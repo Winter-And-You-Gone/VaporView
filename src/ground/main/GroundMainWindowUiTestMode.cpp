@@ -316,6 +316,7 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
         state_->ui_test_started_ms_ = QDateTime::currentMSecsSinceEpoch();
         state_->ui_test_connection_in_progress_ = false;
         resetUiTestRecording();
+        startOrResumeUiTestRecording();
         state_->ui_test_model_->reset(0);
         state_->ui_test_mode_enabled_ = true;
         if (state_->tcp_wave_panel_)

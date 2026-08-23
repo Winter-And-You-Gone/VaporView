@@ -5391,6 +5391,7 @@ void MainWindow::setupLogPanel()
     state_->recording_status_label_ = new QLabel(recordingBody);
     state_->recording_status_label_->setObjectName(QStringLiteral("recordingStatusLabel"));
     state_->recording_status_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    state_->recording_status_label_->setTextFormat(Qt::RichText);
     state_->recording_status_label_->setWordWrap(true);
     state_->recording_status_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     state_->recording_status_label_->setMinimumWidth(0);

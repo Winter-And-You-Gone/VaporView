@@ -5,6 +5,81 @@
 namespace
 {
 
+QString recordingStatusHtmlFromPlainText(const QString& plainText)
+{
+    QString html = QStringLiteral(
+        "<table width=\"100%\" cellspacing=\"0\" cellpadding=\"0\">");
+    const QStringList lines = plainText.split(QLatin1Char('\n'));
+    for (int row = 0; row < lines.size(); ++row)
+    {
+        const QString line = lines.at(row);
+        const QString trimmed = line.trimmed();
+        if (trimmed.isEmpty())
+        {
+            html += QStringLiteral("<tr><td colspan=\"3\">&nbsp;</td></tr>");
+            continue;
+        }
+
+        const bool fullWidthLine = row == 0 || trimmed.endsWith(QChar(0xFF1A)) ||
+                                   trimmed.endsWith(QLatin1Char(':'));
+        if (fullWidthLine)
+        {
+            html += QStringLiteral(
+                        "<tr><td colspan=\"3\" style=\"white-space:nowrap; padding-top:%1px;\">%2</td></tr>")
+                        .arg(row == 0 ? 0 : 4)
+                        .arg(trimmed.toHtmlEscaped());
+            continue;
+        }
+
+        int separator = line.indexOf(QChar(0xFF1A));
+        int separatorWidth = 1;
+        if (separator < 0)
+        {
+            separator = line.indexOf(QStringLiteral(": "));
+            separatorWidth = 2;
+        }
+        if (separator < 0)
+        {
+            html += QStringLiteral(
+                        "<tr><td colspan=\"3\" style=\"white-space:nowrap;\">%1</td></tr>")
+                        .arg(trimmed.toHtmlEscaped());
+            continue;
+        }
+
+        const QString label = line.left(separator + 1).trimmed();
+        QString value = line.mid(separator + separatorWidth).trimmed();
+        QString unit;
+        const int unitSeparator = value.lastIndexOf(QLatin1Char(' '));
+        if (unitSeparator > 0)
+        {
+            const QString candidate = value.mid(unitSeparator + 1);
+            if (candidate == QStringLiteral("行") ||
+                candidate == QStringLiteral("帧") ||
+                candidate == QStringLiteral("条") ||
+                candidate == QStringLiteral("rows") ||
+                candidate == QStringLiteral("frames") ||
+                candidate == QStringLiteral("features") ||
+                candidate == QStringLiteral("records"))
+            {
+                unit = candidate;
+                value = value.left(unitSeparator).trimmed();
+            }
+        }
+
+        html += QStringLiteral(
+            "<tr>"
+            "<td style=\"white-space:nowrap;\">%1</td>"
+            "<td align=\"right\" style=\"white-space:nowrap; padding-left:8px;\">%2</td>"
+            "<td width=\"42\" align=\"right\" style=\"white-space:nowrap; padding-left:4px;\">%3</td>"
+            "</tr>")
+            .arg(label.toHtmlEscaped(),
+                 value.toHtmlEscaped(),
+                 unit.toHtmlEscaped());
+    }
+    html += QStringLiteral("</table>");
+    return html;
+}
+
 
 void publishPendingUiLogDropNotice(quint64 dropped)
 {
@@ -436,9 +511,20 @@ void MainWindow::updateRecordingStatusLabel()
         return;
     }
 
+    auto applyRecordingStatusText = [this](const QString& plainText) {
+        state_->recording_status_label_->setText(recordingStatusHtmlFromPlainText(plainText));
+        state_->recording_status_label_->setToolTip(plainText);
+        if (state_->recording_status_card_)
+        {
+            state_->recording_status_card_->setToolTip(plainText);
+        }
+    };
+
     if (isUiTestMode())
     {
-        const qint64 elapsedMs = uiTestRecordingElapsedMs();
+        const qint64 elapsedMs = state_->ui_test_recording_state_ == 0
+            ? 0
+            : std::max<qint64>(uiTestRecordingElapsedMs(), 5000);
         const auto countAtRate = [elapsedMs](qint64 rateHz) {
             return static_cast<qulonglong>(std::max<qint64>(0, elapsedMs) * rateHz / 1000);
         };
@@ -488,13 +574,11 @@ void MainWindow::updateRecordingStatusLabel()
                                 state_->dark_theme_enabled_);
         const QString visualStatus = QString::fromLatin1(visual);
         const bool visualChanged = state_->recording_status_label_->property("status").toString() != visualStatus;
-        state_->recording_status_label_->setText(text);
-        state_->recording_status_label_->setToolTip(text);
+        applyRecordingStatusText(text);
         state_->recording_status_label_->setProperty("status", visualStatus);
         if (state_->recording_status_card_)
         {
             state_->recording_status_card_->setProperty("status", visualStatus);
-            state_->recording_status_card_->setToolTip(text);
         }
         if (visualChanged)
         {
@@ -634,7 +718,7 @@ void MainWindow::updateRecordingStatusLabel()
         if (state_->remote_recording_state_ == 1)
         {
             setRecordingTitleIcon(true);
-            state_->recording_status_label_->setText(
+            applyRecordingStatusText(
                 QString(state_->is_english_ ? "Sky Recording: On\n%1" : "天空端记录：进行中\n%1")
                     .arg(detailWithSchedule));
             setVisualStatus("connected");
@@ -642,7 +726,7 @@ void MainWindow::updateRecordingStatusLabel()
         else if (state_->remote_recording_state_ == 2)
         {
             setRecordingTitleIcon(false);
-            state_->recording_status_label_->setText(
+            applyRecordingStatusText(
                 QString(state_->is_english_ ? "Sky Recording: Paused\n%1" : "天空端记录：已暂停\n%1")
                     .arg(detailWithSchedule));
             setVisualStatus("connecting");
@@ -650,16 +734,10 @@ void MainWindow::updateRecordingStatusLabel()
         else
         {
             setRecordingTitleIcon(false);
-            state_->recording_status_label_->setText(
+            applyRecordingStatusText(
                 QString(state_->is_english_ ? "Sky Recording: Off\n%1" : "天空端记录：未记录\n%1")
                     .arg(detailWithSchedule));
             setVisualStatus("disconnected");
-        }
-        const QString summary = state_->recording_status_label_->text();
-        state_->recording_status_label_->setToolTip(summary);
-        if (state_->recording_status_card_)
-        {
-            state_->recording_status_card_->setToolTip(summary);
         }
         polishVisualStatus();
         updateRecordingActionStates();
@@ -696,7 +774,7 @@ void MainWindow::updateRecordingStatusLabel()
         if (recordingStatus.paused)
         {
             setRecordingTitleIcon(false);
-            state_->recording_status_label_->setText(
+            applyRecordingStatusText(
                 QString(state_->is_english_ ? "Recording: Paused\n%1" : "记录：已暂停\n%1")
                     .arg(appendScheduledLine(detail)));
             setVisualStatus("connecting");
@@ -704,7 +782,7 @@ void MainWindow::updateRecordingStatusLabel()
         else
         {
             setRecordingTitleIcon(true);
-            state_->recording_status_label_->setText(
+            applyRecordingStatusText(
                 QString(state_->is_english_ ? "Recording: On\n%1" : "记录：进行中\n%1")
                     .arg(appendScheduledLine(detail)));
             setVisualStatus("connected");
@@ -712,19 +790,13 @@ void MainWindow::updateRecordingStatusLabel()
     }
     else
     {
-        state_->recording_status_label_->setText(
+        applyRecordingStatusText(
             QString(state_->is_english_ ? "Recording: Off\n%1" : "记录：未记录\n%1")
                 .arg(appendScheduledLine(detail)));
         setRecordingTitleIcon(false);
         setVisualStatus("disconnected");
     }
 
-    const QString summary = state_->recording_status_label_->text();
-    state_->recording_status_label_->setToolTip(summary);
-    if (state_->recording_status_card_)
-    {
-        state_->recording_status_card_->setToolTip(summary);
-    }
     polishVisualStatus();
     updateRecordingActionStates();
 }
