@@ -156,6 +156,21 @@ protected:
         {
             focusWidget->clearFocus();
         }
+        clearTrackKeyboardFocusIndicators();
+        setKeyboardFocusIndicatorVisible(false);
+        QPushButton::mousePressEvent(event);
+    }
+
+    void mouseReleaseEvent(QMouseEvent *event) override
+    {
+        QPushButton::mouseReleaseEvent(event);
+        clearTrackKeyboardFocusIndicators();
+        setKeyboardFocusIndicatorVisible(false);
+    }
+
+private:
+    void clearTrackKeyboardFocusIndicators()
+    {
         if (QWidget *track = parentWidget())
         {
             const auto children = track->findChildren<QWidget *>(QString(), Qt::FindDirectChildrenOnly);
@@ -167,11 +182,8 @@ protected:
                 }
             }
         }
-        setKeyboardFocusIndicatorVisible(false);
-        QPushButton::mousePressEvent(event);
     }
 
-private:
     void setKeyboardFocusIndicatorVisible(bool visible)
     {
         if (keyboard_focus_indicator_visible_ == visible)

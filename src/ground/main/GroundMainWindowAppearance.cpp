@@ -1008,9 +1008,26 @@ void MainWindow::updateResponsiveHomeLayout()
 
     if (state_->epsilon_group_)
     {
-        state_->epsilon_group_->setMaximumWidth(QWIDGETSIZE_MAX);
-        state_->epsilon_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-        state_->sensor_layout_->setAlignment(state_->epsilon_group_, Qt::Alignment());
+        if (compact)
+        {
+            const QMargins groupMargins = state_->epsilon_group_->layout()
+                ? state_->epsilon_group_->layout()->contentsMargins()
+                : QMargins();
+            const int contentWidth = state_->epsilon_panel_
+                ? state_->epsilon_panel_->preferredWrappedWidth() + groupMargins.left() + groupMargins.right()
+                : state_->epsilon_group_->minimumSizeHint().width();
+            const int targetWidth = std::max(state_->epsilon_group_->minimumSizeHint().width(),
+                                             contentWidth + scalePixels(16));
+            state_->epsilon_group_->setMaximumWidth(targetWidth);
+            state_->epsilon_group_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
+            state_->sensor_layout_->setAlignment(state_->epsilon_group_, Qt::AlignLeft | Qt::AlignTop);
+        }
+        else
+        {
+            state_->epsilon_group_->setMaximumWidth(QWIDGETSIZE_MAX);
+            state_->epsilon_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+            state_->sensor_layout_->setAlignment(state_->epsilon_group_, Qt::Alignment());
+        }
     }
     if (state_->env_group_)
     {

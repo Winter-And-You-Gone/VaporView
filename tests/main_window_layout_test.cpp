@@ -2771,6 +2771,14 @@ QRect wrappedTextBounds(const QLabel *label)
                                              label->text());
 }
 
+void requireLabelTextSlack(const QLabel *label, int minimumSlack, const char *message)
+{
+    require(label != nullptr, message);
+    const int textWidth = std::max(label->fontMetrics().horizontalAdvance(label->text()),
+                                   label->fontMetrics().boundingRect(label->text()).width());
+    require(label->width() >= textWidth + minimumSlack, message);
+}
+
 void requireMargins(const QMargins& actual, const QMargins& expected, const char *message)
 {
     require(actual.left() == expected.left() &&
@@ -3444,9 +3452,9 @@ bool epsilonSectionCardsUseWrappedMotionRow(QWidget *epsilonPanel)
     const QRect third(cards.at(2)->mapTo(epsilonPanel, QPoint(0, 0)), cards.at(2)->size());
     return std::abs(first.top() - second.top()) <= 4 &&
            second.left() > first.right() &&
+           second.left() - first.right() <= 1 &&
            third.top() > first.bottom() &&
-           third.left() <= first.left() + 2 &&
-           third.right() >= second.right() - 2;
+           third.left() <= first.left() + 2;
 }
 
 void requireEpsilonSectionCardsUseWrappedMotionRow(QWidget *epsilonPanel, const char *message)
@@ -3769,6 +3777,8 @@ void requireHomeOverviewLanguageWidthRoundTrip()
     const QRect wideAttitudeConsistencyBounds = wrappedTextBounds(wideAttitudeConsistencyValue);
     require(wideAttitudeConsistencyBounds.height() <= wideAttitudeConsistencyValue->height() + 2,
             "wide overview shows the full EPSILON attitude consistency value without clipping");
+    requireLabelTextSlack(wideAttitudeConsistencyValue, 8,
+                          "wide overview EPSILON longest value keeps a small readable slack");
     wideOverviewWindow.close();
     require(processEventsUntil(1000, [&wideOverviewWindow]() {
                 return !wideOverviewWindow.isVisible();
@@ -10053,6 +10063,20 @@ int main(int argc, char **argv)
     requireMargins(epsilonPanel->layout()->contentsMargins(),
                    QMargins(2, 2, 2, 2),
                    "EPSILON panel content rhythm remains the reference");
+    const bool compactSensorCardsStacked =
+        std::abs(epsilonGroup->x() - environmentGroup->x()) <= 4 &&
+        environmentGroup->y() > epsilonGroup->y();
+    if (compactSensorCardsStacked)
+    {
+        const int epsilonMinimumWidth = epsilonGroup->minimumSizeHint().width();
+        require(epsilonGroup->width() <= epsilonMinimumWidth + 24,
+                "compact EPSILON outer card follows the narrowed content width with a small reserve");
+        if (dataGroup->width() > epsilonMinimumWidth + 48)
+        {
+            require(epsilonGroup->width() < dataGroup->width() - 8,
+                    "compact EPSILON outer card no longer expands to the full row width");
+        }
+    }
 
     QList<QFrame*> cards = sortedEpsilonSectionCards(epsilonPanel);
     require(cards.size() == 3, "three EPSILON section cards");
