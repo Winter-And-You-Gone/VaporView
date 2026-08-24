@@ -1607,7 +1607,9 @@ void MainWindow::onEpsilonDataReady()
     if (collectors.epsilon)
     {
         state_->current_epsilon_ = collectors.epsilon->getLatestData();
-        if (state_->epsilon_device_session_ && !isRemoteSkyMode())
+        if (state_->epsilon_device_session_ &&
+            !isRemoteSkyMode() &&
+            !state_->epsilon_device_session_->operationPending())
         {
             const QString detail = QStringLiteral("%1 @ %2")
                 .arg(localSerialPortComboValue(state_->epsilon_port_combo_),

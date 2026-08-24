@@ -136,7 +136,8 @@ int main(int argc, char **argv)
 
     *slowPacketRates = true;
     const quint64 staleId = session.configurePacketRates(packetRateOperation(), localDevice);
-    require(staleId != 0, "slow local EPSILON operation starts");
+    require(staleId != 0 && session.operationPending(),
+            "slow local EPSILON operation remains pending while the worker is busy");
     session.setBackend(EpsilonBackend::Remote);
     require(!results.isEmpty() && results.back().request_id == staleId &&
                 results.back().outcome == EpsilonOperationOutcome::Disconnected,
