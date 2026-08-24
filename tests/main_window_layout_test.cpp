@@ -10065,6 +10065,11 @@ int main(int argc, char **argv)
 
     const QRect compactEpsilonGeometry = epsilonGroup->geometry();
     const QRect compactEnvironmentGeometry = environmentGroup->geometry();
+    require(std::abs(compactEnvironmentGeometry.top() - compactEpsilonGeometry.top()) <= 1 &&
+                compactEnvironmentGeometry.left() > compactEpsilonGeometry.right(),
+            "default home data cards place environment and lidar to the right of EPSILON when width permits");
+    require(compactEnvironmentGeometry.right() <= dataGroup->contentsRect().right() + 1,
+            "default environment and lidar card stays inside the home data card edge");
     window.resize(1920, 1000);
     require(processEventsUntil(1000, [&window,
                                       epsilonGroup,

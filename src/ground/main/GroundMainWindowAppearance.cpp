@@ -912,7 +912,31 @@ void MainWindow::updateResponsiveHomeLayout()
         state_->data_group_->setProperty(kMainCardUserResizedHeightProperty, false);
     }
 
-    const QBoxLayout::Direction direction = compact ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight;
+    const QMargins epsilonGroupMargins = state_->epsilon_group_ && state_->epsilon_group_->layout()
+        ? state_->epsilon_group_->layout()->contentsMargins()
+        : QMargins();
+    const int compactEpsilonContentWidth = state_->epsilon_panel_
+        ? state_->epsilon_panel_->preferredWrappedWidth() + epsilonGroupMargins.left() + epsilonGroupMargins.right()
+        : (state_->epsilon_group_ ? state_->epsilon_group_->minimumSizeHint().width() : 0);
+    const int compactEpsilonTargetWidth = state_->epsilon_group_
+        ? std::max(state_->epsilon_group_->minimumSizeHint().width(),
+                   compactEpsilonContentWidth + scalePixels(16))
+        : compactEpsilonContentWidth;
+    const int environmentMinimumWidth = state_->env_group_
+        ? std::max(state_->env_group_->minimumWidth(), state_->env_group_->minimumSizeHint().width())
+        : 0;
+    int sensorAvailableWidth = std::max(0, state_->sensor_row_widget_->contentsRect().width());
+    if (sensorAvailableWidth <= 1 && state_->data_group_)
+    {
+        sensorAvailableWidth = std::max(0, state_->data_group_->contentsRect().width());
+    }
+    const int sensorCardGap = std::max(0, kTopLevelCardGap);
+    const bool compactCardsFitSideBySide =
+        sensorAvailableWidth > 0 &&
+        sensorAvailableWidth >= compactEpsilonTargetWidth + sensorCardGap + environmentMinimumWidth;
+    const bool stackSensorCards = compact && !compactCardsFitSideBySide;
+
+    const QBoxLayout::Direction direction = stackSensorCards ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight;
     if (state_->sensor_layout_->direction() != direction)
     {
         state_->sensor_layout_->setDirection(direction);
@@ -1014,15 +1038,7 @@ void MainWindow::updateResponsiveHomeLayout()
     {
         if (compact)
         {
-            const QMargins groupMargins = state_->epsilon_group_->layout()
-                ? state_->epsilon_group_->layout()->contentsMargins()
-                : QMargins();
-            const int contentWidth = state_->epsilon_panel_
-                ? state_->epsilon_panel_->preferredWrappedWidth() + groupMargins.left() + groupMargins.right()
-                : state_->epsilon_group_->minimumSizeHint().width();
-            const int targetWidth = std::max(state_->epsilon_group_->minimumSizeHint().width(),
-                                             contentWidth + scalePixels(16));
-            state_->epsilon_group_->setMaximumWidth(targetWidth);
+            state_->epsilon_group_->setMaximumWidth(compactEpsilonTargetWidth);
             state_->epsilon_group_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
             state_->sensor_layout_->setAlignment(state_->epsilon_group_, Qt::AlignLeft | Qt::AlignTop);
         }
@@ -1048,9 +1064,10 @@ void MainWindow::updateResponsiveHomeLayout()
             const int targetEnvironmentWidth = totalStretch > 0
                 ? availableWidth * kSensorEnvironmentStretch / totalStretch
                 : 0;
-            const int environmentMinimumWidth = std::max(state_->env_group_->minimumWidth(),
-                                                         state_->env_group_->minimumSizeHint().width());
-            state_->env_group_->setMaximumWidth(std::max(environmentMinimumWidth, targetEnvironmentWidth));
+            const int nonCompactEnvironmentMinimumWidth =
+                std::max(state_->env_group_->minimumWidth(),
+                         state_->env_group_->minimumSizeHint().width());
+            state_->env_group_->setMaximumWidth(std::max(nonCompactEnvironmentMinimumWidth, targetEnvironmentWidth));
         }
         state_->env_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
         state_->sensor_layout_->setAlignment(state_->env_group_, Qt::Alignment());
@@ -1058,7 +1075,7 @@ void MainWindow::updateResponsiveHomeLayout()
     if (state_->sensor_layout_->count() >= 2)
     {
         state_->sensor_layout_->setStretch(0, compact ? 0 : kSensorNavigationStretch);
-        state_->sensor_layout_->setStretch(1, compact ? 0 : kSensorEnvironmentStretch);
+        state_->sensor_layout_->setStretch(1, stackSensorCards ? 0 : kSensorEnvironmentStretch);
     }
 
     auto clearFixedHeight = [](QWidget *widget) {
@@ -1097,14 +1114,27 @@ void MainWindow::updateResponsiveHomeLayout()
     const int epsilonHeight = contentHeightFor(state_->epsilon_group_);
     const int envHeight = contentHeightFor(state_->env_group_);
     int targetHeight = std::max(epsilonHeight, envHeight);
-    if (compact && epsilonHeight > 0 && envHeight > 0)
+    if (stackSensorCards && epsilonHeight > 0 && envHeight > 0)
     {
         targetHeight = epsilonHeight + envHeight + state_->sensor_layout_->spacing();
     }
 
+    bool hadStoredDataMinimumHeight = false;
+    const int storedDataMinimumHeight = state_->data_group_
+        ? state_->data_group_->property(kMainCardMinimumHeightProperty).toInt(&hadStoredDataMinimumHeight)
+        : 0;
+    const int dataMinimumHeight =
+        preserveDataCardHeight && hadStoredDataMinimumHeight
+            ? std::max(0, storedDataMinimumHeight)
+            : targetHeight;
+    const int dataCardHeight =
+        preserveDataCardHeight
+            ? std::max(currentDataCardHeight, dataMinimumHeight)
+            : targetHeight;
+
     if (targetHeight > 0)
     {
-        if (compact)
+        if (stackSensorCards)
         {
             if (state_->epsilon_group_)
             {
@@ -1119,19 +1149,16 @@ void MainWindow::updateResponsiveHomeLayout()
         {
             if (state_->epsilon_group_)
             {
-                state_->epsilon_group_->setFixedHeight(targetHeight);
+                state_->epsilon_group_->setFixedHeight(dataCardHeight);
             }
             if (state_->env_group_)
             {
-                state_->env_group_->setFixedHeight(targetHeight);
+                state_->env_group_->setFixedHeight(dataCardHeight);
             }
         }
-        state_->sensor_row_widget_->setMinimumHeight(targetHeight);
-        state_->data_group_->setProperty(kMainCardMinimumHeightProperty, targetHeight);
-        state_->data_group_->setMinimumHeight(targetHeight);
-        const int dataCardHeight = preserveDataCardHeight
-            ? std::max(currentDataCardHeight, targetHeight)
-            : targetHeight;
+        state_->sensor_row_widget_->setMinimumHeight(dataMinimumHeight);
+        state_->data_group_->setProperty(kMainCardMinimumHeightProperty, dataMinimumHeight);
+        state_->data_group_->setMinimumHeight(dataMinimumHeight);
         state_->data_group_->setFixedHeight(dataCardHeight);
     }
 
