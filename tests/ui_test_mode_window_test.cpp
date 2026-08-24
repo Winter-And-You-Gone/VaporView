@@ -204,6 +204,74 @@ bool findLogEventWithDevice(QListView *logList, const QString& event, const QStr
     return false;
 }
 
+int findSourceLogEventRow(VaporView::Ground::Main::UiLogModel *logModel,
+                          const QString& event)
+{
+    if (!logModel)
+    {
+        return -1;
+    }
+    for (int row = 0; row < logModel->rowCount(); ++row)
+    {
+        if (logModel->index(row, 0)
+                .data(VaporView::Ground::Main::UiLogModel::EventRole)
+                .toString() == event)
+        {
+            return row;
+        }
+    }
+    return -1;
+}
+
+bool hasContiguousEpsilonProgressSequence(VaporView::Ground::Main::UiLogModel *logModel)
+{
+    if (!logModel)
+    {
+        return false;
+    }
+    std::set<int> steps;
+    int total = 0;
+    for (int row = 0; row < logModel->rowCount(); ++row)
+    {
+        const QModelIndex index = logModel->index(row, 0);
+        if (index.data(VaporView::Ground::Main::UiLogModel::EventRole).toString() !=
+            QStringLiteral("epsilon_configuration_collector_output"))
+        {
+            continue;
+        }
+        const QVariantMap fields = index.data(
+            VaporView::Ground::Main::UiLogModel::FieldsRole).toMap();
+        if (fields.value(QStringLiteral("execution_path")).toString() !=
+            QStringLiteral("ui_test"))
+        {
+            continue;
+        }
+        bool currentOk = false;
+        bool totalOk = false;
+        const int current = fields.value(QStringLiteral("epsilon_progress_current"))
+            .toInt(&currentOk);
+        const int entryTotal = fields.value(QStringLiteral("epsilon_progress_total"))
+            .toInt(&totalOk);
+        if (currentOk && totalOk && current > 0 && entryTotal > 0)
+        {
+            steps.insert(current);
+            total = std::max(total, entryTotal);
+        }
+    }
+    if (total <= 0)
+    {
+        return false;
+    }
+    for (int step = 1; step <= total; ++step)
+    {
+        if (steps.find(step) == steps.end())
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 void dumpLogRows(QListView *logList, const char *prefix)
 {
     if (!logList || !logList->model())
@@ -940,8 +1008,11 @@ int main(int argc, char **argv)
         QStringLiteral("epsilonReconfigureProgressLabel"));
     auto *epsilonProgressBar = window->findChild<QProgressBar *>(
         QStringLiteral("epsilonReconfigureProgressBar"));
+    auto *epsilonLogModel = window->findChild<VaporView::Ground::Main::UiLogModel *>();
     require(epsilonProgressRow && epsilonProgressLabel && epsilonProgressBar,
             "UI test mode exposes the EPSILON reconfigure progress controls");
+    require(epsilonLogModel != nullptr,
+            "UI test mode exposes the EPSILON log source model");
     require(!epsilonProgressRow->isVisible(),
             "EPSILON reconfigure progress starts hidden before an operation");
     require(QMetaObject::invokeMethod(window,
@@ -951,20 +1022,43 @@ int main(int argc, char **argv)
     require(VaporViewTest::processEventsUntil(600, [epsilonProgressRow, epsilonProgressBar]() {
                 return epsilonProgressRow->isVisible() &&
                     epsilonProgressBar->minimum() == 0 &&
-                    epsilonProgressBar->maximum() == 0;
+                    epsilonProgressBar->maximum() == 100 &&
+                    epsilonProgressBar->value() == 0;
             }),
-            "UI test mode shows an indeterminate EPSILON reconfigure progress row");
+            "UI test mode shows a determinate 0-100 EPSILON reconfigure progress row");
     const QString initialProgressText = epsilonProgressLabel->text();
     require(initialProgressText.contains(QStringLiteral("正在重配 EPSILON 输出")),
             "UI test mode labels the EPSILON reconfigure progress row");
-    require(VaporViewTest::processEventsUntil(1100, [epsilonProgressLabel, initialProgressText]() {
-                return epsilonProgressLabel->text() != initialProgressText;
+    require(VaporViewTest::processEventsUntil(1200, [epsilonProgressBar,
+                                                       epsilonProgressLabel,
+                                                       initialProgressText]() {
+                return epsilonProgressBar->value() > 0 &&
+                    epsilonProgressLabel->text() != initialProgressText;
             }),
-            "UI test mode updates the EPSILON reconfigure elapsed time in place");
-    require(VaporViewTest::processEventsUntil(2500, [epsilonProgressRow]() {
+            "UI test mode advances EPSILON progress after simulated command/reply stages");
+    require(VaporViewTest::processEventsUntil(6000, [epsilonProgressRow, epsilonProgressBar]() {
+                return epsilonProgressRow->isVisible() && epsilonProgressBar->value() == 100;
+            }),
+            "UI test mode reaches 100 percent after the simulated navigation stream is restored");
+    require(VaporViewTest::processEventsUntil(1000, [epsilonProgressRow]() {
                 return !epsilonProgressRow->isVisible();
             }),
             "UI test mode hides the EPSILON reconfigure progress row after completion");
+    const QStringList expectedEpsilonReconfigureEvents{
+        QStringLiteral("epsilon_output_reconfigure_started"),
+        QStringLiteral("epsilon_live_stream_pause_for_configuration"),
+        QStringLiteral("epsilon_configuration_collector_output"),
+        QStringLiteral("epsilon_output_reconfigure_completed"),
+        QStringLiteral("epsilon_configuration_completed_live_stream_restored"),
+        QStringLiteral("epsilon_operation_completed"),
+        QStringLiteral("ui_test_epsilon_output_reconfigure_completed")};
+    for (const QString& event : expectedEpsilonReconfigureEvents)
+    {
+        require(findSourceLogEventRow(epsilonLogModel, event) >= 0,
+                "UI test mode logs the complete EPSILON reconfigure event sequence");
+    }
+    require(hasContiguousEpsilonProgressSequence(epsilonLogModel),
+            "UI test mode records one progress step for every simulated command or successful reply");
 
     auto *temperatureOutputPercentPill =
         window->findChild<QLabel *>(QStringLiteral("temperatureOverviewOutputPercentPill"));

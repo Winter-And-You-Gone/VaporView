@@ -5565,7 +5565,7 @@ void MainWindow::setupLogPanel()
         new QProgressBar(state_->epsilon_reconfigure_progress_row_);
     state_->epsilon_reconfigure_progress_bar_->setObjectName(
         QStringLiteral("epsilonReconfigureProgressBar"));
-    state_->epsilon_reconfigure_progress_bar_->setRange(0, 0);
+    state_->epsilon_reconfigure_progress_bar_->setRange(0, 100);
     state_->epsilon_reconfigure_progress_bar_->setTextVisible(false);
     state_->epsilon_reconfigure_progress_bar_->setFixedHeight(scalePixels(8));
     state_->epsilon_reconfigure_progress_bar_->setMinimumWidth(scalePixels(72));

@@ -281,7 +281,10 @@ private:
     void restoreUiTestWidgetState();
     void enqueueUiLogRecord(const VaporView::LogRecord& record);
     void flushPendingUiLogRecords();
-    void startEpsilonReconfigureProgress();
+    void startEpsilonReconfigureProgress(int total_steps = 100);
+    void setEpsilonReconfigureProgress(int current_step,
+                                       int total_steps,
+                                       const QString& stage = QString());
     void updateEpsilonReconfigureProgress();
     void stopEpsilonReconfigureProgress();
     void setLogViewMode(VaporView::Ground::Main::LogUiViewMode mode, bool persist = true);

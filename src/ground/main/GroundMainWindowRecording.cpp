@@ -1,6 +1,8 @@
 #include "ground/main/GroundMainWindowImplementation.h"
 
 #include <QProgressBar>
+#include <algorithm>
+#include <cmath>
 #include <utility>
 
 namespace
@@ -33,6 +35,20 @@ void MainWindow::publishGroundLog(VaporView::LogLevel level,
                                   const QString& message,
                                   QVariantMap fields)
 {
+    bool hasProgressCurrent = false;
+    bool hasProgressTotal = false;
+    const int progressCurrent = fields.value(QStringLiteral("epsilon_progress_current"))
+        .toInt(&hasProgressCurrent);
+    const int progressTotal = fields.value(QStringLiteral("epsilon_progress_total"))
+        .toInt(&hasProgressTotal);
+    if (hasProgressCurrent && hasProgressTotal && progressTotal > 0)
+    {
+        setEpsilonReconfigureProgress(
+            progressCurrent,
+            progressTotal,
+            fields.value(QStringLiteral("epsilon_progress_stage")).toString());
+    }
+
     fields.insert(QStringLiteral("event"), event);
     fields.insert(QStringLiteral("ui_visible"), true);
     if (!fields.contains(QStringLiteral("ui_visibility")))
@@ -59,7 +75,7 @@ void MainWindow::publishGroundLog(VaporView::LogLevel level,
     state_->has_inline_progress_log_ = false;
 }
 
-void MainWindow::startEpsilonReconfigureProgress()
+void MainWindow::startEpsilonReconfigureProgress(int totalSteps)
 {
     if (!state_->epsilon_reconfigure_progress_row_ ||
         !state_->epsilon_reconfigure_progress_label_ ||
@@ -69,8 +85,11 @@ void MainWindow::startEpsilonReconfigureProgress()
     }
 
     state_->epsilon_reconfigure_progress_visible_ = true;
+    state_->epsilon_reconfigure_progress_current_ = 0;
+    state_->epsilon_reconfigure_progress_total_ = std::max(1, totalSteps);
+    state_->epsilon_reconfigure_progress_stage_.clear();
     state_->epsilon_reconfigure_progress_elapsed_.start();
-    state_->epsilon_reconfigure_progress_bar_->setRange(0, 0);
+    state_->epsilon_reconfigure_progress_bar_->setRange(0, 100);
     state_->epsilon_reconfigure_progress_bar_->setValue(0);
     state_->epsilon_reconfigure_progress_row_->setVisible(true);
     updateEpsilonReconfigureProgress();
@@ -78,6 +97,31 @@ void MainWindow::startEpsilonReconfigureProgress()
     {
         state_->epsilon_reconfigure_progress_timer_->start();
     }
+}
+
+void MainWindow::setEpsilonReconfigureProgress(int currentStep,
+                                                int totalSteps,
+                                                const QString& stage)
+{
+    if (!state_->epsilon_reconfigure_progress_visible_ ||
+        !state_->epsilon_reconfigure_progress_bar_)
+    {
+        return;
+    }
+
+    state_->epsilon_reconfigure_progress_total_ = std::max(1, totalSteps);
+    state_->epsilon_reconfigure_progress_current_ =
+        std::clamp(currentStep, 0, state_->epsilon_reconfigure_progress_total_);
+    if (!stage.isEmpty())
+    {
+        state_->epsilon_reconfigure_progress_stage_ = stage;
+    }
+    const int percentage = static_cast<int>(std::lround(
+        100.0 * state_->epsilon_reconfigure_progress_current_ /
+        state_->epsilon_reconfigure_progress_total_));
+    state_->epsilon_reconfigure_progress_bar_->setRange(0, 100);
+    state_->epsilon_reconfigure_progress_bar_->setValue(std::clamp(percentage, 0, 100));
+    updateEpsilonReconfigureProgress();
 }
 
 void MainWindow::updateEpsilonReconfigureProgress()
@@ -95,10 +139,24 @@ void MainWindow::updateEpsilonReconfigureProgress()
     const QString elapsedText = QStringLiteral("%1:%2")
         .arg(elapsedSeconds / 60, 2, 10, QLatin1Char('0'))
         .arg(elapsedSeconds % 60, 2, 10, QLatin1Char('0'));
+    const int percentage = state_->epsilon_reconfigure_progress_total_ > 0
+        ? static_cast<int>(std::lround(
+            100.0 * state_->epsilon_reconfigure_progress_current_ /
+            state_->epsilon_reconfigure_progress_total_))
+        : 0;
+    const QString stage = state_->epsilon_reconfigure_progress_stage_;
     state_->epsilon_reconfigure_progress_label_->setText(
         state_->is_english_
-            ? QStringLiteral("Configuring EPSILON output (elapsed %1)").arg(elapsedText)
-            : QStringLiteral("正在重配 EPSILON 输出（已用时 %1）").arg(elapsedText));
+            ? (stage.isEmpty()
+                ? QStringLiteral("Configuring EPSILON output (%1%, elapsed %2)")
+                      .arg(percentage).arg(elapsedText)
+                : QStringLiteral("Configuring EPSILON output (%1%, %2, elapsed %3)")
+                      .arg(percentage).arg(stage).arg(elapsedText))
+            : (stage.isEmpty()
+                ? QStringLiteral("正在重配 EPSILON 输出（%1%，已用时 %2）")
+                      .arg(percentage).arg(elapsedText)
+                : QStringLiteral("正在重配 EPSILON 输出（%1%，%2，已用时 %3）")
+                      .arg(percentage).arg(stage).arg(elapsedText)));
 }
 
 void MainWindow::stopEpsilonReconfigureProgress()
@@ -117,6 +175,9 @@ void MainWindow::stopEpsilonReconfigureProgress()
         state_->epsilon_reconfigure_progress_bar_->setRange(0, 100);
         state_->epsilon_reconfigure_progress_bar_->setValue(0);
     }
+    state_->epsilon_reconfigure_progress_current_ = 0;
+    state_->epsilon_reconfigure_progress_total_ = 100;
+    state_->epsilon_reconfigure_progress_stage_.clear();
 }
 
 void MainWindow::publishTemperatureCommandLog(VaporView::LogLevel level,

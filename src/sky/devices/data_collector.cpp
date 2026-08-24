@@ -796,6 +796,7 @@ std::string readPrintableSerialResponse(SerialPort& serial, int totalWaitMs, boo
 }
 
 using EpsilonLogFn = std::function<void(const std::string&)>;
+using EpsilonCommandProgressFn = EpsilonCollector::CommandProgressCallback;
 
 std::string readLoggedEpsilonAsciiResponse(SerialPort& serial, const EpsilonLogFn& logFn, int totalWaitMs)
 {
@@ -817,15 +818,25 @@ std::string sendLoggedEpsilonAsciiCommand(SerialPort& serial,
                                           const EpsilonLogFn& logFn,
                                           bool english,
                                           const std::string& command,
-                                          int waitMs)
+                                          int waitMs,
+                                          const EpsilonCommandProgressFn& progress = {})
 {
-  logFn("[EPSILON TX] " + trimAscii(command));
+  const std::string trimmedCommand = trimAscii(command);
+  logFn("[EPSILON TX] " + trimmedCommand);
   const ssize_t written = serial.write(command.c_str(), command.size());
   if (written != static_cast<ssize_t>(command.size()))
   {
     logFn(std::string(english ? "EPSILON: failed to send command: " : "EPSILON：命令发送失败：") +
-          trimAscii(command));
+          trimmedCommand);
+    if (progress)
+    {
+      progress(trimmedCommand, false, false);
+    }
     return std::string();
+  }
+  if (progress)
+  {
+    progress(trimmedCommand, false, true);
   }
   if (waitMs > 0)
   {
@@ -834,16 +845,24 @@ std::string sendLoggedEpsilonAsciiCommand(SerialPort& serial,
   const std::string response = waitMs > 0
       ? readLoggedEpsilonAsciiResponse(serial, logFn, std::max(180, waitMs))
       : std::string();
-  const std::string trimmedCommand = trimAscii(command);
   const bool expectedPrompt = trimmedCommand == "#freboot" && response.find("(y/n)") != std::string::npos;
   const bool expectedFmsgList = trimmedCommand == "#fmsg" && response.find("MSG_") != std::string::npos;
+  const bool hasAsciiError = response.find("ERROR") != std::string::npos ||
+      response.find("error") != std::string::npos;
+  const bool successfulReply = !response.empty() && !hasAsciiError &&
+      (expectedPrompt || expectedFmsgList || containsEpsilonAsciiAck(response) ||
+       response.find("MSG_") != std::string::npos);
   if (command != "y\r\n" && command != "Y\r\n" && !expectedPrompt &&
       !expectedFmsgList && !containsEpsilonAsciiAck(response))
   {
     logFn(std::string(english
                           ? "EPSILON: no explicit ASCII acknowledgement for command: "
-                          : "EPSILON：命令未收到明确 ASCII 确认：") +
+          : "EPSILON：命令未收到明确 ASCII 确认：") +
           trimmedCommand);
+  }
+  if (progress && !response.empty())
+  {
+    progress(trimmedCommand, true, successfulReply);
   }
   return response;
 }
@@ -852,7 +871,8 @@ bool rebootEpsilonAndReopenSerial(SerialPort& serial,
                                   const std::string& portName,
                                   const SerialConfig& config,
                                   const EpsilonLogFn& logFn,
-                                  bool english)
+                                  bool english,
+                                  const EpsilonCommandProgressFn& progress = {})
 {
   if (portName.empty())
   {
@@ -862,7 +882,8 @@ bool rebootEpsilonAndReopenSerial(SerialPort& serial,
     return false;
   }
 
-  const std::string rebootResponse = sendLoggedEpsilonAsciiCommand(serial, logFn, english, "#freboot\r\n", 2000);
+  const std::string rebootResponse = sendLoggedEpsilonAsciiCommand(
+      serial, logFn, english, "#freboot\r\n", 2000, progress);
   if (rebootResponse.find("(y/n)") == std::string::npos)
   {
     logFn(english
@@ -871,7 +892,7 @@ bool rebootEpsilonAndReopenSerial(SerialPort& serial,
     return false;
   }
 
-  sendLoggedEpsilonAsciiCommand(serial, logFn, english, "y\r\n", 0);
+  sendLoggedEpsilonAsciiCommand(serial, logFn, english, "y\r\n", 0, progress);
   sleepMs(150);
 
   serial.close();
@@ -2142,7 +2163,9 @@ bool EpsilonCollector::setDeviceSampleRate(int hz)
   return true;
 }
 
-bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packetRates, bool forceApply)
+bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packetRates,
+                                            bool forceApply,
+                                            CommandProgressCallback progress)
 {
   const bool english = isEnglishLog();
   if (packetRates.empty())
@@ -2183,7 +2206,7 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
       return false;
     }
 
-    const bool configured = setOutputPacketRates(packetRates, forceApply);
+    const bool configured = setOutputPacketRates(packetRates, forceApply, std::move(progress));
     if (!serial_.isOpen() && !start(portName, serialConfig))
     {
       log(english
@@ -2217,9 +2240,9 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
   }
 
   const EpsilonLogFn logFn = [this](const std::string& message) { log(message); };
-  auto failPacketConfiguration = [this, &logFn, english](const std::string& message) {
+  auto failPacketConfiguration = [this, &logFn, english, &progress](const std::string& message) {
     log(message);
-    sendLoggedEpsilonAsciiCommand(serial_, logFn, english, "#fdeconfig\r\n", 700);
+    sendLoggedEpsilonAsciiCommand(serial_, logFn, english, "#fdeconfig\r\n", 700, progress);
     return false;
   };
 
@@ -2227,7 +2250,8 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
   serial_.flush();
   sleepMs(80);
 
-  const std::string configResponse = sendLoggedEpsilonAsciiCommand(serial_, logFn, english, "#fconfig\r\n", kConfigCommandWaitMs);
+  const std::string configResponse = sendLoggedEpsilonAsciiCommand(
+      serial_, logFn, english, "#fconfig\r\n", kConfigCommandWaitMs, progress);
   if (!containsEpsilonAsciiOk(configResponse))
   {
     return failPacketConfiguration(english
@@ -2235,7 +2259,8 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
                                        : "EPSILON：进入配置模式失败，数据包频率未修改");
   }
 
-  const std::string fmsgResponse = sendLoggedEpsilonAsciiCommand(serial_, logFn, english, "#fmsg\r\n", kConfigCommandWaitMs);
+  const std::string fmsgResponse = sendLoggedEpsilonAsciiCommand(
+      serial_, logFn, english, "#fmsg\r\n", kConfigCommandWaitMs, progress);
   const auto currentRates = parseFmsgResponse(fmsgResponse);
 
   bool needsReconfigure = currentRates.size() < packetRates.size();
@@ -2261,7 +2286,8 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
     {
       char command[32];
       std::snprintf(command, sizeof(command), "#fmsg %02X %d\r\n", entry.first, entry.second);
-      const std::string response = sendLoggedEpsilonAsciiCommand(serial_, logFn, english, command, kConfigCommandWaitMs);
+      const std::string response = sendLoggedEpsilonAsciiCommand(
+          serial_, logFn, english, command, kConfigCommandWaitMs, progress);
       if (!EpsilonProtocol::packetRateCommandAccepted(response, entry.first, entry.second))
       {
         std::ostringstream oss;
@@ -2275,7 +2301,8 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
       }
     }
 
-    const std::string saveResponse = sendLoggedEpsilonAsciiCommand(serial_, logFn, english, "#fsave\r\n", kConfigCommandWaitMs);
+    const std::string saveResponse = sendLoggedEpsilonAsciiCommand(
+        serial_, logFn, english, "#fsave\r\n", kConfigCommandWaitMs, progress);
     if (!containsEpsilonAsciiOk(saveResponse))
     {
       return failPacketConfiguration(english
@@ -2283,7 +2310,8 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
                                          : "EPSILON：保存数据包频率配置失败");
     }
 
-    if (!rebootEpsilonAndReopenSerial(serial_, port_name_, serial_config_, logFn, english))
+    if (!rebootEpsilonAndReopenSerial(
+            serial_, port_name_, serial_config_, logFn, english, progress))
     {
       return false;
     }
@@ -2306,7 +2334,8 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
     log(english
             ? "EPSILON: output configuration already matches requested packet rates"
             : "EPSILON：当前输出配置已匹配目标数据包频率");
-    sendLoggedEpsilonAsciiCommand(serial_, logFn, english, "#fdeconfig\r\n", kConfigCommandWaitMs);
+    sendLoggedEpsilonAsciiCommand(
+        serial_, logFn, english, "#fdeconfig\r\n", kConfigCommandWaitMs, progress);
     return waitForEpsilonNavigationStreamRestore(serial_,
                                                  logFn,
                                                  3000,

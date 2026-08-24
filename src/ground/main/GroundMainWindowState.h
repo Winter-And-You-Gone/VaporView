@@ -457,6 +457,9 @@ struct MainWindowState
     bool port_detection_in_progress_;
     bool epsilon_reconfigure_in_progress_;
     bool epsilon_reconfigure_progress_visible_;
+    int epsilon_reconfigure_progress_current_;
+    int epsilon_reconfigure_progress_total_;
+    QString epsilon_reconfigure_progress_stage_;
     QElapsedTimer epsilon_reconfigure_progress_elapsed_;
     bool is_connected_;
     bool ui_test_mode_enabled_;

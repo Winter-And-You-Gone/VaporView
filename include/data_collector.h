@@ -12,6 +12,7 @@
 #include <mutex>
 #include <thread>
 #include <vector>
+#include <string>
 
 namespace VaporView
 {
@@ -137,6 +138,9 @@ private:
 class EpsilonCollector : public DataCollector
 {
 public:
+  using CommandProgressCallback = std::function<void(const std::string& command,
+                                                     bool is_reply,
+                                                     bool successful)>;
   using RawFrameCallback = std::function<void(uint64_t host_timestamp_us,
                                               uint8_t packet_id,
                                               uint8_t serial_number,
@@ -145,7 +149,9 @@ public:
 
   EpsilonData getLatestData();
   bool setDeviceSampleRate(int hz) override;
-  bool setOutputPacketRates(const std::map<uint8_t, int>& packet_rates, bool force_apply = false);
+  bool setOutputPacketRates(const std::map<uint8_t, int>& packet_rates,
+                            bool force_apply = false,
+                            CommandProgressCallback progress = {});
   bool configureRtcmPort(int port_index, int baud_rate);
   bool configureMainAntennaLeverArm(double x_m, double y_m, double z_m);
   bool checkDeviceResponse() override;
