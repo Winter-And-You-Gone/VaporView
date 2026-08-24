@@ -217,10 +217,13 @@ struct TelemetryBasic
     float ahrs_packet_rate_hz = 0.0f;
     float insgps_packet_rate_hz = 0.0f;
     float sys_state_packet_rate_hz = 0.0f;
+    float status_packet_rate_hz = 0.0f;
     float raw_gnss_packet_rate_hz = 0.0f;
     float satellite_packet_rate_hz = 0.0f;
     float geodetic_packet_rate_hz = 0.0f;
     float ecef_packet_rate_hz = 0.0f;
+    float euler_orien_packet_rate_hz = 0.0f;
+    float quat_orien_packet_rate_hz = 0.0f;
 };
 
 struct DownsampledWaveform

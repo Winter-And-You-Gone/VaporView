@@ -2511,10 +2511,13 @@ void EpsilonCollector::run()
   PacketRateTracker ahrsRateTracker;
   PacketRateTracker insGpsRateTracker;
   PacketRateTracker sysStateRateTracker;
+  PacketRateTracker statusRateTracker;
   PacketRateTracker rawGnssRateTracker;
   PacketRateTracker satelliteRateTracker;
   PacketRateTracker geodeticRateTracker;
   PacketRateTracker ecefRateTracker;
+  PacketRateTracker eulerOrienRateTracker;
+  PacketRateTracker quatOrienRateTracker;
   bool reportedInvalidEcef = false;
   bool hasResolvedLlh = false;
 
@@ -2526,10 +2529,13 @@ void EpsilonCollector::run()
                        &ahrsRateTracker,
                        &insGpsRateTracker,
                        &sysStateRateTracker,
+                       &statusRateTracker,
                        &rawGnssRateTracker,
                        &satelliteRateTracker,
                        &geodeticRateTracker,
                        &ecefRateTracker,
+                       &eulerOrienRateTracker,
+                       &quatOrienRateTracker,
                        &reportedInvalidEcef,
                        &hasResolvedLlh](const std::vector<uint8_t>& frame, uint64_t hostTimestampUs) {
     if (frame.size() < 8)
@@ -2572,6 +2578,9 @@ void EpsilonCollector::run()
     case kMsgSystemState:
       sysStateRateTracker.record();
       break;
+    case kMsgStatus:
+      statusRateTracker.record();
+      break;
     case kMsgRawGnss:
       rawGnssRateTracker.record();
       break;
@@ -2583,6 +2592,12 @@ void EpsilonCollector::run()
       break;
     case kMsgEcefPos:
       ecefRateTracker.record();
+      break;
+    case kMsgEulerOrien:
+      eulerOrienRateTracker.record();
+      break;
+    case kMsgQuatOrien:
+      quatOrienRateTracker.record();
       break;
     default:
       break;
@@ -3006,10 +3021,13 @@ void EpsilonCollector::run()
       latest_data_.ahrs_packet_rate_hz = ahrsRateTracker.rate_hz;
       latest_data_.insgps_packet_rate_hz = insGpsRateTracker.rate_hz;
       latest_data_.sys_state_packet_rate_hz = sysStateRateTracker.rate_hz;
+      latest_data_.status_packet_rate_hz = statusRateTracker.rate_hz;
       latest_data_.raw_gnss_packet_rate_hz = rawGnssRateTracker.rate_hz;
       latest_data_.satellite_packet_rate_hz = satelliteRateTracker.rate_hz;
       latest_data_.geodetic_packet_rate_hz = geodeticRateTracker.rate_hz;
       latest_data_.ecef_packet_rate_hz = ecefRateTracker.rate_hz;
+      latest_data_.euler_orien_packet_rate_hz = eulerOrienRateTracker.rate_hz;
+      latest_data_.quat_orien_packet_rate_hz = quatOrienRateTracker.rate_hz;
 
       callback = data_callback_;
       rawCallback = raw_frame_callback_;

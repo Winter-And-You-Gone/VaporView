@@ -564,6 +564,10 @@ void MainWindow::applyUiTestSnapshot()
         rates.temperatureHz = snapshot.temperatureRateHz;
         state_->device_panel_coordinator_->updateRates(rates);
     }
+    if (state_->epsilon_config_panel_)
+    {
+        state_->epsilon_config_panel_->setLivePacketRates(snapshot.epsilon);
+    }
     updateEnvironmentStatusIcons(snapshot.lidar.valid, snapshot.ptb.valid, snapshot.hmp.valid);
     if (state_->tcp_wave_panel_ && !snapshot.rawWaveform.isEmpty())
     {

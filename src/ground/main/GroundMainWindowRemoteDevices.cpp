@@ -1786,6 +1786,10 @@ void MainWindow::refreshRemoteSkyDataUi()
         state_->device_panel_coordinator_->updateEnvironmentData(epsilon, ptb, hmp, lidar);
         state_->device_panel_coordinator_->updateTemperatureData(state_->current_temperature_controller_);
     }
+    if (state_->epsilon_config_panel_)
+    {
+        state_->epsilon_config_panel_->setLivePacketRates(epsilon);
+    }
     updateEnvironmentStatusIcons(lidarValid, ptbValid, hmpValid);
     updateRemoteTelemetrySummaryLabel();
     updateHomeDeviceStatusCapsules();

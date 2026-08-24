@@ -801,10 +801,13 @@ void SkyRuntime::sendBasicTelemetry()
         data.ahrs_packet_rate_hz = static_cast<float>(epsilon.ahrs_packet_rate_hz);
         data.insgps_packet_rate_hz = static_cast<float>(epsilon.insgps_packet_rate_hz);
         data.sys_state_packet_rate_hz = static_cast<float>(epsilon.sys_state_packet_rate_hz);
+        data.status_packet_rate_hz = static_cast<float>(epsilon.status_packet_rate_hz);
         data.raw_gnss_packet_rate_hz = static_cast<float>(epsilon.raw_gnss_packet_rate_hz);
         data.satellite_packet_rate_hz = static_cast<float>(epsilon.satellite_packet_rate_hz);
         data.geodetic_packet_rate_hz = static_cast<float>(epsilon.geodetic_packet_rate_hz);
         data.ecef_packet_rate_hz = static_cast<float>(epsilon.ecef_packet_rate_hz);
+        data.euler_orien_packet_rate_hz = static_cast<float>(epsilon.euler_orien_packet_rate_hz);
+        data.quat_orien_packet_rate_hz = static_cast<float>(epsilon.quat_orien_packet_rate_hz);
     }
 
     if (hasLidar)

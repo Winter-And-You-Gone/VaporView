@@ -1870,10 +1870,13 @@ void SkyDeviceManager::generateSimulatedData()
         latest_epsilon_.ahrs_packet_rate_hz = simulatedPacketRate(0x41, 50.0);
         latest_epsilon_.insgps_packet_rate_hz = simulatedPacketRate(0x42, 50.0);
         latest_epsilon_.sys_state_packet_rate_hz = simulatedPacketRate(0x50, 10.0);
+        latest_epsilon_.status_packet_rate_hz = simulatedPacketRate(0x53, 10.0);
         latest_epsilon_.raw_gnss_packet_rate_hz = simulatedPacketRate(0x59, 1.0);
         latest_epsilon_.satellite_packet_rate_hz = simulatedPacketRate(0x5A, 1.0);
         latest_epsilon_.geodetic_packet_rate_hz = simulatedPacketRate(0x5C, 10.0);
         latest_epsilon_.ecef_packet_rate_hz = simulatedPacketRate(0x5D, 10.0);
+        latest_epsilon_.euler_orien_packet_rate_hz = simulatedPacketRate(0x63, 50.0);
+        latest_epsilon_.quat_orien_packet_rate_hz = simulatedPacketRate(0x64, 50.0);
         epsilon_status_.rx_count++;
         epsilon_status_.last_data_time_us = t;
         emit epsilonDataUpdated(latest_epsilon_);

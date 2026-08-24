@@ -473,7 +473,7 @@ quint16 TelemetryCodec::crc16Ccitt(const char *data, qsizetype size)
 QByteArray TelemetryCodec::serializeBasicTelemetry(const TelemetryBasic& data)
 {
     QByteArray payload;
-    payload.reserve(208);
+    payload.reserve(220);
     appendLe<quint64>(payload, data.host_time_us);
     appendLe<quint64>(payload, data.epsilon_time_us);
     for (double value : {data.latitude_deg, data.longitude_deg, data.height_m, data.ecef_x_m, data.ecef_y_m, data.ecef_z_m})
@@ -520,6 +520,9 @@ QByteArray TelemetryCodec::serializeBasicTelemetry(const TelemetryBasic& data)
     appendFloatLe(payload, data.satellite_packet_rate_hz);
     appendFloatLe(payload, data.geodetic_packet_rate_hz);
     appendFloatLe(payload, data.ecef_packet_rate_hz);
+    appendFloatLe(payload, data.status_packet_rate_hz);
+    appendFloatLe(payload, data.euler_orien_packet_rate_hz);
+    appendFloatLe(payload, data.quat_orien_packet_rate_hz);
     return payload;
 }
 
@@ -607,6 +610,15 @@ bool TelemetryCodec::parseBasicTelemetry(const QByteArray& payload, TelemetryBas
           readFloatLe(payload, offset, data.ecef_packet_rate_hz)))
     {
         return false;
+    }
+    if (payload.size() - offset >= static_cast<qsizetype>(sizeof(float) * 3))
+    {
+        if (!(readFloatLe(payload, offset, data.status_packet_rate_hz) &&
+              readFloatLe(payload, offset, data.euler_orien_packet_rate_hz) &&
+              readFloatLe(payload, offset, data.quat_orien_packet_rate_hz)))
+        {
+            return false;
+        }
     }
     return true;
 }

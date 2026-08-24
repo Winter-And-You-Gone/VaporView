@@ -66,10 +66,11 @@ int main(int argc, char *argv[])
         }
     }
     require(panel.findChild<QFrame *>(QStringLiteral("epsilonStatusCard")) != nullptr &&
+                panel.findChild<QFrame *>(QStringLiteral("epsilonLivePacketRateCard")) != nullptr &&
                 panel.findChild<QFrame *>(QStringLiteral("epsilonOutputCard")) != nullptr &&
                 panel.findChild<QFrame *>(QStringLiteral("epsilonDeviceSettingsCard")) != nullptr &&
-                sectionCardCount == 3,
-            "panel exposes exactly three EPSILON business section cards");
+                sectionCardCount == 4,
+            "panel exposes the summary, live-rate, output, and device-settings cards");
     require(panel.findChild<QWidget *>(QStringLiteral("epsilonActionsContainer")) != nullptr,
             "panel keeps a separate primary action container");
     auto *outputCard = panel.findChild<QFrame *>(QStringLiteral("epsilonOutputCard"));
@@ -280,6 +281,49 @@ int main(int argc, char *argv[])
     const std::map<uint8_t, int> defaults = defaultEpsilonPacketRates();
     panel.setPacketRates(defaults);
     require(panel.packetRates() == defaults, "semantic packet-rate setter and getter preserve all 11 values");
+    VaporView::EpsilonData liveData;
+    liveData.valid = true;
+    liveData.imu_packet_rate_hz = 250.0;
+    liveData.ahrs_packet_rate_hz = 50.0;
+    liveData.insgps_packet_rate_hz = 100.0;
+    liveData.sys_state_packet_rate_hz = 100.0;
+    liveData.raw_gnss_packet_rate_hz = 10.0;
+    liveData.satellite_packet_rate_hz = 1.0;
+    liveData.geodetic_packet_rate_hz = 10.0;
+    liveData.ecef_packet_rate_hz = 10.0;
+    liveData.euler_orien_packet_rate_hz = 50.0;
+    liveData.quat_orien_packet_rate_hz = 50.0;
+    panel.setLivePacketRates(liveData);
+    auto *liveRateCard = panel.findChild<QFrame *>(QStringLiteral("epsilonLivePacketRateCard"));
+    auto *liveRateTitle = panel.findChild<QLabel *>(QStringLiteral("epsilonLivePacketRateCardTitle"));
+    require(liveRateCard != nullptr && liveRateTitle != nullptr &&
+                liveRateTitle->text() == QStringLiteral("实时数据包频率"),
+            "live packet-rate card appears below the configuration summary");
+    auto *summaryCard = panel.findChild<QFrame *>(QStringLiteral("epsilonStatusCard"));
+    const QRect summaryRect(summaryCard->mapTo(&panel, QPoint(0, 0)), summaryCard->size());
+    const QRect liveRateRect(liveRateCard->mapTo(&panel, QPoint(0, 0)), liveRateCard->size());
+    require(liveRateRect.top() > summaryRect.bottom(),
+            "live packet-rate card is placed below the summary card");
+    int liveRateValueCount = 0;
+    for (const auto &option : options)
+    {
+        const QString packetId = QStringLiteral("%1").arg(
+            option.packet_id, 2, 16, QLatin1Char('0')).toUpper();
+        auto *label = panel.findChild<QLabel *>(
+            QStringLiteral("epsilonLivePacketRateLabel_%1").arg(packetId));
+        auto *value = panel.findChild<QLabel *>(
+            QStringLiteral("epsilonLivePacketRateValue_%1").arg(packetId));
+        require(label != nullptr && value != nullptr && !label->text().isEmpty() &&
+                    !value->text().isEmpty(),
+                "live packet-rate card exposes every configured packet");
+        ++liveRateValueCount;
+    }
+    require(liveRateValueCount == 11, "live packet-rate card exposes all 11 packet rates");
+    require(panel.findChild<QLabel *>(QStringLiteral("epsilonLivePacketRateValue_40"))->text() ==
+                QStringLiteral("250.0 Hz") &&
+                panel.findChild<QLabel *>(QStringLiteral("epsilonLivePacketRateValue_53"))->text().contains(
+                    QStringLiteral("未收到")),
+            "live packet-rate card shows measured rates and explicitly marks missing packets");
     auto *profileSummary = panel.findChild<QLabel *>(QStringLiteral("epsilonProfileSummaryValue"));
     require(profileSummary != nullptr && profileSummary->text() == QStringLiteral("逐项设置"),
             "configuration summary reflects the packet-rate editor state");
@@ -404,6 +448,10 @@ int main(int argc, char *argv[])
                 panel.findChild<QLabel *>(QStringLiteral("epsilonPacketGroupGnssPosition"))->text() ==
                     QStringLiteral("GNSS and Position"),
             "EPSILON packet group titles follow the active language");
+    require(liveRateTitle->text() == QStringLiteral("Live Packet Rates") &&
+                panel.findChild<QLabel *>(QStringLiteral("epsilonLivePacketRateValue_53"))->text().contains(
+                    QStringLiteral("no packets")),
+            "live packet-rate card follows the active language");
     require(rtcmButton->toolTip().contains(QStringLiteral("communication port")) &&
                 !rtcmButton->toolTip().contains(QStringLiteral("port 2"), Qt::CaseInsensitive),
             "English RTCM action help keeps the selectable device-port wording");

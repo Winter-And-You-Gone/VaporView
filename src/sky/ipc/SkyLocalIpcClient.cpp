@@ -647,10 +647,13 @@ void SkyLocalIpcClient::updateFromBasic(const TelemetryBasic& basic)
         dashboard_.epsilon.ahrs_packet_rate_hz = basic.ahrs_packet_rate_hz;
         dashboard_.epsilon.insgps_packet_rate_hz = basic.insgps_packet_rate_hz;
         dashboard_.epsilon.sys_state_packet_rate_hz = basic.sys_state_packet_rate_hz;
+        dashboard_.epsilon.status_packet_rate_hz = basic.status_packet_rate_hz;
         dashboard_.epsilon.raw_gnss_packet_rate_hz = basic.raw_gnss_packet_rate_hz;
         dashboard_.epsilon.satellite_packet_rate_hz = basic.satellite_packet_rate_hz;
         dashboard_.epsilon.geodetic_packet_rate_hz = basic.geodetic_packet_rate_hz;
         dashboard_.epsilon.ecef_packet_rate_hz = basic.ecef_packet_rate_hz;
+        dashboard_.epsilon.euler_orien_packet_rate_hz = basic.euler_orien_packet_rate_hz;
+        dashboard_.epsilon.quat_orien_packet_rate_hz = basic.quat_orien_packet_rate_hz;
         dashboard_.epsilon.system_status_bits = basic.status_bits;
         dashboard_.epsilon.filter_status_bits = basic.filter_status_bits;
         dashboard_.epsilon.update_status_bits = basic.update_status_bits;

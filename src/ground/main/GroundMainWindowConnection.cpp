@@ -1333,6 +1333,10 @@ void MainWindow::onConnectClicked()
             state_->current_lidar_, state_->current_temperature_controller_);
         state_->device_panel_coordinator_->clearRates();
     }
+    if (state_->epsilon_config_panel_)
+    {
+        state_->epsilon_config_panel_->setLivePacketRates(state_->current_epsilon_);
+    }
     updateEnvironmentStatusIcons(false, false, false);
 
     const bool english = state_->is_english_;
@@ -1847,6 +1851,10 @@ void MainWindow::onRefreshTimer()
     {
         state_->device_panel_coordinator_->updateEnvironmentData(
             state_->current_epsilon_, state_->current_ptb_, state_->current_hmp_, state_->current_lidar_);
+    }
+    if (state_->epsilon_config_panel_)
+    {
+        state_->epsilon_config_panel_->setLivePacketRates(state_->current_epsilon_);
     }
     updateEnvironmentStatusIcons(state_->current_lidar_.valid, state_->current_ptb_.valid, state_->current_hmp_.valid);
 

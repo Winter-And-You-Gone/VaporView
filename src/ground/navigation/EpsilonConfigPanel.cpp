@@ -19,6 +19,7 @@
 #include <QVBoxLayout>
 
 #include <algorithm>
+#include <cmath>
 
 namespace VaporView::Ground::Navigation
 {
@@ -227,6 +228,47 @@ QPushButton *createActionButton(QWidget *parent)
     return button;
 }
 
+double livePacketRateForId(const VaporView::EpsilonData& data, quint8 packetId)
+{
+    switch (packetId)
+    {
+    case 0x40:
+        return data.imu_packet_rate_hz;
+    case 0x41:
+        return data.ahrs_packet_rate_hz;
+    case 0x42:
+        return data.insgps_packet_rate_hz;
+    case 0x50:
+        return data.sys_state_packet_rate_hz;
+    case 0x53:
+        return data.status_packet_rate_hz;
+    case 0x59:
+        return data.raw_gnss_packet_rate_hz;
+    case 0x5A:
+        return data.satellite_packet_rate_hz;
+    case 0x5C:
+        return data.geodetic_packet_rate_hz;
+    case 0x5D:
+        return data.ecef_packet_rate_hz;
+    case 0x63:
+        return data.euler_orien_packet_rate_hz;
+    case 0x64:
+        return data.quat_orien_packet_rate_hz;
+    default:
+        return 0.0;
+    }
+}
+
+QString livePacketRateText(double rateHz, bool english)
+{
+    if (!std::isfinite(rateHz) || rateHz <= 0.0)
+    {
+        return english ? QStringLiteral("0.0 Hz (no packets)")
+                       : QStringLiteral("0.0 Hz（未收到）");
+    }
+    return QStringLiteral("%1 Hz").arg(rateHz, 0, 'f', 1);
+}
+
 } // namespace
 
 EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
@@ -274,6 +316,44 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     summaryCard.body_layout->addWidget(summaryFields);
 
     panelLayout->addWidget(summaryCard.card);
+
+    const SectionCard livePacketRateCard = createSectionCard(
+        this, QStringLiteral("epsilonLivePacketRateCard"), QStringLiteral("activity"));
+    live_packet_rate_title_label_ = livePacketRateCard.title;
+    live_packet_rate_title_label_->setObjectName(QStringLiteral("epsilonLivePacketRateCardTitle"));
+    auto *livePacketRateGridWidget = new QWidget(livePacketRateCard.card);
+    livePacketRateGridWidget->setObjectName(QStringLiteral("epsilonLivePacketRateGrid"));
+    livePacketRateGridWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
+    live_packet_rate_grid_ = new QGridLayout(livePacketRateGridWidget);
+    live_packet_rate_grid_->setContentsMargins(0, 0, 0, 0);
+    live_packet_rate_grid_->setHorizontalSpacing(24);
+    live_packet_rate_grid_->setVerticalSpacing(6);
+    live_packet_rate_grid_->setColumnStretch(1, 1);
+    for (const auto &option : VaporView::Ground::DeviceRates::epsilonPacketConfigOptions())
+    {
+        const QString packetId = QStringLiteral("%1").arg(
+            option.packet_id, 2, 16, QLatin1Char('0')).toUpper();
+        auto *label = new QLabel(livePacketRateGridWidget);
+        label->setObjectName(QStringLiteral("epsilonLivePacketRateLabel_%1").arg(packetId));
+        label->setProperty("epsilonLivePacketRateLabel", true);
+        label->setWordWrap(false);
+        label->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        label->setFocusPolicy(Qt::NoFocus);
+        auto *value = new QLabel(livePacketRateGridWidget);
+        value->setObjectName(QStringLiteral("epsilonLivePacketRateValue_%1").arg(packetId));
+        value->setProperty("epsilonLivePacketRateValue", true);
+        value->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        value->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        value->setFocusPolicy(Qt::NoFocus);
+        live_packet_rate_grid_->addWidget(label, live_packet_rate_labels_.size(), 0,
+                                          Qt::AlignLeft | Qt::AlignVCenter);
+        live_packet_rate_grid_->addWidget(value, live_packet_rate_values_.size(), 1,
+                                          Qt::AlignRight | Qt::AlignVCenter);
+        live_packet_rate_labels_.append(label);
+        live_packet_rate_values_.append(value);
+    }
+    livePacketRateCard.body_layout->addWidget(livePacketRateGridWidget);
+    panelLayout->addWidget(livePacketRateCard.card);
 
     const SectionCard outputCard = createSectionCard(
         this, QStringLiteral("epsilonOutputCard"), QStringLiteral("activity"));
@@ -497,6 +577,12 @@ void EpsilonConfigPanel::setPacketRates(const std::map<uint8_t, int>& packetRate
             combo->setCurrentIndex(index);
         }
     }
+}
+
+void EpsilonConfigPanel::setLivePacketRates(const VaporView::EpsilonData& epsilonData)
+{
+    live_epsilon_data_ = epsilonData;
+    updateLivePacketRateTexts();
 }
 
 std::map<uint8_t, int> EpsilonConfigPanel::packetRates() const
@@ -752,6 +838,33 @@ void EpsilonConfigPanel::updatePacketLabelWidths()
     }
 }
 
+void EpsilonConfigPanel::updateLivePacketRateTexts()
+{
+    const auto &options = VaporView::Ground::DeviceRates::epsilonPacketConfigOptions();
+    for (int i = 0; i < live_packet_rate_labels_.size() &&
+                    i < static_cast<int>(options.size()); ++i)
+    {
+        QLabel *label = live_packet_rate_labels_.at(i);
+        QLabel *value = live_packet_rate_values_.at(i);
+        if (!label || !value)
+        {
+            continue;
+        }
+        const auto &option = options.at(i);
+        const QString labelText = VaporView::Ground::DeviceRates::epsilonPacketDialogRowLabel(
+            option, is_english_);
+        label->setText(labelText);
+        label->setToolTip(labelText);
+        label->setAccessibleName(labelText);
+        const QString valueText = !live_epsilon_data_.valid
+            ? QStringLiteral("--")
+            : livePacketRateText(livePacketRateForId(live_epsilon_data_, option.packet_id), is_english_);
+        value->setText(valueText);
+        value->setToolTip(valueText);
+        value->setAccessibleName(QStringLiteral("%1 %2").arg(labelText, valueText));
+    }
+}
+
 void EpsilonConfigPanel::applyAppearance()
 {
     const QString style = QStringLiteral(
@@ -761,6 +874,8 @@ void EpsilonConfigPanel::applyAppearance()
         "QWidget[epsilonConfigCardBody=\"true\"] { background-color: @vv-surface-raised; border-bottom-left-radius: 11px; border-bottom-right-radius: 11px; }"
         "QLabel[epsilonSummaryName=\"true\"] { color: @vv-text-secondary; font-weight: 400; }"
         "QLabel[epsilonSummaryValue=\"true\"], QLabel[epsilonSettingName=\"true\"] { color: @vv-text-strong; font-weight: 600; }"
+        "QLabel[epsilonLivePacketRateLabel=\"true\"] { color: @vv-text-secondary; font-weight: 400; }"
+        "QLabel[epsilonLivePacketRateValue=\"true\"] { color: @vv-text-strong; font-weight: 600; }"
         "QLabel[epsilonPacketGroupHeader=\"true\"] { color: @vv-text-strong; font-weight: 600; padding-top: 2px; }"
         "QLabel[epsilonSecondaryText=\"true\"] { color: @vv-text-secondary; font-weight: 400; }"
         "QPushButton[epsilonSecondaryAction=\"true\"] { background-color: @vv-surface-alt; border: 1px solid @vv-border; color: @vv-text; }"
@@ -769,7 +884,7 @@ void EpsilonConfigPanel::applyAppearance()
         "QPushButton[epsilonSecondaryAction=\"true\"]:disabled { background-color: @vv-surface-alt; border-color: @vv-border; color: @vv-text-muted; }"
         "QPushButton#epsilonRecommendedConfigButton { min-height: 28px; max-height: 28px; padding-top: 0px; padding-bottom: 0px; }"
         "QWidget#epsilonActionsContainer { background-color: @vv-window; border: none; }"
-        "QWidget#epsilonSummaryFields, QWidget#epsilonOutputTitleActions, QWidget#epsilonPacketGrid { background-color: transparent; border: none; }"
+        "QWidget#epsilonSummaryFields, QWidget#epsilonLivePacketRateGrid, QWidget#epsilonOutputTitleActions, QWidget#epsilonPacketGrid { background-color: transparent; border: none; }"
         "QComboBox[epsilonRtcmDevicePortControl=\"true\"] { background-color: @vv-surface; }");
     const QString resolvedStyle = VaporView::applyAppThemeTokens(
         style, VaporView::isDarkThemeEnabled());
@@ -801,9 +916,10 @@ void EpsilonConfigPanel::updateTexts()
 {
     const auto &options = VaporView::Ground::DeviceRates::epsilonPacketConfigOptions();
     summary_title_label_->setText(is_english_ ? QStringLiteral("Configuration Summary") : QStringLiteral("配置摘要"));
+    live_packet_rate_title_label_->setText(is_english_ ? QStringLiteral("Live Packet Rates") : QStringLiteral("实时数据包频率"));
     output_title_label_->setText(is_english_ ? QStringLiteral("Packet Communication Rates") : QStringLiteral("报文通信频率"));
     device_settings_title_label_->setText(is_english_ ? QStringLiteral("Device Settings") : QStringLiteral("设备设置"));
-    for (QLabel *title : {summary_title_label_, output_title_label_, device_settings_title_label_})
+    for (QLabel *title : {summary_title_label_, live_packet_rate_title_label_, output_title_label_, device_settings_title_label_})
     {
         title->setAccessibleName(title->text());
     }
@@ -915,6 +1031,7 @@ void EpsilonConfigPanel::updateTexts()
         }
     }
     updateSummaryTexts();
+    updateLivePacketRateTexts();
 }
 
 } // namespace VaporView::Ground::Navigation
