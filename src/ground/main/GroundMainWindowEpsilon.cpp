@@ -1206,7 +1206,7 @@ void MainWindow::onReconfigureEpsilonClicked()
                               {QStringLiteral("process_output"), step.process_output},
                               {QStringLiteral("external_raw_text"), true},
                               {QStringLiteral("execution_path"), QStringLiteral("ui_test")},
-                              {QStringLiteral("ui_visibility"), QStringLiteral("details")},
+                              {QStringLiteral("ui_visibility"), QStringLiteral("hidden")},
                               {QStringLiteral("epsilon_progress_current"), *progressStep},
                               {QStringLiteral("epsilon_progress_total"), totalProgressSteps},
                               {QStringLiteral("epsilon_progress_stage"), step.stage},

@@ -223,55 +223,6 @@ int findSourceLogEventRow(VaporView::Ground::Main::UiLogModel *logModel,
     return -1;
 }
 
-bool hasContiguousEpsilonProgressSequence(VaporView::Ground::Main::UiLogModel *logModel)
-{
-    if (!logModel)
-    {
-        return false;
-    }
-    std::set<int> steps;
-    int total = 0;
-    for (int row = 0; row < logModel->rowCount(); ++row)
-    {
-        const QModelIndex index = logModel->index(row, 0);
-        if (index.data(VaporView::Ground::Main::UiLogModel::EventRole).toString() !=
-            QStringLiteral("epsilon_configuration_collector_output"))
-        {
-            continue;
-        }
-        const QVariantMap fields = index.data(
-            VaporView::Ground::Main::UiLogModel::FieldsRole).toMap();
-        if (fields.value(QStringLiteral("execution_path")).toString() !=
-            QStringLiteral("ui_test"))
-        {
-            continue;
-        }
-        bool currentOk = false;
-        bool totalOk = false;
-        const int current = fields.value(QStringLiteral("epsilon_progress_current"))
-            .toInt(&currentOk);
-        const int entryTotal = fields.value(QStringLiteral("epsilon_progress_total"))
-            .toInt(&totalOk);
-        if (currentOk && totalOk && current > 0 && entryTotal > 0)
-        {
-            steps.insert(current);
-            total = std::max(total, entryTotal);
-        }
-    }
-    if (total <= 0)
-    {
-        return false;
-    }
-    for (int step = 1; step <= total; ++step)
-    {
-        if (steps.find(step) == steps.end())
-        {
-            return false;
-        }
-    }
-    return true;
-}
-
 void dumpLogRows(QListView *logList, const char *prefix)
 {
     if (!logList || !logList->model())
@@ -1047,7 +998,6 @@ int main(int argc, char **argv)
     const QStringList expectedEpsilonReconfigureEvents{
         QStringLiteral("epsilon_output_reconfigure_started"),
         QStringLiteral("epsilon_live_stream_pause_for_configuration"),
-        QStringLiteral("epsilon_configuration_collector_output"),
         QStringLiteral("epsilon_output_reconfigure_completed"),
         QStringLiteral("epsilon_configuration_completed_live_stream_restored"),
         QStringLiteral("epsilon_operation_completed"),
@@ -1057,8 +1007,9 @@ int main(int argc, char **argv)
         require(findSourceLogEventRow(epsilonLogModel, event) >= 0,
                 "UI test mode logs the complete EPSILON reconfigure event sequence");
     }
-    require(hasContiguousEpsilonProgressSequence(epsilonLogModel),
-            "UI test mode records one progress step for every simulated command or successful reply");
+    require(findSourceLogEventRow(epsilonLogModel,
+                                  QStringLiteral("epsilon_configuration_collector_output")) < 0,
+            "UI test mode keeps raw EPSILON command and reply diagnostics out of the main log list");
 
     auto *temperatureOutputPercentPill =
         window->findChild<QLabel *>(QStringLiteral("temperatureOverviewOutputPercentPill"));
