@@ -3768,6 +3768,48 @@ void requireHomeOverviewLanguageWidthRoundTrip()
         wideOverviewWindow.findChild<QWidget *>(QStringLiteral("epsilonPanel"));
     require(wideEpsilonPanel != nullptr,
             "wide overview exposes the EPSILON panel");
+    QGroupBox *wideEpsilonCard = nullptr;
+    for (QWidget *ancestor = wideEpsilonPanel; ancestor && !wideEpsilonCard;
+         ancestor = ancestor->parentWidget())
+    {
+        auto *group = qobject_cast<QGroupBox *>(ancestor);
+        if (group && group->objectName() == QStringLiteral("sensorGroupBox"))
+        {
+            wideEpsilonCard = group;
+        }
+    }
+    QGroupBox *wideEnvironmentCard = nullptr;
+    if (auto *wideDataGroup =
+            wideOverviewWindow.findChild<QGroupBox *>(QStringLiteral("sensorRowContainer")))
+    {
+        for (QGroupBox *card :
+             wideDataGroup->findChildren<QGroupBox *>(QStringLiteral("sensorGroupBox")))
+        {
+            if (card != wideEpsilonCard &&
+                card->findChildren<QLabel *>(QStringLiteral("envStatusIcon")).size() == 3)
+            {
+                wideEnvironmentCard = card;
+                break;
+            }
+        }
+    }
+    auto wideWidgetRect = [&wideOverviewWindow](QWidget *widget) {
+        return QRect(widget->mapTo(wideOverviewWindow.centralWidget(), QPoint(0, 0)),
+                     widget->size());
+    };
+    auto wideRightEdge = [](const QRect& rect) {
+        return rect.left() + rect.width();
+    };
+    require(wideEpsilonCard != nullptr && wideEnvironmentCard != nullptr,
+            "wide overview exposes EPSILON and environment top-level cards");
+    const QRect wideEpsilonCardRect = wideWidgetRect(wideEpsilonCard);
+    const QRect wideEnvironmentCardRect = wideWidgetRect(wideEnvironmentCard);
+    require(std::abs(wideEpsilonCardRect.top() - wideEnvironmentCardRect.top()) <= 1,
+            "wide overview keeps the environment card on the EPSILON row");
+    require(std::abs((wideEnvironmentCardRect.left() -
+                      wideRightEdge(wideEpsilonCardRect)) -
+                     VaporView::Ground::MainSupport::kTopLevelCardGap) <= 1,
+            "wide overview places the environment card to the right of EPSILON with the shared gap");
     QLabel *wideAttitudeConsistencyValue = epsilonValueLabelForField(
         wideEpsilonPanel,
         QStringLiteral("姿态一致性[最大差值]:"));

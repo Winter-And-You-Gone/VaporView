@@ -883,9 +883,11 @@ bool MainWindow::shouldUseCompactHomeLayout() const
     const int viewportWidth = state_->main_cards_scroll_area_ && state_->main_cards_scroll_area_->viewport()
         ? state_->main_cards_scroll_area_->viewport()->width()
         : width();
-    return (availableSize.isValid() &&
-            (availableSize.width() <= kCompactHomeScreenWidth || availableSize.height() <= kCompactHomeScreenHeight)) ||
-           (viewportWidth > 0 && viewportWidth <= kCompactHomeViewportWidth);
+    if (viewportWidth > 0)
+    {
+        return viewportWidth <= kCompactHomeViewportWidth;
+    }
+    return availableSize.isValid() && availableSize.width() <= kCompactHomeScreenWidth;
 }
 
 void MainWindow::updateResponsiveHomeLayout()
