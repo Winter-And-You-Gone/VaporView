@@ -622,6 +622,10 @@ private:
                                     auto *collector,
                                     const SerialConfig& serialConfig,
                                     auto&& onReady) -> int {
+            if (!settings.requested)
+            {
+                return 0;
+            }
             if (!settings.enabled)
             {
                 postConnectionLog(VaporView::LogLevel::Info,

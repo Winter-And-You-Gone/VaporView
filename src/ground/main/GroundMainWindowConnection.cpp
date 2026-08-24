@@ -257,7 +257,12 @@ VaporView::DeviceState MainWindow::homeDeviceActionState(VaporView::SkyDeviceId 
     }
     if (state_->connection_attempt_in_progress_)
     {
-        return VaporView::DeviceState::Connecting;
+        const QVariant singleConnectTargetValue = property(kHomeDeviceSingleConnectTargetProperty);
+        if (!singleConnectTargetValue.isValid() ||
+            static_cast<VaporView::SkyDeviceId>(singleConnectTargetValue.toInt()) == device)
+        {
+            return VaporView::DeviceState::Connecting;
+        }
     }
     return VaporView::DeviceState::Disconnected;
 }
@@ -354,22 +359,14 @@ void MainWindow::triggerHomeDeviceAction(VaporView::SkyDeviceId device)
     {
         if (connectRequested)
         {
-            for (VaporView::SkyDeviceId candidate : {VaporView::SkyDeviceId::Epsilon,
-                                                     VaporView::SkyDeviceId::Ptb,
-                                                     VaporView::SkyDeviceId::Hmp,
-                                                     VaporView::SkyDeviceId::Lidar,
-                                                     VaporView::SkyDeviceId::TemperatureController,
-                                                     VaporView::SkyDeviceId::Ai8TemperatureController})
-            {
-                if (localDeviceEnabled(candidate) &&
-                    homeDevicePortSelected(candidate) &&
-                    !homeDeviceConnected(candidate))
-                {
-                    startHomeDeviceActionSpinner(candidate);
-                }
-            }
+            startHomeDeviceActionSpinner(device);
+            setProperty(kHomeDeviceSingleConnectTargetProperty, static_cast<int>(device));
         }
         action->trigger();
+        if (connectRequested && !state_->connection_attempt_in_progress_)
+        {
+            setProperty(kHomeDeviceSingleConnectTargetProperty, QVariant());
+        }
     }
 }
 
@@ -767,6 +764,7 @@ void MainWindow::finishConnectionAttempt(bool connected)
 {
     state_->connection_attempt_in_progress_ = false;
     state_->cancel_connection_requested_.store(false);
+    setProperty(kHomeDeviceSingleConnectTargetProperty, QVariant());
     const bool overallConnected = connected || anyLocalDeviceConnected();
     if (!overallConnected && state_->recording_service_->isSessionOpen())
     {
@@ -1387,12 +1385,23 @@ void MainWindow::onConnectClicked()
     settings.beginGroup(QStringLiteral("MainWindow"));
     const std::map<uint8_t, int> epsilonDesiredPacketRates =
         effectiveEpsilonPacketRates(settings);
-    const bool epsilonEnabled = localDeviceEnabled(VaporView::SkyDeviceId::Epsilon);
-    const bool ptbEnabled = localDeviceEnabled(VaporView::SkyDeviceId::Ptb);
-    const bool hmpEnabled = localDeviceEnabled(VaporView::SkyDeviceId::Hmp);
-    const bool lidarEnabled = localDeviceEnabled(VaporView::SkyDeviceId::Lidar);
-    const bool temperatureEnabled = localDeviceEnabled(VaporView::SkyDeviceId::TemperatureController);
-    const bool ai8TemperatureEnabled = localDeviceEnabled(VaporView::SkyDeviceId::Ai8TemperatureController);
+    const QVariant singleConnectTargetValue = property(kHomeDeviceSingleConnectTargetProperty);
+    const bool singleDeviceConnect = singleConnectTargetValue.isValid();
+    const VaporView::SkyDeviceId singleConnectTarget = singleDeviceConnect
+        ? static_cast<VaporView::SkyDeviceId>(singleConnectTargetValue.toInt())
+        : VaporView::SkyDeviceId::All;
+    auto localRequestedFor = [&](VaporView::SkyDeviceId device) {
+        return !singleDeviceConnect || singleConnectTarget == device;
+    };
+    auto localEnabledForRequest = [&](VaporView::SkyDeviceId device) {
+        return localRequestedFor(device) && localDeviceEnabled(device);
+    };
+    const bool epsilonEnabled = localEnabledForRequest(VaporView::SkyDeviceId::Epsilon);
+    const bool ptbEnabled = localEnabledForRequest(VaporView::SkyDeviceId::Ptb);
+    const bool hmpEnabled = localEnabledForRequest(VaporView::SkyDeviceId::Hmp);
+    const bool lidarEnabled = localEnabledForRequest(VaporView::SkyDeviceId::Lidar);
+    const bool temperatureEnabled = localEnabledForRequest(VaporView::SkyDeviceId::TemperatureController);
+    const bool ai8TemperatureEnabled = localEnabledForRequest(VaporView::SkyDeviceId::Ai8TemperatureController);
 
     if (epsilonEnabled &&
         !epsilonPort.isEmpty() &&
@@ -1425,13 +1434,16 @@ void MainWindow::onConnectClicked()
 
     VaporView::Ground::Devices::LocalConnectionRequest request;
     request.english = english;
+    request.includeWaveform = !singleDeviceConnect;
     request.selectText = selectText;
-    auto localSettings = [](bool enabled,
+    auto localSettings = [](bool requested,
+                            bool enabled,
                             const QString& port,
                             const QString& baud,
                             int sampleRate,
                             bool skipDeviceRate) {
         VaporView::Ground::Devices::LocalSerialDeviceSettings settings;
+        settings.requested = requested;
         settings.enabled = enabled;
         settings.port = port;
         settings.baudText = baud;
@@ -1439,17 +1451,24 @@ void MainWindow::onConnectClicked()
         settings.skipDeviceRate = skipDeviceRate;
         return settings;
     };
-    request.epsilon = localSettings(epsilonEnabled, epsilonPort, epsilonBaudText, epsilonCallbackRate, false);
-    request.ptb = localSettings(ptbEnabled, ptbPort, ptbBaudText, ptbRate, skipPtbDeviceRate);
-    request.hmp = localSettings(hmpEnabled, hmpPort, hmpBaudText, hmpRate, skipHmpDeviceRate);
-    request.lidar = localSettings(lidarEnabled, lidarPort, lidarBaudText, lidarRate, skipLidarDeviceRate);
+    request.epsilon = localSettings(localRequestedFor(VaporView::SkyDeviceId::Epsilon),
+                                    epsilonEnabled, epsilonPort, epsilonBaudText,
+                                    epsilonCallbackRate, false);
+    request.ptb = localSettings(localRequestedFor(VaporView::SkyDeviceId::Ptb),
+                                ptbEnabled, ptbPort, ptbBaudText, ptbRate, skipPtbDeviceRate);
+    request.hmp = localSettings(localRequestedFor(VaporView::SkyDeviceId::Hmp),
+                                hmpEnabled, hmpPort, hmpBaudText, hmpRate, skipHmpDeviceRate);
+    request.lidar = localSettings(localRequestedFor(VaporView::SkyDeviceId::Lidar),
+                                  lidarEnabled, lidarPort, lidarBaudText, lidarRate, skipLidarDeviceRate);
     request.temperatureController = localSettings(
+        localRequestedFor(VaporView::SkyDeviceId::TemperatureController),
         temperatureEnabled,
         temperaturePort,
         temperatureBaudText,
         temperatureRate,
         skipTemperatureDeviceRate);
     request.ai8TemperatureController = localSettings(
+        localRequestedFor(VaporView::SkyDeviceId::Ai8TemperatureController),
         ai8TemperatureEnabled,
         ai8TemperaturePort,
         ai8TemperatureBaudText,
