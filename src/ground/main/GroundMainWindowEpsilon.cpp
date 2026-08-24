@@ -3,6 +3,8 @@
 namespace
 {
 
+constexpr int kUiTestEpsilonReconfigureDurationMs = 1800;
+
 QString epsilonOperationName(VaporView::Ground::Devices::EpsilonOperation operation)
 {
     using Operation = VaporView::Ground::Devices::EpsilonOperation;
@@ -1007,10 +1009,30 @@ void MainWindow::onReconfigureEpsilonClicked()
 {
     if (isUiTestMode())
     {
-        publishUiTestEvent(QStringLiteral("ui_test_epsilon_output_reconfigure_completed"),
-                           state_->is_english_ ? QStringLiteral("Simulated EPSILON output reconfiguration completed")
-                                               : QStringLiteral("模拟 EPSILON 输出重配置已完成"),
-                           {{QStringLiteral("device"), QStringLiteral("EPSILON")}});
+        if (state_->epsilon_reconfigure_in_progress_)
+        {
+            return;
+        }
+        state_->epsilon_reconfigure_in_progress_ = true;
+        startEpsilonReconfigureProgress();
+        updateConnectionStatus(anyCollectorRunning());
+        updateDeviceConfigState();
+        QTimer::singleShot(kUiTestEpsilonReconfigureDurationMs, this, [this]() {
+            if (!isUiTestMode() || !state_->epsilon_reconfigure_in_progress_)
+            {
+                return;
+            }
+            stopEpsilonReconfigureProgress();
+            state_->epsilon_reconfigure_in_progress_ = false;
+            updateConnectionStatus(anyCollectorRunning());
+            updateDeviceConfigState();
+            publishUiTestEvent(
+                QStringLiteral("ui_test_epsilon_output_reconfigure_completed"),
+                state_->is_english_
+                    ? QStringLiteral("Simulated EPSILON output reconfiguration completed")
+                    : QStringLiteral("模拟 EPSILON 输出重配置已完成"),
+                {{QStringLiteral("device"), QStringLiteral("EPSILON")}});
+        });
         return;
     }
     if (state_->connection_attempt_in_progress_ || state_->port_detection_in_progress_ || state_->epsilon_reconfigure_in_progress_)

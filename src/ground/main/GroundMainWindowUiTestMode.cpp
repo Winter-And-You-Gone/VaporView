@@ -387,6 +387,11 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
     {
         state_->recording_schedule_controller_->cancel();
     }
+    if (state_->epsilon_reconfigure_in_progress_)
+    {
+        stopEpsilonReconfigureProgress();
+        state_->epsilon_reconfigure_in_progress_ = false;
+    }
     state_->ui_test_connection_in_progress_ = false;
     resetUiTestRecording();
     state_->ui_test_mode_enabled_ = false;

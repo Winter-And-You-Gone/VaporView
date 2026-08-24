@@ -33,6 +33,7 @@
 #include <QMap>
 #include <QPointer>
 #include <QPlainTextEdit>
+#include <QProgressBar>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSettings>
@@ -932,6 +933,38 @@ int main(int argc, char **argv)
             "UI test mode exposes the EPSILON home panel");
     requireUiTestEpsilonPanelFieldsCovered(epsilonPanel);
     requireUiTestEpsilonPanelWrappedTopRowFilled(epsilonPanel);
+
+    auto *epsilonProgressRow = window->findChild<QWidget *>(
+        QStringLiteral("epsilonReconfigureProgressRow"));
+    auto *epsilonProgressLabel = window->findChild<QLabel *>(
+        QStringLiteral("epsilonReconfigureProgressLabel"));
+    auto *epsilonProgressBar = window->findChild<QProgressBar *>(
+        QStringLiteral("epsilonReconfigureProgressBar"));
+    require(epsilonProgressRow && epsilonProgressLabel && epsilonProgressBar,
+            "UI test mode exposes the EPSILON reconfigure progress controls");
+    require(!epsilonProgressRow->isVisible(),
+            "EPSILON reconfigure progress starts hidden before an operation");
+    require(QMetaObject::invokeMethod(window,
+                                      "onReconfigureEpsilonClicked",
+                                      Qt::DirectConnection),
+            "simulated EPSILON reconfigure action invoked");
+    require(VaporViewTest::processEventsUntil(600, [epsilonProgressRow, epsilonProgressBar]() {
+                return epsilonProgressRow->isVisible() &&
+                    epsilonProgressBar->minimum() == 0 &&
+                    epsilonProgressBar->maximum() == 0;
+            }),
+            "UI test mode shows an indeterminate EPSILON reconfigure progress row");
+    const QString initialProgressText = epsilonProgressLabel->text();
+    require(initialProgressText.contains(QStringLiteral("正在重配 EPSILON 输出")),
+            "UI test mode labels the EPSILON reconfigure progress row");
+    require(VaporViewTest::processEventsUntil(1100, [epsilonProgressLabel, initialProgressText]() {
+                return epsilonProgressLabel->text() != initialProgressText;
+            }),
+            "UI test mode updates the EPSILON reconfigure elapsed time in place");
+    require(VaporViewTest::processEventsUntil(2500, [epsilonProgressRow]() {
+                return !epsilonProgressRow->isVisible();
+            }),
+            "UI test mode hides the EPSILON reconfigure progress row after completion");
 
     auto *temperatureOutputPercentPill =
         window->findChild<QLabel *>(QStringLiteral("temperatureOverviewOutputPercentPill"));
