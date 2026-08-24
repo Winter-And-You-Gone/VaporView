@@ -86,7 +86,10 @@ void MainWindow::onEpsilonSessionOperationStarted(
     quint64 requestId, VaporView::Ground::Devices::EpsilonOperation operation)
 {
     Q_UNUSED(requestId);
-    Q_UNUSED(operation);
+    if (operation == VaporView::Ground::Devices::EpsilonOperation::ConfigurePacketRates)
+    {
+        startEpsilonReconfigureProgress();
+    }
     state_->epsilon_reconfigure_in_progress_ = true;
     updateConnectionStatus(anyCollectorRunning());
     updateDeviceConfigState();
@@ -95,6 +98,10 @@ void MainWindow::onEpsilonSessionOperationStarted(
 void MainWindow::onEpsilonSessionOperationFinished(
     const VaporView::Ground::Devices::EpsilonSessionResult& result)
 {
+    if (result.operation == VaporView::Ground::Devices::EpsilonOperation::ConfigurePacketRates)
+    {
+        stopEpsilonReconfigureProgress();
+    }
     state_->epsilon_reconfigure_in_progress_ = false;
     updateConnectionStatus(anyCollectorRunning());
 

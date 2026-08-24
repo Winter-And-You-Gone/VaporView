@@ -6,6 +6,7 @@
 #include <QGraphicsOpacityEffect>
 #include <QLayout>
 #include <QLinearGradient>
+#include <QProgressBar>
 #include <QPointer>
 #include <QScrollBar>
 #include <QTimer>
@@ -5544,6 +5545,37 @@ void MainWindow::setupLogPanel()
     logTitleLayout->addWidget(logTitleActions, 0, Qt::AlignVCenter | Qt::AlignRight);
     log_layout->addWidget(logTitleBar);
 
+    state_->epsilon_reconfigure_progress_row_ = new QWidget(state_->log_group_);
+    state_->epsilon_reconfigure_progress_row_->setObjectName(
+        QStringLiteral("epsilonReconfigureProgressRow"));
+    state_->epsilon_reconfigure_progress_row_->setVisible(false);
+    auto *epsilonProgressLayout = new QHBoxLayout(state_->epsilon_reconfigure_progress_row_);
+    epsilonProgressLayout->setContentsMargins(8, 4, 8, 4);
+    epsilonProgressLayout->setSpacing(8);
+    state_->epsilon_reconfigure_progress_label_ =
+        new QLabel(state_->epsilon_reconfigure_progress_row_);
+    state_->epsilon_reconfigure_progress_label_->setObjectName(
+        QStringLiteral("epsilonReconfigureProgressLabel"));
+    state_->epsilon_reconfigure_progress_label_->setSizePolicy(
+        QSizePolicy::Preferred, QSizePolicy::Preferred);
+    epsilonProgressLayout->addWidget(state_->epsilon_reconfigure_progress_label_,
+                                     0,
+                                     Qt::AlignVCenter | Qt::AlignLeft);
+    state_->epsilon_reconfigure_progress_bar_ =
+        new QProgressBar(state_->epsilon_reconfigure_progress_row_);
+    state_->epsilon_reconfigure_progress_bar_->setObjectName(
+        QStringLiteral("epsilonReconfigureProgressBar"));
+    state_->epsilon_reconfigure_progress_bar_->setRange(0, 0);
+    state_->epsilon_reconfigure_progress_bar_->setTextVisible(false);
+    state_->epsilon_reconfigure_progress_bar_->setFixedHeight(scalePixels(8));
+    state_->epsilon_reconfigure_progress_bar_->setMinimumWidth(scalePixels(72));
+    state_->epsilon_reconfigure_progress_bar_->setSizePolicy(
+        QSizePolicy::Expanding, QSizePolicy::Fixed);
+    epsilonProgressLayout->addWidget(state_->epsilon_reconfigure_progress_bar_,
+                                     1,
+                                     Qt::AlignVCenter);
+    log_layout->addWidget(state_->epsilon_reconfigure_progress_row_);
+
     state_->log_new_entries_row_ = new QWidget(state_->log_group_);
     state_->log_new_entries_row_->setObjectName(QStringLiteral("logNewEntriesRow"));
     state_->log_new_entries_row_->setVisible(false);
@@ -5615,6 +5647,13 @@ void MainWindow::setupLogPanel()
     state_->log_flush_timer_->setInterval(kUiLogBatchIntervalMs);
     state_->log_flush_timer_->setTimerType(Qt::CoarseTimer);
     connect(state_->log_flush_timer_, &QTimer::timeout, this, &MainWindow::flushPendingUiLogRecords);
+    state_->epsilon_reconfigure_progress_timer_ = new QTimer(this);
+    state_->epsilon_reconfigure_progress_timer_->setInterval(500);
+    state_->epsilon_reconfigure_progress_timer_->setTimerType(Qt::CoarseTimer);
+    connect(state_->epsilon_reconfigure_progress_timer_,
+            &QTimer::timeout,
+            this,
+            &MainWindow::updateEpsilonReconfigureProgress);
     updateLogFilterAction();
     updateLogUnreadUi();
     flushPendingUiLogRecords();

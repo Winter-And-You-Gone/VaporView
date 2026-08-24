@@ -4,6 +4,7 @@
 #include "ground/main/MainWindow.h"
 #include "ground/main/UiLogModel.h"
 
+#include <QElapsedTimer>
 #include <QPointer>
 #include <QVariantMap>
 
@@ -193,6 +194,10 @@ struct MainWindowState
     UiLogItemDelegate *log_item_delegate_;
     QTimer *log_flush_timer_;
     QWidget *log_new_entries_row_;
+    QWidget *epsilon_reconfigure_progress_row_;
+    QLabel *epsilon_reconfigure_progress_label_;
+    QProgressBar *epsilon_reconfigure_progress_bar_;
+    QTimer *epsilon_reconfigure_progress_timer_;
     QPushButton *log_new_entries_btn_;
     QToolButton *log_search_btn_;
     QMenu *log_search_menu_;
@@ -451,6 +456,8 @@ struct MainWindowState
     bool connection_attempt_in_progress_;
     bool port_detection_in_progress_;
     bool epsilon_reconfigure_in_progress_;
+    bool epsilon_reconfigure_progress_visible_;
+    QElapsedTimer epsilon_reconfigure_progress_elapsed_;
     bool is_connected_;
     bool ui_test_mode_enabled_;
     bool ui_test_application_closing_;

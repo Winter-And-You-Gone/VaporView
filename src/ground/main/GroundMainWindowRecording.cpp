@@ -1,5 +1,6 @@
 #include "ground/main/GroundMainWindowImplementation.h"
 
+#include <QProgressBar>
 #include <utility>
 
 namespace
@@ -56,6 +57,66 @@ void MainWindow::publishGroundLog(VaporView::LogLevel level,
         enqueueUiLogRecord(record);
     }
     state_->has_inline_progress_log_ = false;
+}
+
+void MainWindow::startEpsilonReconfigureProgress()
+{
+    if (!state_->epsilon_reconfigure_progress_row_ ||
+        !state_->epsilon_reconfigure_progress_label_ ||
+        !state_->epsilon_reconfigure_progress_bar_)
+    {
+        return;
+    }
+
+    state_->epsilon_reconfigure_progress_visible_ = true;
+    state_->epsilon_reconfigure_progress_elapsed_.start();
+    state_->epsilon_reconfigure_progress_bar_->setRange(0, 0);
+    state_->epsilon_reconfigure_progress_bar_->setValue(0);
+    state_->epsilon_reconfigure_progress_row_->setVisible(true);
+    updateEpsilonReconfigureProgress();
+    if (state_->epsilon_reconfigure_progress_timer_)
+    {
+        state_->epsilon_reconfigure_progress_timer_->start();
+    }
+}
+
+void MainWindow::updateEpsilonReconfigureProgress()
+{
+    if (!state_->epsilon_reconfigure_progress_visible_ ||
+        !state_->epsilon_reconfigure_progress_label_)
+    {
+        return;
+    }
+
+    const qint64 elapsedMs = state_->epsilon_reconfigure_progress_elapsed_.isValid()
+        ? state_->epsilon_reconfigure_progress_elapsed_.elapsed()
+        : 0;
+    const qint64 elapsedSeconds = elapsedMs / 1000;
+    const QString elapsedText = QStringLiteral("%1:%2")
+        .arg(elapsedSeconds / 60, 2, 10, QLatin1Char('0'))
+        .arg(elapsedSeconds % 60, 2, 10, QLatin1Char('0'));
+    state_->epsilon_reconfigure_progress_label_->setText(
+        state_->is_english_
+            ? QStringLiteral("Configuring EPSILON output (elapsed %1)").arg(elapsedText)
+            : QStringLiteral("正在重配 EPSILON 输出（已用时 %1）").arg(elapsedText));
+}
+
+void MainWindow::stopEpsilonReconfigureProgress()
+{
+    state_->epsilon_reconfigure_progress_visible_ = false;
+    if (state_->epsilon_reconfigure_progress_timer_)
+    {
+        state_->epsilon_reconfigure_progress_timer_->stop();
+    }
+    if (state_->epsilon_reconfigure_progress_row_)
+    {
+        state_->epsilon_reconfigure_progress_row_->setVisible(false);
+    }
+    if (state_->epsilon_reconfigure_progress_bar_)
+    {
+        state_->epsilon_reconfigure_progress_bar_->setRange(0, 100);
+        state_->epsilon_reconfigure_progress_bar_->setValue(0);
+    }
 }
 
 void MainWindow::publishTemperatureCommandLog(VaporView::LogLevel level,

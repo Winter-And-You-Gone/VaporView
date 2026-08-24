@@ -58,6 +58,7 @@ class QRadioButton;
 class QStackedWidget;
 class QCheckBox;
 class QListView;
+class QProgressBar;
 class QPlainTextEdit;
 class TcpWavePanel;
 class SessionViewerWindow;
@@ -280,6 +281,9 @@ private:
     void restoreUiTestWidgetState();
     void enqueueUiLogRecord(const VaporView::LogRecord& record);
     void flushPendingUiLogRecords();
+    void startEpsilonReconfigureProgress();
+    void updateEpsilonReconfigureProgress();
+    void stopEpsilonReconfigureProgress();
     void setLogViewMode(VaporView::Ground::Main::LogUiViewMode mode, bool persist = true);
     void scrollLogViewToBottom();
     bool isLogViewNearBottom() const;
