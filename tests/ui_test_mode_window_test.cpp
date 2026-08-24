@@ -179,6 +179,30 @@ int findLogEventRow(QListView *logList, const QString& event)
     return -1;
 }
 
+bool findLogEventWithDevice(QListView *logList, const QString& event, const QString& device)
+{
+    if (!logList || !logList->model())
+    {
+        return false;
+    }
+    for (int row = 0; row < logList->model()->rowCount(); ++row)
+    {
+        const QModelIndex index = logList->model()->index(row, 0);
+        const QString rowEvent = index
+            .data(VaporView::Ground::Main::UiLogModel::EventRole)
+            .toString();
+        const QVariantMap fields = index
+            .data(VaporView::Ground::Main::UiLogModel::FieldsRole)
+            .toMap();
+        if (rowEvent == event &&
+            fields.value(QStringLiteral("device")).toString() == device)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 void dumpLogRows(QListView *logList, const char *prefix)
 {
     if (!logList || !logList->model())
@@ -1973,6 +1997,98 @@ int main(int argc, char **argv)
                 "failed-path connection summary follows the TCP waveform error");
         failedConnectionWindow->close();
         delete failedConnectionWindow;
+        VaporView::setSettingsWritesSuspended(false);
+    }
+
+    {
+        VaporView::setSettingsWritesSuspended(true);
+        QTemporaryDir singleDeviceLogDirectory;
+        require(singleDeviceLogDirectory.isValid(),
+                "temporary single-device connection log directory created");
+        VaporView::LogService singleDeviceLogService(
+            QStringLiteral("VaporViewUiTestModeWindowSingleDeviceConnectionTest"),
+            nullptr,
+            singleDeviceLogDirectory.path(),
+            singleDeviceLogDirectory.path());
+        auto *singleDeviceWindow = new MainWindow();
+        singleDeviceWindow->show();
+        processEvents();
+        auto *singleDeviceSourceModeSwitch = findHomeSourceModeSwitch(singleDeviceWindow);
+        require(singleDeviceSourceModeSwitch != nullptr,
+                "single-device normal-mode source mode switch exists");
+        if (singleDeviceSourceModeSwitch->switchChecked())
+        {
+            singleDeviceSourceModeSwitch->click();
+            processEvents();
+        }
+        auto *singleDeviceLogList =
+            singleDeviceWindow->findChild<QListView *>(QStringLiteral("logListView"));
+        require(singleDeviceLogList && singleDeviceLogList->model(),
+                "single-device normal-mode window exposes the log model");
+        auto *singleDeviceLogAllAction =
+            singleDeviceWindow->findChild<QAction *>(QStringLiteral("logFilterAllMenuAction"));
+        require(singleDeviceLogAllAction != nullptr,
+                "single-device normal-mode window exposes the all-log view action");
+        singleDeviceLogAllAction->trigger();
+        auto *singleDeviceEpsilonPort =
+            singleDeviceWindow->findChild<QComboBox *>(QStringLiteral("epsilonPortCombo"));
+        require(singleDeviceEpsilonPort != nullptr,
+                "single-device normal-mode window exposes the EPSILON port combo");
+        const QString singleDevicePort = QStringLiteral("__invalid_vaporview_home_epsilon__");
+        singleDeviceEpsilonPort->addItem(singleDevicePort, singleDevicePort);
+        singleDeviceEpsilonPort->setCurrentIndex(singleDeviceEpsilonPort->findData(singleDevicePort));
+        processEvents();
+        QToolButton *singleDeviceEpsilonAction = nullptr;
+        for (QToolButton *button :
+             singleDeviceWindow->findChildren<QToolButton *>(QStringLiteral("homeDeviceActionButton")))
+        {
+            if (!button->property("deviceConfigAction").toBool() &&
+                button->toolTip().contains(QStringLiteral("EPSILON")))
+            {
+                singleDeviceEpsilonAction = button;
+                break;
+            }
+        }
+        require(singleDeviceEpsilonAction != nullptr && singleDeviceEpsilonAction->isEnabled(),
+                "single-device EPSILON home action is enabled when only EPSILON has a port");
+        VaporView::setSettingsWritesSuspended(false);
+        singleDeviceEpsilonAction->click();
+        VaporView::setSettingsWritesSuspended(true);
+        const bool singleDeviceLogsFlushed =
+            VaporViewTest::processEventsUntil(5000, [singleDeviceLogList]() {
+                return findLogEventWithDevice(
+                           singleDeviceLogList,
+                           QStringLiteral("local_device_connection_started"),
+                           QStringLiteral("EPSILON")) &&
+                    findLogEventRow(singleDeviceLogList,
+                                    QStringLiteral("local_connection_summary")) >= 0;
+            });
+        if (!singleDeviceLogsFlushed)
+        {
+            dumpLogRows(singleDeviceLogList, "single-device home connection log rows");
+        }
+        require(singleDeviceLogsFlushed,
+                "single-device home action logs only the EPSILON connection attempt and summary");
+        require(findLogEventRow(singleDeviceLogList,
+                                QStringLiteral("tcp_wave_connection_started")) < 0,
+                "single-device home action does not start TCP waveform connection");
+        for (const QString& nonTargetDevice : {
+                 QStringLiteral("PTB210"),
+                 QStringLiteral("BMP390"),
+                 QStringLiteral("HMP3"),
+                 QStringLiteral("SHT45"),
+                 QStringLiteral("TFA1500-L"),
+                 QStringLiteral("RD105"),
+                 QStringLiteral("AI-8288")})
+        {
+            require(!findLogEventWithDevice(
+                        singleDeviceLogList,
+                        QStringLiteral("local_device_connection_skipped"),
+                        nonTargetDevice),
+                    "single-device home action does not emit skipped logs for non-target devices");
+        }
+        singleDeviceWindow->close();
+        delete singleDeviceWindow;
         VaporView::setSettingsWritesSuspended(false);
     }
     require(settingsSnapshotsEqual(snapshotAll(), beforeDirectClose,

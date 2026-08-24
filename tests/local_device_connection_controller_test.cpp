@@ -75,6 +75,45 @@ int main()
 
     controller.disconnect();
 
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        logs.clear();
+    }
+    finished = false;
+    connected = true;
+    LocalConnectionRequest singleDeviceRequest;
+    singleDeviceRequest.english = false;
+    singleDeviceRequest.selectText = QStringLiteral("未选择");
+    singleDeviceRequest.epsilon.port = QStringLiteral("__invalid_vaporview_port__");
+    singleDeviceRequest.epsilon.baudText = QStringLiteral("921600");
+    singleDeviceRequest.ptb.requested = false;
+    singleDeviceRequest.hmp.requested = false;
+    singleDeviceRequest.lidar.requested = false;
+    singleDeviceRequest.temperatureController.requested = false;
+    singleDeviceRequest.ai8TemperatureController.requested = false;
+    require(controller.connectAsync(singleDeviceRequest),
+            "start single requested-device connection attempt");
+    controller.wait();
+    require(finished && !connected,
+            "single requested-device failure completes without connected devices");
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        bool foundEpsilonAttempt = false;
+        bool foundUnexpectedSkippedDevice = false;
+        for (const LocalConnectionLogEntry& entry : logs)
+        {
+            foundEpsilonAttempt = foundEpsilonAttempt ||
+                (entry.event == QStringLiteral("local_device_connection_started") &&
+                 entry.fields.value(QStringLiteral("device")).toString() == QStringLiteral("EPSILON"));
+            foundUnexpectedSkippedDevice = foundUnexpectedSkippedDevice ||
+                (entry.event == QStringLiteral("local_device_connection_skipped") &&
+                 entry.fields.value(QStringLiteral("device")).toString() != QStringLiteral("EPSILON"));
+        }
+        require(foundEpsilonAttempt, "single requested-device attempt logs the target device");
+        require(!foundUnexpectedSkippedDevice,
+                "non-requested devices do not emit skipped-device noise");
+    }
+
     LocalSampleRateConfiguration rateConfiguration;
     const LocalSampleRateApplyResult allRateResult =
         controller.applyRunningSampleRates(rateConfiguration);

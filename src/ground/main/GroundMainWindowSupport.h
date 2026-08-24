@@ -105,6 +105,7 @@ inline constexpr const char *kHomeOverviewSplitterInitializedProperty = "_vv_hom
 inline constexpr const char *kHomeOverviewDeviceAutoMinimumWidthProperty = "_vv_home_overview_device_auto_minimum_width";
 inline constexpr const char *kHomeOverviewDeviceAutoManagedWidthProperty = "_vv_home_overview_device_auto_managed_width";
 inline constexpr const char *kHomeOverviewDeviceProgrammaticResizeProperty = "_vv_home_overview_device_programmatic_resize";
+inline constexpr const char *kHomeDeviceSingleConnectTargetProperty = "_vv_home_device_single_connect_target";
 inline constexpr int kSensorNavigationStretch = 4;
 inline constexpr int kSensorEnvironmentStretch = 1;
 inline constexpr int kTcpWaveCardMinHeight = 430;

@@ -30,6 +30,7 @@ enum class LocalDeviceKind
 
 struct LocalSerialDeviceSettings
 {
+    bool requested = true;
     bool enabled = true;
     QString port;
     QString baudText;
@@ -40,6 +41,7 @@ struct LocalSerialDeviceSettings
 struct LocalConnectionRequest
 {
     bool english = false;
+    bool includeWaveform = true;
     QString selectText;
     LocalSerialDeviceSettings epsilon;
     LocalSerialDeviceSettings ptb;
