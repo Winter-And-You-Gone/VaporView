@@ -120,6 +120,16 @@ int main()
             "stale attitude sources expire after three seconds");
     requireNear(attitude.roll_deg, 1.0, 1.0e-9, "fresh MSG_SYS_STATE resumes as fallback");
 
+    require(VaporView::EpsilonProtocol::packetRateCommandAccepted(
+                "IMU [40] 100.0Hz\r\n", 0x40, 100),
+            "#fmsg packet-rate response is accepted");
+    require(VaporView::EpsilonProtocol::packetRateCommandAccepted(
+                "*#OK\r\n", 0x40, 100),
+            "legacy #OK packet-rate response is accepted");
+    require(!VaporView::EpsilonProtocol::packetRateCommandAccepted(
+                "IMU [40] 50.0Hz\r\n", 0x40, 100),
+            "packet-rate response for a different rate is rejected");
+
     std::cout << "epsilon_protocol_test passed\n";
     return 0;
 }

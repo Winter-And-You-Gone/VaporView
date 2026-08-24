@@ -1485,6 +1485,20 @@ bool parseEnvironmentSerialLine(const std::string& line, EnvironmentSerialValues
 namespace EpsilonProtocol
 {
 
+bool packetRateCommandAccepted(const std::string& response,
+                               std::uint8_t packetId,
+                               int expectedRateHz)
+{
+  if (containsEpsilonAsciiOk(response))
+  {
+    return true;
+  }
+
+  const auto rates = parseFmsgResponse(response);
+  const auto it = rates.find(packetId);
+  return it != rates.end() && it->second == expectedRateHz;
+}
+
 bool decodeCorePacket(EpsilonData& data,
                       std::uint8_t packetId,
                       const std::uint8_t *payload,
@@ -2248,7 +2262,7 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
       char command[32];
       std::snprintf(command, sizeof(command), "#fmsg %02X %d\r\n", entry.first, entry.second);
       const std::string response = sendLoggedEpsilonAsciiCommand(serial_, logFn, english, command, kConfigCommandWaitMs);
-      if (!containsEpsilonAsciiOk(response))
+      if (!EpsilonProtocol::packetRateCommandAccepted(response, entry.first, entry.second))
       {
         std::ostringstream oss;
         oss << (english ? "EPSILON: failed to set packet 0x" : "EPSILON：设置数据包 0x")
