@@ -4460,6 +4460,36 @@ int main(int argc, char **argv)
                 !recordingStatusDetail.contains(QStringLiteral("双路精密温控器")) &&
                 !recordingStatusDetail.contains(QStringLiteral("8路温控器")),
             "recording status does not show semantic temperature-controller names");
+    auto *recordingStatusBody =
+        recordingStatusCard->findChild<QWidget *>(QStringLiteral("recordingStatusBody"));
+    require(recordingStatusBody != nullptr &&
+                recordingStatusBody->layout() != nullptr,
+            "recording status body exists for local-mode padding checks");
+    require(recordingStatusBody->layout()->contentsMargins().bottom() == 4,
+            "local recording status card uses tighter bottom padding");
+    int localRecordingStatusLastLineBottom = 0;
+    const QList<QLabel*> recordingStatusLabels =
+        recordingStatusView->findChildren<QLabel *>();
+    require(!recordingStatusLabels.isEmpty(),
+            "local recording status rows are visible for bottom padding checks");
+    for (QLabel *label : recordingStatusLabels)
+    {
+        if (!label->isVisibleTo(&window))
+        {
+            continue;
+        }
+        const QRect labelRect(label->mapTo(recordingStatusBody, QPoint(0, 0)),
+                              label->size());
+        localRecordingStatusLastLineBottom =
+            std::max(localRecordingStatusLastLineBottom,
+                     labelRect.top() + labelRect.height());
+    }
+    const QRect recordingStatusBodyContents = recordingStatusBody->contentsRect();
+    const int localRecordingStatusBottomGap =
+        recordingStatusBodyContents.top() + recordingStatusBodyContents.height() -
+        localRecordingStatusLastLineBottom;
+    require(localRecordingStatusBottomGap >= 4 && localRecordingStatusBottomGap <= 6,
+            "local recording status last row stays close to the card bottom");
     requireTopLevelCardElevation(recordingStatusCard,
                                  1.0,
                                  "recording status card uses the shared soft elevation");
