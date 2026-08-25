@@ -274,10 +274,8 @@ void NavigationStatusPanel::setSnapshot(const NavigationStatusSnapshot& snapshot
         (snapshot.epsilonOnline && realtimeDataFresh) ? QStringLiteral("healthy") : QStringLiteral("inactive"));
     applyStatusLabel(
         gnss_status_.value,
-        navigationDataUsable
-            ? (is_english_ ? QStringLiteral("● Available") : QStringLiteral("● 可用"))
-            : unavailableText(),
-        navigationDataUsable ? QStringLiteral("healthy") : QStringLiteral("inactive"));
+        fixUsable ? fixText : unavailableText(),
+        fixUsable ? QStringLiteral("healthy") : QStringLiteral("inactive"));
     applyStatusLabel(
         ins_status_.value,
         attitudeUsable

@@ -175,9 +175,10 @@ void testStateVisibilityAndFormatting()
                 label(panel, "navigationStatusHorizontalAccuracyValue")->text().endsWith(QStringLiteral(" m")),
             "navigation values use stable units and precision formatting");
     require(label(panel, "navigationStatusFreshnessValue")->text().contains(QStringLiteral("32 ms")) &&
+                label(panel, "navigationStatusGnssValue")->text() == QStringLiteral("RTK_FIXED") &&
                 label(panel, "navigationStatusGnssFixValue")->text() == QStringLiteral("RTK_FIXED") &&
                 label(panel, "navigationStatusSatellitesValue")->text() == QStringLiteral("24"),
-            "overview and GNSS quality reflect explicit reliable snapshot fields");
+            "overview and GNSS quality render the explicit GNSS fix state");
 
     NavigationStatusSnapshot stale = reliable;
     stale.epsilonDataFresh = false;
@@ -201,10 +202,11 @@ void testStateVisibilityAndFormatting()
     panel.setSnapshot(partial);
     processEventsFor(30);
     require(gnssCard->isVisible() &&
+                label(panel, "navigationStatusGnssValue")->text() == QStringLiteral("3D") &&
                 label(panel, "navigationStatusGnssFixValue")->text() == QStringLiteral("3D") &&
                 label(panel, "navigationStatusSatellitesValue")->text() == QStringLiteral("--") &&
                 label(panel, "navigationStatusHorizontalAccuracyValue")->text() == QStringLiteral("--"),
-            "partial GNSS data renders only the fields whose validity is explicit");
+            "partial GNSS data renders explicit fix state without inferring quality fields");
 
     NavigationStatusSnapshot invalid = reliable;
     invalid.positionAvailable = true;
