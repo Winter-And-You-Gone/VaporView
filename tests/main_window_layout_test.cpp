@@ -4608,6 +4608,16 @@ int main(int argc, char **argv)
     const QRect epsilonCardRect = widgetRectInCentral(homeEpsilonCardForSpacing);
     const QRect environmentCardRect = widgetRectInCentral(homeEnvironmentCardForSpacing);
     const QRect homeTcpWaveCardRect = widgetRectInCentral(tcpWaveCardForSpacing);
+    auto *homeEpsilonTitleBar = homeEpsilonCardForSpacing->findChild<QWidget *>(
+        QStringLiteral("sectionTitleBar"), Qt::FindDirectChildrenOnly);
+    auto *homeEnvironmentTitleBar = homeEnvironmentCardForSpacing->findChild<QWidget *>(
+        QStringLiteral("environmentSectionTitleBar"), Qt::FindDirectChildrenOnly);
+    require(homeEpsilonTitleBar != nullptr && homeEnvironmentTitleBar != nullptr,
+            "home EPSILON and environment cards expose standard title bars");
+    require(homeEnvironmentTitleBar->height() == homeEpsilonTitleBar->height(),
+            "home environment title bar matches the EPSILON title-bar height");
+    require(homeEnvironmentTitleBar->y() <= 2,
+            "home environment title bar sits flush with the top of the card");
     require(std::abs((std::min(epsilonCardRect.top(), environmentCardRect.top()) -
                       bottomEdge(homeOverviewSplitterRect)) -
                      kExpectedTopLevelCardGap) <= 1,

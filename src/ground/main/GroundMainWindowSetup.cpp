@@ -4782,9 +4782,9 @@ void MainWindow::setupDataPanels()
 
     auto *envTitleBar = new QWidget(env_group);
     envTitleBar->setObjectName("environmentSectionTitleBar");
-    envTitleBar->setFixedHeight(kEnvironmentTitleBarHeight);
+    envTitleBar->setFixedHeight(kMainPageTitleBarHeight);
     auto *envTitleLayout = new QHBoxLayout(envTitleBar);
-    envTitleLayout->setContentsMargins(8, 0, 8, 0);
+    envTitleLayout->setContentsMargins(8, 2, 8, 2);
     envTitleLayout->setSpacing(8);
 
     QWidget *envTitleCluster = nullptr;
@@ -4819,6 +4819,7 @@ void MainWindow::setupDataPanels()
 
     state_->hmp_panel_ = new HmpPanel(this);
     env_layout->addWidget(state_->hmp_panel_);
+    env_layout->addStretch(1);
     updateEnvironmentStatusIcons(false, false, false);
 
     const int sensorCardHeight = std::max({

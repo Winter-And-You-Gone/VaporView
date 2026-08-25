@@ -478,6 +478,12 @@ QGroupBox#sensorGroupBox {
     padding: 0px;
     color: @vv-text;
 }
+QGroupBox#sensorGroupBox::title {
+    color: transparent;
+    height: 0px;
+    margin: 0px;
+    padding: 0px;
+}
 QFrame#appSidebar {
     background-color: @vv-surface;
     border-right: 1px solid @vv-border;

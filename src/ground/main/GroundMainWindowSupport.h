@@ -90,7 +90,6 @@ inline constexpr int kHomeDeviceActionSpinnerFrames = 30;
 inline constexpr int kHomeDeviceActionSpinnerIntervalMs = 25;
 inline constexpr int kHomeDeviceActionSpinnerMinimumMs = 1000;
 inline constexpr int kMainPageTitleBarHeight = kMainPageInputHeight + 4;
-inline constexpr int kEnvironmentTitleBarHeight = kMainPageButtonHeight;
 inline constexpr int kHomeOverviewCardOuterPadding = 1;
 inline constexpr int kHomeOverviewBodyPadding = 2;
 inline constexpr int kConfigFormBottomPadding = 4;
