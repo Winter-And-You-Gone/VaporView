@@ -1692,6 +1692,25 @@ int main(int argc, char **argv)
             recordingStatus->findChildren<QLabel *>(QStringLiteral("recordingStatusUnitLabel"));
         const QList<QLabel *> values =
             recordingStatus->findChildren<QLabel *>(QStringLiteral("recordingStatusValueLabel"));
+        const QList<QLabel *> fields =
+            recordingStatus->findChildren<QLabel *>(QStringLiteral("recordingStatusFieldLabel"));
+        for (QLabel *field : fields)
+        {
+            if (!field->isVisible())
+            {
+                continue;
+            }
+            if (field->fontMetrics().horizontalAdvance(field->text()) > field->width() + 1)
+            {
+                return false;
+            }
+            const QRect fieldRect(field->mapTo(recordingStatus, QPoint(0, 0)), field->size());
+            if (!recordingStatus->rect().contains(fieldRect.topLeft()) ||
+                fieldRect.right() > recordingStatus->rect().right())
+            {
+                return false;
+            }
+        }
         QList<QLabel *> visibleUnits;
         for (QLabel *unit : units)
         {

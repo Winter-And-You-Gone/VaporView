@@ -162,6 +162,8 @@ void RecordingStatusView::setStatusText(const QString& plainText)
 
     QList<QLabel *> valueLabelsWithUnits;
     QList<QLabel *> unitLabels;
+    QList<QLabel *> fieldLabels;
+    int fieldWidth = 0;
     int valueWidth = 0;
     int unitWidth = 0;
     int outputRow = 0;
@@ -190,6 +192,8 @@ void RecordingStatusView::setStatusText(const QString& plainText)
             QStringLiteral("recordingStatusFieldLabel"),
             line.label,
             Qt::AlignLeft);
+        fieldWidth = std::max(fieldWidth, nameLabel->fontMetrics().horizontalAdvance(line.label));
+        fieldLabels.append(nameLabel);
         grid_layout_->addWidget(nameLabel, outputRow, 0);
 
         auto *valueLabel = createRecordingStatusLabel(
@@ -226,10 +230,16 @@ void RecordingStatusView::setStatusText(const QString& plainText)
         ++outputRow;
     }
 
+    fieldWidth += 2;
     valueWidth += 4;
     unitWidth += 6;
+    grid_layout_->setColumnMinimumWidth(0, fieldWidth);
     grid_layout_->setColumnMinimumWidth(1, valueWidth);
     grid_layout_->setColumnMinimumWidth(2, unitWidth);
+    for (QLabel *label : std::as_const(fieldLabels))
+    {
+        label->setMinimumWidth(fieldWidth);
+    }
     for (QLabel *label : std::as_const(valueLabelsWithUnits))
     {
         label->setMinimumWidth(valueWidth);
