@@ -4467,27 +4467,27 @@ int main(int argc, char **argv)
             "recording status body exists for local-mode padding checks");
     require(recordingStatusBody->layout()->contentsMargins().bottom() == 4,
             "local recording status card uses tighter bottom padding");
-    int localRecordingStatusLastLineBottom = 0;
-    const QList<QLabel*> recordingStatusLabels =
-        recordingStatusView->findChildren<QLabel *>();
-    require(!recordingStatusLabels.isEmpty(),
-            "local recording status rows are visible for bottom padding checks");
-    for (QLabel *label : recordingStatusLabels)
-    {
-        if (!label->isVisibleTo(&window))
+    auto recordingStatusBottomGap = [&window, recordingStatusBody, recordingStatusView]() {
+        int lastLineBottom = 0;
+        const QList<QLabel*> labels = recordingStatusView->findChildren<QLabel *>();
+        require(!labels.isEmpty(),
+                "local recording status rows are visible for bottom padding checks");
+        for (QLabel *label : labels)
         {
-            continue;
+            if (!label->isVisibleTo(&window))
+            {
+                continue;
+            }
+            const QRect labelRect(label->mapTo(recordingStatusBody, QPoint(0, 0)),
+                                  label->size());
+            lastLineBottom =
+                std::max(lastLineBottom,
+                         labelRect.top() + labelRect.height());
         }
-        const QRect labelRect(label->mapTo(recordingStatusBody, QPoint(0, 0)),
-                              label->size());
-        localRecordingStatusLastLineBottom =
-            std::max(localRecordingStatusLastLineBottom,
-                     labelRect.top() + labelRect.height());
-    }
-    const QRect recordingStatusBodyContents = recordingStatusBody->contentsRect();
-    const int localRecordingStatusBottomGap =
-        recordingStatusBodyContents.top() + recordingStatusBodyContents.height() -
-        localRecordingStatusLastLineBottom;
+        const QRect contents = recordingStatusBody->contentsRect();
+        return contents.top() + contents.height() - lastLineBottom;
+    };
+    const int localRecordingStatusBottomGap = recordingStatusBottomGap();
     require(localRecordingStatusBottomGap >= 4 && localRecordingStatusBottomGap <= 6,
             "local recording status last row stays close to the card bottom");
     requireTopLevelCardElevation(recordingStatusCard,
@@ -10072,6 +10072,12 @@ int main(int argc, char **argv)
     requireSameRect(deviceTelemetrySummaryCard->geometry(), localTelemetrySummaryRect, 2,
                     "device telemetry summary geometry is stable in sky-ground remote mode");
     setDeviceSourceModeRemote(false);
+    require(recordingStatusView->toolTip().contains(QStringLiteral("记录：未记录")) &&
+                !recordingStatusView->toolTip().contains(QStringLiteral("天空端记录")),
+            "recording status returns to local text after switching back from remote mode");
+    const int restoredRecordingStatusBottomGap = recordingStatusBottomGap();
+    require(restoredRecordingStatusBottomGap >= 4 && restoredRecordingStatusBottomGap <= 6,
+            "local recording status bottom padding is restored after remote mode");
     require(epsilonConfigCard->isEnabled(),
             "EPSILON configuration panel is available after switching back to local mode");
     require(deviceTelemetrySummaryCard->isVisible(),

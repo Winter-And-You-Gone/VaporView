@@ -152,6 +152,12 @@ void RecordingStatusView::setStatusText(const QString& plainText)
     status_text_ = plainText;
     setToolTip(plainText);
 
+    const int previousRowCount = grid_layout_->rowCount();
+    for (int row = 0; row < previousRowCount; ++row)
+    {
+        grid_layout_->setRowMinimumHeight(row, 0);
+        grid_layout_->setRowStretch(row, 0);
+    }
     clearLayout(grid_layout_);
 
     QList<QLabel *> valueLabelsWithUnits;

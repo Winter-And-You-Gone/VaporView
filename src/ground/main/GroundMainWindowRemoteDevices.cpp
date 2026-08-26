@@ -414,7 +414,7 @@ void MainWindow::onDataSourceModeChanged(int index)
     updateDeviceConfigTexts();
     updateSourceModeUi();
     requestRemoteSkyConfigIfAvailable(false);
-    updateRecordingActionStates();
+    updateRecordingStatusLabel();
 }
 
 void MainWindow::updateSourceModeUi()
