@@ -97,6 +97,20 @@ int main(int argc, char **argv)
                 humidityTrend->property("sampleCount").toInt() == 1 &&
                 pressureTrend->property("sampleCount").toInt() == 1,
             "environment trend plots receive temperature, humidity, and pressure samples");
+    require(temperatureTrend->property("yAxisUnitLabel").toString() == QStringLiteral("°C") &&
+                humidityTrend->property("yAxisUnitLabel").toString() == QStringLiteral("%RH") &&
+                pressureTrend->property("yAxisUnitLabel").toString() == QStringLiteral("hPa"),
+            "environment trend plots expose y-axis unit labels");
+    require(temperatureTrend->property("xAxisLabelText").toString() == QStringLiteral("时间") &&
+                humidityTrend->property("xAxisLabelText").toString() == QStringLiteral("时间") &&
+                pressureTrend->property("xAxisLabelText").toString() == QStringLiteral("时间"),
+            "environment trend plots expose the default time x-axis label");
+    hmp.setEnglish(true);
+    ptb.setEnglish(true);
+    require(temperatureTrend->property("xAxisLabelText").toString() == QStringLiteral("Time") &&
+                humidityTrend->property("xAxisLabelText").toString() == QStringLiteral("Time") &&
+                pressureTrend->property("xAxisLabelText").toString() == QStringLiteral("Time"),
+            "environment trend plot x-axis labels follow language switching");
 
     coordinator.clearRates();
     require(epsilonRate.text().contains(QStringLiteral("-- Hz")),

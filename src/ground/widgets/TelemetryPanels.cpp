@@ -25,7 +25,7 @@ constexpr const char *kNumericWidthCandidatesProperty = "_vv_numeric_width_candi
 constexpr const char *kNumericWidthPaddingProperty = "_vv_numeric_width_padding";
 constexpr quint64 kImuPpsSyncWindowUs = 2ULL * 1000ULL * 1000ULL;
 constexpr int kEnvironmentTrendMaxSamples = 160;
-constexpr int kEnvironmentTrendPlotHeight = 40;
+constexpr int kEnvironmentTrendPlotHeight = 64;
 
 QFont numericFontFrom(const QFont& base)
 {
@@ -200,6 +200,8 @@ public:
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         setAttribute(Qt::WA_OpaquePaintEvent, true);
         setProperty("sampleCount", 0);
+        setProperty("yAxisUnitLabel", unit_);
+        setProperty("xAxisLabelText", QStringLiteral("时间"));
     }
 
     QSize sizeHint() const override
@@ -212,16 +214,36 @@ public:
         return QSize(120, kEnvironmentTrendPlotHeight);
     }
 
-    void appendSample(double value)
+    void setEnglish(bool english)
+    {
+        is_english_ = english;
+        setProperty("xAxisLabelText", is_english_ ? QStringLiteral("Time") : QStringLiteral("时间"));
+        update();
+    }
+
+    void appendSample(double value,
+                      std::chrono::steady_clock::time_point timestamp = std::chrono::steady_clock::time_point{})
     {
         if (!std::isfinite(value))
         {
             return;
         }
+        const auto effectiveTimestamp = timestamp == std::chrono::steady_clock::time_point{}
+            ? std::chrono::steady_clock::now()
+            : timestamp;
+        if (!has_first_sample_timestamp_)
+        {
+            first_sample_timestamp_ = effectiveTimestamp;
+            has_first_sample_timestamp_ = true;
+        }
+        const double elapsedSeconds =
+            std::chrono::duration<double>(effectiveTimestamp - first_sample_timestamp_).count();
         samples_.append(value);
+        sample_times_seconds_.append(std::max(0.0, elapsedSeconds));
         while (samples_.size() > kEnvironmentTrendMaxSamples)
         {
             samples_.removeFirst();
+            sample_times_seconds_.removeFirst();
         }
         setProperty("sampleCount", samples_.size());
         setProperty("latestValue", value);
@@ -240,6 +262,7 @@ protected:
         const QColor border = VaporView::appThemeColor(VaporView::AppThemeColor::PlotBorder, dark);
         const QColor grid = VaporView::appThemeColor(VaporView::AppThemeColor::PlotGrid, dark);
         const QColor muted = VaporView::appThemeColor(VaporView::AppThemeColor::PlotMutedText, dark);
+        const QColor axis = VaporView::appThemeColor(VaporView::AppThemeColor::PlotAxisStrong, dark);
         const QColor line = VaporView::appThemeColor(series_color_, dark);
 
         painter.fillRect(rect(), background);
@@ -250,7 +273,12 @@ protected:
         painter.setPen(QPen(border, 1.0));
         painter.drawPath(panelPath);
 
-        const QRectF plotRect = panelRect.adjusted(8.0, 5.0, -8.0, -5.0);
+        QFont axisFont = font();
+        axisFont.setPointSize(std::max(7, axisFont.pointSize() - 3));
+        const QFontMetrics axisFm(axisFont);
+        const qreal yAxisWidth = std::max<qreal>(28.0, axisFm.horizontalAdvance(unit_) + 10.0);
+        const qreal xAxisHeight = axisFm.height() + 8.0;
+        const QRectF plotRect = panelRect.adjusted(yAxisWidth, 5.0, -7.0, -xAxisHeight);
         painter.setClipPath(panelPath);
         painter.setPen(QPen(grid, 1.0));
         for (int i = 1; i <= 2; ++i)
@@ -258,14 +286,44 @@ protected:
             const qreal y = plotRect.top() + plotRect.height() * i / 3.0;
             painter.drawLine(QPointF(plotRect.left(), y), QPointF(plotRect.right(), y));
         }
+        painter.setPen(QPen(axis, 1.0));
+        painter.drawLine(QPointF(plotRect.left(), plotRect.top()),
+                         QPointF(plotRect.left(), plotRect.bottom()));
+        painter.drawLine(QPointF(plotRect.left(), plotRect.bottom()),
+                         QPointF(plotRect.right(), plotRect.bottom()));
+        painter.setFont(axisFont);
+        painter.setPen(muted);
+        painter.drawText(QRectF(panelRect.left() + 4.0,
+                                plotRect.top() + (plotRect.height() - axisFm.height()) / 2.0,
+                                yAxisWidth - 8.0,
+                                axisFm.height()),
+                         Qt::AlignRight | Qt::AlignVCenter,
+                         unit_);
+        const QString xAxisText = is_english_ ? QStringLiteral("Time") : QStringLiteral("时间");
+        const QRectF xAxisLabelRect(plotRect.left(),
+                                    plotRect.bottom() + 3.0,
+                                    plotRect.width(),
+                                    axisFm.height());
+        painter.drawText(xAxisLabelRect, Qt::AlignCenter, xAxisText);
+        setProperty("yAxisUnitLabel", unit_);
+        setProperty("xAxisLabelText", xAxisText);
 
         QVector<double> finiteSamples;
+        QVector<double> finiteSampleTimes;
         finiteSamples.reserve(samples_.size());
-        for (double sample : samples_)
+        finiteSampleTimes.reserve(samples_.size());
+        for (int index = 0; index < samples_.size(); ++index)
         {
+            const double sample = samples_.at(index);
             if (std::isfinite(sample))
             {
                 finiteSamples.append(sample);
+                const double sampleTime = index < sample_times_seconds_.size()
+                    ? sample_times_seconds_.at(index)
+                    : static_cast<double>(index);
+                finiteSampleTimes.append(std::isfinite(sampleTime)
+                                             ? std::max(0.0, sampleTime)
+                                             : static_cast<double>(index));
             }
         }
 
@@ -292,9 +350,25 @@ protected:
         QPolygonF polyline;
         polyline.reserve(finiteSamples.size());
         const int count = finiteSamples.size();
+        double minTime = 0.0;
+        double maxTime = static_cast<double>(std::max(1, count - 1));
+        if (!finiteSampleTimes.isEmpty())
+        {
+            auto [minTimeIt, maxTimeIt] = std::minmax_element(finiteSampleTimes.cbegin(),
+                                                              finiteSampleTimes.cend());
+            minTime = *minTimeIt;
+            maxTime = *maxTimeIt;
+        }
+        const double timeSpan = std::max(1e-6, maxTime - minTime);
+        setProperty("xAxisTimeSpanSeconds", maxTime - minTime);
+        setProperty("xAxisLeftLabel", QStringLiteral("-%1").arg(formatDuration(maxTime - minTime)));
+        setProperty("xAxisRightLabel", QStringLiteral("0s"));
         for (int i = 0; i < count; ++i)
         {
-            const double xRatio = count <= 1 ? 0.5 : static_cast<double>(i) / static_cast<double>(count - 1);
+            const double xValue = i < finiteSampleTimes.size()
+                ? finiteSampleTimes.at(i)
+                : static_cast<double>(i);
+            const double xRatio = count <= 1 ? 0.5 : (xValue - minTime) / timeSpan;
             const double yRatio = (finiteSamples.at(i) - minValue) / std::max(1e-6, span);
             polyline.append(QPointF(plotRect.left() + xRatio * plotRect.width(),
                                     plotRect.bottom() - yRatio * plotRect.height()));
@@ -315,9 +389,27 @@ protected:
     }
 
 private:
+    static QString formatDuration(double seconds)
+    {
+        if (!std::isfinite(seconds) || seconds < 1.0)
+        {
+            return QStringLiteral("0s");
+        }
+        if (seconds < 60.0)
+        {
+            return QStringLiteral("%1s").arg(qRound(seconds));
+        }
+        const int minutes = qRound(seconds / 60.0);
+        return QStringLiteral("%1m").arg(minutes);
+    }
+
     VaporView::AppThemeColor series_color_;
     QString unit_;
     QVector<double> samples_;
+    QVector<double> sample_times_seconds_;
+    std::chrono::steady_clock::time_point first_sample_timestamp_{};
+    bool has_first_sample_timestamp_ = false;
+    bool is_english_ = false;
 };
 
 namespace
@@ -982,6 +1074,10 @@ void PtbPanel::setEnglish(bool english)
         pressure_lbl_->setText("气压:");
     }
     refreshFixedTextLabelWidth(pressure_lbl_);
+    if (pressure_trend_plot_)
+    {
+        pressure_trend_plot_->setEnglish(english);
+    }
 }
 
 void PtbPanel::updateData(const VaporView::PtbData& ptb_data)
@@ -996,7 +1092,7 @@ void PtbPanel::updateData(const VaporView::PtbData& ptb_data)
                                           last_pressure_timestamp_,
                                           has_pressure_timestamp_))
         {
-            pressure_trend_plot_->appendSample(ptb_data.pressure_hpa);
+            pressure_trend_plot_->appendSample(ptb_data.pressure_hpa, ptb_data.timestamp);
         }
     }
     else
@@ -1110,6 +1206,14 @@ void HmpPanel::setEnglish(bool english)
     }
     refreshFixedTextLabelWidth(temp_lbl_);
     refreshFixedTextLabelWidth(humidity_lbl_);
+    if (temperature_trend_plot_)
+    {
+        temperature_trend_plot_->setEnglish(english);
+    }
+    if (humidity_trend_plot_)
+    {
+        humidity_trend_plot_->setEnglish(english);
+    }
 }
 
 void HmpPanel::updateData(const VaporView::HmpData& hmp_data)
@@ -1127,14 +1231,14 @@ void HmpPanel::updateData(const VaporView::HmpData& hmp_data)
                                           last_temperature_timestamp_,
                                           has_temperature_timestamp_))
         {
-            temperature_trend_plot_->appendSample(hmp_data.temperature);
+            temperature_trend_plot_->appendSample(hmp_data.temperature, hmp_data.timestamp);
         }
         if (humidity_trend_plot_ &&
             shouldAppendEnvironmentSample(hmp_data.timestamp,
                                           last_humidity_timestamp_,
                                           has_humidity_timestamp_))
         {
-            humidity_trend_plot_->appendSample(hmp_data.humidity);
+            humidity_trend_plot_->appendSample(hmp_data.humidity, hmp_data.timestamp);
         }
     }
     else
