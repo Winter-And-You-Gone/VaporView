@@ -57,6 +57,10 @@ void DevicePanelCoordinator::updateEnvironmentData(
     {
         bindings_.lidar->updateData(lidar);
     }
+    if (bindings_.environmentTrend)
+    {
+        bindings_.environmentTrend->updateData(ptb, hmp);
+    }
 }
 
 void DevicePanelCoordinator::updateTemperatureData(

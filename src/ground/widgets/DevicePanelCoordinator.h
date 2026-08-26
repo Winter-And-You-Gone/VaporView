@@ -10,6 +10,7 @@ class HmpPanel;
 class ImuPanel;
 class LidarPanel;
 class PtbPanel;
+class EnvironmentTrendPanel;
 class TemperatureControllerPanel;
 
 namespace VaporView::Ground::Widgets
@@ -26,6 +27,7 @@ struct DevicePanelBindings
     PtbPanel *ptb = nullptr;
     HmpPanel *hmp = nullptr;
     LidarPanel *lidar = nullptr;
+    EnvironmentTrendPanel *environmentTrend = nullptr;
     TemperatureControllerPanel *temperature = nullptr;
     TemperatureControllerOverviewPanel *temperatureOverview = nullptr;
 };

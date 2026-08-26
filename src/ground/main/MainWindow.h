@@ -67,6 +67,7 @@ class ImuPanel;
 class PtbPanel;
 class HmpPanel;
 class LidarPanel;
+class EnvironmentTrendPanel;
 class TemperatureControllerPanel;
 class TemperatureTrendPlotWidget;
 namespace VaporView { class SingleLevelPopupMenu; }

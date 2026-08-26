@@ -183,6 +183,7 @@ struct MainWindowState
     PtbPanel *ptb_panel_;
     HmpPanel *hmp_panel_;
     LidarPanel *lidar_panel_;
+    EnvironmentTrendPanel *environment_trend_panel_;
     TemperatureControllerPanel *temperature_controller_panel_;
     VaporView::Ground::Widgets::Ai8TemperatureControllerPanel *ai8_temperature_controller_panel_;
     std::unique_ptr<VaporView::Ground::Widgets::DevicePanelCoordinator> device_panel_coordinator_;

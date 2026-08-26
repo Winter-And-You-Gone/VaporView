@@ -10108,6 +10108,24 @@ int main(int argc, char **argv)
         }
     }
     require(environmentGroup != nullptr, "environment and lidar card exists");
+    auto *environmentTrendPanel =
+        environmentGroup->findChild<QWidget *>(QStringLiteral("environmentTrendPanel"));
+    require(environmentTrendPanel != nullptr,
+            "environment card includes the temperature, humidity, and pressure trend panel");
+    QStringList environmentTrendPlotNames = {
+        QStringLiteral("environmentTemperatureTrendPlot"),
+        QStringLiteral("environmentHumidityTrendPlot"),
+        QStringLiteral("environmentPressureTrendPlot")
+    };
+    for (const QString& plotName : environmentTrendPlotNames)
+    {
+        QWidget *plot = environmentTrendPanel->findChild<QWidget *>(plotName);
+        require(plot != nullptr && plot->height() >= 30,
+                "environment trend plot exists with a readable compact height");
+        require(plot->mapTo(environmentGroup, QPoint(0, plot->height())).y() <=
+                    environmentGroup->contentsRect().bottom() + 1,
+                "environment trend plot stays inside the environment card");
+    }
 
     const QRect compactEpsilonGeometry = epsilonGroup->geometry();
     const QRect compactEnvironmentGeometry = environmentGroup->geometry();

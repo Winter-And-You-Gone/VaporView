@@ -4819,6 +4819,9 @@ void MainWindow::setupDataPanels()
 
     state_->hmp_panel_ = new HmpPanel(this);
     env_layout->addWidget(state_->hmp_panel_);
+
+    state_->environment_trend_panel_ = new EnvironmentTrendPanel(this);
+    env_layout->addWidget(state_->environment_trend_panel_);
     env_layout->addStretch(1);
     updateEnvironmentStatusIcons(false, false, false);
 
@@ -5287,6 +5290,7 @@ void MainWindow::setupDataPanels()
         state_->ptb_panel_,
         state_->hmp_panel_,
         state_->lidar_panel_,
+        state_->environment_trend_panel_,
         state_->temperature_controller_panel_,
         state_->temperature_overview_panel_});
 

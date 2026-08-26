@@ -1,10 +1,13 @@
 #include "TelemetryPanels.h"
 #include "ground/widgets/VisualTextLabel.h"
+#include "shared/theme/AppTheme.h"
 
 #include <QDateTime>
 #include <QFontMetrics>
 #include <QGridLayout>
 #include <QHBoxLayout>
+#include <QPainter>
+#include <QPainterPath>
 #include <QSizePolicy>
 #include <QStyle>
 #include <QTimeZone>
@@ -21,6 +24,8 @@ constexpr const char *kTextWidthPaddingProperty = "_vv_text_width_padding";
 constexpr const char *kNumericWidthCandidatesProperty = "_vv_numeric_width_candidates";
 constexpr const char *kNumericWidthPaddingProperty = "_vv_numeric_width_padding";
 constexpr quint64 kImuPpsSyncWindowUs = 2ULL * 1000ULL * 1000ULL;
+constexpr int kEnvironmentTrendMaxSamples = 160;
+constexpr int kEnvironmentTrendPlotHeight = 38;
 
 QFont numericFontFrom(const QFont& base)
 {
@@ -177,6 +182,146 @@ QString fixedDecimalWithUnit(double value, int decimals, int numberWidth, const 
         ? fixedTextField(number, numberWidth)
         : QStringLiteral("%1 %2").arg(fixedTextField(number, numberWidth), unit);
 }
+
+} // namespace
+
+class EnvironmentTrendSparklineWidget final : public QWidget
+{
+public:
+    EnvironmentTrendSparklineWidget(VaporView::AppThemeColor seriesColor,
+                                    const QString& unit,
+                                    QWidget *parent = nullptr)
+        : QWidget(parent)
+        , series_color_(seriesColor)
+        , unit_(unit)
+    {
+        setMinimumHeight(kEnvironmentTrendPlotHeight);
+        setMaximumHeight(kEnvironmentTrendPlotHeight);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        setAttribute(Qt::WA_OpaquePaintEvent, true);
+        setProperty("sampleCount", 0);
+    }
+
+    QSize sizeHint() const override
+    {
+        return QSize(180, kEnvironmentTrendPlotHeight);
+    }
+
+    QSize minimumSizeHint() const override
+    {
+        return QSize(120, kEnvironmentTrendPlotHeight);
+    }
+
+    void appendSample(double value)
+    {
+        if (!std::isfinite(value))
+        {
+            return;
+        }
+        samples_.append(value);
+        while (samples_.size() > kEnvironmentTrendMaxSamples)
+        {
+            samples_.removeFirst();
+        }
+        setProperty("sampleCount", samples_.size());
+        setProperty("latestValue", value);
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        Q_UNUSED(event);
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+
+        const bool dark = VaporView::isDarkThemeEnabled();
+        const QColor background = VaporView::appThemeColor(VaporView::AppThemeColor::SurfaceRaised, dark);
+        const QColor border = VaporView::appThemeColor(VaporView::AppThemeColor::PlotBorder, dark);
+        const QColor grid = VaporView::appThemeColor(VaporView::AppThemeColor::PlotGrid, dark);
+        const QColor muted = VaporView::appThemeColor(VaporView::AppThemeColor::PlotMutedText, dark);
+        const QColor line = VaporView::appThemeColor(series_color_, dark);
+
+        painter.fillRect(rect(), background);
+        const QRectF panelRect = QRectF(rect()).adjusted(1.0, 1.0, -1.0, -1.0);
+        QPainterPath panelPath;
+        panelPath.addRoundedRect(panelRect, 6.0, 6.0);
+        painter.fillPath(panelPath, background);
+        painter.setPen(QPen(border, 1.0));
+        painter.drawPath(panelPath);
+
+        const QRectF plotRect = panelRect.adjusted(8.0, 5.0, -8.0, -5.0);
+        painter.setClipPath(panelPath);
+        painter.setPen(QPen(grid, 1.0));
+        for (int i = 1; i <= 2; ++i)
+        {
+            const qreal y = plotRect.top() + plotRect.height() * i / 3.0;
+            painter.drawLine(QPointF(plotRect.left(), y), QPointF(plotRect.right(), y));
+        }
+
+        QVector<double> finiteSamples;
+        finiteSamples.reserve(samples_.size());
+        for (double sample : samples_)
+        {
+            if (std::isfinite(sample))
+            {
+                finiteSamples.append(sample);
+            }
+        }
+
+        if (finiteSamples.isEmpty())
+        {
+            painter.setClipping(false);
+            painter.setPen(muted);
+            painter.drawText(plotRect, Qt::AlignCenter, QStringLiteral("--"));
+            return;
+        }
+
+        auto [minIt, maxIt] = std::minmax_element(finiteSamples.cbegin(), finiteSamples.cend());
+        double minValue = *minIt;
+        double maxValue = *maxIt;
+        double span = maxValue - minValue;
+        if (span < 1e-6)
+        {
+            const double reserve = std::max(1.0, std::abs(maxValue) * 0.02);
+            minValue -= reserve;
+            maxValue += reserve;
+            span = maxValue - minValue;
+        }
+
+        QPolygonF polyline;
+        polyline.reserve(finiteSamples.size());
+        const int count = finiteSamples.size();
+        for (int i = 0; i < count; ++i)
+        {
+            const double xRatio = count <= 1 ? 0.5 : static_cast<double>(i) / static_cast<double>(count - 1);
+            const double yRatio = (finiteSamples.at(i) - minValue) / std::max(1e-6, span);
+            polyline.append(QPointF(plotRect.left() + xRatio * plotRect.width(),
+                                    plotRect.bottom() - yRatio * plotRect.height()));
+        }
+
+        painter.setPen(QPen(line, 1.8, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        painter.drawPolyline(polyline);
+        painter.setBrush(line);
+        painter.setPen(Qt::NoPen);
+        painter.drawEllipse(polyline.constLast(), 2.4, 2.4);
+        painter.setClipping(false);
+        setProperty("yAxisMin", minValue);
+        setProperty("yAxisMax", maxValue);
+        if (!unit_.isEmpty())
+        {
+            setProperty("unit", unit_);
+        }
+    }
+
+private:
+    VaporView::AppThemeColor series_color_;
+    QString unit_;
+    QVector<double> samples_;
+};
+
+namespace
+{
 
 QString imuFrameTypeName(VaporView::ImuFrameType type)
 {
@@ -1046,4 +1191,145 @@ void LidarPanel::updateData(const VaporView::LidarData& lidar_data)
         polishNumericLabel(distance_label_);
         polishNumericLabel(strength_label_);
     }
+}
+
+EnvironmentTrendPanel::EnvironmentTrendPanel(QWidget *parent)
+    : QWidget(parent)
+{
+    setupUi();
+}
+
+void EnvironmentTrendPanel::setupUi()
+{
+    setObjectName(QStringLiteral("environmentTrendPanel"));
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
+    auto *layout = new QVBoxLayout(this);
+    layout->setContentsMargins(6, 6, 6, 6);
+    layout->setSpacing(4);
+
+    layout->addWidget(createTrendRow(temperature_trend_lbl_,
+                                     temperature_trend_plot_,
+                                     QStringLiteral("environmentTemperatureTrendPlot")));
+    layout->addWidget(createTrendRow(humidity_trend_lbl_,
+                                     humidity_trend_plot_,
+                                     QStringLiteral("environmentHumidityTrendPlot")));
+    layout->addWidget(createTrendRow(pressure_trend_lbl_,
+                                     pressure_trend_plot_,
+                                     QStringLiteral("environmentPressureTrendPlot")));
+
+    if (temperature_trend_plot_)
+    {
+        temperature_trend_plot_->setProperty("seriesRole", QStringLiteral("temperature"));
+    }
+    if (humidity_trend_plot_)
+    {
+        humidity_trend_plot_->setProperty("seriesRole", QStringLiteral("humidity"));
+    }
+    if (pressure_trend_plot_)
+    {
+        pressure_trend_plot_->setProperty("seriesRole", QStringLiteral("pressure"));
+    }
+    setEnglish(false);
+}
+
+QWidget *EnvironmentTrendPanel::createTrendRow(QLabel *&label,
+                                               EnvironmentTrendSparklineWidget *&plot,
+                                               const QString& objectName)
+{
+    auto *row = new QWidget(this);
+    row->setObjectName(QStringLiteral("environmentTrendRow"));
+    row->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    auto *rowLayout = new QHBoxLayout(row);
+    rowLayout->setContentsMargins(0, 0, 0, 0);
+    rowLayout->setSpacing(6);
+
+    label = new QLabel(row);
+    label->setObjectName(QStringLiteral("fieldLabel"));
+    label->setMinimumHeight(kEnvironmentTrendPlotHeight);
+    label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    setFixedTextLabelWidth(label,
+                           {QStringLiteral("Temp Trend:"),
+                            QStringLiteral("Humidity Trend:"),
+                            QStringLiteral("Pressure Trend:"),
+                            QStringLiteral("温度趋势:"),
+                            QStringLiteral("湿度趋势:"),
+                            QStringLiteral("气压趋势:")},
+                           6);
+    rowLayout->addWidget(label);
+
+    VaporView::AppThemeColor color = VaporView::AppThemeColor::PlotSeriesTemperature;
+    QString unit = QStringLiteral("°C");
+    if (objectName.contains(QStringLiteral("Humidity")))
+    {
+        color = VaporView::AppThemeColor::PlotSeriesHumidity;
+        unit = QStringLiteral("%RH");
+    }
+    else if (objectName.contains(QStringLiteral("Pressure")))
+    {
+        color = VaporView::AppThemeColor::PlotSeriesPressure;
+        unit = QStringLiteral("hPa");
+    }
+    plot = new EnvironmentTrendSparklineWidget(color, unit, row);
+    plot->setObjectName(objectName);
+    rowLayout->addWidget(plot, 1);
+    return row;
+}
+
+bool EnvironmentTrendPanel::shouldAppendSample(
+    const std::chrono::steady_clock::time_point& timestamp,
+    std::chrono::steady_clock::time_point& lastTimestamp,
+    bool& hasTimestamp) const
+{
+    const bool hasIncomingTimestamp = timestamp != std::chrono::steady_clock::time_point{};
+    if (!hasIncomingTimestamp)
+    {
+        return true;
+    }
+    if (hasTimestamp && timestamp == lastTimestamp)
+    {
+        return false;
+    }
+    lastTimestamp = timestamp;
+    hasTimestamp = true;
+    return true;
+}
+
+void EnvironmentTrendPanel::updateData(const VaporView::PtbData& ptb_data,
+                                       const VaporView::HmpData& hmp_data)
+{
+    if (hmp_data.valid && temperature_trend_plot_ &&
+        shouldAppendSample(hmp_data.timestamp, last_temperature_timestamp_, has_temperature_timestamp_))
+    {
+        temperature_trend_plot_->appendSample(hmp_data.temperature);
+    }
+    if (hmp_data.valid && humidity_trend_plot_ &&
+        shouldAppendSample(hmp_data.timestamp, last_humidity_timestamp_, has_humidity_timestamp_))
+    {
+        humidity_trend_plot_->appendSample(hmp_data.humidity);
+    }
+    if (ptb_data.valid && pressure_trend_plot_ &&
+        shouldAppendSample(ptb_data.timestamp, last_pressure_timestamp_, has_pressure_timestamp_))
+    {
+        pressure_trend_plot_->appendSample(ptb_data.pressure_hpa);
+    }
+}
+
+void EnvironmentTrendPanel::setEnglish(bool english)
+{
+    is_english_ = english;
+    if (english)
+    {
+        temperature_trend_lbl_->setText(QStringLiteral("Temp Trend:"));
+        humidity_trend_lbl_->setText(QStringLiteral("Humidity Trend:"));
+        pressure_trend_lbl_->setText(QStringLiteral("Pressure Trend:"));
+    }
+    else
+    {
+        temperature_trend_lbl_->setText(QStringLiteral("温度趋势:"));
+        humidity_trend_lbl_->setText(QStringLiteral("湿度趋势:"));
+        pressure_trend_lbl_->setText(QStringLiteral("气压趋势:"));
+    }
+    refreshFixedTextLabelWidth(temperature_trend_lbl_);
+    refreshFixedTextLabelWidth(humidity_trend_lbl_);
+    refreshFixedTextLabelWidth(pressure_trend_lbl_);
 }
