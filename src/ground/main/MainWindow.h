@@ -289,6 +289,8 @@ private:
     void updateEpsilonReconfigureProgress();
     void stopEpsilonReconfigureProgress();
     void setLogViewMode(VaporView::Ground::Main::LogUiViewMode mode, bool persist = true);
+    void settleLogViewAtBottom();
+    void scheduleLogViewBottomFollow();
     void scrollLogViewToBottom();
     bool isLogViewNearBottom() const;
     void updateLogFollowState();

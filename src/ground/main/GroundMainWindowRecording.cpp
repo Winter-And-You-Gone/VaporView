@@ -352,11 +352,50 @@ bool MainWindow::isLogViewNearBottom() const
 
 void MainWindow::scrollLogViewToBottom()
 {
+    settleLogViewAtBottom();
+    scheduleLogViewBottomFollow();
+    clearLogUnreadState();
+}
+
+void MainWindow::settleLogViewAtBottom()
+{
     if (state_->log_list_view_)
     {
-        state_->log_list_view_->scrollToBottom();
+        QListView *logListView = state_->log_list_view_;
+        logListView->doItemsLayout();
+        if (QAbstractItemModel *model = logListView->model())
+        {
+            const int lastRow = model->rowCount() - 1;
+            if (lastRow >= 0)
+            {
+                logListView->scrollTo(model->index(lastRow, 0),
+                                      QAbstractItemView::PositionAtBottom);
+            }
+        }
+        logListView->scrollToBottom();
+        if (QScrollBar *scrollBar = logListView->verticalScrollBar())
+        {
+            scrollBar->setValue(scrollBar->maximum());
+        }
+        if (logListView->viewport())
+        {
+            logListView->viewport()->update();
+        }
     }
-    clearLogUnreadState();
+}
+
+void MainWindow::scheduleLogViewBottomFollow()
+{
+    if (!state_->log_list_view_)
+    {
+        return;
+    }
+    QTimer::singleShot(0, this, [this]() {
+        settleLogViewAtBottom();
+        QTimer::singleShot(0, this, [this]() {
+            settleLogViewAtBottom();
+        });
+    });
 }
 
 void MainWindow::updateLogFollowState()

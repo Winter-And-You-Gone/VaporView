@@ -459,6 +459,38 @@ int main(int argc, char **argv)
     VaporViewTest::processEventsFor(90);
     followAction->trigger();
     VaporViewTest::processEventsFor(30);
+    for (int i = 0; i < 36; ++i)
+    {
+        logService.publish(VaporView::LogLevel::Warning,
+                           QStringLiteral("Ground"),
+                           QStringLiteral("scroll.follow"),
+                           QStringLiteral("自动跟随长日志 %1：这是一条会在窄日志卡片中自动换行的真实日志路径记录，用来验证滚动条到达最新底部后最后一条内容完整可见。").arg(i),
+                           {{QStringLiteral("event"), QStringLiteral("scroll_follow_wrapped_warning_%1").arg(i)}});
+    }
+    auto logListSettledAtBottom = [logList]() {
+        if (!logList || !logList->model() || !logList->viewport())
+        {
+            return false;
+        }
+        QScrollBar *scrollBar = logList->verticalScrollBar();
+        if (!scrollBar || scrollBar->maximum() <= 0 || scrollBar->value() != scrollBar->maximum())
+        {
+            return false;
+        }
+        const int lastRow = logList->model()->rowCount() - 1;
+        if (lastRow < 0)
+        {
+            return false;
+        }
+        const QRect lastRowRect = logList->visualRect(logList->model()->index(lastRow, 0));
+        return lastRowRect.isValid() &&
+               !lastRowRect.isEmpty() &&
+               lastRowRect.bottom() <= logList->viewport()->rect().bottom();
+    };
+    require(VaporViewTest::processEventsUntil(2000, logListSettledAtBottom),
+            "auto-follow keeps the final wrapped log row fully visible at the bottom");
+    clearButton->click();
+    VaporViewTest::processEventsFor(90);
     for (int i = 0; i < 80; ++i)
     {
         logService.publish(VaporView::LogLevel::Warning,

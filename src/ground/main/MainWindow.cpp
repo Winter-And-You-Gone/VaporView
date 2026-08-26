@@ -778,13 +778,19 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         watched == state_->log_list_view_->viewport() &&
         eventType == QEvent::Resize)
     {
+        const bool shouldKeepBottom =
+            state_->log_auto_follow_enabled_ && isLogViewNearBottom();
         QListView *logListView = state_->log_list_view_;
         logListView->doItemsLayout();
-        QTimer::singleShot(0, logListView, [logListView]() {
+        QTimer::singleShot(0, this, [this, logListView, shouldKeepBottom]() {
             logListView->doItemsLayout();
             if (logListView->viewport())
             {
                 logListView->viewport()->update();
+            }
+            if (shouldKeepBottom)
+            {
+                scheduleLogViewBottomFollow();
             }
         });
     }
