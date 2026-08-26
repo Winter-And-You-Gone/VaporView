@@ -573,8 +573,16 @@ void MainWindow::updateRecordingStatusLabel()
         const auto countAtRate = [elapsedMs](qint64 rateHz) {
             return static_cast<qulonglong>(std::max<qint64>(0, elapsedMs) * rateHz / 1000);
         };
-        const qulonglong rawTotal = countAtRate(100) + countAtRate(10) + countAtRate(2) +
-                                    countAtRate(20) + countAtRate(10);
+        const qulonglong rawNavigation = countAtRate(100);
+        const qulonglong rawPressure = countAtRate(10);
+        const qulonglong rawTemperatureHumidity = countAtRate(2);
+        const qulonglong rawDistance = countAtRate(20);
+        const qulonglong rawWaveform = countAtRate(10);
+        const qulonglong rawLaserTemperatureController = countAtRate(4);
+        const qulonglong rawSystemTemperatureController = countAtRate(8);
+        const qulonglong rawTotal =
+            rawNavigation + rawPressure + rawTemperatureHumidity + rawDistance +
+            rawWaveform + rawLaserTemperatureController + rawSystemTemperatureController;
         const char *visual = state_->ui_test_recording_state_ == 1
             ? "connected" : state_->ui_test_recording_state_ == 2 ? "connecting" : "disconnected";
         const QString stateText = state_->ui_test_recording_state_ == 1
@@ -589,27 +597,31 @@ void MainWindow::updateRecordingStatusLabel()
             ? QStringLiteral("--")
             : QStringLiteral("UI-TEST-SESSION");
         const QString detail = state_->is_english_
-            ? QStringLiteral("Session: %1\nElapsed: %2\nExternal device records: %3 rows\nWaveform frames: %4 frames\nRecorded RAW EPSILON: %5 records\nRecorded RAW PTB210: %6 records\nRecorded RAW HMP3: %7 records\nRecorded RAW TFA1500: %8 records\nRecorded RAW TCP: %9 records\nRecorded RAW total: %10 records\nFile output: none (memory only)")
+            ? QStringLiteral("Session: %1\nElapsed: %2\nExternal device records: %3 rows\nWaveform frames: %4 frames\nRecorded RAW EPSILON: %5 records\nRecorded RAW PTB210: %6 records\nRecorded RAW HMP3: %7 records\nRecorded RAW TFA1500: %8 records\nRecorded RAW TCP: %9 records\nRecorded RAW RD105: %10 records\nRecorded RAW AI-8288: %11 records\nRecorded RAW total: %12 records\nFile output: none (memory only)")
                   .arg(session)
                   .arg(formatElapsedCompact(static_cast<quint64>(std::max<qint64>(0, elapsedMs))))
                   .arg(countAtRate(20))
                   .arg(countAtRate(10))
-                  .arg(countAtRate(100))
-                  .arg(countAtRate(10))
-                  .arg(countAtRate(2))
-                  .arg(countAtRate(20))
-                  .arg(countAtRate(10))
+                  .arg(rawNavigation)
+                  .arg(rawPressure)
+                  .arg(rawTemperatureHumidity)
+                  .arg(rawDistance)
+                  .arg(rawWaveform)
+                  .arg(rawLaserTemperatureController)
+                  .arg(rawSystemTemperatureController)
                   .arg(rawTotal)
-            : QStringLiteral("会话：%1\n时长：%2\n外部设备记录：%3 行\n波形帧数：%4 帧\n已记录：\nRAW EPSILON：%5 条\nRAW PTB210：%6 条\nRAW HMP3：%7 条\nRAW TFA1500：%8 条\nRAW TCP：%9 条\nRAW 记录总数：%10 条\n文件写入：无（仅内存模拟）")
+            : QStringLiteral("会话：%1\n时长：%2\n外部设备记录：%3 行\n波形帧数：%4 帧\n已记录：\nRAW EPSILON：%5 条\nRAW PTB210：%6 条\nRAW HMP3：%7 条\nRAW TFA1500：%8 条\nRAW TCP：%9 条\nRAW RD105：%10 条\nRAW AI-8288：%11 条\nRAW 记录总数：%12 条\n文件写入：无（仅内存模拟）")
                   .arg(session)
                   .arg(formatElapsedCompact(static_cast<quint64>(std::max<qint64>(0, elapsedMs))))
                   .arg(countAtRate(20))
                   .arg(countAtRate(10))
-                  .arg(countAtRate(100))
-                  .arg(countAtRate(10))
-                  .arg(countAtRate(2))
-                  .arg(countAtRate(20))
-                  .arg(countAtRate(10))
+                  .arg(rawNavigation)
+                  .arg(rawPressure)
+                  .arg(rawTemperatureHumidity)
+                  .arg(rawDistance)
+                  .arg(rawWaveform)
+                  .arg(rawLaserTemperatureController)
+                  .arg(rawSystemTemperatureController)
                   .arg(rawTotal);
         const QString text = QStringLiteral("%1\n%2").arg(stateText, detail);
         setSectionTitleIconName(state_->recording_status_title_lbl_,

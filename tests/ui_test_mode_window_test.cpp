@@ -1766,8 +1766,12 @@ int main(int argc, char **argv)
                     text.contains(QStringLiteral(" 条\nRAW HMP3：")) &&
                     text.contains(QStringLiteral(" 条\nRAW TFA1500：")) &&
                     text.contains(QStringLiteral(" 条\nRAW TCP：")) &&
+                    text.contains(QStringLiteral(" 条\nRAW RD105：")) &&
+                    text.contains(QStringLiteral(" 条\nRAW AI-8288：")) &&
                     text.contains(QStringLiteral("RAW 记录总数：")) &&
                     text.contains(QStringLiteral(" 条\n文件写入：无（仅内存模拟）")) &&
+                    !text.contains(QStringLiteral("RAW RD105：0 条")) &&
+                    !text.contains(QStringLiteral("RAW AI-8288：0 条")) &&
                     !text.contains(QStringLiteral("已记录 RAW")) &&
                     text.contains(QStringLiteral("文件写入：无（仅内存模拟）")) &&
                     recordingStatusUnitColumnIsStable();
