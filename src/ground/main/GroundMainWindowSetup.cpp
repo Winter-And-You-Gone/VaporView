@@ -2348,6 +2348,11 @@ void MainWindow::setupCentralWidget()
         }
 
         snapshot.gnssFixText = QString::fromStdString(epsilon.gnss_fix_text);
+        snapshot.filterStatusAvailable = epsilonDataFresh &&
+            (snapshot.navigationDataAvailable || snapshot.positionAvailable ||
+             epsilon.filter_status_bits != 0 || epsilon.update_status_bits != 0);
+        snapshot.filterStatusBits = epsilon.filter_status_bits;
+        snapshot.updateStatusBits = epsilon.update_status_bits;
         snapshot.satelliteCount = epsilon.gnss_satellites;
         snapshot.horizontalAccuracyM = epsilon.hacc_m;
         snapshot.longitudeDeg = epsilon.longitude_deg;

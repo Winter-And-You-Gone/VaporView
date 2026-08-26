@@ -52,6 +52,9 @@ NavigationStatusSnapshot reliableSnapshot()
     snapshot.epsilonDataAgeMs = 32;
     snapshot.navigationDataAvailable = true;
     snapshot.gnssFixText = QStringLiteral("RTK_FIXED");
+    snapshot.filterStatusAvailable = true;
+    snapshot.filterStatusBits = 0x0062;
+    snapshot.updateStatusBits = 0x000c;
     snapshot.gnssQualityAvailable = true;
     snapshot.satelliteCount = 24;
     snapshot.horizontalAccuracyM = 0.015;
@@ -176,9 +179,10 @@ void testStateVisibilityAndFormatting()
             "navigation values use stable units and precision formatting");
     require(label(panel, "navigationStatusFreshnessValue")->text().contains(QStringLiteral("32 ms")) &&
                 label(panel, "navigationStatusGnssValue")->text() == QStringLiteral("RTK_FIXED") &&
+                label(panel, "navigationStatusFixValue")->text() == QStringLiteral("定位融合中") &&
                 label(panel, "navigationStatusGnssFixValue")->text() == QStringLiteral("RTK_FIXED") &&
                 label(panel, "navigationStatusSatellitesValue")->text() == QStringLiteral("24"),
-            "overview and GNSS quality render the explicit GNSS fix state");
+            "overview separates positioning status from the explicit GNSS fix state");
 
     NavigationStatusSnapshot stale = reliable;
     stale.epsilonDataFresh = false;
@@ -203,6 +207,7 @@ void testStateVisibilityAndFormatting()
     processEventsFor(30);
     require(gnssCard->isVisible() &&
                 label(panel, "navigationStatusGnssValue")->text() == QStringLiteral("3D") &&
+                label(panel, "navigationStatusFixValue")->text() == QStringLiteral("GNSS可用") &&
                 label(panel, "navigationStatusGnssFixValue")->text() == QStringLiteral("3D") &&
                 label(panel, "navigationStatusSatellitesValue")->text() == QStringLiteral("--") &&
                 label(panel, "navigationStatusHorizontalAccuracyValue")->text() == QStringLiteral("--"),
