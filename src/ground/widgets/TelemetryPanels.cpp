@@ -201,7 +201,7 @@ public:
         setAttribute(Qt::WA_OpaquePaintEvent, true);
         setProperty("sampleCount", 0);
         setProperty("yAxisUnitLabel", unit_);
-        setProperty("xAxisLabelText", QStringLiteral("时间"));
+        updateAxisProperties();
     }
 
     QSize sizeHint() const override
@@ -217,7 +217,7 @@ public:
     void setEnglish(bool english)
     {
         is_english_ = english;
-        setProperty("xAxisLabelText", is_english_ ? QStringLiteral("Time") : QStringLiteral("时间"));
+        updateAxisProperties();
         update();
     }
 
@@ -234,19 +234,22 @@ public:
         if (!has_first_sample_timestamp_)
         {
             first_sample_timestamp_ = effectiveTimestamp;
+            first_sample_wall_msecs_ = QDateTime::currentMSecsSinceEpoch();
             has_first_sample_timestamp_ = true;
         }
         const double elapsedSeconds =
-            std::chrono::duration<double>(effectiveTimestamp - first_sample_timestamp_).count();
+            std::max(0.0,
+                     std::chrono::duration<double>(effectiveTimestamp - first_sample_timestamp_).count());
         samples_.append(value);
-        sample_times_seconds_.append(std::max(0.0, elapsedSeconds));
+        sample_wall_msecs_.append(first_sample_wall_msecs_ + qRound64(elapsedSeconds * 1000.0));
         while (samples_.size() > kEnvironmentTrendMaxSamples)
         {
             samples_.removeFirst();
-            sample_times_seconds_.removeFirst();
+            sample_wall_msecs_.removeFirst();
         }
         setProperty("sampleCount", samples_.size());
         setProperty("latestValue", value);
+        updateAxisProperties();
         update();
     }
 
@@ -273,11 +276,25 @@ protected:
         painter.setPen(QPen(border, 1.0));
         painter.drawPath(panelPath);
 
+        QVector<double> finiteSamples;
+        QVector<qint64> finiteSampleTimes;
+        collectFiniteSamples(finiteSamples, finiteSampleTimes);
+        const AxisState axisState = makeAxisState(finiteSamples, finiteSampleTimes);
+
         QFont axisFont = font();
         axisFont.setPointSize(std::max(7, axisFont.pointSize() - 3));
         const QFontMetrics axisFm(axisFont);
-        const qreal yAxisWidth = std::max<qreal>(28.0, axisFm.horizontalAdvance(unit_) + 10.0);
-        const qreal xAxisHeight = axisFm.height() + 8.0;
+        const QStringList yAxisLabels{
+            axisState.yTopLabel,
+            axisState.yMiddleLabel,
+            axisState.yBottomLabel
+        };
+        qreal yAxisWidth = 32.0;
+        for (const QString& label : yAxisLabels)
+        {
+            yAxisWidth = std::max<qreal>(yAxisWidth, axisFm.horizontalAdvance(label) + 10.0);
+        }
+        const qreal xAxisHeight = axisFm.height() + 9.0;
         const QRectF plotRect = panelRect.adjusted(yAxisWidth, 5.0, -7.0, -xAxisHeight);
         painter.setClipPath(panelPath);
         painter.setPen(QPen(grid, 1.0));
@@ -293,38 +310,59 @@ protected:
                          QPointF(plotRect.right(), plotRect.bottom()));
         painter.setFont(axisFont);
         painter.setPen(muted);
-        painter.drawText(QRectF(panelRect.left() + 4.0,
-                                plotRect.top() + (plotRect.height() - axisFm.height()) / 2.0,
-                                yAxisWidth - 8.0,
-                                axisFm.height()),
-                         Qt::AlignRight | Qt::AlignVCenter,
-                         unit_);
-        const QString xAxisText = is_english_ ? QStringLiteral("Time") : QStringLiteral("时间");
-        const QRectF xAxisLabelRect(plotRect.left(),
-                                    plotRect.bottom() + 3.0,
-                                    plotRect.width(),
-                                    axisFm.height());
-        painter.drawText(xAxisLabelRect, Qt::AlignCenter, xAxisText);
-        setProperty("yAxisUnitLabel", unit_);
-        setProperty("xAxisLabelText", xAxisText);
-
-        QVector<double> finiteSamples;
-        QVector<double> finiteSampleTimes;
-        finiteSamples.reserve(samples_.size());
-        finiteSampleTimes.reserve(samples_.size());
-        for (int index = 0; index < samples_.size(); ++index)
+        auto drawYAxisTick = [&](const QString& label, qreal y) {
+            painter.setPen(QPen(axis, 1.0));
+            painter.drawLine(QPointF(plotRect.left() - 3.0, y), QPointF(plotRect.left(), y));
+            painter.setPen(muted);
+            const qreal labelTop = std::clamp(y - axisFm.height() / 2.0,
+                                              plotRect.top(),
+                                              std::max(plotRect.top(), plotRect.bottom() - axisFm.height()));
+            painter.drawText(QRectF(panelRect.left() + 3.0,
+                                    labelTop,
+                                    yAxisWidth - 8.0,
+                                    axisFm.height()),
+                             Qt::AlignRight | Qt::AlignVCenter,
+                             label);
+        };
+        drawYAxisTick(axisState.yTopLabel, plotRect.top());
+        drawYAxisTick(axisState.yMiddleLabel, plotRect.center().y());
+        drawYAxisTick(axisState.yBottomLabel, plotRect.bottom());
+        painter.setPen(QPen(axis, 1.0));
+        painter.drawLine(QPointF(plotRect.left(), plotRect.bottom()),
+                         QPointF(plotRect.left(), plotRect.bottom() + 3.0));
+        painter.drawLine(QPointF(plotRect.right(), plotRect.bottom()),
+                         QPointF(plotRect.right(), plotRect.bottom() + 3.0));
+        painter.setPen(muted);
+        const qreal xAxisLabelTop = plotRect.bottom() + 3.0;
+        const qreal leftWidth = axisFm.horizontalAdvance(axisState.xLeftLabel) + 6.0;
+        const qreal rightWidth = axisFm.horizontalAdvance(axisState.xRightLabel) + 6.0;
+        const bool renderSingleTimeLabel =
+            axisState.xLeftLabel == axisState.xRightLabel ||
+            plotRect.width() < leftWidth + rightWidth + 8.0;
+        setProperty("xAxisSingleLabel", renderSingleTimeLabel);
+        if (renderSingleTimeLabel)
         {
-            const double sample = samples_.at(index);
-            if (std::isfinite(sample))
-            {
-                finiteSamples.append(sample);
-                const double sampleTime = index < sample_times_seconds_.size()
-                    ? sample_times_seconds_.at(index)
-                    : static_cast<double>(index);
-                finiteSampleTimes.append(std::isfinite(sampleTime)
-                                             ? std::max(0.0, sampleTime)
-                                             : static_cast<double>(index));
-            }
+            painter.drawText(QRectF(plotRect.left(),
+                                    xAxisLabelTop,
+                                    plotRect.width(),
+                                    axisFm.height()),
+                             Qt::AlignCenter,
+                             axisState.xRightLabel);
+        }
+        else
+        {
+            painter.drawText(QRectF(plotRect.left(),
+                                    xAxisLabelTop,
+                                    std::min<qreal>(plotRect.width() / 2.0, leftWidth),
+                                    axisFm.height()),
+                             Qt::AlignLeft | Qt::AlignVCenter,
+                             axisState.xLeftLabel);
+            painter.drawText(QRectF(plotRect.right() - std::min<qreal>(plotRect.width() / 2.0, rightWidth),
+                                    xAxisLabelTop,
+                                    std::min<qreal>(plotRect.width() / 2.0, rightWidth),
+                                    axisFm.height()),
+                             Qt::AlignRight | Qt::AlignVCenter,
+                             axisState.xRightLabel);
         }
 
         if (finiteSamples.isEmpty())
@@ -335,41 +373,21 @@ protected:
             return;
         }
 
-        auto [minIt, maxIt] = std::minmax_element(finiteSamples.cbegin(), finiteSamples.cend());
-        double minValue = *minIt;
-        double maxValue = *maxIt;
-        double span = maxValue - minValue;
-        if (span < 1e-6)
-        {
-            const double reserve = std::max(1.0, std::abs(maxValue) * 0.02);
-            minValue -= reserve;
-            maxValue += reserve;
-            span = maxValue - minValue;
-        }
-
         QPolygonF polyline;
         polyline.reserve(finiteSamples.size());
         const int count = finiteSamples.size();
-        double minTime = 0.0;
-        double maxTime = static_cast<double>(std::max(1, count - 1));
-        if (!finiteSampleTimes.isEmpty())
-        {
-            auto [minTimeIt, maxTimeIt] = std::minmax_element(finiteSampleTimes.cbegin(),
-                                                              finiteSampleTimes.cend());
-            minTime = *minTimeIt;
-            maxTime = *maxTimeIt;
-        }
-        const double timeSpan = std::max(1e-6, maxTime - minTime);
-        setProperty("xAxisTimeSpanSeconds", maxTime - minTime);
-        setProperty("xAxisLeftLabel", QStringLiteral("-%1").arg(formatDuration(maxTime - minTime)));
-        setProperty("xAxisRightLabel", QStringLiteral("0s"));
+        const qint64 timeSpan = axisState.maxWallMsecs - axisState.minWallMsecs;
+        const bool useWallTimeForX = count > 1 && timeSpan > 0;
         for (int i = 0; i < count; ++i)
         {
-            const double xValue = i < finiteSampleTimes.size()
-                ? finiteSampleTimes.at(i)
-                : static_cast<double>(i);
-            const double xRatio = count <= 1 ? 0.5 : (xValue - minTime) / timeSpan;
-            const double yRatio = (finiteSamples.at(i) - minValue) / std::max(1e-6, span);
+            const double xRatio = count <= 1
+                ? 0.5
+                : useWallTimeForX
+                    ? static_cast<double>(finiteSampleTimes.at(i) - axisState.minWallMsecs) /
+                          static_cast<double>(timeSpan)
+                    : static_cast<double>(i) / static_cast<double>(count - 1);
+            const double yRatio = (finiteSamples.at(i) - axisState.minValue) /
+                std::max(1e-6, axisState.span);
             polyline.append(QPointF(plotRect.left() + xRatio * plotRect.width(),
                                     plotRect.bottom() - yRatio * plotRect.height()));
         }
@@ -380,8 +398,6 @@ protected:
         painter.setPen(Qt::NoPen);
         painter.drawEllipse(polyline.constLast(), 2.4, 2.4);
         painter.setClipping(false);
-        setProperty("yAxisMin", minValue);
-        setProperty("yAxisMax", maxValue);
         if (!unit_.isEmpty())
         {
             setProperty("unit", unit_);
@@ -389,25 +405,151 @@ protected:
     }
 
 private:
-    static QString formatDuration(double seconds)
+    struct AxisState
     {
-        if (!std::isfinite(seconds) || seconds < 1.0)
+        double minValue = std::numeric_limits<double>::quiet_NaN();
+        double maxValue = std::numeric_limits<double>::quiet_NaN();
+        double span = 0.0;
+        qint64 minWallMsecs = 0;
+        qint64 maxWallMsecs = 0;
+        QString yTopLabel = QStringLiteral("--");
+        QString yMiddleLabel = QStringLiteral("--");
+        QString yBottomLabel = QStringLiteral("--");
+        QString xLeftLabel;
+        QString xRightLabel;
+    };
+
+    void collectFiniteSamples(QVector<double>& finiteSamples,
+                              QVector<qint64>& finiteSampleTimes) const
+    {
+        finiteSamples.reserve(samples_.size());
+        finiteSampleTimes.reserve(samples_.size());
+        for (int index = 0; index < samples_.size(); ++index)
         {
-            return QStringLiteral("0s");
+            const double sample = samples_.at(index);
+            if (std::isfinite(sample))
+            {
+                finiteSamples.append(sample);
+                finiteSampleTimes.append(index < sample_wall_msecs_.size()
+                                             ? sample_wall_msecs_.at(index)
+                                             : QDateTime::currentMSecsSinceEpoch());
+            }
         }
-        if (seconds < 60.0)
+    }
+
+    static QString trimTrailingZeroes(QString text)
+    {
+        if (!text.contains(QLatin1Char('.')))
         {
-            return QStringLiteral("%1s").arg(qRound(seconds));
+            return text;
         }
-        const int minutes = qRound(seconds / 60.0);
-        return QStringLiteral("%1m").arg(minutes);
+        while (text.endsWith(QLatin1Char('0')))
+        {
+            text.chop(1);
+        }
+        if (text.endsWith(QLatin1Char('.')))
+        {
+            text.chop(1);
+        }
+        return text;
+    }
+
+    static QString formatAxisValue(double value, double span)
+    {
+        if (!std::isfinite(value))
+        {
+            return QStringLiteral("--");
+        }
+        const int decimals = span < 1.0 ? 2 : (span < 10.0 ? 1 : 0);
+        return trimTrailingZeroes(QString::number(value, 'f', decimals));
+    }
+
+    static QString formatClockLabel(qint64 wallMsecs, qint64 spanMsecs)
+    {
+        if (wallMsecs <= 0)
+        {
+            wallMsecs = QDateTime::currentMSecsSinceEpoch();
+        }
+        const QString format = spanMsecs > 0 && spanMsecs < 60 * 1000
+            ? QStringLiteral("H:mm:ss")
+            : QStringLiteral("H:mm");
+        return QDateTime::fromMSecsSinceEpoch(wallMsecs).toLocalTime().toString(format);
+    }
+
+    static AxisState makeAxisState(const QVector<double>& finiteSamples,
+                                   const QVector<qint64>& finiteSampleTimes)
+    {
+        AxisState state;
+        if (finiteSamples.isEmpty())
+        {
+            const qint64 now = QDateTime::currentMSecsSinceEpoch();
+            state.minWallMsecs = now;
+            state.maxWallMsecs = now;
+            state.xLeftLabel = formatClockLabel(now, 0);
+            state.xRightLabel = state.xLeftLabel;
+            return state;
+        }
+
+        auto [minIt, maxIt] = std::minmax_element(finiteSamples.cbegin(), finiteSamples.cend());
+        state.minValue = *minIt;
+        state.maxValue = *maxIt;
+        state.span = state.maxValue - state.minValue;
+        if (state.span < 1e-6)
+        {
+            constexpr double reserve = 1.0;
+            state.minValue -= reserve;
+            state.maxValue += reserve;
+            state.span = state.maxValue - state.minValue;
+        }
+        state.yTopLabel = formatAxisValue(state.maxValue, state.span);
+        state.yMiddleLabel = formatAxisValue((state.minValue + state.maxValue) / 2.0, state.span);
+        state.yBottomLabel = formatAxisValue(state.minValue, state.span);
+
+        if (finiteSampleTimes.isEmpty())
+        {
+            const qint64 now = QDateTime::currentMSecsSinceEpoch();
+            state.minWallMsecs = now;
+            state.maxWallMsecs = now;
+        }
+        else
+        {
+            auto [minTimeIt, maxTimeIt] = std::minmax_element(finiteSampleTimes.cbegin(),
+                                                              finiteSampleTimes.cend());
+            state.minWallMsecs = *minTimeIt;
+            state.maxWallMsecs = *maxTimeIt;
+        }
+        const qint64 spanMsecs = std::max<qint64>(0, state.maxWallMsecs - state.minWallMsecs);
+        state.xLeftLabel = formatClockLabel(state.minWallMsecs, spanMsecs);
+        state.xRightLabel = formatClockLabel(state.maxWallMsecs, spanMsecs);
+        return state;
+    }
+
+    void updateAxisProperties()
+    {
+        QVector<double> finiteSamples;
+        QVector<qint64> finiteSampleTimes;
+        collectFiniteSamples(finiteSamples, finiteSampleTimes);
+        const AxisState state = makeAxisState(finiteSamples, finiteSampleTimes);
+        setProperty("yAxisUnitLabel", unit_);
+        setProperty("yAxisMin", state.minValue);
+        setProperty("yAxisMax", state.maxValue);
+        setProperty("yAxisTopLabel", state.yTopLabel);
+        setProperty("yAxisMiddleLabel", state.yMiddleLabel);
+        setProperty("yAxisBottomLabel", state.yBottomLabel);
+        setProperty("xAxisLabelText", QString());
+        setProperty("xAxisLeftLabel", state.xLeftLabel);
+        setProperty("xAxisRightLabel", state.xRightLabel);
+        setProperty("xAxisTimeSpanSeconds",
+                    static_cast<double>(std::max<qint64>(0, state.maxWallMsecs - state.minWallMsecs)) /
+                        1000.0);
     }
 
     VaporView::AppThemeColor series_color_;
     QString unit_;
     QVector<double> samples_;
-    QVector<double> sample_times_seconds_;
+    QVector<qint64> sample_wall_msecs_;
     std::chrono::steady_clock::time_point first_sample_timestamp_{};
+    qint64 first_sample_wall_msecs_ = 0;
     bool has_first_sample_timestamp_ = false;
     bool is_english_ = false;
 };

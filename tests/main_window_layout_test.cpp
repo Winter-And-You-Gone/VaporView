@@ -10129,10 +10129,16 @@ int main(int argc, char **argv)
         require(plot->mapTo(environmentGroup, QPoint(0, plot->height())).y() <=
                     environmentGroup->contentsRect().bottom() + 1,
                 "environment trend plot stays inside the environment card");
-        require(plot->property("xAxisLabelText").toString() == QStringLiteral("时间"),
-                "environment trend plot exposes the time x-axis label");
+        require(plot->property("xAxisLabelText").toString().isEmpty() &&
+                    plot->property("xAxisLeftLabel").toString().contains(QLatin1Char(':')) &&
+                    plot->property("xAxisRightLabel").toString().contains(QLatin1Char(':')),
+                "environment trend plot exposes clock-time x-axis tick labels");
         require(!plot->property("yAxisUnitLabel").toString().isEmpty(),
-                "environment trend plot exposes the y-axis unit label");
+                "environment trend plot keeps y-axis unit metadata");
+        require(!plot->property("yAxisTopLabel").toString().isEmpty() &&
+                    !plot->property("yAxisMiddleLabel").toString().isEmpty() &&
+                    !plot->property("yAxisBottomLabel").toString().isEmpty(),
+                "environment trend plot exposes numeric y-axis tick labels");
     }
     QWidget *pressurePlot = environmentGroup->findChild<QWidget *>(QStringLiteral("environmentPressureTrendPlot"));
     QWidget *temperaturePlot = environmentGroup->findChild<QWidget *>(QStringLiteral("environmentTemperatureTrendPlot"));

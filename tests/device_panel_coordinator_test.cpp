@@ -101,16 +101,22 @@ int main(int argc, char **argv)
                 humidityTrend->property("yAxisUnitLabel").toString() == QStringLiteral("%RH") &&
                 pressureTrend->property("yAxisUnitLabel").toString() == QStringLiteral("hPa"),
             "environment trend plots expose y-axis unit labels");
-    require(temperatureTrend->property("xAxisLabelText").toString() == QStringLiteral("时间") &&
-                humidityTrend->property("xAxisLabelText").toString() == QStringLiteral("时间") &&
-                pressureTrend->property("xAxisLabelText").toString() == QStringLiteral("时间"),
-            "environment trend plots expose the default time x-axis label");
+    require(temperatureTrend->property("yAxisBottomLabel").toString() == QStringLiteral("20.5") &&
+                temperatureTrend->property("yAxisMiddleLabel").toString() == QStringLiteral("21.5") &&
+                temperatureTrend->property("yAxisTopLabel").toString() == QStringLiteral("22.5"),
+            "temperature trend plot exposes numeric y-axis tick labels around the current value");
+    require(temperatureTrend->property("xAxisLabelText").toString().isEmpty() &&
+                temperatureTrend->property("xAxisLeftLabel").toString().contains(QLatin1Char(':')) &&
+                temperatureTrend->property("xAxisRightLabel").toString().contains(QLatin1Char(':')) &&
+                humidityTrend->property("xAxisLeftLabel").toString().contains(QLatin1Char(':')) &&
+                pressureTrend->property("xAxisLeftLabel").toString().contains(QLatin1Char(':')),
+            "environment trend plots expose clock-time x-axis tick labels instead of a title word");
     hmp.setEnglish(true);
     ptb.setEnglish(true);
-    require(temperatureTrend->property("xAxisLabelText").toString() == QStringLiteral("Time") &&
-                humidityTrend->property("xAxisLabelText").toString() == QStringLiteral("Time") &&
-                pressureTrend->property("xAxisLabelText").toString() == QStringLiteral("Time"),
-            "environment trend plot x-axis labels follow language switching");
+    require(temperatureTrend->property("xAxisLeftLabel").toString().contains(QLatin1Char(':')) &&
+                humidityTrend->property("xAxisLeftLabel").toString().contains(QLatin1Char(':')) &&
+                pressureTrend->property("xAxisLeftLabel").toString().contains(QLatin1Char(':')),
+            "environment trend plot x-axis clock labels survive language switching");
 
     coordinator.clearRates();
     require(epsilonRate.text().contains(QStringLiteral("-- Hz")),
