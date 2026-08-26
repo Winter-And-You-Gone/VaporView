@@ -44,14 +44,12 @@ int main(int argc, char **argv)
     PtbPanel ptb;
     HmpPanel hmp;
     LidarPanel lidar;
-    EnvironmentTrendPanel environmentTrend;
 
     VaporView::Ground::Widgets::DevicePanelBindings bindings;
     bindings.epsilon = &epsilon;
     bindings.ptb = &ptb;
     bindings.hmp = &hmp;
     bindings.lidar = &lidar;
-    bindings.environmentTrend = &environmentTrend;
     VaporView::Ground::Widgets::DevicePanelCoordinator coordinator(bindings);
 
     VaporView::Ground::Widgets::DevicePanelRates rates;
@@ -90,11 +88,11 @@ int main(int argc, char **argv)
             "HMP data is presented through the coordinator");
     require(hasLabelText(lidar, QStringLiteral("highlightedValue"), QStringLiteral("12.75")),
             "Lidar data is presented through the coordinator");
-    auto *temperatureTrend = environmentTrend.findChild<QWidget *>(QStringLiteral("environmentTemperatureTrendPlot"));
-    auto *humidityTrend = environmentTrend.findChild<QWidget *>(QStringLiteral("environmentHumidityTrendPlot"));
-    auto *pressureTrend = environmentTrend.findChild<QWidget *>(QStringLiteral("environmentPressureTrendPlot"));
+    auto *temperatureTrend = hmp.findChild<QWidget *>(QStringLiteral("environmentTemperatureTrendPlot"));
+    auto *humidityTrend = hmp.findChild<QWidget *>(QStringLiteral("environmentHumidityTrendPlot"));
+    auto *pressureTrend = ptb.findChild<QWidget *>(QStringLiteral("environmentPressureTrendPlot"));
     require(temperatureTrend && humidityTrend && pressureTrend,
-            "environment trend plots are created");
+            "environment trend plots are embedded under their data panels");
     require(temperatureTrend->property("sampleCount").toInt() == 1 &&
                 humidityTrend->property("sampleCount").toInt() == 1 &&
                 pressureTrend->property("sampleCount").toInt() == 1,

@@ -166,6 +166,9 @@ private:
     QLabel *pressure_label_ = nullptr;
     QLabel *status_label_ = nullptr;
     QLabel *pressure_lbl_ = nullptr;
+    EnvironmentTrendSparklineWidget *pressure_trend_plot_ = nullptr;
+    std::chrono::steady_clock::time_point last_pressure_timestamp_{};
+    bool has_pressure_timestamp_ = false;
     bool is_english_ = false;
 };
 
@@ -187,6 +190,12 @@ private:
     QLabel *status_label_ = nullptr;
     QLabel *temp_lbl_ = nullptr;
     QLabel *humidity_lbl_ = nullptr;
+    EnvironmentTrendSparklineWidget *temperature_trend_plot_ = nullptr;
+    EnvironmentTrendSparklineWidget *humidity_trend_plot_ = nullptr;
+    std::chrono::steady_clock::time_point last_temperature_timestamp_{};
+    std::chrono::steady_clock::time_point last_humidity_timestamp_{};
+    bool has_temperature_timestamp_ = false;
+    bool has_humidity_timestamp_ = false;
     bool is_english_ = false;
 };
 
@@ -208,37 +217,6 @@ private:
     QLabel *status_label_ = nullptr;
     QLabel *distance_lbl_ = nullptr;
     QLabel *strength_lbl_ = nullptr;
-    bool is_english_ = false;
-};
-
-class EnvironmentTrendPanel : public QWidget
-{
-public:
-    explicit EnvironmentTrendPanel(QWidget *parent = nullptr);
-    void updateData(const VaporView::PtbData& ptb_data, const VaporView::HmpData& hmp_data);
-    void setEnglish(bool english);
-
-private:
-    void setupUi();
-    QWidget *createTrendRow(QLabel *&label,
-                            EnvironmentTrendSparklineWidget *&plot,
-                            const QString& objectName);
-    bool shouldAppendSample(const std::chrono::steady_clock::time_point& timestamp,
-                            std::chrono::steady_clock::time_point& lastTimestamp,
-                            bool& hasTimestamp) const;
-
-    QLabel *temperature_trend_lbl_ = nullptr;
-    QLabel *humidity_trend_lbl_ = nullptr;
-    QLabel *pressure_trend_lbl_ = nullptr;
-    EnvironmentTrendSparklineWidget *temperature_trend_plot_ = nullptr;
-    EnvironmentTrendSparklineWidget *humidity_trend_plot_ = nullptr;
-    EnvironmentTrendSparklineWidget *pressure_trend_plot_ = nullptr;
-    std::chrono::steady_clock::time_point last_temperature_timestamp_{};
-    std::chrono::steady_clock::time_point last_humidity_timestamp_{};
-    std::chrono::steady_clock::time_point last_pressure_timestamp_{};
-    bool has_temperature_timestamp_ = false;
-    bool has_humidity_timestamp_ = false;
-    bool has_pressure_timestamp_ = false;
     bool is_english_ = false;
 };
 

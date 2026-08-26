@@ -25,7 +25,7 @@ constexpr const char *kNumericWidthCandidatesProperty = "_vv_numeric_width_candi
 constexpr const char *kNumericWidthPaddingProperty = "_vv_numeric_width_padding";
 constexpr quint64 kImuPpsSyncWindowUs = 2ULL * 1000ULL * 1000ULL;
 constexpr int kEnvironmentTrendMaxSamples = 160;
-constexpr int kEnvironmentTrendPlotHeight = 38;
+constexpr int kEnvironmentTrendPlotHeight = 40;
 
 QFont numericFontFrom(const QFont& base)
 {
@@ -323,6 +323,23 @@ private:
 namespace
 {
 
+bool shouldAppendEnvironmentSample(const std::chrono::steady_clock::time_point& timestamp,
+                                   std::chrono::steady_clock::time_point& lastTimestamp,
+                                   bool& hasTimestamp)
+{
+    const bool hasIncomingTimestamp = timestamp != std::chrono::steady_clock::time_point{};
+    if (!hasIncomingTimestamp)
+    {
+        return true;
+    }
+    if (hasTimestamp && timestamp == lastTimestamp)
+    {
+        return false;
+    }
+    lastTimestamp = timestamp;
+    hasTimestamp = true;
+    return true;
+}
 QString imuFrameTypeName(VaporView::ImuFrameType type)
 {
     switch (type)
@@ -495,7 +512,6 @@ void GnssPanel::updateRate(double hz)
             : QStringLiteral("%1 Hz").arg(fixedTextField(QStringLiteral("--"), 6)));
     }
 }
-
 void GnssPanel::setEnglish(bool english)
 {
     is_english_ = english;
@@ -898,6 +914,7 @@ PtbPanel::PtbPanel(QWidget *parent)
     , pressure_label_(nullptr)
     , status_label_(nullptr)
     , pressure_lbl_(nullptr)
+    , pressure_trend_plot_(nullptr)
     , is_english_(false)
 {
     setupUi();
@@ -931,6 +948,14 @@ void PtbPanel::setupUi()
     pressLayout->addStretch();
     pressLayout->addWidget(rate_label_);
     layout->addLayout(pressLayout);
+
+    pressure_trend_plot_ = new EnvironmentTrendSparklineWidget(
+        VaporView::AppThemeColor::PlotSeriesPressure,
+        QStringLiteral("hPa"),
+        this);
+    pressure_trend_plot_->setObjectName(QStringLiteral("environmentPressureTrendPlot"));
+    pressure_trend_plot_->setProperty("seriesRole", QStringLiteral("pressure"));
+    layout->addWidget(pressure_trend_plot_);
 
     setEnglish(false);
 }
@@ -966,6 +991,13 @@ void PtbPanel::updateData(const VaporView::PtbData& ptb_data)
         pressure_label_->setText(fixedDecimalWithUnit(ptb_data.pressure_hpa, 2, 8, QStringLiteral("hPa")));
         pressure_label_->setProperty("data-valid", true);
         polishNumericLabel(pressure_label_);
+        if (pressure_trend_plot_ &&
+            shouldAppendEnvironmentSample(ptb_data.timestamp,
+                                          last_pressure_timestamp_,
+                                          has_pressure_timestamp_))
+        {
+            pressure_trend_plot_->appendSample(ptb_data.pressure_hpa);
+        }
     }
     else
     {
@@ -983,6 +1015,8 @@ HmpPanel::HmpPanel(QWidget *parent)
     , status_label_(nullptr)
     , temp_lbl_(nullptr)
     , humidity_lbl_(nullptr)
+    , temperature_trend_plot_(nullptr)
+    , humidity_trend_plot_(nullptr)
     , is_english_(false)
 {
     setupUi();
@@ -1017,6 +1051,14 @@ void HmpPanel::setupUi()
     tempLayout->addWidget(rate_label_);
     layout->addLayout(tempLayout);
 
+    temperature_trend_plot_ = new EnvironmentTrendSparklineWidget(
+        VaporView::AppThemeColor::PlotSeriesTemperature,
+        QStringLiteral("°C"),
+        this);
+    temperature_trend_plot_->setObjectName(QStringLiteral("environmentTemperatureTrendPlot"));
+    temperature_trend_plot_->setProperty("seriesRole", QStringLiteral("temperature"));
+    layout->addWidget(temperature_trend_plot_);
+
     auto *humidLayout = new QHBoxLayout();
     humidLayout->setSpacing(1);
     humidity_lbl_ = new QLabel(this);
@@ -1031,6 +1073,14 @@ void HmpPanel::setupUi()
     humidLayout->addWidget(humidity_label_);
     humidLayout->addStretch();
     layout->addLayout(humidLayout);
+
+    humidity_trend_plot_ = new EnvironmentTrendSparklineWidget(
+        VaporView::AppThemeColor::PlotSeriesHumidity,
+        QStringLiteral("%RH"),
+        this);
+    humidity_trend_plot_->setObjectName(QStringLiteral("environmentHumidityTrendPlot"));
+    humidity_trend_plot_->setProperty("seriesRole", QStringLiteral("humidity"));
+    layout->addWidget(humidity_trend_plot_);
 
     setEnglish(false);
 }
@@ -1072,6 +1122,20 @@ void HmpPanel::updateData(const VaporView::HmpData& hmp_data)
         polishNumericLabel(temperature_label_);
         humidity_label_->setProperty("data-valid", true);
         polishNumericLabel(humidity_label_);
+        if (temperature_trend_plot_ &&
+            shouldAppendEnvironmentSample(hmp_data.timestamp,
+                                          last_temperature_timestamp_,
+                                          has_temperature_timestamp_))
+        {
+            temperature_trend_plot_->appendSample(hmp_data.temperature);
+        }
+        if (humidity_trend_plot_ &&
+            shouldAppendEnvironmentSample(hmp_data.timestamp,
+                                          last_humidity_timestamp_,
+                                          has_humidity_timestamp_))
+        {
+            humidity_trend_plot_->appendSample(hmp_data.humidity);
+        }
     }
     else
     {
@@ -1191,145 +1255,4 @@ void LidarPanel::updateData(const VaporView::LidarData& lidar_data)
         polishNumericLabel(distance_label_);
         polishNumericLabel(strength_label_);
     }
-}
-
-EnvironmentTrendPanel::EnvironmentTrendPanel(QWidget *parent)
-    : QWidget(parent)
-{
-    setupUi();
-}
-
-void EnvironmentTrendPanel::setupUi()
-{
-    setObjectName(QStringLiteral("environmentTrendPanel"));
-    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
-    auto *layout = new QVBoxLayout(this);
-    layout->setContentsMargins(6, 6, 6, 6);
-    layout->setSpacing(4);
-
-    layout->addWidget(createTrendRow(temperature_trend_lbl_,
-                                     temperature_trend_plot_,
-                                     QStringLiteral("environmentTemperatureTrendPlot")));
-    layout->addWidget(createTrendRow(humidity_trend_lbl_,
-                                     humidity_trend_plot_,
-                                     QStringLiteral("environmentHumidityTrendPlot")));
-    layout->addWidget(createTrendRow(pressure_trend_lbl_,
-                                     pressure_trend_plot_,
-                                     QStringLiteral("environmentPressureTrendPlot")));
-
-    if (temperature_trend_plot_)
-    {
-        temperature_trend_plot_->setProperty("seriesRole", QStringLiteral("temperature"));
-    }
-    if (humidity_trend_plot_)
-    {
-        humidity_trend_plot_->setProperty("seriesRole", QStringLiteral("humidity"));
-    }
-    if (pressure_trend_plot_)
-    {
-        pressure_trend_plot_->setProperty("seriesRole", QStringLiteral("pressure"));
-    }
-    setEnglish(false);
-}
-
-QWidget *EnvironmentTrendPanel::createTrendRow(QLabel *&label,
-                                               EnvironmentTrendSparklineWidget *&plot,
-                                               const QString& objectName)
-{
-    auto *row = new QWidget(this);
-    row->setObjectName(QStringLiteral("environmentTrendRow"));
-    row->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    auto *rowLayout = new QHBoxLayout(row);
-    rowLayout->setContentsMargins(0, 0, 0, 0);
-    rowLayout->setSpacing(6);
-
-    label = new QLabel(row);
-    label->setObjectName(QStringLiteral("fieldLabel"));
-    label->setMinimumHeight(kEnvironmentTrendPlotHeight);
-    label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    setFixedTextLabelWidth(label,
-                           {QStringLiteral("Temp Trend:"),
-                            QStringLiteral("Humidity Trend:"),
-                            QStringLiteral("Pressure Trend:"),
-                            QStringLiteral("温度趋势:"),
-                            QStringLiteral("湿度趋势:"),
-                            QStringLiteral("气压趋势:")},
-                           6);
-    rowLayout->addWidget(label);
-
-    VaporView::AppThemeColor color = VaporView::AppThemeColor::PlotSeriesTemperature;
-    QString unit = QStringLiteral("°C");
-    if (objectName.contains(QStringLiteral("Humidity")))
-    {
-        color = VaporView::AppThemeColor::PlotSeriesHumidity;
-        unit = QStringLiteral("%RH");
-    }
-    else if (objectName.contains(QStringLiteral("Pressure")))
-    {
-        color = VaporView::AppThemeColor::PlotSeriesPressure;
-        unit = QStringLiteral("hPa");
-    }
-    plot = new EnvironmentTrendSparklineWidget(color, unit, row);
-    plot->setObjectName(objectName);
-    rowLayout->addWidget(plot, 1);
-    return row;
-}
-
-bool EnvironmentTrendPanel::shouldAppendSample(
-    const std::chrono::steady_clock::time_point& timestamp,
-    std::chrono::steady_clock::time_point& lastTimestamp,
-    bool& hasTimestamp) const
-{
-    const bool hasIncomingTimestamp = timestamp != std::chrono::steady_clock::time_point{};
-    if (!hasIncomingTimestamp)
-    {
-        return true;
-    }
-    if (hasTimestamp && timestamp == lastTimestamp)
-    {
-        return false;
-    }
-    lastTimestamp = timestamp;
-    hasTimestamp = true;
-    return true;
-}
-
-void EnvironmentTrendPanel::updateData(const VaporView::PtbData& ptb_data,
-                                       const VaporView::HmpData& hmp_data)
-{
-    if (hmp_data.valid && temperature_trend_plot_ &&
-        shouldAppendSample(hmp_data.timestamp, last_temperature_timestamp_, has_temperature_timestamp_))
-    {
-        temperature_trend_plot_->appendSample(hmp_data.temperature);
-    }
-    if (hmp_data.valid && humidity_trend_plot_ &&
-        shouldAppendSample(hmp_data.timestamp, last_humidity_timestamp_, has_humidity_timestamp_))
-    {
-        humidity_trend_plot_->appendSample(hmp_data.humidity);
-    }
-    if (ptb_data.valid && pressure_trend_plot_ &&
-        shouldAppendSample(ptb_data.timestamp, last_pressure_timestamp_, has_pressure_timestamp_))
-    {
-        pressure_trend_plot_->appendSample(ptb_data.pressure_hpa);
-    }
-}
-
-void EnvironmentTrendPanel::setEnglish(bool english)
-{
-    is_english_ = english;
-    if (english)
-    {
-        temperature_trend_lbl_->setText(QStringLiteral("Temp Trend:"));
-        humidity_trend_lbl_->setText(QStringLiteral("Humidity Trend:"));
-        pressure_trend_lbl_->setText(QStringLiteral("Pressure Trend:"));
-    }
-    else
-    {
-        temperature_trend_lbl_->setText(QStringLiteral("温度趋势:"));
-        humidity_trend_lbl_->setText(QStringLiteral("湿度趋势:"));
-        pressure_trend_lbl_->setText(QStringLiteral("气压趋势:"));
-    }
-    refreshFixedTextLabelWidth(temperature_trend_lbl_);
-    refreshFixedTextLabelWidth(humidity_trend_lbl_);
-    refreshFixedTextLabelWidth(pressure_trend_lbl_);
 }

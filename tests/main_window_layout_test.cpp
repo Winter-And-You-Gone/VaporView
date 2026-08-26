@@ -10108,10 +10108,8 @@ int main(int argc, char **argv)
         }
     }
     require(environmentGroup != nullptr, "environment and lidar card exists");
-    auto *environmentTrendPanel =
-        environmentGroup->findChild<QWidget *>(QStringLiteral("environmentTrendPanel"));
-    require(environmentTrendPanel != nullptr,
-            "environment card includes the temperature, humidity, and pressure trend panel");
+    require(environmentGroup->findChild<QWidget *>(QStringLiteral("environmentTrendPanel")) == nullptr,
+            "environment card does not use a separate trend-title panel");
     QStringList environmentTrendPlotNames = {
         QStringLiteral("environmentTemperatureTrendPlot"),
         QStringLiteral("environmentHumidityTrendPlot"),
@@ -10119,13 +10117,24 @@ int main(int argc, char **argv)
     };
     for (const QString& plotName : environmentTrendPlotNames)
     {
-        QWidget *plot = environmentTrendPanel->findChild<QWidget *>(plotName);
+        QWidget *plot = environmentGroup->findChild<QWidget *>(plotName);
         require(plot != nullptr && plot->height() >= 30,
                 "environment trend plot exists with a readable compact height");
+        require(plot->width() >= environmentGroup->width() * 4 / 5,
+                "environment trend plot uses most of the environment card width");
         require(plot->mapTo(environmentGroup, QPoint(0, plot->height())).y() <=
                     environmentGroup->contentsRect().bottom() + 1,
                 "environment trend plot stays inside the environment card");
     }
+    QWidget *pressurePlot = environmentGroup->findChild<QWidget *>(QStringLiteral("environmentPressureTrendPlot"));
+    QWidget *temperaturePlot = environmentGroup->findChild<QWidget *>(QStringLiteral("environmentTemperatureTrendPlot"));
+    QWidget *humidityPlot = environmentGroup->findChild<QWidget *>(QStringLiteral("environmentHumidityTrendPlot"));
+    require(pressurePlot && qobject_cast<PtbPanel *>(pressurePlot->parentWidget()) != nullptr,
+            "pressure trend plot sits under the pressure data panel");
+    require(temperaturePlot && qobject_cast<HmpPanel *>(temperaturePlot->parentWidget()) != nullptr,
+            "temperature trend plot sits under the temperature data panel");
+    require(humidityPlot && qobject_cast<HmpPanel *>(humidityPlot->parentWidget()) != nullptr,
+            "humidity trend plot sits under the humidity data panel");
 
     const QRect compactEpsilonGeometry = epsilonGroup->geometry();
     const QRect compactEnvironmentGeometry = environmentGroup->geometry();

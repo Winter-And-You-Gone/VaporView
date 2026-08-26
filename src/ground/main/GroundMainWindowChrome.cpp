@@ -662,7 +662,6 @@ void MainWindow::setEnglish(bool english)
     if (state_->ptb_panel_) state_->ptb_panel_->setEnglish(english);
     if (state_->hmp_panel_) state_->hmp_panel_->setEnglish(english);
     if (state_->lidar_panel_) state_->lidar_panel_->setEnglish(english);
-    if (state_->environment_trend_panel_) state_->environment_trend_panel_->setEnglish(english);
     if (state_->tcp_wave_panel_) state_->tcp_wave_panel_->setEnglish(english);
 
     const CollectorSnapshot collectors = snapshotCollectors();
