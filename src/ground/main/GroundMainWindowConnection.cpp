@@ -4,6 +4,39 @@
 
 #include <QJsonArray>
 
+namespace
+{
+
+constexpr const char *kHomeDeviceIconKeyProperty = "_vv_home_device_icon_key";
+
+bool setDynamicPropertyIfChanged(QObject *object, const char *name, const QVariant& value)
+{
+    if (!object || object->property(name) == value)
+    {
+        return false;
+    }
+    object->setProperty(name, value);
+    return true;
+}
+
+void setLabelTextIfChanged(QLabel *label, const QString& text)
+{
+    if (label && label->text() != text)
+    {
+        label->setText(text);
+    }
+}
+
+void setWidgetToolTipIfChanged(QWidget *widget, const QString& text)
+{
+    if (widget && widget->toolTip() != text)
+    {
+        widget->setToolTip(text);
+    }
+}
+
+}  // namespace
+
 void MainWindow::updateConnectionStatus(bool connected)
 {
     if (isUiTestMode())
@@ -441,14 +474,18 @@ void MainWindow::updateHomeDeviceStatusCapsules()
                     ? (state_->is_english_ ? QStringLiteral("Not ready") : QStringLiteral("未就绪"))
                     : (state_->is_english_ ? QStringLiteral("Ready to connect") : QStringLiteral("可以连接"));
         const QString deviceName = homeDeviceDisplayName(device, state_->is_english_);
-        label->setText(deviceName);
-        label->setProperty("connected", connected);
-        label->setProperty("state", stateKey);
-        label->setToolTip(state_->is_english_
+        setLabelTextIfChanged(label, deviceName);
+        bool labelStyleChanged = false;
+        labelStyleChanged |= setDynamicPropertyIfChanged(label, "connected", connected);
+        labelStyleChanged |= setDynamicPropertyIfChanged(label, "state", stateKey);
+        setWidgetToolTipIfChanged(label, state_->is_english_
             ? QStringLiteral("%1 status: %2").arg(deviceName, stateText)
             : QStringLiteral("%1状态：%2").arg(deviceName, stateText));
-        label->style()->unpolish(label);
-        label->style()->polish(label);
+        if (labelStyleChanged)
+        {
+            label->style()->unpolish(label);
+            label->style()->polish(label);
+        }
 
         if (!button)
         {
@@ -505,6 +542,7 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         button->setEnabled(enabled);
         if (spinnerActive)
         {
+            button->setProperty(kHomeDeviceIconKeyProperty, QStringLiteral("spinner"));
             button->setIcon(createRotatedLucideIcon(QStringLiteral("refresh-cw"),
                                                     toolbarColor(AppThemeColor::HomeDeviceSuccess),
                                                     homeDeviceActionSpinnerDegrees(device, nowMs)));
@@ -517,16 +555,32 @@ void MainWindow::updateHomeDeviceStatusCapsules()
                 : state == VaporView::DeviceState::Disabled
                     ? toolbarColor(AppThemeColor::ToolbarDisabled)
                     : toolbarColor(AppThemeColor::HomeDeviceSuccess);
-            button->setIcon(createLucideIcon(iconName, iconColor));
+            const QString iconKey = QStringLiteral("%1|%2").arg(iconName, iconColor.name(QColor::HexArgb));
+            if (button->property(kHomeDeviceIconKeyProperty).toString() != iconKey)
+            {
+                button->setProperty(kHomeDeviceIconKeyProperty, iconKey);
+                button->setIcon(createLucideIcon(iconName, iconColor));
+            }
         }
-        button->setToolTip(state_->is_english_
+        const QString buttonToolTip = state_->is_english_
             ? QStringLiteral("%1 %2 (%3)").arg(actionText, deviceName, modeHint)
-            : QStringLiteral("%1%2（%3）").arg(actionText, deviceName, modeHint));
-        button->setAccessibleName(button->toolTip());
-        button->setProperty("connected", connected);
-        button->setProperty("state", spinnerActive ? QStringLiteral("connecting") : stateKey);
-        button->style()->unpolish(button);
-        button->style()->polish(button);
+            : QStringLiteral("%1%2（%3）").arg(actionText, deviceName, modeHint);
+        if (button->toolTip() != buttonToolTip)
+        {
+            button->setToolTip(buttonToolTip);
+        }
+        if (button->accessibleName() != buttonToolTip)
+        {
+            button->setAccessibleName(buttonToolTip);
+        }
+        bool buttonStyleChanged = false;
+        buttonStyleChanged |= setDynamicPropertyIfChanged(button, "connected", connected);
+        buttonStyleChanged |= setDynamicPropertyIfChanged(button, "state", spinnerActive ? QStringLiteral("connecting") : stateKey);
+        if (buttonStyleChanged)
+        {
+            button->style()->unpolish(button);
+            button->style()->polish(button);
+        }
     };
 
     updateCapsule(state_->home_epsilon_status_lbl_, state_->home_epsilon_action_btn_, VaporView::SkyDeviceId::Epsilon);

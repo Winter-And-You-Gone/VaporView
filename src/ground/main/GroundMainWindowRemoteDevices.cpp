@@ -9,6 +9,75 @@
 namespace
 {
 
+constexpr const char *kEnvStatusIconValidProperty = "_vv_env_status_icon_valid";
+constexpr const char *kEnvStatusIconEnglishProperty = "_vv_env_status_icon_english";
+constexpr const char *kEnvStatusIconDarkProperty = "_vv_env_status_icon_dark";
+constexpr const char *kRemoteActionBaseKeyProperty = "_vv_remote_action_base_key";
+constexpr const char *kRemoteActionIconKeyProperty = "_vv_remote_action_icon_key";
+
+bool setDynamicPropertyIfChanged(QObject *object, const char *name, const QVariant& value)
+{
+    if (!object || object->property(name) == value)
+    {
+        return false;
+    }
+    object->setProperty(name, value);
+    return true;
+}
+
+void setButtonTextIfChanged(QAbstractButton *button, const QString& text)
+{
+    if (button && button->text() != text)
+    {
+        button->setText(text);
+    }
+}
+
+void setWidgetToolTipIfChanged(QWidget *widget, const QString& text)
+{
+    if (widget && widget->toolTip() != text)
+    {
+        widget->setToolTip(text);
+    }
+}
+
+void setAccessibleNameIfChanged(QWidget *widget, const QString& text)
+{
+    if (widget && widget->accessibleName() != text)
+    {
+        widget->setAccessibleName(text);
+    }
+}
+
+void setButtonStatusTipIfChanged(QWidget *widget, const QString& text)
+{
+    if (widget && widget->statusTip() != text)
+    {
+        widget->setStatusTip(text);
+    }
+}
+
+template <typename IconFactory>
+void setButtonIconForKey(QToolButton *button, const QString& key, IconFactory iconFactory)
+{
+    if (!button || button->property(kRemoteActionIconKeyProperty).toString() == key)
+    {
+        return;
+    }
+    button->setProperty(kRemoteActionIconKeyProperty, key);
+    button->setIcon(iconFactory());
+}
+
+void repolishIfNeeded(QWidget *widget, bool needed)
+{
+    if (!widget || !needed)
+    {
+        return;
+    }
+    widget->style()->unpolish(widget);
+    widget->style()->polish(widget);
+}
+
 QString remoteSummaryRecordingStateText(quint8 state, bool english)
 {
     switch (state)
@@ -1730,6 +1799,17 @@ void MainWindow::updateEnvironmentStatusIcons(bool lidarValid, bool ptbValid, bo
         {
             return;
         }
+        const bool dark = state_->dark_theme_enabled_;
+        if (label->property(kEnvStatusIconValidProperty).isValid() &&
+            label->property(kEnvStatusIconValidProperty).toBool() == valid &&
+            label->property(kEnvStatusIconEnglishProperty).toBool() == state_->is_english_ &&
+            label->property(kEnvStatusIconDarkProperty).toBool() == dark)
+        {
+            return;
+        }
+        label->setProperty(kEnvStatusIconValidProperty, valid);
+        label->setProperty(kEnvStatusIconEnglishProperty, state_->is_english_);
+        label->setProperty(kEnvStatusIconDarkProperty, dark);
         const QIcon icon = createLucideIcon(valid ? QStringLiteral("check") : QStringLiteral("circle-x"),
                                             valid ? toolbarColor(AppThemeColor::ToolbarGreen) : toolbarColor(AppThemeColor::ToolbarRed));
         label->setPixmap(icon.pixmap(QSize(kEnvStatusIconSize, kEnvStatusIconSize)));
@@ -2156,6 +2236,7 @@ void MainWindow::updateTemperatureTitleButtonsState()
 
         if (spinnerActive)
         {
+            button->setProperty(kRemoteActionIconKeyProperty, QStringLiteral("spinner"));
             button->setIcon(createRotatedLucideIcon(
                 QStringLiteral("refresh-cw"),
                 toolbarColor(AppThemeColor::HomeDeviceSuccess),
@@ -2168,19 +2249,27 @@ void MainWindow::updateTemperatureTitleButtonsState()
                 : deviceState == VaporView::DeviceState::Disabled
                     ? toolbarColor(AppThemeColor::ToolbarDisabled)
                     : toolbarColor(AppThemeColor::HomeDeviceSuccess);
-            button->setIcon(createLucideIcon(deviceConfigRemoteIconName(command), iconColor));
+            const QString iconName = deviceConfigRemoteIconName(command);
+            setButtonIconForKey(button,
+                                QStringLiteral("%1|%2").arg(iconName, iconColor.name(QColor::HexArgb)),
+                                [iconName, iconColor]() {
+                                    return createLucideIcon(iconName, iconColor);
+                                });
         }
         button->setEnabled(enabled);
-        button->setText(QString());
-        button->setProperty("connected", connected);
-        button->setProperty("state", spinnerActive
+        setButtonTextIfChanged(button, QString());
+        bool styleChanged = false;
+        styleChanged |= setDynamicPropertyIfChanged(button, "connected", connected);
+        styleChanged |= setDynamicPropertyIfChanged(button, "state", spinnerActive
             ? QStringLiteral("connecting")
             : deviceState == VaporView::DeviceState::Disabled
                 ? QStringLiteral("disabled")
                 : connected
                     ? QStringLiteral("connected")
                     : QStringLiteral("disconnected"));
-        button->setProperty("temperatureTitleCommand", deviceConfigRemoteActionKey(command));
+        styleChanged |= setDynamicPropertyIfChanged(button,
+                                                    "temperatureTitleCommand",
+                                                    deviceConfigRemoteActionKey(command));
 
         const QString deviceName = homeDeviceDisplayName(device, state_->is_english_);
         const QString actionText = spinnerActive
@@ -2192,11 +2281,10 @@ void MainWindow::updateTemperatureTitleButtonsState()
         const QString tooltip = state_->is_english_
             ? QStringLiteral("%1 %2 (%3)").arg(actionText, deviceName, modeHint)
             : QStringLiteral("%1%2（%3）").arg(actionText, deviceName, modeHint);
-        button->setToolTip(tooltip);
-        button->setAccessibleName(tooltip);
-        button->setStatusTip(QString());
-        button->style()->unpolish(button);
-        button->style()->polish(button);
+        setWidgetToolTipIfChanged(button, tooltip);
+        setAccessibleNameIfChanged(button, tooltip);
+        setButtonStatusTipIfChanged(button, QString());
+        repolishIfNeeded(button, styleChanged);
     };
 
     updateTitleButton(state_->temperature_title_action_btn_,
@@ -2957,12 +3045,32 @@ void MainWindow::updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId dev
     const VaporView::CommandId command = connected
         ? VaporView::CommandId::DisconnectDevice
         : VaporView::CommandId::ConnectDevice;
-    applyDeviceConfigRemoteButtonPresentation(button, command, device, state_->is_english_, false);
+    const QString baseKey = QStringLiteral("%1|%2|%3|%4")
+        .arg(static_cast<int>(command))
+        .arg(static_cast<int>(device))
+        .arg(state_->is_english_ ? 1 : 0)
+        .arg(state_->dark_theme_enabled_ ? 1 : 0);
+    const QString iconName = deviceConfigRemoteIconName(command);
+    const QColor iconColor = deviceConfigRemoteIconColor(command);
+    const QString baseIconKey = QStringLiteral("%1|%2").arg(iconName, iconColor.name(QColor::HexArgb));
+    if (button->property(kRemoteActionBaseKeyProperty).toString() != baseKey)
+    {
+        applyDeviceConfigRemoteButtonPresentation(button, command, device, state_->is_english_, false);
+        button->setProperty(kRemoteActionBaseKeyProperty, baseKey);
+        button->setProperty(kRemoteActionIconKeyProperty, baseIconKey);
+    }
     if (busy)
     {
+        button->setProperty(kRemoteActionIconKeyProperty, QStringLiteral("spinner"));
         button->setIcon(createRotatedLucideIcon(QStringLiteral("refresh-cw"),
                                                 toolbarColor(AppThemeColor::HomeDeviceSuccess),
                                                 homeDeviceActionSpinnerDegrees(device, nowMs)));
+    }
+    else
+    {
+        setButtonIconForKey(button, baseIconKey, [iconName, iconColor]() {
+            return createLucideIcon(iconName, iconColor);
+        });
     }
     const bool remoteMode = isRemoteSkyMode();
     const bool linkOpen = state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen();
@@ -2992,18 +3100,18 @@ void MainWindow::updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId dev
     const QString tooltip = state_->is_english_
         ? QStringLiteral("%1 %2 (%3)").arg(actionText, deviceName, modeHint)
         : QStringLiteral("%1%2（%3）").arg(actionText, deviceName, modeHint);
-    button->setToolTip(tooltip);
-    button->setAccessibleName(tooltip);
-    button->setProperty("connected", connected);
-    button->setProperty("state", busy
+    setWidgetToolTipIfChanged(button, tooltip);
+    setAccessibleNameIfChanged(button, tooltip);
+    bool styleChanged = false;
+    styleChanged |= setDynamicPropertyIfChanged(button, "connected", connected);
+    styleChanged |= setDynamicPropertyIfChanged(button, "state", busy
         ? QStringLiteral("connecting")
         : state == VaporView::DeviceState::Disabled
             ? QStringLiteral("disabled")
             : connected
                 ? QStringLiteral("connected")
                 : QStringLiteral("disconnected"));
-    button->style()->unpolish(button);
-    button->style()->polish(button);
+    repolishIfNeeded(button, styleChanged);
 }
 
 void MainWindow::setImuFormatSelection(const QString& format)

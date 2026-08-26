@@ -1796,6 +1796,30 @@ int main(int argc, char **argv)
                     recordingStatusUnitColumnIsStable();
             }),
             "UI test mode immediately covers recording status with aligned non-zero counters");
+    const QList<QLabel *> recordingStatusLabelsBeforeCounterRefresh =
+        recordingStatus->findChildren<QLabel *>();
+    QVector<QPointer<QLabel>> stableRecordingStatusLabels;
+    stableRecordingStatusLabels.reserve(recordingStatusLabelsBeforeCounterRefresh.size());
+    for (QLabel *label : recordingStatusLabelsBeforeCounterRefresh)
+    {
+        stableRecordingStatusLabels.append(label);
+    }
+    const QString recordingTextBeforeCounterRefresh = recordingStatus->toolTip();
+    require(VaporViewTest::processEventsUntil(1500, [recordingStatus, recordingTextBeforeCounterRefresh]() {
+                return recordingStatus->toolTip() != recordingTextBeforeCounterRefresh;
+            }),
+            "UI test mode recording counters continue refreshing");
+    const QList<QLabel *> recordingStatusLabelsAfterCounterRefresh =
+        recordingStatus->findChildren<QLabel *>();
+    require(recordingStatusLabelsAfterCounterRefresh.size() == stableRecordingStatusLabels.size(),
+            "recording status counter refresh keeps the same number of label widgets");
+    for (int labelIndex = 0; labelIndex < stableRecordingStatusLabels.size(); ++labelIndex)
+    {
+        require(stableRecordingStatusLabels.at(labelIndex) &&
+                    recordingStatusLabelsAfterCounterRefresh.at(labelIndex) ==
+                        stableRecordingStatusLabels.at(labelIndex).data(),
+                "recording status counter refresh reuses existing label widgets");
+    }
     require(QMetaObject::invokeMethod(window, "onPauseRecordingClicked", Qt::DirectConnection),
             "simulated recording pause slot invoked");
     processEvents();

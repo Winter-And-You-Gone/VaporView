@@ -279,9 +279,8 @@ void MainWindow::flushPendingUiLogRecords()
 
     if (shouldFollow)
     {
-        QTimer::singleShot(0, this, [this]() {
-            scrollLogViewToBottom();
-        });
+        scheduleLogViewBottomFollow();
+        clearLogUnreadState();
     }
     else if (visibleInCurrentView > 0)
     {
@@ -310,9 +309,8 @@ void MainWindow::renderLogView()
     state_->has_inline_progress_log_ = false;
     if (state_->log_auto_follow_enabled_)
     {
-        QTimer::singleShot(0, this, [this]() {
-            scrollLogViewToBottom();
-        });
+        scheduleLogViewBottomFollow();
+        clearLogUnreadState();
     }
     updateLogFilterAction();
     updateLogUnreadUi();
@@ -386,14 +384,16 @@ void MainWindow::settleLogViewAtBottom()
 
 void MainWindow::scheduleLogViewBottomFollow()
 {
-    if (!state_->log_list_view_)
+    if (!state_->log_list_view_ || state_->log_bottom_follow_scheduled_)
     {
         return;
     }
+    state_->log_bottom_follow_scheduled_ = true;
     QTimer::singleShot(0, this, [this]() {
         settleLogViewAtBottom();
         QTimer::singleShot(0, this, [this]() {
             settleLogViewAtBottom();
+            state_->log_bottom_follow_scheduled_ = false;
         });
     });
 }

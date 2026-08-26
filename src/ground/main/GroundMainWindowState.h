@@ -450,6 +450,7 @@ struct MainWindowState
     int log_unread_error_count_;
     int log_unread_status_count_;
     quint64 pending_ui_log_records_dropped_;
+    bool log_bottom_follow_scheduled_;
     bool language_switch_in_progress_;
     bool restoring_persistent_settings_;
     bool has_inline_progress_log_;

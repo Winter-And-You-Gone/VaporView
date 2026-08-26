@@ -118,6 +118,33 @@ void clearLayout(QLayout *layout)
     }
 }
 
+void setLabelTextIfChanged(QLabel *label, const QString& text)
+{
+    if (label && label->text() != text)
+    {
+        label->setText(text);
+    }
+}
+
+QString recordingStatusStructureKey(const QList<RecordingStatusLine>& lines)
+{
+    QStringList tokens;
+    tokens.reserve(lines.size() * 3);
+    for (const RecordingStatusLine& line : lines)
+    {
+        if (line.fullWidth)
+        {
+            tokens << QStringLiteral("full")
+                   << (line.section ? QStringLiteral("section") : QStringLiteral("plain"));
+        }
+        else
+        {
+            tokens << QStringLiteral("field") << line.label << line.unit;
+        }
+    }
+    return tokens.join(QChar(0x1f));
+}
+
 }  // namespace
 
 namespace VaporView::Ground::Main
@@ -143,6 +170,15 @@ RecordingStatusView::RecordingStatusView(QWidget *parent)
 
 void RecordingStatusView::setStatusText(const QString& plainText)
 {
+    const QStringList textLines = plainText.split(QLatin1Char('\n'));
+    QList<RecordingStatusLine> lines;
+    lines.reserve(textLines.size());
+    for (int row = 0; row < textLines.size(); ++row)
+    {
+        lines.append(parseRecordingStatusLine(textLines.at(row), row));
+    }
+    const QString structureKey = recordingStatusStructureKey(lines);
+
     if (status_text_ == plainText)
     {
         setToolTip(plainText);
@@ -152,6 +188,75 @@ void RecordingStatusView::setStatusText(const QString& plainText)
     status_text_ = plainText;
     setToolTip(plainText);
 
+    auto applyColumnWidths = [this]() {
+        int fieldWidth = 0;
+        int valueWidth = 0;
+        int unitWidth = 0;
+        for (const RowWidgets& row : std::as_const(row_widgets_))
+        {
+            if (row.fieldLabel)
+            {
+                fieldWidth = std::max(fieldWidth,
+                                      row.fieldLabel->fontMetrics().horizontalAdvance(row.fieldLabel->text()));
+            }
+            if (row.valueLabel && row.unitLabel)
+            {
+                valueWidth = std::max(valueWidth,
+                                      row.valueLabel->fontMetrics().horizontalAdvance(row.valueLabel->text()));
+                unitWidth = std::max(unitWidth,
+                                     row.unitLabel->fontMetrics().horizontalAdvance(row.unitLabel->text()));
+            }
+        }
+
+        fieldWidth += 2;
+        valueWidth += 4;
+        unitWidth += 6;
+        grid_layout_->setColumnMinimumWidth(0, fieldWidth);
+        grid_layout_->setColumnMinimumWidth(1, valueWidth);
+        grid_layout_->setColumnMinimumWidth(2, unitWidth);
+        for (const RowWidgets& row : std::as_const(row_widgets_))
+        {
+            if (row.fieldLabel)
+            {
+                row.fieldLabel->setMinimumWidth(fieldWidth);
+            }
+            if (row.valueLabel && row.unitLabel)
+            {
+                row.valueLabel->setMinimumWidth(valueWidth);
+                row.valueLabel->setMaximumWidth(valueWidth);
+                row.valueLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+                row.unitLabel->setMinimumWidth(unitWidth);
+                row.unitLabel->setMaximumWidth(unitWidth);
+                row.unitLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+            }
+        }
+    };
+
+    if (status_structure_key_ == structureKey && row_widgets_.size() == lines.size())
+    {
+        for (int row = 0; row < lines.size(); ++row)
+        {
+            const RecordingStatusLine& line = lines.at(row);
+            const RowWidgets& widgets = row_widgets_.at(row);
+            if (line.fullWidth)
+            {
+                setLabelTextIfChanged(widgets.fullLabel,
+                                      line.label.isEmpty() ? QStringLiteral(" ") : line.label);
+            }
+            else
+            {
+                setLabelTextIfChanged(widgets.fieldLabel, line.label);
+                setLabelTextIfChanged(widgets.valueLabel, line.value);
+                setLabelTextIfChanged(widgets.unitLabel, line.unit);
+            }
+        }
+        applyColumnWidths();
+        return;
+    }
+
+    status_structure_key_ = structureKey;
+    row_widgets_.clear();
+
     const int previousRowCount = grid_layout_->rowCount();
     for (int row = 0; row < previousRowCount; ++row)
     {
@@ -160,18 +265,13 @@ void RecordingStatusView::setStatusText(const QString& plainText)
     }
     clearLayout(grid_layout_);
 
-    QList<QLabel *> valueLabelsWithUnits;
-    QList<QLabel *> unitLabels;
-    QList<QLabel *> fieldLabels;
-    int fieldWidth = 0;
-    int valueWidth = 0;
-    int unitWidth = 0;
     int outputRow = 0;
 
-    const QStringList lines = plainText.split(QLatin1Char('\n'));
     for (int row = 0; row < lines.size(); ++row)
     {
-        const RecordingStatusLine line = parseRecordingStatusLine(lines.at(row), row);
+        const RecordingStatusLine line = lines.at(row);
+        RowWidgets widgets;
+        widgets.fullWidth = line.fullWidth;
         if (line.fullWidth)
         {
             auto *label = createRecordingStatusLabel(
@@ -183,6 +283,8 @@ void RecordingStatusView::setStatusText(const QString& plainText)
             label->setProperty("recordingStatusSection", line.section);
             grid_layout_->addWidget(label, outputRow, 0, 1, 3);
             grid_layout_->setRowMinimumHeight(outputRow, label->minimumHeight() + (line.section ? 2 : 0));
+            widgets.fullLabel = label;
+            row_widgets_.append(widgets);
             ++outputRow;
             continue;
         }
@@ -192,8 +294,7 @@ void RecordingStatusView::setStatusText(const QString& plainText)
             QStringLiteral("recordingStatusFieldLabel"),
             line.label,
             Qt::AlignLeft);
-        fieldWidth = std::max(fieldWidth, nameLabel->fontMetrics().horizontalAdvance(line.label));
-        fieldLabels.append(nameLabel);
+        widgets.fieldLabel = nameLabel;
         grid_layout_->addWidget(nameLabel, outputRow, 0);
 
         auto *valueLabel = createRecordingStatusLabel(
@@ -204,6 +305,7 @@ void RecordingStatusView::setStatusText(const QString& plainText)
         valueLabel->setFont(VaporView::Ground::MainSupport::numericFontFrom(valueLabel->font()));
         valueLabel->ensurePolished();
         valueLabel->setMinimumHeight(valueLabel->fontMetrics().height() + 2);
+        widgets.valueLabel = valueLabel;
 
         if (line.unit.isEmpty())
         {
@@ -218,40 +320,17 @@ void RecordingStatusView::setStatusText(const QString& plainText)
                 line.unit,
                 Qt::AlignRight);
             unitLabel->ensurePolished();
-            valueWidth = std::max(valueWidth, valueLabel->fontMetrics().horizontalAdvance(line.value));
-            unitWidth = std::max(unitWidth, unitLabel->fontMetrics().horizontalAdvance(line.unit));
-            valueLabelsWithUnits.append(valueLabel);
-            unitLabels.append(unitLabel);
+            widgets.unitLabel = unitLabel;
             grid_layout_->addWidget(valueLabel, outputRow, 1, Qt::AlignRight | Qt::AlignVCenter);
             grid_layout_->addWidget(unitLabel, outputRow, 2, Qt::AlignRight | Qt::AlignVCenter);
         }
 
         grid_layout_->setRowMinimumHeight(outputRow, valueLabel->minimumHeight());
+        row_widgets_.append(widgets);
         ++outputRow;
     }
 
-    fieldWidth += 2;
-    valueWidth += 4;
-    unitWidth += 6;
-    grid_layout_->setColumnMinimumWidth(0, fieldWidth);
-    grid_layout_->setColumnMinimumWidth(1, valueWidth);
-    grid_layout_->setColumnMinimumWidth(2, unitWidth);
-    for (QLabel *label : std::as_const(fieldLabels))
-    {
-        label->setMinimumWidth(fieldWidth);
-    }
-    for (QLabel *label : std::as_const(valueLabelsWithUnits))
-    {
-        label->setMinimumWidth(valueWidth);
-        label->setMaximumWidth(valueWidth);
-        label->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    }
-    for (QLabel *label : std::as_const(unitLabels))
-    {
-        label->setMinimumWidth(unitWidth);
-        label->setMaximumWidth(unitWidth);
-        label->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    }
+    applyColumnWidths();
 }
 
 QString RecordingStatusView::statusText() const
