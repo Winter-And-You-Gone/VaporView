@@ -80,6 +80,7 @@ private:
     QVector<QLabel *> packet_rate_labels_;
     QVector<QComboBox *> packet_rate_combos_;
     QVector<int> packet_rate_group_ids_;
+    QVector<QWidget *> live_packet_rate_fields_;
     QVector<QLabel *> live_packet_rate_labels_;
     QVector<QLabel *> live_packet_rate_values_;
     VaporView::EpsilonData live_epsilon_data_;

@@ -305,20 +305,55 @@ int main(int argc, char *argv[])
     require(liveRateRect.top() > summaryRect.bottom(),
             "live packet-rate card is placed below the summary card");
     int liveRateValueCount = 0;
+    QSet<int> liveRateColumns;
+    std::map<std::pair<int, int>, QRect> liveRateCells;
+    std::map<int, int> liveRateColumnLefts;
     for (const auto &option : options)
     {
         const QString packetId = QStringLiteral("%1").arg(
             option.packet_id, 2, 16, QLatin1Char('0')).toUpper();
+        auto *field = panel.findChild<QWidget *>(
+            QStringLiteral("epsilonLivePacketRateField_%1").arg(packetId));
         auto *label = panel.findChild<QLabel *>(
             QStringLiteral("epsilonLivePacketRateLabel_%1").arg(packetId));
         auto *value = panel.findChild<QLabel *>(
             QStringLiteral("epsilonLivePacketRateValue_%1").arg(packetId));
-        require(label != nullptr && value != nullptr && !label->text().isEmpty() &&
+        require(field != nullptr && label != nullptr && value != nullptr && !label->text().isEmpty() &&
                     !value->text().isEmpty(),
                 "live packet-rate card exposes every configured packet");
+        const int row = field->property("epsilonLivePacketGridRow").toInt();
+        const int column = field->property("epsilonLivePacketGridColumn").toInt();
+        require(row >= 0 && column >= 0 && column <= 3 &&
+                    label->property("epsilonLivePacketGridRow").toInt() == row &&
+                    label->property("epsilonLivePacketGridColumn").toInt() == column &&
+                    value->property("epsilonLivePacketGridRow").toInt() == row &&
+                    value->property("epsilonLivePacketGridColumn").toInt() == column,
+                "live packet-rate fields expose their four-column grid position");
+        const QRect fieldRect(field->mapTo(liveRateCard, QPoint(0, 0)), field->size());
+        liveRateColumns.insert(column);
+        const auto [columnLeft, inserted] = liveRateColumnLefts.emplace(column, fieldRect.left());
+        if (!inserted)
+        {
+            require(std::abs(columnLeft->second - fieldRect.left()) <= 2,
+                    "live packet-rate fields align within their visual column");
+        }
+        require(liveRateCells.emplace(std::make_pair(row, column), fieldRect).second,
+                "live packet-rate fields occupy unique cells");
         ++liveRateValueCount;
     }
     require(liveRateValueCount == 11, "live packet-rate card exposes all 11 packet rates");
+    require(liveRateColumns == QSet<int>{0, 1, 2, 3},
+            "live packet-rate card lays fields out across four columns");
+    for (const auto& [cell, rect] : liveRateCells)
+    {
+        if (cell.first == 0)
+        {
+            continue;
+        }
+        const auto previous = liveRateCells.find(std::make_pair(cell.first - 1, cell.second));
+        require(previous == liveRateCells.end() || rect.top() > previous->second.bottom(),
+                "live packet-rate fields wrap downward within each column");
+    }
     require(panel.findChild<QLabel *>(QStringLiteral("epsilonLivePacketRateValue_40"))->text() ==
                 QStringLiteral("250.0 Hz") &&
                 panel.findChild<QLabel *>(QStringLiteral("epsilonLivePacketRateValue_53"))->text().contains(

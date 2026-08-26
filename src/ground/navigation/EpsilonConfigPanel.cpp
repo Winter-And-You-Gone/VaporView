@@ -31,6 +31,7 @@ constexpr int kPacketWideGridColumnCount = 5;
 constexpr int kPacketOuterGroupColumns = 2;
 constexpr int kPacketInnerFieldColumns = 2;
 constexpr int kPacketVisualColumnCount = kPacketOuterGroupColumns * kPacketInnerFieldColumns;
+constexpr int kLivePacketVisualColumnCount = 4;
 
 enum class PacketRateGroup
 {
@@ -326,29 +327,52 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     livePacketRateGridWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
     live_packet_rate_grid_ = new QGridLayout(livePacketRateGridWidget);
     live_packet_rate_grid_->setContentsMargins(0, 0, 0, 0);
-    live_packet_rate_grid_->setHorizontalSpacing(24);
-    live_packet_rate_grid_->setVerticalSpacing(6);
-    live_packet_rate_grid_->setColumnStretch(1, 1);
+    live_packet_rate_grid_->setHorizontalSpacing(20);
+    live_packet_rate_grid_->setVerticalSpacing(8);
+    for (int column = 0; column < kLivePacketVisualColumnCount; ++column)
+    {
+        live_packet_rate_grid_->setColumnStretch(column, 1);
+    }
     for (const auto &option : VaporView::Ground::DeviceRates::epsilonPacketConfigOptions())
     {
         const QString packetId = QStringLiteral("%1").arg(
             option.packet_id, 2, 16, QLatin1Char('0')).toUpper();
-        auto *label = new QLabel(livePacketRateGridWidget);
+        const int itemIndex = live_packet_rate_fields_.size();
+        const int row = itemIndex / kLivePacketVisualColumnCount;
+        const int visualColumn = itemIndex % kLivePacketVisualColumnCount;
+        auto *field = new QWidget(livePacketRateGridWidget);
+        field->setObjectName(QStringLiteral("epsilonLivePacketRateField_%1").arg(packetId));
+        field->setProperty("epsilonLivePacketRateField", true);
+        field->setProperty("epsilonPacketId", static_cast<uint>(option.packet_id));
+        field->setProperty("epsilonLivePacketGridRow", row);
+        field->setProperty("epsilonLivePacketGridColumn", visualColumn);
+        field->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        auto *fieldLayout = new QHBoxLayout(field);
+        fieldLayout->setContentsMargins(0, 0, 0, 0);
+        fieldLayout->setSpacing(6);
+        auto *label = new QLabel(field);
         label->setObjectName(QStringLiteral("epsilonLivePacketRateLabel_%1").arg(packetId));
         label->setProperty("epsilonLivePacketRateLabel", true);
+        label->setProperty("epsilonPacketId", static_cast<uint>(option.packet_id));
+        label->setProperty("epsilonLivePacketGridRow", row);
+        label->setProperty("epsilonLivePacketGridColumn", visualColumn);
         label->setWordWrap(false);
         label->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
         label->setFocusPolicy(Qt::NoFocus);
-        auto *value = new QLabel(livePacketRateGridWidget);
+        auto *value = new QLabel(field);
         value->setObjectName(QStringLiteral("epsilonLivePacketRateValue_%1").arg(packetId));
         value->setProperty("epsilonLivePacketRateValue", true);
+        value->setProperty("epsilonPacketId", static_cast<uint>(option.packet_id));
+        value->setProperty("epsilonLivePacketGridRow", row);
+        value->setProperty("epsilonLivePacketGridColumn", visualColumn);
         value->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
         value->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
         value->setFocusPolicy(Qt::NoFocus);
-        live_packet_rate_grid_->addWidget(label, live_packet_rate_labels_.size(), 0,
-                                          Qt::AlignLeft | Qt::AlignVCenter);
-        live_packet_rate_grid_->addWidget(value, live_packet_rate_values_.size(), 1,
-                                          Qt::AlignRight | Qt::AlignVCenter);
+        fieldLayout->addWidget(label, 0, Qt::AlignLeft | Qt::AlignVCenter);
+        fieldLayout->addStretch(1);
+        fieldLayout->addWidget(value, 0, Qt::AlignRight | Qt::AlignVCenter);
+        live_packet_rate_grid_->addWidget(field, row, visualColumn);
+        live_packet_rate_fields_.append(field);
         live_packet_rate_labels_.append(label);
         live_packet_rate_values_.append(value);
     }
