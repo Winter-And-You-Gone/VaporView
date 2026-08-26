@@ -1690,6 +1690,8 @@ int main(int argc, char **argv)
     auto recordingStatusUnitColumnIsStable = [recordingStatus]() {
         const QList<QLabel *> units =
             recordingStatus->findChildren<QLabel *>(QStringLiteral("recordingStatusUnitLabel"));
+        const QList<QLabel *> values =
+            recordingStatus->findChildren<QLabel *>(QStringLiteral("recordingStatusValueLabel"));
         QList<QLabel *> visibleUnits;
         for (QLabel *unit : units)
         {
@@ -1721,6 +1723,30 @@ int main(int argc, char **argv)
                 rightEdge = unitRect.right();
             }
             else if (std::abs(rightEdge - unitRect.right()) > 1)
+            {
+                return false;
+            }
+            bool hasTightValueBeforeUnit = false;
+            for (QLabel *value : values)
+            {
+                if (!value->isVisible())
+                {
+                    continue;
+                }
+                const QRect valueRect(value->mapTo(recordingStatus, QPoint(0, 0)), value->size());
+                if (std::abs(valueRect.center().y() - unitRect.center().y()) > 4)
+                {
+                    continue;
+                }
+                const int gap = unitRect.left() - valueRect.right();
+                if (value->alignment().testFlag(Qt::AlignRight) &&
+                    gap >= 0 && gap <= 24)
+                {
+                    hasTightValueBeforeUnit = true;
+                    break;
+                }
+            }
+            if (!hasTightValueBeforeUnit)
             {
                 return false;
             }

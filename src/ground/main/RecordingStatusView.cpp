@@ -212,8 +212,8 @@ void RecordingStatusView::setStatusText(const QString& plainText)
             unitWidth = std::max(unitWidth, unitLabel->fontMetrics().horizontalAdvance(line.unit));
             valueLabelsWithUnits.append(valueLabel);
             unitLabels.append(unitLabel);
-            grid_layout_->addWidget(valueLabel, outputRow, 1);
-            grid_layout_->addWidget(unitLabel, outputRow, 2);
+            grid_layout_->addWidget(valueLabel, outputRow, 1, Qt::AlignRight | Qt::AlignVCenter);
+            grid_layout_->addWidget(unitLabel, outputRow, 2, Qt::AlignRight | Qt::AlignVCenter);
         }
 
         grid_layout_->setRowMinimumHeight(outputRow, valueLabel->minimumHeight());
