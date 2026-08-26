@@ -10133,6 +10133,15 @@ int main(int argc, char **argv)
                     plot->property("xAxisLeftLabel").toString().contains(QLatin1Char(':')) &&
                     plot->property("xAxisRightLabel").toString().contains(QLatin1Char(':')),
                 "environment trend plot exposes clock-time x-axis tick labels");
+        const QStringList xAxisTickLabels = plot->property("xAxisTickLabels").toStringList();
+        require(plot->property("xAxisTickCount").toInt() == xAxisTickLabels.size() &&
+                    xAxisTickLabels.size() > 2 &&
+                    xAxisTickLabels.first().contains(QLatin1Char(':')) &&
+                    xAxisTickLabels.last().contains(QLatin1Char(':')),
+                "environment trend plot exposes adaptive clock-time x-axis tick labels");
+        require(std::abs(plot->property("xAxisTimeSpanSeconds").toDouble() -
+                         static_cast<double>(xAxisTickLabels.size() - 1)) < 1e-6,
+                "environment trend plot uses temperature-style one-second x-axis intervals");
         require(!plot->property("yAxisUnitLabel").toString().isEmpty(),
                 "environment trend plot keeps y-axis unit metadata");
         require(!plot->property("yAxisTopLabel").toString().isEmpty() &&
