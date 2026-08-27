@@ -3848,6 +3848,134 @@ void requireHomeOverviewLanguageWidthRoundTrip()
             "wide overview test window closes cleanly");
 }
 
+void requireHomeEnvironmentCardLayout(MainWindow& window)
+{
+    activateLayouts(&window);
+    processEventsFor(500);
+    activateLayouts(&window);
+
+    auto *dataGroup = window.findChild<QGroupBox *>(QStringLiteral("sensorRowContainer"));
+    require(dataGroup != nullptr, "sensor row container exists");
+
+    QGroupBox *epsilonGroup = nullptr;
+    QGroupBox *environmentGroup = nullptr;
+    const QList<QGroupBox*> sensorGroups =
+        dataGroup->findChildren<QGroupBox *>(QStringLiteral("sensorGroupBox"));
+    for (QGroupBox *group : sensorGroups)
+    {
+        if (!group)
+        {
+            continue;
+        }
+        if (group->findChildren<QLabel *>(QStringLiteral("envStatusIcon")).size() == 3)
+        {
+            environmentGroup = group;
+        }
+        else if (group->findChild<QWidget *>(QStringLiteral("epsilonPanel")))
+        {
+            epsilonGroup = group;
+        }
+    }
+    require(epsilonGroup != nullptr, "EPSILON card exists");
+    require(environmentGroup != nullptr, "environment and lidar card exists");
+
+    const QRect epsilonGeometry = epsilonGroup->geometry();
+    const QRect environmentGeometry = environmentGroup->geometry();
+    const int sideBySideRequiredWidth =
+        epsilonGroup->minimumSizeHint().width() +
+        VaporView::Ground::MainSupport::kTopLevelCardGap +
+        environmentGroup->minimumSizeHint().width();
+    const bool sideBySideFits = dataGroup->contentsRect().width() >= sideBySideRequiredWidth;
+    const bool sideBySide =
+        std::abs(environmentGeometry.top() - epsilonGeometry.top()) <= 1 &&
+        environmentGeometry.left() > epsilonGeometry.right();
+    const bool stacked =
+        std::abs(environmentGeometry.left() - epsilonGeometry.left()) <= 4 &&
+        environmentGeometry.top() > epsilonGeometry.bottom();
+    require(sideBySideFits ? sideBySide : (sideBySide || stacked),
+            "home data cards either place environment to the right when width permits, or stack cleanly when narrow");
+    require(environmentGeometry.right() <= dataGroup->contentsRect().right() + 1,
+            "default environment and lidar card stays inside the home data card edge");
+
+    auto labelContains = [](QWidget *panel, const QString& objectName, const QString& token) -> QLabel * {
+        if (!panel)
+        {
+            return nullptr;
+        }
+        const QList<QLabel*> labels = panel->findChildren<QLabel *>(objectName);
+        for (QLabel *label : labels)
+        {
+            if (label && label->text().contains(token))
+            {
+                return label;
+            }
+        }
+        return nullptr;
+    };
+    auto labelCenterY = [](QWidget *container, const QLabel *label) {
+        return label->mapTo(container, QPoint(0, label->height() / 2)).y();
+    };
+    auto labelRectInside = [](QWidget *container, const QLabel *label) {
+        return QRect(label->mapTo(container, QPoint(0, 0)), label->size());
+    };
+
+    auto *hmpPanel = environmentGroup->findChild<HmpPanel *>();
+    require(hmpPanel != nullptr, "environment card contains the temperature/humidity panel");
+    QLabel *humidityValueLabel = labelContains(hmpPanel, QStringLiteral("highlightedValue"), QStringLiteral("%RH"));
+    const QList<QLabel*> hmpRateLabels = hmpPanel->findChildren<QLabel *>(QStringLiteral("rateLabel"));
+    require(humidityValueLabel != nullptr && hmpRateLabels.size() >= 2,
+            "humidity row has a dedicated polling-rate label");
+    const int humidityCenterY = labelCenterY(hmpPanel, humidityValueLabel);
+    bool humidityRateVisibleOnRow = false;
+    for (const QLabel *rateLabel : hmpRateLabels)
+    {
+        const QRect rateRect = labelRectInside(hmpPanel, rateLabel);
+        require(rateLabel->text().contains(QStringLiteral("Hz")) &&
+                    rateRect.right() <= hmpPanel->contentsRect().right() + 1,
+                "HMP polling-rate labels are visible inside the panel");
+        humidityRateVisibleOnRow =
+            humidityRateVisibleOnRow ||
+            std::abs(labelCenterY(hmpPanel, rateLabel) - humidityCenterY) <= 2;
+    }
+    require(humidityRateVisibleOnRow,
+            "humidity row shows its polling-rate label on the same row");
+
+    auto *lidarPanel = environmentGroup->findChild<LidarPanel *>();
+    require(lidarPanel != nullptr, "environment card contains the lidar panel");
+    QLabel *distanceValueLabel = labelContains(lidarPanel, QStringLiteral("highlightedValue"), QStringLiteral("m"));
+    QLabel *strengthValueLabel = nullptr;
+    const QList<QLabel*> lidarValueLabels =
+        lidarPanel->findChildren<QLabel *>(QStringLiteral("highlightedValue"));
+    for (QLabel *label : lidarValueLabels)
+    {
+        if (label && label != distanceValueLabel)
+        {
+            strengthValueLabel = label;
+            break;
+        }
+    }
+    const QList<QLabel*> lidarRateLabels = lidarPanel->findChildren<QLabel *>(QStringLiteral("rateLabel"));
+    require(distanceValueLabel != nullptr && strengthValueLabel != nullptr && !lidarRateLabels.isEmpty(),
+            "lidar panel exposes distance, strength, and rate labels");
+    const QLabel *lidarRateLabel = lidarRateLabels.first();
+    require(std::abs(labelCenterY(lidarPanel, distanceValueLabel) -
+                     labelCenterY(lidarPanel, strengthValueLabel)) <= 2 &&
+                std::abs(labelCenterY(lidarPanel, distanceValueLabel) -
+                         labelCenterY(lidarPanel, lidarRateLabel)) <= 2,
+            "default home environment card keeps distance, strength, and rate on one row");
+    const std::array<const QLabel *, 3> lidarRowLabels = {
+        distanceValueLabel,
+        strengthValueLabel,
+        lidarRateLabel
+    };
+    for (const QLabel *label : lidarRowLabels)
+    {
+        const QRect rect = labelRectInside(lidarPanel, label);
+        require(rect.right() <= lidarPanel->contentsRect().right() + 1,
+                "lidar row labels stay visible inside the panel");
+    }
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -3897,6 +4025,19 @@ int main(int argc, char **argv)
     {
         requireHomeOverviewLanguageWidthRoundTrip();
         std::cout << "home_overview_language_layout_test passed\n";
+        return 0;
+    }
+
+    if (app.arguments().contains(QStringLiteral("--home-environment-layout-only")))
+    {
+        MainWindow environmentWindow;
+        environmentWindow.setWindowTitle(QStringLiteral("VaporView"));
+        environmentWindow.resize(1920, 1000);
+        environmentWindow.show();
+        require(waitForWindowExposed(&environmentWindow),
+                "home-environment test window becomes exposed");
+        requireHomeEnvironmentCardLayout(environmentWindow);
+        std::cout << "home_environment_layout_test passed\n";
         return 0;
     }
 
@@ -10159,12 +10300,24 @@ int main(int argc, char **argv)
             "temperature trend plot sits under the temperature data panel");
     require(humidityPlot && qobject_cast<HmpPanel *>(humidityPlot->parentWidget()) != nullptr,
             "humidity trend plot sits under the humidity data panel");
+    requireHomeEnvironmentCardLayout(window);
 
     const QRect compactEpsilonGeometry = epsilonGroup->geometry();
     const QRect compactEnvironmentGeometry = environmentGroup->geometry();
-    require(std::abs(compactEnvironmentGeometry.top() - compactEpsilonGeometry.top()) <= 1 &&
-                compactEnvironmentGeometry.left() > compactEpsilonGeometry.right(),
-            "default home data cards place environment and lidar to the right of EPSILON when width permits");
+    const int compactSideBySideRequiredWidth =
+        epsilonGroup->minimumSizeHint().width() +
+        VaporView::Ground::MainSupport::kTopLevelCardGap +
+        environmentGroup->minimumSizeHint().width();
+    const bool compactSideBySideFits =
+        dataGroup->contentsRect().width() >= compactSideBySideRequiredWidth;
+    const bool compactSideBySide =
+        std::abs(compactEnvironmentGeometry.top() - compactEpsilonGeometry.top()) <= 1 &&
+        compactEnvironmentGeometry.left() > compactEpsilonGeometry.right();
+    const bool compactStacked =
+        std::abs(compactEnvironmentGeometry.left() - compactEpsilonGeometry.left()) <= 4 &&
+        compactEnvironmentGeometry.top() > compactEpsilonGeometry.bottom();
+    require(compactSideBySideFits ? compactSideBySide : (compactSideBySide || compactStacked),
+            "default home data cards either place environment to the right when width permits, or stack cleanly when narrow");
     require(compactEnvironmentGeometry.right() <= dataGroup->contentsRect().right() + 1,
             "default environment and lidar card stays inside the home data card edge");
     window.resize(1920, 1000);
@@ -10217,6 +10370,11 @@ int main(int argc, char **argv)
 
     const QRect wideEpsilonGeometry = epsilonGroup->geometry();
     const QRect wideEnvironmentGeometry = environmentGroup->geometry();
+    require(std::abs(wideEnvironmentGeometry.top() - wideEpsilonGeometry.top()) <= 1 &&
+                wideEnvironmentGeometry.left() > wideEpsilonGeometry.right(),
+            "wide home data cards place environment and lidar to the right of EPSILON");
+    require(wideEnvironmentGeometry.right() <= dataGroup->contentsRect().right() + 1,
+            "wide environment and lidar card stays inside the home data card edge");
     window.resize(originalWindowSize);
     require(processEventsUntil(1000, [&window,
                                       epsilonGroup,

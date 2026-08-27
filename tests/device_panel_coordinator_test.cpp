@@ -4,6 +4,8 @@
 
 #include <QApplication>
 #include <QLabel>
+#include <QLayout>
+#include <QPoint>
 
 #include <chrono>
 #include <cmath>
@@ -33,6 +35,38 @@ bool hasLabelText(const QWidget& panel, const QString& objectName, const QString
         }
     }
     return false;
+}
+
+int labelTextCount(const QWidget& panel, const QString& objectName, const QString& text)
+{
+    int count = 0;
+    const auto labels = panel.findChildren<QLabel *>(objectName);
+    for (const QLabel *label : labels)
+    {
+        if (label->text().contains(text))
+        {
+            ++count;
+        }
+    }
+    return count;
+}
+
+QLabel *firstLabelContaining(QWidget& panel, const QString& objectName, const QString& text)
+{
+    const auto labels = panel.findChildren<QLabel *>(objectName);
+    for (QLabel *label : labels)
+    {
+        if (label->text().contains(text))
+        {
+            return label;
+        }
+    }
+    return nullptr;
+}
+
+int labelCenterYInPanel(const QLabel *label, QWidget& panel)
+{
+    return label->mapTo(&panel, QPoint(0, label->height() / 2)).y();
 }
 
 } // namespace
@@ -67,6 +101,8 @@ int main(int argc, char **argv)
             "PTB rate is presented through the coordinator");
     require(hasLabelText(hmp, QStringLiteral("rateLabel"), QStringLiteral("8.0")),
             "HMP rate is presented through the coordinator");
+    require(labelTextCount(hmp, QStringLiteral("rateLabel"), QStringLiteral("8.0")) == 2,
+            "HMP rate is shown on both the temperature and humidity rows");
     require(hasLabelText(lidar, QStringLiteral("rateLabel"), QStringLiteral("20.0")),
             "Lidar rate is presented through the coordinator");
 
@@ -86,6 +122,11 @@ int main(int argc, char **argv)
     lidarData.distance_m = 12.75;
     lidarData.signal_strength = 321;
     coordinator.updateEnvironmentData(epsilonData, ptbData, hmpData, lidarData);
+    lidar.resize(560, std::max(1, lidar.sizeHint().height()));
+    if (lidar.layout())
+    {
+        lidar.layout()->activate();
+    }
 
     require(hasLabelText(ptb, QStringLiteral("highlightedValue"), QStringLiteral("1001.25")),
             "PTB data is presented through the coordinator");
@@ -93,6 +134,19 @@ int main(int argc, char **argv)
             "HMP data is presented through the coordinator");
     require(hasLabelText(lidar, QStringLiteral("highlightedValue"), QStringLiteral("12.75")),
             "Lidar data is presented through the coordinator");
+    auto *lidarDistanceValue =
+        firstLabelContaining(lidar, QStringLiteral("highlightedValue"), QStringLiteral("12.75"));
+    auto *lidarStrengthValue =
+        firstLabelContaining(lidar, QStringLiteral("highlightedValue"), QStringLiteral("321"));
+    auto *lidarRateValue =
+        firstLabelContaining(lidar, QStringLiteral("rateLabel"), QStringLiteral("20.0"));
+    require(lidarDistanceValue && lidarStrengthValue && lidarRateValue,
+            "Lidar row exposes distance, strength, and rate labels");
+    require(std::abs(labelCenterYInPanel(lidarDistanceValue, lidar) -
+                     labelCenterYInPanel(lidarStrengthValue, lidar)) <= 2 &&
+                std::abs(labelCenterYInPanel(lidarDistanceValue, lidar) -
+                         labelCenterYInPanel(lidarRateValue, lidar)) <= 2,
+            "Lidar distance, strength, and rate are presented on the same row");
     auto *temperatureTrend = hmp.findChild<QWidget *>(QStringLiteral("environmentTemperatureTrendPlot"));
     auto *humidityTrend = hmp.findChild<QWidget *>(QStringLiteral("environmentHumidityTrendPlot"));
     auto *pressureTrend = ptb.findChild<QWidget *>(QStringLiteral("environmentPressureTrendPlot"));
@@ -172,6 +226,8 @@ int main(int argc, char **argv)
             "clearing rates invalidates the EPSILON rate display");
     require(hasLabelText(ptb, QStringLiteral("rateLabel"), QStringLiteral("--")),
             "clearing rates invalidates the PTB rate display");
+    require(labelTextCount(hmp, QStringLiteral("rateLabel"), QStringLiteral("--")) == 2,
+            "clearing rates invalidates both HMP temperature and humidity rate displays");
 
     std::cout << "device panel coordinator tests passed\n";
     return 0;

@@ -631,6 +631,9 @@ add_test(NAME main_window_layout_test COMMAND main_window_layout_test)
 add_test(NAME home_overview_language_layout_test
     COMMAND main_window_layout_test --home-overview-language-only
 )
+add_test(NAME home_environment_layout_test
+    COMMAND main_window_layout_test --home-environment-layout-only
+)
 add_test(NAME combination_navigation_page_test
     COMMAND main_window_layout_test --combination-navigation-only
 )
@@ -1155,6 +1158,7 @@ set_property(TEST
     main_window_layout_test
     device_config_layout_test
     home_overview_language_layout_test
+    home_environment_layout_test
     session_viewer_io_test
     session_viewer_window_state_test
     session_viewer_trajectory_test
@@ -1167,6 +1171,7 @@ set_property(TEST
 set_property(TEST main_window_layout_test APPEND PROPERTY LABELS main-window layout)
 set_property(TEST device_config_layout_test APPEND PROPERTY LABELS main-window layout)
 set_property(TEST home_overview_language_layout_test APPEND PROPERTY LABELS main-window layout)
+set_property(TEST home_environment_layout_test APPEND PROPERTY LABELS main-window layout)
 set_property(TEST combination_navigation_page_test APPEND PROPERTY LABELS main-window layout)
 set_property(TEST navigation_status_panel_test APPEND PROPERTY LABELS navigation-status ui layout)
 set_property(TEST ui_test_mode_window_test APPEND PROPERTY LABELS main-window ui-test-mode)

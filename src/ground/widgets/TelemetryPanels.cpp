@@ -30,6 +30,7 @@ constexpr qreal kEnvironmentTimeXAxisLabelGap = 4.0;
 constexpr qreal kEnvironmentXAxisLabelRightInset = 2.0;
 constexpr qreal kEnvironmentXAxisTickLength = 3.0;
 constexpr qint64 kEnvironmentTimeAxisMsecsPerInterval = 1000;
+constexpr int kEnvironmentPanelSideBySideMinimumWidth = 410;
 
 QFont numericFontFrom(const QFont& base)
 {
@@ -166,6 +167,22 @@ QStringList environmentFieldLabelWidthCandidates()
         QStringLiteral("气压:"),
         QStringLiteral("温度:"),
         QStringLiteral("湿度:")
+    };
+}
+
+QStringList lidarDistanceFieldLabelWidthCandidates()
+{
+    return {
+        QStringLiteral("Distance:"),
+        QStringLiteral("距离:")
+    };
+}
+
+QStringList lidarStrengthFieldLabelWidthCandidates()
+{
+    return {
+        QStringLiteral("Strength:"),
+        QStringLiteral("强度:")
     };
 }
 
@@ -1247,6 +1264,13 @@ PtbPanel::PtbPanel(QWidget *parent)
     setupUi();
 }
 
+QSize PtbPanel::minimumSizeHint() const
+{
+    QSize hint = QWidget::minimumSizeHint();
+    hint.setWidth(std::min(hint.width(), kEnvironmentPanelSideBySideMinimumWidth));
+    return hint;
+}
+
 void PtbPanel::setupUi()
 {
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
@@ -1341,6 +1365,7 @@ void PtbPanel::updateData(const VaporView::PtbData& ptb_data)
 HmpPanel::HmpPanel(QWidget *parent)
     : QWidget(parent)
     , rate_label_(nullptr)
+    , humidity_rate_label_(nullptr)
     , humidity_label_(nullptr)
     , temperature_label_(nullptr)
     , status_label_(nullptr)
@@ -1351,6 +1376,13 @@ HmpPanel::HmpPanel(QWidget *parent)
     , is_english_(false)
 {
     setupUi();
+}
+
+QSize HmpPanel::minimumSizeHint() const
+{
+    QSize hint = QWidget::minimumSizeHint();
+    hint.setWidth(std::min(hint.width(), kEnvironmentPanelSideBySideMinimumWidth));
+    return hint;
 }
 
 void HmpPanel::setupUi()
@@ -1365,6 +1397,11 @@ void HmpPanel::setupUi()
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     rate_label_->setMinimumHeight(20);
     setFixedNumericLabelWidth(rate_label_, {QStringLiteral("-999.9 Hz"), QStringLiteral("999.9 Hz"), QStringLiteral("-- Hz")}, 4);
+    humidity_rate_label_ = new VaporView::VisualTextLabel(this);
+    humidity_rate_label_->setObjectName("rateLabel");
+    humidity_rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    humidity_rate_label_->setMinimumHeight(20);
+    setFixedNumericLabelWidth(humidity_rate_label_, {QStringLiteral("-999.9 Hz"), QStringLiteral("999.9 Hz"), QStringLiteral("-- Hz")}, 4);
 
     auto *tempLayout = new QHBoxLayout();
     tempLayout->setSpacing(1);
@@ -1403,6 +1440,7 @@ void HmpPanel::setupUi()
     setFixedNumericLabelWidth(humidity_label_, {QStringLiteral("-9999.9 %RH"), QStringLiteral("9999.9 %RH"), QStringLiteral("100.0 %RH"), QStringLiteral("--- %RH")}, 28);
     humidLayout->addWidget(humidity_label_);
     humidLayout->addStretch();
+    humidLayout->addWidget(humidity_rate_label_);
     layout->addLayout(humidLayout);
 
     humidity_trend_plot_ = new EnvironmentTrendSparklineWidget(
@@ -1418,11 +1456,15 @@ void HmpPanel::setupUi()
 
 void HmpPanel::updateRate(double hz)
 {
-    if (rate_label_)
+    const QString rateText = (hz > 0.0 && std::isfinite(hz))
+        ? fixedDecimalWithUnit(hz, 1, 6, QStringLiteral("Hz"))
+        : QStringLiteral("%1 Hz").arg(fixedTextField(QStringLiteral("--"), 6));
+    for (QLabel *label : {rate_label_, humidity_rate_label_})
     {
-        rate_label_->setText((hz > 0.0 && std::isfinite(hz))
-            ? fixedDecimalWithUnit(hz, 1, 6, QStringLiteral("Hz"))
-            : QStringLiteral("%1 Hz").arg(fixedTextField(QStringLiteral("--"), 6)));
+        if (label)
+        {
+            label->setText(rateText);
+        }
     }
 }
 
@@ -1500,6 +1542,13 @@ LidarPanel::LidarPanel(QWidget *parent)
     setupUi();
 }
 
+QSize LidarPanel::minimumSizeHint() const
+{
+    QSize hint = QWidget::minimumSizeHint();
+    hint.setWidth(std::min(hint.width(), kEnvironmentPanelSideBySideMinimumWidth));
+    return hint;
+}
+
 void LidarPanel::setupUi()
 {
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
@@ -1518,31 +1567,27 @@ void LidarPanel::setupUi()
     distance_lbl_ = new QLabel(this);
     distance_lbl_->setObjectName("fieldLabel");
     distance_lbl_->setMinimumHeight(20);
-    setFixedTextLabelWidth(distance_lbl_, environmentFieldLabelWidthCandidates(), 6);
+    setFixedTextLabelWidth(distance_lbl_, lidarDistanceFieldLabelWidthCandidates(), 4);
     distanceLayout->addWidget(distance_lbl_);
     distance_label_ = new QLabel("--- m", this);
     distance_label_->setObjectName("highlightedValue");
     distance_label_->setMinimumHeight(20);
-    setFixedNumericLabelWidth(distance_label_, {QStringLiteral("-9999.99 m"), QStringLiteral("9999.99 m"), QStringLiteral("--- m")}, 18);
+    setFixedNumericLabelWidth(distance_label_, {QStringLiteral("9999.99 m"), QStringLiteral("--- m")}, 8);
     distanceLayout->addWidget(distance_label_);
-    distanceLayout->addStretch();
-    distanceLayout->addWidget(rate_label_);
-    layout->addLayout(distanceLayout);
-
-    auto *strengthLayout = new QHBoxLayout();
-    strengthLayout->setSpacing(1);
+    distanceLayout->addSpacing(8);
     strength_lbl_ = new QLabel(this);
     strength_lbl_->setObjectName("fieldLabel");
     strength_lbl_->setMinimumHeight(20);
-    setFixedTextLabelWidth(strength_lbl_, environmentFieldLabelWidthCandidates(), 6);
-    strengthLayout->addWidget(strength_lbl_);
+    setFixedTextLabelWidth(strength_lbl_, lidarStrengthFieldLabelWidthCandidates(), 4);
+    distanceLayout->addWidget(strength_lbl_);
     strength_label_ = new QLabel("---", this);
     strength_label_->setObjectName("highlightedValue");
     strength_label_->setMinimumHeight(20);
-    setFixedNumericLabelWidth(strength_label_, {QStringLiteral("-999999"), QStringLiteral("999999"), QStringLiteral("---")}, 18);
-    strengthLayout->addWidget(strength_label_);
-    strengthLayout->addStretch();
-    layout->addLayout(strengthLayout);
+    setFixedNumericLabelWidth(strength_label_, {QStringLiteral("65535"), QStringLiteral("---")}, 6);
+    distanceLayout->addWidget(strength_label_);
+    distanceLayout->addStretch();
+    distanceLayout->addWidget(rate_label_);
+    layout->addLayout(distanceLayout);
 
     setEnglish(false);
 }
