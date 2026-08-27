@@ -5,6 +5,7 @@
 #include <QSettings>
 #include <QTemporaryDir>
 
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -43,6 +44,9 @@ int main(int argc, char **argv)
     require(firstSnapshot.epsilon.filter_status_bits != 0 &&
                 firstSnapshot.epsilon.update_status_bits != 0,
             "normal scenario supplies EPSILON filter/update status bits");
+    require(firstSnapshot.epsilon.gnss_fix_code == 6 &&
+                firstSnapshot.epsilon.gnss_fix_text == "RTK_FIXED",
+            "UI-test GNSS cycle starts from the RTK fixed state");
     require(firstSnapshot.epsilon.quat_orien_valid &&
                 std::isfinite(firstSnapshot.epsilon.attitude_delta_max_deg) &&
                 std::isfinite(firstSnapshot.epsilon.attitude_delta_ahrs_euler_deg) &&
@@ -94,6 +98,18 @@ int main(int argc, char **argv)
                 laterSnapshot.transmitBitsPerSecond >= 100'000'000.0 &&
                 laterSnapshot.receiveBitsPerSecond + laterSnapshot.transmitBitsPerSecond < 1'000'000'000.0,
             "UI-test link-rate values cover three-digit one-decimal Mbps without leaving the compact reserve");
+
+    constexpr std::array<int, 10> expectedFixCodes{{6, 5, 9, 4, 3, 2, 8, 7, 1, 0}};
+    constexpr std::array<const char *, 10> expectedFixTexts{{
+        "RTK_FIXED", "RTK_FLOAT", "RTK_DUAL", "DGPS", "3D",
+        "2D", "PPP", "STATIC", "NO_FIX", "NO_GPS"}};
+    for (std::size_t index = 0; index < expectedFixCodes.size(); ++index)
+    {
+        const UiTestSnapshot cycleSnapshot = first.snapshot(static_cast<qint64>(index) * 3000 + 100);
+        require(cycleSnapshot.epsilon.gnss_fix_code == expectedFixCodes[index] &&
+                    cycleSnapshot.epsilon.gnss_fix_text == expectedFixTexts[index],
+                "UI-test GNSS data cycles through every EPSILON fix state every three seconds");
+    }
 
     first.setScenario(UiTestScenario::PartialFailure, 2500);
     const UiTestSnapshot partial = first.snapshot(2600);

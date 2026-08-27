@@ -2327,8 +2327,9 @@ void MainWindow::setupCentralWidget()
         {
             snapshot.navigationDataAvailable = true;
             snapshot.gnssQualityAvailable = true;
-            snapshot.positionAvailable = true;
-            snapshot.speedAvailable = std::isfinite(epsilon.vel_n_mps) &&
+            snapshot.positionAvailable = epsilon.gnss_fix_code >= 2;
+            snapshot.speedAvailable = snapshot.positionAvailable &&
+                std::isfinite(epsilon.vel_n_mps) &&
                 std::isfinite(epsilon.vel_e_mps);
             snapshot.attitudeAvailable = epsilon.ahrs_attitude_valid ||
                 epsilon.euler_orien_valid || epsilon.quat_orien_valid ||
@@ -2348,6 +2349,7 @@ void MainWindow::setupCentralWidget()
         }
 
         snapshot.gnssFixText = QString::fromStdString(epsilon.gnss_fix_text);
+        snapshot.gnssFixCode = epsilon.gnss_fix_code;
         snapshot.filterStatusAvailable = epsilonDataFresh &&
             (snapshot.navigationDataAvailable || snapshot.positionAvailable ||
              epsilon.filter_status_bits != 0 || epsilon.update_status_bits != 0);

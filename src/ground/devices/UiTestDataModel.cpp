@@ -13,6 +13,29 @@ namespace
 {
 
 constexpr double kPi = 3.14159265358979323846;
+constexpr int kUiTestGnssCycleIntervalMs = 3000;
+
+struct UiTestGnssStatus
+{
+    int fixCode;
+    const char *fixText;
+    int satellites;
+    double horizontalAccuracyM;
+    double verticalAccuracyM;
+};
+
+constexpr std::array<UiTestGnssStatus, 10> kUiTestGnssCycle{{
+    {6, "RTK_FIXED", 24, 0.015, 0.025},
+    {5, "RTK_FLOAT", 22, 0.18, 0.26},
+    {9, "RTK_DUAL", 26, 0.012, 0.020},
+    {4, "DGPS", 18, 0.65, 0.95},
+    {3, "3D", 16, 1.20, 1.80},
+    {2, "2D", 12, 2.50, std::numeric_limits<double>::quiet_NaN()},
+    {8, "PPP", 20, 0.08, 0.12},
+    {7, "STATIC", 21, 0.04, 0.07},
+    {1, "NO_FIX", 7, std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()},
+    {0, "NO_GPS", 0, std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()},
+}};
 
 std::chrono::steady_clock::time_point sampleTimestamp(qint64 elapsedMs)
 {
@@ -70,6 +93,51 @@ double attitudeDeltaDeg(double lhsRoll,
     const double dPitch = lhsPitch - rhsPitch;
     const double dYaw = lhsYaw - rhsYaw;
     return std::sqrt(dRoll * dRoll + dPitch * dPitch + dYaw * dYaw);
+}
+
+const UiTestGnssStatus& uiTestGnssStatus(qint64 elapsedMs)
+{
+    const qint64 bucket = std::max<qint64>(0, elapsedMs) / kUiTestGnssCycleIntervalMs;
+    return kUiTestGnssCycle[static_cast<std::size_t>(
+        bucket % static_cast<qint64>(kUiTestGnssCycle.size()))];
+}
+
+std::uint16_t uiTestFilterStatusBits(int fixCode)
+{
+    if (fixCode <= 0)
+    {
+        return 0;
+    }
+    std::uint16_t bits = static_cast<std::uint16_t>((fixCode & 0x0F) << 4);
+    if (fixCode >= 2)
+    {
+        bits = static_cast<std::uint16_t>(bits | 0x000B);
+    }
+    if (fixCode == 9)
+    {
+        bits = static_cast<std::uint16_t>(bits | 0x0004);
+    }
+    return bits;
+}
+
+std::uint16_t uiTestUpdateStatusBits(int fixCode)
+{
+    switch (fixCode)
+    {
+    case 2:
+    case 7:
+        return 0x0004;
+    case 3:
+    case 4:
+    case 8:
+        return 0x000c;
+    case 5:
+    case 6:
+    case 9:
+        return 0x002c;
+    default:
+        return 0;
+    }
 }
 
 } // namespace
@@ -297,21 +365,21 @@ UiTestSnapshot UiTestDataModel::snapshot(qint64 elapsedMs) const
         1'787'184'000ULL + static_cast<uint64_t>(nonNegativeElapsedMs / 1000);
     result.epsilon.utc_microseconds =
         static_cast<uint32_t>((nonNegativeElapsedMs % 1000) * 1000);
-    result.epsilon.gnss_fix_code = 4;
-    result.epsilon.gnss_fix_text = "RTK Fixed (UI Test)";
-    result.epsilon.gnss_satellites = 24;
+    const UiTestGnssStatus& gnssStatus = uiTestGnssStatus(nonNegativeElapsedMs);
+    result.epsilon.gnss_fix_code = gnssStatus.fixCode;
+    result.epsilon.gnss_fix_text = gnssStatus.fixText;
+    result.epsilon.gnss_satellites = result.epsilon.valid ? gnssStatus.satellites : 0;
     result.epsilon.heading_valid = true;
     result.epsilon.hdop = 0.62;
     result.epsilon.vdop = 0.88;
-    result.epsilon.hacc_m = 0.015;
-    result.epsilon.vacc_m = 0.025;
+    result.epsilon.hacc_m = gnssStatus.horizontalAccuracyM;
+    result.epsilon.vacc_m = gnssStatus.verticalAccuracyM;
     result.epsilon.imu_temp_c = 34.0 + slow;
     result.epsilon.pressure_pa = 101325.0 + medium * 25.0;
     result.epsilon.raw_frame_count = static_cast<uint64_t>(seconds * 100.0);
     result.epsilon.system_status_bits = 0x0000;
-    result.epsilon.filter_status_bits =
-        static_cast<uint16_t>((result.epsilon.gnss_fix_code & 0x0F) << 4);
-    result.epsilon.update_status_bits = 0x0007;
+    result.epsilon.filter_status_bits = uiTestFilterStatusBits(result.epsilon.gnss_fix_code);
+    result.epsilon.update_status_bits = uiTestUpdateStatusBits(result.epsilon.gnss_fix_code);
     result.epsilon.imu_packet_rate_hz = result.epsilon.valid ? 100.0 : 0.0;
     result.epsilon.ahrs_packet_rate_hz = result.epsilon.valid ? 100.0 : 0.0;
     result.epsilon.insgps_packet_rate_hz = result.epsilon.valid ? 20.0 : 0.0;
@@ -343,9 +411,10 @@ UiTestSnapshot UiTestDataModel::snapshot(qint64 elapsedMs) const
     result.gnss.sigma_lat = result.epsilon.hacc_m;
     result.gnss.sigma_lon = result.epsilon.hacc_m * 1.15;
     result.gnss.sigma_alt = result.epsilon.vacc_m;
-    result.gnss.position_status = "RTK_FIXED";
-    result.gnss.num_satellites_used = 24;
-    result.gnss.num_satellites_tracked = 28;
+    result.gnss.position_status = gnssStatus.fixText;
+    result.gnss.num_satellites_used = result.epsilon.gnss_satellites;
+    result.gnss.num_satellites_tracked =
+        result.epsilon.gnss_satellites > 0 ? result.epsilon.gnss_satellites + 4 : 0;
     result.gnss.gdop = 1.12;
     result.gnss.pdop = 1.04;
     result.gnss.hdop = result.epsilon.hdop;

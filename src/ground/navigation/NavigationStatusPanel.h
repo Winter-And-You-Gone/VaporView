@@ -26,6 +26,7 @@ struct NavigationStatusSnapshot
 
     bool navigationDataAvailable = false;
     QString gnssFixText;
+    int gnssFixCode = -1;
     bool filterStatusAvailable = false;
     quint16 filterStatusBits = 0;
     quint16 updateStatusBits = 0;

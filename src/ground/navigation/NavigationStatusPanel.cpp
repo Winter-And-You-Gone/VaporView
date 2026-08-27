@@ -68,6 +68,40 @@ bool usableAttitude(const NavigationStatusSnapshot& snapshot)
         std::isfinite(snapshot.headingDeg);
 }
 
+bool isUsableGnssFixCode(int code)
+{
+    return code >= 2 && code <= 9;
+}
+
+QString positioningStatusFromGnssFixCode(int code, bool english)
+{
+    switch (code)
+    {
+    case 0:
+        return english ? QStringLiteral("No GPS") : QStringLiteral("无GPS");
+    case 1:
+        return english ? QStringLiteral("No fix") : QStringLiteral("未定位");
+    case 2:
+        return english ? QStringLiteral("2D fix") : QStringLiteral("2D定位");
+    case 3:
+        return english ? QStringLiteral("3D fix") : QStringLiteral("3D定位");
+    case 4:
+        return QStringLiteral("DGPS");
+    case 5:
+        return english ? QStringLiteral("RTK float") : QStringLiteral("RTK浮点");
+    case 6:
+        return english ? QStringLiteral("RTK fixed") : QStringLiteral("RTK固定");
+    case 7:
+        return english ? QStringLiteral("Static") : QStringLiteral("静态定点");
+    case 8:
+        return QStringLiteral("PPP");
+    case 9:
+        return english ? QStringLiteral("RTK dual fixed") : QStringLiteral("双天线RTK固定");
+    default:
+        return QString();
+    }
+}
+
 QString positioningStatusText(const NavigationStatusSnapshot& snapshot,
                               bool positionUsable,
                               bool fixUsable,
@@ -77,6 +111,15 @@ QString positioningStatusText(const NavigationStatusSnapshot& snapshot,
     if (!snapshot.epsilonDataFresh)
     {
         return unavailableText;
+    }
+
+    if (fixUsable)
+    {
+        const QString fixStatus = positioningStatusFromGnssFixCode(snapshot.gnssFixCode, english);
+        if (!fixStatus.isEmpty())
+        {
+            return fixStatus;
+        }
     }
 
     const bool gpsPositionUpdateActive = (snapshot.updateStatusBits & ((1u << 2) | (1u << 9))) != 0;
@@ -320,7 +363,8 @@ void NavigationStatusPanel::setSnapshot(const NavigationStatusSnapshot& snapshot
     applyStatusLabel(
         gnss_status_.value,
         fixUsable ? fixText : unavailableText(),
-        fixUsable ? QStringLiteral("healthy") : QStringLiteral("inactive"));
+        fixUsable && (snapshot.gnssFixCode < 0 || isUsableGnssFixCode(snapshot.gnssFixCode))
+            ? QStringLiteral("healthy") : QStringLiteral("inactive"));
     applyStatusLabel(
         ins_status_.value,
         attitudeUsable

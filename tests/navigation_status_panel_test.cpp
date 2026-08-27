@@ -52,6 +52,7 @@ NavigationStatusSnapshot reliableSnapshot()
     snapshot.epsilonDataAgeMs = 32;
     snapshot.navigationDataAvailable = true;
     snapshot.gnssFixText = QStringLiteral("RTK_FIXED");
+    snapshot.gnssFixCode = 6;
     snapshot.filterStatusAvailable = true;
     snapshot.filterStatusBits = 0x0062;
     snapshot.updateStatusBits = 0x000c;
@@ -179,7 +180,7 @@ void testStateVisibilityAndFormatting()
             "navigation values use stable units and precision formatting");
     require(label(panel, "navigationStatusFreshnessValue")->text().contains(QStringLiteral("32 ms")) &&
                 label(panel, "navigationStatusGnssValue")->text() == QStringLiteral("RTK_FIXED") &&
-                label(panel, "navigationStatusFixValue")->text() == QStringLiteral("定位融合中") &&
+                label(panel, "navigationStatusFixValue")->text() == QStringLiteral("RTK固定") &&
                 label(panel, "navigationStatusGnssFixValue")->text() == QStringLiteral("RTK_FIXED") &&
                 label(panel, "navigationStatusSatellitesValue")->text() == QStringLiteral("24"),
             "overview separates positioning status from the explicit GNSS fix state");
@@ -203,15 +204,46 @@ void testStateVisibilityAndFormatting()
     partial.epsilonDataFresh = true;
     partial.navigationDataAvailable = true;
     partial.gnssFixText = QStringLiteral("3D");
+    partial.gnssFixCode = 3;
     panel.setSnapshot(partial);
     processEventsFor(30);
     require(gnssCard->isVisible() &&
                 label(panel, "navigationStatusGnssValue")->text() == QStringLiteral("3D") &&
-                label(panel, "navigationStatusFixValue")->text() == QStringLiteral("GNSS可用") &&
+                label(panel, "navigationStatusFixValue")->text() == QStringLiteral("3D定位") &&
                 label(panel, "navigationStatusGnssFixValue")->text() == QStringLiteral("3D") &&
                 label(panel, "navigationStatusSatellitesValue")->text() == QStringLiteral("--") &&
                 label(panel, "navigationStatusHorizontalAccuracyValue")->text() == QStringLiteral("--"),
             "partial GNSS data renders explicit fix state without inferring quality fields");
+
+    const struct
+    {
+        int code;
+        QString text;
+        QString expectedStatus;
+    } statusCases[] = {
+        {0, QStringLiteral("NO_GPS"), QStringLiteral("无GPS")},
+        {1, QStringLiteral("NO_FIX"), QStringLiteral("未定位")},
+        {2, QStringLiteral("2D"), QStringLiteral("2D定位")},
+        {3, QStringLiteral("3D"), QStringLiteral("3D定位")},
+        {4, QStringLiteral("DGPS"), QStringLiteral("DGPS")},
+        {5, QStringLiteral("RTK_FLOAT"), QStringLiteral("RTK浮点")},
+        {6, QStringLiteral("RTK_FIXED"), QStringLiteral("RTK固定")},
+        {7, QStringLiteral("STATIC"), QStringLiteral("静态定点")},
+        {8, QStringLiteral("PPP"), QStringLiteral("PPP")},
+        {9, QStringLiteral("RTK_DUAL"), QStringLiteral("双天线RTK固定")},
+    };
+    for (const auto& statusCase : statusCases)
+    {
+        NavigationStatusSnapshot statusSnapshot = reliable;
+        statusSnapshot.gnssFixCode = statusCase.code;
+        statusSnapshot.gnssFixText = statusCase.text;
+        statusSnapshot.positionAvailable = statusCase.code >= 2;
+        panel.setSnapshot(statusSnapshot);
+        processEventsFor(5);
+        require(label(panel, "navigationStatusGnssValue")->text() == statusCase.text &&
+                    label(panel, "navigationStatusFixValue")->text() == statusCase.expectedStatus,
+                "positioning status maps every GNSS fix code to a distinct readable state");
+    }
 
     NavigationStatusSnapshot invalid = reliable;
     invalid.positionAvailable = true;

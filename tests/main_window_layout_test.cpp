@@ -1729,6 +1729,7 @@ void requireRtkSidebarPage(
     sampleStatus.epsilonDataFresh = true;
     sampleStatus.navigationDataAvailable = true;
     sampleStatus.gnssFixText = QStringLiteral("RTK_FIXED");
+    sampleStatus.gnssFixCode = 6;
     sampleStatus.filterStatusAvailable = true;
     sampleStatus.filterStatusBits = 0x0062;
     sampleStatus.updateStatusBits = 0x000c;
@@ -1742,7 +1743,7 @@ void requireRtkSidebarPage(
     sampleStatus.heightM = 42.5;
     combinationPage->setStatusSnapshot(sampleStatus);
     require(rtkServiceStatus->text().contains(QStringLiteral("运行中")) &&
-                positioningMode->text() == QStringLiteral("定位融合中") &&
+                positioningMode->text() == QStringLiteral("RTK固定") &&
                 longitudeValue->text() != QStringLiteral("--") &&
                 ntripStatus->text() == QStringLiteral("--") &&
                 rtcmStatus->text() == QStringLiteral("--"),
