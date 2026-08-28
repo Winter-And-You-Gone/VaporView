@@ -130,7 +130,12 @@ void SingleLevelPopupComboBox::rebuildPopupRows()
     }
 
     popup_menu_->setFont(font());
+    const QList<SingleLevelPopupMenuRow *> staleRows = popup_menu_->rows();
     popup_menu_->clear();
+    for (SingleLevelPopupMenuRow *row : staleRows)
+    {
+        delete row;
+    }
     const QIcon checkIcon = show_selection_check_ && selection_check_icon_provider_
         ? selection_check_icon_provider_()
         : QIcon();

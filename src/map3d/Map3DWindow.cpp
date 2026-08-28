@@ -61,6 +61,7 @@ namespace {
 
 constexpr qint64 kStatusUpdateIntervalMs = 200;
 constexpr double kAutomaticSentinel2ImageryRangeM = 20000.0;
+constexpr auto kDefaultStartupEarthRelative = "resources/maps/vaporview_default.earth";
 
 QString heightSafetyNote()
 {
@@ -491,6 +492,50 @@ MapDataSelection selectionForCustomEarth(const MapDataSelection& discovered,
     return selection;
 }
 
+MapDataSelection selectionForLightweightStartup(const MapDataSelection& discovered)
+{
+    const QString defaultEarthFile = QDir::cleanPath(
+        QDir(discovered.diagnostics.projectRoot)
+            .absoluteFilePath(QString::fromLatin1(kDefaultStartupEarthRelative)));
+    if (!QFileInfo(defaultEarthFile).isFile()
+        || discovered.earthFile == defaultEarthFile
+        || discovered.mode == MapDataMode::NaturalEarth
+        || discovered.mode == MapDataMode::LocalGridOnly)
+    {
+        return discovered;
+    }
+
+    MapDataSelection selection = discovered;
+    selection.mode = MapDataMode::NaturalEarth;
+    selection.earthFile = defaultEarthFile;
+    selection.earthFilePath = defaultEarthFile;
+    selection.description = QStringLiteral(
+        "Fast startup Natural Earth background; use Reload Best Local Map for DEM, OSM, and 3D buildings.");
+
+    MapDataDiagnostics& diagnostics = selection.diagnostics;
+    diagnostics.earthFilePath = defaultEarthFile;
+    diagnostics.selectedBaseMode = MapDataMode::NaturalEarth;
+    diagnostics.selectedBaseModeLabel = MapDataManager::modeLabel(MapDataMode::NaturalEarth);
+    diagnostics.selectedBaseModeKey = MapDataManager::modeKey(MapDataMode::NaturalEarth);
+    diagnostics.selectedBaseEarthFilePath = defaultEarthFile;
+    diagnostics.selectedDemLayerAvailable = false;
+    diagnostics.selectedOsmLayersAvailable = false;
+    diagnostics.selectedElevationSource.clear();
+    diagnostics.selectedFullLocalEarthPath.clear();
+    diagnostics.messages.push_back(
+        QStringLiteral("Started with lightweight Natural Earth so the 3D Map window opens immediately; use 重载最佳本地地图 to load DEM/OSM/3D building resources."));
+    diagnostics.warnings.push_back(
+        QStringLiteral("Heavy local map resources are not auto-loaded when the 3D Map window opens."));
+    return selection;
+}
+
+bool shouldAutoLoadLocal3DTiles(const MapDataSelection& selection)
+{
+    return selection.diagnostics.real3DLocalReady
+        && QFileInfo(selection.earthFile).fileName().compare(
+               QStringLiteral("vaporview_real3d_local.earth"), Qt::CaseInsensitive) == 0;
+}
+
 void configureMenuRow(VaporView::SingleLevelPopupMenuRow* row, int minimumWidth = 250)
 {
     if (!row)
@@ -637,21 +682,25 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     }
     else
     {
-        view_ = new OsgEarthViewWidget(this);
-        view_->setObjectName(QStringLiteral("map3DView"));
-        connect(view_,
-                &OsgEarthViewWidget::trajectorySampleSelected,
-                this,
-                &Map3DWindow::showSelectedTrajectorySample);
-        connect(view_, &OsgEarthViewWidget::trajectorySampleSelectionCleared, this, [this]() {
-            clearSelectedTrajectorySample();
-            updateStatus(nullptr);
-        });
-        setCentralWidget(view_);
+        render_placeholder_label_ = new QLabel(this);
+        render_placeholder_label_->setObjectName(QStringLiteral("map3DRenderPlaceholder"));
+        render_placeholder_label_->setMinimumSize(640, 420);
+        render_placeholder_label_->setAlignment(Qt::AlignCenter);
+        render_placeholder_label_->setWordWrap(true);
+        render_placeholder_label_->setText(
+            QStringLiteral("3D 地图窗口已打开。\n点击工具栏“启动渲染”后再加载地图数据。"));
+        setCentralWidget(render_placeholder_label_);
     }
     status_label_->setObjectName(QStringLiteral("map3DStatusLabel"));
 
     QToolBar* toolbar = addToolBar(QStringLiteral("3D Map"));
+    start_rendering_action_ = toolbar->addAction(QStringLiteral("启动渲染"));
+    start_rendering_action_->setObjectName(QStringLiteral("map3DStartRenderingAction"));
+    start_rendering_action_->setToolTip(QStringLiteral("启动真实 3D 渲染视图并加载轻量启动地图"));
+    start_rendering_action_->setStatusTip(start_rendering_action_->toolTip());
+    start_rendering_action_->setEnabled(!isMap3DHeadlessTest());
+    connect(start_rendering_action_, &QAction::triggered, this, &Map3DWindow::startRendering);
+
     QAction* openSessionAction = toolbar->addAction(QStringLiteral("打开 Session"));
     connect(openSessionAction, &QAction::triggered, this, &Map3DWindow::openSessionDirectory);
 
@@ -942,7 +991,10 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     map_resource_dialog_ = new MapResourceDialog(map_resource_manager_, this);
     connect(map_resources_action_, &QAction::triggered, this, &Map3DWindow::showMapResources);
     connect(map_resource_dialog_, &MapResourceDialog::resourcesChanged, this, [this]() {
-        const MapDataSelection selection = map_data_manager_.selectBestAvailableMap();
+        const MapDataSelection discoveredSelection = map_data_manager_.selectBestAvailableMap();
+        const MapDataSelection selection = view_
+            ? discoveredSelection
+            : selectionForLightweightStartup(discoveredSelection);
         setMapSelection(selection);
         if (view_ && selection.hasEarthFile())
         {
@@ -957,34 +1009,20 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     statusBar()->addPermanentWidget(status_label_, 1);
     updateReplayUi();
     updateHeatLegend();
-    updateStatus(nullptr);
     if (isMap3DHeadlessTest())
     {
         setMapSelection(map_data_manager_.selectBestAvailableMap());
         latest_earth_load_.requestedPath = map_selection_.earthFile;
         latest_earth_load_.failureReason = QStringLiteral("Headless test mode; earth loading was not attempted.");
+        updateStatus(nullptr);
     }
     else
     {
-        QTimer::singleShot(0, this, [this]() {
-            loadInitialEarthFile();
-            const QString aircraftModelPath =
-                map3DSettings()
-                    .value(QStringLiteral("aircraftModelPath"))
-                    .toString();
-            if (!aircraftModelPath.isEmpty() && view_)
-            {
-                statusBar()->showMessage(QStringLiteral("正在后台加载飞机模型: %1").arg(aircraftModelPath));
-                view_->loadAircraftModelAsync(aircraftModelPath, [this, aircraftModelPath](bool loaded) {
-                    statusBar()->showMessage(
-                        loaded
-                            ? QStringLiteral("已加载飞机模型: %1").arg(aircraftModelPath)
-                            : QStringLiteral("飞机模型加载失败，已保留当前标记: %1").arg(aircraftModelPath),
-                        7000);
-                    refreshDiagnosticsText();
-                });
-            }
-        });
+        setMapSelection(selectionForLightweightStartup(map_data_manager_.selectBestAvailableMap()));
+        latest_earth_load_.requestedPath = map_selection_.earthFile;
+        latest_earth_load_.failureReason = QStringLiteral("3D rendering has not been started.");
+        updateStatus(nullptr);
+        statusBar()->showMessage(QStringLiteral("3D 地图窗口已打开；点击“启动渲染”后加载地图。"), 8000);
     }
 }
 
@@ -1009,6 +1047,107 @@ Map3DWindow::~Map3DWindow()
     {
         view_->shutdown();
     }
+}
+
+void Map3DWindow::configureViewSignals()
+{
+    if (!view_)
+    {
+        return;
+    }
+
+    view_->setObjectName(QStringLiteral("map3DView"));
+    connect(view_,
+            &OsgEarthViewWidget::trajectorySampleSelected,
+            this,
+            &Map3DWindow::showSelectedTrajectorySample);
+    connect(view_, &OsgEarthViewWidget::trajectorySampleSelectionCleared, this, [this]() {
+        clearSelectedTrajectorySample();
+        updateStatus(nullptr);
+    });
+}
+
+void Map3DWindow::applyCurrentControlsToView()
+{
+    if (!view_)
+    {
+        return;
+    }
+
+    view_->setFollowAircraft(follow_action_ && follow_action_->isChecked());
+    view_->setMaxVisibleSamples(max_visible_samples_);
+    applyHeatControlsToView();
+    if (track_line_visible_action_)
+    {
+        view_->setTrackLineVisible(track_line_visible_action_->isChecked());
+    }
+    if (track_points_visible_action_)
+    {
+        view_->setTrackPointsVisible(track_points_visible_action_->isChecked());
+    }
+    if (track_line_width_spin_)
+    {
+        view_->setTrackLineWidth(static_cast<float>(track_line_width_spin_->value()));
+    }
+    if (track_point_size_spin_)
+    {
+        view_->setTrackPointSize(static_cast<float>(track_point_size_spin_->value()));
+    }
+    for (std::size_t index = 0; index < kMap3DLayerCount; ++index)
+    {
+        view_->setLayerVisible(static_cast<Map3DLayer>(index), layer_visibility_[index]);
+    }
+}
+
+void Map3DWindow::startRendering()
+{
+    if (isMap3DHeadlessTest())
+    {
+        return;
+    }
+    if (view_)
+    {
+        statusBar()->showMessage(QStringLiteral("3D 渲染已启动。"), 3000);
+        return;
+    }
+
+    statusBar()->showMessage(QStringLiteral("正在启动 3D 渲染视图..."));
+    QWidget* previousCentralWidget = takeCentralWidget();
+    view_ = new OsgEarthViewWidget(this);
+    configureViewSignals();
+    setCentralWidget(view_);
+    if (previousCentralWidget)
+    {
+        previousCentralWidget->deleteLater();
+    }
+    render_placeholder_label_ = nullptr;
+    if (start_rendering_action_)
+    {
+        start_rendering_action_->setEnabled(false);
+    }
+    applyCurrentControlsToView();
+    refreshLayerMenuAvailability();
+    updateStatus(nullptr);
+
+    QTimer::singleShot(0, this, [this]() {
+        loadInitialEarthFile();
+        const QString aircraftModelPath =
+            map3DSettings()
+                .value(QStringLiteral("aircraftModelPath"))
+                .toString();
+        if (!aircraftModelPath.isEmpty() && view_)
+        {
+            statusBar()->showMessage(QStringLiteral("正在后台加载飞机模型: %1").arg(aircraftModelPath));
+            view_->loadAircraftModelAsync(aircraftModelPath, [this, aircraftModelPath](bool loaded) {
+                statusBar()->showMessage(
+                    loaded
+                        ? QStringLiteral("已加载飞机模型: %1").arg(aircraftModelPath)
+                        : QStringLiteral("飞机模型加载失败，已保留当前标记: %1").arg(aircraftModelPath),
+                    7000);
+                refreshDiagnosticsText();
+            });
+        }
+    });
 }
 
 void Map3DWindow::createLayerMenu(QToolBar* toolbar)
@@ -1507,44 +1646,45 @@ void Map3DWindow::loadInitialEarthFile()
         return;
     }
     const MapDataSelection autoSelection = map_data_manager_.selectBestAvailableMap();
+    const MapDataSelection startupSelection = selectionForLightweightStartup(autoSelection);
     QSettings settings = map3DSettings();
     const QString persistedPath = settings.value(QStringLiteral("lastEarthFile")).toString();
     const bool hasPersistedCustomEarth =
         !persistedPath.isEmpty() && !map_data_manager_.isBuiltInEarthFile(persistedPath);
-    const QString initialPath = hasPersistedCustomEarth ? persistedPath : autoSelection.earthFile;
+    const QString initialPath = hasPersistedCustomEarth ? persistedPath : startupSelection.earthFile;
     if (!view_ || !QFileInfo(initialPath).isFile())
     {
         latest_earth_load_ = {};
         latest_earth_load_.requestedPath = initialPath;
         latest_earth_load_.failureReason = QStringLiteral("Selected earth file does not exist.");
-        setMapSelection(autoSelection);
+        setMapSelection(startupSelection);
         statusBar()->showMessage(QStringLiteral("未找到默认 Earth 文件，当前显示本地 NED 网格。"), 8000);
         return;
     }
 
     statusBar()->showMessage(QStringLiteral("正在后台加载 Earth 文件: %1").arg(initialPath));
-    view_->loadEarthFileAsync(initialPath, [this, autoSelection, initialPath, hasPersistedCustomEarth](bool loaded) {
+    view_->loadEarthFileAsync(initialPath, [this, autoSelection, startupSelection, initialPath, hasPersistedCustomEarth](bool loaded) {
         latest_earth_load_ = view_ ? view_->earthLoadDiagnostics() : EarthLoadDiagnostics{};
         if (!loaded && hasPersistedCustomEarth)
         {
             QSettings settings = map3DSettings();
             VaporView::removePersistentSetting(settings, QStringLiteral("lastEarthFile"));
-            const QString fallbackPath = autoSelection.earthFile;
+            const QString fallbackPath = startupSelection.earthFile;
             if (view_ && QFileInfo(fallbackPath).isFile())
             {
                 statusBar()->showMessage(QStringLiteral("自定义 Earth 失败，正在加载自动地图: %1").arg(fallbackPath));
-                view_->loadEarthFileAsync(fallbackPath, [this, autoSelection, fallbackPath](bool fallbackLoaded) {
+                view_->loadEarthFileAsync(fallbackPath, [this, startupSelection, fallbackPath](bool fallbackLoaded) {
                     latest_earth_load_ = view_ ? view_->earthLoadDiagnostics() : EarthLoadDiagnostics{};
                     if (!fallbackLoaded)
                     {
-                        setMapSelection(autoSelection);
+                        setMapSelection(startupSelection);
                         statusBar()->showMessage(QStringLiteral("自动加载 Earth 文件失败，已保留当前场景。"), 8000);
                         return;
                     }
-                    setMapSelection(autoSelection);
+                    setMapSelection(startupSelection);
                     QSettings settings = map3DSettings();
                     VaporView::setPersistentSetting(settings, QStringLiteral("lastEarthFile"), fallbackPath);
-                    if (autoSelection.diagnostics.real3DLocalReady)
+                    if (shouldAutoLoadLocal3DTiles(startupSelection))
                     {
                         loadConfiguredLocal3DTiles(false);
                     }
@@ -1563,12 +1703,12 @@ void Map3DWindow::loadInitialEarthFile()
         }
         if (!loaded)
         {
-            setMapSelection(autoSelection);
+            setMapSelection(startupSelection);
             statusBar()->showMessage(QStringLiteral("自动加载 Earth 文件失败，已保留当前场景: %1").arg(initialPath), 8000);
             return;
         }
-        const MapDataSelection activeSelection = initialPath == autoSelection.earthFile
-            ? autoSelection
+        const MapDataSelection activeSelection = initialPath == startupSelection.earthFile
+            ? startupSelection
             : selectionForCustomEarth(autoSelection,
                                       initialPath,
                                       QStringLiteral("User-selected custom Earth scene."),
@@ -1577,7 +1717,7 @@ void Map3DWindow::loadInitialEarthFile()
         resetAutomaticSentinel2Imagery();
         QSettings settings = map3DSettings();
         VaporView::setPersistentSetting(settings, QStringLiteral("lastEarthFile"), initialPath);
-        if (activeSelection.diagnostics.real3DLocalReady)
+        if (shouldAutoLoadLocal3DTiles(activeSelection))
         {
             loadConfiguredLocal3DTiles(false);
         }
@@ -1627,7 +1767,15 @@ void Map3DWindow::openEarthFile()
         this, QStringLiteral("加载 Earth 文件"),
         settings.value(QStringLiteral("lastEarthFile")).toString(),
         QStringLiteral("osgEarth (*.earth);;All Files (*)"));
-    if (file.isEmpty() || !view_) return;
+    if (file.isEmpty())
+    {
+        return;
+    }
+    if (!view_)
+    {
+        statusBar()->showMessage(QStringLiteral("请先点击“启动渲染”，再加载 Earth 文件。"), 6000);
+        return;
+    }
     const MapDataSelection selection =
         selectionForCustomEarth(map_data_manager_.selectBestAvailableMap(), file,
                                 QStringLiteral("User-selected custom Earth scene."),
@@ -1667,7 +1815,12 @@ void Map3DWindow::loadLocalImageryTemplate(const LocalImageryOption& option)
         statusBar()->showMessage(QStringLiteral("[界面测试] 已模拟影像模板加载；未访问外部资源。"), 6000);
         return;
     }
-    if (!option.available || !view_)
+    if (!view_)
+    {
+        statusBar()->showMessage(QStringLiteral("请先点击“启动渲染”，再加载本地影像。"), 6000);
+        return;
+    }
+    if (!option.available)
     {
         statusBar()->showMessage(QStringLiteral("本地影像不可用: %1").arg(option.label), 5000);
         return;
@@ -1873,7 +2026,19 @@ bool Map3DWindow::loadConfiguredLocal3DTiles(bool showStatusMessage)
         return false;
     }
     const MapDataDiagnostics diagnostics = map_selection_.diagnostics;
-    if (!diagnostics.local3DTilesTilesetValid || !view_)
+    if (!view_)
+    {
+        latest_local_3d_tiles_load_ = {};
+        latest_local_3d_tiles_load_.requestedPath = diagnostics.local3DTilesTilesetPath;
+        latest_local_3d_tiles_load_.failureReason = QStringLiteral("3D rendering has not been started.");
+        refreshDiagnosticsText();
+        if (showStatusMessage)
+        {
+            statusBar()->showMessage(QStringLiteral("请先点击“启动渲染”，再加载本地 3D 建筑。"), 6000);
+        }
+        return false;
+    }
+    if (!diagnostics.local3DTilesTilesetValid)
     {
         latest_local_3d_tiles_load_ = {};
         latest_local_3d_tiles_load_.requestedPath = diagnostics.local3DTilesTilesetPath;
@@ -1951,8 +2116,13 @@ void Map3DWindow::openAircraftModel()
                                                       QStringLiteral("加载飞机模型"),
                                                       initial,
                                                       QStringLiteral("3D Models (*.osgb *.osg *.glb *.gltf);;All Files (*)"));
-    if (file.isEmpty() || !view_)
+    if (file.isEmpty())
     {
+        return;
+    }
+    if (!view_)
+    {
+        statusBar()->showMessage(QStringLiteral("请先点击“启动渲染”，再加载飞机模型。"), 6000);
         return;
     }
 
@@ -1994,7 +2164,12 @@ void Map3DWindow::reloadBestLocalMap()
         return;
     }
     const MapDataSelection selection = map_data_manager_.selectBestAvailableMap();
-    if (!view_ || !QFileInfo(selection.earthFile).isFile())
+    if (!view_)
+    {
+        statusBar()->showMessage(QStringLiteral("请先点击“启动渲染”，再重载最佳本地地图。"), 6000);
+        return;
+    }
+    if (!QFileInfo(selection.earthFile).isFile())
     {
         latest_earth_load_ = {};
         latest_earth_load_.requestedPath = selection.earthFile;

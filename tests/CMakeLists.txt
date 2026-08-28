@@ -994,6 +994,26 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
     endif()
     add_test(NAME main_window_map3d_live_test COMMAND main_window_map3d_live_test)
 
+    add_executable(main_window_map3d_open_test
+        ${CMAKE_CURRENT_SOURCE_DIR}/main_window_map3d_open_test.cpp
+    )
+    target_include_directories(main_window_map3d_open_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+    )
+    target_compile_definitions(main_window_map3d_open_test PRIVATE
+        VAPORVIEW_MAIN_WINDOW_TESTING=1
+    )
+    target_link_libraries(main_window_map3d_open_test PRIVATE
+        vaporview_main_window
+        vaporview_map3d_osgearth
+    )
+    add_dependencies(main_window_map3d_open_test VaporViewRuntimeResources)
+    if(WIN32)
+        vaporview_stage_osgearth_runtime(main_window_map3d_open_test)
+    endif()
+    add_test(NAME main_window_map3d_open_test COMMAND main_window_map3d_open_test)
+
     add_executable(main_window_map3d_real_close_test
         ${CMAKE_CURRENT_SOURCE_DIR}/main_window_map3d_real_close_test.cpp
     )
@@ -1183,6 +1203,7 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
 
     set(VAPORVIEW_FAST_3D_INTEGRATION_TESTS
         map3d_window_smoke_test
+        main_window_map3d_open_test
     )
     set_tests_properties(${VAPORVIEW_FAST_3D_INTEGRATION_TESTS} PROPERTIES
         TIMEOUT 90
