@@ -113,21 +113,6 @@ void setFixedTextLabelWidth(QLabel *label, const QStringList& candidates, int pa
     applyFixedTextLabelWidth(label, candidates, padding);
 }
 
-void refreshFixedTextLabelWidth(QLabel *label)
-{
-    if (!label)
-    {
-        return;
-    }
-    const QStringList widthCandidates = label->property(kTextWidthCandidatesProperty).toStringList();
-    if (widthCandidates.isEmpty())
-    {
-        return;
-    }
-    const int padding = label->property(kTextWidthPaddingProperty).toInt();
-    applyFixedTextLabelWidth(label, widthCandidates, std::max(0, padding));
-}
-
 void refreshFixedNumericLabelWidth(QLabel *label)
 {
     if (!label)
@@ -154,36 +139,28 @@ void polishNumericLabel(QLabel *label)
     refreshFixedNumericLabelWidth(label);
 }
 
-QStringList environmentFieldLabelWidthCandidates()
+QStringList localizedFieldLabelWidthCandidates(bool english,
+                                               const QString& englishText,
+                                               const QString& chineseText)
 {
-    return {
-        QStringLiteral("Distance:"),
-        QStringLiteral("Strength:"),
-        QStringLiteral("Pressure:"),
-        QStringLiteral("Temp:"),
-        QStringLiteral("Humidity:"),
-        QStringLiteral("距离:"),
-        QStringLiteral("强度:"),
-        QStringLiteral("气压:"),
-        QStringLiteral("温度:"),
-        QStringLiteral("湿度:")
-    };
+    return {english ? englishText : chineseText};
 }
 
-QStringList lidarDistanceFieldLabelWidthCandidates()
+void setLocalizedFixedTextLabel(QLabel *label,
+                                bool english,
+                                const QString& englishText,
+                                const QString& chineseText,
+                                int padding = 2)
 {
-    return {
-        QStringLiteral("Distance:"),
-        QStringLiteral("距离:")
-    };
-}
-
-QStringList lidarStrengthFieldLabelWidthCandidates()
-{
-    return {
-        QStringLiteral("Strength:"),
-        QStringLiteral("强度:")
-    };
+    if (!label)
+    {
+        return;
+    }
+    label->setText(english ? englishText : chineseText);
+    setFixedTextLabelWidth(
+        label,
+        localizedFieldLabelWidthCandidates(english, englishText, chineseText),
+        padding);
 }
 
 QString fixedTextField(const QString& text, int width, Qt::Alignment alignment = Qt::AlignRight)
@@ -1282,19 +1259,18 @@ void PtbPanel::setupUi()
     rate_label_->setObjectName("rateLabel");
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     rate_label_->setMinimumHeight(20);
-    setFixedNumericLabelWidth(rate_label_, {QStringLiteral("-999.9 Hz"), QStringLiteral("999.9 Hz"), QStringLiteral("-- Hz")}, 4);
+    setFixedNumericLabelWidth(rate_label_, {QStringLiteral("999.9 Hz"), QStringLiteral("-- Hz")}, 2);
 
     auto *pressLayout = new QHBoxLayout();
     pressLayout->setSpacing(1);
     pressure_lbl_ = new QLabel(this);
     pressure_lbl_->setObjectName("fieldLabel");
     pressure_lbl_->setMinimumHeight(20);
-    setFixedTextLabelWidth(pressure_lbl_, environmentFieldLabelWidthCandidates(), 6);
     pressLayout->addWidget(pressure_lbl_);
     pressure_label_ = new QLabel("--- hPa", this);
     pressure_label_->setObjectName("highlightedValue");
     pressure_label_->setMinimumHeight(20);
-    setFixedNumericLabelWidth(pressure_label_, {QStringLiteral("-9999.99 hPa"), QStringLiteral("9999.99 hPa"), QStringLiteral("--- hPa")}, 18);
+    setFixedNumericLabelWidth(pressure_label_, {QStringLiteral("1100.00 hPa"), QStringLiteral("--- hPa")}, 4);
     pressLayout->addWidget(pressure_label_);
     pressLayout->addStretch();
     pressLayout->addWidget(rate_label_);
@@ -1324,15 +1300,7 @@ void PtbPanel::updateRate(double hz)
 void PtbPanel::setEnglish(bool english)
 {
     is_english_ = english;
-    if (english)
-    {
-        pressure_lbl_->setText("Pressure:");
-    }
-    else
-    {
-        pressure_lbl_->setText("气压:");
-    }
-    refreshFixedTextLabelWidth(pressure_lbl_);
+    setLocalizedFixedTextLabel(pressure_lbl_, english, QStringLiteral("Pressure:"), QStringLiteral("气压:"));
     if (pressure_trend_plot_)
     {
         pressure_trend_plot_->setEnglish(english);
@@ -1343,7 +1311,7 @@ void PtbPanel::updateData(const VaporView::PtbData& ptb_data)
 {
     if (ptb_data.valid)
     {
-        pressure_label_->setText(fixedDecimalWithUnit(ptb_data.pressure_hpa, 2, 8, QStringLiteral("hPa")));
+        pressure_label_->setText(fixedDecimalWithUnit(ptb_data.pressure_hpa, 2, 7, QStringLiteral("hPa")));
         pressure_label_->setProperty("data-valid", true);
         polishNumericLabel(pressure_label_);
         if (pressure_trend_plot_ &&
@@ -1356,7 +1324,7 @@ void PtbPanel::updateData(const VaporView::PtbData& ptb_data)
     }
     else
     {
-        pressure_label_->setText(fixedDecimalWithUnit(std::numeric_limits<double>::quiet_NaN(), 2, 8, QStringLiteral("hPa")));
+        pressure_label_->setText(fixedDecimalWithUnit(std::numeric_limits<double>::quiet_NaN(), 2, 7, QStringLiteral("hPa")));
         pressure_label_->setProperty("data-valid", false);
         polishNumericLabel(pressure_label_);
     }
@@ -1396,24 +1364,23 @@ void HmpPanel::setupUi()
     rate_label_->setObjectName("rateLabel");
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     rate_label_->setMinimumHeight(20);
-    setFixedNumericLabelWidth(rate_label_, {QStringLiteral("-999.9 Hz"), QStringLiteral("999.9 Hz"), QStringLiteral("-- Hz")}, 4);
+    setFixedNumericLabelWidth(rate_label_, {QStringLiteral("999.9 Hz"), QStringLiteral("-- Hz")}, 2);
     humidity_rate_label_ = new VaporView::VisualTextLabel(this);
     humidity_rate_label_->setObjectName("rateLabel");
     humidity_rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     humidity_rate_label_->setMinimumHeight(20);
-    setFixedNumericLabelWidth(humidity_rate_label_, {QStringLiteral("-999.9 Hz"), QStringLiteral("999.9 Hz"), QStringLiteral("-- Hz")}, 4);
+    setFixedNumericLabelWidth(humidity_rate_label_, {QStringLiteral("999.9 Hz"), QStringLiteral("-- Hz")}, 2);
 
     auto *tempLayout = new QHBoxLayout();
     tempLayout->setSpacing(1);
     temp_lbl_ = new QLabel(this);
     temp_lbl_->setObjectName("fieldLabel");
     temp_lbl_->setMinimumHeight(20);
-    setFixedTextLabelWidth(temp_lbl_, environmentFieldLabelWidthCandidates(), 6);
     tempLayout->addWidget(temp_lbl_);
     temperature_label_ = new QLabel("--- °C", this);
     temperature_label_->setObjectName("highlightedValue");
     temperature_label_->setMinimumHeight(20);
-    setFixedNumericLabelWidth(temperature_label_, {QStringLiteral("-9999.9 °C"), QStringLiteral("9999.9 °C"), QStringLiteral("--- °C")}, 18);
+    setFixedNumericLabelWidth(temperature_label_, {QStringLiteral("-99.9 °C"), QStringLiteral("100.0 °C"), QStringLiteral("--- °C")}, 4);
     tempLayout->addWidget(temperature_label_);
     tempLayout->addStretch();
     tempLayout->addWidget(rate_label_);
@@ -1432,12 +1399,11 @@ void HmpPanel::setupUi()
     humidity_lbl_ = new QLabel(this);
     humidity_lbl_->setObjectName("fieldLabel");
     humidity_lbl_->setMinimumHeight(20);
-    setFixedTextLabelWidth(humidity_lbl_, environmentFieldLabelWidthCandidates(), 6);
     humidLayout->addWidget(humidity_lbl_);
     humidity_label_ = new QLabel("--- %RH", this);
     humidity_label_->setObjectName("highlightedValue");
     humidity_label_->setMinimumHeight(20);
-    setFixedNumericLabelWidth(humidity_label_, {QStringLiteral("-9999.9 %RH"), QStringLiteral("9999.9 %RH"), QStringLiteral("100.0 %RH"), QStringLiteral("--- %RH")}, 28);
+    setFixedNumericLabelWidth(humidity_label_, {QStringLiteral("100.0 %RH"), QStringLiteral("--- %RH")}, 4);
     humidLayout->addWidget(humidity_label_);
     humidLayout->addStretch();
     humidLayout->addWidget(humidity_rate_label_);
@@ -1471,18 +1437,8 @@ void HmpPanel::updateRate(double hz)
 void HmpPanel::setEnglish(bool english)
 {
     is_english_ = english;
-    if (english)
-    {
-        temp_lbl_->setText("Temp:");
-        humidity_lbl_->setText("Humidity:");
-    }
-    else
-    {
-        temp_lbl_->setText("温度:");
-        humidity_lbl_->setText("湿度:");
-    }
-    refreshFixedTextLabelWidth(temp_lbl_);
-    refreshFixedTextLabelWidth(humidity_lbl_);
+    setLocalizedFixedTextLabel(temp_lbl_, english, QStringLiteral("Temp:"), QStringLiteral("温度:"));
+    setLocalizedFixedTextLabel(humidity_lbl_, english, QStringLiteral("Humidity:"), QStringLiteral("湿度:"));
     if (temperature_trend_plot_)
     {
         temperature_trend_plot_->setEnglish(english);
@@ -1497,8 +1453,8 @@ void HmpPanel::updateData(const VaporView::HmpData& hmp_data)
 {
     if (hmp_data.valid)
     {
-        temperature_label_->setText(fixedDecimalWithUnit(hmp_data.temperature, 1, 8, QStringLiteral("°C")));
-        humidity_label_->setText(fixedDecimalWithUnit(hmp_data.humidity, 1, 8, QStringLiteral("%RH")));
+        temperature_label_->setText(fixedDecimalWithUnit(hmp_data.temperature, 1, 5, QStringLiteral("°C")));
+        humidity_label_->setText(fixedDecimalWithUnit(hmp_data.humidity, 1, 5, QStringLiteral("%RH")));
         temperature_label_->setProperty("data-valid", true);
         polishNumericLabel(temperature_label_);
         humidity_label_->setProperty("data-valid", true);
@@ -1520,8 +1476,8 @@ void HmpPanel::updateData(const VaporView::HmpData& hmp_data)
     }
     else
     {
-        temperature_label_->setText(fixedDecimalWithUnit(std::numeric_limits<double>::quiet_NaN(), 1, 8, QStringLiteral("°C")));
-        humidity_label_->setText(fixedDecimalWithUnit(std::numeric_limits<double>::quiet_NaN(), 1, 8, QStringLiteral("%RH")));
+        temperature_label_->setText(fixedDecimalWithUnit(std::numeric_limits<double>::quiet_NaN(), 1, 5, QStringLiteral("°C")));
+        humidity_label_->setText(fixedDecimalWithUnit(std::numeric_limits<double>::quiet_NaN(), 1, 5, QStringLiteral("%RH")));
         temperature_label_->setProperty("data-valid", false);
         polishNumericLabel(temperature_label_);
         humidity_label_->setProperty("data-valid", false);
@@ -1560,30 +1516,28 @@ void LidarPanel::setupUi()
     rate_label_->setObjectName("rateLabel");
     rate_label_->setMinimumHeight(20);
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    setFixedNumericLabelWidth(rate_label_, {QStringLiteral("-999.9 Hz"), QStringLiteral("999.9 Hz"), QStringLiteral("-- Hz")}, 4);
+    setFixedNumericLabelWidth(rate_label_, {QStringLiteral("999.9 Hz"), QStringLiteral("-- Hz")}, 2);
 
     auto *distanceLayout = new QHBoxLayout();
     distanceLayout->setSpacing(1);
     distance_lbl_ = new QLabel(this);
     distance_lbl_->setObjectName("fieldLabel");
     distance_lbl_->setMinimumHeight(20);
-    setFixedTextLabelWidth(distance_lbl_, lidarDistanceFieldLabelWidthCandidates(), 4);
     distanceLayout->addWidget(distance_lbl_);
     distance_label_ = new QLabel("--- m", this);
     distance_label_->setObjectName("highlightedValue");
     distance_label_->setMinimumHeight(20);
-    setFixedNumericLabelWidth(distance_label_, {QStringLiteral("9999.99 m"), QStringLiteral("--- m")}, 4);
+    setFixedNumericLabelWidth(distance_label_, {QStringLiteral("999.99 m"), QStringLiteral("--- m")}, 2);
     distanceLayout->addWidget(distance_label_);
-    distanceLayout->addSpacing(4);
+    distanceLayout->addSpacing(2);
     strength_lbl_ = new QLabel(this);
     strength_lbl_->setObjectName("fieldLabel");
     strength_lbl_->setMinimumHeight(20);
-    setFixedTextLabelWidth(strength_lbl_, lidarStrengthFieldLabelWidthCandidates(), 4);
     distanceLayout->addWidget(strength_lbl_);
     strength_label_ = new QLabel("---", this);
     strength_label_->setObjectName("highlightedValue");
     strength_label_->setMinimumHeight(20);
-    setFixedNumericLabelWidth(strength_label_, {QStringLiteral("65535"), QStringLiteral("---")}, 4);
+    setFixedNumericLabelWidth(strength_label_, {QStringLiteral("65535"), QStringLiteral("---")}, 2);
     distanceLayout->addWidget(strength_label_);
     distanceLayout->addStretch();
     distanceLayout->addWidget(rate_label_);
@@ -1605,26 +1559,16 @@ void LidarPanel::updateRate(double hz)
 void LidarPanel::setEnglish(bool english)
 {
     is_english_ = english;
-    if (english)
-    {
-        distance_lbl_->setText("Distance:");
-        strength_lbl_->setText("Strength:");
-    }
-    else
-    {
-        distance_lbl_->setText("距离:");
-        strength_lbl_->setText("强度:");
-    }
-    refreshFixedTextLabelWidth(distance_lbl_);
-    refreshFixedTextLabelWidth(strength_lbl_);
+    setLocalizedFixedTextLabel(distance_lbl_, english, QStringLiteral("Distance:"), QStringLiteral("距离:"));
+    setLocalizedFixedTextLabel(strength_lbl_, english, QStringLiteral("Strength:"), QStringLiteral("强度:"));
 }
 
 void LidarPanel::updateData(const VaporView::LidarData& lidar_data)
 {
     if (lidar_data.valid)
     {
-        distance_label_->setText(fixedDecimalWithUnit(lidar_data.distance_m, 2, 7, QStringLiteral("m")));
-        strength_label_->setText(fixedTextField(QString::number(lidar_data.signal_strength), 5));
+        distance_label_->setText(fixedDecimalWithUnit(lidar_data.distance_m, 2, 6, QStringLiteral("m")));
+        strength_label_->setText(fixedTextField(QString::number(lidar_data.signal_strength), 4));
         distance_label_->setProperty("data-valid", true);
         strength_label_->setProperty("data-valid", true);
         polishNumericLabel(distance_label_);
@@ -1632,8 +1576,8 @@ void LidarPanel::updateData(const VaporView::LidarData& lidar_data)
     }
     else
     {
-        distance_label_->setText(fixedDecimalWithUnit(std::numeric_limits<double>::quiet_NaN(), 2, 7, QStringLiteral("m")));
-        strength_label_->setText(fixedTextField(QStringLiteral("---"), 5));
+        distance_label_->setText(fixedDecimalWithUnit(std::numeric_limits<double>::quiet_NaN(), 2, 6, QStringLiteral("m")));
+        strength_label_->setText(fixedTextField(QStringLiteral("---"), 4));
         distance_label_->setProperty("data-valid", false);
         strength_label_->setProperty("data-valid", false);
         polishNumericLabel(distance_label_);

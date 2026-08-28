@@ -3,6 +3,7 @@
 #include "ground/widgets/TelemetryPanels.h"
 
 #include <QApplication>
+#include <QFontMetrics>
 #include <QLabel>
 #include <QLayout>
 #include <QPoint>
@@ -64,9 +65,53 @@ QLabel *firstLabelContaining(QWidget& panel, const QString& objectName, const QS
     return nullptr;
 }
 
+QLabel *firstLabelExact(QWidget& panel, const QString& objectName, const QString& text)
+{
+    const auto labels = panel.findChildren<QLabel *>(objectName);
+    for (QLabel *label : labels)
+    {
+        if (label->text() == text)
+        {
+            return label;
+        }
+    }
+    return nullptr;
+}
+
 int labelCenterYInPanel(const QLabel *label, QWidget& panel)
 {
     return label->mapTo(&panel, QPoint(0, label->height() / 2)).y();
+}
+
+int visibleTextLeftInPanel(const QLabel *label, QWidget& panel)
+{
+    const QString text = label->text();
+    int leadingSpaces = 0;
+    while (leadingSpaces < text.size() && text.at(leadingSpaces).isSpace())
+    {
+        ++leadingSpaces;
+    }
+    return label->mapTo(&panel,
+                        QPoint(label->fontMetrics().horizontalAdvance(text.left(leadingSpaces)),
+                               0)).x();
+}
+
+int visibleTextRightInPanel(const QLabel *label, QWidget& panel)
+{
+    return label->mapTo(&panel,
+                        QPoint(label->fontMetrics().horizontalAdvance(label->text().trimmed()),
+                               0)).x();
+}
+
+void requireCompactFieldValueGap(QWidget& panel,
+                                 const QLabel *fieldLabel,
+                                 const QLabel *valueLabel,
+                                 const char *message)
+{
+    require(fieldLabel != nullptr && valueLabel != nullptr, message);
+    const int gap = visibleTextLeftInPanel(valueLabel, panel) -
+                    visibleTextRightInPanel(fieldLabel, panel);
+    require(gap >= 0 && gap <= 16, message);
 }
 
 } // namespace
@@ -122,10 +167,15 @@ int main(int argc, char **argv)
     lidarData.distance_m = 12.75;
     lidarData.signal_strength = 321;
     coordinator.updateEnvironmentData(epsilonData, ptbData, hmpData, lidarData);
-    lidar.resize(560, std::max(1, lidar.sizeHint().height()));
-    if (lidar.layout())
+    for (QWidget *panel : {static_cast<QWidget *>(&ptb),
+                           static_cast<QWidget *>(&hmp),
+                           static_cast<QWidget *>(&lidar)})
     {
-        lidar.layout()->activate();
+        panel->resize(560, std::max(1, panel->sizeHint().height()));
+        if (panel->layout())
+        {
+            panel->layout()->activate();
+        }
     }
 
     require(hasLabelText(ptb, QStringLiteral("highlightedValue"), QStringLiteral("1001.25")),
@@ -147,6 +197,26 @@ int main(int argc, char **argv)
                 std::abs(labelCenterYInPanel(lidarDistanceValue, lidar) -
                          labelCenterYInPanel(lidarRateValue, lidar)) <= 2,
             "Lidar distance, strength, and rate are presented on the same row");
+    auto *pressureField =
+        firstLabelExact(ptb, QStringLiteral("fieldLabel"), QStringLiteral("气压:"));
+    auto *pressureValue =
+        firstLabelContaining(ptb, QStringLiteral("highlightedValue"), QStringLiteral("1001.25"));
+    requireCompactFieldValueGap(ptb,
+                                pressureField,
+                                pressureValue,
+                                "pressure field and value keep a compact readable gap");
+    auto *distanceField =
+        firstLabelExact(lidar, QStringLiteral("fieldLabel"), QStringLiteral("距离:"));
+    auto *strengthField =
+        firstLabelExact(lidar, QStringLiteral("fieldLabel"), QStringLiteral("强度:"));
+    requireCompactFieldValueGap(lidar,
+                                distanceField,
+                                lidarDistanceValue,
+                                "distance field and value keep a compact readable gap");
+    requireCompactFieldValueGap(lidar,
+                                strengthField,
+                                lidarStrengthValue,
+                                "strength field and value keep a compact readable gap");
     auto *temperatureTrend = hmp.findChild<QWidget *>(QStringLiteral("environmentTemperatureTrendPlot"));
     auto *humidityTrend = hmp.findChild<QWidget *>(QStringLiteral("environmentHumidityTrendPlot"));
     auto *pressureTrend = ptb.findChild<QWidget *>(QStringLiteral("environmentPressureTrendPlot"));
