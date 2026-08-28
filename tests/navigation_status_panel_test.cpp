@@ -180,7 +180,7 @@ void testStateVisibilityAndFormatting()
             "navigation values use stable units and precision formatting");
     require(label(panel, "navigationStatusFreshnessValue")->text().contains(QStringLiteral("32 ms")) &&
                 label(panel, "navigationStatusGnssValue")->text() == QStringLiteral("RTK_FIXED") &&
-                label(panel, "navigationStatusFixValue")->text() == QStringLiteral("RTK固定") &&
+                label(panel, "navigationStatusFixValue")->text() == QStringLiteral("RTK固定解") &&
                 label(panel, "navigationStatusGnssFixValue")->text() == QStringLiteral("RTK_FIXED") &&
                 label(panel, "navigationStatusSatellitesValue")->text() == QStringLiteral("24"),
             "overview separates positioning status from the explicit GNSS fix state");
@@ -225,12 +225,12 @@ void testStateVisibilityAndFormatting()
         {1, QStringLiteral("NO_FIX"), QStringLiteral("未定位")},
         {2, QStringLiteral("2D"), QStringLiteral("2D定位")},
         {3, QStringLiteral("3D"), QStringLiteral("3D定位")},
-        {4, QStringLiteral("DGPS"), QStringLiteral("DGPS")},
-        {5, QStringLiteral("RTK_FLOAT"), QStringLiteral("RTK浮点")},
-        {6, QStringLiteral("RTK_FIXED"), QStringLiteral("RTK固定")},
+        {4, QStringLiteral("DGPS"), QStringLiteral("差分定位")},
+        {5, QStringLiteral("RTK_FLOAT"), QStringLiteral("RTK浮点解")},
+        {6, QStringLiteral("RTK_FIXED"), QStringLiteral("RTK固定解")},
         {7, QStringLiteral("STATIC"), QStringLiteral("静态定点")},
-        {8, QStringLiteral("PPP"), QStringLiteral("PPP")},
-        {9, QStringLiteral("RTK_DUAL"), QStringLiteral("双天线RTK固定")},
+        {8, QStringLiteral("PPP"), QStringLiteral("精密单点定位")},
+        {9, QStringLiteral("RTK_DUAL"), QStringLiteral("双天线RTK固定解")},
     };
     for (const auto& statusCase : statusCases)
     {

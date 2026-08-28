@@ -1743,7 +1743,7 @@ void requireRtkSidebarPage(
     sampleStatus.heightM = 42.5;
     combinationPage->setStatusSnapshot(sampleStatus);
     require(rtkServiceStatus->text().contains(QStringLiteral("运行中")) &&
-                positioningMode->text() == QStringLiteral("RTK固定") &&
+                positioningMode->text() == QStringLiteral("RTK固定解") &&
                 longitudeValue->text() != QStringLiteral("--") &&
                 ntripStatus->text() == QStringLiteral("--") &&
                 rtcmStatus->text() == QStringLiteral("--"),

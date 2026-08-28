@@ -86,17 +86,17 @@ QString positioningStatusFromGnssFixCode(int code, bool english)
     case 3:
         return english ? QStringLiteral("3D fix") : QStringLiteral("3D定位");
     case 4:
-        return QStringLiteral("DGPS");
+        return english ? QStringLiteral("Differential positioning") : QStringLiteral("差分定位");
     case 5:
-        return english ? QStringLiteral("RTK float") : QStringLiteral("RTK浮点");
+        return english ? QStringLiteral("RTK float") : QStringLiteral("RTK浮点解");
     case 6:
-        return english ? QStringLiteral("RTK fixed") : QStringLiteral("RTK固定");
+        return english ? QStringLiteral("RTK fixed") : QStringLiteral("RTK固定解");
     case 7:
         return english ? QStringLiteral("Static") : QStringLiteral("静态定点");
     case 8:
-        return QStringLiteral("PPP");
+        return english ? QStringLiteral("Precise point positioning") : QStringLiteral("精密单点定位");
     case 9:
-        return english ? QStringLiteral("RTK dual fixed") : QStringLiteral("双天线RTK固定");
+        return english ? QStringLiteral("RTK dual fixed") : QStringLiteral("双天线RTK固定解");
     default:
         return QString();
     }
