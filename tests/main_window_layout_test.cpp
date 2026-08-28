@@ -3848,7 +3848,7 @@ void requireHomeOverviewLanguageWidthRoundTrip()
             "wide overview test window closes cleanly");
 }
 
-void requireHomeEnvironmentCardLayout(MainWindow& window)
+void requireHomeEnvironmentCardLayout(MainWindow& window, bool requireSideBySide)
 {
     activateLayouts(&window);
     processEventsFor(500);
@@ -3892,7 +3892,7 @@ void requireHomeEnvironmentCardLayout(MainWindow& window)
     const bool stacked =
         std::abs(environmentGeometry.left() - epsilonGeometry.left()) <= 4 &&
         environmentGeometry.top() > epsilonGeometry.bottom();
-    require(sideBySideFits ? sideBySide : (sideBySide || stacked),
+    require((sideBySideFits || requireSideBySide) ? sideBySide : (sideBySide || stacked),
             "home data cards either place environment to the right when width permits, or stack cleanly when narrow");
     require(environmentGeometry.right() <= dataGroup->contentsRect().right() + 1,
             "default environment and lidar card stays inside the home data card edge");
@@ -4032,11 +4032,11 @@ int main(int argc, char **argv)
     {
         MainWindow environmentWindow;
         environmentWindow.setWindowTitle(QStringLiteral("VaporView"));
-        environmentWindow.resize(1920, 1000);
+        environmentWindow.resize(2000, 1250);
         environmentWindow.show();
         require(waitForWindowExposed(&environmentWindow),
                 "home-environment test window becomes exposed");
-        requireHomeEnvironmentCardLayout(environmentWindow);
+        requireHomeEnvironmentCardLayout(environmentWindow, true);
         std::cout << "home_environment_layout_test passed\n";
         return 0;
     }
@@ -10300,7 +10300,7 @@ int main(int argc, char **argv)
             "temperature trend plot sits under the temperature data panel");
     require(humidityPlot && qobject_cast<HmpPanel *>(humidityPlot->parentWidget()) != nullptr,
             "humidity trend plot sits under the humidity data panel");
-    requireHomeEnvironmentCardLayout(window);
+    requireHomeEnvironmentCardLayout(window, false);
 
     const QRect compactEpsilonGeometry = epsilonGroup->geometry();
     const QRect compactEnvironmentGeometry = environmentGroup->geometry();

@@ -30,7 +30,7 @@ constexpr qreal kEnvironmentTimeXAxisLabelGap = 4.0;
 constexpr qreal kEnvironmentXAxisLabelRightInset = 2.0;
 constexpr qreal kEnvironmentXAxisTickLength = 3.0;
 constexpr qint64 kEnvironmentTimeAxisMsecsPerInterval = 1000;
-constexpr int kEnvironmentPanelSideBySideMinimumWidth = 410;
+constexpr int kEnvironmentPanelSideBySideMinimumWidth = 340;
 
 QFont numericFontFrom(const QFont& base)
 {
@@ -1572,9 +1572,9 @@ void LidarPanel::setupUi()
     distance_label_ = new QLabel("--- m", this);
     distance_label_->setObjectName("highlightedValue");
     distance_label_->setMinimumHeight(20);
-    setFixedNumericLabelWidth(distance_label_, {QStringLiteral("9999.99 m"), QStringLiteral("--- m")}, 8);
+    setFixedNumericLabelWidth(distance_label_, {QStringLiteral("9999.99 m"), QStringLiteral("--- m")}, 4);
     distanceLayout->addWidget(distance_label_);
-    distanceLayout->addSpacing(8);
+    distanceLayout->addSpacing(4);
     strength_lbl_ = new QLabel(this);
     strength_lbl_->setObjectName("fieldLabel");
     strength_lbl_->setMinimumHeight(20);
@@ -1583,7 +1583,7 @@ void LidarPanel::setupUi()
     strength_label_ = new QLabel("---", this);
     strength_label_->setObjectName("highlightedValue");
     strength_label_->setMinimumHeight(20);
-    setFixedNumericLabelWidth(strength_label_, {QStringLiteral("65535"), QStringLiteral("---")}, 6);
+    setFixedNumericLabelWidth(strength_label_, {QStringLiteral("65535"), QStringLiteral("---")}, 4);
     distanceLayout->addWidget(strength_label_);
     distanceLayout->addStretch();
     distanceLayout->addWidget(rate_label_);
@@ -1623,8 +1623,8 @@ void LidarPanel::updateData(const VaporView::LidarData& lidar_data)
 {
     if (lidar_data.valid)
     {
-        distance_label_->setText(fixedDecimalWithUnit(lidar_data.distance_m, 2, 8, QStringLiteral("m")));
-        strength_label_->setText(fixedTextField(QString::number(lidar_data.signal_strength), 8));
+        distance_label_->setText(fixedDecimalWithUnit(lidar_data.distance_m, 2, 7, QStringLiteral("m")));
+        strength_label_->setText(fixedTextField(QString::number(lidar_data.signal_strength), 5));
         distance_label_->setProperty("data-valid", true);
         strength_label_->setProperty("data-valid", true);
         polishNumericLabel(distance_label_);
@@ -1632,8 +1632,8 @@ void LidarPanel::updateData(const VaporView::LidarData& lidar_data)
     }
     else
     {
-        distance_label_->setText(fixedDecimalWithUnit(std::numeric_limits<double>::quiet_NaN(), 2, 8, QStringLiteral("m")));
-        strength_label_->setText(fixedTextField(QStringLiteral("---"), 8));
+        distance_label_->setText(fixedDecimalWithUnit(std::numeric_limits<double>::quiet_NaN(), 2, 7, QStringLiteral("m")));
+        strength_label_->setText(fixedTextField(QStringLiteral("---"), 5));
         distance_label_->setProperty("data-valid", false);
         strength_label_->setProperty("data-valid", false);
         polishNumericLabel(distance_label_);

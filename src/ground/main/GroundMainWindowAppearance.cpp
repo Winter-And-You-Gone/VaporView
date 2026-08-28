@@ -923,6 +923,10 @@ void MainWindow::updateResponsiveHomeLayout()
         ? std::max(state_->epsilon_group_->minimumSizeHint().width(),
                    compactEpsilonContentWidth + scalePixels(16))
         : compactEpsilonContentWidth;
+    const int compactEpsilonMinimumWidth = state_->epsilon_group_
+        ? std::max(state_->epsilon_group_->minimumSizeHint().width(),
+                   compactEpsilonContentWidth)
+        : compactEpsilonContentWidth;
     const int environmentMinimumWidth = state_->env_group_
         ? std::max(state_->env_group_->minimumWidth(), state_->env_group_->minimumSizeHint().width())
         : 0;
@@ -934,8 +938,12 @@ void MainWindow::updateResponsiveHomeLayout()
     const int sensorCardGap = std::max(0, kTopLevelCardGap);
     const bool compactCardsFitSideBySide =
         sensorAvailableWidth > 0 &&
-        sensorAvailableWidth >= compactEpsilonTargetWidth + sensorCardGap + environmentMinimumWidth;
+        sensorAvailableWidth >= compactEpsilonMinimumWidth + sensorCardGap + environmentMinimumWidth;
     const bool stackSensorCards = compact && !compactCardsFitSideBySide;
+    const int compactEpsilonSideBySideWidth = compactCardsFitSideBySide
+        ? std::max(compactEpsilonMinimumWidth,
+                   sensorAvailableWidth - sensorCardGap - environmentMinimumWidth)
+        : compactEpsilonTargetWidth;
 
     const QBoxLayout::Direction direction = stackSensorCards ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight;
     if (state_->sensor_layout_->direction() != direction)
@@ -1039,7 +1047,8 @@ void MainWindow::updateResponsiveHomeLayout()
     {
         if (compact)
         {
-            state_->epsilon_group_->setMaximumWidth(compactEpsilonTargetWidth);
+            state_->epsilon_group_->setMaximumWidth(std::min(compactEpsilonTargetWidth,
+                                                             compactEpsilonSideBySideWidth));
             state_->epsilon_group_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
             state_->sensor_layout_->setAlignment(state_->epsilon_group_, Qt::AlignLeft | Qt::AlignTop);
         }
