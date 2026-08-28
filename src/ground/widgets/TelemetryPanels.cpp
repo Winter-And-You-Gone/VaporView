@@ -85,6 +85,23 @@ void setFixedNumericLabelWidth(QLabel *label, const QStringList& candidates, int
     applyFixedNumericLabelWidth(label, candidates, padding);
 }
 
+void setMinimumNumericLabelWidth(QLabel *label, const QStringList& candidates, int padding = 0)
+{
+    if (!label)
+    {
+        return;
+    }
+    label->setFont(numericFontFrom(label->font()));
+    QStringList widthCandidates = candidates;
+    if (!label->text().isEmpty())
+    {
+        widthCandidates.append(label->text());
+    }
+    label->setMinimumWidth(widestTextWidth(label->font(), widthCandidates) + padding);
+    label->setMaximumWidth(QWIDGETSIZE_MAX);
+    label->setSizePolicy(QSizePolicy::Expanding, label->sizePolicy().verticalPolicy());
+}
+
 void applyFixedTextLabelWidth(QLabel *label, const QStringList& candidates, int padding)
 {
     if (!label)
@@ -1270,9 +1287,9 @@ void PtbPanel::setupUi()
     pressure_label_ = new QLabel("--- hPa", this);
     pressure_label_->setObjectName("highlightedValue");
     pressure_label_->setMinimumHeight(20);
-    setFixedNumericLabelWidth(pressure_label_, {QStringLiteral("1100.00 hPa"), QStringLiteral("--- hPa")}, 4);
-    pressLayout->addWidget(pressure_label_);
-    pressLayout->addStretch();
+    pressure_label_->setAlignment(Qt::AlignCenter | Qt::AlignVCenter);
+    setMinimumNumericLabelWidth(pressure_label_, {QStringLiteral("1100.00 hPa"), QStringLiteral("--- hPa")}, 4);
+    pressLayout->addWidget(pressure_label_, 1);
     pressLayout->addWidget(rate_label_);
     layout->addLayout(pressLayout);
 
@@ -1529,7 +1546,7 @@ void LidarPanel::setupUi()
     distance_label_->setMinimumHeight(20);
     setFixedNumericLabelWidth(distance_label_, {QStringLiteral("999.99 m"), QStringLiteral("--- m")}, 2);
     distanceLayout->addWidget(distance_label_);
-    distanceLayout->addSpacing(2);
+    distanceLayout->addSpacing(10);
     strength_lbl_ = new QLabel(this);
     strength_lbl_->setObjectName("fieldLabel");
     strength_lbl_->setMinimumHeight(20);

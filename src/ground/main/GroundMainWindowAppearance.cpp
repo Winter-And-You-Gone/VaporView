@@ -940,9 +940,18 @@ void MainWindow::updateResponsiveHomeLayout()
         sensorAvailableWidth > 0 &&
         sensorAvailableWidth >= compactEpsilonMinimumWidth + sensorCardGap + environmentMinimumWidth;
     const bool stackSensorCards = compact && !compactCardsFitSideBySide;
+    const int sideBySideAvailableWidth = std::max(0, sensorAvailableWidth - sensorCardGap);
+    const int sideBySideMinimumWidth = compactEpsilonMinimumWidth + environmentMinimumWidth;
+    const int sideBySideExtraWidth = std::max(0, sideBySideAvailableWidth - sideBySideMinimumWidth);
+    const int sensorStretchTotal = kSensorNavigationStretch + kSensorEnvironmentStretch;
+    const int proportionalEnvironmentWidth = sensorStretchTotal > 0
+        ? environmentMinimumWidth + sideBySideExtraWidth * kSensorEnvironmentStretch / sensorStretchTotal
+        : environmentMinimumWidth;
+    const int proportionalEpsilonWidth =
+        compactEpsilonMinimumWidth + sideBySideExtraWidth -
+        (proportionalEnvironmentWidth - environmentMinimumWidth);
     const int compactEpsilonSideBySideWidth = compactCardsFitSideBySide
-        ? std::max(compactEpsilonMinimumWidth,
-                   sensorAvailableWidth - sensorCardGap - environmentMinimumWidth)
+        ? std::max(compactEpsilonMinimumWidth, proportionalEpsilonWidth)
         : compactEpsilonTargetWidth;
 
     const QBoxLayout::Direction direction = stackSensorCards ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight;
@@ -1047,8 +1056,9 @@ void MainWindow::updateResponsiveHomeLayout()
     {
         if (compact)
         {
-            state_->epsilon_group_->setMaximumWidth(std::min(compactEpsilonTargetWidth,
-                                                             compactEpsilonSideBySideWidth));
+            state_->epsilon_group_->setMaximumWidth(compactCardsFitSideBySide
+                                                        ? compactEpsilonSideBySideWidth
+                                                        : compactEpsilonTargetWidth);
             state_->epsilon_group_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
             state_->sensor_layout_->setAlignment(state_->epsilon_group_, Qt::AlignLeft | Qt::AlignTop);
         }
@@ -1063,28 +1073,20 @@ void MainWindow::updateResponsiveHomeLayout()
     {
         if (compact)
         {
-            state_->env_group_->setMaximumWidth(QWIDGETSIZE_MAX);
+            state_->env_group_->setMaximumWidth(compactCardsFitSideBySide
+                                                    ? proportionalEnvironmentWidth
+                                                    : QWIDGETSIZE_MAX);
         }
         else
         {
-            const int rowWidth = state_->sensor_row_widget_->contentsRect().width();
-            const int gap = std::max(0, state_->sensor_layout_->spacing());
-            const int availableWidth = std::max(0, rowWidth - gap);
-            const int totalStretch = kSensorNavigationStretch + kSensorEnvironmentStretch;
-            const int targetEnvironmentWidth = totalStretch > 0
-                ? availableWidth * kSensorEnvironmentStretch / totalStretch
-                : 0;
-            const int nonCompactEnvironmentMinimumWidth =
-                std::max(state_->env_group_->minimumWidth(),
-                         state_->env_group_->minimumSizeHint().width());
-            state_->env_group_->setMaximumWidth(std::max(nonCompactEnvironmentMinimumWidth, targetEnvironmentWidth));
+            state_->env_group_->setMaximumWidth(proportionalEnvironmentWidth);
         }
         state_->env_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
         state_->sensor_layout_->setAlignment(state_->env_group_, Qt::Alignment());
     }
     if (state_->sensor_layout_->count() >= 2)
     {
-        state_->sensor_layout_->setStretch(0, compact ? 0 : kSensorNavigationStretch);
+        state_->sensor_layout_->setStretch(0, stackSensorCards ? 0 : kSensorNavigationStretch);
         state_->sensor_layout_->setStretch(1, stackSensorCards ? 0 : kSensorEnvironmentStretch);
     }
 
