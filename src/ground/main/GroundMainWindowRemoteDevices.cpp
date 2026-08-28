@@ -247,6 +247,31 @@ bool MainWindow::isRemoteSkyTcpMode() const
     return state_->sky_telemetry_transport_combo_->currentData().toString() != QStringLiteral("serial");
 }
 
+void MainWindow::requestSourceModeSelection(bool remoteSelected)
+{
+    auto syncSwitch = [remoteSelected](VaporView::Ground::Widgets::SourceModeOverviewSwitchButton *button) {
+        if (button)
+        {
+            button->setSwitchChecked(remoteSelected, button->switchChecked() != remoteSelected);
+        }
+    };
+    syncSwitch(state_->source_mode_switch_);
+    syncSwitch(state_->device_config_.data_source_mode_switch);
+
+    if (!state_->data_source_mode_combo_)
+    {
+        return;
+    }
+
+    const int targetIndex = remoteSelected ? 1 : 0;
+    if (state_->data_source_mode_combo_->currentIndex() == targetIndex)
+    {
+        updateSourceModeUi();
+        return;
+    }
+    state_->data_source_mode_combo_->setCurrentIndex(targetIndex);
+}
+
 void MainWindow::onDataSourceModeChanged(int index)
 {
     // Switching targets updates the shared serial card in several stages (local

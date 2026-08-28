@@ -408,6 +408,7 @@ private:
     void updateRecordingActionStates();
     bool isRemoteSkyMode() const;
     bool isRemoteSkyTcpMode() const;
+    void requestSourceModeSelection(bool remoteSelected);
     void updateSourceModeUi();
     void syncDeviceConfigPageForCurrentTarget();
     void enterLocalDeviceConfigMode();

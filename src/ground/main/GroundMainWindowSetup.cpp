@@ -2462,11 +2462,7 @@ void MainWindow::setupDeviceConfigPage()
             &VaporView::Ground::Widgets::SegmentedSwitchButton::selectionRequested,
             this,
             [this](bool remoteSelected) {
-                if (!state_->data_source_mode_combo_)
-                {
-                    return;
-                }
-                state_->data_source_mode_combo_->setCurrentIndex(remoteSelected ? 1 : 0);
+                requestSourceModeSelection(remoteSelected);
             });
     serialTitleLayout->addWidget(state_->device_config_.data_source_mode_switch, 0, Qt::AlignVCenter | Qt::AlignLeft);
     serialTitleLayout->addStretch(1);
@@ -4447,11 +4443,7 @@ void MainWindow::setupConfigPanel()
             &VaporView::Ground::Widgets::SegmentedSwitchButton::selectionRequested,
             this,
             [this](bool remoteSelected) {
-                if (!state_->data_source_mode_combo_)
-                {
-                    return;
-                }
-                state_->data_source_mode_combo_->setCurrentIndex(remoteSelected ? 1 : 0);
+                requestSourceModeSelection(remoteSelected);
             });
     configTitleLayout->addWidget(state_->source_mode_switch_, 0, Qt::AlignVCenter | Qt::AlignRight);
 

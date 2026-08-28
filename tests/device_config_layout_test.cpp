@@ -1,6 +1,7 @@
 #include "ground/main/MainWindow.h"
 #include "ground/devices/RemoteSkyController.h"
 #include "ground/navigation/CombinationNavigationPage.h"
+#include "ground/widgets/SegmentedSwitchButton.h"
 #include "shared/config/SettingsWriteBarrier.h"
 #include "SkyConfig.h"
 #include "TelemetryCodec.h"
@@ -641,6 +642,8 @@ int main(int argc, char **argv)
 
     auto *dataSourceModeSwitch =
         serialCard->findChild<QPushButton *>(QStringLiteral("deviceConfigSourceModeOverviewSwitch"));
+    auto *dataSourceModeSegmentedSwitch =
+        qobject_cast<VaporView::Ground::Widgets::SegmentedSwitchButton *>(dataSourceModeSwitch);
     auto *epsilonPortCombo =
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceEpsilonPortCombo"));
     auto *epsilonBaudCombo =
@@ -674,7 +677,8 @@ int main(int argc, char **argv)
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceAi8TemperatureBaudCombo"));
     auto *ai8RateCombo =
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceAi8TemperatureRateCombo"));
-    require(dataSourceModeSwitch && epsilonPortCombo && epsilonBaudCombo && epsilonRateCombo &&
+    require(dataSourceModeSwitch && dataSourceModeSegmentedSwitch &&
+                epsilonPortCombo && epsilonBaudCombo && epsilonRateCombo &&
                 epsilonPacketRatesButton,
             "shared device config controls exist for target switching");
     require(dataSourceModeSwitch->property("segmentedSwitchControl").toBool() &&
@@ -796,6 +800,8 @@ int main(int argc, char **argv)
             "local EPSILON port is visible before remote switch");
 
     dataSourceModeSwitch->click();
+    require(dataSourceModeSegmentedSwitch->switchAnimationRunning(),
+            "device configuration source switch starts visual feedback before layout stabilization");
     require(serialCard->height() >= serialCard->sizeHint().height() - 1,
             "local-to-remote switch applies the expanded device card geometry before repaint");
     require(ai8DeviceLabel && ai8DeviceLabel->isVisible() &&
