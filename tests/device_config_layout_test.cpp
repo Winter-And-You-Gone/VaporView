@@ -824,6 +824,34 @@ int main(int argc, char **argv)
     require(skyTelemetryRow->isVisible(),
             "remote mode shows sky-ground link editing controls in the target section");
     require(remoteCard->isVisible(), "remote sky service/config card appears in remote mode");
+    QWidget *serialTitleBar =
+        serialCard->findChild<QWidget *>(QStringLiteral("sectionTitleBar"), Qt::FindDirectChildrenOnly);
+    QWidget *remoteTitleBar =
+        remoteCard->findChild<QWidget *>(QStringLiteral("sectionTitleBar"), Qt::FindDirectChildrenOnly);
+    require(serialTitleBar && remoteTitleBar,
+            "device and remote sky config cards expose direct title bars");
+    if (serialTitleBar->height() != remoteTitleBar->height())
+    {
+        std::cerr << "Title bar geometry: serial height="
+                  << serialTitleBar->height()
+                  << " remote height=" << remoteTitleBar->height()
+                  << " serial top=" << serialTitleBar->geometry().top()
+                  << " remote top=" << remoteTitleBar->geometry().top()
+                  << " serial card top=" << serialCard->geometry().top()
+                  << " remote card top=" << remoteCard->geometry().top()
+                  << '\n';
+    }
+    require(remoteTitleBar->height() == serialTitleBar->height(),
+            "remote sky config title bar matches the shared device-card height");
+    if (std::abs(remoteTitleBar->geometry().top() - serialTitleBar->geometry().top()) > 1)
+    {
+        std::cerr << "Title bar top mismatch: serial top="
+                  << serialTitleBar->geometry().top()
+                  << " remote top=" << remoteTitleBar->geometry().top()
+                  << '\n';
+    }
+    require(std::abs(remoteTitleBar->geometry().top() - serialTitleBar->geometry().top()) <= 1,
+            "remote sky config title bar starts flush like the shared device card");
     require(servicesLabel->isVisible() && syncLabel->isVisible() && advancedLabel->isVisible(),
             "remote mode separates Sky services, config sync, and advanced diagnostics");
     require(!rawJsonEdit->isVisible(),

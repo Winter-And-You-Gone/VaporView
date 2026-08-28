@@ -151,7 +151,8 @@ QGroupBox {
     color: @vv-text;
 }
 
-QGroupBox#sensorGroupBox {
+QGroupBox#sensorGroupBox,
+QGroupBox#deviceRemoteSkyConfigCard {
     margin-top: 0px;
     background-color: @vv-surface;
     border: 1px solid @vv-border;
@@ -159,7 +160,8 @@ QGroupBox#sensorGroupBox {
     padding: 0px 0px 0px 0px;
 }
 
-QGroupBox#sensorGroupBox::title {
+QGroupBox#sensorGroupBox::title,
+QGroupBox#deviceRemoteSkyConfigCard::title {
     color: transparent;
     height: 0px;
     margin: 0px;
@@ -1639,6 +1641,7 @@ QFrame#separator {
 
 /* 一级卡片：外层是页面背景，阴影由 TopLevelCardStyle 统一提供。 */
 QGroupBox#sensorGroupBox[vaporViewTopLevelCard="true"],
+QGroupBox#deviceRemoteSkyConfigCard[vaporViewTopLevelCard="true"],
 QFrame#epsilonSectionCard[vaporViewTopLevelCard="true"],
 QFrame#recordingStatusCard[vaporViewTopLevelCard="true"],
 QFrame#logPanelFrame[vaporViewTopLevelCard="true"],
@@ -1649,6 +1652,7 @@ QFrame[vaporViewTopLevelCard="true"] {
 }
 
 QScrollArea#mainCardsScrollArea QGroupBox#sensorGroupBox[vaporViewTopLevelCard="true"],
+QScrollArea#mainCardsScrollArea QGroupBox#deviceRemoteSkyConfigCard[vaporViewTopLevelCard="true"],
 QScrollArea#mainCardsScrollArea QFrame#epsilonSectionCard[vaporViewTopLevelCard="true"],
 QScrollArea#mainCardsScrollArea QFrame#recordingStatusCard[vaporViewTopLevelCard="true"],
 QScrollArea#mainCardsScrollArea QFrame#logPanelFrame[vaporViewTopLevelCard="true"],
@@ -1657,6 +1661,7 @@ QScrollArea#mainCardsScrollArea QFrame[vaporViewTopLevelCard="true"] {
 }
 
 QGroupBox#sensorGroupBox[vaporViewTopLevelCard="true"] > QWidget#sectionTitleBar,
+QGroupBox#deviceRemoteSkyConfigCard[vaporViewTopLevelCard="true"] > QWidget#sectionTitleBar,
 QGroupBox#sensorGroupBox[vaporViewTopLevelCard="true"] > QWidget#environmentSectionTitleBar,
 QGroupBox#sensorGroupBox[vaporViewTopLevelCard="true"] > TcpWavePanel > QWidget#sectionTitleBar,
 QFrame#epsilonSectionCard[vaporViewTopLevelCard="true"] > QWidget#sectionTitleBar,

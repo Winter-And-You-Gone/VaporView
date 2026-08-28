@@ -470,7 +470,8 @@ QDialog#rtkConfigDialog QLabel#sectionTitleLabel {
     margin: 0px;
     padding: 0px;
 }
-QGroupBox#sensorGroupBox {
+QGroupBox#sensorGroupBox,
+QGroupBox#deviceRemoteSkyConfigCard {
     background-color: @vv-surface;
     border: 1px solid @vv-border;
     border-radius: 8px;
@@ -478,7 +479,8 @@ QGroupBox#sensorGroupBox {
     padding: 0px;
     color: @vv-text;
 }
-QGroupBox#sensorGroupBox::title {
+QGroupBox#sensorGroupBox::title,
+QGroupBox#deviceRemoteSkyConfigCard::title {
     color: transparent;
     height: 0px;
     margin: 0px;
@@ -1181,6 +1183,7 @@ QMenu::item:disabled {
     color: @vv-menu-disabled;
 }
 QGroupBox#sensorGroupBox[vaporViewTopLevelCard="true"],
+QGroupBox#deviceRemoteSkyConfigCard[vaporViewTopLevelCard="true"],
 QFrame#epsilonSectionCard[vaporViewTopLevelCard="true"],
 QFrame#recordingStatusCard[vaporViewTopLevelCard="true"],
 QFrame#logPanelFrame[vaporViewTopLevelCard="true"],
@@ -1190,6 +1193,7 @@ QFrame[vaporViewTopLevelCard="true"] {
     border-radius: 12px;
 }
 QGroupBox#sensorGroupBox[vaporViewTopLevelCard="true"] > QWidget#sectionTitleBar,
+QGroupBox#deviceRemoteSkyConfigCard[vaporViewTopLevelCard="true"] > QWidget#sectionTitleBar,
 QGroupBox#sensorGroupBox[vaporViewTopLevelCard="true"] > QWidget#environmentSectionTitleBar,
 QGroupBox#sensorGroupBox[vaporViewTopLevelCard="true"] > TcpWavePanel > QWidget#sectionTitleBar,
 QFrame#epsilonSectionCard[vaporViewTopLevelCard="true"] > QWidget#sectionTitleBar,
@@ -1388,6 +1392,7 @@ QString mainCardsTopLevelCardStyleSheet()
 {
     return QStringLiteral(
         "QScrollArea#mainCardsScrollArea QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"], "
+        "QScrollArea#mainCardsScrollArea QGroupBox#deviceRemoteSkyConfigCard[vaporViewTopLevelCard=\"true\"], "
         "QScrollArea#mainCardsScrollArea QFrame#epsilonSectionCard[vaporViewTopLevelCard=\"true\"], "
         "QScrollArea#mainCardsScrollArea QFrame#recordingStatusCard[vaporViewTopLevelCard=\"true\"], "
         "QScrollArea#mainCardsScrollArea QFrame#logPanelFrame[vaporViewTopLevelCard=\"true\"], "
