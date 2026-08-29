@@ -259,7 +259,10 @@ void writeUnifiedRawFile(const QString& path, int recordCount)
     }
 }
 
-void writeUnifiedRawPayloadFile(const QString& path, quint16 recordType, const QByteArray& payload)
+void writeUnifiedRawPayloadFile(const QString& path,
+                                quint16 recordType,
+                                const QByteArray& payload,
+                                quint16 sourceId = kTestRawSourceEpsilon)
 {
     QFile file(path);
     require(file.open(QIODevice::WriteOnly), "temporary raw payload file can be written");
@@ -267,12 +270,12 @@ void writeUnifiedRawPayloadFile(const QString& path, quint16 recordType, const Q
     QDataStream stream(&file);
     stream.setByteOrder(QDataStream::LittleEndian);
     stream.writeRawData(kTestRawMagic, sizeof(kTestRawMagic));
-    stream << quint32(2) << quint32(kTestRawHeaderSize) << quint16(kTestRawSourceEpsilon) << quint16(0);
+    stream << quint32(2) << quint32(kTestRawHeaderSize) << sourceId << quint16(0);
     stream << quint32(kTestRawRecordMarker)
            << quint32(kTestRawRecordHeaderSize)
            << quint64(1'700'000'000'000'000ULL)
            << quint32(payload.size())
-           << quint16(kTestRawSourceEpsilon)
+           << sourceId
            << recordType
            << quint32(0)
            << quint64(0);
@@ -505,6 +508,74 @@ void testRawDataParserRejectsTruncatedFdilinkFrame()
     }
     require(foundDeclaredPayloadSize, "truncated FDILink frame reports its declared payload size");
     require(!foundPayloadFields, "truncated FDILink frame stops before payload-field decoding");
+
+    parser.close();
+    processEventsFor(100);
+}
+
+void testRawDataParserUsesHardwareTemperatureSourceNames()
+{
+    QTemporaryDir sessionDir;
+    require(sessionDir.isValid(), "temporary temperature raw parser session directory");
+    QDir dir(sessionDir.path());
+    require(dir.mkpath(QStringLiteral("raw")), "temporary temperature raw directory can be created");
+
+    const QByteArray laserResponse = QByteArray::fromHex("01030400010002b844");
+    const QByteArray systemResponse = QByteArray::fromHex("01031000010002000300040005000600070008");
+    writeUnifiedRawPayloadFile(
+        dir.filePath(QStringLiteral("raw/laser_temperature_controller.dat")),
+        0x0310,
+        laserResponse,
+        VaporView::SessionRawDat::kSourceLaserTemperatureController);
+    writeUnifiedRawPayloadFile(
+        dir.filePath(QStringLiteral("raw/system_temperature_controller.dat")),
+        VaporView::SessionRawDat::kRecordTypeSystemTemperatureMeasuredValues,
+        systemResponse,
+        VaporView::SessionRawDat::kSourceSystemTemperatureController);
+
+    RawDataParserWindow parser;
+    parser.setEnglish(false);
+    parser.show();
+    require(waitForWindowExposed(&parser), "temperature raw parser window becomes exposed");
+    require(parser.openSessionPath(sessionDir.path()), "raw parser accepts temperature raw session directory");
+
+    auto *table = parser.findChild<QTableView *>();
+    require(table != nullptr, "raw parser exposes the record table");
+    require(processEventsUntil(5000, [table]() {
+                return table->model() && table->model()->rowCount() == 2;
+            }),
+            "temperature raw records are indexed");
+
+    auto *deviceCombo = parser.findChild<QComboBox *>();
+    require(deviceCombo != nullptr, "raw parser exposes the device filter combo");
+    require(deviceCombo->findText(QStringLiteral("RD105")) >= 0 &&
+                deviceCombo->findText(QStringLiteral("AI-8288")) >= 0,
+            "raw parser lists temperature controller model names");
+
+    const int systemIndex = deviceCombo->findData(
+        static_cast<int>(VaporView::SessionRawDat::kSourceSystemTemperatureController));
+    require(systemIndex >= 0, "system temperature source filter exists");
+    deviceCombo->setCurrentIndex(systemIndex);
+    require(processEventsUntil(1000, [table]() {
+                return table->model() && table->model()->rowCount() == 1;
+            }),
+            "system temperature source filter applies");
+    require(table->model()->index(0, 2).data().toString() == QStringLiteral("AI-8288") &&
+                table->model()->index(0, 3).data().toString() == QStringLiteral("AI-8288 测量值"),
+            "system temperature raw record uses the hardware model name");
+
+    const int laserIndex = deviceCombo->findData(
+        static_cast<int>(VaporView::SessionRawDat::kSourceLaserTemperatureController));
+    require(laserIndex >= 0, "laser temperature source filter exists");
+    deviceCombo->setCurrentIndex(laserIndex);
+    require(processEventsUntil(1000, [table]() {
+                return table->model() && table->model()->rowCount() == 1;
+            }),
+            "laser temperature source filter applies");
+    const QString laserType = table->model()->index(0, 3).data().toString();
+    require(table->model()->index(0, 2).data().toString() == QStringLiteral("RD105") &&
+                laserType.contains(QStringLiteral("RD105")),
+            "laser temperature raw record uses the hardware model name");
 
     parser.close();
     processEventsFor(100);
@@ -1438,6 +1509,7 @@ int main(int argc, char **argv)
     {
         testRawDataParserOpenIsNonBlocking();
         testRawDataParserRejectsTruncatedFdilinkFrame();
+        testRawDataParserUsesHardwareTemperatureSourceNames();
         testSessionViewerShowsRecoveredWaveformCatalogWarning();
         testSessionViewerTrajectoryActionLifetime();
     }

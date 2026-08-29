@@ -1,5 +1,11 @@
 # VaporView session package format
 
+For a file-by-file audit of the real `data\对比1` package against the v1.0
+offline-session specification, see
+[`session_format_actual_audit.md`](session_format_actual_audit.md). That audit
+is based on the bytes and fields actually present in the sample package; it is
+not inferred from production source code.
+
 New Ground and Sky recordings use the same session package layout, file set,
 CSV schemas, RAW DAT format, `session.json` schema, and `device_config.json`
 schema. The origin value is explicit in both JSON metadata files:
@@ -19,7 +25,8 @@ session_yyyy-MM-dd_HH-mm-ss/
 ├── raw_dat_format.md
 ├── sensors/
 │   ├── sensor_summary.csv
-│   ├── temperature_controller.csv
+│   ├── laser_temperature_controller.csv
+│   ├── system_temperature_controller.csv
 │   └── waveform_features.csv
 ├── raw/
 │   ├── navigation.dat
@@ -27,6 +34,8 @@ session_yyyy-MM-dd_HH-mm-ss/
 │   ├── temperature_humidity.dat
 │   ├── distance.dat
 │   ├── waveform.dat
+│   ├── laser_temperature_controller.dat
+│   ├── system_temperature_controller.dat
 │   └── waveform_peaks.csv
 ├── logs/
 │   ├── event_log.csv
@@ -44,11 +53,14 @@ standard file even when the recorder has no data for that stream.
 ## Empty file rules
 
 - `sensors/sensor_summary.csv` uses the shared `SessionSensorCsv` header.
-- `sensors/temperature_controller.csv`,
+- `sensors/laser_temperature_controller.csv`,
+  `sensors/system_temperature_controller.csv`,
   `sensors/waveform_features.csv`, `raw/waveform_peaks.csv`, and
   `logs/event_log.csv` are created with their standard headers.
 - `raw/navigation.dat`, `raw/pressure.dat`, `raw/temperature_humidity.dat`,
-  `raw/distance.dat`, and `raw/waveform.dat` are created as valid zero-record
+  `raw/distance.dat`, `raw/waveform.dat`,
+  `raw/laser_temperature_controller.dat`, and
+  `raw/system_temperature_controller.dat` are created as valid zero-record
   unified RAW DAT files.
 - `config/device_config.json` uses the shared device configuration schema
   described below.
@@ -87,7 +99,8 @@ When capture values do not apply, the keys remain present and the values are
 `counts` always contains string counters:
 
 - `sensor_rows`
-- `temperature_controller_rows`
+- `laser_temperature_controller_rows`
+- `system_temperature_controller_rows`
 - `waveform_frames`
 - `waveform_feature_rows`
 - `event_rows`
@@ -96,17 +109,21 @@ When capture values do not apply, the keys remain present and the values are
 `paths` always contains every standard relative path:
 
 - `sensor_summary_csv`
-- `temperature_controller_csv`
+- `laser_temperature_controller_csv`
+- `system_temperature_controller_csv`
 - `waveform_features_csv`
 - `navigation_raw`, `pressure_raw`, `temperature_humidity_raw`,
   `distance_raw`, `waveform_raw`
+- `laser_temperature_controller_raw`
+- `system_temperature_controller_raw`
 - `waveform_peaks_csv`
 - `event_log`, `error_log`
 - `device_config`
 - `raw_format_document`
 
 `raw_files` always contains `navigation`, `pressure`, `temperature_humidity`,
-`distance`, and `waveform`. Each entry contains:
+`distance`, `waveform`, `laser_temperature_controller`, and
+`system_temperature_controller`. Each entry contains:
 
 - `path`
 - `source_id`
@@ -159,9 +176,12 @@ The historical path mapping is:
 | `raw/temperature_humidity.dat` | `raw/hmp.dat` |
 | `raw/distance.dat` | `raw/lidar.dat` |
 | `raw/waveform.dat` | `raw/tcp_wave.dat` |
+| `raw/laser_temperature_controller.dat` | `raw/rd105.dat` |
+| `raw/system_temperature_controller.dat` | `raw/ai8.dat`, `raw/ai8288.dat` |
 | `raw/waveform_peaks.csv` | `raw/tcp_wave_peaks.csv` |
 | `sensors/sensor_summary.csv` | `sensors/devices.csv` |
-| `sensors/temperature_controller.csv` | `sensors/rd105_temperature_controller.csv` |
+| `sensors/laser_temperature_controller.csv` | `sensors/temperature_controller.csv`, `sensors/rd105_temperature_controller.csv` |
+| `sensors/system_temperature_controller.csv` | `sensors/ai8_temperature_controller.csv`, `sensors/ai8288_temperature_controller.csv` |
 
 New writers never create the historical names, and historical sessions are
 read in place without renaming, copying, or modifying their files.
@@ -181,8 +201,10 @@ the same JSON types for populated values. It contains:
 - `telemetry` with `transport`, `endpoint`, `port`, and `baud`
 - `waveform` with endpoint, frame, point, and scalar encoding settings
 - `raw_dat` with the shared RAW directory, format document, and write mode
-- `sensors` with `epsilon`, `ptb`, `hmp`, `lidar`, and `rd105`; each entry
-  always contains `port`, `baud`, and `rate_hz`
+- `sensors` with `epsilon`, `ptb`, `hmp`, `lidar`,
+  `laser_temperature_controller`, and `system_temperature_controller`; each
+  entry always contains `configured`, `enabled`, `port`, `baud`, `rate_hz`,
+  and `slave_address`
 
 Connections or device settings that do not apply to a recorder remain present
 as JSON `null`. For example, Sky recordings preserve all five sensor entries

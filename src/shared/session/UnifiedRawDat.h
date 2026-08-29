@@ -29,7 +29,9 @@ enum class RawSourceId : quint16
     Pressure = 2u,
     TemperatureHumidity = 3u,
     Distance = 4u,
-    Waveform = 5u
+    Waveform = 5u,
+    LaserTemperatureController = 6u,
+    SystemTemperatureController = 7u
 };
 
 inline constexpr quint16 kSourceNavigation = static_cast<quint16>(RawSourceId::Navigation);
@@ -37,9 +39,17 @@ inline constexpr quint16 kSourcePressure = static_cast<quint16>(RawSourceId::Pre
 inline constexpr quint16 kSourceTemperatureHumidity = static_cast<quint16>(RawSourceId::TemperatureHumidity);
 inline constexpr quint16 kSourceDistance = static_cast<quint16>(RawSourceId::Distance);
 inline constexpr quint16 kSourceWaveform = static_cast<quint16>(RawSourceId::Waveform);
+inline constexpr quint16 kSourceLaserTemperatureController =
+    static_cast<quint16>(RawSourceId::LaserTemperatureController);
+inline constexpr quint16 kSourceSystemTemperatureController =
+    static_cast<quint16>(RawSourceId::SystemTemperatureController);
 inline constexpr quint16 kRecordTypePressureResponse = 1u;
 inline constexpr quint16 kRecordTypeTemperatureHumidityModbusResponse = 0x03u;
 inline constexpr quint16 kRecordTypeWaveformPayload = 1u;
+inline constexpr quint16 kRecordTypeSystemTemperatureMeasuredValues = 1u;
+inline constexpr quint16 kRecordTypeSystemTemperatureAlarmStatus = 2u;
+inline constexpr quint16 kRecordTypeSystemTemperatureMainStatus = 3u;
+inline constexpr quint16 kRecordTypeSystemTemperatureControlStatus = 4u;
 inline constexpr quint32 kWaveformCombinedPayloadFlag = 0x00000001u;
 inline constexpr quint32 kWaveformPayloadPrefixSize = sizeof(quint32) * 2u;
 

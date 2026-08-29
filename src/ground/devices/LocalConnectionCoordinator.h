@@ -85,6 +85,7 @@ private:
     LocalConnectionPhase phase_ = LocalConnectionPhase::Idle;
     LocalConnectionOutcome pending_outcome_ = LocalConnectionOutcome::Cancelled;
     bool cancel_requested_ = false;
+    bool waveform_requested_ = true;
     bool serial_connected_ = false;
     bool waveform_connected_ = false;
 };

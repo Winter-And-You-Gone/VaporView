@@ -180,6 +180,8 @@ QString commandIdName(CommandId id)
     case CommandId::SaveSkyConfig: return QStringLiteral("SaveSkyConfig");
     case CommandId::ReloadSkyConfig: return QStringLiteral("ReloadSkyConfig");
     case CommandId::SetPeakSearchRange: return QStringLiteral("SetPeakSearchRange");
+    case CommandId::AutoDetectSerialPorts: return QStringLiteral("AutoDetectSerialPorts");
+    case CommandId::CancelSerialPortDetection: return QStringLiteral("CancelSerialPortDetection");
     case CommandId::SetTemperatureTarget: return QStringLiteral("SetTemperatureTarget");
     case CommandId::SetTemperatureOutputEnabled: return QStringLiteral("SetTemperatureOutputEnabled");
     case CommandId::SetTemperatureOutputMode: return QStringLiteral("SetTemperatureOutputMode");
@@ -234,6 +236,10 @@ QString commandErrorCodeText(CommandErrorCode error, bool english)
         return english ? QStringLiteral("Recording already started") : QStringLiteral("记录已开始");
     case CommandErrorCode::RecordingNotStarted:
         return english ? QStringLiteral("Recording not started") : QStringLiteral("记录未开始");
+    case CommandErrorCode::SerialPortDetectionInProgress:
+        return english ? QStringLiteral("Serial-port detection is already running") : QStringLiteral("串口自动识别正在进行");
+    case CommandErrorCode::SerialPortDetectionNotRunning:
+        return english ? QStringLiteral("Serial-port detection is not running") : QStringLiteral("当前没有正在运行的串口自动识别任务");
     case CommandErrorCode::InternalError:
         return english ? QStringLiteral("Internal error") : QStringLiteral("内部错误");
     }
@@ -467,7 +473,7 @@ quint16 TelemetryCodec::crc16Ccitt(const char *data, qsizetype size)
 QByteArray TelemetryCodec::serializeBasicTelemetry(const TelemetryBasic& data)
 {
     QByteArray payload;
-    payload.reserve(208);
+    payload.reserve(220);
     appendLe<quint64>(payload, data.host_time_us);
     appendLe<quint64>(payload, data.epsilon_time_us);
     for (double value : {data.latitude_deg, data.longitude_deg, data.height_m, data.ecef_x_m, data.ecef_y_m, data.ecef_z_m})
@@ -514,6 +520,9 @@ QByteArray TelemetryCodec::serializeBasicTelemetry(const TelemetryBasic& data)
     appendFloatLe(payload, data.satellite_packet_rate_hz);
     appendFloatLe(payload, data.geodetic_packet_rate_hz);
     appendFloatLe(payload, data.ecef_packet_rate_hz);
+    appendFloatLe(payload, data.status_packet_rate_hz);
+    appendFloatLe(payload, data.euler_orien_packet_rate_hz);
+    appendFloatLe(payload, data.quat_orien_packet_rate_hz);
     return payload;
 }
 
@@ -601,6 +610,15 @@ bool TelemetryCodec::parseBasicTelemetry(const QByteArray& payload, TelemetryBas
           readFloatLe(payload, offset, data.ecef_packet_rate_hz)))
     {
         return false;
+    }
+    if (payload.size() - offset >= static_cast<qsizetype>(sizeof(float) * 3))
+    {
+        if (!(readFloatLe(payload, offset, data.status_packet_rate_hz) &&
+              readFloatLe(payload, offset, data.euler_orien_packet_rate_hz) &&
+              readFloatLe(payload, offset, data.quat_orien_packet_rate_hz)))
+        {
+            return false;
+        }
     }
     return true;
 }
@@ -751,6 +769,8 @@ QByteArray TelemetryCodec::serializeTelemetryStatus(const TelemetryStatus& statu
     appendLe<quint64>(payload, status.rtcm_correction_dropped_bytes);
     appendLe<quint64>(payload, status.rtcm_correction_dropped_chunks);
     appendLe<quint64>(payload, status.rtcm_correction_last_receive_time_us);
+    appendLe<quint64>(payload, status.raw_laser_temperature_controller_record_count);
+    appendLe<quint64>(payload, status.raw_system_temperature_controller_record_count);
     return payload;
 }
 
@@ -830,7 +850,9 @@ bool TelemetryCodec::parseTelemetryStatus(const QByteArray& payload, TelemetrySt
            readOptionalU64(status.rtcm_correction_chunks_received) &&
            readOptionalU64(status.rtcm_correction_dropped_bytes) &&
            readOptionalU64(status.rtcm_correction_dropped_chunks) &&
-           readOptionalU64(status.rtcm_correction_last_receive_time_us);
+           readOptionalU64(status.rtcm_correction_last_receive_time_us) &&
+           readOptionalU64(status.raw_laser_temperature_controller_record_count) &&
+           readOptionalU64(status.raw_system_temperature_controller_record_count);
 }
 
 QByteArray TelemetryCodec::serializeCommand(const CommandMessage& command)

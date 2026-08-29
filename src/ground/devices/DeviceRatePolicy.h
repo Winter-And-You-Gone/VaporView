@@ -54,6 +54,7 @@ const std::vector<EpsilonPacketConfigOption>& epsilonPacketConfigOptions();
 QString epsilonPacketRateSettingsKey(quint8 packetId);
 int nearestSupportedEpsilonPacketRate(const EpsilonPacketConfigOption& option, int desiredRateHz);
 std::map<uint8_t, int> defaultEpsilonPacketRates();
+bool epsilonPacketRatesMatchDefault(const std::map<uint8_t, int>& packetRates);
 bool epsilonPacketRateSupported(const EpsilonPacketConfigOption& option, int rateHz);
 std::map<uint8_t, int> loadCustomEpsilonPacketRates(QSettings& settings);
 std::map<uint8_t, int> effectiveEpsilonPacketRates(QSettings& settings);

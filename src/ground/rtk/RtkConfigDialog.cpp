@@ -1193,6 +1193,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent, bool embedded)
     setObjectName(QStringLiteral("rtkConfigDialog"));
     setSizeGripEnabled(false);
 
+    compact_layout_ = shouldUseCompactEmbeddedLayout();
     setupUi();
     if (!embedded_)
     {
@@ -1303,7 +1304,7 @@ void RtkConfigDialog::resizeEvent(QResizeEvent *event)
         return;
     }
 
-    const bool compactLayout = width() > 0 && width() < scalePixels(900);
+    const bool compactLayout = shouldUseCompactEmbeddedLayout();
     if (compactLayout == compact_layout_)
     {
         return;
@@ -2141,6 +2142,25 @@ int RtkConfigDialog::scalePixels(int pixels) const
     return static_cast<int>(std::lround(pixels * font_scale_percent_ / 100.0));
 }
 
+bool RtkConfigDialog::shouldUseCompactEmbeddedLayout() const
+{
+    if (!embedded_)
+    {
+        return false;
+    }
+
+    int layoutWidth = width();
+    if (QWidget *parent = parentWidget())
+    {
+        layoutWidth = std::max(layoutWidth, parent->width());
+    }
+    if (layoutWidth <= 0)
+    {
+        return true;
+    }
+    return layoutWidth < scalePixels(900);
+}
+
 void RtkConfigDialog::applyScaledUiMetrics()
 {
     const bool compactLayout = compact_layout_;
@@ -2202,9 +2222,15 @@ void RtkConfigDialog::applyScaledUiMetrics()
             ? embeddedTopInset
             : scalePixels(kEmbeddedTopLevelCardChromeInset);
         const int embeddedLeftInset = compactLayout ? 4 : kEmbeddedMainContentLeftCardInset;
+        const auto *scrollArea =
+            embedded_ ? findChild<QScrollArea *>(QStringLiteral("rtkConfigScrollArea")) : nullptr;
+        const bool reservedScrollBarRail =
+            scrollArea && scrollArea->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOn;
         const int embeddedRightInset = compactLayout
             ? 0
-            : kEmbeddedMainContentRightInsetWithHiddenScrollBar;
+            : (reservedScrollBarRail
+                  ? kEmbeddedMainContentRightCardInset
+                  : kEmbeddedMainContentRightInsetWithHiddenScrollBar);
         main_layout_->setSpacing(scalePixels(kEmbeddedTopLevelCardGap));
         main_layout_->setContentsMargins(scalePixels(embedded_
                                              ? embeddedLeftInset
@@ -2438,14 +2464,13 @@ void RtkConfigDialog::applyScaledUiMetrics()
     {
         const QFontMetrics metrics(gga_port_combo_->font());
         const int sourceMinimumWidth = compactLayout ? 80 : 120;
-        const int sourceExtraWidth = compactLayout ? 20 : 56;
+        const int sourceExtraWidth = compactLayout ? 20 : 40;
         const int desiredWidth = metrics.horizontalAdvance(mainGgaSourceLabel()) + scalePixels(sourceExtraWidth);
         const int targetWidth = std::min(scalePixels(compactLayout ? 140 : 200),
                                          std::max(scalePixels(sourceMinimumWidth), desiredWidth));
-        gga_port_combo_->setMinimumWidth(scalePixels(sourceMinimumWidth));
-        gga_port_combo_->setMaximumWidth(targetWidth);
+        gga_port_combo_->setFixedWidth(targetWidth);
         gga_port_combo_->setFixedHeight(scalePixels(kRtkInputHeight));
-        gga_port_combo_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        gga_port_combo_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         gga_port_combo_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
         if (QLineEdit *edit = gga_port_combo_->lineEdit())
         {

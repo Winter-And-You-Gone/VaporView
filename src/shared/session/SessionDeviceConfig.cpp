@@ -19,9 +19,12 @@ QJsonValue optionalString(const QString& value)
 QJsonObject connectionToJson(const DeviceConnectionConfig& config)
 {
     QJsonObject object;
+    object.insert(QStringLiteral("configured"), config.configured);
+    object.insert(QStringLiteral("enabled"), config.configured);
     object.insert(QStringLiteral("port"), optionalString(config.port));
     object.insert(QStringLiteral("baud"), optionalString(config.baud));
     object.insert(QStringLiteral("rate_hz"), optionalString(config.rateHz));
+    object.insert(QStringLiteral("slave_address"), optionalString(config.slaveAddress));
     return object;
 }
 
@@ -62,7 +65,10 @@ QJsonObject sessionDeviceConfigToJson(const SessionDeviceConfig& config)
     sensors.insert(QStringLiteral("ptb"), connectionToJson(config.ptb));
     sensors.insert(QStringLiteral("hmp"), connectionToJson(config.hmp));
     sensors.insert(QStringLiteral("lidar"), connectionToJson(config.lidar));
-    sensors.insert(QStringLiteral("rd105"), connectionToJson(config.temperatureController));
+    sensors.insert(QStringLiteral("laser_temperature_controller"),
+                   connectionToJson(config.laserTemperatureController));
+    sensors.insert(QStringLiteral("system_temperature_controller"),
+                   connectionToJson(config.systemTemperatureController));
 
     QJsonObject root;
     root.insert(QStringLiteral("device_config_format"), QStringLiteral("vaporview.device_config"));

@@ -47,13 +47,16 @@ std::optional<RecordingSessionLayout> createRecordingSessionLayout(
     layout.sessionName = finalSessionName;
     layout.sessionDirectory = QDir::fromNativeSeparators(finalSessionDirectory);
     layout.sensorSummaryFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.sensorSummaryCsvPath);
-    layout.temperatureControllerFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.temperatureControllerCsvPath);
+    layout.laserTemperatureControllerFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.laserTemperatureControllerCsvPath);
+    layout.systemTemperatureControllerFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.systemTemperatureControllerCsvPath);
     layout.waveformFeaturesFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.waveformFeaturesCsvPath);
     layout.navigationRawFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.navigationRawPath);
     layout.pressureRawFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.pressureRawPath);
     layout.temperatureHumidityRawFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.temperatureHumidityRawPath);
     layout.distanceRawFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.distanceRawPath);
     layout.waveformRawFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.waveformRawPath);
+    layout.laserTemperatureControllerRawFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.laserTemperatureControllerRawPath);
+    layout.systemTemperatureControllerRawFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.systemTemperatureControllerRawPath);
     layout.waveformPeaksFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.waveformPeaksCsvPath);
     layout.rawDatDocumentFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.rawFormatDocumentPath);
     layout.sessionMetadataFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.manifestPath);

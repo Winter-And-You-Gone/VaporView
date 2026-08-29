@@ -1,5 +1,6 @@
 #include "ground/devices/LocalDeviceConnectionController.h"
 
+#include "ground/devices/EpsilonConfigurationService.h"
 #include "ground/devices/ImuConfigurationService.h"
 
 #include <QSettings>
@@ -87,12 +88,9 @@ public:
         if (collectors.epsilon && collectors.epsilon->isRunning())
         {
             collectors.epsilon->setSampleRate(configuration.epsilonCallbackRateHz);
-            if (configuration.applyEpsilonDeviceRate)
-            {
-                result.epsilonDeviceRateAttempted = true;
-                result.epsilonDeviceRateSucceeded =
-                    collectors.epsilon->setOutputPacketRates(configuration.epsilonPacketRates);
-            }
+            result.epsilonDeviceRateAttempted = true;
+            result.epsilonDeviceRateSucceeded =
+                collectors.epsilon->setOutputPacketRates(configuration.epsilonPacketRates);
         }
         if (collectors.ptb && collectors.ptb->isRunning())
         {
@@ -129,8 +127,7 @@ public:
 
     LocalSampleRateApplyResult setEpsilonSampleRate(
         int callbackRateHz,
-        const std::map<uint8_t, int>& packetRates,
-        bool applyDeviceRate)
+        const std::map<uint8_t, int>& packetRates)
     {
         LocalSampleRateApplyResult result;
         const auto collector = registry.snapshot().epsilon;
@@ -139,7 +136,7 @@ public:
             return result;
         }
         collector->setSampleRate(callbackRateHz);
-        if (collector->isRunning() && applyDeviceRate)
+        if (collector->isRunning())
         {
             result.epsilonDeviceRateAttempted = true;
             result.epsilonDeviceRateSucceeded = collector->setOutputPacketRates(packetRates);
@@ -492,7 +489,10 @@ private:
             VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_last_config_baud"), request.epsilon.baudText);
             VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_last_config_rate_hz"), request.epsilonConfiguredRateHz);
             VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_last_config_signature"), request.epsilonPacketRateSignature);
-            VaporView::setPersistentSetting(settings, QStringLiteral("epsilon_last_config_apply_version"), 2);
+            VaporView::setPersistentSetting(
+                settings,
+                QStringLiteral("epsilon_last_config_apply_version"),
+                VaporView::Ground::EpsilonConfigurationService::PacketConfigurationVersion);
         };
 
         CollectorSet collectors;
@@ -572,6 +572,32 @@ private:
                                             size);
                 }
             });
+        collectors.temperature_controller->setRawFrameCallback(
+            [this](uint64_t timestampUs,
+                   uint16_t recordType,
+                   const uint8_t *data,
+                   size_t size) {
+                if (callbacks.rawLaserTemperatureControllerResponse)
+                {
+                    callbacks.rawLaserTemperatureControllerResponse(timestampUs,
+                                                                     recordType,
+                                                                     data,
+                                                                     size);
+                }
+            });
+        collectors.ai8_temperature_controller->setRawFrameCallback(
+            [this](uint64_t timestampUs,
+                   quint16 recordType,
+                   const quint8 *data,
+                   size_t size) {
+                if (callbacks.rawSystemTemperatureControllerResponse)
+                {
+                    callbacks.rawSystemTemperatureControllerResponse(timestampUs,
+                                                                      recordType,
+                                                                      data,
+                                                                      size);
+                }
+            });
 
         int totalDevices = 0;
         int connectedDevices = 0;
@@ -596,6 +622,19 @@ private:
                                     auto *collector,
                                     const SerialConfig& serialConfig,
                                     auto&& onReady) -> int {
+            if (!settings.requested)
+            {
+                return 0;
+            }
+            if (!settings.enabled)
+            {
+                postConnectionLog(VaporView::LogLevel::Info,
+                        QStringLiteral("local_device_connection_skipped"),
+                        QStringLiteral("本地设备未启用，已跳过连接。"),
+                        {{QStringLiteral("device"), tag},
+                         {QStringLiteral("reason_code"), QStringLiteral("DEVICE_DISABLED")}});
+                return 0;
+            }
             if (settings.port == request.selectText || settings.port.isEmpty())
             {
                 postConnectionLog(VaporView::LogLevel::Info,
@@ -687,15 +726,7 @@ private:
                              SerialConfig::N81(request.epsilon.baudText.toInt()),
                              [&]() {
             collectors.epsilon->setDataCallback([this]() { notifyData(LocalDeviceKind::Epsilon); });
-            if (request.epsilon.skipDeviceRate)
-            {
-                postConnectionLog(VaporView::LogLevel::Info,
-                        QStringLiteral("epsilon_output_rate_command_skipped"),
-                        QStringLiteral("已跳过 EPSILON 输出频率下发，使用设备当前输出。"),
-                        {{QStringLiteral("device"), QStringLiteral("EPSILON")},
-                         {QStringLiteral("reason_code"), QStringLiteral("RATE_UNSPECIFIED")}});
-            }
-            else if (request.epsilonConfigLikelyMatches)
+            if (request.epsilonConfigLikelyMatches)
             {
                 postConnectionLog(VaporView::LogLevel::Info,
                         QStringLiteral("epsilon_output_reconfigure_skipped_config_unchanged"),
@@ -704,15 +735,26 @@ private:
                          {QStringLiteral("epsilon_packet_profile"), request.epsilonPacketRateSummary},
                          {QStringLiteral("reason_code"), QStringLiteral("CONFIG_UNCHANGED")}});
             }
-            else if (!collectors.epsilon->setOutputPacketRates(request.epsilonPacketRates))
+            else if (request.epsilonPacketRatesMatchDefault &&
+                     collectors.epsilon->lastDeviceResponseHadFdilinkFrame())
             {
-                postConnectionLog(VaporView::LogLevel::Error,
-                        QStringLiteral("epsilon_output_reconfigure_failed"),
-                        QStringLiteral("EPSILON 输出配置下发失败。"),
+                postConnectionLog(VaporView::LogLevel::Info,
+                        QStringLiteral("epsilon_output_reconfigure_skipped_fdilink_detected"),
+                        QStringLiteral("已检测到 EPSILON FDILink 数据流，跳过默认输出配置下发。"),
                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
                          {QStringLiteral("epsilon_packet_profile"), request.epsilonPacketRateSummary},
-                         {QStringLiteral("error_code"), QStringLiteral("CONFIG_APPLY_FAILED")}});
-                return false;
+                         {QStringLiteral("reason_code"), QStringLiteral("FDILINK_STREAM_DETECTED")}});
+            }
+            else if (!collectors.epsilon->setOutputPacketRates(request.epsilonPacketRates))
+            {
+                postConnectionLog(VaporView::LogLevel::Warning,
+                        QStringLiteral("epsilon_output_reconfigure_failed"),
+                        QStringLiteral("EPSILON 输出配置下发失败，继续使用设备当前输出。"),
+                        {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                         {QStringLiteral("epsilon_packet_profile"), request.epsilonPacketRateSummary},
+                         {QStringLiteral("error_code"), QStringLiteral("CONFIG_APPLY_FAILED")},
+                         {QStringLiteral("fallback_action"), QStringLiteral("CURRENT_DEVICE_OUTPUT")},
+                         {QStringLiteral("wiring_hint"), QStringLiteral("MAIN_PRIMARY_RS232_REQUIRED_FOR_CONFIGURATION")}});
             }
             else
             {
@@ -810,7 +852,7 @@ private:
             return false;
         }) < 0) return;
 
-        if (connectCollector(QStringLiteral("TFA1005-L"),
+        if (connectCollector(QStringLiteral("TFA1500-L"),
                              request.lidar,
                              collectors.lidar.get(),
                              SerialConfig::N81(request.lidar.baudText.toInt()),
@@ -821,7 +863,7 @@ private:
                 postConnectionLog(VaporView::LogLevel::Info,
                         QStringLiteral("lidar_output_rate_command_skipped"),
                         QStringLiteral("已跳过激光测距仪输出频率下发，使用设备默认或自适应输出。"),
-                        {{QStringLiteral("device"), QStringLiteral("TFA1005-L")},
+                        {{QStringLiteral("device"), QStringLiteral("TFA1500-L")},
                          {QStringLiteral("reason_code"), QStringLiteral("RATE_UNSPECIFIED")}});
             }
             else if (!collectors.lidar->setDeviceSampleRate(request.lidar.sampleRateHz))
@@ -829,7 +871,7 @@ private:
                 postConnectionLog(VaporView::LogLevel::Warning,
                         QStringLiteral("lidar_output_rate_update_failed"),
                         QStringLiteral("激光测距仪输出频率下发失败，使用设备默认输出。"),
-                        {{QStringLiteral("device"), QStringLiteral("TFA1005-L")},
+                        {{QStringLiteral("device"), QStringLiteral("TFA1500-L")},
                          {QStringLiteral("requested_rate_hz"), request.lidar.sampleRateHz},
                          {QStringLiteral("error_code"), QStringLiteral("OUTPUT_RATE_UPDATE_FAILED")}});
             }
@@ -838,14 +880,14 @@ private:
                 postConnectionLog(VaporView::LogLevel::Info,
                         QStringLiteral("lidar_output_rate_updated"),
                         QStringLiteral("激光测距仪输出频率已更新。"),
-                        {{QStringLiteral("device"), QStringLiteral("TFA1005-L")},
+                        {{QStringLiteral("device"), QStringLiteral("TFA1500-L")},
                          {QStringLiteral("requested_rate_hz"), request.lidar.sampleRateHz}});
             }
             if (collectors.lidar->startStreaming()) return true;
             postConnectionLog(VaporView::LogLevel::Error,
                     QStringLiteral("local_device_stream_start_failed"),
                     QStringLiteral("本地设备数据流启动失败。"),
-                    {{QStringLiteral("device"), QStringLiteral("TFA1005-L")},
+                    {{QStringLiteral("device"), QStringLiteral("TFA1500-L")},
                      {QStringLiteral("error_code"), QStringLiteral("STREAM_START_FAILED")}});
             return false;
         }) < 0) return;
@@ -1009,10 +1051,9 @@ LocalSampleRateApplyResult LocalDeviceConnectionController::applyRunningSampleRa
 
 LocalSampleRateApplyResult LocalDeviceConnectionController::setEpsilonSampleRate(
     int callbackRateHz,
-    const std::map<uint8_t, int>& packetRates,
-    bool applyDeviceRate)
+    const std::map<uint8_t, int>& packetRates)
 {
-    return impl_->setEpsilonSampleRate(callbackRateHz, packetRates, applyDeviceRate);
+    return impl_->setEpsilonSampleRate(callbackRateHz, packetRates);
 }
 
 LocalSampleRateApplyResult LocalDeviceConnectionController::setPtbSampleRate(

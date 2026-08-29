@@ -3,6 +3,7 @@
 
 #include <QString>
 #include <QWidget>
+#include <QtGlobal>
 
 #include <limits>
 
@@ -25,6 +26,10 @@ struct NavigationStatusSnapshot
 
     bool navigationDataAvailable = false;
     QString gnssFixText;
+    int gnssFixCode = -1;
+    bool filterStatusAvailable = false;
+    quint16 filterStatusBits = 0;
+    quint16 updateStatusBits = 0;
     bool gnssQualityAvailable = false;
     int satelliteCount = -1;
     double horizontalAccuracyM = std::numeric_limits<double>::quiet_NaN();

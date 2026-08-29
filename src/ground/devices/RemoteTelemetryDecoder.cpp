@@ -170,10 +170,13 @@ RemoteEpsilonTelemetry decodeRemoteEpsilonTelemetry(
         result.data.ahrs_packet_rate_hz = telemetry.ahrs_packet_rate_hz;
         result.data.insgps_packet_rate_hz = telemetry.insgps_packet_rate_hz;
         result.data.sys_state_packet_rate_hz = telemetry.sys_state_packet_rate_hz;
+        result.data.status_packet_rate_hz = telemetry.status_packet_rate_hz;
         result.data.raw_gnss_packet_rate_hz = telemetry.raw_gnss_packet_rate_hz;
         result.data.satellite_packet_rate_hz = telemetry.satellite_packet_rate_hz;
         result.data.geodetic_packet_rate_hz = telemetry.geodetic_packet_rate_hz;
         result.data.ecef_packet_rate_hz = telemetry.ecef_packet_rate_hz;
+        result.data.euler_orien_packet_rate_hz = telemetry.euler_orien_packet_rate_hz;
+        result.data.quat_orien_packet_rate_hz = telemetry.quat_orien_packet_rate_hz;
     }
     return result;
 }

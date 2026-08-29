@@ -1,9 +1,11 @@
 #include "app/StartupSplash.h"
 
 #include <QApplication>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QImage>
 #include <QSvgRenderer>
+#include <QThread>
 
 #include <algorithm>
 #include <cmath>
@@ -35,6 +37,18 @@ void requireSizeWithin(const QSize& availableSize)
     const int cardExtent = VaporView::StartupSplash::calculateCardExtent(availableSize);
     require(cardExtent > 0 && cardExtent <= 220,
             "startup splash card extent must stay bounded");
+}
+
+void processEventsFor(qint64 durationMs)
+{
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < durationMs)
+    {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+        QThread::msleep(5);
+    }
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
 }
 
 }
@@ -116,8 +130,17 @@ int main(int argc, char **argv)
     require(logoMaxX - logoMinX + 1 >= renderedFrame.width() * 0.25,
             "startup splash logo must occupy a substantial portion of the card");
 
-    splash.fadeOutAndClose(0);
-    QCoreApplication::processEvents();
+    splash.fadeOutAndClose(200);
+    processEventsFor(80);
+    require(splash.isVisible(), "startup splash must stay visible during animated fade-out");
+    require(splash.animationsRunning(), "startup splash fade animation must run before closing");
+    require(splash.windowOpacity() > 0.99,
+            "startup splash must not fade the translucent top-level window");
+    const QImage fadingFrame = splash.grab().toImage().convertToFormat(QImage::Format_ARGB32);
+    require(fadingFrame.pixelColor(0, 0).alpha() < 16,
+            "startup splash corner must stay transparent during fade-out");
+
+    processEventsFor(240);
     require(!splash.isVisible(), "startup splash must hide after fade-out completion");
     require(!splash.animationsRunning(), "startup splash animations must stop after closing");
 

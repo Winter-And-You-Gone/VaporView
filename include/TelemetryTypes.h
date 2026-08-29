@@ -38,6 +38,7 @@ enum class MsgType : quint8
     Ai8TemperatureControllerStatus = 0x08,
     DeviceOperationResponse = 0x09,
     RtcmCorrectionData = 0x0A,
+    SerialPortDetectionResult = 0x0B,
     Command = 0x10,
     CommandAck = 0x11,
     Heartbeat = 0x20,
@@ -70,6 +71,8 @@ enum class CommandId : quint16
     SaveSkyConfig = 32,
     ReloadSkyConfig = 33,
     SetPeakSearchRange = 34,
+    AutoDetectSerialPorts = 35,
+    CancelSerialPortDetection = 36,
     SetTemperatureTarget = 40,
     SetTemperatureOutputEnabled = 41,
     SetTemperatureOutputMode = 42,
@@ -138,6 +141,8 @@ enum class CommandErrorCode : quint32
     ConfigSaveFailed = 11,
     RecordingAlreadyStarted = 12,
     RecordingNotStarted = 13,
+    SerialPortDetectionInProgress = 14,
+    SerialPortDetectionNotRunning = 15,
     InternalError = 100,
 };
 
@@ -212,10 +217,13 @@ struct TelemetryBasic
     float ahrs_packet_rate_hz = 0.0f;
     float insgps_packet_rate_hz = 0.0f;
     float sys_state_packet_rate_hz = 0.0f;
+    float status_packet_rate_hz = 0.0f;
     float raw_gnss_packet_rate_hz = 0.0f;
     float satellite_packet_rate_hz = 0.0f;
     float geodetic_packet_rate_hz = 0.0f;
     float ecef_packet_rate_hz = 0.0f;
+    float euler_orien_packet_rate_hz = 0.0f;
+    float quat_orien_packet_rate_hz = 0.0f;
 };
 
 struct DownsampledWaveform
@@ -348,6 +356,8 @@ struct TelemetryStatus
     quint64 rtcm_correction_dropped_bytes = 0;
     quint64 rtcm_correction_dropped_chunks = 0;
     quint64 rtcm_correction_last_receive_time_us = 0;
+    quint64 raw_laser_temperature_controller_record_count = 0;
+    quint64 raw_system_temperature_controller_record_count = 0;
 };
 
 struct CommandMessage

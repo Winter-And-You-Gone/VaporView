@@ -12,6 +12,7 @@
 #include <mutex>
 #include <thread>
 #include <vector>
+#include <string>
 
 namespace VaporView
 {
@@ -137,6 +138,9 @@ private:
 class EpsilonCollector : public DataCollector
 {
 public:
+  using CommandProgressCallback = std::function<void(const std::string& command,
+                                                     bool is_reply,
+                                                     bool successful)>;
   using RawFrameCallback = std::function<void(uint64_t host_timestamp_us,
                                               uint8_t packet_id,
                                               uint8_t serial_number,
@@ -145,10 +149,13 @@ public:
 
   EpsilonData getLatestData();
   bool setDeviceSampleRate(int hz) override;
-  bool setOutputPacketRates(const std::map<uint8_t, int>& packet_rates, bool force_apply = false);
+  bool setOutputPacketRates(const std::map<uint8_t, int>& packet_rates,
+                            bool force_apply = false,
+                            CommandProgressCallback progress = {});
   bool configureRtcmPort(int port_index, int baud_rate);
   bool configureMainAntennaLeverArm(double x_m, double y_m, double z_m);
   bool checkDeviceResponse() override;
+  bool lastDeviceResponseHadFdilinkFrame() const;
   void setRawFrameCallback(RawFrameCallback callback);
 
 protected:
@@ -157,6 +164,7 @@ protected:
 private:
   EpsilonData latest_data_;
   RawFrameCallback raw_frame_callback_;
+  bool last_device_response_had_fdilink_frame_ = false;
 };
 
 class ImuCollector : public DataCollector
@@ -274,7 +282,10 @@ private:
 class TemperatureControllerCollector : public DataCollector
 {
 public:
-  using RawFrameCallback = std::function<void(uint64_t host_timestamp_us, const uint8_t* frame, size_t size)>;
+  using RawFrameCallback = std::function<void(uint64_t host_timestamp_us,
+                                              uint16_t record_type,
+                                              const uint8_t* frame,
+                                              size_t size)>;
 
   TemperatureControllerData getLatestData();
   bool checkDeviceResponse() override;
@@ -322,13 +333,17 @@ private:
   bool readSnapshot(TemperatureControllerData& sample);
   bool readChannel(uint8_t channel, TemperatureControllerChannelData& channel_data);
   bool readRegisters(uint16_t address, uint16_t count, std::vector<uint16_t>& registers, int wait_ms = 200);
-  bool readRegistersUnlocked(uint16_t address, uint16_t count, std::vector<uint16_t>& registers, int wait_ms);
+  bool readRegistersUnlocked(uint16_t address,
+                             uint16_t count,
+                             std::vector<uint16_t>& registers,
+                             int wait_ms,
+                             bool record_raw = true);
   bool queryAscii(const std::string& command, std::string& response, int wait_ms = 1200);
   bool writeRegisters(uint16_t address, const std::vector<uint16_t>& registers, int wait_ms = 200);
   bool writeRegistersUnlocked(uint16_t address, const std::vector<uint16_t>& registers, int wait_ms);
   bool writeAndConfirm(uint8_t channel, uint16_t address, const std::vector<uint16_t>& registers);
   bool readResponseFrame(uint8_t function_code, std::vector<uint8_t>& frame, int wait_ms);
-  void publishRawFrame(const std::vector<uint8_t>& frame);
+  void publishRawFrame(uint16_t record_type, const std::vector<uint8_t>& frame);
 };
 
 }

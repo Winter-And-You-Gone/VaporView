@@ -25,6 +25,14 @@ namespace
 {
 std::atomic_bool g_shutdownRequested = false;
 
+void configureConsoleEncoding()
+{
+#ifdef Q_OS_WIN
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
+#endif
+}
+
 void handleProcessSignal(int)
 {
     g_shutdownRequested.store(true, std::memory_order_relaxed);
@@ -97,6 +105,8 @@ void registerTelemetryMetaTypes()
 
 int main(int argc, char *argv[])
 {
+    configureConsoleEncoding();
+
     QCoreApplication app(argc, argv);
     std::signal(SIGINT, handleProcessSignal);
     std::signal(SIGTERM, handleProcessSignal);
@@ -108,7 +118,7 @@ int main(int argc, char *argv[])
 #endif
 
     app.setApplicationName("VaporViewSkyCore");
-    app.setApplicationVersion("1.0.21");
+    app.setApplicationVersion("1.0.23");
     app.setOrganizationName("VaporView");
     VaporView::LogService logService(QStringLiteral("VaporViewSkyCore"));
     logService.installQtMessageHandler();

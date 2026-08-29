@@ -117,6 +117,16 @@ int main(int argc, char **argv)
             "waveform failure has an explicit failed outcome");
 
     finished = false;
+    waveformStarted = false;
+    LocalConnectionRequest serialOnlyRequest;
+    serialOnlyRequest.includeWaveform = false;
+    require(coordinator.begin(serialOnlyRequest), "coordinator starts serial-only local device request");
+    coordinator.serialFinished(false);
+    require(finished && result.outcome == LocalConnectionOutcome::Completed &&
+                !result.serialConnected && !result.waveformConnected && !waveformStarted,
+            "serial-only local device request does not start TCP waveform phase");
+
+    finished = false;
     require(coordinator.begin(request), "coordinator starts explicit disconnect case");
     coordinator.serialFinished(true);
     coordinator.disconnect();

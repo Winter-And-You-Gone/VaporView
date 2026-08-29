@@ -355,7 +355,6 @@ void Ai8TemperatureControllerPanel::setupUi()
     temperature_plot_ = new ::TemperatureTrendPlotWidget(mainContentCard);
     temperature_plot_->setObjectName(QStringLiteral("ai8TemperatureTrendPlot"));
     temperature_plot_->setProperty("ai8TemperaturePlot", true);
-    temperature_plot_->setProperty("forceWhiteBackground", true);
     temperature_plot_->setCompactMode(true);
     temperature_plot_->setTimeAxisEnabled(true);
     temperature_plot_->setFixedHeight(

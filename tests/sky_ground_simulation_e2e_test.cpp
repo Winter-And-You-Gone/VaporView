@@ -7,6 +7,7 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QProcess>
+#include <QProcessEnvironment>
 #include <QTemporaryDir>
 #include <QTcpServer>
 
@@ -114,7 +115,7 @@ void startSkyCore(QProcess& process, quint16 port, const QString& configPath)
 VaporView::SkyConfig testConfig()
 {
     VaporView::SkyConfig config = VaporView::SkyConfig::defaults();
-    config.epsilon = {true, QStringLiteral("/dev/test-epsilon"), 921600, 100.0};
+    config.epsilon = {true, QStringLiteral("/dev/test-epsilon"), 921600};
     config.ptb = {true, QStringLiteral("/dev/test-ptb210"), 9600, 20.0};
     config.ptb.source = QStringLiteral("ptb210");
     config.hmp = {true, QStringLiteral("/dev/test-hmp3"), 19200, 20.0};
@@ -228,6 +229,8 @@ int main(int argc, char **argv)
     require(receivedConfig.value(QStringLiteral("hmp")).toObject().value(QStringLiteral("source")).toString() ==
                 QStringLiteral("hmp3"),
             "initial humidity source returned");
+    require(!receivedConfig.value(QStringLiteral("epsilon")).toObject().contains(QStringLiteral("frequency_hz")),
+            "GetSkyConfig omits EPSILON single frequency");
     require(acks.contains(seq) && acks.value(seq).error_code == VaporView::CommandErrorCode::Ok,
             "GetSkyConfig acknowledged");
 
@@ -265,6 +268,8 @@ int main(int argc, char **argv)
     require(receivedConfig.value(QStringLiteral("ai8_temperature_controller")).toObject()
                 .value(QStringLiteral("slave_address")).toInt() == 7,
             "GetSkyConfig reflects AI-8 slave address after apply");
+    require(!receivedConfig.value(QStringLiteral("epsilon")).toObject().contains(QStringLiteral("frequency_hz")),
+            "post-apply GetSkyConfig still omits EPSILON single frequency");
     require(acks.contains(seq) && acks.value(seq).error_code == VaporView::CommandErrorCode::Ok,
             "post-apply GetSkyConfig acknowledged");
 
@@ -490,6 +495,9 @@ int main(int argc, char **argv)
         QStringLiteral("--telemetry-tcp-port"), QString::number(port),
         QStringLiteral("--remote-device-e2e-output"), groundUiResultPath,
     });
+    QProcessEnvironment groundUiEnvironment = QProcessEnvironment::systemEnvironment();
+    groundUiEnvironment.insert(QStringLiteral("VAPORVIEW_SETTINGS_DIR"), groundUiTempDir.path());
+    groundUi.setProcessEnvironment(groundUiEnvironment);
     groundUi.setProcessChannelMode(QProcess::MergedChannels);
     groundUi.start();
     require(groundUi.waitForStarted(5000), "VaporView Ground UI E2E process starts");

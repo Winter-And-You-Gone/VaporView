@@ -1,5 +1,6 @@
 #include "ground/main/UiLogModel.h"
 
+#include <QAbstractItemView>
 #include <QApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -836,17 +837,29 @@ QSize UiLogItemDelegate::sizeHint(const QStyleOptionViewItem& option, const QMod
         font.setBold(true);
     }
 
-    int itemWidth = option.rect.width();
+    int itemWidth = 0;
+    if (const auto *view = qobject_cast<const QAbstractItemView *>(option.widget))
+    {
+        itemWidth = view->viewport() ? view->viewport()->width() : view->width();
+    }
+    if (itemWidth <= 0)
+    {
+        itemWidth = option.rect.width();
+    }
     if (itemWidth <= 0 && option.widget)
     {
         itemWidth = option.widget->width();
     }
-    const int textWidth = std::max(1, itemWidth - 20);
+    const QMargins textMargins(10, 3, 10, 3);
+    const int textWidth = std::max(1, itemWidth - textMargins.left() - textMargins.right());
     const QRect textBounds = QFontMetrics(font).boundingRect(
         QRect(0, 0, textWidth, std::numeric_limits<int>::max()),
         Qt::AlignLeft | Qt::TextWordWrap,
         index.data(Qt::DisplayRole).toString());
-    size.setHeight(std::max({size.height(), 26, textBounds.height() + 6}));
+    size.setWidth(itemWidth);
+    size.setHeight(std::max({size.height(),
+                             26,
+                             textBounds.height() + textMargins.top() + textMargins.bottom()}));
     return size;
 }
 

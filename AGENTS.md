@@ -63,6 +63,13 @@
 - UI/布局验证需要截图时，截图导出代码和截图文件默认只作临时检查；视觉确认后移除临时代码和产物，再进入最终构建、测试、提交。
 - 不要在构建或测试进程仍在后台运行时提交或 push。提交前确认工作区只包含本次任务相关文件，push 前仍按上面的 `build/Release` 规则重新构建。
 
+## Test State Restoration
+
+- 任何测试、GUI 验证或临时诊断结束后，都必须恢复测试开始前的应用状态、配置状态和工作区环境，不能把测试过程中的临时状态留给后续人工验证或下一项任务。
+- 涉及字体/界面缩放、窗口尺寸、主题、语言、侧栏宽度、滚动位置或持久化配置时，测试结束必须恢复原值；如果测试前使用的是默认状态，放缩测试结束后必须恢复为项目约定的“标准”大小（100% 字体缩放和正常窗口尺寸）。
+- 优先使用隔离的临时 `QSettings`、临时配置目录和测试专用窗口，配合 RAII、清理钩子或等价的 finally 路径保证恢复；测试中断、失败或超时也必须执行清理。
+- 测试结束前确认当前任务启动的进程已经退出，并删除临时截图、诊断代码、构建日志和其它测试产物；不得把这些状态或产物提交、推送到 GitHub。
+
 ## Qt Popup Styling Guardrails
 
 - `QComboBox` 的下拉框是 Qt 内部创建的原生 popup 顶层窗口，不能用自绘菜单的方式改它的 `view()->window()` 来做外侧阴影。不要给 combo popup 容器设置 `WA_TranslucentBackground`、`WA_NoSystemBackground`、透明 stylesheet、外扩 geometry、shadow margin 或自定义 shadow host；Windows 下这些透明 backing store 很容易显示成黑色外框/黑块。

@@ -382,6 +382,18 @@ int main()
     require(outlierQualityStats.jumpSamples == 1, "only the outlier is counted as a jump");
     require(outlierQualityStats.lineSamples == 4, "normal samples after the outlier remain line samples");
 
+    VaporView::Map3D::Trajectory3DLayer noHeatLayer;
+    noHeatLayer.appendRenderSamples({
+        heatSample(0),
+        heatSample(1),
+        heatSample(2),
+    });
+    require(!noHeatLayer.heatRenderingEnabled(),
+            "render samples without the selected heat metric use the ordinary trajectory renderer");
+    require(noHeatLayer.qualityStats().lineSamples == 3
+                && noHeatLayer.sphereMarkerCount() == 3,
+            "render samples without heat data retain ordinary line and marker geometry");
+
     VaporView::Map3D::Trajectory3DLayer heatLayer;
     std::vector<VaporView::Geo::TrajectoryRenderSample> heatSamples = {
         heatSample(0, 1.0),

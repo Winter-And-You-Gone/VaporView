@@ -5,6 +5,9 @@
 #include <QByteArray>
 #include <QElapsedTimer>
 #include <QHostAddress>
+#include <QLabel>
+#include <QLineEdit>
+#include <QPushButton>
 #include <QSettings>
 #include <QTcpServer>
 #include <QTcpSocket>
@@ -379,6 +382,103 @@ void testWavePlotXAxisLabelsDefaultToChinese()
             "peak trend x-axis still supports English range text");
 }
 
+bool hasLabelText(QWidget *root, const QString& text)
+{
+    if (!root)
+    {
+        return false;
+    }
+    for (QLabel *label : root->findChildren<QLabel *>())
+    {
+        if (label && label->text() == text)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool hasButtonText(QWidget *root, const QString& text)
+{
+    if (!root)
+    {
+        return false;
+    }
+    for (QPushButton *button : root->findChildren<QPushButton *>())
+    {
+        if (button && button->text() == text)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool endpointEditorsEnabled(QWidget *root, bool expectedEnabled)
+{
+    const QList<QLineEdit *> editors = root ? root->findChildren<QLineEdit *>() : QList<QLineEdit *>();
+    if (editors.size() < 2)
+    {
+        return false;
+    }
+    for (QLineEdit *editor : editors)
+    {
+        if (!editor || editor->isEnabled() != expectedEnabled)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+void testRemoteSkyModeKeepsLocalEndpointText()
+{
+    TcpWavePanel panel;
+    panel.setEnglish(false);
+    require(hasLabelText(&panel, QStringLiteral("TCP主机:")) &&
+                hasLabelText(&panel, QStringLiteral("端口:")),
+            "local TCP wave labels describe the local TCP endpoint");
+    require(hasButtonText(&panel, QStringLiteral("连接")),
+            "local TCP wave connect button uses the shared text");
+
+    panel.setRemoteSkyMode(true);
+    require(hasLabelText(&panel, QStringLiteral("TCP主机:")) &&
+                hasLabelText(&panel, QStringLiteral("端口:")),
+            "remote TCP wave mode keeps the shared endpoint labels");
+    require(!hasLabelText(&panel, QStringLiteral("天空端波形主机:")) &&
+                !hasLabelText(&panel, QStringLiteral("天空端波形端口:")),
+            "remote TCP wave mode does not expose separate Sky endpoint wording");
+    require(hasButtonText(&panel, QStringLiteral("连接")),
+            "remote TCP wave mode keeps the shared connect text");
+    require(endpointEditorsEnabled(&panel, true),
+            "remote TCP wave disconnected mode keeps endpoint editors usable");
+
+    panel.setRemoteWaveTcpState(VaporView::DeviceState::Connected);
+    require(hasButtonText(&panel, QStringLiteral("断开")),
+            "remote TCP wave connected state keeps the shared disconnect text");
+    require(endpointEditorsEnabled(&panel, false),
+            "remote TCP wave connected state locks endpoint editors like local mode");
+
+    panel.setRemoteWaveTcpState(VaporView::DeviceState::Disconnected);
+    require(endpointEditorsEnabled(&panel, true),
+            "remote TCP wave disconnected state restores endpoint editing");
+
+    panel.setEnglish(true);
+    require(hasLabelText(&panel, QStringLiteral("TCP Host:")) &&
+                hasLabelText(&panel, QStringLiteral("Port:")),
+            "remote TCP wave mode keeps the shared English endpoint labels");
+    require(!hasLabelText(&panel, QStringLiteral("Sky Wave Host:")) &&
+                !hasLabelText(&panel, QStringLiteral("Sky Wave Port:")),
+            "remote TCP wave mode does not expose separate English Sky endpoint wording");
+    require(hasButtonText(&panel, QStringLiteral("Connect")),
+            "remote TCP wave disconnected state keeps the shared English connect text");
+
+    panel.setRemoteSkyMode(false);
+    require(hasLabelText(&panel, QStringLiteral("TCP Host:")) &&
+                hasLabelText(&panel, QStringLiteral("Port:")),
+            "local TCP wave labels are restored when leaving remote mode");
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -399,6 +499,7 @@ int main(int argc, char **argv)
     testInvalidStreamAndPayloadCorrectionPublishStructuredLogs();
     testInvalidTcpStreamDoesNotGrowBacklog();
     testWavePlotXAxisLabelsDefaultToChinese();
+    testRemoteSkyModeKeepsLocalEndpointText();
     std::cout << "tcp_wave_panel_test passed\n";
     return 0;
 }

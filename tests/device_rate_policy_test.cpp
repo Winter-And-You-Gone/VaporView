@@ -37,6 +37,8 @@ int main()
     const std::map<uint8_t, int> defaultRates = defaultEpsilonPacketRates();
     require(defaultRates.at(0x40) == 250 && defaultRates.at(0x5A) == 1,
             "recommended EPSILON packet-rate defaults are stable");
+    require(epsilonPacketRatesMatchDefault(defaultRates),
+            "recommended EPSILON packet-rate profile is recognized as default");
     require(epsilonPacketCallbackRate(defaultRates, 10) == 250,
             "callback rate follows fastest configured packet");
 
@@ -64,6 +66,8 @@ int main()
     const std::map<uint8_t, int> effective = effectiveEpsilonPacketRates(settings);
     require(effective.at(0x40) == 500 && effective.at(0x41) == defaultRates.at(0x41),
             "saved EPSILON packet rates override individual recommended defaults");
+    require(!epsilonPacketRatesMatchDefault(effective),
+            "custom EPSILON packet-rate profile is recognized as non-default");
     require(!epsilonPacketRatesSignature(effective).isEmpty(), "packet-rate signature is stable");
 
     std::cout << "device rate policy tests passed\n";

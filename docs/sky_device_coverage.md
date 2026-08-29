@@ -13,7 +13,7 @@
 | BMP390 | PASS | PASS | N/A | N/A | PASS | PASS | 复用压力槽，`source=bmp390`；设备内部参数读写 N/A。 |
 | HMP3 | PASS | PASS | N/A | N/A | PASS | PASS | 温湿度槽串口/频率配置，设备内部参数页 N/A。 |
 | SHT45 | PASS | PASS | N/A | N/A | PASS | PASS | 复用温湿度槽，`source=sht45`；设备内部参数读写 N/A。 |
-| TFA1005-L | PASS | PASS | N/A | N/A | PASS | PASS | 当前 Local 没有真实用户可修改的内部参数。 |
+| TFA1500-L | PASS | PASS | N/A | N/A | PASS | PASS | 当前 Local 没有真实用户可修改的内部参数。 |
 | RD105 | PASS | PASS | PASS | PASS | PASS | PASS | 同一个 `TemperatureControllerPanel`，经 `Rd105DeviceSession` 路由 Local 或 Remote backend。 |
 | AI-8288 / AI-8 | PASS | PASS | PASS | PASS | PASS | PASS | 同一个 `Ai8TemperatureControllerPanel`，写入后 Sky 端回读确认。 |
 | AI-8288 / AI-8 factory reset | N/A | N/A | N/A（正式 UI） | N/A（真实 collector） | PASS | PASS | 当前正式 AI-8 页面没有恢复出厂按钮；仿真保留受控 factory-reset 验收。 |
@@ -86,6 +86,7 @@ collector   |
 
 ## SkyConfig
 
+- `epsilon` stores only `enabled`, `port`, and `baud`; legacy `frequency_hz` is accepted when reading older files but is no longer serialized. EPSILON packet rates are configured through the packet-rate profile workflow instead of a single SkyConfig frequency.
 - Pressure and humidity keep the existing logical sections: `ptb` means the pressure slot and `hmp` means the temperature/humidity slot.
 - `ptb.source` accepts `ptb210` or `bmp390`; missing legacy values default to `ptb210`.
 - `hmp.source` accepts `hmp3` or `sht45`; missing legacy values default to `hmp3`.
@@ -97,9 +98,9 @@ collector   |
 
 - `TelemetryBasic` remains for neutral physical quantities: pressure, temperature, humidity, lidar, navigation, and health/status fields.
 - `TelemetryStatus` includes RTCM correction receive/drop counters so Ground can distinguish configured/streaming/error states without logging every RTCM chunk.
-- RD105 continues to use dedicated `TemperatureControllerStatus` telemetry and `sensors/temperature_controller.csv`.
-- AI-8288 uses dedicated `Ai8TemperatureControllerStatus` telemetry and `sensors/ai8_temperature_controller.csv`, preserving eight measured channels, control states, main status, and alarm registers.
-- RD105 and AI-8288 raw Modbus frame recording is intentionally not part of the current product recorder; structured controller state is the durable session artifact.
+- RD105 continues to use dedicated `TemperatureControllerStatus` telemetry and `sensors/laser_temperature_controller.csv`.
+- AI-8288 uses dedicated `Ai8TemperatureControllerStatus` telemetry and `sensors/system_temperature_controller.csv`, preserving eight measured channels, control states, main status, and alarm registers.
+- RD105 and AI-8288 raw Modbus response frames are recorded to `raw/laser_temperature_controller.dat` and `raw/system_temperature_controller.dat`; structured controller state remains in the semantic CSV artifacts.
 
 ## Simulation Contract
 

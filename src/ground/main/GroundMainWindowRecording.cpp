@@ -1,10 +1,12 @@
 #include "ground/main/GroundMainWindowImplementation.h"
 
+#include <QProgressBar>
+#include <algorithm>
+#include <cmath>
 #include <utility>
 
 namespace
 {
-
 
 void publishPendingUiLogDropNotice(quint64 dropped)
 {
@@ -33,6 +35,20 @@ void MainWindow::publishGroundLog(VaporView::LogLevel level,
                                   const QString& message,
                                   QVariantMap fields)
 {
+    bool hasProgressCurrent = false;
+    bool hasProgressTotal = false;
+    const int progressCurrent = fields.value(QStringLiteral("epsilon_progress_current"))
+        .toInt(&hasProgressCurrent);
+    const int progressTotal = fields.value(QStringLiteral("epsilon_progress_total"))
+        .toInt(&hasProgressTotal);
+    if (hasProgressCurrent && hasProgressTotal && progressTotal > 0)
+    {
+        setEpsilonReconfigureProgress(
+            progressCurrent,
+            progressTotal,
+            fields.value(QStringLiteral("epsilon_progress_stage")).toString());
+    }
+
     fields.insert(QStringLiteral("event"), event);
     fields.insert(QStringLiteral("ui_visible"), true);
     if (!fields.contains(QStringLiteral("ui_visibility")))
@@ -57,6 +73,111 @@ void MainWindow::publishGroundLog(VaporView::LogLevel level,
         enqueueUiLogRecord(record);
     }
     state_->has_inline_progress_log_ = false;
+}
+
+void MainWindow::startEpsilonReconfigureProgress(int totalSteps)
+{
+    if (!state_->epsilon_reconfigure_progress_row_ ||
+        !state_->epsilon_reconfigure_progress_label_ ||
+        !state_->epsilon_reconfigure_progress_bar_)
+    {
+        return;
+    }
+
+    state_->epsilon_reconfigure_progress_visible_ = true;
+    state_->epsilon_reconfigure_progress_current_ = 0;
+    state_->epsilon_reconfigure_progress_total_ = std::max(1, totalSteps);
+    state_->epsilon_reconfigure_progress_stage_.clear();
+    state_->epsilon_reconfigure_progress_elapsed_.start();
+    state_->epsilon_reconfigure_progress_bar_->setRange(0, 100);
+    state_->epsilon_reconfigure_progress_bar_->setValue(0);
+    state_->epsilon_reconfigure_progress_row_->setVisible(true);
+    updateEpsilonReconfigureProgress();
+    if (state_->epsilon_reconfigure_progress_timer_)
+    {
+        state_->epsilon_reconfigure_progress_timer_->start();
+    }
+}
+
+void MainWindow::setEpsilonReconfigureProgress(int currentStep,
+                                                int totalSteps,
+                                                const QString& stage)
+{
+    if (!state_->epsilon_reconfigure_progress_visible_ ||
+        !state_->epsilon_reconfigure_progress_bar_)
+    {
+        return;
+    }
+
+    state_->epsilon_reconfigure_progress_total_ = std::max(1, totalSteps);
+    state_->epsilon_reconfigure_progress_current_ =
+        std::clamp(currentStep, 0, state_->epsilon_reconfigure_progress_total_);
+    if (!stage.isEmpty())
+    {
+        state_->epsilon_reconfigure_progress_stage_ = stage;
+    }
+    const int percentage = static_cast<int>(std::lround(
+        100.0 * state_->epsilon_reconfigure_progress_current_ /
+        state_->epsilon_reconfigure_progress_total_));
+    state_->epsilon_reconfigure_progress_bar_->setRange(0, 100);
+    state_->epsilon_reconfigure_progress_bar_->setValue(std::clamp(percentage, 0, 100));
+    updateEpsilonReconfigureProgress();
+}
+
+void MainWindow::updateEpsilonReconfigureProgress()
+{
+    if (!state_->epsilon_reconfigure_progress_visible_ ||
+        !state_->epsilon_reconfigure_progress_label_)
+    {
+        return;
+    }
+
+    const qint64 elapsedMs = state_->epsilon_reconfigure_progress_elapsed_.isValid()
+        ? state_->epsilon_reconfigure_progress_elapsed_.elapsed()
+        : 0;
+    const qint64 elapsedSeconds = elapsedMs / 1000;
+    const QString elapsedText = QStringLiteral("%1:%2")
+        .arg(elapsedSeconds / 60, 2, 10, QLatin1Char('0'))
+        .arg(elapsedSeconds % 60, 2, 10, QLatin1Char('0'));
+    const int percentage = state_->epsilon_reconfigure_progress_total_ > 0
+        ? static_cast<int>(std::lround(
+            100.0 * state_->epsilon_reconfigure_progress_current_ /
+            state_->epsilon_reconfigure_progress_total_))
+        : 0;
+    const QString stage = state_->epsilon_reconfigure_progress_stage_;
+    state_->epsilon_reconfigure_progress_label_->setText(
+        state_->is_english_
+            ? (stage.isEmpty()
+                ? QStringLiteral("Configuring EPSILON output (%1%, elapsed %2)")
+                      .arg(percentage).arg(elapsedText)
+                : QStringLiteral("Configuring EPSILON output (%1%, %2, elapsed %3)")
+                      .arg(percentage).arg(stage).arg(elapsedText))
+            : (stage.isEmpty()
+                ? QStringLiteral("正在重配 EPSILON 输出（%1%，已用时 %2）")
+                      .arg(percentage).arg(elapsedText)
+                : QStringLiteral("正在重配 EPSILON 输出（%1%，%2，已用时 %3）")
+                      .arg(percentage).arg(stage).arg(elapsedText)));
+}
+
+void MainWindow::stopEpsilonReconfigureProgress()
+{
+    state_->epsilon_reconfigure_progress_visible_ = false;
+    if (state_->epsilon_reconfigure_progress_timer_)
+    {
+        state_->epsilon_reconfigure_progress_timer_->stop();
+    }
+    if (state_->epsilon_reconfigure_progress_row_)
+    {
+        state_->epsilon_reconfigure_progress_row_->setVisible(false);
+    }
+    if (state_->epsilon_reconfigure_progress_bar_)
+    {
+        state_->epsilon_reconfigure_progress_bar_->setRange(0, 100);
+        state_->epsilon_reconfigure_progress_bar_->setValue(0);
+    }
+    state_->epsilon_reconfigure_progress_current_ = 0;
+    state_->epsilon_reconfigure_progress_total_ = 100;
+    state_->epsilon_reconfigure_progress_stage_.clear();
 }
 
 void MainWindow::publishTemperatureCommandLog(VaporView::LogLevel level,
@@ -158,9 +279,8 @@ void MainWindow::flushPendingUiLogRecords()
 
     if (shouldFollow)
     {
-        QTimer::singleShot(0, this, [this]() {
-            scrollLogViewToBottom();
-        });
+        scheduleLogViewBottomFollow();
+        clearLogUnreadState();
     }
     else if (visibleInCurrentView > 0)
     {
@@ -189,9 +309,8 @@ void MainWindow::renderLogView()
     state_->has_inline_progress_log_ = false;
     if (state_->log_auto_follow_enabled_)
     {
-        QTimer::singleShot(0, this, [this]() {
-            scrollLogViewToBottom();
-        });
+        scheduleLogViewBottomFollow();
+        clearLogUnreadState();
     }
     updateLogFilterAction();
     updateLogUnreadUi();
@@ -231,11 +350,52 @@ bool MainWindow::isLogViewNearBottom() const
 
 void MainWindow::scrollLogViewToBottom()
 {
+    settleLogViewAtBottom();
+    scheduleLogViewBottomFollow();
+    clearLogUnreadState();
+}
+
+void MainWindow::settleLogViewAtBottom()
+{
     if (state_->log_list_view_)
     {
-        state_->log_list_view_->scrollToBottom();
+        QListView *logListView = state_->log_list_view_;
+        logListView->doItemsLayout();
+        if (QAbstractItemModel *model = logListView->model())
+        {
+            const int lastRow = model->rowCount() - 1;
+            if (lastRow >= 0)
+            {
+                logListView->scrollTo(model->index(lastRow, 0),
+                                      QAbstractItemView::PositionAtBottom);
+            }
+        }
+        logListView->scrollToBottom();
+        if (QScrollBar *scrollBar = logListView->verticalScrollBar())
+        {
+            scrollBar->setValue(scrollBar->maximum());
+        }
+        if (logListView->viewport())
+        {
+            logListView->viewport()->update();
+        }
     }
-    clearLogUnreadState();
+}
+
+void MainWindow::scheduleLogViewBottomFollow()
+{
+    if (!state_->log_list_view_ || state_->log_bottom_follow_scheduled_)
+    {
+        return;
+    }
+    state_->log_bottom_follow_scheduled_ = true;
+    QTimer::singleShot(0, this, [this]() {
+        settleLogViewAtBottom();
+        QTimer::singleShot(0, this, [this]() {
+            settleLogViewAtBottom();
+            state_->log_bottom_follow_scheduled_ = false;
+        });
+    });
 }
 
 void MainWindow::updateLogFollowState()
@@ -431,17 +591,37 @@ void MainWindow::updateRecordingStatusLabel()
                 : (isUiTestMode() ? QStringLiteral("记录状态（界面测试）")
                                   : QStringLiteral("记录状态")));
     }
-    if (!state_->recording_status_label_)
+    if (!state_->recording_status_view_)
     {
         return;
     }
 
+    auto applyRecordingStatusText = [this](const QString& plainText) {
+        state_->recording_status_view_->setStatusText(plainText);
+        if (state_->recording_status_card_)
+        {
+            state_->recording_status_card_->setToolTip(plainText);
+        }
+    };
+
     if (isUiTestMode())
     {
-        const qint64 elapsedMs = uiTestRecordingElapsedMs();
+        const qint64 elapsedMs = state_->ui_test_recording_state_ == 0
+            ? 0
+            : std::max<qint64>(uiTestRecordingElapsedMs(), 5000);
         const auto countAtRate = [elapsedMs](qint64 rateHz) {
             return static_cast<qulonglong>(std::max<qint64>(0, elapsedMs) * rateHz / 1000);
         };
+        const qulonglong rawNavigation = countAtRate(100);
+        const qulonglong rawPressure = countAtRate(10);
+        const qulonglong rawTemperatureHumidity = countAtRate(2);
+        const qulonglong rawDistance = countAtRate(20);
+        const qulonglong rawWaveform = countAtRate(10);
+        const qulonglong rawLaserTemperatureController = countAtRate(4);
+        const qulonglong rawSystemTemperatureController = countAtRate(8);
+        const qulonglong rawTotal =
+            rawNavigation + rawPressure + rawTemperatureHumidity + rawDistance +
+            rawWaveform + rawLaserTemperatureController + rawSystemTemperatureController;
         const char *visual = state_->ui_test_recording_state_ == 1
             ? "connected" : state_->ui_test_recording_state_ == 2 ? "connecting" : "disconnected";
         const QString stateText = state_->ui_test_recording_state_ == 1
@@ -456,26 +636,32 @@ void MainWindow::updateRecordingStatusLabel()
             ? QStringLiteral("--")
             : QStringLiteral("UI-TEST-SESSION");
         const QString detail = state_->is_english_
-            ? QStringLiteral("Session: %1\nElapsed: %2\nSensor rows: %3\nWaveform frames: %4\nRaw EPSILON: %5\nRaw PTB: %6\nRaw HMP: %7\nRaw Lidar: %8\nRaw TCP wave: %9\nFile output: none (memory only)")
+            ? QStringLiteral("Session: %1\nElapsed: %2\nExternal device records: %3 rows\nWaveform frames: %4 frames\nRecorded RAW EPSILON: %5 records\nRecorded RAW PTB210: %6 records\nRecorded RAW HMP3: %7 records\nRecorded RAW TFA1500: %8 records\nRecorded RAW TCP: %9 records\nRecorded RAW RD105: %10 records\nRecorded RAW AI-8288: %11 records\nRecorded RAW total: %12 records\nFile output: none (memory only)")
                   .arg(session)
                   .arg(formatElapsedCompact(static_cast<quint64>(std::max<qint64>(0, elapsedMs))))
                   .arg(countAtRate(20))
                   .arg(countAtRate(10))
-                  .arg(countAtRate(100))
-                  .arg(countAtRate(10))
-                  .arg(countAtRate(2))
-                  .arg(countAtRate(20))
-                  .arg(countAtRate(10))
-            : QStringLiteral("会话：%1\n时长：%2\n设备行数：%3\n波形帧数：%4\nRaw EPSILON：%5\nRaw PTB：%6\nRaw HMP：%7\nRaw Lidar：%8\nRaw TCP 波形：%9\n文件写入：无（仅内存模拟）")
+                  .arg(rawNavigation)
+                  .arg(rawPressure)
+                  .arg(rawTemperatureHumidity)
+                  .arg(rawDistance)
+                  .arg(rawWaveform)
+                  .arg(rawLaserTemperatureController)
+                  .arg(rawSystemTemperatureController)
+                  .arg(rawTotal)
+            : QStringLiteral("会话：%1\n时长：%2\n外部设备记录：%3 行\n波形帧数：%4 帧\n已记录：\nRAW EPSILON：%5 条\nRAW PTB210：%6 条\nRAW HMP3：%7 条\nRAW TFA1500：%8 条\nRAW TCP：%9 条\nRAW RD105：%10 条\nRAW AI-8288：%11 条\nRAW 记录总数：%12 条\n文件写入：无（仅内存模拟）")
                   .arg(session)
                   .arg(formatElapsedCompact(static_cast<quint64>(std::max<qint64>(0, elapsedMs))))
                   .arg(countAtRate(20))
                   .arg(countAtRate(10))
-                  .arg(countAtRate(100))
-                  .arg(countAtRate(10))
-                  .arg(countAtRate(2))
-                  .arg(countAtRate(20))
-                  .arg(countAtRate(10));
+                  .arg(rawNavigation)
+                  .arg(rawPressure)
+                  .arg(rawTemperatureHumidity)
+                  .arg(rawDistance)
+                  .arg(rawWaveform)
+                  .arg(rawLaserTemperatureController)
+                  .arg(rawSystemTemperatureController)
+                  .arg(rawTotal);
         const QString text = QStringLiteral("%1\n%2").arg(stateText, detail);
         setSectionTitleIconName(state_->recording_status_title_lbl_,
                                 state_->ui_test_recording_state_ == 1
@@ -483,14 +669,12 @@ void MainWindow::updateRecordingStatusLabel()
                                     : QStringLiteral("pencil"),
                                 state_->dark_theme_enabled_);
         const QString visualStatus = QString::fromLatin1(visual);
-        const bool visualChanged = state_->recording_status_label_->property("status").toString() != visualStatus;
-        state_->recording_status_label_->setText(text);
-        state_->recording_status_label_->setToolTip(text);
-        state_->recording_status_label_->setProperty("status", visualStatus);
+        const bool visualChanged = state_->recording_status_view_->property("status").toString() != visualStatus;
+        applyRecordingStatusText(text);
+        state_->recording_status_view_->setProperty("status", visualStatus);
         if (state_->recording_status_card_)
         {
             state_->recording_status_card_->setProperty("status", visualStatus);
-            state_->recording_status_card_->setToolTip(text);
         }
         if (visualChanged)
         {
@@ -499,8 +683,8 @@ void MainWindow::updateRecordingStatusLabel()
                 state_->recording_status_card_->style()->unpolish(state_->recording_status_card_);
                 state_->recording_status_card_->style()->polish(state_->recording_status_card_);
             }
-            state_->recording_status_label_->style()->unpolish(state_->recording_status_label_);
-            state_->recording_status_label_->style()->polish(state_->recording_status_label_);
+            state_->recording_status_view_->style()->unpolish(state_->recording_status_view_);
+            state_->recording_status_view_->style()->polish(state_->recording_status_view_);
         }
         updateRecordingActionStates();
         return;
@@ -508,15 +692,15 @@ void MainWindow::updateRecordingStatusLabel()
 
     auto setVisualStatus = [this](const char *status) {
         const QString statusValue = QString::fromLatin1(status);
-        state_->recording_status_label_->setProperty("status", statusValue);
+        state_->recording_status_view_->setProperty("status", statusValue);
         if (state_->recording_status_card_)
         {
             state_->recording_status_card_->setProperty("status", statusValue);
         }
     };
     auto polishVisualStatus = [this]() {
-        state_->recording_status_label_->style()->unpolish(state_->recording_status_label_);
-        state_->recording_status_label_->style()->polish(state_->recording_status_label_);
+        state_->recording_status_view_->style()->unpolish(state_->recording_status_view_);
+        state_->recording_status_view_->style()->polish(state_->recording_status_view_);
         if (state_->recording_status_card_)
         {
             state_->recording_status_card_->style()->unpolish(state_->recording_status_card_);
@@ -524,16 +708,21 @@ void MainWindow::updateRecordingStatusLabel()
         }
     };
     auto localDetailText = [this](const QString& session,
+                                  const QString& elapsed,
                                   qlonglong sensorRows,
                                   qlonglong waveformFrames,
                                   qulonglong rawEpsilon,
                                   qulonglong rawPtb,
                                   qulonglong rawHmp,
                                   qulonglong rawLidar,
-                                  qulonglong rawWaveform) {
+                                  qulonglong rawWaveform,
+                                  qulonglong rawLaserTemperature,
+                                  qulonglong rawSystemTemperature,
+                                  qulonglong rawTotal) {
         return state_->is_english_
-            ? QStringLiteral("Session: %1\nSensor rows: %2\nWaveform frames: %3\nRaw EPSILON: %4\nRaw PTB: %5\nRaw HMP: %6\nRaw Lidar: %7\nRaw TCP wave: %8")
+            ? QStringLiteral("Session: %1\nElapsed: %2\nExternal device records: %3 rows\nWaveform frames: %4 frames\nRecorded RAW EPSILON: %5 records\nRecorded RAW PTB210: %6 records\nRecorded RAW HMP3: %7 records\nRecorded RAW TFA1500: %8 records\nRecorded RAW TCP: %9 records\nRecorded RAW RD105: %10 records\nRecorded RAW AI-8288: %11 records\nRecorded RAW total: %12 records")
                   .arg(session)
+                  .arg(elapsed)
                   .arg(sensorRows)
                   .arg(waveformFrames)
                   .arg(rawEpsilon)
@@ -541,15 +730,22 @@ void MainWindow::updateRecordingStatusLabel()
                   .arg(rawHmp)
                   .arg(rawLidar)
                   .arg(rawWaveform)
-            : QStringLiteral("会话：%1\n设备行数：%2\n波形帧数：%3\nRaw EPSILON：%4\nRaw PTB：%5\nRaw HMP：%6\nRaw Lidar：%7\nRaw TCP 波形：%8")
+                  .arg(rawLaserTemperature)
+                  .arg(rawSystemTemperature)
+                  .arg(rawTotal)
+            : QStringLiteral("会话：%1\n时长：%2\n外部设备记录：%3 行\n波形帧数：%4 帧\n已记录：\nRAW EPSILON：%5 条\nRAW PTB210：%6 条\nRAW HMP3：%7 条\nRAW TFA1500：%8 条\nRAW TCP：%9 条\nRAW RD105：%10 条\nRAW AI-8288：%11 条\nRAW 记录总数：%12 条")
                   .arg(session)
+                  .arg(elapsed)
                   .arg(sensorRows)
                   .arg(waveformFrames)
                   .arg(rawEpsilon)
                   .arg(rawPtb)
                   .arg(rawHmp)
                   .arg(rawLidar)
-                  .arg(rawWaveform);
+                  .arg(rawWaveform)
+                  .arg(rawLaserTemperature)
+                  .arg(rawSystemTemperature)
+                  .arg(rawTotal);
     };
     auto appendScheduledLine = [this](const QString& text) {
         const QString scheduledLine = state_->recording_schedule_controller_
@@ -578,13 +774,15 @@ void MainWindow::updateRecordingStatusLabel()
             displayStatus.raw_pressure_record_count +
             displayStatus.raw_temperature_humidity_record_count +
             displayStatus.raw_distance_record_count +
-            displayStatus.raw_waveform_record_count;
+            displayStatus.raw_waveform_record_count +
+            displayStatus.raw_laser_temperature_controller_record_count +
+            displayStatus.raw_system_temperature_controller_record_count;
         const QString elapsed = formatElapsedCompact(displayStatus.recording_elapsed_ms);
         const QString session = displayStatus.session_name.isEmpty()
             ? QStringLiteral("--")
             : displayStatus.session_name;
         const QString detail = state_->is_english_
-            ? QStringLiteral("Session: %1\nElapsed: %2\nTelemetry rows: %3\nWave features: %4\nWave snapshots: %5\nRaw EPSILON: %6\nRaw PTB: %7\nRaw HMP: %8\nRaw Lidar: %9\nRaw TCP wave: %10")
+            ? QStringLiteral("Session: %1\nElapsed: %2\nExternal device records: %3 rows\nWave features: %4 features\nWaveform frames: %5 frames\nRecorded RAW EPSILON: %6 records\nRecorded RAW PTB210: %7 records\nRecorded RAW HMP3: %8 records\nRecorded RAW TFA1500: %9 records\nRecorded RAW TCP: %10 records\nRecorded RAW RD105: %11 records\nRecorded RAW AI-8288: %12 records\nRecorded RAW total: %13 records")
                   .arg(session)
                   .arg(elapsed)
                   .arg(displayStatus.telemetry_record_count)
@@ -595,7 +793,10 @@ void MainWindow::updateRecordingStatusLabel()
                   .arg(displayStatus.raw_temperature_humidity_record_count)
                   .arg(displayStatus.raw_distance_record_count)
                   .arg(displayStatus.raw_waveform_record_count)
-            : QStringLiteral("会话：%1\n时长：%2\n遥测行数：%3\n波形特征：%4\n波形快照：%5\nRaw EPSILON：%6\nRaw PTB：%7\nRaw HMP：%8\nRaw Lidar：%9\nRaw TCP 波形：%10")
+                  .arg(displayStatus.raw_laser_temperature_controller_record_count)
+                  .arg(displayStatus.raw_system_temperature_controller_record_count)
+                  .arg(rawTotal)
+            : QStringLiteral("会话：%1\n时长：%2\n外部设备记录：%3 行\n波形特征：%4 条\n波形帧数：%5 帧\n已记录：\nRAW EPSILON：%6 条\nRAW PTB210：%7 条\nRAW HMP3：%8 条\nRAW TFA1500：%9 条\nRAW TCP：%10 条\nRAW RD105：%11 条\nRAW AI-8288：%12 条\nRAW 记录总数：%13 条")
                   .arg(session)
                   .arg(elapsed)
                   .arg(displayStatus.telemetry_record_count)
@@ -605,41 +806,33 @@ void MainWindow::updateRecordingStatusLabel()
                   .arg(displayStatus.raw_pressure_record_count)
                   .arg(displayStatus.raw_temperature_humidity_record_count)
                   .arg(displayStatus.raw_distance_record_count)
-                  .arg(displayStatus.raw_waveform_record_count);
+                  .arg(displayStatus.raw_waveform_record_count)
+                  .arg(displayStatus.raw_laser_temperature_controller_record_count)
+                  .arg(displayStatus.raw_system_temperature_controller_record_count)
+                  .arg(rawTotal);
         const QString detailWithSchedule = appendScheduledLine(detail);
-        state_->recording_status_label_->setToolTip(detailWithSchedule);
-        if (state_->recording_status_card_)
-        {
-            state_->recording_status_card_->setToolTip(detailWithSchedule);
-        }
         if (state_->remote_recording_state_ == 1)
         {
             setRecordingTitleIcon(true);
-            state_->recording_status_label_->setText(
-                QString(state_->is_english_ ? "Sky Recording: On\n%1\nRaw total: %2"
-                                    : "天空端记录：进行中\n%1\nRaw 总数：%2")
-                    .arg(detailWithSchedule)
-                    .arg(rawTotal));
+            applyRecordingStatusText(
+                QString(state_->is_english_ ? "Sky Recording: On\n%1" : "天空端记录：进行中\n%1")
+                    .arg(detailWithSchedule));
             setVisualStatus("connected");
         }
         else if (state_->remote_recording_state_ == 2)
         {
             setRecordingTitleIcon(false);
-            state_->recording_status_label_->setText(
-                QString(state_->is_english_ ? "Sky Recording: Paused\n%1\nRaw total: %2"
-                                    : "天空端记录：已暂停\n%1\nRaw 总数：%2")
-                    .arg(detailWithSchedule)
-                    .arg(rawTotal));
+            applyRecordingStatusText(
+                QString(state_->is_english_ ? "Sky Recording: Paused\n%1" : "天空端记录：已暂停\n%1")
+                    .arg(detailWithSchedule));
             setVisualStatus("connecting");
         }
         else
         {
             setRecordingTitleIcon(false);
-            state_->recording_status_label_->setText(
-                QString(state_->is_english_ ? "Sky Recording: Off\n%1\nRaw total: %2"
-                                    : "天空端记录：未记录\n%1\nRaw 总数：%2")
-                    .arg(detailWithSchedule)
-                    .arg(rawTotal));
+            applyRecordingStatusText(
+                QString(state_->is_english_ ? "Sky Recording: Off\n%1" : "天空端记录：未记录\n%1")
+                    .arg(detailWithSchedule));
             setVisualStatus("disconnected");
         }
         polishVisualStatus();
@@ -651,21 +844,33 @@ void MainWindow::updateRecordingStatusLabel()
     const QString session = recordingStatus.sessionName.isEmpty()
         ? QStringLiteral("--")
         : recordingStatus.sessionName;
+    const quint64 rawTotal =
+        recordingStatus.rawNavigationRecords +
+        recordingStatus.rawPressureRecords +
+        recordingStatus.rawTemperatureHumidityRecords +
+        recordingStatus.rawDistanceRecords +
+        recordingStatus.rawWaveformRecords +
+        recordingStatus.rawLaserTemperatureControllerRecords +
+        recordingStatus.rawSystemTemperatureControllerRecords;
     const QString detail = localDetailText(
         session,
+        formatElapsedCompact(recordingStatus.recordingElapsedMs),
         static_cast<qlonglong>(recordingStatus.sensorRows),
         static_cast<qlonglong>(recordingStatus.waveformFrames),
         static_cast<qulonglong>(recordingStatus.rawNavigationRecords),
         static_cast<qulonglong>(recordingStatus.rawPressureRecords),
         static_cast<qulonglong>(recordingStatus.rawTemperatureHumidityRecords),
         static_cast<qulonglong>(recordingStatus.rawDistanceRecords),
-        static_cast<qulonglong>(recordingStatus.rawWaveformRecords));
+        static_cast<qulonglong>(recordingStatus.rawWaveformRecords),
+        static_cast<qulonglong>(recordingStatus.rawLaserTemperatureControllerRecords),
+        static_cast<qulonglong>(recordingStatus.rawSystemTemperatureControllerRecords),
+        rawTotal);
     if (recordingStatus.sessionOpen)
     {
         if (recordingStatus.paused)
         {
             setRecordingTitleIcon(false);
-            state_->recording_status_label_->setText(
+            applyRecordingStatusText(
                 QString(state_->is_english_ ? "Recording: Paused\n%1" : "记录：已暂停\n%1")
                     .arg(appendScheduledLine(detail)));
             setVisualStatus("connecting");
@@ -673,7 +878,7 @@ void MainWindow::updateRecordingStatusLabel()
         else
         {
             setRecordingTitleIcon(true);
-            state_->recording_status_label_->setText(
+            applyRecordingStatusText(
                 QString(state_->is_english_ ? "Recording: On\n%1" : "记录：进行中\n%1")
                     .arg(appendScheduledLine(detail)));
             setVisualStatus("connected");
@@ -681,19 +886,13 @@ void MainWindow::updateRecordingStatusLabel()
     }
     else
     {
-        state_->recording_status_label_->setText(
+        applyRecordingStatusText(
             QString(state_->is_english_ ? "Recording: Off\n%1" : "记录：未记录\n%1")
                 .arg(appendScheduledLine(detail)));
         setRecordingTitleIcon(false);
         setVisualStatus("disconnected");
     }
 
-    const QString summary = state_->recording_status_label_->text();
-    state_->recording_status_label_->setToolTip(summary);
-    if (state_->recording_status_card_)
-    {
-        state_->recording_status_card_->setToolTip(summary);
-    }
     polishVisualStatus();
     updateRecordingActionStates();
 }
@@ -786,8 +985,18 @@ bool MainWindow::startRecordingSession()
     options.deviceConfig.ptb = serialConfig(state_->ptb_port_combo_, state_->ptb_baud_combo_, state_->ptb_rate_combo_);
     options.deviceConfig.hmp = serialConfig(state_->hmp_port_combo_, state_->hmp_baud_combo_, state_->hmp_rate_combo_);
     options.deviceConfig.lidar = serialConfig(state_->lidar_port_combo_, state_->lidar_baud_combo_, state_->lidar_rate_combo_);
-    options.deviceConfig.temperatureController =
+    options.deviceConfig.laserTemperatureController =
         serialConfig(state_->temperature_port_combo_, state_->temperature_baud_combo_, state_->temperature_rate_combo_);
+    options.deviceConfig.laserTemperatureController.slaveAddress =
+        QString::number(rememberedTemperatureSlaveAddress());
+    options.deviceConfig.systemTemperatureController =
+        serialConfig(state_->device_config_.ai8_temperature_port_combo,
+                     state_->device_config_.ai8_temperature_baud_combo,
+                     state_->device_config_.ai8_temperature_rate_combo);
+    options.deviceConfig.systemTemperatureController.slaveAddress =
+        QString::number(state_->ai8_temperature_controller_panel_
+                            ? state_->ai8_temperature_controller_panel_->currentPageData().global.address
+                            : 1);
 
     VaporView::Ground::Session::GroundRecordingStartError startError =
         VaporView::Ground::Session::GroundRecordingStartError::None;

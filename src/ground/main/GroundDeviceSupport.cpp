@@ -427,7 +427,7 @@ QStringList temperatureControllerStatusLabelWidthCandidates()
         QStringLiteral("Controller Mode:"),
         QStringLiteral("自身温度:"),
         QStringLiteral("错误码:"),
-        QStringLiteral("温控器模式:")
+        QStringLiteral("温控器模式")
     };
 }
 
@@ -485,7 +485,7 @@ QString skyDeviceDisplayName(VaporView::SkyDeviceId device)
     case VaporView::SkyDeviceId::Epsilon: return QStringLiteral("EPSILON");
     case VaporView::SkyDeviceId::Ptb: return QStringLiteral("PTB210");
     case VaporView::SkyDeviceId::Hmp: return QStringLiteral("HMP3");
-    case VaporView::SkyDeviceId::Lidar: return QStringLiteral("TFA1005-L");
+    case VaporView::SkyDeviceId::Lidar: return QStringLiteral("TFA1500-L");
     case VaporView::SkyDeviceId::TemperatureController: return QStringLiteral("RD105");
     case VaporView::SkyDeviceId::Ai8TemperatureController: return QStringLiteral("AI-8288");
     case VaporView::SkyDeviceId::WaveTcp: return QStringLiteral("Wave TCP");
@@ -505,7 +505,7 @@ QString homeDeviceDisplayName(VaporView::SkyDeviceId device, bool english)
     case VaporView::SkyDeviceId::Hmp:
         return english ? QStringLiteral("HMP Temp/Humidity") : QStringLiteral("HMP 温湿度");
     case VaporView::SkyDeviceId::Lidar:
-        return english ? QStringLiteral("TFA1005-L LiDAR") : QStringLiteral("TFA1005-L 激光测距");
+        return english ? QStringLiteral("TFA1500-L LiDAR") : QStringLiteral("TFA1500-L 激光测距");
     case VaporView::SkyDeviceId::TemperatureController:
         return english ? QStringLiteral("RD105 Thermal") : QStringLiteral("RD105 激光温控");
     case VaporView::SkyDeviceId::Ai8TemperatureController:
@@ -640,7 +640,7 @@ QColor deviceConfigRemoteIconColor(VaporView::CommandId command)
     case VaporView::CommandId::ConnectDevice:
         return toolbarColor(AppThemeColor::ToolbarGreen);
     case VaporView::CommandId::DisconnectDevice:
-        return toolbarColor(AppThemeColor::ToolbarRed);
+        return toolbarColor(AppThemeColor::ToolbarBlue);
     case VaporView::CommandId::ReconnectDevice:
         return toolbarColor(AppThemeColor::ToolbarBlue);
     default:
@@ -800,7 +800,7 @@ void saveRememberedSensorBaud(QSettings& settings,
 QString sourceModeDisplayText(bool english, int index)
 {
     return index == 1
-        ? (english ? QStringLiteral("Sky-Ground Remote Mode") : QStringLiteral("天地远程模式"))
+        ? (english ? QStringLiteral("Remote") : QStringLiteral("远程"))
         : (english ? QStringLiteral("Local") : QStringLiteral("本地"));
 }
 

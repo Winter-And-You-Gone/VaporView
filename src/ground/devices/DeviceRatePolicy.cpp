@@ -96,6 +96,11 @@ std::map<uint8_t, int> defaultEpsilonPacketRates()
     };
 }
 
+bool epsilonPacketRatesMatchDefault(const std::map<uint8_t, int>& packetRates)
+{
+    return packetRates == defaultEpsilonPacketRates();
+}
+
 bool epsilonPacketRateSupported(const EpsilonPacketConfigOption& option, int rateHz)
 {
     return std::find(option.supported_rates_hz.cbegin(), option.supported_rates_hz.cend(), rateHz) != option.supported_rates_hz.cend();

@@ -30,6 +30,8 @@ enum class LocalDeviceKind
 
 struct LocalSerialDeviceSettings
 {
+    bool requested = true;
+    bool enabled = true;
     QString port;
     QString baudText;
     int sampleRateHz = 1;
@@ -39,6 +41,7 @@ struct LocalSerialDeviceSettings
 struct LocalConnectionRequest
 {
     bool english = false;
+    bool includeWaveform = true;
     QString selectText;
     LocalSerialDeviceSettings epsilon;
     LocalSerialDeviceSettings ptb;
@@ -54,6 +57,7 @@ struct LocalConnectionRequest
     int epsilonConfiguredRateHz = 100;
     QString epsilonPacketRateSignature;
     QString epsilonPacketRateSummary;
+    bool epsilonPacketRatesMatchDefault = true;
     bool epsilonConfigLikelyMatches = false;
 };
 
@@ -86,13 +90,14 @@ struct LocalConnectionCallbacks
     std::function<void(quint64, const void *, size_t)> rawPtbResponse;
     std::function<void(quint64, const void *, size_t)> rawHmpResponse;
     std::function<void(quint64, quint16, const void *, size_t)> rawLidarFrame;
+    std::function<void(quint64, quint16, const void *, size_t)> rawLaserTemperatureControllerResponse;
+    std::function<void(quint64, quint16, const void *, size_t)> rawSystemTemperatureControllerResponse;
 };
 
 struct LocalSampleRateConfiguration
 {
     int epsilonCallbackRateHz = 100;
     std::map<uint8_t, int> epsilonPacketRates;
-    bool applyEpsilonDeviceRate = true;
     int ptbRateHz = 1;
     bool applyPtbDeviceRate = true;
     int hmpRateHz = 1;
@@ -156,8 +161,7 @@ public:
         const LocalSampleRateConfiguration& configuration);
     LocalSampleRateApplyResult setEpsilonSampleRate(
         int callbackRateHz,
-        const std::map<uint8_t, int>& packetRates,
-        bool applyDeviceRate);
+        const std::map<uint8_t, int>& packetRates);
     LocalSampleRateApplyResult setPtbSampleRate(int rateHz, bool applyDeviceRate);
     void setHmpSampleRate(int rateHz);
     void setLidarSampleRate(int rateHz, bool applyDeviceRate);

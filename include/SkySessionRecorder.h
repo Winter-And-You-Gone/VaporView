@@ -49,6 +49,12 @@ public:
     quint64 rawTemperatureHumidityRecordCount() const;
     quint64 rawDistanceRecordCount() const;
     quint64 rawWaveformRecordCount() const;
+    quint64 rawLaserTemperatureControllerRecordCount() const;
+    quint64 rawSystemTemperatureControllerRecordCount() const;
+
+    static bool isTimestampInsideRecordingWindow(quint64 timestampUs,
+                                                 quint64 startTimeUs,
+                                                 quint64 endTimeUs);
 
     bool appendEvent(const LogRecord& record);
     bool appendError(const LogRecord& record);
@@ -79,6 +85,12 @@ public:
     void recordRawPtbResponse(quint64 hostTimeUs, const QByteArray& response);
     void recordRawHmpResponse(quint64 hostTimeUs, const QByteArray& response);
     void recordRawLidarFrame(quint64 hostTimeUs, quint16 protocol, const QByteArray& frame);
+    void recordRawLaserTemperatureControllerResponse(quint64 hostTimeUs,
+                                                     quint16 recordType,
+                                                     const QByteArray& response);
+    void recordRawSystemTemperatureControllerResponse(quint64 hostTimeUs,
+                                                      quint16 recordType,
+                                                      const QByteArray& response);
     void recordRawTcpWaveFrame(quint64 hostTimeUs,
                                const QByteArray& rawPayload,
                                const QByteArray& harmonicPayload,
@@ -117,6 +129,8 @@ private:
     QString temperature_humidity_raw_filename_;
     QString distance_raw_filename_;
     QString waveform_raw_filename_;
+    QString laser_temperature_controller_raw_filename_;
+    QString system_temperature_controller_raw_filename_;
     QString waveform_peaks_filename_;
     QString event_log_filename_;
     QString error_log_filename_;
@@ -129,6 +143,8 @@ private:
     QFile temperature_humidity_raw_file_;
     QFile distance_raw_file_;
     QFile waveform_raw_file_;
+    QFile laser_temperature_controller_raw_file_;
+    QFile system_temperature_controller_raw_file_;
     QFile waveform_peaks_file_;
     QFile event_log_file_;
     QFile error_log_file_;
@@ -139,6 +155,7 @@ private:
     QString telemetry_transport_ = QStringLiteral("serial");
     QString telemetry_endpoint_;
     quint64 recording_start_time_us_ = 0;
+    quint64 recording_end_time_us_ = 0;
     quint64 recording_elapsed_ms_ = 0;
     quint64 telemetry_row_count_ = 0;
     quint64 waveform_feature_count_ = 0;
@@ -151,6 +168,8 @@ private:
     quint64 raw_temperature_humidity_record_count_ = 0;
     quint64 raw_distance_record_count_ = 0;
     quint64 raw_waveform_record_count_ = 0;
+    quint64 raw_laser_temperature_controller_record_count_ = 0;
+    quint64 raw_system_temperature_controller_record_count_ = 0;
     quint64 native_raw_waveform_record_count_ = 0;
     quint64 event_row_count_ = 0;
     quint64 error_row_count_ = 0;

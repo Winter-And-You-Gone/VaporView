@@ -1,7 +1,15 @@
 #include "ground/main/GroundMainWindowImplementation.h"
 #include "ground/devices/DeviceRatePolicy.h"
+
+#include <QSettings>
+
+#include <algorithm>
+#include <map>
+#include <memory>
 namespace
 {
+
+constexpr int kUiTestEpsilonReconfigureStepDelayMs = 90;
 
 QString epsilonOperationName(VaporView::Ground::Devices::EpsilonOperation operation)
 {
@@ -86,7 +94,10 @@ void MainWindow::onEpsilonSessionOperationStarted(
     quint64 requestId, VaporView::Ground::Devices::EpsilonOperation operation)
 {
     Q_UNUSED(requestId);
-    Q_UNUSED(operation);
+    if (operation == VaporView::Ground::Devices::EpsilonOperation::ConfigurePacketRates)
+    {
+        startEpsilonReconfigureProgress();
+    }
     state_->epsilon_reconfigure_in_progress_ = true;
     updateConnectionStatus(anyCollectorRunning());
     updateDeviceConfigState();
@@ -95,6 +106,10 @@ void MainWindow::onEpsilonSessionOperationStarted(
 void MainWindow::onEpsilonSessionOperationFinished(
     const VaporView::Ground::Devices::EpsilonSessionResult& result)
 {
+    if (result.operation == VaporView::Ground::Devices::EpsilonOperation::ConfigurePacketRates)
+    {
+        stopEpsilonReconfigureProgress();
+    }
     state_->epsilon_reconfigure_in_progress_ = false;
     updateConnectionStatus(anyCollectorRunning());
 
@@ -350,15 +365,15 @@ void MainWindow::syncRtkConfigPageState()
 void MainWindow::onRtkConfigClicked()
 {
     syncRtkConfigPageState();
-    if (state_->combination_navigation_page_)
-    {
-        state_->combination_navigation_page_->showDifferentialPage();
-    }
     if (state_->main_page_stack_ &&
         state_->combination_navigation_page_ &&
         state_->main_page_stack_->indexOf(state_->combination_navigation_page_) >= 0)
     {
         state_->main_page_stack_->setCurrentWidget(state_->combination_navigation_page_);
+    }
+    if (state_->combination_navigation_page_)
+    {
+        state_->combination_navigation_page_->showDifferentialPage();
     }
     if (state_->rtk_config_nav_btn_)
     {
@@ -774,7 +789,6 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
         return;
     }
 
-    const QString epsilonRateText = state_->epsilon_rate_combo_ ? state_->epsilon_rate_combo_->currentText() : QStringLiteral("100");
     QSettings settings = VaporView::applicationConfigSettings();
     settings.beginGroup(QStringLiteral("MainWindow"));
     if (isRemoteSkyMode())
@@ -972,8 +986,7 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
     const bool targetReadyForApply = isRemoteSkyMode() ||
         (!epsilonPort.isEmpty() && epsilonPort != selectText);
     if (!state_->recording_service_->isActive() &&
-        targetReadyForApply &&
-        !isRateUnspecified(epsilonRateText))
+        targetReadyForApply)
     {
         publishGroundLog(VaporView::LogLevel::Info,
                          QStringLiteral("configuration.apply"),
@@ -1002,10 +1015,209 @@ void MainWindow::onReconfigureEpsilonClicked()
 {
     if (isUiTestMode())
     {
-        publishUiTestEvent(QStringLiteral("ui_test_epsilon_output_reconfigure_completed"),
-                           state_->is_english_ ? QStringLiteral("Simulated EPSILON output reconfiguration completed")
-                                               : QStringLiteral("模拟 EPSILON 输出重配置已完成"),
-                           {{QStringLiteral("device"), QStringLiteral("EPSILON")}});
+        if (state_->epsilon_reconfigure_in_progress_)
+        {
+            return;
+        }
+
+        QSettings settings = VaporView::applicationConfigSettings();
+        settings.beginGroup(QStringLiteral("MainWindow"));
+        const std::map<uint8_t, int> packetRates = effectiveEpsilonPacketRates(settings);
+        const int outputRateHz = std::clamp(state_->epsilon_sample_rate_, 20, 200);
+        const int callbackRateHz = epsilonPacketCallbackRate(packetRates, outputRateHz);
+        const QString packetRateSummary = epsilonPacketRatesSummary(packetRates);
+        const QString packetRateSignature = epsilonPacketRatesSignature(packetRates);
+        const QString uiTestPort = QStringLiteral("UI-TEST-EPSILON");
+        constexpr int uiTestBaud = 921600;
+
+        struct UiTestEpsilonStep
+        {
+            QString process_output;
+            QString command;
+            QString stage;
+            bool is_reply = false;
+            bool advances_progress = true;
+        };
+        auto steps = std::make_shared<QVector<UiTestEpsilonStep>>();
+        const auto appendCommand = [steps](const QString& command,
+                                            const QString& reply,
+                                            const QString& stage) {
+            steps->push_back({QStringLiteral("[EPSILON TX] %1").arg(command),
+                              command,
+                              QStringLiteral("已发送命令 %1").arg(command),
+                              false,
+                              true});
+            steps->push_back({QStringLiteral("[EPSILON RX] %1").arg(reply),
+                              command,
+                              QStringLiteral("已收到 %1 成功回复").arg(command),
+                              true,
+                              true});
+            if (!stage.isEmpty())
+            {
+                steps->last().stage = stage;
+            }
+        };
+        appendCommand(QStringLiteral("#fconfig"), QStringLiteral("*#OK"),
+                      QStringLiteral("已进入配置模式"));
+        appendCommand(QStringLiteral("#fmsg"), QStringLiteral("MSG_IMU 250Hz; MSG_AHRS 50Hz"),
+                      QStringLiteral("已读取当前输出配置"));
+        for (const auto& entry : packetRates)
+        {
+            const QString command = QStringLiteral("#fmsg %1 %2")
+                .arg(QString::number(entry.first, 16).rightJustified(2, QLatin1Char('0')).toUpper())
+                .arg(entry.second);
+            appendCommand(command,
+                          QStringLiteral("*#OK"),
+                          QStringLiteral("已收到数据包 0x%1 成功回复")
+                              .arg(QString::number(entry.first, 16)
+                                       .rightJustified(2, QLatin1Char('0')).toUpper()));
+        }
+        appendCommand(QStringLiteral("#fsave"), QStringLiteral("*#OK"),
+                      QStringLiteral("已保存输出配置"));
+        appendCommand(QStringLiteral("#freboot"), QStringLiteral("(y/n)"),
+                      QStringLiteral("已收到重启确认提示"));
+        steps->push_back({QStringLiteral("[EPSILON TX] y"),
+                          QStringLiteral("y"),
+                          QStringLiteral("已发送重启确认"),
+                          false,
+                          true});
+        steps->push_back({QStringLiteral("[EPSILON INFO] serial port reopened after device reboot"),
+                          QStringLiteral("serial reopen"),
+                          QStringLiteral("设备重启后串口已重新打开"),
+                          false,
+                          false});
+        steps->push_back({QStringLiteral("[FDILink RX] navigation stream restored"),
+                          QStringLiteral("FDILink"),
+                          QStringLiteral("实时导航流已恢复"),
+                          true,
+                          true});
+        const int totalProgressSteps = static_cast<int>(std::count_if(
+            steps->cbegin(), steps->cend(), [](const UiTestEpsilonStep& step) {
+                return step.advances_progress;
+            }));
+
+        state_->epsilon_reconfigure_in_progress_ = true;
+        startEpsilonReconfigureProgress(totalProgressSteps);
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("device.navigation.command"),
+                         QStringLiteral("epsilon_output_reconfigure_started"),
+                         QStringLiteral("开始手动重配 EPSILON 输出。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("execution_path"), QStringLiteral("ui_test")},
+                          {QStringLiteral("port"), uiTestPort},
+                          {QStringLiteral("baud"), uiTestBaud},
+                          {QStringLiteral("packet_rate_summary"), packetRateSummary},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("device.navigation.command"),
+                         QStringLiteral("epsilon_live_stream_pause_for_configuration"),
+                         QStringLiteral("为手动重配 EPSILON 输出临时停止当前数据流。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("operation"), QStringLiteral("output_reconfigure")},
+                          {QStringLiteral("execution_path"), QStringLiteral("ui_test")},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
+        updateConnectionStatus(anyCollectorRunning());
+        updateDeviceConfigState();
+
+        auto *timer = new QTimer(this);
+        timer->setInterval(kUiTestEpsilonReconfigureStepDelayMs);
+        timer->setSingleShot(false);
+        auto stepIndex = std::make_shared<int>(0);
+        auto progressStep = std::make_shared<int>(0);
+        connect(timer, &QTimer::timeout, this,
+                [this, timer, steps, stepIndex, progressStep, totalProgressSteps,
+                 outputRateHz, callbackRateHz, packetRateSignature]() {
+            if (!isUiTestMode() || !state_->epsilon_reconfigure_in_progress_)
+            {
+                timer->stop();
+                timer->deleteLater();
+                return;
+            }
+
+            if (*stepIndex >= steps->size())
+            {
+                timer->stop();
+                timer->deleteLater();
+                publishGroundLog(VaporView::LogLevel::Info,
+                                 QStringLiteral("device.navigation.command"),
+                                 QStringLiteral("epsilon_output_reconfigure_completed"),
+                                 QStringLiteral("EPSILON 输出手动重配已完成。"),
+                                 {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                                  {QStringLiteral("operation"), QStringLiteral("output_reconfigure")},
+                                  {QStringLiteral("execution_path"), QStringLiteral("ui_test")},
+                                  {QStringLiteral("port"), QStringLiteral("UI-TEST-EPSILON")},
+                                  {QStringLiteral("output_rate_hz"), outputRateHz},
+                                  {QStringLiteral("callback_rate_hz"), callbackRateHz},
+                                  {QStringLiteral("packet_rate_signature"), packetRateSignature},
+                                  {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
+                publishGroundLog(VaporView::LogLevel::Info,
+                                 QStringLiteral("device.navigation.command"),
+                                 QStringLiteral("epsilon_configuration_completed_live_stream_restored"),
+                                 QStringLiteral("EPSILON 配置已完成，实时导航流已恢复。"),
+                                 {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                                  {QStringLiteral("operation"), QStringLiteral("output_reconfigure")},
+                                  {QStringLiteral("execution_path"), QStringLiteral("ui_test")},
+                                  {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
+                publishGroundLog(VaporView::LogLevel::Info,
+                                 QStringLiteral("device.navigation.command"),
+                                 QStringLiteral("epsilon_operation_completed"),
+                                 QStringLiteral("EPSILON 设备操作已完成。"),
+                                 {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                                  {QStringLiteral("request_id"), static_cast<qulonglong>(0)},
+                                  {QStringLiteral("operation"), QStringLiteral("packet_profile")},
+                                  {QStringLiteral("execution_path"), QStringLiteral("ui_test")},
+                                  {QStringLiteral("outcome"), QStringLiteral("success")},
+                                  {QStringLiteral("command_error_code"), QStringLiteral("ok")},
+                                  {QStringLiteral("details"), QStringLiteral("界面测试模式模拟操作成功。")},
+                                  {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
+                publishUiTestEvent(
+                    QStringLiteral("ui_test_epsilon_output_reconfigure_completed"),
+                    state_->is_english_
+                        ? QStringLiteral("Simulated EPSILON output reconfiguration completed")
+                        : QStringLiteral("模拟 EPSILON 输出重配置已完成"),
+                    {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                     {QStringLiteral("total_steps"), totalProgressSteps}});
+                setEpsilonReconfigureProgress(totalProgressSteps,
+                                               totalProgressSteps,
+                                               QStringLiteral("实时导航流已恢复"));
+                QTimer::singleShot(220, this, [this]() {
+                    if (!isUiTestMode() || !state_->epsilon_reconfigure_in_progress_)
+                    {
+                        return;
+                    }
+                    stopEpsilonReconfigureProgress();
+                    state_->epsilon_reconfigure_in_progress_ = false;
+                    updateConnectionStatus(anyCollectorRunning());
+                    updateDeviceConfigState();
+                });
+                return;
+            }
+
+            const UiTestEpsilonStep step = steps->at((*stepIndex)++);
+            if (step.advances_progress)
+            {
+                ++(*progressStep);
+            }
+            publishGroundLog(VaporView::LogLevel::Info,
+                             QStringLiteral("device.collector"),
+                             QStringLiteral("epsilon_configuration_collector_output"),
+                             QStringLiteral("EPSILON 配置过程输出了采集器诊断信息。"),
+                             {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                              {QStringLiteral("process_output"), step.process_output},
+                              {QStringLiteral("external_raw_text"), true},
+                              {QStringLiteral("execution_path"), QStringLiteral("ui_test")},
+                              {QStringLiteral("ui_visibility"), QStringLiteral("hidden")},
+                              {QStringLiteral("epsilon_progress_current"), *progressStep},
+                              {QStringLiteral("epsilon_progress_total"), totalProgressSteps},
+                              {QStringLiteral("epsilon_progress_stage"), step.stage},
+                              {QStringLiteral("epsilon_progress_command"), step.command},
+                              {QStringLiteral("epsilon_progress_kind"), step.is_reply
+                                  ? QStringLiteral("reply") : QStringLiteral("command")},
+                              {QStringLiteral("epsilon_progress_success"), step.advances_progress},
+                              {QStringLiteral("ui_dedupe_key"),
+                               QStringLiteral("epsilon:ui_test:progress:%1").arg(*stepIndex)}});
+        });
+        timer->start();
         return;
     }
     if (state_->connection_attempt_in_progress_ || state_->port_detection_in_progress_ || state_->epsilon_reconfigure_in_progress_)
@@ -1027,24 +1239,7 @@ void MainWindow::onReconfigureEpsilonClicked()
 
     if (isRemoteSkyMode())
     {
-        const QString epsilonRateText = state_->epsilon_rate_combo_
-            ? state_->epsilon_rate_combo_->currentText()
-            : QStringLiteral("100");
-        if (isRateUnspecified(epsilonRateText))
-        {
-            publishGroundLog(VaporView::LogLevel::Info,
-                             QStringLiteral("device.navigation.command"),
-                             QStringLiteral("epsilon_output_reconfigure_skipped_rate_unspecified"),
-                             QStringLiteral("EPSILON 频率为“不设定”，已跳过输出频率下发。"),
-                             {{QStringLiteral("device"), QStringLiteral("EPSILON")},
-                              {QStringLiteral("execution_path"), QStringLiteral("remote_sky")},
-                              {QStringLiteral("reason_code"), QStringLiteral("COMMAND_NOT_SUPPORTED")},
-                              {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
-            return;
-        }
-
-        const int epsilonRate = effectiveRateOrDefault(
-            epsilonRateText, kDefaultEpsilonSampleRateHz, 200);
+        const int epsilonRate = std::clamp(state_->epsilon_sample_rate_, 20, 200);
         QSettings settings = VaporView::applicationConfigSettings();
         settings.beginGroup(QStringLiteral("MainWindow"));
         settings.beginGroup(QStringLiteral("RemoteEpsilonPacketProfile"));
@@ -1112,20 +1307,7 @@ void MainWindow::onReconfigureEpsilonClicked()
         return;
     }
 
-    const QString epsilonRateText = state_->epsilon_rate_combo_ ? state_->epsilon_rate_combo_->currentText() : QStringLiteral("100");
-    if (isRateUnspecified(epsilonRateText))
-    {
-        publishGroundLog(VaporView::LogLevel::Info,
-                         QStringLiteral("device.navigation.command"),
-                         QStringLiteral("epsilon_output_reconfigure_skipped_rate_unspecified"),
-                         QStringLiteral("EPSILON 频率为“不设定”，已跳过输出频率下发。"),
-                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
-                          {QStringLiteral("reason_code"), QStringLiteral("COMMAND_NOT_SUPPORTED")},
-                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
-        return;
-    }
-
-    const int epsilonRate = effectiveRateOrDefault(epsilonRateText, kDefaultEpsilonSampleRateHz, 200);
+    const int epsilonRate = std::clamp(state_->epsilon_sample_rate_, 20, 200);
     state_->epsilon_sample_rate_ = epsilonRate;
     QSettings settings = VaporView::applicationConfigSettings();
     settings.beginGroup(QStringLiteral("MainWindow"));

@@ -61,6 +61,14 @@ int main(int argc, char **argv)
     const quint16 port = server.localPort();
     require(port > 0, "server test port");
     require(serverOpen, "server open signal");
+    const QString expectedListenMessage =
+        QStringLiteral("TCP 遥测服务端已开始监听：127.0.0.1:%1。").arg(port);
+    require(std::any_of(serverRecords.begin(), serverRecords.end(), [&](const VaporView::LogRecord& record) {
+        return record.fields.value(QStringLiteral("event")).toString() ==
+                   QStringLiteral("telemetry_tcp_server_listening") &&
+               record.message == expectedListenMessage &&
+               record.fields.value(QStringLiteral("local_port")).toUInt() == port;
+    }), "server startup log shows the actual listen endpoint");
 
     VaporView::TcpTelemetryLink client;
     bool clientOpen = false;

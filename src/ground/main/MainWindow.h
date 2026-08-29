@@ -58,6 +58,7 @@ class QRadioButton;
 class QStackedWidget;
 class QCheckBox;
 class QListView;
+class QProgressBar;
 class QPlainTextEdit;
 class TcpWavePanel;
 class SessionViewerWindow;
@@ -206,6 +207,7 @@ private slots:
     void onRd105SessionOperationFinished(
         const VaporView::Ground::Devices::Rd105SessionResult& result);
     void onRemoteCommandAckReceived(const VaporView::CommandAck& ack);
+    void onRemoteSerialPortDetectionResult(const QJsonObject& result);
     void onRemoteLinkOpenChanged(bool open);
     void onRemoteSkyConfigReadClicked();
     void onRemoteSkyConfigApplyClicked();
@@ -279,7 +281,15 @@ private:
     void restoreUiTestWidgetState();
     void enqueueUiLogRecord(const VaporView::LogRecord& record);
     void flushPendingUiLogRecords();
+    void startEpsilonReconfigureProgress(int total_steps = 100);
+    void setEpsilonReconfigureProgress(int current_step,
+                                       int total_steps,
+                                       const QString& stage = QString());
+    void updateEpsilonReconfigureProgress();
+    void stopEpsilonReconfigureProgress();
     void setLogViewMode(VaporView::Ground::Main::LogUiViewMode mode, bool persist = true);
+    void settleLogViewAtBottom();
+    void scheduleLogViewBottomFollow();
     void scrollLogViewToBottom();
     bool isLogViewNearBottom() const;
     void updateLogFollowState();
@@ -309,6 +319,9 @@ private:
     void stopRecording(bool announce = true);
     void updateConnectionStatus(bool connected);
     bool homeDeviceConnected(VaporView::SkyDeviceId device) const;
+    bool localDeviceEnabled(VaporView::SkyDeviceId device) const;
+    void loadLocalDeviceEnabledState();
+    void saveLocalDeviceEnabledState() const;
     bool homeDevicePortSelected(VaporView::SkyDeviceId device) const;
     VaporView::DeviceState homeDeviceActionState(VaporView::SkyDeviceId device) const;
     void triggerHomeDeviceAction(VaporView::SkyDeviceId device);
@@ -395,6 +408,7 @@ private:
     void updateRecordingActionStates();
     bool isRemoteSkyMode() const;
     bool isRemoteSkyTcpMode() const;
+    void requestSourceModeSelection(bool remoteSelected);
     void updateSourceModeUi();
     void syncDeviceConfigPageForCurrentTarget();
     void enterLocalDeviceConfigMode();
@@ -408,6 +422,7 @@ private:
     void setRemoteSkyConfigStatus(const QString& text, bool error = false);
     void updateRemoteSkyConfigControlsState();
     void requestRemoteSkyConfigIfAvailable(bool force = false);
+    void startRemoteSerialPortDetection();
     void onRemoteSkyConfigReceived(const QJsonObject& object);
     void onRemoteSkyConfigApplyResultReceived(const QJsonObject& result);
     void handleRemoteSkyConfigReceived(const QJsonObject& object, bool bypassGenerationGuard);
@@ -438,7 +453,8 @@ private:
     std::map<uint8_t, int> deviceConfigEpsilonPacketRates() const;
     void saveDeviceConfigEpsilonPacketRates(bool applyAfterSave);
     void sendRemoteDeviceCommand(VaporView::CommandId command, VaporView::SkyDeviceId device);
-    void requestRemoteWaveTcpConnection(bool connectRequested);
+    void requestRemoteWaveTcpConnection(bool connectRequested, const QString& host = QString(), int port = 0);
+    void clearPendingRemoteWaveTcpConnection();
     void sendRemotePeakSearchRange(quint32 startIndex, quint32 endIndex);
     QPushButton *createRemoteDeviceButton(const QString& text, VaporView::CommandId command, VaporView::SkyDeviceId device);
     void setRemoteDeviceButtonsEnabled(bool enabled);

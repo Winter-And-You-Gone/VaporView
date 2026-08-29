@@ -288,6 +288,28 @@ MainWindow::MainWindow(QWidget *parent)
                                                 size_t size) {
         state_->recording_service_->recordRawLidarFrame(timestampUs, protocol, payload, size);
     };
+    connectionCallbacks.rawLaserTemperatureControllerResponse =
+        [this](quint64 timestampUs,
+               quint16 recordType,
+               const void *payload,
+               size_t size) {
+        state_->recording_service_->recordRawLaserTemperatureControllerResponse(
+            timestampUs,
+            recordType,
+            payload,
+            size);
+    };
+    connectionCallbacks.rawSystemTemperatureControllerResponse =
+        [this](quint64 timestampUs,
+               quint16 recordType,
+               const void *payload,
+               size_t size) {
+        state_->recording_service_->recordRawSystemTemperatureControllerResponse(
+            timestampUs,
+            recordType,
+            payload,
+            size);
+    };
     state_->local_connection_controller_->setCallbacks(std::move(connectionCallbacks));
 
     RecordingScheduleController::Hooks scheduleHooks;
@@ -466,6 +488,10 @@ MainWindow::MainWindow(QWidget *parent)
                 &VaporView::GroundTelemetryService::skyConfigApplyResultReceived,
                 this,
                 &MainWindow::onRemoteSkyConfigApplyResultReceived);
+        connect(telemetryService,
+                &VaporView::GroundTelemetryService::serialPortDetectionResultReceived,
+                this,
+                &MainWindow::onRemoteSerialPortDetectionResult);
     }
     connect(state_->remote_sky_controller_.get(), &RemoteSkyController::commandTimedOut,
             this, [this](VaporView::CommandId commandId, quint16 commandSeq) {
@@ -473,6 +499,7 @@ MainWindow::MainWindow(QWidget *parent)
             commandSeq == state_->remote_sky_config_read_seq_)
         {
             state_->remote_sky_config_loading_ = false;
+            clearPendingRemoteWaveTcpConnection();
             setRemoteSkyConfigStatus(state_->is_english_
                 ? QStringLiteral("Remote Sky config read timed out.")
                 : QStringLiteral("读取天空端配置超时。"),
@@ -483,6 +510,7 @@ MainWindow::MainWindow(QWidget *parent)
                  commandSeq == state_->remote_sky_config_apply_seq_)
         {
             state_->remote_sky_config_applying_ = false;
+            clearPendingRemoteWaveTcpConnection();
             state_->remote_sky_config_dirty_ = true;
             setRemoteSkyConfigStatus(state_->is_english_
                 ? QStringLiteral("Remote Sky config apply timed out.")
@@ -499,6 +527,16 @@ MainWindow::MainWindow(QWidget *parent)
                 : QStringLiteral("保存天空端配置超时。"),
                 true);
             updateRemoteSkyConfigControlsState();
+        }
+        else if (commandId == VaporView::CommandId::AutoDetectSerialPorts &&
+                 commandSeq == state_->remote_serial_detection_seq_)
+        {
+            state_->port_detection_in_progress_ = false;
+            state_->remote_serial_detection_seq_ = 0;
+            setRemoteSkyConfigStatus(state_->is_english_
+                ? QStringLiteral("Remote serial-port detection timed out.")
+                : QStringLiteral("远程串口自动识别超时。"), true);
+            updateConnectionStatus(state_->is_connected_);
         }
         else if (commandId == VaporView::CommandId::SetPeakSearchRange)
         {
@@ -694,6 +732,67 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
     if (handleRemoteSkySerialPortManualEntryEvent(watched, event))
     {
         return true;
+    }
+    if (eventType == QEvent::KeyPress)
+    {
+        auto *sidebarButton = qobject_cast<QPushButton *>(watched);
+        if (sidebarButton && sidebarButton->objectName() == QStringLiteral("appSidebarButton"))
+        {
+            auto *keyEvent = static_cast<QKeyEvent *>(event);
+            const QList<QPushButton *> buttons = {
+                state_->home_nav_btn_,
+                state_->device_config_nav_btn_,
+                state_->temperature_nav_btn_,
+                state_->rtk_config_nav_btn_,
+            };
+            const int currentIndex = buttons.indexOf(sidebarButton);
+            if (currentIndex >= 0)
+            {
+                if (keyEvent->key() == Qt::Key_Return ||
+                    keyEvent->key() == Qt::Key_Enter ||
+                    keyEvent->key() == Qt::Key_Space)
+                {
+                    sidebarButton->click();
+                    return true;
+                }
+                const bool previous = keyEvent->key() == Qt::Key_Up ||
+                                      keyEvent->key() == Qt::Key_Left;
+                const bool next = keyEvent->key() == Qt::Key_Down ||
+                                  keyEvent->key() == Qt::Key_Right;
+                if (previous || next)
+                {
+                    const int step = previous ? -1 : 1;
+                    const int nextIndex = (currentIndex + step + buttons.size()) % buttons.size();
+                    if (QPushButton *target = buttons.at(nextIndex))
+                    {
+                        target->setFocus(Qt::OtherFocusReason);
+                        target->click();
+                    }
+                    return true;
+                }
+            }
+        }
+    }
+
+    if (state_->log_list_view_ &&
+        watched == state_->log_list_view_->viewport() &&
+        eventType == QEvent::Resize)
+    {
+        const bool shouldKeepBottom =
+            state_->log_auto_follow_enabled_ && isLogViewNearBottom();
+        QListView *logListView = state_->log_list_view_;
+        logListView->doItemsLayout();
+        QTimer::singleShot(0, this, [this, logListView, shouldKeepBottom]() {
+            logListView->doItemsLayout();
+            if (logListView->viewport())
+            {
+                logListView->viewport()->update();
+            }
+            if (shouldKeepBottom)
+            {
+                scheduleLogViewBottomFollow();
+            }
+        });
     }
 
     if (state_->log_list_view_ &&

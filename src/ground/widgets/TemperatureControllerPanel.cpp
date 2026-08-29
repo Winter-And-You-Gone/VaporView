@@ -92,6 +92,7 @@ constexpr int kTemperatureControllerSubTabTextPadding = 28;
 constexpr int kTemperatureControllerTopEnableWidth = 106;
 constexpr int kTemperatureControllerTopEnableHeight = 34;
 constexpr int kTemperatureControllerCompactInputWidth = 112;
+constexpr int kTemperatureControllerInlineLabelSpacing = 6;
 constexpr int kTemperatureControllerModeTextWidthReserve = 18;
 constexpr int kTemperatureControllerAutoPidTextWidthReserve = 36;
 // The 266px common-parameter row is 85 + 6 + 84 + 6 + 85, matching 130 + 6 + 130.
@@ -288,7 +289,7 @@ QStringList temperatureControllerStatusLabelWidthCandidates()
             QStringLiteral("Controller Mode:"),
             QStringLiteral("自身温度:"),
             QStringLiteral("错误码:"),
-            QStringLiteral("温控器模式:")};
+            QStringLiteral("温控器模式")};
 }
 
 QStringList temperatureControllerCompactStatusLabelWidthCandidates()
@@ -2014,7 +2015,7 @@ void TemperatureControllerPanel::setupUi()
     controller_mode_field_->setFixedHeight(kTemperatureControllerTopControlsHeight);
     auto *controllerModeLayout = new QHBoxLayout(controller_mode_field_);
     controllerModeLayout->setContentsMargins(0, 0, 0, 0);
-    controllerModeLayout->setSpacing(0);
+    controllerModeLayout->setSpacing(kTemperatureControllerInlineLabelSpacing);
     controllerModeLayout->addWidget(controller_mode_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     controllerModeLayout->addWidget(controller_mode_combo_, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
@@ -2226,7 +2227,7 @@ QWidget *TemperatureControllerPanel::createChannelTopControlsPage(int index)
         field->setFixedHeight(kTemperatureControllerTopControlsHeight);
         auto *fieldLayout = new QHBoxLayout(field);
         fieldLayout->setContentsMargins(0, 0, 0, 0);
-        fieldLayout->setSpacing(6);
+        fieldLayout->setSpacing(kTemperatureControllerInlineLabelSpacing);
         label = new QLabel(text, field);
         label->setObjectName(QStringLiteral("fieldLabel"));
         label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
@@ -3694,7 +3695,7 @@ void TemperatureControllerPanel::updateChannelTexts()
     if (internal_temperature_lbl_) internal_temperature_lbl_->setText(is_english_ ? QStringLiteral("Internal:") : QStringLiteral("自身温度:"));
     if (error_code_lbl_) error_code_lbl_->setText(is_english_ ? QStringLiteral("Error:") : QStringLiteral("错误码:"));
     if (rate_title_lbl_) rate_title_lbl_->setText(is_english_ ? QStringLiteral("Polling rate:") : QStringLiteral("轮询频率:"));
-    if (controller_mode_lbl_) controller_mode_lbl_->setText(is_english_ ? QStringLiteral("Mode:") : QStringLiteral("温控器模式:"));
+    if (controller_mode_lbl_) controller_mode_lbl_->setText(is_english_ ? QStringLiteral("Mode:") : QStringLiteral("温控器模式"));
     refreshFixedTextLabelWidth(internal_temperature_lbl_);
     refreshFixedTextLabelWidth(error_code_lbl_);
     refreshFixedTextLabelWidth(rate_title_lbl_);

@@ -176,6 +176,16 @@ SerialDeviceConfig serialConfigFromTemperatureConfig(const TemperatureController
     return serial;
 }
 
+SerialDeviceConfig serialConfigFromEpsilonConfig(const EpsilonSerialConfig& config)
+{
+    SerialDeviceConfig serial;
+    serial.enabled = config.enabled;
+    serial.port = config.port;
+    serial.baud_rate = config.baud_rate;
+    serial.frequency_hz = kDefaultEpsilonCallbackRateHz;
+    return serial;
+}
+
 void initializeSimulatedTemperatureController(TemperatureControllerData& data)
 {
     if (data.valid)
@@ -442,8 +452,7 @@ SkyDeviceManager::SkyDeviceManager(QObject *parent)
 
 SkyDeviceManager::~SkyDeviceManager()
 {
-    disconnectAll();
-    stopRtcmWriter();
+    shutdown(false);
     pending_raw_events_.close();
 }
 
@@ -532,7 +541,21 @@ void SkyDeviceManager::drainRawEvents()
             }
             break;
         case SkyDeviceId::TemperatureController:
+            if (temperature_controller_.get() == event.collectorIdentity)
+            {
+                emit laserTemperatureControllerRawResponseReceived(event.timestampUs,
+                                                                   event.metadata,
+                                                                   event.payload);
+            }
+            break;
         case SkyDeviceId::Ai8TemperatureController:
+            if (ai8_temperature_controller_.get() == event.collectorIdentity)
+            {
+                emit systemTemperatureControllerRawResponseReceived(event.timestampUs,
+                                                                    event.metadata,
+                                                                    event.payload);
+            }
+            break;
         case SkyDeviceId::WaveTcp:
         case SkyDeviceId::All:
             break;
@@ -635,12 +658,23 @@ bool SkyDeviceManager::connectDevice(SkyDeviceId id, CommandErrorCode *errorCode
 
 bool SkyDeviceManager::disconnectDevice(SkyDeviceId id, CommandErrorCode *errorCode)
 {
+    return disconnectDeviceInternal(id, errorCode, true);
+}
+
+bool SkyDeviceManager::disconnectDeviceInternal(SkyDeviceId id,
+                                                CommandErrorCode *errorCode,
+                                                bool publishLog)
+{
     if (id == SkyDeviceId::All)
     {
-        disconnectAll();
+        disconnectAll(publishLog);
         if (errorCode) *errorCode = CommandErrorCode::Ok;
         return true;
     }
+    const DeviceStatusItem previousStatus = status(id);
+    const bool shouldPublishDisconnectLog =
+        previousStatus.state != DeviceState::Disconnected &&
+        previousStatus.state != DeviceState::Disabled;
     switch (id)
     {
     case SkyDeviceId::Epsilon:
@@ -669,11 +703,14 @@ bool SkyDeviceManager::disconnectDevice(SkyDeviceId id, CommandErrorCode *errorC
     }
     invalidateDeviceData(id);
     setState(id, DeviceState::Disconnected);
-    publishDeviceLog(LogLevel::Info,
-                     QStringLiteral("device.connection"),
-                     QStringLiteral("device_disconnected"),
-                     QStringLiteral("设备已断开，缓存数据已失效。"),
-                     {{QStringLiteral("device_id"), skyDeviceIdName(id)}});
+    if (publishLog && shouldPublishDisconnectLog)
+    {
+        publishDeviceLog(LogLevel::Info,
+                         QStringLiteral("device.connection"),
+                         QStringLiteral("device_disconnected"),
+                         QStringLiteral("设备已断开，缓存数据已失效。"),
+                         {{QStringLiteral("device_id"), skyDeviceIdName(id)}});
+    }
     if (errorCode) *errorCode = CommandErrorCode::Ok;
     return true;
 }
@@ -707,11 +744,11 @@ void SkyDeviceManager::connectAll()
     }
 }
 
-void SkyDeviceManager::disconnectAll()
+void SkyDeviceManager::disconnectAll(bool publishLogs)
 {
     for (SkyDeviceId id : {SkyDeviceId::Epsilon, SkyDeviceId::Ptb, SkyDeviceId::Hmp, SkyDeviceId::Lidar, SkyDeviceId::TemperatureController, SkyDeviceId::Ai8TemperatureController, SkyDeviceId::WaveTcp})
     {
-        disconnectDevice(id);
+        disconnectDeviceInternal(id, nullptr, publishLogs);
     }
 }
 
@@ -719,6 +756,14 @@ void SkyDeviceManager::reconnectAll()
 {
     disconnectAll();
     connectAll();
+}
+
+void SkyDeviceManager::shutdown(bool publishLogs)
+{
+    simulate_timer_.stop();
+    simulate_data_ = false;
+    disconnectAll(publishLogs);
+    stopRtcmWriter();
 }
 
 DeviceStatusItem SkyDeviceManager::status(SkyDeviceId id) const
@@ -877,7 +922,6 @@ bool SkyDeviceManager::configureEpsilonPacketRates(
     if (simulate_data_)
     {
         simulated_epsilon_packet_rates_ = operation.packet_rates;
-        config_.epsilon.frequency_hz = operation.callback_rate_hz;
         if (errorCode) *errorCode = CommandErrorCode::Ok;
         if (errorMessage) *errorMessage = QStringLiteral("EPSILON packet rates were applied in simulation.");
         return true;
@@ -891,7 +935,7 @@ bool SkyDeviceManager::configureEpsilonPacketRates(
     const bool ok = epsilon_->setOutputPacketRates(operation.packet_rates, true);
     if (ok)
     {
-        config_.epsilon.frequency_hz = operation.callback_rate_hz;
+        epsilon_->setSampleRate(operation.callback_rate_hz);
     }
     if (errorCode) *errorCode = ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed;
     if (errorMessage && !ok) *errorMessage = QStringLiteral("EPSILON packet-rate configuration failed.");
@@ -1816,14 +1860,23 @@ void SkyDeviceManager::generateSimulatedData()
         latest_epsilon_.diff_age_s = 0.8 + std::abs(std::sin(simulate_phase_ * 0.15)) * 0.4;
         latest_epsilon_.heading_valid = true;
         latest_epsilon_.raw_frame_count++;
-        latest_epsilon_.imu_packet_rate_hz = 100.0;
-        latest_epsilon_.ahrs_packet_rate_hz = 50.0;
-        latest_epsilon_.insgps_packet_rate_hz = 50.0;
-        latest_epsilon_.sys_state_packet_rate_hz = 10.0;
-        latest_epsilon_.raw_gnss_packet_rate_hz = 1.0;
-        latest_epsilon_.satellite_packet_rate_hz = 1.0;
-        latest_epsilon_.geodetic_packet_rate_hz = 10.0;
-        latest_epsilon_.ecef_packet_rate_hz = 10.0;
+        const auto simulatedPacketRate = [this](uint8_t packetId, double fallbackHz) {
+            const auto it = simulated_epsilon_packet_rates_.find(packetId);
+            return it != simulated_epsilon_packet_rates_.end()
+                ? static_cast<double>(it->second)
+                : fallbackHz;
+        };
+        latest_epsilon_.imu_packet_rate_hz = simulatedPacketRate(0x40, 100.0);
+        latest_epsilon_.ahrs_packet_rate_hz = simulatedPacketRate(0x41, 50.0);
+        latest_epsilon_.insgps_packet_rate_hz = simulatedPacketRate(0x42, 50.0);
+        latest_epsilon_.sys_state_packet_rate_hz = simulatedPacketRate(0x50, 10.0);
+        latest_epsilon_.status_packet_rate_hz = simulatedPacketRate(0x53, 10.0);
+        latest_epsilon_.raw_gnss_packet_rate_hz = simulatedPacketRate(0x59, 1.0);
+        latest_epsilon_.satellite_packet_rate_hz = simulatedPacketRate(0x5A, 1.0);
+        latest_epsilon_.geodetic_packet_rate_hz = simulatedPacketRate(0x5C, 10.0);
+        latest_epsilon_.ecef_packet_rate_hz = simulatedPacketRate(0x5D, 10.0);
+        latest_epsilon_.euler_orien_packet_rate_hz = simulatedPacketRate(0x63, 50.0);
+        latest_epsilon_.quat_orien_packet_rate_hz = simulatedPacketRate(0x64, 50.0);
         epsilon_status_.rx_count++;
         epsilon_status_.last_data_time_us = t;
         emit epsilonDataUpdated(latest_epsilon_);
@@ -2023,13 +2076,12 @@ DeviceStatusItem& SkyDeviceManager::mutableStatus(SkyDeviceId id)
     return epsilon_status_;
 }
 
-const SerialDeviceConfig& SkyDeviceManager::serialConfigFor(SkyDeviceId id) const
+SerialDeviceConfig SkyDeviceManager::serialConfigFor(SkyDeviceId id) const
 {
-    static const SerialDeviceConfig kInvalidSerialConfig;
     switch (id)
     {
     case SkyDeviceId::Epsilon:
-        return config_.epsilon;
+        return serialConfigFromEpsilonConfig(config_.epsilon);
     case SkyDeviceId::Ptb:
         return config_.ptb;
     case SkyDeviceId::Hmp:
@@ -2042,7 +2094,7 @@ const SerialDeviceConfig& SkyDeviceManager::serialConfigFor(SkyDeviceId id) cons
     case SkyDeviceId::All:
         break;
     }
-    return kInvalidSerialConfig;
+    return SerialDeviceConfig();
 }
 
 bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDeviceConfig& config, CommandErrorCode *errorCode)
@@ -2161,7 +2213,6 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
         });
         if (!epsilon_->start(config.port.toStdString(), SerialConfig::N81(config.baud_rate))) return fail(CommandErrorCode::DeviceConnectFailed);
         if (!epsilon_->checkDeviceResponse()) return fail(CommandErrorCode::DeviceConnectFailed);
-        if (!epsilon_->setDeviceSampleRate(static_cast<int>(config.frequency_hz))) return fail(CommandErrorCode::DeviceConnectFailed);
         if (!epsilon_->startStreaming()) return fail(CommandErrorCode::DeviceConnectFailed);
         break;
     case SkyDeviceId::Ptb:
@@ -2345,6 +2396,30 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
                 self->handleTemperatureControllerData(data);
             }, Qt::QueuedConnection);
         });
+        temperature_controller_->setRawFrameCallback(
+            [self = QPointer<SkyDeviceManager>(this),
+             weakCollector = std::weak_ptr<TemperatureControllerCollector>(temperature_controller_)](
+                uint64_t hostTimestampUs,
+                uint16_t recordType,
+                const uint8_t* frameData,
+                size_t size) {
+            if (!self || !frameData || size > static_cast<size_t>(std::numeric_limits<int>::max()))
+            {
+                return;
+            }
+            const std::shared_ptr<TemperatureControllerCollector> collector = weakCollector.lock();
+            if (!collector)
+            {
+                return;
+            }
+            PendingRawEvent event;
+            event.deviceId = SkyDeviceId::TemperatureController;
+            event.collectorIdentity = collector.get();
+            event.timestampUs = static_cast<quint64>(hostTimestampUs);
+            event.metadata = recordType;
+            event.payload = QByteArray(reinterpret_cast<const char*>(frameData), static_cast<int>(size));
+            self->enqueueRawEvent(std::move(event));
+        });
         if (!temperature_controller_->start(config.port.toStdString(), SerialConfig::N81(config.baud_rate))) return fail(CommandErrorCode::DeviceConnectFailed);
         if (!temperature_controller_->checkDeviceResponse()) return fail(CommandErrorCode::DeviceConnectFailed);
         if (!temperature_controller_->startStreaming()) return fail(CommandErrorCode::DeviceConnectFailed);
@@ -2374,6 +2449,30 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
                 }
                 self->handleAi8TemperatureControllerData(data);
             }, Qt::QueuedConnection);
+        });
+        ai8_temperature_controller_->setRawFrameCallback(
+            [self = QPointer<SkyDeviceManager>(this),
+             weakCollector = std::weak_ptr<Ai8TemperatureControllerCollector>(ai8_temperature_controller_)](
+                uint64_t hostTimestampUs,
+                uint16_t recordType,
+                const uint8_t* frameData,
+                size_t size) {
+            if (!self || !frameData || size > static_cast<size_t>(std::numeric_limits<int>::max()))
+            {
+                return;
+            }
+            const std::shared_ptr<Ai8TemperatureControllerCollector> collector = weakCollector.lock();
+            if (!collector)
+            {
+                return;
+            }
+            PendingRawEvent event;
+            event.deviceId = SkyDeviceId::Ai8TemperatureController;
+            event.collectorIdentity = collector.get();
+            event.timestampUs = static_cast<quint64>(hostTimestampUs);
+            event.metadata = recordType;
+            event.payload = QByteArray(reinterpret_cast<const char*>(frameData), static_cast<int>(size));
+            self->enqueueRawEvent(std::move(event));
         });
         if (!ai8_temperature_controller_->start(config.port.toStdString(), SerialConfig::N81(config.baud_rate))) return fail(CommandErrorCode::DeviceConnectFailed);
         if (!ai8_temperature_controller_->checkDeviceResponse()) return fail(CommandErrorCode::DeviceConnectFailed);

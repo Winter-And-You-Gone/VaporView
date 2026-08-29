@@ -4,11 +4,14 @@
 #include "ground/main/MainWindow.h"
 #include "ground/main/UiLogModel.h"
 
+#include <QElapsedTimer>
 #include <QPointer>
 #include <QVariantMap>
 
 namespace VaporView::Ground::Main
 {
+
+class RecordingStatusView;
 
 enum class AppSidebarMode
 {
@@ -44,7 +47,7 @@ struct DeviceConfigPageWidgets
 {
     QWidget *page = nullptr;
     QLabel *serial_title_lbl = nullptr;
-    QLabel *data_source_mode_lbl = nullptr;
+    VaporView::Ground::Widgets::SourceModeOverviewSwitchButton *data_source_mode_switch = nullptr;
     QLabel *sky_telemetry_transport_lbl = nullptr;
     QLabel *sky_telemetry_port_lbl = nullptr;
     QLabel *sky_telemetry_baud_lbl = nullptr;
@@ -74,8 +77,10 @@ struct DeviceConfigPageWidgets
     QLabel *data_telemetry_summary_title_lbl = nullptr;
     QGroupBox *remote_sky_config_card = nullptr;
     QLabel *remote_sky_config_title_lbl = nullptr;
+    QLabel *remote_sky_services_title_lbl = nullptr;
+    QLabel *remote_sky_sync_title_lbl = nullptr;
+    QLabel *remote_sky_advanced_title_lbl = nullptr;
     QLabel *remote_sky_config_status_lbl = nullptr;
-    QLabel *remote_sky_rd105_slave_lbl = nullptr;
     QLabel *remote_sky_wave_enabled_lbl = nullptr;
     QLabel *remote_sky_wave_host_lbl = nullptr;
     QLabel *remote_sky_wave_port_lbl = nullptr;
@@ -89,7 +94,6 @@ struct DeviceConfigPageWidgets
     QVBoxLayout *data_telemetry_link_summary_layout = nullptr;
     QVBoxLayout *data_telemetry_device_summary_layout = nullptr;
     QPushButton *auto_detect_ports_btn = nullptr;
-    QComboBox *data_source_mode_combo = nullptr;
     QComboBox *sky_telemetry_transport_combo = nullptr;
     QComboBox *sky_telemetry_port_combo = nullptr;
     QComboBox *sky_telemetry_baud_combo = nullptr;
@@ -98,6 +102,7 @@ struct DeviceConfigPageWidgets
     QComboBox *epsilon_port_combo = nullptr;
     QComboBox *epsilon_baud_combo = nullptr;
     QComboBox *epsilon_rate_combo = nullptr;
+    QPushButton *epsilon_packet_rates_btn = nullptr;
     QComboBox *ptb_port_combo = nullptr;
     QComboBox *ptb_baud_combo = nullptr;
     QComboBox *ptb_source_combo = nullptr;
@@ -121,7 +126,6 @@ struct DeviceConfigPageWidgets
     QCheckBox *lidar_enabled_check = nullptr;
     QCheckBox *temperature_enabled_check = nullptr;
     QCheckBox *ai8_temperature_enabled_check = nullptr;
-    QSpinBox *remote_sky_rd105_slave_spin = nullptr;
     QCheckBox *remote_sky_wave_enabled_check = nullptr;
     QLineEdit *remote_sky_wave_host_edit = nullptr;
     QSpinBox *remote_sky_wave_port_spin = nullptr;
@@ -190,6 +194,10 @@ struct MainWindowState
     UiLogItemDelegate *log_item_delegate_;
     QTimer *log_flush_timer_;
     QWidget *log_new_entries_row_;
+    QWidget *epsilon_reconfigure_progress_row_;
+    QLabel *epsilon_reconfigure_progress_label_;
+    QProgressBar *epsilon_reconfigure_progress_bar_;
+    QTimer *epsilon_reconfigure_progress_timer_;
     QPushButton *log_new_entries_btn_;
     QToolButton *log_search_btn_;
     QMenu *log_search_menu_;
@@ -197,7 +205,7 @@ struct MainWindowState
     QToolButton *log_clear_btn_;
     QFrame *recording_status_card_;
     QLabel *recording_status_title_lbl_;
-    QLabel *recording_status_label_;
+    RecordingStatusView *recording_status_view_;
     QPushButton *auto_detect_ports_btn_;
 
     QComboBox *epsilon_port_combo_;
@@ -371,7 +379,6 @@ struct MainWindowState
     QWidget *sky_telemetry_row_widget_;
 
     QComboBox *global_rate_combo_;
-    QComboBox *epsilon_rate_combo_;
     QComboBox *gnss_rate_combo_;
     QComboBox *imu_rate_combo_;
     QComboBox *ptb_rate_combo_;
@@ -443,12 +450,18 @@ struct MainWindowState
     int log_unread_error_count_;
     int log_unread_status_count_;
     quint64 pending_ui_log_records_dropped_;
+    bool log_bottom_follow_scheduled_;
     bool language_switch_in_progress_;
     bool restoring_persistent_settings_;
     bool has_inline_progress_log_;
     bool connection_attempt_in_progress_;
     bool port_detection_in_progress_;
     bool epsilon_reconfigure_in_progress_;
+    bool epsilon_reconfigure_progress_visible_;
+    int epsilon_reconfigure_progress_current_;
+    int epsilon_reconfigure_progress_total_;
+    QString epsilon_reconfigure_progress_stage_;
+    QElapsedTimer epsilon_reconfigure_progress_elapsed_;
     bool is_connected_;
     bool ui_test_mode_enabled_;
     bool ui_test_application_closing_;
@@ -485,6 +498,9 @@ struct MainWindowState
     bool remote_sky_config_saving_;
     bool remote_sky_config_raw_mode_;
     bool remote_sky_config_updating_ui_;
+    bool remote_serial_detection_pending_ = false;
+    quint16 remote_serial_detection_seq_ = 0;
+    quint16 remote_serial_detection_cancel_seq_ = 0;
     QString remote_sky_config_status_text_;
     bool remote_sky_config_status_error_;
     quint16 remote_sky_config_read_seq_;
@@ -492,9 +508,14 @@ struct MainWindowState
     quint16 remote_sky_config_save_seq_;
     quint64 remote_sky_config_read_generation_;
     quint64 remote_sky_config_apply_generation_;
+    quint64 remote_sky_config_loaded_generation_;
     bool remote_wave_stream_requested_;
     bool remote_wave_stream_enable_pending_;
     bool remote_wave_stream_auto_start_;
+    bool remote_wave_connect_after_config_read_;
+    bool remote_wave_connect_after_config_apply_;
+    QString remote_wave_pending_host_;
+    int remote_wave_pending_port_;
     int remote_recording_state_;
     QHash<VaporView::SkyDeviceId, qint64> home_device_action_spinner_until_ms_;
     QHash<VaporView::SkyDeviceId, qint64> home_device_action_spinner_started_ms_;

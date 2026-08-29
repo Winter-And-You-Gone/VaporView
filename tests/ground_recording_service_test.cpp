@@ -81,10 +81,27 @@ int main(int argc, char **argv)
     require(recorder.isActive(), "recorder active after start");
 
     const QByteArray rawFrame("\x01\x02\x03", 3);
+    const QByteArray laserResponse = QByteArray::fromHex("01030411223344");
+    const QByteArray systemResponse = QByteArray::fromHex("0103080001000200030004");
     require(recorder.recordRawEpsilonFrame(1'000'000, 0x20, 4,
                                            rawFrame.constData(),
                                            static_cast<size_t>(rawFrame.size())),
             "record raw epsilon frame");
+    require(recorder.recordRawLaserTemperatureControllerResponse(
+                1'000'050,
+                0x0120,
+                laserResponse.constData(),
+                static_cast<size_t>(laserResponse.size())),
+            "record raw laser temperature response");
+    for (quint16 recordType = 1; recordType <= 4; ++recordType)
+    {
+        require(recorder.recordRawSystemTemperatureControllerResponse(
+                    1'000'100 + recordType,
+                    recordType,
+                    systemResponse.constData(),
+                    static_cast<size_t>(systemResponse.size())),
+                "record raw system temperature response");
+    }
     require(recorder.recordTcpWaveFrame(1'000'100,
                                         littleEndianFloat(1.5f),
                                         littleEndianFloat(3.25f),
@@ -95,13 +112,36 @@ int main(int argc, char **argv)
     require(recorder.pause(), "pause recording");
     require(recorder.isSessionOpen(), "session remains open while paused");
     require(recorder.isPaused(), "paused state");
+    const auto pausedStatus = recorder.status();
+    require(pausedStatus.recordingElapsedMs > 0, "paused recording preserves elapsed time");
+    require(!recorder.recordRawLaserTemperatureControllerResponse(
+                1'000'200,
+                0x0121,
+                laserResponse.constData(),
+                static_cast<size_t>(laserResponse.size())),
+            "paused recording rejects raw laser temperature response");
+    require(recorder.status().rawLaserTemperatureControllerRecords ==
+                pausedStatus.rawLaserTemperatureControllerRecords,
+            "paused recording does not increase laser raw count");
     require(recorder.start(options, &startError, &errorMessage), "resume recording");
+    require(recorder.recordRawLaserTemperatureControllerResponse(
+                1'000'250,
+                0x0121,
+                laserResponse.constData(),
+                static_cast<size_t>(laserResponse.size())),
+            "resumed recording accepts raw laser temperature response");
     std::this_thread::sleep_for(std::chrono::milliseconds(35));
 
     const auto beforeStop = recorder.status();
+    require(beforeStop.recordingElapsedMs >= pausedStatus.recordingElapsedMs,
+            "resumed recording keeps elapsed time monotonic");
     require(beforeStop.sensorRows >= 2, "sensor rows written");
     require(beforeStop.rawNavigationRecords == 1, "raw epsilon count");
     require(beforeStop.rawWaveformRecords == 1, "raw TCP wave count");
+    require(beforeStop.rawLaserTemperatureControllerRecords == 2,
+            "raw laser temperature count");
+    require(beforeStop.rawSystemTemperatureControllerRecords == 4,
+            "raw system temperature count");
     const QString sessionDirectory = beforeStop.sessionDirectory;
 
     const auto summary = recorder.stop();
@@ -141,6 +181,8 @@ int main(int argc, char **argv)
     require(!root.contains(QStringLiteral("mode")), "new ground metadata omits legacy mode");
     require(!root.value(QStringLiteral("end_time_utc")).toString().isEmpty(),
             "session end timestamp");
+    require(root.value(QStringLiteral("waveform_points_per_frame")).toInt() == 1,
+            "ground waveform point count comes from the harmonic payload");
     const QJsonObject counts = root.value(QStringLiteral("counts")).toObject();
     require(counts.value(QStringLiteral("sensor_rows")).toString().toULongLong() >= 2,
             "metadata sensor row count");
@@ -151,21 +193,25 @@ int main(int argc, char **argv)
     const QJsonObject paths = root.value(QStringLiteral("paths")).toObject();
     require(paths.value(QStringLiteral("sensor_summary_csv")).toString() == QStringLiteral("sensors/sensor_summary.csv"),
             "metadata sensor summary path");
-    require(paths.value(QStringLiteral("temperature_controller_csv")).toString()
-                == QStringLiteral("sensors/temperature_controller.csv"),
-            "metadata temperature controller path");
-    require(paths.value(QStringLiteral("ai8_temperature_controller_csv")).toString()
-                == QStringLiteral("sensors/ai8_temperature_controller.csv"),
-            "metadata AI-8 temperature controller path");
+    require(paths.value(QStringLiteral("laser_temperature_controller_csv")).toString()
+                == QStringLiteral("sensors/laser_temperature_controller.csv"),
+            "metadata laser temperature controller path");
+    require(paths.value(QStringLiteral("system_temperature_controller_csv")).toString()
+                == QStringLiteral("sensors/system_temperature_controller.csv"),
+            "metadata system temperature controller path");
     require(paths.value(QStringLiteral("waveform_features_csv")).toString()
                 == QStringLiteral("sensors/waveform_features.csv"),
             "metadata waveform features path");
-    require(QFile::exists(QDir(sessionDirectory).filePath(QStringLiteral("sensors/temperature_controller.csv"))),
-            "temperature controller csv exists");
-    require(QFile::exists(QDir(sessionDirectory).filePath(QStringLiteral("sensors/ai8_temperature_controller.csv"))),
-            "AI-8 temperature controller csv exists");
+    require(QFile::exists(QDir(sessionDirectory).filePath(QStringLiteral("sensors/laser_temperature_controller.csv"))),
+            "laser temperature controller csv exists");
+    require(QFile::exists(QDir(sessionDirectory).filePath(QStringLiteral("sensors/system_temperature_controller.csv"))),
+            "system temperature controller csv exists");
     require(QFile::exists(QDir(sessionDirectory).filePath(QStringLiteral("sensors/waveform_features.csv"))),
             "waveform features csv exists");
+    require(QFile::exists(QDir(sessionDirectory).filePath(QStringLiteral("raw/laser_temperature_controller.dat"))),
+            "laser temperature controller raw file exists");
+    require(QFile::exists(QDir(sessionDirectory).filePath(QStringLiteral("raw/system_temperature_controller.dat"))),
+            "system temperature controller raw file exists");
 
     QFile deviceConfigFile(QDir(sessionDirectory).filePath(QStringLiteral("config/device_config.json")));
     require(deviceConfigFile.open(QIODevice::ReadOnly), "open ground device config");
@@ -200,9 +246,12 @@ int main(int argc, char **argv)
     require(deviceSensors.value(QStringLiteral("epsilon")).toObject()
                 .value(QStringLiteral("port")).toString() == QStringLiteral("COM7"),
             "ground device config epsilon port");
-    require(deviceSensors.value(QStringLiteral("rd105")).toObject()
+    require(deviceSensors.value(QStringLiteral("laser_temperature_controller")).toObject()
                 .value(QStringLiteral("port")).isNull(),
-            "ground device config missing rd105 port is null");
+            "ground device config missing laser temperature port is null");
+    require(deviceSensors.value(QStringLiteral("system_temperature_controller")).toObject()
+                .value(QStringLiteral("port")).isNull(),
+            "ground device config missing system temperature port is null");
 
     QFile rawFile(QDir(sessionDirectory).filePath(QStringLiteral("raw/navigation.dat")));
     require(rawFile.open(QIODevice::ReadOnly), "open navigation raw file");
@@ -214,6 +263,74 @@ int main(int argc, char **argv)
             "shared reader scans ground navigation raw DAT");
     require(rawResult.fileHeader.version == VaporView::SessionRawDat::kCurrentFormatVersion,
             "ground writer uses shared current raw version");
+
+    QFile waveformFile(QDir(sessionDirectory).filePath(QStringLiteral("raw/waveform.dat")));
+    require(waveformFile.open(QIODevice::ReadOnly), "open waveform raw file");
+    VaporView::SessionRawDat::RawScanOptions waveformScanOptions;
+    waveformScanOptions.expectedSourceId = VaporView::SessionRawDat::kSourceWaveform;
+    const auto waveformRawResult = VaporView::SessionRawDat::scan(waveformFile, waveformScanOptions);
+    require(waveformRawResult.success() && waveformRawResult.records.size() == 1,
+            "shared reader scans ground waveform raw DAT");
+    const auto& waveformRecord = waveformRawResult.records.first();
+    require(waveformRecord.header.sourceId == VaporView::SessionRawDat::kSourceWaveform,
+            "ground waveform source id");
+    require(waveformRecord.header.recordType == VaporView::SessionRawDat::kRecordTypeWaveformPayload,
+            "ground waveform record type");
+    require((waveformRecord.header.flags & VaporView::SessionRawDat::kWaveformCombinedPayloadFlag) != 0,
+            "ground waveform combined flag");
+    require(waveformFile.seek(static_cast<qint64>(waveformRecord.payloadOffset)),
+            "seek ground waveform payload");
+    QByteArray expectedWaveformPayload;
+    require(VaporView::SessionRawDat::encodeWaveformPayload(
+                littleEndianFloat(1.5f),
+                littleEndianFloat(3.25f),
+                &expectedWaveformPayload),
+            "encode expected ground waveform payload");
+    require(waveformFile.read(waveformRecord.header.payloadSize) == expectedWaveformPayload,
+            "ground waveform payload remains byte-for-byte equal");
+
+    auto readRawPayload = [](const QString& filename,
+                             quint16 sourceId,
+                             quint16 expectedRecordType,
+                             int expectedRecords) {
+        QFile file(filename);
+        require(file.open(QIODevice::ReadOnly), "open temperature raw file");
+        VaporView::SessionRawDat::RawScanOptions options;
+        options.expectedSourceId = sourceId;
+        const auto result = VaporView::SessionRawDat::scan(file, options);
+        require(result.success() && result.records.size() == expectedRecords,
+                "temperature raw record count");
+        for (const auto& record : result.records)
+        {
+            require(record.header.sourceId == sourceId &&
+                        record.header.recordType >= expectedRecordType,
+                    "temperature raw source and record type");
+        }
+        require(file.seek(static_cast<qint64>(result.records.first().payloadOffset)),
+                "seek temperature raw payload");
+        return file.read(result.records.first().header.payloadSize);
+    };
+    require(readRawPayload(
+                QDir(sessionDirectory).filePath(QStringLiteral("raw/laser_temperature_controller.dat")),
+                VaporView::SessionRawDat::kSourceLaserTemperatureController,
+                0x0120,
+                2) == laserResponse,
+            "laser temperature raw payload remains byte-for-byte equal");
+    require(readRawPayload(
+                QDir(sessionDirectory).filePath(QStringLiteral("raw/system_temperature_controller.dat")),
+                VaporView::SessionRawDat::kSourceSystemTemperatureController,
+                1,
+                4) == systemResponse,
+            "system temperature raw payload remains byte-for-byte equal");
+
+    require(root.value(QStringLiteral("raw_files")).toObject()
+                 .value(QStringLiteral("laser_temperature_controller")).toObject()
+                 .value(QStringLiteral("records")).toString() == QStringLiteral("2"),
+            "metadata laser temperature raw count");
+    require(root.value(QStringLiteral("raw_files")).toObject()
+                 .value(QStringLiteral("system_temperature_controller")).toObject()
+                 .value(QStringLiteral("records")).toString() == QStringLiteral("4"),
+            "metadata system temperature raw count");
 
     QTemporaryDir concurrentDirectory;
     require(concurrentDirectory.isValid(), "concurrent recording temporary directory");

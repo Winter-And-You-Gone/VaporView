@@ -15,12 +15,14 @@
 #include <QWidget>
 
 #include <array>
+#include <chrono>
 #include <limits>
 
 class QButtonGroup;
 class QEvent;
 class QObject;
 class QRadioButton;
+class EnvironmentTrendSparklineWidget;
 class TemperatureTrendPlotWidget;
 
 class GnssPanel : public QWidget
@@ -154,6 +156,7 @@ class PtbPanel : public QWidget
 
 public:
     explicit PtbPanel(QWidget *parent = nullptr);
+    QSize minimumSizeHint() const override;
     void updateData(const VaporView::PtbData& ptb_data);
     void updateRate(double hz);
     void setEnglish(bool english);
@@ -164,6 +167,9 @@ private:
     QLabel *pressure_label_ = nullptr;
     QLabel *status_label_ = nullptr;
     QLabel *pressure_lbl_ = nullptr;
+    EnvironmentTrendSparklineWidget *pressure_trend_plot_ = nullptr;
+    std::chrono::steady_clock::time_point last_pressure_timestamp_{};
+    bool has_pressure_timestamp_ = false;
     bool is_english_ = false;
 };
 
@@ -173,6 +179,7 @@ class HmpPanel : public QWidget
 
 public:
     explicit HmpPanel(QWidget *parent = nullptr);
+    QSize minimumSizeHint() const override;
     void updateData(const VaporView::HmpData& hmp_data);
     void updateRate(double hz);
     void setEnglish(bool english);
@@ -180,11 +187,18 @@ public:
 private:
     void setupUi();
     QLabel *rate_label_ = nullptr;
+    QLabel *humidity_rate_label_ = nullptr;
     QLabel *humidity_label_ = nullptr;
     QLabel *temperature_label_ = nullptr;
     QLabel *status_label_ = nullptr;
     QLabel *temp_lbl_ = nullptr;
     QLabel *humidity_lbl_ = nullptr;
+    EnvironmentTrendSparklineWidget *temperature_trend_plot_ = nullptr;
+    EnvironmentTrendSparklineWidget *humidity_trend_plot_ = nullptr;
+    std::chrono::steady_clock::time_point last_temperature_timestamp_{};
+    std::chrono::steady_clock::time_point last_humidity_timestamp_{};
+    bool has_temperature_timestamp_ = false;
+    bool has_humidity_timestamp_ = false;
     bool is_english_ = false;
 };
 
@@ -194,6 +208,7 @@ class LidarPanel : public QWidget
 
 public:
     explicit LidarPanel(QWidget *parent = nullptr);
+    QSize minimumSizeHint() const override;
     void updateData(const VaporView::LidarData& lidar_data);
     void updateRate(double hz);
     void setEnglish(bool english);

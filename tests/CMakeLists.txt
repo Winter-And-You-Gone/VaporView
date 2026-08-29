@@ -532,6 +532,15 @@ add_executable(ground_recording_service_test
 target_link_libraries(ground_recording_service_test PRIVATE vaporview_ground_session_core)
 add_test(NAME ground_recording_service_test COMMAND ground_recording_service_test)
 
+add_executable(waveform_points_per_frame_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/waveform_points_per_frame_test.cpp
+)
+target_link_libraries(waveform_points_per_frame_test PRIVATE
+    vaporview_ground_session_core
+    vaporview_sky_core
+)
+add_test(NAME waveform_points_per_frame_test COMMAND waveform_points_per_frame_test)
+
 add_executable(recording_schedule_controller_test
     ${CMAKE_CURRENT_SOURCE_DIR}/recording_schedule_controller_test.cpp
 )
@@ -622,6 +631,9 @@ add_test(NAME main_window_layout_test COMMAND main_window_layout_test)
 add_test(NAME home_overview_language_layout_test
     COMMAND main_window_layout_test --home-overview-language-only
 )
+add_test(NAME home_environment_layout_test
+    COMMAND main_window_layout_test --home-environment-layout-only
+)
 add_test(NAME combination_navigation_page_test
     COMMAND main_window_layout_test --combination-navigation-only
 )
@@ -636,7 +648,7 @@ target_include_directories(device_config_layout_test PRIVATE
 target_compile_definitions(device_config_layout_test PRIVATE
     VAPORVIEW_MAIN_WINDOW_TESTING=1
 )
-target_link_libraries(device_config_layout_test PRIVATE vaporview_main_window)
+target_link_libraries(device_config_layout_test PRIVATE vaporview_main_window Qt6::Network)
 add_dependencies(device_config_layout_test VaporViewRuntimeResources)
 add_test(NAME device_config_layout_test COMMAND device_config_layout_test)
 
@@ -1166,6 +1178,7 @@ set_property(TEST
     main_window_layout_test
     device_config_layout_test
     home_overview_language_layout_test
+    home_environment_layout_test
     session_viewer_io_test
     session_viewer_window_state_test
     session_viewer_trajectory_test
@@ -1178,6 +1191,7 @@ set_property(TEST
 set_property(TEST main_window_layout_test APPEND PROPERTY LABELS main-window layout)
 set_property(TEST device_config_layout_test APPEND PROPERTY LABELS main-window layout)
 set_property(TEST home_overview_language_layout_test APPEND PROPERTY LABELS main-window layout)
+set_property(TEST home_environment_layout_test APPEND PROPERTY LABELS main-window layout)
 set_property(TEST combination_navigation_page_test APPEND PROPERTY LABELS main-window layout)
 set_property(TEST navigation_status_panel_test APPEND PROPERTY LABELS navigation-status ui layout)
 set_property(TEST ui_test_mode_window_test APPEND PROPERTY LABELS main-window ui-test-mode)

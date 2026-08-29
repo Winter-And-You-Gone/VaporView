@@ -36,6 +36,7 @@ bool LocalConnectionCoordinator::begin(LocalConnectionRequest request)
     phase_ = LocalConnectionPhase::SerialDevices;
     cancel_requested_ = false;
     pending_outcome_ = LocalConnectionOutcome::Cancelled;
+    waveform_requested_ = request.includeWaveform;
     serial_connected_ = false;
     waveform_connected_ = false;
     timeout_timer_.start(timeout_ms_);
@@ -111,6 +112,7 @@ void LocalConnectionCoordinator::disconnect()
     pending_outcome_ = LocalConnectionOutcome::Cancelled;
     serial_connected_ = false;
     waveform_connected_ = false;
+    waveform_requested_ = true;
 
     if (serialPhaseActive && hooks_.cancelSerial)
     {
@@ -143,6 +145,11 @@ LocalConnectionPhase LocalConnectionCoordinator::phase() const
 
 void LocalConnectionCoordinator::startWaveformPhase()
 {
+    if (!waveform_requested_)
+    {
+        complete(LocalConnectionOutcome::Completed);
+        return;
+    }
     if (hooks_.waveformConnected && hooks_.waveformConnected())
     {
         waveform_connected_ = true;
@@ -212,6 +219,7 @@ void LocalConnectionCoordinator::complete(LocalConnectionOutcome outcome)
     pending_outcome_ = LocalConnectionOutcome::Cancelled;
     serial_connected_ = false;
     waveform_connected_ = false;
+    waveform_requested_ = true;
     if (hooks_.finished)
     {
         hooks_.finished(result);

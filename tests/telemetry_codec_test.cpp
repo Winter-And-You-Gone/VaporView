@@ -102,10 +102,13 @@ void testFrameRoundTrip()
     basic.ahrs_packet_rate_hz = 40.0f;
     basic.insgps_packet_rate_hz = 41.0f;
     basic.sys_state_packet_rate_hz = 42.0f;
+    basic.status_packet_rate_hz = 43.0f;
     basic.raw_gnss_packet_rate_hz = 50.0f;
     basic.satellite_packet_rate_hz = 59.0f;
     basic.geodetic_packet_rate_hz = 10.0f;
     basic.ecef_packet_rate_hz = 11.0f;
+    basic.euler_orien_packet_rate_hz = 63.0f;
+    basic.quat_orien_packet_rate_hz = 64.0f;
     basic.validity_flags = VaporView::BasicHasEpsilonTime |
                            VaporView::BasicHasPosition |
                            VaporView::BasicHasEcef |
@@ -124,6 +127,14 @@ void testFrameRoundTrip()
     VaporView::TelemetryBasic parsedLegacy;
     require(VaporView::TelemetryCodec::parseBasicTelemetry(payload.left(91), parsedLegacy), "parse legacy basic telemetry");
     require(parsedLegacy.gnss_satellites == 0, "legacy basic satellites default");
+    VaporView::TelemetryBasic parsedEightRate;
+    require(VaporView::TelemetryCodec::parseBasicTelemetry(payload.left(payload.size() - 12), parsedEightRate),
+            "parse pre-live-rate-extension telemetry");
+    require(std::fabs(parsedEightRate.ecef_packet_rate_hz - basic.ecef_packet_rate_hz) < 0.000001f &&
+                parsedEightRate.status_packet_rate_hz == 0.0f &&
+                parsedEightRate.euler_orien_packet_rate_hz == 0.0f &&
+                parsedEightRate.quat_orien_packet_rate_hz == 0.0f,
+            "pre-live-rate-extension telemetry keeps the original eight rates and defaults new rates");
     const QByteArray frame = codec.encodeFrame(VaporView::MsgType::TelemetryBasic, payload, 7, 99);
     const QByteArray noisy = QByteArray("noise") + frame.left(frame.size() / 2);
     require(codec.feedBytes(noisy).isEmpty(), "partial frame should not decode");
@@ -148,6 +159,9 @@ void testFrameRoundTrip()
     require(parsed.dropped_frame_count == basic.dropped_frame_count, "basic dropped frame count");
     require(std::fabs(parsed.imu_packet_rate_hz - basic.imu_packet_rate_hz) < 0.000001f, "basic imu packet rate");
     require(std::fabs(parsed.ecef_packet_rate_hz - basic.ecef_packet_rate_hz) < 0.000001f, "basic ecef packet rate");
+    require(std::fabs(parsed.status_packet_rate_hz - basic.status_packet_rate_hz) < 0.000001f, "basic status packet rate");
+    require(std::fabs(parsed.euler_orien_packet_rate_hz - basic.euler_orien_packet_rate_hz) < 0.000001f, "basic euler packet rate");
+    require(std::fabs(parsed.quat_orien_packet_rate_hz - basic.quat_orien_packet_rate_hz) < 0.000001f, "basic quaternion packet rate");
 }
 
 void testCrcError()
@@ -462,6 +476,8 @@ void testSkyConfigDiff()
             "sky config diff detects source, AI-8, and EPSILON RTCM changes");
 
     const QJsonObject json = b.toJson();
+    require(!json.value(QStringLiteral("epsilon")).toObject().contains(QStringLiteral("frequency_hz")),
+            "sky config no longer serializes a single EPSILON frequency");
     VaporView::SkyConfig parsed;
     QString error;
     require(VaporView::SkyConfig::fromJson(json, parsed, &error), "sky config parse");
@@ -487,6 +503,7 @@ void testSkyConfigDiff()
     legacy.remove(QStringLiteral("ai8_temperature_controller"));
     QJsonObject legacyEpsilon = legacy.value(QStringLiteral("epsilon")).toObject();
     legacyEpsilon.remove(QStringLiteral("rtcm"));
+    legacyEpsilon.insert(QStringLiteral("frequency_hz"), 100.0);
     legacy.insert(QStringLiteral("epsilon"), legacyEpsilon);
     legacy.remove(QStringLiteral("epsilon_rtcm"));
     error.clear();
@@ -495,8 +512,9 @@ void testSkyConfigDiff()
                 parsed.hmp.source == QStringLiteral("hmp3") &&
                 !parsed.ai8_temperature_controller.enabled &&
                 !parsed.epsilon_rtcm.enabled &&
-                parsed.epsilon_rtcm.device_port_index == 2,
-            "sky config legacy source, AI-8, and EPSILON RTCM defaults");
+                parsed.epsilon_rtcm.device_port_index == 2 &&
+                !parsed.toJson().value(QStringLiteral("epsilon")).toObject().contains(QStringLiteral("frequency_hz")),
+            "sky config legacy source, AI-8, EPSILON frequency, and EPSILON RTCM defaults");
 }
 
 void testSkyConfigRejectsInvalidJsonTypes()
@@ -565,6 +583,8 @@ void testTelemetryStatus()
     status.rtcm_correction_dropped_bytes = 128;
     status.rtcm_correction_dropped_chunks = 2;
     status.rtcm_correction_last_receive_time_us = 987654321;
+    status.raw_laser_temperature_controller_record_count = 60;
+    status.raw_system_temperature_controller_record_count = 70;
     VaporView::DeviceStatusItem ai8;
     ai8.device_id = VaporView::SkyDeviceId::Ai8TemperatureController;
     ai8.state = VaporView::DeviceState::Connected;
@@ -581,6 +601,11 @@ void testTelemetryStatus()
     require(parsed.recording_elapsed_ms == status.recording_elapsed_ms, "status recording elapsed");
     require(parsed.raw_navigation_record_count == status.raw_navigation_record_count, "status raw epsilon count");
     require(parsed.raw_waveform_record_count == status.raw_waveform_record_count, "status raw tcp wave count");
+    require(parsed.raw_laser_temperature_controller_record_count ==
+                status.raw_laser_temperature_controller_record_count &&
+                parsed.raw_system_temperature_controller_record_count ==
+                status.raw_system_temperature_controller_record_count,
+            "status raw temperature controller counts");
     require(parsed.rtcm_correction_bytes_received == status.rtcm_correction_bytes_received &&
                 parsed.rtcm_correction_chunks_received == status.rtcm_correction_chunks_received &&
                 parsed.rtcm_correction_dropped_bytes == status.rtcm_correction_dropped_bytes &&

@@ -86,16 +86,35 @@ bool GroundTelemetryService::open(const QString& portName, int baudRate)
 bool GroundTelemetryService::openTcp(const QString& host, quint16 port)
 {
     auto link = std::make_unique<TcpTelemetryLink>();
+    QString systemError;
+    const QMetaObject::Connection errorConnection =
+        QObject::connect(link.get(), &TelemetryLink::errorOccurred,
+                         [&systemError](const QString& error) {
+                             systemError = error;
+                         });
     const bool ok = link->connectToHost(host, port);
+    QObject::disconnect(errorConnection);
     if (!ok)
     {
+        const QString endpoint = QStringLiteral("%1:%2").arg(host.trimmed()).arg(port);
+        QVariantMap fields{
+            {QStringLiteral("error_code"), QStringLiteral("GROUND_TELEMETRY_TCP_CONNECT_FAILED")},
+            {QStringLiteral("endpoint"), endpoint},
+            {QStringLiteral("host"), host},
+            {QStringLiteral("port"), port},
+            {QStringLiteral("ui_message"),
+             QStringLiteral("无法连接天空端 TCP 数传端点（%1）。").arg(endpoint)},
+            {QStringLiteral("ui_visibility"), QStringLiteral("details")},
+        };
+        if (!systemError.isEmpty())
+        {
+            fields.insert(QStringLiteral("system_error"), systemError);
+        }
         publishTelemetryLog(LogLevel::Error,
                             QStringLiteral("telemetry.tcp"),
                             QStringLiteral("ground_telemetry_tcp_connect_failed"),
-                            QStringLiteral("无法连接地面端 TCP 遥测端点。"),
-                            {{QStringLiteral("error_code"), QStringLiteral("GROUND_TELEMETRY_TCP_CONNECT_FAILED")},
-                             {QStringLiteral("host"), host},
-                             {QStringLiteral("port"), port}});
+                            QStringLiteral("无法连接天空端 TCP 数传端点。"),
+                            fields);
         return false;
     }
     transport_type_ = TelemetryTransportType::Tcp;
@@ -432,6 +451,23 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         }
         break;
     }
+    case MsgType::SerialPortDetectionResult:
+    {
+        const QJsonDocument document = QJsonDocument::fromJson(frame.payload);
+        if (document.isObject())
+        {
+            emit serialPortDetectionResultReceived(document.object());
+        }
+        else
+        {
+            reportProtocolDiagnostic(LogLevel::Warning, QStringLiteral("protocol.parse"),
+                                     QStringLiteral("serial_port_detection_result_parse_failed"),
+                                     QStringLiteral("无法解析串口自动识别结果遥测载荷。"),
+                                     {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
+                                      {QStringLiteral("payload_bytes"), frame.payload.size()}});
+        }
+        break;
+    }
     case MsgType::TemperatureControllerStatus:
     {
         TemperatureControllerData data;
@@ -583,10 +619,19 @@ void GroundTelemetryService::attachLinkSignals()
     {
         return;
     }
-    connect(link_.get(), &TelemetryLink::bytesReceived, this, [this](const QByteArray& bytes) {
+    TelemetryLink *activeLink = link_.get();
+    connect(activeLink, &TelemetryLink::bytesReceived, this, [this, activeLink](const QByteArray& bytes) {
+        if (link_.get() != activeLink)
+        {
+            return;
+        }
         onBytesReceived(bytes);
     });
-    connect(link_.get(), &TelemetryLink::openChanged, this, [this](bool open) {
+    connect(activeLink, &TelemetryLink::openChanged, this, [this, activeLink](bool open) {
+        if (link_.get() != activeLink)
+        {
+            return;
+        }
         if (!open)
         {
             retry_timer_.stop();
@@ -595,7 +640,11 @@ void GroundTelemetryService::attachLinkSignals()
         }
         emit linkOpenChanged(open);
     });
-    connect(link_.get(), &TelemetryLink::errorOccurred, this, [this](const QString& systemError) {
+    connect(activeLink, &TelemetryLink::errorOccurred, this, [this, activeLink](const QString& systemError) {
+        if (link_.get() != activeLink)
+        {
+            return;
+        }
         publishTelemetryLog(LogLevel::Warning,
                             QStringLiteral("telemetry.link"),
                             QStringLiteral("ground_telemetry_link_error"),
@@ -603,7 +652,11 @@ void GroundTelemetryService::attachLinkSignals()
                             {{QStringLiteral("reason_code"), QStringLiteral("GROUND_TELEMETRY_LINK_ERROR")},
                              {QStringLiteral("system_error"), systemError}});
     });
-    connect(link_.get(), &TelemetryLink::logRecordGenerated, this, [](LogRecord record) {
+    connect(activeLink, &TelemetryLink::logRecordGenerated, this, [this, activeLink](LogRecord record) {
+        if (link_.get() != activeLink)
+        {
+            return;
+        }
         if (record.source.isEmpty())
         {
             record.source = QStringLiteral("TelemetryLink");

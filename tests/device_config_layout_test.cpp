@@ -1,6 +1,10 @@
 #include "ground/main/MainWindow.h"
+#include "ground/devices/RemoteSkyController.h"
+#include "ground/navigation/CombinationNavigationPage.h"
+#include "ground/widgets/SegmentedSwitchButton.h"
 #include "shared/config/SettingsWriteBarrier.h"
 #include "SkyConfig.h"
+#include "TelemetryCodec.h"
 #include "test_ui_helpers.h"
 
 #include <QApplication>
@@ -9,6 +13,9 @@
 #include <QFrame>
 #include <QGroupBox>
 #include <QHBoxLayout>
+#include <QHostAddress>
+#include <QIcon>
+#include <QJsonDocument>
 #include <QLabel>
 #include <QLayout>
 #include <QLineEdit>
@@ -16,10 +23,14 @@
 #include <QKeyEvent>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QRect>
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QSettings>
+#include <QStackedWidget>
 #include <QStringList>
+#include <QTcpServer>
+#include <QTcpSocket>
 #include <QTemporaryDir>
 #include <QToolButton>
 #include <QVector>
@@ -65,7 +76,7 @@ void activateLayouts(QWidget *widget)
     }
 }
 
-QPushButton *findDeviceConfigNav(MainWindow& window)
+QPushButton *findSidebarNav(MainWindow& window, const QStringList& accessibleNames)
 {
     for (QPushButton *button : window.findChildren<QPushButton *>())
     {
@@ -73,13 +84,28 @@ QPushButton *findDeviceConfigNav(MainWindow& window)
         {
             continue;
         }
-        if (button->accessibleName() == QStringLiteral("设备配置") ||
-            button->accessibleName() == QStringLiteral("Device"))
+        if (accessibleNames.contains(button->accessibleName()))
         {
             return button;
         }
     }
     return nullptr;
+}
+
+QPushButton *findDeviceConfigNav(MainWindow& window)
+{
+    return findSidebarNav(window, {
+        QStringLiteral("设备配置"),
+        QStringLiteral("Device"),
+    });
+}
+
+QPushButton *findCombinationNavigationNav(MainWindow& window)
+{
+    return findSidebarNav(window, {
+        QStringLiteral("组合导航"),
+        QStringLiteral("Combination Navigation"),
+    });
 }
 
 QFrame *findLinkStatusCard(QWidget *deviceConfigPage)
@@ -93,8 +119,8 @@ QFrame *findLinkStatusCard(QWidget *deviceConfigPage)
         for (QLabel *label : card->findChildren<QLabel *>())
         {
             const QString text = label->text();
-            if (text.contains(QStringLiteral("天地通信链路状态")) ||
-                text.contains(QStringLiteral("Sky-ground Communication Link Status")))
+            if (text.contains(QStringLiteral("数据源与天地链路")) ||
+                text.contains(QStringLiteral("Data Source / Sky Link")))
             {
                 return card;
             }
@@ -108,7 +134,7 @@ QRect rectInPage(QWidget *widget, QWidget *page)
     return QRect(widget->mapTo(page, QPoint(0, 0)), widget->size());
 }
 
-bool cardHasAnyLabel(QFrame *card, const QStringList& candidates)
+bool cardHasAnyLabel(QWidget *card, const QStringList& candidates)
 {
     if (!card)
     {
@@ -133,6 +159,22 @@ QLabel *findExactLabel(QWidget *parent, const QString& text)
     for (QLabel *label : parent->findChildren<QLabel *>())
     {
         if (label && label->text() == text)
+        {
+            return label;
+        }
+    }
+    return nullptr;
+}
+
+QLabel *findSubsectionLabel(QWidget *parent, const QString& sectionKey)
+{
+    if (!parent)
+    {
+        return nullptr;
+    }
+    for (QLabel *label : parent->findChildren<QLabel *>(QStringLiteral("deviceConfigSubsectionLabel")))
+    {
+        if (label && label->property("deviceConfigSubsection").toString() == sectionKey)
         {
             return label;
         }
@@ -340,6 +382,9 @@ int main(int argc, char **argv)
 
     QPushButton *deviceConfigNav = findDeviceConfigNav(window);
     require(deviceConfigNav != nullptr, "device configuration nav button exists");
+    QPushButton *combinationNavigationNav = findCombinationNavigationNav(window);
+    require(combinationNavigationNav != nullptr,
+            "combination navigation nav button exists");
     deviceConfigNav->click();
     VaporViewTest::processEventsFor(180);
     activateLayouts(&window);
@@ -402,7 +447,7 @@ int main(int argc, char **argv)
         linkStatusCard->findChild<QWidget *>(QStringLiteral("homeTelemetrySummaryContainer"));
     require(summaryContainer != nullptr, "link-status card exposes its summary container");
     require(qobject_cast<QHBoxLayout *>(summaryContainer->layout()) != nullptr,
-            "link-status summary sections use a horizontal layout");
+            "link-status summary sections are arranged horizontally");
     QList<QFrame *> subCards =
         summaryContainer->findChildren<QFrame *>(QStringLiteral("homeTelemetrySectionCard"));
     require(subCards.size() == 3,
@@ -447,38 +492,40 @@ int main(int argc, char **argv)
     requirePillLabelsFit(subCards.at(2),
                          "data subcard pill labels fit without clipping");
 
+    const int summaryTop = summaryContainer->layout()->contentsMargins().top();
     int previousRight = -1;
-    int top = -1;
     for (QFrame *subCard : subCards)
     {
         const QRect subRect(subCard->mapTo(summaryContainer, QPoint(0, 0)), subCard->size());
         require(previousRight < 0 || subRect.left() > previousRight,
                 "link-status subcards are arranged left-to-right");
-        require(top < 0 || std::abs(subRect.top() - top) <= 2,
-                "link-status subcards share a top baseline");
+        require(std::abs(subRect.top() - summaryTop) <= 2,
+                "link-status subcards share a top edge");
         require(subRect.right() <= summaryContainer->width() &&
                     subRect.bottom() <= summaryContainer->height(),
                 "link-status subcards stay inside the summary container");
+        require(subCard->sizePolicy().horizontalPolicy() == QSizePolicy::Fixed &&
+                    std::abs(subRect.width() - subCard->sizeHint().width()) <= 2,
+                "link-status subcard width follows its widest content row");
         previousRight = subRect.right();
-        top = subRect.top();
     }
 
-    const QStringList detailedDeviceLabels{
+    const QStringList formattedDeviceLabels{
         QStringLiteral("EPSILON2-D4G 组合导航"),
         QStringLiteral("PTB210 气压计"),
         QStringLiteral("HMP3 温湿度计"),
-        QStringLiteral("TFA1005-L 激光雷达"),
-        QStringLiteral("RD105 激光驱动板温控器"),
+        QStringLiteral("TFA1500-L 激光测距"),
+        QStringLiteral("RD105 温控器"),
         QStringLiteral("AI-8288D92J0 八路温控器"),
     };
-    for (const QString& labelText : detailedDeviceLabels)
+    for (const QString& labelText : formattedDeviceLabels)
     {
         requireLabelFits(findExactLabel(serialCard, labelText),
-                         "serial configuration uses detailed device labels without clipping");
+                         "serial configuration uses model-plus-device labels without clipping");
     }
     int widestDeviceLabelText = 0;
     int deviceLabelWidth = -1;
-    for (const QString& labelText : detailedDeviceLabels)
+    for (const QString& labelText : formattedDeviceLabels)
     {
         QLabel *label = findExactLabel(serialCard, labelText);
         require(label != nullptr, "serial configuration device label exists for width measurement");
@@ -493,20 +540,23 @@ int main(int argc, char **argv)
     }
     require(deviceLabelWidth >= widestDeviceLabelText &&
                 deviceLabelWidth <= widestDeviceLabelText + 2,
-            "serial configuration device column uses the widest device label without extra width");
+            "serial configuration device column uses the widest formatted label without extra width");
     const QStringList serialColumnHeaders{
         QStringLiteral("设备"),
         QStringLiteral("串口"),
         QStringLiteral("波特率"),
         QStringLiteral("频率/轮询"),
+        QStringLiteral("启用"),
         QStringLiteral("来源"),
-        QStringLiteral("链路操作"),
+        QStringLiteral("操作"),
     };
     for (const QString& headerText : serialColumnHeaders)
     {
         requireLabelFits(findExactLabel(serialCard, headerText),
                          "serial configuration column headers are visible and fit");
     }
+    auto *epsilonPacketRatesButton =
+        serialCard->findChild<QPushButton *>(QStringLiteral("deviceEpsilonPacketRatesButton"));
     requireHeaderAboveWidget(serialCard,
                              findExactLabel(serialCard, QStringLiteral("设备")),
                              findExactLabel(serialCard, QStringLiteral("EPSILON2-D4G 组合导航")),
@@ -521,15 +571,16 @@ int main(int argc, char **argv)
                              "baud-rate column header sits above baud selectors");
     requireHeaderAboveWidget(serialCard,
                              findExactLabel(serialCard, QStringLiteral("频率/轮询")),
-                             serialCard->findChild<QWidget *>(QStringLiteral("deviceAi8TemperatureRateCombo")),
-                             "rate column header sits above rate selectors");
+                             epsilonPacketRatesButton,
+                             "rate column header sits above the EPSILON packet-rate entry");
     requireHeaderAboveWidget(serialCard,
                              findExactLabel(serialCard, QStringLiteral("来源")),
                              serialCard->findChild<QWidget *>(QStringLiteral("devicePressureSourceCombo")),
                              "source column header sits above source selectors");
-    QLabel *actionHeader = findExactLabel(serialCard, QStringLiteral("链路操作"));
+    QLabel *actionHeader = findExactLabel(serialCard, QStringLiteral("操作"));
     require(actionHeader != nullptr, "link-action column header exists");
     int centeredActionCount = 0;
+    QToolButton *temperatureActionButton = nullptr;
     const QRect actionHeaderRect(actionHeader->mapTo(serialCard, QPoint(0, 0)), actionHeader->size());
     for (QToolButton *button : serialCard->findChildren<QToolButton *>())
     {
@@ -546,10 +597,17 @@ int main(int argc, char **argv)
         }
         require(std::abs(buttonRect.center().x() - actionHeaderRect.center().x()) <= 1,
                 "link-action icons are centered under the link-action column header");
+        if (button->property("deviceConfigRemoteDevice").toInt() ==
+            static_cast<int>(VaporView::SkyDeviceId::TemperatureController))
+        {
+            temperatureActionButton = button;
+        }
         ++centeredActionCount;
     }
     require(centeredActionCount == 6,
             "serial configuration exposes all six centered link-action icons");
+    require(temperatureActionButton != nullptr,
+            "serial configuration exposes the RD105 link-action icon");
     auto *pressureSourceCombo =
         serialCard->findChild<QComboBox *>(QStringLiteral("devicePressureSourceCombo"));
     auto *humiditySourceCombo =
@@ -577,19 +635,22 @@ int main(int argc, char **argv)
     require(humiditySourceCombo->toolTip().contains(QStringLiteral("SHT45")) &&
                 !humiditySourceCombo->toolTip().contains(QStringLiteral("HMP3")),
             "humidity source tooltip follows SHT45 selection");
-    requireLabelFits(findExactLabel(serialCard, QStringLiteral("BMP390 气压计")),
-                     "pressure device label follows the selected source");
-    requireLabelFits(findExactLabel(serialCard, QStringLiteral("SHT45 温湿度计")),
-                     "humidity device label follows the selected source");
+    requireLabelFits(findExactLabel(serialCard, QStringLiteral("PTB210 气压计")),
+                     "pressure device row restores the model-plus-device label");
+    requireLabelFits(findExactLabel(serialCard, QStringLiteral("HMP3 温湿度计")),
+                     "humidity device row restores the model-plus-device label");
 
-    auto *dataSourceModeCombo =
-        serialCard->findChild<QComboBox *>(QStringLiteral("deviceDataSourceModeCombo"));
+    auto *dataSourceModeSwitch =
+        serialCard->findChild<QPushButton *>(QStringLiteral("deviceConfigSourceModeOverviewSwitch"));
+    auto *dataSourceModeSegmentedSwitch =
+        qobject_cast<VaporView::Ground::Widgets::SegmentedSwitchButton *>(dataSourceModeSwitch);
     auto *epsilonPortCombo =
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceEpsilonPortCombo"));
     auto *epsilonBaudCombo =
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceEpsilonBaudCombo"));
     auto *epsilonRateCombo =
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceEpsilonRateCombo"));
+    auto *ai8DeviceLabel = findExactLabel(serialCard, QStringLiteral("AI-8288D92J0 八路温控器"));
     auto *remoteCard =
         deviceConfigPage->findChild<QGroupBox *>(QStringLiteral("deviceRemoteSkyConfigCard"));
     auto *remoteStatus =
@@ -606,17 +667,95 @@ int main(int argc, char **argv)
         deviceConfigPage->findChild<QSpinBox *>(QStringLiteral("deviceRemoteSkyRd105SlaveSpin"));
     auto *ai8EnabledCheck =
         serialCard->findChild<QCheckBox *>(QStringLiteral("deviceRemoteAi8TemperatureEnabledCheck"));
+    auto *temperatureEnabledCheck =
+        serialCard->findChild<QCheckBox *>(QStringLiteral("deviceRemoteTemperatureEnabledCheck"));
+    auto *temperaturePortCombo =
+        serialCard->findChild<QComboBox *>(QStringLiteral("deviceTemperaturePortCombo"));
     auto *ai8PortCombo =
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceAi8TemperaturePortCombo"));
     auto *ai8BaudCombo =
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceAi8TemperatureBaudCombo"));
     auto *ai8RateCombo =
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceAi8TemperatureRateCombo"));
-    require(dataSourceModeCombo && epsilonPortCombo && epsilonBaudCombo && epsilonRateCombo,
+    require(dataSourceModeSwitch && dataSourceModeSegmentedSwitch &&
+                epsilonPortCombo && epsilonBaudCombo && epsilonRateCombo &&
+                epsilonPacketRatesButton,
             "shared device config controls exist for target switching");
+    require(dataSourceModeSwitch->property("segmentedSwitchControl").toBool() &&
+                dataSourceModeSwitch->text().contains(QStringLiteral("数据源")) &&
+                dataSourceModeSwitch->focusPolicy() == Qt::TabFocus,
+            "device configuration target switching reuses the home segmented source switch");
+    QPushButton *autoDetectButton = nullptr;
+    for (QPushButton *button : serialCard->findChildren<QPushButton *>())
+    {
+        if (button->isVisible() &&
+            (button->text().contains(QStringLiteral("自动识别")) ||
+             button->text().contains(QStringLiteral("Auto Detect"))))
+        {
+            autoDetectButton = button;
+            break;
+        }
+    }
+    require(autoDetectButton != nullptr,
+            "device configuration exposes the title-bar auto-detect button");
+    const QRect autoDetectRect(autoDetectButton->mapTo(serialCard, QPoint(0, 0)),
+                               autoDetectButton->size());
+    const QRect sourceModeSwitchRect(dataSourceModeSwitch->mapTo(serialCard, QPoint(0, 0)),
+                                     dataSourceModeSwitch->size());
+    require(sourceModeSwitchRect.left() > autoDetectRect.right() &&
+                sourceModeSwitchRect.left() - autoDetectRect.right() <= 16,
+            "device configuration target switch is left-aligned beside auto-detect");
+    require(!epsilonRateCombo->isVisible() &&
+                !epsilonRateCombo->isEnabled() &&
+                epsilonPacketRatesButton->isVisible() &&
+                epsilonPacketRatesButton->text() == QStringLiteral("包频率设置"),
+            "EPSILON frequency column uses a packet-rate navigation button instead of a single rate selector");
+    require(epsilonRateCombo->findText(QStringLiteral("No Set")) < 0 &&
+                epsilonRateCombo->findText(QStringLiteral("不设定")) < 0,
+            "EPSILON compatibility rate combo does not expose an unspecified option");
+    auto *mainPageStackForEpsilonButton =
+        window.findChild<QStackedWidget *>(QStringLiteral("mainPageStack"));
+    auto *combinationPageForEpsilonButton =
+        window.findChild<VaporView::Ground::Navigation::CombinationNavigationPage *>();
+    require(mainPageStackForEpsilonButton && combinationPageForEpsilonButton,
+            "combination navigation page is available for the EPSILON packet-rate jump");
+    require(deviceConfigNav->isChecked() && !deviceConfigNav->icon().isNull(),
+            "device configuration sidebar button starts selected with an icon");
+    const qint64 selectedDeviceConfigIconKey =
+        deviceConfigNav->icon().pixmap(deviceConfigNav->iconSize()).cacheKey();
+    epsilonPacketRatesButton->click();
+    VaporViewTest::processEventsFor(120);
+    require(mainPageStackForEpsilonButton->currentWidget() == combinationPageForEpsilonButton &&
+                combinationPageForEpsilonButton->currentSection() ==
+                    VaporView::Ground::Navigation::CombinationNavigationPage::Section::Epsilon,
+            "EPSILON packet-rate button jumps to Combination Navigation EPSILON settings");
+    require(!deviceConfigNav->isChecked() &&
+                combinationNavigationNav->isChecked() &&
+                !deviceConfigNav->icon().isNull() &&
+                deviceConfigNav->icon().pixmap(deviceConfigNav->iconSize()).cacheKey() !=
+                    selectedDeviceConfigIconKey,
+            "EPSILON packet-rate jump refreshes the previous device-config sidebar icon");
+    mainPageStackForEpsilonButton->setCurrentWidget(deviceConfigPage);
+    VaporViewTest::processEventsFor(80);
+    auto *skyTelemetryTransportCombo =
+        deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceSkyTelemetryTransportCombo"));
+    QWidget *skyTelemetryRow = skyTelemetryTransportCombo ? skyTelemetryTransportCombo->parentWidget() : nullptr;
+    require(skyTelemetryRow && !skyTelemetryRow->isVisible(),
+            "local mode hides sky-ground link editing controls from the unified device table");
+    QWidget *serialFormRow =
+        epsilonPortCombo && epsilonPortCombo->parentWidget() ? epsilonPortCombo->parentWidget()->parentWidget() : nullptr;
+    QLayout *serialCardLayout = serialCard ? serialCard->layout() : nullptr;
+    require(serialFormRow && serialCardLayout &&
+                serialCardLayout->indexOf(skyTelemetryRow) > serialCardLayout->indexOf(serialFormRow),
+            "sky-ground link fields are placed below the device serial configuration rows");
+    QLabel *servicesLabel = findSubsectionLabel(remoteCard, QStringLiteral("services"));
+    QLabel *syncLabel = findSubsectionLabel(remoteCard, QStringLiteral("sync"));
+    QLabel *advancedLabel = findSubsectionLabel(remoteCard, QStringLiteral("advanced"));
     require(remoteCard && remoteStatus && remoteApplyButton && remoteSaveButton &&
-                rawModeButton && rawJsonEdit && rd105SlaveSpin,
-            "remote sky advanced controls exist on the unified page");
+                rawModeButton && rawJsonEdit && servicesLabel && syncLabel && advancedLabel,
+            "remote sky service, sync, and diagnostics controls exist on the unified page");
+    require(rd105SlaveSpin == nullptr,
+            "remote RD105 address setting is removed from Device Config; use the RD105 temperature page instead");
     QLabel *remoteTitleIcon = nullptr;
     for (QLabel *iconLabel : remoteCard->findChildren<QLabel *>(QStringLiteral("sectionTitleIcon")))
     {
@@ -627,7 +766,32 @@ int main(int argc, char **argv)
         }
     }
     require(remoteTitleIcon && !remoteTitleIcon->pixmap().isNull(),
-            "remote sky advanced card renders its server configuration icon");
+            "remote sky service/config card renders its server configuration icon");
+    require(!remoteCard->isVisible(),
+            "local mode hides the remote-only Sky services/config card");
+    require(!rawJsonEdit->isVisible(),
+            "SkyConfig JSON starts hidden instead of acting as a primary configuration area");
+    require(temperatureEnabledCheck && temperatureEnabledCheck->isVisible() &&
+                temperatureEnabledCheck->isEnabled() &&
+                temperatureEnabledCheck->isChecked(),
+            "local mode exposes the same enabled toggle used by remote serial rows");
+    require(temperaturePortCombo != nullptr,
+            "local mode exposes the RD105 serial port combo");
+    selectComboText(temperaturePortCombo, QStringLiteral("COM7"),
+                    "local RD105 serial combo can select a retained port before disabling");
+    VaporViewTest::processEventsFor(80);
+    require(temperatureActionButton->isEnabled(),
+            "local RD105 action is enabled before the enabled toggle is cleared");
+    const QString originalTemperaturePort = temperaturePortCombo->currentText();
+    temperatureEnabledCheck->setChecked(false);
+    VaporViewTest::processEventsFor(80);
+    require(!temperatureActionButton->isEnabled() &&
+                temperaturePortCombo->currentText() == originalTemperaturePort,
+            "local enabled toggle disables RD105 connection without clearing the serial selection");
+    temperatureEnabledCheck->setChecked(true);
+    VaporViewTest::processEventsFor(80);
+    require(temperatureActionButton->isEnabled(),
+            "local enabled toggle restores the RD105 connection action");
 
     selectComboText(epsilonPortCombo, QStringLiteral("COM7"),
                     "local EPSILON port can be set before switching targets");
@@ -635,9 +799,71 @@ int main(int argc, char **argv)
     require(epsilonPortCombo->currentText() == QStringLiteral("COM7"),
             "local EPSILON port is visible before remote switch");
 
-    dataSourceModeCombo->setCurrentIndex(1);
+    dataSourceModeSwitch->click();
+    require(dataSourceModeSegmentedSwitch->switchAnimationRunning(),
+            "device configuration source switch starts visual feedback before layout stabilization");
+    require(serialCard->height() >= serialCard->sizeHint().height() - 1,
+            "local-to-remote switch applies the expanded device card geometry before repaint");
+    require(ai8DeviceLabel && ai8DeviceLabel->isVisible() &&
+                ai8DeviceLabel->mapTo(serialCard, QPoint(0, 0)).y() + ai8DeviceLabel->height() <= serialCard->height(),
+            "local-to-remote switch keeps the AI-8288 row inside the device card before repaint");
+    require(!remoteCard->isVisible() ||
+                remoteCard->geometry().top() >= serialCard->geometry().bottom() + 1,
+            "local-to-remote switch positions the remote card below all device rows before repaint");
+    VaporViewTest::processEventsFor(16);
+    require(ai8DeviceLabel && ai8DeviceLabel->isVisible() &&
+                ai8DeviceLabel->mapTo(serialCard, QPoint(0, 0)).y() + ai8DeviceLabel->height() <= serialCard->height(),
+            "local-to-remote switch keeps the AI-8288 row inside the device card during the first repaint frame");
+    require(!remoteCard->isVisible() ||
+                remoteCard->geometry().top() >= serialCard->geometry().bottom() + 1,
+            "first repaint frame keeps the remote card below the device rows");
     VaporViewTest::processEventsFor(160);
-    require(remoteCard->isVisible(), "remote sky advanced card appears in remote mode");
+    activateLayouts(&window);
+    require(scrollArea->horizontalScrollBar() &&
+                scrollArea->horizontalScrollBar()->maximum() == 0 &&
+                !scrollArea->horizontalScrollBar()->isVisible(),
+            "remote device configuration page has no horizontal overflow");
+    require(cardHasAnyLabel(serialCard,
+                            QStringList() << QStringLiteral("设备配置 [远程]")
+                                          << QStringLiteral("Device Configuration [Remote]")),
+            "remote mode retitles the shared device configuration card for the Remote target");
+    require(skyTelemetryRow->isVisible(),
+            "remote mode shows sky-ground link editing controls in the target section");
+    require(remoteCard->isVisible(), "remote sky service/config card appears in remote mode");
+    QWidget *serialTitleBar =
+        serialCard->findChild<QWidget *>(QStringLiteral("sectionTitleBar"), Qt::FindDirectChildrenOnly);
+    QWidget *remoteTitleBar =
+        remoteCard->findChild<QWidget *>(QStringLiteral("sectionTitleBar"), Qt::FindDirectChildrenOnly);
+    require(serialTitleBar && remoteTitleBar,
+            "device and remote sky config cards expose direct title bars");
+    if (serialTitleBar->height() != remoteTitleBar->height())
+    {
+        std::cerr << "Title bar geometry: serial height="
+                  << serialTitleBar->height()
+                  << " remote height=" << remoteTitleBar->height()
+                  << " serial top=" << serialTitleBar->geometry().top()
+                  << " remote top=" << remoteTitleBar->geometry().top()
+                  << " serial card top=" << serialCard->geometry().top()
+                  << " remote card top=" << remoteCard->geometry().top()
+                  << '\n';
+    }
+    require(remoteTitleBar->height() == serialTitleBar->height(),
+            "remote sky config title bar matches the shared device-card height");
+    if (std::abs(remoteTitleBar->geometry().top() - serialTitleBar->geometry().top()) > 1)
+    {
+        std::cerr << "Title bar top mismatch: serial top="
+                  << serialTitleBar->geometry().top()
+                  << " remote top=" << remoteTitleBar->geometry().top()
+                  << '\n';
+    }
+    require(std::abs(remoteTitleBar->geometry().top() - serialTitleBar->geometry().top()) <= 1,
+            "remote sky config title bar starts flush like the shared device card");
+    require(servicesLabel->isVisible() && syncLabel->isVisible() && advancedLabel->isVisible(),
+            "remote mode separates Sky services, config sync, and advanced diagnostics");
+    require(!rawJsonEdit->isVisible(),
+            "advanced SkyConfig JSON remains collapsed until requested");
+    require(remoteStatus->property("status").toString() == QStringLiteral("disabled"),
+            "disconnected remote mode explains the config state with a disabled status chip");
     require(pressureSourceCombo->isVisible() && humiditySourceCombo->isVisible(),
             "remote mode keeps PTB/BMP390 and HMP/SHT45 source selectors visible");
     require(ai8EnabledCheck && ai8EnabledCheck->isVisible() &&
@@ -647,9 +873,19 @@ int main(int argc, char **argv)
             "remote mode exposes AI-8 SkyConfig serial fields");
     require(!remoteApplyButton->isEnabled() && !remoteSaveButton->isEnabled(),
             "disconnected remote mode disables apply and save operations");
+    require(!epsilonPortCombo->isEnabled() &&
+                ai8PortCombo && !ai8PortCombo->isEnabled(),
+            "remote config fields wait for a loaded SkyConfig while the link is disconnected");
+    auto *tcpWaveHostEdit = window.findChild<QLineEdit *>(QStringLiteral("tcpWaveHostEdit"));
+    auto *tcpWavePortEdit = window.findChild<QLineEdit *>(QStringLiteral("tcpWavePortEdit"));
+    auto *tcpWaveConnectButton = window.findChild<QPushButton *>(QStringLiteral("compactTcpStartButton"));
+    require(tcpWaveHostEdit != nullptr && tcpWavePortEdit != nullptr && tcpWaveConnectButton != nullptr,
+            "home TCP wave source controls are reachable in remote mode");
+    require(tcpWaveHostEdit->isEnabled() && tcpWavePortEdit->isEnabled(),
+            "remote TCP wave disconnected mode leaves host and port editable");
 
     VaporView::SkyConfig remoteConfig = VaporView::SkyConfig::defaults();
-    remoteConfig.epsilon = {true, QStringLiteral("/dev/ttyEPSILON"), 921600, 100.0};
+    remoteConfig.epsilon = {true, QStringLiteral("/dev/ttyEPSILON"), 921600};
     remoteConfig.ptb = {true, QStringLiteral("/dev/ttyPTB210"), 9600, 20.0};
     remoteConfig.ptb.source = QStringLiteral("ptb210");
     remoteConfig.hmp = {true, QStringLiteral("/dev/ttyHMP3"), 19200, 20.0};
@@ -659,8 +895,134 @@ int main(int argc, char **argv)
     remoteConfig.ai8_temperature_controller = {true, QStringLiteral("/dev/ttyAI8"), 19200, 5.0, 5};
     remoteConfig.wave_tcp = {true, QStringLiteral("10.0.0.2"), 8899, 12, 0, 0};
     remoteConfig.telemetry = {11.0, 12.0, 2.0, 1.0, 3.0};
-    window.testInjectRemoteSkyConfig(remoteConfig.toJson());
+
+    auto *remoteController = qobject_cast<VaporView::Ground::Devices::RemoteSkyController *>(
+        window.property("remoteSkyController").value<QObject *>());
+    require(remoteController != nullptr,
+            "normal-mode device config test can access the Remote Sky controller");
+    QTcpServer fakeSkyServer;
+    require(fakeSkyServer.listen(QHostAddress::LocalHost),
+            "fake SkyConfig TCP server starts after the remote page is already open");
+    QTcpSocket *fakeSkySocket = nullptr;
+    VaporView::TelemetryCodec inboundCodec;
+    VaporView::TelemetryCodec outboundCodec;
+    int getSkyConfigRequests = 0;
+    int setSkyConfigRequests = 0;
+    bool skyConfigFrameSent = false;
+    bool skyConfigApplyResultSent = false;
+    QObject::connect(&fakeSkyServer, &QTcpServer::newConnection, [&]() {
+        fakeSkySocket = fakeSkyServer.nextPendingConnection();
+        require(fakeSkySocket != nullptr, "fake SkyConfig server accepts the Ground link");
+        QObject::connect(fakeSkySocket, &QTcpSocket::readyRead, [&]() {
+            const QVector<VaporView::TelemetryFrame> frames =
+                inboundCodec.feedBytes(fakeSkySocket->readAll());
+            for (const VaporView::TelemetryFrame& frame : frames)
+            {
+                if (frame.type != VaporView::MsgType::Command)
+                {
+                    continue;
+                }
+                VaporView::CommandMessage command;
+                if (!VaporView::TelemetryCodec::parseCommand(frame.payload, command) ||
+                    (command.command_id != VaporView::CommandId::GetSkyConfig &&
+                     command.command_id != VaporView::CommandId::SetSkyConfig))
+                {
+                    continue;
+                }
+                VaporView::CommandAck ack;
+                ack.command_id = command.command_id;
+                ack.command_seq = command.command_seq;
+                ack.error_code = VaporView::CommandErrorCode::Ok;
+                if (command.command_id == VaporView::CommandId::GetSkyConfig)
+                {
+                    ++getSkyConfigRequests;
+                }
+                else
+                {
+                    ++setSkyConfigRequests;
+                    VaporView::SkyConfig parsedConfig;
+                    QString parseError;
+                    const QJsonDocument document = QJsonDocument::fromJson(command.payload);
+                    if (document.isObject() &&
+                        VaporView::SkyConfig::fromJson(document.object(), parsedConfig, &parseError))
+                    {
+                        remoteConfig = parsedConfig;
+                    }
+                }
+                fakeSkySocket->write(outboundCodec.encodeFrame(
+                    VaporView::MsgType::CommandAck,
+                    VaporView::TelemetryCodec::serializeCommandAck(ack),
+                    static_cast<quint16>(100 + getSkyConfigRequests * 2),
+                    1));
+                if (command.command_id == VaporView::CommandId::GetSkyConfig)
+                {
+                    fakeSkySocket->write(outboundCodec.encodeFrame(
+                        VaporView::MsgType::SkyConfig,
+                        QJsonDocument(remoteConfig.toJson()).toJson(QJsonDocument::Compact),
+                        static_cast<quint16>(101 + getSkyConfigRequests * 2),
+                        2));
+                    skyConfigFrameSent = true;
+                }
+                else
+                {
+                    fakeSkySocket->write(outboundCodec.encodeFrame(
+                        VaporView::MsgType::SkyConfigApplyResult,
+                        QJsonDocument(QJsonObject{{QStringLiteral("success"), true}})
+                            .toJson(QJsonDocument::Compact),
+                        static_cast<quint16>(180 + setSkyConfigRequests),
+                        3));
+                    skyConfigApplyResultSent = true;
+                }
+            }
+        });
+    });
+    VaporView::setSettingsWritesSuspended(false);
+    const bool remoteOpened = remoteController->openTcp(
+        QStringLiteral("127.0.0.1"), fakeSkyServer.serverPort());
+    if (!remoteOpened)
+    {
+        VaporView::setSettingsWritesSuspended(true);
+    }
+    require(remoteOpened,
+            "Ground opens the fake Sky TCP link after entering the Remote Device Config page");
+    const bool remoteConfigAutoLoaded = VaporViewTest::processEventsUntil(3000, [&]() {
+                return skyConfigFrameSent &&
+                    getSkyConfigRequests == 1 &&
+                    remoteStatus->property("status").toString() == QStringLiteral("success") &&
+                    epsilonPortCombo->isEnabled() &&
+                    epsilonBaudCombo->isEnabled() &&
+                    ai8PortCombo->isEnabled() &&
+                    ai8BaudCombo->isEnabled() &&
+                    ai8RateCombo->isEnabled() &&
+                    epsilonPortCombo->currentText() == QStringLiteral("/dev/ttyEPSILON") &&
+                    ai8PortCombo->currentText() == QStringLiteral("/dev/ttyAI8");
+            });
+    VaporView::setSettingsWritesSuspended(true);
+    if (!remoteConfigAutoLoaded)
+    {
+        std::cerr << "remote lifecycle state: opened=" << remoteController->isOpen()
+                  << " getRequests=" << getSkyConfigRequests
+                  << " frameSent=" << skyConfigFrameSent
+                  << " status=" << remoteStatus->property("status").toString().toStdString()
+                  << " text=" << remoteStatus->text().toStdString()
+                  << " epsilonEnabled=" << epsilonPortCombo->isEnabled()
+                  << " epsilonText=" << epsilonPortCombo->currentText().toStdString()
+                  << " ai8Enabled=" << ai8PortCombo->isEnabled()
+                  << " ai8Text=" << ai8PortCombo->currentText().toStdString()
+                  << "\n";
+    }
+    require(remoteConfigAutoLoaded,
+            "page-open-before-Sky lifecycle auto-reads SkyConfig and enables remote serial fields");
     VaporViewTest::processEventsFor(160);
+    require(getSkyConfigRequests == 1,
+            "Remote link-open lifecycle sends one automatic GetSkyConfig request");
+    activateLayouts(&window);
+    require(scrollArea->horizontalScrollBar() &&
+                scrollArea->horizontalScrollBar()->maximum() == 0 &&
+                !scrollArea->horizontalScrollBar()->isVisible(),
+            "loaded remote SkyConfig still fits horizontally");
+    require(remoteStatus->property("status").toString() == QStringLiteral("success"),
+            "loaded remote SkyConfig is marked successful while the sky link is connected");
     require(epsilonPortCombo->currentText() == QStringLiteral("/dev/ttyEPSILON"),
             "remote SkyConfig updates the same EPSILON port combo");
     require(epsilonPortCombo->findText(QStringLiteral("COM7")) < 0,
@@ -668,8 +1030,8 @@ int main(int argc, char **argv)
     require(epsilonPortCombo->findText(QStringLiteral("手动添加")) >= 0 ||
                 epsilonPortCombo->findText(QStringLiteral("Add Port")) >= 0,
             "remote sky port combo keeps manual entry available");
-    require(rd105SlaveSpin->value() == 9,
-            "remote-only RD105 slave address is loaded into the unified page");
+    require(deviceConfigPage->findChild<QSpinBox *>(QStringLiteral("deviceRemoteSkyRd105SlaveSpin")) == nullptr,
+            "remote-only RD105 slave address is not duplicated on the unified page");
     require(pressureSourceCombo->currentData().toString() == QStringLiteral("ptb210") &&
                 humiditySourceCombo->currentData().toString() == QStringLiteral("hmp3"),
             "remote SkyConfig restores pressure and humidity source selections");
@@ -678,6 +1040,26 @@ int main(int argc, char **argv)
                 ai8BaudCombo->currentText() == QStringLiteral("19200") &&
                 ai8RateCombo->currentText() == QStringLiteral("5"),
             "remote SkyConfig restores AI-8 enabled, port, baud, and polling rate");
+    require(tcpWaveHostEdit->text() == QStringLiteral("10.0.0.2") &&
+                tcpWavePortEdit->text() == QStringLiteral("8899"),
+            "remote SkyConfig mirrors Wave TCP endpoint into the home TCP wave card");
+
+    tcpWaveHostEdit->setText(QStringLiteral("10.0.0.9"));
+    tcpWavePortEdit->setText(QStringLiteral("9901"));
+    tcpWaveConnectButton->click();
+    require(VaporViewTest::processEventsUntil(1500, [&]() {
+                return skyConfigApplyResultSent &&
+                    remoteStatus->property("status").toString() == QStringLiteral("success");
+            }),
+            "remote TCP wave endpoint edit clears SetSkyConfig pending state");
+    QString endpointError;
+    const QJsonObject endpointJson = window.testRemoteSkyConfigFromDeviceConfigUi(&endpointError);
+    const QJsonObject endpointWaveJson = endpointJson.value(QStringLiteral("wave_tcp")).toObject();
+    require(endpointError.isEmpty() &&
+                endpointWaveJson.value(QStringLiteral("enabled")).toBool(false) &&
+                endpointWaveJson.value(QStringLiteral("host")).toString() == QStringLiteral("10.0.0.9") &&
+                endpointWaveJson.value(QStringLiteral("port")).toInt() == 9901,
+            "remote TCP wave connect applies the home card endpoint to SkyConfig");
 
     const int manualIndex = std::max(epsilonPortCombo->findText(QStringLiteral("手动添加")),
                                      epsilonPortCombo->findText(QStringLiteral("Add Port")));
@@ -691,8 +1073,6 @@ int main(int argc, char **argv)
     QApplication::sendEvent(epsilonPortCombo->lineEdit(), &acceptManualPort);
     VaporViewTest::processEventsFor(80);
     epsilonBaudCombo->setCurrentText(QStringLiteral("115200"));
-    epsilonRateCombo->setCurrentText(QStringLiteral("88"));
-    rd105SlaveSpin->setValue(17);
     selectComboData(pressureSourceCombo, QStringLiteral("bmp390"),
                     "remote pressure source can be edited to BMP390");
     selectComboData(humiditySourceCombo, QStringLiteral("sht45"),
@@ -702,6 +1082,8 @@ int main(int argc, char **argv)
     ai8BaudCombo->setCurrentText(QStringLiteral("115200"));
     ai8RateCombo->setCurrentText(QStringLiteral("12"));
     VaporViewTest::processEventsFor(120);
+    require(remoteStatus->property("status").toString() == QStringLiteral("dirty"),
+            "editing remote SkyConfig fields uses the dirty status vocabulary");
 
     QString remoteError;
     const QJsonObject uiJson = window.testRemoteSkyConfigFromDeviceConfigUi(&remoteError);
@@ -711,10 +1093,10 @@ int main(int argc, char **argv)
             "remote edited port is serialized into SetSkyConfig JSON");
     require(uiJson.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("baud")).toInt() == 115200,
             "remote edited baud is serialized into SetSkyConfig JSON");
-    require(std::abs(uiJson.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("frequency_hz")).toDouble() - 88.0) < 0.01,
-            "remote edited frequency is serialized into SetSkyConfig JSON");
-    require(uiJson.value(QStringLiteral("temperature_controller")).toObject().value(QStringLiteral("slave_address")).toInt() == 17,
-            "remote-only RD105 field is serialized into SkyConfig JSON");
+    require(!uiJson.value(QStringLiteral("epsilon")).toObject().contains(QStringLiteral("frequency_hz")),
+            "remote EPSILON SkyConfig omits the legacy single frequency while packet rates are edited in Combination Navigation");
+    require(uiJson.value(QStringLiteral("temperature_controller")).toObject().value(QStringLiteral("slave_address")).toInt() == 9,
+            "Device Config preserves the loaded RD105 slave address instead of editing it");
     require(uiJson.value(QStringLiteral("ptb")).toObject().value(QStringLiteral("source")).toString() ==
                 QStringLiteral("bmp390"),
             "remote edited pressure source is serialized into SkyConfig JSON");
@@ -748,6 +1130,12 @@ int main(int argc, char **argv)
     VaporViewTest::processEventsFor(80);
     require(window.testRemoteSkyConfigStatusText().contains(QStringLiteral("mock reject")),
             "remote apply failure is displayed inline");
+    require(remoteStatus->property("status").toString() == QStringLiteral("error"),
+            "remote apply failure uses the error status vocabulary");
+    require(remoteApplyButton->isEnabled() &&
+                epsilonPortCombo->isEnabled() &&
+                ai8PortCombo->isEnabled(),
+            "remote apply failure restores editing controls for dirty retry");
     QString afterFailureError;
     const QJsonObject afterFailureJson = window.testRemoteSkyConfigFromDeviceConfigUi(&afterFailureError);
     require(afterFailureError.isEmpty() &&
@@ -757,7 +1145,18 @@ int main(int argc, char **argv)
     rawModeButton->click();
     VaporViewTest::processEventsFor(120);
 
-    dataSourceModeCombo->setCurrentIndex(0);
+    remoteController->close();
+    require(VaporViewTest::processEventsUntil(1500, [&]() {
+                return !remoteController->isOpen() &&
+                    remoteStatus->property("status").toString() == QStringLiteral("disabled") &&
+                    !epsilonPortCombo->isEnabled() &&
+                    !ai8PortCombo->isEnabled();
+            }),
+            "remote link close keeps loaded values visible but makes remote fields non-writable");
+
+    dataSourceModeSwitch->click();
+    require(serialCard->height() >= serialCard->sizeHint().height() - 1,
+            "remote-to-local switch keeps the compact device card geometry stable before repaint");
     VaporViewTest::processEventsFor(160);
     require(epsilonPortCombo->currentText() == QStringLiteral("COM7"),
             "switching back to Local restores the local EPSILON serial port");

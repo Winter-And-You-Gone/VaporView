@@ -4,31 +4,27 @@
 void MainWindow::onGlobalRateChanged(const QString& text)
 {
     int rate = parseRate(text);
-    const bool skipEpsilonDeviceRate = state_->epsilon_rate_combo_ && isRateUnspecified(state_->epsilon_rate_combo_->currentText());
     const bool skipPtbDeviceRate = state_->ptb_rate_combo_ && isRateUnspecified(state_->ptb_rate_combo_->currentText());
     const bool skipHmpDeviceRate = state_->hmp_rate_combo_ && isRateUnspecified(state_->hmp_rate_combo_->currentText());
     const bool skipLidarDeviceRate = state_->lidar_rate_combo_ && isRateUnspecified(state_->lidar_rate_combo_->currentText());
     const bool skipTemperatureDeviceRate = state_->temperature_rate_combo_ && isRateUnspecified(state_->temperature_rate_combo_->currentText());
 
-    state_->epsilon_sample_rate_ = skipEpsilonDeviceRate ? kDefaultEpsilonSampleRateHz : std::clamp(rate, 20, 200);
+    state_->epsilon_sample_rate_ = std::clamp(rate, 20, 200);
     state_->ptb_sample_rate_ = skipPtbDeviceRate ? kDefaultPtbSampleRateHz : clampPtbSampleRate(rate);
     state_->hmp_sample_rate_ = skipHmpDeviceRate ? kDefaultHmpSampleRateHz : rate;
     state_->lidar_sample_rate_ = skipLidarDeviceRate ? kDefaultLidarSampleRateHz : std::min(rate, 100);
     state_->temperature_sample_rate_ = skipTemperatureDeviceRate ? kDefaultTemperatureSampleRateHz : std::min(rate, kMaxTemperatureSampleRateHz);
 
-    if (state_->epsilon_rate_combo_) state_->epsilon_rate_combo_->blockSignals(true);
     if (state_->ptb_rate_combo_) state_->ptb_rate_combo_->blockSignals(true);
     if (state_->hmp_rate_combo_) state_->hmp_rate_combo_->blockSignals(true);
     if (state_->lidar_rate_combo_) state_->lidar_rate_combo_->blockSignals(true);
     if (state_->temperature_rate_combo_) state_->temperature_rate_combo_->blockSignals(true);
 
-    if (state_->epsilon_rate_combo_ && !skipEpsilonDeviceRate) state_->epsilon_rate_combo_->setCurrentText(QString::number(state_->epsilon_sample_rate_));
     if (state_->ptb_rate_combo_ && !skipPtbDeviceRate) state_->ptb_rate_combo_->setCurrentText(QString::number(state_->ptb_sample_rate_));
     if (state_->hmp_rate_combo_ && !skipHmpDeviceRate) state_->hmp_rate_combo_->setCurrentText(text);
     if (state_->lidar_rate_combo_ && !skipLidarDeviceRate) state_->lidar_rate_combo_->setCurrentText(QString::number(state_->lidar_sample_rate_));
     if (state_->temperature_rate_combo_ && !skipTemperatureDeviceRate) state_->temperature_rate_combo_->setCurrentText(QString::number(state_->temperature_sample_rate_));
 
-    if (state_->epsilon_rate_combo_) state_->epsilon_rate_combo_->blockSignals(false);
     if (state_->ptb_rate_combo_) state_->ptb_rate_combo_->blockSignals(false);
     if (state_->hmp_rate_combo_) state_->hmp_rate_combo_->blockSignals(false);
     if (state_->lidar_rate_combo_) state_->lidar_rate_combo_->blockSignals(false);
@@ -42,7 +38,6 @@ void MainWindow::onGlobalRateChanged(const QString& text)
     LocalSampleRateConfiguration configuration;
     configuration.epsilonCallbackRateHz = epsilonCallbackRate;
     configuration.epsilonPacketRates = epsilonDesiredPacketRates;
-    configuration.applyEpsilonDeviceRate = !skipEpsilonDeviceRate;
     configuration.ptbRateHz = state_->ptb_sample_rate_;
     configuration.applyPtbDeviceRate = !skipPtbDeviceRate;
     configuration.hmpRateHz = state_->hmp_sample_rate_;
@@ -107,14 +102,13 @@ void MainWindow::onGlobalRateChanged(const QString& text)
                           {QStringLiteral("temperature_rate_hz"), state_->temperature_sample_rate_},
                           {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
-    if (skipEpsilonDeviceRate || skipPtbDeviceRate || skipHmpDeviceRate || skipLidarDeviceRate || skipTemperatureDeviceRate)
+    if (skipPtbDeviceRate || skipHmpDeviceRate || skipLidarDeviceRate || skipTemperatureDeviceRate)
     {
         publishGroundLog(VaporView::LogLevel::Info,
                          QStringLiteral("device.rate"),
                          QStringLiteral("sample_rate_device_commands_skipped_unspecified"),
                          QStringLiteral("已选择“不设定”的设备保持不下发输出频率命令。"),
-                         {{QStringLiteral("epsilon_skipped"), skipEpsilonDeviceRate},
-                          {QStringLiteral("ptb_skipped"), skipPtbDeviceRate},
+                         {{QStringLiteral("ptb_skipped"), skipPtbDeviceRate},
                           {QStringLiteral("hmp_skipped"), skipHmpDeviceRate},
                           {QStringLiteral("lidar_skipped"), skipLidarDeviceRate},
                           {QStringLiteral("temperature_skipped"), skipTemperatureDeviceRate},
@@ -146,8 +140,7 @@ void MainWindow::onGlobalRateChanged(const QString& text)
 
 void MainWindow::onGnssRateChanged(const QString& text)
 {
-    const bool skipDeviceRate = isRateUnspecified(text);
-    state_->epsilon_sample_rate_ = effectiveRateOrDefault(text, kDefaultEpsilonSampleRateHz, 200);
+    state_->epsilon_sample_rate_ = std::clamp(parseRate(text), 20, 200);
     QSettings settings = VaporView::applicationConfigSettings();
     settings.beginGroup(QStringLiteral("MainWindow"));
     const std::map<uint8_t, int> epsilonDesiredPacketRates =
@@ -156,19 +149,8 @@ void MainWindow::onGnssRateChanged(const QString& text)
     const LocalSampleRateApplyResult rateResult =
         state_->local_connection_controller_->setEpsilonSampleRate(
         epsilonCallbackRate,
-        epsilonDesiredPacketRates,
-        !skipDeviceRate);
-    if (skipDeviceRate)
-    {
-        publishGroundLog(VaporView::LogLevel::Info,
-                         QStringLiteral("device.navigation.command"),
-                         QStringLiteral("epsilon_output_rate_command_disabled"),
-                         QStringLiteral("已禁用 EPSILON 输出频率下发，使用设备当前输出。"),
-                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
-                          {QStringLiteral("apply_device_rate"), false},
-                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
-    }
-    else if (rateResult.epsilonDeviceRateAttempted && !rateResult.epsilonDeviceRateSucceeded)
+        epsilonDesiredPacketRates);
+    if (rateResult.epsilonDeviceRateAttempted && !rateResult.epsilonDeviceRateSucceeded)
     {
         publishGroundLog(VaporView::LogLevel::Error,
                          QStringLiteral("device.navigation.command"),
@@ -311,7 +293,7 @@ void MainWindow::onLidarRateChanged(const QString& text)
                          QStringLiteral("device.lidar.command"),
                          QStringLiteral("lidar_output_rate_command_disabled"),
                          QStringLiteral("已禁用激光测距仪输出频率下发，使用设备默认或自适应输出。"),
-                         {{QStringLiteral("device"), QStringLiteral("TFA1005-L")},
+                         {{QStringLiteral("device"), QStringLiteral("TFA1500-L")},
                           {QStringLiteral("apply_device_rate"), false},
                           {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
@@ -321,7 +303,7 @@ void MainWindow::onLidarRateChanged(const QString& text)
                          QStringLiteral("device.rate"),
                          QStringLiteral("lidar_sample_rate_updated"),
                          QStringLiteral("激光测距仪采样频率已更新。"),
-                         {{QStringLiteral("device"), QStringLiteral("TFA1005-L")},
+                         {{QStringLiteral("device"), QStringLiteral("TFA1500-L")},
                           {QStringLiteral("requested_rate_hz"), state_->lidar_sample_rate_},
                           {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
@@ -358,14 +340,13 @@ void MainWindow::onTemperatureRateChanged(const QString& text)
 void MainWindow::applyAllSampleRates()
 {
     int rate = parseRate(state_->global_rate_combo_ ? state_->global_rate_combo_->currentText() : QString::number(kDefaultHmpSampleRateHz));
-    const bool skipEpsilonDeviceRate = state_->epsilon_rate_combo_ && isRateUnspecified(state_->epsilon_rate_combo_->currentText());
     const bool skipPtbDeviceRate = state_->ptb_rate_combo_ && isRateUnspecified(state_->ptb_rate_combo_->currentText());
     const bool skipHmpDeviceRate = state_->hmp_rate_combo_ && isRateUnspecified(state_->hmp_rate_combo_->currentText());
     const bool skipLidarDeviceRate = state_->lidar_rate_combo_ && isRateUnspecified(state_->lidar_rate_combo_->currentText());
     const bool skipTemperatureDeviceRate = state_->temperature_rate_combo_ && isRateUnspecified(state_->temperature_rate_combo_->currentText());
     QSettings settings = VaporView::applicationConfigSettings();
     settings.beginGroup(QStringLiteral("MainWindow"));
-    const int epsilonRate = skipEpsilonDeviceRate ? kDefaultEpsilonSampleRateHz : std::clamp(rate, 20, 200);
+    const int epsilonRate = std::clamp(rate, 20, 200);
     const int ptbRate = skipPtbDeviceRate ? kDefaultPtbSampleRateHz : clampPtbSampleRate(rate);
     const int hmpRate = skipHmpDeviceRate ? kDefaultHmpSampleRateHz : rate;
     const int lidarRate = skipLidarDeviceRate ? kDefaultLidarSampleRateHz : std::min(rate, 100);
@@ -377,7 +358,6 @@ void MainWindow::applyAllSampleRates()
     LocalSampleRateConfiguration configuration;
     configuration.epsilonCallbackRateHz = epsilonCallbackRate;
     configuration.epsilonPacketRates = epsilonDesiredPacketRates;
-    configuration.applyEpsilonDeviceRate = !skipEpsilonDeviceRate;
     configuration.ptbRateHz = ptbRate;
     configuration.applyPtbDeviceRate = !skipPtbDeviceRate;
     configuration.hmpRateHz = hmpRate;
@@ -416,19 +396,16 @@ void MainWindow::applyAllSampleRates()
                           {QStringLiteral("ui_dedupe_key"), QStringLiteral("ptb210:sample_rate:command_failed")}});
     }
 
-    if (state_->epsilon_rate_combo_) state_->epsilon_rate_combo_->blockSignals(true);
     if (state_->ptb_rate_combo_) state_->ptb_rate_combo_->blockSignals(true);
     if (state_->hmp_rate_combo_) state_->hmp_rate_combo_->blockSignals(true);
     if (state_->lidar_rate_combo_) state_->lidar_rate_combo_->blockSignals(true);
     if (state_->temperature_rate_combo_) state_->temperature_rate_combo_->blockSignals(true);
 
-    if (state_->epsilon_rate_combo_ && !skipEpsilonDeviceRate) state_->epsilon_rate_combo_->setCurrentText(QString::number(epsilonRate));
     if (state_->ptb_rate_combo_ && !skipPtbDeviceRate) state_->ptb_rate_combo_->setCurrentText(QString::number(ptbRate));
     if (state_->hmp_rate_combo_ && !skipHmpDeviceRate) state_->hmp_rate_combo_->setCurrentText(QString::number(rate));
     if (state_->lidar_rate_combo_ && !skipLidarDeviceRate) state_->lidar_rate_combo_->setCurrentText(QString::number(lidarRate));
     if (state_->temperature_rate_combo_ && !skipTemperatureDeviceRate) state_->temperature_rate_combo_->setCurrentText(QString::number(temperatureRate));
 
-    if (state_->epsilon_rate_combo_) state_->epsilon_rate_combo_->blockSignals(false);
     if (state_->ptb_rate_combo_) state_->ptb_rate_combo_->blockSignals(false);
     if (state_->hmp_rate_combo_) state_->hmp_rate_combo_->blockSignals(false);
     if (state_->lidar_rate_combo_) state_->lidar_rate_combo_->blockSignals(false);
@@ -467,14 +444,13 @@ void MainWindow::applyAllSampleRates()
                           {QStringLiteral("temperature_rate_hz"), temperatureRate},
                           {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
-    if (skipEpsilonDeviceRate || skipPtbDeviceRate || skipHmpDeviceRate || skipLidarDeviceRate || skipTemperatureDeviceRate)
+    if (skipPtbDeviceRate || skipHmpDeviceRate || skipLidarDeviceRate || skipTemperatureDeviceRate)
     {
         publishGroundLog(VaporView::LogLevel::Info,
                          QStringLiteral("device.rate"),
                          QStringLiteral("sample_rate_device_commands_skipped_unspecified"),
                          QStringLiteral("已选择“不设定”的设备保持不下发输出频率命令。"),
-                         {{QStringLiteral("epsilon_skipped"), skipEpsilonDeviceRate},
-                          {QStringLiteral("ptb_skipped"), skipPtbDeviceRate},
+                         {{QStringLiteral("ptb_skipped"), skipPtbDeviceRate},
                           {QStringLiteral("hmp_skipped"), skipHmpDeviceRate},
                           {QStringLiteral("lidar_skipped"), skipLidarDeviceRate},
                           {QStringLiteral("temperature_skipped"), skipTemperatureDeviceRate},

@@ -190,6 +190,8 @@ public:
     void reset()
     {
         observed_widths_.clear();
+        observed_paintable_widths_.clear();
+        observed_width_details_.clear();
     }
 
     bool observedWidthDifferentFrom(int expectedWidth) const
@@ -202,20 +204,57 @@ public:
             });
     }
 
+    bool observedPaintableWidthDifferentFrom(int expectedWidth) const
+    {
+        return std::any_of(
+            observed_paintable_widths_.cbegin(),
+            observed_paintable_widths_.cend(),
+            [expectedWidth](int width) {
+                return width != expectedWidth;
+            });
+    }
+
+    QString observedWidthDetailsSummary() const
+    {
+        return observed_width_details_.join(QLatin1Char(','));
+    }
+
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override
     {
         if (watched == target_ && event->type() == QEvent::Resize)
         {
-            observed_widths_.append(
-                static_cast<QResizeEvent *>(event)->size().width());
+            const int width = static_cast<QResizeEvent *>(event)->size().width();
+            observed_widths_.append(width);
+            const bool paintable = isEffectivelyPaintable();
+            if (paintable)
+            {
+                observed_paintable_widths_.append(width);
+            }
+            observed_width_details_.append(QStringLiteral("%1:p%2")
+                                               .arg(width)
+                                               .arg(paintable ? 1 : 0));
         }
         return QObject::eventFilter(watched, event);
     }
 
 private:
+    bool isEffectivelyPaintable() const
+    {
+        for (QWidget *widget = target_; widget; widget = widget->parentWidget())
+        {
+            if (!widget->isVisible() || !widget->updatesEnabled())
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     QWidget *target_;
     QVector<int> observed_widths_;
+    QVector<int> observed_paintable_widths_;
+    QStringList observed_width_details_;
 };
 
 QAction *findAboutAction(MainWindow *window)
@@ -1444,6 +1483,22 @@ void requireRtkSidebarPage(
                 deviceButton->y() < temperatureButton->y() &&
                 temperatureButton->y() < rtkButton->y(),
             "sidebar order is home, device configuration, thermal, combination navigation");
+    require(homeButton->focusPolicy() == Qt::TabFocus &&
+                deviceButton->focusPolicy() == Qt::TabFocus &&
+                temperatureButton->focusPolicy() == Qt::TabFocus &&
+                rtkButton->focusPolicy() == Qt::TabFocus,
+            "sidebar navigation buttons are reachable by keyboard tab focus");
+    homeButton->setFocus(Qt::OtherFocusReason);
+    QKeyEvent sidebarDown(QEvent::KeyPress, Qt::Key_Down, Qt::NoModifier);
+    QApplication::sendEvent(homeButton, &sidebarDown);
+    processEventsFor(60);
+    require(deviceButton->isChecked(),
+            "sidebar Down arrow moves page selection to device configuration");
+    QKeyEvent sidebarUp(QEvent::KeyPress, Qt::Key_Up, Qt::NoModifier);
+    QApplication::sendEvent(deviceButton, &sidebarUp);
+    processEventsFor(60);
+    require(homeButton->isChecked(),
+            "sidebar Up arrow moves page selection back to home");
     require(rtkButton->toolTip().contains(QStringLiteral("未启动")) ||
                 rtkButton->toolTip().contains(QStringLiteral("stopped")),
             "combination-navigation sidebar button starts with stopped RTK status text");
@@ -1469,12 +1524,24 @@ void requireRtkSidebarPage(
     auto *preLogCard = findCardByTitle(preDialog,
                                        {QStringLiteral("RTK 服务日志"),
                                         QStringLiteral("RTK Service Log")});
-    require(preGgaCard != nullptr && preLogCard != nullptr,
+    auto *preRtcmCard = findCardByTitle(preDialog,
+                                        {QStringLiteral("RTCM 输出配置"),
+                                         QStringLiteral("RTCM Output Configuration")});
+    auto *preGgaSourceCombo =
+        preDialog->findChild<QComboBox *>(QStringLiteral("rtkGgaPortCombo"));
+    require(preGgaCard != nullptr && preLogCard != nullptr && preRtcmCard != nullptr &&
+                preGgaSourceCombo != nullptr,
             "RTK cards exist before sidebar click for resize sampling");
+    require(preGgaSourceCombo->width() <= 140,
+            "RTK GGA source combo starts compact before the differential page is first shown");
     ResizeWidthRecorder ggaResizeRecorder(preGgaCard);
+    ResizeWidthRecorder rtcmResizeRecorder(preRtcmCard);
     ResizeWidthRecorder logResizeRecorder(preLogCard);
+    ResizeWidthRecorder ggaSourceComboResizeRecorder(preGgaSourceCombo);
     preGgaCard->installEventFilter(&ggaResizeRecorder);
+    preRtcmCard->installEventFilter(&rtcmResizeRecorder);
     preLogCard->installEventFilter(&logResizeRecorder);
+    preGgaSourceCombo->installEventFilter(&ggaSourceComboResizeRecorder);
     clickWidget(rtkButton, 0);
     processEventsFor(150);
     auto *combinationPage = qobject_cast<VaporView::Ground::Navigation::CombinationNavigationPage *>(
@@ -1583,16 +1650,15 @@ void requireRtkSidebarPage(
     {
         require(button->isCheckable() && button->text() == expectedText &&
                     button->accessibleName() == expectedText &&
-                    button->focusPolicy() == Qt::TabFocus,
-                "combination-navigation buttons are real, named and keyboard-tab focusable");
+                    button->focusPolicy() == Qt::TabFocus &&
+                    !button->property("combinationNavigationKeyboardFocus").toBool(),
+                "combination-navigation buttons are real, named and keyboard-tab focusable without mouse-open focus rings");
     }
     require(combinationPage->styleSheet().contains(
                 QStringLiteral("QFrame#combinationNavigationNavigationTrack")) &&
                 combinationPage->styleSheet().contains(QStringLiteral(":checked")) &&
-                combinationPage->styleSheet().contains(QStringLiteral(":focus")) &&
-                combinationPage->styleSheet().contains(VaporView::appThemeColorName(
-                    VaporView::AppThemeColor::Focus, VaporView::isDarkThemeEnabled())),
-            "combination-navigation capsule keeps checked and focus theme styling");
+                !combinationPage->styleSheet().contains(QStringLiteral(":focus")),
+            "combination-navigation capsule keeps checked styling without stylesheet/native focus rings");
     require(combinationPage->findChildren<RtkConfigDialog *>().size() == 1 &&
                 combinationPage->differentialPage() == preDialog &&
                 combinationStack->indexOf(preDialog) == 2,
@@ -1663,6 +1729,10 @@ void requireRtkSidebarPage(
     sampleStatus.epsilonDataFresh = true;
     sampleStatus.navigationDataAvailable = true;
     sampleStatus.gnssFixText = QStringLiteral("RTK_FIXED");
+    sampleStatus.gnssFixCode = 6;
+    sampleStatus.filterStatusAvailable = true;
+    sampleStatus.filterStatusBits = 0x0062;
+    sampleStatus.updateStatusBits = 0x000c;
     sampleStatus.gnssQualityAvailable = true;
     sampleStatus.satelliteCount = 24;
     sampleStatus.horizontalAccuracyM = 0.015;
@@ -1673,6 +1743,7 @@ void requireRtkSidebarPage(
     sampleStatus.heightM = 42.5;
     combinationPage->setStatusSnapshot(sampleStatus);
     require(rtkServiceStatus->text().contains(QStringLiteral("运行中")) &&
+                positioningMode->text() == QStringLiteral("RTK固定解") &&
                 longitudeValue->text() != QStringLiteral("--") &&
                 ntripStatus->text() == QStringLiteral("--") &&
                 rtcmStatus->text() == QStringLiteral("--"),
@@ -1682,6 +1753,37 @@ void requireRtkSidebarPage(
                 positioningMode->text() == QStringLiteral("--") &&
                 longitudeValue->text() == QStringLiteral("--"),
             "local provider keeps GNSS fix and position unavailable without field-level freshness");
+    ggaResizeRecorder.reset();
+    rtcmResizeRecorder.reset();
+    logResizeRecorder.reset();
+    ggaSourceComboResizeRecorder.reset();
+    clickWidget(differentialButton, 0);
+    processEventsFor(150);
+    require(combinationStack->currentWidget() == preDialog && differentialButton->isChecked(),
+            "combination navigation switches directly from status to differential positioning");
+    const bool statusToDifferentialWidthsStable =
+        !ggaResizeRecorder.observedPaintableWidthDifferentFrom(preGgaCard->width()) &&
+        !rtcmResizeRecorder.observedPaintableWidthDifferentFrom(preRtcmCard->width()) &&
+        !logResizeRecorder.observedPaintableWidthDifferentFrom(preLogCard->width()) &&
+        !ggaSourceComboResizeRecorder.observedPaintableWidthDifferentFrom(preGgaSourceCombo->width());
+    if (!statusToDifferentialWidthsStable)
+    {
+        std::cerr << "RTK status->differential widths: gga="
+                  << ggaResizeRecorder.observedWidthDetailsSummary().toStdString()
+                  << " final " << preGgaCard->width()
+                  << " rtcm=" << rtcmResizeRecorder.observedWidthDetailsSummary().toStdString()
+                  << " final " << preRtcmCard->width()
+                  << " log=" << logResizeRecorder.observedWidthDetailsSummary().toStdString()
+                  << " final " << preLogCard->width()
+                  << " combo=" << ggaSourceComboResizeRecorder.observedWidthDetailsSummary().toStdString()
+                  << " final " << preGgaSourceCombo->width() << '\n';
+    }
+    require(statusToDifferentialWidthsStable,
+            "status to differential first show keeps RTK cards and GGA source combo widths stable");
+    clickWidget(statusButton, 0);
+    processEventsFor(50);
+    require(combinationStack->currentWidget() == statusPage && statusButton->isChecked(),
+            "combination navigation returns to status after first-show width sampling");
     auto *unsavedRtkServerEdit =
         preDialog->findChild<QLineEdit *>(QStringLiteral("rtkServerEdit"));
     require(unsavedRtkServerEdit != nullptr,
@@ -1709,16 +1811,22 @@ void requireRtkSidebarPage(
             "combination navigation settles the selected thumb on the new section");
     ggaResizeRecorder.reset();
     logResizeRecorder.reset();
+    ggaSourceComboResizeRecorder.reset();
     statusSummaryResizeRecorder.reset();
     epsilonOutputResizeRecorder.reset();
     differentialGgaResizeRecorder.reset();
     clickWidget(differentialButton, 0);
     processEventsFor(150);
+    require(!epsilonButton->property("combinationNavigationKeyboardFocus").toBool() &&
+                !differentialButton->property("combinationNavigationKeyboardFocus").toBool(),
+            "combination navigation pointer switching clears keyboard-only focus borders");
     auto *dialog = qobject_cast<RtkConfigDialog *>(combinationStack->currentWidget());
     require(dialog == preDialog && differentialButton->isChecked(),
             "combination navigation switches from EPSILON to the original RTK page");
     require(!differentialGgaResizeRecorder.observedWidthDifferentFrom(preGgaCard->width()),
             "EPSILON to differential switching keeps the RTK card width stable");
+    require(!ggaSourceComboResizeRecorder.observedWidthDifferentFrom(preGgaSourceCombo->width()),
+            "EPSILON to differential switching keeps the GGA source combo width stable");
     require(unsavedRtkServerEdit->text() == unsavedRtkServer,
             "switching internal pages preserves unsaved RTK input");
     clickWidget(epsilonButton, 0);
@@ -2349,9 +2457,8 @@ void requireRtkSidebarPage(
     processEventsFor(100);
     require(qApp->property(VaporView::kAppDarkThemeProperty).toBool(),
             "main window is in dark theme for RTK layout stability checks");
-    require(combinationPage->styleSheet().contains(VaporView::appThemeColorName(
-                VaporView::AppThemeColor::Focus, true)),
-            "combination-navigation local style resolves the dark-theme focus token");
+    require(!combinationPage->styleSheet().contains(QStringLiteral(":focus")),
+            "combination-navigation dark-theme style keeps focus rings out of stylesheet/native painting");
     require(combinationPage->styleSheet().contains(
                 VaporView::appThemeColorName(VaporView::AppThemeColor::Window, true)) &&
                 combinationPage->styleSheet().contains(
@@ -2414,9 +2521,8 @@ void requireRtkSidebarPage(
     processEventsFor(100);
     require(!qApp->property(VaporView::kAppDarkThemeProperty).toBool(),
             "main window returns to light theme after RTK layout stability checks");
-    require(combinationPage->styleSheet().contains(VaporView::appThemeColorName(
-                VaporView::AppThemeColor::Focus, false)),
-            "combination-navigation local style resolves the light-theme focus token");
+    require(!combinationPage->styleSheet().contains(QStringLiteral(":focus")),
+            "combination-navigation light-theme style keeps focus rings out of stylesheet/native painting");
     require(processEventsUntil(1500, themeCardGeometrySettled),
             "RTK card geometry settles after switching back to light theme");
     requireSameRect(widgetRect(ntripCard), ntripRectBeforeTheme,
@@ -2670,6 +2776,14 @@ QRect wrappedTextBounds(const QLabel *label)
                                              label->text());
 }
 
+void requireLabelTextSlack(const QLabel *label, int minimumSlack, const char *message)
+{
+    require(label != nullptr, message);
+    const int textWidth = std::max(label->fontMetrics().horizontalAdvance(label->text()),
+                                   label->fontMetrics().boundingRect(label->text()).width());
+    require(label->width() >= textWidth + minimumSlack, message);
+}
+
 void requireMargins(const QMargins& actual, const QMargins& expected, const char *message)
 {
     require(actual.left() == expected.left() &&
@@ -2911,6 +3025,10 @@ void requireTelemetryLabelsHaveNoColon(QWidget *summaryContainer, const char *me
     require(!labels.isEmpty(), message);
     for (QLabel *label : labels)
     {
+        if (label && label->objectName() == QStringLiteral("homeTelemetrySummaryValueLabel"))
+        {
+            continue;
+        }
         require(label != nullptr &&
                     !label->text().contains(QLatin1Char(':')) &&
                     !label->text().contains(QStringLiteral("：")),
@@ -3297,11 +3415,185 @@ bool epsilonSectionTitlesContain(QWidget *epsilonPanel, const QString& token)
     });
 }
 
+QList<QFrame*> sortedEpsilonSectionCards(QWidget *epsilonPanel)
+{
+    if (!epsilonPanel)
+    {
+        return {};
+    }
+    QList<QFrame*> cards = epsilonPanel->findChildren<QFrame *>(QStringLiteral("epsilonSectionCard"));
+    std::sort(cards.begin(), cards.end(), [](const QFrame *lhs, const QFrame *rhs) {
+        if (std::abs(lhs->y() - rhs->y()) > 4)
+        {
+            return lhs->y() < rhs->y();
+        }
+        return lhs->x() < rhs->x();
+    });
+    return cards;
+}
+
+bool epsilonSectionCardsShareRow(QWidget *epsilonPanel)
+{
+    const QList<QFrame*> cards = sortedEpsilonSectionCards(epsilonPanel);
+    if (cards.size() != 3)
+    {
+        return false;
+    }
+    const int firstTop = cards.first()->mapTo(epsilonPanel, QPoint(0, 0)).y();
+    return std::all_of(cards.cbegin(), cards.cend(), [epsilonPanel, firstTop](const QFrame *card) {
+        return card && std::abs(card->mapTo(epsilonPanel, QPoint(0, 0)).y() - firstTop) <= 2;
+    });
+}
+
+bool epsilonSectionCardsUseWrappedMotionRow(QWidget *epsilonPanel)
+{
+    const QList<QFrame*> cards = sortedEpsilonSectionCards(epsilonPanel);
+    if (cards.size() != 3)
+    {
+        return false;
+    }
+    const QRect first(cards.at(0)->mapTo(epsilonPanel, QPoint(0, 0)), cards.at(0)->size());
+    const QRect second(cards.at(1)->mapTo(epsilonPanel, QPoint(0, 0)), cards.at(1)->size());
+    const QRect third(cards.at(2)->mapTo(epsilonPanel, QPoint(0, 0)), cards.at(2)->size());
+    return std::abs(first.top() - second.top()) <= 4 &&
+           second.left() > first.right() &&
+           second.left() - first.right() <= 1 &&
+           third.top() > first.bottom() &&
+           third.left() <= first.left() + 2 &&
+           third.right() >= second.right() - 2;
+}
+
+void requireEpsilonSectionCardsUseWrappedMotionRow(QWidget *epsilonPanel, const char *message)
+{
+    if (!epsilonSectionCardsUseWrappedMotionRow(epsilonPanel))
+    {
+        const QList<QFrame*> cards = sortedEpsilonSectionCards(epsilonPanel);
+        std::cerr << "EPSILON card geometry:";
+        for (const QFrame *card : cards)
+        {
+            const QRect rect(card->mapTo(epsilonPanel, QPoint(0, 0)), card->size());
+            std::cerr << " [" << rect.x() << ',' << rect.y() << ' '
+                      << rect.width() << 'x' << rect.height()
+                      << " min=" << card->minimumWidth() << ']';
+        }
+        std::cerr << '\n';
+    }
+    require(epsilonSectionCardsUseWrappedMotionRow(epsilonPanel), message);
+}
+
+void requireEpsilonSectionCardsStayInsidePanel(QWidget *epsilonPanel, const char *message)
+{
+    const QList<QFrame*> cards = sortedEpsilonSectionCards(epsilonPanel);
+    require(epsilonPanel != nullptr && cards.size() == 3, "EPSILON section cards exist for bounds check");
+    const QRect bounds = epsilonPanel->contentsRect();
+    bool inside = true;
+    for (const QFrame *card : cards)
+    {
+        const QRect rect(card->mapTo(epsilonPanel, QPoint(0, 0)), card->size());
+        if (rect.left() < bounds.left() - 2 || rect.right() > bounds.right() + 2)
+        {
+            inside = false;
+        }
+    }
+    if (!inside)
+    {
+        std::cerr << "EPSILON panel bounds: [" << bounds.x() << ',' << bounds.y()
+                  << ' ' << bounds.width() << 'x' << bounds.height() << ']'
+                  << " card geometry:";
+        for (const QFrame *card : cards)
+        {
+            const QRect rect(card->mapTo(epsilonPanel, QPoint(0, 0)), card->size());
+            std::cerr << " [" << rect.x() << ',' << rect.y() << ' '
+                      << rect.width() << 'x' << rect.height()
+                      << " min=" << card->minimumWidth() << ']';
+        }
+        std::cerr << '\n';
+    }
+    require(inside, message);
+}
+
+void requireEpsilonSectionCardsFillWrappedTopRow(QWidget *epsilonPanel, const char *message)
+{
+    const QList<QFrame*> cards = sortedEpsilonSectionCards(epsilonPanel);
+    require(epsilonPanel != nullptr && cards.size() == 3,
+            "EPSILON section cards exist for wrapped-row fill check");
+    const QRect first(cards.at(0)->mapTo(epsilonPanel, QPoint(0, 0)), cards.at(0)->size());
+    const QRect second(cards.at(1)->mapTo(epsilonPanel, QPoint(0, 0)), cards.at(1)->size());
+    const QRect third(cards.at(2)->mapTo(epsilonPanel, QPoint(0, 0)), cards.at(2)->size());
+    const QRect bounds = epsilonPanel->contentsRect();
+    const int topRowJoinGap = second.left() - first.right() - 1;
+    const bool fillsWrappedRow =
+        std::abs(first.top() - second.top()) <= 4 &&
+        topRowJoinGap >= 0 &&
+        topRowJoinGap <= 1 &&
+        first.left() <= bounds.left() + 6 &&
+        third.left() <= first.left() + 2 &&
+        std::abs(second.right() - third.right()) <= 2 &&
+        second.right() >= bounds.right() - 6;
+    if (!fillsWrappedRow)
+    {
+        std::cerr << "EPSILON wrapped fill geometry: bounds=" << bounds.width()
+                  << " first=[" << first.x() << ',' << first.y() << ' '
+                  << first.width() << 'x' << first.height() << ']'
+                  << " second=[" << second.x() << ',' << second.y() << ' '
+                  << second.width() << 'x' << second.height() << ']'
+                  << " third=[" << third.x() << ',' << third.y() << ' '
+                  << third.width() << 'x' << third.height() << "]\n";
+    }
+    require(fillsWrappedRow, message);
+}
+
+QLabel *epsilonValueLabelForField(QWidget *epsilonPanel, const QString& fieldText)
+{
+    if (!epsilonPanel)
+    {
+        return nullptr;
+    }
+    QLabel *fieldLabel = nullptr;
+    const QList<QLabel*> fieldLabels = epsilonPanel->findChildren<QLabel *>(QStringLiteral("fieldLabel"));
+    for (QLabel *label : fieldLabels)
+    {
+        if (label && label->text() == fieldText)
+        {
+            fieldLabel = label;
+            break;
+        }
+    }
+    if (!fieldLabel)
+    {
+        return nullptr;
+    }
+
+    const QRect fieldRect(fieldLabel->mapTo(epsilonPanel, QPoint(0, 0)), fieldLabel->size());
+    QLabel *bestValue = nullptr;
+    int bestDistance = std::numeric_limits<int>::max();
+    const QList<QLabel*> valueLabels = epsilonPanel->findChildren<QLabel *>(QStringLiteral("valueLabel"));
+    for (QLabel *valueLabel : valueLabels)
+    {
+        if (!valueLabel)
+        {
+            continue;
+        }
+        const QRect valueRect(valueLabel->mapTo(epsilonPanel, QPoint(0, 0)), valueLabel->size());
+        if (std::abs(valueRect.center().y() - fieldRect.center().y()) > std::max(fieldRect.height(), valueRect.height()))
+        {
+            continue;
+        }
+        const int distance = valueRect.left() - fieldRect.right();
+        if (distance >= 0 && distance < bestDistance)
+        {
+            bestDistance = distance;
+            bestValue = valueLabel;
+        }
+    }
+    return bestValue;
+}
+
 void requireHomeOverviewLanguageWidthRoundTrip()
 {
     MainWindow languageOverviewWindow;
     languageOverviewWindow.setWindowTitle(QStringLiteral("VaporView"));
-    languageOverviewWindow.resize(1600, 800);
+    languageOverviewWindow.resize(1280, 800);
     languageOverviewWindow.show();
     require(waitForWindowExposed(&languageOverviewWindow),
             "dedicated language overview window becomes exposed");
@@ -3331,6 +3623,27 @@ void requireHomeOverviewLanguageWidthRoundTrip()
     const QVector<TelemetryPillWidthSnapshotItem> initialTelemetryPillWidths =
         telemetryPillWidthSnapshot(languageTelemetrySummaryContainer);
     requireEpsilonSectionTitleWidths(languageEpsilonPanel, false);
+    requireEpsilonSectionCardsUseWrappedMotionRow(
+        languageEpsilonPanel,
+        "language overview EPSILON Chinese cards start with motion details on the second row");
+    QLabel *attitudeConsistencyValue = epsilonValueLabelForField(
+        languageEpsilonPanel,
+        QStringLiteral("姿态一致性[最大差值]:"));
+    require(attitudeConsistencyValue != nullptr,
+            "language overview exposes the EPSILON attitude consistency value label");
+    attitudeConsistencyValue->setText(
+        QStringLiteral("最大 0.066°（41-63 0.037°，41-64 0.030°，63-64 0.066°）"));
+    attitudeConsistencyValue->setToolTip(attitudeConsistencyValue->text());
+    attitudeConsistencyValue->updateGeometry();
+    activateLayouts(&languageOverviewWindow);
+    processEventsFor(50);
+    activateLayouts(languageDeviceOverviewCard);
+    requireEpsilonSectionCardsUseWrappedMotionRow(
+        languageEpsilonPanel,
+        "language overview keeps attitude consistency on the expanded second row after data arrives");
+    const QRect attitudeConsistencyBounds = wrappedTextBounds(attitudeConsistencyValue);
+    require(attitudeConsistencyBounds.height() <= attitudeConsistencyValue->height() + 2,
+            "language overview shows the full EPSILON attitude consistency value without clipping");
     requireHomeDeviceColumnsAligned(&languageOverviewWindow);
     requireHomeDeviceMinimumWidthMatchesControls(&languageOverviewWindow);
 
@@ -3403,7 +3716,6 @@ void requireHomeOverviewLanguageWidthRoundTrip()
                                                                   languageHomeOverviewSplitter,
                                                                   languageDeviceOverviewCard,
                                                                   inflatedEnglishDeviceWidth]() {
-                activateLayouts(&languageOverviewWindow);
                 const QList<int> sizes = languageHomeOverviewSplitter->sizes();
                 return sizes.size() == 2 &&
                        sizes.at(0) < inflatedEnglishDeviceWidth &&
@@ -3421,6 +3733,8 @@ void requireHomeOverviewLanguageWidthRoundTrip()
     }
     require(returnedToChineseWidth,
             "language overview device card returns to the Chinese minimum width after language toggles");
+    processEventsFor(50);
+    activateLayouts(languageDeviceOverviewCard);
     requireTelemetrySummaryPillsOrdered(
         languageTelemetrySummaryContainer,
         "language overview telemetry capsules stay ordered after returning to Chinese");
@@ -3435,11 +3749,231 @@ void requireHomeOverviewLanguageWidthRoundTrip()
         telemetryPillWidthSnapshot(languageTelemetrySummaryContainer),
         "language overview telemetry capsule widths do not exceed their initial Chinese widths");
     requireEpsilonSectionTitleWidths(languageEpsilonPanel, false);
+    requireEpsilonSectionCardsUseWrappedMotionRow(
+        languageEpsilonPanel,
+        "language overview EPSILON cards return to the wrapped motion row after switching back to Chinese");
     languageOverviewWindow.close();
     require(processEventsUntil(1000, [&languageOverviewWindow]() {
                 return !languageOverviewWindow.isVisible();
             }),
             "dedicated language overview test window closes cleanly");
+
+    MainWindow wideOverviewWindow;
+    wideOverviewWindow.setWindowTitle(QStringLiteral("VaporView"));
+    wideOverviewWindow.resize(1920, 1000);
+    wideOverviewWindow.show();
+    require(waitForWindowExposed(&wideOverviewWindow),
+            "wide overview window becomes exposed");
+    require(processEventsUntil(1000, [&wideOverviewWindow]() {
+                activateLayouts(&wideOverviewWindow);
+                return wideOverviewWindow.size() == QSize(1920, 1000);
+            }),
+            "wide overview window settles at the maximized-style size");
+    auto *wideEpsilonPanel =
+        wideOverviewWindow.findChild<QWidget *>(QStringLiteral("epsilonPanel"));
+    require(wideEpsilonPanel != nullptr,
+            "wide overview exposes the EPSILON panel");
+    QGroupBox *wideEpsilonCard = nullptr;
+    for (QWidget *ancestor = wideEpsilonPanel; ancestor && !wideEpsilonCard;
+         ancestor = ancestor->parentWidget())
+    {
+        auto *group = qobject_cast<QGroupBox *>(ancestor);
+        if (group && group->objectName() == QStringLiteral("sensorGroupBox"))
+        {
+            wideEpsilonCard = group;
+        }
+    }
+    QGroupBox *wideEnvironmentCard = nullptr;
+    if (auto *wideDataGroup =
+            wideOverviewWindow.findChild<QGroupBox *>(QStringLiteral("sensorRowContainer")))
+    {
+        for (QGroupBox *card :
+             wideDataGroup->findChildren<QGroupBox *>(QStringLiteral("sensorGroupBox")))
+        {
+            if (card != wideEpsilonCard &&
+                card->findChildren<QLabel *>(QStringLiteral("envStatusIcon")).size() == 3)
+            {
+                wideEnvironmentCard = card;
+                break;
+            }
+        }
+    }
+    auto wideWidgetRect = [&wideOverviewWindow](QWidget *widget) {
+        return QRect(widget->mapTo(wideOverviewWindow.centralWidget(), QPoint(0, 0)),
+                     widget->size());
+    };
+    auto wideRightEdge = [](const QRect& rect) {
+        return rect.left() + rect.width();
+    };
+    require(wideEpsilonCard != nullptr && wideEnvironmentCard != nullptr,
+            "wide overview exposes EPSILON and environment top-level cards");
+    const QRect wideEpsilonCardRect = wideWidgetRect(wideEpsilonCard);
+    const QRect wideEnvironmentCardRect = wideWidgetRect(wideEnvironmentCard);
+    require(std::abs(wideEpsilonCardRect.top() - wideEnvironmentCardRect.top()) <= 1,
+            "wide overview keeps the environment card on the EPSILON row");
+    require(std::abs((wideEnvironmentCardRect.left() -
+                      wideRightEdge(wideEpsilonCardRect)) -
+                     VaporView::Ground::MainSupport::kTopLevelCardGap) <= 1,
+            "wide overview places the environment card to the right of EPSILON with the shared gap");
+    QLabel *wideAttitudeConsistencyValue = epsilonValueLabelForField(
+        wideEpsilonPanel,
+        QStringLiteral("姿态一致性[最大差值]:"));
+    require(wideAttitudeConsistencyValue != nullptr,
+            "wide overview exposes the EPSILON attitude consistency value label");
+    wideAttitudeConsistencyValue->setText(
+        QStringLiteral("最大 0.066°（41-63 0.037°，41-64 0.030°，63-64 0.066°）"));
+    wideAttitudeConsistencyValue->setToolTip(wideAttitudeConsistencyValue->text());
+    wideAttitudeConsistencyValue->updateGeometry();
+    activateLayouts(&wideOverviewWindow);
+    processEventsFor(50);
+    activateLayouts(&wideOverviewWindow);
+    requireEpsilonSectionCardsStayInsidePanel(
+        wideEpsilonPanel,
+        "wide overview EPSILON section cards stay inside the EPSILON panel");
+    requireEpsilonSectionCardsFillWrappedTopRow(
+        wideEpsilonPanel,
+        "wide overview EPSILON first-row cards fill the wrapped row without a center gap");
+    requireEpsilonSectionCardsUseWrappedMotionRow(
+        wideEpsilonPanel,
+        "wide overview wraps motion details instead of overflowing into the environment card");
+    const QRect wideAttitudeConsistencyBounds = wrappedTextBounds(wideAttitudeConsistencyValue);
+    require(wideAttitudeConsistencyBounds.height() <= wideAttitudeConsistencyValue->height() + 2,
+            "wide overview shows the full EPSILON attitude consistency value without clipping");
+    requireLabelTextSlack(wideAttitudeConsistencyValue, 8,
+                          "wide overview EPSILON longest value keeps a small readable slack");
+    wideOverviewWindow.close();
+    require(processEventsUntil(1000, [&wideOverviewWindow]() {
+                return !wideOverviewWindow.isVisible();
+            }),
+            "wide overview test window closes cleanly");
+}
+
+void requireHomeEnvironmentCardLayout(MainWindow& window, bool requireSideBySide)
+{
+    activateLayouts(&window);
+    processEventsFor(500);
+    activateLayouts(&window);
+
+    auto *dataGroup = window.findChild<QGroupBox *>(QStringLiteral("sensorRowContainer"));
+    require(dataGroup != nullptr, "sensor row container exists");
+
+    QGroupBox *epsilonGroup = nullptr;
+    QGroupBox *environmentGroup = nullptr;
+    const QList<QGroupBox*> sensorGroups =
+        dataGroup->findChildren<QGroupBox *>(QStringLiteral("sensorGroupBox"));
+    for (QGroupBox *group : sensorGroups)
+    {
+        if (!group)
+        {
+            continue;
+        }
+        if (group->findChildren<QLabel *>(QStringLiteral("envStatusIcon")).size() == 3)
+        {
+            environmentGroup = group;
+        }
+        else if (group->findChild<QWidget *>(QStringLiteral("epsilonPanel")))
+        {
+            epsilonGroup = group;
+        }
+    }
+    require(epsilonGroup != nullptr, "EPSILON card exists");
+    require(environmentGroup != nullptr, "environment and lidar card exists");
+
+    const QRect epsilonGeometry = epsilonGroup->geometry();
+    const QRect environmentGeometry = environmentGroup->geometry();
+    const int sideBySideRequiredWidth =
+        epsilonGroup->minimumSizeHint().width() +
+        VaporView::Ground::MainSupport::kTopLevelCardGap +
+        environmentGroup->minimumSizeHint().width();
+    const bool sideBySideFits = dataGroup->contentsRect().width() >= sideBySideRequiredWidth;
+    const bool sideBySide =
+        std::abs(environmentGeometry.top() - epsilonGeometry.top()) <= 1 &&
+        environmentGeometry.left() > epsilonGeometry.right();
+    const bool stacked =
+        std::abs(environmentGeometry.left() - epsilonGeometry.left()) <= 4 &&
+        environmentGeometry.top() > epsilonGeometry.bottom();
+    require((sideBySideFits || requireSideBySide) ? sideBySide : (sideBySide || stacked),
+            "home data cards either place environment to the right when width permits, or stack cleanly when narrow");
+    require(environmentGeometry.right() <= dataGroup->contentsRect().right() + 1,
+            "default environment and lidar card stays inside the home data card edge");
+
+    auto labelContains = [](QWidget *panel, const QString& objectName, const QString& token) -> QLabel * {
+        if (!panel)
+        {
+            return nullptr;
+        }
+        const QList<QLabel*> labels = panel->findChildren<QLabel *>(objectName);
+        for (QLabel *label : labels)
+        {
+            if (label && label->text().contains(token))
+            {
+                return label;
+            }
+        }
+        return nullptr;
+    };
+    auto labelCenterY = [](QWidget *container, const QLabel *label) {
+        return label->mapTo(container, QPoint(0, label->height() / 2)).y();
+    };
+    auto labelRectInside = [](QWidget *container, const QLabel *label) {
+        return QRect(label->mapTo(container, QPoint(0, 0)), label->size());
+    };
+
+    auto *hmpPanel = environmentGroup->findChild<HmpPanel *>();
+    require(hmpPanel != nullptr, "environment card contains the temperature/humidity panel");
+    QLabel *humidityValueLabel = labelContains(hmpPanel, QStringLiteral("highlightedValue"), QStringLiteral("%RH"));
+    const QList<QLabel*> hmpRateLabels = hmpPanel->findChildren<QLabel *>(QStringLiteral("rateLabel"));
+    require(humidityValueLabel != nullptr && hmpRateLabels.size() >= 2,
+            "humidity row has a dedicated polling-rate label");
+    const int humidityCenterY = labelCenterY(hmpPanel, humidityValueLabel);
+    bool humidityRateVisibleOnRow = false;
+    for (const QLabel *rateLabel : hmpRateLabels)
+    {
+        const QRect rateRect = labelRectInside(hmpPanel, rateLabel);
+        require(rateLabel->text().contains(QStringLiteral("Hz")) &&
+                    rateRect.right() <= hmpPanel->contentsRect().right() + 1,
+                "HMP polling-rate labels are visible inside the panel");
+        humidityRateVisibleOnRow =
+            humidityRateVisibleOnRow ||
+            std::abs(labelCenterY(hmpPanel, rateLabel) - humidityCenterY) <= 2;
+    }
+    require(humidityRateVisibleOnRow,
+            "humidity row shows its polling-rate label on the same row");
+
+    auto *lidarPanel = environmentGroup->findChild<LidarPanel *>();
+    require(lidarPanel != nullptr, "environment card contains the lidar panel");
+    QLabel *distanceValueLabel = labelContains(lidarPanel, QStringLiteral("highlightedValue"), QStringLiteral("m"));
+    QLabel *strengthValueLabel = nullptr;
+    const QList<QLabel*> lidarValueLabels =
+        lidarPanel->findChildren<QLabel *>(QStringLiteral("highlightedValue"));
+    for (QLabel *label : lidarValueLabels)
+    {
+        if (label && label != distanceValueLabel)
+        {
+            strengthValueLabel = label;
+            break;
+        }
+    }
+    const QList<QLabel*> lidarRateLabels = lidarPanel->findChildren<QLabel *>(QStringLiteral("rateLabel"));
+    require(distanceValueLabel != nullptr && strengthValueLabel != nullptr && !lidarRateLabels.isEmpty(),
+            "lidar panel exposes distance, strength, and rate labels");
+    const QLabel *lidarRateLabel = lidarRateLabels.first();
+    require(std::abs(labelCenterY(lidarPanel, distanceValueLabel) -
+                     labelCenterY(lidarPanel, strengthValueLabel)) <= 2 &&
+                std::abs(labelCenterY(lidarPanel, distanceValueLabel) -
+                         labelCenterY(lidarPanel, lidarRateLabel)) <= 2,
+            "default home environment card keeps distance, strength, and rate on one row");
+    const std::array<const QLabel *, 3> lidarRowLabels = {
+        distanceValueLabel,
+        strengthValueLabel,
+        lidarRateLabel
+    };
+    for (const QLabel *label : lidarRowLabels)
+    {
+        const QRect rect = labelRectInside(lidarPanel, label);
+        require(rect.right() <= lidarPanel->contentsRect().right() + 1,
+                "lidar row labels stay visible inside the panel");
+    }
 }
 
 }  // namespace
@@ -3491,6 +4025,19 @@ int main(int argc, char **argv)
     {
         requireHomeOverviewLanguageWidthRoundTrip();
         std::cout << "home_overview_language_layout_test passed\n";
+        return 0;
+    }
+
+    if (app.arguments().contains(QStringLiteral("--home-environment-layout-only")))
+    {
+        MainWindow environmentWindow;
+        environmentWindow.setWindowTitle(QStringLiteral("VaporView"));
+        environmentWindow.resize(2000, 1250);
+        environmentWindow.show();
+        require(waitForWindowExposed(&environmentWindow),
+                "home-environment test window becomes exposed");
+        requireHomeEnvironmentCardLayout(environmentWindow, true);
+        std::cout << "home_environment_layout_test passed\n";
         return 0;
     }
 
@@ -3572,8 +4119,8 @@ int main(int argc, char **argv)
         QComboBox *rememberedSourceModeCombo = findSourceModeCombo(&rememberedModeWindow);
         require(rememberedSourceModeCombo != nullptr,
                 "remembered source mode combo exists on startup");
-        require(rememberedSourceModeCombo->itemText(1) == QStringLiteral("天地远程模式") ||
-                    rememberedSourceModeCombo->itemText(1) == QStringLiteral("Sky-Ground Remote Mode"),
+        require(rememberedSourceModeCombo->itemText(1) == QStringLiteral("远程") ||
+                    rememberedSourceModeCombo->itemText(1) == QStringLiteral("Remote"),
                 "source mode combo uses the new remote-mode label");
         require(rememberedSourceModeCombo->property("usesSingleLevelPopupMenu").toBool(),
                 "source mode combo uses the shared single-level popup");
@@ -3661,6 +4208,12 @@ int main(int argc, char **argv)
         applicationSettings.setValue(QStringLiteral("serial/ptb_baud"), QStringLiteral("9600"));
         applicationSettings.setValue(QStringLiteral("sensor/humidity_source"), QStringLiteral("hmp3"));
         applicationSettings.setValue(QStringLiteral("serial/hmp_baud"), QStringLiteral("19200"));
+        applicationSettings.setValue(QStringLiteral("local_enabled/epsilon"), true);
+        applicationSettings.setValue(QStringLiteral("local_enabled/ptb"), true);
+        applicationSettings.setValue(QStringLiteral("local_enabled/hmp"), true);
+        applicationSettings.setValue(QStringLiteral("local_enabled/lidar"), true);
+        applicationSettings.setValue(QStringLiteral("local_enabled/temperature"), true);
+        applicationSettings.setValue(QStringLiteral("local_enabled/ai8_temperature"), true);
         applicationSettings.remove(QStringLiteral("serial/ptb210_baud"));
         applicationSettings.remove(QStringLiteral("serial/bmp390_baud"));
         applicationSettings.remove(QStringLiteral("serial/hmp3_baud"));
@@ -3698,7 +4251,7 @@ int main(int argc, char **argv)
                     checkUpdatesAction->toolTip() == QStringLiteral("Check for VaporView updates"),
                 "check updates action updates to English");
         app.setApplicationVersion(QString());
-        requireAboutDialogLayout(&aboutWindow, aboutAction, true, QStringLiteral("1.0.21"));
+        requireAboutDialogLayout(&aboutWindow, aboutAction, true, QStringLiteral("1.0.23"));
         require(QMetaObject::invokeMethod(&aboutWindow, "onSwitchLanguage", Qt::DirectConnection),
                 "main window switches back to Chinese after about dialog coverage");
         require(processEventsUntil(1000, [aboutAction]() {
@@ -4032,10 +4585,57 @@ int main(int argc, char **argv)
                             "light sidebar uses a complete rounded card border");
     auto *recordingStatusCard =
         window.findChild<QFrame *>(QStringLiteral("recordingStatusCard"));
+    auto *recordingStatusView =
+        window.findChild<QWidget *>(QStringLiteral("recordingStatusView"));
     auto *logPanelFrame =
         window.findChild<QFrame *>(QStringLiteral("logPanelFrame"));
-    require(recordingStatusCard != nullptr && logPanelFrame != nullptr,
+    require(recordingStatusCard != nullptr && recordingStatusView != nullptr &&
+                logPanelFrame != nullptr,
             "right-side recording and log cards exist for outer-margin checks");
+    const QString recordingStatusDetail = recordingStatusView->toolTip();
+    require(recordingStatusDetail.contains(QStringLiteral("RAW EPSILON")) &&
+                recordingStatusDetail.contains(QStringLiteral("RAW PTB210")) &&
+                recordingStatusDetail.contains(QStringLiteral("RAW HMP3")) &&
+                recordingStatusDetail.contains(QStringLiteral("RAW TFA1500")) &&
+                recordingStatusDetail.contains(QStringLiteral("RAW TCP")) &&
+                recordingStatusDetail.contains(QStringLiteral("RAW RD105")) &&
+                recordingStatusDetail.contains(QStringLiteral("RAW AI-8288")),
+            "recording status uses hardware model names");
+    require(!recordingStatusDetail.contains(QStringLiteral("RAW 激光温控")) &&
+                !recordingStatusDetail.contains(QStringLiteral("RAW 系统温控")) &&
+                !recordingStatusDetail.contains(QStringLiteral("双路精密温控器")) &&
+                !recordingStatusDetail.contains(QStringLiteral("8路温控器")),
+            "recording status does not show semantic temperature-controller names");
+    auto *recordingStatusBody =
+        recordingStatusCard->findChild<QWidget *>(QStringLiteral("recordingStatusBody"));
+    require(recordingStatusBody != nullptr &&
+                recordingStatusBody->layout() != nullptr,
+            "recording status body exists for local-mode padding checks");
+    require(recordingStatusBody->layout()->contentsMargins().bottom() == 4,
+            "local recording status card uses tighter bottom padding");
+    auto recordingStatusBottomGap = [&window, recordingStatusBody, recordingStatusView]() {
+        int lastLineBottom = 0;
+        const QList<QLabel*> labels = recordingStatusView->findChildren<QLabel *>();
+        require(!labels.isEmpty(),
+                "local recording status rows are visible for bottom padding checks");
+        for (QLabel *label : labels)
+        {
+            if (!label->isVisibleTo(&window))
+            {
+                continue;
+            }
+            const QRect labelRect(label->mapTo(recordingStatusBody, QPoint(0, 0)),
+                                  label->size());
+            lastLineBottom =
+                std::max(lastLineBottom,
+                         labelRect.top() + labelRect.height());
+        }
+        const QRect contents = recordingStatusBody->contentsRect();
+        return contents.top() + contents.height() - lastLineBottom;
+    };
+    const int localRecordingStatusBottomGap = recordingStatusBottomGap();
+    require(localRecordingStatusBottomGap >= 4 && localRecordingStatusBottomGap <= 6,
+            "local recording status last row stays close to the card bottom");
     requireTopLevelCardElevation(recordingStatusCard,
                                  1.0,
                                  "recording status card uses the shared soft elevation");
@@ -4184,6 +4784,16 @@ int main(int argc, char **argv)
     const QRect epsilonCardRect = widgetRectInCentral(homeEpsilonCardForSpacing);
     const QRect environmentCardRect = widgetRectInCentral(homeEnvironmentCardForSpacing);
     const QRect homeTcpWaveCardRect = widgetRectInCentral(tcpWaveCardForSpacing);
+    auto *homeEpsilonTitleBar = homeEpsilonCardForSpacing->findChild<QWidget *>(
+        QStringLiteral("sectionTitleBar"), Qt::FindDirectChildrenOnly);
+    auto *homeEnvironmentTitleBar = homeEnvironmentCardForSpacing->findChild<QWidget *>(
+        QStringLiteral("environmentSectionTitleBar"), Qt::FindDirectChildrenOnly);
+    require(homeEpsilonTitleBar != nullptr && homeEnvironmentTitleBar != nullptr,
+            "home EPSILON and environment cards expose standard title bars");
+    require(homeEnvironmentTitleBar->height() == homeEpsilonTitleBar->height(),
+            "home environment title bar matches the EPSILON title-bar height");
+    require(homeEnvironmentTitleBar->y() <= 2,
+            "home environment title bar sits flush with the top of the card");
     require(std::abs((std::min(epsilonCardRect.top(), environmentCardRect.top()) -
                       bottomEdge(homeOverviewSplitterRect)) -
                      kExpectedTopLevelCardGap) <= 1,
@@ -4246,8 +4856,8 @@ int main(int argc, char **argv)
     require(checkedSidebarButton->iconSize().width() >= 28 &&
                 checkedSidebarButton->iconSize().height() >= 28,
             "compact sidebar lucide icon is visually larger");
-    require(checkedSidebarButton->focusPolicy() == Qt::NoFocus,
-            "compact sidebar selected icon does not draw a keyboard focus frame");
+    require(checkedSidebarButton->focusPolicy() == Qt::TabFocus,
+            "compact sidebar remains keyboard reachable after collapsing");
     QPushButton *temperatureNavButton = nullptr;
     for (QPushButton *button : sidebarButtons)
     {
@@ -5261,8 +5871,8 @@ int main(int argc, char **argv)
     require(ai8StatusRect.left() > ai8NavigationRect.right() &&
                 ai8StatusRect.right() <= ai8Panel->rect().right() &&
                 ai8StatusRect.bottom() < ai8MainContentRect.top() &&
-                ai8TemperaturePlot->property("forceWhiteBackground").toBool(),
-            "AI-8 page action row is right-aligned beside page selectors and the plot uses a white background");
+                !ai8TemperaturePlot->property("forceWhiteBackground").toBool(),
+            "AI-8 page action row is right-aligned beside page selectors and the plot follows the active theme");
     auto *ai8GlobalButton = ai8TemperatureCard->findChild<QPushButton *>(
         QStringLiteral("ai8PageSelectorButton4"));
     auto *ai8ChannelButton = ai8TemperatureCard->findChild<QPushButton *>(
@@ -5296,6 +5906,14 @@ int main(int argc, char **argv)
                                  QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8NavigationBar QPushButton:checked {"),
                                  QStringLiteral("font-weight: 600"),
                                  "AI-8 page selector marks the selected parameter group like the temperature tabs");
+    const bool ai8StyleDark =
+        qApp->property(VaporView::kAppDarkThemeProperty).toBool();
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8MainContentCard {"),
+        QStringLiteral("background-color: %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceRaised, ai8StyleDark)),
+        "AI-8 common parameters and trend plot use the raised theme surface");
     requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8MainContentCard {"),
                                  QStringLiteral("border-radius: 8px"),
@@ -5304,7 +5922,7 @@ int main(int argc, char **argv)
         qApp->styleSheet(),
         QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8DetailParametersCard {"),
         QStringLiteral("background-color: %1").arg(
-            VaporView::appThemeColorName(VaporView::AppThemeColor::White, false)),
+            VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceRaised, ai8StyleDark)),
         "AI-8 detail parameter cards use the same background as the common parameter card");
     requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8ParameterField {"),
@@ -5645,10 +6263,11 @@ int main(int argc, char **argv)
             linkRateNames << nameLabel->text();
         }
     }
-    require(linkRateNames == QStringList{QStringLiteral("天→地"),
+    require(linkRateNames == QStringList{QStringLiteral("目标"),
+                                         QStringLiteral("天→地"),
                                          QStringLiteral("地→天"),
                                          QStringLiteral("合")},
-            "home link-rate pills use the compact Chinese field names");
+            "home link-rate pills expose target plus compact Chinese field names");
     const QList<QFrame*> ratePills =
         homeRateSection->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
     require(!ratePills.isEmpty(),
@@ -5705,10 +6324,28 @@ int main(int argc, char **argv)
     QFrame *homeLinkSection = homeTelemetrySections.at(1);
     const QList<QFrame*> linkRatePills =
         homeLinkSection->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
-    require(linkRatePills.size() == 3,
-            "home link-rate telemetry section keeps three link pills");
+    require(linkRatePills.size() == 4,
+            "home link-rate telemetry section includes target plus three link-rate pills");
+    QFrame *targetPill = findTelemetryPillByName(homeLinkSection, QStringLiteral("目标"));
+    require(targetPill != nullptr,
+            "home link-rate telemetry section exposes the current Local/Remote target");
+    const int targetPillY = targetPill->mapTo(homeLinkSection, QPoint(0, 0)).y();
+    int linkRatePillY = -1;
     for (QFrame *pill : linkRatePills)
     {
+        if (pill == targetPill)
+        {
+            continue;
+        }
+        const int pillY = pill->mapTo(homeLinkSection, QPoint(0, 0)).y();
+        require(pillY > targetPillY,
+                "home link-rate target is alone on the first telemetry line");
+        if (linkRatePillY < 0)
+        {
+            linkRatePillY = pillY;
+        }
+        require(std::abs(pillY - linkRatePillY) <= 2,
+                "home link-rate direction and total pills share the second telemetry line");
         QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
         require(valueLabel != nullptr,
                 "home link-rate pill has a value label");
@@ -5975,6 +6612,18 @@ int main(int argc, char **argv)
         *visibleDarkTemperaturePlot,
         VaporView::appThemeColor(VaporView::AppThemeColor::SurfaceRaised, true),
         "dark temperature trend plot matches its raised card background");
+    requireLastStyleRuleContains(
+        darkOverviewStyleSheet,
+        QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8MainContentCard {"),
+        QStringLiteral("background-color: %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceRaised, true)),
+        "dark AI-8 common parameters and trend plot use the raised surface background");
+    requireLastStyleRuleContains(
+        darkOverviewStyleSheet,
+        QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8DetailParametersCard {"),
+        QStringLiteral("background-color: %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceRaised, true)),
+        "dark AI-8 detail parameter cards use the raised surface background");
     requireLastStyleRuleContains(darkOverviewStyleSheet,
                                  QStringLiteral("QToolButton#temperatureOverviewChannelButton[available=\"false\"] {"),
                                  VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt, true),
@@ -6159,6 +6808,12 @@ int main(int argc, char **argv)
         temperaturePanel->findChild<QSpinBox *>(QStringLiteral("temperaturePidKdSpinChannel1"));
     auto *autoPidCombo =
         temperaturePanel->findChild<QComboBox *>(QStringLiteral("temperatureAutoPidComboChannel1"));
+    QLabel *autoPidLabel = nullptr;
+    if (autoPidCombo && autoPidCombo->parentWidget())
+    {
+        autoPidLabel =
+            autoPidCombo->parentWidget()->findChild<QLabel *>(QStringLiteral("fieldLabel"), Qt::FindDirectChildrenOnly);
+    }
     auto *addressSpin =
         temperaturePanel->findChild<QSpinBox *>(QStringLiteral("temperatureDeviceAddressSpin"));
     auto *rs485BaudCombo =
@@ -6182,12 +6837,14 @@ int main(int argc, char **argv)
     require(controllerModeCombo != nullptr && controllerModeLabel != nullptr && temperatureStatusRateLabel != nullptr &&
                 targetSpin != nullptr && enableSwitch != nullptr && enableSwitch2 != nullptr && modeCombo != nullptr &&
                 maxOutputSpin != nullptr && kpSpin != nullptr && kiSpin != nullptr &&
-                kdSpin != nullptr && autoPidCombo != nullptr &&
+                kdSpin != nullptr && autoPidCombo != nullptr && autoPidLabel != nullptr &&
                 addressSpin != nullptr && rs485BaudCombo != nullptr && overtempOutputCombo != nullptr &&
                 commonInternalTemperatureEdit != nullptr && factoryResetButton != nullptr &&
                 sensorModelSelector1 != nullptr && sensorModelBValueRadio != nullptr &&
                 sensorModelPtRadio != nullptr && sensorModelShRadio != nullptr && sensorModelMf501Radio != nullptr,
             "temperature controller editable controls are discoverable for stale telemetry checks");
+    require(controllerModeLabel->text() == QStringLiteral("温控器模式"),
+            "RD105 controller mode label omits the trailing Chinese colon");
     for (QLabel *fieldLabel : temperaturePanel->findChildren<QLabel *>(QStringLiteral("fieldLabel")))
     {
         if (fieldLabel->wordWrap())
@@ -6531,6 +7188,10 @@ int main(int argc, char **argv)
     const QRect autoPidFieldRectForMode(
         autoPidCombo->parentWidget()->mapTo(temperatureChannelSelectorRow, QPoint(0, 0)),
         autoPidCombo->parentWidget()->size());
+    const QRect autoPidLabelRect(autoPidLabel->mapTo(autoPidCombo->parentWidget(), QPoint(0, 0)),
+                                 autoPidLabel->size());
+    const QRect autoPidComboRect(autoPidCombo->mapTo(autoPidCombo->parentWidget(), QPoint(0, 0)),
+                                 autoPidCombo->size());
     const QRect controllerModeLabelRect(controllerModeLabel->mapTo(temperatureControllerModeField, QPoint(0, 0)),
                                         controllerModeLabel->size());
     const QRect controllerModeComboRect(controllerModeCombo->mapTo(temperatureControllerModeField, QPoint(0, 0)),
@@ -6581,9 +7242,12 @@ int main(int argc, char **argv)
                 std::abs(enableToAutoGap - autoToControllerModeGap) <= 1,
             "temperature common-page top controls use one evenly distributed gap");
     require(controllerModeLabelRect.right() < controllerModeComboRect.left(),
-            "temperature controller mode label sits immediately before the combo");
-    require(controllerModeComboRect.left() - controllerModeLabelRect.right() - 1 <= 1,
-            "temperature controller mode label removes the gap before its combo");
+            "temperature controller mode label sits before the combo");
+    const int autoPidLabelToComboGap = autoPidComboRect.left() - autoPidLabelRect.right() - 1;
+    const int controllerModeLabelToComboGap = controllerModeComboRect.left() - controllerModeLabelRect.right() - 1;
+    require(autoPidLabelToComboGap >= 4 && autoPidLabelToComboGap <= 8 &&
+                std::abs(controllerModeLabelToComboGap - autoPidLabelToComboGap) <= 1,
+            "temperature controller mode label keeps the same few-pixel gap as Auto PID");
     require(controllerModeComboRectInTopRow.right() <= controllerModeFieldRect.right() &&
                 controllerModeComboRectInTopRow.right() < temperatureChannelSelectorRow->width(),
             "temperature controller mode combo stays inside its field and top row without right-edge clipping");
@@ -8182,8 +8846,8 @@ int main(int argc, char **argv)
     const QList<QLabel*> tcpTitleBarLabels = tcpWaveTitleBar->findChildren<QLabel *>();
     for (QLabel *label : tcpTitleBarLabels)
     {
-        if (label->text() == QStringLiteral("TCP波形监视") ||
-            label->text() == QStringLiteral("TCP Wave Monitor"))
+        if (label->text() == QStringLiteral("波形监控") ||
+            label->text() == QStringLiteral("Wave Monitor"))
         {
             tcpWaveTitleLabel = label;
         }
@@ -8951,7 +9615,7 @@ int main(int argc, char **argv)
     require(std::abs(serialConfigCard->width() - expectedDeviceConfigCardWidth) <= 4,
             "device configuration serial card fills the main content row");
     requireCardTitleBar(serialConfigCard,
-                        QStringList{QStringLiteral("串口配置"), QStringLiteral("Serial Port Configuration")},
+                        QStringList{QStringLiteral("设备配置 [本机]"), QStringLiteral("Device Configuration [Local]")},
                         QStringLiteral("usb"),
                         "device serial configuration card uses the standard icon title bar");
     const QString appStyleSheet = qApp->styleSheet();
@@ -9186,12 +9850,10 @@ int main(int argc, char **argv)
             "EPSILON RTCM input selector remains keyboard accessible");
     const QRect reconfigureRect = requireActionButton(
         epsilonDeviceSettingsCard, QStringLiteral("epsilonReconfigureButton"),
-        {QStringLiteral("重新配置输出"), QStringLiteral("Reconfigure Output")},
+        {QStringLiteral("应用已保存配置"), QStringLiteral("Apply Saved Configuration")},
         epsilonDeviceLocalBounds, "EPSILON device settings expose the reconfigure action");
-    const QRect rtkRect = requireActionButton(
-        epsilonDeviceSettingsCard, QStringLiteral("epsilonRtkConfigButton"),
-        {QStringLiteral("RTK配置"), QStringLiteral("RTK Config")},
-        epsilonDeviceLocalBounds, "EPSILON device settings expose the differential-navigation action");
+    require(epsilonDeviceSettingsCard->findChild<QPushButton *>(QStringLiteral("epsilonRtkConfigButton")) == nullptr,
+            "EPSILON device settings route differential navigation through the top navigation bar");
     const QRect saveRect = requireActionButton(
         epsilonActionsContainer, QStringLiteral("epsilonSaveButton"),
         {QStringLiteral("保存并应用"), QStringLiteral("Save + Apply")},
@@ -9200,7 +9862,6 @@ int main(int argc, char **argv)
     Q_UNUSED(recommendedRect);
     Q_UNUSED(rtcmRect);
     Q_UNUSED(reconfigureRect);
-    Q_UNUSED(rtkRect);
     require(saveRect.top() + epsilonActionsBounds.top() > epsilonDeviceSettingsBounds.bottom(),
             "EPSILON save-and-apply action follows device settings");
     require(epsilonOutputCard->findChild<QPushButton *>(QStringLiteral("epsilonSaveButton")) == nullptr,
@@ -9223,8 +9884,8 @@ int main(int argc, char **argv)
         const QList<QLabel*> labels = summaryCard->findChildren<QLabel *>();
         for (QLabel *label : labels)
         {
-            if (label->text().contains(QStringLiteral("天地通信链路状态")) ||
-                label->text().contains(QStringLiteral("Sky-ground Communication Link Status")))
+            if (label->text().contains(QStringLiteral("数据源与天地链路")) ||
+                label->text().contains(QStringLiteral("Data Source / Sky Link")))
             {
                 deviceTelemetrySummaryCard = summaryCard;
                 break;
@@ -9244,7 +9905,7 @@ int main(int argc, char **argv)
     require(!serialConfigCard->isAncestorOf(deviceTelemetrySummaryCard),
             "device telemetry summary card is not nested inside the serial configuration card");
     requireCardTitleBar(deviceTelemetrySummaryCard,
-                        QStringList{QStringLiteral("天地通信链路状态"), QStringLiteral("Sky-ground Communication Link Status")},
+                        QStringList{QStringLiteral("数据源与天地链路"), QStringLiteral("Data Source / Sky Link")},
                         QStringLiteral("satellite"),
                         "device telemetry summary card uses the standard icon title bar");
     const int titlePaneStyleIndex = appStyleSheet.indexOf(QStringLiteral("QFrame#deviceTelemetrySectionTitlePane"));
@@ -9278,7 +9939,6 @@ int main(int argc, char **argv)
     };
     int previousSubCardRight = -1;
     int previousSubCardTop = -1;
-    int previousTitleLeft = -1;
     for (int i = 0; i < telemetrySubCards.size(); ++i)
     {
         QFrame *subCard = telemetrySubCards.at(i);
@@ -9286,7 +9946,10 @@ int main(int argc, char **argv)
         require(previousSubCardRight < 0 || subCardRect.left() > previousSubCardRight,
                 "device telemetry summary subcards are arranged horizontally");
         require(previousSubCardTop < 0 || std::abs(subCardRect.top() - previousSubCardTop) <= 2,
-                "device telemetry summary subcards align on the top edge");
+                "device telemetry summary subcards share a top edge");
+        require(subCard->sizePolicy().horizontalPolicy() == QSizePolicy::Fixed &&
+                    std::abs(subCardRect.width() - subCard->sizeHint().width()) <= 2,
+                "device telemetry summary subcard width follows its widest content row");
         previousSubCardRight = subCardRect.right();
         previousSubCardTop = subCardRect.top();
 
@@ -9317,9 +9980,9 @@ int main(int argc, char **argv)
                 "device telemetry summary subcard title pane matches the compact EPSILON title width");
         const QRect titleRect(expectedTitleLabel->mapTo(subCard, QPoint(0, 0)),
                               expectedTitleLabel->size());
-        require(previousTitleLeft < 0 || std::abs(titleRect.left() - previousTitleLeft) <= 2,
-                "device telemetry summary subcard titles align in a left-side column");
-        previousTitleLeft = titleRect.left();
+        require(titleRect.left() >= titlePaneRect.left() &&
+                    titleRect.right() <= titlePaneRect.right(),
+                "device telemetry summary subcard title fits its left-side pane");
         require(titlePaneRect.left() <= 2 &&
                     titlePaneRect.height() >= subCardRect.height() - 4,
                 "device telemetry summary subcard title pane spans the left side");
@@ -9424,12 +10087,32 @@ int main(int argc, char **argv)
     }
 
     QComboBox *deviceSourceModeCombo = findSourceModeCombo(deviceConfigPage);
-    require(deviceSourceModeCombo != nullptr,
-            "device configuration source mode combo exists");
-    require(deviceSourceModeCombo->property("usesSingleLevelPopupMenu").toBool(),
-            "device configuration source mode combo uses the shared single-level popup");
-    require(deviceSourceModeCombo->width() <= 160,
-            "device configuration source mode combo uses compact width");
+    require(deviceSourceModeCombo == nullptr,
+            "device configuration no longer exposes the title-bar source mode combo");
+    auto *deviceSourceModeSwitch =
+        deviceConfigPage->findChild<QPushButton *>(QStringLiteral("deviceConfigSourceModeOverviewSwitch"));
+    require(deviceSourceModeSwitch != nullptr &&
+                deviceSourceModeSwitch->property("segmentedSwitchControl").toBool() &&
+                deviceSourceModeSwitch->focusPolicy() == Qt::TabFocus,
+            "device configuration source mode uses the shared segmented switch");
+    auto *homeSourceModeSwitch =
+        window.findChild<QPushButton *>(QStringLiteral("sourceModeOverviewSwitch"));
+    require(homeSourceModeSwitch != nullptr &&
+                deviceSourceModeSwitch->size() == homeSourceModeSwitch->size(),
+            "device configuration source switch reuses the home title-bar switch size");
+    auto setDeviceSourceModeRemote = [&](bool remote) {
+        if (deviceSourceModeSwitch->isChecked() != remote)
+        {
+            const QPoint target(remote ? deviceSourceModeSwitch->width() * 3 / 4
+                                       : deviceSourceModeSwitch->width() / 4,
+                                deviceSourceModeSwitch->height() / 2);
+            clickWidgetAt(deviceSourceModeSwitch, target, 0);
+        }
+        processEventsFor(150);
+        activateLayouts(&window);
+        require(deviceSourceModeSwitch->isChecked() == remote,
+                "device configuration source switch reaches the requested source mode");
+    };
     QComboBox *pressureSourceCombo =
         findComboWithData(deviceConfigPage, QStringLiteral("bmp390"));
     QComboBox *humiditySourceCombo =
@@ -9502,9 +10185,11 @@ int main(int argc, char **argv)
     require(deviceSkyTelemetry.transportCombo != nullptr,
             "device configuration sky telemetry transport combo exists");
     requireSkyTelemetryTransportLabels(deviceSkyTelemetry, false);
-    deviceSourceModeCombo->setCurrentIndex(1);
-    processEventsFor(150);
-    activateLayouts(&window);
+    require(deviceSkyTelemetry.row && !deviceSkyTelemetry.row->isVisible(),
+            "local device configuration hides sky-ground telemetry edit controls");
+    setDeviceSourceModeRemote(true);
+    require(deviceSkyTelemetry.row->isVisible(),
+            "remote device configuration shows sky-ground telemetry edit controls");
     setSkyTelemetryTransport(deviceSkyTelemetry.transportCombo, QStringLiteral("tcp"));
     processEventsFor(100);
     activateLayouts(&window);
@@ -9532,9 +10217,13 @@ int main(int argc, char **argv)
                     "EPSILON configuration panel geometry is stable in sky-ground remote mode");
     requireSameRect(deviceTelemetrySummaryCard->geometry(), localTelemetrySummaryRect, 2,
                     "device telemetry summary geometry is stable in sky-ground remote mode");
-    deviceSourceModeCombo->setCurrentIndex(0);
-    processEventsFor(150);
-    activateLayouts(&window);
+    setDeviceSourceModeRemote(false);
+    require(recordingStatusView->toolTip().contains(QStringLiteral("记录：未记录")) &&
+                !recordingStatusView->toolTip().contains(QStringLiteral("天空端记录")),
+            "recording status returns to local text after switching back from remote mode");
+    const int restoredRecordingStatusBottomGap = recordingStatusBottomGap();
+    require(restoredRecordingStatusBottomGap >= 4 && restoredRecordingStatusBottomGap <= 6,
+            "local recording status bottom padding is restored after remote mode");
     require(epsilonConfigCard->isEnabled(),
             "EPSILON configuration panel is available after switching back to local mode");
     require(deviceTelemetrySummaryCard->isVisible(),
@@ -9565,9 +10254,72 @@ int main(int argc, char **argv)
         }
     }
     require(environmentGroup != nullptr, "environment and lidar card exists");
+    require(environmentGroup->findChild<QWidget *>(QStringLiteral("environmentTrendPanel")) == nullptr,
+            "environment card does not use a separate trend-title panel");
+    QStringList environmentTrendPlotNames = {
+        QStringLiteral("environmentTemperatureTrendPlot"),
+        QStringLiteral("environmentHumidityTrendPlot"),
+        QStringLiteral("environmentPressureTrendPlot")
+    };
+    for (const QString& plotName : environmentTrendPlotNames)
+    {
+        QWidget *plot = environmentGroup->findChild<QWidget *>(plotName);
+        require(plot != nullptr && plot->height() >= 30,
+                "environment trend plot exists with a readable compact height");
+        require(plot->width() >= environmentGroup->width() * 4 / 5,
+                "environment trend plot uses most of the environment card width");
+        require(plot->mapTo(environmentGroup, QPoint(0, plot->height())).y() <=
+                    environmentGroup->contentsRect().bottom() + 1,
+                "environment trend plot stays inside the environment card");
+        require(plot->property("xAxisLabelText").toString().isEmpty() &&
+                    plot->property("xAxisLeftLabel").toString().contains(QLatin1Char(':')) &&
+                    plot->property("xAxisRightLabel").toString().contains(QLatin1Char(':')),
+                "environment trend plot exposes clock-time x-axis tick labels");
+        const QStringList xAxisTickLabels = plot->property("xAxisTickLabels").toStringList();
+        require(plot->property("xAxisTickCount").toInt() == xAxisTickLabels.size() &&
+                    xAxisTickLabels.size() > 2 &&
+                    xAxisTickLabels.first().contains(QLatin1Char(':')) &&
+                    xAxisTickLabels.last().contains(QLatin1Char(':')),
+                "environment trend plot exposes adaptive clock-time x-axis tick labels");
+        require(std::abs(plot->property("xAxisTimeSpanSeconds").toDouble() -
+                         static_cast<double>(xAxisTickLabels.size() - 1)) < 1e-6,
+                "environment trend plot uses temperature-style one-second x-axis intervals");
+        require(!plot->property("yAxisUnitLabel").toString().isEmpty(),
+                "environment trend plot keeps y-axis unit metadata");
+        require(!plot->property("yAxisTopLabel").toString().isEmpty() &&
+                    !plot->property("yAxisMiddleLabel").toString().isEmpty() &&
+                    !plot->property("yAxisBottomLabel").toString().isEmpty(),
+                "environment trend plot exposes numeric y-axis tick labels");
+    }
+    QWidget *pressurePlot = environmentGroup->findChild<QWidget *>(QStringLiteral("environmentPressureTrendPlot"));
+    QWidget *temperaturePlot = environmentGroup->findChild<QWidget *>(QStringLiteral("environmentTemperatureTrendPlot"));
+    QWidget *humidityPlot = environmentGroup->findChild<QWidget *>(QStringLiteral("environmentHumidityTrendPlot"));
+    require(pressurePlot && qobject_cast<PtbPanel *>(pressurePlot->parentWidget()) != nullptr,
+            "pressure trend plot sits under the pressure data panel");
+    require(temperaturePlot && qobject_cast<HmpPanel *>(temperaturePlot->parentWidget()) != nullptr,
+            "temperature trend plot sits under the temperature data panel");
+    require(humidityPlot && qobject_cast<HmpPanel *>(humidityPlot->parentWidget()) != nullptr,
+            "humidity trend plot sits under the humidity data panel");
+    requireHomeEnvironmentCardLayout(window, false);
 
     const QRect compactEpsilonGeometry = epsilonGroup->geometry();
     const QRect compactEnvironmentGeometry = environmentGroup->geometry();
+    const int compactSideBySideRequiredWidth =
+        epsilonGroup->minimumSizeHint().width() +
+        VaporView::Ground::MainSupport::kTopLevelCardGap +
+        environmentGroup->minimumSizeHint().width();
+    const bool compactSideBySideFits =
+        dataGroup->contentsRect().width() >= compactSideBySideRequiredWidth;
+    const bool compactSideBySide =
+        std::abs(compactEnvironmentGeometry.top() - compactEpsilonGeometry.top()) <= 1 &&
+        compactEnvironmentGeometry.left() > compactEpsilonGeometry.right();
+    const bool compactStacked =
+        std::abs(compactEnvironmentGeometry.left() - compactEpsilonGeometry.left()) <= 4 &&
+        compactEnvironmentGeometry.top() > compactEpsilonGeometry.bottom();
+    require(compactSideBySideFits ? compactSideBySide : (compactSideBySide || compactStacked),
+            "default home data cards either place environment to the right when width permits, or stack cleanly when narrow");
+    require(compactEnvironmentGeometry.right() <= dataGroup->contentsRect().right() + 1,
+            "default environment and lidar card stays inside the home data card edge");
     window.resize(1920, 1000);
     require(processEventsUntil(1000, [&window,
                                       epsilonGroup,
@@ -9605,46 +10357,31 @@ int main(int argc, char **argv)
         require(epsilonGroup->width() >= environmentGroup->width() * 3.6,
                 "EPSILON card keeps an approximately 4:1 width relationship against environment card");
     }
-    QList<QFrame*> wideCards = dataGroup->findChildren<QFrame *>(QStringLiteral("epsilonSectionCard"));
+    auto *wideEpsilonPanel = dataGroup->findChild<QWidget *>(QStringLiteral("epsilonPanel"));
+    require(wideEpsilonPanel != nullptr, "wide EPSILON panel exists");
+    QList<QFrame*> wideCards = sortedEpsilonSectionCards(wideEpsilonPanel);
     require(wideCards.size() == 3, "three EPSILON section cards at wide window size");
-    std::sort(wideCards.begin(), wideCards.end(), [](const QFrame *lhs, const QFrame *rhs) {
-        if (std::abs(lhs->y() - rhs->y()) > 4)
-        {
-            return lhs->y() < rhs->y();
-        }
-        return lhs->x() < rhs->x();
-    });
-    int wideCardsRight = 0;
-    int wideCardsTotalWidth = 0;
-    int wideCardsTotalMinimumWidth = 0;
-    for (const QFrame *card : wideCards)
-    {
-        wideCardsRight = std::max(wideCardsRight,
-                                  card->mapTo(epsilonGroup, QPoint(card->width(), 0)).x());
-        wideCardsTotalWidth += card->width();
-        wideCardsTotalMinimumWidth += card->minimumWidth();
-        require(card->width() + 2 >= card->minimumWidth(),
-                "EPSILON section cards keep their content-driven minimum width at wide window size");
-    }
-    require(wideCardsRight >= epsilonGroup->contentsRect().right() - 8,
-            "EPSILON section cards expand to fill the available group width at wide window size");
-    require(wideCardsTotalWidth > wideCardsTotalMinimumWidth + 24,
-            "EPSILON section cards grow beyond their minimum widths at wide window size");
-    for (const QFrame *card : wideCards)
-    {
-        const double actualRatio =
-            static_cast<double>(card->width()) / static_cast<double>(wideCardsTotalWidth);
-        const double minimumRatio =
-            static_cast<double>(card->minimumWidth()) / static_cast<double>(wideCardsTotalMinimumWidth);
-        require(std::abs(actualRatio - minimumRatio) <= 0.06,
-                "EPSILON section cards expand proportionally to their content widths");
-    }
-    require(std::abs(wideCards.at(0)->height() - wideCards.at(1)->height()) <= 2 &&
-                std::abs(wideCards.at(0)->height() - wideCards.at(2)->height()) <= 2,
-            "EPSILON section cards have matching heights at wide window size");
+    requireEpsilonSectionCardsStayInsidePanel(
+        wideEpsilonPanel,
+        "wide EPSILON section cards stay inside the EPSILON panel");
+    requireEpsilonSectionCardsUseWrappedMotionRow(
+        wideEpsilonPanel,
+        "wide EPSILON panel defaults to the wrapped motion row at maximized-style width");
 
     const QRect wideEpsilonGeometry = epsilonGroup->geometry();
     const QRect wideEnvironmentGeometry = environmentGroup->geometry();
+    require(std::abs(wideEnvironmentGeometry.top() - wideEpsilonGeometry.top()) <= 1 &&
+                wideEnvironmentGeometry.left() > wideEpsilonGeometry.right(),
+            "wide home data cards place environment and lidar to the right of EPSILON");
+    require(wideEnvironmentGeometry.right() <= dataGroup->contentsRect().right() + 1,
+            "wide environment and lidar card stays inside the home data card edge");
+    if (compactSideBySide &&
+        wideEnvironmentGeometry.width() + wideEpsilonGeometry.width() >
+            compactEnvironmentGeometry.width() + compactEpsilonGeometry.width() + 20)
+    {
+        require(wideEnvironmentGeometry.width() > compactEnvironmentGeometry.width() + 4,
+                "environment and lidar card expands beyond its minimum as the window grows");
+    }
     window.resize(originalWindowSize);
     require(processEventsUntil(1000, [&window,
                                       epsilonGroup,
@@ -9665,27 +10402,30 @@ int main(int argc, char **argv)
     requireMargins(epsilonPanel->layout()->contentsMargins(),
                    QMargins(2, 2, 2, 2),
                    "EPSILON panel content rhythm remains the reference");
-
-    QList<QFrame*> cards = dataGroup->findChildren<QFrame *>(QStringLiteral("epsilonSectionCard"));
-    require(cards.size() == 3, "three EPSILON section cards");
-    std::sort(cards.begin(), cards.end(), [](const QFrame *lhs, const QFrame *rhs) {
-        if (std::abs(lhs->y() - rhs->y()) > 4)
+    const bool compactSensorCardsStacked =
+        std::abs(epsilonGroup->x() - environmentGroup->x()) <= 4 &&
+        environmentGroup->y() > epsilonGroup->y();
+    if (compactSensorCardsStacked)
+    {
+        const int epsilonMinimumWidth = epsilonGroup->minimumSizeHint().width();
+        require(epsilonGroup->width() <= epsilonMinimumWidth + 24,
+                "compact EPSILON outer card follows the narrowed content width with a small reserve");
+        if (dataGroup->width() > epsilonMinimumWidth + 48)
         {
-            return lhs->y() < rhs->y();
+            require(epsilonGroup->width() < dataGroup->width() - 8,
+                    "compact EPSILON outer card no longer expands to the full row width");
         }
-        return lhs->x() < rhs->x();
-    });
+    }
 
-    const int rowTolerance = 4;
-    require(std::abs(cards.at(0)->y() - cards.at(1)->y()) <= rowTolerance,
-            "EPSILON first and second cards are on one row at default window size");
-    require(std::abs(cards.at(0)->y() - cards.at(2)->y()) <= rowTolerance,
-            "EPSILON third card is on the same row at default window size");
-    require(cards.at(1)->x() > cards.at(0)->x(), "EPSILON second card is to the right of the first");
-    require(cards.at(2)->x() > cards.at(1)->x(), "EPSILON third card is to the right of the second");
-    require(std::abs(cards.at(0)->height() - cards.at(1)->height()) <= 2 &&
-                std::abs(cards.at(0)->height() - cards.at(2)->height()) <= 2,
-            "EPSILON section cards have matching heights at default window size");
+    QList<QFrame*> cards = sortedEpsilonSectionCards(epsilonPanel);
+    require(cards.size() == 3, "three EPSILON section cards");
+
+    requireEpsilonSectionCardsUseWrappedMotionRow(
+        epsilonPanel,
+        "EPSILON motion details use the second row at the default window size");
+    requireEpsilonSectionCardsFillWrappedTopRow(
+        epsilonPanel,
+        "EPSILON first-row cards fill the outer card width without a center gap");
 
     for (QTimer *timer : window.findChildren<QTimer *>())
     {

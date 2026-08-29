@@ -63,8 +63,10 @@ QJsonObject countsToJson(const SessionRecordCounts& counts)
 {
     QJsonObject object;
     object.insert(QStringLiteral("sensor_rows"), numberText(counts.sensorRows));
-    object.insert(QStringLiteral("temperature_controller_rows"), numberText(counts.temperatureControllerRows));
-    object.insert(QStringLiteral("ai8_temperature_controller_rows"), numberText(counts.ai8TemperatureControllerRows));
+    object.insert(QStringLiteral("laser_temperature_controller_rows"),
+                  numberText(counts.laserTemperatureControllerRows));
+    object.insert(QStringLiteral("system_temperature_controller_rows"),
+                  numberText(counts.systemTemperatureControllerRows));
     object.insert(QStringLiteral("waveform_frames"), numberText(counts.waveformFrames));
     object.insert(QStringLiteral("waveform_feature_rows"), numberText(counts.waveformFeatureRows));
     object.insert(QStringLiteral("event_rows"), numberText(counts.eventRows));
@@ -77,14 +79,20 @@ QJsonObject pathsToJson()
     const SessionPackageLayout& layout = standardSessionPackageLayout();
     QJsonObject object;
     object.insert(QStringLiteral("sensor_summary_csv"), layout.sensorSummaryCsvPath);
-    object.insert(QStringLiteral("temperature_controller_csv"), layout.temperatureControllerCsvPath);
-    object.insert(QStringLiteral("ai8_temperature_controller_csv"), layout.ai8TemperatureControllerCsvPath);
+    object.insert(QStringLiteral("laser_temperature_controller_csv"),
+                  layout.laserTemperatureControllerCsvPath);
+    object.insert(QStringLiteral("system_temperature_controller_csv"),
+                  layout.systemTemperatureControllerCsvPath);
     object.insert(QStringLiteral("waveform_features_csv"), layout.waveformFeaturesCsvPath);
     object.insert(QStringLiteral("navigation_raw"), layout.navigationRawPath);
     object.insert(QStringLiteral("pressure_raw"), layout.pressureRawPath);
     object.insert(QStringLiteral("temperature_humidity_raw"), layout.temperatureHumidityRawPath);
     object.insert(QStringLiteral("distance_raw"), layout.distanceRawPath);
     object.insert(QStringLiteral("waveform_raw"), layout.waveformRawPath);
+    object.insert(QStringLiteral("laser_temperature_controller_raw"),
+                  layout.laserTemperatureControllerRawPath);
+    object.insert(QStringLiteral("system_temperature_controller_raw"),
+                  layout.systemTemperatureControllerRawPath);
     object.insert(QStringLiteral("waveform_peaks_csv"), layout.waveformPeaksCsvPath);
     object.insert(QStringLiteral("event_log"), layout.eventLogPath);
     object.insert(QStringLiteral("error_log"), layout.errorLogPath);
@@ -100,6 +108,8 @@ quint64 rawRecordCountForKey(const RawFileRecordCounts& counts, const QString& k
     if (key == QLatin1String("temperature_humidity")) return counts.temperatureHumidity;
     if (key == QLatin1String("distance")) return counts.distance;
     if (key == QLatin1String("waveform")) return counts.waveform;
+    if (key == QLatin1String("laser_temperature_controller")) return counts.laserTemperatureController;
+    if (key == QLatin1String("system_temperature_controller")) return counts.systemTemperatureController;
     return 0;
 }
 
@@ -110,6 +120,13 @@ void setRawRecordCountForKey(RawFileRecordCounts& counts, const QString& key, qu
     else if (key == QLatin1String("temperature_humidity") || key == QLatin1String("hmp")) counts.temperatureHumidity = value;
     else if (key == QLatin1String("distance") || key == QLatin1String("lidar")) counts.distance = value;
     else if (key == QLatin1String("waveform") || key == QLatin1String("tcp_wave")) counts.waveform = value;
+    else if (key == QLatin1String("laser_temperature_controller") || key == QLatin1String("rd105")) counts.laserTemperatureController = value;
+    else if (key == QLatin1String("system_temperature_controller") ||
+             key == QLatin1String("ai8_temperature_controller") ||
+             key == QLatin1String("ai8288"))
+    {
+        counts.systemTemperatureController = value;
+    }
 }
 
 QJsonObject rawFileObjectCompat(const QJsonObject& rawFiles,
@@ -306,10 +323,18 @@ SessionManifestParseResult sessionManifestFromJson(const QJsonObject& json)
 
     const QJsonObject counts = json.value(QStringLiteral("counts")).toObject();
     manifest.counts.sensorRows = countFromObjects(counts, json, QStringLiteral("sensor_rows"));
-    manifest.counts.temperatureControllerRows =
-        countFromObjects(counts, json, QStringLiteral("temperature_controller_rows"));
-    manifest.counts.ai8TemperatureControllerRows =
-        countFromObjects(counts, json, QStringLiteral("ai8_temperature_controller_rows"));
+    manifest.counts.laserTemperatureControllerRows =
+        countFromObjects(counts,
+                         json,
+                         QStringLiteral("laser_temperature_controller_rows"),
+                         countFromObjects(counts, json, QStringLiteral("temperature_controller_rows")));
+    manifest.counts.systemTemperatureControllerRows =
+        countFromObjects(counts,
+                         json,
+                         QStringLiteral("system_temperature_controller_rows"),
+                         countFromObjects(counts,
+                                          json,
+                                          QStringLiteral("ai8_temperature_controller_rows")));
     manifest.counts.waveformFrames = countFromObjects(counts, json, QStringLiteral("waveform_frames"));
     manifest.counts.waveformFeatureRows = counts.contains(QStringLiteral("waveform_feature_rows"))
         ? unsignedFromJson(counts.value(QStringLiteral("waveform_feature_rows")))

@@ -260,7 +260,7 @@ QString fixedStatusFloat(double value, int decimals, int width)
 QString remoteWaveformStatusText(bool english, int sampleCount)
 {
     return QStringLiteral("%1 %2")
-        .arg(english ? QStringLiteral("Remote pts:") : QStringLiteral("远程点:"),
+        .arg(english ? QStringLiteral("Points:") : QStringLiteral("采样点:"),
              fixedStatusField(QString::number(sampleCount), kRemoteStatusCountWidth));
 }
 
@@ -1590,6 +1590,7 @@ void TcpWavePanel::setupUi()
     hostRowLayout->addWidget(host_label_, 0, Qt::AlignVCenter | Qt::AlignRight);
 
     host_edit_ = new QLineEdit(this);
+    host_edit_->setObjectName(QStringLiteral("tcpWaveHostEdit"));
     host_edit_->setText("127.0.0.1");
     host_edit_->setFixedHeight(kTcpControlHeight);
     host_edit_->setMinimumWidth(90);
@@ -1606,6 +1607,7 @@ void TcpWavePanel::setupUi()
     portRowLayout->addWidget(port_label_, 0, Qt::AlignVCenter | Qt::AlignRight);
 
     port_edit_ = new QLineEdit(this);
+    port_edit_->setObjectName(QStringLiteral("tcpWavePortEdit"));
     port_edit_->setText(QStringLiteral("8888"));
     port_edit_->setValidator(new QIntValidator(1, 65535, port_edit_));
     port_edit_->setAlignment(Qt::AlignCenter);
@@ -1861,7 +1863,7 @@ void TcpWavePanel::setEnglish(bool english)
     is_english_ = english;
     if (panel_title_label_)
     {
-        panel_title_label_->setText(english ? "TCP Wave Monitor" : "TCP波形监视");
+        panel_title_label_->setText(english ? "Wave Monitor" : "波形监控");
         if (auto *titleLabel = dynamic_cast<WaveDisplayTitleLabel *>(panel_title_label_))
         {
             titleLabel->refreshFixedWidth();
@@ -1878,12 +1880,9 @@ void TcpWavePanel::setEnglish(bool english)
     }
     host_label_->setText(english ? "TCP Host:" : "TCP主机:");
     port_label_->setText(english ? "Port:" : "端口:");
-    connect_button_->setText(remote_sky_mode_
-        ? (remote_wave_tcp_connected_ ? (english ? "Disconnect Sky Wave" : "断开天空波形")
-                                      : (english ? "Connect Sky Wave" : "连接天空波形"))
-        : (socket_ && socket_->state() == QAbstractSocket::ConnectedState
-            ? (english ? "Disconnect" : "断开")
-            : (english ? "Connect" : "连接")));
+    connect_button_->setText(isConnected()
+        ? (english ? "Disconnect" : "断开")
+        : (english ? "Connect" : "连接"));
     wave1_group_->setTitle(QString());
     wave4_group_->setTitle(QString());
     peak_group_->setTitle(QString());
@@ -2290,6 +2289,22 @@ int TcpWavePanel::port() const
     return ok && value >= 1 && value <= 65535 ? value : 8888;
 }
 
+void TcpWavePanel::setConnectionEndpoint(const QString& host, int port)
+{
+    if (host_edit_)
+    {
+        const QSignalBlocker blocker(host_edit_);
+        const QString trimmedHost = host.trimmed();
+        host_edit_->setText(trimmedHost.isEmpty() ? QStringLiteral("127.0.0.1") : trimmedHost);
+    }
+    if (port_edit_)
+    {
+        const QSignalBlocker blocker(port_edit_);
+        const int boundedPort = port >= 1 && port <= 65535 ? port : 8888;
+        port_edit_->setText(QString::number(boundedPort));
+    }
+}
+
 bool TcpWavePanel::isConnected() const
 {
     if (ui_test_mode_)
@@ -2325,32 +2340,34 @@ void TcpWavePanel::toggleConnection()
 void TcpWavePanel::setRemoteSkyMode(bool enabled)
 {
     remote_sky_mode_ = enabled;
-    if (host_edit_) host_edit_->setEnabled(!enabled);
-    if (port_edit_) port_edit_->setEnabled(!enabled);
+    if (host_label_)
+    {
+        host_label_->setText(is_english_ ? "TCP Host:" : "TCP主机:");
+    }
+    if (port_label_)
+    {
+        port_label_->setText(is_english_ ? "Port:" : "端口:");
+    }
+    updateEndpointEditorState();
     if (enabled && socket_ && socket_->state() != QAbstractSocket::UnconnectedState)
     {
         requestGracefulDisconnect();
     }
     if (connect_button_)
     {
-        connect_button_->setText(enabled
-            ? (remote_wave_tcp_connected_ ? (is_english_ ? "Disconnect Sky Wave" : "断开天空波形")
-                                          : (is_english_ ? "Connect Sky Wave" : "连接天空波形"))
-                             : (isConnected() ? (is_english_ ? "Disconnect" : "断开")
-                             : (is_english_ ? "Connect" : "连接")));
+        connect_button_->setText(isConnected()
+            ? (is_english_ ? "Disconnect" : "断开")
+            : (is_english_ ? "Connect" : "连接"));
     }
     if (status_label_)
     {
-        status_label_->setVisible(enabled);
-        if (!enabled)
-        {
-            status_label_->clear();
-        }
+        status_label_->clear();
+        status_label_->setVisible(false);
     }
     if (enabled && !remote_wave_tcp_connected_)
     {
-        clearRemoteWaveformDisplay(is_english_ ? QStringLiteral("Sky Wave TCP is not connected")
-                                               : QStringLiteral("天空端波形 TCP 未连接"));
+        clearRemoteWaveformDisplay(is_english_ ? QStringLiteral("TCP wave is not connected")
+                                               : QStringLiteral("TCP波形未连接"));
     }
 }
 
@@ -2361,11 +2378,12 @@ void TcpWavePanel::setRemoteWaveTcpState(VaporView::DeviceState state)
     if (remote_sky_mode_ && connect_button_)
     {
         connect_button_->setText(remote_wave_tcp_connected_
-            ? (is_english_ ? "Disconnect Sky Wave" : "断开天空波形")
-            : (is_english_ ? "Connect Sky Wave" : "连接天空波形"));
+            ? (is_english_ ? "Disconnect" : "断开")
+            : (is_english_ ? "Connect" : "连接"));
     }
     if (remote_sky_mode_)
     {
+        updateEndpointEditorState();
         const bool hasRemoteDataStatus = !remote_waveform_status_text_.isEmpty() || !remote_feature_status_text_.isEmpty();
         if (remote_wave_tcp_connected_ && hasRemoteDataStatus)
         {
@@ -2377,14 +2395,14 @@ void TcpWavePanel::setRemoteWaveTcpState(VaporView::DeviceState state)
         }
         else
         {
-            setStatusText(QString(is_english_ ? "Remote Sky wave TCP: %1" : "天空端波形 TCP：%1")
-                              .arg(VaporView::deviceStateName(state)));
+            setStatusText(QString(is_english_ ? "TCP wave: %1" : "TCP波形：%1")
+                               .arg(VaporView::deviceStateName(state)));
         }
         if (!remote_wave_tcp_connected_ && wasConnected)
         {
             last_remote_feature_time_us_ = 0;
-            clearRemoteWaveformDisplay(is_english_ ? QStringLiteral("Sky Wave TCP disconnected")
-                                                   : QStringLiteral("天空端波形 TCP 已断开"));
+            clearRemoteWaveformDisplay(is_english_ ? QStringLiteral("TCP wave disconnected")
+                                                   : QStringLiteral("TCP波形已断开"));
         }
     }
 }
@@ -2409,7 +2427,7 @@ void TcpWavePanel::injectRemoteRawSignalFrame(quint64 timestampUs, const QVector
     }
     const QString sampleCountText = fixedStatusInteger(samples.size(), kRemoteStatusCountWidth);
     wave1_history_ = samples;
-    pending_wave1_info_text_ = QString(is_english_ ? "remote source: %1 samples" : "远程源：%1 点")
+    pending_wave1_info_text_ = QString(is_english_ ? "%1 samples" : "%1 点")
         .arg(sampleCountText);
     remote_waveform_status_text_ = remoteWaveformStatusText(is_english_, samples.size());
     updatePendingRemoteLiveStatus();
@@ -2430,7 +2448,11 @@ void TcpWavePanel::injectRemoteSecondHarmonicFrame(quint64 timestampUs, const QV
     ++frame_count_;
     updateFrameRateDisplay(QDateTime::currentMSecsSinceEpoch());
     const QString sampleCountText = fixedStatusInteger(samples.size(), kRemoteStatusCountWidth);
-    pending_wave1_info_text_ = is_english_ ? "Remote Sky source" : "天空端远程源";
+    if (!wave1_history_.isEmpty())
+    {
+        pending_wave1_info_text_ = QString(is_english_ ? "%1 samples" : "%1 点")
+            .arg(fixedStatusInteger(wave1_history_.size(), kRemoteStatusCountWidth));
+    }
     pending_wave4_info_text_ = QString(is_english_ ? "%1 samples" : "%1 点").arg(sampleCountText);
     remote_waveform_status_text_ = remoteWaveformStatusText(is_english_, samples.size());
     updatePendingRemoteLiveStatus();
@@ -2490,15 +2512,15 @@ void TcpWavePanel::applyRemotePeakSearchRange(quint32 startIndex, quint32 endInd
     saveRememberedInputState();
     updatePeakFilterButtonText();
     setStatusText(is_english_
-        ? QStringLiteral("Peak search range accepted by sky. Waiting for the next feature frame.")
-        : QStringLiteral("峰值搜索区间已下发到天空端，等待下一帧特征值。"));
+        ? QStringLiteral("Peak search range accepted. Waiting for the next feature frame.")
+        : QStringLiteral("峰值搜索区间已接受，等待下一帧特征值。"));
 }
 
 void TcpWavePanel::rejectRemotePeakSearchRange(const QString& reason)
 {
     setStatusText(is_english_
-        ? QStringLiteral("Sky rejected peak search range: %1").arg(reason)
-        : QStringLiteral("天空端拒绝峰值搜索区间：%1").arg(reason));
+        ? QStringLiteral("Peak search range rejected: %1").arg(reason)
+        : QStringLiteral("峰值搜索区间被拒绝：%1").arg(reason));
 }
 
 void TcpWavePanel::setUiTestMode(bool enabled)
@@ -2682,8 +2704,8 @@ void TcpWavePanel::onToggleConnectionClicked()
         publishTcpWaveLog(VaporView::LogLevel::Info,
                           connectRequested ? QStringLiteral("tcp_wave_remote_connection_requested")
                                            : QStringLiteral("tcp_wave_remote_disconnection_requested"),
-                          connectRequested ? QStringLiteral("已请求连接天空端波形 TCP。")
-                                           : QStringLiteral("已请求断开天空端波形 TCP。"),
+                          connectRequested ? QStringLiteral("已请求连接 TCP 波形。")
+                                           : QStringLiteral("已请求断开 TCP 波形。"),
                           {{QStringLiteral("execution_path"), QStringLiteral("remote_sky")},
                            {QStringLiteral("requested_connected"), connectRequested},
                            {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
@@ -2932,8 +2954,8 @@ void TcpWavePanel::onConfigurePeakFilterClicked()
             updatePeakFilterButtonText();
             emit remotePeakSearchRangeRequested(static_cast<quint32>(searchStart), static_cast<quint32>(searchEnd));
             setStatusText(is_english_
-                ? QStringLiteral("Remote Sky: peak search range sent to sky; waiting for ACK.")
-                : QStringLiteral("Remote Sky 模式：峰值搜索区间已发送到天空端，等待 ACK。"));
+                ? QStringLiteral("Peak search range sent; waiting for ACK.")
+                : QStringLiteral("峰值搜索区间已发送，等待 ACK。"));
         }
         else
         {
@@ -3069,6 +3091,12 @@ void TcpWavePanel::onSocketStateChanged()
         return;
     }
 
+    if (remote_sky_mode_)
+    {
+        updateEndpointEditorState();
+        return;
+    }
+
     switch (socket_->state())
     {
     case QAbstractSocket::HostLookupState:
@@ -3130,9 +3158,21 @@ void TcpWavePanel::onSocketError()
 
 void TcpWavePanel::setConnectedUiState(bool connected)
 {
+    if (remote_sky_mode_)
+    {
+        updateEndpointEditorState();
+        if (connect_button_)
+        {
+            connect_button_->setEnabled(true);
+            connect_button_->setText(remote_wave_tcp_connected_
+                ? (is_english_ ? "Disconnect" : "断开")
+                : (is_english_ ? "Connect" : "连接"));
+        }
+        return;
+    }
+
     const bool active = connected && socket_ && socket_->state() != QAbstractSocket::UnconnectedState;
-    host_edit_->setEnabled(!active);
-    port_edit_->setEnabled(!active);
+    updateEndpointEditorState();
     if (socket_ && socket_->state() == QAbstractSocket::ClosingState)
     {
         connect_button_->setText(is_english_ ? "Disconnecting..." : "正在断开...");
@@ -3144,6 +3184,25 @@ void TcpWavePanel::setConnectedUiState(bool connected)
     connect_button_->setText(active ? (is_english_ ? "Disconnect" : "断开") : (is_english_ ? "Connect" : "连接"));
 }
 
+void TcpWavePanel::updateEndpointEditorState()
+{
+    const bool localActive =
+        !remote_sky_mode_ &&
+        socket_ &&
+        socket_->state() != QAbstractSocket::UnconnectedState;
+    const bool endpointEditable = remote_sky_mode_
+        ? !remote_wave_tcp_connected_
+        : !localActive;
+    if (host_edit_)
+    {
+        host_edit_->setEnabled(endpointEditable);
+    }
+    if (port_edit_)
+    {
+        port_edit_->setEnabled(endpointEditable);
+    }
+}
+
 void TcpWavePanel::setStatusText(const QString& text)
 {
     if (status_label_ && status_label_->text() != text)
@@ -3153,7 +3212,7 @@ void TcpWavePanel::setStatusText(const QString& text)
     }
     if (status_label_)
     {
-        status_label_->setVisible(remote_sky_mode_);
+        status_label_->setVisible(false);
     }
 }
 

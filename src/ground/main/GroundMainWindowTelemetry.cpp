@@ -177,7 +177,9 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
         status.raw_pressure_record_count +
         status.raw_temperature_humidity_record_count +
         status.raw_distance_record_count +
-        status.raw_waveform_record_count;
+        status.raw_waveform_record_count +
+        status.raw_laser_temperature_controller_record_count +
+        status.raw_system_temperature_controller_record_count;
     if (!status.session_name.isEmpty() ||
         status.telemetry_record_count > 0 ||
         status.waveform_feature_record_count > 0 ||
@@ -245,8 +247,8 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
     if (state_->remote_wave_stream_auto_start_ &&
         !state_->remote_wave_stream_requested_ &&
         !state_->remote_wave_stream_enable_pending_ &&
-        state_->remote_sky_controller_->deviceState(VaporView::SkyDeviceId::WaveTcp) == VaporView::DeviceState::Connected &&
-        state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen())
+        state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen() &&
+        state_->remote_sky_controller_->deviceState(VaporView::SkyDeviceId::WaveTcp) == VaporView::DeviceState::Connected)
     {
         state_->remote_wave_stream_enable_pending_ = true;
         state_->remote_sky_controller_->sendCommand(VaporView::CommandId::EnableWaveformStreaming);
@@ -336,6 +338,7 @@ void MainWindow::onRemoteCommandAckReceived(const VaporView::CommandAck& ack)
         !(ok && noError))
     {
         state_->remote_sky_config_loading_ = false;
+        clearPendingRemoteWaveTcpConnection();
         setRemoteSkyConfigStatus(state_->is_english_
             ? QStringLiteral("Remote Sky config read was rejected: %1").arg(errorText)
             : QStringLiteral("读取天空端配置被拒绝：%1").arg(errorText),
@@ -354,6 +357,7 @@ void MainWindow::onRemoteCommandAckReceived(const VaporView::CommandAck& ack)
         else
         {
             state_->remote_sky_config_applying_ = false;
+            clearPendingRemoteWaveTcpConnection();
             state_->remote_sky_config_dirty_ = true;
             setRemoteSkyConfigStatus(state_->is_english_
                 ? QStringLiteral("Remote Sky config apply was rejected: %1").arg(errorText)
@@ -372,6 +376,30 @@ void MainWindow::onRemoteCommandAckReceived(const VaporView::CommandAck& ack)
                                   : QStringLiteral("天空端配置保存失败：%1").arg(errorText)),
             !(ok && noError));
         updateRemoteSkyConfigControlsState();
+    }
+
+    if (ack.command_id == VaporView::CommandId::AutoDetectSerialPorts &&
+        ack.command_seq == state_->remote_serial_detection_seq_ &&
+        !(ok && noError))
+    {
+        state_->port_detection_in_progress_ = false;
+        state_->remote_serial_detection_seq_ = 0;
+        setRemoteSkyConfigStatus(state_->is_english_
+            ? QStringLiteral("Remote serial-port detection was rejected: %1").arg(errorText)
+            : QStringLiteral("远程串口自动识别被拒绝：%1").arg(errorText), true);
+        updateConnectionStatus(state_->is_connected_);
+    }
+    else if (ack.command_id == VaporView::CommandId::CancelSerialPortDetection &&
+             ack.command_seq == state_->remote_serial_detection_cancel_seq_ &&
+             !(ok && noError))
+    {
+        state_->remote_serial_detection_cancel_seq_ = 0;
+        publishGroundLog(VaporView::LogLevel::Warning,
+                         QStringLiteral("device.connection"),
+                         QStringLiteral("remote_serial_port_detection_cancel_failed"),
+                         QStringLiteral("天空端取消串口自动识别失败。"),
+                         {{QStringLiteral("error_code"), commandErrorCodeIdentifier(ack.error_code)},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("attention")} });
     }
 
     if (ack.command_id == VaporView::CommandId::EnableWaveformStreaming)

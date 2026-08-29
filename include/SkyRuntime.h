@@ -12,7 +12,9 @@
 #include <QJsonObject>
 #include <QObject>
 #include <QTimer>
+#include <atomic>
 #include <memory>
+#include <thread>
 
 namespace VaporView
 {
@@ -100,6 +102,9 @@ private:
     void sendAck(const CommandAck& ack);
     void sendSkyConfig();
     void sendSkyConfigApplyResult(const QJsonObject& result);
+    bool startSerialPortDetection();
+    bool cancelSerialPortDetection();
+    void sendSerialPortDetectionResult(const QJsonObject& result);
     void sendDownsampledWaveformFrame(bool honorStreamingEnabled);
     void publishRuntimeLog(LogLevel level,
                            const QString& category,
@@ -129,6 +134,9 @@ private:
     quint64 started_time_us_ = 0;
     quint64 last_sent_feature_time_us_ = 0;
     QVector<float> peak_trend_;
+    std::atomic_bool serial_port_detection_in_progress_{false};
+    std::atomic_bool serial_port_detection_cancel_requested_{false};
+    std::thread serial_port_detection_thread_;
 };
 
 }  // namespace VaporView

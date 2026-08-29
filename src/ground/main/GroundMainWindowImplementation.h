@@ -2,6 +2,7 @@
 
 #include "ground/main/MainWindow.h"
 #include "ground/main/GroundMainWindowState.h"
+#include "ground/main/RecordingStatusView.h"
 #include "ground/main/UiLogModel.h"
 #include "shared/config/SettingsWriteBarrier.h"
 #include "shared/config/ApplicationConfig.h"
@@ -169,6 +170,7 @@ using VaporView::SingleLevelPopupMenuRow;
 using VaporView::SingleLevelPopupTextAlignment;
 using VaporView::Ground::Main::kMaxPendingUiLogRecords;
 using VaporView::Ground::Main::kUiLogBatchIntervalMs;
+using VaporView::Ground::Main::RecordingStatusView;
 using VaporView::Ground::Widgets::Ai8TemperatureControllerPanel;
 using VaporView::Ground::Widgets::EpsilonPanel;
 using VaporView::Ground::Widgets::DevicePanelBindings;

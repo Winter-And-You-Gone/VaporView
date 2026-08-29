@@ -66,10 +66,11 @@ int main(int argc, char *argv[])
         }
     }
     require(panel.findChild<QFrame *>(QStringLiteral("epsilonStatusCard")) != nullptr &&
+                panel.findChild<QFrame *>(QStringLiteral("epsilonLivePacketRateCard")) != nullptr &&
                 panel.findChild<QFrame *>(QStringLiteral("epsilonOutputCard")) != nullptr &&
                 panel.findChild<QFrame *>(QStringLiteral("epsilonDeviceSettingsCard")) != nullptr &&
-                sectionCardCount == 3,
-            "panel exposes exactly three EPSILON business section cards");
+                sectionCardCount == 4,
+            "panel exposes the summary, live-rate, output, and device-settings cards");
     require(panel.findChild<QWidget *>(QStringLiteral("epsilonActionsContainer")) != nullptr,
             "panel keeps a separate primary action container");
     auto *outputCard = panel.findChild<QFrame *>(QStringLiteral("epsilonOutputCard"));
@@ -280,6 +281,84 @@ int main(int argc, char *argv[])
     const std::map<uint8_t, int> defaults = defaultEpsilonPacketRates();
     panel.setPacketRates(defaults);
     require(panel.packetRates() == defaults, "semantic packet-rate setter and getter preserve all 11 values");
+    VaporView::EpsilonData liveData;
+    liveData.valid = true;
+    liveData.imu_packet_rate_hz = 250.0;
+    liveData.ahrs_packet_rate_hz = 50.0;
+    liveData.insgps_packet_rate_hz = 100.0;
+    liveData.sys_state_packet_rate_hz = 100.0;
+    liveData.raw_gnss_packet_rate_hz = 10.0;
+    liveData.satellite_packet_rate_hz = 1.0;
+    liveData.geodetic_packet_rate_hz = 10.0;
+    liveData.ecef_packet_rate_hz = 10.0;
+    liveData.euler_orien_packet_rate_hz = 50.0;
+    liveData.quat_orien_packet_rate_hz = 50.0;
+    panel.setLivePacketRates(liveData);
+    auto *liveRateCard = panel.findChild<QFrame *>(QStringLiteral("epsilonLivePacketRateCard"));
+    auto *liveRateTitle = panel.findChild<QLabel *>(QStringLiteral("epsilonLivePacketRateCardTitle"));
+    require(liveRateCard != nullptr && liveRateTitle != nullptr &&
+                liveRateTitle->text() == QStringLiteral("实时数据包频率"),
+            "live packet-rate card appears below the configuration summary");
+    auto *summaryCard = panel.findChild<QFrame *>(QStringLiteral("epsilonStatusCard"));
+    const QRect summaryRect(summaryCard->mapTo(&panel, QPoint(0, 0)), summaryCard->size());
+    const QRect liveRateRect(liveRateCard->mapTo(&panel, QPoint(0, 0)), liveRateCard->size());
+    require(liveRateRect.top() > summaryRect.bottom(),
+            "live packet-rate card is placed below the summary card");
+    int liveRateValueCount = 0;
+    QSet<int> liveRateColumns;
+    std::map<std::pair<int, int>, QRect> liveRateCells;
+    std::map<int, int> liveRateColumnLefts;
+    for (const auto &option : options)
+    {
+        const QString packetId = QStringLiteral("%1").arg(
+            option.packet_id, 2, 16, QLatin1Char('0')).toUpper();
+        auto *field = panel.findChild<QWidget *>(
+            QStringLiteral("epsilonLivePacketRateField_%1").arg(packetId));
+        auto *label = panel.findChild<QLabel *>(
+            QStringLiteral("epsilonLivePacketRateLabel_%1").arg(packetId));
+        auto *value = panel.findChild<QLabel *>(
+            QStringLiteral("epsilonLivePacketRateValue_%1").arg(packetId));
+        require(field != nullptr && label != nullptr && value != nullptr && !label->text().isEmpty() &&
+                    !value->text().isEmpty(),
+                "live packet-rate card exposes every configured packet");
+        const int row = field->property("epsilonLivePacketGridRow").toInt();
+        const int column = field->property("epsilonLivePacketGridColumn").toInt();
+        require(row >= 0 && column >= 0 && column <= 3 &&
+                    label->property("epsilonLivePacketGridRow").toInt() == row &&
+                    label->property("epsilonLivePacketGridColumn").toInt() == column &&
+                    value->property("epsilonLivePacketGridRow").toInt() == row &&
+                    value->property("epsilonLivePacketGridColumn").toInt() == column,
+                "live packet-rate fields expose their four-column grid position");
+        const QRect fieldRect(field->mapTo(liveRateCard, QPoint(0, 0)), field->size());
+        liveRateColumns.insert(column);
+        const auto [columnLeft, inserted] = liveRateColumnLefts.emplace(column, fieldRect.left());
+        if (!inserted)
+        {
+            require(std::abs(columnLeft->second - fieldRect.left()) <= 2,
+                    "live packet-rate fields align within their visual column");
+        }
+        require(liveRateCells.emplace(std::make_pair(row, column), fieldRect).second,
+                "live packet-rate fields occupy unique cells");
+        ++liveRateValueCount;
+    }
+    require(liveRateValueCount == 11, "live packet-rate card exposes all 11 packet rates");
+    require(liveRateColumns == QSet<int>{0, 1, 2, 3},
+            "live packet-rate card lays fields out across four columns");
+    for (const auto& [cell, rect] : liveRateCells)
+    {
+        if (cell.first == 0)
+        {
+            continue;
+        }
+        const auto previous = liveRateCells.find(std::make_pair(cell.first - 1, cell.second));
+        require(previous == liveRateCells.end() || rect.top() > previous->second.bottom(),
+                "live packet-rate fields wrap downward within each column");
+    }
+    require(panel.findChild<QLabel *>(QStringLiteral("epsilonLivePacketRateValue_40"))->text() ==
+                QStringLiteral("250.0 Hz") &&
+                panel.findChild<QLabel *>(QStringLiteral("epsilonLivePacketRateValue_53"))->text().contains(
+                    QStringLiteral("未收到")),
+            "live packet-rate card shows measured rates and explicitly marks missing packets");
     auto *profileSummary = panel.findChild<QLabel *>(QStringLiteral("epsilonProfileSummaryValue"));
     require(profileSummary != nullptr && profileSummary->text() == QStringLiteral("逐项设置"),
             "configuration summary reflects the packet-rate editor state");
@@ -293,7 +372,6 @@ int main(int argc, char *argv[])
     ActionProbe save{"epsilonSaveButton"};
     ActionProbe rtcm{"epsilonRtcmPortButton"};
     ActionProbe reconfigure{"epsilonReconfigureButton"};
-    ActionProbe rtk{"epsilonRtkConfigButton"};
     QObject::connect(&panel, &EpsilonConfigPanel::recommendedProfileRequested,
                      &panel, [&recommended]() { recommended.emitted = true; });
     QObject::connect(&panel, &EpsilonConfigPanel::saveRequested,
@@ -302,10 +380,8 @@ int main(int argc, char *argv[])
                      &panel, [&rtcm]() { rtcm.emitted = true; });
     QObject::connect(&panel, &EpsilonConfigPanel::reconfigureRequested,
                      &panel, [&reconfigure]() { reconfigure.emitted = true; });
-    QObject::connect(&panel, &EpsilonConfigPanel::rtkConfigRequested,
-                     &panel, [&rtk]() { rtk.emitted = true; });
 
-    for (ActionProbe *probe : {&recommended, &save, &rtcm, &reconfigure, &rtk})
+    for (ActionProbe *probe : {&recommended, &save, &rtcm, &reconfigure})
     {
         auto *button = panel.findChild<QPushButton *>(QString::fromLatin1(probe->objectName));
         require(button != nullptr, "EPSILON operation button exists");
@@ -316,6 +392,39 @@ int main(int argc, char *argv[])
         button->click();
         require(probe->emitted, "EPSILON operation button emits its semantic request");
     }
+    require(panel.findChild<QPushButton *>(QStringLiteral("epsilonRtkConfigButton")) == nullptr &&
+                panel.findChild<QLabel *>(QStringLiteral("epsilonRtkSettingName")) == nullptr &&
+                panel.findChild<QLabel *>(QStringLiteral("epsilonRtkSettingDescription")) == nullptr,
+            "EPSILON device settings route differential positioning through the navigation bar");
+    auto *reconfigureName = panel.findChild<QLabel *>(QStringLiteral("epsilonReconfigureSettingName"));
+    auto *reconfigureDescription = panel.findChild<QLabel *>(QStringLiteral("epsilonReconfigureSettingDescription"));
+    require(reconfigureName != nullptr && reconfigureName->text() == QStringLiteral("应用已保存配置") &&
+                reconfigureDescription != nullptr &&
+                reconfigureDescription->text().contains(QStringLiteral("本机已保存")) &&
+                reconfigureDescription->text().contains(QStringLiteral("不会保存")),
+            "EPSILON saved-configuration action explains its local source and unsaved-change behavior");
+    auto *deviceSettingsCard = panel.findChild<QFrame *>(QStringLiteral("epsilonDeviceSettingsCard"));
+    auto *rtcmDescription = panel.findChild<QLabel *>(QStringLiteral("epsilonRtcmSettingDescription"));
+    auto *reconfigureButton = panel.findChild<QPushButton *>(QStringLiteral("epsilonReconfigureButton"));
+    require(deviceSettingsCard != nullptr && rtcmDescription != nullptr && reconfigureButton != nullptr,
+            "EPSILON device settings exposes labels and actions for geometry checks");
+    const QRect rtcmDescriptionRect(rtcmDescription->mapTo(deviceSettingsCard, QPoint(0, 0)),
+                                    rtcmDescription->size());
+    const QRect rtcmDevicePortRect(rtcmDevicePortCombo->mapTo(deviceSettingsCard, QPoint(0, 0)),
+                                   rtcmDevicePortCombo->size());
+    const QRect reconfigureDescriptionRect(
+        reconfigureDescription->mapTo(deviceSettingsCard, QPoint(0, 0)),
+        reconfigureDescription->size());
+    const QRect reconfigureButtonRect(reconfigureButton->mapTo(deviceSettingsCard, QPoint(0, 0)),
+                                      reconfigureButton->size());
+    const int reconfigureDescriptionRequiredHeight =
+        reconfigureDescription->heightForWidth(reconfigureDescription->width());
+    require(reconfigureDescriptionRect.width() > rtcmDescriptionRect.width() + 120 &&
+                reconfigureDescriptionRect.right() >= rtcmDevicePortRect.right() - 2 &&
+                reconfigureDescriptionRect.right() < reconfigureButtonRect.left() &&
+                (reconfigureDescriptionRequiredHeight <= 0 ||
+                 reconfigureDescriptionRequiredHeight <= reconfigureDescriptionRect.height()),
+            "EPSILON saved-configuration description uses the empty selector column without clipping wrapped text");
     auto *rtcmButton = panel.findChild<QPushButton *>(QStringLiteral("epsilonRtcmPortButton"));
     require(rtcmButton != nullptr &&
                 !rtcmButton->toolTip().contains(QStringLiteral("port 2"), Qt::CaseInsensitive) &&
@@ -374,6 +483,10 @@ int main(int argc, char *argv[])
                 panel.findChild<QLabel *>(QStringLiteral("epsilonPacketGroupGnssPosition"))->text() ==
                     QStringLiteral("GNSS and Position"),
             "EPSILON packet group titles follow the active language");
+    require(liveRateTitle->text() == QStringLiteral("Live Packet Rates") &&
+                panel.findChild<QLabel *>(QStringLiteral("epsilonLivePacketRateValue_53"))->text().contains(
+                    QStringLiteral("no packets")),
+            "live packet-rate card follows the active language");
     require(rtcmButton->toolTip().contains(QStringLiteral("communication port")) &&
                 !rtcmButton->toolTip().contains(QStringLiteral("port 2"), Qt::CaseInsensitive),
             "English RTCM action help keeps the selectable device-port wording");

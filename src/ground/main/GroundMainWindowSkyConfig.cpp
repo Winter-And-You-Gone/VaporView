@@ -317,6 +317,7 @@ void MainWindow::enterLocalDeviceConfigMode()
             installLocalSerialPortComboBehavior(combo);
         }
     }
+    loadLocalDeviceEnabledState();
 }
 
 void MainWindow::enterRemoteSkyDeviceConfigMode()
@@ -325,7 +326,8 @@ void MainWindow::enterRemoteSkyDeviceConfigMode()
                              state_->device_config_.ptb_port_combo,
                              state_->device_config_.hmp_port_combo,
                              state_->device_config_.lidar_port_combo,
-                             state_->device_config_.temperature_port_combo})
+                             state_->device_config_.temperature_port_combo,
+                             state_->device_config_.ai8_temperature_port_combo})
     {
         if (combo)
         {
@@ -406,11 +408,11 @@ void MainWindow::setRemoteSkyConfigUi(const VaporView::SkyConfig& config)
     setSerial(state_->device_config_.epsilon_enabled_check,
               state_->device_config_.epsilon_port_combo,
               state_->device_config_.epsilon_baud_combo,
-              state_->device_config_.epsilon_rate_combo,
+              nullptr,
               config.epsilon.enabled,
               config.epsilon.port,
               config.epsilon.baud_rate,
-              config.epsilon.frequency_hz);
+              0.0);
     setSerial(state_->device_config_.ptb_enabled_check,
               state_->device_config_.ptb_port_combo,
               state_->device_config_.ptb_baud_combo,
@@ -467,7 +469,6 @@ void MainWindow::setRemoteSkyConfigUi(const VaporView::SkyConfig& config)
                  config.hmp.source.isEmpty() ? QStringLiteral("hmp3") : config.hmp.source);
 
     const QList<QPair<QSpinBox *, int>> intSpins = {
-        {state_->device_config_.remote_sky_rd105_slave_spin, config.temperature_controller.slave_address},
         {state_->device_config_.remote_sky_wave_port_spin, config.wave_tcp.port},
         {state_->device_config_.remote_sky_wave_downsample_spin, config.wave_tcp.downsample_ratio}
     };
@@ -488,6 +489,11 @@ void MainWindow::setRemoteSkyConfigUi(const VaporView::SkyConfig& config)
     {
         const QSignalBlocker blocker(state_->device_config_.remote_sky_wave_host_edit);
         state_->device_config_.remote_sky_wave_host_edit->setText(config.wave_tcp.host);
+    }
+    if (isRemoteSkyMode() && state_->tcp_wave_panel_)
+    {
+        state_->tcp_wave_panel_->setConnectionEndpoint(config.wave_tcp.host,
+                                                       config.wave_tcp.port);
     }
     const QList<QPair<QDoubleSpinBox *, double>> doubleSpins = {
         {state_->device_config_.remote_sky_telemetry_basic_spin, config.telemetry.basic_rate_hz},
@@ -560,11 +566,13 @@ VaporView::SkyConfig MainWindow::remoteSkyConfigFromDeviceConfigUi(QString *erro
         target.baud_rate = baud ? baud->currentText().trimmed().toInt() : target.baud_rate;
         target.frequency_hz = rate ? rate->currentText().trimmed().toDouble() : target.frequency_hz;
     };
-    readSerial(state_->device_config_.epsilon_enabled_check,
-               state_->device_config_.epsilon_port_combo,
-               state_->device_config_.epsilon_baud_combo,
-               state_->device_config_.epsilon_rate_combo,
-               config.epsilon);
+    config.epsilon.enabled = state_->device_config_.epsilon_enabled_check
+        ? state_->device_config_.epsilon_enabled_check->isChecked()
+        : config.epsilon.enabled;
+    config.epsilon.port = remoteSkySerialPortComboValue(state_->device_config_.epsilon_port_combo);
+    config.epsilon.baud_rate = state_->device_config_.epsilon_baud_combo
+        ? state_->device_config_.epsilon_baud_combo->currentText().trimmed().toInt()
+        : config.epsilon.baud_rate;
     readSerial(state_->device_config_.ptb_enabled_check,
                state_->device_config_.ptb_port_combo,
                state_->device_config_.ptb_baud_combo,
@@ -620,11 +628,6 @@ VaporView::SkyConfig MainWindow::remoteSkyConfigFromDeviceConfigUi(QString *erro
     {
         config.ai8_temperature_controller.slave_address =
             state_->ai8_temperature_controller_panel_->currentPageData().global.address;
-    }
-    if (state_->device_config_.remote_sky_rd105_slave_spin)
-    {
-        config.temperature_controller.slave_address =
-            state_->device_config_.remote_sky_rd105_slave_spin->value();
     }
     if (state_->device_config_.remote_sky_wave_enabled_check) config.wave_tcp.enabled = state_->device_config_.remote_sky_wave_enabled_check->isChecked();
     if (state_->device_config_.remote_sky_wave_host_edit) config.wave_tcp.host = state_->device_config_.remote_sky_wave_host_edit->text().trimmed();
@@ -747,9 +750,34 @@ void MainWindow::setRemoteSkyConfigStatus(const QString& text, bool error)
     }
     state_->device_config_.remote_sky_config_status_lbl->setText(text);
     state_->device_config_.remote_sky_config_status_lbl->setToolTip(text);
+    const bool linkOpen = isUiTestMode() ||
+        (state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen());
+    QString status = QStringLiteral("normal");
+    if (error)
+    {
+        status = QStringLiteral("error");
+    }
+    else if (state_->remote_sky_config_loading_ ||
+             state_->remote_sky_config_applying_ ||
+             state_->remote_sky_config_saving_)
+    {
+        status = QStringLiteral("pending");
+    }
+    else if (isRemoteSkyMode() && !linkOpen)
+    {
+        status = QStringLiteral("disabled");
+    }
+    else if (state_->remote_sky_config_dirty_)
+    {
+        status = QStringLiteral("dirty");
+    }
+    else if (state_->remote_sky_config_loaded_)
+    {
+        status = QStringLiteral("success");
+    }
     state_->device_config_.remote_sky_config_status_lbl->setProperty(
         "status",
-        error ? QStringLiteral("error") : QStringLiteral("normal"));
+        status);
     state_->device_config_.remote_sky_config_status_lbl->style()->unpolish(
         state_->device_config_.remote_sky_config_status_lbl);
     state_->device_config_.remote_sky_config_status_lbl->style()->polish(
@@ -765,11 +793,13 @@ void MainWindow::updateRemoteSkyConfigControlsState()
     const bool pending = state_->remote_sky_config_loading_ ||
                          state_->remote_sky_config_applying_ ||
                          state_->remote_sky_config_saving_;
-    const bool fieldsEnabled = hasConfig && !pending;
+    const bool fieldsEnabled = hasConfig && linkOpen && !pending;
+    const bool localInputsEnabled = !remote && (isUiTestMode() || !state_->is_connected_) &&
+        !state_->connection_attempt_in_progress_ && !state_->port_detection_in_progress_ &&
+        !state_->epsilon_reconfigure_in_progress_;
     const QList<QWidget *> targetWidgets = {
         state_->device_config_.epsilon_port_combo,
         state_->device_config_.epsilon_baud_combo,
-        state_->device_config_.epsilon_rate_combo,
         state_->device_config_.ptb_port_combo,
         state_->device_config_.ptb_baud_combo,
         state_->device_config_.ptb_rate_combo,
@@ -798,15 +828,25 @@ void MainWindow::updateRemoteSkyConfigControlsState()
             }
         }
     }
+    if (state_->device_config_.epsilon_rate_combo)
+    {
+        state_->device_config_.epsilon_rate_combo->setEnabled(false);
+    }
 
-    for (QWidget *widget : {static_cast<QWidget *>(state_->device_config_.epsilon_enabled_check),
-                            static_cast<QWidget *>(state_->device_config_.ptb_enabled_check),
-                            static_cast<QWidget *>(state_->device_config_.hmp_enabled_check),
-                            static_cast<QWidget *>(state_->device_config_.lidar_enabled_check),
-                            static_cast<QWidget *>(state_->device_config_.temperature_enabled_check),
-                            static_cast<QWidget *>(state_->device_config_.ai8_temperature_enabled_check),
-                            static_cast<QWidget *>(state_->device_config_.remote_sky_rd105_slave_spin),
-                            static_cast<QWidget *>(state_->device_config_.remote_sky_wave_enabled_check),
+    for (QCheckBox *check : {state_->device_config_.epsilon_enabled_check,
+                             state_->device_config_.ptb_enabled_check,
+                             state_->device_config_.hmp_enabled_check,
+                             state_->device_config_.lidar_enabled_check,
+                             state_->device_config_.temperature_enabled_check,
+                             state_->device_config_.ai8_temperature_enabled_check})
+    {
+        if (check)
+        {
+            check->setEnabled(remote ? fieldsEnabled : localInputsEnabled);
+        }
+    }
+
+    for (QWidget *widget : {static_cast<QWidget *>(state_->device_config_.remote_sky_wave_enabled_check),
                             static_cast<QWidget *>(state_->device_config_.remote_sky_wave_host_edit),
                             static_cast<QWidget *>(state_->device_config_.remote_sky_wave_port_spin),
                             static_cast<QWidget *>(state_->device_config_.remote_sky_wave_downsample_spin),
@@ -843,10 +883,10 @@ void MainWindow::updateRemoteSkyConfigControlsState()
     {
         setRemoteSkyConfigStatus(linkOpen
             ? (state_->is_english_
-                ? QStringLiteral("Remote Sky config is not loaded. Click Read Sky Config.")
-                : QStringLiteral("尚未读取天空端配置，请点击“读取天空端配置”。"))
+                ? QStringLiteral("Sky config is not loaded. Use Refresh to read it.")
+                : QStringLiteral("尚未读取天空端配置，请使用“刷新”读取。"))
             : (state_->is_english_
-                ? QStringLiteral("Connect the sky-ground telemetry link to read Remote Sky config.")
+                ? QStringLiteral("Connect the sky-ground telemetry link before refreshing Sky config.")
                 : QStringLiteral("请先连接天地数传链路，再读取天空端配置。")),
             false);
     }
@@ -867,9 +907,12 @@ void MainWindow::requestRemoteSkyConfigIfAvailable(bool force)
         config.lidar.port = QStringLiteral("UI-TEST-LIDAR");
         config.temperature_controller.enabled = true;
         config.temperature_controller.port = QStringLiteral("UI-TEST-RD105");
+        config.ai8_temperature_controller.enabled = true;
+        config.ai8_temperature_controller.port = QStringLiteral("UI-TEST-AI8");
         state_->remote_sky_config_ = config;
         state_->remote_sky_baseline_config_ = config;
         state_->remote_sky_config_loaded_ = true;
+        state_->remote_sky_config_loaded_generation_ = 0;
         state_->remote_sky_config_dirty_ = false;
         state_->remote_sky_config_loading_ = false;
         setRemoteSkyConfigUi(config);
@@ -887,18 +930,31 @@ void MainWindow::requestRemoteSkyConfigIfAvailable(bool force)
                 ? QStringLiteral("Telemetry link is disconnected. Showing last loaded Remote Sky config.")
                 : QStringLiteral("天地数传已断开，当前显示上次读取到的天空端配置。"))
             : (state_->is_english_
-                ? QStringLiteral("Connect the sky-ground telemetry link to read Remote Sky config.")
+                ? QStringLiteral("Connect the sky-ground telemetry link before refreshing Sky config.")
                 : QStringLiteral("请先连接天地数传链路，再读取天空端配置。")),
             false);
         updateRemoteSkyConfigControlsState();
         return;
     }
-    if (state_->remote_sky_config_loading_ && !force)
+
+    const quint64 linkGeneration = state_->remote_sky_controller_->linkGeneration();
+    const bool pending = state_->remote_sky_config_loading_ ||
+                         state_->remote_sky_config_applying_ ||
+                         state_->remote_sky_config_saving_;
+    if (pending)
     {
+        updateRemoteSkyConfigControlsState();
+        return;
+    }
+    if (!force &&
+        state_->remote_sky_config_loaded_ &&
+        state_->remote_sky_config_loaded_generation_ == linkGeneration)
+    {
+        updateRemoteSkyConfigControlsState();
         return;
     }
     state_->remote_sky_config_loading_ = true;
-    state_->remote_sky_config_read_generation_ = state_->remote_sky_controller_->linkGeneration();
+    state_->remote_sky_config_read_generation_ = linkGeneration;
     state_->remote_sky_config_read_seq_ = state_->remote_sky_controller_->requestSkyConfig();
     if (state_->remote_sky_config_read_seq_ == 0)
     {
@@ -1023,6 +1079,7 @@ void MainWindow::handleRemoteSkyConfigReceived(const QJsonObject& object, bool b
          state_->remote_sky_controller_->linkGeneration() != state_->remote_sky_config_read_generation_))
     {
         state_->remote_sky_config_loading_ = false;
+        clearPendingRemoteWaveTcpConnection();
         updateRemoteSkyConfigControlsState();
         return;
     }
@@ -1045,18 +1102,36 @@ void MainWindow::handleRemoteSkyConfigReceived(const QJsonObject& object, bool b
             state_->device_config_.remote_sky_raw_mode_btn->setChecked(true);
         }
         setRemoteSkyConfigStatus(QStringLiteral("Invalid config from sky: %1").arg(error), true);
+        clearPendingRemoteWaveTcpConnection();
         updateRemoteSkyConfigControlsState();
         return;
     }
     state_->remote_sky_config_ = config;
     state_->remote_sky_baseline_config_ = config;
     state_->remote_sky_config_loaded_ = true;
+    state_->remote_sky_config_loaded_generation_ = bypassGenerationGuard || isUiTestMode()
+        ? 0
+        : state_->remote_sky_config_read_generation_;
     state_->remote_sky_config_dirty_ = false;
     setRemoteSkyConfigUi(config);
     setRemoteSkyConfigStatus(state_->is_english_
         ? QStringLiteral("Remote Sky config read from sky.")
         : QStringLiteral("已读取天空端配置。"));
     updateRemoteSkyConfigControlsState();
+    if (state_->remote_serial_detection_pending_)
+    {
+        state_->remote_serial_detection_pending_ = false;
+        startRemoteSerialPortDetection();
+    }
+    if (state_->remote_wave_connect_after_config_read_)
+    {
+        const QString pendingHost = state_->remote_wave_pending_host_;
+        const int pendingPort = state_->remote_wave_pending_port_;
+        state_->remote_wave_connect_after_config_read_ = false;
+        state_->remote_wave_pending_host_.clear();
+        state_->remote_wave_pending_port_ = 0;
+        requestRemoteWaveTcpConnection(true, pendingHost, pendingPort);
+    }
 }
 
 void MainWindow::onRemoteSkyConfigApplyResultReceived(const QJsonObject& result)
@@ -1073,16 +1148,22 @@ void MainWindow::handleRemoteSkyConfigApplyResultReceived(const QJsonObject& res
          state_->remote_sky_controller_->linkGeneration() != state_->remote_sky_config_apply_generation_))
     {
         state_->remote_sky_config_applying_ = false;
+        clearPendingRemoteWaveTcpConnection();
         updateRemoteSkyConfigControlsState();
         return;
     }
     state_->remote_sky_config_applying_ = false;
     const bool success = result.value(QStringLiteral("success")).toBool(false);
     const QString error = result.value(QStringLiteral("error")).toString();
+    const bool connectWaveAfterApply = state_->remote_wave_connect_after_config_apply_;
+    state_->remote_wave_connect_after_config_apply_ = false;
     if (success)
     {
         state_->remote_sky_baseline_config_ = state_->remote_sky_config_;
         state_->remote_sky_config_loaded_ = true;
+        state_->remote_sky_config_loaded_generation_ = bypassGenerationGuard || isUiTestMode()
+            ? 0
+            : state_->remote_sky_config_apply_generation_;
         state_->remote_sky_config_dirty_ = false;
         setRemoteSkyConfigStatus(state_->is_english_
             ? QStringLiteral("Sky accepted the Remote Sky config.")
@@ -1090,6 +1171,7 @@ void MainWindow::handleRemoteSkyConfigApplyResultReceived(const QJsonObject& res
     }
     else
     {
+        clearPendingRemoteWaveTcpConnection();
         state_->remote_sky_config_dirty_ = true;
         setRemoteSkyConfigStatus(error.isEmpty()
             ? (state_->is_english_ ? QStringLiteral("Sky failed to apply the config.") : QStringLiteral("天空端应用配置失败。"))
@@ -1103,6 +1185,10 @@ void MainWindow::handleRemoteSkyConfigApplyResultReceived(const QJsonObject& res
             QJsonDocument(result).toJson(QJsonDocument::Indented));
     }
     updateRemoteSkyConfigControlsState();
+    if (success && connectWaveAfterApply)
+    {
+        requestRemoteWaveTcpConnection(true);
+    }
 }
 
 #ifdef VAPORVIEW_MAIN_WINDOW_TESTING

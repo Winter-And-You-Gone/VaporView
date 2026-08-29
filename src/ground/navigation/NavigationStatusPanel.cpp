@@ -68,6 +68,94 @@ bool usableAttitude(const NavigationStatusSnapshot& snapshot)
         std::isfinite(snapshot.headingDeg);
 }
 
+bool isUsableGnssFixCode(int code)
+{
+    return code >= 2 && code <= 9;
+}
+
+QString positioningStatusFromGnssFixCode(int code, bool english)
+{
+    switch (code)
+    {
+    case 0:
+        return english ? QStringLiteral("No GPS") : QStringLiteral("无GPS");
+    case 1:
+        return english ? QStringLiteral("No fix") : QStringLiteral("未定位");
+    case 2:
+        return english ? QStringLiteral("2D fix") : QStringLiteral("2D定位");
+    case 3:
+        return english ? QStringLiteral("3D fix") : QStringLiteral("3D定位");
+    case 4:
+        return english ? QStringLiteral("Differential positioning") : QStringLiteral("差分定位");
+    case 5:
+        return english ? QStringLiteral("RTK float") : QStringLiteral("RTK浮点解");
+    case 6:
+        return english ? QStringLiteral("RTK fixed") : QStringLiteral("RTK固定解");
+    case 7:
+        return english ? QStringLiteral("Static") : QStringLiteral("静态定点");
+    case 8:
+        return english ? QStringLiteral("Precise point positioning") : QStringLiteral("精密单点定位");
+    case 9:
+        return english ? QStringLiteral("RTK dual fixed") : QStringLiteral("双天线RTK固定解");
+    default:
+        return QString();
+    }
+}
+
+QString positioningStatusText(const NavigationStatusSnapshot& snapshot,
+                              bool positionUsable,
+                              bool fixUsable,
+                              bool english,
+                              const QString& unavailableText)
+{
+    if (!snapshot.epsilonDataFresh)
+    {
+        return unavailableText;
+    }
+
+    if (fixUsable)
+    {
+        const QString fixStatus = positioningStatusFromGnssFixCode(snapshot.gnssFixCode, english);
+        if (!fixStatus.isEmpty())
+        {
+            return fixStatus;
+        }
+    }
+
+    const bool gpsPositionUpdateActive = (snapshot.updateStatusBits & ((1u << 2) | (1u << 9))) != 0;
+    const bool gpsVelocityUpdateActive = (snapshot.updateStatusBits & ((1u << 3) | (1u << 10))) != 0;
+    const bool navigationFilterInitialized = (snapshot.filterStatusBits & (1u << 1)) != 0;
+
+    if (positionUsable)
+    {
+        if (snapshot.filterStatusAvailable &&
+            (navigationFilterInitialized || gpsPositionUpdateActive || gpsVelocityUpdateActive))
+        {
+            return english ? QStringLiteral("Fusion active") : QStringLiteral("定位融合中");
+        }
+        return english ? QStringLiteral("Position available") : QStringLiteral("位置可用");
+    }
+
+    if (snapshot.filterStatusAvailable)
+    {
+        if (snapshot.filterStatusBits == 0)
+        {
+            return english ? QStringLiteral("Not initialized") : QStringLiteral("未初始化");
+        }
+        if (navigationFilterInitialized)
+        {
+            return english ? QStringLiteral("Navigation initialized") : QStringLiteral("导航已初始化");
+        }
+    }
+
+    if (fixUsable)
+    {
+        return english ? QStringLiteral("GNSS available") : QStringLiteral("GNSS可用");
+    }
+
+    return unavailableText;
+}
+
 } // namespace
 
 NavigationStatusPanel::NavigationStatusPanel(QWidget *parent)
@@ -274,17 +362,18 @@ void NavigationStatusPanel::setSnapshot(const NavigationStatusSnapshot& snapshot
         (snapshot.epsilonOnline && realtimeDataFresh) ? QStringLiteral("healthy") : QStringLiteral("inactive"));
     applyStatusLabel(
         gnss_status_.value,
-        navigationDataUsable
-            ? (is_english_ ? QStringLiteral("● Available") : QStringLiteral("● 可用"))
-            : unavailableText(),
-        navigationDataUsable ? QStringLiteral("healthy") : QStringLiteral("inactive"));
+        fixUsable ? fixText : unavailableText(),
+        fixUsable && (snapshot.gnssFixCode < 0 || isUsableGnssFixCode(snapshot.gnssFixCode))
+            ? QStringLiteral("healthy") : QStringLiteral("inactive"));
     applyStatusLabel(
         ins_status_.value,
         attitudeUsable
             ? (is_english_ ? QStringLiteral("● Available") : QStringLiteral("● 可用"))
             : unavailableText(),
         attitudeUsable ? QStringLiteral("healthy") : QStringLiteral("inactive"));
-    applyValueLabel(positioning_mode_.value, fixUsable ? fixText : unavailableText());
+    applyValueLabel(
+        positioning_mode_.value,
+        positioningStatusText(snapshot, positionUsable, fixUsable, is_english_, unavailableText()));
 
     QString freshnessText = unavailableText();
     if (snapshot.epsilonDataFresh)
@@ -449,7 +538,7 @@ void NavigationStatusPanel::updateTexts()
     epsilon_status_.name->setText(QStringLiteral("EPSILON"));
     gnss_status_.name->setText(QStringLiteral("GNSS"));
     ins_status_.name->setText(QStringLiteral("INS"));
-    positioning_mode_.name->setText(is_english_ ? QStringLiteral("Fix") : QStringLiteral("定位"));
+    positioning_mode_.name->setText(is_english_ ? QStringLiteral("Positioning Status") : QStringLiteral("定位状态"));
     data_freshness_.name->setText(is_english_ ? QStringLiteral("Data") : QStringLiteral("数据"));
     rtk_status_.name->setText(is_english_ ? QStringLiteral("RTK Service") : QStringLiteral("RTK 服务"));
     longitude_.name->setText(is_english_ ? QStringLiteral("Longitude") : QStringLiteral("经度"));

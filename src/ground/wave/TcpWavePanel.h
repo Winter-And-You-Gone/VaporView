@@ -38,6 +38,7 @@ public:
     bool isConnected() const;
     bool isConnecting() const;
     void toggleConnection();
+    void setConnectionEndpoint(const QString& host, int port);
     void attachWaveformSplitControls(QLabel *label, QSpinBox *spinBox);
     void setCompactLayout(bool compact);
     int preferredPanelHeight() const;
@@ -133,6 +134,7 @@ private:
     void setupSocket();
     void recreateSocket();
     void requestGracefulDisconnect();
+    void updateEndpointEditorState();
     void setConnectedUiState(bool connected);
     void loadRememberedInputState();
     void saveRememberedInputState() const;

@@ -4,6 +4,8 @@
 #include <QFrame>
 #include <QVector>
 
+#include "data_types.h"
+
 #include <cstdint>
 #include <map>
 
@@ -28,6 +30,7 @@ public:
     void setEnglish(bool english);
     void setAvailable(bool available);
     void setPacketRates(const std::map<uint8_t, int>& packetRates);
+    void setLivePacketRates(const VaporView::EpsilonData& epsilonData);
     std::map<uint8_t, int> packetRates() const;
     void setRtcmDevicePortIndex(int portIndex);
     int rtcmDevicePortIndex() const;
@@ -37,7 +40,6 @@ signals:
     void saveRequested();
     void rtcmPortRequested();
     void reconfigureRequested();
-    void rtkConfigRequested();
 
 protected:
     void changeEvent(QEvent *event) override;
@@ -47,6 +49,7 @@ private:
     void arrangePacketFields(bool twoColumns);
     void applyAppearance();
     void updatePacketLabelWidths();
+    void updateLivePacketRateTexts();
     void updateSummaryTexts();
     void updateTexts();
 
@@ -55,6 +58,8 @@ private:
     bool packet_layout_initialized_ = false;
     bool two_column_layout_ = true;
     QGridLayout *packet_grid_ = nullptr;
+    QGridLayout *live_packet_rate_grid_ = nullptr;
+    QLabel *live_packet_rate_title_label_ = nullptr;
     QLabel *summary_title_label_ = nullptr;
     QLabel *output_title_label_ = nullptr;
     QLabel *device_settings_title_label_ = nullptr;
@@ -70,18 +75,19 @@ private:
     QComboBox *rtcm_device_port_combo_ = nullptr;
     QLabel *reconfigure_name_label_ = nullptr;
     QLabel *reconfigure_description_label_ = nullptr;
-    QLabel *rtk_name_label_ = nullptr;
-    QLabel *rtk_description_label_ = nullptr;
     QVector<QLabel *> packet_group_labels_;
     QVector<QWidget *> packet_rate_fields_;
     QVector<QLabel *> packet_rate_labels_;
     QVector<QComboBox *> packet_rate_combos_;
     QVector<int> packet_rate_group_ids_;
+    QVector<QWidget *> live_packet_rate_fields_;
+    QVector<QLabel *> live_packet_rate_labels_;
+    QVector<QLabel *> live_packet_rate_values_;
+    VaporView::EpsilonData live_epsilon_data_;
     QPushButton *recommended_button_ = nullptr;
     QPushButton *save_button_ = nullptr;
     QPushButton *rtcm_port_button_ = nullptr;
     QPushButton *reconfigure_button_ = nullptr;
-    QPushButton *rtk_config_button_ = nullptr;
 };
 
 } // namespace VaporView::Ground::Navigation

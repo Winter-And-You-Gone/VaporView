@@ -56,8 +56,9 @@ public:
     bool disconnectDevice(SkyDeviceId id, CommandErrorCode *errorCode = nullptr);
     bool reconnectDevice(SkyDeviceId id, CommandErrorCode *errorCode = nullptr);
     void connectAll();
-    void disconnectAll();
+    void disconnectAll(bool publishLogs = true);
     void reconnectAll();
+    void shutdown(bool publishLogs = false);
 
     DeviceStatusItem status(SkyDeviceId id) const;
     QVector<DeviceStatusItem> allStatuses() const;
@@ -132,6 +133,12 @@ signals:
     void ptbRawResponseReceived(quint64 timestampUs, QByteArray response);
     void hmpRawResponseReceived(quint64 timestampUs, QByteArray response);
     void lidarRawFrameReceived(quint64 timestampUs, quint16 protocol, QByteArray frame);
+    void laserTemperatureControllerRawResponseReceived(quint64 timestampUs,
+                                                       quint16 recordType,
+                                                       QByteArray response);
+    void systemTemperatureControllerRawResponseReceived(quint64 timestampUs,
+                                                        quint16 recordType,
+                                                        QByteArray response);
     void tcpRawWaveFrameReceived(quint64 timestampUs,
                                  QByteArray rawPayload,
                                  QByteArray harmonicPayload,
@@ -147,9 +154,10 @@ private slots:
 
 private:
     void initializeStatuses();
+    bool disconnectDeviceInternal(SkyDeviceId id, CommandErrorCode *errorCode, bool publishLog);
     void setState(SkyDeviceId id, DeviceState state, quint16 errorCode = 0);
     DeviceStatusItem& mutableStatus(SkyDeviceId id);
-    const SerialDeviceConfig& serialConfigFor(SkyDeviceId id) const;
+    SerialDeviceConfig serialConfigFor(SkyDeviceId id) const;
     bool connectSerialCollector(SkyDeviceId id, const SerialDeviceConfig& config, CommandErrorCode *errorCode);
     bool connectWaveTcp(CommandErrorCode *errorCode);
     void disconnectWaveTcp();

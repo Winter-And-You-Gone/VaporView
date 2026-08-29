@@ -61,6 +61,7 @@ signals:
     void commandTimedOut(CommandId commandId, quint16 commandSeq);
     void skyConfigReceived(const QJsonObject& config);
     void skyConfigApplyResultReceived(const QJsonObject& result);
+    void serialPortDetectionResultReceived(const QJsonObject& result);
 
 private slots:
     void onBytesReceived(const QByteArray& bytes);

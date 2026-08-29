@@ -1,6 +1,6 @@
 # VaporView
 
-`VaporView` 是一个基于 Qt Widgets 的桌面程序。当前主界面面向 EPSILON 组合导航、PTB210/BMP390 气压来源、HMP3/SHT45 温湿度来源、TFA1005-L 激光测距模块、RD105 温控器、AI-8288 八路温控器和本地 TCP 波形流，提供串口接入、实时数据显示、RTK/NTRIP 转发、会话记录、离线查看和轨迹查看能力。
+`VaporView` 是一个基于 Qt Widgets 的桌面程序。当前主界面面向 EPSILON 组合导航、PTB210/BMP390 气压来源、HMP3/SHT45 温湿度来源、TFA1500-L 激光测距模块、RD105 温控器、AI-8288 八路温控器和本地 TCP 波形流，提供串口接入、实时数据显示、RTK/NTRIP 转发、会话记录、离线查看和轨迹查看能力。
 
 ## 快速开始
 
@@ -175,9 +175,9 @@ H300 网桥使用说明：
 
 - Qt Widgets 图形界面，应用名和窗口标题为 `VaporView`，应用版本为 `1.0.1`。
 - 中英文界面切换、F11 全屏、70% / 80% / 90% / 100% / 115% / 130% 字号缩放。
-- 串口刷新、手动端口输入与自动识别；正式设备配置覆盖 EPSILON、PTB210/BMP390、HMP3/SHT45、TFA1005-L、RD105、AI-8288 和 Wave TCP。
+- 串口刷新、手动端口输入与自动识别；正式设备配置覆盖 EPSILON、PTB210/BMP390、HMP3/SHT45、TFA1500-L、RD105、AI-8288 和 Wave TCP。
 - EPSILON `FDILink` 组合导航数据解析、包频率配置、RTCM 串口配置、主天线杆臂配置。
-- PTB210/BMP390 气压、HMP3/SHT45 温湿度、TFA1005-L 距离数据显示与频率统计。
+- PTB210/BMP390 气压、HMP3/SHT45 温湿度、TFA1500-L 距离数据显示与频率统计。
 - RD105 双通道温控与 AI-8288 八路温控数据显示、参数页面和当前产品化控制入口。
 - TCP 波形监视，默认连接 `127.0.0.1:8888`，显示原始信号、归一化二次谐波和峰值趋势。
 - RTK NTRIP 配置对话框，基于内置 RTKLIB `strsvr` 把 NTRIP 输入转发到串口或 TCP Client 输出。
@@ -401,7 +401,7 @@ Qt `SerialPort` 模块当前用于枚举可用串口；实际采集读写使用�
 - `EpsilonCollector`：EPSILON `FDILink` 采集、校验、解析、包频率配置、RTCM 串口配置、主天线杆臂配置。
 - `PtbCollector`：PTB210 气压采集。
 - `HmpCollector`：HMP3 Modbus RTU 温湿度采集。
-- `LidarCollector`：TFA1005-L 激光测距采集。
+- `LidarCollector`：TFA1500-L 激光测距采集。
 - `GnssCollector` 和 `ImuCollector` 仍在源码中保留，但当前主窗口没有独立 GNSS 或 IMU 设备配置行。
 
 ## 设备支持
@@ -504,7 +504,7 @@ EPSILON RTCM 与杆臂配置：
 - 温度寄存器起点：`0x0002`
 - 当前没有设备侧采样率命令；UI 频率改变的是主机轮询间隔。
 
-### TFA1005-L
+### TFA1500-L
 
 当前主界面默认串口参数：
 
@@ -513,9 +513,9 @@ EPSILON RTCM 与杆臂配置：
 
 自动识别顺序中：
 
-- TFA1005-L：`500000 N81`
+- TFA1500-L：`500000 N81`
 
-TFA1005-L 当前实现事实：
+TFA1500-L 当前实现事实：
 
 - 支持高频模式、距离输出模式和低频连续测距模式的启动命令。
 - 高频启动命令：`55 AA CB CC CC CC CC FB`
@@ -523,7 +523,7 @@ TFA1005-L 当前实现事实：
 - 待机命令：`55 00 02 00 00 57`
 - 距离输出命令：`5A 0A 02 02 00 F1`
 - 低频连续测距命令：`55 02 02 20 00 75`
-- TFA1005-L 距离帧头为 `0x5C`，当前距离帧长度为 `5` 字节。
+- TFA1500-L 距离帧头为 `0x5C`，当前距离帧长度为 `5` 字节。
 - 高频模式和 `>= 500000` 波特率下使用设备自适应输出，主机采样率限制最高保存到 `1000 Hz`。
 
 ## TCP 波形监视
@@ -604,7 +604,8 @@ data/
     ├── raw_dat_format.md
     ├── sensors/
     │   ├── sensor_summary.csv
-    │   ├── temperature_controller.csv
+    │   ├── laser_temperature_controller.csv
+    │   ├── system_temperature_controller.csv
     │   └── waveform_features.csv
     ├── raw/
     │   ├── navigation.dat
@@ -612,6 +613,8 @@ data/
     │   ├── temperature_humidity.dat
     │   ├── distance.dat
     │   ├── waveform.dat
+    │   ├── laser_temperature_controller.dat
+    │   ├── system_temperature_controller.dat
     │   └── waveform_peaks.csv
     ├── logs/
     │   ├── event_log.csv
@@ -639,11 +642,13 @@ data/
 会话文件名按数据语义命名，而不是按设备型号命名。标准路径为
 `navigation.dat`、`pressure.dat`、`temperature_humidity.dat`、`distance.dat`、
 `waveform.dat`、`waveform_peaks.csv`、`sensor_summary.csv` 和
-`temperature_controller.csv`；具体设备型号、厂家和端口保存在
+`laser_temperature_controller.csv`、`system_temperature_controller.csv`；
+具体设备型号、厂家和端口保存在
 `session.json` 或 `config/device_config.json`。Reader 兼容历史路径：
 `epsilon.dat`、`ptb.dat`、`hmp.dat`、`lidar.dat`、`tcp_wave.dat`、
-`tcp_wave_peaks.csv`、`devices.csv` 和
-`rd105_temperature_controller.csv`。解析顺序是 manifest 显式路径、新默认
+`tcp_wave_peaks.csv`、`devices.csv`、`temperature_controller.csv`、
+`ai8_temperature_controller.csv`、`rd105_temperature_controller.csv`、
+`rd105.dat`、`ai8.dat` 和 `ai8288.dat`。解析顺序是 manifest 显式路径、新默认
 路径、旧路径；历史会话不会被自动迁移或修改。
 
 `device_config.json` 由共享 `SessionDeviceConfig` schema 生成。Ground 和 Sky
@@ -652,7 +657,7 @@ data/
 - 格式版本、`recording_origin`、当前记录目录和 session 目录
 - 遥测 transport / endpoint / port / baud；不适用项保留为 `null`
 - 波形主机、端口、记录模式、每帧点数和值类型
-- EPSILON、PTB、HMP、Lidar、RD105 的串口、波特率和频率文本；天空端无法提供的
+- EPSILON、PTB、HMP、Lidar、RD105、AI-8288 的串口、波特率、频率文本和从站地址；天空端无法提供的
   逐设备配置保留为 `null`
 
 ## 数据文件格式

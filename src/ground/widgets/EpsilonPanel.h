@@ -34,7 +34,9 @@ constexpr int kEpsilonPositionValueColumnWidth = 112;
 constexpr int kEpsilonMotionValueColumnWidth = 145;
 constexpr int kEpsilonFieldBaseSpacing = 2;
 constexpr int kEpsilonMotionFieldSpacing = 8;
+constexpr int kEpsilonValueColumnSlack = 14;
 constexpr int kEpsilonFieldMinimumHeight = 20;
+constexpr int kEpsilonThreeColumnContentReserve = 180;
 
 inline QFont numericFontFrom(const QFont& base)
 {
@@ -94,6 +96,9 @@ public:
             it.value()->setText(formatSectionTitle(text, english));
         }
         updateCardGridLayout(true);
+        QTimer::singleShot(0, this, [this]() {
+            updateCardGridLayout(true);
+        });
     }
 
     void setCompactLayout(bool compact)
@@ -113,14 +118,47 @@ public:
         updateGeometry();
     }
 
+    int preferredWrappedWidth() const
+    {
+        const QVector<int> widths = standardCardWidths();
+        if (widths.isEmpty())
+        {
+            return minimumSizeHint().width();
+        }
+
+        const int gap = std::max(0, cards_layout_ ? cards_layout_->horizontalSpacing() : 0);
+        int cardsWidth = 0;
+        if (widths.size() >= 3)
+        {
+            cardsWidth = std::max(widths.at(0) + gap + widths.at(1), widths.at(2));
+        }
+        else
+        {
+            for (int i = 0; i < widths.size(); ++i)
+            {
+                cardsWidth += widths.at(i);
+            }
+            cardsWidth += gap * std::max(0, static_cast<int>(widths.size()) - 1);
+        }
+
+        const QMargins margins = layout() ? layout()->contentsMargins() : QMargins();
+        return cardsWidth + margins.left() + margins.right();
+    }
+
     void updateData(const VaporView::EpsilonData& epsilon_data)
     {
-        auto setValue = [this](const QString& key, const QString& value) {
+        bool layoutWidthDirty = false;
+        auto setValue = [this, &layoutWidthDirty](const QString& key, const QString& value) {
             if (QLabel *label = value_labels_.value(key, nullptr))
             {
                 const QString display_text = value.isEmpty() ? QStringLiteral("--") : value;
                 label->setText(display_text);
                 label->setToolTip(display_text);
+                label->ensurePolished();
+                if (label->fontMetrics().horizontalAdvance(display_text) + 2 > label->minimumWidth())
+                {
+                    layoutWidthDirty = true;
+                }
             }
         };
         if (!epsilon_data.valid)
@@ -253,6 +291,10 @@ public:
                      : QStringLiteral("原始 %1 / 丢帧 %2")
                            .arg(epsilon_data.raw_frame_count)
                            .arg(epsilon_data.dropped_frame_count));
+        if (layoutWidthDirty)
+        {
+            updateCardGridLayout(true);
+        }
     }
 
 protected:
@@ -399,14 +441,23 @@ private:
         int availableWidth = contentsRect().width();
         if (const QWidget *parent = parentWidget())
         {
-            int parentWidth = parent->contentsRect().width() - 4;
-            if (const QWidget *grandParent = parent->parentWidget())
-            {
-                parentWidth = std::max(parentWidth, grandParent->contentsRect().width() - 8);
-            }
+            const int parentWidth = parent->contentsRect().width() - 4;
             if (parentWidth > 0)
             {
-                availableWidth = std::max(availableWidth, parentWidth);
+                availableWidth = availableWidth > 0
+                    ? std::min(availableWidth, parentWidth)
+                    : parentWidth;
+            }
+            if (availableWidth <= 0)
+            {
+                if (const QWidget *grandParent = parent->parentWidget())
+                {
+                    const int grandParentWidth = grandParent->contentsRect().width() - 8;
+                    if (grandParentWidth > 0)
+                    {
+                        availableWidth = grandParentWidth;
+                    }
+                }
             }
         }
         return availableWidth;
@@ -418,15 +469,11 @@ private:
         {
             return 1;
         }
-        if (!compact_layout_)
-        {
-            return 3;
-        }
 
         const int availableWidth = availableCardWidth();
         if (availableWidth <= 0)
         {
-            return compact_layout_ ? 1 : 3;
+            return compact_layout_ ? 1 : std::min(2, static_cast<int>(section_cards_.size()));
         }
 
         const QVector<int> widths = standardCardWidths();
@@ -438,7 +485,7 @@ private:
             allWidth += width;
         }
         allWidth += gap * std::max(0, cardCount - 1);
-        if (cardCount >= 3 && availableWidth >= allWidth)
+        if (cardCount >= 3 && availableWidth >= allWidth + kEpsilonThreeColumnContentReserve)
         {
             return 3;
         }
@@ -518,12 +565,12 @@ private:
         {
             return is_english_
                 ? QStringList{QStringLiteral("2026-07-01T23:59:59.999Z"),
-                              QStringLiteral("1782934672910000 us"),
+                              QStringLiteral("999999999 us"),
                               QStringLiteral("raw 9999 / dropped 999"),
                               QStringLiteral("0X0060 initialized / position fusion active"),
                               QStringLiteral("Yes")}
                 : QStringList{QStringLiteral("2026-07-01T23:59:59.999Z"),
-                              QStringLiteral("1782934672910000 us"),
+                              QStringLiteral("999999999 us"),
                               QStringLiteral("原始 9999 / 丢帧 999"),
                               QStringLiteral("0X0060 已初始化 / 定位融合中"),
                               QStringLiteral("是")};
@@ -538,10 +585,17 @@ private:
         }
         if (key == QStringLiteral("motion"))
         {
-            return QStringList{QStringLiteral("-12.345/12.345/-12.345"),
-                               QStringLiteral("-12.345/-12.345/12.345"),
-                               QStringLiteral("-0.1234/-0.1234/0.1234"),
-                               QStringLiteral("-179.99/-89.99/359.99")};
+            return is_english_
+                ? QStringList{QStringLiteral("-12.345/12.345/-12.345"),
+                              QStringLiteral("-12.345/-12.345/12.345"),
+                              QStringLiteral("-0.1234/-0.1234/0.1234"),
+                              QStringLiteral("-179.99/-89.99/359.99"),
+                              QStringLiteral("max 0.999° (41-63 0.999°, 41-64 0.999°, 63-64 0.999°)")}
+                : QStringList{QStringLiteral("-12.345/12.345/-12.345"),
+                              QStringLiteral("-12.345/-12.345/12.345"),
+                              QStringLiteral("-0.1234/-0.1234/0.1234"),
+                              QStringLiteral("-179.99/-89.99/359.99"),
+                              QStringLiteral("最大 0.999°（41-63 0.999°，41-64 0.999°，63-64 0.999°）")};
         }
         return {};
     }
@@ -580,7 +634,7 @@ private:
         bool changed = false;
         for (int i = 0; i < count; ++i)
         {
-            int titleWidth = 0;
+            int titleWidth = section_card_title_widths_.value(i, 0);
             for (QLabel *label : section_card_title_labels_.at(i))
             {
                 if (!label)
@@ -588,8 +642,7 @@ private:
                     continue;
                 }
                 titleWidth = std::max(titleWidth,
-                                      std::max(label->sizeHint().width(),
-                                               QFontMetrics(label->font()).horizontalAdvance(label->text())));
+                                      QFontMetrics(label->font()).horizontalAdvance(label->text()));
             }
             int valueWidth = 0;
             if (i < section_card_value_labels_.size())
@@ -617,7 +670,7 @@ private:
                     }
                 }
             }
-            valueWidth += 2;
+            valueWidth += kEpsilonValueColumnSlack;
             QGridLayout *grid = section_card_grids_.at(i);
             if (!grid)
             {
@@ -678,9 +731,11 @@ private:
                 }
                 if (i < section_cards_.size() &&
                     section_cards_.at(i) &&
-                    section_cards_.at(i)->minimumWidth() != standardWidth)
+                    (section_cards_.at(i)->minimumWidth() != standardWidth ||
+                     section_cards_.at(i)->maximumWidth() != QWIDGETSIZE_MAX))
                 {
                     section_cards_.at(i)->setMinimumWidth(standardWidth);
+                    section_cards_.at(i)->setMaximumWidth(QWIDGETSIZE_MAX);
                     changed = true;
                 }
                 if (section_card_value_widths_.at(i) != valueWidth)
@@ -778,8 +833,9 @@ private:
             return;
         }
 
-        cards_layout_->setHorizontalSpacing(compact_layout_ ? 4 : 2);
+        cards_layout_->setHorizontalSpacing(0);
         cards_layout_->setVerticalSpacing(compact_layout_ ? 4 : 2);
+        cards_layout_->setAlignment(Qt::Alignment());
         const bool titleWidthsChanged = syncSectionTitleWidths();
         const bool columnWidthsChanged = syncSectionColumnWidths();
         const bool widthsChanged = titleWidthsChanged || columnWidthsChanged;
@@ -820,6 +876,9 @@ private:
         else if (columns == 2 && section_cards_.size() >= 3)
         {
             setCardsExpandable(true);
+            // Keep the top cards touching while letting them fill the wrapped row.
+            section_cards_.at(0)->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+            section_cards_.at(1)->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
             cards_layout_->setColumnMinimumWidth(0, widths.at(0));
             cards_layout_->setColumnMinimumWidth(1, widths.at(1));
             cards_layout_->setColumnStretch(0, std::max(1, widths.at(0)));
@@ -874,6 +933,7 @@ private:
         outerLayout->addLayout(cardLayout, 1);
         section_card_grids_.push_back(cardLayout);
         section_card_keys_.push_back(key);
+        section_card_title_widths_.push_back(titleColumnWidth);
         section_card_title_labels_.push_back({});
         section_card_value_labels_.push_back({});
         const int chromeWidth = kEpsilonSideTitleWidth + outerLayout->contentsMargins().left() +
@@ -1000,6 +1060,7 @@ private:
     QVector<QFrame*> section_cards_;
     QVector<QGridLayout*> section_card_grids_;
     QVector<QString> section_card_keys_;
+    QVector<int> section_card_title_widths_;
     QVector<int> section_card_standard_widths_;
     QVector<int> section_card_chrome_widths_;
     QVector<int> section_card_value_widths_;

@@ -796,6 +796,7 @@ std::string readPrintableSerialResponse(SerialPort& serial, int totalWaitMs, boo
 }
 
 using EpsilonLogFn = std::function<void(const std::string&)>;
+using EpsilonCommandProgressFn = EpsilonCollector::CommandProgressCallback;
 
 std::string readLoggedEpsilonAsciiResponse(SerialPort& serial, const EpsilonLogFn& logFn, int totalWaitMs)
 {
@@ -817,15 +818,25 @@ std::string sendLoggedEpsilonAsciiCommand(SerialPort& serial,
                                           const EpsilonLogFn& logFn,
                                           bool english,
                                           const std::string& command,
-                                          int waitMs)
+                                          int waitMs,
+                                          const EpsilonCommandProgressFn& progress = {})
 {
-  logFn("[EPSILON TX] " + trimAscii(command));
+  const std::string trimmedCommand = trimAscii(command);
+  logFn("[EPSILON TX] " + trimmedCommand);
   const ssize_t written = serial.write(command.c_str(), command.size());
   if (written != static_cast<ssize_t>(command.size()))
   {
     logFn(std::string(english ? "EPSILON: failed to send command: " : "EPSILON：命令发送失败：") +
-          trimAscii(command));
+          trimmedCommand);
+    if (progress)
+    {
+      progress(trimmedCommand, false, false);
+    }
     return std::string();
+  }
+  if (progress)
+  {
+    progress(trimmedCommand, false, true);
   }
   if (waitMs > 0)
   {
@@ -834,16 +845,24 @@ std::string sendLoggedEpsilonAsciiCommand(SerialPort& serial,
   const std::string response = waitMs > 0
       ? readLoggedEpsilonAsciiResponse(serial, logFn, std::max(180, waitMs))
       : std::string();
-  const std::string trimmedCommand = trimAscii(command);
   const bool expectedPrompt = trimmedCommand == "#freboot" && response.find("(y/n)") != std::string::npos;
   const bool expectedFmsgList = trimmedCommand == "#fmsg" && response.find("MSG_") != std::string::npos;
+  const bool hasAsciiError = response.find("ERROR") != std::string::npos ||
+      response.find("error") != std::string::npos;
+  const bool successfulReply = !response.empty() && !hasAsciiError &&
+      (expectedPrompt || expectedFmsgList || containsEpsilonAsciiAck(response) ||
+       response.find("MSG_") != std::string::npos);
   if (command != "y\r\n" && command != "Y\r\n" && !expectedPrompt &&
       !expectedFmsgList && !containsEpsilonAsciiAck(response))
   {
     logFn(std::string(english
                           ? "EPSILON: no explicit ASCII acknowledgement for command: "
-                          : "EPSILON：命令未收到明确 ASCII 确认：") +
+          : "EPSILON：命令未收到明确 ASCII 确认：") +
           trimmedCommand);
+  }
+  if (progress && !response.empty())
+  {
+    progress(trimmedCommand, true, successfulReply);
   }
   return response;
 }
@@ -852,7 +871,8 @@ bool rebootEpsilonAndReopenSerial(SerialPort& serial,
                                   const std::string& portName,
                                   const SerialConfig& config,
                                   const EpsilonLogFn& logFn,
-                                  bool english)
+                                  bool english,
+                                  const EpsilonCommandProgressFn& progress = {})
 {
   if (portName.empty())
   {
@@ -862,7 +882,8 @@ bool rebootEpsilonAndReopenSerial(SerialPort& serial,
     return false;
   }
 
-  const std::string rebootResponse = sendLoggedEpsilonAsciiCommand(serial, logFn, english, "#freboot\r\n", 2000);
+  const std::string rebootResponse = sendLoggedEpsilonAsciiCommand(
+      serial, logFn, english, "#freboot\r\n", 2000, progress);
   if (rebootResponse.find("(y/n)") == std::string::npos)
   {
     logFn(english
@@ -871,7 +892,7 @@ bool rebootEpsilonAndReopenSerial(SerialPort& serial,
     return false;
   }
 
-  sendLoggedEpsilonAsciiCommand(serial, logFn, english, "y\r\n", 0);
+  sendLoggedEpsilonAsciiCommand(serial, logFn, english, "y\r\n", 0, progress);
   sleepMs(150);
 
   serial.close();
@@ -956,11 +977,11 @@ const char* lidarProtocolName(LidarProtocol protocol)
   switch (protocol)
   {
   case LidarProtocol::TFA1500DistanceFrame:
-    return "TFA1005-L";
+    return "TFA1500-L";
   case LidarProtocol::TFA1500LowFrequencyFrame:
-    return "TFA1005-L 低频";
+    return "TFA1500-L 低频";
   case LidarProtocol::TFA1500HighFrequency:
-    return "TFA1005-L 高频";
+    return "TFA1500-L 高频";
   case LidarProtocol::ObservedAaB7Frame:
     return "AA-B7 激光测距帧";
   case LidarProtocol::Unknown:
@@ -1484,6 +1505,20 @@ bool parseEnvironmentSerialLine(const std::string& line, EnvironmentSerialValues
 
 namespace EpsilonProtocol
 {
+
+bool packetRateCommandAccepted(const std::string& response,
+                               std::uint8_t packetId,
+                               int expectedRateHz)
+{
+  if (containsEpsilonAsciiOk(response))
+  {
+    return true;
+  }
+
+  const auto rates = parseFmsgResponse(response);
+  const auto it = rates.find(packetId);
+  return it != rates.end() && it->second == expectedRateHz;
+}
 
 bool decodeCorePacket(EpsilonData& data,
                       std::uint8_t packetId,
@@ -2010,6 +2045,11 @@ EpsilonData EpsilonCollector::getLatestData()
   return latest_data_;
 }
 
+bool EpsilonCollector::lastDeviceResponseHadFdilinkFrame() const
+{
+  return last_device_response_had_fdilink_frame_;
+}
+
 void EpsilonCollector::setRawFrameCallback(RawFrameCallback callback)
 {
   std::lock_guard<std::mutex> lock(mutex_);
@@ -2019,6 +2059,7 @@ void EpsilonCollector::setRawFrameCallback(RawFrameCallback callback)
 bool EpsilonCollector::checkDeviceResponse()
 {
   const bool english = isEnglishLog();
+  last_device_response_had_fdilink_frame_ = false;
   std::vector<uint8_t> buffer;
   std::vector<uint8_t> frame;
   uint8_t packetId = 0;
@@ -2081,6 +2122,7 @@ bool EpsilonCollector::checkDeviceResponse()
     sendCommandForProbe("#fdeconfig\r\n", 1500);
     if (readValidFdilinkFrame(serial_, buffer, &frame, 2500, &packetId, nullptr))
     {
+      last_device_response_had_fdilink_frame_ = true;
       log(std::string(english
                           ? "EPSILON: recovered navigation stream with FDILink frame "
                           : "EPSILON：已恢复导航数据流，FDILink 数据包 ") +
@@ -2094,6 +2136,7 @@ bool EpsilonCollector::checkDeviceResponse()
     return false;
   }
 
+  last_device_response_had_fdilink_frame_ = true;
   log(std::string(english ? "EPSILON: detected FDILink frame " : "EPSILON：检测到 FDILink 数据包 ") +
       std::to_string(packetId));
   return true;
@@ -2120,7 +2163,9 @@ bool EpsilonCollector::setDeviceSampleRate(int hz)
   return true;
 }
 
-bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packetRates, bool forceApply)
+bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packetRates,
+                                            bool forceApply,
+                                            CommandProgressCallback progress)
 {
   const bool english = isEnglishLog();
   if (packetRates.empty())
@@ -2161,7 +2206,7 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
       return false;
     }
 
-    const bool configured = setOutputPacketRates(packetRates, forceApply);
+    const bool configured = setOutputPacketRates(packetRates, forceApply, std::move(progress));
     if (!serial_.isOpen() && !start(portName, serialConfig))
     {
       log(english
@@ -2195,9 +2240,9 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
   }
 
   const EpsilonLogFn logFn = [this](const std::string& message) { log(message); };
-  auto failPacketConfiguration = [this, &logFn, english](const std::string& message) {
+  auto failPacketConfiguration = [this, &logFn, english, &progress](const std::string& message) {
     log(message);
-    sendLoggedEpsilonAsciiCommand(serial_, logFn, english, "#fdeconfig\r\n", 700);
+    sendLoggedEpsilonAsciiCommand(serial_, logFn, english, "#fdeconfig\r\n", 700, progress);
     return false;
   };
 
@@ -2205,7 +2250,8 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
   serial_.flush();
   sleepMs(80);
 
-  const std::string configResponse = sendLoggedEpsilonAsciiCommand(serial_, logFn, english, "#fconfig\r\n", kConfigCommandWaitMs);
+  const std::string configResponse = sendLoggedEpsilonAsciiCommand(
+      serial_, logFn, english, "#fconfig\r\n", kConfigCommandWaitMs, progress);
   if (!containsEpsilonAsciiOk(configResponse))
   {
     return failPacketConfiguration(english
@@ -2213,7 +2259,8 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
                                        : "EPSILON：进入配置模式失败，数据包频率未修改");
   }
 
-  const std::string fmsgResponse = sendLoggedEpsilonAsciiCommand(serial_, logFn, english, "#fmsg\r\n", kConfigCommandWaitMs);
+  const std::string fmsgResponse = sendLoggedEpsilonAsciiCommand(
+      serial_, logFn, english, "#fmsg\r\n", kConfigCommandWaitMs, progress);
   const auto currentRates = parseFmsgResponse(fmsgResponse);
 
   bool needsReconfigure = currentRates.size() < packetRates.size();
@@ -2239,8 +2286,9 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
     {
       char command[32];
       std::snprintf(command, sizeof(command), "#fmsg %02X %d\r\n", entry.first, entry.second);
-      const std::string response = sendLoggedEpsilonAsciiCommand(serial_, logFn, english, command, kConfigCommandWaitMs);
-      if (!containsEpsilonAsciiOk(response))
+      const std::string response = sendLoggedEpsilonAsciiCommand(
+          serial_, logFn, english, command, kConfigCommandWaitMs, progress);
+      if (!EpsilonProtocol::packetRateCommandAccepted(response, entry.first, entry.second))
       {
         std::ostringstream oss;
         oss << (english ? "EPSILON: failed to set packet 0x" : "EPSILON：设置数据包 0x")
@@ -2253,7 +2301,8 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
       }
     }
 
-    const std::string saveResponse = sendLoggedEpsilonAsciiCommand(serial_, logFn, english, "#fsave\r\n", kConfigCommandWaitMs);
+    const std::string saveResponse = sendLoggedEpsilonAsciiCommand(
+        serial_, logFn, english, "#fsave\r\n", kConfigCommandWaitMs, progress);
     if (!containsEpsilonAsciiOk(saveResponse))
     {
       return failPacketConfiguration(english
@@ -2261,7 +2310,8 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
                                          : "EPSILON：保存数据包频率配置失败");
     }
 
-    if (!rebootEpsilonAndReopenSerial(serial_, port_name_, serial_config_, logFn, english))
+    if (!rebootEpsilonAndReopenSerial(
+            serial_, port_name_, serial_config_, logFn, english, progress))
     {
       return false;
     }
@@ -2284,7 +2334,8 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
     log(english
             ? "EPSILON: output configuration already matches requested packet rates"
             : "EPSILON：当前输出配置已匹配目标数据包频率");
-    sendLoggedEpsilonAsciiCommand(serial_, logFn, english, "#fdeconfig\r\n", kConfigCommandWaitMs);
+    sendLoggedEpsilonAsciiCommand(
+        serial_, logFn, english, "#fdeconfig\r\n", kConfigCommandWaitMs, progress);
     return waitForEpsilonNavigationStreamRestore(serial_,
                                                  logFn,
                                                  3000,
@@ -2503,10 +2554,13 @@ void EpsilonCollector::run()
   PacketRateTracker ahrsRateTracker;
   PacketRateTracker insGpsRateTracker;
   PacketRateTracker sysStateRateTracker;
+  PacketRateTracker statusRateTracker;
   PacketRateTracker rawGnssRateTracker;
   PacketRateTracker satelliteRateTracker;
   PacketRateTracker geodeticRateTracker;
   PacketRateTracker ecefRateTracker;
+  PacketRateTracker eulerOrienRateTracker;
+  PacketRateTracker quatOrienRateTracker;
   bool reportedInvalidEcef = false;
   bool hasResolvedLlh = false;
 
@@ -2518,10 +2572,13 @@ void EpsilonCollector::run()
                        &ahrsRateTracker,
                        &insGpsRateTracker,
                        &sysStateRateTracker,
+                       &statusRateTracker,
                        &rawGnssRateTracker,
                        &satelliteRateTracker,
                        &geodeticRateTracker,
                        &ecefRateTracker,
+                       &eulerOrienRateTracker,
+                       &quatOrienRateTracker,
                        &reportedInvalidEcef,
                        &hasResolvedLlh](const std::vector<uint8_t>& frame, uint64_t hostTimestampUs) {
     if (frame.size() < 8)
@@ -2564,6 +2621,9 @@ void EpsilonCollector::run()
     case kMsgSystemState:
       sysStateRateTracker.record();
       break;
+    case kMsgStatus:
+      statusRateTracker.record();
+      break;
     case kMsgRawGnss:
       rawGnssRateTracker.record();
       break;
@@ -2575,6 +2635,12 @@ void EpsilonCollector::run()
       break;
     case kMsgEcefPos:
       ecefRateTracker.record();
+      break;
+    case kMsgEulerOrien:
+      eulerOrienRateTracker.record();
+      break;
+    case kMsgQuatOrien:
+      quatOrienRateTracker.record();
       break;
     default:
       break;
@@ -2998,10 +3064,13 @@ void EpsilonCollector::run()
       latest_data_.ahrs_packet_rate_hz = ahrsRateTracker.rate_hz;
       latest_data_.insgps_packet_rate_hz = insGpsRateTracker.rate_hz;
       latest_data_.sys_state_packet_rate_hz = sysStateRateTracker.rate_hz;
+      latest_data_.status_packet_rate_hz = statusRateTracker.rate_hz;
       latest_data_.raw_gnss_packet_rate_hz = rawGnssRateTracker.rate_hz;
       latest_data_.satellite_packet_rate_hz = satelliteRateTracker.rate_hz;
       latest_data_.geodetic_packet_rate_hz = geodeticRateTracker.rate_hz;
       latest_data_.ecef_packet_rate_hz = ecefRateTracker.rate_hz;
+      latest_data_.euler_orien_packet_rate_hz = eulerOrienRateTracker.rate_hz;
+      latest_data_.quat_orien_packet_rate_hz = quatOrienRateTracker.rate_hz;
 
       callback = data_callback_;
       rawCallback = raw_frame_callback_;
@@ -4270,16 +4339,16 @@ bool TemperatureControllerCollector::initialize()
   return true;
 }
 
-void TemperatureControllerCollector::publishRawFrame(const std::vector<uint8_t>& frame)
+void TemperatureControllerCollector::publishRawFrame(uint16_t record_type, const std::vector<uint8_t>& frame)
 {
   RawFrameCallback raw_callback;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     raw_callback = raw_frame_callback_;
   }
-  if (raw_callback && !frame.empty())
+  if (raw_callback && record_type != 0 && !frame.empty())
   {
-    raw_callback(systemTimestampUs(), frame.data(), frame.size());
+    raw_callback(systemTimestampUs(), record_type, frame.data(), frame.size());
   }
 }
 
@@ -4344,7 +4413,6 @@ bool TemperatureControllerCollector::readResponseFrame(uint8_t function_code, st
           break;
         }
         frame.assign(buffer.begin(), buffer.begin() + static_cast<std::ptrdiff_t>(frame_size));
-        publishRawFrame(frame);
         return true;
       }
     }
@@ -4362,7 +4430,11 @@ bool TemperatureControllerCollector::readRegisters(uint16_t address, uint16_t co
   return readRegistersUnlocked(address, count, registers, wait_ms);
 }
 
-bool TemperatureControllerCollector::readRegistersUnlocked(uint16_t address, uint16_t count, std::vector<uint16_t>& registers, int wait_ms)
+bool TemperatureControllerCollector::readRegistersUnlocked(uint16_t address,
+                                                           uint16_t count,
+                                                           std::vector<uint16_t>& registers,
+                                                           int wait_ms,
+                                                           bool record_raw)
 {
   using namespace TemperatureControllerProtocol;
   const QByteArray request = buildReadRegistersRequest(slave_address_, address, count);
@@ -4384,6 +4456,10 @@ bool TemperatureControllerCollector::readRegistersUnlocked(uint16_t address, uin
     return false;
   }
   registers.assign(parsed.registers.cbegin(), parsed.registers.cend());
+  if (record_raw)
+  {
+    publishRawFrame(address, frame);
+  }
   return true;
 }
 
@@ -4422,10 +4498,6 @@ bool TemperatureControllerCollector::queryAscii(const std::string& command, std:
     }
   }
 
-  if (!response.empty())
-  {
-    publishRawFrame(std::vector<uint8_t>(response.cbegin(), response.cend()));
-  }
   return !response.empty();
 }
 
@@ -4464,7 +4536,7 @@ bool TemperatureControllerCollector::writeAndConfirm(uint8_t channel, uint16_t a
     return false;
   }
   std::vector<uint16_t> read_back;
-  if (!readRegistersUnlocked(address, static_cast<uint16_t>(registers.size()), read_back, 200))
+  if (!readRegistersUnlocked(address, static_cast<uint16_t>(registers.size()), read_back, 200, false))
   {
     return false;
   }
@@ -4809,7 +4881,7 @@ bool TemperatureControllerCollector::setDeviceAddress(uint16_t address)
   }
   slave_address_ = static_cast<uint8_t>(address);
   std::vector<uint16_t> read_back;
-  return readRegistersUnlocked(static_cast<uint16_t>(Register::DeviceAddress), 1, read_back, 500) &&
+  return readRegistersUnlocked(static_cast<uint16_t>(Register::DeviceAddress), 1, read_back, 500, false) &&
          !read_back.empty() &&
          read_back[0] == address;
 }
@@ -4831,7 +4903,7 @@ bool TemperatureControllerCollector::setRs485BaudIndex(uint16_t baud_index)
     return false;
   }
   std::vector<uint16_t> read_back;
-  return readRegistersUnlocked(static_cast<uint16_t>(Register::Rs485Baud), 1, read_back, 500) &&
+  return readRegistersUnlocked(static_cast<uint16_t>(Register::Rs485Baud), 1, read_back, 500, false) &&
          read_back == registers;
 }
 
@@ -4998,8 +5070,8 @@ bool LidarCollector::ensureTfa1500Streaming()
     logStructured(LogLevel::Error,
                   "device.lidar.command",
                   "lidar_high_frequency_start_failed",
-                  "TFA1005-L 高频测距启动命令发送失败。",
-                  {{"device", "TFA1005-L"},
+                  "TFA1500-L 高频测距启动命令发送失败。",
+                  {{"device", "TFA1500-L"},
                    {"command", "high_frequency_start"},
                    {"error_code", "SERIAL_WRITE_FAILED"}});
     return false;
@@ -5018,8 +5090,8 @@ bool LidarCollector::ensureTfa1500Standby()
     logStructured(LogLevel::Error,
                   "device.lidar.command",
                   "lidar_standby_command_failed",
-                  "TFA1005-L 待机命令发送失败。",
-                  {{"device", "TFA1005-L"},
+                  "TFA1500-L 待机命令发送失败。",
+                  {{"device", "TFA1500-L"},
                    {"command", "standby"},
                    {"error_code", "SERIAL_WRITE_FAILED"}});
     return false;
@@ -5038,8 +5110,8 @@ bool LidarCollector::ensureTfa1500DistanceOutput()
     logStructured(LogLevel::Error,
                   "device.lidar.command",
                   "lidar_distance_output_command_failed",
-                  "TFA1005-L 距离输出命令发送失败。",
-                  {{"device", "TFA1005-L"},
+                  "TFA1500-L 距离输出命令发送失败。",
+                  {{"device", "TFA1500-L"},
                    {"command", "distance_output"},
                    {"error_code", "SERIAL_WRITE_FAILED"}});
     return false;
@@ -5057,8 +5129,8 @@ bool LidarCollector::ensureTfa1500LowFrequencyContinuous()
     logStructured(LogLevel::Error,
                   "device.lidar.command",
                   "lidar_low_frequency_continuous_command_failed",
-                  "TFA1005-L 低频连续测距命令发送失败。",
-                  {{"device", "TFA1005-L"},
+                  "TFA1500-L 低频连续测距命令发送失败。",
+                  {{"device", "TFA1500-L"},
                    {"command", "low_frequency_continuous"},
                    {"error_code", "SERIAL_WRITE_FAILED"}});
     return false;
@@ -5094,7 +5166,7 @@ bool LidarCollector::setDeviceSampleRate(int hz)
     }
 
     sample_rate_hz_.store(std::min(hz, 1000));
-    log("TFA1005-L: 高频模式使用设备自适应输出；主机采样率限制已设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
+    log("TFA1500-L: 高频模式使用设备自适应输出；主机采样率限制已设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
     return true;
   }
 
@@ -5102,7 +5174,7 @@ bool LidarCollector::setDeviceSampleRate(int hz)
   {
     ensureTfa1500DistanceOutput();
     sample_rate_hz_.store(std::min(hz, 100));
-    log("TFA1005-L: 距离输出模式不支持设备侧频率命令；主机采样率限制已设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
+    log("TFA1500-L: 距离输出模式不支持设备侧频率命令；主机采样率限制已设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
     return true;
   }
 
@@ -5110,13 +5182,13 @@ bool LidarCollector::setDeviceSampleRate(int hz)
   {
     ensureTfa1500LowFrequencyContinuous();
     sample_rate_hz_.store(std::min(hz, 100));
-    log("TFA1005-L: 低频模式不支持设备侧频率命令；主机采样率限制已设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
+    log("TFA1500-L: 低频模式不支持设备侧频率命令；主机采样率限制已设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
     return true;
   }
 
   ensureTfa1500DistanceOutput();
   sample_rate_hz_.store(std::min(hz, 100));
-  log("TFA1005-L: 未识别具体输出模式，已使用距离输出命令并将主机采样率限制设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
+  log("TFA1500-L: 未识别具体输出模式，已使用距离输出命令并将主机采样率限制设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
   return true;
 }
 

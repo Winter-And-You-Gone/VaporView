@@ -1,4 +1,5 @@
 #include "ground/main/MainWindow.h"
+#include "ground/devices/RemoteSkyController.h"
 #include "ground/main/UiLogModel.h"
 #include "ground/rtk/RtkConfigDialog.h"
 #include "ground/wave/TcpWavePanel.h"
@@ -32,6 +33,7 @@
 #include <QMap>
 #include <QPointer>
 #include <QPlainTextEdit>
+#include <QProgressBar>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSettings>
@@ -49,6 +51,7 @@
 #include <cstdlib>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <set>
 #include <tuple>
 
@@ -62,6 +65,13 @@ void require(bool condition, const char *message)
         std::cerr << "FAILED: " << message << '\n';
         std::exit(1);
     }
+}
+
+VaporView::Ground::Widgets::SegmentedSwitchButton *findHomeSourceModeSwitch(QWidget *root)
+{
+    return root ? root->findChild<VaporView::Ground::Widgets::SegmentedSwitchButton *>(
+                      QStringLiteral("sourceModeOverviewSwitch"))
+                : nullptr;
 }
 
 using SettingsSnapshot = QMap<QString, QVariant>;
@@ -163,6 +173,49 @@ int findLogEventRow(QListView *logList, const QString& event)
             .data(VaporView::Ground::Main::UiLogModel::EventRole)
             .toString();
         if (rowEvent == event)
+        {
+            return row;
+        }
+    }
+    return -1;
+}
+
+bool findLogEventWithDevice(QListView *logList, const QString& event, const QString& device)
+{
+    if (!logList || !logList->model())
+    {
+        return false;
+    }
+    for (int row = 0; row < logList->model()->rowCount(); ++row)
+    {
+        const QModelIndex index = logList->model()->index(row, 0);
+        const QString rowEvent = index
+            .data(VaporView::Ground::Main::UiLogModel::EventRole)
+            .toString();
+        const QVariantMap fields = index
+            .data(VaporView::Ground::Main::UiLogModel::FieldsRole)
+            .toMap();
+        if (rowEvent == event &&
+            fields.value(QStringLiteral("device")).toString() == device)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+int findSourceLogEventRow(VaporView::Ground::Main::UiLogModel *logModel,
+                          const QString& event)
+{
+    if (!logModel)
+    {
+        return -1;
+    }
+    for (int row = 0; row < logModel->rowCount(); ++row)
+    {
+        if (logModel->index(row, 0)
+                .data(VaporView::Ground::Main::UiLogModel::EventRole)
+                .toString() == event)
         {
             return row;
         }
@@ -297,6 +350,41 @@ bool homeTelemetrySummaryHasStableCompactTextGaps(QWidget *homeConfigCard)
     return true;
 }
 
+QList<QFrame *> sortedHomeTelemetryPills(QWidget *homeConfigCard)
+{
+    QWidget *summaryContainer = homeTelemetrySummaryContainer(homeConfigCard);
+    QList<QFrame *> result;
+    for (QFrame *section : sortedHomeTelemetrySections(summaryContainer))
+    {
+        QList<QFrame *> sectionPills =
+            section->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
+        std::sort(sectionPills.begin(), sectionPills.end(), [section](QFrame *lhs, QFrame *rhs) {
+            const QPoint lhsPos = lhs->mapTo(section, QPoint(0, 0));
+            const QPoint rhsPos = rhs->mapTo(section, QPoint(0, 0));
+            return std::make_tuple(lhsPos.y(), lhsPos.x()) <
+                   std::make_tuple(rhsPos.y(), rhsPos.x());
+        });
+        result.append(sectionPills);
+    }
+    return result;
+}
+
+bool sameWidgetSet(const QList<QFrame *>& actual, const QList<QFrame *>& expected)
+{
+    if (actual.size() != expected.size())
+    {
+        return false;
+    }
+    for (QFrame *widget : expected)
+    {
+        if (!actual.contains(widget))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 QStringList homeTelemetryDynamicSummaryValues(QWidget *homeConfigCard)
 {
     QWidget *summaryContainer = homeTelemetrySummaryContainer(homeConfigCard);
@@ -319,6 +407,31 @@ QStringList homeTelemetryDynamicSummaryValues(QWidget *homeConfigCard)
         }
     }
     return values;
+}
+
+QFrame *homeTelemetryPill(QWidget *homeConfigCard, const QString& name)
+{
+    QWidget *summaryContainer = homeTelemetrySummaryContainer(homeConfigCard);
+    for (QFrame *pill : summaryContainer
+             ? summaryContainer->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"))
+             : QList<QFrame *>())
+    {
+        QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
+        if (nameLabel && nameLabel->text() == name)
+        {
+            return pill;
+        }
+    }
+    return nullptr;
+}
+
+QString homeTelemetryPillValue(QWidget *homeConfigCard, const QString& name)
+{
+    QFrame *pill = homeTelemetryPill(homeConfigCard, name);
+    QLabel *valueLabel = pill
+        ? pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"))
+        : nullptr;
+    return valueLabel ? valueLabel->text() : QString();
 }
 
 void requireCompactTelemetryPillTextGap(QFrame *pill, const char *message)
@@ -468,15 +581,171 @@ void requireUiTestHomeTelemetryCapsulesCovered(QWidget *homeConfigCard, const ch
 
     const QList<QFrame *> linkPills =
         sections.at(1)->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
-    require(linkPills.size() == 3, "UI-test link-rate summary keeps three capsules");
+    require(linkPills.size() == 4, "UI-test link-rate summary keeps target plus three rate capsules");
     for (QFrame *pill : linkPills)
     {
+        QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
+        if (nameLabel && (nameLabel->text() == QStringLiteral("目标") ||
+                          nameLabel->text() == QStringLiteral("Target")))
+        {
+            continue;
+        }
         QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
         require(valueLabel != nullptr && valueLabel->text().contains(QStringLiteral("Mbps")),
                 "UI-test link-rate capsule shows representative Mbps data");
         require(valueLabel->width() >= valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9 Mbps")),
                 "UI-test link-rate capsule reserves the requested 999.9 Mbps width");
     }
+}
+
+QMap<QString, QString> epsilonPanelFieldValues(QWidget *epsilonPanel)
+{
+    QMap<QString, QString> result;
+    if (!epsilonPanel)
+    {
+        return result;
+    }
+
+    const QList<QLabel *> fieldLabels =
+        epsilonPanel->findChildren<QLabel *>(QStringLiteral("fieldLabel"));
+    const QList<QLabel *> valueLabels =
+        epsilonPanel->findChildren<QLabel *>(QStringLiteral("valueLabel"));
+    for (QLabel *fieldLabel : fieldLabels)
+    {
+        if (!fieldLabel)
+        {
+            continue;
+        }
+        const QRect fieldRect(fieldLabel->mapTo(epsilonPanel, QPoint(0, 0)),
+                              fieldLabel->size());
+        QLabel *bestValue = nullptr;
+        int bestDistance = std::numeric_limits<int>::max();
+        for (QLabel *valueLabel : valueLabels)
+        {
+            if (!valueLabel)
+            {
+                continue;
+            }
+            const QRect valueRect(valueLabel->mapTo(epsilonPanel, QPoint(0, 0)),
+                                  valueLabel->size());
+            if (valueRect.left() <= fieldRect.left() ||
+                std::abs(valueRect.center().y() - fieldRect.center().y()) > 4)
+            {
+                continue;
+            }
+            const int distance = valueRect.left() - fieldRect.right();
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                bestValue = valueLabel;
+            }
+        }
+        result.insert(fieldLabel->text(), bestValue ? bestValue->text() : QString());
+    }
+    return result;
+}
+
+void requireUiTestEpsilonPanelFieldsCovered(QWidget *epsilonPanel)
+{
+    const QMap<QString, QString> values = epsilonPanelFieldValues(epsilonPanel);
+    const QStringList requiredFields{
+        QStringLiteral("UTC时间:"),
+        QStringLiteral("设备时间戳:"),
+        QStringLiteral("原始帧/丢帧:"),
+        QStringLiteral("系统状态:"),
+        QStringLiteral("滤波状态:"),
+        QStringLiteral("航向有效:"),
+        QStringLiteral("GNSS状态:"),
+        QStringLiteral("卫星数:"),
+        QStringLiteral("纬度[deg]:"),
+        QStringLiteral("经度[deg]:"),
+        QStringLiteral("高度[m]:"),
+        QStringLiteral("hAcc/vAcc:"),
+        QStringLiteral("NED速度[m/s][N/E/D]:"),
+        QStringLiteral("IMU加速度[m/s²][X/Y/Z]:"),
+        QStringLiteral("IMU角速度[rad/s][X/Y/Z]:"),
+        QStringLiteral("姿态角[deg][Roll/Pitch/Yaw]:"),
+        QStringLiteral("姿态来源[0x41/0x63/0x64]:"),
+        QStringLiteral("姿态一致性[最大差值]:")
+    };
+    for (const QString& field : requiredFields)
+    {
+        const QString value = values.value(field);
+        if (value.isEmpty() || value == QStringLiteral("--"))
+        {
+            std::cerr << "UI-test EPSILON field not covered: "
+                      << field.toStdString()
+                      << " value='" << value.toStdString() << "'\n";
+        }
+        require(!value.isEmpty() && value != QStringLiteral("--"),
+                "UI test mode populates every EPSILON home panel field");
+    }
+
+    const QString filterStatus = values.value(QStringLiteral("滤波状态:"));
+    require(filterStatus.contains(QStringLiteral("定位融合中")) &&
+                !filterStatus.contains(QStringLiteral("未初始化")),
+            "UI-test EPSILON filter status matches the RTK fixed sample");
+    const QString attitudeConsistency = values.value(QStringLiteral("姿态一致性[最大差值]:"));
+    require(attitudeConsistency.contains(QStringLiteral("最大")) &&
+                attitudeConsistency.contains(QStringLiteral("41-63")) &&
+                attitudeConsistency.contains(QStringLiteral("41-64")) &&
+                attitudeConsistency.contains(QStringLiteral("63-64")),
+            "UI-test EPSILON attitude consistency covers all three attitude sources");
+}
+
+QList<QFrame *> sortedEpsilonSectionCards(QWidget *epsilonPanel)
+{
+    if (!epsilonPanel)
+    {
+        return {};
+    }
+
+    QList<QFrame *> cards =
+        epsilonPanel->findChildren<QFrame *>(QStringLiteral("epsilonSectionCard"));
+    std::sort(cards.begin(), cards.end(), [epsilonPanel](QFrame *lhs, QFrame *rhs) {
+        const QPoint lhsPos = lhs->mapTo(epsilonPanel, QPoint(0, 0));
+        const QPoint rhsPos = rhs->mapTo(epsilonPanel, QPoint(0, 0));
+        if (std::abs(lhsPos.y() - rhsPos.y()) > 4)
+        {
+            return lhsPos.y() < rhsPos.y();
+        }
+        return lhsPos.x() < rhsPos.x();
+    });
+    return cards;
+}
+
+void requireUiTestEpsilonPanelWrappedTopRowFilled(QWidget *epsilonPanel)
+{
+    const QList<QFrame *> cards = sortedEpsilonSectionCards(epsilonPanel);
+    require(epsilonPanel != nullptr && cards.size() == 3,
+            "UI-test EPSILON panel exposes three section cards");
+
+    const QRect first(cards.at(0)->mapTo(epsilonPanel, QPoint(0, 0)), cards.at(0)->size());
+    const QRect second(cards.at(1)->mapTo(epsilonPanel, QPoint(0, 0)), cards.at(1)->size());
+    const QRect third(cards.at(2)->mapTo(epsilonPanel, QPoint(0, 0)), cards.at(2)->size());
+    const QRect bounds = epsilonPanel->contentsRect();
+    const int topRowJoinGap = second.left() - first.right() - 1;
+    const bool fillsTopRow =
+        std::abs(first.top() - second.top()) <= 4 &&
+        topRowJoinGap >= 0 &&
+        topRowJoinGap <= 1 &&
+        first.left() <= bounds.left() + 6 &&
+        third.top() > first.bottom() &&
+        third.left() <= first.left() + 2 &&
+        std::abs(second.right() - third.right()) <= 2 &&
+        second.right() >= bounds.right() - 6;
+    if (!fillsTopRow)
+    {
+        std::cerr << "UI-test EPSILON wrapped row geometry: bounds=" << bounds.width()
+                  << " first=[" << first.x() << ',' << first.y() << ' '
+                  << first.width() << 'x' << first.height() << ']'
+                  << " second=[" << second.x() << ',' << second.y() << ' '
+                  << second.width() << 'x' << second.height() << ']'
+                  << " third=[" << third.x() << ',' << third.y() << ' '
+                  << third.width() << 'x' << third.height() << "]\n";
+    }
+    require(fillsTopRow,
+            "UI-test EPSILON top-row cards fill the outer card width without a center gap");
 }
 
 bool temperatureOverviewOutputPercentShows(QLabel *pill, const QString& expectedValue)
@@ -598,18 +867,7 @@ int main(int argc, char **argv)
                 homeBottomFade->geometry().bottom() == homeScrollArea->viewport()->rect().bottom(),
             "home bottom fade stays attached to the viewport edge above the reserved content inset");
 
-    VaporView::Ground::Widgets::SegmentedSwitchButton *sourceModeSwitch = nullptr;
-    for (auto *candidate : window->findChildren<VaporView::Ground::Widgets::SegmentedSwitchButton *>())
-    {
-        if ((candidate->leftSegmentText().contains(QStringLiteral("本地")) ||
-             candidate->leftSegmentText().contains(QStringLiteral("Local"))) &&
-            (candidate->rightSegmentText().contains(QStringLiteral("远程")) ||
-             candidate->rightSegmentText().contains(QStringLiteral("Remote"))))
-        {
-            sourceModeSwitch = candidate;
-            break;
-        }
-    }
+    auto *sourceModeSwitch = findHomeSourceModeSwitch(window);
     require(sourceModeSwitch, "home source mode switch exists");
     QGroupBox *homeConfigCard = nullptr;
     for (QWidget *ancestor = sourceModeSwitch->parentWidget(); ancestor && !homeConfigCard;
@@ -618,27 +876,26 @@ int main(int argc, char **argv)
         homeConfigCard = qobject_cast<QGroupBox *>(ancestor);
     }
     require(homeConfigCard, "home device overview card exists");
-    QList<QPointer<QFrame>> telemetryPillsBeforeModeSwitch;
-    for (QFrame *pill : homeConfigCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill")))
-    {
-        telemetryPillsBeforeModeSwitch.append(pill);
-    }
-    require(!telemetryPillsBeforeModeSwitch.isEmpty(),
+    const int telemetryPillCountBeforeModeSwitch =
+        homeConfigCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill")).size();
+    require(telemetryPillCountBeforeModeSwitch > 0,
             "home telemetry summary contains persistent pills before source-mode switching");
+    require(homeTelemetryPillValue(homeConfigCard, QStringLiteral("目标")) == QStringLiteral("本机"),
+            "home telemetry target starts as the local host");
     sourceModeSwitch->click();
     processEvents();
-    for (const QPointer<QFrame>& pill : telemetryPillsBeforeModeSwitch)
-    {
-        require(!pill.isNull(),
-                "unchanged home telemetry summary pills survive switching to remote mode");
-    }
+    require(homeTelemetryPillValue(homeConfigCard, QStringLiteral("目标")).startsWith(QStringLiteral("TCP ")),
+            "home telemetry target updates to the remote Sky TCP endpoint");
+    require(homeConfigCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill")).size() ==
+                telemetryPillCountBeforeModeSwitch,
+            "home telemetry summary keeps the same pill count when switching to remote mode");
     sourceModeSwitch->click();
     processEvents();
-    for (const QPointer<QFrame>& pill : telemetryPillsBeforeModeSwitch)
-    {
-        require(!pill.isNull(),
-                "unchanged home telemetry summary pills survive switching back to local mode");
-    }
+    require(homeTelemetryPillValue(homeConfigCard, QStringLiteral("目标")) == QStringLiteral("本机"),
+            "home telemetry target returns to the local host");
+    require(homeConfigCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill")).size() ==
+                telemetryPillCountBeforeModeSwitch,
+            "home telemetry summary keeps the same pill count when switching back to local mode");
 
     epsilonPort->addItem(QStringLiteral("UNSAVED-COM42"), QStringLiteral("UNSAVED-COM42"));
     epsilonPort->setCurrentIndex(epsilonPort->count() - 1);
@@ -674,10 +931,15 @@ int main(int argc, char **argv)
     const QStringList dynamicValuesBefore = homeTelemetryDynamicSummaryValues(homeConfigCard);
     require(!dynamicValuesBefore.isEmpty(),
             "UI test mode exposes dynamic home telemetry capsule values");
+    const QList<QFrame *> telemetryPillsBeforeRefresh = sortedHomeTelemetryPills(homeConfigCard);
+    require(!telemetryPillsBeforeRefresh.isEmpty(),
+            "UI test mode exposes home telemetry capsule widgets before dynamic refresh");
     require(VaporViewTest::processEventsUntil(1600, [homeConfigCard, dynamicValuesBefore]() {
                 return homeTelemetryDynamicSummaryValues(homeConfigCard) != dynamicValuesBefore;
             }),
             "UI test mode refreshes home telemetry capsule values over time");
+    require(sameWidgetSet(sortedHomeTelemetryPills(homeConfigCard), telemetryPillsBeforeRefresh),
+            "UI test mode refreshes home telemetry values without rebuilding capsule widgets");
     require(VaporViewTest::processEventsUntil(1500, [homeConfigCard]() {
                 return homeTelemetrySummaryHasStableCompactTextGaps(homeConfigCard);
             }),
@@ -685,6 +947,69 @@ int main(int argc, char **argv)
     requireUiTestHomeTelemetryCapsulesCovered(
         homeConfigCard,
         "UI-test home telemetry summary capsules stay covered after dynamic refresh");
+    QWidget *epsilonPanel = window->findChild<QWidget *>(QStringLiteral("epsilonPanel"));
+    require(epsilonPanel && epsilonPanel->isVisible(),
+            "UI test mode exposes the EPSILON home panel");
+    requireUiTestEpsilonPanelFieldsCovered(epsilonPanel);
+    requireUiTestEpsilonPanelWrappedTopRowFilled(epsilonPanel);
+
+    auto *epsilonProgressRow = window->findChild<QWidget *>(
+        QStringLiteral("epsilonReconfigureProgressRow"));
+    auto *epsilonProgressLabel = window->findChild<QLabel *>(
+        QStringLiteral("epsilonReconfigureProgressLabel"));
+    auto *epsilonProgressBar = window->findChild<QProgressBar *>(
+        QStringLiteral("epsilonReconfigureProgressBar"));
+    auto *epsilonLogModel = window->findChild<VaporView::Ground::Main::UiLogModel *>();
+    require(epsilonProgressRow && epsilonProgressLabel && epsilonProgressBar,
+            "UI test mode exposes the EPSILON reconfigure progress controls");
+    require(epsilonLogModel != nullptr,
+            "UI test mode exposes the EPSILON log source model");
+    require(!epsilonProgressRow->isVisible(),
+            "EPSILON reconfigure progress starts hidden before an operation");
+    require(QMetaObject::invokeMethod(window,
+                                      "onReconfigureEpsilonClicked",
+                                      Qt::DirectConnection),
+            "simulated EPSILON reconfigure action invoked");
+    require(VaporViewTest::processEventsUntil(600, [epsilonProgressRow, epsilonProgressBar]() {
+                return epsilonProgressRow->isVisible() &&
+                    epsilonProgressBar->minimum() == 0 &&
+                    epsilonProgressBar->maximum() == 100 &&
+                    epsilonProgressBar->value() == 0;
+            }),
+            "UI test mode shows a determinate 0-100 EPSILON reconfigure progress row");
+    const QString initialProgressText = epsilonProgressLabel->text();
+    require(initialProgressText.contains(QStringLiteral("正在重配 EPSILON 输出")),
+            "UI test mode labels the EPSILON reconfigure progress row");
+    require(VaporViewTest::processEventsUntil(1200, [epsilonProgressBar,
+                                                       epsilonProgressLabel,
+                                                       initialProgressText]() {
+                return epsilonProgressBar->value() > 0 &&
+                    epsilonProgressLabel->text() != initialProgressText;
+            }),
+            "UI test mode advances EPSILON progress after simulated command/reply stages");
+    require(VaporViewTest::processEventsUntil(6000, [epsilonProgressRow, epsilonProgressBar]() {
+                return epsilonProgressRow->isVisible() && epsilonProgressBar->value() == 100;
+            }),
+            "UI test mode reaches 100 percent after the simulated navigation stream is restored");
+    require(VaporViewTest::processEventsUntil(1000, [epsilonProgressRow]() {
+                return !epsilonProgressRow->isVisible();
+            }),
+            "UI test mode hides the EPSILON reconfigure progress row after completion");
+    const QStringList expectedEpsilonReconfigureEvents{
+        QStringLiteral("epsilon_output_reconfigure_started"),
+        QStringLiteral("epsilon_live_stream_pause_for_configuration"),
+        QStringLiteral("epsilon_output_reconfigure_completed"),
+        QStringLiteral("epsilon_configuration_completed_live_stream_restored"),
+        QStringLiteral("epsilon_operation_completed"),
+        QStringLiteral("ui_test_epsilon_output_reconfigure_completed")};
+    for (const QString& event : expectedEpsilonReconfigureEvents)
+    {
+        require(findSourceLogEventRow(epsilonLogModel, event) >= 0,
+                "UI test mode logs the complete EPSILON reconfigure event sequence");
+    }
+    require(findSourceLogEventRow(epsilonLogModel,
+                                  QStringLiteral("epsilon_configuration_collector_output")) < 0,
+            "UI test mode keeps raw EPSILON command and reply diagnostics out of the main log list");
 
     auto *temperatureOutputPercentPill =
         window->findChild<QLabel *>(QStringLiteral("temperatureOverviewOutputPercentPill"));
@@ -1260,11 +1585,11 @@ int main(int argc, char **argv)
     QWidget *deviceConfigPage = window->findChild<QWidget *>(QStringLiteral("deviceConfigPage"));
     require(deviceConfigPage && deviceConfigPage->isVisible(),
             "unified device configuration page is visible in UI test mode");
-    QComboBox *deviceSourceMode =
-        deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceDataSourceModeCombo"));
-    require(deviceSourceMode && deviceSourceMode->count() >= 2,
-            "unified device configuration page exposes the source-mode selector");
-    deviceSourceMode->setCurrentIndex(1);
+    auto *deviceSourceMode =
+        deviceConfigPage->findChild<QPushButton *>(QStringLiteral("deviceConfigSourceModeOverviewSwitch"));
+    require(deviceSourceMode && deviceSourceMode->property("segmentedSwitchControl").toBool(),
+            "unified device configuration page exposes the segmented source-mode selector");
+    deviceSourceMode->click();
     processEvents();
     auto *deviceRemoteCard =
         deviceConfigPage->findChild<QGroupBox *>(QStringLiteral("deviceRemoteSkyConfigCard"));
@@ -1280,31 +1605,42 @@ int main(int argc, char **argv)
         deviceConfigPage->findChild<QPlainTextEdit *>(QStringLiteral("deviceRemoteSkyRawJsonEdit"));
     auto *deviceRemoteStatus =
         deviceConfigPage->findChild<QLabel *>(QStringLiteral("deviceRemoteSkyConfigStatus"));
-    auto *deviceRemoteRd105Slave =
-        deviceConfigPage->findChild<QSpinBox *>(QStringLiteral("deviceRemoteSkyRd105SlaveSpin"));
+    auto *deviceRemoteWavePort =
+        deviceConfigPage->findChild<QSpinBox *>(QStringLiteral("deviceRemoteSkyWavePortSpin"));
     auto *deviceEpsilonPort =
         deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceEpsilonPortCombo"));
     require(deviceRemoteCard && deviceRemoteCard->isVisible() &&
                 deviceRemoteRead && deviceRemoteApply && deviceRemoteSave &&
                 deviceRemoteRaw && deviceRemoteRawJson && deviceRemoteStatus &&
-                deviceRemoteRd105Slave && deviceEpsilonPort,
+                deviceRemoteWavePort && deviceEpsilonPort,
             "remote sky configuration controls live on the unified device configuration page");
+    require(deviceConfigPage->findChild<QSpinBox *>(QStringLiteral("deviceRemoteSkyRd105SlaveSpin")) == nullptr,
+            "Remote Sky RD105 address is configured from the temperature page, not Device Config");
     deviceRemoteRead->click();
     require(VaporViewTest::processEventsUntil(1500, [deviceEpsilonPort]() {
                 return deviceEpsilonPort->currentText() == QStringLiteral("UI-TEST-EPSILON");
             }),
             "UI-test Remote Sky read loads a fixed config into the shared device rows");
-    deviceRemoteRd105Slave->setValue(23);
-    processEvents();
-    require(deviceRemoteApply->isEnabled(),
-            "editing Remote Sky fields marks the unified page dirty and enables Apply in UI test mode");
+    require(deviceRemoteStatus->property("status").toString() == QStringLiteral("success"),
+            "UI-test Remote Sky read uses the synced/success status vocabulary");
     deviceRemoteRaw->click();
     require(VaporViewTest::processEventsUntil(800, [deviceRemoteRawJson]() {
                 return deviceRemoteRawJson->isVisible() &&
                     deviceRemoteRawJson->toPlainText().contains(QStringLiteral("\"wave_tcp\"")) &&
-                    deviceRemoteRawJson->toPlainText().contains(QStringLiteral("\"slave_address\": 23"));
+                    deviceRemoteRawJson->toPlainText().contains(QStringLiteral("\"slave_address\": 1"));
             }),
-            "unified device configuration exposes Remote Sky Raw JSON round-trip");
+            "unified device configuration exposes Remote Sky Raw JSON round-trip without a duplicate RD105 address editor");
+    deviceRemoteRaw->click();
+    require(VaporViewTest::processEventsUntil(800, [deviceRemoteRawJson]() {
+                return !deviceRemoteRawJson->isVisible();
+            }),
+            "Remote Sky raw JSON can return to visual mode");
+    deviceRemoteWavePort->setValue(deviceRemoteWavePort->value() + 1);
+    processEvents();
+    require(deviceRemoteApply->isEnabled(),
+            "editing Remote Sky fields marks the unified page dirty and enables Apply in UI test mode");
+    require(deviceRemoteStatus->property("status").toString() == QStringLiteral("dirty"),
+            "UI-test Remote Sky edit uses the dirty status vocabulary");
     deviceRemoteApply->click();
     require(VaporViewTest::processEventsUntil(800, [deviceRemoteStatus]() {
                 const QString text = deviceRemoteStatus->text();
@@ -1312,6 +1648,8 @@ int main(int argc, char **argv)
                     text.contains(QStringLiteral("validated"));
             }),
             "UI-test Remote Sky apply validates and applies on the unified page");
+    require(deviceRemoteStatus->property("status").toString() == QStringLiteral("success"),
+            "UI-test Remote Sky apply returns to the synced/success status vocabulary");
     deviceRemoteSave->click();
     require(VaporViewTest::processEventsUntil(800, [deviceRemoteStatus]() {
                 const QString text = deviceRemoteStatus->text();
@@ -1319,6 +1657,8 @@ int main(int argc, char **argv)
                     text.contains(QStringLiteral("Simulated"));
             }),
             "UI-test Remote Sky save is simulated from the unified page");
+    require(deviceRemoteStatus->property("status").toString() == QStringLiteral("success"),
+            "UI-test Remote Sky save keeps the saved/success status vocabulary");
 
     QAction *partialFailureAction = findUiTestScenarioAction(
         window,
@@ -1334,7 +1674,7 @@ int main(int argc, char **argv)
     processEvents();
 
     auto *recordingCard = window->findChild<QFrame *>(QStringLiteral("recordingStatusCard"));
-    auto *recordingStatus = window->findChild<QLabel *>(QStringLiteral("recordingStatusLabel"));
+    auto *recordingStatus = window->findChild<QWidget *>(QStringLiteral("recordingStatusView"));
     require(recordingCard && recordingStatus, "recording status card exists");
     QLabel *recordingTitle = nullptr;
     for (QLabel *label : recordingCard->findChildren<QLabel *>())
@@ -1347,39 +1687,162 @@ int main(int argc, char **argv)
     }
     require(recordingTitle && recordingTitle->text() == QStringLiteral("记录状态（界面测试）"),
             "recording card title identifies UI test mode");
-    require(QMetaObject::invokeMethod(window, "onStartRecordingClicked", Qt::DirectConnection),
-            "simulated recording start slot invoked");
-    require(VaporViewTest::processEventsUntil(1500, [recordingStatus]() {
-                return recordingStatus->text().contains(QStringLiteral("记录：进行中（界面测试）")) &&
-                    recordingStatus->text().contains(QStringLiteral("会话：UI-TEST-SESSION")) &&
-                    recordingStatus->text().contains(QStringLiteral("设备行数：")) &&
-                    !recordingStatus->text().contains(QStringLiteral("设备行数：0\n")) &&
-                    recordingStatus->text().contains(QStringLiteral("文件写入：无（仅内存模拟）"));
+    auto recordingStatusUnitColumnIsStable = [recordingStatus]() {
+        const QList<QLabel *> units =
+            recordingStatus->findChildren<QLabel *>(QStringLiteral("recordingStatusUnitLabel"));
+        const QList<QLabel *> values =
+            recordingStatus->findChildren<QLabel *>(QStringLiteral("recordingStatusValueLabel"));
+        const QList<QLabel *> fields =
+            recordingStatus->findChildren<QLabel *>(QStringLiteral("recordingStatusFieldLabel"));
+        for (QLabel *field : fields)
+        {
+            if (!field->isVisible())
+            {
+                continue;
+            }
+            if (field->fontMetrics().horizontalAdvance(field->text()) > field->width() + 1)
+            {
+                return false;
+            }
+            const QRect fieldRect(field->mapTo(recordingStatus, QPoint(0, 0)), field->size());
+            if (!recordingStatus->rect().contains(fieldRect.topLeft()) ||
+                fieldRect.right() > recordingStatus->rect().right())
+            {
+                return false;
+            }
+        }
+        QList<QLabel *> visibleUnits;
+        for (QLabel *unit : units)
+        {
+            if (unit->isVisible())
+            {
+                visibleUnits.append(unit);
+            }
+        }
+        if (visibleUnits.size() < 6)
+        {
+            return false;
+        }
+        int rightEdge = -1;
+        for (QLabel *unit : visibleUnits)
+        {
+            if (!unit->alignment().testFlag(Qt::AlignRight) ||
+                unit->fontMetrics().horizontalAdvance(unit->text()) > unit->width() + 1)
+            {
+                return false;
+            }
+            const QRect unitRect(unit->mapTo(recordingStatus, QPoint(0, 0)), unit->size());
+            if (!recordingStatus->rect().contains(unitRect.topLeft()) ||
+                unitRect.right() > recordingStatus->rect().right())
+            {
+                return false;
+            }
+            if (rightEdge < 0)
+            {
+                rightEdge = unitRect.right();
+            }
+            else if (std::abs(rightEdge - unitRect.right()) > 1)
+            {
+                return false;
+            }
+            bool hasTightValueBeforeUnit = false;
+            for (QLabel *value : values)
+            {
+                if (!value->isVisible())
+                {
+                    continue;
+                }
+                const QRect valueRect(value->mapTo(recordingStatus, QPoint(0, 0)), value->size());
+                if (std::abs(valueRect.center().y() - unitRect.center().y()) > 4)
+                {
+                    continue;
+                }
+                const int gap = unitRect.left() - valueRect.right();
+                if (value->alignment().testFlag(Qt::AlignRight) &&
+                    gap >= 0 && gap <= 24)
+                {
+                    hasTightValueBeforeUnit = true;
+                    break;
+                }
+            }
+            if (!hasTightValueBeforeUnit)
+            {
+                return false;
+            }
+        }
+        return true;
+    };
+    require(VaporViewTest::processEventsUntil(1500, [recordingStatus, recordingStatusUnitColumnIsStable]() {
+                const QString text = recordingStatus->toolTip();
+                return text.contains(QStringLiteral("记录：进行中（界面测试）")) &&
+                    text.contains(QStringLiteral("会话：UI-TEST-SESSION")) &&
+                    text.contains(QStringLiteral("外部设备记录：")) &&
+                    !text.contains(QStringLiteral("外部设备记录：0 行\n")) &&
+                    text.contains(QStringLiteral("波形帧数：")) &&
+                    text.contains(QStringLiteral(" 帧\n已记录：")) &&
+                    text.contains(QStringLiteral("已记录：\nRAW EPSILON：")) &&
+                    text.contains(QStringLiteral(" 条\nRAW PTB210：")) &&
+                    text.contains(QStringLiteral(" 条\nRAW HMP3：")) &&
+                    text.contains(QStringLiteral(" 条\nRAW TFA1500：")) &&
+                    text.contains(QStringLiteral(" 条\nRAW TCP：")) &&
+                    text.contains(QStringLiteral(" 条\nRAW RD105：")) &&
+                    text.contains(QStringLiteral(" 条\nRAW AI-8288：")) &&
+                    text.contains(QStringLiteral("RAW 记录总数：")) &&
+                    text.contains(QStringLiteral(" 条\n文件写入：无（仅内存模拟）")) &&
+                    !text.contains(QStringLiteral("RAW RD105：0 条")) &&
+                    !text.contains(QStringLiteral("RAW AI-8288：0 条")) &&
+                    !text.contains(QStringLiteral("已记录 RAW")) &&
+                    text.contains(QStringLiteral("文件写入：无（仅内存模拟）")) &&
+                    recordingStatusUnitColumnIsStable();
             }),
-            "simulated recording displays deterministic in-memory counters");
+            "UI test mode immediately covers recording status with aligned non-zero counters");
+    const QList<QLabel *> recordingStatusLabelsBeforeCounterRefresh =
+        recordingStatus->findChildren<QLabel *>();
+    QVector<QPointer<QLabel>> stableRecordingStatusLabels;
+    stableRecordingStatusLabels.reserve(recordingStatusLabelsBeforeCounterRefresh.size());
+    for (QLabel *label : recordingStatusLabelsBeforeCounterRefresh)
+    {
+        stableRecordingStatusLabels.append(label);
+    }
+    const QString recordingTextBeforeCounterRefresh = recordingStatus->toolTip();
+    require(VaporViewTest::processEventsUntil(1500, [recordingStatus, recordingTextBeforeCounterRefresh]() {
+                return recordingStatus->toolTip() != recordingTextBeforeCounterRefresh;
+            }),
+            "UI test mode recording counters continue refreshing");
+    const QList<QLabel *> recordingStatusLabelsAfterCounterRefresh =
+        recordingStatus->findChildren<QLabel *>();
+    require(recordingStatusLabelsAfterCounterRefresh.size() == stableRecordingStatusLabels.size(),
+            "recording status counter refresh keeps the same number of label widgets");
+    for (int labelIndex = 0; labelIndex < stableRecordingStatusLabels.size(); ++labelIndex)
+    {
+        require(stableRecordingStatusLabels.at(labelIndex) &&
+                    recordingStatusLabelsAfterCounterRefresh.at(labelIndex) ==
+                        stableRecordingStatusLabels.at(labelIndex).data(),
+                "recording status counter refresh reuses existing label widgets");
+    }
     require(QMetaObject::invokeMethod(window, "onPauseRecordingClicked", Qt::DirectConnection),
             "simulated recording pause slot invoked");
     processEvents();
-    const QString pausedRecordingText = recordingStatus->text();
+    const QString pausedRecordingText = recordingStatus->toolTip();
     require(pausedRecordingText.contains(QStringLiteral("记录：已暂停（界面测试）")),
             "simulated recording displays the paused UI-test state");
     require(!VaporViewTest::processEventsUntil(400, [recordingStatus, pausedRecordingText]() {
-                return recordingStatus->text() != pausedRecordingText;
+                return recordingStatus->toolTip() != pausedRecordingText;
             }),
             "simulated recording counters freeze while paused");
     require(QMetaObject::invokeMethod(window, "onStartRecordingClicked", Qt::DirectConnection),
             "simulated recording resume slot invoked");
     require(VaporViewTest::processEventsUntil(1500, [recordingStatus, pausedRecordingText]() {
-                return recordingStatus->text().contains(QStringLiteral("记录：进行中（界面测试）")) &&
-                    recordingStatus->text() != pausedRecordingText;
+                return recordingStatus->toolTip().contains(QStringLiteral("记录：进行中（界面测试）")) &&
+                    recordingStatus->toolTip() != pausedRecordingText;
             }),
             "simulated recording counters resume without starting the real recorder");
     require(QMetaObject::invokeMethod(window, "onStopRecordingClicked", Qt::DirectConnection),
             "simulated recording stop slot invoked");
     processEvents();
-    require(recordingStatus->text().contains(QStringLiteral("记录：未记录（界面测试）")) &&
-                recordingStatus->text().contains(QStringLiteral("设备行数：0")) &&
-                recordingStatus->text().contains(QStringLiteral("文件写入：无（仅内存模拟）")),
+    require(recordingStatus->toolTip().contains(QStringLiteral("记录：未记录（界面测试）")) &&
+                recordingStatus->toolTip().contains(QStringLiteral("外部设备记录：0 行")) &&
+                recordingStatus->toolTip().contains(QStringLiteral("文件写入：无（仅内存模拟）")),
             "stopping simulated recording clears only its in-memory counters");
     require(QMetaObject::invokeMethod(window, "onDisconnectClicked", Qt::DirectConnection),
             "simulated disconnect slot invoked");
@@ -1463,18 +1926,7 @@ int main(int argc, char **argv)
         auto *connectionWindow = new MainWindow();
         connectionWindow->show();
         processEvents();
-        VaporView::Ground::Widgets::SegmentedSwitchButton *connectionSourceModeSwitch = nullptr;
-        for (auto *candidate : connectionWindow->findChildren<VaporView::Ground::Widgets::SegmentedSwitchButton *>())
-        {
-            if ((candidate->leftSegmentText().contains(QStringLiteral("本地")) ||
-                 candidate->leftSegmentText().contains(QStringLiteral("Local"))) &&
-                (candidate->rightSegmentText().contains(QStringLiteral("远程")) ||
-                 candidate->rightSegmentText().contains(QStringLiteral("Remote"))))
-            {
-                connectionSourceModeSwitch = candidate;
-                break;
-            }
-        }
+        auto *connectionSourceModeSwitch = findHomeSourceModeSwitch(connectionWindow);
         require(connectionSourceModeSwitch != nullptr,
                 "normal-mode source mode switch exists");
         if (connectionSourceModeSwitch->switchChecked())
@@ -1482,6 +1934,49 @@ int main(int argc, char **argv)
             connectionSourceModeSwitch->click();
             processEvents();
         }
+
+        QTcpServer remoteIdleSource;
+        require(remoteIdleSource.listen(QHostAddress::LocalHost),
+                "idle TCP telemetry source starts for zero-rate link coverage");
+        auto *remoteController = qobject_cast<VaporView::Ground::Devices::RemoteSkyController *>(
+            connectionWindow->property("remoteSkyController").value<QObject *>());
+        require(remoteController != nullptr,
+                "normal-mode window exposes its remote Sky controller");
+        VaporView::setSettingsWritesSuspended(false);
+        require(remoteController->openTcp(QStringLiteral("127.0.0.1"), remoteIdleSource.serverPort()),
+                "remote Sky controller connects to the idle TCP telemetry source");
+        VaporView::setSettingsWritesSuspended(true);
+        connectionSourceModeSwitch->click();
+        processEvents();
+        QGroupBox *remoteHomeConfigCard = nullptr;
+        for (QWidget *ancestor = connectionSourceModeSwitch->parentWidget();
+             ancestor && !remoteHomeConfigCard;
+             ancestor = ancestor->parentWidget())
+        {
+            remoteHomeConfigCard = qobject_cast<QGroupBox *>(ancestor);
+        }
+        require(remoteHomeConfigCard != nullptr && connectionSourceModeSwitch->switchChecked(),
+                "remote source mode is active for zero-rate link coverage");
+        for (const QString& name : {QStringLiteral("天→地"), QStringLiteral("地→天"), QStringLiteral("合")})
+        {
+            QFrame *pill = homeTelemetryPill(remoteHomeConfigCard, name);
+            require(pill != nullptr,
+                    "remote zero-rate link summary exposes the expected rate pill");
+            QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
+            QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
+            require(nameLabel && valueLabel && valueLabel->text() == QStringLiteral("0 bps"),
+                    "remote zero-rate link summary shows 0 bps");
+            require(nameLabel->property("telemetryAvailable").toBool() &&
+                        valueLabel->property("telemetryAvailable").toBool(),
+                    "remote zero-rate link summary remains visually available while connected");
+        }
+        remoteController->close();
+        processEvents();
+        require(!remoteController->isOpen(),
+                "remote zero-rate link coverage closes the remote telemetry connection");
+        connectionSourceModeSwitch->click();
+        processEvents();
+
         auto *connectionWavePanel = connectionWindow->findChild<TcpWavePanel *>();
         require(connectionWavePanel != nullptr,
                 "normal-mode window exposes its TCP waveform panel");
@@ -1579,18 +2074,7 @@ int main(int argc, char **argv)
         auto *failedConnectionWindow = new MainWindow();
         failedConnectionWindow->show();
         processEvents();
-        VaporView::Ground::Widgets::SegmentedSwitchButton *failedSourceModeSwitch = nullptr;
-        for (auto *candidate : failedConnectionWindow->findChildren<VaporView::Ground::Widgets::SegmentedSwitchButton *>())
-        {
-            if ((candidate->leftSegmentText().contains(QStringLiteral("本地")) ||
-                 candidate->leftSegmentText().contains(QStringLiteral("Local"))) &&
-                (candidate->rightSegmentText().contains(QStringLiteral("远程")) ||
-                 candidate->rightSegmentText().contains(QStringLiteral("Remote"))))
-            {
-                failedSourceModeSwitch = candidate;
-                break;
-            }
-        }
+        auto *failedSourceModeSwitch = findHomeSourceModeSwitch(failedConnectionWindow);
         require(failedSourceModeSwitch != nullptr,
                 "failed-path normal-mode source mode switch exists");
         if (failedSourceModeSwitch->switchChecked())
@@ -1664,6 +2148,98 @@ int main(int argc, char **argv)
                 "failed-path connection summary follows the TCP waveform error");
         failedConnectionWindow->close();
         delete failedConnectionWindow;
+        VaporView::setSettingsWritesSuspended(false);
+    }
+
+    {
+        VaporView::setSettingsWritesSuspended(true);
+        QTemporaryDir singleDeviceLogDirectory;
+        require(singleDeviceLogDirectory.isValid(),
+                "temporary single-device connection log directory created");
+        VaporView::LogService singleDeviceLogService(
+            QStringLiteral("VaporViewUiTestModeWindowSingleDeviceConnectionTest"),
+            nullptr,
+            singleDeviceLogDirectory.path(),
+            singleDeviceLogDirectory.path());
+        auto *singleDeviceWindow = new MainWindow();
+        singleDeviceWindow->show();
+        processEvents();
+        auto *singleDeviceSourceModeSwitch = findHomeSourceModeSwitch(singleDeviceWindow);
+        require(singleDeviceSourceModeSwitch != nullptr,
+                "single-device normal-mode source mode switch exists");
+        if (singleDeviceSourceModeSwitch->switchChecked())
+        {
+            singleDeviceSourceModeSwitch->click();
+            processEvents();
+        }
+        auto *singleDeviceLogList =
+            singleDeviceWindow->findChild<QListView *>(QStringLiteral("logListView"));
+        require(singleDeviceLogList && singleDeviceLogList->model(),
+                "single-device normal-mode window exposes the log model");
+        auto *singleDeviceLogAllAction =
+            singleDeviceWindow->findChild<QAction *>(QStringLiteral("logFilterAllMenuAction"));
+        require(singleDeviceLogAllAction != nullptr,
+                "single-device normal-mode window exposes the all-log view action");
+        singleDeviceLogAllAction->trigger();
+        auto *singleDeviceEpsilonPort =
+            singleDeviceWindow->findChild<QComboBox *>(QStringLiteral("epsilonPortCombo"));
+        require(singleDeviceEpsilonPort != nullptr,
+                "single-device normal-mode window exposes the EPSILON port combo");
+        const QString singleDevicePort = QStringLiteral("__invalid_vaporview_home_epsilon__");
+        singleDeviceEpsilonPort->addItem(singleDevicePort, singleDevicePort);
+        singleDeviceEpsilonPort->setCurrentIndex(singleDeviceEpsilonPort->findData(singleDevicePort));
+        processEvents();
+        QToolButton *singleDeviceEpsilonAction = nullptr;
+        for (QToolButton *button :
+             singleDeviceWindow->findChildren<QToolButton *>(QStringLiteral("homeDeviceActionButton")))
+        {
+            if (!button->property("deviceConfigAction").toBool() &&
+                button->toolTip().contains(QStringLiteral("EPSILON")))
+            {
+                singleDeviceEpsilonAction = button;
+                break;
+            }
+        }
+        require(singleDeviceEpsilonAction != nullptr && singleDeviceEpsilonAction->isEnabled(),
+                "single-device EPSILON home action is enabled when only EPSILON has a port");
+        VaporView::setSettingsWritesSuspended(false);
+        singleDeviceEpsilonAction->click();
+        VaporView::setSettingsWritesSuspended(true);
+        const bool singleDeviceLogsFlushed =
+            VaporViewTest::processEventsUntil(5000, [singleDeviceLogList]() {
+                return findLogEventWithDevice(
+                           singleDeviceLogList,
+                           QStringLiteral("local_device_connection_started"),
+                           QStringLiteral("EPSILON")) &&
+                    findLogEventRow(singleDeviceLogList,
+                                    QStringLiteral("local_connection_summary")) >= 0;
+            });
+        if (!singleDeviceLogsFlushed)
+        {
+            dumpLogRows(singleDeviceLogList, "single-device home connection log rows");
+        }
+        require(singleDeviceLogsFlushed,
+                "single-device home action logs only the EPSILON connection attempt and summary");
+        require(findLogEventRow(singleDeviceLogList,
+                                QStringLiteral("tcp_wave_connection_started")) < 0,
+                "single-device home action does not start TCP waveform connection");
+        for (const QString& nonTargetDevice : {
+                 QStringLiteral("PTB210"),
+                 QStringLiteral("BMP390"),
+                 QStringLiteral("HMP3"),
+                 QStringLiteral("SHT45"),
+                 QStringLiteral("TFA1500-L"),
+                 QStringLiteral("RD105"),
+                 QStringLiteral("AI-8288")})
+        {
+            require(!findLogEventWithDevice(
+                        singleDeviceLogList,
+                        QStringLiteral("local_device_connection_skipped"),
+                        nonTargetDevice),
+                    "single-device home action does not emit skipped logs for non-target devices");
+        }
+        singleDeviceWindow->close();
+        delete singleDeviceWindow;
         VaporView::setSettingsWritesSuspended(false);
     }
     require(settingsSnapshotsEqual(snapshotAll(), beforeDirectClose,

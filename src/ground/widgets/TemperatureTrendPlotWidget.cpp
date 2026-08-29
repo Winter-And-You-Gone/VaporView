@@ -144,7 +144,8 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing, true);
     const bool dark = VaporView::isDarkThemeEnabled();
-    const QColor background = property("forceWhiteBackground").toBool()
+    const bool forceWhiteBackground = property("forceWhiteBackground").toBool() && !dark;
+    const QColor background = forceWhiteBackground
         ? QColor(Qt::white)
         : appThemeColor(AppThemeColor::SurfaceRaised, dark);
     const QColor grid = VaporView::appThemeColor(VaporView::AppThemeColor::PlotGrid, dark);

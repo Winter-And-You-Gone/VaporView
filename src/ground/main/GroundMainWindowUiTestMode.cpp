@@ -316,6 +316,7 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
         state_->ui_test_started_ms_ = QDateTime::currentMSecsSinceEpoch();
         state_->ui_test_connection_in_progress_ = false;
         resetUiTestRecording();
+        startOrResumeUiTestRecording();
         state_->ui_test_model_->reset(0);
         state_->ui_test_mode_enabled_ = true;
         if (state_->tcp_wave_panel_)
@@ -385,6 +386,11 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
     if (state_->recording_schedule_controller_ && state_->recording_schedule_controller_->isActive())
     {
         state_->recording_schedule_controller_->cancel();
+    }
+    if (state_->epsilon_reconfigure_in_progress_)
+    {
+        stopEpsilonReconfigureProgress();
+        state_->epsilon_reconfigure_in_progress_ = false;
     }
     state_->ui_test_connection_in_progress_ = false;
     resetUiTestRecording();
@@ -562,6 +568,10 @@ void MainWindow::applyUiTestSnapshot()
         rates.lidarHz = snapshot.lidarRateHz;
         rates.temperatureHz = snapshot.temperatureRateHz;
         state_->device_panel_coordinator_->updateRates(rates);
+    }
+    if (state_->epsilon_config_panel_)
+    {
+        state_->epsilon_config_panel_->setLivePacketRates(snapshot.epsilon);
     }
     updateEnvironmentStatusIcons(snapshot.lidar.valid, snapshot.ptb.valid, snapshot.hmp.valid);
     if (state_->tcp_wave_panel_ && !snapshot.rawWaveform.isEmpty())

@@ -1,8 +1,82 @@
 #include "ground/main/GroundMainWindowImplementation.h"
 #include "ground/devices/DeviceRatePolicy.h"
 
+#include <QStyle>
+
+#include <algorithm>
+#include <tuple>
+
 namespace
 {
+
+constexpr const char *kEnvStatusIconValidProperty = "_vv_env_status_icon_valid";
+constexpr const char *kEnvStatusIconEnglishProperty = "_vv_env_status_icon_english";
+constexpr const char *kEnvStatusIconDarkProperty = "_vv_env_status_icon_dark";
+constexpr const char *kRemoteActionBaseKeyProperty = "_vv_remote_action_base_key";
+constexpr const char *kRemoteActionIconKeyProperty = "_vv_remote_action_icon_key";
+
+bool setDynamicPropertyIfChanged(QObject *object, const char *name, const QVariant& value)
+{
+    if (!object || object->property(name) == value)
+    {
+        return false;
+    }
+    object->setProperty(name, value);
+    return true;
+}
+
+void setButtonTextIfChanged(QAbstractButton *button, const QString& text)
+{
+    if (button && button->text() != text)
+    {
+        button->setText(text);
+    }
+}
+
+void setWidgetToolTipIfChanged(QWidget *widget, const QString& text)
+{
+    if (widget && widget->toolTip() != text)
+    {
+        widget->setToolTip(text);
+    }
+}
+
+void setAccessibleNameIfChanged(QWidget *widget, const QString& text)
+{
+    if (widget && widget->accessibleName() != text)
+    {
+        widget->setAccessibleName(text);
+    }
+}
+
+void setButtonStatusTipIfChanged(QWidget *widget, const QString& text)
+{
+    if (widget && widget->statusTip() != text)
+    {
+        widget->setStatusTip(text);
+    }
+}
+
+template <typename IconFactory>
+void setButtonIconForKey(QToolButton *button, const QString& key, IconFactory iconFactory)
+{
+    if (!button || button->property(kRemoteActionIconKeyProperty).toString() == key)
+    {
+        return;
+    }
+    button->setProperty(kRemoteActionIconKeyProperty, key);
+    button->setIcon(iconFactory());
+}
+
+void repolishIfNeeded(QWidget *widget, bool needed)
+{
+    if (!widget || !needed)
+    {
+        return;
+    }
+    widget->style()->unpolish(widget);
+    widget->style()->polish(widget);
+}
 
 QString remoteSummaryRecordingStateText(quint8 state, bool english)
 {
@@ -28,6 +102,112 @@ QString remoteSummaryBytesText(quint64 bytes)
         ++unit;
     }
     return QStringLiteral("%1 %2").arg(value, 0, 'f', unit == 0 ? 0 : 1).arg(units[unit]);
+}
+
+QString compactAvailabilityText(bool hasData, bool english)
+{
+    return hasData
+        ? (english ? QStringLiteral("Yes") : QStringLiteral("有"))
+        : (english ? QStringLiteral("No") : QStringLiteral("无"));
+}
+
+QString compactAvailabilityWidthText(bool english)
+{
+    return english ? QStringLiteral("Yes") : QStringLiteral("有");
+}
+
+QString summaryItemValueText(const VaporView::Ground::Main::RemoteTelemetrySummarySections::Item& item,
+                             bool compactAvailabilityValues,
+                             bool english)
+{
+    if (compactAvailabilityValues && item.compactAvailabilityValue)
+    {
+        return compactAvailabilityText(item.hasData, english);
+    }
+    return item.value;
+}
+
+QString summaryItemWidthText(const VaporView::Ground::Main::RemoteTelemetrySummarySections::Item& item,
+                             bool compactAvailabilityValues,
+                             bool english)
+{
+    if (compactAvailabilityValues && item.compactAvailabilityValue)
+    {
+        return compactAvailabilityWidthText(english);
+    }
+    return item.valueWidthText.isEmpty() ? item.value : item.valueWidthText;
+}
+
+void setTelemetryAvailability(QWidget *widget, bool available)
+{
+    if (!widget || widget->property("telemetryAvailable").toBool() == available)
+    {
+        return;
+    }
+    widget->setProperty("telemetryAvailable", available);
+    if (QStyle *style = widget->style())
+    {
+        style->unpolish(widget);
+        style->polish(widget);
+    }
+    widget->update();
+}
+
+bool updateSummarySectionValues(QVBoxLayout *sectionLayout,
+                                const QList<VaporView::Ground::Main::RemoteTelemetrySummarySections::Item>& items,
+                                bool compactAvailabilityValues,
+                                bool english)
+{
+    auto *section = sectionLayout ? qobject_cast<QWidget *>(sectionLayout->parent()) : nullptr;
+    if (!section)
+    {
+        return false;
+    }
+
+    QList<QFrame *> pills =
+        section->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
+    std::stable_sort(pills.begin(), pills.end(), [section](QFrame *left, QFrame *right) {
+        const QPoint leftPos = left->mapTo(section, QPoint(0, 0));
+        const QPoint rightPos = right->mapTo(section, QPoint(0, 0));
+        return std::make_tuple(leftPos.y(), leftPos.x()) <
+               std::make_tuple(rightPos.y(), rightPos.x());
+    });
+    if (pills.size() != items.size())
+    {
+        return false;
+    }
+
+    for (int index = 0; index < items.size(); ++index)
+    {
+        const auto& item = items.at(index);
+        QFrame *pill = pills.at(index);
+        auto *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
+        auto *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
+        if (!nameLabel || !valueLabel || nameLabel->text() != item.label)
+        {
+            return false;
+        }
+
+        const QString valueText = summaryItemValueText(item, compactAvailabilityValues, english);
+        const QString widthText = summaryItemWidthText(item, compactAvailabilityValues, english);
+        const int requiredValueWidth = std::max(valueLabel->fontMetrics().horizontalAdvance(valueText),
+                                               valueLabel->fontMetrics().horizontalAdvance(widthText));
+        const int availableValueWidth = std::max(
+            valueLabel->width(),
+            std::max(valueLabel->minimumWidth(), valueLabel->sizeHint().width()));
+        if (requiredValueWidth > availableValueWidth + 1)
+        {
+            return false;
+        }
+
+        if (valueLabel->text() != valueText)
+        {
+            valueLabel->setText(valueText);
+        }
+        setTelemetryAvailability(nameLabel, item.hasData);
+        setTelemetryAvailability(valueLabel, item.hasData);
+    }
+    return true;
 }
 
 QString rd105OutcomeName(VaporView::Ground::Devices::Rd105OperationOutcome outcome)
@@ -67,8 +247,222 @@ bool MainWindow::isRemoteSkyTcpMode() const
     return state_->sky_telemetry_transport_combo_->currentData().toString() != QStringLiteral("serial");
 }
 
+void MainWindow::requestSourceModeSelection(bool remoteSelected)
+{
+    auto syncSwitch = [remoteSelected](VaporView::Ground::Widgets::SourceModeOverviewSwitchButton *button) {
+        if (button)
+        {
+            button->setSwitchChecked(remoteSelected, button->switchChecked() != remoteSelected);
+        }
+    };
+    syncSwitch(state_->source_mode_switch_);
+    syncSwitch(state_->device_config_.data_source_mode_switch);
+
+    if (!state_->data_source_mode_combo_)
+    {
+        return;
+    }
+
+    const int targetIndex = remoteSelected ? 1 : 0;
+    if (state_->data_source_mode_combo_->currentIndex() == targetIndex)
+    {
+        updateSourceModeUi();
+        return;
+    }
+    state_->data_source_mode_combo_->setCurrentIndex(targetIndex);
+}
+
 void MainWindow::onDataSourceModeChanged(int index)
 {
+    // Switching targets updates the shared serial card in several stages (local
+    // values, remote values, row visibility, and enabled states). Keep the page
+    // from painting those intermediate layouts; otherwise the card briefly
+    // disappears while the sky-link row is being inserted below the device rows.
+    QWidget *deviceConfigPage = state_->device_config_.page;
+    QScrollArea *deviceConfigScrollArea = deviceConfigPage
+        ? deviceConfigPage->findChild<QScrollArea *>(QStringLiteral("mainCardsScrollArea"))
+        : nullptr;
+    const bool pageUpdatesEnabled = deviceConfigPage && deviceConfigPage->updatesEnabled();
+    const bool scrollUpdatesEnabled = deviceConfigScrollArea && deviceConfigScrollArea->updatesEnabled();
+    const bool viewportUpdatesEnabled = deviceConfigScrollArea && deviceConfigScrollArea->viewport()->updatesEnabled();
+    if (pageUpdatesEnabled)
+    {
+        deviceConfigPage->setUpdatesEnabled(false);
+    }
+    if (scrollUpdatesEnabled)
+    {
+        deviceConfigScrollArea->setUpdatesEnabled(false);
+    }
+    if (viewportUpdatesEnabled)
+    {
+        deviceConfigScrollArea->viewport()->setUpdatesEnabled(false);
+    }
+    QWidget *serialCard = state_->device_config_.sky_telemetry_row_widget
+        ? state_->device_config_.sky_telemetry_row_widget->parentWidget()
+        : nullptr;
+    QWidget *remoteSkyConfigCard = state_->device_config_.remote_sky_config_card;
+    QWidget *deviceConfigContent = deviceConfigScrollArea
+        ? deviceConfigScrollArea->widget()
+        : nullptr;
+    const bool serialCardHeightLocked = serialCard && serialCard->isVisible();
+    const bool serialCardUpdatesEnabled = serialCard && serialCard->updatesEnabled();
+    const bool remoteSkyConfigCardUpdatesEnabled =
+        remoteSkyConfigCard && remoteSkyConfigCard->updatesEnabled();
+    const int serialCardCurrentHeight = serialCardHeightLocked ? serialCard->height() : 0;
+    const int serialCardMinimumHeight = serialCardHeightLocked
+        ? serialCard->minimumHeight()
+        : 0;
+    const int serialCardMaximumHeight = serialCardHeightLocked
+        ? serialCard->maximumHeight()
+        : QWIDGETSIZE_MAX;
+    if (serialCardUpdatesEnabled && serialCard)
+    {
+        serialCard->setUpdatesEnabled(false);
+    }
+    if (remoteSkyConfigCardUpdatesEnabled && remoteSkyConfigCard)
+    {
+        // Its old geometry still points at the five-row local card. Keep it
+        // from painting over the AI-8288 row until the content layout catches up.
+        remoteSkyConfigCard->setUpdatesEnabled(false);
+    }
+    if (serialCardHeightLocked)
+    {
+        // The parent content layout can otherwise overwrite the card geometry
+        // with its pre-switch size before the newly visible row is measured.
+        serialCard->setFixedHeight(serialCardCurrentHeight);
+        if (index == 1 && !state_->remote_sky_mode_ && state_->device_config_.sky_telemetry_row_widget)
+        {
+            const QWidget *skyTelemetryRow = state_->device_config_.sky_telemetry_row_widget;
+            const int skyRowHeight = std::max(skyTelemetryRow->sizeHint().height(),
+                                              skyTelemetryRow->minimumSizeHint().height());
+            serialCard->setFixedHeight(serialCardCurrentHeight + skyRowHeight);
+        }
+    }
+    QList<QLayout *> deviceConfigLayouts = {
+        serialCard ? serialCard->layout() : nullptr,
+        deviceConfigContent ? deviceConfigContent->layout() : nullptr,
+        deviceConfigPage ? deviceConfigPage->layout() : nullptr};
+    for (QWidget *root : {serialCard})
+    {
+        if (!root)
+        {
+            continue;
+        }
+        for (QLayout *layout : root->findChildren<QLayout *>())
+        {
+            if (!deviceConfigLayouts.contains(layout))
+            {
+                deviceConfigLayouts.append(layout);
+            }
+        }
+    }
+    QList<QLayout *> disabledDeviceConfigLayouts;
+    for (QLayout *layout : deviceConfigLayouts)
+    {
+        if (layout && layout->isEnabled())
+        {
+            layout->setEnabled(false);
+            disabledDeviceConfigLayouts.append(layout);
+        }
+    }
+    const auto restoreDeviceConfigUpdates = qScopeGuard(
+        [deviceConfigPage, deviceConfigScrollArea, pageUpdatesEnabled, scrollUpdatesEnabled,
+         viewportUpdatesEnabled, disabledDeviceConfigLayouts, serialCard,
+         serialCardHeightLocked, serialCardMinimumHeight, serialCardMaximumHeight,
+         serialCardUpdatesEnabled, remoteSkyConfigCard, remoteSkyConfigCardUpdatesEnabled,
+         deviceConfigContent]() {
+            for (QLayout *layout : disabledDeviceConfigLayouts)
+            {
+                layout->setEnabled(true);
+                layout->invalidate();
+                layout->activate();
+            }
+            if (serialCardHeightLocked && serialCard)
+            {
+                serialCard->setMinimumHeight(serialCardMinimumHeight);
+                serialCard->setMaximumHeight(serialCardMaximumHeight);
+                if (QLayout *layout = serialCard->layout())
+                {
+                    layout->invalidate();
+                    layout->activate();
+                }
+            }
+            // Flush the layout requests generated by the visibility changes while
+            // painting is still blocked. Otherwise Qt can apply an intermediate
+            // compact card geometry on the first event-loop turn after the switch.
+            if (serialCard)
+            {
+                QCoreApplication::sendPostedEvents(serialCard, QEvent::LayoutRequest);
+            }
+            if (deviceConfigContent)
+            {
+                QCoreApplication::sendPostedEvents(deviceConfigContent, QEvent::LayoutRequest);
+            }
+            if (deviceConfigPage)
+            {
+                QCoreApplication::sendPostedEvents(deviceConfigPage, QEvent::LayoutRequest);
+            }
+            if (deviceConfigScrollArea)
+            {
+                QCoreApplication::sendPostedEvents(deviceConfigScrollArea, QEvent::LayoutRequest);
+            }
+            if (serialCardHeightLocked && serialCard)
+            {
+                const int targetHeight = std::max(serialCard->sizeHint().height(),
+                                                  serialCard->minimumSizeHint().height());
+                serialCard->setFixedHeight(targetHeight);
+            }
+            if (deviceConfigContent)
+            {
+                if (QLayout *layout = deviceConfigContent->layout())
+                {
+                    // Reposition the newly visible remote card after the final
+                    // serial-card height is known, while painting is still blocked.
+                    layout->invalidate();
+                    layout->setGeometry(deviceConfigContent->rect());
+                    layout->activate();
+                }
+            }
+            if (remoteSkyConfigCard && remoteSkyConfigCard->isVisible() &&
+                serialCard && deviceConfigContent)
+            {
+                // A fixed-height serial card can change after the content
+                // layout's cached item geometry was calculated. Align the
+                // remote card explicitly before either card is repainted.
+                const int spacing = deviceConfigContent->layout()
+                    ? deviceConfigContent->layout()->spacing()
+                    : 0;
+                QPoint remotePosition = remoteSkyConfigCard->pos();
+                remotePosition.setY(serialCard->geometry().bottom() + 1 + std::max(0, spacing));
+                remoteSkyConfigCard->move(remotePosition);
+            }
+            if (remoteSkyConfigCardUpdatesEnabled && remoteSkyConfigCard)
+            {
+                remoteSkyConfigCard->setUpdatesEnabled(true);
+                remoteSkyConfigCard->update();
+            }
+            if (serialCardUpdatesEnabled && serialCard)
+            {
+                serialCard->setUpdatesEnabled(true);
+                serialCard->update();
+            }
+            if (viewportUpdatesEnabled && deviceConfigScrollArea)
+            {
+                deviceConfigScrollArea->viewport()->setUpdatesEnabled(true);
+                deviceConfigScrollArea->viewport()->update();
+            }
+            if (scrollUpdatesEnabled && deviceConfigScrollArea)
+            {
+                deviceConfigScrollArea->setUpdatesEnabled(true);
+                deviceConfigScrollArea->update();
+            }
+            if (pageUpdatesEnabled && deviceConfigPage)
+            {
+                deviceConfigPage->setUpdatesEnabled(true);
+                deviceConfigPage->update();
+            }
+        });
+
     state_->remote_sky_mode_ = index == 1;
     if (state_->ai8_device_session_)
     {
@@ -96,7 +490,6 @@ void MainWindow::onDataSourceModeChanged(int index)
                 ? VaporView::Ground::Devices::Rd105Backend::Remote
                 : VaporView::Ground::Devices::Rd105Backend::Local);
     }
-    saveRememberedInputState();
     clearRemoteSkyDataUi();
     syncDeviceConfigEpsilonPanelFromSettings();
     if (state_->tcp_wave_panel_)
@@ -111,9 +504,11 @@ void MainWindow::onDataSourceModeChanged(int index)
     {
         syncDeviceConfigPageFromHome();
     }
+    saveRememberedInputState();
+    updateDeviceConfigTexts();
     updateSourceModeUi();
     requestRemoteSkyConfigIfAvailable(false);
-    updateRecordingActionStates();
+    updateRecordingStatusLabel();
 }
 
 void MainWindow::updateSourceModeUi()
@@ -136,7 +531,11 @@ void MainWindow::updateSourceModeUi()
     }
     if (state_->auto_detect_ports_btn_)
     {
-        state_->auto_detect_ports_btn_->setEnabled(!remote && (isUiTestMode() || !state_->is_connected_) && !state_->connection_attempt_in_progress_);
+        const bool remoteDetectionAvailable = remote && (isUiTestMode() ||
+            (state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen()));
+        state_->auto_detect_ports_btn_->setEnabled(remote
+            ? remoteDetectionAvailable
+            : (isUiTestMode() || !state_->is_connected_) && !state_->connection_attempt_in_progress_);
     }
     if (state_->source_mode_switch_)
     {
@@ -429,6 +828,7 @@ void MainWindow::clearRemoteSkyDataUi()
     state_->remote_wave_stream_requested_ = false;
     state_->remote_wave_stream_enable_pending_ = false;
     state_->remote_wave_stream_auto_start_ = true;
+    clearPendingRemoteWaveTcpConnection();
     state_->remote_status_ = VaporView::TelemetryStatus();
     state_->remote_recording_state_ = 0;
 
@@ -470,9 +870,14 @@ void MainWindow::clearRemoteSkyDataUi()
 void MainWindow::markRemoteSkyLinkClosed()
 {
     state_->remote_sky_controller_->markLinkClosed();
+    state_->remote_serial_detection_pending_ = false;
+    state_->port_detection_in_progress_ = false;
+    state_->remote_serial_detection_seq_ = 0;
+    state_->remote_serial_detection_cancel_seq_ = 0;
     state_->remote_sky_online_ = false;
     state_->remote_wave_stream_requested_ = false;
     state_->remote_wave_stream_enable_pending_ = false;
+    clearPendingRemoteWaveTcpConnection();
     state_->remote_sky_config_loading_ = false;
     state_->remote_sky_config_applying_ = false;
     state_->remote_sky_config_saving_ = false;
@@ -663,6 +1068,7 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
     const double txBps = connected
         ? (uiTestMode ? uiTestSnapshot.transmitBitsPerSecond : state_->remote_sky_controller_->transmitBitsPerSecond())
         : 0.0;
+    const bool linkRateAvailable = connected;
     const bool statusFresh = connected && (uiTestMode ||
         (state_->remote_sky_controller_ &&
          state_->remote_sky_controller_->statusFresh(QDateTime::currentMSecsSinceEpoch())));
@@ -672,6 +1078,33 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         : state_->remote_status_.disk_free_bytes;
     const quint32 crcErrorCount = uiTestMode ? 0U : state_->remote_status_.crc_error_count;
     const QString unavailableText = QStringLiteral("--");
+    const QString targetText = [this]() {
+        if (!isRemoteSkyMode())
+        {
+            return state_->is_english_
+                ? QStringLiteral("Local host")
+                : QStringLiteral("本机");
+        }
+        if (isRemoteSkyTcpMode())
+        {
+            const QString host = state_->sky_telemetry_tcp_host_edit_
+                ? state_->sky_telemetry_tcp_host_edit_->text().trimmed()
+                : QString();
+            const int port = state_->sky_telemetry_tcp_port_spin_
+                ? state_->sky_telemetry_tcp_port_spin_->value()
+                : 0;
+            return QStringLiteral("TCP %1:%2")
+                .arg(host.isEmpty() ? QStringLiteral("--") : host)
+                .arg(port > 0 ? QString::number(port) : QStringLiteral("--"));
+        }
+        const QString serialPort = localSerialPortComboValue(state_->sky_telemetry_port_combo_);
+        const QString baud = state_->sky_telemetry_baud_combo_
+            ? state_->sky_telemetry_baud_combo_->currentText().trimmed()
+            : QString();
+        return QStringLiteral("Serial %1 %2")
+            .arg(serialPort.isEmpty() ? QStringLiteral("--") : serialPort,
+                 baud.isEmpty() ? QStringLiteral("--") : baud);
+    }();
 
     auto makeItem = [](const QString& label,
                        const QString& value,
@@ -715,9 +1148,10 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         appendWaveformRate(1, QStringLiteral("Wave raw"));
         appendWaveformRate(4, QStringLiteral("Wave harm."));
         rateRows << makeItem(QStringLiteral("Wave capture"), actualWaveRate, connected && waveCaptureRateHz > 0.0, frequencyWidthText);
-        linkRows << makeItem(QStringLiteral("Sky->Ground"), formatBitRate(rxBps), connected && rxBps > 0.0, bitRateWidthText);
-        linkRows << makeItem(QStringLiteral("Ground->Sky"), formatBitRate(txBps), connected && txBps > 0.0, bitRateWidthText);
-        linkRows << makeItem(QStringLiteral("Total"), formatBitRate(rxBps + txBps), connected && (rxBps + txBps) > 0.0, bitRateWidthText);
+        linkRows << makeItem(QStringLiteral("Target"), targetText, true);
+        linkRows << makeItem(QStringLiteral("Sky->Ground"), formatBitRate(rxBps), linkRateAvailable, bitRateWidthText);
+        linkRows << makeItem(QStringLiteral("Ground->Sky"), formatBitRate(txBps), linkRateAvailable, bitRateWidthText);
+        linkRows << makeItem(QStringLiteral("Total"), formatBitRate(rxBps + txBps), linkRateAvailable, bitRateWidthText);
         linkStatusRows << makeItem(QStringLiteral("Disk"),
                                    statusFresh && diskFreeBytes > 0 ? remoteSummaryBytesText(diskFreeBytes) : unavailableText,
                                    statusFresh && diskFreeBytes > 0,
@@ -744,9 +1178,10 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         appendWaveformRate(1, QStringLiteral("原始波形"));
         appendWaveformRate(4, QStringLiteral("谐波波形"));
         rateRows << makeItem(QStringLiteral("波形采集"), actualWaveRate, connected && waveCaptureRateHz > 0.0, frequencyWidthText);
-        linkRows << makeItem(QStringLiteral("天→地"), formatBitRate(rxBps), connected && rxBps > 0.0, bitRateWidthText);
-        linkRows << makeItem(QStringLiteral("地→天"), formatBitRate(txBps), connected && txBps > 0.0, bitRateWidthText);
-        linkRows << makeItem(QStringLiteral("合"), formatBitRate(rxBps + txBps), connected && (rxBps + txBps) > 0.0, bitRateWidthText);
+        linkRows << makeItem(QStringLiteral("目标"), targetText, true);
+        linkRows << makeItem(QStringLiteral("天→地"), formatBitRate(rxBps), linkRateAvailable, bitRateWidthText);
+        linkRows << makeItem(QStringLiteral("地→天"), formatBitRate(txBps), linkRateAvailable, bitRateWidthText);
+        linkRows << makeItem(QStringLiteral("合"), formatBitRate(rxBps + txBps), linkRateAvailable, bitRateWidthText);
         linkStatusRows << makeItem(QStringLiteral("磁盘"),
                                    statusFresh && diskFreeBytes > 0 ? remoteSummaryBytesText(diskFreeBytes) : unavailableText,
                                    statusFresh && diskFreeBytes > 0,
@@ -781,27 +1216,26 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         return;
     }
     const RemoteTelemetrySummarySections sections = remoteTelemetrySummarySections();
-    QStringList summaryRenderTokens{
+    QStringList summaryStructureTokens{
         QString::number(state_->font_scale_percent_),
         state_->is_english_ ? QStringLiteral("en") : QStringLiteral("zh"),
         qApp && !qApp->styleSheet().isEmpty() ? QStringLiteral("styled") : QStringLiteral("unstyled")};
-    const auto appendSummaryRenderTokens = [&summaryRenderTokens](
-                                               const QList<RemoteTelemetrySummarySections::Item>& items) {
-        summaryRenderTokens << QString::number(items.size());
+    const auto appendSummaryStructureTokens = [&summaryStructureTokens](
+                                                  const QList<RemoteTelemetrySummarySections::Item>& items) {
+        summaryStructureTokens << QString::number(items.size());
         for (const RemoteTelemetrySummarySections::Item& item : items)
         {
-            summaryRenderTokens << item.label
-                                << item.value
-                                << item.valueWidthText
-                                << (item.hasData ? QStringLiteral("1") : QStringLiteral("0"));
+            summaryStructureTokens << item.label
+                                   << item.valueWidthText
+                                   << (item.compactAvailabilityValue ? QStringLiteral("compact") : QStringLiteral("value"));
         }
     };
-    appendSummaryRenderTokens(sections.rateItems);
-    appendSummaryRenderTokens(sections.linkItems);
-    appendSummaryRenderTokens(sections.linkStatusItems);
-    appendSummaryRenderTokens(sections.deviceItems);
-    const QString summaryRenderKey = summaryRenderTokens.join(QChar(0x1f));
-    constexpr auto kSummaryRenderKeyProperty = "vaporViewTelemetrySummaryRenderKey";
+    appendSummaryStructureTokens(sections.rateItems);
+    appendSummaryStructureTokens(sections.linkItems);
+    appendSummaryStructureTokens(sections.linkStatusItems);
+    appendSummaryStructureTokens(sections.deviceItems);
+    const QString summaryStructureKey = summaryStructureTokens.join(QChar(0x1f));
+    constexpr auto kSummaryStructureKeyProperty = "vaporViewTelemetrySummaryStructureKey";
 
     if (state_->data_telemetry_summary_card_)
     {
@@ -811,11 +1245,59 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
     {
         state_->device_config_.data_telemetry_summary_card->setVisible(true);
     }
-    const bool homeSummaryCurrent = !state_->data_telemetry_summary_card_ ||
-        state_->data_telemetry_summary_card_->property(kSummaryRenderKeyProperty).toString() == summaryRenderKey;
-    const bool deviceConfigSummaryCurrent = !state_->device_config_.data_telemetry_summary_card ||
-        state_->device_config_.data_telemetry_summary_card->property(kSummaryRenderKeyProperty).toString() == summaryRenderKey;
-    if (homeSummaryCurrent && deviceConfigSummaryCurrent)
+    QList<RemoteTelemetrySummarySections::Item> deviceConfigDataItems = sections.linkStatusItems;
+    for (const RemoteTelemetrySummarySections::Item& item : sections.deviceItems)
+    {
+        deviceConfigDataItems << item;
+    }
+
+    bool homeSummaryNeedsRender = false;
+    if (state_->data_telemetry_summary_card_)
+    {
+        homeSummaryNeedsRender = !(
+            updateSummarySectionValues(state_->data_telemetry_summary_layout_,
+                                       sections.rateItems,
+                                       false,
+                                       state_->is_english_) &&
+            updateSummarySectionValues(state_->data_telemetry_link_summary_layout_,
+                                       sections.linkItems,
+                                       false,
+                                       state_->is_english_) &&
+            updateSummarySectionValues(state_->data_telemetry_device_summary_layout_,
+                                       sections.deviceItems,
+                                       true,
+                                       state_->is_english_));
+        if (!homeSummaryNeedsRender)
+        {
+            state_->data_telemetry_summary_card_->setProperty(kSummaryStructureKeyProperty, summaryStructureKey);
+            state_->data_telemetry_summary_card_->update();
+        }
+    }
+
+    bool deviceConfigSummaryNeedsRender = false;
+    if (state_->device_config_.data_telemetry_summary_card)
+    {
+        deviceConfigSummaryNeedsRender = !(
+            updateSummarySectionValues(state_->device_config_.data_telemetry_rate_summary_layout,
+                                       sections.rateItems,
+                                       false,
+                                       state_->is_english_) &&
+            updateSummarySectionValues(state_->device_config_.data_telemetry_link_summary_layout,
+                                       sections.linkItems,
+                                       false,
+                                       state_->is_english_) &&
+            updateSummarySectionValues(state_->device_config_.data_telemetry_device_summary_layout,
+                                       deviceConfigDataItems,
+                                       true,
+                                       state_->is_english_));
+        if (!deviceConfigSummaryNeedsRender)
+        {
+            state_->device_config_.data_telemetry_summary_card->setProperty(kSummaryStructureKeyProperty, summaryStructureKey);
+            state_->device_config_.data_telemetry_summary_card->update();
+        }
+    }
+
+    if (!homeSummaryNeedsRender && !deviceConfigSummaryNeedsRender)
     {
         if (state_->home_overview_splitter_)
         {
@@ -823,7 +1305,6 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         }
         return;
     }
-
     auto clearLayout = [](QLayout *layout) {
         if (!layout)
         {
@@ -897,11 +1378,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             nameLabel->setMinimumHeight(nameLabel->fontMetrics().height() + scalePixels(2));
             pillLayout->addWidget(nameLabel, 0, Qt::AlignVCenter);
 
-            const QString compactValue = item.hasData
-                ? (state_->is_english_ ? QStringLiteral("Yes") : QStringLiteral("有"))
-                : (state_->is_english_ ? QStringLiteral("No") : QStringLiteral("无"));
-            const bool useCompactValue = compactAvailabilityValues && item.compactAvailabilityValue;
-            const QString valueText = useCompactValue ? compactValue : item.value;
+            const QString valueText = summaryItemValueText(item, compactAvailabilityValues, state_->is_english_);
             auto *valueLabel = new QLabel(valueText, pill);
             valueLabel->setObjectName(QStringLiteral("homeTelemetrySummaryValueLabel"));
             valueLabel->setProperty("deviceConfigLink", useSideTitle);
@@ -912,9 +1389,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             valueLabel->setTextFormat(Qt::PlainText);
             valueLabel->ensurePolished();
             valueLabel->setMinimumHeight(valueLabel->fontMetrics().height() + scalePixels(2));
-            const QString widthValue = useCompactValue
-                ? (state_->is_english_ ? QStringLiteral("Yes") : QStringLiteral("有"))
-                : (item.valueWidthText.isEmpty() ? valueText : item.valueWidthText);
+            const QString widthValue = summaryItemWidthText(item, compactAvailabilityValues, state_->is_english_);
             const int polishedValueWidth =
                 std::max(valueLabel->sizeHint().width(),
                          std::max(valueLabel->fontMetrics().horizontalAdvance(widthValue),
@@ -1145,7 +1620,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         summaryWidget->setMinimumWidth(sectionMinimumWidth + margins.left() + margins.right());
         summaryWidget->updateGeometry();
     };
-    if (state_->data_telemetry_summary_card_)
+    if (homeSummaryNeedsRender && state_->data_telemetry_summary_card_)
     {
         renderSummarySection(state_->data_telemetry_summary_card_,
                              state_->data_telemetry_summary_layout_,
@@ -1157,7 +1632,8 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                              state_->data_telemetry_link_summary_layout_,
                              state_->is_english_ ? QStringLiteral("Link rate") : QStringLiteral("链路速率"),
                              sections.linkItems,
-                             -1);
+                             1,
+                             3);
         renderSummarySection(state_->data_telemetry_summary_card_,
                              state_->data_telemetry_device_summary_layout_,
                              state_->is_english_ ? QStringLiteral("Data") : QStringLiteral("数据"),
@@ -1174,15 +1650,10 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         updateSummaryMinimumWidth(state_->data_telemetry_summary_card_);
         state_->data_telemetry_summary_card_->updateGeometry();
         updateHomeDeviceOverviewMinimumWidth();
-        state_->data_telemetry_summary_card_->setProperty(kSummaryRenderKeyProperty, summaryRenderKey);
+        state_->data_telemetry_summary_card_->setProperty(kSummaryStructureKeyProperty, summaryStructureKey);
     }
-    if (state_->device_config_.data_telemetry_summary_card)
+    if (deviceConfigSummaryNeedsRender && state_->device_config_.data_telemetry_summary_card)
     {
-        QList<RemoteTelemetrySummarySections::Item> deviceConfigDataItems = sections.linkStatusItems;
-        for (const RemoteTelemetrySummarySections::Item& item : sections.deviceItems)
-        {
-            deviceConfigDataItems << item;
-        }
         renderSummarySection(state_->device_config_.data_telemetry_summary_card,
                              state_->device_config_.data_telemetry_rate_summary_layout,
                              state_->is_english_ ? QStringLiteral("Data stream rates") : QStringLiteral("数据频率"),
@@ -1211,7 +1682,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             summaryLayout->activate();
         }
         state_->device_config_.data_telemetry_summary_card->updateGeometry();
-        state_->device_config_.data_telemetry_summary_card->setProperty(kSummaryRenderKeyProperty, summaryRenderKey);
+        state_->device_config_.data_telemetry_summary_card->setProperty(kSummaryStructureKeyProperty, summaryStructureKey);
     }
     if (state_->home_overview_splitter_)
     {
@@ -1272,7 +1743,6 @@ void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
         return;
     }
 
-    const QString epsilonRateText = state_->epsilon_rate_combo_ ? state_->epsilon_rate_combo_->currentText() : QStringLiteral("100");
     const std::map<uint8_t, int> defaultRates = defaultEpsilonPacketRates();
     const std::map<uint8_t, int> savedPacketRates = deviceConfigEpsilonPacketRates();
     const QString epsilonBaudText = isRemoteSkyMode()
@@ -1323,8 +1793,7 @@ void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
         (!epsilonPort.isEmpty() && epsilonPort != selectText);
     if (applyAfterSave &&
         !state_->recording_service_->isActive() &&
-        targetReadyForApply &&
-        !isRateUnspecified(epsilonRateText))
+        targetReadyForApply)
     {
         publishGroundLog(VaporView::LogLevel::Info,
                          QStringLiteral("configuration.apply"),
@@ -1355,6 +1824,17 @@ void MainWindow::updateEnvironmentStatusIcons(bool lidarValid, bool ptbValid, bo
         {
             return;
         }
+        const bool dark = state_->dark_theme_enabled_;
+        if (label->property(kEnvStatusIconValidProperty).isValid() &&
+            label->property(kEnvStatusIconValidProperty).toBool() == valid &&
+            label->property(kEnvStatusIconEnglishProperty).toBool() == state_->is_english_ &&
+            label->property(kEnvStatusIconDarkProperty).toBool() == dark)
+        {
+            return;
+        }
+        label->setProperty(kEnvStatusIconValidProperty, valid);
+        label->setProperty(kEnvStatusIconEnglishProperty, state_->is_english_);
+        label->setProperty(kEnvStatusIconDarkProperty, dark);
         const QIcon icon = createLucideIcon(valid ? QStringLiteral("check") : QStringLiteral("circle-x"),
                                             valid ? toolbarColor(AppThemeColor::ToolbarGreen) : toolbarColor(AppThemeColor::ToolbarRed));
         label->setPixmap(icon.pixmap(QSize(kEnvStatusIconSize, kEnvStatusIconSize)));
@@ -1411,13 +1891,134 @@ void MainWindow::refreshRemoteSkyDataUi()
         state_->device_panel_coordinator_->updateEnvironmentData(epsilon, ptb, hmp, lidar);
         state_->device_panel_coordinator_->updateTemperatureData(state_->current_temperature_controller_);
     }
+    if (state_->epsilon_config_panel_)
+    {
+        state_->epsilon_config_panel_->setLivePacketRates(epsilon);
+    }
     updateEnvironmentStatusIcons(lidarValid, ptbValid, hmpValid);
     updateRemoteTelemetrySummaryLabel();
     updateHomeDeviceStatusCapsules();
 }
 
-void MainWindow::requestRemoteWaveTcpConnection(bool connectRequested)
+void MainWindow::requestRemoteWaveTcpConnection(bool connectRequested, const QString& host, int port)
 {
+    const bool endpointProvided = !host.isNull() || port > 0;
+    const QString endpointHost = host.trimmed();
+    const bool endpointValid = !endpointHost.isEmpty() && port >= 1 && port <= 65535;
+    if (!connectRequested)
+    {
+        clearPendingRemoteWaveTcpConnection();
+    }
+    else if (endpointProvided && !endpointValid)
+    {
+        setRemoteSkyConfigStatus(state_->is_english_
+            ? QStringLiteral("Enter a TCP wave host and a port from 1 to 65535.")
+            : QStringLiteral("请输入 TCP 波形主机和 1 到 65535 之间的端口。"),
+            true);
+        return;
+    }
+
+    if (connectRequested && endpointValid)
+    {
+        if (!state_->remote_sky_config_loaded_ && !isUiTestMode())
+        {
+            if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
+            {
+                setRemoteSkyConfigStatus(state_->is_english_
+                    ? QStringLiteral("Telemetry link is disconnected; TCP wave endpoint was not sent.")
+                    : QStringLiteral("天地数传已断开，未发送 TCP 波形地址。"),
+                    true);
+                return;
+            }
+            state_->remote_wave_connect_after_config_read_ = true;
+            state_->remote_wave_pending_host_ = endpointHost;
+            state_->remote_wave_pending_port_ = port;
+            requestRemoteSkyConfigIfAvailable(true);
+            if (!state_->remote_sky_config_loading_)
+            {
+                clearPendingRemoteWaveTcpConnection();
+                return;
+            }
+            setRemoteSkyConfigStatus(state_->is_english_
+                ? QStringLiteral("Reading Remote Sky config before applying the TCP wave endpoint...")
+                : QStringLiteral("正在读取天空端配置，然后应用 TCP 波形地址..."));
+            return;
+        }
+
+        VaporView::SkyConfig config = state_->remote_sky_config_loaded_
+            ? state_->remote_sky_config_
+            : VaporView::SkyConfig::defaults();
+        const bool endpointChanged =
+            config.wave_tcp.host.trimmed() != endpointHost ||
+            config.wave_tcp.port != port ||
+            !config.wave_tcp.enabled;
+        if (endpointChanged)
+        {
+            if (state_->remote_sky_config_applying_)
+            {
+                setRemoteSkyConfigStatus(state_->is_english_
+                    ? QStringLiteral("Remote Sky config is already applying; TCP wave connection was not started.")
+                    : QStringLiteral("天空端配置正在应用，暂未发起 TCP 波形连接。"),
+                    true);
+                return;
+            }
+            config.wave_tcp.enabled = true;
+            config.wave_tcp.host = endpointHost;
+            config.wave_tcp.port = port;
+            QString error;
+            if (!config.validate(&error))
+            {
+                setRemoteSkyConfigStatus(error, true);
+                return;
+            }
+            state_->remote_sky_config_ = config;
+            state_->remote_sky_config_loaded_ = true;
+            state_->remote_sky_config_loaded_generation_ =
+                state_->remote_sky_controller_ ? state_->remote_sky_controller_->linkGeneration() : 0;
+            state_->remote_sky_config_dirty_ = true;
+            setRemoteSkyConfigUi(config);
+            if (isUiTestMode())
+            {
+                state_->remote_sky_baseline_config_ = config;
+                state_->remote_sky_config_dirty_ = false;
+            }
+            else
+            {
+                if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
+                {
+                    setRemoteSkyConfigStatus(state_->is_english_
+                        ? QStringLiteral("Telemetry link is disconnected; TCP wave endpoint was not sent.")
+                        : QStringLiteral("天地数传已断开，未发送 TCP 波形地址。"),
+                        true);
+                    return;
+                }
+                state_->remote_wave_connect_after_config_apply_ = true;
+                state_->remote_sky_config_applying_ = true;
+                state_->remote_sky_config_apply_generation_ = state_->remote_sky_controller_->linkGeneration();
+                state_->remote_sky_config_apply_seq_ =
+                    state_->remote_sky_controller_->telemetryService()->setSkyConfig(config.toJson());
+                if (state_->remote_sky_config_apply_seq_ == 0)
+                {
+                    state_->remote_sky_config_applying_ = false;
+                    state_->remote_sky_config_apply_generation_ = 0;
+                    clearPendingRemoteWaveTcpConnection();
+                    setRemoteSkyConfigStatus(state_->is_english_
+                        ? QStringLiteral("TCP wave endpoint was not sent.")
+                        : QStringLiteral("未发送 TCP 波形地址。"),
+                        true);
+                }
+                else
+                {
+                    setRemoteSkyConfigStatus(state_->is_english_
+                        ? QStringLiteral("TCP wave endpoint sent; connecting after it is applied...")
+                        : QStringLiteral("TCP 波形地址已发送，应用成功后自动连接..."));
+                }
+                updateRemoteSkyConfigControlsState();
+                return;
+            }
+        }
+    }
+
     if (isUiTestMode())
     {
         state_->ui_test_model_->setDeviceState(
@@ -1458,15 +2059,26 @@ void MainWindow::requestRemoteWaveTcpConnection(bool connectRequested)
     }
     if (!connectRequested && state_->tcp_wave_panel_)
     {
-        state_->remote_sky_controller_->setDeviceState(VaporView::SkyDeviceId::WaveTcp,
-                                                VaporView::DeviceState::Disconnected);
-        state_->remote_sky_controller_->clearDeviceData(VaporView::SkyDeviceId::WaveTcp);
+        if (state_->remote_sky_controller_)
+        {
+            state_->remote_sky_controller_->setDeviceState(VaporView::SkyDeviceId::WaveTcp,
+                                                    VaporView::DeviceState::Disconnected);
+            state_->remote_sky_controller_->clearDeviceData(VaporView::SkyDeviceId::WaveTcp);
+        }
         state_->tcp_wave_panel_->setRemoteWaveTcpState(VaporView::DeviceState::Disconnected);
         updateRemoteTelemetrySummaryLabel();
     }
     sendRemoteDeviceCommand(connectRequested ? VaporView::CommandId::ConnectDevice : VaporView::CommandId::DisconnectDevice,
                             VaporView::SkyDeviceId::WaveTcp);
     updateHomeDeviceStatusCapsules();
+}
+
+void MainWindow::clearPendingRemoteWaveTcpConnection()
+{
+    state_->remote_wave_connect_after_config_read_ = false;
+    state_->remote_wave_connect_after_config_apply_ = false;
+    state_->remote_wave_pending_host_.clear();
+    state_->remote_wave_pending_port_ = 0;
 }
 
 QPushButton *MainWindow::createRemoteDeviceButton(const QString& text, VaporView::CommandId command, VaporView::SkyDeviceId device)
@@ -1649,6 +2261,7 @@ void MainWindow::updateTemperatureTitleButtonsState()
 
         if (spinnerActive)
         {
+            button->setProperty(kRemoteActionIconKeyProperty, QStringLiteral("spinner"));
             button->setIcon(createRotatedLucideIcon(
                 QStringLiteral("refresh-cw"),
                 toolbarColor(AppThemeColor::HomeDeviceSuccess),
@@ -1657,23 +2270,31 @@ void MainWindow::updateTemperatureTitleButtonsState()
         else
         {
             const QColor iconColor = connected
-                ? toolbarColor(AppThemeColor::HomeDeviceDanger)
+                ? toolbarColor(AppThemeColor::ToolbarBlue)
                 : deviceState == VaporView::DeviceState::Disabled
                     ? toolbarColor(AppThemeColor::ToolbarDisabled)
                     : toolbarColor(AppThemeColor::HomeDeviceSuccess);
-            button->setIcon(createLucideIcon(deviceConfigRemoteIconName(command), iconColor));
+            const QString iconName = deviceConfigRemoteIconName(command);
+            setButtonIconForKey(button,
+                                QStringLiteral("%1|%2").arg(iconName, iconColor.name(QColor::HexArgb)),
+                                [iconName, iconColor]() {
+                                    return createLucideIcon(iconName, iconColor);
+                                });
         }
         button->setEnabled(enabled);
-        button->setText(QString());
-        button->setProperty("connected", connected);
-        button->setProperty("state", spinnerActive
+        setButtonTextIfChanged(button, QString());
+        bool styleChanged = false;
+        styleChanged |= setDynamicPropertyIfChanged(button, "connected", connected);
+        styleChanged |= setDynamicPropertyIfChanged(button, "state", spinnerActive
             ? QStringLiteral("connecting")
             : deviceState == VaporView::DeviceState::Disabled
                 ? QStringLiteral("disabled")
                 : connected
                     ? QStringLiteral("connected")
                     : QStringLiteral("disconnected"));
-        button->setProperty("temperatureTitleCommand", deviceConfigRemoteActionKey(command));
+        styleChanged |= setDynamicPropertyIfChanged(button,
+                                                    "temperatureTitleCommand",
+                                                    deviceConfigRemoteActionKey(command));
 
         const QString deviceName = homeDeviceDisplayName(device, state_->is_english_);
         const QString actionText = spinnerActive
@@ -1685,11 +2306,10 @@ void MainWindow::updateTemperatureTitleButtonsState()
         const QString tooltip = state_->is_english_
             ? QStringLiteral("%1 %2 (%3)").arg(actionText, deviceName, modeHint)
             : QStringLiteral("%1%2（%3）").arg(actionText, deviceName, modeHint);
-        button->setToolTip(tooltip);
-        button->setAccessibleName(tooltip);
-        button->setStatusTip(QString());
-        button->style()->unpolish(button);
-        button->style()->polish(button);
+        setWidgetToolTipIfChanged(button, tooltip);
+        setAccessibleNameIfChanged(button, tooltip);
+        setButtonStatusTipIfChanged(button, QString());
+        repolishIfNeeded(button, styleChanged);
     };
 
     updateTitleButton(state_->temperature_title_action_btn_,
@@ -2095,6 +2715,18 @@ void MainWindow::onRd105SessionOperationFinished(
                 state_->current_temperature_controller_);
         }
     }
+    else if (result.success() &&
+             result.command == VaporView::CommandId::SetTemperatureDeviceAddress &&
+             state_->remote_sky_config_loaded_)
+    {
+        state_->remote_sky_config_.temperature_controller.slave_address =
+            static_cast<int>(result.payload.device_address);
+        if (!state_->remote_sky_config_dirty_)
+        {
+            state_->remote_sky_baseline_config_.temperature_controller.slave_address =
+                state_->remote_sky_config_.temperature_controller.slave_address;
+        }
+    }
 
     QVariantMap fields = temperatureCommandLogFields(result.command, result.payload, channel);
     fields.insert(QStringLiteral("device"), QStringLiteral("RD105"));
@@ -2438,12 +3070,32 @@ void MainWindow::updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId dev
     const VaporView::CommandId command = connected
         ? VaporView::CommandId::DisconnectDevice
         : VaporView::CommandId::ConnectDevice;
-    applyDeviceConfigRemoteButtonPresentation(button, command, device, state_->is_english_, false);
+    const QString baseKey = QStringLiteral("%1|%2|%3|%4")
+        .arg(static_cast<int>(command))
+        .arg(static_cast<int>(device))
+        .arg(state_->is_english_ ? 1 : 0)
+        .arg(state_->dark_theme_enabled_ ? 1 : 0);
+    const QString iconName = deviceConfigRemoteIconName(command);
+    const QColor iconColor = deviceConfigRemoteIconColor(command);
+    const QString baseIconKey = QStringLiteral("%1|%2").arg(iconName, iconColor.name(QColor::HexArgb));
+    if (button->property(kRemoteActionBaseKeyProperty).toString() != baseKey)
+    {
+        applyDeviceConfigRemoteButtonPresentation(button, command, device, state_->is_english_, false);
+        button->setProperty(kRemoteActionBaseKeyProperty, baseKey);
+        button->setProperty(kRemoteActionIconKeyProperty, baseIconKey);
+    }
     if (busy)
     {
+        button->setProperty(kRemoteActionIconKeyProperty, QStringLiteral("spinner"));
         button->setIcon(createRotatedLucideIcon(QStringLiteral("refresh-cw"),
                                                 toolbarColor(AppThemeColor::HomeDeviceSuccess),
                                                 homeDeviceActionSpinnerDegrees(device, nowMs)));
+    }
+    else
+    {
+        setButtonIconForKey(button, baseIconKey, [iconName, iconColor]() {
+            return createLucideIcon(iconName, iconColor);
+        });
     }
     const bool remoteMode = isRemoteSkyMode();
     const bool linkOpen = state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen();
@@ -2473,18 +3125,18 @@ void MainWindow::updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId dev
     const QString tooltip = state_->is_english_
         ? QStringLiteral("%1 %2 (%3)").arg(actionText, deviceName, modeHint)
         : QStringLiteral("%1%2（%3）").arg(actionText, deviceName, modeHint);
-    button->setToolTip(tooltip);
-    button->setAccessibleName(tooltip);
-    button->setProperty("connected", connected);
-    button->setProperty("state", busy
+    setWidgetToolTipIfChanged(button, tooltip);
+    setAccessibleNameIfChanged(button, tooltip);
+    bool styleChanged = false;
+    styleChanged |= setDynamicPropertyIfChanged(button, "connected", connected);
+    styleChanged |= setDynamicPropertyIfChanged(button, "state", busy
         ? QStringLiteral("connecting")
         : state == VaporView::DeviceState::Disabled
             ? QStringLiteral("disabled")
             : connected
                 ? QStringLiteral("connected")
                 : QStringLiteral("disconnected"));
-    button->style()->unpolish(button);
-    button->style()->polish(button);
+    repolishIfNeeded(button, styleChanged);
 }
 
 void MainWindow::setImuFormatSelection(const QString& format)

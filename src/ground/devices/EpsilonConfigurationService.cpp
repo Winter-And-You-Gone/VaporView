@@ -6,6 +6,7 @@
 #include "shared/config/ApplicationConfig.h"
 #include "shared/config/SettingsWriteBarrier.h"
 
+#include <algorithm>
 #include <utility>
 
 namespace VaporView::Ground
@@ -315,6 +316,65 @@ EpsilonConfigurationResult EpsilonConfigurationService::configurePacketRates(
     const std::shared_ptr<VaporView::EpsilonCollector> collector = prepareCollector(operation, log);
     collector->setSampleRate(callback_rate_hz);
 
+    const int totalProgressSteps = static_cast<int>(2 * (packet_rates.size() + 4) + 2);
+    int progressStep = 0;
+    int progressLogSequence = 0;
+    const auto emitProgress = [&](const QString& processOutput,
+                                  const QString& command,
+                                  const QString& stage,
+                                  bool isReply,
+                                  bool successful,
+                                  int current) {
+        emitLog(log,
+                LogLevel::Info,
+                QStringLiteral("device.collector"),
+                QStringLiteral("epsilon_configuration_collector_output"),
+                QStringLiteral("EPSILON 配置过程输出了采集器诊断信息。"),
+                {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                 {QStringLiteral("process_output"), processOutput},
+                 {QStringLiteral("external_raw_text"), true},
+                 {QStringLiteral("ui_visibility"), QStringLiteral("hidden")},
+                 {QStringLiteral("epsilon_progress_current"), current},
+                 {QStringLiteral("epsilon_progress_total"), totalProgressSteps},
+                 {QStringLiteral("epsilon_progress_stage"), stage},
+                 {QStringLiteral("epsilon_progress_command"), command},
+                 {QStringLiteral("epsilon_progress_kind"), isReply
+                      ? QStringLiteral("reply") : QStringLiteral("command")},
+                 {QStringLiteral("epsilon_progress_success"), successful},
+                 {QStringLiteral("ui_dedupe_key"),
+                  QStringLiteral("epsilon:output_reconfigure:progress:%1")
+                      .arg(++progressLogSequence)}});
+    };
+    const VaporView::EpsilonCollector::CommandProgressCallback progress =
+        [&](const std::string& command, bool isReply, bool successful) {
+            if (successful)
+            {
+                progressStep = std::min(totalProgressSteps - 1, progressStep + 1);
+            }
+            const QString commandText = QString::fromStdString(command);
+            const QString stage = isReply
+                ? (english
+                    ? QStringLiteral("Received successful reply for %1").arg(commandText)
+                    : QStringLiteral("已收到 %1 成功回复").arg(commandText))
+                : (successful
+                    ? (english
+                        ? QStringLiteral("Sent command %1").arg(commandText)
+                        : QStringLiteral("已发送命令 %1").arg(commandText))
+                    : (english
+                        ? QStringLiteral("Command %1 failed to send").arg(commandText)
+                        : QStringLiteral("命令 %1 发送失败").arg(commandText)));
+            const QString processOutput = QStringLiteral("[%1] %2")
+                .arg(isReply ? QStringLiteral("EPSILON RX")
+                             : QStringLiteral("EPSILON TX"),
+                     commandText);
+            emitProgress(processOutput,
+                         commandText,
+                         stage,
+                         isReply,
+                         successful,
+                         progressStep);
+        };
+
     if (operation.restart_live_stream)
     {
         emitLog(log,
@@ -350,7 +410,7 @@ EpsilonConfigurationResult EpsilonConfigurationService::configurePacketRates(
         return finishOperation(operation, QStringLiteral("output_reconfigure"), collector, std::move(result), log);
     }
 
-    if (!collector->setOutputPacketRates(packet_rates, true))
+    if (!collector->setOutputPacketRates(packet_rates, true, progress))
     {
         result.error_message = QString(english
                 ? "[EPSILON] Manual reconfiguration failed on %1 @ %2."
@@ -372,6 +432,15 @@ EpsilonConfigurationResult EpsilonConfigurationService::configurePacketRates(
                  {QStringLiteral("ui_dedupe_key"), QStringLiteral("epsilon:output_reconfigure:failed")}});
         return finishOperation(operation, QStringLiteral("output_reconfigure"), collector, std::move(result), log);
     }
+
+    progressStep = totalProgressSteps;
+    emitProgress(QStringLiteral("[FDILink RX] navigation stream restored"),
+                 QStringLiteral("FDILink"),
+                 english ? QStringLiteral("Live navigation stream restored")
+                         : QStringLiteral("实时导航流已恢复"),
+                 true,
+                 true,
+                 progressStep);
 
     result.command_succeeded = true;
     {

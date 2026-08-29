@@ -148,7 +148,7 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
             }};
     };
     auto makeLidarProbe = [&](const QString& baud) {
-        return ProbeSpec{QStringLiteral("lidar"), QStringLiteral("TFA1005-L"), baud,
+        return ProbeSpec{QStringLiteral("lidar"), QStringLiteral("TFA1500-L"), baud,
             [cancelRequested, baud](const QString& port) {
                 return probeCollector(port,
                                       std::make_unique<LidarCollector>(),
@@ -308,14 +308,14 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
         {
             QVariantMap fields = probeFields(selectedProbe.probe, selectedProbe.port);
             fields.insert(QStringLiteral("probe_phase"), QStringLiteral("selected"));
-            fields.insert(QStringLiteral("ui_visibility"), QStringLiteral("hidden"));
+            fields.insert(QStringLiteral("ui_visibility"), QStringLiteral("details"));
             fields.insert(QStringLiteral("ui_message"),
                           QString(english
                               ? "[Auto Detect] Probing selected %1 on %2 @ %3..."
                               : "[自动识别] 正在探测已选 %1: %2 @ %3 ...")
                               .arg(selectedProbe.probe.label, selectedProbe.port, selectedProbe.probe.baud));
             postSerialPortDetectionLog(log,
-                                       LogLevel::Debug,
+                                       LogLevel::Info,
                                        QStringLiteral("serial_port_detection_probe_started"),
                                        QStringLiteral("开始探测串口设备。"),
                                        std::move(fields));
@@ -357,13 +357,13 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
             {
                 QVariantMap fields = probeFields(probe, port);
                 fields.insert(QStringLiteral("probe_phase"), QStringLiteral("default"));
-                fields.insert(QStringLiteral("ui_visibility"), QStringLiteral("hidden"));
+                fields.insert(QStringLiteral("ui_visibility"), QStringLiteral("details"));
                 fields.insert(QStringLiteral("ui_message"),
                               QString(english ? "[Auto Detect] Probing %1 on %2 @ %3..."
                                               : "[自动识别] 正在探测 %1: %2 @ %3 ...")
                                   .arg(probe.label, port, probe.baud));
                 postSerialPortDetectionLog(log,
-                                           LogLevel::Debug,
+                                           LogLevel::Info,
                                            QStringLiteral("serial_port_detection_probe_started"),
                                            QStringLiteral("开始探测串口设备。"),
                                            std::move(fields));
@@ -380,7 +380,7 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
         {QStringLiteral("epsilon"), QStringLiteral("EPSILON")},
         {QStringLiteral("ptb"), QStringLiteral("PTB210")},
         {QStringLiteral("hmp"), QStringLiteral("HMP3")},
-        {QStringLiteral("lidar"), QStringLiteral("TFA1005-L")},
+        {QStringLiteral("lidar"), QStringLiteral("TFA1500-L")},
         {QStringLiteral("temperature"), QStringLiteral("RD105")},
         {QStringLiteral("ai8"), QStringLiteral("AI-8288")},
     };

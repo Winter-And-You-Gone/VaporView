@@ -151,12 +151,21 @@ QGroupBox {
     color: @vv-text;
 }
 
-QGroupBox#sensorGroupBox {
+QGroupBox#sensorGroupBox,
+QGroupBox#deviceRemoteSkyConfigCard {
     margin-top: 0px;
     background-color: @vv-surface;
     border: 1px solid @vv-border;
     border-radius: 8px;
     padding: 0px 0px 0px 0px;
+}
+
+QGroupBox#sensorGroupBox::title,
+QGroupBox#deviceRemoteSkyConfigCard::title {
+    color: transparent;
+    height: 0px;
+    margin: 0px;
+    padding: 0px;
 }
 
 QWidget#tcpWaveCardOutline {
@@ -186,6 +195,8 @@ QPushButton#appSidebarButton {
 }
 
 QPushButton#appSidebarButton:focus {
+    background-color: @vv-primary-subtle;
+    border-color: @vv-primary;
     outline: none;
 }
 
@@ -358,8 +369,8 @@ QWidget#environmentSectionTitleBar {
     border-bottom: 1px solid @vv-border;
     border-top-left-radius: 7px;
     border-top-right-radius: 7px;
-    min-height: 36px;
-    max-height: 36px;
+    min-height: 40px;
+    max-height: 40px;
 }
 
 QWidget#environmentSectionTitleBar QLabel {
@@ -490,6 +501,56 @@ QLabel#homeTelemetrySummaryValueLabel[deviceConfigLink="true"] {
     font-weight: 600;
 }
 
+QLabel#deviceConfigSubsectionLabel {
+    background-color: transparent;
+    border: none;
+    color: @vv-text-strong;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 2px 0px 0px 0px;
+}
+
+QLabel#deviceRemoteSkyConfigStatus {
+    background-color: @vv-field-bg;
+    border: 1px solid @vv-border;
+    border-radius: 8px;
+    color: @vv-text-strong;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 4px 8px;
+}
+
+QLabel#deviceRemoteSkyConfigStatus[status="success"] {
+    background-color: @vv-success-bg;
+    border-color: @vv-success;
+    color: @vv-success;
+}
+
+QLabel#deviceRemoteSkyConfigStatus[status="pending"],
+QLabel#deviceRemoteSkyConfigStatus[status="normal"] {
+    background-color: @vv-primary-subtle;
+    border-color: @vv-primary;
+    color: @vv-primary;
+}
+
+QLabel#deviceRemoteSkyConfigStatus[status="warning"],
+QLabel#deviceRemoteSkyConfigStatus[status="dirty"] {
+    background-color: @vv-warning-bg;
+    border-color: @vv-warning;
+    color: @vv-warning;
+}
+
+QLabel#deviceRemoteSkyConfigStatus[status="error"] {
+    background-color: @vv-danger-bg;
+    border-color: @vv-danger;
+    color: @vv-danger;
+}
+
+QLabel#deviceRemoteSkyConfigStatus[status="disabled"] {
+    background-color: @vv-surface-alt;
+    border-color: @vv-border;
+    color: @vv-text-muted;
+}
 QLabel#temperatureOverviewValuePill {
     background-color: @vv-surface;
     border: 1px solid @vv-border;
@@ -1494,8 +1555,8 @@ QToolButton#homeDeviceActionButton[state="connecting"] {
 }
 
 QToolButton#homeDeviceActionButton[state="connected"] {
-    background-color: @vv-hd-bad-bg;
-    border-color: @vv-hd-bad;
+    background-color: @vv-surface-alt;
+    border-color: @vv-border-strong;
 }
 
 QToolButton#homeDeviceActionButton:hover {
@@ -1580,6 +1641,7 @@ QFrame#separator {
 
 /* 一级卡片：外层是页面背景，阴影由 TopLevelCardStyle 统一提供。 */
 QGroupBox#sensorGroupBox[vaporViewTopLevelCard="true"],
+QGroupBox#deviceRemoteSkyConfigCard[vaporViewTopLevelCard="true"],
 QFrame#epsilonSectionCard[vaporViewTopLevelCard="true"],
 QFrame#recordingStatusCard[vaporViewTopLevelCard="true"],
 QFrame#logPanelFrame[vaporViewTopLevelCard="true"],
@@ -1590,6 +1652,7 @@ QFrame[vaporViewTopLevelCard="true"] {
 }
 
 QScrollArea#mainCardsScrollArea QGroupBox#sensorGroupBox[vaporViewTopLevelCard="true"],
+QScrollArea#mainCardsScrollArea QGroupBox#deviceRemoteSkyConfigCard[vaporViewTopLevelCard="true"],
 QScrollArea#mainCardsScrollArea QFrame#epsilonSectionCard[vaporViewTopLevelCard="true"],
 QScrollArea#mainCardsScrollArea QFrame#recordingStatusCard[vaporViewTopLevelCard="true"],
 QScrollArea#mainCardsScrollArea QFrame#logPanelFrame[vaporViewTopLevelCard="true"],
@@ -1598,6 +1661,7 @@ QScrollArea#mainCardsScrollArea QFrame[vaporViewTopLevelCard="true"] {
 }
 
 QGroupBox#sensorGroupBox[vaporViewTopLevelCard="true"] > QWidget#sectionTitleBar,
+QGroupBox#deviceRemoteSkyConfigCard[vaporViewTopLevelCard="true"] > QWidget#sectionTitleBar,
 QGroupBox#sensorGroupBox[vaporViewTopLevelCard="true"] > QWidget#environmentSectionTitleBar,
 QGroupBox#sensorGroupBox[vaporViewTopLevelCard="true"] > TcpWavePanel > QWidget#sectionTitleBar,
 QFrame#epsilonSectionCard[vaporViewTopLevelCard="true"] > QWidget#sectionTitleBar,

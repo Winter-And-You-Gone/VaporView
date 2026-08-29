@@ -71,6 +71,17 @@ public:
         return fallback_text_;
     }
 
+    void setContentOpacity(qreal opacity)
+    {
+        const qreal boundedOpacity = std::clamp(opacity, 0.0, 1.0);
+        if (qFuzzyCompare(content_opacity_, boundedOpacity))
+        {
+            return;
+        }
+        content_opacity_ = boundedOpacity;
+        update();
+    }
+
 protected:
     void paintEvent(QPaintEvent *event) override
     {
@@ -79,6 +90,14 @@ protected:
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing, true);
         painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+        painter.setCompositionMode(QPainter::CompositionMode_Clear);
+        painter.fillRect(rect(), Qt::transparent);
+        painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+        painter.setOpacity(content_opacity_);
+        if (content_opacity_ <= 0.0)
+        {
+            return;
+        }
 
         const QRectF cardRect = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
         const qreal cornerRadius = cardRect.width() * kCardCornerRadiusFraction;
@@ -118,6 +137,7 @@ protected:
 
 private:
     QSvgRenderer renderer_;
+    qreal content_opacity_ = 1.0;
     bool fallback_text_ = false;
 };
 
@@ -146,9 +166,9 @@ StartupSplash::StartupSplash(const QString& logoPath, QWidget *parent)
     card_widget_->setGraphicsEffect(shadow);
     updateLogoSize();
 
-    window_fade_animation_ = new QPropertyAnimation(this, "windowOpacity", this);
-    window_fade_animation_->setEasingCurve(QEasingCurve::InCubic);
-    connect(window_fade_animation_, &QPropertyAnimation::finished, this, [this]() {
+    fade_animation_ = new QPropertyAnimation(this, "contentOpacity", this);
+    fade_animation_->setEasingCurve(QEasingCurve::InCubic);
+    connect(fade_animation_, &QPropertyAnimation::finished, this, [this]() {
         if (!fading_out_)
         {
             return;
@@ -223,6 +243,7 @@ void StartupSplash::showCentered()
     fading_out_ = false;
     visible_timer_.invalidate();
     setWindowOpacity(1.0);
+    setContentOpacity(1.0);
     show();
     raise();
 }
@@ -244,11 +265,11 @@ void StartupSplash::fadeOutAndClose(int durationMs)
         return;
     }
 
-    window_fade_animation_->stop();
-    window_fade_animation_->setDuration(durationMs);
-    window_fade_animation_->setStartValue(windowOpacity());
-    window_fade_animation_->setEndValue(0.0);
-    window_fade_animation_->start();
+    fade_animation_->stop();
+    fade_animation_->setDuration(durationMs);
+    fade_animation_->setStartValue(contentOpacity());
+    fade_animation_->setEndValue(0.0);
+    fade_animation_->start();
 }
 
 void StartupSplash::closeImmediately()
@@ -265,7 +286,7 @@ bool StartupSplash::isUsingFallbackText() const
 
 bool StartupSplash::animationsRunning() const
 {
-    return window_fade_animation_->state() == QAbstractAnimation::Running;
+    return fade_animation_->state() == QAbstractAnimation::Running;
 }
 
 qint64 StartupSplash::visibleElapsedMilliseconds() const
@@ -288,6 +309,10 @@ void StartupSplash::hideEvent(QHideEvent *event)
 void StartupSplash::paintEvent(QPaintEvent *event)
 {
     Q_UNUSED(event);
+
+    QPainter painter(this);
+    painter.setCompositionMode(QPainter::CompositionMode_Clear);
+    painter.fillRect(rect(), Qt::transparent);
 }
 
 void StartupSplash::resizeEvent(QResizeEvent *event)
@@ -304,7 +329,28 @@ void StartupSplash::showEvent(QShowEvent *event)
 
 void StartupSplash::stopAnimations()
 {
-    window_fade_animation_->stop();
+    fade_animation_->stop();
+}
+
+qreal StartupSplash::contentOpacity() const
+{
+    return content_opacity_;
+}
+
+void StartupSplash::setContentOpacity(qreal opacity)
+{
+    const qreal boundedOpacity = std::clamp(opacity, 0.0, 1.0);
+    if (qFuzzyCompare(content_opacity_, boundedOpacity))
+    {
+        return;
+    }
+
+    content_opacity_ = boundedOpacity;
+    if (card_widget_)
+    {
+        card_widget_->setContentOpacity(content_opacity_);
+    }
+    update();
 }
 
 void StartupSplash::updateLogoSize()

@@ -167,23 +167,6 @@ QString applicationSoftwareVersion()
         : QCoreApplication::applicationVersion();
 }
 
-QString ai8ControlStateText(Ai8TemperatureControllerProtocol::ChannelControlState state)
-{
-    using State = Ai8TemperatureControllerProtocol::ChannelControlState;
-    switch (state)
-    {
-    case State::ApidOutput:
-        return QStringLiteral("apid_output");
-    case State::AutoTuning:
-        return QStringLiteral("auto_tuning");
-    case State::Stopped:
-        return QStringLiteral("stopped");
-    case State::Unknown:
-        break;
-    }
-    return QStringLiteral("unknown");
-}
-
 }  // namespace
 
 bool SkySessionRecorder::start(const QString& baseDirectory,
@@ -212,6 +195,7 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
         recording_start_time_us_ = now >= recording_elapsed_ms_ * 1000ULL
             ? now - recording_elapsed_ms_ * 1000ULL
             : now;
+        recording_end_time_us_ = 0;
         recording_state_ = 1;
         return true;
     }
@@ -225,6 +209,7 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     telemetry_transport_ = telemetryTransport.trimmed().isEmpty() ? QStringLiteral("serial") : telemetryTransport.trimmed();
     telemetry_endpoint_ = telemetryEndpoint.trimmed().isEmpty() ? telemetryPort : telemetryEndpoint.trimmed();
     recording_start_time_us_ = nowUs();
+    recording_end_time_us_ = 0;
 
     VaporView::Session::SessionPackageInitOptions initOptions;
     initOptions.origin = VaporView::Session::RecordingOrigin::Sky;
@@ -255,8 +240,12 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     session_metadata_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.manifestPath);
     sensor_summary_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.sensorSummaryCsvPath);
     feature_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.waveformFeaturesCsvPath);
-    temperature_controller_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.temperatureControllerCsvPath);
-    ai8_temperature_controller_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.ai8TemperatureControllerCsvPath);
+    temperature_controller_filename_ = VaporView::Session::sessionPackageFilePath(
+        session_directory_,
+        packageLayout.laserTemperatureControllerCsvPath);
+    ai8_temperature_controller_filename_ = VaporView::Session::sessionPackageFilePath(
+        session_directory_,
+        packageLayout.systemTemperatureControllerCsvPath);
     basic_record_file_.setFileName(sensor_summary_filename_);
     feature_record_file_.setFileName(feature_filename_);
     temperature_controller_record_file_.setFileName(temperature_controller_filename_);
@@ -266,6 +255,12 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     temperature_humidity_raw_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.temperatureHumidityRawPath);
     distance_raw_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.distanceRawPath);
     waveform_raw_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.waveformRawPath);
+    laser_temperature_controller_raw_filename_ = VaporView::Session::sessionPackageFilePath(
+        session_directory_,
+        packageLayout.laserTemperatureControllerRawPath);
+    system_temperature_controller_raw_filename_ = VaporView::Session::sessionPackageFilePath(
+        session_directory_,
+        packageLayout.systemTemperatureControllerRawPath);
     waveform_peaks_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.waveformPeaksCsvPath);
     waveform_peaks_file_.setFileName(waveform_peaks_filename_);
     event_log_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.eventLogPath);
@@ -284,7 +279,15 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
         !openRawDatFile(pressure_raw_file_, pressure_raw_filename_, SessionRawDat::kSourcePressure, errorMessage) ||
         !openRawDatFile(temperature_humidity_raw_file_, temperature_humidity_raw_filename_, SessionRawDat::kSourceTemperatureHumidity, errorMessage) ||
         !openRawDatFile(distance_raw_file_, distance_raw_filename_, SessionRawDat::kSourceDistance, errorMessage) ||
-        !openRawDatFile(waveform_raw_file_, waveform_raw_filename_, SessionRawDat::kSourceWaveform, errorMessage))
+        !openRawDatFile(waveform_raw_file_, waveform_raw_filename_, SessionRawDat::kSourceWaveform, errorMessage) ||
+        !openRawDatFile(laser_temperature_controller_raw_file_,
+                        laser_temperature_controller_raw_filename_,
+                        SessionRawDat::kSourceLaserTemperatureController,
+                        errorMessage) ||
+        !openRawDatFile(system_temperature_controller_raw_file_,
+                        system_temperature_controller_raw_filename_,
+                        SessionRawDat::kSourceSystemTemperatureController,
+                        errorMessage))
     {
         if (errorMessage && errorMessage->isEmpty()) *errorMessage = QStringLiteral("cannot open session files");
         closeFiles();
@@ -298,10 +301,10 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     featureOut << VaporView::Session::waveformFeaturesCsvHeader();
 
     QTextStream temperatureOut(&temperature_controller_record_file_);
-    temperatureOut << VaporView::Session::temperatureControllerCsvHeader();
+    temperatureOut << VaporView::Session::laserTemperatureControllerCsvHeader();
 
     QTextStream ai8TemperatureOut(&ai8_temperature_controller_record_file_);
-    ai8TemperatureOut << VaporView::Session::ai8TemperatureControllerCsvHeader();
+    ai8TemperatureOut << VaporView::Session::systemTemperatureControllerCsvHeader();
 
     QTextStream peakIndexOut(&waveform_peaks_file_);
     peakIndexOut << VaporView::Session::waveformPeaksCsvHeader();
@@ -319,6 +322,8 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     raw_temperature_humidity_record_count_ = 0;
     raw_distance_record_count_ = 0;
     raw_waveform_record_count_ = 0;
+    raw_laser_temperature_controller_record_count_ = 0;
+    raw_system_temperature_controller_record_count_ = 0;
     native_raw_waveform_record_count_ = 0;
     event_row_count_ = 0;
     error_row_count_ = 0;
@@ -347,7 +352,11 @@ void SkySessionRecorder::pause()
 
 bool SkySessionRecorder::stop(QString *errorMessage)
 {
-    recording_elapsed_ms_ = recordingElapsedMs();
+    recording_end_time_us_ = nowUs();
+    if (recording_state_ == 1 && recording_end_time_us_ >= recording_start_time_us_)
+    {
+        recording_elapsed_ms_ = (recording_end_time_us_ - recording_start_time_us_) / 1000ULL;
+    }
     const bool metadataWritten = writeSessionMetadata(QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs),
                                                       errorMessage);
     closeFiles();
@@ -387,6 +396,10 @@ quint64 SkySessionRecorder::recordingStartTimeUs() const
 
 quint64 SkySessionRecorder::recordingElapsedMs() const
 {
+    if (recording_end_time_us_ != 0)
+    {
+        return recording_elapsed_ms_;
+    }
     if (recording_state_ != 1 || recording_start_time_us_ == 0)
     {
         return recording_elapsed_ms_;
@@ -443,6 +456,23 @@ quint64 SkySessionRecorder::rawDistanceRecordCount() const
 quint64 SkySessionRecorder::rawWaveformRecordCount() const
 {
     return raw_waveform_record_count_;
+}
+
+quint64 SkySessionRecorder::rawLaserTemperatureControllerRecordCount() const
+{
+    return raw_laser_temperature_controller_record_count_;
+}
+
+quint64 SkySessionRecorder::rawSystemTemperatureControllerRecordCount() const
+{
+    return raw_system_temperature_controller_record_count_;
+}
+
+bool SkySessionRecorder::isTimestampInsideRecordingWindow(quint64 timestampUs,
+                                                          quint64 startTimeUs,
+                                                          quint64 endTimeUs)
+{
+    return timestampUs >= startTimeUs && (endTimeUs == 0 || timestampUs <= endTimeUs);
 }
 
 bool SkySessionRecorder::appendEvent(const LogRecord& record)
@@ -581,7 +611,11 @@ void SkySessionRecorder::recordDeviceSnapshot(quint64 hostTimeUs,
 
 void SkySessionRecorder::recordWaveformFeature(const WaveformFeature& feature)
 {
-    if (!isRecording() || !feature_record_file_.isOpen())
+    if (!isRecording() ||
+        !feature_record_file_.isOpen() ||
+        !isTimestampInsideRecordingWindow(feature.host_time_us,
+                                          recording_start_time_us_,
+                                          recording_end_time_us_))
     {
         return;
     }
@@ -653,25 +687,26 @@ void SkySessionRecorder::recordAi8TemperatureControllerStatus(
     }
 
     QStringList row;
-    row.reserve(26);
+    row.reserve(27);
     row << QString::number(hostTimeUs)
-        << boolText(data.valid)
-        << boolText(data.controlStatesValid)
-        << boolText(data.alarmStatusValid)
-        << boolText(data.mainStatusValid)
-        << QString::number(data.mainStatusRaw);
+        << boolText(data.valid);
     for (double measured : data.measuredC)
     {
         row << (std::isfinite(measured) ? QString::number(measured, 'f', 6) : QString());
     }
+    row << boolText(data.controlStatesValid);
     for (Ai8TemperatureControllerProtocol::ChannelControlState state : data.controlStates)
     {
-        row << ai8ControlStateText(state);
+        row << QString::number(static_cast<quint8>(state));
     }
+    row << boolText(data.alarmStatusValid);
     for (quint16 alarmRegister : data.alarmStatusRegisters)
     {
         row << QString::number(alarmRegister);
     }
+    row << boolText(data.mainStatusValid)
+        << QString::number(data.mainStatusRaw)
+        << data.errorMessage;
 
     QTextStream out(&ai8_temperature_controller_record_file_);
     for (int i = 0; i < row.size(); ++i)
@@ -760,6 +795,34 @@ void SkySessionRecorder::recordRawLidarFrame(quint64 hostTimeUs, quint16 protoco
                    hostTimeUs,
                    frame.constData(),
                    frame.size());
+}
+
+void SkySessionRecorder::recordRawLaserTemperatureControllerResponse(quint64 hostTimeUs,
+                                                                     quint16 recordType,
+                                                                     const QByteArray& response)
+{
+    writeRawRecord(laser_temperature_controller_raw_file_,
+                   raw_laser_temperature_controller_record_count_,
+                   SessionRawDat::kSourceLaserTemperatureController,
+                   recordType,
+                   0u,
+                   hostTimeUs,
+                   response.constData(),
+                   response.size());
+}
+
+void SkySessionRecorder::recordRawSystemTemperatureControllerResponse(quint64 hostTimeUs,
+                                                                      quint16 recordType,
+                                                                      const QByteArray& response)
+{
+    writeRawRecord(system_temperature_controller_raw_file_,
+                   raw_system_temperature_controller_record_count_,
+                   SessionRawDat::kSourceSystemTemperatureController,
+                   recordType,
+                   0u,
+                   hostTimeUs,
+                   response.constData(),
+                   response.size());
 }
 
 void SkySessionRecorder::recordRawTcpWaveFrame(quint64 hostTimeUs,
@@ -897,7 +960,9 @@ bool SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc, QString
         return false;
     }
 
-    const quint64 endTimeUs = endTimeUtc.isEmpty() ? 0 : nowUs();
+    const quint64 endTimeUs = endTimeUtc.isEmpty()
+        ? 0
+        : (recording_end_time_us_ == 0 ? nowUs() : recording_end_time_us_);
     VaporView::Session::SessionManifest manifest;
     manifest.recordingOrigin = VaporView::Session::RecordingOrigin::Sky;
     manifest.sessionName = session_name_;
@@ -923,8 +988,8 @@ bool SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc, QString
     manifest.capture.telemetryPort = telemetry_port_;
     manifest.capture.telemetryBaud = telemetry_baud_ > 0 ? QString::number(telemetry_baud_) : QString();
     manifest.counts.sensorRows = telemetry_row_count_;
-    manifest.counts.temperatureControllerRows = temperature_controller_count_;
-    manifest.counts.ai8TemperatureControllerRows = ai8_temperature_controller_count_;
+    manifest.counts.laserTemperatureControllerRows = temperature_controller_count_;
+    manifest.counts.systemTemperatureControllerRows = ai8_temperature_controller_count_;
     manifest.counts.waveformFrames = raw_waveform_record_count_;
     manifest.counts.waveformFeatureRows = waveform_feature_count_;
     manifest.counts.eventRows = event_row_count_;
@@ -934,6 +999,8 @@ bool SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc, QString
     manifest.rawRecords.temperatureHumidity = raw_temperature_humidity_record_count_;
     manifest.rawRecords.distance = raw_distance_record_count_;
     manifest.rawRecords.waveform = raw_waveform_record_count_;
+    manifest.rawRecords.laserTemperatureController = raw_laser_temperature_controller_record_count_;
+    manifest.rawRecords.systemTemperatureController = raw_system_temperature_controller_record_count_;
     return VaporView::Session::writeSessionManifestAtomically(session_metadata_filename_,
                                                               manifest,
                                                               errorMessage);
@@ -951,6 +1018,8 @@ void SkySessionRecorder::closeFiles()
                         &temperature_humidity_raw_file_,
                         &distance_raw_file_,
                         &waveform_raw_file_,
+                        &laser_temperature_controller_raw_file_,
+                        &system_temperature_controller_raw_file_,
                         &waveform_peaks_file_,
                         &event_log_file_,
                         &error_log_file_})

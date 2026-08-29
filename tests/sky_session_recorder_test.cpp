@@ -6,12 +6,14 @@
 #include "shared/session/UnifiedRawDat.h"
 
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QStringList>
 #include <QTemporaryDir>
+#include <QThread>
 #include <iostream>
 
 namespace
@@ -23,6 +25,108 @@ void require(bool condition, const char *message)
         std::cerr << "FAIL: " << message << '\n';
         std::exit(1);
     }
+}
+
+quint64 currentTimestampUs()
+{
+    return static_cast<quint64>(QDateTime::currentMSecsSinceEpoch()) * 1000ULL;
+}
+
+VaporView::WaveformFeature waveformFeatureAt(quint64 hostTimeUs)
+{
+    VaporView::WaveformFeature feature;
+    feature.host_time_us = hostTimeUs;
+    feature.epsilon_time_us = hostTimeUs;
+    feature.original_point_count = 50000;
+    feature.search_start_index = 0;
+    feature.search_end_index = 50000;
+    feature.channel_id = 4;
+    feature.peak = 0.125f;
+    feature.mean = 0.25f;
+    feature.rms = 0.5f;
+    feature.peak_index = 1249.0f;
+    feature.peak_x = 1249.0f;
+    feature.min_value = -0.75f;
+    feature.max_value = 1.25f;
+    return feature;
+}
+
+QStringList waveformFeatureLines(const QString& sessionDirectory)
+{
+    QFile file(sessionDirectory + QStringLiteral("/sensors/waveform_features.csv"));
+    require(file.open(QIODevice::ReadOnly | QIODevice::Text), "open waveform feature boundary csv");
+    return QString::fromUtf8(file.readAll()).trimmed().split('\n');
+}
+
+void verifyWaveformFeatureRecordingBoundaries()
+{
+    QTemporaryDir tempDir;
+    require(tempDir.isValid(), "temporary waveform feature boundary directory");
+
+    VaporView::SkySessionRecorder recorder;
+    QString error;
+    require(recorder.start(tempDir.path(), QStringLiteral("COM51"), 921600, &error),
+            "start waveform feature boundary recorder");
+    const quint64 startTimeUs = recorder.recordingStartTimeUs();
+
+    require(!VaporView::SkySessionRecorder::isTimestampInsideRecordingWindow(
+                startTimeUs - 1, startTimeUs, 0),
+            "feature before start is outside an open recording window");
+    require(VaporView::SkySessionRecorder::isTimestampInsideRecordingWindow(
+                startTimeUs, startTimeUs, 0),
+            "feature exactly at start is inside an open recording window");
+    require(VaporView::SkySessionRecorder::isTimestampInsideRecordingWindow(
+                startTimeUs + 1, startTimeUs, 0),
+            "feature after start is inside an open recording window");
+
+    recorder.recordWaveformFeature(waveformFeatureAt(startTimeUs - 30000));
+    recorder.recordWaveformFeature(waveformFeatureAt(startTimeUs));
+    QThread::msleep(15);
+    const quint64 liveFeatureTimeUs = currentTimestampUs();
+    recorder.recordWaveformFeature(waveformFeatureAt(liveFeatureTimeUs));
+    const quint64 preStopFeatureTimeUs = currentTimestampUs();
+    recorder.recordWaveformFeature(waveformFeatureAt(preStopFeatureTimeUs));
+
+    require(recorder.stop(&error), "stop waveform feature boundary recorder");
+    require(error.isEmpty(), "stop waveform feature boundary recorder error");
+    const QString sessionDirectory = recorder.sessionDirectory();
+
+    QFile manifestFile(sessionDirectory + QStringLiteral("/session.json"));
+    require(manifestFile.open(QIODevice::ReadOnly), "open waveform feature boundary manifest");
+    const QJsonObject manifest = QJsonDocument::fromJson(manifestFile.readAll()).object();
+    const quint64 endTimeUs = manifest.value(QStringLiteral("end_time_us")).toString().toULongLong();
+    require(VaporView::SkySessionRecorder::isTimestampInsideRecordingWindow(
+                endTimeUs - 10000, startTimeUs, endTimeUs),
+            "feature before stop is inside a closed recording window");
+    require(VaporView::SkySessionRecorder::isTimestampInsideRecordingWindow(
+                endTimeUs, startTimeUs, endTimeUs),
+            "feature exactly at stop is inside a closed recording window");
+    require(!VaporView::SkySessionRecorder::isTimestampInsideRecordingWindow(
+                endTimeUs + 1000, startTimeUs, endTimeUs),
+            "feature after stop is outside a closed recording window");
+
+    recorder.recordWaveformFeature(waveformFeatureAt(endTimeUs + 1000));
+    const QStringList lines = waveformFeatureLines(sessionDirectory);
+    require(lines.size() == 4, "only valid waveform features are written");
+    for (int index = 1; index < lines.size(); ++index)
+    {
+        const quint64 timestampUs = lines.at(index).section(',', 0, 0).toULongLong();
+        require(timestampUs >= startTimeUs && timestampUs <= endTimeUs,
+                "written waveform feature timestamp is inside manifest window");
+    }
+
+    VaporView::SkySessionRecorder pauseRecorder;
+    require(pauseRecorder.start(tempDir.path(), QStringLiteral("COM52"), 921600, &error),
+            "start pause resume waveform feature recorder");
+    pauseRecorder.recordWaveformFeature(waveformFeatureAt(pauseRecorder.recordingStartTimeUs()));
+    pauseRecorder.pause();
+    pauseRecorder.recordWaveformFeature(waveformFeatureAt(currentTimestampUs()));
+    require(pauseRecorder.start(tempDir.path(), QStringLiteral("COM52"), 921600, &error),
+            "resume waveform feature recorder");
+    pauseRecorder.recordWaveformFeature(waveformFeatureAt(currentTimestampUs()));
+    require(pauseRecorder.stop(&error), "stop pause resume waveform feature recorder");
+    require(waveformFeatureLines(pauseRecorder.sessionDirectory()).size() == 3,
+            "pause drops features and resume keeps new features");
 }
 
 }
@@ -42,6 +146,8 @@ int main(int argc, char *argv[])
     require(error.isEmpty(), "start recorder error text");
     require(recorder.isRecording(), "recorder state");
     require(!recorder.sessionName().isEmpty(), "session name");
+
+    verifyWaveformFeatureRecordingBoundaries();
 
     VaporView::LogRecord eventRecord;
     eventRecord.timestamp_utc = QStringLiteral("2026-07-30T12:00:00.000Z");
@@ -138,7 +244,7 @@ int main(int argc, char *argv[])
     lidar.signal_strength = 180;
     recorder.recordDeviceSnapshot(1100, 1000, epsilon, true, ptb, true, hmp, true, lidar, true);
     VaporView::WaveformFeature feature;
-    feature.host_time_us = 1200;
+    feature.host_time_us = recorder.recordingStartTimeUs();
     feature.epsilon_time_us = 900;
     feature.original_point_count = 50000;
     feature.search_start_index = 1000;
@@ -175,13 +281,28 @@ int main(int argc, char *argv[])
         ai8.alarmStatusRegisters[static_cast<size_t>(index)] = static_cast<quint16>(index + 1);
     }
     recorder.recordAi8TemperatureControllerStatus(1300, ai8);
+    const QByteArray laserResponse = QByteArray::fromHex("01030411223344");
+    const QByteArray systemResponse = QByteArray::fromHex("0103080001000200030004");
+    recorder.recordRawLaserTemperatureControllerResponse(
+        1400,
+        0x0120,
+        laserResponse);
+    for (quint16 recordType = 1; recordType <= 4; ++recordType)
+    {
+        recorder.recordRawSystemTemperatureControllerResponse(
+            1500 + recordType,
+            recordType,
+            systemResponse);
+    }
 
     const QString sessionDir = recorder.sessionDirectory();
     require(QFileInfo::exists(sessionDir), "session directory");
     require(QFileInfo::exists(sessionDir + QStringLiteral("/session.json")), "session metadata");
     require(QFileInfo::exists(sessionDir + QStringLiteral("/sensors/sensor_summary.csv")), "sensor summary csv");
-    require(QFileInfo::exists(sessionDir + QStringLiteral("/sensors/ai8_temperature_controller.csv")),
-            "AI-8 temperature controller csv");
+    require(QFileInfo::exists(sessionDir + QStringLiteral("/sensors/laser_temperature_controller.csv")),
+            "laser temperature controller csv");
+    require(QFileInfo::exists(sessionDir + QStringLiteral("/sensors/system_temperature_controller.csv")),
+            "system temperature controller csv");
     require(QFileInfo::exists(sessionDir + QStringLiteral("/sensors/waveform_features.csv")), "waveform features csv");
     require(!QFileInfo::exists(sessionDir + QStringLiteral("/waveform_index.csv")), "no waveform index csv");
     require(QFileInfo::exists(sessionDir + QStringLiteral("/logs/event_log.csv")), "event log");
@@ -189,6 +310,10 @@ int main(int argc, char *argv[])
     require(!QFileInfo::exists(sessionDir + QStringLiteral("/waveforms")), "no waveform bin directory");
     require(QFileInfo::exists(sessionDir + QStringLiteral("/raw/navigation.dat")), "navigation raw dat");
     require(QFileInfo::exists(sessionDir + QStringLiteral("/raw/waveform.dat")), "waveform raw dat");
+    require(QFileInfo::exists(sessionDir + QStringLiteral("/raw/laser_temperature_controller.dat")),
+            "laser temperature controller raw dat");
+    require(QFileInfo::exists(sessionDir + QStringLiteral("/raw/system_temperature_controller.dat")),
+            "system temperature controller raw dat");
     require(QFileInfo::exists(sessionDir + QStringLiteral("/raw/waveform_peaks.csv")), "waveform peaks csv");
 
     recorder.stop();
@@ -260,27 +385,30 @@ int main(int argc, char *argv[])
     require(featureCells.at(11) == QStringLiteral("-0.750000"), "feature min csv precision");
     require(featureCells.at(12) == QStringLiteral("1.250000"), "feature max csv precision");
 
-    QFile ai8File(sessionDir + QStringLiteral("/sensors/ai8_temperature_controller.csv"));
-    require(ai8File.open(QIODevice::ReadOnly | QIODevice::Text), "open AI-8 temperature controller csv");
+    QFile ai8File(sessionDir + QStringLiteral("/sensors/system_temperature_controller.csv"));
+    require(ai8File.open(QIODevice::ReadOnly | QIODevice::Text), "open system temperature controller csv");
     const QStringList ai8Lines = QString::fromUtf8(ai8File.readAll()).trimmed().split('\n');
-    require(ai8Lines.size() == 2, "AI-8 temperature controller csv row count");
-    require(ai8Lines.at(0) + QLatin1Char('\n') == VaporView::Session::ai8TemperatureControllerCsvHeader(),
-            "AI-8 temperature controller csv header");
+    require(ai8Lines.size() == 2, "system temperature controller csv row count");
+    require(ai8Lines.at(0) + QLatin1Char('\n') == VaporView::Session::systemTemperatureControllerCsvHeader(),
+            "system temperature controller csv header");
     const QStringList ai8Cells = ai8Lines.at(1).split(',');
-    require(ai8Cells.size() == 26, "AI-8 temperature controller csv column count");
+    require(ai8Cells.size() == 27, "system temperature controller csv column count");
     require(ai8Cells.at(0) == QStringLiteral("1300") &&
                 ai8Cells.at(1) == QStringLiteral("true") &&
-                ai8Cells.at(5) == QStringLiteral("4660"),
-            "AI-8 temperature controller status fields");
-    require(ai8Cells.at(6) == QStringLiteral("20.000000") &&
-                ai8Cells.at(13) == QStringLiteral("27.000000"),
-            "AI-8 temperature controller measured channels");
-    require(ai8Cells.at(14) == QStringLiteral("apid_output") &&
-                ai8Cells.at(15) == QStringLiteral("stopped"),
-            "AI-8 temperature controller control states");
-    require(ai8Cells.at(22) == QStringLiteral("1") &&
-                ai8Cells.at(25) == QStringLiteral("4"),
-            "AI-8 temperature controller alarm registers");
+                ai8Cells.at(10) == QStringLiteral("true") &&
+                ai8Cells.at(19) == QStringLiteral("true") &&
+                ai8Cells.at(24) == QStringLiteral("true") &&
+                ai8Cells.at(25) == QStringLiteral("4660"),
+            "system temperature controller status fields");
+    require(ai8Cells.at(2) == QStringLiteral("20.000000") &&
+                ai8Cells.at(9) == QStringLiteral("27.000000"),
+            "system temperature controller measured channels");
+    require(ai8Cells.at(11) == QStringLiteral("1") &&
+                ai8Cells.at(12) == QStringLiteral("3"),
+            "system temperature controller control state codes");
+    require(ai8Cells.at(20) == QStringLiteral("1") &&
+                ai8Cells.at(23) == QStringLiteral("4"),
+            "system temperature controller alarm registers");
 
     QFile peakIndexFile(sessionDir + QStringLiteral("/raw/waveform_peaks.csv"));
     require(peakIndexFile.open(QIODevice::ReadOnly | QIODevice::Text), "open waveform peaks csv");
@@ -320,19 +448,25 @@ int main(int argc, char *argv[])
             "waveform frame count");
     require(counts.value(QStringLiteral("waveform_feature_rows")).toString().toULongLong() == 1,
             "waveform feature row count");
-    require(counts.value(QStringLiteral("ai8_temperature_controller_rows")).toString().toULongLong() == 1,
-            "AI-8 temperature controller row count");
+    require(counts.value(QStringLiteral("system_temperature_controller_rows")).toString().toULongLong() == 1,
+            "system temperature controller row count");
+    const QJsonObject rawFiles = root.value(QStringLiteral("raw_files")).toObject();
+    require(rawFiles.value(QStringLiteral("laser_temperature_controller"))
+                .toObject().value(QStringLiteral("records")).toString().toULongLong() == 1,
+            "laser temperature controller raw record count");
+    require(rawFiles.value(QStringLiteral("system_temperature_controller"))
+                .toObject().value(QStringLiteral("records")).toString().toULongLong() == 4,
+            "system temperature controller raw record count");
     require(root.value(QStringLiteral("waveform_file_count")).toString().toULongLong() == 1,
             "waveform file count");
-    const QJsonObject rawFiles = root.value(QStringLiteral("raw_files")).toObject();
     require(rawFiles.value(QStringLiteral("waveform")).toObject().value(QStringLiteral("records")).toString().toULongLong() == 1,
             "waveform raw record count");
     const QJsonObject paths = root.value(QStringLiteral("paths")).toObject();
     require(paths.value(QStringLiteral("waveform_peaks_csv")).toString() == QStringLiteral("raw/waveform_peaks.csv"),
             "metadata waveform peaks path");
-    require(paths.value(QStringLiteral("ai8_temperature_controller_csv")).toString() ==
-                QStringLiteral("sensors/ai8_temperature_controller.csv"),
-            "metadata AI-8 temperature controller path");
+    require(paths.value(QStringLiteral("system_temperature_controller_csv")).toString() ==
+                QStringLiteral("sensors/system_temperature_controller.csv"),
+            "metadata system temperature controller path");
 
     QFile eventFile(sessionDir + QStringLiteral("/logs/event_log.csv"));
     require(eventFile.open(QIODevice::ReadOnly | QIODevice::Text), "open event log");
@@ -429,5 +563,37 @@ int main(int argc, char *argv[])
     require(decoded.size() == 4, "decoded harmonic sample count");
     require(decoded[0] == 1.0f && decoded[1] == 2.0f && decoded[2] == 3.0f && decoded[3] == 4.0f,
             "decoded harmonic samples");
+
+    auto verifyTemperatureRaw = [&](const QString& filename,
+                                    quint16 sourceId,
+                                    int expectedCount,
+                                    quint16 firstRecordType,
+                                    const QByteArray& expectedPayload) {
+        QFile file(filename);
+        require(file.open(QIODevice::ReadOnly), "open temperature raw dat");
+        VaporView::SessionRawDat::RawScanOptions options;
+        options.expectedSourceId = sourceId;
+        const auto result = VaporView::SessionRawDat::scan(file, options);
+        require(result.success() && result.records.size() == expectedCount,
+                "temperature raw dat record count");
+        require(result.records.first().header.recordType == firstRecordType,
+                "temperature raw dat record type");
+        require(file.seek(static_cast<qint64>(result.records.first().payloadOffset)),
+                "seek temperature raw dat payload");
+        require(file.read(result.records.first().header.payloadSize) == expectedPayload,
+                "temperature raw dat payload is byte-for-byte equal");
+    };
+    verifyTemperatureRaw(
+        sessionDir + QStringLiteral("/raw/laser_temperature_controller.dat"),
+        VaporView::SessionRawDat::kSourceLaserTemperatureController,
+        1,
+        0x0120,
+        laserResponse);
+    verifyTemperatureRaw(
+        sessionDir + QStringLiteral("/raw/system_temperature_controller.dat"),
+        VaporView::SessionRawDat::kSourceSystemTemperatureController,
+        4,
+        VaporView::SessionRawDat::kRecordTypeSystemTemperatureMeasuredValues,
+        systemResponse);
     return 0;
 }

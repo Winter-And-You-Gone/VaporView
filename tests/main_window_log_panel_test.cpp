@@ -2,6 +2,7 @@
 #include "ground/main/MainWindow.h"
 #include "ground/main/UiLogModel.h"
 #include "shared/config/SettingsWriteBarrier.h"
+#include "shared/theme/AppTheme.h"
 #include "test_ui_helpers.h"
 
 #include <QAbstractItemModel>
@@ -11,6 +12,7 @@
 #include <QLineEdit>
 #include <QListView>
 #include <QMenu>
+#include <QMetaObject>
 #include <QMouseEvent>
 #include <QPushButton>
 #include <QScrollBar>
@@ -99,6 +101,18 @@ void require(bool condition, const char *message)
     {
         fail(message);
     }
+}
+
+void requireLastRuleContains(const QString& styleSheet,
+                             const QString& selector,
+                             const QString& expected,
+                             const char *message)
+{
+    const qsizetype selectorPos = styleSheet.lastIndexOf(selector);
+    require(selectorPos >= 0, message);
+    const qsizetype ruleEnd = styleSheet.indexOf(QLatin1Char('}'), selectorPos);
+    require(ruleEnd > selectorPos, message);
+    require(styleSheet.mid(selectorPos, ruleEnd - selectorPos).contains(expected), message);
 }
 
 void publishRecord(VaporView::LogService& logService,
@@ -357,6 +371,35 @@ int main(int argc, char **argv)
     VaporViewTest::processEventsFor(30);
     require(logList->visualRect(wrappedLogIndex).height() > logList->fontMetrics().height() * 2,
             "long log details wrap into multiple visible lines");
+    require(logList->resizeMode() == QListView::Adjust,
+            "log list recalculates variable row heights when its width changes");
+    require(logList->wordWrap(), "log list keeps word wrapping enabled for multi-line rows");
+    auto wrappedRowHeight = [&]() {
+        logList->scrollTo(wrappedLogIndex, QAbstractItemView::PositionAtCenter);
+        VaporViewTest::processEventsFor(90);
+        const QRect rowRect = logList->visualRect(wrappedLogIndex);
+        require(rowRect.isValid() && !rowRect.isEmpty(), "wrapped log row remains visible after resize");
+        require(rowRect.height() >= logList->fontMetrics().height(),
+                "wrapped log row height remains at least one text line");
+        return rowRect.height();
+    };
+    const int originalMinimumWidth = logList->minimumWidth();
+    const int originalMaximumWidth = logList->maximumWidth();
+    const int narrowLogWidth = std::max(220, logList->width() / 2);
+    const int wideLogWidth = std::max(narrowLogWidth + 180, narrowLogWidth * 2);
+    logList->setFixedWidth(narrowLogWidth);
+    const int narrowRowHeight = wrappedRowHeight();
+    logList->setFixedWidth(wideLogWidth);
+    const int wideRowHeight = wrappedRowHeight();
+    require(wideRowHeight <= narrowRowHeight,
+            "wider log list does not keep a stale taller wrapped row height");
+    logList->setFixedWidth(narrowLogWidth);
+    const int restoredNarrowRowHeight = wrappedRowHeight();
+    require(std::abs(restoredNarrowRowHeight - narrowRowHeight) <= logList->fontMetrics().height(),
+            "log row height is stable after narrow-wide-narrow resize");
+    logList->setMinimumWidth(originalMinimumWidth);
+    logList->setMaximumWidth(originalMaximumWidth);
+    VaporViewTest::processEventsFor(90);
 
     searchEdit->setText(QStringLiteral("DEVICE_CONNECTION_FAILED"));
     VaporViewTest::processEventsFor(30);
@@ -416,6 +459,38 @@ int main(int argc, char **argv)
     VaporViewTest::processEventsFor(90);
     followAction->trigger();
     VaporViewTest::processEventsFor(30);
+    for (int i = 0; i < 36; ++i)
+    {
+        logService.publish(VaporView::LogLevel::Warning,
+                           QStringLiteral("Ground"),
+                           QStringLiteral("scroll.follow"),
+                           QStringLiteral("自动跟随长日志 %1：这是一条会在窄日志卡片中自动换行的真实日志路径记录，用来验证滚动条到达最新底部后最后一条内容完整可见。").arg(i),
+                           {{QStringLiteral("event"), QStringLiteral("scroll_follow_wrapped_warning_%1").arg(i)}});
+    }
+    auto logListSettledAtBottom = [logList]() {
+        if (!logList || !logList->model() || !logList->viewport())
+        {
+            return false;
+        }
+        QScrollBar *scrollBar = logList->verticalScrollBar();
+        if (!scrollBar || scrollBar->maximum() <= 0 || scrollBar->value() != scrollBar->maximum())
+        {
+            return false;
+        }
+        const int lastRow = logList->model()->rowCount() - 1;
+        if (lastRow < 0)
+        {
+            return false;
+        }
+        const QRect lastRowRect = logList->visualRect(logList->model()->index(lastRow, 0));
+        return lastRowRect.isValid() &&
+               !lastRowRect.isEmpty() &&
+               lastRowRect.bottom() <= logList->viewport()->rect().bottom();
+    };
+    require(VaporViewTest::processEventsUntil(2000, logListSettledAtBottom),
+            "auto-follow keeps the final wrapped log row fully visible at the bottom");
+    clearButton->click();
+    VaporViewTest::processEventsFor(90);
     for (int i = 0; i < 80; ++i)
     {
         logService.publish(VaporView::LogLevel::Warning,
@@ -444,6 +519,40 @@ int main(int argc, char **argv)
     require(logScrollBar->value() == beforeNewLogScrollValue,
             "new log does not jump when auto follow is enabled but the user is viewing history");
     require(newEntriesButton->isVisible(), "new log indicator appears while viewing history with auto follow enabled");
+    const bool startedDark = qApp->property(VaporView::kAppDarkThemeProperty).toBool();
+    if (!startedDark)
+    {
+        require(QMetaObject::invokeMethod(window.get(), "onToggleTheme", Qt::DirectConnection),
+                "main window can switch to dark theme for new log indicator style checks");
+        VaporViewTest::processEventsFor(90);
+    }
+    require(qApp->property(VaporView::kAppDarkThemeProperty).toBool(),
+            "main window is in dark theme for new log indicator style checks");
+    const QString darkStyleSheet = qApp->styleSheet();
+    requireLastRuleContains(
+        darkStyleSheet,
+        QStringLiteral("QPushButton#logNewEntriesButton {"),
+        QStringLiteral("background-color: %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::PrimarySubtle, true)),
+        "dark new log indicator uses the orange theme background");
+    requireLastRuleContains(
+        darkStyleSheet,
+        QStringLiteral("QPushButton#logNewEntriesButton {"),
+        QStringLiteral("border: 1px solid %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::Primary, true)),
+        "dark new log indicator border uses the orange theme color");
+    requireLastRuleContains(
+        darkStyleSheet,
+        QStringLiteral("QPushButton#logNewEntriesButton {"),
+        QStringLiteral("color: %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::Primary, true)),
+        "dark new log indicator text uses the orange theme color");
+    if (!startedDark)
+    {
+        require(QMetaObject::invokeMethod(window.get(), "onToggleTheme", Qt::DirectConnection),
+                "main window can restore the original light theme after new log indicator style checks");
+        VaporViewTest::processEventsFor(90);
+    }
 
     window.reset();
     VaporView::setSettingsWritesSuspended(false);

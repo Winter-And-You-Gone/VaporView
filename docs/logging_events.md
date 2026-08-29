@@ -27,7 +27,7 @@
 | SkyCore | telemetry.serial | telemetry_serial_open_failed | Error | 无法打开天空端遥测串口。 | port, baud | system_error | TELEMETRY_SERIAL_OPEN_FAILED |
 | SkyCore | telemetry.tcp | telemetry_tcp_listen_failed | Error | 无法监听天空端 TCP 遥测端点。 | host, port | system_error | TELEMETRY_TCP_LISTEN_FAILED |
 | SkyCore | telemetry.link | telemetry_link_error | Warning | 天空端遥测链路异常。 | system_error |  | TELEMETRY_LINK_ERROR |
-| TelemetryLink | telemetry.link | telemetry_tcp_server_listening | Info | TCP 遥测服务端已开始监听。 | role, host, requested_port, local_port | ui_visibility |  |
+| TelemetryLink | telemetry.link | telemetry_tcp_server_listening | Info | TCP 遥测服务端已开始监听：{host}:{local_port}。 | role, host, requested_port, local_port | ui_visibility |  |
 | TelemetryLink | telemetry.link | telemetry_tcp_connected | Info | TCP 遥测客户端已连接。 | role, host, port | ui_visibility |  |
 | TelemetryLink | telemetry.link | telemetry_tcp_client_replaced | Info | TCP 遥测客户端连接已被新连接替换。 | role, peer_host, peer_port | ui_visibility |  |
 | TelemetryLink | telemetry.link | telemetry_tcp_client_connected | Info | TCP 遥测客户端已接入。 | role, peer_host, peer_port | ui_visibility |  |
@@ -63,15 +63,15 @@
 | SkyCore | device.temperature.state | temperature_controller_firmware_read_failed | Error | RD105 温控器版本号读取失败。 | device_id, device, command, error_code |  | COMMAND_VERIFY_FAILED |
 | SkyCore | device.temperature.state | temperature_controller_parameters_read_failed | Error | RD105 温控器参数读取失败。 | device_id, device, command, error_code |  | COMMAND_VERIFY_FAILED |
 | SkyCore | device.temperature.state | temperature_controller_parameters_incomplete | Error | RD105 温控器参数读取不完整。 | device_id, device, command, error_code |  | COMMAND_VERIFY_FAILED |
-| SkyCore | device.lidar.command | lidar_high_frequency_start_failed | Error | TFA1005-L 高频测距启动命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
-| SkyCore | device.lidar.command | lidar_standby_command_failed | Error | TFA1005-L 待机命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
-| SkyCore | device.lidar.command | lidar_distance_output_command_failed | Error | TFA1005-L 距离输出命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
-| SkyCore | device.lidar.command | lidar_low_frequency_continuous_command_failed | Error | TFA1005-L 低频连续测距命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
+| SkyCore | device.lidar.command | lidar_high_frequency_start_failed | Error | TFA1500-L 高频测距启动命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
+| SkyCore | device.lidar.command | lidar_standby_command_failed | Error | TFA1500-L 待机命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
+| SkyCore | device.lidar.command | lidar_distance_output_command_failed | Error | TFA1500-L 距离输出命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
+| SkyCore | device.lidar.command | lidar_low_frequency_continuous_command_failed | Error | TFA1500-L 低频连续测距命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
 | SkyCore | device.wave_tcp | wave_tcp_peak_search_range_updated | Info | Wave TCP 峰值搜索范围已更新。 | start_index, end_index |  |  |
 | SkyCore | device.wave_tcp | wave_tcp_resync_discarded_bytes | Warning | Wave TCP 重新同步时已丢弃部分字节。 | dropped_bytes |  | WAVE_TCP_FRAME_HEADER_NOT_FOUND |
 | SkyCore | device.wave_tcp | wave_tcp_resync_skipped_bytes | Warning | Wave TCP 重新同步时已跳过部分字节。 | skipped_bytes, header_order |  | WAVE_TCP_FRAME_OFFSET |
 | SkyCore | device.wave_tcp | wave_tcp_payload_format_locked | Info | Wave TCP 载荷格式已锁定。 | header_order, float_encoding |  |  |
-| SkyCore | ipc | sky_ipc_listening | Info | 本地 IPC 服务已开始监听。 | host, port |  |  |
+| SkyCore | ipc | sky_ipc_listening | Info | 本地 IPC 服务已开始监听：{host}:{port}。 | host, port |  |  |
 | SkyCore | ipc | sky_ipc_listen_failed | Error | 本地 IPC 服务监听失败。 | host, port, system_error |  | SKY_IPC_LISTEN_FAILED |
 | SkyCore | ipc | sky_ipc_client_connected | Info | 本地 IPC 客户端已连接。 | peer_host, peer_port |  |  |
 | SkyCore | ipc | sky_ipc_client_disconnected | Info | 本地 IPC 客户端已断开。 |  |  |  |
@@ -96,7 +96,7 @@
 | SkyTui | ipc.protocol | sky_ipc_error_frame_received | Error | 已收到 SkyCore telemetry Error 帧。 | payload_hex, payload_bytes |  | SKY_IPC_ERROR_FRAME |
 | SkyTui | ui | sky_tui_ui_log | Info | SkyTui 界面日志已更新。 | ui_visibility, ui_visible |  |  |
 | Ground | telemetry.serial | ground_telemetry_serial_open_failed | Error | 无法打开地面端遥测串口。 | port, baud | system_error | GROUND_TELEMETRY_SERIAL_OPEN_FAILED |
-| Ground | telemetry.tcp | ground_telemetry_tcp_connect_failed | Error | 无法连接地面端 TCP 遥测端点。 | host, port | system_error | GROUND_TELEMETRY_TCP_CONNECT_FAILED |
+| Ground | telemetry.tcp | ground_telemetry_tcp_connect_failed | Error | 无法连接天空端 TCP 数传端点。 | endpoint, host, port | system_error, ui_message, ui_visibility | GROUND_TELEMETRY_TCP_CONNECT_FAILED |
 | Ground | telemetry.link | ground_telemetry_link_error | Warning | 地面端遥测链路异常。 | system_error |  | GROUND_TELEMETRY_LINK_ERROR |
 | Ground | telemetry.command | telemetry_command_ack_timeout | Warning | 天空端命令 ACK 等待超时。 | command_id, command_value, command_seq |  | TELEMETRY_COMMAND_ACK_TIMEOUT |
 | Ground | protocol.crc | telemetry_crc_or_version_error | Warning | 遥测解码器拒绝了 CRC 或协议版本错误的数据帧。 | total_errors, delta |  |  |
@@ -108,6 +108,7 @@
 | Ground | protocol.parse | command_ack_parse_failed | Warning | 无法解析 CommandAck 遥测载荷。 | message_type, payload_bytes |  |  |
 | Ground | protocol.parse | sky_config_parse_failed | Warning | 无法解析 SkyConfig JSON 遥测载荷。 | message_type, payload_bytes |  |  |
 | Ground | protocol.parse | sky_config_apply_result_parse_failed | Warning | 无法解析 SkyConfigApplyResult JSON 遥测载荷。 | message_type, payload_bytes |  |  |
+| Ground | protocol.parse | serial_port_detection_result_parse_failed | Warning | 无法解析串口自动识别结果遥测载荷。 | message_type, payload_bytes |  |  |
 | Ground | protocol.parse | temperature_controller_status_parse_failed | Warning | 无法解析 TemperatureControllerStatus 遥测载荷。 | message_type, payload_bytes |  |  |
 | Ground | protocol.parse | ai8_temperature_controller_status_parse_failed | Warning | 无法解析 AI-8288 遥测载荷。 | message_type, payload_bytes |  |  |
 | Ground | protocol.parse | device_operation_response_parse_failed | Warning | 无法解析 DeviceOperationResponse 遥测载荷。 | message_type, payload_bytes |  |  |
@@ -143,12 +144,14 @@
 | Ground | session.recording | scheduled_recording_stop_command_sent | Info | 定时记录停止命令已发送。 | execution_path, command, command_seq | ui_visibility |  |
 | Ground | device.connection | serial_ports_refreshed | Info | 串口列表已刷新。 | serial_port_count | ui_visibility |  |
 | Ground | device.connection | serial_port_detection_started | Info | 开始自动识别串口。 |  | ui_visibility |  |
+| Ground | device.connection | remote_serial_port_detection_started | Info | 已请求天空端自动识别串口。 | command_seq | ui_visibility |  |
 | Ground | device.connection | serial_port_detection_cancel_requested | Info | 已请求取消，正在停止自动识别串口。 | reason_code | ui_visibility | USER_CANCELLED |
+| Ground | device.connection | remote_serial_port_detection_cancel_failed | Warning | 天空端取消串口自动识别失败。 | error_code | ui_visibility |  |
 | Ground | device.connection | serial_port_detection_no_ports | Warning | 自动识别结束，当前没有发现可用串口。 | reason_code, serial_port_count, selected_candidates | ui_message, ui_visibility | NO_SERIAL_PORTS |
 | Ground | device.connection | serial_port_detection_plan_created | Info | 串口自动识别计划已创建。 | serial_port_count, selected_candidates, default_probe_count | ui_message, ui_visibility |  |
 | Ground | device.connection | serial_port_detection_selected_pass_started | Info | 开始按已选串口和波特率探测设备。 | selected_candidates | ui_message, ui_visibility |  |
 | Ground | device.connection | serial_port_detection_default_pass_started | Info | 开始按默认波特率探测剩余设备。 | serial_port_count, default_probe_count | ui_message, ui_visibility |  |
-| Ground | device.connection | serial_port_detection_probe_started | Debug | 开始探测串口设备。 | device_key, device, port, baud, probe_phase | ui_message, ui_visibility |  |
+| Ground | device.connection | serial_port_detection_probe_started | Info | 开始探测串口设备。 | device_key, device, port, baud, probe_phase | ui_message, ui_visibility |  |
 | Ground | device.connection | serial_port_detection_device_identified | Info | 串口自动识别已识别设备。 | device_key, device, port, baud, detected_devices | ui_message, ui_visibility |  |
 | Ground | device.connection | serial_port_detection_cancelled | Info | 串口自动识别已取消。 | reason_code, detected_devices | ui_message, ui_visibility | USER_CANCELLED |
 | Ground | device.connection | serial_port_detection_device_not_found | Info | 串口自动识别未找到设备。 | device_key, device | ui_message, ui_visibility |  |
@@ -170,8 +173,8 @@
 | Ground | device.connection | local_device_connected | Info | 本地设备响应正常，连接成功。 | device, port, baud | ui_visibility |  |
 | Ground | device.connection | local_device_stream_start_failed | Error | 本地设备数据流启动失败。 | device, error_code | ui_visibility | STREAM_START_FAILED |
 | Ground | device.connection | local_device_collector_diagnostic | Debug | 本地设备采集器输出了诊断信息。 | external_raw_text | ui_visibility |  |
-| Ground | device.connection | epsilon_output_rate_command_skipped | Info | 已跳过 EPSILON 输出频率下发，使用设备当前输出。 | device, reason_code | ui_visibility | RATE_UNSPECIFIED |
 | Ground | device.connection | epsilon_output_reconfigure_skipped_config_unchanged | Info | EPSILON 输出配置与上次保存配置一致，已跳过自动重配。 | device, epsilon_packet_profile, reason_code | ui_visibility | CONFIG_UNCHANGED |
+| Ground | device.connection | epsilon_output_reconfigure_skipped_fdilink_detected | Info | 已检测到 EPSILON FDILink 数据流，跳过默认输出配置下发。 | device, epsilon_packet_profile, reason_code | ui_visibility | FDILINK_STREAM_DETECTED |
 | Ground | device.connection | ptb_sample_rate_command_skipped | Info | 已跳过 PTB210 采样频率下发，使用设备当前输出。 | device, reason_code | ui_visibility | RATE_UNSPECIFIED |
 | Ground | device.connection | ptb_sample_rate_update_failed | Warning | PTB210 采样频率下发失败。 | device, requested_rate_hz, error_code | ui_visibility | SAMPLE_RATE_UPDATE_FAILED |
 | Ground | device.connection | lidar_output_rate_command_skipped | Info | 已跳过激光测距仪输出频率下发，使用设备默认或自适应输出。 | device, reason_code | ui_visibility | RATE_UNSPECIFIED |
@@ -191,7 +194,7 @@
 | Ground | telemetry.connection | remote_sky_connection_rejected_missing_port | Warning | 请先选择天空端数传串口。 | reason_code, transport | ui_dedupe_key | MISSING_ENDPOINT |
 | Ground | telemetry.connection | remote_sky_connection_started | Info | 正在连接天空端数传。 | transport, endpoint | ui_visibility |  |
 | Ground | telemetry.connection | remote_sky_connection_opened | Info | 数传链路已打开，正在等待天空端握手。 | endpoint, transport | ui_visibility |  |
-| Ground | telemetry.connection | remote_sky_connection_open_failed | Error | 打开天空端数传链路失败。 | error_code, endpoint, transport | ui_dedupe_key | TELEMETRY_LINK_OPEN_FAILED |
+| Ground | telemetry.connection | remote_sky_connection_open_failed | Error | 打开天空端数传链路失败。 | error_code, endpoint, transport | ui_dedupe_key, ui_message | TELEMETRY_LINK_OPEN_FAILED |
 | Ground | telemetry.connection | remote_sky_handshake_confirmed | Info | 天空端握手成功。 |  | ui_visibility |  |
 | Ground | telemetry.connection | remote_sky_disconnection_started | Info | 正在断开天空端数传。 |  | ui_visibility |  |
 | Ground | telemetry.connection | remote_sky_disconnected | Info | 天空端数传已断开。 |  | ui_visibility |  |
@@ -256,12 +259,10 @@
 | Ground | device.navigation.command | epsilon_output_reconfigure_rejected_dependency_unavailable | Warning | EPSILON 当前不可用，无法重新配置输出。 | device, execution_path, reason_code | ui_dedupe_key | DEPENDENCY_UNAVAILABLE |
 | Ground | device.navigation.command | epsilon_output_reconfigure_rejected_missing_port | Warning | 请先选择 EPSILON 串口。 | device, reason_code | ui_dedupe_key | MISSING_ENDPOINT |
 | Ground | device.navigation.command | epsilon_output_reconfigure_rejected_invalid_baud | Warning | EPSILON 波特率无效。 | device, reason_code, baud_text | ui_dedupe_key | CONFIG_INVALID |
-| Ground | device.navigation.command | epsilon_output_reconfigure_skipped_rate_unspecified | Info | EPSILON 频率为“不设定”，已跳过输出频率下发。 | device, reason_code | ui_visibility | COMMAND_NOT_SUPPORTED |
 | Ground | device.navigation.command | epsilon_output_reconfigure_started | Info | 开始手动重配 EPSILON 输出。 | device, port, baud, packet_rate_summary | ui_visibility |  |
 | Ground | device.navigation.command | epsilon_output_reconfigure_open_failed | Error | 打开 EPSILON 串口进行手动重配失败。 | device, operation, port, baud, system_error, error_code | ui_dedupe_key | SERIAL_OPEN_FAILED |
-| Ground | device.navigation.command | epsilon_output_reconfigure_failed | Error | EPSILON 输出手动重配失败。 | device, operation, port, baud, output_rate_hz, callback_rate_hz, packet_rate_signature, error_code | ui_dedupe_key | CONFIG_APPLY_FAILED |
+| Ground | device.navigation.command | epsilon_output_reconfigure_failed | Warning/Error | EPSILON 输出手动重配失败。 | device, operation, port, baud, output_rate_hz, callback_rate_hz, packet_rate_signature, error_code | ui_dedupe_key | CONFIG_APPLY_FAILED |
 | Ground | device.navigation.command | epsilon_output_reconfigure_completed | Info | EPSILON 输出手动重配已完成。 | device, operation, port, output_rate_hz, callback_rate_hz, packet_rate_signature | ui_visibility |  |
-| Ground | device.navigation.command | epsilon_output_rate_command_disabled | Info | 已禁用 EPSILON 输出频率下发，使用设备当前输出。 | device, apply_device_rate | ui_visibility |  |
 | Ground | device.navigation.command | epsilon_output_rate_command_failed | Error | EPSILON 输出频率下发失败。 | device, requested_rate_hz, error_code | ui_dedupe_key | COMMAND_VERIFY_FAILED |
 | Ground | device.navigation.command | epsilon_output_rate_saved_deferred | Info | EPSILON 输出频率已保存，将在下次连接时应用。 | device, requested_rate_hz | ui_visibility |  |
 | Ground | device.navigation.command | epsilon_output_rate_updated | Info | EPSILON 输出频率已更新。 | device, requested_rate_hz | ui_visibility |  |
@@ -288,7 +289,7 @@
 | Ground | device.lidar.command | lidar_output_rate_command_disabled | Info | 已禁用激光测距仪输出频率下发，使用设备默认或自适应输出。 | device, apply_device_rate | ui_visibility |  |
 | Ground | device.rate | sample_rate_apply_partial_failure | Warning | 主机侧频率已更新，但一个或多个设备输出频率命令失败。 | requested_rate_hz, epsilon_command_failed, ptb_command_failed, reason_code | ui_dedupe_key | DEPENDENCY_UNAVAILABLE |
 | Ground | device.rate | sample_rates_updated | Info | 所有频率已更新。 | requested_rate_hz, epsilon_rate_hz, ptb_rate_hz, hmp_rate_hz, lidar_rate_hz, temperature_rate_hz | ui_visibility |  |
-| Ground | device.rate | sample_rate_device_commands_skipped_unspecified | Info | 已选择“不设定”的设备保持不下发输出频率命令。 | epsilon_skipped, ptb_skipped, hmp_skipped, lidar_skipped, temperature_skipped | ui_visibility |  |
+| Ground | device.rate | sample_rate_device_commands_skipped_unspecified | Info | 已选择“不设定”的设备保持不下发输出频率命令。 | ptb_skipped, hmp_skipped, lidar_skipped, temperature_skipped | ui_visibility |  |
 | Ground | device.rate | ptb_sample_rate_capped | Info | PTB210 采样频率已按设备上限限制。 | device, requested_rate_hz, effective_rate_hz | ui_visibility |  |
 | Ground | device.rate | ptb_sample_rate_updated_capped | Info | PTB210 采样频率已更新，并按设备上限限制。 | device, requested_rate_hz, effective_rate_hz | ui_visibility |  |
 | Ground | device.rate | ptb_sample_rate_updated | Info | PTB210 采样频率已更新。 | device, requested_rate_hz | ui_visibility |  |

@@ -19,6 +19,7 @@ namespace VaporView
 class StartupSplash final : public QWidget
 {
     Q_OBJECT
+    Q_PROPERTY(qreal contentOpacity READ contentOpacity WRITE setContentOpacity)
 
 public:
     explicit StartupSplash(
@@ -51,12 +52,15 @@ protected:
 private:
     class SplashCardWidget;
 
+    qreal contentOpacity() const;
+    void setContentOpacity(qreal opacity);
     void stopAnimations();
     void updateLogoSize();
 
     SplashCardWidget *card_widget_ = nullptr;
-    QPropertyAnimation *window_fade_animation_ = nullptr;
+    QPropertyAnimation *fade_animation_ = nullptr;
     QElapsedTimer visible_timer_;
+    qreal content_opacity_ = 1.0;
     bool fading_out_ = false;
 };
 
