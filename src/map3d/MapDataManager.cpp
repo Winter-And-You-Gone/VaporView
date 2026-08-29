@@ -843,14 +843,14 @@ bool MapDataSelection::hasEarthFile() const
     return !earthFilePath.isEmpty() || !earthFile.isEmpty();
 }
 
-MapDataSelection MapDataManager::selectBestAvailableMap() const
+MapDataSelection MapDataManager::selectBestAvailableMap(MapDataScanMode scanMode) const
 {
     MapDataSelection best;
     bool haveSelection = false;
 
     for (const QString& root : candidateRoots())
     {
-        const MapDataSelection selection = evaluateRoot(root);
+        const MapDataSelection selection = evaluateRoot(root, scanMode);
         if (!haveSelection || selectionPriority(selection) > selectionPriority(best))
         {
             best = selection;
@@ -941,7 +941,7 @@ QStringList MapDataManager::candidateRoots() const
     return roots;
 }
 
-MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
+MapDataSelection MapDataManager::evaluateRoot(const QString& root, MapDataScanMode scanMode) const
 {
     MapDataSelection selection;
     MapDataDiagnostics& diagnostics = selection.diagnostics;
@@ -1047,7 +1047,17 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
     diagnostics.localImageryMenuEntryCount = localImageryMenuEntryCount(diagnostics.localImageryOptions);
     diagnostics.localImageryMenuAvailable = diagnostics.localImageryMenuEntryCount > 0;
     diagnostics.local3DTilesAvailable = isFile(diagnostics.local3DTilesTilesetPath);
-    collectLocal3DTilesDiagnostics(diagnostics);
+    if (scanMode == MapDataScanMode::Full)
+    {
+        collectLocal3DTilesDiagnostics(diagnostics);
+    }
+    else if (diagnostics.local3DTilesAvailable)
+    {
+        diagnostics.local3DTilesDiagnostics.push_back(
+            QStringLiteral("Native OSG building tileset contract validation is deferred for fast 3D Map startup."));
+        diagnostics.messages.push_back(
+            QStringLiteral("Optional native OSG building tileset detected; contract validation will run when rendering/resources are explicitly loaded."));
+    }
     diagnostics.real3DLocalReady = isFile(real3DLocalEarthPath)
         && diagnostics.naturalEarthAvailable
         && diagnostics.copernicusDemAvailable

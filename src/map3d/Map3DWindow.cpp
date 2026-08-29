@@ -991,7 +991,8 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     map_resource_dialog_ = new MapResourceDialog(map_resource_manager_, this);
     connect(map_resources_action_, &QAction::triggered, this, &Map3DWindow::showMapResources);
     connect(map_resource_dialog_, &MapResourceDialog::resourcesChanged, this, [this]() {
-        const MapDataSelection discoveredSelection = map_data_manager_.selectBestAvailableMap();
+        const MapDataSelection discoveredSelection = map_data_manager_.selectBestAvailableMap(
+            view_ ? MapDataScanMode::Full : MapDataScanMode::LightweightStartup);
         const MapDataSelection selection = view_
             ? discoveredSelection
             : selectionForLightweightStartup(discoveredSelection);
@@ -1018,7 +1019,8 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     }
     else
     {
-        setMapSelection(selectionForLightweightStartup(map_data_manager_.selectBestAvailableMap()));
+        setMapSelection(selectionForLightweightStartup(
+            map_data_manager_.selectBestAvailableMap(MapDataScanMode::LightweightStartup)));
         latest_earth_load_.requestedPath = map_selection_.earthFile;
         latest_earth_load_.failureReason = QStringLiteral("3D rendering has not been started.");
         updateStatus(nullptr);

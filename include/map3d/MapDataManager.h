@@ -14,6 +14,11 @@ enum class MapDataMode {
     FullLocalMap
 };
 
+enum class MapDataScanMode {
+    Full = 0,
+    LightweightStartup
+};
+
 struct LocalImageryOption {
     QString key;
     QString label;
@@ -118,7 +123,7 @@ public:
     MapDataManager();
     explicit MapDataManager(QStringList candidateRoots);
 
-    MapDataSelection selectBestAvailableMap() const;
+    MapDataSelection selectBestAvailableMap(MapDataScanMode scanMode = MapDataScanMode::Full) const;
     bool isBuiltInEarthFile(const QString& earthPath) const;
 
     static QString modeLabel(MapDataMode mode);
@@ -126,7 +131,7 @@ public:
 
 private:
     QStringList candidateRoots() const;
-    MapDataSelection evaluateRoot(const QString& root) const;
+    MapDataSelection evaluateRoot(const QString& root, MapDataScanMode scanMode) const;
 
     QStringList candidate_roots_;
 };
