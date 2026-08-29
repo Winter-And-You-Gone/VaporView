@@ -3016,6 +3016,7 @@ void MainWindow::updateRemoteDeviceButtonText(VaporView::SkyDeviceId device, Vap
                 ? VaporView::DeviceState::Connected
                 : VaporView::DeviceState::Disconnected);
         }
+        updateDeviceConfigRemoteActionButton(device);
         updateHomeDeviceStatusCapsules();
         return;
     case VaporView::SkyDeviceId::All:
@@ -3053,6 +3054,8 @@ void MainWindow::updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId dev
         button = state_->device_config_.ai8_temperature_remote_action_btn;
         break;
     case VaporView::SkyDeviceId::WaveTcp:
+        button = state_->device_config_.tcp_wave_remote_action_btn;
+        break;
     case VaporView::SkyDeviceId::All:
         return;
     }
@@ -3105,8 +3108,10 @@ void MainWindow::updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId dev
             ? true
             : remoteMode
                 ? linkOpen
-                : ((connected && state_->disconnect_btn_ && state_->disconnect_btn_->isEnabled()) ||
-                   (!connected && state_->connect_btn_ && state_->connect_btn_->isEnabled()));
+                : device == VaporView::SkyDeviceId::WaveTcp
+                    ? state_->tcp_wave_panel_ != nullptr
+                    : ((connected && state_->disconnect_btn_ && state_->disconnect_btn_->isEnabled()) ||
+                       (!connected && state_->connect_btn_ && state_->connect_btn_->isEnabled()));
     button->setEnabled(enabled);
 
     const QString actionText = busy
@@ -3116,12 +3121,18 @@ void MainWindow::updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId dev
             : state == VaporView::DeviceState::Disabled
                 ? (remoteMode
                     ? (state_->is_english_ ? QStringLiteral("Connect telemetry first") : QStringLiteral("请先连接数传"))
-                    : (state_->is_english_ ? QStringLiteral("Select port first") : QStringLiteral("请先选择串口")))
+                    : device == VaporView::SkyDeviceId::WaveTcp
+                        ? (state_->is_english_ ? QStringLiteral("Wave monitor unavailable") : QStringLiteral("波形监控不可用"))
+                        : (state_->is_english_ ? QStringLiteral("Select port first") : QStringLiteral("请先选择串口")))
                 : (state_->is_english_ ? QStringLiteral("Connect") : QStringLiteral("连接"));
     const QString deviceName = homeDeviceDisplayName(device, state_->is_english_);
-    const QString modeHint = remoteMode
-        ? (state_->is_english_ ? QStringLiteral("remote Sky device") : QStringLiteral("天空端设备"))
-        : (state_->is_english_ ? QStringLiteral("local serial device") : QStringLiteral("本地串口设备"));
+    const QString modeHint = device == VaporView::SkyDeviceId::WaveTcp
+        ? (remoteMode
+            ? (state_->is_english_ ? QStringLiteral("remote Sky waveform") : QStringLiteral("天空端波形"))
+            : (state_->is_english_ ? QStringLiteral("local TCP waveform") : QStringLiteral("本地 TCP 波形")))
+        : (remoteMode
+            ? (state_->is_english_ ? QStringLiteral("remote Sky device") : QStringLiteral("天空端设备"))
+            : (state_->is_english_ ? QStringLiteral("local serial device") : QStringLiteral("本地串口设备")));
     const QString tooltip = state_->is_english_
         ? QStringLiteral("%1 %2 (%3)").arg(actionText, deviceName, modeHint)
         : QStringLiteral("%1%2（%3）").arg(actionText, deviceName, modeHint);

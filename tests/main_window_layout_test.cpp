@@ -9181,6 +9181,7 @@ int main(int argc, char **argv)
     int disconnectRemoteActionCount = 0;
     QToolButton *temperatureDeviceActionButton = nullptr;
     QToolButton *ai8TemperatureDeviceActionButton = nullptr;
+    QToolButton *tcpWaveDeviceActionButton = nullptr;
     QPushButton *deviceAutoDetectButton = nullptr;
     for (QPushButton *button : deviceConfigPage->findChildren<QPushButton *>())
     {
@@ -9221,9 +9222,14 @@ int main(int argc, char **argv)
                         button->accessibleName() == button->toolTip() &&
                         button->statusTip().isEmpty(),
                     "device configuration icon-only remote actions keep tooltip and accessibility text without redundant status-tip text");
+            const bool tcpWaveAction = button->property("deviceConfigRemoteDevice").toInt() ==
+                static_cast<int>(VaporView::SkyDeviceId::WaveTcp);
             require(button->toolTip().contains(QStringLiteral("本地串口设备")) ||
-                        button->toolTip().contains(QStringLiteral("local serial device")),
-                    "device configuration actions identify the local serial mode");
+                        button->toolTip().contains(QStringLiteral("local serial device")) ||
+                        (tcpWaveAction &&
+                         (button->toolTip().contains(QStringLiteral("本地 TCP 波形")) ||
+                          button->toolTip().contains(QStringLiteral("local TCP waveform")))),
+                    "device configuration actions identify their local device mode");
             if (remoteAction == QStringLiteral("connect"))
             {
                 ++connectRemoteActionCount;
@@ -9246,17 +9252,23 @@ int main(int argc, char **argv)
             {
                 ai8TemperatureDeviceActionButton = button;
             }
+            if (tcpWaveAction)
+            {
+                tcpWaveDeviceActionButton = button;
+            }
             ++localDeviceActionCount;
         }
     }
-    require(localDeviceActionCount == 6,
-            "device configuration keeps one local action per serial device");
-    require(connectRemoteActionCount == 6 && disconnectRemoteActionCount == 0,
+    require(localDeviceActionCount == 7,
+            "device configuration keeps one local action per device row");
+    require(connectRemoteActionCount == 7 && disconnectRemoteActionCount == 0,
             "device configuration shows one connect action for every disconnected device");
     require(temperatureDeviceActionButton != nullptr,
             "device configuration exposes the RD105 connection action button");
     require(ai8TemperatureDeviceActionButton != nullptr,
             "device configuration exposes the AI-8288 connection action button");
+    require(tcpWaveDeviceActionButton != nullptr,
+            "device configuration exposes the TCP waveform connection action button");
     require(deviceAutoDetectButton != nullptr && deviceAutoDetectButton->width() <= 145,
             "device configuration auto-detect button uses compact title-bar width");
 

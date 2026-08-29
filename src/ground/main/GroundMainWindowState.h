@@ -59,6 +59,12 @@ struct DeviceConfigPageWidgets
     QLabel *lidar_lbl = nullptr;
     QLabel *temperature_lbl = nullptr;
     QLabel *ai8_temperature_lbl = nullptr;
+    QLabel *tcp_wave_lbl = nullptr;
+    QLabel *tcp_wave_port_hint_lbl = nullptr;
+    QLabel *tcp_wave_baud_hint_lbl = nullptr;
+    QLabel *tcp_wave_rate_hint_lbl = nullptr;
+    QLabel *tcp_wave_enabled_hint_lbl = nullptr;
+    QLabel *tcp_wave_source_hint_lbl = nullptr;
     QLabel *device_header_lbl = nullptr;
     QLabel *port_header_lbl = nullptr;
     QLabel *baud_header_lbl = nullptr;
@@ -152,6 +158,8 @@ struct DeviceConfigPageWidgets
     QWidget *temperature_remote_buttons_widget = nullptr;
     QToolButton *ai8_temperature_remote_action_btn = nullptr;
     QWidget *ai8_temperature_remote_buttons_widget = nullptr;
+    QToolButton *tcp_wave_remote_action_btn = nullptr;
+    QWidget *tcp_wave_remote_buttons_widget = nullptr;
 };
 
 struct MainWindowState

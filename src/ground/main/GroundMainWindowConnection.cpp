@@ -657,6 +657,8 @@ void MainWindow::updateHomeDeviceActionSpinnerIcons()
                  VaporView::SkyDeviceId::TemperatureController);
     updateButton(state_->device_config_.ai8_temperature_remote_action_btn,
                  VaporView::SkyDeviceId::Ai8TemperatureController);
+    updateButton(state_->device_config_.tcp_wave_remote_action_btn,
+                 VaporView::SkyDeviceId::WaveTcp);
     updateButton(state_->temperature_title_action_btn_,
                  VaporView::SkyDeviceId::TemperatureController);
     updateButton(state_->ai8_temperature_title_action_btn_,
