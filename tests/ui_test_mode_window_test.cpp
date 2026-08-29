@@ -5,6 +5,7 @@
 #include "ground/wave/TcpWavePanel.h"
 #include "ground/widgets/Ai8TemperatureControllerPanel.h"
 #include "ground/widgets/SegmentedSwitchButton.h"
+#include "ground/widgets/TelemetryPanels.h"
 #include "ground/widgets/TemperatureTrendPlotWidget.h"
 #include "LogService.h"
 #include "shared/config/SettingsWriteBarrier.h"
@@ -693,6 +694,33 @@ void requireUiTestEpsilonPanelFieldsCovered(QWidget *epsilonPanel)
             "UI-test EPSILON attitude consistency covers all three attitude sources");
 }
 
+bool uiTestLidarDistanceUsesThreeDigitTwoDecimals(QWidget *root)
+{
+    const auto *lidarPanel = root ? root->findChild<LidarPanel *>() : nullptr;
+    if (!lidarPanel)
+    {
+        return false;
+    }
+
+    const QList<QLabel *> values =
+        lidarPanel->findChildren<QLabel *>(QStringLiteral("highlightedValue"));
+    for (const QLabel *value : values)
+    {
+        const QString text = value ? value->text().trimmed() : QString();
+        if (!text.endsWith(QStringLiteral(" m")))
+        {
+            continue;
+        }
+
+        const QString number = text.left(text.size() - 2);
+        return number.size() == 6 &&
+            number.at(3) == QLatin1Char('.') &&
+            number.at(0).isDigit() && number.at(1).isDigit() && number.at(2).isDigit() &&
+            number.at(4).isDigit() && number.at(5).isDigit();
+    }
+    return false;
+}
+
 QList<QFrame *> sortedEpsilonSectionCards(QWidget *epsilonPanel)
 {
     if (!epsilonPanel)
@@ -952,6 +980,10 @@ int main(int argc, char **argv)
             "UI test mode exposes the EPSILON home panel");
     requireUiTestEpsilonPanelFieldsCovered(epsilonPanel);
     requireUiTestEpsilonPanelWrappedTopRowFilled(epsilonPanel);
+    require(VaporViewTest::processEventsUntil(1500, [window]() {
+                return uiTestLidarDistanceUsesThreeDigitTwoDecimals(window);
+            }),
+            "UI test mode shows lidar distance as a three-digit value with two decimals");
 
     auto *epsilonProgressRow = window->findChild<QWidget *>(
         QStringLiteral("epsilonReconfigureProgressRow"));

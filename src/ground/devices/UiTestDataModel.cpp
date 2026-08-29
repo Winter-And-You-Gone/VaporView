@@ -468,7 +468,7 @@ UiTestSnapshot UiTestDataModel::snapshot(qint64 elapsedMs) const
 
     result.lidar.valid = connected(deviceState(SkyDeviceId::Lidar)) && !stalled;
     result.lidar.timestamp = timestamp;
-    result.lidar.distance_m = 18.0 + std::sin(seconds * 0.7) * 2.5;
+    result.lidar.distance_m = 120.0 + std::sin(seconds * 0.7) * 2.5;
     result.lidar.signal_strength = static_cast<uint16_t>(820 + 70 * slow);
     if (!result.lidar.valid)
     {

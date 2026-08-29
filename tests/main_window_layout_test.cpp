@@ -4707,8 +4707,9 @@ int main(int argc, char **argv)
     require(std::abs((homePrimaryCardRect.top() - centralRect.top()) -
                      kExpectedVisibleOuterGap) <= 1,
             "home first-row cards sit 12px below the titlebar content edge");
-    require(std::abs((homeTemperatureCardRect.left() - rightEdge(homePrimaryCardRect)) -
-                     kExpectedTopLevelCardGap) <= 1,
+    const int homeOverviewCardGap =
+        homeTemperatureCardRect.left() - rightEdge(homePrimaryCardRect);
+    require(std::abs(homeOverviewCardGap - kExpectedTopLevelCardGap) <= 1,
             "home overview cards keep the shared shadow-safe horizontal gap");
     const int sidebarLeftGap = sidebarRect.left() - centralRect.left();
     const int sidebarBottomGap = centralRect.bottom() - sidebarRect.bottom();
@@ -4800,9 +4801,10 @@ int main(int argc, char **argv)
             "home sensor row keeps the shared shadow-safe vertical gap");
     if (std::abs(epsilonCardRect.top() - environmentCardRect.top()) <= 1)
     {
-        require(std::abs((environmentCardRect.left() - rightEdge(epsilonCardRect)) -
-                         kExpectedTopLevelCardGap) <= 1,
-                "home EPSILON and environment cards keep the shared horizontal gap");
+        const int homeSensorCardGap =
+            environmentCardRect.left() - rightEdge(epsilonCardRect);
+        require(std::abs(homeSensorCardGap - homeOverviewCardGap) <= 1,
+                "home EPSILON and environment cards match the device and temperature overview gap");
     }
     else
     {
