@@ -109,6 +109,18 @@ void requireSingleLevelComboPopup(QComboBox *combo, const char *message)
     }
 
     singleLevelCombo->hidePopup();
+    singleLevelCombo->showPopup();
+    QList<VaporView::SingleLevelPopupMenuRow *> directRows;
+    for (QObject *child : popupMenu->children())
+    {
+        if (auto *row = qobject_cast<VaporView::SingleLevelPopupMenuRow *>(child))
+        {
+            directRows.push_back(row);
+        }
+    }
+    require(directRows.size() == combo->count(), "rebuilt combo popup removes stale row widgets");
+    QCoreApplication::processEvents();
+    singleLevelCombo->hidePopup();
     QCoreApplication::processEvents();
     require(!popupMenu->isVisible(), message);
 }

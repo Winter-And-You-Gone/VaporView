@@ -72,6 +72,47 @@ void runCase(int historySize)
     }
 }
 
+void runHeatSlidingWindowCase()
+{
+    constexpr int kHistorySize = 200000;
+    constexpr int kTailAppends = 1000;
+    VaporView::Map3D::Trajectory3DLayer layer;
+    layer.setMaxVisibleSamples(kHistorySize);
+    std::vector<VaporView::Geo::TrajectoryRenderSample> history;
+    history.reserve(kHistorySize);
+    for (int index = 0; index < kHistorySize; ++index)
+    {
+        VaporView::Geo::TrajectoryRenderSample value;
+        value.navigation = sample(index);
+        value.heat.peak = static_cast<double>(index % 10000);
+        history.push_back(value);
+    }
+    layer.appendRenderSamples(history);
+    layer.resetHeatRangeInstrumentation();
+    for (int index = 0; index < kTailAppends; ++index)
+    {
+        VaporView::Geo::TrajectoryRenderSample value;
+        value.navigation = sample(kHistorySize + index);
+        value.heat.peak = static_cast<double>((kHistorySize + index) % 10000);
+        layer.appendRenderSample(value);
+    }
+
+    std::cout << "heat_history=" << kHistorySize
+              << " heat_tail_appends=" << kTailAppends
+              << " full_heat_range_scans=" << layer.heatRangeFullScanCount()
+              << " incremental_heat_appends=" << layer.heatRangeIncrementalAppendCount()
+              << " heat_evictions=" << layer.heatRangeEvictionCount()
+              << " retained_samples=" << layer.sampleCount()
+              << '\n';
+    if (layer.heatRangeFullScanCount() != 0
+        || layer.heatRangeIncrementalAppendCount() != kTailAppends
+        || layer.heatRangeEvictionCount() != kTailAppends)
+    {
+        std::cerr << "FAIL: heat sliding-window append performed a full range scan\n";
+        std::exit(1);
+    }
+}
+
 } // namespace
 
 int main()
@@ -80,5 +121,6 @@ int main()
     {
         runCase(historySize);
     }
+    runHeatSlidingWindowCase();
     return 0;
 }

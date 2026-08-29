@@ -802,6 +802,46 @@ void SingleLevelPopupMenu::setPanelContentWidth(int width)
     setFixedWidth(std::max(1, width) + shadowMargin() * 2);
 }
 
+QSize SingleLevelPopupMenu::sizeHint() const
+{
+    const QSize fallback = QMenu::sizeHint();
+    const QList<SingleLevelPopupMenuRow *> menuRows = rows();
+    if (menuRows.isEmpty() || panel_padding_ < 8)
+    {
+        return fallback;
+    }
+
+    int contentWidth = 0;
+    int contentHeight = 0;
+    for (const SingleLevelPopupMenuRow *row : menuRows)
+    {
+        if (!row || !row->isVisible())
+        {
+            continue;
+        }
+        const QSize rowHint = row->sizeHint();
+        contentWidth = std::max(contentWidth, rowHint.width());
+        contentHeight += std::max(1, rowHint.height());
+    }
+    if (contentHeight <= 0)
+    {
+        return fallback;
+    }
+
+    int width = contentWidth + shadowMargin() * 2;
+    if (minimumWidth() == maximumWidth() && minimumWidth() > 0)
+    {
+        width = minimumWidth();
+    }
+    else
+    {
+        width = std::max(width, fallback.width());
+    }
+
+    const int height = contentHeight + panel_padding_ * 2 + shadowMargin() + bottomShadowMargin();
+    return QSize(width, height);
+}
+
 void SingleLevelPopupMenu::refreshTheme()
 {
     if (objectName().isEmpty())

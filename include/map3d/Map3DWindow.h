@@ -73,6 +73,9 @@ private:
         Replay,
     };
     void loadInitialEarthFile();
+    void startRendering();
+    void configureViewSignals();
+    void applyCurrentControlsToView();
     void openSessionDirectory();
     void openEarthFile();
     void loadLocalImageryTemplate(const VaporView::Map3D::LocalImageryOption& option);
@@ -127,6 +130,7 @@ private:
 
     OsgEarthViewWidget* view_ = nullptr;
     QWidget* headless_view_ = nullptr;
+    QLabel* render_placeholder_label_ = nullptr;
     int headless_sample_count_ = 0;
     std::vector<VaporView::Geo::NavSample> headless_samples_;
     std::vector<VaporView::Geo::TrajectoryRenderSample> headless_render_samples_;
@@ -134,6 +138,7 @@ private:
     VaporView::Geo::HeatMetric heat_metric_ = VaporView::Geo::HeatMetric::Peak;
     VaporView::Geo::HeatPalette heat_palette_ = VaporView::Geo::HeatPalette::Candy;
     QAction* follow_action_ = nullptr;
+    QAction* start_rendering_action_ = nullptr;
     QLabel* status_label_ = nullptr;
     QLabel* heat_legend_label_ = nullptr;
     QAction* diagnostics_action_ = nullptr;

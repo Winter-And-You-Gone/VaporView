@@ -10387,6 +10387,13 @@ int main(int argc, char **argv)
             "wide home data cards place environment and lidar to the right of EPSILON");
     require(wideEnvironmentGeometry.right() <= dataGroup->contentsRect().right() + 1,
             "wide environment and lidar card stays inside the home data card edge");
+    if (compactSideBySide &&
+        wideEnvironmentGeometry.width() + wideEpsilonGeometry.width() >
+            compactEnvironmentGeometry.width() + compactEpsilonGeometry.width() + 20)
+    {
+        require(wideEnvironmentGeometry.width() > compactEnvironmentGeometry.width() + 4,
+                "environment and lidar card expands beyond its minimum as the window grows");
+    }
     window.resize(originalWindowSize);
     require(processEventsUntil(1000, [&window,
                                       epsilonGroup,

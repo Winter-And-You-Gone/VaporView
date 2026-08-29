@@ -239,6 +239,7 @@ Trajectory3DLayer::Trajectory3DLayer()
 void Trajectory3DLayer::clear()
 {
     samples_.clear();
+    sample_sequences_.clear();
     line_sample_flags_.clear();
     last_line_sample_index_ = -1;
     selected_sample_index_ = -1;
@@ -247,8 +248,9 @@ void Trajectory3DLayer::clear()
     quality_stats_ = {};
     heat_rendering_enabled_ = false;
     heat_range_override_.reset();
-    heat_range_cache_ = {};
-    heat_range_cache_valid_ = false;
+    resetHeatStatistics();
+    next_sample_sequence_ = 0;
+    resetHeatRangeInstrumentation();
     geode_->removeDrawables(0, geode_->getNumDrawables());
     updateSelectedMarkerGeometry();
 }
@@ -280,11 +282,11 @@ void Trajectory3DLayer::appendSampleInternal(const VaporView::Geo::TrajectoryRen
     {
         heat_rendering_enabled_ = true;
     }
+    sample_sequences_.push_back(next_sample_sequence_++);
     samples_.push_back(sample);
     if (enableHeatRendering)
     {
-        VaporView::Geo::accumulateHeatRange(heat_range_cache_, sample.heat, heat_metric_);
-        heat_range_cache_valid_ = true;
+        appendHeatStatistics(sample, sample_sequences_.back());
         updateHeatRenderingState();
     }
     const int sampleIndex = sampleCount() - 1;
@@ -408,7 +410,7 @@ void Trajectory3DLayer::clearWorldOrigin()
 
 void Trajectory3DLayer::setMaxVisibleSamples(int maxVisibleSamples)
 {
-    const int sanitized = (std::max)(1000, maxVisibleSamples);
+    const int sanitized = (std::max)(1, maxVisibleSamples);
     if (max_visible_samples_ == sanitized)
     {
         return;
@@ -590,6 +592,28 @@ int Trajectory3DLayer::fullRebuildCount() const
 int Trajectory3DLayer::segmentGeometryRebuildCount() const
 {
     return segment_geometry_rebuild_count_;
+}
+
+int Trajectory3DLayer::heatRangeFullScanCount() const
+{
+    return heat_range_full_scan_count_;
+}
+
+int Trajectory3DLayer::heatRangeIncrementalAppendCount() const
+{
+    return heat_range_incremental_append_count_;
+}
+
+int Trajectory3DLayer::heatRangeEvictionCount() const
+{
+    return heat_range_eviction_count_;
+}
+
+void Trajectory3DLayer::resetHeatRangeInstrumentation()
+{
+    heat_range_full_scan_count_ = 0;
+    heat_range_incremental_append_count_ = 0;
+    heat_range_eviction_count_ = 0;
 }
 
 bool Trajectory3DLayer::heatRenderingEnabled() const
@@ -1169,8 +1193,6 @@ void Trajectory3DLayer::trimToVisibleLimit()
     }
     if (removed)
     {
-        invalidateHeatRange();
-        recomputeHeatRange();
         updateHeatRenderingState();
     }
 }
@@ -1181,8 +1203,16 @@ void Trajectory3DLayer::removeOldestSample()
     {
         return;
     }
+    const std::uint64_t sequence = sample_sequences_.front();
     adjustQualityStats(0, -1);
+    if (heat_rendering_enabled_)
+    {
+        evictHeatStatistics(
+            sequence,
+            VaporView::Geo::metricValue(samples_.front(), heat_metric_).has_value());
+    }
     samples_.pop_front();
+    sample_sequences_.pop_front();
     line_sample_flags_.pop_front();
     if (last_line_sample_index_ >= 0)
     {
@@ -1400,18 +1430,84 @@ VaporView::Geo::HeatRange Trajectory3DLayer::resolvedHeatRange() const
 
 void Trajectory3DLayer::invalidateHeatRange()
 {
-    heat_range_cache_ = {};
-    heat_range_cache_valid_ = false;
+    resetHeatStatistics();
 }
 
 void Trajectory3DLayer::recomputeHeatRange()
 {
-    heat_range_cache_ = {};
-    for (const VaporView::Geo::TrajectoryRenderSample& sample : samples_)
+    const int incrementalAppendCount = heat_range_incremental_append_count_;
+    resetHeatStatistics();
+    ++heat_range_full_scan_count_;
+    for (std::size_t index = 0; index < samples_.size(); ++index)
     {
-        VaporView::Geo::accumulateHeatRange(heat_range_cache_, sample.heat, heat_metric_);
+        appendHeatStatistics(samples_[index], sample_sequences_[index]);
+    }
+    heat_range_incremental_append_count_ = incrementalAppendCount;
+    heat_range_cache_valid_ = true;
+}
+
+void Trajectory3DLayer::resetHeatStatistics()
+{
+    heat_range_cache_ = {};
+    heat_range_cache_valid_ = false;
+    heat_min_deque_.clear();
+    heat_max_deque_.clear();
+    heat_valid_count_ = 0;
+}
+
+void Trajectory3DLayer::updateHeatRangeCacheFromExtrema()
+{
+    heat_range_cache_ = {};
+    if (!heat_min_deque_.empty() && !heat_max_deque_.empty())
+    {
+        heat_range_cache_.valid = true;
+        heat_range_cache_.minimum = heat_min_deque_.front().value;
+        heat_range_cache_.maximum = heat_max_deque_.front().value;
+        heat_range_cache_.validCount = heat_valid_count_;
     }
     heat_range_cache_valid_ = true;
+}
+
+void Trajectory3DLayer::appendHeatStatistics(
+    const VaporView::Geo::TrajectoryRenderSample& sample,
+    std::uint64_t sequence)
+{
+    const std::optional<double> value = VaporView::Geo::metricValue(sample, heat_metric_);
+    if (value.has_value())
+    {
+        const HeatExtremaEntry entry{sequence, value.value()};
+        while (!heat_min_deque_.empty() && heat_min_deque_.back().value >= entry.value)
+        {
+            heat_min_deque_.pop_back();
+        }
+        while (!heat_max_deque_.empty() && heat_max_deque_.back().value <= entry.value)
+        {
+            heat_max_deque_.pop_back();
+        }
+        heat_min_deque_.push_back(entry);
+        heat_max_deque_.push_back(entry);
+        ++heat_valid_count_;
+    }
+    ++heat_range_incremental_append_count_;
+    updateHeatRangeCacheFromExtrema();
+}
+
+void Trajectory3DLayer::evictHeatStatistics(std::uint64_t sequence, bool hasValidValue)
+{
+    if (!heat_min_deque_.empty() && heat_min_deque_.front().sequence == sequence)
+    {
+        heat_min_deque_.pop_front();
+    }
+    if (!heat_max_deque_.empty() && heat_max_deque_.front().sequence == sequence)
+    {
+        heat_max_deque_.pop_front();
+    }
+    if (hasValidValue && heat_valid_count_ > 0)
+    {
+        --heat_valid_count_;
+    }
+    ++heat_range_eviction_count_;
+    updateHeatRangeCacheFromExtrema();
 }
 
 void Trajectory3DLayer::updateHeatRenderingState()

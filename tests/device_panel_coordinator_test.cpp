@@ -114,6 +114,34 @@ void requireCompactFieldValueGap(QWidget& panel,
     require(gap >= 0 && gap <= 16, message);
 }
 
+void requireReadableLabelGap(QWidget& panel,
+                             const QLabel *leftLabel,
+                             const QLabel *rightLabel,
+                             int minimumGap,
+                             int maximumGap,
+                             const char *message)
+{
+    require(leftLabel != nullptr && rightLabel != nullptr, message);
+    const int gap = visibleTextLeftInPanel(rightLabel, panel) -
+                    visibleTextRightInPanel(leftLabel, panel);
+    require(gap >= minimumGap && gap <= maximumGap, message);
+}
+
+void requireValueCenteredBetween(QWidget& panel,
+                                 const QLabel *leftLabel,
+                                 const QLabel *valueLabel,
+                                 const QLabel *rightLabel,
+                                 const char *message)
+{
+    require(leftLabel != nullptr && valueLabel != nullptr && rightLabel != nullptr,
+            message);
+    const int leftEdge = leftLabel->mapTo(&panel, QPoint(leftLabel->width(), 0)).x();
+    const int rightEdge = rightLabel->mapTo(&panel, QPoint(0, 0)).x();
+    const int expectedCenter = (leftEdge + rightEdge) / 2;
+    const int valueCenter = valueLabel->mapTo(&panel, QPoint(valueLabel->width() / 2, 0)).x();
+    require(std::abs(valueCenter - expectedCenter) <= 2, message);
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -201,10 +229,13 @@ int main(int argc, char **argv)
         firstLabelExact(ptb, QStringLiteral("fieldLabel"), QStringLiteral("气压:"));
     auto *pressureValue =
         firstLabelContaining(ptb, QStringLiteral("highlightedValue"), QStringLiteral("1001.25"));
-    requireCompactFieldValueGap(ptb,
+    auto *pressureRateValue =
+        firstLabelContaining(ptb, QStringLiteral("rateLabel"), QStringLiteral("12.5"));
+    requireValueCenteredBetween(ptb,
                                 pressureField,
                                 pressureValue,
-                                "pressure field and value keep a compact readable gap");
+                                pressureRateValue,
+                                "pressure value is centered between its field label and rate");
     auto *distanceField =
         firstLabelExact(lidar, QStringLiteral("fieldLabel"), QStringLiteral("距离:"));
     auto *strengthField =
@@ -213,6 +244,12 @@ int main(int argc, char **argv)
                                 distanceField,
                                 lidarDistanceValue,
                                 "distance field and value keep a compact readable gap");
+    requireReadableLabelGap(lidar,
+                            lidarDistanceValue,
+                            strengthField,
+                            8,
+                            24,
+                            "strength field keeps a slightly wider gap after distance");
     requireCompactFieldValueGap(lidar,
                                 strengthField,
                                 lidarStrengthValue,

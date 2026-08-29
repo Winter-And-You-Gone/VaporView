@@ -238,6 +238,18 @@ int main(int argc, char** argv)
             "invalid placeholder 3D Tiles JSON should not pass local-only contract checks");
     require(selection.diagnostics.local3DTilesDiagnostics.join(QLatin1Char('\n')).contains(QStringLiteral("not valid JSON")),
             "invalid 3D Tiles JSON should be diagnosed");
+
+    VaporView::Map3D::MapDataManager lightweightManager({root.absolutePath()});
+    const VaporView::Map3D::MapDataSelection lightweightSelection =
+        lightweightManager.selectBestAvailableMap(VaporView::Map3D::MapDataScanMode::LightweightStartup);
+    require(lightweightSelection.diagnostics.local3DTilesAvailable,
+            "lightweight map discovery should still detect an optional 3D Tiles tileset");
+    require(lightweightSelection.diagnostics.local3DTilesDiagnostics.join(QLatin1Char('\n'))
+                .contains(QStringLiteral("deferred for fast 3D Map startup")),
+            "lightweight map discovery should defer native 3D Tiles contract validation");
+    require(!lightweightSelection.diagnostics.local3DTilesDiagnostics.join(QLatin1Char('\n'))
+                 .contains(QStringLiteral("not valid JSON")),
+            "lightweight map discovery should not parse the optional 3D Tiles JSON");
     require(selection.diagnostics.foundFiles.contains(selection.diagnostics.sentinel2ImageryVrtPath),
             "optional Sentinel-2 VRT should be listed as found");
     require(selection.diagnostics.foundFiles.contains(selection.diagnostics.local3DTilesTilesetPath),
