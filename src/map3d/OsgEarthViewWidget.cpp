@@ -782,13 +782,17 @@ Map3DLayer mapLayerCategory(const osgEarth::Layer* layer)
 
 } // namespace
 
-OsgEarthViewWidget::OsgEarthViewWidget(QWidget* parent)
+OsgEarthViewWidget::OsgEarthViewWidget(QWidget* parent, bool deferRendering)
     : QOpenGLWidget(parent)
     , trajectory_layer_(std::make_unique<Trajectory3DLayer>())
     , aircraft_layer_(std::make_unique<Aircraft3DLayer>())
 {
     layer_visibility_.fill(true);
-    initializeMap3DRuntime();
+    rendering_started_ = !deferRendering;
+    if (rendering_started_)
+    {
+        initializeMap3DRuntime();
+    }
     setMinimumSize(640, 420);
     setFocusPolicy(Qt::StrongFocus);
     setMouseTracking(true);
@@ -1732,6 +1736,34 @@ float OsgEarthViewWidget::trackPointSize() const
     return trajectory_layer_ ? trajectory_layer_->trackPointSize() : 7.0f;
 }
 
+void OsgEarthViewWidget::startRendering()
+{
+    assertGuiThread(this, Q_FUNC_INFO);
+    if (shutdown_ || rendering_started_)
+    {
+        return;
+    }
+
+    rendering_started_ = true;
+    // osgEarth creates a temporary native WGL context while it initializes.
+    // Do not ask OSG to restore this widget through its temporary device context.
+    if (QOpenGLContext::currentContext() == context())
+    {
+        doneCurrent();
+    }
+    initializeMap3DRuntime();
+    if (isVisible())
+    {
+        frameTimer_.start();
+    }
+    update();
+}
+
+bool OsgEarthViewWidget::isRenderingStarted() const
+{
+    return rendering_started_ && !shutdown_;
+}
+
 bool OsgEarthViewWidget::flyToAircraft()
 {
     const VaporView::Geo::NavSample* latest = latestRawSample();
@@ -2109,7 +2141,7 @@ void OsgEarthViewWidget::keyReleaseEvent(QKeyEvent* event)
 
 void OsgEarthViewWidget::initializeSceneIfNeeded()
 {
-    if (shutdown_)
+    if (shutdown_ || !rendering_started_)
     {
         return;
     }
@@ -2330,7 +2362,7 @@ void OsgEarthViewWidget::updateFollowCamera(const VaporView::Geo::NavSample& sam
 void OsgEarthViewWidget::showEvent(QShowEvent* event)
 {
     QOpenGLWidget::showEvent(event);
-    if (!shutdown_)
+    if (!shutdown_ && rendering_started_)
     {
         frameTimer_.start();
     }
