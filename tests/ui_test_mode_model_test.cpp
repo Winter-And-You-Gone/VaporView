@@ -102,6 +102,34 @@ int main(int argc, char **argv)
     require(firstSnapshot.receiveBitsPerSecond == secondSnapshot.receiveBitsPerSecond &&
                 firstSnapshot.waveCaptureRateHz == secondSnapshot.waveCaptureRateHz,
             "same elapsed time produces deterministic UI-test telemetry capsule values");
+    UiTestDataModel pidModel;
+    constexpr double pidTargetTemperature = 25.0;
+    const double initialPidTemperature =
+        pidModel.snapshot(0).temperature.channels[0].measured_temperature_c;
+    const double positivePidOvershoot =
+        pidModel.snapshot(2327).temperature.channels[0].measured_temperature_c;
+    const double negativePidOvershoot =
+        pidModel.snapshot(4654).temperature.channels[0].measured_temperature_c;
+    const double settledPidTemperature =
+        pidModel.snapshot(9308).temperature.channels[0].measured_temperature_c;
+    require(initialPidTemperature < pidTargetTemperature &&
+                positivePidOvershoot > pidTargetTemperature &&
+                negativePidOvershoot < pidTargetTemperature &&
+                std::abs(negativePidOvershoot - pidTargetTemperature) <
+                    std::abs(initialPidTemperature - pidTargetTemperature) &&
+                std::abs(settledPidTemperature - pidTargetTemperature) <
+                    std::abs(negativePidOvershoot - pidTargetTemperature),
+            "enabled UI-test temperature simulates damped PID overshoot toward the target");
+    TemperatureControllerCommand disableOutput;
+    disableOutput.channel = 1;
+    disableOutput.output_enabled = false;
+    pidModel.applyTemperatureCommand(CommandId::SetTemperatureOutputEnabled, disableOutput);
+    const double disabledTemperature =
+        pidModel.snapshot(4654).temperature.channels[0].measured_temperature_c;
+    require(!pidModel.snapshot(4654).temperature.channels[0].output_enabled &&
+                std::abs(disabledTemperature - pidTargetTemperature) <
+                    std::abs(negativePidOvershoot - pidTargetTemperature),
+            "disabling UI-test temperature output removes the PID overshoot response");
     const UiTestSnapshot laterSnapshot = first.snapshot(3900);
     require(firstSnapshot.waveformFeatureRateHz != laterSnapshot.waveformFeatureRateHz ||
                 firstSnapshot.rawWaveformRateHz != laterSnapshot.rawWaveformRateHz ||

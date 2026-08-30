@@ -17,6 +17,9 @@ constexpr int kUiTestGnssCycleIntervalMs = 3000;
 constexpr qint64 kUiTestLidarWideDistanceStartMs = 3000;
 constexpr qint64 kUiTestLidarDistanceCycleIntervalMs = 3000;
 constexpr qint64 kUiTestLidarWideDistanceDurationMs = 2000;
+constexpr double kUiTestTemperaturePidAmplitudeC = 1.25;
+constexpr double kUiTestTemperaturePidAngularRate = 1.35;
+constexpr double kUiTestTemperaturePidDampingPerSecond = 0.125;
 
 struct UiTestGnssStatus
 {
@@ -116,6 +119,29 @@ bool uiTestLidarUsesWideDistance(qint64 elapsedMs)
     return (nonNegativeElapsedMs - kUiTestLidarWideDistanceStartMs) %
                kUiTestLidarDistanceCycleIntervalMs <
         kUiTestLidarWideDistanceDurationMs;
+}
+
+double uiTestTemperatureMeasurement(double target,
+                                    double seconds,
+                                    std::size_t channelIndex,
+                                    bool outputEnabled)
+{
+    if (!std::isfinite(target))
+    {
+        return target;
+    }
+
+    const double channelPhase = static_cast<double>(channelIndex) * 0.35;
+    if (!outputEnabled)
+    {
+        return target + std::sin(seconds * 0.55 + channelPhase) * 0.35;
+    }
+
+    const double dampedOscillation =
+        kUiTestTemperaturePidAmplitudeC *
+        std::exp(-kUiTestTemperaturePidDampingPerSecond * seconds) *
+        std::sin(kUiTestTemperaturePidAngularRate * seconds - kPi / 2.0 + channelPhase);
+    return target + dampedOscillation;
 }
 
 std::uint16_t uiTestFilterStatusBits(int fixCode)
@@ -502,7 +528,8 @@ UiTestSnapshot UiTestDataModel::snapshot(qint64 elapsedMs) const
     {
         TemperatureControllerChannelData& channel = result.temperature.channels[index];
         const double target = channel.target_temperature_c;
-        channel.measured_temperature_c = target + std::sin(seconds * 0.55 + index) * 0.35;
+        channel.measured_temperature_c = uiTestTemperatureMeasurement(
+            target, seconds, index, channel.output_enabled);
         channel.output_percent = channel.output_enabled ? 32.0 + 8.0 * medium : 0.0;
         channel.output_current_a = channel.output_enabled ? channel.output_percent * 0.012 : 0.0;
         channel.sensor_resistance_ohm = 10000.0 + channel.measured_temperature_c * 18.0;
