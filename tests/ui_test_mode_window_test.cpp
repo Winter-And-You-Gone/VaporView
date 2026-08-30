@@ -5,6 +5,7 @@
 #include "ground/wave/TcpWavePanel.h"
 #include "ground/widgets/Ai8TemperatureControllerPanel.h"
 #include "ground/widgets/SegmentedSwitchButton.h"
+#include "ground/widgets/TelemetryPanels.h"
 #include "ground/widgets/TemperatureTrendPlotWidget.h"
 #include "LogService.h"
 #include "shared/config/SettingsWriteBarrier.h"
@@ -693,6 +694,46 @@ void requireUiTestEpsilonPanelFieldsCovered(QWidget *epsilonPanel)
             "UI-test EPSILON attitude consistency covers all three attitude sources");
 }
 
+bool uiTestLidarDistanceUsesIntegerDigits(QWidget *root, int integerDigits)
+{
+    const auto *lidarPanel = root ? root->findChild<LidarPanel *>() : nullptr;
+    if (!lidarPanel)
+    {
+        return false;
+    }
+
+    const QList<QLabel *> values =
+        lidarPanel->findChildren<QLabel *>(QStringLiteral("highlightedValue"));
+    for (const QLabel *value : values)
+    {
+        const QString text = value ? value->text().trimmed() : QString();
+        if (!text.endsWith(QStringLiteral(" m")))
+        {
+            continue;
+        }
+
+        const QString number = text.left(text.size() - 2);
+        const int expectedNumberSize = integerDigits + 1 + 2;
+        if (number.size() != expectedNumberSize ||
+            number.at(integerDigits) != QLatin1Char('.') ||
+            number.at(0).isDigit() == false ||
+            number.at(number.size() - 2).isDigit() == false ||
+            number.at(number.size() - 1).isDigit() == false)
+        {
+            continue;
+        }
+        for (int index = 1; index < integerDigits; ++index)
+        {
+            if (!number.at(index).isDigit())
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
 QList<QFrame *> sortedEpsilonSectionCards(QWidget *epsilonPanel)
 {
     if (!epsilonPanel)
@@ -917,6 +958,8 @@ int main(int argc, char **argv)
     require(modeAction->isChecked(), "UI test mode action becomes checked");
     require(!badge->isHidden(), "persistent UI test badge is visible");
     require(scenarioMenu->isEnabled(), "scenario menu is enabled in UI test mode");
+    require(uiTestLidarDistanceUsesIntegerDigits(window, 3),
+            "UI test mode starts with a three-digit lidar distance and two decimals");
     require(VaporViewTest::processEventsUntil(1500, [homeConfigCard]() {
                 return homeTelemetrySummaryShowsUiTestRates(homeConfigCard);
             }),
@@ -952,6 +995,14 @@ int main(int argc, char **argv)
             "UI test mode exposes the EPSILON home panel");
     requireUiTestEpsilonPanelFieldsCovered(epsilonPanel);
     requireUiTestEpsilonPanelWrappedTopRowFilled(epsilonPanel);
+    require(VaporViewTest::processEventsUntil(4000, [window]() {
+                return uiTestLidarDistanceUsesIntegerDigits(window, 4);
+            }),
+            "UI test mode changes lidar distance to four integer digits with two decimals every three seconds");
+    require(VaporViewTest::processEventsUntil(2500, [window]() {
+                return uiTestLidarDistanceUsesIntegerDigits(window, 3);
+            }),
+            "UI test mode returns lidar distance to three integer digits after two seconds");
 
     auto *epsilonProgressRow = window->findChild<QWidget *>(
         QStringLiteral("epsilonReconfigureProgressRow"));

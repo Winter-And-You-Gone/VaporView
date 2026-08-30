@@ -303,10 +303,11 @@ protected:
         const qreal xAxisHeight = axisFm.height() + 9.0;
         const QRectF basePlotRect = panelRect.adjusted(yAxisWidth, 5.0, -7.0, -xAxisHeight);
         QRectF plotRect = basePlotRect;
-        const qreal labelHalfWidth = timeAxisLabelWidth(axisFm) / 2.0;
-        const qreal timeAxisLeft = std::max(basePlotRect.left(), labelHalfWidth);
+        const qreal firstLabelHalfWidth = timeAxisFirstLabelWidth(axisFm) / 2.0;
+        const qreal subsequentLabelHalfWidth = timeAxisSubsequentLabelWidth(axisFm) / 2.0;
+        const qreal timeAxisLeft = std::max(basePlotRect.left(), firstLabelHalfWidth);
         const qreal timeAxisRight = std::min(basePlotRect.right(),
-                                             width() - labelHalfWidth -
+                                             width() - subsequentLabelHalfWidth -
                                                  kEnvironmentXAxisLabelRightInset);
         if (timeAxisRight > timeAxisLeft + 1.0)
         {
@@ -489,15 +490,15 @@ private:
         return trimTrailingZeroes(QString::number(value, 'f', decimals));
     }
 
-    static QString formatClockLabel(qint64 wallMsecs, qint64 spanMsecs)
+    static QString formatClockLabel(qint64 wallMsecs, bool includeHour)
     {
         if (wallMsecs <= 0)
         {
             wallMsecs = QDateTime::currentMSecsSinceEpoch();
         }
-        const QString format = spanMsecs > 0 && spanMsecs < 10 * 60 * 1000
+        const QString format = includeHour
             ? QStringLiteral("H:mm:ss")
-            : QStringLiteral("H:mm");
+            : QStringLiteral("mm:ss");
         return QDateTime::fromMSecsSinceEpoch(wallMsecs).toLocalTime().toString(format);
     }
 
@@ -517,10 +518,11 @@ private:
         const qreal yAxisWidth = yAxisWidthFor(state, axisFm);
         const qreal baseLeft = 1.0 + yAxisWidth;
         const qreal baseRight = widgetWidth - 8.0;
-        const qreal labelHalfWidth = timeAxisLabelWidth(axisFm) / 2.0;
-        const qreal timeAxisLeft = std::max(baseLeft, labelHalfWidth);
+        const qreal firstLabelHalfWidth = timeAxisFirstLabelWidth(axisFm) / 2.0;
+        const qreal subsequentLabelHalfWidth = timeAxisSubsequentLabelWidth(axisFm) / 2.0;
+        const qreal timeAxisLeft = std::max(baseLeft, firstLabelHalfWidth);
         const qreal timeAxisRight = std::min(baseRight,
-                                             widgetWidth - labelHalfWidth -
+                                             widgetWidth - subsequentLabelHalfWidth -
                                                  kEnvironmentXAxisLabelRightInset);
         if (timeAxisRight > timeAxisLeft + 1.0)
         {
@@ -529,14 +531,19 @@ private:
         return std::max<qreal>(0.0, baseRight - baseLeft);
     }
 
-    static qreal timeAxisLabelWidth(const QFontMetrics& axisFm)
+    static qreal timeAxisFirstLabelWidth(const QFontMetrics& axisFm)
     {
         return std::max<qreal>(36.0, axisFm.horizontalAdvance(QStringLiteral("00:00:00")));
     }
 
+    static qreal timeAxisSubsequentLabelWidth(const QFontMetrics& axisFm)
+    {
+        return std::max<qreal>(36.0, axisFm.horizontalAdvance(QStringLiteral("00:00")));
+    }
+
     static int xAxisTickCountForWidth(qreal plotWidth, const QFontMetrics& axisFm)
     {
-        const qreal targetSpacing = timeAxisLabelWidth(axisFm) + kEnvironmentTimeXAxisLabelGap;
+        const qreal targetSpacing = timeAxisSubsequentLabelWidth(axisFm) + kEnvironmentTimeXAxisLabelGap;
         const int intervalsByWidth = static_cast<int>(
             std::floor(std::max<qreal>(0.0, plotWidth) / targetSpacing));
         return std::max(2, intervalsByWidth + 1);
@@ -562,7 +569,7 @@ private:
             const qint64 tickMsecs = xAxis.minWallMsecs +
                 qRound64(static_cast<double>(spanMsecs) * i /
                          static_cast<double>(std::max(1, tickCount - 1)));
-            xAxis.labels.append(formatClockLabel(tickMsecs, spanMsecs));
+            xAxis.labels.append(formatClockLabel(tickMsecs, i == 0));
         }
         return xAxis;
     }
@@ -591,7 +598,7 @@ private:
             const qint64 now = QDateTime::currentMSecsSinceEpoch();
             state.minWallMsecs = now;
             state.maxWallMsecs = now;
-            state.xLeftLabel = formatClockLabel(now, 0);
+            state.xLeftLabel = formatClockLabel(now, true);
             state.xRightLabel = state.xLeftLabel;
             return state;
         }
@@ -624,9 +631,8 @@ private:
             state.minWallMsecs = *minTimeIt;
             state.maxWallMsecs = *maxTimeIt;
         }
-        const qint64 spanMsecs = std::max<qint64>(0, state.maxWallMsecs - state.minWallMsecs);
-        state.xLeftLabel = formatClockLabel(state.minWallMsecs, spanMsecs);
-        state.xRightLabel = formatClockLabel(state.maxWallMsecs, spanMsecs);
+        state.xLeftLabel = formatClockLabel(state.minWallMsecs, true);
+        state.xRightLabel = formatClockLabel(state.maxWallMsecs, false);
         return state;
     }
 
@@ -1544,7 +1550,7 @@ void LidarPanel::setupUi()
     distance_label_ = new QLabel("--- m", this);
     distance_label_->setObjectName("highlightedValue");
     distance_label_->setMinimumHeight(20);
-    setFixedNumericLabelWidth(distance_label_, {QStringLiteral("999.99 m"), QStringLiteral("--- m")}, 2);
+    setFixedNumericLabelWidth(distance_label_, {QStringLiteral("9999.99 m"), QStringLiteral("--- m")}, 2);
     distanceLayout->addWidget(distance_label_);
     distanceLayout->addSpacing(10);
     strength_lbl_ = new QLabel(this);

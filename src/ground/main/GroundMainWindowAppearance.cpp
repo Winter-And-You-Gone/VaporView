@@ -1059,8 +1059,12 @@ void MainWindow::updateResponsiveHomeLayout()
             state_->epsilon_group_->setMaximumWidth(compactCardsFitSideBySide
                                                         ? compactEpsilonSideBySideWidth
                                                         : compactEpsilonTargetWidth);
-            state_->epsilon_group_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
-            state_->sensor_layout_->setAlignment(state_->epsilon_group_, Qt::AlignLeft | Qt::AlignTop);
+            state_->epsilon_group_->setSizePolicy(
+                compactCardsFitSideBySide ? QSizePolicy::Expanding : QSizePolicy::Maximum,
+                QSizePolicy::Preferred);
+            state_->sensor_layout_->setAlignment(
+                state_->epsilon_group_,
+                compactCardsFitSideBySide ? Qt::Alignment() : Qt::AlignLeft | Qt::AlignTop);
         }
         else
         {

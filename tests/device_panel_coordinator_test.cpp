@@ -192,7 +192,7 @@ int main(int argc, char **argv)
     hmpData.timestamp = baseTimestamp;
     VaporView::LidarData lidarData;
     lidarData.valid = true;
-    lidarData.distance_m = 12.75;
+    lidarData.distance_m = 120.75;
     lidarData.signal_strength = 321;
     coordinator.updateEnvironmentData(epsilonData, ptbData, hmpData, lidarData);
     for (QWidget *panel : {static_cast<QWidget *>(&ptb),
@@ -210,10 +210,10 @@ int main(int argc, char **argv)
             "PTB data is presented through the coordinator");
     require(hasLabelText(hmp, QStringLiteral("highlightedValue"), QStringLiteral("21.5")),
             "HMP data is presented through the coordinator");
-    require(hasLabelText(lidar, QStringLiteral("highlightedValue"), QStringLiteral("12.75")),
+    require(hasLabelText(lidar, QStringLiteral("highlightedValue"), QStringLiteral("120.75")),
             "Lidar data is presented through the coordinator");
     auto *lidarDistanceValue =
-        firstLabelContaining(lidar, QStringLiteral("highlightedValue"), QStringLiteral("12.75"));
+        firstLabelContaining(lidar, QStringLiteral("highlightedValue"), QStringLiteral("120.75"));
     auto *lidarStrengthValue =
         firstLabelContaining(lidar, QStringLiteral("highlightedValue"), QStringLiteral("321"));
     auto *lidarRateValue =

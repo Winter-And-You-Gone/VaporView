@@ -581,6 +581,7 @@ int main(int argc, char **argv)
     require(actionHeader != nullptr, "link-action column header exists");
     int centeredActionCount = 0;
     QToolButton *temperatureActionButton = nullptr;
+    QToolButton *tcpWaveActionButton = nullptr;
     const QRect actionHeaderRect(actionHeader->mapTo(serialCard, QPoint(0, 0)), actionHeader->size());
     for (QToolButton *button : serialCard->findChildren<QToolButton *>())
     {
@@ -602,12 +603,19 @@ int main(int argc, char **argv)
         {
             temperatureActionButton = button;
         }
+        if (button->property("deviceConfigRemoteDevice").toInt() ==
+            static_cast<int>(VaporView::SkyDeviceId::WaveTcp))
+        {
+            tcpWaveActionButton = button;
+        }
         ++centeredActionCount;
     }
-    require(centeredActionCount == 6,
-            "serial configuration exposes all six centered link-action icons");
+    require(centeredActionCount == 7,
+            "serial configuration exposes all seven centered link-action icons");
     require(temperatureActionButton != nullptr,
             "serial configuration exposes the RD105 link-action icon");
+    require(tcpWaveActionButton != nullptr,
+            "serial configuration exposes the TCP waveform link-action icon");
     auto *pressureSourceCombo =
         serialCard->findChild<QComboBox *>(QStringLiteral("devicePressureSourceCombo"));
     auto *humiditySourceCombo =
@@ -639,6 +647,9 @@ int main(int argc, char **argv)
                      "pressure device row restores the model-plus-device label");
     requireLabelFits(findExactLabel(serialCard, QStringLiteral("HMP3 温湿度计")),
                      "humidity device row restores the model-plus-device label");
+    QLabel *tcpWaveDeviceLabel = findExactLabel(serialCard, QStringLiteral("TCP 波形"));
+    requireLabelFits(tcpWaveDeviceLabel,
+                     "TCP waveform row label fits in the device configuration card");
 
     auto *dataSourceModeSwitch =
         serialCard->findChild<QPushButton *>(QStringLiteral("deviceConfigSourceModeOverviewSwitch"));
@@ -651,6 +662,10 @@ int main(int argc, char **argv)
     auto *epsilonRateCombo =
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceEpsilonRateCombo"));
     auto *ai8DeviceLabel = findExactLabel(serialCard, QStringLiteral("AI-8288D92J0 八路温控器"));
+    require(tcpWaveDeviceLabel && ai8DeviceLabel &&
+                tcpWaveDeviceLabel->mapTo(serialCard, QPoint(0, 0)).y() >
+                    ai8DeviceLabel->mapTo(serialCard, QPoint(0, 0)).y(),
+            "TCP waveform row is placed below the AI-8288 row");
     auto *remoteCard =
         deviceConfigPage->findChild<QGroupBox *>(QStringLiteral("deviceRemoteSkyConfigCard"));
     auto *remoteStatus =
@@ -871,6 +886,10 @@ int main(int argc, char **argv)
                 ai8BaudCombo && ai8BaudCombo->isVisible() &&
                 ai8RateCombo && ai8RateCombo->isVisible(),
             "remote mode exposes AI-8 SkyConfig serial fields");
+    require(tcpWaveDeviceLabel->isVisible() && tcpWaveActionButton->isVisible(),
+            "remote mode keeps the TCP waveform row visible in the device table");
+    require(!tcpWaveActionButton->isEnabled(),
+            "disconnected remote mode disables the TCP waveform device action until telemetry is connected");
     require(!remoteApplyButton->isEnabled() && !remoteSaveButton->isEnabled(),
             "disconnected remote mode disables apply and save operations");
     require(!epsilonPortCombo->isEnabled() &&

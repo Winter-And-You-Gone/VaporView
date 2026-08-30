@@ -4707,8 +4707,9 @@ int main(int argc, char **argv)
     require(std::abs((homePrimaryCardRect.top() - centralRect.top()) -
                      kExpectedVisibleOuterGap) <= 1,
             "home first-row cards sit 12px below the titlebar content edge");
-    require(std::abs((homeTemperatureCardRect.left() - rightEdge(homePrimaryCardRect)) -
-                     kExpectedTopLevelCardGap) <= 1,
+    const int homeOverviewCardGap =
+        homeTemperatureCardRect.left() - rightEdge(homePrimaryCardRect);
+    require(std::abs(homeOverviewCardGap - kExpectedTopLevelCardGap) <= 1,
             "home overview cards keep the shared shadow-safe horizontal gap");
     const int sidebarLeftGap = sidebarRect.left() - centralRect.left();
     const int sidebarBottomGap = centralRect.bottom() - sidebarRect.bottom();
@@ -4800,9 +4801,10 @@ int main(int argc, char **argv)
             "home sensor row keeps the shared shadow-safe vertical gap");
     if (std::abs(epsilonCardRect.top() - environmentCardRect.top()) <= 1)
     {
-        require(std::abs((environmentCardRect.left() - rightEdge(epsilonCardRect)) -
-                         kExpectedTopLevelCardGap) <= 1,
-                "home EPSILON and environment cards keep the shared horizontal gap");
+        const int homeSensorCardGap =
+            environmentCardRect.left() - rightEdge(epsilonCardRect);
+        require(std::abs(homeSensorCardGap - homeOverviewCardGap) <= 1,
+                "home EPSILON and environment cards match the device and temperature overview gap");
     }
     else
     {
@@ -9181,6 +9183,7 @@ int main(int argc, char **argv)
     int disconnectRemoteActionCount = 0;
     QToolButton *temperatureDeviceActionButton = nullptr;
     QToolButton *ai8TemperatureDeviceActionButton = nullptr;
+    QToolButton *tcpWaveDeviceActionButton = nullptr;
     QPushButton *deviceAutoDetectButton = nullptr;
     for (QPushButton *button : deviceConfigPage->findChildren<QPushButton *>())
     {
@@ -9221,9 +9224,14 @@ int main(int argc, char **argv)
                         button->accessibleName() == button->toolTip() &&
                         button->statusTip().isEmpty(),
                     "device configuration icon-only remote actions keep tooltip and accessibility text without redundant status-tip text");
+            const bool tcpWaveAction = button->property("deviceConfigRemoteDevice").toInt() ==
+                static_cast<int>(VaporView::SkyDeviceId::WaveTcp);
             require(button->toolTip().contains(QStringLiteral("本地串口设备")) ||
-                        button->toolTip().contains(QStringLiteral("local serial device")),
-                    "device configuration actions identify the local serial mode");
+                        button->toolTip().contains(QStringLiteral("local serial device")) ||
+                        (tcpWaveAction &&
+                         (button->toolTip().contains(QStringLiteral("本地 TCP 波形")) ||
+                          button->toolTip().contains(QStringLiteral("local TCP waveform")))),
+                    "device configuration actions identify their local device mode");
             if (remoteAction == QStringLiteral("connect"))
             {
                 ++connectRemoteActionCount;
@@ -9246,17 +9254,23 @@ int main(int argc, char **argv)
             {
                 ai8TemperatureDeviceActionButton = button;
             }
+            if (tcpWaveAction)
+            {
+                tcpWaveDeviceActionButton = button;
+            }
             ++localDeviceActionCount;
         }
     }
-    require(localDeviceActionCount == 6,
-            "device configuration keeps one local action per serial device");
-    require(connectRemoteActionCount == 6 && disconnectRemoteActionCount == 0,
+    require(localDeviceActionCount == 7,
+            "device configuration keeps one local action per device row");
+    require(connectRemoteActionCount == 7 && disconnectRemoteActionCount == 0,
             "device configuration shows one connect action for every disconnected device");
     require(temperatureDeviceActionButton != nullptr,
             "device configuration exposes the RD105 connection action button");
     require(ai8TemperatureDeviceActionButton != nullptr,
             "device configuration exposes the AI-8288 connection action button");
+    require(tcpWaveDeviceActionButton != nullptr,
+            "device configuration exposes the TCP waveform connection action button");
     require(deviceAutoDetectButton != nullptr && deviceAutoDetectButton->width() <= 145,
             "device configuration auto-detect button uses compact title-bar width");
 
@@ -10261,6 +10275,15 @@ int main(int argc, char **argv)
         QStringLiteral("environmentHumidityTrendPlot"),
         QStringLiteral("environmentPressureTrendPlot")
     };
+    const auto isTwoDigitNumber = [](const QString& text) {
+        return text.size() == 2 && text.at(0).isDigit() && text.at(1).isDigit();
+    };
+    const auto isHourNumber = [](const QString& text) {
+        return (text.size() == 1 || text.size() == 2) &&
+            std::all_of(text.cbegin(), text.cend(), [](const QChar& character) {
+                return character.isDigit();
+            });
+    };
     for (const QString& plotName : environmentTrendPlotNames)
     {
         QWidget *plot = environmentGroup->findChild<QWidget *>(plotName);
@@ -10276,11 +10299,28 @@ int main(int argc, char **argv)
                     plot->property("xAxisRightLabel").toString().contains(QLatin1Char(':')),
                 "environment trend plot exposes clock-time x-axis tick labels");
         const QStringList xAxisTickLabels = plot->property("xAxisTickLabels").toStringList();
+        bool subsequentLabelsUseMinutesAndSeconds = true;
+        for (int index = 1; index < xAxisTickLabels.size(); ++index)
+        {
+            const QStringList parts = xAxisTickLabels.at(index).split(QLatin1Char(':'));
+            if (parts.size() != 2 || !isTwoDigitNumber(parts.at(0)) ||
+                !isTwoDigitNumber(parts.at(1)))
+            {
+                subsequentLabelsUseMinutesAndSeconds = false;
+                break;
+            }
+        }
+        const QStringList firstLabelParts = xAxisTickLabels.isEmpty()
+            ? QStringList()
+            : xAxisTickLabels.first().split(QLatin1Char(':'));
+        const bool firstLabelIncludesHour = firstLabelParts.size() == 3 &&
+            isHourNumber(firstLabelParts.at(0)) &&
+            isTwoDigitNumber(firstLabelParts.at(1)) &&
+            isTwoDigitNumber(firstLabelParts.at(2));
         require(plot->property("xAxisTickCount").toInt() == xAxisTickLabels.size() &&
                     xAxisTickLabels.size() > 2 &&
-                    xAxisTickLabels.first().contains(QLatin1Char(':')) &&
-                    xAxisTickLabels.last().contains(QLatin1Char(':')),
-                "environment trend plot exposes adaptive clock-time x-axis tick labels");
+                    firstLabelIncludesHour && subsequentLabelsUseMinutesAndSeconds,
+                "environment trend plot shows hour only on the first tick and compact minute-second labels after it");
         require(std::abs(plot->property("xAxisTimeSpanSeconds").toDouble() -
                          static_cast<double>(xAxisTickLabels.size() - 1)) < 1e-6,
                 "environment trend plot uses temperature-style one-second x-axis intervals");

@@ -2616,6 +2616,20 @@ void MainWindow::setupDeviceConfigPage()
             rateCombo->setEnabled(false);
         }
     };
+    auto createTcpWaveHintLabel = [formWidget](const QString& objectName, int fixedWidth = 0) {
+        auto *label = new QLabel(formWidget);
+        label->setObjectName(QStringLiteral("fieldLabel"));
+        label->setProperty("deviceTcpWaveHint", objectName);
+        label->setFixedHeight(kMainPageInputHeight);
+        label->setAlignment(Qt::AlignCenter);
+        label->setTextFormat(Qt::PlainText);
+        label->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        if (fixedWidth > 0)
+        {
+            label->setFixedWidth(fixedWidth);
+        }
+        return label;
+    };
 
     addPortRow(state_->device_config_.epsilon_lbl, state_->device_config_.epsilon_port_combo, state_->device_config_.epsilon_baud_combo,
                state_->device_config_.epsilon_rate_lbl, state_->device_config_.epsilon_rate_combo, 0);
@@ -2633,6 +2647,50 @@ void MainWindow::setupDeviceConfigPage()
                state_->device_config_.ai8_temperature_rate_lbl,
                state_->device_config_.ai8_temperature_rate_combo,
                5);
+    constexpr int kTcpWaveDeviceRow = 6;
+    const int tcpWaveGridRow = kTcpWaveDeviceRow + 1;
+    state_->device_config_.tcp_wave_lbl = new QLabel(formWidget);
+    state_->device_config_.tcp_wave_lbl->setObjectName(QStringLiteral("fieldLabel"));
+    state_->device_config_.tcp_wave_lbl->setFixedHeight(kMainPageInputHeight);
+    state_->device_config_.tcp_wave_lbl->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+    formLayout->addWidget(state_->device_config_.tcp_wave_lbl, tcpWaveGridRow, 0);
+
+    state_->device_config_.tcp_wave_port_hint_lbl =
+        createTcpWaveHintLabel(QStringLiteral("deviceTcpWavePortHint"),
+                               kDeviceConfigPortComboWidth);
+    formLayout->addWidget(state_->device_config_.tcp_wave_port_hint_lbl,
+                          tcpWaveGridRow,
+                          1,
+                          Qt::AlignVCenter);
+    state_->device_config_.tcp_wave_baud_hint_lbl =
+        createTcpWaveHintLabel(QStringLiteral("deviceTcpWaveBaudHint"),
+                               kDeviceConfigBaudComboWidth);
+    formLayout->addWidget(state_->device_config_.tcp_wave_baud_hint_lbl,
+                          tcpWaveGridRow,
+                          2,
+                          Qt::AlignVCenter);
+    state_->device_config_.tcp_wave_rate_hint_lbl =
+        createTcpWaveHintLabel(QStringLiteral("deviceTcpWaveRateHint"),
+                               kDeviceConfigRateComboWidth + 36);
+    formLayout->addWidget(state_->device_config_.tcp_wave_rate_hint_lbl,
+                          tcpWaveGridRow,
+                          3,
+                          1,
+                          2,
+                          Qt::AlignVCenter | Qt::AlignLeft);
+    state_->device_config_.tcp_wave_enabled_hint_lbl =
+        createTcpWaveHintLabel(QStringLiteral("deviceTcpWaveEnabledHint"));
+    formLayout->addWidget(state_->device_config_.tcp_wave_enabled_hint_lbl,
+                          tcpWaveGridRow,
+                          5,
+                          Qt::AlignVCenter | Qt::AlignHCenter);
+    state_->device_config_.tcp_wave_source_hint_lbl =
+        createTcpWaveHintLabel(QStringLiteral("deviceTcpWaveSourceHint"),
+                               kDeviceConfigSourceComboWidth);
+    formLayout->addWidget(state_->device_config_.tcp_wave_source_hint_lbl,
+                          tcpWaveGridRow,
+                          6,
+                          Qt::AlignVCenter);
     state_->device_config_.ai8_temperature_port_combo->setObjectName(QStringLiteral("deviceAi8TemperaturePortCombo"));
     refreshLocalSerialPortComboOptions(state_->device_config_.ai8_temperature_port_combo, getAvailablePorts());
     state_->device_config_.ai8_temperature_baud_combo->setObjectName(
@@ -2906,6 +2964,9 @@ void MainWindow::setupDeviceConfigPage()
     addDeviceRemoteButton(5, state_->device_config_.ai8_temperature_remote_buttons_widget,
                            state_->device_config_.ai8_temperature_remote_action_btn,
                            VaporView::SkyDeviceId::Ai8TemperatureController);
+    addDeviceRemoteButton(kTcpWaveDeviceRow, state_->device_config_.tcp_wave_remote_buttons_widget,
+                           state_->device_config_.tcp_wave_remote_action_btn,
+                           VaporView::SkyDeviceId::WaveTcp);
 
     formRowLayout->addWidget(formWidget, 0, Qt::AlignTop | Qt::AlignLeft);
     serialLayout->addWidget(formRowWidget, 0, Qt::AlignTop);
@@ -3587,6 +3648,27 @@ void MainWindow::updateDeviceConfigTexts()
     if (state_->device_config_.lidar_lbl) state_->device_config_.lidar_lbl->setText(state_->is_english_ ? QStringLiteral("TFA1500-L LiDAR") : QStringLiteral("TFA1500-L 激光测距"));
     if (state_->device_config_.temperature_lbl) state_->device_config_.temperature_lbl->setText(state_->is_english_ ? QStringLiteral("RD105 Thermal") : QStringLiteral("RD105 温控器"));
     if (state_->device_config_.ai8_temperature_lbl) state_->device_config_.ai8_temperature_lbl->setText(state_->is_english_ ? QStringLiteral("AI-8288D92J0 8-Channel Thermal") : QStringLiteral("AI-8288D92J0 八路温控器"));
+    if (state_->device_config_.tcp_wave_lbl) state_->device_config_.tcp_wave_lbl->setText(state_->is_english_ ? QStringLiteral("TCP Waveform") : QStringLiteral("TCP 波形"));
+    if (state_->device_config_.tcp_wave_port_hint_lbl) state_->device_config_.tcp_wave_port_hint_lbl->setText(QStringLiteral("TCP"));
+    if (state_->device_config_.tcp_wave_baud_hint_lbl) state_->device_config_.tcp_wave_baud_hint_lbl->setText(state_->is_english_ ? QStringLiteral("Host/Port") : QStringLiteral("主机/端口"));
+    if (state_->device_config_.tcp_wave_rate_hint_lbl) state_->device_config_.tcp_wave_rate_hint_lbl->setText(state_->is_english_ ? QStringLiteral("Wave card") : QStringLiteral("波形卡片"));
+    if (state_->device_config_.tcp_wave_enabled_hint_lbl) state_->device_config_.tcp_wave_enabled_hint_lbl->setText(QStringLiteral("-"));
+    if (state_->device_config_.tcp_wave_source_hint_lbl) state_->device_config_.tcp_wave_source_hint_lbl->setText(QStringLiteral("-"));
+    const QString tcpWaveHint = state_->is_english_
+        ? QStringLiteral("Configure the TCP waveform endpoint in the Wave Monitor card.")
+        : QStringLiteral("TCP 波形主机和端口在波形监控卡片中设置。");
+    for (QLabel *label : {state_->device_config_.tcp_wave_lbl,
+                          state_->device_config_.tcp_wave_port_hint_lbl,
+                          state_->device_config_.tcp_wave_baud_hint_lbl,
+                          state_->device_config_.tcp_wave_rate_hint_lbl,
+                          state_->device_config_.tcp_wave_enabled_hint_lbl,
+                          state_->device_config_.tcp_wave_source_hint_lbl})
+    {
+        if (label)
+        {
+            label->setToolTip(tcpWaveHint);
+        }
+    }
     auto updateEnabledCheckPresentation = [this](QCheckBox *check, const QString& deviceName) {
         if (!check)
         {
@@ -3669,7 +3751,8 @@ void MainWindow::updateDeviceConfigTexts()
                                           VaporView::SkyDeviceId::Hmp,
                                           VaporView::SkyDeviceId::Lidar,
                                           VaporView::SkyDeviceId::TemperatureController,
-                                          VaporView::SkyDeviceId::Ai8TemperatureController})
+                                          VaporView::SkyDeviceId::Ai8TemperatureController,
+                                          VaporView::SkyDeviceId::WaveTcp})
     {
         updateDeviceConfigRemoteActionButton(device);
     }
@@ -3800,6 +3883,19 @@ void MainWindow::updateDeviceConfigState()
             widget->setVisible(true);
         }
     }
+    for (QWidget *widget : {static_cast<QWidget *>(state_->device_config_.tcp_wave_lbl),
+                            static_cast<QWidget *>(state_->device_config_.tcp_wave_port_hint_lbl),
+                            static_cast<QWidget *>(state_->device_config_.tcp_wave_baud_hint_lbl),
+                            static_cast<QWidget *>(state_->device_config_.tcp_wave_rate_hint_lbl),
+                            static_cast<QWidget *>(state_->device_config_.tcp_wave_enabled_hint_lbl),
+                            static_cast<QWidget *>(state_->device_config_.tcp_wave_source_hint_lbl)})
+    {
+        if (widget)
+        {
+            widget->setVisible(true);
+            widget->setEnabled(true);
+        }
+    }
     if (state_->device_config_.remote_sky_config_card)
     {
         state_->device_config_.remote_sky_config_card->setVisible(remote);
@@ -3810,7 +3906,8 @@ void MainWindow::updateDeviceConfigState()
                             state_->device_config_.hmp_remote_buttons_widget,
                             state_->device_config_.lidar_remote_buttons_widget,
                             state_->device_config_.temperature_remote_buttons_widget,
-                            state_->device_config_.ai8_temperature_remote_buttons_widget})
+                            state_->device_config_.ai8_temperature_remote_buttons_widget,
+                            state_->device_config_.tcp_wave_remote_buttons_widget})
     {
         if (widget)
         {
@@ -3822,7 +3919,8 @@ void MainWindow::updateDeviceConfigState()
                                           VaporView::SkyDeviceId::Hmp,
                                           VaporView::SkyDeviceId::Lidar,
                                           VaporView::SkyDeviceId::TemperatureController,
-                                          VaporView::SkyDeviceId::Ai8TemperatureController})
+                                          VaporView::SkyDeviceId::Ai8TemperatureController,
+                                          VaporView::SkyDeviceId::WaveTcp})
     {
         updateDeviceConfigRemoteActionButton(device);
     }
