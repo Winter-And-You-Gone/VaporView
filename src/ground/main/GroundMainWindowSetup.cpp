@@ -8,6 +8,7 @@
 #include <QLinearGradient>
 #include <QProgressBar>
 #include <QPointer>
+#include <QSignalBlocker>
 #include <QScrollBar>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -2655,24 +2656,32 @@ void MainWindow::setupDeviceConfigPage()
     state_->device_config_.tcp_wave_lbl->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
     formLayout->addWidget(state_->device_config_.tcp_wave_lbl, tcpWaveGridRow, 0);
 
-    state_->device_config_.tcp_wave_port_hint_lbl =
-        createTcpWaveHintLabel(QStringLiteral("deviceTcpWavePortHint"),
-                               kDeviceConfigPortComboWidth);
-    formLayout->addWidget(state_->device_config_.tcp_wave_port_hint_lbl,
+    state_->device_config_.tcp_wave_host_edit = new QLineEdit(formWidget);
+    state_->device_config_.tcp_wave_host_edit->setObjectName(
+        QStringLiteral("deviceTcpWaveHostEdit"));
+    state_->device_config_.tcp_wave_host_edit->setFixedHeight(kMainPageInputHeight);
+    state_->device_config_.tcp_wave_host_edit->setFixedWidth(kDeviceConfigPortComboWidth);
+    state_->device_config_.tcp_wave_host_edit->setText(QStringLiteral("127.0.0.1"));
+    formLayout->addWidget(state_->device_config_.tcp_wave_host_edit,
                           tcpWaveGridRow,
                           1,
                           Qt::AlignVCenter);
-    state_->device_config_.tcp_wave_baud_hint_lbl =
-        createTcpWaveHintLabel(QStringLiteral("deviceTcpWaveBaudHint"),
-                               kDeviceConfigBaudComboWidth);
-    formLayout->addWidget(state_->device_config_.tcp_wave_baud_hint_lbl,
+    state_->device_config_.tcp_wave_port_spin = new QSpinBox(formWidget);
+    state_->device_config_.tcp_wave_port_spin->setObjectName(
+        QStringLiteral("deviceTcpWavePortSpin"));
+    state_->device_config_.tcp_wave_port_spin->setRange(1, 65535);
+    state_->device_config_.tcp_wave_port_spin->setFixedHeight(kMainPageInputHeight);
+    state_->device_config_.tcp_wave_port_spin->setFixedWidth(kDeviceConfigBaudComboWidth);
+    state_->device_config_.tcp_wave_port_spin->setAlignment(Qt::AlignCenter);
+    state_->device_config_.tcp_wave_port_spin->setValue(8888);
+    formLayout->addWidget(state_->device_config_.tcp_wave_port_spin,
                           tcpWaveGridRow,
                           2,
                           Qt::AlignVCenter);
-    state_->device_config_.tcp_wave_rate_hint_lbl =
-        createTcpWaveHintLabel(QStringLiteral("deviceTcpWaveRateHint"),
+    state_->device_config_.tcp_wave_transport_hint_lbl =
+        createTcpWaveHintLabel(QStringLiteral("deviceTcpWaveTransportHint"),
                                kDeviceConfigRateComboWidth + 36);
-    formLayout->addWidget(state_->device_config_.tcp_wave_rate_hint_lbl,
+    formLayout->addWidget(state_->device_config_.tcp_wave_transport_hint_lbl,
                           tcpWaveGridRow,
                           3,
                           1,
@@ -2691,6 +2700,14 @@ void MainWindow::setupDeviceConfigPage()
                           tcpWaveGridRow,
                           6,
                           Qt::AlignVCenter);
+    connect(state_->device_config_.tcp_wave_host_edit,
+            &QLineEdit::editingFinished,
+            this,
+            [this]() { applyDeviceConfigTcpWaveEndpoint(); });
+    connect(state_->device_config_.tcp_wave_port_spin,
+            QOverload<int>::of(&QSpinBox::valueChanged),
+            this,
+            [this](int) { applyDeviceConfigTcpWaveEndpoint(); });
     state_->device_config_.ai8_temperature_port_combo->setObjectName(QStringLiteral("deviceAi8TemperaturePortCombo"));
     refreshLocalSerialPortComboOptions(state_->device_config_.ai8_temperature_port_combo, getAvailablePorts());
     state_->device_config_.ai8_temperature_baud_combo->setObjectName(
@@ -3547,6 +3564,10 @@ void MainWindow::syncDeviceConfigPageFromHome()
         const QSignalBlocker blocker(state_->device_config_.sky_telemetry_tcp_port_spin);
         state_->device_config_.sky_telemetry_tcp_port_spin->setValue(state_->sky_telemetry_tcp_port_spin_->value());
     }
+    if (!isRemoteSkyMode())
+    {
+        syncDeviceConfigTcpWaveEndpointFromPanel();
+    }
     if (state_->device_config_.data_telemetry_summary_card)
     {
         state_->device_config_.data_telemetry_summary_card->setVisible(true);
@@ -3555,6 +3576,64 @@ void MainWindow::syncDeviceConfigPageFromHome()
     syncDeviceConfigEpsilonPanelFromSettings();
 
     updateDeviceConfigState();
+}
+
+void MainWindow::syncDeviceConfigTcpWaveEndpointFromPanel()
+{
+    if (!state_->tcp_wave_panel_ ||
+        !state_->device_config_.tcp_wave_host_edit ||
+        !state_->device_config_.tcp_wave_port_spin)
+    {
+        return;
+    }
+
+    const QSignalBlocker hostBlocker(state_->device_config_.tcp_wave_host_edit);
+    const QSignalBlocker portBlocker(state_->device_config_.tcp_wave_port_spin);
+    state_->device_config_.tcp_wave_host_edit->setText(state_->tcp_wave_panel_->host());
+    state_->device_config_.tcp_wave_port_spin->setValue(state_->tcp_wave_panel_->port());
+}
+
+void MainWindow::applyDeviceConfigTcpWaveEndpoint()
+{
+    if (!state_->device_config_.tcp_wave_host_edit ||
+        !state_->device_config_.tcp_wave_port_spin ||
+        !state_->tcp_wave_panel_)
+    {
+        return;
+    }
+
+    const QString configuredHost = state_->device_config_.tcp_wave_host_edit->text().trimmed();
+    const QString host = configuredHost.isEmpty()
+        ? QStringLiteral("127.0.0.1")
+        : configuredHost;
+    const int port = state_->device_config_.tcp_wave_port_spin->value();
+    if (!isRemoteSkyMode())
+    {
+        state_->tcp_wave_panel_->setConnectionEndpoint(host, port, !isUiTestMode());
+        return;
+    }
+
+    if (!state_->remote_sky_config_loaded_)
+    {
+        syncDeviceConfigTcpWaveEndpointFromPanel();
+        return;
+    }
+
+    const bool wasUpdating = state_->remote_sky_config_updating_ui_;
+    state_->remote_sky_config_updating_ui_ = true;
+    if (state_->device_config_.remote_sky_wave_host_edit)
+    {
+        const QSignalBlocker blocker(state_->device_config_.remote_sky_wave_host_edit);
+        state_->device_config_.remote_sky_wave_host_edit->setText(host);
+    }
+    if (state_->device_config_.remote_sky_wave_port_spin)
+    {
+        const QSignalBlocker blocker(state_->device_config_.remote_sky_wave_port_spin);
+        state_->device_config_.remote_sky_wave_port_spin->setValue(port);
+    }
+    state_->tcp_wave_panel_->setConnectionEndpoint(host, port);
+    state_->remote_sky_config_updating_ui_ = wasUpdating;
+    markRemoteSkyConfigDirty();
 }
 
 void MainWindow::updateDeviceConfigTexts()
@@ -3581,8 +3660,8 @@ void MainWindow::updateDeviceConfigTexts()
     if (state_->device_config_.sky_telemetry_port_lbl) state_->device_config_.sky_telemetry_port_lbl->setText(state_->is_english_ ? "Serial:" : "串口:");
     if (state_->device_config_.sky_telemetry_baud_lbl) state_->device_config_.sky_telemetry_baud_lbl->setText(state_->is_english_ ? "Baud:" : "波特率:");
     if (state_->device_config_.device_header_lbl) state_->device_config_.device_header_lbl->setText(state_->is_english_ ? QStringLiteral("Device") : QStringLiteral("设备"));
-    if (state_->device_config_.port_header_lbl) state_->device_config_.port_header_lbl->setText(state_->is_english_ ? QStringLiteral("Serial Port") : QStringLiteral("串口"));
-    if (state_->device_config_.baud_header_lbl) state_->device_config_.baud_header_lbl->setText(state_->is_english_ ? QStringLiteral("Baud Rate") : QStringLiteral("波特率"));
+    if (state_->device_config_.port_header_lbl) state_->device_config_.port_header_lbl->setText(state_->is_english_ ? QStringLiteral("Serial / Host") : QStringLiteral("串口/主机"));
+    if (state_->device_config_.baud_header_lbl) state_->device_config_.baud_header_lbl->setText(state_->is_english_ ? QStringLiteral("Baud / Port") : QStringLiteral("波特率/端口"));
     if (state_->device_config_.rate_header_lbl) state_->device_config_.rate_header_lbl->setText(state_->is_english_ ? QStringLiteral("Rate / Poll") : QStringLiteral("频率/轮询"));
     if (state_->device_config_.enabled_header_lbl) state_->device_config_.enabled_header_lbl->setText(state_->is_english_ ? QStringLiteral("Enabled") : QStringLiteral("启用"));
     if (state_->device_config_.source_header_lbl) state_->device_config_.source_header_lbl->setText(state_->is_english_ ? QStringLiteral("Source") : QStringLiteral("来源"));
@@ -3649,18 +3728,15 @@ void MainWindow::updateDeviceConfigTexts()
     if (state_->device_config_.temperature_lbl) state_->device_config_.temperature_lbl->setText(state_->is_english_ ? QStringLiteral("RD105 Thermal") : QStringLiteral("RD105 温控器"));
     if (state_->device_config_.ai8_temperature_lbl) state_->device_config_.ai8_temperature_lbl->setText(state_->is_english_ ? QStringLiteral("AI-8288D92J0 8-Channel Thermal") : QStringLiteral("AI-8288D92J0 八路温控器"));
     if (state_->device_config_.tcp_wave_lbl) state_->device_config_.tcp_wave_lbl->setText(state_->is_english_ ? QStringLiteral("TCP Waveform") : QStringLiteral("TCP 波形"));
-    if (state_->device_config_.tcp_wave_port_hint_lbl) state_->device_config_.tcp_wave_port_hint_lbl->setText(QStringLiteral("TCP"));
-    if (state_->device_config_.tcp_wave_baud_hint_lbl) state_->device_config_.tcp_wave_baud_hint_lbl->setText(state_->is_english_ ? QStringLiteral("Host/Port") : QStringLiteral("主机/端口"));
-    if (state_->device_config_.tcp_wave_rate_hint_lbl) state_->device_config_.tcp_wave_rate_hint_lbl->setText(state_->is_english_ ? QStringLiteral("Wave card") : QStringLiteral("波形卡片"));
+    if (state_->device_config_.tcp_wave_host_edit) state_->device_config_.tcp_wave_host_edit->setPlaceholderText(state_->is_english_ ? QStringLiteral("Host address") : QStringLiteral("主机地址"));
+    if (state_->device_config_.tcp_wave_transport_hint_lbl) state_->device_config_.tcp_wave_transport_hint_lbl->setText(state_->is_english_ ? QStringLiteral("TCP service") : QStringLiteral("TCP 服务"));
     if (state_->device_config_.tcp_wave_enabled_hint_lbl) state_->device_config_.tcp_wave_enabled_hint_lbl->setText(QStringLiteral("-"));
     if (state_->device_config_.tcp_wave_source_hint_lbl) state_->device_config_.tcp_wave_source_hint_lbl->setText(QStringLiteral("-"));
     const QString tcpWaveHint = state_->is_english_
-        ? QStringLiteral("Configure the TCP waveform endpoint in the Wave Monitor card.")
-        : QStringLiteral("TCP 波形主机和端口在波形监控卡片中设置。");
+        ? QStringLiteral("TCP waveform host address and port. Changes stay synchronized with the Wave Monitor card.")
+        : QStringLiteral("TCP 波形主机地址和端口，与波形监控卡片保持同步。");
     for (QLabel *label : {state_->device_config_.tcp_wave_lbl,
-                          state_->device_config_.tcp_wave_port_hint_lbl,
-                          state_->device_config_.tcp_wave_baud_hint_lbl,
-                          state_->device_config_.tcp_wave_rate_hint_lbl,
+                          state_->device_config_.tcp_wave_transport_hint_lbl,
                           state_->device_config_.tcp_wave_enabled_hint_lbl,
                           state_->device_config_.tcp_wave_source_hint_lbl})
     {
@@ -3669,6 +3745,8 @@ void MainWindow::updateDeviceConfigTexts()
             label->setToolTip(tcpWaveHint);
         }
     }
+    if (state_->device_config_.tcp_wave_host_edit) state_->device_config_.tcp_wave_host_edit->setToolTip(tcpWaveHint);
+    if (state_->device_config_.tcp_wave_port_spin) state_->device_config_.tcp_wave_port_spin->setToolTip(tcpWaveHint);
     auto updateEnabledCheckPresentation = [this](QCheckBox *check, const QString& deviceName) {
         if (!check)
         {
@@ -3884,16 +3962,25 @@ void MainWindow::updateDeviceConfigState()
         }
     }
     for (QWidget *widget : {static_cast<QWidget *>(state_->device_config_.tcp_wave_lbl),
-                            static_cast<QWidget *>(state_->device_config_.tcp_wave_port_hint_lbl),
-                            static_cast<QWidget *>(state_->device_config_.tcp_wave_baud_hint_lbl),
-                            static_cast<QWidget *>(state_->device_config_.tcp_wave_rate_hint_lbl),
+                            static_cast<QWidget *>(state_->device_config_.tcp_wave_host_edit),
+                            static_cast<QWidget *>(state_->device_config_.tcp_wave_port_spin),
+                            static_cast<QWidget *>(state_->device_config_.tcp_wave_transport_hint_lbl),
                             static_cast<QWidget *>(state_->device_config_.tcp_wave_enabled_hint_lbl),
                             static_cast<QWidget *>(state_->device_config_.tcp_wave_source_hint_lbl)})
     {
         if (widget)
         {
             widget->setVisible(true);
-            widget->setEnabled(true);
+        }
+    }
+    for (QLabel *label : {state_->device_config_.tcp_wave_lbl,
+                          state_->device_config_.tcp_wave_transport_hint_lbl,
+                          state_->device_config_.tcp_wave_enabled_hint_lbl,
+                          state_->device_config_.tcp_wave_source_hint_lbl})
+    {
+        if (label)
+        {
+            label->setEnabled(true);
         }
     }
     if (state_->device_config_.remote_sky_config_card)
@@ -5399,6 +5486,10 @@ void MainWindow::setupDataPanels()
 
     state_->tcp_wave_panel_ = new TcpWavePanel(this);
     state_->tcp_wave_panel_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    connect(state_->tcp_wave_panel_, &TcpWavePanel::connectionEndpointChanged,
+            this, [this](const QString&, int) {
+                syncDeviceConfigTcpWaveEndpointFromPanel();
+            });
     connect(state_->tcp_wave_panel_, &TcpWavePanel::rawWaveFrameReady,
             this, &MainWindow::onTcpRawWaveFrameReady);
     connect(state_->tcp_wave_panel_, &TcpWavePanel::connectionStateChanged, this, [this](bool connected) {
@@ -5428,6 +5519,7 @@ void MainWindow::setupDataPanels()
             this, &MainWindow::sendRemotePeakSearchRange);
     connect(state_->tcp_wave_panel_, &TcpWavePanel::preferredPanelHeightChanged,
             this, &MainWindow::updateResponsiveHomeLayout);
+    syncDeviceConfigTcpWaveEndpointFromPanel();
     tcpWaveLayout->addWidget(state_->tcp_wave_panel_);
     state_->main_layout_->addWidget(state_->tcp_wave_group_, 0);
     state_->main_layout_->addStretch(1);

@@ -37,8 +37,9 @@ public:
     int port() const;
     bool isConnected() const;
     bool isConnecting() const;
+    bool endpointEditable() const;
     void toggleConnection();
-    void setConnectionEndpoint(const QString& host, int port);
+    void setConnectionEndpoint(const QString& host, int port, bool persist = false);
     void attachWaveformSplitControls(QLabel *label, QSpinBox *spinBox);
     void setCompactLayout(bool compact);
     int preferredPanelHeight() const;
@@ -99,6 +100,7 @@ signals:
     void normalizedSecondHarmonicFrameReady(quint64 timestampUs, QVector<float> samples);
     void rawWaveFrameReady(quint64 timestampUs, QByteArray rawSignalPayload, QByteArray harmonicPayload, VaporView::TcpFloatEncoding floatEncoding);
     void connectionStateChanged(bool connected);
+    void connectionEndpointChanged(const QString& host, int port);
     void remoteWaveTcpConnectionRequested(bool connectRequested);
     void remotePeakSearchRangeRequested(quint32 startIndex, quint32 endIndex);
     void preferredPanelHeightChanged();

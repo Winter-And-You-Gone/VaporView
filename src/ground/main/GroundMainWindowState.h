@@ -60,9 +60,9 @@ struct DeviceConfigPageWidgets
     QLabel *temperature_lbl = nullptr;
     QLabel *ai8_temperature_lbl = nullptr;
     QLabel *tcp_wave_lbl = nullptr;
-    QLabel *tcp_wave_port_hint_lbl = nullptr;
-    QLabel *tcp_wave_baud_hint_lbl = nullptr;
-    QLabel *tcp_wave_rate_hint_lbl = nullptr;
+    QLineEdit *tcp_wave_host_edit = nullptr;
+    QSpinBox *tcp_wave_port_spin = nullptr;
+    QLabel *tcp_wave_transport_hint_lbl = nullptr;
     QLabel *tcp_wave_enabled_hint_lbl = nullptr;
     QLabel *tcp_wave_source_hint_lbl = nullptr;
     QLabel *device_header_lbl = nullptr;

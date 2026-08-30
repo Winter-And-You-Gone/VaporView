@@ -878,6 +878,19 @@ void MainWindow::updateRemoteSkyConfigControlsState()
     {
         state_->device_config_.remote_sky_raw_mode_btn->setEnabled(hasConfig && !pending);
     }
+    const bool localTcpWaveEndpointEditable =
+        !state_->tcp_wave_panel_ || state_->tcp_wave_panel_->endpointEditable();
+    const bool tcpWaveEndpointEnabled = remote
+        ? fieldsEnabled
+        : localInputsEnabled && localTcpWaveEndpointEditable;
+    if (state_->device_config_.tcp_wave_host_edit)
+    {
+        state_->device_config_.tcp_wave_host_edit->setEnabled(tcpWaveEndpointEnabled);
+    }
+    if (state_->device_config_.tcp_wave_port_spin)
+    {
+        state_->device_config_.tcp_wave_port_spin->setEnabled(tcpWaveEndpointEnabled);
+    }
     if (state_->device_config_.remote_sky_config_status_lbl &&
         state_->remote_sky_config_status_text_.isEmpty())
     {
