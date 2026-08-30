@@ -1136,7 +1136,13 @@ QSplitter#homeSensorCardSplitter::handle:vertical:hover {
 
 QSplitter#homeSensorCardSplitter::handle:horizontal:pressed,
 QSplitter#homeSensorCardSplitter::handle:vertical:pressed {
-    background-color: @vv-resize-pressed;
+    background-color: @vv-surface;
+}
+
+QSplitter#homeSensorCardSplitter::handle:focus {
+    background-color: @vv-surface;
+    border: none;
+    outline: none;
 }
 
 /* 工具提示 */

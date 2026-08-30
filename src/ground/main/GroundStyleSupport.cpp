@@ -946,7 +946,12 @@ QSplitter#homeSensorCardSplitter::handle:vertical:hover {
 }
 QSplitter#homeSensorCardSplitter::handle:horizontal:pressed,
 QSplitter#homeSensorCardSplitter::handle:vertical:pressed {
-    background-color: @vv-border-strong;
+    background-color: @vv-surface;
+}
+QSplitter#homeSensorCardSplitter::handle:focus {
+    background-color: @vv-surface;
+    border: none;
+    outline: none;
 }
 QWidget#mainCardResizeHandle {
     min-height: 3px;

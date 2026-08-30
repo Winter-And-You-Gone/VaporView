@@ -4438,13 +4438,23 @@ int main(int argc, char **argv)
                                  QStringLiteral("QSplitter#homeOverviewSplitter::handle:horizontal:pressed {"),
                                  homeOverviewSplitterSurface,
                                  "home overview splitter keeps its surface color while pressed");
-    require(qApp->styleSheet().contains(
-                QStringLiteral("QSplitter#homeSensorCardSplitter::handle:horizontal")) &&
-                qApp->styleSheet().contains(
-                    VaporView::appThemeRgba(VaporView::AppThemeColor::Primary, false, 0.18)) &&
-                qApp->styleSheet().contains(
-                    VaporView::appThemeRgba(VaporView::AppThemeColor::Primary, false, 0.28)),
-            "home sensor card splitter exposes hover and pressed resize feedback");
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QSplitter#homeSensorCardSplitter::handle:horizontal:hover,"),
+        VaporView::appThemeRgba(VaporView::AppThemeColor::Primary, false, 0.18),
+        "home sensor card splitter keeps a hover resize cue");
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QSplitter#homeSensorCardSplitter::handle:horizontal:pressed,"),
+        QStringLiteral("background-color: ") +
+            VaporView::appThemeColorName(VaporView::AppThemeColor::Surface, false),
+        "home sensor card splitter keeps a neutral pressed state");
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QSplitter#homeSensorCardSplitter::handle:focus {"),
+        QStringLiteral("background-color: ") +
+            VaporView::appThemeColorName(VaporView::AppThemeColor::Surface, false),
+        "home sensor card splitter keeps a neutral focus state");
     requireLastStyleRuleContains(
         qApp->styleSheet(),
         QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar:vertical {"),
