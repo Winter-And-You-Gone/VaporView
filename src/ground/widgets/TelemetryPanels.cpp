@@ -303,11 +303,10 @@ protected:
         const qreal xAxisHeight = axisFm.height() + 9.0;
         const QRectF basePlotRect = panelRect.adjusted(yAxisWidth, 5.0, -7.0, -xAxisHeight);
         QRectF plotRect = basePlotRect;
-        const qreal firstLabelHalfWidth = timeAxisFirstLabelWidth(axisFm) / 2.0;
-        const qreal subsequentLabelHalfWidth = timeAxisSubsequentLabelWidth(axisFm) / 2.0;
-        const qreal timeAxisLeft = std::max(basePlotRect.left(), firstLabelHalfWidth);
+        const qreal compactLabelHalfWidth = timeAxisSubsequentLabelWidth(axisFm) / 2.0;
+        const qreal timeAxisLeft = std::max(basePlotRect.left(), compactLabelHalfWidth);
         const qreal timeAxisRight = std::min(basePlotRect.right(),
-                                             width() - subsequentLabelHalfWidth -
+                                             width() - compactLabelHalfWidth -
                                                  kEnvironmentXAxisLabelRightInset);
         if (timeAxisRight > timeAxisLeft + 1.0)
         {
@@ -366,7 +365,7 @@ protected:
                              QPointF(x, plotRect.bottom() + kEnvironmentXAxisTickLength));
             painter.setPen(muted);
             const QString& label = xAxisState.labels.at(i);
-            const qreal labelWidth = std::max<qreal>(36.0, axisFm.horizontalAdvance(label) + 6.0);
+            const qreal labelWidth = timeAxisLabelWidth(axisFm, i == 0);
             const qreal labelLeft = std::clamp(x - labelWidth / 2.0,
                                                0.0,
                                                std::max<qreal>(
@@ -518,11 +517,10 @@ private:
         const qreal yAxisWidth = yAxisWidthFor(state, axisFm);
         const qreal baseLeft = 1.0 + yAxisWidth;
         const qreal baseRight = widgetWidth - 8.0;
-        const qreal firstLabelHalfWidth = timeAxisFirstLabelWidth(axisFm) / 2.0;
-        const qreal subsequentLabelHalfWidth = timeAxisSubsequentLabelWidth(axisFm) / 2.0;
-        const qreal timeAxisLeft = std::max(baseLeft, firstLabelHalfWidth);
+        const qreal compactLabelHalfWidth = timeAxisSubsequentLabelWidth(axisFm) / 2.0;
+        const qreal timeAxisLeft = std::max(baseLeft, compactLabelHalfWidth);
         const qreal timeAxisRight = std::min(baseRight,
-                                             widgetWidth - subsequentLabelHalfWidth -
+                                             widgetWidth - compactLabelHalfWidth -
                                                  kEnvironmentXAxisLabelRightInset);
         if (timeAxisRight > timeAxisLeft + 1.0)
         {
@@ -531,14 +529,17 @@ private:
         return std::max<qreal>(0.0, baseRight - baseLeft);
     }
 
-    static qreal timeAxisFirstLabelWidth(const QFontMetrics& axisFm)
+    static qreal timeAxisLabelWidth(const QFontMetrics& axisFm, bool includeHour)
     {
-        return std::max<qreal>(36.0, axisFm.horizontalAdvance(QStringLiteral("00:00:00")));
+        return std::max<qreal>(1.0,
+                               axisFm.horizontalAdvance(includeHour
+                                                            ? QStringLiteral("00:00:00")
+                                                            : QStringLiteral("00:00")));
     }
 
     static qreal timeAxisSubsequentLabelWidth(const QFontMetrics& axisFm)
     {
-        return std::max<qreal>(36.0, axisFm.horizontalAdvance(QStringLiteral("00:00")));
+        return timeAxisLabelWidth(axisFm, false);
     }
 
     static int xAxisTickCountForWidth(qreal plotWidth, const QFontMetrics& axisFm)

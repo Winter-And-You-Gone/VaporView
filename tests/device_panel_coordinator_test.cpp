@@ -294,10 +294,10 @@ int main(int argc, char **argv)
         temperatureTrend->property("xAxisTickLabels").toStringList();
     require(temperatureTrend->property("xAxisTickCount").toInt() ==
                     temperatureXAxisTicks.size() &&
-                temperatureXAxisTicks.size() > 2 &&
+                temperatureXAxisTicks.size() > 10 &&
                 temperatureXAxisTicks.first().contains(QLatin1Char(':')) &&
                 temperatureXAxisTicks.last().contains(QLatin1Char(':')),
-            "environment trend x-axis adapts to render more than endpoint time ticks when width permits");
+            "environment trend x-axis packs additional ticks using the compact minute-second label width");
     const int compactXAxisTickCount = temperatureXAxisTicks.size();
     require(std::abs(temperatureTrend->property("xAxisTimeSpanSeconds").toDouble() -
                      static_cast<double>(compactXAxisTickCount - 1)) < 1e-6,
