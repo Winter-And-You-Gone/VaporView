@@ -543,8 +543,8 @@ int main(int argc, char **argv)
             "serial configuration device column uses the widest formatted label without extra width");
     const QStringList serialColumnHeaders{
         QStringLiteral("设备"),
-        QStringLiteral("串口"),
-        QStringLiteral("波特率"),
+        QStringLiteral("串口/主机"),
+        QStringLiteral("波特率/端口"),
         QStringLiteral("频率/轮询"),
         QStringLiteral("启用"),
         QStringLiteral("来源"),
@@ -562,11 +562,11 @@ int main(int argc, char **argv)
                              findExactLabel(serialCard, QStringLiteral("EPSILON2-D4G 组合导航")),
                              "device column header sits above the device names");
     requireHeaderAboveWidget(serialCard,
-                             findExactLabel(serialCard, QStringLiteral("串口")),
+                             findExactLabel(serialCard, QStringLiteral("串口/主机")),
                              serialCard->findChild<QWidget *>(QStringLiteral("deviceEpsilonPortCombo")),
                              "serial-port column header sits above port selectors");
     requireHeaderAboveWidget(serialCard,
-                             findExactLabel(serialCard, QStringLiteral("波特率")),
+                             findExactLabel(serialCard, QStringLiteral("波特率/端口")),
                              serialCard->findChild<QWidget *>(QStringLiteral("deviceEpsilonBaudCombo")),
                              "baud-rate column header sits above baud selectors");
     requireHeaderAboveWidget(serialCard,
@@ -650,6 +650,28 @@ int main(int argc, char **argv)
     QLabel *tcpWaveDeviceLabel = findExactLabel(serialCard, QStringLiteral("TCP 波形"));
     requireLabelFits(tcpWaveDeviceLabel,
                      "TCP waveform row label fits in the device configuration card");
+    auto *deviceTcpWaveHostEdit =
+        serialCard->findChild<QLineEdit *>(QStringLiteral("deviceTcpWaveHostEdit"));
+    auto *deviceTcpWavePortSpin =
+        serialCard->findChild<QSpinBox *>(QStringLiteral("deviceTcpWavePortSpin"));
+    require(deviceTcpWaveHostEdit && deviceTcpWavePortSpin &&
+                deviceTcpWaveHostEdit->isVisible() && deviceTcpWavePortSpin->isVisible(),
+            "TCP waveform device row exposes visible host and port editors");
+    auto *tcpWaveHostEdit = window.findChild<QLineEdit *>(QStringLiteral("tcpWaveHostEdit"));
+    auto *tcpWavePortEdit = window.findChild<QLineEdit *>(QStringLiteral("tcpWavePortEdit"));
+    require(tcpWaveHostEdit && tcpWavePortEdit,
+            "home TCP wave source controls exist for endpoint synchronization");
+    deviceTcpWaveHostEdit->setText(QStringLiteral("127.0.0.9"));
+    deviceTcpWaveHostEdit->setFocus();
+    require(QMetaObject::invokeMethod(deviceTcpWaveHostEdit,
+                                      "editingFinished",
+                                      Qt::DirectConnection),
+            "device TCP host editor accepts the endpoint commit signal");
+    deviceTcpWavePortSpin->setValue(9901);
+    VaporViewTest::processEventsFor(60);
+    require(tcpWaveHostEdit->text() == QStringLiteral("127.0.0.9") &&
+                tcpWavePortEdit->text() == QStringLiteral("9901"),
+            "local device-row endpoint edits synchronize to the home TCP wave card");
 
     auto *dataSourceModeSwitch =
         serialCard->findChild<QPushButton *>(QStringLiteral("deviceConfigSourceModeOverviewSwitch"));
@@ -893,12 +915,18 @@ int main(int argc, char **argv)
     require(!remoteApplyButton->isEnabled() && !remoteSaveButton->isEnabled(),
             "disconnected remote mode disables apply and save operations");
     require(!epsilonPortCombo->isEnabled() &&
-                ai8PortCombo && !ai8PortCombo->isEnabled(),
+                ai8PortCombo && !ai8PortCombo->isEnabled() &&
+                !deviceTcpWaveHostEdit->isEnabled() &&
+                !deviceTcpWavePortSpin->isEnabled(),
             "remote config fields wait for a loaded SkyConfig while the link is disconnected");
-    auto *tcpWaveHostEdit = window.findChild<QLineEdit *>(QStringLiteral("tcpWaveHostEdit"));
-    auto *tcpWavePortEdit = window.findChild<QLineEdit *>(QStringLiteral("tcpWavePortEdit"));
     auto *tcpWaveConnectButton = window.findChild<QPushButton *>(QStringLiteral("compactTcpStartButton"));
-    require(tcpWaveHostEdit != nullptr && tcpWavePortEdit != nullptr && tcpWaveConnectButton != nullptr,
+    auto *remoteWaveHostEdit =
+        deviceConfigPage->findChild<QLineEdit *>(QStringLiteral("deviceRemoteSkyWaveHostEdit"));
+    auto *remoteWavePortSpin =
+        deviceConfigPage->findChild<QSpinBox *>(QStringLiteral("deviceRemoteSkyWavePortSpin"));
+    require(tcpWaveHostEdit != nullptr && tcpWavePortEdit != nullptr &&
+                tcpWaveConnectButton != nullptr && remoteWaveHostEdit != nullptr &&
+                remoteWavePortSpin != nullptr,
             "home TCP wave source controls are reachable in remote mode");
     require(tcpWaveHostEdit->isEnabled() && tcpWavePortEdit->isEnabled(),
             "remote TCP wave disconnected mode leaves host and port editable");
@@ -1013,8 +1041,12 @@ int main(int argc, char **argv)
                     ai8PortCombo->isEnabled() &&
                     ai8BaudCombo->isEnabled() &&
                     ai8RateCombo->isEnabled() &&
+                    deviceTcpWaveHostEdit->isEnabled() &&
+                    deviceTcpWavePortSpin->isEnabled() &&
                     epsilonPortCombo->currentText() == QStringLiteral("/dev/ttyEPSILON") &&
-                    ai8PortCombo->currentText() == QStringLiteral("/dev/ttyAI8");
+                    ai8PortCombo->currentText() == QStringLiteral("/dev/ttyAI8") &&
+                    deviceTcpWaveHostEdit->text() == QStringLiteral("10.0.0.2") &&
+                    deviceTcpWavePortSpin->value() == 8899;
             });
     VaporView::setSettingsWritesSuspended(true);
     if (!remoteConfigAutoLoaded)
@@ -1062,6 +1094,19 @@ int main(int argc, char **argv)
     require(tcpWaveHostEdit->text() == QStringLiteral("10.0.0.2") &&
                 tcpWavePortEdit->text() == QStringLiteral("8899"),
             "remote SkyConfig mirrors Wave TCP endpoint into the home TCP wave card");
+
+    deviceTcpWaveHostEdit->setText(QStringLiteral("10.0.0.3"));
+    deviceTcpWaveHostEdit->setFocus();
+    require(QMetaObject::invokeMethod(deviceTcpWaveHostEdit,
+                                      "editingFinished",
+                                      Qt::DirectConnection),
+            "remote device TCP host editor accepts the endpoint commit signal");
+    deviceTcpWavePortSpin->setValue(9900);
+    VaporViewTest::processEventsFor(80);
+    require(remoteWaveHostEdit->text() == QStringLiteral("10.0.0.3") &&
+                remoteWavePortSpin->value() == 9900 &&
+                remoteApplyButton->isEnabled(),
+            "remote device-row endpoint edits synchronize to the SkyConfig form");
 
     tcpWaveHostEdit->setText(QStringLiteral("10.0.0.9"));
     tcpWavePortEdit->setText(QStringLiteral("9901"));

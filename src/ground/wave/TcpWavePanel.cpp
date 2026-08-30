@@ -1775,9 +1775,11 @@ void TcpWavePanel::setupUi()
 
     connect(host_edit_, &QLineEdit::textChanged, this, [this](const QString&) {
         saveRememberedInputState();
+        emit connectionEndpointChanged(host(), port());
     });
     connect(port_edit_, &QLineEdit::textChanged, this, [this](const QString&) {
         saveRememberedInputState();
+        emit connectionEndpointChanged(host(), port());
     });
 
     live_display_timer_ = new QTimer(this);
@@ -2289,19 +2291,38 @@ int TcpWavePanel::port() const
     return ok && value >= 1 && value <= 65535 ? value : 8888;
 }
 
-void TcpWavePanel::setConnectionEndpoint(const QString& host, int port)
+bool TcpWavePanel::endpointEditable() const
 {
+    return host_edit_ && port_edit_ && host_edit_->isEnabled() && port_edit_->isEnabled();
+}
+
+void TcpWavePanel::setConnectionEndpoint(const QString& host, int port, bool persist)
+{
+    const QString trimmedHost = host.trimmed();
+    const QString boundedHost = trimmedHost.isEmpty()
+        ? QStringLiteral("127.0.0.1")
+        : trimmedHost;
+    const int boundedPort = port >= 1 && port <= 65535 ? port : 8888;
+    const bool changed =
+        (host_edit_ && host_edit_->text() != boundedHost) ||
+        (port_edit_ && port_edit_->text() != QString::number(boundedPort));
     if (host_edit_)
     {
         const QSignalBlocker blocker(host_edit_);
-        const QString trimmedHost = host.trimmed();
-        host_edit_->setText(trimmedHost.isEmpty() ? QStringLiteral("127.0.0.1") : trimmedHost);
+        host_edit_->setText(boundedHost);
     }
     if (port_edit_)
     {
         const QSignalBlocker blocker(port_edit_);
-        const int boundedPort = port >= 1 && port <= 65535 ? port : 8888;
         port_edit_->setText(QString::number(boundedPort));
+    }
+    if (persist)
+    {
+        saveRememberedInputState();
+    }
+    if (changed)
+    {
+        emit connectionEndpointChanged(boundedHost, boundedPort);
     }
 }
 

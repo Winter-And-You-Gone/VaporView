@@ -432,6 +432,8 @@ private:
     void updateHomeDeviceOverviewMinimumWidth();
     void updateConfigCardHeightForSourceMode();
     void syncDeviceConfigPageFromHome();
+    void syncDeviceConfigTcpWaveEndpointFromPanel();
+    void applyDeviceConfigTcpWaveEndpoint();
     void updateDeviceConfigTexts();
     void updateDeviceConfigState();
     void clearRemoteSkyDataUi();
