@@ -20,6 +20,7 @@ constexpr qint64 kUiTestLidarWideDistanceDurationMs = 2000;
 constexpr double kUiTestTemperaturePidAmplitudeC = 1.25;
 constexpr double kUiTestTemperaturePidAngularRate = 1.35;
 constexpr double kUiTestTemperaturePidDampingPerSecond = 0.125;
+constexpr double kUiTestAi8TemperatureTargetC = 25.0;
 
 struct UiTestGnssStatus
 {
@@ -546,9 +547,11 @@ UiTestSnapshot UiTestDataModel::snapshot(qint64 elapsedMs) const
         Ai8TemperatureControllerProtocol::ChannelControlState::ApidOutput);
     for (int index = 0; index < Ai8TemperatureControllerProtocol::kChannelCount; ++index)
     {
-        const double channelOffset = static_cast<double>(index) * 0.65;
         result.ai8Temperature.measuredC[static_cast<std::size_t>(index)] =
-            23.5 + channelOffset + std::sin(seconds * 0.7 + index * 0.33) * 0.4;
+            uiTestTemperatureMeasurement(kUiTestAi8TemperatureTargetC,
+                                         seconds,
+                                         static_cast<std::size_t>(index),
+                                         true);
     }
     if (!result.ai8Temperature.valid)
     {

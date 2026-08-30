@@ -130,6 +130,22 @@ int main(int argc, char **argv)
                 std::abs(disabledTemperature - pidTargetTemperature) <
                     std::abs(negativePidOvershoot - pidTargetTemperature),
             "disabling UI-test temperature output removes the PID overshoot response");
+    const double initialAi8PidTemperature =
+        pidModel.snapshot(0).ai8Temperature.measuredC[0];
+    const double positiveAi8PidOvershoot =
+        pidModel.snapshot(2327).ai8Temperature.measuredC[0];
+    const double negativeAi8PidOvershoot =
+        pidModel.snapshot(4654).ai8Temperature.measuredC[0];
+    const double settledAi8PidTemperature =
+        pidModel.snapshot(9308).ai8Temperature.measuredC[0];
+    require(initialAi8PidTemperature < pidTargetTemperature &&
+                positiveAi8PidOvershoot > pidTargetTemperature &&
+                negativeAi8PidOvershoot < pidTargetTemperature &&
+                std::abs(negativeAi8PidOvershoot - pidTargetTemperature) <
+                    std::abs(initialAi8PidTemperature - pidTargetTemperature) &&
+                std::abs(settledAi8PidTemperature - pidTargetTemperature) <
+                    std::abs(negativeAi8PidOvershoot - pidTargetTemperature),
+            "enabled UI-test AI-8 temperature simulates damped PID overshoot toward the target");
     const UiTestSnapshot laterSnapshot = first.snapshot(3900);
     require(firstSnapshot.waveformFeatureRateHz != laterSnapshot.waveformFeatureRateHz ||
                 firstSnapshot.rawWaveformRateHz != laterSnapshot.rawWaveformRateHz ||
