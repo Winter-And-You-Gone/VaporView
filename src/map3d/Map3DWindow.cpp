@@ -38,6 +38,7 @@
 #include <QSlider>
 #include <QShowEvent>
 #include <QSpinBox>
+#include <QStackedLayout>
 #include <QStatusBar>
 #include <QStringList>
 #include <QTimer>
@@ -682,14 +683,28 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     }
     else
     {
-        render_placeholder_label_ = new QLabel(this);
+        auto* renderHost = new QWidget(this);
+        render_stack_ = new QStackedLayout(renderHost);
+        render_stack_->setContentsMargins(0, 0, 0, 0);
+        render_stack_->setStackingMode(QStackedLayout::StackAll);
+
+        render_placeholder_label_ = new QLabel(renderHost);
         render_placeholder_label_->setObjectName(QStringLiteral("map3DRenderPlaceholder"));
         render_placeholder_label_->setMinimumSize(640, 420);
         render_placeholder_label_->setAlignment(Qt::AlignCenter);
+        render_placeholder_label_->setAutoFillBackground(true);
         render_placeholder_label_->setWordWrap(true);
         render_placeholder_label_->setText(
             QStringLiteral("3D 地图窗口已打开。\n点击工具栏“启动渲染”后再加载地图数据。"));
-        setCentralWidget(render_placeholder_label_);
+
+        // Create the first QOpenGLWidget before the top-level window is shown.
+        // Qt otherwise recreates the native window when rendering is started.
+        prewarmed_view_ = new OsgEarthViewWidget(renderHost, true);
+        prewarmed_view_->setObjectName(QStringLiteral("map3DView"));
+        render_stack_->addWidget(render_placeholder_label_);
+        render_stack_->addWidget(prewarmed_view_);
+        render_stack_->setCurrentWidget(render_placeholder_label_);
+        setCentralWidget(renderHost);
     }
     status_label_->setObjectName(QStringLiteral("map3DStatusLabel"));
 
@@ -1049,6 +1064,10 @@ Map3DWindow::~Map3DWindow()
     {
         view_->shutdown();
     }
+    else if (prewarmed_view_)
+    {
+        prewarmed_view_->shutdown();
+    }
 }
 
 void Map3DWindow::configureViewSignals()
@@ -1112,17 +1131,21 @@ void Map3DWindow::startRendering()
         statusBar()->showMessage(QStringLiteral("3D 渲染已启动。"), 3000);
         return;
     }
+    if (!prewarmed_view_ || !render_stack_)
+    {
+        statusBar()->showMessage(QStringLiteral("无法创建 3D 渲染视图。"), 8000);
+        return;
+    }
 
     statusBar()->showMessage(QStringLiteral("正在启动 3D 渲染视图..."));
-    QWidget* previousCentralWidget = takeCentralWidget();
-    view_ = new OsgEarthViewWidget(this);
+    view_ = prewarmed_view_;
     configureViewSignals();
-    setCentralWidget(view_);
-    if (previousCentralWidget)
+    render_stack_->setCurrentWidget(view_);
+    if (render_placeholder_label_)
     {
-        previousCentralWidget->deleteLater();
+        render_placeholder_label_->hide();
     }
-    render_placeholder_label_ = nullptr;
+    view_->startRendering();
     if (start_rendering_action_)
     {
         start_rendering_action_->setEnabled(false);

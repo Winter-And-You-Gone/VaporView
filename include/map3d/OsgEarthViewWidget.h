@@ -111,7 +111,7 @@ class OsgEarthViewWidget final : public QOpenGLWidget {
     Q_OBJECT
 
 public:
-    explicit OsgEarthViewWidget(QWidget* parent = nullptr);
+    explicit OsgEarthViewWidget(QWidget* parent = nullptr, bool deferRendering = false);
     ~OsgEarthViewWidget() override;
 
     void appendNavigationSample(const VaporView::Geo::NavSample& sample);
@@ -158,6 +158,8 @@ public:
     float trackLineWidth() const;
     void setTrackPointSize(float size);
     float trackPointSize() const;
+    void startRendering();
+    bool isRenderingStarted() const;
     bool flyToAircraft();
     bool flyToTrack();
     void resetView();
@@ -245,6 +247,7 @@ private:
 
     QTimer frameTimer_;
     bool initialized_ = false;
+    bool rendering_started_ = false;
     bool shutdown_ = false;
     bool follow_aircraft_ = false;
     bool use_xihu_initial_view_ = false;

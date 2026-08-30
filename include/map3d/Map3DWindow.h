@@ -20,6 +20,7 @@ class QLabel;
 class QPlainTextEdit;
 class QSlider;
 class QSpinBox;
+class QStackedLayout;
 class QTimer;
 class QCloseEvent;
 class QEvent;
@@ -129,8 +130,10 @@ private:
     void startSessionLoad(const QString& sessionDir, quint64 generation);
 
     OsgEarthViewWidget* view_ = nullptr;
+    OsgEarthViewWidget* prewarmed_view_ = nullptr;
     QWidget* headless_view_ = nullptr;
     QLabel* render_placeholder_label_ = nullptr;
+    QStackedLayout* render_stack_ = nullptr;
     int headless_sample_count_ = 0;
     std::vector<VaporView::Geo::NavSample> headless_samples_;
     std::vector<VaporView::Geo::TrajectoryRenderSample> headless_render_samples_;
