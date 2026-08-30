@@ -1544,7 +1544,7 @@ void LidarPanel::setupUi()
     distance_label_ = new QLabel("--- m", this);
     distance_label_->setObjectName("highlightedValue");
     distance_label_->setMinimumHeight(20);
-    setFixedNumericLabelWidth(distance_label_, {QStringLiteral("999.99 m"), QStringLiteral("--- m")}, 2);
+    setFixedNumericLabelWidth(distance_label_, {QStringLiteral("9999.99 m"), QStringLiteral("--- m")}, 2);
     distanceLayout->addWidget(distance_label_);
     distanceLayout->addSpacing(10);
     strength_lbl_ = new QLabel(this);

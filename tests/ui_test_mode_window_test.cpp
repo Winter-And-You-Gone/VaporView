@@ -694,7 +694,7 @@ void requireUiTestEpsilonPanelFieldsCovered(QWidget *epsilonPanel)
             "UI-test EPSILON attitude consistency covers all three attitude sources");
 }
 
-bool uiTestLidarDistanceUsesThreeDigitTwoDecimals(QWidget *root)
+bool uiTestLidarDistanceUsesIntegerDigits(QWidget *root, int integerDigits)
 {
     const auto *lidarPanel = root ? root->findChild<LidarPanel *>() : nullptr;
     if (!lidarPanel)
@@ -713,10 +713,23 @@ bool uiTestLidarDistanceUsesThreeDigitTwoDecimals(QWidget *root)
         }
 
         const QString number = text.left(text.size() - 2);
-        return number.size() == 6 &&
-            number.at(3) == QLatin1Char('.') &&
-            number.at(0).isDigit() && number.at(1).isDigit() && number.at(2).isDigit() &&
-            number.at(4).isDigit() && number.at(5).isDigit();
+        const int expectedNumberSize = integerDigits + 1 + 2;
+        if (number.size() != expectedNumberSize ||
+            number.at(integerDigits) != QLatin1Char('.') ||
+            number.at(0).isDigit() == false ||
+            number.at(number.size() - 2).isDigit() == false ||
+            number.at(number.size() - 1).isDigit() == false)
+        {
+            continue;
+        }
+        for (int index = 1; index < integerDigits; ++index)
+        {
+            if (!number.at(index).isDigit())
+            {
+                return false;
+            }
+        }
+        return true;
     }
     return false;
 }
@@ -945,6 +958,8 @@ int main(int argc, char **argv)
     require(modeAction->isChecked(), "UI test mode action becomes checked");
     require(!badge->isHidden(), "persistent UI test badge is visible");
     require(scenarioMenu->isEnabled(), "scenario menu is enabled in UI test mode");
+    require(uiTestLidarDistanceUsesIntegerDigits(window, 3),
+            "UI test mode starts with a three-digit lidar distance and two decimals");
     require(VaporViewTest::processEventsUntil(1500, [homeConfigCard]() {
                 return homeTelemetrySummaryShowsUiTestRates(homeConfigCard);
             }),
@@ -980,10 +995,14 @@ int main(int argc, char **argv)
             "UI test mode exposes the EPSILON home panel");
     requireUiTestEpsilonPanelFieldsCovered(epsilonPanel);
     requireUiTestEpsilonPanelWrappedTopRowFilled(epsilonPanel);
-    require(VaporViewTest::processEventsUntil(1500, [window]() {
-                return uiTestLidarDistanceUsesThreeDigitTwoDecimals(window);
+    require(VaporViewTest::processEventsUntil(4000, [window]() {
+                return uiTestLidarDistanceUsesIntegerDigits(window, 4);
             }),
-            "UI test mode shows lidar distance as a three-digit value with two decimals");
+            "UI test mode changes lidar distance to four integer digits with two decimals every three seconds");
+    require(VaporViewTest::processEventsUntil(2500, [window]() {
+                return uiTestLidarDistanceUsesIntegerDigits(window, 3);
+            }),
+            "UI test mode returns lidar distance to three integer digits after two seconds");
 
     auto *epsilonProgressRow = window->findChild<QWidget *>(
         QStringLiteral("epsilonReconfigureProgressRow"));

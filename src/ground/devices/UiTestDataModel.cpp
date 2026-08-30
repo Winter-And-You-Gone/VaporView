@@ -14,6 +14,9 @@ namespace
 
 constexpr double kPi = 3.14159265358979323846;
 constexpr int kUiTestGnssCycleIntervalMs = 3000;
+constexpr qint64 kUiTestLidarWideDistanceStartMs = 3000;
+constexpr qint64 kUiTestLidarDistanceCycleIntervalMs = 3000;
+constexpr qint64 kUiTestLidarWideDistanceDurationMs = 2000;
 
 struct UiTestGnssStatus
 {
@@ -100,6 +103,19 @@ const UiTestGnssStatus& uiTestGnssStatus(qint64 elapsedMs)
     const qint64 bucket = std::max<qint64>(0, elapsedMs) / kUiTestGnssCycleIntervalMs;
     return kUiTestGnssCycle[static_cast<std::size_t>(
         bucket % static_cast<qint64>(kUiTestGnssCycle.size()))];
+}
+
+bool uiTestLidarUsesWideDistance(qint64 elapsedMs)
+{
+    const qint64 nonNegativeElapsedMs = std::max<qint64>(0, elapsedMs);
+    if (nonNegativeElapsedMs < kUiTestLidarWideDistanceStartMs)
+    {
+        return false;
+    }
+
+    return (nonNegativeElapsedMs - kUiTestLidarWideDistanceStartMs) %
+               kUiTestLidarDistanceCycleIntervalMs <
+        kUiTestLidarWideDistanceDurationMs;
 }
 
 std::uint16_t uiTestFilterStatusBits(int fixCode)
@@ -468,7 +484,10 @@ UiTestSnapshot UiTestDataModel::snapshot(qint64 elapsedMs) const
 
     result.lidar.valid = connected(deviceState(SkyDeviceId::Lidar)) && !stalled;
     result.lidar.timestamp = timestamp;
-    result.lidar.distance_m = 120.0 + std::sin(seconds * 0.7) * 2.5;
+    const double lidarDistanceBaseM = uiTestLidarUsesWideDistance(nonNegativeElapsedMs)
+        ? 1234.0
+        : 120.0;
+    result.lidar.distance_m = lidarDistanceBaseM + std::sin(seconds * 0.7) * 2.5;
     result.lidar.signal_strength = static_cast<uint16_t>(820 + 70 * slow);
     if (!result.lidar.valid)
     {

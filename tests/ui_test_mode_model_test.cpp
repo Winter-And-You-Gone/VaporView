@@ -77,6 +77,22 @@ int main(int argc, char **argv)
                 firstSnapshot.lidar.distance_m >= 100.0 &&
                 firstSnapshot.lidar.distance_m < 1000.0,
             "UI-test lidar distance uses a three-digit meter range");
+    const UiTestSnapshot beforeWideDistance = first.snapshot(2999);
+    const UiTestSnapshot wideDistance = first.snapshot(3000);
+    const UiTestSnapshot wideDistanceEnd = first.snapshot(4999);
+    const UiTestSnapshot afterWideDistance = first.snapshot(5000);
+    const UiTestSnapshot repeatedWideDistance = first.snapshot(6000);
+    require(beforeWideDistance.lidar.distance_m >= 100.0 &&
+                beforeWideDistance.lidar.distance_m < 1000.0 &&
+                wideDistance.lidar.distance_m >= 1000.0 &&
+                wideDistance.lidar.distance_m < 10000.0 &&
+                wideDistanceEnd.lidar.distance_m >= 1000.0 &&
+                wideDistanceEnd.lidar.distance_m < 10000.0 &&
+                afterWideDistance.lidar.distance_m >= 100.0 &&
+                afterWideDistance.lidar.distance_m < 1000.0 &&
+                repeatedWideDistance.lidar.distance_m >= 1000.0 &&
+                repeatedWideDistance.lidar.distance_m < 10000.0,
+            "UI-test lidar distance alternates between three and four integer digits on the requested cycle");
     require(firstSnapshot.epsilon.latitude_deg == secondSnapshot.epsilon.latitude_deg,
             "same elapsed time produces deterministic navigation data");
     require(firstSnapshot.rawWaveform == secondSnapshot.rawWaveform,
