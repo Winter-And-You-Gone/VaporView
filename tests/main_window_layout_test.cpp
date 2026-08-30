@@ -10275,6 +10275,15 @@ int main(int argc, char **argv)
         QStringLiteral("environmentHumidityTrendPlot"),
         QStringLiteral("environmentPressureTrendPlot")
     };
+    const auto isTwoDigitNumber = [](const QString& text) {
+        return text.size() == 2 && text.at(0).isDigit() && text.at(1).isDigit();
+    };
+    const auto isHourNumber = [](const QString& text) {
+        return (text.size() == 1 || text.size() == 2) &&
+            std::all_of(text.cbegin(), text.cend(), [](const QChar& character) {
+                return character.isDigit();
+            });
+    };
     for (const QString& plotName : environmentTrendPlotNames)
     {
         QWidget *plot = environmentGroup->findChild<QWidget *>(plotName);
@@ -10290,11 +10299,28 @@ int main(int argc, char **argv)
                     plot->property("xAxisRightLabel").toString().contains(QLatin1Char(':')),
                 "environment trend plot exposes clock-time x-axis tick labels");
         const QStringList xAxisTickLabels = plot->property("xAxisTickLabels").toStringList();
+        bool subsequentLabelsUseMinutesAndSeconds = true;
+        for (int index = 1; index < xAxisTickLabels.size(); ++index)
+        {
+            const QStringList parts = xAxisTickLabels.at(index).split(QLatin1Char(':'));
+            if (parts.size() != 2 || !isTwoDigitNumber(parts.at(0)) ||
+                !isTwoDigitNumber(parts.at(1)))
+            {
+                subsequentLabelsUseMinutesAndSeconds = false;
+                break;
+            }
+        }
+        const QStringList firstLabelParts = xAxisTickLabels.isEmpty()
+            ? QStringList()
+            : xAxisTickLabels.first().split(QLatin1Char(':'));
+        const bool firstLabelIncludesHour = firstLabelParts.size() == 3 &&
+            isHourNumber(firstLabelParts.at(0)) &&
+            isTwoDigitNumber(firstLabelParts.at(1)) &&
+            isTwoDigitNumber(firstLabelParts.at(2));
         require(plot->property("xAxisTickCount").toInt() == xAxisTickLabels.size() &&
                     xAxisTickLabels.size() > 2 &&
-                    xAxisTickLabels.first().contains(QLatin1Char(':')) &&
-                    xAxisTickLabels.last().contains(QLatin1Char(':')),
-                "environment trend plot exposes adaptive clock-time x-axis tick labels");
+                    firstLabelIncludesHour && subsequentLabelsUseMinutesAndSeconds,
+                "environment trend plot shows hour only on the first tick and compact minute-second labels after it");
         require(std::abs(plot->property("xAxisTimeSpanSeconds").toDouble() -
                          static_cast<double>(xAxisTickLabels.size() - 1)) < 1e-6,
                 "environment trend plot uses temperature-style one-second x-axis intervals");
