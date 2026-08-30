@@ -381,7 +381,9 @@ QSplitter#appLayoutSplitter > QWidget,
 QSplitter#mainContentSplitter,
 QSplitter#mainContentSplitter > QWidget,
 QSplitter#homeOverviewSplitter,
-QSplitter#homeOverviewSplitter > QWidget {
+QSplitter#homeOverviewSplitter > QWidget,
+QSplitter#homeSensorCardSplitter,
+QSplitter#homeSensorCardSplitter > QWidget {
     background-color: @vv-window;
 }
 QMenuBar,
@@ -929,6 +931,22 @@ QSplitter#homeOverviewSplitter::handle:horizontal:hover {
 }
 QSplitter#homeOverviewSplitter::handle:horizontal:pressed {
     background-color: @vv-window;
+}
+QSplitter#homeSensorCardSplitter::handle:horizontal {
+    width: 12px;
+    background-color: @vv-surface;
+}
+QSplitter#homeSensorCardSplitter::handle:vertical {
+    height: 12px;
+    background-color: @vv-surface;
+}
+QSplitter#homeSensorCardSplitter::handle:horizontal:hover,
+QSplitter#homeSensorCardSplitter::handle:vertical:hover {
+    background-color: @vv-border;
+}
+QSplitter#homeSensorCardSplitter::handle:horizontal:pressed,
+QSplitter#homeSensorCardSplitter::handle:vertical:pressed {
+    background-color: @vv-border-strong;
 }
 QWidget#mainCardResizeHandle {
     min-height: 3px;

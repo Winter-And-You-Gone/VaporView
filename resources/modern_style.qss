@@ -34,6 +34,8 @@ QSplitter#appLayoutSplitter,
 QSplitter#mainContentSplitter,
 QSplitter#homeOverviewSplitter,
 QSplitter#homeOverviewSplitter > QWidget,
+QSplitter#homeSensorCardSplitter,
+QSplitter#homeSensorCardSplitter > QWidget,
 QSplitter#sessionViewerContentSplitter {
     background-color: @vv-surface;
 }
@@ -1115,6 +1117,26 @@ QSplitter#homeOverviewSplitter::handle:horizontal:hover {
 
 QSplitter#homeOverviewSplitter::handle:horizontal:pressed {
     background-color: @vv-surface;
+}
+
+QSplitter#homeSensorCardSplitter::handle:horizontal {
+    width: 12px;
+    background-color: @vv-surface;
+}
+
+QSplitter#homeSensorCardSplitter::handle:vertical {
+    height: 12px;
+    background-color: @vv-surface;
+}
+
+QSplitter#homeSensorCardSplitter::handle:horizontal:hover,
+QSplitter#homeSensorCardSplitter::handle:vertical:hover {
+    background-color: @vv-resize-hover;
+}
+
+QSplitter#homeSensorCardSplitter::handle:horizontal:pressed,
+QSplitter#homeSensorCardSplitter::handle:vertical:pressed {
+    background-color: @vv-resize-pressed;
 }
 
 /* 工具提示 */

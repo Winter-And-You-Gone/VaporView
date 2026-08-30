@@ -996,6 +996,98 @@ void moveVerticalDragWithStaleEventPosition(const VerticalDragContext& context,
     QCoreApplication::sendEvent(context.widget, &move);
 }
 
+void requireHomeSensorCardSplitterResizable(MainWindow& window)
+{
+    auto *splitter = window.findChild<QSplitter *>(QStringLiteral("homeSensorCardSplitter"));
+    require(splitter != nullptr, "home sensor card splitter exists");
+    require(splitter->orientation() == Qt::Horizontal &&
+                splitter->count() == 2 &&
+                !splitter->isCollapsible(0) &&
+                !splitter->isCollapsible(1),
+            "home sensor card splitter is horizontal and keeps both cards non-collapsible");
+    require(splitter->handleWidth() ==
+                VaporView::Ground::MainSupport::kHomeSensorSplitterHandleWidth,
+            "home sensor card splitter keeps the shared 12px separator width");
+    QWidget *handle = splitter->handle(1);
+    require(handle != nullptr && handle->isEnabled() &&
+                handle->cursor().shape() == Qt::SplitHCursor,
+            "home sensor card splitter exposes an enabled horizontal resize handle");
+
+    activateLayouts(&window);
+    processEventsFor(40);
+    const QList<int> originalSizes = splitter->sizes();
+    require(originalSizes.size() == 2,
+            "home sensor card splitter exposes two card widths");
+    QWidget *environmentCard = splitter->widget(1);
+    require(environmentCard != nullptr,
+            "home sensor card splitter exposes the environment card");
+    const int availableGrowth = originalSizes.at(1) - environmentCard->minimumWidth();
+    const int dragDistance = std::min(72, availableGrowth);
+    require(dragDistance >= 40,
+            "home sensor card splitter has enough width for a drag regression");
+
+    const QPoint localStart = handle->rect().center();
+    const QPoint globalStart = handle->mapToGlobal(localStart);
+    QMouseEvent press(QEvent::MouseButtonPress,
+                      localStart,
+                      globalStart,
+                      Qt::LeftButton,
+                      Qt::LeftButton,
+                      Qt::NoModifier);
+    QCoreApplication::sendEvent(handle, &press);
+    const QPoint localEnd = localStart + QPoint(dragDistance, 0);
+    const QPoint globalEnd = globalStart + QPoint(dragDistance, 0);
+    QMouseEvent move(QEvent::MouseMove,
+                     localEnd,
+                     globalEnd,
+                     Qt::NoButton,
+                     Qt::LeftButton,
+                     Qt::NoModifier);
+    QCoreApplication::sendEvent(handle, &move);
+    QMouseEvent release(QEvent::MouseButtonRelease,
+                        localEnd,
+                        globalEnd,
+                        Qt::LeftButton,
+                        Qt::NoButton,
+                        Qt::NoModifier);
+    QCoreApplication::sendEvent(handle, &release);
+    processEventsFor(40);
+    activateLayouts(&window);
+
+    const QList<int> resizedSizes = splitter->sizes();
+    require(resizedSizes.size() == 2 &&
+                resizedSizes.at(0) >= originalSizes.at(0) + dragDistance - 2 &&
+                resizedSizes.at(1) <= originalSizes.at(1) - dragDistance + 2,
+            "dragging the home sensor separator changes both card widths");
+    require(splitter->property(
+                VaporView::Ground::MainSupport::kHomeSensorSplitterUserResizedProperty)
+                .toBool(),
+            "home sensor separator drag is marked as user-resized");
+
+    QResizeEvent responsiveRefresh(window.size(), window.size());
+    QCoreApplication::sendEvent(&window, &responsiveRefresh);
+    processEventsFor(40);
+    activateLayouts(&window);
+    const QList<int> refreshedSizes = splitter->sizes();
+    require(refreshedSizes.size() == 2 &&
+                std::abs(refreshedSizes.at(0) - resizedSizes.at(0)) <= 1 &&
+                std::abs(refreshedSizes.at(1) - resizedSizes.at(1)) <= 1,
+            "home sensor separator width survives a responsive layout refresh");
+
+    splitter->setProperty(
+        VaporView::Ground::MainSupport::kHomeSensorSplitterProgrammaticResizeProperty,
+        true);
+    splitter->setSizes(originalSizes);
+    splitter->setProperty(
+        VaporView::Ground::MainSupport::kHomeSensorSplitterProgrammaticResizeProperty,
+        false);
+    splitter->setProperty(
+        VaporView::Ground::MainSupport::kHomeSensorSplitterUserResizedProperty,
+        false);
+    processEventsFor(40);
+    activateLayouts(&window);
+}
+
 void doubleClickWidget(QWidget *widget, int waitMs = 50)
 {
     require(widget != nullptr, "double-click widget exists");
@@ -4346,6 +4438,13 @@ int main(int argc, char **argv)
                                  QStringLiteral("QSplitter#homeOverviewSplitter::handle:horizontal:pressed {"),
                                  homeOverviewSplitterSurface,
                                  "home overview splitter keeps its surface color while pressed");
+    require(qApp->styleSheet().contains(
+                QStringLiteral("QSplitter#homeSensorCardSplitter::handle:horizontal")) &&
+                qApp->styleSheet().contains(
+                    VaporView::appThemeRgba(VaporView::AppThemeColor::Primary, false, 0.18)) &&
+                qApp->styleSheet().contains(
+                    VaporView::appThemeRgba(VaporView::AppThemeColor::Primary, false, 0.28)),
+            "home sensor card splitter exposes hover and pressed resize feedback");
     requireLastStyleRuleContains(
         qApp->styleSheet(),
         QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar:vertical {"),
@@ -4746,18 +4845,19 @@ int main(int argc, char **argv)
     auto *homeDataGroupForSpacing =
         window.findChild<QGroupBox *>(QStringLiteral("sensorRowContainer"));
     require(homeDataGroupForSpacing != nullptr, "home sensor row container exists for top-level spacing checks");
-    auto *homeEpsilonCardForSpacing =
-        homeDataGroupForSpacing->findChild<QGroupBox *>(QStringLiteral("sensorGroupBox"));
+    QGroupBox *homeEpsilonCardForSpacing = nullptr;
     QGroupBox *homeEnvironmentCardForSpacing = nullptr;
     const QList<QGroupBox*> homeSensorCardsForSpacing =
         homeDataGroupForSpacing->findChildren<QGroupBox *>(QStringLiteral("sensorGroupBox"));
     for (QGroupBox *card : homeSensorCardsForSpacing)
     {
-        if (card != homeEpsilonCardForSpacing &&
-            card->findChildren<QLabel *>(QStringLiteral("envStatusIcon")).size() == 3)
+        if (card->findChild<QWidget *>(QStringLiteral("epsilonPanel")))
+        {
+            homeEpsilonCardForSpacing = card;
+        }
+        else if (card->findChildren<QLabel *>(QStringLiteral("envStatusIcon")).size() == 3)
         {
             homeEnvironmentCardForSpacing = card;
-            break;
         }
     }
     require(homeEpsilonCardForSpacing != nullptr &&
@@ -10253,20 +10353,23 @@ int main(int argc, char **argv)
     auto *dataGroup = window.findChild<QGroupBox *>(QStringLiteral("sensorRowContainer"));
     require(dataGroup != nullptr, "sensor row container exists");
 
-    auto *epsilonGroup = dataGroup->findChild<QGroupBox *>(QStringLiteral("sensorGroupBox"));
-    require(epsilonGroup != nullptr, "EPSILON card exists");
+    QGroupBox *epsilonGroup = nullptr;
     QGroupBox *environmentGroup = nullptr;
     const QList<QGroupBox*> sensorGroups =
         dataGroup->findChildren<QGroupBox *>(QStringLiteral("sensorGroupBox"));
     for (QGroupBox *group : sensorGroups)
     {
-        if (group != epsilonGroup &&
+        if (group->findChild<QWidget *>(QStringLiteral("epsilonPanel")))
+        {
+            epsilonGroup = group;
+        }
+        else if (
             group->findChildren<QLabel *>(QStringLiteral("envStatusIcon")).size() == 3)
         {
             environmentGroup = group;
-            break;
         }
     }
+    require(epsilonGroup != nullptr, "EPSILON card exists");
     require(environmentGroup != nullptr, "environment and lidar card exists");
     require(environmentGroup->findChild<QWidget *>(QStringLiteral("environmentTrendPanel")) == nullptr,
             "environment card does not use a separate trend-title panel");
@@ -10372,6 +10475,7 @@ int main(int argc, char **argv)
                         environmentGroup->geometry() != compactEnvironmentGeometry);
             }),
             "sensor-card layout responds to the wide window size");
+    requireHomeSensorCardSplitterResizable(window);
     requireHomeDeviceGeometryStableAcrossCardResize(&window,
                                                     homeOverviewSplitter,
                                                     deviceOverviewCard,

@@ -312,6 +312,7 @@ struct MainWindowState
     QGroupBox *data_group_;
     QWidget *sensor_row_widget_;
     QHBoxLayout *sensor_layout_;
+    QSplitter *sensor_card_splitter_;
     QWidget *log_side_panel_;
     QFrame *log_group_;
     QGroupBox *tcp_wave_group_;

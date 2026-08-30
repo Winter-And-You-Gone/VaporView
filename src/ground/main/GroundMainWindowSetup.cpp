@@ -4909,7 +4909,17 @@ void MainWindow::setupDataPanels()
     state_->sensor_row_widget_ = new QWidget(state_->data_group_);
     state_->sensor_layout_ = new QHBoxLayout(state_->sensor_row_widget_);
     state_->sensor_layout_->setContentsMargins(0, 0, 0, 0);
-    state_->sensor_layout_->setSpacing(kTopLevelCardGap);
+    state_->sensor_layout_->setSpacing(0);
+    state_->sensor_card_splitter_ = new QSplitter(Qt::Horizontal, state_->sensor_row_widget_);
+    state_->sensor_card_splitter_->setObjectName(QStringLiteral("homeSensorCardSplitter"));
+    state_->sensor_card_splitter_->setAttribute(Qt::WA_StyledBackground, true);
+    state_->sensor_card_splitter_->setAutoFillBackground(true);
+    state_->sensor_card_splitter_->setChildrenCollapsible(false);
+    state_->sensor_card_splitter_->setHandleWidth(kHomeSensorSplitterHandleWidth);
+    state_->sensor_card_splitter_->setOpaqueResize(true);
+    state_->sensor_card_splitter_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    state_->sensor_card_splitter_->setProperty(kHomeSensorSplitterProgrammaticResizeProperty, false);
+    state_->sensor_card_splitter_->setProperty(kHomeSensorSplitterUserResizedProperty, false);
 
     state_->epsilon_group_ = new QGroupBox(this);
     state_->epsilon_group_->setObjectName("sensorGroupBox");
@@ -4947,7 +4957,7 @@ void MainWindow::setupDataPanels()
     epsilon_layout->addWidget(epsilonTitleBar);
     state_->epsilon_panel_ = new EpsilonPanel(epsilonRateTitleLabel, this);
     epsilon_layout->addWidget(state_->epsilon_panel_);
-    state_->sensor_layout_->addWidget(state_->epsilon_group_, kSensorNavigationStretch);
+    state_->sensor_card_splitter_->addWidget(state_->epsilon_group_);
 
     state_->gnss_group_ = nullptr;
     state_->imu_group_ = nullptr;
@@ -5014,7 +5024,22 @@ void MainWindow::setupDataPanels()
     env_group->setFixedHeight(sensorCardHeight);
     state_->sensor_row_widget_->setMinimumHeight(sensorCardHeight);
 
-    state_->sensor_layout_->addWidget(env_group, kSensorEnvironmentStretch);
+    state_->sensor_card_splitter_->addWidget(env_group);
+    state_->sensor_card_splitter_->setCollapsible(0, false);
+    state_->sensor_card_splitter_->setCollapsible(1, false);
+    state_->sensor_card_splitter_->setStretchFactor(0, kSensorNavigationStretch);
+    state_->sensor_card_splitter_->setStretchFactor(1, kSensorEnvironmentStretch);
+    state_->sensor_layout_->addWidget(state_->sensor_card_splitter_, 1);
+    connect(state_->sensor_card_splitter_, &QSplitter::splitterMoved, this, [this]() {
+        if (!state_->sensor_card_splitter_ ||
+            state_->sensor_card_splitter_
+                ->property(kHomeSensorSplitterProgrammaticResizeProperty)
+                .toBool())
+        {
+            return;
+        }
+        state_->sensor_card_splitter_->setProperty(kHomeSensorSplitterUserResizedProperty, true);
+    });
 
     data_layout->addWidget(state_->sensor_row_widget_, 0);
     data_layout->addStretch(1);

@@ -107,6 +107,8 @@ inline constexpr const char *kHomeOverviewDeviceProgrammaticResizeProperty = "_v
 inline constexpr const char *kHomeDeviceSingleConnectTargetProperty = "_vv_home_device_single_connect_target";
 inline constexpr int kSensorNavigationStretch = 4;
 inline constexpr int kSensorEnvironmentStretch = 1;
+inline constexpr const char *kHomeSensorSplitterProgrammaticResizeProperty = "_vv_home_sensor_splitter_programmatic_resize";
+inline constexpr const char *kHomeSensorSplitterUserResizedProperty = "_vv_home_sensor_splitter_user_resized";
 inline constexpr int kTcpWaveCardMinHeight = 430;
 inline constexpr int kCompactTcpWaveCardMinHeight = 560;
 inline constexpr int kAppSidebarIconOnlyBaseWidth = 62;
@@ -119,6 +121,7 @@ inline constexpr int kAppSidebarFullIconSize = 20;
 inline constexpr int kAppSidebarCompactIconSize = 32;
 inline constexpr int kMainCardResizeHandleHeight = 3;
 inline constexpr int kTopLevelCardGap = 12;
+inline constexpr int kHomeSensorSplitterHandleWidth = kTopLevelCardGap;
 inline constexpr int kTopLevelCardChromeInset = 12;
 inline constexpr int kTopLevelCardOuterVerticalInset =
     kTopLevelCardGap - kAppSidebarVisualPadding;

@@ -53,7 +53,7 @@ void MainWindow::loadModernStyleSheet()
         state_->base_style_sheet_ =
             "* { font-family: \"Segoe UI\", \"Microsoft YaHei\", \"PingFang SC\", sans-serif; }"
             "QMainWindow { background-color: @vv-surface; }"
-            "QWidget#appCentralWidget, QWidget#mainCardsPane, QFrame#appSidebar, QStackedWidget#mainPageStack, QWidget#temperaturePage, QWidget#deviceConfigPage, QWidget#logSidePanel, QMainWindow#sessionViewerWindow, QWidget#sessionViewerCentralWidget, QWidget#sessionViewerViewport, QWidget#sessionViewerContentPane, QScrollArea#mainCardsScrollArea, QScrollArea#sessionViewerScrollArea, QWidget#mainCardsViewport, QScrollArea#mainCardsScrollArea > QWidget, QScrollArea#mainCardsScrollArea > QWidget > QWidget, QScrollArea#sessionViewerScrollArea > QWidget, QScrollArea#sessionViewerScrollArea > QWidget > QWidget, QSplitter#appLayoutSplitter, QSplitter#mainContentSplitter, QSplitter#homeOverviewSplitter, QSplitter#homeOverviewSplitter > QWidget, QSplitter#sessionViewerContentSplitter { background-color: @vv-surface; }"
+            "QWidget#appCentralWidget, QWidget#mainCardsPane, QFrame#appSidebar, QStackedWidget#mainPageStack, QWidget#temperaturePage, QWidget#deviceConfigPage, QWidget#logSidePanel, QMainWindow#sessionViewerWindow, QWidget#sessionViewerCentralWidget, QWidget#sessionViewerViewport, QWidget#sessionViewerContentPane, QScrollArea#mainCardsScrollArea, QScrollArea#sessionViewerScrollArea, QWidget#mainCardsViewport, QScrollArea#mainCardsScrollArea > QWidget, QScrollArea#mainCardsScrollArea > QWidget > QWidget, QScrollArea#sessionViewerScrollArea > QWidget, QScrollArea#sessionViewerScrollArea > QWidget > QWidget, QSplitter#appLayoutSplitter, QSplitter#mainContentSplitter, QSplitter#homeOverviewSplitter, QSplitter#homeOverviewSplitter > QWidget, QSplitter#homeSensorCardSplitter, QSplitter#homeSensorCardSplitter > QWidget, QSplitter#sessionViewerContentSplitter { background-color: @vv-surface; }"
             "QFrame#appSidebar { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; }"
             "QPushButton#appSidebarButton { background-color: transparent; border: 1px solid transparent; border-radius: 6px; color: @vv-text; font-weight: 600; min-height: 34px; max-height: 34px; padding: 6px 8px; text-align: left; outline: none; }"
             "QPushButton#appSidebarButton:focus { outline: none; }"
@@ -204,6 +204,10 @@ void MainWindow::loadModernStyleSheet()
             "QSplitter#homeOverviewSplitter::handle:horizontal { width: 12px; background-color: @vv-surface; }"
             "QSplitter#homeOverviewSplitter::handle:horizontal:hover { background-color: @vv-surface; }"
             "QSplitter#homeOverviewSplitter::handle:horizontal:pressed { background-color: @vv-surface; }"
+            "QSplitter#homeSensorCardSplitter::handle:horizontal { width: 12px; background-color: @vv-surface; }"
+            "QSplitter#homeSensorCardSplitter::handle:vertical { height: 12px; background-color: @vv-surface; }"
+            "QSplitter#homeSensorCardSplitter::handle:horizontal:hover, QSplitter#homeSensorCardSplitter::handle:vertical:hover { background-color: @vv-resize-hover; }"
+            "QSplitter#homeSensorCardSplitter::handle:horizontal:pressed, QSplitter#homeSensorCardSplitter::handle:vertical:pressed { background-color: @vv-resize-pressed; }"
             "QWidget#mainCardResizeHandle { min-height: 3px; max-height: 3px; background-color: transparent; }"
             "QSplitter#mainContentSplitter::handle:horizontal:hover { background-color: @vv-resize-hover; }"
             "QWidget#mainCardResizeHandle:hover { background-color: @vv-resize-hover; }"
@@ -220,6 +224,10 @@ void MainWindow::loadModernStyleSheet()
             "QSplitter#homeOverviewSplitter::handle:horizontal { width: 12px; background-color: @vv-surface; }"
             "QSplitter#homeOverviewSplitter::handle:horizontal:hover { background-color: @vv-surface; }"
             "QSplitter#homeOverviewSplitter::handle:horizontal:pressed { background-color: @vv-surface; }"
+            "QSplitter#homeSensorCardSplitter::handle:horizontal { width: 12px; background-color: @vv-surface; }"
+            "QSplitter#homeSensorCardSplitter::handle:vertical { height: 12px; background-color: @vv-surface; }"
+            "QSplitter#homeSensorCardSplitter::handle:horizontal:hover, QSplitter#homeSensorCardSplitter::handle:vertical:hover { background-color: @vv-resize-hover; }"
+            "QSplitter#homeSensorCardSplitter::handle:horizontal:pressed, QSplitter#homeSensorCardSplitter::handle:vertical:pressed { background-color: @vv-resize-pressed; }"
             "QPushButton { background-color: @vv-primary; color: @vv-white; border: none; border-radius: 6px; padding: 4px 16px; font-size: 15px; font-weight: 500; min-height: 28px; max-height: 28px; }"
             "QPushButton:hover { background-color: @vv-primary-hover; }"
             "QPushButton:pressed { background-color: @vv-primary-pressed; }"
@@ -893,10 +901,29 @@ bool MainWindow::shouldUseCompactHomeLayout() const
 
 void MainWindow::updateResponsiveHomeLayout()
 {
-    if (!state_->sensor_layout_ || !state_->sensor_row_widget_ || !state_->data_group_)
+    if (!state_->sensor_layout_ || !state_->sensor_row_widget_ ||
+        !state_->sensor_card_splitter_ || !state_->data_group_)
     {
         return;
     }
+
+    QSplitter *sensorCardSplitter = state_->sensor_card_splitter_;
+    const auto setSensorCardSplitterSizes = [sensorCardSplitter](const QList<int>& sizes) {
+        if (!sensorCardSplitter || sizes.size() < 2)
+        {
+            return;
+        }
+        const QList<int> currentSizes = sensorCardSplitter->sizes();
+        if (currentSizes.size() == sizes.size() &&
+            std::abs(currentSizes.at(0) - sizes.at(0)) <= 1 &&
+            std::abs(currentSizes.at(1) - sizes.at(1)) <= 1)
+        {
+            return;
+        }
+        sensorCardSplitter->setProperty(kHomeSensorSplitterProgrammaticResizeProperty, true);
+        sensorCardSplitter->setSizes(sizes);
+        sensorCardSplitter->setProperty(kHomeSensorSplitterProgrammaticResizeProperty, false);
+    };
 
     const bool compact = shouldUseCompactHomeLayout();
     const bool layoutChanged = state_->compact_home_layout_ != compact;
@@ -935,7 +962,7 @@ void MainWindow::updateResponsiveHomeLayout()
     {
         sensorAvailableWidth = std::max(0, state_->data_group_->contentsRect().width());
     }
-    const int sensorCardGap = std::max(0, kTopLevelCardGap);
+    const int sensorCardGap = std::max(0, sensorCardSplitter->handleWidth());
     const bool compactCardsFitSideBySide =
         sensorAvailableWidth > 0 &&
         sensorAvailableWidth >= compactEpsilonMinimumWidth + sensorCardGap + environmentMinimumWidth;
@@ -954,12 +981,21 @@ void MainWindow::updateResponsiveHomeLayout()
         ? std::max(compactEpsilonMinimumWidth, proportionalEpsilonWidth)
         : compactEpsilonTargetWidth;
 
-    const QBoxLayout::Direction direction = stackSensorCards ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight;
-    if (state_->sensor_layout_->direction() != direction)
+    const Qt::Orientation sensorOrientation =
+        stackSensorCards ? Qt::Vertical : Qt::Horizontal;
+    if (sensorCardSplitter->orientation() != sensorOrientation)
     {
-        state_->sensor_layout_->setDirection(direction);
+        sensorCardSplitter->setProperty(kHomeSensorSplitterProgrammaticResizeProperty, true);
+        sensorCardSplitter->setOrientation(sensorOrientation);
+        sensorCardSplitter->setProperty(kHomeSensorSplitterProgrammaticResizeProperty, false);
+        sensorCardSplitter->setProperty(kHomeSensorSplitterUserResizedProperty, false);
     }
-    state_->sensor_layout_->setSpacing(kTopLevelCardGap);
+    if (QWidget *handle = sensorCardSplitter->handle(1))
+    {
+        handle->setEnabled(!stackSensorCards);
+        handle->setCursor(stackSensorCards ? Qt::SplitVCursor : Qt::SplitHCursor);
+    }
+    state_->sensor_layout_->setSpacing(0);
 
     if (state_->epsilon_panel_)
     {
@@ -1054,44 +1090,39 @@ void MainWindow::updateResponsiveHomeLayout()
 
     if (state_->epsilon_group_)
     {
-        if (compact)
+        if (stackSensorCards)
         {
-            state_->epsilon_group_->setMaximumWidth(compactCardsFitSideBySide
-                                                        ? compactEpsilonSideBySideWidth
-                                                        : compactEpsilonTargetWidth);
-            state_->epsilon_group_->setSizePolicy(
-                compactCardsFitSideBySide ? QSizePolicy::Expanding : QSizePolicy::Maximum,
-                QSizePolicy::Preferred);
-            state_->sensor_layout_->setAlignment(
-                state_->epsilon_group_,
-                compactCardsFitSideBySide ? Qt::Alignment() : Qt::AlignLeft | Qt::AlignTop);
+            state_->epsilon_group_->setMaximumWidth(compactEpsilonTargetWidth);
+            state_->epsilon_group_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
         }
         else
         {
             state_->epsilon_group_->setMaximumWidth(QWIDGETSIZE_MAX);
             state_->epsilon_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-            state_->sensor_layout_->setAlignment(state_->epsilon_group_, Qt::Alignment());
         }
     }
     if (state_->env_group_)
     {
-        if (compact)
-        {
-            state_->env_group_->setMaximumWidth(compactCardsFitSideBySide
-                                                    ? proportionalEnvironmentWidth
-                                                    : QWIDGETSIZE_MAX);
-        }
-        else
-        {
-            state_->env_group_->setMaximumWidth(proportionalEnvironmentWidth);
-        }
+        state_->env_group_->setMaximumWidth(QWIDGETSIZE_MAX);
         state_->env_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-        state_->sensor_layout_->setAlignment(state_->env_group_, Qt::Alignment());
     }
-    if (state_->sensor_layout_->count() >= 2)
+    if (!stackSensorCards && sensorAvailableWidth > sensorCardGap)
     {
-        state_->sensor_layout_->setStretch(0, stackSensorCards ? 0 : kSensorNavigationStretch);
-        state_->sensor_layout_->setStretch(1, stackSensorCards ? 0 : kSensorEnvironmentStretch);
+        const bool userResized = sensorCardSplitter
+            ->property(kHomeSensorSplitterUserResizedProperty)
+            .toBool();
+        const int availableCardWidth = std::max(0, sensorAvailableWidth - sensorCardGap);
+        const int desiredEpsilonWidth = std::max(
+            compactEpsilonMinimumWidth,
+            std::min(compactEpsilonSideBySideWidth,
+                     std::max(0, availableCardWidth - environmentMinimumWidth)));
+        const int desiredEnvironmentWidth = std::max(
+            environmentMinimumWidth,
+            availableCardWidth - desiredEpsilonWidth);
+        if (!userResized)
+        {
+            setSensorCardSplitterSizes({desiredEpsilonWidth, desiredEnvironmentWidth});
+        }
     }
 
     auto clearFixedHeight = [](QWidget *widget) {
@@ -1132,7 +1163,7 @@ void MainWindow::updateResponsiveHomeLayout()
     int targetHeight = std::max(epsilonHeight, envHeight);
     if (stackSensorCards && epsilonHeight > 0 && envHeight > 0)
     {
-        targetHeight = epsilonHeight + envHeight + state_->sensor_layout_->spacing();
+        targetHeight = epsilonHeight + envHeight + sensorCardGap;
     }
 
     bool hadStoredDataMinimumHeight = false;
@@ -1176,6 +1207,10 @@ void MainWindow::updateResponsiveHomeLayout()
         state_->data_group_->setProperty(kMainCardMinimumHeightProperty, dataMinimumHeight);
         state_->data_group_->setMinimumHeight(dataMinimumHeight);
         state_->data_group_->setFixedHeight(dataCardHeight);
+        if (stackSensorCards && epsilonHeight > 0 && envHeight > 0)
+        {
+            setSensorCardSplitterSizes({epsilonHeight, envHeight});
+        }
     }
 
     if (state_->log_side_panel_)
