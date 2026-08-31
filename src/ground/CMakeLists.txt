@@ -70,6 +70,7 @@ set(NAV_HEADERS
     ${CMAKE_SOURCE_DIR}/src/ground/navigation/NavigationStatusPanel.h
     ${CMAKE_SOURCE_DIR}/src/ground/navigation/EpsilonConfigPanel.h
     ${CMAKE_SOURCE_DIR}/src/ground/main/MainWindow.h
+    ${CMAKE_SOURCE_DIR}/src/ground/devices/RemoteSkyLinkConfig.h
     ${CMAKE_SOURCE_DIR}/src/ground/widgets/CustomTitleBar.h
     ${CMAKE_SOURCE_DIR}/src/ground/widgets/VisualTextLabel.h
     ${CMAKE_SOURCE_DIR}/src/ground/widgets/WindowSizing.h

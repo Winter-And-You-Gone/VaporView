@@ -906,13 +906,13 @@ void MainWindow::onRefreshPortsClicked()
     updateCombo(state_->device_config_.hmp_port_combo);
     updateCombo(state_->device_config_.lidar_port_combo);
     updateCombo(state_->device_config_.temperature_port_combo);
-    updateCombo(state_->sky_telemetry_port_combo_);
     updateCombo(state_->device_config_.sky_telemetry_port_combo);
     updateCombo(state_->device_config_.ai8_temperature_port_combo);
     refreshAi8TemperatureTitlePortOptions(
         ports,
         localSerialPortComboValue(state_->device_config_.ai8_temperature_port_combo));
     updateLocalDeviceConfigFromUi();
+    updateRemoteSkyLinkConfigFromUi();
     updateTemperatureControllerTitleText();
     updateTemperatureTitleButtonsState();
 
@@ -1249,6 +1249,18 @@ QJsonObject MainWindow::testLocalDeviceConfigSnapshot() const
     };
 }
 
+QJsonObject MainWindow::testRemoteSkyLinkConfigSnapshot() const
+{
+    const auto& config = state_->remote_sky_link_config_;
+    return QJsonObject{
+        {QStringLiteral("transport"), VaporView::telemetryTransportName(config.transport)},
+        {QStringLiteral("tcp_host"), config.tcpHost},
+        {QStringLiteral("tcp_port"), config.tcpPort},
+        {QStringLiteral("serial_port"), config.serialPort},
+        {QStringLiteral("serial_baud"), config.serialBaudRate},
+    };
+}
+
 void MainWindow::testApplyLocalPortDetection(const QString& deviceKey,
                                              const QString& port,
                                              const QString& baud)
@@ -1299,13 +1311,14 @@ void MainWindow::onConnectClicked()
     if (isRemoteSkyMode())
     {
         clearRemoteSkyDataUi();
-        const bool tcpTelemetry = isRemoteSkyTcpMode();
+        const auto& skyLink = state_->remote_sky_link_config_;
+        const bool tcpTelemetry = skyLink.transport == VaporView::TelemetryTransportType::Tcp;
         bool opened = false;
         QString openedText;
         if (tcpTelemetry)
         {
-            const QString host = state_->sky_telemetry_tcp_host_edit_ ? state_->sky_telemetry_tcp_host_edit_->text().trimmed() : QString();
-            const int tcpPort = state_->sky_telemetry_tcp_port_spin_ ? state_->sky_telemetry_tcp_port_spin_->value() : 39100;
+            const QString host = skyLink.tcpHost.trimmed();
+            const int tcpPort = skyLink.tcpPort;
             if (host.isEmpty())
             {
                 publishGroundLog(VaporView::LogLevel::Warning,
@@ -1329,8 +1342,8 @@ void MainWindow::onConnectClicked()
         }
         else
         {
-            const QString port = localSerialPortComboValue(state_->sky_telemetry_port_combo_);
-            const int baud = state_->sky_telemetry_baud_combo_ ? state_->sky_telemetry_baud_combo_->currentText().toInt() : 921600;
+            const QString port = skyLink.serialPort.trimmed();
+            const int baud = skyLink.serialBaudRate;
             if (port.isEmpty())
             {
                 publishGroundLog(VaporView::LogLevel::Warning,

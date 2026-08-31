@@ -494,12 +494,6 @@ void MainWindow::setEnglish(bool english)
         state_->config_inline_title_lbl_->setText(english ? "Device Overview" : "设备概览");
     }
     if (state_->source_mode_switch_) state_->source_mode_switch_->setEnglish(english);
-    if (state_->sky_telemetry_transport_lbl_) state_->sky_telemetry_transport_lbl_->setText(english ? "Link:" : "链路:");
-    updateSkyTelemetryTransportComboTexts(state_->sky_telemetry_transport_combo_, english);
-    if (state_->sky_telemetry_tcp_host_lbl_) state_->sky_telemetry_tcp_host_lbl_->setText(english ? "Sky IP:" : "天空端IP:");
-    if (state_->sky_telemetry_tcp_port_lbl_) state_->sky_telemetry_tcp_port_lbl_->setText(english ? "Port:" : "端口:");
-    if (state_->sky_telemetry_port_lbl_) state_->sky_telemetry_port_lbl_->setText(english ? "Serial:" : "串口:");
-    if (state_->sky_telemetry_baud_lbl_) state_->sky_telemetry_baud_lbl_->setText(english ? "Baud:" : "波特率:");
     if (state_->data_source_mode_combo_)
     {
         const QSignalBlocker blocker(state_->data_source_mode_combo_);

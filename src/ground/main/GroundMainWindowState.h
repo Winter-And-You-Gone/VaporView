@@ -2,6 +2,7 @@
 
 #include "LogRecord.h"
 #include "ground/devices/LocalDeviceConnectionController.h"
+#include "ground/devices/RemoteSkyLinkConfig.h"
 #include "ground/main/MainWindow.h"
 #include "ground/main/UiLogModel.h"
 
@@ -357,19 +358,8 @@ struct MainWindowState
     VaporView::Ground::Widgets::Ai8TemperatureOverviewPanel *ai8_temperature_overview_panel_;
     QLabel *config_inline_title_lbl_;
     VaporView::Ground::Widgets::SourceModeOverviewSwitchButton *source_mode_switch_;
-    QLabel *sky_telemetry_transport_lbl_;
-    QLabel *sky_telemetry_port_lbl_;
-    QLabel *sky_telemetry_baud_lbl_;
-    QLabel *sky_telemetry_tcp_host_lbl_;
-    QLabel *sky_telemetry_tcp_port_lbl_;
-    QWidget *sky_telemetry_row_widget_;
 
     QComboBox *data_source_mode_combo_;
-    QComboBox *sky_telemetry_transport_combo_;
-    QComboBox *sky_telemetry_port_combo_;
-    QComboBox *sky_telemetry_baud_combo_;
-    QLineEdit *sky_telemetry_tcp_host_edit_;
-    QSpinBox *sky_telemetry_tcp_port_spin_;
     QComboBox *imu_format_combo_;
     QPushButton *imu_apply_btn_;
     QPushButton *imu_hi91_btn_;
@@ -384,6 +374,7 @@ struct MainWindowState
     std::unique_ptr<VaporView::Ground::Devices::LocalDeviceConnectionController> local_connection_controller_;
     std::unique_ptr<VaporView::Ground::Devices::LocalConnectionCoordinator> local_connection_coordinator_;
     VaporView::Ground::Devices::LocalDeviceConfig local_device_config_;
+    VaporView::Ground::Devices::RemoteSkyLinkConfig remote_sky_link_config_;
     std::unique_ptr<VaporView::Ground::Session::GroundRecordingService> recording_service_;
     std::unique_ptr<VaporView::Ground::Session::RecordingScheduleController> recording_schedule_controller_;
 

@@ -5770,23 +5770,17 @@ int main(int argc, char **argv)
     activateLayouts(&window);
 
     const QRect homeConfigLocalRect = homeConfigCard->geometry();
-    const SkyTelemetryRowWidgets homeSkyTelemetry = findSkyTelemetryRowWidgets(homeConfigCard);
-    require(homeSkyTelemetry.transportCombo != nullptr,
-            "home sky telemetry transport combo exists");
-    requireSkyTelemetryTransportLabels(homeSkyTelemetry, false);
+    QWidget *homeOverviewBody =
+        window.findChild<QWidget *>(QStringLiteral("homeOverviewDeviceBody"));
+    require(homeOverviewBody &&
+                window.findChild<QWidget *>(QStringLiteral("homeSkyTelemetryRow")) == nullptr &&
+                window.findChild<QComboBox *>(QStringLiteral("skyTelemetryPortCombo")) == nullptr &&
+                homeOverviewBody->findChildren<QComboBox *>().isEmpty() &&
+                homeOverviewBody->findChildren<QLineEdit *>().isEmpty() &&
+                homeOverviewBody->findChildren<QSpinBox *>().isEmpty(),
+            "home device overview contains no Sky Link configuration controls");
     homeSourceModeCombo->setCurrentIndex(1);
     processEventsFor(150);
-    activateLayouts(&window);
-    setSkyTelemetryTransport(homeSkyTelemetry.transportCombo, QStringLiteral("tcp"));
-    processEventsFor(100);
-    activateLayouts(&window);
-    requireSkyTelemetryTcpMode(homeSkyTelemetry, false);
-    setSkyTelemetryTransport(homeSkyTelemetry.transportCombo, QStringLiteral("serial"));
-    processEventsFor(100);
-    activateLayouts(&window);
-    requireSkyTelemetrySerialMode(homeSkyTelemetry, false);
-    setSkyTelemetryTransport(homeSkyTelemetry.transportCombo, QStringLiteral("tcp"));
-    processEventsFor(100);
     activateLayouts(&window);
     requireSameRect(homeConfigCard->geometry(), homeConfigLocalRect, 2,
                     "home configuration card geometry is stable in sky-ground remote mode");
@@ -9562,9 +9556,6 @@ int main(int argc, char **argv)
     {
         requireLocalSerialPortComboReady(deviceConfigPage->findChild<QComboBox *>(comboSpec.first), comboSpec.second);
     }
-    requireLocalSerialPortComboReady(
-        window.findChild<QComboBox *>(QStringLiteral("skyTelemetryPortCombo")),
-        "home sky telemetry serial combo uses select-plus-manual behavior");
     const int manualAddIndex = devicePortCombo->findText(QStringLiteral("手动添加"));
     require(manualAddIndex >= 0,
             "device configuration local serial combo exposes the manual-add option");

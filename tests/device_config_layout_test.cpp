@@ -411,6 +411,16 @@ int main(int argc, char **argv)
     QWidget *deviceConfigPage = window.findChild<QWidget *>(QStringLiteral("deviceConfigPage"));
     require(deviceConfigPage != nullptr && deviceConfigPage->isVisible(),
             "device configuration page is visible");
+    QWidget *homeOverviewBody =
+        window.findChild<QWidget *>(QStringLiteral("homeOverviewDeviceBody"));
+    require(homeOverviewBody != nullptr,
+            "home device overview body exists");
+    require(window.findChild<QWidget *>(QStringLiteral("homeSkyTelemetryRow")) == nullptr &&
+                window.findChild<QComboBox *>(QStringLiteral("skyTelemetryPortCombo")) == nullptr &&
+                homeOverviewBody->findChildren<QComboBox *>().isEmpty() &&
+                homeOverviewBody->findChildren<QLineEdit *>().isEmpty() &&
+                homeOverviewBody->findChildren<QSpinBox *>().isEmpty(),
+            "home device overview does not create Sky Link configuration widgets");
     QScrollArea *scrollArea =
         deviceConfigPage->findChild<QScrollArea *>(QStringLiteral("mainCardsScrollArea"));
     require(scrollArea != nullptr && scrollArea->widget() != nullptr,
@@ -1013,8 +1023,15 @@ int main(int argc, char **argv)
     VaporViewTest::processEventsFor(80);
     auto *skyTelemetryTransportCombo =
         deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceSkyTelemetryTransportCombo"));
+    auto *skyTelemetryPortCombo =
+        deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceSkyTelemetryPortCombo"));
+    auto *skyTelemetryTcpHostEdit =
+        deviceConfigPage->findChild<QLineEdit *>(QStringLiteral("deviceSkyTelemetryTcpHostEdit"));
+    auto *skyTelemetryTcpPortSpin =
+        deviceConfigPage->findChild<QSpinBox *>(QStringLiteral("deviceSkyTelemetryTcpPortSpin"));
     QWidget *skyTelemetryRow = skyTelemetryTransportCombo ? skyTelemetryTransportCombo->parentWidget() : nullptr;
-    require(skyTelemetryRow && skyTelemetryBaudCombo && !skyTelemetryRow->isVisible(),
+    require(skyTelemetryRow && skyTelemetryBaudCombo && skyTelemetryPortCombo &&
+                skyTelemetryTcpHostEdit && skyTelemetryTcpPortSpin && !skyTelemetryRow->isVisible(),
             "local mode hides sky-ground link editing controls from the unified device table");
     QWidget *serialFormRow =
         epsilonPortCombo && epsilonPortCombo->parentWidget() ? epsilonPortCombo->parentWidget()->parentWidget() : nullptr;
@@ -1111,34 +1128,27 @@ int main(int argc, char **argv)
     selectComboText(skyTelemetryBaudCombo, QStringLiteral("460800"),
                     "device Sky Link baud accepts an original selectable value");
     VaporViewTest::processEventsFor(60);
-    QWidget *homeSkyTelemetryRow =
-        window.findChild<QWidget *>(QStringLiteral("homeSkyTelemetryRow"));
-    QComboBox *homeSkyTelemetryBaudCombo = nullptr;
-    if (homeSkyTelemetryRow)
-    {
-        for (QComboBox *combo : homeSkyTelemetryRow->findChildren<QComboBox *>(
-                 QString(), Qt::FindDirectChildrenOnly))
-        {
-            if (combo && combo->findText(QStringLiteral("921600")) >= 0)
-            {
-                homeSkyTelemetryBaudCombo = combo;
-                break;
-            }
-        }
-    }
-    require(homeSkyTelemetryBaudCombo &&
-                homeSkyTelemetryBaudCombo->currentText() == QStringLiteral("460800"),
-            "device Sky Link baud selection synchronizes to the home Sky Link control");
-    selectComboText(homeSkyTelemetryBaudCombo, QStringLiteral("921600"),
-                    "home Sky Link baud accepts the original default value");
+    selectComboText(skyTelemetryPortCombo, QStringLiteral("COM42"),
+                    "device Sky Link serial port accepts a retained port");
     VaporViewTest::processEventsFor(60);
-    require(skyTelemetryBaudCombo->currentText() == QStringLiteral("921600"),
-            "home Sky Link baud selection synchronizes back to device configuration");
+    QJsonObject skyLinkConfig = window.testRemoteSkyLinkConfigSnapshot();
+    require(skyLinkConfig.value(QStringLiteral("transport")).toString() == QStringLiteral("serial") &&
+                skyLinkConfig.value(QStringLiteral("serial_port")).toString() == QStringLiteral("COM42") &&
+                skyLinkConfig.value(QStringLiteral("serial_baud")).toInt() == 460800,
+            "device Sky Link serial controls update the non-UI link model");
     selectComboData(skyTelemetryTransportCombo, QStringLiteral("tcp"),
                     "Sky Link transport can switch back to TCP");
     VaporViewTest::processEventsFor(60);
     require(!skyTelemetryBaudCombo->isVisible(),
             "Sky Link baud remains hidden in TCP mode");
+    skyTelemetryTcpHostEdit->setText(QStringLiteral("10.10.0.8"));
+    skyTelemetryTcpPortSpin->setValue(39201);
+    VaporViewTest::processEventsFor(60);
+    skyLinkConfig = window.testRemoteSkyLinkConfigSnapshot();
+    require(skyLinkConfig.value(QStringLiteral("transport")).toString() == QStringLiteral("tcp") &&
+                skyLinkConfig.value(QStringLiteral("tcp_host")).toString() == QStringLiteral("10.10.0.8") &&
+                skyLinkConfig.value(QStringLiteral("tcp_port")).toInt() == 39201,
+            "device Sky Link TCP controls update the non-UI link model");
     require(remoteCard->isVisible(), "remote sky service/config card appears in remote mode");
     QWidget *serialTitleBar =
         serialCard->findChild<QWidget *>(QStringLiteral("sectionTitleBar"), Qt::FindDirectChildrenOnly);
@@ -1223,6 +1233,14 @@ int main(int argc, char **argv)
     QTcpServer fakeSkyServer;
     require(fakeSkyServer.listen(QHostAddress::LocalHost),
             "fake SkyConfig TCP server starts after the remote page is already open");
+    skyTelemetryTcpHostEdit->setText(QStringLiteral("127.0.0.1"));
+    skyTelemetryTcpPortSpin->setValue(static_cast<int>(fakeSkyServer.serverPort()));
+    VaporViewTest::processEventsFor(60);
+    skyLinkConfig = window.testRemoteSkyLinkConfigSnapshot();
+    require(skyLinkConfig.value(QStringLiteral("tcp_host")).toString() == QStringLiteral("127.0.0.1") &&
+                skyLinkConfig.value(QStringLiteral("tcp_port")).toInt() ==
+                    static_cast<int>(fakeSkyServer.serverPort()),
+            "Sky Link model supplies the fake TCP endpoint before remote connection");
     QTcpSocket *fakeSkySocket = nullptr;
     VaporView::TelemetryCodec inboundCodec;
     VaporView::TelemetryCodec outboundCodec;
@@ -1297,14 +1315,15 @@ int main(int argc, char **argv)
         });
     });
     VaporView::setSettingsWritesSuspended(false);
-    const bool remoteOpened = remoteController->openTcp(
-        QStringLiteral("127.0.0.1"), fakeSkyServer.serverPort());
+    const bool remoteConnectInvoked = QMetaObject::invokeMethod(
+        &window, "onConnectClicked", Qt::DirectConnection);
+    const bool remoteOpened = remoteConnectInvoked && remoteController->isOpen();
     if (!remoteOpened)
     {
         VaporView::setSettingsWritesSuspended(true);
     }
     require(remoteOpened,
-            "Ground opens the fake Sky TCP link after entering the Remote Device Config page");
+            "Remote connection opens the fake Sky TCP link from the Sky Link model endpoint");
     const bool remoteConfigAutoLoaded = VaporViewTest::processEventsUntil(3000, [&]() {
                 return skyConfigFrameSent &&
                     getSkyConfigRequests == 1 &&
@@ -1523,6 +1542,59 @@ int main(int argc, char **argv)
 
     window.close();
     VaporView::setSettingsWritesSuspended(false);
+
+    QSettings migratedSkyLinkSettings = VaporView::applicationConfigSettings();
+    migratedSkyLinkSettings.beginGroup(QStringLiteral("MainWindow"));
+    migratedSkyLinkSettings.setValue(QStringLiteral("source/mode"), QStringLiteral("remote"));
+    migratedSkyLinkSettings.setValue(QStringLiteral("telemetry/transport"), QStringLiteral("serial"));
+    migratedSkyLinkSettings.setValue(QStringLiteral("telemetry/sky_port"), QStringLiteral("COM11"));
+    migratedSkyLinkSettings.setValue(QStringLiteral("telemetry/sky_baud"), QStringLiteral("230400"));
+    migratedSkyLinkSettings.setValue(QStringLiteral("telemetry/tcp_host"), QStringLiteral("172.20.0.8"));
+    migratedSkyLinkSettings.setValue(QStringLiteral("telemetry/tcp_port"), 39555);
+    migratedSkyLinkSettings.endGroup();
+    migratedSkyLinkSettings.sync();
+
+    MainWindow restoredWindow;
+    restoredWindow.resize(1280, 760);
+    restoredWindow.show();
+    require(VaporViewTest::waitForWindowExposed(&restoredWindow),
+            "restored Sky Link settings window becomes exposed");
+    QPushButton *restoredDeviceConfigNav = findDeviceConfigNav(restoredWindow);
+    require(restoredDeviceConfigNav != nullptr,
+            "restored Sky Link settings window exposes the device configuration nav button");
+    restoredDeviceConfigNav->click();
+    VaporViewTest::processEventsFor(120);
+    QJsonObject restoredSkyLink = restoredWindow.testRemoteSkyLinkConfigSnapshot();
+    QWidget *restoredDeviceConfigPage =
+        restoredWindow.findChild<QWidget *>(QStringLiteral("deviceConfigPage"));
+    QComboBox *restoredTransport = restoredDeviceConfigPage
+        ? restoredDeviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceSkyTelemetryTransportCombo"))
+        : nullptr;
+    QComboBox *restoredPort = restoredDeviceConfigPage
+        ? restoredDeviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceSkyTelemetryPortCombo"))
+        : nullptr;
+    QComboBox *restoredBaud = restoredDeviceConfigPage
+        ? restoredDeviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceSkyTelemetryBaudCombo"))
+        : nullptr;
+    QLineEdit *restoredHost = restoredDeviceConfigPage
+        ? restoredDeviceConfigPage->findChild<QLineEdit *>(QStringLiteral("deviceSkyTelemetryTcpHostEdit"))
+        : nullptr;
+    QSpinBox *restoredTcpPort = restoredDeviceConfigPage
+        ? restoredDeviceConfigPage->findChild<QSpinBox *>(QStringLiteral("deviceSkyTelemetryTcpPortSpin"))
+        : nullptr;
+    require(restoredSkyLink.value(QStringLiteral("transport")).toString() == QStringLiteral("serial") &&
+                restoredSkyLink.value(QStringLiteral("serial_port")).toString() == QStringLiteral("COM11") &&
+                restoredSkyLink.value(QStringLiteral("serial_baud")).toInt() == 230400 &&
+                restoredSkyLink.value(QStringLiteral("tcp_host")).toString() == QStringLiteral("172.20.0.8") &&
+                restoredSkyLink.value(QStringLiteral("tcp_port")).toInt() == 39555 &&
+                restoredTransport && restoredTransport->currentData().toString() == QStringLiteral("serial") &&
+                restoredPort && restoredPort->currentText() == QStringLiteral("COM11") &&
+                restoredBaud && restoredBaud->currentText() == QStringLiteral("230400") &&
+                restoredHost && restoredHost->text() == QStringLiteral("172.20.0.8") &&
+                restoredTcpPort && restoredTcpPort->value() == 39555,
+            "legacy Sky Link settings load into the model and refresh the device configuration UI");
+    restoredWindow.close();
+
     std::cout << "device configuration layout test passed\n";
     return 0;
 }

@@ -1771,22 +1771,36 @@ void MainWindow::loadRememberedInputState()
             state_->data_source_mode_combo_->setCurrentIndex(index);
         }
     }
-    loadCombo(state_->sky_telemetry_port_combo_, QStringLiteral("telemetry/sky_port"));
-    loadCombo(state_->sky_telemetry_baud_combo_, QStringLiteral("telemetry/sky_baud"));
-    if (state_->sky_telemetry_transport_combo_)
+    auto& skyLink = state_->remote_sky_link_config_;
+    VaporView::TelemetryTransportType transport = skyLink.transport;
+    if (VaporView::parseTelemetryTransport(
+            settings.value(QStringLiteral("telemetry/transport"),
+                           VaporView::telemetryTransportName(transport)).toString(),
+            transport))
     {
-        const QString transport = settings.value(QStringLiteral("telemetry/transport"), QStringLiteral("tcp")).toString();
-        const int index = state_->sky_telemetry_transport_combo_->findData(transport);
-        state_->sky_telemetry_transport_combo_->setCurrentIndex(index >= 0 ? index : 0);
+        skyLink.transport = transport;
     }
-    if (state_->sky_telemetry_tcp_host_edit_)
+    skyLink.serialPort = settings.value(QStringLiteral("telemetry/sky_port"),
+                                        skyLink.serialPort).toString().trimmed();
+    if (!skyLink.serialPort.isEmpty())
     {
-        state_->sky_telemetry_tcp_host_edit_->setText(settings.value(QStringLiteral("telemetry/tcp_host"), QStringLiteral("192.168.1.2")).toString());
+        VaporView::rememberSerialPort(skyLink.serialPort);
     }
-    if (state_->sky_telemetry_tcp_port_spin_)
+    bool validSkyBaud = false;
+    const int savedSkyBaud = settings.value(
+        QStringLiteral("telemetry/sky_baud"), skyLink.serialBaudRate).toInt(&validSkyBaud);
+    const QList<int> supportedSkyBauds = {
+        9600, 19200, 38400, 57600, 115200, 230400, 460800, 500000, 921600};
+    if (validSkyBaud && supportedSkyBauds.contains(savedSkyBaud))
     {
-        state_->sky_telemetry_tcp_port_spin_->setValue(settings.value(QStringLiteral("telemetry/tcp_port"), 39100).toInt());
+        skyLink.serialBaudRate = savedSkyBaud;
     }
+    skyLink.tcpHost = settings.value(QStringLiteral("telemetry/tcp_host"),
+                                     skyLink.tcpHost).toString().trimmed();
+    skyLink.tcpPort = std::clamp(
+        settings.value(QStringLiteral("telemetry/tcp_port"), skyLink.tcpPort).toInt(),
+        1,
+        65535);
 
     state_->recording_export_rate_hz_ = std::clamp(settings.value("recording_export_rate_hz", state_->recording_export_rate_hz_).toInt(), 1, 200);
     state_->imu_recording_rate_hz_ = std::clamp(settings.value("imu_recording_rate_hz", state_->imu_recording_rate_hz_).toInt(), 0, 1000);
@@ -1802,37 +1816,43 @@ void MainWindow::loadRememberedInputState()
         state_->data_source_mode_combo_->setCurrentIndex(1);
     }
     const int portIndex = args.indexOf(QStringLiteral("--telemetry-port"));
-    if (portIndex >= 0 && portIndex + 1 < args.size() && state_->sky_telemetry_port_combo_)
+    if (portIndex >= 0 && portIndex + 1 < args.size())
     {
         const QString port = args.at(portIndex + 1).trimmed();
         VaporView::rememberSerialPort(port);
-        setLocalSerialPortComboText(state_->sky_telemetry_port_combo_, port);
+        skyLink.serialPort = port;
     }
     const int baudIndex = args.indexOf(QStringLiteral("--telemetry-baud"));
-    if (baudIndex >= 0 && baudIndex + 1 < args.size() && state_->sky_telemetry_baud_combo_)
+    if (baudIndex >= 0 && baudIndex + 1 < args.size())
     {
-        state_->sky_telemetry_baud_combo_->setCurrentText(args.at(baudIndex + 1));
+        bool validBaud = false;
+        const int baud = args.at(baudIndex + 1).toInt(&validBaud);
+        if (validBaud && supportedSkyBauds.contains(baud))
+        {
+            skyLink.serialBaudRate = baud;
+        }
     }
     const int transportIndex = args.indexOf(QStringLiteral("--telemetry-transport"));
-    if (transportIndex >= 0 && transportIndex + 1 < args.size() && state_->sky_telemetry_transport_combo_)
+    if (transportIndex >= 0 && transportIndex + 1 < args.size())
     {
-        const QString transport = args.at(transportIndex + 1).trimmed().toLower();
-        const int comboIndex = state_->sky_telemetry_transport_combo_->findData(transport);
-        if (comboIndex >= 0)
+        VaporView::TelemetryTransportType commandLineTransport = skyLink.transport;
+        if (VaporView::parseTelemetryTransport(args.at(transportIndex + 1),
+                                                commandLineTransport))
         {
-            state_->sky_telemetry_transport_combo_->setCurrentIndex(comboIndex);
+            skyLink.transport = commandLineTransport;
         }
     }
     const int hostIndex = args.indexOf(QStringLiteral("--telemetry-host"));
-    if (hostIndex >= 0 && hostIndex + 1 < args.size() && state_->sky_telemetry_tcp_host_edit_)
+    if (hostIndex >= 0 && hostIndex + 1 < args.size())
     {
-        state_->sky_telemetry_tcp_host_edit_->setText(args.at(hostIndex + 1));
+        skyLink.tcpHost = args.at(hostIndex + 1).trimmed();
     }
     const int tcpPortIndex = args.indexOf(QStringLiteral("--telemetry-tcp-port"));
-    if (tcpPortIndex >= 0 && tcpPortIndex + 1 < args.size() && state_->sky_telemetry_tcp_port_spin_)
+    if (tcpPortIndex >= 0 && tcpPortIndex + 1 < args.size())
     {
-        state_->sky_telemetry_tcp_port_spin_->setValue(args.at(tcpPortIndex + 1).toInt());
+        skyLink.tcpPort = std::clamp(args.at(tcpPortIndex + 1).toInt(), 1, 65535);
     }
+    refreshDeviceConfigUiFromRemoteSkyLinkModel();
     onDataSourceModeChanged(state_->data_source_mode_combo_ ? state_->data_source_mode_combo_->currentIndex() : 0);
 }
 
@@ -1844,6 +1864,7 @@ void MainWindow::saveRememberedInputState() const
     }
     QSettings settings = VaporView::applicationConfigSettings();
     updateLocalDeviceConfigFromUi();
+    updateRemoteSkyLinkConfigFromUi();
     settings.beginGroup(QStringLiteral("MainWindow"));
 
     auto saveCombo = [this, &settings](const QString& key, QComboBox *combo) {
@@ -1933,20 +1954,18 @@ void MainWindow::saveRememberedInputState() const
     {
         VaporView::setPersistentSetting(settings, QStringLiteral("source/mode"), sourceModeStorageValue(state_->data_source_mode_combo_->currentIndex()));
     }
-    saveCombo(QStringLiteral("telemetry/sky_port"), state_->sky_telemetry_port_combo_);
-    saveCombo(QStringLiteral("telemetry/sky_baud"), state_->sky_telemetry_baud_combo_);
-    if (state_->sky_telemetry_transport_combo_)
-    {
-        VaporView::setPersistentSetting(settings, QStringLiteral("telemetry/transport"), state_->sky_telemetry_transport_combo_->currentData().toString());
-    }
-    if (state_->sky_telemetry_tcp_host_edit_)
-    {
-        VaporView::setPersistentSetting(settings, QStringLiteral("telemetry/tcp_host"), state_->sky_telemetry_tcp_host_edit_->text().trimmed());
-    }
-    if (state_->sky_telemetry_tcp_port_spin_)
-    {
-        VaporView::setPersistentSetting(settings, QStringLiteral("telemetry/tcp_port"), state_->sky_telemetry_tcp_port_spin_->value());
-    }
+    const auto& skyLink = state_->remote_sky_link_config_;
+    VaporView::rememberSerialPort(skyLink.serialPort);
+    VaporView::setPersistentSetting(settings, QStringLiteral("telemetry/sky_port"),
+                                    skyLink.serialPort);
+    VaporView::setPersistentSetting(settings, QStringLiteral("telemetry/sky_baud"),
+                                    QString::number(skyLink.serialBaudRate));
+    VaporView::setPersistentSetting(settings, QStringLiteral("telemetry/transport"),
+                                    VaporView::telemetryTransportName(skyLink.transport));
+    VaporView::setPersistentSetting(settings, QStringLiteral("telemetry/tcp_host"),
+                                    skyLink.tcpHost);
+    VaporView::setPersistentSetting(settings, QStringLiteral("telemetry/tcp_port"),
+                                    skyLink.tcpPort);
     VaporView::setPersistentSetting(settings, QStringLiteral("recording_export_rate_hz"), state_->recording_export_rate_hz_);
     VaporView::setPersistentSetting(settings, QStringLiteral("imu_recording_rate_hz"), state_->imu_recording_rate_hz_);
     VaporView::setPersistentSetting(settings, QStringLiteral("waveform_recording_rate_hz"), state_->waveform_recording_rate_hz_);
@@ -1988,20 +2007,52 @@ void MainWindow::bindRememberedInputState()
     bindCombo(state_->device_config_.ptb_source_combo);
     bindCombo(state_->device_config_.hmp_source_combo);
     bindCombo(state_->data_source_mode_combo_);
-    bindCombo(state_->sky_telemetry_transport_combo_);
-    bindCombo(state_->sky_telemetry_port_combo_);
-    bindCombo(state_->sky_telemetry_baud_combo_);
-    if (state_->sky_telemetry_tcp_host_edit_)
+    const auto persistSkyLink = [this](bool transportChanged) {
+        updateRemoteSkyLinkConfigFromUi();
+        saveRememberedInputState();
+        if (transportChanged)
+        {
+            updateSourceModeUi();
+        }
+        else
+        {
+            updateRemoteTelemetrySummaryLabel();
+        }
+    };
+    if (state_->device_config_.sky_telemetry_transport_combo)
     {
-        connect(state_->sky_telemetry_tcp_host_edit_, &QLineEdit::textChanged, this, [this](const QString&) {
-            saveRememberedInputState();
-        });
+        connect(state_->device_config_.sky_telemetry_transport_combo,
+                QOverload<int>::of(&QComboBox::currentIndexChanged),
+                this,
+                [persistSkyLink](int) { persistSkyLink(true); });
     }
-    if (state_->sky_telemetry_tcp_port_spin_)
+    if (state_->device_config_.sky_telemetry_port_combo)
     {
-        connect(state_->sky_telemetry_tcp_port_spin_, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int) {
-            saveRememberedInputState();
-        });
+        connect(state_->device_config_.sky_telemetry_port_combo,
+                &QComboBox::currentTextChanged,
+                this,
+                [persistSkyLink](const QString&) { persistSkyLink(false); });
+    }
+    if (state_->device_config_.sky_telemetry_baud_combo)
+    {
+        connect(state_->device_config_.sky_telemetry_baud_combo,
+                &QComboBox::currentTextChanged,
+                this,
+                [persistSkyLink](const QString&) { persistSkyLink(false); });
+    }
+    if (state_->device_config_.sky_telemetry_tcp_host_edit)
+    {
+        connect(state_->device_config_.sky_telemetry_tcp_host_edit,
+                &QLineEdit::textChanged,
+                this,
+                [persistSkyLink](const QString&) { persistSkyLink(false); });
+    }
+    if (state_->device_config_.sky_telemetry_tcp_port_spin)
+    {
+        connect(state_->device_config_.sky_telemetry_tcp_port_spin,
+                QOverload<int>::of(&QSpinBox::valueChanged),
+                this,
+                [persistSkyLink](int) { persistSkyLink(false); });
     }
 
 }

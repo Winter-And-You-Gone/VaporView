@@ -118,6 +118,7 @@ public:
     QJsonObject testRemoteSkyConfigFromDeviceConfigUi(QString *errorMessage = nullptr) const;
     QString testRemoteSkyConfigStatusText() const;
     QJsonObject testLocalDeviceConfigSnapshot() const;
+    QJsonObject testRemoteSkyLinkConfigSnapshot() const;
     void testApplyLocalPortDetection(const QString& deviceKey,
                                      const QString& port,
                                      const QString& baud);
@@ -422,6 +423,8 @@ private:
     void syncDeviceConfigPageForCurrentTarget();
     void updateLocalDeviceConfigFromUi() const;
     void refreshDeviceConfigUiFromLocalModel();
+    void updateRemoteSkyLinkConfigFromUi() const;
+    void refreshDeviceConfigUiFromRemoteSkyLinkModel();
     void enterLocalDeviceConfigMode();
     void enterRemoteSkyDeviceConfigMode();
     void setRemoteSkyConfigUi(const VaporView::SkyConfig& config);

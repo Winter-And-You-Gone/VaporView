@@ -2553,72 +2553,6 @@ void MainWindow::setupDeviceConfigPage()
     skyTelemetryLayout->addWidget(state_->device_config_.sky_telemetry_baud_combo, 0, Qt::AlignVCenter);
     skyTelemetryLayout->addStretch(1);
 
-    const auto syncTransport = [this](QComboBox *source, QComboBox *target) {
-        connect(source, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-                [this, source, target](int) {
-            const QSignalBlocker blocker(target);
-            const int index = target->findData(source->currentData());
-            if (index >= 0)
-            {
-                target->setCurrentIndex(index);
-            }
-            saveRememberedInputState();
-            updateSourceModeUi();
-        });
-    };
-    syncTransport(state_->sky_telemetry_transport_combo_,
-                  state_->device_config_.sky_telemetry_transport_combo);
-    syncTransport(state_->device_config_.sky_telemetry_transport_combo,
-                  state_->sky_telemetry_transport_combo_);
-    const auto syncPort = [this](QComboBox *source, QComboBox *target) {
-        connect(source, &QComboBox::currentTextChanged, this,
-                [this, source, target](const QString&) {
-            const QSignalBlocker blocker(target);
-            setLocalSerialPortComboText(target, localSerialPortComboValue(source));
-            saveRememberedInputState();
-        });
-    };
-    syncPort(state_->sky_telemetry_port_combo_,
-             state_->device_config_.sky_telemetry_port_combo);
-    syncPort(state_->device_config_.sky_telemetry_port_combo,
-             state_->sky_telemetry_port_combo_);
-    const auto syncBaud = [this](QComboBox *source, QComboBox *target) {
-        connect(source, &QComboBox::currentTextChanged, this,
-                [this, source, target](const QString& text) {
-            const QSignalBlocker blocker(target);
-            applyComboText(target, text);
-            saveRememberedInputState();
-        });
-    };
-    syncBaud(state_->sky_telemetry_baud_combo_,
-             state_->device_config_.sky_telemetry_baud_combo);
-    syncBaud(state_->device_config_.sky_telemetry_baud_combo,
-             state_->sky_telemetry_baud_combo_);
-    const auto syncHost = [this](QLineEdit *source, QLineEdit *target) {
-        connect(source, &QLineEdit::textChanged, this,
-                [this, target](const QString& text) {
-            const QSignalBlocker blocker(target);
-            target->setText(text);
-            saveRememberedInputState();
-        });
-    };
-    syncHost(state_->sky_telemetry_tcp_host_edit_,
-             state_->device_config_.sky_telemetry_tcp_host_edit);
-    syncHost(state_->device_config_.sky_telemetry_tcp_host_edit,
-             state_->sky_telemetry_tcp_host_edit_);
-    const auto syncTcpPort = [this](QSpinBox *source, QSpinBox *target) {
-        connect(source, QOverload<int>::of(&QSpinBox::valueChanged), this,
-                [this, target](int value) {
-            const QSignalBlocker blocker(target);
-            target->setValue(value);
-            saveRememberedInputState();
-        });
-    };
-    syncTcpPort(state_->sky_telemetry_tcp_port_spin_,
-                state_->device_config_.sky_telemetry_tcp_port_spin);
-    syncTcpPort(state_->device_config_.sky_telemetry_tcp_port_spin,
-                state_->sky_telemetry_tcp_port_spin_);
-
     auto *formRowWidget = new QWidget(serialCard);
     auto *formRowLayout = new QVBoxLayout(formRowWidget);
     formRowLayout->setContentsMargins(0, 0, 0, 0);
@@ -3601,6 +3535,73 @@ void MainWindow::refreshDeviceConfigUiFromLocalModel()
     setChecked(state_->device_config_.ai8_temperature_enabled_check, c.ai8TemperatureController.enabled);
 }
 
+void MainWindow::updateRemoteSkyLinkConfigFromUi() const
+{
+    auto& config = state_->remote_sky_link_config_;
+    if (QComboBox *transport = state_->device_config_.sky_telemetry_transport_combo)
+    {
+        VaporView::TelemetryTransportType parsedTransport = config.transport;
+        if (VaporView::parseTelemetryTransport(transport->currentData().toString(),
+                                                parsedTransport))
+        {
+            config.transport = parsedTransport;
+        }
+    }
+    if (QComboBox *port = state_->device_config_.sky_telemetry_port_combo;
+        port && !port->property(kLocalSerialPortManualEntryProperty).toBool())
+    {
+        config.serialPort = localSerialPortComboValue(port);
+    }
+    if (QComboBox *baud = state_->device_config_.sky_telemetry_baud_combo)
+    {
+        bool validBaud = false;
+        const int value = baud->currentText().trimmed().toInt(&validBaud);
+        if (validBaud && value > 0)
+        {
+            config.serialBaudRate = value;
+        }
+    }
+    if (QLineEdit *host = state_->device_config_.sky_telemetry_tcp_host_edit)
+    {
+        config.tcpHost = host->text().trimmed();
+    }
+    if (QSpinBox *port = state_->device_config_.sky_telemetry_tcp_port_spin)
+    {
+        config.tcpPort = port->value();
+    }
+}
+
+void MainWindow::refreshDeviceConfigUiFromRemoteSkyLinkModel()
+{
+    const auto& config = state_->remote_sky_link_config_;
+    if (QComboBox *transport = state_->device_config_.sky_telemetry_transport_combo)
+    {
+        const QSignalBlocker blocker(transport);
+        const int index = transport->findData(VaporView::telemetryTransportName(config.transport));
+        transport->setCurrentIndex(index >= 0 ? index : 0);
+    }
+    if (QComboBox *port = state_->device_config_.sky_telemetry_port_combo)
+    {
+        const QSignalBlocker blocker(port);
+        setLocalSerialPortComboText(port, config.serialPort);
+    }
+    if (QComboBox *baud = state_->device_config_.sky_telemetry_baud_combo)
+    {
+        const QSignalBlocker blocker(baud);
+        applyComboText(baud, QString::number(config.serialBaudRate));
+    }
+    if (QLineEdit *host = state_->device_config_.sky_telemetry_tcp_host_edit)
+    {
+        const QSignalBlocker blocker(host);
+        host->setText(config.tcpHost);
+    }
+    if (QSpinBox *port = state_->device_config_.sky_telemetry_tcp_port_spin)
+    {
+        const QSignalBlocker blocker(port);
+        port->setValue(config.tcpPort);
+    }
+}
+
 void MainWindow::syncDeviceConfigTcpWaveEndpointFromPanel()
 {
     if (!state_->tcp_wave_panel_ ||
@@ -4472,7 +4473,6 @@ void MainWindow::refreshLocalSerialPortManualOptionTexts()
                              state_->device_config_.lidar_port_combo,
                              state_->device_config_.temperature_port_combo,
                              state_->device_config_.ai8_temperature_port_combo,
-                             state_->sky_telemetry_port_combo_,
                              state_->device_config_.sky_telemetry_port_combo})
     {
         if (!combo || !combo->property(kLocalSerialPortComboProperty).toBool())
@@ -4592,67 +4592,6 @@ void MainWindow::setupConfigPanel()
                                        kConfigHomeBodyBottomPadding);
     homeBodyLayout->setSpacing(2);
 
-    state_->sky_telemetry_row_widget_ = new QWidget(homeBodyWidget);
-    state_->sky_telemetry_row_widget_->setObjectName(QStringLiteral("homeSkyTelemetryRow"));
-    state_->sky_telemetry_row_widget_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    auto *skyTelemetryLayout = new QHBoxLayout(state_->sky_telemetry_row_widget_);
-    skyTelemetryLayout->setContentsMargins(0, 2, 0, 2);
-    skyTelemetryLayout->setSpacing(6);
-    state_->sky_telemetry_transport_lbl_ = new QLabel(state_->sky_telemetry_row_widget_);
-    state_->sky_telemetry_transport_lbl_->setObjectName(QStringLiteral("fieldLabel"));
-    state_->sky_telemetry_transport_combo_ = new QComboBox(state_->sky_telemetry_row_widget_);
-    state_->sky_telemetry_transport_combo_->addItem(
-        skyTelemetryTransportDisplayText(false, QStringLiteral("tcp")), QStringLiteral("tcp"));
-    state_->sky_telemetry_transport_combo_->addItem(
-        skyTelemetryTransportDisplayText(false, QStringLiteral("serial")), QStringLiteral("serial"));
-    state_->sky_telemetry_transport_combo_->setFixedSize(110, kMainPageInputHeight);
-    configureComboPopup(state_->sky_telemetry_transport_combo_);
-    state_->sky_telemetry_tcp_host_lbl_ = new QLabel(state_->sky_telemetry_row_widget_);
-    state_->sky_telemetry_tcp_host_lbl_->setObjectName(QStringLiteral("fieldLabel"));
-    state_->sky_telemetry_tcp_host_edit_ = new QLineEdit(state_->sky_telemetry_row_widget_);
-    state_->sky_telemetry_tcp_host_edit_->setText(QStringLiteral("192.168.1.2"));
-    state_->sky_telemetry_tcp_host_edit_->setFixedHeight(kMainPageInputHeight);
-    state_->sky_telemetry_tcp_host_edit_->setFixedWidth(160);
-    state_->sky_telemetry_tcp_port_lbl_ = new QLabel(state_->sky_telemetry_row_widget_);
-    state_->sky_telemetry_tcp_port_lbl_->setObjectName(QStringLiteral("fieldLabel"));
-    state_->sky_telemetry_tcp_port_spin_ = new QSpinBox(state_->sky_telemetry_row_widget_);
-    state_->sky_telemetry_tcp_port_spin_->setRange(1, 65535);
-    state_->sky_telemetry_tcp_port_spin_->setValue(39100);
-    state_->sky_telemetry_tcp_port_spin_->setFixedSize(100, kMainPageInputHeight);
-    state_->sky_telemetry_port_lbl_ = new QLabel(state_->sky_telemetry_row_widget_);
-    state_->sky_telemetry_port_lbl_->setObjectName(QStringLiteral("fieldLabel"));
-    state_->sky_telemetry_port_combo_ = new QComboBox(state_->sky_telemetry_row_widget_);
-    state_->sky_telemetry_port_combo_->setObjectName(QStringLiteral("skyTelemetryPortCombo"));
-    installLocalSerialPortComboBehavior(state_->sky_telemetry_port_combo_);
-    refreshLocalSerialPortComboOptions(state_->sky_telemetry_port_combo_, getAvailablePorts());
-    state_->sky_telemetry_port_combo_->setFixedSize(108, kMainPageInputHeight);
-    state_->sky_telemetry_baud_lbl_ = new QLabel(state_->sky_telemetry_row_widget_);
-    state_->sky_telemetry_baud_lbl_->setObjectName(QStringLiteral("fieldLabel"));
-    state_->sky_telemetry_baud_combo_ = new QComboBox(state_->sky_telemetry_row_widget_);
-    state_->sky_telemetry_baud_combo_->addItems(
-        {QStringLiteral("9600"), QStringLiteral("19200"), QStringLiteral("38400"),
-         QStringLiteral("57600"), QStringLiteral("115200"), QStringLiteral("230400"),
-         QStringLiteral("460800"), QStringLiteral("500000"), QStringLiteral("921600")});
-    state_->sky_telemetry_baud_combo_->setCurrentText(QStringLiteral("921600"));
-    state_->sky_telemetry_baud_combo_->setFixedSize(100, kMainPageInputHeight);
-    configureComboPopup(state_->sky_telemetry_baud_combo_);
-    const QList<QWidget *> skyTelemetryWidgets{
-        state_->sky_telemetry_transport_lbl_,
-        state_->sky_telemetry_transport_combo_,
-        state_->sky_telemetry_tcp_host_lbl_,
-        state_->sky_telemetry_tcp_host_edit_,
-        state_->sky_telemetry_tcp_port_lbl_,
-        state_->sky_telemetry_tcp_port_spin_,
-        state_->sky_telemetry_port_lbl_,
-        state_->sky_telemetry_port_combo_,
-        state_->sky_telemetry_baud_lbl_,
-        state_->sky_telemetry_baud_combo_};
-    for (QWidget *widget : skyTelemetryWidgets)
-    {
-        skyTelemetryLayout->addWidget(widget, 0, Qt::AlignVCenter);
-    }
-    skyTelemetryLayout->addStretch(1);
-
     auto *homeDevicesWidget = new QWidget(homeBodyWidget);
     homeDevicesWidget->setObjectName(QStringLiteral("homeOverviewDeviceGrid"));
     homeDevicesWidget->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
@@ -4731,7 +4670,6 @@ void MainWindow::setupConfigPanel()
     state_->config_group_->setMinimumWidth(homeDeviceOverviewContentMinimumWidth());
 
     homeBodyLayout->addWidget(homeDevicesWidget, 0, Qt::AlignTop | Qt::AlignLeft);
-    homeBodyLayout->addWidget(state_->sky_telemetry_row_widget_, 0, Qt::AlignTop);
     homeBodyLayout->addWidget(state_->data_telemetry_summary_card_, 0, Qt::AlignTop);
     config_root_layout->addWidget(homeBodyWidget, 0, Qt::AlignTop);
     updateHomeDeviceStatusCapsules();

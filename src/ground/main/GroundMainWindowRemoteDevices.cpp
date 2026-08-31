@@ -240,11 +240,8 @@ bool MainWindow::isRemoteSkyMode() const
 
 bool MainWindow::isRemoteSkyTcpMode() const
 {
-    if (!state_->sky_telemetry_transport_combo_)
-    {
-        return true;
-    }
-    return state_->sky_telemetry_transport_combo_->currentData().toString() != QStringLiteral("serial");
+    return state_->remote_sky_link_config_.transport ==
+        VaporView::TelemetryTransportType::Tcp;
 }
 
 void MainWindow::requestSourceModeSelection(bool remoteSelected)
@@ -553,24 +550,6 @@ void MainWindow::updateSourceModeUi()
         state_->source_mode_switch_->setEnabled(isUiTestMode() || (!state_->is_connected_ && !state_->connection_attempt_in_progress_));
         state_->source_mode_switch_->setSwitchChecked(remote, state_->source_mode_switch_->switchChecked() != remote);
     }
-    const bool remoteInputsEnabled = remote && (isUiTestMode() || !state_->is_connected_) && !state_->connection_attempt_in_progress_;
-    const bool tcpTelemetry = isRemoteSkyTcpMode();
-    if (state_->sky_telemetry_transport_combo_) state_->sky_telemetry_transport_combo_->setEnabled(remoteInputsEnabled);
-    if (state_->sky_telemetry_port_combo_) state_->sky_telemetry_port_combo_->setEnabled(remoteInputsEnabled && !tcpTelemetry);
-    if (state_->sky_telemetry_baud_combo_) state_->sky_telemetry_baud_combo_->setEnabled(remoteInputsEnabled && !tcpTelemetry);
-    if (state_->sky_telemetry_tcp_host_edit_) state_->sky_telemetry_tcp_host_edit_->setEnabled(remoteInputsEnabled && tcpTelemetry);
-    if (state_->sky_telemetry_tcp_port_spin_) state_->sky_telemetry_tcp_port_spin_->setEnabled(remoteInputsEnabled && tcpTelemetry);
-    if (state_->sky_telemetry_row_widget_) state_->sky_telemetry_row_widget_->setVisible(remote);
-    if (state_->sky_telemetry_transport_lbl_) state_->sky_telemetry_transport_lbl_->setVisible(true);
-    if (state_->sky_telemetry_transport_combo_) state_->sky_telemetry_transport_combo_->setVisible(true);
-    if (state_->sky_telemetry_port_lbl_) state_->sky_telemetry_port_lbl_->setVisible(!tcpTelemetry);
-    if (state_->sky_telemetry_port_combo_) state_->sky_telemetry_port_combo_->setVisible(!tcpTelemetry);
-    if (state_->sky_telemetry_baud_lbl_) state_->sky_telemetry_baud_lbl_->setVisible(!tcpTelemetry);
-    if (state_->sky_telemetry_baud_combo_) state_->sky_telemetry_baud_combo_->setVisible(!tcpTelemetry);
-    if (state_->sky_telemetry_tcp_host_lbl_) state_->sky_telemetry_tcp_host_lbl_->setVisible(tcpTelemetry);
-    if (state_->sky_telemetry_tcp_host_edit_) state_->sky_telemetry_tcp_host_edit_->setVisible(tcpTelemetry);
-    if (state_->sky_telemetry_tcp_port_lbl_) state_->sky_telemetry_tcp_port_lbl_->setVisible(tcpTelemetry);
-    if (state_->sky_telemetry_tcp_port_spin_) state_->sky_telemetry_tcp_port_spin_->setVisible(tcpTelemetry);
     const bool remoteActionsAvailable = remote && (isUiTestMode() ||
         (state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen()));
     setRemoteDeviceButtonsEnabled(remoteActionsAvailable);
@@ -1119,20 +1098,14 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         }
         if (isRemoteSkyTcpMode())
         {
-            const QString host = state_->sky_telemetry_tcp_host_edit_
-                ? state_->sky_telemetry_tcp_host_edit_->text().trimmed()
-                : QString();
-            const int port = state_->sky_telemetry_tcp_port_spin_
-                ? state_->sky_telemetry_tcp_port_spin_->value()
-                : 0;
+            const QString host = state_->remote_sky_link_config_.tcpHost.trimmed();
+            const int port = state_->remote_sky_link_config_.tcpPort;
             return QStringLiteral("TCP %1:%2")
                 .arg(host.isEmpty() ? QStringLiteral("--") : host)
                 .arg(port > 0 ? QString::number(port) : QStringLiteral("--"));
         }
-        const QString serialPort = localSerialPortComboValue(state_->sky_telemetry_port_combo_);
-        const QString baud = state_->sky_telemetry_baud_combo_
-            ? state_->sky_telemetry_baud_combo_->currentText().trimmed()
-            : QString();
+        const QString serialPort = state_->remote_sky_link_config_.serialPort.trimmed();
+        const QString baud = QString::number(state_->remote_sky_link_config_.serialBaudRate);
         return QStringLiteral("Serial %1 %2")
             .arg(serialPort.isEmpty() ? QStringLiteral("--") : serialPort,
                  baud.isEmpty() ? QStringLiteral("--") : baud);
