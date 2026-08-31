@@ -986,24 +986,33 @@ QString temperatureOverviewOutputPercentText(double value)
     return QStringLiteral("%1%").arg(QLocale::c().toString(value, 'f', 2));
 }
 
-void setTemperatureOverviewPillText(QLabel *label, const QString& title, const QString& value)
+void setTemperatureOverviewPillText(QLabel *label,
+                                    const QString& title,
+                                    const QString& number,
+                                    const QString& unit,
+                                    const QColor& numberColor)
 {
     if (!label)
     {
         return;
     }
 
+    const QString displayText = QStringLiteral("%1 %2 %3").arg(title, number, unit);
     label->setProperty("reservedValueText", temperatureOverviewReservedNumberText());
-    const int valueSuffixStart = value.indexOf(QLatin1Char(' '));
-    const QString valueSuffix = valueSuffixStart >= 0 ? value.mid(valueSuffixStart) : QString();
     label->setProperty("reservedDisplayText",
-                       QStringLiteral("%1 %2%3")
-                           .arg(title, temperatureOverviewReservedNumberText(), valueSuffix));
+                       QStringLiteral("%1 %2 %3")
+                           .arg(title, temperatureOverviewReservedNumberText(), unit));
+    label->setProperty("displayText", displayText);
+    label->setProperty("legendNumberColor", numberColor.name(QColor::HexRgb));
     label->setProperty("reservedValueFits", false);
-    label->setTextFormat(Qt::PlainText);
-    label->setText(QStringLiteral("%1 %2").arg(title, value));
-    label->setToolTip(title);
-    label->setAccessibleName(title);
+    label->setTextFormat(Qt::RichText);
+    label->setText(QStringLiteral("%1&nbsp;<span style=\"color: %2;\">%3</span>&nbsp;%4")
+                       .arg(title.toHtmlEscaped(),
+                            numberColor.name(QColor::HexRgb),
+                            number.toHtmlEscaped(),
+                            unit.toHtmlEscaped()));
+    label->setToolTip(displayText);
+    label->setAccessibleName(displayText);
     label->style()->unpolish(label);
     label->style()->polish(label);
 }
@@ -1484,7 +1493,8 @@ private:
             QFont pillFont = label->font();
             pillFont.setWeight(QFont::Bold);
             const QFontMetrics metrics(pillFont);
-            const int currentWidth = metrics.horizontalAdvance(label->text());
+            const int currentWidth = metrics.horizontalAdvance(
+                label->property("displayText").toString());
             const int reservedWidth = metrics.horizontalAdvance(
                 label->property("reservedDisplayText").toString());
             return std::max(currentWidth, reservedWidth) + kOverviewValuePillHorizontalPadding;
@@ -1620,6 +1630,7 @@ private:
     void refreshChannelUi()
     {
         const int index = currentChannelIndex();
+        const bool dark = VaporView::isDarkThemeEnabled();
         const bool valid = latest_data_.valid;
         const VaporView::TemperatureControllerChannelData& channel = latest_data_.channels[index];
         const bool measuredValid = valid && std::isfinite(channel.measured_temperature_c);
@@ -1633,14 +1644,16 @@ private:
                 : std::numeric_limits<double>::quiet_NaN()));
         setTemperatureOverviewPillText(
             target_temp_value_,
-            is_english_ ? QStringLiteral("Target Temp") : QStringLiteral("目标温度"),
-            temperatureOverviewNumberText(targetValid ? channel.target_temperature_c : std::numeric_limits<double>::quiet_NaN()) +
-                (is_english_ ? QStringLiteral(" °C") : QStringLiteral(" ℃")));
+            is_english_ ? QStringLiteral("Target") : QStringLiteral("目标"),
+            temperatureOverviewNumberText(targetValid ? channel.target_temperature_c : std::numeric_limits<double>::quiet_NaN()),
+            is_english_ ? QStringLiteral("°C") : QStringLiteral("℃"),
+            appThemeColor(AppThemeColor::ToolbarGreen, dark));
         setTemperatureOverviewPillText(
             current_temp_value_,
-            is_english_ ? QStringLiteral("Current Temp") : QStringLiteral("当前温度"),
-            temperatureOverviewNumberText(measuredValid ? channel.measured_temperature_c : std::numeric_limits<double>::quiet_NaN()) +
-                (is_english_ ? QStringLiteral(" °C") : QStringLiteral(" ℃")));
+            is_english_ ? QStringLiteral("Current") : QStringLiteral("当前"),
+            temperatureOverviewNumberText(measuredValid ? channel.measured_temperature_c : std::numeric_limits<double>::quiet_NaN()),
+            is_english_ ? QStringLiteral("°C") : QStringLiteral("℃"),
+            appThemeColor(AppThemeColor::PlotSeriesTemperature, dark));
         if (channel_button_)
         {
             channel_button_->setProperty("available", valid);

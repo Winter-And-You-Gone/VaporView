@@ -6252,24 +6252,38 @@ int main(int argc, char **argv)
             "temperature overview value overlay passes pointer input through to the plot");
     require(!qApp->styleSheet().contains(QStringLiteral("QLabel#temperatureOverviewValuePill[hasData")),
             "temperature overview value pills use the default background without data-state colors");
+    const QString targetLegendNumberColor = VaporView::appThemeColor(
+        VaporView::AppThemeColor::ToolbarGreen,
+        VaporView::isDarkThemeEnabled()).name(QColor::HexRgb);
+    const QString currentLegendNumberColor = VaporView::appThemeColor(
+        VaporView::AppThemeColor::PlotSeriesTemperature,
+        VaporView::isDarkThemeEnabled()).name(QColor::HexRgb);
     bool hasTargetUnavailableText = false;
     bool hasCurrentUnavailableText = false;
     for (QLabel *pill : temperatureValuePills)
     {
+        const QString displayText = pill->property("displayText").toString();
+        const QString expectedNumberColor = displayText.startsWith(QStringLiteral("目标 "))
+            ? targetLegendNumberColor
+            : currentLegendNumberColor;
         require(!pill->property("hasData").isValid(),
                 "temperature overview value pill does not carry availability styling state");
         require(!pill->wordWrap(),
                 "temperature overview value pill keeps the requested single-line format without wrapping");
-        require(pill->textFormat() == Qt::PlainText &&
-                    (pill->text() == QStringLiteral("目标温度 --- ℃") ||
-                     pill->text() == QStringLiteral("当前温度 --- ℃")),
-                "temperature overview value pill starts with the label, value, and Celsius unit on one line");
+        require(pill->textFormat() == Qt::RichText &&
+                    (displayText == QStringLiteral("目标 --- ℃") ||
+                     displayText == QStringLiteral("当前 --- ℃")) &&
+                    pill->accessibleName() == displayText &&
+                    pill->property("legendNumberColor").toString() == expectedNumberColor &&
+                    pill->text().contains(
+                        QStringLiteral("<span style=\"color: %1;\">---</span>").arg(expectedNumberColor)),
+                "temperature overview value pill starts with concise text and a semantic legend color");
         require(pill->parentWidget() == temperatureOverviewValueOverlay,
                 "temperature overview value pill is moved into the plot overlay");
         hasTargetUnavailableText = hasTargetUnavailableText ||
-            pill->text() == QStringLiteral("目标温度 --- ℃");
+            displayText == QStringLiteral("目标 --- ℃");
         hasCurrentUnavailableText = hasCurrentUnavailableText ||
-            pill->text() == QStringLiteral("当前温度 --- ℃");
+            displayText == QStringLiteral("当前 --- ℃");
         require(pill->property("reservedValueText").toString() == QStringLiteral("999.99999") &&
                     pill->property("reservedDisplayText").toString().contains(
                         QStringLiteral("999.99999 ℃")),
@@ -6889,12 +6903,23 @@ int main(int argc, char **argv)
     bool sawTemperatureOverviewCurrentValue = false;
     for (QLabel *pill : temperatureValuePills)
     {
-        if (pill->text() == QStringLiteral("目标温度 25.00000 ℃"))
+        const QString displayText = pill->property("displayText").toString();
+        if (displayText == QStringLiteral("目标 25.00000 ℃"))
         {
+            require(pill->property("legendNumberColor").toString() == targetLegendNumberColor &&
+                        pill->text().contains(
+                            QStringLiteral("<span style=\"color: %1;\">25.00000</span>")
+                                .arg(targetLegendNumberColor)),
+                    "temperature overview target value uses the target-guide green legend color");
             sawTemperatureOverviewTargetValue = true;
         }
-        if (pill->text() == QStringLiteral("当前温度 24.75000 ℃"))
+        if (displayText == QStringLiteral("当前 24.75000 ℃"))
         {
+            require(pill->property("legendNumberColor").toString() == currentLegendNumberColor &&
+                        pill->text().contains(
+                            QStringLiteral("<span style=\"color: %1;\">24.75000</span>")
+                                .arg(currentLegendNumberColor)),
+                    "temperature overview current value uses the temperature-series red legend color");
             sawTemperatureOverviewCurrentValue = true;
         }
     }

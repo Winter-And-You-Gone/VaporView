@@ -273,25 +273,41 @@ int main(int argc, char **argv)
                 overviewValueOverlay->parentWidget() == overviewPlot &&
                 overviewValueOverlay->testAttribute(Qt::WA_TransparentForMouseEvents),
             "temperature overview moves the target and current value pills into a pointer-transparent plot overlay");
-    require(overviewValuePills.at(0)->textFormat() == Qt::PlainText &&
-                overviewValuePills.at(1)->textFormat() == Qt::PlainText &&
-                overviewValuePills.at(0)->text().contains(QStringLiteral(" ℃")) &&
-                overviewValuePills.at(1)->text().contains(QStringLiteral(" ℃")) &&
+    const QString targetLegendNumberColor = VaporView::appThemeColor(
+        VaporView::AppThemeColor::ToolbarGreen,
+        VaporView::isDarkThemeEnabled()).name(QColor::HexRgb);
+    const QString currentLegendNumberColor = VaporView::appThemeColor(
+        VaporView::AppThemeColor::PlotSeriesTemperature,
+        VaporView::isDarkThemeEnabled()).name(QColor::HexRgb);
+    require(overviewValuePills.at(0)->textFormat() == Qt::RichText &&
+                overviewValuePills.at(1)->textFormat() == Qt::RichText &&
                 overviewValuePills.at(0)->parentWidget() == overviewValueOverlay &&
                 overviewValuePills.at(1)->parentWidget() == overviewValueOverlay,
-            "temperature overview value pills use one-line Celsius text inside the plot overlay");
-    require(overviewValuePills.at(0)->text() == QStringLiteral("目标温度 --- ℃") &&
-                overviewValuePills.at(1)->text() == QStringLiteral("当前温度 --- ℃"),
-            "temperature overview initializes target and current rows with the requested labels");
+            "temperature overview value pills use one-line rich text inside the plot overlay");
+    require(overviewValuePills.at(0)->property("displayText").toString() == QStringLiteral("目标 --- ℃") &&
+                overviewValuePills.at(1)->property("displayText").toString() == QStringLiteral("当前 --- ℃") &&
+                overviewValuePills.at(0)->property("legendNumberColor").toString() == targetLegendNumberColor &&
+                overviewValuePills.at(1)->property("legendNumberColor").toString() == currentLegendNumberColor &&
+                overviewValuePills.at(0)->text().contains(
+                    QStringLiteral("<span style=\"color: %1;\">---</span>").arg(targetLegendNumberColor)) &&
+                overviewValuePills.at(1)->text().contains(
+                    QStringLiteral("<span style=\"color: %1;\">---</span>").arg(currentLegendNumberColor)),
+            "temperature overview initializes concise target and current rows with legend colors");
     VaporView::TemperatureControllerData overviewData;
     overviewData.valid = true;
     overviewData.channels[0].target_temperature_c = 25.0;
     overviewData.channels[0].measured_temperature_c = 24.75;
     temperatureOverview->updateData(overviewData);
     QApplication::processEvents();
-    require(overviewValuePills.at(0)->text() == QStringLiteral("目标温度 25.00000 ℃") &&
-                overviewValuePills.at(1)->text() == QStringLiteral("当前温度 24.75000 ℃"),
-            "temperature overview value pills format target and current values with five decimals");
+    require(overviewValuePills.at(0)->property("displayText").toString() == QStringLiteral("目标 25.00000 ℃") &&
+                overviewValuePills.at(1)->property("displayText").toString() == QStringLiteral("当前 24.75000 ℃") &&
+                overviewValuePills.at(0)->accessibleName() == QStringLiteral("目标 25.00000 ℃") &&
+                overviewValuePills.at(1)->accessibleName() == QStringLiteral("当前 24.75000 ℃") &&
+                overviewValuePills.at(0)->text().contains(
+                    QStringLiteral("<span style=\"color: %1;\">25.00000</span>").arg(targetLegendNumberColor)) &&
+                overviewValuePills.at(1)->text().contains(
+                    QStringLiteral("<span style=\"color: %1;\">24.75000</span>").arg(currentLegendNumberColor)),
+            "temperature overview value pills format five-decimal values with matching legend colors");
     overviewPlot->repaint();
     const QRect overlayRect = overviewValueOverlay->geometry();
     require(overlayRect.left() > overviewPlot->property("plotAreaLeft").toDouble() &&
