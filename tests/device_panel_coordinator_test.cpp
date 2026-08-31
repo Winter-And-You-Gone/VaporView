@@ -7,6 +7,7 @@
 #include <QLabel>
 #include <QLayout>
 #include <QPoint>
+#include <QPixmap>
 
 #include <chrono>
 #include <cmath>
@@ -290,6 +291,16 @@ int main(int argc, char **argv)
         ptbData.pressure_hpa = 1001.25 + i * 0.05;
         coordinator.updateEnvironmentData(epsilonData, ptbData, hmpData, lidarData);
     }
+    const QPixmap compactTemperatureTrendSnapshot = temperatureTrend->grab();
+    require(!compactTemperatureTrendSnapshot.isNull(),
+            "environment trend plot renders before compact time-label geometry is checked");
+    require(std::abs(temperatureTrend->property("xAxisFirstMinuteSecondSeparatorX").toDouble() -
+                         temperatureTrend->property("xAxisFirstTickX").toDouble()) <= 0.75 &&
+                temperatureTrend->property("xAxisFirstLabelLeftX").toDouble() <
+                    temperatureTrend->property("xAxisFirstTickX").toDouble() &&
+                temperatureTrend->property("xAxisSecondLabelLeftX").toDouble() -
+                        temperatureTrend->property("xAxisFirstLabelRightX").toDouble() >= 2.0,
+            "environment trend first time label aligns its minute-second separator and stays clear of the next label");
     const QStringList temperatureXAxisTicks =
         temperatureTrend->property("xAxisTickLabels").toStringList();
     require(temperatureTrend->property("xAxisTickCount").toInt() ==
