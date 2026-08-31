@@ -1274,6 +1274,58 @@ void MainWindow::queueResponsiveHomeLayoutRefresh()
     });
 }
 
+void MainWindow::syncDeviceConfigNumericColumnFonts()
+{
+    const QList<QWidget *> controls = {
+        state_->device_config_.epsilon_baud_combo,
+        state_->device_config_.ptb_baud_combo,
+        state_->device_config_.hmp_baud_combo,
+        state_->device_config_.lidar_baud_combo,
+        state_->device_config_.temperature_baud_combo,
+        state_->device_config_.ai8_temperature_baud_combo,
+        state_->device_config_.tcp_wave_port_spin,
+    };
+
+    QFont columnFont;
+    bool hasColumnFont = false;
+    for (QWidget *control : controls)
+    {
+        if (control)
+        {
+            columnFont = control->font();
+            hasColumnFont = true;
+            break;
+        }
+    }
+    if (!hasColumnFont)
+    {
+        return;
+    }
+
+    for (QWidget *control : controls)
+    {
+        if (!control)
+        {
+            continue;
+        }
+        control->setFont(columnFont);
+        if (auto *combo = qobject_cast<QComboBox *>(control))
+        {
+            if (QLineEdit *editor = combo->lineEdit())
+            {
+                editor->setFont(columnFont);
+            }
+        }
+        else if (auto *spin = qobject_cast<QSpinBox *>(control))
+        {
+            if (QLineEdit *editor = spin->findChild<QLineEdit *>(QString(), Qt::FindDirectChildrenOnly))
+            {
+                editor->setFont(columnFont);
+            }
+        }
+    }
+}
+
 void MainWindow::applyStyleConfiguration()
 {
     QFont appFont = qApp->font();
@@ -1281,6 +1333,7 @@ void MainWindow::applyStyleConfiguration()
     qApp->setPalette(appThemePalette(state_->dark_theme_enabled_));
     qApp->setFont(appFont);
     qApp->setStyleSheet(scaledStyleSheet(themedStyleSheet()));
+    syncDeviceConfigNumericColumnFonts();
     updateTopLevelCardShadows(this, state_->font_scale_percent_ / 100.0);
     configureComboPopupsIn(this);
     setWindowsTitleBarDark(this, state_->dark_theme_enabled_);

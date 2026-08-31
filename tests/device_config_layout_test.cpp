@@ -11,6 +11,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QFrame>
+#include <QFontMetrics>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QHostAddress>
@@ -722,6 +723,37 @@ int main(int argc, char **argv)
                 dataSourceModeSwitch->text().contains(QStringLiteral("数据源")) &&
                 dataSourceModeSwitch->focusPolicy() == Qt::TabFocus,
             "device configuration target switching reuses the home segmented source switch");
+    auto lineEditForNumericControl = [](QWidget *control) -> QLineEdit * {
+        if (auto *combo = qobject_cast<QComboBox *>(control))
+        {
+            return combo->lineEdit();
+        }
+        if (auto *spin = qobject_cast<QSpinBox *>(control))
+        {
+            return spin->findChild<QLineEdit *>(QString(), Qt::FindDirectChildrenOnly);
+        }
+        return nullptr;
+    };
+    const QList<QWidget *> numericColumnControls = {
+        epsilonBaudCombo,
+        serialCard->findChild<QComboBox *>(QStringLiteral("devicePressureBaudCombo")),
+        serialCard->findChild<QComboBox *>(QStringLiteral("deviceHumidityBaudCombo")),
+        serialCard->findChild<QComboBox *>(QStringLiteral("deviceLidarBaudCombo")),
+        serialCard->findChild<QComboBox *>(QStringLiteral("deviceTemperatureBaudCombo")),
+        ai8BaudCombo,
+        deviceTcpWavePortSpin,
+    };
+    const int localNumericFontHeight = epsilonBaudCombo->fontMetrics().height();
+    const int localNumericTextWidth =
+        epsilonBaudCombo->fontMetrics().horizontalAdvance(QStringLiteral("8888"));
+    for (QWidget *control : numericColumnControls)
+    {
+        require(control &&
+                    control->fontMetrics().height() == localNumericFontHeight &&
+                    control->fontMetrics().horizontalAdvance(QStringLiteral("8888")) ==
+                        localNumericTextWidth,
+                "local baud/port column controls share one font size");
+    }
     QPushButton *autoDetectButton = nullptr;
     for (QPushButton *button : serialCard->findChildren<QPushButton *>())
     {
@@ -1091,6 +1123,18 @@ int main(int argc, char **argv)
                 ai8BaudCombo->currentText() == QStringLiteral("19200") &&
                 ai8RateCombo->currentText() == QStringLiteral("5"),
             "remote SkyConfig restores AI-8 enabled, port, baud, and polling rate");
+    for (QWidget *control : numericColumnControls)
+    {
+        QLineEdit *editor = lineEditForNumericControl(control);
+        require(editor &&
+                    control->fontMetrics().height() == localNumericFontHeight &&
+                    control->fontMetrics().horizontalAdvance(QStringLiteral("8888")) ==
+                        localNumericTextWidth &&
+                    editor->fontMetrics().height() == localNumericFontHeight &&
+                    editor->fontMetrics().horizontalAdvance(QStringLiteral("8888")) ==
+                        localNumericTextWidth,
+                "remote baud/port column editors keep the local font size");
+    }
     require(tcpWaveHostEdit->text() == QStringLiteral("10.0.0.2") &&
                 tcpWavePortEdit->text() == QStringLiteral("8899"),
             "remote SkyConfig mirrors Wave TCP endpoint into the home TCP wave card");

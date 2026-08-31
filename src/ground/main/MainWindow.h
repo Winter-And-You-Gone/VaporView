@@ -338,6 +338,7 @@ private:
     void setFontScale(int percent);
     void showAboutDialog();
     void applyStyleConfiguration();
+    void syncDeviceConfigNumericColumnFonts();
     QString themedStyleSheet() const;
     QString scaledStyleSheet(const QString& styleSheet) const;
     void applyScaledUiMetrics();
