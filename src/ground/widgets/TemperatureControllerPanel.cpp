@@ -1264,7 +1264,8 @@ public:
         layout->addWidget(divider);
 
         auto *plotSection = new QWidget(this);
-        plotSection->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        plotSection->setFixedHeight(kOverviewTrendPlotHeight);
+        plotSection->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         auto *plotSectionLayout = new QVBoxLayout(plotSection);
         plotSectionLayout->setContentsMargins(0, 0, 0, 0);
         plotSectionLayout->setSpacing(0);
@@ -1273,7 +1274,6 @@ public:
         plot_->setProperty("temperatureOverviewPlot", true);
         plot_->setCompactMode(true);
         plot_->setTimeAxisEnabled(true);
-        plot_->setMinimumHeight(136);
         plot_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
         plotSectionLayout->addWidget(plot_, 1);
 
@@ -1301,7 +1301,7 @@ public:
         current_temp_value_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         valueOverlayLayout->addWidget(current_temp_value_, 0);
         plot_->installEventFilter(this);
-        layout->addWidget(plotSection, 1);
+        layout->addWidget(plotSection, 1, Qt::AlignTop);
 
         setEnglish(false);
         updateData(VaporView::TemperatureControllerData());
@@ -1427,6 +1427,7 @@ private:
     static constexpr int kOverviewSummarySpacing = 4;
     static constexpr int kOverviewChannelHeight = 28;
     static constexpr int kOverviewOutputPercentHeight = 42;
+    static constexpr int kOverviewTrendPlotHeight = 144;
     static constexpr int kOverviewValuePillHeight = 30;
     static constexpr int kOverviewValuePillSpacing = 4;
     static constexpr int kOverviewValuePillAxisGap = 8;

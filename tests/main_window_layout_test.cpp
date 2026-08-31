@@ -6347,6 +6347,8 @@ int main(int argc, char **argv)
     require(temperatureOutputCapsule->geometry().top() ==
                 temperatureOutputPercentPill->geometry().bottom() + 1 + summarySpacing,
             "temperature overview places output enable directly below output percent without a stretch gap");
+    require(temperatureOverviewPlot->height() == 144,
+            "temperature overview keeps the home trend plot compact instead of filling the card height");
     temperatureOverviewPlot->repaint();
     const QRect valueOverlayRect = temperatureOverviewValueOverlay->geometry();
     const double plotAreaLeft = temperatureOverviewPlot->property("plotAreaLeft").toDouble();

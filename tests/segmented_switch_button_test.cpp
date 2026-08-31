@@ -283,6 +283,8 @@ int main(int argc, char **argv)
                 overviewValueOverlay->parentWidget() == overviewPlot &&
                 overviewValueOverlay->testAttribute(Qt::WA_TransparentForMouseEvents),
             "temperature overview moves the target and current value pills into a pointer-transparent plot overlay");
+    require(overviewPlot->height() == 144,
+            "temperature overview keeps its trend plot at the compact fixed height");
     const QString targetLegendNumberColor = VaporView::appThemeColor(
         VaporView::AppThemeColor::ToolbarGreen,
         VaporView::isDarkThemeEnabled()).name(QColor::HexRgb);
