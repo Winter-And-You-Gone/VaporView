@@ -2469,6 +2469,21 @@ void MainWindow::setupDeviceConfigPage()
     serialTitleLayout->addStretch(1);
     serialLayout->addWidget(serialTitleBar);
 
+    constexpr int kDeviceConfigPortComboWidth = 108;
+    constexpr int kDeviceConfigBaudComboWidth = 100;
+    constexpr int kDeviceConfigRateComboWidth = 88;
+    constexpr int kDeviceConfigSourceComboWidth = 108;
+
+    auto createCombo = [this](QWidget *parent, int width, bool editable = false) {
+        auto *combo = new QComboBox(parent);
+        combo->setEditable(editable);
+        combo->setFixedHeight(kMainPageInputHeight);
+        combo->setFixedWidth(width);
+        combo->setMaxVisibleItems(15);
+        configureComboPopup(combo);
+        return combo;
+    };
+
     auto *skyTelemetryRow = new QWidget(serialCard);
     state_->device_config_.sky_telemetry_row_widget = skyTelemetryRow;
     auto *skyTelemetryLayout = new QHBoxLayout(skyTelemetryRow);
@@ -2508,9 +2523,10 @@ void MainWindow::setupDeviceConfigPage()
 
     state_->device_config_.sky_telemetry_baud_lbl = new QLabel(skyTelemetryRow);
     state_->device_config_.sky_telemetry_baud_lbl->setObjectName(QStringLiteral("fieldLabel"));
-    state_->device_config_.sky_telemetry_baud_combo = new QComboBox(skyTelemetryRow);
-    state_->device_config_.sky_telemetry_baud_combo->setFixedHeight(kMainPageInputHeight);
-    state_->device_config_.sky_telemetry_baud_combo->setFixedWidth(100);
+    state_->device_config_.sky_telemetry_baud_combo =
+        createCombo(skyTelemetryRow, kDeviceConfigBaudComboWidth);
+    state_->device_config_.sky_telemetry_baud_combo->setObjectName(
+        QStringLiteral("deviceSkyTelemetryBaudCombo"));
     state_->device_config_.sky_telemetry_transport_combo->addItem(
         skyTelemetryTransportDisplayText(false, QStringLiteral("tcp")), QStringLiteral("tcp"));
     state_->device_config_.sky_telemetry_transport_combo->addItem(
@@ -2614,20 +2630,6 @@ void MainWindow::setupDeviceConfigPage()
     formLayout->setContentsMargins(6, 4, 6, 8);
     formLayout->setHorizontalSpacing(6);
     formLayout->setVerticalSpacing(5);
-    constexpr int kDeviceConfigPortComboWidth = 108;
-    constexpr int kDeviceConfigBaudComboWidth = 100;
-    constexpr int kDeviceConfigRateComboWidth = 88;
-    constexpr int kDeviceConfigSourceComboWidth = 108;
-
-    auto createCombo = [this, formWidget](int width, bool editable = false) {
-        auto *combo = new QComboBox(formWidget);
-        combo->setEditable(editable);
-        combo->setFixedHeight(kMainPageInputHeight);
-        combo->setFixedWidth(width);
-        combo->setMaxVisibleItems(15);
-        configureComboPopup(combo);
-        return combo;
-    };
 
     auto createColumnHeader = [formLayout, formWidget](
             QLabel *&label,
@@ -2668,13 +2670,13 @@ void MainWindow::setupDeviceConfigPage()
         label->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
         formLayout->addWidget(label, gridRow, 0);
 
-        portCombo = createCombo(kDeviceConfigPortComboWidth);
+        portCombo = createCombo(formWidget, kDeviceConfigPortComboWidth);
         installLocalSerialPortComboBehavior(portCombo);
         portCombo->setMinimumContentsLength(6);
         portCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
         formLayout->addWidget(portCombo, gridRow, 1, Qt::AlignVCenter);
 
-        baudCombo = createCombo(kDeviceConfigBaudComboWidth);
+        baudCombo = createCombo(formWidget, kDeviceConfigBaudComboWidth);
         formLayout->addWidget(baudCombo, gridRow, 2, Qt::AlignVCenter);
 
         rateLabel = new QLabel(formWidget);
@@ -2682,7 +2684,7 @@ void MainWindow::setupDeviceConfigPage()
         rateLabel->setFixedHeight(kMainPageInputHeight);
         formLayout->addWidget(rateLabel, gridRow, 3, Qt::AlignVCenter | Qt::AlignRight);
 
-        rateCombo = createCombo(kDeviceConfigRateComboWidth, true);
+        rateCombo = createCombo(formWidget, kDeviceConfigRateComboWidth, true);
         rateCombo->setMinimumContentsLength(4);
         rateCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
         formLayout->addWidget(rateCombo, gridRow, 4, Qt::AlignVCenter);
@@ -2964,7 +2966,8 @@ void MainWindow::setupDeviceConfigPage()
     {
         state_->device_config_.temperature_rate_combo->setObjectName(QStringLiteral("deviceTemperatureRateCombo"));
     }
-    state_->device_config_.ptb_source_combo = createCombo(kDeviceConfigSourceComboWidth);
+    state_->device_config_.ptb_source_combo =
+        createCombo(formWidget, kDeviceConfigSourceComboWidth);
     state_->device_config_.ptb_source_combo->setObjectName(QStringLiteral("devicePressureSourceCombo"));
     state_->device_config_.ptb_source_combo->addItem(QStringLiteral("PTB210"), QStringLiteral("ptb210"));
     state_->device_config_.ptb_source_combo->addItem(QStringLiteral("BMP390"), QStringLiteral("bmp390"));
@@ -2973,7 +2976,8 @@ void MainWindow::setupDeviceConfigPage()
         : QStringLiteral("气压来源。BMP390 使用微雪示例程序通过 115200 8N1 串口输出。"));
     formLayout->addWidget(state_->device_config_.ptb_source_combo, 2, 6, Qt::AlignVCenter);
 
-    state_->device_config_.hmp_source_combo = createCombo(kDeviceConfigSourceComboWidth);
+    state_->device_config_.hmp_source_combo =
+        createCombo(formWidget, kDeviceConfigSourceComboWidth);
     state_->device_config_.hmp_source_combo->setObjectName(QStringLiteral("deviceHumiditySourceCombo"));
     state_->device_config_.hmp_source_combo->addItem(QStringLiteral("HMP3"), QStringLiteral("hmp3"));
     state_->device_config_.hmp_source_combo->addItem(QStringLiteral("SHT45"), QStringLiteral("sht45"));

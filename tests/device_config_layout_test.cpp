@@ -1,4 +1,5 @@
 #include "ground/main/MainWindow.h"
+#include "ground/main/GroundMainWindowSupport.h"
 #include "ground/devices/RemoteSkyController.h"
 #include "ground/navigation/CombinationNavigationPage.h"
 #include "ground/widgets/SegmentedSwitchButton.h"
@@ -740,6 +741,8 @@ int main(int argc, char **argv)
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceAi8TemperatureBaudCombo"));
     auto *ai8RateCombo =
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceAi8TemperatureRateCombo"));
+    auto *skyTelemetryBaudCombo =
+        deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceSkyTelemetryBaudCombo"));
     require(dataSourceModeSwitch && dataSourceModeSegmentedSwitch &&
                 epsilonPortCombo && epsilonBaudCombo && epsilonRateCombo &&
                 pressurePortCombo && pressureBaudCombo &&
@@ -855,6 +858,56 @@ int main(int argc, char **argv)
                 dataSourceModeSwitch->text().contains(QStringLiteral("数据源")) &&
                 dataSourceModeSwitch->focusPolicy() == Qt::TabFocus,
             "device configuration target switching reuses the home segmented source switch");
+    const QList<QComboBox *> deviceConnectionBaudCombos = {
+        epsilonBaudCombo,
+        pressureBaudCombo,
+        humidityBaudCombo,
+        serialCard->findChild<QComboBox *>(QStringLiteral("deviceLidarBaudCombo")),
+        serialCard->findChild<QComboBox *>(QStringLiteral("deviceTemperatureBaudCombo")),
+        ai8BaudCombo,
+        skyTelemetryBaudCombo,
+    };
+    for (QComboBox *combo : deviceConnectionBaudCombos)
+    {
+        require(combo &&
+                    combo->height() == VaporView::Ground::MainSupport::kMainPageInputHeight &&
+                    combo->minimumHeight() == VaporView::Ground::MainSupport::kMainPageInputHeight &&
+                    combo->maximumHeight() == VaporView::Ground::MainSupport::kMainPageInputHeight &&
+                    combo->width() == epsilonBaudCombo->width() &&
+                    combo->minimumWidth() == epsilonBaudCombo->minimumWidth() &&
+                    combo->maximumWidth() == epsilonBaudCombo->maximumWidth() &&
+                    combo->maxVisibleItems() == 15 &&
+                    combo->focusPolicy() == epsilonBaudCombo->focusPolicy(),
+                "device connection baud combos share the fixed size, focus, and popup item limit");
+        VaporViewTest::requireComboPopupStyled(
+            combo,
+            "device connection baud combo uses the shared native popup style",
+            require);
+    }
+    const QStringList expectedSkyTelemetryBauds = {
+        QStringLiteral("9600"),
+        QStringLiteral("19200"),
+        QStringLiteral("38400"),
+        QStringLiteral("57600"),
+        QStringLiteral("115200"),
+        QStringLiteral("230400"),
+        QStringLiteral("460800"),
+        QStringLiteral("500000"),
+        QStringLiteral("921600"),
+    };
+    require(skyTelemetryBaudCombo->count() == expectedSkyTelemetryBauds.size() &&
+                skyTelemetryBaudCombo->currentText() == QStringLiteral("921600"),
+            "device Sky Link baud keeps its nine original choices and 921600 default");
+    for (const QString& baud : expectedSkyTelemetryBauds)
+    {
+        require(skyTelemetryBaudCombo->findText(baud) >= 0,
+                "device Sky Link baud keeps every original choice");
+    }
+    auto *ai8ParameterBaudCombo = window.findChild<QComboBox *>(QStringLiteral("ai8BaudCombo"));
+    require(ai8ParameterBaudCombo &&
+                ai8ParameterBaudCombo->property("usesSingleLevelPopupMenu").toBool() &&
+                ai8ParameterBaudCombo->currentData().toInt() == 19200,
+            "AI-8 parameter bAud keeps its separate fixed-choice popup implementation");
     auto lineEditForNumericControl = [](QWidget *control) -> QLineEdit * {
         if (auto *combo = qobject_cast<QComboBox *>(control))
         {
@@ -961,7 +1014,7 @@ int main(int argc, char **argv)
     auto *skyTelemetryTransportCombo =
         deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceSkyTelemetryTransportCombo"));
     QWidget *skyTelemetryRow = skyTelemetryTransportCombo ? skyTelemetryTransportCombo->parentWidget() : nullptr;
-    require(skyTelemetryRow && !skyTelemetryRow->isVisible(),
+    require(skyTelemetryRow && skyTelemetryBaudCombo && !skyTelemetryRow->isVisible(),
             "local mode hides sky-ground link editing controls from the unified device table");
     QWidget *serialFormRow =
         epsilonPortCombo && epsilonPortCombo->parentWidget() ? epsilonPortCombo->parentWidget()->parentWidget() : nullptr;
@@ -1050,6 +1103,42 @@ int main(int argc, char **argv)
             "remote mode retitles the shared device configuration card for the Remote target");
     require(skyTelemetryRow->isVisible(),
             "remote mode shows sky-ground link editing controls in the target section");
+    selectComboData(skyTelemetryTransportCombo, QStringLiteral("serial"),
+                    "Sky Link transport can switch to Serial");
+    VaporViewTest::processEventsFor(60);
+    require(skyTelemetryBaudCombo->isVisible(),
+            "Sky Link baud remains visible in Serial mode");
+    selectComboText(skyTelemetryBaudCombo, QStringLiteral("460800"),
+                    "device Sky Link baud accepts an original selectable value");
+    VaporViewTest::processEventsFor(60);
+    QWidget *homeSkyTelemetryRow =
+        window.findChild<QWidget *>(QStringLiteral("homeSkyTelemetryRow"));
+    QComboBox *homeSkyTelemetryBaudCombo = nullptr;
+    if (homeSkyTelemetryRow)
+    {
+        for (QComboBox *combo : homeSkyTelemetryRow->findChildren<QComboBox *>(
+                 QString(), Qt::FindDirectChildrenOnly))
+        {
+            if (combo && combo->findText(QStringLiteral("921600")) >= 0)
+            {
+                homeSkyTelemetryBaudCombo = combo;
+                break;
+            }
+        }
+    }
+    require(homeSkyTelemetryBaudCombo &&
+                homeSkyTelemetryBaudCombo->currentText() == QStringLiteral("460800"),
+            "device Sky Link baud selection synchronizes to the home Sky Link control");
+    selectComboText(homeSkyTelemetryBaudCombo, QStringLiteral("921600"),
+                    "home Sky Link baud accepts the original default value");
+    VaporViewTest::processEventsFor(60);
+    require(skyTelemetryBaudCombo->currentText() == QStringLiteral("921600"),
+            "home Sky Link baud selection synchronizes back to device configuration");
+    selectComboData(skyTelemetryTransportCombo, QStringLiteral("tcp"),
+                    "Sky Link transport can switch back to TCP");
+    VaporViewTest::processEventsFor(60);
+    require(!skyTelemetryBaudCombo->isVisible(),
+            "Sky Link baud remains hidden in TCP mode");
     require(remoteCard->isVisible(), "remote sky service/config card appears in remote mode");
     QWidget *serialTitleBar =
         serialCard->findChild<QWidget *>(QStringLiteral("sectionTitleBar"), Qt::FindDirectChildrenOnly);
