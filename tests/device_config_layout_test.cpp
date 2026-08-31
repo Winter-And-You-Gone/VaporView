@@ -746,6 +746,9 @@ int main(int argc, char **argv)
     const int localNumericFontHeight = epsilonBaudCombo->fontMetrics().height();
     const int localNumericTextWidth =
         epsilonBaudCombo->fontMetrics().horizontalAdvance(QStringLiteral("8888"));
+    const auto isHorizontallyCentered = [](Qt::Alignment alignment) {
+        return (alignment & Qt::AlignHorizontal_Mask) == Qt::AlignHCenter;
+    };
     for (QWidget *control : numericColumnControls)
     {
         require(control &&
@@ -753,6 +756,23 @@ int main(int argc, char **argv)
                     control->fontMetrics().horizontalAdvance(QStringLiteral("8888")) ==
                         localNumericTextWidth,
                 "local baud/port column controls share one font size");
+        if (auto *combo = qobject_cast<QComboBox *>(control))
+        {
+            require(combo->count() > 0, "local baud combo has selectable values");
+            for (int index = 0; index < combo->count(); ++index)
+            {
+                require(isHorizontallyCentered(static_cast<Qt::Alignment>(
+                            combo->itemData(index, Qt::TextAlignmentRole).toUInt())),
+                        "local baud combo items are horizontally centered");
+            }
+        }
+        else if (auto *spin = qobject_cast<QSpinBox *>(control))
+        {
+            QLineEdit *editor = lineEditForNumericControl(control);
+            require(isHorizontallyCentered(spin->alignment()) && editor &&
+                        isHorizontallyCentered(editor->alignment()),
+                    "local TCP port control text is horizontally centered");
+        }
     }
     QPushButton *autoDetectButton = nullptr;
     for (QPushButton *button : serialCard->findChildren<QPushButton *>())
@@ -1132,8 +1152,14 @@ int main(int argc, char **argv)
                         localNumericTextWidth &&
                     editor->fontMetrics().height() == localNumericFontHeight &&
                     editor->fontMetrics().horizontalAdvance(QStringLiteral("8888")) ==
-                        localNumericTextWidth,
-                "remote baud/port column editors keep the local font size");
+                        localNumericTextWidth &&
+                    isHorizontallyCentered(editor->alignment()),
+                "remote baud/port column editors keep the local font size and alignment");
+        if (auto *spin = qobject_cast<QSpinBox *>(control))
+        {
+            require(isHorizontallyCentered(spin->alignment()),
+                    "remote TCP port control keeps the shared alignment");
+        }
     }
     require(tcpWaveHostEdit->text() == QStringLiteral("10.0.0.2") &&
                 tcpWavePortEdit->text() == QStringLiteral("8899"),

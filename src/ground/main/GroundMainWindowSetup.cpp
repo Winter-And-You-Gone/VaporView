@@ -3574,6 +3574,7 @@ void MainWindow::syncDeviceConfigPageFromHome()
     }
     updateRemoteTelemetrySummaryLabel();
     syncDeviceConfigEpsilonPanelFromSettings();
+    syncDeviceConfigNumericColumnFonts();
 
     updateDeviceConfigState();
 }

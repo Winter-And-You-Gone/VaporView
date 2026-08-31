@@ -1302,6 +1302,7 @@ void MainWindow::syncDeviceConfigNumericColumnFonts()
         return;
     }
 
+    const int centeredTextAlignment = static_cast<int>(Qt::AlignCenter);
     for (QWidget *control : controls)
     {
         if (!control)
@@ -1311,16 +1312,35 @@ void MainWindow::syncDeviceConfigNumericColumnFonts()
         control->setFont(columnFont);
         if (auto *combo = qobject_cast<QComboBox *>(control))
         {
+            for (int index = 0; index < combo->count(); ++index)
+            {
+                if (combo->itemData(index, Qt::TextAlignmentRole).toInt() != centeredTextAlignment)
+                {
+                    combo->setItemData(index, centeredTextAlignment, Qt::TextAlignmentRole);
+                }
+            }
             if (QLineEdit *editor = combo->lineEdit())
             {
                 editor->setFont(columnFont);
+                if (editor->alignment() != Qt::AlignCenter)
+                {
+                    editor->setAlignment(Qt::AlignCenter);
+                }
             }
         }
         else if (auto *spin = qobject_cast<QSpinBox *>(control))
         {
+            if (spin->alignment() != Qt::AlignCenter)
+            {
+                spin->setAlignment(Qt::AlignCenter);
+            }
             if (QLineEdit *editor = spin->findChild<QLineEdit *>(QString(), Qt::FindDirectChildrenOnly))
             {
                 editor->setFont(columnFont);
+                if (editor->alignment() != Qt::AlignCenter)
+                {
+                    editor->setAlignment(Qt::AlignCenter);
+                }
             }
         }
     }
