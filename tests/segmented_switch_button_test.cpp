@@ -254,6 +254,51 @@ int main(int argc, char **argv)
         overviewOutputCapsule->width() - overviewOutputSwitch->geometry().right() - 1;
     require(std::abs(overviewSwitchLeftGap - overviewSwitchRightGap) <= 1,
             "temperature overview segmented switch is horizontally centered in its capsule");
+
+    auto *overviewValueOverlay =
+        temperatureOverview->findChild<QWidget *>(QStringLiteral("temperatureOverviewValueOverlay"));
+    const QList<QLabel *> overviewValuePills =
+        temperatureOverview->findChildren<QLabel *>(QStringLiteral("temperatureOverviewValuePill"));
+    QWidget *overviewPlot = nullptr;
+    for (QWidget *plot : temperatureOverview->findChildren<QWidget *>(QStringLiteral("temperatureTrendPlot")))
+    {
+        if (plot->property("temperatureOverviewPlot").toBool())
+        {
+            overviewPlot = plot;
+            break;
+        }
+    }
+    require(overviewValueOverlay != nullptr && overviewValuePills.size() == 2 &&
+                overviewPlot != nullptr &&
+                overviewValueOverlay->parentWidget() == overviewPlot &&
+                overviewValueOverlay->testAttribute(Qt::WA_TransparentForMouseEvents),
+            "temperature overview moves the target and current value pills into a pointer-transparent plot overlay");
+    require(overviewValuePills.at(0)->textFormat() == Qt::PlainText &&
+                overviewValuePills.at(1)->textFormat() == Qt::PlainText &&
+                overviewValuePills.at(0)->text().contains(QStringLiteral(" ℃")) &&
+                overviewValuePills.at(1)->text().contains(QStringLiteral(" ℃")) &&
+                overviewValuePills.at(0)->parentWidget() == overviewValueOverlay &&
+                overviewValuePills.at(1)->parentWidget() == overviewValueOverlay,
+            "temperature overview value pills use one-line Celsius text inside the plot overlay");
+    require(overviewValuePills.at(0)->text() == QStringLiteral("目标温度 --- ℃") &&
+                overviewValuePills.at(1)->text() == QStringLiteral("当前温度 --- ℃"),
+            "temperature overview initializes target and current rows with the requested labels");
+    VaporView::TemperatureControllerData overviewData;
+    overviewData.valid = true;
+    overviewData.channels[0].target_temperature_c = 25.0;
+    overviewData.channels[0].measured_temperature_c = 24.75;
+    temperatureOverview->updateData(overviewData);
+    QApplication::processEvents();
+    require(overviewValuePills.at(0)->text() == QStringLiteral("目标温度 25.00000 ℃") &&
+                overviewValuePills.at(1)->text() == QStringLiteral("当前温度 24.75000 ℃"),
+            "temperature overview value pills format target and current values with five decimals");
+    overviewPlot->repaint();
+    const QRect overlayRect = overviewValueOverlay->geometry();
+    require(overlayRect.left() > overviewPlot->property("plotAreaLeft").toDouble() &&
+                overlayRect.top() > overviewPlot->property("plotAreaTop").toDouble() &&
+                overlayRect.right() <= std::floor(overviewPlot->property("plotAreaRight").toDouble()) &&
+                overlayRect.bottom() <= std::floor(overviewPlot->property("plotAreaBottom").toDouble()),
+            "temperature overview value overlay stays clear of the plot axes");
     delete temperatureOverview;
 
     std::cout << "segmented_switch_button_test passed\n";

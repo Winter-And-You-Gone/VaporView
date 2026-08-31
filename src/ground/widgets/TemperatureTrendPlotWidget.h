@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QString>
+#include <QRectF>
 #include <QVector>
 #include <QWidget>
 
@@ -21,6 +22,7 @@ public:
     void setSampleTimes(const QVector<double>& sampleTimes);
     void setTimeAxisEnabled(bool enabled);
     void setTargetTemperature(double celsius);
+    QRectF plotAreaRect() const;
 
 protected:
     void paintEvent(QPaintEvent *event) override;
