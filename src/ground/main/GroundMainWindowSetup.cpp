@@ -4889,11 +4889,24 @@ void MainWindow::setupDataPanels()
     state_->ptb_group_ = nullptr;
     state_->hmp_group_ = nullptr;
 
-    state_->temperature_overview_group_ = new QGroupBox(this);
+    state_->home_temperature_overview_column_ = new QWidget(this);
+    state_->home_temperature_overview_column_->setObjectName(
+        QStringLiteral("homeTemperatureOverviewColumn"));
+    state_->home_temperature_overview_column_->setMinimumWidth(kHomeOverviewTemperatureMinWidth);
+    state_->home_temperature_overview_column_->setSizePolicy(QSizePolicy::Expanding,
+                                                              QSizePolicy::Expanding);
+    auto *temperatureOverviewColumnLayout =
+        new QVBoxLayout(state_->home_temperature_overview_column_);
+    temperatureOverviewColumnLayout->setContentsMargins(0, 0, 0, 0);
+    temperatureOverviewColumnLayout->setSpacing(kTopLevelCardGap);
+
+    state_->temperature_overview_group_ =
+        new QGroupBox(state_->home_temperature_overview_column_);
     state_->temperature_overview_group_->setObjectName("sensorGroupBox");
+    state_->temperature_overview_group_->setProperty("homeLaserTemperatureOverviewCard", true);
     configureTopLevelCard(state_->temperature_overview_group_);
     state_->temperature_overview_group_->setMinimumWidth(kHomeOverviewTemperatureMinWidth);
-    state_->temperature_overview_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    state_->temperature_overview_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     auto *temperatureOverviewLayout = new QVBoxLayout(state_->temperature_overview_group_);
     temperatureOverviewLayout->setContentsMargins(kHomeOverviewCardOuterPadding,
                                                  0,
@@ -4943,7 +4956,51 @@ void MainWindow::setupDataPanels()
         command.output_enabled = enabled;
         sendTemperatureCommand(VaporView::CommandId::SetTemperatureOutputEnabled, command);
     });
-    temperatureOverviewLayout->addWidget(state_->temperature_overview_panel_, 1);
+    state_->temperature_overview_panel_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    temperatureOverviewLayout->addWidget(state_->temperature_overview_panel_, 0);
+
+    state_->ai8_temperature_overview_group_ =
+        new QGroupBox(state_->home_temperature_overview_column_);
+    state_->ai8_temperature_overview_group_->setObjectName("sensorGroupBox");
+    state_->ai8_temperature_overview_group_->setProperty("homeAi8TemperatureOverviewCard", true);
+    configureTopLevelCard(state_->ai8_temperature_overview_group_);
+    state_->ai8_temperature_overview_group_->setMinimumWidth(kHomeOverviewTemperatureMinWidth);
+    state_->ai8_temperature_overview_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    auto *ai8TemperatureOverviewLayout = new QVBoxLayout(state_->ai8_temperature_overview_group_);
+    ai8TemperatureOverviewLayout->setContentsMargins(kHomeOverviewCardOuterPadding,
+                                                      0,
+                                                      kHomeOverviewCardOuterPadding,
+                                                      kHomeOverviewCardOuterPadding);
+    ai8TemperatureOverviewLayout->setSpacing(0);
+
+    auto *ai8TemperatureOverviewTitleBar = new QWidget(state_->ai8_temperature_overview_group_);
+    ai8TemperatureOverviewTitleBar->setObjectName("sectionTitleBar");
+    ai8TemperatureOverviewTitleBar->setFixedHeight(kMainPageTitleBarHeight);
+    auto *ai8TemperatureOverviewTitleLayout = new QHBoxLayout(ai8TemperatureOverviewTitleBar);
+    ai8TemperatureOverviewTitleLayout->setContentsMargins(8, 2, 8, 2);
+    ai8TemperatureOverviewTitleLayout->setSpacing(8);
+    QWidget *ai8TemperatureOverviewTitleCluster = nullptr;
+    state_->ai8_temperature_overview_inline_title_lbl_ = createSectionTitleCluster(
+        ai8TemperatureOverviewTitleBar,
+        QStringLiteral("thermometer"),
+        kMainPageButtonHeight,
+        &ai8TemperatureOverviewTitleCluster);
+    state_->ai8_temperature_overview_inline_title_lbl_->setText(
+        state_->is_english_ ? QStringLiteral("Device Temperature Overview")
+                            : QStringLiteral("设备温控概览"));
+    ai8TemperatureOverviewTitleLayout->addWidget(
+        ai8TemperatureOverviewTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    ai8TemperatureOverviewTitleLayout->addStretch(1);
+    ai8TemperatureOverviewLayout->addWidget(ai8TemperatureOverviewTitleBar);
+
+    state_->ai8_temperature_overview_panel_ =
+        new Ai8TemperatureOverviewPanel(state_->ai8_temperature_overview_group_);
+    state_->ai8_temperature_overview_panel_->setEnglish(state_->is_english_);
+    ai8TemperatureOverviewLayout->addWidget(state_->ai8_temperature_overview_panel_, 0);
+
+    temperatureOverviewColumnLayout->addWidget(state_->temperature_overview_group_, 0, Qt::AlignTop);
+    temperatureOverviewColumnLayout->addWidget(state_->ai8_temperature_overview_group_, 0, Qt::AlignTop);
+    temperatureOverviewColumnLayout->addStretch(1);
 
     state_->home_overview_splitter_ = new QSplitter(Qt::Horizontal, this);
     state_->home_overview_splitter_->setObjectName(QStringLiteral("homeOverviewSplitter"));
@@ -4955,7 +5012,7 @@ void MainWindow::setupDataPanels()
     state_->home_overview_splitter_->setMinimumWidth(0);
     state_->home_overview_splitter_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
     state_->home_overview_splitter_->addWidget(state_->config_group_);
-    state_->home_overview_splitter_->addWidget(state_->temperature_overview_group_);
+    state_->home_overview_splitter_->addWidget(state_->home_temperature_overview_column_);
     state_->home_overview_splitter_->setCollapsible(0, false);
     state_->home_overview_splitter_->setCollapsible(1, false);
     state_->home_overview_splitter_->setStretchFactor(0, 0);

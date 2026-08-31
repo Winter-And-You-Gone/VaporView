@@ -1127,7 +1127,7 @@ public:
         : TemperatureControllerOverviewPanel(parent)
     {
         setObjectName(QStringLiteral("temperatureOverviewPanel"));
-        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
         auto *layout = new QHBoxLayout(this);
         layout->setContentsMargins(kHomeOverviewBodyPadding,

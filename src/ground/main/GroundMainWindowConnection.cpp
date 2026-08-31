@@ -798,6 +798,10 @@ void MainWindow::stopAllCollectors()
         state_->ai8_temperature_controller_panel_->setBackendConnected(false);
         state_->ai8_temperature_controller_panel_->applyLiveData({});
     }
+    if (state_->ai8_temperature_overview_panel_)
+    {
+        state_->ai8_temperature_overview_panel_->applyLiveData({});
+    }
     if (state_->ai8_device_session_)
     {
         state_->ai8_device_session_->setLocalAvailable(false);
@@ -1729,10 +1733,17 @@ void MainWindow::onAi8TemperatureControllerDataReady()
             : QString();
         state_->ai8_device_session_->setLocalAvailable(available, detail);
     }
-    if (available && state_->ai8_temperature_controller_panel_)
+    if (available)
     {
-        state_->ai8_temperature_controller_panel_->applyLiveData(
-            collectors.ai8_temperature_controller->getLatestData());
+        const auto liveData = collectors.ai8_temperature_controller->getLatestData();
+        if (state_->ai8_temperature_controller_panel_)
+        {
+            state_->ai8_temperature_controller_panel_->applyLiveData(liveData);
+        }
+        if (state_->ai8_temperature_overview_panel_)
+        {
+            state_->ai8_temperature_overview_panel_->applyLiveData(liveData);
+        }
     }
     updateAi8TemperatureTitleStatus();
 }

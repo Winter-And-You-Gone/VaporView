@@ -1079,6 +1079,28 @@ int main(int argc, char **argv)
             "UI test mode exposes the home temperature output percent capsule and switch");
     require(temperatureOverviewPlot != nullptr,
             "UI test mode exposes the home temperature overview trend plot");
+    auto *ai8HomeTemperatureOverview =
+        window->findChild<QWidget *>(QStringLiteral("ai8TemperatureOverviewPanel"));
+    const QList<QLabel *> ai8HomeTemperatureValues = ai8HomeTemperatureOverview
+        ? ai8HomeTemperatureOverview->findChildren<QLabel *>(
+              QStringLiteral("ai8TemperatureOverviewValueLabel"))
+        : QList<QLabel *>();
+    require(ai8HomeTemperatureOverview != nullptr && ai8HomeTemperatureValues.size() == 8 &&
+                ai8HomeTemperatureOverview->findChildren<QWidget *>(
+                    QStringLiteral("temperatureTrendPlot")).isEmpty(),
+            "UI test mode exposes the eight-value AI-8288 home overview without a trend plot");
+    require(VaporViewTest::processEventsUntil(1500, [ai8HomeTemperatureValues]() {
+                for (QLabel *valueLabel : ai8HomeTemperatureValues)
+                {
+                    if (!valueLabel || valueLabel->text() == QStringLiteral("---") ||
+                        !valueLabel->text().contains(QStringLiteral("°C")))
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }),
+            "UI test mode feeds all eight AI-8288 temperatures into the home overview");
     require(VaporViewTest::processEventsUntil(1500, [temperatureOverviewPlot]() {
                 return temperatureOverviewPlot->property("xAxisTimeMode").toBool() &&
                     temperatureOverviewPlot->property("xAxisTimeLabelFormat").toString() ==

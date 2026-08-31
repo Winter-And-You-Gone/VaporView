@@ -232,14 +232,22 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
                 invalidateTemperatureControllerDataUi();
             }
             else if (item.device_id == VaporView::SkyDeviceId::Ai8TemperatureController &&
-                     state_->ai8_temperature_controller_panel_)
+                     (state_->ai8_temperature_controller_panel_ ||
+                      state_->ai8_temperature_overview_panel_))
             {
                 if (state_->ai8_device_session_)
                 {
                     state_->ai8_device_session_->setRemoteAvailable(false);
                 }
-                state_->ai8_temperature_controller_panel_->setBackendConnected(false);
-                state_->ai8_temperature_controller_panel_->applyLiveData({});
+                if (state_->ai8_temperature_controller_panel_)
+                {
+                    state_->ai8_temperature_controller_panel_->setBackendConnected(false);
+                    state_->ai8_temperature_controller_panel_->applyLiveData({});
+                }
+                if (state_->ai8_temperature_overview_panel_)
+                {
+                    state_->ai8_temperature_overview_panel_->applyLiveData({});
+                }
                 updateAi8TemperatureTitleStatus();
             }
         }
@@ -277,21 +285,31 @@ void MainWindow::onRemoteTemperatureControllerStatusUpdated(const VaporView::Tem
 void MainWindow::onRemoteAi8TemperatureControllerStatusUpdated(
     const VaporView::Ai8TemperatureControllerProtocol::LiveData& liveData)
 {
-    if (!state_->ai8_temperature_controller_panel_)
+    if (!state_->ai8_temperature_controller_panel_ && !state_->ai8_temperature_overview_panel_)
     {
         return;
     }
     const QString detail = state_->is_english_
         ? QStringLiteral("Remote Sky")
         : QStringLiteral("天空端远程");
-    state_->ai8_temperature_controller_panel_->setBackendConnected(true, detail);
+    if (state_->ai8_temperature_controller_panel_)
+    {
+        state_->ai8_temperature_controller_panel_->setBackendConnected(true, detail);
+    }
     if (state_->ai8_device_session_)
     {
         state_->ai8_device_session_->setRemoteAvailable(
             remoteDeviceDataValid(VaporView::SkyDeviceId::Ai8TemperatureController, 3000),
             detail);
     }
-    state_->ai8_temperature_controller_panel_->applyLiveData(liveData);
+    if (state_->ai8_temperature_controller_panel_)
+    {
+        state_->ai8_temperature_controller_panel_->applyLiveData(liveData);
+    }
+    if (state_->ai8_temperature_overview_panel_)
+    {
+        state_->ai8_temperature_overview_panel_->applyLiveData(liveData);
+    }
     updateAi8TemperatureTitleStatus();
 }
 

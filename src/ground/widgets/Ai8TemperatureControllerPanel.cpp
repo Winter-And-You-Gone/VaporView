@@ -51,6 +51,11 @@ constexpr int kAi8TemperaturePlotMinimumHeight = 180;
 constexpr int kCommonEditorMinimumWidth = (kEditorMinimumWidth * 4) / 3;
 constexpr int kCommonParameterStackWidth =
     kCommonEditorMinimumWidth * kPageColumnCount + kAi8CommonControlGap;
+constexpr int kAi8OverviewColumnCount = 4;
+constexpr int kAi8OverviewCellHeight = 32;
+constexpr int kAi8OverviewCellGap = 4;
+constexpr int kAi8OverviewHorizontalPadding = 8;
+constexpr int kAi8OverviewVerticalPadding = 6;
 
 class Ai8ParameterFieldFrame final : public QFrame
 {
@@ -1544,6 +1549,97 @@ void Ai8TemperatureControllerPanel::updateTemperaturePlot()
     temperature_plot_->setSamples(measured_temperature_history_[static_cast<size_t>(channelIndex)]);
     temperature_plot_->setSampleTimes(
         measured_temperature_time_history_[static_cast<size_t>(channelIndex)]);
+}
+
+Ai8TemperatureOverviewPanel::Ai8TemperatureOverviewPanel(QWidget *parent)
+    : QWidget(parent)
+{
+    setObjectName(QStringLiteral("ai8TemperatureOverviewPanel"));
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+
+    auto *layout = new QGridLayout(this);
+    layout->setContentsMargins(kAi8OverviewHorizontalPadding,
+                               kAi8OverviewVerticalPadding,
+                               kAi8OverviewHorizontalPadding,
+                               kAi8OverviewVerticalPadding);
+    layout->setHorizontalSpacing(kAi8OverviewCellGap);
+    layout->setVerticalSpacing(kAi8OverviewCellGap);
+
+    for (int index = 0; index < Ai8TemperatureControllerProtocol::kChannelCount; ++index)
+    {
+        auto *cell = new QWidget(this);
+        cell->setObjectName(QStringLiteral("ai8TemperatureOverviewCell"));
+        cell->setProperty("channelIndex", index);
+        cell->setFixedHeight(kAi8OverviewCellHeight);
+        cell->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        auto *cellLayout = new QHBoxLayout(cell);
+        cellLayout->setContentsMargins(2, 0, 2, 0);
+        cellLayout->setSpacing(4);
+
+        auto *channelLabel = new QLabel(cell);
+        channelLabel->setObjectName(QStringLiteral("ai8TemperatureOverviewChannelLabel"));
+        channelLabel->setProperty("channelIndex", index);
+        channelLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        channelLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        cellLayout->addWidget(channelLabel, 0);
+
+        auto *valueLabel = new QLabel(cell);
+        valueLabel->setObjectName(QStringLiteral("ai8TemperatureOverviewValueLabel"));
+        valueLabel->setProperty("channelIndex", index);
+        valueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        valueLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        cellLayout->addWidget(valueLabel, 1);
+
+        channel_labels_[static_cast<size_t>(index)] = channelLabel;
+        value_labels_[static_cast<size_t>(index)] = valueLabel;
+        layout->addWidget(cell, index / kAi8OverviewColumnCount, index % kAi8OverviewColumnCount);
+    }
+    for (int column = 0; column < kAi8OverviewColumnCount; ++column)
+    {
+        layout->setColumnStretch(column, 1);
+    }
+
+    refreshLabels();
+}
+
+void Ai8TemperatureOverviewPanel::setEnglish(bool english)
+{
+    english_ = english;
+    refreshLabels();
+}
+
+void Ai8TemperatureOverviewPanel::applyLiveData(
+    const Ai8TemperatureControllerProtocol::LiveData& liveData)
+{
+    latest_live_data_ = liveData;
+    refreshLabels();
+}
+
+void Ai8TemperatureOverviewPanel::refreshLabels()
+{
+    for (int index = 0; index < Ai8TemperatureControllerProtocol::kChannelCount; ++index)
+    {
+        QLabel *channelLabel = channel_labels_[static_cast<size_t>(index)];
+        QLabel *valueLabel = value_labels_[static_cast<size_t>(index)];
+        if (!channelLabel || !valueLabel)
+        {
+            continue;
+        }
+
+        const QString channelText = english_
+            ? QStringLiteral("CH %1").arg(index + 1)
+            : QStringLiteral("通道 %1").arg(index + 1);
+        const double measured = latest_live_data_.measuredC[static_cast<size_t>(index)];
+        const QString valueText = latest_live_data_.valid && std::isfinite(measured)
+            ? temperatureText(measured)
+            : QStringLiteral("---");
+        channelLabel->setText(channelText);
+        valueLabel->setText(valueText);
+        valueLabel->setProperty("displayText", valueText);
+        valueLabel->setAccessibleName(
+            english_ ? QStringLiteral("Channel %1 %2").arg(index + 1).arg(valueText)
+                     : QStringLiteral("通道 %1 %2").arg(index + 1).arg(valueText));
+    }
 }
 
 } // namespace VaporView::Ground::Widgets

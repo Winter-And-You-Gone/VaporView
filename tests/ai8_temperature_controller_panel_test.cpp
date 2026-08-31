@@ -50,6 +50,50 @@ int main(int argc, char **argv)
     panel.show();
     QApplication::processEvents();
 
+    VaporView::Ground::Widgets::Ai8TemperatureOverviewPanel overview;
+    overview.resize(480, 100);
+    overview.show();
+    QApplication::processEvents();
+    const QList<QLabel *> overviewChannelLabels =
+        overview.findChildren<QLabel *>(QStringLiteral("ai8TemperatureOverviewChannelLabel"));
+    const QList<QLabel *> overviewValueLabels =
+        overview.findChildren<QLabel *>(QStringLiteral("ai8TemperatureOverviewValueLabel"));
+    require(overviewChannelLabels.size() == 8 && overviewValueLabels.size() == 8,
+            "AI-8288 overview exposes one direct temperature value for each of eight channels");
+    VaporView::Ai8TemperatureControllerProtocol::LiveData overviewLiveData;
+    overviewLiveData.valid = true;
+    for (int index = 0; index < VaporView::Ai8TemperatureControllerProtocol::kChannelCount; ++index)
+    {
+        overviewLiveData.measuredC[static_cast<size_t>(index)] = 20.0 + index * 0.25;
+    }
+    overview.applyLiveData(overviewLiveData);
+    QApplication::processEvents();
+    for (QLabel *valueLabel : overviewValueLabels)
+    {
+        const int index = valueLabel->property("channelIndex").toInt();
+        require(index >= 0 && index < VaporView::Ai8TemperatureControllerProtocol::kChannelCount &&
+                    valueLabel->text() == QString::number(20.0 + index * 0.25, 'f', 1) +
+                        QStringLiteral(" °C") &&
+                    valueLabel->accessibleName() ==
+                        QStringLiteral("通道 %1 %2")
+                            .arg(index + 1)
+                            .arg(valueLabel->text()),
+                "AI-8288 overview formats each live channel temperature and exposes it to accessibility tools");
+    }
+    overview.setEnglish(true);
+    for (QLabel *channelLabel : overviewChannelLabels)
+    {
+        const int index = channelLabel->property("channelIndex").toInt();
+        require(channelLabel->text() == QStringLiteral("CH %1").arg(index + 1),
+                "AI-8288 overview localizes its channel labels");
+    }
+    overview.applyLiveData({});
+    for (QLabel *valueLabel : overviewValueLabels)
+    {
+        require(valueLabel->text() == QStringLiteral("---"),
+                "AI-8288 overview clears stale temperatures when live data is unavailable");
+    }
+
     auto *stack = panel.findChild<QStackedWidget *>(QStringLiteral("ai8ParameterStack"));
     require(stack != nullptr && stack->count() == 4 && stack->currentIndex() == 0,
             "AI-8 panel starts on one of four documented parameter groups");

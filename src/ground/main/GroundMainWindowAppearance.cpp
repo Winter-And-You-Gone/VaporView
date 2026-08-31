@@ -126,6 +126,9 @@ void MainWindow::loadModernStyleSheet()
             "QLabel#homeTelemetrySummaryValueLabel[deviceConfigLink=\"true\"] { color: @vv-text-strong; font-size: 14px; font-weight: 600; }"
             "QLabel#homeTelemetrySummaryTitleLabel[skyTelemetryTitle=\"true\"] { color: @vv-primary; }"
             "QLabel#temperatureOverviewValuePill { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text-strong; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 13px; font-weight: 700; padding: 2px 8px; margin: 0px; }"
+            "QWidget#ai8TemperatureOverviewPanel { background-color: transparent; }"
+            "QLabel#ai8TemperatureOverviewChannelLabel { color: @vv-text-muted; font-size: 11px; font-weight: 600; }"
+            "QLabel#ai8TemperatureOverviewValueLabel { color: @vv-text-strong; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 13px; font-weight: 700; }"
             "QLabel#temperatureOverviewOutputPercentPill { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text-strong; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 13px; font-weight: 700; padding: 2px 3px; margin: 0px; }"
             "QPushButton#temperatureOverviewOutputSwitch { background-color: transparent; border: none; padding: 0px; margin: 0px; color: @vv-text; font-size: 14px; font-weight: 700; }"
             "QToolButton#temperatureOverviewChannelButton { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-primary; font-size: 13px; font-weight: 500; padding: 1px 8px 1px 8px; text-align: center; }"
@@ -1039,8 +1042,8 @@ void MainWindow::updateResponsiveHomeLayout()
         const int viewportWidth = std::max(0, state_->main_cards_scroll_area_->viewport()->width());
         const int viewportContentWidth =
             std::max(0, viewportWidth - contentMargins.left() - contentMargins.right());
-        const int overviewMinimumWidth = state_->home_overview_splitter_ && state_->config_group_ && state_->temperature_overview_group_
-            ? state_->config_group_->minimumWidth() + state_->temperature_overview_group_->minimumWidth() + state_->home_overview_splitter_->handleWidth()
+        const int overviewMinimumWidth = state_->home_overview_splitter_ && state_->config_group_ && state_->home_temperature_overview_column_
+            ? state_->config_group_->minimumWidth() + state_->home_temperature_overview_column_->minimumWidth() + state_->home_overview_splitter_->handleWidth()
             : (state_->config_group_ ? state_->config_group_->minimumWidth() : 0);
         const bool widthConstrained = overviewMinimumWidth > 0 && viewportWidth > 0 &&
             viewportContentWidth < overviewMinimumWidth;
@@ -1064,12 +1067,12 @@ void MainWindow::updateResponsiveHomeLayout()
             contentLayout->activate();
         }
         updateHomeDeviceOverviewMinimumWidth();
-        if (state_->home_overview_splitter_ && state_->config_group_ && state_->temperature_overview_group_)
+        if (state_->home_overview_splitter_ && state_->config_group_ && state_->home_temperature_overview_column_)
         {
             const QList<int> sizes = state_->home_overview_splitter_->sizes();
             const bool initialized = state_->home_overview_splitter_->property(kHomeOverviewSplitterInitializedProperty).toBool();
             const int leftMinimum = state_->config_group_->minimumWidth();
-            const int rightMinimum = state_->temperature_overview_group_->minimumWidth();
+            const int rightMinimum = state_->home_temperature_overview_column_->minimumWidth();
             const bool invalidSizes = sizes.size() < 2 || (sizes.at(0) + sizes.at(1)) <= 0;
             const int totalWidth =
                 overviewWidth > 0 ? overviewWidth : std::max(overviewMinimumWidth, state_->home_overview_splitter_->width());

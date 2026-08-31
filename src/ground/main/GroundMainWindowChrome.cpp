@@ -554,6 +554,16 @@ void MainWindow::setEnglish(bool english)
     {
         state_->temperature_overview_panel_->setEnglish(english);
     }
+    if (state_->ai8_temperature_overview_inline_title_lbl_)
+    {
+        state_->ai8_temperature_overview_inline_title_lbl_->setText(
+            english ? QStringLiteral("Device Temperature Overview")
+                    : QStringLiteral("设备温控概览"));
+    }
+    if (state_->ai8_temperature_overview_panel_)
+    {
+        state_->ai8_temperature_overview_panel_->setEnglish(english);
+    }
     if (state_->temperature_controller_inline_title_lbl_)
     {
         updateTemperatureControllerTitleText();

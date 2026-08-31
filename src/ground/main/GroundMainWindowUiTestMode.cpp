@@ -461,6 +461,10 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
         state_->ai8_temperature_controller_panel_->setBackendConnected(false);
         state_->ai8_temperature_controller_panel_->applyLiveData({});
     }
+    if (state_->ai8_temperature_overview_panel_)
+    {
+        state_->ai8_temperature_overview_panel_->applyLiveData({});
+    }
     if (state_->device_panel_coordinator_)
     {
         state_->device_panel_coordinator_->updateAllData(
@@ -555,6 +559,10 @@ void MainWindow::applyUiTestSnapshot()
         state_->ai8_temperature_controller_panel_->setBackendConnected(
             snapshot.ai8Temperature.valid, detail);
         state_->ai8_temperature_controller_panel_->applyLiveData(snapshot.ai8Temperature);
+    }
+    if (state_->ai8_temperature_overview_panel_)
+    {
+        state_->ai8_temperature_overview_panel_->applyLiveData(snapshot.ai8Temperature);
     }
     if (state_->device_panel_coordinator_)
     {

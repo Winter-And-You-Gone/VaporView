@@ -278,6 +278,7 @@ struct MainWindowState
     QSplitter *app_layout_splitter_;
     QSplitter *main_content_splitter_;
     QSplitter *home_overview_splitter_;
+    QWidget *home_temperature_overview_column_;
     QWidget *app_sidebar_;
     QButtonGroup *app_nav_button_group_;
     QPushButton *home_nav_btn_;
@@ -312,6 +313,7 @@ struct MainWindowState
     QGroupBox *hmp_group_;
     QGroupBox *env_group_;
     QGroupBox *temperature_overview_group_;
+    QGroupBox *ai8_temperature_overview_group_;
     QGroupBox *temperature_controller_group_;
     QGroupBox *ai8_temperature_controller_group_;
     QGroupBox *lidar_group_;
@@ -343,6 +345,7 @@ struct MainWindowState
     QLabel *env_ptb_status_icon_;
     QLabel *env_hmp_status_icon_;
     QLabel *temperature_overview_inline_title_lbl_;
+    QLabel *ai8_temperature_overview_inline_title_lbl_;
     QLabel *temperature_controller_inline_title_lbl_;
     QLabel *ai8_temperature_controller_inline_title_lbl_;
     QComboBox *temperature_title_port_combo_;
@@ -351,6 +354,7 @@ struct MainWindowState
     QToolButton *ai8_temperature_title_action_btn_;
     QLabel *ai8_temperature_title_status_lbl_;
     VaporView::Ground::Widgets::TemperatureControllerOverviewPanel *temperature_overview_panel_;
+    VaporView::Ground::Widgets::Ai8TemperatureOverviewPanel *ai8_temperature_overview_panel_;
     QLabel *config_inline_title_lbl_;
     VaporView::Ground::Widgets::SourceModeOverviewSwitchButton *source_mode_switch_;
     QLabel *sky_telemetry_transport_lbl_;

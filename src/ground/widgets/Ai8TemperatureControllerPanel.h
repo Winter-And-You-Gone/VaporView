@@ -138,4 +138,21 @@ private:
     bool detail_sections_expanded_ = false;
 };
 
+class Ai8TemperatureOverviewPanel final : public QWidget
+{
+public:
+    explicit Ai8TemperatureOverviewPanel(QWidget *parent = nullptr);
+
+    void setEnglish(bool english);
+    void applyLiveData(const Ai8TemperatureControllerProtocol::LiveData& liveData);
+
+private:
+    void refreshLabels();
+
+    std::array<QLabel *, Ai8TemperatureControllerProtocol::kChannelCount> channel_labels_{};
+    std::array<QLabel *, Ai8TemperatureControllerProtocol::kChannelCount> value_labels_{};
+    Ai8TemperatureControllerProtocol::LiveData latest_live_data_;
+    bool english_ = false;
+};
+
 } // namespace VaporView::Ground::Widgets

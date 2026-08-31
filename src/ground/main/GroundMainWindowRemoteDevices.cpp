@@ -671,7 +671,7 @@ void MainWindow::updateHomeDeviceOverviewMinimumWidth()
     const int contentMinimumWidth = homeDeviceOverviewContentMinimumWidth();
     state_->config_group_->setMinimumWidth(contentMinimumWidth);
 
-    if (!state_->home_overview_splitter_ || !state_->temperature_overview_group_)
+    if (!state_->home_overview_splitter_ || !state_->home_temperature_overview_column_)
     {
         return;
     }
@@ -705,7 +705,7 @@ void MainWindow::updateHomeDeviceOverviewMinimumWidth()
                                         std::max(state_->home_overview_splitter_->width(),
                                                  sizes.at(0) + sizes.at(1) + state_->home_overview_splitter_->handleWidth()) -
                                             state_->home_overview_splitter_->handleWidth());
-    const int rightMinimumWidth = state_->temperature_overview_group_->minimumWidth();
+    const int rightMinimumWidth = state_->home_temperature_overview_column_->minimumWidth();
     if (availableWidth < contentMinimumWidth + rightMinimumWidth)
     {
         rememberAutoMinimumWidth();
@@ -778,16 +778,17 @@ void MainWindow::updateConfigCardHeightForSourceMode()
                                      scalePixels(kConfigCardBottomPadding));
     }
 
+    const auto naturalCardHeight = [](QWidget *card) {
+        return card ? std::max(card->minimumSizeHint().height(), card->sizeHint().height()) : 0;
+    };
+    const int laserOverviewHeight = naturalCardHeight(state_->temperature_overview_group_);
+    const int ai8OverviewHeight = naturalCardHeight(state_->ai8_temperature_overview_group_);
+    const int overviewColumnHeight = laserOverviewHeight > 0 && ai8OverviewHeight > 0
+        ? laserOverviewHeight + kTopLevelCardGap + ai8OverviewHeight
+        : std::max(laserOverviewHeight, ai8OverviewHeight);
+    minimumHeight = std::max(minimumHeight, overviewColumnHeight);
     state_->config_group_->setProperty(kMainCardMinimumHeightProperty, minimumHeight);
     state_->config_group_->setMinimumHeight(minimumHeight);
-    if (state_->temperature_overview_group_)
-    {
-        const int temperatureMinimumHeight = std::max(state_->temperature_overview_group_->minimumSizeHint().height(),
-                                                      state_->temperature_overview_group_->sizeHint().height());
-        minimumHeight = std::max(minimumHeight, temperatureMinimumHeight);
-        state_->temperature_overview_group_->setProperty(kMainCardMinimumHeightProperty, minimumHeight);
-        state_->temperature_overview_group_->setMinimumHeight(minimumHeight);
-    }
     if (state_->home_overview_splitter_)
     {
         const int currentHeight = state_->home_overview_splitter_->height();
@@ -800,11 +801,23 @@ void MainWindow::updateConfigCardHeightForSourceMode()
         {
             state_->config_group_->setFixedHeight(targetHeight);
         }
-        if (state_->temperature_overview_group_ &&
-            (state_->temperature_overview_group_->minimumHeight() != targetHeight ||
-             state_->temperature_overview_group_->maximumHeight() != targetHeight))
+        if (state_->home_temperature_overview_column_ &&
+            (state_->home_temperature_overview_column_->minimumHeight() != targetHeight ||
+             state_->home_temperature_overview_column_->maximumHeight() != targetHeight))
         {
-            state_->temperature_overview_group_->setFixedHeight(targetHeight);
+            state_->home_temperature_overview_column_->setFixedHeight(targetHeight);
+        }
+        if (state_->temperature_overview_group_ &&
+            (state_->temperature_overview_group_->minimumHeight() != laserOverviewHeight ||
+             state_->temperature_overview_group_->maximumHeight() != laserOverviewHeight))
+        {
+            state_->temperature_overview_group_->setFixedHeight(laserOverviewHeight);
+        }
+        if (state_->ai8_temperature_overview_group_ &&
+            (state_->ai8_temperature_overview_group_->minimumHeight() != ai8OverviewHeight ||
+             state_->ai8_temperature_overview_group_->maximumHeight() != ai8OverviewHeight))
+        {
+            state_->ai8_temperature_overview_group_->setFixedHeight(ai8OverviewHeight);
         }
         if (state_->home_overview_splitter_->minimumHeight() != targetHeight ||
             state_->home_overview_splitter_->maximumHeight() != targetHeight)
@@ -862,6 +875,10 @@ void MainWindow::clearRemoteSkyDataUi()
     {
         state_->ai8_temperature_controller_panel_->setBackendConnected(false);
         state_->ai8_temperature_controller_panel_->applyLiveData({});
+    }
+    if (state_->ai8_temperature_overview_panel_)
+    {
+        state_->ai8_temperature_overview_panel_->applyLiveData({});
     }
 
     if (state_->device_panel_coordinator_)
@@ -928,6 +945,10 @@ void MainWindow::markRemoteSkyLinkClosed()
     {
         state_->ai8_temperature_controller_panel_->setBackendConnected(false);
         state_->ai8_temperature_controller_panel_->applyLiveData({});
+    }
+    if (state_->ai8_temperature_overview_panel_)
+    {
+        state_->ai8_temperature_overview_panel_->applyLiveData({});
     }
     refreshRemoteSkyDataUi();
     updateSourceModeUi();

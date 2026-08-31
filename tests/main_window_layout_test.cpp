@@ -4770,6 +4770,20 @@ int main(int argc, char **argv)
         }
         return nullptr;
     };
+    auto homeOverviewCardForRole = [](QWidget *root, const char *roleProperty) -> QGroupBox * {
+        if (!root)
+        {
+            return nullptr;
+        }
+        for (QGroupBox *card : root->findChildren<QGroupBox *>(QStringLiteral("sensorGroupBox")))
+        {
+            if (card->property(roleProperty).toBool())
+            {
+                return card;
+            }
+        }
+        return nullptr;
+    };
     const QRect centralRect = window.centralWidget()->contentsRect();
     const QRect sidebarRect = widgetRectInCentral(appSidebar);
     const QRect recordingCardRect = widgetRectInCentral(recordingStatusCard);
@@ -4781,18 +4795,33 @@ int main(int argc, char **argv)
             "home overview splitter exists for page spacing baseline");
     auto *homePrimaryCardForPageSpacing =
         qobject_cast<QGroupBox *>(homeOverviewSplitterForPageSpacing->widget(0));
-    auto *homeTemperatureCardForPageSpacing =
-        qobject_cast<QGroupBox *>(homeOverviewSplitterForPageSpacing->widget(1));
+    auto *homeTemperatureColumnForPageSpacing = homeOverviewSplitterForPageSpacing->widget(1);
+    auto *homeTemperatureCardForPageSpacing = homeOverviewCardForRole(
+        homeOverviewSplitterForPageSpacing, "homeLaserTemperatureOverviewCard");
+    auto *homeAi8TemperatureCardForPageSpacing = homeOverviewCardForRole(
+        homeOverviewSplitterForPageSpacing, "homeAi8TemperatureOverviewCard");
     require(homePrimaryCardForPageSpacing != nullptr,
             "home primary card exists for page spacing baseline");
     require(homeTemperatureCardForPageSpacing != nullptr,
             "home temperature overview card exists for page spacing baseline");
+    require(homeTemperatureColumnForPageSpacing != nullptr &&
+                homeTemperatureColumnForPageSpacing->objectName() ==
+                    QStringLiteral("homeTemperatureOverviewColumn") &&
+                homeTemperatureCardForPageSpacing->parentWidget() ==
+                    homeTemperatureColumnForPageSpacing &&
+                homeAi8TemperatureCardForPageSpacing != nullptr &&
+                homeAi8TemperatureCardForPageSpacing->parentWidget() ==
+                    homeTemperatureColumnForPageSpacing,
+            "home temperature overview keeps its two cards in the right-side column");
     requireTopLevelCardElevation(homePrimaryCardForPageSpacing,
                                  1.0,
                                  "home device overview uses the shared soft elevation");
     requireTopLevelCardElevation(homeTemperatureCardForPageSpacing,
                                  1.0,
                                  "home temperature overview uses the shared soft elevation");
+    requireTopLevelCardElevation(homeAi8TemperatureCardForPageSpacing,
+                                 1.0,
+                                 "home AI-8288 temperature overview uses the shared soft elevation");
     const QRect mainPageStackCentralRect = widgetRectInCentral(mainPageStackForScroll);
     const QRect homeOverviewSplitterRect = widgetRectInCentral(homeOverviewSplitterForPageSpacing);
     const QRect homePrimaryCardRect = widgetRectInCentral(homePrimaryCardForPageSpacing);
@@ -5443,24 +5472,39 @@ int main(int argc, char **argv)
 
     auto *homeOverviewSplitter = window.findChild<QSplitter *>(QStringLiteral("homeOverviewSplitter"));
     require(homeOverviewSplitter != nullptr, "home overview splitter exists");
-    require(homeOverviewSplitter->count() == 2, "home overview splitter has device and temperature cards");
+    require(homeOverviewSplitter->count() == 2, "home overview splitter has device and temperature columns");
     require(!homeOverviewSplitter->isCollapsible(0) &&
                 !homeOverviewSplitter->isCollapsible(1),
             "home overview splitter keeps both overview cards non-collapsible");
 
     auto *deviceOverviewCard = qobject_cast<QGroupBox *>(homeOverviewSplitter->widget(0));
-    auto *temperatureOverviewCard = qobject_cast<QGroupBox *>(homeOverviewSplitter->widget(1));
+    auto *temperatureOverviewColumn = homeOverviewSplitter->widget(1);
+    auto *temperatureOverviewCard = homeOverviewCardForRole(
+        homeOverviewSplitter, "homeLaserTemperatureOverviewCard");
+    auto *ai8TemperatureOverviewCard = homeOverviewCardForRole(
+        homeOverviewSplitter, "homeAi8TemperatureOverviewCard");
     require(deviceOverviewCard != nullptr, "device overview card exists");
-    require(temperatureOverviewCard != nullptr, "temperature overview card exists");
+    require(temperatureOverviewColumn != nullptr &&
+                temperatureOverviewColumn->objectName() == QStringLiteral("homeTemperatureOverviewColumn"),
+            "temperature overview column exists");
+    require(temperatureOverviewCard != nullptr, "laser temperature overview card exists");
+    require(ai8TemperatureOverviewCard != nullptr, "AI-8288 temperature overview card exists");
     require(deviceOverviewCard->layout() != nullptr, "device overview card layout exists");
     require(temperatureOverviewCard->layout() != nullptr, "temperature overview card layout exists");
+    require(ai8TemperatureOverviewCard->layout() != nullptr,
+            "AI-8288 temperature overview card layout exists");
 
     auto *deviceOverviewBody = deviceOverviewCard->findChild<QWidget *>(QStringLiteral("homeOverviewDeviceBody"));
     auto *temperatureOverviewBody = temperatureOverviewCard->findChild<QWidget *>(QStringLiteral("temperatureOverviewPanel"));
+    auto *ai8TemperatureOverviewBody = ai8TemperatureOverviewCard->findChild<QWidget *>(
+        QStringLiteral("ai8TemperatureOverviewPanel"));
     require(deviceOverviewBody != nullptr, "device overview body exists");
     require(temperatureOverviewBody != nullptr, "temperature overview body exists");
+    require(ai8TemperatureOverviewBody != nullptr, "AI-8288 temperature overview body exists");
     require(deviceOverviewBody->layout() != nullptr, "device overview body layout exists");
     require(temperatureOverviewBody->layout() != nullptr, "temperature overview body layout exists");
+    require(ai8TemperatureOverviewBody->layout() != nullptr,
+            "AI-8288 temperature overview body layout exists");
 
     requireMargins(deviceOverviewCard->layout()->contentsMargins(),
                    QMargins(1, 0, 1, 1),
@@ -5468,12 +5512,27 @@ int main(int argc, char **argv)
     requireMargins(temperatureOverviewCard->layout()->contentsMargins(),
                    QMargins(1, 0, 1, 1),
                    "temperature overview card outer padding matches sensor cards");
+    requireMargins(ai8TemperatureOverviewCard->layout()->contentsMargins(),
+                   QMargins(1, 0, 1, 1),
+                   "AI-8288 temperature overview card outer padding matches sensor cards");
     requireMargins(deviceOverviewBody->layout()->contentsMargins(),
                    QMargins(2, 2, 2, 2),
                    "device overview body padding matches sensor-card content rhythm");
     requireMargins(temperatureOverviewBody->layout()->contentsMargins(),
                    QMargins(2, 2, 2, 2),
                    "temperature overview body padding matches sensor-card content rhythm");
+    const QList<QLabel *> ai8TemperatureOverviewValues =
+        ai8TemperatureOverviewBody->findChildren<QLabel *>(
+            QStringLiteral("ai8TemperatureOverviewValueLabel"));
+    require(ai8TemperatureOverviewValues.size() == 8 &&
+                ai8TemperatureOverviewBody->findChildren<QWidget *>(
+                    QStringLiteral("temperatureTrendPlot")).isEmpty(),
+            "AI-8288 overview shows eight direct temperature values without a trend plot");
+    require(temperatureOverviewCard->height() < temperatureOverviewColumn->height() &&
+                ai8TemperatureOverviewCard->y() > temperatureOverviewCard->geometry().bottom() &&
+                temperatureOverviewCard->minimumHeight() == temperatureOverviewCard->maximumHeight() &&
+                ai8TemperatureOverviewCard->minimumHeight() == ai8TemperatureOverviewCard->maximumHeight(),
+            "right-side temperature overview cards remain compact instead of filling the overview row");
     requireHomeDeviceMinimumWidthMatchesControls(&window);
 
     auto *homeConfigCard = deviceOverviewCard;
@@ -5538,6 +5597,7 @@ int main(int argc, char **argv)
     const int overviewHeightBeforeDrag = homeOverviewSplitter->height();
     const int deviceOverviewHeightBeforeDrag = deviceOverviewCard->height();
     const int temperatureOverviewHeightBeforeDrag = temperatureOverviewCard->height();
+    const int ai8TemperatureOverviewHeightBeforeDrag = ai8TemperatureOverviewCard->height();
     const int overviewGapBeforeDrag = homeOverviewResizeGap->height();
     const VerticalDragContext overviewExpandDrag =
         beginVerticalDrag(homeOverviewResizeHandle);
@@ -5549,7 +5609,8 @@ int main(int argc, char **argv)
     const int overviewGapAfterExpand = homeOverviewResizeGap->height();
     require(overviewHeightAfterExpand == overviewHeightBeforeDrag &&
                 deviceOverviewCard->height() == deviceOverviewHeightBeforeDrag &&
-                temperatureOverviewCard->height() == temperatureOverviewHeightBeforeDrag,
+                temperatureOverviewCard->height() == temperatureOverviewHeightBeforeDrag &&
+                ai8TemperatureOverviewCard->height() == ai8TemperatureOverviewHeightBeforeDrag,
             "home overview resize handle leaves both overview card heights unchanged");
     require(overviewGapAfterExpand >= overviewGapBeforeDrag + 48,
             "home overview resize handle expands the blank gap below the overview cards");
@@ -5599,8 +5660,9 @@ int main(int argc, char **argv)
         require(homeOverviewSplitter->height() == overviewHeightBeforeDrag &&
                     deviceOverviewCard->height() == deviceOverviewHeightBeforeDrag &&
                     temperatureOverviewCard->height() == temperatureOverviewHeightBeforeDrag &&
+                    ai8TemperatureOverviewCard->height() == ai8TemperatureOverviewHeightBeforeDrag &&
                     nextOverviewGap <= previousOverviewGap + 1,
-                "overview gap resizing does not change the overview card heights");
+                "overview gap resizing does not change the overview column card heights");
         previousTemperatureBottom = nextTemperatureBottom;
         previousOverviewGap = nextOverviewGap;
     }
@@ -5611,7 +5673,8 @@ int main(int argc, char **argv)
                 homeOverviewResizeGap->height() <= overviewGapAfterExpand - 32 &&
                 homeOverviewSplitter->height() == overviewHeightBeforeDrag &&
                 deviceOverviewCard->height() == deviceOverviewHeightBeforeDrag &&
-                temperatureOverviewCard->height() == temperatureOverviewHeightBeforeDrag,
+                temperatureOverviewCard->height() == temperatureOverviewHeightBeforeDrag &&
+                ai8TemperatureOverviewCard->height() == ai8TemperatureOverviewHeightBeforeDrag,
             "home overview resize handle can shrink the blank gap without resizing either card");
     const VerticalDragContext overviewClampDrag =
         beginVerticalDrag(homeOverviewResizeHandle);
@@ -5620,7 +5683,8 @@ int main(int argc, char **argv)
             require(homeOverviewResizeGap->height() == overviewGapBeforeDrag &&
                 dragLockedOverviewHeight == overviewHeightBeforeDrag &&
                 deviceOverviewCard->height() == deviceOverviewHeightBeforeDrag &&
-                temperatureOverviewCard->height() == temperatureOverviewHeightBeforeDrag,
+                temperatureOverviewCard->height() == temperatureOverviewHeightBeforeDrag &&
+                ai8TemperatureOverviewCard->height() == ai8TemperatureOverviewHeightBeforeDrag,
             "overview gap clamps at its minimum without changing either overview card");
     QEvent overviewLayoutRequest(QEvent::LayoutRequest);
     QCoreApplication::sendEvent(homeOverviewResizeGap, &overviewLayoutRequest);
@@ -5628,7 +5692,8 @@ int main(int argc, char **argv)
     require(homeOverviewResizeGap->height() == overviewGapBeforeDrag &&
                 homeOverviewSplitter->height() == dragLockedOverviewHeight &&
                 deviceOverviewCard->height() == deviceOverviewHeightBeforeDrag &&
-                temperatureOverviewCard->height() == temperatureOverviewHeightBeforeDrag,
+                temperatureOverviewCard->height() == temperatureOverviewHeightBeforeDrag &&
+                ai8TemperatureOverviewCard->height() == ai8TemperatureOverviewHeightBeforeDrag,
             "layout requests cannot release the overview gap or resize its cards");
     endVerticalDrag(overviewClampDrag, -256);
     processEventsFor(40);
