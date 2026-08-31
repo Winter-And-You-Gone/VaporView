@@ -593,6 +593,13 @@ add_executable(serial_port_detection_service_test
 target_link_libraries(serial_port_detection_service_test PRIVATE vaporview_ground_device_core)
 add_test(NAME serial_port_detection_service_test COMMAND serial_port_detection_service_test)
 
+add_test(
+    NAME local_device_config_source_audit_test
+    COMMAND ${CMAKE_COMMAND}
+        -DVAPORVIEW_SOURCE_DIR=${CMAKE_SOURCE_DIR}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/local_device_config_source_audit.cmake
+)
+
 add_executable(main_window_layout_test
     ${CMAKE_CURRENT_SOURCE_DIR}/main_window_layout_test.cpp
 )

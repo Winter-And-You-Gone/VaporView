@@ -23,6 +23,24 @@ int main()
 {
     using namespace VaporView::Ground::Devices;
 
+    LocalDeviceConfig config;
+    config.epsilon.port = QStringLiteral("COM42");
+    config.epsilon.baudText = QStringLiteral("460800");
+    config.epsilon.enabled = true;
+    const LocalSerialDeviceSettings requestSettings =
+        makeLocalConnectionSettings(config.epsilon, true, 100, false);
+    require(requestSettings.requested && requestSettings.enabled,
+            "enabled model entry remains requested in connection settings");
+    require(requestSettings.port == QStringLiteral("COM42") &&
+                requestSettings.baudText == QStringLiteral("460800"),
+            "connection settings copy port and baud from the non-UI model");
+    require(requestSettings.sampleRateHz == 100,
+            "connection settings use the effective runtime sample rate");
+    const LocalSerialDeviceSettings skippedSettings =
+        makeLocalConnectionSettings(config.epsilon, false, 100, false);
+    require(!skippedSettings.requested && !skippedSettings.enabled,
+            "non-requested device is disabled without changing the stored model");
+
     LocalDeviceConnectionController controller;
     std::mutex mutex;
     std::vector<LocalConnectionLogEntry> logs;

@@ -274,6 +274,12 @@ void MainWindow::requestSourceModeSelection(bool remoteSelected)
 
 void MainWindow::onDataSourceModeChanged(int index)
 {
+    const bool wasRemoteSkyMode = state_->remote_sky_mode_;
+    if (!wasRemoteSkyMode && index == 1)
+    {
+        updateLocalDeviceConfigFromUi();
+    }
+
     // Switching targets updates the shared serial card in several stages (local
     // values, remote values, row visibility, and enabled states). Keep the page
     // from painting those intermediate layouts; otherwise the card briefly
@@ -502,7 +508,7 @@ void MainWindow::onDataSourceModeChanged(int index)
     }
     else
     {
-        syncDeviceConfigPageFromHome();
+        refreshDeviceConfigUiFromLocalModel();
     }
     saveRememberedInputState();
     updateDeviceConfigTexts();
@@ -516,11 +522,16 @@ void MainWindow::updateSourceModeUi()
     const bool remote = isRemoteSkyMode();
     const bool localInputsEnabled = !remote && (isUiTestMode() || !state_->is_connected_) &&
         !state_->connection_attempt_in_progress_ && !state_->port_detection_in_progress_ && !state_->epsilon_reconfigure_in_progress_;
-    const QList<QWidget*> localWidgets = {state_->epsilon_port_combo_, state_->epsilon_baud_combo_, state_->ptb_port_combo_, state_->ptb_baud_combo_,
-                                          state_->hmp_port_combo_, state_->hmp_baud_combo_, state_->lidar_port_combo_, state_->lidar_baud_combo_,
-                                          state_->temperature_port_combo_, state_->temperature_baud_combo_,
-                                          state_->epsilon_packet_rates_btn_, state_->ptb_rate_combo_, state_->hmp_rate_combo_, state_->lidar_rate_combo_,
-                                          state_->temperature_rate_combo_, state_->device_config_.ptb_source_combo,
+    const QList<QWidget*> localWidgets = {state_->device_config_.epsilon_port_combo, state_->device_config_.epsilon_baud_combo,
+                                          state_->device_config_.ptb_port_combo, state_->device_config_.ptb_baud_combo,
+                                          state_->device_config_.hmp_port_combo, state_->device_config_.hmp_baud_combo,
+                                          state_->device_config_.lidar_port_combo, state_->device_config_.lidar_baud_combo,
+                                          state_->device_config_.temperature_port_combo, state_->device_config_.temperature_baud_combo,
+                                          state_->device_config_.epsilon_packet_rates_btn,
+                                          state_->device_config_.ptb_rate_combo, state_->device_config_.hmp_rate_combo,
+                                          state_->device_config_.lidar_rate_combo, state_->device_config_.temperature_rate_combo,
+                                          state_->device_config_.ai8_temperature_rate_combo,
+                                          state_->device_config_.ptb_source_combo,
                                           state_->device_config_.hmp_source_combo};
     for (QWidget *widget : localWidgets)
     {
@@ -529,11 +540,11 @@ void MainWindow::updateSourceModeUi()
             widget->setEnabled(localInputsEnabled);
         }
     }
-    if (state_->auto_detect_ports_btn_)
+    if (state_->device_config_.auto_detect_ports_btn)
     {
         const bool remoteDetectionAvailable = remote && (isUiTestMode() ||
             (state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen()));
-        state_->auto_detect_ports_btn_->setEnabled(remote
+        state_->device_config_.auto_detect_ports_btn->setEnabled(remote
             ? remoteDetectionAvailable
             : (isUiTestMode() || !state_->is_connected_) && !state_->connection_attempt_in_progress_);
     }
@@ -549,7 +560,7 @@ void MainWindow::updateSourceModeUi()
     if (state_->sky_telemetry_baud_combo_) state_->sky_telemetry_baud_combo_->setEnabled(remoteInputsEnabled && !tcpTelemetry);
     if (state_->sky_telemetry_tcp_host_edit_) state_->sky_telemetry_tcp_host_edit_->setEnabled(remoteInputsEnabled && tcpTelemetry);
     if (state_->sky_telemetry_tcp_port_spin_) state_->sky_telemetry_tcp_port_spin_->setEnabled(remoteInputsEnabled && tcpTelemetry);
-    if (state_->sky_telemetry_row_widget_) state_->sky_telemetry_row_widget_->setVisible(true);
+    if (state_->sky_telemetry_row_widget_) state_->sky_telemetry_row_widget_->setVisible(remote);
     if (state_->sky_telemetry_transport_lbl_) state_->sky_telemetry_transport_lbl_->setVisible(true);
     if (state_->sky_telemetry_transport_combo_) state_->sky_telemetry_transport_combo_->setVisible(true);
     if (state_->sky_telemetry_port_lbl_) state_->sky_telemetry_port_lbl_->setVisible(!tcpTelemetry);
@@ -1749,9 +1760,7 @@ void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
         ? QString::number(state_->remote_sky_config_.epsilon.baud_rate > 0
               ? state_->remote_sky_config_.epsilon.baud_rate
               : 921600)
-        : (state_->epsilon_baud_combo_
-              ? state_->epsilon_baud_combo_->currentText().trimmed()
-              : QStringLiteral("921600"));
+        : state_->local_device_config_.epsilon.baudText;
     if (!validateEpsilonPacketBandwidth(savedPacketRates, epsilonBaudText, true))
     {
         return;
@@ -1788,7 +1797,7 @@ void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
                       {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
 
     const QString selectText = state_->is_english_ ? "-- Select --" : "未选择";
-    const QString epsilonPort = localSerialPortComboValue(state_->epsilon_port_combo_);
+    const QString epsilonPort = state_->local_device_config_.epsilon.port;
     const bool targetReadyForApply = isRemoteSkyMode() ||
         (!epsilonPort.isEmpty() && epsilonPort != selectText);
     if (applyAfterSave &&
@@ -2081,37 +2090,28 @@ void MainWindow::clearPendingRemoteWaveTcpConnection()
     state_->remote_wave_pending_port_ = 0;
 }
 
-QPushButton *MainWindow::createRemoteDeviceButton(const QString& text, VaporView::CommandId command, VaporView::SkyDeviceId device)
-{
-    auto *button = new QPushButton(text, this);
-    button->setFixedHeight(kMainPageButtonHeight);
-    button->setMinimumWidth(60);
-    const QString action = command == VaporView::CommandId::ConnectDevice
-        ? QStringLiteral("连接")
-        : command == VaporView::CommandId::DisconnectDevice
-            ? QStringLiteral("断开")
-            : QStringLiteral("重连");
-    button->setToolTip(QStringLiteral("请求天空端%1 %2").arg(action, skyDeviceDisplayName(device)));
-    connect(button, &QPushButton::clicked, this, [this, command, device]() {
-        sendRemoteDeviceCommand(command, device);
-    });
-    return button;
-}
-
 void MainWindow::setRemoteDeviceButtonsEnabled(bool enabled)
 {
-    for (QPushButton *button : {state_->epsilon_remote_connect_btn_, state_->epsilon_remote_disconnect_btn_, state_->epsilon_remote_reconnect_btn_,
-                               state_->ptb_remote_connect_btn_, state_->ptb_remote_disconnect_btn_, state_->ptb_remote_reconnect_btn_,
-                               state_->hmp_remote_connect_btn_, state_->hmp_remote_disconnect_btn_, state_->hmp_remote_reconnect_btn_,
-                               state_->lidar_remote_connect_btn_, state_->lidar_remote_disconnect_btn_, state_->lidar_remote_reconnect_btn_,
-                               state_->temperature_remote_connect_btn_, state_->temperature_remote_disconnect_btn_, state_->temperature_remote_reconnect_btn_})
+    for (QToolButton *button : {state_->device_config_.epsilon_remote_action_btn,
+                                state_->device_config_.ptb_remote_action_btn,
+                                state_->device_config_.hmp_remote_action_btn,
+                                state_->device_config_.lidar_remote_action_btn,
+                                state_->device_config_.temperature_remote_action_btn,
+                                state_->device_config_.ai8_temperature_remote_action_btn,
+                                state_->device_config_.tcp_wave_remote_action_btn})
     {
         if (button)
         {
             button->setEnabled(enabled);
         }
     }
-    for (QWidget *widget : {state_->epsilon_remote_buttons_widget_, state_->ptb_remote_buttons_widget_, state_->hmp_remote_buttons_widget_, state_->lidar_remote_buttons_widget_, state_->temperature_remote_buttons_widget_})
+    for (QWidget *widget : {state_->device_config_.epsilon_remote_buttons_widget,
+                            state_->device_config_.ptb_remote_buttons_widget,
+                            state_->device_config_.hmp_remote_buttons_widget,
+                            state_->device_config_.lidar_remote_buttons_widget,
+                            state_->device_config_.temperature_remote_buttons_widget,
+                            state_->device_config_.ai8_temperature_remote_buttons_widget,
+                            state_->device_config_.tcp_wave_remote_buttons_widget})
     {
         if (widget)
         {
@@ -2127,7 +2127,7 @@ void MainWindow::updateTemperatureControllerTitleText()
         return;
     }
 
-    const QString portText = localSerialPortComboValue(state_->temperature_port_combo_);
+    const QString portText = state_->local_device_config_.temperatureController.port;
     const bool hasPort = !portText.isEmpty() && !portText.startsWith(QStringLiteral("--"));
     const QString base = state_->is_english_
         ? QStringLiteral("RD105 Laser Driver Board Temperature Controller")
@@ -2145,11 +2145,11 @@ void MainWindow::updateTemperatureControllerTitleText()
     }
 
     QStringList availablePorts;
-    if (state_->temperature_port_combo_)
+    if (state_->device_config_.temperature_port_combo)
     {
-        for (int index = 0; index < state_->temperature_port_combo_->count(); ++index)
+        for (int index = 0; index < state_->device_config_.temperature_port_combo->count(); ++index)
         {
-            const QString candidate = localSerialPortItemValue(state_->temperature_port_combo_, index);
+            const QString candidate = localSerialPortItemValue(state_->device_config_.temperature_port_combo, index);
             if (!candidate.isEmpty() && !availablePorts.contains(candidate))
             {
                 availablePorts.append(candidate);
@@ -2176,7 +2176,7 @@ void MainWindow::updateTemperatureControllerTitleText()
         : 0;
     state_->temperature_title_port_combo_->setCurrentIndex(selectedIndex >= 0 ? selectedIndex : 0);
     state_->temperature_title_port_combo_->setEnabled(
-        state_->temperature_port_combo_ && state_->temperature_port_combo_->isEnabled() && !availablePorts.isEmpty());
+        state_->device_config_.temperature_port_combo && state_->device_config_.temperature_port_combo->isEnabled() && !availablePorts.isEmpty());
     state_->temperature_title_port_combo_->ensurePolished();
     const int titlePortWidth = std::clamp(
         state_->temperature_title_port_combo_->fontMetrics().horizontalAdvance(portDisplay) +
@@ -2366,7 +2366,8 @@ void MainWindow::connectLocalTemperatureController()
         return;
     }
 
-    const QString port = localSerialPortComboValue(state_->temperature_port_combo_);
+    updateLocalDeviceConfigFromUi();
+    const QString port = state_->local_device_config_.temperatureController.port;
     const QString selectText = state_->is_english_ ? QStringLiteral("-- Select --") : QStringLiteral("未选择");
     if (port.isEmpty() || port == selectText || port.startsWith(QStringLiteral("--")))
     {
@@ -2382,9 +2383,7 @@ void MainWindow::connectLocalTemperatureController()
         return;
     }
 
-    const QString baudText = state_->temperature_baud_combo_
-        ? state_->temperature_baud_combo_->currentText().trimmed()
-        : QStringLiteral("38400");
+    const QString baudText = state_->local_device_config_.temperatureController.baudText;
     bool baudOk = false;
     const int baud = baudText.toInt(&baudOk);
     if (!baudOk || baud <= 0)
@@ -2402,9 +2401,7 @@ void MainWindow::connectLocalTemperatureController()
     }
 
     const bool english = state_->is_english_;
-    const QString rateText = state_->temperature_rate_combo_
-        ? state_->temperature_rate_combo_->currentText()
-        : QString::number(kDefaultTemperatureSampleRateHz);
+    const QString rateText = state_->local_device_config_.temperatureRateText;
     const bool useDefaultRate = isRateUnspecified(rateText);
     const int rate = effectiveRateOrDefault(rateText,
                                             kDefaultTemperatureSampleRateHz,
@@ -2698,15 +2695,16 @@ void MainWindow::onRd105SessionOperationFinished(
                     result.command,
                     result.payload);
             VaporView::Ground::Devices::persistTemperatureSerialSettings(settingsUpdate);
-            if (settingsUpdate.baudRate && state_->temperature_baud_combo_)
+            if (settingsUpdate.baudRate)
             {
                 const QString baudText = QString::number(*settingsUpdate.baudRate);
-                const QSignalBlocker blocker(state_->temperature_baud_combo_);
-                if (state_->temperature_baud_combo_->findText(baudText) < 0)
+                state_->local_device_config_.temperatureController.baudText = baudText;
+                if (state_->device_config_.temperature_baud_combo->findText(baudText) < 0)
                 {
-                    state_->temperature_baud_combo_->addItem(baudText);
+                    state_->device_config_.temperature_baud_combo->addItem(baudText);
                 }
-                state_->temperature_baud_combo_->setCurrentText(baudText);
+                const QSignalBlocker blocker(state_->device_config_.temperature_baud_combo);
+                state_->device_config_.temperature_baud_combo->setCurrentText(baudText);
             }
         }
         if (state_->device_panel_coordinator_)
@@ -2987,29 +2985,12 @@ QString MainWindow::temperatureCommandStatusText(VaporView::CommandId command, q
 
 void MainWindow::updateRemoteDeviceButtonText(VaporView::SkyDeviceId device, VaporView::DeviceState state)
 {
-    QPushButton *connectButton = nullptr;
-    QPushButton *disconnectButton = nullptr;
-    QPushButton *reconnectButton = nullptr;
-    switch (device)
+    if (device == VaporView::SkyDeviceId::All)
     {
-    case VaporView::SkyDeviceId::Epsilon:
-        connectButton = state_->epsilon_remote_connect_btn_; disconnectButton = state_->epsilon_remote_disconnect_btn_; reconnectButton = state_->epsilon_remote_reconnect_btn_;
-        break;
-    case VaporView::SkyDeviceId::Ptb:
-        connectButton = state_->ptb_remote_connect_btn_; disconnectButton = state_->ptb_remote_disconnect_btn_; reconnectButton = state_->ptb_remote_reconnect_btn_;
-        break;
-    case VaporView::SkyDeviceId::Hmp:
-        connectButton = state_->hmp_remote_connect_btn_; disconnectButton = state_->hmp_remote_disconnect_btn_; reconnectButton = state_->hmp_remote_reconnect_btn_;
-        break;
-    case VaporView::SkyDeviceId::Lidar:
-        connectButton = state_->lidar_remote_connect_btn_; disconnectButton = state_->lidar_remote_disconnect_btn_; reconnectButton = state_->lidar_remote_reconnect_btn_;
-        break;
-    case VaporView::SkyDeviceId::TemperatureController:
-        connectButton = state_->temperature_remote_connect_btn_; disconnectButton = state_->temperature_remote_disconnect_btn_; reconnectButton = state_->temperature_remote_reconnect_btn_;
-        break;
-    case VaporView::SkyDeviceId::Ai8TemperatureController:
-        break;
-    case VaporView::SkyDeviceId::WaveTcp:
+        return;
+    }
+    if (device == VaporView::SkyDeviceId::WaveTcp)
+    {
         if (state_->tcp_wave_panel_)
         {
             state_->tcp_wave_panel_->setRemoteWaveTcpState(state_->remote_wave_stream_requested_ && state == VaporView::DeviceState::Connected
@@ -3019,13 +3000,7 @@ void MainWindow::updateRemoteDeviceButtonText(VaporView::SkyDeviceId device, Vap
         updateDeviceConfigRemoteActionButton(device);
         updateHomeDeviceStatusCapsules();
         return;
-    case VaporView::SkyDeviceId::All:
-        return;
     }
-    const QString stateText = VaporView::deviceStateName(state);
-    if (connectButton) connectButton->setToolTip(QStringLiteral("请求天空端连接 %1（当前：%2）").arg(skyDeviceDisplayName(device), stateText));
-    if (disconnectButton) disconnectButton->setToolTip(QStringLiteral("请求天空端断开 %1（当前：%2）").arg(skyDeviceDisplayName(device), stateText));
-    if (reconnectButton) reconnectButton->setToolTip(QStringLiteral("请求天空端重连 %1（当前：%2）").arg(skyDeviceDisplayName(device), stateText));
     updateDeviceConfigRemoteActionButton(device);
     updateHomeDeviceStatusCapsules();
 }
@@ -3162,8 +3137,7 @@ void MainWindow::setImuBaudSelection(int baud)
 
 void MainWindow::setImuRateSelection(int rate)
 {
-    applyComboText(state_->imu_rate_combo_, QString::number(rate));
-    state_->imu_sample_rate_ = parseRate(state_->imu_rate_combo_->currentText());
+    state_->imu_sample_rate_ = std::max(1, rate);
 }
 
 bool MainWindow::applyImuDeviceProfile(const QString& requestedFormat, int requestedBaud, int requestedRate)
@@ -3191,7 +3165,7 @@ bool MainWindow::applyImuDeviceProfile(const QString& requestedFormat, int reque
     const int currentBaud = (state_->imu_baud_combo_ ? state_->imu_baud_combo_->currentText() : QStringLiteral("921600")).toInt(&baudOk);
     const int effectiveCurrentBaud = baudOk && currentBaud > 0 ? currentBaud : 921600;
     const QString currentFormat = state_->imu_format_combo_ ? state_->imu_format_combo_->currentText().trimmed().toUpper() : QStringLiteral("HI91");
-    const int currentRate = parseRate(state_->imu_rate_combo_ ? state_->imu_rate_combo_->currentText() : QStringLiteral("200"));
+    const int currentRate = state_->imu_sample_rate_ > 0 ? state_->imu_sample_rate_ : 200;
 
     const QString targetFormat = requestedFormat.isEmpty() ? currentFormat : requestedFormat.trimmed().toUpper();
     const int targetBaud = requestedBaud > 0 ? requestedBaud : effectiveCurrentBaud;

@@ -38,6 +38,40 @@ struct LocalSerialDeviceSettings
     bool skipDeviceRate = false;
 };
 
+// Persistent local-device configuration edited by the Device Configuration page.
+// This is deliberately UI-free so connection, auto-detect, settings and recording
+// paths do not need to inspect QWidget state.
+struct LocalDeviceConfig
+{
+    LocalSerialDeviceSettings epsilon{true, true, {}, QStringLiteral("921600"), 100, false};
+    LocalSerialDeviceSettings ptb{true, true, {}, QStringLiteral("9600"), 1, false};
+    LocalSerialDeviceSettings hmp{true, true, {}, QStringLiteral("19200"), 1, false};
+    LocalSerialDeviceSettings lidar{true, true, {}, QStringLiteral("500000"), 1, false};
+    LocalSerialDeviceSettings temperatureController{true, true, {}, QStringLiteral("38400"), 1, false};
+    LocalSerialDeviceSettings ai8TemperatureController{true, true, {}, QStringLiteral("19200"), 5, false};
+
+    PressureSensorProtocol pressureProtocol = PressureSensorProtocol::Ptb210;
+    HumiditySensorProtocol humidityProtocol = HumiditySensorProtocol::Hmp3Modbus;
+    QString pressureSource = QStringLiteral("ptb210");
+    QString humiditySource = QStringLiteral("hmp3");
+    QString ptbRateText = QStringLiteral("1");
+    QString hmpRateText = QStringLiteral("1");
+    QString lidarRateText = QStringLiteral("1");
+    QString temperatureRateText = QStringLiteral("1");
+    QString ai8RateText = QStringLiteral("5");
+
+    // PTB/HMP keep independent port/baud values per source.  The active values
+    // above are mirrored into these maps whenever a source is changed.
+    std::map<QString, LocalSerialDeviceSettings> pressureBySource;
+    std::map<QString, LocalSerialDeviceSettings> humidityBySource;
+};
+
+LocalSerialDeviceSettings makeLocalConnectionSettings(
+    const LocalSerialDeviceSettings& config,
+    bool requested,
+    int sampleRateHz,
+    bool skipDeviceRate);
+
 struct LocalConnectionRequest
 {
     bool english = false;

@@ -71,7 +71,6 @@ inline constexpr const char *kRemoteSkySerialPortComboProperty = "_vv_remote_sky
 inline constexpr const char *kRemoteSkySerialPortManualHandlerProperty = "_vv_remote_sky_serial_manual_handler";
 inline constexpr const char *kRemoteSkySerialPortManualEntryProperty = "_vv_remote_sky_serial_manual_entry";
 inline constexpr const char *kRemoteSkySerialPortManualPreviousTextProperty = "_vv_remote_sky_serial_manual_previous_text";
-inline constexpr const char *kDeviceConfigLocalMirrorOnlyProperty = "_vv_device_config_local_mirror_only";
 inline constexpr int kLocalSerialPortHistoryItemRole = Qt::UserRole + 1;
 inline constexpr int kMainPageInputHeight = 36;
 inline constexpr int kMainPageButtonHeight = kMainPageInputHeight;
@@ -348,6 +347,10 @@ QString rtkConfigCardStyleSheet();
 
 QString imuFrameTypeName(ImuFrameType type);
 void applyComboText(QComboBox *combo, const QString& value);
+QString sensorPortSettingsKey(const QString& source);
+QString rememberedSensorPort(const QSettings& settings,
+                              const QString& source,
+                              const QString& legacyKey = QString());
 QString sensorBaudSettingsKey(const QString& source);
 QString sensorDefaultBaud(const QString& source);
 QString rememberedSensorBaud(const QSettings& settings,

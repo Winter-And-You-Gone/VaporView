@@ -4253,7 +4253,7 @@ int main(int argc, char **argv)
                     rememberedHumidityBaud->currentText() == QStringLiteral("38400"),
                 "humidity source restores the remembered SHT45 baud rate on startup");
         auto *rememberedTemperaturePort =
-            rememberedModeWindow.findChild<QComboBox *>(QStringLiteral("temperaturePortCombo"));
+            rememberedModeWindow.findChild<QComboBox *>(QStringLiteral("deviceTemperaturePortCombo"));
         const QString staleHistoryPortText = QStringLiteral("COM123");
         require(rememberedTemperaturePort != nullptr &&
                     rememberedTemperaturePort->findText(staleHistoryPortText) < 0 &&
@@ -6106,18 +6106,18 @@ int main(int argc, char **argv)
                 !ai8ReadButton->isEnabled() && !ai8WriteButton->isEnabled(),
             "AI-8 read and write actions remain disabled until the protocol backend is connected");
 
-    auto *temperaturePortCombo = window.findChild<QComboBox *>(QStringLiteral("temperaturePortCombo"));
-    auto *temperatureBaudCombo = window.findChild<QComboBox *>(QStringLiteral("temperatureBaudCombo"));
-    auto *temperatureRateCombo = window.findChild<QComboBox *>(QStringLiteral("temperatureRateCombo"));
+    auto *temperaturePortCombo = window.findChild<QComboBox *>(QStringLiteral("deviceTemperaturePortCombo"));
+    auto *temperatureBaudCombo = window.findChild<QComboBox *>(QStringLiteral("deviceTemperatureBaudCombo"));
+    auto *temperatureRateCombo = window.findChild<QComboBox *>(QStringLiteral("deviceTemperatureRateCombo"));
     require(temperaturePortCombo != nullptr && temperatureBaudCombo != nullptr && temperatureRateCombo != nullptr,
             "RD105 serial controls exist in device configuration");
-    const QList<QPair<QString, const char *>> homeLocalSerialCombos = {
-        {QStringLiteral("epsilonPortCombo"), "EPSILON local serial port combo uses select-plus-manual behavior"},
-        {QStringLiteral("pressurePortCombo"), "PTB local serial port combo uses select-plus-manual behavior"},
-        {QStringLiteral("humidityPortCombo"), "HMP local serial port combo uses select-plus-manual behavior"},
-        {QStringLiteral("lidarPortCombo"), "Lidar local serial port combo uses select-plus-manual behavior"},
-        {QStringLiteral("temperaturePortCombo"), "RD105 local serial port combo uses select-plus-manual behavior"}};
-    for (const auto& comboSpec : homeLocalSerialCombos)
+    const QList<QPair<QString, const char *>> localSerialCombos = {
+        {QStringLiteral("deviceEpsilonPortCombo"), "EPSILON local serial port combo uses select-plus-manual behavior"},
+        {QStringLiteral("devicePressurePortCombo"), "PTB local serial port combo uses select-plus-manual behavior"},
+        {QStringLiteral("deviceHumidityPortCombo"), "HMP local serial port combo uses select-plus-manual behavior"},
+        {QStringLiteral("deviceLidarPortCombo"), "Lidar local serial port combo uses select-plus-manual behavior"},
+        {QStringLiteral("deviceTemperaturePortCombo"), "RD105 local serial port combo uses select-plus-manual behavior"}};
+    for (const auto& comboSpec : localSerialCombos)
     {
         requireLocalSerialPortComboReady(window.findChild<QComboBox *>(comboSpec.first), comboSpec.second);
     }

@@ -4,10 +4,10 @@
 void MainWindow::onGlobalRateChanged(const QString& text)
 {
     int rate = parseRate(text);
-    const bool skipPtbDeviceRate = state_->ptb_rate_combo_ && isRateUnspecified(state_->ptb_rate_combo_->currentText());
-    const bool skipHmpDeviceRate = state_->hmp_rate_combo_ && isRateUnspecified(state_->hmp_rate_combo_->currentText());
-    const bool skipLidarDeviceRate = state_->lidar_rate_combo_ && isRateUnspecified(state_->lidar_rate_combo_->currentText());
-    const bool skipTemperatureDeviceRate = state_->temperature_rate_combo_ && isRateUnspecified(state_->temperature_rate_combo_->currentText());
+    const bool skipPtbDeviceRate = state_->device_config_.ptb_rate_combo && isRateUnspecified(state_->device_config_.ptb_rate_combo->currentText());
+    const bool skipHmpDeviceRate = state_->device_config_.hmp_rate_combo && isRateUnspecified(state_->device_config_.hmp_rate_combo->currentText());
+    const bool skipLidarDeviceRate = state_->device_config_.lidar_rate_combo && isRateUnspecified(state_->device_config_.lidar_rate_combo->currentText());
+    const bool skipTemperatureDeviceRate = state_->device_config_.temperature_rate_combo && isRateUnspecified(state_->device_config_.temperature_rate_combo->currentText());
 
     state_->epsilon_sample_rate_ = std::clamp(rate, 20, 200);
     state_->ptb_sample_rate_ = skipPtbDeviceRate ? kDefaultPtbSampleRateHz : clampPtbSampleRate(rate);
@@ -15,20 +15,20 @@ void MainWindow::onGlobalRateChanged(const QString& text)
     state_->lidar_sample_rate_ = skipLidarDeviceRate ? kDefaultLidarSampleRateHz : std::min(rate, 100);
     state_->temperature_sample_rate_ = skipTemperatureDeviceRate ? kDefaultTemperatureSampleRateHz : std::min(rate, kMaxTemperatureSampleRateHz);
 
-    if (state_->ptb_rate_combo_) state_->ptb_rate_combo_->blockSignals(true);
-    if (state_->hmp_rate_combo_) state_->hmp_rate_combo_->blockSignals(true);
-    if (state_->lidar_rate_combo_) state_->lidar_rate_combo_->blockSignals(true);
-    if (state_->temperature_rate_combo_) state_->temperature_rate_combo_->blockSignals(true);
+    if (state_->device_config_.ptb_rate_combo) state_->device_config_.ptb_rate_combo->blockSignals(true);
+    if (state_->device_config_.hmp_rate_combo) state_->device_config_.hmp_rate_combo->blockSignals(true);
+    if (state_->device_config_.lidar_rate_combo) state_->device_config_.lidar_rate_combo->blockSignals(true);
+    if (state_->device_config_.temperature_rate_combo) state_->device_config_.temperature_rate_combo->blockSignals(true);
 
-    if (state_->ptb_rate_combo_ && !skipPtbDeviceRate) state_->ptb_rate_combo_->setCurrentText(QString::number(state_->ptb_sample_rate_));
-    if (state_->hmp_rate_combo_ && !skipHmpDeviceRate) state_->hmp_rate_combo_->setCurrentText(text);
-    if (state_->lidar_rate_combo_ && !skipLidarDeviceRate) state_->lidar_rate_combo_->setCurrentText(QString::number(state_->lidar_sample_rate_));
-    if (state_->temperature_rate_combo_ && !skipTemperatureDeviceRate) state_->temperature_rate_combo_->setCurrentText(QString::number(state_->temperature_sample_rate_));
+    if (state_->device_config_.ptb_rate_combo && !skipPtbDeviceRate) state_->device_config_.ptb_rate_combo->setCurrentText(QString::number(state_->ptb_sample_rate_));
+    if (state_->device_config_.hmp_rate_combo && !skipHmpDeviceRate) state_->device_config_.hmp_rate_combo->setCurrentText(text);
+    if (state_->device_config_.lidar_rate_combo && !skipLidarDeviceRate) state_->device_config_.lidar_rate_combo->setCurrentText(QString::number(state_->lidar_sample_rate_));
+    if (state_->device_config_.temperature_rate_combo && !skipTemperatureDeviceRate) state_->device_config_.temperature_rate_combo->setCurrentText(QString::number(state_->temperature_sample_rate_));
 
-    if (state_->ptb_rate_combo_) state_->ptb_rate_combo_->blockSignals(false);
-    if (state_->hmp_rate_combo_) state_->hmp_rate_combo_->blockSignals(false);
-    if (state_->lidar_rate_combo_) state_->lidar_rate_combo_->blockSignals(false);
-    if (state_->temperature_rate_combo_) state_->temperature_rate_combo_->blockSignals(false);
+    if (state_->device_config_.ptb_rate_combo) state_->device_config_.ptb_rate_combo->blockSignals(false);
+    if (state_->device_config_.hmp_rate_combo) state_->device_config_.hmp_rate_combo->blockSignals(false);
+    if (state_->device_config_.lidar_rate_combo) state_->device_config_.lidar_rate_combo->blockSignals(false);
+    if (state_->device_config_.temperature_rate_combo) state_->device_config_.temperature_rate_combo->blockSignals(false);
 
     QSettings settings = VaporView::applicationConfigSettings();
     settings.beginGroup(QStringLiteral("MainWindow"));
@@ -208,10 +208,10 @@ void MainWindow::onPtbRateChanged(const QString& text)
         return;
     }
 
-    if (state_->ptb_rate_combo_ && state_->ptb_rate_combo_->currentText() != QString::number(state_->ptb_sample_rate_))
+    if (state_->device_config_.ptb_rate_combo && state_->device_config_.ptb_rate_combo->currentText() != QString::number(state_->ptb_sample_rate_))
     {
-        QSignalBlocker blocker(state_->ptb_rate_combo_);
-        state_->ptb_rate_combo_->setCurrentText(QString::number(state_->ptb_sample_rate_));
+        QSignalBlocker blocker(state_->device_config_.ptb_rate_combo);
+        state_->device_config_.ptb_rate_combo->setCurrentText(QString::number(state_->ptb_sample_rate_));
     }
 
     const LocalSampleRateApplyResult rateResult =
@@ -339,11 +339,11 @@ void MainWindow::onTemperatureRateChanged(const QString& text)
 
 void MainWindow::applyAllSampleRates()
 {
-    int rate = parseRate(state_->global_rate_combo_ ? state_->global_rate_combo_->currentText() : QString::number(kDefaultHmpSampleRateHz));
-    const bool skipPtbDeviceRate = state_->ptb_rate_combo_ && isRateUnspecified(state_->ptb_rate_combo_->currentText());
-    const bool skipHmpDeviceRate = state_->hmp_rate_combo_ && isRateUnspecified(state_->hmp_rate_combo_->currentText());
-    const bool skipLidarDeviceRate = state_->lidar_rate_combo_ && isRateUnspecified(state_->lidar_rate_combo_->currentText());
-    const bool skipTemperatureDeviceRate = state_->temperature_rate_combo_ && isRateUnspecified(state_->temperature_rate_combo_->currentText());
+    const int rate = kDefaultHmpSampleRateHz;
+    const bool skipPtbDeviceRate = state_->device_config_.ptb_rate_combo && isRateUnspecified(state_->device_config_.ptb_rate_combo->currentText());
+    const bool skipHmpDeviceRate = state_->device_config_.hmp_rate_combo && isRateUnspecified(state_->device_config_.hmp_rate_combo->currentText());
+    const bool skipLidarDeviceRate = state_->device_config_.lidar_rate_combo && isRateUnspecified(state_->device_config_.lidar_rate_combo->currentText());
+    const bool skipTemperatureDeviceRate = state_->device_config_.temperature_rate_combo && isRateUnspecified(state_->device_config_.temperature_rate_combo->currentText());
     QSettings settings = VaporView::applicationConfigSettings();
     settings.beginGroup(QStringLiteral("MainWindow"));
     const int epsilonRate = std::clamp(rate, 20, 200);
@@ -396,20 +396,20 @@ void MainWindow::applyAllSampleRates()
                           {QStringLiteral("ui_dedupe_key"), QStringLiteral("ptb210:sample_rate:command_failed")}});
     }
 
-    if (state_->ptb_rate_combo_) state_->ptb_rate_combo_->blockSignals(true);
-    if (state_->hmp_rate_combo_) state_->hmp_rate_combo_->blockSignals(true);
-    if (state_->lidar_rate_combo_) state_->lidar_rate_combo_->blockSignals(true);
-    if (state_->temperature_rate_combo_) state_->temperature_rate_combo_->blockSignals(true);
+    if (state_->device_config_.ptb_rate_combo) state_->device_config_.ptb_rate_combo->blockSignals(true);
+    if (state_->device_config_.hmp_rate_combo) state_->device_config_.hmp_rate_combo->blockSignals(true);
+    if (state_->device_config_.lidar_rate_combo) state_->device_config_.lidar_rate_combo->blockSignals(true);
+    if (state_->device_config_.temperature_rate_combo) state_->device_config_.temperature_rate_combo->blockSignals(true);
 
-    if (state_->ptb_rate_combo_ && !skipPtbDeviceRate) state_->ptb_rate_combo_->setCurrentText(QString::number(ptbRate));
-    if (state_->hmp_rate_combo_ && !skipHmpDeviceRate) state_->hmp_rate_combo_->setCurrentText(QString::number(rate));
-    if (state_->lidar_rate_combo_ && !skipLidarDeviceRate) state_->lidar_rate_combo_->setCurrentText(QString::number(lidarRate));
-    if (state_->temperature_rate_combo_ && !skipTemperatureDeviceRate) state_->temperature_rate_combo_->setCurrentText(QString::number(temperatureRate));
+    if (state_->device_config_.ptb_rate_combo && !skipPtbDeviceRate) state_->device_config_.ptb_rate_combo->setCurrentText(QString::number(ptbRate));
+    if (state_->device_config_.hmp_rate_combo && !skipHmpDeviceRate) state_->device_config_.hmp_rate_combo->setCurrentText(QString::number(rate));
+    if (state_->device_config_.lidar_rate_combo && !skipLidarDeviceRate) state_->device_config_.lidar_rate_combo->setCurrentText(QString::number(lidarRate));
+    if (state_->device_config_.temperature_rate_combo && !skipTemperatureDeviceRate) state_->device_config_.temperature_rate_combo->setCurrentText(QString::number(temperatureRate));
 
-    if (state_->ptb_rate_combo_) state_->ptb_rate_combo_->blockSignals(false);
-    if (state_->hmp_rate_combo_) state_->hmp_rate_combo_->blockSignals(false);
-    if (state_->lidar_rate_combo_) state_->lidar_rate_combo_->blockSignals(false);
-    if (state_->temperature_rate_combo_) state_->temperature_rate_combo_->blockSignals(false);
+    if (state_->device_config_.ptb_rate_combo) state_->device_config_.ptb_rate_combo->blockSignals(false);
+    if (state_->device_config_.hmp_rate_combo) state_->device_config_.hmp_rate_combo->blockSignals(false);
+    if (state_->device_config_.lidar_rate_combo) state_->device_config_.lidar_rate_combo->blockSignals(false);
+    if (state_->device_config_.temperature_rate_combo) state_->device_config_.temperature_rate_combo->blockSignals(false);
 
     state_->gnss_sample_rate_ = rate;
     state_->imu_sample_rate_ = rate;

@@ -350,10 +350,13 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
             QStringLiteral("UI-TEST-AI8")
         };
         const QList<QComboBox *> portCombos{
-            state_->epsilon_port_combo_, state_->gnss_port_combo_, state_->imu_port_combo_,
-            state_->ptb_port_combo_, state_->hmp_port_combo_,
-            state_->lidar_port_combo_, state_->temperature_port_combo_,
-            state_->sky_telemetry_port_combo_
+            state_->device_config_.epsilon_port_combo,
+            state_->gnss_port_combo_, state_->imu_port_combo_,
+            state_->device_config_.ptb_port_combo,
+            state_->device_config_.hmp_port_combo,
+            state_->device_config_.lidar_port_combo,
+            state_->device_config_.temperature_port_combo,
+            state_->device_config_.sky_telemetry_port_combo
         };
         for (int index = 0; index < portCombos.size(); ++index)
         {
@@ -372,7 +375,7 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
         applyComboText(state_->device_config_.ai8_temperature_rate_combo,
                        QStringLiteral("5"));
         refreshAi8TemperatureTitlePortOptions(testPorts, QStringLiteral("UI-TEST-AI8"));
-        syncDeviceConfigPageFromHome();
+        updateLocalDeviceConfigFromUi();
         updateUiTestModeUi();
         updateConnectionStatus(false);
         applyUiTestSnapshot();

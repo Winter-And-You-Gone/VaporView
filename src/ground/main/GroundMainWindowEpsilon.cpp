@@ -221,7 +221,7 @@ void MainWindow::applyEpsilonMainAntennaLeverArm(
     }
     else
     {
-        const QString epsilonPort = localSerialPortComboValue(state_->epsilon_port_combo_);
+        const QString epsilonPort = state_->local_device_config_.epsilon.port;
         if (epsilonPort.isEmpty() || epsilonPort.startsWith(QStringLiteral("--")))
         {
             fail(state_->is_english_
@@ -230,7 +230,7 @@ void MainWindow::applyEpsilonMainAntennaLeverArm(
             return;
         }
 
-        const QString epsilonBaudText = state_->epsilon_baud_combo_ ? state_->epsilon_baud_combo_->currentText().trimmed() : QStringLiteral("921600");
+        const QString epsilonBaudText = state_->local_device_config_.epsilon.baudText;
         bool baudOk = false;
         const int epsilonBaud = epsilonBaudText.toInt(&baudOk);
         if (!baudOk || epsilonBaud <= 0)
@@ -344,8 +344,8 @@ void MainWindow::syncRtkConfigPageState()
     }
     else
     {
-        const QString epsilonPort = localSerialPortComboValue(state_->epsilon_port_combo_);
-        const QString epsilonBaud = state_->epsilon_baud_combo_ ? state_->epsilon_baud_combo_->currentText().trimmed() : QStringLiteral("921600");
+        const QString epsilonPort = state_->local_device_config_.epsilon.port;
+        const QString epsilonBaud = state_->local_device_config_.epsilon.baudText;
         state_->rtk_config_dialog_->setEpsilonMainPortAndBaud(epsilonPort, epsilonBaud);
         state_->rtk_config_dialog_->setRtcmCorrectionSink({}, QString());
         QSettings settings = VaporView::applicationConfigSettings();
@@ -560,7 +560,7 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
         return;
     }
     const QString selectText = state_->is_english_ ? "-- Select --" : "未选择";
-    const QString epsilonPort = localSerialPortComboValue(state_->epsilon_port_combo_);
+    const QString epsilonPort = state_->local_device_config_.epsilon.port;
     if (epsilonPort.isEmpty() || epsilonPort == selectText)
     {
         publishGroundLog(VaporView::LogLevel::Warning,
@@ -573,7 +573,7 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
         return;
     }
 
-    const QString epsilonBaudText = state_->epsilon_baud_combo_ ? state_->epsilon_baud_combo_->currentText().trimmed() : QStringLiteral("921600");
+    const QString epsilonBaudText = state_->local_device_config_.epsilon.baudText;
     bool epsilonBaudOk = false;
     const int epsilonBaud = epsilonBaudText.toInt(&epsilonBaudOk);
     if (!epsilonBaudOk || epsilonBaud <= 0)
@@ -953,9 +953,7 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
         ? QString::number(state_->remote_sky_config_.epsilon.baud_rate > 0
               ? state_->remote_sky_config_.epsilon.baud_rate
               : 921600)
-        : (state_->epsilon_baud_combo_
-              ? state_->epsilon_baud_combo_->currentText().trimmed()
-              : QStringLiteral("921600"));
+        : state_->local_device_config_.epsilon.baudText;
     if (!validateEpsilonPacketBandwidth(savedPacketRates, epsilonBaudText, true))
     {
         return;
@@ -982,7 +980,7 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
                       {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
 
     const QString selectText = state_->is_english_ ? "-- Select --" : "未选择";
-    const QString epsilonPort = localSerialPortComboValue(state_->epsilon_port_combo_);
+    const QString epsilonPort = state_->local_device_config_.epsilon.port;
     const bool targetReadyForApply = isRemoteSkyMode() ||
         (!epsilonPort.isEmpty() && epsilonPort != selectText);
     if (!state_->recording_service_->isActive() &&
@@ -1278,7 +1276,7 @@ void MainWindow::onReconfigureEpsilonClicked()
         return;
     }
     const QString selectText = state_->is_english_ ? "-- Select --" : "未选择";
-    const QString epsilonPort = localSerialPortComboValue(state_->epsilon_port_combo_);
+    const QString epsilonPort = state_->local_device_config_.epsilon.port;
     if (epsilonPort.isEmpty() || epsilonPort == selectText)
     {
         publishGroundLog(VaporView::LogLevel::Warning,
@@ -1291,7 +1289,7 @@ void MainWindow::onReconfigureEpsilonClicked()
         return;
     }
 
-    const QString epsilonBaudText = state_->epsilon_baud_combo_ ? state_->epsilon_baud_combo_->currentText().trimmed() : QStringLiteral("921600");
+    const QString epsilonBaudText = state_->local_device_config_.epsilon.baudText;
     bool baudOk = false;
     const int epsilonBaud = epsilonBaudText.toInt(&baudOk);
     if (!baudOk || epsilonBaud <= 0)

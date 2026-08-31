@@ -489,19 +489,10 @@ void MainWindow::setEnglish(bool english)
     if (state_->imu_group_) state_->imu_group_->setTitle(QString());
     if (state_->env_group_) state_->env_group_->setTitle(QString());
 
-    if (state_->epsilon_lbl_) state_->epsilon_lbl_->setText(english ? "EPSILON:" : "EPSILON:");
-    if (state_->gnss_lbl_) state_->gnss_lbl_->setText(english ? "GNSS:" : "GNSS:");
-    if (state_->imu_lbl_) state_->imu_lbl_->setText(english ? "IMU:" : "IMU:");
-    if (state_->ptb_lbl_) state_->ptb_lbl_->setText(english ? "PTB210:" : "PTB210:");
-    if (state_->hmp_lbl_) state_->hmp_lbl_->setText(english ? "HMP3:" : "HMP3:");
-    if (state_->lidar_lbl_) state_->lidar_lbl_->setText(english ? "TFA1500-L:" : "TFA1500-L:");
-    if (state_->temperature_lbl_) state_->temperature_lbl_->setText(QStringLiteral("RD105:"));
-
     if (state_->config_inline_title_lbl_)
     {
         state_->config_inline_title_lbl_->setText(english ? "Device Overview" : "设备概览");
     }
-    if (state_->data_source_mode_lbl_) state_->data_source_mode_lbl_->setText(english ? "Source:" : "数据源:");
     if (state_->source_mode_switch_) state_->source_mode_switch_->setEnglish(english);
     if (state_->sky_telemetry_transport_lbl_) state_->sky_telemetry_transport_lbl_->setText(english ? "Link:" : "链路:");
     updateSkyTelemetryTransportComboTexts(state_->sky_telemetry_transport_combo_, english);
@@ -515,12 +506,12 @@ void MainWindow::setEnglish(bool english)
         state_->data_source_mode_combo_->setItemText(0, sourceModeDisplayText(english, 0));
         state_->data_source_mode_combo_->setItemText(1, sourceModeDisplayText(english, 1));
     }
-    if (state_->auto_detect_ports_btn_)
+    if (state_->device_config_.auto_detect_ports_btn)
     {
-        state_->auto_detect_ports_btn_->setText(state_->port_detection_in_progress_
+        state_->device_config_.auto_detect_ports_btn->setText(state_->port_detection_in_progress_
             ? (english ? "Cancel Auto Detect" : "取消自动识别")
             : (english ? "Auto Detect Ports" : "自动识别串口"));
-        state_->auto_detect_ports_btn_->setToolTip(state_->port_detection_in_progress_
+        state_->device_config_.auto_detect_ports_btn->setToolTip(state_->port_detection_in_progress_
             ? (english ? "Stop the current serial-port detection task." : "停止当前串口自动识别任务。")
             : (english ? "Probe available serial ports and automatically assign detected devices."
                        : "扫描可用串口，并将识别出的设备自动填入对应端口。"));
@@ -580,17 +571,13 @@ void MainWindow::setEnglish(bool english)
     }
     updateAi8TemperatureTitleStatus();
     updateTemperatureTitleButtonsState();
-    if (state_->global_rate_lbl_) state_->global_rate_lbl_->setText(english ? "Global Rate:" : "统一频率:");
-    if (state_->epsilon_rate_lbl_) state_->epsilon_rate_lbl_->setText(english ? "Packets:" : "包频率:");
-    if (state_->epsilon_packet_rates_btn_)
+    if (state_->device_config_.epsilon_packet_rates_btn)
     {
-        state_->epsilon_packet_rates_btn_->setText(english ? "Packet Rates" : "配置EPSILON包频率");
-        state_->epsilon_packet_rates_btn_->setToolTip(english
+        state_->device_config_.epsilon_packet_rates_btn->setText(english ? "Packet Rates" : "配置EPSILON包频率");
+        state_->device_config_.epsilon_packet_rates_btn->setToolTip(english
             ? "Configure EPSILON packet output rates"
             : "配置 EPSILON 各数据包输出频率");
     }
-    if (state_->gnss_rate_lbl_) state_->gnss_rate_lbl_->setText(english ? "Rate:" : "频率:");
-    if (state_->imu_rate_lbl_) state_->imu_rate_lbl_->setText(english ? "Rate:" : "频率:");
     if (state_->imu_apply_btn_)
     {
         state_->imu_apply_btn_->setText(english ? "Apply IMU" : "应用IMU");
@@ -628,11 +615,9 @@ void MainWindow::setEnglish(bool english)
     {
         state_->imu_rate_1000_btn_->setToolTip(english ? "Switch IMU output frequency to 1000 Hz" : "一键切换 IMU 输出频率到 1000 Hz");
     }
-    state_->ptb_rate_lbl_->setText(english ? "Rate:" : "频率:");
-    state_->hmp_rate_lbl_->setText(english ? "Rate:" : "频率:");
-    state_->lidar_rate_lbl_->setText(english ? "Rate:" : "频率:");
-    if (state_->temperature_rate_lbl_) state_->temperature_rate_lbl_->setText(english ? "Poll:" : "轮询:");
-    for (QComboBox *combo : {state_->ptb_rate_combo_, state_->hmp_rate_combo_, state_->lidar_rate_combo_, state_->temperature_rate_combo_})
+    for (QComboBox *combo : {state_->device_config_.ptb_rate_combo, state_->device_config_.hmp_rate_combo,
+                             state_->device_config_.lidar_rate_combo, state_->device_config_.temperature_rate_combo,
+                             state_->device_config_.ai8_temperature_rate_combo})
     {
         if (!combo)
         {

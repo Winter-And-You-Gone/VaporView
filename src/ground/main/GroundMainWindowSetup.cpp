@@ -2511,6 +2511,19 @@ void MainWindow::setupDeviceConfigPage()
     state_->device_config_.sky_telemetry_baud_combo = new QComboBox(skyTelemetryRow);
     state_->device_config_.sky_telemetry_baud_combo->setFixedHeight(kMainPageInputHeight);
     state_->device_config_.sky_telemetry_baud_combo->setFixedWidth(100);
+    state_->device_config_.sky_telemetry_transport_combo->addItem(
+        skyTelemetryTransportDisplayText(false, QStringLiteral("tcp")), QStringLiteral("tcp"));
+    state_->device_config_.sky_telemetry_transport_combo->addItem(
+        skyTelemetryTransportDisplayText(false, QStringLiteral("serial")), QStringLiteral("serial"));
+    state_->device_config_.sky_telemetry_tcp_host_edit->setText(QStringLiteral("192.168.1.2"));
+    state_->device_config_.sky_telemetry_tcp_port_spin->setValue(39100);
+    refreshLocalSerialPortComboOptions(state_->device_config_.sky_telemetry_port_combo,
+                                       getAvailablePorts());
+    state_->device_config_.sky_telemetry_baud_combo->addItems(
+        {QStringLiteral("9600"), QStringLiteral("19200"), QStringLiteral("38400"),
+         QStringLiteral("57600"), QStringLiteral("115200"), QStringLiteral("230400"),
+         QStringLiteral("460800"), QStringLiteral("500000"), QStringLiteral("921600")});
+    state_->device_config_.sky_telemetry_baud_combo->setCurrentText(QStringLiteral("921600"));
 
     skyTelemetryLayout->addWidget(state_->device_config_.sky_telemetry_transport_lbl, 0, Qt::AlignVCenter | Qt::AlignLeft);
     skyTelemetryLayout->addWidget(state_->device_config_.sky_telemetry_transport_combo, 0, Qt::AlignVCenter);
@@ -2523,6 +2536,72 @@ void MainWindow::setupDeviceConfigPage()
     skyTelemetryLayout->addWidget(state_->device_config_.sky_telemetry_baud_lbl, 0, Qt::AlignVCenter | Qt::AlignLeft);
     skyTelemetryLayout->addWidget(state_->device_config_.sky_telemetry_baud_combo, 0, Qt::AlignVCenter);
     skyTelemetryLayout->addStretch(1);
+
+    const auto syncTransport = [this](QComboBox *source, QComboBox *target) {
+        connect(source, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+                [this, source, target](int) {
+            const QSignalBlocker blocker(target);
+            const int index = target->findData(source->currentData());
+            if (index >= 0)
+            {
+                target->setCurrentIndex(index);
+            }
+            saveRememberedInputState();
+            updateSourceModeUi();
+        });
+    };
+    syncTransport(state_->sky_telemetry_transport_combo_,
+                  state_->device_config_.sky_telemetry_transport_combo);
+    syncTransport(state_->device_config_.sky_telemetry_transport_combo,
+                  state_->sky_telemetry_transport_combo_);
+    const auto syncPort = [this](QComboBox *source, QComboBox *target) {
+        connect(source, &QComboBox::currentTextChanged, this,
+                [this, source, target](const QString&) {
+            const QSignalBlocker blocker(target);
+            setLocalSerialPortComboText(target, localSerialPortComboValue(source));
+            saveRememberedInputState();
+        });
+    };
+    syncPort(state_->sky_telemetry_port_combo_,
+             state_->device_config_.sky_telemetry_port_combo);
+    syncPort(state_->device_config_.sky_telemetry_port_combo,
+             state_->sky_telemetry_port_combo_);
+    const auto syncBaud = [this](QComboBox *source, QComboBox *target) {
+        connect(source, &QComboBox::currentTextChanged, this,
+                [this, source, target](const QString& text) {
+            const QSignalBlocker blocker(target);
+            applyComboText(target, text);
+            saveRememberedInputState();
+        });
+    };
+    syncBaud(state_->sky_telemetry_baud_combo_,
+             state_->device_config_.sky_telemetry_baud_combo);
+    syncBaud(state_->device_config_.sky_telemetry_baud_combo,
+             state_->sky_telemetry_baud_combo_);
+    const auto syncHost = [this](QLineEdit *source, QLineEdit *target) {
+        connect(source, &QLineEdit::textChanged, this,
+                [this, target](const QString& text) {
+            const QSignalBlocker blocker(target);
+            target->setText(text);
+            saveRememberedInputState();
+        });
+    };
+    syncHost(state_->sky_telemetry_tcp_host_edit_,
+             state_->device_config_.sky_telemetry_tcp_host_edit);
+    syncHost(state_->device_config_.sky_telemetry_tcp_host_edit,
+             state_->sky_telemetry_tcp_host_edit_);
+    const auto syncTcpPort = [this](QSpinBox *source, QSpinBox *target) {
+        connect(source, QOverload<int>::of(&QSpinBox::valueChanged), this,
+                [this, target](int value) {
+            const QSignalBlocker blocker(target);
+            target->setValue(value);
+            saveRememberedInputState();
+        });
+    };
+    syncTcpPort(state_->sky_telemetry_tcp_port_spin_,
+                state_->device_config_.sky_telemetry_tcp_port_spin);
+    syncTcpPort(state_->device_config_.sky_telemetry_tcp_port_spin,
+                state_->sky_telemetry_tcp_port_spin_);
 
     auto *formRowWidget = new QWidget(serialCard);
     auto *formRowLayout = new QVBoxLayout(formRowWidget);
@@ -2591,13 +2670,11 @@ void MainWindow::setupDeviceConfigPage()
 
         portCombo = createCombo(kDeviceConfigPortComboWidth);
         installLocalSerialPortComboBehavior(portCombo);
-        portCombo->setProperty(kDeviceConfigLocalMirrorOnlyProperty, true);
         portCombo->setMinimumContentsLength(6);
         portCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
         formLayout->addWidget(portCombo, gridRow, 1, Qt::AlignVCenter);
 
         baudCombo = createCombo(kDeviceConfigBaudComboWidth);
-        baudCombo->setProperty(kDeviceConfigLocalMirrorOnlyProperty, true);
         formLayout->addWidget(baudCombo, gridRow, 2, Qt::AlignVCenter);
 
         rateLabel = new QLabel(formWidget);
@@ -2606,7 +2683,6 @@ void MainWindow::setupDeviceConfigPage()
         formLayout->addWidget(rateLabel, gridRow, 3, Qt::AlignVCenter | Qt::AlignRight);
 
         rateCombo = createCombo(kDeviceConfigRateComboWidth, true);
-        rateCombo->setProperty(kDeviceConfigLocalMirrorOnlyProperty, true);
         rateCombo->setMinimumContentsLength(4);
         rateCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
         formLayout->addWidget(rateCombo, gridRow, 4, Qt::AlignVCenter);
@@ -2648,6 +2724,49 @@ void MainWindow::setupDeviceConfigPage()
                state_->device_config_.ai8_temperature_rate_lbl,
                state_->device_config_.ai8_temperature_rate_combo,
                5);
+    const QStringList availablePorts = getAvailablePorts();
+    for (QComboBox *portCombo : {state_->device_config_.epsilon_port_combo,
+                                 state_->device_config_.ptb_port_combo,
+                                 state_->device_config_.hmp_port_combo,
+                                 state_->device_config_.lidar_port_combo,
+                                 state_->device_config_.temperature_port_combo})
+    {
+        refreshLocalSerialPortComboOptions(portCombo, availablePorts);
+    }
+    const QStringList baudRates{QStringLiteral("9600"), QStringLiteral("19200"),
+                                QStringLiteral("38400"), QStringLiteral("57600"),
+                                QStringLiteral("115200"), QStringLiteral("230400"),
+                                QStringLiteral("460800"), QStringLiteral("500000"),
+                                QStringLiteral("921600")};
+    const auto populateBaud = [&baudRates](QComboBox *combo, const QString& defaultBaud) {
+        combo->addItems(baudRates);
+        combo->setCurrentText(defaultBaud);
+    };
+    populateBaud(state_->device_config_.epsilon_baud_combo, QStringLiteral("921600"));
+    populateBaud(state_->device_config_.ptb_baud_combo, QStringLiteral("9600"));
+    populateBaud(state_->device_config_.hmp_baud_combo, QStringLiteral("19200"));
+    populateBaud(state_->device_config_.lidar_baud_combo, QStringLiteral("500000"));
+    populateBaud(state_->device_config_.temperature_baud_combo, QStringLiteral("38400"));
+    const QList<int> supportedRates{1, 2, 5, 10, 20, 50, 70, 100, 200, 250, 500, 1000};
+    const auto populateRate = [this, &supportedRates](QComboBox *combo, int maximum, int defaultRate) {
+        for (int rate : supportedRates)
+        {
+            if (rate <= maximum)
+            {
+                combo->addItem(QString::number(rate));
+            }
+        }
+        combo->setCurrentText(QString::number(defaultRate));
+        combo->addItem(state_->is_english_ ? QStringLiteral("No Set") : QStringLiteral("不设定"));
+    };
+    populateRate(state_->device_config_.ptb_rate_combo,
+                 kPtbMaxSampleRateHz,
+                 kDefaultPtbSampleRateHz);
+    populateRate(state_->device_config_.hmp_rate_combo, 1000, kDefaultHmpSampleRateHz);
+    populateRate(state_->device_config_.lidar_rate_combo, 100, kDefaultLidarSampleRateHz);
+    populateRate(state_->device_config_.temperature_rate_combo,
+                 kMaxTemperatureSampleRateHz,
+                 kDefaultTemperatureSampleRateHz);
     constexpr int kTcpWaveDeviceRow = 6;
     const int tcpWaveGridRow = kTcpWaveDeviceRow + 1;
     state_->device_config_.tcp_wave_lbl = new QLabel(formWidget);
@@ -2847,7 +2966,6 @@ void MainWindow::setupDeviceConfigPage()
     }
     state_->device_config_.ptb_source_combo = createCombo(kDeviceConfigSourceComboWidth);
     state_->device_config_.ptb_source_combo->setObjectName(QStringLiteral("devicePressureSourceCombo"));
-    state_->device_config_.ptb_source_combo->setProperty(kDeviceConfigLocalMirrorOnlyProperty, true);
     state_->device_config_.ptb_source_combo->addItem(QStringLiteral("PTB210"), QStringLiteral("ptb210"));
     state_->device_config_.ptb_source_combo->addItem(QStringLiteral("BMP390"), QStringLiteral("bmp390"));
     state_->device_config_.ptb_source_combo->setToolTip(state_->is_english_
@@ -2857,7 +2975,6 @@ void MainWindow::setupDeviceConfigPage()
 
     state_->device_config_.hmp_source_combo = createCombo(kDeviceConfigSourceComboWidth);
     state_->device_config_.hmp_source_combo->setObjectName(QStringLiteral("deviceHumiditySourceCombo"));
-    state_->device_config_.hmp_source_combo->setProperty(kDeviceConfigLocalMirrorOnlyProperty, true);
     state_->device_config_.hmp_source_combo->addItem(QStringLiteral("HMP3"), QStringLiteral("hmp3"));
     state_->device_config_.hmp_source_combo->addItem(QStringLiteral("SHT45"), QStringLiteral("sht45"));
     state_->device_config_.hmp_source_combo->setToolTip(state_->is_english_
@@ -2865,11 +2982,12 @@ void MainWindow::setupDeviceConfigPage()
         : QStringLiteral("温湿度来源。SHT45 使用 Adafruit 示例程序通过 115200 8N1 串口输出。"));
     formLayout->addWidget(state_->device_config_.hmp_source_combo, 3, 6, Qt::AlignVCenter);
     auto bindSensorSourceBaud = [this](QComboBox *sourceCombo,
+                                       QComboBox *devicePortCombo,
                                        QComboBox *deviceBaudCombo,
-                                       QComboBox *homeBaudCombo) {
+                                       bool pressure) {
         sourceCombo->setProperty(kSensorBaudSourceProperty, sourceCombo->currentData().toString());
         connect(sourceCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-                [this, sourceCombo, deviceBaudCombo, homeBaudCombo](int) {
+                [this, sourceCombo, devicePortCombo, deviceBaudCombo, pressure](int) {
             if (isRemoteSkyMode())
             {
                 sourceCombo->setProperty(kSensorBaudSourceProperty, sourceCombo->currentData().toString());
@@ -2877,25 +2995,67 @@ void MainWindow::setupDeviceConfigPage()
                 markRemoteSkyConfigDirty();
                 return;
             }
-            QSettings settings = VaporView::applicationConfigSettings();
-            settings.beginGroup(QStringLiteral("MainWindow"));
             const QString previousSource = sourceCombo->property(kSensorBaudSourceProperty).toString();
-            saveRememberedSensorBaud(
-                settings, previousSource, homeBaudCombo ? homeBaudCombo : deviceBaudCombo);
+            auto& profiles = pressure ? state_->local_device_config_.pressureBySource
+                                       : state_->local_device_config_.humidityBySource;
+            auto& active = pressure ? state_->local_device_config_.ptb
+                                     : state_->local_device_config_.hmp;
+            if (!previousSource.isEmpty()) profiles[previousSource] = active;
 
             const QString currentSource = sourceCombo->currentData().toString();
-            const QString baud = rememberedSensorBaud(settings, currentSource);
-            applyComboText(homeBaudCombo, baud);
-            applyComboText(deviceBaudCombo, baud);
+            const auto it = profiles.find(currentSource);
+            if (it != profiles.end())
+            {
+                active = it->second;
+            }
+            else
+            {
+                QSettings settings = VaporView::applicationConfigSettings();
+                settings.beginGroup(QStringLiteral("MainWindow"));
+                active.port = rememberedSensorPort(
+                    settings,
+                    currentSource,
+                    QString());
+                active.baudText = rememberedSensorBaud(
+                    settings,
+                    currentSource,
+                    QString());
+            }
             sourceCombo->setProperty(kSensorBaudSourceProperty, currentSource);
+            {
+                const QSignalBlocker portBlocker(devicePortCombo);
+                const QSignalBlocker baudBlocker(deviceBaudCombo);
+                setLocalSerialPortComboText(devicePortCombo, active.port);
+                applyComboText(deviceBaudCombo, active.baudText);
+            }
+            if (pressure)
+            {
+                state_->local_device_config_.pressureSource = currentSource;
+                state_->local_device_config_.pressureProtocol = currentSource == QStringLiteral("bmp390")
+                    ? VaporView::PressureSensorProtocol::Bmp390Serial
+                    : VaporView::PressureSensorProtocol::Ptb210;
+            }
+            else
+            {
+                state_->local_device_config_.humiditySource = currentSource;
+                state_->local_device_config_.humidityProtocol = currentSource == QStringLiteral("sht45")
+                    ? VaporView::HumiditySensorProtocol::Sht45Serial
+                    : VaporView::HumiditySensorProtocol::Hmp3Modbus;
+            }
             saveRememberedInputState();
             updateDeviceConfigTexts();
         });
     };
     bindSensorSourceBaud(
-        state_->device_config_.ptb_source_combo, state_->device_config_.ptb_baud_combo, state_->ptb_baud_combo_);
+        state_->device_config_.ptb_source_combo,
+        state_->device_config_.ptb_port_combo,
+        state_->device_config_.ptb_baud_combo,
+        true);
     bindSensorSourceBaud(
-        state_->device_config_.hmp_source_combo, state_->device_config_.hmp_baud_combo, state_->hmp_baud_combo_);
+        state_->device_config_.hmp_source_combo,
+        state_->device_config_.hmp_port_combo,
+        state_->device_config_.hmp_baud_combo,
+        false);
     if (state_->device_config_.temperature_port_combo)
     {
         state_->device_config_.temperature_port_combo->setObjectName(QStringLiteral("deviceTemperaturePortCombo"));
@@ -3288,123 +3448,6 @@ void MainWindow::setupDeviceConfigPage()
     pageLayout->addWidget(scrollArea, 1);
     state_->main_page_stack_->addWidget(state_->device_config_.page);
 
-    auto comboItemsMatch = [](const QComboBox *left, const QComboBox *right) {
-        if (!left || !right || left->count() != right->count())
-        {
-            return false;
-        }
-        for (int i = 0; i < left->count(); ++i)
-        {
-            if (left->itemText(i) != right->itemText(i) ||
-                left->itemData(i) != right->itemData(i))
-            {
-                return false;
-            }
-        }
-        return true;
-    };
-
-    auto mirrorComboToHome = [this, comboItemsMatch](QComboBox *deviceCombo, QComboBox *homeCombo) {
-        if (!deviceCombo || !homeCombo)
-        {
-            return;
-        }
-        connect(deviceCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, deviceCombo, homeCombo](int index) {
-            if (!homeCombo || index < 0 || index >= deviceCombo->count())
-            {
-                return;
-            }
-            if (isRemoteSkyMode() &&
-                deviceCombo->property(kDeviceConfigLocalMirrorOnlyProperty).toBool())
-            {
-                markRemoteSkyConfigDirty();
-                return;
-            }
-            if (deviceCombo->property(kLocalSerialPortComboProperty).toBool() &&
-                isLocalSerialPortManualOption(deviceCombo, index))
-            {
-                return;
-            }
-            if (deviceCombo->property(kLocalSerialPortComboProperty).toBool())
-            {
-                setLocalSerialPortComboText(
-                    homeCombo,
-                    localSerialPortItemValue(deviceCombo, index));
-                return;
-            }
-            const QVariant itemData = deviceCombo->itemData(index);
-            const int dataIndex = itemData.isValid() ? homeCombo->findData(itemData) : -1;
-            const int textIndex = homeCombo->findText(deviceCombo->itemText(index));
-            const int targetIndex = dataIndex >= 0 ? dataIndex : textIndex;
-            if (targetIndex >= 0 && targetIndex != homeCombo->currentIndex())
-            {
-                homeCombo->setCurrentIndex(targetIndex);
-            }
-        });
-        connect(deviceCombo, &QComboBox::currentTextChanged, this, [this, deviceCombo, homeCombo](const QString& text) {
-            if (!homeCombo || homeCombo->currentText() == text)
-            {
-                return;
-            }
-            if (isRemoteSkyMode() &&
-                deviceCombo->property(kDeviceConfigLocalMirrorOnlyProperty).toBool())
-            {
-                markRemoteSkyConfigDirty();
-                return;
-            }
-            if (deviceCombo->property(kLocalSerialPortComboProperty).toBool())
-            {
-                if (deviceCombo->property(kLocalSerialPortManualEntryProperty).toBool() ||
-                    isLocalSerialPortManualOptionText(text))
-                {
-                    return;
-                }
-                setLocalSerialPortComboText(homeCombo, text);
-                return;
-            }
-            const int index = homeCombo->findText(text);
-            if (index >= 0)
-            {
-                homeCombo->setCurrentIndex(index);
-            }
-            else if (homeCombo->isEditable())
-            {
-                homeCombo->setEditText(text);
-            }
-        });
-        connect(homeCombo, &QComboBox::currentTextChanged, this, [this, deviceCombo, homeCombo, comboItemsMatch]() {
-            if (homeCombo && homeCombo->property(kLocalSerialPortManualEntryProperty).toBool())
-            {
-                return;
-            }
-            if (deviceCombo &&
-                homeCombo &&
-                deviceCombo->isEditable() == homeCombo->isEditable() &&
-                deviceCombo->currentText() == homeCombo->currentText() &&
-                comboItemsMatch(homeCombo, deviceCombo))
-            {
-                return;
-            }
-            syncDeviceConfigPageFromHome();
-        });
-    };
-    mirrorComboToHome(state_->device_config_.sky_telemetry_transport_combo, state_->sky_telemetry_transport_combo_);
-    mirrorComboToHome(state_->device_config_.sky_telemetry_port_combo, state_->sky_telemetry_port_combo_);
-    mirrorComboToHome(state_->device_config_.sky_telemetry_baud_combo, state_->sky_telemetry_baud_combo_);
-    mirrorComboToHome(state_->device_config_.epsilon_port_combo, state_->epsilon_port_combo_);
-    mirrorComboToHome(state_->device_config_.epsilon_baud_combo, state_->epsilon_baud_combo_);
-    mirrorComboToHome(state_->device_config_.ptb_port_combo, state_->ptb_port_combo_);
-    mirrorComboToHome(state_->device_config_.ptb_baud_combo, state_->ptb_baud_combo_);
-    mirrorComboToHome(state_->device_config_.hmp_port_combo, state_->hmp_port_combo_);
-    mirrorComboToHome(state_->device_config_.hmp_baud_combo, state_->hmp_baud_combo_);
-    mirrorComboToHome(state_->device_config_.lidar_port_combo, state_->lidar_port_combo_);
-    mirrorComboToHome(state_->device_config_.lidar_baud_combo, state_->lidar_baud_combo_);
-    mirrorComboToHome(state_->device_config_.temperature_port_combo, state_->temperature_port_combo_);
-    mirrorComboToHome(state_->device_config_.temperature_baud_combo, state_->temperature_baud_combo_);
-    mirrorComboToHome(state_->device_config_.ptb_rate_combo, state_->ptb_rate_combo_);
-    mirrorComboToHome(state_->device_config_.hmp_rate_combo, state_->hmp_rate_combo_);
-    mirrorComboToHome(state_->device_config_.lidar_rate_combo, state_->lidar_rate_combo_);
-    mirrorComboToHome(state_->device_config_.temperature_rate_combo, state_->temperature_rate_combo_);
     connect(state_->device_config_.ai8_temperature_port_combo,
             &QComboBox::currentTextChanged,
             this,
@@ -3421,33 +3464,7 @@ void MainWindow::setupDeviceConfigPage()
                     localSerialPortComboValue(state_->device_config_.ai8_temperature_port_combo));
             });
 
-    connect(state_->device_config_.sky_telemetry_tcp_host_edit, &QLineEdit::textChanged, this, [this](const QString& text) {
-        if (state_->sky_telemetry_tcp_host_edit_ && state_->sky_telemetry_tcp_host_edit_->text() != text)
-        {
-            state_->sky_telemetry_tcp_host_edit_->setText(text);
-        }
-    });
-    connect(state_->device_config_.sky_telemetry_tcp_port_spin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
-        if (state_->sky_telemetry_tcp_port_spin_ && state_->sky_telemetry_tcp_port_spin_->value() != value)
-        {
-            state_->sky_telemetry_tcp_port_spin_->setValue(value);
-        }
-    });
-    if (state_->sky_telemetry_tcp_host_edit_)
-    {
-        connect(state_->sky_telemetry_tcp_host_edit_, &QLineEdit::textChanged, this, [this]() {
-            syncDeviceConfigPageFromHome();
-        });
-    }
-    if (state_->sky_telemetry_tcp_port_spin_)
-    {
-        connect(state_->sky_telemetry_tcp_port_spin_, QOverload<int>::of(&QSpinBox::valueChanged), this, [this]() {
-            syncDeviceConfigPageFromHome();
-        });
-    }
-
     updateDeviceConfigTexts();
-    syncDeviceConfigPageFromHome();
     updateDeviceConfigState();
 }
 
@@ -3477,106 +3494,107 @@ void MainWindow::updateSidebarNavIcons()
     }
 }
 
-void MainWindow::syncDeviceConfigPageFromHome()
+void MainWindow::updateLocalDeviceConfigFromUi() const
 {
-    if (!state_->device_config_.page)
+    if (isRemoteSkyMode())
     {
         return;
     }
+    auto capture = [this](QComboBox *port,
+                          QComboBox *baud,
+                          VaporView::Ground::Devices::LocalSerialDeviceSettings& out) {
+        if (port) out.port = localSerialPortComboValue(port);
+        if (baud) out.baudText = baud->currentText().trimmed();
+    };
+    capture(state_->device_config_.epsilon_port_combo, state_->device_config_.epsilon_baud_combo, state_->local_device_config_.epsilon);
+    capture(state_->device_config_.ptb_port_combo, state_->device_config_.ptb_baud_combo, state_->local_device_config_.ptb);
+    capture(state_->device_config_.hmp_port_combo, state_->device_config_.hmp_baud_combo, state_->local_device_config_.hmp);
+    capture(state_->device_config_.lidar_port_combo, state_->device_config_.lidar_baud_combo, state_->local_device_config_.lidar);
+    capture(state_->device_config_.temperature_port_combo, state_->device_config_.temperature_baud_combo, state_->local_device_config_.temperatureController);
+    capture(state_->device_config_.ai8_temperature_port_combo, state_->device_config_.ai8_temperature_baud_combo, state_->local_device_config_.ai8TemperatureController);
+    auto captureRate = [](QComboBox *combo,
+                          QString& text,
+                          int& value,
+                          bool& skipDeviceRate) {
+        if (!combo) return;
+        text = combo->currentText().trimmed();
+        skipDeviceRate = isRateUnspecified(text);
+        value = effectiveRateOrDefault(text, value, 1000);
+    };
+    captureRate(state_->device_config_.ptb_rate_combo, state_->local_device_config_.ptbRateText, state_->local_device_config_.ptb.sampleRateHz, state_->local_device_config_.ptb.skipDeviceRate);
+    captureRate(state_->device_config_.hmp_rate_combo, state_->local_device_config_.hmpRateText, state_->local_device_config_.hmp.sampleRateHz, state_->local_device_config_.hmp.skipDeviceRate);
+    captureRate(state_->device_config_.lidar_rate_combo, state_->local_device_config_.lidarRateText, state_->local_device_config_.lidar.sampleRateHz, state_->local_device_config_.lidar.skipDeviceRate);
+    captureRate(state_->device_config_.temperature_rate_combo, state_->local_device_config_.temperatureRateText, state_->local_device_config_.temperatureController.sampleRateHz, state_->local_device_config_.temperatureController.skipDeviceRate);
+    captureRate(state_->device_config_.ai8_temperature_rate_combo, state_->local_device_config_.ai8RateText, state_->local_device_config_.ai8TemperatureController.sampleRateHz, state_->local_device_config_.ai8TemperatureController.skipDeviceRate);
+    if (state_->device_config_.epsilon_enabled_check) state_->local_device_config_.epsilon.enabled = state_->device_config_.epsilon_enabled_check->isChecked();
+    if (state_->device_config_.ptb_enabled_check) state_->local_device_config_.ptb.enabled = state_->device_config_.ptb_enabled_check->isChecked();
+    if (state_->device_config_.hmp_enabled_check) state_->local_device_config_.hmp.enabled = state_->device_config_.hmp_enabled_check->isChecked();
+    if (state_->device_config_.lidar_enabled_check) state_->local_device_config_.lidar.enabled = state_->device_config_.lidar_enabled_check->isChecked();
+    if (state_->device_config_.temperature_enabled_check) state_->local_device_config_.temperatureController.enabled = state_->device_config_.temperature_enabled_check->isChecked();
+    if (state_->device_config_.ai8_temperature_enabled_check) state_->local_device_config_.ai8TemperatureController.enabled = state_->device_config_.ai8_temperature_enabled_check->isChecked();
+    if (state_->device_config_.ptb_source_combo) state_->local_device_config_.pressureSource = state_->device_config_.ptb_source_combo->currentData().toString();
+    if (state_->device_config_.hmp_source_combo) state_->local_device_config_.humiditySource = state_->device_config_.hmp_source_combo->currentData().toString();
+    state_->local_device_config_.pressureProtocol = state_->local_device_config_.pressureSource == QStringLiteral("bmp390") ? VaporView::PressureSensorProtocol::Bmp390Serial : VaporView::PressureSensorProtocol::Ptb210;
+    state_->local_device_config_.humidityProtocol = state_->local_device_config_.humiditySource == QStringLiteral("sht45") ? VaporView::HumiditySensorProtocol::Sht45Serial : VaporView::HumiditySensorProtocol::Hmp3Modbus;
+    state_->local_device_config_.pressureBySource[state_->local_device_config_.pressureSource] =
+        state_->local_device_config_.ptb;
+    state_->local_device_config_.humidityBySource[state_->local_device_config_.humiditySource] =
+        state_->local_device_config_.hmp;
+    state_->epsilon_sample_rate_ = std::clamp(state_->local_device_config_.epsilon.sampleRateHz, 20, 200);
+    state_->ptb_sample_rate_ = state_->local_device_config_.ptb.sampleRateHz;
+    state_->hmp_sample_rate_ = state_->local_device_config_.hmp.sampleRateHz;
+    state_->lidar_sample_rate_ = state_->local_device_config_.lidar.sampleRateHz;
+    state_->temperature_sample_rate_ = state_->local_device_config_.temperatureController.sampleRateHz;
+}
 
-    auto copyCombo = [this](QComboBox *source, QComboBox *target) {
-        if (!source || !target)
+void MainWindow::refreshDeviceConfigUiFromLocalModel()
+{
+    const auto& c = state_->local_device_config_;
+    auto apply = [this](QComboBox *port,
+                        QComboBox *baud,
+                        const VaporView::Ground::Devices::LocalSerialDeviceSettings& value) {
+        if (port)
         {
-            return;
+            const QSignalBlocker blocker(port);
+            setLocalSerialPortComboText(port, value.port);
         }
-        const bool localSerial = source->property(kLocalSerialPortComboProperty).toBool() ||
-                                 target->property(kLocalSerialPortComboProperty).toBool();
-        const QSignalBlocker blocker(target);
-        const QString currentText = source->currentText();
-        const int currentIndex = source->currentIndex();
-        if (localSerial)
+        if (baud)
         {
-            installLocalSerialPortComboBehavior(target);
-        }
-        target->setEditable(localSerial ? false : source->isEditable());
-        target->clear();
-        for (int i = 0; i < source->count(); ++i)
-        {
-            target->addItem(source->itemIcon(i), source->itemText(i), source->itemData(i));
-            target->setItemData(
-                i,
-                source->itemData(i, kLocalSerialPortHistoryItemRole),
-                kLocalSerialPortHistoryItemRole);
-        }
-        const QVariant currentData = currentIndex >= 0 ? source->itemData(currentIndex) : QVariant();
-        int targetIndex = currentData.isValid() ? target->findData(currentData) : -1;
-        if (targetIndex < 0)
-        {
-            targetIndex = target->findText(currentText);
-        }
-        if (targetIndex >= 0)
-        {
-            target->setCurrentIndex(targetIndex);
-        }
-        else if (localSerial)
-        {
-            setLocalSerialPortComboText(target, currentText);
-        }
-        else if (target->isEditable())
-        {
-            target->setCurrentText(currentText);
-        }
-        else
-        {
-            target->setCurrentIndex(std::clamp(currentIndex, -1, target->count() - 1));
+            const QSignalBlocker blocker(baud);
+            applyComboText(baud, value.baudText);
         }
     };
-
-    copyCombo(state_->sky_telemetry_transport_combo_, state_->device_config_.sky_telemetry_transport_combo);
-    copyCombo(state_->sky_telemetry_port_combo_, state_->device_config_.sky_telemetry_port_combo);
-    copyCombo(state_->sky_telemetry_baud_combo_, state_->device_config_.sky_telemetry_baud_combo);
-    if (!isRemoteSkyMode())
-    {
-        copyCombo(state_->epsilon_port_combo_, state_->device_config_.epsilon_port_combo);
-        copyCombo(state_->epsilon_baud_combo_, state_->device_config_.epsilon_baud_combo);
-        copyCombo(state_->ptb_port_combo_, state_->device_config_.ptb_port_combo);
-        copyCombo(state_->ptb_baud_combo_, state_->device_config_.ptb_baud_combo);
-        copyCombo(state_->hmp_port_combo_, state_->device_config_.hmp_port_combo);
-        copyCombo(state_->hmp_baud_combo_, state_->device_config_.hmp_baud_combo);
-        copyCombo(state_->lidar_port_combo_, state_->device_config_.lidar_port_combo);
-        copyCombo(state_->lidar_baud_combo_, state_->device_config_.lidar_baud_combo);
-        copyCombo(state_->temperature_port_combo_, state_->device_config_.temperature_port_combo);
-        copyCombo(state_->temperature_baud_combo_, state_->device_config_.temperature_baud_combo);
-        copyCombo(state_->ptb_rate_combo_, state_->device_config_.ptb_rate_combo);
-        copyCombo(state_->hmp_rate_combo_, state_->device_config_.hmp_rate_combo);
-        copyCombo(state_->lidar_rate_combo_, state_->device_config_.lidar_rate_combo);
-        copyCombo(state_->temperature_rate_combo_, state_->device_config_.temperature_rate_combo);
-    }
-    syncDeviceConfigPageForCurrentTarget();
-
-    if (state_->sky_telemetry_tcp_host_edit_ && state_->device_config_.sky_telemetry_tcp_host_edit)
-    {
-        const QSignalBlocker blocker(state_->device_config_.sky_telemetry_tcp_host_edit);
-        state_->device_config_.sky_telemetry_tcp_host_edit->setText(state_->sky_telemetry_tcp_host_edit_->text());
-    }
-    if (state_->sky_telemetry_tcp_port_spin_ && state_->device_config_.sky_telemetry_tcp_port_spin)
-    {
-        const QSignalBlocker blocker(state_->device_config_.sky_telemetry_tcp_port_spin);
-        state_->device_config_.sky_telemetry_tcp_port_spin->setValue(state_->sky_telemetry_tcp_port_spin_->value());
-    }
-    if (!isRemoteSkyMode())
-    {
-        syncDeviceConfigTcpWaveEndpointFromPanel();
-    }
-    if (state_->device_config_.data_telemetry_summary_card)
-    {
-        state_->device_config_.data_telemetry_summary_card->setVisible(true);
-    }
-    updateRemoteTelemetrySummaryLabel();
-    syncDeviceConfigEpsilonPanelFromSettings();
-    syncDeviceConfigNumericColumnFonts();
-
-    updateDeviceConfigState();
+    apply(state_->device_config_.epsilon_port_combo, state_->device_config_.epsilon_baud_combo, c.epsilon);
+    apply(state_->device_config_.ptb_port_combo, state_->device_config_.ptb_baud_combo, c.ptb);
+    apply(state_->device_config_.hmp_port_combo, state_->device_config_.hmp_baud_combo, c.hmp);
+    apply(state_->device_config_.lidar_port_combo, state_->device_config_.lidar_baud_combo, c.lidar);
+    apply(state_->device_config_.temperature_port_combo, state_->device_config_.temperature_baud_combo, c.temperatureController);
+    apply(state_->device_config_.ai8_temperature_port_combo, state_->device_config_.ai8_temperature_baud_combo, c.ai8TemperatureController);
+    auto setText = [](QComboBox *combo, const QString& text) {
+        if (combo && !text.isEmpty())
+        {
+            const QSignalBlocker blocker(combo);
+            applyComboText(combo, text);
+        }
+    };
+    setText(state_->device_config_.ptb_rate_combo, c.ptbRateText);
+    setText(state_->device_config_.hmp_rate_combo, c.hmpRateText);
+    setText(state_->device_config_.lidar_rate_combo, c.lidarRateText);
+    setText(state_->device_config_.temperature_rate_combo, c.temperatureRateText);
+    setText(state_->device_config_.ai8_temperature_rate_combo, c.ai8RateText);
+    auto setChecked = [](QCheckBox *check, bool checked) {
+        if (check)
+        {
+            const QSignalBlocker blocker(check);
+            check->setChecked(checked);
+        }
+    };
+    setChecked(state_->device_config_.epsilon_enabled_check, c.epsilon.enabled);
+    setChecked(state_->device_config_.ptb_enabled_check, c.ptb.enabled);
+    setChecked(state_->device_config_.hmp_enabled_check, c.hmp.enabled);
+    setChecked(state_->device_config_.lidar_enabled_check, c.lidar.enabled);
+    setChecked(state_->device_config_.temperature_enabled_check, c.temperatureController.enabled);
+    setChecked(state_->device_config_.ai8_temperature_enabled_check, c.ai8TemperatureController.enabled);
 }
 
 void MainWindow::syncDeviceConfigTcpWaveEndpointFromPanel()
@@ -3856,10 +3874,7 @@ void MainWindow::updateDeviceConfigState()
 
     if (state_->device_config_.auto_detect_ports_btn)
     {
-        state_->device_config_.auto_detect_ports_btn->setEnabled(state_->auto_detect_ports_btn_ && state_->auto_detect_ports_btn_->isEnabled());
         state_->device_config_.auto_detect_ports_btn->setVisible(true);
-        state_->device_config_.auto_detect_ports_btn->setText(state_->auto_detect_ports_btn_ ? state_->auto_detect_ports_btn_->text() : QString());
-        state_->device_config_.auto_detect_ports_btn->setToolTip(state_->auto_detect_ports_btn_ ? state_->auto_detect_ports_btn_->toolTip() : QString());
         fitButtonFixedWidth(state_->device_config_.auto_detect_ports_btn,
                             kDeviceConfigAutoDetectButtonMinWidth,
                             kDeviceConfigTopButtonPadding);
@@ -4447,12 +4462,7 @@ bool MainWindow::handleLocalSerialPortManualEntryEvent(QObject *watched, QEvent 
 
 void MainWindow::refreshLocalSerialPortManualOptionTexts()
 {
-    for (QComboBox *combo : {state_->epsilon_port_combo_,
-                             state_->ptb_port_combo_,
-                             state_->hmp_port_combo_,
-                             state_->lidar_port_combo_,
-                             state_->temperature_port_combo_,
-                             state_->device_config_.epsilon_port_combo,
+    for (QComboBox *combo : {state_->device_config_.epsilon_port_combo,
                              state_->device_config_.ptb_port_combo,
                              state_->device_config_.hmp_port_combo,
                              state_->device_config_.lidar_port_combo,
@@ -4511,101 +4521,6 @@ void MainWindow::setupConfigPanel()
                                            kHomeOverviewCardOuterPadding,
                                            kConfigCardBottomPadding);
 
-    auto *config_form_widget = new QWidget(state_->config_group_);
-    config_form_widget->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-    config_form_widget->hide();
-    auto *config_layout = new QGridLayout(config_form_widget);
-    config_layout->setVerticalSpacing(4);
-    config_layout->setHorizontalSpacing(8);
-    config_layout->setContentsMargins(8, 0, 8, kConfigFormBottomPadding);
-    config_layout->setColumnStretch(0, 0);
-    config_layout->setColumnStretch(1, 0);
-    config_layout->setColumnStretch(2, 0);
-    config_layout->setColumnStretch(3, 0);
-    config_layout->setColumnStretch(4, 0);
-    config_layout->setColumnStretch(5, 0);
-    config_layout->setColumnStretch(6, 1);
-    config_layout->setColumnMinimumWidth(0, 110);
-    config_layout->setColumnMinimumWidth(1, 170);
-    config_layout->setColumnMinimumWidth(2, 100);
-    config_layout->setColumnMinimumWidth(3, 80);
-    config_layout->setColumnMinimumWidth(4, 100);
-
-    QStringList baudRates = {"9600", "19200", "38400", "57600", "115200", "230400", "460800", "500000", "921600"};
-    QStringList ports = getAvailablePorts();
-
-    auto createRateCombo = [this, config_form_widget](int maxRate = 500) {
-        auto *combo = new QComboBox(config_form_widget);
-        const QList<int> supportedRates = {1, 2, 5, 10, 20, 50, 70, 100, 200, 250, 500, 1000};
-        for (int rate : supportedRates)
-        {
-            if (rate <= maxRate)
-            {
-                combo->addItem(QString::number(rate));
-            }
-        }
-        const int preferredIndex = combo->findText(maxRate >= 200 ? QStringLiteral("200") : QStringLiteral("20"));
-        combo->setCurrentIndex(preferredIndex >= 0 ? preferredIndex : 0);
-        combo->setEditable(true);
-        combo->setFixedHeight(kMainPageInputHeight);
-        combo->setFixedWidth(100);
-        combo->setValidator(new QIntValidator(1, maxRate, combo));
-        configureComboPopup(combo);
-        return combo;
-    };
-
-    auto addNoSetRateOption = [this](QComboBox *combo) {
-        if (!combo)
-        {
-            return;
-        }
-        if (combo->findText(QStringLiteral("No Set")) < 0 &&
-            combo->findText(QStringLiteral("不设定")) < 0)
-        {
-            combo->addItem(state_->is_english_ ? QStringLiteral("No Set") : QStringLiteral("不设定"));
-        }
-        combo->setValidator(nullptr);
-    };
-
-    auto createPortRow = [this, config_form_widget, config_layout, &baudRates, &ports, &createRateCombo](QLabel*& lbl, QComboBox*& portCombo, QComboBox*& baudCombo, QLabel*& rateLbl, QComboBox*& rateCombo, const QString& defaultBaud, int row, int maxRate = 500, bool createRateSelector = true) {
-        lbl = new QLabel(config_form_widget);
-        lbl->setObjectName("fieldLabel");
-        lbl->setFixedHeight(kMainPageInputHeight);
-        lbl->setFixedWidth(80);
-        config_layout->addWidget(lbl, row, 0, Qt::AlignVCenter | Qt::AlignLeft);
-
-        portCombo = new QComboBox(config_form_widget);
-        portCombo->setMinimumContentsLength(10);
-        portCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-        portCombo->setFixedHeight(kMainPageInputHeight);
-        portCombo->setMinimumWidth(160);
-        portCombo->setMaximumWidth(190);
-        portCombo->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-        portCombo->setMaxVisibleItems(15);
-        configureComboPopup(portCombo);
-        refreshLocalSerialPortComboOptions(portCombo, ports);
-        config_layout->addWidget(portCombo, row, 1, Qt::AlignVCenter);
-
-        baudCombo = new QComboBox(config_form_widget);
-        baudCombo->addItems(baudRates);
-        baudCombo->setCurrentText(defaultBaud);
-        baudCombo->setFixedHeight(kMainPageInputHeight);
-        baudCombo->setFixedWidth(100);
-        configureComboPopup(baudCombo);
-        config_layout->addWidget(baudCombo, row, 2, Qt::AlignVCenter);
-
-        rateLbl = new QLabel(config_form_widget);
-        rateLbl->setObjectName("fieldLabel");
-        rateLbl->setFixedHeight(kMainPageInputHeight);
-        config_layout->addWidget(rateLbl, row, 3, Qt::AlignVCenter | Qt::AlignRight);
-
-        rateCombo = createRateSelector ? createRateCombo(maxRate) : nullptr;
-        if (rateCombo)
-        {
-            config_layout->addWidget(rateCombo, row, 4, Qt::AlignVCenter);
-        }
-    };
-
     auto *configTitleBar = new QWidget(state_->config_group_);
     configTitleBar->setObjectName("sectionTitleBar");
     configTitleBar->setFixedHeight(kMainPageTitleBarHeight);
@@ -4633,153 +4548,13 @@ void MainWindow::setupConfigPanel()
             });
     configTitleLayout->addWidget(state_->source_mode_switch_, 0, Qt::AlignVCenter | Qt::AlignRight);
 
-    state_->auto_detect_ports_btn_ = new QPushButton(config_form_widget);
-    state_->auto_detect_ports_btn_->setFixedHeight(kMainPageButtonHeight);
-    state_->auto_detect_ports_btn_->setMinimumWidth(120);
-    connect(state_->auto_detect_ports_btn_, &QPushButton::clicked, this, &MainWindow::onAutoDetectPortsClicked);
-
-    state_->data_source_mode_lbl_ = new QLabel(config_form_widget);
-    state_->data_source_mode_lbl_->setObjectName("fieldLabel");
-    state_->data_source_mode_combo_ = createSingleLevelPopupComboBox(config_form_widget);
+    state_->data_source_mode_combo_ = createSingleLevelPopupComboBox(state_->config_group_);
     state_->data_source_mode_combo_->addItem(sourceModeDisplayText(false, 0));
     state_->data_source_mode_combo_->addItem(sourceModeDisplayText(false, 1));
-    state_->data_source_mode_combo_->setFixedHeight(kMainPageInputHeight);
-    state_->data_source_mode_combo_->setMinimumWidth(180);
-    state_->data_source_mode_combo_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    state_->data_source_mode_combo_->hide();
     connect(state_->data_source_mode_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &MainWindow::onDataSourceModeChanged);
     config_root_layout->addWidget(configTitleBar);
-
-    state_->sky_telemetry_row_widget_ = new QWidget(config_form_widget);
-    state_->sky_telemetry_transport_lbl_ = new QLabel(state_->sky_telemetry_row_widget_);
-    state_->sky_telemetry_transport_lbl_->setObjectName("fieldLabel");
-    state_->sky_telemetry_transport_combo_ = new QComboBox(state_->sky_telemetry_row_widget_);
-    state_->sky_telemetry_transport_combo_->addItem(skyTelemetryTransportDisplayText(false, QStringLiteral("tcp")), QStringLiteral("tcp"));
-    state_->sky_telemetry_transport_combo_->addItem(skyTelemetryTransportDisplayText(false, QStringLiteral("serial")), QStringLiteral("serial"));
-    state_->sky_telemetry_transport_combo_->setFixedHeight(kMainPageInputHeight);
-    state_->sky_telemetry_transport_combo_->setFixedWidth(110);
-    connect(state_->sky_telemetry_transport_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, [this](int) {
-                updateSourceModeUi();
-                saveRememberedInputState();
-            });
-
-    state_->sky_telemetry_tcp_host_lbl_ = new QLabel(state_->sky_telemetry_row_widget_);
-    state_->sky_telemetry_tcp_host_lbl_->setObjectName("fieldLabel");
-    state_->sky_telemetry_tcp_host_edit_ = new QLineEdit(state_->sky_telemetry_row_widget_);
-    state_->sky_telemetry_tcp_host_edit_->setText(QStringLiteral("192.168.1.2"));
-    state_->sky_telemetry_tcp_host_edit_->setFixedHeight(kMainPageInputHeight);
-    state_->sky_telemetry_tcp_host_edit_->setMinimumWidth(150);
-    state_->sky_telemetry_tcp_host_edit_->setMaximumWidth(180);
-
-    state_->sky_telemetry_tcp_port_lbl_ = new QLabel(state_->sky_telemetry_row_widget_);
-    state_->sky_telemetry_tcp_port_lbl_->setObjectName("fieldLabel");
-    state_->sky_telemetry_tcp_port_spin_ = new QSpinBox(state_->sky_telemetry_row_widget_);
-    state_->sky_telemetry_tcp_port_spin_->setRange(1, 65535);
-    state_->sky_telemetry_tcp_port_spin_->setValue(39100);
-    state_->sky_telemetry_tcp_port_spin_->setFixedHeight(kMainPageInputHeight);
-    state_->sky_telemetry_tcp_port_spin_->setFixedWidth(100);
-
-    state_->sky_telemetry_port_lbl_ = new QLabel(state_->sky_telemetry_row_widget_);
-    state_->sky_telemetry_port_lbl_->setObjectName("fieldLabel");
-    state_->sky_telemetry_port_combo_ = new QComboBox(state_->sky_telemetry_row_widget_);
-    state_->sky_telemetry_port_combo_->setObjectName(QStringLiteral("skyTelemetryPortCombo"));
-    state_->sky_telemetry_port_combo_->setFixedHeight(kMainPageInputHeight);
-    state_->sky_telemetry_port_combo_->setMinimumWidth(160);
-    refreshLocalSerialPortComboOptions(state_->sky_telemetry_port_combo_, ports);
-    configureComboPopup(state_->sky_telemetry_port_combo_);
-    state_->sky_telemetry_baud_lbl_ = new QLabel(state_->sky_telemetry_row_widget_);
-    state_->sky_telemetry_baud_lbl_->setObjectName("fieldLabel");
-    state_->sky_telemetry_baud_combo_ = new QComboBox(state_->sky_telemetry_row_widget_);
-    state_->sky_telemetry_baud_combo_->addItems(baudRates);
-    state_->sky_telemetry_baud_combo_->setCurrentText(QStringLiteral("921600"));
-    state_->sky_telemetry_baud_combo_->setFixedHeight(kMainPageInputHeight);
-    state_->sky_telemetry_baud_combo_->setFixedWidth(100);
-    auto *skyTelemetryLayout = new QHBoxLayout(state_->sky_telemetry_row_widget_);
-    skyTelemetryLayout->setContentsMargins(8, 2, 8, 2);
-    skyTelemetryLayout->setSpacing(8);
-    skyTelemetryLayout->addWidget(state_->sky_telemetry_transport_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    skyTelemetryLayout->addWidget(state_->sky_telemetry_transport_combo_, 0, Qt::AlignVCenter);
-    skyTelemetryLayout->addWidget(state_->sky_telemetry_tcp_host_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    skyTelemetryLayout->addWidget(state_->sky_telemetry_tcp_host_edit_, 0, Qt::AlignVCenter);
-    skyTelemetryLayout->addWidget(state_->sky_telemetry_tcp_port_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    skyTelemetryLayout->addWidget(state_->sky_telemetry_tcp_port_spin_, 0, Qt::AlignVCenter);
-    skyTelemetryLayout->addWidget(state_->sky_telemetry_port_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    skyTelemetryLayout->addWidget(state_->sky_telemetry_port_combo_, 0, Qt::AlignVCenter);
-    skyTelemetryLayout->addWidget(state_->sky_telemetry_baud_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    skyTelemetryLayout->addWidget(state_->sky_telemetry_baud_combo_, 0, Qt::AlignVCenter);
-    skyTelemetryLayout->addStretch(1);
-    state_->sky_telemetry_row_widget_->setVisible(true);
-
-    int row = 0;
-
-    QComboBox *epsilonRateCombo = nullptr;
-    createPortRow(state_->epsilon_lbl_,
-                  state_->epsilon_port_combo_,
-                  state_->epsilon_baud_combo_,
-                  state_->epsilon_rate_lbl_,
-                  epsilonRateCombo,
-                  "921600",
-                  row++,
-                  200,
-                  false);
-    createPortRow(state_->ptb_lbl_, state_->ptb_port_combo_, state_->ptb_baud_combo_, state_->ptb_rate_lbl_, state_->ptb_rate_combo_, "9600", row++, kPtbMaxSampleRateHz);
-    createPortRow(state_->hmp_lbl_, state_->hmp_port_combo_, state_->hmp_baud_combo_, state_->hmp_rate_lbl_, state_->hmp_rate_combo_, "19200", row++);
-    createPortRow(state_->lidar_lbl_, state_->lidar_port_combo_, state_->lidar_baud_combo_, state_->lidar_rate_lbl_, state_->lidar_rate_combo_, "500000", row++, 100);
-    createPortRow(state_->temperature_lbl_, state_->temperature_port_combo_, state_->temperature_baud_combo_, state_->temperature_rate_lbl_, state_->temperature_rate_combo_, "38400", row++, kMaxTemperatureSampleRateHz);
-    if (state_->epsilon_port_combo_) state_->epsilon_port_combo_->setObjectName(QStringLiteral("epsilonPortCombo"));
-    if (state_->ptb_port_combo_) state_->ptb_port_combo_->setObjectName(QStringLiteral("pressurePortCombo"));
-    if (state_->hmp_port_combo_) state_->hmp_port_combo_->setObjectName(QStringLiteral("humidityPortCombo"));
-    if (state_->lidar_port_combo_) state_->lidar_port_combo_->setObjectName(QStringLiteral("lidarPortCombo"));
-    if (state_->temperature_port_combo_) state_->temperature_port_combo_->setObjectName(QStringLiteral("temperaturePortCombo"));
-    if (state_->temperature_baud_combo_) state_->temperature_baud_combo_->setObjectName(QStringLiteral("temperatureBaudCombo"));
-    if (state_->temperature_rate_combo_) state_->temperature_rate_combo_->setObjectName(QStringLiteral("temperatureRateCombo"));
-    if (state_->temperature_rate_combo_)
-    {
-        state_->temperature_rate_combo_->setCurrentText(QString::number(kDefaultTemperatureSampleRateHz));
-    }
-
-    auto addRemoteButtons = [this, config_form_widget, config_layout](int rowIndex,
-                                                  QWidget*& buttonsWidget,
-                                                  QPushButton*& connectButton,
-                                                  QPushButton*& disconnectButton,
-                                                  QPushButton*& reconnectButton,
-                                                  VaporView::SkyDeviceId device) {
-        auto *buttons = new QWidget(config_form_widget);
-        buttonsWidget = buttons;
-        auto *layout = new QHBoxLayout(buttons);
-        layout->setContentsMargins(0, 0, 0, 0);
-        layout->setSpacing(4);
-        connectButton = createRemoteDeviceButton(QStringLiteral("连接"), VaporView::CommandId::ConnectDevice, device);
-        disconnectButton = createRemoteDeviceButton(QStringLiteral("断开"), VaporView::CommandId::DisconnectDevice, device);
-        reconnectButton = createRemoteDeviceButton(QStringLiteral("重连"), VaporView::CommandId::ReconnectDevice, device);
-        layout->addWidget(connectButton);
-        layout->addWidget(disconnectButton);
-        layout->addWidget(reconnectButton);
-        layout->addStretch();
-        config_layout->addWidget(buttons, rowIndex, 5, Qt::AlignVCenter | Qt::AlignLeft);
-    };
-    addRemoteButtons(0, state_->epsilon_remote_buttons_widget_, state_->epsilon_remote_connect_btn_, state_->epsilon_remote_disconnect_btn_, state_->epsilon_remote_reconnect_btn_, VaporView::SkyDeviceId::Epsilon);
-    addRemoteButtons(1, state_->ptb_remote_buttons_widget_, state_->ptb_remote_connect_btn_, state_->ptb_remote_disconnect_btn_, state_->ptb_remote_reconnect_btn_, VaporView::SkyDeviceId::Ptb);
-    addRemoteButtons(2, state_->hmp_remote_buttons_widget_, state_->hmp_remote_connect_btn_, state_->hmp_remote_disconnect_btn_, state_->hmp_remote_reconnect_btn_, VaporView::SkyDeviceId::Hmp);
-    addRemoteButtons(3, state_->lidar_remote_buttons_widget_, state_->lidar_remote_connect_btn_, state_->lidar_remote_disconnect_btn_, state_->lidar_remote_reconnect_btn_, VaporView::SkyDeviceId::Lidar);
-    addRemoteButtons(4, state_->temperature_remote_buttons_widget_, state_->temperature_remote_connect_btn_, state_->temperature_remote_disconnect_btn_, state_->temperature_remote_reconnect_btn_, VaporView::SkyDeviceId::TemperatureController);
-
-    state_->epsilon_packet_rates_btn_ = new QPushButton(config_form_widget);
-    state_->epsilon_packet_rates_btn_->setFixedHeight(kMainPageButtonHeight);
-    state_->epsilon_packet_rates_btn_->setMinimumWidth(140);
-    connect(state_->epsilon_packet_rates_btn_, &QPushButton::clicked, this, &MainWindow::onConfigureEpsilonPacketRatesClicked);
-    config_layout->addWidget(state_->epsilon_packet_rates_btn_, 0, 4, Qt::AlignVCenter);
-
-    for (QComboBox *combo : {state_->ptb_rate_combo_, state_->hmp_rate_combo_, state_->lidar_rate_combo_, state_->temperature_rate_combo_})
-    {
-        addNoSetRateOption(combo);
-    }
-
-    connect(state_->ptb_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onPtbRateChanged);
-    connect(state_->hmp_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onHmpRateChanged);
-    connect(state_->lidar_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onLidarRateChanged);
-    connect(state_->temperature_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onTemperatureRateChanged);
 
     state_->data_telemetry_summary_card_ = new QWidget(state_->config_group_);
     state_->data_telemetry_summary_card_->setObjectName(QStringLiteral("homeTelemetrySummaryContainer"));
@@ -4812,6 +4587,67 @@ void MainWindow::setupConfigPanel()
                                        kHomeOverviewBodyPadding,
                                        kConfigHomeBodyBottomPadding);
     homeBodyLayout->setSpacing(2);
+
+    state_->sky_telemetry_row_widget_ = new QWidget(homeBodyWidget);
+    state_->sky_telemetry_row_widget_->setObjectName(QStringLiteral("homeSkyTelemetryRow"));
+    state_->sky_telemetry_row_widget_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    auto *skyTelemetryLayout = new QHBoxLayout(state_->sky_telemetry_row_widget_);
+    skyTelemetryLayout->setContentsMargins(0, 2, 0, 2);
+    skyTelemetryLayout->setSpacing(6);
+    state_->sky_telemetry_transport_lbl_ = new QLabel(state_->sky_telemetry_row_widget_);
+    state_->sky_telemetry_transport_lbl_->setObjectName(QStringLiteral("fieldLabel"));
+    state_->sky_telemetry_transport_combo_ = new QComboBox(state_->sky_telemetry_row_widget_);
+    state_->sky_telemetry_transport_combo_->addItem(
+        skyTelemetryTransportDisplayText(false, QStringLiteral("tcp")), QStringLiteral("tcp"));
+    state_->sky_telemetry_transport_combo_->addItem(
+        skyTelemetryTransportDisplayText(false, QStringLiteral("serial")), QStringLiteral("serial"));
+    state_->sky_telemetry_transport_combo_->setFixedSize(110, kMainPageInputHeight);
+    configureComboPopup(state_->sky_telemetry_transport_combo_);
+    state_->sky_telemetry_tcp_host_lbl_ = new QLabel(state_->sky_telemetry_row_widget_);
+    state_->sky_telemetry_tcp_host_lbl_->setObjectName(QStringLiteral("fieldLabel"));
+    state_->sky_telemetry_tcp_host_edit_ = new QLineEdit(state_->sky_telemetry_row_widget_);
+    state_->sky_telemetry_tcp_host_edit_->setText(QStringLiteral("192.168.1.2"));
+    state_->sky_telemetry_tcp_host_edit_->setFixedHeight(kMainPageInputHeight);
+    state_->sky_telemetry_tcp_host_edit_->setFixedWidth(160);
+    state_->sky_telemetry_tcp_port_lbl_ = new QLabel(state_->sky_telemetry_row_widget_);
+    state_->sky_telemetry_tcp_port_lbl_->setObjectName(QStringLiteral("fieldLabel"));
+    state_->sky_telemetry_tcp_port_spin_ = new QSpinBox(state_->sky_telemetry_row_widget_);
+    state_->sky_telemetry_tcp_port_spin_->setRange(1, 65535);
+    state_->sky_telemetry_tcp_port_spin_->setValue(39100);
+    state_->sky_telemetry_tcp_port_spin_->setFixedSize(100, kMainPageInputHeight);
+    state_->sky_telemetry_port_lbl_ = new QLabel(state_->sky_telemetry_row_widget_);
+    state_->sky_telemetry_port_lbl_->setObjectName(QStringLiteral("fieldLabel"));
+    state_->sky_telemetry_port_combo_ = new QComboBox(state_->sky_telemetry_row_widget_);
+    state_->sky_telemetry_port_combo_->setObjectName(QStringLiteral("skyTelemetryPortCombo"));
+    installLocalSerialPortComboBehavior(state_->sky_telemetry_port_combo_);
+    refreshLocalSerialPortComboOptions(state_->sky_telemetry_port_combo_, getAvailablePorts());
+    state_->sky_telemetry_port_combo_->setFixedSize(108, kMainPageInputHeight);
+    state_->sky_telemetry_baud_lbl_ = new QLabel(state_->sky_telemetry_row_widget_);
+    state_->sky_telemetry_baud_lbl_->setObjectName(QStringLiteral("fieldLabel"));
+    state_->sky_telemetry_baud_combo_ = new QComboBox(state_->sky_telemetry_row_widget_);
+    state_->sky_telemetry_baud_combo_->addItems(
+        {QStringLiteral("9600"), QStringLiteral("19200"), QStringLiteral("38400"),
+         QStringLiteral("57600"), QStringLiteral("115200"), QStringLiteral("230400"),
+         QStringLiteral("460800"), QStringLiteral("500000"), QStringLiteral("921600")});
+    state_->sky_telemetry_baud_combo_->setCurrentText(QStringLiteral("921600"));
+    state_->sky_telemetry_baud_combo_->setFixedSize(100, kMainPageInputHeight);
+    configureComboPopup(state_->sky_telemetry_baud_combo_);
+    const QList<QWidget *> skyTelemetryWidgets{
+        state_->sky_telemetry_transport_lbl_,
+        state_->sky_telemetry_transport_combo_,
+        state_->sky_telemetry_tcp_host_lbl_,
+        state_->sky_telemetry_tcp_host_edit_,
+        state_->sky_telemetry_tcp_port_lbl_,
+        state_->sky_telemetry_tcp_port_spin_,
+        state_->sky_telemetry_port_lbl_,
+        state_->sky_telemetry_port_combo_,
+        state_->sky_telemetry_baud_lbl_,
+        state_->sky_telemetry_baud_combo_};
+    for (QWidget *widget : skyTelemetryWidgets)
+    {
+        skyTelemetryLayout->addWidget(widget, 0, Qt::AlignVCenter);
+    }
+    skyTelemetryLayout->addStretch(1);
 
     auto *homeDevicesWidget = new QWidget(homeBodyWidget);
     homeDevicesWidget->setObjectName(QStringLiteral("homeOverviewDeviceGrid"));
@@ -4891,9 +4727,9 @@ void MainWindow::setupConfigPanel()
     state_->config_group_->setMinimumWidth(homeDeviceOverviewContentMinimumWidth());
 
     homeBodyLayout->addWidget(homeDevicesWidget, 0, Qt::AlignTop | Qt::AlignLeft);
+    homeBodyLayout->addWidget(state_->sky_telemetry_row_widget_, 0, Qt::AlignTop);
     homeBodyLayout->addWidget(state_->data_telemetry_summary_card_, 0, Qt::AlignTop);
     config_root_layout->addWidget(homeBodyWidget, 0, Qt::AlignTop);
-    config_form_widget->setVisible(false);
     updateHomeDeviceStatusCapsules();
     updateRemoteTelemetrySummaryLabel();
 }
@@ -5213,23 +5049,23 @@ void MainWindow::setupDataPanels()
             QOverload<int>::of(&QComboBox::currentIndexChanged),
             this,
             [this](int index) {
-                if (!state_->temperature_port_combo_ || !state_->temperature_title_port_combo_ || index < 0)
+                if (!state_->device_config_.temperature_port_combo || !state_->temperature_title_port_combo_ || index < 0)
                 {
                     return;
                 }
                 const QString selectedPort = state_->temperature_title_port_combo_->itemData(index).toString().trimmed();
-                if (selectedPort.isEmpty() || localSerialPortComboValue(state_->temperature_port_combo_) == selectedPort)
+                if (selectedPort.isEmpty() || localSerialPortComboValue(state_->device_config_.temperature_port_combo) == selectedPort)
                 {
                     return;
                 }
-                const int sourceIndex = state_->temperature_port_combo_->findData(selectedPort);
+                const int sourceIndex = state_->device_config_.temperature_port_combo->findData(selectedPort);
                 if (sourceIndex >= 0)
                 {
-                    state_->temperature_port_combo_->setCurrentIndex(sourceIndex);
+                    state_->device_config_.temperature_port_combo->setCurrentIndex(sourceIndex);
                 }
                 else
                 {
-                    setLocalSerialPortComboText(state_->temperature_port_combo_, selectedPort);
+                    setLocalSerialPortComboText(state_->device_config_.temperature_port_combo, selectedPort);
                 }
             });
     temperatureTitleLayout->addWidget(state_->temperature_title_port_combo_, 0, Qt::AlignVCenter | Qt::AlignLeft);

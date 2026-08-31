@@ -557,7 +557,7 @@ MainWindow::MainWindow(QWidget *parent)
         }
     });
     loadRememberedInputState();
-    syncDeviceConfigPageFromHome();
+    refreshDeviceConfigUiFromLocalModel();
     bindRememberedInputState();
     state_->restoring_persistent_settings_ = false;
     saveRememberedInputState();

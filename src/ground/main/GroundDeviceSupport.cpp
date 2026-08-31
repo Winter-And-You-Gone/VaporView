@@ -727,6 +727,39 @@ void applyComboText(QComboBox *combo, const QString& value)
     }
 }
 
+QString sensorPortSettingsKey(const QString& source)
+{
+    if (source == QStringLiteral("ptb210"))
+    {
+        return QStringLiteral("serial/ptb210_port");
+    }
+    if (source == QStringLiteral("bmp390"))
+    {
+        return QStringLiteral("serial/bmp390_port");
+    }
+    if (source == QStringLiteral("hmp3"))
+    {
+        return QStringLiteral("serial/hmp3_port");
+    }
+    if (source == QStringLiteral("sht45"))
+    {
+        return QStringLiteral("serial/sht45_port");
+    }
+    return QString();
+}
+
+QString rememberedSensorPort(const QSettings& settings,
+                             const QString& source,
+                             const QString& legacyKey)
+{
+    const QString key = sensorPortSettingsKey(source);
+    if (!key.isEmpty() && settings.contains(key))
+    {
+        return settings.value(key).toString();
+    }
+    return legacyKey.isEmpty() ? QString() : settings.value(legacyKey).toString();
+}
+
 QString sensorBaudSettingsKey(const QString& source)
 {
     if (source == QStringLiteral("ptb210"))

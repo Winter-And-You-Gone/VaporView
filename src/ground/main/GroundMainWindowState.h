@@ -1,6 +1,7 @@
 #pragma once
 
 #include "LogRecord.h"
+#include "ground/devices/LocalDeviceConnectionController.h"
 #include "ground/main/MainWindow.h"
 #include "ground/main/UiLogModel.h"
 
@@ -214,22 +215,10 @@ struct MainWindowState
     QFrame *recording_status_card_;
     QLabel *recording_status_title_lbl_;
     RecordingStatusView *recording_status_view_;
-    QPushButton *auto_detect_ports_btn_;
-
-    QComboBox *epsilon_port_combo_;
     QComboBox *gnss_port_combo_;
     QComboBox *imu_port_combo_;
-    QComboBox *ptb_port_combo_;
-    QComboBox *hmp_port_combo_;
-    QComboBox *lidar_port_combo_;
-    QComboBox *temperature_port_combo_;
-    QComboBox *epsilon_baud_combo_;
     QComboBox *gnss_baud_combo_;
     QComboBox *imu_baud_combo_;
-    QComboBox *ptb_baud_combo_;
-    QComboBox *hmp_baud_combo_;
-    QComboBox *lidar_baud_combo_;
-    QComboBox *temperature_baud_combo_;
     QAction *connect_btn_;
     QAction *cancel_connect_btn_;
     QAction *disconnect_btn_;
@@ -327,13 +316,6 @@ struct MainWindowState
     QGroupBox *ai8_temperature_controller_group_;
     QGroupBox *lidar_group_;
 
-    QLabel *epsilon_lbl_;
-    QLabel *gnss_lbl_;
-    QLabel *imu_lbl_;
-    QLabel *ptb_lbl_;
-    QLabel *hmp_lbl_;
-    QLabel *lidar_lbl_;
-    QLabel *temperature_lbl_;
     QLabel *home_epsilon_status_lbl_;
     QLabel *home_ptb_status_lbl_;
     QLabel *home_hmp_status_lbl_;
@@ -370,15 +352,6 @@ struct MainWindowState
     QLabel *ai8_temperature_title_status_lbl_;
     VaporView::Ground::Widgets::TemperatureControllerOverviewPanel *temperature_overview_panel_;
     QLabel *config_inline_title_lbl_;
-    QLabel *global_rate_lbl_;
-    QLabel *epsilon_rate_lbl_;
-    QLabel *gnss_rate_lbl_;
-    QLabel *imu_rate_lbl_;
-    QLabel *ptb_rate_lbl_;
-    QLabel *hmp_rate_lbl_;
-    QLabel *lidar_rate_lbl_;
-    QLabel *temperature_rate_lbl_;
-    QLabel *data_source_mode_lbl_;
     VaporView::Ground::Widgets::SourceModeOverviewSwitchButton *source_mode_switch_;
     QLabel *sky_telemetry_transport_lbl_;
     QLabel *sky_telemetry_port_lbl_;
@@ -387,13 +360,6 @@ struct MainWindowState
     QLabel *sky_telemetry_tcp_port_lbl_;
     QWidget *sky_telemetry_row_widget_;
 
-    QComboBox *global_rate_combo_;
-    QComboBox *gnss_rate_combo_;
-    QComboBox *imu_rate_combo_;
-    QComboBox *ptb_rate_combo_;
-    QComboBox *hmp_rate_combo_;
-    QComboBox *lidar_rate_combo_;
-    QComboBox *temperature_rate_combo_;
     QComboBox *data_source_mode_combo_;
     QComboBox *sky_telemetry_transport_combo_;
     QComboBox *sky_telemetry_port_combo_;
@@ -401,27 +367,6 @@ struct MainWindowState
     QLineEdit *sky_telemetry_tcp_host_edit_;
     QSpinBox *sky_telemetry_tcp_port_spin_;
     QComboBox *imu_format_combo_;
-    QPushButton *epsilon_packet_rates_btn_;
-    QPushButton *epsilon_remote_connect_btn_;
-    QPushButton *epsilon_remote_disconnect_btn_;
-    QPushButton *epsilon_remote_reconnect_btn_;
-    QWidget *epsilon_remote_buttons_widget_;
-    QPushButton *ptb_remote_connect_btn_;
-    QPushButton *ptb_remote_disconnect_btn_;
-    QPushButton *ptb_remote_reconnect_btn_;
-    QWidget *ptb_remote_buttons_widget_;
-    QPushButton *hmp_remote_connect_btn_;
-    QPushButton *hmp_remote_disconnect_btn_;
-    QPushButton *hmp_remote_reconnect_btn_;
-    QWidget *hmp_remote_buttons_widget_;
-    QPushButton *lidar_remote_connect_btn_;
-    QPushButton *lidar_remote_disconnect_btn_;
-    QPushButton *lidar_remote_reconnect_btn_;
-    QWidget *lidar_remote_buttons_widget_;
-    QPushButton *temperature_remote_connect_btn_;
-    QPushButton *temperature_remote_disconnect_btn_;
-    QPushButton *temperature_remote_reconnect_btn_;
-    QWidget *temperature_remote_buttons_widget_;
     QPushButton *imu_apply_btn_;
     QPushButton *imu_hi91_btn_;
     QPushButton *imu_hi92_btn_;
@@ -434,6 +379,7 @@ struct MainWindowState
 
     std::unique_ptr<VaporView::Ground::Devices::LocalDeviceConnectionController> local_connection_controller_;
     std::unique_ptr<VaporView::Ground::Devices::LocalConnectionCoordinator> local_connection_coordinator_;
+    VaporView::Ground::Devices::LocalDeviceConfig local_device_config_;
     std::unique_ptr<VaporView::Ground::Session::GroundRecordingService> recording_service_;
     std::unique_ptr<VaporView::Ground::Session::RecordingScheduleController> recording_schedule_controller_;
 

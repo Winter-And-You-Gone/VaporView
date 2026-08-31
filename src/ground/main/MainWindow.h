@@ -84,6 +84,7 @@ namespace VaporView::Ground::Devices { struct CollectorSet; }
 namespace VaporView::Ground::Devices { class LocalDeviceConnectionController; }
 namespace VaporView::Ground::Devices { class LocalConnectionCoordinator; }
 namespace VaporView::Ground::Devices { class RemoteSkyController; }
+namespace VaporView::Ground::Devices { struct SerialPortDetectionResult; }
 namespace VaporView::Ground::Devices { class Ai8DeviceSession; }
 namespace VaporView::Ground::Devices { enum class Ai8Operation; struct Ai8SessionResult; }
 namespace VaporView::Ground::Devices { class EpsilonDeviceSession; }
@@ -115,6 +116,10 @@ public:
     void testInjectRemoteSkyApplyResult(const QJsonObject& result);
     QJsonObject testRemoteSkyConfigFromDeviceConfigUi(QString *errorMessage = nullptr) const;
     QString testRemoteSkyConfigStatusText() const;
+    QJsonObject testLocalDeviceConfigSnapshot() const;
+    void testApplyLocalPortDetection(const QString& deviceKey,
+                                     const QString& port,
+                                     const QString& baud);
 #endif
 
 #if defined(VAPORVIEW_HAS_OSGEARTH) && defined(VAPORVIEW_MAIN_WINDOW_TESTING)
@@ -216,6 +221,8 @@ private slots:
     void onUiTestScenarioTriggered(QAction *action);
 
 private:
+    void applyLocalPortDetections(
+        const QVector<VaporView::Ground::Devices::SerialPortDetectionResult>& detections);
     using AppSidebarMode = VaporView::Ground::Main::AppSidebarMode;
     using RemoteTelemetrySummarySections = VaporView::Ground::Main::RemoteTelemetrySummarySections;
 
@@ -412,6 +419,8 @@ private:
     void requestSourceModeSelection(bool remoteSelected);
     void updateSourceModeUi();
     void syncDeviceConfigPageForCurrentTarget();
+    void updateLocalDeviceConfigFromUi() const;
+    void refreshDeviceConfigUiFromLocalModel();
     void enterLocalDeviceConfigMode();
     void enterRemoteSkyDeviceConfigMode();
     void setRemoteSkyConfigUi(const VaporView::SkyConfig& config);
@@ -432,7 +441,6 @@ private:
     int homeDeviceOverviewContentMinimumWidth() const;
     void updateHomeDeviceOverviewMinimumWidth();
     void updateConfigCardHeightForSourceMode();
-    void syncDeviceConfigPageFromHome();
     void syncDeviceConfigTcpWaveEndpointFromPanel();
     void applyDeviceConfigTcpWaveEndpoint();
     void updateDeviceConfigTexts();
@@ -459,7 +467,6 @@ private:
     void requestRemoteWaveTcpConnection(bool connectRequested, const QString& host = QString(), int port = 0);
     void clearPendingRemoteWaveTcpConnection();
     void sendRemotePeakSearchRange(quint32 startIndex, quint32 endIndex);
-    QPushButton *createRemoteDeviceButton(const QString& text, VaporView::CommandId command, VaporView::SkyDeviceId device);
     void setRemoteDeviceButtonsEnabled(bool enabled);
     void updateRemoteDeviceButtonText(VaporView::SkyDeviceId device, VaporView::DeviceState state);
     void updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId device);

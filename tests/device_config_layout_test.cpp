@@ -2,6 +2,7 @@
 #include "ground/devices/RemoteSkyController.h"
 #include "ground/navigation/CombinationNavigationPage.h"
 #include "ground/widgets/SegmentedSwitchButton.h"
+#include "shared/config/ApplicationConfig.h"
 #include "shared/config/SettingsWriteBarrier.h"
 #include "SkyConfig.h"
 #include "TelemetryCodec.h"
@@ -371,8 +372,24 @@ int main(int argc, char **argv)
     app.setApplicationName(QStringLiteral("VaporView"));
     app.setOrganizationName(QStringLiteral("VaporView"));
     QSettings historySettings(QStringLiteral("VaporView"), QStringLiteral("SerialPortHistory"));
-    historySettings.setValue(QStringLiteral("ports"), QStringList{QStringLiteral("COM7")});
+    historySettings.setValue(QStringLiteral("ports"),
+                             QStringList{QStringLiteral("COM7"),
+                                         QStringLiteral("COM11"),
+                                         QStringLiteral("COM12"),
+                                         QStringLiteral("COM42")});
     historySettings.sync();
+    QSettings legacySettings = VaporView::applicationConfigSettings();
+    legacySettings.beginGroup(QStringLiteral("MainWindow"));
+    legacySettings.setValue(QStringLiteral("serial/epsilon_port"), QStringLiteral("COM7"));
+    legacySettings.setValue(QStringLiteral("serial/epsilon_baud"), QStringLiteral("460800"));
+    legacySettings.setValue(QStringLiteral("serial/ptb_port"), QStringLiteral("COM11"));
+    legacySettings.setValue(QStringLiteral("serial/ptb_baud"), QStringLiteral("9600"));
+    legacySettings.setValue(QStringLiteral("serial/hmp_port"), QStringLiteral("COM12"));
+    legacySettings.setValue(QStringLiteral("serial/hmp_baud"), QStringLiteral("19200"));
+    legacySettings.setValue(QStringLiteral("sensor/pressure_source"), QStringLiteral("ptb210"));
+    legacySettings.setValue(QStringLiteral("sensor/humidity_source"), QStringLiteral("hmp3"));
+    legacySettings.endGroup();
+    legacySettings.sync();
     VaporView::setSettingsWritesSuspended(true);
 
     MainWindow window;
@@ -684,6 +701,14 @@ int main(int argc, char **argv)
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceEpsilonBaudCombo"));
     auto *epsilonRateCombo =
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceEpsilonRateCombo"));
+    auto *pressurePortCombo =
+        serialCard->findChild<QComboBox *>(QStringLiteral("devicePressurePortCombo"));
+    auto *pressureBaudCombo =
+        serialCard->findChild<QComboBox *>(QStringLiteral("devicePressureBaudCombo"));
+    auto *humidityPortCombo =
+        serialCard->findChild<QComboBox *>(QStringLiteral("deviceHumidityPortCombo"));
+    auto *humidityBaudCombo =
+        serialCard->findChild<QComboBox *>(QStringLiteral("deviceHumidityBaudCombo"));
     auto *ai8DeviceLabel = findExactLabel(serialCard, QStringLiteral("AI-8288D92J0 八路温控器"));
     require(tcpWaveDeviceLabel && ai8DeviceLabel &&
                 tcpWaveDeviceLabel->mapTo(serialCard, QPoint(0, 0)).y() >
@@ -717,8 +742,115 @@ int main(int argc, char **argv)
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceAi8TemperatureRateCombo"));
     require(dataSourceModeSwitch && dataSourceModeSegmentedSwitch &&
                 epsilonPortCombo && epsilonBaudCombo && epsilonRateCombo &&
+                pressurePortCombo && pressureBaudCombo &&
+                humidityPortCombo && humidityBaudCombo &&
                 epsilonPacketRatesButton,
             "shared device config controls exist for target switching");
+    if (epsilonPortCombo->currentText() != QStringLiteral("COM7") ||
+        epsilonBaudCombo->currentText() != QStringLiteral("460800"))
+    {
+        QSettings diagnosticSettings = VaporView::applicationConfigSettings();
+        diagnosticSettings.beginGroup(QStringLiteral("MainWindow"));
+        std::cerr << "Legacy load mismatch: uiPort="
+                  << epsilonPortCombo->currentText().toStdString()
+                  << " uiBaud=" << epsilonBaudCombo->currentText().toStdString()
+                  << " savedPort="
+                  << diagnosticSettings.value(QStringLiteral("serial/epsilon_port")).toString().toStdString()
+                  << " savedBaud="
+                  << diagnosticSettings.value(QStringLiteral("serial/epsilon_baud")).toString().toStdString()
+                  << " file=" << diagnosticSettings.fileName().toStdString() << '\n';
+    }
+    require(epsilonPortCombo->currentText() == QStringLiteral("COM7") &&
+                epsilonBaudCombo->currentText() == QStringLiteral("460800"),
+            "legacy local serial settings load directly into the visible device page");
+    QJsonObject localConfig = window.testLocalDeviceConfigSnapshot();
+    require(localConfig.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("port")).toString() ==
+                QStringLiteral("COM7") &&
+                localConfig.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("baud")).toString() ==
+                QStringLiteral("460800"),
+            "legacy settings populate the non-UI local-device model");
+
+    selectComboText(epsilonBaudCombo, QStringLiteral("115200"),
+                    "visible EPSILON baud selector accepts an edit");
+    VaporViewTest::processEventsFor(40);
+    localConfig = window.testLocalDeviceConfigSnapshot();
+    require(localConfig.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("baud")).toString() ==
+                QStringLiteral("115200"),
+            "visible device-page baud edits update the local-device model");
+
+    window.testApplyLocalPortDetection(QStringLiteral("epsilon"),
+                                       QStringLiteral("COM42"),
+                                       QStringLiteral("921600"));
+    VaporViewTest::processEventsFor(40);
+    localConfig = window.testLocalDeviceConfigSnapshot();
+    if (epsilonPortCombo->currentText() != QStringLiteral("COM42") ||
+        epsilonBaudCombo->currentText() != QStringLiteral("921600") ||
+        localConfig.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("port")).toString() !=
+            QStringLiteral("COM42"))
+    {
+        const QJsonObject epsilonConfig = localConfig.value(QStringLiteral("epsilon")).toObject();
+        std::cerr << "Detection apply mismatch: uiPort="
+                  << epsilonPortCombo->currentText().toStdString()
+                  << " uiBaud=" << epsilonBaudCombo->currentText().toStdString()
+                  << " modelPort=" << epsilonConfig.value(QStringLiteral("port")).toString().toStdString()
+                  << " modelBaud=" << epsilonConfig.value(QStringLiteral("baud")).toString().toStdString()
+                  << '\n';
+    }
+    require(epsilonPortCombo->currentText() == QStringLiteral("COM42") &&
+                epsilonBaudCombo->currentText() == QStringLiteral("921600") &&
+                localConfig.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("port")).toString() ==
+                    QStringLiteral("COM42"),
+            "auto-detect results update the model and refresh the visible device page");
+    selectComboText(epsilonPortCombo, QStringLiteral("COM7"),
+                    "EPSILON port restores after the auto-detect model test");
+    selectComboText(epsilonBaudCombo, QStringLiteral("460800"),
+                    "EPSILON baud restores after the auto-detect model test");
+
+    VaporView::setSettingsWritesSuspended(false);
+    selectComboData(pressureSourceCombo, QStringLiteral("ptb210"),
+                    "pressure source switches to PTB210 for profile test");
+    selectComboText(pressurePortCombo, QStringLiteral("COM11"),
+                    "PTB210 profile accepts its own port");
+    selectComboText(pressureBaudCombo, QStringLiteral("9600"),
+                    "PTB210 profile accepts its own baud");
+    selectComboData(pressureSourceCombo, QStringLiteral("bmp390"),
+                    "pressure source switches to BMP390 for profile test");
+    selectComboText(pressurePortCombo, QStringLiteral("COM12"),
+                    "BMP390 profile accepts its own port");
+    selectComboText(pressureBaudCombo, QStringLiteral("115200"),
+                    "BMP390 profile accepts its own baud");
+    selectComboData(pressureSourceCombo, QStringLiteral("ptb210"),
+                    "pressure source returns to PTB210");
+    require(pressurePortCombo->currentText() == QStringLiteral("COM11") &&
+                pressureBaudCombo->currentText() == QStringLiteral("9600"),
+            "PTB source A-B-A restores its source-specific port and baud");
+
+    selectComboData(humiditySourceCombo, QStringLiteral("hmp3"),
+                    "humidity source switches to HMP3 for profile test");
+    selectComboText(humidityPortCombo, QStringLiteral("COM12"),
+                    "HMP3 profile accepts its own port");
+    selectComboText(humidityBaudCombo, QStringLiteral("19200"),
+                    "HMP3 profile accepts its own baud");
+    selectComboData(humiditySourceCombo, QStringLiteral("sht45"),
+                    "humidity source switches to SHT45 for profile test");
+    selectComboText(humidityPortCombo, QStringLiteral("COM7"),
+                    "SHT45 profile accepts its own port");
+    selectComboText(humidityBaudCombo, QStringLiteral("115200"),
+                    "SHT45 profile accepts its own baud");
+    selectComboData(humiditySourceCombo, QStringLiteral("hmp3"),
+                    "humidity source returns to HMP3");
+    require(humidityPortCombo->currentText() == QStringLiteral("COM12") &&
+                humidityBaudCombo->currentText() == QStringLiteral("19200"),
+            "HMP source A-B-A restores its source-specific port and baud");
+    QSettings profileSettings = VaporView::applicationConfigSettings();
+    profileSettings.beginGroup(QStringLiteral("MainWindow"));
+    require(profileSettings.value(QStringLiteral("serial/ptb210_port")).toString() == QStringLiteral("COM11") &&
+                profileSettings.value(QStringLiteral("serial/bmp390_port")).toString() == QStringLiteral("COM12") &&
+                profileSettings.value(QStringLiteral("serial/hmp3_port")).toString() == QStringLiteral("COM12") &&
+                profileSettings.value(QStringLiteral("serial/sht45_port")).toString() == QStringLiteral("COM7"),
+            "source-specific pressure and humidity ports persist beside legacy settings");
+    profileSettings.endGroup();
+    VaporView::setSettingsWritesSuspended(true);
     require(dataSourceModeSwitch->property("segmentedSwitchControl").toBool() &&
                 dataSourceModeSwitch->text().contains(QStringLiteral("数据源")) &&
                 dataSourceModeSwitch->focusPolicy() == Qt::TabFocus,

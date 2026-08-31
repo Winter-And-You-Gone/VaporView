@@ -14,6 +14,20 @@
 namespace VaporView::Ground::Devices
 {
 
+LocalSerialDeviceSettings makeLocalConnectionSettings(
+    const LocalSerialDeviceSettings& config,
+    bool requested,
+    int sampleRateHz,
+    bool skipDeviceRate)
+{
+    LocalSerialDeviceSettings settings = config;
+    settings.requested = requested;
+    settings.enabled = requested && config.enabled;
+    settings.sampleRateHz = sampleRateHz;
+    settings.skipDeviceRate = skipDeviceRate;
+    return settings;
+}
+
 class LocalDeviceConnectionController::Impl
 {
 public:

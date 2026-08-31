@@ -974,25 +974,25 @@ bool MainWindow::startRecordingSession()
         ? state_->tcp_wave_panel_->host()
         : QStringLiteral("127.0.0.1");
     options.deviceConfig.waveformPort = state_->tcp_wave_panel_ ? state_->tcp_wave_panel_->port() : 8888;
-    auto serialConfig = [this](QComboBox *port, QComboBox *baud, QComboBox *rate) {
+    auto serialConfig = [](const VaporView::Ground::Devices::LocalSerialDeviceSettings& settings,
+                           const QString& rateText) {
         VaporView::Ground::Session::GroundRecordingSerialConfig config;
-        config.port = localSerialPortComboValue(port);
-        config.baud = baud ? baud->currentText() : QString();
-        config.rateHz = rate ? rate->currentText() : QString();
+        config.port = settings.port;
+        config.baud = settings.baudText;
+        config.rateHz = rateText;
         return config;
     };
-    options.deviceConfig.epsilon = serialConfig(state_->epsilon_port_combo_, state_->epsilon_baud_combo_, nullptr);
-    options.deviceConfig.ptb = serialConfig(state_->ptb_port_combo_, state_->ptb_baud_combo_, state_->ptb_rate_combo_);
-    options.deviceConfig.hmp = serialConfig(state_->hmp_port_combo_, state_->hmp_baud_combo_, state_->hmp_rate_combo_);
-    options.deviceConfig.lidar = serialConfig(state_->lidar_port_combo_, state_->lidar_baud_combo_, state_->lidar_rate_combo_);
+    const auto& localConfig = state_->local_device_config_;
+    options.deviceConfig.epsilon = serialConfig(localConfig.epsilon, QString::number(localConfig.epsilon.sampleRateHz));
+    options.deviceConfig.ptb = serialConfig(localConfig.ptb, localConfig.ptbRateText);
+    options.deviceConfig.hmp = serialConfig(localConfig.hmp, localConfig.hmpRateText);
+    options.deviceConfig.lidar = serialConfig(localConfig.lidar, localConfig.lidarRateText);
     options.deviceConfig.laserTemperatureController =
-        serialConfig(state_->temperature_port_combo_, state_->temperature_baud_combo_, state_->temperature_rate_combo_);
+        serialConfig(localConfig.temperatureController, localConfig.temperatureRateText);
     options.deviceConfig.laserTemperatureController.slaveAddress =
         QString::number(rememberedTemperatureSlaveAddress());
     options.deviceConfig.systemTemperatureController =
-        serialConfig(state_->device_config_.ai8_temperature_port_combo,
-                     state_->device_config_.ai8_temperature_baud_combo,
-                     state_->device_config_.ai8_temperature_rate_combo);
+        serialConfig(localConfig.ai8TemperatureController, localConfig.ai8RateText);
     options.deviceConfig.systemTemperatureController.slaveAddress =
         QString::number(state_->ai8_temperature_controller_panel_
                             ? state_->ai8_temperature_controller_panel_->currentPageData().global.address
