@@ -1088,6 +1088,42 @@ int main(int argc, char **argv)
                         temperatureOverviewPlot->property("sampleCount").toInt();
             }),
             "UI test mode feeds timestamped samples into the home temperature overview time axis");
+    QLabel *targetOverviewValuePill = nullptr;
+    QLabel *currentOverviewValuePill = nullptr;
+    for (QLabel *pill : window->findChildren<QLabel *>(QStringLiteral("temperatureOverviewValuePill")))
+    {
+        const QString displayText = pill->property("displayText").toString();
+        if (displayText.startsWith(QStringLiteral("目标 ")))
+        {
+            targetOverviewValuePill = pill;
+        }
+        else if (displayText.startsWith(QStringLiteral("当前 ")))
+        {
+            currentOverviewValuePill = pill;
+        }
+    }
+    const QString targetLegendNumberColor = VaporView::appThemeColor(
+        VaporView::AppThemeColor::ToolbarGreen,
+        VaporView::isDarkThemeEnabled()).name(QColor::HexRgb);
+    const QString currentLegendNumberColor = VaporView::appThemeColor(
+        VaporView::AppThemeColor::PlotSeriesTemperature,
+        VaporView::isDarkThemeEnabled()).name(QColor::HexRgb);
+    require(targetOverviewValuePill != nullptr && currentOverviewValuePill != nullptr &&
+                targetOverviewValuePill->textFormat() == Qt::RichText &&
+                currentOverviewValuePill->textFormat() == Qt::RichText &&
+                !targetOverviewValuePill->property("displayText").toString().contains(
+                    QStringLiteral("温度")) &&
+                !currentOverviewValuePill->property("displayText").toString().contains(
+                    QStringLiteral("温度")) &&
+                targetOverviewValuePill->property("legendNumberColor").toString() ==
+                    targetLegendNumberColor &&
+                currentOverviewValuePill->property("legendNumberColor").toString() ==
+                    currentLegendNumberColor &&
+                targetOverviewValuePill->text().contains(
+                    QStringLiteral("<span style=\"color: %1;\">").arg(targetLegendNumberColor)) &&
+                currentOverviewValuePill->text().contains(
+                    QStringLiteral("<span style=\"color: %1;\">").arg(currentLegendNumberColor)),
+            "UI test mode shows concise target/current legend labels with green/red numeric values");
     temperatureOverviewPlot->repaint();
     const double overviewTargetGuideLineY =
         temperatureOverviewPlot->property("targetGuideLineY").toDouble();

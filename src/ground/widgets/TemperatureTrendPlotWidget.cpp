@@ -137,6 +137,30 @@ void TemperatureTrendPlotWidget::setTargetTemperature(double celsius)
     update();
 }
 
+QRectF TemperatureTrendPlotWidget::plotAreaRect() const
+{
+    QFont axisFont = font();
+    axisFont.setPointSize(std::max(8, axisFont.pointSize() - 2));
+    const QFontMetrics axisFm(axisFont);
+    const qreal leftAxisWidth = axisFm.horizontalAdvance(QStringLiteral("999")) + 6.0;
+    constexpr qreal kBottomAxisHeight = 24.0;
+    const QRectF basePlotRect = rect().adjusted(leftAxisWidth, 4.0, -4.0, -kBottomAxisHeight);
+    QRectF plotRect = basePlotRect;
+    if (time_axis_enabled_)
+    {
+        const qreal labelHalfWidth = timeAxisLabelWidth(axisFm) / 2.0;
+        const qreal timeAxisLeft = std::max(basePlotRect.left(), labelHalfWidth);
+        const qreal timeAxisRight = std::min(basePlotRect.right(),
+                                             width() - labelHalfWidth - kXAxisLabelRightInset);
+        if (timeAxisRight > timeAxisLeft + 1.0)
+        {
+            plotRect.setLeft(timeAxisLeft);
+            plotRect.setRight(timeAxisRight);
+        }
+    }
+    return plotRect;
+}
+
 void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
 {
     QWidget::paintEvent(event);
@@ -162,22 +186,11 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
     const QFontMetrics axisFm(axisFont);
     painter.setPen(text);
     constexpr int kYAxisTicks = 6;
-    const qreal leftAxisWidth = axisFm.horizontalAdvance(QStringLiteral("999")) + 6.0;
-    constexpr qreal kBottomAxisHeight = 24.0;
-    const QRectF basePlotRect = rect().adjusted(leftAxisWidth, 4.0, -4.0, -kBottomAxisHeight);
-    QRectF plotRect = basePlotRect;
-    if (time_axis_enabled_)
-    {
-        const qreal labelHalfWidth = timeAxisLabelWidth(axisFm) / 2.0;
-        const qreal timeAxisLeft = std::max(basePlotRect.left(), labelHalfWidth);
-        const qreal timeAxisRight = std::min(basePlotRect.right(),
-                                             width() - labelHalfWidth - kXAxisLabelRightInset);
-        if (timeAxisRight > timeAxisLeft + 1.0)
-        {
-            plotRect.setLeft(timeAxisLeft);
-            plotRect.setRight(timeAxisRight);
-        }
-    }
+    const QRectF plotRect = plotAreaRect();
+    setProperty("plotAreaLeft", plotRect.left());
+    setProperty("plotAreaTop", plotRect.top());
+    setProperty("plotAreaRight", plotRect.right());
+    setProperty("plotAreaBottom", plotRect.bottom());
     const qreal timeAxisMinimumTickSpacing = timeAxisLabelWidth(axisFm) + kTimeXAxisLabelGap;
     const int xAxisLabelCount = xAxisLabelCountForWidth(plotRect.width(), axisFm, time_axis_enabled_);
     const int xAxisIntervals = std::max(1, xAxisLabelCount - 1);

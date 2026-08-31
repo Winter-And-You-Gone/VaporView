@@ -365,25 +365,22 @@ protected:
                              QPointF(x, plotRect.bottom() + kEnvironmentXAxisTickLength));
             painter.setPen(muted);
             const QString& label = xAxisState.labels.at(i);
-            const qreal labelWidth = timeAxisLabelWidth(axisFm, i == 0);
             const qreal labelTextWidth = axisFm.horizontalAdvance(label);
-            const qreal labelAlignmentInset = std::max<qreal>(
-                0.0, (labelWidth - labelTextWidth) / 2.0);
             const int minuteSecondSeparatorIndex = label.lastIndexOf(QLatin1Char(':'));
-            const qreal labelAnchorOffset = i == 0 && minuteSecondSeparatorIndex >= 0
-                ? labelAlignmentInset +
-                    axisFm.horizontalAdvance(label.left(minuteSecondSeparatorIndex)) +
+            const bool alignMinuteSecondSeparator = i == 0 && minuteSecondSeparatorIndex >= 0;
+            const qreal textAnchorOffset = alignMinuteSecondSeparator
+                ? axisFm.horizontalAdvance(label.left(minuteSecondSeparatorIndex)) +
                     axisFm.horizontalAdvance(QStringLiteral(":")) / 2.0
-                : labelWidth / 2.0;
-            const qreal labelLeft = std::clamp(x - labelAnchorOffset,
+                : labelTextWidth / 2.0;
+            const qreal labelLeft = std::clamp(x - textAnchorOffset,
                                                0.0,
                                                std::max<qreal>(
                                                    0.0,
-                                                   width() - labelWidth -
+                                                   width() - labelTextWidth -
                                                        kEnvironmentXAxisLabelRightInset));
-            const qreal renderedLabelLeft = labelLeft + labelAlignmentInset;
-            const qreal renderedLabelRight = renderedLabelLeft + labelTextWidth;
-            if (i == 0 && minuteSecondSeparatorIndex >= 0)
+            const qreal renderedLabelLeft = labelLeft;
+            const qreal renderedLabelRight = labelLeft + labelTextWidth;
+            if (alignMinuteSecondSeparator)
             {
                 const qreal separatorCenter = renderedLabelLeft +
                     axisFm.horizontalAdvance(label.left(minuteSecondSeparatorIndex)) +
@@ -399,9 +396,9 @@ protected:
             }
             painter.drawText(QRectF(labelLeft,
                                     xAxisLabelTop,
-                                    labelWidth,
+                                    labelTextWidth,
                                     axisFm.height()),
-                             Qt::AlignHCenter | Qt::AlignVCenter,
+                             Qt::AlignLeft | Qt::AlignVCenter,
                              label);
         }
 

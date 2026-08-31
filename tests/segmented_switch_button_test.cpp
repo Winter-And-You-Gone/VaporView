@@ -254,6 +254,67 @@ int main(int argc, char **argv)
         overviewOutputCapsule->width() - overviewOutputSwitch->geometry().right() - 1;
     require(std::abs(overviewSwitchLeftGap - overviewSwitchRightGap) <= 1,
             "temperature overview segmented switch is horizontally centered in its capsule");
+
+    auto *overviewValueOverlay =
+        temperatureOverview->findChild<QWidget *>(QStringLiteral("temperatureOverviewValueOverlay"));
+    const QList<QLabel *> overviewValuePills =
+        temperatureOverview->findChildren<QLabel *>(QStringLiteral("temperatureOverviewValuePill"));
+    QWidget *overviewPlot = nullptr;
+    for (QWidget *plot : temperatureOverview->findChildren<QWidget *>(QStringLiteral("temperatureTrendPlot")))
+    {
+        if (plot->property("temperatureOverviewPlot").toBool())
+        {
+            overviewPlot = plot;
+            break;
+        }
+    }
+    require(overviewValueOverlay != nullptr && overviewValuePills.size() == 2 &&
+                overviewPlot != nullptr &&
+                overviewValueOverlay->parentWidget() == overviewPlot &&
+                overviewValueOverlay->testAttribute(Qt::WA_TransparentForMouseEvents),
+            "temperature overview moves the target and current value pills into a pointer-transparent plot overlay");
+    const QString targetLegendNumberColor = VaporView::appThemeColor(
+        VaporView::AppThemeColor::ToolbarGreen,
+        VaporView::isDarkThemeEnabled()).name(QColor::HexRgb);
+    const QString currentLegendNumberColor = VaporView::appThemeColor(
+        VaporView::AppThemeColor::PlotSeriesTemperature,
+        VaporView::isDarkThemeEnabled()).name(QColor::HexRgb);
+    require(overviewValuePills.at(0)->textFormat() == Qt::RichText &&
+                overviewValuePills.at(1)->textFormat() == Qt::RichText &&
+                overviewValuePills.at(0)->parentWidget() == overviewValueOverlay &&
+                overviewValuePills.at(1)->parentWidget() == overviewValueOverlay,
+            "temperature overview value pills use one-line rich text inside the plot overlay");
+    require(overviewValuePills.at(0)->property("displayText").toString() == QStringLiteral("目标 --- ℃") &&
+                overviewValuePills.at(1)->property("displayText").toString() == QStringLiteral("当前 --- ℃") &&
+                overviewValuePills.at(0)->property("legendNumberColor").toString() == targetLegendNumberColor &&
+                overviewValuePills.at(1)->property("legendNumberColor").toString() == currentLegendNumberColor &&
+                overviewValuePills.at(0)->text().contains(
+                    QStringLiteral("<span style=\"color: %1;\">---</span>").arg(targetLegendNumberColor)) &&
+                overviewValuePills.at(1)->text().contains(
+                    QStringLiteral("<span style=\"color: %1;\">---</span>").arg(currentLegendNumberColor)),
+            "temperature overview initializes concise target and current rows with legend colors");
+    VaporView::TemperatureControllerData overviewData;
+    overviewData.valid = true;
+    overviewData.channels[0].target_temperature_c = 25.0;
+    overviewData.channels[0].measured_temperature_c = 24.75;
+    temperatureOverview->updateData(overviewData);
+    QApplication::processEvents();
+    require(overviewValuePills.at(0)->property("displayText").toString() == QStringLiteral("目标 25.00000 ℃") &&
+                overviewValuePills.at(1)->property("displayText").toString() == QStringLiteral("当前 24.75000 ℃") &&
+                overviewValuePills.at(0)->accessibleName() == QStringLiteral("目标 25.00000 ℃") &&
+                overviewValuePills.at(1)->accessibleName() == QStringLiteral("当前 24.75000 ℃") &&
+                overviewValuePills.at(0)->text().contains(
+                    QStringLiteral("<span style=\"color: %1;\">25.00000</span>").arg(targetLegendNumberColor)) &&
+                overviewValuePills.at(1)->text().contains(
+                    QStringLiteral("<span style=\"color: %1;\">24.75000</span>").arg(currentLegendNumberColor)),
+            "temperature overview value pills format five-decimal values with matching legend colors");
+    overviewPlot->repaint();
+    const QRect overlayRect = overviewValueOverlay->geometry();
+    require(overlayRect.left() > overviewPlot->property("plotAreaLeft").toDouble() &&
+                overlayRect.top() > overviewPlot->property("plotAreaTop").toDouble() &&
+                overlayRect.right() <= std::floor(overviewPlot->property("plotAreaRight").toDouble()) &&
+                overlayRect.bottom() <= std::floor(overviewPlot->property("plotAreaBottom").toDouble()),
+            "temperature overview value overlay stays clear of the plot axes");
     delete temperatureOverview;
 
     std::cout << "segmented_switch_button_test passed\n";

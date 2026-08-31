@@ -6233,22 +6233,64 @@ int main(int argc, char **argv)
         window.findChildren<QLabel *>(QStringLiteral("temperatureOverviewValuePill"));
     require(temperatureValuePills.size() == 2,
             "temperature overview target and current value pills exist");
+    auto *temperatureOverviewValueOverlay =
+        window.findChild<QWidget *>(QStringLiteral("temperatureOverviewValueOverlay"));
+    QWidget *temperatureOverviewPlot = nullptr;
+    for (QWidget *plot : window.findChildren<QWidget *>(QStringLiteral("temperatureTrendPlot")))
+    {
+        if (plot->property("temperatureOverviewPlot").toBool())
+        {
+            temperatureOverviewPlot = plot;
+            break;
+        }
+    }
+    require(temperatureOverviewValueOverlay != nullptr &&
+                temperatureOverviewPlot != nullptr &&
+                temperatureOverviewValueOverlay->parentWidget() == temperatureOverviewPlot,
+            "temperature overview value pills use an overlay attached to the trend plot");
+    require(temperatureOverviewValueOverlay->testAttribute(Qt::WA_TransparentForMouseEvents),
+            "temperature overview value overlay passes pointer input through to the plot");
     require(!qApp->styleSheet().contains(QStringLiteral("QLabel#temperatureOverviewValuePill[hasData")),
             "temperature overview value pills use the default background without data-state colors");
+    const QString targetLegendNumberColor = VaporView::appThemeColor(
+        VaporView::AppThemeColor::ToolbarGreen,
+        VaporView::isDarkThemeEnabled()).name(QColor::HexRgb);
+    const QString currentLegendNumberColor = VaporView::appThemeColor(
+        VaporView::AppThemeColor::PlotSeriesTemperature,
+        VaporView::isDarkThemeEnabled()).name(QColor::HexRgb);
+    bool hasTargetUnavailableText = false;
+    bool hasCurrentUnavailableText = false;
     for (QLabel *pill : temperatureValuePills)
     {
+        const QString displayText = pill->property("displayText").toString();
+        const QString expectedNumberColor = displayText.startsWith(QStringLiteral("目标 "))
+            ? targetLegendNumberColor
+            : currentLegendNumberColor;
         require(!pill->property("hasData").isValid(),
                 "temperature overview value pill does not carry availability styling state");
         require(!pill->wordWrap(),
-                "temperature overview value pill uses explicit two-line text without wrapping");
+                "temperature overview value pill keeps the requested single-line format without wrapping");
         require(pill->textFormat() == Qt::RichText &&
-                    pill->text().contains(QStringLiteral("<br/>")) &&
-                    pill->text().contains(QStringLiteral("px; font-weight: 700;\">---")),
-                "temperature overview value pill uses rich text with an enlarged numeric row");
+                    (displayText == QStringLiteral("目标 --- ℃") ||
+                     displayText == QStringLiteral("当前 --- ℃")) &&
+                    pill->accessibleName() == displayText &&
+                    pill->property("legendNumberColor").toString() == expectedNumberColor &&
+                    pill->text().contains(
+                        QStringLiteral("<span style=\"color: %1;\">---</span>").arg(expectedNumberColor)),
+                "temperature overview value pill starts with concise text and a semantic legend color");
+        require(pill->parentWidget() == temperatureOverviewValueOverlay,
+                "temperature overview value pill is moved into the plot overlay");
+        hasTargetUnavailableText = hasTargetUnavailableText ||
+            displayText == QStringLiteral("目标 --- ℃");
+        hasCurrentUnavailableText = hasCurrentUnavailableText ||
+            displayText == QStringLiteral("当前 --- ℃");
         require(pill->property("reservedValueText").toString() == QStringLiteral("999.99999") &&
-                    pill->property("reservedValueFits").toBool(),
-                "temperature overview value pill reserves width for 999.99999");
+                    pill->property("reservedDisplayText").toString().contains(
+                        QStringLiteral("999.99999 ℃")),
+                "temperature overview value pill reserves width for the five-decimal Celsius format");
     }
+    require(hasTargetUnavailableText && hasCurrentUnavailableText,
+            "temperature overview exposes both unavailable target and current temperature rows");
     auto *temperatureOutputSwitch =
         window.findChild<QPushButton *>(QStringLiteral("temperatureOverviewOutputSwitch"));
     auto *temperatureOutputPercentPill =
@@ -6293,10 +6335,25 @@ int main(int argc, char **argv)
                 temperatureOverviewSummary->layout()->indexOf(temperatureOutputPercentPill) >
                     temperatureOverviewSummary->layout()->indexOf(temperatureChannelButton) &&
                 temperatureOverviewSummary->layout()->indexOf(temperatureOutputPercentPill) <
-                    temperatureOverviewSummary->layout()->indexOf(temperatureValuePills.first()),
-            "temperature overview output percent capsule sits between channel selection and target temperature");
+                    temperatureOverviewSummary->layout()->indexOf(temperatureOutputCapsule) &&
+                std::none_of(temperatureValuePills.cbegin(), temperatureValuePills.cend(),
+                             [temperatureOverviewSummary](QLabel *pill) {
+                                 return temperatureOverviewSummary->layout()->indexOf(pill) >= 0;
+                             }),
+            "temperature overview summary keeps channel and output controls while value pills move to the plot");
     processEventsFor(50);
     activateLayouts(&window);
+    temperatureOverviewPlot->repaint();
+    const QRect valueOverlayRect = temperatureOverviewValueOverlay->geometry();
+    const double plotAreaLeft = temperatureOverviewPlot->property("plotAreaLeft").toDouble();
+    const double plotAreaTop = temperatureOverviewPlot->property("plotAreaTop").toDouble();
+    const double plotAreaRight = temperatureOverviewPlot->property("plotAreaRight").toDouble();
+    const double plotAreaBottom = temperatureOverviewPlot->property("plotAreaBottom").toDouble();
+    require(valueOverlayRect.left() > plotAreaLeft &&
+                valueOverlayRect.top() > plotAreaTop &&
+                valueOverlayRect.right() <= std::floor(plotAreaRight) &&
+                valueOverlayRect.bottom() <= std::floor(plotAreaBottom),
+            "temperature overview value overlay stays inside the plot area with an axis-safe inset");
     requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("QLabel#temperatureOverviewValuePill {"),
                                  QStringLiteral("font-size: 13px"),
@@ -6317,16 +6374,6 @@ int main(int argc, char **argv)
                                  QStringLiteral("QPushButton#temperatureOverviewOutputSwitch {"),
                                  QStringLiteral("font-size: 14px"),
                                  "temperature overview output switch font is enlarged for readability");
-    const int temperatureSummarySpacing = temperatureOverviewSummary->layout()->spacing();
-    int temperatureSummaryControlHeight =
-        temperatureChannelButton->height() + temperatureOutputPercentPill->height() +
-        temperatureOutputCapsule->height() + temperatureSummarySpacing * 4;
-    for (QLabel *pill : temperatureValuePills)
-    {
-        temperatureSummaryControlHeight += pill->height();
-        require(pill->height() >= 44,
-                "temperature overview value capsules are taller than the old compact pills");
-    }
     require(temperatureOutputPercentPill->height() > temperatureChannelButton->height() &&
                 temperatureOutputPercentPill->height() >= 42,
             "temperature overview output percent capsule is taller than the compact channel selector");
@@ -6335,8 +6382,9 @@ int main(int argc, char **argv)
     require(temperatureOutputCapsule->height() == 60 &&
                 temperatureOutputCapsule->width() == temperatureChannelButton->width(),
             "temperature overview output capsule keeps the compact summary-column width and height");
-    require(std::abs(temperatureSummaryControlHeight - temperatureOverviewSummary->height()) <= 2,
-            "temperature overview summary capsules fill the available card body height");
+    require(temperatureOverviewValueOverlay->height() >=
+                temperatureValuePills.first()->height() + temperatureValuePills.last()->height(),
+            "temperature overview plot overlay reserves two stacked value rows");
 
     const QList<QFrame*> homeTelemetryPills =
         deviceOverviewCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
@@ -6855,23 +6903,28 @@ int main(int argc, char **argv)
     bool sawTemperatureOverviewCurrentValue = false;
     for (QLabel *pill : temperatureValuePills)
     {
-        if (pill->text().contains(QStringLiteral("<br/>")) &&
-            pill->text().contains(QStringLiteral("25.00000")) &&
-            !pill->text().contains(QStringLiteral("25.00000℃")) &&
-            pill->text().contains(QStringLiteral("目标温度℃")))
+        const QString displayText = pill->property("displayText").toString();
+        if (displayText == QStringLiteral("目标 25.00000 ℃"))
         {
+            require(pill->property("legendNumberColor").toString() == targetLegendNumberColor &&
+                        pill->text().contains(
+                            QStringLiteral("<span style=\"color: %1;\">25.00000</span>")
+                                .arg(targetLegendNumberColor)),
+                    "temperature overview target value uses the target-guide green legend color");
             sawTemperatureOverviewTargetValue = true;
         }
-        if (pill->text().contains(QStringLiteral("<br/>")) &&
-            pill->text().contains(QStringLiteral("24.75000")) &&
-            !pill->text().contains(QStringLiteral("24.75000℃")) &&
-            pill->text().contains(QStringLiteral("当前温度℃")))
+        if (displayText == QStringLiteral("当前 24.75000 ℃"))
         {
+            require(pill->property("legendNumberColor").toString() == currentLegendNumberColor &&
+                        pill->text().contains(
+                            QStringLiteral("<span style=\"color: %1;\">24.75000</span>")
+                                .arg(currentLegendNumberColor)),
+                    "temperature overview current value uses the temperature-series red legend color");
             sawTemperatureOverviewCurrentValue = true;
         }
     }
     require(sawTemperatureOverviewTargetValue && sawTemperatureOverviewCurrentValue,
-            "temperature overview value pills use title-over-value layout with five decimal places");
+            "temperature overview value pills use the requested one-line format with five decimal places");
 
     auto *temperaturePanel = window.findChild<TemperatureControllerPanel *>();
     require(temperaturePanel != nullptr,
@@ -10646,6 +10699,31 @@ int main(int argc, char **argv)
         activateLayouts(&scaledWindow);
         requireHomeDeviceColumnsAligned(&scaledWindow);
         requireHomeDeviceMinimumWidthMatchesControls(&scaledWindow);
+        auto *scaledTemperatureOverviewValueOverlay =
+            scaledWindow.findChild<QWidget *>(QStringLiteral("temperatureOverviewValueOverlay"));
+        QWidget *scaledTemperatureOverviewPlot = nullptr;
+        for (QWidget *plot : scaledWindow.findChildren<QWidget *>(QStringLiteral("temperatureTrendPlot")))
+        {
+            if (plot->property("temperatureOverviewPlot").toBool())
+            {
+                scaledTemperatureOverviewPlot = plot;
+                break;
+            }
+        }
+        require(scaledTemperatureOverviewValueOverlay != nullptr &&
+                    scaledTemperatureOverviewPlot != nullptr,
+                "scaled temperature overview plot and value overlay exist");
+        scaledTemperatureOverviewPlot->repaint();
+        const QRect scaledValueOverlayRect = scaledTemperatureOverviewValueOverlay->geometry();
+        require(scaledValueOverlayRect.left() >
+                    scaledTemperatureOverviewPlot->property("plotAreaLeft").toDouble() &&
+                    scaledValueOverlayRect.top() >
+                        scaledTemperatureOverviewPlot->property("plotAreaTop").toDouble() &&
+                    scaledValueOverlayRect.right() <= std::floor(
+                        scaledTemperatureOverviewPlot->property("plotAreaRight").toDouble()) &&
+                    scaledValueOverlayRect.bottom() <= std::floor(
+                        scaledTemperatureOverviewPlot->property("plotAreaBottom").toDouble()),
+                "scaled temperature overview value overlay stays clear of the plot axes");
         QPushButton *scaledTemperatureNavButton = nullptr;
         for (QPushButton *button : scaledWindow.findChildren<QPushButton *>())
         {
