@@ -1220,8 +1220,6 @@ public:
         output_percent_value_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         summaryLayout->addWidget(output_percent_value_, 0);
 
-        summaryLayout->addStretch(1);
-
         output_capsule_ = new QFrame(summary_widget_);
         output_capsule_->setObjectName(QStringLiteral("temperatureOverviewOutputCapsule"));
         output_capsule_->setFixedSize(kOverviewControlWidth, kOverviewOutputCapsuleHeight);
@@ -1255,6 +1253,7 @@ public:
         });
         outputLayout->addWidget(output_switch_button_, 0, Qt::AlignHCenter);
         summaryLayout->addWidget(output_capsule_, 0);
+        summaryLayout->addStretch(1);
 
         layout->addWidget(summary_widget_, 0);
 

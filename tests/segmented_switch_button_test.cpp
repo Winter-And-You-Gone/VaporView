@@ -9,6 +9,7 @@
 #include <QImage>
 #include <QKeyEvent>
 #include <QLabel>
+#include <QLayout>
 #include <QMouseEvent>
 #include <QVariantAnimation>
 
@@ -249,6 +250,15 @@ int main(int argc, char **argv)
             "temperature overview uses the shared 480 ms jelly switch inside a compact capsule");
     temperatureOverview->show();
     QApplication::processEvents();
+    auto *overviewOutputPercent =
+        temperatureOverview->findChild<QLabel *>(QStringLiteral("temperatureOverviewOutputPercentPill"));
+    auto *overviewSummary =
+        temperatureOverview->findChild<QWidget *>(QStringLiteral("temperatureOverviewSummary"));
+    require(overviewOutputPercent != nullptr && overviewSummary != nullptr &&
+                overviewSummary->layout() != nullptr &&
+                overviewOutputCapsule->geometry().top() ==
+                    overviewOutputPercent->geometry().bottom() + 1 + overviewSummary->layout()->spacing(),
+            "temperature overview places output enable directly below output percent without a stretch gap");
     const int overviewSwitchLeftGap = overviewOutputSwitch->geometry().left();
     const int overviewSwitchRightGap =
         overviewOutputCapsule->width() - overviewOutputSwitch->geometry().right() - 1;

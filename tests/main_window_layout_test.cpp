@@ -6343,6 +6343,10 @@ int main(int argc, char **argv)
             "temperature overview summary keeps channel and output controls while value pills move to the plot");
     processEventsFor(50);
     activateLayouts(&window);
+    const int summarySpacing = temperatureOverviewSummary->layout()->spacing();
+    require(temperatureOutputCapsule->geometry().top() ==
+                temperatureOutputPercentPill->geometry().bottom() + 1 + summarySpacing,
+            "temperature overview places output enable directly below output percent without a stretch gap");
     temperatureOverviewPlot->repaint();
     const QRect valueOverlayRect = temperatureOverviewValueOverlay->geometry();
     const double plotAreaLeft = temperatureOverviewPlot->property("plotAreaLeft").toDouble();
