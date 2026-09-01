@@ -1,6 +1,7 @@
 #include "SkyLocalIpcClient.h"
 #include "SkyLocalIpcServer.h"
 #include "SkyRuntime.h"
+#include "SerialBaudRate.h"
 #include "SkyStartupScreen.h"
 #include "SkyTuiApp.h"
 #include "LogService.h"
@@ -85,7 +86,14 @@ int main(int argc, char *argv[])
     runtimeOptions.telemetry_host = parser.value(telemetryHostOption);
     runtimeOptions.telemetry_tcp_port = parser.value(telemetryTcpPortOption).toInt();
     runtimeOptions.telemetry_port = parser.value(telemetryPortOption);
-    runtimeOptions.telemetry_baud = parser.value(telemetryBaudOption).toInt();
+    const auto telemetryBaud = VaporView::parseSerialBaudRate(
+        parser.value(telemetryBaudOption));
+    if (!telemetryBaud)
+    {
+        QTextStream(stderr) << "--telemetry-baud 必须为正整数。\n";
+        return 2;
+    }
+    runtimeOptions.telemetry_baud = *telemetryBaud;
     runtimeOptions.config_path = parser.value(skyConfigOption);
     runtimeOptions.simulate_data = parser.isSet(skySimulateOption);
     runtimeOptions.wave_host = parser.value(skyWaveHostOption);

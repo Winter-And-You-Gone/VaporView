@@ -1368,6 +1368,17 @@ int main(int argc, char **argv)
             "loaded remote SkyConfig is marked successful while the sky link is connected");
     require(epsilonPortCombo->currentText() == QStringLiteral("/dev/ttyEPSILON"),
             "remote SkyConfig updates the same EPSILON port combo");
+    for (QComboBox *baudCombo : {epsilonBaudCombo,
+                                 pressureBaudCombo,
+                                 humidityBaudCombo,
+                                 serialCard->findChild<QComboBox *>(QStringLiteral("deviceLidarBaudCombo")),
+                                 serialCard->findChild<QComboBox *>(QStringLiteral("deviceTemperatureBaudCombo")),
+                                 ai8BaudCombo})
+    {
+        require(baudCombo && baudCombo->isEditable() &&
+                    baudCombo->property("_vv_serial_baud_rate_combo").toBool(),
+                "remote Sky host serial baud controls accept custom positive integers");
+    }
     require(epsilonPortCombo->findText(QStringLiteral("COM7")) < 0,
             "remote sky device port options do not reuse the ground PC serial list");
     require(epsilonPortCombo->findText(QStringLiteral("手动添加")) >= 0 ||
@@ -1446,14 +1457,14 @@ int main(int argc, char **argv)
     QKeyEvent acceptManualPort(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
     QApplication::sendEvent(epsilonPortCombo->lineEdit(), &acceptManualPort);
     VaporViewTest::processEventsFor(80);
-    epsilonBaudCombo->setCurrentText(QStringLiteral("115200"));
+    epsilonBaudCombo->setCurrentText(QStringLiteral("123457"));
     selectComboData(pressureSourceCombo, QStringLiteral("bmp390"),
                     "remote pressure source can be edited to BMP390");
     selectComboData(humiditySourceCombo, QStringLiteral("sht45"),
                     "remote humidity source can be edited to SHT45");
     selectComboText(ai8PortCombo, QStringLiteral("/dev/ttyAI8_ALT"),
                     "remote AI-8 port can be edited independently");
-    ai8BaudCombo->setCurrentText(QStringLiteral("115200"));
+    ai8BaudCombo->setCurrentText(QStringLiteral("234567"));
     ai8RateCombo->setCurrentText(QStringLiteral("12"));
     VaporViewTest::processEventsFor(120);
     require(remoteStatus->property("status").toString() == QStringLiteral("dirty"),
@@ -1465,8 +1476,8 @@ int main(int argc, char **argv)
     require(uiJson.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("port")).toString() ==
                 QStringLiteral("/dev/ttyEPSILON_ALT"),
             "remote edited port is serialized into SetSkyConfig JSON");
-    require(uiJson.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("baud")).toInt() == 115200,
-            "remote edited baud is serialized into SetSkyConfig JSON");
+    require(uiJson.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("baud")).toInt() == 123457,
+            "remote custom host baud is serialized into SetSkyConfig JSON");
     require(!uiJson.value(QStringLiteral("epsilon")).toObject().contains(QStringLiteral("frequency_hz")),
             "remote EPSILON SkyConfig omits the legacy single frequency while packet rates are edited in Combination Navigation");
     require(uiJson.value(QStringLiteral("temperature_controller")).toObject().value(QStringLiteral("slave_address")).toInt() == 9,
@@ -1481,7 +1492,7 @@ int main(int argc, char **argv)
         uiJson.value(QStringLiteral("ai8_temperature_controller")).toObject();
     require(ai8Json.value(QStringLiteral("enabled")).toBool(false) &&
                 ai8Json.value(QStringLiteral("port")).toString() == QStringLiteral("/dev/ttyAI8_ALT") &&
-                ai8Json.value(QStringLiteral("baud")).toInt() == 115200 &&
+                ai8Json.value(QStringLiteral("baud")).toInt() == 234567 &&
                 std::abs(ai8Json.value(QStringLiteral("frequency_hz")).toDouble() - 12.0) < 0.01,
             "remote edited AI-8 fields are serialized into SkyConfig JSON");
     require(uiJson.contains(QStringLiteral("wave_tcp")) && uiJson.contains(QStringLiteral("telemetry")),

@@ -10,6 +10,7 @@
 #include <thread>
 
 #include "serial_port.h"
+#include "SerialBaudRate.h"
 
 namespace VaporView
 {
@@ -75,15 +76,14 @@ inline SerialHeaderProbeResult probeSerialPortForHeader(
 
     for (const QString& baudText : baudTexts)
     {
-        bool ok = false;
-        const int baudrate = baudText.toInt(&ok);
-        if (!ok || baudrate <= 0)
+        const auto baudrate = parseSerialBaudRate(baudText);
+        if (!baudrate)
         {
             continue;
         }
 
         SerialPort serial;
-        if (!serial.open(portName.toStdString(), SerialConfig::N81(baudrate)))
+        if (!serial.open(portName.toStdString(), SerialConfig::N81(*baudrate)))
         {
             continue;
         }

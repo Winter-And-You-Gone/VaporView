@@ -24,6 +24,7 @@
 | SkyCore | config.apply | sky_config_apply_rejected | Warning | 天空端配置无效，未应用。 | system_error |  | SKY_CONFIG_INVALID |
 | SkyCore | config.save | sky_config_save_failed | Error | 无法保存天空端配置。 | config_path, system_error |  | SKY_CONFIG_SAVE_FAILED |
 | SkyCore | telemetry.serial | telemetry_serial_port_missing | Error | 无法启动串口遥测：串口名称为空。 |  |  | TELEMETRY_SERIAL_PORT_MISSING |
+| SkyCore | telemetry.serial | telemetry_serial_baud_invalid | Error | 无法启动串口遥测：波特率必须为正整数。 | port, configured_baud, error_code |  | INVALID_BAUD_RATE |
 | SkyCore | telemetry.serial | telemetry_serial_open_failed | Error | 无法打开天空端遥测串口。 | port, baud | system_error | TELEMETRY_SERIAL_OPEN_FAILED |
 | SkyCore | telemetry.tcp | telemetry_tcp_listen_failed | Error | 无法监听天空端 TCP 遥测端点。 | host, port | system_error | TELEMETRY_TCP_LISTEN_FAILED |
 | SkyCore | telemetry.link | telemetry_link_error | Warning | 天空端遥测链路异常。 | system_error |  | TELEMETRY_LINK_ERROR |
@@ -96,6 +97,7 @@
 | SkyTui | ipc.protocol | sky_ipc_error_frame_received | Error | 已收到 SkyCore telemetry Error 帧。 | payload_hex, payload_bytes |  | SKY_IPC_ERROR_FRAME |
 | SkyTui | ui | sky_tui_ui_log | Info | SkyTui 界面日志已更新。 | ui_visibility, ui_visible |  |  |
 | Ground | telemetry.serial | ground_telemetry_serial_open_failed | Error | 无法打开地面端遥测串口。 | port, baud | system_error | GROUND_TELEMETRY_SERIAL_OPEN_FAILED |
+| Ground | telemetry.serial | ground_telemetry_serial_baud_invalid | Warning | 地面端遥测串口波特率必须为正整数。 | port, configured_baud, error_code |  | INVALID_BAUD_RATE |
 | Ground | telemetry.tcp | ground_telemetry_tcp_connect_failed | Error | 无法连接天空端 TCP 数传端点。 | endpoint, host, port | system_error, ui_message, ui_visibility | GROUND_TELEMETRY_TCP_CONNECT_FAILED |
 | Ground | telemetry.link | ground_telemetry_link_error | Warning | 地面端遥测链路异常。 | system_error |  | GROUND_TELEMETRY_LINK_ERROR |
 | Ground | telemetry.command | telemetry_command_ack_timeout | Warning | 天空端命令 ACK 等待超时。 | command_id, command_value, command_seq |  | TELEMETRY_COMMAND_ACK_TIMEOUT |
@@ -165,6 +167,7 @@
 | Ground | device.connection | local_connection_summary | Info/Warning | 本地连接流程已结束。 | serial_connected, tcp_wave_connected, outcome | ui_visibility | FAILED / TIMED_OUT / REJECTED |
 | Ground | device.connection | local_device_connection_cancelled | Info | 本地设备连接已取消。 | reason_code | ui_visibility | USER_CANCELLED |
 | Ground | device.connection | local_device_connection_skipped | Info | 本地设备未选择端口，已跳过连接。 | device, reason_code | ui_visibility | PORT_NOT_SELECTED |
+| Ground | device.connection | local_device_connection_rejected_invalid_baud | Warning | 本地设备主机串口波特率无效。 | device, port, configured_baud, error_code, reason_code |  | INVALID_BAUD_RATE |
 | Ground | device.connection | local_device_port_check_started | Info | 开始检查本地设备串口。 | device, port, baud | ui_visibility |  |
 | Ground | device.connection | local_device_connection_started | Info | 正在连接本地设备。 | device, port, baud | ui_visibility |  |
 | Ground | device.connection | local_device_port_open_failed | Warning | 打开本地设备串口失败。 | device, port, baud, error_code | system_error, ui_visibility | PORT_OPEN_FAILED |
@@ -185,6 +188,7 @@
 | Ground | device.connection | local_serial_devices_not_connected | Warning | 没有串口设备连接成功。 | connected_devices, total_devices, reason_code | ui_visibility | NO_DEVICE_CONNECTED |
 | Ground | device.connection | temperature_controller_connection_rejected_missing_port | Warning | 请先选择本地 RD105 串口。 | device, device_id, reason_code | ui_dedupe_key | MISSING_ENDPOINT |
 | Ground | device.connection | temperature_controller_connection_rejected_invalid_baud | Warning | RD105 波特率无效。 | device, device_id, reason_code, baud_text | ui_dedupe_key | CONFIG_INVALID |
+| Ground | device.connection | local_temperature_connection_rejected_invalid_baud | Warning | RD105 主机串口波特率无效。 | device, port, configured_baud, error_code, reason_code |  | INVALID_BAUD_RATE |
 | Ground | device.connection | temperature_controller_connection_started | Info | 正在连接本地 RD105 温控器。 | device, device_id, port, baud, sample_rate_hz | ui_visibility |  |
 | Ground | device.connection | temperature_controller_connected | Info | 本地 RD105 温控器已连接。 | device, device_id | details, ui_visibility |  |
 | Ground | device.connection | temperature_controller_connection_failed | Error | 本地 RD105 温控器连接失败。 | device, device_id, error_code | system_error, ui_dedupe_key | SERIAL_OPEN_FAILED |
@@ -192,6 +196,7 @@
 | Ground | device.connection | temperature_controller_disconnected | Info | 本地 RD105 温控器已断开。 | device, device_id | ui_visibility |  |
 | Ground | telemetry.connection | remote_sky_connection_rejected_missing_host | Warning | 请先输入天空端数传 IP。 | reason_code, transport | ui_dedupe_key | MISSING_ENDPOINT |
 | Ground | telemetry.connection | remote_sky_connection_rejected_missing_port | Warning | 请先选择天空端数传串口。 | reason_code, transport | ui_dedupe_key | MISSING_ENDPOINT |
+| Ground | telemetry.connection | remote_sky_connection_rejected_invalid_baud | Warning | 天空端数传串口波特率无效。 | reason_code, error_code, transport, port, configured_baud | ui_dedupe_key | INVALID_BAUD_RATE |
 | Ground | telemetry.connection | remote_sky_connection_started | Info | 正在连接天空端数传。 | transport, endpoint | ui_visibility |  |
 | Ground | telemetry.connection | remote_sky_connection_opened | Info | 数传链路已打开，正在等待天空端握手。 | endpoint, transport | ui_visibility |  |
 | Ground | telemetry.connection | remote_sky_connection_open_failed | Error | 打开天空端数传链路失败。 | error_code, endpoint, transport | ui_dedupe_key, ui_message | TELEMETRY_LINK_OPEN_FAILED |

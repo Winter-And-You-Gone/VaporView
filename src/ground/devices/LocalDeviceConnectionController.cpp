@@ -2,6 +2,7 @@
 
 #include "ground/devices/EpsilonConfigurationService.h"
 #include "ground/devices/ImuConfigurationService.h"
+#include "SerialBaudRate.h"
 
 #include <QSettings>
 #include "shared/config/ApplicationConfig.h"
@@ -416,6 +417,27 @@ private:
         LocalTemperatureConnectionRequest request,
         std::function<void(bool, const QString&)> completion)
     {
+        if (!VaporView::isValidSerialBaudRate(request.baudRate))
+        {
+            postConnectionLog(VaporView::LogLevel::Warning,
+                              QStringLiteral("local_temperature_connection_rejected_invalid_baud"),
+                              QStringLiteral("RD105 主机串口波特率无效。"),
+                              {{QStringLiteral("device"), QStringLiteral("RD105")},
+                               {QStringLiteral("port"), request.port},
+                               {QStringLiteral("configured_baud"), request.baudText},
+                               {QStringLiteral("error_code"), QStringLiteral("INVALID_BAUD_RATE")},
+                               {QStringLiteral("reason_code"), QStringLiteral("INVALID_BAUD_RATE")}});
+            inProgress.store(false);
+            cancel.store(false);
+            if (completion)
+            {
+                completion(false,
+                           request.english
+                               ? QStringLiteral("[RD105] Invalid host serial baud rate.")
+                               : QStringLiteral("[RD105] 主机串口波特率无效。"));
+            }
+            return;
+        }
         auto collector = std::make_shared<TemperatureControllerCollector>();
         collector->setEnglish(request.english);
         collector->setSampleRate(request.sampleRateHz);
@@ -634,7 +656,7 @@ private:
         auto connectCollector = [&](const QString& tag,
                                     const LocalSerialDeviceSettings& settings,
                                     auto *collector,
-                                    const SerialConfig& serialConfig,
+                                    auto&& serialConfigFactory,
                                     auto&& onReady) -> int {
             if (!settings.requested)
             {
@@ -658,6 +680,21 @@ private:
                          {QStringLiteral("reason_code"), QStringLiteral("PORT_NOT_SELECTED")}});
                 return 0;
             }
+
+            const auto baudRate = VaporView::parseSerialBaudRate(settings.baudText);
+            if (!baudRate)
+            {
+                postConnectionLog(VaporView::LogLevel::Warning,
+                        QStringLiteral("local_device_connection_rejected_invalid_baud"),
+                        QStringLiteral("本地设备主机串口波特率无效。"),
+                        {{QStringLiteral("device"), tag},
+                         {QStringLiteral("port"), settings.port},
+                         {QStringLiteral("configured_baud"), settings.baudText},
+                         {QStringLiteral("error_code"), QStringLiteral("INVALID_BAUD_RATE")},
+                         {QStringLiteral("reason_code"), QStringLiteral("INVALID_BAUD_RATE")}});
+                return 0;
+            }
+            const SerialConfig serialConfig = serialConfigFactory(*baudRate);
 
             ++totalDevices;
             postConnectionLog(VaporView::LogLevel::Info,
@@ -737,7 +774,7 @@ private:
         if (connectCollector(QStringLiteral("EPSILON"),
                              request.epsilon,
                              collectors.epsilon.get(),
-                             SerialConfig::N81(request.epsilon.baudText.toInt()),
+                             [](int baud) { return SerialConfig::N81(baud); },
                              [&]() {
             collectors.epsilon->setDataCallback([this]() { notifyData(LocalDeviceKind::Epsilon); });
             if (request.epsilonConfigLikelyMatches)
@@ -793,8 +830,10 @@ private:
         if (connectCollector(pressureName,
                              request.ptb,
                              collectors.ptb.get(),
-                             useBmp390 ? SerialConfig::N81(request.ptb.baudText.toInt())
-                                       : SerialConfig::E71(request.ptb.baudText.toInt()),
+                             [useBmp390](int baud) {
+                                 return useBmp390 ? SerialConfig::N81(baud)
+                                                  : SerialConfig::E71(baud);
+                             },
                              [&]() {
             collectors.ptb->setDataCallback([this]() { notifyData(LocalDeviceKind::Ptb); });
             if (request.ptb.skipDeviceRate)
@@ -837,8 +876,10 @@ private:
         if (connectCollector(humidityName,
                              request.hmp,
                              collectors.hmp.get(),
-                             useSht45 ? SerialConfig::N81(request.hmp.baudText.toInt())
-                                      : SerialConfig::N82(request.hmp.baudText.toInt()),
+                             [useSht45](int baud) {
+                                 return useSht45 ? SerialConfig::N81(baud)
+                                                 : SerialConfig::N82(baud);
+                             },
                              [&]() {
             collectors.hmp->setDataCallback([this]() { notifyData(LocalDeviceKind::Hmp); });
             if (request.hmp.skipDeviceRate)
@@ -869,7 +910,7 @@ private:
         if (connectCollector(QStringLiteral("TFA1500-L"),
                              request.lidar,
                              collectors.lidar.get(),
-                             SerialConfig::N81(request.lidar.baudText.toInt()),
+                             [](int baud) { return SerialConfig::N81(baud); },
                              [&]() {
             collectors.lidar->setDataCallback([this]() { notifyData(LocalDeviceKind::Lidar); });
             if (request.lidar.skipDeviceRate)
@@ -909,7 +950,7 @@ private:
         if (connectCollector(QStringLiteral("RD105"),
                              request.temperatureController,
                              collectors.temperature_controller.get(),
-                             SerialConfig::N81(request.temperatureController.baudText.toInt()),
+                             [](int baud) { return SerialConfig::N81(baud); },
                              [&]() {
             collectors.temperature_controller->setDataCallback(
                 [this]() { notifyData(LocalDeviceKind::TemperatureController); });
@@ -941,7 +982,7 @@ private:
         if (connectCollector(QStringLiteral("AI-8288"),
                              request.ai8TemperatureController,
                              collectors.ai8_temperature_controller.get(),
-                             SerialConfig::N81(request.ai8TemperatureController.baudText.toInt()),
+                             [](int baud) { return SerialConfig::N81(baud); },
                              [&]() {
             collectors.ai8_temperature_controller->setDataCallback(
                 [this]() { notifyData(LocalDeviceKind::Ai8TemperatureController); });

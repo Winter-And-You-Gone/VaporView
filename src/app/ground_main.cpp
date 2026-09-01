@@ -37,6 +37,7 @@
 #include "ground/devices/RemoteSkyController.h"
 #include "ground/main/MainWindow.h"
 #include "SkyRuntime.h"
+#include "SerialBaudRate.h"
 
 #include <algorithm>
 #include <cmath>
@@ -777,7 +778,21 @@ int runApplication(int argc, char *argv[])
         options.telemetry_host = parser.value(telemetryHostOption);
         options.telemetry_tcp_port = parser.value(telemetryTcpPortOption).toInt();
         options.telemetry_port = parser.value(telemetryPortOption);
-        options.telemetry_baud = parser.value(telemetryBaudOption).toInt();
+        const auto telemetryBaud = VaporView::parseSerialBaudRate(
+            parser.value(telemetryBaudOption));
+        if (!telemetryBaud)
+        {
+            logService.publish(VaporView::LogLevel::Critical,
+                               QStringLiteral("App"),
+                               QStringLiteral("startup.arguments"),
+                               QStringLiteral("启动参数无效：串口遥测速率必须为正整数。"),
+                               {{QStringLiteral("event"), QStringLiteral("startup_argument_invalid")},
+                                {QStringLiteral("error_code"), QStringLiteral("INVALID_TELEMETRY_BAUD")},
+                                {QStringLiteral("argument"), QStringLiteral("--telemetry-baud")},
+                                {QStringLiteral("value"), parser.value(telemetryBaudOption)}});
+            return requestProcessExit(2, "invalid_telemetry_baud");
+        }
+        options.telemetry_baud = *telemetryBaud;
         options.config_path = parser.value(skyConfigOption);
         options.simulate_data = parser.isSet(skySimulateOption);
         options.wave_host = parser.value(skyWaveHostOption);

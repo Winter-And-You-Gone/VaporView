@@ -1,6 +1,7 @@
 #include "ground/main/GroundMainWindowImplementation.h"
 #include "ground/devices/DeviceRatePolicy.h"
 #include "ground/widgets/SerialPortComboSupport.h"
+#include "BaudRateComboSupport.h"
 
 #include <QEvent>
 #include <QGraphicsOpacityEffect>
@@ -2535,11 +2536,12 @@ void MainWindow::setupDeviceConfigPage()
     state_->device_config_.sky_telemetry_tcp_port_spin->setValue(39100);
     refreshLocalSerialPortComboOptions(state_->device_config_.sky_telemetry_port_combo,
                                        getAvailablePorts());
-    state_->device_config_.sky_telemetry_baud_combo->addItems(
+    VaporView::configureSerialBaudRateCombo(
+        state_->device_config_.sky_telemetry_baud_combo,
         {QStringLiteral("9600"), QStringLiteral("19200"), QStringLiteral("38400"),
          QStringLiteral("57600"), QStringLiteral("115200"), QStringLiteral("230400"),
-         QStringLiteral("460800"), QStringLiteral("500000"), QStringLiteral("921600")});
-    state_->device_config_.sky_telemetry_baud_combo->setCurrentText(QStringLiteral("921600"));
+         QStringLiteral("460800"), QStringLiteral("500000"), QStringLiteral("921600")},
+        QStringLiteral("921600"));
 
     skyTelemetryLayout->addWidget(state_->device_config_.sky_telemetry_transport_lbl, 0, Qt::AlignVCenter | Qt::AlignLeft);
     skyTelemetryLayout->addWidget(state_->device_config_.sky_telemetry_transport_combo, 0, Qt::AlignVCenter);
@@ -2675,8 +2677,7 @@ void MainWindow::setupDeviceConfigPage()
                                 QStringLiteral("460800"), QStringLiteral("500000"),
                                 QStringLiteral("921600")};
     const auto populateBaud = [&baudRates](QComboBox *combo, const QString& defaultBaud) {
-        combo->addItems(baudRates);
-        combo->setCurrentText(defaultBaud);
+        VaporView::configureSerialBaudRateCombo(combo, baudRates, defaultBaud);
     };
     populateBaud(state_->device_config_.epsilon_baud_combo, QStringLiteral("921600"));
     populateBaud(state_->device_config_.ptb_baud_combo, QStringLiteral("9600"));
@@ -2767,12 +2768,11 @@ void MainWindow::setupDeviceConfigPage()
     refreshLocalSerialPortComboOptions(state_->device_config_.ai8_temperature_port_combo, getAvailablePorts());
     state_->device_config_.ai8_temperature_baud_combo->setObjectName(
         QStringLiteral("deviceAi8TemperatureBaudCombo"));
-    for (int baudRate : {4800, 9600, 19200, 38400, 57600, 115200})
-    {
-        state_->device_config_.ai8_temperature_baud_combo->addItem(
-            QString::number(baudRate), baudRate);
-    }
-    state_->device_config_.ai8_temperature_baud_combo->setCurrentText(QStringLiteral("19200"));
+    VaporView::configureSerialBaudRateCombo(
+        state_->device_config_.ai8_temperature_baud_combo,
+        {QStringLiteral("4800"), QStringLiteral("9600"), QStringLiteral("19200"),
+         QStringLiteral("38400"), QStringLiteral("57600"), QStringLiteral("115200")},
+        QStringLiteral("19200"));
     state_->device_config_.ai8_temperature_rate_combo->setObjectName(
         QStringLiteral("deviceAi8TemperatureRateCombo"));
     for (int rate : {1, 2, 5, 10, 20})
@@ -2818,7 +2818,14 @@ void MainWindow::setupDeviceConfigPage()
                 &QComboBox::currentTextChanged,
                 this,
                 [this, setMatchingBaud](const QString& baud) {
-                    setMatchingBaud(state_->device_config_.ai8_temperature_baud_combo, baud);
+                    QComboBox *hostBaud = state_->device_config_.ai8_temperature_baud_combo;
+                    // The AI-8 panel edits its fixed protocol bAud enum.  Keep
+                    // the old convenience sync for a preset host baud, but do
+                    // not overwrite a manually entered host-side baud.
+                    if (hostBaud && hostBaud->findText(hostBaud->currentText(), Qt::MatchExactly) >= 0)
+                    {
+                        setMatchingBaud(hostBaud, baud);
+                    }
                 });
     }
     state_->device_config_.ptb_baud_combo->setObjectName(QStringLiteral("devicePressureBaudCombo"));
@@ -3442,7 +3449,14 @@ void MainWindow::updateLocalDeviceConfigFromUi() const
                           QComboBox *baud,
                           VaporView::Ground::Devices::LocalSerialDeviceSettings& out) {
         if (port) out.port = localSerialPortComboValue(port);
-        if (baud) out.baudText = baud->currentText().trimmed();
+        if (baud)
+        {
+            const QString normalized = VaporView::normalizedSerialBaudRateText(baud->currentText());
+            if (!normalized.isEmpty())
+            {
+                out.baudText = normalized;
+            }
+        }
     };
     capture(state_->device_config_.epsilon_port_combo, state_->device_config_.epsilon_baud_combo, state_->local_device_config_.epsilon);
     capture(state_->device_config_.ptb_port_combo, state_->device_config_.ptb_baud_combo, state_->local_device_config_.ptb);
@@ -3554,11 +3568,10 @@ void MainWindow::updateRemoteSkyLinkConfigFromUi() const
     }
     if (QComboBox *baud = state_->device_config_.sky_telemetry_baud_combo)
     {
-        bool validBaud = false;
-        const int value = baud->currentText().trimmed().toInt(&validBaud);
-        if (validBaud && value > 0)
+        const auto value = VaporView::serialBaudRateComboValue(baud);
+        if (value)
         {
-            config.serialBaudRate = value;
+            config.serialBaudRate = *value;
         }
     }
     if (QLineEdit *host = state_->device_config_.sky_telemetry_tcp_host_edit)

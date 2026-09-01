@@ -1,5 +1,6 @@
 #include "SkyRuntime.h"
 #include "LogService.h"
+#include "SerialBaudRate.h"
 #include "ground/devices/SerialPortDetectionService.h"
 #include "geo/CoordinateTransform.h"
 #include "geo/GeoTypes.h"
@@ -357,6 +358,17 @@ bool SkyRuntime::start()
                               QStringLiteral("telemetry_serial_port_missing"),
                               QStringLiteral("无法启动串口遥测：串口名称为空。"),
                               {{QStringLiteral("error_code"), QStringLiteral("TELEMETRY_SERIAL_PORT_MISSING")}});
+            return false;
+        }
+        if (!isValidSerialBaudRate(options_.telemetry_baud))
+        {
+            publishRuntimeLog(LogLevel::Error,
+                              QStringLiteral("telemetry.serial"),
+                              QStringLiteral("telemetry_serial_baud_invalid"),
+                              QStringLiteral("无法启动串口遥测：波特率必须为正整数。"),
+                              {{QStringLiteral("error_code"), QStringLiteral("INVALID_BAUD_RATE")},
+                               {QStringLiteral("port"), options_.telemetry_port},
+                               {QStringLiteral("configured_baud"), options_.telemetry_baud}});
             return false;
         }
         auto link = std::make_unique<SerialTelemetryLink>();

@@ -1,5 +1,6 @@
 #include "ground/main/GroundMainWindowImplementation.h"
 #include "ground/widgets/SerialPortComboSupport.h"
+#include "BaudRateComboSupport.h"
 
 namespace
 {
@@ -342,10 +343,14 @@ void MainWindow::enterRemoteSkyDeviceConfigMode()
         QSettings settings = VaporView::applicationConfigSettings();
         settings.beginGroup(QStringLiteral("MainWindow"));
         auto rememberedBaud = [&settings](const QString& source, const QString& legacyKey) {
-            bool ok = false;
-            const int baud = VaporView::Ground::MainSupport::rememberedSensorBaud(
-                settings, source, legacyKey).toInt(&ok);
-            return ok && baud > 0 ? baud : VaporView::Ground::MainSupport::sensorDefaultBaud(source).toInt();
+            const auto remembered = VaporView::parseSerialBaudRate(
+                VaporView::Ground::MainSupport::rememberedSensorBaud(settings, source, legacyKey));
+            if (remembered)
+            {
+                return *remembered;
+            }
+            return VaporView::parseSerialBaudRate(
+                VaporView::Ground::MainSupport::sensorDefaultBaud(source)).value_or(9600);
         };
         config.ptb.source = settings.value(
             QStringLiteral("sensor/pressure_source"), QStringLiteral("ptb210")).toString();
@@ -401,7 +406,7 @@ void MainWindow::setRemoteSkyConfigUi(const VaporView::SkyConfig& config)
             }
             combo->setCurrentText(text);
         };
-        setComboText(baud, QString::number(baudRate));
+        VaporView::setSerialBaudRateComboText(baud, QString::number(baudRate));
         setComboText(rate, numberText(frequency));
     };
 
@@ -557,33 +562,67 @@ VaporView::SkyConfig MainWindow::remoteSkyConfigFromDeviceConfigUi(QString *erro
     VaporView::SkyConfig config = state_->remote_sky_config_loaded_
         ? state_->remote_sky_config_
         : VaporView::SkyConfig::defaults();
-    auto readSerial = [this](QCheckBox *enabled,
-                             QComboBox *port,
-                             QComboBox *baud,
-                             QComboBox *rate,
-                             VaporView::SerialDeviceConfig& target) {
+    auto readSerial = [this, errorMessage](const QString& deviceName,
+                                           QCheckBox *enabled,
+                                           QComboBox *port,
+                                           QComboBox *baud,
+                                           QComboBox *rate,
+                                           VaporView::SerialDeviceConfig& target) {
         target.enabled = enabled ? enabled->isChecked() : target.enabled;
         target.port = remoteSkySerialPortComboValue(port);
-        target.baud_rate = baud ? baud->currentText().trimmed().toInt() : target.baud_rate;
+        if (baud)
+        {
+            const auto baudRate = VaporView::serialBaudRateComboValue(baud);
+            if (!baudRate)
+            {
+                if (errorMessage)
+                {
+                    *errorMessage = state_->is_english_
+                        ? QStringLiteral("%1 baud rate must be a positive integer.").arg(deviceName)
+                        : QStringLiteral("%1 波特率必须为正整数。").arg(deviceName);
+                }
+                return false;
+            }
+            target.baud_rate = *baudRate;
+        }
         target.frequency_hz = rate ? rate->currentText().trimmed().toDouble() : target.frequency_hz;
+        return true;
     };
     config.epsilon.enabled = state_->device_config_.epsilon_enabled_check
         ? state_->device_config_.epsilon_enabled_check->isChecked()
         : config.epsilon.enabled;
     config.epsilon.port = remoteSkySerialPortComboValue(state_->device_config_.epsilon_port_combo);
-    config.epsilon.baud_rate = state_->device_config_.epsilon_baud_combo
-        ? state_->device_config_.epsilon_baud_combo->currentText().trimmed().toInt()
-        : config.epsilon.baud_rate;
-    readSerial(state_->device_config_.ptb_enabled_check,
-               state_->device_config_.ptb_port_combo,
-               state_->device_config_.ptb_baud_combo,
-               state_->device_config_.ptb_rate_combo,
-               config.ptb);
-    readSerial(state_->device_config_.hmp_enabled_check,
-               state_->device_config_.hmp_port_combo,
-               state_->device_config_.hmp_baud_combo,
-               state_->device_config_.hmp_rate_combo,
-               config.hmp);
+    if (state_->device_config_.epsilon_baud_combo)
+    {
+        const auto baudRate = VaporView::serialBaudRateComboValue(
+            state_->device_config_.epsilon_baud_combo);
+        if (!baudRate)
+        {
+            if (errorMessage)
+            {
+                *errorMessage = state_->is_english_
+                    ? QStringLiteral("EPSILON baud rate must be a positive integer.")
+                    : QStringLiteral("EPSILON 波特率必须为正整数。");
+            }
+            return config;
+        }
+        config.epsilon.baud_rate = *baudRate;
+    }
+    if (!readSerial(QStringLiteral("PTB"),
+                    state_->device_config_.ptb_enabled_check,
+                    state_->device_config_.ptb_port_combo,
+                    state_->device_config_.ptb_baud_combo,
+                    state_->device_config_.ptb_rate_combo,
+                    config.ptb) ||
+        !readSerial(QStringLiteral("HMP"),
+                    state_->device_config_.hmp_enabled_check,
+                    state_->device_config_.hmp_port_combo,
+                    state_->device_config_.hmp_baud_combo,
+                    state_->device_config_.hmp_rate_combo,
+                    config.hmp))
+    {
+        return config;
+    }
     if (state_->device_config_.ptb_source_combo)
     {
         config.ptb.source = state_->device_config_.ptb_source_combo->currentData().toString();
@@ -592,21 +631,29 @@ VaporView::SkyConfig MainWindow::remoteSkyConfigFromDeviceConfigUi(QString *erro
     {
         config.hmp.source = state_->device_config_.hmp_source_combo->currentData().toString();
     }
-    readSerial(state_->device_config_.lidar_enabled_check,
-               state_->device_config_.lidar_port_combo,
-               state_->device_config_.lidar_baud_combo,
-               state_->device_config_.lidar_rate_combo,
-               config.lidar);
+    if (!readSerial(QStringLiteral("Lidar"),
+                    state_->device_config_.lidar_enabled_check,
+                    state_->device_config_.lidar_port_combo,
+                    state_->device_config_.lidar_baud_combo,
+                    state_->device_config_.lidar_rate_combo,
+                    config.lidar))
+    {
+        return config;
+    }
     VaporView::SerialDeviceConfig temperatureSerial;
     temperatureSerial.enabled = config.temperature_controller.enabled;
     temperatureSerial.port = config.temperature_controller.port;
     temperatureSerial.baud_rate = config.temperature_controller.baud_rate;
     temperatureSerial.frequency_hz = config.temperature_controller.frequency_hz;
-    readSerial(state_->device_config_.temperature_enabled_check,
-               state_->device_config_.temperature_port_combo,
-               state_->device_config_.temperature_baud_combo,
-               state_->device_config_.temperature_rate_combo,
-               temperatureSerial);
+    if (!readSerial(QStringLiteral("RD105"),
+                    state_->device_config_.temperature_enabled_check,
+                    state_->device_config_.temperature_port_combo,
+                    state_->device_config_.temperature_baud_combo,
+                    state_->device_config_.temperature_rate_combo,
+                    temperatureSerial))
+    {
+        return config;
+    }
     config.temperature_controller.enabled = temperatureSerial.enabled;
     config.temperature_controller.port = temperatureSerial.port;
     config.temperature_controller.baud_rate = temperatureSerial.baud_rate;
@@ -616,11 +663,15 @@ VaporView::SkyConfig MainWindow::remoteSkyConfigFromDeviceConfigUi(QString *erro
     ai8TemperatureSerial.port = config.ai8_temperature_controller.port;
     ai8TemperatureSerial.baud_rate = config.ai8_temperature_controller.baud_rate;
     ai8TemperatureSerial.frequency_hz = config.ai8_temperature_controller.frequency_hz;
-    readSerial(state_->device_config_.ai8_temperature_enabled_check,
-               state_->device_config_.ai8_temperature_port_combo,
-               state_->device_config_.ai8_temperature_baud_combo,
-               state_->device_config_.ai8_temperature_rate_combo,
-               ai8TemperatureSerial);
+    if (!readSerial(QStringLiteral("AI-8288"),
+                    state_->device_config_.ai8_temperature_enabled_check,
+                    state_->device_config_.ai8_temperature_port_combo,
+                    state_->device_config_.ai8_temperature_baud_combo,
+                    state_->device_config_.ai8_temperature_rate_combo,
+                    ai8TemperatureSerial))
+    {
+        return config;
+    }
     config.ai8_temperature_controller.enabled = ai8TemperatureSerial.enabled;
     config.ai8_temperature_controller.port = ai8TemperatureSerial.port;
     config.ai8_temperature_controller.baud_rate = ai8TemperatureSerial.baud_rate;

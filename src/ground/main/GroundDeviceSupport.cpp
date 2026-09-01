@@ -1,4 +1,5 @@
 #include "ground/main/GroundMainWindowSupport.h"
+#include "BaudRateComboSupport.h"
 
 #include <QComboBox>
 #include <QFontDatabase>
@@ -710,6 +711,11 @@ void applyComboText(QComboBox *combo, const QString& value)
     {
         return;
     }
+    if (VaporView::isSerialBaudRateCombo(combo))
+    {
+        VaporView::setSerialBaudRateComboText(combo, value);
+        return;
+    }
     const QSignalBlocker blocker(combo);
     const int idx = combo->findText(value);
     if (idx >= 0)
@@ -823,7 +829,7 @@ void saveRememberedSensorBaud(QSettings& settings,
     {
         return;
     }
-    const QString baud = baudCombo->currentText().trimmed();
+    const QString baud = VaporView::normalizedSerialBaudRateText(baudCombo->currentText());
     if (!baud.isEmpty())
     {
         VaporView::setPersistentSetting(settings, key, baud);

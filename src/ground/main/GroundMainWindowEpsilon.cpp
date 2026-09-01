@@ -1,5 +1,6 @@
 #include "ground/main/GroundMainWindowImplementation.h"
 #include "ground/devices/DeviceRatePolicy.h"
+#include "SerialBaudRate.h"
 
 #include <QSettings>
 
@@ -43,11 +44,10 @@ bool MainWindow::validateEpsilonPacketBandwidth(
     const QString& baudText,
     bool showWarning)
 {
-    bool baudOk = false;
-    const int baudRate = baudText.trimmed().toInt(&baudOk);
+    const auto baudRate = VaporView::parseSerialBaudRate(baudText);
     const EpsilonSerialBandwidth bandwidth = epsilonSerialBandwidth(
         packetRates,
-        baudOk ? baudRate : 0);
+        baudRate.value_or(0));
     if (bandwidth.fits())
     {
         return true;
@@ -231,9 +231,8 @@ void MainWindow::applyEpsilonMainAntennaLeverArm(
         }
 
         const QString epsilonBaudText = state_->local_device_config_.epsilon.baudText;
-        bool baudOk = false;
-        const int epsilonBaud = epsilonBaudText.toInt(&baudOk);
-        if (!baudOk || epsilonBaud <= 0)
+        const auto epsilonBaud = VaporView::parseSerialBaudRate(epsilonBaudText);
+        if (!epsilonBaud)
         {
             fail(QString(state_->is_english_ ? "Invalid EPSILON baud rate: %1" : "EPSILON 波特率无效: %1").arg(epsilonBaudText));
             return;
@@ -263,12 +262,12 @@ void MainWindow::applyEpsilonMainAntennaLeverArm(
                          {{QStringLiteral("device"), QStringLiteral("EPSILON")},
                           {QStringLiteral("operation"), QStringLiteral("main_antenna_lever_arm")},
                           {QStringLiteral("port"), epsilonPort},
-                          {QStringLiteral("baud"), epsilonBaud},
+                          {QStringLiteral("baud"), *epsilonBaud},
                           {QStringLiteral("values"), values},
                           {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
 
         localDeviceOperation.port = epsilonPort;
-        localDeviceOperation.baud = epsilonBaud;
+        localDeviceOperation.baud = *epsilonBaud;
         localDeviceOperation.baud_text = epsilonBaudText;
         localDeviceOperation.english = english;
         localDeviceOperation.live_collector = liveCollector;
@@ -485,6 +484,8 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
                            forwardPortCombo);
 
         auto *forwardBaudCombo = new QComboBox(&dialog);
+        // This value is also written into the EPSILON device-side RTCM port
+        // setting, so it remains limited to that protocol's documented enum.
         forwardBaudCombo->addItems({QStringLiteral("115200"),
                                     QStringLiteral("230400"),
                                     QStringLiteral("460800"),
@@ -514,9 +515,9 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
         }
 
         const QString forwardPort = forwardPortCombo->currentText().trimmed();
-        bool forwardBaudOk = false;
-        const int forwardBaud = forwardBaudCombo->currentText().trimmed().toInt(&forwardBaudOk);
-        if (forwardPort.isEmpty() || !forwardBaudOk || forwardBaud <= 0)
+        const auto forwardBaud = VaporView::parseSerialBaudRate(
+            forwardBaudCombo->currentText());
+        if (forwardPort.isEmpty() || !forwardBaud)
         {
             publishGroundLog(VaporView::LogLevel::Warning,
                              QStringLiteral("device.navigation.command"),
@@ -532,7 +533,7 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
         VaporView::EpsilonRtcmInputOperation operation;
         operation.device_port_index = deviceRtcmPortIndex;
         operation.forward_port = forwardPort;
-        operation.forward_baud = forwardBaud;
+        operation.forward_baud = *forwardBaud;
         const bool shouldOpenRtkDialog = openRtkConfigCheck->isChecked();
         auto requestId = std::make_shared<quint64>(0);
         auto connection = std::make_shared<QMetaObject::Connection>();
@@ -574,9 +575,8 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
     }
 
     const QString epsilonBaudText = state_->local_device_config_.epsilon.baudText;
-    bool epsilonBaudOk = false;
-    const int epsilonBaud = epsilonBaudText.toInt(&epsilonBaudOk);
-    if (!epsilonBaudOk || epsilonBaud <= 0)
+    const auto epsilonBaud = VaporView::parseSerialBaudRate(epsilonBaudText);
+    if (!epsilonBaud)
     {
         publishGroundLog(VaporView::LogLevel::Warning,
                          QStringLiteral("device.navigation.command"),
@@ -634,6 +634,8 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
     formLayout->addRow(state_->is_english_ ? "PC RTCM Forward Port:" : "本机 RTCM 转发串口：", forwardPortCombo);
 
     auto *forwardBaudCombo = new QComboBox(&dialog);
+    // This value is also written into the EPSILON device-side RTCM port
+    // setting, so it remains limited to that protocol's documented enum.
     forwardBaudCombo->addItems({QStringLiteral("115200"),
                                 QStringLiteral("230400"),
                                 QStringLiteral("460800"),
@@ -696,10 +698,9 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
         return;
     }
 
-    bool forwardBaudOk = false;
     const QString forwardBaudText = forwardBaudCombo->currentText().trimmed();
-    const int forwardBaud = forwardBaudText.toInt(&forwardBaudOk);
-    if (!forwardBaudOk || forwardBaud <= 0)
+    const auto forwardBaud = VaporView::parseSerialBaudRate(forwardBaudText);
+    if (!forwardBaud)
     {
         publishGroundLog(VaporView::LogLevel::Warning,
                          QStringLiteral("device.navigation.command"),
@@ -737,20 +738,20 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
                      QStringLiteral("正在把 EPSILON 通信串口配置为 RTCM。"),
                      {{QStringLiteral("device"), QStringLiteral("EPSILON")},
                       {QStringLiteral("main_port"), epsilonPort},
-                      {QStringLiteral("main_baud"), epsilonBaud},
+                      {QStringLiteral("main_baud"), *epsilonBaud},
                       {QStringLiteral("device_port"), deviceRtcmPortIndex},
                       {QStringLiteral("forward_port"), forwardPort},
-                      {QStringLiteral("forward_baud"), forwardBaud},
+                      {QStringLiteral("forward_baud"), *forwardBaud},
                       {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
 
     VaporView::EpsilonRtcmInputOperation operation;
     operation.device_port_index = deviceRtcmPortIndex;
     operation.forward_port = forwardPort;
-    operation.forward_baud = forwardBaud;
+    operation.forward_baud = *forwardBaud;
 
     VaporView::Ground::EpsilonDeviceOperation localDeviceOperation;
     localDeviceOperation.port = epsilonPort;
-    localDeviceOperation.baud = epsilonBaud;
+    localDeviceOperation.baud = *epsilonBaud;
     localDeviceOperation.baud_text = epsilonBaudText;
     localDeviceOperation.english = english;
     localDeviceOperation.live_collector = liveCollector;
@@ -1290,9 +1291,8 @@ void MainWindow::onReconfigureEpsilonClicked()
     }
 
     const QString epsilonBaudText = state_->local_device_config_.epsilon.baudText;
-    bool baudOk = false;
-    const int epsilonBaud = epsilonBaudText.toInt(&baudOk);
-    if (!baudOk || epsilonBaud <= 0)
+    const auto epsilonBaud = VaporView::parseSerialBaudRate(epsilonBaudText);
+    if (!epsilonBaud)
     {
         publishGroundLog(VaporView::LogLevel::Warning,
                          QStringLiteral("device.navigation.command"),
@@ -1342,7 +1342,7 @@ void MainWindow::onReconfigureEpsilonClicked()
                      QStringLiteral("开始手动重配 EPSILON 输出。"),
                      {{QStringLiteral("device"), QStringLiteral("EPSILON")},
                       {QStringLiteral("port"), epsilonPort},
-                      {QStringLiteral("baud"), epsilonBaud},
+                      {QStringLiteral("baud"), *epsilonBaud},
                       {QStringLiteral("packet_rate_summary"), desiredPacketRateSummary},
                       {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
 
@@ -1354,7 +1354,7 @@ void MainWindow::onReconfigureEpsilonClicked()
 
     VaporView::Ground::EpsilonDeviceOperation localDeviceOperation;
     localDeviceOperation.port = epsilonPort;
-    localDeviceOperation.baud = epsilonBaud;
+    localDeviceOperation.baud = *epsilonBaud;
     localDeviceOperation.baud_text = epsilonBaudText;
     localDeviceOperation.english = english;
     localDeviceOperation.live_collector = liveCollector;

@@ -1,5 +1,6 @@
 #include "ground/main/GroundMainWindowImplementation.h"
 #include "ground/widgets/SerialPortComboSupport.h"
+#include "BaudRateComboSupport.h"
 
 void MainWindow::loadModernStyleSheet()
 {
@@ -1786,14 +1787,11 @@ void MainWindow::loadRememberedInputState()
     {
         VaporView::rememberSerialPort(skyLink.serialPort);
     }
-    bool validSkyBaud = false;
-    const int savedSkyBaud = settings.value(
-        QStringLiteral("telemetry/sky_baud"), skyLink.serialBaudRate).toInt(&validSkyBaud);
-    const QList<int> supportedSkyBauds = {
-        9600, 19200, 38400, 57600, 115200, 230400, 460800, 500000, 921600};
-    if (validSkyBaud && supportedSkyBauds.contains(savedSkyBaud))
+    const auto savedSkyBaud = VaporView::parseSerialBaudRate(settings.value(
+        QStringLiteral("telemetry/sky_baud"), skyLink.serialBaudRate).toString());
+    if (savedSkyBaud)
     {
-        skyLink.serialBaudRate = savedSkyBaud;
+        skyLink.serialBaudRate = *savedSkyBaud;
     }
     skyLink.tcpHost = settings.value(QStringLiteral("telemetry/tcp_host"),
                                      skyLink.tcpHost).toString().trimmed();
@@ -1825,11 +1823,10 @@ void MainWindow::loadRememberedInputState()
     const int baudIndex = args.indexOf(QStringLiteral("--telemetry-baud"));
     if (baudIndex >= 0 && baudIndex + 1 < args.size())
     {
-        bool validBaud = false;
-        const int baud = args.at(baudIndex + 1).toInt(&validBaud);
-        if (validBaud && supportedSkyBauds.contains(baud))
+        const auto baud = VaporView::parseSerialBaudRate(args.at(baudIndex + 1));
+        if (baud)
         {
-            skyLink.serialBaudRate = baud;
+            skyLink.serialBaudRate = *baud;
         }
     }
     const int transportIndex = args.indexOf(QStringLiteral("--telemetry-transport"));
@@ -1879,6 +1876,15 @@ void MainWindow::saveRememberedInputState() const
                 const QString port = localSerialPortComboValue(combo);
                 VaporView::rememberSerialPort(port);
                 VaporView::setPersistentSetting(settings, key, port);
+                return;
+            }
+            if (VaporView::isSerialBaudRateCombo(combo))
+            {
+                const QString baud = VaporView::normalizedSerialBaudRateText(combo->currentText());
+                if (!baud.isEmpty())
+                {
+                    VaporView::setPersistentSetting(settings, key, baud);
+                }
                 return;
             }
             VaporView::setPersistentSetting(settings, key, combo->currentText().trimmed());

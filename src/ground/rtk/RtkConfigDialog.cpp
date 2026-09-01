@@ -3,6 +3,7 @@
 #include "shared/theme/SingleLevelPopupMenu.h"
 #include "shared/theme/TopLevelCardStyle.h"
 #include "RtkConfigDialog.h"
+#include "BaudRateComboSupport.h"
 #include "ground/widgets/CustomTitleBar.h"
 #include "ground/widgets/VisualTextLabel.h"
 #include "ground/widgets/LabelTextSelection.h"
@@ -450,7 +451,8 @@ QStringList buildProbeBaudList(const QComboBox *baudrateCombo)
     QStringList baudTexts;
     if (baudrateCombo)
     {
-        const QString currentText = baudrateCombo->currentText().trimmed();
+        const QString currentText = VaporView::normalizedSerialBaudRateText(
+            baudrateCombo->currentText());
         if (!currentText.isEmpty())
         {
             baudTexts.append(currentText);
@@ -458,7 +460,8 @@ QStringList buildProbeBaudList(const QComboBox *baudrateCombo)
 
         for (int i = 0; i < baudrateCombo->count(); ++i)
         {
-            const QString text = baudrateCombo->itemText(i).trimmed();
+            const QString text = VaporView::normalizedSerialBaudRateText(
+                baudrateCombo->itemText(i));
             if (!text.isEmpty())
             {
                 baudTexts.append(text);
@@ -1713,8 +1716,12 @@ void RtkConfigDialog::setupUi()
     addOutputWidget(firstOutputRow.first, firstOutputRow.second, baudrate_label_);
     baudrate_combo_ = new QComboBox(this);
     baudrate_combo_->setObjectName(QStringLiteral("rtkBaudrateCombo"));
-    baudrate_combo_->addItems({"9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600"});
-    baudrate_combo_->setCurrentText("115200");
+    VaporView::configureSerialBaudRateCombo(
+        baudrate_combo_,
+        {QStringLiteral("9600"), QStringLiteral("19200"), QStringLiteral("38400"),
+         QStringLiteral("57600"), QStringLiteral("115200"), QStringLiteral("230400"),
+         QStringLiteral("460800"), QStringLiteral("921600")},
+        QStringLiteral("115200"));
     configureComboBoxPopup(baudrate_combo_, isDarkThemeEnabled());
     addOutputWidget(firstOutputRow.first, firstOutputRow.second, baudrate_combo_);
     firstOutputRow.second->addStretch(1);
@@ -2800,7 +2807,8 @@ void RtkConfigDialog::loadSettings()
     main_antenna_lever_z_edit_->setText(settings.value("main_antenna_lever_z_m", "").toString());
     setPreferredOutputPortAndBaud(settings.value("output_port").toString(), QString());
     applySavedGgaSource(settings.value("gga_source", settings.value("gga_port", QString::fromLatin1(kEpsilonMainGgaSourceKey))).toString());
-    baudrate_combo_->setCurrentText(settings.value("baudrate", "115200").toString());
+    VaporView::setSerialBaudRateComboText(
+        baudrate_combo_, settings.value("baudrate", "115200").toString());
     timeout_combo_->setCurrentText(settings.value("timeout", "5000").toString());
     reconnect_combo_->setCurrentText(settings.value("reconnect", "1000").toString());
     updateGgaMonitorText();
@@ -2833,7 +2841,12 @@ void RtkConfigDialog::saveSettings()
     const QString savedGgaPort = isMainGgaSourceSelected() ? QString() : ggaPortName();
     VaporView::rememberSerialPort(savedGgaPort);
     VaporView::setPersistentSetting(settings, QStringLiteral("gga_port"), savedGgaPort);
-    VaporView::setPersistentSetting(settings, QStringLiteral("baudrate"), baudrate_combo_->currentText());
+    if (const QString baud = VaporView::normalizedSerialBaudRateText(
+            baudrate_combo_->currentText());
+        !baud.isEmpty())
+    {
+        VaporView::setPersistentSetting(settings, QStringLiteral("baudrate"), baud);
+    }
     VaporView::setPersistentSetting(settings, QStringLiteral("timeout"), timeout_combo_->currentText());
     VaporView::setPersistentSetting(settings, QStringLiteral("reconnect"), reconnect_combo_->currentText());
 }
@@ -2878,16 +2891,14 @@ void RtkConfigDialog::setPreferredOutputPortAndBaud(const QString& portName, con
     }
     if (!baudText.trimmed().isEmpty() && baudrate_combo_)
     {
-        baudrate_combo_->setCurrentText(baudText.trimmed());
+        VaporView::setSerialBaudRateComboText(baudrate_combo_, baudText);
     }
 }
 
 void RtkConfigDialog::setEpsilonMainPortAndBaud(const QString& portName, const QString& baudText)
 {
     epsilon_main_port_ = portName.trimmed();
-    bool ok = false;
-    const int baudrate = baudText.trimmed().toInt(&ok);
-    epsilon_main_baudrate_ = ok ? baudrate : 921600;
+    epsilon_main_baudrate_ = VaporView::parseSerialBaudRate(baudText).value_or(921600);
 }
 
 void RtkConfigDialog::setEpsilonDataProvider(std::function<VaporView::EpsilonData()> provider)
@@ -2987,8 +2998,7 @@ bool RtkConfigDialog::buildRtkStreamConfig(RtkStreamConfig *config,
     const QString password = password_edit_->text();
     const QString mountpoint = selectedMountpointText(mountpoint_combo_);
     const QString outputPort = selectedSerialPortText(output_port_combo_);
-    bool baudrateOk = false;
-    const int baudrate = baudrate_combo_->currentText().toInt(&baudrateOk);
+    const auto baudrateValue = VaporView::serialBaudRateComboValue(baudrate_combo_);
     const int timeout = comboIntValue(timeout_combo_, 5000);
     const int reconnect = comboIntValue(reconnect_combo_, 1000);
     const VaporView::EpsilonData epsilonData = epsilon_data_provider_
@@ -3029,6 +3039,17 @@ bool RtkConfigDialog::buildRtkStreamConfig(RtkStreamConfig *config,
         return false;
     }
 
+    if (!baudrateValue)
+    {
+        if (validationError)
+        {
+            *validationError = textFor("Please enter a positive integer output baudrate.",
+                                       "请输入正整数输出波特率。");
+        }
+        return false;
+    }
+    const int baudrate = *baudrateValue;
+
     if (requireOutputPort && serialPortNamesReferToSamePort(outputPort, epsilon_main_port_))
     {
         if (validationError)
@@ -3048,7 +3069,7 @@ bool RtkConfigDialog::buildRtkStreamConfig(RtkStreamConfig *config,
         config->password = password;
         config->mountpoint = mountpoint;
         config->outputPort = outputPort;
-        config->baudrate = baudrateOk ? baudrate : 115200;
+        config->baudrate = baudrate;
         config->timeoutMs = timeout;
         config->reconnectMs = reconnect;
         config->relayBack = hasEpsilonPosition ? 0 : 1;
@@ -3083,7 +3104,7 @@ bool RtkConfigDialog::buildRtkStreamConfig(RtkStreamConfig *config,
         {
             const QString serialUrl = QString("serial://%1:%2:8:n:1:off")
                 .arg(outputPort)
-                .arg(baudrateOk ? baudrate : 115200);
+                .arg(baudrate);
             const QString ggaSource = hasEpsilonPosition
                 ? textFor("GGA source: EPSILON main-port position [%1, %2, %3 m] at 1 Hz",
                           "GGA 来源: EPSILON 主串口定位 [%1, %2, %3 m]，1Hz")
@@ -3309,16 +3330,12 @@ QString RtkConfigDialog::ggaPortName() const
 
 int RtkConfigDialog::currentGgaBaudrate() const
 {
-    bool ok = false;
-    const int baudrate = baudrate_combo_ ? baudrate_combo_->currentText().toInt(&ok) : 115200;
-    return ok ? baudrate : 115200;
+    return VaporView::serialBaudRateComboValue(baudrate_combo_).value_or(115200);
 }
 
 int RtkConfigDialog::currentOutputBaudrate() const
 {
-    bool ok = false;
-    const int baudrate = baudrate_combo_ ? baudrate_combo_->currentText().toInt(&ok) : 115200;
-    return ok ? baudrate : 115200;
+    return VaporView::serialBaudRateComboValue(baudrate_combo_).value_or(115200);
 }
 
 void RtkConfigDialog::updateGgaFrequency(double hz)

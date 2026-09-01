@@ -169,6 +169,19 @@ target_include_directories(temperature_controller_protocol_test PRIVATE
 target_link_libraries(temperature_controller_protocol_test PRIVATE vaporview_sky_core)
 add_test(NAME temperature_controller_protocol_test COMMAND temperature_controller_protocol_test)
 
+add_executable(serial_baud_rate_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/serial_baud_rate_test.cpp
+)
+target_include_directories(serial_baud_rate_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+)
+target_link_libraries(serial_baud_rate_test PRIVATE Qt6::Widgets)
+add_test(NAME serial_baud_rate_test COMMAND serial_baud_rate_test)
+set_tests_properties(serial_baud_rate_test PROPERTIES
+    TIMEOUT 30
+    LABELS "fast;unit;ui;serial"
+)
+
 add_executable(ai8_temperature_controller_protocol_test
     ${CMAKE_CURRENT_SOURCE_DIR}/ai8_temperature_controller_protocol_test.cpp
 )

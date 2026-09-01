@@ -99,6 +99,11 @@ SerialPort& SerialPort::operator=(SerialPort&& other) noexcept
 bool SerialPort::open(const std::string& port, const SerialConfig& config)
 {
   close();
+  if (config.baudrate <= 0)
+  {
+    last_error_ = "Baudrate must be a positive integer";
+    return false;
+  }
 
 #ifdef _WIN32
   std::string winPort = port;

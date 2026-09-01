@@ -1,4 +1,5 @@
 #include "SerialTelemetryLink.h"
+#include "SerialBaudRate.h"
 
 #include <QRegularExpression>
 
@@ -15,6 +16,11 @@ SerialTelemetryLink::SerialTelemetryLink(QObject *parent)
 bool SerialTelemetryLink::open(const QString& portName, int baudRate)
 {
     close();
+    if (!VaporView::isValidSerialBaudRate(baudRate))
+    {
+        emit errorOccurred(QStringLiteral("Serial baud rate must be a positive integer."));
+        return false;
+    }
     requested_port_name_ = portName.trimmed();
     port_.setPortName(normalizePortName(requested_port_name_));
     port_.setBaudRate(baudRate);

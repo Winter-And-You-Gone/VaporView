@@ -1,5 +1,6 @@
 #include "ground/main/GroundMainWindowImplementation.h"
 #include "ground/devices/DeviceRatePolicy.h"
+#include "BaudRateComboSupport.h"
 
 #include <QStyle>
 
@@ -2378,9 +2379,8 @@ void MainWindow::connectLocalTemperatureController()
     }
 
     const QString baudText = state_->local_device_config_.temperatureController.baudText;
-    bool baudOk = false;
-    const int baud = baudText.toInt(&baudOk);
-    if (!baudOk || baud <= 0)
+    const auto baud = VaporView::parseSerialBaudRate(baudText);
+    if (!baud)
     {
         publishGroundLog(VaporView::LogLevel::Warning,
                          QStringLiteral("device.connection"),
@@ -2414,7 +2414,7 @@ void MainWindow::connectLocalTemperatureController()
                      {{QStringLiteral("device"), QStringLiteral("RD105")},
                       {QStringLiteral("device_id"), QStringLiteral("temperature_controller")},
                       {QStringLiteral("port"), port},
-                      {QStringLiteral("baud"), baud},
+                      {QStringLiteral("baud"), *baud},
                       {QStringLiteral("sample_rate_hz"), rate},
                       {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
 
@@ -2422,7 +2422,7 @@ void MainWindow::connectLocalTemperatureController()
     request.english = english;
     request.port = port;
     request.baudText = baudText;
-    request.baudRate = baud;
+    request.baudRate = *baud;
     request.sampleRateHz = rate;
     request.slaveAddress = slaveAddress;
     request.usesDefaultRate = useDefaultRate;
@@ -2693,12 +2693,9 @@ void MainWindow::onRd105SessionOperationFinished(
             {
                 const QString baudText = QString::number(*settingsUpdate.baudRate);
                 state_->local_device_config_.temperatureController.baudText = baudText;
-                if (state_->device_config_.temperature_baud_combo->findText(baudText) < 0)
-                {
-                    state_->device_config_.temperature_baud_combo->addItem(baudText);
-                }
-                const QSignalBlocker blocker(state_->device_config_.temperature_baud_combo);
-                state_->device_config_.temperature_baud_combo->setCurrentText(baudText);
+                VaporView::setSerialBaudRateComboText(
+                    state_->device_config_.temperature_baud_combo,
+                    baudText);
             }
         }
         if (state_->device_panel_coordinator_)
@@ -3155,9 +3152,10 @@ bool MainWindow::applyImuDeviceProfile(const QString& requestedFormat, int reque
         return false;
     }
 
-    bool baudOk = false;
-    const int currentBaud = (state_->imu_baud_combo_ ? state_->imu_baud_combo_->currentText() : QStringLiteral("921600")).toInt(&baudOk);
-    const int effectiveCurrentBaud = baudOk && currentBaud > 0 ? currentBaud : 921600;
+    const auto currentBaud = VaporView::parseSerialBaudRate(
+        state_->imu_baud_combo_ ? state_->imu_baud_combo_->currentText()
+                                : QStringLiteral("921600"));
+    const int effectiveCurrentBaud = currentBaud.value_or(921600);
     const QString currentFormat = state_->imu_format_combo_ ? state_->imu_format_combo_->currentText().trimmed().toUpper() : QStringLiteral("HI91");
     const int currentRate = state_->imu_sample_rate_ > 0 ? state_->imu_sample_rate_ : 200;
 

@@ -72,6 +72,9 @@ int main()
             "channel input/correction encoding mismatch");
     require(Ai8::encodeBaudRate(19200) == 192 && Ai8::decodeBaudRate(192) == 19200,
             "bAud 0.1K encoding mismatch");
+    require(Ai8::isSupportedBaudRate(19200) &&
+                !Ai8::isSupportedBaudRate(123457),
+            "AI-8288 internal bAud remains a documented fixed-value enum");
     require(Ai8::isDocumentedRunState(0) &&
                 Ai8::isDocumentedRunState(15) &&
                 Ai8::isDocumentedRunState(9655) &&

@@ -359,13 +359,21 @@ int main(int argc, char **argv)
                 "NTRIP tab order follows the visual field order");
     }
     dialog.setPreferredOutputPortAndBaud(QStringLiteral("COM77"), QStringLiteral("115200"));
+    auto *baudrateCombo = dialog.findChild<QComboBox *>(QStringLiteral("rtkBaudrateCombo"));
     const int rememberedPortIndex = outputPortCombo->findText(QStringLiteral("COM77"));
+    require(baudrateCombo && baudrateCombo->isEditable() &&
+                baudrateCombo->property("_vv_serial_baud_rate_combo").toBool(),
+            "RTK output baud selector accepts custom host serial values");
+    dialog.setPreferredOutputPortAndBaud(QStringLiteral("COM77"), QStringLiteral("123457"));
     require(rememberedPortIndex >= 0 &&
                 outputPortCombo->currentIndex() == rememberedPortIndex &&
                 outputPortCombo->itemData(
                     rememberedPortIndex,
                     VaporView::kSerialPortHistoryItemRole).toBool(),
             "explicit RTK serial history is retained and marked as history");
+    require(baudrateCombo->currentText() == QStringLiteral("123457"),
+            "RTK custom host baud round-trips through the visible output configuration");
+    dialog.setPreferredOutputPortAndBaud(QStringLiteral("COM77"), QStringLiteral("115200"));
     auto *fetchMountpointsButton = dialog.findChild<QPushButton *>(QStringLiteral("rtkFetchMountpointsButton"));
     require(serverEdit && portEdit && fetchMountpointsButton, "mountpoint fetch controls exist");
     const int mountpointComboWidth = mountpointCombo->width();

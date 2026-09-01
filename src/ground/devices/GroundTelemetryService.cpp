@@ -2,6 +2,7 @@
 
 #include "LogService.h"
 #include "SerialTelemetryLink.h"
+#include "SerialBaudRate.h"
 #include "TcpTelemetryLink.h"
 
 #include <QDateTime>
@@ -66,6 +67,17 @@ GroundTelemetryService::GroundTelemetryService(QObject *parent)
 
 bool GroundTelemetryService::open(const QString& portName, int baudRate)
 {
+    if (!VaporView::isValidSerialBaudRate(baudRate))
+    {
+        publishTelemetryLog(LogLevel::Warning,
+                            QStringLiteral("telemetry.serial"),
+                            QStringLiteral("ground_telemetry_serial_baud_invalid"),
+                            QStringLiteral("地面端遥测串口波特率必须为正整数。"),
+                            {{QStringLiteral("error_code"), QStringLiteral("INVALID_BAUD_RATE")},
+                             {QStringLiteral("port"), portName},
+                             {QStringLiteral("configured_baud"), baudRate}});
+        return false;
+    }
     auto link = std::make_unique<SerialTelemetryLink>();
     const bool ok = link->open(portName, baudRate);
     if (!ok)

@@ -1,6 +1,7 @@
 #include "ground/main/GroundMainWindowImplementation.h"
 #include "ground/devices/DeviceRatePolicy.h"
 #include "ground/widgets/SerialPortComboSupport.h"
+#include "SerialBaudRate.h"
 
 #include <QJsonArray>
 
@@ -983,17 +984,18 @@ void MainWindow::onRemoteSerialPortDetectionResult(const QJsonObject& result)
             const QJsonObject item = value.toObject();
             const QString key = item.value(QStringLiteral("device_key")).toString();
             const QString port = item.value(QStringLiteral("port")).toString().trimmed();
-            const int baud = item.value(QStringLiteral("baud")).toString().toInt();
-            if (port.isEmpty() || baud <= 0)
+            const auto baud = VaporView::parseSerialBaudRate(
+                item.value(QStringLiteral("baud")).toVariant().toString());
+            if (port.isEmpty() || !baud)
             {
                 continue;
             }
-            if (key == QStringLiteral("epsilon")) { config.epsilon.port = port; config.epsilon.baud_rate = baud; }
-            else if (key == QStringLiteral("ptb")) { config.ptb.port = port; config.ptb.baud_rate = baud; }
-            else if (key == QStringLiteral("hmp")) { config.hmp.port = port; config.hmp.baud_rate = baud; }
-            else if (key == QStringLiteral("lidar")) { config.lidar.port = port; config.lidar.baud_rate = baud; }
-            else if (key == QStringLiteral("temperature")) { config.temperature_controller.port = port; config.temperature_controller.baud_rate = baud; }
-            else if (key == QStringLiteral("ai8")) { config.ai8_temperature_controller.port = port; config.ai8_temperature_controller.baud_rate = baud; }
+            if (key == QStringLiteral("epsilon")) { config.epsilon.port = port; config.epsilon.baud_rate = *baud; }
+            else if (key == QStringLiteral("ptb")) { config.ptb.port = port; config.ptb.baud_rate = *baud; }
+            else if (key == QStringLiteral("hmp")) { config.hmp.port = port; config.hmp.baud_rate = *baud; }
+            else if (key == QStringLiteral("lidar")) { config.lidar.port = port; config.lidar.baud_rate = *baud; }
+            else if (key == QStringLiteral("temperature")) { config.temperature_controller.port = port; config.temperature_controller.baud_rate = *baud; }
+            else if (key == QStringLiteral("ai8")) { config.ai8_temperature_controller.port = port; config.ai8_temperature_controller.baud_rate = *baud; }
         }
         state_->remote_sky_config_ = config;
         state_->remote_sky_config_loaded_ = true;
@@ -1353,6 +1355,20 @@ void MainWindow::onConnectClicked()
                                  {{QStringLiteral("reason_code"), QStringLiteral("MISSING_ENDPOINT")},
                                   {QStringLiteral("transport"), QStringLiteral("serial")},
                                   {QStringLiteral("ui_dedupe_key"), QStringLiteral("remote_sky:serial:missing_port")}});
+                return;
+            }
+            if (!VaporView::isValidSerialBaudRate(baud))
+            {
+                publishGroundLog(VaporView::LogLevel::Warning,
+                                 QStringLiteral("telemetry.connection"),
+                                 QStringLiteral("remote_sky_connection_rejected_invalid_baud"),
+                                 QStringLiteral("天空端数传串口波特率无效。"),
+                                 {{QStringLiteral("reason_code"), QStringLiteral("INVALID_BAUD_RATE")},
+                                  {QStringLiteral("error_code"), QStringLiteral("INVALID_BAUD_RATE")},
+                                  {QStringLiteral("transport"), QStringLiteral("serial")},
+                                  {QStringLiteral("port"), port},
+                                  {QStringLiteral("configured_baud"), baud},
+                                  {QStringLiteral("ui_dedupe_key"), QStringLiteral("remote_sky:serial:invalid_baud")}});
                 return;
             }
             openedText = QStringLiteral("%1 @ %2").arg(port).arg(baud);

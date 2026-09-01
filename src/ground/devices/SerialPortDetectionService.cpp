@@ -2,6 +2,7 @@
 
 #include "Ai8TemperatureControllerCollector.h"
 #include "data_collector.h"
+#include "SerialBaudRate.h"
 
 #include <QHash>
 #include <QSerialPortInfo>
@@ -61,9 +62,10 @@ void postSerialPortDetectionLog(const SerialPortDetectionService::LogCallback& l
 
 QString normalizedBaud(const QString& baud, const QString& fallback)
 {
-    const QString trimmed = baud.trimmed();
-    bool ok = false;
-    return trimmed.toInt(&ok) > 0 && ok ? trimmed : fallback;
+    const QString normalized = VaporView::normalizedSerialBaudRateText(baud);
+    return normalized.isEmpty()
+        ? VaporView::normalizedSerialBaudRateText(fallback)
+        : normalized;
 }
 
 template <typename Collector>
@@ -123,58 +125,88 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
     auto makeEpsilonProbe = [&](const QString& baud) {
         return ProbeSpec{QStringLiteral("epsilon"), QStringLiteral("EPSILON"), baud,
             [cancelRequested, baud](const QString& port) {
+                const auto baudRate = VaporView::parseSerialBaudRate(baud);
+                if (!baudRate)
+                {
+                    return false;
+                }
                 return probeCollector(port,
                                       std::make_unique<EpsilonCollector>(),
-                                      SerialConfig::N81(baud.toInt()),
+                                      SerialConfig::N81(*baudRate),
                                       cancelRequested);
             }};
     };
     auto makePtbProbe = [&](const QString& baud) {
         return ProbeSpec{QStringLiteral("ptb"), QStringLiteral("PTB210"), baud,
             [cancelRequested, baud](const QString& port) {
+                const auto baudRate = VaporView::parseSerialBaudRate(baud);
+                if (!baudRate)
+                {
+                    return false;
+                }
                 return probeCollector(port,
                                       std::make_unique<PtbCollector>(),
-                                      SerialConfig::E71(baud.toInt()),
+                                      SerialConfig::E71(*baudRate),
                                       cancelRequested);
             }};
     };
     auto makeHmpProbe = [&](const QString& baud) {
         return ProbeSpec{QStringLiteral("hmp"), QStringLiteral("HMP3"), baud,
             [cancelRequested, baud](const QString& port) {
+                const auto baudRate = VaporView::parseSerialBaudRate(baud);
+                if (!baudRate)
+                {
+                    return false;
+                }
                 return probeCollector(port,
                                       std::make_unique<HmpCollector>(),
-                                      SerialConfig::N82(baud.toInt()),
+                                      SerialConfig::N82(*baudRate),
                                       cancelRequested);
             }};
     };
     auto makeLidarProbe = [&](const QString& baud) {
         return ProbeSpec{QStringLiteral("lidar"), QStringLiteral("TFA1500-L"), baud,
             [cancelRequested, baud](const QString& port) {
+                const auto baudRate = VaporView::parseSerialBaudRate(baud);
+                if (!baudRate)
+                {
+                    return false;
+                }
                 return probeCollector(port,
                                       std::make_unique<LidarCollector>(),
-                                      SerialConfig::N81(baud.toInt()),
+                                      SerialConfig::N81(*baudRate),
                                       cancelRequested);
             }};
     };
     auto makeTemperatureProbe = [&](const QString& baud) {
         return ProbeSpec{QStringLiteral("temperature"), QStringLiteral("RD105"), baud,
             [cancelRequested, baud, slaveAddress = request.temperatureSlaveAddress](const QString& port) {
+                const auto baudRate = VaporView::parseSerialBaudRate(baud);
+                if (!baudRate)
+                {
+                    return false;
+                }
                 auto collector = std::make_unique<TemperatureControllerCollector>();
                 collector->setSlaveAddress(static_cast<uint8_t>(slaveAddress));
                 return probeCollector(port,
                                       std::move(collector),
-                                      SerialConfig::N81(baud.toInt()),
+                                      SerialConfig::N81(*baudRate),
                                       cancelRequested);
             }};
     };
     auto makeAi8TemperatureProbe = [&](const QString& baud) {
         return ProbeSpec{QStringLiteral("ai8"), QStringLiteral("AI-8288"), baud,
             [cancelRequested, baud, slaveAddress = request.ai8SlaveAddress](const QString& port) {
+                const auto baudRate = VaporView::parseSerialBaudRate(baud);
+                if (!baudRate)
+                {
+                    return false;
+                }
                 auto collector = std::make_unique<Ai8TemperatureControllerCollector>();
                 collector->setSlaveAddress(static_cast<quint8>(slaveAddress));
                 return probeCollector(port,
                                       std::move(collector),
-                                      SerialConfig::N81(baud.toInt()),
+                                      SerialConfig::N81(*baudRate),
                                       cancelRequested);
             }};
     };
