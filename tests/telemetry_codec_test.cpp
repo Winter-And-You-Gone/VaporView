@@ -537,6 +537,20 @@ void testSkyConfigRejectsInvalidJsonTypes()
     require(error.contains(QStringLiteral("epsilon.baud")) && error.contains(QStringLiteral("integer")),
             "sky config baud type error message");
 
+    for (double invalidBaud : {0.0, -1.0, 115200.5, 2147483648.0})
+    {
+        QJsonObject invalidBaudConfig = VaporView::SkyConfig::defaults().toJson();
+        QJsonObject invalidEpsilon = invalidBaudConfig.value(QStringLiteral("epsilon")).toObject();
+        invalidEpsilon.insert(QStringLiteral("baud"), invalidBaud);
+        invalidBaudConfig.insert(QStringLiteral("epsilon"), invalidEpsilon);
+        error.clear();
+        require(!VaporView::SkyConfig::fromJson(invalidBaudConfig, parsed, &error),
+                "sky config rejects non-positive, fractional, or overflowing host baud");
+        require(error.contains(QStringLiteral("epsilon.baud")) ||
+                    error.contains(QStringLiteral("epsilon baud")),
+                "sky config invalid baud error identifies the affected field");
+    }
+
     QJsonObject badEnabled = VaporView::SkyConfig::defaults().toJson();
     QJsonObject wave = badEnabled.value(QStringLiteral("wave_tcp")).toObject();
     wave.insert(QStringLiteral("enabled"), QStringLiteral("true"));

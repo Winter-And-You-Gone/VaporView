@@ -4,8 +4,11 @@
 #include "SerialBaudRate.h"
 
 #include <QComboBox>
+#include <QEvent>
 #include <QIntValidator>
+#include <QKeyEvent>
 #include <QLineEdit>
+#include <QPointer>
 #include <QSignalBlocker>
 
 #include <limits>
@@ -59,6 +62,39 @@ inline std::optional<int> serialBaudRateComboValue(const QComboBox *combo)
     return combo ? parseSerialBaudRate(combo->currentText()) : std::nullopt;
 }
 
+class SerialBaudRateComboEditFilter final : public QObject
+{
+public:
+    explicit SerialBaudRateComboEditFilter(QComboBox *combo, QObject *parent)
+        : QObject(parent)
+        , combo_(combo)
+    {
+    }
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if (event->type() == QEvent::KeyPress)
+        {
+            const auto *keyEvent = static_cast<QKeyEvent *>(event);
+            if (keyEvent->key() == Qt::Key_Escape && combo_)
+            {
+                const QString last = combo_->property(kSerialBaudRateLastValidProperty).toString();
+                if (!last.isEmpty())
+                {
+                    setSerialBaudRateComboText(combo_, last);
+                    event->accept();
+                    return true;
+                }
+            }
+        }
+        return QObject::eventFilter(watched, event);
+    }
+
+private:
+    QPointer<QComboBox> combo_;
+};
+
 inline void configureSerialBaudRateCombo(QComboBox *combo,
                                          const QStringList& presets,
                                          const QString& defaultValue = QString())
@@ -76,6 +112,8 @@ inline void configureSerialBaudRateCombo(QComboBox *combo,
         combo->lineEdit()->setValidator(
             new QIntValidator(1, std::numeric_limits<int>::max(), combo->lineEdit()));
         combo->lineEdit()->setCompleter(nullptr);
+        combo->lineEdit()->installEventFilter(
+            new SerialBaudRateComboEditFilter(combo, combo->lineEdit()));
     }
     for (const QString& preset : presets)
     {

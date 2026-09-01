@@ -37,6 +37,26 @@ int main()
             "connection settings retain a custom host baud from the non-UI model");
     require(requestSettings.sampleRateHz == 100,
             "connection settings use the effective runtime sample rate");
+    const std::vector<std::pair<const char *, LocalSerialDeviceSettings *>> allHostSerialSettings = {
+        {"epsilon", &config.epsilon},
+        {"ptb", &config.ptb},
+        {"hmp", &config.hmp},
+        {"lidar", &config.lidar},
+        {"temperature", &config.temperatureController},
+        {"ai8", &config.ai8TemperatureController},
+    };
+    for (const auto& item : allHostSerialSettings)
+    {
+        item.second->port = QStringLiteral("COM42");
+        item.second->baudText = QStringLiteral("256000");
+        const LocalSerialDeviceSettings custom =
+            makeLocalConnectionSettings(*item.second, true, 7, false);
+        require(custom.requested && custom.enabled &&
+                    custom.port == QStringLiteral("COM42") &&
+                    custom.baudText == QStringLiteral("256000") &&
+                    custom.sampleRateHz == 7,
+                "every local host serial device retains a custom baud in its non-UI model");
+    }
     const LocalSerialDeviceSettings skippedSettings =
         makeLocalConnectionSettings(config.epsilon, false, 100, false);
     require(!skippedSettings.requested && !skippedSettings.enabled,

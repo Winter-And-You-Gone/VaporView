@@ -2,6 +2,7 @@
 
 #include <QApplication>
 #include <QComboBox>
+#include <QKeyEvent>
 #include <QMetaObject>
 #include <QValidator>
 
@@ -26,15 +27,22 @@ int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
 
-    require(VaporView::parseSerialBaudRate(QStringLiteral("123457")) == 123457 &&
+    require(VaporView::parseSerialBaudRate(QStringLiteral("76800")) == 76800 &&
+                VaporView::parseSerialBaudRate(QStringLiteral("128000")) == 128000 &&
+                VaporView::parseSerialBaudRate(QStringLiteral("123457")) == 123457 &&
                 VaporView::parseSerialBaudRate(QStringLiteral("256000")) == 256000 &&
-                VaporView::parseSerialBaudRate(QStringLiteral("1000000")) == 1000000,
+                VaporView::parseSerialBaudRate(QStringLiteral("1000000")) == 1000000 &&
+                VaporView::parseSerialBaudRate(QStringLiteral("1500000")) == 1500000,
             "arbitrary positive baud values parse");
     require(VaporView::normalizedSerialBaudRateText(QStringLiteral("000123457")) ==
                 QStringLiteral("123457"),
             "baud text canonicalizes leading zeroes");
-    require(!VaporView::parseSerialBaudRate(QStringLiteral("0")) &&
-                !VaporView::parseSerialBaudRate(QStringLiteral("-9600")) &&
+    require(!VaporView::parseSerialBaudRate(QString()) &&
+                !VaporView::parseSerialBaudRate(QStringLiteral("   ")) &&
+                !VaporView::parseSerialBaudRate(QStringLiteral("0")) &&
+                !VaporView::parseSerialBaudRate(QStringLiteral("-1")) &&
+                !VaporView::parseSerialBaudRate(QStringLiteral("abc")) &&
+                !VaporView::parseSerialBaudRate(QStringLiteral("115200x")) &&
                 !VaporView::parseSerialBaudRate(QStringLiteral("9600.5")) &&
                 !VaporView::parseSerialBaudRate(QStringLiteral("2147483648")),
             "invalid or overflowing baud text is rejected");
@@ -80,6 +88,11 @@ int main(int argc, char **argv)
     QMetaObject::invokeMethod(combo.lineEdit(), "editingFinished", Qt::DirectConnection);
     require(combo.currentText() == QStringLiteral("1000000"),
             "invalid edit restores the last valid baud");
+    combo.lineEdit()->setText(QStringLiteral("123x"));
+    QKeyEvent escape(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+    QApplication::sendEvent(combo.lineEdit(), &escape);
+    require(combo.currentText() == QStringLiteral("1000000") && combo.count() == 2,
+            "Escape restores the last valid baud without changing presets");
 
     std::cout << "serial baud rate tests passed\n";
     return 0;

@@ -9731,15 +9731,16 @@ int main(int argc, char **argv)
                 deviceAi8TemperatureRateCombo->mapTo(deviceConfigPage, QPoint(0, 0)).x() >
                     deviceAi8TemperatureBaudCombo->mapTo(deviceConfigPage, QPoint(0, 0)).x(),
             "device configuration aligns all AI-8288 serial controls with the RD105 row");
-    deviceAi8TemperatureBaudCombo->setCurrentIndex(
-        deviceAi8TemperatureBaudCombo->findData(57600));
+    deviceAi8TemperatureBaudCombo->setCurrentText(QStringLiteral("123457"));
     processEventsFor(20);
-    require(ai8BaudCombo->currentData().toInt() == 57600,
-            "device configuration AI-8288 baud selection updates the global parameter editor");
-    ai8BaudCombo->setCurrentIndex(ai8BaudCombo->findData(19200));
+    require(deviceAi8TemperatureBaudCombo->currentText() == QStringLiteral("123457") &&
+                ai8BaudCombo->currentData().toInt() == 19200,
+            "device configuration AI-8288 host baud stays independent from the global device parameter");
+    ai8BaudCombo->setCurrentIndex(ai8BaudCombo->findData(57600));
     processEventsFor(20);
-    require(deviceAi8TemperatureBaudCombo->currentData().toInt() == 19200,
-            "AI-8 global baud parameter writes back to device configuration");
+    require(deviceAi8TemperatureBaudCombo->currentText() == QStringLiteral("123457") &&
+                ai8BaudCombo->currentData().toInt() == 57600,
+            "AI-8 global device parameter does not overwrite the host connection baud");
     deviceConfigScrollArea->ensureWidgetVisible(deviceTemperaturePortCombo, 20, 20);
     processEventsFor(80);
     requireComboPopupFloatingContainer(deviceTemperaturePortCombo,

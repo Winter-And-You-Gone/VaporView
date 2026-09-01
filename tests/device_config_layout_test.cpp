@@ -730,6 +730,8 @@ int main(int argc, char **argv)
         deviceConfigPage->findChild<QGroupBox *>(QStringLiteral("deviceRemoteSkyConfigCard"));
     auto *remoteStatus =
         deviceConfigPage->findChild<QLabel *>(QStringLiteral("deviceRemoteSkyConfigStatus"));
+    auto *remoteReadButton =
+        deviceConfigPage->findChild<QPushButton *>(QStringLiteral("deviceRemoteSkyReadButton"));
     auto *remoteApplyButton =
         deviceConfigPage->findChild<QPushButton *>(QStringLiteral("deviceRemoteSkyApplyButton"));
     auto *remoteSaveButton =
@@ -1098,7 +1100,7 @@ int main(int argc, char **argv)
     QLabel *servicesLabel = findSubsectionLabel(remoteCard, QStringLiteral("services"));
     QLabel *syncLabel = findSubsectionLabel(remoteCard, QStringLiteral("sync"));
     QLabel *advancedLabel = findSubsectionLabel(remoteCard, QStringLiteral("advanced"));
-    require(remoteCard && remoteStatus && remoteApplyButton && remoteSaveButton &&
+    require(remoteCard && remoteStatus && remoteReadButton && remoteApplyButton && remoteSaveButton &&
                 rawModeButton && rawJsonEdit && servicesLabel && syncLabel && advancedLabel,
             "remote sky service, sync, and diagnostics controls exist on the unified page");
     require(rd105SlaveSpin == nullptr,
@@ -1311,6 +1313,7 @@ int main(int argc, char **argv)
     VaporView::TelemetryCodec outboundCodec;
     int getSkyConfigRequests = 0;
     int setSkyConfigRequests = 0;
+    int saveSkyConfigRequests = 0;
     bool skyConfigFrameSent = false;
     bool skyConfigApplyResultSent = false;
     QObject::connect(&fakeSkyServer, &QTcpServer::newConnection, [&]() {
@@ -1328,7 +1331,8 @@ int main(int argc, char **argv)
                 VaporView::CommandMessage command;
                 if (!VaporView::TelemetryCodec::parseCommand(frame.payload, command) ||
                     (command.command_id != VaporView::CommandId::GetSkyConfig &&
-                     command.command_id != VaporView::CommandId::SetSkyConfig))
+                     command.command_id != VaporView::CommandId::SetSkyConfig &&
+                     command.command_id != VaporView::CommandId::SaveSkyConfig))
                 {
                     continue;
                 }
@@ -1342,14 +1346,21 @@ int main(int argc, char **argv)
                 }
                 else
                 {
-                    ++setSkyConfigRequests;
-                    VaporView::SkyConfig parsedConfig;
-                    QString parseError;
-                    const QJsonDocument document = QJsonDocument::fromJson(command.payload);
-                    if (document.isObject() &&
-                        VaporView::SkyConfig::fromJson(document.object(), parsedConfig, &parseError))
+                    if (command.command_id == VaporView::CommandId::SetSkyConfig)
                     {
-                        remoteConfig = parsedConfig;
+                        ++setSkyConfigRequests;
+                        VaporView::SkyConfig parsedConfig;
+                        QString parseError;
+                        const QJsonDocument document = QJsonDocument::fromJson(command.payload);
+                        if (document.isObject() &&
+                            VaporView::SkyConfig::fromJson(document.object(), parsedConfig, &parseError))
+                        {
+                            remoteConfig = parsedConfig;
+                        }
+                    }
+                    else
+                    {
+                        ++saveSkyConfigRequests;
                     }
                 }
                 fakeSkySocket->write(outboundCodec.encodeFrame(
@@ -1366,7 +1377,7 @@ int main(int argc, char **argv)
                         2));
                     skyConfigFrameSent = true;
                 }
-                else
+                else if (command.command_id == VaporView::CommandId::SetSkyConfig)
                 {
                     fakeSkySocket->write(outboundCodec.encodeFrame(
                         VaporView::MsgType::SkyConfigApplyResult,
@@ -1465,7 +1476,7 @@ int main(int argc, char **argv)
     remoteDetections.append(QJsonObject{
         {QStringLiteral("device_key"), QStringLiteral("epsilon")},
         {QStringLiteral("port"), QStringLiteral("/dev/ttyEPSILON_DETECTED")},
-        {QStringLiteral("baud"), QStringLiteral("1000000")},
+        {QStringLiteral("baud"), QStringLiteral("256000")},
     });
     window.testInjectRemoteSerialPortDetectionResult(QJsonObject{
         {QStringLiteral("success"), true},
@@ -1478,9 +1489,9 @@ int main(int argc, char **argv)
         window.testRemoteSkyConfigFromDeviceConfigUi(&remoteDetectionError);
     require(remoteDetectionError.isEmpty() &&
                 epsilonPortCombo->currentText() == QStringLiteral("/dev/ttyEPSILON_DETECTED") &&
-                epsilonBaudCombo->currentText() == QStringLiteral("1000000") &&
+                epsilonBaudCombo->currentText() == QStringLiteral("256000") &&
                 remoteDetectionJson.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("baud")).toInt() ==
-                    1000000,
+                    256000,
             "remote serial detection preserves a custom host baud in the unified UI and config model");
     for (QWidget *control : numericColumnControls)
     {
@@ -1618,6 +1629,31 @@ int main(int argc, char **argv)
                     remoteStatus->property("status").toString() == QStringLiteral("success");
             }),
             "remote apply persists every custom host serial baud through the SkyConfig endpoint");
+
+    VaporView::setSettingsWritesSuspended(false);
+    const int customBaudReadRequestCount = getSkyConfigRequests;
+    remoteReadButton->click();
+    const bool customBaudReadbackRestored = VaporViewTest::processEventsUntil(1500, [&]() {
+                return getSkyConfigRequests == customBaudReadRequestCount + 1 &&
+                    epsilonBaudCombo->currentText() == QStringLiteral("123457") &&
+                    pressureBaudCombo->currentText() == QStringLiteral("256000") &&
+                    humidityBaudCombo->currentText() == QStringLiteral("1000000") &&
+                    lidarBaudCombo->currentText() == QStringLiteral("1500000") &&
+                    temperatureBaudCombo->currentText() == QStringLiteral("38401") &&
+                    ai8BaudCombo->currentText() == QStringLiteral("234567") &&
+                    remoteStatus->property("status").toString() == QStringLiteral("success");
+            });
+    require(customBaudReadbackRestored,
+            "remote SkyConfig readback restores every custom host baud in the unified UI");
+
+    const int customBaudSaveRequestCount = saveSkyConfigRequests;
+    remoteSaveButton->click();
+    require(VaporViewTest::processEventsUntil(1500, [&]() {
+                return saveSkyConfigRequests == customBaudSaveRequestCount + 1 &&
+                    remoteStatus->property("status").toString() == QStringLiteral("success");
+            }),
+            "remote SkyConfig save acknowledges the applied custom host baud values");
+    VaporView::setSettingsWritesSuspended(true);
 
     rawModeButton->click();
     VaporViewTest::processEventsFor(120);
