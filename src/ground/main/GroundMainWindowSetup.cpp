@@ -2792,42 +2792,6 @@ void MainWindow::setupDeviceConfigPage()
                         effectiveRateOrDefault(text, 5, 20));
                 }
             });
-    if (auto *ai8PanelBaudCombo = findChild<QComboBox *>(QStringLiteral("ai8BaudCombo"));
-        ai8PanelBaudCombo && state_->device_config_.ai8_temperature_baud_combo)
-    {
-        auto setMatchingBaud = [](QComboBox *combo, const QString& baud) {
-            if (!combo || combo->currentText() == baud)
-            {
-                return;
-            }
-            const int index = combo->findText(baud);
-            if (index >= 0)
-            {
-                combo->setCurrentIndex(index);
-            }
-        };
-        setMatchingBaud(ai8PanelBaudCombo,
-                        state_->device_config_.ai8_temperature_baud_combo->currentText());
-        connect(state_->device_config_.ai8_temperature_baud_combo,
-                &QComboBox::currentTextChanged,
-                this,
-                [ai8PanelBaudCombo, setMatchingBaud](const QString& baud) {
-                    setMatchingBaud(ai8PanelBaudCombo, baud);
-                });
-        connect(ai8PanelBaudCombo,
-                &QComboBox::currentTextChanged,
-                this,
-                [this, setMatchingBaud](const QString& baud) {
-                    QComboBox *hostBaud = state_->device_config_.ai8_temperature_baud_combo;
-                    // The AI-8 panel edits its fixed protocol bAud enum.  Keep
-                    // the old convenience sync for a preset host baud, but do
-                    // not overwrite a manually entered host-side baud.
-                    if (hostBaud && hostBaud->findText(hostBaud->currentText(), Qt::MatchExactly) >= 0)
-                    {
-                        setMatchingBaud(hostBaud, baud);
-                    }
-                });
-    }
     state_->device_config_.ptb_baud_combo->setObjectName(QStringLiteral("devicePressureBaudCombo"));
     state_->device_config_.hmp_baud_combo->setObjectName(QStringLiteral("deviceHumidityBaudCombo"));
     if (state_->device_config_.epsilon_baud_combo)

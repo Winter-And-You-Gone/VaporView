@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QMetaObject>
+#include <QValidator>
 
 #include <cstdlib>
 #include <iostream>
@@ -25,8 +26,10 @@ int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
 
-    require(VaporView::parseSerialBaudRate(QStringLiteral("123457")) == 123457,
-            "arbitrary positive baud parses");
+    require(VaporView::parseSerialBaudRate(QStringLiteral("123457")) == 123457 &&
+                VaporView::parseSerialBaudRate(QStringLiteral("256000")) == 256000 &&
+                VaporView::parseSerialBaudRate(QStringLiteral("1000000")) == 1000000,
+            "arbitrary positive baud values parse");
     require(VaporView::normalizedSerialBaudRateText(QStringLiteral("000123457")) ==
                 QStringLiteral("123457"),
             "baud text canonicalizes leading zeroes");
@@ -53,9 +56,29 @@ int main(int argc, char **argv)
     require(VaporView::serialBaudRateComboValue(&combo) == 123457,
             "custom baud round-trips through combo parsing");
 
+    combo.lineEdit()->setText(QStringLiteral("256000"));
+    QMetaObject::invokeMethod(combo.lineEdit(), "editingFinished", Qt::DirectConnection);
+    require(combo.currentText() == QStringLiteral("256000") && combo.count() == 2,
+            "typed custom baud commits without adding a preset item");
+    combo.lineEdit()->setText(QStringLiteral("1000000"));
+    QMetaObject::invokeMethod(combo.lineEdit(), "editingFinished", Qt::DirectConnection);
+    require(VaporView::serialBaudRateComboValue(&combo) == 1000000 && combo.count() == 2,
+            "large custom baud commits through the editable control");
+
+    const QValidator *validator = combo.lineEdit()->validator();
+    QString zero = QStringLiteral("0");
+    QString nonNumeric = QStringLiteral("12k");
+    int cursor = 0;
+    require(validator && validator->validate(zero, cursor) != QValidator::Acceptable &&
+                validator->validate(nonNumeric, cursor) != QValidator::Acceptable,
+            "host baud editor does not accept zero or non-numeric input");
+    combo.lineEdit()->setText(QStringLiteral("0"));
+    QMetaObject::invokeMethod(combo.lineEdit(), "editingFinished", Qt::DirectConnection);
+    require(combo.currentText() == QStringLiteral("1000000"),
+            "zero baud restores the last valid value when editing finishes");
     combo.lineEdit()->setText(QStringLiteral("not-a-baud"));
     QMetaObject::invokeMethod(combo.lineEdit(), "editingFinished", Qt::DirectConnection);
-    require(combo.currentText() == QStringLiteral("123457"),
+    require(combo.currentText() == QStringLiteral("1000000"),
             "invalid edit restores the last valid baud");
 
     std::cout << "serial baud rate tests passed\n";

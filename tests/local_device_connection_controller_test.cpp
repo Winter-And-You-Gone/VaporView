@@ -1,5 +1,6 @@
 #include "ground/devices/LocalDeviceConnectionController.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <mutex>
@@ -25,15 +26,15 @@ int main()
 
     LocalDeviceConfig config;
     config.epsilon.port = QStringLiteral("COM42");
-    config.epsilon.baudText = QStringLiteral("460800");
+    config.epsilon.baudText = QStringLiteral("256000");
     config.epsilon.enabled = true;
     const LocalSerialDeviceSettings requestSettings =
         makeLocalConnectionSettings(config.epsilon, true, 100, false);
     require(requestSettings.requested && requestSettings.enabled,
             "enabled model entry remains requested in connection settings");
     require(requestSettings.port == QStringLiteral("COM42") &&
-                requestSettings.baudText == QStringLiteral("460800"),
-            "connection settings copy port and baud from the non-UI model");
+                requestSettings.baudText == QStringLiteral("256000"),
+            "connection settings retain a custom host baud from the non-UI model");
     require(requestSettings.sampleRateHz == 100,
             "connection settings use the effective runtime sample rate");
     const LocalSerialDeviceSettings skippedSettings =
@@ -103,7 +104,7 @@ int main()
     singleDeviceRequest.english = false;
     singleDeviceRequest.selectText = QStringLiteral("未选择");
     singleDeviceRequest.epsilon.port = QStringLiteral("__invalid_vaporview_port__");
-    singleDeviceRequest.epsilon.baudText = QStringLiteral("921600");
+    singleDeviceRequest.epsilon.baudText = QStringLiteral("256000");
     singleDeviceRequest.ptb.requested = false;
     singleDeviceRequest.hmp.requested = false;
     singleDeviceRequest.lidar.requested = false;
@@ -117,19 +118,52 @@ int main()
     {
         std::lock_guard<std::mutex> lock(mutex);
         bool foundEpsilonAttempt = false;
+        bool foundCustomEpsilonBaud = false;
         bool foundUnexpectedSkippedDevice = false;
         for (const LocalConnectionLogEntry& entry : logs)
         {
             foundEpsilonAttempt = foundEpsilonAttempt ||
                 (entry.event == QStringLiteral("local_device_connection_started") &&
                  entry.fields.value(QStringLiteral("device")).toString() == QStringLiteral("EPSILON"));
+            foundCustomEpsilonBaud = foundCustomEpsilonBaud ||
+                (entry.event == QStringLiteral("local_device_connection_started") &&
+                 entry.fields.value(QStringLiteral("device")).toString() == QStringLiteral("EPSILON") &&
+                 entry.fields.value(QStringLiteral("baud")).toString() == QStringLiteral("256000"));
             foundUnexpectedSkippedDevice = foundUnexpectedSkippedDevice ||
                 (entry.event == QStringLiteral("local_device_connection_skipped") &&
                  entry.fields.value(QStringLiteral("device")).toString() != QStringLiteral("EPSILON"));
         }
         require(foundEpsilonAttempt, "single requested-device attempt logs the target device");
+        require(foundCustomEpsilonBaud,
+                "single requested-device attempt passes the custom baud into the serial backend");
         require(!foundUnexpectedSkippedDevice,
                 "non-requested devices do not emit skipped-device noise");
+    }
+
+    controller.disconnect();
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        logs.clear();
+    }
+    finished = false;
+    connected = true;
+    LocalConnectionRequest invalidBaudRequest = singleDeviceRequest;
+    invalidBaudRequest.epsilon.baudText = QStringLiteral("0");
+    require(controller.connectAsync(invalidBaudRequest),
+            "start invalid-baud connection attempt");
+    controller.wait();
+    require(finished && !connected,
+            "invalid host baud completes without connecting a device");
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        const bool rejectedInvalidBaud = std::any_of(
+            logs.cbegin(), logs.cend(), [](const LocalConnectionLogEntry& entry) {
+                return entry.event == QStringLiteral("local_device_connection_rejected_invalid_baud") &&
+                    entry.fields.value(QStringLiteral("device")).toString() == QStringLiteral("EPSILON") &&
+                    entry.fields.value(QStringLiteral("configured_baud")).toString() == QStringLiteral("0");
+            });
+        require(rejectedInvalidBaud,
+                "connection controller rejects a non-positive host baud before opening the port");
     }
 
     LocalSampleRateConfiguration rateConfiguration;

@@ -119,6 +119,7 @@ public:
     QString testRemoteSkyConfigStatusText() const;
     QJsonObject testLocalDeviceConfigSnapshot() const;
     QJsonObject testRemoteSkyLinkConfigSnapshot() const;
+    void testInjectRemoteSerialPortDetectionResult(const QJsonObject& result);
     void testApplyLocalPortDetection(const QString& deviceKey,
                                      const QString& port,
                                      const QString& baud);

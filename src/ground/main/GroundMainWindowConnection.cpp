@@ -1263,6 +1263,11 @@ QJsonObject MainWindow::testRemoteSkyLinkConfigSnapshot() const
     };
 }
 
+void MainWindow::testInjectRemoteSerialPortDetectionResult(const QJsonObject& result)
+{
+    onRemoteSerialPortDetectionResult(result);
+}
+
 void MainWindow::testApplyLocalPortDetection(const QString& deviceKey,
                                              const QString& port,
                                              const QString& baud)

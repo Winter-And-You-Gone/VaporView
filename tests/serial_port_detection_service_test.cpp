@@ -64,7 +64,7 @@ int main()
 
     SerialPortDetectionRequest selectedProbeRequest;
     selectedProbeRequest.english = false;
-    selectedProbeRequest.epsilon = {QStringLiteral("VAPORVIEW_TEST_SELECTED_PORT"), QStringLiteral("921600")};
+    selectedProbeRequest.epsilon = {QStringLiteral("VAPORVIEW_TEST_SELECTED_PORT"), QStringLiteral("256000")};
     logs.clear();
     SerialPortDetectionService::detect(
         selectedProbeRequest,
@@ -80,6 +80,9 @@ int main()
     require(selectedStarted->fields.value(QStringLiteral("ui_visibility")).toString() ==
                 QStringLiteral("details"),
             "selected per-probe progress enters the details log view");
+    require(selectedStarted->fields.value(QStringLiteral("baud")).toString() ==
+                QStringLiteral("256000"),
+            "selected probe keeps the configured custom host baud");
 
     std::cout << "serial_port_detection_service_test passed\n";
     return 0;
