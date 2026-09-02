@@ -50,27 +50,27 @@ int main(int argc, char **argv)
     QComboBox combo;
     VaporView::configureSerialBaudRateCombo(
         &combo,
-        {QStringLiteral("9600"), QStringLiteral("115200")},
+        VaporView::hostSerialLinkBaudCapabilities(),
         QStringLiteral("115200"));
     require(combo.isEditable() && VaporView::isSerialBaudRateCombo(&combo),
             "host baud combo is explicitly editable");
-    require(combo.count() == 2 && combo.currentText() == QStringLiteral("115200"),
+    require(combo.count() == 9 && combo.currentText() == QStringLiteral("115200"),
             "preset baud values remain intact");
 
     require(VaporView::setSerialBaudRateComboText(&combo, QStringLiteral("123457")) &&
                 combo.currentText() == QStringLiteral("123457") &&
-                combo.count() == 2,
+                combo.count() == 9,
             "custom baud remains selected without polluting preset items");
     require(VaporView::serialBaudRateComboValue(&combo) == 123457,
             "custom baud round-trips through combo parsing");
 
     combo.lineEdit()->setText(QStringLiteral("256000"));
     QMetaObject::invokeMethod(combo.lineEdit(), "editingFinished", Qt::DirectConnection);
-    require(combo.currentText() == QStringLiteral("256000") && combo.count() == 2,
+    require(combo.currentText() == QStringLiteral("256000") && combo.count() == 9,
             "typed custom baud commits without adding a preset item");
     combo.lineEdit()->setText(QStringLiteral("1000000"));
     QMetaObject::invokeMethod(combo.lineEdit(), "editingFinished", Qt::DirectConnection);
-    require(VaporView::serialBaudRateComboValue(&combo) == 1000000 && combo.count() == 2,
+    require(VaporView::serialBaudRateComboValue(&combo) == 1000000 && combo.count() == 9,
             "large custom baud commits through the editable control");
 
     const QValidator *validator = combo.lineEdit()->validator();
@@ -91,8 +91,46 @@ int main(int argc, char **argv)
     combo.lineEdit()->setText(QStringLiteral("123x"));
     QKeyEvent escape(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
     QApplication::sendEvent(combo.lineEdit(), &escape);
-    require(combo.currentText() == QStringLiteral("1000000") && combo.count() == 2,
+    require(combo.currentText() == QStringLiteral("1000000") && combo.count() == 9,
             "Escape restores the last valid baud without changing presets");
+
+    QComboBox ai8Combo;
+    VaporView::configureSerialBaudRateCombo(
+        &ai8Combo,
+        VaporView::ai8TemperatureControllerBaudCapabilities(),
+        QStringLiteral("19200"));
+    require(!ai8Combo.isEditable() && ai8Combo.count() == 6 &&
+                ai8Combo.currentText() == QStringLiteral("19200"),
+            "AI-8288 connection baud is a non-editable documented preset list");
+    require(!VaporView::setSerialBaudRateComboText(&ai8Combo, QStringLiteral("256000")) &&
+                ai8Combo.currentText() == QStringLiteral("19200") &&
+                VaporView::serialBaudRateComboValue(&ai8Combo) == 19200,
+            "AI-8288 connection rejects unsupported custom baud without changing its value");
+    for (const QString& baud : VaporView::ai8TemperatureControllerBaudCapabilities().presets)
+    {
+        require(ai8Combo.findText(baud) >= 0,
+                "AI-8288 connection exposes every protocol-supported baud");
+    }
+
+    QComboBox skyLinkCombo;
+    VaporView::configureSerialBaudRateCombo(
+        &skyLinkCombo,
+        VaporView::skyLinkBaudCapabilities(),
+        QStringLiteral("921600"));
+    require(skyLinkCombo.isEditable() &&
+                VaporView::setSerialBaudRateComboText(&skyLinkCombo, QStringLiteral("1000000")) &&
+                VaporView::serialBaudRateComboValue(&skyLinkCombo) == 1000000,
+            "Sky Link remains an editable custom baud host link");
+
+    QComboBox rtkOutputCombo;
+    VaporView::configureSerialBaudRateCombo(
+        &rtkOutputCombo,
+        VaporView::rtkOutputBaudCapabilities(),
+        QStringLiteral("115200"));
+    require(rtkOutputCombo.isEditable() &&
+                VaporView::setSerialBaudRateComboText(&rtkOutputCombo, QStringLiteral("123457")) &&
+                VaporView::serialBaudRateComboValue(&rtkOutputCombo) == 123457,
+            "RTK output remains an editable custom baud host link");
 
     std::cout << "serial baud rate tests passed\n";
     return 0;

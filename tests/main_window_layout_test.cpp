@@ -1021,7 +1021,17 @@ void requireHomeSensorCardSplitterResizable(MainWindow& window)
     QWidget *environmentCard = splitter->widget(1);
     require(environmentCard != nullptr,
             "home sensor card splitter exposes the environment card");
-    const int availableGrowth = originalSizes.at(1) - environmentCard->minimumWidth();
+    QWidget *epsilonCard = splitter->widget(0);
+    require(epsilonCard != nullptr,
+            "home sensor card splitter exposes the EPSILON card");
+    const int environmentMinimumWidth = std::max(
+        environmentCard->minimumWidth(), environmentCard->minimumSizeHint().width());
+    const int epsilonMinimumWidth = std::max(
+        epsilonCard->minimumWidth(), epsilonCard->minimumSizeHint().width());
+    const int environmentShrink = originalSizes.at(1) - environmentMinimumWidth;
+    const int environmentExpand = originalSizes.at(0) - epsilonMinimumWidth;
+    const bool dragTowardEnvironment = environmentShrink < 40 && environmentExpand >= 40;
+    const int availableGrowth = dragTowardEnvironment ? environmentExpand : environmentShrink;
     const int dragDistance = std::min(72, availableGrowth);
     require(dragDistance >= 40,
             "home sensor card splitter has enough width for a drag regression");
@@ -1035,8 +1045,9 @@ void requireHomeSensorCardSplitterResizable(MainWindow& window)
                       Qt::LeftButton,
                       Qt::NoModifier);
     QCoreApplication::sendEvent(handle, &press);
-    const QPoint localEnd = localStart + QPoint(dragDistance, 0);
-    const QPoint globalEnd = globalStart + QPoint(dragDistance, 0);
+    const int dragDirection = dragTowardEnvironment ? -1 : 1;
+    const QPoint localEnd = localStart + QPoint(dragDirection * dragDistance, 0);
+    const QPoint globalEnd = globalStart + QPoint(dragDirection * dragDistance, 0);
     QMouseEvent move(QEvent::MouseMove,
                      localEnd,
                      globalEnd,
@@ -1056,8 +1067,11 @@ void requireHomeSensorCardSplitterResizable(MainWindow& window)
 
     const QList<int> resizedSizes = splitter->sizes();
     require(resizedSizes.size() == 2 &&
-                resizedSizes.at(0) >= originalSizes.at(0) + dragDistance - 2 &&
-                resizedSizes.at(1) <= originalSizes.at(1) - dragDistance + 2,
+                (dragDirection > 0
+                     ? resizedSizes.at(0) >= originalSizes.at(0) + dragDistance - 2 &&
+                           resizedSizes.at(1) <= originalSizes.at(1) - dragDistance + 2
+                     : resizedSizes.at(0) <= originalSizes.at(0) - dragDistance + 2 &&
+                           resizedSizes.at(1) >= originalSizes.at(1) + dragDistance - 2),
             "dragging the home sensor separator changes both card widths");
     require(splitter->property(
                 VaporView::Ground::MainSupport::kHomeSensorSplitterUserResizedProperty)
@@ -4083,11 +4097,17 @@ int main(int argc, char **argv)
     app.setApplicationName(QStringLiteral("main_window_layout_test"));
 
     {
-        QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+        QSettings settings(QSettings::defaultFormat(),
+                           QSettings::UserScope,
+                           QStringLiteral("VaporView"),
+                           QStringLiteral("MainWindow"));
         settings.setValue(QStringLiteral("app_sidebar_width"), 56);
         settings.setValue(QStringLiteral("font_scale_percent"), 100);
         settings.setValue(QStringLiteral("serial/temperature_port"), QStringLiteral(""));
-        QSettings(QStringLiteral("VaporView"), QStringLiteral("SerialPortHistory"))
+        QSettings(QSettings::defaultFormat(),
+                  QSettings::UserScope,
+                  QStringLiteral("VaporView"),
+                  QStringLiteral("SerialPortHistory"))
             .setValue(QStringLiteral("ports"), QStringList{QStringLiteral("COM123")});
         settings.setValue(QStringLiteral("dark_theme_enabled"), false);
         settings.setValue(QStringLiteral("serial/temperature_baud"), QStringLiteral("38400"));
@@ -4273,7 +4293,10 @@ int main(int argc, char **argv)
     }
 
     {
-        QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+        QSettings settings(QSettings::defaultFormat(),
+                           QSettings::UserScope,
+                           QStringLiteral("VaporView"),
+                           QStringLiteral("MainWindow"));
         settings.setValue(QStringLiteral("source/mode"), QStringLiteral("local"));
         settings.setValue(QStringLiteral("sensor/pressure_source"), QStringLiteral("ptb210"));
         settings.setValue(QStringLiteral("serial/ptb_baud"), QStringLiteral("9600"));
@@ -4281,11 +4304,17 @@ int main(int argc, char **argv)
         settings.setValue(QStringLiteral("serial/hmp_baud"), QStringLiteral("19200"));
 #ifdef Q_OS_WIN
         settings.setValue(QStringLiteral("serial/temperature_port"), QStringLiteral("COM9"));
-        QSettings(QStringLiteral("VaporView"), QStringLiteral("SerialPortHistory"))
+        QSettings(QSettings::defaultFormat(),
+                  QSettings::UserScope,
+                  QStringLiteral("VaporView"),
+                  QStringLiteral("SerialPortHistory"))
             .setValue(QStringLiteral("ports"), QStringList{QStringLiteral("COM9")});
 #else
         settings.setValue(QStringLiteral("serial/temperature_port"), QStringLiteral("/dev/ttyRD105"));
-        QSettings(QStringLiteral("VaporView"), QStringLiteral("SerialPortHistory"))
+        QSettings(QSettings::defaultFormat(),
+                  QSettings::UserScope,
+                  QStringLiteral("VaporView"),
+                  QStringLiteral("SerialPortHistory"))
             .setValue(QStringLiteral("ports"), QStringList{QStringLiteral("/dev/ttyRD105")});
 #endif
         settings.remove(QStringLiteral("serial/ptb210_baud"));
@@ -9706,6 +9735,7 @@ int main(int argc, char **argv)
                 deviceAi8TemperatureLabel->font().weight() == deviceTemperatureLabel->font().weight(),
             "device configuration AI-8288 label matches the RD105 field-label typography");
     require(deviceAi8TemperatureBaudCombo != nullptr &&
+                !deviceAi8TemperatureBaudCombo->isEditable() &&
                 deviceAi8TemperatureBaudCombo->count() == 6 &&
                 deviceAi8TemperatureBaudCombo->currentData().toInt() == 19200 &&
                 deviceAi8TemperatureBaudCombo->findData(4800) >= 0 &&
@@ -9731,14 +9761,14 @@ int main(int argc, char **argv)
                 deviceAi8TemperatureRateCombo->mapTo(deviceConfigPage, QPoint(0, 0)).x() >
                     deviceAi8TemperatureBaudCombo->mapTo(deviceConfigPage, QPoint(0, 0)).x(),
             "device configuration aligns all AI-8288 serial controls with the RD105 row");
-    deviceAi8TemperatureBaudCombo->setCurrentText(QStringLiteral("123457"));
+    deviceAi8TemperatureBaudCombo->setCurrentText(QStringLiteral("256000"));
     processEventsFor(20);
-    require(deviceAi8TemperatureBaudCombo->currentText() == QStringLiteral("123457") &&
+    require(deviceAi8TemperatureBaudCombo->currentText() == QStringLiteral("19200") &&
                 ai8BaudCombo->currentData().toInt() == 19200,
-            "device configuration AI-8288 host baud stays independent from the global device parameter");
+            "device configuration AI-8288 connection rejects unsupported custom baud");
     ai8BaudCombo->setCurrentIndex(ai8BaudCombo->findData(57600));
     processEventsFor(20);
-    require(deviceAi8TemperatureBaudCombo->currentText() == QStringLiteral("123457") &&
+    require(deviceAi8TemperatureBaudCombo->currentText() == QStringLiteral("19200") &&
                 ai8BaudCombo->currentData().toInt() == 57600,
             "AI-8 global device parameter does not overwrite the host connection baud");
     deviceConfigScrollArea->ensureWidgetVisible(deviceTemperaturePortCombo, 20, 20);
@@ -10749,7 +10779,10 @@ int main(int argc, char **argv)
     }
 
     {
-        QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+        QSettings settings(QSettings::defaultFormat(),
+                           QSettings::UserScope,
+                           QStringLiteral("VaporView"),
+                           QStringLiteral("MainWindow"));
         settings.setValue(QStringLiteral("font_scale_percent"), 130);
         settings.sync();
 

@@ -2538,9 +2538,7 @@ void MainWindow::setupDeviceConfigPage()
                                        getAvailablePorts());
     VaporView::configureSerialBaudRateCombo(
         state_->device_config_.sky_telemetry_baud_combo,
-        {QStringLiteral("9600"), QStringLiteral("19200"), QStringLiteral("38400"),
-         QStringLiteral("57600"), QStringLiteral("115200"), QStringLiteral("230400"),
-         QStringLiteral("460800"), QStringLiteral("500000"), QStringLiteral("921600")},
+        VaporView::skyLinkBaudCapabilities(),
         QStringLiteral("921600"));
 
     skyTelemetryLayout->addWidget(state_->device_config_.sky_telemetry_transport_lbl, 0, Qt::AlignVCenter | Qt::AlignLeft);
@@ -2671,19 +2669,26 @@ void MainWindow::setupDeviceConfigPage()
     {
         refreshLocalSerialPortComboOptions(portCombo, availablePorts);
     }
-    const QStringList baudRates{QStringLiteral("9600"), QStringLiteral("19200"),
-                                QStringLiteral("38400"), QStringLiteral("57600"),
-                                QStringLiteral("115200"), QStringLiteral("230400"),
-                                QStringLiteral("460800"), QStringLiteral("500000"),
-                                QStringLiteral("921600")};
-    const auto populateBaud = [&baudRates](QComboBox *combo, const QString& defaultBaud) {
-        VaporView::configureSerialBaudRateCombo(combo, baudRates, defaultBaud);
-    };
-    populateBaud(state_->device_config_.epsilon_baud_combo, QStringLiteral("921600"));
-    populateBaud(state_->device_config_.ptb_baud_combo, QStringLiteral("9600"));
-    populateBaud(state_->device_config_.hmp_baud_combo, QStringLiteral("19200"));
-    populateBaud(state_->device_config_.lidar_baud_combo, QStringLiteral("500000"));
-    populateBaud(state_->device_config_.temperature_baud_combo, QStringLiteral("38400"));
+    VaporView::configureSerialBaudRateCombo(
+        state_->device_config_.epsilon_baud_combo,
+        VaporView::epsilonConnectionBaudCapabilities(),
+        QStringLiteral("921600"));
+    VaporView::configureSerialBaudRateCombo(
+        state_->device_config_.ptb_baud_combo,
+        VaporView::ptb210BaudCapabilities(),
+        QStringLiteral("9600"));
+    VaporView::configureSerialBaudRateCombo(
+        state_->device_config_.hmp_baud_combo,
+        VaporView::hmp3BaudCapabilities(),
+        QStringLiteral("19200"));
+    VaporView::configureSerialBaudRateCombo(
+        state_->device_config_.lidar_baud_combo,
+        VaporView::lidarBaudCapabilities(),
+        QStringLiteral("500000"));
+    VaporView::configureSerialBaudRateCombo(
+        state_->device_config_.temperature_baud_combo,
+        VaporView::rd105BaudCapabilities(),
+        QStringLiteral("38400"));
     const QList<int> supportedRates{1, 2, 5, 10, 20, 50, 70, 100, 200, 250, 500, 1000};
     const auto populateRate = [this, &supportedRates](QComboBox *combo, int maximum, int defaultRate) {
         for (int rate : supportedRates)
@@ -2770,9 +2775,8 @@ void MainWindow::setupDeviceConfigPage()
         QStringLiteral("deviceAi8TemperatureBaudCombo"));
     VaporView::configureSerialBaudRateCombo(
         state_->device_config_.ai8_temperature_baud_combo,
-        {QStringLiteral("4800"), QStringLiteral("9600"), QStringLiteral("19200"),
-         QStringLiteral("38400"), QStringLiteral("57600"), QStringLiteral("115200")},
-        QStringLiteral("19200"));
+        VaporView::ai8TemperatureControllerBaudCapabilities(),
+        QString::number(VaporView::Ai8TemperatureControllerProtocol::kDefaultBaudRate));
     state_->device_config_.ai8_temperature_rate_combo->setObjectName(
         QStringLiteral("deviceAi8TemperatureRateCombo"));
     for (int rate : {1, 2, 5, 10, 20})
@@ -2899,7 +2903,14 @@ void MainWindow::setupDeviceConfigPage()
                 [this, sourceCombo, devicePortCombo, deviceBaudCombo, pressure](int) {
             if (isRemoteSkyMode())
             {
-                sourceCombo->setProperty(kSensorBaudSourceProperty, sourceCombo->currentData().toString());
+                const QString currentSource = sourceCombo->currentData().toString();
+                sourceCombo->setProperty(kSensorBaudSourceProperty, currentSource);
+                const QSignalBlocker baudBlocker(deviceBaudCombo);
+                VaporView::configureSerialBaudRateCombo(
+                    deviceBaudCombo,
+                    pressure ? VaporView::pressureSensorBaudCapabilities(currentSource)
+                             : VaporView::humiditySensorBaudCapabilities(currentSource),
+                    VaporView::serialBaudRateComboText(deviceBaudCombo));
                 updateDeviceConfigTexts();
                 markRemoteSkyConfigDirty();
                 return;
@@ -2935,7 +2946,12 @@ void MainWindow::setupDeviceConfigPage()
                 const QSignalBlocker portBlocker(devicePortCombo);
                 const QSignalBlocker baudBlocker(deviceBaudCombo);
                 setLocalSerialPortComboText(devicePortCombo, active.port);
-                applyComboText(deviceBaudCombo, active.baudText);
+                VaporView::configureSerialBaudRateCombo(
+                    deviceBaudCombo,
+                    pressure ? VaporView::pressureSensorBaudCapabilities(currentSource)
+                             : VaporView::humiditySensorBaudCapabilities(currentSource),
+                    active.baudText);
+                active.baudText = VaporView::serialBaudRateComboText(deviceBaudCombo);
             }
             if (pressure)
             {
@@ -3415,10 +3431,10 @@ void MainWindow::updateLocalDeviceConfigFromUi() const
         if (port) out.port = localSerialPortComboValue(port);
         if (baud)
         {
-            const QString normalized = VaporView::normalizedSerialBaudRateText(baud->currentText());
-            if (!normalized.isEmpty())
+            const auto baudRate = VaporView::serialBaudRateComboValue(baud);
+            if (baudRate)
             {
-                out.baudText = normalized;
+                out.baudText = QString::number(*baudRate);
             }
         }
     };
@@ -3468,7 +3484,8 @@ void MainWindow::refreshDeviceConfigUiFromLocalModel()
     const auto& c = state_->local_device_config_;
     auto apply = [this](QComboBox *port,
                         QComboBox *baud,
-                        const VaporView::Ground::Devices::LocalSerialDeviceSettings& value) {
+                        const VaporView::Ground::Devices::LocalSerialDeviceSettings& value,
+                        const VaporView::BaudRateCapabilities *capabilities = nullptr) {
         if (port)
         {
             const QSignalBlocker blocker(port);
@@ -3477,12 +3494,23 @@ void MainWindow::refreshDeviceConfigUiFromLocalModel()
         if (baud)
         {
             const QSignalBlocker blocker(baud);
-            applyComboText(baud, value.baudText);
+            if (capabilities)
+            {
+                VaporView::configureSerialBaudRateCombo(baud, *capabilities, value.baudText);
+            }
+            else
+            {
+                applyComboText(baud, value.baudText);
+            }
         }
     };
     apply(state_->device_config_.epsilon_port_combo, state_->device_config_.epsilon_baud_combo, c.epsilon);
-    apply(state_->device_config_.ptb_port_combo, state_->device_config_.ptb_baud_combo, c.ptb);
-    apply(state_->device_config_.hmp_port_combo, state_->device_config_.hmp_baud_combo, c.hmp);
+    const auto& pressureCapabilities = VaporView::pressureSensorBaudCapabilities(c.pressureSource);
+    const auto& humidityCapabilities = VaporView::humiditySensorBaudCapabilities(c.humiditySource);
+    apply(state_->device_config_.ptb_port_combo, state_->device_config_.ptb_baud_combo, c.ptb,
+          &pressureCapabilities);
+    apply(state_->device_config_.hmp_port_combo, state_->device_config_.hmp_baud_combo, c.hmp,
+          &humidityCapabilities);
     apply(state_->device_config_.lidar_port_combo, state_->device_config_.lidar_baud_combo, c.lidar);
     apply(state_->device_config_.temperature_port_combo, state_->device_config_.temperature_baud_combo, c.temperatureController);
     apply(state_->device_config_.ai8_temperature_port_combo, state_->device_config_.ai8_temperature_baud_combo, c.ai8TemperatureController);
@@ -4163,8 +4191,11 @@ void MainWindow::refreshLocalSerialPortComboOptions(QComboBox *combo,
         !isLocalSerialPortManualOptionText(previousText);
     const bool previousIsAvailable = VaporView::serialPortListContains(ports, previousText);
     const bool previousIsHistory = VaporView::isRememberedSerialPort(previousText);
-    const bool shouldKeepPrevious =
-        previousIsRealPort && (previousIsAvailable || previousIsHistory);
+    // A persisted device setting is an explicit user choice. Keep it visible
+    // while the device is temporarily disconnected, even before it appears in
+    // the port history or the current hardware scan.
+    const bool shouldKeepPrevious = previousIsRealPort &&
+        (hasExplicitPreferredText || previousIsAvailable || previousIsHistory);
 
     installLocalSerialPortComboBehavior(combo);
     const QSignalBlocker blocker(combo);

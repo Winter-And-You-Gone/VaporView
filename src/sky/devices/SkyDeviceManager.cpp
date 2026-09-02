@@ -1,5 +1,6 @@
 #include "SkyDeviceManager.h"
 
+#include "SerialBaudRateCapabilities.h"
 #include "serial_port.h"
 
 #include <QDateTime>
@@ -411,23 +412,7 @@ bool supportedRemoteEpsilonPacketRate(uint8_t packetId, int rateHz)
 
 bool supportedEpsilonRtcmBaud(int baudRate)
 {
-    switch (baudRate)
-    {
-    case 9600:
-    case 19200:
-    case 38400:
-    case 76800:
-    case 115200:
-    case 230400:
-    case 460800:
-    case 921600:
-    case 2625000:
-    case 5250000:
-    case 10500000:
-        return true;
-    default:
-        return false;
-    }
+    return isBaudRateSupported(epsilonRtcmForwardBaudCapabilities(), baudRate);
 }
 
 TemperatureControllerChannelData *simulatedTemperatureChannel(TemperatureControllerData& data, quint8 channel)

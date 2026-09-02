@@ -139,22 +139,6 @@ int decodeBaudRate(quint16 value)
     return static_cast<int>(value) * 100;
 }
 
-bool isSupportedBaudRate(int baudRate)
-{
-    switch (baudRate)
-    {
-    case 4800:
-    case 9600:
-    case 19200:
-    case 38400:
-    case 57600:
-    case 115200:
-        return true;
-    default:
-        return false;
-    }
-}
-
 bool isDocumentedRunState(quint16 value)
 {
     switch (value)

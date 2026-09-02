@@ -2,6 +2,7 @@
 
 #include "Ai8TemperatureControllerCollector.h"
 #include "data_collector.h"
+#include "SerialBaudRateCapabilities.h"
 #include "SerialBaudRate.h"
 
 #include <QHash>
@@ -60,12 +61,16 @@ void postSerialPortDetectionLog(const SerialPortDetectionService::LogCallback& l
     }
 }
 
-QString normalizedBaud(const QString& baud, const QString& fallback)
+QString normalizedBaud(const QString& baud,
+                       const QString& fallback,
+                       const VaporView::BaudRateCapabilities& capabilities)
 {
     const QString normalized = VaporView::normalizedSerialBaudRateText(baud);
-    return normalized.isEmpty()
-        ? VaporView::normalizedSerialBaudRateText(fallback)
-        : normalized;
+    if (VaporView::isBaudRateSupported(capabilities, normalized))
+    {
+        return normalized;
+    }
+    return VaporView::normalizedSerialBaudRateText(fallback);
 }
 
 template <typename Collector>
@@ -116,8 +121,10 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
     }
 
     const QString epsilonDefaultBaud = QStringLiteral("921600");
-    const QString ptbDefaultBaud = QStringLiteral("9600");
-    const QString hmpDefaultBaud = QStringLiteral("19200");
+    const bool useBmp390 = request.pressureProtocol == VaporView::PressureSensorProtocol::Bmp390Serial;
+    const bool useSht45 = request.humidityProtocol == VaporView::HumiditySensorProtocol::Sht45Serial;
+    const QString ptbDefaultBaud = useBmp390 ? QStringLiteral("115200") : QStringLiteral("9600");
+    const QString hmpDefaultBaud = useSht45 ? QStringLiteral("115200") : QStringLiteral("19200");
     const QString lidarDefaultBaud = QStringLiteral("500000");
     const QString temperatureDefaultBaud = QStringLiteral("38400");
     const QString ai8TemperatureDefaultBaud = QStringLiteral("19200");
@@ -137,30 +144,44 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
             }};
     };
     auto makePtbProbe = [&](const QString& baud) {
-        return ProbeSpec{QStringLiteral("ptb"), QStringLiteral("PTB210"), baud,
-            [cancelRequested, baud](const QString& port) {
+        return ProbeSpec{QStringLiteral("ptb"),
+            useBmp390 ? QStringLiteral("BMP390") : QStringLiteral("PTB210"),
+            baud,
+            [cancelRequested, baud, useBmp390](const QString& port) {
                 const auto baudRate = VaporView::parseSerialBaudRate(baud);
                 if (!baudRate)
                 {
                     return false;
                 }
+                auto collector = std::make_unique<PtbCollector>();
+                collector->setProtocol(useBmp390
+                                           ? VaporView::PressureSensorProtocol::Bmp390Serial
+                                           : VaporView::PressureSensorProtocol::Ptb210);
                 return probeCollector(port,
-                                      std::make_unique<PtbCollector>(),
-                                      SerialConfig::E71(*baudRate),
+                                      std::move(collector),
+                                      useBmp390 ? SerialConfig::N81(*baudRate)
+                                                 : SerialConfig::E71(*baudRate),
                                       cancelRequested);
             }};
     };
     auto makeHmpProbe = [&](const QString& baud) {
-        return ProbeSpec{QStringLiteral("hmp"), QStringLiteral("HMP3"), baud,
-            [cancelRequested, baud](const QString& port) {
+        return ProbeSpec{QStringLiteral("hmp"),
+            useSht45 ? QStringLiteral("SHT45") : QStringLiteral("HMP3"),
+            baud,
+            [cancelRequested, baud, useSht45](const QString& port) {
                 const auto baudRate = VaporView::parseSerialBaudRate(baud);
                 if (!baudRate)
                 {
                     return false;
                 }
+                auto collector = std::make_unique<HmpCollector>();
+                collector->setProtocol(useSht45
+                                           ? VaporView::HumiditySensorProtocol::Sht45Serial
+                                           : VaporView::HumiditySensorProtocol::Hmp3Modbus);
                 return probeCollector(port,
-                                      std::make_unique<HmpCollector>(),
-                                      SerialConfig::N82(*baudRate),
+                                      std::move(collector),
+                                      useSht45 ? SerialConfig::N81(*baudRate)
+                                               : SerialConfig::N82(*baudRate),
                                       cancelRequested);
             }};
     };
@@ -198,7 +219,9 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
         return ProbeSpec{QStringLiteral("ai8"), QStringLiteral("AI-8288"), baud,
             [cancelRequested, baud, slaveAddress = request.ai8SlaveAddress](const QString& port) {
                 const auto baudRate = VaporView::parseSerialBaudRate(baud);
-                if (!baudRate)
+                if (!baudRate || !VaporView::isBaudRateSupported(
+                                     VaporView::ai8TemperatureControllerBaudCapabilities(),
+                                     *baudRate))
                 {
                     return false;
                 }
@@ -226,14 +249,69 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
             selected.push_back({std::move(probe), normalizedPort});
         }
     };
-    addSelected(makeEpsilonProbe(normalizedBaud(request.epsilon.baud, epsilonDefaultBaud)), request.epsilon.port);
-    addSelected(makePtbProbe(normalizedBaud(request.ptb.baud, ptbDefaultBaud)), request.ptb.port);
-    addSelected(makeHmpProbe(normalizedBaud(request.hmp.baud, hmpDefaultBaud)), request.hmp.port);
-    addSelected(makeLidarProbe(normalizedBaud(request.lidar.baud, lidarDefaultBaud)), request.lidar.port);
-    addSelected(makeTemperatureProbe(normalizedBaud(request.temperatureController.baud, temperatureDefaultBaud)),
+    auto selectedBaud = [&](const QString& key,
+                            const QString& label,
+                            const QString& configuredBaud,
+                            const QString& fallbackBaud,
+                            const VaporView::BaudRateCapabilities& capabilities) {
+        const QString normalized = VaporView::normalizedSerialBaudRateText(configuredBaud);
+        if (!normalized.isEmpty() && !VaporView::isBaudRateSupported(capabilities, normalized))
+        {
+            postSerialPortDetectionLog(
+                log,
+                LogLevel::Warning,
+                QStringLiteral("serial_port_detection_rejected_unsupported_baud"),
+                QStringLiteral("自动识别已忽略设备不支持的已选波特率，并改用默认值。"),
+                {{QStringLiteral("device_key"), key},
+                 {QStringLiteral("device"), label},
+                 {QStringLiteral("configured_baud"), configuredBaud},
+                 {QStringLiteral("fallback_baud"), fallbackBaud},
+                 {QStringLiteral("error_code"), QStringLiteral("UNSUPPORTED_BAUD_RATE")},
+                 {QStringLiteral("reason_code"), QStringLiteral("UNSUPPORTED_BAUD_RATE")}});
+        }
+        return normalizedBaud(configuredBaud, fallbackBaud, capabilities);
+    };
+    addSelected(makeEpsilonProbe(selectedBaud(QStringLiteral("epsilon"),
+                                              QStringLiteral("EPSILON"),
+                                              request.epsilon.baud,
+                                              epsilonDefaultBaud,
+                                              VaporView::epsilonConnectionBaudCapabilities())),
+                request.epsilon.port);
+    addSelected(makePtbProbe(selectedBaud(QStringLiteral("ptb"),
+                                          useBmp390 ? QStringLiteral("BMP390")
+                                                     : QStringLiteral("PTB210"),
+                                          request.ptb.baud,
+                                          ptbDefaultBaud,
+                                              useBmp390 ? VaporView::bmp390SerialAdapterBaudCapabilities()
+                                                         : VaporView::ptb210BaudCapabilities())),
+                request.ptb.port);
+    addSelected(makeHmpProbe(selectedBaud(QStringLiteral("hmp"),
+                                          useSht45 ? QStringLiteral("SHT45")
+                                                   : QStringLiteral("HMP3"),
+                                          request.hmp.baud,
+                                          hmpDefaultBaud,
+                                          useSht45 ? VaporView::sht45SerialAdapterBaudCapabilities()
+                                                   : VaporView::hmp3BaudCapabilities())),
+                request.hmp.port);
+    addSelected(makeLidarProbe(selectedBaud(QStringLiteral("lidar"),
+                                            QStringLiteral("TFA1500-L"),
+                                            request.lidar.baud,
+                                            lidarDefaultBaud,
+                                            VaporView::lidarBaudCapabilities())),
+                request.lidar.port);
+    addSelected(makeTemperatureProbe(selectedBaud(
+                    QStringLiteral("temperature"),
+                    QStringLiteral("RD105"),
+                    request.temperatureController.baud,
+                    temperatureDefaultBaud,
+                    VaporView::rd105BaudCapabilities())),
                 request.temperatureController.port);
-    addSelected(makeAi8TemperatureProbe(
-                    normalizedBaud(request.ai8TemperatureController.baud, ai8TemperatureDefaultBaud)),
+    addSelected(makeAi8TemperatureProbe(selectedBaud(
+                    QStringLiteral("ai8"),
+                    QStringLiteral("AI-8288"),
+                    request.ai8TemperatureController.baud,
+                    ai8TemperatureDefaultBaud,
+                    VaporView::ai8TemperatureControllerBaudCapabilities())),
                 request.ai8TemperatureController.port);
 
     QVector<ProbeSpec> defaults;

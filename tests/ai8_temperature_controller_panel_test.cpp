@@ -410,8 +410,16 @@ int main(int argc, char **argv)
     require(addressSpin != nullptr && addressSpin->minimum() == 1 && addressSpin->maximum() == 88 &&
                 addressSpin->value() == 1,
             "AI-8 address range and default match the register table");
-    require(baudCombo != nullptr && baudCombo->currentData().toInt() == 19200,
-            "AI-8 baud rate defaults to 19.2K");
+    require(baudCombo != nullptr && !baudCombo->isEditable() &&
+                baudCombo->count() == static_cast<int>(
+                    VaporView::Ai8TemperatureControllerProtocol::kSupportedBaudRates.size()) &&
+                baudCombo->currentData().toInt() == 19200,
+            "AI-8 baud rate defaults to the protocol fixed baud list");
+    for (int baud : VaporView::Ai8TemperatureControllerProtocol::kSupportedBaudRates)
+    {
+        require(baudCombo->findData(baud) >= 0,
+                "AI-8 parameter page uses the shared protocol-supported baud source");
+    }
     auto *channelOutputGroupSpin = panel.findChild<QSpinBox *>(QStringLiteral("ai8ChannelOutputGroupSpin"));
     auto *programNumberSpin = panel.findChild<QSpinBox *>(QStringLiteral("ai8ProgramNumberSpin"));
     auto *highAlarmSpin = panel.findChild<QDoubleSpinBox *>(QStringLiteral("ai8HighAlarmSpin"));

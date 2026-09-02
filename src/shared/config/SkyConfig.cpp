@@ -1,4 +1,5 @@
 #include "SkyConfig.h"
+#include "SerialBaudRateCapabilities.h"
 
 #include <QFile>
 #include <QJsonDocument>
@@ -191,6 +192,11 @@ QJsonObject epsilonRtcmToJson(const EpsilonRtcmConfig& config)
     return object;
 }
 
+bool validateSupportedBaud(const QString& section,
+                           int baudRate,
+                           const BaudRateCapabilities& capabilities,
+                           QString *errorMessage);
+
 bool epsilonRtcmFromJson(const QJsonObject& object, EpsilonRtcmConfig& config, QString *errorMessage)
 {
     EpsilonRtcmConfig next = config;
@@ -203,7 +209,11 @@ bool epsilonRtcmFromJson(const QJsonObject& object, EpsilonRtcmConfig& config, Q
     {
         return false;
     }
-    if (next.device_port_index < 2 || next.device_port_index > 5 || next.baud_rate <= 0)
+    if (next.device_port_index < 2 || next.device_port_index > 5 ||
+        !validateSupportedBaud(section,
+                               next.baud_rate,
+                               epsilonRtcmForwardBaudCapabilities(),
+                               errorMessage))
     {
         if (errorMessage) *errorMessage = QStringLiteral("epsilon.rtcm device_port_index/baud is invalid");
         return false;
@@ -234,7 +244,10 @@ bool epsilonFromJson(const QJsonObject& object, EpsilonSerialConfig& config, QSt
         if (errorMessage) *errorMessage = QStringLiteral("epsilon port is empty");
         return false;
     }
-    if (next.baud_rate <= 0)
+    if (!validateSupportedBaud(section,
+                               next.baud_rate,
+                               epsilonConnectionBaudCapabilities(),
+                               errorMessage))
     {
         if (errorMessage) *errorMessage = QStringLiteral("epsilon baud is invalid");
         return false;
@@ -287,6 +300,22 @@ bool validateSource(const QString& section,
     return true;
 }
 
+bool validateSupportedBaud(const QString& section,
+                           int baudRate,
+                           const BaudRateCapabilities& capabilities,
+                           QString *errorMessage)
+{
+    if (isBaudRateSupported(capabilities, baudRate))
+    {
+        return true;
+    }
+    if (errorMessage)
+    {
+        *errorMessage = QStringLiteral("%1 baud is unsupported").arg(section);
+    }
+    return false;
+}
+
 QJsonObject temperatureControllerToJson(const TemperatureControllerConfig& config)
 {
     QJsonObject object;
@@ -316,7 +345,11 @@ bool temperatureControllerFromJson(const QJsonObject& object, TemperatureControl
         if (errorMessage) *errorMessage = QStringLiteral("temperature_controller port is empty");
         return false;
     }
-    if (next.baud_rate <= 0 || next.frequency_hz <= 0.0 || next.slave_address <= 0 || next.slave_address > 247)
+    if (!validateSupportedBaud(section,
+                               next.baud_rate,
+                               rd105BaudCapabilities(),
+                               errorMessage) ||
+        next.frequency_hz <= 0.0 || next.slave_address <= 0 || next.slave_address > 247)
     {
         if (errorMessage) *errorMessage = QStringLiteral("temperature_controller baud/frequency/slave_address is invalid");
         return false;
@@ -343,7 +376,11 @@ bool ai8TemperatureControllerFromJson(const QJsonObject& object, TemperatureCont
         if (errorMessage) *errorMessage = QStringLiteral("ai8_temperature_controller port is empty");
         return false;
     }
-    if (next.baud_rate <= 0 || next.frequency_hz <= 0.0 || next.slave_address <= 0 || next.slave_address > 88)
+    if (!validateSupportedBaud(section,
+                               next.baud_rate,
+                               ai8TemperatureControllerBaudCapabilities(),
+                               errorMessage) ||
+        next.frequency_hz <= 0.0 || next.slave_address <= 0 || next.slave_address > 88)
     {
         if (errorMessage) *errorMessage = QStringLiteral("ai8_temperature_controller baud/frequency/slave_address is invalid");
         return false;
@@ -644,16 +681,26 @@ QJsonObject SkyConfig::toJson() const
 bool SkyConfig::validate(QString *errorMessage) const
 {
     SkyConfig copy = *this;
-    return validateSource(QStringLiteral("ptb"),
-                          ptb.source,
-                          QStringLiteral("ptb210"),
-                          {QStringLiteral("ptb210"), QStringLiteral("bmp390")},
-                          errorMessage) &&
-           validateSource(QStringLiteral("hmp"),
-                          hmp.source,
-                          QStringLiteral("hmp3"),
-                          {QStringLiteral("hmp3"), QStringLiteral("sht45")},
-                          errorMessage) &&
+    if (!validateSource(QStringLiteral("ptb"),
+                        ptb.source,
+                        QStringLiteral("ptb210"),
+                        {QStringLiteral("ptb210"), QStringLiteral("bmp390")},
+                        errorMessage) ||
+        !validateSource(QStringLiteral("hmp"),
+                        hmp.source,
+                        QStringLiteral("hmp3"),
+                        {QStringLiteral("hmp3"), QStringLiteral("sht45")},
+                        errorMessage))
+    {
+        return false;
+    }
+    const QString pressureSource = ptb.source.trimmed().isEmpty()
+        ? QStringLiteral("ptb210")
+        : ptb.source.trimmed();
+    return validateSupportedBaud(QStringLiteral("ptb"),
+                                 ptb.baud_rate,
+                                 pressureSensorBaudCapabilities(pressureSource),
+                                 errorMessage) &&
            epsilonFromJson(epsilonToJson(epsilon), copy.epsilon, errorMessage) &&
            epsilonRtcmFromJson(epsilonRtcmToJson(epsilon_rtcm), copy.epsilon_rtcm, errorMessage) &&
            serialFromJson(serialToJson(ptb), copy.ptb, QStringLiteral("ptb"), errorMessage) &&

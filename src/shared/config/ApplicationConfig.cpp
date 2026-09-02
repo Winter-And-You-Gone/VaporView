@@ -126,7 +126,10 @@ void migrateLegacyScope(QSettings& target,
                         const QString& applicationName,
                         Predicate shouldMigrate)
 {
-    QSettings source(QStringLiteral("VaporView"), applicationName);
+    QSettings source(QSettings::defaultFormat(),
+                     QSettings::UserScope,
+                     QStringLiteral("VaporView"),
+                     applicationName);
     if (source.fileName().compare(target.fileName(), Qt::CaseInsensitive) == 0)
     {
         return;

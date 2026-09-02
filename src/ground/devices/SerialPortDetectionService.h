@@ -1,6 +1,7 @@
 #pragma once
 
 #include "LogRecord.h"
+#include "data_collector.h"
 
 #include <QString>
 #include <QStringList>
@@ -28,6 +29,8 @@ struct SerialPortDetectionRequest
     SerialPortProbeSelection lidar;
     SerialPortProbeSelection temperatureController;
     SerialPortProbeSelection ai8TemperatureController;
+    VaporView::PressureSensorProtocol pressureProtocol = VaporView::PressureSensorProtocol::Ptb210;
+    VaporView::HumiditySensorProtocol humidityProtocol = VaporView::HumiditySensorProtocol::Hmp3Modbus;
     int temperatureSlaveAddress = 1;
     int ai8SlaveAddress = 1;
 };

@@ -1478,6 +1478,12 @@ bool SkyRuntime::startSerialPortDetection()
         config.temperature_controller.port, QString::number(config.temperature_controller.baud_rate)};
     request.ai8TemperatureController = {
         config.ai8_temperature_controller.port, QString::number(config.ai8_temperature_controller.baud_rate)};
+    request.pressureProtocol = config.ptb.source.trimmed() == QStringLiteral("bmp390")
+        ? VaporView::PressureSensorProtocol::Bmp390Serial
+        : VaporView::PressureSensorProtocol::Ptb210;
+    request.humidityProtocol = config.hmp.source.trimmed() == QStringLiteral("sht45")
+        ? VaporView::HumiditySensorProtocol::Sht45Serial
+        : VaporView::HumiditySensorProtocol::Hmp3Modbus;
     request.temperatureSlaveAddress = config.temperature_controller.slave_address;
     request.ai8SlaveAddress = config.ai8_temperature_controller.slave_address;
     serial_port_detection_cancel_requested_.store(false);

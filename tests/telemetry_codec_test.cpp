@@ -546,10 +546,34 @@ void testSkyConfigRejectsInvalidJsonTypes()
         error.clear();
         require(!VaporView::SkyConfig::fromJson(invalidBaudConfig, parsed, &error),
                 "sky config rejects non-positive, fractional, or overflowing host baud");
-        require(error.contains(QStringLiteral("epsilon.baud")) ||
+    require(error.contains(QStringLiteral("epsilon.baud")) ||
                     error.contains(QStringLiteral("epsilon baud")),
                 "sky config invalid baud error identifies the affected field");
     }
+
+    QJsonObject unsupportedAi8Baud = VaporView::SkyConfig::defaults().toJson();
+    QJsonObject ai8 = unsupportedAi8Baud.value(
+        QStringLiteral("ai8_temperature_controller")).toObject();
+    ai8.insert(QStringLiteral("baud"), 256000);
+    unsupportedAi8Baud.insert(QStringLiteral("ai8_temperature_controller"), ai8);
+    error.clear();
+    require(!VaporView::SkyConfig::fromJson(unsupportedAi8Baud, parsed, &error),
+            "sky config rejects unsupported AI-8288 connection baud");
+    require(error.contains(QStringLiteral("ai8_temperature_controller")),
+            "AI-8288 unsupported baud error identifies the affected section");
+
+    QJsonObject unsupportedPtbBaud = VaporView::SkyConfig::defaults().toJson();
+    QJsonObject ptbFixed = unsupportedPtbBaud.value(QStringLiteral("ptb")).toObject();
+    ptbFixed.insert(QStringLiteral("baud"), 256000);
+    unsupportedPtbBaud.insert(QStringLiteral("ptb"), ptbFixed);
+    error.clear();
+    require(!VaporView::SkyConfig::fromJson(unsupportedPtbBaud, parsed, &error),
+            "sky config rejects unsupported PTB210 connection baud");
+    ptbFixed.insert(QStringLiteral("source"), QStringLiteral("bmp390"));
+    unsupportedPtbBaud.insert(QStringLiteral("ptb"), ptbFixed);
+    error.clear();
+    require(VaporView::SkyConfig::fromJson(unsupportedPtbBaud, parsed, &error),
+            "sky config preserves custom baud for the BMP390 serial adapter source");
 
     QJsonObject badEnabled = VaporView::SkyConfig::defaults().toJson();
     QJsonObject wave = badEnabled.value(QStringLiteral("wave_tcp")).toObject();

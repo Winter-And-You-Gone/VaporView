@@ -2,6 +2,7 @@
 
 #include "ground/devices/EpsilonConfigurationService.h"
 #include "ground/devices/ImuConfigurationService.h"
+#include "SerialBaudRateCapabilities.h"
 #include "SerialBaudRate.h"
 
 #include <QSettings>
@@ -417,16 +418,17 @@ private:
         LocalTemperatureConnectionRequest request,
         std::function<void(bool, const QString&)> completion)
     {
-        if (!VaporView::isValidSerialBaudRate(request.baudRate))
+        if (!VaporView::isBaudRateSupported(
+                VaporView::rd105BaudCapabilities(), request.baudRate))
         {
             postConnectionLog(VaporView::LogLevel::Warning,
-                              QStringLiteral("local_temperature_connection_rejected_invalid_baud"),
-                              QStringLiteral("RD105 主机串口波特率无效。"),
+                              QStringLiteral("local_temperature_connection_rejected_unsupported_baud"),
+                              QStringLiteral("RD105 主机串口波特率不受设备支持。"),
                               {{QStringLiteral("device"), QStringLiteral("RD105")},
                                {QStringLiteral("port"), request.port},
                                {QStringLiteral("configured_baud"), request.baudText},
-                               {QStringLiteral("error_code"), QStringLiteral("INVALID_BAUD_RATE")},
-                               {QStringLiteral("reason_code"), QStringLiteral("INVALID_BAUD_RATE")}});
+                               {QStringLiteral("error_code"), QStringLiteral("UNSUPPORTED_BAUD_RATE")},
+                               {QStringLiteral("reason_code"), QStringLiteral("UNSUPPORTED_BAUD_RATE")}});
             inProgress.store(false);
             cancel.store(false);
             if (completion)
@@ -655,6 +657,7 @@ private:
         };
         auto connectCollector = [&](const QString& tag,
                                     const LocalSerialDeviceSettings& settings,
+                                    const VaporView::BaudRateCapabilities& baudCapabilities,
                                     auto *collector,
                                     auto&& serialConfigFactory,
                                     auto&& onReady) -> int {
@@ -692,6 +695,18 @@ private:
                          {QStringLiteral("configured_baud"), settings.baudText},
                          {QStringLiteral("error_code"), QStringLiteral("INVALID_BAUD_RATE")},
                          {QStringLiteral("reason_code"), QStringLiteral("INVALID_BAUD_RATE")}});
+                return 0;
+            }
+            if (!VaporView::isBaudRateSupported(baudCapabilities, *baudRate))
+            {
+                postConnectionLog(VaporView::LogLevel::Warning,
+                        QStringLiteral("local_device_connection_rejected_unsupported_baud"),
+                        QStringLiteral("本地设备主机串口波特率不受设备支持。"),
+                        {{QStringLiteral("device"), tag},
+                         {QStringLiteral("port"), settings.port},
+                         {QStringLiteral("configured_baud"), settings.baudText},
+                         {QStringLiteral("error_code"), QStringLiteral("UNSUPPORTED_BAUD_RATE")},
+                         {QStringLiteral("reason_code"), QStringLiteral("UNSUPPORTED_BAUD_RATE")}});
                 return 0;
             }
             const SerialConfig serialConfig = serialConfigFactory(*baudRate);
@@ -773,6 +788,7 @@ private:
 
         if (connectCollector(QStringLiteral("EPSILON"),
                              request.epsilon,
+                             VaporView::epsilonConnectionBaudCapabilities(),
                              collectors.epsilon.get(),
                              [](int baud) { return SerialConfig::N81(baud); },
                              [&]() {
@@ -829,6 +845,8 @@ private:
         const QString pressureName = useBmp390 ? QStringLiteral("BMP390") : QStringLiteral("PTB210");
         if (connectCollector(pressureName,
                              request.ptb,
+                             useBmp390 ? VaporView::bmp390SerialAdapterBaudCapabilities()
+                                       : VaporView::ptb210BaudCapabilities(),
                              collectors.ptb.get(),
                              [useBmp390](int baud) {
                                  return useBmp390 ? SerialConfig::N81(baud)
@@ -875,6 +893,8 @@ private:
         const QString humidityName = useSht45 ? QStringLiteral("SHT45") : QStringLiteral("HMP3");
         if (connectCollector(humidityName,
                              request.hmp,
+                             useSht45 ? VaporView::sht45SerialAdapterBaudCapabilities()
+                                      : VaporView::hmp3BaudCapabilities(),
                              collectors.hmp.get(),
                              [useSht45](int baud) {
                                  return useSht45 ? SerialConfig::N81(baud)
@@ -909,6 +929,7 @@ private:
 
         if (connectCollector(QStringLiteral("TFA1500-L"),
                              request.lidar,
+                             VaporView::lidarBaudCapabilities(),
                              collectors.lidar.get(),
                              [](int baud) { return SerialConfig::N81(baud); },
                              [&]() {
@@ -949,6 +970,7 @@ private:
 
         if (connectCollector(QStringLiteral("RD105"),
                              request.temperatureController,
+                             VaporView::rd105BaudCapabilities(),
                              collectors.temperature_controller.get(),
                              [](int baud) { return SerialConfig::N81(baud); },
                              [&]() {
@@ -981,6 +1003,7 @@ private:
 
         if (connectCollector(QStringLiteral("AI-8288"),
                              request.ai8TemperatureController,
+                             VaporView::ai8TemperatureControllerBaudCapabilities(),
                              collectors.ai8_temperature_controller.get(),
                              [](int baud) { return SerialConfig::N81(baud); },
                              [&]() {

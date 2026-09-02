@@ -410,6 +410,30 @@ void MainWindow::setRemoteSkyConfigUi(const VaporView::SkyConfig& config)
         setComboText(rate, numberText(frequency));
     };
 
+    auto setComboData = [](QComboBox *combo, const QString& sourceValue) {
+        if (!combo)
+        {
+            return;
+        }
+        const QSignalBlocker blocker(combo);
+        const int index = combo->findData(sourceValue);
+        combo->setCurrentIndex(index >= 0 ? index : 0);
+        combo->setProperty(kSensorBaudSourceProperty, combo->currentData().toString());
+    };
+    setComboData(state_->device_config_.ptb_source_combo,
+                 config.ptb.source.isEmpty() ? QStringLiteral("ptb210") : config.ptb.source);
+    setComboData(state_->device_config_.hmp_source_combo,
+                 config.hmp.source.isEmpty() ? QStringLiteral("hmp3") : config.hmp.source);
+
+    VaporView::configureSerialBaudRateCombo(
+        state_->device_config_.ptb_baud_combo,
+        VaporView::pressureSensorBaudCapabilities(config.ptb.source),
+        QString::number(config.ptb.baud_rate));
+    VaporView::configureSerialBaudRateCombo(
+        state_->device_config_.hmp_baud_combo,
+        VaporView::humiditySensorBaudCapabilities(config.hmp.source),
+        QString::number(config.hmp.baud_rate));
+
     setSerial(state_->device_config_.epsilon_enabled_check,
               state_->device_config_.epsilon_port_combo,
               state_->device_config_.epsilon_baud_combo,
@@ -458,21 +482,6 @@ void MainWindow::setRemoteSkyConfigUi(const VaporView::SkyConfig& config)
               config.ai8_temperature_controller.port,
               config.ai8_temperature_controller.baud_rate,
               config.ai8_temperature_controller.frequency_hz);
-    auto setComboData = [](QComboBox *combo, const QString& sourceValue) {
-        if (!combo)
-        {
-            return;
-        }
-        const QSignalBlocker blocker(combo);
-        const int index = combo->findData(sourceValue);
-        combo->setCurrentIndex(index >= 0 ? index : 0);
-        combo->setProperty(kSensorBaudSourceProperty, combo->currentData().toString());
-    };
-    setComboData(state_->device_config_.ptb_source_combo,
-                 config.ptb.source.isEmpty() ? QStringLiteral("ptb210") : config.ptb.source);
-    setComboData(state_->device_config_.hmp_source_combo,
-                 config.hmp.source.isEmpty() ? QStringLiteral("hmp3") : config.hmp.source);
-
     const QList<QPair<QSpinBox *, int>> intSpins = {
         {state_->device_config_.remote_sky_wave_port_spin, config.wave_tcp.port},
         {state_->device_config_.remote_sky_wave_downsample_spin, config.wave_tcp.downsample_ratio}

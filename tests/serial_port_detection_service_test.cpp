@@ -64,7 +64,8 @@ int main()
 
     SerialPortDetectionRequest selectedProbeRequest;
     selectedProbeRequest.english = false;
-    selectedProbeRequest.epsilon = {QStringLiteral("VAPORVIEW_TEST_SELECTED_PORT"), QStringLiteral("256000")};
+    selectedProbeRequest.ai8TemperatureController = {
+        QStringLiteral("VAPORVIEW_TEST_SELECTED_PORT"), QStringLiteral("256000")};
     logs.clear();
     SerialPortDetectionService::detect(
         selectedProbeRequest,
@@ -81,8 +82,72 @@ int main()
                 QStringLiteral("details"),
             "selected per-probe progress enters the details log view");
     require(selectedStarted->fields.value(QStringLiteral("baud")).toString() ==
-                QStringLiteral("256000"),
-            "selected probe keeps the configured custom host baud");
+                QStringLiteral("19200"),
+            "AI-8288 selected probe falls back to the documented default baud");
+    const auto rejectedAi8 = std::find_if(logs.cbegin(), logs.cend(), [](const auto& entry) {
+        return entry.event == QStringLiteral("serial_port_detection_rejected_unsupported_baud") &&
+               entry.fields.value(QStringLiteral("device_key")).toString() == QStringLiteral("ai8") &&
+               entry.fields.value(QStringLiteral("configured_baud")).toString() == QStringLiteral("256000") &&
+               entry.fields.value(QStringLiteral("fallback_baud")).toString() == QStringLiteral("19200") &&
+               entry.fields.value(QStringLiteral("reason_code")).toString() ==
+                   QStringLiteral("UNSUPPORTED_BAUD_RATE");
+    });
+    require(rejectedAi8 != logs.cend(),
+            "AI-8288 auto-detect reports an unsupported configured baud before probing");
+
+    SerialPortDetectionRequest customProbeRequest;
+    customProbeRequest.english = false;
+    customProbeRequest.hmp = {
+        QStringLiteral("VAPORVIEW_TEST_CUSTOM_PORT"), QStringLiteral("256000")};
+    logs.clear();
+    SerialPortDetectionService::detect(
+        customProbeRequest,
+        []() { return false; },
+        [&](const SerialPortDetectionService::LogEntry& entry) { logs.push_back(entry); });
+    const auto customStarted = std::find_if(logs.cbegin(), logs.cend(), [](const auto& entry) {
+        return entry.event == QStringLiteral("serial_port_detection_probe_started") &&
+               entry.fields.value(QStringLiteral("probe_phase")).toString() == QStringLiteral("selected") &&
+               entry.fields.value(QStringLiteral("device_key")).toString() == QStringLiteral("hmp");
+    });
+    require(customStarted != logs.cend() &&
+                customStarted->fields.value(QStringLiteral("baud")).toString() ==
+                    QStringLiteral("256000"),
+            "custom-capable HMP host link retains a selected custom baud during auto-detect");
+
+    SerialPortDetectionRequest sourceAwareRequest;
+    sourceAwareRequest.ptb = {
+        QStringLiteral("VAPORVIEW_TEST_BMP_PORT"), QStringLiteral("256000")};
+    sourceAwareRequest.hmp = {
+        QStringLiteral("VAPORVIEW_TEST_SHT45_PORT"), QStringLiteral("256000")};
+    sourceAwareRequest.pressureProtocol = VaporView::PressureSensorProtocol::Bmp390Serial;
+    sourceAwareRequest.humidityProtocol = VaporView::HumiditySensorProtocol::Sht45Serial;
+    logs.clear();
+    SerialPortDetectionService::detect(
+        sourceAwareRequest,
+        []() { return false; },
+        [&](const SerialPortDetectionService::LogEntry& entry) { logs.push_back(entry); });
+    const auto bmpStarted = std::find_if(logs.cbegin(), logs.cend(), [](const auto& entry) {
+        return entry.event == QStringLiteral("serial_port_detection_probe_started") &&
+               entry.fields.value(QStringLiteral("probe_phase")).toString() == QStringLiteral("selected") &&
+               entry.fields.value(QStringLiteral("device_key")).toString() == QStringLiteral("ptb");
+    });
+    const auto shtStarted = std::find_if(logs.cbegin(), logs.cend(), [](const auto& entry) {
+        return entry.event == QStringLiteral("serial_port_detection_probe_started") &&
+               entry.fields.value(QStringLiteral("probe_phase")).toString() == QStringLiteral("selected") &&
+               entry.fields.value(QStringLiteral("device_key")).toString() == QStringLiteral("hmp");
+    });
+    require(bmpStarted != logs.cend() &&
+                bmpStarted->fields.value(QStringLiteral("device")).toString() ==
+                    QStringLiteral("BMP390") &&
+                bmpStarted->fields.value(QStringLiteral("baud")).toString() ==
+                    QStringLiteral("256000"),
+            "BMP390 source keeps its custom adapter baud during auto-detect");
+    require(shtStarted != logs.cend() &&
+                shtStarted->fields.value(QStringLiteral("device")).toString() ==
+                    QStringLiteral("SHT45") &&
+                shtStarted->fields.value(QStringLiteral("baud")).toString() ==
+                    QStringLiteral("256000"),
+            "SHT45 source keeps its custom adapter baud during auto-detect");
 
     std::cout << "serial_port_detection_service_test passed\n";
     return 0;

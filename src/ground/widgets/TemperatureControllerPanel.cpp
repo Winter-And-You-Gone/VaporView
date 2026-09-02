@@ -1,5 +1,7 @@
 #include "ground/widgets/TemperatureControllerWidgets.h"
 
+#include "SerialBaudRateCapabilities.h"
+
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
@@ -3077,10 +3079,10 @@ QWidget *TemperatureControllerPanel::createCommonSettingsPage()
     common_.rs485_baud_combo->setObjectName(QStringLiteral("temperatureRs485BaudCombo"));
     common_.rs485_baud_combo->setFixedWidth(kTemperatureControllerSettingsInputWidth);
     common_.rs485_baud_combo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
-    const QList<int> baudRates = {4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800};
+    const QStringList& baudRates = VaporView::rd105BaudCapabilities().presets;
     for (int i = 0; i < baudRates.size(); ++i)
     {
-        common_.rs485_baud_combo->addItem(QString::number(baudRates.at(i)), i);
+        common_.rs485_baud_combo->addItem(baudRates.at(i), i);
     }
     QWidget *rs485BaudField =
         makeField(QStringLiteral("设置485串口波特率"), common_.rs485_baud_combo, common_.rs485_baud_label_text);

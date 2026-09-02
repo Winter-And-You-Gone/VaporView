@@ -1,6 +1,7 @@
 #include "ground/main/GroundMainWindowImplementation.h"
 #include "ground/devices/DeviceRatePolicy.h"
 #include "ground/widgets/SerialPortComboSupport.h"
+#include "SerialBaudRateCapabilities.h"
 #include "SerialBaudRate.h"
 
 #include <QJsonArray>
@@ -978,6 +979,35 @@ void MainWindow::onRemoteSerialPortDetectionResult(const QJsonObject& result)
     if (success && !canceled)
     {
         VaporView::SkyConfig config = state_->remote_sky_config_;
+        const auto baudCapabilities = [&config](const QString& key)
+            -> const VaporView::BaudRateCapabilities& {
+            if (key == QStringLiteral("epsilon"))
+            {
+                return VaporView::epsilonConnectionBaudCapabilities();
+            }
+            if (key == QStringLiteral("ptb"))
+            {
+                return config.ptb.source.trimmed() == QStringLiteral("bmp390")
+                    ? VaporView::bmp390SerialAdapterBaudCapabilities()
+                    : VaporView::ptb210BaudCapabilities();
+            }
+            if (key == QStringLiteral("hmp"))
+            {
+                return config.hmp.source.trimmed() == QStringLiteral("sht45")
+                    ? VaporView::sht45SerialAdapterBaudCapabilities()
+                    : VaporView::hmp3BaudCapabilities();
+            }
+            if (key == QStringLiteral("temperature"))
+            {
+                return VaporView::rd105BaudCapabilities();
+            }
+            if (key == QStringLiteral("ai8"))
+            {
+                return VaporView::ai8TemperatureControllerBaudCapabilities();
+            }
+            return VaporView::lidarBaudCapabilities();
+        };
+        bool acceptedDetection = false;
         const QJsonArray detections = result.value(QStringLiteral("detections")).toArray();
         for (const QJsonValue& value : detections)
         {
@@ -990,22 +1020,47 @@ void MainWindow::onRemoteSerialPortDetectionResult(const QJsonObject& result)
             {
                 continue;
             }
+            if (!VaporView::isBaudRateSupported(baudCapabilities(key), *baud))
+            {
+                publishGroundLog(VaporView::LogLevel::Warning,
+                                 QStringLiteral("device.connection"),
+                                 QStringLiteral("remote_serial_port_detection_rejected_unsupported_baud"),
+                                 QStringLiteral("已忽略天空端自动识别返回的不受支持波特率。"),
+                                 {{QStringLiteral("device_key"), key},
+                                  {QStringLiteral("port"), port},
+                                  {QStringLiteral("configured_baud"),
+                                   item.value(QStringLiteral("baud")).toVariant().toString()},
+                                  {QStringLiteral("error_code"),
+                                   QStringLiteral("UNSUPPORTED_BAUD_RATE")},
+                                  {QStringLiteral("reason_code"),
+                                   QStringLiteral("UNSUPPORTED_BAUD_RATE")}});
+                continue;
+            }
             if (key == QStringLiteral("epsilon")) { config.epsilon.port = port; config.epsilon.baud_rate = *baud; }
             else if (key == QStringLiteral("ptb")) { config.ptb.port = port; config.ptb.baud_rate = *baud; }
             else if (key == QStringLiteral("hmp")) { config.hmp.port = port; config.hmp.baud_rate = *baud; }
             else if (key == QStringLiteral("lidar")) { config.lidar.port = port; config.lidar.baud_rate = *baud; }
             else if (key == QStringLiteral("temperature")) { config.temperature_controller.port = port; config.temperature_controller.baud_rate = *baud; }
             else if (key == QStringLiteral("ai8")) { config.ai8_temperature_controller.port = port; config.ai8_temperature_controller.baud_rate = *baud; }
+            else { continue; }
+            acceptedDetection = true;
         }
-        state_->remote_sky_config_ = config;
-        state_->remote_sky_config_loaded_ = true;
-        state_->remote_sky_config_loaded_generation_ =
-            state_->remote_sky_controller_ ? state_->remote_sky_controller_->linkGeneration() : 0;
-        state_->remote_sky_config_dirty_ = true;
-        setRemoteSkyConfigUi(config);
+        if (acceptedDetection)
+        {
+            state_->remote_sky_config_ = config;
+            state_->remote_sky_config_loaded_ = true;
+            state_->remote_sky_config_loaded_generation_ =
+                state_->remote_sky_controller_ ? state_->remote_sky_controller_->linkGeneration() : 0;
+            state_->remote_sky_config_dirty_ = true;
+            setRemoteSkyConfigUi(config);
+        }
         setRemoteSkyConfigStatus(state_->is_english_
-            ? QStringLiteral("Remote detection completed; review and apply/save the detected ports.")
-            : QStringLiteral("远程串口自动识别完成，结果已填入配置，请检查后点击应用/保存。"));
+            ? (acceptedDetection
+                ? QStringLiteral("Remote detection completed; review and apply/save the detected ports.")
+                : QStringLiteral("Remote detection completed; unsupported baud results were ignored.") )
+            : (acceptedDetection
+                ? QStringLiteral("远程串口自动识别完成，结果已填入配置，请检查后点击应用/保存。")
+                : QStringLiteral("远程串口自动识别完成，已忽略不受支持的波特率结果。")));
     }
     else
     {
@@ -1129,6 +1184,8 @@ void MainWindow::onAutoDetectPortsClicked()
     request.lidar = {selectedLidarPort, selectedLidarBaud};
     request.temperatureController = {selectedTemperaturePort, selectedTemperatureBaud};
     request.ai8TemperatureController = {selectedAi8TemperaturePort, selectedAi8TemperatureBaud};
+    request.pressureProtocol = localConfig.pressureProtocol;
+    request.humidityProtocol = localConfig.humidityProtocol;
     request.temperatureSlaveAddress = rememberedTemperatureSlaveAddress();
     request.ai8SlaveAddress = state_->ai8_temperature_controller_panel_
         ? state_->ai8_temperature_controller_panel_->currentPageData().global.address
@@ -1179,6 +1236,34 @@ void MainWindow::applyLocalPortDetections(
     QHash<QString, QString> detectedBauds;
     QSet<QString> detectedKeys;
     QSet<QString> detectedPortNames;
+    const auto baudCapabilities = [this](const QString& key)
+        -> const VaporView::BaudRateCapabilities& {
+        if (key == QStringLiteral("epsilon"))
+        {
+            return VaporView::epsilonConnectionBaudCapabilities();
+        }
+        if (key == QStringLiteral("ptb"))
+        {
+            return state_->local_device_config_.pressureSource == QStringLiteral("bmp390")
+                ? VaporView::bmp390SerialAdapterBaudCapabilities()
+                : VaporView::ptb210BaudCapabilities();
+        }
+        if (key == QStringLiteral("hmp"))
+        {
+            return state_->local_device_config_.humiditySource == QStringLiteral("sht45")
+                ? VaporView::sht45SerialAdapterBaudCapabilities()
+                : VaporView::hmp3BaudCapabilities();
+        }
+        if (key == QStringLiteral("temperature"))
+        {
+            return VaporView::rd105BaudCapabilities();
+        }
+        if (key == QStringLiteral("ai8"))
+        {
+            return VaporView::ai8TemperatureControllerBaudCapabilities();
+        }
+        return VaporView::lidarBaudCapabilities();
+    };
     for (const auto& detection : detections)
     {
         const QString port = normalizePort(detection.port);
@@ -1186,8 +1271,29 @@ void MainWindow::applyLocalPortDetections(
         {
             continue;
         }
+        const auto baudRate = VaporView::parseSerialBaudRate(detection.baud);
+        if (!baudRate)
+        {
+            continue;
+        }
+        if (!VaporView::isBaudRateSupported(
+                baudCapabilities(detection.deviceKey), *baudRate))
+        {
+            publishGroundLog(VaporView::LogLevel::Warning,
+                             QStringLiteral("device.connection"),
+                             QStringLiteral("local_serial_port_detection_rejected_unsupported_baud"),
+                             QStringLiteral("已忽略本地自动识别返回的不受支持波特率。"),
+                             {{QStringLiteral("device_key"), detection.deviceKey},
+                              {QStringLiteral("port"), detection.port},
+                              {QStringLiteral("configured_baud"), detection.baud},
+                              {QStringLiteral("error_code"),
+                               QStringLiteral("UNSUPPORTED_BAUD_RATE")},
+                              {QStringLiteral("reason_code"),
+                               QStringLiteral("UNSUPPORTED_BAUD_RATE")}});
+            continue;
+        }
         detectedPorts[detection.deviceKey] = port;
-        detectedBauds[detection.deviceKey] = detection.baud;
+        detectedBauds[detection.deviceKey] = QString::number(*baudRate);
         detectedKeys.insert(detection.deviceKey);
         detectedPortNames.insert(port);
     }

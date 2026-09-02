@@ -1718,9 +1718,7 @@ void RtkConfigDialog::setupUi()
     baudrate_combo_->setObjectName(QStringLiteral("rtkBaudrateCombo"));
     VaporView::configureSerialBaudRateCombo(
         baudrate_combo_,
-        {QStringLiteral("9600"), QStringLiteral("19200"), QStringLiteral("38400"),
-         QStringLiteral("57600"), QStringLiteral("115200"), QStringLiteral("230400"),
-         QStringLiteral("460800"), QStringLiteral("921600")},
+        VaporView::rtkOutputBaudCapabilities(),
         QStringLiteral("115200"));
     configureComboBoxPopup(baudrate_combo_, isDarkThemeEnabled());
     addOutputWidget(firstOutputRow.first, firstOutputRow.second, baudrate_combo_);
@@ -2898,7 +2896,11 @@ void RtkConfigDialog::setPreferredOutputPortAndBaud(const QString& portName, con
 void RtkConfigDialog::setEpsilonMainPortAndBaud(const QString& portName, const QString& baudText)
 {
     epsilon_main_port_ = portName.trimmed();
-    epsilon_main_baudrate_ = VaporView::parseSerialBaudRate(baudText).value_or(921600);
+    const auto baudRate = VaporView::parseSerialBaudRate(baudText);
+    epsilon_main_baudrate_ = baudRate && VaporView::isBaudRateSupported(
+        VaporView::epsilonConnectionBaudCapabilities(), *baudRate)
+        ? *baudRate
+        : 921600;
 }
 
 void RtkConfigDialog::setEpsilonDataProvider(std::function<VaporView::EpsilonData()> provider)

@@ -5,6 +5,7 @@
 #include "ground/widgets/SegmentedSwitchButton.h"
 #include "shared/config/ApplicationConfig.h"
 #include "shared/config/SettingsWriteBarrier.h"
+#include "BaudRateComboSupport.h"
 #include "SkyConfig.h"
 #include "TelemetryCodec.h"
 #include "test_ui_helpers.h"
@@ -373,15 +374,20 @@ int main(int argc, char **argv)
     QApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("VaporView"));
     app.setOrganizationName(QStringLiteral("VaporView"));
-    QSettings historySettings(QStringLiteral("VaporView"), QStringLiteral("SerialPortHistory"));
+    QSettings historySettings(QSettings::defaultFormat(),
+                              QSettings::UserScope,
+                              QStringLiteral("VaporView"),
+                              QStringLiteral("SerialPortHistory"));
     historySettings.setValue(QStringLiteral("ports"),
                              QStringList{QStringLiteral("COM7"),
                                          QStringLiteral("COM11"),
                                          QStringLiteral("COM12"),
                                          QStringLiteral("COM42")});
     historySettings.sync();
-    QSettings legacySettings = VaporView::applicationConfigSettings();
-    legacySettings.beginGroup(QStringLiteral("MainWindow"));
+    QSettings legacySettings(QSettings::defaultFormat(),
+                             QSettings::UserScope,
+                             QStringLiteral("VaporView"),
+                             QStringLiteral("MainWindow"));
     legacySettings.setValue(QStringLiteral("serial/epsilon_port"), QStringLiteral("COM7"));
     legacySettings.setValue(QStringLiteral("serial/epsilon_baud"), QStringLiteral("460800"));
     legacySettings.setValue(QStringLiteral("serial/ptb_port"), QStringLiteral("COM11"));
@@ -390,11 +396,9 @@ int main(int argc, char **argv)
     legacySettings.setValue(QStringLiteral("serial/hmp_baud"), QStringLiteral("19200"));
     legacySettings.setValue(QStringLiteral("sensor/pressure_source"), QStringLiteral("ptb210"));
     legacySettings.setValue(QStringLiteral("sensor/humidity_source"), QStringLiteral("hmp3"));
-    legacySettings.endGroup();
     legacySettings.sync();
-    VaporView::setSettingsWritesSuspended(true);
-
     MainWindow window;
+    VaporView::setSettingsWritesSuspended(true);
     window.resize(1280, 760);
     window.show();
     require(VaporViewTest::waitForWindowExposed(&window),
@@ -762,20 +766,6 @@ int main(int argc, char **argv)
                 humidityPortCombo && humidityBaudCombo &&
                 epsilonPacketRatesButton,
             "shared device config controls exist for target switching");
-    if (epsilonPortCombo->currentText() != QStringLiteral("COM7") ||
-        epsilonBaudCombo->currentText() != QStringLiteral("460800"))
-    {
-        QSettings diagnosticSettings = VaporView::applicationConfigSettings();
-        diagnosticSettings.beginGroup(QStringLiteral("MainWindow"));
-        std::cerr << "Legacy load mismatch: uiPort="
-                  << epsilonPortCombo->currentText().toStdString()
-                  << " uiBaud=" << epsilonBaudCombo->currentText().toStdString()
-                  << " savedPort="
-                  << diagnosticSettings.value(QStringLiteral("serial/epsilon_port")).toString().toStdString()
-                  << " savedBaud="
-                  << diagnosticSettings.value(QStringLiteral("serial/epsilon_baud")).toString().toStdString()
-                  << " file=" << diagnosticSettings.fileName().toStdString() << '\n';
-    }
     require(epsilonPortCombo->currentText() == QStringLiteral("COM7") &&
                 epsilonBaudCombo->currentText() == QStringLiteral("460800"),
             "legacy local serial settings load directly into the visible device page");
@@ -789,49 +779,29 @@ int main(int argc, char **argv)
     epsilonBaudCombo->setCurrentText(QStringLiteral("123457"));
     VaporViewTest::processEventsFor(40);
     localConfig = window.testLocalDeviceConfigSnapshot();
-    require(epsilonBaudCombo->currentText() == QStringLiteral("123457") &&
+    require(!epsilonBaudCombo->isEditable() &&
+                epsilonBaudCombo->currentText() == QStringLiteral("460800") &&
                 localConfig.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("baud")).toString() ==
-                    QStringLiteral("123457"),
-            "visible EPSILON custom baud edit updates the local-device model");
+                    QStringLiteral("460800"),
+            "EPSILON connection rejects unsupported custom baud without changing the local model");
 
-    window.testApplyLocalPortDetection(QStringLiteral("epsilon"),
+    const QJsonObject ai8BeforeInvalidDetection =
+        localConfig.value(QStringLiteral("ai8")).toObject();
+    window.testApplyLocalPortDetection(QStringLiteral("ai8"),
                                        QStringLiteral("COM42"),
                                        QStringLiteral("256000"));
     VaporViewTest::processEventsFor(40);
     localConfig = window.testLocalDeviceConfigSnapshot();
-    if (epsilonPortCombo->currentText() != QStringLiteral("COM42") ||
-        epsilonBaudCombo->currentText() != QStringLiteral("256000") ||
-        localConfig.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("port")).toString() !=
-            QStringLiteral("COM42") ||
-        localConfig.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("baud")).toString() !=
-            QStringLiteral("256000"))
-    {
-        const QJsonObject epsilonConfig = localConfig.value(QStringLiteral("epsilon")).toObject();
-        std::cerr << "Detection apply mismatch: uiPort="
-                  << epsilonPortCombo->currentText().toStdString()
-                  << " uiBaud=" << epsilonBaudCombo->currentText().toStdString()
-                  << " modelPort=" << epsilonConfig.value(QStringLiteral("port")).toString().toStdString()
-                  << " modelBaud=" << epsilonConfig.value(QStringLiteral("baud")).toString().toStdString()
-                  << '\n';
-    }
-    require(epsilonPortCombo->currentText() == QStringLiteral("COM42") &&
-                epsilonBaudCombo->currentText() == QStringLiteral("256000") &&
-                localConfig.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("port")).toString() ==
-                    QStringLiteral("COM42") &&
-                localConfig.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("baud")).toString() ==
-                    QStringLiteral("256000"),
-            "auto-detect custom baud updates the model and refreshes the visible device page");
-    selectComboText(epsilonPortCombo, QStringLiteral("COM7"),
-                    "EPSILON port restores after the auto-detect model test");
-    selectComboText(epsilonBaudCombo, QStringLiteral("460800"),
-                    "EPSILON baud restores after the auto-detect model test");
+    require(localConfig.value(QStringLiteral("ai8")).toObject() == ai8BeforeInvalidDetection &&
+                ai8BaudCombo->currentText() == QStringLiteral("19200"),
+            "AI-8288 auto-detect rejects unsupported baud without polluting model or UI");
 
     VaporView::setSettingsWritesSuspended(false);
     selectComboData(pressureSourceCombo, QStringLiteral("ptb210"),
                     "pressure source switches to PTB210 for profile test");
     selectComboText(pressurePortCombo, QStringLiteral("COM11"),
                     "PTB210 profile accepts its own port");
-    pressureBaudCombo->setCurrentText(QStringLiteral("76800"));
+    pressureBaudCombo->setCurrentText(QStringLiteral("19200"));
     selectComboData(pressureSourceCombo, QStringLiteral("bmp390"),
                     "pressure source switches to BMP390 for profile test");
     selectComboText(pressurePortCombo, QStringLiteral("COM12"),
@@ -840,7 +810,7 @@ int main(int argc, char **argv)
     selectComboData(pressureSourceCombo, QStringLiteral("ptb210"),
                     "pressure source returns to PTB210");
     require(pressurePortCombo->currentText() == QStringLiteral("COM11") &&
-                pressureBaudCombo->currentText() == QStringLiteral("76800"),
+                pressureBaudCombo->currentText() == QStringLiteral("19200"),
             "PTB source A-B-A restores its source-specific port and baud");
 
     selectComboData(humiditySourceCombo, QStringLiteral("hmp3"),
@@ -864,7 +834,7 @@ int main(int argc, char **argv)
                 profileSettings.value(QStringLiteral("serial/bmp390_port")).toString() == QStringLiteral("COM12") &&
                 profileSettings.value(QStringLiteral("serial/hmp3_port")).toString() == QStringLiteral("COM12") &&
                 profileSettings.value(QStringLiteral("serial/sht45_port")).toString() == QStringLiteral("COM7") &&
-                profileSettings.value(QStringLiteral("serial/ptb210_baud")).toString() == QStringLiteral("76800") &&
+                profileSettings.value(QStringLiteral("serial/ptb210_baud")).toString() == QStringLiteral("19200") &&
                 profileSettings.value(QStringLiteral("serial/bmp390_baud")).toString() == QStringLiteral("256000") &&
                 profileSettings.value(QStringLiteral("serial/hmp3_baud")).toString() == QStringLiteral("128000") &&
                 profileSettings.value(QStringLiteral("serial/sht45_baud")).toString() == QStringLiteral("1000000"),
@@ -887,7 +857,6 @@ int main(int argc, char **argv)
     for (QComboBox *combo : deviceConnectionBaudCombos)
     {
         require(combo &&
-                    combo->isEditable() &&
                     combo->property("_vv_serial_baud_rate_combo").toBool() &&
                     combo->height() == VaporView::Ground::MainSupport::kMainPageInputHeight &&
                     combo->minimumHeight() == VaporView::Ground::MainSupport::kMainPageInputHeight &&
@@ -922,24 +891,54 @@ int main(int argc, char **argv)
         require(skyTelemetryBaudCombo->findText(baud) >= 0,
                 "device Sky Link baud keeps every original choice");
     }
-    const QList<QComboBox *> genericHostBaudCombos = {
-        epsilonBaudCombo,
-        pressureBaudCombo,
+    const QList<QComboBox *> customHostBaudCombos = {
         humidityBaudCombo,
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceLidarBaudCombo")),
-        serialCard->findChild<QComboBox *>(QStringLiteral("deviceTemperatureBaudCombo")),
         skyTelemetryBaudCombo,
     };
-    for (QComboBox *combo : genericHostBaudCombos)
+    for (QComboBox *combo : customHostBaudCombos)
     {
-        require(combo && combo->count() == expectedSkyTelemetryBauds.size(),
-                "generic host serial baud combo keeps the shared preset set");
+        require(combo && combo->isEditable() &&
+                    combo->count() == expectedSkyTelemetryBauds.size(),
+                "custom host serial baud combo keeps the shared editable preset set");
         for (const QString& baud : expectedSkyTelemetryBauds)
         {
             require(combo->findText(baud) >= 0,
-                    "generic host serial baud combo keeps every original preset");
+                "custom host serial baud combo keeps every original preset");
         }
     }
+    const QStringList expectedEpsilonBauds = {
+        QStringLiteral("9600"), QStringLiteral("19200"), QStringLiteral("38400"),
+        QStringLiteral("76800"), QStringLiteral("115200"), QStringLiteral("230400"),
+        QStringLiteral("460800"), QStringLiteral("921600"),
+    };
+    const QStringList expectedPtbBauds = {
+        QStringLiteral("1200"), QStringLiteral("2400"), QStringLiteral("4800"),
+        QStringLiteral("9600"), QStringLiteral("19200"),
+    };
+    const QStringList expectedRd105Bauds = {
+        QStringLiteral("4800"), QStringLiteral("9600"), QStringLiteral("19200"),
+        QStringLiteral("38400"), QStringLiteral("57600"), QStringLiteral("115200"),
+        QStringLiteral("230400"), QStringLiteral("460800"),
+    };
+    const auto requirePresetOnly = [](QComboBox *combo,
+                                      const QStringList& expected,
+                                      const char *message) {
+        require(combo && !combo->isEditable() && combo->count() == expected.size(), message);
+        for (const QString& baud : expected)
+        {
+            require(combo->findText(baud) >= 0, message);
+        }
+    };
+    requirePresetOnly(epsilonBaudCombo,
+                      expectedEpsilonBauds,
+                      "EPSILON connection uses its documented fixed baud list");
+    requirePresetOnly(pressureBaudCombo,
+                      expectedPtbBauds,
+                      "PTB210 connection uses its documented fixed baud list");
+    requirePresetOnly(serialCard->findChild<QComboBox *>(QStringLiteral("deviceTemperatureBaudCombo")),
+                      expectedRd105Bauds,
+                      "RD105 connection uses its documented fixed baud list");
     const QStringList expectedAi8HostBauds = {
         QStringLiteral("4800"),
         QStringLiteral("9600"),
@@ -948,8 +947,9 @@ int main(int argc, char **argv)
         QStringLiteral("57600"),
         QStringLiteral("115200"),
     };
-    require(ai8BaudCombo->count() == expectedAi8HostBauds.size(),
-            "AI-8 host serial combo keeps its original preset set");
+    requirePresetOnly(ai8BaudCombo,
+                      expectedAi8HostBauds,
+                      "AI-8 connection keeps the protocol fixed preset set");
     for (const QString& baud : expectedAi8HostBauds)
     {
         require(ai8BaudCombo->findText(baud) >= 0,
@@ -974,6 +974,10 @@ int main(int argc, char **argv)
                     QStringLiteral("115200") &&
                 ai8ParameterBaudCombo->currentData().toInt() == 19200,
             "AI-8 host serial baud does not overwrite the fixed device bAud parameter");
+    require(!VaporView::setSerialBaudRateComboText(
+                ai8BaudCombo, QStringLiteral("256000")) &&
+                ai8BaudCombo->currentText() == QStringLiteral("115200"),
+            "AI-8 connection helper rejects an unsupported custom baud");
     ai8BaudCombo->setCurrentText(QStringLiteral("19200"));
     VaporViewTest::processEventsFor(40);
     auto lineEditForNumericControl = [](QWidget *control) -> QLineEdit * {
@@ -1282,7 +1286,7 @@ int main(int argc, char **argv)
             "remote TCP wave disconnected mode leaves host and port editable");
 
     VaporView::SkyConfig remoteConfig = VaporView::SkyConfig::defaults();
-    remoteConfig.epsilon = {true, QStringLiteral("/dev/ttyEPSILON"), 256000};
+    remoteConfig.epsilon = {true, QStringLiteral("/dev/ttyEPSILON"), 921600};
     remoteConfig.ptb = {true, QStringLiteral("/dev/ttyPTB210"), 9600, 20.0};
     remoteConfig.ptb.source = QStringLiteral("ptb210");
     remoteConfig.hmp = {true, QStringLiteral("/dev/ttyHMP3"), 19200, 20.0};
@@ -1443,19 +1447,24 @@ int main(int argc, char **argv)
     require(remoteStatus->property("status").toString() == QStringLiteral("success"),
             "loaded remote SkyConfig is marked successful while the sky link is connected");
     require(epsilonPortCombo->currentText() == QStringLiteral("/dev/ttyEPSILON") &&
-                epsilonBaudCombo->currentText() == QStringLiteral("256000"),
-            "remote SkyConfig updates the same EPSILON port and custom baud controls");
+                epsilonBaudCombo->currentText() == QStringLiteral("921600"),
+            "remote SkyConfig updates the same EPSILON port and documented baud controls");
     for (QComboBox *baudCombo : {epsilonBaudCombo,
                                  pressureBaudCombo,
-                                 humidityBaudCombo,
-                                 serialCard->findChild<QComboBox *>(QStringLiteral("deviceLidarBaudCombo")),
                                  serialCard->findChild<QComboBox *>(QStringLiteral("deviceTemperatureBaudCombo")),
-                                 ai8BaudCombo,
+                                 ai8BaudCombo})
+    {
+        require(baudCombo && !baudCombo->isEditable() &&
+                    baudCombo->property("_vv_serial_baud_rate_combo").toBool(),
+                "remote fixed-protocol baud controls stay non-editable");
+    }
+    for (QComboBox *baudCombo : {humidityBaudCombo,
+                                 serialCard->findChild<QComboBox *>(QStringLiteral("deviceLidarBaudCombo")),
                                  skyTelemetryBaudCombo})
     {
         require(baudCombo && baudCombo->isEditable() &&
                     baudCombo->property("_vv_serial_baud_rate_combo").toBool(),
-                "remote Sky host serial baud controls accept custom positive integers");
+                "remote host-link baud controls retain custom positive integer input");
     }
     require(epsilonPortCombo->findText(QStringLiteral("COM7")) < 0,
             "remote sky device port options do not reuse the ground PC serial list");
@@ -1472,10 +1481,32 @@ int main(int argc, char **argv)
                 ai8BaudCombo->currentText() == QStringLiteral("19200") &&
                 ai8RateCombo->currentText() == QStringLiteral("5"),
             "remote SkyConfig restores AI-8 enabled, port, baud, and polling rate");
+    QJsonObject invalidAi8RemoteConfig = remoteConfig.toJson();
+    QJsonObject invalidAi8RemoteSection = invalidAi8RemoteConfig.value(
+        QStringLiteral("ai8_temperature_controller")).toObject();
+    invalidAi8RemoteSection.insert(QStringLiteral("baud"), 256000);
+    invalidAi8RemoteConfig.insert(QStringLiteral("ai8_temperature_controller"), invalidAi8RemoteSection);
+    window.testInjectRemoteSkyConfig(invalidAi8RemoteConfig);
+    VaporViewTest::processEventsFor(80);
+    require(window.testRemoteSkyConfigStatusText().contains(
+                QStringLiteral("ai8_temperature_controller")) &&
+                ai8BaudCombo->currentText() == QStringLiteral("19200"),
+            "remote AI-8288 config read rejects unsupported baud without accepting it into the UI");
+    window.testInjectRemoteSkyConfig(remoteConfig.toJson());
+    VaporViewTest::processEventsFor(80);
+    rawModeButton->click();
+    VaporViewTest::processEventsFor(80);
+    require(!rawModeButton->isChecked() && !rawJsonEdit->isVisible(),
+            "a subsequent valid remote config can return from raw JSON mode to the form");
     QJsonArray remoteDetections;
     remoteDetections.append(QJsonObject{
         {QStringLiteral("device_key"), QStringLiteral("epsilon")},
         {QStringLiteral("port"), QStringLiteral("/dev/ttyEPSILON_DETECTED")},
+        {QStringLiteral("baud"), QStringLiteral("460800")},
+    });
+    remoteDetections.append(QJsonObject{
+        {QStringLiteral("device_key"), QStringLiteral("ai8")},
+        {QStringLiteral("port"), QStringLiteral("/dev/ttyAI8_INVALID")},
         {QStringLiteral("baud"), QStringLiteral("256000")},
     });
     window.testInjectRemoteSerialPortDetectionResult(QJsonObject{
@@ -1489,22 +1520,31 @@ int main(int argc, char **argv)
         window.testRemoteSkyConfigFromDeviceConfigUi(&remoteDetectionError);
     require(remoteDetectionError.isEmpty() &&
                 epsilonPortCombo->currentText() == QStringLiteral("/dev/ttyEPSILON_DETECTED") &&
-                epsilonBaudCombo->currentText() == QStringLiteral("256000") &&
+                epsilonBaudCombo->currentText() == QStringLiteral("460800") &&
+                ai8PortCombo->currentText() == QStringLiteral("/dev/ttyAI8") &&
+                ai8BaudCombo->currentText() == QStringLiteral("19200") &&
                 remoteDetectionJson.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("baud")).toInt() ==
-                    256000,
-            "remote serial detection preserves a custom host baud in the unified UI and config model");
+                    460800 &&
+                remoteDetectionJson.value(QStringLiteral("ai8_temperature_controller")).toObject().value(
+                    QStringLiteral("baud")).toInt() == 19200,
+            "remote serial detection accepts valid fixed baud and rejects invalid AI-8288 baud");
     for (QWidget *control : numericColumnControls)
     {
-        QLineEdit *editor = lineEditForNumericControl(control);
-        require(editor &&
+        require(control &&
                     control->fontMetrics().height() == localNumericFontHeight &&
                     control->fontMetrics().horizontalAdvance(QStringLiteral("8888")) ==
-                        localNumericTextWidth &&
-                    editor->fontMetrics().height() == localNumericFontHeight &&
-                    editor->fontMetrics().horizontalAdvance(QStringLiteral("8888")) ==
-                        localNumericTextWidth &&
-                    isHorizontallyCentered(editor->alignment()),
-                "remote baud/port column editors keep the local font size and alignment");
+                        localNumericTextWidth,
+                "remote baud/port column controls keep the local font size and alignment");
+        if (auto *combo = qobject_cast<QComboBox *>(control); combo && combo->isEditable())
+        {
+            QLineEdit *editor = lineEditForNumericControl(control);
+            require(editor &&
+                        editor->fontMetrics().height() == localNumericFontHeight &&
+                        editor->fontMetrics().horizontalAdvance(QStringLiteral("8888")) ==
+                            localNumericTextWidth &&
+                        isHorizontallyCentered(editor->alignment()),
+                    "remote custom baud editor keeps the local font size and alignment");
+        }
         if (auto *spin = qobject_cast<QSpinBox *>(control))
         {
             require(isHorizontallyCentered(spin->alignment()),
@@ -1556,24 +1596,24 @@ int main(int argc, char **argv)
     QKeyEvent acceptManualPort(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
     QApplication::sendEvent(epsilonPortCombo->lineEdit(), &acceptManualPort);
     VaporViewTest::processEventsFor(80);
-    epsilonBaudCombo->setCurrentText(QStringLiteral("123457"));
+    epsilonBaudCombo->setCurrentText(QStringLiteral("230400"));
     auto *lidarBaudCombo =
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceLidarBaudCombo"));
     auto *temperatureBaudCombo =
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceTemperatureBaudCombo"));
     require(lidarBaudCombo && temperatureBaudCombo,
             "remote configuration exposes every remaining host serial baud control");
-    pressureBaudCombo->setCurrentText(QStringLiteral("256000"));
-    humidityBaudCombo->setCurrentText(QStringLiteral("1000000"));
-    lidarBaudCombo->setCurrentText(QStringLiteral("1500000"));
-    temperatureBaudCombo->setCurrentText(QStringLiteral("38401"));
     selectComboData(pressureSourceCombo, QStringLiteral("bmp390"),
                     "remote pressure source can be edited to BMP390");
     selectComboData(humiditySourceCombo, QStringLiteral("sht45"),
                     "remote humidity source can be edited to SHT45");
+    pressureBaudCombo->setCurrentText(QStringLiteral("256000"));
+    humidityBaudCombo->setCurrentText(QStringLiteral("1000000"));
+    lidarBaudCombo->setCurrentText(QStringLiteral("1500000"));
+    temperatureBaudCombo->setCurrentText(QStringLiteral("460800"));
     selectComboText(ai8PortCombo, QStringLiteral("/dev/ttyAI8_ALT"),
                     "remote AI-8 port can be edited independently");
-    ai8BaudCombo->setCurrentText(QStringLiteral("234567"));
+    ai8BaudCombo->setCurrentText(QStringLiteral("57600"));
     ai8RateCombo->setCurrentText(QStringLiteral("12"));
     VaporViewTest::processEventsFor(120);
     require(remoteStatus->property("status").toString() == QStringLiteral("dirty"),
@@ -1585,13 +1625,13 @@ int main(int argc, char **argv)
     require(uiJson.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("port")).toString() ==
                 QStringLiteral("/dev/ttyEPSILON_ALT"),
             "remote edited port is serialized into SetSkyConfig JSON");
-    require(uiJson.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("baud")).toInt() == 123457,
-            "remote custom host baud is serialized into SetSkyConfig JSON");
+    require(uiJson.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("baud")).toInt() == 230400,
+            "remote EPSILON documented baud is serialized into SetSkyConfig JSON");
     require(uiJson.value(QStringLiteral("ptb")).toObject().value(QStringLiteral("baud")).toInt() == 256000 &&
                 uiJson.value(QStringLiteral("hmp")).toObject().value(QStringLiteral("baud")).toInt() == 1000000 &&
                 uiJson.value(QStringLiteral("lidar")).toObject().value(QStringLiteral("baud")).toInt() == 1500000 &&
-                uiJson.value(QStringLiteral("temperature_controller")).toObject().value(QStringLiteral("baud")).toInt() == 38401,
-            "every remote host serial baud control serializes its custom positive value");
+                uiJson.value(QStringLiteral("temperature_controller")).toObject().value(QStringLiteral("baud")).toInt() == 460800,
+            "remote source-specific and host-link baud controls serialize according to capability");
     require(!uiJson.value(QStringLiteral("epsilon")).toObject().contains(QStringLiteral("frequency_hz")),
             "remote EPSILON SkyConfig omits the legacy single frequency while packet rates are edited in Combination Navigation");
     require(uiJson.value(QStringLiteral("temperature_controller")).toObject().value(QStringLiteral("slave_address")).toInt() == 9,
@@ -1606,7 +1646,7 @@ int main(int argc, char **argv)
         uiJson.value(QStringLiteral("ai8_temperature_controller")).toObject();
     require(ai8Json.value(QStringLiteral("enabled")).toBool(false) &&
                 ai8Json.value(QStringLiteral("port")).toString() == QStringLiteral("/dev/ttyAI8_ALT") &&
-                ai8Json.value(QStringLiteral("baud")).toInt() == 234567 &&
+                ai8Json.value(QStringLiteral("baud")).toInt() == 57600 &&
                 std::abs(ai8Json.value(QStringLiteral("frequency_hz")).toDouble() - 12.0) < 0.01,
             "remote edited AI-8 fields are serialized into SkyConfig JSON");
     require(uiJson.contains(QStringLiteral("wave_tcp")) && uiJson.contains(QStringLiteral("telemetry")),
@@ -1620,12 +1660,12 @@ int main(int argc, char **argv)
     remoteApplyButton->click();
     require(VaporViewTest::processEventsUntil(1500, [&]() {
                 return setSkyConfigRequests == customBaudApplyRequestCount + 1 &&
-                    remoteConfig.epsilon.baud_rate == 123457 &&
+                    remoteConfig.epsilon.baud_rate == 230400 &&
                     remoteConfig.ptb.baud_rate == 256000 &&
                     remoteConfig.hmp.baud_rate == 1000000 &&
                     remoteConfig.lidar.baud_rate == 1500000 &&
-                    remoteConfig.temperature_controller.baud_rate == 38401 &&
-                    remoteConfig.ai8_temperature_controller.baud_rate == 234567 &&
+                    remoteConfig.temperature_controller.baud_rate == 460800 &&
+                    remoteConfig.ai8_temperature_controller.baud_rate == 57600 &&
                     remoteStatus->property("status").toString() == QStringLiteral("success");
             }),
             "remote apply persists every custom host serial baud through the SkyConfig endpoint");
@@ -1635,12 +1675,12 @@ int main(int argc, char **argv)
     remoteReadButton->click();
     const bool customBaudReadbackRestored = VaporViewTest::processEventsUntil(1500, [&]() {
                 return getSkyConfigRequests == customBaudReadRequestCount + 1 &&
-                    epsilonBaudCombo->currentText() == QStringLiteral("123457") &&
+                    epsilonBaudCombo->currentText() == QStringLiteral("230400") &&
                     pressureBaudCombo->currentText() == QStringLiteral("256000") &&
                     humidityBaudCombo->currentText() == QStringLiteral("1000000") &&
                     lidarBaudCombo->currentText() == QStringLiteral("1500000") &&
-                    temperatureBaudCombo->currentText() == QStringLiteral("38401") &&
-                    ai8BaudCombo->currentText() == QStringLiteral("234567") &&
+                    temperatureBaudCombo->currentText() == QStringLiteral("460800") &&
+                    ai8BaudCombo->currentText() == QStringLiteral("57600") &&
                     remoteStatus->property("status").toString() == QStringLiteral("success");
             });
     require(customBaudReadbackRestored,
@@ -1705,18 +1745,18 @@ int main(int argc, char **argv)
             "switching back to Local restores local pressure and humidity sources");
 
     VaporView::setSettingsWritesSuspended(false);
-    epsilonBaudCombo->setCurrentText(QStringLiteral("256000"));
+    humidityBaudCombo->setCurrentText(QStringLiteral("256000"));
     VaporViewTest::processEventsFor(80);
     localConfig = window.testLocalDeviceConfigSnapshot();
-    require(epsilonBaudCombo->currentText() == QStringLiteral("256000") &&
-                localConfig.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("baud")).toString() ==
+    require(humidityBaudCombo->currentText() == QStringLiteral("256000") &&
+                localConfig.value(QStringLiteral("hmp")).toObject().value(QStringLiteral("baud")).toString() ==
                     QStringLiteral("256000"),
-            "local custom host baud remains in the model before settings round-trip");
+            "local SHT45 adapter custom baud remains in the model before settings round-trip");
     QSettings customBaudSettings = VaporView::applicationConfigSettings();
     customBaudSettings.beginGroup(QStringLiteral("MainWindow"));
-    require(customBaudSettings.value(QStringLiteral("serial/epsilon_baud")).toString() ==
+    require(customBaudSettings.value(QStringLiteral("serial/sht45_baud")).toString() ==
                 QStringLiteral("256000"),
-            "local custom host baud is persisted before the next window is created");
+            "local adapter custom baud is persisted before the next window is created");
     customBaudSettings.endGroup();
     customBaudSettings.sync();
     window.close();
@@ -1727,6 +1767,8 @@ int main(int argc, char **argv)
     migratedSkyLinkSettings.setValue(QStringLiteral("telemetry/transport"), QStringLiteral("serial"));
     migratedSkyLinkSettings.setValue(QStringLiteral("telemetry/sky_port"), QStringLiteral("COM11"));
     migratedSkyLinkSettings.setValue(QStringLiteral("telemetry/sky_baud"), QStringLiteral("1000000"));
+    migratedSkyLinkSettings.setValue(QStringLiteral("serial/ai8_temperature_baud"),
+                                     QStringLiteral("256000"));
     migratedSkyLinkSettings.setValue(QStringLiteral("telemetry/tcp_host"), QStringLiteral("172.20.0.8"));
     migratedSkyLinkSettings.setValue(QStringLiteral("telemetry/tcp_port"), 39555);
     migratedSkyLinkSettings.endGroup();
@@ -1763,6 +1805,12 @@ int main(int argc, char **argv)
     QComboBox *restoredEpsilonBaud = restoredDeviceConfigPage
         ? restoredDeviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceEpsilonBaudCombo"))
         : nullptr;
+    QComboBox *restoredHumidityBaud = restoredDeviceConfigPage
+        ? restoredDeviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceHumidityBaudCombo"))
+        : nullptr;
+    QComboBox *restoredAi8Baud = restoredDeviceConfigPage
+        ? restoredDeviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceAi8TemperatureBaudCombo"))
+        : nullptr;
     QPushButton *restoredSourceModeSwitch = restoredDeviceConfigPage
         ? restoredDeviceConfigPage->findChild<QPushButton *>(QStringLiteral("deviceConfigSourceModeOverviewSwitch"))
         : nullptr;
@@ -1777,12 +1825,21 @@ int main(int argc, char **argv)
                 restoredHost && restoredHost->text() == QStringLiteral("172.20.0.8") &&
                 restoredTcpPort && restoredTcpPort->value() == 39555,
             "custom Sky Link settings load into the model and refresh the device configuration UI");
-    require(restoredSourceModeSwitch && restoredEpsilonBaud,
+    require(restoredSourceModeSwitch && restoredEpsilonBaud && restoredHumidityBaud && restoredAi8Baud,
             "restored device page exposes source switching and local EPSILON baud controls");
     restoredSourceModeSwitch->click();
     VaporViewTest::processEventsFor(120);
-    require(restoredEpsilonBaud->currentText() == QStringLiteral("256000"),
-            "local custom host baud survives a settings save and a new window instance");
+    require(restoredHumidityBaud->currentText() == QStringLiteral("256000"),
+            "local adapter custom baud survives a settings save and a new window instance");
+    require(!restoredAi8Baud->isEditable() &&
+                restoredAi8Baud->currentText() == QStringLiteral("19200"),
+            "legacy invalid AI-8288 setting falls back to the protocol default without a blank combo");
+    QSettings restoredSettings = VaporView::applicationConfigSettings();
+    restoredSettings.beginGroup(QStringLiteral("MainWindow"));
+    require(restoredSettings.value(QStringLiteral("serial/ai8_temperature_baud")).toString() ==
+                QStringLiteral("19200"),
+            "legacy invalid AI-8288 setting is replaced by the supported default");
+    restoredSettings.endGroup();
     restoredWindow.close();
 
     std::cout << "device configuration layout test passed\n";

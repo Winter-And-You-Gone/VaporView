@@ -25,27 +25,23 @@ int main()
     using namespace VaporView::Ground::Devices;
 
     LocalDeviceConfig config;
-    config.epsilon.port = QStringLiteral("COM42");
-    config.epsilon.baudText = QStringLiteral("256000");
-    config.epsilon.enabled = true;
+    config.hmp.port = QStringLiteral("COM42");
+    config.hmp.baudText = QStringLiteral("256000");
+    config.hmp.enabled = true;
     const LocalSerialDeviceSettings requestSettings =
-        makeLocalConnectionSettings(config.epsilon, true, 100, false);
+        makeLocalConnectionSettings(config.hmp, true, 100, false);
     require(requestSettings.requested && requestSettings.enabled,
             "enabled model entry remains requested in connection settings");
     require(requestSettings.port == QStringLiteral("COM42") &&
                 requestSettings.baudText == QStringLiteral("256000"),
-            "connection settings retain a custom host baud from the non-UI model");
+            "connection settings retain a custom host-link baud from the non-UI model");
     require(requestSettings.sampleRateHz == 100,
             "connection settings use the effective runtime sample rate");
-    const std::vector<std::pair<const char *, LocalSerialDeviceSettings *>> allHostSerialSettings = {
-        {"epsilon", &config.epsilon},
-        {"ptb", &config.ptb},
+    const std::vector<std::pair<const char *, LocalSerialDeviceSettings *>> customHostSerialSettings = {
         {"hmp", &config.hmp},
         {"lidar", &config.lidar},
-        {"temperature", &config.temperatureController},
-        {"ai8", &config.ai8TemperatureController},
     };
-    for (const auto& item : allHostSerialSettings)
+    for (const auto& item : customHostSerialSettings)
     {
         item.second->port = QStringLiteral("COM42");
         item.second->baudText = QStringLiteral("256000");
@@ -55,7 +51,7 @@ int main()
                     custom.port == QStringLiteral("COM42") &&
                     custom.baudText == QStringLiteral("256000") &&
                     custom.sampleRateHz == 7,
-                "every local host serial device retains a custom baud in its non-UI model");
+                "custom-capable local host links retain a custom baud in the non-UI model");
     }
     const LocalSerialDeviceSettings skippedSettings =
         makeLocalConnectionSettings(config.epsilon, false, 100, false);
@@ -123,10 +119,10 @@ int main()
     LocalConnectionRequest singleDeviceRequest;
     singleDeviceRequest.english = false;
     singleDeviceRequest.selectText = QStringLiteral("未选择");
-    singleDeviceRequest.epsilon.port = QStringLiteral("__invalid_vaporview_port__");
-    singleDeviceRequest.epsilon.baudText = QStringLiteral("256000");
+    singleDeviceRequest.epsilon.requested = false;
     singleDeviceRequest.ptb.requested = false;
-    singleDeviceRequest.hmp.requested = false;
+    singleDeviceRequest.hmp.port = QStringLiteral("__invalid_vaporview_port__");
+    singleDeviceRequest.hmp.baudText = QStringLiteral("256000");
     singleDeviceRequest.lidar.requested = false;
     singleDeviceRequest.temperatureController.requested = false;
     singleDeviceRequest.ai8TemperatureController.requested = false;
@@ -137,25 +133,25 @@ int main()
             "single requested-device failure completes without connected devices");
     {
         std::lock_guard<std::mutex> lock(mutex);
-        bool foundEpsilonAttempt = false;
-        bool foundCustomEpsilonBaud = false;
+        bool foundHmpAttempt = false;
+        bool foundCustomHmpBaud = false;
         bool foundUnexpectedSkippedDevice = false;
         for (const LocalConnectionLogEntry& entry : logs)
         {
-            foundEpsilonAttempt = foundEpsilonAttempt ||
+            foundHmpAttempt = foundHmpAttempt ||
                 (entry.event == QStringLiteral("local_device_connection_started") &&
-                 entry.fields.value(QStringLiteral("device")).toString() == QStringLiteral("EPSILON"));
-            foundCustomEpsilonBaud = foundCustomEpsilonBaud ||
+                 entry.fields.value(QStringLiteral("device")).toString() == QStringLiteral("HMP3"));
+            foundCustomHmpBaud = foundCustomHmpBaud ||
                 (entry.event == QStringLiteral("local_device_connection_started") &&
-                 entry.fields.value(QStringLiteral("device")).toString() == QStringLiteral("EPSILON") &&
+                 entry.fields.value(QStringLiteral("device")).toString() == QStringLiteral("HMP3") &&
                  entry.fields.value(QStringLiteral("baud")).toString() == QStringLiteral("256000"));
             foundUnexpectedSkippedDevice = foundUnexpectedSkippedDevice ||
                 (entry.event == QStringLiteral("local_device_connection_skipped") &&
-                 entry.fields.value(QStringLiteral("device")).toString() != QStringLiteral("EPSILON"));
+                 entry.fields.value(QStringLiteral("device")).toString() != QStringLiteral("HMP3"));
         }
-        require(foundEpsilonAttempt, "single requested-device attempt logs the target device");
-        require(foundCustomEpsilonBaud,
-                "single requested-device attempt passes the custom baud into the serial backend");
+        require(foundHmpAttempt, "single requested-device attempt logs the target device");
+        require(foundCustomHmpBaud,
+                "single requested-device attempt passes custom host-link baud into the serial backend");
         require(!foundUnexpectedSkippedDevice,
                 "non-requested devices do not emit skipped-device noise");
     }
@@ -168,7 +164,7 @@ int main()
     finished = false;
     connected = true;
     LocalConnectionRequest invalidBaudRequest = singleDeviceRequest;
-    invalidBaudRequest.epsilon.baudText = QStringLiteral("0");
+    invalidBaudRequest.hmp.baudText = QStringLiteral("0");
     require(controller.connectAsync(invalidBaudRequest),
             "start invalid-baud connection attempt");
     controller.wait();
@@ -179,11 +175,52 @@ int main()
         const bool rejectedInvalidBaud = std::any_of(
             logs.cbegin(), logs.cend(), [](const LocalConnectionLogEntry& entry) {
                 return entry.event == QStringLiteral("local_device_connection_rejected_invalid_baud") &&
-                    entry.fields.value(QStringLiteral("device")).toString() == QStringLiteral("EPSILON") &&
+                    entry.fields.value(QStringLiteral("device")).toString() == QStringLiteral("HMP3") &&
                     entry.fields.value(QStringLiteral("configured_baud")).toString() == QStringLiteral("0");
             });
         require(rejectedInvalidBaud,
                 "connection controller rejects a non-positive host baud before opening the port");
+    }
+
+    controller.disconnect();
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        logs.clear();
+    }
+    finished = false;
+    connected = true;
+    LocalConnectionRequest unsupportedAi8Request;
+    unsupportedAi8Request.english = false;
+    unsupportedAi8Request.selectText = QStringLiteral("未选择");
+    unsupportedAi8Request.epsilon.requested = false;
+    unsupportedAi8Request.ptb.requested = false;
+    unsupportedAi8Request.hmp.requested = false;
+    unsupportedAi8Request.lidar.requested = false;
+    unsupportedAi8Request.temperatureController.requested = false;
+    unsupportedAi8Request.ai8TemperatureController.port = QStringLiteral("__invalid_vaporview_port__");
+    unsupportedAi8Request.ai8TemperatureController.baudText = QStringLiteral("256000");
+    require(controller.connectAsync(unsupportedAi8Request),
+            "start unsupported AI-8288 baud connection attempt");
+    controller.wait();
+    require(finished && !connected,
+            "unsupported AI-8288 baud completes without connecting a device");
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        const bool rejectedUnsupportedAi8Baud = std::any_of(
+            logs.cbegin(), logs.cend(), [](const LocalConnectionLogEntry& entry) {
+                return entry.event == QStringLiteral("local_device_connection_rejected_unsupported_baud") &&
+                    entry.fields.value(QStringLiteral("device")).toString() == QStringLiteral("AI-8288") &&
+                    entry.fields.value(QStringLiteral("configured_baud")).toString() == QStringLiteral("256000") &&
+                    entry.fields.value(QStringLiteral("reason_code")).toString() ==
+                        QStringLiteral("UNSUPPORTED_BAUD_RATE");
+            });
+        const bool openedAi8Port = std::any_of(
+            logs.cbegin(), logs.cend(), [](const LocalConnectionLogEntry& entry) {
+                return entry.event == QStringLiteral("local_device_connection_started") &&
+                    entry.fields.value(QStringLiteral("device")).toString() == QStringLiteral("AI-8288");
+            });
+        require(rejectedUnsupportedAi8Baud && !openedAi8Port,
+                "AI-8288 unsupported baud is rejected before a serial-port open is attempted");
     }
 
     LocalSampleRateConfiguration rateConfiguration;

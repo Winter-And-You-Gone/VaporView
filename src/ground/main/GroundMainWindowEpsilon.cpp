@@ -1,5 +1,6 @@
 #include "ground/main/GroundMainWindowImplementation.h"
 #include "ground/devices/DeviceRatePolicy.h"
+#include "BaudRateComboSupport.h"
 #include "SerialBaudRate.h"
 
 #include <QSettings>
@@ -486,14 +487,12 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
         auto *forwardBaudCombo = new QComboBox(&dialog);
         // This value is also written into the EPSILON device-side RTCM port
         // setting, so it remains limited to that protocol's documented enum.
-        forwardBaudCombo->addItems({QStringLiteral("115200"),
-                                    QStringLiteral("230400"),
-                                    QStringLiteral("460800"),
-                                    QStringLiteral("921600")});
-        forwardBaudCombo->setCurrentText(QString::number(
-            state_->remote_sky_config_.epsilon_rtcm.baud_rate > 0
-                ? state_->remote_sky_config_.epsilon_rtcm.baud_rate
-                : 115200));
+        VaporView::configureSerialBaudRateCombo(
+            forwardBaudCombo,
+            VaporView::epsilonRtcmForwardBaudCapabilities(),
+            QString::number(state_->remote_sky_config_.epsilon_rtcm.baud_rate > 0
+                                ? state_->remote_sky_config_.epsilon_rtcm.baud_rate
+                                : 115200));
         configureComboPopup(forwardBaudCombo);
         formLayout->addRow(state_->is_english_ ? "RTCM Port Baud:" : "RTCM 串口波特率：",
                            forwardBaudCombo);
@@ -517,7 +516,9 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
         const QString forwardPort = forwardPortCombo->currentText().trimmed();
         const auto forwardBaud = VaporView::parseSerialBaudRate(
             forwardBaudCombo->currentText());
-        if (forwardPort.isEmpty() || !forwardBaud)
+        if (forwardPort.isEmpty() || !forwardBaud ||
+            !VaporView::isBaudRateSupported(
+                VaporView::epsilonRtcmForwardBaudCapabilities(), *forwardBaud))
         {
             publishGroundLog(VaporView::LogLevel::Warning,
                              QStringLiteral("device.navigation.command"),
@@ -636,11 +637,10 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
     auto *forwardBaudCombo = new QComboBox(&dialog);
     // This value is also written into the EPSILON device-side RTCM port
     // setting, so it remains limited to that protocol's documented enum.
-    forwardBaudCombo->addItems({QStringLiteral("115200"),
-                                QStringLiteral("230400"),
-                                QStringLiteral("460800"),
-                                QStringLiteral("921600")});
-    forwardBaudCombo->setCurrentText(settings.value("epsilon_rtcm_forward_baud", "115200").toString());
+    VaporView::configureSerialBaudRateCombo(
+        forwardBaudCombo,
+        VaporView::epsilonRtcmForwardBaudCapabilities(),
+        settings.value("epsilon_rtcm_forward_baud", "115200").toString());
     configureComboPopup(forwardBaudCombo);
     formLayout->addRow(state_->is_english_ ? "RTCM Port Baud:" : "RTCM 串口波特率：", forwardBaudCombo);
 
@@ -700,7 +700,9 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
 
     const QString forwardBaudText = forwardBaudCombo->currentText().trimmed();
     const auto forwardBaud = VaporView::parseSerialBaudRate(forwardBaudText);
-    if (!forwardBaud)
+    if (!forwardBaud ||
+        !VaporView::isBaudRateSupported(
+            VaporView::epsilonRtcmForwardBaudCapabilities(), *forwardBaud))
     {
         publishGroundLog(VaporView::LogLevel::Warning,
                          QStringLiteral("device.navigation.command"),

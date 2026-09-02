@@ -153,6 +153,7 @@
 | Ground | device.connection | serial_port_detection_plan_created | Info | 串口自动识别计划已创建。 | serial_port_count, selected_candidates, default_probe_count | ui_message, ui_visibility |  |
 | Ground | device.connection | serial_port_detection_selected_pass_started | Info | 开始按已选串口和波特率探测设备。 | selected_candidates | ui_message, ui_visibility |  |
 | Ground | device.connection | serial_port_detection_default_pass_started | Info | 开始按默认波特率探测剩余设备。 | serial_port_count, default_probe_count | ui_message, ui_visibility |  |
+| Ground | device.connection | serial_port_detection_rejected_unsupported_baud | Warning | 自动识别已忽略设备不支持的已选波特率，并改用默认值。 | device_key, device, configured_baud, fallback_baud, error_code, reason_code | ui_visibility | UNSUPPORTED_BAUD_RATE |
 | Ground | device.connection | serial_port_detection_probe_started | Info | 开始探测串口设备。 | device_key, device, port, baud, probe_phase | ui_message, ui_visibility |  |
 | Ground | device.connection | serial_port_detection_device_identified | Info | 串口自动识别已识别设备。 | device_key, device, port, baud, detected_devices | ui_message, ui_visibility |  |
 | Ground | device.connection | serial_port_detection_cancelled | Info | 串口自动识别已取消。 | reason_code, detected_devices | ui_message, ui_visibility | USER_CANCELLED |
@@ -168,6 +169,7 @@
 | Ground | device.connection | local_device_connection_cancelled | Info | 本地设备连接已取消。 | reason_code | ui_visibility | USER_CANCELLED |
 | Ground | device.connection | local_device_connection_skipped | Info | 本地设备未选择端口，已跳过连接。 | device, reason_code | ui_visibility | PORT_NOT_SELECTED |
 | Ground | device.connection | local_device_connection_rejected_invalid_baud | Warning | 本地设备主机串口波特率无效。 | device, port, configured_baud, error_code, reason_code |  | INVALID_BAUD_RATE |
+| Ground | device.connection | local_device_connection_rejected_unsupported_baud | Warning | 本地设备主机串口波特率不受设备支持。 | device, port, configured_baud, error_code, reason_code |  | UNSUPPORTED_BAUD_RATE |
 | Ground | device.connection | local_device_port_check_started | Info | 开始检查本地设备串口。 | device, port, baud | ui_visibility |  |
 | Ground | device.connection | local_device_connection_started | Info | 正在连接本地设备。 | device, port, baud | ui_visibility |  |
 | Ground | device.connection | local_device_port_open_failed | Warning | 打开本地设备串口失败。 | device, port, baud, error_code | system_error, ui_visibility | PORT_OPEN_FAILED |
@@ -186,9 +188,12 @@
 | Ground | device.connection | ai8_temperature_polling_rate_updated | Info | AI-8288 主机轮询频率已更新。 | device, requested_rate_hz | ui_visibility |  |
 | Ground | device.connection | local_serial_device_phase_completed | Info | 本地串口设备连接阶段已完成。 | connected_devices, total_devices | ui_visibility |  |
 | Ground | device.connection | local_serial_devices_not_connected | Warning | 没有串口设备连接成功。 | connected_devices, total_devices, reason_code | ui_visibility | NO_DEVICE_CONNECTED |
+| Ground | device.connection | remote_serial_port_detection_rejected_unsupported_baud | Warning | 已忽略天空端自动识别返回的不受支持波特率。 | device_key, port, configured_baud, error_code, reason_code | ui_visibility | UNSUPPORTED_BAUD_RATE |
+| Ground | device.connection | local_serial_port_detection_rejected_unsupported_baud | Warning | 已忽略本地自动识别返回的不受支持波特率。 | device_key, port, configured_baud, error_code, reason_code | ui_visibility | UNSUPPORTED_BAUD_RATE |
 | Ground | device.connection | temperature_controller_connection_rejected_missing_port | Warning | 请先选择本地 RD105 串口。 | device, device_id, reason_code | ui_dedupe_key | MISSING_ENDPOINT |
 | Ground | device.connection | temperature_controller_connection_rejected_invalid_baud | Warning | RD105 波特率无效。 | device, device_id, reason_code, baud_text | ui_dedupe_key | CONFIG_INVALID |
 | Ground | device.connection | local_temperature_connection_rejected_invalid_baud | Warning | RD105 主机串口波特率无效。 | device, port, configured_baud, error_code, reason_code |  | INVALID_BAUD_RATE |
+| Ground | device.connection | local_temperature_connection_rejected_unsupported_baud | Warning | RD105 主机串口波特率不受设备支持。 | device, port, configured_baud, error_code, reason_code |  | UNSUPPORTED_BAUD_RATE |
 | Ground | device.connection | temperature_controller_connection_started | Info | 正在连接本地 RD105 温控器。 | device, device_id, port, baud, sample_rate_hz | ui_visibility |  |
 | Ground | device.connection | temperature_controller_connected | Info | 本地 RD105 温控器已连接。 | device, device_id | details, ui_visibility |  |
 | Ground | device.connection | temperature_controller_connection_failed | Error | 本地 RD105 温控器连接失败。 | device, device_id, error_code | system_error, ui_dedupe_key | SERIAL_OPEN_FAILED |
@@ -285,6 +290,7 @@
 | Ground | configuration.apply | epsilon_packet_profile_saved | Info | 已保存 EPSILON 包频率配置。 | device, packet_rate_profile, packet_rate_summary | ui_visibility |  |
 | Ground | configuration.apply | epsilon_packet_profile_apply_requested | Info | 正在应用刚保存的 EPSILON 包频率配置。 | device, port, packet_rate_summary | ui_visibility |  |
 | Ground | configuration.apply | epsilon_packet_profile_saved_deferred | Info | EPSILON 包频率配置已保存，将在下次连接或重配时生效。 | device, packet_rate_summary | ui_visibility |  |
+| Ground | configuration.apply | ai8_persisted_baud_rejected | Warning | 已忽略 AI-8288 的无效已保存波特率，并恢复默认值。 | device, configured_baud, fallback_baud, error_code, reason_code | ui_visibility | UNSUPPORTED_BAUD_RATE |
 | Ground | configuration.apply | recording_directory_updated | Info | 记录目录已更新。 | recording_directory | ui_visibility |  |
 | Ground | configuration.apply | recording_csv_rate_updated | Info | 其余设备记录频率已更新。 | recording_rate_hz | ui_visibility |  |
 | Ground | configuration.apply | epsilon_raw_recording_full_frames_enabled | Info | EPSILON 原始记录固定保存完整已校验 FDILink 帧。 | device, recording_mode | ui_visibility |  |

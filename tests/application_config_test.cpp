@@ -21,6 +21,14 @@ void require(bool condition, const char *message)
     }
 }
 
+QSettings legacySettings(const QString& applicationName)
+{
+    return QSettings(QSettings::defaultFormat(),
+                     QSettings::UserScope,
+                     QStringLiteral("VaporView"),
+                     applicationName);
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -33,7 +41,7 @@ int main(int argc, char **argv)
 
     QCoreApplication application(argc, argv);
 
-    QSettings mainSettings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+    QSettings mainSettings = legacySettings(QStringLiteral("MainWindow"));
     mainSettings.setValue(QStringLiteral("dark_theme_enabled"), true);
     mainSettings.setValue(QStringLiteral("recording_directory"), QStringLiteral("D:/records"));
     mainSettings.setValue(QStringLiteral("serial/epsilon_port"), QStringLiteral("COM7"));
@@ -43,22 +51,22 @@ int main(int argc, char **argv)
     mainSettings.setValue(QStringLiteral("epsilon_rtcm_device_port_index"), 3);
     mainSettings.sync();
 
-    QSettings waveSettings(QStringLiteral("VaporView"), QStringLiteral("TcpWavePanel"));
+    QSettings waveSettings = legacySettings(QStringLiteral("TcpWavePanel"));
     waveSettings.setValue(QStringLiteral("connection/host"), QStringLiteral("10.0.0.8"));
     waveSettings.setValue(QStringLiteral("peak_filter/mode"), QStringLiteral("iqr"));
     waveSettings.sync();
 
-    QSettings trajectorySettings(QStringLiteral("VaporView"), QStringLiteral("TrajectoryViewer"));
+    QSettings trajectorySettings = legacySettings(QStringLiteral("TrajectoryViewer"));
     trajectorySettings.setValue(QStringLiteral("map/tianditu_key"), QStringLiteral("plain-test-key"));
     trajectorySettings.setValue(QStringLiteral("map/source"), QStringLiteral("tianditu_img"));
     trajectorySettings.sync();
 
-    QSettings sessionSettings(QStringLiteral("VaporView"), QStringLiteral("SessionViewer"));
+    QSettings sessionSettings = legacySettings(QStringLiteral("SessionViewer"));
     sessionSettings.setValue(QStringLiteral("kf_gins/executable_path"), QStringLiteral("D:/KF-GINS/KF-GINS.exe"));
     sessionSettings.setValue(QStringLiteral("last_session_directory"), QStringLiteral("D:/sessions"));
     sessionSettings.sync();
 
-    QSettings mapSettings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+    QSettings mapSettings = legacySettings(QStringLiteral("Map3D"));
     mapSettings.setValue(QStringLiteral("mapManifestUrl"), QStringLiteral("https://example.test/maps.json"));
     mapSettings.setValue(QStringLiteral("heatPalette"), 2);
     mapSettings.sync();

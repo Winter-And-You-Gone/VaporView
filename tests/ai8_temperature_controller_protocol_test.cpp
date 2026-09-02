@@ -3,6 +3,7 @@
 
 #include <QByteArray>
 
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -75,6 +76,10 @@ int main()
     require(Ai8::isSupportedBaudRate(19200) &&
                 !Ai8::isSupportedBaudRate(123457),
             "AI-8288 internal bAud remains a documented fixed-value enum");
+    require(Ai8::kSupportedBaudRates ==
+                std::array<int, 6>{4800, 9600, 19200, 38400, 57600, 115200} &&
+                Ai8::kDefaultBaudRate == 19200,
+            "AI-8288 connection and internal bAud share the documented protocol baud source");
     require(Ai8::isDocumentedRunState(0) &&
                 Ai8::isDocumentedRunState(15) &&
                 Ai8::isDocumentedRunState(9655) &&

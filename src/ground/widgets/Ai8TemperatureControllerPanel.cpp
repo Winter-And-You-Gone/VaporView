@@ -1,6 +1,7 @@
 #include "ground/widgets/Ai8TemperatureControllerPanel.h"
 #include "ground/widgets/TemperatureTrendPlotWidget.h"
 #include "ground/widgets/TemperatureControllerWidgets.h"
+#include "Ai8TemperatureControllerProtocol.h"
 
 #include <QAbstractButton>
 #include <QButtonGroup>
@@ -699,7 +700,7 @@ QWidget *Ai8TemperatureControllerPanel::createGlobalPage()
     auto *addressSpin = createSpinBox(page, QStringLiteral("ai8DeviceAddressSpin"), 1, 88, 1);
     QComboBox *baudCombo = createFixedChoiceCombo(page);
     baudCombo->setObjectName(QStringLiteral("ai8BaudCombo"));
-    for (int baudRate : {4800, 9600, 19200, 38400, 57600, 115200})
+    for (int baudRate : Ai8TemperatureControllerProtocol::kSupportedBaudRates)
     {
         baudCombo->addItem(QString::number(baudRate), baudRate);
     }

@@ -14,6 +14,9 @@ constexpr int kChannelCount = 8;
 constexpr int kParameterGroupCount = 4;
 constexpr int kControlStatusRegisterCount = (kChannelCount + 1) / 2;
 constexpr int kAlarmStatusRegisterCount = (kChannelCount + 1) / 2;
+constexpr int kDefaultBaudRate = 19200;
+inline constexpr std::array<int, 6> kSupportedBaudRates = {
+    4800, 9600, 19200, 38400, 57600, 115200};
 
 enum class ChannelControlState : quint8
 {
@@ -234,7 +237,17 @@ int decodeChannelInputGroup(quint16 value);
 int decodeCorrectionEntry(quint16 value);
 quint16 encodeBaudRate(int baudRate);
 int decodeBaudRate(quint16 value);
-bool isSupportedBaudRate(int baudRate);
+constexpr bool isSupportedBaudRate(int baudRate)
+{
+    for (int supportedRate : kSupportedBaudRates)
+    {
+        if (baudRate == supportedRate)
+        {
+            return true;
+        }
+    }
+    return false;
+}
 bool isDocumentedRunState(quint16 value);
 QString pageName(Page page, bool english);
 

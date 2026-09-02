@@ -974,15 +974,14 @@ void MainWindow::updateResponsiveHomeLayout()
         sensorAvailableWidth >= compactEpsilonMinimumWidth + sensorCardGap + environmentMinimumWidth;
     const bool stackSensorCards = compact && !compactCardsFitSideBySide;
     const int sideBySideAvailableWidth = std::max(0, sensorAvailableWidth - sensorCardGap);
-    const int sideBySideMinimumWidth = compactEpsilonMinimumWidth + environmentMinimumWidth;
-    const int sideBySideExtraWidth = std::max(0, sideBySideAvailableWidth - sideBySideMinimumWidth);
     const int sensorStretchTotal = kSensorNavigationStretch + kSensorEnvironmentStretch;
     const int proportionalEnvironmentWidth = sensorStretchTotal > 0
-        ? environmentMinimumWidth + sideBySideExtraWidth * kSensorEnvironmentStretch / sensorStretchTotal
+        ? std::max(environmentMinimumWidth,
+                   sideBySideAvailableWidth * kSensorEnvironmentStretch / sensorStretchTotal)
         : environmentMinimumWidth;
-    const int proportionalEpsilonWidth =
-        compactEpsilonMinimumWidth + sideBySideExtraWidth -
-        (proportionalEnvironmentWidth - environmentMinimumWidth);
+    const int proportionalEpsilonWidth = std::max(
+        compactEpsilonMinimumWidth,
+        sideBySideAvailableWidth - proportionalEnvironmentWidth);
     const int compactEpsilonSideBySideWidth = compactCardsFitSideBySide
         ? std::max(compactEpsilonMinimumWidth, proportionalEpsilonWidth)
         : compactEpsilonTargetWidth;
@@ -1672,7 +1671,6 @@ void MainWindow::loadRememberedInputState()
 {
     QSettings settings = VaporView::applicationConfigSettings();
     settings.beginGroup(QStringLiteral("MainWindow"));
-
     auto loadCombo = [this, &settings](QComboBox *combo, const QString& key, const QString& fallbackKey = QString()) {
         if (!combo)
         {
@@ -1704,8 +1702,26 @@ void MainWindow::loadRememberedInputState()
     loadCombo(state_->device_config_.temperature_port_combo, QStringLiteral("serial/temperature_port"));
     loadCombo(state_->device_config_.ai8_temperature_port_combo,
               QStringLiteral("serial/ai8_temperature_port"));
-    loadCombo(state_->device_config_.ai8_temperature_baud_combo,
-              QStringLiteral("serial/ai8_temperature_baud"));
+    const QString ai8BaudKey = QStringLiteral("serial/ai8_temperature_baud");
+    const QString ai8FallbackBaud = QString::number(
+        VaporView::Ai8TemperatureControllerProtocol::kDefaultBaudRate);
+    const QString savedAi8Baud = settings.value(ai8BaudKey, ai8FallbackBaud).toString();
+    if (!VaporView::setSerialBaudRateComboText(
+            state_->device_config_.ai8_temperature_baud_combo, savedAi8Baud))
+    {
+        VaporView::setSerialBaudRateComboText(
+            state_->device_config_.ai8_temperature_baud_combo, ai8FallbackBaud);
+        VaporView::setPersistentSetting(settings, ai8BaudKey, ai8FallbackBaud);
+        publishGroundLog(VaporView::LogLevel::Warning,
+                         QStringLiteral("configuration.apply"),
+                         QStringLiteral("ai8_persisted_baud_rejected"),
+                         QStringLiteral("已忽略 AI-8288 的无效已保存波特率，并恢复默认值。"),
+                         {{QStringLiteral("device"), QStringLiteral("AI-8288")},
+                          {QStringLiteral("configured_baud"), savedAi8Baud},
+                          {QStringLiteral("fallback_baud"), ai8FallbackBaud},
+                          {QStringLiteral("error_code"), QStringLiteral("UNSUPPORTED_BAUD_RATE")},
+                          {QStringLiteral("reason_code"), QStringLiteral("UNSUPPORTED_BAUD_RATE")}});
+    }
     loadCombo(state_->device_config_.ai8_temperature_rate_combo,
               QStringLiteral("rate/ai8_temperature"));
     refreshAi8TemperatureTitlePortOptions(
@@ -1743,12 +1759,20 @@ void MainWindow::loadRememberedInputState()
     }
     const QString pressureBaud = rememberedSensorBaud(
         settings, pressureSource, QStringLiteral("serial/ptb_baud"));
+    VaporView::configureSerialBaudRateCombo(
+        state_->device_config_.ptb_baud_combo,
+        VaporView::pressureSensorBaudCapabilities(pressureSource),
+        pressureBaud);
     setLocalSerialPortComboText(
         state_->device_config_.ptb_port_combo,
         rememberedSensorPort(settings, pressureSource, QStringLiteral("serial/ptb_port")));
     applyComboText(state_->device_config_.ptb_baud_combo, pressureBaud);
     const QString humidityBaud = rememberedSensorBaud(
         settings, humiditySource, QStringLiteral("serial/hmp_baud"));
+    VaporView::configureSerialBaudRateCombo(
+        state_->device_config_.hmp_baud_combo,
+        VaporView::humiditySensorBaudCapabilities(humiditySource),
+        humidityBaud);
     setLocalSerialPortComboText(
         state_->device_config_.hmp_port_combo,
         rememberedSensorPort(settings, humiditySource, QStringLiteral("serial/hmp_port")));

@@ -1,7 +1,7 @@
 #ifndef VAPORVIEW_BAUD_RATE_COMBO_SUPPORT_H_
 #define VAPORVIEW_BAUD_RATE_COMBO_SUPPORT_H_
 
-#include "SerialBaudRate.h"
+#include "SerialBaudRateCapabilities.h"
 
 #include <QComboBox>
 #include <QEvent>
@@ -19,10 +19,39 @@ namespace VaporView
 inline constexpr const char *kSerialBaudRateComboProperty = "_vv_serial_baud_rate_combo";
 inline constexpr const char *kSerialBaudRateLastValidProperty = "_vv_serial_baud_rate_last_valid";
 inline constexpr const char *kSerialBaudRateEditingGuardProperty = "_vv_serial_baud_rate_editing_guard";
+inline constexpr const char *kSerialBaudRateEditFilterProperty = "_vv_serial_baud_rate_edit_filter";
+inline constexpr const char *kSerialBaudRateEditingFinishedBoundProperty = "_vv_serial_baud_rate_editing_finished_bound";
+inline constexpr const char *kSerialBaudRateInputModeProperty = "_vv_serial_baud_rate_input_mode";
+inline constexpr const char *kSerialBaudRateCustomMinimumProperty = "_vv_serial_baud_rate_custom_minimum";
+inline constexpr const char *kSerialBaudRateCustomMaximumProperty = "_vv_serial_baud_rate_custom_maximum";
 
 inline bool isSerialBaudRateCombo(const QComboBox *combo)
 {
     return combo && combo->property(kSerialBaudRateComboProperty).toBool();
+}
+
+inline BaudRateCapabilities serialBaudRateComboCapabilities(const QComboBox *combo)
+{
+    BaudRateCapabilities capabilities;
+    if (!combo || !isSerialBaudRateCombo(combo))
+    {
+        return capabilities;
+    }
+    capabilities.inputMode = static_cast<BaudRateInputMode>(
+        combo->property(kSerialBaudRateInputModeProperty).toInt());
+    capabilities.customMinimum = combo->property(kSerialBaudRateCustomMinimumProperty).toInt();
+    capabilities.customMaximum = combo->property(kSerialBaudRateCustomMaximumProperty).toInt();
+    for (int index = 0; index < combo->count(); ++index)
+    {
+        capabilities.presets.append(combo->itemText(index));
+    }
+    return capabilities;
+}
+
+inline bool serialBaudRateComboAccepts(const QComboBox *combo, int baudRate)
+{
+    return !isSerialBaudRateCombo(combo) ||
+        isBaudRateSupported(serialBaudRateComboCapabilities(combo), baudRate);
 }
 
 inline bool setSerialBaudRateComboText(QComboBox *combo, const QString& value)
@@ -32,7 +61,8 @@ inline bool setSerialBaudRateComboText(QComboBox *combo, const QString& value)
         return false;
     }
     const QString normalized = normalizedSerialBaudRateText(value);
-    if (normalized.isEmpty())
+    const auto baudRate = parseSerialBaudRate(normalized);
+    if (!baudRate || !serialBaudRateComboAccepts(combo, *baudRate))
     {
         return false;
     }
@@ -59,7 +89,10 @@ inline QString serialBaudRateComboText(const QComboBox *combo)
 
 inline std::optional<int> serialBaudRateComboValue(const QComboBox *combo)
 {
-    return combo ? parseSerialBaudRate(combo->currentText()) : std::nullopt;
+    const auto baudRate = combo ? parseSerialBaudRate(combo->currentText()) : std::nullopt;
+    return baudRate && serialBaudRateComboAccepts(combo, *baudRate)
+        ? baudRate
+        : std::nullopt;
 }
 
 class SerialBaudRateComboEditFilter final : public QObject
@@ -96,71 +129,90 @@ private:
 };
 
 inline void configureSerialBaudRateCombo(QComboBox *combo,
-                                         const QStringList& presets,
+                                         const BaudRateCapabilities& capabilities,
                                          const QString& defaultValue = QString())
 {
     if (!combo)
     {
         return;
     }
+    const QString previousValue = combo->currentText().trimmed();
+    const QSignalBlocker blocker(combo);
     combo->setProperty(kSerialBaudRateComboProperty, true);
-    combo->setEditable(true);
+    combo->setProperty(kSerialBaudRateInputModeProperty,
+                       static_cast<int>(capabilities.inputMode));
+    combo->setProperty(kSerialBaudRateCustomMinimumProperty, capabilities.customMinimum);
+    combo->setProperty(kSerialBaudRateCustomMaximumProperty, capabilities.customMaximum);
+    combo->setEditable(capabilities.inputMode == BaudRateInputMode::PresetAndCustom);
     combo->setInsertPolicy(QComboBox::NoInsert);
     combo->setDuplicatesEnabled(false);
-    if (combo->lineEdit())
+    if (capabilities.inputMode == BaudRateInputMode::PresetAndCustom && combo->lineEdit())
     {
         combo->lineEdit()->setValidator(
-            new QIntValidator(1, std::numeric_limits<int>::max(), combo->lineEdit()));
+            new QIntValidator(capabilities.customMinimum,
+                              capabilities.customMaximum,
+                              combo->lineEdit()));
         combo->lineEdit()->setCompleter(nullptr);
-        combo->lineEdit()->installEventFilter(
-            new SerialBaudRateComboEditFilter(combo, combo->lineEdit()));
+        if (!combo->lineEdit()->property(kSerialBaudRateEditFilterProperty).toBool())
+        {
+            combo->lineEdit()->installEventFilter(
+                new SerialBaudRateComboEditFilter(combo, combo->lineEdit()));
+            combo->lineEdit()->setProperty(kSerialBaudRateEditFilterProperty, true);
+        }
+        if (!combo->lineEdit()->property(kSerialBaudRateEditingFinishedBoundProperty).toBool())
+        {
+            QObject::connect(combo->lineEdit(),
+                             &QLineEdit::editingFinished,
+                             combo,
+                             [combo]() {
+                                 const QString normalized = normalizedSerialBaudRateText(combo->currentText());
+                                 if (setSerialBaudRateComboText(combo, normalized))
+                                 {
+                                     return;
+                                 }
+                                 const QString last = combo->property(kSerialBaudRateLastValidProperty).toString();
+                                 if (!last.isEmpty())
+                                 {
+                                     setSerialBaudRateComboText(combo, last);
+                                 }
+                             });
+            combo->lineEdit()->setProperty(kSerialBaudRateEditingFinishedBoundProperty, true);
+        }
     }
-    for (const QString& preset : presets)
+    combo->clear();
+    for (const QString& preset : capabilities.presets)
     {
         const QString normalized = normalizedSerialBaudRateText(preset);
         if (!normalized.isEmpty() && combo->findText(normalized, Qt::MatchExactly) < 0)
         {
             combo->addItem(normalized, normalized.toInt());
+            combo->setItemData(combo->count() - 1,
+                               Qt::AlignCenter,
+                               Qt::TextAlignmentRole);
         }
     }
-    if (combo->property(kSerialBaudRateEditingGuardProperty).toBool())
+    if (!combo->property(kSerialBaudRateEditingGuardProperty).toBool())
     {
-        return;
-    }
-    combo->setProperty(kSerialBaudRateEditingGuardProperty, true);
-    QObject::connect(combo,
-                     &QComboBox::currentTextChanged,
-                     combo,
-                     [combo](const QString& text) {
-                         const QString normalized = normalizedSerialBaudRateText(text);
-                         if (!normalized.isEmpty())
-                         {
-                             combo->setProperty(kSerialBaudRateLastValidProperty, normalized);
-                         }
-                     });
-    if (combo->lineEdit())
-    {
-        QObject::connect(combo->lineEdit(),
-                         &QLineEdit::editingFinished,
+        combo->setProperty(kSerialBaudRateEditingGuardProperty, true);
+        QObject::connect(combo,
+                         &QComboBox::currentTextChanged,
                          combo,
-                         [combo]() {
-                             const QString normalized = normalizedSerialBaudRateText(combo->currentText());
-                             if (!normalized.isEmpty())
+                         [combo](const QString& text) {
+                             const auto baudRate = parseSerialBaudRate(text);
+                             if (baudRate && serialBaudRateComboAccepts(combo, *baudRate))
                              {
-                                 setSerialBaudRateComboText(combo, normalized);
-                                 return;
-                             }
-                             const QString last = combo->property(kSerialBaudRateLastValidProperty).toString();
-                             if (!last.isEmpty())
-                             {
-                                 setSerialBaudRateComboText(combo, last);
+                                 combo->setProperty(kSerialBaudRateLastValidProperty,
+                                                    QString::number(*baudRate));
                              }
                          });
     }
     const QString requested = defaultValue.isEmpty()
-        ? (combo->currentText().isEmpty() && combo->count() > 0 ? combo->itemText(0) : combo->currentText())
+        ? (previousValue.isEmpty() && combo->count() > 0 ? combo->itemText(0) : previousValue)
         : defaultValue;
-    setSerialBaudRateComboText(combo, requested);
+    if (!setSerialBaudRateComboText(combo, requested) && combo->count() > 0)
+    {
+        setSerialBaudRateComboText(combo, combo->itemText(0));
+    }
 }
 
 }  // namespace VaporView
