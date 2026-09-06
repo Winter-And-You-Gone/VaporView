@@ -727,7 +727,21 @@ void MainWindow::setupCustomTitleBar()
     state_->title_language_btn_->setAccessibleName(QStringLiteral("titleLanguageButton"));
     connect(state_->title_language_btn_, &QToolButton::clicked, this, &MainWindow::onSwitchLanguage);
     titleLayout->addWidget(state_->title_language_btn_, 0, Qt::AlignVCenter);
-    titleLayout->addWidget(createTitleBarActionButton(state_->theme_toggle_action_, state_->custom_title_bar_), 0, Qt::AlignVCenter);
+    auto *themeToggleButton =
+        createTitleBarActionButton(state_->theme_toggle_action_, state_->custom_title_bar_);
+    themeToggleButton->setAccessibleName(QStringLiteral("titleThemeButton"));
+    titleLayout->addWidget(themeToggleButton, 0, Qt::AlignVCenter);
+
+    state_->source_mode_switch_ = createSourceModeOverviewSwitchButton(state_->custom_title_bar_);
+    state_->source_mode_switch_->setFixedSize(128, kMainPageButtonHeight);
+    state_->source_mode_switch_->setEnglish(state_->is_english_);
+    connect(state_->source_mode_switch_,
+            &VaporView::Ground::Widgets::SegmentedSwitchButton::selectionRequested,
+            this,
+            [this](bool remoteSelected) {
+                requestSourceModeSelection(remoteSelected);
+            });
+    titleLayout->addWidget(state_->source_mode_switch_, 0, Qt::AlignVCenter);
     titleLayout->addStretch(1);
     state_->log_side_panel_toggle_btn_ = createTitleBarIconButton(QStringLiteral("titleBarButton"), state_->custom_title_bar_);
     state_->log_side_panel_toggle_btn_->setAccessibleName(QStringLiteral("logSidePanelToggleButton"));
@@ -2456,17 +2470,6 @@ void MainWindow::setupDeviceConfigPage()
     connect(state_->device_config_.auto_detect_ports_btn, &QPushButton::clicked, this, &MainWindow::onAutoDetectPortsClicked);
     serialTitleLayout->addWidget(state_->device_config_.auto_detect_ports_btn, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
-    state_->device_config_.data_source_mode_switch = createSourceModeOverviewSwitchButton(serialTitleBar);
-    state_->device_config_.data_source_mode_switch->setObjectName(QStringLiteral("deviceConfigSourceModeOverviewSwitch"));
-    state_->device_config_.data_source_mode_switch->setFixedSize(128, kMainPageButtonHeight);
-    state_->device_config_.data_source_mode_switch->setEnglish(state_->is_english_);
-    connect(state_->device_config_.data_source_mode_switch,
-            &VaporView::Ground::Widgets::SegmentedSwitchButton::selectionRequested,
-            this,
-            [this](bool remoteSelected) {
-                requestSourceModeSelection(remoteSelected);
-            });
-    serialTitleLayout->addWidget(state_->device_config_.data_source_mode_switch, 0, Qt::AlignVCenter | Qt::AlignLeft);
     serialTitleLayout->addStretch(1);
     serialLayout->addWidget(serialTitleBar);
 
@@ -3681,7 +3684,6 @@ void MainWindow::updateDeviceConfigTexts()
             ? (state_->is_english_ ? "Device Configuration [Remote]" : "设备配置 [远程]")
             : (state_->is_english_ ? "Device Configuration [Local]" : "设备配置 [本机]"));
     }
-    if (state_->device_config_.data_source_mode_switch) state_->device_config_.data_source_mode_switch->setEnglish(state_->is_english_);
     if (state_->device_config_.sky_telemetry_transport_lbl) state_->device_config_.sky_telemetry_transport_lbl->setText(state_->is_english_ ? "Sky Link:" : "天地链路:");
     updateSkyTelemetryTransportComboTexts(state_->device_config_.sky_telemetry_transport_combo, state_->is_english_);
     if (state_->device_config_.sky_telemetry_tcp_host_lbl) state_->device_config_.sky_telemetry_tcp_host_lbl->setText(state_->is_english_ ? "Sky IP:" : "天空端IP:");
@@ -3925,13 +3927,6 @@ void MainWindow::updateDeviceConfigState()
         }
     }
 
-    if (state_->device_config_.data_source_mode_switch)
-    {
-        state_->device_config_.data_source_mode_switch->setEnabled(state_->source_mode_switch_ && state_->source_mode_switch_->isEnabled());
-        state_->device_config_.data_source_mode_switch->setSwitchChecked(
-            remote,
-            state_->device_config_.data_source_mode_switch->switchChecked() != remote);
-    }
     if (state_->device_config_.sky_telemetry_transport_combo) state_->device_config_.sky_telemetry_transport_combo->setEnabled(remoteInputsEnabled);
     if (state_->device_config_.sky_telemetry_port_combo) state_->device_config_.sky_telemetry_port_combo->setEnabled(remoteInputsEnabled && !tcpTelemetry);
     if (state_->device_config_.sky_telemetry_baud_combo) state_->device_config_.sky_telemetry_baud_combo->setEnabled(remoteInputsEnabled && !tcpTelemetry);
@@ -4548,17 +4543,6 @@ void MainWindow::setupConfigPanel()
     configTitleLayout->addWidget(configTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
     configTitleLayout->addStretch(1);
-
-    state_->source_mode_switch_ = createSourceModeOverviewSwitchButton(configTitleBar);
-    state_->source_mode_switch_->setFixedSize(128, kMainPageButtonHeight);
-    state_->source_mode_switch_->setEnglish(state_->is_english_);
-    connect(state_->source_mode_switch_,
-            &VaporView::Ground::Widgets::SegmentedSwitchButton::selectionRequested,
-            this,
-            [this](bool remoteSelected) {
-                requestSourceModeSelection(remoteSelected);
-            });
-    configTitleLayout->addWidget(state_->source_mode_switch_, 0, Qt::AlignVCenter | Qt::AlignRight);
 
     state_->data_source_mode_combo_ = createSingleLevelPopupComboBox(state_->config_group_);
     state_->data_source_mode_combo_->addItem(sourceModeDisplayText(false, 0));

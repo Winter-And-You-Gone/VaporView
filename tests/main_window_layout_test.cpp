@@ -30,6 +30,7 @@
 #include <QFocusEvent>
 #include <QGraphicsOpacityEffect>
 #include <QGroupBox>
+#include <QHBoxLayout>
 #include <QHoverEvent>
 #include <QIcon>
 #include <QImage>
@@ -10360,16 +10361,26 @@ int main(int argc, char **argv)
     require(deviceSourceModeCombo == nullptr,
             "device configuration no longer exposes the title-bar source mode combo");
     auto *deviceSourceModeSwitch =
-        deviceConfigPage->findChild<QPushButton *>(QStringLiteral("deviceConfigSourceModeOverviewSwitch"));
+        window.findChild<QPushButton *>(QStringLiteral("sourceModeOverviewSwitch"));
+    auto *customTitleBar = window.findChild<QWidget *>(QStringLiteral("customTitleBar"));
+    auto *customTitleLayout = customTitleBar
+        ? qobject_cast<QHBoxLayout *>(customTitleBar->layout())
+        : nullptr;
+    const int sourceModeTitleIndex = customTitleLayout
+        ? customTitleLayout->indexOf(deviceSourceModeSwitch)
+        : -1;
+    QWidget *precedingTitleWidget = sourceModeTitleIndex > 0
+        ? customTitleLayout->itemAt(sourceModeTitleIndex - 1)->widget()
+        : nullptr;
     require(deviceSourceModeSwitch != nullptr &&
                 deviceSourceModeSwitch->property("segmentedSwitchControl").toBool() &&
-                deviceSourceModeSwitch->focusPolicy() == Qt::TabFocus,
-            "device configuration source mode uses the shared segmented switch");
-    auto *homeSourceModeSwitch =
-        window.findChild<QPushButton *>(QStringLiteral("sourceModeOverviewSwitch"));
-    require(homeSourceModeSwitch != nullptr &&
-                deviceSourceModeSwitch->size() == homeSourceModeSwitch->size(),
-            "device configuration source switch reuses the home title-bar switch size");
+                deviceSourceModeSwitch->focusPolicy() == Qt::TabFocus &&
+                deviceSourceModeSwitch->parentWidget() == customTitleBar &&
+                precedingTitleWidget &&
+                precedingTitleWidget->accessibleName() == QStringLiteral("titleThemeButton") &&
+                deviceConfigPage->findChild<QPushButton *>(
+                    QStringLiteral("deviceConfigSourceModeOverviewSwitch")) == nullptr,
+            "device configuration uses the single source switch immediately right of the title-bar theme button");
     auto setDeviceSourceModeRemote = [&](bool remote) {
         if (deviceSourceModeSwitch->isChecked() != remote)
         {

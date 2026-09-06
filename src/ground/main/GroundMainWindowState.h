@@ -49,7 +49,6 @@ struct DeviceConfigPageWidgets
 {
     QWidget *page = nullptr;
     QLabel *serial_title_lbl = nullptr;
-    VaporView::Ground::Widgets::SourceModeOverviewSwitchButton *data_source_mode_switch = nullptr;
     QLabel *sky_telemetry_transport_lbl = nullptr;
     QLabel *sky_telemetry_port_lbl = nullptr;
     QLabel *sky_telemetry_baud_lbl = nullptr;

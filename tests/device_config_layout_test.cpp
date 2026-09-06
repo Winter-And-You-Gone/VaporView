@@ -710,9 +710,15 @@ int main(int argc, char **argv)
             "local device-row endpoint edits synchronize to the home TCP wave card");
 
     auto *dataSourceModeSwitch =
-        serialCard->findChild<QPushButton *>(QStringLiteral("deviceConfigSourceModeOverviewSwitch"));
+        window.findChild<QPushButton *>(QStringLiteral("sourceModeOverviewSwitch"));
     auto *dataSourceModeSegmentedSwitch =
         qobject_cast<VaporView::Ground::Widgets::SegmentedSwitchButton *>(dataSourceModeSwitch);
+    auto *titleBar = window.findChild<QWidget *>(QStringLiteral("customTitleBar"));
+    auto *titleLayout = titleBar ? qobject_cast<QHBoxLayout *>(titleBar->layout()) : nullptr;
+    const int sourceModeTitleIndex = titleLayout ? titleLayout->indexOf(dataSourceModeSwitch) : -1;
+    QWidget *precedingTitleWidget = sourceModeTitleIndex > 0
+        ? titleLayout->itemAt(sourceModeTitleIndex - 1)->widget()
+        : nullptr;
     auto *epsilonPortCombo =
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceEpsilonPortCombo"));
     auto *epsilonBaudCombo =
@@ -764,7 +770,7 @@ int main(int argc, char **argv)
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceAi8TemperatureRateCombo"));
     auto *skyTelemetryBaudCombo =
         deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceSkyTelemetryBaudCombo"));
-    require(dataSourceModeSwitch && dataSourceModeSegmentedSwitch &&
+    require(dataSourceModeSwitch && dataSourceModeSegmentedSwitch && titleBar &&
                 epsilonPortCombo && epsilonBaudCombo && epsilonRateCombo &&
                 pressurePortCombo && pressureBaudCombo &&
                 humidityPortCombo && humidityBaudCombo && lidarBaudCombo &&
@@ -878,8 +884,13 @@ int main(int argc, char **argv)
     VaporView::setSettingsWritesSuspended(true);
     require(dataSourceModeSwitch->property("segmentedSwitchControl").toBool() &&
                 dataSourceModeSwitch->text().contains(QStringLiteral("数据源")) &&
-                dataSourceModeSwitch->focusPolicy() == Qt::TabFocus,
-            "device configuration target switching reuses the home segmented source switch");
+                dataSourceModeSwitch->focusPolicy() == Qt::TabFocus &&
+                dataSourceModeSwitch->parentWidget() == titleBar &&
+                precedingTitleWidget &&
+                precedingTitleWidget->accessibleName() == QStringLiteral("titleThemeButton") &&
+                serialCard->findChild<QPushButton *>(
+                    QStringLiteral("deviceConfigSourceModeOverviewSwitch")) == nullptr,
+            "one shared source switch sits immediately right of the title-bar theme button");
     const QList<QComboBox *> deviceConnectionBaudCombos = {
         epsilonBaudCombo,
         pressureBaudCombo,
@@ -1078,13 +1089,8 @@ int main(int argc, char **argv)
     }
     require(autoDetectButton != nullptr,
             "device configuration exposes the title-bar auto-detect button");
-    const QRect autoDetectRect(autoDetectButton->mapTo(serialCard, QPoint(0, 0)),
-                               autoDetectButton->size());
-    const QRect sourceModeSwitchRect(dataSourceModeSwitch->mapTo(serialCard, QPoint(0, 0)),
-                                     dataSourceModeSwitch->size());
-    require(sourceModeSwitchRect.left() > autoDetectRect.right() &&
-                sourceModeSwitchRect.left() - autoDetectRect.right() <= 16,
-            "device configuration target switch is left-aligned beside auto-detect");
+    require(dataSourceModeSwitch->parentWidget() == titleBar,
+            "device configuration uses the shared title-bar source switch instead of a card-local copy");
     require(!epsilonRateCombo->isVisible() &&
                 !epsilonRateCombo->isEnabled() &&
                 epsilonPacketRatesButton->isVisible() &&
@@ -1188,7 +1194,7 @@ int main(int argc, char **argv)
 
     dataSourceModeSwitch->click();
     require(dataSourceModeSegmentedSwitch->switchAnimationRunning(),
-            "device configuration source switch starts visual feedback before layout stabilization");
+            "title-bar source switch starts visual feedback before layout stabilization");
     require(serialCard->height() >= serialCard->sizeHint().height() - 1,
             "local-to-remote switch applies the expanded device card geometry before repaint");
     require(ai8DeviceLabel && ai8DeviceLabel->isVisible() &&
@@ -1881,9 +1887,8 @@ int main(int argc, char **argv)
     QComboBox *restoredAi8Baud = restoredDeviceConfigPage
         ? restoredDeviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceAi8TemperatureBaudCombo"))
         : nullptr;
-    QPushButton *restoredSourceModeSwitch = restoredDeviceConfigPage
-        ? restoredDeviceConfigPage->findChild<QPushButton *>(QStringLiteral("deviceConfigSourceModeOverviewSwitch"))
-        : nullptr;
+    QPushButton *restoredSourceModeSwitch =
+        restoredWindow.findChild<QPushButton *>(QStringLiteral("sourceModeOverviewSwitch"));
     require(restoredSkyLink.value(QStringLiteral("transport")).toString() == QStringLiteral("serial") &&
                 restoredSkyLink.value(QStringLiteral("serial_port")).toString() == QStringLiteral("COM11") &&
                 restoredSkyLink.value(QStringLiteral("serial_baud")).toInt() == 1000000 &&
@@ -1895,8 +1900,10 @@ int main(int argc, char **argv)
                 restoredHost && restoredHost->text() == QStringLiteral("172.20.0.8") &&
                 restoredTcpPort && restoredTcpPort->value() == 39555,
             "custom Sky Link settings load into the model and refresh the device configuration UI");
-    require(restoredSourceModeSwitch && restoredEpsilonBaud && restoredHumidityBaud && restoredAi8Baud,
-            "restored device page exposes source switching and local EPSILON baud controls");
+    require(restoredSourceModeSwitch && restoredEpsilonBaud && restoredHumidityBaud && restoredAi8Baud &&
+                restoredDeviceConfigPage->findChild<QPushButton *>(
+                    QStringLiteral("deviceConfigSourceModeOverviewSwitch")) == nullptr,
+            "restored device page uses the shared title-bar source switch and local EPSILON baud controls");
     restoredSourceModeSwitch->click();
     VaporViewTest::processEventsFor(120);
     require(restoredHumidityBaud->currentText() == QStringLiteral("256000"),

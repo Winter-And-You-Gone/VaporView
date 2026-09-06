@@ -68,11 +68,25 @@ void require(bool condition, const char *message)
     }
 }
 
-VaporView::Ground::Widgets::SegmentedSwitchButton *findHomeSourceModeSwitch(QWidget *root)
+VaporView::Ground::Widgets::SegmentedSwitchButton *findTitleBarSourceModeSwitch(QWidget *root)
 {
     return root ? root->findChild<VaporView::Ground::Widgets::SegmentedSwitchButton *>(
                       QStringLiteral("sourceModeOverviewSwitch"))
                 : nullptr;
+}
+
+QGroupBox *findHomeDeviceOverviewCard(QWidget *root)
+{
+    QWidget *body = root ? root->findChild<QWidget *>(QStringLiteral("homeOverviewDeviceBody"))
+                         : nullptr;
+    for (QWidget *ancestor = body; ancestor; ancestor = ancestor->parentWidget())
+    {
+        if (auto *card = qobject_cast<QGroupBox *>(ancestor))
+        {
+            return card;
+        }
+    }
+    return nullptr;
 }
 
 using SettingsSnapshot = QMap<QString, QVariant>;
@@ -887,7 +901,7 @@ int main(int argc, char **argv)
     auto *window = new MainWindow();
     window->show();
     processEvents();
-    QComboBox *epsilonPort = window->findChild<QComboBox *>(QStringLiteral("epsilonPortCombo"));
+    QComboBox *epsilonPort = window->findChild<QComboBox *>(QStringLiteral("deviceEpsilonPortCombo"));
     QLineEdit *rtkServer = window->findChild<QLineEdit *>(QStringLiteral("rtkServerEdit"));
     QLineEdit *rtkPort = window->findChild<QLineEdit *>(QStringLiteral("rtkPortEdit"));
     QLineEdit *rtkUsername = window->findChild<QLineEdit *>(QStringLiteral("rtkUsernameEdit"));
@@ -908,15 +922,16 @@ int main(int argc, char **argv)
                 homeBottomFade->geometry().bottom() == homeScrollArea->viewport()->rect().bottom(),
             "home bottom fade stays attached to the viewport edge above the reserved content inset");
 
-    auto *sourceModeSwitch = findHomeSourceModeSwitch(window);
-    require(sourceModeSwitch, "home source mode switch exists");
-    QGroupBox *homeConfigCard = nullptr;
-    for (QWidget *ancestor = sourceModeSwitch->parentWidget(); ancestor && !homeConfigCard;
-         ancestor = ancestor->parentWidget())
-    {
-        homeConfigCard = qobject_cast<QGroupBox *>(ancestor);
-    }
+    auto *sourceModeSwitch = findTitleBarSourceModeSwitch(window);
+    require(sourceModeSwitch, "title-bar source mode switch exists");
+    auto *titleBar = window->findChild<QWidget *>(QStringLiteral("customTitleBar"));
+    require(titleBar && sourceModeSwitch->parentWidget() == titleBar,
+            "source mode switch lives in the main title bar");
+    QGroupBox *homeConfigCard = findHomeDeviceOverviewCard(window);
     require(homeConfigCard, "home device overview card exists");
+    require(homeConfigCard->findChild<QPushButton *>(QStringLiteral("sourceModeOverviewSwitch")) ==
+                nullptr,
+            "home device overview card does not retain a source-mode switch");
     const int telemetryPillCountBeforeModeSwitch =
         homeConfigCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill")).size();
     require(telemetryPillCountBeforeModeSwitch > 0,
@@ -1694,10 +1709,12 @@ int main(int argc, char **argv)
     QWidget *deviceConfigPage = window->findChild<QWidget *>(QStringLiteral("deviceConfigPage"));
     require(deviceConfigPage && deviceConfigPage->isVisible(),
             "unified device configuration page is visible in UI test mode");
-    auto *deviceSourceMode =
-        deviceConfigPage->findChild<QPushButton *>(QStringLiteral("deviceConfigSourceModeOverviewSwitch"));
-    require(deviceSourceMode && deviceSourceMode->property("segmentedSwitchControl").toBool(),
-            "unified device configuration page exposes the segmented source-mode selector");
+    auto *deviceSourceMode = findTitleBarSourceModeSwitch(window);
+    require(deviceSourceMode && deviceSourceMode->property("segmentedSwitchControl").toBool() &&
+                deviceSourceMode->parentWidget() == titleBar &&
+                deviceConfigPage->findChild<QPushButton *>(
+                    QStringLiteral("deviceConfigSourceModeOverviewSwitch")) == nullptr,
+            "unified device configuration uses the shared title-bar source-mode selector");
     deviceSourceMode->click();
     processEvents();
     auto *deviceRemoteCard =
@@ -2035,7 +2052,7 @@ int main(int argc, char **argv)
         auto *connectionWindow = new MainWindow();
         connectionWindow->show();
         processEvents();
-        auto *connectionSourceModeSwitch = findHomeSourceModeSwitch(connectionWindow);
+        auto *connectionSourceModeSwitch = findTitleBarSourceModeSwitch(connectionWindow);
         require(connectionSourceModeSwitch != nullptr,
                 "normal-mode source mode switch exists");
         if (connectionSourceModeSwitch->switchChecked())
@@ -2057,13 +2074,7 @@ int main(int argc, char **argv)
         VaporView::setSettingsWritesSuspended(true);
         connectionSourceModeSwitch->click();
         processEvents();
-        QGroupBox *remoteHomeConfigCard = nullptr;
-        for (QWidget *ancestor = connectionSourceModeSwitch->parentWidget();
-             ancestor && !remoteHomeConfigCard;
-             ancestor = ancestor->parentWidget())
-        {
-            remoteHomeConfigCard = qobject_cast<QGroupBox *>(ancestor);
-        }
+        QGroupBox *remoteHomeConfigCard = findHomeDeviceOverviewCard(connectionWindow);
         require(remoteHomeConfigCard != nullptr && connectionSourceModeSwitch->switchChecked(),
                 "remote source mode is active for zero-rate link coverage");
         for (const QString& name : {QStringLiteral("天→地"), QStringLiteral("地→天"), QStringLiteral("合")})
@@ -2104,11 +2115,11 @@ int main(int argc, char **argv)
         waveInputs.at(0)->setText(QStringLiteral("127.0.0.1"));
         waveInputs.at(1)->setText(QString::number(localWaveSource.serverPort()));
         for (const QString& objectName : {
-                 QStringLiteral("epsilonPortCombo"),
-                 QStringLiteral("pressurePortCombo"),
-                 QStringLiteral("humidityPortCombo"),
-                 QStringLiteral("lidarPortCombo"),
-                 QStringLiteral("temperaturePortCombo"),
+                 QStringLiteral("deviceEpsilonPortCombo"),
+                 QStringLiteral("devicePressurePortCombo"),
+                 QStringLiteral("deviceHumidityPortCombo"),
+                 QStringLiteral("deviceLidarPortCombo"),
+                 QStringLiteral("deviceTemperaturePortCombo"),
                  QStringLiteral("deviceAi8TemperaturePortCombo")})
         {
             if (QComboBox *combo = connectionWindow->findChild<QComboBox *>(objectName))
@@ -2183,7 +2194,7 @@ int main(int argc, char **argv)
         auto *failedConnectionWindow = new MainWindow();
         failedConnectionWindow->show();
         processEvents();
-        auto *failedSourceModeSwitch = findHomeSourceModeSwitch(failedConnectionWindow);
+        auto *failedSourceModeSwitch = findTitleBarSourceModeSwitch(failedConnectionWindow);
         require(failedSourceModeSwitch != nullptr,
                 "failed-path normal-mode source mode switch exists");
         if (failedSourceModeSwitch->switchChecked())
@@ -2209,11 +2220,11 @@ int main(int argc, char **argv)
         failedWaveInputs.at(0)->setText(QStringLiteral("127.0.0.1"));
         failedWaveInputs.at(1)->setText(QString::number(closedWavePort));
         for (const QString& objectName : {
-                 QStringLiteral("epsilonPortCombo"),
-                 QStringLiteral("pressurePortCombo"),
-                 QStringLiteral("humidityPortCombo"),
-                 QStringLiteral("lidarPortCombo"),
-                 QStringLiteral("temperaturePortCombo"),
+                 QStringLiteral("deviceEpsilonPortCombo"),
+                 QStringLiteral("devicePressurePortCombo"),
+                 QStringLiteral("deviceHumidityPortCombo"),
+                 QStringLiteral("deviceLidarPortCombo"),
+                 QStringLiteral("deviceTemperaturePortCombo"),
                  QStringLiteral("deviceAi8TemperaturePortCombo")})
         {
             if (QComboBox *combo = failedConnectionWindow->findChild<QComboBox *>(objectName))
@@ -2273,7 +2284,7 @@ int main(int argc, char **argv)
         auto *singleDeviceWindow = new MainWindow();
         singleDeviceWindow->show();
         processEvents();
-        auto *singleDeviceSourceModeSwitch = findHomeSourceModeSwitch(singleDeviceWindow);
+        auto *singleDeviceSourceModeSwitch = findTitleBarSourceModeSwitch(singleDeviceWindow);
         require(singleDeviceSourceModeSwitch != nullptr,
                 "single-device normal-mode source mode switch exists");
         if (singleDeviceSourceModeSwitch->switchChecked())
@@ -2291,7 +2302,7 @@ int main(int argc, char **argv)
                 "single-device normal-mode window exposes the all-log view action");
         singleDeviceLogAllAction->trigger();
         auto *singleDeviceEpsilonPort =
-            singleDeviceWindow->findChild<QComboBox *>(QStringLiteral("epsilonPortCombo"));
+            singleDeviceWindow->findChild<QComboBox *>(QStringLiteral("deviceEpsilonPortCombo"));
         require(singleDeviceEpsilonPort != nullptr,
                 "single-device normal-mode window exposes the EPSILON port combo");
         const QString singleDevicePort = QStringLiteral("__invalid_vaporview_home_epsilon__");

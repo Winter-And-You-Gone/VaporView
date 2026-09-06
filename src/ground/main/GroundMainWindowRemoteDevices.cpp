@@ -254,7 +254,6 @@ void MainWindow::requestSourceModeSelection(bool remoteSelected)
         }
     };
     syncSwitch(state_->source_mode_switch_);
-    syncSwitch(state_->device_config_.data_source_mode_switch);
 
     if (!state_->data_source_mode_combo_)
     {
