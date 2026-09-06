@@ -697,9 +697,20 @@ bool SkyConfig::validate(QString *errorMessage) const
     const QString pressureSource = ptb.source.trimmed().isEmpty()
         ? QStringLiteral("ptb210")
         : ptb.source.trimmed();
+    const QString humiditySource = hmp.source.trimmed().isEmpty()
+        ? QStringLiteral("hmp3")
+        : hmp.source.trimmed();
     return validateSupportedBaud(QStringLiteral("ptb"),
                                  ptb.baud_rate,
                                  pressureSensorBaudCapabilities(pressureSource),
+                                 errorMessage) &&
+           validateSupportedBaud(QStringLiteral("hmp"),
+                                 hmp.baud_rate,
+                                 humiditySensorBaudCapabilities(humiditySource),
+                                 errorMessage) &&
+           validateSupportedBaud(QStringLiteral("lidar"),
+                                 lidar.baud_rate,
+                                 lidarBaudCapabilities(),
                                  errorMessage) &&
            epsilonFromJson(epsilonToJson(epsilon), copy.epsilon, errorMessage) &&
            epsilonRtcmFromJson(epsilonRtcmToJson(epsilon_rtcm), copy.epsilon_rtcm, errorMessage) &&

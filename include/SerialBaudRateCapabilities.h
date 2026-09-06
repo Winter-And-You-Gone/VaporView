@@ -64,7 +64,9 @@ inline const BaudRateCapabilities& hostSerialLinkBaudCapabilities()
         {QStringLiteral("9600"), QStringLiteral("19200"), QStringLiteral("38400"),
          QStringLiteral("57600"), QStringLiteral("115200"), QStringLiteral("230400"),
          QStringLiteral("460800"), QStringLiteral("500000"), QStringLiteral("921600")},
-        BaudRateInputMode::PresetAndCustom};
+        BaudRateInputMode::PresetAndCustom,
+        1,
+        std::numeric_limits<int>::max()};
     return capabilities;
 }
 
@@ -90,12 +92,32 @@ inline const BaudRateCapabilities& sht45SerialAdapterBaudCapabilities()
 
 inline const BaudRateCapabilities& hmp3BaudCapabilities()
 {
-    return hostSerialLinkBaudCapabilities();
+    // HMP-Series Quick Guide M211982ZH-L documents the 19200 default and a
+    // configurable serial interface, but does not publish a complete baud
+    // whitelist or numeric range. Keep the existing editable compatibility
+    // policy without presenting 1..INT_MAX as an official device guarantee.
+    static const BaudRateCapabilities capabilities{
+        {QStringLiteral("9600"), QStringLiteral("19200"), QStringLiteral("38400"),
+         QStringLiteral("57600"), QStringLiteral("115200"), QStringLiteral("230400"),
+         QStringLiteral("460800"), QStringLiteral("500000"), QStringLiteral("921600")},
+        BaudRateInputMode::PresetAndCustom};
+    return capabilities;
 }
 
 inline const BaudRateCapabilities& lidarBaudCapabilities()
 {
-    return hostSerialLinkBaudCapabilities();
+    // TFA1500-L manual: UART TTL 3.3 V, default 500000, low-frequency mode
+    // supports >=115200 and high-frequency mode supports >=500000. The active
+    // mode is discovered by LidarCollector at runtime rather than selected in
+    // the serial configuration, so this capability enforces only the global
+    // documented lower bound and cannot enforce the high-frequency bound here.
+    static const BaudRateCapabilities capabilities{
+        {QStringLiteral("115200"), QStringLiteral("230400"), QStringLiteral("460800"),
+         QStringLiteral("500000"), QStringLiteral("921600")},
+        BaudRateInputMode::PresetAndCustom,
+        115200,
+        std::numeric_limits<int>::max()};
+    return capabilities;
 }
 
 inline const BaudRateCapabilities& ptb210BaudCapabilities();

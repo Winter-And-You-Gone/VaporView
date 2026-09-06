@@ -1,13 +1,16 @@
 #include "BaudRateComboSupport.h"
+#include "SkyConfig.h"
 
 #include <QApplication>
 #include <QComboBox>
+#include <QJsonObject>
 #include <QKeyEvent>
 #include <QMetaObject>
 #include <QValidator>
 
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 
 namespace
 {
@@ -46,6 +49,51 @@ int main(int argc, char **argv)
                 !VaporView::parseSerialBaudRate(QStringLiteral("9600.5")) &&
                 !VaporView::parseSerialBaudRate(QStringLiteral("2147483648")),
             "invalid or overflowing baud text is rejected");
+
+    const auto& hmpCapabilities = VaporView::hmp3BaudCapabilities();
+    require(hmpCapabilities.inputMode == VaporView::BaudRateInputMode::PresetAndCustom &&
+                hmpCapabilities.customMinimum == 1 &&
+                hmpCapabilities.customMaximum == std::numeric_limits<int>::max() &&
+                hmpCapabilities.presets.contains(QStringLiteral("19200")) &&
+                VaporView::isBaudRateSupported(hmpCapabilities, 19200) &&
+                VaporView::isBaudRateSupported(hmpCapabilities, 750000),
+            "HMP3 keeps the documented default and editable compatibility policy");
+
+    const auto& lidarCapabilities = VaporView::lidarBaudCapabilities();
+    // LidarCollector discovers the frequency mode after opening the device;
+    // no configuration mode is available here, so only the global lower bound
+    // is enforced rather than assuming the high-frequency 500000 minimum.
+    require(lidarCapabilities.inputMode == VaporView::BaudRateInputMode::PresetAndCustom &&
+                lidarCapabilities.customMinimum == 115200 &&
+                lidarCapabilities.customMaximum == std::numeric_limits<int>::max() &&
+                lidarCapabilities.presets.contains(QStringLiteral("500000")) &&
+                !lidarCapabilities.presets.contains(QStringLiteral("9600")) &&
+                VaporView::isBaudRateSupported(lidarCapabilities, 115200) &&
+                VaporView::isBaudRateSupported(lidarCapabilities, 500000) &&
+                VaporView::isBaudRateSupported(lidarCapabilities, 750000) &&
+                !VaporView::isBaudRateSupported(lidarCapabilities, 9600),
+            "TFA1500-L enforces the global documented 115200 minimum while retaining custom baud");
+
+    VaporView::SkyConfig skyDefaults = VaporView::SkyConfig::defaults();
+    QString skyConfigError;
+    require(skyDefaults.hmp.baud_rate == 19200 && skyDefaults.lidar.baud_rate == 500000 &&
+                skyDefaults.validate(&skyConfigError),
+            "HMP3 19200 and TFA1500-L 500000 defaults remain valid");
+    skyDefaults.lidar.baud_rate = 9600;
+    require(!skyDefaults.validate(&skyConfigError) &&
+                skyConfigError == QStringLiteral("lidar baud is unsupported"),
+            "SkyConfig rejects a persisted TFA1500-L baud below the device minimum");
+    skyDefaults.lidar.baud_rate = 750000;
+    require(skyDefaults.validate(&skyConfigError),
+            "SkyConfig accepts a non-preset TFA1500-L baud in the documented custom range");
+    QJsonObject invalidSkyJson = skyDefaults.toJson();
+    QJsonObject invalidLidar = invalidSkyJson.value(QStringLiteral("lidar")).toObject();
+    invalidLidar[QStringLiteral("baud")] = 9600;
+    invalidSkyJson[QStringLiteral("lidar")] = invalidLidar;
+    VaporView::SkyConfig parsedSkyConfig;
+    require(!VaporView::SkyConfig::fromJson(invalidSkyJson, parsedSkyConfig, &skyConfigError) &&
+                skyConfigError == QStringLiteral("lidar baud is unsupported"),
+            "remote SkyConfig JSON rejects the same unsupported TFA1500-L baud");
 
     QComboBox combo;
     VaporView::configureSerialBaudRateCombo(
@@ -93,6 +141,26 @@ int main(int argc, char **argv)
     QApplication::sendEvent(combo.lineEdit(), &escape);
     require(combo.currentText() == QStringLiteral("1000000") && combo.count() == 9,
             "Escape restores the last valid baud without changing presets");
+
+    QComboBox lidarCombo;
+    VaporView::configureSerialBaudRateCombo(
+        &lidarCombo,
+        lidarCapabilities,
+        QStringLiteral("500000"));
+    require(lidarCombo.isEditable() && lidarCombo.currentText() == QStringLiteral("500000") &&
+                lidarCombo.count() == 5,
+            "TFA1500-L baud combo uses the legal default and editable presets");
+    require(!VaporView::setSerialBaudRateComboText(&lidarCombo, QStringLiteral("9600")) &&
+                lidarCombo.currentText() == QStringLiteral("500000") &&
+                VaporView::setSerialBaudRateComboText(&lidarCombo, QStringLiteral("750000")) &&
+                lidarCombo.currentText() == QStringLiteral("750000"),
+            "TFA1500-L combo rejects 9600 and accepts a legal custom baud");
+    const QValidator *lidarValidator = lidarCombo.lineEdit()->validator();
+    QString lidarBelowMinimum = QStringLiteral("9600");
+    int lidarCursor = 0;
+    require(lidarValidator &&
+                lidarValidator->validate(lidarBelowMinimum, lidarCursor) != QValidator::Acceptable,
+            "TFA1500-L editor rejects values below the device minimum");
 
     QComboBox ai8Combo;
     VaporView::configureSerialBaudRateCombo(

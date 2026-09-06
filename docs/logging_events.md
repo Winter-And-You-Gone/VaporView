@@ -192,7 +192,6 @@
 | Ground | device.connection | local_serial_port_detection_rejected_unsupported_baud | Warning | 已忽略本地自动识别返回的不受支持波特率。 | device_key, port, configured_baud, error_code, reason_code | ui_visibility | UNSUPPORTED_BAUD_RATE |
 | Ground | device.connection | temperature_controller_connection_rejected_missing_port | Warning | 请先选择本地 RD105 串口。 | device, device_id, reason_code | ui_dedupe_key | MISSING_ENDPOINT |
 | Ground | device.connection | temperature_controller_connection_rejected_invalid_baud | Warning | RD105 波特率无效。 | device, device_id, reason_code, baud_text | ui_dedupe_key | CONFIG_INVALID |
-| Ground | device.connection | local_temperature_connection_rejected_invalid_baud | Warning | RD105 主机串口波特率无效。 | device, port, configured_baud, error_code, reason_code |  | INVALID_BAUD_RATE |
 | Ground | device.connection | local_temperature_connection_rejected_unsupported_baud | Warning | RD105 主机串口波特率不受设备支持。 | device, port, configured_baud, error_code, reason_code |  | UNSUPPORTED_BAUD_RATE |
 | Ground | device.connection | temperature_controller_connection_started | Info | 正在连接本地 RD105 温控器。 | device, device_id, port, baud, sample_rate_hz | ui_visibility |  |
 | Ground | device.connection | temperature_controller_connected | Info | 本地 RD105 温控器已连接。 | device, device_id | details, ui_visibility |  |
@@ -291,6 +290,7 @@
 | Ground | configuration.apply | epsilon_packet_profile_apply_requested | Info | 正在应用刚保存的 EPSILON 包频率配置。 | device, port, packet_rate_summary | ui_visibility |  |
 | Ground | configuration.apply | epsilon_packet_profile_saved_deferred | Info | EPSILON 包频率配置已保存，将在下次连接或重配时生效。 | device, packet_rate_summary | ui_visibility |  |
 | Ground | configuration.apply | ai8_persisted_baud_rejected | Warning | 已忽略 AI-8288 的无效已保存波特率，并恢复默认值。 | device, configured_baud, fallback_baud, error_code, reason_code | ui_visibility | UNSUPPORTED_BAUD_RATE |
+| Ground | configuration.apply | lidar_persisted_baud_rejected | Warning | 已忽略 TFA1500-L 的无效已保存波特率，并恢复默认值。 | device, configured_baud, fallback_baud, error_code, reason_code | ui_visibility | UNSUPPORTED_BAUD_RATE |
 | Ground | configuration.apply | recording_directory_updated | Info | 记录目录已更新。 | recording_directory | ui_visibility |  |
 | Ground | configuration.apply | recording_csv_rate_updated | Info | 其余设备记录频率已更新。 | recording_rate_hz | ui_visibility |  |
 | Ground | configuration.apply | epsilon_raw_recording_full_frames_enabled | Info | EPSILON 原始记录固定保存完整已校验 FDILink 帧。 | device, recording_mode | ui_visibility |  |

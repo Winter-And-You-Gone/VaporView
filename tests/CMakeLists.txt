@@ -175,7 +175,7 @@ add_executable(serial_baud_rate_test
 target_include_directories(serial_baud_rate_test PRIVATE
     ${CMAKE_SOURCE_DIR}/include
 )
-target_link_libraries(serial_baud_rate_test PRIVATE Qt6::Widgets)
+target_link_libraries(serial_baud_rate_test PRIVATE Qt6::Widgets vaporview_protocol)
 add_test(NAME serial_baud_rate_test COMMAND serial_baud_rate_test)
 set_tests_properties(serial_baud_rate_test PROPERTIES
     TIMEOUT 30
