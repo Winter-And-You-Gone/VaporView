@@ -58,9 +58,20 @@ int main(int argc, char **argv)
         overview.findChildren<QLabel *>(QStringLiteral("ai8TemperatureOverviewChannelLabel"));
     const QList<QLabel *> overviewValueLabels =
         overview.findChildren<QLabel *>(QStringLiteral("ai8TemperatureOverviewValueLabel"));
+    const QList<QFrame *> overviewCells =
+        overview.findChildren<QFrame *>(QStringLiteral("ai8TemperatureOverviewCell"));
     auto *overviewLayout = qobject_cast<QGridLayout *>(overview.layout());
     require(overviewChannelLabels.size() == 8 && overviewValueLabels.size() == 8,
             "AI-8288 overview exposes one direct temperature value for each of eight channels");
+    require(overviewCells.size() == 8,
+            "AI-8288 overview wraps each channel in its own capsule frame");
+    for (QFrame *cell : overviewCells)
+    {
+        require(cell->frameShape() == QFrame::NoFrame &&
+                    cell->testAttribute(Qt::WA_StyledBackground) &&
+                    cell->height() == 32,
+                "AI-8288 overview channel capsules use a stable styled frame");
+    }
     require(overviewLayout != nullptr && overviewLayout->rowCount() == 1 &&
                 overviewLayout->columnCount() == 8,
             "AI-8288 overview keeps all eight channels on one row");

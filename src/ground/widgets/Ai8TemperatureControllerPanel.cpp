@@ -1568,14 +1568,16 @@ Ai8TemperatureOverviewPanel::Ai8TemperatureOverviewPanel(QWidget *parent)
 
     for (int index = 0; index < Ai8TemperatureControllerProtocol::kChannelCount; ++index)
     {
-        auto *cell = new QWidget(this);
+        auto *cell = new QFrame(this);
         cell->setObjectName(QStringLiteral("ai8TemperatureOverviewCell"));
         cell->setProperty("channelIndex", index);
+        cell->setFrameShape(QFrame::NoFrame);
+        cell->setAttribute(Qt::WA_StyledBackground, true);
         cell->setFixedHeight(kAi8OverviewCellHeight);
         cell->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         auto *cellLayout = new QHBoxLayout(cell);
-        cellLayout->setContentsMargins(1, 0, 1, 0);
-        cellLayout->setSpacing(2);
+        cellLayout->setContentsMargins(6, 0, 6, 0);
+        cellLayout->setSpacing(4);
 
         auto *channelLabel = new QLabel(cell);
         channelLabel->setObjectName(QStringLiteral("ai8TemperatureOverviewChannelLabel"));

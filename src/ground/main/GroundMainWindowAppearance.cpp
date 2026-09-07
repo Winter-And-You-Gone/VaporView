@@ -131,6 +131,8 @@ void MainWindow::loadModernStyleSheet()
             "QLabel#homeTelemetrySummaryTitleLabel[skyTelemetryTitle=\"true\"] { color: @vv-primary; }"
             "QLabel#temperatureOverviewValuePill { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text-strong; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 13px; font-weight: 700; padding: 2px 8px; margin: 0px; }"
             "QWidget#ai8TemperatureOverviewPanel { background-color: transparent; }"
+            "QFrame#ai8TemperatureOverviewCell { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 12px; }"
+            "QFrame#ai8TemperatureOverviewCell QLabel { background-color: transparent; border: none; }"
             "QLabel#ai8TemperatureOverviewChannelLabel { color: @vv-text-muted; font-size: 11px; font-weight: 600; }"
             "QLabel#ai8TemperatureOverviewValueLabel { color: @vv-text-strong; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 13px; font-weight: 700; }"
             "QLabel#temperatureOverviewOutputPercentPill { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text-strong; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 13px; font-weight: 700; padding: 2px 3px; margin: 0px; }"
