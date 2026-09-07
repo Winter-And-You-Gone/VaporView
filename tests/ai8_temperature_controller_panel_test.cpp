@@ -117,6 +117,23 @@ int main(int argc, char **argv)
                             .arg(valueLabel->text()),
                 "AI-8288 overview formats each live channel temperature and exposes it to accessibility tools");
     }
+    const double thresholdValues[] = {40.0, 40.1, 60.0, 60.1, -5.0,
+        std::numeric_limits<double>::quiet_NaN(),
+        std::numeric_limits<double>::infinity(), 25.0};
+    const char *expectedStates[] = {"normal", "warm", "warm", "hot", "normal",
+        "unavailable", "unavailable", "normal"};
+    for (int index = 0; index < 8; ++index)
+        overviewLiveData.measuredC[static_cast<size_t>(index)] = thresholdValues[index];
+    overview.applyLiveData(overviewLiveData);
+    for (QLabel *valueLabel : overviewValueLabels)
+    {
+        const int index = valueLabel->property("channelIndex").toInt();
+        require(valueLabel->property("temperatureState").toString() ==
+                    QString::fromLatin1(expectedStates[index]) &&
+                    valueLabel->parentWidget()->property("available").toBool() ==
+                        std::isfinite(thresholdValues[index]),
+                "Overview colors follow strict temperature thresholds and finite data availability");
+    }
     overview.setEnglish(true);
     for (QLabel *channelLabel : overviewChannelLabels)
     {
@@ -127,7 +144,9 @@ int main(int argc, char **argv)
     overview.applyLiveData({});
     for (QLabel *valueLabel : overviewValueLabels)
     {
-        require(valueLabel->text() == QStringLiteral("---"),
+        require(valueLabel->text() == QStringLiteral("---") &&
+                    valueLabel->property("temperatureState").toString() == QStringLiteral("unavailable") &&
+                    !valueLabel->parentWidget()->property("available").toBool(),
                 "AI-8288 overview clears stale temperatures when live data is unavailable");
     }
 

@@ -1632,9 +1632,28 @@ void Ai8TemperatureOverviewPanel::refreshLabels()
         const QString channelText = english_ ? QString::number(index + 1)
                                              : QStringLiteral("通道 %1").arg(index + 1);
         const double measured = latest_live_data_.measuredC[static_cast<size_t>(index)];
-        const QString valueText = latest_live_data_.valid && std::isfinite(measured)
+        const bool available = latest_live_data_.valid && std::isfinite(measured);
+        const QString valueText = available
             ? temperatureText(measured)
             : QStringLiteral("---");
+        QWidget *cell = valueLabel->parentWidget();
+        const QString temperatureState = !available ? QStringLiteral("unavailable")
+            : measured > 60.0 ? QStringLiteral("hot")
+            : measured > 40.0 ? QStringLiteral("warm") : QStringLiteral("normal");
+        if (cell->property("available") != QVariant(available))
+        {
+            cell->setProperty("available", available);
+            cell->style()->unpolish(cell);
+            cell->style()->polish(cell);
+            cell->update();
+        }
+        if (valueLabel->property("temperatureState").toString() != temperatureState)
+        {
+            valueLabel->setProperty("temperatureState", temperatureState);
+            valueLabel->style()->unpolish(valueLabel);
+            valueLabel->style()->polish(valueLabel);
+            valueLabel->update();
+        }
         channelLabel->setText(channelText);
         valueLabel->setText(valueText);
         valueLabel->setProperty("displayText", valueText);
