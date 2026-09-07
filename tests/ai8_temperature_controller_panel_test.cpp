@@ -1,4 +1,5 @@
 #include "ground/widgets/Ai8TemperatureControllerPanel.h"
+#include "ground/widgets/TemperatureTrendPlotWidget.h"
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
@@ -7,6 +8,7 @@
 #include <QComboBox>
 #include <QColor>
 #include <QDoubleSpinBox>
+#include <QDateTime>
 #include <QFrame>
 #include <QGridLayout>
 #include <QImage>
@@ -43,6 +45,37 @@ void require(bool condition, const char *message)
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
+
+    TemperatureTrendPlotWidget windowedPlot;
+    windowedPlot.setCompactMode(true);
+    windowedPlot.resize(600, 190);
+    windowedPlot.setTimeAxisEnabled(true);
+    windowedPlot.setTargetTemperature(25.0);
+    const double now = QDateTime::currentMSecsSinceEpoch() / 1000.0;
+    windowedPlot.setSamples({23.0, 25.0, 25.1});
+    windowedPlot.setSampleTimes({now - 120.0, now - 60.0, now - 0.1});
+    require(!windowedPlot.grab().isNull() &&
+                windowedPlot.property("yAxisMinC").toDouble() == 24.0 &&
+                windowedPlot.property("yAxisMaxC").toDouble() == 26.0,
+            "Time plot recenters after old extrema leave the visible window");
+    windowedPlot.setSampleTimes({now - 2.0, now - 1.0, now - 0.1});
+    windowedPlot.grab();
+    require(windowedPlot.property("yAxisMinC").toDouble() == 22.0,
+            "Time plot still expands for a visible low temperature");
+    windowedPlot.setSamples({0.0, 25.0, 25.1});
+    windowedPlot.setSampleTimes({now - 120.0, now - 1.0, now - 0.1});
+    windowedPlot.grab();
+    require(windowedPlot.property("yAxisMinC").toDouble() > 0.0 &&
+                windowedPlot.property("yAxisMinC").toDouble() < 24.0,
+            "Time plot includes the clipped line at the left window edge without the old extreme");
+    windowedPlot.setSampleTimes({now - 120.0, now - 110.0, now - 100.0});
+    windowedPlot.grab();
+    require(windowedPlot.property("yAxisMinC").toDouble() == 24.0 &&
+                windowedPlot.property("yAxisMaxC").toDouble() == 26.0,
+            "An empty visible window restores the target-centered range");
+    windowedPlot.setTimeAxisEnabled(false);
+    require(windowedPlot.property("yAxisMinC").toDouble() == -1.0,
+            "Sample-index plots retain full-history scaling");
 
     VaporView::Ground::Widgets::Ai8TemperatureControllerPanel panel;
     QLabel protocolStatusLabel;

@@ -32,6 +32,8 @@ private:
     static QString timeAxisTickLabel(double value);
     static std::pair<double, double> temperatureAxisRange(const QVector<double>& finiteSamples,
                                                            double targetTemperature);
+    std::pair<double, double> visibleTimeRange(double now) const;
+    std::pair<double, double> visibleTemperatureAxisRange(double now) const;
     void updateSampleProperties();
     void applyPlotSizing();
 

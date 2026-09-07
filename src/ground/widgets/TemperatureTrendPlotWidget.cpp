@@ -197,15 +197,17 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
     setProperty("xAxisTickCount", xAxisLabelCount);
     setProperty("xAxisTimeMinimumTickSpacing",
                 time_axis_enabled_ ? timeAxisMinimumTickSpacing : 0.0);
-    auto xAxisRange = [this, xAxisIntervals](int sampleCount) {
+    const double now = localClockSeconds();
+    auto xAxisRange = [this, now](int sampleCount) {
         if (!time_axis_enabled_)
         {
             return std::pair<double, double>{0.0, static_cast<double>(std::max(1, sampleCount - 1))};
         }
-        const double visibleSpan = static_cast<double>(xAxisIntervals) * kTimeAxisSecondsPerInterval;
-        const double xMax = localClockSeconds();
-        return std::pair<double, double>{xMax - visibleSpan, xMax};
+        return visibleTimeRange(now);
     };
+    const auto [minValue, maxValue] = visibleTemperatureAxisRange(now);
+    setProperty("yAxisMinC", minValue);
+    setProperty("yAxisMaxC", maxValue);
     auto drawGridAndAxes = [&](double minValue,
                                double maxValue,
                                int sampleCount) {
@@ -348,7 +350,6 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
 
     if (finiteSamples.isEmpty() || plotRect.width() <= 1.0 || plotRect.height() <= 1.0)
     {
-        const auto [minValue, maxValue] = temperatureAxisRange(QVector<double>(), target_temperature_c_);
         drawGridAndAxes(minValue, maxValue, 0);
         drawTargetTemperatureGuide(minValue, maxValue);
         painter.setPen(muted);
@@ -370,7 +371,6 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
         return;
     }
 
-    const auto [minValue, maxValue] = temperatureAxisRange(finiteSamples, target_temperature_c_);
     drawGridAndAxes(minValue, maxValue, finiteSamples.size());
     drawTargetTemperatureGuide(minValue, maxValue);
 
@@ -449,20 +449,61 @@ std::pair<double, double> TemperatureTrendPlotWidget::temperatureAxisRange(
     return {minValue, maxValue};
 }
 
-void TemperatureTrendPlotWidget::updateSampleProperties()
+std::pair<double, double> TemperatureTrendPlotWidget::visibleTimeRange(double now) const
+{
+    QFont axisFont = font();
+    axisFont.setPointSize(std::max(8, axisFont.pointSize() - 2));
+    const int intervals = xAxisLabelCountForWidth(
+        plotAreaRect().width(), QFontMetrics(axisFont), true) - 1;
+    return {now - intervals * kTimeAxisSecondsPerInterval, now};
+}
+
+std::pair<double, double> TemperatureTrendPlotWidget::visibleTemperatureAxisRange(double now) const
 {
     QVector<double> finiteSamples;
     finiteSamples.reserve(samples_.size());
-    for (double value : samples_)
+    const auto [xMin, xMax] = visibleTimeRange(now);
+    const bool useTimes = time_axis_enabled_ && sample_times_.size() == samples_.size();
+    int previous = -1;
+    for (int index = 0; index < samples_.size(); ++index)
     {
-        if (std::isfinite(value))
+        const double value = samples_.at(index);
+        if (!std::isfinite(value))
+            continue;
+        if (!useTimes)
         {
             finiteSamples.append(value);
+            continue;
         }
+        const double time = sample_times_.at(index);
+        if (!std::isfinite(time))
+            continue;
+        if (time >= xMin && time <= xMax)
+            finiteSamples.append(value);
+        // Include only the visible part of a line crossing either window edge.
+        if (previous >= 0)
+        {
+            const double previousTime = sample_times_.at(previous);
+            for (double edge : {xMin, xMax})
+            {
+                if (previousTime < edge && time > edge)
+                {
+                    const double ratio = (edge - previousTime) / (time - previousTime);
+                    finiteSamples.append(samples_.at(previous) +
+                        ratio * (value - samples_.at(previous)));
+                }
+            }
+        }
+        previous = index;
     }
+    return temperatureAxisRange(finiteSamples, target_temperature_c_);
+}
 
-    const auto [minValue, maxValue] = temperatureAxisRange(finiteSamples, target_temperature_c_);
-    setProperty("sampleCount", finiteSamples.size());
+void TemperatureTrendPlotWidget::updateSampleProperties()
+{
+    const auto [minValue, maxValue] = visibleTemperatureAxisRange(localClockSeconds());
+    setProperty("sampleCount", static_cast<int>(std::count_if(samples_.cbegin(), samples_.cend(),
+        [](double value) { return std::isfinite(value); })));
     setProperty("yAxisMinC", minValue);
     setProperty("yAxisMaxC", maxValue);
     setProperty("axisLabelsVisible", true);
