@@ -82,8 +82,8 @@ int main(int argc, char **argv)
     for (QLabel *channelLabel : overviewChannelLabels)
     {
         const int index = channelLabel->property("channelIndex").toInt();
-        require(channelLabel->text() == QString::number(index + 1),
-                "AI-8288 overview shows the channel number without a repeated channel prefix");
+        require(channelLabel->text() == QStringLiteral("通道 %1").arg(index + 1),
+                "AI-8288 overview identifies each capsule with its channel number");
         auto *cell = qobject_cast<QFrame *>(channelLabel->parentWidget());
         auto *cellLayout = cell ? qobject_cast<QVBoxLayout *>(cell->layout()) : nullptr;
         auto *valueLabel = cell ? cell->findChild<QLabel *>(

@@ -1629,7 +1629,8 @@ void Ai8TemperatureOverviewPanel::refreshLabels()
             continue;
         }
 
-        const QString channelText = QString::number(index + 1);
+        const QString channelText = english_ ? QString::number(index + 1)
+                                             : QStringLiteral("通道 %1").arg(index + 1);
         const double measured = latest_live_data_.measuredC[static_cast<size_t>(index)];
         const QString valueText = latest_live_data_.valid && std::isfinite(measured)
             ? temperatureText(measured)
