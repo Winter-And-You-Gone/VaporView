@@ -598,10 +598,6 @@ void MainWindow::updateRecordingStatusLabel()
 
     auto applyRecordingStatusText = [this](const QString& plainText) {
         state_->recording_status_view_->setStatusText(plainText);
-        if (state_->recording_status_card_)
-        {
-            state_->recording_status_card_->setToolTip(plainText);
-        }
     };
 
     if (isUiTestMode())

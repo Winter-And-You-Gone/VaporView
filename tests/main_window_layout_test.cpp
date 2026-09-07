@@ -1,6 +1,7 @@
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/TopLevelCardStyle.h"
 #include "ground/main/MainWindow.h"
+#include "ground/main/RecordingStatusView.h"
 #include "ground/main/GroundMainWindowSupport.h"
 #include "ground/navigation/CombinationNavigationPage.h"
 #include "ground/navigation/EpsilonConfigPanel.h"
@@ -4731,7 +4732,11 @@ int main(int argc, char **argv)
     require(recordingStatusCard != nullptr && recordingStatusView != nullptr &&
                 logPanelFrame != nullptr,
             "right-side recording and log cards exist for outer-margin checks");
-    const QString recordingStatusDetail = recordingStatusView->toolTip();
+    auto *recordingStatus =
+        static_cast<VaporView::Ground::Main::RecordingStatusView *>(recordingStatusView);
+    require(recordingStatusCard->toolTip().isEmpty() && recordingStatusView->toolTip().isEmpty(),
+            "recording status card fields do not expose redundant hover tooltips");
+    const QString recordingStatusDetail = recordingStatus->statusText();
     require(recordingStatusDetail.contains(QStringLiteral("RAW EPSILON")) &&
                 recordingStatusDetail.contains(QStringLiteral("RAW PTB210")) &&
                 recordingStatusDetail.contains(QStringLiteral("RAW HMP3")) &&
@@ -6518,11 +6523,10 @@ int main(int argc, char **argv)
             linkRateNames << nameLabel->text();
         }
     }
-    require(linkRateNames == QStringList{QStringLiteral("目标"),
-                                         QStringLiteral("天→地"),
+    require(linkRateNames == QStringList{QStringLiteral("天→地"),
                                          QStringLiteral("地→天"),
                                          QStringLiteral("合")},
-            "home link-rate pills expose target plus compact Chinese field names");
+            "home link-rate pills expose compact Chinese field names without a target capsule");
     const QList<QFrame*> ratePills =
         homeRateSection->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
     require(!ratePills.isEmpty(),
@@ -6579,28 +6583,20 @@ int main(int argc, char **argv)
     QFrame *homeLinkSection = homeTelemetrySections.at(1);
     const QList<QFrame*> linkRatePills =
         homeLinkSection->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
-    require(linkRatePills.size() == 4,
-            "home link-rate telemetry section includes target plus three link-rate pills");
-    QFrame *targetPill = findTelemetryPillByName(homeLinkSection, QStringLiteral("目标"));
-    require(targetPill != nullptr,
-            "home link-rate telemetry section exposes the current Local/Remote target");
-    const int targetPillY = targetPill->mapTo(homeLinkSection, QPoint(0, 0)).y();
+    require(linkRatePills.size() == 3,
+            "home link-rate telemetry section includes only the three link-rate pills");
+    require(findTelemetryPillByName(homeLinkSection, QStringLiteral("目标")) == nullptr,
+            "home link-rate telemetry section omits the target capsule");
     int linkRatePillY = -1;
     for (QFrame *pill : linkRatePills)
     {
-        if (pill == targetPill)
-        {
-            continue;
-        }
         const int pillY = pill->mapTo(homeLinkSection, QPoint(0, 0)).y();
-        require(pillY > targetPillY,
-                "home link-rate target is alone on the first telemetry line");
         if (linkRatePillY < 0)
         {
             linkRatePillY = pillY;
         }
         require(std::abs(pillY - linkRatePillY) <= 2,
-                "home link-rate direction and total pills share the second telemetry line");
+                "home link-rate direction and total pills share one telemetry line");
         QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
         require(valueLabel != nullptr,
                 "home link-rate pill has a value label");
@@ -10499,8 +10495,8 @@ int main(int argc, char **argv)
     requireSameRect(deviceTelemetrySummaryCard->geometry(), localTelemetrySummaryRect, 2,
                     "device telemetry summary geometry is stable in sky-ground remote mode");
     setDeviceSourceModeRemote(false);
-    require(recordingStatusView->toolTip().contains(QStringLiteral("记录：未记录")) &&
-                !recordingStatusView->toolTip().contains(QStringLiteral("天空端记录")),
+    require(recordingStatus->statusText().contains(QStringLiteral("记录：未记录")) &&
+                !recordingStatus->statusText().contains(QStringLiteral("天空端记录")),
             "recording status returns to local text after switching back from remote mode");
     const int restoredRecordingStatusBottomGap = recordingStatusBottomGap();
     require(restoredRecordingStatusBottomGap >= 4 && restoredRecordingStatusBottomGap <= 6,

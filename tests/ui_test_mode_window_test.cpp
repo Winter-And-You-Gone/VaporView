@@ -1,4 +1,5 @@
 #include "ground/main/MainWindow.h"
+#include "ground/main/RecordingStatusView.h"
 #include "ground/devices/RemoteSkyController.h"
 #include "ground/main/UiLogModel.h"
 #include "ground/rtk/RtkConfigDialog.h"
@@ -1843,8 +1844,13 @@ int main(int argc, char **argv)
     processEvents();
 
     auto *recordingCard = window->findChild<QFrame *>(QStringLiteral("recordingStatusCard"));
-    auto *recordingStatus = window->findChild<QWidget *>(QStringLiteral("recordingStatusView"));
-    require(recordingCard && recordingStatus, "recording status card exists");
+    auto *recordingStatusWidget =
+        window->findChild<QWidget *>(QStringLiteral("recordingStatusView"));
+    require(recordingCard && recordingStatusWidget, "recording status card exists");
+    auto *recordingStatus =
+        static_cast<VaporView::Ground::Main::RecordingStatusView *>(recordingStatusWidget);
+    require(recordingCard->toolTip().isEmpty() && recordingStatus->toolTip().isEmpty(),
+            "UI-test recording status card fields do not expose redundant hover tooltips");
     QLabel *recordingTitle = nullptr;
     for (QLabel *label : recordingCard->findChildren<QLabel *>())
     {
@@ -1942,7 +1948,7 @@ int main(int argc, char **argv)
         return true;
     };
     require(VaporViewTest::processEventsUntil(1500, [recordingStatus, recordingStatusUnitColumnIsStable]() {
-                const QString text = recordingStatus->toolTip();
+                const QString text = recordingStatus->statusText();
                 return text.contains(QStringLiteral("记录：进行中（界面测试）")) &&
                     text.contains(QStringLiteral("会话：UI-TEST-SESSION")) &&
                     text.contains(QStringLiteral("外部设备记录：")) &&
@@ -1973,9 +1979,9 @@ int main(int argc, char **argv)
     {
         stableRecordingStatusLabels.append(label);
     }
-    const QString recordingTextBeforeCounterRefresh = recordingStatus->toolTip();
+    const QString recordingTextBeforeCounterRefresh = recordingStatus->statusText();
     require(VaporViewTest::processEventsUntil(1500, [recordingStatus, recordingTextBeforeCounterRefresh]() {
-                return recordingStatus->toolTip() != recordingTextBeforeCounterRefresh;
+                return recordingStatus->statusText() != recordingTextBeforeCounterRefresh;
             }),
             "UI test mode recording counters continue refreshing");
     const QList<QLabel *> recordingStatusLabelsAfterCounterRefresh =
@@ -1992,26 +1998,26 @@ int main(int argc, char **argv)
     require(QMetaObject::invokeMethod(window, "onPauseRecordingClicked", Qt::DirectConnection),
             "simulated recording pause slot invoked");
     processEvents();
-    const QString pausedRecordingText = recordingStatus->toolTip();
+    const QString pausedRecordingText = recordingStatus->statusText();
     require(pausedRecordingText.contains(QStringLiteral("记录：已暂停（界面测试）")),
             "simulated recording displays the paused UI-test state");
     require(!VaporViewTest::processEventsUntil(400, [recordingStatus, pausedRecordingText]() {
-                return recordingStatus->toolTip() != pausedRecordingText;
+                return recordingStatus->statusText() != pausedRecordingText;
             }),
             "simulated recording counters freeze while paused");
     require(QMetaObject::invokeMethod(window, "onStartRecordingClicked", Qt::DirectConnection),
             "simulated recording resume slot invoked");
     require(VaporViewTest::processEventsUntil(1500, [recordingStatus, pausedRecordingText]() {
-                return recordingStatus->toolTip().contains(QStringLiteral("记录：进行中（界面测试）")) &&
-                    recordingStatus->toolTip() != pausedRecordingText;
+                return recordingStatus->statusText().contains(QStringLiteral("记录：进行中（界面测试）")) &&
+                    recordingStatus->statusText() != pausedRecordingText;
             }),
             "simulated recording counters resume without starting the real recorder");
     require(QMetaObject::invokeMethod(window, "onStopRecordingClicked", Qt::DirectConnection),
             "simulated recording stop slot invoked");
     processEvents();
-    require(recordingStatus->toolTip().contains(QStringLiteral("记录：未记录（界面测试）")) &&
-                recordingStatus->toolTip().contains(QStringLiteral("外部设备记录：0 行")) &&
-                recordingStatus->toolTip().contains(QStringLiteral("文件写入：无（仅内存模拟）")),
+    require(recordingStatus->statusText().contains(QStringLiteral("记录：未记录（界面测试）")) &&
+                recordingStatus->statusText().contains(QStringLiteral("外部设备记录：0 行")) &&
+                recordingStatus->statusText().contains(QStringLiteral("文件写入：无（仅内存模拟）")),
             "stopping simulated recording clears only its in-memory counters");
     require(QMetaObject::invokeMethod(window, "onDisconnectClicked", Qt::DirectConnection),
             "simulated disconnect slot invoked");

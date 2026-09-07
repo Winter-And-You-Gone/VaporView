@@ -181,12 +181,10 @@ void RecordingStatusView::setStatusText(const QString& plainText)
 
     if (status_text_ == plainText)
     {
-        setToolTip(plainText);
         return;
     }
 
     status_text_ = plainText;
-    setToolTip(plainText);
 
     auto applyColumnWidths = [this]() {
         int fieldWidth = 0;
