@@ -70,12 +70,14 @@ int main(int argc, char **argv)
     {
         require(cell->frameShape() == QFrame::NoFrame &&
                     cell->testAttribute(Qt::WA_StyledBackground) &&
-                    cell->height() == 52 &&
+                    cell->height() == 36 &&
                     qobject_cast<QVBoxLayout *>(cell->layout()) != nullptr,
                 "AI-8288 overview channel capsules use a stable styled frame");
     }
     require(overviewLayout != nullptr && overviewLayout->rowCount() == 1 &&
-                overviewLayout->columnCount() == 8,
+                overviewLayout->columnCount() == 8 &&
+                overviewLayout->contentsMargins().top() == 1 &&
+                overviewLayout->contentsMargins().bottom() == 1,
             "AI-8288 overview keeps all eight channels on one row");
     for (QLabel *channelLabel : overviewChannelLabels)
     {
@@ -87,7 +89,9 @@ int main(int argc, char **argv)
         auto *valueLabel = cell ? cell->findChild<QLabel *>(
                                      QStringLiteral("ai8TemperatureOverviewValueLabel"))
                                 : nullptr;
-        require(cellLayout != nullptr && cellLayout->count() == 4 && valueLabel != nullptr &&
+        require(cellLayout != nullptr && cellLayout->count() == 2 && valueLabel != nullptr &&
+                    cellLayout->contentsMargins().top() == 1 &&
+                    cellLayout->contentsMargins().bottom() == 1 &&
                     channelLabel->geometry().top() < valueLabel->geometry().top() &&
                     (channelLabel->alignment() & Qt::AlignHCenter) &&
                     (valueLabel->alignment() & Qt::AlignHCenter),

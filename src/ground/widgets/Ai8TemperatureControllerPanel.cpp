@@ -53,10 +53,10 @@ constexpr int kCommonEditorMinimumWidth = (kEditorMinimumWidth * 4) / 3;
 constexpr int kCommonParameterStackWidth =
     kCommonEditorMinimumWidth * kPageColumnCount + kAi8CommonControlGap;
 constexpr int kAi8OverviewColumnCount = Ai8TemperatureControllerProtocol::kChannelCount;
-constexpr int kAi8OverviewCellHeight = 52;
+constexpr int kAi8OverviewCellHeight = 36;
 constexpr int kAi8OverviewCellGap = 2;
 constexpr int kAi8OverviewHorizontalPadding = 8;
-constexpr int kAi8OverviewVerticalPadding = 6;
+constexpr int kAi8OverviewVerticalPadding = 1;
 
 class Ai8ParameterFieldFrame final : public QFrame
 {
@@ -1576,9 +1576,8 @@ Ai8TemperatureOverviewPanel::Ai8TemperatureOverviewPanel(QWidget *parent)
         cell->setFixedHeight(kAi8OverviewCellHeight);
         cell->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         auto *cellLayout = new QVBoxLayout(cell);
-        cellLayout->setContentsMargins(4, 3, 4, 3);
+        cellLayout->setContentsMargins(4, 1, 4, 1);
         cellLayout->setSpacing(1);
-        cellLayout->addStretch(1);
 
         auto *channelLabel = new QLabel(cell);
         channelLabel->setObjectName(QStringLiteral("ai8TemperatureOverviewChannelLabel"));
@@ -1593,7 +1592,6 @@ Ai8TemperatureOverviewPanel::Ai8TemperatureOverviewPanel(QWidget *parent)
         valueLabel->setAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
         valueLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
         cellLayout->addWidget(valueLabel, 0, Qt::AlignHCenter);
-        cellLayout->addStretch(1);
 
         channel_labels_[static_cast<size_t>(index)] = channelLabel;
         value_labels_[static_cast<size_t>(index)] = valueLabel;
