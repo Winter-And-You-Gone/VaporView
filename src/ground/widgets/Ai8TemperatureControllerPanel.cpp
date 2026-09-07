@@ -53,7 +53,7 @@ constexpr int kCommonEditorMinimumWidth = (kEditorMinimumWidth * 4) / 3;
 constexpr int kCommonParameterStackWidth =
     kCommonEditorMinimumWidth * kPageColumnCount + kAi8CommonControlGap;
 constexpr int kAi8OverviewColumnCount = Ai8TemperatureControllerProtocol::kChannelCount;
-constexpr int kAi8OverviewCellHeight = 32;
+constexpr int kAi8OverviewCellHeight = 52;
 constexpr int kAi8OverviewCellGap = 2;
 constexpr int kAi8OverviewHorizontalPadding = 8;
 constexpr int kAi8OverviewVerticalPadding = 6;
@@ -1575,23 +1575,25 @@ Ai8TemperatureOverviewPanel::Ai8TemperatureOverviewPanel(QWidget *parent)
         cell->setAttribute(Qt::WA_StyledBackground, true);
         cell->setFixedHeight(kAi8OverviewCellHeight);
         cell->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        auto *cellLayout = new QHBoxLayout(cell);
-        cellLayout->setContentsMargins(6, 0, 6, 0);
-        cellLayout->setSpacing(4);
+        auto *cellLayout = new QVBoxLayout(cell);
+        cellLayout->setContentsMargins(4, 3, 4, 3);
+        cellLayout->setSpacing(1);
+        cellLayout->addStretch(1);
 
         auto *channelLabel = new QLabel(cell);
         channelLabel->setObjectName(QStringLiteral("ai8TemperatureOverviewChannelLabel"));
         channelLabel->setProperty("channelIndex", index);
-        channelLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        channelLabel->setAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
         channelLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-        cellLayout->addWidget(channelLabel, 0);
+        cellLayout->addWidget(channelLabel, 0, Qt::AlignHCenter);
 
         auto *valueLabel = new QLabel(cell);
         valueLabel->setObjectName(QStringLiteral("ai8TemperatureOverviewValueLabel"));
         valueLabel->setProperty("channelIndex", index);
-        valueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        valueLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        cellLayout->addWidget(valueLabel, 1);
+        valueLabel->setAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
+        valueLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        cellLayout->addWidget(valueLabel, 0, Qt::AlignHCenter);
+        cellLayout->addStretch(1);
 
         channel_labels_[static_cast<size_t>(index)] = channelLabel;
         value_labels_[static_cast<size_t>(index)] = valueLabel;

@@ -19,6 +19,7 @@
 #include <QSpinBox>
 #include <QStackedWidget>
 #include <QToolButton>
+#include <QVBoxLayout>
 
 #include <cmath>
 #include <cstdlib>
@@ -69,7 +70,8 @@ int main(int argc, char **argv)
     {
         require(cell->frameShape() == QFrame::NoFrame &&
                     cell->testAttribute(Qt::WA_StyledBackground) &&
-                    cell->height() == 32,
+                    cell->height() == 52 &&
+                    qobject_cast<QVBoxLayout *>(cell->layout()) != nullptr,
                 "AI-8288 overview channel capsules use a stable styled frame");
     }
     require(overviewLayout != nullptr && overviewLayout->rowCount() == 1 &&
@@ -80,6 +82,16 @@ int main(int argc, char **argv)
         const int index = channelLabel->property("channelIndex").toInt();
         require(channelLabel->text() == QString::number(index + 1),
                 "AI-8288 overview shows the channel number without a repeated channel prefix");
+        auto *cell = qobject_cast<QFrame *>(channelLabel->parentWidget());
+        auto *cellLayout = cell ? qobject_cast<QVBoxLayout *>(cell->layout()) : nullptr;
+        auto *valueLabel = cell ? cell->findChild<QLabel *>(
+                                     QStringLiteral("ai8TemperatureOverviewValueLabel"))
+                                : nullptr;
+        require(cellLayout != nullptr && cellLayout->count() == 4 && valueLabel != nullptr &&
+                    channelLabel->geometry().top() < valueLabel->geometry().top() &&
+                    (channelLabel->alignment() & Qt::AlignHCenter) &&
+                    (valueLabel->alignment() & Qt::AlignHCenter),
+                "AI-8288 overview capsules stack the channel number above its temperature");
     }
     VaporView::Ai8TemperatureControllerProtocol::LiveData overviewLiveData;
     overviewLiveData.valid = true;
