@@ -1009,6 +1009,24 @@ int main(int argc, char **argv)
     processEvents();
     require(modeAction->isChecked(), "UI test mode action becomes checked");
     require(!badge->isHidden(), "persistent UI test badge is visible");
+    const auto overviewCells = window->findChildren<QFrame *>(
+        QStringLiteral("ai8TemperatureOverviewCell"));
+    require(overviewCells.size() == 8, "UI test mode exposes eight temperature capsules");
+    for (QFrame *cell : overviewCells)
+    {
+        require(cell->property("available").toBool(),
+                "UI test mode supplies valid data to each temperature capsule");
+        const QImage rendered = cell->grab().toImage();
+        require(rendered.pixelColor(3, cell->height() / 2) ==
+                    VaporView::appThemeColor(VaporView::AppThemeColor::HomeDeviceSuccessBackground,
+                        qApp->property(VaporView::kAppDarkThemeProperty).toBool()),
+                "UI test temperature capsules render green using the loaded resource stylesheet");
+        auto *value = cell->findChild<QLabel *>(QStringLiteral("ai8TemperatureOverviewValueLabel"));
+        require(value != nullptr && value->property("temperatureState").toString() ==
+                    QStringLiteral("normal") &&
+                    value->palette().color(QPalette::WindowText) == QColor(QStringLiteral("#3B82F6")),
+                "UI test normal temperature values use the blue resource stylesheet color");
+    }
     require(scenarioMenu->isEnabled(), "scenario menu is enabled in UI test mode");
     require(uiTestLidarDistanceUsesIntegerDigits(window, 3),
             "UI test mode starts with a three-digit lidar distance and two decimals");

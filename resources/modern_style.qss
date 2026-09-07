@@ -571,6 +571,23 @@ QFrame#ai8TemperatureOverviewCell {
     border-radius: 12px;
 }
 
+QFrame#ai8TemperatureOverviewCell[available="true"] {
+    background-color: @vv-hd-ok-bg;
+    border-color: @vv-hd-ok;
+}
+
+QLabel#ai8TemperatureOverviewValueLabel[temperatureState="normal"] {
+    color: #3B82F6;
+}
+
+QLabel#ai8TemperatureOverviewValueLabel[temperatureState="warm"] {
+    color: @vv-warning;
+}
+
+QLabel#ai8TemperatureOverviewValueLabel[temperatureState="hot"] {
+    color: @vv-hd-bad;
+}
+
 QFrame#ai8TemperatureOverviewCell QLabel {
     background-color: transparent;
     border: none;
