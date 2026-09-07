@@ -135,6 +135,33 @@ QFrame *findLinkStatusCard(QWidget *deviceConfigPage)
     return nullptr;
 }
 
+QFrame *findTelemetrySummarySourcePill(QWidget *card)
+{
+    QWidget *titleBar = card
+        ? card->findChild<QWidget *>(QStringLiteral("sectionTitleBar"), Qt::FindDirectChildrenOnly)
+        : nullptr;
+    return titleBar
+        ? titleBar->findChild<QFrame *>(QStringLiteral("telemetrySummarySourcePill"),
+                                        Qt::FindDirectChildrenOnly)
+        : nullptr;
+}
+
+QString telemetrySummarySourcePillName(QFrame *pill)
+{
+    QLabel *nameLabel = pill
+        ? pill->findChild<QLabel *>(QStringLiteral("telemetrySummarySourcePillNameLabel"))
+        : nullptr;
+    return nameLabel ? nameLabel->text() : QString();
+}
+
+QString telemetrySummarySourcePillValue(QFrame *pill)
+{
+    QLabel *valueLabel = pill
+        ? pill->findChild<QLabel *>(QStringLiteral("telemetrySummarySourcePillValueLabel"))
+        : nullptr;
+    return valueLabel ? valueLabel->text() : QString();
+}
+
 QRect rectInPage(QWidget *widget, QWidget *page)
 {
     return QRect(widget->mapTo(page, QPoint(0, 0)), widget->size());
@@ -453,6 +480,20 @@ int main(int argc, char **argv)
     require(serialCard != nullptr, "serial configuration card can be identified");
     require(linkStatusCard->parentWidget() == serialCard->parentWidget(),
             "link-status and serial configuration cards are siblings");
+    QFrame *linkStatusSourcePill = findTelemetrySummarySourcePill(linkStatusCard);
+    const bool localSourcePill =
+        (telemetrySummarySourcePillName(linkStatusSourcePill) == QStringLiteral("数据源") &&
+         telemetrySummarySourcePillValue(linkStatusSourcePill) == QStringLiteral("本地")) ||
+        (telemetrySummarySourcePillName(linkStatusSourcePill) == QStringLiteral("Source") &&
+         telemetrySummarySourcePillValue(linkStatusSourcePill) == QStringLiteral("Local"));
+    require(localSourcePill,
+            "data-source card title bar exposes the local data-source pill");
+    requireLabelFits(linkStatusSourcePill->findChild<QLabel *>(
+                         QStringLiteral("telemetrySummarySourcePillNameLabel")),
+                     "data-source title pill name fits without clipping");
+    requireLabelFits(linkStatusSourcePill->findChild<QLabel *>(
+                         QStringLiteral("telemetrySummarySourcePillValueLabel")),
+                     "data-source title pill value fits without clipping");
 
     const QMargins margins = scrollArea->widget()->layout()
         ? scrollArea->widget()->layout()->contentsMargins()
@@ -508,6 +549,16 @@ int main(int argc, char **argv)
                                      "link-rate subcard uses its widest pill as every column width");
     requirePillLabelsFit(subCards.at(1),
                          "link-rate subcard pill labels fit without clipping");
+    const QList<QFrame *> linkPills =
+        subCards.at(1)->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
+    require(linkPills.size() == 3,
+            "link-rate subcard keeps only the three bitrate capsules");
+    for (QFrame *pill : linkPills)
+    {
+        const QString name = pillName(pill);
+        require(name != QStringLiteral("目标") && name != QStringLiteral("Target"),
+                "link-rate subcard does not contain a target capsule");
+    }
 
     const QList<QList<QFrame *>> dataRows = pillRows(subCards.at(2));
     const QStringList firstDataRow = dataRows.isEmpty() ? QStringList() : pillNames(dataRows.first());
@@ -1220,6 +1271,13 @@ int main(int argc, char **argv)
                             QStringList() << QStringLiteral("设备配置 [远程]")
                                           << QStringLiteral("Device Configuration [Remote]")),
             "remote mode retitles the shared device configuration card for the Remote target");
+    const bool defaultRemoteSourcePill =
+        (telemetrySummarySourcePillName(linkStatusSourcePill) == QStringLiteral("数据源") &&
+         telemetrySummarySourcePillValue(linkStatusSourcePill) == QStringLiteral("远程 192.168.1.2")) ||
+        (telemetrySummarySourcePillName(linkStatusSourcePill) == QStringLiteral("Source") &&
+         telemetrySummarySourcePillValue(linkStatusSourcePill) == QStringLiteral("Remote 192.168.1.2"));
+    require(defaultRemoteSourcePill,
+            "data-source title pill follows the default remote TCP host");
     require(skyTelemetryRow->isVisible(),
             "remote mode shows sky-ground link editing controls in the target section");
     selectComboData(skyTelemetryTransportCombo, QStringLiteral("serial"),
@@ -1251,6 +1309,13 @@ int main(int argc, char **argv)
                 skyLinkConfig.value(QStringLiteral("tcp_host")).toString() == QStringLiteral("10.10.0.8") &&
                 skyLinkConfig.value(QStringLiteral("tcp_port")).toInt() == 39201,
             "device Sky Link TCP controls update the non-UI link model");
+    const bool updatedRemoteSourcePill =
+        (telemetrySummarySourcePillName(linkStatusSourcePill) == QStringLiteral("数据源") &&
+         telemetrySummarySourcePillValue(linkStatusSourcePill) == QStringLiteral("远程 10.10.0.8")) ||
+        (telemetrySummarySourcePillName(linkStatusSourcePill) == QStringLiteral("Source") &&
+         telemetrySummarySourcePillValue(linkStatusSourcePill) == QStringLiteral("Remote 10.10.0.8"));
+    require(updatedRemoteSourcePill,
+            "data-source title pill updates after editing the remote TCP host");
     selectComboData(skyTelemetryTransportCombo, QStringLiteral("serial"),
                     "Sky Link transport restores Serial after TCP validation");
     VaporViewTest::processEventsFor(60);

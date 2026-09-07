@@ -89,6 +89,51 @@ QGroupBox *findHomeDeviceOverviewCard(QWidget *root)
     return nullptr;
 }
 
+QFrame *findDeviceConfigTelemetrySummaryCard(QWidget *root)
+{
+    for (QFrame *card : root
+             ? root->findChildren<QFrame *>(QStringLiteral("epsilonSectionCard"))
+             : QList<QFrame *>())
+    {
+        for (QLabel *label : card->findChildren<QLabel *>())
+        {
+            if (label->text().contains(QStringLiteral("数据源与天地链路")) ||
+                label->text().contains(QStringLiteral("Data Source / Sky Link")))
+            {
+                return card;
+            }
+        }
+    }
+    return nullptr;
+}
+
+QFrame *findTelemetrySummarySourcePill(QWidget *card)
+{
+    QWidget *titleBar = card
+        ? card->findChild<QWidget *>(QStringLiteral("sectionTitleBar"), Qt::FindDirectChildrenOnly)
+        : nullptr;
+    return titleBar
+        ? titleBar->findChild<QFrame *>(QStringLiteral("telemetrySummarySourcePill"),
+                                        Qt::FindDirectChildrenOnly)
+        : nullptr;
+}
+
+QString telemetrySummarySourcePillValue(QFrame *pill)
+{
+    QLabel *valueLabel = pill
+        ? pill->findChild<QLabel *>(QStringLiteral("telemetrySummarySourcePillValueLabel"))
+        : nullptr;
+    return valueLabel ? valueLabel->text() : QString();
+}
+
+QString telemetrySummarySourcePillName(QFrame *pill)
+{
+    QLabel *nameLabel = pill
+        ? pill->findChild<QLabel *>(QStringLiteral("telemetrySummarySourcePillNameLabel"))
+        : nullptr;
+    return nameLabel ? nameLabel->text() : QString();
+}
+
 using SettingsSnapshot = QMap<QString, QVariant>;
 
 SettingsSnapshot snapshot(const QString& application)
@@ -440,15 +485,6 @@ QFrame *homeTelemetryPill(QWidget *homeConfigCard, const QString& name)
     return nullptr;
 }
 
-QString homeTelemetryPillValue(QWidget *homeConfigCard, const QString& name)
-{
-    QFrame *pill = homeTelemetryPill(homeConfigCard, name);
-    QLabel *valueLabel = pill
-        ? pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"))
-        : nullptr;
-    return valueLabel ? valueLabel->text() : QString();
-}
-
 void requireCompactTelemetryPillTextGap(QFrame *pill, const char *message)
 {
     require(pill != nullptr, message);
@@ -596,15 +632,13 @@ void requireUiTestHomeTelemetryCapsulesCovered(QWidget *homeConfigCard, const ch
 
     const QList<QFrame *> linkPills =
         sections.at(1)->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
-    require(linkPills.size() == 4, "UI-test link-rate summary keeps target plus three rate capsules");
+    require(linkPills.size() == 3, "UI-test link-rate summary keeps three rate capsules without a target");
     for (QFrame *pill : linkPills)
     {
         QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
-        if (nameLabel && (nameLabel->text() == QStringLiteral("目标") ||
-                          nameLabel->text() == QStringLiteral("Target")))
-        {
-            continue;
-        }
+        require(nameLabel != nullptr && nameLabel->text() != QStringLiteral("目标") &&
+                    nameLabel->text() != QStringLiteral("Target"),
+                "UI-test link-rate summary omits the target capsule");
         QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
         require(valueLabel != nullptr && valueLabel->text().contains(QStringLiteral("Mbps")),
                 "UI-test link-rate capsule shows representative Mbps data");
@@ -936,19 +970,21 @@ int main(int argc, char **argv)
         homeConfigCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill")).size();
     require(telemetryPillCountBeforeModeSwitch > 0,
             "home telemetry summary contains persistent pills before source-mode switching");
-    require(homeTelemetryPillValue(homeConfigCard, QStringLiteral("目标")) == QStringLiteral("本机"),
-            "home telemetry target starts as the local host");
+    QFrame *homeSourcePill = findTelemetrySummarySourcePill(homeConfigCard);
+    require(homeSourcePill && telemetrySummarySourcePillName(homeSourcePill) == QStringLiteral("数据源") &&
+                telemetrySummarySourcePillValue(homeSourcePill) == QStringLiteral("本地"),
+            "home device overview title bar shows the local data source");
     sourceModeSwitch->click();
     processEvents();
-    require(homeTelemetryPillValue(homeConfigCard, QStringLiteral("目标")).startsWith(QStringLiteral("TCP ")),
-            "home telemetry target updates to the remote Sky TCP endpoint");
+    require(telemetrySummarySourcePillValue(homeSourcePill) == QStringLiteral("远程 192.168.1.2"),
+            "home device overview title bar shows the remote Sky TCP host");
     require(homeConfigCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill")).size() ==
                 telemetryPillCountBeforeModeSwitch,
             "home telemetry summary keeps the same pill count when switching to remote mode");
     sourceModeSwitch->click();
     processEvents();
-    require(homeTelemetryPillValue(homeConfigCard, QStringLiteral("目标")) == QStringLiteral("本机"),
-            "home telemetry target returns to the local host");
+    require(telemetrySummarySourcePillValue(homeSourcePill) == QStringLiteral("本地"),
+            "home device overview title bar returns to the local data source");
     require(homeConfigCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill")).size() ==
                 telemetryPillCountBeforeModeSwitch,
             "home telemetry summary keeps the same pill count when switching back to local mode");
@@ -1715,8 +1751,15 @@ int main(int argc, char **argv)
                 deviceConfigPage->findChild<QPushButton *>(
                     QStringLiteral("deviceConfigSourceModeOverviewSwitch")) == nullptr,
             "unified device configuration uses the shared title-bar source-mode selector");
+    QFrame *deviceSummaryCard = findDeviceConfigTelemetrySummaryCard(deviceConfigPage);
+    QFrame *deviceSourcePill = findTelemetrySummarySourcePill(deviceSummaryCard);
+    require(deviceSourcePill && telemetrySummarySourcePillName(deviceSourcePill) == QStringLiteral("数据源") &&
+                telemetrySummarySourcePillValue(deviceSourcePill) == QStringLiteral("本地"),
+            "device configuration data-source card title bar shows the local source");
     deviceSourceMode->click();
     processEvents();
+    require(telemetrySummarySourcePillValue(deviceSourcePill) == QStringLiteral("远程 192.168.1.2"),
+            "device configuration data-source card title bar shows the remote Sky TCP host");
     auto *deviceRemoteCard =
         deviceConfigPage->findChild<QGroupBox *>(QStringLiteral("deviceRemoteSkyConfigCard"));
     auto *deviceRemoteRead =

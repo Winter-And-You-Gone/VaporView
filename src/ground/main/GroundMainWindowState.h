@@ -82,6 +82,7 @@ struct DeviceConfigPageWidgets
     QWidget *sky_telemetry_row_widget = nullptr;
     QFrame *data_telemetry_summary_card = nullptr;
     QLabel *data_telemetry_summary_title_lbl = nullptr;
+    QFrame *data_telemetry_summary_source_pill = nullptr;
     QGroupBox *remote_sky_config_card = nullptr;
     QLabel *remote_sky_config_title_lbl = nullptr;
     QLabel *remote_sky_services_title_lbl = nullptr;
@@ -333,6 +334,7 @@ struct MainWindowState
     QToolButton *home_wave_action_btn_;
     QToolButton *home_ai8_temperature_action_btn_;
     QWidget *data_telemetry_summary_card_;
+    QFrame *data_telemetry_summary_source_pill_;
     QVBoxLayout *data_telemetry_summary_layout_;
     QVBoxLayout *data_telemetry_link_summary_layout_;
     QVBoxLayout *data_telemetry_device_summary_layout_;

@@ -1089,27 +1089,6 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         : state_->remote_status_.disk_free_bytes;
     const quint32 crcErrorCount = uiTestMode ? 0U : state_->remote_status_.crc_error_count;
     const QString unavailableText = QStringLiteral("--");
-    const QString targetText = [this]() {
-        if (!isRemoteSkyMode())
-        {
-            return state_->is_english_
-                ? QStringLiteral("Local host")
-                : QStringLiteral("本机");
-        }
-        if (isRemoteSkyTcpMode())
-        {
-            const QString host = state_->remote_sky_link_config_.tcpHost.trimmed();
-            const int port = state_->remote_sky_link_config_.tcpPort;
-            return QStringLiteral("TCP %1:%2")
-                .arg(host.isEmpty() ? QStringLiteral("--") : host)
-                .arg(port > 0 ? QString::number(port) : QStringLiteral("--"));
-        }
-        const QString serialPort = state_->remote_sky_link_config_.serialPort.trimmed();
-        const QString baud = QString::number(state_->remote_sky_link_config_.serialBaudRate);
-        return QStringLiteral("Serial %1 %2")
-            .arg(serialPort.isEmpty() ? QStringLiteral("--") : serialPort,
-                 baud.isEmpty() ? QStringLiteral("--") : baud);
-    }();
 
     auto makeItem = [](const QString& label,
                        const QString& value,
@@ -1153,7 +1132,6 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         appendWaveformRate(1, QStringLiteral("Wave raw"));
         appendWaveformRate(4, QStringLiteral("Wave harm."));
         rateRows << makeItem(QStringLiteral("Wave capture"), actualWaveRate, connected && waveCaptureRateHz > 0.0, frequencyWidthText);
-        linkRows << makeItem(QStringLiteral("Target"), targetText, true);
         linkRows << makeItem(QStringLiteral("Sky->Ground"), formatBitRate(rxBps), linkRateAvailable, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("Ground->Sky"), formatBitRate(txBps), linkRateAvailable, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("Total"), formatBitRate(rxBps + txBps), linkRateAvailable, bitRateWidthText);
@@ -1183,7 +1161,6 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         appendWaveformRate(1, QStringLiteral("原始波形"));
         appendWaveformRate(4, QStringLiteral("谐波波形"));
         rateRows << makeItem(QStringLiteral("波形采集"), actualWaveRate, connected && waveCaptureRateHz > 0.0, frequencyWidthText);
-        linkRows << makeItem(QStringLiteral("目标"), targetText, true);
         linkRows << makeItem(QStringLiteral("天→地"), formatBitRate(rxBps), linkRateAvailable, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("地→天"), formatBitRate(txBps), linkRateAvailable, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("合"), formatBitRate(rxBps + txBps), linkRateAvailable, bitRateWidthText);
@@ -1221,6 +1198,62 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         return;
     }
     const RemoteTelemetrySummarySections sections = remoteTelemetrySummarySections();
+    const auto updateSourcePill = [this](QFrame *pill) {
+        if (!pill)
+        {
+            return;
+        }
+
+        auto *nameLabel = pill->findChild<QLabel *>(
+            QStringLiteral("telemetrySummarySourcePillNameLabel"));
+        auto *valueLabel = pill->findChild<QLabel *>(
+            QStringLiteral("telemetrySummarySourcePillValueLabel"));
+        if (!nameLabel || !valueLabel)
+        {
+            return;
+        }
+
+        const QString sourceName = state_->is_english_ ? QStringLiteral("Source") : QStringLiteral("数据源");
+        QString sourceValue = state_->is_english_ ? QStringLiteral("Local") : QStringLiteral("本地");
+        if (isRemoteSkyMode())
+        {
+            const QString endpoint = isRemoteSkyTcpMode()
+                ? state_->remote_sky_link_config_.tcpHost.trimmed()
+                : state_->remote_sky_link_config_.serialPort.trimmed();
+            const QString remotePrefix = state_->is_english_ ? QStringLiteral("Remote") : QStringLiteral("远程");
+            sourceValue = QStringLiteral("%1 %2").arg(
+                remotePrefix,
+                endpoint.isEmpty() ? QStringLiteral("--") : endpoint);
+        }
+
+        if (nameLabel->text() != sourceName)
+        {
+            nameLabel->setText(sourceName);
+        }
+        if (valueLabel->text() != sourceValue)
+        {
+            valueLabel->setText(sourceValue);
+        }
+        const QString accessibleText = QStringLiteral("%1: %2").arg(sourceName, sourceValue);
+        setAccessibleNameIfChanged(pill, accessibleText);
+        setWidgetToolTipIfChanged(pill, accessibleText);
+        if (QLayout *layout = pill->layout())
+        {
+            layout->invalidate();
+            layout->activate();
+        }
+        pill->updateGeometry();
+        if (QWidget *titleBar = pill->parentWidget())
+        {
+            if (QLayout *layout = titleBar->layout())
+            {
+                layout->invalidate();
+                layout->activate();
+            }
+        }
+    };
+    updateSourcePill(state_->data_telemetry_summary_source_pill_);
+    updateSourcePill(state_->device_config_.data_telemetry_summary_source_pill);
     QStringList summaryStructureTokens{
         QString::number(state_->font_scale_percent_),
         state_->is_english_ ? QStringLiteral("en") : QStringLiteral("zh"),
@@ -1637,8 +1670,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                              state_->data_telemetry_link_summary_layout_,
                              state_->is_english_ ? QStringLiteral("Link rate") : QStringLiteral("链路速率"),
                              sections.linkItems,
-                             1,
-                             3);
+                             -1);
         renderSummarySection(state_->data_telemetry_summary_card_,
                              state_->data_telemetry_device_summary_layout_,
                              state_->is_english_ ? QStringLiteral("Data") : QStringLiteral("数据"),

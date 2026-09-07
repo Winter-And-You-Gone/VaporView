@@ -25,6 +25,35 @@ namespace
 constexpr int kMainContentBottomFadeHeight = 36;
 constexpr int kDeviceConfigEpsilonPacketRatesButtonMinWidth = 194;
 
+QFrame *createTelemetrySummarySourcePill(QWidget *parent)
+{
+    auto *pill = new QFrame(parent);
+    pill->setObjectName(QStringLiteral("telemetrySummarySourcePill"));
+    pill->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    pill->setMinimumHeight(kMainPageButtonHeight);
+    pill->setToolTip(QString());
+
+    auto *layout = new QHBoxLayout(pill);
+    layout->setContentsMargins(6, 1, 6, 1);
+    layout->setSpacing(4);
+
+    auto *nameLabel = new QLabel(pill);
+    nameLabel->setObjectName(QStringLiteral("telemetrySummarySourcePillNameLabel"));
+    nameLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    nameLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    nameLabel->setTextFormat(Qt::PlainText);
+    layout->addWidget(nameLabel, 0, Qt::AlignVCenter);
+
+    auto *valueLabel = new QLabel(pill);
+    valueLabel->setObjectName(QStringLiteral("telemetrySummarySourcePillValueLabel"));
+    valueLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    valueLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    valueLabel->setTextFormat(Qt::PlainText);
+    layout->addWidget(valueLabel, 0, Qt::AlignVCenter);
+
+    return pill;
+}
+
 int topLevelCardShadowSafeRightInset(int fontScalePercent)
 {
     const qreal shadowScale = std::max<qreal>(0.5, fontScalePercent / 100.0);
@@ -3097,6 +3126,11 @@ void MainWindow::setupDeviceConfigPage()
                                                                                kMainPageButtonHeight,
                                                                                &summaryTitleCluster);
     summaryTitleLayout->addWidget(summaryTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    state_->device_config_.data_telemetry_summary_source_pill =
+        createTelemetrySummarySourcePill(summaryTitleBar);
+    summaryTitleLayout->addWidget(state_->device_config_.data_telemetry_summary_source_pill,
+                                  0,
+                                  Qt::AlignVCenter | Qt::AlignLeft);
     summaryTitleLayout->addStretch(1);
     summaryLayout->addWidget(summaryTitleBar);
 
@@ -4541,6 +4575,11 @@ void MainWindow::setupConfigPanel()
                                                          kMainPageButtonHeight,
                                                          &configTitleCluster);
     configTitleLayout->addWidget(configTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
+
+    state_->data_telemetry_summary_source_pill_ = createTelemetrySummarySourcePill(configTitleBar);
+    configTitleLayout->addWidget(state_->data_telemetry_summary_source_pill_,
+                                 0,
+                                 Qt::AlignVCenter | Qt::AlignLeft);
 
     configTitleLayout->addStretch(1);
 
