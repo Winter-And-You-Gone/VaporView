@@ -58,8 +58,18 @@ int main(int argc, char **argv)
         overview.findChildren<QLabel *>(QStringLiteral("ai8TemperatureOverviewChannelLabel"));
     const QList<QLabel *> overviewValueLabels =
         overview.findChildren<QLabel *>(QStringLiteral("ai8TemperatureOverviewValueLabel"));
+    auto *overviewLayout = qobject_cast<QGridLayout *>(overview.layout());
     require(overviewChannelLabels.size() == 8 && overviewValueLabels.size() == 8,
             "AI-8288 overview exposes one direct temperature value for each of eight channels");
+    require(overviewLayout != nullptr && overviewLayout->rowCount() == 1 &&
+                overviewLayout->columnCount() == 8,
+            "AI-8288 overview keeps all eight channels on one row");
+    for (QLabel *channelLabel : overviewChannelLabels)
+    {
+        const int index = channelLabel->property("channelIndex").toInt();
+        require(channelLabel->text() == QString::number(index + 1),
+                "AI-8288 overview shows the channel number without a repeated channel prefix");
+    }
     VaporView::Ai8TemperatureControllerProtocol::LiveData overviewLiveData;
     overviewLiveData.valid = true;
     for (int index = 0; index < VaporView::Ai8TemperatureControllerProtocol::kChannelCount; ++index)
@@ -84,8 +94,8 @@ int main(int argc, char **argv)
     for (QLabel *channelLabel : overviewChannelLabels)
     {
         const int index = channelLabel->property("channelIndex").toInt();
-        require(channelLabel->text() == QStringLiteral("CH %1").arg(index + 1),
-                "AI-8288 overview localizes its channel labels");
+        require(channelLabel->text() == QString::number(index + 1),
+                "AI-8288 overview keeps compact channel-number labels in English");
     }
     overview.applyLiveData({});
     for (QLabel *valueLabel : overviewValueLabels)

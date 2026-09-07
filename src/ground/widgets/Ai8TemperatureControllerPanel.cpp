@@ -52,9 +52,9 @@ constexpr int kAi8TemperaturePlotMinimumHeight = 180;
 constexpr int kCommonEditorMinimumWidth = (kEditorMinimumWidth * 4) / 3;
 constexpr int kCommonParameterStackWidth =
     kCommonEditorMinimumWidth * kPageColumnCount + kAi8CommonControlGap;
-constexpr int kAi8OverviewColumnCount = 4;
+constexpr int kAi8OverviewColumnCount = Ai8TemperatureControllerProtocol::kChannelCount;
 constexpr int kAi8OverviewCellHeight = 32;
-constexpr int kAi8OverviewCellGap = 4;
+constexpr int kAi8OverviewCellGap = 2;
 constexpr int kAi8OverviewHorizontalPadding = 8;
 constexpr int kAi8OverviewVerticalPadding = 6;
 
@@ -1574,8 +1574,8 @@ Ai8TemperatureOverviewPanel::Ai8TemperatureOverviewPanel(QWidget *parent)
         cell->setFixedHeight(kAi8OverviewCellHeight);
         cell->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         auto *cellLayout = new QHBoxLayout(cell);
-        cellLayout->setContentsMargins(2, 0, 2, 0);
-        cellLayout->setSpacing(4);
+        cellLayout->setContentsMargins(1, 0, 1, 0);
+        cellLayout->setSpacing(2);
 
         auto *channelLabel = new QLabel(cell);
         channelLabel->setObjectName(QStringLiteral("ai8TemperatureOverviewChannelLabel"));
@@ -1627,9 +1627,7 @@ void Ai8TemperatureOverviewPanel::refreshLabels()
             continue;
         }
 
-        const QString channelText = english_
-            ? QStringLiteral("CH %1").arg(index + 1)
-            : QStringLiteral("通道 %1").arg(index + 1);
+        const QString channelText = QString::number(index + 1);
         const double measured = latest_live_data_.measuredC[static_cast<size_t>(index)];
         const QString valueText = latest_live_data_.valid && std::isfinite(measured)
             ? temperatureText(measured)
