@@ -237,7 +237,21 @@ void RecordingStatusView::setStatusText(const QString& plainText)
         }
     };
 
-    if (status_structure_key_ == structureKey && row_widgets_.size() == lines.size())
+    bool compatibleRows = status_structure_key_ == structureKey && row_widgets_.size() == lines.size();
+    if (compatibleRows)
+    {
+        for (int row = 0; row < lines.size(); ++row)
+        {
+            if (!lines.at(row).fullWidth &&
+                (!row_widgets_.at(row).fieldLabel || !row_widgets_.at(row).valueLabel ||
+                 !row_widgets_.at(row).unitLabel))
+            {
+                compatibleRows = false;
+                break;
+            }
+        }
+    }
+    if (compatibleRows)
     {
         setUpdatesEnabled(false);
         grid_layout_->setEnabled(false);
