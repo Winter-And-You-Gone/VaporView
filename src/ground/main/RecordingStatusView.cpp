@@ -254,7 +254,6 @@ void RecordingStatusView::setStatusText(const QString& plainText)
     if (compatibleRows)
     {
         setUpdatesEnabled(false);
-        grid_layout_->setEnabled(false);
         for (int row = 0; row < lines.size(); ++row)
         {
             const RecordingStatusLine& line = lines.at(row);
@@ -272,9 +271,15 @@ void RecordingStatusView::setStatusText(const QString& plainText)
             }
         }
         applyColumnWidths();
-        grid_layout_->setEnabled(true);
         grid_layout_->invalidate();
         grid_layout_->activate();
+        for (const RowWidgets& row : std::as_const(row_widgets_))
+        {
+            if (row.valueLabel)
+                row.valueLabel->setVisible(true);
+            if (row.unitLabel)
+                row.unitLabel->setVisible(true);
+        }
         setUpdatesEnabled(true);
         update();
         return;
