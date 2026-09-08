@@ -160,6 +160,8 @@ RecordingStatusView::RecordingStatusView(QWidget *parent)
     setAttribute(Qt::WA_StyledBackground, true);
     setAutoFillBackground(false);
     setMinimumWidth(0);
+    // Keep the card width stable when local/remote text lengths differ.
+    setMinimumWidth(340);
     setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Minimum);
 
     grid_layout_->setContentsMargins(0, 0, 0, 0);
