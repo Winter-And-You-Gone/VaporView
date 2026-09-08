@@ -208,9 +208,12 @@ void RecordingStatusView::setStatusText(const QString& plainText)
             }
         }
 
-        fieldWidth += 2;
-        valueWidth += 4;
-        unitWidth += 6;
+        field_column_width_ = std::max(field_column_width_, fieldWidth + 2);
+        value_column_width_ = std::max(value_column_width_, valueWidth + 4);
+        unit_column_width_ = std::max(unit_column_width_, unitWidth + 6);
+        fieldWidth = field_column_width_;
+        valueWidth = value_column_width_;
+        unitWidth = unit_column_width_;
         grid_layout_->setColumnMinimumWidth(0, fieldWidth);
         grid_layout_->setColumnMinimumWidth(1, valueWidth);
         grid_layout_->setColumnMinimumWidth(2, unitWidth);

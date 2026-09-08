@@ -32,6 +32,9 @@ private:
     QString status_text_;
     QString status_structure_key_;
     QVector<RowWidgets> row_widgets_;
+    int field_column_width_ = 0;
+    int value_column_width_ = 0;
+    int unit_column_width_ = 0;
 };
 
 }  // namespace VaporView::Ground::Main
