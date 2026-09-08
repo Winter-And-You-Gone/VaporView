@@ -4625,7 +4625,7 @@ void MainWindow::setupConfigPanel()
 
     auto *homeDevicesWidget = new QWidget(homeBodyWidget);
     homeDevicesWidget->setObjectName(QStringLiteral("homeOverviewDeviceGrid"));
-    homeDevicesWidget->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    homeDevicesWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     auto *homeDevicesLayout = new QGridLayout(homeDevicesWidget);
     homeDevicesLayout->setContentsMargins(0, 0, 0, 0);
     homeDevicesLayout->setHorizontalSpacing(kHomeDeviceItemGap);
@@ -4636,13 +4636,14 @@ void MainWindow::setupConfigPanel()
     {
         auto *columnWidget = new QWidget(homeDevicesWidget);
         columnWidget->setObjectName(QStringLiteral("homeDeviceColumn"));
-        columnWidget->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        columnWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         auto *columnLayout = new QGridLayout(columnWidget);
         columnLayout->setContentsMargins(0, 0, 0, 0);
         columnLayout->setHorizontalSpacing(4);
         columnLayout->setVerticalSpacing(kHomeDeviceGridRowGap);
         homeDeviceColumnLayouts[static_cast<std::size_t>(column)] = columnLayout;
-        homeDevicesLayout->addWidget(columnWidget, 0, column, Qt::AlignLeft | Qt::AlignTop);
+        homeDevicesLayout->addWidget(columnWidget, 0, column, Qt::AlignTop);
+        homeDevicesLayout->setColumnStretch(column, 1);
     }
 
     auto createHomeDeviceCapsule = [](QWidget *parent) {
@@ -4695,7 +4696,6 @@ void MainWindow::setupConfigPanel()
     connect(state_->home_device_action_spinner_timer_, &QTimer::timeout, this, [this]() {
         updateHomeDeviceActionSpinnerIcons();
     });
-    homeDevicesLayout->setColumnStretch(kHomeDeviceGridColumns, 1);
     updateHomeDeviceStatusCapsules();
     homeDevicesLayout->activate();
     state_->config_group_->setMinimumWidth(homeDeviceOverviewContentMinimumWidth());

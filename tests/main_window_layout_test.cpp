@@ -6456,8 +6456,8 @@ int main(int argc, char **argv)
             "temperature overview value overlay stays inside the plot area with an axis-safe inset");
     requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("QLabel#temperatureOverviewValuePill {"),
-                                 QStringLiteral("font-size: 13px"),
-                                 "temperature overview value pill font matches the other capsules");
+                                 QStringLiteral("font-size: 17px"),
+                                 "temperature overview value pill uses the enlarged value typography");
     requireLastStyleRuleContains(qApp->styleSheet(),
                                  QStringLiteral("QLabel#temperatureOverviewOutputPercentPill {"),
                                  QStringLiteral("font-size: 13px"),
