@@ -4783,7 +4783,56 @@ int main(int argc, char **argv)
         const QRect contents = recordingStatusBody->contentsRect();
         return contents.top() + contents.height() - lastLineBottom;
     };
+    auto recordingStatusColumnsHaveContent = [&window, recordingStatus]() {
+        const QList<QLabel*> values =
+            recordingStatus->findChildren<QLabel *>(QStringLiteral("recordingStatusValueLabel"));
+        const QList<QLabel*> units =
+            recordingStatus->findChildren<QLabel *>(QStringLiteral("recordingStatusUnitLabel"));
+        int visibleValueCount = 0;
+        int visibleUnitCount = 0;
+        const auto labelHasContent = [&window, recordingStatus](QLabel *label) {
+            if (!label->isVisibleTo(&window))
+            {
+                return true;
+            }
+            if (label->text().trimmed().isEmpty() || label->width() <= 0 || label->height() <= 0)
+            {
+                return false;
+            }
+            const QRect labelRect(label->mapTo(recordingStatus, QPoint(0, 0)), label->size());
+            return recordingStatus->rect().contains(labelRect.topLeft()) &&
+                   labelRect.right() <= recordingStatus->rect().right();
+        };
+        for (QLabel *value : values)
+        {
+            require(labelHasContent(value),
+                    "recording status value labels keep non-empty text and visible geometry");
+            if (value->isVisibleTo(&window))
+            {
+                ++visibleValueCount;
+            }
+        }
+        for (QLabel *unit : units)
+        {
+            if (!unit->isVisibleTo(&window))
+            {
+                continue;
+            }
+            const QRect unitRect(unit->mapTo(recordingStatus, QPoint(0, 0)), unit->size());
+            require(unit->width() > 0 && unit->height() > 0 &&
+                        recordingStatus->rect().contains(unitRect.topLeft()) &&
+                        unitRect.right() <= recordingStatus->rect().right(),
+                    "recording status unit labels keep visible geometry");
+            if (!unit->text().trimmed().isEmpty())
+            {
+                ++visibleUnitCount;
+            }
+        }
+        return visibleValueCount >= 10 && visibleUnitCount >= 8;
+    };
     const int localRecordingStatusBottomGap = recordingStatusBottomGap();
+    require(recordingStatusColumnsHaveContent(),
+            "local recording status values and units are visible in the card");
     require(localRecordingStatusBottomGap >= 4 && localRecordingStatusBottomGap <= 6,
             "local recording status last row stays close to the card bottom");
     requireTopLevelCardElevation(recordingStatusCard,
@@ -10473,6 +10522,8 @@ int main(int argc, char **argv)
     setDeviceSourceModeRemote(true);
     require(deviceSkyTelemetry.row->isVisible(),
             "remote device configuration shows sky-ground telemetry edit controls");
+    require(recordingStatusColumnsHaveContent(),
+            "remote recording status values and units are visible in the card");
     setSkyTelemetryTransport(deviceSkyTelemetry.transportCombo, QStringLiteral("tcp"));
     processEventsFor(100);
     activateLayouts(&window);
@@ -10501,6 +10552,8 @@ int main(int argc, char **argv)
     requireSameRect(deviceTelemetrySummaryCard->geometry(), localTelemetrySummaryRect, 2,
                     "device telemetry summary geometry is stable in sky-ground remote mode");
     setDeviceSourceModeRemote(false);
+    require(recordingStatusColumnsHaveContent(),
+            "local recording status values and units remain visible after returning from remote mode");
     require(recordingStatus->statusText().contains(QStringLiteral("记录（本地）：未记录")) &&
                 !recordingStatus->statusText().contains(QStringLiteral("记录（远程）")),
             "recording status returns to local text after switching back from remote mode");
