@@ -211,8 +211,8 @@ void RecordingStatusView::setStatusText(const QString& plainText)
         }
 
         field_column_width_ = std::max(field_column_width_, fieldWidth + 2);
-        value_column_width_ = std::max(value_column_width_, valueWidth + 4);
-        unit_column_width_ = std::max(unit_column_width_, unitWidth + 6);
+        value_column_width_ = std::max(value_column_width_, std::max(24, valueWidth + 4));
+        unit_column_width_ = std::max(unit_column_width_, std::max(20, unitWidth + 6));
         fieldWidth = field_column_width_;
         valueWidth = value_column_width_;
         unitWidth = unit_column_width_;
