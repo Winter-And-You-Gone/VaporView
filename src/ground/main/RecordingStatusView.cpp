@@ -239,6 +239,8 @@ void RecordingStatusView::setStatusText(const QString& plainText)
 
     if (status_structure_key_ == structureKey && row_widgets_.size() == lines.size())
     {
+        setUpdatesEnabled(false);
+        grid_layout_->setEnabled(false);
         for (int row = 0; row < lines.size(); ++row)
         {
             const RecordingStatusLine& line = lines.at(row);
@@ -256,6 +258,11 @@ void RecordingStatusView::setStatusText(const QString& plainText)
             }
         }
         applyColumnWidths();
+        grid_layout_->setEnabled(true);
+        grid_layout_->invalidate();
+        grid_layout_->activate();
+        setUpdatesEnabled(true);
+        update();
         return;
     }
 
