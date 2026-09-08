@@ -129,7 +129,7 @@ void MainWindow::loadModernStyleSheet()
             "QLabel#homeTelemetrySummaryNameLabel[deviceConfigLink=\"true\"] { color: @vv-text-strong; font-size: 14px; font-weight: 700; }"
             "QLabel#homeTelemetrySummaryValueLabel[deviceConfigLink=\"true\"] { color: @vv-text-strong; font-size: 14px; font-weight: 600; }"
             "QLabel#homeTelemetrySummaryTitleLabel[skyTelemetryTitle=\"true\"] { color: @vv-primary; }"
-            "QLabel#temperatureOverviewValuePill { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text-strong; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 15px; font-weight: 700; padding: 2px 8px; margin: 0px; }"
+            "QLabel#temperatureOverviewValuePill { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text-strong; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 17px; font-weight: 700; padding: 2px 8px; margin: 0px; }"
             "QWidget#ai8TemperatureOverviewPanel { background-color: transparent; }"
             "QFrame#ai8TemperatureOverviewCell { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 12px; }"
             "QFrame#ai8TemperatureOverviewCell[available=\"true\"] { background-color: @vv-hd-ok-bg; border-color: @vv-hd-ok; }"
