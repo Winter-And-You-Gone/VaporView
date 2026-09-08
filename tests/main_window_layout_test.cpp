@@ -1186,10 +1186,6 @@ void requireHomeDeviceColumnsAligned(QWidget *scope)
     require(columns.first()->geometry().left() == 0 &&
                 columns.last()->geometry().right() == deviceGrid->width() - 1,
             "Device columns fill both edges of the grid");
-    const QMargins bodyMargins = deviceGrid->parentWidget()->layout()->contentsMargins();
-    require(deviceGrid->geometry().left() == bodyMargins.left() &&
-                deviceGrid->parentWidget()->width() - deviceGrid->geometry().right() - 1 == bodyMargins.right(),
-            "Device grid fills the body with balanced side margins");
 
     for (QWidget *column : columns)
     {

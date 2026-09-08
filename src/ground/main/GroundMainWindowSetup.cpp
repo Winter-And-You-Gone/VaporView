@@ -4641,6 +4641,10 @@ void MainWindow::setupConfigPanel()
         columnLayout->setContentsMargins(0, 0, 0, 0);
         columnLayout->setHorizontalSpacing(4);
         columnLayout->setVerticalSpacing(kHomeDeviceGridRowGap);
+        if (column == kHomeDeviceGridColumns - 1)
+        {
+            columnLayout->setAlignment(Qt::AlignRight | Qt::AlignTop);
+        }
         homeDeviceColumnLayouts[static_cast<std::size_t>(column)] = columnLayout;
         homeDevicesLayout->addWidget(columnWidget, 0, column, Qt::AlignTop);
         homeDevicesLayout->setColumnStretch(column, 1);
