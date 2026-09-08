@@ -621,18 +621,18 @@ void MainWindow::updateRecordingStatusLabel()
         const char *visual = state_->ui_test_recording_state_ == 1
             ? "connected" : state_->ui_test_recording_state_ == 2 ? "connecting" : "disconnected";
         const QString stateText = state_->ui_test_recording_state_ == 1
-            ? (state_->is_english_ ? QStringLiteral("Recording: On (UI Test)")
-                                   : QStringLiteral("记录：进行中（界面测试）"))
+            ? (state_->is_english_ ? QStringLiteral("Recording (Local): On (UI Test)")
+                                   : QStringLiteral("记录（本地）：进行中（界面测试）"))
             : state_->ui_test_recording_state_ == 2
-                ? (state_->is_english_ ? QStringLiteral("Recording: Paused (UI Test)")
-                                       : QStringLiteral("记录：已暂停（界面测试）"))
-                : (state_->is_english_ ? QStringLiteral("Recording: Off (UI test)")
-                                       : QStringLiteral("记录：未记录（界面测试）"));
+                ? (state_->is_english_ ? QStringLiteral("Recording (Local): Paused (UI Test)")
+                                       : QStringLiteral("记录（本地）：已暂停（界面测试）"))
+                : (state_->is_english_ ? QStringLiteral("Recording (Local): Off (UI test)")
+                                       : QStringLiteral("记录（本地）：未记录（界面测试）"));
         const QString session = state_->ui_test_recording_state_ == 0
             ? QStringLiteral("--")
             : QStringLiteral("UI-TEST-SESSION");
         const QString detail = state_->is_english_
-            ? QStringLiteral("Session: %1\nElapsed: %2\nExternal device records: %3 rows\nWaveform frames: %4 frames\nRecorded RAW EPSILON: %5 records\nRecorded RAW PTB210: %6 records\nRecorded RAW HMP3: %7 records\nRecorded RAW TFA1500: %8 records\nRecorded RAW TCP: %9 records\nRecorded RAW RD105: %10 records\nRecorded RAW AI-8288: %11 records\nRecorded RAW total: %12 records\nFile output: none (memory only)")
+            ? QStringLiteral("Session: %1\nElapsed: %2\nExternal device records: %3 rows\nWave features: remote only\nWaveform frames: %4 frames\nRecorded RAW EPSILON: %5 records\nRecorded RAW PTB210: %6 records\nRecorded RAW HMP3: %7 records\nRecorded RAW TFA1500: %8 records\nRecorded RAW TCP: %9 records\nRecorded RAW RD105: %10 records\nRecorded RAW AI-8288: %11 records\nRecorded RAW total: %12 records\nFile output: none (memory only)")
                   .arg(session)
                   .arg(formatElapsedCompact(static_cast<quint64>(std::max<qint64>(0, elapsedMs))))
                   .arg(countAtRate(20))
@@ -645,7 +645,7 @@ void MainWindow::updateRecordingStatusLabel()
                   .arg(rawLaserTemperatureController)
                   .arg(rawSystemTemperatureController)
                   .arg(rawTotal)
-            : QStringLiteral("会话：%1\n时长：%2\n外部设备记录：%3 行\n波形帧数：%4 帧\n已记录：\nRAW EPSILON：%5 条\nRAW PTB210：%6 条\nRAW HMP3：%7 条\nRAW TFA1500：%8 条\nRAW TCP：%9 条\nRAW RD105：%10 条\nRAW AI-8288：%11 条\nRAW 记录总数：%12 条\n文件写入：无（仅内存模拟）")
+            : QStringLiteral("会话：%1\n时长：%2\n外部设备记录：%3 行\n波形特征：仅远程有效\n波形帧数：%4 帧\n已记录：\nRAW EPSILON：%5 条\nRAW PTB210：%6 条\nRAW HMP3：%7 条\nRAW TFA1500：%8 条\nRAW TCP：%9 条\nRAW RD105：%10 条\nRAW AI-8288：%11 条\nRAW 记录总数：%12 条\n文件写入：无（仅内存模拟）")
                   .arg(session)
                   .arg(formatElapsedCompact(static_cast<quint64>(std::max<qint64>(0, elapsedMs))))
                   .arg(countAtRate(20))
@@ -729,7 +729,7 @@ void MainWindow::updateRecordingStatusLabel()
                   .arg(rawLaserTemperature)
                   .arg(rawSystemTemperature)
                   .arg(rawTotal)
-            : QStringLiteral("会话：%1\n时长：%2\n外部设备记录：%3 行\n波形帧数：%4 帧\n已记录：\nRAW EPSILON：%5 条\nRAW PTB210：%6 条\nRAW HMP3：%7 条\nRAW TFA1500：%8 条\nRAW TCP：%9 条\nRAW RD105：%10 条\nRAW AI-8288：%11 条\nRAW 记录总数：%12 条")
+            : QStringLiteral("会话：%1\n时长：%2\n外部设备记录：%3 行\n波形特征：仅远程有效\n波形帧数：%4 帧\n已记录：\nRAW EPSILON：%5 条\nRAW PTB210：%6 条\nRAW HMP3：%7 条\nRAW TFA1500：%8 条\nRAW TCP：%9 条\nRAW RD105：%10 条\nRAW AI-8288：%11 条\nRAW 记录总数：%12 条")
                   .arg(session)
                   .arg(elapsed)
                   .arg(sensorRows)
@@ -811,7 +811,7 @@ void MainWindow::updateRecordingStatusLabel()
         {
             setRecordingTitleIcon(true);
             applyRecordingStatusText(
-                QString(state_->is_english_ ? "Sky Recording: On\n%1" : "天空端记录：进行中\n%1")
+                QString(state_->is_english_ ? "Recording (Remote): On\n%1" : "记录（远程）：进行中\n%1")
                     .arg(detailWithSchedule));
             setVisualStatus("connected");
         }
@@ -819,7 +819,7 @@ void MainWindow::updateRecordingStatusLabel()
         {
             setRecordingTitleIcon(false);
             applyRecordingStatusText(
-                QString(state_->is_english_ ? "Sky Recording: Paused\n%1" : "天空端记录：已暂停\n%1")
+                QString(state_->is_english_ ? "Recording (Remote): Paused\n%1" : "记录（远程）：已暂停\n%1")
                     .arg(detailWithSchedule));
             setVisualStatus("connecting");
         }
@@ -827,7 +827,7 @@ void MainWindow::updateRecordingStatusLabel()
         {
             setRecordingTitleIcon(false);
             applyRecordingStatusText(
-                QString(state_->is_english_ ? "Sky Recording: Off\n%1" : "天空端记录：未记录\n%1")
+                QString(state_->is_english_ ? "Recording (Remote): Off\n%1" : "记录（远程）：未记录\n%1")
                     .arg(detailWithSchedule));
             setVisualStatus("disconnected");
         }
@@ -867,7 +867,7 @@ void MainWindow::updateRecordingStatusLabel()
         {
             setRecordingTitleIcon(false);
             applyRecordingStatusText(
-                QString(state_->is_english_ ? "Recording: Paused\n%1" : "记录：已暂停\n%1")
+                QString(state_->is_english_ ? "Recording (Local): Paused\n%1" : "记录（本地）：已暂停\n%1")
                     .arg(appendScheduledLine(detail)));
             setVisualStatus("connecting");
         }
@@ -875,7 +875,7 @@ void MainWindow::updateRecordingStatusLabel()
         {
             setRecordingTitleIcon(true);
             applyRecordingStatusText(
-                QString(state_->is_english_ ? "Recording: On\n%1" : "记录：进行中\n%1")
+                QString(state_->is_english_ ? "Recording (Local): On\n%1" : "记录（本地）：进行中\n%1")
                     .arg(appendScheduledLine(detail)));
             setVisualStatus("connected");
         }
@@ -883,7 +883,7 @@ void MainWindow::updateRecordingStatusLabel()
     else
     {
         applyRecordingStatusText(
-            QString(state_->is_english_ ? "Recording: Off\n%1" : "记录：未记录\n%1")
+            QString(state_->is_english_ ? "Recording (Local): Off\n%1" : "记录（本地）：未记录\n%1")
                 .arg(appendScheduledLine(detail)));
         setRecordingTitleIcon(false);
         setVisualStatus("disconnected");

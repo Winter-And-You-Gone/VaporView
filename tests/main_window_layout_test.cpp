@@ -10501,8 +10501,8 @@ int main(int argc, char **argv)
     requireSameRect(deviceTelemetrySummaryCard->geometry(), localTelemetrySummaryRect, 2,
                     "device telemetry summary geometry is stable in sky-ground remote mode");
     setDeviceSourceModeRemote(false);
-    require(recordingStatus->statusText().contains(QStringLiteral("记录：未记录")) &&
-                !recordingStatus->statusText().contains(QStringLiteral("天空端记录")),
+    require(recordingStatus->statusText().contains(QStringLiteral("记录（本地）：未记录")) &&
+                !recordingStatus->statusText().contains(QStringLiteral("记录（远程）")),
             "recording status returns to local text after switching back from remote mode");
     const int restoredRecordingStatusBottomGap = recordingStatusBottomGap();
     require(restoredRecordingStatusBottomGap >= 4 && restoredRecordingStatusBottomGap <= 6,
