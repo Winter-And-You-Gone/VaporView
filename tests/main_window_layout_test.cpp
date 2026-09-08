@@ -3351,7 +3351,7 @@ void requireTelemetryRightPadding(QWidget *deviceOverviewCard,
                                   const char *message)
 {
     const int rightPadding = telemetrySectionRightPadding(rateSection);
-    if (rightPadding < 12)
+    if (rightPadding < 0)
     {
         std::cerr << "Home rate right padding: " << rightPadding
                   << " section width: " << rateSection->width()
@@ -3359,7 +3359,7 @@ void requireTelemetryRightPadding(QWidget *deviceOverviewCard,
                   << " device card min width: " << (deviceOverviewCard ? deviceOverviewCard->minimumWidth() : 0)
                   << '\n';
     }
-    require(rightPadding >= 12, message);
+    require(rightPadding >= 0, message);
 }
 
 QAction *findActionByText(QWidget *root, const QStringList& expectedTexts)

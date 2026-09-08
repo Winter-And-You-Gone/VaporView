@@ -1443,7 +1443,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                                       pillLayout->spacing() +
                                       valueLabel->minimumWidth() +
                                       pillLayout->contentsMargins().right();
-                pill->setFixedWidth(pillWidth);
+                pill->setMinimumWidth(pillWidth);
             }
 
             lineLayout->addWidget(pill, 0, Qt::AlignVCenter);
@@ -1539,9 +1539,16 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             {
                 linePills << addItemLabel(lineLayout, line, items.at(i));
             }
+            if (!useSideTitle)
+            {
+                for (QFrame *pill : linePills)
+                {
+                    pill->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+                }
+            }
             lineLayout->addStretch(1);
             renderedLines.push_back({line, lineLayout, linePills});
-            linesLayout->addWidget(line, 0, Qt::AlignLeft | Qt::AlignTop);
+            linesLayout->addWidget(line, 1, Qt::AlignTop);
         };
 
         const int itemCount = static_cast<int>(items.size());
@@ -1609,7 +1616,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                 ++lineWidgetCount;
             }
             renderedLine.line->setMinimumWidth(lineMinimumWidth);
-            renderedLine.line->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+            renderedLine.line->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
             if (!useSideTitle)
             {
                 const QMargins sectionMargins = sectionLayout->contentsMargins();
