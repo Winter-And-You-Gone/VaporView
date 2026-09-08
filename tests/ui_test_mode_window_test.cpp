@@ -1972,6 +1972,7 @@ int main(int argc, char **argv)
                     text.contains(QStringLiteral("外部设备记录：")) &&
                     !text.contains(QStringLiteral("外部设备记录：0 行\n")) &&
                     text.contains(QStringLiteral("波形帧数：")) &&
+                    text.contains(QStringLiteral("波形特征：仅远程有效")) &&
                     text.contains(QStringLiteral(" 帧\n已记录：")) &&
                     text.contains(QStringLiteral("已记录：\nRAW EPSILON：")) &&
                     text.contains(QStringLiteral(" 条\nRAW PTB210：")) &&

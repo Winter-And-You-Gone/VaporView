@@ -139,7 +139,9 @@ QString recordingStatusStructureKey(const QList<RecordingStatusLine>& lines)
         }
         else
         {
-            tokens << QStringLiteral("field") << line.label << line.unit;
+            // Units are presentation data; keeping them out of the structure key lets
+            // local/remote status updates reuse the same widgets without rebuilding.
+            tokens << QStringLiteral("field") << line.label;
         }
     }
     return tokens.join(QChar(0x1f));
@@ -305,23 +307,15 @@ void RecordingStatusView::setStatusText(const QString& plainText)
         valueLabel->setMinimumHeight(valueLabel->fontMetrics().height() + 2);
         widgets.valueLabel = valueLabel;
 
-        if (line.unit.isEmpty())
-        {
-            valueLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-            grid_layout_->addWidget(valueLabel, outputRow, 1, 1, 2);
-        }
-        else
-        {
-            auto *unitLabel = createRecordingStatusLabel(
-                this,
-                QStringLiteral("recordingStatusUnitLabel"),
-                line.unit,
-                Qt::AlignRight);
-            unitLabel->ensurePolished();
-            widgets.unitLabel = unitLabel;
-            grid_layout_->addWidget(valueLabel, outputRow, 1, Qt::AlignRight | Qt::AlignVCenter);
-            grid_layout_->addWidget(unitLabel, outputRow, 2, Qt::AlignRight | Qt::AlignVCenter);
-        }
+        auto *unitLabel = createRecordingStatusLabel(
+            this,
+            QStringLiteral("recordingStatusUnitLabel"),
+            line.unit,
+            Qt::AlignRight);
+        unitLabel->ensurePolished();
+        widgets.unitLabel = unitLabel;
+        grid_layout_->addWidget(valueLabel, outputRow, 1, Qt::AlignRight | Qt::AlignVCenter);
+        grid_layout_->addWidget(unitLabel, outputRow, 2, Qt::AlignRight | Qt::AlignVCenter);
 
         grid_layout_->setRowMinimumHeight(outputRow, valueLabel->minimumHeight());
         row_widgets_.append(widgets);
