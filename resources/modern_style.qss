@@ -559,7 +559,7 @@ QLabel#temperatureOverviewValuePill {
     border-radius: 10px;
     color: @vv-text-strong;
     font-family: "Consolas", "Monaco", "Courier New", monospace;
-    font-size: 13px;
+    font-size: 15px;
     font-weight: 700;
     padding: 2px 8px;
     margin: 0px;
@@ -637,7 +637,7 @@ QToolButton#temperatureOverviewChannelButton {
     border: 1px solid @vv-border;
     border-radius: 10px;
     color: @vv-primary;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 500;
     padding: 1px 8px 1px 8px;
     text-align: center;
