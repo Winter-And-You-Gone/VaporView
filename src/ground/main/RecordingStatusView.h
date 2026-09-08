@@ -22,6 +22,7 @@ private:
     struct RowWidgets
     {
         bool fullWidth = false;
+        bool valueSpansUnit = false;
         QLabel *fullLabel = nullptr;
         QLabel *fieldLabel = nullptr;
         QLabel *valueLabel = nullptr;

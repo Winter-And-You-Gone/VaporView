@@ -4763,6 +4763,14 @@ int main(int argc, char **argv)
             "recording status body exists for local-mode padding checks");
     require(recordingStatusBody->layout()->contentsMargins().bottom() == 4,
             "local recording status card uses tighter bottom padding");
+    const QRect recordingStatusViewRectInBody(
+        recordingStatusView->mapTo(recordingStatusBody, QPoint(0, 0)),
+        recordingStatusView->size());
+    const QRect recordingStatusBodyContents = recordingStatusBody->contentsRect();
+    require(recordingStatusBodyContents.contains(recordingStatusViewRectInBody.topLeft()) &&
+                recordingStatusViewRectInBody.right() <= recordingStatusBodyContents.right() &&
+                recordingStatusViewRectInBody.bottom() <= recordingStatusBodyContents.bottom(),
+            "recording status view fits inside the card body without clipping value columns");
     auto recordingStatusBottomGap = [&window, recordingStatusBody, recordingStatusView]() {
         int lastLineBottom = 0;
         const QList<QLabel*> labels = recordingStatusView->findChildren<QLabel *>();

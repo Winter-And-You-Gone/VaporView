@@ -139,9 +139,10 @@ QString recordingStatusStructureKey(const QList<RecordingStatusLine>& lines)
         }
         else
         {
-            // Units are presentation data; keeping them out of the structure key lets
-            // local/remote status updates reuse the same widgets without rebuilding.
             tokens << QStringLiteral("field") << line.label;
+            // A value without a unit uses the unit column as extra room.  The
+            // presence of a unit therefore changes the row layout, not just text.
+            tokens << (line.unit.isEmpty() ? QStringLiteral("span") : QStringLiteral("unit"));
         }
     }
     return tokens.join(QChar(0x1f));
@@ -160,8 +161,6 @@ RecordingStatusView::RecordingStatusView(QWidget *parent)
     setAttribute(Qt::WA_StyledBackground, true);
     setAutoFillBackground(false);
     setMinimumWidth(0);
-    // Keep the card width stable when local/remote text lengths differ.
-    setMinimumWidth(340);
     setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Minimum);
 
     grid_layout_->setContentsMargins(0, 0, 0, 0);
@@ -201,17 +200,22 @@ void RecordingStatusView::setStatusText(const QString& plainText)
                 fieldWidth = std::max(fieldWidth,
                                       row.fieldLabel->fontMetrics().horizontalAdvance(row.fieldLabel->text()));
             }
-            if (row.valueLabel && row.unitLabel)
+            if (row.valueLabel)
             {
-                valueWidth = std::max(valueWidth,
-                                      row.valueLabel->fontMetrics().horizontalAdvance(row.valueLabel->text()));
-                unitWidth = std::max(unitWidth,
-                                     row.unitLabel->fontMetrics().horizontalAdvance(row.unitLabel->text()));
+                if (!row.valueSpansUnit && row.unitLabel)
+                {
+                    valueWidth = std::max(valueWidth,
+                                          row.valueLabel->fontMetrics().horizontalAdvance(row.valueLabel->text()));
+                    unitWidth = std::max(unitWidth,
+                                         row.unitLabel->fontMetrics().horizontalAdvance(row.unitLabel->text()));
+                }
             }
         }
 
         field_column_width_ = std::max(field_column_width_, fieldWidth + 2);
-        value_column_width_ = std::max(value_column_width_, std::max(24, valueWidth + 4));
+        // Keep enough room for the common unit-less state text (for example,
+        // "仅远程有效") when it spans the value and unit columns.
+        value_column_width_ = std::max(value_column_width_, std::max(40, valueWidth + 4));
         unit_column_width_ = std::max(unit_column_width_, std::max(20, unitWidth + 6));
         fieldWidth = field_column_width_;
         valueWidth = value_column_width_;
@@ -225,14 +229,24 @@ void RecordingStatusView::setStatusText(const QString& plainText)
             {
                 row.fieldLabel->setMinimumWidth(fieldWidth);
             }
-            if (row.valueLabel && row.unitLabel)
+            if (row.valueLabel)
             {
-                row.valueLabel->setMinimumWidth(valueWidth);
-                row.valueLabel->setMaximumWidth(valueWidth);
-                row.valueLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-                row.unitLabel->setMinimumWidth(unitWidth);
-                row.unitLabel->setMaximumWidth(unitWidth);
-                row.unitLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+                if (row.valueSpansUnit)
+                {
+                    row.valueLabel->setMinimumWidth(0);
+                    row.valueLabel->setMaximumWidth(QWIDGETSIZE_MAX);
+                    row.valueLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+                }
+                else if (row.unitLabel)
+                {
+                    row.valueLabel->setMinimumWidth(valueWidth);
+                    row.valueLabel->setMaximumWidth(valueWidth);
+                    row.valueLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+                    row.unitLabel->setMinimumWidth(unitWidth);
+                    row.unitLabel->setMaximumWidth(unitWidth);
+                    row.unitLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+                    row.unitLabel->setVisible(true);
+                }
             }
         }
     };
@@ -244,7 +258,8 @@ void RecordingStatusView::setStatusText(const QString& plainText)
         {
             if (!lines.at(row).fullWidth &&
                 (!row_widgets_.at(row).fieldLabel || !row_widgets_.at(row).valueLabel ||
-                 !row_widgets_.at(row).unitLabel))
+                 lines.at(row).unit.isEmpty() != row_widgets_.at(row).valueSpansUnit ||
+                 (!lines.at(row).unit.isEmpty() && !row_widgets_.at(row).unitLabel)))
             {
                 compatibleRows = false;
                 break;
@@ -338,15 +353,24 @@ void RecordingStatusView::setStatusText(const QString& plainText)
         valueLabel->setMinimumHeight(valueLabel->fontMetrics().height() + 2);
         widgets.valueLabel = valueLabel;
 
-        auto *unitLabel = createRecordingStatusLabel(
-            this,
-            QStringLiteral("recordingStatusUnitLabel"),
-            line.unit,
-            Qt::AlignRight);
-        unitLabel->ensurePolished();
-        widgets.unitLabel = unitLabel;
-        grid_layout_->addWidget(valueLabel, outputRow, 1, Qt::AlignRight | Qt::AlignVCenter);
-        grid_layout_->addWidget(unitLabel, outputRow, 2, Qt::AlignRight | Qt::AlignVCenter);
+        widgets.valueSpansUnit = line.unit.isEmpty();
+        if (widgets.valueSpansUnit)
+        {
+            grid_layout_->addWidget(valueLabel, outputRow, 1, 1, 2,
+                                    Qt::AlignRight | Qt::AlignVCenter);
+        }
+        else
+        {
+            auto *unitLabel = createRecordingStatusLabel(
+                this,
+                QStringLiteral("recordingStatusUnitLabel"),
+                line.unit,
+                Qt::AlignRight);
+            unitLabel->ensurePolished();
+            widgets.unitLabel = unitLabel;
+            grid_layout_->addWidget(valueLabel, outputRow, 1, Qt::AlignRight | Qt::AlignVCenter);
+            grid_layout_->addWidget(unitLabel, outputRow, 2, Qt::AlignRight | Qt::AlignVCenter);
+        }
 
         grid_layout_->setRowMinimumHeight(outputRow, valueLabel->minimumHeight());
         row_widgets_.append(widgets);
