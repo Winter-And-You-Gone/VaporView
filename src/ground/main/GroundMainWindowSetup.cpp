@@ -4700,7 +4700,7 @@ void MainWindow::setupConfigPanel()
     homeDevicesLayout->activate();
     state_->config_group_->setMinimumWidth(homeDeviceOverviewContentMinimumWidth());
 
-    homeBodyLayout->addWidget(homeDevicesWidget, 0, Qt::AlignTop | Qt::AlignLeft);
+    homeBodyLayout->addWidget(homeDevicesWidget, 0, Qt::AlignTop);
     homeBodyLayout->addWidget(state_->data_telemetry_summary_card_, 0, Qt::AlignTop);
     config_root_layout->addWidget(homeBodyWidget, 0, Qt::AlignTop);
     updateHomeDeviceStatusCapsules();

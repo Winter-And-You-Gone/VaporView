@@ -1183,6 +1183,13 @@ void requireHomeDeviceColumnsAligned(QWidget *scope)
                                             Qt::FindDirectChildrenOnly);
     require(columns.size() == 3,
             "home device overview exposes three aligned device columns");
+    require(columns.first()->geometry().left() == 0 &&
+                columns.last()->geometry().right() == deviceGrid->width() - 1,
+            "Device columns fill both edges of the grid");
+    const QMargins bodyMargins = deviceGrid->parentWidget()->layout()->contentsMargins();
+    require(deviceGrid->geometry().left() == bodyMargins.left() &&
+                deviceGrid->parentWidget()->width() - deviceGrid->geometry().right() - 1 == bodyMargins.right(),
+            "Device grid fills the body with balanced side margins");
 
     for (QWidget *column : columns)
     {
@@ -1316,9 +1323,12 @@ void requireHomeDeviceGeometryStableAcrossCardResize(QWidget *scope,
     for (const auto& [control, originalGeometry] : originalGeometries)
     {
         const QRect resizedGeometry(control->mapTo(deviceCard, QPoint(0, 0)), control->size());
-        require(resizedGeometry == originalGeometry,
-                "home device capsules and action icons keep their geometry when the card widens");
+        require(resizedGeometry.height() == originalGeometry.height() &&
+                    resizedGeometry.y() == originalGeometry.y() &&
+                    resizedGeometry.width() >= originalGeometry.width(),
+                "home device controls expand horizontally while preserving row geometry");
     }
+    requireHomeDeviceColumnsAligned(scope);
 
     splitter->setSizes(originalSizes);
     processEventsFor(40);
