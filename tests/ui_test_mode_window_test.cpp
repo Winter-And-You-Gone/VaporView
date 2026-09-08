@@ -975,10 +975,26 @@ int main(int argc, char **argv)
     require(homeSourcePill && telemetrySummarySourcePillName(homeSourcePill) == QStringLiteral("数据源") &&
                 telemetrySummarySourcePillValue(homeSourcePill) == QStringLiteral("本地"),
             "home device overview title bar shows the local data source");
+    auto *recordingStatusForSourceSwitch =
+        window->findChild<QWidget *>(QStringLiteral("recordingStatusView"));
+    require(recordingStatusForSourceSwitch != nullptr,
+            "recording status view exists before source-mode switching");
+    const QList<QLabel *> recordingStatusLabelsBeforeSourceSwitch =
+        recordingStatusForSourceSwitch->findChildren<QLabel *>();
+    const auto recordingStatusLabelsAreReused =
+        [recordingStatusForSourceSwitch](const QList<QLabel *> &before) {
+            const QList<QLabel *> after = recordingStatusForSourceSwitch->findChildren<QLabel *>();
+            return after.size() == before.size() &&
+                   std::all_of(before.cbegin(),
+                               before.cend(),
+                               [&after](QLabel *label) { return after.contains(label); });
+        };
     sourceModeSwitch->click();
     processEvents();
     require(telemetrySummarySourcePillValue(homeSourcePill) == QStringLiteral("远程 192.168.1.2"),
             "home device overview title bar shows the remote Sky TCP host");
+    require(recordingStatusLabelsAreReused(recordingStatusLabelsBeforeSourceSwitch),
+            "local-to-remote source switch reuses recording status labels without rebuilding the card text");
     require(homeConfigCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill")).size() ==
                 telemetryPillCountBeforeModeSwitch,
             "home telemetry summary keeps the same pill count when switching to remote mode");
@@ -986,6 +1002,8 @@ int main(int argc, char **argv)
     processEvents();
     require(telemetrySummarySourcePillValue(homeSourcePill) == QStringLiteral("本地"),
             "home device overview title bar returns to the local data source");
+    require(recordingStatusLabelsAreReused(recordingStatusLabelsBeforeSourceSwitch),
+            "remote-to-local source switch reuses recording status labels without rebuilding the card text");
     require(homeConfigCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill")).size() ==
                 telemetryPillCountBeforeModeSwitch,
             "home telemetry summary keeps the same pill count when switching back to local mode");

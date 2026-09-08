@@ -4843,6 +4843,16 @@ int main(int argc, char **argv)
             "local recording status values and units are visible in the card");
     require(localRecordingStatusBottomGap >= 4 && localRecordingStatusBottomGap <= 6,
             "local recording status last row stays close to the card bottom");
+    const QList<QLabel *> recordingStatusLabelsBeforeSourceSwitch =
+        recordingStatus->findChildren<QLabel *>();
+    const auto recordingStatusLabelsAreReused =
+        [recordingStatus](const QList<QLabel *> &before) {
+            const QList<QLabel *> after = recordingStatus->findChildren<QLabel *>();
+            return after.size() == before.size() &&
+                   std::all_of(before.cbegin(),
+                               before.cend(),
+                               [&after](QLabel *label) { return after.contains(label); });
+        };
     requireTopLevelCardElevation(recordingStatusCard,
                                  1.0,
                                  "recording status card uses the shared soft elevation");
@@ -10530,6 +10540,8 @@ int main(int argc, char **argv)
     setDeviceSourceModeRemote(true);
     require(deviceSkyTelemetry.row->isVisible(),
             "remote device configuration shows sky-ground telemetry edit controls");
+    require(recordingStatusLabelsAreReused(recordingStatusLabelsBeforeSourceSwitch),
+            "local-to-remote source switch reuses recording status labels without rebuilding the card text");
     require(recordingStatusColumnsHaveContent(),
             "remote recording status values and units are visible in the card");
     setSkyTelemetryTransport(deviceSkyTelemetry.transportCombo, QStringLiteral("tcp"));
@@ -10560,6 +10572,8 @@ int main(int argc, char **argv)
     requireSameRect(deviceTelemetrySummaryCard->geometry(), localTelemetrySummaryRect, 2,
                     "device telemetry summary geometry is stable in sky-ground remote mode");
     setDeviceSourceModeRemote(false);
+    require(recordingStatusLabelsAreReused(recordingStatusLabelsBeforeSourceSwitch),
+            "remote-to-local source switch reuses recording status labels without rebuilding the card text");
     require(recordingStatusColumnsHaveContent(),
             "local recording status values and units remain visible after returning from remote mode");
     require(recordingStatus->statusText().contains(QStringLiteral("记录（本地）：未记录")) &&

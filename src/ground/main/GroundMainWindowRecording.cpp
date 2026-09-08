@@ -716,7 +716,7 @@ void MainWindow::updateRecordingStatusLabel()
                                   qulonglong rawSystemTemperature,
                                   qulonglong rawTotal) {
         return state_->is_english_
-            ? QStringLiteral("Session: %1\nElapsed: %2\nExternal device records: %3 rows\nWaveform frames: %4 frames\nRecorded RAW EPSILON: %5 records\nRecorded RAW PTB210: %6 records\nRecorded RAW HMP3: %7 records\nRecorded RAW TFA1500: %8 records\nRecorded RAW TCP: %9 records\nRecorded RAW RD105: %10 records\nRecorded RAW AI-8288: %11 records\nRecorded RAW total: %12 records")
+            ? QStringLiteral("Session: %1\nElapsed: %2\nExternal device records: %3 rows\nWave features: remote only\nWaveform frames: %4 frames\nRecorded RAW EPSILON: %5 records\nRecorded RAW PTB210: %6 records\nRecorded RAW HMP3: %7 records\nRecorded RAW TFA1500: %8 records\nRecorded RAW TCP: %9 records\nRecorded RAW RD105: %10 records\nRecorded RAW AI-8288: %11 records\nRecorded RAW total: %12 records")
                   .arg(session)
                   .arg(elapsed)
                   .arg(sensorRows)
