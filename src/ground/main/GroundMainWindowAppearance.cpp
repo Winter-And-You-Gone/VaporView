@@ -424,7 +424,34 @@ int MainWindow::minimumLogSidePanelWidth() const
     const int actionButtonsWidth = scalePixels(kMainPageButtonHeight * 2);
     const int cardMargins = scalePixels(2);
     const int safetyPadding = scalePixels(12);
-    return titleBarMargins + titleClusterWidth + titleBarSpacing + actionButtonsWidth + cardMargins + safetyPadding;
+    const int logTitleMinimumWidth =
+        titleBarMargins + titleClusterWidth + titleBarSpacing + actionButtonsWidth +
+        cardMargins + safetyPadding;
+
+    // The recording view has fixed numeric columns, so its minimum must reach
+    // the splitter instead of allowing child labels to paint beyond the card.
+    int recordingCardMinimumWidth = 0;
+    if (state_->recording_status_view_)
+    {
+        recordingCardMinimumWidth = state_->recording_status_view_->minimumWidth();
+        for (QWidget *container = state_->recording_status_view_->parentWidget();
+             container && container != state_->log_side_panel_;
+             container = container->parentWidget())
+        {
+            if (QLayout *layout = container->layout())
+            {
+                const QMargins margins = layout->contentsMargins();
+                recordingCardMinimumWidth += margins.left() + margins.right();
+            }
+        }
+        if (state_->log_side_panel_ && state_->log_side_panel_->layout())
+        {
+            const QMargins margins = state_->log_side_panel_->layout()->contentsMargins();
+            recordingCardMinimumWidth += margins.left() + margins.right();
+        }
+    }
+
+    return std::max(logTitleMinimumWidth, recordingCardMinimumWidth);
 }
 
 int MainWindow::appSidebarIconOnlyWidth() const

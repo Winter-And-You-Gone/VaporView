@@ -598,6 +598,10 @@ void MainWindow::updateRecordingStatusLabel()
 
     auto applyRecordingStatusText = [this](const QString& plainText) {
         state_->recording_status_view_->setStatusText(plainText);
+        if (state_->log_side_panel_)
+        {
+            state_->log_side_panel_->setMinimumWidth(minimumLogSidePanelWidth());
+        }
     };
 
     if (isUiTestMode())

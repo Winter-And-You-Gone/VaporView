@@ -2039,6 +2039,17 @@ int main(int argc, char **argv)
                     recordingStatusUnitColumnIsStable();
             }),
             "UI test mode immediately covers recording status with aligned non-zero counters");
+    auto *recordingBody =
+        recordingCard->findChild<QWidget *>(QStringLiteral("recordingStatusBody"));
+    require(recordingBody != nullptr,
+            "UI-test recording status card body exists");
+    const QRect recordingViewRectInBody(
+        recordingStatus->mapTo(recordingBody, QPoint(0, 0)), recordingStatus->size());
+    const QRect recordingBodyContents = recordingBody->contentsRect();
+    require(recordingBodyContents.contains(recordingViewRectInBody.topLeft()) &&
+                recordingViewRectInBody.right() <= recordingBodyContents.right() &&
+                recordingViewRectInBody.bottom() <= recordingBodyContents.bottom(),
+            "UI-test recording status view remains inside its card body");
     const QList<QLabel *> recordingStatusLabelsBeforeCounterRefresh =
         recordingStatus->findChildren<QLabel *>();
     QVector<QPointer<QLabel>> stableRecordingStatusLabels;
