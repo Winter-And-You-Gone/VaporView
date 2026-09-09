@@ -269,9 +269,9 @@ void RecordingStatusView::setStatusText(const QString& plainText)
                 row.rowWidget->setMinimumWidth(0);
                 row.rowWidget->setMaximumWidth(QWIDGETSIZE_MAX);
                 row.rowWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-                row.rowLayout->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
                 row.rowLayout->addWidget(row.fieldLabel, 0, Qt::AlignVCenter);
                 row.rowLayout->addSpacing(kRecordingStatusColumnSpacing);
+                row.rowLayout->addStretch(1);
                 row.rowLayout->addWidget(row.valueLabel, 0, Qt::AlignRight | Qt::AlignVCenter);
                 if (row.unitLabel)
                 {
@@ -317,8 +317,7 @@ void RecordingStatusView::setStatusText(const QString& plainText)
             widgets.valueLabel->setVisible(true);
             widgets.unitLabel->setVisible(false);
             widgets.rowWidget->setVisible(true);
-            grid_layout_->addWidget(widgets.rowWidget, row, 0, 1, 3,
-                                    Qt::AlignRight | Qt::AlignVCenter);
+            grid_layout_->addWidget(widgets.rowWidget, row, 0, 1, 3, Qt::AlignVCenter);
         }
         else
         {
@@ -474,10 +473,9 @@ void RecordingStatusView::setStatusText(const QString& plainText)
             unitLabel->setParent(rowWidget);
             rowLayout->addWidget(nameLabel, 0, Qt::AlignVCenter);
             rowLayout->addSpacing(kRecordingStatusColumnSpacing);
+            rowLayout->addStretch(1);
             rowLayout->addWidget(valueLabel, 0, Qt::AlignRight | Qt::AlignVCenter);
-            rowLayout->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-            grid_layout_->addWidget(rowWidget, outputRow, 0, 1, 3,
-                                    Qt::AlignRight | Qt::AlignVCenter);
+            grid_layout_->addWidget(rowWidget, outputRow, 0, 1, 3, Qt::AlignVCenter);
             unitLabel->setVisible(false);
         }
         else

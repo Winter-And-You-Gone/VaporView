@@ -2048,6 +2048,36 @@ int main(int argc, char **argv)
                     recordingStatusUnitColumnIsStable();
             }),
             "UI test mode immediately covers recording status with aligned non-zero counters");
+    const QStringList leftAlignedRecordingFields{QStringLiteral("会话："),
+                                                 QStringLiteral("时长："),
+                                                 QStringLiteral("文件写入：")};
+    const QList<QLabel *> recordingStatusFields =
+        recordingStatus->findChildren<QLabel *>(QStringLiteral("recordingStatusFieldLabel"));
+    bool namedRecordingFieldsLeftAligned = true;
+    for (const QString& fieldName : leftAlignedRecordingFields)
+    {
+        bool fieldFound = false;
+        for (QLabel *field : recordingStatusFields)
+        {
+            if (!field->isVisible() || field->text() != fieldName)
+            {
+                continue;
+            }
+            fieldFound = true;
+            const QRect fieldRect(field->mapTo(recordingStatus, QPoint(0, 0)), field->size());
+            if (fieldRect.left() > 1)
+            {
+                namedRecordingFieldsLeftAligned = false;
+            }
+            break;
+        }
+        if (!fieldFound)
+        {
+            namedRecordingFieldsLeftAligned = false;
+        }
+    }
+    require(namedRecordingFieldsLeftAligned,
+            "recording session, duration, and file-write fields stay left aligned");
     auto *recordingBody =
         recordingCard->findChild<QWidget *>(QStringLiteral("recordingStatusBody"));
     require(recordingBody != nullptr,
