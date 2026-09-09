@@ -3,6 +3,7 @@
 #include "ground/main/GroundMainWindowSupport.h"
 
 #include <QGridLayout>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QList>
 #include <QSizePolicy>
@@ -128,6 +129,29 @@ void setLabelTextIfChanged(QLabel *label, const QString& text)
     }
 }
 
+void setRecordingStatusLabelWidth(QLabel *label, int width)
+{
+    if (!label)
+    {
+        return;
+    }
+    label->setMinimumWidth(width);
+    label->setMaximumWidth(width);
+    label->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+}
+
+void clearRowLayout(QHBoxLayout *layout)
+{
+    if (!layout)
+    {
+        return;
+    }
+    while (QLayoutItem *item = layout->takeAt(0))
+    {
+        delete item;
+    }
+}
+
 QString recordingStatusStructureKey(const QList<RecordingStatusLine>& lines)
 {
     QStringList tokens;
@@ -167,8 +191,9 @@ RecordingStatusView::RecordingStatusView(QWidget *parent)
     grid_layout_->setContentsMargins(0, 0, 0, 0);
     grid_layout_->setHorizontalSpacing(kRecordingStatusColumnSpacing);
     grid_layout_->setVerticalSpacing(1);
-    grid_layout_->setColumnStretch(0, 1);
-    grid_layout_->setColumnStretch(1, 0);
+    // Keep the field column compact and let value content use spare card width.
+    grid_layout_->setColumnStretch(0, 0);
+    grid_layout_->setColumnStretch(1, 1);
     grid_layout_->setColumnStretch(2, 0);
 }
 
@@ -194,41 +219,28 @@ void RecordingStatusView::setStatusText(const QString& plainText)
         int fieldWidth = 0;
         int valueWidth = 0;
         int unitWidth = 0;
-        int spanningValueWidth = 0;
         for (const RowWidgets& row : std::as_const(row_widgets_))
         {
-            if (row.fieldLabel)
+            if (!row.fieldLabel || !row.valueLabel || row.valueSpansUnit)
             {
-                fieldWidth = std::max(fieldWidth,
-                                      row.fieldLabel->fontMetrics().horizontalAdvance(row.fieldLabel->text()));
+                continue;
             }
-            if (row.valueLabel)
+
+            fieldWidth = std::max(fieldWidth,
+                                  row.fieldLabel->fontMetrics().horizontalAdvance(row.fieldLabel->text()));
+            valueWidth = std::max(
+                valueWidth, row.valueLabel->fontMetrics().horizontalAdvance(row.valueLabel->text()));
+            if (row.unitLabel)
             {
-                const int textWidth = row.valueLabel->fontMetrics().horizontalAdvance(row.valueLabel->text());
-                if (row.valueSpansUnit)
-                {
-                    spanningValueWidth = std::max(spanningValueWidth, textWidth + 4);
-                }
-                else if (row.unitLabel)
-                {
-                    valueWidth = std::max(valueWidth, textWidth);
-                    unitWidth = std::max(unitWidth,
-                                         row.unitLabel->fontMetrics().horizontalAdvance(row.unitLabel->text()));
-                }
+                unitWidth = std::max(
+                    unitWidth, row.unitLabel->fontMetrics().horizontalAdvance(row.unitLabel->text()));
             }
         }
 
         field_column_width_ = std::max(field_column_width_, fieldWidth + 2);
-        // Keep enough room for the common unit-less state text (for example,
-        // "仅远程有效") when it spans the value and unit columns.
+        // Keep stable widths for the shared field, value, and unit columns.
         value_column_width_ = std::max(value_column_width_, std::max(40, valueWidth + 4));
         unit_column_width_ = std::max(unit_column_width_, std::max(20, unitWidth + 6));
-        // A spanning value shares the fixed value and unit columns.  Reserve
-        // its full width so session/file text cannot be clipped at the card edge.
-        value_column_width_ = std::max(
-            value_column_width_,
-            std::max(0,
-                     spanningValueWidth - unit_column_width_ - grid_layout_->horizontalSpacing()));
         fieldWidth = field_column_width_;
         valueWidth = value_column_width_;
         unitWidth = unit_column_width_;
@@ -240,27 +252,40 @@ void RecordingStatusView::setStatusText(const QString& plainText)
         grid_layout_->setColumnMinimumWidth(2, unitWidth);
         for (const RowWidgets& row : std::as_const(row_widgets_))
         {
-            if (row.fieldLabel)
+            if (!row.fieldLabel || !row.valueLabel)
+            {
+                continue;
+            }
+
+            if (row.valueSpansUnit && row.rowWidget && row.rowLayout)
+            {
+                clearRowLayout(row.rowLayout);
+                const int fieldTextWidth = std::max(
+                    1, row.fieldLabel->fontMetrics().horizontalAdvance(row.fieldLabel->text()));
+                const int valueTextWidth = std::max(
+                    1, row.valueLabel->fontMetrics().horizontalAdvance(row.valueLabel->text()));
+                setRecordingStatusLabelWidth(row.fieldLabel, fieldTextWidth);
+                setRecordingStatusLabelWidth(row.valueLabel, valueTextWidth);
+                row.rowWidget->setMinimumWidth(0);
+                row.rowWidget->setMaximumWidth(QWIDGETSIZE_MAX);
+                row.rowWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+                row.rowLayout->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+                row.rowLayout->addWidget(row.fieldLabel, 0, Qt::AlignVCenter);
+                row.rowLayout->addSpacing(kRecordingStatusColumnSpacing);
+                row.rowLayout->addWidget(row.valueLabel, 0, Qt::AlignRight | Qt::AlignVCenter);
+                if (row.unitLabel)
+                {
+                    row.unitLabel->setVisible(false);
+                }
+            }
+            else
             {
                 row.fieldLabel->setMinimumWidth(fieldWidth);
-            }
-            if (row.valueLabel)
-            {
-                if (row.valueSpansUnit)
+                row.valueLabel->setMinimumWidth(valueWidth);
+                row.valueLabel->setMaximumWidth(valueWidth);
+                row.valueLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+                if (row.unitLabel)
                 {
-                    row.valueLabel->setMinimumWidth(0);
-                    row.valueLabel->setMaximumWidth(QWIDGETSIZE_MAX);
-                    row.valueLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
-                    if (row.unitLabel)
-                    {
-                        row.unitLabel->setVisible(false);
-                    }
-                }
-                else if (row.unitLabel)
-                {
-                    row.valueLabel->setMinimumWidth(valueWidth);
-                    row.valueLabel->setMaximumWidth(valueWidth);
-                    row.valueLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
                     row.unitLabel->setMinimumWidth(unitWidth);
                     row.unitLabel->setMaximumWidth(unitWidth);
                     row.unitLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
@@ -271,26 +296,38 @@ void RecordingStatusView::setStatusText(const QString& plainText)
     };
 
     auto setValueSpan = [this](int row, RowWidgets& widgets, bool spansUnit) {
-        if (!widgets.valueLabel || !widgets.unitLabel || widgets.valueSpansUnit == spansUnit)
+        if (!widgets.rowWidget || !widgets.rowLayout || !widgets.fieldLabel || !widgets.valueLabel ||
+            !widgets.unitLabel || widgets.valueSpansUnit == spansUnit)
         {
             return;
         }
 
+        clearRowLayout(widgets.rowLayout);
+        grid_layout_->removeWidget(widgets.rowWidget);
+        grid_layout_->removeWidget(widgets.fieldLabel);
         grid_layout_->removeWidget(widgets.valueLabel);
         grid_layout_->removeWidget(widgets.unitLabel);
         widgets.valueSpansUnit = spansUnit;
         if (spansUnit)
         {
+            widgets.fieldLabel->setParent(widgets.rowWidget);
+            widgets.valueLabel->setParent(widgets.rowWidget);
+            widgets.unitLabel->setParent(widgets.rowWidget);
+            widgets.fieldLabel->setVisible(true);
+            widgets.valueLabel->setVisible(true);
             widgets.unitLabel->setVisible(false);
-            grid_layout_->addWidget(widgets.valueLabel,
-                                    row,
-                                    1,
-                                    1,
-                                    2,
+            widgets.rowWidget->setVisible(true);
+            grid_layout_->addWidget(widgets.rowWidget, row, 0, 1, 3,
                                     Qt::AlignRight | Qt::AlignVCenter);
         }
         else
         {
+            widgets.fieldLabel->setParent(this);
+            widgets.valueLabel->setParent(this);
+            widgets.unitLabel->setParent(this);
+            widgets.fieldLabel->setVisible(true);
+            widgets.valueLabel->setVisible(true);
+            grid_layout_->addWidget(widgets.fieldLabel, row, 0);
             grid_layout_->addWidget(widgets.valueLabel,
                                     row,
                                     1,
@@ -300,6 +337,7 @@ void RecordingStatusView::setStatusText(const QString& plainText)
                                     2,
                                     Qt::AlignRight | Qt::AlignVCenter);
             widgets.unitLabel->setVisible(true);
+            widgets.rowWidget->setVisible(false);
         }
     };
 
@@ -310,7 +348,8 @@ void RecordingStatusView::setStatusText(const QString& plainText)
         {
             if (!lines.at(row).fullWidth &&
                 (!row_widgets_.at(row).fieldLabel || !row_widgets_.at(row).valueLabel ||
-                 !row_widgets_.at(row).unitLabel))
+                 !row_widgets_.at(row).unitLabel || !row_widgets_.at(row).rowWidget ||
+                 !row_widgets_.at(row).rowLayout))
             {
                 compatibleRows = false;
                 break;
@@ -353,6 +392,14 @@ void RecordingStatusView::setStatusText(const QString& plainText)
     }
 
     status_structure_key_ = structureKey;
+    for (const RowWidgets& row : std::as_const(row_widgets_))
+    {
+        if (row.rowWidget && grid_layout_->indexOf(row.rowWidget) < 0)
+        {
+            row.rowWidget->hide();
+            row.rowWidget->deleteLater();
+        }
+    }
     row_widgets_.clear();
 
     const int previousRowCount = grid_layout_->rowCount();
@@ -388,15 +435,14 @@ void RecordingStatusView::setStatusText(const QString& plainText)
         }
 
         auto *nameLabel = createRecordingStatusLabel(
-            this,
+            nullptr,
             QStringLiteral("recordingStatusFieldLabel"),
             line.label,
             Qt::AlignLeft);
         widgets.fieldLabel = nameLabel;
-        grid_layout_->addWidget(nameLabel, outputRow, 0);
 
         auto *valueLabel = createRecordingStatusLabel(
-            this,
+            nullptr,
             QStringLiteral("recordingStatusValueLabel"),
             line.value,
             Qt::AlignRight);
@@ -407,20 +453,40 @@ void RecordingStatusView::setStatusText(const QString& plainText)
 
         widgets.valueSpansUnit = line.unit.isEmpty();
         auto *unitLabel = createRecordingStatusLabel(
-            this,
+            nullptr,
             QStringLiteral("recordingStatusUnitLabel"),
             line.unit,
             Qt::AlignRight);
         unitLabel->ensurePolished();
         widgets.unitLabel = unitLabel;
+
+        auto *rowWidget = new QWidget(this);
+        rowWidget->setObjectName(QStringLiteral("recordingStatusRow"));
+        auto *rowLayout = new QHBoxLayout(rowWidget);
+        rowLayout->setContentsMargins(0, 0, 0, 0);
+        rowLayout->setSpacing(0);
+        widgets.rowWidget = rowWidget;
+        widgets.rowLayout = rowLayout;
         if (widgets.valueSpansUnit)
         {
-            grid_layout_->addWidget(valueLabel, outputRow, 1, 1, 2,
+            nameLabel->setParent(rowWidget);
+            valueLabel->setParent(rowWidget);
+            unitLabel->setParent(rowWidget);
+            rowLayout->addWidget(nameLabel, 0, Qt::AlignVCenter);
+            rowLayout->addSpacing(kRecordingStatusColumnSpacing);
+            rowLayout->addWidget(valueLabel, 0, Qt::AlignRight | Qt::AlignVCenter);
+            rowLayout->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            grid_layout_->addWidget(rowWidget, outputRow, 0, 1, 3,
                                     Qt::AlignRight | Qt::AlignVCenter);
             unitLabel->setVisible(false);
         }
         else
         {
+            nameLabel->setParent(this);
+            valueLabel->setParent(this);
+            unitLabel->setParent(this);
+            rowWidget->setVisible(false);
+            grid_layout_->addWidget(nameLabel, outputRow, 0);
             grid_layout_->addWidget(valueLabel, outputRow, 1, Qt::AlignRight | Qt::AlignVCenter);
             grid_layout_->addWidget(unitLabel, outputRow, 2, Qt::AlignRight | Qt::AlignVCenter);
         }

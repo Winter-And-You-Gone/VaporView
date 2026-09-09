@@ -24,6 +24,7 @@
 #include <QEventLoop>
 #include <QFrame>
 #include <QGroupBox>
+#include <QGridLayout>
 #include <QHostAddress>
 #include <QImage>
 #include <QLabel>
@@ -977,7 +978,9 @@ int main(int argc, char **argv)
             "home device overview title bar shows the local data source");
     auto *recordingStatusForSourceSwitch =
         window->findChild<QWidget *>(QStringLiteral("recordingStatusView"));
-    require(recordingStatusForSourceSwitch != nullptr,
+    auto *recordingCardForModeSwitch =
+        window->findChild<QFrame *>(QStringLiteral("recordingStatusCard"));
+    require(recordingStatusForSourceSwitch != nullptr && recordingCardForModeSwitch != nullptr,
             "recording status view exists before source-mode switching");
     const QList<QLabel *> recordingStatusLabelsBeforeSourceSwitch =
         recordingStatusForSourceSwitch->findChildren<QLabel *>();
@@ -1007,6 +1010,8 @@ int main(int argc, char **argv)
     require(homeConfigCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill")).size() ==
                 telemetryPillCountBeforeModeSwitch,
             "home telemetry summary keeps the same pill count when switching back to local mode");
+    const int normalRecordingCardWidth = recordingCardForModeSwitch->width();
+    const int normalRecordingViewMinimumWidth = recordingStatusForSourceSwitch->minimumWidth();
 
     epsilonPort->addItem(QStringLiteral("UNSAVED-COM42"), QStringLiteral("UNSAVED-COM42"));
     epsilonPort->setCurrentIndex(epsilonPort->count() - 1);
@@ -2054,6 +2059,15 @@ int main(int argc, char **argv)
                 recordingViewRectInBody.right() <= recordingBodyContents.right() &&
                 recordingViewRectInBody.bottom() <= recordingBodyContents.bottom(),
             "UI-test recording status view remains inside its card body");
+    auto *recordingStatusGrid = qobject_cast<QGridLayout *>(recordingStatus->layout());
+    require(recordingStatusGrid != nullptr &&
+                recordingStatusGrid->horizontalSpacing() == 2 &&
+                recordingStatusGrid->columnStretch(0) == 0 &&
+                recordingStatusGrid->columnStretch(1) == 1,
+            "UI-test recording status gives spare width to value columns");
+    require(std::abs(recordingCard->width() - normalRecordingCardWidth) <= 1 &&
+                recordingStatus->minimumWidth() <= normalRecordingViewMinimumWidth + 1,
+            "UI-test recording status does not widen its card for unit-less text");
     const QList<QLabel *> recordingStatusLabelsBeforeCounterRefresh =
         recordingStatus->findChildren<QLabel *>();
     QVector<QPointer<QLabel>> stableRecordingStatusLabels;
@@ -2136,6 +2150,8 @@ int main(int argc, char **argv)
     }
     require(!cachedScenarioMenuEnabled && !currentScenarioMenuEnabled,
             "scenario menu is disabled after exit");
+    require(std::abs(recordingCard->width() - normalRecordingCardWidth) <= 1,
+            "recording status card returns to its normal width after UI test mode");
     require(!testCreatedAuxiliary.isVisible(), "test-created auxiliary window closes on UI test exit");
     require(settingsSnapshotsEqual(snapshotAll(), before,
                                    "all settings namespaces remain unchanged after normal UI test exit"),

@@ -5472,7 +5472,7 @@ void MainWindow::setupLogPanel()
     recordingBody->setAttribute(Qt::WA_StyledBackground, true);
     recordingBody->setAutoFillBackground(true);
     auto *recordingStatusLayout = new QHBoxLayout(recordingBody);
-    recordingStatusLayout->setContentsMargins(10, 8, 10, 4);
+    recordingStatusLayout->setContentsMargins(6, 8, 6, 4);
     recordingStatusLayout->setSpacing(0);
 
     state_->recording_status_view_ = new RecordingStatusView(recordingBody);

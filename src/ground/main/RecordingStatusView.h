@@ -5,6 +5,7 @@
 #include <QWidget>
 
 class QGridLayout;
+class QHBoxLayout;
 class QLabel;
 
 namespace VaporView::Ground::Main
@@ -27,6 +28,8 @@ private:
         QLabel *fieldLabel = nullptr;
         QLabel *valueLabel = nullptr;
         QLabel *unitLabel = nullptr;
+        QWidget *rowWidget = nullptr;
+        QHBoxLayout *rowLayout = nullptr;
     };
 
     QGridLayout *grid_layout_;
