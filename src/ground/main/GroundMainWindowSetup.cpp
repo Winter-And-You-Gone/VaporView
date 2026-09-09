@@ -725,7 +725,7 @@ void MainWindow::setupCustomTitleBar()
     state_->custom_title_label_ = new QLabel(QStringLiteral("VaporView"), state_->custom_title_bar_);
     state_->custom_title_label_->setObjectName(QStringLiteral("customTitleLabel"));
     state_->custom_title_label_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
-    state_->custom_title_label_->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
+    state_->custom_title_label_->setAlignment(Qt::AlignCenter);
     state_->custom_title_label_->installEventFilter(this);
     titleLayout->addWidget(state_->custom_title_label_, 0);
 

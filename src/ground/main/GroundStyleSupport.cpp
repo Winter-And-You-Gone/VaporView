@@ -169,7 +169,7 @@ QLabel#customTitleLabel {
     color: @vv-text-title;
     font-size: 15px;
     font-weight: 600;
-    padding: 0px 8px;
+    padding: 0px 4px;
 }
 QLabel#uiTestModeBadge {
     color: @vv-warning;
@@ -233,7 +233,7 @@ QLabel#customTitleLabel {
     color: @vv-text;
     font-size: 15px;
     font-weight: 600;
-    padding: 0px 8px;
+    padding: 0px 4px;
 }
 QLabel#uiTestModeBadge {
     color: @vv-warning;

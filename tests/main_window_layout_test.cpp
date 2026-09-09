@@ -1996,7 +1996,7 @@ void requireRtkSidebarPage(
     const QFontMetrics titleMetrics = customTitleLabel->fontMetrics();
     const int titleTextWidth = std::max(titleMetrics.horizontalAdvance(customTitleLabel->text()),
                                         titleMetrics.boundingRect(customTitleLabel->text()).width());
-    const int expectedTitlePaddingAndSlack = 2 * 8 + 4;
+    const int expectedTitlePaddingAndSlack = 2 * 4 + 4;
     require(customTitleLabel->width() >= titleTextWidth + expectedTitlePaddingAndSlack,
             "custom title bar keeps glyph edge slack beyond its stylesheet padding");
     statusSummaryResizeRecorder.reset();
@@ -5150,6 +5150,8 @@ int main(int argc, char **argv)
                 customTitleLabel->minimumWidth() == customTitleReservedWidth &&
                 customTitleLabel->maximumWidth() == customTitleReservedWidth,
             "custom title bar reserves a fixed title column width");
+    require(customTitleLabel->alignment() == Qt::AlignCenter,
+            "custom title bar centers the current page title");
     const int logoCenterX = customLogo->mapTo(&window, customLogo->rect().center()).x();
     const int checkedSidebarButtonCenterX =
         checkedSidebarButton->mapTo(&window, checkedSidebarButton->rect().center()).x();
