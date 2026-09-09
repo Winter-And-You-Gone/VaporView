@@ -586,9 +586,9 @@ void MainWindow::updateRecordingStatusLabel()
     {
         state_->recording_status_title_lbl_->setText(
             state_->is_english_
-                ? (isUiTestMode() ? QStringLiteral("Recording Status (UI Test)")
+                ? (isUiTestMode() ? QStringLiteral("Recording Status (Test)")
                                   : QStringLiteral("Recording Status"))
-                : (isUiTestMode() ? QStringLiteral("记录状态（界面测试）")
+                : (isUiTestMode() ? QStringLiteral("记录状态（测试）")
                                   : QStringLiteral("记录状态")));
     }
     if (!state_->recording_status_view_)
@@ -621,13 +621,13 @@ void MainWindow::updateRecordingStatusLabel()
         const char *visual = state_->ui_test_recording_state_ == 1
             ? "connected" : state_->ui_test_recording_state_ == 2 ? "connecting" : "disconnected";
         const QString stateText = state_->ui_test_recording_state_ == 1
-            ? (state_->is_english_ ? QStringLiteral("Recording (Local): On (UI Test)")
-                                   : QStringLiteral("记录（本地）：进行中（界面测试）"))
+            ? (state_->is_english_ ? QStringLiteral("Recording (Local): On (Test)")
+                                   : QStringLiteral("记录（本地）：进行中（测试）"))
             : state_->ui_test_recording_state_ == 2
-                ? (state_->is_english_ ? QStringLiteral("Recording (Local): Paused (UI Test)")
-                                       : QStringLiteral("记录（本地）：已暂停（界面测试）"))
-                : (state_->is_english_ ? QStringLiteral("Recording (Local): Off (UI test)")
-                                       : QStringLiteral("记录（本地）：未记录（界面测试）"));
+                ? (state_->is_english_ ? QStringLiteral("Recording (Local): Paused (Test)")
+                                       : QStringLiteral("记录（本地）：已暂停（测试）"))
+                : (state_->is_english_ ? QStringLiteral("Recording (Local): Off (Test)")
+                                       : QStringLiteral("记录（本地）：未记录（测试）"));
         const QString session = state_->ui_test_recording_state_ == 0
             ? QStringLiteral("--")
             : QStringLiteral("UI-TEST-SESSION");

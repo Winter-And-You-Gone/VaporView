@@ -1896,8 +1896,11 @@ int main(int argc, char **argv)
             break;
         }
     }
-    require(recordingTitle && recordingTitle->text() == QStringLiteral("记录状态（界面测试）"),
+    require(recordingTitle && recordingTitle->text() == QStringLiteral("记录状态（测试）"),
             "recording card title identifies UI test mode");
+    require(recordingTitle->fontMetrics().horizontalAdvance(recordingTitle->text()) <=
+                recordingTitle->width() + 1,
+            "UI-test recording card title fits without clipping");
     auto recordingStatusUnitColumnIsStable = [recordingStatus]() {
         const QList<QLabel *> units =
             recordingStatus->findChildren<QLabel *>(QStringLiteral("recordingStatusUnitLabel"));
@@ -1905,6 +1908,9 @@ int main(int argc, char **argv)
             recordingStatus->findChildren<QLabel *>(QStringLiteral("recordingStatusValueLabel"));
         const QList<QLabel *> fields =
             recordingStatus->findChildren<QLabel *>(QStringLiteral("recordingStatusFieldLabel"));
+        const QList<QLabel *> fullLabels =
+            recordingStatus->findChildren<QLabel *>(QStringLiteral("recordingStatusStateLabel")) +
+            recordingStatus->findChildren<QLabel *>(QStringLiteral("recordingStatusSectionLabel"));
         for (QLabel *field : fields)
         {
             if (!field->isVisible())
@@ -1918,6 +1924,31 @@ int main(int argc, char **argv)
             const QRect fieldRect(field->mapTo(recordingStatus, QPoint(0, 0)), field->size());
             if (!recordingStatus->rect().contains(fieldRect.topLeft()) ||
                 fieldRect.right() > recordingStatus->rect().right())
+            {
+                return false;
+            }
+        }
+        for (QLabel *value : values)
+        {
+            if (!value->isVisible())
+            {
+                continue;
+            }
+            if (value->fontMetrics().horizontalAdvance(value->text()) > value->width() + 1)
+            {
+                return false;
+            }
+            const QRect valueRect(value->mapTo(recordingStatus, QPoint(0, 0)), value->size());
+            if (!recordingStatus->rect().contains(valueRect.topLeft()) ||
+                valueRect.right() > recordingStatus->rect().right())
+            {
+                return false;
+            }
+        }
+        for (QLabel *fullLabel : fullLabels)
+        {
+            if (fullLabel->isVisible() &&
+                fullLabel->fontMetrics().horizontalAdvance(fullLabel->text()) > fullLabel->width() + 1)
             {
                 return false;
             }
@@ -1985,7 +2016,7 @@ int main(int argc, char **argv)
     };
     require(VaporViewTest::processEventsUntil(1500, [recordingStatus, recordingStatusUnitColumnIsStable]() {
                 const QString text = recordingStatus->statusText();
-                return text.contains(QStringLiteral("记录（本地）：进行中（界面测试）")) &&
+                return text.contains(QStringLiteral("记录（本地）：进行中（测试）")) &&
                     text.contains(QStringLiteral("会话：UI-TEST-SESSION")) &&
                     text.contains(QStringLiteral("外部设备记录：")) &&
                     !text.contains(QStringLiteral("外部设备记录：0 行\n")) &&
@@ -2036,7 +2067,7 @@ int main(int argc, char **argv)
             "simulated recording pause slot invoked");
     processEvents();
     const QString pausedRecordingText = recordingStatus->statusText();
-    require(pausedRecordingText.contains(QStringLiteral("记录（本地）：已暂停（界面测试）")),
+    require(pausedRecordingText.contains(QStringLiteral("记录（本地）：已暂停（测试）")),
             "simulated recording displays the paused UI-test state");
     require(!VaporViewTest::processEventsUntil(400, [recordingStatus, pausedRecordingText]() {
                 return recordingStatus->statusText() != pausedRecordingText;
@@ -2045,14 +2076,14 @@ int main(int argc, char **argv)
     require(QMetaObject::invokeMethod(window, "onStartRecordingClicked", Qt::DirectConnection),
             "simulated recording resume slot invoked");
     require(VaporViewTest::processEventsUntil(1500, [recordingStatus, pausedRecordingText]() {
-                return recordingStatus->statusText().contains(QStringLiteral("记录（本地）：进行中（界面测试）")) &&
+                return recordingStatus->statusText().contains(QStringLiteral("记录（本地）：进行中（测试）")) &&
                     recordingStatus->statusText() != pausedRecordingText;
             }),
             "simulated recording counters resume without starting the real recorder");
     require(QMetaObject::invokeMethod(window, "onStopRecordingClicked", Qt::DirectConnection),
             "simulated recording stop slot invoked");
     processEvents();
-    require(recordingStatus->statusText().contains(QStringLiteral("记录（本地）：未记录（界面测试）")) &&
+    require(recordingStatus->statusText().contains(QStringLiteral("记录（本地）：未记录（测试）")) &&
                 recordingStatus->statusText().contains(QStringLiteral("外部设备记录：0 行")) &&
                 recordingStatus->statusText().contains(QStringLiteral("文件写入：无（仅内存模拟）")),
             "stopping simulated recording clears only its in-memory counters");

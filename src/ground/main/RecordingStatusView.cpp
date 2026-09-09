@@ -192,6 +192,7 @@ void RecordingStatusView::setStatusText(const QString& plainText)
         int fieldWidth = 0;
         int valueWidth = 0;
         int unitWidth = 0;
+        int spanningValueWidth = 0;
         for (const RowWidgets& row : std::as_const(row_widgets_))
         {
             if (row.fieldLabel)
@@ -201,10 +202,14 @@ void RecordingStatusView::setStatusText(const QString& plainText)
             }
             if (row.valueLabel)
             {
-                if (!row.valueSpansUnit && row.unitLabel)
+                const int textWidth = row.valueLabel->fontMetrics().horizontalAdvance(row.valueLabel->text());
+                if (row.valueSpansUnit)
                 {
-                    valueWidth = std::max(valueWidth,
-                                          row.valueLabel->fontMetrics().horizontalAdvance(row.valueLabel->text()));
+                    spanningValueWidth = std::max(spanningValueWidth, textWidth + 4);
+                }
+                else if (row.unitLabel)
+                {
+                    valueWidth = std::max(valueWidth, textWidth);
                     unitWidth = std::max(unitWidth,
                                          row.unitLabel->fontMetrics().horizontalAdvance(row.unitLabel->text()));
                 }
@@ -216,9 +221,18 @@ void RecordingStatusView::setStatusText(const QString& plainText)
         // "仅远程有效") when it spans the value and unit columns.
         value_column_width_ = std::max(value_column_width_, std::max(40, valueWidth + 4));
         unit_column_width_ = std::max(unit_column_width_, std::max(20, unitWidth + 6));
+        // A spanning value shares the fixed value and unit columns.  Reserve
+        // its full width so session/file text cannot be clipped at the card edge.
+        value_column_width_ = std::max(
+            value_column_width_,
+            std::max(0,
+                     spanningValueWidth - unit_column_width_ - grid_layout_->horizontalSpacing()));
         fieldWidth = field_column_width_;
         valueWidth = value_column_width_;
         unitWidth = unit_column_width_;
+        const int contentMinimumWidth = fieldWidth + valueWidth + unitWidth +
+                                        2 * grid_layout_->horizontalSpacing();
+        setMinimumWidth(std::max(minimumWidth(), contentMinimumWidth));
         grid_layout_->setColumnMinimumWidth(0, fieldWidth);
         grid_layout_->setColumnMinimumWidth(1, valueWidth);
         grid_layout_->setColumnMinimumWidth(2, unitWidth);
