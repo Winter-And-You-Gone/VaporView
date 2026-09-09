@@ -1993,6 +1993,12 @@ void requireRtkSidebarPage(
     requireLabelTextOneOf(customTitleLabel,
                           {QStringLiteral("组合导航"), QStringLiteral("Combination Navigation")},
                           "custom title bar follows the selected combination-navigation page");
+    const QFontMetrics titleMetrics = customTitleLabel->fontMetrics();
+    const int titleTextWidth = std::max(titleMetrics.horizontalAdvance(customTitleLabel->text()),
+                                        titleMetrics.boundingRect(customTitleLabel->text()).width());
+    const int expectedTitlePaddingAndSlack = 2 * 8 + 4;
+    require(customTitleLabel->width() >= titleTextWidth + expectedTitlePaddingAndSlack,
+            "custom title bar keeps glyph edge slack beyond its stylesheet padding");
     statusSummaryResizeRecorder.reset();
     clickWidget(statusButton, 0);
     processEventsFor(50);

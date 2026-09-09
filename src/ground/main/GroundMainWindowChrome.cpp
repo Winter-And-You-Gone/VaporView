@@ -1895,13 +1895,17 @@ void MainWindow::updateCustomTitleBarTitleWidth()
     int maxTextWidth = 0;
     for (const QString& title : titleCandidates)
     {
-        maxTextWidth = std::max(maxTextWidth, metrics.horizontalAdvance(title));
+        const int advanceWidth = metrics.horizontalAdvance(title);
+        const int boundingWidth = metrics.boundingRect(title).width();
+        maxTextWidth = std::max(maxTextWidth, std::max(advanceWidth, boundingWidth));
     }
 
     // Keep the label's existing 8px stylesheet padding on both sides while
-    // reserving one stable column for every page title.
+    // reserving one stable column for every page title. The extra edge slack
+    // keeps the final glyph clear of the label's paint boundary.
     const int horizontalPadding = 2 * scalePixels(8);
-    state_->custom_title_label_->setFixedWidth(maxTextWidth + horizontalPadding);
+    const int glyphEdgeSlack = scalePixels(4);
+    state_->custom_title_label_->setFixedWidth(maxTextWidth + horizontalPadding + glyphEdgeSlack);
     state_->custom_title_label_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
 }
 
