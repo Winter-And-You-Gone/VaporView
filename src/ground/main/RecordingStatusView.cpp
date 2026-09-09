@@ -47,13 +47,14 @@ RecordingStatusLine parseRecordingStatusLine(const QString& line, int row)
         return result;
     }
 
-    const bool fullWidthLine = row == 0 ||
-                               trimmed.endsWith(QChar(0xFF1A)) ||
-                               trimmed.endsWith(QLatin1Char(':'));
+    const bool sectionLine = trimmed == QStringLiteral("已记录") ||
+                             trimmed.endsWith(QChar(0xFF1A)) ||
+                             trimmed.endsWith(QLatin1Char(':'));
+    const bool fullWidthLine = row == 0 || sectionLine;
     if (fullWidthLine)
     {
         result.fullWidth = true;
-        result.section = row != 0;
+        result.section = row != 0 && sectionLine;
         return result;
     }
 
@@ -418,12 +419,13 @@ void RecordingStatusView::setStatusText(const QString& plainText)
         widgets.fullWidth = line.fullWidth;
         if (line.fullWidth)
         {
+            const bool centerRecordedSection = line.label == QStringLiteral("已记录");
             auto *label = createRecordingStatusLabel(
                 this,
                 row == 0 ? QStringLiteral("recordingStatusStateLabel")
                          : QStringLiteral("recordingStatusSectionLabel"),
                 line.label.isEmpty() ? QStringLiteral(" ") : line.label,
-                Qt::AlignLeft);
+                centerRecordedSection ? Qt::AlignHCenter : Qt::AlignLeft);
             label->setProperty("recordingStatusSection", line.section);
             grid_layout_->addWidget(label, outputRow, 0, 1, 3);
             grid_layout_->setRowMinimumHeight(outputRow, label->minimumHeight() + (line.section ? 2 : 0));

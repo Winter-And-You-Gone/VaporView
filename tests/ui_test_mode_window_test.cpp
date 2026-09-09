@@ -2031,8 +2031,8 @@ int main(int argc, char **argv)
                     !text.contains(QStringLiteral("外部设备记录：0 行\n")) &&
                     text.contains(QStringLiteral("波形帧数：")) &&
                     text.contains(QStringLiteral("波形特征：仅远程有效")) &&
-                    text.contains(QStringLiteral(" 帧\n已记录：")) &&
-                    text.contains(QStringLiteral("已记录：\nRAW EPSILON：")) &&
+                    text.contains(QStringLiteral(" 帧\n已记录\n")) &&
+                    text.contains(QStringLiteral("已记录\nRAW EPSILON：")) &&
                     text.contains(QStringLiteral(" 条\nRAW PTB210：")) &&
                     text.contains(QStringLiteral(" 条\nRAW HMP3：")) &&
                     text.contains(QStringLiteral(" 条\nRAW TFA1500：")) &&
@@ -2048,6 +2048,20 @@ int main(int argc, char **argv)
                     recordingStatusUnitColumnIsStable();
             }),
             "UI test mode immediately covers recording status with aligned non-zero counters");
+    QLabel *recordedSectionLabel = nullptr;
+    for (QLabel *label : recordingStatus->findChildren<QLabel *>(
+             QStringLiteral("recordingStatusSectionLabel")))
+    {
+        if (label->text() == QStringLiteral("已记录"))
+        {
+            recordedSectionLabel = label;
+            break;
+        }
+    }
+    require(recordedSectionLabel &&
+                recordedSectionLabel->alignment().testFlag(Qt::AlignHCenter) &&
+                !recordedSectionLabel->text().contains(QChar(0xFF1A)),
+            "recording RAW section title is centered without a colon");
     const QStringList leftAlignedRecordingFields{QStringLiteral("会话："),
                                                  QStringLiteral("时长："),
                                                  QStringLiteral("文件写入：")};
