@@ -360,6 +360,7 @@ private:
     void updateRtkConfigIcon();
     void updateFontScaleMenuCheckIcons();
     QString currentMainPageTitleText() const;
+    void updateCustomTitleBarTitleWidth();
     void updateCustomTitleBarTexts();
     void updateCustomTitleBarStyle();
     void updateWindowControlButtons();

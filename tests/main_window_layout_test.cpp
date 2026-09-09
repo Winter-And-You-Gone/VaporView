@@ -5139,6 +5139,11 @@ int main(int argc, char **argv)
     requireLabelTextOneOf(customTitleLabel,
                           {QStringLiteral("首页"), QStringLiteral("Home")},
                           "custom title bar starts with the selected home page title");
+    const int customTitleReservedWidth = customTitleLabel->width();
+    require(customTitleReservedWidth > 0 &&
+                customTitleLabel->minimumWidth() == customTitleReservedWidth &&
+                customTitleLabel->maximumWidth() == customTitleReservedWidth,
+            "custom title bar reserves a fixed title column width");
     const int logoCenterX = customLogo->mapTo(&window, customLogo->rect().center()).x();
     const int checkedSidebarButtonCenterX =
         checkedSidebarButton->mapTo(&window, checkedSidebarButton->rect().center()).x();
@@ -9455,6 +9460,8 @@ int main(int argc, char **argv)
     requireLabelTextOneOf(customTitleLabel,
                           {QStringLiteral("温控"), QStringLiteral("Thermal")},
                           "custom title bar follows the selected temperature page");
+    require(customTitleLabel->width() == customTitleReservedWidth,
+            "custom title bar keeps its reserved width on the temperature page");
     requireNoVisiblePageTitle(temperaturePage,
                               "temperature page does not show an internal page title");
     clickWidget(deviceConfigNavButton, 150);
@@ -9465,6 +9472,8 @@ int main(int argc, char **argv)
     requireLabelTextOneOf(customTitleLabel,
                           {QStringLiteral("设备配置"), QStringLiteral("Device")},
                           "custom title bar follows the selected device configuration page");
+    require(customTitleLabel->width() == customTitleReservedWidth,
+            "custom title bar keeps its reserved width on the device configuration page");
     requireNoVisiblePageTitle(deviceConfigPage,
                               "device configuration page does not show an internal page title");
     auto *deviceConfigScrollArea =

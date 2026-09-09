@@ -1848,11 +1848,69 @@ QString MainWindow::currentMainPageTitleText() const
     }
 }
 
+void MainWindow::updateCustomTitleBarTitleWidth()
+{
+    if (!state_->custom_title_label_)
+    {
+        return;
+    }
+
+    QStringList titleCandidates;
+    if (state_->app_nav_button_group_)
+    {
+        const QList<QAbstractButton *> buttons = state_->app_nav_button_group_->buttons();
+        for (QAbstractButton *button : buttons)
+        {
+            if (!button)
+            {
+                continue;
+            }
+            const QString accessibleName = button->accessibleName().trimmed();
+            const QString text = button->text().trimmed();
+            const QString toolTip = button->toolTip().trimmed();
+            const QString title = !accessibleName.isEmpty()
+                ? accessibleName
+                : (!text.isEmpty() ? text : toolTip);
+            if (!title.isEmpty())
+            {
+                titleCandidates.append(title);
+            }
+        }
+    }
+
+    if (titleCandidates.isEmpty())
+    {
+        titleCandidates = state_->is_english_
+            ? QStringList{QStringLiteral("Home"),
+                          QStringLiteral("Device"),
+                          QStringLiteral("Thermal"),
+                          QStringLiteral("Combination Navigation")}
+            : QStringList{QStringLiteral("首页"),
+                          QStringLiteral("设备配置"),
+                          QStringLiteral("温控"),
+                          QStringLiteral("组合导航")};
+    }
+
+    const QFontMetrics metrics(state_->custom_title_label_->font());
+    int maxTextWidth = 0;
+    for (const QString& title : titleCandidates)
+    {
+        maxTextWidth = std::max(maxTextWidth, metrics.horizontalAdvance(title));
+    }
+
+    // Keep the label's existing 8px stylesheet padding on both sides while
+    // reserving one stable column for every page title.
+    const int horizontalPadding = 2 * scalePixels(8);
+    state_->custom_title_label_->setFixedWidth(maxTextWidth + horizontalPadding);
+    state_->custom_title_label_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+}
+
 void MainWindow::updateCustomTitleBarTexts()
 {
     if (state_->custom_title_label_)
     {
         state_->custom_title_label_->setText(currentMainPageTitleText());
+        updateCustomTitleBarTitleWidth();
     }
     if (state_->ui_test_mode_badge_)
     {
@@ -1895,6 +1953,7 @@ void MainWindow::updateCustomTitleBarStyle()
     }
 
     state_->custom_title_bar_->setFixedHeight(scalePixels(48));
+    updateCustomTitleBarTitleWidth();
     const QSize actionButtonSize(scalePixels(34), scalePixels(34));
     const QSize windowButtonSize(scalePixels(34), scalePixels(34));
     const QSize iconSize(scalePixels(24), scalePixels(24));
