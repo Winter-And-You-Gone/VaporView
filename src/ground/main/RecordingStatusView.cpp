@@ -47,7 +47,7 @@ RecordingStatusLine parseRecordingStatusLine(const QString& line, int row)
         return result;
     }
 
-    const bool sectionLine = trimmed == QStringLiteral("已记录") ||
+    const bool sectionLine = trimmed == QStringLiteral("已记录条数") ||
                              trimmed.endsWith(QChar(0xFF1A)) ||
                              trimmed.endsWith(QLatin1Char(':'));
     const bool fullWidthLine = row == 0 || sectionLine;
@@ -419,7 +419,7 @@ void RecordingStatusView::setStatusText(const QString& plainText)
         widgets.fullWidth = line.fullWidth;
         if (line.fullWidth)
         {
-            const bool centerRecordedSection = line.label == QStringLiteral("已记录");
+            const bool centerRecordedSection = line.label == QStringLiteral("已记录条数");
             auto *label = createRecordingStatusLabel(
                 this,
                 row == 0 ? QStringLiteral("recordingStatusStateLabel")
