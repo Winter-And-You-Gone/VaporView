@@ -428,8 +428,8 @@ int MainWindow::minimumLogSidePanelWidth() const
         titleBarMargins + titleClusterWidth + titleBarSpacing + actionButtonsWidth +
         cardMargins + safetyPadding;
 
-    // The recording view reports the compact width needed by its current rows,
-    // so the splitter keeps every value inside the card without extra reserve.
+    // The recording view has fixed numeric columns, so its minimum must reach
+    // the splitter instead of allowing child labels to paint beyond the card.
     int recordingCardMinimumWidth = 0;
     if (state_->recording_status_view_)
     {

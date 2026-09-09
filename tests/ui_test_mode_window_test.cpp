@@ -24,7 +24,6 @@
 #include <QEventLoop>
 #include <QFrame>
 #include <QGroupBox>
-#include <QGridLayout>
 #include <QHostAddress>
 #include <QImage>
 #include <QLabel>
@@ -1922,32 +1921,13 @@ int main(int argc, char **argv)
             {
                 return false;
             }
-            const QRect fieldRect(field->mapTo(recordingStatus, QPoint(0, 0)), field->size());
-            if (!recordingStatus->rect().contains(fieldRect.topLeft()) ||
-                fieldRect.right() > recordingStatus->rect().right())
+            if (!field->alignment().testFlag(Qt::AlignLeft))
             {
                 return false;
             }
-            bool hasTightValueAfterField = false;
-            for (QLabel *value : values)
-            {
-                if (!value->isVisible())
-                {
-                    continue;
-                }
-                const QRect valueRect(value->mapTo(recordingStatus, QPoint(0, 0)), value->size());
-                if (std::abs(valueRect.center().y() - fieldRect.center().y()) > 4)
-                {
-                    continue;
-                }
-                const int gap = valueRect.left() - (fieldRect.left() + fieldRect.width());
-                if (gap >= 0 && gap <= 4)
-                {
-                    hasTightValueAfterField = true;
-                    break;
-                }
-            }
-            if (!hasTightValueAfterField)
+            const QRect fieldRect(field->mapTo(recordingStatus, QPoint(0, 0)), field->size());
+            if (!recordingStatus->rect().contains(fieldRect.topLeft()) ||
+                fieldRect.right() > recordingStatus->rect().right())
             {
                 return false;
             }
@@ -2074,13 +2054,6 @@ int main(int argc, char **argv)
                 recordingViewRectInBody.right() <= recordingBodyContents.right() &&
                 recordingViewRectInBody.bottom() <= recordingBodyContents.bottom(),
             "UI-test recording status view remains inside its card body");
-    auto *recordingStatusGrid = qobject_cast<QGridLayout *>(recordingStatus->layout());
-    require(recordingStatusGrid != nullptr &&
-                recordingStatusGrid->horizontalSpacing() == 2 &&
-                recordingStatusGrid->columnStretch(0) == 0,
-            "UI-test recording status keeps compact field/value column spacing");
-    require(recordingStatus->minimumWidth() < 200,
-            "UI-test recording status minimum width excludes unit-less value expansion");
     const QList<QLabel *> recordingStatusLabelsBeforeCounterRefresh =
         recordingStatus->findChildren<QLabel *>();
     QVector<QPointer<QLabel>> stableRecordingStatusLabels;
