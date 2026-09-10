@@ -746,9 +746,9 @@ void MainWindow::setupCustomTitleBar()
                 requestSourceModeSelection(remoteSelected);
             });
 
-    titleLayout->addWidget(createTitleBarActionButton(state_->refresh_ports_btn_, state_->custom_title_bar_), 0, Qt::AlignVCenter);
-    addTitleBarSeparator(titleLayout);
     titleLayout->addWidget(state_->source_mode_switch_, 0, Qt::AlignVCenter);
+    addTitleBarSeparator(titleLayout);
+    titleLayout->addWidget(createTitleBarActionButton(state_->refresh_ports_btn_, state_->custom_title_bar_), 0, Qt::AlignVCenter);
     titleLayout->addWidget(createTitleBarActionButton(state_->connect_btn_, state_->custom_title_bar_), 0, Qt::AlignVCenter);
     titleLayout->addWidget(createTitleBarActionButton(state_->cancel_connect_btn_, state_->custom_title_bar_), 0, Qt::AlignVCenter);
     titleLayout->addWidget(createTitleBarActionButton(state_->disconnect_btn_, state_->custom_title_bar_), 0, Qt::AlignVCenter);

@@ -10455,20 +10455,38 @@ int main(int argc, char **argv)
     const int sourceModeTitleIndex = customTitleLayout
         ? customTitleLayout->indexOf(deviceSourceModeSwitch)
         : -1;
-    QWidget *followingTitleWidget = sourceModeTitleIndex >= 0 &&
-            sourceModeTitleIndex + 1 < customTitleLayout->count()
-        ? customTitleLayout->itemAt(sourceModeTitleIndex + 1)->widget()
-        : nullptr;
+    int refreshPortsTitleIndex = -1;
+    int connectTitleIndex = -1;
+    if (customTitleLayout)
+    {
+        for (int index = 0; index < customTitleLayout->count(); ++index)
+        {
+            const QWidget *titleWidget = customTitleLayout->itemAt(index)->widget();
+            if (!titleWidget)
+            {
+                continue;
+            }
+            const QString toolTip = titleWidget->toolTip();
+            if (toolTip == QStringLiteral("刷新串口") || toolTip == QStringLiteral("Refresh ports"))
+            {
+                refreshPortsTitleIndex = index;
+            }
+            else if (toolTip == QStringLiteral("连接") || toolTip == QStringLiteral("Connect"))
+            {
+                connectTitleIndex = index;
+            }
+        }
+    }
     require(deviceSourceModeSwitch != nullptr &&
                 deviceSourceModeSwitch->property("segmentedSwitchControl").toBool() &&
                 deviceSourceModeSwitch->focusPolicy() == Qt::TabFocus &&
                 deviceSourceModeSwitch->parentWidget() == customTitleBar &&
-                followingTitleWidget &&
-                (followingTitleWidget->toolTip() == QStringLiteral("连接") ||
-                 followingTitleWidget->toolTip() == QStringLiteral("Connect")) &&
+                sourceModeTitleIndex >= 0 &&
+                refreshPortsTitleIndex > sourceModeTitleIndex &&
+                connectTitleIndex == refreshPortsTitleIndex + 1 &&
                 deviceConfigPage->findChild<QPushButton *>(
                     QStringLiteral("deviceConfigSourceModeOverviewSwitch")) == nullptr,
-            "device configuration uses the single source switch immediately left of the title-bar connect action");
+            "device configuration keeps the refresh action immediately left of the title-bar connect action");
     auto setDeviceSourceModeRemote = [&](bool remote) {
         if (deviceSourceModeSwitch->isChecked() != remote)
         {

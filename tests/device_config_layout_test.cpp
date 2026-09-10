@@ -767,10 +767,28 @@ int main(int argc, char **argv)
     auto *titleBar = window.findChild<QWidget *>(QStringLiteral("customTitleBar"));
     auto *titleLayout = titleBar ? qobject_cast<QHBoxLayout *>(titleBar->layout()) : nullptr;
     const int sourceModeTitleIndex = titleLayout ? titleLayout->indexOf(dataSourceModeSwitch) : -1;
-    QWidget *followingTitleWidget = sourceModeTitleIndex >= 0 &&
-            sourceModeTitleIndex + 1 < titleLayout->count()
-        ? titleLayout->itemAt(sourceModeTitleIndex + 1)->widget()
-        : nullptr;
+    int refreshPortsTitleIndex = -1;
+    int connectTitleIndex = -1;
+    if (titleLayout)
+    {
+        for (int index = 0; index < titleLayout->count(); ++index)
+        {
+            const QWidget *titleWidget = titleLayout->itemAt(index)->widget();
+            if (!titleWidget)
+            {
+                continue;
+            }
+            const QString toolTip = titleWidget->toolTip();
+            if (toolTip == QStringLiteral("刷新串口") || toolTip == QStringLiteral("Refresh ports"))
+            {
+                refreshPortsTitleIndex = index;
+            }
+            else if (toolTip == QStringLiteral("连接") || toolTip == QStringLiteral("Connect"))
+            {
+                connectTitleIndex = index;
+            }
+        }
+    }
     auto *epsilonPortCombo =
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceEpsilonPortCombo"));
     auto *epsilonBaudCombo =
@@ -938,12 +956,12 @@ int main(int argc, char **argv)
                 dataSourceModeSwitch->text().contains(QStringLiteral("数据源")) &&
                 dataSourceModeSwitch->focusPolicy() == Qt::TabFocus &&
                 dataSourceModeSwitch->parentWidget() == titleBar &&
-                followingTitleWidget &&
-                (followingTitleWidget->toolTip() == QStringLiteral("连接") ||
-                 followingTitleWidget->toolTip() == QStringLiteral("Connect")) &&
+                sourceModeTitleIndex >= 0 &&
+                refreshPortsTitleIndex > sourceModeTitleIndex &&
+                connectTitleIndex == refreshPortsTitleIndex + 1 &&
                 serialCard->findChild<QPushButton *>(
                     QStringLiteral("deviceConfigSourceModeOverviewSwitch")) == nullptr,
-            "one shared source switch sits immediately left of the title-bar connect action");
+            "the refresh action sits immediately left of the title-bar connect action");
     const QList<QComboBox *> deviceConnectionBaudCombos = {
         epsilonBaudCombo,
         pressureBaudCombo,
