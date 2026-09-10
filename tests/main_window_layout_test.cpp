@@ -10455,18 +10455,20 @@ int main(int argc, char **argv)
     const int sourceModeTitleIndex = customTitleLayout
         ? customTitleLayout->indexOf(deviceSourceModeSwitch)
         : -1;
-    QWidget *precedingTitleWidget = sourceModeTitleIndex > 0
-        ? customTitleLayout->itemAt(sourceModeTitleIndex - 1)->widget()
+    QWidget *followingTitleWidget = sourceModeTitleIndex >= 0 &&
+            sourceModeTitleIndex + 1 < customTitleLayout->count()
+        ? customTitleLayout->itemAt(sourceModeTitleIndex + 1)->widget()
         : nullptr;
     require(deviceSourceModeSwitch != nullptr &&
                 deviceSourceModeSwitch->property("segmentedSwitchControl").toBool() &&
                 deviceSourceModeSwitch->focusPolicy() == Qt::TabFocus &&
                 deviceSourceModeSwitch->parentWidget() == customTitleBar &&
-                precedingTitleWidget &&
-                precedingTitleWidget->accessibleName() == QStringLiteral("titleThemeButton") &&
+                followingTitleWidget &&
+                (followingTitleWidget->toolTip() == QStringLiteral("连接") ||
+                 followingTitleWidget->toolTip() == QStringLiteral("Connect")) &&
                 deviceConfigPage->findChild<QPushButton *>(
                     QStringLiteral("deviceConfigSourceModeOverviewSwitch")) == nullptr,
-            "device configuration uses the single source switch immediately right of the title-bar theme button");
+            "device configuration uses the single source switch immediately left of the title-bar connect action");
     auto setDeviceSourceModeRemote = [&](bool remote) {
         if (deviceSourceModeSwitch->isChecked() != remote)
         {

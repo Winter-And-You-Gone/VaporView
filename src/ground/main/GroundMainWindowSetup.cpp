@@ -736,8 +736,19 @@ void MainWindow::setupCustomTitleBar()
     state_->ui_test_mode_badge_->hide();
     titleLayout->addWidget(state_->ui_test_mode_badge_, 0, Qt::AlignVCenter);
 
+    state_->source_mode_switch_ = createSourceModeOverviewSwitchButton(state_->custom_title_bar_);
+    state_->source_mode_switch_->setFixedSize(128, kMainPageButtonHeight);
+    state_->source_mode_switch_->setEnglish(state_->is_english_);
+    connect(state_->source_mode_switch_,
+            &VaporView::Ground::Widgets::SegmentedSwitchButton::selectionRequested,
+            this,
+            [this](bool remoteSelected) {
+                requestSourceModeSelection(remoteSelected);
+            });
+
     titleLayout->addWidget(createTitleBarActionButton(state_->refresh_ports_btn_, state_->custom_title_bar_), 0, Qt::AlignVCenter);
     addTitleBarSeparator(titleLayout);
+    titleLayout->addWidget(state_->source_mode_switch_, 0, Qt::AlignVCenter);
     titleLayout->addWidget(createTitleBarActionButton(state_->connect_btn_, state_->custom_title_bar_), 0, Qt::AlignVCenter);
     titleLayout->addWidget(createTitleBarActionButton(state_->cancel_connect_btn_, state_->custom_title_bar_), 0, Qt::AlignVCenter);
     titleLayout->addWidget(createTitleBarActionButton(state_->disconnect_btn_, state_->custom_title_bar_), 0, Qt::AlignVCenter);
@@ -760,17 +771,6 @@ void MainWindow::setupCustomTitleBar()
         createTitleBarActionButton(state_->theme_toggle_action_, state_->custom_title_bar_);
     themeToggleButton->setAccessibleName(QStringLiteral("titleThemeButton"));
     titleLayout->addWidget(themeToggleButton, 0, Qt::AlignVCenter);
-
-    state_->source_mode_switch_ = createSourceModeOverviewSwitchButton(state_->custom_title_bar_);
-    state_->source_mode_switch_->setFixedSize(128, kMainPageButtonHeight);
-    state_->source_mode_switch_->setEnglish(state_->is_english_);
-    connect(state_->source_mode_switch_,
-            &VaporView::Ground::Widgets::SegmentedSwitchButton::selectionRequested,
-            this,
-            [this](bool remoteSelected) {
-                requestSourceModeSelection(remoteSelected);
-            });
-    titleLayout->addWidget(state_->source_mode_switch_, 0, Qt::AlignVCenter);
     titleLayout->addStretch(1);
     state_->log_side_panel_toggle_btn_ = createTitleBarIconButton(QStringLiteral("titleBarButton"), state_->custom_title_bar_);
     state_->log_side_panel_toggle_btn_->setAccessibleName(QStringLiteral("logSidePanelToggleButton"));

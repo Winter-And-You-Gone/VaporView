@@ -767,8 +767,9 @@ int main(int argc, char **argv)
     auto *titleBar = window.findChild<QWidget *>(QStringLiteral("customTitleBar"));
     auto *titleLayout = titleBar ? qobject_cast<QHBoxLayout *>(titleBar->layout()) : nullptr;
     const int sourceModeTitleIndex = titleLayout ? titleLayout->indexOf(dataSourceModeSwitch) : -1;
-    QWidget *precedingTitleWidget = sourceModeTitleIndex > 0
-        ? titleLayout->itemAt(sourceModeTitleIndex - 1)->widget()
+    QWidget *followingTitleWidget = sourceModeTitleIndex >= 0 &&
+            sourceModeTitleIndex + 1 < titleLayout->count()
+        ? titleLayout->itemAt(sourceModeTitleIndex + 1)->widget()
         : nullptr;
     auto *epsilonPortCombo =
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceEpsilonPortCombo"));
@@ -937,11 +938,12 @@ int main(int argc, char **argv)
                 dataSourceModeSwitch->text().contains(QStringLiteral("数据源")) &&
                 dataSourceModeSwitch->focusPolicy() == Qt::TabFocus &&
                 dataSourceModeSwitch->parentWidget() == titleBar &&
-                precedingTitleWidget &&
-                precedingTitleWidget->accessibleName() == QStringLiteral("titleThemeButton") &&
+                followingTitleWidget &&
+                (followingTitleWidget->toolTip() == QStringLiteral("连接") ||
+                 followingTitleWidget->toolTip() == QStringLiteral("Connect")) &&
                 serialCard->findChild<QPushButton *>(
                     QStringLiteral("deviceConfigSourceModeOverviewSwitch")) == nullptr,
-            "one shared source switch sits immediately right of the title-bar theme button");
+            "one shared source switch sits immediately left of the title-bar connect action");
     const QList<QComboBox *> deviceConnectionBaudCombos = {
         epsilonBaudCombo,
         pressureBaudCombo,
