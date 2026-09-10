@@ -20,6 +20,7 @@
 #include <QRect>
 #include <QSpinBox>
 #include <QStackedWidget>
+#include <QThread>
 #include <QToolButton>
 #include <QVBoxLayout>
 
@@ -58,6 +59,15 @@ int main(int argc, char **argv)
                 windowedPlot.property("yAxisMinC").toDouble() == 24.0 &&
                 windowedPlot.property("yAxisMaxC").toDouble() == 26.0,
             "Time plot recenters after old extrema leave the visible window");
+    require(std::abs(windowedPlot.property("xAxisTimeMaxSeconds").toDouble() - (now - 0.1)) < 0.05 &&
+                std::abs(windowedPlot.property("latestSampleX").toDouble() -
+                         windowedPlot.property("plotAreaRight").toDouble()) < 0.5,
+            "Time plot anchors the newest temperature point to the stable right edge");
+    const double anchoredLatestSampleX = windowedPlot.property("latestSampleX").toDouble();
+    QThread::msleep(60);
+    windowedPlot.grab();
+    require(std::abs(windowedPlot.property("latestSampleX").toDouble() - anchoredLatestSampleX) < 0.5,
+            "Time plot keeps the newest temperature point fixed while waiting for the next sample");
     windowedPlot.setSampleTimes({now - 2.0, now - 1.0, now - 0.1});
     windowedPlot.grab();
     require(windowedPlot.property("yAxisMinC").toDouble() == 22.0,
@@ -70,9 +80,15 @@ int main(int argc, char **argv)
             "Time plot includes the clipped line at the left window edge without the old extreme");
     windowedPlot.setSampleTimes({now - 120.0, now - 110.0, now - 100.0});
     windowedPlot.grab();
+    require(std::abs(windowedPlot.property("xAxisTimeMaxSeconds").toDouble() - (now - 100.0)) < 0.05,
+            "Time plot keeps the right edge anchored to the newest retained sample");
+    windowedPlot.setSamples({});
+    windowedPlot.setSampleTimes({});
+    windowedPlot.grab();
     require(windowedPlot.property("yAxisMinC").toDouble() == 24.0 &&
                 windowedPlot.property("yAxisMaxC").toDouble() == 26.0,
-            "An empty visible window restores the target-centered range");
+            "An empty temperature plot restores the target-centered range");
+    windowedPlot.setSamples({0.0, 25.0, 25.1});
     windowedPlot.setTimeAxisEnabled(false);
     require(windowedPlot.property("yAxisMinC").toDouble() == -1.0,
             "Sample-index plots retain full-history scaling");

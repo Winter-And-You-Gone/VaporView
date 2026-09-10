@@ -191,6 +191,7 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
     setProperty("plotAreaTop", plotRect.top());
     setProperty("plotAreaRight", plotRect.right());
     setProperty("plotAreaBottom", plotRect.bottom());
+    setProperty("latestSampleX", std::numeric_limits<double>::quiet_NaN());
     const qreal timeAxisMinimumTickSpacing = timeAxisLabelWidth(axisFm) + kTimeXAxisLabelGap;
     const int xAxisLabelCount = xAxisLabelCountForWidth(plotRect.width(), axisFm, time_axis_enabled_);
     const int xAxisIntervals = std::max(1, xAxisLabelCount - 1);
@@ -404,6 +405,7 @@ void TemperatureTrendPlotWidget::paintEvent(QPaintEvent *event)
     painter.setBrush(line);
     painter.setPen(Qt::NoPen);
     painter.drawEllipse(polyline.last(), 3.0, 3.0);
+    setProperty("latestSampleX", polyline.last().x());
     painter.restore();
 }
 
@@ -455,7 +457,22 @@ std::pair<double, double> TemperatureTrendPlotWidget::visibleTimeRange(double no
     axisFont.setPointSize(std::max(8, axisFont.pointSize() - 2));
     const int intervals = xAxisLabelCountForWidth(
         plotAreaRect().width(), QFontMetrics(axisFont), true) - 1;
-    return {now - intervals * kTimeAxisSecondsPerInterval, now};
+    // Anchor the visible window to the newest sample. Using the wall clock here
+    // makes the newest point drift left between samples and jump right on update.
+    double xMax = now;
+    if (time_axis_enabled_ && sample_times_.size() == samples_.size())
+    {
+        for (int index = samples_.size() - 1; index >= 0; --index)
+        {
+            if (std::isfinite(samples_.at(index)) &&
+                std::isfinite(sample_times_.at(index)))
+            {
+                xMax = sample_times_.at(index);
+                break;
+            }
+        }
+    }
+    return {xMax - intervals * kTimeAxisSecondsPerInterval, xMax};
 }
 
 std::pair<double, double> TemperatureTrendPlotWidget::visibleTemperatureAxisRange(double now) const
