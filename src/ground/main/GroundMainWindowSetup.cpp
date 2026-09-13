@@ -3287,14 +3287,14 @@ void MainWindow::setupDeviceConfigPage()
 
     state_->device_config_.remote_sky_sync_title_lbl =
         createSectionLabel(QStringLiteral("sync"));
-    remoteGrid->addWidget(state_->device_config_.remote_sky_sync_title_lbl, 4, 0, 1, 6);
+    remoteGrid->addWidget(state_->device_config_.remote_sky_sync_title_lbl, 0, 7, 1, 5);
 
     state_->device_config_.remote_sky_config_status_lbl = createFieldLabel(QStringLiteral("deviceRemoteSkyConfigStatus"));
     state_->device_config_.remote_sky_config_status_lbl->setWordWrap(true);
     state_->device_config_.remote_sky_config_status_lbl->setMinimumHeight(kMainPageInputHeight);
     state_->device_config_.remote_sky_config_status_lbl->setSizePolicy(QSizePolicy::Expanding,
                                                                         QSizePolicy::Minimum);
-    remoteGrid->addWidget(state_->device_config_.remote_sky_config_status_lbl, 5, 0, 1, 4);
+    remoteGrid->addWidget(state_->device_config_.remote_sky_config_status_lbl, 1, 7, 1, 5);
 
     auto *remoteActionRow = new QWidget(remoteBody);
     auto *remoteActionLayout = new QHBoxLayout(remoteActionRow);
@@ -3315,14 +3315,14 @@ void MainWindow::setupDeviceConfigPage()
         remoteActionLayout->addWidget(button);
     }
     remoteActionLayout->addStretch(1);
-    remoteGrid->addWidget(remoteActionRow, 5, 4, 1, 2);
+    remoteGrid->addWidget(remoteActionRow, 2, 7, 1, 5);
     connect(state_->device_config_.remote_sky_read_btn, &QPushButton::clicked, this, &MainWindow::onRemoteSkyConfigReadClicked);
     connect(state_->device_config_.remote_sky_apply_btn, &QPushButton::clicked, this, &MainWindow::onRemoteSkyConfigApplyClicked);
     connect(state_->device_config_.remote_sky_save_btn, &QPushButton::clicked, this, &MainWindow::onRemoteSkyConfigSaveClicked);
 
     state_->device_config_.remote_sky_advanced_title_lbl =
         createSectionLabel(QStringLiteral("advanced"));
-    remoteGrid->addWidget(state_->device_config_.remote_sky_advanced_title_lbl, 6, 0, 1, 4);
+    remoteGrid->addWidget(state_->device_config_.remote_sky_advanced_title_lbl, 3, 7, 1, 5);
 
     state_->device_config_.remote_sky_raw_mode_btn = new QPushButton(remoteBody);
     state_->device_config_.remote_sky_raw_mode_btn->setObjectName(QStringLiteral("deviceRemoteSkyRawModeButton"));
@@ -3333,7 +3333,7 @@ void MainWindow::setupDeviceConfigPage()
             &QPushButton::toggled,
             this,
             &MainWindow::onRemoteSkyConfigRawModeToggled);
-    remoteGrid->addWidget(state_->device_config_.remote_sky_raw_mode_btn, 6, 4, 1, 2,
+    remoteGrid->addWidget(state_->device_config_.remote_sky_raw_mode_btn, 4, 7, 1, 5,
                           Qt::AlignVCenter | Qt::AlignRight);
 
     state_->device_config_.remote_sky_raw_json_edit = new QPlainTextEdit(remoteBody);
@@ -3341,7 +3341,7 @@ void MainWindow::setupDeviceConfigPage()
     state_->device_config_.remote_sky_raw_json_edit->setLineWrapMode(QPlainTextEdit::NoWrap);
     state_->device_config_.remote_sky_raw_json_edit->setMinimumHeight(220);
     state_->device_config_.remote_sky_raw_json_edit->setVisible(false);
-    remoteGrid->addWidget(state_->device_config_.remote_sky_raw_json_edit, 7, 0, 1, 6);
+    remoteGrid->addWidget(state_->device_config_.remote_sky_raw_json_edit, 5, 7, 1, 5);
     remoteConfigLayout->addWidget(remoteBody);
 
     const auto markRemoteDirty = [this]() { markRemoteSkyConfigDirty(); };
