@@ -3187,18 +3187,17 @@ void MainWindow::setupDeviceConfigPage()
     remoteGrid->setColumnMinimumWidth(1, 92);
     remoteGrid->setColumnMinimumWidth(3, 92);
     remoteGrid->setColumnMinimumWidth(5, 92);
-    remoteGrid->setColumnMinimumWidth(6, 16);
-
-    auto *remoteDivider = new QFrame(remoteBody);
-    remoteDivider->setObjectName(QStringLiteral("deviceRemoteSkyConfigDivider"));
-    remoteDivider->setFrameShape(QFrame::VLine);
-    remoteDivider->setFrameShadow(QFrame::Plain);
-    remoteDivider->setLineWidth(1);
-    remoteDivider->setMinimumWidth(2);
-    remoteDivider->setMaximumWidth(2);
-    remoteDivider->setMinimumHeight(180);
-    remoteDivider->setStyleSheet(QStringLiteral("QFrame#deviceRemoteSkyConfigDivider { background-color: #9a9a9a; border: none; }"));
-    remoteGrid->addWidget(remoteDivider, 0, 6, 6, 1, Qt::AlignHCenter | Qt::AlignVCenter);
+    remoteGrid->setColumnMinimumWidth(6, 12);
+    auto *servicesPanel = new QFrame(remoteBody);
+    servicesPanel->setObjectName(QStringLiteral("deviceRemoteSkyServicesSubcard"));
+    servicesPanel->setStyleSheet(QStringLiteral("QFrame#deviceRemoteSkyServicesSubcard { background: rgba(248,248,248,220); border: 1px solid #dedede; border-radius: 8px; }"));
+    remoteGrid->addWidget(servicesPanel, 0, 0, 4, 6);
+    servicesPanel->lower();
+    auto *syncPanel = new QFrame(remoteBody);
+    syncPanel->setObjectName(QStringLiteral("deviceRemoteSkySyncSubcard"));
+    syncPanel->setStyleSheet(QStringLiteral("QFrame#deviceRemoteSkySyncSubcard { background: rgba(248,248,248,220); border: 1px solid #dedede; border-radius: 8px; }"));
+    remoteGrid->addWidget(syncPanel, 0, 7, 6, 5);
+    syncPanel->lower();
 
     auto createFieldLabel = [remoteBody](const QString& objectName = QString()) {
         auto *label = new QLabel(remoteBody);
