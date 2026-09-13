@@ -3179,8 +3179,8 @@ void MainWindow::setupDeviceConfigPage()
     auto *remoteBody = new QWidget(remoteConfigCard);
     auto *remoteGrid = new QGridLayout(remoteBody);
     remoteGrid->setContentsMargins(8, 8, 8, 8);
-    remoteGrid->setHorizontalSpacing(8);
-    remoteGrid->setVerticalSpacing(6);
+    remoteGrid->setHorizontalSpacing(4);
+    remoteGrid->setVerticalSpacing(4);
     remoteGrid->setColumnMinimumWidth(1, 92);
     remoteGrid->setColumnMinimumWidth(3, 92);
     remoteGrid->setColumnMinimumWidth(5, 92);
@@ -3189,6 +3189,7 @@ void MainWindow::setupDeviceConfigPage()
         auto *label = new QLabel(remoteBody);
         label->setObjectName(objectName.isEmpty() ? QStringLiteral("fieldLabel") : objectName);
         label->setFixedHeight(kMainPageInputHeight);
+        label->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
         return label;
     };
     auto createSectionLabel = [remoteBody](const QString& sectionKey) {
@@ -3206,6 +3207,7 @@ void MainWindow::setupDeviceConfigPage()
         spin->setDecimals(1);
         spin->setFixedHeight(kMainPageInputHeight);
         spin->setFixedWidth(92);
+        spin->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         return spin;
     };
     auto addPair = [remoteGrid](QLabel *label, QWidget *field, int row, int labelColumn, int fieldColumn) {
