@@ -4094,6 +4094,84 @@ void requireHomeEnvironmentCardLayout(MainWindow& window, bool requireSideBySide
         require(rect.right() <= lidarPanel->contentsRect().right() + 1,
                 "lidar row labels stay visible inside the panel");
     }
+
+    if (!requireSideBySide)
+    {
+        return;
+    }
+
+    const QSize originalSize = window.size();
+    const QRect originalEpsilonGeometry = epsilonGroup->geometry();
+    const QRect originalEnvironmentGeometry = environmentGroup->geometry();
+    const int originalRowWidth =
+        originalEpsilonGeometry.width() + originalEnvironmentGeometry.width();
+    const int epsilonMinimumWidth = epsilonGroup->minimumSizeHint().width();
+    const int environmentMinimumWidth = environmentGroup->minimumSizeHint().width();
+    const int initialExtraWidth = std::max(
+        0, originalRowWidth - epsilonMinimumWidth - environmentMinimumWidth);
+    const int expectedInitialEnvironmentExtra = initialExtraWidth *
+        VaporView::Ground::MainSupport::kSensorEnvironmentStretch /
+        (VaporView::Ground::MainSupport::kSensorNavigationStretch +
+         VaporView::Ground::MainSupport::kSensorEnvironmentStretch);
+    require(initialExtraWidth > 0 &&
+                originalEnvironmentGeometry.width() - environmentMinimumWidth >=
+                    expectedInitialEnvironmentExtra - 4,
+            "environment card receives its share of spare width above content minimums");
+    const QSize expandedSize = originalSize + QSize(400, 0);
+    window.resize(expandedSize);
+    require(processEventsUntil(1000, [&window,
+                                      epsilonGroup,
+                                      environmentGroup,
+                                      expandedSize,
+                                      originalEpsilonGeometry,
+                                      originalEnvironmentGeometry]() {
+                activateLayouts(&window);
+                return window.size() == expandedSize &&
+                    (epsilonGroup->geometry() != originalEpsilonGeometry ||
+                     environmentGroup->geometry() != originalEnvironmentGeometry);
+            }),
+            "home sensor cards respond when a wide window grows");
+
+    const QRect expandedEpsilonGeometry = epsilonGroup->geometry();
+    const QRect expandedEnvironmentGeometry = environmentGroup->geometry();
+    require(std::abs(expandedEnvironmentGeometry.top() - expandedEpsilonGeometry.top()) <= 1 &&
+                expandedEnvironmentGeometry.left() > expandedEpsilonGeometry.right(),
+            "grown home sensor cards remain side by side");
+    const int expandedRowWidth =
+        expandedEpsilonGeometry.width() + expandedEnvironmentGeometry.width();
+    const int rowWidthGrowth = expandedRowWidth - originalRowWidth;
+    const int environmentWidthGrowth =
+        expandedEnvironmentGeometry.width() - originalEnvironmentGeometry.width();
+    const int epsilonWidthGrowth =
+        expandedEpsilonGeometry.width() - originalEpsilonGeometry.width();
+    const int originalCardWidthTotal =
+        originalEpsilonGeometry.width() + originalEnvironmentGeometry.width();
+    const int expandedCardWidthTotal =
+        expandedEpsilonGeometry.width() + expandedEnvironmentGeometry.width();
+    const double originalEnvironmentShare =
+        static_cast<double>(originalEnvironmentGeometry.width()) / originalCardWidthTotal;
+    const double expandedEnvironmentShare =
+        static_cast<double>(expandedEnvironmentGeometry.width()) / expandedCardWidthTotal;
+    require(rowWidthGrowth >= 100 &&
+                std::abs(expandedEnvironmentShare - originalEnvironmentShare) <= 0.015 &&
+                std::abs(epsilonWidthGrowth -
+                         rowWidthGrowth * (1.0 - originalEnvironmentShare)) <= 6 &&
+                std::abs(environmentWidthGrowth - rowWidthGrowth * originalEnvironmentShare) <= 6,
+            "wide home sensor cards preserve their width proportion while expanding");
+
+    window.resize(originalSize);
+    require(processEventsUntil(1000, [&window,
+                                      epsilonGroup,
+                                      environmentGroup,
+                                      originalSize,
+                                      expandedEpsilonGeometry,
+                                      expandedEnvironmentGeometry]() {
+                activateLayouts(&window);
+                return window.size() == originalSize &&
+                    (epsilonGroup->geometry() != expandedEpsilonGeometry ||
+                     environmentGroup->geometry() != expandedEnvironmentGeometry);
+            }),
+            "home sensor cards return to their original wide-window layout");
 }
 
 }  // namespace
@@ -4158,7 +4236,7 @@ int main(int argc, char **argv)
     {
         MainWindow environmentWindow;
         environmentWindow.setWindowTitle(QStringLiteral("VaporView"));
-        environmentWindow.resize(2000, 1250);
+        environmentWindow.resize(1400, 1000);
         environmentWindow.show();
         require(waitForWindowExposed(&environmentWindow),
                 "home-environment test window becomes exposed");

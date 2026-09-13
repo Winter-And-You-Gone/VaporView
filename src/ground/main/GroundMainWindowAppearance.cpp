@@ -1010,14 +1010,17 @@ void MainWindow::updateResponsiveHomeLayout()
         sensorAvailableWidth >= compactEpsilonMinimumWidth + sensorCardGap + environmentMinimumWidth;
     const bool stackSensorCards = compact && !compactCardsFitSideBySide;
     const int sideBySideAvailableWidth = std::max(0, sensorAvailableWidth - sensorCardGap);
+    const int sideBySideMinimumWidth = compactEpsilonMinimumWidth + environmentMinimumWidth;
+    const int sideBySideExtraWidth =
+        std::max(0, sideBySideAvailableWidth - sideBySideMinimumWidth);
     const int sensorStretchTotal = kSensorNavigationStretch + kSensorEnvironmentStretch;
     const int proportionalEnvironmentWidth = sensorStretchTotal > 0
-        ? std::max(environmentMinimumWidth,
-                   sideBySideAvailableWidth * kSensorEnvironmentStretch / sensorStretchTotal)
+        ? environmentMinimumWidth +
+            sideBySideExtraWidth * kSensorEnvironmentStretch / sensorStretchTotal
         : environmentMinimumWidth;
-    const int proportionalEpsilonWidth = std::max(
-        compactEpsilonMinimumWidth,
-        sideBySideAvailableWidth - proportionalEnvironmentWidth);
+    const int proportionalEpsilonWidth =
+        compactEpsilonMinimumWidth + sideBySideExtraWidth -
+        (proportionalEnvironmentWidth - environmentMinimumWidth);
     const int compactEpsilonSideBySideWidth = compactCardsFitSideBySide
         ? std::max(compactEpsilonMinimumWidth, proportionalEpsilonWidth)
         : compactEpsilonTargetWidth;
