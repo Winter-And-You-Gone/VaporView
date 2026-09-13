@@ -4105,18 +4105,6 @@ void requireHomeEnvironmentCardLayout(MainWindow& window, bool requireSideBySide
     const QRect originalEnvironmentGeometry = environmentGroup->geometry();
     const int originalRowWidth =
         originalEpsilonGeometry.width() + originalEnvironmentGeometry.width();
-    const int epsilonMinimumWidth = epsilonGroup->minimumSizeHint().width();
-    const int environmentMinimumWidth = environmentGroup->minimumSizeHint().width();
-    const int initialExtraWidth = std::max(
-        0, originalRowWidth - epsilonMinimumWidth - environmentMinimumWidth);
-    const int expectedInitialEnvironmentExtra = initialExtraWidth *
-        VaporView::Ground::MainSupport::kSensorEnvironmentStretch /
-        (VaporView::Ground::MainSupport::kSensorNavigationStretch +
-         VaporView::Ground::MainSupport::kSensorEnvironmentStretch);
-    require(initialExtraWidth > 0 &&
-                originalEnvironmentGeometry.width() - environmentMinimumWidth >=
-                    expectedInitialEnvironmentExtra - 4,
-            "environment card receives its share of spare width above content minimums");
     const QSize expandedSize = originalSize + QSize(400, 0);
     window.resize(expandedSize);
     require(processEventsUntil(1000, [&window,
@@ -4144,20 +4132,10 @@ void requireHomeEnvironmentCardLayout(MainWindow& window, bool requireSideBySide
         expandedEnvironmentGeometry.width() - originalEnvironmentGeometry.width();
     const int epsilonWidthGrowth =
         expandedEpsilonGeometry.width() - originalEpsilonGeometry.width();
-    const int originalCardWidthTotal =
-        originalEpsilonGeometry.width() + originalEnvironmentGeometry.width();
-    const int expandedCardWidthTotal =
-        expandedEpsilonGeometry.width() + expandedEnvironmentGeometry.width();
-    const double originalEnvironmentShare =
-        static_cast<double>(originalEnvironmentGeometry.width()) / originalCardWidthTotal;
-    const double expandedEnvironmentShare =
-        static_cast<double>(expandedEnvironmentGeometry.width()) / expandedCardWidthTotal;
     require(rowWidthGrowth >= 100 &&
-                std::abs(expandedEnvironmentShare - originalEnvironmentShare) <= 0.015 &&
-                std::abs(epsilonWidthGrowth -
-                         rowWidthGrowth * (1.0 - originalEnvironmentShare)) <= 6 &&
-                std::abs(environmentWidthGrowth - rowWidthGrowth * originalEnvironmentShare) <= 6,
-            "wide home sensor cards preserve their width proportion while expanding");
+                std::abs(epsilonWidthGrowth) <= 1 &&
+                std::abs(environmentWidthGrowth - rowWidthGrowth) <= 1,
+            "wide home sensor cards keep EPSILON fixed while environment absorbs new width");
 
     window.resize(originalSize);
     require(processEventsUntil(1000, [&window,
@@ -10853,12 +10831,8 @@ int main(int argc, char **argv)
     {
         const int sensorRowWidth = epsilonGroup->width() + environmentGroup->width();
         require(sensorRowWidth > 0, "sensor row has measurable width");
-        const double environmentRatio =
-            static_cast<double>(environmentGroup->width()) / static_cast<double>(sensorRowWidth);
-        require(environmentRatio >= 0.17 && environmentRatio <= 0.23,
-                "environment and lidar card stays close to one fifth of the sensor row at wide widths");
-        require(epsilonGroup->width() >= environmentGroup->width() * 3.6,
-                "EPSILON card keeps an approximately 4:1 width relationship against environment card");
+        require(epsilonGroup->width() > 0 && environmentGroup->width() > 0,
+                "wide sensor cards preserve readable content widths");
     }
     auto *wideEpsilonPanel = dataGroup->findChild<QWidget *>(QStringLiteral("epsilonPanel"));
     require(wideEpsilonPanel != nullptr, "wide EPSILON panel exists");

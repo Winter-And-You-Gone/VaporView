@@ -4853,6 +4853,11 @@ void MainWindow::setupDataPanels()
             return;
         }
         state_->sensor_card_splitter_->setProperty(kHomeSensorSplitterUserResizedProperty, true);
+        if (state_->epsilon_group_)
+        {
+            state_->epsilon_group_->setMaximumWidth(QWIDGETSIZE_MAX);
+            state_->epsilon_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        }
     });
 
     data_layout->addWidget(state_->sensor_row_widget_, 0);

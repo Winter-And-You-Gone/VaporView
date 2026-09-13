@@ -1009,21 +1009,6 @@ void MainWindow::updateResponsiveHomeLayout()
         sensorAvailableWidth > 0 &&
         sensorAvailableWidth >= compactEpsilonMinimumWidth + sensorCardGap + environmentMinimumWidth;
     const bool stackSensorCards = compact && !compactCardsFitSideBySide;
-    const int sideBySideAvailableWidth = std::max(0, sensorAvailableWidth - sensorCardGap);
-    const int sideBySideMinimumWidth = compactEpsilonMinimumWidth + environmentMinimumWidth;
-    const int sideBySideExtraWidth =
-        std::max(0, sideBySideAvailableWidth - sideBySideMinimumWidth);
-    const int sensorStretchTotal = kSensorNavigationStretch + kSensorEnvironmentStretch;
-    const int proportionalEnvironmentWidth = sensorStretchTotal > 0
-        ? environmentMinimumWidth +
-            sideBySideExtraWidth * kSensorEnvironmentStretch / sensorStretchTotal
-        : environmentMinimumWidth;
-    const int proportionalEpsilonWidth =
-        compactEpsilonMinimumWidth + sideBySideExtraWidth -
-        (proportionalEnvironmentWidth - environmentMinimumWidth);
-    const int compactEpsilonSideBySideWidth = compactCardsFitSideBySide
-        ? std::max(compactEpsilonMinimumWidth, proportionalEpsilonWidth)
-        : compactEpsilonTargetWidth;
 
     const Qt::Orientation sensorOrientation =
         stackSensorCards ? Qt::Vertical : Qt::Horizontal;
@@ -1139,6 +1124,14 @@ void MainWindow::updateResponsiveHomeLayout()
             state_->epsilon_group_->setMaximumWidth(compactEpsilonTargetWidth);
             state_->epsilon_group_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
         }
+        else if (!sensorCardSplitter->property(kHomeSensorSplitterUserResizedProperty).toBool())
+        {
+            // In the automatic layout, keep the navigation card at its readable
+            // content width so all additional viewport space goes to the
+            // environment and lidar card.
+            state_->epsilon_group_->setMaximumWidth(compactEpsilonTargetWidth);
+            state_->epsilon_group_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
+        }
         else
         {
             state_->epsilon_group_->setMaximumWidth(QWIDGETSIZE_MAX);
@@ -1158,7 +1151,7 @@ void MainWindow::updateResponsiveHomeLayout()
         const int availableCardWidth = std::max(0, sensorAvailableWidth - sensorCardGap);
         const int desiredEpsilonWidth = std::max(
             compactEpsilonMinimumWidth,
-            std::min(compactEpsilonSideBySideWidth,
+            std::min(compactEpsilonTargetWidth,
                      std::max(0, availableCardWidth - environmentMinimumWidth)));
         const int desiredEnvironmentWidth = std::max(
             environmentMinimumWidth,
