@@ -3190,12 +3190,12 @@ void MainWindow::setupDeviceConfigPage()
     remoteGrid->setColumnMinimumWidth(6, 12);
     auto *servicesPanel = new QFrame(remoteBody);
     servicesPanel->setObjectName(QStringLiteral("deviceRemoteSkyServicesSubcard"));
-    servicesPanel->setStyleSheet(QStringLiteral("QFrame#deviceRemoteSkyServicesSubcard { background: rgba(248,248,248,220); border: 1px solid #dedede; border-radius: 8px; }"));
+    servicesPanel->setProperty("epsilonSubcard", true);
     remoteGrid->addWidget(servicesPanel, 0, 0, 4, 6);
     servicesPanel->lower();
     auto *syncPanel = new QFrame(remoteBody);
     syncPanel->setObjectName(QStringLiteral("deviceRemoteSkySyncSubcard"));
-    syncPanel->setStyleSheet(QStringLiteral("QFrame#deviceRemoteSkySyncSubcard { background: rgba(248,248,248,220); border: 1px solid #dedede; border-radius: 8px; }"));
+    syncPanel->setProperty("epsilonSubcard", true);
     remoteGrid->addWidget(syncPanel, 0, 7, 6, 5);
     syncPanel->lower();
 
