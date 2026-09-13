@@ -3184,6 +3184,9 @@ void MainWindow::setupDeviceConfigPage()
     remoteGrid->setColumnMinimumWidth(1, 92);
     remoteGrid->setColumnMinimumWidth(3, 92);
     remoteGrid->setColumnMinimumWidth(5, 92);
+    remoteGrid->setColumnMinimumWidth(0, 110);
+    remoteGrid->setColumnMinimumWidth(2, 110);
+    remoteGrid->setColumnMinimumWidth(4, 110);
     remoteGrid->setColumnStretch(6, 1);
 
     auto createFieldLabel = [remoteBody](const QString& objectName = QString()) {
@@ -3269,11 +3272,11 @@ void MainWindow::setupDeviceConfigPage()
     addPair(state_->device_config_.remote_sky_telemetry_waveform_lbl,
             state_->device_config_.remote_sky_telemetry_waveform_spin,
             2,
-            3,
+            4,
             5);
     addPair(state_->device_config_.remote_sky_telemetry_heartbeat_lbl,
             state_->device_config_.remote_sky_telemetry_heartbeat_spin,
-            2,
+            3,
             0,
             1);
     addPair(state_->device_config_.remote_sky_telemetry_status_lbl,
