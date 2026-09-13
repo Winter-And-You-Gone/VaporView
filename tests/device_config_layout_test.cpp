@@ -205,7 +205,7 @@ QLabel *findSubsectionLabel(QWidget *parent, const QString& sectionKey)
     {
         return nullptr;
     }
-    for (QLabel *label : parent->findChildren<QLabel *>(QStringLiteral("deviceConfigSubsectionLabel")))
+    for (QLabel *label : parent->findChildren<QLabel *>(QStringLiteral("epsilonSectionLabel")))
     {
         if (label && label->property("deviceConfigSubsection").toString() == sectionKey)
         {
@@ -1376,6 +1376,44 @@ int main(int argc, char **argv)
             "remote sky config title bar starts flush like the shared device card");
     require(servicesLabel->isVisible() && syncLabel->isVisible() && advancedLabel->isVisible(),
             "remote mode separates Sky services, config sync, and advanced diagnostics");
+    auto *servicesSubcard = remoteCard->findChild<QFrame *>(QStringLiteral("deviceRemoteSkyServicesSubcard"));
+    auto *syncSubcard = remoteCard->findChild<QFrame *>(QStringLiteral("deviceRemoteSkySyncSubcard"));
+    auto *advancedSubcard = remoteCard->findChild<QFrame *>(QStringLiteral("deviceRemoteSkyAdvancedSubcard"));
+    require(servicesSubcard && syncSubcard && advancedSubcard &&
+                servicesSubcard->property("epsilonSubcard").toBool() &&
+                syncSubcard->property("epsilonSubcard").toBool() &&
+                advancedSubcard->property("epsilonSubcard").toBool(),
+            "remote Sky services, sync, and diagnostics use three EPSILON-style subcards");
+    const auto requireVerticalSubcardTitle = [](QLabel *label, const char *message) {
+        require(label && label->objectName() == QStringLiteral("epsilonSectionLabel") &&
+                    label->text().contains(QLatin1Char('\n')) &&
+                    label->sizePolicy().horizontalPolicy() == QSizePolicy::Fixed &&
+                    label->alignment() == Qt::AlignCenter,
+                message);
+    };
+    requireVerticalSubcardTitle(servicesLabel,
+                                "Sky services subcard keeps the EPSILON vertical title treatment");
+    requireVerticalSubcardTitle(syncLabel,
+                                "config sync subcard keeps the EPSILON vertical title treatment");
+    requireVerticalSubcardTitle(advancedLabel,
+                                "advanced diagnostics subcard keeps the EPSILON vertical title treatment");
+    const QRect servicesSubcardRect = rectInPage(servicesSubcard, remoteCard);
+    const QRect syncSubcardRect = rectInPage(syncSubcard, remoteCard);
+    const QRect advancedSubcardRect = rectInPage(advancedSubcard, remoteCard);
+    require(servicesSubcardRect.left() < syncSubcardRect.left() &&
+                syncSubcardRect.top() < advancedSubcardRect.top() &&
+                !servicesSubcardRect.intersects(syncSubcardRect) &&
+                !servicesSubcardRect.intersects(advancedSubcardRect) &&
+                !syncSubcardRect.intersects(advancedSubcardRect),
+            "remote Sky subcards keep the service card left and stack sync/diagnostics on the right");
+    QLabel *waveEnabledLabel = findExactLabel(remoteCard, QStringLiteral("Wave TCP:"));
+    require(waveEnabledLabel &&
+                servicesLabel->mapTo(servicesSubcard, QPoint(0, 0)).x() + servicesLabel->width() <
+                    waveEnabledLabel->mapTo(servicesSubcard, QPoint(0, 0)).x(),
+            "Sky services subcard places its vertical title to the left of its controls");
+    require(syncLabel->mapTo(syncSubcard, QPoint(0, 0)).x() + syncLabel->width() <
+                remoteStatus->mapTo(syncSubcard, QPoint(0, 0)).x(),
+            "config sync subcard places its vertical title to the left of its status content");
     require(!rawJsonEdit->isVisible(),
             "advanced SkyConfig JSON remains collapsed until requested");
     require(remoteStatus->property("status").toString() == QStringLiteral("disabled"),

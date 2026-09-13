@@ -25,6 +25,41 @@ namespace
 constexpr int kMainContentBottomFadeHeight = 36;
 constexpr int kDeviceConfigEpsilonPacketRatesButtonMinWidth = 194;
 
+QString epsilonSideTitleText(const QString& source)
+{
+    if (source.contains(QLatin1Char(' ')))
+    {
+        return source.split(QLatin1Char(' '), Qt::SkipEmptyParts).join(QLatin1Char('\n'));
+    }
+
+    QStringList characters;
+    characters.reserve(source.size());
+    for (const QChar ch : source)
+    {
+        if (!ch.isSpace())
+        {
+            characters << QString(ch);
+        }
+    }
+    return characters.join(QLatin1Char('\n'));
+}
+
+void updateEpsilonSideTitleWidth(QLabel *label)
+{
+    if (!label)
+    {
+        return;
+    }
+
+    int titleWidth = kEpsilonSideTitleWidth;
+    const QFontMetrics metrics(label->font());
+    for (const QString& line : label->text().split(QLatin1Char('\n')))
+    {
+        titleWidth = std::max(titleWidth, metrics.horizontalAdvance(line) + 8);
+    }
+    label->setFixedWidth(titleWidth);
+}
+
 QFrame *createTelemetrySummarySourcePill(QWidget *parent)
 {
     auto *pill = new QFrame(parent);
@@ -3179,38 +3214,80 @@ void MainWindow::setupDeviceConfigPage()
     auto *remoteBody = new QWidget(remoteConfigCard);
     auto *remoteGrid = new QGridLayout(remoteBody);
     remoteGrid->setContentsMargins(8, 8, 8, 8);
-    remoteGrid->setHorizontalSpacing(20);
-    remoteGrid->setVerticalSpacing(4);
-    remoteGrid->setColumnMinimumWidth(0, 62);
-    remoteGrid->setColumnMinimumWidth(2, 62);
-    remoteGrid->setColumnMinimumWidth(4, 62);
-    remoteGrid->setColumnMinimumWidth(1, 92);
-    remoteGrid->setColumnMinimumWidth(3, 92);
-    remoteGrid->setColumnMinimumWidth(5, 92);
-    remoteGrid->setColumnMinimumWidth(6, 12);
-    auto *servicesPanel = new QFrame(remoteBody);
-    servicesPanel->setObjectName(QStringLiteral("deviceRemoteSkyServicesSubcard"));
-    servicesPanel->setProperty("epsilonSubcard", true);
-    remoteGrid->addWidget(servicesPanel, 0, 0, 4, 6);
-    auto *syncPanel = new QFrame(remoteBody);
-    syncPanel->setObjectName(QStringLiteral("deviceRemoteSkySyncSubcard"));
-    syncPanel->setProperty("epsilonSubcard", true);
-    remoteGrid->addWidget(syncPanel, 0, 7, 6, 5);
+    remoteGrid->setHorizontalSpacing(8);
+    remoteGrid->setVerticalSpacing(8);
+    remoteGrid->setColumnStretch(0, 1);
+    remoteGrid->setColumnStretch(1, 1);
+
+    auto createSubcard = [remoteBody](QLabel *&titleLabel,
+                                      const QString& objectName,
+                                      const QString& sectionKey,
+                                      const QString& title,
+                                      QGridLayout *&contentGrid) {
+        auto *panel = new QFrame(remoteBody);
+        panel->setObjectName(objectName);
+        panel->setProperty("epsilonSubcard", true);
+        panel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+
+        auto *panelLayout = new QHBoxLayout(panel);
+        panelLayout->setContentsMargins(2, 2, 2, 2);
+        panelLayout->setSpacing(2);
+
+        titleLabel = new QLabel(panel);
+        titleLabel->setObjectName(QStringLiteral("epsilonSectionLabel"));
+        titleLabel->setProperty("deviceConfigSubsection", sectionKey);
+        titleLabel->setText(epsilonSideTitleText(title));
+        titleLabel->setAlignment(Qt::AlignCenter);
+        titleLabel->setWordWrap(false);
+        titleLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+        updateEpsilonSideTitleWidth(titleLabel);
+        panelLayout->addWidget(titleLabel, 0);
+
+        auto *content = new QWidget(panel);
+        content->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        contentGrid = new QGridLayout(content);
+        contentGrid->setContentsMargins(6, 6, 6, 6);
+        contentGrid->setHorizontalSpacing(20);
+        contentGrid->setVerticalSpacing(4);
+        panelLayout->addWidget(content, 1);
+        return panel;
+    };
+
+    QGridLayout *servicesGrid = nullptr;
+    auto *servicesPanel = createSubcard(state_->device_config_.remote_sky_services_title_lbl,
+                                        QStringLiteral("deviceRemoteSkyServicesSubcard"),
+                                        QStringLiteral("services"),
+                                        QStringLiteral("天空端服务"),
+                                        servicesGrid);
+    remoteGrid->addWidget(servicesPanel, 0, 0, 2, 1, Qt::AlignTop);
+    servicesGrid->setColumnMinimumWidth(0, 62);
+    servicesGrid->setColumnMinimumWidth(2, 62);
+    servicesGrid->setColumnMinimumWidth(4, 62);
+    servicesGrid->setColumnMinimumWidth(1, 92);
+    servicesGrid->setColumnMinimumWidth(3, 92);
+    servicesGrid->setColumnMinimumWidth(5, 92);
+
+    QGridLayout *syncGrid = nullptr;
+    auto *syncPanel = createSubcard(state_->device_config_.remote_sky_sync_title_lbl,
+                                    QStringLiteral("deviceRemoteSkySyncSubcard"),
+                                    QStringLiteral("sync"),
+                                    QStringLiteral("配置同步"),
+                                    syncGrid);
+    remoteGrid->addWidget(syncPanel, 0, 1, Qt::AlignTop);
+
+    QGridLayout *advancedGrid = nullptr;
+    auto *advancedPanel = createSubcard(state_->device_config_.remote_sky_advanced_title_lbl,
+                                        QStringLiteral("deviceRemoteSkyAdvancedSubcard"),
+                                        QStringLiteral("advanced"),
+                                        QStringLiteral("高级 / 诊断"),
+                                        advancedGrid);
+    remoteGrid->addWidget(advancedPanel, 1, 1, Qt::AlignTop);
 
     auto createFieldLabel = [remoteBody](const QString& objectName = QString()) {
         auto *label = new QLabel(remoteBody);
         label->setObjectName(objectName.isEmpty() ? QStringLiteral("fieldLabel") : objectName);
         label->setFixedHeight(kMainPageInputHeight);
         label->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
-        return label;
-    };
-    auto createSectionLabel = [remoteBody](const QString& sectionKey) {
-        auto *label = new QLabel(remoteBody);
-        label->setObjectName(QStringLiteral("deviceConfigSubsectionLabel"));
-        label->setProperty("deviceConfigSubsection", sectionKey);
-        label->setMinimumHeight(22);
-        label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-        label->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Minimum);
         return label;
     };
     auto createRateSpin = [remoteBody]() {
@@ -3222,21 +3299,23 @@ void MainWindow::setupDeviceConfigPage()
         spin->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         return spin;
     };
-    auto addPair = [remoteGrid](QLabel *label, QWidget *field, int row, int labelColumn, int fieldColumn) {
-        remoteGrid->addWidget(label, row, labelColumn, Qt::AlignVCenter | Qt::AlignLeft);
-        remoteGrid->addWidget(field, row, fieldColumn, Qt::AlignVCenter | Qt::AlignLeft);
+    auto addPair = [](QGridLayout *grid,
+                      QLabel *label,
+                      QWidget *field,
+                      int row,
+                      int labelColumn,
+                      int fieldColumn) {
+        grid->addWidget(label, row, labelColumn, Qt::AlignVCenter | Qt::AlignLeft);
+        grid->addWidget(field, row, fieldColumn, Qt::AlignVCenter | Qt::AlignLeft);
     };
-
-    state_->device_config_.remote_sky_services_title_lbl =
-        createSectionLabel(QStringLiteral("services"));
-    remoteGrid->addWidget(state_->device_config_.remote_sky_services_title_lbl, 0, 0, 1, 6);
 
     state_->device_config_.remote_sky_wave_enabled_lbl = createFieldLabel();
     state_->device_config_.remote_sky_wave_enabled_check = new QCheckBox(remoteBody);
     state_->device_config_.remote_sky_wave_enabled_check->setObjectName(QStringLiteral("deviceRemoteSkyWaveEnabledCheck"));
-    addPair(state_->device_config_.remote_sky_wave_enabled_lbl,
+    addPair(servicesGrid,
+            state_->device_config_.remote_sky_wave_enabled_lbl,
             state_->device_config_.remote_sky_wave_enabled_check,
-            1,
+            0,
             0,
             1);
 
@@ -3246,9 +3325,10 @@ void MainWindow::setupDeviceConfigPage()
     state_->device_config_.remote_sky_wave_downsample_spin->setRange(1, 1000);
     state_->device_config_.remote_sky_wave_downsample_spin->setFixedHeight(kMainPageInputHeight);
     state_->device_config_.remote_sky_wave_downsample_spin->setFixedWidth(92);
-    addPair(state_->device_config_.remote_sky_wave_downsample_lbl,
+    addPair(servicesGrid,
+            state_->device_config_.remote_sky_wave_downsample_lbl,
             state_->device_config_.remote_sky_wave_downsample_spin,
-            1,
+            0,
             2,
             3);
 
@@ -3267,42 +3347,44 @@ void MainWindow::setupDeviceConfigPage()
     state_->device_config_.remote_sky_telemetry_heartbeat_spin->setObjectName(QStringLiteral("deviceRemoteSkyTelemetryHeartbeatSpin"));
     state_->device_config_.remote_sky_telemetry_status_spin = createRateSpin();
     state_->device_config_.remote_sky_telemetry_status_spin->setObjectName(QStringLiteral("deviceRemoteSkyTelemetryStatusSpin"));
-    addPair(state_->device_config_.remote_sky_telemetry_basic_lbl,
+    addPair(servicesGrid,
+            state_->device_config_.remote_sky_telemetry_basic_lbl,
             state_->device_config_.remote_sky_telemetry_basic_spin,
-            2,
+            1,
             0,
             1);
-    addPair(state_->device_config_.remote_sky_telemetry_feature_lbl,
+    addPair(servicesGrid,
+            state_->device_config_.remote_sky_telemetry_feature_lbl,
             state_->device_config_.remote_sky_telemetry_feature_spin,
-            2,
+            1,
             2,
             3);
-    addPair(state_->device_config_.remote_sky_telemetry_waveform_lbl,
+    addPair(servicesGrid,
+            state_->device_config_.remote_sky_telemetry_waveform_lbl,
             state_->device_config_.remote_sky_telemetry_waveform_spin,
-            2,
+            1,
             4,
             5);
-    addPair(state_->device_config_.remote_sky_telemetry_heartbeat_lbl,
+    addPair(servicesGrid,
+            state_->device_config_.remote_sky_telemetry_heartbeat_lbl,
             state_->device_config_.remote_sky_telemetry_heartbeat_spin,
-            3,
+            2,
             0,
             1);
-    addPair(state_->device_config_.remote_sky_telemetry_status_lbl,
+    addPair(servicesGrid,
+            state_->device_config_.remote_sky_telemetry_status_lbl,
             state_->device_config_.remote_sky_telemetry_status_spin,
-            3,
+            2,
             2,
             3);
-
-    state_->device_config_.remote_sky_sync_title_lbl =
-        createSectionLabel(QStringLiteral("sync"));
-    remoteGrid->addWidget(state_->device_config_.remote_sky_sync_title_lbl, 0, 7, 1, 5);
 
     state_->device_config_.remote_sky_config_status_lbl = createFieldLabel(QStringLiteral("deviceRemoteSkyConfigStatus"));
     state_->device_config_.remote_sky_config_status_lbl->setWordWrap(true);
     state_->device_config_.remote_sky_config_status_lbl->setMinimumHeight(kMainPageInputHeight);
     state_->device_config_.remote_sky_config_status_lbl->setSizePolicy(QSizePolicy::Expanding,
                                                                         QSizePolicy::Minimum);
-    remoteGrid->addWidget(state_->device_config_.remote_sky_config_status_lbl, 1, 7, 1, 5);
+    syncGrid->setColumnStretch(0, 1);
+    syncGrid->addWidget(state_->device_config_.remote_sky_config_status_lbl, 0, 0);
 
     auto *remoteActionRow = new QWidget(remoteBody);
     auto *remoteActionLayout = new QHBoxLayout(remoteActionRow);
@@ -3323,14 +3405,10 @@ void MainWindow::setupDeviceConfigPage()
         remoteActionLayout->addWidget(button);
     }
     remoteActionLayout->addStretch(1);
-    remoteGrid->addWidget(remoteActionRow, 2, 7, 1, 5);
+    syncGrid->addWidget(remoteActionRow, 1, 0);
     connect(state_->device_config_.remote_sky_read_btn, &QPushButton::clicked, this, &MainWindow::onRemoteSkyConfigReadClicked);
     connect(state_->device_config_.remote_sky_apply_btn, &QPushButton::clicked, this, &MainWindow::onRemoteSkyConfigApplyClicked);
     connect(state_->device_config_.remote_sky_save_btn, &QPushButton::clicked, this, &MainWindow::onRemoteSkyConfigSaveClicked);
-
-    state_->device_config_.remote_sky_advanced_title_lbl =
-        createSectionLabel(QStringLiteral("advanced"));
-    remoteGrid->addWidget(state_->device_config_.remote_sky_advanced_title_lbl, 3, 7, 1, 5);
 
     state_->device_config_.remote_sky_raw_mode_btn = new QPushButton(remoteBody);
     state_->device_config_.remote_sky_raw_mode_btn->setObjectName(QStringLiteral("deviceRemoteSkyRawModeButton"));
@@ -3341,19 +3419,16 @@ void MainWindow::setupDeviceConfigPage()
             &QPushButton::toggled,
             this,
             &MainWindow::onRemoteSkyConfigRawModeToggled);
-    remoteGrid->addWidget(state_->device_config_.remote_sky_raw_mode_btn, 4, 7, 1, 5,
-                          Qt::AlignVCenter | Qt::AlignRight);
+    advancedGrid->setColumnStretch(0, 1);
+    advancedGrid->addWidget(state_->device_config_.remote_sky_raw_mode_btn, 0, 0,
+                            Qt::AlignVCenter | Qt::AlignRight);
 
     state_->device_config_.remote_sky_raw_json_edit = new QPlainTextEdit(remoteBody);
     state_->device_config_.remote_sky_raw_json_edit->setObjectName(QStringLiteral("deviceRemoteSkyRawJsonEdit"));
     state_->device_config_.remote_sky_raw_json_edit->setLineWrapMode(QPlainTextEdit::NoWrap);
     state_->device_config_.remote_sky_raw_json_edit->setMinimumHeight(220);
     state_->device_config_.remote_sky_raw_json_edit->setVisible(false);
-    remoteGrid->addWidget(state_->device_config_.remote_sky_raw_json_edit, 5, 7, 1, 5);
-    servicesPanel->setAttribute(Qt::WA_TransparentForMouseEvents);
-    syncPanel->setAttribute(Qt::WA_TransparentForMouseEvents);
-    servicesPanel->raise();
-    syncPanel->raise();
+    advancedGrid->addWidget(state_->device_config_.remote_sky_raw_json_edit, 1, 0);
     remoteConfigLayout->addWidget(remoteBody);
 
     const auto markRemoteDirty = [this]() { markRemoteSkyConfigDirty(); };
@@ -3863,9 +3938,20 @@ void MainWindow::updateDeviceConfigTexts()
             ? "Sky Services / Config Sync"
             : "天空端服务与配置同步");
     }
-    if (state_->device_config_.remote_sky_services_title_lbl) state_->device_config_.remote_sky_services_title_lbl->setText(state_->is_english_ ? "Sky services" : "天空端服务");
-    if (state_->device_config_.remote_sky_sync_title_lbl) state_->device_config_.remote_sky_sync_title_lbl->setText(state_->is_english_ ? "Config sync" : "配置同步");
-    if (state_->device_config_.remote_sky_advanced_title_lbl) state_->device_config_.remote_sky_advanced_title_lbl->setText(state_->is_english_ ? "Advanced / diagnostics" : "高级 / 诊断");
+    const auto setRemoteSkySubcardTitle = [this](QLabel *label, const QString& text) {
+        if (!label)
+        {
+            return;
+        }
+        label->setText(epsilonSideTitleText(text));
+        updateEpsilonSideTitleWidth(label);
+    };
+    setRemoteSkySubcardTitle(state_->device_config_.remote_sky_services_title_lbl,
+                             state_->is_english_ ? QStringLiteral("Sky services") : QStringLiteral("天空端服务"));
+    setRemoteSkySubcardTitle(state_->device_config_.remote_sky_sync_title_lbl,
+                             state_->is_english_ ? QStringLiteral("Config sync") : QStringLiteral("配置同步"));
+    setRemoteSkySubcardTitle(state_->device_config_.remote_sky_advanced_title_lbl,
+                             state_->is_english_ ? QStringLiteral("Advanced / diagnostics") : QStringLiteral("高级 / 诊断"));
     if (state_->device_config_.remote_sky_wave_enabled_lbl) state_->device_config_.remote_sky_wave_enabled_lbl->setText(state_->is_english_ ? "Wave TCP:" : "Wave TCP:");
     if (state_->device_config_.remote_sky_wave_host_lbl) state_->device_config_.remote_sky_wave_host_lbl->setText(state_->is_english_ ? "Sky Wave Host:" : "天空端波形主机:");
     if (state_->device_config_.remote_sky_wave_port_lbl) state_->device_config_.remote_sky_wave_port_lbl->setText(state_->is_english_ ? "Sky Wave Port:" : "天空端波形端口:");
