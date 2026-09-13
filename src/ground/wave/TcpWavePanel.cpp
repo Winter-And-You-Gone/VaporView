@@ -37,6 +37,7 @@
 #include <QPolygonF>
 #include <QRectF>
 #include <QPushButton>
+#include <QResizeEvent>
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QSize>
@@ -93,6 +94,10 @@ constexpr int kPlotRightMargin = 2;
 constexpr int kPlotBottomMarginExtra = 8;
 constexpr int kWavePlotLeftMargin = 72;
 constexpr int kPeakPlotLeftMargin = 72;
+constexpr int kMinTimeXAxisLabelCount = 2;
+constexpr qint64 kTimeXAxisMsecsPerInterval = 1000;
+constexpr qreal kTimeXAxisLabelGap = 4.0;
+constexpr qreal kTimeXAxisLabelRightInset = 2.0;
 constexpr int kDefaultPeakSearchStartIndex = 0;
 constexpr int kDefaultPeakSearchEndIndex = 0;
 constexpr int kPeakTrendFrameWindow = 1000;
@@ -887,6 +892,176 @@ float waveformPeakValue(const QVector<float>& samples, int searchStartIndex, int
     }
     return hasPeak ? peakValue : std::numeric_limits<float>::quiet_NaN();
 }
+
+qreal timeAxisLabelWidth(const QFontMetrics& metrics)
+{
+    return std::max<qreal>(36.0, metrics.horizontalAdvance(QStringLiteral("00:00:00")));
+}
+
+int timeAxisLabelCountForWidth(qreal plotWidth, const QFontMetrics& metrics)
+{
+    const qreal targetSpacing = timeAxisLabelWidth(metrics) + kTimeXAxisLabelGap;
+    const int intervals = static_cast<int>(std::floor(std::max<qreal>(0.0, plotWidth) / targetSpacing));
+    return std::max(kMinTimeXAxisLabelCount, intervals + 1);
+}
+
+QString timeAxisTickLabel(qint64 wallMsecs)
+{
+    if (wallMsecs <= 0)
+    {
+        wallMsecs = QDateTime::currentMSecsSinceEpoch();
+    }
+    return QDateTime::fromMSecsSinceEpoch(wallMsecs)
+        .toLocalTime()
+        .toString(QStringLiteral("hh:mm:ss"));
+}
+
+qint64 wallMsecsFromTimestampUs(quint64 timestampUs)
+{
+    if (timestampUs == 0)
+    {
+        return 0;
+    }
+    // Host timestamps are Unix microseconds. Small values are relative/test
+    // timestamps and cannot be rendered as a meaningful wall-clock time.
+    constexpr quint64 kMinimumEpochUs = 946684800000000ULL; // 2000-01-01
+    if (timestampUs < kMinimumEpochUs)
+    {
+        return QDateTime::currentMSecsSinceEpoch();
+    }
+    return static_cast<qint64>(timestampUs / 1000ULL);
+}
+
+struct TimeAxisState
+{
+    qint64 min_wall_msecs = 0;
+    qint64 max_wall_msecs = 0;
+    QStringList labels;
+};
+
+TimeAxisState makeTimeAxisState(qint64 minWallMsecs,
+                                qint64 maxWallMsecs,
+                                qreal plotWidth,
+                                const QFontMetrics& metrics)
+{
+    const int labelCount = timeAxisLabelCountForWidth(plotWidth, metrics);
+    const qint64 minimumSpan = static_cast<qint64>(labelCount - 1) * kTimeXAxisMsecsPerInterval;
+    if (maxWallMsecs <= 0)
+    {
+        maxWallMsecs = QDateTime::currentMSecsSinceEpoch();
+    }
+    if (minWallMsecs <= 0 || maxWallMsecs <= minWallMsecs ||
+        maxWallMsecs - minWallMsecs < minimumSpan)
+    {
+        minWallMsecs = maxWallMsecs - minimumSpan;
+    }
+
+    TimeAxisState state;
+    state.min_wall_msecs = minWallMsecs;
+    state.max_wall_msecs = maxWallMsecs;
+    state.labels.reserve(labelCount);
+    for (int index = 0; index < labelCount; ++index)
+    {
+        const qint64 tickMsecs = minWallMsecs + qRound64(
+            static_cast<double>(maxWallMsecs - minWallMsecs) * index /
+            static_cast<double>(std::max(1, labelCount - 1)));
+        state.labels.append(timeAxisTickLabel(tickMsecs));
+    }
+    return state;
+}
+
+void setTimeAxisProperties(QWidget *widget, const TimeAxisState& state)
+{
+    if (!widget)
+    {
+        return;
+    }
+    widget->setProperty("xAxisLabelText", QString());
+    widget->setProperty("xAxisTimeMode", true);
+    widget->setProperty("xAxisTimeLabelFormat", QStringLiteral("hh:mm:ss"));
+    widget->setProperty("xAxisTickCount", state.labels.size());
+    widget->setProperty("xAxisTickLabels", state.labels);
+    widget->setProperty("xAxisLeftLabel", state.labels.isEmpty() ? QString() : state.labels.first());
+    widget->setProperty("xAxisRightLabel", state.labels.isEmpty() ? QString() : state.labels.last());
+    widget->setProperty("xAxisSingleLabel", state.labels.size() <= 1);
+    widget->setProperty("xAxisTimeMinMsecs", state.min_wall_msecs);
+    widget->setProperty("xAxisTimeMaxMsecs", state.max_wall_msecs);
+    widget->setProperty("xAxisTimeMinSeconds",
+                        static_cast<double>(state.min_wall_msecs) / 1000.0);
+    widget->setProperty("xAxisTimeMaxSeconds",
+                        static_cast<double>(state.max_wall_msecs) / 1000.0);
+    widget->setProperty("xAxisTimeSpanSeconds",
+                        static_cast<double>(std::max<qint64>(0, state.max_wall_msecs - state.min_wall_msecs)) / 1000.0);
+    // Keep the old test-facing property names in sync with the new clock labels.
+    widget->setProperty("xAxisStartLabelText", state.labels.isEmpty() ? QString() : state.labels.first());
+    widget->setProperty("xAxisRangeLabelText", QString());
+    widget->setProperty("xAxisEndLabelText", state.labels.isEmpty() ? QString() : state.labels.last());
+}
+
+QRectF timeAxisPlotRect(const QRect& widgetRect,
+                        int leftMargin,
+                        int bottomMargin,
+                        const QFontMetrics& metrics)
+{
+    const QRectF baseRect = widgetRect.adjusted(leftMargin,
+                                                kPlotTopMargin,
+                                                -kPlotRightMargin,
+                                                -bottomMargin);
+    const qreal labelHalfWidth = timeAxisLabelWidth(metrics) / 2.0;
+    const qreal left = std::max(baseRect.left(), labelHalfWidth);
+    const qreal right = std::min(baseRect.right(),
+                                 widgetRect.width() - labelHalfWidth - kTimeXAxisLabelRightInset);
+    if (right > left + 1.0)
+    {
+        return QRectF(left, baseRect.top(), right - left, baseRect.height());
+    }
+    return baseRect;
+}
+
+void drawTimeAxis(QPainter& painter,
+                  const QRectF& plotRect,
+                  const TimeAxisState& state,
+                  const QFontMetrics& metrics,
+                  const QColor& color)
+{
+    if (state.labels.isEmpty() || plotRect.width() <= 1.0)
+    {
+        return;
+    }
+
+    painter.setPen(color);
+    const int intervals = std::max(1, static_cast<int>(state.labels.size()) - 1);
+    const qreal axisLabelTop = plotRect.bottom() + 2.0;
+    for (int index = 0; index < static_cast<int>(state.labels.size()); ++index)
+    {
+        const qreal x = plotRect.left() + plotRect.width() * index / static_cast<qreal>(intervals);
+        const qreal labelWidth = std::max<qreal>(36.0, metrics.horizontalAdvance(state.labels.at(index)));
+        const qreal labelLeft = std::clamp(x - labelWidth / 2.0,
+                                           0.0,
+                                           std::max<qreal>(0.0, painter.device()->width() -
+                                                               labelWidth - kTimeXAxisLabelRightInset));
+        painter.drawText(QRectF(labelLeft, axisLabelTop, labelWidth, metrics.height()),
+                         Qt::AlignHCenter | Qt::AlignVCenter,
+                         state.labels.at(index));
+    }
+}
+
+void updateTimeAxisGeometryProperties(QWidget *widget,
+                                      const QRectF& plotRect,
+                                      const TimeAxisState& state)
+{
+    if (!widget)
+    {
+        return;
+    }
+    widget->setProperty("plotAreaLeft", plotRect.left());
+    widget->setProperty("plotAreaTop", plotRect.top());
+    widget->setProperty("plotAreaRight", plotRect.right());
+    widget->setProperty("plotAreaBottom", plotRect.bottom());
+    widget->setProperty("xAxisTimeFirstTickX", plotRect.left());
+    widget->setProperty("xAxisTimeLastTickX", plotRect.right());
+    widget->setProperty("xAxisTimeRightLabel", state.labels.isEmpty() ? QString() : state.labels.last());
+}
 }
 
 class WavePlotWidget : public QWidget
@@ -904,9 +1079,21 @@ public:
         updateXAxisLabelProperty();
     }
 
-    void setSamples(const QVector<float>& samples)
+    void setSamples(const QVector<float>& samples, qint64 frameWallMsecs = 0)
     {
         samples_ = samples;
+        if (samples_.isEmpty())
+        {
+            frame_wall_msecs_ = 0;
+        }
+        else if (frameWallMsecs > 0)
+        {
+            frame_wall_msecs_ = frameWallMsecs;
+        }
+        else if (frame_wall_msecs_ <= 0)
+        {
+            frame_wall_msecs_ = QDateTime::currentMSecsSinceEpoch();
+        }
         updateXAxisLabelProperty();
         update();
     }
@@ -919,12 +1106,18 @@ public:
 
     void setEnglish(bool english)
     {
-        is_english_ = english;
+        Q_UNUSED(english);
         updateXAxisLabelProperty();
         update();
     }
 
 protected:
+    void resizeEvent(QResizeEvent *event) override
+    {
+        QWidget::resizeEvent(event);
+        updateXAxisLabelProperty();
+    }
+
     void paintEvent(QPaintEvent *event) override
     {
         QWidget::paintEvent(event);
@@ -937,12 +1130,19 @@ protected:
         const QFontMetrics fm = painter.fontMetrics();
         const int leftMargin = kWavePlotLeftMargin;
         const int bottomMargin = fm.height() + kPlotBottomMarginExtra;
-        const QRectF plotRect = rect().adjusted(leftMargin, kPlotTopMargin, -kPlotRightMargin, -bottomMargin);
+        const QRectF plotRect = timeAxisPlotRect(rect(), leftMargin, bottomMargin, fm);
+        const TimeAxisState timeAxis = makeTimeAxisState(0,
+                                                         frame_wall_msecs_,
+                                                         plotRect.width(),
+                                                         fm);
+        setTimeAxisProperties(this, timeAxis);
+        updateTimeAxisGeometryProperties(this, plotRect, timeAxis);
         const auto drawGrid = [&]() {
             painter.setPen(QPen(theme.grid, 1));
-            for (int i = 0; i <= 10; ++i)
+            const int intervals = std::max(1, static_cast<int>(timeAxis.labels.size()) - 1);
+            for (int i = 0; i < static_cast<int>(timeAxis.labels.size()); ++i)
             {
-                const qreal x = plotRect.left() + plotRect.width() * i / 10.0;
+                const qreal x = plotRect.left() + plotRect.width() * i / static_cast<qreal>(intervals);
                 painter.drawLine(QPointF(x, plotRect.top()), QPointF(x, plotRect.bottom()));
             }
             for (int i = 0; i <= 6; ++i)
@@ -958,6 +1158,7 @@ protected:
         if (samples_.isEmpty())
         {
             drawGrid();
+            drawTimeAxis(painter, plotRect, timeAxis, fm, theme.text);
             painter.setPen(theme.mutedText);
             painter.drawText(plotRect, Qt::AlignCenter, empty_text_);
             return;
@@ -1006,27 +1207,30 @@ protected:
                              Qt::AlignRight | Qt::AlignVCenter,
                              formatWaveValue(value, 3));
         }
-        painter.drawText(QRectF(plotRect.left(), plotRect.bottom() + 2, plotRect.width(), fm.height()), Qt::AlignRight | Qt::AlignVCenter,
-                         xAxisLabel(sampleCount));
+        drawTimeAxis(painter, plotRect, timeAxis, fm, theme.text);
     }
 
 private:
-    QString xAxisLabel(int sampleCount) const
-    {
-        return is_english_
-            ? QStringLiteral("%1 samples").arg(sampleCount)
-            : QStringLiteral("%1 点").arg(sampleCount);
-    }
-
     void updateXAxisLabelProperty()
     {
-        setProperty("xAxisLabelText", xAxisLabel(samples_.size()));
+        const int widgetWidth = std::max(width(), sizeHint().width());
+        const QFontMetrics metrics(font());
+        const QRectF plotRect = timeAxisPlotRect(
+            QRect(0, 0, widgetWidth, std::max(height(), minimumHeight())),
+            kWavePlotLeftMargin,
+            metrics.height() + kPlotBottomMarginExtra,
+            metrics);
+        setTimeAxisProperties(this,
+                              makeTimeAxisState(0,
+                                                frame_wall_msecs_,
+                                                plotRect.width(),
+                                                metrics));
     }
 
     QColor line_color_;
     QVector<float> samples_;
+    qint64 frame_wall_msecs_ = 0;
     QString empty_text_ = QStringLiteral("No data");
-    bool is_english_ = false;
 };
 
 class PeakTrendPlotWidget : public QWidget
@@ -1052,12 +1256,18 @@ public:
         updateXAxisLabelProperty();
     }
 
-    void setPeakValues(const QVector<float>& values)
+    void setPeakValues(const QVector<float>& values,
+                       const QVector<qint64>& wallMsecs = {})
     {
         const bool keepTail = peak_values_.isEmpty() ||
             view_count_ <= 0 ||
             (view_start_index_ + visibleCount()) >= peak_values_.size();
         peak_values_ = values;
+        peak_wall_msecs_ = wallMsecs;
+        if (peak_wall_msecs_.size() != peak_values_.size())
+        {
+            peak_wall_msecs_.resize(peak_values_.size());
+        }
         normalizeView(keepTail);
         notifyViewChanged();
         updateXAxisLabelProperty();
@@ -1108,12 +1318,18 @@ public:
 
     void setEnglish(bool english)
     {
-        is_english_ = english;
+        Q_UNUSED(english);
         updateXAxisLabelProperty();
         update();
     }
 
 protected:
+    void resizeEvent(QResizeEvent *event) override
+    {
+        QWidget::resizeEvent(event);
+        updateXAxisLabelProperty();
+    }
+
     void paintEvent(QPaintEvent *event) override
     {
         QWidget::paintEvent(event);
@@ -1126,12 +1342,16 @@ protected:
         const QFontMetrics fm = painter.fontMetrics();
         const int leftMargin = kPeakPlotLeftMargin;
         const int bottomMargin = fm.height() + kPlotBottomMarginExtra;
-        const QRectF plotRect = rect().adjusted(leftMargin, kPlotTopMargin, -kPlotRightMargin, -bottomMargin);
+        const QRectF plotRect = timeAxisPlotRect(rect(), leftMargin, bottomMargin, fm);
+        const TimeAxisState timeAxis = visibleTimeAxisState(plotRect.width(), fm);
+        setTimeAxisProperties(this, timeAxis);
+        updateTimeAxisGeometryProperties(this, plotRect, timeAxis);
         const auto drawGrid = [&]() {
             painter.setPen(QPen(theme.grid, 1));
-            for (int i = 0; i <= 10; ++i)
+            const int intervals = std::max(1, static_cast<int>(timeAxis.labels.size()) - 1);
+            for (int i = 0; i < static_cast<int>(timeAxis.labels.size()); ++i)
             {
-                const qreal x = plotRect.left() + plotRect.width() * i / 10.0;
+                const qreal x = plotRect.left() + plotRect.width() * i / static_cast<qreal>(intervals);
                 painter.drawLine(QPointF(x, plotRect.top()), QPointF(x, plotRect.bottom()));
             }
             for (int i = 0; i <= 6; ++i)
@@ -1147,6 +1367,7 @@ protected:
         if (peak_values_.isEmpty())
         {
             drawGrid();
+            drawTimeAxis(painter, plotRect, timeAxis, fm, theme.text);
             painter.setPen(theme.mutedText);
             painter.drawText(plotRect, Qt::AlignCenter, empty_text_);
             return;
@@ -1172,6 +1393,7 @@ protected:
         if (finiteIndices.isEmpty())
         {
             drawGrid();
+            drawTimeAxis(painter, plotRect, timeAxis, fm, theme.text);
             painter.setPen(theme.mutedText);
             painter.drawText(plotRect, Qt::AlignCenter, empty_text_);
             return;
@@ -1209,7 +1431,7 @@ protected:
                     continue;
                 }
 
-                const double ratio = static_cast<double>(i) / static_cast<double>(count - 1);
+                const double ratio = timeRatio(startIndex + i, startIndex, count, timeAxis);
                 const double normalized = (value - minValue) / std::max(1e-6f, maxValue - minValue);
                 segment.push_back(QPointF(plotRect.left() + ratio * plotRect.width(),
                                           plotRect.bottom() - normalized * plotRect.height()));
@@ -1231,7 +1453,7 @@ protected:
                 {
                     continue;
                 }
-                const double ratio = count == 1 ? 0.5 : static_cast<double>(i) / static_cast<double>(count - 1);
+                const double ratio = timeRatio(startIndex + i, startIndex, count, timeAxis);
                 const double normalized = (value - minValue) / std::max(1e-6f, maxValue - minValue);
                 const QPointF point(plotRect.left() + ratio * plotRect.width(),
                                     plotRect.bottom() - normalized * plotRect.height());
@@ -1253,25 +1475,7 @@ protected:
                              Qt::AlignRight | Qt::AlignVCenter,
                              formatWaveValue(value, 3));
         }
-        const qreal axisLabelTop = plotRect.bottom() + 2;
-        const QString startLabel = xAxisStartLabel(startIndex);
-        const QString rangeLabel = xAxisRangeLabel(startIndex, count);
-        const QString endLabel = xAxisEndLabel(startIndex, count);
-        const qreal startWidth = fm.horizontalAdvance(startLabel) + 8.0;
-        const qreal endWidth = fm.horizontalAdvance(endLabel) + 8.0;
-        painter.drawText(QRectF(plotRect.left(), axisLabelTop, plotRect.width(), fm.height()),
-                         Qt::AlignLeft | Qt::AlignVCenter,
-                         startLabel);
-        painter.drawText(QRectF(plotRect.left(), axisLabelTop, plotRect.width(), fm.height()),
-                         Qt::AlignRight | Qt::AlignVCenter,
-                         endLabel);
-        const QRectF rangeRect(plotRect.left() + startWidth,
-                               axisLabelTop,
-                               std::max<qreal>(1.0, plotRect.width() - startWidth - endWidth),
-                               fm.height());
-        painter.drawText(rangeRect,
-                         Qt::AlignCenter | Qt::AlignVCenter,
-                         fm.elidedText(rangeLabel, Qt::ElideRight, static_cast<int>(rangeRect.width())));
+        drawTimeAxis(painter, plotRect, timeAxis, fm, theme.text);
     }
 
 private:
@@ -1331,45 +1535,67 @@ private:
         }
     }
 
-    QString xAxisStartLabel(int startIndex) const
+    TimeAxisState visibleTimeAxisState(qreal plotWidth, const QFontMetrics& metrics) const
     {
-        return QString::number(startIndex + 1);
+        const int startIndex = visibleStartIndex();
+        const int count = visibleCount();
+        qint64 minWallMsecs = 0;
+        qint64 maxWallMsecs = 0;
+        for (int index = 0; index < count; ++index)
+        {
+            const int valueIndex = startIndex + index;
+            if (valueIndex < 0 || valueIndex >= peak_wall_msecs_.size())
+            {
+                continue;
+            }
+            const qint64 wallMsecs = peak_wall_msecs_.at(valueIndex);
+            if (wallMsecs <= 0)
+            {
+                continue;
+            }
+            minWallMsecs = minWallMsecs <= 0 ? wallMsecs : std::min(minWallMsecs, wallMsecs);
+            maxWallMsecs = std::max(maxWallMsecs, wallMsecs);
+        }
+        return makeTimeAxisState(minWallMsecs, maxWallMsecs, plotWidth, metrics);
     }
 
-    QString xAxisEndLabel(int startIndex, int count) const
+    double timeRatio(int index,
+                     int startIndex,
+                     int count,
+                     const TimeAxisState& timeAxis) const
     {
-        return QString::number(startIndex + count);
-    }
-
-    QString xAxisRangeLabel(int startIndex, int count) const
-    {
-        return is_english_
-            ? QStringLiteral("Visible range %1-%2 / cache %3 pts")
-                  .arg(startIndex + 1)
-                  .arg(startIndex + count)
-                  .arg(peak_values_.size())
-            : QStringLiteral("显示范围%1-%2/缓存%3点")
-                  .arg(startIndex + 1)
-                  .arg(startIndex + count)
-                  .arg(peak_values_.size());
+        if (index >= 0 && index < peak_wall_msecs_.size() &&
+            peak_wall_msecs_.at(index) > 0 &&
+            timeAxis.max_wall_msecs > timeAxis.min_wall_msecs)
+        {
+            return std::clamp(
+                static_cast<double>(peak_wall_msecs_.at(index) - timeAxis.min_wall_msecs) /
+                    static_cast<double>(timeAxis.max_wall_msecs - timeAxis.min_wall_msecs),
+                0.0,
+                1.0);
+        }
+        return count <= 1 ? 0.5 : static_cast<double>(index - startIndex) / static_cast<double>(count - 1);
     }
 
     void updateXAxisLabelProperty()
     {
-        const int startIndex = visibleStartIndex();
-        const int count = visibleCount();
-        setProperty("xAxisStartLabelText", xAxisStartLabel(startIndex));
-        setProperty("xAxisRangeLabelText", xAxisRangeLabel(startIndex, count));
-        setProperty("xAxisEndLabelText", xAxisEndLabel(startIndex, count));
+        const int widgetWidth = std::max(width(), sizeHint().width());
+        const QFontMetrics metrics(font());
+        const QRectF plotRect = timeAxisPlotRect(
+            QRect(0, 0, widgetWidth, std::max(height(), minimumHeight())),
+            kPeakPlotLeftMargin,
+            metrics.height() + kPlotBottomMarginExtra,
+            metrics);
+        setTimeAxisProperties(this, visibleTimeAxisState(plotRect.width(), metrics));
     }
 
     QVector<float> peak_values_;
+    QVector<qint64> peak_wall_msecs_;
     PlotMode plot_mode_;
     int view_start_index_;
     int view_count_;
     QString empty_text_ = QStringLiteral("No peak data");
     std::function<void(int, int, int)> on_view_changed_;
-    bool is_english_ = false;
 };
 
 TcpWavePanel::TcpWavePanel(QWidget *parent)
@@ -2029,15 +2255,15 @@ void TcpWavePanel::applyWaveDisplayMode()
 
     if (showRawWave && wave1_plot_)
     {
-        wave1_plot_->setSamples(wave1_history_);
+        wave1_plot_->setSamples(wave1_history_, wave1_wall_msecs_);
     }
     if (showHarmonicWave && wave4_plot_)
     {
-        wave4_plot_->setSamples(wave4_history_);
+        wave4_plot_->setSamples(wave4_history_, wave4_wall_msecs_);
     }
     if (showPeakTrend && peak_plot_)
     {
-        peak_plot_->setPeakValues(peak_history_);
+        peak_plot_->setPeakValues(peak_history_, peak_wall_msecs_);
     }
 
     updateGeometry();
@@ -2218,15 +2444,15 @@ void TcpWavePanel::updateLiveDisplay()
     live_display_dirty_ = false;
     if ((wave_display_all_ || wave_display_raw_) && wave1_plot_)
     {
-        wave1_plot_->setSamples(wave1_history_);
+        wave1_plot_->setSamples(wave1_history_, wave1_wall_msecs_);
     }
     if ((wave_display_all_ || wave_display_harmonic_) && wave4_plot_)
     {
-        wave4_plot_->setSamples(wave4_history_);
+        wave4_plot_->setSamples(wave4_history_, wave4_wall_msecs_);
     }
     if ((wave_display_all_ || wave_display_peak_trend_) && peak_plot_)
     {
-        peak_plot_->setPeakValues(peak_history_);
+        peak_plot_->setPeakValues(peak_history_, peak_wall_msecs_);
     }
     if (wave1_info_label_ && !pending_wave1_info_text_.isEmpty())
     {
@@ -2437,7 +2663,6 @@ void TcpWavePanel::setRemoteFeatureRateHz(double rateHz)
 
 void TcpWavePanel::injectRemoteRawSignalFrame(quint64 timestampUs, const QVector<float>& samples)
 {
-    Q_UNUSED(timestampUs);
     if (remote_sky_mode_ && !remote_wave_tcp_connected_)
     {
         return;
@@ -2448,6 +2673,7 @@ void TcpWavePanel::injectRemoteRawSignalFrame(quint64 timestampUs, const QVector
     }
     const QString sampleCountText = fixedStatusInteger(samples.size(), kRemoteStatusCountWidth);
     wave1_history_ = samples;
+    wave1_wall_msecs_ = wallMsecsFromTimestampUs(timestampUs);
     pending_wave1_info_text_ = QString(is_english_ ? "%1 samples" : "%1 点")
         .arg(sampleCountText);
     remote_waveform_status_text_ = remoteWaveformStatusText(is_english_, samples.size());
@@ -2466,6 +2692,7 @@ void TcpWavePanel::injectRemoteSecondHarmonicFrame(quint64 timestampUs, const QV
         return;
     }
     wave4_history_ = samples;
+    wave4_wall_msecs_ = wallMsecsFromTimestampUs(timestampUs);
     ++frame_count_;
     updateFrameRateDisplay(QDateTime::currentMSecsSinceEpoch());
     const QString sampleCountText = fixedStatusInteger(samples.size(), kRemoteStatusCountWidth);
@@ -2491,10 +2718,13 @@ void TcpWavePanel::injectRemoteWaveformFeature(const VaporView::WaveformFeature&
     if (!validFeature)
     {
         peak_raw_history_.push_back(std::numeric_limits<float>::quiet_NaN());
+        peak_wall_msecs_.push_back(wallMsecsFromTimestampUs(feature.host_time_us));
         last_remote_feature_time_us_ = feature.host_time_us;
         if (peak_raw_history_.size() > kPeakTrendFrameWindow)
         {
-            peak_raw_history_.remove(0, peak_raw_history_.size() - kPeakTrendFrameWindow);
+            const int removeCount = peak_raw_history_.size() - kPeakTrendFrameWindow;
+            peak_raw_history_.remove(0, removeCount);
+            peak_wall_msecs_.remove(0, std::min<qsizetype>(removeCount, peak_wall_msecs_.size()));
         }
         rebuildPeakHistory();
         remote_feature_status_text_ = remoteInvalidFeatureStatusText(is_english_);
@@ -2503,10 +2733,13 @@ void TcpWavePanel::injectRemoteWaveformFeature(const VaporView::WaveformFeature&
         return;
     }
     peak_raw_history_.push_back(feature.peak);
+    peak_wall_msecs_.push_back(wallMsecsFromTimestampUs(feature.host_time_us));
     last_remote_feature_time_us_ = feature.host_time_us;
     if (peak_raw_history_.size() > kPeakTrendFrameWindow)
     {
-        peak_raw_history_.remove(0, peak_raw_history_.size() - kPeakTrendFrameWindow);
+        const int removeCount = peak_raw_history_.size() - kPeakTrendFrameWindow;
+        peak_raw_history_.remove(0, removeCount);
+        peak_wall_msecs_.remove(0, std::min<qsizetype>(removeCount, peak_wall_msecs_.size()));
     }
     rebuildPeakHistory();
     remote_feature_status_text_ = remoteFeatureStatusText(is_english_,
@@ -2525,6 +2758,7 @@ void TcpWavePanel::applyRemotePeakSearchRange(quint32 startIndex, quint32 endInd
     peak_search_end_index_ = static_cast<int>(endIndex);
     peak_raw_history_.clear();
     peak_history_.clear();
+    peak_wall_msecs_.clear();
     last_remote_feature_time_us_ = 0;
     if (peak_plot_)
     {
@@ -2590,27 +2824,27 @@ void TcpWavePanel::testFlushLiveDisplay()
 
 QString TcpWavePanel::testRawXAxisLabel() const
 {
-    return wave1_plot_ ? wave1_plot_->property("xAxisLabelText").toString() : QString();
+    return wave1_plot_ ? wave1_plot_->property("xAxisRightLabel").toString() : QString();
 }
 
 QString TcpWavePanel::testHarmonicXAxisLabel() const
 {
-    return wave4_plot_ ? wave4_plot_->property("xAxisLabelText").toString() : QString();
+    return wave4_plot_ ? wave4_plot_->property("xAxisRightLabel").toString() : QString();
 }
 
 QString TcpWavePanel::testPeakXAxisLabel() const
 {
-    return peak_plot_ ? peak_plot_->property("xAxisRangeLabelText").toString() : QString();
+    return peak_plot_ ? peak_plot_->property("xAxisRightLabel").toString() : QString();
 }
 
 QString TcpWavePanel::testPeakXAxisStartLabel() const
 {
-    return peak_plot_ ? peak_plot_->property("xAxisStartLabelText").toString() : QString();
+    return peak_plot_ ? peak_plot_->property("xAxisLeftLabel").toString() : QString();
 }
 
 QString TcpWavePanel::testPeakXAxisEndLabel() const
 {
-    return peak_plot_ ? peak_plot_->property("xAxisEndLabelText").toString() : QString();
+    return peak_plot_ ? peak_plot_->property("xAxisRightLabel").toString() : QString();
 }
 
 int TcpWavePanel::testWavePlotBottomMarginExtra() const
@@ -2779,8 +3013,11 @@ void TcpWavePanel::onToggleConnectionClicked()
     buffer_.clear();
     wave1_history_.clear();
     wave4_history_.clear();
+    wave1_wall_msecs_ = 0;
+    wave4_wall_msecs_ = 0;
     peak_raw_history_.clear();
     peak_history_.clear();
+    peak_wall_msecs_.clear();
     last_remote_feature_time_us_ = 0;
     pending_wave1_payload_.clear();
     if (peak_plot_)
@@ -2822,6 +3059,7 @@ void TcpWavePanel::onClearPeakPlotClicked()
 {
     peak_raw_history_.clear();
     peak_history_.clear();
+    peak_wall_msecs_.clear();
     last_remote_feature_time_us_ = 0;
     if (peak_plot_)
     {
@@ -2984,6 +3222,7 @@ void TcpWavePanel::onConfigurePeakFilterClicked()
             peak_search_end_index_ = searchEnd;
             peak_raw_history_.clear();
             peak_history_.clear();
+            peak_wall_msecs_.clear();
             last_remote_feature_time_us_ = 0;
             if (peak_plot_)
             {
@@ -3241,8 +3480,11 @@ void TcpWavePanel::clearRemoteWaveformDisplay(const QString& statusText)
 {
     wave1_history_.clear();
     wave4_history_.clear();
+    wave1_wall_msecs_ = 0;
+    wave4_wall_msecs_ = 0;
     peak_raw_history_.clear();
     peak_history_.clear();
+    peak_wall_msecs_.clear();
     last_remote_feature_time_us_ = 0;
     frame_arrival_times_ms_.clear();
     frame_count_ = 0;
@@ -3475,11 +3717,16 @@ void TcpWavePanel::processBuffer()
                 {
                     wave1_history_ = std::move(wave1);
                     wave4_history_ = std::move(wave4);
+                    wave1_wall_msecs_ = wallMsecsFromTimestampUs(frameTimestampUs);
+                    wave4_wall_msecs_ = wave1_wall_msecs_;
                     const float rawPeakValue = currentWaveformPeakValue(wave4_history_);
                     peak_raw_history_.push_back(rawPeakValue);
+                    peak_wall_msecs_.push_back(wave4_wall_msecs_);
                     if (peak_raw_history_.size() > kPeakTrendFrameWindow)
                     {
-                        peak_raw_history_.remove(0, peak_raw_history_.size() - kPeakTrendFrameWindow);
+                        const int removeCount = peak_raw_history_.size() - kPeakTrendFrameWindow;
+                        peak_raw_history_.remove(0, removeCount);
+                        peak_wall_msecs_.remove(0, std::min<qsizetype>(removeCount, peak_wall_msecs_.size()));
                     }
                     rebuildPeakHistory();
                     const float displayedPeakValue = peak_history_.isEmpty()

@@ -3,12 +3,14 @@
 
 #include <QApplication>
 #include <QByteArray>
+#include <QDateTime>
 #include <QElapsedTimer>
 #include <QHostAddress>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSettings>
+#include <QStringList>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTemporaryDir>
@@ -343,17 +345,41 @@ void testInvalidTcpStreamDoesNotGrowBacklog()
     require(panel.testBufferedByteCount() <= 3, "invalid TCP stream backlog should stay bounded");
 }
 
-void testWavePlotXAxisLabelsDefaultToChinese()
+bool isClockTimeLabel(const QString& label)
+{
+    return label.size() == 8 &&
+        label.at(2) == QLatin1Char(':') &&
+        label.at(5) == QLatin1Char(':') &&
+        label.at(0).isDigit() && label.at(1).isDigit() &&
+        label.at(3).isDigit() && label.at(4).isDigit() &&
+        label.at(6).isDigit() && label.at(7).isDigit();
+}
+
+void requireTimeXAxis(QWidget *plot, const char *message)
+{
+    require(plot != nullptr, message);
+    require(plot->property("xAxisTimeMode").toBool(), message);
+    require(plot->property("xAxisTimeLabelFormat").toString() == QStringLiteral("hh:mm:ss"), message);
+    const QStringList labels = plot->property("xAxisTickLabels").toStringList();
+    require(labels.size() >= 2, message);
+    for (const QString& label : labels)
+    {
+        require(isClockTimeLabel(label), message);
+    }
+}
+
+void testWavePlotXAxisLabelsUseClockTime()
 {
     TcpWavePanel panel;
 
     const QVector<float> samples(512, 0.25f);
-    panel.injectRemoteRawSignalFrame(1, samples);
-    panel.injectRemoteSecondHarmonicFrame(2, samples);
+    constexpr quint64 baseTimestampUs = 1'700'000'000'000'000ULL;
+    panel.injectRemoteRawSignalFrame(baseTimestampUs, samples);
+    panel.injectRemoteSecondHarmonicFrame(baseTimestampUs + 500'000ULL, samples);
     for (int frame = 0; frame < 11; ++frame)
     {
         VaporView::WaveformFeature feature;
-        feature.host_time_us = static_cast<quint64>(frame + 1) * 1000ULL;
+        feature.host_time_us = baseTimestampUs + static_cast<quint64>(frame) * 1'000'000ULL;
         feature.peak = 0.5f + static_cast<float>(frame) * 0.01f;
         feature.rms = 0.1f;
         feature.quality_flags = 0;
@@ -361,25 +387,36 @@ void testWavePlotXAxisLabelsDefaultToChinese()
     }
     panel.testFlushLiveDisplay();
 
-    require(panel.testRawXAxisLabel() == QStringLiteral("512 点"),
-            "raw waveform x-axis defaults samples to Chinese");
-    require(panel.testHarmonicXAxisLabel() == QStringLiteral("512 点"),
-            "harmonic waveform x-axis defaults samples to Chinese");
-    require(panel.testPeakXAxisStartLabel() == QStringLiteral("1"),
-            "peak trend x-axis shows the visible range start");
-    require(panel.testPeakXAxisLabel() == QStringLiteral("显示范围1-11/缓存11点"),
-            "peak trend x-axis centers a Chinese visible range and cache label");
-    require(panel.testPeakXAxisEndLabel() == QStringLiteral("11"),
-            "peak trend x-axis shows the visible range end");
+    requireTimeXAxis(panel.findChild<QWidget *>(QStringLiteral("tcpWaveRawPlot")),
+                     "raw waveform x-axis uses clock time");
+    requireTimeXAxis(panel.findChild<QWidget *>(QStringLiteral("tcpWaveHarmonicPlot")),
+                     "harmonic waveform x-axis uses clock time");
+    requireTimeXAxis(panel.findChild<QWidget *>(QStringLiteral("tcpWavePeakTrendPlot")),
+                     "peak trend x-axis uses clock time");
+    require(isClockTimeLabel(panel.testRawXAxisLabel()),
+            "raw waveform x-axis right label is hh:mm:ss");
+    require(isClockTimeLabel(panel.testHarmonicXAxisLabel()),
+            "harmonic waveform x-axis right label is hh:mm:ss");
+    require(isClockTimeLabel(panel.testPeakXAxisStartLabel()) &&
+                isClockTimeLabel(panel.testPeakXAxisEndLabel()),
+            "peak trend x-axis endpoints are hh:mm:ss");
+    require(panel.testRawXAxisLabel() ==
+                QDateTime::fromMSecsSinceEpoch(static_cast<qint64>(baseTimestampUs / 1000ULL))
+                    .toLocalTime().toString(QStringLiteral("hh:mm:ss")),
+            "raw waveform x-axis is anchored to the frame timestamp");
+    require(panel.testPeakXAxisEndLabel() ==
+                QDateTime::fromMSecsSinceEpoch(static_cast<qint64>((baseTimestampUs + 10'000'000ULL) / 1000ULL))
+                    .toLocalTime().toString(QStringLiteral("hh:mm:ss")),
+            "peak trend x-axis is anchored to the newest feature timestamp");
     require(panel.testWavePlotBottomMarginExtra() >= 8 &&
                 panel.testPeakPlotBottomMarginExtra() >= 8,
             "waveform plots reserve extra bottom margin for full x-axis labels");
 
     panel.setEnglish(true);
-    require(panel.testRawXAxisLabel() == QStringLiteral("512 samples"),
-            "raw waveform x-axis still supports English samples");
-    require(panel.testPeakXAxisLabel() == QStringLiteral("Visible range 1-11 / cache 11 pts"),
-            "peak trend x-axis still supports English range text");
+    require(isClockTimeLabel(panel.testRawXAxisLabel()) &&
+                isClockTimeLabel(panel.testHarmonicXAxisLabel()) &&
+                isClockTimeLabel(panel.testPeakXAxisEndLabel()),
+            "English mode keeps clock time x-axis labels");
 }
 
 bool hasLabelText(QWidget *root, const QString& text)
@@ -498,7 +535,7 @@ int main(int argc, char **argv)
     testSocketErrorPublishesStructuredError();
     testInvalidStreamAndPayloadCorrectionPublishStructuredLogs();
     testInvalidTcpStreamDoesNotGrowBacklog();
-    testWavePlotXAxisLabelsDefaultToChinese();
+    testWavePlotXAxisLabelsUseClockTime();
     testRemoteSkyModeKeepsLocalEndpointText();
     std::cout << "tcp_wave_panel_test passed\n";
     return 0;

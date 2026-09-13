@@ -208,6 +208,9 @@ private:
     QVector<float> wave4_history_;
     QVector<float> peak_raw_history_;
     QVector<float> peak_history_;
+    qint64 wave1_wall_msecs_ = 0;
+    qint64 wave4_wall_msecs_ = 0;
+    QVector<qint64> peak_wall_msecs_;
     QString pending_wave1_info_text_;
     QString pending_wave4_info_text_;
     QString pending_live_status_text_;
