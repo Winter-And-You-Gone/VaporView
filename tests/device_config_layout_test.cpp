@@ -17,6 +17,7 @@
 #include <QFrame>
 #include <QFontMetrics>
 #include <QGroupBox>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QHostAddress>
 #include <QIcon>
@@ -1413,6 +1414,9 @@ int main(int argc, char **argv)
             "remote Sky subcards keep the service card left and stack sync/diagnostics on the right");
     require(findExactLabel(remoteCard, QStringLiteral("Wave TCP:")) == nullptr,
             "Sky services subcard no longer duplicates the TCP waveform enabled field");
+    auto *servicesGrid = servicesSubcard->findChild<QGridLayout *>();
+    require(servicesGrid && servicesGrid->columnCount() == 2 && servicesGrid->rowCount() == 6,
+            "Sky services subcard uses a two-column label/value layout");
     require(syncLabel->mapTo(syncSubcard, QPoint(0, 0)).x() + syncLabel->width() <
                 remoteStatus->mapTo(syncSubcard, QPoint(0, 0)).x(),
             "config sync subcard places its vertical title to the left of its status content");
