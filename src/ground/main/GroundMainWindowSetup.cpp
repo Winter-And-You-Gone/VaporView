@@ -3179,14 +3179,14 @@ void MainWindow::setupDeviceConfigPage()
     auto *remoteBody = new QWidget(remoteConfigCard);
     auto *remoteGrid = new QGridLayout(remoteBody);
     remoteGrid->setContentsMargins(8, 8, 8, 8);
-    remoteGrid->setHorizontalSpacing(4);
+    remoteGrid->setHorizontalSpacing(16);
     remoteGrid->setVerticalSpacing(4);
+    remoteGrid->setColumnMinimumWidth(0, 120);
+    remoteGrid->setColumnMinimumWidth(2, 120);
+    remoteGrid->setColumnMinimumWidth(4, 120);
     remoteGrid->setColumnMinimumWidth(1, 92);
     remoteGrid->setColumnMinimumWidth(3, 92);
     remoteGrid->setColumnMinimumWidth(5, 92);
-    remoteGrid->setColumnMinimumWidth(0, 0);
-    remoteGrid->setColumnMinimumWidth(2, 110);
-    remoteGrid->setColumnMinimumWidth(4, 110);
     remoteGrid->setColumnStretch(6, 1);
 
     auto createFieldLabel = [remoteBody](const QString& objectName = QString()) {
