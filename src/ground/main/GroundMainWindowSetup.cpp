@@ -3179,11 +3179,11 @@ void MainWindow::setupDeviceConfigPage()
     auto *remoteBody = new QWidget(remoteConfigCard);
     auto *remoteGrid = new QGridLayout(remoteBody);
     remoteGrid->setContentsMargins(8, 8, 8, 8);
-    remoteGrid->setHorizontalSpacing(2);
+    remoteGrid->setHorizontalSpacing(8);
     remoteGrid->setVerticalSpacing(4);
-    remoteGrid->setColumnMinimumWidth(0, 82);
-    remoteGrid->setColumnMinimumWidth(2, 82);
-    remoteGrid->setColumnMinimumWidth(4, 82);
+    remoteGrid->setColumnMinimumWidth(0, 72);
+    remoteGrid->setColumnMinimumWidth(2, 72);
+    remoteGrid->setColumnMinimumWidth(4, 72);
     remoteGrid->setColumnMinimumWidth(1, 92);
     remoteGrid->setColumnMinimumWidth(3, 92);
     remoteGrid->setColumnMinimumWidth(5, 92);
