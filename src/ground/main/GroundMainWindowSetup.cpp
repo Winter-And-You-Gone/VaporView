@@ -3181,9 +3181,9 @@ void MainWindow::setupDeviceConfigPage()
     remoteGrid->setContentsMargins(8, 8, 8, 8);
     remoteGrid->setHorizontalSpacing(8);
     remoteGrid->setVerticalSpacing(6);
-    remoteGrid->setColumnStretch(1, 1);
-    remoteGrid->setColumnStretch(3, 1);
-    remoteGrid->setColumnStretch(5, 1);
+    remoteGrid->setColumnMinimumWidth(1, 92);
+    remoteGrid->setColumnMinimumWidth(3, 92);
+    remoteGrid->setColumnMinimumWidth(5, 92);
 
     auto createFieldLabel = [remoteBody](const QString& objectName = QString()) {
         auto *label = new QLabel(remoteBody);
