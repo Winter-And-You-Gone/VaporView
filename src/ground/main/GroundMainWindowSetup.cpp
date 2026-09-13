@@ -3184,7 +3184,7 @@ void MainWindow::setupDeviceConfigPage()
     remoteGrid->setColumnMinimumWidth(1, 92);
     remoteGrid->setColumnMinimumWidth(3, 92);
     remoteGrid->setColumnMinimumWidth(5, 92);
-    remoteGrid->setColumnMinimumWidth(0, 110);
+    remoteGrid->setColumnMinimumWidth(0, 0);
     remoteGrid->setColumnMinimumWidth(2, 110);
     remoteGrid->setColumnMinimumWidth(4, 110);
     remoteGrid->setColumnStretch(6, 1);
@@ -3215,7 +3215,7 @@ void MainWindow::setupDeviceConfigPage()
         return spin;
     };
     auto addPair = [remoteGrid](QLabel *label, QWidget *field, int row, int labelColumn, int fieldColumn) {
-        remoteGrid->addWidget(label, row, labelColumn, Qt::AlignVCenter | Qt::AlignRight);
+        remoteGrid->addWidget(label, row, labelColumn, Qt::AlignVCenter | Qt::AlignLeft);
         remoteGrid->addWidget(field, row, fieldColumn, Qt::AlignVCenter | Qt::AlignLeft);
     };
 
