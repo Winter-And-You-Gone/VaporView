@@ -3192,12 +3192,10 @@ void MainWindow::setupDeviceConfigPage()
     servicesPanel->setObjectName(QStringLiteral("deviceRemoteSkyServicesSubcard"));
     servicesPanel->setProperty("epsilonSubcard", true);
     remoteGrid->addWidget(servicesPanel, 0, 0, 4, 6);
-    servicesPanel->lower();
     auto *syncPanel = new QFrame(remoteBody);
     syncPanel->setObjectName(QStringLiteral("deviceRemoteSkySyncSubcard"));
     syncPanel->setProperty("epsilonSubcard", true);
     remoteGrid->addWidget(syncPanel, 0, 7, 6, 5);
-    syncPanel->lower();
 
     auto createFieldLabel = [remoteBody](const QString& objectName = QString()) {
         auto *label = new QLabel(remoteBody);
