@@ -3194,7 +3194,10 @@ void MainWindow::setupDeviceConfigPage()
     remoteDivider->setFrameShape(QFrame::VLine);
     remoteDivider->setFrameShadow(QFrame::Plain);
     remoteDivider->setLineWidth(1);
-    remoteDivider->setStyleSheet(QStringLiteral("QFrame#deviceRemoteSkyConfigDivider { color: #c8c8c8; background: #c8c8c8; min-width: 1px; max-width: 1px; }"));
+    remoteDivider->setMinimumWidth(2);
+    remoteDivider->setMaximumWidth(2);
+    remoteDivider->setMinimumHeight(180);
+    remoteDivider->setStyleSheet(QStringLiteral("QFrame#deviceRemoteSkyConfigDivider { background-color: #9a9a9a; border: none; }"));
     remoteGrid->addWidget(remoteDivider, 0, 6, 6, 1, Qt::AlignHCenter | Qt::AlignVCenter);
 
     auto createFieldLabel = [remoteBody](const QString& objectName = QString()) {
