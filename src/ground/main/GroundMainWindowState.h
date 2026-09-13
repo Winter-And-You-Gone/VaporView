@@ -63,8 +63,8 @@ struct DeviceConfigPageWidgets
     QLabel *tcp_wave_lbl = nullptr;
     QLineEdit *tcp_wave_host_edit = nullptr;
     QSpinBox *tcp_wave_port_spin = nullptr;
+    QCheckBox *tcp_wave_enabled_check = nullptr;
     QLabel *tcp_wave_transport_hint_lbl = nullptr;
-    QLabel *tcp_wave_enabled_hint_lbl = nullptr;
     QLabel *tcp_wave_source_hint_lbl = nullptr;
     QLabel *device_header_lbl = nullptr;
     QLabel *port_header_lbl = nullptr;
@@ -89,9 +89,6 @@ struct DeviceConfigPageWidgets
     QLabel *remote_sky_sync_title_lbl = nullptr;
     QLabel *remote_sky_advanced_title_lbl = nullptr;
     QLabel *remote_sky_config_status_lbl = nullptr;
-    QLabel *remote_sky_wave_enabled_lbl = nullptr;
-    QLabel *remote_sky_wave_host_lbl = nullptr;
-    QLabel *remote_sky_wave_port_lbl = nullptr;
     QLabel *remote_sky_wave_downsample_lbl = nullptr;
     QLabel *remote_sky_telemetry_basic_lbl = nullptr;
     QLabel *remote_sky_telemetry_feature_lbl = nullptr;
@@ -134,9 +131,6 @@ struct DeviceConfigPageWidgets
     QCheckBox *lidar_enabled_check = nullptr;
     QCheckBox *temperature_enabled_check = nullptr;
     QCheckBox *ai8_temperature_enabled_check = nullptr;
-    QCheckBox *remote_sky_wave_enabled_check = nullptr;
-    QLineEdit *remote_sky_wave_host_edit = nullptr;
-    QSpinBox *remote_sky_wave_port_spin = nullptr;
     QSpinBox *remote_sky_wave_downsample_spin = nullptr;
     QDoubleSpinBox *remote_sky_telemetry_basic_spin = nullptr;
     QDoubleSpinBox *remote_sky_telemetry_feature_spin = nullptr;

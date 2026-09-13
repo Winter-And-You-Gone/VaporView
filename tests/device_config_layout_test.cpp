@@ -741,9 +741,14 @@ int main(int argc, char **argv)
         serialCard->findChild<QLineEdit *>(QStringLiteral("deviceTcpWaveHostEdit"));
     auto *deviceTcpWavePortSpin =
         serialCard->findChild<QSpinBox *>(QStringLiteral("deviceTcpWavePortSpin"));
+    auto *deviceTcpWaveEnabledCheck =
+        serialCard->findChild<QCheckBox *>(QStringLiteral("deviceTcpWaveEnabledCheck"));
     require(deviceTcpWaveHostEdit && deviceTcpWavePortSpin &&
                 deviceTcpWaveHostEdit->isVisible() && deviceTcpWavePortSpin->isVisible(),
             "TCP waveform device row exposes visible host and port editors");
+    require(deviceTcpWaveEnabledCheck && deviceTcpWaveEnabledCheck->isVisible() &&
+                deviceTcpWaveEnabledCheck->isChecked(),
+            "TCP waveform device row exposes a real enabled checkbox");
     auto *tcpWaveHostEdit = window.findChild<QLineEdit *>(QStringLiteral("tcpWaveHostEdit"));
     auto *tcpWavePortEdit = window.findChild<QLineEdit *>(QStringLiteral("tcpWavePortEdit"));
     require(tcpWaveHostEdit && tcpWavePortEdit,
@@ -1406,11 +1411,8 @@ int main(int argc, char **argv)
                 !servicesSubcardRect.intersects(advancedSubcardRect) &&
                 !syncSubcardRect.intersects(advancedSubcardRect),
             "remote Sky subcards keep the service card left and stack sync/diagnostics on the right");
-    QLabel *waveEnabledLabel = findExactLabel(remoteCard, QStringLiteral("Wave TCP:"));
-    require(waveEnabledLabel &&
-                servicesLabel->mapTo(servicesSubcard, QPoint(0, 0)).x() + servicesLabel->width() <
-                    waveEnabledLabel->mapTo(servicesSubcard, QPoint(0, 0)).x(),
-            "Sky services subcard places its vertical title to the left of its controls");
+    require(findExactLabel(remoteCard, QStringLiteral("Wave TCP:")) == nullptr,
+            "Sky services subcard no longer duplicates the TCP waveform enabled field");
     require(syncLabel->mapTo(syncSubcard, QPoint(0, 0)).x() + syncLabel->width() <
                 remoteStatus->mapTo(syncSubcard, QPoint(0, 0)).x(),
             "config sync subcard places its vertical title to the left of its status content");
@@ -1433,17 +1435,13 @@ int main(int argc, char **argv)
             "disconnected remote mode disables apply and save operations");
     require(!epsilonPortCombo->isEnabled() &&
                 ai8PortCombo && !ai8PortCombo->isEnabled() &&
+                !deviceTcpWaveEnabledCheck->isEnabled() &&
                 !deviceTcpWaveHostEdit->isEnabled() &&
                 !deviceTcpWavePortSpin->isEnabled(),
             "remote config fields wait for a loaded SkyConfig while the link is disconnected");
     auto *tcpWaveConnectButton = window.findChild<QPushButton *>(QStringLiteral("compactTcpStartButton"));
-    auto *remoteWaveHostEdit =
-        deviceConfigPage->findChild<QLineEdit *>(QStringLiteral("deviceRemoteSkyWaveHostEdit"));
-    auto *remoteWavePortSpin =
-        deviceConfigPage->findChild<QSpinBox *>(QStringLiteral("deviceRemoteSkyWavePortSpin"));
     require(tcpWaveHostEdit != nullptr && tcpWavePortEdit != nullptr &&
-                tcpWaveConnectButton != nullptr && remoteWaveHostEdit != nullptr &&
-                remoteWavePortSpin != nullptr,
+                tcpWaveConnectButton != nullptr,
             "home TCP wave source controls are reachable in remote mode");
     require(tcpWaveHostEdit->isEnabled() && tcpWavePortEdit->isEnabled(),
             "remote TCP wave disconnected mode leaves host and port editable");
@@ -1755,6 +1753,19 @@ int main(int argc, char **argv)
     require(tcpWaveHostEdit->text() == QStringLiteral("10.0.0.2") &&
                 tcpWavePortEdit->text() == QStringLiteral("8899"),
             "remote SkyConfig mirrors Wave TCP endpoint into the home TCP wave card");
+    require(deviceTcpWaveEnabledCheck->isChecked() && deviceTcpWaveEnabledCheck->isEnabled(),
+            "remote SkyConfig mirrors Wave TCP enabled state into the device row checkbox");
+    deviceTcpWaveEnabledCheck->setChecked(false);
+    VaporViewTest::processEventsFor(40);
+    QString disabledWaveError;
+    const QJsonObject disabledWaveUiJson =
+        window.testRemoteSkyConfigFromDeviceConfigUi(&disabledWaveError);
+    require(disabledWaveError.isEmpty() &&
+                !disabledWaveUiJson.value(QStringLiteral("wave_tcp")).toObject()
+                     .value(QStringLiteral("enabled")).toBool(true),
+            "TCP waveform enabled checkbox controls the serialized SkyConfig flag");
+    deviceTcpWaveEnabledCheck->setChecked(true);
+    VaporViewTest::processEventsFor(40);
 
     deviceTcpWaveHostEdit->setText(QStringLiteral("10.0.0.3"));
     deviceTcpWaveHostEdit->setFocus();
@@ -1764,10 +1775,10 @@ int main(int argc, char **argv)
             "remote device TCP host editor accepts the endpoint commit signal");
     deviceTcpWavePortSpin->setValue(9900);
     VaporViewTest::processEventsFor(80);
-    require(remoteWaveHostEdit->text() == QStringLiteral("10.0.0.3") &&
-                remoteWavePortSpin->value() == 9900 &&
+    require(deviceTcpWaveHostEdit->text() == QStringLiteral("10.0.0.3") &&
+                deviceTcpWavePortSpin->value() == 9900 &&
                 remoteApplyButton->isEnabled(),
-            "remote device-row endpoint edits synchronize to the SkyConfig form");
+            "remote device-row endpoint edits keep the shared SkyConfig endpoint in sync");
 
     tcpWaveHostEdit->setText(QStringLiteral("10.0.0.9"));
     tcpWavePortEdit->setText(QStringLiteral("9901"));

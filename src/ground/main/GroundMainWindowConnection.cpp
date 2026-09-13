@@ -184,7 +184,7 @@ bool MainWindow::homeDeviceConnected(VaporView::SkyDeviceId device) const
 
 bool MainWindow::localDeviceEnabled(VaporView::SkyDeviceId device) const
 {
-    if (isUiTestMode() || isRemoteSkyMode() || device == VaporView::SkyDeviceId::WaveTcp)
+    if (isUiTestMode() || isRemoteSkyMode())
     {
         return true;
     }
@@ -204,8 +204,9 @@ bool MainWindow::localDeviceEnabled(VaporView::SkyDeviceId device) const
     case VaporView::SkyDeviceId::Ai8TemperatureController:
         return state_->local_device_config_.ai8TemperatureController.enabled;
     case VaporView::SkyDeviceId::All:
-    case VaporView::SkyDeviceId::WaveTcp:
         return true;
+    case VaporView::SkyDeviceId::WaveTcp:
+        return state_->local_device_config_.waveTcpEnabled;
     }
     return true;
 }
@@ -272,7 +273,13 @@ VaporView::DeviceState MainWindow::homeDeviceActionState(VaporView::SkyDeviceId 
         {
             return VaporView::DeviceState::Connecting;
         }
-        return state_->tcp_wave_panel_->isConnected() ? VaporView::DeviceState::Connected : VaporView::DeviceState::Disconnected;
+        if (state_->tcp_wave_panel_->isConnected())
+        {
+            return VaporView::DeviceState::Connected;
+        }
+        return localDeviceEnabled(device)
+            ? VaporView::DeviceState::Disconnected
+            : VaporView::DeviceState::Disabled;
     }
 
     if (homeDeviceConnected(device))
@@ -1352,6 +1359,7 @@ QJsonObject MainWindow::testLocalDeviceConfigSnapshot() const
         {QStringLiteral("lidar"), serial(config.lidar)},
         {QStringLiteral("temperature"), serial(config.temperatureController)},
         {QStringLiteral("ai8"), serial(config.ai8TemperatureController)},
+        {QStringLiteral("wave_tcp_enabled"), config.waveTcpEnabled},
         {QStringLiteral("pressure_source"), config.pressureSource},
         {QStringLiteral("humidity_source"), config.humiditySource},
     };

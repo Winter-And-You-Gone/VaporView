@@ -49,6 +49,7 @@ struct LocalDeviceConfig
     LocalSerialDeviceSettings lidar{true, true, {}, QStringLiteral("500000"), 1, false};
     LocalSerialDeviceSettings temperatureController{true, true, {}, QStringLiteral("38400"), 1, false};
     LocalSerialDeviceSettings ai8TemperatureController{true, true, {}, QStringLiteral("19200"), 5, false};
+    bool waveTcpEnabled = true;
 
     PressureSensorProtocol pressureProtocol = PressureSensorProtocol::Ptb210;
     HumiditySensorProtocol humidityProtocol = HumiditySensorProtocol::Hmp3Modbus;

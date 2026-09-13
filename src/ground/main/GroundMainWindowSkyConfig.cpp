@@ -493,10 +493,10 @@ void MainWindow::setRemoteSkyConfigUi(const VaporView::SkyConfig& config)
             item.first->setValue(item.second);
         }
     }
-    if (state_->device_config_.remote_sky_wave_enabled_check)
+    if (state_->device_config_.tcp_wave_enabled_check)
     {
-        const QSignalBlocker blocker(state_->device_config_.remote_sky_wave_enabled_check);
-        state_->device_config_.remote_sky_wave_enabled_check->setChecked(config.wave_tcp.enabled);
+        const QSignalBlocker blocker(state_->device_config_.tcp_wave_enabled_check);
+        state_->device_config_.tcp_wave_enabled_check->setChecked(config.wave_tcp.enabled);
     }
     if (state_->device_config_.tcp_wave_host_edit)
         state_->device_config_.tcp_wave_host_edit->setText(config.wave_tcp.host);
@@ -688,7 +688,7 @@ VaporView::SkyConfig MainWindow::remoteSkyConfigFromDeviceConfigUi(QString *erro
         config.ai8_temperature_controller.slave_address =
             state_->ai8_temperature_controller_panel_->currentPageData().global.address;
     }
-    if (state_->device_config_.remote_sky_wave_enabled_check) config.wave_tcp.enabled = state_->device_config_.remote_sky_wave_enabled_check->isChecked();
+    if (state_->device_config_.tcp_wave_enabled_check) config.wave_tcp.enabled = state_->device_config_.tcp_wave_enabled_check->isChecked();
     if (state_->device_config_.tcp_wave_host_edit) config.wave_tcp.host = state_->device_config_.tcp_wave_host_edit->text().trimmed();
     if (state_->device_config_.tcp_wave_port_spin) config.wave_tcp.port = state_->device_config_.tcp_wave_port_spin->value();
     if (state_->device_config_.remote_sky_wave_downsample_spin) config.wave_tcp.downsample_ratio = state_->device_config_.remote_sky_wave_downsample_spin->value();
@@ -897,7 +897,8 @@ void MainWindow::updateRemoteSkyConfigControlsState()
                              state_->device_config_.hmp_enabled_check,
                              state_->device_config_.lidar_enabled_check,
                              state_->device_config_.temperature_enabled_check,
-                             state_->device_config_.ai8_temperature_enabled_check})
+                             state_->device_config_.ai8_temperature_enabled_check,
+                             state_->device_config_.tcp_wave_enabled_check})
     {
         if (check)
         {
@@ -905,7 +906,7 @@ void MainWindow::updateRemoteSkyConfigControlsState()
         }
     }
 
-    for (QWidget *widget : {static_cast<QWidget *>(state_->device_config_.remote_sky_wave_enabled_check),
+    for (QWidget *widget : {static_cast<QWidget *>(state_->device_config_.tcp_wave_enabled_check),
                             static_cast<QWidget *>(state_->device_config_.remote_sky_wave_downsample_spin),
                             static_cast<QWidget *>(state_->device_config_.remote_sky_telemetry_basic_spin),
                             static_cast<QWidget *>(state_->device_config_.remote_sky_telemetry_feature_spin),

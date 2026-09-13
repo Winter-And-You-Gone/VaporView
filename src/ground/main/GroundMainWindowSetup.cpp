@@ -2815,12 +2815,6 @@ void MainWindow::setupDeviceConfigPage()
                           1,
                           2,
                           Qt::AlignVCenter | Qt::AlignLeft);
-    state_->device_config_.tcp_wave_enabled_hint_lbl =
-        createTcpWaveHintLabel(QStringLiteral("deviceTcpWaveEnabledHint"));
-    formLayout->addWidget(state_->device_config_.tcp_wave_enabled_hint_lbl,
-                          tcpWaveGridRow,
-                          5,
-                          Qt::AlignVCenter | Qt::AlignHCenter);
     state_->device_config_.tcp_wave_source_hint_lbl =
         createTcpWaveHintLabel(QStringLiteral("deviceTcpWaveSourceHint"),
                                kDeviceConfigSourceComboWidth);
@@ -3091,6 +3085,8 @@ void MainWindow::setupDeviceConfigPage()
                           QStringLiteral("deviceRemoteTemperatureEnabledCheck"));
     addDeviceEnabledCheck(state_->device_config_.ai8_temperature_enabled_check, 5,
                           QStringLiteral("deviceRemoteAi8TemperatureEnabledCheck"));
+    addDeviceEnabledCheck(state_->device_config_.tcp_wave_enabled_check, kTcpWaveDeviceRow,
+                          QStringLiteral("deviceTcpWaveEnabledCheck"));
 
     auto addDeviceRemoteButton = [this, formLayout, formWidget](
             int row,
@@ -3309,16 +3305,6 @@ void MainWindow::setupDeviceConfigPage()
         grid->addWidget(field, row, fieldColumn, Qt::AlignVCenter | Qt::AlignLeft);
     };
 
-    state_->device_config_.remote_sky_wave_enabled_lbl = createFieldLabel();
-    state_->device_config_.remote_sky_wave_enabled_check = new QCheckBox(remoteBody);
-    state_->device_config_.remote_sky_wave_enabled_check->setObjectName(QStringLiteral("deviceRemoteSkyWaveEnabledCheck"));
-    addPair(servicesGrid,
-            state_->device_config_.remote_sky_wave_enabled_lbl,
-            state_->device_config_.remote_sky_wave_enabled_check,
-            0,
-            0,
-            1);
-
     state_->device_config_.remote_sky_wave_downsample_lbl = createFieldLabel();
     state_->device_config_.remote_sky_wave_downsample_spin = new QSpinBox(remoteBody);
     state_->device_config_.remote_sky_wave_downsample_spin->setObjectName(QStringLiteral("deviceRemoteSkyWaveDownsampleSpin"));
@@ -3329,8 +3315,8 @@ void MainWindow::setupDeviceConfigPage()
             state_->device_config_.remote_sky_wave_downsample_lbl,
             state_->device_config_.remote_sky_wave_downsample_spin,
             0,
-            2,
-            3);
+            0,
+            1);
 
     state_->device_config_.remote_sky_telemetry_basic_lbl = createFieldLabel();
     state_->device_config_.remote_sky_telemetry_feature_lbl = createFieldLabel();
@@ -3444,7 +3430,6 @@ void MainWindow::setupDeviceConfigPage()
     {
         connect(spin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, markRemoteDirty);
     }
-    connect(state_->device_config_.remote_sky_wave_enabled_check, &QCheckBox::toggled, this, markRemoteDirty);
     for (QComboBox *combo : {state_->device_config_.ai8_temperature_port_combo,
                              state_->device_config_.ai8_temperature_baud_combo,
                              state_->device_config_.ai8_temperature_rate_combo})
@@ -3568,6 +3553,7 @@ void MainWindow::updateLocalDeviceConfigFromUi() const
     if (state_->device_config_.lidar_enabled_check) state_->local_device_config_.lidar.enabled = state_->device_config_.lidar_enabled_check->isChecked();
     if (state_->device_config_.temperature_enabled_check) state_->local_device_config_.temperatureController.enabled = state_->device_config_.temperature_enabled_check->isChecked();
     if (state_->device_config_.ai8_temperature_enabled_check) state_->local_device_config_.ai8TemperatureController.enabled = state_->device_config_.ai8_temperature_enabled_check->isChecked();
+    if (state_->device_config_.tcp_wave_enabled_check) state_->local_device_config_.waveTcpEnabled = state_->device_config_.tcp_wave_enabled_check->isChecked();
     if (state_->device_config_.ptb_source_combo) state_->local_device_config_.pressureSource = state_->device_config_.ptb_source_combo->currentData().toString();
     if (state_->device_config_.hmp_source_combo) state_->local_device_config_.humiditySource = state_->device_config_.hmp_source_combo->currentData().toString();
     state_->local_device_config_.pressureProtocol = state_->local_device_config_.pressureSource == QStringLiteral("bmp390") ? VaporView::PressureSensorProtocol::Bmp390Serial : VaporView::PressureSensorProtocol::Ptb210;
@@ -3643,6 +3629,7 @@ void MainWindow::refreshDeviceConfigUiFromLocalModel()
     setChecked(state_->device_config_.lidar_enabled_check, c.lidar.enabled);
     setChecked(state_->device_config_.temperature_enabled_check, c.temperatureController.enabled);
     setChecked(state_->device_config_.ai8_temperature_enabled_check, c.ai8TemperatureController.enabled);
+    setChecked(state_->device_config_.tcp_wave_enabled_check, c.waveTcpEnabled);
 }
 
 void MainWindow::updateRemoteSkyLinkConfigFromUi() const
@@ -3862,14 +3849,12 @@ void MainWindow::updateDeviceConfigTexts()
     if (state_->device_config_.tcp_wave_lbl) state_->device_config_.tcp_wave_lbl->setText(state_->is_english_ ? QStringLiteral("TCP Waveform") : QStringLiteral("TCP 波形"));
     if (state_->device_config_.tcp_wave_host_edit) state_->device_config_.tcp_wave_host_edit->setPlaceholderText(state_->is_english_ ? QStringLiteral("Host address") : QStringLiteral("主机地址"));
     if (state_->device_config_.tcp_wave_transport_hint_lbl) state_->device_config_.tcp_wave_transport_hint_lbl->setText(state_->is_english_ ? QStringLiteral("TCP service") : QStringLiteral("TCP 服务"));
-    if (state_->device_config_.tcp_wave_enabled_hint_lbl) state_->device_config_.tcp_wave_enabled_hint_lbl->setText(QStringLiteral("-"));
     if (state_->device_config_.tcp_wave_source_hint_lbl) state_->device_config_.tcp_wave_source_hint_lbl->setText(QStringLiteral("-"));
     const QString tcpWaveHint = state_->is_english_
-        ? QStringLiteral("TCP waveform host address and port. Changes stay synchronized with the Wave Monitor card.")
-        : QStringLiteral("TCP 波形主机地址和端口，与波形监控卡片保持同步。");
+        ? QStringLiteral("TCP waveform host address, port, and enabled state. Changes stay synchronized with the Wave Monitor card.")
+        : QStringLiteral("TCP 波形主机地址、端口和启用状态，与波形监控卡片保持同步。");
     for (QLabel *label : {state_->device_config_.tcp_wave_lbl,
                           state_->device_config_.tcp_wave_transport_hint_lbl,
-                          state_->device_config_.tcp_wave_enabled_hint_lbl,
                           state_->device_config_.tcp_wave_source_hint_lbl})
     {
         if (label)
@@ -3893,8 +3878,8 @@ void MainWindow::updateDeviceConfigTexts()
                 ? QStringLiteral("Include %1 when Remote Sky connects its devices.").arg(name)
                 : QStringLiteral("控制天空端连接设备时是否启用%1。").arg(name))
             : (state_->is_english_
-                ? QStringLiteral("Skip %1 during local connection while keeping its serial settings.").arg(name)
-                : QStringLiteral("本地连接时跳过%1，但保留串口配置。").arg(name)));
+                ? QStringLiteral("Skip %1 during local connection while keeping its configured settings.").arg(name)
+                : QStringLiteral("本地连接时跳过%1，但保留已配置参数。").arg(name)));
     };
     updateEnabledCheckPresentation(state_->device_config_.epsilon_enabled_check, QStringLiteral("EPSILON"));
     updateEnabledCheckPresentation(state_->device_config_.ptb_enabled_check, state_->is_english_ ? QStringLiteral("Pressure") : QStringLiteral("气压"));
@@ -3902,6 +3887,8 @@ void MainWindow::updateDeviceConfigTexts()
     updateEnabledCheckPresentation(state_->device_config_.lidar_enabled_check, QStringLiteral("TFA1500-L"));
     updateEnabledCheckPresentation(state_->device_config_.temperature_enabled_check, QStringLiteral("RD105"));
     updateEnabledCheckPresentation(state_->device_config_.ai8_temperature_enabled_check, QStringLiteral("AI-8288"));
+    updateEnabledCheckPresentation(state_->device_config_.tcp_wave_enabled_check,
+                                   state_->is_english_ ? QStringLiteral("TCP waveform") : QStringLiteral("TCP 波形"));
     if (state_->device_config_.epsilon_rate_lbl) state_->device_config_.epsilon_rate_lbl->setText(QString());
     if (state_->device_config_.epsilon_packet_rates_btn)
     {
@@ -3952,9 +3939,6 @@ void MainWindow::updateDeviceConfigTexts()
                              state_->is_english_ ? QStringLiteral("Config sync") : QStringLiteral("配置同步"));
     setRemoteSkySubcardTitle(state_->device_config_.remote_sky_advanced_title_lbl,
                              state_->is_english_ ? QStringLiteral("Advanced / diagnostics") : QStringLiteral("高级 / 诊断"));
-    if (state_->device_config_.remote_sky_wave_enabled_lbl) state_->device_config_.remote_sky_wave_enabled_lbl->setText(state_->is_english_ ? "Wave TCP:" : "Wave TCP:");
-    if (state_->device_config_.remote_sky_wave_host_lbl) state_->device_config_.remote_sky_wave_host_lbl->setText(state_->is_english_ ? "Sky Wave Host:" : "天空端波形主机:");
-    if (state_->device_config_.remote_sky_wave_port_lbl) state_->device_config_.remote_sky_wave_port_lbl->setText(state_->is_english_ ? "Sky Wave Port:" : "天空端波形端口:");
     if (state_->device_config_.remote_sky_wave_downsample_lbl) state_->device_config_.remote_sky_wave_downsample_lbl->setText(state_->is_english_ ? "Downsample:" : "降采样:");
     if (state_->device_config_.remote_sky_telemetry_basic_lbl) state_->device_config_.remote_sky_telemetry_basic_lbl->setText(state_->is_english_ ? "Basic Hz:" : "基础 Hz:");
     if (state_->device_config_.remote_sky_telemetry_feature_lbl) state_->device_config_.remote_sky_telemetry_feature_lbl->setText(state_->is_english_ ? "Feature Hz:" : "特征 Hz:");
@@ -4073,7 +4057,8 @@ void MainWindow::updateDeviceConfigState()
                              state_->device_config_.hmp_enabled_check,
                              state_->device_config_.lidar_enabled_check,
                              state_->device_config_.temperature_enabled_check,
-                             state_->device_config_.ai8_temperature_enabled_check})
+                             state_->device_config_.ai8_temperature_enabled_check,
+                             state_->device_config_.tcp_wave_enabled_check})
     {
         if (check)
         {
@@ -4098,7 +4083,7 @@ void MainWindow::updateDeviceConfigState()
                             static_cast<QWidget *>(state_->device_config_.tcp_wave_host_edit),
                             static_cast<QWidget *>(state_->device_config_.tcp_wave_port_spin),
                             static_cast<QWidget *>(state_->device_config_.tcp_wave_transport_hint_lbl),
-                            static_cast<QWidget *>(state_->device_config_.tcp_wave_enabled_hint_lbl),
+                            static_cast<QWidget *>(state_->device_config_.tcp_wave_enabled_check),
                             static_cast<QWidget *>(state_->device_config_.tcp_wave_source_hint_lbl)})
     {
         if (widget)
@@ -4108,7 +4093,6 @@ void MainWindow::updateDeviceConfigState()
     }
     for (QLabel *label : {state_->device_config_.tcp_wave_lbl,
                           state_->device_config_.tcp_wave_transport_hint_lbl,
-                          state_->device_config_.tcp_wave_enabled_hint_lbl,
                           state_->device_config_.tcp_wave_source_hint_lbl})
     {
         if (label)

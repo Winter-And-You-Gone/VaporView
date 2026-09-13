@@ -1679,6 +1679,7 @@ void MainWindow::loadLocalDeviceEnabledState()
     loadCheck(state_->device_config_.lidar_enabled_check, QStringLiteral("local_enabled/lidar"));
     loadCheck(state_->device_config_.temperature_enabled_check, QStringLiteral("local_enabled/temperature"));
     loadCheck(state_->device_config_.ai8_temperature_enabled_check, QStringLiteral("local_enabled/ai8_temperature"));
+    loadCheck(state_->device_config_.tcp_wave_enabled_check, QStringLiteral("local_enabled/wave_tcp"));
 }
 
 void MainWindow::saveLocalDeviceEnabledState() const
@@ -1702,6 +1703,7 @@ void MainWindow::saveLocalDeviceEnabledState() const
     saveCheck(QStringLiteral("local_enabled/lidar"), state_->device_config_.lidar_enabled_check);
     saveCheck(QStringLiteral("local_enabled/temperature"), state_->device_config_.temperature_enabled_check);
     saveCheck(QStringLiteral("local_enabled/ai8_temperature"), state_->device_config_.ai8_temperature_enabled_check);
+    saveCheck(QStringLiteral("local_enabled/wave_tcp"), state_->device_config_.tcp_wave_enabled_check);
 }
 
 void MainWindow::loadRememberedInputState()
