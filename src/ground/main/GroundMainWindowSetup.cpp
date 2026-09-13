@@ -3179,7 +3179,7 @@ void MainWindow::setupDeviceConfigPage()
     auto *remoteBody = new QWidget(remoteConfigCard);
     auto *remoteGrid = new QGridLayout(remoteBody);
     remoteGrid->setContentsMargins(8, 8, 8, 8);
-    remoteGrid->setHorizontalSpacing(8);
+    remoteGrid->setHorizontalSpacing(20);
     remoteGrid->setVerticalSpacing(4);
     remoteGrid->setColumnMinimumWidth(0, 72);
     remoteGrid->setColumnMinimumWidth(2, 72);
@@ -3187,7 +3187,14 @@ void MainWindow::setupDeviceConfigPage()
     remoteGrid->setColumnMinimumWidth(1, 92);
     remoteGrid->setColumnMinimumWidth(3, 92);
     remoteGrid->setColumnMinimumWidth(5, 92);
-    remoteGrid->setColumnStretch(6, 1);
+    remoteGrid->setColumnMinimumWidth(6, 16);
+
+    auto *remoteDivider = new QFrame(remoteBody);
+    remoteDivider->setObjectName(QStringLiteral("deviceRemoteSkyConfigDivider"));
+    remoteDivider->setFrameShape(QFrame::VLine);
+    remoteDivider->setFrameShadow(QFrame::Plain);
+    remoteDivider->setLineWidth(1);
+    remoteGrid->addWidget(remoteDivider, 0, 6, 6, 1, Qt::AlignHCenter | Qt::AlignVCenter);
 
     auto createFieldLabel = [remoteBody](const QString& objectName = QString()) {
         auto *label = new QLabel(remoteBody);
