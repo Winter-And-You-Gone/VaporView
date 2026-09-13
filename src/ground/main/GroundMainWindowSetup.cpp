@@ -3350,6 +3350,10 @@ void MainWindow::setupDeviceConfigPage()
     state_->device_config_.remote_sky_raw_json_edit->setMinimumHeight(220);
     state_->device_config_.remote_sky_raw_json_edit->setVisible(false);
     remoteGrid->addWidget(state_->device_config_.remote_sky_raw_json_edit, 5, 7, 1, 5);
+    servicesPanel->setAttribute(Qt::WA_TransparentForMouseEvents);
+    syncPanel->setAttribute(Qt::WA_TransparentForMouseEvents);
+    servicesPanel->raise();
+    syncPanel->raise();
     remoteConfigLayout->addWidget(remoteBody);
 
     const auto markRemoteDirty = [this]() { markRemoteSkyConfigDirty(); };

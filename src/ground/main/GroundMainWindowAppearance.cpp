@@ -113,7 +113,7 @@ void MainWindow::loadModernStyleSheet()
             "QWidget#sectionTitleCluster QLabel#sectionTitleIcon { background-color: transparent; border: none; padding: 0px; margin: 0px; }"
             "QWidget#sectionTitleBar QWidget#sectionTitleCluster QLabel#sectionTitleLabel, QWidget#environmentSectionTitleBar QWidget#sectionTitleCluster QLabel#sectionTitleLabel { margin: 0px; padding: 0px; }"
             "QFrame#epsilonSectionCard { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; }"
-            "QFrame[epsilonSubcard=\"true\"] { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; }"
+            "QFrame[epsilonSubcard=\"true\"] { background-color: transparent; border: 1px solid @vv-border; border-radius: 8px; }"
             "QWidget#homeTelemetrySummaryContainer { background-color: transparent; border: none; }"
             "QFrame#homeTelemetrySectionCard { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 6px; }"
             "QFrame#deviceTelemetrySectionTitlePane { background-color: @vv-surface-alt; border: none; border-right: 1px solid @vv-border; border-top-left-radius: 6px; border-bottom-left-radius: 6px; }"
