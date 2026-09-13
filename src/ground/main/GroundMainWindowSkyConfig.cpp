@@ -483,7 +483,6 @@ void MainWindow::setRemoteSkyConfigUi(const VaporView::SkyConfig& config)
               config.ai8_temperature_controller.baud_rate,
               config.ai8_temperature_controller.frequency_hz);
     const QList<QPair<QSpinBox *, int>> intSpins = {
-        {state_->device_config_.remote_sky_wave_port_spin, config.wave_tcp.port},
         {state_->device_config_.remote_sky_wave_downsample_spin, config.wave_tcp.downsample_ratio}
     };
     for (const auto& item : intSpins)
@@ -499,11 +498,10 @@ void MainWindow::setRemoteSkyConfigUi(const VaporView::SkyConfig& config)
         const QSignalBlocker blocker(state_->device_config_.remote_sky_wave_enabled_check);
         state_->device_config_.remote_sky_wave_enabled_check->setChecked(config.wave_tcp.enabled);
     }
-    if (state_->device_config_.remote_sky_wave_host_edit)
-    {
-        const QSignalBlocker blocker(state_->device_config_.remote_sky_wave_host_edit);
-        state_->device_config_.remote_sky_wave_host_edit->setText(config.wave_tcp.host);
-    }
+    if (state_->device_config_.tcp_wave_host_edit)
+        state_->device_config_.tcp_wave_host_edit->setText(config.wave_tcp.host);
+    if (state_->device_config_.tcp_wave_port_spin)
+        state_->device_config_.tcp_wave_port_spin->setValue(config.wave_tcp.port);
     if (isRemoteSkyMode() && state_->tcp_wave_panel_)
     {
         state_->tcp_wave_panel_->setConnectionEndpoint(config.wave_tcp.host,
@@ -691,8 +689,8 @@ VaporView::SkyConfig MainWindow::remoteSkyConfigFromDeviceConfigUi(QString *erro
             state_->ai8_temperature_controller_panel_->currentPageData().global.address;
     }
     if (state_->device_config_.remote_sky_wave_enabled_check) config.wave_tcp.enabled = state_->device_config_.remote_sky_wave_enabled_check->isChecked();
-    if (state_->device_config_.remote_sky_wave_host_edit) config.wave_tcp.host = state_->device_config_.remote_sky_wave_host_edit->text().trimmed();
-    if (state_->device_config_.remote_sky_wave_port_spin) config.wave_tcp.port = state_->device_config_.remote_sky_wave_port_spin->value();
+    if (state_->device_config_.tcp_wave_host_edit) config.wave_tcp.host = state_->device_config_.tcp_wave_host_edit->text().trimmed();
+    if (state_->device_config_.tcp_wave_port_spin) config.wave_tcp.port = state_->device_config_.tcp_wave_port_spin->value();
     if (state_->device_config_.remote_sky_wave_downsample_spin) config.wave_tcp.downsample_ratio = state_->device_config_.remote_sky_wave_downsample_spin->value();
     if (state_->device_config_.remote_sky_telemetry_basic_spin) config.telemetry.basic_rate_hz = state_->device_config_.remote_sky_telemetry_basic_spin->value();
     if (state_->device_config_.remote_sky_telemetry_feature_spin) config.telemetry.feature_rate_hz = state_->device_config_.remote_sky_telemetry_feature_spin->value();
@@ -908,8 +906,6 @@ void MainWindow::updateRemoteSkyConfigControlsState()
     }
 
     for (QWidget *widget : {static_cast<QWidget *>(state_->device_config_.remote_sky_wave_enabled_check),
-                            static_cast<QWidget *>(state_->device_config_.remote_sky_wave_host_edit),
-                            static_cast<QWidget *>(state_->device_config_.remote_sky_wave_port_spin),
                             static_cast<QWidget *>(state_->device_config_.remote_sky_wave_downsample_spin),
                             static_cast<QWidget *>(state_->device_config_.remote_sky_telemetry_basic_spin),
                             static_cast<QWidget *>(state_->device_config_.remote_sky_telemetry_feature_spin),

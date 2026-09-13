@@ -3226,30 +3226,6 @@ void MainWindow::setupDeviceConfigPage()
             0,
             1);
 
-    state_->device_config_.remote_sky_wave_host_lbl = createFieldLabel();
-    state_->device_config_.remote_sky_wave_host_edit = new QLineEdit(remoteBody);
-    state_->device_config_.remote_sky_wave_host_edit->setObjectName(QStringLiteral("deviceRemoteSkyWaveHostEdit"));
-    state_->device_config_.remote_sky_wave_host_edit->setFixedHeight(kMainPageInputHeight);
-    state_->device_config_.remote_sky_wave_host_edit->setMinimumWidth(132);
-    state_->device_config_.remote_sky_wave_host_edit->setMaximumWidth(180);
-    addPair(state_->device_config_.remote_sky_wave_host_lbl,
-            state_->device_config_.remote_sky_wave_host_edit,
-            1,
-            2,
-            3);
-
-    state_->device_config_.remote_sky_wave_port_lbl = createFieldLabel();
-    state_->device_config_.remote_sky_wave_port_spin = new QSpinBox(remoteBody);
-    state_->device_config_.remote_sky_wave_port_spin->setObjectName(QStringLiteral("deviceRemoteSkyWavePortSpin"));
-    state_->device_config_.remote_sky_wave_port_spin->setRange(1, 65535);
-    state_->device_config_.remote_sky_wave_port_spin->setFixedHeight(kMainPageInputHeight);
-    state_->device_config_.remote_sky_wave_port_spin->setFixedWidth(92);
-    addPair(state_->device_config_.remote_sky_wave_port_lbl,
-            state_->device_config_.remote_sky_wave_port_spin,
-            1,
-            4,
-            5);
-
     state_->device_config_.remote_sky_wave_downsample_lbl = createFieldLabel();
     state_->device_config_.remote_sky_wave_downsample_spin = new QSpinBox(remoteBody);
     state_->device_config_.remote_sky_wave_downsample_spin->setObjectName(QStringLiteral("deviceRemoteSkyWaveDownsampleSpin"));
@@ -3363,8 +3339,7 @@ void MainWindow::setupDeviceConfigPage()
     remoteConfigLayout->addWidget(remoteBody);
 
     const auto markRemoteDirty = [this]() { markRemoteSkyConfigDirty(); };
-    for (QSpinBox *spin : {state_->device_config_.remote_sky_wave_port_spin,
-                           state_->device_config_.remote_sky_wave_downsample_spin})
+    for (QSpinBox *spin : {state_->device_config_.remote_sky_wave_downsample_spin})
     {
         connect(spin, QOverload<int>::of(&QSpinBox::valueChanged), this, markRemoteDirty);
     }
@@ -3377,7 +3352,6 @@ void MainWindow::setupDeviceConfigPage()
         connect(spin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, markRemoteDirty);
     }
     connect(state_->device_config_.remote_sky_wave_enabled_check, &QCheckBox::toggled, this, markRemoteDirty);
-    connect(state_->device_config_.remote_sky_wave_host_edit, &QLineEdit::textEdited, this, markRemoteDirty);
     for (QComboBox *combo : {state_->device_config_.ai8_temperature_port_combo,
                              state_->device_config_.ai8_temperature_baud_combo,
                              state_->device_config_.ai8_temperature_rate_combo})
@@ -3687,15 +3661,15 @@ void MainWindow::applyDeviceConfigTcpWaveEndpoint()
 
     const bool wasUpdating = state_->remote_sky_config_updating_ui_;
     state_->remote_sky_config_updating_ui_ = true;
-    if (state_->device_config_.remote_sky_wave_host_edit)
+    if (state_->device_config_.tcp_wave_host_edit)
     {
-        const QSignalBlocker blocker(state_->device_config_.remote_sky_wave_host_edit);
-        state_->device_config_.remote_sky_wave_host_edit->setText(host);
+        const QSignalBlocker blocker(state_->device_config_.tcp_wave_host_edit);
+        state_->device_config_.tcp_wave_host_edit->setText(host);
     }
-    if (state_->device_config_.remote_sky_wave_port_spin)
+    if (state_->device_config_.tcp_wave_port_spin)
     {
-        const QSignalBlocker blocker(state_->device_config_.remote_sky_wave_port_spin);
-        state_->device_config_.remote_sky_wave_port_spin->setValue(port);
+        const QSignalBlocker blocker(state_->device_config_.tcp_wave_port_spin);
+        state_->device_config_.tcp_wave_port_spin->setValue(port);
     }
     state_->tcp_wave_panel_->setConnectionEndpoint(host, port);
     state_->remote_sky_config_updating_ui_ = wasUpdating;
