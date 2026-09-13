@@ -3258,6 +3258,8 @@ void MainWindow::setupDeviceConfigPage()
     remoteGrid->addWidget(servicesPanel, 0, 0, 2, 1, Qt::AlignTop);
     servicesGrid->setColumnMinimumWidth(0, 62);
     servicesGrid->setColumnMinimumWidth(1, 92);
+    servicesGrid->setColumnMinimumWidth(2, 62);
+    servicesGrid->setColumnMinimumWidth(3, 92);
 
     QGridLayout *syncGrid = nullptr;
     auto *syncPanel = createSubcard(state_->device_config_.remote_sky_sync_title_lbl,
@@ -3332,33 +3334,33 @@ void MainWindow::setupDeviceConfigPage()
     addPair(servicesGrid,
             state_->device_config_.remote_sky_telemetry_basic_lbl,
             state_->device_config_.remote_sky_telemetry_basic_spin,
-            1,
             0,
-            1);
+            2,
+            3);
     addPair(servicesGrid,
             state_->device_config_.remote_sky_telemetry_feature_lbl,
             state_->device_config_.remote_sky_telemetry_feature_spin,
-            2,
+            1,
             0,
             1);
     addPair(servicesGrid,
             state_->device_config_.remote_sky_telemetry_waveform_lbl,
             state_->device_config_.remote_sky_telemetry_waveform_spin,
-            3,
-            0,
-            1);
+            1,
+            2,
+            3);
     addPair(servicesGrid,
             state_->device_config_.remote_sky_telemetry_heartbeat_lbl,
             state_->device_config_.remote_sky_telemetry_heartbeat_spin,
-            4,
+            2,
             0,
             1);
     addPair(servicesGrid,
             state_->device_config_.remote_sky_telemetry_status_lbl,
             state_->device_config_.remote_sky_telemetry_status_spin,
-            5,
-            0,
-            1);
+            2,
+            2,
+            3);
 
     state_->device_config_.remote_sky_config_status_lbl = createFieldLabel(QStringLiteral("deviceRemoteSkyConfigStatus"));
     state_->device_config_.remote_sky_config_status_lbl->setWordWrap(true);

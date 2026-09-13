@@ -1415,8 +1415,8 @@ int main(int argc, char **argv)
     require(findExactLabel(remoteCard, QStringLiteral("Wave TCP:")) == nullptr,
             "Sky services subcard no longer duplicates the TCP waveform enabled field");
     auto *servicesGrid = servicesSubcard->findChild<QGridLayout *>();
-    require(servicesGrid && servicesGrid->columnCount() == 2 && servicesGrid->rowCount() == 6,
-            "Sky services subcard uses a two-column label/value layout");
+    require(servicesGrid && servicesGrid->columnCount() == 4 && servicesGrid->rowCount() == 3,
+            "Sky services subcard uses two side-by-side label/value columns");
     require(syncLabel->mapTo(syncSubcard, QPoint(0, 0)).x() + syncLabel->width() <
                 remoteStatus->mapTo(syncSubcard, QPoint(0, 0)).x(),
             "config sync subcard places its vertical title to the left of its status content");
