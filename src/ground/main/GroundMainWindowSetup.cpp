@@ -3273,12 +3273,12 @@ void MainWindow::setupDeviceConfigPage()
             5);
     addPair(state_->device_config_.remote_sky_telemetry_heartbeat_lbl,
             state_->device_config_.remote_sky_telemetry_heartbeat_spin,
-            3,
+            2,
             0,
             1);
     addPair(state_->device_config_.remote_sky_telemetry_status_lbl,
             state_->device_config_.remote_sky_telemetry_status_spin,
-            4,
+            3,
             2,
             3);
 
