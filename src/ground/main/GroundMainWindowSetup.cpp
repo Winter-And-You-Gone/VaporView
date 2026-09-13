@@ -3255,7 +3255,7 @@ void MainWindow::setupDeviceConfigPage()
                                         QStringLiteral("services"),
                                         QStringLiteral("天空端服务"),
                                         servicesGrid);
-    remoteGrid->addWidget(servicesPanel, 0, 0, 2, 1, Qt::AlignTop);
+    remoteGrid->addWidget(servicesPanel, 0, 0, 1, 2, Qt::AlignTop);
     servicesGrid->setColumnMinimumWidth(0, 62);
     servicesGrid->setColumnMinimumWidth(1, 92);
     servicesGrid->setColumnMinimumWidth(2, 62);
@@ -3267,7 +3267,7 @@ void MainWindow::setupDeviceConfigPage()
                                     QStringLiteral("sync"),
                                     QStringLiteral("配置同步"),
                                     syncGrid);
-    remoteGrid->addWidget(syncPanel, 0, 1, Qt::AlignTop);
+    remoteGrid->addWidget(syncPanel, 1, 0, Qt::AlignTop);
 
     QGridLayout *advancedGrid = nullptr;
     auto *advancedPanel = createSubcard(state_->device_config_.remote_sky_advanced_title_lbl,
