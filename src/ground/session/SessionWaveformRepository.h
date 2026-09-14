@@ -52,6 +52,7 @@ struct SessionIndexedWaveformFrame
 
 struct SessionWaveformCatalog
 {
+    QString sessionDirectory;
     QString waveformPeaksCsvFilename;
     QString waveformRawFilename;
     QVector<SessionWaveformSegment> legacySegments;

@@ -14,7 +14,8 @@ enum class SessionState
 {
     Recording,
     Complete,
-    Recovered
+    Recovered,
+    Incomplete
 };
 
 QString sessionStateToString(SessionState state);

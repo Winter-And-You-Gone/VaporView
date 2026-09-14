@@ -37,12 +37,14 @@ Component.prototype.createOperationsForArchive = function(archive) {
         component.createOperationsForArchive(archive);
     } else {
         component.addOperation("Extract", archive, "@TargetDir@/tmpMaintenanceToolApp");
-        component.addOperation("Copy",
-                               "@TargetDir@/tmpMaintenanceToolApp/.vaporview-install-root",
-                               "@TargetDir@/.vaporview-install-root");
-        component.addOperation("Copy",
-                               "@TargetDir@/tmpMaintenanceToolApp/VaporViewPermissionTool.exe",
-                               "@TargetDir@/VaporViewPermissionTool.exe");
+        if (systemInfo.productType === "windows") {
+            component.addOperation("Copy",
+                                "@TargetDir@/tmpMaintenanceToolApp/.vaporview-install-root",
+                                "@TargetDir@/.vaporview-install-root");
+            component.addOperation("Copy",
+                                "@TargetDir@/tmpMaintenanceToolApp/VaporViewPermissionTool.exe",
+                                "@TargetDir@/VaporViewPermissionTool.exe");
+        }
     }
 
     if (systemInfo.productType === "windows") {

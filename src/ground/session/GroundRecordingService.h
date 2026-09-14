@@ -11,6 +11,8 @@
 #include <functional>
 #include <memory>
 
+namespace VaporView { class RecordingStorage; }
+
 namespace VaporView::Ground::Session
 {
 
@@ -55,6 +57,7 @@ struct GroundRecordingOptions
 
 struct GroundRecordingStatus
 {
+    bool writeFailed = false;
     bool sessionOpen = false;
     bool active = false;
     bool paused = false;
@@ -74,6 +77,7 @@ struct GroundRecordingStatus
 
 struct GroundRecordingStopSummary
 {
+    bool writeFailed = false;
     bool hadOpenSession = false;
     QString sessionDirectory;
     qint64 sensorRows = 0;
@@ -98,7 +102,8 @@ enum class GroundRecordingWarning
     TcpFramesDropped,
     DeviceRawQueueBacklog,
     DeviceRawQueueFull,
-    DeviceRawFramesDropped
+    DeviceRawFramesDropped,
+    DataWriteFailed
 };
 
 class GroundRecordingService final
@@ -108,7 +113,7 @@ public:
     using StatusCallback = std::function<void()>;
     using WarningCallback = std::function<void(GroundRecordingWarning, quint64)>;
 
-    GroundRecordingService();
+    explicit GroundRecordingService(std::shared_ptr<VaporView::RecordingStorage> storage = {});
     ~GroundRecordingService();
 
     GroundRecordingService(const GroundRecordingService&) = delete;

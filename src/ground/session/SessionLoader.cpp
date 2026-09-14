@@ -91,6 +91,10 @@ SessionMetadataLoadResult SessionLoader::loadMetadata(const QString& sessionDire
             return result;
         }
         manifest = manifestResult.manifest;
+        if (manifest.state == VaporView::Session::SessionState::Incomplete)
+        {
+            result.warning = QStringLiteral("Recording is incomplete because a storage write failed; recovered samples must not be treated as a complete acquisition.");
+        }
     }
     else
     {

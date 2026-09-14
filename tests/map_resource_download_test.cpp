@@ -153,7 +153,7 @@ int main(int argc, char** argv)
     {
         return fail(QStringLiteral("could not start local HTTP server: %1").arg(server.errorString()));
     }
-    const QString uniqueDirectory = QStringLiteral(".vaporview-map-resource-test-%1-%2")
+    const QString uniqueDirectory = QStringLiteral("resources/maps/.vaporview-map-resource-test-%1-%2")
                                         .arg(QCoreApplication::applicationPid())
                                         .arg(QRandomGenerator::global()->generate());
     const QString relativePath = uniqueDirectory + QStringLiteral("/payload.bin");

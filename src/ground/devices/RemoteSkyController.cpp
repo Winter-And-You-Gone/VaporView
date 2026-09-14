@@ -5,6 +5,7 @@
 
 #include <QDateTime>
 #include <QMetaObject>
+#include <QRandomGenerator>
 
 #include <chrono>
 
@@ -14,6 +15,7 @@ namespace VaporView::Ground::Devices
 RemoteSkyController::RemoteSkyController(QObject *parent)
     : QObject(parent)
 {
+    next_device_operation_request_id_ = QRandomGenerator::global()->generate();
     connect(&service_, &GroundTelemetryService::linkOpenChanged,
             this, [this](bool open) {
                 const quint64 generation = service_.linkGeneration();

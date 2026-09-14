@@ -56,6 +56,7 @@ struct RtkStreamStats
 };
 
 bool serialPortNamesReferToSamePort(const QString& first, const QString& second);
+bool validateRtkStreamConfig(const RtkStreamConfig& config, QString *errorMessage = nullptr);
 
 class RtkStreamService
 {
@@ -64,6 +65,7 @@ public:
     ~RtkStreamService();
 
     bool start(const RtkStreamConfig &config, QString *errorMessage = nullptr);
+    void updateNmeaPosition(bool valid, double latitudeDeg, double longitudeDeg, double heightM);
     void stop();
     bool isRunning() const;
     RtkStreamStats stats() const;

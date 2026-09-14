@@ -1205,6 +1205,8 @@ typedef struct {        /* stream server type */
     int buffsize;       /* input/monitor buffer size (bytes) */
     int nmeacycle;      /* NMEA request cycle (ms) (0:no) */
     int relayback;      /* relay back of output streams (0:no) */
+    uint32_t nmeaupdated; /* VaporView: tick of last rover position update */
+    int nmeamaxage;     /* VaporView: position expiry (ms), 0 for fixed position */
     int nstr;           /* number of streams (1 input + (nstr-1) outputs */
     int npb;            /* data length in peek buffer (bytes) */
     char cmds_periodic[16][MAXRCVCMD]; /* periodic commands */

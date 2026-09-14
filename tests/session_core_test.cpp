@@ -205,6 +205,10 @@ void testSessionMetadataLoading()
             "custom sensor path is resolved relative to the session");
     require(result.metadata.waveformRawFilename.endsWith(QStringLiteral("raw/waveform.dat")),
             "missing raw path uses the semantic default");
+    writeBytes(metadataFile.fileName(), QByteArrayLiteral("{\"session_name\":\"failed\",\"state\":\"incomplete\"}"));
+    const auto incomplete = VaporView::Ground::SessionLoader::loadMetadata(sessionDir.path());
+    require(incomplete.success && incomplete.warning.contains(QStringLiteral("Recording is incomplete")),
+            "failed recording remains readable with an explicit incomplete warning");
 
     QTemporaryDir skySessionDir;
     require(skySessionDir.isValid(), "temporary sky session directory is available");
@@ -528,6 +532,24 @@ void testLegacyWaveformCatalogAndPeakCache()
         catalogResult.catalog);
     require(cached.success && cached.peakValues == fullPeaks.peakValues,
             "waveform peak cache round-trips recorded values");
+
+    QTemporaryDir outside;
+    const QString victimPath = outside.filePath(QStringLiteral("victim.txt"));
+    QFile victim(victimPath);
+    require(victim.open(QIODevice::WriteOnly), "create external cache sentinel");
+    victim.write("preserve me");
+    victim.close();
+    auto maliciousCatalog = catalogResult.catalog;
+    maliciousCatalog.waveformPeaksCsvFilename = victimPath;
+    require(!VaporView::Ground::SessionWaveformRepository::writeCachedPeakSeries(
+                maliciousCatalog, fullPeaks.timestampsUs, fullPeaks.peakValues),
+            "imported cache path cannot overwrite an external file");
+    require(victim.open(QIODevice::ReadOnly) && victim.readAll() == QByteArray("preserve me"),
+            "external sentinel remains unchanged");
+    maliciousCatalog.waveformPeaksCsvFilename = sessionDir.filePath(QStringLiteral("sensors/sensor_summary.csv"));
+    require(!VaporView::Ground::SessionWaveformRepository::writeCachedPeakSeries(
+                maliciousCatalog, fullPeaks.timestampsUs, fullPeaks.peakValues),
+            "cache cannot overwrite another session data file");
 
     VaporView::Ground::SessionPeakFilterSettings filter;
     filter.mode = VaporView::Ground::SessionPeakFilterMode::KeepRange;

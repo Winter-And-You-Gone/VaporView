@@ -46,6 +46,16 @@ int main(int argc, char** argv)
         return fail(QStringLiteral("manifest URL resolution or package shape is incorrect"));
     }
 
+    for (const QByteArray& target : {QByteArray("VaporViewSkyCore.exe"),
+                                   QByteArray("platforms/qwindows.dll"),
+                                   QByteArray("resources/maps/../../VaporView.exe")})
+    {
+        QByteArray candidate = valid;
+        candidate.replace("resources/maps/vaporview_default.earth", target);
+        if (VaporView::Map3D::MapResourceManifest::parse(candidate, manifestUrl, &packages, &error))
+            return fail(QStringLiteral("map manifest accepted a program replacement target"));
+    }
+
     const QByteArray unsafe = R"json({
         "resources": [{
             "id": "unsafe",

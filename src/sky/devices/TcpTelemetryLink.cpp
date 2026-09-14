@@ -113,6 +113,14 @@ qint64 TcpTelemetryLink::writeBytes(const QByteArray& bytes)
     {
         return -1;
     }
+    constexpr qint64 maximumPendingBytes = 4 * 1024 * 1024;
+    if (bytes.size() > maximumPendingBytes ||
+        socket_->bytesToWrite() > maximumPendingBytes - bytes.size())
+    {
+        socket_->abort();
+        emit errorOccurred(QStringLiteral("Telemetry peer is too slow; pending output exceeded 4 MiB."));
+        return -1;
+    }
     const qint64 written = socket_->write(bytes);
     if (written > 0)
     {
@@ -177,6 +185,7 @@ void TcpTelemetryLink::onSocketDisconnected()
     const QString peer = QStringLiteral("%1:%2").arg(socket_->peerAddress().toString()).arg(socket_->peerPort());
     socket_->deleteLater();
     socket_ = nullptr;
+    emit streamReset();
     emitTcpLog(LogLevel::Info,
                QStringLiteral("telemetry_tcp_client_disconnected"),
                QStringLiteral("TCP 遥测客户端已断开。"),
@@ -220,6 +229,7 @@ void TcpTelemetryLink::onSocketError(QAbstractSocket::SocketError error)
 
 void TcpTelemetryLink::attachSocket(QTcpSocket *socket)
 {
+    emit streamReset();
     socket_ = socket;
     socket_->setParent(this);
     socket_->setSocketOption(QAbstractSocket::LowDelayOption, 1);
@@ -243,6 +253,7 @@ void TcpTelemetryLink::closeSocket()
     }
     QTcpSocket *socket = socket_;
     socket_ = nullptr;
+    emit streamReset();
     socket->disconnect(this);
     socket->close();
     socket->deleteLater();

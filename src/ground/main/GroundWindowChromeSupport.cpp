@@ -55,7 +55,13 @@ public:
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override
     {
-        Q_UNUSED(watched);
+        const auto *widget = qobject_cast<QWidget *>(watched);
+        // A queued pointer event can outlive the menu's visible state.
+        // Do not reopen submenus or execute actions after their row is hidden.
+        if (!widget || !widget->isVisible() || !widget->isEnabled())
+        {
+            return false;
+        }
         if ((event->type() == QEvent::Enter || event->type() == QEvent::MouseMove) && hover_callback_)
         {
             hover_callback_();

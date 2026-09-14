@@ -104,9 +104,19 @@ int main(int argc, char** argv)
 
     QWidget* mapWindow = findMap3DWindow();
     require(mapWindow != nullptr && mapWindow->isVisible(), QStringLiteral("3D map window opens from MainWindow"));
+    auto* startRendering = mapWindow->findChild<QAction*>(QStringLiteral("map3DStartRenderingAction"));
+    require(startRendering != nullptr, QStringLiteral("explicit rendering action exists"));
+    startRendering->trigger();
 
     auto* view = mapWindow->findChild<VaporView::Map3D::OsgEarthViewWidget*>(QStringLiteral("map3DView"));
     require(view != nullptr, QStringLiteral("real OSG/osgEarth 3D view exists in MainWindow path"));
+    const qint64 startupDeadline = QDateTime::currentMSecsSinceEpoch() + 10000;
+    while (!view->hasEarthMap() && QDateTime::currentMSecsSinceEpoch() < startupDeadline)
+        processEventsFor(20);
+    require(view->hasEarthMap(), QStringLiteral("lightweight startup map loads before selecting local detail"));
+    auto* reload = mapWindow->findChild<QAction*>(QStringLiteral("map3DReloadBestMapAction"));
+    require(reload != nullptr, QStringLiteral("local map reload action exists"));
+    reload->trigger();
 
     bool loaded = false;
     const qint64 loadDeadline = QDateTime::currentMSecsSinceEpoch() + 20000;

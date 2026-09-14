@@ -149,6 +149,13 @@ MainWindow::MainWindow(QWidget *parent)
             using Warning = VaporView::Ground::Session::GroundRecordingWarning;
             switch (warning)
             {
+            case Warning::DataWriteFailed:
+                publishGroundLog(VaporView::LogLevel::Error,
+                                 QStringLiteral("session.write"),
+                                 QStringLiteral("recording_data_write_failed"),
+                                 QStringLiteral("录制数据写入失败；当前会话不完整，请停止记录并检查存储设备。"),
+                                 {{QStringLiteral("error_code"), QStringLiteral("RECORDING_DATA_WRITE_FAILED")}});
+                break;
             case Warning::RawFormatDocumentCopyFailed:
                 publishGroundLog(VaporView::LogLevel::Warning,
                                  QStringLiteral("session.write"),

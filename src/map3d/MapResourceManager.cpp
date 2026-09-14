@@ -1,4 +1,5 @@
 #include "map3d/MapResourceManager.h"
+#include "shared/io/SafeWritePath.h"
 
 #include <QCryptographicHash>
 #include <QCoreApplication>
@@ -45,6 +46,12 @@ bool isSafeRelativePath(const QString& path)
     return std::none_of(parts.cbegin(), parts.cend(), [](const QString& part) {
         return part == QStringLiteral("..") || part.contains(QLatin1Char(':'));
     });
+}
+
+bool isMapResourcePath(const QString& path)
+{
+    return isSafeRelativePath(path) &&
+        normalizedRelativePath(path).startsWith(QStringLiteral("resources/maps/"));
 }
 
 bool isSha256Hex(const QString& value)
@@ -170,7 +177,7 @@ bool parseFileObject(const QJsonObject& object,
     {
         return false;
     }
-    if (!isSafeRelativePath(path))
+    if (!isMapResourcePath(path))
     {
         if (error) *error = QStringLiteral("Unsafe map resource path: %1").arg(path);
         return false;
@@ -284,7 +291,7 @@ bool MapResourceManifest::parse(const QByteArray& payload,
             }
         }
         parseString(object, "installPath", &package.installPath, false, errorMessage);
-        if (!package.installPath.isEmpty() && !isSafeRelativePath(package.installPath))
+        if (!package.installPath.isEmpty() && !isMapResourcePath(package.installPath))
         {
             if (errorMessage) *errorMessage = QStringLiteral("Unsafe map install path: %1").arg(package.installPath);
             return false;
@@ -293,7 +300,7 @@ bool MapResourceManifest::parse(const QByteArray& payload,
         const QJsonArray requiredFiles = object.value(QStringLiteral("requiredFiles")).toArray();
         for (const QJsonValue& required : requiredFiles)
         {
-            if (!required.isString() || !isSafeRelativePath(required.toString()))
+            if (!required.isString() || !isMapResourcePath(required.toString()))
             {
                 if (errorMessage) *errorMessage = QStringLiteral("Manifest contains an unsafe required file path.");
                 return false;
@@ -421,7 +428,7 @@ const MapResourcePackage* MapResourceManager::findPackage(const QString& package
 
 bool MapResourceManager::validateRelativePath(const QString& path) const
 {
-    return isSafeRelativePath(path);
+    return isMapResourcePath(path);
 }
 
 QString MapResourceManager::filePath(const QString& relativePath) const
@@ -549,7 +556,17 @@ void MapResourceManager::downloadPackage(const QString& packageId)
     active_error_.clear();
     active_installed_files_.clear();
     active_backups_.clear();
+    if (!QDir().mkpath(downloadRoot()))
+    {
+        failOperation(QStringLiteral("无法创建地图资源目录：%1").arg(downloadRoot()));
+        return;
+    }
     active_temp_root_ = QDir(downloadRoot()).filePath(QStringLiteral(".vaporview-downloads/%1").arg(packageId));
+    if (!VaporView::isContainedWritePath(downloadRoot(), active_temp_root_))
+    {
+        failOperation(QStringLiteral("地图临时目录包含不安全的链接路径。"));
+        return;
+    }
     QDir(active_temp_root_).removeRecursively();
     if (!QDir().mkpath(active_temp_root_))
     {
@@ -678,6 +695,12 @@ void MapResourceManager::finishFileReply()
         return;
     }
     const QString destination = filePath(resource.relativePath);
+    if (!VaporView::isContainedWritePath(downloadRoot(), destination))
+    {
+        failOperation(QStringLiteral("地图资源目标包含不安全的链接路径。"));
+        reply->deleteLater();
+        return;
+    }
     if (!QDir().mkpath(QFileInfo(destination).absolutePath()))
     {
         failOperation(QStringLiteral("无法安装地图文件：%1").arg(destination));
@@ -784,6 +807,11 @@ void MapResourceManager::removePackage(const QString& packageId)
             return;
         }
         const QString target = filePath(relativePath);
+        if (!VaporView::isContainedWritePath(downloadRoot(), target))
+        {
+            emit operationFinished(packageId, false, QStringLiteral("地图资源目标包含不安全的链接路径。"));
+            return;
+        }
         if (QFileInfo::exists(target))
         {
             removed = QFile::remove(target) || removed;

@@ -12,6 +12,8 @@
 #include <QJsonObject>
 #include <QObject>
 #include <QTimer>
+#include <QElapsedTimer>
+#include <QHash>
 #include <atomic>
 #include <memory>
 #include <thread>
@@ -74,6 +76,9 @@ public:
     QVector<DownsampledWaveform> currentDownsampledWaveforms() const;
 
     SkyCommandResult executeCommand(const CommandMessage& command);
+    void submitCommand(const CommandMessage& command,
+                       std::function<void(const SkyCommandResult&)> completion,
+                       const QByteArray& clientScope = QByteArray());
 
     void setWaveformStreamingEnabled(bool enabled);
     bool waveformStreamingEnabled() const;
@@ -137,6 +142,13 @@ private:
     std::atomic_bool serial_port_detection_in_progress_{false};
     std::atomic_bool serial_port_detection_cancel_requested_{false};
     std::thread serial_port_detection_thread_;
+    QElapsedTimer command_clock_;
+    QHash<QByteArray, QPair<qint64, SkyCommandResult>> command_results_;
+    QByteArray active_command_key_;
+    QVector<std::function<void(const SkyCommandResult&)>> active_command_callbacks_;
+    std::thread device_command_thread_;
+    quint64 device_command_generation_ = 0;
+    quint64 telemetry_stream_generation_ = 0;
 };
 
 }  // namespace VaporView

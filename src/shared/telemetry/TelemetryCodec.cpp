@@ -240,6 +240,8 @@ QString commandErrorCodeText(CommandErrorCode error, bool english)
         return english ? QStringLiteral("Serial-port detection is already running") : QStringLiteral("串口自动识别正在进行");
     case CommandErrorCode::SerialPortDetectionNotRunning:
         return english ? QStringLiteral("Serial-port detection is not running") : QStringLiteral("当前没有正在运行的串口自动识别任务");
+    case CommandErrorCode::DeviceOperationBusy:
+        return english ? QStringLiteral("Device operation is busy") : QStringLiteral("设备操作正在执行");
     case CommandErrorCode::InternalError:
         return english ? QStringLiteral("Internal error") : QStringLiteral("内部错误");
     }

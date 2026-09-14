@@ -485,7 +485,7 @@ static void *strsvrthread(void *arg)
     sol_t sol_nmea={{0}};
     uint32_t tick,tick_nmea;
     uint8_t buff[1024];
-    int i,n,cyc;
+    int i,n,cyc,relayback,nmeacycle;
     
     tracet(3,"strsvrthread:\n");
     
@@ -494,6 +494,14 @@ static void *strsvrthread(void *arg)
     
     for (cyc=0;svr->state;cyc++) {
         tick=tickget();
+        lock(&svr->lock);
+        relayback=svr->relayback;
+        nmeacycle=svr->nmeacycle;
+        if (svr->nmeamaxage>0&&(uint32_t)(tick-svr->nmeaupdated)>(uint32_t)svr->nmeamaxage) {
+            nmeacycle=0;
+        }
+        matcpy(sol_nmea.rr,svr->nmeapos,3,1);
+        unlock(&svr->lock);
         
         /* read data from input stream */
         while ((n=strread(svr->stream,svr->buff,svr->buffsize))>0&&svr->state) {
@@ -522,7 +530,7 @@ static void *strsvrthread(void *arg)
             while ((n=strread(svr->stream+i,buff,sizeof(buff)))>0) {
                 
                 /* relay back message from output stream to input stream */
-                if (i==svr->relayback) {
+                if (i==relayback) {
                     strwrite(svr->stream,buff,n);
                 }
                 /* write data to log stream */
@@ -534,10 +542,9 @@ static void *strsvrthread(void *arg)
             periodic_cmd(cyc*svr->cycle,svr->cmds_periodic[i],svr->stream+i);
         }
         /* write nmea messages to input stream */
-        if (svr->nmeacycle>0&&(int)(tick-tick_nmea)>=svr->nmeacycle) {
+        if (nmeacycle>0&&(int)(tick-tick_nmea)>=nmeacycle) {
             sol_nmea.stat=SOLQ_SINGLE;
             sol_nmea.time=utc2gpst(timeget());
-            matcpy(sol_nmea.rr,svr->nmeapos,3,1);
             strsendnmea(svr->stream,&sol_nmea);
             tick_nmea=tick;
         }
@@ -650,6 +657,8 @@ extern int strsvrstart(strsvr_t *svr, int *opts, int *strs, char **paths,
     svr->buffsize=opts[3]<4096?4096:opts[3]; /* >=4096byte */
     svr->nmeacycle=0<opts[5]&&opts[5]<1000?1000:opts[5]; /* >=1s */
     svr->relayback=opts[7];
+    svr->nmeaupdated=tickget();
+    svr->nmeamaxage=0;
     for (i=0;i<3;i++) svr->nmeapos[i]=nmeapos?nmeapos[i]:0.0;
     for (i=0;i<svr->nstr;i++) {
         strcpy(svr->cmds_periodic[i],!cmds_periodic[i]?"":cmds_periodic[i]);

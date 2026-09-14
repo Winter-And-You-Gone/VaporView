@@ -7,6 +7,7 @@
 #include "ground/navigation/EpsilonConfigPanel.h"
 #include "ground/rtk/RtkConfigDialog.h"
 #include "ground/widgets/TelemetryPanels.h"
+#include "ground/widgets/EpsilonPanel.h"
 #include "ground/widgets/VisualTextLabel.h"
 #include "shared/config/ApplicationConfig.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
@@ -23,6 +24,7 @@
 #include <QContextMenuEvent>
 #include <QCoreApplication>
 #include <QDoubleSpinBox>
+#include <QEnterEvent>
 #include <QDialog>
 #include <QFile>
 #include <QFont>
@@ -1483,7 +1485,9 @@ void hoverWidget(QWidget *widget, bool hovered, int waitMs = 50)
     {
         if (hovered)
         {
-            QEvent enter(QEvent::Enter);
+            QEnterEvent enter(QPointF(widget->rect().center()),
+                              QPointF(widget->rect().center()),
+                              QPointF(widget->mapToGlobal(widget->rect().center())));
             QCoreApplication::sendEvent(widget, &enter);
         }
         else
@@ -2915,11 +2919,16 @@ void requireMargins(const QMargins& actual, const QMargins& expected, const char
 
 void requireSameRect(const QRect& actual, const QRect& expected, int tolerance, const char *message)
 {
-    require(std::abs(actual.x() - expected.x()) <= tolerance &&
+    const bool matches = std::abs(actual.x() - expected.x()) <= tolerance &&
                 std::abs(actual.y() - expected.y()) <= tolerance &&
                 std::abs(actual.width() - expected.width()) <= tolerance &&
-                std::abs(actual.height() - expected.height()) <= tolerance,
-            message);
+                std::abs(actual.height() - expected.height()) <= tolerance;
+    if (!matches)
+        std::cerr << "geometry actual=" << actual.x() << ',' << actual.y() << ','
+                  << actual.width() << ',' << actual.height() << " expected="
+                  << expected.x() << ',' << expected.y() << ',' << expected.width() << ','
+                  << expected.height() << '\n';
+    require(matches, message);
 }
 
 void requireChildInsideParent(QWidget *child, QWidget *parent, int tolerance, const char *message)
@@ -4167,6 +4176,29 @@ int main(int argc, char **argv)
     app.setApplicationName(QStringLiteral("main_window_layout_test"));
 
     {
+        VaporView::Ground::Main::RecordingStatusView view;
+        QFont smallFont = app.font();
+        smallFont.setPointSize(9);
+        view.setFont(smallFont);
+        const QString text = QStringLiteral("Recording: Off\nRecorded RAW EPSILON: 123 records");
+        view.setStatusText(text);
+        const auto labels = view.findChildren<QLabel *>();
+        const int smallWidth = view.minimumWidth();
+        QFont largeFont = smallFont;
+        largeFont.setPointSize(18);
+        view.setFont(largeFont);
+        view.refreshLayoutMetrics();
+        require(view.minimumWidth() > smallWidth,
+                "recording columns follow larger fonts even when status text is unchanged");
+        require(view.findChildren<QLabel *>() == labels && view.statusText() == text,
+                "recording metric refresh preserves labels and status");
+        view.setFont(smallFont);
+        view.refreshLayoutMetrics();
+        require(view.minimumWidth() == smallWidth,
+                "recording columns release obsolete widths after restoring font size");
+    }
+
+    {
         QSettings settings(QSettings::defaultFormat(),
                            QSettings::UserScope,
                            QStringLiteral("VaporView"),
@@ -4905,8 +4937,6 @@ int main(int argc, char **argv)
             "local recording status values and units are visible in the card");
     require(localRecordingStatusBottomGap >= 4 && localRecordingStatusBottomGap <= 6,
             "local recording status last row stays close to the card bottom");
-    const QList<QLabel *> recordingStatusLabelsBeforeSourceSwitch =
-        recordingStatus->findChildren<QLabel *>();
     const auto recordingStatusLabelsAreReused =
         [recordingStatus](const QList<QLabel *> &before) {
             const QList<QLabel *> after = recordingStatus->findChildren<QLabel *>();
@@ -10485,8 +10515,6 @@ int main(int argc, char **argv)
     require(std::abs(telemetrySummaryPageRect.left() - serialConfigPageRect.left()) <= 2 &&
                 std::abs(telemetrySummaryPageRect.right() - serialConfigPageRect.right()) <= 2,
             "device telemetry summary and serial configuration cards share the full-row width");
-    const QRect localEpsilonConfigRect = epsilonConfigCard->geometry();
-    const QRect localTelemetrySummaryRect = deviceTelemetrySummaryCard->geometry();
     for (const QFrame *summaryCard : deviceSummaryCards)
     {
         if (!summaryCard->isVisible())
@@ -10630,7 +10658,15 @@ int main(int argc, char **argv)
     requireSkyTelemetryTransportLabels(deviceSkyTelemetry, false);
     require(deviceSkyTelemetry.row && !deviceSkyTelemetry.row->isVisible(),
             "local device configuration hides sky-ground telemetry edit controls");
+    // Earlier language round trips legitimately change the row structure.
+    // Observe ownership immediately around the source-mode transition.
+    const QList<QLabel *> recordingStatusLabelsBeforeSourceSwitch =
+        recordingStatus->findChildren<QLabel *>();
+    const QRect localEpsilonConfigRect = epsilonConfigCard->geometry();
+    const QRect localTelemetrySummaryRect = deviceTelemetrySummaryCard->geometry();
     setDeviceSourceModeRemote(true);
+    requireSameRect(deviceTelemetrySummaryCard->geometry(), localTelemetrySummaryRect, 2,
+                    "device telemetry summary geometry is stable immediately after source switch");
     require(deviceSkyTelemetry.row->isVisible(),
             "remote device configuration shows sky-ground telemetry edit controls");
     require(recordingStatusLabelsAreReused(recordingStatusLabelsBeforeSourceSwitch),

@@ -18,6 +18,7 @@ public:
 
     void setStatusText(const QString& plainText);
     QString statusText() const;
+    void refreshLayoutMetrics();
 
 private:
     struct RowWidgets

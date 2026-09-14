@@ -1,4 +1,5 @@
 #include "SkyDeviceManager.h"
+#include "TelemetryCodec.h"
 
 #include "SerialBaudRateCapabilities.h"
 #include "serial_port.h"
@@ -874,6 +875,90 @@ bool SkyDeviceManager::setPeakSearchRange(quint32 startIndex, quint32 endIndex, 
                       {QStringLiteral("end_index"), endIndex}});
     if (errorCode) *errorCode = CommandErrorCode::Ok;
     return true;
+}
+
+std::function<CommandErrorCode()> SkyDeviceManager::prepareEpsilonOperation(const DeviceOperationRequest& request)
+{
+    auto rejected = [](CommandErrorCode error) { return [error]() { return error; }; };
+    if (epsilon_status_.state != DeviceState::Connected)
+        return rejected(CommandErrorCode::DeviceNotConnected);
+    EpsilonPacketRatesOperation rates;
+    EpsilonMainAntennaLeverArmOperation lever;
+    EpsilonRtcmInputOperation rtcm;
+    if (request.operation == DeviceOperation::ConfigureEpsilonPacketRates)
+    {
+        if (!TelemetryCodec::parseEpsilonPacketRatesOperation(request.payload, rates) ||
+            rates.output_rate_hz <= 0 || rates.output_rate_hz > 1000 ||
+            rates.callback_rate_hz <= 0 || rates.callback_rate_hz > 1000 || rates.packet_rates.empty())
+            return rejected(CommandErrorCode::InvalidPayload);
+        for (const auto& rate : rates.packet_rates)
+            if (!supportedRemoteEpsilonPacketRate(rate.first, rate.second))
+                return rejected(CommandErrorCode::ConfigInvalid);
+    }
+    else if (request.operation == DeviceOperation::ConfigureEpsilonMainAntennaLeverArm)
+    {
+        if (!TelemetryCodec::parseEpsilonMainAntennaLeverArmOperation(request.payload, lever) ||
+            !std::isfinite(lever.x_m) || !std::isfinite(lever.y_m) || !std::isfinite(lever.z_m) ||
+            std::abs(lever.x_m) > 100 || std::abs(lever.y_m) > 100 || std::abs(lever.z_m) > 100)
+            return rejected(CommandErrorCode::InvalidPayload);
+    }
+    else if (request.operation == DeviceOperation::ConfigureEpsilonRtcmInput)
+    {
+        if (!TelemetryCodec::parseEpsilonRtcmInputOperation(request.payload, rtcm) ||
+            rtcm.device_port_index < 2 || rtcm.device_port_index > 5 || !supportedEpsilonRtcmBaud(rtcm.forward_baud))
+            return rejected(CommandErrorCode::InvalidPayload);
+    }
+    else return rejected(CommandErrorCode::InvalidPayload);
+    if (simulate_data_) return rejected(CommandErrorCode::Ok);
+    const auto collector = epsilon_;
+    if (!collector || !collector->isRunning()) return rejected(CommandErrorCode::DeviceNotConnected);
+    const auto port = config_.epsilon.port.toStdString();
+    const auto serial = SerialConfig::N81(config_.epsilon.baud_rate);
+    // Only the collector and immutable values cross into the worker. QObject
+    // state and configuration changes stay in completeEpsilonOperation().
+    return [collector, port, serial, operation = request.operation, rates, lever, rtcm]() {
+        if (operation == DeviceOperation::ConfigureEpsilonPacketRates)
+        {
+            const bool ok = collector->setOutputPacketRates(rates.packet_rates, true);
+            if (ok) collector->setSampleRate(rates.callback_rate_hz);
+            return ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed;
+        }
+        collector->stop();
+        if (!collector->start(port, serial)) return CommandErrorCode::DeviceConnectFailed;
+        const bool ok = operation == DeviceOperation::ConfigureEpsilonMainAntennaLeverArm
+            ? collector->configureMainAntennaLeverArm(lever.x_m, lever.y_m, lever.z_m)
+            : collector->configureRtcmPort(rtcm.device_port_index, rtcm.forward_baud);
+        collector->stop();
+        if (!collector->start(port, serial) || !collector->checkDeviceResponse() || !collector->startStreaming())
+            return CommandErrorCode::InternalError;
+        return ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed;
+    };
+}
+
+void SkyDeviceManager::completeEpsilonOperation(const DeviceOperationRequest& request, CommandErrorCode result)
+{
+    if (result == CommandErrorCode::InternalError || result == CommandErrorCode::DeviceConnectFailed)
+        setState(SkyDeviceId::Epsilon, DeviceState::Error, static_cast<quint16>(result));
+    if (result != CommandErrorCode::Ok) return;
+    if (request.operation == DeviceOperation::ConfigureEpsilonPacketRates)
+    {
+        EpsilonPacketRatesOperation rates;
+        TelemetryCodec::parseEpsilonPacketRatesOperation(request.payload, rates);
+        if (simulate_data_) simulated_epsilon_packet_rates_ = rates.packet_rates;
+    }
+    else if (request.operation == DeviceOperation::ConfigureEpsilonMainAntennaLeverArm)
+        TelemetryCodec::parseEpsilonMainAntennaLeverArmOperation(request.payload, simulated_epsilon_lever_arm_);
+    else if (request.operation == DeviceOperation::ConfigureEpsilonRtcmInput)
+    {
+        EpsilonRtcmInputOperation rtcm;
+        TelemetryCodec::parseEpsilonRtcmInputOperation(request.payload, rtcm);
+        simulated_epsilon_rtcm_input_ = rtcm;
+        config_.epsilon_rtcm.enabled = !rtcm.forward_port.trimmed().isEmpty();
+        config_.epsilon_rtcm.device_port_index = rtcm.device_port_index;
+        config_.epsilon_rtcm.forward_port = rtcm.forward_port.trimmed();
+        config_.epsilon_rtcm.baud_rate = rtcm.forward_baud;
+        if (!simulate_data_) restartRtcmWriter();
+    }
 }
 
 bool SkyDeviceManager::configureEpsilonPacketRates(

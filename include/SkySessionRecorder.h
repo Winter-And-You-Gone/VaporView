@@ -9,16 +9,23 @@
 
 #include <QByteArray>
 #include <QFile>
+#include <QElapsedTimer>
 #include <QString>
 #include <QVector>
 #include <mutex>
+#include <memory>
+#include <functional>
 
 namespace VaporView
 {
+class RecordingStorage;
 
 class SkySessionRecorder
 {
 public:
+    explicit SkySessionRecorder(std::shared_ptr<RecordingStorage> storage = {});
+    void setStorageFailureCallback(std::function<void()> callback) { storage_failure_callback_ = std::move(callback); }
+    bool storageFailed() const { return storage_failed_; }
     bool start(const QString& baseDirectory,
                const QString& telemetryPort,
                int telemetryBaud,
@@ -155,6 +162,11 @@ private:
     QString telemetry_transport_ = QStringLiteral("serial");
     QString telemetry_endpoint_;
     quint64 recording_start_time_us_ = 0;
+    std::shared_ptr<RecordingStorage> storage_;
+    bool storage_failed_ = false;
+    std::function<void()> storage_failure_callback_;
+    void markStorageFailure();
+    QElapsedTimer active_segment_timer_;
     quint64 recording_end_time_us_ = 0;
     quint64 recording_elapsed_ms_ = 0;
     quint64 telemetry_row_count_ = 0;

@@ -1,5 +1,6 @@
 #include "ground/session/SessionWaveformRepository.h"
 #include "shared/config/SettingsWriteBarrier.h"
+#include "shared/io/SafeWritePath.h"
 
 #include "ground/session/SessionCsv.h"
 #include "shared/session/UnifiedRawDat.h"
@@ -452,6 +453,7 @@ SessionWaveformCatalogResult SessionWaveformRepository::loadCatalog(
     const ProgressCallback& progress)
 {
     SessionWaveformCatalogResult result;
+    result.catalog.sessionDirectory = metadata.sessionDirectory;
     result.catalog.waveformPeaksCsvFilename = metadata.waveformPeaksCsvFilename;
     result.catalog.waveformRawFilename = metadata.waveformRawFilename;
     result.catalog.pointsPerFrame = metadata.waveformPointsPerFrame;
@@ -714,6 +716,14 @@ bool SessionWaveformRepository::writeCachedPeakSeries(
     }
     if (catalog.waveformPeaksCsvFilename.isEmpty() || timestampsUs.isEmpty() ||
         timestampsUs.size() != peakValues.size())
+    {
+        return false;
+    }
+    const QString cacheRelative = QDir::fromNativeSeparators(QDir(catalog.sessionDirectory)
+        .relativeFilePath(catalog.waveformPeaksCsvFilename));
+    if ((cacheRelative != QStringLiteral("raw/waveform_peaks.csv") &&
+         cacheRelative != QStringLiteral("raw/tcp_wave_peaks.csv")) ||
+        !VaporView::isContainedWritePath(catalog.sessionDirectory, catalog.waveformPeaksCsvFilename))
     {
         return false;
     }

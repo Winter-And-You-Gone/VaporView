@@ -35,6 +35,7 @@ bool waitForResult(
     while (results.isEmpty() && timer.elapsed() < timeoutMs)
     {
         app.processEvents(QEventLoop::AllEvents, 20);
+        QThread::msleep(1);
     }
     return !results.isEmpty();
 }
@@ -175,7 +176,9 @@ int main(int argc, char **argv)
     require(remoteController.isOpen() && timeoutSocket != nullptr,
             "EPSILON timeout TCP link is established");
     const quint64 timeoutId = remoteSession.configurePacketRates(packetRateOperation());
-    require(timeoutId != 0 && waitForResult(app, timeoutResults, 5000) &&
+    require(timeoutId != 0 && !waitForResult(app, timeoutResults, 5000),
+            "slow EPSILON operation is not timed out during its reboot window");
+    require(waitForResult(app, timeoutResults, 60000) &&
                 timeoutResults.back().request_id == timeoutId &&
                 timeoutResults.back().outcome == EpsilonOperationOutcome::Timeout,
             "remote EPSILON operation reports timeout when Sky returns no response");

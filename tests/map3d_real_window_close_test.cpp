@@ -3,6 +3,7 @@
 
 #include <QApplication>
 #include <QCoreApplication>
+#include <QAction>
 #include <QDateTime>
 #include <QDir>
 #include <QElapsedTimer>
@@ -21,6 +22,11 @@
 #include <cstdlib>
 #include <functional>
 #include <iostream>
+
+#ifdef Q_OS_WIN
+#include <qt_windows.h>
+#include <imm.h>
+#endif
 
 namespace {
 
@@ -103,6 +109,13 @@ int main(int argc, char** argv)
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
     QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, settingsDir.path());
 
+#ifdef Q_OS_WIN
+    // This rendering/lifecycle test never exercises text input. Disable the
+    // current thread's IME before Qt creates any native windows, so third-party
+    // input method hooks cannot affect the window teardown regression.
+    require(ImmDisableIME(GetCurrentThreadId()) != FALSE,
+            QStringLiteral("isolate rendering test from native input method hooks"));
+#endif
     QApplication app(argc, argv);
     app.setOrganizationName(QStringLiteral("VaporViewMap3DRealWindowCloseTest"));
     app.setApplicationName(QStringLiteral("map3d_real_window_close_test"));
@@ -110,9 +123,20 @@ int main(int argc, char** argv)
     auto* window = new VaporView::Map3D::Map3DWindow;
     window->resize(1100, 760);
     window->show();
+    auto* startRendering = window->findChild<QAction*>(QStringLiteral("map3DStartRenderingAction"));
+    require(startRendering != nullptr, QStringLiteral("explicit rendering action exists"));
+    startRendering->trigger();
 
     auto* view = window->findChild<VaporView::Map3D::OsgEarthViewWidget*>(QStringLiteral("map3DView"));
     require(view != nullptr, QStringLiteral("real OSG/osgEarth 3D view exists"));
+    const bool startupLoaded = waitUntil([&]() { return view->hasEarthMap(); }, 10000);
+    const auto startupDiagnostics = view->earthLoadDiagnostics();
+    require(startupLoaded,
+            QStringLiteral("lightweight startup map loads before selecting local detail: %1: %2")
+                .arg(startupDiagnostics.requestedPath, startupDiagnostics.failureReason));
+    auto* reload = window->findChild<QAction*>(QStringLiteral("map3DReloadBestMapAction"));
+    require(reload != nullptr, QStringLiteral("local map reload action exists"));
+    reload->trigger();
 
     bool loaded = false;
     const qint64 loadDeadline = QDateTime::currentMSecsSinceEpoch() + 20000;

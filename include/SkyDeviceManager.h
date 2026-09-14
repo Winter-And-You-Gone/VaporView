@@ -18,6 +18,7 @@
 #include <memory>
 #include <mutex>
 #include <thread>
+#include <functional>
 
 #include "shared/concurrency/BoundedByteQueue.h"
 
@@ -67,6 +68,8 @@ public:
     bool configureEpsilonPacketRates(const EpsilonPacketRatesOperation& operation,
                                      CommandErrorCode *errorCode = nullptr,
                                      QString *errorMessage = nullptr);
+    std::function<CommandErrorCode()> prepareEpsilonOperation(const DeviceOperationRequest& request);
+    void completeEpsilonOperation(const DeviceOperationRequest& request, CommandErrorCode result);
     bool configureEpsilonMainAntennaLeverArm(
         const EpsilonMainAntennaLeverArmOperation& operation,
         CommandErrorCode *errorCode = nullptr,

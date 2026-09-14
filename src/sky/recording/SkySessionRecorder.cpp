@@ -12,6 +12,7 @@
 #include <QFileInfo>
 #include <QStringList>
 #include <QTextStream>
+#include "shared/session/RecordingStorage.h"
 #include <QtEndian>
 #include <algorithm>
 #include <cmath>
@@ -169,6 +170,21 @@ QString applicationSoftwareVersion()
 
 }  // namespace
 
+SkySessionRecorder::SkySessionRecorder(std::shared_ptr<RecordingStorage> storage)
+    : storage_(storage ? std::move(storage) : std::make_shared<RecordingStorage>())
+{
+}
+
+void SkySessionRecorder::markStorageFailure()
+{
+    if (storage_failed_) return;
+    storage_failed_ = true;
+    recording_elapsed_ms_ = recordingElapsedMs();
+    active_segment_timer_.invalidate();
+    if (recording_state_ == 1) recording_state_ = 2;
+    if (storage_failure_callback_) storage_failure_callback_();
+}
+
 bool SkySessionRecorder::start(const QString& baseDirectory,
                                const QString& telemetryPort,
                                int telemetryBaud,
@@ -191,10 +207,12 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
 {
     if (recording_state_ == 2 && !session_directory_.isEmpty())
     {
-        const quint64 now = nowUs();
-        recording_start_time_us_ = now >= recording_elapsed_ms_ * 1000ULL
-            ? now - recording_elapsed_ms_ * 1000ULL
-            : now;
+        if (storage_failed_)
+        {
+            if (errorMessage) *errorMessage = QStringLiteral("Recording has a storage failure; stop this session before starting another.");
+            return false;
+        }
+        active_segment_timer_.start();
         recording_end_time_us_ = 0;
         recording_state_ = 1;
         return true;
@@ -203,12 +221,14 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     closeFiles();
 
     const QString baseSessionName = QStringLiteral("session_%1").arg(timestampForSessionName());
+    storage_failed_ = false;
     session_start_time_utc_ = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
     telemetry_port_ = telemetryPort;
     telemetry_baud_ = telemetryBaud;
     telemetry_transport_ = telemetryTransport.trimmed().isEmpty() ? QStringLiteral("serial") : telemetryTransport.trimmed();
     telemetry_endpoint_ = telemetryEndpoint.trimmed().isEmpty() ? telemetryPort : telemetryEndpoint.trimmed();
     recording_start_time_us_ = nowUs();
+    active_segment_timer_.start();
     recording_end_time_us_ = 0;
 
     VaporView::Session::SessionPackageInitOptions initOptions;
@@ -294,21 +314,40 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
         return false;
     }
 
-    QTextStream basicOut(&basic_record_file_);
+    RecordingOutputDevice basicOutput(*storage_, basic_record_file_);
+    QTextStream basicOut(&basicOutput);
     basicOut << SessionSensorCsv::header();
 
-    QTextStream featureOut(&feature_record_file_);
+    RecordingOutputDevice featureOutput(*storage_, feature_record_file_);
+    QTextStream featureOut(&featureOutput);
     featureOut << VaporView::Session::waveformFeaturesCsvHeader();
 
-    QTextStream temperatureOut(&temperature_controller_record_file_);
+    RecordingOutputDevice temperatureOutput(*storage_, temperature_controller_record_file_);
+    QTextStream temperatureOut(&temperatureOutput);
     temperatureOut << VaporView::Session::laserTemperatureControllerCsvHeader();
 
-    QTextStream ai8TemperatureOut(&ai8_temperature_controller_record_file_);
+    RecordingOutputDevice ai8Output(*storage_, ai8_temperature_controller_record_file_);
+    QTextStream ai8TemperatureOut(&ai8Output);
     ai8TemperatureOut << VaporView::Session::systemTemperatureControllerCsvHeader();
 
-    QTextStream peakIndexOut(&waveform_peaks_file_);
+    RecordingOutputDevice peakOutput(*storage_, waveform_peaks_file_);
+    QTextStream peakIndexOut(&peakOutput);
     peakIndexOut << VaporView::Session::waveformPeaksCsvHeader();
     peakIndexOut.flush();
+    basicOut.flush();
+    featureOut.flush();
+    temperatureOut.flush();
+    ai8TemperatureOut.flush();
+    if (basicOut.status() != QTextStream::Ok || featureOut.status() != QTextStream::Ok ||
+        temperatureOut.status() != QTextStream::Ok || ai8TemperatureOut.status() != QTextStream::Ok ||
+        peakIndexOut.status() != QTextStream::Ok)
+    {
+        markStorageFailure();
+        if (errorMessage) *errorMessage = QStringLiteral("cannot write session headers");
+        closeFiles();
+        writeSessionMetadata();
+        return false;
+    }
 
     recording_elapsed_ms_ = 0;
     telemetry_row_count_ = 0;
@@ -342,6 +381,7 @@ void SkySessionRecorder::pause()
     if (recording_state_ == 1)
     {
         recording_elapsed_ms_ = recordingElapsedMs();
+        active_segment_timer_.invalidate();
         recording_state_ = 2;
     }
     else if (recording_state_ != 0)
@@ -352,16 +392,16 @@ void SkySessionRecorder::pause()
 
 bool SkySessionRecorder::stop(QString *errorMessage)
 {
+    recording_elapsed_ms_ = recordingElapsedMs();
+    active_segment_timer_.invalidate();
     recording_end_time_us_ = nowUs();
-    if (recording_state_ == 1 && recording_end_time_us_ >= recording_start_time_us_)
-    {
-        recording_elapsed_ms_ = (recording_end_time_us_ - recording_start_time_us_) / 1000ULL;
-    }
+    closeFiles();
     const bool metadataWritten = writeSessionMetadata(QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs),
                                                       errorMessage);
-    closeFiles();
     recording_state_ = 0;
-    return metadataWritten;
+    if (storage_failed_ && errorMessage && errorMessage->isEmpty())
+        *errorMessage = QStringLiteral("Recording is incomplete because data could not be written or flushed.");
+    return metadataWritten && !storage_failed_;
 }
 
 bool SkySessionRecorder::isRecording() const
@@ -404,8 +444,8 @@ quint64 SkySessionRecorder::recordingElapsedMs() const
     {
         return recording_elapsed_ms_;
     }
-    const quint64 now = nowUs();
-    return now >= recording_start_time_us_ ? (now - recording_start_time_us_) / 1000ULL : 0;
+    return recording_elapsed_ms_ + (active_segment_timer_.isValid()
+        ? static_cast<quint64>(active_segment_timer_.elapsed()) : 0);
 }
 
 quint64 SkySessionRecorder::telemetryRecordCount() const
@@ -594,7 +634,8 @@ void SkySessionRecorder::recordDeviceSnapshot(quint64 hostTimeUs,
         resolveEpsilonEcefFromLlh(resolvedEpsilon);
     }
 
-    QTextStream out(&basic_record_file_);
+    RecordingOutputDevice output(*storage_, basic_record_file_);
+    QTextStream out(&output);
     out << SessionSensorCsv::formatRow(
         hostTimeUs,
         epsilonHostTimeUs,
@@ -606,6 +647,8 @@ void SkySessionRecorder::recordDeviceSnapshot(quint64 hostTimeUs,
         hasHmp && hmp.valid,
         lidar,
         hasLidar && lidar.valid);
+    out.flush();
+    if (out.status() != QTextStream::Ok) { markStorageFailure(); return; }
     ++telemetry_row_count_;
 }
 
@@ -619,7 +662,8 @@ void SkySessionRecorder::recordWaveformFeature(const WaveformFeature& feature)
     {
         return;
     }
-    QTextStream out(&feature_record_file_);
+    RecordingOutputDevice output(*storage_, feature_record_file_);
+    QTextStream out(&output);
     out << feature.host_time_us << ','
         << feature.epsilon_time_us << ','
         << feature.original_point_count << ','
@@ -634,6 +678,8 @@ void SkySessionRecorder::recordWaveformFeature(const WaveformFeature& feature)
         << QString::number(feature.min_value, 'f', 6) << ','
         << QString::number(feature.max_value, 'f', 6) << ','
         << feature.quality_flags << '\n';
+    out.flush();
+    if (out.status() != QTextStream::Ok) { markStorageFailure(); return; }
     ++waveform_feature_count_;
 }
 
@@ -664,7 +710,8 @@ void SkySessionRecorder::recordTemperatureControllerStatus(quint64 hostTimeUs, c
             << QString::number(channel.kd);
     }
 
-    QTextStream out(&temperature_controller_record_file_);
+    RecordingOutputDevice output(*storage_, temperature_controller_record_file_);
+    QTextStream out(&output);
     for (int i = 0; i < row.size(); ++i)
     {
         if (i > 0)
@@ -674,6 +721,8 @@ void SkySessionRecorder::recordTemperatureControllerStatus(quint64 hostTimeUs, c
         out << csvEscape(row.at(i));
     }
     out << '\n';
+    out.flush();
+    if (out.status() != QTextStream::Ok) { markStorageFailure(); return; }
     ++temperature_controller_count_;
 }
 
@@ -708,7 +757,8 @@ void SkySessionRecorder::recordAi8TemperatureControllerStatus(
         << QString::number(data.mainStatusRaw)
         << data.errorMessage;
 
-    QTextStream out(&ai8_temperature_controller_record_file_);
+    RecordingOutputDevice output(*storage_, ai8_temperature_controller_record_file_);
+    QTextStream out(&output);
     for (int i = 0; i < row.size(); ++i)
     {
         if (i > 0)
@@ -718,6 +768,8 @@ void SkySessionRecorder::recordAi8TemperatureControllerStatus(
         out << csvEscape(row.at(i));
     }
     out << '\n';
+    out.flush();
+    if (out.status() != QTextStream::Ok) { markStorageFailure(); return; }
     ++ai8_temperature_controller_count_;
 }
 
@@ -845,12 +897,12 @@ bool SkySessionRecorder::openRawDatFile(QFile& file, const QString& filename, qu
         return false;
     }
 
-    if (!SessionRawDat::writeFileHeader(file, sourceId, errorMessage))
+    RecordingOutputDevice output(*storage_, file);
+    if (!SessionRawDat::writeFileHeader(output, sourceId, errorMessage) || !storage_->flush(file))
     {
         file.close();
         return false;
     }
-    file.flush();
     return true;
 }
 
@@ -885,8 +937,10 @@ bool SkySessionRecorder::writeRawRecord(QFile& file,
     const QByteArrayView payloadView = payloadSize > 0
         ? QByteArrayView(static_cast<const char *>(payload), payloadSize)
         : QByteArrayView();
-    if (!SessionRawDat::writeRecord(file, header, payloadView))
+    RecordingOutputDevice output(*storage_, file);
+    if (!SessionRawDat::writeRecord(output, header, payloadView))
     {
+        markStorageFailure();
         return false;
     }
     ++recordCount;
@@ -944,12 +998,14 @@ void SkySessionRecorder::appendTcpWavePeakIndexLine(quint64 hostTimeUs,
         return;
     }
 
-    QTextStream out(&waveform_peaks_file_);
+    RecordingOutputDevice output(*storage_, waveform_peaks_file_);
+    QTextStream out(&output);
     out << hostTimeUs << ','
         << peakValueCsvText(summary.value) << ','
         << summary.index << ','
         << summary.point_count << ",0,0\n";
     out.flush();
+    if (out.status() != QTextStream::Ok) markStorageFailure();
 }
 
 bool SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc, QString *errorMessage)
@@ -966,7 +1022,7 @@ bool SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc, QString
     VaporView::Session::SessionManifest manifest;
     manifest.recordingOrigin = VaporView::Session::RecordingOrigin::Sky;
     manifest.sessionName = session_name_;
-    manifest.state = endTimeUtc.isEmpty()
+    manifest.state = storage_failed_ ? VaporView::Session::SessionState::Incomplete : endTimeUtc.isEmpty()
         ? VaporView::Session::SessionState::Recording
         : VaporView::Session::SessionState::Complete;
     manifest.startTimeUtc = session_start_time_utc_;
@@ -1026,7 +1082,7 @@ void SkySessionRecorder::closeFiles()
     {
         if (file->isOpen())
         {
-            file->flush();
+            if (!storage_->flush(*file)) markStorageFailure();
             file->close();
         }
     }

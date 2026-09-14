@@ -3,6 +3,7 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QEnterEvent>
 #include <QEventLoop>
 #include <QFrame>
 #include <QKeyEvent>
@@ -118,7 +119,9 @@ void sendMouseClick(QWidget *receiver)
 void sendMouseEnter(QWidget *receiver)
 {
     require(receiver != nullptr, "mouse enter receiver exists");
-    QEvent event(QEvent::Enter);
+    QEnterEvent event(QPointF(receiver->rect().center()),
+                      QPointF(receiver->rect().center()),
+                      QPointF(receiver->mapToGlobal(receiver->rect().center())));
     QApplication::sendEvent(receiver, &event);
     VaporViewTest::processEventsFor(80);
 }
@@ -225,10 +228,17 @@ int main(int argc, char **argv)
                 !csvRateRows.first()->property("keyboardFocus").toBool(),
             "mouse-opened nested submenu leaves its first row unhighlighted");
 
+    // These events were posted while the rows were visible, but are delivered
+    // only after the full menu has closed.
+    QCoreApplication::postEvent(developerRootRow, new QEnterEvent(QPointF(), QPointF(), QPointF()));
+    QCoreApplication::postEvent(csvRateRow, new QEnterEvent(QPointF(), QPointF(), QPointF()));
     panel->hide();
     subMenu->window()->hide();
     nestedMenu->window()->hide();
     VaporViewTest::processEventsFor(30);
+    require(!panel->isVisible() && !subMenu->window()->isVisible() &&
+                !nestedMenu->window()->isVisible(),
+            "queued hover events cannot reopen closed application submenus");
     titleMenuButton->click();
     VaporViewTest::processEventsFor(80);
 

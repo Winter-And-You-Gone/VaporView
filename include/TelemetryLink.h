@@ -30,6 +30,7 @@ public:
     virtual qint64 writeBytes(const QByteArray& bytes) = 0;
 
 signals:
+    void streamReset();
     void bytesReceived(const QByteArray& bytes);
     void openChanged(bool open);
     void errorOccurred(const QString& error);

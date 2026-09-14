@@ -867,7 +867,15 @@ void MainWindow::updateRecordingStatusLabel()
         rawTotal);
     if (recordingStatus.sessionOpen)
     {
-        if (recordingStatus.paused)
+        if (recordingStatus.writeFailed)
+        {
+            setRecordingTitleIcon(false);
+            applyRecordingStatusText(
+                QString(state_->is_english_ ? "Recording (Local): Write failed\n%1" : "记录（本地）：写入失败\n%1")
+                    .arg(appendScheduledLine(detail)));
+            setVisualStatus("error");
+        }
+        else if (recordingStatus.paused)
         {
             setRecordingTitleIcon(false);
             applyRecordingStatusText(

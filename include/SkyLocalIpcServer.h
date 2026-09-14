@@ -41,6 +41,7 @@ private:
     {
         QTcpSocket *socket = nullptr;
         TelemetryCodec codec;
+        quint64 connection_id = 0;
     };
 
     ClientState *stateFor(QTcpSocket *socket) const;
@@ -68,6 +69,7 @@ private:
     TelemetryCodec encoder_;
     QTimer status_timer_;
     quint16 next_frame_seq_ = 1;
+    quint64 next_connection_id_ = 1;
 };
 
 }  // namespace VaporView

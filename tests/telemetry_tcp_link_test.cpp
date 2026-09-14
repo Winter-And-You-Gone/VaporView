@@ -44,6 +44,16 @@ int main(int argc, char **argv)
     QCoreApplication app(argc, argv);
 
     VaporView::TcpTelemetryLink server;
+    VaporView::TelemetryCodec serverDecoder;
+    int decodedAfterReset = 0;
+    qint64 receivedByteCount = 0;
+    QObject::connect(&server, &VaporView::TelemetryLink::streamReset,
+                     [&]() { serverDecoder.reset(); });
+    QObject::connect(&server, &VaporView::TelemetryLink::bytesReceived,
+                     [&](const QByteArray& bytes) {
+                         receivedByteCount += bytes.size();
+                         decodedAfterReset += serverDecoder.feedBytes(bytes).size();
+                     });
     bool serverOpen = false;
     bool serverClosed = false;
     std::vector<VaporView::LogRecord> serverRecords;
@@ -129,6 +139,13 @@ int main(int argc, char **argv)
     require(parsed.validity_flags == VaporView::BasicHasPosition, "basic flags");
 
     VaporView::TcpTelemetryLink replacement;
+    const QByteArray resetProbe = serverDecoder.encodeFrame(
+        VaporView::MsgType::Heartbeat, QByteArray("reset-probe"), 77, 88);
+    const int beforeResetProbe = decodedAfterReset;
+    const qint64 beforePartialBytes = receivedByteCount;
+    require(client.writeBytes(resetProbe.left(resetProbe.size() - 2)) > 0, "send partial old peer frame");
+    require(waitUntil([&]() { return receivedByteCount >= beforePartialBytes + resetProbe.size() - 2; }),
+            "old peer partial frame reached decoder before replacement");
     bool replacementOpen = false;
     QByteArray replacementBytes;
     QObject::connect(&replacement, &VaporView::TelemetryLink::openChanged, [&](bool open) {
@@ -140,6 +157,9 @@ int main(int argc, char **argv)
     require(replacement.connectToHost(QStringLiteral("127.0.0.1"), port), "replacement connect");
     require(waitUntil([&]() { return replacementOpen; }), "replacement open signal");
     require(waitUntil([&]() { return !clientOpen; }), "old client closed on replacement");
+    require(replacement.writeBytes(resetProbe) == resetProbe.size(), "send complete new peer frame");
+    require(waitUntil([&]() { return decodedAfterReset == beforeResetProbe + 1; }),
+            "new stream decodes without inheriting old partial bytes");
     require(waitUntil([&]() {
         return std::any_of(serverRecords.begin(), serverRecords.end(), [](const VaporView::LogRecord& record) {
             return record.source == QStringLiteral("TelemetryLink") &&
@@ -155,6 +175,8 @@ int main(int argc, char **argv)
         return replacementBytes.contains(QByteArrayLiteral("new"));
     }), "replacement receives bytes");
 
+    require(server.writeBytes(QByteArray(4 * 1024 * 1024 + 1, 'x')) == -1,
+            "oversized outbound payload disconnects instead of growing the write buffer");
     server.close();
     require(serverClosed, "server close signal");
     require(waitUntil([&]() { return !replacementOpen; }), "replacement close signal");

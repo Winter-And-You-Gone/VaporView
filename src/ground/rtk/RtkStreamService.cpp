@@ -302,6 +302,53 @@ struct RtkStreamService::Impl
     }
 };
 
+bool validateRtkStreamConfig(const RtkStreamConfig& config, QString *errorMessage)
+{
+    if (errorMessage) errorMessage->clear();
+    auto bounded = [errorMessage](const QString& value, qsizetype maximum, const char *field) {
+        if (value.contains(QChar::Null) || value.toUtf8().size() > maximum)
+        {
+            if (errorMessage)
+                *errorMessage = QStringLiteral("RTK %1 contains a null character or exceeds %2 UTF-8 bytes.")
+                    .arg(QString::fromLatin1(field)).arg(maximum);
+            return false;
+        }
+        return true;
+    };
+
+    // decodetcppath stores these components in 256-byte C arrays. Reject
+    // truncation as well as overflow; a truncated credential is not equivalent.
+    if (!bounded(sanitizeField(config.server), 255, "server") ||
+        !bounded(sanitizeField(config.port), 255, "port") ||
+        !bounded(sanitizeField(config.username), 255, "username") ||
+        !bounded(config.password, 255, "password") ||
+        !bounded(sanitizeField(config.mountpoint), 255, "mountpoint") ||
+        !bounded(buildNtripPath(config), MAXSTRPATH - 1, "input path") ||
+        !bounded(buildOutputPath(config), MAXSTRPATH - 1, "output path"))
+    {
+        return false;
+    }
+    const QString output = buildOutputPath(config);
+    if (config.outputMode == RtkStreamConfig::OutputMode::Serial)
+    {
+        // openserial copies the port into 128 bytes and prepends "\\\\.\\"
+        // on Windows; its final sscanf string destination is 64 bytes.
+        if (!bounded(output.section(QLatin1Char(':'), 0, 0), 123, "serial port") ||
+            !bounded(output.section(QLatin1Char(':'), 5), 63, "serial flow control"))
+            return false;
+    }
+    else
+    {
+        // TCP output overrides use the same bounded component parser.
+        QString components = output;
+        components.replace(QLatin1Char('@'), QLatin1Char(':'));
+        components.replace(QLatin1Char('/'), QLatin1Char(':'));
+        for (const QString& component : components.split(QLatin1Char(':')))
+            if (!bounded(component, 255, "TCP output component")) return false;
+    }
+    return true;
+}
+
 RtkStreamService::RtkStreamService()
     : impl_(std::make_unique<Impl>())
 {
@@ -314,8 +361,32 @@ RtkStreamService::~RtkStreamService()
     stop();
 }
 
+void RtkStreamService::updateNmeaPosition(bool valid, double latitudeDeg, double longitudeDeg, double heightM)
+{
+    if (!impl_->running) return;
+    valid = valid && std::isfinite(latitudeDeg) && std::isfinite(longitudeDeg) && std::isfinite(heightM) &&
+        latitudeDeg >= -90.0 && latitudeDeg <= 90.0 && longitudeDeg >= -180.0 && longitudeDeg <= 180.0;
+    double position[3] = {};
+    if (valid)
+    {
+        const double llh[] = {latitudeDeg * D2R, longitudeDeg * D2R, heightM};
+        pos2ecef(llh, position);
+    }
+    lock(&impl_->server.lock);
+    for (int index = 0; index < 3; ++index) impl_->server.nmeapos[index] = position[index];
+    impl_->server.nmeacycle = valid ? 1000 : 0;
+    impl_->server.relayback = valid ? 0 : 1;
+    impl_->server.nmeaupdated = tickget();
+    impl_->server.nmeamaxage = 3000;
+    unlock(&impl_->server.lock);
+}
+
 bool RtkStreamService::start(const RtkStreamConfig &config, QString *errorMessage)
 {
+    if (!validateRtkStreamConfig(config, errorMessage))
+    {
+        return false;
+    }
     const QString outputPath = buildOutputPath(config);
     if (sanitizeField(config.server).isEmpty() ||
         sanitizeField(config.port).isEmpty() ||

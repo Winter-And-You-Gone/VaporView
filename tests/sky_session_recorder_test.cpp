@@ -1,4 +1,5 @@
 #include "SkySessionRecorder.h"
+#include "FailingRecordingStorage.h"
 #include "geo/CoordinateTransform.h"
 #include "shared/session/SessionDeviceConfig.h"
 #include "shared/session/SessionPackageLayout.h"
@@ -119,10 +120,13 @@ void verifyWaveformFeatureRecordingBoundaries()
     require(pauseRecorder.start(tempDir.path(), QStringLiteral("COM52"), 921600, &error),
             "start pause resume waveform feature recorder");
     pauseRecorder.recordWaveformFeature(waveformFeatureAt(pauseRecorder.recordingStartTimeUs()));
+    const quint64 originalPauseStart = pauseRecorder.recordingStartTimeUs();
     pauseRecorder.pause();
     pauseRecorder.recordWaveformFeature(waveformFeatureAt(currentTimestampUs()));
     require(pauseRecorder.start(tempDir.path(), QStringLiteral("COM52"), 921600, &error),
             "resume waveform feature recorder");
+    require(pauseRecorder.recordingStartTimeUs() == originalPauseStart,
+            "resume preserves the original absolute recording origin");
     pauseRecorder.recordWaveformFeature(waveformFeatureAt(currentTimestampUs()));
     require(pauseRecorder.stop(&error), "stop pause resume waveform feature recorder");
     require(waveformFeatureLines(pauseRecorder.sessionDirectory()).size() == 3,
@@ -134,6 +138,38 @@ void verifyWaveformFeatureRecordingBoundaries()
 int main(int argc, char *argv[])
 {
     QCoreApplication app(argc, argv);
+    for (bool failAtFlush : {false, true})
+    {
+        QTemporaryDir faultDirectory;
+        auto storage = std::make_shared<FailingRecordingStorage>();
+        VaporView::SkySessionRecorder faultRecorder(storage);
+        QString storageError;
+        if (!failAtFlush)
+        {
+            storage->failWrites.store(true);
+            require(!faultRecorder.start(faultDirectory.path(), QStringLiteral("test"), 115200, &storageError),
+                    "short header write rejects Sky recording startup");
+            storage->failWrites.store(false);
+            storageError.clear();
+        }
+        require(faultRecorder.start(faultDirectory.path(), QStringLiteral("test"), 115200, &storageError),
+                "start storage fault fixture");
+        storage->failWrites.store(!failAtFlush);
+        storage->failFlush.store(failAtFlush);
+        if (!failAtFlush)
+        {
+            faultRecorder.recordWaveformFeature(waveformFeatureAt(faultRecorder.recordingStartTimeUs()));
+            require(faultRecorder.storageFailed() && faultRecorder.waveformFeatureRecordCount() == 0,
+                    "short CSV write latches fault without counting success");
+            storage->failWrites.store(false);
+        }
+        require(!faultRecorder.stop(&storageError) && !storageError.isEmpty(),
+                "stop reports previous loss even when storage recovered");
+        QFile manifest(QDir(faultRecorder.sessionDirectory()).filePath(QStringLiteral("session.json")));
+        require(manifest.open(QIODevice::ReadOnly), "read failed Sky session manifest");
+        require(QJsonDocument::fromJson(manifest.readAll()).object().value(QStringLiteral("state")) ==
+                    QJsonValue(QStringLiteral("incomplete")), "Sky storage failure cannot produce complete manifest");
+    }
     app.setApplicationName(QStringLiteral("sky_session_recorder_test"));
     app.setApplicationVersion(QStringLiteral("test"));
 

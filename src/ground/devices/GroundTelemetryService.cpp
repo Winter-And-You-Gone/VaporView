@@ -15,7 +15,6 @@ namespace VaporView
 {
 namespace
 {
-constexpr int kCommandRetryIntervalMs = 800;
 constexpr int kCommandMaxRetries = 3;
 constexpr qint64 kBitRateWindowMs = 5000;
 
@@ -200,8 +199,12 @@ quint16 GroundTelemetryService::sendCommand(CommandId commandId, const QByteArra
 
     PendingCommand pending;
     pending.command = command;
+    DeviceOperationRequest operation;
+    if (commandId == CommandId::DeviceOperation &&
+        TelemetryCodec::parseDeviceOperationRequest(payload, operation) && operation.device_id == SkyDeviceId::Epsilon)
+        pending.retry_interval_ms = 15000;
     pending.encodedPayload = TelemetryCodec::serializeCommand(command);
-    pending.next_retry_ms = nowMs() + kCommandRetryIntervalMs;
+    pending.next_retry_ms = nowMs() + pending.retry_interval_ms;
     sendCommandPayload(pending);
     pending_commands_.insert(command.command_seq, pending);
     return command.command_seq;
@@ -330,7 +333,7 @@ void GroundTelemetryService::onRetryTimer()
             continue;
         }
         ++pending.retry_count;
-        pending.next_retry_ms = currentMs + kCommandRetryIntervalMs;
+        pending.next_retry_ms = currentMs + pending.retry_interval_ms;
         sendCommandPayload(pending);
     }
     for (quint16 seq : expired)

@@ -22,6 +22,7 @@
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <system_error>
 
 namespace VaporView
 {
@@ -159,6 +160,17 @@ SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
             LogService::writeLogFallback(record);
         }
         emit logRecord(record);
+    });
+    command_clock_.start();
+    session_recorder_.setStorageFailureCallback([this]() {
+        QMetaObject::invokeMethod(this, [this]() {
+            publishRuntimeLog(LogLevel::Error, QStringLiteral("session.write"),
+                              QStringLiteral("recording_data_write_failed"),
+                              QStringLiteral("天空端录制写入失败，会话已暂停并标记为不完整。"),
+                              {{QStringLiteral("error_code"), QStringLiteral("RECORDING_DATA_WRITE_FAILED")},
+                               {QStringLiteral("session_sink_failure"), true}});
+            sendTelemetryStatus();
+        }, Qt::QueuedConnection);
     });
     LogService::withCurrentInstance([this](LogService& logService) {
         connect(&logService, &LogService::recordPublished, this,
@@ -313,6 +325,14 @@ bool SkyRuntime::start()
     device_manager_.setSimulateData(options_.simulate_data);
 
     auto attachLinkSignals = [this](TelemetryLink *link) {
+        connect(link, &TelemetryLink::streamReset, this, [this]() {
+            ++telemetry_stream_generation_;
+            codec_.reset();
+        });
+        connect(link, &TelemetryLink::openChanged, this, [this](bool) {
+            ++telemetry_stream_generation_;
+            codec_.reset();
+        });
         connect(link, &TelemetryLink::bytesReceived, this, [this](const QByteArray& bytes) {
             onBytesReceived(bytes);
         });
@@ -425,6 +445,10 @@ bool SkyRuntime::start()
 
 void SkyRuntime::stop()
 {
+    ++device_command_generation_;
+    if (device_command_thread_.joinable()) device_command_thread_.join();
+    active_command_key_.clear();
+    active_command_callbacks_.clear();
     serial_port_detection_cancel_requested_.store(true);
     if (serial_port_detection_thread_.joinable())
     {
@@ -490,31 +514,37 @@ bool SkyRuntime::isRunning() const
 
 bool SkyRuntime::connectDevice(SkyDeviceId id, CommandErrorCode *error)
 {
+    if (!active_command_key_.isEmpty()) { if (error) *error = CommandErrorCode::DeviceOperationBusy; return false; }
     return device_manager_.connectDevice(id, error);
 }
 
 bool SkyRuntime::disconnectDevice(SkyDeviceId id, CommandErrorCode *error)
 {
+    if (!active_command_key_.isEmpty()) { if (error) *error = CommandErrorCode::DeviceOperationBusy; return false; }
     return device_manager_.disconnectDevice(id, error);
 }
 
 bool SkyRuntime::reconnectDevice(SkyDeviceId id, CommandErrorCode *error)
 {
+    if (!active_command_key_.isEmpty()) { if (error) *error = CommandErrorCode::DeviceOperationBusy; return false; }
     return device_manager_.reconnectDevice(id, error);
 }
 
 void SkyRuntime::connectAllDevices()
 {
+    if (!active_command_key_.isEmpty()) return;
     device_manager_.connectAll();
 }
 
 void SkyRuntime::disconnectAllDevices()
 {
+    if (!active_command_key_.isEmpty()) return;
     device_manager_.disconnectAll();
 }
 
 void SkyRuntime::reconnectAllDevices()
 {
+    if (!active_command_key_.isEmpty()) return;
     device_manager_.reconnectAll();
 }
 
@@ -989,9 +1019,95 @@ void SkyRuntime::dispatchFrame(const TelemetryFrame& frame)
 
 void SkyRuntime::handleCommand(const CommandMessage& command)
 {
-    const SkyCommandResult result = executeCommand(command);
-    sendAck(result.ack);
-    sendCommandResultFrames(result);
+    const quint64 streamGeneration = telemetry_stream_generation_;
+    submitCommand(command, [this, streamGeneration](const SkyCommandResult& result) {
+        if (streamGeneration != telemetry_stream_generation_) return;
+        sendAck(result.ack);
+        sendCommandResultFrames(result);
+    }, QByteArrayLiteral("telemetry"));
+}
+
+void SkyRuntime::submitCommand(const CommandMessage& command,
+                              std::function<void(const SkyCommandResult&)> completion,
+                              const QByteArray& clientScope)
+{
+    const QByteArray key = clientScope + '\0' + TelemetryCodec::serializeCommand(command);
+    const qint64 now = command_clock_.elapsed();
+    for (auto it = command_results_.begin(); it != command_results_.end();)
+        if (now - it.value().first >= 120000) it = command_results_.erase(it); else ++it;
+    const auto cached = command_results_.constFind(key);
+    if (cached != command_results_.cend()) { completion(cached.value().second); return; }
+    if (key == active_command_key_ && active_command_callbacks_.size() < 16)
+    {
+        active_command_callbacks_.push_back(std::move(completion));
+        return;
+    }
+    auto busy = [&]() {
+        SkyCommandResult result;
+        result.ack = makeAck(command, CommandErrorCode::DeviceOperationBusy);
+        completion(result);
+    };
+    const bool mutatesDevice = command.command_id != CommandId::RequestStatus &&
+        command.command_id != CommandId::QueryDeviceStatus && command.command_id != CommandId::GetSkyConfig &&
+        command.command_id != CommandId::StartRecording && command.command_id != CommandId::PauseRecording &&
+        command.command_id != CommandId::StopRecording && command.command_id != CommandId::RequestOneWaveform;
+    if ((!active_command_key_.isEmpty() && mutatesDevice) ||
+        (command.command_id == CommandId::DeviceOperation && command_results_.size() >= 128))
+    {
+        busy();
+        return;
+    }
+    DeviceOperationRequest request;
+    if (command.command_id != CommandId::DeviceOperation ||
+        !TelemetryCodec::parseDeviceOperationRequest(command.payload, request) ||
+        request.device_id != SkyDeviceId::Epsilon)
+    {
+        const auto result = executeCommand(command);
+        if (command.command_id == CommandId::DeviceOperation) command_results_.insert(key, qMakePair(now, result));
+        completion(result);
+        return;
+    }
+    if (serial_port_detection_in_progress_.load()) { busy(); return; }
+    auto work = device_manager_.prepareEpsilonOperation(request);
+    if (device_command_thread_.joinable()) device_command_thread_.join();
+    active_command_key_ = key;
+    active_command_callbacks_.push_back(std::move(completion));
+    const quint64 generation = device_command_generation_;
+    try
+    {
+    device_command_thread_ = std::thread([this, work = std::move(work), request, command, key, generation]() {
+        CommandErrorCode error = CommandErrorCode::InternalError;
+        try { error = work(); } catch (...) { }
+        QMetaObject::invokeMethod(this, [this, request, command, key, generation, error]() {
+            if (generation != device_command_generation_) return;
+            device_manager_.completeEpsilonOperation(request, error);
+            SkyCommandResult result;
+            result.ack = makeAck(command, error);
+            result.send_status = true;
+            result.send_device_operation_response = true;
+            result.device_operation_response.request_id = request.request_id;
+            result.device_operation_response.device_id = request.device_id;
+            result.device_operation_response.operation = request.operation;
+            result.device_operation_response.error_code = error;
+            if (error != CommandErrorCode::Ok)
+                result.device_operation_response.error_message = QStringLiteral("EPSILON device operation failed; verify physical state before retrying.");
+            command_results_.insert(key, qMakePair(command_clock_.elapsed(), result));
+            active_command_key_.clear();
+            const auto callbacks = std::move(active_command_callbacks_);
+            active_command_callbacks_.clear();
+            for (const auto& callback : callbacks) callback(result);
+        }, Qt::QueuedConnection);
+    });
+    }
+    catch (const std::system_error&)
+    {
+        active_command_key_.clear();
+        const auto callbacks = std::move(active_command_callbacks_);
+        active_command_callbacks_.clear();
+        SkyCommandResult result;
+        result.ack = makeAck(command, CommandErrorCode::InternalError);
+        for (const auto& callback : callbacks) callback(result);
+    }
 }
 
 SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)

@@ -120,6 +120,7 @@
 | Ground | session.write | session_event_log_append_failed | Error | 无法从会话日志接收器写入 event_log.csv。 | session_sink_failure, source, category |  | SESSION_EVENT_LOG_APPEND_FAILED |
 | Ground | session.write | session_error_log_append_failed | Error | 无法从会话日志接收器写入 error_log.txt。 | session_sink_failure, source, category |  | SESSION_ERROR_LOG_APPEND_FAILED |
 | Ground | session.write | recording_stop_summary_append_failed | Error | 无法写入记录停止摘要。 |  |  | RECORDING_STOP_SUMMARY_APPEND_FAILED |
+| Ground / SkyCore | session.write | recording_data_write_failed | Error | 录制数据写入失败，会话不完整；请检查存储设备。 | error_code | session_sink_failure | RECORDING_DATA_WRITE_FAILED |
 | Ground | session.write | raw_format_document_copy_failed | Warning | 未能将统一 raw DAT 格式说明复制到当前会话目录。 | error_code | ui_dedupe_key | RAW_FORMAT_DOCUMENT_COPY_FAILED |
 | Ground | session.write | device_config_snapshot_failed | Warning | 保存设备配置快照失败。 | error_code | ui_dedupe_key | DEVICE_CONFIG_SNAPSHOT_FAILED |
 | Ground | session.write | session_metadata_update_failed | Warning | 更新会话元数据失败。 | error_code | ui_dedupe_key | SESSION_METADATA_UPDATE_FAILED |

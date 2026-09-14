@@ -73,6 +73,7 @@ private:
         CommandMessage command;
         QByteArray encodedPayload;
         int retry_count = 0;
+        int retry_interval_ms = 800;
         qint64 next_retry_ms = 0;
     };
 

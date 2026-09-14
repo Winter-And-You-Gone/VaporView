@@ -9,6 +9,7 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTimer>
+#include <QPointer>
 
 namespace VaporView
 {
@@ -174,6 +175,7 @@ void SkyLocalIpcServer::onNewConnection()
     {
         auto *state = new ClientState;
         state->socket = socket;
+        state->connection_id = next_connection_id_++;
         clients_.push_back(state);
 
         connect(socket, &QTcpSocket::readyRead, this, [this, socket]() {
@@ -308,9 +310,13 @@ void SkyLocalIpcServer::handleCommand(QTcpSocket *socket, const CommandMessage& 
         return;
     }
 
-    const SkyCommandResult result = runtime_->executeCommand(command);
-    sendFrame(socket, MsgType::CommandAck, TelemetryCodec::serializeCommandAck(result.ack));
-    sendCommandResultFrames(socket, result);
+    const QPointer<SkyLocalIpcServer> self(this);
+    const QPointer<QTcpSocket> peer(socket);
+    runtime_->submitCommand(command, [self, peer](const SkyCommandResult& result) {
+        if (!self || !peer) return;
+        self->sendFrame(peer, MsgType::CommandAck, TelemetryCodec::serializeCommandAck(result.ack));
+        self->sendCommandResultFrames(peer, result);
+    }, QByteArray("ipc:") + QByteArray::number(stateFor(socket)->connection_id));
 }
 
 void SkyLocalIpcServer::sendCommandResultFrames(QTcpSocket *socket, const SkyCommandResult& result)
@@ -388,11 +394,23 @@ void SkyLocalIpcServer::broadcastFrame(MsgType type, const QByteArray& payload)
 
 void SkyLocalIpcServer::sendFrame(QTcpSocket *socket, MsgType type, const QByteArray& payload)
 {
-    if (!socket || socket->state() != QAbstractSocket::ConnectedState)
+    if (!socket || socket->state() != QAbstractSocket::ConnectedState ||
+        socket->property("vaporviewSlowPeer").toBool())
     {
         return;
     }
-    socket->write(encoder_.encodeFrame(type, payload, next_frame_seq_++, currentTimestampUs()));
+    const QByteArray frame = encoder_.encodeFrame(type, payload, next_frame_seq_++, currentTimestampUs());
+    constexpr qint64 maximumPendingBytes = 4 * 1024 * 1024;
+    if (frame.size() > maximumPendingBytes ||
+        socket->bytesToWrite() > maximumPendingBytes - frame.size())
+    {
+        socket->setProperty("vaporviewSlowPeer", true);
+        // Disconnect outside the broadcast traversal: disconnected removes
+        // ClientState and publishes another IPC log synchronously.
+        QMetaObject::invokeMethod(socket, [socket]() { socket->abort(); }, Qt::QueuedConnection);
+        return;
+    }
+    socket->write(frame);
 }
 
 quint64 SkyLocalIpcServer::currentTimestampUs() const

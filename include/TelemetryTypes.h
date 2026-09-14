@@ -143,6 +143,7 @@ enum class CommandErrorCode : quint32
     RecordingNotStarted = 13,
     SerialPortDetectionInProgress = 14,
     SerialPortDetectionNotRunning = 15,
+    DeviceOperationBusy = 16,
     InternalError = 100,
 };
 

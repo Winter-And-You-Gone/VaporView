@@ -205,6 +205,8 @@ QString sessionStateToString(SessionState state)
         return QStringLiteral("complete");
     case SessionState::Recovered:
         return QStringLiteral("recovered");
+    case SessionState::Incomplete:
+        return QStringLiteral("incomplete");
     }
     return QStringLiteral("recording");
 }
@@ -212,6 +214,7 @@ QString sessionStateToString(SessionState state)
 SessionState sessionStateFromString(const QString& value)
 {
     const QString normalized = value.trimmed().toLower();
+    if (normalized == QLatin1String("incomplete")) return SessionState::Incomplete;
     if (normalized == QLatin1String("complete"))
     {
         return SessionState::Complete;

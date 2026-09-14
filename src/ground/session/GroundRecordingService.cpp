@@ -7,12 +7,14 @@
 #include "shared/session/SessionPackageLayout.h"
 #include "shared/session/SessionSensorCsv.h"
 #include "shared/session/UnifiedRawDat.h"
+#include "shared/session/RecordingStorage.h"
 #include "shared/concurrency/BoundedByteQueue.h"
 #include "shared/config/SettingsWriteBarrier.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QTextStream>
@@ -203,8 +205,9 @@ RecordingSessionLayout groundLayoutFromPackage(const VaporView::Session::Session
 class GroundRecordingService::Impl
 {
 public:
-    Impl()
-        : steadyClockAnchor(std::chrono::steady_clock::now())
+    explicit Impl(std::shared_ptr<VaporView::RecordingStorage> suppliedStorage)
+        : storage(suppliedStorage ? std::move(suppliedStorage) : std::make_shared<VaporView::RecordingStorage>())
+        , steadyClockAnchor(std::chrono::steady_clock::now())
         , systemClockAnchor(std::chrono::system_clock::now())
     {
     }
@@ -221,24 +224,30 @@ public:
         if (startError) *startError = GroundRecordingStartError::None;
         if (isSessionOpen())
         {
+            if (writeFailed.load())
+            {
+                if (errorMessage) *errorMessage = QStringLiteral("Recording has a storage failure; stop this session before starting another.");
+                return false;
+            }
             if (!paused.load())
             {
                 return true;
             }
-            const quint64 nowUs = GroundRecordingService::currentTimestampUs();
-            const quint64 elapsedUs = recordingElapsedMs * 1000ULL;
-            sessionStartTimeUs = nowUs >= elapsedUs ? nowUs - elapsedUs : nowUs;
+            activeSegmentTimer.start();
             startWorkers();
             notifyStatus();
             return true;
         }
 
         options = requestedOptions;
+        writeFailed.store(false);
+        storageFailureReported.store(false);
         options.exportRateHz = std::clamp(options.exportRateHz, 1, 200);
         const QString sessionName = QStringLiteral("session_%1").arg(sessionDirectoryTimestamp());
 
         sessionStartTimeUtc = timestampUtc();
         sessionStartTimeUs = GroundRecordingService::currentTimestampUs();
+        activeSegmentTimer.start();
 
         VaporView::Session::SessionPackageInitOptions initOptions;
         initOptions.origin = VaporView::Session::RecordingOrigin::Ground;
@@ -311,40 +320,62 @@ public:
 
         resetCurrentCounts();
         {
-            QTextStream out(eventLogFile.get());
+            VaporView::RecordingOutputDevice output(*storage, *eventLogFile);
+            QTextStream out(&output);
             out.setEncoding(QStringConverter::Utf8);
             out << VaporView::Session::eventLogCsvHeader();
             out.flush();
+            if (out.status() != QTextStream::Ok) markWriteFailure();
         }
         {
-            QTextStream out(waveformPeaksFile.get());
+            VaporView::RecordingOutputDevice output(*storage, *waveformPeaksFile);
+            QTextStream out(&output);
             out.setEncoding(QStringConverter::Utf8);
             out << VaporView::Session::waveformPeaksCsvHeader();
             out.flush();
+            if (out.status() != QTextStream::Ok) markWriteFailure();
         }
         {
-            QTextStream out(sensorSummaryFile.get());
+            VaporView::RecordingOutputDevice output(*storage, *sensorSummaryFile);
+            QTextStream out(&output);
             out.setEncoding(QStringConverter::Utf8);
             out << SessionSensorCsv::header();
             out.flush();
+            if (out.status() != QTextStream::Ok) markWriteFailure();
         }
         {
-            QTextStream out(temperatureControllerFile.get());
+            VaporView::RecordingOutputDevice output(*storage, *temperatureControllerFile);
+            QTextStream out(&output);
             out.setEncoding(QStringConverter::Utf8);
             out << VaporView::Session::laserTemperatureControllerCsvHeader();
             out.flush();
+            if (out.status() != QTextStream::Ok) markWriteFailure();
         }
         {
-            QTextStream out(ai8TemperatureControllerFile.get());
+            VaporView::RecordingOutputDevice output(*storage, *ai8TemperatureControllerFile);
+            QTextStream out(&output);
             out.setEncoding(QStringConverter::Utf8);
             out << VaporView::Session::systemTemperatureControllerCsvHeader();
             out.flush();
+            if (out.status() != QTextStream::Ok) markWriteFailure();
         }
         {
-            QTextStream out(waveformFeaturesFile.get());
+            VaporView::RecordingOutputDevice output(*storage, *waveformFeaturesFile);
+            QTextStream out(&output);
             out.setEncoding(QStringConverter::Utf8);
             out << VaporView::Session::waveformFeaturesCsvHeader();
             out.flush();
+            if (out.status() != QTextStream::Ok) markWriteFailure();
+        }
+        if (writeFailed.load())
+        {
+            if (startError) *startError = GroundRecordingStartError::OpenSessionFiles;
+            if (errorMessage) *errorMessage = QStringLiteral("failed to write session headers");
+            closeFiles();
+            writeSessionMetadata();
+            resetFiles();
+            layout = {};
+            return false;
         }
         QString metadataError;
         if (!writeSessionMetadata(QString(), &metadataError))
@@ -368,10 +399,10 @@ public:
         {
             return false;
         }
-        const quint64 nowUs = GroundRecordingService::currentTimestampUs();
-        if (sessionStartTimeUs > 0 && nowUs >= sessionStartTimeUs)
+        if (activeSegmentTimer.isValid())
         {
-            recordingElapsedMs = (nowUs - sessionStartTimeUs) / 1000ULL;
+            recordingElapsedMs += static_cast<quint64>(activeSegmentTimer.elapsed());
+            activeSegmentTimer.invalidate();
         }
         stopWorkers();
         paused.store(true);
@@ -396,6 +427,8 @@ public:
         }
 
         summary.sessionDirectory = layout.sessionDirectory;
+        recordingElapsedMs = currentStatus().recordingElapsedMs;
+        activeSegmentTimer.invalidate();
         summary.sensorRows = sensorRows.load();
         summary.waveformFrames = waveformFrames.load();
         lastStatus = currentStatus();
@@ -403,11 +436,16 @@ public:
         lastStatus.active = false;
         lastStatus.paused = false;
 
+        closeFiles();
+        summary.writeFailed = writeFailed.load();
+        lastStatus.writeFailed = summary.writeFailed;
         if (!writeSessionMetadata(timestampUtc()))
         {
+            markWriteFailure();
+            summary.writeFailed = true;
+            lastStatus.writeFailed = true;
             warn(GroundRecordingWarning::MetadataUpdateFailed, 0);
         }
-        closeFiles();
         resetFiles();
         resetCurrentCounts();
         paused.store(false);
@@ -426,19 +464,16 @@ public:
     GroundRecordingStatus currentStatus() const
     {
         GroundRecordingStatus result;
+        result.writeFailed = writeFailed.load();
         result.sessionOpen = isSessionOpen();
-        result.active = workerRunning.load();
+        result.active = workerRunning.load() && !result.writeFailed;
         result.paused = paused.load();
         result.sessionName = layout.sessionName;
         result.sessionDirectory = layout.sessionDirectory;
         result.recordingElapsedMs = recordingElapsedMs;
-        if (!result.paused && sessionStartTimeUs > 0)
+        if (!result.paused && activeSegmentTimer.isValid())
         {
-            const quint64 nowUs = GroundRecordingService::currentTimestampUs();
-            if (nowUs >= sessionStartTimeUs)
-            {
-                result.recordingElapsedMs = (nowUs - sessionStartTimeUs) / 1000ULL;
-            }
+            result.recordingElapsedMs += static_cast<quint64>(activeSegmentTimer.elapsed());
         }
         result.sensorRows = sensorRows.load();
         result.waveformFrames = waveformFrames.load();
@@ -469,7 +504,7 @@ public:
     {
         Q_UNUSED(file);
         Q_UNUSED(recordCount);
-        if (!workerRunning.load() ||
+        if (!workerRunning.load() || writeFailed.load() ||
             size > static_cast<size_t>(std::numeric_limits<int>::max()) ||
             size > static_cast<size_t>(std::numeric_limits<quint32>::max()) ||
             (size > 0 && !data))
@@ -627,6 +662,8 @@ public:
 
     void notifyStatus() const
     {
+        if (writeFailed.load() && !storageFailureReported.exchange(true))
+            warn(GroundRecordingWarning::DataWriteFailed, 0);
         if (statusCallback)
         {
             statusCallback();
@@ -652,13 +689,13 @@ private:
         }
 
         QString error;
-        if (!SessionRawDat::writeFileHeader(*file, sourceId, &error))
+        VaporView::RecordingOutputDevice output(*storage, *file);
+        if (!SessionRawDat::writeFileHeader(output, sourceId, &error) || !storage->flush(*file))
         {
             file->close();
             file.reset();
             return false;
         }
-        file->flush();
         return true;
     }
 
@@ -693,8 +730,11 @@ private:
         const QByteArrayView payload = size > 0
             ? QByteArrayView(static_cast<const char *>(data), static_cast<qsizetype>(size))
             : QByteArrayView();
-        if (!SessionRawDat::writeRecord(*rawFile, header, payload))
+        if (writeFailed.load()) return false;
+        VaporView::RecordingOutputDevice output(*storage, *rawFile);
+        if (!SessionRawDat::writeRecord(output, header, payload))
         {
+            markWriteFailure();
             return false;
         }
         recordCount.store(sequence + 1, std::memory_order_relaxed);
@@ -736,13 +776,15 @@ private:
                     snapshot.hasLidar);
                 {
                     std::lock_guard<std::mutex> lock(filesMutex);
-                    if (file && file->isOpen())
+                    if (file && file->isOpen() && !writeFailed.load())
                     {
-                        QTextStream out(file);
+                        VaporView::RecordingOutputDevice output(*storage, *file);
+                        QTextStream out(&output);
                         out.setEncoding(QStringConverter::Utf8);
                         out << row;
                         out.flush();
-                        sensorRows.fetch_add(1);
+                        if (out.status() == QTextStream::Ok) sensorRows.fetch_add(1);
+                        else markWriteFailure();
                     }
                 }
                 notifyStatus();
@@ -928,13 +970,15 @@ private:
         {
             return;
         }
-            QTextStream out(waveformPeaksFile.get());
+        VaporView::RecordingOutputDevice output(*storage, *waveformPeaksFile);
+        QTextStream out(&output);
         out.setEncoding(QStringConverter::Utf8);
         out << record.timestampUs << ','
             << peakValueCsvText(summary.value) << ','
             << summary.index << ','
             << summary.pointCount << ",0,0\n";
         out.flush();
+        if (out.status() != QTextStream::Ok) markWriteFailure();
     }
 
     bool writeSessionMetadata(const QString& endTimeUtc = QString(), QString *errorMessage = nullptr) const
@@ -946,14 +990,13 @@ private:
         }
 
         const quint64 endUs = endTimeUtc.isEmpty() ? 0 : GroundRecordingService::currentTimestampUs();
-        const quint64 elapsedMs = endUs > 0 && sessionStartTimeUs > 0 && endUs >= sessionStartTimeUs
-            ? (endUs - sessionStartTimeUs) / 1000ULL
-            : 0;
+        const quint64 elapsedMs = recordingElapsedMs +
+            (activeSegmentTimer.isValid() ? static_cast<quint64>(activeSegmentTimer.elapsed()) : 0);
 
         VaporView::Session::SessionManifest manifest;
         manifest.recordingOrigin = VaporView::Session::RecordingOrigin::Ground;
         manifest.sessionName = layout.sessionName;
-        manifest.state = endTimeUtc.isEmpty()
+        manifest.state = writeFailed.load() ? VaporView::Session::SessionState::Incomplete : endTimeUtc.isEmpty()
             ? VaporView::Session::SessionState::Recording
             : VaporView::Session::SessionState::Complete;
         manifest.startTimeUtc = sessionStartTimeUtc;
@@ -1012,7 +1055,7 @@ private:
         {
             if (file && file->isOpen())
             {
-                file->flush();
+                if (!storage->flush(*file)) markWriteFailure();
                 file->close();
             }
         }
@@ -1063,10 +1106,18 @@ public:
     GroundRecordingOptions options;
     RecordingSessionLayout layout;
     GroundRecordingStatus lastStatus;
+    std::shared_ptr<VaporView::RecordingStorage> storage;
     std::chrono::steady_clock::time_point steadyClockAnchor;
     std::chrono::system_clock::time_point systemClockAnchor;
     QString sessionStartTimeUtc;
+    std::atomic_bool writeFailed{false};
+    mutable std::atomic_bool storageFailureReported{false};
+    void markWriteFailure()
+    {
+        writeFailed.store(true);
+    }
     quint64 sessionStartTimeUs = 0;
+    QElapsedTimer activeSegmentTimer;
     quint64 recordingElapsedMs = 0;
 
     std::unique_ptr<QFile> sensorSummaryFile;
@@ -1117,8 +1168,8 @@ public:
     qint64 lastTcpQueueWarningMs = 0;
 };
 
-GroundRecordingService::GroundRecordingService()
-    : impl_(std::make_unique<Impl>())
+GroundRecordingService::GroundRecordingService(std::shared_ptr<VaporView::RecordingStorage> storage)
+    : impl_(std::make_unique<Impl>(std::move(storage)))
 {
 }
 
@@ -1174,7 +1225,7 @@ bool GroundRecordingService::isSessionOpen() const
 
 bool GroundRecordingService::isActive() const
 {
-    return impl_->workerRunning.load();
+    return impl_->workerRunning.load() && !impl_->writeFailed.load();
 }
 
 bool GroundRecordingService::isPaused() const
@@ -1276,7 +1327,7 @@ bool GroundRecordingService::recordTcpWaveFrame(quint64 hostTimestampUs,
                                                 const QByteArray& harmonicPayload,
                                                 TcpFloatEncoding floatEncoding)
 {
-    if (!impl_->workerRunning.load() ||
+    if (!impl_->workerRunning.load() || impl_->writeFailed.load() ||
         static_cast<quint64>(rawSignalPayload.size()) > std::numeric_limits<quint32>::max() ||
         static_cast<quint64>(harmonicPayload.size()) > std::numeric_limits<quint32>::max())
     {

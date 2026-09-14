@@ -1,4 +1,5 @@
 #include "ground/session/GroundRecordingService.h"
+#include "FailingRecordingStorage.h"
 #include "shared/session/SessionDeviceConfig.h"
 #include "shared/session/SessionSensorCsv.h"
 #include "shared/session/UnifiedRawDat.h"
@@ -44,6 +45,37 @@ QByteArray littleEndianFloat(float value)
 int main(int argc, char **argv)
 {
     QCoreApplication application(argc, argv);
+    for (bool failAtFlush : {false, true})
+    {
+        QTemporaryDir faultDirectory;
+        auto storage = std::make_shared<FailingRecordingStorage>();
+        VaporView::Ground::Session::GroundRecordingService faultRecorder(storage);
+        VaporView::Ground::Session::GroundRecordingOptions faultOptions;
+        faultOptions.baseDirectory = faultDirectory.path();
+        if (!failAtFlush)
+        {
+            storage->failWrites.store(true);
+            require(!faultRecorder.start(faultOptions) && !faultRecorder.isActive(),
+                    "short header write rejects recording startup");
+            storage->failWrites.store(false);
+        }
+        require(faultRecorder.start(faultOptions), "start storage fault fixture");
+        const QString manifestPath = QDir(faultRecorder.status().sessionDirectory).filePath(QStringLiteral("session.json"));
+        storage->failWrites.store(!failAtFlush);
+        storage->failFlush.store(failAtFlush);
+        if (!failAtFlush)
+        {
+            const QByteArray raw("raw-record");
+            require(faultRecorder.recordRawEpsilonFrame(1234, 1, 1, raw.constData(), raw.size()),
+                    "accept raw before injected storage failure");
+        }
+        const auto failedStop = faultRecorder.stop();
+        require(failedStop.writeFailed, "stop exposes write or flush failure");
+        QFile manifest(manifestPath);
+        require(manifest.open(QIODevice::ReadOnly), "open incomplete manifest");
+        require(QJsonDocument::fromJson(manifest.readAll()).object().value(QStringLiteral("state")) ==
+                    QJsonValue(QStringLiteral("incomplete")), "storage failure cannot produce complete session");
+    }
     QTemporaryDir temporaryDirectory;
     require(temporaryDirectory.isValid(), "temporary directory");
 
@@ -78,6 +110,11 @@ int main(int argc, char **argv)
     require(startError == VaporView::Ground::Session::GroundRecordingStartError::None,
             "start error state");
     require(recorder.isSessionOpen(), "session open after start");
+    QFile initialManifest(QDir(recorder.status().sessionDirectory).filePath(QStringLiteral("session.json")));
+    require(initialManifest.open(QIODevice::ReadOnly), "read original session origin");
+    const QJsonValue originalStartTime = QJsonDocument::fromJson(initialManifest.readAll()).object()
+        .value(QStringLiteral("start_time_us"));
+    initialManifest.close();
     require(recorder.isActive(), "recorder active after start");
 
     const QByteArray rawFrame("\x01\x02\x03", 3);
@@ -176,6 +213,8 @@ int main(int argc, char **argv)
     const QJsonDocument metadata = QJsonDocument::fromJson(metadataFile.readAll());
     require(metadata.isObject(), "session metadata object");
     const QJsonObject root = metadata.object();
+    require(root.value(QStringLiteral("start_time_us")) == originalStartTime,
+            "pause resume preserves original absolute session start");
     require(root.value(QStringLiteral("recording_origin")).toString() == QStringLiteral("ground"),
             "metadata recording origin");
     require(!root.contains(QStringLiteral("mode")), "new ground metadata omits legacy mode");

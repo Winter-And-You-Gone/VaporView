@@ -3229,6 +3229,14 @@ void RtkConfigDialog::pollRtkServiceStatus(bool forceLog)
 
 void RtkConfigDialog::onRtkStatusTimer()
 {
+    if (rtk_service_ && rtk_service_->isRunning())
+    {
+        const VaporView::EpsilonData data = epsilon_data_provider_ ? epsilon_data_provider_() : VaporView::EpsilonData();
+        const auto age = std::chrono::steady_clock::now() - data.timestamp;
+        const bool fresh = age >= std::chrono::steady_clock::duration::zero() && age <= std::chrono::seconds(3);
+        rtk_service_->updateNmeaPosition(isUsableEpsilonNmeaPosition(data) && fresh,
+                                        data.latitude_deg, data.longitude_deg, data.height_m);
+    }
     pollRtkServiceStatus(false);
 }
 

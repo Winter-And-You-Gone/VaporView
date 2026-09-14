@@ -439,8 +439,13 @@ add_test(NAME application_config_test COMMAND application_config_test)
 add_executable(rtk_serial_topology_test
     ${CMAKE_CURRENT_SOURCE_DIR}/rtk_serial_topology_test.cpp
 )
-target_link_libraries(rtk_serial_topology_test PRIVATE vaporview_ground_rtk)
+target_link_libraries(rtk_serial_topology_test PRIVATE vaporview_ground_rtk Qt6::Network)
 add_test(NAME rtk_serial_topology_test COMMAND rtk_serial_topology_test)
+
+add_executable(sky_command_execution_test ${CMAKE_CURRENT_SOURCE_DIR}/sky_command_execution_test.cpp)
+target_link_libraries(sky_command_execution_test PRIVATE vaporview_sky_core)
+add_test(NAME sky_command_execution_test COMMAND sky_command_execution_test)
+set_tests_properties(sky_command_execution_test PROPERTIES LABELS "fast;unit;protocol" TIMEOUT 15)
 
 add_executable(rtk_config_dialog_test
     ${CMAKE_CURRENT_SOURCE_DIR}/rtk_config_dialog_test.cpp
@@ -998,6 +1003,9 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
     add_executable(map3d_real_window_close_test
         ${CMAKE_CURRENT_SOURCE_DIR}/map3d_real_window_close_test.cpp
     )
+    if(WIN32)
+        target_link_libraries(map3d_real_window_close_test PRIVATE imm32)
+    endif()
     target_include_directories(map3d_real_window_close_test PRIVATE
         ${CMAKE_SOURCE_DIR}/include
     )
@@ -1154,6 +1162,7 @@ set(VAPORVIEW_FAST_UNIT_TESTS
 )
 set_tests_properties(${VAPORVIEW_FAST_UNIT_TESTS} PROPERTIES TIMEOUT 30)
 set_property(TEST ${VAPORVIEW_FAST_UNIT_TESTS} PROPERTY LABELS fast unit)
+set_tests_properties(epsilon_device_session_test PROPERTIES LABELS "integration;protocol" TIMEOUT 75)
 set_property(TEST lifecycle_breadcrumb_test APPEND PROPERTY LABELS logging)
 
 set(VAPORVIEW_FAST_INTEGRATION_TESTS

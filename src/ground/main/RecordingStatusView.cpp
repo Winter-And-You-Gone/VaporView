@@ -504,4 +504,15 @@ QString RecordingStatusView::statusText() const
     return status_text_;
 }
 
+void RecordingStatusView::refreshLayoutMetrics()
+{
+    const QString text = status_text_;
+    status_text_.clear();
+    field_column_width_ = 0;
+    value_column_width_ = 0;
+    unit_column_width_ = 0;
+    setMinimumWidth(0);
+    setStatusText(text);
+}
+
 }  // namespace VaporView::Ground::Main
