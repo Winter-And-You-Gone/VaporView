@@ -3255,7 +3255,7 @@ void MainWindow::setupDeviceConfigPage()
                                         QStringLiteral("services"),
                                         QStringLiteral("天空端服务"),
                                         servicesGrid);
-    remoteGrid->addWidget(servicesPanel, 0, 0, 1, 2, Qt::AlignTop);
+    remoteGrid->addWidget(servicesPanel, 0, 0, Qt::AlignTop);
     servicesGrid->setColumnMinimumWidth(0, 62);
     servicesGrid->setColumnMinimumWidth(1, 92);
     servicesGrid->setColumnMinimumWidth(2, 62);
@@ -3275,7 +3275,7 @@ void MainWindow::setupDeviceConfigPage()
                                         QStringLiteral("advanced"),
                                         QStringLiteral("高级 / 诊断"),
                                         advancedGrid);
-    remoteGrid->addWidget(advancedPanel, 1, 1, Qt::AlignTop);
+    remoteGrid->addWidget(advancedPanel, 0, 1, Qt::AlignTop);
 
     auto createFieldLabel = [remoteBody](const QString& objectName = QString()) {
         auto *label = new QLabel(remoteBody);
