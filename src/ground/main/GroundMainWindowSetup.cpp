@@ -3275,7 +3275,7 @@ void MainWindow::setupDeviceConfigPage()
                                         QStringLiteral("advanced"),
                                         QStringLiteral("高级 / 诊断"),
                                         advancedGrid);
-    remoteGrid->addWidget(advancedPanel, 0, 1, Qt::AlignTop);
+    remoteGrid->addWidget(advancedPanel, 0, 1, 2, 1);
 
     auto createFieldLabel = [remoteBody](const QString& objectName = QString()) {
         auto *label = new QLabel(remoteBody);

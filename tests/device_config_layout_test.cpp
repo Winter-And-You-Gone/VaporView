@@ -1407,13 +1407,14 @@ int main(int argc, char **argv)
     const QRect syncSubcardRect = rectInPage(syncSubcard, remoteCard);
     const QRect advancedSubcardRect = rectInPage(advancedSubcard, remoteCard);
     require(std::abs(servicesSubcardRect.top() - advancedSubcardRect.top()) <= 1 &&
+                std::abs(syncSubcardRect.bottom() - advancedSubcardRect.bottom()) <= 1 &&
                 servicesSubcardRect.left() == syncSubcardRect.left() &&
                 servicesSubcardRect.right() < advancedSubcardRect.left() &&
                 servicesSubcardRect.bottom() < syncSubcardRect.top() &&
                 !servicesSubcardRect.intersects(syncSubcardRect) &&
                 !servicesSubcardRect.intersects(advancedSubcardRect) &&
                 !syncSubcardRect.intersects(advancedSubcardRect),
-            "remote Sky services and config sync stack on the left while diagnostics sits on the right");
+            "remote Sky diagnostics spans the full height of the stacked services and sync subcards");
     require(findExactLabel(remoteCard, QStringLiteral("Wave TCP:")) == nullptr,
             "Sky services subcard no longer duplicates the TCP waveform enabled field");
     auto *servicesGrid = servicesSubcard->findChild<QGridLayout *>();
