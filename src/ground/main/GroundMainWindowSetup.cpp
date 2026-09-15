@@ -3273,7 +3273,7 @@ void MainWindow::setupDeviceConfigPage()
     auto *advancedPanel = createSubcard(state_->device_config_.remote_sky_advanced_title_lbl,
                                         QStringLiteral("deviceRemoteSkyAdvancedSubcard"),
                                         QStringLiteral("advanced"),
-                                        QStringLiteral("高级 / 诊断"),
+                                        QStringLiteral("JSON配置文件"),
                                         advancedGrid);
     remoteGrid->addWidget(advancedPanel, 0, 1, 2, 1);
 
@@ -3936,7 +3936,7 @@ void MainWindow::updateDeviceConfigTexts()
     setRemoteSkySubcardTitle(state_->device_config_.remote_sky_sync_title_lbl,
                              state_->is_english_ ? QStringLiteral("Config sync") : QStringLiteral("配置同步"));
     setRemoteSkySubcardTitle(state_->device_config_.remote_sky_advanced_title_lbl,
-                             state_->is_english_ ? QStringLiteral("Advanced / diagnostics") : QStringLiteral("高级 / 诊断"));
+                             state_->is_english_ ? QStringLiteral("JSON config file") : QStringLiteral("JSON配置文件"));
     if (state_->device_config_.remote_sky_wave_downsample_lbl) state_->device_config_.remote_sky_wave_downsample_lbl->setText(state_->is_english_ ? "Downsample:" : "降采样:");
     if (state_->device_config_.remote_sky_telemetry_basic_lbl) state_->device_config_.remote_sky_telemetry_basic_lbl->setText(state_->is_english_ ? "Basic Hz:" : "基础 Hz:");
     if (state_->device_config_.remote_sky_telemetry_feature_lbl) state_->device_config_.remote_sky_telemetry_feature_lbl->setText(state_->is_english_ ? "Feature Hz:" : "特征 Hz:");

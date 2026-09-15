@@ -1381,7 +1381,11 @@ int main(int argc, char **argv)
     require(std::abs(remoteTitleBar->geometry().top() - serialTitleBar->geometry().top()) <= 1,
             "remote sky config title bar starts flush like the shared device card");
     require(servicesLabel->isVisible() && syncLabel->isVisible() && advancedLabel->isVisible(),
-            "remote mode separates Sky services, config sync, and advanced diagnostics");
+            "remote mode separates Sky services, config sync, and JSON config file");
+    QString advancedTitle = advancedLabel->text();
+    advancedTitle.remove(QLatin1Char('\n'));
+    require(advancedTitle == QStringLiteral("JSON配置文件"),
+            "remote JSON config file subcard uses the requested title");
     auto *servicesSubcard = remoteCard->findChild<QFrame *>(QStringLiteral("deviceRemoteSkyServicesSubcard"));
     auto *syncSubcard = remoteCard->findChild<QFrame *>(QStringLiteral("deviceRemoteSkySyncSubcard"));
     auto *advancedSubcard = remoteCard->findChild<QFrame *>(QStringLiteral("deviceRemoteSkyAdvancedSubcard"));
@@ -1402,7 +1406,7 @@ int main(int argc, char **argv)
     requireVerticalSubcardTitle(syncLabel,
                                 "config sync subcard keeps the EPSILON vertical title treatment");
     requireVerticalSubcardTitle(advancedLabel,
-                                "advanced diagnostics subcard keeps the EPSILON vertical title treatment");
+                                "JSON config file subcard keeps the EPSILON vertical title treatment");
     const QRect servicesSubcardRect = rectInPage(servicesSubcard, remoteCard);
     const QRect syncSubcardRect = rectInPage(syncSubcard, remoteCard);
     const QRect advancedSubcardRect = rectInPage(advancedSubcard, remoteCard);
@@ -1414,7 +1418,7 @@ int main(int argc, char **argv)
                 !servicesSubcardRect.intersects(syncSubcardRect) &&
                 !servicesSubcardRect.intersects(advancedSubcardRect) &&
                 !syncSubcardRect.intersects(advancedSubcardRect),
-            "remote Sky diagnostics spans the full height of the stacked services and sync subcards");
+            "remote Sky JSON config file spans the full height of the stacked services and sync subcards");
     require(findExactLabel(remoteCard, QStringLiteral("Wave TCP:")) == nullptr,
             "Sky services subcard no longer duplicates the TCP waveform enabled field");
     auto *servicesGrid = servicesSubcard->findChild<QGridLayout *>();
