@@ -463,6 +463,7 @@ private:
     void updateRemoteTelemetrySummaryLabel();
     void updateEnvironmentStatusIcons(bool lidarValid, bool ptbValid, bool hmpValid);
     void syncDeviceConfigEpsilonPanelFromSettings();
+    std::map<uint8_t, int> legacyRemoteEpsilonPacketRates() const;
     void setDeviceConfigEpsilonPacketRates(const std::map<uint8_t, int>& packetRates);
     bool validateEpsilonPacketBandwidth(const std::map<uint8_t, int>& packetRates,
                                         const QString& baudText,

@@ -1817,7 +1817,7 @@ int main(int argc, char **argv)
     auto *deviceRemoteStatus =
         deviceConfigPage->findChild<QLabel *>(QStringLiteral("deviceRemoteSkyConfigStatus"));
     auto *deviceRemoteWavePort =
-        deviceConfigPage->findChild<QSpinBox *>(QStringLiteral("deviceRemoteSkyWavePortSpin"));
+        deviceConfigPage->findChild<QSpinBox *>(QStringLiteral("deviceTcpWavePortSpin"));
     auto *deviceEpsilonPort =
         deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceEpsilonPortCombo"));
     require(deviceRemoteCard && deviceRemoteCard->isVisible() &&
@@ -1838,6 +1838,7 @@ int main(int argc, char **argv)
     require(VaporViewTest::processEventsUntil(800, [deviceRemoteRawJson]() {
                 return deviceRemoteRawJson->isVisible() &&
                     deviceRemoteRawJson->toPlainText().contains(QStringLiteral("\"wave_tcp\"")) &&
+                    deviceRemoteRawJson->toPlainText().contains(QStringLiteral("\"packet_rates\"")) &&
                     deviceRemoteRawJson->toPlainText().contains(QStringLiteral("\"slave_address\": 1"));
             }),
             "unified device configuration exposes Remote Sky Raw JSON round-trip without a duplicate RD105 address editor");

@@ -67,7 +67,8 @@ public:
     bool setPeakSearchRange(quint32 startIndex, quint32 endIndex, CommandErrorCode *errorCode = nullptr);
     bool configureEpsilonPacketRates(const EpsilonPacketRatesOperation& operation,
                                      CommandErrorCode *errorCode = nullptr,
-                                     QString *errorMessage = nullptr);
+                                     QString *errorMessage = nullptr,
+                                     bool forceApply = true);
     std::function<CommandErrorCode()> prepareEpsilonOperation(const DeviceOperationRequest& request);
     void completeEpsilonOperation(const DeviceOperationRequest& request, CommandErrorCode result);
     bool configureEpsilonMainAntennaLeverArm(

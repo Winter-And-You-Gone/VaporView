@@ -231,6 +231,9 @@ int main(int argc, char **argv)
             "initial humidity source returned");
     require(!receivedConfig.value(QStringLiteral("epsilon")).toObject().contains(QStringLiteral("frequency_hz")),
             "GetSkyConfig omits EPSILON single frequency");
+    require(receivedConfig.value(QStringLiteral("epsilon")).toObject()
+                .value(QStringLiteral("packet_rates")).isArray(),
+            "GetSkyConfig includes EPSILON packet-rate profile");
     require(acks.contains(seq) && acks.value(seq).error_code == VaporView::CommandErrorCode::Ok,
             "GetSkyConfig acknowledged");
 
@@ -270,6 +273,9 @@ int main(int argc, char **argv)
             "GetSkyConfig reflects AI-8 slave address after apply");
     require(!receivedConfig.value(QStringLiteral("epsilon")).toObject().contains(QStringLiteral("frequency_hz")),
             "post-apply GetSkyConfig still omits EPSILON single frequency");
+    require(receivedConfig.value(QStringLiteral("epsilon")).toObject()
+                .value(QStringLiteral("packet_rates")).isArray(),
+            "post-apply GetSkyConfig preserves EPSILON packet-rate profile");
     require(acks.contains(seq) && acks.value(seq).error_code == VaporView::CommandErrorCode::Ok,
             "post-apply GetSkyConfig acknowledged");
 

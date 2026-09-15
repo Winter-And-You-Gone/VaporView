@@ -1757,6 +1757,14 @@ std::map<uint8_t, int> MainWindow::deviceConfigEpsilonPacketRates() const
     return packetRates;
 }
 
+std::map<uint8_t, int> MainWindow::legacyRemoteEpsilonPacketRates() const
+{
+    QSettings settings = VaporView::applicationConfigSettings();
+    settings.beginGroup(QStringLiteral("MainWindow"));
+    settings.beginGroup(QStringLiteral("RemoteEpsilonPacketProfile"));
+    return loadCustomEpsilonPacketRates(settings);
+}
+
 void MainWindow::syncDeviceConfigEpsilonPanelFromSettings()
 {
     if (!state_->epsilon_config_panel_)
@@ -1764,13 +1772,21 @@ void MainWindow::syncDeviceConfigEpsilonPanelFromSettings()
         return;
     }
 
-    QSettings settings = VaporView::applicationConfigSettings();
-    settings.beginGroup(QStringLiteral("MainWindow"));
     if (isRemoteSkyMode())
     {
-        settings.beginGroup(QStringLiteral("RemoteEpsilonPacketProfile"));
+        setDeviceConfigEpsilonPacketRates(
+            state_->remote_sky_config_loaded_
+                ? state_->remote_sky_config_.epsilon.packet_rates
+                : legacyRemoteEpsilonPacketRates());
     }
-    setDeviceConfigEpsilonPacketRates(loadCustomEpsilonPacketRates(settings));
+    else
+    {
+        QSettings settings = VaporView::applicationConfigSettings();
+        settings.beginGroup(QStringLiteral("MainWindow"));
+        setDeviceConfigEpsilonPacketRates(loadCustomEpsilonPacketRates(settings));
+    }
+    QSettings settings = VaporView::applicationConfigSettings();
+    settings.beginGroup(QStringLiteral("MainWindow"));
     state_->epsilon_config_panel_->setRtcmDevicePortIndex(
         isRemoteSkyMode()
             ? state_->remote_sky_config_.epsilon_rtcm.device_port_index
@@ -1799,12 +1815,73 @@ void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
         return;
     }
 
-    QSettings settings = VaporView::applicationConfigSettings();
-    settings.beginGroup(QStringLiteral("MainWindow"));
+    const QString packetRateSummary = epsilonPacketRatesSummary(savedPacketRates);
     if (isRemoteSkyMode())
     {
-        settings.beginGroup(QStringLiteral("RemoteEpsilonPacketProfile"));
+        state_->remote_sky_config_.epsilon.packet_rates = savedPacketRates;
+        setDeviceConfigEpsilonPacketRates(savedPacketRates);
+        if (!state_->remote_sky_config_loaded_)
+        {
+            QSettings legacySettings = VaporView::applicationConfigSettings();
+            legacySettings.beginGroup(QStringLiteral("MainWindow"));
+            legacySettings.beginGroup(QStringLiteral("RemoteEpsilonPacketProfile"));
+            for (const EpsilonPacketConfigOption& option : epsilonPacketConfigOptions())
+            {
+                const auto it = savedPacketRates.find(option.packet_id);
+                VaporView::setPersistentSetting(
+                    legacySettings,
+                    epsilonPacketRateSettingsKey(option.packet_id),
+                    it != savedPacketRates.end() ? it->second : defaultRates.at(option.packet_id));
+            }
+            setRemoteSkyConfigStatus(state_->is_english_
+                ? QStringLiteral("EPSILON packet profile is saved locally and will migrate after the Sky config is read.")
+                : QStringLiteral("EPSILON 包频率已暂存本地，读取天空端配置后将迁移到 SkyConfig。"));
+            updateRemoteSkyConfigControlsState();
+            return;
+        }
+
+        state_->remote_sky_config_dirty_ = true;
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("configuration.apply"),
+                         QStringLiteral("epsilon_packet_profile_saved"),
+                         savedPacketRates == defaultRates
+                             ? QStringLiteral("已更新天空端 EPSILON 推荐默认包频率配置。")
+                             : QStringLiteral("已更新天空端 EPSILON 包频率配置。"),
+                         {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                          {QStringLiteral("packet_rate_profile"), savedPacketRates == defaultRates
+                              ? QStringLiteral("recommended_default")
+                              : QStringLiteral("custom")},
+                          {QStringLiteral("packet_rate_summary"), packetRateSummary},
+                          {QStringLiteral("execution_path"), QStringLiteral("remote_sky_config")},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
+
+        const bool remoteLinkReady = state_->remote_sky_controller_ &&
+            state_->remote_sky_controller_->isOpen();
+        if (applyAfterSave && !state_->recording_service_->isActive() && remoteLinkReady)
+        {
+            publishGroundLog(VaporView::LogLevel::Info,
+                             QStringLiteral("configuration.apply"),
+                             QStringLiteral("epsilon_packet_profile_apply_requested"),
+                             QStringLiteral("正在通过 SkyConfig 应用天空端 EPSILON 包频率配置。"),
+                             {{QStringLiteral("device"), QStringLiteral("EPSILON")},
+                              {QStringLiteral("port"), state_->remote_sky_config_.epsilon.port},
+                              {QStringLiteral("packet_rate_summary"), packetRateSummary},
+                              {QStringLiteral("execution_path"), QStringLiteral("remote_sky_config")},
+                              {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
+            onRemoteSkyConfigApplyClicked();
+        }
+        else
+        {
+            setRemoteSkyConfigStatus(state_->is_english_
+                ? QStringLiteral("EPSILON packet profile updated; press Apply to send it to Sky.")
+                : QStringLiteral("EPSILON 包频率已更新，请点击应用发送到天空端。"));
+            updateRemoteSkyConfigControlsState();
+        }
+        return;
     }
+
+    QSettings settings = VaporView::applicationConfigSettings();
+    settings.beginGroup(QStringLiteral("MainWindow"));
     for (const EpsilonPacketConfigOption& option : epsilonPacketConfigOptions())
     {
         const auto it = savedPacketRates.find(option.packet_id);
@@ -1814,8 +1891,6 @@ void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
 
     VaporView::removePersistentSetting(settings, QStringLiteral("epsilon_last_config_signature"));
     VaporView::removePersistentSetting(settings, QStringLiteral("epsilon_last_config_apply_version"));
-    const QString packetRateSummary = epsilonPacketRatesSummary(savedPacketRates);
-
     publishGroundLog(VaporView::LogLevel::Info,
                      QStringLiteral("configuration.apply"),
                      QStringLiteral("epsilon_packet_profile_saved"),

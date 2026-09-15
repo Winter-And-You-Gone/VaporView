@@ -83,6 +83,9 @@ int main(int argc, char **argv)
     }
 
     require(manager.latestEpsilon().valid, "simulated EPSILON data is valid");
+    require(std::fabs(manager.latestEpsilon().imu_packet_rate_hz - 250.0) < 0.000001 &&
+                std::fabs(manager.latestEpsilon().sys_state_packet_rate_hz - 100.0) < 0.000001,
+            "simulated EPSILON starts with the SkyConfig packet-rate profile");
     require(manager.latestPtb().valid && std::fabs(manager.latestPtb().pressure_hpa) > 1.0,
             "simulated pressure data is valid");
     require(manager.latestHmp().valid && std::fabs(manager.latestHmp().humidity) > 1.0,
@@ -131,6 +134,36 @@ int main(int argc, char **argv)
     require(!manager.configureEpsilonPacketRates(invalidPacketRates, &error, &operationMessage) &&
                 error == VaporView::CommandErrorCode::ConfigInvalid,
             "EPSILON simulated packet-rate operation rejects unsupported packet id");
+
+    VaporView::SkyConfig packetProfileConfig = manager.config();
+    packetProfileConfig.epsilon.packet_rates[0x40] = 200;
+    const VaporView::ApplyConfigResult packetProfileResult = manager.applyConfig(packetProfileConfig);
+    const QJsonObject packetProfileApply = packetProfileResult.json.value(
+        QStringLiteral("epsilon_packet_rates")).toObject();
+    require(packetProfileResult.success && packetProfileApply.value(QStringLiteral("changed")).toBool() &&
+                packetProfileApply.value(QStringLiteral("applied")).toBool() &&
+                !packetProfileApply.value(QStringLiteral("pending")).toBool(),
+            "SkyConfig packet-rate profile applies to a connected simulated EPSILON");
+    generateSimulatedData(manager);
+    require(std::fabs(manager.latestEpsilon().imu_packet_rate_hz - 200.0) < 0.000001,
+            "SkyConfig packet-rate profile updates simulated EPSILON output");
+
+    require(manager.disconnectDevice(VaporView::SkyDeviceId::Epsilon, &error),
+            "simulated EPSILON disconnects before deferred profile apply");
+    packetProfileConfig.epsilon.packet_rates[0x40] = 100;
+    const VaporView::ApplyConfigResult pendingPacketProfileResult =
+        manager.applyConfig(packetProfileConfig);
+    const QJsonObject pendingPacketProfile = pendingPacketProfileResult.json.value(
+        QStringLiteral("epsilon_packet_rates")).toObject();
+    require(pendingPacketProfileResult.success &&
+                pendingPacketProfile.value(QStringLiteral("pending")).toBool() &&
+                !pendingPacketProfile.value(QStringLiteral("applied")).toBool(),
+            "SkyConfig packet-rate profile is marked pending while EPSILON is disconnected");
+    require(manager.connectDevice(VaporView::SkyDeviceId::Epsilon, &error),
+            "simulated EPSILON reconnects with deferred packet profile");
+    generateSimulatedData(manager);
+    require(std::fabs(manager.latestEpsilon().imu_packet_rate_hz - 100.0) < 0.000001,
+            "deferred SkyConfig packet-rate profile applies on reconnect");
 
     VaporView::EpsilonMainAntennaLeverArmOperation leverArm;
     leverArm.x_m = 1.25;

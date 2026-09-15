@@ -22,7 +22,7 @@
 ## EPSILON 详细配置结果
 
 - `EpsilonDeviceSession` 统一承接 packet profile、output reconfigure、主天线杆臂、EPSILON COMM2~COMM5 RTCM input 配置，Local backend 调用 `EpsilonConfigurationService`，Remote backend 通过 `DeviceOperation` 到 SkyCore。
-- Packet profile 在 Local 与 Remote 使用独立设置域；Remote profile 不覆盖本地 EPSILON profile。
+- Local packet profile remains in the local settings domain; Remote packet profile is stored in `SkyConfig.epsilon.packet_rates` and does not overwrite the local EPSILON profile. Older Ground profiles are used only as a migration fallback until the shared config is applied.
 - Remote output reconfigure、lever arm、RTCM input 在 SkyCore 的 `SkyDeviceManager` 执行；仿真模式保存 packet rates、lever arm、RTCM input / forwarding state。
 - Remote RTCM correction 不是 request/ACK per chunk；Ground 通过 `MsgType::RtcmCorrectionData` 发送 bounded payload，Sky 端用 bounded queue / counters 接收，仿真模式只更新 receive stats，不打开真实串口。
 
@@ -86,7 +86,7 @@ collector   |
 
 ## SkyConfig
 
-- `epsilon` stores only `enabled`, `port`, and `baud`; legacy `frequency_hz` is accepted when reading older files but is no longer serialized. EPSILON packet rates are configured through the packet-rate profile workflow instead of a single SkyConfig frequency.
+- `epsilon` stores `enabled`, `port`, `baud`, and `packet_rates`; legacy `frequency_hz` is accepted when reading older files but is no longer serialized. `packet_rates` is a stable array of `{packet_id, rate_hz}` entries for the EPSILON output profile. If the field is absent, the recommended profile is used; Ground falls back to the legacy `RemoteEpsilonPacketProfile` until the first SkyConfig read/apply migrates it.
 - Pressure and humidity keep the existing logical sections: `ptb` means the pressure slot and `hmp` means the temperature/humidity slot.
 - `ptb.source` accepts `ptb210` or `bmp390`; missing legacy values default to `ptb210`.
 - `hmp.source` accepts `hmp3` or `sht45`; missing legacy values default to `hmp3`.

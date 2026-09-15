@@ -2,6 +2,7 @@
 #include "SerialBaudRateCapabilities.h"
 
 #include <QFile>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSaveFile>
@@ -179,6 +180,15 @@ QJsonObject epsilonToJson(const EpsilonSerialConfig& config)
     object["enabled"] = config.enabled;
     object["port"] = config.port;
     object["baud"] = config.baud_rate;
+    QJsonArray packetRates;
+    for (const auto& entry : config.packet_rates)
+    {
+        QJsonObject packetRate;
+        packetRate["packet_id"] = static_cast<int>(entry.first);
+        packetRate["rate_hz"] = entry.second;
+        packetRates.append(packetRate);
+    }
+    object["packet_rates"] = packetRates;
     return object;
 }
 
@@ -196,6 +206,65 @@ bool validateSupportedBaud(const QString& section,
                            int baudRate,
                            const BaudRateCapabilities& capabilities,
                            QString *errorMessage);
+
+bool epsilonPacketRatesFromJson(const QJsonObject& object,
+                                EpsilonSerialConfig& config,
+                                QString *errorMessage)
+{
+    if (!object.contains(QStringLiteral("packet_rates")))
+    {
+        return true;
+    }
+    const QJsonValue value = object.value(QStringLiteral("packet_rates"));
+    if (!value.isArray())
+    {
+        return failType(QStringLiteral("epsilon.packet_rates"), QStringLiteral("array"), value, errorMessage);
+    }
+    const QJsonArray array = value.toArray();
+    if (array.isEmpty())
+    {
+        if (errorMessage) *errorMessage = QStringLiteral("epsilon.packet_rates must not be empty");
+        return false;
+    }
+
+    std::map<uint8_t, int> packetRates;
+    for (int index = 0; index < array.size(); ++index)
+    {
+        const QJsonValue item = array.at(index);
+        const QString itemPath = QStringLiteral("epsilon.packet_rates[%1]").arg(index);
+        if (!item.isObject())
+        {
+            return failType(itemPath, QStringLiteral("object"), item, errorMessage);
+        }
+        const QJsonObject packetRate = item.toObject();
+        if (!packetRate.contains(QStringLiteral("packet_id")) ||
+            !packetRate.contains(QStringLiteral("rate_hz")))
+        {
+            if (errorMessage) *errorMessage = QStringLiteral("%1 must contain packet_id and rate_hz").arg(itemPath);
+            return false;
+        }
+        int packetId = 0;
+        int rateHz = 0;
+        if (!readIntField(packetRate, itemPath, QStringLiteral("packet_id"), packetId, errorMessage) ||
+            !readIntField(packetRate, itemPath, QStringLiteral("rate_hz"), rateHz, errorMessage))
+        {
+            return false;
+        }
+        if (packetId < 0 || packetId > 0xFF || rateHz < 0 || rateHz > 1000)
+        {
+            if (errorMessage) *errorMessage = QStringLiteral("%1 packet_id/rate_hz is invalid").arg(itemPath);
+            return false;
+        }
+        const auto inserted = packetRates.emplace(static_cast<uint8_t>(packetId), rateHz);
+        if (!inserted.second)
+        {
+            if (errorMessage) *errorMessage = QStringLiteral("%1 contains a duplicate packet_id").arg(itemPath);
+            return false;
+        }
+    }
+    config.packet_rates = std::move(packetRates);
+    return true;
+}
 
 bool epsilonRtcmFromJson(const QJsonObject& object, EpsilonRtcmConfig& config, QString *errorMessage)
 {
@@ -236,6 +305,10 @@ bool epsilonFromJson(const QJsonObject& object, EpsilonSerialConfig& config, QSt
         !readStringField(object, section, QStringLiteral("port"), next.port, errorMessage) ||
         !readIntField(object, section, QStringLiteral("baud"), next.baud_rate, errorMessage) ||
         !readIntField(object, section, QStringLiteral("baud_rate"), next.baud_rate, errorMessage))
+    {
+        return false;
+    }
+    if (!epsilonPacketRatesFromJson(object, next, errorMessage))
     {
         return false;
     }
@@ -487,7 +560,8 @@ bool EpsilonSerialConfig::operator==(const EpsilonSerialConfig& other) const
 {
     return enabled == other.enabled &&
            port == other.port &&
-           baud_rate == other.baud_rate;
+           baud_rate == other.baud_rate &&
+           packet_rates == other.packet_rates;
 }
 
 bool EpsilonSerialConfig::operator!=(const EpsilonSerialConfig& other) const
@@ -726,7 +800,10 @@ bool SkyConfig::validate(QString *errorMessage) const
 SkyConfigDiff SkyConfig::diff(const SkyConfig& other) const
 {
     SkyConfigDiff result;
-    result.epsilon_changed = epsilon != other.epsilon;
+    result.epsilon_changed = epsilon.enabled != other.epsilon.enabled ||
+        epsilon.port != other.epsilon.port ||
+        epsilon.baud_rate != other.epsilon.baud_rate;
+    result.epsilon_packet_rates_changed = epsilon.packet_rates != other.epsilon.packet_rates;
     result.epsilon_rtcm_changed = epsilon_rtcm != other.epsilon_rtcm;
     result.ptb_changed = ptb != other.ptb;
     result.hmp_changed = hmp != other.hmp;

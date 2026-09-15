@@ -460,6 +460,10 @@ void testSkyConfigDiff()
             "sky config source and AI-8 defaults");
     VaporView::SkyConfig b = a;
     require(!a.diff(b).epsilon_changed, "unchanged epsilon");
+    b.epsilon.packet_rates[0x40] = 200;
+    const VaporView::SkyConfigDiff packetRateDiff = a.diff(b);
+    require(!packetRateDiff.epsilon_changed && packetRateDiff.epsilon_packet_rates_changed,
+            "EPSILON packet-rate change is independent from serial endpoint change");
     b.epsilon.baud_rate = 115200;
     const VaporView::SkyConfigDiff diff = a.diff(b);
     require(diff.epsilon_changed, "epsilon changed");
@@ -476,12 +480,18 @@ void testSkyConfigDiff()
             "sky config diff detects source, AI-8, and EPSILON RTCM changes");
 
     const QJsonObject json = b.toJson();
-    require(!json.value(QStringLiteral("epsilon")).toObject().contains(QStringLiteral("frequency_hz")),
-            "sky config no longer serializes a single EPSILON frequency");
+    const QJsonObject epsilonJson = json.value(QStringLiteral("epsilon")).toObject();
+    require(!epsilonJson.contains(QStringLiteral("frequency_hz")) &&
+                epsilonJson.value(QStringLiteral("packet_rates")).isArray() &&
+                epsilonJson.value(QStringLiteral("packet_rates")).toArray().size() ==
+                    static_cast<int>(a.epsilon.packet_rates.size()),
+            "sky config serializes the EPSILON packet-rate profile");
     VaporView::SkyConfig parsed;
     QString error;
     require(VaporView::SkyConfig::fromJson(json, parsed, &error), "sky config parse");
     require(parsed.epsilon.baud_rate == 115200, "sky config baud");
+    require(parsed.epsilon.packet_rates == b.epsilon.packet_rates,
+            "sky config EPSILON packet-rate profile round-trip");
     require(parsed.ptb.source == QStringLiteral("bmp390") &&
                 parsed.hmp.source == QStringLiteral("sht45") &&
                 parsed.ai8_temperature_controller.enabled &&
@@ -503,6 +513,7 @@ void testSkyConfigDiff()
     legacy.remove(QStringLiteral("ai8_temperature_controller"));
     QJsonObject legacyEpsilon = legacy.value(QStringLiteral("epsilon")).toObject();
     legacyEpsilon.remove(QStringLiteral("rtcm"));
+    legacyEpsilon.remove(QStringLiteral("packet_rates"));
     legacyEpsilon.insert(QStringLiteral("frequency_hz"), 100.0);
     legacy.insert(QStringLiteral("epsilon"), legacyEpsilon);
     legacy.remove(QStringLiteral("epsilon_rtcm"));
@@ -513,6 +524,7 @@ void testSkyConfigDiff()
                 !parsed.ai8_temperature_controller.enabled &&
                 !parsed.epsilon_rtcm.enabled &&
                 parsed.epsilon_rtcm.device_port_index == 2 &&
+                parsed.epsilon.packet_rates == VaporView::defaultSkyEpsilonPacketRates() &&
                 !parsed.toJson().value(QStringLiteral("epsilon")).toObject().contains(QStringLiteral("frequency_hz")),
             "sky config legacy source, AI-8, EPSILON frequency, and EPSILON RTCM defaults");
 }

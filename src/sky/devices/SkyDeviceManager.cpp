@@ -587,6 +587,7 @@ void SkyDeviceManager::setSimulateData(bool simulate)
 void SkyDeviceManager::loadConfig(const SkyConfig& config)
 {
     config_ = config;
+    simulated_epsilon_packet_rates_ = config_.epsilon.packet_rates;
     restartRtcmWriter();
 }
 
@@ -620,6 +621,10 @@ bool SkyDeviceManager::connectDevice(SkyDeviceId id, CommandErrorCode *errorCode
             return true;
         }
         setState(id, DeviceState::Connected);
+        if (id == SkyDeviceId::Epsilon)
+        {
+            simulated_epsilon_packet_rates_ = config_.epsilon.packet_rates;
+        }
         if (errorCode) *errorCode = CommandErrorCode::Ok;
         return true;
     }
@@ -827,6 +832,58 @@ ApplyConfigResult SkyDeviceManager::applyConfig(const SkyConfig& newConfig)
         restartRtcmWriter();
     }
 
+    bool epsilonPacketRatesApplied = false;
+    bool epsilonPacketRatesPending = false;
+    QString epsilonPacketRatesError;
+    if (diff.epsilon_packet_rates_changed)
+    {
+        bool packetRatesSupported = true;
+        for (const auto& entry : config_.epsilon.packet_rates)
+        {
+            if (!supportedRemoteEpsilonPacketRate(entry.first, entry.second))
+            {
+                packetRatesSupported = false;
+                break;
+            }
+        }
+        if (!packetRatesSupported)
+        {
+            epsilonPacketRatesError = QStringLiteral("EPSILON packet id or rate is unsupported.");
+            result.success = false;
+            result.error_code = CommandErrorCode::ConfigInvalid;
+        }
+        else if (!config_.epsilon.enabled || epsilon_status_.state != DeviceState::Connected)
+        {
+            epsilonPacketRatesPending = true;
+        }
+        else
+        {
+            EpsilonPacketRatesOperation operation;
+            operation.packet_rates = config_.epsilon.packet_rates;
+            int maxPacketRateHz = 0;
+            for (const auto& entry : operation.packet_rates)
+            {
+                maxPacketRateHz = std::max(maxPacketRateHz, entry.second);
+            }
+            const int callbackRateHz = maxPacketRateHz > 0
+                ? maxPacketRateHz
+                : static_cast<int>(kDefaultEpsilonCallbackRateHz);
+            operation.output_rate_hz = callbackRateHz;
+            operation.callback_rate_hz = callbackRateHz;
+            CommandErrorCode packetRateError = CommandErrorCode::Ok;
+            epsilonPacketRatesApplied = configureEpsilonPacketRates(
+                operation, &packetRateError, &epsilonPacketRatesError, false);
+            if (!epsilonPacketRatesApplied)
+            {
+                result.success = false;
+                if (result.error_code == CommandErrorCode::Ok)
+                {
+                    result.error_code = packetRateError;
+                }
+            }
+        }
+    }
+
     QJsonObject devices;
     devices["epsilon"] = resultItem(diff.epsilon_changed, epsilonReconfigured, epsilon_status_);
     devices["ptb"] = resultItem(diff.ptb_changed, ptbReconfigured, ptb_status_);
@@ -847,12 +904,22 @@ ApplyConfigResult SkyDeviceManager::applyConfig(const SkyConfig& newConfig)
     epsilonRtcm["forward_port"] = config_.epsilon_rtcm.forward_port;
     epsilonRtcm["baud"] = config_.epsilon_rtcm.baud_rate;
 
+    QJsonObject epsilonPacketRates;
+    epsilonPacketRates["changed"] = diff.epsilon_packet_rates_changed;
+    epsilonPacketRates["applied"] = epsilonPacketRatesApplied;
+    epsilonPacketRates["pending"] = epsilonPacketRatesPending;
+    if (!epsilonPacketRatesError.isEmpty())
+    {
+        epsilonPacketRates["error"] = epsilonPacketRatesError;
+    }
+
     result.json["success"] = result.success;
     result.json["error_code"] = static_cast<int>(result.error_code);
     result.json["error"] = commandErrorCodeText(result.error_code);
     result.json["devices"] = devices;
     result.json["telemetry"] = telemetry;
     result.json["epsilon_rtcm"] = epsilonRtcm;
+    result.json["epsilon_packet_rates"] = epsilonPacketRates;
     return result;
 }
 
@@ -964,7 +1031,8 @@ void SkyDeviceManager::completeEpsilonOperation(const DeviceOperationRequest& re
 bool SkyDeviceManager::configureEpsilonPacketRates(
     const EpsilonPacketRatesOperation& operation,
     CommandErrorCode *errorCode,
-    QString *errorMessage)
+    QString *errorMessage,
+    bool forceApply)
 {
     if (operation.output_rate_hz <= 0 || operation.output_rate_hz > 1000 ||
         operation.callback_rate_hz <= 0 || operation.callback_rate_hz > 1000 ||
@@ -1002,7 +1070,7 @@ bool SkyDeviceManager::configureEpsilonPacketRates(
         if (errorMessage) *errorMessage = QStringLiteral("EPSILON collector is not running.");
         return false;
     }
-    const bool ok = epsilon_->setOutputPacketRates(operation.packet_rates, true);
+    const bool ok = epsilon_->setOutputPacketRates(operation.packet_rates, forceApply);
     if (ok)
     {
         epsilon_->setSampleRate(operation.callback_rate_hz);
@@ -2554,6 +2622,32 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
     }
 
     setState(id, DeviceState::Connected);
+    if (id == SkyDeviceId::Epsilon && !config_.epsilon.packet_rates.empty())
+    {
+        EpsilonPacketRatesOperation operation;
+        operation.packet_rates = config_.epsilon.packet_rates;
+        int maxPacketRateHz = 0;
+        for (const auto& entry : operation.packet_rates)
+        {
+            maxPacketRateHz = std::max(maxPacketRateHz, entry.second);
+        }
+        const int callbackRateHz = maxPacketRateHz > 0
+            ? maxPacketRateHz
+            : static_cast<int>(kDefaultEpsilonCallbackRateHz);
+        operation.output_rate_hz = callbackRateHz;
+        operation.callback_rate_hz = callbackRateHz;
+        CommandErrorCode packetRateError = CommandErrorCode::Ok;
+        QString packetRateErrorMessage;
+        if (!configureEpsilonPacketRates(operation,
+                                         &packetRateError,
+                                         &packetRateErrorMessage,
+                                         false))
+        {
+            disconnectDeviceInternal(id, nullptr, false);
+            if (errorCode) *errorCode = packetRateError;
+            return false;
+        }
+    }
     if (errorCode) *errorCode = CommandErrorCode::Ok;
     return true;
 }

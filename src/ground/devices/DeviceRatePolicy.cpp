@@ -1,4 +1,5 @@
 #include "ground/devices/DeviceRatePolicy.h"
+#include "SkyConfig.h"
 
 #include <QSettings>
 #include <QStringList>
@@ -81,19 +82,7 @@ int nearestSupportedEpsilonPacketRate(const EpsilonPacketConfigOption& option, i
 
 std::map<uint8_t, int> defaultEpsilonPacketRates()
 {
-    return {
-        {0x40, 250},
-        {0x41, 50},
-        {0x42, 100},
-        {0x50, 100},
-        {0x53, 100},
-        {0x59, 10},
-        {0x5A, 1},
-        {0x5C, 10},
-        {0x5D, 10},
-        {0x63, 50},
-        {0x64, 50},
-    };
+    return VaporView::defaultSkyEpsilonPacketRates();
 }
 
 bool epsilonPacketRatesMatchDefault(const std::map<uint8_t, int>& packetRates)

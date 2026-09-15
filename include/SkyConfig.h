@@ -4,10 +4,30 @@
 #include <QJsonObject>
 #include <QString>
 
+#include <cstdint>
+#include <map>
+
 namespace VaporView
 {
 
 constexpr double kDefaultEpsilonCallbackRateHz = 250.0;
+
+inline std::map<uint8_t, int> defaultSkyEpsilonPacketRates()
+{
+    return {
+        {0x40, 250},
+        {0x41, 50},
+        {0x42, 100},
+        {0x50, 100},
+        {0x53, 100},
+        {0x59, 10},
+        {0x5A, 1},
+        {0x5C, 10},
+        {0x5D, 10},
+        {0x63, 50},
+        {0x64, 50},
+    };
+}
 
 struct SerialDeviceConfig
 {
@@ -26,6 +46,7 @@ struct EpsilonSerialConfig
     bool enabled = true;
     QString port;
     int baud_rate = 921600;
+    std::map<uint8_t, int> packet_rates = defaultSkyEpsilonPacketRates();
 
     bool operator==(const EpsilonSerialConfig& other) const;
     bool operator!=(const EpsilonSerialConfig& other) const;
@@ -82,6 +103,7 @@ struct TelemetryRateConfig
 struct SkyConfigDiff
 {
     bool epsilon_changed = false;
+    bool epsilon_packet_rates_changed = false;
     bool epsilon_rtcm_changed = false;
     bool ptb_changed = false;
     bool hmp_changed = false;

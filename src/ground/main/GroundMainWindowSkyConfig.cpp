@@ -442,6 +442,7 @@ void MainWindow::setRemoteSkyConfigUi(const VaporView::SkyConfig& config)
               config.epsilon.port,
               config.epsilon.baud_rate,
               0.0);
+    setDeviceConfigEpsilonPacketRates(config.epsilon.packet_rates);
     setSerial(state_->device_config_.ptb_enabled_check,
               state_->device_config_.ptb_port_combo,
               state_->device_config_.ptb_baud_combo,
@@ -615,6 +616,7 @@ VaporView::SkyConfig MainWindow::remoteSkyConfigFromDeviceConfigUi(QString *erro
         }
         config.epsilon.baud_rate = *baudRate;
     }
+    config.epsilon.packet_rates = deviceConfigEpsilonPacketRates();
     if (!readSerial(QStringLiteral("PTB"),
                     state_->device_config_.ptb_enabled_check,
                     state_->device_config_.ptb_port_combo,
@@ -1177,17 +1179,28 @@ void MainWindow::handleRemoteSkyConfigReceived(const QJsonObject& object, bool b
         updateRemoteSkyConfigControlsState();
         return;
     }
+    const QJsonObject epsilonObject = object.value(QStringLiteral("epsilon")).toObject();
+    const bool packetRatesProvided = epsilonObject.contains(QStringLiteral("packet_rates"));
+    const bool migratedLegacyPacketRates = !packetRatesProvided;
+    if (migratedLegacyPacketRates)
+    {
+        config.epsilon.packet_rates = legacyRemoteEpsilonPacketRates();
+    }
     state_->remote_sky_config_ = config;
     state_->remote_sky_baseline_config_ = config;
     state_->remote_sky_config_loaded_ = true;
     state_->remote_sky_config_loaded_generation_ = bypassGenerationGuard || isUiTestMode()
         ? 0
         : state_->remote_sky_config_read_generation_;
-    state_->remote_sky_config_dirty_ = false;
+    state_->remote_sky_config_dirty_ = migratedLegacyPacketRates;
     setRemoteSkyConfigUi(config);
-    setRemoteSkyConfigStatus(state_->is_english_
-        ? QStringLiteral("Remote Sky config read from sky.")
-        : QStringLiteral("已读取天空端配置。"));
+    setRemoteSkyConfigStatus(migratedLegacyPacketRates
+        ? (state_->is_english_
+            ? QStringLiteral("Remote Sky config read; legacy EPSILON packet profile is ready to migrate.")
+            : QStringLiteral("已读取天空端配置；旧版 EPSILON 包频率已准备迁移。"))
+        : (state_->is_english_
+            ? QStringLiteral("Remote Sky config read from sky.")
+            : QStringLiteral("已读取天空端配置。")));
     updateRemoteSkyConfigControlsState();
     if (state_->remote_serial_detection_pending_)
     {

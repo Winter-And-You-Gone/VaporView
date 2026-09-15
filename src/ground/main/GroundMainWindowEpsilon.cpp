@@ -792,14 +792,15 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
         return;
     }
 
+    const bool remoteTarget = isRemoteSkyMode();
     QSettings settings = VaporView::applicationConfigSettings();
     settings.beginGroup(QStringLiteral("MainWindow"));
-    if (isRemoteSkyMode())
-    {
-        settings.beginGroup(QStringLiteral("RemoteEpsilonPacketProfile"));
-    }
     const std::map<uint8_t, int> defaultRates = defaultEpsilonPacketRates();
-    const std::map<uint8_t, int> initialRates = loadCustomEpsilonPacketRates(settings);
+    const std::map<uint8_t, int> initialRates = remoteTarget
+        ? (state_->remote_sky_config_loaded_
+            ? state_->remote_sky_config_.epsilon.packet_rates
+            : legacyRemoteEpsilonPacketRates())
+        : loadCustomEpsilonPacketRates(settings);
 
     QDialog dialog(this);
     dialog.setObjectName(QStringLiteral("epsilonPacketRatesDialog"));
@@ -816,7 +817,6 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
     auto *layout = new QVBoxLayout(&dialog);
     layout->setSpacing(10);
 
-    const bool remoteTarget = isRemoteSkyMode();
     auto *hintLabel = new QLabel(
         state_->is_english_
             ? (remoteTarget
@@ -961,6 +961,12 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
     {
         return;
     }
+    if (remoteTarget)
+    {
+        setDeviceConfigEpsilonPacketRates(savedPacketRates);
+        saveDeviceConfigEpsilonPacketRates(true);
+        return;
+    }
     for (const auto& entry : savedPacketRates)
     {
         VaporView::setPersistentSetting(settings, epsilonPacketRateSettingsKey(entry.first), entry.second);
@@ -1023,7 +1029,11 @@ void MainWindow::onReconfigureEpsilonClicked()
 
         QSettings settings = VaporView::applicationConfigSettings();
         settings.beginGroup(QStringLiteral("MainWindow"));
-        const std::map<uint8_t, int> packetRates = effectiveEpsilonPacketRates(settings);
+        const std::map<uint8_t, int> packetRates = isRemoteSkyMode()
+            ? (state_->remote_sky_config_loaded_
+                ? state_->remote_sky_config_.epsilon.packet_rates
+                : legacyRemoteEpsilonPacketRates())
+            : effectiveEpsilonPacketRates(settings);
         const int outputRateHz = std::clamp(state_->epsilon_sample_rate_, 20, 200);
         const int callbackRateHz = epsilonPacketCallbackRate(packetRates, outputRateHz);
         const QString packetRateSummary = epsilonPacketRatesSummary(packetRates);
@@ -1241,11 +1251,9 @@ void MainWindow::onReconfigureEpsilonClicked()
     if (isRemoteSkyMode())
     {
         const int epsilonRate = std::clamp(state_->epsilon_sample_rate_, 20, 200);
-        QSettings settings = VaporView::applicationConfigSettings();
-        settings.beginGroup(QStringLiteral("MainWindow"));
-        settings.beginGroup(QStringLiteral("RemoteEpsilonPacketProfile"));
-        const std::map<uint8_t, int> desiredPacketRates =
-            effectiveEpsilonPacketRates(settings);
+        const std::map<uint8_t, int> desiredPacketRates = state_->remote_sky_config_loaded_
+            ? state_->remote_sky_config_.epsilon.packet_rates
+            : legacyRemoteEpsilonPacketRates();
         const QString epsilonBaudText = QString::number(
             state_->remote_sky_config_.epsilon.baud_rate > 0
                 ? state_->remote_sky_config_.epsilon.baud_rate
