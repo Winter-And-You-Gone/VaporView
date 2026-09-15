@@ -5,7 +5,6 @@
 #include <QApplication>
 #include <QFont>
 #include <QLabel>
-#include <QPainter>
 #include <QResizeEvent>
 #include <QScrollBar>
 #include <QSyntaxHighlighter>
@@ -273,24 +272,6 @@ void JsonConfigEditor::changeEvent(QEvent *event)
         }
         update();
     }
-}
-
-void JsonConfigEditor::paintEvent(QPaintEvent *event)
-{
-    QPlainTextEdit::paintEvent(event);
-    if (!validation_known_)
-    {
-        return;
-    }
-    QPainter painter(this);
-    painter.setRenderHint(QPainter::Antialiasing);
-    painter.setPen(QPen(VaporView::appThemeColor(
-                            validation_valid_ ? VaporView::AppThemeColor::Success
-                                               : VaporView::AppThemeColor::Danger,
-                            VaporView::isDarkThemePalette(palette())),
-                        1.0));
-    painter.setBrush(Qt::NoBrush);
-    painter.drawRoundedRect(rect().adjusted(0, 0, -1, -1), 6, 6);
 }
 
 void JsonConfigEditor::resizeEvent(QResizeEvent *event)

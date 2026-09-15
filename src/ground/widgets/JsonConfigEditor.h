@@ -3,7 +3,6 @@
 #include <QPlainTextEdit>
 
 class QEvent;
-class QPaintEvent;
 class QResizeEvent;
 class QSyntaxHighlighter;
 class QLabel;
@@ -25,7 +24,6 @@ public:
 
 protected:
     void changeEvent(QEvent *event) override;
-    void paintEvent(QPaintEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
 
 private:
