@@ -3,6 +3,7 @@
 #include <QPlainTextEdit>
 
 class QEvent;
+class QPaintEvent;
 class QResizeEvent;
 class QSyntaxHighlighter;
 class QLabel;
@@ -27,9 +28,16 @@ protected:
     void resizeEvent(QResizeEvent *event) override;
 
 private:
+    class LineNumberArea;
+
+    int lineNumberAreaWidth() const;
+    void updateLineNumberAreaWidth(int blockCount);
+    void updateLineNumberArea(const QRect& rect, int dy);
+    void paintLineNumberArea(QPaintEvent *event);
     void updateValidationBadgeGeometry();
     void updateValidationBadgeStyle();
 
+    LineNumberArea *line_number_area_ = nullptr;
     QSyntaxHighlighter *syntax_highlighter_ = nullptr;
     QLabel *validation_badge_ = nullptr;
     bool validation_known_ = false;

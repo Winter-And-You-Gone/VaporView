@@ -4,10 +4,14 @@
 
 #include <QApplication>
 #include <QFont>
+#include <QFontMetrics>
 #include <QLabel>
+#include <QPaintEvent>
+#include <QPainter>
 #include <QResizeEvent>
 #include <QScrollBar>
 #include <QSyntaxHighlighter>
+#include <QTextBlock>
 #include <QTextCharFormat>
 #include <QTextDocument>
 
@@ -227,10 +231,53 @@ protected:
 
 } // namespace
 
+class JsonConfigEditor::LineNumberArea final : public QWidget
+{
+public:
+    explicit LineNumberArea(JsonConfigEditor *editor)
+        : QWidget(editor)
+        , editor_(editor)
+    {
+        setObjectName(QStringLiteral("deviceRemoteSkyJsonLineNumberArea"));
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+    }
+
+    QSize sizeHint() const override
+    {
+        return QSize(editor_ ? editor_->lineNumberAreaWidth() : 0, 0);
+    }
+
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        if (editor_)
+        {
+            editor_->paintLineNumberArea(event);
+        }
+    }
+
+private:
+    JsonConfigEditor *editor_ = nullptr;
+};
+
 JsonConfigEditor::JsonConfigEditor(QWidget *parent)
     : QPlainTextEdit(parent)
 {
+    line_number_area_ = new LineNumberArea(this);
     syntax_highlighter_ = new JsonSyntaxHighlighter(document());
+
+    connect(document(), &QTextDocument::blockCountChanged,
+            this,
+            &JsonConfigEditor::updateLineNumberAreaWidth);
+    connect(this,
+            &QPlainTextEdit::updateRequest,
+            this,
+            &JsonConfigEditor::updateLineNumberArea);
+    connect(verticalScrollBar(), &QScrollBar::rangeChanged, this, [this](int, int) {
+        updateValidationBadgeGeometry();
+    });
+
+    updateLineNumberAreaWidth(0);
 
     validation_badge_ = new QLabel(this);
     validation_badge_->setObjectName(QStringLiteral("deviceRemoteSkyJsonFormatBadge"));
@@ -270,14 +317,125 @@ void JsonConfigEditor::changeEvent(QEvent *event)
         {
             syntax_highlighter_->rehighlight();
         }
+        if (line_number_area_)
+        {
+            line_number_area_->update();
+        }
         update();
+    }
+    else if (event->type() == QEvent::FontChange)
+    {
+        updateValidationBadgeStyle();
+        updateValidationBadgeGeometry();
+        updateLineNumberAreaWidth(0);
+        if (syntax_highlighter_)
+        {
+            syntax_highlighter_->rehighlight();
+        }
     }
 }
 
 void JsonConfigEditor::resizeEvent(QResizeEvent *event)
 {
     QPlainTextEdit::resizeEvent(event);
+    if (line_number_area_)
+    {
+        const QRect viewRect = viewport()->geometry();
+        const int areaWidth = lineNumberAreaWidth();
+        line_number_area_->setGeometry(viewRect.left() - areaWidth,
+                                       viewRect.top(),
+                                       areaWidth,
+                                       viewRect.height());
+    }
     updateValidationBadgeGeometry();
+}
+
+int JsonConfigEditor::lineNumberAreaWidth() const
+{
+    int digits = 1;
+    int blockCount = std::max(1, document()->blockCount());
+    while (blockCount >= 10)
+    {
+        blockCount /= 10;
+        ++digits;
+    }
+    return 8 + fontMetrics().horizontalAdvance(QLatin1Char('9')) * digits;
+}
+
+void JsonConfigEditor::updateLineNumberAreaWidth(int blockCount)
+{
+    Q_UNUSED(blockCount);
+    setViewportMargins(lineNumberAreaWidth(), 0, 0, 0);
+    if (line_number_area_)
+    {
+        const QRect viewRect = viewport()->geometry();
+        const int areaWidth = lineNumberAreaWidth();
+        line_number_area_->setGeometry(viewRect.left() - areaWidth,
+                                       viewRect.top(),
+                                       areaWidth,
+                                       viewRect.height());
+        line_number_area_->update();
+    }
+}
+
+void JsonConfigEditor::updateLineNumberArea(const QRect& rect, int dy)
+{
+    if (!line_number_area_)
+    {
+        return;
+    }
+    if (dy)
+    {
+        line_number_area_->scroll(0, dy);
+    }
+    else
+    {
+        line_number_area_->update(0, rect.y(), line_number_area_->width(), rect.height());
+    }
+    if (rect.contains(viewport()->rect()))
+    {
+        updateLineNumberAreaWidth(0);
+    }
+}
+
+void JsonConfigEditor::paintLineNumberArea(QPaintEvent *event)
+{
+    if (!line_number_area_ || !event)
+    {
+        return;
+    }
+    QPainter painter(line_number_area_);
+    const bool dark = VaporView::isDarkThemePalette(palette());
+    painter.fillRect(event->rect(),
+                     VaporView::appThemeColor(VaporView::AppThemeColor::SurfaceAlt, dark));
+    painter.setPen(VaporView::appThemeColor(VaporView::AppThemeColor::Border, dark));
+    painter.drawLine(line_number_area_->width() - 1,
+                     event->rect().top(),
+                     line_number_area_->width() - 1,
+                     event->rect().bottom());
+    painter.setPen(VaporView::appThemeColor(VaporView::AppThemeColor::TextMuted, dark));
+
+    QTextBlock block = firstVisibleBlock();
+    int blockNumber = block.blockNumber();
+    int top = qRound(blockBoundingGeometry(block).translated(contentOffset()).top());
+    int bottom = top + qRound(blockBoundingRect(block).height());
+    const QFontMetrics metrics(font());
+    while (block.isValid() && top <= event->rect().bottom())
+    {
+        if (block.isVisible() && bottom >= event->rect().top())
+        {
+            painter.drawText(0,
+                             top,
+                             line_number_area_->width() - 6,
+                             metrics.height(),
+                             Qt::AlignRight,
+                             QString::number(blockNumber + 1));
+        }
+        block = block.next();
+        top = bottom;
+        bottom = top + qRound(blockBoundingRect(block).height());
+        ++blockNumber;
+    }
 }
 
 void JsonConfigEditor::updateValidationBadgeGeometry()
@@ -287,11 +445,15 @@ void JsonConfigEditor::updateValidationBadgeGeometry()
         return;
     }
     const QSize hint = validation_badge_->sizeHint();
-    const int rightInset = verticalScrollBar() && verticalScrollBar()->isVisible()
-        ? verticalScrollBar()->width() + 8
-        : 10;
-    validation_badge_->setGeometry(std::max(0, width() - rightInset - hint.width()),
-                                   8,
+    const QRect viewRect = viewport()->geometry();
+    int right = viewRect.right();
+    if (QScrollBar *scrollBar = verticalScrollBar(); scrollBar && scrollBar->isVisible())
+    {
+        right = std::min(right, scrollBar->mapTo(this, QPoint(0, 0)).x() - 1);
+    }
+    const int left = std::max(viewRect.left() + 4, right - 8 - hint.width() + 1);
+    validation_badge_->setGeometry(left,
+                                   viewRect.top() + 8,
                                    hint.width(),
                                    hint.height());
 }

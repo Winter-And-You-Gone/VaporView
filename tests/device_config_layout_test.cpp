@@ -1690,6 +1690,18 @@ int main(int argc, char **argv)
                 rawJsonEdit->property("jsonFormatState").toString() == QStringLiteral("valid") &&
                 jsonFormatBadge->property("jsonFormatState").toString() == QStringLiteral("valid"),
             "SkyConfig JSON shows an automatic valid-format status");
+    auto *jsonLineNumberArea = rawJsonEdit->findChild<QWidget *>(
+        QStringLiteral("deviceRemoteSkyJsonLineNumberArea"));
+    require(jsonLineNumberArea && jsonLineNumberArea->isVisible() &&
+                jsonLineNumberArea->width() >= rawJsonEdit->fontMetrics().horizontalAdvance(QLatin1Char('9')) + 8,
+            "SkyConfig JSON displays a dedicated line-number gutter");
+    const QRect jsonBadgeRect = jsonFormatBadge->geometry();
+    const QScrollBar *jsonScrollBar = rawJsonEdit->verticalScrollBar();
+    const QRect jsonScrollRect(jsonScrollBar->mapTo(rawJsonEdit, QPoint(0, 0)),
+                               jsonScrollBar->size());
+    require(!rawJsonEdit->verticalScrollBar()->isVisible() ||
+                jsonBadgeRect.right() < jsonScrollRect.left() - 1,
+            "SkyConfig JSON format badge stays clear of the vertical scroll rail");
     const QString renderedRemoteJson = rawJsonEdit->toPlainText();
     const auto formatAtJsonPosition = [rawJsonEdit](int position) {
         if (position < 0)
