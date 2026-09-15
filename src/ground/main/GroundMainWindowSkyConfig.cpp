@@ -758,7 +758,7 @@ void MainWindow::onRemoteSkyConfigRawModeToggled(bool checked)
         }
         setRemoteSkyConfigStatus(state_->is_english_
             ? QStringLiteral("Editing the same JSON used by SkyConfig.")
-            : QStringLiteral("可直接编辑天空端 SkyConfig JSON。"));
+            : QStringLiteral("可直接编辑 JSON配置文件。"));
     }
     else
     {

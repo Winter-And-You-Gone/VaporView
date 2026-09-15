@@ -3417,6 +3417,9 @@ void MainWindow::setupDeviceConfigPage()
     state_->device_config_.remote_sky_raw_json_edit->setVisible(state_->remote_sky_config_raw_mode_);
     advancedGrid->addWidget(state_->device_config_.remote_sky_raw_json_edit, 1, 0);
     advancedGrid->setRowStretch(1, 1);
+    advancedGrid->activate();
+    // Keep the stylesheet's 1px top and bottom borders in the reserved height.
+    advancedPanel->setMinimumHeight(advancedPanel->layout()->sizeHint().height() + 2);
     refreshRemoteSkyConfigRawFromVisual();
     remoteConfigLayout->addWidget(remoteBody);
 
@@ -3953,7 +3956,7 @@ void MainWindow::updateDeviceConfigTexts()
     if (state_->device_config_.remote_sky_save_btn) state_->device_config_.remote_sky_save_btn->setText(state_->is_english_ ? "Save to Sky" : "保存到天空端");
     if (state_->device_config_.remote_sky_raw_mode_btn) state_->device_config_.remote_sky_raw_mode_btn->setText(state_->remote_sky_config_raw_mode_
         ? (state_->is_english_ ? "Back to Form" : "返回表单")
-        : (state_->is_english_ ? "SkyConfig JSON" : "SkyConfig JSON"));
+        : (state_->is_english_ ? "JSON config file" : "JSON配置文件"));
     for (VaporView::SkyDeviceId device : {VaporView::SkyDeviceId::Epsilon,
                                           VaporView::SkyDeviceId::Ptb,
                                           VaporView::SkyDeviceId::Hmp,

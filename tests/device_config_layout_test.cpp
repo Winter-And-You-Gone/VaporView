@@ -1679,6 +1679,21 @@ int main(int argc, char **argv)
             "remote TFA1500-L config read rejects 9600 without accepting it into the UI");
     window.testInjectRemoteSkyConfig(remoteConfig.toJson());
     VaporViewTest::processEventsFor(80);
+    activateLayouts(&window);
+    const QRect remoteCardRawModeRect = rectInPage(remoteCard, deviceConfigPage);
+    rawModeButton->click();
+    VaporViewTest::processEventsFor(80);
+    activateLayouts(&window);
+    const QRect remoteCardFormModeRect = rectInPage(remoteCard, deviceConfigPage);
+    require(!rawModeButton->isChecked() && !rawJsonEdit->isVisible() &&
+                remoteCardFormModeRect == remoteCardRawModeRect,
+            "switching to the form keeps the remote Sky card geometry stable");
+    rawModeButton->click();
+    VaporViewTest::processEventsFor(80);
+    activateLayouts(&window);
+    require(rawModeButton->isChecked() && rawJsonEdit->isVisible() &&
+                rectInPage(remoteCard, deviceConfigPage) == remoteCardRawModeRect,
+            "switching back to JSON keeps the remote Sky card geometry stable");
     rawModeButton->click();
     VaporViewTest::processEventsFor(80);
     require(!rawModeButton->isChecked() && !rawJsonEdit->isVisible(),
