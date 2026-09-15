@@ -1834,14 +1834,13 @@ int main(int argc, char **argv)
             "UI-test Remote Sky read loads a fixed config into the shared device rows");
     require(deviceRemoteStatus->property("status").toString() == QStringLiteral("success"),
             "UI-test Remote Sky read uses the synced/success status vocabulary");
-    deviceRemoteRaw->click();
     require(VaporViewTest::processEventsUntil(800, [deviceRemoteRawJson]() {
                 return deviceRemoteRawJson->isVisible() &&
                     deviceRemoteRawJson->toPlainText().contains(QStringLiteral("\"wave_tcp\"")) &&
                     deviceRemoteRawJson->toPlainText().contains(QStringLiteral("\"packet_rates\"")) &&
                     deviceRemoteRawJson->toPlainText().contains(QStringLiteral("\"slave_address\": 1"));
             }),
-            "unified device configuration exposes Remote Sky Raw JSON round-trip without a duplicate RD105 address editor");
+            "unified device configuration shows Remote Sky Raw JSON directly without a duplicate RD105 address editor");
     deviceRemoteRaw->click();
     require(VaporViewTest::processEventsUntil(800, [deviceRemoteRawJson]() {
                 return !deviceRemoteRawJson->isVisible();

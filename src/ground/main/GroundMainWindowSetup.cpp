@@ -3214,6 +3214,8 @@ void MainWindow::setupDeviceConfigPage()
     remoteGrid->setVerticalSpacing(8);
     remoteGrid->setColumnStretch(0, 1);
     remoteGrid->setColumnStretch(1, 1);
+    remoteGrid->setRowStretch(0, 1);
+    remoteGrid->setRowStretch(1, 1);
 
     auto createSubcard = [remoteBody](QLabel *&titleLabel,
                                       const QString& objectName,
@@ -3223,7 +3225,7 @@ void MainWindow::setupDeviceConfigPage()
         auto *panel = new QFrame(remoteBody);
         panel->setObjectName(objectName);
         panel->setProperty("epsilonSubcard", true);
-        panel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        panel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
         auto *panelLayout = new QHBoxLayout(panel);
         panelLayout->setContentsMargins(2, 2, 2, 2);
@@ -3255,7 +3257,7 @@ void MainWindow::setupDeviceConfigPage()
                                         QStringLiteral("services"),
                                         QStringLiteral("天空端服务"),
                                         servicesGrid);
-    remoteGrid->addWidget(servicesPanel, 0, 0, Qt::AlignTop);
+    remoteGrid->addWidget(servicesPanel, 0, 0);
     servicesGrid->setColumnMinimumWidth(0, 62);
     servicesGrid->setColumnMinimumWidth(1, 92);
     servicesGrid->setColumnMinimumWidth(2, 62);
@@ -3267,7 +3269,7 @@ void MainWindow::setupDeviceConfigPage()
                                     QStringLiteral("sync"),
                                     QStringLiteral("配置同步"),
                                     syncGrid);
-    remoteGrid->addWidget(syncPanel, 1, 0, Qt::AlignTop);
+    remoteGrid->addWidget(syncPanel, 1, 0);
 
     QGridLayout *advancedGrid = nullptr;
     auto *advancedPanel = createSubcard(state_->device_config_.remote_sky_advanced_title_lbl,
@@ -3397,6 +3399,7 @@ void MainWindow::setupDeviceConfigPage()
     state_->device_config_.remote_sky_raw_mode_btn = new QPushButton(remoteBody);
     state_->device_config_.remote_sky_raw_mode_btn->setObjectName(QStringLiteral("deviceRemoteSkyRawModeButton"));
     state_->device_config_.remote_sky_raw_mode_btn->setCheckable(true);
+    state_->device_config_.remote_sky_raw_mode_btn->setChecked(state_->remote_sky_config_raw_mode_);
     state_->device_config_.remote_sky_raw_mode_btn->setFixedHeight(kMainPageButtonHeight);
     state_->device_config_.remote_sky_raw_mode_btn->setFocusPolicy(Qt::TabFocus);
     connect(state_->device_config_.remote_sky_raw_mode_btn,
@@ -3405,14 +3408,16 @@ void MainWindow::setupDeviceConfigPage()
             &MainWindow::onRemoteSkyConfigRawModeToggled);
     advancedGrid->setColumnStretch(0, 1);
     advancedGrid->addWidget(state_->device_config_.remote_sky_raw_mode_btn, 0, 0,
-                            Qt::AlignVCenter | Qt::AlignRight);
+                            Qt::AlignTop | Qt::AlignRight);
 
     state_->device_config_.remote_sky_raw_json_edit = new QPlainTextEdit(remoteBody);
     state_->device_config_.remote_sky_raw_json_edit->setObjectName(QStringLiteral("deviceRemoteSkyRawJsonEdit"));
     state_->device_config_.remote_sky_raw_json_edit->setLineWrapMode(QPlainTextEdit::NoWrap);
     state_->device_config_.remote_sky_raw_json_edit->setMinimumHeight(220);
-    state_->device_config_.remote_sky_raw_json_edit->setVisible(false);
+    state_->device_config_.remote_sky_raw_json_edit->setVisible(state_->remote_sky_config_raw_mode_);
     advancedGrid->addWidget(state_->device_config_.remote_sky_raw_json_edit, 1, 0);
+    advancedGrid->setRowStretch(1, 1);
+    refreshRemoteSkyConfigRawFromVisual();
     remoteConfigLayout->addWidget(remoteBody);
 
     const auto markRemoteDirty = [this]() { markRemoteSkyConfigDirty(); };

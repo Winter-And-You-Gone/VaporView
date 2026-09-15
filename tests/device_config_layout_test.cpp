@@ -1240,7 +1240,7 @@ int main(int argc, char **argv)
     require(!remoteCard->isVisible(),
             "local mode hides the remote-only Sky services/config card");
     require(!rawJsonEdit->isVisible(),
-            "SkyConfig JSON starts hidden instead of acting as a primary configuration area");
+            "remote SkyConfig JSON stays hidden with its parent card in local mode");
     require(temperatureEnabledCheck && temperatureEnabledCheck->isVisible() &&
                 temperatureEnabledCheck->isEnabled() &&
                 temperatureEnabledCheck->isChecked(),
@@ -1427,8 +1427,11 @@ int main(int argc, char **argv)
     require(syncLabel->mapTo(syncSubcard, QPoint(0, 0)).x() + syncLabel->width() <
                 remoteStatus->mapTo(syncSubcard, QPoint(0, 0)).x(),
             "config sync subcard places its vertical title to the left of its status content");
-    require(!rawJsonEdit->isVisible(),
-            "advanced SkyConfig JSON remains collapsed until requested");
+    require(rawModeButton->isChecked() && rawJsonEdit->isVisible() &&
+                rawJsonEdit->toPlainText().contains(QStringLiteral("\"packet_rates\"")) &&
+                rawModeButton->mapTo(advancedSubcard, QPoint(0, 0)).y() <
+                    rawJsonEdit->mapTo(advancedSubcard, QPoint(0, 0)).y(),
+            "SkyConfig JSON is visible by default with its toggle at the card top");
     require(remoteStatus->property("status").toString() == QStringLiteral("disabled"),
             "disconnected remote mode explains the config state with a disabled status chip");
     require(pressureSourceCombo->isVisible() && humiditySourceCombo->isVisible(),

@@ -526,7 +526,12 @@ void MainWindow::setRemoteSkyConfigUi(const VaporView::SkyConfig& config)
     syncDeviceConfigNumericColumnFonts();
     if (state_->remote_sky_config_raw_mode_)
     {
-        refreshRemoteSkyConfigRawFromVisual();
+        if (state_->device_config_.remote_sky_raw_json_edit)
+        {
+            const QSignalBlocker blocker(state_->device_config_.remote_sky_raw_json_edit);
+            state_->device_config_.remote_sky_raw_json_edit->setPlainText(
+                QJsonDocument(config.toJson()).toJson(QJsonDocument::Indented));
+        }
     }
 }
 
