@@ -3396,27 +3396,15 @@ void MainWindow::setupDeviceConfigPage()
     connect(state_->device_config_.remote_sky_apply_btn, &QPushButton::clicked, this, &MainWindow::onRemoteSkyConfigApplyClicked);
     connect(state_->device_config_.remote_sky_save_btn, &QPushButton::clicked, this, &MainWindow::onRemoteSkyConfigSaveClicked);
 
-    state_->device_config_.remote_sky_raw_mode_btn = new QPushButton(remoteBody);
-    state_->device_config_.remote_sky_raw_mode_btn->setObjectName(QStringLiteral("deviceRemoteSkyRawModeButton"));
-    state_->device_config_.remote_sky_raw_mode_btn->setCheckable(true);
-    state_->device_config_.remote_sky_raw_mode_btn->setChecked(state_->remote_sky_config_raw_mode_);
-    state_->device_config_.remote_sky_raw_mode_btn->setFixedHeight(kMainPageButtonHeight);
-    state_->device_config_.remote_sky_raw_mode_btn->setFocusPolicy(Qt::TabFocus);
-    connect(state_->device_config_.remote_sky_raw_mode_btn,
-            &QPushButton::toggled,
-            this,
-            &MainWindow::onRemoteSkyConfigRawModeToggled);
     advancedGrid->setColumnStretch(0, 1);
-    advancedGrid->addWidget(state_->device_config_.remote_sky_raw_mode_btn, 0, 0,
-                            Qt::AlignTop | Qt::AlignRight);
 
     state_->device_config_.remote_sky_raw_json_edit = new QPlainTextEdit(remoteBody);
     state_->device_config_.remote_sky_raw_json_edit->setObjectName(QStringLiteral("deviceRemoteSkyRawJsonEdit"));
     state_->device_config_.remote_sky_raw_json_edit->setLineWrapMode(QPlainTextEdit::NoWrap);
     state_->device_config_.remote_sky_raw_json_edit->setMinimumHeight(220);
-    state_->device_config_.remote_sky_raw_json_edit->setVisible(state_->remote_sky_config_raw_mode_);
-    advancedGrid->addWidget(state_->device_config_.remote_sky_raw_json_edit, 1, 0);
-    advancedGrid->setRowStretch(1, 1);
+    state_->device_config_.remote_sky_raw_json_edit->setVisible(true);
+    advancedGrid->addWidget(state_->device_config_.remote_sky_raw_json_edit, 0, 0);
+    advancedGrid->setRowStretch(0, 1);
     advancedGrid->activate();
     // Keep the stylesheet's 1px top and bottom borders in the reserved height.
     advancedPanel->setMinimumHeight(advancedPanel->layout()->sizeHint().height() + 2);
@@ -3450,7 +3438,7 @@ void MainWindow::setupDeviceConfigPage()
     connect(state_->device_config_.remote_sky_raw_json_edit, &QPlainTextEdit::textChanged, this, [this]() {
         if (state_->remote_sky_config_raw_mode_)
         {
-            markRemoteSkyConfigDirty();
+            markRemoteSkyConfigDirty(false);
         }
     });
 
@@ -3954,9 +3942,6 @@ void MainWindow::updateDeviceConfigTexts()
     if (state_->device_config_.remote_sky_read_btn) state_->device_config_.remote_sky_read_btn->setText(state_->is_english_ ? "Refresh" : "刷新");
     if (state_->device_config_.remote_sky_apply_btn) state_->device_config_.remote_sky_apply_btn->setText(state_->is_english_ ? "Apply Changes" : "应用更改");
     if (state_->device_config_.remote_sky_save_btn) state_->device_config_.remote_sky_save_btn->setText(state_->is_english_ ? "Save to Sky" : "保存到天空端");
-    if (state_->device_config_.remote_sky_raw_mode_btn) state_->device_config_.remote_sky_raw_mode_btn->setText(state_->remote_sky_config_raw_mode_
-        ? (state_->is_english_ ? "Back to Form" : "返回表单")
-        : (state_->is_english_ ? "JSON config file" : "JSON配置文件"));
     for (VaporView::SkyDeviceId device : {VaporView::SkyDeviceId::Epsilon,
                                           VaporView::SkyDeviceId::Ptb,
                                           VaporView::SkyDeviceId::Hmp,

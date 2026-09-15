@@ -741,62 +741,23 @@ bool MainWindow::applyRemoteSkyConfigRawToVisual(QString *errorMessage)
     return true;
 }
 
-void MainWindow::onRemoteSkyConfigRawModeToggled(bool checked)
-{
-    if (checked == state_->remote_sky_config_raw_mode_)
-    {
-        updateDeviceConfigTexts();
-        return;
-    }
-    if (checked)
-    {
-        state_->remote_sky_config_raw_mode_ = true;
-        refreshRemoteSkyConfigRawFromVisual();
-        if (state_->device_config_.remote_sky_raw_json_edit)
-        {
-            state_->device_config_.remote_sky_raw_json_edit->setVisible(true);
-        }
-        setRemoteSkyConfigStatus(state_->is_english_
-            ? QStringLiteral("Editing the same JSON used by SkyConfig.")
-            : QStringLiteral("可直接编辑 JSON配置文件。"));
-    }
-    else
-    {
-        QString error;
-        if (!applyRemoteSkyConfigRawToVisual(&error))
-        {
-            setRemoteSkyConfigStatus(error, true);
-            const QSignalBlocker blocker(state_->device_config_.remote_sky_raw_mode_btn);
-            state_->device_config_.remote_sky_raw_mode_btn->setChecked(true);
-            return;
-        }
-        state_->remote_sky_config_raw_mode_ = false;
-        if (state_->device_config_.remote_sky_raw_json_edit)
-        {
-            state_->device_config_.remote_sky_raw_json_edit->setVisible(false);
-        }
-        setRemoteSkyConfigStatus(state_->is_english_
-            ? QStringLiteral("Visual form is synchronized from JSON.")
-            : QStringLiteral("可视化表单已从 JSON 同步。"));
-        markRemoteSkyConfigDirty();
-    }
-    updateDeviceConfigTexts();
-    updateRemoteSkyConfigControlsState();
-}
-
-void MainWindow::markRemoteSkyConfigDirty()
+void MainWindow::markRemoteSkyConfigDirty(bool syncRawJsonFromVisual)
 {
     if (!isRemoteSkyMode() || state_->remote_sky_config_updating_ui_ || !state_->remote_sky_config_loaded_)
     {
         return;
     }
-    if (!state_->remote_sky_config_raw_mode_)
+    if (syncRawJsonFromVisual)
     {
+        const bool wasRaw = state_->remote_sky_config_raw_mode_;
+        state_->remote_sky_config_raw_mode_ = false;
         QString error;
         const VaporView::SkyConfig config = remoteSkyConfigFromDeviceConfigUi(&error);
+        state_->remote_sky_config_raw_mode_ = wasRaw;
         if (error.isEmpty())
         {
             state_->remote_sky_config_ = config;
+            refreshRemoteSkyConfigRawFromVisual();
         }
     }
     state_->remote_sky_config_dirty_ = true;
@@ -938,10 +899,6 @@ void MainWindow::updateRemoteSkyConfigControlsState()
     if (state_->device_config_.remote_sky_save_btn)
     {
         state_->device_config_.remote_sky_save_btn->setEnabled(remote && linkOpen && hasConfig && !pending);
-    }
-    if (state_->device_config_.remote_sky_raw_mode_btn)
-    {
-        state_->device_config_.remote_sky_raw_mode_btn->setEnabled(hasConfig && !pending);
     }
     const bool localTcpWaveEndpointEditable =
         !state_->tcp_wave_panel_ || state_->tcp_wave_panel_->endpointEditable();
@@ -1174,11 +1131,6 @@ void MainWindow::handleRemoteSkyConfigReceived(const QJsonObject& object, bool b
             state_->device_config_.remote_sky_raw_json_edit->setVisible(true);
         }
         state_->remote_sky_config_raw_mode_ = true;
-        if (state_->device_config_.remote_sky_raw_mode_btn)
-        {
-            const QSignalBlocker blocker(state_->device_config_.remote_sky_raw_mode_btn);
-            state_->device_config_.remote_sky_raw_mode_btn->setChecked(true);
-        }
         setRemoteSkyConfigStatus(QStringLiteral("Invalid config from sky: %1").arg(error), true);
         clearPendingRemoteWaveTcpConnection();
         updateRemoteSkyConfigControlsState();

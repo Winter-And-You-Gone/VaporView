@@ -140,7 +140,6 @@ struct DeviceConfigPageWidgets
     QPushButton *remote_sky_read_btn = nullptr;
     QPushButton *remote_sky_apply_btn = nullptr;
     QPushButton *remote_sky_save_btn = nullptr;
-    QPushButton *remote_sky_raw_mode_btn = nullptr;
     QPlainTextEdit *remote_sky_raw_json_edit = nullptr;
     QToolButton *epsilon_remote_action_btn = nullptr;
     QWidget *epsilon_remote_buttons_widget = nullptr;

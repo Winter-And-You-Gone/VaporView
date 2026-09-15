@@ -826,8 +826,6 @@ int main(int argc, char **argv)
         deviceConfigPage->findChild<QPushButton *>(QStringLiteral("deviceRemoteSkyApplyButton"));
     auto *remoteSaveButton =
         deviceConfigPage->findChild<QPushButton *>(QStringLiteral("deviceRemoteSkySaveButton"));
-    auto *rawModeButton =
-        deviceConfigPage->findChild<QPushButton *>(QStringLiteral("deviceRemoteSkyRawModeButton"));
     auto *rawJsonEdit =
         deviceConfigPage->findChild<QPlainTextEdit *>(QStringLiteral("deviceRemoteSkyRawJsonEdit"));
     auto *rd105SlaveSpin =
@@ -1222,7 +1220,7 @@ int main(int argc, char **argv)
     QLabel *syncLabel = findSubsectionLabel(remoteCard, QStringLiteral("sync"));
     QLabel *advancedLabel = findSubsectionLabel(remoteCard, QStringLiteral("advanced"));
     require(remoteCard && remoteStatus && remoteReadButton && remoteApplyButton && remoteSaveButton &&
-                rawModeButton && rawJsonEdit && servicesLabel && syncLabel && advancedLabel,
+                rawJsonEdit && servicesLabel && syncLabel && advancedLabel,
             "remote sky service, sync, and diagnostics controls exist on the unified page");
     require(rd105SlaveSpin == nullptr,
             "remote RD105 address setting is removed from Device Config; use the RD105 temperature page instead");
@@ -1427,11 +1425,10 @@ int main(int argc, char **argv)
     require(syncLabel->mapTo(syncSubcard, QPoint(0, 0)).x() + syncLabel->width() <
                 remoteStatus->mapTo(syncSubcard, QPoint(0, 0)).x(),
             "config sync subcard places its vertical title to the left of its status content");
-    require(rawModeButton->isChecked() && rawJsonEdit->isVisible() &&
-                rawJsonEdit->toPlainText().contains(QStringLiteral("\"packet_rates\"")) &&
-                rawModeButton->mapTo(advancedSubcard, QPoint(0, 0)).y() <
-                    rawJsonEdit->mapTo(advancedSubcard, QPoint(0, 0)).y(),
-            "SkyConfig JSON is visible by default with its toggle at the card top");
+    require(deviceConfigPage->findChild<QPushButton *>(QStringLiteral("deviceRemoteSkyRawModeButton")) == nullptr &&
+                rawJsonEdit->isVisible() &&
+                rawJsonEdit->toPlainText().contains(QStringLiteral("\"packet_rates\"")),
+            "SkyConfig JSON is displayed directly without a mode toggle");
     require(remoteStatus->property("status").toString() == QStringLiteral("disabled"),
             "disconnected remote mode explains the config state with a disabled status chip");
     require(pressureSourceCombo->isVisible() && humiditySourceCombo->isVisible(),
@@ -1679,25 +1676,9 @@ int main(int argc, char **argv)
             "remote TFA1500-L config read rejects 9600 without accepting it into the UI");
     window.testInjectRemoteSkyConfig(remoteConfig.toJson());
     VaporViewTest::processEventsFor(80);
-    activateLayouts(&window);
-    const QRect remoteCardRawModeRect = rectInPage(remoteCard, deviceConfigPage);
-    rawModeButton->click();
-    VaporViewTest::processEventsFor(80);
-    activateLayouts(&window);
-    const QRect remoteCardFormModeRect = rectInPage(remoteCard, deviceConfigPage);
-    require(!rawModeButton->isChecked() && !rawJsonEdit->isVisible() &&
-                remoteCardFormModeRect == remoteCardRawModeRect,
-            "switching to the form keeps the remote Sky card geometry stable");
-    rawModeButton->click();
-    VaporViewTest::processEventsFor(80);
-    activateLayouts(&window);
-    require(rawModeButton->isChecked() && rawJsonEdit->isVisible() &&
-                rectInPage(remoteCard, deviceConfigPage) == remoteCardRawModeRect,
-            "switching back to JSON keeps the remote Sky card geometry stable");
-    rawModeButton->click();
-    VaporViewTest::processEventsFor(80);
-    require(!rawModeButton->isChecked() && !rawJsonEdit->isVisible(),
-            "a subsequent valid remote config can return from raw JSON mode to the form");
+    require(rawJsonEdit->isVisible() &&
+                rawJsonEdit->toPlainText().contains(QStringLiteral("\"packet_rates\"")),
+            "a subsequent valid remote config keeps the SkyConfig JSON visible directly");
     QJsonArray remoteDetections;
     remoteDetections.append(QJsonObject{
         {QStringLiteral("device_key"), QStringLiteral("epsilon")},
@@ -1934,12 +1915,10 @@ int main(int argc, char **argv)
             "remote SkyConfig save acknowledges the applied custom host baud values");
     VaporView::setSettingsWritesSuspended(true);
 
-    rawModeButton->click();
-    VaporViewTest::processEventsFor(120);
     require(rawJsonEdit->isVisible() &&
                 rawJsonEdit->toPlainText().contains(QStringLiteral("/dev/ttyEPSILON_ALT")) &&
                 rawJsonEdit->toPlainText().contains(QStringLiteral("\"wave_tcp\"")),
-            "remote raw JSON mode is hosted in the unified Device Config page");
+            "remote SkyConfig JSON stays visible alongside the unified Device Config fields");
     window.testInjectRemoteSkyApplyResult(QJsonObject{
         {QStringLiteral("success"), false},
         {QStringLiteral("error"), QStringLiteral("mock reject")}
@@ -1959,9 +1938,6 @@ int main(int argc, char **argv)
                 afterFailureJson.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("port")).toString() ==
                     QStringLiteral("/dev/ttyEPSILON_ALT"),
             "remote apply failure preserves the user's edited remote values");
-    rawModeButton->click();
-    VaporViewTest::processEventsFor(120);
-
     remoteController->close();
     require(VaporViewTest::processEventsUntil(1500, [&]() {
                 return !remoteController->isOpen() &&

@@ -1810,8 +1810,6 @@ int main(int argc, char **argv)
         deviceConfigPage->findChild<QPushButton *>(QStringLiteral("deviceRemoteSkyApplyButton"));
     auto *deviceRemoteSave =
         deviceConfigPage->findChild<QPushButton *>(QStringLiteral("deviceRemoteSkySaveButton"));
-    auto *deviceRemoteRaw =
-        deviceConfigPage->findChild<QPushButton *>(QStringLiteral("deviceRemoteSkyRawModeButton"));
     auto *deviceRemoteRawJson =
         deviceConfigPage->findChild<QPlainTextEdit *>(QStringLiteral("deviceRemoteSkyRawJsonEdit"));
     auto *deviceRemoteStatus =
@@ -1822,7 +1820,8 @@ int main(int argc, char **argv)
         deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceEpsilonPortCombo"));
     require(deviceRemoteCard && deviceRemoteCard->isVisible() &&
                 deviceRemoteRead && deviceRemoteApply && deviceRemoteSave &&
-                deviceRemoteRaw && deviceRemoteRawJson && deviceRemoteStatus &&
+                deviceConfigPage->findChild<QPushButton *>(QStringLiteral("deviceRemoteSkyRawModeButton")) == nullptr &&
+                deviceRemoteRawJson && deviceRemoteStatus &&
                 deviceRemoteWavePort && deviceEpsilonPort,
             "remote sky configuration controls live on the unified device configuration page");
     require(deviceConfigPage->findChild<QSpinBox *>(QStringLiteral("deviceRemoteSkyRd105SlaveSpin")) == nullptr,
@@ -1841,11 +1840,6 @@ int main(int argc, char **argv)
                     deviceRemoteRawJson->toPlainText().contains(QStringLiteral("\"slave_address\": 1"));
             }),
             "unified device configuration shows Remote Sky Raw JSON directly without a duplicate RD105 address editor");
-    deviceRemoteRaw->click();
-    require(VaporViewTest::processEventsUntil(800, [deviceRemoteRawJson]() {
-                return !deviceRemoteRawJson->isVisible();
-            }),
-            "Remote Sky raw JSON can return to visual mode");
     deviceRemoteWavePort->setValue(deviceRemoteWavePort->value() + 1);
     processEvents();
     require(deviceRemoteApply->isEnabled(),

@@ -1820,6 +1820,7 @@ void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
     {
         state_->remote_sky_config_.epsilon.packet_rates = savedPacketRates;
         setDeviceConfigEpsilonPacketRates(savedPacketRates);
+        refreshRemoteSkyConfigRawFromVisual();
         if (!state_->remote_sky_config_loaded_)
         {
             QSettings legacySettings = VaporView::applicationConfigSettings();
