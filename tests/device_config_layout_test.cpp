@@ -1410,6 +1410,20 @@ int main(int argc, char **argv)
                                 "config sync subcard keeps the EPSILON vertical title treatment");
     requireVerticalSubcardTitle(advancedLabel,
                                 "JSON config file subcard keeps the EPSILON vertical title treatment");
+    auto *advancedPanelLayout = qobject_cast<QHBoxLayout *>(advancedSubcard->layout());
+    auto *jsonContent = rawJsonEdit->parentWidget();
+    const QRect advancedContentsRect = advancedSubcard->contentsRect();
+    const QRect jsonContentRect = jsonContent ? jsonContent->geometry() : QRect();
+    auto *advancedGrid = advancedSubcard->findChild<QGridLayout *>();
+    require(advancedPanelLayout &&
+                advancedPanelLayout->contentsMargins() == QMargins(0, 0, 0, 0) &&
+                advancedGrid &&
+                advancedGrid->contentsMargins() == QMargins(0, 0, 0, 0) &&
+                jsonContent &&
+                jsonContentRect.top() == advancedContentsRect.top() &&
+                jsonContentRect.right() == advancedContentsRect.right() &&
+                jsonContentRect.bottom() == advancedContentsRect.bottom(),
+            "JSON display area fills the advanced subcard without an outer margin");
     const QRect servicesSubcardRect = rectInPage(servicesSubcard, remoteCard);
     const QRect syncSubcardRect = rectInPage(syncSubcard, remoteCard);
     const QRect advancedSubcardRect = rectInPage(advancedSubcard, remoteCard);

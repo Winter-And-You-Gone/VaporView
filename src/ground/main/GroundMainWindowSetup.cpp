@@ -3278,6 +3278,10 @@ void MainWindow::setupDeviceConfigPage()
                                         QStringLiteral("JSON配置文件"),
                                         advancedGrid);
     remoteGrid->addWidget(advancedPanel, 0, 1, 2, 1);
+    // Let the JSON display fill the advanced subcard without an outer inset.
+    auto *advancedPanelLayout = qobject_cast<QHBoxLayout *>(advancedPanel->layout());
+    advancedPanelLayout->setContentsMargins(0, 0, 0, 0);
+    advancedGrid->setContentsMargins(0, 0, 0, 0);
 
     auto createFieldLabel = [remoteBody](const QString& objectName = QString()) {
         auto *label = new QLabel(remoteBody);
