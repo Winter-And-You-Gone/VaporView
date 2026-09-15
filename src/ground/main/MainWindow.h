@@ -433,6 +433,7 @@ private:
     VaporView::SkyConfig remoteSkyConfigFromDeviceConfigUi(QString *errorMessage = nullptr) const;
     void refreshRemoteSkyConfigRawFromVisual();
     bool applyRemoteSkyConfigRawToVisual(QString *errorMessage = nullptr);
+    void setRemoteSkyConfigJsonValidation(bool valid, const QString& errorMessage = QString());
     void markRemoteSkyConfigDirty(bool syncRawJsonFromVisual = true);
     void setRemoteSkyConfigStatus(const QString& text, bool error = false);
     void updateRemoteSkyConfigControlsState();

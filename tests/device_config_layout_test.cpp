@@ -13,7 +13,9 @@
 
 #include <QApplication>
 #include <QCheckBox>
+#include <QColor>
 #include <QComboBox>
+#include <QDoubleSpinBox>
 #include <QFrame>
 #include <QFontMetrics>
 #include <QGroupBox>
@@ -39,6 +41,9 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTemporaryDir>
+#include <QTextBlock>
+#include <QTextCharFormat>
+#include <QTextLayout>
 #include <QToolButton>
 #include <QVector>
 
@@ -1679,6 +1684,73 @@ int main(int argc, char **argv)
     require(rawJsonEdit->isVisible() &&
                 rawJsonEdit->toPlainText().contains(QStringLiteral("\"packet_rates\"")),
             "a subsequent valid remote config keeps the SkyConfig JSON visible directly");
+    auto *jsonFormatBadge = rawJsonEdit->findChild<QLabel *>(
+        QStringLiteral("deviceRemoteSkyJsonFormatBadge"));
+    require(jsonFormatBadge &&
+                rawJsonEdit->property("jsonFormatState").toString() == QStringLiteral("valid") &&
+                jsonFormatBadge->property("jsonFormatState").toString() == QStringLiteral("valid"),
+            "SkyConfig JSON shows an automatic valid-format status");
+    const QString renderedRemoteJson = rawJsonEdit->toPlainText();
+    const auto formatAtJsonPosition = [rawJsonEdit](int position) {
+        if (position < 0)
+        {
+            return QTextCharFormat();
+        }
+        const QTextBlock block = rawJsonEdit->document()->findBlock(position);
+        if (!block.isValid() || !block.layout())
+        {
+            return QTextCharFormat();
+        }
+        const int offset = position - block.position();
+        for (const QTextLayout::FormatRange& range : block.layout()->formats())
+        {
+            if (offset >= range.start && offset < range.start + range.length)
+            {
+                return range.format;
+            }
+        }
+        return QTextCharFormat();
+    };
+    const int epsilonKeyPosition = renderedRemoteJson.indexOf(QStringLiteral("\"epsilon\""));
+    const int epsilonValuePosition = renderedRemoteJson.indexOf(QStringLiteral("/dev/ttyEPSILON"));
+    const int rootBracketPosition = renderedRemoteJson.indexOf(QLatin1Char('{'));
+    const int nestedBracketPosition = renderedRemoteJson.indexOf(
+        QLatin1Char('{'), rootBracketPosition + 1);
+    const QColor keyColor = formatAtJsonPosition(epsilonKeyPosition).foreground().color();
+    const QColor valueColor = formatAtJsonPosition(epsilonValuePosition).foreground().color();
+    const QColor rootBracketColor = formatAtJsonPosition(rootBracketPosition).foreground().color();
+    const QColor nestedBracketColor = formatAtJsonPosition(nestedBracketPosition).foreground().color();
+    require(epsilonKeyPosition >= 0 && epsilonValuePosition >= 0 &&
+                keyColor.isValid() && valueColor.isValid() && keyColor != valueColor,
+            "SkyConfig JSON highlights keys and string values with different colors");
+    require(rootBracketPosition >= 0 && nestedBracketPosition >= 0 &&
+                rootBracketColor.isValid() && nestedBracketColor.isValid() &&
+                rootBracketColor != nestedBracketColor,
+            "SkyConfig JSON uses different rainbow colors for nested brackets");
+    auto *telemetryBasicSpin = deviceConfigPage->findChild<QDoubleSpinBox *>(
+        QStringLiteral("deviceRemoteSkyTelemetryBasicSpin"));
+    QScrollBar *jsonVerticalScroll = rawJsonEdit->verticalScrollBar();
+    require(telemetryBasicSpin && jsonVerticalScroll && jsonVerticalScroll->maximum() > 0,
+            "SkyConfig JSON has a scrollable viewport and editable telemetry rate");
+    const int jsonScrollBefore = jsonVerticalScroll->maximum() / 2;
+    jsonVerticalScroll->setValue(jsonScrollBefore);
+    const double telemetryRateBefore = telemetryBasicSpin->value();
+    telemetryBasicSpin->setValue(telemetryRateBefore + 0.1);
+    VaporViewTest::processEventsFor(80);
+    require(jsonVerticalScroll->value() == jsonScrollBefore,
+            "editing a remote telemetry number preserves the SkyConfig JSON scroll position");
+    const QString validRemoteJson = rawJsonEdit->toPlainText();
+    rawJsonEdit->setPlainText(validRemoteJson.trimmed().chopped(1));
+    VaporViewTest::processEventsFor(80);
+    require(rawJsonEdit->property("jsonFormatState").toString() == QStringLiteral("invalid") &&
+                jsonFormatBadge->property("jsonFormatState").toString() == QStringLiteral("invalid"),
+            "SkyConfig JSON reports malformed edits immediately");
+    rawJsonEdit->setPlainText(validRemoteJson);
+    VaporViewTest::processEventsFor(80);
+    window.testInjectRemoteSkyConfig(remoteConfig.toJson());
+    VaporViewTest::processEventsFor(80);
+    require(rawJsonEdit->property("jsonFormatState").toString() == QStringLiteral("valid"),
+            "restoring a valid SkyConfig JSON clears the format error");
     QJsonArray remoteDetections;
     remoteDetections.append(QJsonObject{
         {QStringLiteral("device_key"), QStringLiteral("epsilon")},

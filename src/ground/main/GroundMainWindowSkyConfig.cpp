@@ -2,6 +2,9 @@
 #include "ground/widgets/SerialPortComboSupport.h"
 #include "BaudRateComboSupport.h"
 
+#include <QScrollBar>
+#include <QTextCursor>
+
 namespace
 {
 
@@ -43,6 +46,50 @@ bool validManualRemotePortText(const QString& text, bool english)
            trimmed != QStringLiteral("手动添加") &&
            trimmed != QStringLiteral("Add Port") &&
            trimmed != selectText(english);
+}
+
+void setJsonEditorTextPreservingViewport(QPlainTextEdit *editor, const QString& text)
+{
+    if (!editor || editor->toPlainText() == text)
+    {
+        return;
+    }
+
+    QScrollBar *verticalScrollBar = editor->verticalScrollBar();
+    QScrollBar *horizontalScrollBar = editor->horizontalScrollBar();
+    const int oldVerticalValue = verticalScrollBar ? verticalScrollBar->value() : 0;
+    const int oldVerticalMaximum = verticalScrollBar ? verticalScrollBar->maximum() : 0;
+    const int oldHorizontalValue = horizontalScrollBar ? horizontalScrollBar->value() : 0;
+    const int oldHorizontalMaximum = horizontalScrollBar ? horizontalScrollBar->maximum() : 0;
+    const bool wasAtVerticalEnd = oldVerticalMaximum > 0 && oldVerticalValue >= oldVerticalMaximum;
+    const bool wasAtHorizontalEnd = oldHorizontalMaximum > 0 && oldHorizontalValue >= oldHorizontalMaximum;
+    const QTextCursor oldCursor = editor->textCursor();
+
+    const QSignalBlocker blocker(editor);
+    editor->setPlainText(text);
+
+    const int maxCursorPosition = std::max(0, editor->document()->characterCount() - 1);
+    const int anchor = std::clamp(oldCursor.anchor(), 0, maxCursorPosition);
+    const int position = std::clamp(oldCursor.position(), 0, maxCursorPosition);
+    QTextCursor restoredCursor = editor->textCursor();
+    restoredCursor.setPosition(anchor);
+    restoredCursor.setPosition(position, QTextCursor::KeepAnchor);
+    editor->setTextCursor(restoredCursor);
+
+    if (verticalScrollBar)
+    {
+        const int value = wasAtVerticalEnd
+            ? verticalScrollBar->maximum()
+            : std::min(oldVerticalValue, verticalScrollBar->maximum());
+        verticalScrollBar->setValue(std::max(0, value));
+    }
+    if (horizontalScrollBar)
+    {
+        const int value = wasAtHorizontalEnd
+            ? horizontalScrollBar->maximum()
+            : std::min(oldHorizontalValue, horizontalScrollBar->maximum());
+        horizontalScrollBar->setValue(std::max(0, value));
+    }
 }
 
 } // namespace
@@ -528,11 +575,14 @@ void MainWindow::setRemoteSkyConfigUi(const VaporView::SkyConfig& config)
     {
         if (state_->device_config_.remote_sky_raw_json_edit)
         {
-            const QSignalBlocker blocker(state_->device_config_.remote_sky_raw_json_edit);
-            state_->device_config_.remote_sky_raw_json_edit->setPlainText(
+            setJsonEditorTextPreservingViewport(
+                state_->device_config_.remote_sky_raw_json_edit,
                 QJsonDocument(config.toJson()).toJson(QJsonDocument::Indented));
         }
     }
+    QString validationError;
+    remoteSkyConfigFromDeviceConfigUi(&validationError);
+    setRemoteSkyConfigJsonValidation(validationError.isEmpty(), validationError);
 }
 
 VaporView::SkyConfig MainWindow::remoteSkyConfigFromDeviceConfigUi(QString *errorMessage) const
@@ -721,9 +771,12 @@ void MainWindow::refreshRemoteSkyConfigRawFromVisual()
     const VaporView::SkyConfig config = state_->remote_sky_config_raw_mode_
         ? state_->remote_sky_config_
         : remoteSkyConfigFromDeviceConfigUi(&error);
-    const QSignalBlocker blocker(state_->device_config_.remote_sky_raw_json_edit);
-    state_->device_config_.remote_sky_raw_json_edit->setPlainText(
+    setJsonEditorTextPreservingViewport(
+        state_->device_config_.remote_sky_raw_json_edit,
         QJsonDocument(config.toJson()).toJson(QJsonDocument::Indented));
+    QString validationError;
+    remoteSkyConfigFromDeviceConfigUi(&validationError);
+    setRemoteSkyConfigJsonValidation(validationError.isEmpty(), validationError);
 }
 
 bool MainWindow::applyRemoteSkyConfigRawToVisual(QString *errorMessage)
@@ -741,12 +794,27 @@ bool MainWindow::applyRemoteSkyConfigRawToVisual(QString *errorMessage)
     return true;
 }
 
+void MainWindow::setRemoteSkyConfigJsonValidation(bool valid, const QString& errorMessage)
+{
+    auto *editor = dynamic_cast<VaporView::Ground::Widgets::JsonConfigEditor *>(
+        state_->device_config_.remote_sky_raw_json_edit);
+    if (!editor)
+    {
+        return;
+    }
+    const QString statusText = valid
+        ? (state_->is_english_ ? QStringLiteral("Valid JSON") : QStringLiteral("格式正确"))
+        : (state_->is_english_ ? QStringLiteral("Invalid JSON") : QStringLiteral("格式错误"));
+    editor->setValidationStatus(valid, statusText, errorMessage);
+}
+
 void MainWindow::markRemoteSkyConfigDirty(bool syncRawJsonFromVisual)
 {
     if (!isRemoteSkyMode() || state_->remote_sky_config_updating_ui_ || !state_->remote_sky_config_loaded_)
     {
         return;
     }
+    QString validationError;
     if (syncRawJsonFromVisual)
     {
         const bool wasRaw = state_->remote_sky_config_raw_mode_;
@@ -760,10 +828,29 @@ void MainWindow::markRemoteSkyConfigDirty(bool syncRawJsonFromVisual)
             refreshRemoteSkyConfigRawFromVisual();
         }
     }
+    else
+    {
+        const VaporView::SkyConfig config = remoteSkyConfigFromDeviceConfigUi(&validationError);
+        setRemoteSkyConfigJsonValidation(validationError.isEmpty(), validationError);
+        if (validationError.isEmpty())
+        {
+            state_->remote_sky_config_ = config;
+        }
+    }
     state_->remote_sky_config_dirty_ = true;
-    setRemoteSkyConfigStatus(state_->is_english_
-        ? QStringLiteral("Remote Sky config has unapplied edits.")
-        : QStringLiteral("天空端配置有未应用改动。"));
+    if (!validationError.isEmpty())
+    {
+        setRemoteSkyConfigStatus(state_->is_english_
+            ? QStringLiteral("JSON format error: %1").arg(validationError)
+            : QStringLiteral("JSON 格式错误：%1").arg(validationError),
+            true);
+    }
+    else
+    {
+        setRemoteSkyConfigStatus(state_->is_english_
+            ? QStringLiteral("Remote Sky config has unapplied edits.")
+            : QStringLiteral("天空端配置有未应用改动。"));
+    }
     updateRemoteSkyConfigControlsState();
 }
 
@@ -1125,12 +1212,13 @@ void MainWindow::handleRemoteSkyConfigReceived(const QJsonObject& object, bool b
     {
         if (state_->device_config_.remote_sky_raw_json_edit)
         {
-            const QSignalBlocker blocker(state_->device_config_.remote_sky_raw_json_edit);
-            state_->device_config_.remote_sky_raw_json_edit->setPlainText(
+            setJsonEditorTextPreservingViewport(
+                state_->device_config_.remote_sky_raw_json_edit,
                 QJsonDocument(object).toJson(QJsonDocument::Indented));
             state_->device_config_.remote_sky_raw_json_edit->setVisible(true);
         }
         state_->remote_sky_config_raw_mode_ = true;
+        setRemoteSkyConfigJsonValidation(false, error);
         setRemoteSkyConfigStatus(QStringLiteral("Invalid config from sky: %1").arg(error), true);
         clearPendingRemoteWaveTcpConnection();
         updateRemoteSkyConfigControlsState();

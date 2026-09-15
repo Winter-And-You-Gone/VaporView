@@ -3398,7 +3398,8 @@ void MainWindow::setupDeviceConfigPage()
 
     advancedGrid->setColumnStretch(0, 1);
 
-    state_->device_config_.remote_sky_raw_json_edit = new QPlainTextEdit(remoteBody);
+    state_->device_config_.remote_sky_raw_json_edit =
+        new VaporView::Ground::Widgets::JsonConfigEditor(remoteBody);
     state_->device_config_.remote_sky_raw_json_edit->setObjectName(QStringLiteral("deviceRemoteSkyRawJsonEdit"));
     state_->device_config_.remote_sky_raw_json_edit->setLineWrapMode(QPlainTextEdit::NoWrap);
     state_->device_config_.remote_sky_raw_json_edit->setMinimumHeight(220);
