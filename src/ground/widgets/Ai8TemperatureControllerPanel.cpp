@@ -242,6 +242,8 @@ void Ai8TemperatureControllerPanel::setupUi()
     rootLayout->setSizeConstraint(QLayout::SetMinimumSize);
     rootLayout->setContentsMargins(10, 10, 10, 10);
     rootLayout->setSpacing(8);
+    // Keep rows anchored while detail collapse precedes the parent's resize.
+    rootLayout->setAlignment(Qt::AlignTop);
 
     auto *navigationBar = new QFrame(this);
     navigationBar->setObjectName(QStringLiteral("ai8NavigationBar"));

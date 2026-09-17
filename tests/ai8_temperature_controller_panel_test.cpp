@@ -479,8 +479,13 @@ int main(int argc, char **argv)
                 globalDetailContent->isVisible() &&
                 globalExpandedDetailHeight > channelExpandedDetailHeight,
             "AI-8 switching pages preserves the shared expanded detail state and current-page height");
+    const int mainContentTopBeforeCollapse = mainContentCard->y();
     globalDetailToggle->click();
+    require(mainContentCard->y() == mainContentTopBeforeCollapse,
+            "AI-8 collapse keeps main content anchored before the parent resizes");
     QApplication::processEvents();
+    require(mainContentCard->y() == mainContentTopBeforeCollapse,
+            "AI-8 collapse keeps main content anchored after layout events");
     QApplication::processEvents();
     require(!globalDetailToggle->isChecked() && !channelDetailToggle->isChecked() &&
                 !outputDetailToggle->isChecked() &&
