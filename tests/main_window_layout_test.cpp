@@ -4257,6 +4257,39 @@ int main(int argc, char **argv)
 
     if (app.arguments().contains(QStringLiteral("--combination-navigation-only")))
     {
+        {
+            MainWindow firstShowWindow;
+            firstShowWindow.show();
+            require(waitForWindowExposed(&firstShowWindow), "first-show window becomes exposed");
+            processEventsFor(200);
+            auto *navigation = firstShowWindow.findChild<
+                VaporView::Ground::Navigation::CombinationNavigationPage *>();
+            auto *mainStack = firstShowWindow.findChild<QStackedWidget *>(QStringLiteral("mainPageStack"));
+            auto *rtk = firstShowWindow.findChild<RtkConfigDialog *>();
+            auto *gga = findCardByTitle(rtk, {QStringLiteral("GGA 监视"), QStringLiteral("GGA Monitor")});
+            auto *ntrip = findCardByTitle(rtk, {QStringLiteral("NTRIP 服务器配置"),
+                                              QStringLiteral("NTRIP Server Configuration")});
+            require(navigation && mainStack && gga && ntrip, "fresh navigation page exposes both top cards");
+            mainStack->setCurrentWidget(navigation);
+            processEventsFor(100);
+            ResizeWidthRecorder recorder(gga);
+            gga->installEventFilter(&recorder);
+            navigation->showDifferentialPage();
+            const QRect initialGgaBounds = gga->geometry();
+            const QRect initialNtripBounds = ntrip->geometry();
+            processEventsFor(300);
+            require(initialGgaBounds == gga->geometry() && initialNtripBounds == ntrip->geometry(),
+                    "first differential switch settles the NTRIP/GGA boundary before returning");
+            require(!recorder.observedPaintableWidthDifferentFrom(gga->width()),
+                    "fresh differential page keeps the NTRIP/GGA boundary stable without prewarming layouts");
+            navigation->showStatusPage();
+            processEventsFor(100);
+            navigation->showDifferentialPage();
+            processEventsFor(100);
+            require(initialGgaBounds == gga->geometry() && initialNtripBounds == ntrip->geometry(),
+                    "subsequent differential switches preserve the settled card boundary");
+            firstShowWindow.close();
+        }
         MainWindow combinationWindow;
         combinationWindow.setWindowTitle(QStringLiteral("VaporView"));
         combinationWindow.resize(1280, 800);

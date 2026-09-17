@@ -68,11 +68,14 @@ void prepareStackPageForShow(QStackedWidget *stack, QWidget *page)
 void settleStackPageForShow(QStackedWidget *stack, QWidget *page)
 {
     prepareStackPageForShow(stack, page);
-    QCoreApplication::sendPostedEvents(page, QEvent::LayoutRequest);
-    for (QObject *child : page->findChildren<QObject *>())
+    // Settle child size hints before their parents consume them. A parent-first
+    // pass leaves the RTK card row with another layout request after painting resumes.
+    const auto children = page->findChildren<QObject *>();
+    for (auto child = children.crbegin(); child != children.crend(); ++child)
     {
-        QCoreApplication::sendPostedEvents(child, QEvent::LayoutRequest);
+        QCoreApplication::sendPostedEvents(*child, QEvent::LayoutRequest);
     }
+    QCoreApplication::sendPostedEvents(page, QEvent::LayoutRequest);
     prepareStackPageForShow(stack, page);
 }
 
