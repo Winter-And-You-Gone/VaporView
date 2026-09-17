@@ -1400,7 +1400,7 @@ void requireSpinArrowHoverUsesPrimary(bool dark, const char *message)
     require(primaryPixelCount >= 1, message);
 }
 
-void requireComboArrowUsesDarkIdleAndPrimaryHighlight(const char *message)
+void requireComboArrowUsesPrimary(bool dark, const char *message)
 {
     QComboBox combo;
     combo.addItem(QStringLiteral("COM9"));
@@ -1413,16 +1413,19 @@ void requireComboArrowUsesDarkIdleAndPrimaryHighlight(const char *message)
     QCoreApplication::sendEvent(&combo, &leave);
     combo.setAttribute(Qt::WA_UnderMouse, false);
 
-    QStyleOptionComboBox option;
-    option.initFrom(&combo);
-    option.currentText = combo.currentText();
-    const QRect arrowRect = combo.style()->subControlRect(QStyle::CC_ComboBox,
-                                                          &option,
-                                                          QStyle::SC_ComboBoxArrow,
-                                                          &combo);
+    const auto arrowRectForCurrentState = [&combo]() {
+        QStyleOptionComboBox option;
+        option.initFrom(&combo);
+        option.currentText = combo.currentText();
+        return combo.style()->subControlRect(QStyle::CC_ComboBox,
+                                             &option,
+                                             QStyle::SC_ComboBoxArrow,
+                                             &combo);
+    };
+    const QRect arrowRect = arrowRectForCurrentState();
     require(!arrowRect.isEmpty(), message);
-    const QColor idleColor = VaporView::appThemeColor(VaporView::AppThemeColor::Text, true);
-    const QColor highlightColor = VaporView::appThemeColor(VaporView::AppThemeColor::Primary, true);
+    const QColor idleColor = VaporView::appThemeColor(VaporView::AppThemeColor::Text, dark);
+    const QColor highlightColor = VaporView::appThemeColor(VaporView::AppThemeColor::Primary, dark);
 
     const QImage idleImage = combo.grab().toImage().convertToFormat(QImage::Format_ARGB32);
     const qreal devicePixelRatio = idleImage.devicePixelRatio();
@@ -1434,8 +1437,11 @@ void requireComboArrowUsesDarkIdleAndPrimaryHighlight(const char *message)
     const int idleArrowPixels = countPixelsNearColor(idleImage, arrowPixelRect, idleColor);
     const int idleContentHighlightPixels = countPixelsNearColor(
         idleImage, contentPixelArea, highlightColor);
-    require(idleArrowPixels >= 1,
-            "dark theme combo arrow renders white while idle");
+    if (dark)
+    {
+        require(idleArrowPixels >= 1,
+                "dark theme combo arrow renders white while idle");
+    }
     require(idleContentHighlightPixels == 0,
             "dark theme combo does not draw a second highlighted arrow in its content area");
 
@@ -1444,13 +1450,19 @@ void requireComboArrowUsesDarkIdleAndPrimaryHighlight(const char *message)
     QCoreApplication::sendEvent(&combo, &enter);
     moveMouseOverWidgetAt(&combo, arrowRect.center(), 80);
 
+    const QRect highlightedArrowRect = arrowRectForCurrentState();
+    const QRect highlightedArrowPixelRect(
+        qRound(highlightedArrowRect.x() * devicePixelRatio),
+        qRound(highlightedArrowRect.y() * devicePixelRatio),
+        qRound(highlightedArrowRect.width() * devicePixelRatio),
+        qRound(highlightedArrowRect.height() * devicePixelRatio));
+    const QRect highlightedSampleRect = arrowPixelRect.united(highlightedArrowPixelRect);
     const QImage highlightedImage = combo.grab().toImage().convertToFormat(QImage::Format_ARGB32);
     const int highlightedArrowPixels = countPixelsNearColor(
-        highlightedImage, arrowPixelRect, highlightColor);
+        highlightedImage, highlightedSampleRect, highlightColor);
     const int highlightedContentPixels = countPixelsNearColor(
         highlightedImage, contentPixelArea, highlightColor);
-    require(highlightedArrowPixels >= 1,
-            "dark theme combo arrow renders orange while highlighted");
+    require(highlightedArrowPixels >= 1, message);
     require(highlightedContentPixels == 0,
             "dark theme combo highlight stays in the right arrow slot");
 }
@@ -4255,6 +4267,46 @@ int main(int argc, char **argv)
         return 0;
     }
 
+    if (app.arguments().contains(QStringLiteral("--combo-arrow-only")))
+    {
+        MainWindow comboArrowWindow;
+        comboArrowWindow.resize(1280, 800);
+        comboArrowWindow.show();
+        require(waitForWindowExposed(&comboArrowWindow),
+                "combo-arrow test window becomes exposed");
+        const bool initialDarkTheme = qApp->property(VaporView::kAppDarkThemeProperty).toBool();
+        if (initialDarkTheme)
+        {
+            require(QMetaObject::invokeMethod(&comboArrowWindow,
+                                               "onToggleTheme",
+                                               Qt::DirectConnection),
+                    "combo-arrow test can switch to light theme");
+            processEventsFor(150);
+        }
+        requireComboArrowUsesPrimary(false,
+                                     "light theme combo arrow renders the primary lucide icon when highlighted");
+        require(QMetaObject::invokeMethod(&comboArrowWindow, "onToggleTheme", Qt::DirectConnection),
+                "main window can switch to dark theme for combo-arrow checks");
+        processEventsFor(150);
+        requireComboArrowUsesPrimary(true,
+                                     "dark theme combo arrow renders the primary lucide icon when highlighted");
+        if (!initialDarkTheme)
+        {
+            require(QMetaObject::invokeMethod(&comboArrowWindow,
+                                               "onToggleTheme",
+                                               Qt::DirectConnection),
+                    "combo-arrow test restores the light theme");
+            processEventsFor(150);
+        }
+        comboArrowWindow.close();
+        require(processEventsUntil(1000, [&comboArrowWindow]() {
+                    return !comboArrowWindow.isVisible();
+                }),
+                "combo-arrow test window closes cleanly");
+        std::cout << "combo_arrow_hover_test passed\n";
+        return 0;
+    }
+
     if (app.arguments().contains(QStringLiteral("--combination-navigation-only")))
     {
         {
@@ -4551,6 +4603,11 @@ int main(int argc, char **argv)
                 qApp->styleSheet().contains(QStringLiteral("QComboBox::down-arrow")) &&
                 qApp->styleSheet().contains(QStringLiteral("background-color: transparent")),
             "spin arrows use enlarged primary lucide hover icons without button backgrounds");
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QComboBox::down-arrow:hover,"),
+        QStringLiteral("chevron-down-primary.svg"),
+        "light theme combo arrows include the primary hover asset");
     const QString lightFieldBackground =
         VaporView::appThemeColorName(VaporView::AppThemeColor::FieldBackground, false);
     require(VaporView::appThemeColor(VaporView::AppThemeColor::FieldBackground, false) ==
@@ -4568,6 +4625,8 @@ int main(int argc, char **argv)
             "light theme gives combo, line, spin/date and multiline fields a pure white background");
     requireSpinArrowHoverUsesPrimary(false,
                                      "light theme spin arrow hover renders the primary lucide icon");
+    requireComboArrowUsesPrimary(false,
+                                 "light theme combo arrow renders the primary lucide icon when highlighted");
     requireMenuPopupStyleUnified(qApp->styleSheet(),
                                  false,
                                  "light popup menus use the shared menu hover and rounded panel style");
@@ -6992,7 +7051,7 @@ int main(int argc, char **argv)
         "dark selected sidebar buttons retain visible hover feedback");
     requireSpinArrowHoverUsesPrimary(true,
                                      "dark theme spin arrow hover renders the primary lucide icon");
-    requireComboArrowUsesDarkIdleAndPrimaryHighlight(
+    requireComboArrowUsesPrimary(true,
         "dark theme combo arrow renders white at idle and orange when highlighted");
     requireComboDarkFocusBorderUsesPrimary(
         "dark theme combo focus border renders with the orange primary color");

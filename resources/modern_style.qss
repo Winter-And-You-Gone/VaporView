@@ -838,6 +838,12 @@ QComboBox::down-arrow {
     margin-right: 6px;
 }
 
+QComboBox::down-arrow:hover,
+QComboBox::down-arrow:focus,
+QComboBox::down-arrow:on {
+    image: url(lucide/chevron-down-primary.svg);
+}
+
 QComboBox QAbstractItemView {
     background-color: @vv-menu-panel;
     border: none;

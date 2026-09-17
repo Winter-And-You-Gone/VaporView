@@ -158,6 +158,7 @@ void MainWindow::loadModernStyleSheet()
             "QComboBox:disabled { background-color: @vv-surface-alt; color: @vv-text; }"
             "QComboBox::drop-down { border: none; width: 20px; border-top-right-radius: 4px; border-bottom-right-radius: 4px; }"
             "QComboBox::down-arrow { image: url(lucide/chevron-down.svg); width: 12px; height: 12px; margin-right: 6px; }"
+            "QComboBox::down-arrow:hover, QComboBox::down-arrow:focus, QComboBox::down-arrow:on { image: url(lucide/chevron-down-primary.svg); }"
             "QComboBox QAbstractItemView { background-color: @vv-menu-panel; border: none; border-radius: 10px; color: @vv-menu-text; selection-background-color: transparent; selection-color: @vv-menu-text; padding: 12px 0px; outline: none; }"
             "QComboBox QAbstractItemView::item { background-color: transparent; color: @vv-menu-text; padding: 7px 14px; min-height: 30px; border: 0px; border-radius: 0px; }"
             "QComboBox QAbstractItemView::item:selected, QComboBox QAbstractItemView::item:selected:active, QComboBox QAbstractItemView::item:selected:!active { background-color: transparent; color: @vv-menu-text; }"
