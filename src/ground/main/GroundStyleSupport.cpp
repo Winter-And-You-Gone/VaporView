@@ -671,14 +671,14 @@ QLabel#epsilonSectionLabel {
     font-weight: 700;
 }
 QLabel#valueLabel {
-    color: @vv-white;
+    color: @vv-primary;
     background-color: transparent;
     font-family: "Consolas", "Monaco", "Courier New", monospace;
     font-size: 14px;
     font-weight: 600;
 }
 QLabel#highlightedValue {
-    color: @vv-white;
+    color: @vv-primary;
     background-color: @vv-border;
     font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
 }

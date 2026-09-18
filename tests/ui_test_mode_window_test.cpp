@@ -744,6 +744,21 @@ void requireUiTestEpsilonPanelFieldsCovered(QWidget *epsilonPanel)
             "UI-test EPSILON attitude consistency covers all three attitude sources");
 }
 
+void requireUiTestEpsilonValueColor(QWidget *epsilonPanel, bool dark, const char *message)
+{
+    const QList<QLabel *> valueLabels = epsilonPanel
+        ? epsilonPanel->findChildren<QLabel *>(QStringLiteral("valueLabel"))
+        : QList<QLabel *>();
+    require(!valueLabels.isEmpty(), "UI-test EPSILON value labels exist for theme check");
+    const QColor expected = VaporView::appThemeColor(VaporView::AppThemeColor::Primary, dark);
+    for (const QLabel *valueLabel : valueLabels)
+    {
+        require(valueLabel != nullptr &&
+                    valueLabel->palette().color(QPalette::WindowText) == expected,
+                message);
+    }
+}
+
 bool uiTestLidarDistanceUsesIntegerDigits(QWidget *root, int integerDigits)
 {
     const auto *lidarPanel = root ? root->findChild<LidarPanel *>() : nullptr;
@@ -972,6 +987,8 @@ int main(int argc, char **argv)
                 "dark EPSILON layout test receives the populated UI-test sample");
         requireUiTestEpsilonPanelFieldsCovered(epsilonPanel);
         requireUiTestEpsilonPanelWrappedTopRowFilled(epsilonPanel);
+        requireUiTestEpsilonValueColor(
+            epsilonPanel, true, "dark UI-test EPSILON values use the orange theme color");
         const QList<QFrame *> overviewCells = window->findChildren<QFrame *>(
             QStringLiteral("ai8TemperatureOverviewCell"));
         require(overviewCells.size() == 8,
@@ -1150,6 +1167,8 @@ int main(int argc, char **argv)
             "UI test mode exposes the EPSILON home panel");
     requireUiTestEpsilonPanelFieldsCovered(epsilonPanel);
     requireUiTestEpsilonPanelWrappedTopRowFilled(epsilonPanel);
+    requireUiTestEpsilonValueColor(
+        epsilonPanel, false, "light UI-test EPSILON values keep the blue theme color");
     require(VaporViewTest::processEventsUntil(4000, [window]() {
                 return uiTestLidarDistanceUsesIntegerDigits(window, 4);
             }),
