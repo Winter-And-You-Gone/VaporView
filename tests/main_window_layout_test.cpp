@@ -3033,6 +3033,71 @@ void requireLastStyleRuleContains(const QString& styleSheet,
     require(rule.contains(expected), message);
 }
 
+void requireDarkAi8OverviewCapsulesReadable(MainWindow& window)
+{
+    const QString styleSheet = qApp->styleSheet();
+    requireLastStyleRuleContains(
+        styleSheet,
+        QStringLiteral("QFrame#ai8TemperatureOverviewCell {"),
+        QStringLiteral("background-color: %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt, true)),
+        "dark AI-8 overview capsules use the alternate dark surface");
+    requireLastStyleRuleContains(
+        styleSheet,
+        QStringLiteral("QFrame#ai8TemperatureOverviewCell[available=\"true\"] {"),
+        QStringLiteral("background-color: %1").arg(VaporView::appThemeColorName(
+            VaporView::AppThemeColor::HomeDeviceSuccessBackground, true)),
+        "dark AI-8 overview available capsules use the dark success background");
+    requireLastStyleRuleContains(
+        styleSheet,
+        QStringLiteral("QLabel#ai8TemperatureOverviewChannelLabel {"),
+        QStringLiteral("color: %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::TextMuted, true)),
+        "dark AI-8 overview channel labels use muted light text");
+    requireLastStyleRuleContains(
+        styleSheet,
+        QStringLiteral("QLabel#ai8TemperatureOverviewValueLabel {"),
+        QStringLiteral("color: %1").arg(
+            VaporView::appThemeColorName(VaporView::AppThemeColor::TextStrong, true)),
+        "dark AI-8 overview unavailable values use strong light text");
+
+    auto *overview = window.findChild<QWidget *>(QStringLiteral("ai8TemperatureOverviewPanel"));
+    require(overview != nullptr && overview->isVisibleTo(&window),
+            "dark AI-8 overview is visible on the home page");
+    const QList<QFrame *> cells = overview->findChildren<QFrame *>(
+        QStringLiteral("ai8TemperatureOverviewCell"));
+    require(cells.size() == 8, "dark AI-8 overview has all eight temperature capsules");
+
+    const QColor background =
+        VaporView::appThemeColor(VaporView::AppThemeColor::SurfaceAlt, true);
+    const QColor channelText =
+        VaporView::appThemeColor(VaporView::AppThemeColor::TextMuted, true);
+    const QColor valueText =
+        VaporView::appThemeColor(VaporView::AppThemeColor::TextStrong, true);
+    for (QFrame *cell : cells)
+    {
+        auto *channelLabel = cell->findChild<QLabel *>(
+            QStringLiteral("ai8TemperatureOverviewChannelLabel"));
+        auto *valueLabel = cell->findChild<QLabel *>(
+            QStringLiteral("ai8TemperatureOverviewValueLabel"));
+        require(!cell->property("available").toBool() && channelLabel != nullptr &&
+                    valueLabel != nullptr && valueLabel->text() == QStringLiteral("---"),
+                "dark AI-8 overview starts with a readable unavailable capsule");
+        requireWidgetInteriorUsesBackground(
+            cell,
+            background,
+            "dark AI-8 overview unavailable capsule renders the alternate dark surface");
+        require(channelLabel->palette().color(QPalette::WindowText) == channelText &&
+                    valueLabel->palette().color(QPalette::WindowText) == valueText,
+                "dark AI-8 overview labels use their configured readable text colors");
+        const QImage channelImage = channelLabel->grab().toImage().convertToFormat(QImage::Format_ARGB32);
+        const QImage valueImage = valueLabel->grab().toImage().convertToFormat(QImage::Format_ARGB32);
+        require(countPixelsNearColor(channelImage, channelImage.rect(), channelText, 8) >= 1 &&
+                    countPixelsNearColor(valueImage, valueImage.rect(), valueText, 8) >= 1,
+                "dark AI-8 overview renders both channel and unavailable value text over the dark capsule");
+    }
+}
+
 void requireSidebarCardStyle(const QString& styleSheet,
                              bool dark,
                              const char *message)
@@ -4312,6 +4377,43 @@ int main(int argc, char **argv)
                 "home-environment test window becomes exposed");
         requireHomeEnvironmentCardLayout(environmentWindow, true);
         std::cout << "home_environment_layout_test passed\n";
+        return 0;
+    }
+
+    if (app.arguments().contains(QStringLiteral("--ai8-overview-dark-only")))
+    {
+        MainWindow ai8OverviewWindow;
+        ai8OverviewWindow.resize(1280, 800);
+        ai8OverviewWindow.show();
+        require(waitForWindowExposed(&ai8OverviewWindow),
+                "AI-8 overview dark-theme test window becomes exposed");
+        const bool initialDarkTheme = qApp->property(VaporView::kAppDarkThemeProperty).toBool();
+        if (!initialDarkTheme)
+        {
+            require(QMetaObject::invokeMethod(&ai8OverviewWindow,
+                                               "onToggleTheme",
+                                               Qt::DirectConnection),
+                    "AI-8 overview test can switch to dark theme");
+            processEventsFor(150);
+            activateLayouts(&ai8OverviewWindow);
+        }
+        require(qApp->property(VaporView::kAppDarkThemeProperty).toBool(),
+                "AI-8 overview test is in dark theme");
+        requireDarkAi8OverviewCapsulesReadable(ai8OverviewWindow);
+        if (!initialDarkTheme)
+        {
+            require(QMetaObject::invokeMethod(&ai8OverviewWindow,
+                                               "onToggleTheme",
+                                               Qt::DirectConnection),
+                    "AI-8 overview test restores the light theme");
+            processEventsFor(150);
+        }
+        ai8OverviewWindow.close();
+        require(processEventsUntil(1000, [&ai8OverviewWindow]() {
+                    return !ai8OverviewWindow.isVisible();
+                }),
+                "AI-8 overview dark-theme test window closes cleanly");
+        std::cout << "ai8_overview_dark_theme_test passed\n";
         return 0;
     }
 

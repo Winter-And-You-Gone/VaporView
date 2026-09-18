@@ -1369,6 +1369,42 @@ QFrame#temperatureOverviewOutputCapsule {
 QLabel#temperatureOverviewOutputLabel {
     color: @vv-text-strong;
 }
+QWidget#ai8TemperatureOverviewPanel {
+    background-color: transparent;
+}
+QFrame#ai8TemperatureOverviewCell {
+    background-color: @vv-surface-alt;
+    border: 1px solid @vv-border;
+    border-radius: 12px;
+}
+QFrame#ai8TemperatureOverviewCell[available="true"] {
+    background-color: @vv-hd-ok-bg;
+    border-color: @vv-hd-ok;
+}
+QFrame#ai8TemperatureOverviewCell QLabel {
+    background-color: transparent;
+    border: none;
+}
+QLabel#ai8TemperatureOverviewChannelLabel {
+    color: @vv-text-muted;
+    font-size: 11px;
+    font-weight: 600;
+}
+QLabel#ai8TemperatureOverviewValueLabel {
+    color: @vv-text-strong;
+    font-family: "Consolas", "Monaco", "Courier New", monospace;
+    font-size: 13px;
+    font-weight: 700;
+}
+QLabel#ai8TemperatureOverviewValueLabel[temperatureState="normal"] {
+    color: #3B82F6;
+}
+QLabel#ai8TemperatureOverviewValueLabel[temperatureState="warm"] {
+    color: @vv-warning;
+}
+QLabel#ai8TemperatureOverviewValueLabel[temperatureState="hot"] {
+    color: @vv-hd-bad;
+}
 QToolButton#temperatureOverviewChannelButton {
     background-color: @vv-surface-alt;
     border: 1px solid @vv-border;
