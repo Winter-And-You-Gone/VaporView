@@ -1389,15 +1389,19 @@ void requireSpinArrowHoverUsesPrimary(bool dark, const char *message)
             "spin hover filter tracks the upper step button");
 
     const QImage image = spin.grab().toImage().convertToFormat(QImage::Format_ARGB32);
+    const qreal devicePixelRatio = image.devicePixelRatio();
+    const QRect arrowPixelRect(qRound(upButtonRect.x() * devicePixelRatio),
+                               qRound(upButtonRect.y() * devicePixelRatio),
+                               qRound(upButtonRect.width() * devicePixelRatio),
+                               qRound(upButtonRect.height() * devicePixelRatio));
     const QColor expected = VaporView::appThemeColor(VaporView::AppThemeColor::Primary, dark);
-    const int primaryPixelCount = countPixelsNearColor(
-        image,
-        QRect(image.width() / 2,
-              0,
-              image.width() - image.width() / 2,
-              image.height() / 2),
-        expected);
+    const int primaryPixelCount = countPixelsNearColor(image, arrowPixelRect, expected);
     require(primaryPixelCount >= 1, message);
+    require(countPixelsNearColor(
+                image,
+                QRect(0, 0, arrowPixelRect.left(), image.height()),
+                expected) == 0,
+            "enabled spin arrow hover does not duplicate the primary icon in the text area");
 }
 
 void requireDisabledSpinArrowKeepsIdle(bool dark, const char *message)
@@ -4367,11 +4371,15 @@ int main(int argc, char **argv)
                     "spin-arrow disabled test can switch to light theme");
             processEventsFor(150);
         }
+        requireSpinArrowHoverUsesPrimary(false,
+                                         "light theme enabled spin arrow keeps the hover icon in its arrow slot");
         requireDisabledSpinArrowKeepsIdle(false,
                                           "light theme disabled spin arrow stays in its idle color");
         require(QMetaObject::invokeMethod(&spinArrowWindow, "onToggleTheme", Qt::DirectConnection),
                 "spin-arrow disabled test can switch to dark theme");
         processEventsFor(150);
+        requireSpinArrowHoverUsesPrimary(true,
+                                         "dark theme enabled spin arrow keeps the hover icon in its arrow slot");
         requireDisabledSpinArrowKeepsIdle(true,
                                           "dark theme disabled spin arrow stays in its idle color");
         if (!initialDarkTheme)
@@ -4683,7 +4691,7 @@ int main(int argc, char **argv)
                 qApp->styleSheet().contains(QStringLiteral("chevron-up-primary.svg")) &&
                 qApp->styleSheet().contains(QStringLiteral("chevron-down-primary.svg")) &&
                 qApp->styleSheet().contains(QStringLiteral("QAbstractSpinBox::up-arrow")) &&
-                qApp->styleSheet().contains(QStringLiteral("QAbstractSpinBox:enabled[spinArrowHover=\"up\"]::up-arrow")) &&
+                qApp->styleSheet().contains(QStringLiteral("QAbstractSpinBox[spinArrowHover=\"up\"]::up-arrow")) &&
                 qApp->styleSheet().contains(QStringLiteral("QComboBox::down-arrow")) &&
                 qApp->styleSheet().contains(QStringLiteral("background-color: transparent")),
             "spin arrows use enlarged primary lucide hover icons without button backgrounds");

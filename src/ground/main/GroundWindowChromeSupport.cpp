@@ -811,7 +811,7 @@ protected:
         {
             setHoverPart(spin, QString());
         }
-        else if (event->type() == QEvent::EnabledChange && !spin->isEnabled())
+        else if (event->type() == QEvent::EnabledChange)
         {
             setHoverPart(spin, QString());
         }

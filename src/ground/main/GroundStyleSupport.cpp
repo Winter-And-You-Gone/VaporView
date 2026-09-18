@@ -1118,10 +1118,10 @@ QAbstractSpinBox::up-arrow {
 QAbstractSpinBox::down-arrow {
     image: url(lucide/chevron-down-dark.svg);
 }
-QAbstractSpinBox:enabled[spinArrowHover="up"]::up-arrow {
+QAbstractSpinBox[spinArrowHover="up"]::up-arrow {
     image: url(lucide/chevron-up-primary-dark.svg);
 }
-QAbstractSpinBox:enabled[spinArrowHover="down"]::down-arrow {
+QAbstractSpinBox[spinArrowHover="down"]::down-arrow {
     image: url(lucide/chevron-down-primary-dark.svg);
 }
 QToolBar QToolButton:hover {
