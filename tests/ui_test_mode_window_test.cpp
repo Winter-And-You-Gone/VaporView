@@ -815,6 +815,12 @@ void requireUiTestEpsilonPanelWrappedTopRowFilled(QWidget *epsilonPanel)
     const QRect second(cards.at(1)->mapTo(epsilonPanel, QPoint(0, 0)), cards.at(1)->size());
     const QRect third(cards.at(2)->mapTo(epsilonPanel, QPoint(0, 0)), cards.at(2)->size());
     const QRect bounds = epsilonPanel->contentsRect();
+    const auto staysInsidePanel = [&bounds](const QRect& rect) {
+        return rect.left() >= bounds.left() - 2 &&
+               rect.top() >= bounds.top() - 2 &&
+               rect.right() <= bounds.right() + 2 &&
+               rect.bottom() <= bounds.bottom() + 2;
+    };
     const int topRowJoinGap = second.left() - first.right() - 1;
     const bool fillsTopRow =
         std::abs(first.top() - second.top()) <= 4 &&
@@ -824,7 +830,13 @@ void requireUiTestEpsilonPanelWrappedTopRowFilled(QWidget *epsilonPanel)
         third.top() > first.bottom() &&
         third.left() <= first.left() + 2 &&
         std::abs(second.right() - third.right()) <= 2 &&
-        second.right() >= bounds.right() - 6;
+        second.right() >= bounds.right() - 6 &&
+        staysInsidePanel(first) &&
+        staysInsidePanel(second) &&
+        staysInsidePanel(third) &&
+        !first.intersects(second) &&
+        !first.intersects(third) &&
+        !second.intersects(third);
     if (!fillsTopRow)
     {
         std::cerr << "UI-test EPSILON wrapped row geometry: bounds=" << bounds.width()
@@ -911,11 +923,13 @@ int main(int argc, char **argv)
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDirectory.path());
     QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, settingsDirectory.path());
     QApplication application(argc, argv);
+    const bool darkEpsilonLayoutOnly = application.arguments().contains(
+        QStringLiteral("--dark-epsilon-layout-only"));
 
     {
         QSettings mainSettings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
         mainSettings.setValue(QStringLiteral("serial/epsilon_port"), QStringLiteral("NORMAL-COM7"));
-        mainSettings.setValue(QStringLiteral("dark_theme_enabled"), false);
+        mainSettings.setValue(QStringLiteral("dark_theme_enabled"), darkEpsilonLayoutOnly);
         mainSettings.setValue(QStringLiteral("font_scale_percent"), 100);
         mainSettings.setValue(QStringLiteral("recording_directory"), settingsDirectory.filePath(QStringLiteral("business-output")));
         mainSettings.sync();
@@ -937,6 +951,37 @@ int main(int argc, char **argv)
     auto *window = new MainWindow();
     window->show();
     processEvents();
+
+    if (darkEpsilonLayoutOnly)
+    {
+        require(qApp->property(VaporView::kAppDarkThemeProperty).toBool(),
+                "dark EPSILON layout test starts in dark theme");
+        QAction *modeAction = window->findChild<QAction *>(QStringLiteral("uiTestModeAction"));
+        require(modeAction != nullptr, "dark EPSILON layout test exposes the UI-test action");
+        modeAction->trigger();
+        require(modeAction->isChecked(), "dark EPSILON layout test enters UI-test mode");
+        QWidget *epsilonPanel = window->findChild<QWidget *>(QStringLiteral("epsilonPanel"));
+        require(epsilonPanel != nullptr && epsilonPanel->isVisible(),
+                "dark EPSILON layout test exposes the home panel");
+        require(VaporViewTest::processEventsUntil(2500, [epsilonPanel]() {
+                    const QMap<QString, QString> values = epsilonPanelFieldValues(epsilonPanel);
+                    return values.value(QStringLiteral("UTC时间:")) != QStringLiteral("--") &&
+                           values.value(QStringLiteral("姿态一致性[最大差值]:"))
+                               .contains(QStringLiteral("41-63"));
+                }),
+                "dark EPSILON layout test receives the populated UI-test sample");
+        requireUiTestEpsilonPanelFieldsCovered(epsilonPanel);
+        requireUiTestEpsilonPanelWrappedTopRowFilled(epsilonPanel);
+        window->close();
+        require(VaporViewTest::processEventsUntil(1000, [window]() {
+                    return !window->isVisible();
+                }),
+                "dark EPSILON layout test window closes cleanly");
+        delete window;
+        std::cout << "dark_epsilon_layout_test passed\n";
+        return 0;
+    }
+
     QComboBox *epsilonPort = window->findChild<QComboBox *>(QStringLiteral("deviceEpsilonPortCombo"));
     QLineEdit *rtkServer = window->findChild<QLineEdit *>(QStringLiteral("rtkServerEdit"));
     QLineEdit *rtkPort = window->findChild<QLineEdit *>(QStringLiteral("rtkPortEdit"));

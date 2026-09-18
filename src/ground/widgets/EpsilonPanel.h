@@ -35,6 +35,9 @@ constexpr int kEpsilonMotionValueColumnWidth = 145;
 constexpr int kEpsilonFieldBaseSpacing = 2;
 constexpr int kEpsilonMotionFieldSpacing = 8;
 constexpr int kEpsilonValueColumnSlack = 14;
+// The motion card spans the wrapped row; keep its minimum just inside the
+// default panel width and let the word-wrapped value label use the extra room.
+constexpr int kEpsilonMotionValueColumnSlack = 8;
 constexpr int kEpsilonFieldMinimumHeight = 20;
 constexpr int kEpsilonThreeColumnContentReserve = 180;
 
@@ -670,7 +673,9 @@ private:
                     }
                 }
             }
-            valueWidth += kEpsilonValueColumnSlack;
+            valueWidth += sectionKey == QStringLiteral("motion")
+                ? kEpsilonMotionValueColumnSlack
+                : kEpsilonValueColumnSlack;
             QGridLayout *grid = section_card_grids_.at(i);
             if (!grid)
             {
