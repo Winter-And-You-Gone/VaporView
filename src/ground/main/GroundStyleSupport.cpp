@@ -934,11 +934,11 @@ QSplitter#homeOverviewSplitter::handle:horizontal:pressed {
 }
 QSplitter#homeSensorCardSplitter::handle:horizontal {
     width: 12px;
-    background-color: @vv-surface;
+    background-color: @vv-window;
 }
 QSplitter#homeSensorCardSplitter::handle:vertical {
     height: 12px;
-    background-color: @vv-surface;
+    background-color: @vv-window;
 }
 QSplitter#homeSensorCardSplitter::handle:horizontal:hover,
 QSplitter#homeSensorCardSplitter::handle:vertical:hover {
@@ -946,10 +946,10 @@ QSplitter#homeSensorCardSplitter::handle:vertical:hover {
 }
 QSplitter#homeSensorCardSplitter::handle:horizontal:pressed,
 QSplitter#homeSensorCardSplitter::handle:vertical:pressed {
-    background-color: @vv-surface;
+    background-color: @vv-window;
 }
 QSplitter#homeSensorCardSplitter::handle:focus {
-    background-color: @vv-surface;
+    background-color: @vv-window;
     border: none;
     outline: none;
 }

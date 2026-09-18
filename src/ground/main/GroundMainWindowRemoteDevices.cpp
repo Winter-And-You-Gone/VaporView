@@ -655,6 +655,15 @@ void MainWindow::updateHomeDeviceOverviewMinimumWidth()
         return;
     }
 
+    QSplitter *overviewSplitter = state_->home_overview_splitter_;
+    const bool darkTheme = qApp && qApp->property(kAppDarkThemeProperty).toBool();
+    const QVariant previousTheme = overviewSplitter->property(kHomeOverviewDeviceThemeProperty);
+    // A theme repolish can briefly report smaller label size hints. Keep an
+    // auto-managed card at its current width during that transition; language
+    // changes still follow the normal minimum-width convergence below.
+    const bool themeChanged = previousTheme.isValid() && previousTheme.toBool() != darkTheme;
+    overviewSplitter->setProperty(kHomeOverviewDeviceThemeProperty, darkTheme);
+
     auto rememberAutoMinimumWidth = [this, contentMinimumWidth]() {
         state_->home_overview_splitter_->setProperty(
             kHomeOverviewDeviceAutoMinimumWidthProperty,
@@ -700,6 +709,7 @@ void MainWindow::updateHomeDeviceOverviewMinimumWidth()
                                       .toBool();
     const bool belowCurrentMinimum = sizes.at(0) < contentMinimumWidth;
     const bool autoMinimumShrank =
+        !themeChanged &&
         autoManagedWidth &&
         hadPreviousAutoMinimum &&
         previousAutoMinimumWidth > contentMinimumWidth;
@@ -708,6 +718,7 @@ void MainWindow::updateHomeDeviceOverviewMinimumWidth()
         previousAutoMinimumWidth > contentMinimumWidth &&
         std::abs(sizes.at(0) - previousAutoMinimumWidth) <= 1;
     const bool shouldFollowAutoMinimum =
+        !themeChanged &&
         autoMinimumShrank &&
         sizes.at(0) >= contentMinimumWidth;
     if (!belowCurrentMinimum && !followsPreviousAutoMinimum && !shouldFollowAutoMinimum)

@@ -669,6 +669,9 @@ add_test(NAME home_environment_layout_test
 add_test(NAME ai8_overview_dark_theme_test
     COMMAND main_window_layout_test --ai8-overview-dark-only
 )
+add_test(NAME home_theme_layout_test
+    COMMAND main_window_layout_test --home-theme-layout-only
+)
 add_test(NAME combo_arrow_hover_test
     COMMAND main_window_layout_test --combo-arrow-only
 )

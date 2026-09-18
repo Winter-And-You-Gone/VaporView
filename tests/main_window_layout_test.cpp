@@ -4286,6 +4286,103 @@ void requireHomeEnvironmentCardLayout(MainWindow& window, bool requireSideBySide
             "home sensor cards return to their original wide-window layout");
 }
 
+void requireHomeThemeLayoutStability()
+{
+    MainWindow window;
+    window.setWindowTitle(QStringLiteral("VaporView"));
+    window.resize(1280, 800);
+    window.show();
+    require(waitForWindowExposed(&window),
+            "home theme test window becomes exposed");
+    activateLayouts(&window);
+    processEventsFor(300);
+    activateLayouts(&window);
+
+    auto *overviewSplitter =
+        window.findChild<QSplitter *>(QStringLiteral("homeOverviewSplitter"));
+    auto *deviceCard = overviewSplitter && overviewSplitter->count() >= 1
+        ? qobject_cast<QGroupBox *>(overviewSplitter->widget(0))
+        : nullptr;
+    auto *sensorSplitter =
+        window.findChild<QSplitter *>(QStringLiteral("homeSensorCardSplitter"));
+    require(overviewSplitter != nullptr && deviceCard != nullptr && sensorSplitter != nullptr,
+            "home theme test exposes the overview and sensor splitters");
+    const bool initialDarkTheme =
+        qApp->property(VaporView::kAppDarkThemeProperty).toBool();
+    if (initialDarkTheme)
+    {
+        require(QMetaObject::invokeMethod(&window, "onToggleTheme", Qt::DirectConnection),
+                "home theme test can normalize the initial theme to light");
+        processEventsFor(300);
+        activateLayouts(&window);
+    }
+    const QList<int> lightSizes = overviewSplitter->sizes();
+    require(lightSizes.size() == 2 &&
+                !qApp->property(VaporView::kAppDarkThemeProperty).toBool(),
+            "home theme test reads the light-theme overview splitter sizes");
+    const int lightDeviceWidth = lightSizes.at(0);
+
+    require(QMetaObject::invokeMethod(&window, "onToggleTheme", Qt::DirectConnection),
+            "home theme test switches to dark theme");
+    processEventsFor(300);
+    activateLayouts(&window);
+    const QList<int> darkSizes = overviewSplitter->sizes();
+    require(darkSizes.size() == 2,
+            "home theme test reads the dark-theme overview splitter sizes");
+    if (darkSizes.size() == 2 && darkSizes.at(0) != lightDeviceWidth)
+    {
+        std::cerr << "Home theme overview width: light=" << lightDeviceWidth
+                  << " dark=" << darkSizes.at(0)
+                  << " cardMin=" << deviceCard->minimumWidth() << '\n';
+    }
+    require(std::abs(darkSizes.at(0) - lightDeviceWidth) <= 1,
+            "theme switching preserves the auto-managed device overview width");
+
+    QWidget *sensorHandle = sensorSplitter->handle(1);
+    require(sensorHandle != nullptr && sensorHandle->isVisible(),
+            "home theme test exposes the EPSILON/environment separator handle");
+    const QString darkWindowBackground =
+        QStringLiteral("background-color: ") +
+        VaporView::appThemeColorName(VaporView::AppThemeColor::Window, true);
+    requireLastStyleRuleContains(
+        qApp->styleSheet(),
+        QStringLiteral("QSplitter#homeSensorCardSplitter::handle:horizontal {"),
+        darkWindowBackground,
+        "dark EPSILON/environment separator uses the main window background");
+    const QImage separatorImage =
+        sensorHandle->grab().toImage().convertToFormat(QImage::Format_ARGB32);
+    require(!separatorImage.isNull(),
+            "dark EPSILON/environment separator can be rendered for visual verification");
+    const QRect separatorInterior = separatorImage.rect().adjusted(1, 1, -1, -1);
+    require(!separatorInterior.isEmpty() &&
+                countPixelsNearColor(
+                    separatorImage,
+                    separatorInterior,
+                    VaporView::appThemeColor(VaporView::AppThemeColor::Window, true),
+                    8) >= separatorInterior.width() * separatorInterior.height() / 2,
+            "dark EPSILON/environment separator pixels match the main window background");
+
+    require(QMetaObject::invokeMethod(&window, "onToggleTheme", Qt::DirectConnection),
+            "home theme test restores the light theme");
+    processEventsFor(300);
+    activateLayouts(&window);
+    const QList<int> restoredSizes = overviewSplitter->sizes();
+    require(restoredSizes.size() == 2 &&
+                std::abs(restoredSizes.at(0) - lightDeviceWidth) <= 1,
+            "switching back to light theme preserves the device overview width");
+    if (initialDarkTheme)
+    {
+        require(QMetaObject::invokeMethod(&window, "onToggleTheme", Qt::DirectConnection),
+                "home theme test restores the original dark theme");
+        processEventsFor(300);
+    }
+    window.close();
+    require(processEventsUntil(1000, [&window]() {
+                return !window.isVisible();
+            }),
+            "home theme test window closes cleanly");
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -4377,6 +4474,13 @@ int main(int argc, char **argv)
                 "home-environment test window becomes exposed");
         requireHomeEnvironmentCardLayout(environmentWindow, true);
         std::cout << "home_environment_layout_test passed\n";
+        return 0;
+    }
+
+    if (app.arguments().contains(QStringLiteral("--home-theme-layout-only")))
+    {
+        requireHomeThemeLayoutStability();
+        std::cout << "home_theme_layout_test passed\n";
         return 0;
     }
 
