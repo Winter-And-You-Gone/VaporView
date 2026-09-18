@@ -811,12 +811,22 @@ protected:
         {
             setHoverPart(spin, QString());
         }
+        else if (event->type() == QEvent::EnabledChange && !spin->isEnabled())
+        {
+            setHoverPart(spin, QString());
+        }
         return QObject::eventFilter(watched, event);
     }
 
 private:
     static void updateHoverPart(QAbstractSpinBox *spin, const QPoint& position)
     {
+        if (!spin->isEnabled())
+        {
+            setHoverPart(spin, QString());
+            return;
+        }
+
         QStyleOptionSpinBox option;
         option.initFrom(spin);
         option.subControls = QStyle::SC_All;

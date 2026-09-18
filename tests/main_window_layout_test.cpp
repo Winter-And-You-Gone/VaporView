@@ -1400,6 +1400,50 @@ void requireSpinArrowHoverUsesPrimary(bool dark, const char *message)
     require(primaryPixelCount >= 1, message);
 }
 
+void requireDisabledSpinArrowKeepsIdle(bool dark, const char *message)
+{
+    QSpinBox spin;
+    spin.setRange(0, 100);
+    spin.setValue(42);
+    spin.resize(120, 36);
+    spin.setFocusPolicy(Qt::NoFocus);
+    spin.show();
+    processEventsFor(80);
+    spin.setEnabled(false);
+    processEventsFor(80);
+
+    QStyleOptionSpinBox option;
+    option.initFrom(&spin);
+    option.subControls = QStyle::SC_All;
+    option.buttonSymbols = spin.buttonSymbols();
+    option.frame = spin.hasFrame();
+    const QRect upButtonRect = spin.style()->subControlRect(QStyle::CC_SpinBox,
+                                                            &option,
+                                                            QStyle::SC_SpinBoxUp,
+                                                            &spin);
+    require(!upButtonRect.isEmpty(), message);
+    moveMouseOverWidgetAt(&spin, upButtonRect.center(), 80);
+    QHoverEvent hoverMove(QEvent::HoverMove,
+                          QPointF(upButtonRect.center()),
+                          QPointF(-1, -1));
+    QCoreApplication::sendEvent(&spin, &hoverMove);
+    processEventsFor(80);
+    require(spin.property("spinArrowHover").toString().isEmpty(),
+            "disabled spin boxes do not retain an arrow hover state");
+
+    const QImage image = spin.grab().toImage().convertToFormat(QImage::Format_ARGB32);
+    const qreal devicePixelRatio = image.devicePixelRatio();
+    const QRect arrowPixelRect(qRound(upButtonRect.x() * devicePixelRatio),
+                               qRound(upButtonRect.y() * devicePixelRatio),
+                               qRound(upButtonRect.width() * devicePixelRatio),
+                               qRound(upButtonRect.height() * devicePixelRatio));
+    require(countPixelsNearColor(
+                image,
+                arrowPixelRect,
+                VaporView::appThemeColor(VaporView::AppThemeColor::Primary, dark)) == 0,
+            message);
+}
+
 void requireComboArrowUsesPrimary(bool dark, const char *message)
 {
     QComboBox combo;
@@ -4307,6 +4351,46 @@ int main(int argc, char **argv)
         return 0;
     }
 
+    if (app.arguments().contains(QStringLiteral("--spin-arrow-disabled-only")))
+    {
+        MainWindow spinArrowWindow;
+        spinArrowWindow.resize(1280, 800);
+        spinArrowWindow.show();
+        require(waitForWindowExposed(&spinArrowWindow),
+                "spin-arrow disabled test window becomes exposed");
+        const bool initialDarkTheme = qApp->property(VaporView::kAppDarkThemeProperty).toBool();
+        if (initialDarkTheme)
+        {
+            require(QMetaObject::invokeMethod(&spinArrowWindow,
+                                               "onToggleTheme",
+                                               Qt::DirectConnection),
+                    "spin-arrow disabled test can switch to light theme");
+            processEventsFor(150);
+        }
+        requireDisabledSpinArrowKeepsIdle(false,
+                                          "light theme disabled spin arrow stays in its idle color");
+        require(QMetaObject::invokeMethod(&spinArrowWindow, "onToggleTheme", Qt::DirectConnection),
+                "spin-arrow disabled test can switch to dark theme");
+        processEventsFor(150);
+        requireDisabledSpinArrowKeepsIdle(true,
+                                          "dark theme disabled spin arrow stays in its idle color");
+        if (!initialDarkTheme)
+        {
+            require(QMetaObject::invokeMethod(&spinArrowWindow,
+                                               "onToggleTheme",
+                                               Qt::DirectConnection),
+                    "spin-arrow disabled test restores the light theme");
+            processEventsFor(150);
+        }
+        spinArrowWindow.close();
+        require(processEventsUntil(1000, [&spinArrowWindow]() {
+                    return !spinArrowWindow.isVisible();
+                }),
+                "spin-arrow disabled test window closes cleanly");
+        std::cout << "spin_arrow_disabled_test passed\n";
+        return 0;
+    }
+
     if (app.arguments().contains(QStringLiteral("--combination-navigation-only")))
     {
         {
@@ -4599,7 +4683,7 @@ int main(int argc, char **argv)
                 qApp->styleSheet().contains(QStringLiteral("chevron-up-primary.svg")) &&
                 qApp->styleSheet().contains(QStringLiteral("chevron-down-primary.svg")) &&
                 qApp->styleSheet().contains(QStringLiteral("QAbstractSpinBox::up-arrow")) &&
-                qApp->styleSheet().contains(QStringLiteral("QAbstractSpinBox[spinArrowHover=\"up\"]::up-arrow")) &&
+                qApp->styleSheet().contains(QStringLiteral("QAbstractSpinBox:enabled[spinArrowHover=\"up\"]::up-arrow")) &&
                 qApp->styleSheet().contains(QStringLiteral("QComboBox::down-arrow")) &&
                 qApp->styleSheet().contains(QStringLiteral("background-color: transparent")),
             "spin arrows use enlarged primary lucide hover icons without button backgrounds");
