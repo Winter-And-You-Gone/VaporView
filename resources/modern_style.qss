@@ -583,7 +583,7 @@ QFrame#ai8TemperatureOverviewCell[available="true"] {
 }
 
 QLabel#ai8TemperatureOverviewValueLabel[temperatureState="normal"] {
-    color: @vv-primary;
+    color: @vv-hd-temperature-normal;
 }
 
 QLabel#ai8TemperatureOverviewValueLabel[temperatureState="warm"] {

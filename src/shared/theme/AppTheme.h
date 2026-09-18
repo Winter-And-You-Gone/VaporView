@@ -72,6 +72,7 @@ enum class AppThemeColor
     HomeDeviceSuccessBackground,
     HomeDeviceDanger,
     HomeDeviceDangerBackground,
+    HomeDeviceTemperatureNormal,
     Warning,
     WarningBackground,
     Orange,

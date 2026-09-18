@@ -403,6 +403,7 @@ const ThemeReplacement kColorTokens[] = {
     {"@vv-hd-ok", AppThemeColor::HomeDeviceSuccess},
     {"@vv-hd-bad-bg", AppThemeColor::HomeDeviceDangerBackground},
     {"@vv-hd-bad", AppThemeColor::HomeDeviceDanger},
+    {"@vv-hd-temperature-normal", AppThemeColor::HomeDeviceTemperatureNormal},
     {"@vv-warning-bg", AppThemeColor::WarningBackground},
     {"@vv-warning", AppThemeColor::Warning},
     {"@vv-orange-bg", AppThemeColor::OrangeBackground},
@@ -607,6 +608,8 @@ QColor appThemeColor(AppThemeColor color, bool dark)
         return hexColor(dark ? "#FB7185" : "#EF4444");
     case AppThemeColor::HomeDeviceDangerBackground:
         return hexColor(dark ? "#3F1518" : "#FDECEC");
+    case AppThemeColor::HomeDeviceTemperatureNormal:
+        return hexColor(dark ? kBrandOrange : "#3B82F6");
     case AppThemeColor::Warning:
         return hexColor(dark ? "#E9A07D" : kBrandOrange);
     case AppThemeColor::WarningBackground:

@@ -983,7 +983,8 @@ int main(int argc, char **argv)
             require(value != nullptr && value->property("temperatureState").toString() ==
                         QStringLiteral("normal") &&
                         value->palette().color(QPalette::WindowText) ==
-                            VaporView::appThemeColor(VaporView::AppThemeColor::Primary, true),
+                            VaporView::appThemeColor(
+                                VaporView::AppThemeColor::HomeDeviceTemperatureNormal, true),
                     "dark UI test normal temperature values use the orange theme color");
         }
         window->close();
@@ -1107,7 +1108,8 @@ int main(int argc, char **argv)
         require(value != nullptr && value->property("temperatureState").toString() ==
                     QStringLiteral("normal") &&
                     value->palette().color(QPalette::WindowText) ==
-                        VaporView::appThemeColor(VaporView::AppThemeColor::Primary, false),
+                        VaporView::appThemeColor(
+                            VaporView::AppThemeColor::HomeDeviceTemperatureNormal, false),
                 "UI test normal temperature values use the light-theme primary color");
     }
     require(scenarioMenu->isEnabled(), "scenario menu is enabled in UI test mode");
