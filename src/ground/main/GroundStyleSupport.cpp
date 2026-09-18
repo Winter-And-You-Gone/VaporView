@@ -1397,7 +1397,7 @@ QLabel#ai8TemperatureOverviewValueLabel {
     font-weight: 700;
 }
 QLabel#ai8TemperatureOverviewValueLabel[temperatureState="normal"] {
-    color: #3B82F6;
+    color: @vv-primary;
 }
 QLabel#ai8TemperatureOverviewValueLabel[temperatureState="warm"] {
     color: @vv-warning;

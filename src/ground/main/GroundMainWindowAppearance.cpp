@@ -137,7 +137,7 @@ void MainWindow::loadModernStyleSheet()
             "QFrame#ai8TemperatureOverviewCell QLabel { background-color: transparent; border: none; }"
             "QLabel#ai8TemperatureOverviewChannelLabel { color: @vv-text-muted; font-size: 11px; font-weight: 600; }"
             "QLabel#ai8TemperatureOverviewValueLabel { color: @vv-text-strong; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 13px; font-weight: 700; }"
-            "QLabel#ai8TemperatureOverviewValueLabel[temperatureState=\"normal\"] { color: #3B82F6; }"
+            "QLabel#ai8TemperatureOverviewValueLabel[temperatureState=\"normal\"] { color: @vv-primary; }"
             "QLabel#ai8TemperatureOverviewValueLabel[temperatureState=\"warm\"] { color: @vv-warning; }"
             "QLabel#ai8TemperatureOverviewValueLabel[temperatureState=\"hot\"] { color: @vv-hd-bad; }"
             "QLabel#temperatureOverviewOutputPercentPill { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text-strong; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 13px; font-weight: 700; padding: 2px 3px; margin: 0px; }"

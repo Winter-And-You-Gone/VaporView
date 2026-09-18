@@ -972,6 +972,20 @@ int main(int argc, char **argv)
                 "dark EPSILON layout test receives the populated UI-test sample");
         requireUiTestEpsilonPanelFieldsCovered(epsilonPanel);
         requireUiTestEpsilonPanelWrappedTopRowFilled(epsilonPanel);
+        const QList<QFrame *> overviewCells = window->findChildren<QFrame *>(
+            QStringLiteral("ai8TemperatureOverviewCell"));
+        require(overviewCells.size() == 8,
+                "dark UI test mode exposes eight temperature capsules");
+        for (QFrame *cell : overviewCells)
+        {
+            auto *value = cell->findChild<QLabel *>(
+                QStringLiteral("ai8TemperatureOverviewValueLabel"));
+            require(value != nullptr && value->property("temperatureState").toString() ==
+                        QStringLiteral("normal") &&
+                        value->palette().color(QPalette::WindowText) ==
+                            VaporView::appThemeColor(VaporView::AppThemeColor::Primary, true),
+                    "dark UI test normal temperature values use the orange theme color");
+        }
         window->close();
         require(VaporViewTest::processEventsUntil(1000, [window]() {
                     return !window->isVisible();
@@ -1092,8 +1106,9 @@ int main(int argc, char **argv)
         auto *value = cell->findChild<QLabel *>(QStringLiteral("ai8TemperatureOverviewValueLabel"));
         require(value != nullptr && value->property("temperatureState").toString() ==
                     QStringLiteral("normal") &&
-                    value->palette().color(QPalette::WindowText) == QColor(QStringLiteral("#3B82F6")),
-                "UI test normal temperature values use the blue resource stylesheet color");
+                    value->palette().color(QPalette::WindowText) ==
+                        VaporView::appThemeColor(VaporView::AppThemeColor::Primary, false),
+                "UI test normal temperature values use the light-theme primary color");
     }
     require(scenarioMenu->isEnabled(), "scenario menu is enabled in UI test mode");
     require(uiTestLidarDistanceUsesIntegerDigits(window, 3),
