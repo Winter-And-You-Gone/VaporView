@@ -281,12 +281,16 @@ QString uiLogViewModeToSetting(LogUiViewMode mode)
     case LogUiViewMode::Debug:
         return QStringLiteral("debug");
     }
-    return QStringLiteral("attention");
+    return QStringLiteral("all");
 }
 
 LogUiViewMode uiLogViewModeFromSetting(const QString& value)
 {
     const QString normalized = value.trimmed().toLower();
+    if (normalized == QStringLiteral("attention"))
+    {
+        return LogUiViewMode::Attention;
+    }
     if (normalized == QStringLiteral("all"))
     {
         return LogUiViewMode::All;
@@ -295,7 +299,7 @@ LogUiViewMode uiLogViewModeFromSetting(const QString& value)
     {
         return LogUiViewMode::Debug;
     }
-    return LogUiViewMode::Attention;
+    return kDefaultLogUiViewMode;
 }
 
 UiLogModel::UiLogModel(QObject *parent)

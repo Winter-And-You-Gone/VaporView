@@ -347,7 +347,7 @@
 
 清单格式使用普通条目，避免被事件目录审计脚本当成第二张事件目录表解析：
 
-- Any / ui.issue / `user_issue_reported` / Info、Warning、Error / `attention` / 可合并 / 默认键：用户问题上报需要默认进入关注视图，Info 也可作为重要状态确认。
+- Any / ui.issue / `user_issue_reported` / Info、Warning、Error / `attention` / 可合并 / 默认键：用户问题上报需要进入关注视图，Info 也可作为重要状态确认。
 - Ground / device.connection / LocalConnection* / Info、Warning、Error / `details` 或 `attention` / 可合并 / 默认键：本地连接流程直接产生结构化事件，业务状态继续走业务 signal。
 - Ground / telemetry.wave.tcp / `tcp_wave_*` / Debug、Info、Warning、Error / `hidden`、`details` 或 `attention` / 可合并 / 默认键：TcpWavePanel 在知道业务语义的位置直接发布结构化日志，不再通过 MainWindow 字符串桥接。
 - Ground / ui.log / `ui_log_view_cleared` / Info / `hidden` / 可合并 / 默认键：“清空显示”动作可审计，但清空后不能立即生成可见行。

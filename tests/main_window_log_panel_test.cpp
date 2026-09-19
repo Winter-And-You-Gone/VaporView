@@ -311,6 +311,10 @@ int main(int argc, char **argv)
                    {QStringLiteral("ui_visibility"), QStringLiteral("attention")},
                    {QStringLiteral("system_error"), QStringLiteral("Access denied")}});
 
+    require(logList->model()->rowCount() == 4,
+            "default log view shows Info and higher records while keeping Debug hidden");
+    attentionAction->trigger();
+    VaporViewTest::processEventsFor(30);
     require(logList->model()->rowCount() == 3,
             "attention view shows warnings and explicit attention Info");
     QModelIndex connectionLogIndex;

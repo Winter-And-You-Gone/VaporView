@@ -24,6 +24,8 @@ enum class LogUiViewMode
     Debug,
 };
 
+inline constexpr LogUiViewMode kDefaultLogUiViewMode = LogUiViewMode::All;
+
 enum class LogUiVisibility
 {
     Attention,
@@ -145,7 +147,7 @@ protected:
     bool filterAcceptsRow(int sourceRow, const QModelIndex& sourceParent) const override;
 
 private:
-    LogUiViewMode view_mode_ = LogUiViewMode::Attention;
+    LogUiViewMode view_mode_ = kDefaultLogUiViewMode;
     QString search_text_;
 };
 

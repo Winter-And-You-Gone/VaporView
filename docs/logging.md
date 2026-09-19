@@ -176,15 +176,15 @@ RD105 温控命令统一使用 `Ground / device.temperature.command`。典型事
 
 日志文件和桌面日志面板是分层的：JSONL 文件继续保存 Debug、Info、Warning、Error 和 Critical；桌面日志面板只根据结构化字段和级别决定是否显示，不提高全局最低日志级别，也不丢弃普通 Info 文件记录。
 
-地面端桌面日志面板提供三个正向视图：
+地面端桌面日志面板提供三个正向视图，默认打开 `全部`：
 
-- `关注`：默认视图，只显示 Warning、Error、Critical，以及显式 `ui_visibility=attention` 的 Info。
-- `全部`：显示 Info、Warning、Error、Critical；Debug 仍隐藏。
+- `全部`：默认视图，显示 Info、Warning、Error、Critical；Debug 仍隐藏。
+- `关注`：只显示 Warning、Error、Critical，以及显式 `ui_visibility=attention` 的 Info。
 - `调试`：显示 Debug、Info、Warning、Error、Critical，用于现场诊断和 Qt/内部细节。
 
 生产者可在 `fields` 中设置稳定英文字段 `ui_visibility`：
 
-- `attention`：进入默认关注视图，用于用户需要即时知道的重要状态变化。
+- `attention`：进入关注视图，用于用户需要即时知道的重要状态变化。
 - `details`：进入全部/调试视图，用于普通运行细节和 legacy UI 文本。
 - `hidden`：不进入桌面日志面板，但仍写入日志文件，用于高频进度、原始输出、清空显示审计等。
 

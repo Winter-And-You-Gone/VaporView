@@ -73,7 +73,7 @@ QVector<VaporView::LogRecord> queueWithFirstRecord(const VaporView::LogRecord& f
     return records;
 }
 
-void defaultViewIsAttention()
+void viewModesFilterByVisibility()
 {
     using namespace VaporView::Ground::Main;
     UiLogModel model;
@@ -84,9 +84,22 @@ void defaultViewIsAttention()
     model.appendRecord(makeRecord(VaporView::LogLevel::Critical, QStringLiteral("严重"), {{QStringLiteral("event"), QStringLiteral("critical_line")}}, QStringLiteral("Ground"), QStringLiteral("crit"), 5, 5'000'000));
     model.appendRecord(makeRecord(VaporView::LogLevel::Info, QStringLiteral("重要 Info"), {{QStringLiteral("event"), QStringLiteral("important_info")}, {QStringLiteral("ui_visibility"), QStringLiteral("attention")}}, QStringLiteral("Ground"), QStringLiteral("info"), 6, 6'000'000));
 
-    require(proxyRows(model, LogUiViewMode::Attention) == 4, "default attention view shows warning/error/critical/attention info only");
+    require(proxyRows(model, LogUiViewMode::Attention) == 4, "attention view shows warning/error/critical/attention info only");
     require(proxyRows(model, LogUiViewMode::All) == 5, "all view shows info and higher without debug");
     require(proxyRows(model, LogUiViewMode::Debug) == 6, "debug view shows debug and all non-explicit-hidden records");
+}
+
+void defaultViewModeSettingIsAll()
+{
+    using namespace VaporView::Ground::Main;
+    require(kDefaultLogUiViewMode == LogUiViewMode::All,
+            "log view default mode is all");
+    require(uiLogViewModeFromSetting(QString()) == LogUiViewMode::All,
+            "missing log view setting defaults to all");
+    require(uiLogViewModeFromSetting(QStringLiteral("unknown")) == LogUiViewMode::All,
+            "unknown log view setting defaults to all");
+    require(uiLogViewModeFromSetting(QStringLiteral("attention")) == LogUiViewMode::Attention,
+            "saved attention log view setting remains supported");
 }
 
 void structuredVisibilityDoesNotUseMessageLanguage()
@@ -395,7 +408,8 @@ void capacityAndBatchingAreBounded()
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
-    defaultViewIsAttention();
+    viewModesFilterByVisibility();
+    defaultViewModeSettingIsAll();
     structuredVisibilityDoesNotUseMessageLanguage();
     detailsLogsDoNotInferSeverityFromMessage();
     searchMatchesStructuredFields();
