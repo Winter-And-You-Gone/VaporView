@@ -4679,6 +4679,25 @@ int main(int argc, char **argv)
             : nullptr;
         require(embeddedRtk && rtkScrollArea && rtkNtripCard && rtkGgaCard && rtkRtcmCard && rtkLogCard,
                 "combination-navigation test finds the responsive RTK card grid");
+        auto *combinationSourceMode = findSourceModeCombo(&combinationWindow);
+        auto *combinationRtkOutputPort =
+            combinationWindow.findChild<QComboBox *>(QStringLiteral("rtkOutputPortCombo"));
+        require(combinationSourceMode && combinationRtkOutputPort &&
+                    combinationSourceMode->currentIndex() == 1 &&
+                    !combinationRtkOutputPort->isEnabled() &&
+                    combinationRtkOutputPort->currentText() == QStringLiteral("Remote Sky"),
+                "combination-navigation test starts with the remote RTK sink read-only");
+        combinationSourceMode->setCurrentIndex(0);
+        processEventsFor(80);
+        require(combinationRtkOutputPort->isEnabled() &&
+                    combinationRtkOutputPort->toolTip().isEmpty(),
+                "combination-navigation source switch re-enables local RTK output selection");
+        combinationSourceMode->setCurrentIndex(1);
+        processEventsFor(80);
+        require(!combinationRtkOutputPort->isEnabled() &&
+                    combinationRtkOutputPort->currentText() == QStringLiteral("Remote Sky") &&
+                    combinationRtkOutputPort->toolTip().contains(QStringLiteral("本地")),
+                "combination-navigation source switch restores the remote RTK sink");
         combinationWindow.resize(1024, 800);
         processEventsFor(200);
         activateLayouts(embeddedRtk);

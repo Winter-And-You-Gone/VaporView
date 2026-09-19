@@ -510,6 +510,11 @@ void MainWindow::onDataSourceModeChanged(int index)
     saveRememberedInputState();
     updateDeviceConfigTexts();
     updateSourceModeUi();
+    // The RTK page keeps one embedded dialog instance alive across source
+    // switches.  Refresh its transport endpoint here as well, otherwise a
+    // dialog that was opened in Remote mode keeps the Remote Sky sink (and its
+    // disabled output combo) after switching back to Local.
+    syncRtkConfigPageState();
     requestRemoteSkyConfigIfAvailable(false);
     updateRecordingStatusLabel();
 }

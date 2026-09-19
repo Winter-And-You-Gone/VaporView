@@ -4222,10 +4222,16 @@ void RtkConfigDialog::refreshPortCombos()
             output_port_combo_->addItem(sinkLabel, sinkLabel);
             output_port_combo_->setCurrentIndex(0);
             output_port_combo_->setEnabled(false);
+            output_port_combo_->setToolTip(textFor(
+                "Remote mode sends RTCM through the Sky link. Switch the source mode to Local to choose a PC serial port.",
+                "当前为远程模式，RTCM 通过天地链路发送到天空端；切换到“本地”后才能选择本机串口。"));
+            output_port_combo_->setAccessibleDescription(output_port_combo_->toolTip());
         }
         else
         {
             output_port_combo_->setEnabled(true);
+            output_port_combo_->setToolTip(QString());
+            output_port_combo_->setAccessibleDescription(QString());
             output_port_combo_->addItem(textFor("-- Select --", "未选择"));
             for (const QString& port : ports)
             {
