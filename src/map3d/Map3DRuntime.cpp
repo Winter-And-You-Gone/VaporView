@@ -8,6 +8,7 @@
 
 #include <osgDB/Registry>
 #include <osgEarth/Registry>
+#include <osgEarthDrivers/cache_filesystem/FileSystemCache>
 
 #include <mutex>
 
@@ -160,6 +161,21 @@ void initializeMap3DRuntime()
             osgDB::Registry::instance()->getLibraryFilePathList().push_front(pluginDir.toStdString());
         }
         osgEarth::initialize();
+        auto* registry = osgEarth::Registry::instance();
+        if (!registry->getDefaultCache() && !qEnvironmentVariableIsSet("OSGEARTH_CACHE_PATH"))
+        {
+            const QString cachePath = QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation)
+                + QStringLiteral("/VaporView/osgearth");
+            if (QDir().mkpath(cachePath))
+            {
+                osgEarth::Drivers::FileSystemCacheOptions options;
+                options.rootPath() = cachePath.toStdString();
+                // Native image serialization avoids introducing lossy JPEG recompression.
+                options.format() = "osgb";
+                osg::ref_ptr<osgEarth::Cache> cache = osgEarth::CacheFactory::create(options);
+                if (cache && cache->getStatus().isOK()) registry->setDefaultCache(cache.get());
+            }
+        }
     });
 }
 

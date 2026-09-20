@@ -16,6 +16,7 @@
 #include <QString>
 #include <QThread>
 #include <QThreadPool>
+#include <QTemporaryDir>
 
 #include <cstdlib>
 #include <iostream>
@@ -59,6 +60,9 @@ bool waitUntil(const std::function<bool()>& predicate, int timeoutMs)
 
 int main(int argc, char** argv)
 {
+    QTemporaryDir cacheDir;
+    require(cacheDir.isValid(), QStringLiteral("isolated map cache directory"));
+    qputenv("OSGEARTH_CACHE_PATH", cacheDir.path().toUtf8());
     QApplication app(argc, argv);
 
     const QDir sourceRoot(QStringLiteral(VAPORVIEW_SOURCE_DIR));
@@ -73,10 +77,26 @@ int main(int argc, char** argv)
         return 77;
     }
 
+    int presentedFrames = 0;
+    int performanceUpdates = 0;
     VaporView::Map3D::OsgEarthViewWidget view;
+    QObject::connect(&view, &QOpenGLWidget::frameSwapped, [&]() { ++presentedFrames; });
+    QObject::connect(&view, &VaporView::Map3D::OsgEarthViewWidget::performanceUpdated,
+                     [&]() { ++performanceUpdates; });
     view.resize(800, 600);
     view.show();
-    processEventsFor(250);
+    require(waitUntil([&]() { return presentedFrames >= 3 && performanceUpdates > 0; }, 5000),
+            QStringLiteral("presentation-driven rendering continues without user input"));
+    require(view.performanceStats().frameIntervalP95Ms > 0.0,
+            QStringLiteral("performance reports measured presentation intervals"));
+    view.hide();
+    processEventsFor(100);
+    const int hiddenFrames = presentedFrames;
+    processEventsFor(200);
+    require(presentedFrames == hiddenFrames, QStringLiteral("hidden views stop presenting frames"));
+    view.show();
+    require(waitUntil([&]() { return presentedFrames >= hiddenFrames + 3; }, 5000),
+            QStringLiteral("showing a hidden view restarts presentation scheduling"));
 
     bool earthFinished = false;
     bool earthLoaded = false;
@@ -103,6 +123,20 @@ int main(int argc, char** argv)
     require(earthDiagnostics.layerSummaries.join(QStringLiteral(" | "))
                 .contains(QStringLiteral("low-angle adaptive clipping and LOD")),
             QStringLiteral("earth camera keeps near-horizontal views responsive with adaptive distance/detail limits"));
+    // No frame is rendered with the test key, so this checks configuration/reuse without network I/O.
+    view.hide();
+    require(view.applyTiandituSatelliteImagery(QStringLiteral("test-key-not-sent")),
+            QStringLiteral("satellite layer opens with an explicit tile profile"));
+    const auto satelliteDiagnostics = view.earthLoadDiagnostics();
+    require(satelliteDiagnostics.layerSummaries.join(QStringLiteral(" | "))
+                .contains(QStringLiteral("Tianditu source levels: 1-")),
+            QStringLiteral("satellite requests exclude the level-zero placeholder"));
+    require(view.applyTiandituSatelliteImagery(QStringLiteral("test-key-not-sent"))
+                && view.earthLoadDiagnostics().layerSummaries == satelliteDiagnostics.layerSummaries,
+            QStringLiteral("reapplying identical satellite settings reuses the loaded layer"));
+    view.applyTiandituSatelliteImagery(QString());
+    view.show();
+
     require(view.layerAvailable(VaporView::Map3D::Map3DLayer::BaseMap),
             QStringLiteral("real scene exposes the base geography layer"));
     require(view.layerAvailable(VaporView::Map3D::Map3DLayer::SatelliteImagery),

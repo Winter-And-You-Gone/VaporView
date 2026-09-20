@@ -68,6 +68,13 @@ struct Map3DPerformanceStats {
     TrajectoryQualityStats qualityStats;
     double frameMs = 0.0;
     double framesPerSecond = 0.0;
+    bool idleRendering = false;
+    double frameIntervalP95Ms = 0.0;
+    double presentMs = 0.0;
+    unsigned imageryRequests = 0;
+    unsigned imageryFailures = 0;
+    int pendingJobs = 0;
+    int runningJobs = 0;
     double trackUpdateMs = 0.0;
     QString heightReferenceStatus;
 };
@@ -180,6 +187,7 @@ public:
     double earthCameraRangeM() const;
 
 signals:
+    void performanceUpdated();
     void trajectorySampleSelected(int sampleIndex, VaporView::Geo::NavSample sample);
     void trajectorySampleSelectionCleared();
 
@@ -246,6 +254,14 @@ private:
     void releaseGlObjectsForContextDestruction();
 
     QTimer frameTimer_;
+    QElapsedTimer present_clock_;
+    QElapsedTimer performance_publish_clock_;
+    QElapsedTimer camera_activity_clock_;
+    osg::Matrixd last_view_matrix_;
+    std::deque<double> frame_intervals_;
+    double present_ms_ = 0.0;
+    bool frame_pending_presentation_ = false;
+    bool idle_rendering_ = false;
     bool initialized_ = false;
     bool rendering_started_ = false;
     bool shutdown_ = false;

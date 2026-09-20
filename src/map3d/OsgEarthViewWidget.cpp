@@ -11,6 +11,9 @@
 #include "shared/theme/AppTheme.h"
 
 #include <osg/Camera>
+#include <osgDB/DatabasePager>
+#include <osgEarth/Threading>
+#include <osgEarth/Progress>
 #include <osg/BoundingSphere>
 #include <osg/Geometry>
 #include <osg/Geode>
@@ -61,6 +64,7 @@
 #include <QtConcurrent/QtConcurrentRun>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <functional>
 #include <limits>
@@ -618,6 +622,22 @@ bool restoreEarthViewpoint(osgViewer::Viewer* viewer, const osgEarth::Viewpoint&
     return true;
 }
 
+// Source attempts exclude cache hits; failed counts exclude canceled requests.
+class MeasuredXYZImageLayer final : public osgEarth::XYZImageLayer
+{
+public:
+    mutable std::atomic_uint requests{0};
+    mutable std::atomic_uint failures{0};
+    osgEarth::GeoImage createImageImplementation(const osgEarth::TileKey& key,
+                                                osgEarth::ProgressCallback* progress) const override
+    {
+        ++requests;
+        auto image = osgEarth::XYZImageLayer::createImageImplementation(key, progress);
+        if (!image.valid() && !(progress && progress->isCanceled())) ++failures;
+        return image;
+    }
+};
+
 QString tiandituSatelliteUrlTemplate(const QString& key)
 {
     const QString encodedKey = QString::fromLatin1(QUrl::toPercentEncoding(key.trimmed()));
@@ -724,7 +744,44 @@ OsgEarthViewWidget::OsgEarthViewWidget(QWidget* parent, bool deferRendering)
     setFocusPolicy(Qt::StrongFocus);
     setMouseTracking(true);
     trajectory_info_card_ = new TrajectorySampleInfoCard(this);
-    frameTimer_.setInterval(33);
+    frameTimer_.setSingleShot(true);
+    frameTimer_.setTimerType(Qt::PreciseTimer);
+    frameTimer_.setInterval(0);
+    connect(this, &QOpenGLWidget::frameSwapped, this, [this]() {
+        if (shutdown_ || !rendering_started_ || !isVisible() || !frame_pending_presentation_)
+            return;
+        frame_pending_presentation_ = false;
+        present_ms_ = present_clock_.isValid() ? present_clock_.nsecsElapsed() / 1000000.0 : 0.0;
+        if (frame_interval_clock_.isValid())
+        {
+            const double interval = frame_interval_clock_.nsecsElapsed() / 1000000.0;
+            if (interval > 0.0)
+            {
+                frame_intervals_.push_back(interval);
+                if (frame_intervals_.size() > 120) frame_intervals_.pop_front();
+                smoothed_frame_interval_ms_ = smoothed_frame_interval_ms_ <= 0.0 ? interval
+                    : smoothed_frame_interval_ms_ * 0.9 + interval * 0.1;
+                frames_per_second_ = 1000.0 / smoothed_frame_interval_ms_;
+            }
+        }
+        frame_interval_clock_.start();
+        auto* jobs = jobs::get_metrics();
+        const bool loading = jobs->total_pending() > 0 || jobs->total_running() > 0
+            || jobs->total_postprocessing() > 0
+            || (viewer_ && viewer_->getDatabasePager()->getRequestsInProgress());
+        const bool active = loading || (viewer_ && viewer_->getRequestContinousUpdate())
+            || !camera_activity_clock_.isValid()
+            || camera_activity_clock_.elapsed() < 1000;
+        // Include drawing/composition time in the frame budget; never queue a backlog.
+        const int delay = active ? (std::max)(0, 16 - static_cast<int>(last_frame_ms_ + present_ms_)) : 100;
+        idle_rendering_ = !active;
+        frameTimer_.start(delay);
+        if (!performance_publish_clock_.isValid() || performance_publish_clock_.elapsed() >= 500)
+        {
+            performance_publish_clock_.start();
+            emit performanceUpdated();
+        }
+    });
     connect(&frameTimer_, &QTimer::timeout, this, [this]() {
         if (!shutdown_)
         {
@@ -1109,9 +1166,15 @@ bool OsgEarthViewWidget::applyTiandituSatelliteImagery(const QString& key)
     }
 
     osgEarth::Map* map = map_node_->getMap();
-    removeLayerByName(map, kTiandituSatelliteLayerName);
-
     const QString trimmedKey = key.trimmed();
+    auto* existing = dynamic_cast<osgEarth::XYZImageLayer*>(map->getLayerByName(kTiandituSatelliteLayerName));
+    if (existing && !trimmedKey.isEmpty() && existing->isOpen()
+        && existing->getURL().full() == tiandituSatelliteUrlTemplate(trimmedKey).toStdString())
+    {
+        applyLayerVisibility(Map3DLayer::SatelliteImagery);
+        return true;
+    }
+    removeLayerByName(map, kTiandituSatelliteLayerName);
     if (trimmedKey.isEmpty())
     {
         earth_load_diagnostics_.layerSummaries.push_back(
@@ -1120,7 +1183,7 @@ bool OsgEarthViewWidget::applyTiandituSatelliteImagery(const QString& key)
         return false;
     }
 
-    osg::ref_ptr<osgEarth::XYZImageLayer> layer = new osgEarth::XYZImageLayer;
+    osg::ref_ptr<osgEarth::XYZImageLayer> layer = new MeasuredXYZImageLayer;
     layer->setName(kTiandituSatelliteLayerName);
     osgEarth::URIContext tiandituContext;
     tiandituContext.addHeader("User-Agent", kTiandituBrowserUserAgent);
@@ -1129,9 +1192,13 @@ bool OsgEarthViewWidget::applyTiandituSatelliteImagery(const QString& key)
                                 tiandituContext));
     layer->setProfile(osgEarth::Profile::create(osgEarth::Profile::SPHERICAL_MERCATOR));
     layer->setFormat("jpg");
-    layer->options().minLevel() = 0u;
+    // Level 0 returns a successful HTTP response containing a no-imagery placeholder.
+    layer->options().minLevel() = 1u;
     layer->options().maxLevel() = kTiandituMaxZoom;
 
+    earth_load_diagnostics_.layerSummaries.push_back(
+        QStringLiteral("Tianditu source levels: %1-%2; level 0 placeholder excluded.")
+            .arg(layer->options().minLevel().get()).arg(layer->options().maxLevel().get()));
     const unsigned insertIndex = tiandituSatelliteInsertIndex(map);
     map->insertLayer(layer.get(), insertIndex);
     earth_load_diagnostics_.layerSummaries.push_back(
@@ -1681,7 +1748,10 @@ void OsgEarthViewWidget::startRendering()
     initializeMap3DRuntime();
     if (isVisible())
     {
-        frameTimer_.start();
+        frame_interval_clock_.invalidate();
+        frame_intervals_.clear();
+        camera_activity_clock_.invalidate();
+        frameTimer_.start(0);
     }
     update();
 }
@@ -1824,6 +1894,25 @@ Map3DPerformanceStats OsgEarthViewWidget::performanceStats() const
     stats.qualityStats = trajectory_layer_ ? trajectory_layer_->qualityStats() : TrajectoryQualityStats{};
     stats.frameMs = smoothed_frame_ms_ > 0.0 ? smoothed_frame_ms_ : last_frame_ms_;
     stats.framesPerSecond = frames_per_second_;
+    stats.idleRendering = idle_rendering_;
+    if (!frame_intervals_.empty())
+    {
+        std::vector<double> sorted(frame_intervals_.begin(), frame_intervals_.end());
+        std::sort(sorted.begin(), sorted.end());
+        stats.frameIntervalP95Ms = sorted[static_cast<std::size_t>(std::ceil(sorted.size() * 0.95)) - 1];
+    }
+    stats.presentMs = present_ms_;
+    stats.pendingJobs = jobs::get_metrics()->total_pending();
+    stats.runningJobs = jobs::get_metrics()->total_running();
+    if (map_node_ && map_node_->getMap())
+    {
+        if (const auto* imagery = dynamic_cast<const MeasuredXYZImageLayer*>(
+                map_node_->getMap()->getLayerByName(kTiandituSatelliteLayerName)))
+        {
+            stats.imageryRequests = imagery->requests.load();
+            stats.imageryFailures = imagery->failures.load();
+        }
+    }
     stats.trackUpdateMs = last_track_update_ms_;
     stats.heightReferenceStatus = height_reference_status_;
     return stats;
@@ -1877,31 +1966,23 @@ void OsgEarthViewWidget::paintGL()
     initializeSceneIfNeeded();
     if (viewer_)
     {
-        const double frameIntervalMs = frame_interval_clock_.isValid()
-            ? static_cast<double>(frame_interval_clock_.restart())
-            : 0.0;
-        if (frameIntervalMs > 0.0)
-        {
-            smoothed_frame_interval_ms_ = smoothed_frame_interval_ms_ <= 0.0
-                ? frameIntervalMs
-                : (smoothed_frame_interval_ms_ * 0.9 + frameIntervalMs * 0.1);
-            frames_per_second_ = smoothed_frame_interval_ms_ > 0.0
-                ? 1000.0 / smoothed_frame_interval_ms_
-                : 0.0;
-        }
-        else
-        {
-            frame_interval_clock_.start();
-        }
         QElapsedTimer timer;
         timer.start();
         updateCameraProjectionForCurrentView();
         viewer_->frame();
+        const auto& viewMatrix = viewer_->getCamera()->getViewMatrix();
+        if (!camera_activity_clock_.isValid() || last_view_matrix_ != viewMatrix)
+        {
+            last_view_matrix_ = viewMatrix;
+            camera_activity_clock_.start();
+        }
         updateTrajectoryInfoCardPosition();
         last_frame_ms_ = static_cast<double>(timer.nsecsElapsed()) / 1000000.0;
         smoothed_frame_ms_ = smoothed_frame_ms_ <= 0.0
             ? last_frame_ms_
             : (smoothed_frame_ms_ * 0.9 + last_frame_ms_ * 0.1);
+        present_clock_.start();
+        frame_pending_presentation_ = true;
     }
 }
 
@@ -2218,11 +2299,13 @@ void OsgEarthViewWidget::updateCameraProjectionForCurrentView()
         earthProjectionProfile(rangeM, pitchDeg);
 
     osg::Camera* camera = viewer_->getCamera();
-    camera->setProjectionMatrixAsPerspective(
+    const osg::Matrixd projection = osg::Matrixd::perspective(
         30.0,
         static_cast<double>(safeWidth) / static_cast<double>(safeHeight),
         kEarthProjectionNearPlaneM,
         projectionProfile.farPlaneM);
+    if (camera->getProjectionMatrix() != projection)
+        camera->setProjectionMatrix(projection);
     camera->setComputeNearFarMode(osg::CullSettings::DO_NOT_COMPUTE_NEAR_FAR);
     camera->setCullingMode(osg::CullSettings::ENABLE_ALL_CULLING);
     camera->setSmallFeatureCullingPixelSize(projectionProfile.smallFeatureCullPixels);
@@ -2291,7 +2374,10 @@ void OsgEarthViewWidget::showEvent(QShowEvent* event)
     QOpenGLWidget::showEvent(event);
     if (!shutdown_ && rendering_started_)
     {
-        frameTimer_.start();
+        frame_interval_clock_.invalidate();
+        frame_intervals_.clear();
+        camera_activity_clock_.invalidate();
+        frameTimer_.start(0);
     }
 }
 

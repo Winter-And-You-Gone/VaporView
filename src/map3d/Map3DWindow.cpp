@@ -1086,6 +1086,7 @@ void Map3DWindow::configureViewSignals()
     }
 
     view_->setObjectName(QStringLiteral("map3DView"));
+    connect(view_, &OsgEarthViewWidget::performanceUpdated, this, [this]() { updateStatus(nullptr); });
     connect(view_,
             &OsgEarthViewWidget::trajectorySampleSelected,
             this,
@@ -3024,10 +3025,11 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest, bool for
     }
     if (view_)
     {
-        text += QStringLiteral(" | Seg %1x%2 | FPS %3 | Frame %4 ms | Track %5 ms")
+        text += QStringLiteral(" | Seg %1x%2 | FPS %3 | CPU %4 ms | Track %5 ms")
                     .arg(stats.segmentCount)
                     .arg(stats.segmentSize)
-                    .arg(stats.framesPerSecond, 0, 'f', 1)
+                    .arg(QString::number(stats.framesPerSecond, 'f', 1)
+                         + (stats.idleRendering ? QStringLiteral("（静止）") : QString()))
                     .arg(stats.frameMs, 0, 'f', 1)
                     .arg(stats.trackUpdateMs, 0, 'f', 1);
     }

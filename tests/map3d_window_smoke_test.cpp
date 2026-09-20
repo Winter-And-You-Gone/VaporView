@@ -662,6 +662,9 @@ int main(int argc, char** argv)
             "diagnostics include earth load attempt state");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Render performance:")),
             "diagnostics include render performance section");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Presented frame interval P95"))
+                && diagnosticsText->toPlainText().contains(QStringLiteral("Satellite source requests/failures")),
+            "diagnostics distinguish presentation timing from satellite source failures");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Local imagery menu:")),
             "diagnostics include local imagery menu availability");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Optional local imagery VRTs:")),

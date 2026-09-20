@@ -144,7 +144,11 @@ QString formatMap3DDiagnostics(const Map3DDiagnosticsContext& context)
                  .arg(stats.segmentCount)
                  .arg(stats.segmentSize);
     lines << QStringLiteral("  FPS: %1").arg(stats.framesPerSecond, 0, 'f', 1);
-    lines << QStringLiteral("  Frame ms: %1").arg(stats.frameMs, 0, 'f', 1);
+    lines << QStringLiteral("  CPU frame ms (not GPU time): %1").arg(stats.frameMs, 0, 'f', 1);
+    lines << QStringLiteral("  Presented frame interval P95 ms (includes idle pacing): %1").arg(stats.frameIntervalP95Ms, 0, 'f', 1);
+    lines << QStringLiteral("  Paint end to frameSwapped ms: %1").arg(stats.presentMs, 0, 'f', 1);
+    lines << QStringLiteral("  osgEarth jobs pending/running (process-wide): %1/%2").arg(stats.pendingJobs).arg(stats.runningJobs);
+    lines << QStringLiteral("  Satellite source requests/failures (cache hits excluded): %1/%2").arg(stats.imageryRequests).arg(stats.imageryFailures);
     lines << QStringLiteral("  Track update ms: %1").arg(stats.trackUpdateMs, 0, 'f', 1);
     lines << QStringLiteral("Trajectory quality:");
     lines << QStringLiteral("  Visible line samples: %1").arg(qualityStats.lineSamples);
