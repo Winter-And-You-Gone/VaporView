@@ -235,8 +235,8 @@ int main(int argc, char** argv)
             QStringLiteral("real window loads corrupt-ECEF session through LLH fallback"));
     require(view->hasEarthMap(),
             QStringLiteral("loading corrupt-ECEF session preserves the Earth map"));
-    require(view->flyToTrack(),
-            QStringLiteral("corrupt-ECEF session focuses with LLH before close"));
+    require(view->earthCameraRangeM() < 20000.0,
+            QStringLiteral("corrupt-ECEF session automatically focuses with LLH before close"));
     processEventsFor(1500);
     require(hasVisibleMapSurface(view->grabFramebuffer()),
             QStringLiteral("session auto-focus keeps the Earth surface visible instead of a black route-only frame"));
@@ -254,6 +254,25 @@ int main(int argc, char** argv)
             QStringLiteral("reopened corrupt-ECEF session still focuses with LLH"));
     window->close();
     processEventsFor(250);
+    delete window;
+    processEventsFor(500);
+
+    window = new VaporView::Map3D::Map3DWindow;
+    window->resize(1100, 760);
+    window->show();
+    window->loadSessionDirectory(sessionDir.path());
+    view = window->findChild<VaporView::Map3D::OsgEarthViewWidget*>(QStringLiteral("map3DView"));
+    require(view != nullptr, QStringLiteral("opening a session starts the renderer automatically"));
+    require(waitUntil([&]() {
+                return view->hasEarthMap() && view->sampleCount() == kSessionSampleCount;
+            }, 30000),
+            QStringLiteral("cold session open loads both Earth and track"));
+    processEventsFor(1500);
+    require(view->earthCameraRangeM() < 20000.0,
+            QStringLiteral("cold session open automatically focuses after both loads finish"));
+    require(hasVisibleMapSurface(view->grabFramebuffer()),
+            QStringLiteral("cold session open renders the Earth surface"));
+    window->close();
     delete window;
     processEventsFor(500);
 

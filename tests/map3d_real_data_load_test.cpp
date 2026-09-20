@@ -13,6 +13,7 @@
 #include <QKeyEvent>
 #include <QLabel>
 #include <QMouseEvent>
+#include <QWheelEvent>
 #include <QString>
 #include <QThread>
 #include <QThreadPool>
@@ -153,6 +154,33 @@ int main(int argc, char** argv)
     view.setLayerVisible(VaporView::Map3D::Map3DLayer::Hydrography, true);
     require(view.layerVisible(VaporView::Map3D::Map3DLayer::Hydrography),
             QStringLiteral("hydrography visibility can be restored independently"));
+
+    std::vector<VaporView::Geo::TrajectoryRenderSample> heatTrack;
+    for (int index = 0; index < 64; ++index)
+    {
+        VaporView::Geo::TrajectoryRenderSample sample;
+        sample.navigation.latDeg = 30.25 + index * 0.00001;
+        sample.navigation.lonDeg = 120.15 + index * 0.00001;
+        sample.navigation.heightM = 25.0;
+        sample.navigation.heightReference = VaporView::Geo::HeightReference::Wgs84Ellipsoid;
+        sample.navigation.fixQuality = VaporView::Geo::FixQuality::Fixed;
+        sample.heat.peak = static_cast<double>(index);
+        heatTrack.push_back(sample);
+    }
+    view.setSamples(heatTrack);
+    require(view.flyToTrack(), QStringLiteral("heat track can be focused"));
+    require(view.loadEarthFile(earthPath), QStringLiteral("late Earth load succeeds after track installation"));
+    require(view.earthCameraRangeM() < 10000.0,
+            QStringLiteral("late Earth load focuses the existing track instead of resetting to the globe"));
+    for (int step = 0; step < 12; ++step)
+    {
+        QWheelEvent wheel(QPointF(400, 300), QPointF(view.mapToGlobal(QPoint(400, 300))),
+                          QPoint(), QPoint(0, step < 6 ? 120 : -120),
+                          Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+        QCoreApplication::sendEvent(&view, &wheel);
+        processEventsFor(100);
+    }
+    view.clearTrack();
 
     VaporView::Geo::NavSample unresolvedMslSample;
     unresolvedMslSample.latDeg = 30.25;

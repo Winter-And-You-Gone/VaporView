@@ -1117,6 +1117,11 @@ bool Trajectory3DLayer::appendSphereMarkerGeometry(TrajectorySegment& segment, i
 
 void Trajectory3DLayer::configureGeometryState(osg::Geometry& geometry)
 {
+    // Keep heat attributes in a per-geometry VAO instead of sharing terrain array state.
+    geometry.setUseDisplayList(false);
+    geometry.setUseVertexBufferObjects(true);
+    geometry.setUseVertexArrayObject(true);
+    geometry.setDataVariance(osg::Object::DYNAMIC);
     osg::StateSet* stateSet = geometry.getOrCreateStateSet();
     osg::ref_ptr<osg::LineWidth> lineWidth = new osg::LineWidth(track_line_width_);
     stateSet->setAttributeAndModes(lineWidth.get(), osg::StateAttribute::ON);
@@ -1132,6 +1137,11 @@ void Trajectory3DLayer::configureGeometryState(osg::Geometry& geometry)
 
 void Trajectory3DLayer::configureSphereMarkerState(osg::Geometry& geometry)
 {
+    // Keep heat attributes in a per-geometry VAO instead of sharing terrain array state.
+    geometry.setUseDisplayList(false);
+    geometry.setUseVertexBufferObjects(true);
+    geometry.setUseVertexArrayObject(true);
+    geometry.setDataVariance(osg::Object::DYNAMIC);
     osg::StateSet* stateSet = geometry.getOrCreateStateSet();
     osg::ref_ptr<osg::Point> pointSize = new osg::Point(track_point_size_);
     stateSet->setAttributeAndModes(pointSize.get(), osg::StateAttribute::ON);

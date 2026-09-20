@@ -1294,6 +1294,11 @@ bool OsgEarthViewWidget::applyEarthLoad(EarthLoadDiagnostics diagnostics,
             QStringLiteral("Preserved previous Earth camera viewpoint."));
     }
     rebuildDisplayTrack();
+    // A session may finish loading before the initial asynchronous Earth load.
+    if (!previousViewpoint && sampleCount() > 0)
+    {
+        flyToTrack();
+    }
     update();
     return true;
 }

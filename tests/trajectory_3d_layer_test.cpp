@@ -140,6 +140,10 @@ int main()
     require(geode->getNumDrawables() == 6, "geode has one line and one sphere drawable per segment");
     require(layer.sphereMarkerCount() == 9000, "short trajectory renders every sample as a solid sphere marker");
     auto* firstSphereGeometry = dynamic_cast<osg::Geometry*>(geode->getDrawable(1));
+    require(firstSphereGeometry != nullptr && firstSphereGeometry->getUseVertexArrayObject()
+                && firstSphereGeometry->getUseVertexBufferObjects()
+                && !firstSphereGeometry->getUseDisplayList(),
+            "trajectory markers isolate vertex attributes from the terrain renderer");
     require(firstSphereGeometry != nullptr && firstSphereGeometry->getVertexArray() != nullptr,
             "trajectory sphere marker geometry exists");
     require(firstSphereGeometry->getVertexArray()->getNumElements() == 4096 * 42,

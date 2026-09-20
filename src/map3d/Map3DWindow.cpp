@@ -1525,6 +1525,10 @@ void Map3DWindow::loadSessionDirectory(const QString& sessionDir)
         statusBar()->showMessage(QStringLiteral("[界面测试] 已模拟会话轨迹加载；未读取业务文件。"), 6000);
         return;
     }
+    if (!view_ && !headless_view_)
+    {
+        startRendering();
+    }
     const quint64 generation = ++session_load_generation_;
     if (session_load_watcher_)
     {
@@ -1555,10 +1559,11 @@ void Map3DWindow::startSessionLoad(const QString& sessionDir, quint64 generation
     {
         return;
     }
-    statusBar()->showMessage(QStringLiteral("Loading session track..."), 3000);
+    statusBar()->showMessage(QStringLiteral("正在加载 Session 轨迹及热力数据，完成后自动定位…"));
     auto* watcher = new QFutureWatcher<
         VaporView::Ground::Session::SessionTrajectoryRenderLoadResult>(this);
     session_load_watcher_ = watcher;
+    updateStatus(nullptr, true);
     connect(watcher,
             &QFutureWatcher<VaporView::Ground::Session::SessionTrajectoryRenderLoadResult>::finished,
             this,
@@ -1583,6 +1588,8 @@ void Map3DWindow::startSessionLoad(const QString& sessionDir, quint64 generation
         }
         if (!result.success)
         {
+            updateStatus(nullptr, true);
+            statusBar()->showMessage(QStringLiteral("Session 轨迹加载失败。"), 8000);
             QMessageBox::warning(this,
                                  QStringLiteral("Session Track"),
                                  QStringLiteral("无法读取轨迹: %1").arg(result.error));
@@ -2975,6 +2982,10 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest, bool for
     const TrajectoryQualityStats qualityStats =
         view_ ? stats.qualityStats : qualityStatsForSamples(headless_samples_, max_visible_samples_);
     QString text = QStringLiteral("Points: %1/%2").arg(visibleSamples).arg(totalSamples);
+    if (session_load_watcher_)
+    {
+        text.prepend(QStringLiteral("正在加载 Session（完成后自动定位） | "));
+    }
     if (visibleSamples > 0)
     {
         text += QStringLiteral(" | Q %1").arg(qualityStatsSummary(qualityStats));
