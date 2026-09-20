@@ -1729,6 +1729,14 @@ int main(int argc, char **argv)
     RtkConfigDialog *rtkDialog = window->findChild<RtkConfigDialog *>();
     require(wavePanel && rtkDialog, "TCP waveform and RTK test-session participants exist");
     require(wavePanel->isConnected(), "TCP waveform panel starts connected in UI test mode");
+    require(VaporViewTest::processEventsUntil(3000, [wavePanel]() {
+                const auto raw = wavePanel->findChild<QWidget *>(QStringLiteral("tcpWaveRawPlot"));
+                const auto harmonic = wavePanel->findChild<QWidget *>(QStringLiteral("tcpWaveHarmonicPlot"));
+                const auto peak = wavePanel->findChild<QWidget *>(QStringLiteral("tcpWavePeakTrendPlot"));
+                return raw && harmonic && peak && raw->property("sampleCount").toInt() > 0 &&
+                    harmonic->property("sampleCount").toInt() > 0 && peak->property("sampleCount").toInt() > 0;
+            }),
+            "UI test mode populates raw, harmonic, and peak trend plots");
     wavePanel->toggleConnection();
     require(!wavePanel->isConnected(), "TCP waveform disconnect is simulated in memory");
     wavePanel->toggleConnection();

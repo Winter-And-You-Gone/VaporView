@@ -1082,6 +1082,7 @@ public:
     void setSamples(const QVector<float>& samples, qint64 frameWallMsecs = 0)
     {
         samples_ = samples;
+        setProperty("sampleCount", samples_.size());
         if (samples_.isEmpty())
         {
             frame_wall_msecs_ = 0;
@@ -1263,6 +1264,7 @@ public:
             view_count_ <= 0 ||
             (view_start_index_ + visibleCount()) >= peak_values_.size();
         peak_values_ = values;
+        setProperty("sampleCount", peak_values_.size());
         peak_wall_msecs_ = wallMsecs;
         if (peak_wall_msecs_.size() != peak_values_.size())
         {
@@ -2611,7 +2613,7 @@ void TcpWavePanel::setRemoteSkyMode(bool enabled)
         status_label_->clear();
         status_label_->setVisible(false);
     }
-    if (enabled && !remote_wave_tcp_connected_)
+    if (enabled && !ui_test_mode_ && !remote_wave_tcp_connected_)
     {
         clearRemoteWaveformDisplay(is_english_ ? QStringLiteral("TCP wave is not connected")
                                                : QStringLiteral("TCP波形未连接"));
@@ -2622,6 +2624,10 @@ void TcpWavePanel::setRemoteWaveTcpState(VaporView::DeviceState state)
 {
     const bool wasConnected = remote_wave_tcp_connected_;
     remote_wave_tcp_connected_ = state == VaporView::DeviceState::Connected;
+    if (ui_test_mode_)
+    {
+        return;
+    }
     if (remote_sky_mode_ && connect_button_)
     {
         connect_button_->setText(remote_wave_tcp_connected_
@@ -2663,7 +2669,8 @@ void TcpWavePanel::setRemoteFeatureRateHz(double rateHz)
 
 void TcpWavePanel::injectRemoteRawSignalFrame(quint64 timestampUs, const QVector<float>& samples)
 {
-    if (remote_sky_mode_ && !remote_wave_tcp_connected_)
+    if (ui_test_mode_ ? !ui_test_connected_
+                      : (remote_sky_mode_ && !remote_wave_tcp_connected_))
     {
         return;
     }
@@ -2683,7 +2690,8 @@ void TcpWavePanel::injectRemoteRawSignalFrame(quint64 timestampUs, const QVector
 
 void TcpWavePanel::injectRemoteSecondHarmonicFrame(quint64 timestampUs, const QVector<float>& samples)
 {
-    if (remote_sky_mode_ && !remote_wave_tcp_connected_)
+    if (ui_test_mode_ ? !ui_test_connected_
+                      : (remote_sky_mode_ && !remote_wave_tcp_connected_))
     {
         return;
     }
@@ -2710,7 +2718,8 @@ void TcpWavePanel::injectRemoteSecondHarmonicFrame(quint64 timestampUs, const QV
 
 void TcpWavePanel::injectRemoteWaveformFeature(const VaporView::WaveformFeature& feature)
 {
-    if (remote_sky_mode_ && !remote_wave_tcp_connected_)
+    if (ui_test_mode_ ? !ui_test_connected_
+                      : (remote_sky_mode_ && !remote_wave_tcp_connected_))
     {
         return;
     }
@@ -2797,6 +2806,7 @@ void TcpWavePanel::setUiTestMode(bool enabled)
                                   : QStringLiteral("界面测试波形源已连接（模拟）"));
         return;
     }
+    clearRemoteWaveformDisplay();
     ui_test_mode_ = false;
     ui_test_connected_ = false;
     if (host_edit_) host_edit_->setText(ui_test_saved_host_);

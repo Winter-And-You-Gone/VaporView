@@ -536,6 +536,34 @@ int main(int argc, char **argv)
     testInvalidStreamAndPayloadCorrectionPublishStructuredLogs();
     testInvalidTcpStreamDoesNotGrowBacklog();
     testWavePlotXAxisLabelsUseClockTime();
+    {
+        TcpWavePanel panel;
+        panel.setRemoteSkyMode(true);
+        panel.setUiTestMode(true);
+        panel.setRemoteWaveTcpState(VaporView::DeviceState::Disconnected);
+        const QVector<float> samples{0.1f, 0.8f, 0.2f};
+        VaporView::WaveformFeature feature;
+        feature.host_time_us = 1'700'000'000'000'000ULL;
+        feature.peak = 0.8f;
+        feature.quality_flags = 0;
+        panel.injectRemoteRawSignalFrame(feature.host_time_us, samples);
+        panel.injectRemoteSecondHarmonicFrame(feature.host_time_us, samples);
+        panel.injectRemoteWaveformFeature(feature);
+        panel.testFlushLiveDisplay();
+        require(isClockTimeLabel(panel.testRawXAxisLabel()) &&
+                    isClockTimeLabel(panel.testHarmonicXAxisLabel()) &&
+                    isClockTimeLabel(panel.testPeakXAxisLabel()),
+                "all three UI-test plots receive data without a real remote connection");
+        panel.setUiTestConnected(false);
+        const QString previousTime = panel.testRawXAxisLabel();
+        panel.injectRemoteRawSignalFrame(feature.host_time_us + 10'000'000ULL, samples);
+        panel.testFlushLiveDisplay();
+        require(panel.testRawXAxisLabel() == previousTime,
+                "simulated disconnect stops incoming waveform frames");
+        panel.setUiTestMode(false);
+        require(!panel.isConnected(),
+                "leaving UI test mode returns the panel to disconnected state");
+    }
     testRemoteSkyModeKeepsLocalEndpointText();
     std::cout << "tcp_wave_panel_test passed\n";
     return 0;
