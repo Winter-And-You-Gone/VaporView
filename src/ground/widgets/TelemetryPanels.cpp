@@ -584,7 +584,13 @@ private:
         xAxis.maxWallMsecs = state.maxWallMsecs > 0
             ? state.maxWallMsecs
             : QDateTime::currentMSecsSinceEpoch();
-        xAxis.minWallMsecs = xAxis.maxWallMsecs - spanMsecs;
+        // When a source has only just started (as in UI test mode), keep the
+        // available samples centered in the plot instead of anchoring the
+        // entire fixed window to "now" and leaving half the line empty.
+        const qint64 availableSpan = std::max<qint64>(0, state.maxWallMsecs - state.minWallMsecs);
+        xAxis.minWallMsecs = availableSpan > 0 && availableSpan < spanMsecs
+            ? state.minWallMsecs
+            : xAxis.maxWallMsecs - spanMsecs;
 
         xAxis.labels.reserve(tickCount);
         for (int i = 0; i < tickCount; ++i)
