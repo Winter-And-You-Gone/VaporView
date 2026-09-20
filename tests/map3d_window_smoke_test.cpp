@@ -2,6 +2,8 @@
 #include "geo/GeoTypes.h"
 #include "map3d/Map3DWindow.h"
 #include "map3d/Map3DRuntime.h"
+#include "map3d/EarthProjectionProfile.h"
+#include <osg/Matrixd>
 #include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
 
@@ -206,6 +208,24 @@ int main(int argc, char** argv)
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
     QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, settingsDir.path());
+
+    // A surface focal point must remain visible throughout the zoom/pitch range.
+    for (double range : {50.0, 11000.0, 120000.0, 850000.0, 1000000.0,
+                         1000001.0, 10000000.0, 18000000.0, 20000000.0})
+    {
+        for (double pitch : {-90.0, -35.0, -4.0})
+        {
+            const auto profile = VaporView::Map3D::earthProjectionProfile(range, pitch);
+            const auto projection = osg::Matrixd::perspective(30.0, 4.0 / 3.0,
+                VaporView::Map3D::kEarthProjectionNearPlaneM, profile.farPlaneM);
+            const osg::Vec3d focalPoint = osg::Vec3d(0.0, 0.0, -range) * projection;
+            require(focalPoint.z() > -1.0 && focalPoint.z() < 1.0,
+                    "earth focal point stays inside the camera clip volume at every zoom level");
+            if (range > 1000000.0)
+                require(profile.farPlaneM >= range + 2.0 * 6378137.0,
+                        "orbital view includes the far side of the globe");
+        }
+    }
 
     QApplication app(argc, argv);
     QCoreApplication::setOrganizationName(QStringLiteral("VaporViewTest"));
