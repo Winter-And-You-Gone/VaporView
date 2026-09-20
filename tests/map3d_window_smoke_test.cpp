@@ -13,6 +13,9 @@
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDir>
+#include <QDialog>
+#include <QPushButton>
+#include <QTableWidget>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
@@ -241,6 +244,38 @@ int main(int argc, char** argv)
 
     VaporView::Map3D::Map3DWindow window;
     QCoreApplication::processEvents();
+
+    auto* mapFilesAction = actionByName(window, QStringLiteral("map3DMapFilesAction"));
+    require(mapFilesAction && mapFilesAction->text() == QStringLiteral("地图文件"),
+            "map files button is available before rendering starts");
+    mapFilesAction->trigger();
+    QCoreApplication::processEvents();
+    auto* filesDialog = window.findChild<QDialog*>(QStringLiteral("map3DMapFilesDialog"));
+    auto* filesTable = window.findChild<QTableWidget*>(QStringLiteral("map3DMapFilesTable"));
+    require(filesDialog && filesDialog->isVisible() && filesTable && filesTable->rowCount() > 0,
+            "map files button opens a populated local file list without rendering");
+    for (int row = 0; row < filesTable->rowCount(); ++row)
+    {
+        require(filesTable->item(row, 0) && filesTable->item(row, 1) && filesTable->item(row, 2),
+                "each map file has a name, status and path");
+        const QFileInfo file(filesTable->item(row, 2)->text());
+        if (!file.exists())
+            require(filesTable->item(row, 1)->text() == QStringLiteral("缺失"),
+                    "missing map files are marked missing");
+        else if (file.isFile() && file.isReadable())
+            require(filesTable->item(row, 1)->text() == QStringLiteral("就绪"),
+                    "readable local map files are marked ready");
+    }
+    auto* filesRefresh = filesDialog->findChild<QPushButton*>(QStringLiteral("map3DMapFilesRefreshButton"));
+    require(filesRefresh != nullptr, "map files list supports rescanning");
+    const int fileCount = filesTable->rowCount();
+    filesRefresh->click();
+    require(filesTable->rowCount() == fileCount, "rescan does not duplicate file rows");
+    filesDialog->hide();
+    mapFilesAction->trigger();
+    require(window.findChildren<QDialog*>(QStringLiteral("map3DMapFilesDialog")).size() == 1,
+            "reopening map files reuses the existing dialog");
+    filesDialog->hide();
 
     QLabel* label = statusLabel(window);
     require(label->text().contains(QStringLiteral("Points: 0")), "initial status has zero points");

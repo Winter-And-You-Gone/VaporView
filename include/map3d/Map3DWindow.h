@@ -60,6 +60,7 @@ public slots:
     void noteLiveSampleDrop(const QString& source, const QString& reason, qint64 recordTimestampUs = 0);
     void showMapDiagnostics();
     void showMapResources();
+    void showMapFiles();
 
 protected:
     void closeEvent(QCloseEvent* event) override;

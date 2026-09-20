@@ -24,6 +24,9 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHideEvent>
+#include <QHeaderView>
+#include <QPushButton>
+#include <QTableWidget>
 #include <QIcon>
 #include <QLabel>
 #include <QMenu>
@@ -715,6 +718,11 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     start_rendering_action_->setStatusTip(start_rendering_action_->toolTip());
     start_rendering_action_->setEnabled(!isMap3DHeadlessTest());
     connect(start_rendering_action_, &QAction::triggered, this, &Map3DWindow::startRendering);
+
+    QAction* mapFilesAction = toolbar->addAction(QStringLiteral("地图文件"));
+    mapFilesAction->setObjectName(QStringLiteral("map3DMapFilesAction"));
+    mapFilesAction->setToolTip(QStringLiteral("查看本地地图文件及就绪、缺失状态"));
+    connect(mapFilesAction, &QAction::triggered, this, &Map3DWindow::showMapFiles);
 
     QAction* openSessionAction = toolbar->addAction(QStringLiteral("打开 Session"));
     connect(openSessionAction, &QAction::triggered, this, &Map3DWindow::openSessionDirectory);
@@ -2334,6 +2342,91 @@ void Map3DWindow::setUiTestMode(bool enabled)
                         false);
     }
     statusBar()->showMessage(QStringLiteral("地图偏好已恢复。"), 4000);
+}
+
+void Map3DWindow::showMapFiles()
+{
+    auto* dialog = findChild<QDialog*>(QStringLiteral("map3DMapFilesDialog"));
+    if (!dialog)
+    {
+        dialog = new QDialog(this);
+        dialog->setObjectName(QStringLiteral("map3DMapFilesDialog"));
+        dialog->setWindowTitle(QStringLiteral("地图文件"));
+        dialog->resize(920, 560);
+        auto* layout = new QVBoxLayout(dialog);
+        auto* summary = new QLabel(dialog);
+        summary->setObjectName(QStringLiteral("map3DMapFilesSummary"));
+        summary->setWordWrap(true);
+        layout->addWidget(summary);
+        auto* hint = new QLabel(QStringLiteral("就绪表示本地文件存在且可读，不代表已加载或内容完整；可选数据缺失不影响其他地图使用。完整加载信息可查看“地图诊断”。"), dialog);
+        hint->setWordWrap(true);
+        layout->addWidget(hint);
+        auto* table = new QTableWidget(dialog);
+        table->setObjectName(QStringLiteral("map3DMapFilesTable"));
+        table->setColumnCount(3);
+        table->setHorizontalHeaderLabels({QStringLiteral("地图文件"), QStringLiteral("状态"), QStringLiteral("文件路径")});
+        table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+        table->setSelectionBehavior(QAbstractItemView::SelectRows);
+        table->setAlternatingRowColors(true);
+        table->setWordWrap(false);
+        table->verticalHeader()->hide();
+        table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+        table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+        table->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
+        layout->addWidget(table, 1);
+        auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, dialog);
+        buttons->button(QDialogButtonBox::Close)->setText(QStringLiteral("关闭"));
+        auto* refresh = buttons->addButton(QStringLiteral("重新扫描"), QDialogButtonBox::ActionRole);
+        refresh->setObjectName(QStringLiteral("map3DMapFilesRefreshButton"));
+        connect(refresh, &QPushButton::clicked, this, &Map3DWindow::showMapFiles);
+        connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::hide);
+        layout->addWidget(buttons);
+    }
+
+    const auto diagnostics = map_data_manager_.selectBestAvailableMap().diagnostics;
+    QStringList paths = diagnostics.foundFiles + diagnostics.missingFiles;
+    // Optional resources must remain visible even when none have been installed.
+    paths << diagnostics.real3DLocalEarthPath
+          << diagnostics.sentinel2ImageryEarthPath << diagnostics.landsatImageryEarthPath
+          << diagnostics.openAerialMapImageryEarthPath << diagnostics.sentinel2ImageryVrtPath
+          << diagnostics.landsatImageryVrtPath << diagnostics.openAerialMapImageryVrtPath
+          << diagnostics.local3DTilesTilesetPath << diagnostics.local3DTilesMissingResources
+          << map_selection_.earthFile;
+    const QDir mapsDir(diagnostics.mapsRoot);
+    for (const QString& name : mapsDir.entryList({QStringLiteral("*.earth")}, QDir::Files))
+    {
+        paths << mapsDir.absoluteFilePath(name);
+    }
+    paths.removeAll(QString());
+    paths.removeDuplicates();
+    paths.sort(Qt::CaseInsensitive);
+    auto* table = dialog->findChild<QTableWidget*>(QStringLiteral("map3DMapFilesTable"));
+    table->setRowCount(paths.size());
+    int readyCount = 0;
+    int missingCount = 0;
+    for (int row = 0; row < paths.size(); ++row)
+    {
+        const QFileInfo file(paths.at(row));
+        const bool ready = file.isFile() && file.isReadable();
+        const bool missing = !file.exists();
+        readyCount += ready ? 1 : 0;
+        missingCount += missing ? 1 : 0;
+        table->setItem(row, 0, new QTableWidgetItem(file.fileName()));
+        table->setItem(row, 1, new QTableWidgetItem(ready ? QStringLiteral("就绪")
+            : missing ? QStringLiteral("缺失") : QStringLiteral("不可读 / 非文件")));
+        auto* pathItem = new QTableWidgetItem(QDir::toNativeSeparators(file.absoluteFilePath()));
+        pathItem->setToolTip(pathItem->text());
+        table->setItem(row, 2, pathItem);
+    }
+    auto* summary = dialog->findChild<QLabel*>(QStringLiteral("map3DMapFilesSummary"));
+    summary->setText(QStringLiteral("地图目录：%1\n当前选择：%2\n共 %3 个文件 · 就绪 %4 · 缺失 %5 · 异常 %6")
+        .arg(QDir::toNativeSeparators(diagnostics.mapsRoot),
+             QDir::toNativeSeparators(map_selection_.earthFile))
+        .arg(paths.size()).arg(readyCount).arg(missingCount)
+        .arg(paths.size() - readyCount - missingCount));
+    dialog->show();
+    dialog->raise();
+    dialog->activateWindow();
 }
 
 void Map3DWindow::showMapResources()
