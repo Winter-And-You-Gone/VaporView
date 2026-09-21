@@ -17,6 +17,7 @@
 #include <osg/BoundingSphere>
 #include <osg/Geometry>
 #include <osg/Geode>
+#include <osg/Point>
 #include <osg/Group>
 #include <osg/Texture2D>
 #include <osg/Viewport>
@@ -78,6 +79,36 @@ constexpr double kEarthRadiusM = 6378137.0;
 constexpr double kWgs84FirstEccentricitySquared = 6.6943799901413165e-3;
 constexpr double kDegreesToRadians = 0.017453292519943295;
 constexpr unsigned kTiandituMaxZoom = 18;
+
+osg::ref_ptr<osg::Node> createStarfieldNode()
+{
+    auto* geode = new osg::Geode;
+    auto* geometry = new osg::Geometry;
+    auto* vertices = new osg::Vec3Array;
+    auto* colors = new osg::Vec4Array;
+    constexpr double radius = 18'000'000.0;
+    constexpr int starCount = 420;
+    for (int index = 0; index < starCount; ++index)
+    {
+        const double a = std::fmod(index * 2.399963229728653, 6.283185307179586);
+        const double z = -0.96 + std::fmod(index * 0.618033988749895, 1.92);
+        const double r = std::sqrt(std::max(0.0, 1.0 - z * z));
+        vertices->push_back(osg::Vec3(radius * r * std::cos(a),
+                                      radius * r * std::sin(a), radius * z));
+        const float brightness = 0.55f + static_cast<float>((index * 37) % 45) / 100.0f;
+        colors->push_back(osg::Vec4(brightness, brightness * 0.96f, brightness * 0.86f, 1.0f));
+    }
+    geometry->setVertexArray(vertices);
+    geometry->setColorArray(colors, osg::Array::BIND_PER_VERTEX);
+    geometry->addPrimitiveSet(new osg::DrawArrays(osg::PrimitiveSet::POINTS, 0, starCount));
+    auto* state = geometry->getOrCreateStateSet();
+    state->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
+    state->setMode(GL_DEPTH_TEST, osg::StateAttribute::OFF);
+    state->setRenderBinDetails(-10, "RenderBin");
+    state->setAttribute(new osg::Point(1.7f));
+    geode->addDrawable(geometry);
+    return geode;
+}
 constexpr const char* kTiandituSatelliteLayerName = "Tianditu Satellite imagery";
 constexpr const char* kTiandituBrowserUserAgent =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -2194,6 +2225,7 @@ void OsgEarthViewWidget::initializeSceneIfNeeded()
     }
 
     root_ = new osg::Group;
+    root_->addChild(createStarfieldNode());
     overlay_transform_ = new osg::MatrixTransform;
     overlay_transform_->addChild(trajectory_layer_->node());
     overlay_transform_->addChild(aircraft_layer_->node());
@@ -2217,7 +2249,7 @@ void OsgEarthViewWidget::initializeSceneIfNeeded()
     if (viewer_->getCamera())
     {
         viewer_->getCamera()->setGraphicsContext(graphics_window_.get());
-        viewer_->getCamera()->setClearColor(osg::Vec4(0.055f, 0.065f, 0.075f, 1.0f));
+        viewer_->getCamera()->setClearColor(osg::Vec4(0.004f, 0.008f, 0.022f, 1.0f));
         viewer_->getCamera()->setViewMatrixAsLookAt(osg::Vec3d(220.0, -320.0, 240.0),
                                                     osg::Vec3d(0.0, 0.0, 0.0),
                                                     osg::Vec3d(0.0, 0.0, 1.0));
