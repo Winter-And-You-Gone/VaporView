@@ -123,9 +123,7 @@ int main(int argc, char** argv)
     auto* window = new VaporView::Map3D::Map3DWindow;
     window->resize(1100, 760);
     window->show();
-    auto* startRendering = window->findChild<QAction*>(QStringLiteral("map3DStartRenderingAction"));
-    require(startRendering != nullptr, QStringLiteral("explicit rendering action exists"));
-    startRendering->trigger();
+
 
     auto* view = window->findChild<VaporView::Map3D::OsgEarthViewWidget*>(QStringLiteral("map3DView"));
     require(view != nullptr, QStringLiteral("real OSG/osgEarth 3D view exists"));

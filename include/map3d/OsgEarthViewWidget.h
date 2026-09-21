@@ -187,6 +187,7 @@ public:
     double earthCameraRangeM() const;
 
 signals:
+    void renderingFailed(const QString& reason);
     void performanceUpdated();
     void trajectorySampleSelected(int sampleIndex, VaporView::Geo::NavSample sample);
     void trajectorySampleSelectionCleared();
@@ -263,6 +264,8 @@ private:
     bool frame_pending_presentation_ = false;
     bool idle_rendering_ = false;
     bool initialized_ = false;
+    void failRendering(const QString& reason);
+    bool rendering_failed_ = false;
     bool rendering_started_ = false;
     bool shutdown_ = false;
     bool follow_aircraft_ = false;

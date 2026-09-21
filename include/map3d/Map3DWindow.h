@@ -142,7 +142,6 @@ private:
     VaporView::Geo::HeatMetric heat_metric_ = VaporView::Geo::HeatMetric::Peak;
     VaporView::Geo::HeatPalette heat_palette_ = VaporView::Geo::HeatPalette::Candy;
     QAction* follow_action_ = nullptr;
-    QAction* start_rendering_action_ = nullptr;
     QLabel* status_label_ = nullptr;
     QLabel* heat_legend_label_ = nullptr;
     QAction* diagnostics_action_ = nullptr;

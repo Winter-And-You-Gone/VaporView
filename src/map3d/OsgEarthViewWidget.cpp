@@ -1738,19 +1738,25 @@ float OsgEarthViewWidget::trackPointSize() const
 void OsgEarthViewWidget::startRendering()
 {
     assertGuiThread(this, Q_FUNC_INFO);
-    if (shutdown_ || rendering_started_)
+    if (shutdown_ || rendering_failed_ || rendering_started_)
     {
         return;
     }
 
     rendering_started_ = true;
+    QTimer::singleShot(1000, this, [this]() {
+        if (!shutdown_ && rendering_started_ && isVisible() && !isValid())
+            failRendering(QStringLiteral("无法创建 OpenGL 渲染上下文，请检查显卡驱动"));
+    });
     // osgEarth creates a temporary native WGL context while it initializes.
     // Do not ask OSG to restore this widget through its temporary device context.
     if (QOpenGLContext::currentContext() == context())
     {
         doneCurrent();
     }
-    initializeMap3DRuntime();
+    try { initializeMap3DRuntime(); }
+    catch (const std::exception& error) { failRendering(QString::fromUtf8(error.what())); return; }
+    catch (...) { failRendering(QStringLiteral("渲染运行库初始化失败")); return; }
     if (isVisible())
     {
         frame_interval_clock_.invalidate();
@@ -1934,7 +1940,11 @@ bool OsgEarthViewWidget::hasEarthMap() const
 }
 
 void OsgEarthViewWidget::initializeGL()
-{
+try {
+    if (!context() || !context()->isValid()) {
+        failRendering(QStringLiteral("OpenGL 上下文不可用"));
+        return;
+    }
     if (shutdown_)
     {
         return;
@@ -1952,8 +1962,12 @@ void OsgEarthViewWidget::initializeGL()
     }
 }
 
+catch (const std::exception& error) { failRendering(QString::fromUtf8(error.what())); }
+catch (...) { failRendering(QStringLiteral("OpenGL 初始化失败")); }
+
 void OsgEarthViewWidget::resizeGL(int w, int h)
-{
+try {
+    if (rendering_failed_) return;
     if (shutdown_)
     {
         return;
@@ -1962,8 +1976,12 @@ void OsgEarthViewWidget::resizeGL(int w, int h)
     updateCameraViewport(w, h);
 }
 
+catch (const std::exception& error) { failRendering(QString::fromUtf8(error.what())); }
+catch (...) { failRendering(QStringLiteral("渲染视口调整失败")); }
+
 void OsgEarthViewWidget::paintGL()
-{
+try {
+    if (rendering_failed_) return;
     if (shutdown_)
     {
         return;
@@ -1989,6 +2007,18 @@ void OsgEarthViewWidget::paintGL()
         present_clock_.start();
         frame_pending_presentation_ = true;
     }
+}
+
+catch (const std::exception& error) { failRendering(QString::fromUtf8(error.what())); }
+catch (...) { failRendering(QStringLiteral("渲染帧失败")); }
+
+void OsgEarthViewWidget::failRendering(const QString& reason)
+{
+    if (rendering_failed_) return;
+    rendering_failed_ = true;
+    rendering_started_ = false;
+    frameTimer_.stop();
+    QTimer::singleShot(0, this, [this, reason]() { emit renderingFailed(reason); });
 }
 
 void OsgEarthViewWidget::mousePressEvent(QMouseEvent* event)

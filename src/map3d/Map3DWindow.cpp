@@ -698,7 +698,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         render_placeholder_label_->setAutoFillBackground(true);
         render_placeholder_label_->setWordWrap(true);
         render_placeholder_label_->setText(
-            QStringLiteral("3D 地图窗口已打开。\n点击工具栏“启动渲染”后再加载地图数据。"));
+            QStringLiteral("正在检查并启动 3D 渲染…"));
 
         // Create the first QOpenGLWidget before the top-level window is shown.
         // Qt otherwise recreates the native window when rendering is started.
@@ -712,13 +712,6 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     status_label_->setObjectName(QStringLiteral("map3DStatusLabel"));
 
     QToolBar* toolbar = addToolBar(QStringLiteral("3D Map"));
-    start_rendering_action_ = toolbar->addAction(QStringLiteral("启动渲染"));
-    start_rendering_action_->setObjectName(QStringLiteral("map3DStartRenderingAction"));
-    start_rendering_action_->setToolTip(QStringLiteral("启动真实 3D 渲染视图并加载轻量启动地图"));
-    start_rendering_action_->setStatusTip(start_rendering_action_->toolTip());
-    start_rendering_action_->setEnabled(!isMap3DHeadlessTest());
-    connect(start_rendering_action_, &QAction::triggered, this, &Map3DWindow::startRendering);
-
     QAction* mapFilesAction = toolbar->addAction(QStringLiteral("地图文件"));
     mapFilesAction->setObjectName(QStringLiteral("map3DMapFilesAction"));
     mapFilesAction->setToolTip(QStringLiteral("查看本地地图文件及就绪、缺失状态"));
@@ -1154,16 +1147,20 @@ void Map3DWindow::startRendering()
     {
         render_placeholder_label_->hide();
     }
+    connect(view_, &OsgEarthViewWidget::renderingFailed, this, [this](const QString& reason) {
+        render_placeholder_label_->setText(QStringLiteral("3D 渲染已停止：%1\n可关闭窗口或查看地图文件状态。").arg(reason));
+        render_stack_->setCurrentWidget(render_placeholder_label_);
+        render_placeholder_label_->show();
+        statusBar()->showMessage(reason);
+    });
     view_->startRendering();
-    if (start_rendering_action_)
-    {
-        start_rendering_action_->setEnabled(false);
-    }
+    if (!view_->isRenderingStarted()) return;
     applyCurrentControlsToView();
     refreshLayerMenuAvailability();
     updateStatus(nullptr);
 
     QTimer::singleShot(0, this, [this]() {
+        if (!view_ || !view_->isRenderingStarted()) return;
         loadInitialEarthFile();
         const QString aircraftModelPath =
             map3DSettings()
@@ -2574,6 +2571,9 @@ void Map3DWindow::showEvent(QShowEvent* event)
     QMainWindow::showEvent(event);
     refreshLayerMenuTheme();
     refreshLayerMenuAvailability();
+    QTimer::singleShot(0, this, [this]() {
+        if (isVisible() && !view_) startRendering();
+    });
     if (sentinel2_auto_load_timer_
         && view_
         && view_->hasEarthMap()

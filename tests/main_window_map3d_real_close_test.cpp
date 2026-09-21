@@ -104,9 +104,7 @@ int main(int argc, char** argv)
 
     QWidget* mapWindow = findMap3DWindow();
     require(mapWindow != nullptr && mapWindow->isVisible(), QStringLiteral("3D map window opens from MainWindow"));
-    auto* startRendering = mapWindow->findChild<QAction*>(QStringLiteral("map3DStartRenderingAction"));
-    require(startRendering != nullptr, QStringLiteral("explicit rendering action exists"));
-    startRendering->trigger();
+
 
     auto* view = mapWindow->findChild<VaporView::Map3D::OsgEarthViewWidget*>(QStringLiteral("map3DView"));
     require(view != nullptr, QStringLiteral("real OSG/osgEarth 3D view exists in MainWindow path"));

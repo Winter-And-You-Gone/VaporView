@@ -106,41 +106,26 @@ int main(int argc, char** argv)
     require(mapStatusLabel != nullptr, QStringLiteral("3D map status label exists"));
     QLabel* renderPlaceholder = mapWindow->findChild<QLabel*>(
         QStringLiteral("map3DRenderPlaceholder"));
-    require(renderPlaceholder != nullptr && renderPlaceholder->isVisible(),
-            QStringLiteral("3D map first opens a responsive render placeholder"));
-    require(renderPlaceholder->text().contains(QStringLiteral("启动渲染")),
-            QStringLiteral("3D map placeholder directs the user to explicitly start rendering"));
-
-    auto* prewarmedView = mapWindow->findChild<VaporView::Map3D::OsgEarthViewWidget*>(
-        QStringLiteral("map3DView"));
-    require(prewarmedView != nullptr && prewarmedView->isVisible(),
-            QStringLiteral("3D map prewarms its OpenGL widget before rendering starts"));
-    require(!prewarmedView->isRenderingStarted(),
-            QStringLiteral("3D map defers osgEarth initialization until rendering starts"));
-
-    QAction* startRenderingAction = mapWindow->findChild<QAction*>(
-        QStringLiteral("map3DStartRenderingAction"));
-    require(startRenderingAction != nullptr && startRenderingAction->isEnabled(),
-            QStringLiteral("3D map exposes an explicit start-rendering action"));
-
-    prewarmedView->makeCurrent();
-    QOpenGLContext* prewarmedContext = prewarmedView->context();
-    require(prewarmedContext != nullptr && QOpenGLContext::currentContext() == prewarmedContext,
-            QStringLiteral("3D map test activates the prewarmed OpenGL context before startup"));
-    startRenderingAction->trigger();
-    require(QOpenGLContext::currentContext() != prewarmedContext,
-            QStringLiteral("3D map releases the prewarmed OpenGL context before osgEarth startup"));
+    require(renderPlaceholder != nullptr, QStringLiteral("render failure placeholder exists"));
+    require(mapWindow->findChild<QAction*>(QStringLiteral("map3DStartRenderingAction")) == nullptr,
+            QStringLiteral("manual start action is removed"));
     processEventsFor(3000);
     auto* view = mapWindow->findChild<VaporView::Map3D::OsgEarthViewWidget*>(
         QStringLiteral("map3DView"));
     require(view != nullptr && view->isVisible(),
             QStringLiteral("3D map starts the real renderer without closing the window"));
     require(view->isRenderingStarted(),
-            QStringLiteral("3D map activates osgEarth only after the user starts rendering"));
+            QStringLiteral("3D map activates osgEarth automatically when opened"));
     require(!view->framebufferSize().isEmpty(),
             QStringLiteral("3D map initializes an OpenGL framebuffer after rendering starts"));
     require(view->earthLoadDiagnostics().attempted,
             QStringLiteral("3D map starts loading the built-in Earth scene after rendering starts"));
+
+    emit view->renderingFailed(QStringLiteral("test renderer failure"));
+    processEventsFor(100);
+    require(mapWindow->isVisible() && renderPlaceholder->isVisible()
+                && renderPlaceholder->text().contains(QStringLiteral("test renderer failure")),
+            QStringLiteral("render failure leaves the window open with a diagnostic"));
 
     mapWindow->close();
     window.close();
