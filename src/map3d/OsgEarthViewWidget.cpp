@@ -83,11 +83,61 @@ constexpr unsigned kTiandituMaxZoom = 18;
 osg::ref_ptr<osg::Node> createStarfieldNode()
 {
     auto* geode = new osg::Geode;
-    auto* geometry = new osg::Geometry;
-    auto* vertices = new osg::Vec3Array;
-    auto* colors = new osg::Vec4Array;
     constexpr double radius = 18'000'000.0;
-    constexpr int starCount = 420;
+    auto addLayer = [geode, radius](int count, bool milkyWay) {
+        auto* geometry = new osg::Geometry;
+        auto* vertices = new osg::Vec3Array;
+        auto* colors = new osg::Vec4Array;
+        for (int index = 0; index < count; ++index)
+        {
+            const double a = std::fmod(index * (milkyWay ? 1.731 : 2.399963229728653), 6.283185307179586);
+            const double rawZ = std::fmod(index * (milkyWay ? 0.754877666 : 0.618033988749895), 2.0) - 1.0;
+            const double z = milkyWay
+                ? rawZ * (0.055 + 0.10 * (0.5 + 0.5 * std::sin(index * 0.17)))
+                : -0.96 + rawZ * 0.96;
+            const double r = std::sqrt(std::max(0.0, 1.0 - z * z));
+            vertices->push_back(osg::Vec3(radius * r * std::cos(a),
+                                          radius * r * std::sin(a), radius * z));
+            if (milkyWay)
+            {
+                const float warmth = static_cast<float>((index * 29) % 100) / 100.0f;
+                colors->push_back(osg::Vec4(0.20f + warmth * 0.20f,
+                                            0.22f + warmth * 0.14f,
+                                            0.34f + (1.0f - warmth) * 0.22f,
+                                            0.10f + warmth * 0.10f));
+            }
+            else
+            {
+                const float brightness = 0.55f + static_cast<float>((index * 37) % 45) / 100.0f;
+                colors->push_back(osg::Vec4(brightness, brightness * 0.96f, brightness * 0.86f, 1.0f));
+            }
+        }
+        geometry->setVertexArray(vertices);
+        geometry->setColorArray(colors, osg::Array::BIND_PER_VERTEX);
+        geometry->addPrimitiveSet(new osg::DrawArrays(osg::PrimitiveSet::POINTS, 0, count));
+        auto* state = geometry->getOrCreateStateSet();
+        state->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
+        state->setMode(GL_DEPTH_TEST, osg::StateAttribute::OFF);
+        if (milkyWay)
+        {
+            state->setMode(GL_BLEND, osg::StateAttribute::ON);
+            state->setRenderingHint(osg::StateSet::TRANSPARENT_BIN);
+            state->setAttribute(new osg::Point(7.0f));
+        }
+        else
+        {
+            state->setAttribute(new osg::Point(1.7f));
+        }
+        state->setRenderBinDetails(-10, "RenderBin");
+        geode->addDrawable(geometry);
+    };
+    addLayer(420, false);
+    addLayer(1500, true);
+    /* A second, thinner dust lane gives the background the irregular layered
+       appearance of a photographed Milky Way instead of a uniform stripe. */
+    addLayer(500, true);
+    return geode;
+    /*
     for (int index = 0; index < starCount; ++index)
     {
         const double a = std::fmod(index * 2.399963229728653, 6.283185307179586);
@@ -108,6 +158,7 @@ osg::ref_ptr<osg::Node> createStarfieldNode()
     state->setAttribute(new osg::Point(1.7f));
     geode->addDrawable(geometry);
     return geode;
+    */
 }
 constexpr const char* kTiandituSatelliteLayerName = "Tianditu Satellite imagery";
 constexpr const char* kTiandituBrowserUserAgent =
