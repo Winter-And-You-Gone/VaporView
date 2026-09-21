@@ -107,7 +107,7 @@ VaporView::Geo::TrajectoryHeatValues heatValuesFromTrackPoint(
 }  // namespace
 
 SessionTrajectoryRenderLoadResult SessionTrajectoryRenderLoader::loadSessionDirectory(
-    const QString& sessionDir)
+    const QString& sessionDir, const std::function<void(int, const QString&)>& progress)
 {
     SessionTrajectoryRenderLoadResult result;
     VaporView::Geo::SessionTrackReadResult track = VaporView::Geo::readSessionTrack(sessionDir);
@@ -118,6 +118,7 @@ SessionTrajectoryRenderLoadResult SessionTrajectoryRenderLoader::loadSessionDire
         return result;
     }
 
+    if (progress) progress(25, QStringLiteral("轨迹读取完成；读取传感器数据…"));
     result.sourceCsvPath = track.sourceCsvPath;
     result.totalRows = track.totalRows;
     result.rejectedRows = track.rejectedRows;
@@ -158,10 +159,12 @@ SessionTrajectoryRenderLoadResult SessionTrajectoryRenderLoader::loadSessionDire
         return result;
     }
 
+    if (progress) progress(60, QStringLiteral("传感器读取完成；关联波形峰值…"));
     QVector<VaporView::Ground::SessionTrackPoint> trackPoints =
         std::move(sensorResult.data.track_points);
     attachDefaultWaveformPeaks(metadataResult.metadata, trackPoints, result.warning);
 
+    if (progress) progress(80, QStringLiteral("波形关联完成；生成显示数据…"));
     QHash<int, VaporView::Geo::NavSample> navSampleByCsvRow;
     navSampleByCsvRow.reserve(static_cast<int>(
         std::min(track.samples.size(), track.sourceCsvRows.size())));

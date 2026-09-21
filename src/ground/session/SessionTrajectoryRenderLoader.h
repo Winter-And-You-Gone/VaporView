@@ -6,6 +6,7 @@
 #include <QtGlobal>
 
 #include <vector>
+#include <functional>
 
 namespace VaporView::Ground::Session
 {
@@ -25,7 +26,8 @@ struct SessionTrajectoryRenderLoadResult
 class SessionTrajectoryRenderLoader final
 {
 public:
-    static SessionTrajectoryRenderLoadResult loadSessionDirectory(const QString& sessionDir);
+    static SessionTrajectoryRenderLoadResult loadSessionDirectory(const QString& sessionDir,
+        const std::function<void(int, const QString&)>& progress = {});
 };
 
 }  // namespace VaporView::Ground::Session

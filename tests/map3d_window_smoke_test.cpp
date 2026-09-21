@@ -325,7 +325,7 @@ int main(int argc, char** argv)
     auto* layersButton = window.findChild<QToolButton*>(QStringLiteral("map3DLayersButton"));
     require(layersButton != nullptr
                 && layersButton->popupMode() == QToolButton::InstantPopup
-                && layersButton->toolButtonStyle() == Qt::ToolButtonIconOnly,
+                && layersButton->toolButtonStyle() == Qt::ToolButtonTextBesideIcon,
             "clicking the layers icon opens the layer menu directly");
     require(layersButton->accessibleName() == QStringLiteral("地图图层"),
             "layers icon has an accessibility name");

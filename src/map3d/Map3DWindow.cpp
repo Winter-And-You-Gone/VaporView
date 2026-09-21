@@ -531,6 +531,22 @@ MapDataSelection selectionForLightweightStartup(const MapDataSelection& discover
         QStringLiteral("Started with lightweight Natural Earth so the 3D Map window opens immediately; use 重载最佳本地地图 to load DEM/OSM/3D building resources."));
     diagnostics.warnings.push_back(
         QStringLiteral("Heavy local map resources are not auto-loaded when the 3D Map window opens."));
+    // Load available terrain without the heavier OSM/building layers.
+    const bool copernicus = discovered.diagnostics.copernicusDemAvailable;
+    const bool srtm = discovered.diagnostics.srtmDemAvailable;
+    const QString terrainEarth = QDir(discovered.diagnostics.mapsRoot).filePath(
+        copernicus ? QStringLiteral("vaporview_with_dem.earth") : QStringLiteral("vaporview_with_srtm.earth"));
+    if ((copernicus || srtm) && QFileInfo(terrainEarth).isFile()) {
+        selection.earthFile = selection.earthFilePath = terrainEarth;
+        selection.mode = copernicus ? MapDataMode::NaturalEarthWithCopernicusDem : MapDataMode::NaturalEarthWithSrtm;
+        selection.description = QStringLiteral("Natural Earth with available local DEM terrain.");
+        diagnostics.earthFilePath = diagnostics.selectedBaseEarthFilePath = terrainEarth;
+        diagnostics.selectedBaseMode = selection.mode;
+        diagnostics.selectedBaseModeLabel = MapDataManager::modeLabel(selection.mode);
+        diagnostics.selectedBaseModeKey = MapDataManager::modeKey(selection.mode);
+        diagnostics.selectedDemLayerAvailable = true;
+        diagnostics.selectedElevationSource = copernicus ? QStringLiteral("Copernicus DEM") : QStringLiteral("SRTM");
+    }
     return selection;
 }
 
@@ -671,8 +687,6 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     , status_label_(new QLabel(this))
     , replay_timer_(new QTimer(this))
     , sentinel2_auto_load_timer_(new QTimer(this))
-    , session_progress_dialog_(new QProgressDialog(this))
-    , session_progress_timer_(new QTimer(this))
     , latest_track_source_(QStringLiteral("none"))
 {
     layer_visibility_.fill(true);
@@ -719,6 +733,8 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     mapFilesAction->setObjectName(QStringLiteral("map3DMapFilesAction"));
     mapFilesAction->setToolTip(QStringLiteral("查看本地地图文件及就绪、缺失状态"));
     connect(mapFilesAction, &QAction::triggered, this, &Map3DWindow::showMapFiles);
+
+    createLayerMenu(toolbar);
 
     QAction* openSessionAction = toolbar->addAction(QStringLiteral("打开 Session"));
     connect(openSessionAction, &QAction::triggered, this, &Map3DWindow::openSessionDirectory);
@@ -916,18 +932,6 @@ Map3DWindow::Map3DWindow(QWidget* parent)
 
     sentinel2_auto_load_timer_->setTimerType(Qt::CoarseTimer);
     sentinel2_auto_load_timer_->setInterval(300);
-    session_progress_dialog_->setRange(0, 100);
-    session_progress_dialog_->setAutoClose(false);
-    session_progress_dialog_->setAutoReset(false);
-    session_progress_dialog_->setWindowTitle(QStringLiteral("加载 Session"));
-    session_progress_dialog_->setLabelText(QStringLiteral("正在读取 Session 数据…"));
-    session_progress_dialog_->setCancelButton(nullptr);
-    session_progress_dialog_->hide();
-    session_progress_timer_->setInterval(120);
-    connect(session_progress_timer_, &QTimer::timeout, this, [this]() {
-        if (!session_progress_dialog_) return;
-        session_progress_dialog_->setValue(std::min(95, session_progress_dialog_->value() + 1));
-    });
     connect(sentinel2_auto_load_timer_, &QTimer::timeout, this, [this]() {
         if (view_)
         {
@@ -956,7 +960,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     QAction* loadEarthAction = toolbar->addAction(QStringLiteral("加载 Earth 文件"));
     connect(loadEarthAction, &QAction::triggered, this, &Map3DWindow::openEarthFile);
 
-    createLayerMenu(toolbar);
+
 
     local_imagery_menu_ = new VaporView::SingleLevelPopupMenu(this);
     local_imagery_menu_->setTitle(QStringLiteral("本地影像"));
@@ -1218,7 +1222,7 @@ void Map3DWindow::createLayerMenu(QToolBar* toolbar)
     {
         button->setObjectName(QStringLiteral("map3DLayersButton"));
         button->setAccessibleName(QStringLiteral("地图图层"));
-        button->setToolButtonStyle(Qt::ToolButtonIconOnly);
+        button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
         button->setPopupMode(QToolButton::InstantPopup);
     }
 
@@ -1531,6 +1535,7 @@ void Map3DWindow::clearTrack()
 
 void Map3DWindow::loadSessionDirectory(const QString& sessionDir)
 {
+    if (sessionDir.isEmpty() || !QFileInfo(sessionDir).isDir()) return;
     if (VaporView::settingsWritesSuspended())
     {
         Q_UNUSED(sessionDir);
@@ -1558,6 +1563,7 @@ void Map3DWindow::invalidateSessionLoadRequest()
         return;
     }
     ++session_load_generation_;
+    if (session_progress_dialog_) { session_progress_dialog_->reset(); session_progress_dialog_->hide(); }
     pending_session_directory_.clear();
     if (session_load_watcher_)
     {
@@ -1572,12 +1578,22 @@ void Map3DWindow::startSessionLoad(const QString& sessionDir, quint64 generation
         return;
     }
     statusBar()->showMessage(QStringLiteral("正在加载 Session 轨迹及热力数据，完成后自动定位…"));
+    if (!session_progress_dialog_)
+    {
+        session_progress_dialog_ = new QProgressDialog(this);
+        session_progress_dialog_->setObjectName(QStringLiteral("map3DSessionProgress"));
+        session_progress_dialog_->setRange(0, 100);
+        session_progress_dialog_->setAutoClose(false);
+        session_progress_dialog_->setAutoReset(false);
+        session_progress_dialog_->setCancelButton(nullptr);
+        session_progress_dialog_->setWindowTitle(QStringLiteral("加载 Session"));
+    }
     if (session_progress_dialog_)
     {
         session_progress_dialog_->setValue(0);
         session_progress_dialog_->setLabelText(QStringLiteral("正在读取 Session 数据…"));
         session_progress_dialog_->show();
-        session_progress_timer_->start();
+
     }
     auto* watcher = new QFutureWatcher<
         VaporView::Ground::Session::SessionTrajectoryRenderLoadResult>(this);
@@ -1593,15 +1609,6 @@ void Map3DWindow::startSessionLoad(const QString& sessionDir, quint64 generation
             session_load_watcher_ = nullptr;
         }
         watcher->deleteLater();
-        if (session_progress_timer_) session_progress_timer_->stop();
-        if (session_progress_dialog_)
-        {
-            session_progress_dialog_->setValue(100);
-            session_progress_dialog_->setLabelText(result.success
-                ? QStringLiteral("Session 加载完成")
-                : QStringLiteral("Session 加载失败"));
-            QTimer::singleShot(450, session_progress_dialog_, &QProgressDialog::hide);
-        }
         if (generation != session_load_generation_)
         {
             const QString pendingSessionDirectory = std::exchange(pending_session_directory_, {});
@@ -1616,6 +1623,8 @@ void Map3DWindow::startSessionLoad(const QString& sessionDir, quint64 generation
         }
         if (!result.success)
         {
+            session_progress_dialog_->reset();
+            session_progress_dialog_->hide();
             updateStatus(nullptr, true);
             statusBar()->showMessage(QStringLiteral("Session 轨迹加载失败。"), 8000);
             QMessageBox::warning(this,
@@ -1682,6 +1691,8 @@ void Map3DWindow::startSessionLoad(const QString& sessionDir, quint64 generation
                 }
             });
         }
+        session_progress_dialog_->setValue(100);
+        session_progress_dialog_->hide();
         const QString warningSuffix = loadWarning.isEmpty()
             ? QString()
             : QStringLiteral("；%1").arg(loadWarning);
@@ -1692,8 +1703,16 @@ void Map3DWindow::startSessionLoad(const QString& sessionDir, quint64 generation
                                           warningSuffix),
                                  5000);
     });
-    watcher->setFuture(QtConcurrent::run([sessionDir]() {
-        return VaporView::Ground::Session::SessionTrajectoryRenderLoader::loadSessionDirectory(sessionDir);
+    watcher->setFuture(QtConcurrent::run([this, sessionDir, generation]() {
+        return VaporView::Ground::Session::SessionTrajectoryRenderLoader::loadSessionDirectory(sessionDir,
+            [this, generation](int percent, const QString& stage) {
+                QMetaObject::invokeMethod(this, [this, generation, percent, stage]() {
+                    if (generation == session_load_generation_ && session_load_watcher_ && session_progress_dialog_) {
+                        session_progress_dialog_->setValue(percent);
+                        session_progress_dialog_->setLabelText(stage);
+                    }
+                }, Qt::QueuedConnection);
+            });
     }));
 }
 
