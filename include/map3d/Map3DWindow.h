@@ -18,6 +18,7 @@ class QComboBox;
 class QDialog;
 class QLabel;
 class QPlainTextEdit;
+class QProgressDialog;
 class QSlider;
 class QSpinBox;
 class QStackedLayout;
@@ -170,6 +171,8 @@ private:
     QSpinBox* track_point_size_spin_ = nullptr;
     QTimer* replay_timer_ = nullptr;
     QTimer* sentinel2_auto_load_timer_ = nullptr;
+    QProgressDialog* session_progress_dialog_ = nullptr;
+    QTimer* session_progress_timer_ = nullptr;
     QElapsedTimer replay_tick_clock_;
     QElapsedTimer status_update_clock_;
     QDialog* diagnostics_dialog_ = nullptr;

@@ -33,6 +33,7 @@
 #include <QMessageBox>
 #include <QPainter>
 #include <QPlainTextEdit>
+#include <QProgressDialog>
 #include <QPixmap>
 #include <QSettings>
 #include "shared/config/SettingsWriteBarrier.h"
@@ -670,6 +671,8 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     , status_label_(new QLabel(this))
     , replay_timer_(new QTimer(this))
     , sentinel2_auto_load_timer_(new QTimer(this))
+    , session_progress_dialog_(new QProgressDialog(this))
+    , session_progress_timer_(new QTimer(this))
     , latest_track_source_(QStringLiteral("none"))
 {
     layer_visibility_.fill(true);
@@ -913,6 +916,18 @@ Map3DWindow::Map3DWindow(QWidget* parent)
 
     sentinel2_auto_load_timer_->setTimerType(Qt::CoarseTimer);
     sentinel2_auto_load_timer_->setInterval(300);
+    session_progress_dialog_->setRange(0, 100);
+    session_progress_dialog_->setAutoClose(false);
+    session_progress_dialog_->setAutoReset(false);
+    session_progress_dialog_->setWindowTitle(QStringLiteral("加载 Session"));
+    session_progress_dialog_->setLabelText(QStringLiteral("正在读取 Session 数据…"));
+    session_progress_dialog_->setCancelButton(nullptr);
+    session_progress_dialog_->hide();
+    session_progress_timer_->setInterval(120);
+    connect(session_progress_timer_, &QTimer::timeout, this, [this]() {
+        if (!session_progress_dialog_) return;
+        session_progress_dialog_->setValue(std::min(95, session_progress_dialog_->value() + 1));
+    });
     connect(sentinel2_auto_load_timer_, &QTimer::timeout, this, [this]() {
         if (view_)
         {
@@ -1557,6 +1572,13 @@ void Map3DWindow::startSessionLoad(const QString& sessionDir, quint64 generation
         return;
     }
     statusBar()->showMessage(QStringLiteral("正在加载 Session 轨迹及热力数据，完成后自动定位…"));
+    if (session_progress_dialog_)
+    {
+        session_progress_dialog_->setValue(0);
+        session_progress_dialog_->setLabelText(QStringLiteral("正在读取 Session 数据…"));
+        session_progress_dialog_->show();
+        session_progress_timer_->start();
+    }
     auto* watcher = new QFutureWatcher<
         VaporView::Ground::Session::SessionTrajectoryRenderLoadResult>(this);
     session_load_watcher_ = watcher;
@@ -1571,6 +1593,15 @@ void Map3DWindow::startSessionLoad(const QString& sessionDir, quint64 generation
             session_load_watcher_ = nullptr;
         }
         watcher->deleteLater();
+        if (session_progress_timer_) session_progress_timer_->stop();
+        if (session_progress_dialog_)
+        {
+            session_progress_dialog_->setValue(100);
+            session_progress_dialog_->setLabelText(result.success
+                ? QStringLiteral("Session 加载完成")
+                : QStringLiteral("Session 加载失败"));
+            QTimer::singleShot(450, session_progress_dialog_, &QProgressDialog::hide);
+        }
         if (generation != session_load_generation_)
         {
             const QString pendingSessionDirectory = std::exchange(pending_session_directory_, {});
