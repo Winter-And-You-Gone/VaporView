@@ -499,6 +499,15 @@ MapDataSelection selectionForCustomEarth(const MapDataSelection& discovered,
 
 MapDataSelection selectionForLightweightStartup(const MapDataSelection& discovered)
 {
+    // When the complete local OSM set is present, keep the full Earth scene.
+    // The lightweight/DEM-only templates do not declare the OGR water and road
+    // layers, so their menu entries would appear selectable but render nothing.
+    if (discovered.mode == MapDataMode::FullLocalMap
+        && discovered.diagnostics.selectedOsmLayersAvailable
+        && QFileInfo(discovered.earthFile).isFile())
+    {
+        return discovered;
+    }
     const QString defaultEarthFile = QDir::cleanPath(
         QDir(discovered.diagnostics.projectRoot)
             .absoluteFilePath(QString::fromLatin1(kDefaultStartupEarthRelative)));
