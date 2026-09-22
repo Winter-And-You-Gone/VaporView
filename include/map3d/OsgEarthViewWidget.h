@@ -188,6 +188,7 @@ public:
 
 signals:
     void renderingFailed(const QString& reason);
+    void imageryFallbackNotice();
     void performanceUpdated();
     void trajectorySampleSelected(int sampleIndex, VaporView::Geo::NavSample sample);
     void trajectorySampleSelectionCleared();

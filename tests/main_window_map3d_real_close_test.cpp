@@ -82,6 +82,7 @@ int main(int argc, char** argv)
 
     QTemporaryDir settingsDir;
     require(settingsDir.isValid(), QStringLiteral("temporary settings directory"));
+    qputenv("OSGEARTH_CACHE_PATH", settingsDir.filePath(QStringLiteral("map-cache")).toUtf8());
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
     QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, settingsDir.path());
@@ -112,6 +113,9 @@ int main(int argc, char** argv)
     while (!view->hasEarthMap() && QDateTime::currentMSecsSinceEpoch() < startupDeadline)
         processEventsFor(20);
     require(view->hasEarthMap(), QStringLiteral("lightweight startup map loads before selecting local detail"));
+    auto* buildings = mapWindow->findChild<QAction*>(QStringLiteral("map3DLayer_buildings3D"));
+    require(buildings && !buildings->isChecked(), QStringLiteral("building layer starts disabled"));
+    buildings->trigger();
     auto* reload = mapWindow->findChild<QAction*>(QStringLiteral("map3DReloadBestMapAction"));
     require(reload != nullptr, QStringLiteral("local map reload action exists"));
     reload->trigger();

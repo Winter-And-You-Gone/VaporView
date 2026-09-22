@@ -5,6 +5,7 @@
 #include "map3d/AircraftHeading.h"
 #include "Map3DAssetLoader.h"
 #include "EarthProjectionProfile.h"
+#include "TiandituImageLayer.h"
 #include "Map3DRuntime.h"
 #include "map3d/TrackSampling.h"
 #include "map3d/Trajectory3DLayer.h"
@@ -653,22 +654,6 @@ bool restoreEarthViewpoint(osgViewer::Viewer* viewer, const osgEarth::Viewpoint&
     return true;
 }
 
-// Source attempts exclude cache hits; failed counts exclude canceled requests.
-class MeasuredXYZImageLayer final : public osgEarth::XYZImageLayer
-{
-public:
-    mutable std::atomic_uint requests{0};
-    mutable std::atomic_uint failures{0};
-    osgEarth::GeoImage createImageImplementation(const osgEarth::TileKey& key,
-                                                osgEarth::ProgressCallback* progress) const override
-    {
-        ++requests;
-        auto image = osgEarth::XYZImageLayer::createImageImplementation(key, progress);
-        if (!image.valid() && !(progress && progress->isCanceled())) ++failures;
-        return image;
-    }
-};
-
 QString tiandituSatelliteUrlTemplate(const QString& key)
 {
     const QString encodedKey = QString::fromLatin1(QUrl::toPercentEncoding(key.trimmed()));
@@ -733,6 +718,10 @@ Map3DLayer mapLayerCategory(const osgEarth::Layer* layer)
     if (dynamic_cast<const osgEarth::ElevationLayer*>(layer))
     {
         return Map3DLayer::DigitalElevation;
+    }
+    if (name.contains(QStringLiteral("natural earth")))
+    {
+        return Map3DLayer::BaseMap;
     }
     if (name.contains(QStringLiteral("water"))
         || name.contains(QStringLiteral("hydro")))
@@ -810,6 +799,13 @@ OsgEarthViewWidget::OsgEarthViewWidget(QWidget* parent, bool deferRendering)
         if (!performance_publish_clock_.isValid() || performance_publish_clock_.elapsed() >= 500)
         {
             performance_publish_clock_.start();
+            if (map_node_ && map_node_->getMap())
+            {
+                auto* layer = dynamic_cast<Detail::TiandituImageLayer*>(
+                    map_node_->getMap()->getLayerByName(kTiandituSatelliteLayerName));
+                if (layer && layerVisible(Map3DLayer::SatelliteImagery) && layer->fallbackPending.exchange(false))
+                    emit imageryFallbackNotice();
+            }
             emit performanceUpdated();
         }
     });
@@ -1214,7 +1210,7 @@ bool OsgEarthViewWidget::applyTiandituSatelliteImagery(const QString& key)
         return false;
     }
 
-    osg::ref_ptr<osgEarth::XYZImageLayer> layer = new MeasuredXYZImageLayer;
+    osg::ref_ptr<osgEarth::XYZImageLayer> layer = new Detail::TiandituImageLayer;
     layer->setName(kTiandituSatelliteLayerName);
     osgEarth::URIContext tiandituContext;
     tiandituContext.addHeader("User-Agent", kTiandituBrowserUserAgent);
@@ -1225,11 +1221,11 @@ bool OsgEarthViewWidget::applyTiandituSatelliteImagery(const QString& key)
     layer->setFormat("jpg");
     // Level 0 returns a successful HTTP response containing a no-imagery placeholder.
     layer->options().minLevel() = 1u;
-    layer->options().maxLevel() = kTiandituMaxZoom;
+    layer->options().maxDataLevel() = kTiandituMaxZoom;
 
     earth_load_diagnostics_.layerSummaries.push_back(
         QStringLiteral("Tianditu source levels: %1-%2; level 0 placeholder excluded.")
-            .arg(layer->options().minLevel().get()).arg(layer->options().maxLevel().get()));
+            .arg(layer->options().minLevel().get()).arg(layer->options().maxDataLevel().get()));
     const unsigned insertIndex = tiandituSatelliteInsertIndex(map);
     map->insertLayer(layer.get(), insertIndex);
     earth_load_diagnostics_.layerSummaries.push_back(
@@ -1513,7 +1509,10 @@ bool OsgEarthViewWidget::layerAvailable(Map3DLayer layer) const
 
 void OsgEarthViewWidget::applyLayerVisibility(Map3DLayer layer)
 {
-    const bool visible = layerVisible(layer);
+    // The unchecked geographic basemap remains the underlay for satellite gaps.
+    const bool visible = layerVisible(layer)
+        || (layer == Map3DLayer::BaseMap && layerVisible(Map3DLayer::SatelliteImagery));
+    if (layer == Map3DLayer::SatelliteImagery) applyLayerVisibility(Map3DLayer::BaseMap);
     if (layer == Map3DLayer::Buildings3D)
     {
         if (local_3d_tiles_node_)
@@ -1948,7 +1947,7 @@ Map3DPerformanceStats OsgEarthViewWidget::performanceStats() const
     stats.runningJobs = jobs::get_metrics()->total_running();
     if (map_node_ && map_node_->getMap())
     {
-        if (const auto* imagery = dynamic_cast<const MeasuredXYZImageLayer*>(
+        if (const auto* imagery = dynamic_cast<const Detail::TiandituImageLayer*>(
                 map_node_->getMap()->getLayerByName(kTiandituSatelliteLayerName)))
         {
             stats.imageryRequests = imagery->requests.load();

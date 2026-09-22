@@ -3,6 +3,12 @@
 #include "map3d/Map3DWindow.h"
 #include "map3d/Map3DRuntime.h"
 #include "map3d/EarthProjectionProfile.h"
+#include "map3d/TiandituImageLayer.h"
+#include <osgEarth/Map>
+#include <osgEarth/TerrainTileModelFactory>
+#include <osgDB/ReadFile>
+#include <QImage>
+#include <QPainter>
 #include <osg/Matrixd>
 #include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
@@ -200,6 +206,91 @@ bool waitForSessionDirectory(const QString& path, int timeoutMs)
     return map3DTestSettings().value(QStringLiteral("lastSessionDir")).toString() == expected;
 }
 
+void checkImageryFallback()
+{
+    using namespace osgEarth;
+    using VaporView::Map3D::Detail::TiandituImageLayer;
+    using VaporView::Map3D::Detail::isTiandituNoImageryTile;
+    VaporView::Map3D::initializeMap3DRuntime();
+    QTemporaryDir tiles;
+    require(tiles.isValid(), "temporary imagery tiles directory");
+    QImage warning(256, 256, QImage::Format_RGB32);
+    warning.fill(QColor(228, 227, 223));
+    {
+        QPainter painter(&warning);
+        // Deterministic warning ink: independent of Windows fonts and ClearType.
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(182, 181, 179));
+        painter.drawPolygon(QPolygon{QPoint(32, 140), QPoint(44, 116), QPoint(56, 140)});
+        for (int x = 68; x < 220; x += 8)
+        {
+            painter.drawRect(x, 116, 4, 8);
+            painter.drawRect(x, 136, 4, 8);
+        }
+    }
+    require(QDir(tiles.path()).mkpath(QStringLiteral("3/4")), "create child tile directory");
+    const QString missingPath = tiles.filePath(QStringLiteral("3/4/2.png"));
+    require(warning.save(missingPath), "write synthetic provider warning tile");
+    auto decoded = osgDB::readRefImageFile(missingPath.toStdString());
+    require(isTiandituNoImageryTile(decoded), "provider warning tile detected");
+    const QString jpegWarningPath = tiles.filePath(QStringLiteral("warning.jpg"));
+    require(warning.save(jpegWarningPath, "JPG", 85), "write JPEG-compressed warning tile");
+    require(isTiandituNoImageryTile(osgDB::readRefImageFile(jpegWarningPath.toStdString())),
+            "warning detection tolerates JPEG artifacts");
+    for (const QColor& color : {QColor(228,227,223), QColor(250,250,250), QColor(8,30,75), QColor(180,150,95)})
+    {
+        QImage valid(256, 256, QImage::Format_RGB32);
+        valid.fill(color);
+        const QString path = tiles.filePath(QStringLiteral("valid.png"));
+        require(valid.save(path), "write uniform valid imagery");
+        require(!isTiandituNoImageryTile(osgDB::readRefImageFile(path.toStdString())),
+                "uniform snow, sea and desert imagery are not discarded");
+    }
+    QImage parent(256, 256, QImage::Format_RGB32);
+    parent.fill(QColor(30, 110, 50));
+    require(QDir(tiles.path()).mkpath(QStringLiteral("2/2")), "create parent tile directory");
+    require(parent.save(tiles.filePath(QStringLiteral("2/2/1.png"))), "write available parent tile");
+    osg::ref_ptr<TiandituImageLayer> layer = new TiandituImageLayer;
+    layer->setProfile(Profile::create(Profile::SPHERICAL_MERCATOR));
+    layer->setURL(URI((tiles.path() + QStringLiteral("/{z}/{x}/{y}.png")).toStdString()));
+    layer->setCachePolicy(CachePolicy::NO_CACHE);
+    layer->options().minLevel() = 1u;
+    layer->options().maxDataLevel() = 18u;
+    osg::ref_ptr<Map> map = new Map;
+    map->setProfile(Profile::create(Profile::SPHERICAL_MERCATOR));
+    map->addLayer(layer);
+    require(layer->isOpen(), "test imagery layer opens");
+    const TileKey child(3, 4, 2, map->getProfile());
+    require(!layer->createImage(child).valid(), "warning pixels never become valid imagery");
+    require(layer->fallbackPending.exchange(false), "missing imagery requests a GUI notice");
+    GeoImage cachedWarning(decoded, child.getExtent());
+    layer->postCreateImageImplementation(cachedWarning, child, nullptr);
+    require(!cachedWarning.valid(), "old cached warning imagery is rejected too");
+    osg::ref_ptr<TerrainTileModelFactory> factory = new TerrainTileModelFactory(TerrainOptions{});
+    const TerrainEngineRequirements requirements;
+    const CreateTileManifest manifest;
+    osg::ref_ptr<TerrainTileModel> tile = factory->createStandaloneTileModel(map, child, manifest, requirements, nullptr);
+    require(tile && tile->colorLayers.size() == 1, "missing detail uses available parent imagery");
+    osg::Matrixf expected;
+    child.getExtent().createScaleBias(child.createParentKey().getExtent(), expected);
+    require(tile->colorLayers.front().matrix == expected,
+            "parent imagery is cropped to the same geographic extent, not stretched from a neighbor");
+    const TileKey grandchild(4, 8, 4, map->getProfile());
+    tile = factory->createStandaloneTileModel(map, grandchild, manifest, requirements, nullptr);
+    require(tile && tile->colorLayers.size() == 1, "multiple missing levels still use the nearest ancestor");
+    grandchild.getExtent().createScaleBias(child.createParentKey().getExtent(), expected);
+    require(tile->colorLayers.front().matrix == expected,
+            "multiple-level fallback preserves geographic alignment");
+    const TileKey outside(3, 0, 0, map->getProfile());
+    tile = factory->createStandaloneTileModel(map, outside, manifest, requirements, nullptr);
+    require(tile && tile->colorLayers.size() == 1, "root fallback creates a transparent texture");
+    const auto* emptyImage = tile->colorLayers.front().texture->osgTexture()->getImage(0);
+    require(emptyImage && emptyImage->getColor(0, 0).a() == 0.0f,
+            "no parent data leaves the local underlay uncovered");
+    require(layer->isKeyInVisualRange(TileKey(19, 0, 0, map->getProfile())),
+            "zooming beyond source maximum still displays upsampled imagery");
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -208,6 +299,7 @@ int main(int argc, char** argv)
 
     QTemporaryDir settingsDir;
     require(settingsDir.isValid(), "temporary settings directory is valid");
+    qputenv("OSGEARTH_CACHE_PATH", settingsDir.filePath(QStringLiteral("map-cache")).toUtf8());
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
     QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, settingsDir.path());
@@ -242,6 +334,12 @@ int main(int argc, char** argv)
                 != QDir(QCoreApplication::applicationDirPath()).absoluteFilePath(QStringLiteral("data")),
             "session chooser does not default to the release data directory");
 
+    checkImageryFallback();
+    {
+        auto settings = map3DTestSettings();
+        settings.setValue(QStringLiteral("layers/roadNetworkVisible"), true);
+        settings.setValue(QStringLiteral("layers/satelliteImageryVisible"), false);
+    }
     VaporView::Map3D::Map3DWindow window;
     QCoreApplication::processEvents();
 
@@ -353,9 +451,10 @@ int main(int argc, char** argv)
             : nullptr;
         require(layerAction->text() == expectedLayerLabels.at(index),
                 "layer action uses the expected professional name");
-        require(layerAction->isCheckable() && layerAction->isChecked(),
-                "layer action starts visible and is independently checkable");
-        require(row && row->isChecked() && !row->closeOnClick(),
+        const bool expectedVisible = index == 1 || index == 2 || index == 6;
+        require(layerAction->isCheckable() && layerAction->isChecked() == expectedVisible,
+                "only satellite, DEM and flight elements start enabled");
+        require(row && row->isChecked() == expectedVisible && !row->closeOnClick(),
                 "layer row mirrors its check state and keeps the menu open for multi-selection");
     }
 

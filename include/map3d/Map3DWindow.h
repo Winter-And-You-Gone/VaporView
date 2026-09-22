@@ -68,6 +68,7 @@ protected:
     void changeEvent(QEvent* event) override;
     void showEvent(QShowEvent* event) override;
     void hideEvent(QHideEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
 
 private:
     enum class TrackDataMode {
@@ -130,11 +131,16 @@ private:
     void updateStatus(const VaporView::Geo::NavSample* latest = nullptr, bool force = true);
     void invalidateSessionLoadRequest();
     void startSessionLoad(const QString& sessionDir, quint64 generation);
+    void showMapNotice(const QString& text);
+    void positionMapNotice();
 
     OsgEarthViewWidget* view_ = nullptr;
     OsgEarthViewWidget* prewarmed_view_ = nullptr;
     QWidget* headless_view_ = nullptr;
     QLabel* render_placeholder_label_ = nullptr;
+    QLabel* map_notice_label_ = nullptr;
+    QTimer* map_notice_timer_ = nullptr;
+    QElapsedTimer map_notice_clock_;
     QStackedLayout* render_stack_ = nullptr;
     int headless_sample_count_ = 0;
     std::vector<VaporView::Geo::NavSample> headless_samples_;

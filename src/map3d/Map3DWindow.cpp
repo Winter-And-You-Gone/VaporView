@@ -698,7 +698,11 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     , sentinel2_auto_load_timer_(new QTimer(this))
     , latest_track_source_(QStringLiteral("none"))
 {
-    layer_visibility_.fill(true);
+    // Start each new window with the essential layers, regardless of old settings.
+    layer_visibility_.fill(false);
+    layer_visibility_[layerIndex(Map3DLayer::SatelliteImagery)] = true;
+    layer_visibility_[layerIndex(Map3DLayer::DigitalElevation)] = true;
+    layer_visibility_[layerIndex(Map3DLayer::FlightElements)] = true;
     setObjectName(QStringLiteral("map3DWindow"));
     setWindowTitle(QStringLiteral("VaporView 3D Map"));
     setAttribute(Qt::WA_QuitOnClose, false);
@@ -735,6 +739,16 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         render_stack_->setCurrentWidget(render_placeholder_label_);
         setCentralWidget(renderHost);
     }
+    map_notice_label_ = new QLabel(centralWidget());
+    map_notice_label_->setObjectName(QStringLiteral("map3DNoticeBubble"));
+    map_notice_label_->setAttribute(Qt::WA_TransparentForMouseEvents);
+    map_notice_label_->setWordWrap(true);
+    map_notice_label_->setAlignment(Qt::AlignCenter);
+    map_notice_label_->hide();
+    map_notice_timer_ = new QTimer(this);
+    map_notice_timer_->setSingleShot(true);
+    map_notice_timer_->setInterval(4500);
+    connect(map_notice_timer_, &QTimer::timeout, map_notice_label_, &QLabel::hide);
     status_label_->setObjectName(QStringLiteral("map3DStatusLabel"));
 
     QToolBar* toolbar = addToolBar(QStringLiteral("3D Map"));
@@ -1072,6 +1086,34 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     }
 }
 
+void Map3DWindow::showMapNotice(const QString& text)
+{
+    if (!map_notice_label_) return;
+    if (map_notice_clock_.isValid() && map_notice_clock_.elapsed() < 15000) return;
+    map_notice_clock_.start();
+    map_notice_label_->setStyleSheet(QStringLiteral(
+        "QLabel { background: #2d2d30; color: white; border: 1px solid #55555a; border-radius: 8px; padding: 8px 14px; }"));
+    map_notice_label_->setText(text);
+    positionMapNotice();
+    map_notice_label_->show();
+    map_notice_label_->raise();
+    map_notice_timer_->start();
+}
+
+void Map3DWindow::positionMapNotice()
+{
+    if (!map_notice_label_ || !centralWidget()) return;
+    map_notice_label_->setMaximumWidth((std::max)(100, centralWidget()->width() - 24));
+    map_notice_label_->adjustSize();
+    map_notice_label_->move((centralWidget()->width() - map_notice_label_->width()) / 2, 12);
+}
+
+void Map3DWindow::resizeEvent(QResizeEvent* event)
+{
+    QMainWindow::resizeEvent(event);
+    positionMapNotice();
+}
+
 Map3DWindow::~Map3DWindow()
 {
     invalidateSessionLoadRequest();
@@ -1107,6 +1149,9 @@ void Map3DWindow::configureViewSignals()
     }
 
     view_->setObjectName(QStringLiteral("map3DView"));
+    connect(view_, &OsgEarthViewWidget::imageryFallbackNotice, this, [this]() {
+        showMapNotice(QStringLiteral("当前级别影像缺失或加载失败，使用同区域较低级别影像或本地底图。"));
+    });
     connect(view_, &OsgEarthViewWidget::performanceUpdated, this, [this]() { updateStatus(nullptr); });
     connect(view_,
             &OsgEarthViewWidget::trajectorySampleSelected,
@@ -1235,12 +1280,10 @@ void Map3DWindow::createLayerMenu(QToolBar* toolbar)
         button->setPopupMode(QToolButton::InstantPopup);
     }
 
-    QSettings settings = map3DSettings();
     for (std::size_t index = 0; index < kMap3DLayerCount; ++index)
     {
         const auto layer = static_cast<Map3DLayer>(index);
-        const bool visible = settings.value(layerSettingKey(layer), true).toBool();
-        layer_visibility_[index] = visible;
+        const bool visible = layerVisible(layer);
 
         auto* row = new VaporView::SingleLevelPopupMenuRow(layers_menu_);
         row->setObjectName(QStringLiteral("map3DLayerRow_%1").arg(layerObjectName(layer)));
@@ -1781,7 +1824,7 @@ void Map3DWindow::loadInitialEarthFile()
                     setMapSelection(startupSelection);
                     QSettings settings = map3DSettings();
                     VaporView::setPersistentSetting(settings, QStringLiteral("lastEarthFile"), fallbackPath);
-                    if (shouldAutoLoadLocal3DTiles(startupSelection))
+                    if (layerVisible(Map3DLayer::Buildings3D) && shouldAutoLoadLocal3DTiles(startupSelection))
                     {
                         loadConfiguredLocal3DTiles(false);
                     }
@@ -1814,7 +1857,7 @@ void Map3DWindow::loadInitialEarthFile()
         resetAutomaticSentinel2Imagery();
         QSettings settings = map3DSettings();
         VaporView::setPersistentSetting(settings, QStringLiteral("lastEarthFile"), initialPath);
-        if (shouldAutoLoadLocal3DTiles(activeSelection))
+        if (layerVisible(Map3DLayer::Buildings3D) && shouldAutoLoadLocal3DTiles(activeSelection))
         {
             loadConfiguredLocal3DTiles(false);
         }

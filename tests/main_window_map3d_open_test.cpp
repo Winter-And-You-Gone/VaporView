@@ -72,6 +72,7 @@ int main(int argc, char** argv)
 {
     QTemporaryDir settingsDir;
     require(settingsDir.isValid(), QStringLiteral("temporary settings directory"));
+    qputenv("OSGEARTH_CACHE_PATH", settingsDir.filePath(QStringLiteral("map-cache")).toUtf8());
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
     QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, settingsDir.path());
@@ -120,6 +121,27 @@ int main(int argc, char** argv)
             QStringLiteral("3D map initializes an OpenGL framebuffer after rendering starts"));
     require(view->earthLoadDiagnostics().attempted,
             QStringLiteral("3D map starts loading the built-in Earth scene after rendering starts"));
+
+    auto* notice = mapWindow->findChild<QLabel*>(QStringLiteral("map3DNoticeBubble"));
+    require(notice && !notice->isVisible(), QStringLiteral("imagery notice is hidden until needed"));
+    emit view->imageryFallbackNotice();
+    processEventsFor(100);
+    require(notice->isVisible() && notice->text().contains(QStringLiteral("影像")),
+            QStringLiteral("missing imagery shows a temporary notice above the real renderer"));
+    require(notice->testAttribute(Qt::WA_TransparentForMouseEvents),
+            QStringLiteral("imagery notice does not intercept map interaction"));
+    mapWindow->resize(850, 650);
+    processEventsFor(100);
+    require(notice->parentWidget()->rect().contains(notice->geometry())
+                && notice->y() == 12,
+            QStringLiteral("imagery notice remains inside the top of the resized map"));
+    // Repeated tile failures must not restart the lifetime of the bubble.
+    for (int i = 0; i < 5; ++i)
+    {
+        processEventsFor(1000);
+        emit view->imageryFallbackNotice();
+    }
+    require(!notice->isVisible(), QStringLiteral("notice expires even while tile failures continue"));
 
     emit view->renderingFailed(QStringLiteral("test renderer failure"));
     processEventsFor(100);
