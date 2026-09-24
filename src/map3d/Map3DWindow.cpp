@@ -1150,7 +1150,7 @@ void Map3DWindow::configureViewSignals()
 
     view_->setObjectName(QStringLiteral("map3DView"));
     connect(view_, &OsgEarthViewWidget::imageryFallbackNotice, this, [this]() {
-        showMapNotice(QStringLiteral("当前级别影像缺失或加载失败，使用同区域较低级别影像或本地底图。"));
+        showMapNotice(QStringLiteral("部分影像缺失：周边区域统一使用同源较低级别影像；仍无数据处显示灰色。"));
     });
     connect(view_, &OsgEarthViewWidget::performanceUpdated, this, [this]() { updateStatus(nullptr); });
     connect(view_,

@@ -247,9 +247,23 @@ void checkImageryFallback()
                 "uniform snow, sea and desert imagery are not discarded");
     }
     QImage parent(256, 256, QImage::Format_RGB32);
-    parent.fill(QColor(30, 110, 50));
+    // Georeferenced color ramp plus crossing roads detects crop/flip/seam errors.
+    for (int y = 0; y < 256; ++y) for (int x = 0; x < 256; ++x)
+        parent.setPixelColor(x, y, QColor(x, y, 50));
+    {
+        QPainter painter(&parent);
+        painter.setPen(QPen(Qt::white, 6));
+        painter.drawLine(64, 0, 64, 255);
+        painter.drawLine(0, 64, 255, 64);
+    }
     require(QDir(tiles.path()).mkpath(QStringLiteral("2/2")), "create parent tile directory");
     require(parent.save(tiles.filePath(QStringLiteral("2/2/1.png"))), "write available parent tile");
+    QImage detail(256, 256, QImage::Format_RGB32);
+    detail.fill(Qt::blue);
+    require(QDir(tiles.path()).mkpath(QStringLiteral("3/5")), "create detailed sibling directory");
+    require(detail.save(tiles.filePath(QStringLiteral("3/5/2.png"))), "write available detailed sibling");
+    require(QDir(tiles.path()).mkpath(QStringLiteral("3/6")), "create unrelated region directory");
+    require(detail.save(tiles.filePath(QStringLiteral("3/6/2.png"))), "write unrelated detailed tile");
     osg::ref_ptr<TiandituImageLayer> layer = new TiandituImageLayer;
     layer->setProfile(Profile::create(Profile::SPHERICAL_MERCATOR));
     layer->setURL(URI((tiles.path() + QStringLiteral("/{z}/{x}/{y}.png")).toStdString()));
@@ -261,32 +275,106 @@ void checkImageryFallback()
     map->addLayer(layer);
     require(layer->isOpen(), "test imagery layer opens");
     const TileKey child(3, 4, 2, map->getProfile());
-    require(!layer->createImage(child).valid(), "warning pixels never become valid imagery");
+    const TileKey sibling(3, 5, 2, map->getProfile());
+    require(layer->createImage(sibling).getImage()->getColor(20, 20).b() > 0.9f,
+            "available detail is initially displayed");
+    require(layer->createImage(child).valid(), "warning tile is replaced with same-source regional imagery");
     require(layer->fallbackPending.exchange(false), "missing imagery requests a GUI notice");
+    VaporView::Map3D::Detail::TiandituSourceLayer source(layer->options());
     GeoImage cachedWarning(decoded, child.getExtent());
-    layer->postCreateImageImplementation(cachedWarning, child, nullptr);
+    source.postCreateImageImplementation(cachedWarning, child, nullptr);
     require(!cachedWarning.valid(), "old cached warning imagery is rejected too");
-    osg::ref_ptr<TerrainTileModelFactory> factory = new TerrainTileModelFactory(TerrainOptions{});
-    const TerrainEngineRequirements requirements;
-    const CreateTileManifest manifest;
-    osg::ref_ptr<TerrainTileModel> tile = factory->createStandaloneTileModel(map, child, manifest, requirements, nullptr);
-    require(tile && tile->colorLayers.size() == 1, "missing detail uses available parent imagery");
-    osg::Matrixf expected;
-    child.getExtent().createScaleBias(child.createParentKey().getExtent(), expected);
-    require(tile->colorLayers.front().matrix == expected,
-            "parent imagery is cropped to the same geographic extent, not stretched from a neighbor");
+    const auto revision = layer->getRevision();
+    const auto changedRegions = layer->refreshFallbackRegions();
+    require(changedRegions.size() == 1
+                && std::abs(changedRegions.front().xMin() - child.createParentKey().getExtent().xMin()) < 1e-5
+                && std::abs(changedRegions.front().yMin() - child.createParentKey().getExtent().yMin()) < 1e-5,
+            "renderer refreshes exactly the affected parent region");
+    require(layer->getRevision() > revision, "region fallback invalidates already displayed detailed neighbors");
+    require(layer->refreshFallbackRegions().empty(), "unchanged regions do not trigger repeated terrain refreshes");
+    const auto parentKey = child.createParentKey();
+    GeoImage reference(osgDB::readRefImageFile(tiles.filePath(QStringLiteral("2/2/1.png")).toStdString()),
+                       parentKey.getExtent());
+    GeoImagePixelReader referenceReader(reference);
+    referenceReader.setBilinear(true);
+    auto checkPixels = [&](const GeoImage& result) {
+        require(result.valid(), "regional image exists");
+        const auto* pixels = result.getImage();
+        for (int y : {16, 64, 127, 192, 240}) for (int x : {16, 64, 127, 192, 240})
+        {
+            osg::Vec3d position(result.getExtent().xMin() + (x + 0.5) * result.getExtent().width() / pixels->s(),
+                                result.getExtent().yMin() + (y + 0.5) * result.getExtent().height() / pixels->t(), 0.0);
+            require(result.getSRS()->transform(position, reference.getSRS(), position), "sample coordinate transforms");
+            osg::Vec4f expected;
+            referenceReader.readCoordWithoutClamping(expected, position.x(), position.y());
+            const auto actual = pixels->getColor(x, y);
+            require((expected - actual).length() < 0.06f,
+                    "roads and coordinate ramp match the same source across regional tile seams");
+        }
+    };
+    for (unsigned quadrant = 0; quadrant < 4; ++quadrant)
+        checkPixels(layer->createImage(parentKey.createChildKey(quadrant)));
     const TileKey grandchild(4, 8, 4, map->getProfile());
-    tile = factory->createStandaloneTileModel(map, grandchild, manifest, requirements, nullptr);
-    require(tile && tile->colorLayers.size() == 1, "multiple missing levels still use the nearest ancestor");
-    grandchild.getExtent().createScaleBias(child.createParentKey().getExtent(), expected);
-    require(tile->colorLayers.front().matrix == expected,
-            "multiple-level fallback preserves geographic alignment");
+    checkPixels(layer->createImage(grandchild));
+    // The actual globe uses geodetic terrain with Mercator imagery: exercise reprojection too.
+    const auto geodetic = Profile::create(Profile::GLOBAL_GEODETIC);
+    checkPixels(layer->createImage(TileKey(4, 18, 3, geodetic)));
+    require(layer->createImage(TileKey(3, 6, 2, map->getProfile())).getImage()->getColor(20, 20).b() > 0.9f,
+            "unrelated regions retain their available detail");
     const TileKey outside(3, 0, 0, map->getProfile());
-    tile = factory->createStandaloneTileModel(map, outside, manifest, requirements, nullptr);
-    require(tile && tile->colorLayers.size() == 1, "root fallback creates a transparent texture");
-    const auto* emptyImage = tile->colorLayers.front().texture->osgTexture()->getImage(0);
-    require(emptyImage && emptyImage->getColor(0, 0).a() == 0.0f,
-            "no parent data leaves the local underlay uncovered");
+    const auto missing = layer->createImage(outside);
+    require(missing.valid() && missing.getImage()->getColor(0, 0).a() == 1.0f
+                && std::abs(missing.getImage()->getColor(0, 0).r() - 58.0f / 255.0f) < 0.01f,
+            "no same-source data produces opaque neutral coverage, never another map source");
+    std::array<QColor, 4> rootColors = {QColor(190,30,30), QColor(30,190,30),
+                                        QColor(30,30,190), QColor(190,190,30)};
+    QTemporaryDir globeTiles;
+    require(globeTiles.isValid(), "temporary global source directory");
+    const TileKey root(0, 0, 0, map->getProfile());
+    for (unsigned quadrant = 0; quadrant < 4; ++quadrant)
+    {
+        const auto rootChild = root.createChildKey(quadrant);
+        const QString folder = QStringLiteral("1/%1").arg(rootChild.getTileX());
+        require(QDir(globeTiles.path()).mkpath(folder), "create global source tile directory");
+        QImage globalTile(256, 256, QImage::Format_RGB32);
+        globalTile.fill(rootColors[quadrant]);
+        require(globalTile.save(globeTiles.filePath(folder + QStringLiteral("/%1.png").arg(rootChild.getTileY()))),
+                "write level-one source tile");
+    }
+    require(QDir(globeTiles.path()).mkpath(QStringLiteral("11/0")), "create high-detail source directory");
+    QImage highDetail(256, 256, QImage::Format_RGB32);
+    highDetail.fill(QColor(220, 80, 120));
+    require(highDetail.save(globeTiles.filePath(QStringLiteral("11/0/0.png"))), "write high-detail source tile");
+    osg::ref_ptr<TiandituImageLayer> globeLayer = new TiandituImageLayer;
+    globeLayer->setProfile(Profile::create(Profile::SPHERICAL_MERCATOR));
+    globeLayer->setURL(URI((globeTiles.path() + QStringLiteral("/{z}/{x}/{y}.png")).toStdString()));
+    globeLayer->setCachePolicy(CachePolicy::NO_CACHE);
+    globeLayer->options().maxLevel() = 18u;
+    globeLayer->options().maxDataLevel() = 18u;
+    osg::ref_ptr<Map> globeMap = new Map;
+    globeMap->setProfile(Profile::create(Profile::SPHERICAL_MERCATOR));
+    globeMap->addLayer(globeLayer);
+    require(globeLayer->isOpen(), "global source layer opens");
+    const auto global = globeLayer->createImage(root);
+    require(global.valid(), "global overview assembles from source level one without provider warning level zero");
+    GeoImagePixelReader globalReader(global);
+    bool allQuadrantsMatch = true;
+    for (unsigned quadrant = 0; quadrant < 4; ++quadrant)
+    {
+        const auto extent = root.createChildKey(quadrant).getExtent();
+        osg::Vec4f pixel;
+        require(globalReader.readCoordWithoutClamping(pixel,
+                    (extent.xMin() + extent.xMax()) / 2.0,
+                    (extent.yMin() + extent.yMax()) / 2.0), "sample global quadrant");
+        allQuadrantsMatch = allQuadrantsMatch
+            && std::abs(pixel.r() - rootColors[quadrant].redF()) < 0.03f
+            && std::abs(pixel.g() - rootColors[quadrant].greenF()) < 0.03f
+            && std::abs(pixel.b() - rootColors[quadrant].blueF()) < 0.03f;
+    }
+    require(allQuadrantsMatch, "global overview uses the four same-source quadrants");
+    const auto levelEleven = globeLayer->createImage(TileKey(11, 0, 0, globeMap->getProfile()));
+    require(levelEleven.valid() && levelEleven.getImage()->getColor(20, 20).r() > 0.8f,
+            "source detail beyond XYZ's default level ten stays available");
     require(layer->isKeyInVisualRange(TileKey(19, 0, 0, map->getProfile())),
             "zooming beyond source maximum still displays upsampled imagery");
 }

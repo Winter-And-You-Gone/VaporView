@@ -6,6 +6,7 @@
 #include "Map3DAssetLoader.h"
 #include "EarthProjectionProfile.h"
 #include "TiandituImageLayer.h"
+#include <osgEarth/TerrainEngineNode>
 #include "Map3DRuntime.h"
 #include "map3d/TrackSampling.h"
 #include "map3d/Trajectory3DLayer.h"
@@ -803,6 +804,15 @@ OsgEarthViewWidget::OsgEarthViewWidget(QWidget* parent, bool deferRendering)
             {
                 auto* layer = dynamic_cast<Detail::TiandituImageLayer*>(
                     map_node_->getMap()->getLayerByName(kTiandituSatelliteLayerName));
+                if (layer)
+                {
+                    const auto changed = layer->refreshFallbackRegions();
+                    if (auto* engine = map_node_->getTerrainEngine())
+                    {
+                        for (const auto& extent : changed)
+                            engine->invalidateRegion({layer}, extent, 0u, INT_MAX);
+                    }
+                }
                 if (layer && layerVisible(Map3DLayer::SatelliteImagery) && layer->fallbackPending.exchange(false))
                     emit imageryFallbackNotice();
             }
@@ -1206,6 +1216,7 @@ bool OsgEarthViewWidget::applyTiandituSatelliteImagery(const QString& key)
     {
         earth_load_diagnostics_.layerSummaries.push_back(
             QStringLiteral("Tianditu Satellite imagery not applied: no key configured."));
+        applyLayerVisibility(Map3DLayer::SatelliteImagery);
         update();
         return false;
     }
@@ -1221,6 +1232,7 @@ bool OsgEarthViewWidget::applyTiandituSatelliteImagery(const QString& key)
     layer->setFormat("jpg");
     // Level 0 returns a successful HTTP response containing a no-imagery placeholder.
     layer->options().minLevel() = 1u;
+    layer->options().maxLevel() = kTiandituMaxZoom;
     layer->options().maxDataLevel() = kTiandituMaxZoom;
 
     earth_load_diagnostics_.layerSummaries.push_back(
@@ -1509,9 +1521,12 @@ bool OsgEarthViewWidget::layerAvailable(Map3DLayer layer) const
 
 void OsgEarthViewWidget::applyLayerVisibility(Map3DLayer layer)
 {
-    // The unchecked geographic basemap remains the underlay for satellite gaps.
+    // Offline imagery is a whole-source fallback only when no online layer is active.
+    const auto* online = map_node_ && map_node_->getMap()
+        ? map_node_->getMap()->getLayerByName(kTiandituSatelliteLayerName) : nullptr;
+    const bool onlineSatellite = online && online->isOpen() && layerVisible(Map3DLayer::SatelliteImagery);
     const bool visible = layerVisible(layer)
-        || (layer == Map3DLayer::BaseMap && layerVisible(Map3DLayer::SatelliteImagery));
+        || (layer == Map3DLayer::BaseMap && layerVisible(Map3DLayer::SatelliteImagery) && !onlineSatellite);
     if (layer == Map3DLayer::SatelliteImagery) applyLayerVisibility(Map3DLayer::BaseMap);
     if (layer == Map3DLayer::Buildings3D)
     {
@@ -1541,7 +1556,10 @@ void OsgEarthViewWidget::applyLayerVisibility(Map3DLayer layer)
             auto* visibleLayer = dynamic_cast<osgEarth::VisibleLayer*>(candidate.get());
             if (visibleLayer && mapLayerCategory(candidate.get()) == layer)
             {
-                visibleLayer->setVisible(visible);
+                const bool competingImagery = onlineSatellite && candidate.get() != online
+                    && dynamic_cast<osgEarth::ImageLayer*>(candidate.get())
+                    && (layer == Map3DLayer::BaseMap || layer == Map3DLayer::SatelliteImagery);
+                visibleLayer->setVisible(visible && !competingImagery);
             }
         }
     }
@@ -1950,8 +1968,8 @@ Map3DPerformanceStats OsgEarthViewWidget::performanceStats() const
         if (const auto* imagery = dynamic_cast<const Detail::TiandituImageLayer*>(
                 map_node_->getMap()->getLayerByName(kTiandituSatelliteLayerName)))
         {
-            stats.imageryRequests = imagery->requests.load();
-            stats.imageryFailures = imagery->failures.load();
+            stats.imageryRequests = imagery->requestCount();
+            stats.imageryFailures = imagery->failureCount();
         }
     }
     stats.trackUpdateMs = last_track_update_ms_;
