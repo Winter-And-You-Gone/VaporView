@@ -466,8 +466,6 @@ int main(int argc, char** argv)
     QLabel* label = statusLabel(window);
     require(label->text().contains(QStringLiteral("Points: 0")), "initial status has zero points");
     require(label->text().contains(QStringLiteral("Source none")), "initial status reports no track source");
-    QAction* replayAction = actionByName(window, QStringLiteral("map3DReplayAction"));
-    QAction* replayStopAction = actionByName(window, QStringLiteral("map3DReplayStopAction"));
     QAction* followAction = actionByName(window, QStringLiteral("map3DFollowAction"));
     QAction* reloadBestMapAction = actionByName(window, QStringLiteral("map3DReloadBestMapAction"));
     QAction* flyToAircraftAction = actionByName(window, QStringLiteral("map3DFlyToAircraftAction"));
@@ -480,10 +478,8 @@ int main(int argc, char** argv)
     QAction* clearLocal3DTilesAction = actionByName(window, QStringLiteral("map3DClearLocal3DTilesAction"));
     QAction* loadAircraftModelAction = actionByName(window, QStringLiteral("map3DLoadAircraftModelAction"));
     QAction* resetAircraftModelAction = actionByName(window, QStringLiteral("map3DResetAircraftModelAction"));
-    auto* replaySpeedCombo = window.findChild<QComboBox*>(QStringLiteral("map3DReplaySpeedCombo"));
     auto* heatMetricCombo = window.findChild<QComboBox*>(QStringLiteral("map3DHeatMetricCombo"));
     auto* heatPaletteCombo = window.findChild<QComboBox*>(QStringLiteral("map3DHeatPaletteCombo"));
-    auto* replaySlider = window.findChild<QSlider*>(QStringLiteral("map3DReplaySlider"));
     auto* maxVisibleSamplesSpin = window.findChild<QSpinBox*>(QStringLiteral("map3DMaxVisibleSamplesSpin"));
     auto* trackLineWidthSpin = window.findChild<QSpinBox*>(QStringLiteral("map3DTrackLineWidthSpin"));
     auto* trackPointSizeSpin = window.findChild<QSpinBox*>(QStringLiteral("map3DTrackPointSizeSpin"));
@@ -591,9 +587,6 @@ int main(int argc, char** argv)
                 || local3DTilesAction->toolTip().contains(QStringLiteral("3D Tiles"))
                 || local3DTilesAction->toolTip().contains(QStringLiteral("建筑瓦片")),
             "local 3D Tiles action explains its available or unavailable state");
-    require(replaySpeedCombo != nullptr, "replay speed combo exists");
-    requireComboPopupStyled(replaySpeedCombo,
-                            "map3d replay speed combo uses the shared popup styling helper");
     require(heatMetricCombo != nullptr && heatMetricCombo->count() == 4,
             "heat metric combo exposes peak, humidity, temperature and pressure");
     require(heatPaletteCombo != nullptr && heatPaletteCombo->count() == 3
@@ -615,14 +608,10 @@ int main(int argc, char** argv)
                 && heatLegendLabel->text().contains(QStringLiteral("峰值"))
                 && heatLegendLabel->text().contains(QStringLiteral("无有效数据")),
             "heat legend reports no valid data instead of a fake zero range");
-    require(replaySlider != nullptr, "replay slider exists");
     require(maxVisibleSamplesSpin != nullptr, "max visible samples spin box exists");
     require(followAction->isCheckable(), "follow aircraft action is checkable");
     require(maxVisibleSamplesSpin->minimum() == 1000, "max visible samples lower bound is 1000");
     require(maxVisibleSamplesSpin->maximum() == 1000000, "max visible samples upper bound is 1000000");
-    require(!replayAction->isEnabled(), "replay disabled before session load");
-    require(!replayStopAction->isEnabled(), "replay stop disabled before session load");
-    require(!replaySlider->isEnabled(), "replay slider disabled before session load");
 
     heatMetricCombo->setCurrentText(QStringLiteral("温度"));
     heatPaletteCombo->setCurrentText(QStringLiteral("BlueRedFast"));
@@ -781,22 +770,7 @@ int main(int argc, char** argv)
     require(label->text().contains(QStringLiteral("Source Session")), "session load reports session source");
     require(label->text().contains(QStringLiteral("Camera Track auto")),
             "session load automatically focuses the complete track");
-    require(replayAction->isEnabled(), "replay enabled after session load");
-    require(replayStopAction->isEnabled(), "replay stop enabled after session load");
-    require(replaySlider->isEnabled(), "replay slider enabled after session load");
-    require(replaySlider->maximum() == 1000, "replay slider spans session time in milliseconds");
-    require(label->text().contains(QStringLiteral("Replay paused 2/2")), "session status includes paused replay position");
-    require(label->text().contains(QStringLiteral("t 1.000/1.000 s")), "session status includes replay time progress");
-
-    replaySlider->setSliderDown(true);
-    replaySlider->setValue(0);
-    QCoreApplication::processEvents();
-    replaySlider->setSliderDown(false);
-    require(label->text().contains(QStringLiteral("Points: 1")), "slider previews replay sample");
-    require(label->text().contains(QStringLiteral("Source Replay")), "slider preview reports replay source");
-    require(label->text().contains(QStringLiteral("Replay stopped 1/2")), "slider updates replay state and position");
-    require(label->text().contains(QStringLiteral("t 0.000/1.000 s")), "slider updates replay elapsed time");
-
+    require(label->text().contains(QStringLiteral("Points: 2")), "session keeps the complete track visible");
     diagnosticsAction->trigger();
     QCoreApplication::processEvents();
     auto* diagnosticsText = window.findChild<QPlainTextEdit*>();
@@ -864,21 +838,21 @@ int main(int argc, char** argv)
             "diagnostics include native OSG building tileset path");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Trajectory quality:")),
             "diagnostics include trajectory quality section");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Fixed: 1")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Fixed: 2")),
             "diagnostics include fixed quality count");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Visible line samples: 1")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Visible line samples: 2")),
             "diagnostics include visible line sample count");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Samples:")),
             "diagnostics include visible and total sample counts");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Source: Replay")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Source: Session")),
             "diagnostics include latest track source");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Replay state: stopped")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Replay state: paused")),
             "diagnostics include explicit replay state");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Replay position: 1/2")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Replay position: 2/2")),
             "diagnostics include replay position");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Replay speed:")),
             "diagnostics include replay speed");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Replay time: t 0.000/1.000 s")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Replay time: t 1.000/1.000 s")),
             "diagnostics include replay elapsed time");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Attitude source: none")),
             "diagnostics include attitude source");
@@ -895,7 +869,7 @@ int main(int argc, char** argv)
     QCoreApplication::processEvents();
     require(label->text().contains(QStringLiteral("Camera Aircraft")),
             "fly to aircraft updates persistent camera status");
-    require(label->text().contains(QStringLiteral("Lat 39.9000000")),
+    require(label->text().contains(QStringLiteral("Lat 39.9000100")),
             "camera action preserves latest sample status details");
 
     flyToTrackAction->trigger();
@@ -914,33 +888,6 @@ int main(int argc, char** argv)
             "status includes latest live sample drop reason");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Last drop reason: missing LLH")),
             "diagnostics include latest live sample drop reason");
-
-    replaySpeedCombo->setCurrentText(QStringLiteral("2x"));
-    QCoreApplication::processEvents();
-    require(replaySpeedCombo->currentText() == QStringLiteral("2x"), "replay speed can be changed");
-    require(label->text().contains(QStringLiteral("Replay stopped 1/2 2x")),
-            "status refreshes when replay speed changes");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Replay speed: 2x")),
-            "diagnostics refresh when replay speed changes");
-    {
-        QSettings settings = map3DTestSettings();
-        require(settings.value(QStringLiteral("replaySpeed")).toDouble() == 2.0,
-                "replay speed setting is persisted");
-    }
-
-    replayAction->trigger();
-    QCoreApplication::processEvents();
-    require(replayAction->isChecked(), "replay action toggles into playing state");
-    require(replayAction->text() == QStringLiteral("暂停"), "replay action text changes to pause");
-    require(label->text().contains(QStringLiteral("Replay playing 1/2")),
-            "status reports explicit playing replay state");
-    require(waitForText(label, QStringLiteral("Replay paused 2/2"), 1500),
-            "window replay crosses a sparse one-second sample gap without resetting elapsed time");
-
-    replayStopAction->trigger();
-    QCoreApplication::processEvents();
-    require(!replayAction->isChecked(), "stop clears replay playing state");
-    require(label->text().contains(QStringLiteral("Replay stopped 1/2")), "stop rewinds replay to first sample and reports stopped state");
 
     QTemporaryDir supersededSessionDir;
     QTemporaryDir latestSessionDir;

@@ -767,41 +767,6 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     QAction* clearAction = toolbar->addAction(QStringLiteral("清空轨迹"));
     connect(clearAction, &QAction::triggered, this, &Map3DWindow::clearTrack);
 
-    replay_action_ = toolbar->addAction(QStringLiteral("播放"));
-    replay_action_->setObjectName(QStringLiteral("map3DReplayAction"));
-    replay_action_->setCheckable(true);
-    replay_action_->setEnabled(false);
-    connect(replay_action_, &QAction::triggered, this, &Map3DWindow::toggleReplay);
-
-    replay_stop_action_ = toolbar->addAction(QStringLiteral("停止回放"));
-    replay_stop_action_->setObjectName(QStringLiteral("map3DReplayStopAction"));
-    replay_stop_action_->setEnabled(false);
-    connect(replay_stop_action_, &QAction::triggered, this, &Map3DWindow::stopReplay);
-
-    replay_speed_combo_ = new QComboBox(toolbar);
-    replay_speed_combo_->setObjectName(QStringLiteral("map3DReplaySpeedCombo"));
-    replay_speed_combo_->addItems({QStringLiteral("0.5x"),
-                                   QStringLiteral("1x"),
-                                   QStringLiteral("2x"),
-                                   QStringLiteral("5x"),
-                                   QStringLiteral("10x")});
-    VaporView::configureComboBoxPopup(replay_speed_combo_, VaporView::isDarkThemeEnabled());
-    toolbar->addWidget(replay_speed_combo_);
-
-    replay_slider_ = new QSlider(Qt::Horizontal, toolbar);
-    replay_slider_->setObjectName(QStringLiteral("map3DReplaySlider"));
-    replay_slider_->setMinimumWidth(180);
-    replay_slider_->setEnabled(false);
-    replay_slider_->setTracking(true);
-    toolbar->addWidget(replay_slider_);
-    connect(replay_slider_, &QSlider::sliderMoved, this, &Map3DWindow::onReplaySliderMoved);
-    connect(replay_slider_, &QSlider::valueChanged, this, [this](int value) {
-        if (!replay_.isPlaying() && replay_slider_ && replay_slider_->isSliderDown())
-        {
-            rebuildReplayAtElapsed(replaySliderValueToElapsed(value));
-        }
-    });
-
     follow_action_ = toolbar->addAction(QStringLiteral("跟随飞机"));
     follow_action_->setObjectName(QStringLiteral("map3DFollowAction"));
     follow_action_->setCheckable(true);
@@ -944,12 +909,6 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     heat_legend_label_->setObjectName(QStringLiteral("map3DHeatLegendLabel"));
     heat_legend_label_->setMinimumWidth(260);
     toolbar->addWidget(heat_legend_label_);
-
-    replay_.setSpeed(settings.value(QStringLiteral("replaySpeed"), 1.0).toDouble());
-    const QString replaySpeedText = QStringLiteral("%1x").arg(replay_.speed(), 0, 'g', 3);
-    const int replaySpeedIndex = replay_speed_combo_->findText(replaySpeedText);
-    replay_speed_combo_->setCurrentIndex(replaySpeedIndex >= 0 ? replaySpeedIndex : 1);
-    connect(replay_speed_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &Map3DWindow::onReplaySpeedChanged);
 
     replay_timer_->setTimerType(Qt::PreciseTimer);
     replay_timer_->setInterval(static_cast<int>(replay_.interval().count()));
@@ -3192,15 +3151,6 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest, bool for
             text += QStringLiteral(" | Height ref uses recorded ECEF when available");
         }
         text += QStringLiteral(" | Att %1").arg(attitudeSourceLabel(displayLatest));
-    }
-    if (replay_.hasSamples())
-    {
-        text += QStringLiteral(" | Replay %1 %2/%3 %4x %5")
-                    .arg(replayStateLabel(replay_))
-                    .arg((std::max)(0, replay_.currentIndex() + 1))
-                    .arg(replay_.sampleCount())
-                    .arg(replay_.speed(), 0, 'g', 3)
-                    .arg(replayTimeLabel());
     }
     if (has_selected_track_sample_)
     {
