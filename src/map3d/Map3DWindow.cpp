@@ -752,6 +752,8 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     status_label_->setObjectName(QStringLiteral("map3DStatusLabel"));
 
     QToolBar* toolbar = addToolBar(QStringLiteral("3D Map"));
+    toolbar->setObjectName(QStringLiteral("map3DToolbar"));
+    toolbar->setIconSize(QSize(20, 20));
     QAction* mapFilesAction = toolbar->addAction(QStringLiteral("地图文件"));
     mapFilesAction->setObjectName(QStringLiteral("map3DMapFilesAction"));
     mapFilesAction->setToolTip(QStringLiteral("查看本地地图文件及就绪、缺失状态"));
@@ -1390,6 +1392,22 @@ bool Map3DWindow::layerVisible(Map3DLayer layer) const
 void Map3DWindow::refreshLayerMenuTheme()
 {
     const bool dark = isDarkThemeEnabled();
+    if (auto* toolbar = findChild<QToolBar*>(QStringLiteral("map3DToolbar")))
+    {
+        const QString arrow = QDir::fromNativeSeparators(firstExistingMap3DFile(
+            map3DRuntimeRootCandidates(),
+            {dark ? QStringLiteral("resources/lucide/chevron-down-dark.svg")
+                  : QStringLiteral("resources/lucide/chevron-down.svg")}));
+        const QString style = applyAppThemeTokens(QStringLiteral(
+            "QToolBar#map3DToolbar { background: @vv-surface; border: none; spacing: 6px; padding: 6px; }"
+            "QToolBar#map3DToolbar QToolButton { background: @vv-surface-alt; color: @vv-text; border: 1px solid @vv-border; border-radius: 6px; padding: 7px 12px; }"
+            "QToolBar#map3DToolbar QToolButton:hover { background: @vv-primary-subtle; border-color: @vv-primary; }"
+            "QToolBar#map3DToolbar QToolButton:pressed, QToolBar#map3DToolbar QToolButton:checked { background: @vv-primary-subtle-pressed; border-color: @vv-primary; color: @vv-primary; }"
+            "QToolBar#map3DToolbar QToolButton:disabled { background: @vv-disabled-fill; color: @vv-text-disabled; border-color: @vv-border; }"
+            "QToolButton#map3DLayersButton { padding-right: 30px; }"
+            "QToolButton#map3DLayersButton::menu-indicator { image: url(\"%1\"); width: 16px; height: 16px; subcontrol-origin: padding; subcontrol-position: right center; right: 8px; }").arg(arrow), dark);
+        if (toolbar->styleSheet() != style) toolbar->setStyleSheet(style);
+    }
     if (layers_action_)
     {
         layers_action_->setIcon(map3DIcon(QStringLiteral("layers-3"),
