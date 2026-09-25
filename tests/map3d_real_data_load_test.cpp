@@ -111,6 +111,8 @@ int main(int argc, char** argv)
             QStringLiteral("earth async API returns without blocking the GUI thread"));
     require(waitUntil([&]() { return earthFinished; }, 30000) && earthLoaded,
             QStringLiteral("load Hangzhou Xihu real-3D earth file asynchronously"));
+    require(view.earthCameraRangeM() > 10000000.0,
+            QStringLiteral("opening the Xihu earth scene starts with the whole globe in view"));
 
     const VaporView::Map3D::EarthLoadDiagnostics earthDiagnostics =
         view.earthLoadDiagnostics();

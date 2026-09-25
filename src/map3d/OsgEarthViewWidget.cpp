@@ -2511,7 +2511,7 @@ void OsgEarthViewWidget::setInitialEarthView()
     viewer_->setCameraManipulator(manipulator.get());
     const osgEarth::Viewpoint initialView =
         use_xihu_initial_view_
-            ? osgEarth::Viewpoint("Hangzhou Xihu", 120.10, 30.25, 0.0, -15.0, -42.0, 11000.0)
+            ? osgEarth::Viewpoint("Hangzhou Xihu", 120.10, 30.25, 0.0, 0.0, -90.0, 18000000.0)
             : osgEarth::Viewpoint("VaporView Earth", 0.0, 20.0, 0.0, 0.0, -90.0, 18000000.0);
     manipulator->setViewpoint(initialView, 0.0);
     if (viewer_->getCamera())
