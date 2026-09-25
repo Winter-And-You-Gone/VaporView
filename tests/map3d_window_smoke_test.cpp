@@ -466,7 +466,6 @@ int main(int argc, char** argv)
     QLabel* label = statusLabel(window);
     require(label->text().contains(QStringLiteral("Points: 0")), "initial status has zero points");
     require(label->text().contains(QStringLiteral("Source none")), "initial status reports no track source");
-    QAction* followAction = actionByName(window, QStringLiteral("map3DFollowAction"));
     QAction* reloadBestMapAction = actionByName(window, QStringLiteral("map3DReloadBestMapAction"));
     QAction* flyToAircraftAction = actionByName(window, QStringLiteral("map3DFlyToAircraftAction"));
     QAction* flyToTrackAction = actionByName(window, QStringLiteral("map3DFlyToTrackAction"));
@@ -507,7 +506,7 @@ int main(int argc, char** argv)
     auto* layersButton = window.findChild<QToolButton*>(QStringLiteral("map3DLayersButton"));
     require(layersButton != nullptr
                 && layersButton->popupMode() == QToolButton::InstantPopup
-                && layersButton->toolButtonStyle() == Qt::ToolButtonTextBesideIcon,
+                && layersButton->toolButtonStyle() == Qt::ToolButtonIconOnly,
             "clicking the layers icon opens the layer menu directly");
     require(layersButton->accessibleName() == QStringLiteral("地图图层"),
             "layers icon has an accessibility name");
@@ -546,6 +545,10 @@ int main(int argc, char** argv)
     window.show();
     QCoreApplication::processEvents();
     const QRect windowClientRect(window.mapToGlobal(window.rect().topLeft()), window.rect().size());
+    auto* locateButton = window.findChild<QToolButton*>(QStringLiteral("map3DLocateButton"));
+    require(locateButton && !locateButton->icon().isNull(), "corner locate button has an icon");
+    require(window.centralWidget()->rect().contains(layersButton->parentWidget()->geometry()),
+            "corner controls stay inside the map viewport");
     const QRect expectedPopupBounds = windowClientRect.adjusted(8, 8, -8, -8);
     layersMenu->popup(QPoint(windowClientRect.right() - 2, windowClientRect.bottom() - 2));
     QCoreApplication::processEvents();
@@ -609,7 +612,6 @@ int main(int argc, char** argv)
                 && heatLegendLabel->text().contains(QStringLiteral("无有效数据")),
             "heat legend reports no valid data instead of a fake zero range");
     require(maxVisibleSamplesSpin != nullptr, "max visible samples spin box exists");
-    require(followAction->isCheckable(), "follow aircraft action is checkable");
     require(maxVisibleSamplesSpin->minimum() == 1000, "max visible samples lower bound is 1000");
     require(maxVisibleSamplesSpin->maximum() == 1000000, "max visible samples upper bound is 1000000");
 
@@ -644,20 +646,6 @@ int main(int argc, char** argv)
         require(settings.value(QStringLiteral("maxVisibleSamples")).toInt() == 1000,
                 "max visible sample setting is persisted");
     }
-
-    followAction->setChecked(true);
-    QCoreApplication::processEvents();
-    {
-        QSettings settings = map3DTestSettings();
-        require(settings.value(QStringLiteral("followAircraft")).toBool(),
-                "follow aircraft setting is persisted");
-    }
-    require(label->text().contains(QStringLiteral("Follow On")),
-            "status reports follow camera enabled state");
-    followAction->setChecked(false);
-    QCoreApplication::processEvents();
-    require(label->text().contains(QStringLiteral("Follow Off")),
-            "status reports follow camera disabled state");
 
     std::vector<VaporView::Geo::NavSample> manySamples(1100);
     for (int i = 0; i < static_cast<int>(manySamples.size()); ++i)

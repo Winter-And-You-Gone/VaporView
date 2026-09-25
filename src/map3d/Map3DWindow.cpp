@@ -767,9 +767,6 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     QAction* clearAction = toolbar->addAction(QStringLiteral("清空轨迹"));
     connect(clearAction, &QAction::triggered, this, &Map3DWindow::clearTrack);
 
-    follow_action_ = toolbar->addAction(QStringLiteral("跟随飞机"));
-    follow_action_->setObjectName(QStringLiteral("map3DFollowAction"));
-    follow_action_->setCheckable(true);
     QSettings settings = map3DSettings();
     max_visible_samples_ = sanitizeMaxVisibleSamples(settings.value(QStringLiteral("maxVisibleSamples"), 200000).toInt());
     heat_metric_ = heatMetricFromComboIndex(settings.value(QStringLiteral("heatMetric"), 0).toInt());
@@ -923,24 +920,6 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         }
     });
 
-    follow_action_->setChecked(settings.value(QStringLiteral("followAircraft"), false).toBool());
-    if (view_)
-    {
-        view_->setFollowAircraft(follow_action_->isChecked());
-        view_->setMaxVisibleSamples(max_visible_samples_);
-        applyHeatControlsToView();
-    }
-    connect(follow_action_, &QAction::toggled, this, [this](bool enabled) {
-        if (view_)
-        {
-            view_->setFollowAircraft(enabled);
-        }
-        QSettings settings = map3DSettings();
-        VaporView::setPersistentSetting(settings, QStringLiteral("followAircraft"), enabled);
-        setCameraNote(enabled ? QStringLiteral("Follow aircraft") : QStringLiteral("Manual/free camera"));
-        updateStatus(nullptr);
-    });
-
     QAction* loadEarthAction = toolbar->addAction(QStringLiteral("加载 Earth 文件"));
     connect(loadEarthAction, &QAction::triggered, this, &Map3DWindow::openEarthFile);
 
@@ -1073,6 +1052,12 @@ void Map3DWindow::resizeEvent(QResizeEvent* event)
 {
     QMainWindow::resizeEvent(event);
     positionMapNotice();
+    if (auto* controls = findChild<QWidget*>(QStringLiteral("map3DCornerControls")))
+    {
+        controls->move(centralWidget()->width() - controls->width() - 16,
+                       centralWidget()->height() - controls->height() - 16);
+        controls->raise();
+    }
 }
 
 Map3DWindow::~Map3DWindow()
@@ -1228,18 +1213,34 @@ void Map3DWindow::createLayerMenu(QToolBar* toolbar)
     layers_menu_->setPanelPadding(12);
     layers_menu_->setCornerRadius(10);
 
-    layers_action_ = toolbar->addAction(QStringLiteral("图层"));
+    auto* controls = new QWidget(centralWidget());
+    controls->setObjectName(QStringLiteral("map3DCornerControls"));
+    auto* layout = new QVBoxLayout(controls);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(8);
+    auto* locate = new QToolButton(controls);
+    locate->setObjectName(QStringLiteral("map3DLocateButton"));
+    locate->setToolTip(QStringLiteral("定位到飞机"));
+    locate->setAccessibleName(QStringLiteral("定位到飞机"));
+    locate->setFixedSize(40, 40);
+    locate->setIconSize(QSize(22, 22));
+    connect(locate, &QToolButton::clicked, this, &Map3DWindow::flyToAircraft);
+    layout->addWidget(locate);
+    layers_action_ = new QAction(QStringLiteral("图层"), this);
     layers_action_->setObjectName(QStringLiteral("map3DLayersAction"));
     layers_action_->setMenu(layers_menu_);
     layers_action_->setToolTip(QStringLiteral("地图图层"));
     layers_action_->setStatusTip(QStringLiteral("选择 3D 地图中显示的基础、专题与任务图层"));
-    if (auto* button = qobject_cast<QToolButton*>(toolbar->widgetForAction(layers_action_)))
-    {
-        button->setObjectName(QStringLiteral("map3DLayersButton"));
-        button->setAccessibleName(QStringLiteral("地图图层"));
-        button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-        button->setPopupMode(QToolButton::InstantPopup);
-    }
+    auto* button = new QToolButton(controls);
+    button->setDefaultAction(layers_action_);
+    button->setObjectName(QStringLiteral("map3DLayersButton"));
+    button->setAccessibleName(QStringLiteral("地图图层"));
+    button->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    button->setPopupMode(QToolButton::InstantPopup);
+    button->setFixedSize(40, 40);
+    button->setIconSize(QSize(22, 22));
+    layout->addWidget(button);
+    controls->adjustSize();
 
     for (std::size_t index = 0; index < kMap3DLayerCount; ++index)
     {
@@ -1353,24 +1354,29 @@ void Map3DWindow::refreshLayerMenuTheme()
     const bool dark = isDarkThemeEnabled();
     if (auto* toolbar = findChild<QToolBar*>(QStringLiteral("map3DToolbar")))
     {
-        const QString arrow = QDir::fromNativeSeparators(firstExistingMap3DFile(
-            map3DRuntimeRootCandidates(),
-            {dark ? QStringLiteral("resources/lucide/chevron-down-dark.svg")
-                  : QStringLiteral("resources/lucide/chevron-down.svg")}));
         const QString style = applyAppThemeTokens(QStringLiteral(
             "QToolBar#map3DToolbar { background: @vv-surface; border: none; spacing: 6px; padding: 6px; }"
             "QToolBar#map3DToolbar QToolButton { background: @vv-surface-alt; color: @vv-text; border: 1px solid @vv-border; border-radius: 6px; padding: 7px 12px; }"
             "QToolBar#map3DToolbar QToolButton:hover { background: @vv-primary-subtle; border-color: @vv-primary; }"
             "QToolBar#map3DToolbar QToolButton:pressed, QToolBar#map3DToolbar QToolButton:checked { background: @vv-primary-subtle-pressed; border-color: @vv-primary; color: @vv-primary; }"
-            "QToolBar#map3DToolbar QToolButton:disabled { background: @vv-disabled-fill; color: @vv-text-disabled; border-color: @vv-border; }"
-            "QToolButton#map3DLayersButton { padding-right: 30px; }"
-            "QToolButton#map3DLayersButton::menu-indicator { image: url(\"%1\"); width: 16px; height: 16px; subcontrol-origin: padding; subcontrol-position: right center; right: 8px; }").arg(arrow), dark);
+            "QToolBar#map3DToolbar QToolButton:disabled { background: @vv-disabled-fill; color: @vv-text-disabled; border-color: @vv-border; }"), dark);
         if (toolbar->styleSheet() != style) toolbar->setStyleSheet(style);
     }
     if (layers_action_)
     {
         layers_action_->setIcon(map3DIcon(QStringLiteral("layers-3"),
                                            appThemeColor(AppThemeColor::ToolbarBlue, dark)));
+    }
+    if (auto* controls = findChild<QWidget*>(QStringLiteral("map3DCornerControls")))
+    {
+        controls->setStyleSheet(applyAppThemeTokens(QStringLiteral(
+            "QToolButton { background: @vv-surface; color: @vv-text; border: 1px solid @vv-border; border-radius: 8px; padding: 0px; }"
+            "QToolButton:hover { background: @vv-primary-subtle; border-color: @vv-primary; }"
+            "QToolButton:pressed { background: @vv-primary-subtle-pressed; }"
+            "QToolButton::menu-indicator { image: none; width: 0px; height: 0px; }"), dark));
+        controls->findChild<QToolButton*>(QStringLiteral("map3DLocateButton"))->setIcon(
+            map3DIcon(QStringLiteral("locate-fixed"), appThemeColor(AppThemeColor::ToolbarBlue, dark)));
+        controls->raise();
     }
     const QIcon checkIcon = map3DIcon(QStringLiteral("check"),
                                      appThemeColor(AppThemeColor::MenuCheckText, dark));
