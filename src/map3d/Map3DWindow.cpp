@@ -32,6 +32,8 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QPainter>
+#include <QPainterPath>
+#include <QResizeEvent>
 #include <QPlainTextEdit>
 #include <QProgressDialog>
 #include <QPixmap>
@@ -64,6 +66,31 @@
 
 namespace VaporView::Map3D {
 namespace {
+
+// Clip the native menu window as well as its painted panel.
+class MapOptionsMenu final : public QMenu
+{
+public:
+    explicit MapOptionsMenu(QWidget* parent) : QMenu(parent) {}
+protected:
+    void resizeEvent(QResizeEvent* event) override
+    {
+        QMenu::resizeEvent(event);
+        updateMask();
+    }
+    void showEvent(QShowEvent* event) override
+    {
+        QMenu::showEvent(event);
+        updateMask();
+    }
+private:
+    void updateMask()
+    {
+        QPainterPath path;
+        path.addRoundedRect(QRectF(rect()), 10.0, 10.0);
+        setMask(QRegion(path.toFillPolygon().toPolygon()));
+    }
+};
 
 constexpr qint64 kStatusUpdateIntervalMs = 200;
 constexpr double kAutomaticSentinel2ImageryRangeM = 20000.0;
@@ -1033,11 +1060,17 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         }
     });
 
-    auto* moreMenu = new QMenu(this);
+    auto* moreMenu = new MapOptionsMenu(this);
     moreMenu->setObjectName(QStringLiteral("map3DMoreMenu"));
-    auto* resourcesMenu = moreMenu->addMenu(QStringLiteral("地图资源"));
-    auto* modelMenu = moreMenu->addMenu(QStringLiteral("飞机模型"));
-    auto* viewMenu = moreMenu->addMenu(QStringLiteral("视角与诊断"));
+    auto* resourcesMenu = new MapOptionsMenu(moreMenu);
+    resourcesMenu->setTitle(QStringLiteral("地图资源"));
+    moreMenu->addMenu(resourcesMenu);
+    auto* modelMenu = new MapOptionsMenu(moreMenu);
+    modelMenu->setTitle(QStringLiteral("飞机模型"));
+    moreMenu->addMenu(modelMenu);
+    auto* viewMenu = new MapOptionsMenu(moreMenu);
+    viewMenu->setTitle(QStringLiteral("视角与诊断"));
+    moreMenu->addMenu(viewMenu);
     for (QAction* action : {mapFilesAction, loadEarthAction, local_imagery_action_,
                             local_3d_tiles_action_, clear_local_3d_tiles_action_,
                             reloadBestMapAction, map_resources_action_})
@@ -1427,7 +1460,7 @@ void Map3DWindow::refreshLayerMenuTheme()
             "QToolBar#map3DToolbar QToolButton:hover { background: @vv-primary-subtle; border-color: @vv-primary; }"
             "QToolBar#map3DToolbar QToolButton:pressed, QToolBar#map3DToolbar QToolButton:checked { background: @vv-primary-subtle-pressed; border-color: @vv-primary; color: @vv-primary; }"
             "QToolBar#map3DToolbar QToolButton:disabled { background: @vv-disabled-fill; color: @vv-text-disabled; border-color: @vv-border; }"
-            "QToolButton#map3DMoreButton { padding-right: 30px; }"
+            "QToolBar#map3DToolbar QToolButton#map3DMoreButton { padding-right: 36px; padding-left: 12px; }"
             "QToolButton#map3DMoreButton::menu-indicator { image: url(\"%1\"); width: 16px; height: 16px; subcontrol-origin: padding; subcontrol-position: right center; right: 8px; }").arg(arrow), dark);
         if (toolbar->styleSheet() != style) toolbar->setStyleSheet(style);
     }
@@ -1442,10 +1475,20 @@ void Map3DWindow::refreshLayerMenuTheme()
             "QToolButton:checked, QToolButton:hover { background: @vv-primary-subtle; color: @vv-primary; border-color: @vv-primary; }"), dark));
     }
     if (auto* menu = findChild<QMenu*>(QStringLiteral("map3DMoreMenu")))
-        menu->setStyleSheet(applyAppThemeTokens(QStringLiteral(
-            "QMenu { background: @vv-surface; color: @vv-text; border: 1px solid @vv-border; padding: 6px; }"
-            "QMenu::item { padding: 8px 24px; } QMenu::item:selected { background: @vv-primary-subtle; }"
-            "QMenu::item:disabled { color: @vv-text-disabled; }"), dark));
+    {
+        const QString arrow = QDir::fromNativeSeparators(firstExistingMap3DFile(
+            map3DRuntimeRootCandidates(), {dark ? QStringLiteral("resources/lucide/chevron-right-dark.svg")
+                                               : QStringLiteral("resources/lucide/chevron-right.svg")}));
+        const QString style = applyAppThemeTokens(QStringLiteral(
+            "QMenu { background: @vv-surface; color: @vv-text; border: 1px solid @vv-border; border-radius: 10px; padding: 6px; }"
+            "QMenu::item { padding: 8px 32px 8px 16px; border-radius: 5px; }"
+            "QMenu::item:selected { background: @vv-primary-subtle; }"
+            "QMenu::item:disabled { color: @vv-text-disabled; }"
+            "QMenu::right-arrow { image: url(\"%1\"); width: 16px; height: 16px; }").arg(arrow), dark);
+        menu->setStyleSheet(style);
+        for (auto* child : menu->findChildren<QMenu*>(QString(), Qt::FindDirectChildrenOnly))
+            child->setStyleSheet(style);
+    }
     if (layers_action_)
     {
         layers_action_->setIcon(map3DIcon(QStringLiteral("layers-3"),

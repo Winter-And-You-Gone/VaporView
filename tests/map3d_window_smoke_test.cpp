@@ -545,6 +545,22 @@ int main(int argc, char** argv)
     window.show();
     QCoreApplication::processEvents();
     const QRect windowClientRect(window.mapToGlobal(window.rect().topLeft()), window.rect().size());
+    auto* more = window.findChild<QMenu*>(QStringLiteral("map3DMoreMenu"));
+    auto* moreButton = window.findChild<QToolButton*>(QStringLiteral("map3DMoreButton"));
+    const auto originalPalette = qApp->palette();
+    const auto originalTheme = qApp->property(VaporView::kAppDarkThemeProperty);
+    for (bool dark : {false, true})
+    {
+        qApp->setProperty(VaporView::kAppDarkThemeProperty, dark);
+        qApp->setPalette(VaporView::appThemePalette(dark));
+        QCoreApplication::processEvents();
+        more->popup(moreButton->mapToGlobal(QPoint(0, moreButton->height())));
+        QCoreApplication::processEvents();
+        require(!more->mask().isEmpty() && !more->mask().contains(QPoint(0, 0)), "menu clips its corner background");
+        more->hide();
+    }
+    qApp->setProperty(VaporView::kAppDarkThemeProperty, originalTheme);
+    qApp->setPalette(originalPalette);
     auto* locateButton = window.findChild<QToolButton*>(QStringLiteral("map3DLocateButton"));
     require(locateButton && !locateButton->icon().isNull(), "corner locate button has an icon");
     require(window.centralWidget()->rect().contains(layersButton->parentWidget()->geometry()),
