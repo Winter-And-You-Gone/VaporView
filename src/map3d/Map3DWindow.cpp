@@ -49,6 +49,7 @@
 #include <QToolBar>
 #include <QToolButton>
 #include <QVBoxLayout>
+#include <QFormLayout>
 #include <QWidget>
 #include <QWidgetAction>
 #include <QSvgRenderer>
@@ -767,6 +768,21 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     QAction* clearAction = toolbar->addAction(QStringLiteral("清空轨迹"));
     connect(clearAction, &QAction::triggered, this, &Map3DWindow::clearTrack);
 
+    auto* displayPanel = new QDialog(this, Qt::Tool);
+    displayPanel->setObjectName(QStringLiteral("map3DDisplayPanel"));
+    displayPanel->setWindowTitle(QStringLiteral("显示设置"));
+    auto* displayLayout = new QFormLayout(displayPanel);
+    displayLayout->setContentsMargins(16, 16, 16, 16);
+    displayLayout->setSpacing(12);
+    auto* displayAction = toolbar->addAction(QStringLiteral("显示设置"));
+    displayAction->setObjectName(QStringLiteral("map3DDisplayAction"));
+    connect(displayAction, &QAction::triggered, this, [this, displayPanel]() {
+        refreshLayerMenuTheme();
+        displayPanel->adjustSize();
+        displayPanel->move(mapToGlobal(QPoint(16, 70)));
+        displayPanel->show();
+        displayPanel->raise();
+    });
     QSettings settings = map3DSettings();
     max_visible_samples_ = sanitizeMaxVisibleSamples(settings.value(QStringLiteral("maxVisibleSamples"), 200000).toInt());
     heat_metric_ = heatMetricFromComboIndex(settings.value(QStringLiteral("heatMetric"), 0).toInt());
@@ -789,7 +805,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     max_visible_samples_spin_->setSuffix(QStringLiteral(" 点"));
     max_visible_samples_spin_->setToolTip(QStringLiteral("最大可见轨迹点数"));
     max_visible_samples_spin_->setStatusTip(max_visible_samples_spin_->toolTip());
-    toolbar->addWidget(max_visible_samples_spin_);
+    displayLayout->addRow(QStringLiteral("可见点数量"), max_visible_samples_spin_);
     connect(max_visible_samples_spin_, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
         max_visible_samples_ = sanitizeMaxVisibleSamples(value);
         if (view_)
@@ -812,7 +828,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
                                   VaporView::Geo::heatMetricName(VaporView::Geo::HeatMetric::Pressure, false)});
     heat_metric_combo_->setCurrentIndex(heatMetricComboIndex(heat_metric_));
     heat_metric_combo_->setToolTip(QStringLiteral("3D 轨迹热力指标"));
-    toolbar->addWidget(heat_metric_combo_);
+    displayLayout->addRow(QStringLiteral("热力指标"), heat_metric_combo_);
     connect(heat_metric_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
         heat_metric_ = heatMetricFromComboIndex(index);
         applyHeatControlsToView();
@@ -832,7 +848,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
                                    QStringLiteral("SpectralReverse")});
     heat_palette_combo_->setCurrentIndex(heatPaletteComboIndex(heat_palette_));
     heat_palette_combo_->setToolTip(QStringLiteral("3D 轨迹热力调色板"));
-    toolbar->addWidget(heat_palette_combo_);
+    displayLayout->addRow(QStringLiteral("配色"), heat_palette_combo_);
     connect(heat_palette_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
         heat_palette_ = heatPaletteFromComboIndex(index);
         applyHeatControlsToView();
@@ -842,10 +858,16 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         updateStatus(nullptr);
     });
 
-    track_line_visible_action_ = toolbar->addAction(QStringLiteral("轨迹线"));
+    track_line_visible_action_ = new QAction(QStringLiteral("轨迹线"), this);
     track_line_visible_action_->setObjectName(QStringLiteral("map3DTrackLineVisibleAction"));
     track_line_visible_action_->setCheckable(true);
     track_line_visible_action_->setChecked(trackLineVisible);
+    {
+        auto* toggle = new QToolButton(displayPanel);
+        toggle->setDefaultAction(track_line_visible_action_);
+        toggle->setToolButtonStyle(Qt::ToolButtonTextOnly);
+        displayLayout->addRow(toggle);
+    }
     connect(track_line_visible_action_, &QAction::toggled, this, [this](bool visible) {
         if (view_)
         {
@@ -856,10 +878,16 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         updateStatus(nullptr);
     });
 
-    track_points_visible_action_ = toolbar->addAction(QStringLiteral("轨迹点"));
+    track_points_visible_action_ = new QAction(QStringLiteral("轨迹点"), this);
     track_points_visible_action_->setObjectName(QStringLiteral("map3DTrackPointsVisibleAction"));
     track_points_visible_action_->setCheckable(true);
     track_points_visible_action_->setChecked(trackPointsVisible);
+    {
+        auto* toggle = new QToolButton(displayPanel);
+        toggle->setDefaultAction(track_points_visible_action_);
+        toggle->setToolButtonStyle(Qt::ToolButtonTextOnly);
+        displayLayout->addRow(toggle);
+    }
     connect(track_points_visible_action_, &QAction::toggled, this, [this](bool visible) {
         if (view_)
         {
@@ -876,7 +904,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     track_line_width_spin_->setValue(trackLineWidth);
     track_line_width_spin_->setPrefix(QStringLiteral("线宽 "));
     track_line_width_spin_->setSuffix(QStringLiteral(" px"));
-    toolbar->addWidget(track_line_width_spin_);
+    displayLayout->addRow(QStringLiteral("线宽"), track_line_width_spin_);
     connect(track_line_width_spin_, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
         if (view_)
         {
@@ -892,7 +920,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     track_point_size_spin_->setValue(trackPointSize);
     track_point_size_spin_->setPrefix(QStringLiteral("点 "));
     track_point_size_spin_->setSuffix(QStringLiteral(" px"));
-    toolbar->addWidget(track_point_size_spin_);
+    displayLayout->addRow(QStringLiteral("点大小"), track_point_size_spin_);
     connect(track_point_size_spin_, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
         if (view_)
         {
@@ -905,7 +933,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     heat_legend_label_ = new QLabel(toolbar);
     heat_legend_label_->setObjectName(QStringLiteral("map3DHeatLegendLabel"));
     heat_legend_label_->setMinimumWidth(260);
-    toolbar->addWidget(heat_legend_label_);
+    displayLayout->addRow(QStringLiteral("热力范围"), heat_legend_label_);
 
     replay_timer_->setTimerType(Qt::PreciseTimer);
     replay_timer_->setInterval(static_cast<int>(replay_.interval().count()));
@@ -1004,6 +1032,37 @@ Map3DWindow::Map3DWindow(QWidget* parent)
             updateStatus(nullptr);
         }
     });
+
+    auto* moreMenu = new QMenu(this);
+    moreMenu->setObjectName(QStringLiteral("map3DMoreMenu"));
+    auto* resourcesMenu = moreMenu->addMenu(QStringLiteral("地图资源"));
+    auto* modelMenu = moreMenu->addMenu(QStringLiteral("飞机模型"));
+    auto* viewMenu = moreMenu->addMenu(QStringLiteral("视角与诊断"));
+    for (QAction* action : {mapFilesAction, loadEarthAction, local_imagery_action_,
+                            local_3d_tiles_action_, clear_local_3d_tiles_action_,
+                            reloadBestMapAction, map_resources_action_})
+    {
+        toolbar->removeAction(action);
+        resourcesMenu->addAction(action);
+    }
+    for (QAction* action : {load_aircraft_model_action_, reset_aircraft_model_action_})
+    {
+        toolbar->removeAction(action);
+        modelMenu->addAction(action);
+    }
+    for (QAction* action : {flyToAircraftAction, flyToTrackAction, resetViewAction, diagnostics_action_})
+    {
+        toolbar->removeAction(action);
+        viewMenu->addAction(action);
+    }
+    auto* moreAction = toolbar->addAction(QStringLiteral("更多"));
+    moreAction->setObjectName(QStringLiteral("map3DMoreAction"));
+    moreAction->setMenu(moreMenu);
+    if (auto* button = qobject_cast<QToolButton*>(toolbar->widgetForAction(moreAction)))
+    {
+        button->setObjectName(QStringLiteral("map3DMoreButton"));
+        button->setPopupMode(QToolButton::InstantPopup);
+    }
 
     statusBar()->addPermanentWidget(status_label_, 1);
     updateReplayUi();
@@ -1359,14 +1418,34 @@ void Map3DWindow::refreshLayerMenuTheme()
     const bool dark = isDarkThemeEnabled();
     if (auto* toolbar = findChild<QToolBar*>(QStringLiteral("map3DToolbar")))
     {
+        const QString arrow = QDir::fromNativeSeparators(firstExistingMap3DFile(
+            map3DRuntimeRootCandidates(), {dark ? QStringLiteral("resources/lucide/chevron-down-dark.svg")
+                                               : QStringLiteral("resources/lucide/chevron-down.svg")}));
         const QString style = applyAppThemeTokens(QStringLiteral(
             "QToolBar#map3DToolbar { background: @vv-surface; border: none; spacing: 6px; padding: 6px; }"
             "QToolBar#map3DToolbar QToolButton { background: @vv-surface-alt; color: @vv-text; border: 1px solid @vv-border; border-radius: 6px; padding: 7px 12px; }"
             "QToolBar#map3DToolbar QToolButton:hover { background: @vv-primary-subtle; border-color: @vv-primary; }"
             "QToolBar#map3DToolbar QToolButton:pressed, QToolBar#map3DToolbar QToolButton:checked { background: @vv-primary-subtle-pressed; border-color: @vv-primary; color: @vv-primary; }"
-            "QToolBar#map3DToolbar QToolButton:disabled { background: @vv-disabled-fill; color: @vv-text-disabled; border-color: @vv-border; }"), dark);
+            "QToolBar#map3DToolbar QToolButton:disabled { background: @vv-disabled-fill; color: @vv-text-disabled; border-color: @vv-border; }"
+            "QToolButton#map3DMoreButton { padding-right: 30px; }"
+            "QToolButton#map3DMoreButton::menu-indicator { image: url(\"%1\"); width: 16px; height: 16px; subcontrol-origin: padding; subcontrol-position: right center; right: 8px; }").arg(arrow), dark);
         if (toolbar->styleSheet() != style) toolbar->setStyleSheet(style);
     }
+    if (auto* panel = findChild<QDialog*>(QStringLiteral("map3DDisplayPanel")))
+    {
+        panel->setPalette(appThemePalette(dark));
+        panel->setStyleSheet(applyAppThemeTokens(QStringLiteral(
+            "QDialog#map3DDisplayPanel { background: @vv-surface; color: @vv-text; }"
+            "QLabel { color: @vv-text; }"
+            "QComboBox, QSpinBox { background: @vv-field-background; color: @vv-text; border: 1px solid @vv-border; border-radius: 6px; padding: 6px; }"
+            "QToolButton { background: @vv-surface-alt; color: @vv-text; border: 1px solid @vv-border; border-radius: 6px; padding: 6px 12px; }"
+            "QToolButton:checked, QToolButton:hover { background: @vv-primary-subtle; color: @vv-primary; border-color: @vv-primary; }"), dark));
+    }
+    if (auto* menu = findChild<QMenu*>(QStringLiteral("map3DMoreMenu")))
+        menu->setStyleSheet(applyAppThemeTokens(QStringLiteral(
+            "QMenu { background: @vv-surface; color: @vv-text; border: 1px solid @vv-border; padding: 6px; }"
+            "QMenu::item { padding: 8px 24px; } QMenu::item:selected { background: @vv-primary-subtle; }"
+            "QMenu::item:disabled { color: @vv-text-disabled; }"), dark));
     if (layers_action_)
     {
         layers_action_->setIcon(map3DIcon(QStringLiteral("layers-3"),
