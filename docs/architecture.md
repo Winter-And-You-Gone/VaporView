@@ -27,7 +27,6 @@ cmake/
   Dependencies.cmake       # Qt, threads, RTKLIB, and optional dependency discovery
   CompilerOptions.cmake     # project compiler policy
   PlatformConfig.cmake     # runtime staging and platform behavior
-  PythonBindings.cmake     # optional pybind11 target
   InstallRules.cmake       # installation rules
 src/
   app/                     # executable entry points and runtime resources

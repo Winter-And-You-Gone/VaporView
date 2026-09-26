@@ -764,21 +764,14 @@ powershell -ExecutionPolicy Bypass -File scripts/recover_epsilon_main.ps1 -Ports
 python scripts/mock_tcp_waveform_sender.py --host 0.0.0.0 --port 8888 --samples 50000 --rate 10
 ```
 
-## Python 目录状态
+## Python 工具
 
-`python/` 目录提供辅助模块：
+Python 用于 `scripts/` 中的日志审计、地图数据准备、TCP 波形模拟，以及 `tools/epsilon_serial_probe.py` 串口诊断。日志审计已接入 CTest，地图数据准备脚本由 `map_data_script_test` 覆盖。
 
-- `ConfigManager`、`AppConfig`、`SerialPortConfig`
-- `FileLogger`、`DataLogger`
-- `DataExporter`
-
-当前 C++ / Qt 主程序没有直接导入或嵌入执行这些 Python 模块。
-
-CMake 中保留了 `BUILD_PYTHON_BINDINGS` 选项，但默认关闭。当前仓库没有 `python/bindings.cpp`，因此手动设置 `BUILD_PYTHON_BINDINGS=ON` 会在 CMake 配置阶段直接失败，并提示该入口文件缺失。
+当前 C++ / Qt 主程序不嵌入 Python，也不提供 Python bindings。
 
 ## 当前限制
 
-- `BUILD_PYTHON_BINDINGS=ON` 当前不可用，因为缺少 `python/bindings.cpp`。
 - `docs/imu_raw_dat_format.md` 和 `docs/epsilon_raw_dat_format.md` 保留为旧格式说明；当前主窗口新会话使用统一 `raw/*.dat`，并把 `docs/raw_dat_format.md` 复制到 session 根目录。
 - `data/` 为本地记录输出目录，已被 `.gitignore` 忽略。
 - `scripts/` 目录保留当前交付和诊断入口脚本：`build-windows-msvc2022.ps1`、`build-linux-arm64.sh`、`mock_tcp_waveform_sender.py` 和 `recover_epsilon_main.ps1`。

@@ -39,7 +39,6 @@ foreach(config DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${config} "${CMAKE_BINARY_DIR}")
 endforeach()
 
-option(BUILD_PYTHON_BINDINGS "Build Python bindings with pybind11" OFF)
 option(VAPORVIEW_ENABLE_OSGEARTH "Enable osgEarth 3D local map viewer" OFF)
 set(VAPORVIEW_LOCAL_VCPKG_INSTALLED_DIR
     "${CMAKE_SOURCE_DIR}/.local_deps/vcpkg_installed"
@@ -60,5 +59,4 @@ if(BUILD_TESTING)
 endif()
 
 include(CompilerOptions)
-include(PythonBindings)
 include(InstallRules)
