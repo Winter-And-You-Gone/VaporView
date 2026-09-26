@@ -67,28 +67,12 @@
 namespace VaporView::Map3D {
 namespace {
 
-// Clip the native menu window as well as its painted panel.
 class MapOptionsMenu final : public QMenu
 {
 public:
-    explicit MapOptionsMenu(QWidget* parent) : QMenu(parent) {}
-protected:
-    void resizeEvent(QResizeEvent* event) override
+    explicit MapOptionsMenu(QWidget* parent) : QMenu(parent)
     {
-        QMenu::resizeEvent(event);
-        updateMask();
-    }
-    void showEvent(QShowEvent* event) override
-    {
-        QMenu::showEvent(event);
-        updateMask();
-    }
-private:
-    void updateMask()
-    {
-        QPainterPath path;
-        path.addRoundedRect(QRectF(rect()), 10.0, 10.0);
-        setMask(QRegion(path.toFillPolygon().toPolygon()));
+        setAttribute(Qt::WA_TranslucentBackground);
     }
 };
 
@@ -1480,8 +1464,8 @@ void Map3DWindow::refreshLayerMenuTheme()
             map3DRuntimeRootCandidates(), {dark ? QStringLiteral("resources/lucide/chevron-right-dark.svg")
                                                : QStringLiteral("resources/lucide/chevron-right.svg")}));
         const QString style = applyAppThemeTokens(QStringLiteral(
-            "QMenu { background: @vv-surface; color: @vv-text; border: 1px solid @vv-border; border-radius: 10px; padding: 6px; }"
-            "QMenu::item { padding: 8px 32px 8px 16px; border-radius: 5px; }"
+            "QMenu { background: @vv-surface; color: @vv-text; border: 1px solid @vv-border; border-radius: 12px; padding: 6px 0px; }"
+            "QMenu::item { margin: 0px; padding: 8px 32px 8px 16px; border-radius: 0px; min-width: 190px; }"
             "QMenu::item:selected { background: @vv-primary-subtle; }"
             "QMenu::item:disabled { color: @vv-text-disabled; }"
             "QMenu::right-arrow { image: url(\"%1\"); width: 16px; height: 16px; }").arg(arrow), dark);

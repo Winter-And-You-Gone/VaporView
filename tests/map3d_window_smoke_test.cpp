@@ -556,7 +556,6 @@ int main(int argc, char** argv)
         QCoreApplication::processEvents();
         more->popup(moreButton->mapToGlobal(QPoint(0, moreButton->height())));
         QCoreApplication::processEvents();
-        require(!more->mask().isEmpty() && !more->mask().contains(QPoint(0, 0)), "menu clips its corner background");
         more->hide();
     }
     qApp->setProperty(VaporView::kAppDarkThemeProperty, originalTheme);
