@@ -1162,6 +1162,11 @@ void Map3DWindow::startRendering()
     view_ = prewarmed_view_;
     configureViewSignals();
     render_stack_->setCurrentWidget(view_);
+    if (auto* controls = findChild<QWidget*>(QStringLiteral("map3DCornerControls")))
+    {
+        controls->show();
+        controls->raise();
+    }
     if (render_placeholder_label_)
     {
         render_placeholder_label_->hide();
@@ -2654,6 +2659,19 @@ void Map3DWindow::changeEvent(QEvent* event)
 void Map3DWindow::showEvent(QShowEvent* event)
 {
     QMainWindow::showEvent(event);
+    if (auto* controls = findChild<QWidget*>(QStringLiteral("map3DCornerControls")))
+    {
+        controls->show();
+        controls->raise();
+        QTimer::singleShot(0, this, [this]() {
+            if (auto* corner = findChild<QWidget*>(QStringLiteral("map3DCornerControls")))
+            {
+                corner->move(centralWidget()->width() - corner->width() - 16,
+                             centralWidget()->height() - corner->height() - 16);
+                corner->raise();
+            }
+        });
+    }
     refreshLayerMenuTheme();
     refreshLayerMenuAvailability();
     QTimer::singleShot(0, this, [this]() {
