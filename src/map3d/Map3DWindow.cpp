@@ -72,6 +72,8 @@ class MapOptionsMenu final : public QMenu
 public:
     explicit MapOptionsMenu(QWidget* parent) : QMenu(parent)
     {
+        setWindowFlag(Qt::FramelessWindowHint, true);
+        setWindowFlag(Qt::NoDropShadowWindowHint, true);
         setAttribute(Qt::WA_TranslucentBackground);
     }
 };
