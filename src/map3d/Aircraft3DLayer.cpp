@@ -37,23 +37,15 @@ osg::Vec3d samplePosition(const VaporView::Geo::NavSample& sample,
 osg::ref_ptr<osg::Geometry> createAircraftBody()
 {
     osg::ref_ptr<osg::Vec3Array> vertices = new osg::Vec3Array;
-    vertices->push_back(osg::Vec3(0.0f, 22.0f, 0.0f));    // nose, yaw 0 points north/local +Y
-    vertices->push_back(osg::Vec3(-13.0f, -2.0f, 0.0f));  // left wing
-    vertices->push_back(osg::Vec3(0.0f, -11.0f, 0.0f));   // tail
-    vertices->push_back(osg::Vec3(13.0f, -2.0f, 0.0f));   // right wing
-    vertices->push_back(osg::Vec3(0.0f, -7.0f, 7.0f));    // vertical fin
+    vertices->push_back(osg::Vec3(0.0f, 24.0f, 0.0f));    // arrow tip
+    vertices->push_back(osg::Vec3(-14.0f, -10.0f, 0.0f)); // left arrowhead corner
+    vertices->push_back(osg::Vec3(0.0f, -4.0f, 0.0f));    // inner notch
+    vertices->push_back(osg::Vec3(14.0f, -10.0f, 0.0f));  // right arrowhead corner
 
     osg::ref_ptr<osg::DrawElementsUInt> triangles =
         new osg::DrawElementsUInt(osg::PrimitiveSet::TRIANGLES);
-    triangles->push_back(0);
-    triangles->push_back(1);
-    triangles->push_back(2);
-    triangles->push_back(0);
-    triangles->push_back(2);
-    triangles->push_back(3);
-    triangles->push_back(2);
-    triangles->push_back(4);
-    triangles->push_back(0);
+    triangles->push_back(0); triangles->push_back(1); triangles->push_back(2);
+    triangles->push_back(0); triangles->push_back(2); triangles->push_back(3);
 
     osg::ref_ptr<osg::Vec4Array> colors = new osg::Vec4Array;
     colors->push_back(osg::Vec4(1.0f, 0.36f, 0.12f, 1.0f));
@@ -68,12 +60,10 @@ osg::ref_ptr<osg::Geometry> createAircraftBody()
 osg::ref_ptr<osg::Geometry> createAircraftOutline()
 {
     osg::ref_ptr<osg::Vec3Array> vertices = new osg::Vec3Array;
-    vertices->push_back(osg::Vec3(0.0f, 22.0f, 1.0f));
-    vertices->push_back(osg::Vec3(0.0f, -11.0f, 1.0f));
-    vertices->push_back(osg::Vec3(-13.0f, -2.0f, 1.0f));
-    vertices->push_back(osg::Vec3(13.0f, -2.0f, 1.0f));
-    vertices->push_back(osg::Vec3(0.0f, -7.0f, 1.0f));
-    vertices->push_back(osg::Vec3(0.0f, -7.0f, 8.5f));
+    vertices->push_back(osg::Vec3(0.0f, 24.0f, 1.0f));
+    vertices->push_back(osg::Vec3(-14.0f, -10.0f, 1.0f));
+    vertices->push_back(osg::Vec3(0.0f, -4.0f, 1.0f));
+    vertices->push_back(osg::Vec3(14.0f, -10.0f, 1.0f));
 
     osg::ref_ptr<osg::Vec4Array> colors = new osg::Vec4Array;
     colors->push_back(osg::Vec4(1.0f, 0.92f, 0.72f, 1.0f));
@@ -81,7 +71,7 @@ osg::ref_ptr<osg::Geometry> createAircraftOutline()
     osg::ref_ptr<osg::Geometry> geometry = new osg::Geometry;
     geometry->setVertexArray(vertices.get());
     geometry->setColorArray(colors.get(), osg::Array::BIND_OVERALL);
-    geometry->addPrimitiveSet(new osg::DrawArrays(osg::PrimitiveSet::LINES, 0, static_cast<GLsizei>(vertices->size())));
+    geometry->addPrimitiveSet(new osg::DrawArrays(osg::PrimitiveSet::LINE_LOOP, 0, 4));
     geometry->getOrCreateStateSet()->setAttributeAndModes(new osg::LineWidth(2.0f), osg::StateAttribute::ON);
     return geometry;
 }
