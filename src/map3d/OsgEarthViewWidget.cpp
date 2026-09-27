@@ -1215,7 +1215,7 @@ bool OsgEarthViewWidget::applyTiandituSatelliteImagery(const QString& key)
     if (trimmedKey.isEmpty())
     {
         earth_load_diagnostics_.layerSummaries.push_back(
-            QStringLiteral("Tianditu Satellite imagery not applied: no key configured."));
+            QStringLiteral("未应用天地图卫星影像：未配置密钥。"));
         applyLayerVisibility(Map3DLayer::SatelliteImagery);
         update();
         return false;
@@ -1236,12 +1236,12 @@ bool OsgEarthViewWidget::applyTiandituSatelliteImagery(const QString& key)
     layer->options().maxDataLevel() = kTiandituMaxZoom;
 
     earth_load_diagnostics_.layerSummaries.push_back(
-        QStringLiteral("Tianditu source levels: %1-%2; level 0 placeholder excluded.")
+        QStringLiteral("天地图源级别：%1–%2；不使用第 0 级占位图。")
             .arg(layer->options().minLevel().get()).arg(layer->options().maxDataLevel().get()));
     const unsigned insertIndex = tiandituSatelliteInsertIndex(map);
     map->insertLayer(layer.get(), insertIndex);
     earth_load_diagnostics_.layerSummaries.push_back(
-        QStringLiteral("Tianditu Satellite imagery added at layer index %1%2.")
+        QStringLiteral("天地图卫星影像已添加到图层索引 %1%2。")
             .arg(insertIndex)
             .arg(layer->isOpen()
                      ? QString()
@@ -1304,7 +1304,7 @@ bool OsgEarthViewWidget::applyEarthLoad(EarthLoadDiagnostics diagnostics,
     if (!root_)
     {
         earth_load_diagnostics_.loaded = false;
-        earth_load_diagnostics_.failureReason = QStringLiteral("Scene root is not initialized.");
+        earth_load_diagnostics_.failureReason = QStringLiteral("场景根节点尚未初始化。");
         return false;
     }
     const std::optional<osgEarth::Viewpoint> previousViewpoint =
@@ -1315,11 +1315,11 @@ bool OsgEarthViewWidget::applyEarthLoad(EarthLoadDiagnostics diagnostics,
     map_node_ = mapNode;
     configureHighResolutionTerrain(map_node_);
     earth_load_diagnostics_.layerSummaries.push_back(
-        QStringLiteral("Terrain detail: visible-first screen-space LOD, 128 px tile threshold, low-angle adaptive clipping and LOD."));
+        QStringLiteral("地形细节：可见区域优先的屏幕空间 LOD，128 px 瓦片阈值，低视角自适应裁剪和细节级别。"));
     use_xihu_initial_view_ = useXihuInitialView;
     if (replacedPreviousNode)
     {
-        earth_load_diagnostics_.layerSummaries.push_back(QStringLiteral("Replaced previous Earth scene."));
+        earth_load_diagnostics_.layerSummaries.push_back(QStringLiteral("已替换原地图场景。"));
     }
     trajectory_layer_->setUseWorldCoordinates(true);
     aircraft_layer_->setUseWorldCoordinates(true);
@@ -1390,7 +1390,7 @@ bool OsgEarthViewWidget::applyLocal3DTilesLoad(Local3DTilesLoadDiagnostics diagn
     if (!root_)
     {
         local_3d_tiles_load_diagnostics_.loaded = false;
-        local_3d_tiles_load_diagnostics_.failureReason = QStringLiteral("Scene root is not initialized.");
+        local_3d_tiles_load_diagnostics_.failureReason = QStringLiteral("场景根节点尚未初始化。");
         return false;
     }
     local_3d_tiles_load_diagnostics_.clearedPreviousPreview = local_3d_tiles_node_.valid();
@@ -2950,7 +2950,7 @@ VaporView::Geo::NavSample OsgEarthViewWidget::toWorldSample(const VaporView::Geo
         return invalidWorldSample;
     }
 
-    height_reference_status_ = QStringLiteral("WGS84 ellipsoid height applied.");
+    height_reference_status_ = QStringLiteral("已应用 WGS84 椭球高。");
 
     osg::Vec3d world;
     bool converted = false;

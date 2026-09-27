@@ -152,7 +152,7 @@ int main(int argc, char** argv)
     require(window.testLatestPendingMap3DRecordTimestampUs() == 2010000,
             "remote sky telemetry uses host timestamp for the pending 3D map sample");
     processEventsFor(80);
-    require(mapStatusLabel->text().contains(QStringLiteral("Att Euler")),
+    require(mapStatusLabel->text().contains(QStringLiteral("姿态 欧拉角")),
             "flushed remote sky telemetry reports Euler aircraft attitude source");
 
     VaporView::EpsilonData invalidSample = makeSample(39.900004);
@@ -164,7 +164,7 @@ int main(int argc, char** argv)
             "invalid live sample stops the 3D map flush timer");
     require(window.testLastMap3DDropReason() == QStringLiteral("epsilon invalid"),
             "invalid live sample records a 3D map drop reason");
-    require(mapStatusLabel->text().contains(QStringLiteral("Last drop Live: epsilon invalid")),
+    require(mapStatusLabel->text().contains(QStringLiteral("最近丢弃 Live：epsilon invalid")),
             "3D map status reports invalid live sample drop reason");
 
     VaporView::EpsilonData invalidFixSample = makeSample(39.900005);
@@ -179,9 +179,9 @@ int main(int argc, char** argv)
     require(window.testLastMap3DDropReason().isEmpty(),
             "invalid-fix live sample is not treated as a dropped 3D map sample");
     processEventsFor(80);
-    require(mapStatusLabel->text().contains(QStringLiteral("Fix Invalid")),
+    require(mapStatusLabel->text().contains(QStringLiteral("定位 无效")),
             "3D map status reports the forwarded invalid GNSS fix");
-    require(mapStatusLabel->text().contains(QStringLiteral("Invalid 1")),
+    require(mapStatusLabel->text().contains(QStringLiteral("无效 1")),
             "3D map status counts invalid GNSS fixes as marker samples");
 
     window.testMaybeForwardMap3DSampleForMap3D(makeSample(39.900005), 1020000);
@@ -205,7 +205,7 @@ int main(int argc, char** argv)
             "remote telemetry without position leaves the 3D map flush timer stopped");
     require(window.testLastMap3DDropReason() == QStringLiteral("missing BasicHasPosition"),
             "remote telemetry without position records a 3D map drop reason");
-    require(mapStatusLabel->text().contains(QStringLiteral("Last drop Remote: missing BasicHasPosition")),
+    require(mapStatusLabel->text().contains(QStringLiteral("最近丢弃 Remote：missing BasicHasPosition")),
             "3D map status reports remote telemetry drop reason");
 
     mapWindow->hide();

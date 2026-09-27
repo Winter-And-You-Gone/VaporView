@@ -241,17 +241,17 @@ std::vector<LocalImageryOption> localImageryOptions(const MapDataDiagnostics& di
 {
     return {
         {QStringLiteral("sentinel2"),
-         QStringLiteral("Sentinel-2 local imagery"),
+         QStringLiteral("Sentinel-2 本地影像"),
          diagnostics.sentinel2ImageryEarthPath,
          diagnostics.sentinel2ImageryVrtPath,
          isFile(diagnostics.sentinel2ImageryEarthPath) && isFile(diagnostics.sentinel2ImageryVrtPath)},
         {QStringLiteral("landsat"),
-         QStringLiteral("Landsat local imagery"),
+         QStringLiteral("Landsat 本地影像"),
          diagnostics.landsatImageryEarthPath,
          diagnostics.landsatImageryVrtPath,
          isFile(diagnostics.landsatImageryEarthPath) && isFile(diagnostics.landsatImageryVrtPath)},
         {QStringLiteral("openaerialmap"),
-         QStringLiteral("OpenAerialMap local imagery"),
+         QStringLiteral("OpenAerialMap 本地影像"),
          diagnostics.openAerialMapImageryEarthPath,
          diagnostics.openAerialMapImageryVrtPath,
          isFile(diagnostics.openAerialMapImageryEarthPath) && isFile(diagnostics.openAerialMapImageryVrtPath)}
@@ -426,14 +426,14 @@ void collectLocal3DTilesDiagnostics(MapDataDiagnostics& diagnostics)
     QFile file(diagnostics.local3DTilesTilesetPath);
     if (QFileInfo(file).size() > kMaximumTilesetJsonBytes)
     {
-        const QString message = QStringLiteral("Native OSG building tileset exceeds the 64 MiB safety limit.");
+        const QString message = QStringLiteral("原生 OSG 建筑瓦片集超过 64 MiB 安全上限。");
         diagnostics.local3DTilesDiagnostics.push_back(message);
         diagnostics.warnings.push_back(message);
         return;
     }
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
     {
-        const QString message = QStringLiteral("Native OSG building tileset could not be opened: %1").arg(file.errorString());
+        const QString message = QStringLiteral("无法打开原生 OSG 建筑瓦片集：%1").arg(file.errorString());
         diagnostics.local3DTilesDiagnostics.push_back(message);
         diagnostics.warnings.push_back(message);
         return;
@@ -443,7 +443,7 @@ void collectLocal3DTilesDiagnostics(MapDataDiagnostics& diagnostics)
     const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parseError);
     if (parseError.error != QJsonParseError::NoError || !document.isObject())
     {
-        const QString message = QStringLiteral("Native OSG building tileset is not valid JSON: %1").arg(parseError.errorString());
+        const QString message = QStringLiteral("原生 OSG 建筑瓦片集不是有效 JSON：%1").arg(parseError.errorString());
         diagnostics.local3DTilesDiagnostics.push_back(message);
         diagnostics.warnings.push_back(message);
         return;
@@ -473,27 +473,27 @@ void collectLocal3DTilesDiagnostics(MapDataDiagnostics& diagnostics)
 
     if (!hasAsset)
     {
-        addIssue(QStringLiteral("Native OSG building tileset is missing asset object."));
+        addIssue(QStringLiteral("原生 OSG 建筑瓦片集缺少 asset 对象。"));
     }
     else if (!hasAssetVersion)
     {
-        addIssue(QStringLiteral("Native OSG building tileset asset.version is missing."));
+        addIssue(QStringLiteral("原生 OSG 建筑瓦片集缺少 asset.version。"));
     }
     if (!hasNativePayloadFormat)
     {
-        addIssue(QStringLiteral("Local building tileset extras.format must be vaporview-osg-native-building-tiles; generic Cesium 3D Tiles payloads are not supported by this loader."));
+        addIssue(QStringLiteral("本地建筑瓦片集 extras.format 必须为 vaporview-osg-native-building-tiles；此加载器不支持通用 Cesium 3D Tiles 数据块。"));
     }
     if (!hasRoot)
     {
-        addIssue(QStringLiteral("Native OSG building tileset is missing root tile."));
+        addIssue(QStringLiteral("原生 OSG 建筑瓦片集缺少根瓦片。"));
     }
     if (hasRoot && !hasBoundingVolume)
     {
-        addIssue(QStringLiteral("Native OSG building tileset root tile is missing boundingVolume."));
+        addIssue(QStringLiteral("原生 OSG 建筑根瓦片缺少 boundingVolume。"));
     }
     if (!hasGeometricError)
     {
-        addIssue(QStringLiteral("Native OSG building tileset/root geometricError is missing."));
+        addIssue(QStringLiteral("原生 OSG 建筑瓦片集或根瓦片缺少 geometricError。"));
     }
 
     QStringList uris;
@@ -505,14 +505,14 @@ void collectLocal3DTilesDiagnostics(MapDataDiagnostics& diagnostics)
     }
     if (traversalLimitExceeded)
     {
-        addIssue(QStringLiteral("Native OSG building tileset exceeds the traversal safety limit."));
+        addIssue(QStringLiteral("原生 OSG 建筑瓦片集超过遍历安全上限。"));
     }
     uris.removeDuplicates();
     diagnostics.local3DTilesResourceUris = uris;
     diagnostics.local3DTilesResourceCount = uris.size();
     if (uris.isEmpty())
     {
-        addIssue(QStringLiteral("Native OSG building tileset has no content.uri entries yet."));
+        addIssue(QStringLiteral("原生 OSG 建筑瓦片集没有 content.uri 条目。"));
     }
 
     const QFileInfo tilesetInfo(diagnostics.local3DTilesTilesetPath);
@@ -523,7 +523,7 @@ void collectLocal3DTilesDiagnostics(MapDataDiagnostics& diagnostics)
         const QString resourcePath = stripUriQueryAndFragment(uri);
         if (resourcePath.isEmpty())
         {
-            addIssue(QStringLiteral("Native OSG building tileset contains an empty content URI."));
+            addIssue(QStringLiteral("原生 OSG 建筑瓦片集包含空资源 URI。"));
             continue;
         }
         if (hasUriSchemeOrNetworkPath(resourcePath) || QDir::isAbsolutePath(resourcePath))
@@ -554,11 +554,11 @@ void collectLocal3DTilesDiagnostics(MapDataDiagnostics& diagnostics)
 
     for (const QString& uri : diagnostics.local3DTilesExternalUris)
     {
-        addIssue(QStringLiteral("Native OSG building tile content URI is not local/portable: %1").arg(uri));
+        addIssue(QStringLiteral("原生 OSG 建筑瓦片资源 URI 不是可移植本地路径：%1").arg(uri));
     }
     for (const QString& path : diagnostics.local3DTilesMissingResources)
     {
-        addIssue(QStringLiteral("Native OSG building tile referenced resource is missing: %1").arg(path));
+        addIssue(QStringLiteral("原生 OSG 建筑瓦片引用的资源缺失：%1").arg(path));
     }
 
     diagnostics.local3DTilesTilesetValid = hasAsset
@@ -573,8 +573,8 @@ void collectLocal3DTilesDiagnostics(MapDataDiagnostics& diagnostics)
         && diagnostics.local3DTilesMissingResources.isEmpty();
     diagnostics.local3DTilesDiagnostics.push_back(
         diagnostics.local3DTilesTilesetValid
-            ? QStringLiteral("Local OSG building tileset passes the native local-only contract checks.")
-            : QStringLiteral("Local OSG building tileset needs attention before renderer integration."));
+            ? QStringLiteral("本地 OSG 建筑瓦片集通过原生仅本地资源格式检查。")
+            : QStringLiteral("本地 OSG 建筑瓦片集在接入渲染前需要检查。"));
 }
 
 QString bestAvailableDemSource(const MapDataDiagnostics& diagnostics)
@@ -622,9 +622,9 @@ void collectOsmLayerContracts(MapDataDiagnostics& diagnostics)
             .arg(diagnostics.osmRoadsPath),
         QStringLiteral("%1 -> layer water -> OGRFeatures osm-water -> FeatureImage OSM water fill")
             .arg(diagnostics.osmWaterPath),
-        QStringLiteral("%1 -> layer buildings -> generated data only; not rendered by the safe default full-local earth template")
+        QStringLiteral("%1 -> layer buildings -> 仅生成数据；默认安全本地地图模板不渲染此图层")
             .arg(diagnostics.osmBuildingsPath),
-        QStringLiteral("%1 -> layer places -> generated data only; not rendered by the safe default full-local earth template")
+        QStringLiteral("%1 -> layer places -> 仅生成数据；默认安全本地地图模板不渲染此图层")
             .arg(diagnostics.osmPlacesPath)
     };
 }
@@ -635,23 +635,23 @@ void collectFullLocalBlockers(MapDataDiagnostics& diagnostics,
 {
     if (!diagnostics.naturalEarthAvailable)
     {
-        diagnostics.fullLocalBlockers.push_back(QStringLiteral("Natural Earth VRT/raster is incomplete."));
+        diagnostics.fullLocalBlockers.push_back(QStringLiteral("Natural Earth 的 VRT 或栅格数据不完整。"));
     }
     if (!diagnostics.copernicusDemAvailable && !diagnostics.srtmDemAvailable)
     {
-        diagnostics.fullLocalBlockers.push_back(QStringLiteral("No Copernicus DEM or SRTM VRT is available."));
+        diagnostics.fullLocalBlockers.push_back(QStringLiteral("没有可用的 Copernicus DEM 或 SRTM VRT。"));
     }
     if (diagnostics.copernicusDemAvailable && !isFile(fullLocalEarthPath))
     {
-        diagnostics.fullLocalBlockers.push_back(QStringLiteral("Copernicus full-local earth template is missing."));
+        diagnostics.fullLocalBlockers.push_back(QStringLiteral("缺少 Copernicus 完整本地地图模板。"));
     }
     if (!diagnostics.copernicusDemAvailable && diagnostics.srtmDemAvailable && !isFile(fullLocalSrtmEarthPath))
     {
-        diagnostics.fullLocalBlockers.push_back(QStringLiteral("SRTM full-local earth template is missing."));
+        diagnostics.fullLocalBlockers.push_back(QStringLiteral("缺少 SRTM 完整本地地图模板。"));
     }
     for (const QString& path : diagnostics.missingOsmFiles)
     {
-        diagnostics.fullLocalBlockers.push_back(QStringLiteral("Missing OSM GeoPackage: %1").arg(path));
+        diagnostics.fullLocalBlockers.push_back(QStringLiteral("缺少 OSM GeoPackage：%1").arg(path));
     }
 }
 
@@ -667,7 +667,7 @@ void finalizeSelection(MapDataSelection& selection)
 {
     MapDataDiagnostics& diagnostics = selection.diagnostics;
     diagnostics.baseMapPriority =
-        QStringLiteral("Real 3D local > Copernicus DEM > SRTM > Natural Earth > Local grid");
+        QStringLiteral("本地实景三维 > Copernicus DEM > SRTM > Natural Earth > 本地网格");
 
     if (selection.mode == MapDataMode::FullLocalMap)
     {
@@ -688,28 +688,28 @@ void finalizeSelection(MapDataSelection& selection)
         selection.earthFilePath.isEmpty() ? selection.earthFile : selection.earthFilePath;
 
     const auto ready = [](const bool value) {
-        return value ? QStringLiteral("ready") : QStringLiteral("missing");
+        return value ? QStringLiteral("就绪") : QStringLiteral("缺失");
     };
 
     diagnostics.readinessChecks = {
-        QStringLiteral("Natural Earth background: %1").arg(ready(diagnostics.naturalEarthAvailable)),
-        QStringLiteral("Terrain DEM: %1")
+        QStringLiteral("Natural Earth 底图：%1").arg(ready(diagnostics.naturalEarthAvailable)),
+        QStringLiteral("DEM 地形：%1")
             .arg(diagnostics.selectedDemLayerAvailable
                      ? diagnostics.selectedElevationSource
-                     : QStringLiteral("missing")),
-        QStringLiteral("OSM vector files: %1 (%2/4); safe rendered layers: %3")
-            .arg(diagnostics.selectedOsmLayersAvailable ? QStringLiteral("ready") : QStringLiteral("missing"))
+                     : QStringLiteral("缺失")),
+        QStringLiteral("OSM 矢量文件：%1（%2/4）；安全渲染图层：%3")
+            .arg(diagnostics.selectedOsmLayersAvailable ? QStringLiteral("就绪") : QStringLiteral("缺失"))
             .arg(diagnostics.osmLayerCount)
-            .arg(diagnostics.selectedOsmLayersAvailable ? QStringLiteral("water, roads") : QStringLiteral("none")),
-        QStringLiteral("Optional imagery overlays: %1 (%2/3)")
-            .arg(diagnostics.localImageryMenuAvailable ? QStringLiteral("menu ready") : QStringLiteral("not menu ready"))
+            .arg(diagnostics.selectedOsmLayersAvailable ? QStringLiteral("水系、道路") : QStringLiteral("无")),
+        QStringLiteral("可选影像叠加层：%1（%2/3）")
+            .arg(diagnostics.localImageryMenuAvailable ? QStringLiteral("可从菜单加载") : QStringLiteral("菜单未就绪"))
             .arg(diagnostics.localImageryMenuEntryCount),
-        QStringLiteral("Optional native OSG building tiles: %1")
+        QStringLiteral("可选原生 OSG 建筑瓦片：%1")
             .arg(diagnostics.local3DTilesAvailable
-                     ? (diagnostics.local3DTilesTilesetValid ? QStringLiteral("contract valid") : QStringLiteral("needs attention"))
-                     : QStringLiteral("not configured")),
-        QStringLiteral("Real 3D local map: %1")
-            .arg(diagnostics.real3DLocalReady ? QStringLiteral("ready") : QStringLiteral("not ready"))
+                     ? (diagnostics.local3DTilesTilesetValid ? QStringLiteral("格式有效") : QStringLiteral("需要检查"))
+                     : QStringLiteral("未配置")),
+        QStringLiteral("本地实景三维地图：%1")
+            .arg(diagnostics.real3DLocalReady ? QStringLiteral("就绪") : QStringLiteral("未就绪"))
     };
 
     diagnostics.readinessNextSteps.clear();
@@ -719,77 +719,77 @@ void finalizeSelection(MapDataSelection& selection)
         if (diagnostics.real3DLocalReady)
         {
             diagnostics.readinessSummary =
-                QStringLiteral("Ready for Hangzhou Xihu real 3D: Sentinel-2 imagery, %1 elevation, OSM context, and local building tiles are selected.")
+                QStringLiteral("杭州西湖实景三维已就绪：已选择 Sentinel-2 影像、%1 高程、OSM 地理要素和本地建筑瓦片。")
                     .arg(diagnostics.selectedElevationSource);
         }
         else
         {
             diagnostics.readinessSummary =
-                QStringLiteral("Ready for full offline local map: Natural Earth, %1 elevation, and safe OSM water/road context are selected.")
+                QStringLiteral("完整离线地图已就绪：已选择 Natural Earth、%1 高程及安全的 OSM 水系和道路图层。")
                     .arg(diagnostics.selectedElevationSource);
             diagnostics.readinessNextSteps.push_back(
-                QStringLiteral("OSM buildings and places are prepared for diagnostics, but are not auto-rendered because full-country labels/buildings can stall the 3D map."));
+                QStringLiteral("OSM 建筑和地名已准备好供诊断使用，但不会自动渲染，以免全国范围的标签和建筑导致地图卡顿。"));
         }
         if (!diagnostics.localImageryAvailable)
         {
             diagnostics.readinessNextSteps.push_back(
-                QStringLiteral("Optional: prepare Sentinel-2, Landsat, or OpenAerialMap GeoTIFF VRTs for high-resolution imagery overlays."));
+                QStringLiteral("可选：准备 Sentinel-2、Landsat 或 OpenAerialMap GeoTIFF VRT，用于高分辨率影像叠加。"));
         }
         if (!diagnostics.local3DTilesAvailable)
         {
             diagnostics.readinessNextSteps.push_back(
-                QStringLiteral("Optional: place a VaporView native OSG building tileset under resources/maps/tiles3d/local/ for preview diagnostics."));
+                QStringLiteral("可选：将 VaporView 原生 OSG 建筑瓦片集放入 resources/maps/tiles3d/local/，用于预览诊断。"));
         }
         break;
     case MapDataMode::NaturalEarthWithCopernicusDem:
     case MapDataMode::NaturalEarthWithSrtm:
         diagnostics.readinessSummary =
-            QStringLiteral("Ready for terrain-backed offline map: Natural Earth and %1 elevation are selected; OSM vectors are not complete.")
+            QStringLiteral("带地形的离线地图已就绪：已选择 Natural Earth 和 %1 高程；OSM 矢量数据不完整。")
                 .arg(diagnostics.selectedElevationSource);
         diagnostics.readinessNextSteps.push_back(
-            QStringLiteral("Generate all four local OSM GeoPackages with scripts/prepare-osm-local-data.py to enable Full local map."));
+            QStringLiteral("使用 scripts/prepare-osm-local-data.py 生成全部四个本地 OSM GeoPackage，以启用完整本地地图。"));
         diagnostics.readinessNextSteps.push_back(
-            QStringLiteral("Command: python scripts/prepare-osm-local-data.py resources/maps/osm/local_extract.osm.pbf --overwrite"));
+            QStringLiteral("命令：python scripts/prepare-osm-local-data.py resources/maps/osm/local_extract.osm.pbf --overwrite"));
         diagnostics.readinessNextSteps.push_back(
-            QStringLiteral("Validate: python scripts/prepare-osm-local-data.py resources/maps/osm/local_extract.osm.pbf --check"));
+            QStringLiteral("验证：python scripts/prepare-osm-local-data.py resources/maps/osm/local_extract.osm.pbf --check"));
         if (!diagnostics.missingOsmFiles.isEmpty())
         {
             diagnostics.readinessNextSteps.push_back(
-                QStringLiteral("Missing OSM files: %1").arg(diagnostics.missingOsmFiles.join(QStringLiteral("; "))));
+                QStringLiteral("缺少 OSM 文件：%1").arg(diagnostics.missingOsmFiles.join(QStringLiteral("; "))));
         }
         break;
     case MapDataMode::NaturalEarth:
         diagnostics.readinessSummary =
-            QStringLiteral("Ready for offline visual background only: Natural Earth is selected, but no real DEM terrain is available.");
+            QStringLiteral("仅离线视觉底图就绪：已选择 Natural Earth，但没有真实 DEM 地形。");
         diagnostics.readinessNextSteps.push_back(
-            QStringLiteral("Place Copernicus DEM GLO-30 GeoTIFF tiles under resources/maps/terrain/copernicus_dem_glo30/ and run scripts/prepare-demo-dem.py."));
+            QStringLiteral("将 Copernicus DEM GLO-30 GeoTIFF 瓦片放入 resources/maps/terrain/copernicus_dem_glo30/，然后运行 scripts/prepare-demo-dem.py。"));
         diagnostics.readinessNextSteps.push_back(
-            QStringLiteral("Command: python scripts/prepare-demo-dem.py"));
+            QStringLiteral("命令：python scripts/prepare-demo-dem.py"));
         diagnostics.readinessNextSteps.push_back(
-            QStringLiteral("Use SRTM under resources/maps/terrain/srtm/ as a fallback when Copernicus DEM is unavailable."));
+            QStringLiteral("Copernicus DEM 不可用时，可使用 resources/maps/terrain/srtm/ 中的 SRTM 作为备用。"));
         diagnostics.readinessNextSteps.push_back(
-            QStringLiteral("SRTM fallback command: python scripts/prepare-demo-dem.py --srtm"));
+            QStringLiteral("SRTM 备用命令：python scripts/prepare-demo-dem.py --srtm"));
         break;
     case MapDataMode::LocalGridOnly:
         diagnostics.readinessSummary =
-            QStringLiteral("Local grid fallback only: no complete offline Natural Earth dataset is available.");
+            QStringLiteral("仅能回退到本地网格：没有完整的离线 Natural Earth 数据集。");
         diagnostics.readinessNextSteps.push_back(
-            QStringLiteral("Open 地图资源 to read an HTTP manifest and download the Natural Earth background."));
+            QStringLiteral("打开“地图资源”读取 HTTP 清单并下载 Natural Earth 底图。"));
         diagnostics.readinessNextSteps.push_back(
-            QStringLiteral("For developer/offline preparation, scripts/download-natural-earth-map.ps1 remains available."));
+            QStringLiteral("开发或离线准备可使用 scripts/download-natural-earth-map.ps1。"));
         diagnostics.readinessNextSteps.push_back(
-            QStringLiteral("Command: powershell -ExecutionPolicy Bypass -File scripts/download-natural-earth-map.ps1"));
+            QStringLiteral("命令：powershell -ExecutionPolicy Bypass -File scripts/download-natural-earth-map.ps1"));
         diagnostics.readinessNextSteps.push_back(
-            QStringLiteral("Then add Copernicus DEM or SRTM VRTs for real terrain elevation."));
+            QStringLiteral("然后添加 Copernicus DEM 或 SRTM VRT，以提供真实地形高程。"));
         diagnostics.readinessNextSteps.push_back(
-            QStringLiteral("DEM command: python scripts/prepare-demo-dem.py"));
+            QStringLiteral("DEM 命令：python scripts/prepare-demo-dem.py"));
         break;
     }
 
     if (diagnostics.readinessNextSteps.isEmpty())
     {
         diagnostics.readinessNextSteps.push_back(
-            QStringLiteral("No required map-data blockers remain for the selected mode."));
+            QStringLiteral("所选模式所需地图数据已就绪，没有阻塞项。"));
     }
 
     selection.foundFiles = selection.diagnostics.foundFiles;
@@ -864,7 +864,7 @@ MapDataSelection MapDataManager::selectBestAvailableMap(MapDataScanMode scanMode
 
     if (!haveSelection)
     {
-        best.diagnostics.messages.push_back(QStringLiteral("No usable map root found; using local grid only."));
+        best.diagnostics.messages.push_back(QStringLiteral("未找到可用地图根目录；仅使用本地网格。"));
     }
     return best;
 }
@@ -885,7 +885,7 @@ QString MapDataManager::modeLabel(MapDataMode mode)
     switch (mode)
     {
     case MapDataMode::FullLocalMap:
-        return QStringLiteral("Full local map");
+        return QStringLiteral("完整本地地图");
     case MapDataMode::NaturalEarthWithCopernicusDem:
         return QStringLiteral("Natural Earth + Copernicus DEM");
     case MapDataMode::NaturalEarthWithSrtm:
@@ -893,7 +893,7 @@ QString MapDataManager::modeLabel(MapDataMode mode)
     case MapDataMode::NaturalEarth:
         return QStringLiteral("Natural Earth");
     case MapDataMode::LocalGridOnly:
-        return QStringLiteral("Local grid only");
+        return QStringLiteral("仅本地网格");
     }
     return QStringLiteral("Unknown");
 }
@@ -1054,9 +1054,9 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root, MapDataScanMo
     else if (diagnostics.local3DTilesAvailable)
     {
         diagnostics.local3DTilesDiagnostics.push_back(
-            QStringLiteral("Native OSG building tileset contract validation is deferred for fast 3D Map startup."));
+            QStringLiteral("为加快三维地图启动，原生 OSG 建筑瓦片格式校验已延后。"));
         diagnostics.messages.push_back(
-            QStringLiteral("Optional native OSG building tileset detected; contract validation will run when rendering/resources are explicitly loaded."));
+            QStringLiteral("已检测到可选原生 OSG 建筑瓦片集；主动加载渲染或资源时将执行格式校验。"));
     }
     diagnostics.real3DLocalReady = isFile(real3DLocalEarthPath)
         && diagnostics.naturalEarthAvailable
@@ -1070,15 +1070,15 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root, MapDataScanMo
     {
         diagnostics.messages.push_back(
             diagnostics.localImageryMenuAvailable
-                ? QStringLiteral("Optional local high-resolution imagery VRTs detected; use the local imagery toolbar menu to load menu-ready overlays.")
-                : QStringLiteral("Optional local high-resolution imagery VRTs detected, but no matching imagery earth templates are available for the toolbar menu."));
+                ? QStringLiteral("已检测到可选本地高分辨率影像 VRT；可使用本地影像菜单加载已就绪的叠加层。")
+                : QStringLiteral("已检测到本地高分辨率影像 VRT，但缺少菜单所需的匹配地图场景模板。"));
     }
     if (diagnostics.local3DTilesAvailable)
     {
         diagnostics.messages.push_back(
             diagnostics.local3DTilesTilesetValid
-                ? QStringLiteral("Optional native OSG building tileset detected and passed local-only contract checks.")
-                : QStringLiteral("Optional native OSG building tileset detected but needs attention before renderer integration."));
+                ? QStringLiteral("已检测到原生 OSG 建筑瓦片集，并通过仅本地资源格式检查。")
+                : QStringLiteral("已检测到原生 OSG 建筑瓦片集，但接入渲染前仍需检查。"));
     }
 
     const QString selectedFullLocalEarthPath = fullLocalEarthForAvailableDem(
@@ -1090,7 +1090,7 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root, MapDataScanMo
     {
         selection.mode = MapDataMode::FullLocalMap;
         selection.description =
-            QStringLiteral("Hangzhou Xihu Sentinel-2 imagery, Copernicus DEM, OSM context, and local 3D building tiles.");
+            QStringLiteral("杭州西湖 Sentinel-2 影像、Copernicus DEM、OSM 地理要素及本地三维建筑瓦片。");
         setEarthFile(selection, real3DLocalEarthPath);
         diagnostics.selectedDemLayerAvailable = true;
         diagnostics.selectedOsmLayersAvailable = true;
@@ -1098,7 +1098,7 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root, MapDataScanMo
         diagnostics.selectedFullLocalEarthPath = real3DLocalEarthPath;
         diagnostics.selectedOsmLayerCount = 2;
         diagnostics.messages.push_back(
-            QStringLiteral("Selected Hangzhou Xihu real-3D local map with Sentinel-2 imagery and local building tiles."));
+            QStringLiteral("已选择杭州西湖实景三维本地地图，包含 Sentinel-2 影像和本地建筑瓦片。"));
         finalizeSelection(selection);
         return selection;
     }
@@ -1109,7 +1109,7 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root, MapDataScanMo
         && diagnostics.osmVectorAvailable)
     {
         selection.mode = MapDataMode::FullLocalMap;
-        selection.description = QStringLiteral("Natural Earth background, local DEM, and local OSM vector GeoPackages.");
+        selection.description = QStringLiteral("Natural Earth 底图、本地 DEM 及本地 OSM 矢量 GeoPackage。");
         setEarthFile(selection, selectedFullLocalEarthPath);
         diagnostics.selectedDemLayerAvailable = true;
         diagnostics.selectedOsmLayersAvailable = true;
@@ -1117,10 +1117,10 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root, MapDataScanMo
         diagnostics.selectedFullLocalEarthPath = selectedFullLocalEarthPath;
         diagnostics.selectedOsmLayerCount = 2;
         diagnostics.messages.push_back(
-            QStringLiteral("Selected full local map with safe offline OSM water/road layers and %1 elevation.")
+            QStringLiteral("已选择完整本地地图，包含安全的离线 OSM 水系和道路图层及 %1 高程。")
                 .arg(diagnostics.selectedElevationSource));
         diagnostics.messages.push_back(
-            QStringLiteral("OSM buildings and place labels are available as generated GeoPackages but are not rendered by default to avoid CJK glyph boxes and zoom-time stalls."));
+            QStringLiteral("OSM 建筑和地名标签已生成为 GeoPackage；默认不渲染，以避免中文字形缺失和缩放卡顿。"));
         finalizeSelection(selection);
         return selection;
     }
@@ -1130,18 +1130,18 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root, MapDataScanMo
         && diagnostics.copernicusDemAvailable)
     {
         selection.mode = MapDataMode::NaturalEarthWithCopernicusDem;
-        selection.description = QStringLiteral("Natural Earth background with local Copernicus DEM elevation.");
+        selection.description = QStringLiteral("Natural Earth 底图及本地 Copernicus DEM 高程。");
         setEarthFile(selection, copernicusEarthPath);
         diagnostics.selectedDemLayerAvailable = true;
         diagnostics.selectedElevationSource = QStringLiteral("Copernicus DEM GLO-30");
-        diagnostics.messages.push_back(QStringLiteral("Selected Copernicus DEM GLO-30 local elevation."));
+        diagnostics.messages.push_back(QStringLiteral("已选择 Copernicus DEM GLO-30 本地高程。"));
         if (isFile(fullLocalEarthPath) && hasCompleteOsmSet(diagnostics))
         {
-            diagnostics.messages.push_back(QStringLiteral("Full local OSM data is available but automatic selection prioritizes DEM templates."));
+            diagnostics.messages.push_back(QStringLiteral("完整本地 OSM 数据可用，但自动选择优先使用 DEM 模板。"));
         }
         else if (isFile(fullLocalEarthPath) && !hasCompleteOsmSet(diagnostics))
         {
-            diagnostics.warnings.push_back(QStringLiteral("Full local map template exists, but one or more OSM GeoPackages are missing."));
+            diagnostics.warnings.push_back(QStringLiteral("完整本地地图模板存在，但缺少一个或多个 OSM GeoPackage。"));
         }
         finalizeSelection(selection);
         return selection;
@@ -1152,11 +1152,11 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root, MapDataScanMo
         && diagnostics.srtmDemAvailable)
     {
         selection.mode = MapDataMode::NaturalEarthWithSrtm;
-        selection.description = QStringLiteral("Natural Earth background with local SRTM elevation.");
+        selection.description = QStringLiteral("Natural Earth 底图及本地 SRTM 高程。");
         setEarthFile(selection, srtmEarthPath);
         diagnostics.selectedDemLayerAvailable = true;
         diagnostics.selectedElevationSource = QStringLiteral("SRTM");
-        diagnostics.messages.push_back(QStringLiteral("Selected SRTM local elevation fallback."));
+        diagnostics.messages.push_back(QStringLiteral("已选择 SRTM 本地高程作为备用。"));
         finalizeSelection(selection);
         return selection;
     }
@@ -1164,17 +1164,17 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root, MapDataScanMo
     if (isFile(defaultEarthPath) && diagnostics.naturalEarthAvailable)
     {
         selection.mode = MapDataMode::NaturalEarth;
-        selection.description = QStringLiteral("Natural Earth offline visual background without terrain elevation.");
+        selection.description = QStringLiteral("不含地形高程的 Natural Earth 离线视觉底图。");
         setEarthFile(selection, defaultEarthPath);
-        diagnostics.messages.push_back(QStringLiteral("Selected Natural Earth offline background."));
-        diagnostics.warnings.push_back(QStringLiteral("Natural Earth is imagery only; no real DEM terrain is available."));
+        diagnostics.messages.push_back(QStringLiteral("已选择 Natural Earth 离线底图。"));
+        diagnostics.warnings.push_back(QStringLiteral("Natural Earth 仅提供影像；没有可用的真实 DEM 地形。"));
         finalizeSelection(selection);
         return selection;
     }
 
     selection.mode = MapDataMode::LocalGridOnly;
-    selection.description = QStringLiteral("No complete local map set found; use the built-in local grid fallback.");
-    diagnostics.messages.push_back(QStringLiteral("No complete offline map set found for this root."));
+    selection.description = QStringLiteral("未找到完整本地地图数据；使用内置本地网格回退。");
+    diagnostics.messages.push_back(QStringLiteral("此根目录下未找到完整离线地图数据。"));
     finalizeSelection(selection);
     return selection;
 }

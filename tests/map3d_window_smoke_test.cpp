@@ -20,6 +20,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QDialog>
+#include <QDialogButtonBox>
 #include <QPushButton>
 #include <QTableWidget>
 #include <QElapsedTimer>
@@ -464,8 +465,8 @@ int main(int argc, char** argv)
     filesDialog->hide();
 
     QLabel* label = statusLabel(window);
-    require(label->text().contains(QStringLiteral("Points: 0")), "initial status has zero points");
-    require(label->text().contains(QStringLiteral("Source none")), "initial status reports no track source");
+    require(label->text().contains(QStringLiteral("采样点：0")), "initial status has zero points");
+    require(label->text().contains(QStringLiteral("来源 无")), "initial status reports no track source");
     QAction* reloadBestMapAction = actionByName(window, QStringLiteral("map3DReloadBestMapAction"));
     QAction* flyToAircraftAction = actionByName(window, QStringLiteral("map3DFlyToAircraftAction"));
     QAction* flyToTrackAction = actionByName(window, QStringLiteral("map3DFlyToTrackAction"));
@@ -629,7 +630,7 @@ int main(int argc, char** argv)
     require(heatMetricCombo != nullptr && heatMetricCombo->count() == 4,
             "heat metric combo exposes peak, humidity, temperature and pressure");
     require(heatPaletteCombo != nullptr && heatPaletteCombo->count() == 3
-                && heatPaletteCombo->itemText(2) == QStringLiteral("SpectralReverse"),
+                && heatPaletteCombo->itemText(2) == QStringLiteral("反向光谱"),
             "heat palette combo exposes the three shared palette names");
     requireSingleLevelComboPopup(heatMetricCombo,
                                  "heat metric combo uses the shared single-level popup without overlapping rows");
@@ -652,7 +653,7 @@ int main(int argc, char** argv)
     require(maxVisibleSamplesSpin->maximum() == 1000000, "max visible samples upper bound is 1000000");
 
     heatMetricCombo->setCurrentText(QStringLiteral("温度"));
-    heatPaletteCombo->setCurrentText(QStringLiteral("BlueRedFast"));
+    heatPaletteCombo->setCurrentText(QStringLiteral("蓝红渐变"));
     trackLineVisibleAction->setChecked(false);
     trackPointsVisibleAction->setChecked(false);
     trackLineWidthSpin->setValue(9);
@@ -699,11 +700,11 @@ int main(int argc, char** argv)
     }
     window.appendSamples(manySamples);
     QCoreApplication::processEvents();
-    require(label->text().contains(QStringLiteral("Points: 1000/1100")),
+    require(label->text().contains(QStringLiteral("采样点：1000/1100")),
             "max visible samples caps the visible status count");
-    require(label->text().contains(QStringLiteral("Q Fixed 1000")),
+    require(label->text().contains(QStringLiteral("质量 固定解 1000")),
             "status includes visible fixed quality count");
-    require(label->text().contains(QStringLiteral("Source Live")), "live append batch reports live source");
+    require(label->text().contains(QStringLiteral("来源 实时")), "live append batch reports live source");
     window.clearTrack();
     QCoreApplication::processEvents();
 
@@ -718,19 +719,19 @@ int main(int argc, char** argv)
     sample.fixQuality = VaporView::Geo::FixQuality::Fixed;
     window.appendSample(sample);
     QCoreApplication::processEvents();
-    require(label->text().contains(QStringLiteral("Points: 1")), "appendSample updates status");
-    require(label->text().contains(QStringLiteral("Q Fixed 1")),
+    require(label->text().contains(QStringLiteral("采样点：1")), "appendSample updates status");
+    require(label->text().contains(QStringLiteral("质量 固定解 1")),
             "appendSample status includes quality summary");
-    require(label->text().contains(QStringLiteral("Source Live")), "appendSample reports live source");
-    require(label->text().contains(QStringLiteral("rec 1000000")), "status includes latest record timestamp");
-    require(label->text().contains(QStringLiteral("dev 900000")), "status includes latest device timestamp");
-    require(label->text().contains(QStringLiteral("Sats 12")), "status includes latest sample satellite count");
+    require(label->text().contains(QStringLiteral("来源 实时")), "appendSample reports live source");
+    require(label->text().contains(QStringLiteral("记录时间 1000000")), "status includes latest record timestamp");
+    require(label->text().contains(QStringLiteral("设备时间 900000")), "status includes latest device timestamp");
+    require(label->text().contains(QStringLiteral("卫星数 12")), "status includes latest sample satellite count");
     require(label->text().contains(QStringLiteral("HDOP 0.90")), "status includes latest sample HDOP");
-    require(label->text().contains(QStringLiteral("Fix Fixed")),
+    require(label->text().contains(QStringLiteral("定位 固定解")),
             "status reports readable GNSS fix quality");
-    require(label->text().contains(QStringLiteral("Height ref assumed WGS84")),
+    require(label->text().contains(QStringLiteral("高度基准假定为 WGS84")),
             "status reports the explicit fallback for an unspecified height reference");
-    require(label->text().contains(QStringLiteral("Att none")), "status reports absent attitude source");
+    require(label->text().contains(QStringLiteral("姿态 无")), "status reports absent attitude source");
 
     window.clearTrack();
     QCoreApplication::processEvents();
@@ -739,7 +740,7 @@ int main(int argc, char** argv)
     eulerSample.yawDeg = 91.0;
     window.appendSample(eulerSample);
     QCoreApplication::processEvents();
-    require(label->text().contains(QStringLiteral("Att Euler")), "status reports Euler attitude source");
+    require(label->text().contains(QStringLiteral("姿态 欧拉角")), "status reports Euler attitude source");
 
     window.clearTrack();
     QCoreApplication::processEvents();
@@ -751,7 +752,7 @@ int main(int argc, char** argv)
     quaternionSample.quatZ = 0.0;
     window.appendSample(quaternionSample);
     QCoreApplication::processEvents();
-    require(label->text().contains(QStringLiteral("Att Quaternion")), "status reports quaternion attitude source");
+    require(label->text().contains(QStringLiteral("姿态 四元数")), "status reports quaternion attitude source");
 
     VaporView::Geo::NavSample throttledSample = sample;
     throttledSample.recordTimestampUs = 2000000;
@@ -759,7 +760,7 @@ int main(int argc, char** argv)
     throttledSample.latDeg = 39.91;
     window.appendSample(throttledSample);
     QCoreApplication::processEvents();
-    require(!label->text().contains(QStringLiteral("rec 2000000")),
+    require(!label->text().contains(QStringLiteral("记录时间 2000000")),
             "live status updates are throttled below 5 Hz");
     QThread::msleep(220);
     QCoreApplication::processEvents();
@@ -768,19 +769,19 @@ int main(int argc, char** argv)
     throttledSample.latDeg = 39.92;
     window.appendSample(throttledSample);
     QCoreApplication::processEvents();
-    require(label->text().contains(QStringLiteral("rec 3000000")),
+    require(label->text().contains(QStringLiteral("记录时间 3000000")),
             "live status updates refresh after the 5 Hz throttle interval");
 
     window.clearTrack();
     QCoreApplication::processEvents();
 
-    require(label->text().contains(QStringLiteral("Points: 0")), "clearTrack resets status");
-    require(label->text().contains(QStringLiteral("Source none")), "clearTrack resets track source");
+    require(label->text().contains(QStringLiteral("采样点：0")), "clearTrack resets status");
+    require(label->text().contains(QStringLiteral("来源 无")), "clearTrack resets track source");
 
     QTemporaryDir sessionDir;
     writeSessionTrack(sessionDir);
     window.loadSessionDirectory(sessionDir.path());
-    require(waitForText(label, QStringLiteral("Source Session"), 3000),
+    require(waitForText(label, QStringLiteral("来源 会话"), 3000),
             "asynchronous session load completes without blocking the window");
     {
         QSettings settings = map3DTestSettings();
@@ -788,129 +789,132 @@ int main(int argc, char** argv)
                     == QFileInfo(sessionDir.path()).absoluteFilePath(),
                 "programmatic session load persists last session directory");
     }
-    require(label->text().contains(QStringLiteral("Points: 2")), "session load appends track samples");
-    require(label->text().contains(QStringLiteral("Q Fixed 2")),
+    require(label->text().contains(QStringLiteral("采样点：2")), "session load appends track samples");
+    require(label->text().contains(QStringLiteral("质量 固定解 2")),
             "session load recognizes the recorded gnss_fix quality column");
-    require(label->text().contains(QStringLiteral("Source Session")), "session load reports session source");
-    require(label->text().contains(QStringLiteral("Camera Track auto")),
+    require(label->text().contains(QStringLiteral("来源 会话")), "session load reports session source");
+    require(label->text().contains(QStringLiteral("视角 自动轨迹视角")),
             "session load automatically focuses the complete track");
-    require(label->text().contains(QStringLiteral("Points: 2")), "session keeps the complete track visible");
+    require(label->text().contains(QStringLiteral("采样点：2")), "session keeps the complete track visible");
     diagnosticsAction->trigger();
     QCoreApplication::processEvents();
     auto* diagnosticsText = window.findChild<QPlainTextEdit*>();
     require(diagnosticsText != nullptr, "diagnostics text view exists");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Track data:")),
+    auto* buttons = diagnosticsText->parentWidget()->findChild<QDialogButtonBox*>();
+    require(buttons && buttons->button(QDialogButtonBox::Close)->text() == QStringLiteral("关闭"),
+            "diagnostics close button is localized");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("轨迹数据：")),
             "diagnostics include track data section");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Earth load:")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("地图场景加载：")),
             "diagnostics include earth runtime load section");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Local native OSG building load:")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("本地原生 OSG 建筑加载：")),
             "diagnostics include local native OSG building load section");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Cleared previous preview:")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("已清除原有预览：")),
             "diagnostics report whether a local 3D Tiles load removed an old preview");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Aircraft model:")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("飞行器模型：")),
             "diagnostics include aircraft model section");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Requested path: <none>")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("请求路径： <无>")),
             "diagnostics report no custom aircraft model in headless smoke test");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Built-in marker: yes")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("内置标记： 是")),
             "diagnostics report built-in aircraft marker fallback");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Mode:")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("模式：")),
             "diagnostics include selected map mode");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Earth file:")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("地图场景文件：")),
             "diagnostics include selected earth file");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Natural Earth texture:")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Natural Earth 纹理：")),
             "diagnostics include Natural Earth texture path");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Local grid fallback:")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("本地网格回退：")),
             "diagnostics include local grid fallback availability");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Copernicus DEM VRT:")),
             "diagnostics include Copernicus DEM VRT path");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("SRTM VRT:")),
             "diagnostics include SRTM VRT path");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Base map priority: Real 3D local > Copernicus DEM > SRTM > Natural Earth > Local grid")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("底图优先级： 本地实景三维 > Copernicus DEM > SRTM > Natural Earth > 本地网格")),
             "diagnostics include the base map selection priority");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Selected base mode:")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("已选底图模式：")),
             "diagnostics include selected base mode");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("OSM layer contract:")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("OSM 图层约定：")),
             "diagnostics include expected OSM layer contract section");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("layer roads")),
             "diagnostics include expected OSM roads GeoPackage layer name");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("generated data only")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("仅生成数据")),
             "diagnostics include safe-default OSM generated-data contract");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("OSG_LIBRARY_PATH:")),
             "diagnostics include OSG plugin environment");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("osgEarth environment:")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("osgEarth 环境变量：")),
             "diagnostics include osgEarth environment variable list");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("GDAL_DATA:")),
             "diagnostics include GDAL data environment");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("PROJ_DATA:")),
             "diagnostics include PROJ data environment");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Attempted:")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("已尝试加载：")),
             "diagnostics include earth load attempt state");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Render performance:")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("渲染性能：")),
             "diagnostics include render performance section");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Presented frame interval P95"))
-                && diagnosticsText->toPlainText().contains(QStringLiteral("Satellite source requests/failures")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("显示帧间隔 P95"))
+                && diagnosticsText->toPlainText().contains(QStringLiteral("卫星影像请求/失败次数")),
             "diagnostics distinguish presentation timing from satellite source failures");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Local imagery menu:")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("本地影像菜单：")),
             "diagnostics include local imagery menu availability");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Optional local imagery VRTs:")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("可选本地影像 VRT：")),
             "diagnostics include optional local imagery VRT count");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Optional local imagery menu-ready overlays:")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("可从菜单加载的本地影像：")),
             "diagnostics include menu-ready optional local imagery count");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Native OSG building tiles contract:")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("原生 OSG 建筑瓦片格式约定：")),
             "diagnostics include native OSG building tile contract status");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Native OSG building tileset:")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("原生 OSG 建筑瓦片集：")),
             "diagnostics include native OSG building tileset path");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Trajectory quality:")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("轨迹质量：")),
             "diagnostics include trajectory quality section");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Fixed: 2")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("固定解： 2")),
             "diagnostics include fixed quality count");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Visible line samples: 2")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("可见轨迹线采样点： 2")),
             "diagnostics include visible line sample count");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Samples:")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("采样点：")),
             "diagnostics include visible and total sample counts");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Source: Session")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("来源： 会话")),
             "diagnostics include latest track source");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Replay state: paused")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("回放状态： 已暂停")),
             "diagnostics include explicit replay state");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Replay position: 2/2")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("回放位置： 2/2")),
             "diagnostics include replay position");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Replay speed:")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("回放速度：")),
             "diagnostics include replay speed");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Replay time: t 1.000/1.000 s")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("回放时间： t 1.000/1.000 s")),
             "diagnostics include replay elapsed time");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Attitude source: none")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("姿态来源： 无")),
             "diagnostics include attitude source");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Follow aircraft: off")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("跟随飞行器： 关闭")),
             "diagnostics include follow camera state");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Height safety note: vertical reference applied for display")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("高度使用说明： 高度基准仅用于显示")),
             "diagnostics include height reference safety note");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Fix quality: Fixed")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("定位质量： 固定解")),
             "diagnostics include readable GNSS fix quality");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Camera: Track auto")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("视角： 自动轨迹视角")),
             "diagnostics include latest automatic camera action");
 
     flyToAircraftAction->trigger();
     QCoreApplication::processEvents();
-    require(label->text().contains(QStringLiteral("Camera Aircraft")),
+    require(label->text().contains(QStringLiteral("视角 飞行器")),
             "fly to aircraft updates persistent camera status");
-    require(label->text().contains(QStringLiteral("Lat 39.9000100")),
+    require(label->text().contains(QStringLiteral("纬度 39.9000100")),
             "camera action preserves latest sample status details");
 
     flyToTrackAction->trigger();
     QCoreApplication::processEvents();
-    require(label->text().contains(QStringLiteral("Camera Track")),
+    require(label->text().contains(QStringLiteral("视角 轨迹")),
             "fly to track updates persistent camera status");
 
     resetViewAction->trigger();
     QCoreApplication::processEvents();
-    require(label->text().contains(QStringLiteral("Camera Reset")),
+    require(label->text().contains(QStringLiteral("视角 重置")),
             "reset view updates persistent camera status");
 
-    window.noteLiveSampleDrop(QStringLiteral("Live"), QStringLiteral("missing LLH"), 123456);
+    window.noteLiveSampleDrop(QStringLiteral("实时"), QStringLiteral("missing LLH"), 123456);
     QCoreApplication::processEvents();
-    require(label->text().contains(QStringLiteral("Last drop Live: missing LLH")),
+    require(label->text().contains(QStringLiteral("最近丢弃 实时：missing LLH")),
             "status includes latest live sample drop reason");
-    require(diagnosticsText->toPlainText().contains(QStringLiteral("Last drop reason: missing LLH")),
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("最近丢弃原因： missing LLH")),
             "diagnostics include latest live sample drop reason");
 
     QTemporaryDir supersededSessionDir;
@@ -921,7 +925,7 @@ int main(int argc, char** argv)
     window.loadSessionDirectory(latestSessionDir.path());
     require(waitForSessionDirectory(latestSessionDir.path(), 3000),
             "the latest asynchronous session request wins over an older completed request");
-    require(waitForText(label, QStringLiteral("Source Session"), 1000),
+    require(waitForText(label, QStringLiteral("来源 会话"), 1000),
             "the newest asynchronous session request applies its track on the GUI thread");
 
     auto* closingWindow = new VaporView::Map3D::Map3DWindow;

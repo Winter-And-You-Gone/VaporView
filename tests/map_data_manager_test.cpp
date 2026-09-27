@@ -118,9 +118,9 @@ int main(int argc, char** argv)
     selection = select(root);
     require(selection.mode == VaporView::Map3D::MapDataMode::LocalGridOnly, "preview texture alone should not select NaturalEarth");
     require(!selection.diagnostics.naturalEarthAvailable, "preview texture alone should not mark Natural Earth available");
-    require(selection.diagnostics.readinessSummary.contains(QStringLiteral("Local grid fallback")),
+    require(selection.diagnostics.readinessSummary.contains(QStringLiteral("仅能回退到本地网格：没有完整的离线 Natural Earth 数据集。")),
             "local grid selection should summarize fallback readiness");
-    require(selection.diagnostics.baseMapPriority.contains(QStringLiteral("Real 3D local > Copernicus DEM > SRTM > Natural Earth > Local grid")),
+    require(selection.diagnostics.baseMapPriority.contains(QStringLiteral("本地实景三维 > Copernicus DEM > SRTM > Natural Earth > 本地网格")),
             "diagnostics should state the base map selection priority");
     require(selection.diagnostics.selectedBaseMode == VaporView::Map3D::MapDataMode::LocalGridOnly,
             "local grid selection should report LocalGridOnly as the selected base mode");
@@ -159,7 +159,7 @@ int main(int argc, char** argv)
             "NaturalEarth selection should report NaturalEarth as the selected base mode");
     require(selection.diagnostics.selectedBaseEarthFilePath.endsWith(QStringLiteral("vaporview_default.earth")),
             "NaturalEarth selection should report the default earth file as the selected base earth");
-    require(selection.diagnostics.readinessSummary.contains(QStringLiteral("visual background only")),
+    require(selection.diagnostics.readinessSummary.contains(QStringLiteral("仅离线视觉底图")),
             "Natural Earth selection should explain visual-only readiness");
     require(selection.diagnostics.readinessNextSteps.join(QLatin1Char('\n')).contains(QStringLiteral("Copernicus DEM")),
             "Natural Earth readiness should suggest preparing Copernicus DEM");
@@ -167,16 +167,16 @@ int main(int argc, char** argv)
             "Natural Earth readiness should include the Copernicus DEM preparation command");
     require(selection.diagnostics.readinessNextSteps.join(QLatin1Char('\n')).contains(QStringLiteral("python scripts/prepare-demo-dem.py --srtm")),
             "Natural Earth readiness should include the SRTM fallback preparation command");
-    require(selection.diagnostics.readinessChecks.join(QLatin1Char('\n')).contains(QStringLiteral("Terrain DEM: missing")),
+    require(selection.diagnostics.readinessChecks.join(QLatin1Char('\n')).contains(QStringLiteral("DEM 地形：缺失")),
             "Natural Earth readiness checks should report missing terrain DEM");
     require(selection.diagnostics.osmLayerContracts.size() == 4, "diagnostics should describe the four expected OSM layer contracts");
     require(selection.diagnostics.osmLayerContracts.join(QLatin1Char('\n')).contains(QStringLiteral("roads.gpkg -> layer roads")),
             "OSM diagnostics should describe the roads GeoPackage layer name");
     require(selection.diagnostics.osmLayerContracts.join(QLatin1Char('\n')).contains(QStringLiteral("FeatureImage OSM roads")),
             "OSM diagnostics should describe the roads earth render layer");
-    require(selection.diagnostics.osmLayerContracts.join(QLatin1Char('\n')).contains(QStringLiteral("buildings -> generated data only")),
+    require(selection.diagnostics.osmLayerContracts.join(QLatin1Char('\n')).contains(QStringLiteral("buildings -> 仅生成数据")),
             "OSM diagnostics should describe buildings as generated data only in the safe default");
-    require(selection.diagnostics.osmLayerContracts.join(QLatin1Char('\n')).contains(QStringLiteral("places -> generated data only")),
+    require(selection.diagnostics.osmLayerContracts.join(QLatin1Char('\n')).contains(QStringLiteral("places -> 仅生成数据")),
             "OSM diagnostics should describe places as generated data only in the safe default");
     require(!selection.diagnostics.selectedDemLayerAvailable, "NaturalEarth selection should not select a DEM layer");
     require(!selection.diagnostics.osmVectorAvailable, "NaturalEarth selection should not mark OSM complete");
@@ -211,7 +211,7 @@ int main(int argc, char** argv)
             "VRT-only imagery should not count as a menu-ready entry");
     require(!selection.diagnostics.localImageryOptions[0].available,
             "VRT-only imagery option should not be directly loadable from the menu");
-    require(selection.diagnostics.messages.join(QLatin1Char('\n')).contains(QStringLiteral("no matching imagery earth templates")),
+    require(selection.diagnostics.messages.join(QLatin1Char('\n')).contains(QStringLiteral("缺少菜单所需的匹配地图场景模板")),
             "VRT-only imagery diagnostics should explain why the menu is unavailable");
 
     touch(root, QStringLiteral("resources/maps/vaporview_with_sentinel2_imagery.earth"));
@@ -236,7 +236,7 @@ int main(int argc, char** argv)
     require(selection.diagnostics.local3DTilesAvailable, "optional local 3D Tiles tileset should be detected");
     require(!selection.diagnostics.local3DTilesTilesetValid,
             "invalid placeholder 3D Tiles JSON should not pass local-only contract checks");
-    require(selection.diagnostics.local3DTilesDiagnostics.join(QLatin1Char('\n')).contains(QStringLiteral("not valid JSON")),
+    require(selection.diagnostics.local3DTilesDiagnostics.join(QLatin1Char('\n')).contains(QStringLiteral("不是有效 JSON")),
             "invalid 3D Tiles JSON should be diagnosed");
 
     VaporView::Map3D::MapDataManager lightweightManager({root.absolutePath()});
@@ -245,16 +245,16 @@ int main(int argc, char** argv)
     require(lightweightSelection.diagnostics.local3DTilesAvailable,
             "lightweight map discovery should still detect an optional 3D Tiles tileset");
     require(lightweightSelection.diagnostics.local3DTilesDiagnostics.join(QLatin1Char('\n'))
-                .contains(QStringLiteral("deferred for fast 3D Map startup")),
+                .contains(QStringLiteral("校验已延后")),
             "lightweight map discovery should defer native 3D Tiles contract validation");
     require(!lightweightSelection.diagnostics.local3DTilesDiagnostics.join(QLatin1Char('\n'))
-                 .contains(QStringLiteral("not valid JSON")),
+                 .contains(QStringLiteral("不是有效 JSON")),
             "lightweight map discovery should not parse the optional 3D Tiles JSON");
     require(selection.diagnostics.foundFiles.contains(selection.diagnostics.sentinel2ImageryVrtPath),
             "optional Sentinel-2 VRT should be listed as found");
     require(selection.diagnostics.foundFiles.contains(selection.diagnostics.local3DTilesTilesetPath),
             "optional 3D Tiles tileset should be listed as found");
-    require(selection.diagnostics.messages.join(QLatin1Char('\n')).contains(QStringLiteral("menu-ready overlays")),
+    require(selection.diagnostics.messages.join(QLatin1Char('\n')).contains(QStringLiteral("已就绪的叠加层")),
             "optional imagery diagnostics should mention menu-ready toolbar overlays");
 
     writeFile(root, QStringLiteral("resources/maps/tiles3d/local/content/building.b3dm"),
@@ -369,7 +369,7 @@ int main(int argc, char** argv)
     require(!selection.diagnostics.local3DTilesTilesetValid,
             "tileset beyond the traversal depth budget must be rejected");
     require(selection.diagnostics.local3DTilesDiagnostics.join(QLatin1Char('\n'))
-                .contains(QStringLiteral("traversal safety limit")),
+                .contains(QStringLiteral("遍历安全上限")),
             "tileset traversal budget failure should be diagnosed explicitly");
 
     writeFile(root,
@@ -430,7 +430,7 @@ int main(int argc, char** argv)
             "3D Tiles diagnostics should list missing local payload files");
     require(selection.diagnostics.local3DTilesMissingResources.join(QLatin1Char('\n')).contains(QStringLiteral("missing.b3dm")),
             "3D Tiles diagnostics should identify the missing payload filename");
-    require(selection.diagnostics.local3DTilesDiagnostics.join(QLatin1Char('\n')).contains(QStringLiteral("referenced resource is missing")),
+    require(selection.diagnostics.local3DTilesDiagnostics.join(QLatin1Char('\n')).contains(QStringLiteral("引用的资源缺失")),
             "3D Tiles diagnostics should explain missing payload resources");
 
     writeFile(root,
@@ -446,7 +446,7 @@ int main(int argc, char** argv)
     selection = select(root);
     require(!selection.diagnostics.local3DTilesTilesetValid,
             "3D Tiles tileset without content URI should not pass local-only checks");
-    require(selection.diagnostics.local3DTilesDiagnostics.join(QLatin1Char('\n')).contains(QStringLiteral("no content.uri entries")),
+    require(selection.diagnostics.local3DTilesDiagnostics.join(QLatin1Char('\n')).contains(QStringLiteral("没有 content.uri 条目")),
             "3D Tiles diagnostics should explain missing content URIs");
 
     touch(root, QStringLiteral("resources/maps/vaporview_with_srtm.earth"));
@@ -458,9 +458,9 @@ int main(int argc, char** argv)
     require(selection.diagnostics.selectedElevationSource == QStringLiteral("SRTM"), "SRTM selection should report SRTM elevation source");
     require(selection.diagnostics.selectedBaseMode == VaporView::Map3D::MapDataMode::NaturalEarthWithSrtm,
             "SRTM selection should report SRTM as the selected base mode");
-    require(selection.diagnostics.readinessSummary.contains(QStringLiteral("terrain-backed offline map")),
+    require(selection.diagnostics.readinessSummary.contains(QStringLiteral("带地形的离线地图")),
             "SRTM selection should summarize terrain-backed readiness");
-    require(selection.diagnostics.readinessNextSteps.join(QLatin1Char('\n')).contains(QStringLiteral("OSM GeoPackages")),
+    require(selection.diagnostics.readinessNextSteps.join(QLatin1Char('\n')).contains(QStringLiteral("OSM GeoPackage")),
             "terrain-backed readiness should suggest preparing OSM GeoPackages");
     require(selection.diagnostics.readinessNextSteps.join(QLatin1Char('\n')).contains(QStringLiteral("python scripts/prepare-osm-local-data.py resources/maps/osm/local_extract.osm.pbf --overwrite")),
             "terrain-backed readiness should include the OSM conversion command");
@@ -484,7 +484,7 @@ int main(int argc, char** argv)
     require(selection.diagnostics.osmLayerCount == 0, "incomplete OSM set should report zero OSM layers");
     require(selection.diagnostics.missingOsmFiles.size() == 4, "incomplete OSM set should report four missing OSM files");
     require(!selection.diagnostics.fullLocalBlockers.isEmpty(), "incomplete OSM set should explain full-local blockers");
-    require(selection.diagnostics.fullLocalBlockers.join(QLatin1Char('\n')).contains(QStringLiteral("Missing OSM GeoPackage")),
+    require(selection.diagnostics.fullLocalBlockers.join(QLatin1Char('\n')).contains(QStringLiteral("缺少 OSM GeoPackage")),
             "full-local blockers should identify missing OSM GeoPackages");
     require(!selection.diagnostics.selectedOsmLayersAvailable, "incomplete OSM set should not select OSM layers");
 
@@ -494,9 +494,9 @@ int main(int argc, char** argv)
     touch(root, QStringLiteral("resources/maps/osm/places.gpkg"));
     selection = select(root);
     require(selection.mode == VaporView::Map3D::MapDataMode::FullLocalMap, "complete local data should select full local map");
-    require(selection.diagnostics.readinessSummary.contains(QStringLiteral("Ready for full offline local map")),
+    require(selection.diagnostics.readinessSummary.contains(QStringLiteral("完整离线地图已就绪")),
             "full local map should summarize complete local readiness");
-    require(selection.diagnostics.readinessChecks.join(QLatin1Char('\n')).contains(QStringLiteral("OSM vector files: ready (4/4); safe rendered layers: water, roads")),
+    require(selection.diagnostics.readinessChecks.join(QLatin1Char('\n')).contains(QStringLiteral("OSM 矢量文件：就绪（4/4）；安全渲染图层：水系、道路")),
             "full local readiness checks should report selected OSM readiness");
     require(selection.diagnostics.foundFiles.contains(selection.earthFile), "selected earth file should be listed as found");
     require(selection.diagnostics.foundFiles.contains(selection.diagnostics.naturalEarthVrtPath), "Natural Earth VRT should be listed as found");
@@ -505,7 +505,7 @@ int main(int argc, char** argv)
     require(selection.diagnostics.selectedOsmLayerCount == 2, "complete local data should report two safe rendered OSM layers");
     require(selection.diagnostics.osmLayerContracts.join(QLatin1Char('\n')).contains(QStringLiteral("buildings.gpkg -> layer buildings")),
             "complete OSM diagnostics should retain the building layer contract");
-    require(selection.diagnostics.osmLayerContracts.join(QLatin1Char('\n')).contains(QStringLiteral("not rendered by the safe default")),
+    require(selection.diagnostics.osmLayerContracts.join(QLatin1Char('\n')).contains(QStringLiteral("默认安全本地地图模板不渲染")),
             "complete OSM diagnostics should explain heavy OSM layers are not rendered by default");
     require(selection.diagnostics.missingOsmFiles.isEmpty(), "complete local data should not report missing OSM files");
     require(selection.diagnostics.fullLocalBlockers.isEmpty(), "complete local data should not report full-local blockers");
@@ -539,7 +539,7 @@ int main(int argc, char** argv)
             "real-3D local map should become ready when imagery, DEM, OSM, earth template, and tileset exist");
     require(selection.earthFile.endsWith(QStringLiteral("vaporview_real3d_local.earth")),
             "real-3D local map should outrank the safe full-local earth template");
-    require(selection.diagnostics.readinessSummary.contains(QStringLiteral("Hangzhou Xihu real 3D")),
+    require(selection.diagnostics.readinessSummary.contains(QStringLiteral("杭州西湖实景三维")),
             "real-3D local readiness summary should identify the selected map");
 
     QTemporaryDir srtmFullLocalDir;

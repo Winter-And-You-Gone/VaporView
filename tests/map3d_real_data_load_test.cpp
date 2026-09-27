@@ -121,10 +121,10 @@ int main(int argc, char** argv)
     require(earthDiagnostics.foundMapNode,
             QStringLiteral("earth file contains an osgEarth MapNode"));
     require(earthDiagnostics.layerSummaries.join(QStringLiteral(" | "))
-                .contains(QStringLiteral("visible-first screen-space LOD")),
+                .contains(QStringLiteral("可见区域优先的屏幕空间 LOD")),
             QStringLiteral("terrain prioritizes imagery for the visible camera region"));
     require(earthDiagnostics.layerSummaries.join(QStringLiteral(" | "))
-                .contains(QStringLiteral("low-angle adaptive clipping and LOD")),
+                .contains(QStringLiteral("低视角自适应裁剪和细节级别")),
             QStringLiteral("earth camera keeps near-horizontal views responsive with adaptive distance/detail limits"));
     // No frame is rendered with the test key, so this checks configuration/reuse without network I/O.
     view.hide();
@@ -132,7 +132,7 @@ int main(int argc, char** argv)
             QStringLiteral("satellite layer opens with an explicit tile profile"));
     const auto satelliteDiagnostics = view.earthLoadDiagnostics();
     require(satelliteDiagnostics.layerSummaries.join(QStringLiteral(" | "))
-                .contains(QStringLiteral("Tianditu source levels: 1-")),
+                .contains(QStringLiteral("天地图源级别：1–")),
             QStringLiteral("satellite requests exclude the level-zero placeholder"));
     require(view.applyTiandituSatelliteImagery(QStringLiteral("test-key-not-sent"))
                 && view.earthLoadDiagnostics().layerSummaries == satelliteDiagnostics.layerSummaries,
@@ -275,7 +275,7 @@ int main(int argc, char** argv)
     heightStats = view.performanceStats();
     require(heightStats.qualityStats.lineSamples == 1,
             QStringLiteral("valid LLH remains renderable when recorded ECEF is corrupt"));
-    require(heightStats.heightReferenceStatus.contains(QStringLiteral("WGS84 ellipsoid")),
+    require(heightStats.heightReferenceStatus.contains(QStringLiteral("WGS84 椭球高")),
             QStringLiteral("corrupt recorded ECEF falls back to WGS84 LLH conversion"));
     require(view.flyToTrack(),
             QStringLiteral("track focus uses LLH instead of corrupt recorded ECEF"));
