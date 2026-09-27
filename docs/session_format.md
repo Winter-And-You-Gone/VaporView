@@ -137,6 +137,16 @@ stream has no records.
 
 ## Shared implementation
 
+### Business data and diagnostic time boundaries
+
+The manifest start/end timestamps delimit business data acquisition. Sensor CSV
+rows and RAW records use host timestamps within that interval. Lifecycle logs
+under `logs/` may include Start/Stop/flush/close/cleanup events outside it; the
+manifest end is not extended to match the last diagnostic event. See the
+recording-boundary verification in `session_format_actual_audit.md`, section C.13.
+
+### Shared writers
+
 - `RecordingOrigin` defines and serializes `ground` / `sky`.
 - `SessionPackageLayout` is the single production source of standard relative
   paths and shared CSV headers.
@@ -207,7 +217,7 @@ the same JSON types for populated values. It contains:
   and `slave_address`
 
 Connections or device settings that do not apply to a recorder remain present
-as JSON `null`. For example, Sky recordings preserve all five sensor entries
+as JSON `null`. For example, Sky recordings preserve all six sensor entries
 even when their per-device serial settings are unavailable. Common values such
 as the session directories, origin, export rates, capture connection, and
 format versions are filled by `SessionPackageInitializer`, so an endpoint

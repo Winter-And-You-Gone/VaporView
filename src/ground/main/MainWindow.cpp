@@ -729,6 +729,21 @@ void MainWindow::closeEvent(QCloseEvent *event)
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 {
+    if (state_->sensor_card_splitter_ &&
+        watched == state_->sensor_card_splitter_->handle(1) &&
+        state_->sensor_card_splitter_->orientation() == Qt::Horizontal &&
+        event->type() == QEvent::MouseButtonPress &&
+        static_cast<QMouseEvent *>(event)->button() == Qt::LeftButton)
+    {
+        // Release the automatic width cap before QSplitter computes the first
+        // drag position; splitterMoved is too late for that first movement.
+        state_->sensor_card_splitter_->setProperty(kHomeSensorSplitterUserResizedProperty, true);
+        if (state_->epsilon_group_)
+        {
+            state_->epsilon_group_->setMaximumWidth(QWIDGETSIZE_MAX);
+            state_->epsilon_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        }
+    }
     if (event->type() == QEvent::ToolTip && showAppTooltip(watched, event, state_->dark_theme_enabled_))
     {
         return true;

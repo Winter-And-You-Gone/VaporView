@@ -82,3 +82,13 @@
 - 对本轮改动运行 11 项 focused tests：10 项通过，包括 TCP 遥测、两端 recorder、RTK、异步命令、Session、地图清单/下载、菜单专项及 3D 关闭；`main_window_layout_test` 在菜单重开选择状态断言失败。
 - 仅增加临时诊断后复测综合布局：菜单检查通过，随后在 `dragging the home sensor separator changes both card widths` 断言失败（44.04 秒）。当前存在独立的固定首页导航卡宽度改动 `c3562190`，本轮不扩大范围修改该布局契约。临时诊断已移除。
 - 当前综合 UI 测试仍未通过；不将之前的通过记录或已被覆盖的全量日志表述为当前全量成功。最初的工程修复及其直接回归与这项综合 UI 失败分别记录。
+
+## 2026-09-27 当前复核
+
+- 修正环境趋势图：当样本尚未覆盖完整窗口时，X 轴标签现在按实际样本时间范围生成；宽图只增加刻度，不虚构额外时间跨度。`device_panel_coordinator_test` 通过。
+- 修正首页传感器卡拖动：分隔条按下时先解除自动布局对 EPSILON 卡的最大宽度约束，首个拖动事件即可改变两侧卡片宽度。
+- `main_window_layout_test` 使用进程级隔离的 Windows 原生设置和临时配置文件，避免读取开发机真实深色主题或残留配置；测试结束由清理钩子恢复注册表重定向。
+- 最终在 VS/MSVC Developer 环境执行 `cmake --build build/Release --config Release -- -j2` 成功；osgEarth 保持 ON。
+- 当前定向回归 9/9 通过（121.52 秒）：`device_panel_coordinator_test`、`main_window_layout_test`，以及同一布局测试程序下的首页语言、环境布局、AI-8 深色、首页主题、combo 箭头、禁用 spin 箭头、组合导航用例。此前全量测试中的两项失败不再复现，本轮未重跑全部 CTest。
+- 使用临时 Qt `grab()` 检查趋势图和拖动后卡片渲染，确认后移除截图代码和图片，再完成最终构建/测试。最终回归前后真实主窗口用户设置比较一致，进程级测试注册表区域已清理。
+- 仍未完成的硬件与现场验收统一列在 `docs/open_issues.md`；本节不把自动化通过写成硬件验收完成。

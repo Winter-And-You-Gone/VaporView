@@ -56,7 +56,9 @@
 - 快速 CTest：`ctest --test-dir build\Release -C Release -L fast --output-on-failure` 为 52/53 通过；当时 `vaporview_startup_test` 未通过，原因是 `build/Release/VaporView.exe` 仍嵌入 `requireAdministrator` 清单，非提权 QProcess 启动被 Windows 拒绝。
 - 全量 CTest：`ctest --test-dir build\Release -C Release --output-on-failure` 为 67/70 通过；`main_window_layout_test`、`session_viewer_trajectory_test` 和 `vaporview_startup_test` 未通过，均不在本轮日志治理改动面。
 
-## 剩余问题
+## 历史遗留记录
+
+2026-09-27 状态复核：上一轮当前 Release 全量测试中，`session_viewer_trajectory_test` 和 `vaporview_startup_test` 均通过；综合主窗口测试已越过 RTK GGA 居中检查，失败点为首页分隔条拖动。下列条目仅保留当时结果，不代表当前失败清单。最新状态见 [问题状态索引](open_issues.md)。
 
 - `main_window_layout_test` 仍有 RTK GGA 控件垂直居中断言失败，需要独立 UI 布局排查；本轮未修改相关页面。
 - `session_viewer_trajectory_test` 仍有轨迹卡片标题选择/复制断言失败，需要独立 session viewer UI 排查；本轮未修改相关页面。

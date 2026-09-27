@@ -4902,6 +4902,7 @@ void MainWindow::setupDataPanels()
     state_->sensor_card_splitter_->setStretchFactor(0, kSensorNavigationStretch);
     state_->sensor_card_splitter_->setStretchFactor(1, kSensorEnvironmentStretch);
     state_->sensor_layout_->addWidget(state_->sensor_card_splitter_, 1);
+    state_->sensor_card_splitter_->handle(1)->installEventFilter(this);
     connect(state_->sensor_card_splitter_, &QSplitter::splitterMoved, this, [this]() {
         if (!state_->sensor_card_splitter_ ||
             state_->sensor_card_splitter_

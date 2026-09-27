@@ -596,7 +596,7 @@ private:
         for (int i = 0; i < tickCount; ++i)
         {
             const qint64 tickMsecs = xAxis.minWallMsecs +
-                qRound64(static_cast<double>(spanMsecs) * i /
+                qRound64(static_cast<double>(xAxis.maxWallMsecs - xAxis.minWallMsecs) * i /
                          static_cast<double>(std::max(1, tickCount - 1)));
             xAxis.labels.append(formatClockLabel(tickMsecs, i == 0));
         }

@@ -2,7 +2,7 @@
 
 本文档记录真实会话目录的逐文件、逐字段审计结果。内容只来自文件字节、JSON、CSV 和 RAW DAT 实际扫描结果，不根据生产代码推测样例中不存在的字段。
 
-> **样例边界：** 本文档早期章节中的 `data\\对比1` 是历史版本样例，只用于记录格式演进和历史问题，**不代表当前 `origin/main` 的实际输出行为**。当前代码的事实审计见末尾的 **Current origin/main actual session audit** 章节。
+> **样例边界：** 本文档早期章节中的 `data\\对比1` 是历史版本样例，只用于记录格式演进和历史问题，**不代表当前 `origin/main` 的实际输出行为**。后续审计同样对应各节注明的代码基线，不能视为自动更新的远端状态。录制边界的最终结论见 C.13；当前未闭环事项见 [问题状态索引](open_issues.md)。
 
 ## 审计基线
 
@@ -724,6 +724,8 @@ host_time_us,peak_value,peak_index,point_count,search_start_index,search_end_ind
 
 ### C.11 问题分类（本轮只记录，不修复）
 
+> 历史发现：A-1 已在 C.13 修复；A-2 在 C.13 明确为允许的生命周期日志行为。B 类缺项中，计数字符串类型和零记录 RAW 已进入正式规范，其余验收边界见问题状态索引。
+
 #### A. 当前代码真实数据一致性问题
 
 **A-1：waveform feature CSV 有一条记录早于 session start。**
@@ -759,6 +761,8 @@ host_time_us,peak_value,peak_index,point_count,search_start_index,search_end_ind
 - CSV optional numeric/string 值以空字段落盘，bool 以 `true/false` 落盘；`error_log.txt` 是诊断文本而不是结构化接口。
 
 ### C.12 是否可以冻结 v1.0
+
+> 本节是修复前结论，已被 C.13.6 的“可以进入冻结阶段”取代，不再作为当前阻塞项。
 
 **当前不建议冻结完整 v1.0 数据格式。** RAW DAT 外层、waveform 子 payload、时间字段的 manifest 算术、CSV 表头和跨 Ground/Sky 的实际 waveform 点数规则已经有较强证据；但至少 A-1 的录制边界问题仍是真实 session 数据一致性问题，且 B 类字段/日志/零记录和 Sky 配置快照语义尚未正式定义。待确认 A-1 的修复方向、决定 Sky `device_config` 是否需要真实配置快照，并补齐六类协议 RAW 的端到端验证或明确 capability boundary 后，再冻结完整规范更稳妥。
 

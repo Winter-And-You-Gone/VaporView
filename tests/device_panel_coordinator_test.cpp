@@ -3,6 +3,7 @@
 #include "ground/widgets/TelemetryPanels.h"
 
 #include <QApplication>
+#include <QDateTime>
 #include <QFontMetrics>
 #include <QLabel>
 #include <QLayout>
@@ -310,9 +311,23 @@ int main(int argc, char **argv)
                 temperatureXAxisTicks.last().contains(QLatin1Char(':')),
             "environment trend x-axis packs additional ticks using the compact minute-second label width");
     const int compactXAxisTickCount = temperatureXAxisTicks.size();
-    require(std::abs(temperatureTrend->property("xAxisTimeSpanSeconds").toDouble() -
-                     static_cast<double>(compactXAxisTickCount - 1)) < 1e-6,
-            "environment trend x-axis uses one-second time intervals like the temperature trend plot");
+    require(std::abs(temperatureTrend->property("xAxisTimeSpanSeconds").toDouble() - 8.0) < 1e-6,
+            "environment trend x-axis fits the available eight seconds of samples");
+    const auto requireTimeLabelsMatchRange = [](QWidget *plot) {
+        const QStringList labels = plot->property("xAxisTickLabels").toStringList();
+        const qint64 start = plot->property("xAxisTimeMinMsecs").toLongLong();
+        const qint64 end = plot->property("xAxisTimeMaxMsecs").toLongLong();
+        require(labels.size() >= 2 && end > start, "environment time range is nonempty");
+        for (int i = 0; i < labels.size(); ++i)
+        {
+            const qint64 time = start + qRound64(static_cast<double>(end - start) * i / (labels.size() - 1));
+            require(labels.at(i) == QDateTime::fromMSecsSinceEpoch(time).toLocalTime().toString(
+                        i == 0 ? QStringLiteral("H:mm:ss") : QStringLiteral("mm:ss")),
+                    "environment tick labels match the plotted timestamps across the entire axis");
+        }
+    };
+    for (QWidget *plot : {temperatureTrend, humidityTrend, pressureTrend})
+        requireTimeLabelsMatchRange(plot);
 
     temperatureTrend->resize(840, 64);
     humidityTrend->resize(840, 64);
@@ -329,8 +344,19 @@ int main(int argc, char **argv)
                 temperatureTrend->property("xAxisTickCount").toInt() ==
                     wideTemperatureXAxisTicks.size() &&
                 std::abs(temperatureTrend->property("xAxisTimeSpanSeconds").toDouble() -
-                         static_cast<double>(wideTemperatureXAxisTicks.size() - 1)) < 1e-6,
-            "environment trend x-axis packs additional clock ticks as plot width expands");
+                         9.0) < 1e-6,
+            "wider environment plots add ticks without extending the available sample time range");
+    for (QWidget *plot : {temperatureTrend, humidityTrend, pressureTrend})
+        requireTimeLabelsMatchRange(plot);
+
+    hmpData.timestamp = baseTimestamp + std::chrono::seconds(120);
+    ptbData.timestamp = hmpData.timestamp;
+    coordinator.updateEnvironmentData(epsilonData, ptbData, hmpData, lidarData);
+    require(std::abs(temperatureTrend->property("xAxisTimeSpanSeconds").toDouble() -
+                     static_cast<double>(wideTemperatureXAxisTicks.size() - 1)) < 1e-6,
+            "long-running environment plots retain the fixed one-second tick window");
+    for (QWidget *plot : {temperatureTrend, humidityTrend, pressureTrend})
+        requireTimeLabelsMatchRange(plot);
 
     hmp.setEnglish(true);
     ptb.setEnglish(true);

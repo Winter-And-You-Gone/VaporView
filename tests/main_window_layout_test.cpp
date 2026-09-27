@@ -77,8 +77,43 @@
 #include <utility>
 #include <vector>
 
+#ifdef Q_OS_WIN
+#include <qt_windows.h>
+#endif
+
 namespace
 {
+
+#ifdef Q_OS_WIN
+HKEY isolatedUserRegistry = nullptr;
+HKEY originalUserRegistry = nullptr;
+std::wstring isolatedRegistryPath;
+
+void cleanupIsolatedRegistry()
+{
+    RegOverridePredefKey(HKEY_CURRENT_USER, nullptr);
+    if (isolatedUserRegistry)
+        RegCloseKey(isolatedUserRegistry);
+    if (originalUserRegistry)
+    {
+        RegDeleteTreeW(originalUserRegistry, isolatedRegistryPath.c_str());
+        RegCloseKey(originalUserRegistry);
+    }
+}
+
+bool isolateNativeSettings()
+{
+    isolatedRegistryPath = L"Software\\VaporViewLayoutTest-" + std::to_wstring(GetCurrentProcessId());
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"", 0, KEY_ALL_ACCESS, &originalUserRegistry) != ERROR_SUCCESS)
+        return false;
+    // Register before redirecting: require() uses std::exit on assertion failure.
+    std::atexit(cleanupIsolatedRegistry);
+    return RegCreateKeyExW(originalUserRegistry, isolatedRegistryPath.c_str(), 0, nullptr,
+                          REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, nullptr,
+                          &isolatedUserRegistry, nullptr) == ERROR_SUCCESS &&
+           RegOverridePredefKey(HKEY_CURRENT_USER, isolatedUserRegistry) == ERROR_SUCCESS;
+}
+#endif
 
 struct SkyTelemetryRowWidgets
 {
@@ -4392,6 +4427,13 @@ int main(int argc, char **argv)
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
     QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, settingsDir.path());
+#ifdef Q_OS_WIN
+    // QSettings(organization, application) uses the registry on Windows even
+    // when the default format is INI. Redirect only this process's HKCU.
+    require(isolateNativeSettings(), "isolate native Windows settings");
+    QSettings::setDefaultFormat(QSettings::NativeFormat);
+#endif
+    qputenv("VAPORVIEW_CONFIG_FILE", settingsDir.filePath(QStringLiteral("vaporview.ini")).toUtf8());
 
     QApplication app(argc, argv);
     app.setOrganizationName(QStringLiteral("VaporViewLayoutTest"));
