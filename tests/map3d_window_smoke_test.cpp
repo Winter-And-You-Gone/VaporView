@@ -569,6 +569,27 @@ int main(int argc, char** argv)
     QCoreApplication::processEvents();
     require(expectedPopupBounds.contains(layersMenu->geometry()),
             "layers menu stays inside the 3D map window in compact window mode");
+    int layerMenuHideCount = 0;
+    const auto hideConnection = QObject::connect(layersMenu, &QMenu::aboutToHide,
+                                                [&]() { ++layerMenuHideCount; });
+    auto* flightWidgetAction = qobject_cast<QWidgetAction*>(
+        actionByName(window, QStringLiteral("map3DLayer_flightElements")));
+    auto* flightRow = flightWidgetAction
+        ? qobject_cast<VaporView::SingleLevelPopupMenuRow*>(flightWidgetAction->defaultWidget()) : nullptr;
+    require(flightRow != nullptr, "flight layer row exists");
+    const bool originalFlightChecked = flightRow->isChecked();
+    const QRect originalMenuGeometry = layersMenu->geometry();
+    for (int i = 0; i < 4; ++i)
+    {
+        flightRow->click();
+        QCoreApplication::processEvents();
+        require(flightRow->isChecked() == (i % 2 == 0 ? !originalFlightChecked : originalFlightChecked),
+                "each layer row click toggles exactly once");
+        require(layerMenuHideCount == 0 && layersMenu->isVisible() &&
+                    layersMenu->geometry() == originalMenuGeometry,
+                "layer clicks never hide or reposition the open popup");
+    }
+    QObject::disconnect(hideConnection);
     layersMenu->hide();
 
     QAction* satelliteLayerAction =

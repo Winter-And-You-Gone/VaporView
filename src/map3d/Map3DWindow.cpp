@@ -1344,6 +1344,16 @@ void Map3DWindow::createLayerMenu(QToolBar* toolbar)
         action->setChecked(visible);
         action->setStatusTip(layerDescription(layer));
         layer_actions_[index] = action;
+        // Triggering the QWidgetAction makes QMenu hide before the shared
+        // keep-open fallback reopens it. Layer rows only toggle state, so use
+        // a separate button action and update the menu action without triggering.
+        auto* toggleAction = new QAction(action->text(), row);
+        toggleAction->setCheckable(true);
+        toggleAction->setChecked(visible);
+        row->setDefaultAction(toggleAction);
+        disconnect(row, &QToolButton::pressed, layers_menu_, nullptr);
+        connect(toggleAction, &QAction::toggled, action, &QAction::setChecked);
+        connect(action, &QAction::toggled, toggleAction, &QAction::setChecked);
         connect(action, &QAction::toggled, this, [this, layer](bool checked) {
             setLayerVisible(layer, checked, true);
         });
