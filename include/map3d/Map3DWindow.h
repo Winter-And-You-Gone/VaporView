@@ -17,6 +17,7 @@ class QAction;
 class QComboBox;
 class QDialog;
 class QLabel;
+class QMenu;
 class QPlainTextEdit;
 class QProgressDialog;
 class QSlider;
@@ -161,7 +162,7 @@ private:
     QAction* clear_local_3d_tiles_action_ = nullptr;
     QAction* load_aircraft_model_action_ = nullptr;
     QAction* reset_aircraft_model_action_ = nullptr;
-    VaporView::SingleLevelPopupMenu* local_imagery_menu_ = nullptr;
+    QMenu* local_imagery_menu_ = nullptr;
     VaporView::SingleLevelPopupMenu* layers_menu_ = nullptr;
     std::array<QAction*, kMap3DLayerCount> layer_actions_{};
     std::array<VaporView::SingleLevelPopupMenuRow*, kMap3DLayerCount> layer_rows_{};

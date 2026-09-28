@@ -1,3 +1,7 @@
+#include <QPainter>
+#include <QKeyEvent>
+#include <QHelpEvent>
+#include <QToolTip>
 #include "shared/theme/AppTheme.h"
 #include "geo/GeoTypes.h"
 #include "map3d/Map3DWindow.h"
@@ -8,7 +12,6 @@
 #include <osgEarth/TerrainTileModelFactory>
 #include <osgDB/ReadFile>
 #include <QImage>
-#include <QPainter>
 #include <osg/Matrixd>
 #include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
@@ -432,6 +435,36 @@ int main(int argc, char** argv)
     VaporView::Map3D::Map3DWindow window;
     QCoreApplication::processEvents();
 
+    window.show();
+    auto* moreMenu = window.findChild<QMenu*>(QStringLiteral("map3DMoreMenu"));
+    auto* imageryMenu = window.findChild<QMenu*>(QStringLiteral("map3DLocalImageryMenu"));
+    require(moreMenu && imageryMenu, "nested map menus exist");
+    QMenu* resourcesMenu = moreMenu->actions().first()->menu();
+    moreMenu->popup(window.mapToGlobal(QPoint(10, 60)));
+    moreMenu->setActiveAction(resourcesMenu->menuAction());
+    QKeyEvent openSubmenu(QEvent::KeyPress, Qt::Key_Right, Qt::NoModifier);
+    QApplication::sendEvent(moreMenu, &openSubmenu);
+    QCoreApplication::processEvents();
+    resourcesMenu->setActiveAction(imageryMenu->menuAction());
+    QApplication::sendEvent(resourcesMenu, &openSubmenu);
+    QCoreApplication::processEvents();
+    require(resourcesMenu->isVisible() && imageryMenu->isVisible(),
+            "keyboard navigation opens second and third level map menus");
+    require(!resourcesMenu->geometry().intersects(imageryMenu->geometry()),
+            "third level menu does not cover its parent menu or arrow");
+    require(!imageryMenu->toolTipsVisible(), "imagery menu does not show obstructing tooltips");
+    for (QAction* action : imageryMenu->actions())
+        require(!qobject_cast<QWidgetAction*>(action), "imagery submenu uses native menu rows");
+    QHelpEvent tooltipEvent(QEvent::ToolTip, QPoint(20, 20), imageryMenu->mapToGlobal(QPoint(20, 20)));
+    QApplication::sendEvent(imageryMenu, &tooltipEvent);
+    require(!QToolTip::isVisible(), "hover help cannot cover imagery options");
+    QEvent leaveEvent(QEvent::Leave);
+    QApplication::sendEvent(imageryMenu, &leaveEvent);
+    require(!QToolTip::isVisible(), "leaving the menu keeps tooltips dismissed");
+    imageryMenu->hide();
+    resourcesMenu->hide();
+    moreMenu->hide();
+
     auto* mapFilesAction = actionByName(window, QStringLiteral("map3DMapFilesAction"));
     require(mapFilesAction && mapFilesAction->text() == QStringLiteral("地图文件"),
             "map files button is available before rendering starts");
@@ -620,8 +653,8 @@ int main(int argc, char** argv)
     require(satelliteLayerAction->isChecked(),
             "satellite layer can be restored without closing the layer menu");
     require(localImageryAction->menu() != nullptr, "local imagery action has a menu");
-    require(qobject_cast<VaporView::SingleLevelPopupMenu*>(localImageryAction->menu()) != nullptr,
-            "local imagery action uses the shared single-level popup menu");
+    require(localImageryAction->menu() == imageryMenu,
+            "local imagery action uses the cascading map menu");
     bool hasEnabledImageryEntry = false;
     for (QAction* action : localImageryAction->menu()->actions())
     {

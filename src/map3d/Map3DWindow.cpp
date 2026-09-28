@@ -38,6 +38,8 @@
 #include <QResizeEvent>
 #include <QPlainTextEdit>
 #include <QProgressDialog>
+#include <QScreen>
+#include <QToolTip>
 #include <QPixmap>
 #include <QSettings>
 #include "shared/config/SettingsWriteBarrier.h"
@@ -74,9 +76,39 @@ class MapOptionsMenu final : public QMenu
 public:
     explicit MapOptionsMenu(QWidget* parent) : QMenu(parent)
     {
+        setToolTipsVisible(false);
         setWindowFlag(Qt::FramelessWindowHint, true);
         setWindowFlag(Qt::NoDropShadowWindowHint, true);
         setAttribute(Qt::WA_TranslucentBackground);
+    }
+protected:
+    void showEvent(QShowEvent* event) override
+    {
+        QMenu::showEvent(event);
+        auto* parentMenu = qobject_cast<QMenu*>(parentWidget());
+        if (!parentMenu || !parentMenu->isVisible()) return;
+        const QRect parentBounds = parentMenu->geometry();
+        const QRect available = screen()->availableGeometry();
+        const int right = parentBounds.right() + 1;
+        const int left = parentBounds.left() - width();
+        // Qt styles may overlap cascading menus; keep the parent's arrow visible.
+        const int x = right + width() <= available.right() + 1 ? right : left;
+        move(x, y());
+    }
+
+    bool event(QEvent* event) override
+    {
+        if (event->type() == QEvent::ToolTip || event->type() == QEvent::Leave
+            || event->type() == QEvent::Hide)
+        {
+            QToolTip::hideText();
+            if (event->type() == QEvent::ToolTip)
+            {
+                event->accept();
+                return true;
+            }
+        }
+        return QMenu::event(event);
     }
 };
 
@@ -973,12 +1005,9 @@ Map3DWindow::Map3DWindow(QWidget* parent)
 
 
 
-    local_imagery_menu_ = new VaporView::SingleLevelPopupMenu(this);
+    local_imagery_menu_ = new MapOptionsMenu(this);
     local_imagery_menu_->setTitle(QStringLiteral("本地影像"));
     local_imagery_menu_->setObjectName(QStringLiteral("map3DLocalImageryMenu"));
-    local_imagery_menu_->setPanelPadding(12);
-    local_imagery_menu_->setCornerRadius(10);
-    local_imagery_menu_->refreshTheme();
     local_imagery_action_ = toolbar->addAction(QStringLiteral("本地影像"));
     local_imagery_action_->setObjectName(QStringLiteral("map3DLocalImageryAction"));
     local_imagery_action_->setMenu(local_imagery_menu_);
@@ -1058,6 +1087,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     auto* resourcesMenu = new MapOptionsMenu(moreMenu);
     resourcesMenu->setTitle(QStringLiteral("地图资源"));
     moreMenu->addMenu(resourcesMenu);
+    local_imagery_menu_->setParent(resourcesMenu, local_imagery_menu_->windowFlags());
     auto* modelMenu = new MapOptionsMenu(moreMenu);
     modelMenu->setTitle(QStringLiteral("飞机模型"));
     moreMenu->addMenu(modelMenu);
@@ -1501,7 +1531,7 @@ void Map3DWindow::refreshLayerMenuTheme()
             "QMenu::item:disabled { color: @vv-text-disabled; }"
             "QMenu::right-arrow { image: url(\"%1\"); width: 16px; height: 16px; }").arg(arrow), dark);
         menu->setStyleSheet(style);
-        for (auto* child : menu->findChildren<QMenu*>(QString(), Qt::FindDirectChildrenOnly))
+        for (auto* child : menu->findChildren<QMenu*>())
             child->setStyleSheet(style);
     }
     if (layers_action_)
@@ -3041,21 +3071,9 @@ void Map3DWindow::setMapSelection(const MapDataSelection& selection)
         local_imagery_menu_->clear();
         for (const LocalImageryOption& option : map_selection_.diagnostics.localImageryOptions)
         {
-            auto* row = new VaporView::SingleLevelPopupMenuRow(local_imagery_menu_);
-            row->setText(imageryOptionLabel(option));
-            configureMenuRow(row);
-            row->setEnabled(option.available);
-            row->setToolTip(QStringLiteral("%1\nVRT: %2\nEarth: %3")
-                                .arg(option.available ? QStringLiteral("可加载") : QStringLiteral("缺少本地 VRT 或 earth 模板"),
-                                     option.vrtPath,
-                                     option.earthFilePath));
-            QWidgetAction* action = local_imagery_menu_->addRow(row);
+            QAction* action = local_imagery_menu_->addAction(imageryOptionLabel(option));
             action->setObjectName(QStringLiteral("map3DLocalImagery_%1").arg(option.key));
             action->setEnabled(option.available);
-            action->setToolTip(QStringLiteral("%1\nVRT: %2\nEarth: %3")
-                                   .arg(option.available ? QStringLiteral("可加载") : QStringLiteral("缺少本地 VRT 或 earth 模板"),
-                                        option.vrtPath,
-                                        option.earthFilePath));
             connect(action, &QAction::triggered, this, [this, option]() {
                 loadLocalImageryTemplate(option);
             });
