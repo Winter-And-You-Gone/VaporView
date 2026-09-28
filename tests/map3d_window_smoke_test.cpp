@@ -581,9 +581,9 @@ int main(int argc, char** argv)
             : nullptr;
         require(layerAction->text() == expectedLayerLabels.at(index),
                 "layer action uses the expected professional name");
-        const bool expectedVisible = index == 1 || index == 2 || index == 6;
+        const bool expectedVisible = index == 0 || index == 1 || index == 2 || index == 6;
         require(layerAction->isCheckable() && layerAction->isChecked() == expectedVisible,
-                "only satellite, DEM and flight elements start enabled");
+                "base map, satellite, DEM and flight elements start enabled");
         require(row && row->isChecked() == expectedVisible && !row->closeOnClick(),
                 "layer row mirrors its check state and keeps the menu open for multi-selection");
     }

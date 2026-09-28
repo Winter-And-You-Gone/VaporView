@@ -748,6 +748,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
 {
     // Start each new window with the essential layers, regardless of old settings.
     layer_visibility_.fill(false);
+    layer_visibility_[layerIndex(Map3DLayer::BaseMap)] = true;
     layer_visibility_[layerIndex(Map3DLayer::SatelliteImagery)] = true;
     layer_visibility_[layerIndex(Map3DLayer::DigitalElevation)] = true;
     layer_visibility_[layerIndex(Map3DLayer::FlightElements)] = true;
