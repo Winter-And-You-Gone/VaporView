@@ -18,6 +18,7 @@ if(TARGET vaporview_map3d_osgearth)
     target_link_libraries(vaporview_ground_map PRIVATE
         vaporview_map3d_osgearth
         vaporview_geo_core
+        vaporview_ground_ui_support
         vaporview_ground_session_core
         Qt6::Widgets
         Qt6::Concurrent

@@ -464,6 +464,19 @@ int main(int argc, char** argv)
             "reopening map files reuses the existing dialog");
     filesDialog->hide();
 
+    require(window.windowFlags().testFlag(Qt::FramelessWindowHint)
+                && window.menuWidget()
+                && window.menuWidget()->objectName() == QStringLiteral("customTitleBar"),
+            "map window uses the shared title bar above its toolbar");
+    actionByName(window, QStringLiteral("map3DDisplayAction"))->trigger();
+    actionByName(window, QStringLiteral("map3DMapResourcesAction"))->trigger();
+    for (QDialog* dialog : window.findChildren<QDialog*>())
+    {
+        require(dialog->windowFlags().testFlag(Qt::FramelessWindowHint)
+                    && dialog->findChild<QWidget*>(QStringLiteral("customTitleBar")),
+                "map child dialogs use the shared title bar");
+        dialog->hide();
+    }
     QLabel* label = statusLabel(window);
     require(label->text().contains(QStringLiteral("采样点：0")), "initial status has zero points");
     require(label->text().contains(QStringLiteral("来源 无")), "initial status reports no track source");
@@ -800,6 +813,8 @@ int main(int argc, char** argv)
     QCoreApplication::processEvents();
     auto* diagnosticsText = window.findChild<QPlainTextEdit*>();
     require(diagnosticsText != nullptr, "diagnostics text view exists");
+    require(diagnosticsText->window()->findChild<QWidget*>(QStringLiteral("customTitleBar")),
+            "map diagnostics uses the shared title bar");
     auto* buttons = diagnosticsText->parentWidget()->findChild<QDialogButtonBox*>();
     require(buttons && buttons->button(QDialogButtonBox::Close)->text() == QStringLiteral("关闭"),
             "diagnostics close button is localized");

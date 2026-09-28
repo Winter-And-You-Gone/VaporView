@@ -1,5 +1,7 @@
 #include "map3d/Map3DWindow.h"
 
+#include "ground/widgets/CustomTitleBar.h"
+
 #include "Map3DDiagnosticsFormatter.h"
 
 #include "ground/session/SessionTrajectoryRenderLoader.h"
@@ -784,12 +786,17 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     auto* displayPanel = new QDialog(this, Qt::Tool);
     displayPanel->setObjectName(QStringLiteral("map3DDisplayPanel"));
     displayPanel->setWindowTitle(QStringLiteral("显示设置"));
-    auto* displayLayout = new QFormLayout(displayPanel);
+    auto* displayRoot = new QVBoxLayout(displayPanel);
+    displayRoot->setContentsMargins(0, 0, 0, 0);
+    auto* displayContent = new QWidget(displayPanel);
+    displayRoot->addWidget(displayContent);
+    auto* displayLayout = new QFormLayout(displayContent);
     displayLayout->setContentsMargins(16, 16, 16, 16);
     displayLayout->setSpacing(12);
     auto* displayAction = toolbar->addAction(QStringLiteral("显示设置"));
     displayAction->setObjectName(QStringLiteral("map3DDisplayAction"));
     connect(displayAction, &QAction::triggered, this, [this, displayPanel]() {
+        VaporView::installCustomTitleBar(displayPanel, false);
         refreshLayerMenuTheme();
         displayPanel->adjustSize();
         displayPanel->move(mapToGlobal(QPoint(16, 70)));
@@ -1082,6 +1089,18 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         button->setObjectName(QStringLiteral("map3DMoreButton"));
         button->setPopupMode(QToolButton::InstantPopup);
     }
+
+    // Keep the map canvas as the central widget: overlays use its coordinates.
+    // The shared title bar belongs above the toolbar in this QMainWindow.
+    QWidget* mapCanvas = centralWidget();
+    VaporView::installCustomTitleBar(this);
+    QWidget* titleWrapper = takeCentralWidget();
+    QWidget* titleBar = titleWrapper->findChild<QWidget*>(QStringLiteral("customTitleBar"));
+    titleWrapper->layout()->removeWidget(mapCanvas);
+    titleWrapper->layout()->removeWidget(titleBar);
+    setCentralWidget(mapCanvas);
+    setMenuWidget(titleBar);
+    titleWrapper->deleteLater();
 
     statusBar()->addPermanentWidget(status_label_, 1);
     updateReplayUi();
@@ -2508,6 +2527,7 @@ void Map3DWindow::showMapDiagnostics()
         buttons->button(QDialogButtonBox::Close)->setText(QStringLiteral("关闭"));
         connect(buttons, &QDialogButtonBox::rejected, diagnostics_dialog_, &QDialog::hide);
         layout->addWidget(buttons);
+        VaporView::installCustomTitleBar(diagnostics_dialog_);
     }
 
     refreshDiagnosticsText(true);
@@ -2595,6 +2615,7 @@ void Map3DWindow::showMapFiles()
         connect(refresh, &QPushButton::clicked, this, &Map3DWindow::showMapFiles);
         connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::hide);
         layout->addWidget(buttons);
+        VaporView::installCustomTitleBar(dialog);
     }
 
     const auto diagnostics = map_data_manager_.selectBestAvailableMap().diagnostics;
@@ -2649,6 +2670,7 @@ void Map3DWindow::showMapResources()
     {
         return;
     }
+    VaporView::installCustomTitleBar(map_resource_dialog_);
     map_resource_dialog_->show();
     map_resource_dialog_->raise();
     map_resource_dialog_->activateWindow();
