@@ -1,3 +1,4 @@
+#include "MapLanguage.h"
 #include "Map3DAssetLoader.h"
 #include "Map3DRuntime.h"
 
@@ -193,7 +194,7 @@ EarthAssetLoadResult loadEarthAsset(const QString& earthPath)
         result.node = createTexturedEarthNode(naturalEarthTexturePath(earthPath));
         if (!result.node)
         {
-            result.diagnostics.failureReason = QStringLiteral("osgDB::readNodeFile 返回空节点。");
+            result.diagnostics.failureReason = mapText(QStringLiteral("osgDB::readNodeFile 返回空节点。"));
             return result;
         }
         result.diagnostics.loaded = true;
@@ -201,7 +202,7 @@ EarthAssetLoadResult loadEarthAsset(const QString& earthPath)
         result.diagnostics.failureReason = QStringLiteral(
             "osgDB::readNodeFile 返回空节点，回退到手动创建的 Natural Earth 纹理地球。");
         result.diagnostics.layerSummaries.push_back(
-            QStringLiteral("手动创建的 Natural Earth 纹理地球回退（不含 osgEarth MapNode）。"));
+            mapText(QStringLiteral("手动创建的 Natural Earth 纹理地球回退（不含 osgEarth MapNode）。")));
         return result;
     }
 
@@ -209,7 +210,7 @@ EarthAssetLoadResult loadEarthAsset(const QString& earthPath)
     result.diagnostics.foundMapNode = result.mapNode != nullptr;
     if (!result.mapNode)
     {
-        result.diagnostics.failureReason = QStringLiteral("已加载 OSG 节点，但未找到 osgEarth MapNode。");
+        result.diagnostics.failureReason = mapText(QStringLiteral("已加载 OSG 节点，但未找到 osgEarth MapNode。"));
         result.diagnostics.layerSummaries.push_back(result.diagnostics.failureReason);
         result.node = nullptr;
         return result;
@@ -231,9 +232,9 @@ EarthAssetLoadResult loadEarthAsset(const QString& earthPath)
                 ++result.diagnostics.openLayerCount;
             }
             result.diagnostics.layerSummaries.push_back(
-                QStringLiteral("%1 | 已打开=%2 | 状态=%3")
+                mapText(QStringLiteral("%1 | 已打开=%2 | 状态=%3"))
                     .arg(QString::fromStdString(layer->getName()),
-                         layer->isOpen() ? QStringLiteral("是") : QStringLiteral("否"),
+                         layer->isOpen() ? mapText(QStringLiteral("是")) : mapText(QStringLiteral("否")),
                          QString::fromStdString(layer->getStatus().toString())));
         }
     }
@@ -250,38 +251,38 @@ Local3DTilesAssetLoadResult loadLocal3DTilesAsset(const QString& tilesetPath)
     const QFileInfo info(tilesetPath);
     if (!info.isFile())
     {
-        diagnostics.failureReason = QStringLiteral("原生 OSG 建筑瓦片集文件不存在。");
+        diagnostics.failureReason = mapText(QStringLiteral("原生 OSG 建筑瓦片集文件不存在。"));
         return result;
     }
     if (info.size() > kMaximumTilesetJsonBytes)
     {
-        diagnostics.failureReason = QStringLiteral("原生 OSG 建筑瓦片索引超过 64 MiB 安全上限。");
+        diagnostics.failureReason = mapText(QStringLiteral("原生 OSG 建筑瓦片索引超过 64 MiB 安全上限。"));
         return result;
     }
     QFile file(info.absoluteFilePath());
     if (!file.open(QIODevice::ReadOnly))
     {
-        diagnostics.failureReason = QStringLiteral("无法打开原生 OSG 建筑瓦片集：%1").arg(file.errorString());
+        diagnostics.failureReason = mapText(QStringLiteral("无法打开原生 OSG 建筑瓦片集：%1")).arg(file.errorString());
         return result;
     }
     QJsonParseError error;
     const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &error);
     if (error.error != QJsonParseError::NoError || !document.isObject())
     {
-        diagnostics.failureReason = QStringLiteral("原生 OSG 建筑瓦片集不是有效 JSON：%1").arg(error.errorString());
+        diagnostics.failureReason = mapText(QStringLiteral("原生 OSG 建筑瓦片集不是有效 JSON：%1")).arg(error.errorString());
         return result;
     }
     const QJsonObject tileset = document.object();
     const QJsonObject rootTile = tileset.value(QStringLiteral("root")).toObject();
     if (rootTile.isEmpty())
     {
-        diagnostics.failureReason = QStringLiteral("原生 OSG 建筑瓦片索引缺少根瓦片对象。");
+        diagnostics.failureReason = mapText(QStringLiteral("原生 OSG 建筑瓦片索引缺少根瓦片对象。"));
         return result;
     }
     if (tileset.value(QStringLiteral("extras")).toObject().value(QStringLiteral("format")).toString()
         != QStringLiteral("vaporview-osg-native-building-tiles"))
     {
-        diagnostics.failureReason = QStringLiteral("不支持此建筑数据格式。加载器仅接受 vaporview-osg-native-building-tiles，不支持通用 Cesium 3D Tiles。");
+        diagnostics.failureReason = mapText(QStringLiteral("不支持此建筑数据格式。加载器仅接受 vaporview-osg-native-building-tiles，不支持通用 Cesium 3D Tiles。"));
         return result;
     }
 
@@ -305,7 +306,7 @@ Local3DTilesAssetLoadResult loadLocal3DTilesAsset(const QString& tilesetPath)
         if (payloadPath.isEmpty())
         {
             ++diagnostics.failedPayloadCount;
-            diagnostics.warnings.push_back(QStringLiteral("已拒绝非本地瓦片资源 URI：%1").arg(uri));
+            diagnostics.warnings.push_back(mapText(QStringLiteral("已拒绝非本地瓦片资源 URI：%1")).arg(uri));
             return;
         }
         osg::ref_ptr<osg::Node> payload = osgDB::readNodeFile(
@@ -313,7 +314,7 @@ Local3DTilesAssetLoadResult loadLocal3DTilesAsset(const QString& tilesetPath)
         if (!payload)
         {
             ++diagnostics.failedPayloadCount;
-            diagnostics.warnings.push_back(QStringLiteral("本地瓦片数据加载失败：%1").arg(payloadPath));
+            diagnostics.warnings.push_back(mapText(QStringLiteral("本地瓦片数据加载失败：%1")).arg(payloadPath));
             return;
         }
         tilesRoot->addChild(payload.get());
@@ -348,14 +349,14 @@ Local3DTilesAssetLoadResult loadLocal3DTilesAsset(const QString& tilesetPath)
     loadTile(rootTile, 0);
     if (traversalExceeded)
     {
-        diagnostics.failureReason = QStringLiteral("原生 OSG 建筑瓦片索引超过遍历安全上限；已保留原预览。");
+        diagnostics.failureReason = mapText(QStringLiteral("原生 OSG 建筑瓦片索引超过遍历安全上限；已保留原预览。"));
         return result;
     }
     if (diagnostics.loadedPayloadCount == 0 || diagnostics.failedPayloadCount > 0)
     {
         diagnostics.failureReason = diagnostics.warnings.isEmpty()
-            ? QStringLiteral("本地瓦片集没有可加载的数据块。")
-            : QStringLiteral("本地瓦片集加载不完整（%1/%2 个数据块）；已保留原预览。%3")
+            ? mapText(QStringLiteral("本地瓦片集没有可加载的数据块。"))
+            : mapText(QStringLiteral("本地瓦片集加载不完整（%1/%2 个数据块）；已保留原预览。%3"))
                   .arg(diagnostics.loadedPayloadCount)
                   .arg(diagnostics.payloadCount)
                   .arg(diagnostics.warnings.constFirst());
@@ -363,7 +364,7 @@ Local3DTilesAssetLoadResult loadLocal3DTilesAsset(const QString& tilesetPath)
     }
     osgEarth::Registry::shaderGenerator().run(tilesRoot.get());
     diagnostics.loaded = true;
-    diagnostics.nodeDescription = QStringLiteral("已加载 %1 个数据块，共 %2 个瓦片")
+    diagnostics.nodeDescription = mapText(QStringLiteral("已加载 %1 个数据块，共 %2 个瓦片"))
                                       .arg(diagnostics.loadedPayloadCount)
                                       .arg(diagnostics.tileCount);
     result.node = tilesRoot;
@@ -380,13 +381,13 @@ AircraftAssetLoadResult loadAircraftAsset(const QString& modelPath,
     const QString trimmed = modelPath.trimmed();
     if (trimmed.isEmpty())
     {
-        diagnostics.failureReason = QStringLiteral("未配置 %1；使用内置标记。").arg(reasonPrefix);
+        diagnostics.failureReason = mapText(QStringLiteral("未配置 %1；使用内置标记。")).arg(reasonPrefix);
         return result;
     }
     const QFileInfo info(trimmed);
     if (!info.isFile())
     {
-        diagnostics.failureReason = QStringLiteral("%1 文件不存在；使用内置标记。").arg(reasonPrefix);
+        diagnostics.failureReason = mapText(QStringLiteral("%1 文件不存在；使用内置标记。")).arg(reasonPrefix);
         return result;
     }
     diagnostics.attempted = true;
@@ -394,14 +395,14 @@ AircraftAssetLoadResult loadAircraftAsset(const QString& modelPath,
     result.node = osgDB::readNodeFile(QDir::fromNativeSeparators(info.absoluteFilePath()).toStdString());
     if (!result.node)
     {
-        diagnostics.failureReason = QStringLiteral("osgDB::readNodeFile 无法读取 %1；使用内置标记。").arg(reasonPrefix);
+        diagnostics.failureReason = mapText(QStringLiteral("osgDB::readNodeFile 无法读取 %1；使用内置标记。")).arg(reasonPrefix);
         return result;
     }
     osgUtil::Optimizer optimizer;
     optimizer.optimize(result.node.get(), osgUtil::Optimizer::DEFAULT_OPTIMIZATIONS);
     diagnostics.loaded = true;
     diagnostics.usingBuiltInMarker = false;
-    diagnostics.nodeDescription = QStringLiteral("%1 个子节点，包围球半径 %2")
+    diagnostics.nodeDescription = mapText(QStringLiteral("%1 个子节点，包围球半径 %2"))
                                       .arg(result.node->asGroup() ? result.node->asGroup()->getNumChildren() : 0)
                                       .arg(result.node->getBound().radius(), 0, 'f', 2);
     return result;

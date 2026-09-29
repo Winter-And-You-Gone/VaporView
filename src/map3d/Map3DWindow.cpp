@@ -1,3 +1,4 @@
+#include "MapLanguage.h"
 #include "map3d/Map3DWindow.h"
 
 #include "ground/widgets/CustomTitleBar.h"
@@ -15,6 +16,9 @@
 #include "map3d/MapResourceManager.h"
 
 #include <QAction>
+#include <QApplication>
+#include <QDynamicPropertyChangeEvent>
+#include <QAbstractButton>
 #include <QCloseEvent>
 #include <QComboBox>
 #include <QCoreApplication>
@@ -118,7 +122,7 @@ constexpr auto kDefaultStartupEarthRelative = "resources/maps/vaporview_default.
 
 QString heightSafetyNote()
 {
-    return QStringLiteral("高度基准仅用于显示；不用于离地高度或地形净空判断");
+    return mapText(QStringLiteral("高度基准仅用于显示；不用于离地高度或地形净空判断"));
 }
 
 QString heightReferenceLabel(VaporView::Geo::HeightReference reference)
@@ -126,17 +130,17 @@ QString heightReferenceLabel(VaporView::Geo::HeightReference reference)
     switch (reference)
     {
     case VaporView::Geo::HeightReference::Wgs84Ellipsoid:
-        return QStringLiteral("WGS84 椭球高");
+        return mapText(QStringLiteral("WGS84 椭球高"));
     case VaporView::Geo::HeightReference::MeanSeaLevel:
         return QStringLiteral("MSL");
     case VaporView::Geo::HeightReference::Egm2008:
         return QStringLiteral("EGM2008");
     case VaporView::Geo::HeightReference::LocalNed:
-        return QStringLiteral("本地 NED");
+        return mapText(QStringLiteral("本地 NED"));
     case VaporView::Geo::HeightReference::Unknown:
-        return QStringLiteral("未知");
+        return mapText(QStringLiteral("未知"));
     }
-    return QStringLiteral("未知");
+    return mapText(QStringLiteral("未知"));
 }
 
 QString fixQualityLabel(VaporView::Geo::FixQuality quality)
@@ -144,38 +148,38 @@ QString fixQualityLabel(VaporView::Geo::FixQuality quality)
     switch (quality)
     {
     case VaporView::Geo::FixQuality::Fixed:
-        return QStringLiteral("固定解");
+        return mapText(QStringLiteral("固定解"));
     case VaporView::Geo::FixQuality::Float:
-        return QStringLiteral("浮点解");
+        return mapText(QStringLiteral("浮点解"));
     case VaporView::Geo::FixQuality::Dgps:
         return QStringLiteral("DGPS");
     case VaporView::Geo::FixQuality::Single:
-        return QStringLiteral("单点定位");
+        return mapText(QStringLiteral("单点定位"));
     case VaporView::Geo::FixQuality::Invalid:
-        return QStringLiteral("无效");
+        return mapText(QStringLiteral("无效"));
     case VaporView::Geo::FixQuality::Unknown:
-        return QStringLiteral("未知");
+        return mapText(QStringLiteral("未知"));
     }
-    return QStringLiteral("未知");
+    return mapText(QStringLiteral("未知"));
 }
 
 QString attitudeSourceLabel(const VaporView::Geo::NavSample* sample)
 {
     if (!sample)
     {
-        return QStringLiteral("无");
+        return mapText(QStringLiteral("无"));
     }
     if (sample->hasQuaternion())
     {
-        return QStringLiteral("四元数");
+        return mapText(QStringLiteral("四元数"));
     }
     if (std::isfinite(sample->rollDeg)
         || std::isfinite(sample->pitchDeg)
         || std::isfinite(sample->yawDeg))
     {
-        return QStringLiteral("欧拉角");
+        return mapText(QStringLiteral("欧拉角"));
     }
-    return QStringLiteral("无");
+    return mapText(QStringLiteral("无"));
 }
 
 bool isMap3DHeadlessTest()
@@ -185,18 +189,18 @@ bool isMap3DHeadlessTest()
 
 QString availabilityLabel(bool available)
 {
-    return available ? QStringLiteral("可用") : QStringLiteral("缺失");
+    return available ? mapText(QStringLiteral("可用")) : mapText(QStringLiteral("缺失"));
 }
 
 QString selectedDemLabel(const MapDataDiagnostics& diagnostics)
 {
     if (!diagnostics.selectedDemLayerAvailable)
     {
-        return QStringLiteral("无");
+        return mapText(QStringLiteral("无"));
     }
     if (diagnostics.selectedElevationSource.isEmpty())
     {
-        return QStringLiteral("可用");
+        return mapText(QStringLiteral("可用"));
     }
     return diagnostics.selectedElevationSource;
 }
@@ -205,9 +209,9 @@ QString selectedOsmLabel(const MapDataDiagnostics& diagnostics)
 {
     if (!diagnostics.selectedOsmLayersAvailable)
     {
-        return QStringLiteral("未选择（%1/4 个文件）").arg(diagnostics.osmLayerCount);
+        return mapText(QStringLiteral("未选择（%1/4 个文件）")).arg(diagnostics.osmLayerCount);
     }
-    return QStringLiteral("%1 个安全图层（水系/道路，%2/4 个文件）")
+    return mapText(QStringLiteral("%1 个安全图层（水系/道路，%2/4 个文件）"))
         .arg(diagnostics.selectedOsmLayerCount)
         .arg(diagnostics.osmLayerCount);
 }
@@ -215,14 +219,14 @@ QString selectedOsmLabel(const MapDataDiagnostics& diagnostics)
 QString fileAvailabilityLabel(bool available, const QString& path)
 {
     return QStringLiteral("%1 - %2")
-        .arg(available ? QStringLiteral("可用") : QStringLiteral("缺失"), path);
+        .arg(available ? mapText(QStringLiteral("可用")) : mapText(QStringLiteral("缺失")), path);
 }
 
 QString imageryOptionLabel(const LocalImageryOption& option)
 {
     return QStringLiteral("%1 - %2")
         .arg(option.label,
-             option.available ? QStringLiteral("可用") : QStringLiteral("缺少 VRT 或模板"));
+             option.available ? mapText(QStringLiteral("可用")) : mapText(QStringLiteral("缺少 VRT 或模板")));
 }
 
 std::size_t layerIndex(Map3DLayer layer)
@@ -235,19 +239,19 @@ QString layerLabel(Map3DLayer layer)
     switch (layer)
     {
     case Map3DLayer::BaseMap:
-        return QStringLiteral("基础地理底图");
+        return mapText(QStringLiteral("基础地理底图"));
     case Map3DLayer::SatelliteImagery:
-        return QStringLiteral("卫星遥感影像");
+        return mapText(QStringLiteral("卫星遥感影像"));
     case Map3DLayer::DigitalElevation:
-        return QStringLiteral("数字高程模型（DEM）");
+        return mapText(QStringLiteral("数字高程模型（DEM）"));
     case Map3DLayer::Hydrography:
-        return QStringLiteral("水系");
+        return mapText(QStringLiteral("水系"));
     case Map3DLayer::RoadNetwork:
-        return QStringLiteral("道路网络");
+        return mapText(QStringLiteral("道路网络"));
     case Map3DLayer::Buildings3D:
-        return QStringLiteral("三维建筑模型");
+        return mapText(QStringLiteral("三维建筑模型"));
     case Map3DLayer::FlightElements:
-        return QStringLiteral("飞行任务要素（轨迹与飞行器）");
+        return mapText(QStringLiteral("飞行任务要素（轨迹与飞行器）"));
     case Map3DLayer::Count:
         break;
     }
@@ -288,19 +292,19 @@ QString layerDescription(Map3DLayer layer)
     switch (layer)
     {
     case Map3DLayer::BaseMap:
-        return QStringLiteral("全球基础地理参考与地表纹理");
+        return mapText(QStringLiteral("全球基础地理参考与地表纹理"));
     case Map3DLayer::SatelliteImagery:
-        return QStringLiteral("Sentinel-2、Landsat、航空影像或天地图卫星影像");
+        return mapText(QStringLiteral("Sentinel-2、Landsat、航空影像或天地图卫星影像"));
     case Map3DLayer::DigitalElevation:
-        return QStringLiteral("DEM 地形起伏与高程表面");
+        return mapText(QStringLiteral("DEM 地形起伏与高程表面"));
     case Map3DLayer::Hydrography:
-        return QStringLiteral("河流、湖泊及其他水体要素");
+        return mapText(QStringLiteral("河流、湖泊及其他水体要素"));
     case Map3DLayer::RoadNetwork:
-        return QStringLiteral("道路与交通网络要素");
+        return mapText(QStringLiteral("道路与交通网络要素"));
     case Map3DLayer::Buildings3D:
-        return QStringLiteral("本地原生 OSG 三维建筑叠加层");
+        return mapText(QStringLiteral("本地原生 OSG 三维建筑叠加层"));
     case Map3DLayer::FlightElements:
-        return QStringLiteral("飞行轨迹、采样点与飞行器模型");
+        return mapText(QStringLiteral("飞行轨迹、采样点与飞行器模型"));
     case Map3DLayer::Count:
         break;
     }
@@ -374,7 +378,7 @@ QString heatLegendText(VaporView::Geo::HeatMetric metric,
     const QString unit = VaporView::Geo::heatMetricUnit(metric);
     if (!range.valid || range.validCount == 0)
     {
-        return QStringLiteral("%1: -- · 无有效数据").arg(metricName);
+        return mapText(QStringLiteral("%1: -- · 无有效数据")).arg(metricName);
     }
     const double middle = (range.minimum + range.maximum) * 0.5;
     const auto formatValue = [&](double value) {
@@ -472,12 +476,12 @@ QString defaultSessionDataDirectory()
 QString trajectorySampleDetailText(int sampleIndex, const VaporView::Geo::NavSample& sample)
 {
     QStringList parts;
-    parts << QStringLiteral("已选点 #%1").arg(sampleIndex + 1);
+    parts << mapText(QStringLiteral("已选点 #%1")).arg(sampleIndex + 1);
     if (sample.hasLlh())
     {
-        parts << QStringLiteral("纬度 %1").arg(sample.latDeg, 0, 'f', 7)
-              << QStringLiteral("经度 %1").arg(sample.lonDeg, 0, 'f', 7)
-              << QStringLiteral("高度 %1 m %2")
+        parts << mapText(QStringLiteral("纬度 %1")).arg(sample.latDeg, 0, 'f', 7)
+              << mapText(QStringLiteral("经度 %1")).arg(sample.lonDeg, 0, 'f', 7)
+              << mapText(QStringLiteral("高度 %1 m %2"))
                      .arg(sample.heightM, 0, 'f', 2)
                      .arg(heightReferenceLabel(sample.heightReference));
     }
@@ -488,10 +492,10 @@ QString trajectorySampleDetailText(int sampleIndex, const VaporView::Geo::NavSam
                      .arg(sample.ecefYM, 0, 'f', 2)
                      .arg(sample.ecefZM, 0, 'f', 2);
     }
-    parts << QStringLiteral("定位 %1").arg(fixQualityLabel(sample.fixQuality));
+    parts << mapText(QStringLiteral("定位 %1")).arg(fixQualityLabel(sample.fixQuality));
     if (sample.satellites > 0)
     {
-        parts << QStringLiteral("卫星数 %1").arg(sample.satellites);
+        parts << mapText(QStringLiteral("卫星数 %1")).arg(sample.satellites);
     }
     if (std::isfinite(sample.hdop))
     {
@@ -499,13 +503,13 @@ QString trajectorySampleDetailText(int sampleIndex, const VaporView::Geo::NavSam
     }
     if (sample.recordTimestampUs > 0)
     {
-        parts << QStringLiteral("记录时间 %1").arg(sample.recordTimestampUs);
+        parts << mapText(QStringLiteral("记录时间 %1")).arg(sample.recordTimestampUs);
     }
     if (sample.deviceTimestampUs > 0)
     {
-        parts << QStringLiteral("设备时间 %1").arg(sample.deviceTimestampUs);
+        parts << mapText(QStringLiteral("设备时间 %1")).arg(sample.deviceTimestampUs);
     }
-    parts << QStringLiteral("姿态 %1").arg(attitudeSourceLabel(&sample));
+    parts << mapText(QStringLiteral("姿态 %1")).arg(attitudeSourceLabel(&sample));
     return parts.join(QStringLiteral(" | "));
 }
 
@@ -585,9 +589,9 @@ MapDataSelection selectionForLightweightStartup(const MapDataSelection& discover
     diagnostics.selectedElevationSource.clear();
     diagnostics.selectedFullLocalEarthPath.clear();
     diagnostics.messages.push_back(
-        QStringLiteral("已使用轻量 Natural Earth 底图快速打开三维地图；选择“重载最佳本地地图”加载 DEM、OSM 和三维建筑资源。"));
+        mapText(QStringLiteral("已使用轻量 Natural Earth 底图快速打开三维地图；选择“重载最佳本地地图”加载 DEM、OSM 和三维建筑资源。")));
     diagnostics.warnings.push_back(
-        QStringLiteral("打开三维地图时不会自动加载大型本地地图资源。"));
+        mapText(QStringLiteral("打开三维地图时不会自动加载大型本地地图资源。")));
     // Load available terrain without the heavier OSM/building layers.
     const bool copernicus = discovered.diagnostics.copernicusDemAvailable;
     const bool srtm = discovered.diagnostics.srtmDemAvailable;
@@ -596,7 +600,7 @@ MapDataSelection selectionForLightweightStartup(const MapDataSelection& discover
     if ((copernicus || srtm) && QFileInfo(terrainEarth).isFile()) {
         selection.earthFile = selection.earthFilePath = terrainEarth;
         selection.mode = copernicus ? MapDataMode::NaturalEarthWithCopernicusDem : MapDataMode::NaturalEarthWithSrtm;
-        selection.description = QStringLiteral("Natural Earth 底图及可用的本地 DEM 地形。");
+        selection.description = mapText(QStringLiteral("Natural Earth 底图及可用的本地 DEM 地形。"));
         diagnostics.earthFilePath = diagnostics.selectedBaseEarthFilePath = terrainEarth;
         diagnostics.selectedBaseMode = selection.mode;
         diagnostics.selectedBaseModeLabel = MapDataManager::modeLabel(selection.mode);
@@ -710,7 +714,7 @@ TrajectoryQualityStats qualityStatsForSamples(const std::vector<VaporView::Geo::
 
 QString qualityStatsSummary(const TrajectoryQualityStats& stats)
 {
-    return QStringLiteral("固定解 %1 浮点解 %2 差分 %3 单点 %4 未知 %5 无效 %6 跳变 %7")
+    return mapText(QStringLiteral("固定解 %1 浮点解 %2 差分 %3 单点 %4 未知 %5 无效 %6 跳变 %7"))
         .arg(stats.fixedSamples)
         .arg(stats.floatSamples)
         .arg(stats.dgpsSamples)
@@ -724,17 +728,17 @@ QString replayStateLabel(const VaporView::Geo::TrajectoryReplay& replay)
 {
     if (!replay.hasSamples())
     {
-        return QStringLiteral("未加载");
+        return mapText(QStringLiteral("未加载"));
     }
     if (replay.isPlaying())
     {
-        return QStringLiteral("播放中");
+        return mapText(QStringLiteral("播放中"));
     }
     if (replay.currentIndex() <= 0)
     {
-        return QStringLiteral("已停止");
+        return mapText(QStringLiteral("已停止"));
     }
-    return QStringLiteral("已暂停");
+    return mapText(QStringLiteral("已暂停"));
 }
 
 } // namespace
@@ -744,8 +748,9 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     , status_label_(new QLabel(this))
     , replay_timer_(new QTimer(this))
     , sentinel2_auto_load_timer_(new QTimer(this))
-    , latest_track_source_(QStringLiteral("无"))
+    , latest_track_source_(mapText(QStringLiteral("无")))
 {
+    qApp->installEventFilter(this);
     // Start each new window with the essential layers, regardless of old settings.
     layer_visibility_.fill(false);
     layer_visibility_[layerIndex(Map3DLayer::BaseMap)] = true;
@@ -753,7 +758,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     layer_visibility_[layerIndex(Map3DLayer::DigitalElevation)] = true;
     layer_visibility_[layerIndex(Map3DLayer::FlightElements)] = true;
     setObjectName(QStringLiteral("map3DWindow"));
-    setWindowTitle(QStringLiteral("VaporView 三维地图"));
+    setWindowTitle(mapText(QStringLiteral("VaporView 三维地图")));
     setAttribute(Qt::WA_QuitOnClose, false);
     resize(1100, 760);
     if (isMap3DHeadlessTest())
@@ -777,7 +782,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         render_placeholder_label_->setAutoFillBackground(true);
         render_placeholder_label_->setWordWrap(true);
         render_placeholder_label_->setText(
-            QStringLiteral("正在检查并启动 3D 渲染…"));
+            mapText(QStringLiteral("正在检查并启动 3D 渲染…")));
 
         // Create the first QOpenGLWidget before the top-level window is shown.
         // Qt otherwise recreates the native window when rendering is started.
@@ -803,22 +808,22 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     QToolBar* toolbar = addToolBar(QStringLiteral("3D Map"));
     toolbar->setObjectName(QStringLiteral("map3DToolbar"));
     toolbar->setIconSize(QSize(20, 20));
-    QAction* mapFilesAction = toolbar->addAction(QStringLiteral("地图文件"));
+    QAction* mapFilesAction = toolbar->addAction(mapText(QStringLiteral("地图文件")));
     mapFilesAction->setObjectName(QStringLiteral("map3DMapFilesAction"));
-    mapFilesAction->setToolTip(QStringLiteral("查看本地地图文件及就绪、缺失状态"));
+    mapFilesAction->setToolTip(mapText(QStringLiteral("查看本地地图文件及就绪、缺失状态")));
     connect(mapFilesAction, &QAction::triggered, this, &Map3DWindow::showMapFiles);
 
     createLayerMenu(toolbar);
 
-    QAction* openSessionAction = toolbar->addAction(QStringLiteral("打开 Session"));
+    QAction* openSessionAction = toolbar->addAction(mapText(QStringLiteral("打开 Session")));
     connect(openSessionAction, &QAction::triggered, this, &Map3DWindow::openSessionDirectory);
 
-    QAction* clearAction = toolbar->addAction(QStringLiteral("清空轨迹"));
+    QAction* clearAction = toolbar->addAction(mapText(QStringLiteral("清空轨迹")));
     connect(clearAction, &QAction::triggered, this, &Map3DWindow::clearTrack);
 
     auto* displayPanel = new QDialog(this, Qt::Tool);
     displayPanel->setObjectName(QStringLiteral("map3DDisplayPanel"));
-    displayPanel->setWindowTitle(QStringLiteral("显示设置"));
+    displayPanel->setWindowTitle(mapText(QStringLiteral("显示设置")));
     auto* displayRoot = new QVBoxLayout(displayPanel);
     displayRoot->setContentsMargins(0, 0, 0, 0);
     auto* displayContent = new QWidget(displayPanel);
@@ -826,7 +831,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     auto* displayLayout = new QFormLayout(displayContent);
     displayLayout->setContentsMargins(16, 16, 16, 16);
     displayLayout->setSpacing(12);
-    auto* displayAction = toolbar->addAction(QStringLiteral("显示设置"));
+    auto* displayAction = toolbar->addAction(mapText(QStringLiteral("显示设置")));
     displayAction->setObjectName(QStringLiteral("map3DDisplayAction"));
     connect(displayAction, &QAction::triggered, this, [this, displayPanel]() {
         VaporView::installCustomTitleBar(displayPanel, false);
@@ -854,11 +859,11 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     max_visible_samples_spin_->setRange(1000, 1000000);
     max_visible_samples_spin_->setSingleStep(1000);
     max_visible_samples_spin_->setValue(max_visible_samples_);
-    max_visible_samples_spin_->setPrefix(QStringLiteral("可见点 "));
-    max_visible_samples_spin_->setSuffix(QStringLiteral(" 点"));
-    max_visible_samples_spin_->setToolTip(QStringLiteral("最大可见轨迹点数"));
+    max_visible_samples_spin_->setPrefix(mapText(QStringLiteral("可见点 ")));
+    max_visible_samples_spin_->setSuffix(mapText(QStringLiteral(" 点")));
+    max_visible_samples_spin_->setToolTip(mapText(QStringLiteral("最大可见轨迹点数")));
     max_visible_samples_spin_->setStatusTip(max_visible_samples_spin_->toolTip());
-    displayLayout->addRow(QStringLiteral("可见点数量"), max_visible_samples_spin_);
+    displayLayout->addRow(mapText(QStringLiteral("可见点数量")), max_visible_samples_spin_);
     connect(max_visible_samples_spin_, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
         max_visible_samples_ = sanitizeMaxVisibleSamples(value);
         if (view_)
@@ -880,8 +885,8 @@ Map3DWindow::Map3DWindow(QWidget* parent)
                                   VaporView::Geo::heatMetricName(VaporView::Geo::HeatMetric::Temperature, false),
                                   VaporView::Geo::heatMetricName(VaporView::Geo::HeatMetric::Pressure, false)});
     heat_metric_combo_->setCurrentIndex(heatMetricComboIndex(heat_metric_));
-    heat_metric_combo_->setToolTip(QStringLiteral("3D 轨迹热力指标"));
-    displayLayout->addRow(QStringLiteral("热力指标"), heat_metric_combo_);
+    heat_metric_combo_->setToolTip(mapText(QStringLiteral("3D 轨迹热力指标")));
+    displayLayout->addRow(mapText(QStringLiteral("热力指标")), heat_metric_combo_);
     connect(heat_metric_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
         heat_metric_ = heatMetricFromComboIndex(index);
         applyHeatControlsToView();
@@ -896,12 +901,12 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     heatPaletteCombo->setPopupFitContents(true);
     heat_palette_combo_ = heatPaletteCombo;
     heat_palette_combo_->setObjectName(QStringLiteral("map3DHeatPaletteCombo"));
-    heat_palette_combo_->addItems({QStringLiteral("糖果色"),
-                                   QStringLiteral("蓝红渐变"),
-                                   QStringLiteral("反向光谱")});
+    heat_palette_combo_->addItems({mapText(QStringLiteral("糖果色")),
+                                   mapText(QStringLiteral("蓝红渐变")),
+                                   mapText(QStringLiteral("反向光谱"))});
     heat_palette_combo_->setCurrentIndex(heatPaletteComboIndex(heat_palette_));
-    heat_palette_combo_->setToolTip(QStringLiteral("3D 轨迹热力调色板"));
-    displayLayout->addRow(QStringLiteral("配色"), heat_palette_combo_);
+    heat_palette_combo_->setToolTip(mapText(QStringLiteral("3D 轨迹热力调色板")));
+    displayLayout->addRow(mapText(QStringLiteral("配色")), heat_palette_combo_);
     connect(heat_palette_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
         heat_palette_ = heatPaletteFromComboIndex(index);
         applyHeatControlsToView();
@@ -911,7 +916,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         updateStatus(nullptr);
     });
 
-    track_line_visible_action_ = new QAction(QStringLiteral("轨迹线"), this);
+    track_line_visible_action_ = new QAction(mapText(QStringLiteral("轨迹线")), this);
     track_line_visible_action_->setObjectName(QStringLiteral("map3DTrackLineVisibleAction"));
     track_line_visible_action_->setCheckable(true);
     track_line_visible_action_->setChecked(trackLineVisible);
@@ -931,7 +936,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         updateStatus(nullptr);
     });
 
-    track_points_visible_action_ = new QAction(QStringLiteral("轨迹点"), this);
+    track_points_visible_action_ = new QAction(mapText(QStringLiteral("轨迹点")), this);
     track_points_visible_action_->setObjectName(QStringLiteral("map3DTrackPointsVisibleAction"));
     track_points_visible_action_->setCheckable(true);
     track_points_visible_action_->setChecked(trackPointsVisible);
@@ -955,9 +960,9 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     track_line_width_spin_->setObjectName(QStringLiteral("map3DTrackLineWidthSpin"));
     track_line_width_spin_->setRange(1, 20);
     track_line_width_spin_->setValue(trackLineWidth);
-    track_line_width_spin_->setPrefix(QStringLiteral("线宽 "));
+    track_line_width_spin_->setPrefix(mapText(QStringLiteral("线宽 ")));
     track_line_width_spin_->setSuffix(QStringLiteral(" px"));
-    displayLayout->addRow(QStringLiteral("线宽"), track_line_width_spin_);
+    displayLayout->addRow(mapText(QStringLiteral("线宽")), track_line_width_spin_);
     connect(track_line_width_spin_, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
         if (view_)
         {
@@ -971,9 +976,9 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     track_point_size_spin_->setObjectName(QStringLiteral("map3DTrackPointSizeSpin"));
     track_point_size_spin_->setRange(1, 32);
     track_point_size_spin_->setValue(trackPointSize);
-    track_point_size_spin_->setPrefix(QStringLiteral("点 "));
+    track_point_size_spin_->setPrefix(mapText(QStringLiteral("点 ")));
     track_point_size_spin_->setSuffix(QStringLiteral(" px"));
-    displayLayout->addRow(QStringLiteral("点大小"), track_point_size_spin_);
+    displayLayout->addRow(mapText(QStringLiteral("点大小")), track_point_size_spin_);
     connect(track_point_size_spin_, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
         if (view_)
         {
@@ -986,7 +991,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     heat_legend_label_ = new QLabel(toolbar);
     heat_legend_label_->setObjectName(QStringLiteral("map3DHeatLegendLabel"));
     heat_legend_label_->setMinimumWidth(260);
-    displayLayout->addRow(QStringLiteral("热力范围"), heat_legend_label_);
+    displayLayout->addRow(mapText(QStringLiteral("热力范围")), heat_legend_label_);
 
     replay_timer_->setTimerType(Qt::PreciseTimer);
     replay_timer_->setInterval(static_cast<int>(replay_.interval().count()));
@@ -1001,67 +1006,67 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         }
     });
 
-    QAction* loadEarthAction = toolbar->addAction(QStringLiteral("加载 Earth 文件"));
+    QAction* loadEarthAction = toolbar->addAction(mapText(QStringLiteral("加载 Earth 文件")));
     connect(loadEarthAction, &QAction::triggered, this, &Map3DWindow::openEarthFile);
 
 
 
     local_imagery_menu_ = new MapOptionsMenu(this);
-    local_imagery_menu_->setTitle(QStringLiteral("本地影像"));
+    local_imagery_menu_->setTitle(mapText(QStringLiteral("本地影像")));
     local_imagery_menu_->setObjectName(QStringLiteral("map3DLocalImageryMenu"));
-    local_imagery_action_ = toolbar->addAction(QStringLiteral("本地影像"));
+    local_imagery_action_ = toolbar->addAction(mapText(QStringLiteral("本地影像")));
     local_imagery_action_->setObjectName(QStringLiteral("map3DLocalImageryAction"));
     local_imagery_action_->setMenu(local_imagery_menu_);
 
-    local_3d_tiles_action_ = toolbar->addAction(QStringLiteral("本地 OSG 建筑"));
+    local_3d_tiles_action_ = toolbar->addAction(mapText(QStringLiteral("本地 OSG 建筑")));
     local_3d_tiles_action_->setObjectName(QStringLiteral("map3DLocal3DTilesAction"));
     local_3d_tiles_action_->setEnabled(false);
-    local_3d_tiles_action_->setToolTip(QStringLiteral("加载 VaporView 原生 OSG 建筑瓦片；不支持通用 Cesium 3D Tiles"));
+    local_3d_tiles_action_->setToolTip(mapText(QStringLiteral("加载 VaporView 原生 OSG 建筑瓦片；不支持通用 Cesium 3D Tiles")));
     local_3d_tiles_action_->setStatusTip(local_3d_tiles_action_->toolTip());
     connect(local_3d_tiles_action_, &QAction::triggered, this, &Map3DWindow::loadLocal3DTilesPreview);
 
-    clear_local_3d_tiles_action_ = toolbar->addAction(QStringLiteral("清除 OSG 建筑"));
+    clear_local_3d_tiles_action_ = toolbar->addAction(mapText(QStringLiteral("清除 OSG 建筑")));
     clear_local_3d_tiles_action_->setObjectName(QStringLiteral("map3DClearLocal3DTilesAction"));
     clear_local_3d_tiles_action_->setEnabled(false);
-    clear_local_3d_tiles_action_->setToolTip(QStringLiteral("清除当前本地 OSG 建筑叠加层"));
+    clear_local_3d_tiles_action_->setToolTip(mapText(QStringLiteral("清除当前本地 OSG 建筑叠加层")));
     clear_local_3d_tiles_action_->setStatusTip(clear_local_3d_tiles_action_->toolTip());
     connect(clear_local_3d_tiles_action_, &QAction::triggered, this, &Map3DWindow::clearLocal3DTilesPreview);
 
-    load_aircraft_model_action_ = toolbar->addAction(QStringLiteral("加载飞机模型"));
+    load_aircraft_model_action_ = toolbar->addAction(mapText(QStringLiteral("加载飞机模型")));
     load_aircraft_model_action_->setObjectName(QStringLiteral("map3DLoadAircraftModelAction"));
-    load_aircraft_model_action_->setToolTip(QStringLiteral("选择本地 .osgb/.osg/.glb/.gltf 飞机模型"));
+    load_aircraft_model_action_->setToolTip(mapText(QStringLiteral("选择本地 .osgb/.osg/.glb/.gltf 飞机模型")));
     load_aircraft_model_action_->setStatusTip(load_aircraft_model_action_->toolTip());
     connect(load_aircraft_model_action_, &QAction::triggered, this, &Map3DWindow::openAircraftModel);
 
-    reset_aircraft_model_action_ = toolbar->addAction(QStringLiteral("内置飞机标记"));
+    reset_aircraft_model_action_ = toolbar->addAction(mapText(QStringLiteral("内置飞机标记")));
     reset_aircraft_model_action_->setObjectName(QStringLiteral("map3DResetAircraftModelAction"));
-    reset_aircraft_model_action_->setToolTip(QStringLiteral("清除自定义飞机模型设置并恢复内置标记"));
+    reset_aircraft_model_action_->setToolTip(mapText(QStringLiteral("清除自定义飞机模型设置并恢复内置标记")));
     reset_aircraft_model_action_->setStatusTip(reset_aircraft_model_action_->toolTip());
     connect(reset_aircraft_model_action_, &QAction::triggered, this, &Map3DWindow::resetAircraftModel);
 
-    QAction* reloadBestMapAction = toolbar->addAction(QStringLiteral("重载最佳本地地图"));
+    QAction* reloadBestMapAction = toolbar->addAction(mapText(QStringLiteral("重载最佳本地地图")));
     reloadBestMapAction->setObjectName(QStringLiteral("map3DReloadBestMapAction"));
     connect(reloadBestMapAction, &QAction::triggered, this, &Map3DWindow::reloadBestLocalMap);
 
-    QAction* flyToAircraftAction = toolbar->addAction(QStringLiteral("飞到飞机"));
+    QAction* flyToAircraftAction = toolbar->addAction(mapText(QStringLiteral("飞到飞机")));
     flyToAircraftAction->setObjectName(QStringLiteral("map3DFlyToAircraftAction"));
     connect(flyToAircraftAction, &QAction::triggered, this, &Map3DWindow::flyToAircraft);
 
-    QAction* flyToTrackAction = toolbar->addAction(QStringLiteral("飞到轨迹"));
+    QAction* flyToTrackAction = toolbar->addAction(mapText(QStringLiteral("飞到轨迹")));
     flyToTrackAction->setObjectName(QStringLiteral("map3DFlyToTrackAction"));
     connect(flyToTrackAction, &QAction::triggered, this, &Map3DWindow::flyToTrack);
 
-    QAction* resetViewAction = toolbar->addAction(QStringLiteral("重置视角"));
+    QAction* resetViewAction = toolbar->addAction(mapText(QStringLiteral("重置视角")));
     resetViewAction->setObjectName(QStringLiteral("map3DResetViewAction"));
     connect(resetViewAction, &QAction::triggered, this, &Map3DWindow::resetView);
 
-    diagnostics_action_ = toolbar->addAction(QStringLiteral("地图诊断"));
+    diagnostics_action_ = toolbar->addAction(mapText(QStringLiteral("地图诊断")));
     diagnostics_action_->setObjectName(QStringLiteral("map3DDiagnosticsAction"));
     connect(diagnostics_action_, &QAction::triggered, this, &Map3DWindow::showMapDiagnostics);
 
-    map_resources_action_ = toolbar->addAction(QStringLiteral("地图资源"));
+    map_resources_action_ = toolbar->addAction(mapText(QStringLiteral("地图资源")));
     map_resources_action_->setObjectName(QStringLiteral("map3DMapResourcesAction"));
-    map_resources_action_->setToolTip(QStringLiteral("读取、下载和校验 3D 地图资源"));
+    map_resources_action_->setToolTip(mapText(QStringLiteral("读取、下载和校验 3D 地图资源")));
     map_resources_action_->setStatusTip(map_resources_action_->toolTip());
     map_resource_manager_ = new MapResourceManager(this);
     map_resource_dialog_ = new MapResourceDialog(map_resource_manager_, this);
@@ -1086,14 +1091,14 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     auto* moreMenu = new MapOptionsMenu(this);
     moreMenu->setObjectName(QStringLiteral("map3DMoreMenu"));
     auto* resourcesMenu = new MapOptionsMenu(moreMenu);
-    resourcesMenu->setTitle(QStringLiteral("地图资源"));
+    resourcesMenu->setTitle(mapText(QStringLiteral("地图资源")));
     moreMenu->addMenu(resourcesMenu);
     local_imagery_menu_->setParent(resourcesMenu, local_imagery_menu_->windowFlags());
     auto* modelMenu = new MapOptionsMenu(moreMenu);
-    modelMenu->setTitle(QStringLiteral("飞机模型"));
+    modelMenu->setTitle(mapText(QStringLiteral("飞机模型")));
     moreMenu->addMenu(modelMenu);
     auto* viewMenu = new MapOptionsMenu(moreMenu);
-    viewMenu->setTitle(QStringLiteral("视角与诊断"));
+    viewMenu->setTitle(mapText(QStringLiteral("视角与诊断")));
     moreMenu->addMenu(viewMenu);
     for (QAction* action : {mapFilesAction, loadEarthAction, local_imagery_action_,
                             local_3d_tiles_action_, clear_local_3d_tiles_action_,
@@ -1112,7 +1117,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         toolbar->removeAction(action);
         viewMenu->addAction(action);
     }
-    auto* moreAction = toolbar->addAction(QStringLiteral("更多"));
+    auto* moreAction = toolbar->addAction(mapText(QStringLiteral("更多")));
     moreAction->setObjectName(QStringLiteral("map3DMoreAction"));
     moreAction->setMenu(moreMenu);
     if (auto* button = qobject_cast<QToolButton*>(toolbar->widgetForAction(moreAction)))
@@ -1140,7 +1145,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     {
         setMapSelection(map_data_manager_.selectBestAvailableMap());
         latest_earth_load_.requestedPath = map_selection_.earthFile;
-        latest_earth_load_.failureReason = QStringLiteral("无渲染测试模式；未尝试加载地图场景。");
+        latest_earth_load_.failureReason = mapText(QStringLiteral("无渲染测试模式；未尝试加载地图场景。"));
         updateStatus(nullptr);
     }
     else
@@ -1148,9 +1153,9 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         setMapSelection(selectionForLightweightStartup(
             map_data_manager_.selectBestAvailableMap(MapDataScanMode::LightweightStartup)));
         latest_earth_load_.requestedPath = map_selection_.earthFile;
-        latest_earth_load_.failureReason = QStringLiteral("尚未启动三维渲染。");
+        latest_earth_load_.failureReason = mapText(QStringLiteral("尚未启动三维渲染。"));
         updateStatus(nullptr);
-        statusBar()->showMessage(QStringLiteral("3D 地图窗口已打开；点击“启动渲染”后加载地图。"), 8000);
+        statusBar()->showMessage(mapText(QStringLiteral("3D 地图窗口已打开；点击“启动渲染”后加载地图。")), 8000);
     }
 }
 
@@ -1224,7 +1229,7 @@ void Map3DWindow::configureViewSignals()
 
     view_->setObjectName(QStringLiteral("map3DView"));
     connect(view_, &OsgEarthViewWidget::imageryFallbackNotice, this, [this]() {
-        showMapNotice(QStringLiteral("部分影像缺失：周边区域统一使用同源较低级别影像；仍无数据处显示灰色。"));
+        showMapNotice(mapText(QStringLiteral("部分影像缺失：周边区域统一使用同源较低级别影像；仍无数据处显示灰色。")));
     });
     connect(view_, &OsgEarthViewWidget::performanceUpdated, this, [this]() { updateStatus(nullptr); });
     connect(view_,
@@ -1277,16 +1282,16 @@ void Map3DWindow::startRendering()
     }
     if (view_)
     {
-        statusBar()->showMessage(QStringLiteral("3D 渲染已启动。"), 3000);
+        statusBar()->showMessage(mapText(QStringLiteral("3D 渲染已启动。")), 3000);
         return;
     }
     if (!prewarmed_view_ || !render_stack_)
     {
-        statusBar()->showMessage(QStringLiteral("无法创建 3D 渲染视图。"), 8000);
+        statusBar()->showMessage(mapText(QStringLiteral("无法创建 3D 渲染视图。")), 8000);
         return;
     }
 
-    statusBar()->showMessage(QStringLiteral("正在启动 3D 渲染视图..."));
+    statusBar()->showMessage(mapText(QStringLiteral("正在启动 3D 渲染视图...")));
     view_ = prewarmed_view_;
     configureViewSignals();
     render_stack_->setCurrentWidget(view_);
@@ -1300,7 +1305,7 @@ void Map3DWindow::startRendering()
         render_placeholder_label_->hide();
     }
     connect(view_, &OsgEarthViewWidget::renderingFailed, this, [this](const QString& reason) {
-        render_placeholder_label_->setText(QStringLiteral("3D 渲染已停止：%1\n可关闭窗口或查看地图文件状态。").arg(reason));
+        render_placeholder_label_->setText(mapText(QStringLiteral("3D 渲染已停止：%1\n可关闭窗口或查看地图文件状态。")).arg(reason));
         render_stack_->setCurrentWidget(render_placeholder_label_);
         render_placeholder_label_->show();
         statusBar()->showMessage(reason);
@@ -1320,12 +1325,12 @@ void Map3DWindow::startRendering()
                 .toString();
         if (!aircraftModelPath.isEmpty() && view_)
         {
-            statusBar()->showMessage(QStringLiteral("正在后台加载飞机模型: %1").arg(aircraftModelPath));
+            statusBar()->showMessage(mapText(QStringLiteral("正在后台加载飞机模型: %1")).arg(aircraftModelPath));
             view_->loadAircraftModelAsync(aircraftModelPath, [this, aircraftModelPath](bool loaded) {
                 statusBar()->showMessage(
                     loaded
-                        ? QStringLiteral("已加载飞机模型: %1").arg(aircraftModelPath)
-                        : QStringLiteral("飞机模型加载失败，已保留当前标记: %1").arg(aircraftModelPath),
+                        ? mapText(QStringLiteral("已加载飞机模型: %1")).arg(aircraftModelPath)
+                        : mapText(QStringLiteral("飞机模型加载失败，已保留当前标记: %1")).arg(aircraftModelPath),
                     7000);
                 refreshDiagnosticsText();
             });
@@ -1341,7 +1346,7 @@ void Map3DWindow::createLayerMenu(QToolBar* toolbar)
     }
 
     layers_menu_ = new VaporView::SingleLevelPopupMenu(this);
-    layers_menu_->setTitle(QStringLiteral("地图图层"));
+    layers_menu_->setTitle(mapText(QStringLiteral("地图图层")));
     layers_menu_->setObjectName(QStringLiteral("map3DLayersMenu"));
     layers_menu_->setPanelPadding(12);
     layers_menu_->setCornerRadius(10);
@@ -1353,21 +1358,21 @@ void Map3DWindow::createLayerMenu(QToolBar* toolbar)
     layout->setSpacing(8);
     auto* locate = new QToolButton(controls);
     locate->setObjectName(QStringLiteral("map3DLocateButton"));
-    locate->setToolTip(QStringLiteral("定位到飞机"));
-    locate->setAccessibleName(QStringLiteral("定位到飞机"));
+    locate->setToolTip(mapText(QStringLiteral("定位到飞机")));
+    locate->setAccessibleName(mapText(QStringLiteral("定位到飞机")));
     locate->setFixedSize(40, 40);
     locate->setIconSize(QSize(22, 22));
     connect(locate, &QToolButton::clicked, this, &Map3DWindow::flyToAircraft);
     layout->addWidget(locate);
-    layers_action_ = new QAction(QStringLiteral("图层"), this);
+    layers_action_ = new QAction(mapText(QStringLiteral("图层")), this);
     layers_action_->setObjectName(QStringLiteral("map3DLayersAction"));
     layers_action_->setMenu(layers_menu_);
-    layers_action_->setToolTip(QStringLiteral("地图图层"));
-    layers_action_->setStatusTip(QStringLiteral("选择 3D 地图中显示的基础、专题与任务图层"));
+    layers_action_->setToolTip(mapText(QStringLiteral("地图图层")));
+    layers_action_->setStatusTip(mapText(QStringLiteral("选择 3D 地图中显示的基础、专题与任务图层")));
     auto* button = new QToolButton(controls);
     button->setDefaultAction(layers_action_);
     button->setObjectName(QStringLiteral("map3DLayersButton"));
-    button->setAccessibleName(QStringLiteral("地图图层"));
+    button->setAccessibleName(mapText(QStringLiteral("地图图层")));
     button->setToolButtonStyle(Qt::ToolButtonIconOnly);
     button->setPopupMode(QToolButton::InstantPopup);
     button->setFixedSize(40, 40);
@@ -1477,11 +1482,11 @@ void Map3DWindow::setLayerVisible(Map3DLayer layer, bool visible, bool announce)
     if (announce)
     {
         const bool available = view_ ? view_->layerAvailable(layer) : false;
-        const QString state = visible ? QStringLiteral("显示") : QStringLiteral("隐藏");
+        const QString state = visible ? mapText(QStringLiteral("显示")) : mapText(QStringLiteral("隐藏"));
         statusBar()->showMessage(
             available || !visible
                 ? QStringLiteral("%1：%2").arg(layerLabel(layer), state)
-                : QStringLiteral("%1：已设为显示，当前场景加载该数据后自动生效").arg(layerLabel(layer)),
+                : mapText(QStringLiteral("%1：已设为显示，当前场景加载该数据后自动生效")).arg(layerLabel(layer)),
             4500);
     }
 }
@@ -1605,8 +1610,8 @@ void Map3DWindow::refreshLayerMenuAvailability()
         }
 
         const QString availability = available
-            ? QStringLiteral("当前可用")
-            : QStringLiteral("当前场景未加载；数据可用时按此设置显示");
+            ? mapText(QStringLiteral("当前可用"))
+            : mapText(QStringLiteral("当前场景未加载；数据可用时按此设置显示"));
         const QString tooltip = QStringLiteral("%1\n%2").arg(layerDescription(layer), availability);
         if (layer_rows_[index])
         {
@@ -1678,7 +1683,7 @@ void Map3DWindow::appendSample(const VaporView::Geo::NavSample& sample)
         headless_samples_.push_back(sample);
         headless_render_samples_.push_back(renderSampleFromNavSample(sample));
     }
-    recordTrackSource(QStringLiteral("实时"), &sample);
+    recordTrackSource(mapText(QStringLiteral("实时")), &sample);
     updateReplayUi();
     updateHeatLegend();
     updateStatus(&sample, false);
@@ -1709,8 +1714,8 @@ void Map3DWindow::appendSamples(const std::vector<VaporView::Geo::NavSample>& sa
             headless_render_samples_.push_back(renderSampleFromNavSample(sample));
         }
     }
-    recordTrackSource(QStringLiteral("实时"), samples.empty() ? nullptr : &samples.back(),
-                      samples.empty() ? QStringLiteral("实时数据批次为空") : QString());
+    recordTrackSource(mapText(QStringLiteral("实时")), samples.empty() ? nullptr : &samples.back(),
+                      samples.empty() ? mapText(QStringLiteral("实时数据批次为空")) : QString());
     updateReplayUi();
     updateHeatLegend();
     updateStatus(samples.empty() ? nullptr : &samples.back(), false);
@@ -1735,7 +1740,7 @@ void Map3DWindow::clearTrack()
         headless_samples_.clear();
         headless_render_samples_.clear();
     }
-    recordTrackSource(QStringLiteral("无"), nullptr, QStringLiteral("轨迹已清空"));
+    recordTrackSource(mapText(QStringLiteral("无")), nullptr, mapText(QStringLiteral("轨迹已清空")));
     updateReplayUi();
     updateHeatLegend();
     updateStatus(nullptr);
@@ -1747,7 +1752,7 @@ void Map3DWindow::loadSessionDirectory(const QString& sessionDir)
     if (VaporView::settingsWritesSuspended())
     {
         Q_UNUSED(sessionDir);
-        statusBar()->showMessage(QStringLiteral("[界面测试] 已模拟会话轨迹加载；未读取业务文件。"), 6000);
+        statusBar()->showMessage(mapText(QStringLiteral("[界面测试] 已模拟会话轨迹加载；未读取业务文件。")), 6000);
         return;
     }
     if (!view_ && !headless_view_)
@@ -1758,7 +1763,7 @@ void Map3DWindow::loadSessionDirectory(const QString& sessionDir)
     if (session_load_watcher_)
     {
         pending_session_directory_ = sessionDir;
-        statusBar()->showMessage(QStringLiteral("已排队等待加载最新会话轨迹…"), 3000);
+        statusBar()->showMessage(mapText(QStringLiteral("已排队等待加载最新会话轨迹…")), 3000);
         return;
     }
     startSessionLoad(sessionDir, generation);
@@ -1785,7 +1790,7 @@ void Map3DWindow::startSessionLoad(const QString& sessionDir, quint64 generation
     {
         return;
     }
-    statusBar()->showMessage(QStringLiteral("正在加载会话 轨迹及热力数据，完成后自动定位…"));
+    statusBar()->showMessage(mapText(QStringLiteral("正在加载会话 轨迹及热力数据，完成后自动定位…")));
     if (!session_progress_dialog_)
     {
         session_progress_dialog_ = new QProgressDialog(this);
@@ -1794,12 +1799,12 @@ void Map3DWindow::startSessionLoad(const QString& sessionDir, quint64 generation
         session_progress_dialog_->setAutoClose(false);
         session_progress_dialog_->setAutoReset(false);
         session_progress_dialog_->setCancelButton(nullptr);
-        session_progress_dialog_->setWindowTitle(QStringLiteral("加载 Session"));
+        session_progress_dialog_->setWindowTitle(mapText(QStringLiteral("加载 Session")));
     }
     if (session_progress_dialog_)
     {
         session_progress_dialog_->setValue(0);
-        session_progress_dialog_->setLabelText(QStringLiteral("正在读取 Session 数据…"));
+        session_progress_dialog_->setLabelText(mapText(QStringLiteral("正在读取 Session 数据…")));
         session_progress_dialog_->show();
 
     }
@@ -1834,10 +1839,10 @@ void Map3DWindow::startSessionLoad(const QString& sessionDir, quint64 generation
             session_progress_dialog_->reset();
             session_progress_dialog_->hide();
             updateStatus(nullptr, true);
-            statusBar()->showMessage(QStringLiteral("Session 轨迹加载失败。"), 8000);
+            statusBar()->showMessage(mapText(QStringLiteral("Session 轨迹加载失败。")), 8000);
             QMessageBox::warning(this,
-                                 QStringLiteral("会话轨迹"),
-                                 QStringLiteral("无法读取轨迹: %1").arg(result.error));
+                                 mapText(QStringLiteral("会话轨迹")),
+                                 mapText(QStringLiteral("无法读取轨迹: %1")).arg(result.error));
             return;
         }
 
@@ -1877,13 +1882,13 @@ void Map3DWindow::startSessionLoad(const QString& sessionDir, quint64 generation
         latest_drop_source_.clear();
         latest_drop_reason_.clear();
         latest_drop_record_timestamp_us_ = 0;
-        recordTrackSource(QStringLiteral("会话"),
+        recordTrackSource(mapText(QStringLiteral("会话")),
                           replay_.currentSample(),
                           trackNote);
         resetAutomaticSentinel2Imagery();
         applyHeatControlsToView();
         updateHeatLegend();
-        const bool focusedTrack = autoFocusTrack(QStringLiteral("自动轨迹视角"));
+        const bool focusedTrack = autoFocusTrack(mapText(QStringLiteral("自动轨迹视角")));
         applyConfiguredTiandituSatelliteImagery(false);
         updateReplayUi();
         updateStatus(replay_.currentSample());
@@ -1904,7 +1909,7 @@ void Map3DWindow::startSessionLoad(const QString& sessionDir, quint64 generation
         const QString warningSuffix = loadWarning.isEmpty()
             ? QString()
             : QStringLiteral("；%1").arg(loadWarning);
-        statusBar()->showMessage(QStringLiteral("已从 %2 加载 %1 个采样点%3%4")
+        statusBar()->showMessage(mapText(QStringLiteral("已从 %2 加载 %1 个采样点%3%4"))
                                      .arg(renderSamples->size())
                                      .arg(sourceCsvPath,
                                           focusedTrack ? QStringLiteral(" (auto-focused track)") : QString(),
@@ -1926,8 +1931,8 @@ void Map3DWindow::startSessionLoad(const QString& sessionDir, quint64 generation
 
 void Map3DWindow::noteLiveSampleDrop(const QString& source, const QString& reason, qint64 recordTimestampUs)
 {
-    latest_drop_source_ = source.isEmpty() ? QStringLiteral("实时") : source;
-    latest_drop_reason_ = reason.isEmpty() ? QStringLiteral("未知") : reason;
+    latest_drop_source_ = source.isEmpty() ? mapText(QStringLiteral("实时")) : source;
+    latest_drop_reason_ = reason.isEmpty() ? mapText(QStringLiteral("未知")) : reason;
     latest_drop_record_timestamp_us_ = recordTimestampUs;
     refreshDiagnosticsText();
     updateStatus(nullptr);
@@ -1937,8 +1942,8 @@ void Map3DWindow::loadInitialEarthFile()
     if (VaporView::settingsWritesSuspended())
     {
         latest_earth_load_.requestedPath.clear();
-        latest_earth_load_.failureReason = QStringLiteral("界面测试模式；未尝试加载外部地图场景。");
-        statusBar()->showMessage(QStringLiteral("[界面测试] 地图网络加载已禁用；仍可显示模拟轨迹。"), 6000);
+        latest_earth_load_.failureReason = mapText(QStringLiteral("界面测试模式；未尝试加载外部地图场景。"));
+        statusBar()->showMessage(mapText(QStringLiteral("[界面测试] 地图网络加载已禁用；仍可显示模拟轨迹。")), 6000);
         return;
     }
     const MapDataSelection autoSelection = map_data_manager_.selectBestAvailableMap();
@@ -1952,13 +1957,13 @@ void Map3DWindow::loadInitialEarthFile()
     {
         latest_earth_load_ = {};
         latest_earth_load_.requestedPath = initialPath;
-        latest_earth_load_.failureReason = QStringLiteral("所选地图场景文件不存在。");
+        latest_earth_load_.failureReason = mapText(QStringLiteral("所选地图场景文件不存在。"));
         setMapSelection(startupSelection);
-        statusBar()->showMessage(QStringLiteral("未找到默认 Earth 文件，当前显示本地 NED 网格。"), 8000);
+        statusBar()->showMessage(mapText(QStringLiteral("未找到默认 Earth 文件，当前显示本地 NED 网格。")), 8000);
         return;
     }
 
-    statusBar()->showMessage(QStringLiteral("正在后台加载 Earth 文件: %1").arg(initialPath));
+    statusBar()->showMessage(mapText(QStringLiteral("正在后台加载 Earth 文件: %1")).arg(initialPath));
     view_->loadEarthFileAsync(initialPath, [this, autoSelection, startupSelection, initialPath, hasPersistedCustomEarth](bool loaded) {
         latest_earth_load_ = view_ ? view_->earthLoadDiagnostics() : EarthLoadDiagnostics{};
         if (!loaded && hasPersistedCustomEarth)
@@ -1968,13 +1973,13 @@ void Map3DWindow::loadInitialEarthFile()
             const QString fallbackPath = startupSelection.earthFile;
             if (view_ && QFileInfo(fallbackPath).isFile())
             {
-                statusBar()->showMessage(QStringLiteral("自定义 Earth 失败，正在加载自动地图: %1").arg(fallbackPath));
+                statusBar()->showMessage(mapText(QStringLiteral("自定义 Earth 失败，正在加载自动地图: %1")).arg(fallbackPath));
                 view_->loadEarthFileAsync(fallbackPath, [this, startupSelection, fallbackPath](bool fallbackLoaded) {
                     latest_earth_load_ = view_ ? view_->earthLoadDiagnostics() : EarthLoadDiagnostics{};
                     if (!fallbackLoaded)
                     {
                         setMapSelection(startupSelection);
-                        statusBar()->showMessage(QStringLiteral("自动加载 Earth 文件失败，已保留当前场景。"), 8000);
+                        statusBar()->showMessage(mapText(QStringLiteral("自动加载 Earth 文件失败，已保留当前场景。")), 8000);
                         return;
                     }
                     setMapSelection(startupSelection);
@@ -1992,7 +1997,7 @@ void Map3DWindow::loadInitialEarthFile()
                         sentinel2_auto_load_timer_->start();
                     }
                     updateStatus(nullptr);
-                    statusBar()->showMessage(QStringLiteral("已自动加载 Earth 文件: %1").arg(fallbackPath), 5000);
+                    statusBar()->showMessage(mapText(QStringLiteral("已自动加载 Earth 文件: %1")).arg(fallbackPath), 5000);
                 });
                 return;
             }
@@ -2000,15 +2005,15 @@ void Map3DWindow::loadInitialEarthFile()
         if (!loaded)
         {
             setMapSelection(startupSelection);
-            statusBar()->showMessage(QStringLiteral("自动加载 Earth 文件失败，已保留当前场景: %1").arg(initialPath), 8000);
+            statusBar()->showMessage(mapText(QStringLiteral("自动加载 Earth 文件失败，已保留当前场景: %1")).arg(initialPath), 8000);
             return;
         }
         const MapDataSelection activeSelection = initialPath == startupSelection.earthFile
             ? startupSelection
             : selectionForCustomEarth(autoSelection,
                                       initialPath,
-                                      QStringLiteral("用户选择的自定义地图场景。"),
-                                      QStringLiteral("使用用户选择的自定义地图场景文件。"));
+                                      mapText(QStringLiteral("用户选择的自定义地图场景。")),
+                                      mapText(QStringLiteral("使用用户选择的自定义地图场景文件。")));
         setMapSelection(activeSelection);
         resetAutomaticSentinel2Imagery();
         QSettings settings = map3DSettings();
@@ -2025,14 +2030,14 @@ void Map3DWindow::loadInitialEarthFile()
             sentinel2_auto_load_timer_->start();
         }
         updateStatus(nullptr);
-        statusBar()->showMessage(QStringLiteral("已自动加载 Earth 文件: %1").arg(initialPath), 5000);
+        statusBar()->showMessage(mapText(QStringLiteral("已自动加载 Earth 文件: %1")).arg(initialPath), 5000);
     });
 }
 void Map3DWindow::openSessionDirectory()
 {
     if (VaporView::settingsWritesSuspended())
     {
-        statusBar()->showMessage(QStringLiteral("[界面测试] 已模拟会话目录选择；未读取业务文件。"), 6000);
+        statusBar()->showMessage(mapText(QStringLiteral("[界面测试] 已模拟会话目录选择；未读取业务文件。")), 6000);
         return;
     }
     QSettings settings = map3DSettings();
@@ -2042,7 +2047,7 @@ void Map3DWindow::openSessionDirectory()
         initial = defaultSessionDataDirectory();
     }
     const QString dir = QFileDialog::getExistingDirectory(this,
-                                                          QStringLiteral("选择 Session 目录"),
+                                                          mapText(QStringLiteral("选择 Session 目录")),
                                                           initial);
     if (dir.isEmpty())
     {
@@ -2055,34 +2060,34 @@ void Map3DWindow::openEarthFile()
 {
     if (VaporView::settingsWritesSuspended())
     {
-        statusBar()->showMessage(QStringLiteral("[界面测试] 已模拟 Earth 文件加载；未访问外部资源。"), 6000);
+        statusBar()->showMessage(mapText(QStringLiteral("[界面测试] 已模拟 Earth 文件加载；未访问外部资源。")), 6000);
         return;
     }
     QSettings settings = map3DSettings();
     const QString file = QFileDialog::getOpenFileName(
-        this, QStringLiteral("加载 Earth 文件"),
+        this, mapText(QStringLiteral("加载 Earth 文件")),
         settings.value(QStringLiteral("lastEarthFile")).toString(),
-        QStringLiteral("osgEarth 场景 (*.earth);;所有文件 (*)"));
+        mapText(QStringLiteral("osgEarth 场景 (*.earth);;所有文件 (*)")));
     if (file.isEmpty())
     {
         return;
     }
     if (!view_)
     {
-        statusBar()->showMessage(QStringLiteral("请先点击“启动渲染”，再加载 Earth 文件。"), 6000);
+        statusBar()->showMessage(mapText(QStringLiteral("请先点击“启动渲染”，再加载 Earth 文件。")), 6000);
         return;
     }
     const MapDataSelection selection =
         selectionForCustomEarth(map_data_manager_.selectBestAvailableMap(), file,
-                                QStringLiteral("用户选择的自定义地图场景。"),
-                                QStringLiteral("已加载用户选择的地图场景文件。"));
-    statusBar()->showMessage(QStringLiteral("正在后台加载 Earth 文件: %1").arg(file));
+                                mapText(QStringLiteral("用户选择的自定义地图场景。")),
+                                mapText(QStringLiteral("已加载用户选择的地图场景文件。")));
+    statusBar()->showMessage(mapText(QStringLiteral("正在后台加载 Earth 文件: %1")).arg(file));
     view_->loadEarthFileAsync(file, [this, file, selection](bool loaded) {
         latest_earth_load_ = view_ ? view_->earthLoadDiagnostics() : EarthLoadDiagnostics{};
         if (!loaded)
         {
             QMessageBox::warning(this, QStringLiteral("osgEarth"),
-                                 QStringLiteral("无法加载 Earth 文件: %1").arg(file));
+                                 mapText(QStringLiteral("无法加载 Earth 文件: %1")).arg(file));
             return;
         }
         QSettings settings = map3DSettings();
@@ -2096,9 +2101,9 @@ void Map3DWindow::openEarthFile()
         {
             sentinel2_auto_load_timer_->start();
         }
-        const bool focusedTrack = autoFocusTrack(QStringLiteral("自动轨迹视角"));
+        const bool focusedTrack = autoFocusTrack(mapText(QStringLiteral("自动轨迹视角")));
         updateStatus(nullptr);
-        statusBar()->showMessage(QStringLiteral("已加载地图场景：%1%2")
+        statusBar()->showMessage(mapText(QStringLiteral("已加载地图场景：%1%2"))
                                      .arg(file, focusedTrack ? QStringLiteral(" (auto-focused track)") : QString()),
                                  5000);
     });
@@ -2108,31 +2113,31 @@ void Map3DWindow::loadLocalImageryTemplate(const LocalImageryOption& option)
     if (VaporView::settingsWritesSuspended())
     {
         Q_UNUSED(option);
-        statusBar()->showMessage(QStringLiteral("[界面测试] 已模拟影像模板加载；未访问外部资源。"), 6000);
+        statusBar()->showMessage(mapText(QStringLiteral("[界面测试] 已模拟影像模板加载；未访问外部资源。")), 6000);
         return;
     }
     if (!view_)
     {
-        statusBar()->showMessage(QStringLiteral("请先点击“启动渲染”，再加载本地影像。"), 6000);
+        statusBar()->showMessage(mapText(QStringLiteral("请先点击“启动渲染”，再加载本地影像。")), 6000);
         return;
     }
     if (!option.available)
     {
-        statusBar()->showMessage(QStringLiteral("本地影像不可用: %1").arg(option.label), 5000);
+        statusBar()->showMessage(mapText(QStringLiteral("本地影像不可用: %1")).arg(option.label), 5000);
         return;
     }
 
     const MapDataSelection selection =
         selectionForCustomEarth(map_data_manager_.selectBestAvailableMap(),
                                 option.earthFilePath,
-                                QStringLiteral("Natural Earth 底图叠加 %1。").arg(option.label),
-                                QStringLiteral("已加载可选本地影像模板：%1").arg(option.label));
-    statusBar()->showMessage(QStringLiteral("正在后台加载本地影像: %1").arg(option.label));
+                                mapText(QStringLiteral("Natural Earth 底图叠加 %1。")).arg(option.label),
+                                mapText(QStringLiteral("已加载可选本地影像模板：%1")).arg(option.label));
+    statusBar()->showMessage(mapText(QStringLiteral("正在后台加载本地影像: %1")).arg(option.label));
     view_->loadEarthFileAsync(option.earthFilePath, [this, option, selection](bool loaded) {
         latest_earth_load_ = view_ ? view_->earthLoadDiagnostics() : EarthLoadDiagnostics{};
         if (!loaded)
         {
-            statusBar()->showMessage(QStringLiteral("加载本地影像失败: %1").arg(option.earthFilePath), 8000);
+            statusBar()->showMessage(mapText(QStringLiteral("加载本地影像失败: %1")).arg(option.earthFilePath), 8000);
             return;
         }
         setMapSelection(selection);
@@ -2146,11 +2151,11 @@ void Map3DWindow::loadLocalImageryTemplate(const LocalImageryOption& option)
         {
             sentinel2_auto_load_timer_->start();
         }
-        const bool focusedTrack = autoFocusTrack(QStringLiteral("自动轨迹视角"));
+        const bool focusedTrack = autoFocusTrack(mapText(QStringLiteral("自动轨迹视角")));
         updateStatus(nullptr);
-        statusBar()->showMessage(QStringLiteral("已加载本地影像: %1%2")
+        statusBar()->showMessage(mapText(QStringLiteral("已加载本地影像: %1%2"))
                                      .arg(option.label,
-                                          focusedTrack ? QStringLiteral(" (已自动定位轨迹)") : QString()),
+                                          focusedTrack ? mapText(QStringLiteral(" (已自动定位轨迹)")) : QString()),
                                  5000);
     });
 }
@@ -2202,10 +2207,10 @@ void Map3DWindow::maybeLoadSentinel2ImageryForRange(double rangeM)
     const MapDataSelection selection =
         selectionForCustomEarth(bestSelection,
                                 option.earthFilePath,
-                                QStringLiteral("Natural Earth 底图叠加 %1。").arg(option.label),
-                                QStringLiteral("缩放后自动加载本地影像模板：%1")
+                                mapText(QStringLiteral("Natural Earth 底图叠加 %1。")).arg(option.label),
+                                mapText(QStringLiteral("缩放后自动加载本地影像模板：%1"))
                                     .arg(option.label));
-    statusBar()->showMessage(QStringLiteral("放大到近景，正在自动加载 Sentinel-2 本地影像..."));
+    statusBar()->showMessage(mapText(QStringLiteral("放大到近景，正在自动加载 Sentinel-2 本地影像...")));
     view_->loadEarthFilePreservingViewAsync(option.earthFilePath, [this, option, selection](bool loaded) {
         automatic_sentinel2_imagery_loading_ = false;
         latest_earth_load_ = view_ ? view_->earthLoadDiagnostics() : EarthLoadDiagnostics{};
@@ -2215,7 +2220,7 @@ void Map3DWindow::maybeLoadSentinel2ImageryForRange(double rangeM)
             {
                 sentinel2_auto_load_timer_->stop();
             }
-            statusBar()->showMessage(QStringLiteral("自动加载 Sentinel-2 本地影像失败: %1").arg(option.earthFilePath), 8000);
+            statusBar()->showMessage(mapText(QStringLiteral("自动加载 Sentinel-2 本地影像失败: %1")).arg(option.earthFilePath), 8000);
             return;
         }
         automatic_sentinel2_imagery_loaded_ = true;
@@ -2225,7 +2230,7 @@ void Map3DWindow::maybeLoadSentinel2ImageryForRange(double rangeM)
             sentinel2_auto_load_timer_->stop();
         }
         updateStatus(nullptr, true);
-        statusBar()->showMessage(QStringLiteral("已自动加载 Sentinel-2 本地影像，已保留当前视角。"), 5000);
+        statusBar()->showMessage(mapText(QStringLiteral("已自动加载 Sentinel-2 本地影像，已保留当前视角。")), 5000);
     });
 }
 
@@ -2258,7 +2263,7 @@ bool Map3DWindow::applyConfiguredTiandituSatelliteImagery(bool showStatusMessage
     {
         if (showStatusMessage)
         {
-            statusBar()->showMessage(QStringLiteral("[界面测试] 天地图网络图层已禁用。"), 6000);
+            statusBar()->showMessage(mapText(QStringLiteral("[界面测试] 天地图网络图层已禁用。")), 6000);
         }
         return false;
     }
@@ -2284,7 +2289,7 @@ bool Map3DWindow::applyConfiguredTiandituSatelliteImagery(bool showStatusMessage
         }
         if (showStatusMessage)
         {
-            statusBar()->showMessage(QStringLiteral("未配置天地图 Key，3D 地图保留本地离线影像。"), 6000);
+            statusBar()->showMessage(mapText(QStringLiteral("未配置天地图 Key，3D 地图保留本地离线影像。")), 6000);
         }
         return false;
     }
@@ -2299,8 +2304,8 @@ bool Map3DWindow::applyConfiguredTiandituSatelliteImagery(bool showStatusMessage
     {
         statusBar()->showMessage(
             tianditu_satellite_imagery_loaded_
-                ? QStringLiteral("已加载天地图卫星影像。")
-                : QStringLiteral("天地图卫星影像加载失败，已保留当前本地影像。"),
+                ? mapText(QStringLiteral("已加载天地图卫星影像。"))
+                : mapText(QStringLiteral("天地图卫星影像加载失败，已保留当前本地影像。")),
             6000);
     }
     updateStatus(nullptr, true);
@@ -2313,7 +2318,7 @@ bool Map3DWindow::loadConfiguredLocal3DTiles(bool showStatusMessage)
     {
         if (showStatusMessage)
         {
-            statusBar()->showMessage(QStringLiteral("[界面测试] 已模拟本地 3D 建筑加载；未读取外部资源。"), 6000);
+            statusBar()->showMessage(mapText(QStringLiteral("[界面测试] 已模拟本地 3D 建筑加载；未读取外部资源。")), 6000);
         }
         return false;
     }
@@ -2326,11 +2331,11 @@ bool Map3DWindow::loadConfiguredLocal3DTiles(bool showStatusMessage)
     {
         latest_local_3d_tiles_load_ = {};
         latest_local_3d_tiles_load_.requestedPath = diagnostics.local3DTilesTilesetPath;
-        latest_local_3d_tiles_load_.failureReason = QStringLiteral("尚未启动三维渲染。");
+        latest_local_3d_tiles_load_.failureReason = mapText(QStringLiteral("尚未启动三维渲染。"));
         refreshDiagnosticsText();
         if (showStatusMessage)
         {
-            statusBar()->showMessage(QStringLiteral("请先点击“启动渲染”，再加载本地 3D 建筑。"), 6000);
+            statusBar()->showMessage(mapText(QStringLiteral("请先点击“启动渲染”，再加载本地 3D 建筑。")), 6000);
         }
         return false;
     }
@@ -2339,18 +2344,18 @@ bool Map3DWindow::loadConfiguredLocal3DTiles(bool showStatusMessage)
         latest_local_3d_tiles_load_ = {};
         latest_local_3d_tiles_load_.requestedPath = diagnostics.local3DTilesTilesetPath;
         latest_local_3d_tiles_load_.failureReason =
-            QStringLiteral("原生 OSG 建筑瓦片不符合格式约定；请打开地图诊断查看详情。");
+            mapText(QStringLiteral("原生 OSG 建筑瓦片不符合格式约定；请打开地图诊断查看详情。"));
         refreshDiagnosticsText();
         if (showStatusMessage)
         {
-            statusBar()->showMessage(QStringLiteral("本地 OSG 建筑瓦片契约无效，请先查看地图诊断。"), 8000);
+            statusBar()->showMessage(mapText(QStringLiteral("本地 OSG 建筑瓦片契约无效，请先查看地图诊断。")), 8000);
         }
         return false;
     }
 
     if (showStatusMessage)
     {
-        statusBar()->showMessage(QStringLiteral("正在后台加载本地 3D 建筑..."));
+        statusBar()->showMessage(mapText(QStringLiteral("正在后台加载本地 3D 建筑...")));
     }
     view_->loadLocal3DTilesPreviewAsync(
         diagnostics.local3DTilesTilesetPath,
@@ -2370,9 +2375,9 @@ bool Map3DWindow::loadConfiguredLocal3DTiles(bool showStatusMessage)
             }
             statusBar()->showMessage(
                 loaded
-                    ? QStringLiteral("已加载本地 OSG 建筑叠加层: %1 个 payload")
+                    ? mapText(QStringLiteral("已加载本地 OSG 建筑叠加层: %1 个 payload"))
                           .arg(latest_local_3d_tiles_load_.loadedPayloadCount)
-                    : QStringLiteral("本地 3D 建筑加载失败: %1")
+                    : mapText(QStringLiteral("本地 3D 建筑加载失败: %1"))
                           .arg(latest_local_3d_tiles_load_.failureReason.isEmpty()
                                    ? diagnostics.local3DTilesTilesetPath
                                    : latest_local_3d_tiles_load_.failureReason),
@@ -2388,7 +2393,7 @@ void Map3DWindow::clearLocal3DTilesPreview()
         view_->clearLocal3DTilesPreview();
     }
     latest_local_3d_tiles_load_ = {};
-    latest_local_3d_tiles_load_.failureReason = QStringLiteral("已清除本地 OSG 建筑叠加层。");
+    latest_local_3d_tiles_load_.failureReason = mapText(QStringLiteral("已清除本地 OSG 建筑叠加层。"));
     if (clear_local_3d_tiles_action_)
     {
         clear_local_3d_tiles_action_->setEnabled(false);
@@ -2396,20 +2401,20 @@ void Map3DWindow::clearLocal3DTilesPreview()
     refreshLayerMenuAvailability();
     refreshDiagnosticsText();
     updateStatus(nullptr);
-    statusBar()->showMessage(QStringLiteral("已清除本地 OSG 建筑叠加层。"), 5000);
+    statusBar()->showMessage(mapText(QStringLiteral("已清除本地 OSG 建筑叠加层。")), 5000);
 }
 
 void Map3DWindow::openAircraftModel()
 {
     if (VaporView::settingsWritesSuspended())
     {
-        statusBar()->showMessage(QStringLiteral("[界面测试] 已模拟飞机模型选择；未读取外部文件。"), 6000);
+        statusBar()->showMessage(mapText(QStringLiteral("[界面测试] 已模拟飞机模型选择；未读取外部文件。")), 6000);
         return;
     }
     QSettings settings = map3DSettings();
     const QString initial = settings.value(QStringLiteral("aircraftModelPath")).toString();
     const QString file = QFileDialog::getOpenFileName(this,
-                                                      QStringLiteral("加载飞机模型"),
+                                                      mapText(QStringLiteral("加载飞机模型")),
                                                       initial,
                                                       QStringLiteral("3D Models (*.osgb *.osg *.glb *.gltf);;All Files (*)"));
     if (file.isEmpty())
@@ -2418,24 +2423,24 @@ void Map3DWindow::openAircraftModel()
     }
     if (!view_)
     {
-        statusBar()->showMessage(QStringLiteral("请先点击“启动渲染”，再加载飞机模型。"), 6000);
+        statusBar()->showMessage(mapText(QStringLiteral("请先点击“启动渲染”，再加载飞机模型。")), 6000);
         return;
     }
 
-    statusBar()->showMessage(QStringLiteral("正在后台加载飞机模型: %1").arg(file));
+    statusBar()->showMessage(mapText(QStringLiteral("正在后台加载飞机模型: %1")).arg(file));
     view_->loadAircraftModelAsync(file, [this, file](bool loaded) {
         refreshDiagnosticsText();
         updateStatus(nullptr);
         if (!loaded)
         {
             QMessageBox::warning(this,
-                                 QStringLiteral("飞机模型"),
-                                 QStringLiteral("无法加载飞机模型，已保留当前标记: %1").arg(file));
+                                 mapText(QStringLiteral("飞机模型")),
+                                 mapText(QStringLiteral("无法加载飞机模型，已保留当前标记: %1")).arg(file));
             return;
         }
         QSettings settings = map3DSettings();
         VaporView::setPersistentSetting(settings, QStringLiteral("aircraftModelPath"), file);
-        statusBar()->showMessage(QStringLiteral("已加载飞机模型: %1").arg(file), 6000);
+        statusBar()->showMessage(mapText(QStringLiteral("已加载飞机模型: %1")).arg(file), 6000);
     });
 }
 
@@ -2449,39 +2454,39 @@ void Map3DWindow::resetAircraftModel()
     }
     refreshDiagnosticsText();
     updateStatus(nullptr);
-    statusBar()->showMessage(QStringLiteral("已恢复内置飞机标记。"), 5000);
+    statusBar()->showMessage(mapText(QStringLiteral("已恢复内置飞机标记。")), 5000);
 }
 
 void Map3DWindow::reloadBestLocalMap()
 {
     if (VaporView::settingsWritesSuspended())
     {
-        statusBar()->showMessage(QStringLiteral("[界面测试] 已模拟地图重载；未访问外部资源。"), 6000);
+        statusBar()->showMessage(mapText(QStringLiteral("[界面测试] 已模拟地图重载；未访问外部资源。")), 6000);
         return;
     }
     const MapDataSelection selection = map_data_manager_.selectBestAvailableMap();
     if (!view_)
     {
-        statusBar()->showMessage(QStringLiteral("请先点击“启动渲染”，再重载最佳本地地图。"), 6000);
+        statusBar()->showMessage(mapText(QStringLiteral("请先点击“启动渲染”，再重载最佳本地地图。")), 6000);
         return;
     }
     if (!QFileInfo(selection.earthFile).isFile())
     {
         latest_earth_load_ = {};
         latest_earth_load_.requestedPath = selection.earthFile;
-        latest_earth_load_.failureReason = QStringLiteral("所选地图场景文件不存在。");
+        latest_earth_load_.failureReason = mapText(QStringLiteral("所选地图场景文件不存在。"));
         updateStatus(nullptr);
-        statusBar()->showMessage(QStringLiteral("未找到可用的本地地图数据，已保留当前地图。"), 8000);
+        statusBar()->showMessage(mapText(QStringLiteral("未找到可用的本地地图数据，已保留当前地图。")), 8000);
         return;
     }
 
-    statusBar()->showMessage(QStringLiteral("正在后台重载最佳本地地图: %1").arg(selection.earthFile));
+    statusBar()->showMessage(mapText(QStringLiteral("正在后台重载最佳本地地图: %1")).arg(selection.earthFile));
     view_->loadEarthFileAsync(selection.earthFile, [this, selection](bool loaded) {
         latest_earth_load_ = view_ ? view_->earthLoadDiagnostics() : EarthLoadDiagnostics{};
         if (!loaded)
         {
             updateStatus(nullptr);
-            statusBar()->showMessage(QStringLiteral("重载最佳本地地图失败，已保留当前地图: %1")
+            statusBar()->showMessage(mapText(QStringLiteral("重载最佳本地地图失败，已保留当前地图: %1"))
                                          .arg(selection.earthFile),
                                      8000);
             return;
@@ -2501,11 +2506,11 @@ void Map3DWindow::reloadBestLocalMap()
         }
         QSettings settings = map3DSettings();
         VaporView::setPersistentSetting(settings, QStringLiteral("lastEarthFile"), selection.earthFile);
-        const bool focusedTrack = autoFocusTrack(QStringLiteral("自动轨迹视角"));
+        const bool focusedTrack = autoFocusTrack(mapText(QStringLiteral("自动轨迹视角")));
         updateStatus(nullptr);
-        statusBar()->showMessage(QStringLiteral("已重载最佳本地地图: %1%2")
+        statusBar()->showMessage(mapText(QStringLiteral("已重载最佳本地地图: %1%2"))
                                      .arg(selection.earthFile,
-                                          focusedTrack ? QStringLiteral(" (已自动定位轨迹)") : QString()),
+                                          focusedTrack ? mapText(QStringLiteral(" (已自动定位轨迹)")) : QString()),
                                  6000);
     });
 }
@@ -2513,20 +2518,20 @@ void Map3DWindow::reloadBestLocalMap()
 void Map3DWindow::flyToAircraft()
 {
     const bool ok = view_ ? view_->flyToAircraft() : headless_sample_count_ > 0;
-    setCameraNote(ok ? QStringLiteral("飞行器") : QStringLiteral("飞行器不可用"));
+    setCameraNote(ok ? mapText(QStringLiteral("飞行器")) : mapText(QStringLiteral("飞行器不可用")));
     updateStatus(nullptr);
-    statusBar()->showMessage(ok ? QStringLiteral("已定位到飞机。")
-                                : QStringLiteral("暂无飞机位置可定位。"),
+    statusBar()->showMessage(ok ? mapText(QStringLiteral("已定位到飞机。"))
+                                : mapText(QStringLiteral("暂无飞机位置可定位。")),
                              3000);
 }
 
 void Map3DWindow::flyToTrack()
 {
     const bool ok = view_ ? view_->flyToTrack() : headless_sample_count_ > 0;
-    setCameraNote(ok ? QStringLiteral("轨迹") : QStringLiteral("轨迹不可用"));
+    setCameraNote(ok ? mapText(QStringLiteral("轨迹")) : mapText(QStringLiteral("轨迹不可用")));
     updateStatus(nullptr);
-    statusBar()->showMessage(ok ? QStringLiteral("已定位到完整轨迹。")
-                                : QStringLiteral("暂无轨迹可定位。"),
+    statusBar()->showMessage(ok ? mapText(QStringLiteral("已定位到完整轨迹。"))
+                                : mapText(QStringLiteral("暂无轨迹可定位。")),
                              3000);
 }
 
@@ -2536,9 +2541,9 @@ void Map3DWindow::resetView()
     {
         view_->resetView();
     }
-    setCameraNote(QStringLiteral("重置"));
+    setCameraNote(mapText(QStringLiteral("重置")));
     updateStatus(nullptr);
-    statusBar()->showMessage(QStringLiteral("视角已重置。"), 3000);
+    statusBar()->showMessage(mapText(QStringLiteral("视角已重置。")), 3000);
 }
 
 void Map3DWindow::showMapDiagnostics()
@@ -2546,7 +2551,7 @@ void Map3DWindow::showMapDiagnostics()
     if (!diagnostics_dialog_)
     {
         diagnostics_dialog_ = new QDialog(this);
-        diagnostics_dialog_->setWindowTitle(QStringLiteral("三维地图数据诊断"));
+        diagnostics_dialog_->setWindowTitle(mapText(QStringLiteral("三维地图数据诊断")));
         diagnostics_dialog_->resize(820, 520);
 
         QVBoxLayout* layout = new QVBoxLayout(diagnostics_dialog_);
@@ -2555,7 +2560,7 @@ void Map3DWindow::showMapDiagnostics()
         layout->addWidget(diagnostics_text_);
 
         QDialogButtonBox* buttons = new QDialogButtonBox(QDialogButtonBox::Close, diagnostics_dialog_);
-        buttons->button(QDialogButtonBox::Close)->setText(QStringLiteral("关闭"));
+        buttons->button(QDialogButtonBox::Close)->setText(mapText(QStringLiteral("关闭")));
         connect(buttons, &QDialogButtonBox::rejected, diagnostics_dialog_, &QDialog::hide);
         layout->addWidget(buttons);
         VaporView::installCustomTitleBar(diagnostics_dialog_);
@@ -2586,7 +2591,7 @@ void Map3DWindow::setUiTestMode(bool enabled)
         ui_test_saved_replay_speed_index_ = replay_speed_combo_ ? replay_speed_combo_->currentIndex() : 1;
         ui_test_saved_layer_visibility_ = layer_visibility_;
         ui_test_mode_ = true;
-        statusBar()->showMessage(QStringLiteral("[界面测试] 地图偏好已沙箱化，网络地图和资源写入已禁用。"), 6000);
+        statusBar()->showMessage(mapText(QStringLiteral("[界面测试] 地图偏好已沙箱化，网络地图和资源写入已禁用。")), 6000);
         return;
     }
 
@@ -2606,7 +2611,7 @@ void Map3DWindow::setUiTestMode(bool enabled)
                         ui_test_saved_layer_visibility_[static_cast<std::size_t>(index)],
                         false);
     }
-    statusBar()->showMessage(QStringLiteral("地图偏好已恢复。"), 4000);
+    statusBar()->showMessage(mapText(QStringLiteral("地图偏好已恢复。")), 4000);
 }
 
 void Map3DWindow::showMapFiles()
@@ -2616,20 +2621,20 @@ void Map3DWindow::showMapFiles()
     {
         dialog = new QDialog(this);
         dialog->setObjectName(QStringLiteral("map3DMapFilesDialog"));
-        dialog->setWindowTitle(QStringLiteral("地图文件"));
+        dialog->setWindowTitle(mapText(QStringLiteral("地图文件")));
         dialog->resize(920, 560);
         auto* layout = new QVBoxLayout(dialog);
         auto* summary = new QLabel(dialog);
         summary->setObjectName(QStringLiteral("map3DMapFilesSummary"));
         summary->setWordWrap(true);
         layout->addWidget(summary);
-        auto* hint = new QLabel(QStringLiteral("就绪表示本地文件存在且可读，不代表已加载或内容完整；可选数据缺失不影响其他地图使用。完整加载信息可查看“地图诊断”。"), dialog);
+        auto* hint = new QLabel(mapText(QStringLiteral("就绪表示本地文件存在且可读，不代表已加载或内容完整；可选数据缺失不影响其他地图使用。完整加载信息可查看“地图诊断”。")), dialog);
         hint->setWordWrap(true);
         layout->addWidget(hint);
         auto* table = new QTableWidget(dialog);
         table->setObjectName(QStringLiteral("map3DMapFilesTable"));
         table->setColumnCount(3);
-        table->setHorizontalHeaderLabels({QStringLiteral("地图文件"), QStringLiteral("状态"), QStringLiteral("文件路径")});
+        table->setHorizontalHeaderLabels({mapText(QStringLiteral("地图文件")), mapText(QStringLiteral("状态")), mapText(QStringLiteral("文件路径"))});
         table->setEditTriggers(QAbstractItemView::NoEditTriggers);
         table->setSelectionBehavior(QAbstractItemView::SelectRows);
         table->setAlternatingRowColors(true);
@@ -2640,8 +2645,8 @@ void Map3DWindow::showMapFiles()
         table->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
         layout->addWidget(table, 1);
         auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, dialog);
-        buttons->button(QDialogButtonBox::Close)->setText(QStringLiteral("关闭"));
-        auto* refresh = buttons->addButton(QStringLiteral("重新扫描"), QDialogButtonBox::ActionRole);
+        buttons->button(QDialogButtonBox::Close)->setText(mapText(QStringLiteral("关闭")));
+        auto* refresh = buttons->addButton(mapText(QStringLiteral("重新扫描")), QDialogButtonBox::ActionRole);
         refresh->setObjectName(QStringLiteral("map3DMapFilesRefreshButton"));
         connect(refresh, &QPushButton::clicked, this, &Map3DWindow::showMapFiles);
         connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::hide);
@@ -2678,14 +2683,14 @@ void Map3DWindow::showMapFiles()
         readyCount += ready ? 1 : 0;
         missingCount += missing ? 1 : 0;
         table->setItem(row, 0, new QTableWidgetItem(file.fileName()));
-        table->setItem(row, 1, new QTableWidgetItem(ready ? QStringLiteral("就绪")
-            : missing ? QStringLiteral("缺失") : QStringLiteral("不可读 / 非文件")));
+        table->setItem(row, 1, new QTableWidgetItem(ready ? mapText(QStringLiteral("就绪"))
+            : missing ? mapText(QStringLiteral("缺失")) : mapText(QStringLiteral("不可读 / 非文件"))));
         auto* pathItem = new QTableWidgetItem(QDir::toNativeSeparators(file.absoluteFilePath()));
         pathItem->setToolTip(pathItem->text());
         table->setItem(row, 2, pathItem);
     }
     auto* summary = dialog->findChild<QLabel*>(QStringLiteral("map3DMapFilesSummary"));
-    summary->setText(QStringLiteral("地图目录：%1\n当前选择：%2\n共 %3 个文件 · 就绪 %4 · 缺失 %5 · 异常 %6")
+    summary->setText(mapText(QStringLiteral("地图目录：%1\n当前选择：%2\n共 %3 个文件 · 就绪 %4 · 缺失 %5 · 异常 %6"))
         .arg(QDir::toNativeSeparators(diagnostics.mapsRoot),
              QDir::toNativeSeparators(map_selection_.earthFile))
         .arg(paths.size()).arg(readyCount).arg(missingCount)
@@ -2815,6 +2820,62 @@ void Map3DWindow::closeEvent(QCloseEvent* event)
         sentinel2_auto_load_timer_->stop();
     }
     QMainWindow::closeEvent(event);
+}
+
+bool Map3DWindow::eventFilter(QObject* watched, QEvent* event)
+{
+    if (watched == qApp && event->type() == QEvent::DynamicPropertyChange
+        && static_cast<QDynamicPropertyChangeEvent*>(event)->propertyName() == "vaporViewEnglish")
+        QTimer::singleShot(0, this, &Map3DWindow::refreshLanguage);
+    if (event->type() == QEvent::Show) {
+        auto* widget = qobject_cast<QWidget*>(watched);
+        if (widget && widget->isWindow() && (widget == this || isAncestorOf(widget)))
+            QTimer::singleShot(0, this, &Map3DWindow::refreshLanguage);
+    }
+    return QMainWindow::eventFilter(watched, event);
+}
+
+void Map3DWindow::refreshLanguage()
+{
+    const bool english = qApp->property("vaporViewEnglish").toBool();
+    QList<QObject*> objects = findChildren<QObject*>();
+    objects.prepend(this);
+    for (QObject* object : objects) {
+        for (const char* property : {"windowTitle", "toolTip", "statusTip", "title", "placeholderText", "prefix", "suffix"}) {
+            const QVariant value = object->property(property);
+            if (value.metaType().id() == QMetaType::QString) {
+                const QString translated = mapRenderedText(value.toString(), english);
+                if (translated != value.toString()) object->setProperty(property, translated);
+            }
+        }
+        if (qobject_cast<QAction*>(object) || qobject_cast<QAbstractButton*>(object) || qobject_cast<QLabel*>(object)) {
+            const QString value = object->property("text").toString();
+            const QString translated = mapRenderedText(value, english);
+            if (translated != value) object->setProperty("text", translated);
+        }
+        if (auto* combo = qobject_cast<QComboBox*>(object)) {
+            const QSignalBlocker blocker(combo);
+            for (int i = 0; i < combo->count(); ++i)
+                combo->setItemText(i, mapRenderedText(combo->itemText(i), english));
+        }
+        if (auto* table = qobject_cast<QTableWidget*>(object)) {
+            for (int c = 0; c < table->columnCount(); ++c) {
+                if (auto* item = table->horizontalHeaderItem(c)) item->setText(mapRenderedText(item->text(), english));
+                for (int r = 0; r < table->rowCount(); ++r)
+                    if (auto* item = table->item(r, c)) item->setText(mapRenderedText(item->text(), english));
+            }
+        }
+    }
+    if (auto* card = findChild<QWidget*>(QStringLiteral("map3DTrajectoryInfoCard"))) {
+        QEvent languageChange(QEvent::LanguageChange);
+        QCoreApplication::sendEvent(card, &languageChange);
+    }
+    latest_track_source_ = mapRenderedText(latest_track_source_, english);
+    latest_camera_note_ = mapRenderedText(latest_camera_note_, english);
+    updateReplayUi();
+    updateHeatLegend();
+    updateStatus(nullptr, true);
+    refreshDiagnosticsText(true);
 }
 
 void Map3DWindow::changeEvent(QEvent* event)
@@ -2979,7 +3040,7 @@ void Map3DWindow::renderReplayAtCurrentPosition(bool forceStatus)
 
     rendered_replay_index_ = targetIndex;
     const VaporView::Geo::NavSample& currentSample = navigationAt(targetIndex);
-    recordTrackSource(QStringLiteral("回放"),
+    recordTrackSource(mapText(QStringLiteral("回放")),
                       &currentSample);
     updateHeatLegend();
     updateStatus(&currentSample, forceStatus);
@@ -3023,11 +3084,11 @@ void Map3DWindow::updateReplayUi()
     {
         const QSignalBlocker blocker(replay_action_);
         replay_action_->setChecked(replay_.isPlaying());
-        replay_action_->setText(replay_.isPlaying() ? QStringLiteral("暂停") : QStringLiteral("播放"));
+        replay_action_->setText(replay_.isPlaying() ? mapText(QStringLiteral("暂停")) : mapText(QStringLiteral("播放")));
     }
     if (replay_stop_action_)
     {
-        replay_stop_action_->setText(QStringLiteral("停止回放"));
+        replay_stop_action_->setText(mapText(QStringLiteral("停止回放")));
     }
     if (replay_slider_)
     {
@@ -3087,9 +3148,9 @@ void Map3DWindow::setMapSelection(const MapDataSelection& selection)
         local_3d_tiles_action_->setEnabled(enabled);
         local_3d_tiles_action_->setToolTip(
             enabled
-                ? QStringLiteral("加载本地 OSG 建筑瓦片: %1")
+                ? mapText(QStringLiteral("加载本地 OSG 建筑瓦片: %1"))
                       .arg(map_selection_.diagnostics.local3DTilesTilesetPath)
-                : QStringLiteral("本地 OSG 建筑瓦片不可用或契约无效；请查看地图诊断"));
+                : mapText(QStringLiteral("本地 OSG 建筑瓦片不可用或契约无效；请查看地图诊断")));
         local_3d_tiles_action_->setStatusTip(local_3d_tiles_action_->toolTip());
     }
     refreshLayerMenuAvailability();
@@ -3184,7 +3245,7 @@ void Map3DWindow::recordTrackSource(const QString& source,
                                     const VaporView::Geo::NavSample* latest,
                                     const QString& note)
 {
-    latest_track_source_ = source.isEmpty() ? QStringLiteral("无") : source;
+    latest_track_source_ = source.isEmpty() ? mapText(QStringLiteral("无")) : source;
     latest_track_note_ = note;
     latest_track_record_timestamp_us_ = latest ? latest->recordTimestampUs : 0;
     latest_track_device_timestamp_us_ = latest ? latest->deviceTimestampUs : 0;
@@ -3244,54 +3305,54 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest, bool for
     const int visibleSamples = view_ ? stats.visibleSamples : (std::min)(headless_sample_count_, max_visible_samples_);
     const TrajectoryQualityStats qualityStats =
         view_ ? stats.qualityStats : qualityStatsForSamples(headless_samples_, max_visible_samples_);
-    QString text = QStringLiteral("采样点：%1/%2").arg(visibleSamples).arg(totalSamples);
+    QString text = mapText(QStringLiteral("采样点：%1/%2")).arg(visibleSamples).arg(totalSamples);
     if (session_load_watcher_)
     {
-        text.prepend(QStringLiteral("正在加载会话（完成后自动定位） | "));
+        text.prepend(mapText(QStringLiteral("正在加载会话（完成后自动定位） | ")));
     }
     if (visibleSamples > 0)
     {
-        text += QStringLiteral(" | 质量 %1").arg(qualityStatsSummary(qualityStats));
+        text += mapText(QStringLiteral(" | 质量 %1")).arg(qualityStatsSummary(qualityStats));
     }
     if (heat_legend_label_)
     {
-        text += QStringLiteral(" | 热力 %1").arg(heat_legend_label_->text());
+        text += mapText(QStringLiteral(" | 热力 %1")).arg(heat_legend_label_->text());
     }
-    text += QStringLiteral(" | 来源 %1").arg(latest_track_source_.isEmpty() ? QStringLiteral("无") : latest_track_source_);
+    text += mapText(QStringLiteral(" | 来源 %1")).arg(latest_track_source_.isEmpty() ? mapText(QStringLiteral("无")) : latest_track_source_);
     if (!latest_camera_note_.isEmpty())
     {
-        text += QStringLiteral(" | 视角 %1").arg(latest_camera_note_);
+        text += mapText(QStringLiteral(" | 视角 %1")).arg(latest_camera_note_);
     }
-    text += QStringLiteral(" | 跟随 %1")
-                .arg(follow_action_ && follow_action_->isChecked() ? QStringLiteral("开启") : QStringLiteral("关闭"));
+    text += mapText(QStringLiteral(" | 跟随 %1"))
+                .arg(follow_action_ && follow_action_->isChecked() ? mapText(QStringLiteral("开启")) : mapText(QStringLiteral("关闭")));
     if (latest_track_record_timestamp_us_ > 0)
     {
-        text += QStringLiteral(" 记录时间 %1").arg(latest_track_record_timestamp_us_);
+        text += mapText(QStringLiteral(" 记录时间 %1")).arg(latest_track_record_timestamp_us_);
     }
     if (latest_track_device_timestamp_us_ > 0)
     {
-        text += QStringLiteral(" 设备时间 %1").arg(latest_track_device_timestamp_us_);
+        text += mapText(QStringLiteral(" 设备时间 %1")).arg(latest_track_device_timestamp_us_);
     }
     if (!latest_drop_reason_.isEmpty())
     {
-        text += QStringLiteral(" | 最近丢弃 %1：%2")
-                    .arg(latest_drop_source_.isEmpty() ? QStringLiteral("实时") : latest_drop_source_,
+        text += mapText(QStringLiteral(" | 最近丢弃 %1：%2"))
+                    .arg(latest_drop_source_.isEmpty() ? mapText(QStringLiteral("实时")) : latest_drop_source_,
                          latest_drop_reason_);
         if (latest_drop_record_timestamp_us_ > 0)
         {
-            text += QStringLiteral(" 记录时间 %1").arg(latest_drop_record_timestamp_us_);
+            text += mapText(QStringLiteral(" 记录时间 %1")).arg(latest_drop_record_timestamp_us_);
         }
     }
     if (view_ || headless_view_)
     {
         const QSize framebufferSize = view_ ? view_->framebufferSize() : headless_view_->size();
-        text += QStringLiteral(" | 地图 %1 | 视口 %2×%3")
+        text += mapText(QStringLiteral(" | 地图 %1 | 视口 %2×%3"))
                     .arg(MapDataManager::modeLabel(map_selection_.mode))
                     .arg(framebufferSize.width())
                     .arg(framebufferSize.height());
         if (tianditu_satellite_imagery_loaded_)
         {
-            text += QStringLiteral(" | 影像 天地图卫星");
+            text += mapText(QStringLiteral(" | 影像 天地图卫星"));
         }
         text += QStringLiteral(" | DEM %1 | OSM %2")
                     .arg(selectedDemLabel(map_selection_.diagnostics),
@@ -3299,11 +3360,11 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest, bool for
     }
     if (view_)
     {
-        text += QStringLiteral(" | 分段 %1×%2 | FPS %3 | CPU %4 ms | 轨迹 %5 ms")
+        text += mapText(QStringLiteral(" | 分段 %1×%2 | FPS %3 | CPU %4 ms | 轨迹 %5 ms"))
                     .arg(stats.segmentCount)
                     .arg(stats.segmentSize)
                     .arg(QString::number(stats.framesPerSecond, 'f', 1)
-                         + (stats.idleRendering ? QStringLiteral("（静止）") : QString()))
+                         + (stats.idleRendering ? mapText(QStringLiteral("（静止）")) : QString()))
                     .arg(stats.frameMs, 0, 'f', 1)
                     .arg(stats.trackUpdateMs, 0, 'f', 1);
     }
@@ -3315,7 +3376,7 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest, bool for
         const QString hdopText = std::isfinite(displayLatest->hdop)
             ? QString::number(displayLatest->hdop, 'f', 2)
             : QStringLiteral("--");
-        text += QStringLiteral(" | 纬度 %1 经度 %2 高度 %3 m %4 | 定位 %5 | 卫星数 %6 | HDOP %7")
+        text += mapText(QStringLiteral(" | 纬度 %1 经度 %2 高度 %3 m %4 | 定位 %5 | 卫星数 %6 | HDOP %7"))
                     .arg(displayLatest->latDeg, 0, 'f', 7)
                     .arg(displayLatest->lonDeg, 0, 'f', 7)
                     .arg(displayLatest->heightM, 0, 'f', 2)
@@ -3324,24 +3385,24 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest, bool for
                     .arg(satellitesText, hdopText);
         if (displayLatest->heightReference == VaporView::Geo::HeightReference::Wgs84Ellipsoid)
         {
-            text += QStringLiteral(" | 已应用高度基准");
+            text += mapText(QStringLiteral(" | 已应用高度基准"));
         }
         else if (displayLatest->heightReference == VaporView::Geo::HeightReference::Unknown)
         {
-            text += QStringLiteral(" | 高度基准假定为 WGS84");
+            text += mapText(QStringLiteral(" | 高度基准假定为 WGS84"));
         }
         else
         {
-            text += QStringLiteral(" | 高度基准优先使用记录的 ECEF");
+            text += mapText(QStringLiteral(" | 高度基准优先使用记录的 ECEF"));
         }
-        text += QStringLiteral(" | 姿态 %1").arg(attitudeSourceLabel(displayLatest));
+        text += mapText(QStringLiteral(" | 姿态 %1")).arg(attitudeSourceLabel(displayLatest));
     }
     if (has_selected_track_sample_)
     {
-        text += QStringLiteral(" | 选中 #%1").arg(selected_track_sample_index_ + 1);
+        text += mapText(QStringLiteral(" | 选中 #%1")).arg(selected_track_sample_index_ + 1);
         if (selected_track_sample_.hasLlh())
         {
-            text += QStringLiteral(" 纬度 %1 经度 %2 高度 %3 m | 定位 %4")
+            text += mapText(QStringLiteral(" 纬度 %1 经度 %2 高度 %3 m | 定位 %4"))
                         .arg(selected_track_sample_.latDeg, 0, 'f', 7)
                         .arg(selected_track_sample_.lonDeg, 0, 'f', 7)
                         .arg(selected_track_sample_.heightM, 0, 'f', 2)

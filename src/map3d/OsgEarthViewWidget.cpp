@@ -1,3 +1,4 @@
+#include "MapLanguage.h"
 
 #include "map3d/OsgEarthViewWidget.h"
 
@@ -132,19 +133,19 @@ QString trajectoryFixQualityLabel(VaporView::Geo::FixQuality quality)
     switch (quality)
     {
     case VaporView::Geo::FixQuality::Fixed:
-        return QStringLiteral("RTK 固定解");
+        return mapText(QStringLiteral("RTK 固定解"));
     case VaporView::Geo::FixQuality::Float:
-        return QStringLiteral("RTK 浮点解");
+        return mapText(QStringLiteral("RTK 浮点解"));
     case VaporView::Geo::FixQuality::Dgps:
-        return QStringLiteral("差分定位");
+        return mapText(QStringLiteral("差分定位"));
     case VaporView::Geo::FixQuality::Single:
-        return QStringLiteral("单点定位");
+        return mapText(QStringLiteral("单点定位"));
     case VaporView::Geo::FixQuality::Invalid:
-        return QStringLiteral("无效定位");
+        return mapText(QStringLiteral("无效定位"));
     case VaporView::Geo::FixQuality::Unknown:
         break;
     }
-    return QStringLiteral("定位质量未知");
+    return mapText(QStringLiteral("定位质量未知"));
 }
 
 VaporView::AppThemeColor trajectoryFixQualityColor(VaporView::Geo::FixQuality quality)
@@ -172,17 +173,17 @@ QString trajectoryHeightReferenceLabel(VaporView::Geo::HeightReference reference
     switch (reference)
     {
     case VaporView::Geo::HeightReference::Wgs84Ellipsoid:
-        return QStringLiteral("WGS84 椭球高");
+        return mapText(QStringLiteral("WGS84 椭球高"));
     case VaporView::Geo::HeightReference::MeanSeaLevel:
-        return QStringLiteral("平均海平面");
+        return mapText(QStringLiteral("平均海平面"));
     case VaporView::Geo::HeightReference::Egm2008:
         return QStringLiteral("EGM2008");
     case VaporView::Geo::HeightReference::LocalNed:
-        return QStringLiteral("局部 NED");
+        return mapText(QStringLiteral("局部 NED"));
     case VaporView::Geo::HeightReference::Unknown:
         break;
     }
-    return QStringLiteral("高程基准未知");
+    return mapText(QStringLiteral("高程基准未知"));
 }
 
 class TrajectorySampleInfoCard final : public QFrame {
@@ -191,7 +192,7 @@ public:
         : QFrame(parent)
     {
         setObjectName(QStringLiteral("map3DTrajectoryInfoCard"));
-        setAccessibleName(QStringLiteral("轨迹点详细信息"));
+        setAccessibleName(mapText(QStringLiteral("轨迹点详细信息")));
         setAttribute(Qt::WA_TransparentForMouseEvents);
         setAttribute(Qt::WA_ShowWithoutActivating);
         setProperty("billboardMode", QStringLiteral("screen-space"));
@@ -235,8 +236,10 @@ public:
 
     void setSample(int sampleIndex, const VaporView::Geo::NavSample& sample)
     {
+        sample_index_ = sampleIndex;
+        sample_ = sample;
         const QLocale locale;
-        title_label_->setText(QStringLiteral("轨迹点 #%1").arg(sampleIndex + 1));
+        title_label_->setText(mapText(QStringLiteral("轨迹点 #%1")).arg(sampleIndex + 1));
         quality_label_->setText(trajectoryFixQualityLabel(sample.fixQuality));
 
         QString recordTime = QStringLiteral("--");
@@ -271,7 +274,7 @@ public:
             ? locale.toString(sample.vdop, 'f', 2)
             : QStringLiteral("--");
         const QString precision =
-            QStringLiteral("卫星 %1 · HDOP %2 · VDOP %3").arg(satellites, hdop, vdop);
+            mapText(QStringLiteral("卫星 %1 · HDOP %2 · VDOP %3")).arg(satellites, hdop, vdop);
 
         QString velocity = QStringLiteral("--");
         if (std::isfinite(sample.velNMps)
@@ -288,7 +291,7 @@ public:
             && std::isfinite(sample.yawDeg))
         {
             attitude =
-                QStringLiteral("横滚 %1° · 俯仰 %2° · 航向 %3°")
+                mapText(QStringLiteral("横滚 %1° · 俯仰 %2° · 航向 %3°"))
                     .arg(locale.toString(sample.rollDeg, 'f', 2),
                          locale.toString(sample.pitchDeg, 'f', 2),
                          locale.toString(sample.yawDeg, 'f', 2));
@@ -313,12 +316,12 @@ public:
         };
         details_label_->setText(
             QStringLiteral("<table cellspacing=\"0\" cellpadding=\"2\">%1</table>")
-                .arg(row(QStringLiteral("记录时间"), recordTime)
-                     + row(QStringLiteral("经纬度"), position)
-                     + row(QStringLiteral("高程"), height)
-                     + row(QStringLiteral("定位精度"), precision)
-                     + row(QStringLiteral("三维速度"), velocity)
-                     + row(QStringLiteral("姿态"), attitude)
+                .arg(row(mapText(QStringLiteral("记录时间")), recordTime)
+                     + row(mapText(QStringLiteral("经纬度")), position)
+                     + row(mapText(QStringLiteral("高程")), height)
+                     + row(mapText(QStringLiteral("定位精度")), precision)
+                     + row(mapText(QStringLiteral("三维速度")), velocity)
+                     + row(mapText(QStringLiteral("姿态")), attitude)
                      + row(QStringLiteral("ECEF"), ecef)));
         layout_->activate();
         resize(kTrajectoryInfoCardWidth, layout_->sizeHint().height());
@@ -326,6 +329,8 @@ public:
             QStringLiteral("%1，%2，%3")
                 .arg(title_label_->text(), position, quality_label_->text()));
     }
+
+    void refreshLanguage() { if (sample_index_ >= 0) setSample(sample_index_, sample_); }
 
     void placeAt(const QPointF& anchor, const QSize& viewportSize)
     {
@@ -348,7 +353,16 @@ public:
         raise();
     }
 
+protected:
+    void changeEvent(QEvent* event) override
+    {
+        QFrame::changeEvent(event);
+        if (event->type() == QEvent::LanguageChange) refreshLanguage();
+    }
+
 private:
+    int sample_index_ = -1;
+    VaporView::Geo::NavSample sample_;
     void applyTheme(VaporView::Geo::FixQuality quality)
     {
         const bool dark = VaporView::isDarkThemeEnabled();
@@ -1215,7 +1229,7 @@ bool OsgEarthViewWidget::applyTiandituSatelliteImagery(const QString& key)
     if (trimmedKey.isEmpty())
     {
         earth_load_diagnostics_.layerSummaries.push_back(
-            QStringLiteral("未应用天地图卫星影像：未配置密钥。"));
+            mapText(QStringLiteral("未应用天地图卫星影像：未配置密钥。")));
         applyLayerVisibility(Map3DLayer::SatelliteImagery);
         update();
         return false;
@@ -1236,12 +1250,12 @@ bool OsgEarthViewWidget::applyTiandituSatelliteImagery(const QString& key)
     layer->options().maxDataLevel() = kTiandituMaxZoom;
 
     earth_load_diagnostics_.layerSummaries.push_back(
-        QStringLiteral("天地图源级别：%1–%2；不使用第 0 级占位图。")
+        mapText(QStringLiteral("天地图源级别：%1–%2；不使用第 0 级占位图。"))
             .arg(layer->options().minLevel().get()).arg(layer->options().maxDataLevel().get()));
     const unsigned insertIndex = tiandituSatelliteInsertIndex(map);
     map->insertLayer(layer.get(), insertIndex);
     earth_load_diagnostics_.layerSummaries.push_back(
-        QStringLiteral("天地图卫星影像已添加到图层索引 %1%2。")
+        mapText(QStringLiteral("天地图卫星影像已添加到图层索引 %1%2。"))
             .arg(insertIndex)
             .arg(layer->isOpen()
                      ? QString()
@@ -1304,7 +1318,7 @@ bool OsgEarthViewWidget::applyEarthLoad(EarthLoadDiagnostics diagnostics,
     if (!root_)
     {
         earth_load_diagnostics_.loaded = false;
-        earth_load_diagnostics_.failureReason = QStringLiteral("场景根节点尚未初始化。");
+        earth_load_diagnostics_.failureReason = mapText(QStringLiteral("场景根节点尚未初始化。"));
         return false;
     }
     const std::optional<osgEarth::Viewpoint> previousViewpoint =
@@ -1315,11 +1329,11 @@ bool OsgEarthViewWidget::applyEarthLoad(EarthLoadDiagnostics diagnostics,
     map_node_ = mapNode;
     configureHighResolutionTerrain(map_node_);
     earth_load_diagnostics_.layerSummaries.push_back(
-        QStringLiteral("地形细节：可见区域优先的屏幕空间 LOD，128 px 瓦片阈值，低视角自适应裁剪和细节级别。"));
+        mapText(QStringLiteral("地形细节：可见区域优先的屏幕空间 LOD，128 px 瓦片阈值，低视角自适应裁剪和细节级别。")));
     use_xihu_initial_view_ = useXihuInitialView;
     if (replacedPreviousNode)
     {
-        earth_load_diagnostics_.layerSummaries.push_back(QStringLiteral("已替换原地图场景。"));
+        earth_load_diagnostics_.layerSummaries.push_back(mapText(QStringLiteral("已替换原地图场景。")));
     }
     trajectory_layer_->setUseWorldCoordinates(true);
     aircraft_layer_->setUseWorldCoordinates(true);
@@ -1390,7 +1404,7 @@ bool OsgEarthViewWidget::applyLocal3DTilesLoad(Local3DTilesLoadDiagnostics diagn
     if (!root_)
     {
         local_3d_tiles_load_diagnostics_.loaded = false;
-        local_3d_tiles_load_diagnostics_.failureReason = QStringLiteral("场景根节点尚未初始化。");
+        local_3d_tiles_load_diagnostics_.failureReason = mapText(QStringLiteral("场景根节点尚未初始化。"));
         return false;
     }
     local_3d_tiles_load_diagnostics_.clearedPreviousPreview = local_3d_tiles_node_.valid();
@@ -1794,7 +1808,7 @@ void OsgEarthViewWidget::startRendering()
     rendering_started_ = true;
     QTimer::singleShot(1000, this, [this]() {
         if (!shutdown_ && rendering_started_ && isVisible() && !isValid())
-            failRendering(QStringLiteral("无法创建 OpenGL 渲染上下文，请检查显卡驱动"));
+            failRendering(mapText(QStringLiteral("无法创建 OpenGL 渲染上下文，请检查显卡驱动")));
     });
     // osgEarth creates a temporary native WGL context while it initializes.
     // Do not ask OSG to restore this widget through its temporary device context.
@@ -1804,7 +1818,7 @@ void OsgEarthViewWidget::startRendering()
     }
     try { initializeMap3DRuntime(); }
     catch (const std::exception& error) { failRendering(QString::fromUtf8(error.what())); return; }
-    catch (...) { failRendering(QStringLiteral("渲染运行库初始化失败")); return; }
+    catch (...) { failRendering(mapText(QStringLiteral("渲染运行库初始化失败"))); return; }
     if (isVisible())
     {
         frame_interval_clock_.invalidate();
@@ -1990,7 +2004,7 @@ bool OsgEarthViewWidget::hasEarthMap() const
 void OsgEarthViewWidget::initializeGL()
 try {
     if (!context() || !context()->isValid()) {
-        failRendering(QStringLiteral("OpenGL 上下文不可用"));
+        failRendering(mapText(QStringLiteral("OpenGL 上下文不可用")));
         return;
     }
     if (shutdown_)
@@ -2011,7 +2025,7 @@ try {
 }
 
 catch (const std::exception& error) { failRendering(QString::fromUtf8(error.what())); }
-catch (...) { failRendering(QStringLiteral("OpenGL 初始化失败")); }
+catch (...) { failRendering(mapText(QStringLiteral("OpenGL 初始化失败"))); }
 
 void OsgEarthViewWidget::resizeGL(int w, int h)
 try {
@@ -2025,7 +2039,7 @@ try {
 }
 
 catch (const std::exception& error) { failRendering(QString::fromUtf8(error.what())); }
-catch (...) { failRendering(QStringLiteral("渲染视口调整失败")); }
+catch (...) { failRendering(mapText(QStringLiteral("渲染视口调整失败"))); }
 
 void OsgEarthViewWidget::paintGL()
 try {
@@ -2058,7 +2072,7 @@ try {
 }
 
 catch (const std::exception& error) { failRendering(QString::fromUtf8(error.what())); }
-catch (...) { failRendering(QStringLiteral("渲染帧失败")); }
+catch (...) { failRendering(mapText(QStringLiteral("渲染帧失败"))); }
 
 void OsgEarthViewWidget::failRendering(const QString& reason)
 {
@@ -2950,7 +2964,7 @@ VaporView::Geo::NavSample OsgEarthViewWidget::toWorldSample(const VaporView::Geo
         return invalidWorldSample;
     }
 
-    height_reference_status_ = QStringLiteral("已应用 WGS84 椭球高。");
+    height_reference_status_ = mapText(QStringLiteral("已应用 WGS84 椭球高。"));
 
     osg::Vec3d world;
     bool converted = false;

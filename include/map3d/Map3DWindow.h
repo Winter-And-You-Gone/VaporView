@@ -65,6 +65,7 @@ public slots:
     void showMapFiles();
 
 protected:
+    bool eventFilter(QObject* watched, QEvent* event) override;
     void closeEvent(QCloseEvent* event) override;
     void changeEvent(QEvent* event) override;
     void showEvent(QShowEvent* event) override;
@@ -72,6 +73,7 @@ protected:
     void resizeEvent(QResizeEvent* event) override;
 
 private:
+    void refreshLanguage();
     enum class TrackDataMode {
         Live,
         Session,

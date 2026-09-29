@@ -1,7 +1,15 @@
 #include "ground/main/MainWindow.h"
 #include "map3d/OsgEarthViewWidget.h"
+#include "map3d/MapLanguage.h"
 
 #include <QAction>
+#include <QToolButton>
+#include <QPlainTextEdit>
+#include <QDialogButtonBox>
+#include <QPushButton>
+#include <QComboBox>
+#include <QTableWidget>
+#include <QDialog>
 #include <QApplication>
 #include <QCoreApplication>
 #include <QDateTime>
@@ -81,6 +89,13 @@ int main(int argc, char** argv)
     app.setOrganizationName(QStringLiteral("VaporViewMap3DOpenTest"));
     app.setApplicationName(QStringLiteral("main_window_map3d_open_test"));
 
+    const QString originalPath = QStringLiteral("  请求路径： X:/地图/会话%2.earth");
+    const QString translatedPath = VaporView::Map3D::mapRenderedText(originalPath, true);
+    require(translatedPath == QStringLiteral("  Requested path: X:/地图/会话%2.earth"),
+            QStringLiteral("translation preserves Chinese paths and literal placeholders"));
+    require(VaporView::Map3D::mapRenderedText(translatedPath, false) == originalPath,
+            QStringLiteral("diagnostic path round trip is lossless"));
+
     MainWindow window;
     window.resize(1000, 700);
     window.show();
@@ -149,6 +164,40 @@ int main(int argc, char** argv)
                 && renderPlaceholder->text().contains(QStringLiteral("test renderer failure")),
             QStringLiteral("render failure leaves the window open with a diagnostic"));
 
+    auto* diagnosticsAction = mapWindow->findChild<QAction*>(QStringLiteral("map3DDiagnosticsAction"));
+    diagnosticsAction->trigger();
+    processEventsFor(100);
+    auto* diagnostics = mapWindow->findChild<QPlainTextEdit*>();
+    QToolButton* languageButton = nullptr;
+    for (auto* button : mapWindow->findChildren<QToolButton*>())
+        if (button->accessibleName() == QStringLiteral("titleLanguageButton")
+            && button->window() == mapWindow) languageButton = button;
+    require(languageButton && diagnostics, QStringLiteral("map language button and diagnostics exist"));
+    mapWindow->findChild<QAction*>(QStringLiteral("map3DDisplayAction"))->trigger();
+    mapWindow->findChild<QAction*>(QStringLiteral("map3DMapFilesAction"))->trigger();
+    mapWindow->findChild<QAction*>(QStringLiteral("map3DMapResourcesAction"))->trigger();
+    processEventsFor(100);
+    auto* metricCombo = mapWindow->findChild<QComboBox*>(QStringLiteral("map3DHeatMetricCombo"));
+    const int originalMetric = metricCombo->currentIndex();
+    const bool originalEnglish = qApp->property("vaporViewEnglish").toBool();
+    for (int i = 0; i < 2; ++i) {
+        languageButton->click();
+        processEventsFor(300);
+        const bool english = qApp->property("vaporViewEnglish").toBool();
+        require(english == (i == 0 ? !originalEnglish : originalEnglish), QStringLiteral("map language button switches global language"));
+        require(mapWindow->windowTitle() == (english ? QStringLiteral("VaporView 3D Map") : QStringLiteral("VaporView 三维地图")), QStringLiteral("map title switches immediately"));
+        require(diagnosticsAction->text() == (english ? QStringLiteral("Map diagnostics") : QStringLiteral("地图诊断")), QStringLiteral("map menu switches immediately"));
+        require(diagnostics->toPlainText().contains(english ? QStringLiteral("Track data:") : QStringLiteral("轨迹数据：")), QStringLiteral("open diagnostics switches immediately"));
+        require(diagnostics->window()->windowTitle() == (english ? QStringLiteral("3D Map Diagnostics") : QStringLiteral("三维地图数据诊断")), QStringLiteral("diagnostics title is fully translated"));
+        require(diagnostics->toPlainText().contains(english ? QStringLiteral("Terrain detail:") : QStringLiteral("地形细节：")), QStringLiteral("cached diagnostic details switch language"));
+        require(mapWindow->findChild<QDialog*>(QStringLiteral("map3DDisplayPanel"))->windowTitle() == (english ? QStringLiteral("Display settings") : QStringLiteral("显示设置")), QStringLiteral("display settings title switches"));
+        require(metricCombo->currentIndex() == originalMetric, QStringLiteral("language switch preserves selected heat metric"));
+        require(metricCombo->itemText(0) == (english ? QStringLiteral("Peak") : QStringLiteral("峰值")), QStringLiteral("heat metric options switch language"));
+        require(mapWindow->findChild<QTableWidget*>(QStringLiteral("map3DMapFilesTable"))->horizontalHeaderItem(0)->text() == (english ? QStringLiteral("Map files") : QStringLiteral("地图文件")), QStringLiteral("map file table switches language"));
+        auto* buttons = diagnostics->window()->findChild<QDialogButtonBox*>();
+        require(buttons->button(QDialogButtonBox::Close)->text() == (english ? QStringLiteral("Close") : QStringLiteral("关闭")), QStringLiteral("dialog close button switches immediately"));
+        require(mapWindow->findChild<VaporView::Map3D::OsgEarthViewWidget*>(QStringLiteral("map3DView")) == view, QStringLiteral("language change preserves renderer"));
+    }
     mapWindow->close();
     window.close();
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
