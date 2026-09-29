@@ -2120,7 +2120,7 @@ void requireRtkSidebarPage(
                 rtkScrollArea->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOn,
             "RTK config page forbids horizontal scrolling and reserves a stable vertical rail");
     const std::vector<std::pair<QString, int>> compactCombos = {
-        {QStringLiteral("rtkOutputPortCombo"), 100},
+        {QStringLiteral("rtkOutputPortCombo"), 136},
         {QStringLiteral("rtkBaudrateCombo"), 130},
         {QStringLiteral("rtkTimeoutCombo"), 115},
         {QStringLiteral("rtkReconnectCombo"), 125},
@@ -2567,8 +2567,8 @@ void requireRtkSidebarPage(
     auto *leverHelpButton = dialog->findChild<QToolButton *>(QStringLiteral("rtkLeverHelpButton"));
     auto *rtcmOutputPanel = dialog->findChild<QWidget *>(QStringLiteral("rtkEpsilonDataPathPanel"));
     QLabel *outputPortLabel = findLabelByText(dialog,
-                                              {QStringLiteral("RTCM 输出串口:"),
-                                               QStringLiteral("RTCM Output Port:")});
+                                              {QStringLiteral("输出串口:"),
+                                               QStringLiteral("Output Port:")});
     require(rtcmOutputPanel != nullptr && outputPortCombo != nullptr && baudrateCombo != nullptr && timeoutCombo != nullptr &&
                 reconnectCombo != nullptr && applyLeverButton != nullptr && refreshPortsButton != nullptr &&
                 autoDetectPortsButton != nullptr && leverHelpButton != nullptr && outputPortLabel != nullptr,
@@ -2583,9 +2583,9 @@ void requireRtkSidebarPage(
                             "RTK reconnect combo uses the shared popup styling helper");
     require(widgetX(outputPortCombo) - (widgetX(outputPortLabel) + outputPortLabel->width()) <= 12,
             "RTK RTCM output port combo sits close to its label");
-    require(outputPortCombo->width() <= 100 &&
-                outputPortCombo->width() >= outputPortCombo->fontMetrics().horizontalAdvance(QStringLiteral("COM999")) + 34,
-            "RTK RTCM output port combo is fixed around COM999 width");
+    require(outputPortCombo->width() <= 136 &&
+                outputPortCombo->width() >= outputPortCombo->fontMetrics().horizontalAdvance(outputPortCombo->currentText()) + 34,
+            "RTK output port combo fits its selected endpoint text");
     require(std::abs(widgetY(baudrateCombo) - widgetY(outputPortCombo)) <= 2 &&
                 widgetX(baudrateCombo) > widgetX(outputPortCombo),
             "RTK RTCM baudrate shares the first compact output row");
@@ -4727,7 +4727,7 @@ int main(int argc, char **argv)
         require(combinationSourceMode && combinationRtkOutputPort &&
                     combinationSourceMode->currentIndex() == 1 &&
                     !combinationRtkOutputPort->isEnabled() &&
-                    combinationRtkOutputPort->currentText() == QStringLiteral("Remote Sky"),
+                    combinationRtkOutputPort->currentText() == QStringLiteral("远程天空端"),
                 "combination-navigation test starts with the remote RTK sink read-only");
         combinationSourceMode->setCurrentIndex(0);
         processEventsFor(80);
@@ -4737,7 +4737,7 @@ int main(int argc, char **argv)
         combinationSourceMode->setCurrentIndex(1);
         processEventsFor(80);
         require(!combinationRtkOutputPort->isEnabled() &&
-                    combinationRtkOutputPort->currentText() == QStringLiteral("Remote Sky") &&
+                    combinationRtkOutputPort->currentText() == QStringLiteral("远程天空端") &&
                     combinationRtkOutputPort->toolTip().contains(QStringLiteral("本地")),
                 "combination-navigation source switch restores the remote RTK sink");
         combinationWindow.resize(1024, 800);

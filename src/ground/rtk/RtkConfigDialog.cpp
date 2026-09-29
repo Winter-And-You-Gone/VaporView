@@ -1481,7 +1481,7 @@ void RtkConfigDialog::updateAccessibleNames()
     setName(stop_btn_, stop_btn_->text());
     setName(clear_log_btn_, clear_log_btn_->text());
 
-    setName(output_port_combo_, textFor("RTCM output port", "RTCM 输出串口"));
+    setName(output_port_combo_, textFor("Output port", "输出串口"));
     setName(baudrate_combo_, textFor("RTCM output baudrate", "RTCM 输出波特率"));
     setName(main_antenna_lever_x_edit_, textFor("Main antenna lever arm X", "主天线杆臂 X"));
     setName(main_antenna_lever_y_edit_, textFor("Main antenna lever arm Y", "主天线杆臂 Y"));
@@ -2078,7 +2078,7 @@ void RtkConfigDialog::setEnglish(bool english)
     username_label_->setText(textFor("Username:", "用户名:"));
     password_label_->setText(textFor("Password:", "密码:"));
     mountpoint_label_->setText(textFor("Mountpoint:", "挂载点:"));
-    output_port_label_->setText(textFor("RTCM Output Port:", "RTCM 输出串口:"));
+    output_port_label_->setText(textFor("Output Port:", "输出串口:"));
     baudrate_label_->setText(textFor("Baudrate:", "波特率:"));
     main_antenna_lever_label_->setText(textFor("Main Antenna Lever Arm (m):", "主天线杆臂 (m):"));
     timeout_label_->setText(textFor("Timeout (ms):", "超时 (ms):"));
@@ -2426,7 +2426,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     {
         rtcm_output_status_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     }
-    applyComboWidth(output_port_combo_, 96);
+    applyComboWidth(output_port_combo_, rtcm_correction_sink_ ? 132 : 96);
     applyComboWidth(baudrate_combo_, 112);
     if (main_antenna_lever_help_btn_)
     {
@@ -4219,7 +4219,9 @@ void RtkConfigDialog::refreshPortCombos()
             const QString sinkLabel = rtcm_correction_sink_label_.isEmpty()
                 ? QStringLiteral("Remote Sky")
                 : rtcm_correction_sink_label_;
-            output_port_combo_->addItem(sinkLabel, sinkLabel);
+            const QString displayLabel = sinkLabel == QStringLiteral("Remote Sky")
+                ? textFor("Remote Sky", "远程天空端") : sinkLabel;
+            output_port_combo_->addItem(displayLabel, sinkLabel);
             output_port_combo_->setCurrentIndex(0);
             output_port_combo_->setEnabled(false);
             output_port_combo_->setToolTip(textFor(
