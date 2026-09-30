@@ -46,6 +46,8 @@ enum class HeightReference {
 };
 
 struct NavSample {
+    QString navigationSource = QStringLiteral("EPSILON_REALTIME");
+    QString referencePoint = QStringLiteral("IMU");
     qint64 recordTimestampUs = 0;
     qint64 deviceTimestampUs = 0;
 

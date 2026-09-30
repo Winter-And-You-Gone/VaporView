@@ -972,6 +972,8 @@ bool MainWindow::startRecordingSession()
     }
     const bool resuming = state_->recording_service_->isSessionOpen() && state_->recording_service_->isPaused();
     VaporView::Ground::Session::GroundRecordingOptions options;
+    if(state_->rtk_config_dialog_)
+        options.imuToMainAntennaBodyM = state_->rtk_config_dialog_->mainAntennaLeverArm();
     options.baseDirectory = state_->recording_directory_.trimmed();
     if (options.baseDirectory.isEmpty())
     {

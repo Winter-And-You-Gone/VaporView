@@ -1901,7 +1901,7 @@ void requireRtkSidebarPage(
         }
     }
     require(deviceConfigPageForBoundary != nullptr && epsilonPanel != nullptr &&
-                epsilonPacketRateControlCount == 11 && deviceConfigPacketRateControlCount == 0 &&
+                epsilonPacketRateControlCount == 12 && deviceConfigPacketRateControlCount == 0 &&
                 epsilonPage->isAncestorOf(epsilonPanel),
             "the single detailed EPSILON configuration now belongs to Combination Navigation");
     auto *rtkServiceStatus = combinationPage->findChild<QLabel *>(
@@ -10601,9 +10601,9 @@ int main(int argc, char **argv)
     }
     std::sort(packetRateIds.begin(), packetRateIds.end());
     const QList<uint> expectedPacketRateIds = {
-        0x40, 0x41, 0x42, 0x50, 0x53, 0x59, 0x5A, 0x5C, 0x5D, 0x63, 0x64};
+        0x40, 0x41, 0x42, 0x50, 0x53, 0x59, 0x5A, 0x5C, 0x5D, 0x63, 0x64, 0x77};
     require(packetRateIds == expectedPacketRateIds,
-            "EPSILON configuration panel exposes all 11 packet-rate controls");
+            "EPSILON configuration panel exposes all 12 packet-rate controls including PPK");
     require(epsilonConfigCard->isVisible(), "EPSILON configuration panel is visible in local mode");
     require(epsilonPanelForGeometry->styleSheet().contains(
                 QStringLiteral("QFrame[epsilonConfigCard=\"true\"]")) &&

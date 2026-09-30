@@ -6,6 +6,8 @@
 
 #include <cstdint>
 #include <map>
+#include <array>
+#include "EpsilonRawSatellite.h"
 
 namespace VaporView
 {
@@ -26,6 +28,7 @@ inline std::map<uint8_t, int> defaultSkyEpsilonPacketRates()
         {0x5D, 10},
         {0x63, 50},
         {0x64, 50},
+        {Ppk::kMsgRawSatellite, Ppk::kDefaultObservationRateHz},
     };
 }
 
@@ -47,6 +50,7 @@ struct EpsilonSerialConfig
     QString port;
     int baud_rate = 921600;
     std::map<uint8_t, int> packet_rates = defaultSkyEpsilonPacketRates();
+    std::array<double,3> imu_to_main_antenna_body_m{};
 
     bool operator==(const EpsilonSerialConfig& other) const;
     bool operator!=(const EpsilonSerialConfig& other) const;

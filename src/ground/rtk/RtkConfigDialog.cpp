@@ -2849,6 +2849,12 @@ void RtkConfigDialog::saveSettings()
     VaporView::setPersistentSetting(settings, QStringLiteral("reconnect"), reconnect_combo_->currentText());
 }
 
+std::array<double,3> RtkConfigDialog::mainAntennaLeverArm() const
+{
+    return {main_antenna_lever_x_edit_->text().toDouble(),
+            main_antenna_lever_y_edit_->text().toDouble(),main_antenna_lever_z_edit_->text().toDouble()};
+}
+
 void RtkConfigDialog::saveMountpointSetting(const QString& mountpoint)
 {
     if (ui_test_mode_ || isUiTestCasterServerText(server_edit_->text()))

@@ -46,7 +46,7 @@ QString SessionExportService::trajectoryCsvHeader()
     return QStringLiteral(
         "index,csv_row,timestamp_utc,timestamp_us,latitude,longitude,height_m,"
         "cumulative_distance_m,segment_distance_m,speed_mps,gnss_fix,peak_value,"
-        "waveform_frame,waveform_timestamp_us,waveform_delta_ms");
+        "waveform_frame,waveform_timestamp_us,waveform_delta_ms,source,reference_point");
 }
 
 SessionExportResult SessionExportService::exportTrajectoryCsv(
@@ -123,6 +123,7 @@ SessionExportResult SessionExportService::exportTrajectoryCsv(
                << (point.has_waveform_match
                        ? QString::number(static_cast<double>(point.waveform_delta_us) / 1000.0, 'f', 3)
                        : QString())
+               << ',' << csvCell(point.navigation_source) << ',' << csvCell(point.reference_point)
                << '\n';
         ++result.rowsWritten;
     }

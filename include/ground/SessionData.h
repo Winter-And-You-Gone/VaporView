@@ -26,6 +26,8 @@ struct SessionTrackPoint
     int csv_row = -1;
     int waveform_frame_index = -1;
     QString gnss_fix;
+    QString navigation_source = QStringLiteral("EPSILON_REALTIME");
+    QString reference_point = QStringLiteral("IMU");
     bool has_height = false;
     bool has_speed = false;
     bool has_peak_value = false;

@@ -109,6 +109,7 @@ void testFrameRoundTrip()
     basic.ecef_packet_rate_hz = 11.0f;
     basic.euler_orien_packet_rate_hz = 63.0f;
     basic.quat_orien_packet_rate_hz = 64.0f;
+    basic.raw_satellite_epoch_rate_hz = 5.0f;
     basic.validity_flags = VaporView::BasicHasEpsilonTime |
                            VaporView::BasicHasPosition |
                            VaporView::BasicHasEcef |
@@ -128,13 +129,18 @@ void testFrameRoundTrip()
     require(VaporView::TelemetryCodec::parseBasicTelemetry(payload.left(91), parsedLegacy), "parse legacy basic telemetry");
     require(parsedLegacy.gnss_satellites == 0, "legacy basic satellites default");
     VaporView::TelemetryBasic parsedEightRate;
-    require(VaporView::TelemetryCodec::parseBasicTelemetry(payload.left(payload.size() - 12), parsedEightRate),
+    require(VaporView::TelemetryCodec::parseBasicTelemetry(payload.left(payload.size() - 16), parsedEightRate),
             "parse pre-live-rate-extension telemetry");
     require(std::fabs(parsedEightRate.ecef_packet_rate_hz - basic.ecef_packet_rate_hz) < 0.000001f &&
                 parsedEightRate.status_packet_rate_hz == 0.0f &&
                 parsedEightRate.euler_orien_packet_rate_hz == 0.0f &&
                 parsedEightRate.quat_orien_packet_rate_hz == 0.0f,
             "pre-live-rate-extension telemetry keeps the original eight rates and defaults new rates");
+    VaporView::TelemetryBasic parsedBeforePpk;
+    require(VaporView::TelemetryCodec::parseBasicTelemetry(payload.left(payload.size() - 4), parsedBeforePpk) &&
+                parsedBeforePpk.quat_orien_packet_rate_hz == basic.quat_orien_packet_rate_hz &&
+                parsedBeforePpk.raw_satellite_epoch_rate_hz == 0.0f,
+            "legacy eleven-rate telemetry remains compatible without PPK epoch rates");
     const QByteArray frame = codec.encodeFrame(VaporView::MsgType::TelemetryBasic, payload, 7, 99);
     const QByteArray noisy = QByteArray("noise") + frame.left(frame.size() / 2);
     require(codec.feedBytes(noisy).isEmpty(), "partial frame should not decode");
@@ -162,6 +168,8 @@ void testFrameRoundTrip()
     require(std::fabs(parsed.status_packet_rate_hz - basic.status_packet_rate_hz) < 0.000001f, "basic status packet rate");
     require(std::fabs(parsed.euler_orien_packet_rate_hz - basic.euler_orien_packet_rate_hz) < 0.000001f, "basic euler packet rate");
     require(std::fabs(parsed.quat_orien_packet_rate_hz - basic.quat_orien_packet_rate_hz) < 0.000001f, "basic quaternion packet rate");
+    require(std::fabs(parsed.raw_satellite_epoch_rate_hz - basic.raw_satellite_epoch_rate_hz) < 0.000001f,
+            "PPK complete epoch rate survives Remote telemetry");
 }
 
 void testCrcError()

@@ -1,4 +1,5 @@
 #include "ground/devices/UiTestDataModel.h"
+#include "EpsilonRawSatellite.h"
 
 #include <algorithm>
 #include <array>
@@ -428,6 +429,7 @@ UiTestSnapshot UiTestDataModel::snapshot(qint64 elapsedMs) const
     result.epsilon.insgps_packet_rate_hz = result.epsilon.valid ? 20.0 : 0.0;
     result.epsilon.sys_state_packet_rate_hz = result.epsilon.valid ? 20.0 : 0.0;
     result.epsilon.raw_gnss_packet_rate_hz = result.epsilon.valid ? 5.0 : 0.0;
+    result.epsilon.raw_satellite_epoch_rate_hz = result.epsilon.valid ? Ppk::kDefaultObservationRateHz : 0.0;
     result.epsilon.satellite_packet_rate_hz = result.epsilon.valid ? 1.0 : 0.0;
     result.epsilon.geodetic_packet_rate_hz = result.epsilon.valid ? 20.0 : 0.0;
     result.epsilon.ecef_packet_rate_hz = result.epsilon.valid ? 20.0 : 0.0;

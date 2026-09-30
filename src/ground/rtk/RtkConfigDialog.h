@@ -16,6 +16,7 @@
 #include <QHBoxLayout>
 #include <QGridLayout>
 #include <chrono>
+#include <array>
 #include <cstdint>
 #include <deque>
 #include <functional>
@@ -57,6 +58,7 @@ public:
     using EpsilonLeverArmCompletion = std::function<void(bool, const QString&)>;
     using EpsilonLeverArmApplier = std::function<void(double, double, double, EpsilonLeverArmCompletion)>;
     void setEpsilonMainAntennaLeverArmApplier(EpsilonLeverArmApplier applier);
+    std::array<double,3> mainAntennaLeverArm() const;
     using RtcmCorrectionSink = std::function<bool(const QByteArray&)>;
     void setRtcmCorrectionSink(RtcmCorrectionSink sink, const QString& label);
 

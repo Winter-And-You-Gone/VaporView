@@ -227,6 +227,7 @@ struct EpsilonData
   double ecef_packet_rate_hz = 0.0;
   double euler_orien_packet_rate_hz = 0.0;
   double quat_orien_packet_rate_hz = 0.0;
+  double raw_satellite_epoch_rate_hz = 0.0;
 
   std::chrono::steady_clock::time_point timestamp{};
   bool valid = false;

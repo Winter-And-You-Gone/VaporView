@@ -189,6 +189,9 @@ QJsonObject epsilonToJson(const EpsilonSerialConfig& config)
         packetRates.append(packetRate);
     }
     object["packet_rates"] = packetRates;
+    QJsonArray arm;
+    for(double value:config.imu_to_main_antenna_body_m)arm.append(value);
+    object["imu_to_main_antenna_body_m"] = arm;
     return object;
 }
 
@@ -262,6 +265,7 @@ bool epsilonPacketRatesFromJson(const QJsonObject& object,
             return false;
         }
     }
+    packetRates.try_emplace(Ppk::kMsgRawSatellite, Ppk::kDefaultObservationRateHz);
     config.packet_rates = std::move(packetRates);
     return true;
 }
@@ -311,6 +315,17 @@ bool epsilonFromJson(const QJsonObject& object, EpsilonSerialConfig& config, QSt
     if (!epsilonPacketRatesFromJson(object, next, errorMessage))
     {
         return false;
+    }
+    if(object.contains(QStringLiteral("imu_to_main_antenna_body_m")))
+    {
+        const auto arm=object.value(QStringLiteral("imu_to_main_antenna_body_m")).toArray();
+        if(arm.size()!=3){if(errorMessage)*errorMessage=QStringLiteral("epsilon main antenna arm requires three coordinates");return false;}
+        for(int i=0;i<3;++i)
+        {
+            if(!arm[i].isDouble() || !std::isfinite(arm[i].toDouble()) || std::abs(arm[i].toDouble())>100)
+            {if(errorMessage)*errorMessage=QStringLiteral("epsilon main antenna arm is invalid");return false;}
+            next.imu_to_main_antenna_body_m[i]=arm[i].toDouble();
+        }
     }
     if (next.enabled && next.port.trimmed().isEmpty())
     {
@@ -561,7 +576,8 @@ bool EpsilonSerialConfig::operator==(const EpsilonSerialConfig& other) const
     return enabled == other.enabled &&
            port == other.port &&
            baud_rate == other.baud_rate &&
-           packet_rates == other.packet_rates;
+           packet_rates == other.packet_rates &&
+           imu_to_main_antenna_body_m == other.imu_to_main_antenna_body_m;
 }
 
 bool EpsilonSerialConfig::operator!=(const EpsilonSerialConfig& other) const

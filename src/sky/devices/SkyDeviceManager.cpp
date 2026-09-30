@@ -1,5 +1,6 @@
 #include "SkyDeviceManager.h"
 #include "TelemetryCodec.h"
+#include "ppk/ObservationStore.h"
 
 #include "SerialBaudRateCapabilities.h"
 #include "serial_port.h"
@@ -400,6 +401,7 @@ const std::map<uint8_t, std::vector<int>>& supportedRemoteEpsilonPacketRates()
         {0x5D, {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
         {0x63, {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
         {0x64, {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
+        {Ppk::kMsgRawSatellite, {0, 1, 2, 5, 10, 20}},
     };
     return kRates;
 }
@@ -502,6 +504,11 @@ void SkyDeviceManager::drainRawEvents()
         case SkyDeviceId::Epsilon:
             if (epsilon_.get() == event.collectorIdentity)
             {
+                if(event.observationEpoch)
+                {
+                    emit epsilonObservationEpochReceived(event.payload);
+                    break;
+                }
                 emit epsilonRawFrameReceived(event.timestampUs,
                                              static_cast<quint8>(event.metadata),
                                              event.serialNumber,
@@ -1012,9 +1019,13 @@ void SkyDeviceManager::completeEpsilonOperation(const DeviceOperationRequest& re
         EpsilonPacketRatesOperation rates;
         TelemetryCodec::parseEpsilonPacketRatesOperation(request.payload, rates);
         if (simulate_data_) simulated_epsilon_packet_rates_ = rates.packet_rates;
+        config_.epsilon.packet_rates = rates.packet_rates;
     }
     else if (request.operation == DeviceOperation::ConfigureEpsilonMainAntennaLeverArm)
+    {
         TelemetryCodec::parseEpsilonMainAntennaLeverArmOperation(request.payload, simulated_epsilon_lever_arm_);
+        config_.epsilon.imu_to_main_antenna_body_m = {simulated_epsilon_lever_arm_.x_m,simulated_epsilon_lever_arm_.y_m,simulated_epsilon_lever_arm_.z_m};
+    }
     else if (request.operation == DeviceOperation::ConfigureEpsilonRtcmInput)
     {
         EpsilonRtcmInputOperation rtcm;
@@ -1060,6 +1071,7 @@ bool SkyDeviceManager::configureEpsilonPacketRates(
     if (simulate_data_)
     {
         simulated_epsilon_packet_rates_ = operation.packet_rates;
+        config_.epsilon.packet_rates = operation.packet_rates;
         if (errorCode) *errorCode = CommandErrorCode::Ok;
         if (errorMessage) *errorMessage = QStringLiteral("EPSILON packet rates were applied in simulation.");
         return true;
@@ -1074,6 +1086,7 @@ bool SkyDeviceManager::configureEpsilonPacketRates(
     if (ok)
     {
         epsilon_->setSampleRate(operation.callback_rate_hz);
+        config_.epsilon.packet_rates = operation.packet_rates;
     }
     if (errorCode) *errorCode = ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed;
     if (errorMessage && !ok) *errorMessage = QStringLiteral("EPSILON packet-rate configuration failed.");
@@ -1102,6 +1115,7 @@ bool SkyDeviceManager::configureEpsilonMainAntennaLeverArm(
     if (simulate_data_)
     {
         simulated_epsilon_lever_arm_ = operation;
+        config_.epsilon.imu_to_main_antenna_body_m = {operation.x_m,operation.y_m,operation.z_m};
         if (errorCode) *errorCode = CommandErrorCode::Ok;
         if (errorMessage) *errorMessage = QStringLiteral("EPSILON lever arm was applied in simulation.");
         return true;
@@ -1137,6 +1151,7 @@ bool SkyDeviceManager::configureEpsilonMainAntennaLeverArm(
     }
     if (errorCode) *errorCode = ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed;
     if (errorMessage && !ok) *errorMessage = QStringLiteral("EPSILON lever-arm configuration failed.");
+    if(ok)config_.epsilon.imu_to_main_antenna_body_m = {operation.x_m,operation.y_m,operation.z_m};
     return ok;
 }
 
@@ -2015,6 +2030,41 @@ void SkyDeviceManager::generateSimulatedData()
         latest_epsilon_.ecef_packet_rate_hz = simulatedPacketRate(0x5D, 10.0);
         latest_epsilon_.euler_orien_packet_rate_hz = simulatedPacketRate(0x63, 50.0);
         latest_epsilon_.quat_orien_packet_rate_hz = simulatedPacketRate(0x64, 50.0);
+        const int observationRate=static_cast<int>(simulatedPacketRate(Ppk::kMsgRawSatellite,Ppk::kDefaultObservationRateHz));
+        latest_epsilon_.raw_satellite_epoch_rate_hz=observationRate;
+        if(observationRate>0 && t-simulated_observation_time_us_>=1000000ULL/observationRate)
+        {
+            simulated_observation_time_us_=t;
+            Ppk::RawSatellitePacket packet;
+            packet.epoch.unixSeconds=static_cast<uint32_t>(t/1000000ULL);
+            packet.epoch.nanoseconds=static_cast<uint32_t>((t%1000000ULL)*1000ULL);
+            packet.epoch.hostTimestampUs=t;packet.epoch.receiver=1;packet.totalPackets=1;
+            for(uint8_t system: {uint8_t(1),uint8_t(2),uint8_t(3),uint8_t(4),uint8_t(6)})
+            {
+                Ppk::RawSatelliteObservation o;
+                o.system=system;o.prn=1;o.elevationDeg=45;o.azimuthDeg=120;o.frequency=0;
+                o.pseudoRangeM=22000000+system*100;o.carrierPhaseCycles=o.pseudoRangeM/0.19;
+                o.dopplerHz=-150;o.snrDbHz=45;packet.epoch.observations.push_back(o);
+            }
+            const auto frame=Ppk::encodeRawSatelliteFrame(packet,simulated_navigation_serial_++);
+            Ppk::RawSatelliteAssembler assembler;
+            EpsilonCollector replay;
+            replay.setRawFrameCallback([this](uint64_t host,uint8_t id,uint8_t serial,const uint8_t *data,size_t size){
+                emit epsilonRawFrameReceived(host,id,serial,QByteArray(reinterpret_cast<const char *>(data),size));
+            });
+            replay.setRawSatelliteEpochCallback([this](const Ppk::RawSatelliteEpoch& epoch){
+                emit epsilonObservationEpochReceived(Ppk::encodeEpoch(epoch));
+            });
+            replay.consumeRawSatelliteFrame(frame.data(),frame.size(),t,assembler);
+        }
+        std::vector<uint8_t> state(100,0);
+        auto put=[&](size_t offset,auto value){std::memcpy(state.data()+offset,&value,sizeof(value));};
+        put(6,static_cast<uint32_t>(t/1000000ULL));put(10,static_cast<uint32_t>(t%1000000ULL));
+        put(66,static_cast<float>(degToRad(latest_epsilon_.roll_deg)));
+        put(70,static_cast<float>(degToRad(latest_epsilon_.pitch_deg)));
+        put(74,static_cast<float>(degToRad(latest_epsilon_.yaw_deg)));
+        const auto stateFrame=Ppk::encodeFdilinkFrame(0x50,state,simulated_navigation_serial_++);
+        emit epsilonRawFrameReceived(t,0x50,stateFrame[3],QByteArray(reinterpret_cast<const char *>(stateFrame.data()),stateFrame.size()));
         epsilon_status_.rx_count++;
         epsilon_status_.last_data_time_us = t;
         emit epsilonDataUpdated(latest_epsilon_);
@@ -2347,6 +2397,14 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
             event.metadata = packetId;
             event.serialNumber = serialNumber;
             event.payload = QByteArray(reinterpret_cast<const char*>(frameData), static_cast<int>(size));
+            self->enqueueRawEvent(std::move(event));
+        });
+        epsilon_->setRawSatelliteEpochCallback([self = QPointer<SkyDeviceManager>(this),
+            weakCollector = std::weak_ptr<EpsilonCollector>(epsilon_)](const Ppk::RawSatelliteEpoch& epoch) {
+            if (!self) return;
+            const auto collector=weakCollector.lock();if(!collector)return;
+            PendingRawEvent event;event.deviceId=SkyDeviceId::Epsilon;event.collectorIdentity=collector.get();
+            event.observationEpoch=true;event.timestampUs=epoch.hostTimestampUs;event.payload=Ppk::encodeEpoch(epoch);
             self->enqueueRawEvent(std::move(event));
         });
         if (!epsilon_->start(config.port.toStdString(), SerialConfig::N81(config.baud_rate))) return fail(CommandErrorCode::DeviceConnectFailed);

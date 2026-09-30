@@ -134,6 +134,7 @@ signals:
     void waveformUpdated(quint64 timestampUs, QVector<float> samples);
     void waveformFeatureUpdated(const WaveformFeature& feature);
     void epsilonRawFrameReceived(quint64 timestampUs, quint8 packetId, quint8 serialNumber, QByteArray frame);
+    void epsilonObservationEpochReceived(QByteArray encodedEpoch);
     void ptbRawResponseReceived(quint64 timestampUs, QByteArray response);
     void hmpRawResponseReceived(quint64 timestampUs, QByteArray response);
     void lidarRawFrameReceived(quint64 timestampUs, quint16 protocol, QByteArray frame);
@@ -180,6 +181,7 @@ private:
     void handleAi8TemperatureControllerData(const Ai8TemperatureControllerProtocol::LiveData& data);
     struct PendingRawEvent
     {
+        bool observationEpoch = false;
         SkyDeviceId deviceId = SkyDeviceId::All;
         const void *collectorIdentity = nullptr;
         quint64 timestampUs = 0;
@@ -254,6 +256,8 @@ private:
     std::atomic<quint64> rtcm_correction_dropped_chunks_{0};
     std::atomic<quint64> rtcm_correction_last_receive_time_us_{0};
     std::map<uint8_t, int> simulated_epsilon_packet_rates_;
+    quint64 simulated_observation_time_us_ = 0;
+    quint8 simulated_navigation_serial_ = 0;
     EpsilonMainAntennaLeverArmOperation simulated_epsilon_lever_arm_;
     EpsilonRtcmInputOperation simulated_epsilon_rtcm_input_;
 };

@@ -174,6 +174,8 @@ private:
     QSlider* replay_slider_ = nullptr;
     QComboBox* replay_speed_combo_ = nullptr;
     QComboBox* heat_metric_combo_ = nullptr;
+    QComboBox* navigation_source_combo_ = nullptr;
+    QString loaded_session_directory_;
     QComboBox* heat_palette_combo_ = nullptr;
     QSpinBox* max_visible_samples_spin_ = nullptr;
     QSpinBox* track_line_width_spin_ = nullptr;

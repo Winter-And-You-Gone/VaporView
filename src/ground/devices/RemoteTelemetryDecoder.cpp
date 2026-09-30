@@ -172,6 +172,7 @@ RemoteEpsilonTelemetry decodeRemoteEpsilonTelemetry(
         result.data.sys_state_packet_rate_hz = telemetry.sys_state_packet_rate_hz;
         result.data.status_packet_rate_hz = telemetry.status_packet_rate_hz;
         result.data.raw_gnss_packet_rate_hz = telemetry.raw_gnss_packet_rate_hz;
+        result.data.raw_satellite_epoch_rate_hz = telemetry.raw_satellite_epoch_rate_hz;
         result.data.satellite_packet_rate_hz = telemetry.satellite_packet_rate_hz;
         result.data.geodetic_packet_rate_hz = telemetry.geodetic_packet_rate_hz;
         result.data.ecef_packet_rate_hz = telemetry.ecef_packet_rate_hz;

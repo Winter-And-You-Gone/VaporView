@@ -220,6 +220,7 @@ struct TelemetryBasic
     float sys_state_packet_rate_hz = 0.0f;
     float status_packet_rate_hz = 0.0f;
     float raw_gnss_packet_rate_hz = 0.0f;
+    float raw_satellite_epoch_rate_hz = 0.0f;
     float satellite_packet_rate_hz = 0.0f;
     float geodetic_packet_rate_hz = 0.0f;
     float ecef_packet_rate_hz = 0.0f;

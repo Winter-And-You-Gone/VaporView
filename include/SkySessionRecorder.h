@@ -6,6 +6,8 @@
 #include "LogRecord.h"
 #include "data_types.h"
 #include "TcpWaveEncoding.h"
+#include "ppk/ObservationStore.h"
+#include "ppk/AttitudeStore.h"
 
 #include <QByteArray>
 #include <QFile>
@@ -23,6 +25,7 @@ class RecordingStorage;
 class SkySessionRecorder
 {
 public:
+    void setMainAntennaLeverArm(const std::array<double,3>& arm) { imu_to_main_antenna_body_m_ = arm; }
     explicit SkySessionRecorder(std::shared_ptr<RecordingStorage> storage = {});
     void setStorageFailureCallback(std::function<void()> callback) { storage_failure_callback_ = std::move(callback); }
     bool storageFailed() const { return storage_failed_; }
@@ -89,6 +92,7 @@ public:
                                quint8 packetId,
                                quint8 serialNumber,
                                const QByteArray& frame);
+    void recordEpsilonObservationEpoch(const QByteArray& encodedEpoch);
     void recordRawPtbResponse(quint64 hostTimeUs, const QByteArray& response);
     void recordRawHmpResponse(quint64 hostTimeUs, const QByteArray& response);
     void recordRawLidarFrame(quint64 hostTimeUs, quint16 protocol, const QByteArray& frame);
@@ -104,6 +108,7 @@ public:
                                TcpFloatEncoding floatEncoding);
 
 private:
+    std::array<double,3> imu_to_main_antenna_body_m_{};
     bool openRawDatFile(QFile& file, const QString& filename, quint16 sourceId, QString *errorMessage);
     bool writeRawRecord(QFile& file,
                         quint64& recordCount,
@@ -124,6 +129,8 @@ private:
     void closeFiles();
 
     quint8 recording_state_ = 0;
+    Ppk::ObservationStore ppk_observations_;
+    Ppk::AttitudeStore ppk_attitudes_;
     QString session_name_;
     QString session_directory_;
     QString session_metadata_filename_;

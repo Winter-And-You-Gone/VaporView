@@ -525,6 +525,7 @@ QByteArray TelemetryCodec::serializeBasicTelemetry(const TelemetryBasic& data)
     appendFloatLe(payload, data.status_packet_rate_hz);
     appendFloatLe(payload, data.euler_orien_packet_rate_hz);
     appendFloatLe(payload, data.quat_orien_packet_rate_hz);
+    appendFloatLe(payload, data.raw_satellite_epoch_rate_hz);
     return payload;
 }
 
@@ -622,6 +623,8 @@ bool TelemetryCodec::parseBasicTelemetry(const QByteArray& payload, TelemetryBas
             return false;
         }
     }
+    if(payload.size()-offset>=static_cast<qsizetype>(sizeof(float)) &&
+       !readFloatLe(payload,offset,data.raw_satellite_epoch_rate_hz))return false;
     return true;
 }
 

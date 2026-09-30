@@ -1,4 +1,5 @@
 #include "geo/SessionTrackReader.h"
+#include "ppk/SessionNavigationSource.h"
 
 #include "shared/session/SessionPathResolver.h"
 #include "geo/CoordinateTransform.h"
@@ -224,6 +225,7 @@ QStringList locateTrackCsvCandidates(const QString& sessionDir)
 
 SessionTrackReadResult readSessionTrack(const QString& sessionDir)
 {
+    VaporView::Ppk::SessionNavigationResolver navigation(sessionDir);
     SessionTrackReadResult result;
     const VaporView::Session::SessionPathContext pathContext =
         VaporView::Session::loadSessionPathContext(sessionDir);
@@ -283,6 +285,7 @@ SessionTrackReadResult readSessionTrack(const QString& sessionDir)
     }
 
     const QStringList headers = parseCsvLine(in.readLine());
+    navigation.prepareCsv(headers);
     QHash<QString, int> columns;
     for (int i = 0; i < headers.size(); ++i)
     {
@@ -342,8 +345,11 @@ SessionTrackReadResult readSessionTrack(const QString& sessionDir)
             return result;
         }
 
-        const QStringList fields = parseCsvLine(line);
+        QStringList fields = parseCsvLine(line);
+        navigation.applyCsvRow(fields);
         NavSample sample;
+        sample.navigationSource = navigation.usesPpk() ? QStringLiteral("PPK") : QStringLiteral("EPSILON_REALTIME");
+        sample.referencePoint = QStringLiteral("IMU");
         sample.recordTimestampUs = readInt64(fields, recordTsCol);
         sample.deviceTimestampUs = readInt64(fields, deviceTsCol);
         sample.latDeg = readDouble(fields, latCol);

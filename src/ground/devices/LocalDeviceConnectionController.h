@@ -122,6 +122,7 @@ struct LocalConnectionCallbacks
     std::function<void(bool)> finished;
     std::function<void(LocalDeviceKind)> dataReady;
     std::function<void(quint64, quint8, quint8, const void *, size_t)> rawEpsilonFrame;
+    std::function<void(const Ppk::RawSatelliteEpoch&)> epsilonObservationEpoch;
     std::function<void(quint64, const void *, size_t)> rawPtbResponse;
     std::function<void(quint64, const void *, size_t)> rawHmpResponse;
     std::function<void(quint64, quint16, const void *, size_t)> rawLidarFrame;

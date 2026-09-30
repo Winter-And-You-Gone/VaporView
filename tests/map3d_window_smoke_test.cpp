@@ -829,6 +829,9 @@ int main(int argc, char** argv)
     window.loadSessionDirectory(sessionDir.path());
     require(waitForText(label, QStringLiteral("来源 会话"), 3000),
             "asynchronous session load completes without blocking the window");
+    auto *navigationSource = window.findChild<QComboBox *>(QStringLiteral("map3DNavigationSourceCombo"));
+    require(navigationSource && navigationSource->isEnabled() && navigationSource->count() == 2,
+            "Session exposes the shared Original/PPK navigation source");
     {
         QSettings settings = map3DTestSettings();
         require(settings.value(QStringLiteral("lastSessionDir")).toString()
@@ -975,6 +978,10 @@ int main(int argc, char** argv)
             "the latest asynchronous session request wins over an older completed request");
     require(waitForText(label, QStringLiteral("来源 会话"), 1000),
             "the newest asynchronous session request applies its track on the GUI thread");
+    window.appendSample(sample);
+    require(!navigationSource->isEnabled(), "live navigation disables the previous Session source selector");
+    window.clearTrack();
+    require(!navigationSource->isEnabled(), "cleared navigation has no active Session source selector");
 
     auto* closingWindow = new VaporView::Map3D::Map3DWindow;
     closingWindow->loadSessionDirectory(latestSessionDir.path());

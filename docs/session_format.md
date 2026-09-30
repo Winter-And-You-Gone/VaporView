@@ -13,6 +13,13 @@ schema. The origin value is explicit in both JSON metadata files:
 - `"recording_origin": "ground"`
 - `"recording_origin": "sky"`
 
+EPSILON2-D4G recordings also stream complete `0x77` GNSS observation epochs
+and UTC-tagged attitudes into `ppk/rover`. Portable Base/NAV inputs, internal
+RTKLIB results and the Session navigation-source selection live in `ppk/`.
+The formats, RINEX mapping and Original/PPK workflow are documented in
+[`epsilon_ppk.md`](epsilon_ppk.md). This additive extension preserves the
+original sensor CSV and RAW DAT files; older Sessions do not require PPK files.
+
 Production code represents this value with `VaporView::Session::RecordingOrigin`
 and serializes it through the shared session helpers. New writers do not write
 the legacy `mode` field.

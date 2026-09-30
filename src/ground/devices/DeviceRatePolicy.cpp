@@ -52,6 +52,9 @@ const std::vector<EpsilonPacketConfigOption>& epsilonPacketConfigOptions()
         {0x5D, "MSG_ECEF_POS", "ECEF坐标", "ECEF Position", 24, {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
         {0x63, "MSG_EULER_ORIEN", "欧拉姿态", "Euler Orientation", 12, {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
         {0x64, "MSG_QUAT_ORIEN", "四元数姿态", "Quaternion Orientation", 16, {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
+        // Variable-size multi-packet epochs: 48 is the single-observation payload
+        // floor, not an estimate of a full epoch's actual serial bandwidth.
+        {Ppk::kMsgRawSatellite, "MSG_RAW_SATELLITE", "PPK原始观测", "PPK Raw Observations", 48, {0, 1, 2, 5, 10, 20}},
     };
     return kOptions;
 }

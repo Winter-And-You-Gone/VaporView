@@ -37,6 +37,7 @@ target_include_directories(vaporview_ground_session_core PUBLIC
 target_link_libraries(vaporview_ground_session_core PUBLIC
     vaporview_geo_core
     vaporview_session_format
+    vaporview_ppk
     vaporview_wave_encoding
     Qt6::Core
 )
@@ -49,6 +50,8 @@ endif()
 
 if(NOT TARGET vaporview_ground_session_ui)
 add_library(vaporview_ground_session_ui STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/SessionPpkWidget.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/SessionPpkWidget.h
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionMapCoordinator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionMapCoordinator.h
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionViewerPages.cpp
@@ -66,6 +69,7 @@ target_include_directories(vaporview_ground_session_ui PUBLIC
 
 target_link_libraries(vaporview_ground_session_ui PUBLIC
     Qt6::Widgets
+    vaporview_ppk
 )
 
 target_link_libraries(vaporview_ground_session_ui PRIVATE

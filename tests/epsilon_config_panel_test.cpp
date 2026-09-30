@@ -114,8 +114,8 @@ int main(int argc, char *argv[])
 
     const auto &options = epsilonPacketConfigOptions();
     const QList<QComboBox *> combos = packetRateCombos(panel);
-    require(options.size() == 11, "EPSILON policy exposes exactly 11 packet options");
-    require(combos.size() == 11, "panel exposes exactly 11 packet-rate controls");
+    require(options.size() == 12, "EPSILON policy exposes 12 packet options including PPK");
+    require(combos.size() == 12, "panel exposes all 12 packet-rate controls");
     auto *rtcmDevicePortCombo = panel.findChild<QComboBox *>(QStringLiteral("epsilonRtcmDevicePortCombo"));
     require(rtcmDevicePortCombo != nullptr &&
                 rtcmDevicePortCombo->property("epsilonRtcmDevicePortControl").toBool() &&
@@ -150,7 +150,7 @@ int main(int argc, char *argv[])
         {"epsilonPacketGroupSystemDiagnostics", "系统与诊断", {0x50, 0x53}},
         {"epsilonPacketGroupAttitudeRepresentation", "姿态表示", {0x63, 0x64}},
         {"epsilonPacketGroupInertialFusion", "惯导与融合", {0x40, 0x41, 0x42}},
-        {"epsilonPacketGroupGnssPosition", "GNSS 与位置", {0x59, 0x5A, 0x5C, 0x5D}},
+        {"epsilonPacketGroupGnssPosition", "GNSS 与位置", {0x59, 0x5A, 0x5C, 0x5D, 0x77}},
     };
     for (int groupIndex = 0; groupIndex < static_cast<int>(packetGroups.size()); ++groupIndex)
     {
@@ -280,7 +280,7 @@ int main(int argc, char *argv[])
 
     const std::map<uint8_t, int> defaults = defaultEpsilonPacketRates();
     panel.setPacketRates(defaults);
-    require(panel.packetRates() == defaults, "semantic packet-rate setter and getter preserve all 11 values");
+    require(panel.packetRates() == defaults, "semantic packet-rate setter and getter preserve all 12 values");
     VaporView::EpsilonData liveData;
     liveData.valid = true;
     liveData.imu_packet_rate_hz = 250.0;
@@ -293,6 +293,7 @@ int main(int argc, char *argv[])
     liveData.ecef_packet_rate_hz = 10.0;
     liveData.euler_orien_packet_rate_hz = 50.0;
     liveData.quat_orien_packet_rate_hz = 50.0;
+    liveData.raw_satellite_epoch_rate_hz = 5.0;
     panel.setLivePacketRates(liveData);
     auto *liveRateCard = panel.findChild<QFrame *>(QStringLiteral("epsilonLivePacketRateCard"));
     auto *liveRateTitle = panel.findChild<QLabel *>(QStringLiteral("epsilonLivePacketRateCardTitle"));
@@ -341,7 +342,7 @@ int main(int argc, char *argv[])
                 "live packet-rate fields occupy unique cells");
         ++liveRateValueCount;
     }
-    require(liveRateValueCount == 11, "live packet-rate card exposes all 11 packet rates");
+    require(liveRateValueCount == 12, "live packet-rate card exposes all 12 packet rates");
     require(liveRateColumns == QSet<int>{0, 1, 2, 3},
             "live packet-rate card lays fields out across four columns");
     for (const auto& [cell, rect] : liveRateCells)
@@ -450,6 +451,16 @@ int main(int argc, char *argv[])
 
     panel.resize(560, 900);
     QApplication::processEvents();
+    require(panel.width() < 980, "wide grid minimum does not prevent the narrow layout breakpoint");
+    for (QWidget *field : panel.findChildren<QWidget *>())
+        if (field->property("epsilonLivePacketRateField").toBool())
+        {
+            require(field->property("epsilonLivePacketGridColumn").toInt() < 2,
+                    "narrow live packet rates reflow into two columns");
+            for (QLabel *label : field->findChildren<QLabel *>())
+                require(label->width() >= label->fontMetrics().horizontalAdvance(label->text()),
+                        "narrow live rate labels and values remain fully visible");
+        }
     for (QComboBox *combo : combos)
     {
         require(combo->property("epsilonPacketGridColumn").toInt() == 0,

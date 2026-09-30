@@ -2,6 +2,7 @@
 
 #include "TcpWaveEncoding.h"
 #include "data_types.h"
+#include "EpsilonRawSatellite.h"
 
 #include <QByteArray>
 #include <QString>
@@ -10,6 +11,7 @@
 #include <cstddef>
 #include <functional>
 #include <memory>
+#include <array>
 
 namespace VaporView { class RecordingStorage; }
 
@@ -53,6 +55,7 @@ struct GroundRecordingOptions
     QString baseDirectory;
     int exportRateHz = 20;
     GroundRecordingDeviceConfig deviceConfig;
+    std::array<double,3> imuToMainAntennaBodyM{};
 };
 
 struct GroundRecordingStatus
@@ -140,6 +143,7 @@ public:
                                const void *data,
                                size_t size);
     bool recordRawPtbResponse(quint64 hostTimestampUs, const void *data, size_t size);
+    bool recordEpsilonObservationEpoch(const Ppk::RawSatelliteEpoch& epoch);
     bool recordRawHmpResponse(quint64 hostTimestampUs, const void *data, size_t size);
     bool recordRawLidarFrame(quint64 hostTimestampUs,
                              quint16 protocol,

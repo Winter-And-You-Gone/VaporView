@@ -586,6 +586,9 @@ private:
                     callbacks.rawEpsilonFrame(timestampUs, packetId, serialNumber, data, size);
                 }
             });
+        collectors.epsilon->setRawSatelliteEpochCallback([this](const Ppk::RawSatelliteEpoch& epoch) {
+            if (callbacks.epsilonObservationEpoch) callbacks.epsilonObservationEpoch(epoch);
+        });
         collectors.ptb->setRawResponseCallback(
             [this](uint64_t timestampUs, const uint8_t *data, size_t size) {
                 if (callbacks.rawPtbResponse)

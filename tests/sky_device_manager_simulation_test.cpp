@@ -118,6 +118,7 @@ int main(int argc, char **argv)
     epsilonPacketRates.output_rate_hz = 100;
     epsilonPacketRates.callback_rate_hz = 250;
     epsilonPacketRates.packet_rates = {{0x40, 250}, {0x50, 100}, {0x5C, 10}};
+    epsilonPacketRates.packet_rates[VaporView::Ppk::kMsgRawSatellite] = VaporView::Ppk::kDefaultObservationRateHz;
     epsilonPacketRates.packet_rate_signature = QStringLiteral("40=250;50=100;5C=10");
     QString operationMessage;
     require(manager.configureEpsilonPacketRates(epsilonPacketRates, &error, &operationMessage) &&
@@ -129,6 +130,15 @@ int main(int argc, char **argv)
     require(std::fabs(manager.latestEpsilon().imu_packet_rate_hz - 250.0) < 0.000001 &&
                 std::fabs(manager.latestEpsilon().sys_state_packet_rate_hz - 100.0) < 0.000001,
             "EPSILON simulated packet-rate operation updates packet profile rates");
+    require(manager.latestEpsilon().raw_satellite_epoch_rate_hz==VaporView::Ppk::kDefaultObservationRateHz,
+            "remote ConfigureEpsilonPacketRates sets independent 0x77=5Hz");
+    auto legacyJson=manager.config().toJson();
+    auto legacyEpsilon=legacyJson.value("epsilon").toObject();legacyEpsilon.remove("packet_rates");
+    legacyEpsilon.remove("imu_to_main_antenna_body_m");legacyJson.insert("epsilon",legacyEpsilon);
+    VaporView::SkyConfig legacyConfig;QString legacyError;
+    require(VaporView::SkyConfig::fromJson(legacyJson,legacyConfig,&legacyError) &&
+        legacyConfig.epsilon.packet_rates.at(VaporView::Ppk::kMsgRawSatellite)==VaporView::Ppk::kDefaultObservationRateHz,
+        "old SkyConfig defaults PPK observations to 5Hz");
     auto invalidPacketRates = epsilonPacketRates;
     invalidPacketRates.packet_rates[0xFF] = 100;
     require(!manager.configureEpsilonPacketRates(invalidPacketRates, &error, &operationMessage) &&

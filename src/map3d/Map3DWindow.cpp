@@ -6,6 +6,10 @@
 #include "Map3DDiagnosticsFormatter.h"
 
 #include "ground/session/SessionTrajectoryRenderLoader.h"
+#include "ppk/SessionNavigationSource.h"
+#include "ppk/PpkProcessor.h"
+#include <QSignalBlocker>
+#include <QStandardItemModel>
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
@@ -875,6 +879,25 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         updateStatus(nullptr);
     });
 
+    auto *navigationSourceCombo = new VaporView::SingleLevelPopupComboBox(toolbar);
+    navigationSourceCombo->setPopupFitContents(true);
+    navigation_source_combo_ = navigationSourceCombo;
+    navigation_source_combo_->setObjectName(QStringLiteral("map3DNavigationSourceCombo"));
+    navigation_source_combo_->addItems({mapText(QStringLiteral("原始")),mapText(QStringLiteral("PPK 修正"))});
+    navigation_source_combo_->setEnabled(false);
+    displayLayout->addRow(mapText(QStringLiteral("轨迹来源")),navigation_source_combo_);
+    connect(navigation_source_combo_,QOverload<int>::of(&QComboBox::currentIndexChanged),this,[this](int index){
+        if(loaded_session_directory_.isEmpty())return;
+        QString error;
+        if(!VaporView::Ppk::setSessionNavigationSource(loaded_session_directory_,index?VaporView::Ppk::NavigationSource::Ppk:VaporView::Ppk::NavigationSource::Original,&error))
+            statusBar()->showMessage(error,6000);
+    });
+    connect(VaporView::Ppk::SessionNavigationEvents::instance(),&VaporView::Ppk::SessionNavigationEvents::changed,
+        this,[this](const QString& session){
+            if(!loaded_session_directory_.isEmpty() && QFileInfo(loaded_session_directory_).absoluteFilePath()==session)
+                loadSessionDirectory(loaded_session_directory_);
+        },Qt::QueuedConnection);
+
     auto *heatMetricCombo = new VaporView::SingleLevelPopupComboBox(toolbar);
     heatMetricCombo->setShowSelectionCheck(false);
     heatMetricCombo->setPopupFitContents(true);
@@ -1665,6 +1688,8 @@ void Map3DWindow::updateHeatLegend()
 void Map3DWindow::appendSample(const VaporView::Geo::NavSample& sample)
 {
     invalidateSessionLoadRequest();
+    loaded_session_directory_.clear();
+    navigation_source_combo_->setEnabled(false);
     track_data_mode_ = TrackDataMode::Live;
     if (replay_.isPlaying())
     {
@@ -1692,6 +1717,8 @@ void Map3DWindow::appendSample(const VaporView::Geo::NavSample& sample)
 void Map3DWindow::appendSamples(const std::vector<VaporView::Geo::NavSample>& samples)
 {
     invalidateSessionLoadRequest();
+    loaded_session_directory_.clear();
+    navigation_source_combo_->setEnabled(false);
     track_data_mode_ = TrackDataMode::Live;
     if (replay_.isPlaying())
     {
@@ -1724,6 +1751,8 @@ void Map3DWindow::appendSamples(const std::vector<VaporView::Geo::NavSample>& sa
 void Map3DWindow::clearTrack()
 {
     invalidateSessionLoadRequest();
+    loaded_session_directory_.clear();
+    navigation_source_combo_->setEnabled(false);
     track_data_mode_ = TrackDataMode::Live;
     replay_timer_->stop();
     replay_.clear();
@@ -1754,6 +1783,15 @@ void Map3DWindow::loadSessionDirectory(const QString& sessionDir)
         Q_UNUSED(sessionDir);
         statusBar()->showMessage(mapText(QStringLiteral("[界面测试] 已模拟会话轨迹加载；未读取业务文件。")), 6000);
         return;
+    }
+    loaded_session_directory_ = sessionDir;
+    if(navigation_source_combo_)
+    {
+        QSignalBlocker blocker(navigation_source_combo_);
+        navigation_source_combo_->setEnabled(true);
+        auto *model=qobject_cast<QStandardItemModel *>(navigation_source_combo_->model());
+        if(model)model->item(1)->setEnabled(VaporView::Ppk::PpkProcessor::status(sessionDir).completed);
+        navigation_source_combo_->setCurrentIndex(VaporView::Ppk::sessionNavigationSource(sessionDir)==VaporView::Ppk::NavigationSource::Ppk?1:0);
     }
     if (!view_ && !headless_view_)
     {

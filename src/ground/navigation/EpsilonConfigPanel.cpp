@@ -1,4 +1,5 @@
 #include "ground/navigation/EpsilonConfigPanel.h"
+#include "EpsilonRawSatellite.h"
 
 #include "ground/devices/DeviceRatePolicy.h"
 #include "ground/main/GroundMainWindowSupport.h"
@@ -58,6 +59,7 @@ PacketRateGroup packetRateGroupForId(quint8 packetId)
     case 0x5A:
     case 0x5C:
     case 0x5D:
+    case 0x77:
         return PacketRateGroup::GnssAndPosition;
     case 0x63:
     case 0x64:
@@ -255,6 +257,8 @@ double livePacketRateForId(const VaporView::EpsilonData& data, quint8 packetId)
         return data.euler_orien_packet_rate_hz;
     case 0x64:
         return data.quat_orien_packet_rate_hz;
+    case Ppk::kMsgRawSatellite:
+        return data.raw_satellite_epoch_rate_hz;
     default:
         return 0.0;
     }
@@ -404,7 +408,8 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     outputCard.title_layout->addWidget(outputTitleActions, 1, Qt::AlignVCenter | Qt::AlignRight);
     auto *packetGridWidget = new QWidget(outputCard.card);
     packetGridWidget->setObjectName(QStringLiteral("epsilonPacketGrid"));
-    packetGridWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
+    // The wide grid must not prevent resizing past the single-column breakpoint.
+    packetGridWidget->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Minimum);
     packet_grid_ = new QGridLayout(packetGridWidget);
     packet_grid_->setContentsMargins(0, 0, 0, 0);
     packet_grid_->setHorizontalSpacing(12);
@@ -693,6 +698,24 @@ void EpsilonConfigPanel::arrangePacketFields(bool twoColumns)
 
     two_column_layout_ = twoColumns;
     packet_layout_initialized_ = true;
+    const int liveColumns = twoColumns ? kLivePacketVisualColumnCount : 2;
+    for (int column = 0; column < kLivePacketVisualColumnCount; ++column)
+        live_packet_rate_grid_->setColumnStretch(column, column < liveColumns ? 1 : 0);
+    for (int i = 0; i < live_packet_rate_fields_.size(); ++i)
+    {
+        QWidget *field = live_packet_rate_fields_.at(i);
+        live_packet_rate_grid_->removeWidget(field);
+        const int row = i / liveColumns;
+        const int column = i % liveColumns;
+        for (QObject *object : {static_cast<QObject *>(field),
+                               static_cast<QObject *>(live_packet_rate_labels_.at(i)),
+                               static_cast<QObject *>(live_packet_rate_values_.at(i))})
+        {
+            object->setProperty("epsilonLivePacketGridRow", row);
+            object->setProperty("epsilonLivePacketGridColumn", column);
+        }
+        live_packet_rate_grid_->addWidget(field, row, column);
+    }
     if (twoColumns)
     {
         packet_grid_->setColumnMinimumWidth(2, 24);

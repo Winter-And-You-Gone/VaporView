@@ -4,6 +4,20 @@
 
 | source | category | event | recommended level | 中文 message | required fields | optional fields | error_code / reason_code |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| SkyCore | device.navigation.ppk | epsilon_raw_satellite_decode_failed | Warning | EPSILON PPK 原始观测数据包解析失败。 | reason_code |  | CRC_MISMATCH / INVALID_FRAME / INVALID_UTC / INVALID_PACKET_NUMBER / TRUNCATED_HEADER / TRUNCATED_SATELLITE / TRUNCATED_FREQUENCY / INVALID_FREQUENCY_COUNT / PAYLOAD_SIZE_MISMATCH / NONFINITE_OBSERVATION / DUPLICATE_OBSERVATION |
+| SkyCore | device.navigation.ppk | epsilon_raw_satellite_epoch_completed | Debug | EPSILON PPK 原始观测历元状态已更新。 | reason_code, receiver, utc_ns, received_packets, expected_packets |  | COMPLETE |
+| SkyCore | device.navigation.ppk | epsilon_raw_satellite_epoch_incomplete | Warning | EPSILON PPK 原始观测历元状态已更新。 | reason_code, receiver, utc_ns, received_packets, expected_packets |  | MISSING_PACKETS / HEADER_CONFLICT / OBSERVATION_CONFLICT / STREAM_ENDED |
+| SkyCore | device.navigation.ppk | epsilon_raw_satellite_packet_duplicate | Warning | EPSILON PPK 原始观测历元状态已更新。 | reason_code, receiver, utc_ns, received_packets, expected_packets |  | DUPLICATE_PACKET |
+| SkyCore | device.navigation.ppk | epsilon_raw_satellite_time_regression | Warning | EPSILON PPK 原始观测历元状态已更新。 | reason_code, receiver, utc_ns, received_packets, expected_packets |  | UTC_REGRESSION |
+| ppk | session.ppk | ppk_rover_observation_started | Info | 开始记录 PPK Rover 原始观测。 | reason_code, session |  | OK |
+| ppk | session.ppk | ppk_rover_observation_completed | Info | 完成 PPK Rover 原始观测记录。 | reason_code, session, epoch_count, first_utc_ns, last_utc_ns |  | OK |
+| ppk | session.ppk | ppk_rover_observation_failed | Error | PPK Rover 原始观测写入失败。 | reason_code, session, error |  | OBSERVATION_WRITE_FAILED |
+| ppk | session.ppk | ppk_rinex_generated | Info | Session PPK 处理状态已更新。 | reason_code, session, epochs |  | OK |
+| ppk | session.ppk | ppk_processing_started | Info | Session PPK 处理状态已更新。 | reason_code, session |  | OK |
+| ppk | session.ppk | ppk_processing_completed | Info | Session PPK 处理状态已更新。 | reason_code, session, sample_count, fix_count, float_count |  | OK |
+| ppk | session.ppk | ppk_processing_failed | Error | Session PPK 处理状态已更新。 | reason_code, session |  | CANCELLED / SESSION_PPK_BUSY / INVALID_PPK_CONFIG / INVALID_LEVER_ARM / MISSING_BASE_OR_NAVIGATION / MISSING_GNSS_UTC_ATTITUDE / RTKLIB_POSTPOS_FAILED / ATTITUDE_UTC_ALIGNMENT_UNAVAILABLE / PPK_INPUT_COPY_FAILED |
+| ppk | session.ppk | ppk_track_activated | Info | Session 导航轨迹来源已切换。 | reason_code, navigation_source | session | OK |
+| ppk | session.ppk | ppk_track_unavailable | Warning | 所选 PPK 轨迹不可用。 | reason_code, session |  | PPK_TRACK_UNAVAILABLE / INVALID_PPK_TRAJECTORY_HEADER / INVALID_PPK_TRAJECTORY_ROW / INVALID_PPK_TRAJECTORY_VALUE / EMPTY_PPK_TRAJECTORY |
 | App | lifecycle | logging_started | Info | 应用日志系统已启动。 | log_directory | fallback_directory |  |
 | App | lifecycle | logging_stopped | Info | 应用日志系统已停止。 |  |  |  |
 | App | startup.arguments | startup_argument_invalid | Critical | 启动参数无效。 | argument, value | transport | INVALID_TELEMETRY_TRANSPORT / INVALID_TELEMETRY_TCP_PORT |

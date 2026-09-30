@@ -1,4 +1,7 @@
 #include "ground/session/GroundRecordingService.h"
+#include "ppk/PpkProcessor.h"
+#include "ppk/ObservationStore.h"
+#include "ppk/AttitudeStore.h"
 
 #include "ground/session/RecordingSessionLayout.h"
 #include "shared/session/SessionDeviceConfig.h"
@@ -283,6 +286,13 @@ public:
             return false;
         }
         layout = groundLayoutFromPackage(initResult);
+        Ppk::PpkConfig ppkConfig;
+        ppkConfig.imuToAntennaBodyM = options.imuToMainAntennaBodyM;
+        if(!Ppk::PpkProcessor::saveConfig(layout.sessionDirectory,ppkConfig,errorMessage))
+        {
+            if(startError)*startError=GroundRecordingStartError::WriteSessionMetadata;
+            return false;
+        }
 
         sensorSummaryFile = std::make_unique<QFile>(layout.sensorSummaryFilename);
         temperatureControllerFile = std::make_unique<QFile>(layout.laserTemperatureControllerFilename);
@@ -814,6 +824,13 @@ private:
             DeviceRawRecord record;
             while (deviceRawQueue.waitPop(&record))
             {
+                if (record.sourceId == Ppk::kMsgRawSatellite)
+                {
+                    Ppk::RawSatelliteEpoch epoch;
+                    if (!Ppk::decodeEpoch(record.payload, epoch) ||
+                        !ppkObservations.append(layout.sessionDirectory, epoch)) markWriteFailure();
+                    continue;
+                }
                 std::unique_ptr<QFile> *file = nullptr;
                 std::atomic<quint64> *recordCount = nullptr;
                 switch (record.sourceId)
@@ -848,6 +865,9 @@ private:
 
                 if (file && recordCount)
                 {
+                    if (record.sourceId == SessionRawDat::kSourceNavigation && record.recordType == 0x50 &&
+                        !ppkAttitudes.appendSystemState(layout.sessionDirectory, record.timestampUs, record.payload))
+                        markWriteFailure();
                     writeRawRecord(*file,
                                    *recordCount,
                                    record.sourceId,
@@ -868,6 +888,8 @@ private:
         {
             deviceRawThread.join();
         }
+        ppkObservations.close();
+        ppkAttitudes.close();
         const quint64 dropped = deviceRawQueue.droppedRecords();
         deviceRawQueue.reset(false);
         lastDeviceQueueWarningMs.store(0);
@@ -1105,6 +1127,8 @@ public:
     WarningCallback warningCallback;
     GroundRecordingOptions options;
     RecordingSessionLayout layout;
+    Ppk::ObservationStore ppkObservations;
+    Ppk::AttitudeStore ppkAttitudes;
     GroundRecordingStatus lastStatus;
     std::shared_ptr<VaporView::RecordingStorage> storage;
     std::chrono::steady_clock::time_point steadyClockAnchor;
@@ -1231,6 +1255,20 @@ bool GroundRecordingService::isActive() const
 bool GroundRecordingService::isPaused() const
 {
     return impl_->paused.load();
+}
+
+bool GroundRecordingService::recordEpsilonObservationEpoch(const Ppk::RawSatelliteEpoch& epoch)
+{
+    if (!impl_->workerRunning.load() || impl_->writeFailed.load() || impl_->paused.load()) return false;
+    DeviceRawRecord record;
+    record.timestampUs = epoch.hostTimestampUs;
+    record.sourceId = Ppk::kMsgRawSatellite;
+    record.payload = Ppk::encodeEpoch(epoch);
+    const auto size = static_cast<quint64>(record.payload.size());
+    const auto result = impl_->deviceRawQueue.push(std::move(record), size);
+    if (result.status != VaporView::BoundedByteQueue<DeviceRawRecord>::PushStatus::Enqueued)
+    { impl_->markWriteFailure(); return false; }
+    return true;
 }
 
 bool GroundRecordingService::recordRawEpsilonFrame(quint64 hostTimestampUs,

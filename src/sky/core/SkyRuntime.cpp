@@ -205,6 +205,8 @@ SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
             [this](quint64 timestampUs, quint8 packetId, quint8 serialNumber, const QByteArray& frame) {
                 session_recorder_.recordRawEpsilonFrame(timestampUs, packetId, serialNumber, frame);
             });
+    connect(&device_manager_, &SkyDeviceManager::epsilonObservationEpochReceived, this,
+            [this](const QByteArray& bytes) { session_recorder_.recordEpsilonObservationEpoch(bytes); });
     connect(&device_manager_, &SkyDeviceManager::ptbRawResponseReceived, this,
             [this](quint64 timestampUs, const QByteArray& response) {
                 session_recorder_.recordRawPtbResponse(timestampUs, response);
@@ -563,6 +565,7 @@ bool SkyRuntime::startRecording(QString *error)
     const int legacyBaud = options_.telemetry_transport == TelemetryTransportType::Tcp
         ? 0
         : options_.telemetry_baud;
+    session_recorder_.setMainAntennaLeverArm(device_manager_.config().epsilon.imu_to_main_antenna_body_m);
     if (!session_recorder_.start(defaultRecordingDirectory(), legacyPort, legacyBaud, error, transport, endpoint))
     {
         return false;
@@ -845,6 +848,7 @@ void SkyRuntime::sendBasicTelemetry()
         data.sys_state_packet_rate_hz = static_cast<float>(epsilon.sys_state_packet_rate_hz);
         data.status_packet_rate_hz = static_cast<float>(epsilon.status_packet_rate_hz);
         data.raw_gnss_packet_rate_hz = static_cast<float>(epsilon.raw_gnss_packet_rate_hz);
+        data.raw_satellite_epoch_rate_hz = static_cast<float>(epsilon.raw_satellite_epoch_rate_hz);
         data.satellite_packet_rate_hz = static_cast<float>(epsilon.satellite_packet_rate_hz);
         data.geodetic_packet_rate_hz = static_cast<float>(epsilon.geodetic_packet_rate_hz);
         data.ecef_packet_rate_hz = static_cast<float>(epsilon.ecef_packet_rate_hz);

@@ -1,5 +1,6 @@
 add_subdirectory(rtk)
 add_subdirectory(shared)
+add_subdirectory(ppk)
 add_subdirectory(geo)
 set(VAPORVIEW_SESSION_CORE_ONLY ON)
 add_subdirectory(ground/session ground/session_core_bootstrap)

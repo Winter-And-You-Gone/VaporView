@@ -35,7 +35,7 @@ int main()
     require(clampPtbSampleRate(200) == kPtbMaxSampleRateHz, "PTB rate is capped");
 
     const std::map<uint8_t, int> defaultRates = defaultEpsilonPacketRates();
-    require(defaultRates.at(0x40) == 250 && defaultRates.at(0x5A) == 1,
+    require(defaultRates.at(0x40) == 250 && defaultRates.at(0x5A) == 1 && defaultRates.at(0x77) == 5,
             "recommended EPSILON packet-rate defaults are stable");
     require(epsilonPacketRatesMatchDefault(defaultRates),
             "recommended EPSILON packet-rate profile is recognized as default");
@@ -43,8 +43,8 @@ int main()
             "callback rate follows fastest configured packet");
 
     const EpsilonSerialBandwidth defaultBandwidth = epsilonSerialBandwidth(defaultRates);
-    require(defaultBandwidth.required_bits_per_second == 427570,
-            "recommended profile bandwidth matches documented packet sizes");
+    require(defaultBandwidth.required_bits_per_second == 430370,
+            "recommended profile includes the minimum single-observation PPK frame");
     require(defaultBandwidth.fits(), "recommended profile fits 921600 baud with headroom");
 
     std::map<uint8_t, int> maximumRates;
@@ -53,7 +53,7 @@ int main()
         maximumRates[option.packet_id] = option.supported_rates_hz.back();
     }
     const EpsilonSerialBandwidth maximumBandwidth = epsilonSerialBandwidth(maximumRates);
-    require(maximumBandwidth.required_bits_per_second == 3005000,
+    require(maximumBandwidth.required_bits_per_second == 3016200,
             "maximum selectable profile bandwidth is calculated correctly");
     require(!maximumBandwidth.fits(), "maximum selectable profile is rejected at 921600 baud");
 

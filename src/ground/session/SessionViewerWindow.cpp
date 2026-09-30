@@ -1,6 +1,8 @@
 #include "SessionViewerWindow.h"
 #include "ground/session/SessionMapCoordinator.h"
 #include "ground/session/SessionViewerPages.h"
+#include "ground/session/SessionPpkWidget.h"
+#include "ppk/SessionNavigationSource.h"
 #include "ground/widgets/CustomTitleBar.h"
 #include "ground/wave/RawDataParserWindow.h"
 #include "SessionTimeFormat.h"
@@ -17,6 +19,8 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFutureWatcher>
+#include <QEventLoop>
+#include <QPointer>
 #include <QMessageBox>
 #include <QScrollArea>
 #include <QSettings>
@@ -264,6 +268,16 @@ void SessionViewerWindow::setupUi()
     device_data_page_ = new SessionDeviceDataWidget(splitter);
     loading_dialog_ = std::make_unique<SessionLoadingDialog>(this);
     upperLayout->addWidget(overview_page_);
+    ppk_page_ = new SessionPpkWidget(upperWidget);
+    upperLayout->addWidget(ppk_page_);
+    connect(ppk_page_, &SessionPpkWidget::busyChanged, this, [this](bool busy) {
+        overview_page_->setControlsEnabled(!busy);
+    });
+    connect(VaporView::Ppk::SessionNavigationEvents::instance(), &VaporView::Ppk::SessionNavigationEvents::changed,
+        this, [this](const QString& session) {
+            if (!session_loading_ && !session_directory_.isEmpty() && QFileInfo(session_directory_).absoluteFilePath() == session)
+                onReloadClicked();
+        }, Qt::QueuedConnection);
     upperLayout->addWidget(waveform_page_, 1);
     splitter->addWidget(upperWidget);
     splitter->addWidget(device_data_page_);
@@ -372,6 +386,7 @@ void SessionViewerWindow::updateTexts()
 {
     setWindowTitle(is_english_ ? QStringLiteral("Data Viewer") : QStringLiteral("数据查看器"));
     overview_page_->setEnglish(is_english_);
+    ppk_page_->setEnglish(is_english_);
     waveform_page_->setEnglish(is_english_);
     device_data_page_->setEnglish(is_english_);
     updateWaveformActionTexts();
@@ -547,6 +562,7 @@ void SessionViewerWindow::setSessionLoadingControlsEnabled(bool enabled)
     overview_page_->setControlsEnabled(enabled);
     overview_page_->setTrajectoryAvailable(trajectory_controller_.hasTrack());
     waveform_page_->setControlsEnabled(enabled);
+    ppk_page_->setEnabled(enabled);
     if (enabled)
     {
         updateWaveformControls();
@@ -582,6 +598,7 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
 {
     cancelBackgroundWaveformPeakSeries(false);
     session_directory_.clear();
+    if(ppk_page_)ppk_page_->setSessionDirectory({});
     metadata_filename_.clear();
     recording_origin_ = VaporView::Session::RecordingOrigin::Ground;
     sensors_csv_filename_.clear();
@@ -637,6 +654,7 @@ void SessionViewerWindow::restoreLastSessionPath(const QString& path)
 
     clearLoadedData(false);
     session_directory_ = sessionDirectory;
+    ppk_page_->setSessionDirectory(session_directory_);
     overview_page_->setSessionPath(session_directory_);
     setStatusText(is_english_
         ? "Restored the last session path only. Click Reload to load its CSV and waveform files."
@@ -709,6 +727,7 @@ void SessionViewerWindow::onClearViewClicked()
     if (!previousSessionDirectory.isEmpty())
     {
         session_directory_ = previousSessionDirectory;
+        ppk_page_->setSessionDirectory(session_directory_);
         overview_page_->setSessionPath(session_directory_);
     }
 }
@@ -824,6 +843,7 @@ bool SessionViewerWindow::loadSessionDirectory(QString sessionDirectory)
 
     const QString normalized = QDir::fromNativeSeparators(sessionDirectory);
     session_directory_ = normalized;
+    ppk_page_->setSessionDirectory(session_directory_);
     session_load_warning_.clear();
     updateSessionLoadingProgress(is_english_ ? "Reading session metadata..." : "正在读取会话元数据...", 3);
     if (!loadSessionMetadata(normalized))
@@ -937,22 +957,31 @@ bool SessionViewerWindow::loadSensorsCsv()
     trajectory_controller_.clear();
 
     VaporView::Ground::SessionMetadata metadata;
+    metadata.sessionDirectory = session_directory_;
     metadata.sensorSummaryCsvFilename = sensors_csv_filename_;
     metadata.sensorRows = total_sensor_rows_;
-    VaporView::Ground::SessionSensorLoadResult result =
-        VaporView::Ground::SessionLoader::loadSensors(
-            metadata,
-            [this](quint64 rowsRead, quint64 expectedRows) {
-                if (!session_loading_)
-                {
-                    return;
-                }
-                updateSessionLoadingProgress(
-                    QString(is_english_ ? "Reading sensors CSV... %1 rows"
-                                        : "正在读取传感器 CSV... %1 行")
-                        .arg(rowsRead),
-                    rangedProgressPercent(rowsRead, expectedRows, 8, 24));
+    // Keep the existing synchronous load API while parsing CSV and the selected
+    // PPK trajectory on a worker. Paint/progress events remain responsive.
+    QFutureWatcher<VaporView::Ground::SessionSensorLoadResult> watcher;
+    QEventLoop waiting;
+    connect(&watcher, &QFutureWatcher<VaporView::Ground::SessionSensorLoadResult>::finished,
+            &waiting, &QEventLoop::quit);
+    const QPointer<SessionViewerWindow> self(this);
+    watcher.setFuture(QtConcurrent::run([metadata, self] {
+        return VaporView::Ground::SessionLoader::loadSensors(metadata,
+            [self](quint64 rowsRead, quint64 expectedRows) {
+                if (!self) return;
+                QMetaObject::invokeMethod(self, [self, rowsRead, expectedRows] {
+                    if (!self || !self->session_loading_) return;
+                    self->updateSessionLoadingProgress(
+                        QString(self->is_english_ ? "Reading sensors CSV... %1 rows"
+                                                : "正在读取传感器 CSV... %1 行").arg(rowsRead),
+                        rangedProgressPercent(rowsRead, expectedRows, 8, 24));
+                }, Qt::QueuedConnection);
             });
+    }));
+    waiting.exec(QEventLoop::ExcludeUserInputEvents);
+    VaporView::Ground::SessionSensorLoadResult result = watcher.result();
     if (!result.success)
     {
         setStatusText(result.warning);

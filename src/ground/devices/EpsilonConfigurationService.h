@@ -54,7 +54,7 @@ class EpsilonConfigurationService final
 public:
     using LogCallback = std::function<void(const EpsilonConfigurationLogEntry&)>;
 
-    static constexpr int PacketConfigurationVersion = 2;
+    static constexpr int PacketConfigurationVersion = 3;
 
     static EpsilonConfigurationResult applyMainAntennaLeverArm(
         const EpsilonDeviceOperation& operation,

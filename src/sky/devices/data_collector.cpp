@@ -147,6 +147,7 @@ constexpr uint8_t kMsgGeodeticPos = 0x5C;
 constexpr uint8_t kMsgEcefPos = 0x5D;
 constexpr uint8_t kMsgEulerOrien = 0x63;
 constexpr uint8_t kMsgQuatOrien = 0x64;
+constexpr uint8_t kMsgRawSatellite = Ppk::kMsgRawSatellite;
 constexpr uint8_t kMsgMainMavlinkTunnel = 0xF0;
 
 constexpr uint8_t kMavlinkV1Stx = 0xFE;
@@ -591,6 +592,8 @@ const std::vector<int>& supportedEpsilonPacketRates(uint8_t packet_id)
 {
   static const std::vector<int> kCommonRates = {0, 1, 2, 5, 10, 20, 50, 100, 250, 500};
   static const std::vector<int> kImuRates = {0, 1, 2, 5, 10, 20, 50, 100, 200, 250, 500, 1000};
+  static const std::vector<int> kObservationRates = {0, 1, 2, 5, 10, 20};
+  if (packet_id == kMsgRawSatellite) return kObservationRates;
   return packet_id == kMsgImu ? kImuRates : kCommonRates;
 }
 
@@ -632,6 +635,7 @@ std::map<uint8_t, int> desiredEpsilonPacketRates(int hz)
       {kMsgEcefPos, navLowRate},
       {kMsgEulerOrien, nearestSupportedEpsilonPacketRate(kMsgEulerOrien, hz)},
       {kMsgQuatOrien, nearestSupportedEpsilonPacketRate(kMsgQuatOrien, hz)},
+      {kMsgRawSatellite, Ppk::kDefaultObservationRateHz},
   };
 }
 
@@ -2519,8 +2523,42 @@ bool EpsilonCollector::configureMainAntennaLeverArm(double xM, double yM, double
                                                    : "EPSILON：主天线杆臂已保存，但退出配置模式后未检测到 FDILink 数据包");
 }
 
+void EpsilonCollector::setRawSatelliteEpochCallback(RawSatelliteEpochCallback callback)
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  raw_satellite_epoch_callback_ = std::move(callback);
+}
+
+bool EpsilonCollector::consumeRawSatelliteFrame(const uint8_t *frame,size_t size,uint64_t hostTimestampUs,
+                                               Ppk::RawSatelliteAssembler& assembler)
+{
+  Ppk::RawSatellitePacket packet;std::string reason;
+  if(!Ppk::decodeRawSatelliteFrame(frame,size,packet,reason))
+  {
+    logStructured(LogLevel::Warning,"device.navigation.ppk","epsilon_raw_satellite_decode_failed",
+                  "EPSILON PPK 原始观测数据包解析失败。",{{"reason_code",reason}});
+    return false;
+  }
+  RawFrameCallback rawCallback;RawSatelliteEpochCallback epochCallback;
+  {std::lock_guard<std::mutex> lock(mutex_);rawCallback=raw_frame_callback_;epochCallback=raw_satellite_epoch_callback_;}
+  if(rawCallback)rawCallback(hostTimestampUs,Ppk::kMsgRawSatellite,frame[3],frame,size);
+  packet.epoch.hostTimestampUs=hostTimestampUs;
+  if(auto epoch=assembler.accept(std::move(packet)))
+  {if(epochCallback)epochCallback(*epoch);return true;}
+  return false;
+}
+
 void EpsilonCollector::run()
 {
+  Ppk::RawSatelliteAssembler observationAssembler([this](const std::string& event,
+      const std::string& reason, uint8_t receiver, uint64_t utcNs, int received, int expected) {
+    StructuredLogFields fields{{"event", event}, {"reason_code", reason},
+        {"receiver", std::to_string(receiver)}, {"utc_ns", std::to_string(utcNs)},
+        {"received_packets", std::to_string(received)}, {"expected_packets", std::to_string(expected)}};
+    logStructured(event == "epsilon_raw_satellite_epoch_completed" ? LogLevel::Debug : LogLevel::Warning,
+                  "device.navigation.ppk", event, "EPSILON PPK 原始观测历元状态已更新。",
+                  fields);
+  });
   {
     std::lock_guard<std::mutex> lock(mutex_);
     latest_data_ = EpsilonData();
@@ -2561,10 +2599,13 @@ void EpsilonCollector::run()
   PacketRateTracker ecefRateTracker;
   PacketRateTracker eulerOrienRateTracker;
   PacketRateTracker quatOrienRateTracker;
+  PacketRateTracker rawSatelliteEpochRateTracker;
   bool reportedInvalidEcef = false;
   bool hasResolvedLlh = false;
 
   auto consumeFrame = [this,
+                       &observationAssembler,
+                       &rawSatelliteEpochRateTracker,
                        &havePreviousSerial,
                        &previousSerial,
                        &droppedFrames,
@@ -3081,9 +3122,19 @@ void EpsilonCollector::run()
       log(invalidEcefWarning);
     }
 
-    if (rawCallback)
+    if (rawCallback && packetId != kMsgRawSatellite)
     {
       rawCallback(hostTimestampUs, packetId, serialNumber, frame.data(), frame.size());
+    }
+
+    if (packetId == kMsgRawSatellite)
+    {
+      if (consumeRawSatelliteFrame(frame.data(),frame.size(),hostTimestampUs,observationAssembler))
+      {
+        rawSatelliteEpochRateTracker.record();
+        std::lock_guard<std::mutex> lock(mutex_);
+        latest_data_.raw_satellite_epoch_rate_hz=rawSatelliteEpochRateTracker.rate_hz;
+      }
     }
 
     recordDataReceived();
@@ -3148,6 +3199,7 @@ void EpsilonCollector::run()
       consumeFrame(frame, systemTimestampUs());
     }
   }
+  observationAssembler.flush();
 }
 
 ImuData ImuCollector::getLatestData()

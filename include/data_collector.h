@@ -4,6 +4,7 @@
 #include "LogRecord.h"
 #include "data_types.h"
 #include "serial_port.h"
+#include "EpsilonRawSatellite.h"
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -157,6 +158,11 @@ public:
   bool checkDeviceResponse() override;
   bool lastDeviceResponseHadFdilinkFrame() const;
   void setRawFrameCallback(RawFrameCallback callback);
+  using RawSatelliteEpochCallback = std::function<void(const Ppk::RawSatelliteEpoch&)>;
+  void setRawSatelliteEpochCallback(RawSatelliteEpochCallback callback);
+  // The same validated observation path is used by live FDILink and replay.
+  bool consumeRawSatelliteFrame(const uint8_t *frame, size_t size, uint64_t hostTimestampUs,
+                               Ppk::RawSatelliteAssembler& assembler);
 
 protected:
   void run() override;
@@ -164,6 +170,7 @@ protected:
 private:
   EpsilonData latest_data_;
   RawFrameCallback raw_frame_callback_;
+  RawSatelliteEpochCallback raw_satellite_epoch_callback_;
   bool last_device_response_had_fdilink_frame_ = false;
 };
 

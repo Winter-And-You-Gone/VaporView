@@ -1,4 +1,5 @@
 #include "ground/session/SessionLoader.h"
+#include "ppk/SessionNavigationSource.h"
 #include "ground/session/SessionCsv.h"
 #include "shared/session/SessionManifest.h"
 #include "shared/session/SessionPackageLayout.h"
@@ -153,10 +154,14 @@ SessionSensorLoadResult SessionLoader::loadSensors(
     const SessionMetadata& metadata,
     const std::function<void(quint64, quint64)>& progress)
 {
+    QDir csvDirectory=QFileInfo(metadata.sensorSummaryCsvFilename).dir();
+    if(csvDirectory.dirName()==QStringLiteral("sensors"))csvDirectory.cdUp();
+    Ppk::SessionNavigationResolver navigation(metadata.sessionDirectory.isEmpty()?csvDirectory.absolutePath():metadata.sessionDirectory);
     using namespace SessionCsv;
 
     SessionSensorLoadResult result;
     result.success = true;
+    if(!navigation.available())result.warning=navigation.error();
     QFile file(metadata.sensorSummaryCsvFilename);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
     {
@@ -177,6 +182,7 @@ SessionSensorLoadResult SessionLoader::loadSensors(
 
     SessionSensorData& data = result.data;
     data.headers = parseCsvLine(stream.readLine());
+    navigation.prepareCsv(data.headers);
     const int recordTimestampIndex = findHeaderIndex(data.headers, {QStringLiteral("record_timestamp_us")});
     const int epsilonHostTimestampIndex = findHeaderIndex(data.headers, {QStringLiteral("epsilon_host_timestamp_us")});
     const int navLatIndex = findHeaderIndex(data.headers, {QStringLiteral("nav_lat_deg"), QStringLiteral("rtk_lat")});
@@ -230,6 +236,7 @@ SessionSensorLoadResult SessionLoader::loadSensors(
         {
             fields.push_back(QString());
         }
+        navigation.applyCsvRow(fields);
         data.rows.push_back(fields);
 
         bool timestampOk = false;
@@ -317,6 +324,7 @@ SessionSensorLoadResult SessionLoader::loadSensors(
                     ? csvValueAt(fields, trackTimestampIndex).toULongLong(&trackTimestampOk)
                     : data.timestamps_us.last();
                 SessionTrackPoint point;
+                point.navigation_source = navigation.usesPpk() ? QStringLiteral("PPK") : QStringLiteral("EPSILON_REALTIME");
                 point.latitude = latitude;
                 point.longitude = longitude;
                 point.csv_row = data.rows.size() - 1;

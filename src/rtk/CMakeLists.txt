@@ -16,6 +16,17 @@ set(RTKLIB_SOURCES
     ${RTKLIB_DIR}/src/rtcm3.c
     ${RTKLIB_DIR}/src/rtcm3e.c
     ${RTKLIB_DIR}/src/preceph.c
+    ${RTKLIB_DIR}/src/ephemeris.c
+    ${RTKLIB_DIR}/src/ionex.c
+    ${RTKLIB_DIR}/src/lambda.c
+    ${RTKLIB_DIR}/src/options.c
+    ${RTKLIB_DIR}/src/pntpos.c
+    ${RTKLIB_DIR}/src/postpos.c
+    ${RTKLIB_DIR}/src/ppp.c
+    ${RTKLIB_DIR}/src/ppp_ar.c
+    ${RTKLIB_DIR}/src/rinex.c
+    ${RTKLIB_DIR}/src/rtkpos.c
+    ${RTKLIB_DIR}/src/tides.c
     ${RTKLIB_DIR}/src/rcv/novatel.c
     ${RTKLIB_DIR}/src/rcv/ublox.c
     ${RTKLIB_DIR}/src/rcv/ss2.c
@@ -30,7 +41,7 @@ set(RTKLIB_SOURCES
 
 add_library(rtklib_strsvr STATIC ${RTKLIB_SOURCES})
 target_include_directories(rtklib_strsvr PUBLIC ${RTKLIB_DIR}/src)
-target_compile_definitions(rtklib_strsvr PRIVATE
+target_compile_definitions(rtklib_strsvr PUBLIC
     ENAGLO
     ENAGAL
     ENAQZS

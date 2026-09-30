@@ -1,4 +1,5 @@
 #include "SkySessionRecorder.h"
+#include "ppk/PpkProcessor.h"
 #include "geo/CoordinateTransform.h"
 #include "shared/session/SessionManifest.h"
 #include "shared/session/SessionPackageInitializer.h"
@@ -256,6 +257,9 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
 
     session_name_ = initResult.sessionName;
     session_directory_ = initResult.sessionDirectory;
+    Ppk::PpkConfig ppkConfig;
+    ppkConfig.imuToAntennaBodyM = imu_to_main_antenna_body_m_;
+    if(!Ppk::PpkProcessor::saveConfig(session_directory_,ppkConfig,errorMessage))return false;
     const VaporView::Session::SessionPackageLayout& packageLayout = initResult.layout;
     session_metadata_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.manifestPath);
     sensor_summary_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.sensorSummaryCsvPath);
@@ -803,6 +807,8 @@ void SkySessionRecorder::recordRawEpsilonFrame(quint64 hostTimeUs,
                                                quint8 serialNumber,
                                                const QByteArray& frame)
 {
+    if (isRecording() && packetId == 0x50 && !ppk_attitudes_.appendSystemState(session_directory_, hostTimeUs, frame))
+        markStorageFailure();
     writeRawRecord(navigation_raw_file_,
                    raw_navigation_record_count_,
                    SessionRawDat::kSourceNavigation,
@@ -811,6 +817,14 @@ void SkySessionRecorder::recordRawEpsilonFrame(quint64 hostTimeUs,
                    hostTimeUs,
                    frame.constData(),
                    frame.size());
+}
+
+void SkySessionRecorder::recordEpsilonObservationEpoch(const QByteArray& encodedEpoch)
+{
+    if (!isRecording()) return;
+    Ppk::RawSatelliteEpoch epoch;
+    if (!Ppk::decodeEpoch(encodedEpoch, epoch) || !ppk_observations_.append(session_directory_, epoch))
+        markStorageFailure();
 }
 
 void SkySessionRecorder::recordRawPtbResponse(quint64 hostTimeUs, const QByteArray& response)
@@ -1065,6 +1079,8 @@ bool SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc, QString
 void SkySessionRecorder::closeFiles()
 {
     std::lock_guard<std::mutex> lock(files_mutex_);
+    ppk_observations_.close();
+    ppk_attitudes_.close();
     for (QFile *file : {&basic_record_file_,
                         &feature_record_file_,
                         &temperature_controller_record_file_,

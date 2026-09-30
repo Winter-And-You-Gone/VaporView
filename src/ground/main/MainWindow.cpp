@@ -286,6 +286,9 @@ MainWindow::MainWindow(QWidget *parent)
                                                    size_t size) {
         state_->recording_service_->recordRawEpsilonFrame(timestampUs, packetId, serialNumber, payload, size);
     };
+    connectionCallbacks.epsilonObservationEpoch = [this](const VaporView::Ppk::RawSatelliteEpoch& epoch) {
+        state_->recording_service_->recordEpsilonObservationEpoch(epoch);
+    };
     connectionCallbacks.rawPtbResponse = [this](quint64 timestampUs, const void *payload, size_t size) {
         state_->recording_service_->recordRawPtbResponse(timestampUs, payload, size);
     };

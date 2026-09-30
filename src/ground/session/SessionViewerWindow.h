@@ -28,6 +28,7 @@ namespace VaporView::Ground::SessionUi
 class SessionDeviceDataWidget;
 class SessionLoadingDialog;
 class SessionOverviewWidget;
+class SessionPpkWidget;
 class SessionWaveformWidget;
 }
 
@@ -116,6 +117,7 @@ private:
     QVector<float> visibleWaveformSamples(const QVector<float>& samples, int& firstSampleIndex) const;
 
     VaporView::Ground::SessionUi::SessionOverviewWidget *overview_page_;
+    VaporView::Ground::SessionUi::SessionPpkWidget *ppk_page_ = nullptr;
     VaporView::Ground::SessionUi::SessionWaveformWidget *waveform_page_;
     VaporView::Ground::SessionUi::SessionDeviceDataWidget *device_data_page_;
     std::unique_ptr<VaporView::Ground::SessionUi::SessionLoadingDialog> loading_dialog_;

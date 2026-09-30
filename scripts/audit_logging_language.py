@@ -46,6 +46,10 @@ CODE_RE = re.compile(r"^[A-Z0-9]+(?:_[A-Z0-9]+)*$")
 FIELD_KEY_FORMAT_RE = re.compile(r"^[a-z0-9]+(?:_[a-z0-9]+)*$")
 
 LOG_CALLS = {
+    "publishPpkLog": {"source_literal": "ppk", "category_literal": "session.ppk", "event": 1,
+                      "message_literal": "Session PPK 处理状态已更新。", "fields": 3},
+    "reportEpochEvent": {"source_literal": "SkyCore", "category_literal": "device.navigation.ppk", "event": 0,
+                         "message_literal": "EPSILON PPK 原始观测历元状态已更新。"},
     "publish": {"source": 1, "category": 2, "message": 3, "fields": 4},
     "reportUserIssue": {"source": 1, "category": 2, "message": 3, "fields": 4},
     "publishRuntimeLog": {"source_literal": "SkyCore", "category": 1, "event": 2, "message": 3, "fields": 4},
