@@ -23,6 +23,7 @@
 #include <QHBoxLayout>
 #include <QHostAddress>
 #include <QIcon>
+#include <QImage>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QLabel>
@@ -1444,6 +1445,30 @@ int main(int argc, char **argv)
     require(syncLabel->mapTo(syncSubcard, QPoint(0, 0)).x() + syncLabel->width() <
                 remoteStatus->mapTo(syncSubcard, QPoint(0, 0)).x(),
             "config sync subcard places its vertical title to the left of its status content");
+    const bool originalDarkTheme = VaporView::isDarkThemeEnabled();
+    for (bool dark : {true, false})
+    {
+        if (VaporView::isDarkThemeEnabled() != dark)
+        {
+            require(QMetaObject::invokeMethod(&window, "onToggleTheme", Qt::DirectConnection),
+                    "device configuration can switch themes");
+            VaporViewTest::processEventsFor(180);
+        }
+        for (QFrame *subcard : {servicesSubcard, syncSubcard})
+        {
+            const QImage rendered = subcard->grab().toImage();
+            require(rendered.pixelColor(rendered.width() / 2,
+                                        qRound(2 * rendered.devicePixelRatio())) ==
+                        VaporView::appThemeColor(VaporView::AppThemeColor::Surface, dark),
+                    "Sky services and config sync render the active theme surface");
+        }
+    }
+    if (VaporView::isDarkThemeEnabled() != originalDarkTheme)
+    {
+        require(QMetaObject::invokeMethod(&window, "onToggleTheme", Qt::DirectConnection),
+                "device configuration restores its original theme");
+        VaporViewTest::processEventsFor(180);
+    }
     require(deviceConfigPage->findChild<QPushButton *>(QStringLiteral("deviceRemoteSkyRawModeButton")) == nullptr &&
                 rawJsonEdit->isVisible() &&
                 rawJsonEdit->toPlainText().contains(QStringLiteral("\"packet_rates\"")),

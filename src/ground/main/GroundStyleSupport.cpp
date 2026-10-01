@@ -643,6 +643,11 @@ QFrame#epsilonSectionCard {
     border: 1px solid @vv-border;
     border-radius: 8px;
 }
+QFrame[epsilonSubcard="true"] {
+    background-color: @vv-surface;
+    border: 1px solid @vv-border;
+    border-radius: 8px;
+}
 QWidget#homeTelemetrySummaryContainer {
     background-color: transparent;
     border: none;
