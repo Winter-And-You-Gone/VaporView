@@ -154,6 +154,7 @@ SessionOverviewWidget::SessionOverviewWidget(QWidget *parent)
     , choose_session_btn_(new QPushButton(this))
     , reload_btn_(new QPushButton(this))
     , trajectory_view_btn_(new QPushButton(this))
+    , ppk_processing_btn_(new QPushButton(this))
     , raw_data_parser_btn_(new QPushButton(this))
     , clear_view_btn_(new QPushButton(this))
     , status_label_(new QLabel(this))
@@ -172,16 +173,16 @@ SessionOverviewWidget::SessionOverviewWidget(QWidget *parent)
     pathTitle->setObjectName(QStringLiteral("fieldLabel"));
     controlLayout->addWidget(pathTitle, 0, 0);
     session_path_edit_->setReadOnly(true);
-    controlLayout->addWidget(session_path_edit_, 0, 1);
-    controlLayout->addWidget(choose_session_btn_, 0, 2);
-    controlLayout->addWidget(reload_btn_, 0, 3);
-    controlLayout->addWidget(trajectory_view_btn_, 0, 4);
-    controlLayout->addWidget(raw_data_parser_btn_, 0, 5);
-    controlLayout->addWidget(clear_view_btn_, 0, 6);
+    controlLayout->addWidget(session_path_edit_, 0, 1, 1, 5);
+    actions_layout_ = new QGridLayout();
+    actions_layout_->setHorizontalSpacing(8);
+    actions_layout_->setVerticalSpacing(4);
+    controlLayout->addLayout(actions_layout_, 1, 0, 1, 6);
+    ppk_processing_btn_->setObjectName(QStringLiteral("sessionPpkProcessingButton"));
     status_label_->setObjectName(QStringLiteral("sessionViewerStatusLabel"));
     status_label_->setWordWrap(true);
     status_label_->setFocusPolicy(Qt::StrongFocus);
-    controlLayout->addWidget(status_label_, 1, 0, 1, 7);
+    controlLayout->addWidget(status_label_, 2, 0, 1, 6);
     layout->addLayout(controlLayout);
 
     summary_group_->setObjectName(QStringLiteral("sensorGroupBox"));
@@ -211,15 +212,21 @@ SessionOverviewWidget::SessionOverviewWidget(QWidget *parent)
     createSummaryRow(waveform_export_rate_title_, waveform_export_rate_value_);
     createSummaryRow(waveform_files_title_, waveform_files_value_);
     createSummaryRow(waveform_frames_title_, waveform_frames_value_);
+    createSummaryRow(ppk_status_title_, ppk_status_value_);
+    createSummaryRow(navigation_source_title_, navigation_source_value_);
+    ppk_status_value_->setObjectName(QStringLiteral("sessionPpkSummaryStatus"));
+    navigation_source_value_->setObjectName(QStringLiteral("sessionPpkSummarySource"));
     layout->addWidget(summary_group_);
 
     connect(choose_session_btn_, &QPushButton::clicked, this, &SessionOverviewWidget::chooseSessionRequested);
     connect(reload_btn_, &QPushButton::clicked, this, &SessionOverviewWidget::reloadRequested);
     connect(trajectory_view_btn_, &QPushButton::clicked, this, &SessionOverviewWidget::trajectoryRequested);
+    connect(ppk_processing_btn_, &QPushButton::clicked, this, &SessionOverviewWidget::ppkProcessingRequested);
     connect(raw_data_parser_btn_, &QPushButton::clicked, this, &SessionOverviewWidget::rawDataParserRequested);
     connect(clear_view_btn_, &QPushButton::clicked, this, &SessionOverviewWidget::clearRequested);
     setEnglish(false);
     setTrajectoryAvailable(false);
+    setPpkAvailable(false);
     relayoutSummaryFields();
 }
 
@@ -228,6 +235,7 @@ void SessionOverviewWidget::setEnglish(bool english)
     choose_session_btn_->setText(english ? QStringLiteral("Open Data") : QStringLiteral("打开数据"));
     reload_btn_->setText(english ? QStringLiteral("Reload") : QStringLiteral("重新加载"));
     trajectory_view_btn_->setText(english ? QStringLiteral("View Trajectory") : QStringLiteral("轨迹查看"));
+    ppk_processing_btn_->setText(english ? QStringLiteral("PPK Processing") : QStringLiteral("PPK 后处理"));
     raw_data_parser_btn_->setText(english ? QStringLiteral("Raw Data Parser") : QStringLiteral("原始数据解析"));
     clear_view_btn_->setText(english ? QStringLiteral("Clear Page") : QStringLiteral("清空页面"));
     summary_group_->setTitle(english ? QStringLiteral("Data Summary") : QStringLiteral("数据概览"));
@@ -241,6 +249,9 @@ void SessionOverviewWidget::setEnglish(bool english)
     waveform_export_rate_title_->setText(english ? QStringLiteral("Wave Rate:") : QStringLiteral("波形记录频率:"));
     waveform_files_title_->setText(english ? QStringLiteral("Wave Files:") : QStringLiteral("波形文件数:"));
     waveform_frames_title_->setText(english ? QStringLiteral("Wave Frames:") : QStringLiteral("波形帧数:"));
+    ppk_status_title_->setText(english ? QStringLiteral("PPK Status:") : QStringLiteral("PPK 状态:"));
+    navigation_source_title_->setText(english ? QStringLiteral("Navigation source:") : QStringLiteral("导航来源:"));
+    relayoutActions();
     relayoutSummaryFields();
 }
 
@@ -277,11 +288,30 @@ void SessionOverviewWidget::focusStatus()
 void SessionOverviewWidget::setControlsEnabled(bool enabled)
 {
     controls_enabled_ = enabled;
-    choose_session_btn_->setEnabled(enabled);
-    reload_btn_->setEnabled(enabled);
+    choose_session_btn_->setEnabled(enabled && session_changes_enabled_);
+    reload_btn_->setEnabled(enabled && session_changes_enabled_);
     raw_data_parser_btn_->setEnabled(enabled);
-    clear_view_btn_->setEnabled(enabled);
+    clear_view_btn_->setEnabled(enabled && session_changes_enabled_);
     trajectory_view_btn_->setEnabled(enabled && trajectory_available_);
+    ppk_processing_btn_->setEnabled(enabled && ppk_available_);
+}
+
+void SessionOverviewWidget::setSessionChangesEnabled(bool enabled)
+{
+    session_changes_enabled_ = enabled;
+    setControlsEnabled(controls_enabled_);
+}
+
+void SessionOverviewWidget::setPpkAvailable(bool available)
+{
+    ppk_available_ = available;
+    ppk_processing_btn_->setEnabled(controls_enabled_ && available);
+}
+
+void SessionOverviewWidget::setPpkSummary(const QString& status, const QString& navigationSource)
+{
+    ppk_status_value_->setText(status);
+    navigation_source_value_->setText(navigationSource);
 }
 
 void SessionOverviewWidget::setTrajectoryAvailable(bool available)
@@ -324,9 +354,11 @@ void SessionOverviewWidget::relayoutSummaryFields()
         {waveform_export_rate_title_, waveform_export_rate_value_},
         {waveform_files_title_, waveform_files_value_},
         {waveform_frames_title_, waveform_frames_value_},
+        {ppk_status_title_, ppk_status_value_},
+        {navigation_source_title_, navigation_source_value_},
     };
     const int availableWidth = std::max({240, summary_group_->width(), summary_group_->contentsRect().width()});
-    for (int column = 0; column < 12; ++column)
+    for (int column = 0; column < shortFields.size() * 2; ++column)
     {
         summary_layout_->setColumnStretch(column, 0);
         summary_layout_->setColumnMinimumWidth(column, 0);
@@ -365,7 +397,25 @@ void SessionOverviewWidget::relayoutSummaryFields()
 void SessionOverviewWidget::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
+    relayoutActions();
     relayoutSummaryFields();
+}
+
+void SessionOverviewWidget::relayoutActions()
+{
+    const QVector<QPushButton *> buttons = {choose_session_btn_, reload_btn_, trajectory_view_btn_,
+                                           ppk_processing_btn_, raw_data_parser_btn_, clear_view_btn_};
+    int requiredWidth = 5 * actions_layout_->horizontalSpacing();
+    for (auto *button : buttons)
+        requiredWidth += button->sizeHint().width();
+    const int columns = width() >= requiredWidth ? 6 : 3;
+    while (actions_layout_->count())
+        delete actions_layout_->takeAt(0);
+    for (int i = 0; i < 7; ++i)
+        actions_layout_->setColumnStretch(i, 0);
+    for (int i = 0; i < buttons.size(); ++i)
+        actions_layout_->addWidget(buttons[i], i / columns, i % columns);
+    actions_layout_->setColumnStretch(columns, 1);
 }
 
 SessionWaveformWidget::SessionWaveformWidget(QWidget *parent)

@@ -62,6 +62,9 @@ public:
     void focusStatus();
     void setControlsEnabled(bool enabled);
     void setTrajectoryAvailable(bool available);
+    void setPpkAvailable(bool available);
+    void setSessionChangesEnabled(bool enabled);
+    void setPpkSummary(const QString& status, const QString& navigationSource);
     void setSummary(const SessionOverviewSummary& summary);
     void relayoutSummaryFields();
 
@@ -69,6 +72,7 @@ signals:
     void chooseSessionRequested();
     void reloadRequested();
     void trajectoryRequested();
+    void ppkProcessingRequested();
     void rawDataParserRequested();
     void clearRequested();
 
@@ -76,10 +80,13 @@ protected:
     void resizeEvent(QResizeEvent *event) override;
 
 private:
+    void relayoutActions();
+    QGridLayout *actions_layout_;
     QLineEdit *session_path_edit_;
     QPushButton *choose_session_btn_;
     QPushButton *reload_btn_;
     QPushButton *trajectory_view_btn_;
+    QPushButton *ppk_processing_btn_;
     QPushButton *raw_data_parser_btn_;
     QPushButton *clear_view_btn_;
     QLabel *status_label_;
@@ -105,8 +112,14 @@ private:
     QLabel *waveform_files_value_;
     QLabel *waveform_frames_title_;
     QLabel *waveform_frames_value_;
+    QLabel *ppk_status_title_;
+    QLabel *ppk_status_value_;
+    QLabel *navigation_source_title_;
+    QLabel *navigation_source_value_;
     bool controls_enabled_ = true;
     bool trajectory_available_ = false;
+    bool ppk_available_ = false;
+    bool session_changes_enabled_ = true;
 };
 
 class SessionWaveformWidget final : public QGroupBox

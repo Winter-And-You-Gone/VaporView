@@ -9,6 +9,7 @@
 #include <QFileInfo>
 #include <QFutureWatcher>
 #include <QGridLayout>
+#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMessageBox>
@@ -18,6 +19,7 @@
 #include <QSignalBlocker>
 #include <QStandardItemModel>
 #include <QSpinBox>
+#include <QVBoxLayout>
 #include <QtConcurrent/QtConcurrentRun>
 
 namespace VaporView::Ground::SessionUi
@@ -27,12 +29,35 @@ namespace
 {
 constexpr std::array<int, 5> systemMasks{1, 4, 32, 8, 16};
 }
+QString ppkStatusText(const PpkStatus &status, bool hasSession, bool busy, bool english)
+{
+    auto text = [english](const char *en, const char *zh) { return QString::fromUtf8(english ? en : zh); };
+    if (!hasSession)
+        return text("No Session", "无会话");
+    if (busy || status.state == "Processing")
+        return text("Processing", "处理中");
+    if (status.completed)
+        return text("Completed", "已完成");
+    if (status.state == "Failed")
+        return text("Failed", "失败");
+    if (status.ready())
+        return text("Ready", "就绪");
+    if (!status.roverAvailable && !status.baseAvailable && !status.navigationAvailable)
+        return text("Not processed", "未处理");
+    return text("Waiting for inputs", "等待输入数据");
+}
 SessionPpkWidget::SessionPpkWidget(QWidget *parent) : QWidget(parent)
 {
     setObjectName(QStringLiteral("sessionPpkPanel"));
-    auto *layout = new QGridLayout(this);
-    layout->setContentsMargins(8, 4, 8, 4);
-    layout->setHorizontalSpacing(8);
+    setAttribute(Qt::WA_StyledBackground, true);
+    auto *layout = new QVBoxLayout(this);
+    layout->setContentsMargins(12, 12, 12, 12);
+    layout->setSpacing(10);
+    session_label_ = new QLabel(this);
+    session_label_->setObjectName("sessionPpkSessionLabel");
+    session_label_->setWordWrap(true);
+    session_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    layout->addWidget(session_label_);
     status_ = new QLabel(this);
     status_->setObjectName("sessionPpkStatus");
     status_->setWordWrap(true);
@@ -40,8 +65,25 @@ SessionPpkWidget::SessionPpkWidget(QWidget *parent) : QWidget(parent)
     quality_->setObjectName("sessionPpkQuality");
     quality_->setWordWrap(true);
     quality_->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    layout->addWidget(status_, 0, 0, 1, 6);
-    layout->addWidget(quality_, 1, 0, 1, 6);
+    layout->addWidget(status_);
+    auto makeGroup = [this, layout](QGroupBox *&group)
+    {
+        group = new QGroupBox(this);
+        group->setObjectName(QStringLiteral("sensorGroupBox"));
+        auto *card = new QVBoxLayout(group);
+        card->setContentsMargins(12, 12, 12, 12);
+        auto *title = new QLabel(group);
+        title->setObjectName(QStringLiteral("sectionTitleLabel"));
+        card->addWidget(title);
+        auto *grid = new QGridLayout();
+        grid->setContentsMargins(0, 0, 0, 0);
+        grid->setHorizontalSpacing(10);
+        grid->setVerticalSpacing(8);
+        card->addLayout(grid);
+        layout->addWidget(group);
+        return grid;
+    };
+    auto *inputs = makeGroup(inputs_group_);
     base_ = new QPushButton(this);
     nav_ = new QPushButton(this);
     run_ = new QPushButton(this);
@@ -51,22 +93,27 @@ SessionPpkWidget::SessionPpkWidget(QWidget *parent) : QWidget(parent)
     nav_->setObjectName("sessionPpkNavButton");
     run_->setObjectName("sessionPpkRunButton");
     cancel_->setObjectName("sessionPpkCancelButton");
+    clear_->setObjectName("sessionPpkClearButton");
+    rover_status_ = new QLabel(this);
+    base_status_ = new QLabel(this);
+    navigation_status_ = new QLabel(this);
+    rover_status_->setObjectName("sessionPpkRoverStatus");
+    base_status_->setObjectName("sessionPpkBaseStatus");
+    navigation_status_->setObjectName("sessionPpkNavigationStatus");
+    inputs->addWidget(rover_status_, 0, 0);
+    inputs->addWidget(base_status_, 1, 0);
+    inputs->addWidget(base_, 1, 1);
+    inputs->addWidget(navigation_status_, 2, 0);
+    inputs->addWidget(nav_, 2, 1);
+    inputs->setColumnStretch(0, 1);
     source_label_ = new QLabel(this);
     source_ = new QComboBox(this);
     source_->setObjectName("sessionPpkSourceCombo");
     source_->addItems({"Original", "PPK"});
-    layout->addWidget(base_, 2, 0);
-    layout->addWidget(nav_, 2, 1);
-    layout->addWidget(run_, 2, 2);
-    layout->addWidget(clear_, 2, 3);
-    layout->addWidget(source_label_, 2, 4);
-    layout->addWidget(source_, 2, 5);
+    auto *settings = makeGroup(settings_group_);
     arm_label_ = new QLabel(this);
     mask_label_ = new QLabel(this);
-    auto *options = new QWidget(this);
-    auto *optionsLayout = new QHBoxLayout(options);
-    optionsLayout->setContentsMargins(0, 0, 0, 0);
-    optionsLayout->addWidget(arm_label_);
+    settings->addWidget(arm_label_, 0, 0, 1, 3);
     for (int i = 0; i < 3; ++i)
     {
         arm_[i] = new QDoubleSpinBox(this);
@@ -74,25 +121,23 @@ SessionPpkWidget::SessionPpkWidget(QWidget *parent) : QWidget(parent)
         arm_[i]->setDecimals(4);
         arm_[i]->setPrefix(QStringLiteral("%1 ").arg(QChar('X' + i)));
         arm_[i]->setSuffix(" m");
-        optionsLayout->addWidget(arm_[i]);
+        settings->addWidget(arm_[i], 1, i);
     }
-    optionsLayout->addWidget(mask_label_);
     mask_ = new QDoubleSpinBox(this);
     mask_->setRange(0, 89);
     mask_->setSuffix(QStringLiteral("°"));
-    optionsLayout->addWidget(mask_);
     receiver_label_ = new QLabel(this);
     receiver_ = new QSpinBox(this);
     receiver_->setRange(0, 255);
-    optionsLayout->addWidget(receiver_label_);
-    optionsLayout->addWidget(receiver_);
     frequencies_label_ = new QLabel(this);
     frequencies_ = new QSpinBox(this);
     frequencies_->setRange(1, 5);
-    optionsLayout->addWidget(frequencies_label_);
-    optionsLayout->addWidget(frequencies_);
-    optionsLayout->addStretch();
-    layout->addWidget(options, 3, 0, 1, 6);
+    settings->addWidget(receiver_label_, 2, 0);
+    settings->addWidget(frequencies_label_, 2, 1);
+    settings->addWidget(mask_label_, 2, 2);
+    settings->addWidget(receiver_, 3, 0);
+    settings->addWidget(frequencies_, 3, 1);
+    settings->addWidget(mask_, 3, 2);
     auto *systemOptions = new QWidget(this);
     auto *systemLayout = new QHBoxLayout(systemOptions);
     systemLayout->setContentsMargins(0, 0, 0, 0);
@@ -103,11 +148,41 @@ SessionPpkWidget::SessionPpkWidget(QWidget *parent) : QWidget(parent)
         systemLayout->addWidget(systems_[i]);
     }
     systemLayout->addStretch();
-    layout->addWidget(systemOptions, 4, 0, 1, 6);
+    settings->addWidget(systemOptions, 4, 0, 1, 3);
+    auto *processing = makeGroup(processing_group_);
     progress_ = new QProgressBar(this);
     progress_->setRange(0, 100);
-    layout->addWidget(progress_, 5, 0, 1, 5);
-    layout->addWidget(cancel_, 5, 5);
+    processing->addWidget(run_, 0, 0);
+    processing->addWidget(cancel_, 0, 1);
+    processing->addWidget(clear_, 0, 2);
+    processing->addWidget(progress_, 1, 0, 1, 3);
+    auto *results = makeGroup(results_group_);
+    results->addWidget(quality_, 0, 0);
+    auto *navigation = makeGroup(navigation_group_);
+    navigation->addWidget(source_label_, 0, 0);
+    navigation->addWidget(source_, 0, 1);
+    navigation->setColumnStretch(1, 1);
+    layout->addStretch();
+    QWidget::setTabOrder(base_, nav_);
+    QWidget *previous = nav_;
+    for (auto *edit : arm_)
+    {
+        QWidget::setTabOrder(previous, edit);
+        previous = edit;
+    }
+    QWidget::setTabOrder(previous, receiver_);
+    QWidget::setTabOrder(receiver_, frequencies_);
+    QWidget::setTabOrder(frequencies_, mask_);
+    previous = mask_;
+    for (auto *check : systems_)
+    {
+        QWidget::setTabOrder(previous, check);
+        previous = check;
+    }
+    QWidget::setTabOrder(previous, run_);
+    QWidget::setTabOrder(run_, cancel_);
+    QWidget::setTabOrder(cancel_, clear_);
+    QWidget::setTabOrder(clear_, source_);
     connect(base_, &QPushButton::clicked, this, [this] { importFile(false); });
     connect(nav_, &QPushButton::clicked, this, [this] { importFile(true); });
     connect(run_, &QPushButton::clicked, this, &SessionPpkWidget::run);
@@ -164,6 +239,15 @@ QString SessionPpkWidget::textFor(const char *en, const char *zh) const
 void SessionPpkWidget::setEnglish(bool english)
 {
     english_ = english;
+    auto setTitle = [](QGroupBox *group, const QString &text)
+    {
+        group->findChild<QLabel *>(QStringLiteral("sectionTitleLabel"))->setText(text);
+    };
+    setTitle(inputs_group_, textFor("Data sources", "数据源"));
+    setTitle(settings_group_, textFor("Solver settings", "解算设置"));
+    setTitle(processing_group_, textFor("Processing", "处理"));
+    setTitle(results_group_, textFor("Solution quality", "解算结果"));
+    setTitle(navigation_group_, textFor("Navigation", "导航"));
     base_->setText(textFor("Select Base OBS", "选择基站 OBS"));
     nav_->setText(textFor("Select NAV", "选择星历 NAV"));
     clear_->setText(textFor("Clear result", "清除结果"));
@@ -188,6 +272,7 @@ void SessionPpkWidget::setSessionDirectory(const QString &session)
     if (busy())
         return;
     session_ = session;
+    operation_error_.clear();
     const auto config = PpkProcessor::loadConfig(session);
     for (int i = 0; i < 3; ++i)
         arm_[i]->setValue(config.imuToAntennaBodyM[i]);
@@ -200,26 +285,21 @@ void SessionPpkWidget::setSessionDirectory(const QString &session)
 }
 void SessionPpkWidget::refresh()
 {
-    const auto status = PpkProcessor::status(session_);
+    const auto status = session_.isEmpty() ? PpkStatus{} : PpkProcessor::status(session_);
     const bool enabled = !session_.isEmpty() && !busy();
     auto available = [&](bool value) { return textFor(value ? "available" : "missing", value ? "已有" : "缺少"); };
-    QString state = status.state;
-    if (busy())
-        state = textFor(processing_ ? "Processing" : "Importing", processing_ ? "处理中" : "导入中");
-    else if (state == "Ready")
-        state = textFor("Ready", "就绪");
-    else if (state == "Completed")
-        state = textFor("Completed", "已完成");
-    else if (state == "Failed")
-        state = textFor("Failed", "失败");
-    else
-        state = textFor("Waiting for inputs", "等待输入数据");
-    status_->setText(QStringLiteral("PPK · %1   |   Rover: %2   Base: %3   NAV: %4")
-                         .arg(state, available(status.roverAvailable), available(status.baseAvailable),
-                              available(status.navigationAvailable)));
+    const QString state = busy() && !processing_ ? textFor("Importing", "导入中")
+        : !operation_error_.isEmpty() ? textFor("Failed", "失败")
+        : ppkStatusText(status, !session_.isEmpty(), busy(), english_);
+    session_label_->setText(session_.isEmpty() ? textFor("No Session", "无会话")
+        : QStringLiteral("%1: %2").arg(textFor("Session", "会话"), QDir::toNativeSeparators(session_)));
+    status_->setText(QStringLiteral("%1: %2").arg(textFor("PPK Status", "PPK 状态"), state));
+    rover_status_->setText(QStringLiteral("%1: %2").arg(textFor("Rover Observation", "移动站观测"), available(status.roverAvailable)));
+    base_status_->setText(QStringLiteral("%1: %2").arg(textFor("Base Observation", "基站观测"), available(status.baseAvailable)));
+    navigation_status_->setText(QStringLiteral("%1: %2").arg(textFor("Navigation", "导航星历"), available(status.navigationAvailable)));
     const auto q = status.quality;
-    QString summary = status.error;
-    if (status.completed)
+    QString summary = operation_error_.isEmpty() ? status.error : operation_error_;
+    if (summary.isEmpty() && status.completed)
     {
         auto time = [](const QJsonValue &ns)
         {
@@ -239,7 +319,7 @@ void SessionPpkWidget::refresh()
                       .arg(QDir(session_).filePath(q.value("solution_file").toString()));
     }
     quality_->setText(summary);
-    quality_->setVisible(!summary.isEmpty());
+    results_group_->setVisible(!summary.isEmpty());
     base_->setEnabled(enabled);
     nav_->setEnabled(enabled);
     run_->setEnabled(enabled && status.ready());
@@ -269,6 +349,7 @@ void SessionPpkWidget::startWork(const std::function<PpkProcessResult()> &work, 
     if (busy())
         return;
     processing_ = processing;
+    operation_error_.clear();
     watcher_ = new QFutureWatcher<PpkProcessResult>(this);
     auto *watcher = watcher_;
     connect(watcher, &QFutureWatcher<PpkProcessResult>::finished, this,
@@ -277,11 +358,12 @@ void SessionPpkWidget::startWork(const std::function<PpkProcessResult()> &work, 
                 const auto result = watcher->result();
                 watcher_ = nullptr;
                 watcher->deleteLater();
+                operation_error_ = !result.success && !result.cancelled ? result.error : QString();
                 refresh();
                 emit busyChanged(false);
                 if (!result.success && !result.cancelled)
                     QMessageBox::warning(this, textFor("PPK error", "PPK 错误"), result.error);
-                if (result.success && processing_)
+                if (result.success)
                     SessionNavigationEvents::instance()->notify(QFileInfo(session_).absoluteFilePath());
             });
     progress_->setValue(0);

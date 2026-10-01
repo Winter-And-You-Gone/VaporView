@@ -77,18 +77,29 @@ Original navigation.
 
 ## Session workflow
 
-Open the Session viewer and select Base OBS and one or more Navigation RINEX
-files. Files are validated and copied into the Session. EPSILON `XXX-BASE.NAV`
+Open a Session in the Data Viewer, click **PPK Processing**, then select Base OBS
+and one or more Navigation RINEX files in the dedicated PPK window. The main
+Data Viewer only shows PPK status (with FIX percentage after completion) and the
+current navigation source in Data Summary. Files are validated and copied into
+the Session. EPSILON `XXX-BASE.NAV`
 and CORS navigation files use the same import path. Recognized companion NAV
 files beside imported Base OBS are archived automatically; navigation already
 readable within Base input is also passed to RTKLIB. No ephemerides are fabricated
 from `0x77`.
 
-The PPK panel shows Rover/Base/NAV availability, readiness, processing progress,
+The PPK window shows Rover/Base/NAV availability, readiness, processing progress,
 failures, FIX/FLOAT counts and percentages, UTC start/end, sample count, RMS of
 the reported N/E/U standard deviations and solution path. It supports running,
 rerunning, cancellation and clearing results. Clearing preserves inputs and
-Original navigation. All controls follow the existing Session language switch.
+Original navigation. All controls follow the existing Session language switch
+and Light/Dark theme. Repeated clicks reuse the window; closing it preserves
+the selected navigation source and any running worker. Reopening restores its
+current state. Opening or reloading a Session synchronizes the PPK window, and
+Clear Page leaves it in No Session state (the retained path can still be reloaded).
+During processing or input import, Open Data, Reload and Clear Page are disabled;
+waveform and device data browsing remain available. Closing the Data Viewer
+cancels and joins its PPK worker. Navigation source changes continue through
+the shared Session navigation events used by 3D, Heat, Sensor and Export.
 
 Main Antenna Lever Arm is snapshotted from the existing Ground RTK settings or
 SkyConfig when recording begins. The Session keeps its own copy, so later device

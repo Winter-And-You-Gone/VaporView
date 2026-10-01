@@ -14,6 +14,7 @@
 #include <memory>
 
 class QEvent;
+class QCloseEvent;
 template <typename T> class QFutureWatcher;
 class RawDataParserWindow;
 
@@ -28,7 +29,7 @@ namespace VaporView::Ground::SessionUi
 class SessionDeviceDataWidget;
 class SessionLoadingDialog;
 class SessionOverviewWidget;
-class SessionPpkWidget;
+class SessionPpkWindow;
 class SessionWaveformWidget;
 }
 
@@ -49,6 +50,7 @@ public:
 
 protected:
     void changeEvent(QEvent *event) override;
+    void closeEvent(QCloseEvent *event) override;
 
 private slots:
     void onChooseSessionClicked();
@@ -56,6 +58,7 @@ private slots:
     void onClearViewClicked();
     void onViewTrajectoryClicked();
     void onRawDataParserClicked();
+    void onPpkProcessingClicked();
     void onFrameSliderMoved(int value);
     void onFrameSliderChanged(int value);
     void onFrameSpinChanged(int value);
@@ -69,6 +72,9 @@ private:
     void setupUi();
     void updateTexts();
     void updateSummaryLabels();
+    void updatePpkSummary();
+    void syncPpkSession(bool available);
+    bool ppkBusy() const;
     void updateWaveformControls();
     void setStatusText(const QString& text);
     void beginSessionLoading(const QString& text);
@@ -117,7 +123,9 @@ private:
     QVector<float> visibleWaveformSamples(const QVector<float>& samples, int& firstSampleIndex) const;
 
     VaporView::Ground::SessionUi::SessionOverviewWidget *overview_page_;
-    VaporView::Ground::SessionUi::SessionPpkWidget *ppk_page_ = nullptr;
+    VaporView::Ground::SessionUi::SessionPpkWindow *ppk_window_ = nullptr;
+    bool ppk_session_available_ = false;
+    bool navigation_refresh_pending_ = false;
     VaporView::Ground::SessionUi::SessionWaveformWidget *waveform_page_;
     VaporView::Ground::SessionUi::SessionDeviceDataWidget *device_data_page_;
     std::unique_ptr<VaporView::Ground::SessionUi::SessionLoadingDialog> loading_dialog_;

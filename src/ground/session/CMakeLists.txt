@@ -52,6 +52,8 @@ if(NOT TARGET vaporview_ground_session_ui)
 add_library(vaporview_ground_session_ui STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionPpkWidget.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionPpkWidget.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/SessionPpkWindow.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/SessionPpkWindow.h
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionMapCoordinator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionMapCoordinator.h
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionViewerPages.cpp

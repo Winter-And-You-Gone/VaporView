@@ -358,6 +358,10 @@ QStackedWidget#mainPageStack,
 QWidget#temperaturePage,
 QWidget#deviceConfigPage,
 QMainWindow#sessionViewerWindow,
+QMainWindow#sessionPpkWindow,
+QWidget#sessionPpkPanel,
+QWidget#sessionPpkViewport,
+QScrollArea#sessionPpkScrollArea,
 QWidget#sessionViewerCentralWidget,
 QWidget#sessionViewerViewport,
 QWidget#sessionViewerContentPane,
@@ -983,6 +987,15 @@ QCheckBox::indicator,
 QRadioButton::indicator {
     background-color: @vv-surface;
     border-color: @vv-border;
+}
+QWidget#sessionPpkPanel QCheckBox::indicator {
+    background-color: @vv-surface-alt;
+    border: 1px solid @vv-text-secondary;
+    border-radius: 4px;
+}
+QWidget#sessionPpkPanel QCheckBox::indicator:checked {
+    background-color: @vv-primary;
+    border-color: @vv-primary;
 }
 QLabel[data-valid="true"] {
     color: @vv-white;

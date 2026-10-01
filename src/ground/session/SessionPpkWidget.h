@@ -11,10 +11,13 @@ class QProgressBar;
 class QDoubleSpinBox;
 class QCheckBox;
 class QSpinBox;
+class QGroupBox;
 template <typename T> class QFutureWatcher;
 
 namespace VaporView::Ground::SessionUi
 {
+QString ppkStatusText(const Ppk::PpkStatus &status, bool hasSession, bool busy, bool english);
+
 class SessionPpkWidget final : public QWidget
 {
     Q_OBJECT
@@ -23,6 +26,10 @@ class SessionPpkWidget final : public QWidget
     ~SessionPpkWidget() override;
     void setEnglish(bool english);
     void setSessionDirectory(const QString &session);
+    QString sessionDirectory() const
+    {
+        return session_;
+    }
     bool busy() const
     {
         return watcher_ != nullptr;
@@ -37,9 +44,19 @@ class SessionPpkWidget final : public QWidget
     void importFile(bool navigation);
     void startWork(const std::function<Ppk::PpkProcessResult()> &work, bool processing);
     QString session_;
+    QString operation_error_;
     bool english_ = false;
     bool processing_ = false;
     QLabel *status_ = nullptr;
+    QLabel *session_label_ = nullptr;
+    QLabel *rover_status_ = nullptr;
+    QLabel *base_status_ = nullptr;
+    QLabel *navigation_status_ = nullptr;
+    QGroupBox *inputs_group_ = nullptr;
+    QGroupBox *settings_group_ = nullptr;
+    QGroupBox *processing_group_ = nullptr;
+    QGroupBox *results_group_ = nullptr;
+    QGroupBox *navigation_group_ = nullptr;
     QLabel *quality_ = nullptr;
     QLabel *source_label_ = nullptr;
     QLabel *arm_label_ = nullptr;

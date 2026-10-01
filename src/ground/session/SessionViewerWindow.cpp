@@ -2,6 +2,7 @@
 #include "ground/session/SessionMapCoordinator.h"
 #include "ground/session/SessionViewerPages.h"
 #include "ground/session/SessionPpkWidget.h"
+#include "ground/session/SessionPpkWindow.h"
 #include "ppk/SessionNavigationSource.h"
 #include "ground/widgets/CustomTitleBar.h"
 #include "ground/wave/RawDataParserWindow.h"
@@ -14,6 +15,7 @@
 #include "ground/session/GroundRecordingService.h"
 
 #include <QDir>
+#include <QCloseEvent>
 #include <QElapsedTimer>
 #include <QEvent>
 #include <QFileDialog>
@@ -215,11 +217,29 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
 SessionViewerWindow::~SessionViewerWindow()
 {
     cancelBackgroundWaveformPeakSeries(false);
+    // The panel cancels and joins its worker before the viewer's state is destroyed.
+    if (ppk_window_)
+    {
+        delete ppk_window_;
+        ppk_window_ = nullptr;
+    }
     if (raw_data_parser_window_)
     {
         delete raw_data_parser_window_;
         raw_data_parser_window_ = nullptr;
     }
+}
+
+void SessionViewerWindow::closeEvent(QCloseEvent *event)
+{
+    if (ppk_window_)
+    {
+        delete ppk_window_;
+        ppk_window_ = nullptr;
+        overview_page_->setSessionChangesEnabled(true);
+        updatePpkSummary();
+    }
+    QMainWindow::closeEvent(event);
 }
 
 void SessionViewerWindow::setupUi()
@@ -268,15 +288,16 @@ void SessionViewerWindow::setupUi()
     device_data_page_ = new SessionDeviceDataWidget(splitter);
     loading_dialog_ = std::make_unique<SessionLoadingDialog>(this);
     upperLayout->addWidget(overview_page_);
-    ppk_page_ = new SessionPpkWidget(upperWidget);
-    upperLayout->addWidget(ppk_page_);
-    connect(ppk_page_, &SessionPpkWidget::busyChanged, this, [this](bool busy) {
-        overview_page_->setControlsEnabled(!busy);
-    });
     connect(VaporView::Ppk::SessionNavigationEvents::instance(), &VaporView::Ppk::SessionNavigationEvents::changed,
         this, [this](const QString& session) {
-            if (!session_loading_ && !session_directory_.isEmpty() && QFileInfo(session_directory_).absoluteFilePath() == session)
-                onReloadClicked();
+            if (ppk_session_available_ && QFileInfo(session_directory_).absoluteFilePath() == session)
+            {
+                updatePpkSummary();
+                if (!session_loading_ && !ppkBusy())
+                    onReloadClicked();
+                else
+                    navigation_refresh_pending_ = true;
+            }
         }, Qt::QueuedConnection);
     upperLayout->addWidget(waveform_page_, 1);
     splitter->addWidget(upperWidget);
@@ -291,6 +312,8 @@ void SessionViewerWindow::setupUi()
             this, &SessionViewerWindow::onReloadClicked);
     connect(overview_page_, &SessionOverviewWidget::trajectoryRequested,
             this, &SessionViewerWindow::onViewTrajectoryClicked);
+    connect(overview_page_, &SessionOverviewWidget::ppkProcessingRequested,
+            this, &SessionViewerWindow::onPpkProcessingClicked);
     connect(overview_page_, &SessionOverviewWidget::rawDataParserRequested,
             this, &SessionViewerWindow::onRawDataParserClicked);
     connect(overview_page_, &SessionOverviewWidget::clearRequested,
@@ -386,7 +409,9 @@ void SessionViewerWindow::updateTexts()
 {
     setWindowTitle(is_english_ ? QStringLiteral("Data Viewer") : QStringLiteral("数据查看器"));
     overview_page_->setEnglish(is_english_);
-    ppk_page_->setEnglish(is_english_);
+    if (ppk_window_)
+        ppk_window_->setEnglish(is_english_);
+    updatePpkSummary();
     waveform_page_->setEnglish(is_english_);
     device_data_page_->setEnglish(is_english_);
     updateWaveformActionTexts();
@@ -562,7 +587,8 @@ void SessionViewerWindow::setSessionLoadingControlsEnabled(bool enabled)
     overview_page_->setControlsEnabled(enabled);
     overview_page_->setTrajectoryAvailable(trajectory_controller_.hasTrack());
     waveform_page_->setControlsEnabled(enabled);
-    ppk_page_->setEnabled(enabled);
+    if (ppk_window_)
+        ppk_window_->setEnabled(enabled);
     if (enabled)
     {
         updateWaveformControls();
@@ -592,13 +618,18 @@ void SessionViewerWindow::finishSessionLoading()
     loading_dialog_->finish(overview_page_->statusText());
     session_loading_ = false;
     setSessionLoadingControlsEnabled(true);
+    if (navigation_refresh_pending_ && !ppkBusy())
+    {
+        navigation_refresh_pending_ = false;
+        QMetaObject::invokeMethod(this, &SessionViewerWindow::onReloadClicked, Qt::QueuedConnection);
+    }
 }
 
 void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
 {
     cancelBackgroundWaveformPeakSeries(false);
     session_directory_.clear();
-    if(ppk_page_)ppk_page_->setSessionDirectory({});
+    syncPpkSession(false);
     metadata_filename_.clear();
     recording_origin_ = VaporView::Session::RecordingOrigin::Ground;
     sensors_csv_filename_.clear();
@@ -654,7 +685,7 @@ void SessionViewerWindow::restoreLastSessionPath(const QString& path)
 
     clearLoadedData(false);
     session_directory_ = sessionDirectory;
-    ppk_page_->setSessionDirectory(session_directory_);
+    syncPpkSession(true);
     overview_page_->setSessionPath(session_directory_);
     setStatusText(is_english_
         ? "Restored the last session path only. Click Reload to load its CSV and waveform files."
@@ -689,6 +720,8 @@ bool SessionViewerWindow::openSessionPath(const QString& path)
 
 void SessionViewerWindow::onChooseSessionClicked()
 {
+    if (session_loading_ || ppkBusy())
+        return;
     const QString initialDir = dataSelectionDirectory();
     const QString sessionDirectory = QFileDialog::getExistingDirectory(
         this,
@@ -704,6 +737,8 @@ void SessionViewerWindow::onChooseSessionClicked()
 
 void SessionViewerWindow::onReloadClicked()
 {
+    if (session_loading_ || ppkBusy())
+        return;
     if (session_directory_.isEmpty())
     {
         QSettings settings("VaporView", "SessionViewer");
@@ -722,12 +757,13 @@ void SessionViewerWindow::onReloadClicked()
 
 void SessionViewerWindow::onClearViewClicked()
 {
+    if (session_loading_ || ppkBusy())
+        return;
     const QString previousSessionDirectory = session_directory_;
     clearLoadedData(previousSessionDirectory.isEmpty());
     if (!previousSessionDirectory.isEmpty())
     {
         session_directory_ = previousSessionDirectory;
-        ppk_page_->setSessionDirectory(session_directory_);
         overview_page_->setSessionPath(session_directory_);
     }
 }
@@ -816,8 +852,67 @@ void SessionViewerWindow::onRawDataParserClicked()
     raw_data_parser_window_->openSessionPath(session_directory_);
 }
 
+void SessionViewerWindow::onPpkProcessingClicked()
+{
+    if (!ppk_session_available_ || session_loading_)
+        return;
+    if (!ppk_window_)
+    {
+        ppk_window_ = new SessionPpkWindow(this);
+        ppk_window_->setSessionDirectory(session_directory_);
+        connect(ppk_window_, &SessionPpkWindow::busyChanged, this, [this](bool busy) {
+            overview_page_->setSessionChangesEnabled(!busy);
+            updatePpkSummary();
+            if (!busy && navigation_refresh_pending_)
+            {
+                navigation_refresh_pending_ = false;
+                QMetaObject::invokeMethod(this, &SessionViewerWindow::onReloadClicked, Qt::QueuedConnection);
+            }
+        });
+    }
+    ppk_window_->setEnglish(is_english_);
+    if (ppk_window_->isMinimized())
+        ppk_window_->showNormal();
+    else
+        ppk_window_->show();
+    ppk_window_->raise();
+    ppk_window_->activateWindow();
+}
+
+bool SessionViewerWindow::ppkBusy() const
+{
+    return ppk_window_ && ppk_window_->busy();
+}
+
+void SessionViewerWindow::syncPpkSession(bool available)
+{
+    ppk_session_available_ = available;
+    if (!available)
+        navigation_refresh_pending_ = false;
+    overview_page_->setPpkAvailable(available);
+    if (ppk_window_)
+        ppk_window_->setSessionDirectory(available ? session_directory_ : QString());
+    updatePpkSummary();
+}
+
+void SessionViewerWindow::updatePpkSummary()
+{
+    using namespace VaporView::Ppk;
+    const auto status = ppk_session_available_ ? PpkProcessor::status(session_directory_) : PpkStatus{};
+    QString state = ppkStatusText(status, ppk_session_available_, ppkBusy(), is_english_);
+    if (status.completed && !ppkBusy())
+        state += QStringLiteral(" · FIX %1%").arg(status.quality.value("fix_percent").toDouble(), 0, 'f', 1);
+    const bool ppk = ppk_session_available_ && sessionNavigationSource(session_directory_) == NavigationSource::Ppk;
+    const QString source = !ppk_session_available_ ? QStringLiteral("---")
+        : ppk ? (is_english_ ? QStringLiteral("PPK corrected") : QStringLiteral("PPK 修正"))
+        : (is_english_ ? QStringLiteral("Original") : QStringLiteral("原始"));
+    overview_page_->setPpkSummary(state, source);
+}
+
 bool SessionViewerWindow::loadSessionDirectory(QString sessionDirectory)
 {
+    if (session_loading_ || ppkBusy())
+        return false;
     beginSessionLoading(is_english_ ? "Preparing to load session data..." : "正在准备加载会话数据...");
     const qint64 loadStartedMs = monotonicMilliseconds();
     qint64 lastStageMs = loadStartedMs;
@@ -843,7 +938,7 @@ bool SessionViewerWindow::loadSessionDirectory(QString sessionDirectory)
 
     const QString normalized = QDir::fromNativeSeparators(sessionDirectory);
     session_directory_ = normalized;
-    ppk_page_->setSessionDirectory(session_directory_);
+    syncPpkSession(true);
     session_load_warning_.clear();
     updateSessionLoadingProgress(is_english_ ? "Reading session metadata..." : "正在读取会话元数据...", 3);
     if (!loadSessionMetadata(normalized))
@@ -1291,6 +1386,7 @@ void SessionViewerWindow::updateSummaryLabels()
         ? QString::number(total_waveform_frames_)
         : QStringLiteral("---");
     overview_page_->setSummary(summary);
+    updatePpkSummary();
 }
 
 void SessionViewerWindow::updateWaveformControls()
