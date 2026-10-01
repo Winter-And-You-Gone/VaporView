@@ -1,6 +1,7 @@
 #include "ground/main/MainWindow.h"
 #include "ground/session/GroundRecordingService.h"
 #include "ground/session/SessionViewerWindow.h"
+#include "ground/session/SessionViewerPages.h"
 #include "shared/theme/AppTheme.h"
 #include "test_ui_helpers.h"
 
@@ -8,7 +9,11 @@
 #include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QGridLayout>
+#include <QLabel>
+#include <QLineEdit>
 #include <QMetaObject>
+#include <QPushButton>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QTimer>
@@ -71,6 +76,75 @@ QString expectedRecordingDirectoryDialogFallback()
     return defaultDirectory.isDir()
         ? defaultDirectory.absoluteFilePath()
         : defaultDirectory.absoluteDir().absolutePath();
+}
+
+void testOverviewLayout(SessionViewerWindow& viewer)
+{
+    auto *overview = viewer.findChild<VaporView::Ground::SessionUi::SessionOverviewWidget *>();
+    auto *path = overview ? overview->findChild<QLineEdit *>() : nullptr;
+    auto *summary = overview ? overview->findChild<QGroupBox *>() : nullptr;
+    auto *grid = summary ? qobject_cast<QGridLayout *>(summary->layout()) : nullptr;
+    require(overview && path && grid, "data viewer exposes its overview layout");
+    const QSize originalSize = viewer.size();
+    for (bool english : {false, true})
+    {
+        viewer.setEnglish(english);
+        overview->setSummary({QStringLiteral("2026-10-02_023000_ground"), QStringLiteral("Ground"),
+                              QStringLiteral("2026-10-02 02:30:00"), QStringLiteral("2026-10-02 03:00:00"),
+                              QStringLiteral("30:00"), QStringLiteral("10 Hz"), QStringLiteral("18000"),
+                              QStringLiteral("10 Hz"), QStringLiteral("3"), QStringLiteral("18000")});
+        for (int width : {1280, 900})
+        {
+            viewer.resize(width, 800);
+            VaporViewTest::processEventsFor(180);
+            const int columns = width == 1280 ? 4 : 2;
+            QVector<int> fieldCounts(columns, 0);
+            for (QLabel *title : summary->findChildren<QLabel *>(QStringLiteral("fieldLabel")))
+            {
+                int row, column, rowSpan, columnSpan;
+                grid->getItemPosition(grid->indexOf(title), &row, &column, &rowSpan, &columnSpan);
+                require(column / 2 < columns && row < 12 / columns,
+                        "overview fields fill a compact balanced grid");
+                ++fieldCounts[column / 2];
+                require(title->geometry().right() < summary->width(),
+                        "overview field labels remain inside the summary");
+                require(title->width() >= title->fontMetrics().horizontalAdvance(title->text()),
+                        "overview field labels remain readable in both languages");
+            }
+            for (int count : fieldCounts)
+                require(count == 12 / columns, "each overview column contains the same number of fields");
+            const auto sameRow = [summary](const QString& left, const QString& right) {
+                QLabel *leftLabel = nullptr;
+                QLabel *rightLabel = nullptr;
+                for (QLabel *label : summary->findChildren<QLabel *>())
+                {
+                    if (label->text() == left) leftLabel = label;
+                    if (label->text() == right) rightLabel = label;
+                }
+                return leftLabel && rightLabel &&
+                    leftLabel->geometry().center().y() == rightLabel->geometry().center().y();
+            };
+            require(sameRow(english ? QStringLiteral("PPK Status:") : QStringLiteral("PPK 状态:"),
+                            english ? QStringLiteral("Navigation source:") : QStringLiteral("导航来源:")) &&
+                        sameRow(english ? QStringLiteral("Start:") : QStringLiteral("开始时间:"),
+                                english ? QStringLiteral("End:") : QStringLiteral("结束时间:")) &&
+                        sameRow(english ? QStringLiteral("Wave Files:") : QStringLiteral("波形文件数:"),
+                                english ? QStringLiteral("Wave Frames:") : QStringLiteral("波形帧数:")),
+                    "overview keeps related navigation, time, and waveform fields adjacent");
+            for (QPushButton *button : overview->findChildren<QPushButton *>())
+            {
+                const QRect rect(button->mapTo(overview, QPoint()), button->size());
+                require(overview->rect().contains(rect) && !path->geometry().intersects(rect),
+                        "overview path and command buttons fit without overlap");
+                if (width == 1280)
+                    require(std::abs(path->geometry().center().y() - rect.center().y()) <= 1,
+                            "overview path and all commands share one row");
+            }
+        }
+    }
+    viewer.setEnglish(false);
+    viewer.resize(originalSize);
+    VaporViewTest::processEventsFor(180);
 }
 
 void testMainWindowDataViewerOpenCanReopen()
@@ -173,6 +247,7 @@ void testMainWindowDataViewerOpenCanReopen()
     requireSamePath(viewer->dataSelectionDirectory(),
                     menuRecordingDir.path(),
                     "data viewer uses the recording directory configured by the main menu");
+    testOverviewLayout(*viewer);
     auto *minimizeButton = viewer->findChild<QToolButton *>(QStringLiteral("windowMinimizeButton"));
     require(minimizeButton != nullptr, "data viewer minimize button exists before reopen");
     minimizeButton->click();

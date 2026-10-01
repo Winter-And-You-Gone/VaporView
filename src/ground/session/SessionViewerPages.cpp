@@ -169,20 +169,22 @@ SessionOverviewWidget::SessionOverviewWidget(QWidget *parent)
     auto *controlLayout = new QGridLayout();
     controlLayout->setHorizontalSpacing(8);
     controlLayout->setVerticalSpacing(4);
+    controlLayout->setColumnStretch(1, 1);
     auto *pathTitle = new QLabel(tr("Session:"), this);
     pathTitle->setObjectName(QStringLiteral("fieldLabel"));
     controlLayout->addWidget(pathTitle, 0, 0);
     session_path_edit_->setReadOnly(true);
-    controlLayout->addWidget(session_path_edit_, 0, 1, 1, 5);
+    session_path_edit_->setMinimumWidth(180);
+    controlLayout->addWidget(session_path_edit_, 0, 1);
     actions_layout_ = new QGridLayout();
     actions_layout_->setHorizontalSpacing(8);
     actions_layout_->setVerticalSpacing(4);
-    controlLayout->addLayout(actions_layout_, 1, 0, 1, 6);
+    controlLayout->addLayout(actions_layout_, 0, 2);
     ppk_processing_btn_->setObjectName(QStringLiteral("sessionPpkProcessingButton"));
     status_label_->setObjectName(QStringLiteral("sessionViewerStatusLabel"));
     status_label_->setWordWrap(true);
     status_label_->setFocusPolicy(Qt::StrongFocus);
-    controlLayout->addWidget(status_label_, 2, 0, 1, 6);
+    controlLayout->addWidget(status_label_, 1, 0, 1, 3);
     layout->addLayout(controlLayout);
 
     summary_group_->setObjectName(QStringLiteral("sensorGroupBox"));
@@ -200,7 +202,7 @@ SessionOverviewWidget::SessionOverviewWidget(QWidget *parent)
         value->setObjectName(QStringLiteral("valueLabel"));
         value->setMinimumWidth(120);
         value->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-        value->setWordWrap(false);
+        value->setWordWrap(true);
     };
     createSummaryRow(session_name_title_, session_name_value_);
     createSummaryRow(recording_origin_title_, recording_origin_value_);
@@ -341,56 +343,33 @@ void SessionOverviewWidget::relayoutSummaryFields()
         delete summary_layout_->takeAt(0);
     }
 
-    const QVector<QPair<QLabel*, QLabel*>> longFields = {
+    const QVector<QPair<QLabel*, QLabel*>> fields = {
         {session_name_title_, session_name_value_},
         {recording_origin_title_, recording_origin_value_},
-        {start_time_title_, start_time_value_},
-        {end_time_title_, end_time_value_},
-    };
-    const QVector<QPair<QLabel*, QLabel*>> shortFields = {
-        {duration_title_, duration_value_},
-        {sensor_export_rate_title_, sensor_export_rate_value_},
-        {sensor_rows_title_, sensor_rows_value_},
-        {waveform_export_rate_title_, waveform_export_rate_value_},
-        {waveform_files_title_, waveform_files_value_},
-        {waveform_frames_title_, waveform_frames_value_},
         {ppk_status_title_, ppk_status_value_},
         {navigation_source_title_, navigation_source_value_},
+        {start_time_title_, start_time_value_},
+        {end_time_title_, end_time_value_},
+        {duration_title_, duration_value_},
+        {sensor_export_rate_title_, sensor_export_rate_value_},
+        {waveform_files_title_, waveform_files_value_},
+        {waveform_frames_title_, waveform_frames_value_},
+        {waveform_export_rate_title_, waveform_export_rate_value_},
+        {sensor_rows_title_, sensor_rows_value_},
     };
-    const int availableWidth = std::max({240, summary_group_->width(), summary_group_->contentsRect().width()});
-    for (int column = 0; column < shortFields.size() * 2; ++column)
+    const int availableWidth = summary_group_->contentsRect().width();
+    const int pairColumns = availableWidth >= 980 ? 4 : availableWidth >= 640 ? 2 : 1;
+    for (int column = 0; column < 8; ++column)
     {
         summary_layout_->setColumnStretch(column, 0);
         summary_layout_->setColumnMinimumWidth(column, 0);
     }
-    auto addFieldPair = [this](const QPair<QLabel*, QLabel*>& field, int row, int pairColumn) {
-        summary_layout_->addWidget(field.first, row, pairColumn * 2);
-        summary_layout_->addWidget(field.second, row, pairColumn * 2 + 1);
-        summary_layout_->setColumnStretch(pairColumn * 2 + 1, 1);
-    };
-    if (availableWidth >= 1720)
+    for (int index = 0; index < fields.size(); ++index)
     {
-        for (int index = 0; index < longFields.size(); ++index) addFieldPair(longFields.at(index), 0, index);
-        for (int index = 0; index < shortFields.size(); ++index) addFieldPair(shortFields.at(index), 1, index);
-        return;
-    }
-    if (availableWidth >= 1280)
-    {
-        for (int index = 0; index < longFields.size(); ++index) addFieldPair(longFields.at(index), 0, index);
-        for (int index = 0; index < shortFields.size(); ++index) addFieldPair(shortFields.at(index), 1 + index / 3, index % 3);
-        return;
-    }
-    if (availableWidth >= 980)
-    {
-        for (int index = 0; index < longFields.size(); ++index) addFieldPair(longFields.at(index), 0, index);
-        for (int index = 0; index < shortFields.size(); ++index) addFieldPair(shortFields.at(index), 1 + index / 2, index % 2);
-        return;
-    }
-    const QVector<QPair<QLabel*, QLabel*>> allFields = longFields + shortFields;
-    const int pairColumns = availableWidth >= 640 ? 2 : 1;
-    for (int index = 0; index < allFields.size(); ++index)
-    {
-        addFieldPair(allFields.at(index), index / pairColumns, index % pairColumns);
+        const int column = (index % pairColumns) * 2;
+        summary_layout_->addWidget(fields.at(index).first, index / pairColumns, column);
+        summary_layout_->addWidget(fields.at(index).second, index / pairColumns, column + 1);
+        summary_layout_->setColumnStretch(column + 1, 1);
     }
 }
 
@@ -408,14 +387,15 @@ void SessionOverviewWidget::relayoutActions()
     int requiredWidth = 5 * actions_layout_->horizontalSpacing();
     for (auto *button : buttons)
         requiredWidth += button->sizeHint().width();
-    const int columns = width() >= requiredWidth ? 6 : 3;
+    const int pathWidth = session_path_edit_->minimumWidth() +
+        fontMetrics().horizontalAdvance(QStringLiteral("Session:")) + 16;
+    const int columns = width() >= requiredWidth + pathWidth ? 6 : 3;
     while (actions_layout_->count())
         delete actions_layout_->takeAt(0);
     for (int i = 0; i < 7; ++i)
         actions_layout_->setColumnStretch(i, 0);
     for (int i = 0; i < buttons.size(); ++i)
         actions_layout_->addWidget(buttons[i], i / columns, i % columns);
-    actions_layout_->setColumnStretch(columns, 1);
 }
 
 SessionWaveformWidget::SessionWaveformWidget(QWidget *parent)
