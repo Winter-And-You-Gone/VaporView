@@ -76,6 +76,8 @@ struct RawRecordIndex
     RawRecordHeader header;
     quint64 recordOffset = 0;
     quint64 payloadOffset = 0;
+    quint32 waveformHarmonicOffset = 0;
+    quint32 waveformHarmonicSize = 0;
 };
 
 struct WaveformPayloadLayout

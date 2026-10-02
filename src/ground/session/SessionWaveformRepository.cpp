@@ -6,6 +6,9 @@
 #include "shared/session/UnifiedRawDat.h"
 
 #include <QByteArray>
+#include <QCryptographicHash>
+#include <QDataStream>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -199,6 +202,100 @@ struct UnifiedRawCatalogResult
     QString warning;
 };
 
+// This sidecar contains only exact frame locations, never reduced waveform data.
+constexpr qint64 kMaxWaveformIndexCacheBytes = 64 * 1024 * 1024;
+const QByteArray kWaveformIndexMagic = QByteArrayLiteral("VVWIDX01");
+
+QByteArray waveformSourceSignature(QFile& file)
+{
+    const QFileInfo info(file);
+    const qint64 size = file.size();
+    if (size < 0 || !file.seek(0)) return {};
+    const QByteArray first = file.read(std::min<qint64>(4096, size));
+    if (!file.seek(std::max<qint64>(0, size - 4096))) return {};
+    const QByteArray last = file.read(std::min<qint64>(4096, size));
+    if (first.size() != std::min<qint64>(4096, size) || last.size() != first.size()) return {};
+    QCryptographicHash hash(QCryptographicHash::Sha256);
+    hash.addData(info.canonicalFilePath().toUtf8());
+    hash.addData(QByteArray::number(size));
+    hash.addData(QByteArray::number(info.lastModified().toMSecsSinceEpoch()));
+    hash.addData(first);
+    hash.addData(last);
+    return hash.result();
+}
+
+bool loadWaveformIndexCache(QFile& source,
+                            const QByteArray& signature,
+                            VaporView::Ground::SessionWaveformCatalog& catalog)
+{
+    if (signature.isEmpty()) return false;
+    QFile cache(source.fileName() + QStringLiteral(".vvidx"));
+    if (!VaporView::isContainedWritePath(catalog.sessionDirectory, cache.fileName()) ||
+        !cache.open(QIODevice::ReadOnly) || cache.size() < 76 || cache.size() > kMaxWaveformIndexCacheBytes) return false;
+    const QByteArray bytes = cache.readAll();
+    if (bytes.size() < 72 || bytes.first(8) != kWaveformIndexMagic || bytes.mid(8, 32) != signature) return false;
+    const QByteArray body = bytes.mid(72);
+    if (QCryptographicHash::hash(body, QCryptographicHash::Sha256) != bytes.mid(40, 32)) return false;
+    QDataStream stream(body);
+    stream.setVersion(QDataStream::Qt_6_0);
+    quint32 count = 0;
+    stream >> count;
+    if (stream.status() != QDataStream::Ok ||
+        count > static_cast<quint64>(source.size()) / 48 ||
+        static_cast<quint64>(count) * 24 != static_cast<quint64>(stream.device()->bytesAvailable())) return false;
+    QVector<VaporView::Ground::SessionRawTcpWaveFrame> frames;
+    frames.reserve(static_cast<qsizetype>(count));
+    quint64 previousEnd = VaporView::SessionRawDat::kFileHeaderSize +
+        VaporView::SessionRawDat::kRecordHeaderSize + VaporView::SessionRawDat::kWaveformPayloadPrefixSize;
+    const quint64 sourceSize = static_cast<quint64>(source.size());
+    for (quint32 index = 0; index < count; ++index)
+    {
+        VaporView::Ground::SessionRawTcpWaveFrame frame;
+        quint32 encoding = 0;
+        stream >> frame.harmonicPayloadOffset >> frame.harmonicPayloadSize >> frame.timestampUs >> encoding;
+        if (stream.status() != QDataStream::Ok || frame.harmonicPayloadSize == 0 ||
+            frame.harmonicPayloadSize > VaporView::SessionRawDat::kMaxPayloadSize ||
+            frame.harmonicPayloadSize % kFloatBytes != 0 ||
+            frame.harmonicPayloadOffset < previousEnd || frame.harmonicPayloadOffset > sourceSize ||
+            frame.harmonicPayloadSize > sourceSize - frame.harmonicPayloadOffset ||
+            encoding > static_cast<quint32>(VaporView::TcpFloatEncoding::WordSwappedLittleEndian)) return false;
+        previousEnd = frame.harmonicPayloadOffset + frame.harmonicPayloadSize;
+        frame.filename = source.fileName();
+        frame.floatEncoding = static_cast<VaporView::TcpFloatEncoding>(encoding);
+        frames.push_back(std::move(frame));
+    }
+    catalog.rawTcpFrames = std::move(frames);
+    if (catalog.pointsPerFrame <= 0 && !catalog.rawTcpFrames.isEmpty())
+        catalog.pointsPerFrame = static_cast<int>(catalog.rawTcpFrames.first().harmonicPayloadSize / kFloatBytes);
+    return true;
+}
+
+void writeWaveformIndexCache(QFile& source,
+                             const QByteArray& signature,
+                             const VaporView::Ground::SessionWaveformCatalog& catalog,
+                             const QString& warning)
+{
+    const QString path = source.fileName() + QStringLiteral(".vvidx");
+    // Recovery and sequence warnings must be checked again on each open.
+    if (signature.isEmpty() || !warning.isEmpty() || VaporView::settingsWritesSuspended() ||
+        !VaporView::isContainedWritePath(catalog.sessionDirectory, path) ||
+        catalog.rawTcpFrames.size() * 24 + 76 > kMaxWaveformIndexCacheBytes ||
+        waveformSourceSignature(source) != signature) return;
+    QByteArray body;
+    QDataStream stream(&body, QIODevice::WriteOnly);
+    stream.setVersion(QDataStream::Qt_6_0);
+    stream << static_cast<quint32>(catalog.rawTcpFrames.size());
+    for (const auto& frame : catalog.rawTcpFrames)
+        stream << frame.harmonicPayloadOffset << frame.harmonicPayloadSize << frame.timestampUs
+               << static_cast<quint32>(frame.floatEncoding);
+    if (stream.status() != QDataStream::Ok || body.size() + 72 > kMaxWaveformIndexCacheBytes) return;
+    QSaveFile cache(path);
+    if (!cache.open(QIODevice::WriteOnly)) return;
+    const QByteArray bytes = kWaveformIndexMagic + signature +
+        QCryptographicHash::hash(body, QCryptographicHash::Sha256) + body;
+    if (cache.write(bytes) == bytes.size()) cache.commit();
+}
+
 UnifiedRawCatalogResult loadUnifiedRawCatalog(
     const QString& filename,
     VaporView::Ground::SessionWaveformCatalog& catalog,
@@ -210,13 +307,20 @@ UnifiedRawCatalogResult loadUnifiedRawCatalog(
         return result;
     }
     QFile file(filename);
-    if (!file.open(QIODevice::ReadOnly))
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Unbuffered))
     {
         result.status = UnifiedRawCatalogStatus::Error;
         result.error = QStringLiteral("Failed to open raw TCP wave file: %1").arg(filename);
         return result;
     }
 
+    const QByteArray signature = waveformSourceSignature(file);
+    if (loadWaveformIndexCache(file, signature, catalog))
+    {
+        result.status = UnifiedRawCatalogStatus::Loaded;
+        if (progress) progress(static_cast<quint64>(file.size()), static_cast<quint64>(file.size()));
+        return result;
+    }
     VaporView::SessionRawDat::RawScanOptions scanOptions;
     scanOptions.expectedSourceId = VaporView::SessionRawDat::kSourceWaveform;
     scanOptions.progress = progress;
@@ -243,44 +347,21 @@ UnifiedRawCatalogResult loadUnifiedRawCatalog(
         if ((header.flags & VaporView::SessionRawDat::kWaveformCombinedPayloadFlag) != 0 &&
             header.payloadSize >= sizeof(quint32) * 2)
         {
-            if (record.payloadOffset > static_cast<quint64>(std::numeric_limits<qint64>::max()) ||
-                !file.seek(static_cast<qint64>(record.payloadOffset)))
-            {
-                result.status = UnifiedRawCatalogStatus::Error;
-                result.error = QStringLiteral("Failed to seek raw TCP wave payload: %1").arg(filename);
-                return result;
-            }
-            const QByteArray prefix = file.read(VaporView::SessionRawDat::kWaveformPayloadPrefixSize);
-            VaporView::SessionRawDat::WaveformPayloadLayout layout;
-            QString layoutError;
-            if (!VaporView::SessionRawDat::parseWaveformPayloadLayout(
-                    prefix,
-                    header.payloadSize,
-                    &layout,
-                    &layoutError))
-            {
-                result.status = UnifiedRawCatalogStatus::Error;
-                result.error = QStringLiteral("Invalid raw TCP wave sub-payload sizes at offset %1: %2 (%3)")
-                                   .arg(record.recordOffset)
-                                   .arg(filename)
-                                   .arg(layoutError);
-                return result;
-            }
-            if (layout.harmonicSize > 0 && layout.harmonicSize % kFloatBytes != 0)
+            if (record.waveformHarmonicSize > 0 && record.waveformHarmonicSize % kFloatBytes != 0)
             {
                 result.status = UnifiedRawCatalogStatus::Error;
                 result.error = QStringLiteral("Invalid raw TCP wave harmonic payload size %1 at offset %2: %3")
-                                   .arg(layout.harmonicSize)
+                                   .arg(record.waveformHarmonicSize)
                                    .arg(record.recordOffset)
                                    .arg(filename);
                 return result;
             }
-            if (layout.harmonicSize > 0)
+            if (record.waveformHarmonicSize > 0)
             {
                 VaporView::Ground::SessionRawTcpWaveFrame frame;
                 frame.filename = filename;
-                frame.harmonicPayloadOffset = record.payloadOffset + layout.harmonicOffset;
-                frame.harmonicPayloadSize = layout.harmonicSize;
+                frame.harmonicPayloadOffset = record.payloadOffset + record.waveformHarmonicOffset;
+                frame.harmonicPayloadSize = record.waveformHarmonicSize;
                 frame.timestampUs = header.hostTimestampUs;
                 frame.floatEncoding = scanResult.fileHeader.version == 1u
                     ? VaporView::TcpFloatEncoding::Unknown
@@ -288,11 +369,12 @@ UnifiedRawCatalogResult loadUnifiedRawCatalog(
                 catalog.rawTcpFrames.push_back(std::move(frame));
                 if (catalog.pointsPerFrame <= 0)
                 {
-                    catalog.pointsPerFrame = static_cast<int>(layout.harmonicSize / kFloatBytes);
+                    catalog.pointsPerFrame = static_cast<int>(record.waveformHarmonicSize / kFloatBytes);
                 }
             }
         }
     }
+    writeWaveformIndexCache(file, signature, catalog, result.warning);
     return result;
 }
 

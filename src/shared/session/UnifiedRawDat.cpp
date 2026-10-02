@@ -518,6 +518,7 @@ RawScanResult scan(QIODevice& device, const RawScanOptions& options)
             return result;
         }
         const quint64 nextRecord = payloadOffset + header.payloadSize;
+        WaveformPayloadLayout layout;
         if (header.sourceId == kSourceWaveform &&
             (header.flags & kWaveformCombinedPayloadFlag) != 0)
         {
@@ -530,7 +531,6 @@ RawScanResult scan(QIODevice& device, const RawScanOptions& options)
                 return result;
             }
             const QByteArray prefix = device.read(std::min(header.payloadSize, kWaveformPayloadPrefixSize));
-            WaveformPayloadLayout layout;
             QString layoutError;
             if (!parseWaveformPayloadLayout(prefix, header.payloadSize, &layout, &layoutError))
             {
@@ -555,6 +555,12 @@ RawScanResult scan(QIODevice& device, const RawScanOptions& options)
         index.header = header;
         index.recordOffset = static_cast<quint64>(recordOffset);
         index.payloadOffset = payloadOffset;
+        if (header.sourceId == kSourceWaveform &&
+            (header.flags & kWaveformCombinedPayloadFlag) != 0)
+        {
+            index.waveformHarmonicOffset = layout.harmonicOffset;
+            index.waveformHarmonicSize = layout.harmonicSize;
+        }
         result.records.push_back(index);
         result.lastValidOffset = nextRecord;
         if (header.sequence != expectedSequence)

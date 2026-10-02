@@ -5,8 +5,10 @@
 #include "ground/session/RecordingSessionLayout.h"
 #include "ground/session/SessionWaveformRepository.h"
 #include "ground/session/SessionTrajectoryRenderLoader.h"
+#include "shared/config/SettingsWriteBarrier.h"
 
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QEventLoop>
@@ -699,6 +701,80 @@ void testUnifiedRawValidationRecoveryAndLegacyFallback()
             "middle raw record corruption remains fatal");
 }
 
+void testWaveformIndexCache()
+{
+    QTemporaryDir sessionDir;
+    require(sessionDir.isValid(), "temporary waveform index cache session");
+    const QString rawPath = sessionDir.filePath(QStringLiteral("waveform.dat"));
+    const QString cachePath = rawPath + QStringLiteral(".vvidx");
+    writeBytes(rawPath, unifiedTcpWaveBytes(2u, 1024));
+    VaporView::Ground::SessionMetadata metadata;
+    metadata.sessionDirectory = sessionDir.path();
+    metadata.waveformRawFilename = rawPath;
+    int progressUpdates = 0;
+    bool progressReachedEnd = false;
+    const auto load = [&]() {
+        progressUpdates = 0;
+        progressReachedEnd = false;
+        return VaporView::Ground::SessionWaveformRepository::loadCatalog(metadata,
+            [&](quint64 completed, quint64 total) {
+                ++progressUpdates;
+                progressReachedEnd = completed == total;
+            });
+    };
+    const auto scanned = load();
+    require(scanned.success && scanned.catalog.frameCount == 1024 && progressUpdates > 1 &&
+                QFileInfo::exists(cachePath), "first scan atomically writes an exact frame index");
+    const auto cached = load();
+    require(cached.success && cached.catalog.frameCount == scanned.catalog.frameCount &&
+                progressUpdates == 1, "second open uses the cache without scanning records");
+    for (int index = 0; index < scanned.catalog.rawTcpFrames.size(); ++index)
+    {
+        const auto& expected = scanned.catalog.rawTcpFrames.at(index);
+        const auto& actual = cached.catalog.rawTcpFrames.at(index);
+        require(expected.timestampUs == actual.timestampUs &&
+                    expected.harmonicPayloadOffset == actual.harmonicPayloadOffset &&
+                    expected.harmonicPayloadSize == actual.harmonicPayloadSize &&
+                    expected.floatEncoding == actual.floatEncoding,
+                "cached index preserves every frame timestamp, offset, size and encoding");
+        const auto frame = VaporView::Ground::SessionWaveformRepository::readFrame(cached.catalog, index);
+        require(frame.success && frame.samples == QVector<float>({1.5f, 2.5f, 3.5f}),
+                "every cached frame retains all original float32 samples");
+    }
+    QFile cache(cachePath);
+    require(cache.open(QIODevice::ReadWrite) && cache.seek(80), "cache opens for corruption test");
+    require(cache.write("broken", 6) == 6, "cache corruption fixture written");
+    cache.close();
+    require(load().success && progressUpdates > 1, "corrupt cache falls back to validated source scanning");
+    writeBytes(rawPath, unifiedTcpWaveBytes(2u, 1025));
+    require(load().catalog.frameCount == 1025 && progressUpdates > 1,
+            "appended source invalidates the old cache");
+    QFile raw(rawPath);
+    require(raw.open(QIODevice::ReadWrite) && raw.seek(20 + 60 * 600), "source opens for middle corruption");
+    const quint32 badMarker = qToLittleEndian<quint32>(0x12345678u);
+    require(raw.write(reinterpret_cast<const char *>(&badMarker), sizeof(badMarker)) == sizeof(badMarker),
+            "source middle corruption fixture written");
+    require(raw.setFileTime(QDateTime::currentDateTimeUtc().addSecs(2), QFileDevice::FileModificationTime),
+            "source rewrite has a distinct modification time");
+    raw.close();
+    require(!load().success, "same-size source rewrite invalidates cache and detects corruption");
+    QByteArray truncated = unifiedTcpWaveBytes(2u, 2);
+    truncated.chop(2);
+    writeBytes(rawPath, truncated);
+    const auto recovered = load();
+    const auto recoveredCache = load();
+    require(recovered.success && recoveredCache.success && recoveredCache.catalog.frameCount == 1 &&
+                recoveredCache.warning == recovered.warning && !recoveredCache.warning.isEmpty() &&
+                !progressReachedEnd,
+            "reopening rescans truncated-tail recovery and preserves its warning");
+    require(QFile::remove(cachePath), "remove cache before suspended writes test");
+    writeBytes(rawPath, unifiedTcpWaveBytes(2u, 2));
+    const bool writesWereSuspended = VaporView::settingsWritesSuspended();
+    VaporView::setSettingsWritesSuspended(true);
+    require(load().success && !QFileInfo::exists(cachePath), "suspended writes prevent index cache creation");
+    VaporView::setSettingsWritesSuspended(writesWereSuspended);
+}
+
 }  // namespace
 
 int main(int argc, char *argv[])
@@ -717,6 +793,7 @@ int main(int argc, char *argv[])
     testIndexedWaveformCatalog();
     testUnifiedRawWaveformCatalog();
     testUnifiedRawValidationRecoveryAndLegacyFallback();
+    testWaveformIndexCache();
 
     std::cout << "session_core_test passed\n";
     return 0;

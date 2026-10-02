@@ -1159,11 +1159,14 @@ bool SessionViewerWindow::loadWaveformSegments()
     VaporView::Ground::SessionWaveformCatalogResult result =
         VaporView::Ground::SessionWaveformRepository::loadCatalog(
             metadata,
-            [this](quint64 completed, quint64 total) {
+            [this, lastUpdateMs = qint64(-200)](quint64 completed, quint64 total) mutable {
                 if (!session_loading_)
                 {
                     return;
                 }
+                const qint64 now = monotonicMilliseconds();
+                if (completed != total && now - lastUpdateMs < 200) return;
+                lastUpdateMs = now;
                 updateSessionLoadingProgress(
                     QString(is_english_
                         ? "Indexing waveform data... %1/%2"
