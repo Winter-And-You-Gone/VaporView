@@ -15,6 +15,7 @@
 #include <QDataStream>
 #include <QDir>
 #include <QEventLoop>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFrame>
 #include <QImage>
@@ -28,6 +29,7 @@
 #include <QPalette>
 #include <QPixmap>
 #include <QProgressBar>
+#include <QProgressDialog>
 #include <QPushButton>
 #include <QSettings>
 #include <QSize>
@@ -35,6 +37,7 @@
 #include <QSpinBox>
 #include <QTableView>
 #include <QTemporaryDir>
+#include <QThread>
 #include <QTimer>
 #include <QToolButton>
 #include <QTreeWidget>
@@ -618,6 +621,60 @@ void testSessionViewerShowsRecoveredWaveformCatalogWarning()
 
     viewer.close();
     processEventsFor(100);
+}
+
+void testWaveformIndexContinuesWhileGuiIsBusy()
+{
+    QTemporaryDir sessionDir;
+    require(sessionDir.isValid(), "temporary independent waveform indexing session");
+    writeTrajectorySessionWithRawTcpPeaks(sessionDir.path());
+    const QString rawPath = sessionDir.filePath(QStringLiteral("raw/tcp_wave.dat"));
+    const QString cachePath = rawPath + QStringLiteral(".vvidx");
+    constexpr int frameCount = 4096;
+    QVector<quint64> timestamps(frameCount);
+    for (int index = 0; index < frameCount; ++index)
+        timestamps[index] = 1782446035573000ULL + static_cast<quint64>(index) * 1000;
+    writeMinimalRawTcpWaveFile(rawPath, timestamps);
+
+    SessionViewerWindow viewer;
+    viewer.setEnglish(true);
+    viewer.resize(1280, 800);
+    viewer.show();
+    require(waitForWindowExposed(&viewer), "independent index viewer is exposed");
+    bool blockedGuiDuringIndex = false;
+    bool indexedWhileGuiBusy = false;
+    QTimer discoverProgress;
+    QObject::connect(&discoverProgress, &QTimer::timeout, &viewer, [&] {
+        auto* dialog = viewer.findChild<QProgressDialog *>();
+        if (!dialog) return;
+        discoverProgress.stop();
+        for (auto* bar : dialog->findChildren<QProgressBar *>())
+        {
+            QObject::connect(bar, &QProgressBar::valueChanged, &viewer, [&](int) {
+                auto* status = viewer.findChild<QLabel *>(QStringLiteral("sessionViewerStatusLabel"));
+                if (blockedGuiDuringIndex || !status ||
+                    !status->text().startsWith(QStringLiteral("Indexing waveform data..."))) return;
+                blockedGuiDuringIndex = true;
+                // Simulate a slow GUI handler without pumping events. The
+                // worker must still finish and atomically publish its index.
+                QElapsedTimer timeout;
+                timeout.start();
+                while (!QFileInfo::exists(cachePath) && timeout.elapsed() < 3000)
+                    QThread::msleep(10);
+                indexedWhileGuiBusy = QFileInfo::exists(cachePath);
+            });
+        }
+    });
+    discoverProgress.start(0);
+    const bool loaded = viewer.openSessionPath(sessionDir.path());
+    discoverProgress.stop();
+    viewer.close();
+    processEventsFor(100);
+    require(loaded, "independent index viewer loads all waveform data");
+    require(blockedGuiDuringIndex && indexedWhileGuiBusy,
+            "waveform indexing completes while the GUI cannot process events");
+    require(QFileInfo(cachePath).size() == 76 + frameCount * 24,
+            "independent indexing preserves every frame in its cache");
 }
 
 void testCsvViewportUsesNeutralBackground(SessionViewerWindow& viewer)
@@ -1511,6 +1568,7 @@ int main(int argc, char **argv)
         testRawDataParserRejectsTruncatedFdilinkFrame();
         testRawDataParserUsesHardwareTemperatureSourceNames();
         testSessionViewerShowsRecoveredWaveformCatalogWarning();
+        testWaveformIndexContinuesWhileGuiIsBusy();
         testSessionViewerTrajectoryActionLifetime();
     }
     if (runsGroup(QStringLiteral("window-state")))

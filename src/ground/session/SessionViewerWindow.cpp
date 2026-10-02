@@ -1156,25 +1156,40 @@ bool SessionViewerWindow::loadWaveformSegments()
     metadata.waveformRawFilename = waveform_raw_filename_;
     metadata.waveformPointsPerFrame = points_per_frame_;
 
-    VaporView::Ground::SessionWaveformCatalogResult result =
-        VaporView::Ground::SessionWaveformRepository::loadCatalog(
-            metadata,
-            [this, lastUpdateMs = qint64(-200)](quint64 completed, quint64 total) mutable {
-                if (!session_loading_)
+    // Keep GUI event handling out of the scan: main-window paints and timers
+    // must not delay reading the next waveform record.
+    QFutureWatcher<VaporView::Ground::SessionWaveformCatalogResult> watcher;
+    QEventLoop waiting;
+    connect(&watcher, &QFutureWatcher<VaporView::Ground::SessionWaveformCatalogResult>::finished,
+            &waiting, &QEventLoop::quit);
+    const QPointer<SessionViewerWindow> self(this);
+    watcher.setFuture(QtConcurrent::run([metadata, self] {
+        QElapsedTimer progressTimer;
+        progressTimer.start();
+        qint64 lastUpdateMs = -200;
+        return VaporView::Ground::SessionWaveformRepository::loadCatalog(metadata,
+            [self, &progressTimer, &lastUpdateMs](quint64 completed, quint64 total) {
+                if (!self)
                 {
                     return;
                 }
-                const qint64 now = monotonicMilliseconds();
+                const qint64 now = progressTimer.elapsed();
                 if (completed != total && now - lastUpdateMs < 200) return;
                 lastUpdateMs = now;
-                updateSessionLoadingProgress(
-                    QString(is_english_
-                        ? "Indexing waveform data... %1/%2"
-                        : "正在索引波形数据... %1/%2")
-                        .arg(completed)
-                        .arg(total),
-                    rangedProgressPercent(completed, total, 36, 45));
+                QMetaObject::invokeMethod(self, [self, completed, total] {
+                    if (!self || !self->session_loading_) return;
+                    self->updateSessionLoadingProgress(
+                        QString(self->is_english_
+                            ? "Indexing waveform data... %1/%2"
+                            : "正在索引波形数据... %1/%2")
+                            .arg(completed)
+                            .arg(total),
+                        rangedProgressPercent(completed, total, 36, 45));
+                }, Qt::QueuedConnection);
             });
+    }));
+    waiting.exec(QEventLoop::ExcludeUserInputEvents);
+    VaporView::Ground::SessionWaveformCatalogResult result = watcher.result();
     if (!result.success)
     {
         setStatusText(result.error);
