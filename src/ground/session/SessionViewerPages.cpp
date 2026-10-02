@@ -28,6 +28,7 @@
 #include <QProgressDialog>
 #include <QPushButton>
 #include <QResizeEvent>
+#include <QScrollBar>
 #include <QSignalBlocker>
 #include <QSlider>
 #include <QSpinBox>
@@ -50,6 +51,29 @@ namespace
 {
 
 constexpr int kMinimumVisibleCsvRows = 5;
+
+class SessionCsvTableView final : public QTableView
+{
+public:
+    using QTableView::QTableView;
+
+protected:
+    void updateGeometries() override
+    {
+        const int scrollPosition = verticalScrollBar()->value();
+        QTableView::updateGeometries();
+        if (!model() || model()->rowCount() < 2)
+        {
+            return;
+        }
+        // Keep enough range to place the final highlighted pair at the top,
+        // even when the viewport has more rows than the pair itself.
+        verticalScrollBar()->setMaximum(
+            std::max(verticalScrollBar()->maximum(),
+                     verticalHeader()->sectionPosition(model()->rowCount() - 2)));
+        verticalScrollBar()->setValue(scrollPosition);
+    }
+};
 
 QString fixedTextField(const QString& text, int width, Qt::Alignment alignment = Qt::AlignRight)
 {
@@ -722,7 +746,7 @@ void SessionWaveformWidget::clear()
 SessionDeviceDataWidget::SessionDeviceDataWidget(QWidget *parent)
     : QGroupBox(parent)
     , csv_info_label_(new QLabel(this))
-    , csv_table_(new QTableView(this))
+    , csv_table_(new SessionCsvTableView(this))
     , csv_model_(createSessionCsvTableModel(this))
 {
     setObjectName(QStringLiteral("sensorGroupBox"));
@@ -739,6 +763,7 @@ SessionDeviceDataWidget::SessionDeviceDataWidget(QWidget *parent)
     csv_table_->setSelectionMode(QAbstractItemView::SingleSelection);
     csv_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     csv_table_->setWordWrap(false);
+    csv_table_->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     auto *csvHeader = csv_table_->horizontalHeader();
     csvHeader->setSectionsMovable(true);
     csvHeader->setSectionResizeMode(QHeaderView::Interactive);
@@ -874,8 +899,8 @@ SessionCsvHighlightResult SessionDeviceDataWidget::highlightTimestamp(
     if (scrollToRow && result.primaryRow >= 0)
     {
         csv_table_->scrollTo(
-            csv_model_->index(result.primaryRow, 0),
-            QAbstractItemView::PositionAtCenter);
+            csv_model_->index(rows.first(), 0),
+            QAbstractItemView::PositionAtTop);
     }
     csv_table_->viewport()->update();
     result.description = descriptions.join(QStringLiteral(" | "));

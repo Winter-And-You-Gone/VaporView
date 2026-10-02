@@ -977,7 +977,7 @@ bool SessionViewerWindow::loadSessionDirectory(QString sessionDirectory)
     if (total_waveform_frames_ > 0)
     {
         waveform_page_->setFrameValueSilently(1);
-        loadWaveformFrame(0, false);
+        loadWaveformFrame(0);
     }
     else
     {

@@ -677,6 +677,37 @@ void testWaveformIndexContinuesWhileGuiIsBusy()
             "independent indexing preserves every frame in its cache");
 }
 
+void testCsvHighlightsStartAtTopWhenLoadingAndChangingFrames()
+{
+    QTemporaryDir sessionDir;
+    require(sessionDir.isValid(), "temporary CSV follow session directory");
+    writeTrajectorySessionWithRawTcpPeaks(sessionDir.path());
+    writeMinimalRawTcpWaveFile(sessionDir.filePath(QStringLiteral("raw/tcp_wave.dat")),
+                              {1782446036573400ULL, 1782446038573500ULL});
+
+    SessionViewerWindow viewer;
+    viewer.setEnglish(true);
+    viewer.resize(1280, 1000);
+    viewer.show();
+    require(waitForWindowExposed(&viewer), "CSV follow viewer is exposed");
+    require(viewer.openSessionPath(sessionDir.path()), "CSV follow viewer loads waveform and CSV data");
+    processEventsFor(100);
+
+    auto *table = viewer.findChild<QTableView *>(QStringLiteral("sessionViewerCsvTable"));
+    require(table && table->rowAt(0) == 1,
+            "initial waveform load puts its matching CSV pair in the first two visible rows");
+    require(!table->model()->index(1, 1).data().toString().isEmpty() &&
+                !table->model()->index(2, 1).data().toString().isEmpty(),
+            "initial waveform load highlights both CSV matches");
+    require(QMetaObject::invokeMethod(&viewer, "onFrameSpinChanged", Q_ARG(int, 2)),
+            "CSV follow viewer changes waveform frames");
+    processEventsFor(100);
+    require(table->rowAt(0) == 2 && !table->model()->index(3, 1).data().toString().isEmpty(),
+            "changing to the last waveform frame keeps both CSV matches at the top");
+    viewer.close();
+    processEventsFor(100);
+}
+
 void testCsvViewportUsesNeutralBackground(SessionViewerWindow& viewer)
 {
     auto *table = viewer.findChild<QTableView *>(QStringLiteral("sessionViewerCsvTable"));
@@ -1569,6 +1600,7 @@ int main(int argc, char **argv)
         testRawDataParserUsesHardwareTemperatureSourceNames();
         testSessionViewerShowsRecoveredWaveformCatalogWarning();
         testWaveformIndexContinuesWhileGuiIsBusy();
+        testCsvHighlightsStartAtTopWhenLoadingAndChangingFrames();
         testSessionViewerTrajectoryActionLifetime();
     }
     if (runsGroup(QStringLiteral("window-state")))

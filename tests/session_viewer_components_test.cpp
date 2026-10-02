@@ -10,6 +10,7 @@
 #include <QProgressDialog>
 #include <QPushButton>
 #include <QScrollBar>
+#include <QSettings>
 #include <QSplitter>
 #include <QTableView>
 #include <QTemporaryDir>
@@ -141,19 +142,55 @@ void testPages()
     require(highlight.description.contains(QStringLiteral("CSV row")),
             "device data page reports highlighted row timing");
 
-    const SessionCsvHighlightResult distantHighlight =
-        deviceData.highlightTimestamp(timestamps, 90'400, true);
+    const auto requireTopHighlightedPair = [&](quint64 timestamp, int firstRow, int primaryRow) {
+        const auto result = deviceData.highlightTimestamp(timestamps, timestamp, true);
+        QCoreApplication::processEvents();
+        require(result.primaryRow == primaryRow, "CSV following preserves the closest timestamp match");
+        const QModelIndex firstIndex = table->model()->index(firstRow, 0);
+        const QModelIndex secondIndex = table->model()->index(firstRow + 1, 0);
+        const QRect firstRect = table->visualRect(firstIndex);
+        const QRect secondRect = table->visualRect(secondIndex);
+        require(table->rowAt(0) == firstRow && firstRect.top() == 0 &&
+                    secondRect.top() == table->rowHeight(firstRow) &&
+                    table->viewport()->rect().contains(secondRect),
+                "the highlighted CSV pair occupies the first two fully visible rows");
+        const int unhighlightedRow = firstRow == 0 ? 2 : 0;
+        const QVariant normalBackground = table->model()->index(unhighlightedRow, 0).data(Qt::BackgroundRole);
+        require(firstIndex.data(Qt::BackgroundRole) != normalBackground &&
+                    secondIndex.data(Qt::BackgroundRole) != normalBackground,
+                "both CSV rows at the top retain their highlight backgrounds");
+    };
+    requireTopHighlightedPair(90'400, 89, 89);
+    requireTopHighlightedPair(90'700, 89, 90);
+    requireTopHighlightedPair(10'000, 8, 9);
+    requireTopHighlightedPair(500, 0, 0);
+    requireTopHighlightedPair(1'100'500, 1098, 1099);
+    table->verticalScrollBar()->setValue(table->verticalScrollBar()->maximum());
     QCoreApplication::processEvents();
-    const QModelIndex distantIndex = table->model()->index(distantHighlight.primaryRow, 0);
-    const QRect distantRect = table->visualRect(distantIndex);
-    require(table->verticalScrollBar()->value() > 0 &&
-                table->viewport()->rect().intersects(distantRect),
-            "device data page scrolls the primary CSV match into view");
+    require(table->rowAt(0) == 1098, "scrolling to the CSV end keeps the final pair at the top");
+    deviceData.resize(960, deviceData.height() + 240);
+    QCoreApplication::processEvents();
+    require(table->rowAt(0) == 1098, "resizing the CSV viewport preserves the matched pair at the top");
+    requireTopHighlightedPair(1'099'700, 1098, 1099);
     const int followedScrollValue = table->verticalScrollBar()->value();
     deviceData.highlightTimestamp(timestamps, 10'000, false);
     QCoreApplication::processEvents();
     require(table->verticalScrollBar()->value() == followedScrollValue,
             "device data page preserves CSV scroll position when following is disabled");
+
+    deviceData.setRows({QStringLiteral("timestamp_us")}, {{QStringLiteral("1000")}, {QStringLiteral("2000")}});
+    deviceData.highlightTimestamp({1000, 2000}, 1700, true);
+    QCoreApplication::processEvents();
+    require(table->rowAt(0) == 0 && table->verticalScrollBar()->maximum() == 0,
+            "a two-row CSV shows both matches without empty leading rows");
+    deviceData.setRows({QStringLiteral("timestamp_us")}, {{QStringLiteral("1000")}});
+    require(deviceData.highlightTimestamp({1000}, 1700, true).primaryRow == 0,
+            "single-row CSV highlighting remains valid");
+    deviceData.clear();
+    QCoreApplication::processEvents();
+    require(table->verticalScrollBar()->maximum() == 0 &&
+                deviceData.highlightTimestamp({}, 1700, true).primaryRow == -1,
+            "clearing the CSV removes the extended scroll range and highlights");
 
     SessionViewerWindow viewer;
     auto *splitter = viewer.findChild<QSplitter *>(QStringLiteral("sessionViewerContentSplitter"));
@@ -210,6 +247,11 @@ void testMapCoordinator()
 
 int main(int argc, char **argv)
 {
+    QTemporaryDir settingsDir;
+    require(settingsDir.isValid(), "temporary settings directory is available");
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
+    QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, settingsDir.path());
     QApplication app(argc, argv);
     testPages();
     testMapCoordinator();
