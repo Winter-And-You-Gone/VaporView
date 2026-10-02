@@ -3436,9 +3436,9 @@ void TrajectoryViewerDialog::updateThemeStyles()
         "QDialog#trajectoryViewerDialog QSpinBox#trajectoryPeakSearchStartSpin, QDialog#trajectoryViewerDialog QSpinBox#trajectoryPeakSearchEndSpin, QDialog#trajectoryViewerDialog QComboBox#trajectoryPeakFilterModeCombo, QDialog#trajectoryViewerDialog QLineEdit#trajectoryPeakFilterMinEdit, QDialog#trajectoryViewerDialog QLineEdit#trajectoryPeakFilterMaxEdit { background-color: @vv-field-bg; border: 1px solid @vv-border; border-radius: 6px; color: @vv-text; font-size: 12px; font-weight: 600; min-height: 26px; padding: 2px 6px; }"
         "QDialog#trajectoryViewerDialog QSpinBox#trajectoryPeakSearchStartSpin:hover, QDialog#trajectoryViewerDialog QSpinBox#trajectoryPeakSearchEndSpin:hover, QDialog#trajectoryViewerDialog QComboBox#trajectoryPeakFilterModeCombo:hover, QDialog#trajectoryViewerDialog QLineEdit#trajectoryPeakFilterMinEdit:hover, QDialog#trajectoryViewerDialog QLineEdit#trajectoryPeakFilterMaxEdit:hover { border-color: @vv-border-strong; }"
         "QDialog#trajectoryViewerDialog QSpinBox#trajectoryPeakSearchStartSpin:focus, QDialog#trajectoryViewerDialog QSpinBox#trajectoryPeakSearchEndSpin:focus, QDialog#trajectoryViewerDialog QComboBox#trajectoryPeakFilterModeCombo:focus, QDialog#trajectoryViewerDialog QLineEdit#trajectoryPeakFilterMinEdit:focus, QDialog#trajectoryViewerDialog QLineEdit#trajectoryPeakFilterMaxEdit:focus { border-color: @vv-primary; }"
-        "QDialog#trajectoryViewerDialog QPushButton#trajectoryPeakApplyButton { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 6px; color: @vv-text; font-size: 13px; font-weight: 700; min-height: 30px; max-height: 30px; padding: 4px 10px; }"
-        "QDialog#trajectoryViewerDialog QPushButton#trajectoryPeakApplyButton:hover { background-color: @vv-primary-subtle; border-color: @vv-border-strong; color: @vv-primary; }"
-        "QDialog#trajectoryViewerDialog QPushButton#trajectoryPeakApplyButton:pressed { background-color: @vv-primary-subtle-pressed; color: @vv-primary; }"
+        "QDialog#trajectoryViewerDialog QPushButton#trajectoryPeakApplyButton { background-color: @vv-primary; border: 1px solid @vv-primary; border-radius: 6px; color: @vv-white; font-size: 13px; font-weight: 700; min-height: 30px; max-height: 30px; padding: 4px 10px; }"
+        "QDialog#trajectoryViewerDialog QPushButton#trajectoryPeakApplyButton:hover { background-color: @vv-primary-hover; border-color: @vv-primary-hover; }"
+        "QDialog#trajectoryViewerDialog QPushButton#trajectoryPeakApplyButton:pressed { background-color: @vv-primary-pressed; border-color: @vv-primary-pressed; }"
         "QDialog#trajectoryViewerDialog QFrame#trajectoryFilterCard { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 8px; }"
         "QDialog#trajectoryViewerDialog QLabel#trajectoryFilterTitle { color: @vv-text-strong; background-color: transparent; border: none; font-size: 14px; font-weight: 700; }"
         "QDialog#trajectoryViewerDialog QLabel#trajectoryFilterEmptyLabel { color: @vv-text-muted; background-color: transparent; border: none; font-size: 12px; font-weight: 500; line-height: 140%; }"
@@ -3461,10 +3461,10 @@ void TrajectoryViewerDialog::updateThemeStyles()
         "QDialog#trajectoryViewerDialog QPushButton#trajectoryVisibilityToggle:disabled { color: @vv-text-muted; }"
         "QDialog#trajectoryViewerDialog QFrame#trajectoryViewerMapPanel { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; }"
         "QDialog#trajectoryViewerDialog QWidget#trajectoryViewerMap { background-color: @vv-surface; border: none; border-radius: 8px; }"
-        "QDialog#trajectoryViewerDialog QPushButton#trajectorySidebarActionButton { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 600; min-height: 32px; max-height: 32px; padding: 4px 10px; }"
-        "QDialog#trajectoryViewerDialog QPushButton#trajectorySidebarActionButton:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
-        "QDialog#trajectoryViewerDialog QPushButton#trajectorySidebarActionButton:pressed { background-color: @vv-primary-subtle-pressed; color: @vv-primary; }"
-        "QDialog#trajectoryViewerDialog QPushButton#trajectorySidebarActionButton:disabled { background-color: @vv-surface-alt; color: @vv-text-muted; }"
+        "QDialog#trajectoryViewerDialog QPushButton#trajectorySidebarActionButton { background-color: @vv-primary; border: 1px solid @vv-primary; border-radius: 6px; color: @vv-white; font-size: 14px; font-weight: 600; min-height: 32px; max-height: 32px; padding: 4px 10px; }"
+        "QDialog#trajectoryViewerDialog QPushButton#trajectorySidebarActionButton:hover { background-color: @vv-primary-hover; border-color: @vv-primary-hover; }"
+        "QDialog#trajectoryViewerDialog QPushButton#trajectorySidebarActionButton:pressed { background-color: @vv-primary-pressed; border-color: @vv-primary-pressed; }"
+        "QDialog#trajectoryViewerDialog QPushButton#trajectorySidebarActionButton:disabled { background-color: @vv-primary-subtle; border-color: @vv-primary-subtle; color: @vv-text-muted; }"
         "QDialog#trajectoryViewerDialog QSlider::groove:horizontal { background-color: @vv-field-bg; border: 1px solid @vv-border; height: 6px; border-radius: 3px; }"
         "QDialog#trajectoryViewerDialog QSlider::handle:horizontal { background-color: @vv-primary; border: 1px solid @vv-primary; width: 14px; margin: -5px 0px; border-radius: 7px; }"
         "QDialog#trajectoryViewerDialog QComboBox#trajectoryMapSourceCombo { background-color: @vv-field-bg; border: 1px solid @vv-border; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 600; min-height: 32px; padding: 4px 28px 4px 10px; }"
@@ -3476,9 +3476,9 @@ void TrajectoryViewerDialog::updateThemeStyles()
         "QDialog#trajectoryViewerDialog QToolButton#titleBarButton { background-color: transparent; border: none; border-radius: 6px; padding: 0px; margin: 0px; }"
         "QDialog#trajectoryViewerDialog QToolButton#titleBarButton:hover, QDialog#trajectoryViewerDialog QToolButton#titleBarButton:focus { background-color: @vv-title-hover; border: none; }"
         "QDialog#trajectoryViewerDialog QToolButton#titleBarButton::menu-indicator { image: none; width: 0px; height: 0px; }"
-        "QDialog#trajectoryViewerDialog QWidget#trajectoryViewerSidebarContent QToolButton#titleBarButton { background-color: @vv-surface-alt; border: 1px solid @vv-border; }"
-        "QDialog#trajectoryViewerDialog QWidget#trajectoryViewerSidebarContent QToolButton#titleBarButton:hover, QDialog#trajectoryViewerDialog QWidget#trajectoryViewerSidebarContent QToolButton#titleBarButton:focus { background-color: @vv-primary-subtle; border-color: @vv-border-strong; }"
-        "QDialog#trajectoryViewerDialog QWidget#trajectoryViewerSidebarContent QToolButton#titleBarButton:pressed { background-color: @vv-primary-subtle-pressed; }"),
+        "QDialog#trajectoryViewerDialog QWidget#trajectoryViewerSidebarContent QToolButton#titleBarButton { background-color: @vv-primary; border: 1px solid @vv-primary; color: @vv-white; }"
+        "QDialog#trajectoryViewerDialog QWidget#trajectoryViewerSidebarContent QToolButton#titleBarButton:hover, QDialog#trajectoryViewerDialog QWidget#trajectoryViewerSidebarContent QToolButton#titleBarButton:focus { background-color: @vv-primary-hover; border-color: @vv-primary-hover; }"
+        "QDialog#trajectoryViewerDialog QWidget#trajectoryViewerSidebarContent QToolButton#titleBarButton:pressed { background-color: @vv-primary-pressed; border-color: @vv-primary-pressed; }"),
         isDarkPalette());
     if (styleSheet() != themedStyleSheet)
     {
@@ -4142,19 +4142,19 @@ void TrajectoryViewerDialog::updateTitleBarIcons()
     }
     if (tianditu_key_button_)
     {
-        tianditu_key_button_->setIcon(createTitleBarIcon(QStringLiteral("key"), dark));
+        tianditu_key_button_->setIcon(createLucideIcon(QStringLiteral("key"), appThemeColor(AppThemeColor::White, dark)));
     }
     if (zoom_in_button_)
     {
-        zoom_in_button_->setIcon(createTitleBarIcon(QStringLiteral("zoom-in"), dark));
+        zoom_in_button_->setIcon(createLucideIcon(QStringLiteral("zoom-in"), appThemeColor(AppThemeColor::White, dark)));
     }
     if (zoom_out_button_)
     {
-        zoom_out_button_->setIcon(createTitleBarIcon(QStringLiteral("zoom-out"), dark));
+        zoom_out_button_->setIcon(createLucideIcon(QStringLiteral("zoom-out"), appThemeColor(AppThemeColor::White, dark)));
     }
     if (reset_view_button_)
     {
-        reset_view_button_->setIcon(createTitleBarIcon(QStringLiteral("maximize"), dark));
+        reset_view_button_->setIcon(createLucideIcon(QStringLiteral("maximize"), appThemeColor(AppThemeColor::White, dark)));
     }
     if (point_detail_close_button_)
     {
