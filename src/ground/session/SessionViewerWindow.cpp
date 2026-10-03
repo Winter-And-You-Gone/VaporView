@@ -773,16 +773,16 @@ void SessionViewerWindow::onViewTrajectoryClicked()
     if (!trajectory_controller_.hasTrack())
     {
         QMessageBox::information(this,
-            is_english_ ? QStringLiteral("RTK Trajectory") : QStringLiteral("RTK轨迹"),
-            is_english_ ? QStringLiteral("No valid RTK latitude/longitude samples were found in the current session.")
-                        : QStringLiteral("当前会话中没有找到有效的 RTK 经纬度轨迹点。"));
+            is_english_ ? QStringLiteral("Positioning Trajectory") : QStringLiteral("定位轨迹"),
+            is_english_ ? QStringLiteral("No valid position latitude/longitude samples were found in the current session.")
+                        : QStringLiteral("当前会话中没有找到有效的定位经纬度轨迹点。"));
         return;
     }
 
     if (!ensureTrajectoryPeakValuesReady())
     {
         QMessageBox::warning(this,
-            is_english_ ? QStringLiteral("RTK Trajectory") : QStringLiteral("RTK轨迹"),
+            is_english_ ? QStringLiteral("Positioning Trajectory") : QStringLiteral("定位轨迹"),
             is_english_ ? QStringLiteral("Failed to prepare waveform peak values for the trajectory viewer.")
                         : QStringLiteral("无法为轨迹查看器准备波形峰值。"));
         return;

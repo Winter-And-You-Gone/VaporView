@@ -1561,6 +1561,87 @@ void testTrajectoryViewerUsesSidebarLayout()
     processEventsFor(100);
 }
 
+void testTrajectoryViewerPointNavigationProvenance()
+{
+    TrajectoryViewerDialog dialog;
+    dialog.resize(1080, 680);
+    dialog.show();
+    processEventsFor(100);
+    auto *details = dialog.findChild<QLabel *>(QStringLiteral("trajectoryPointDetailLabel"));
+    require(details != nullptr, "trajectory point details exist for navigation provenance");
+
+    RtkTrackPoint point;
+    point.latitude = 30.23094;
+    point.longitude = 120.13970;
+    point.timestamp_us = 1'000'000;
+    point.csv_row = 0;
+    struct Example
+    {
+        QString source;
+        QString fix;
+        QString chineseSource;
+        QString englishSource;
+        QString chineseStatus;
+        QString englishStatus;
+    };
+    const QVector<Example> examples = {
+        {QStringLiteral("EPSILON_REALTIME"), QStringLiteral("3D"),
+         QStringLiteral("原始接收机记录"), QStringLiteral("Original receiver record"),
+         QStringLiteral("单点定位"), QStringLiteral("Single")},
+        {QStringLiteral("EPSILON_REALTIME"), QStringLiteral("RTK_FIXED"),
+         QStringLiteral("原始记录 · 实时 RTK"), QStringLiteral("Original · real-time RTK"),
+         QStringLiteral("固定解（FIX）"), QStringLiteral("Fixed (FIX)")},
+        {QStringLiteral("PPK"), QStringLiteral("RTK_FIXED"),
+         QStringLiteral("PPK 后处理"), QStringLiteral("PPK post-processing"),
+         QStringLiteral("固定解（FIX）"), QStringLiteral("Fixed (FIX)")},
+        {QStringLiteral("PPK"), QStringLiteral("RTK_FLOAT"),
+         QStringLiteral("PPK 后处理"), QStringLiteral("PPK post-processing"),
+         QStringLiteral("浮点解（FLOAT）"), QStringLiteral("Float (FLOAT)")},
+        {QStringLiteral("EPSILON_REALTIME"), QStringLiteral("RTK_FLOAT"),
+         QStringLiteral("原始记录 · 实时 RTK"), QStringLiteral("Original · real-time RTK"),
+         QStringLiteral("浮点解（FLOAT）"), QStringLiteral("Float (FLOAT)")},
+        {QStringLiteral("EPSILON_REALTIME"), QString(),
+         QStringLiteral("原始接收机记录"), QStringLiteral("Original receiver record"),
+         QStringLiteral("未知"), QStringLiteral("Unknown")},
+        {QStringLiteral("OTHER"), QStringLiteral("<CUSTOM>"),
+         QStringLiteral("未知（OTHER）"), QStringLiteral("Unknown (OTHER)"),
+         QStringLiteral("未知（&lt;CUSTOM&gt;）"), QStringLiteral("Unknown (&lt;CUSTOM&gt;)")}
+    };
+    const bool originalDark = qApp->property(VaporView::kAppDarkThemeProperty).toBool();
+    const QPalette originalPalette = qApp->palette();
+    for (bool dark : {false, true})
+    {
+        qApp->setProperty(VaporView::kAppDarkThemeProperty, dark);
+        qApp->setPalette(VaporView::appThemePalette(dark));
+        for (bool english : {false, true})
+        {
+            dialog.setEnglish(english);
+            require(dialog.windowTitle() == (english ? QStringLiteral("Positioning Trajectory Viewer") : QStringLiteral("定位轨迹查看")),
+                    "trajectory title covers raw GNSS, RTK and PPK in both languages");
+            for (const auto &example : examples)
+            {
+                point.navigation_source = example.source;
+                point.gnss_fix = example.fix;
+                dialog.setTrackPoints({point});
+                const QString text = details->text();
+                require(text.contains(english ? QStringLiteral("Trajectory source") : QStringLiteral("轨迹来源")) &&
+                            text.contains(english ? example.englishSource : example.chineseSource),
+                        "point details show actual coordinate provenance after changing tracks");
+                require(text.contains(english ? QStringLiteral("Solution status") : QStringLiteral("解状态")) &&
+                            text.contains(english ? example.englishStatus : example.chineseStatus),
+                        "solution status stays separate from real-time or post-processed provenance");
+                if (example.source == QStringLiteral("PPK"))
+                    require(!text.contains(QStringLiteral("实时 RTK")) && !text.contains(QStringLiteral("real-time RTK")),
+                            "PPK FIX/FLOAT must not be labelled real-time RTK");
+            }
+        }
+    }
+    qApp->setProperty(VaporView::kAppDarkThemeProperty, originalDark);
+    qApp->setPalette(originalPalette);
+    dialog.close();
+    processEventsFor(50);
+}
+
 void testTrajectoryViewerBridgesFilteredRouteRanges()
 {
     TrajectoryViewerDialog dialog;
@@ -1733,6 +1814,7 @@ int main(int argc, char **argv)
     {
         testTrajectoryViewerInitialHeatLegendFromPendingPeaks();
         testTrajectoryViewerUsesSidebarLayout();
+        testTrajectoryViewerPointNavigationProvenance();
         testTrajectoryViewerBridgesFilteredRouteRanges();
         testTrajectoryViewerRouteLodLimitsDenseTracks();
     }

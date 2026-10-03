@@ -87,6 +87,12 @@ files beside imported Base OBS are archived automatically; navigation already
 readable within Base input is also passed to RTKLIB. No ephemerides are fabricated
 from `0x77`.
 
+The Positioning Trajectory viewer shows **Trajectory source** and **Solution
+status** for the selected point. Original receiver records distinguish real-time
+RTK from other GNSS solutions; PPK FIX/FLOAT points are labelled post-processing.
+These fields follow the selected navigation source, so completing PPK does not
+relabel a trajectory that is still using Original coordinates.
+
 The PPK window shows Rover/Base/NAV availability, readiness, processing progress,
 failures, FIX/FLOAT counts and percentages, UTC start/end, sample count, RMS of
 the reported N/E/U standard deviations and solution path. It supports running,

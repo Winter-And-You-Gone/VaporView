@@ -78,7 +78,7 @@ bool SessionMapCoordinator::showTrajectory(
 
     ensureDialog(owner);
     dialog_->setEnglish(is_english_);
-    dialog_->setTrackLabel(QStringLiteral("RTK trajectory"), QStringLiteral("RTK轨迹"));
+    dialog_->setTrackLabel(QStringLiteral("Positioning Trajectory"), QStringLiteral("定位轨迹"));
     dialog_->setPeakSettings(
         peak_search_start_index_,
         peak_search_end_index_,

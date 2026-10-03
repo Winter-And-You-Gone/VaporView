@@ -383,6 +383,11 @@ void testMapCoordinator()
     require(coordinator.isCreated() && coordinator.isVisible(), "map coordinator shows its managed dialog");
     const auto dialogs = owner.findChildren<TrajectoryViewerDialog *>();
     require(dialogs.size() == 1, "map coordinator creates only one dialog");
+    require(dialogs.first()->windowTitle() == QStringLiteral("定位轨迹查看"),
+            "managed trajectory title does not claim all recorded points are RTK");
+    coordinator.setEnglish(true);
+    require(dialogs.first()->windowTitle() == QStringLiteral("Positioning Trajectory Viewer"),
+            "managed trajectory title follows the English language setting");
     require(coordinator.showTrajectory(&owner, points, stats), "map coordinator supports repeated open");
     require(owner.findChildren<TrajectoryViewerDialog *>().size() == 1,
             "repeated map open reuses the existing dialog");

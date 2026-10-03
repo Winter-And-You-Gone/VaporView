@@ -2,6 +2,7 @@
 #include "ground/session/SessionPpkWindow.h"
 #include "ground/session/SessionViewerWindow.h"
 #include "ground/session/SessionViewerPages.h"
+#include "ground/trajectory/TrajectoryViewerDialog.h"
 #include "shared/theme/AppTheme.h"
 #include "shared/config/SettingsWriteBarrier.h"
 #include "ground/main/GroundMainWindowSupport.h"
@@ -12,6 +13,7 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -83,7 +85,12 @@ void writeFile(const QString &path, const QByteArray &bytes)
 void makeSession(const QTemporaryDir &session)
 {
     writeFile(session.filePath("session.json"), R"({"session_name":"PPK UI test","paths":{"devices_csv":"sensors/devices.csv"}})");
-    writeFile(session.filePath("sensors/devices.csv"), "record_timestamp_us,temperature_c\n1000000,23.5\n");
+    // Stay inside the solved interval; RTKLIB clock correction shifts endpoints.
+    const quint64 hostUs = quint64(QDateTime::fromString("2005-04-02T00:04:47Z", Qt::ISODate).toSecsSinceEpoch()) *
+        1000000 + 10000000;
+    writeFile(session.filePath("sensors/devices.csv"),
+              "record_timestamp_us,temperature_c,epsilon_valid,gnss_fix,nav_lat_deg,nav_lon_deg,nav_height_m\n" +
+                  QByteArray::number(hostUs) + ",23.5,true,3D,35.1,139.1,15\n");
 }
 
 QPushButton *button(QWidget &widget, const QString &text)
@@ -233,10 +240,21 @@ int main(int argc, char **argv)
                 "UI stays responsive during real RTKLIB processing");
         require(model->item(1)->isEnabled(), "completed PPK enables track selection");
         require(summary->text().contains("Completed") && summary->text().contains("FIX"), "completed overview displays FIX percentage");
+        require(QMetaObject::invokeMethod(&viewer, "onViewTrajectoryClicked", Qt::DirectConnection),
+                "open positioning trajectory after PPK completes with Original still selected");
+        auto *trajectory = viewer.findChild<TrajectoryViewerDialog *>();
+        auto *pointDetails = trajectory ? trajectory->findChild<QLabel *>("trajectoryPointDetailLabel") : nullptr;
+        require(pointDetails && pointDetails->text().contains("Original receiver record") &&
+                    pointDetails->text().contains("Single"),
+                "completed PPK does not relabel coordinates while Original is selected");
         source->setCurrentIndex(1);
         require(sessionNavigationSource(session.path()) == NavigationSource::Ppk, "UI activates PPK");
         require(VaporViewTest::processEventsUntil(5000, [&] { return navigation->text() == "PPK corrected"; }),
                 "PPK source updates main summary via navigation events");
+        require(VaporViewTest::processEventsUntil(5000, [&] { return pointDetails->text().contains("PPK post-processing"); }),
+                "open trajectory point details follow the actual PPK coordinate reload");
+        require(pointDetails->text().contains("Solution status") && !pointDetails->text().contains("real-time RTK"),
+                "real solver FIX/FLOAT is separate from the PPK provenance");
         require(panel.findChild<QLabel *>("sessionPpkQuality")->text().contains("FIX"), "UI exposes FIX FLOAT quality");
         window->close();
         require(sessionNavigationSource(session.path()) == NavigationSource::Ppk, "closing PPK window preserves source");
@@ -246,6 +264,9 @@ int main(int argc, char **argv)
         require(setSessionNavigationSource(session.path(), NavigationSource::Original), "external navigation source update");
         require(VaporViewTest::processEventsUntil(5000, [&] { return source->currentIndex() == 0 && navigation->text() == "Original"; }),
                 "external source updates both windows");
+        require(VaporViewTest::processEventsUntil(5000, [&] { return pointDetails->text().contains("Original receiver record"); }),
+                "returning to Original updates the existing trajectory details");
+        trajectory->close();
         QFile style(QStringLiteral(VAPORVIEW_SOURCE_DIR "/resources/modern_style.qss"));
         require(style.open(QIODevice::ReadOnly), "load actual runtime stylesheet");
         auto styleText = QString::fromUtf8(style.readAll());

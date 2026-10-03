@@ -706,8 +706,8 @@ public:
         , visible_tile_request_scheduled_(false)
         , feedback_update_scheduled_(false)
         , repaint_update_requested_(false)
-        , english_track_label_(QStringLiteral("RTK trajectory"))
-        , chinese_track_label_(QStringLiteral("RTK轨迹"))
+        , english_track_label_(QStringLiteral("Positioning Trajectory"))
+        , chinese_track_label_(QStringLiteral("定位轨迹"))
         , footer_status_text_()
         , footer_loaded_tiles_(0)
         , footer_failed_tiles_(0)
@@ -2853,8 +2853,8 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     , reset_view_button_(new QToolButton(this))
     , is_english_(false)
     , updating_theme_styles_(false)
-    , english_track_label_(QStringLiteral("RTK trajectory"))
-    , chinese_track_label_(QStringLiteral("RTK轨迹"))
+    , english_track_label_(QStringLiteral("Positioning Trajectory"))
+    , chinese_track_label_(QStringLiteral("定位轨迹"))
     , track_points_()
     , trajectory_filters_()
     , track_stats_()
@@ -3927,6 +3927,44 @@ void TrajectoryViewerDialog::updateSelectedPointDetails()
     }
 
     const RtkTrackPoint& point = track_points_.at(selected_track_index_);
+    const QString source = point.navigation_source.trimmed().toUpper();
+    const QString fix = point.gnss_fix.trimmed().toUpper();
+    const bool fixed = fix == QStringLiteral("RTK_FIXED") || fix == QStringLiteral("RTK_DUAL") ||
+        fix == QStringLiteral("FIXED") || fix == QStringLiteral("FIX");
+    const bool floating = fix == QStringLiteral("RTK_FLOAT") || fix == QStringLiteral("FLOAT");
+    QString sourceText;
+    if (source == QStringLiteral("PPK"))
+        sourceText = is_english_ ? QStringLiteral("PPK post-processing") : QStringLiteral("PPK 后处理");
+    else if (source == QStringLiteral("EPSILON_REALTIME") || source == QStringLiteral("ORIGINAL"))
+        sourceText = fixed || floating
+            ? (is_english_ ? QStringLiteral("Original · real-time RTK") : QStringLiteral("原始记录 · 实时 RTK"))
+            : (is_english_ ? QStringLiteral("Original receiver record") : QStringLiteral("原始接收机记录"));
+    else
+        sourceText = source.isEmpty()
+            ? (is_english_ ? QStringLiteral("Unknown") : QStringLiteral("未知"))
+            : (is_english_ ? QStringLiteral("Unknown (%1)") : QStringLiteral("未知（%1）")).arg(point.navigation_source);
+
+    QString fixText;
+    if (fixed)
+        fixText = is_english_ ? QStringLiteral("Fixed (FIX)") : QStringLiteral("固定解（FIX）");
+    else if (floating)
+        fixText = is_english_ ? QStringLiteral("Float (FLOAT)") : QStringLiteral("浮点解（FLOAT）");
+    else if (fix == QStringLiteral("SINGLE") || fix == QStringLiteral("3D") ||
+             fix == QStringLiteral("2D") || fix == QStringLiteral("GPS"))
+        fixText = is_english_ ? QStringLiteral("Single") : QStringLiteral("单点定位");
+    else if (fix == QStringLiteral("DGPS") || fix == QStringLiteral("DGNSS"))
+        fixText = is_english_ ? QStringLiteral("Differential (DGPS)") : QStringLiteral("差分定位（DGPS）");
+    else if (fix == QStringLiteral("PPP"))
+        fixText = is_english_ ? QStringLiteral("Precise point (PPP)") : QStringLiteral("精密单点定位（PPP）");
+    else if (fix == QStringLiteral("STATIC"))
+        fixText = is_english_ ? QStringLiteral("Static") : QStringLiteral("静态定位");
+    else if (fix == QStringLiteral("INVALID") || fix == QStringLiteral("NONE") ||
+             fix == QStringLiteral("NO_FIX") || fix == QStringLiteral("NO_GPS"))
+        fixText = is_english_ ? QStringLiteral("Invalid") : QStringLiteral("无有效解");
+    else
+        fixText = fix.isEmpty()
+            ? (is_english_ ? QStringLiteral("Unknown") : QStringLiteral("未知"))
+            : (is_english_ ? QStringLiteral("Unknown (%1)") : QStringLiteral("未知（%1）")).arg(point.gnss_fix);
     const QString heightText = point.has_height ? QStringLiteral("%1 m").arg(QString::number(point.height_m, 'f', 3)) : QStringLiteral("--");
     const QString speedText = point.has_speed ? formatSpeed(point.speed_mps) : QStringLiteral("--");
     const QString peakText = point.has_peak_value ? formatPeakValue(point.peak_value) : QStringLiteral("--");
@@ -3940,6 +3978,8 @@ void TrajectoryViewerDialog::updateSelectedPointDetails()
         ? QStringLiteral("Selected #%1 / %2").arg(selected_track_index_ + 1).arg(track_points_.size())
         : QStringLiteral("当前 #%1 / %2").arg(selected_track_index_ + 1).arg(track_points_.size());
     const QVector<QPair<QString, QString>> rows = {
+        {is_english_ ? QStringLiteral("Trajectory source") : QStringLiteral("轨迹来源"), sourceText},
+        {is_english_ ? QStringLiteral("Solution status") : QStringLiteral("解状态"), fixText},
         {is_english_ ? QStringLiteral("CSV row") : QStringLiteral("CSV 行"), QString::number(point.csv_row >= 0 ? point.csv_row + 1 : 0)},
         {is_english_ ? QStringLiteral("Time") : QStringLiteral("时间"), formatTimestampUs(point.timestamp_us)},
         {is_english_ ? QStringLiteral("Latitude") : QStringLiteral("纬度"), QString::number(point.latitude, 'f', 8)},
