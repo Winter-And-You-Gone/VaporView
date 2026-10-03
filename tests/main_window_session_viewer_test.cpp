@@ -199,71 +199,100 @@ void testFrameSliderThemeAndHover(MainWindow& window, SessionViewerWindow& viewe
             if (VaporView::isDarkThemeEnabled() != dark)
                 require(QMetaObject::invokeMethod(&window, "onToggleTheme", Qt::DirectConnection),
                         "frame slider uses the actual application theme switch");
-            VaporViewTest::processEventsFor(100);
-            scrollArea->ensureWidgetVisible(slider, 0, 0);
-            VaporViewTest::processEventsFor(100);
-            QHoverEvent leave(QEvent::HoverLeave, QPointF(-1, -1), QPointF(-1, -1));
-            QCoreApplication::sendEvent(slider, &leave);
-            QEvent outside(QEvent::Leave);
-            QCoreApplication::sendEvent(slider, &outside);
-            const QColor accent = VaporView::appThemeColor(VaporView::AppThemeColor::Primary, dark);
-            const auto capture = [&]() {
-                VaporViewTest::processEventsFor(40);
-                QImage image = slider->grab().toImage();
-                QRect bounds;
-                int pixels = 0;
-                for (int y = 0; y < image.height(); ++y)
-                    for (int x = 0; x < image.width(); ++x)
-                        if (image.pixelColor(x, y).rgb() == accent.rgb())
-                        {
-                            ++pixels;
-                            bounds |= QRect(x, y, 1, 1);
-                        }
-                return qMakePair(bounds, pixels);
-            };
-            const auto normal = capture();
-            QStyleOptionSlider option;
-            option.initFrom(slider);
-            option.orientation = Qt::Horizontal;
-            option.minimum = slider->minimum();
-            option.maximum = slider->maximum();
-            option.sliderPosition = slider->sliderPosition();
-            option.sliderValue = slider->value();
-            const QPoint center = slider->style()->subControlRect(QStyle::CC_Slider, &option,
-                                                                 QStyle::SC_SliderHandle, slider).center();
-            const QPoint outsideHandle(1, 1);
-            QEnterEvent enter(outsideHandle, outsideHandle, slider->mapToGlobal(outsideHandle));
-            QCoreApplication::sendEvent(slider, &enter);
-            VaporViewTest::processEventsFor(100);
-            observer.painted = QRegion();
-            QHoverEvent hover(QEvent::HoverMove, center, outsideHandle);
-            QCoreApplication::sendEvent(slider, &hover);
-            VaporViewTest::processEventsFor(100);
-            // Record the actual incremental paint before grab() forces a full
-            // render and hides clipping outside the native handle's dirty area.
-            const QRegion hoverPaint = observer.painted;
-            const auto hovered = capture();
-            require(QRegion(logicalBounds(normal.first).united(logicalBounds(hovered.first)))
-                        .subtracted(hoverPaint).isEmpty(),
-                    "hover repaints both the old and enlarged circular handle without clipping");
-            observer.painted = QRegion();
-            QHoverEvent leaveHandle(QEvent::HoverMove, QPointF(1, 1), center);
-            QCoreApplication::sendEvent(slider, &leaveHandle);
-            VaporViewTest::processEventsFor(100);
-            require(QRegion(logicalBounds(hovered.first)).subtracted(observer.painted).isEmpty(),
-                    "leaving the handle repaints the enlarged circle without residual edges");
-            QCoreApplication::sendEvent(slider, &hover);
-            QMouseEvent press(QEvent::MouseButtonPress, center, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
-            QCoreApplication::sendEvent(slider, &press);
-            const auto pressed = capture();
-            QMouseEvent release(QEvent::MouseButtonRelease, center, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
-            QCoreApplication::sendEvent(slider, &release);
-            require(normal.second > 50 && hovered.second > normal.second * 1.3 && pressed.second >= hovered.second,
-                    "frame slider retains its theme accent and grows on hover and press in the real application");
-            for (const auto& rendered : {normal, hovered, pressed})
-                require(std::abs(rendered.first.width() - rendered.first.height()) <= 2 &&
-                            rendered.second < rendered.first.width() * rendered.first.height() * 0.85,
-                        "frame slider handle remains circular in every mouse state and font scale");
+            for (int frame : {1, 74143, 144783})
+            {
+                waveform->setFrameValueSilently(frame);
+                VaporViewTest::processEventsFor(100);
+                scrollArea->ensureWidgetVisible(slider, 0, 0);
+                VaporViewTest::processEventsFor(100);
+                QHoverEvent leave(QEvent::HoverLeave, QPointF(-1, -1), QPointF(-1, -1));
+                QCoreApplication::sendEvent(slider, &leave);
+                QEvent outside(QEvent::Leave);
+                QCoreApplication::sendEvent(slider, &outside);
+                const QColor accent = VaporView::appThemeColor(VaporView::AppThemeColor::Primary, dark);
+                const QColor track = VaporView::appThemeColor(VaporView::AppThemeColor::BorderStrong, dark);
+                QRect trackBounds;
+                const auto capture = [&]() {
+                    VaporViewTest::processEventsFor(40);
+                    QImage image = slider->grab().toImage();
+                    QRect bounds;
+                    trackBounds = QRect();
+                    int pixels = 0;
+                    for (int y = 0; y < image.height(); ++y)
+                        for (int x = 0; x < image.width(); ++x)
+                            if (image.pixelColor(x, y).rgb() == accent.rgb())
+                            {
+                                ++pixels;
+                                bounds |= QRect(x, y, 1, 1);
+                            }
+                            else if (image.pixelColor(x, y).rgb() == track.rgb())
+                                trackBounds |= QRect(x, y, 1, 1);
+                    return qMakePair(bounds, pixels);
+                };
+                const auto normal = capture();
+                QStyleOptionSlider option;
+                option.initFrom(slider);
+                option.orientation = Qt::Horizontal;
+                option.minimum = slider->minimum();
+                option.maximum = slider->maximum();
+                option.sliderPosition = slider->sliderPosition();
+                option.sliderValue = slider->value();
+                const QPoint center = slider->style()->subControlRect(QStyle::CC_Slider, &option,
+                                                                     QStyle::SC_SliderHandle, slider).center();
+                const QPoint outsideHandle(1, 1);
+                QEnterEvent enter(outsideHandle, outsideHandle, slider->mapToGlobal(outsideHandle));
+                QCoreApplication::sendEvent(slider, &enter);
+                VaporViewTest::processEventsFor(100);
+                observer.painted = QRegion();
+                QHoverEvent hover(QEvent::HoverMove, center, outsideHandle);
+                QCoreApplication::sendEvent(slider, &hover);
+                VaporViewTest::processEventsFor(100);
+                // Record the actual incremental paint before grab() forces a full
+                // render and hides clipping outside the native handle's dirty area.
+                const QRegion hoverPaint = observer.painted;
+                const auto hovered = capture();
+                require(std::abs(normal.first.center().x() - hovered.first.center().x()) <= 1,
+                        "hover enlarges the frame handle around its original center at every frame");
+                require(QRegion(logicalBounds(normal.first).united(logicalBounds(hovered.first)))
+                            .subtracted(hoverPaint).isEmpty(),
+                        "hover repaints both the old and enlarged circular handle without clipping");
+                observer.painted = QRegion();
+                QHoverEvent leaveHandle(QEvent::HoverMove, QPointF(1, 1), center);
+                QCoreApplication::sendEvent(slider, &leaveHandle);
+                VaporViewTest::processEventsFor(100);
+                require(QRegion(logicalBounds(hovered.first)).subtracted(observer.painted).isEmpty(),
+                        "leaving the handle repaints the enlarged circle without residual edges");
+                QCoreApplication::sendEvent(slider, &hover);
+                QMouseEvent press(QEvent::MouseButtonPress, center, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+                QCoreApplication::sendEvent(slider, &press);
+                const auto pressed = capture();
+                require(std::abs(normal.first.center().x() - pressed.first.center().x()) <= 1,
+                        "pressing the frame handle preserves its center at both endpoints and in between");
+                if (frame == 1)
+                {
+                    waveform->setFrameValueSilently(74143);
+                    capture();
+                    waveform->setFrameValueSilently(frame);
+                    require(std::abs(normal.first.center().x() - trackBounds.left()) <= trackBounds.height() / 2 + 2,
+                            "the first frame is centered at the visible track's left endpoint");
+                }
+                if (frame == 144783)
+                {
+                    waveform->setFrameValueSilently(74143);
+                    capture();
+                    waveform->setFrameValueSilently(frame);
+                    require(std::abs(normal.first.center().x() - trackBounds.right()) <= trackBounds.height() / 2 + 2,
+                            "the last frame is centered at the visible track's right endpoint");
+                }
+                QMouseEvent release(QEvent::MouseButtonRelease, center, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+                QCoreApplication::sendEvent(slider, &release);
+                require(normal.second > 50 && hovered.second > normal.second * 1.3 && pressed.second >= hovered.second,
+                        "frame slider retains its theme accent and grows on hover and press in the real application");
+                for (const auto& rendered : {normal, hovered, pressed})
+                    require(std::abs(rendered.first.width() - rendered.first.height()) <= 2 &&
+                                rendered.second < rendered.first.width() * rendered.first.height() * 0.85,
+                            "frame slider handle remains circular in every mouse state and font scale");
+            }
         }
     }
     QAction scaleAction(&window);

@@ -1385,17 +1385,11 @@ QSlider#sessionViewerFrameSlider {
 QSlider#sessionViewerFrameSlider::groove:horizontal {
     border: none;
     height: 4px;
-    margin: 0px 10px;
+    margin: 0px;
 }
 
 QSlider#sessionViewerFrameSlider::handle:horizontal {
     border: none;
-    width: 14px;
-    margin: -5px 0px;
-}
-
-QSlider#sessionViewerFrameSlider::handle:horizontal:hover,
-QSlider#sessionViewerFrameSlider::handle:horizontal:pressed {
     width: 20px;
     margin: -8px 0px;
 }

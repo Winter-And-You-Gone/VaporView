@@ -81,15 +81,27 @@ protected:
                                                      QStyle::SC_SliderGroove, this);
         const QRect handle = style()->subControlRect(QStyle::CC_Slider, &option,
                                                      QStyle::SC_SliderHandle, this);
+        QStyleOptionSlider endpoint = option;
+        endpoint.sliderPosition = option.minimum;
+        const qreal start = QRectF(style()->subControlRect(QStyle::CC_Slider, &endpoint,
+                                                          QStyle::SC_SliderHandle, this)).center().x();
+        endpoint.sliderPosition = option.maximum;
+        const qreal end = QRectF(style()->subControlRect(QStyle::CC_Slider, &endpoint,
+                                                        QStyle::SC_SliderHandle, this)).center().x();
+        QRectF track(groove);
+        track.setLeft(std::min(start, end));
+        track.setRight(std::max(start, end));
         const bool dark = VaporView::isDarkThemeEnabled();
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing);
         painter.setPen(Qt::NoPen);
         painter.setBrush(appThemeColor(AppThemeColor::BorderStrong, dark));
-        painter.drawRoundedRect(QRectF(groove), groove.height() / 2.0, groove.height() / 2.0);
-        // Draw a circle from the actual scaled geometry: independent QSS pixel
-        // rounding can otherwise make the radius exceed half the handle size.
-        const qreal diameter = std::min(handle.width(), handle.height());
+        painter.drawRoundedRect(track, track.height() / 2.0, track.height() / 2.0);
+        // Keep Qt's positioning and hit area fixed; only the painted circle grows.
+        const bool active = isSliderDown() ||
+            ((option.state & QStyle::State_MouseOver) &&
+             (option.activeSubControls & QStyle::SC_SliderHandle));
+        const qreal diameter = std::min(handle.width(), handle.height()) * (active ? 1.0 : 0.7);
         const QPointF center = QRectF(handle).center();
         painter.setBrush(appThemeColor(AppThemeColor::Primary, dark));
         painter.drawEllipse(QRectF(center.x() - diameter / 2.0, center.y() - diameter / 2.0,
