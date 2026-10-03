@@ -437,6 +437,7 @@ SessionWaveformWidget::SessionWaveformWidget(QWidget *parent)
     frame_title_->setObjectName(QStringLiteral("fieldLabel"));
     frameLayout->addWidget(frame_title_, 0, 0);
     frame_slider_ = new QSlider(Qt::Horizontal, this);
+    frame_slider_->setObjectName(QStringLiteral("sessionViewerFrameSlider"));
     frame_slider_->setEnabled(false);
     frame_slider_->setTracking(false);
     frameLayout->addWidget(frame_slider_, 0, 1);
