@@ -12,6 +12,7 @@
 #include <QScrollBar>
 #include <QSettings>
 #include <QSplitter>
+#include <QSpinBox>
 #include <QTableView>
 #include <QTemporaryDir>
 
@@ -98,6 +99,21 @@ void testPages()
     waveform.setEnvironmentSeries({20.0, 21.0}, {50.0, 51.0}, {1000.0, 1001.0});
     waveform.setEnvironmentCurrentIndex(1, true);
     waveform.setEnvironmentRange(0, 2);
+
+    waveform.configureFrames(144783);
+    waveform.setFramePreviewInfo(74142, 144783, false);
+    auto *frameNumber = waveform.findChild<QSpinBox *>(QStringLiteral("sessionViewerFrameNumberSpin"));
+    auto *frameInfo = waveform.findChild<QLabel *>(QStringLiteral("sessionViewerFrameInfoLabel"));
+    require(frameNumber && frameInfo && frameNumber->value() == 74143 &&
+                !frameInfo->text().contains(QStringLiteral("74143")) &&
+                !frameInfo->text().contains(QStringLiteral("144783")),
+            "waveform preview uses one editable frame counter without duplicating its numbers in the message");
+    waveform.setFrameDetails(74143, 144783, 1782446038573000ULL, QStringLiteral("per_frame"), 1,
+                            0.1, 0.9, 0.9, QStringLiteral("tcp_wave.dat"), QStringLiteral("CSV match"), false);
+    require(frameNumber->value() == 74144 && frameInfo->text().contains(QStringLiteral("min=")) &&
+                !frameInfo->text().contains(QStringLiteral("74144")) &&
+                !frameInfo->text().contains(QStringLiteral("144783")),
+            "waveform details keep the editable counter and remove the repeated frame numbers");
 
     SessionDeviceDataWidget deviceData;
     deviceData.setEnglish(true);

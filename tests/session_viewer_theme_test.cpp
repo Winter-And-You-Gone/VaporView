@@ -725,10 +725,7 @@ void testFrameSliderReleaseRestoresDetails()
     auto *slider = viewer.findChild<QSlider *>();
     auto *spin = viewer.findChild<QSpinBox *>();
     auto *table = viewer.findChild<QTableView *>(QStringLiteral("sessionViewerCsvTable"));
-    QLabel *frameInfo = nullptr;
-    for (auto *label : viewer.findChildren<QLabel *>())
-        if (label->text().startsWith(QStringLiteral("Frame ")) && label->text().contains(QStringLiteral("min=")))
-            frameInfo = label;
+    auto *frameInfo = viewer.findChild<QLabel *>(QStringLiteral("sessionViewerFrameInfoLabel"));
     require(slider && spin && table && frameInfo, "slider release controls and details are available");
 
     const auto requireCommittedFrame = [&](int frame) {
@@ -748,7 +745,7 @@ void testFrameSliderReleaseRestoresDetails()
 
     slider->setSliderDown(true);
     slider->setSliderPosition(3);
-    require(frameInfo->text().startsWith(QStringLiteral("Previewing frame 3")),
+    require(frameInfo->text().contains(QStringLiteral("Previewing")) && spin->value() == 3,
             "dragging previews the selected waveform before release");
     slider->setSliderDown(false);
     requireCommittedFrame(3);
@@ -756,7 +753,7 @@ void testFrameSliderReleaseRestoresDetails()
     slider->setSliderDown(true);
     slider->setSliderPosition(4);
     slider->setSliderPosition(3);
-    require(frameInfo->text().startsWith(QStringLiteral("Previewing frame 3")),
+    require(frameInfo->text().contains(QStringLiteral("Previewing")) && spin->value() == 3,
             "dragging back to the committed frame still shows its preview while held");
     slider->setSliderDown(false);
     requireCommittedFrame(3);
@@ -778,7 +775,7 @@ void testFrameSliderReleaseRestoresDetails()
     QCoreApplication::sendEvent(slider, &sliderPress);
     QMouseEvent sliderMove(QEvent::MouseMove, dragEnd, Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
     QCoreApplication::sendEvent(slider, &sliderMove);
-    require(slider->isSliderDown() && frameInfo->text().startsWith(QStringLiteral("Previewing frame 4")),
+    require(slider->isSliderDown() && frameInfo->text().contains(QStringLiteral("Previewing")) && spin->value() == 4,
             "mouse drag previews its waveform while held");
     QMouseEvent sliderRelease(QEvent::MouseButtonRelease, dragEnd, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
     QCoreApplication::sendEvent(slider, &sliderRelease);

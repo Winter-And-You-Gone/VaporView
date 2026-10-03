@@ -439,20 +439,28 @@ SessionWaveformWidget::SessionWaveformWidget(QWidget *parent)
     frame_slider_ = new QSlider(Qt::Horizontal, this);
     frame_slider_->setEnabled(false);
     frame_slider_->setTracking(false);
-    frameLayout->addWidget(frame_slider_, 0, 1, 1, 3);
+    frameLayout->addWidget(frame_slider_, 0, 1);
+    auto *frameInfoLayout = new QHBoxLayout();
+    frameInfoLayout->setSpacing(8);
+    frame_number_prefix_ = new QLabel(this);
+    frameInfoLayout->addWidget(frame_number_prefix_, 0, Qt::AlignVCenter);
     frame_spin_ = new QSpinBox(this);
+    frame_spin_->setObjectName(QStringLiteral("sessionViewerFrameNumberSpin"));
     frame_spin_->setRange(0, 0);
     frame_spin_->setEnabled(false);
-    frameLayout->addWidget(frame_spin_, 1, 2);
+    frameInfoLayout->addWidget(frame_spin_, 0, Qt::AlignVCenter);
     frame_total_label_ = new QLabel(QStringLiteral("---"), this);
     frame_total_label_->setFont(numericFontFrom(frame_total_label_->font()));
-    frame_total_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     frame_total_label_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
-    frameLayout->addWidget(frame_total_label_, 1, 3);
+    frameInfoLayout->addWidget(frame_total_label_, 0, Qt::AlignVCenter);
+    frame_number_suffix_ = new QLabel(this);
+    frameInfoLayout->addWidget(frame_number_suffix_, 0, Qt::AlignVCenter);
     frame_info_label_ = new QLabel(this);
+    frame_info_label_->setObjectName(QStringLiteral("sessionViewerFrameInfoLabel"));
     frame_info_label_->setFont(numericFontFrom(frame_info_label_->font()));
     frame_info_label_->setWordWrap(true);
-    frameLayout->addWidget(frame_info_label_, 1, 0, 1, 2);
+    frameInfoLayout->addWidget(frame_info_label_, 1);
+    frameLayout->addLayout(frameInfoLayout, 1, 0, 1, 2);
     layout->addLayout(frameLayout);
 
     waveform_plot_title_ = new QLabel(this);
@@ -539,6 +547,9 @@ void SessionWaveformWidget::setEnglish(bool english)
 {
     setTitle(english ? QStringLiteral("Normalized Second Harmonic") : QStringLiteral("归一化二次谐波"));
     frame_title_->setText(english ? QStringLiteral("Frame:") : QStringLiteral("帧:"));
+    frame_number_prefix_->setText(english ? QStringLiteral("Frame") : QStringLiteral("第"));
+    frame_number_suffix_->setText(QStringLiteral("帧"));
+    frame_number_suffix_->setVisible(!english);
     waveform_plot_title_->setText(english ? QStringLiteral("Current Frame Waveform") : QStringLiteral("当前帧波形"));
     waveform_peak_plot_title_->setText(english ? QStringLiteral("Peak Value of Each Frame") : QStringLiteral("每帧峰值"));
     waveform_peak_plot_->setEnglish(english);
@@ -619,17 +630,21 @@ void SessionWaveformWidget::setFrameInfoText(const QString& text)
     frame_info_label_->setText(text);
 }
 
+void SessionWaveformWidget::updateFrameCounter(quint64 frameIndex, quint64 totalFrames)
+{
+    setFrameValueSilently(static_cast<int>(frameIndex + 1));
+    frame_total_label_->setText(QStringLiteral("/ %1").arg(totalFrames));
+}
+
 void SessionWaveformWidget::setFramePreviewInfo(
     quint64 frameIndex,
     quint64 totalFrames,
     bool english)
 {
-    const int digits = std::max(1, static_cast<int>(QString::number(totalFrames).size()));
+    updateFrameCounter(frameIndex, totalFrames);
     setFrameInfoText(QString(english
-        ? "Previewing frame %1 / %2. Release the slider to sync CSV and details."
-        : "正在预览第 %1 / %2 帧。松开滑块后同步 CSV 和详细信息。")
-        .arg(fixedIntegerField(frameIndex + 1, digits))
-        .arg(fixedIntegerField(totalFrames, digits)));
+        ? "| Previewing. Release the slider to sync CSV and details."
+        : "| 正在预览。松开滑块后同步 CSV 和详细信息。"));
 }
 
 void SessionWaveformWidget::setFrameDetails(
@@ -651,12 +666,10 @@ void SessionWaveformWidget::setFrameDetails(
     const QString peakText = std::isfinite(peak)
         ? fixedSignedDecimalField(peak, 6, 14)
         : fixedTextField(english ? QStringLiteral("No valid value") : QStringLiteral("无有效值"), 14, Qt::AlignLeft);
-    const int digits = std::max(1, static_cast<int>(QString::number(totalFrames).size()));
+    updateFrameCounter(frameIndex, totalFrames);
     setFrameInfoText(QString(english
-        ? "Frame %1 / %2 | %3 | %4 | min=%5 max=%6 peak=%7 | %8"
-        : "第 %1 / %2 帧 | %3 | %4 | min=%5 max=%6 峰值=%7 | %8")
-        .arg(fixedIntegerField(frameIndex + 1, digits))
-        .arg(fixedIntegerField(totalFrames, digits))
+        ? "| %1 | %2 | min=%3 max=%4 peak=%5 | %6"
+        : "| %1 | %2 | min=%3 max=%4 峰值=%5 | %6")
         .arg(formatTimestampUs(timestampUs))
         .arg(exportText)
         .arg(fixedSignedDecimalField(minimum, 6, 14))

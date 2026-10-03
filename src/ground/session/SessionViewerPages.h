@@ -174,10 +174,14 @@ signals:
     void visibleRangeChanged(int startIndex, int visibleCount);
 
 private:
+    void updateFrameCounter(quint64 frameIndex, quint64 totalFrames);
+
     QLabel *frame_title_;
     QSlider *frame_slider_;
+    QLabel *frame_number_prefix_;
     QSpinBox *frame_spin_;
     QLabel *frame_total_label_;
+    QLabel *frame_number_suffix_;
     QLabel *frame_info_label_;
     QLabel *waveform_plot_title_;
     SessionWavePlotWidget *waveform_plot_;
