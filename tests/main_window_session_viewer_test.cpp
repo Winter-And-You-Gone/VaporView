@@ -18,8 +18,11 @@
 #include <QLineEdit>
 #include <QMetaObject>
 #include <QMouseEvent>
+#include <QPaintEvent>
 #include <QPushButton>
 #include <QSettings>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QSlider>
 #include <QStyleOptionSlider>
 #include <QTemporaryDir>
@@ -161,8 +164,30 @@ void testFrameSliderThemeAndHover(MainWindow& window, SessionViewerWindow& viewe
     require(waveform && slider, "main-window viewer exposes its frame slider");
     const QSize originalSize = window.size();
     const bool originalDark = VaporView::isDarkThemeEnabled();
+    auto *scrollArea = viewer.findChild<QScrollArea *>(QStringLiteral("sessionViewerScrollArea"));
+    require(scrollArea, "viewer scroll area exposes the frame slider for incremental paint checks");
+    const int originalScroll = scrollArea->verticalScrollBar()->value();
+    class PaintObserver final : public QObject
+    {
+    public:
+        QRegion painted;
+        bool eventFilter(QObject *, QEvent *event) override
+        {
+            if (event->type() == QEvent::Paint)
+                painted |= static_cast<QPaintEvent *>(event)->region();
+            return false;
+        }
+    } observer;
+    slider->installEventFilter(&observer);
+    viewer.raise();
+    viewer.activateWindow();
     waveform->configureFrames(144783);
     waveform->setFrameValueSilently(74143);
+    const auto logicalBounds = [slider](const QRect& pixels) {
+        const qreal ratio = slider->devicePixelRatioF();
+        return QRectF(pixels.x() / ratio, pixels.y() / ratio,
+                      pixels.width() / ratio, pixels.height() / ratio).toAlignedRect();
+    };
     for (int scale : {100, 130, 160})
     {
         QAction scaleAction(&window);
@@ -174,6 +199,8 @@ void testFrameSliderThemeAndHover(MainWindow& window, SessionViewerWindow& viewe
             if (VaporView::isDarkThemeEnabled() != dark)
                 require(QMetaObject::invokeMethod(&window, "onToggleTheme", Qt::DirectConnection),
                         "frame slider uses the actual application theme switch");
+            VaporViewTest::processEventsFor(100);
+            scrollArea->ensureWidgetVisible(slider, 0, 0);
             VaporViewTest::processEventsFor(100);
             QHoverEvent leave(QEvent::HoverLeave, QPointF(-1, -1), QPointF(-1, -1));
             QCoreApplication::sendEvent(slider, &leave);
@@ -204,11 +231,28 @@ void testFrameSliderThemeAndHover(MainWindow& window, SessionViewerWindow& viewe
             option.sliderValue = slider->value();
             const QPoint center = slider->style()->subControlRect(QStyle::CC_Slider, &option,
                                                                  QStyle::SC_SliderHandle, slider).center();
-            QEnterEvent enter(center, center, slider->mapToGlobal(center));
+            const QPoint outsideHandle(1, 1);
+            QEnterEvent enter(outsideHandle, outsideHandle, slider->mapToGlobal(outsideHandle));
             QCoreApplication::sendEvent(slider, &enter);
-            QHoverEvent hover(QEvent::HoverMove, center, QPointF(-1, -1));
+            VaporViewTest::processEventsFor(100);
+            observer.painted = QRegion();
+            QHoverEvent hover(QEvent::HoverMove, center, outsideHandle);
             QCoreApplication::sendEvent(slider, &hover);
+            VaporViewTest::processEventsFor(100);
+            // Record the actual incremental paint before grab() forces a full
+            // render and hides clipping outside the native handle's dirty area.
+            const QRegion hoverPaint = observer.painted;
             const auto hovered = capture();
+            require(QRegion(logicalBounds(normal.first).united(logicalBounds(hovered.first)))
+                        .subtracted(hoverPaint).isEmpty(),
+                    "hover repaints both the old and enlarged circular handle without clipping");
+            observer.painted = QRegion();
+            QHoverEvent leaveHandle(QEvent::HoverMove, QPointF(1, 1), center);
+            QCoreApplication::sendEvent(slider, &leaveHandle);
+            VaporViewTest::processEventsFor(100);
+            require(QRegion(logicalBounds(hovered.first)).subtracted(observer.painted).isEmpty(),
+                    "leaving the handle repaints the enlarged circle without residual edges");
+            QCoreApplication::sendEvent(slider, &hover);
             QMouseEvent press(QEvent::MouseButtonPress, center, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
             QCoreApplication::sendEvent(slider, &press);
             const auto pressed = capture();
@@ -229,6 +273,8 @@ void testFrameSliderThemeAndHover(MainWindow& window, SessionViewerWindow& viewe
         QMetaObject::invokeMethod(&window, "onToggleTheme", Qt::DirectConnection);
     window.resize(originalSize);
     waveform->configureFrames(0);
+    scrollArea->verticalScrollBar()->setValue(originalScroll);
+    slider->removeEventFilter(&observer);
 }
 
 void testMainWindowDataViewerOpenCanReopen()

@@ -60,6 +60,19 @@ public:
     using QSlider::QSlider;
 
 protected:
+    bool event(QEvent *event) override
+    {
+        const bool handled = QSlider::event(event);
+        if (event->type() == QEvent::HoverEnter || event->type() == QEvent::HoverMove ||
+            event->type() == QEvent::HoverLeave)
+        {
+            // The base slider only updates the old handle rectangle on hover.
+            // Our enlarged circle also needs the newly exposed edges painted.
+            update();
+        }
+        return handled;
+    }
+
     void paintEvent(QPaintEvent *) override
     {
         QStyleOptionSlider option;
