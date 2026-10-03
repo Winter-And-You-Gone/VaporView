@@ -103,9 +103,11 @@ public:
         const int diameter = std::max(16, metrics.height());
         const int thickness = std::max(2, diameter / 5);
         const QMargins margins = sessionPlotHorizontalMargins(this);
+        // Groove margins are included in Qt's mouse range but excluded from
+        // handle placement. Position the groove itself so both ranges agree.
         const QString geometry = QStringLiteral(
             "QSlider#sessionViewerFrameSlider { min-height: %1px; max-height: %1px; }"
-            "QSlider#sessionViewerFrameSlider::groove:horizontal { border: none; height: %2px; margin: 0px %3px 0px %4px; }"
+            "QSlider#sessionViewerFrameSlider::groove:horizontal { border: none; height: %2px; position: absolute; right: %3px; left: %4px; margin: 0px; }"
             "QSlider#sessionViewerFrameSlider::handle:horizontal { border: none; width: %5px; margin: -%6px 0px; }")
             .arg(diameter + 2 * (metrics.height() + 4)).arg(thickness)
             .arg(margins.right() - diameter / 2).arg(margins.left() - diameter / 2)

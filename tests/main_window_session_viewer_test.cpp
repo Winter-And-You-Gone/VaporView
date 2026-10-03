@@ -327,8 +327,55 @@ void testFrameSliderThemeAndHover(MainWindow& window, SessionViewerWindow& viewe
                                 std::abs(plotX + qRound(right / ratio) - trackRight) <= 3,
                             "navigator track aligns with the rendered plot area of every waveform and trend chart");
                 }
-                QMouseEvent release(QEvent::MouseButtonRelease, center, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+                QPoint releasePoint = center;
+                if (frame == 74143)
+                {
+                    option.sliderPosition = slider->minimum();
+                    const int left = slider->style()->subControlRect(QStyle::CC_Slider, &option,
+                                                                     QStyle::SC_SliderHandle, slider).center().x();
+                    option.sliderPosition = slider->maximum();
+                    const int right = slider->style()->subControlRect(QStyle::CC_Slider, &option,
+                                                                      QStyle::SC_SliderHandle, slider).center().x();
+                    for (qreal fraction : {0.5, 0.25, 0.0, 0.1, 0.4, 0.75, 1.0, 0.9, 0.5})
+                    {
+                        releasePoint = QPoint(qRound(left + fraction * (right - left)), center.y());
+                        QMouseEvent move(QEvent::MouseMove, releasePoint, Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+                        QCoreApplication::sendEvent(slider, &move);
+                        const QRect dragged = logicalBounds(capture().first);
+                        if (std::abs(dragged.center().x() - releasePoint.x()) > 1)
+                            std::cerr << "drag cursor x=" << releasePoint.x()
+                                      << ", painted handle x=" << dragged.center().x()
+                                      << ", frame=" << slider->sliderPosition() << '\n';
+                        require(slider->isSliderDown() && std::abs(dragged.center().x() - releasePoint.x()) <= 1,
+                                "dragged frame handle follows the cursor across the aligned track in both directions");
+                        require(indexLabel->text() == QString::number(slider->sliderPosition()),
+                                "dragged frame index follows the cursor position");
+                    }
+                }
+                QMouseEvent release(QEvent::MouseButtonRelease, releasePoint, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
                 QCoreApplication::sendEvent(slider, &release);
+                if (frame == 74143)
+                {
+                    option.sliderPosition = slider->sliderPosition();
+                    const QRect handle = slider->style()->subControlRect(QStyle::CC_Slider, &option,
+                                                                         QStyle::SC_SliderHandle, slider);
+                    const int offset = handle.width() / 4;
+                    const QPoint anchor = handle.center() + QPoint(offset, 0);
+                    QMouseEvent offsetPress(QEvent::MouseButtonPress, anchor, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+                    QCoreApplication::sendEvent(slider, &offsetPress);
+                    for (int delta : {-120, 90, -60, 0})
+                    {
+                        releasePoint = anchor + QPoint(delta, 0);
+                        QMouseEvent move(QEvent::MouseMove, releasePoint, Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+                        QCoreApplication::sendEvent(slider, &move);
+                        const QRect dragged = logicalBounds(capture().first);
+                        require(slider->isSliderDown() && std::abs(dragged.center().x() + offset - releasePoint.x()) <= 1,
+                                "pressing off-center preserves the cursor's grab offset throughout dragging");
+                    }
+                    QMouseEvent offsetRelease(QEvent::MouseButtonRelease, releasePoint, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+                    QCoreApplication::sendEvent(slider, &offsetRelease);
+                    require(!slider->isSliderDown(), "releasing the dragged handle ends the preview gesture");
+                }
                 require(normal.second > 50 && hovered.second > normal.second * 1.3 && pressed.second >= hovered.second,
                         "frame slider retains its theme accent and grows on hover and press in the real application");
                 for (const auto& rendered : {normal, hovered, pressed})
