@@ -515,6 +515,11 @@ SessionWaveformWidget::SessionWaveformWidget(QWidget *parent)
 
     connect(frame_slider_, &QSlider::sliderMoved, this, &SessionWaveformWidget::frameSliderMoved);
     connect(frame_slider_, &QSlider::valueChanged, this, &SessionWaveformWidget::frameSliderChanged);
+    connect(frame_slider_, &QSlider::sliderReleased, this, [this] {
+        // Preview updates already set the value with signals blocked, so
+        // valueChanged may not be emitted when the slider is released.
+        emit frameSliderChanged(frame_slider_->sliderPosition());
+    });
     connect(frame_spin_, &QSpinBox::valueChanged, this, &SessionWaveformWidget::frameSpinChanged);
     connect(waveform_frame_filter_btn_, &QPushButton::clicked, this, &SessionWaveformWidget::frameFilterRequested);
     connect(waveform_peak_filter_btn_, &QPushButton::clicked, this, &SessionWaveformWidget::peakFilterRequested);

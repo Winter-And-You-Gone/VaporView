@@ -1453,7 +1453,15 @@ void SessionViewerWindow::onFrameSliderChanged(int value)
     updating_frame_controls_ = false;
     if (value > 0)
     {
-        playback_controller_->seek(value - 1);
+        if (playback_controller_->currentFrame() == value - 1)
+        {
+            // A drag back to the committed frame still leaves preview text.
+            loadWaveformFrame(static_cast<quint64>(value - 1));
+        }
+        else
+        {
+            playback_controller_->seek(value - 1);
+        }
     }
 }
 

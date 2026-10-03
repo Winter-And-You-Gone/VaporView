@@ -19,6 +19,7 @@
 #include <QFile>
 #include <QFrame>
 #include <QImage>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QLayout>
 #include <QLineEdit>
@@ -35,6 +36,7 @@
 #include <QSize>
 #include <QSlider>
 #include <QSpinBox>
+#include <QStyleOptionSlider>
 #include <QTableView>
 #include <QTemporaryDir>
 #include <QThread>
@@ -704,6 +706,88 @@ void testCsvHighlightsStartAtTopWhenLoadingAndChangingFrames()
     processEventsFor(100);
     require(table->rowAt(0) == 2 && !table->model()->index(3, 1).data().toString().isEmpty(),
             "changing to the last waveform frame keeps both CSV matches at the top");
+    viewer.close();
+    processEventsFor(100);
+}
+
+void testFrameSliderReleaseRestoresDetails()
+{
+    QTemporaryDir sessionDir;
+    require(sessionDir.isValid(), "temporary slider release session directory");
+    writeTrajectorySessionWithRawTcpPeaks(sessionDir.path());
+
+    SessionViewerWindow viewer;
+    viewer.setEnglish(true);
+    viewer.resize(1280, 1000);
+    viewer.show();
+    require(waitForWindowExposed(&viewer), "slider release viewer is exposed");
+    require(viewer.openSessionPath(sessionDir.path()), "slider release viewer loads waveform data");
+    auto *slider = viewer.findChild<QSlider *>();
+    auto *spin = viewer.findChild<QSpinBox *>();
+    auto *table = viewer.findChild<QTableView *>(QStringLiteral("sessionViewerCsvTable"));
+    QLabel *frameInfo = nullptr;
+    for (auto *label : viewer.findChildren<QLabel *>())
+        if (label->text().startsWith(QStringLiteral("Frame ")) && label->text().contains(QStringLiteral("min=")))
+            frameInfo = label;
+    require(slider && spin && table && frameInfo, "slider release controls and details are available");
+
+    const auto requireCommittedFrame = [&](int frame) {
+        processEventsFor(50);
+        const QString text = frameInfo->text();
+        require(!text.contains(QStringLiteral("Previewing")) && text.contains(QStringLiteral("min=")) &&
+                    text.contains(QStringLiteral("max=")) && text.contains(QStringLiteral("peak=")) &&
+                    text.contains(QStringLiteral("tcp_wave.dat")) && text.contains(QStringLiteral("CSV row")),
+                "releasing the slider restores frame details and CSV timing");
+        require(slider->value() == frame && spin->value() == frame,
+                "released slider and frame number stay synchronized");
+        const int firstCsvRow = std::max(0, frame - 2);
+        require(table->rowAt(0) == firstCsvRow &&
+                    !table->model()->index(frame - 1, 1).data().toString().isEmpty(),
+                "released slider highlights the matching CSV rows at the top");
+    };
+
+    slider->setSliderDown(true);
+    slider->setSliderPosition(3);
+    require(frameInfo->text().startsWith(QStringLiteral("Previewing frame 3")),
+            "dragging previews the selected waveform before release");
+    slider->setSliderDown(false);
+    requireCommittedFrame(3);
+
+    slider->setSliderDown(true);
+    slider->setSliderPosition(4);
+    slider->setSliderPosition(3);
+    require(frameInfo->text().startsWith(QStringLiteral("Previewing frame 3")),
+            "dragging back to the committed frame still shows its preview while held");
+    slider->setSliderDown(false);
+    requireCommittedFrame(3);
+
+    QStyleOptionSlider sliderOption;
+    sliderOption.initFrom(slider);
+    sliderOption.orientation = slider->orientation();
+    sliderOption.minimum = slider->minimum();
+    sliderOption.maximum = slider->maximum();
+    sliderOption.sliderPosition = slider->sliderPosition();
+    sliderOption.sliderValue = slider->value();
+    const QPoint dragStart = slider->style()->subControlRect(
+        QStyle::CC_Slider, &sliderOption, QStyle::SC_SliderHandle, slider).center();
+    sliderOption.sliderPosition = 4;
+    sliderOption.sliderValue = 4;
+    const QPoint dragEnd = slider->style()->subControlRect(
+        QStyle::CC_Slider, &sliderOption, QStyle::SC_SliderHandle, slider).center();
+    QMouseEvent sliderPress(QEvent::MouseButtonPress, dragStart, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(slider, &sliderPress);
+    QMouseEvent sliderMove(QEvent::MouseMove, dragEnd, Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(slider, &sliderMove);
+    require(slider->isSliderDown() && frameInfo->text().startsWith(QStringLiteral("Previewing frame 4")),
+            "mouse drag previews its waveform while held");
+    QMouseEvent sliderRelease(QEvent::MouseButtonRelease, dragEnd, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(slider, &sliderRelease);
+    requireCommittedFrame(4);
+    QKeyEvent previousFrame(QEvent::KeyPress, Qt::Key_Left, Qt::NoModifier);
+    QCoreApplication::sendEvent(slider, &previousFrame);
+    requireCommittedFrame(3);
+    spin->setValue(1);
+    requireCommittedFrame(1);
     viewer.close();
     processEventsFor(100);
 }
@@ -1601,6 +1685,7 @@ int main(int argc, char **argv)
         testSessionViewerShowsRecoveredWaveformCatalogWarning();
         testWaveformIndexContinuesWhileGuiIsBusy();
         testCsvHighlightsStartAtTopWhenLoadingAndChangingFrames();
+        testFrameSliderReleaseRestoresDetails();
         testSessionViewerTrajectoryActionLifetime();
     }
     if (runsGroup(QStringLiteral("window-state")))
