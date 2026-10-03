@@ -152,13 +152,14 @@ public:
                          const QString& csvMatchText,
                          bool english);
     void setWaveformSamples(const QVector<float>& samples, int firstSampleIndex = 0);
-    void setPeakValues(const QVector<float>& values);
+    void setPeakValues(const QVector<float>& values, const QVector<quint64>& timestampsUs = {});
     void setCurrentPeakFrame(int frameIndex);
     void setPlotMode(bool scatter);
     void repaintPlots();
     void setEnvironmentSeries(const QVector<double>& temperature,
                               const QVector<double>& humidity,
-                              const QVector<double>& pressure);
+                              const QVector<double>& pressure,
+                              const QVector<quint64>& timestampsUs = {});
     void setEnvironmentCurrentIndex(int row, bool english);
     void setEnvironmentRange(int startIndex, int count);
     void setEnvironmentInfoText(const QString& text);

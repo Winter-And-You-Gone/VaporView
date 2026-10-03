@@ -306,22 +306,24 @@ void testFrameSliderThemeAndHover(MainWindow& window, SessionViewerWindow& viewe
                     QWidget *plot = waveform->findChild<QWidget *>(plotName);
                     require(plot != nullptr, "navigator alignment plot exists");
                     const QImage rendered = plot->grab().toImage();
+                    const qreal ratio = plot->devicePixelRatioF();
                     const QColor background = rendered.pixelColor(0, rendered.height() / 2);
+                    const int scanTop = rendered.height() - qRound(80 * ratio);
+                    const int scanBottom = rendered.height() - qRound(40 * ratio);
                     int left = rendered.width();
                     int right = 0;
                     for (int x = 0; x < rendered.width(); ++x)
                     {
                         int linePixels = 0;
-                        for (int y = rendered.height() / 4; y < rendered.height() / 2; ++y)
+                        for (int y = scanTop; y < scanBottom; ++y)
                             if (rendered.pixelColor(x, y).rgb() != background.rgb())
                                 ++linePixels;
-                        if (linePixels > rendered.height() / 5)
+                        if (linePixels > (scanBottom - scanTop) * 0.8)
                         {
                             left = std::min(left, x);
                             right = std::max(right, x);
                         }
                     }
-                    const qreal ratio = plot->devicePixelRatioF();
                     const int plotX = plot->mapTo(waveform, QPoint()).x();
                     require(std::abs(plotX + qRound(left / ratio) - trackLeft) <= 3 &&
                                 std::abs(plotX + qRound(right / ratio) - trackRight) <= 3,

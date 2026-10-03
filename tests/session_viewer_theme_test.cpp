@@ -1,6 +1,7 @@
 #include "shared/theme/AppTheme.h"
 #include "ground/wave/RawDataParserWindow.h"
 #include "ground/session/SessionViewerWindow.h"
+#include "ground/session/SessionViewerWidgets.h"
 #include "shared/session/UnifiedRawDat.h"
 #include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
@@ -19,6 +20,7 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFrame>
+#include <QFontMetrics>
 #include <QImage>
 #include <QKeyEvent>
 #include <QLabel>
@@ -750,6 +752,18 @@ void testFrameSliderReleaseRestoresDetails()
         require(slider->value() == frame && spin->value() == frame,
                 "released slider and frame number stay synchronized");
         requireAnnotations(frame);
+        auto *peakPlot = viewer.findChild<QWidget *>(QStringLiteral("sessionViewerPeakPlot"));
+        const QImage peakImage = peakPlot->grab().toImage();
+        const int plotTop = peakImage.height() - qRound(108 * peakImage.devicePixelRatio());
+        const QColor tagFill = VaporView::appThemeColor(VaporView::AppThemeColor::PlotCurrentGuideLabelFill, false);
+        QRect timeTag;
+        for (int y = 0; y < plotTop; ++y)
+            for (int x = 0; x < peakImage.width(); ++x)
+                if (peakImage.pixelColor(x, y).rgb() == tagFill.rgb())
+                    timeTag |= QRect(x, y, 1, 1);
+        const QFontMetrics timeMetrics(VaporView::Ground::SessionUi::numericFontFrom(peakPlot->font()));
+        require(timeTag.width() >= qRound(timeMetrics.horizontalAdvance(frameTime->text()) * peakImage.devicePixelRatio()),
+                "loaded waveform timestamps reach the peak crosshair time tag after preview and release");
         const int firstCsvRow = std::max(0, frame - 2);
         require(table->rowAt(0) == firstCsvRow &&
                     !table->model()->index(frame - 1, 1).data().toString().isEmpty(),

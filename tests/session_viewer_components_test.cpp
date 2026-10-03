@@ -1,11 +1,14 @@
 #include "ground/session/SessionMapCoordinator.h"
 #include "ground/session/SessionViewerPages.h"
+#include "ground/session/SessionViewerWidgets.h"
 #include "ground/session/SessionViewerWindow.h"
 #include "ground/trajectory/TrajectoryViewerDialog.h"
+#include "shared/theme/AppTheme.h"
 
 #include <QApplication>
 #include <QCoreApplication>
 #include <QHeaderView>
+#include <QImage>
 #include <QLabel>
 #include <QProgressDialog>
 #include <QPushButton>
@@ -224,6 +227,116 @@ void testPages()
             "session viewer keeps both content panes non-collapsible");
 }
 
+void testTrendTimeAxes()
+{
+    using namespace VaporView::Ground::SessionUi;
+    SessionWaveformWidget waveform;
+    waveform.configureFrames(6);
+    waveform.setWaveformSamples({0.1f, 0.8f, 0.3f});
+    auto *currentWave = waveform.findChild<QWidget *>(QStringLiteral("sessionViewerWaveformPlot"));
+    auto *peak = static_cast<SessionPeakPlotWidget *>(waveform.findChild<QWidget *>(QStringLiteral("sessionViewerPeakPlot")));
+    const QVector<QWidget *> plots = {peak,
+        waveform.findChild<QWidget *>(QStringLiteral("sessionViewerTemperaturePlot")),
+        waveform.findChild<QWidget *>(QStringLiteral("sessionViewerHumidityPlot")),
+        waveform.findChild<QWidget *>(QStringLiteral("sessionViewerPressurePlot"))};
+    const QVector<float> peaks = {0.1f, 0.5f, 0.9f, 0.7f, 0.4f, 0.2f};
+    const QVector<double> values = {20.1, 21.2, 23.0, 22.4, 21.8, 20.0};
+    const QVector<quint64> timestamps = {1782446035573001ULL, 1782446035593123ULL, 1782446036584007ULL,
+        1782446037109876ULL, 1782446042123456ULL, 1782446049123457ULL};
+    QVector<quint64> shifted = timestamps;
+    for (quint64& timestamp : shifted)
+        timestamp += 17; // A microsecond-only change must reach both time labels.
+    const auto setSeries = [&](const QVector<quint64>& times) {
+        waveform.setPeakValues(peaks, times);
+        waveform.setEnvironmentSeries(values, values, values, times);
+    };
+    const auto capture = [&]() {
+        QCoreApplication::processEvents();
+        QVector<QImage> images;
+        for (QWidget *plot : plots)
+            images.push_back(plot->grab().toImage());
+        return images;
+    };
+    const auto timeTagBounds = [](const QImage& image) {
+        QRect bounds;
+        const QColor fill = VaporView::appThemeColor(VaporView::AppThemeColor::PlotCurrentGuideLabelFill, false);
+        const int plotTop = image.height() - qRound(108 * image.devicePixelRatio());
+        for (int y = 0; y < plotTop; ++y)
+            for (int x = 0; x < image.width(); ++x)
+                if (image.pixelColor(x, y).rgb() == fill.rgb())
+                    bounds |= QRect(x, y, 1, 1);
+        return bounds;
+    };
+    const bool originalDark = VaporView::isDarkThemeEnabled();
+    waveform.show();
+    for (bool dark : {false, true})
+    {
+        qApp->setProperty(VaporView::kAppDarkThemeProperty, dark);
+        for (int size : {9, 13, 17})
+        {
+            QFont font = waveform.font();
+            font.setPointSize(size);
+            for (QWidget *plot : plots)
+                plot->setFont(font);
+            waveform.resize(960, waveform.sizeHint().height());
+            setSeries({});
+            peak->setViewRange(0, 0);
+            waveform.setEnvironmentRange(0, 0);
+            waveform.setCurrentPeakFrame(-1);
+            const auto withoutTime = capture();
+            const QImage currentFrameBefore = currentWave->grab().toImage();
+            setSeries(timestamps);
+            const auto withTime = capture();
+            require(currentFrameBefore == currentWave->grab().toImage() && currentWave->height() == 120,
+                    "adding trend timestamps leaves the current-frame waveform unchanged");
+            for (int i = 0; i < plots.size(); ++i)
+            {
+                const int plotTop = withTime[i].height() - qRound(108 * withTime[i].devicePixelRatio());
+                require(withTime[i].copy(0, 0, withTime[i].width(), plotTop) !=
+                            withoutTime[i].copy(0, 0, withoutTime[i].width(), plotTop),
+                        "all four trend plots render timestamp ticks above the plot area");
+                const int belowUpperTicks = plotTop + qRound(2 * withTime[i].devicePixelRatio());
+                require(withTime[i].copy(0, belowUpperTicks, withTime[i].width(), withTime[i].height() - belowUpperTicks) ==
+                            withoutTime[i].copy(0, belowUpperTicks, withoutTime[i].width(), withoutTime[i].height() - belowUpperTicks),
+                        "time axes preserve the original series, lower index axis, and vertical axis");
+            }
+            waveform.setCurrentPeakFrame(2);
+            waveform.setEnvironmentCurrentIndex(2, false);
+            const auto selected = capture();
+            setSeries(shifted);
+            waveform.setEnvironmentCurrentIndex(2, false);
+            const auto changedTime = capture();
+            for (int i = 0; i < plots.size(); ++i)
+            {
+                const QRect tag = timeTagBounds(selected[i]);
+                require(!tag.isEmpty() && selected[i].rect().contains(tag),
+                        "current-frame time tags fit above all four crosshair guides");
+                require(selected[i].copy(tag) != changedTime[i].copy(tag),
+                        "changing timestamps invalidates cached time labels and preserves microsecond precision");
+            }
+            setSeries(timestamps);
+            waveform.setEnvironmentCurrentIndex(2, false);
+            require(capture() == selected, "restoring timestamps restores the cached axes and moving time tags");
+            peak->setViewRange(2, 3);
+            waveform.setEnvironmentRange(2, 3);
+            const auto zoomed = capture();
+            require(zoomed[0] != selected[0], "zooming refreshes the upper time axis for the visible data range");
+            for (int index : {2, 4})
+            {
+                waveform.setCurrentPeakFrame(index);
+                waveform.setEnvironmentCurrentIndex(index, false);
+                for (const QImage& image : capture())
+                    require(!timeTagBounds(image).isEmpty(), "time tags remain visible at both visible-range endpoints");
+            }
+        }
+    }
+    waveform.clear();
+    for (const QImage& image : capture())
+        require(timeTagBounds(image).isEmpty(), "clearing the session removes stale crosshair time tags");
+    waveform.close();
+    qApp->setProperty(VaporView::kAppDarkThemeProperty, originalDark);
+}
+
 void testMapCoordinator()
 {
     QWidget owner;
@@ -280,6 +393,7 @@ int main(int argc, char **argv)
     QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, settingsDir.path());
     QApplication app(argc, argv);
     testPages();
+    testTrendTimeAxes();
     testMapCoordinator();
     std::cout << "session_viewer_components_test passed\n";
     return 0;

@@ -831,9 +831,9 @@ void SessionWaveformWidget::setWaveformSamples(const QVector<float>& samples, in
     waveform_plot_->setSamples(samples, firstSampleIndex);
 }
 
-void SessionWaveformWidget::setPeakValues(const QVector<float>& values)
+void SessionWaveformWidget::setPeakValues(const QVector<float>& values, const QVector<quint64>& timestampsUs)
 {
-    waveform_peak_plot_->setPeakValues(values);
+    waveform_peak_plot_->setPeakValues(values, timestampsUs);
 }
 
 void SessionWaveformWidget::setCurrentPeakFrame(int frameIndex)
@@ -860,7 +860,8 @@ void SessionWaveformWidget::repaintPlots()
 void SessionWaveformWidget::setEnvironmentSeries(
     const QVector<double>& temperature,
     const QVector<double>& humidity,
-    const QVector<double>& pressure)
+    const QVector<double>& pressure,
+    const QVector<quint64>& timestampsUs)
 {
     temperature_values_ = temperature;
     humidity_values_ = humidity;
@@ -886,9 +887,9 @@ void SessionWaveformWidget::setEnvironmentSeries(
     }
     setProperty("sessionViewerPlotWidestValue", widestValue);
     static_cast<SessionFrameSlider *>(frame_slider_)->updateGeometryStyle();
-    temperature_plot_->setValues(temperature_values_);
-    humidity_plot_->setValues(humidity_values_);
-    pressure_plot_->setValues(pressure_values_);
+    temperature_plot_->setValues(temperature_values_, timestampsUs);
+    humidity_plot_->setValues(humidity_values_, timestampsUs);
+    pressure_plot_->setValues(pressure_values_, timestampsUs);
     setEnvironmentCurrentIndex(-1, false);
 }
 

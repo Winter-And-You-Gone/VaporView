@@ -3,6 +3,8 @@
 #include "ground/session/SessionCsv.h"
 #include "shared/theme/AppTheme.h"
 
+#include <QDateTime>
+#include <QEvent>
 #include <QFontDatabase>
 #include <QFontMetrics>
 #include <QPaintEvent>
@@ -10,6 +12,7 @@
 #include <QPixmap>
 #include <QPolygonF>
 #include <QSizePolicy>
+#include <QTimeZone>
 
 #include <algorithm>
 #include <cmath>
@@ -201,11 +204,66 @@ void drawGuideTag(QPainter& painter, const QRectF& rect, const QString& text, Qt
     painter.restore();
 }
 
+QString formatPlotTime(quint64 timestampUs)
+{
+    if (timestampUs == 0)
+        return QStringLiteral("---");
+    const QDateTime time = QDateTime::fromMSecsSinceEpoch(timestampUs / 1000ULL, QTimeZone::UTC).toLocalTime();
+    return time.toString(QStringLiteral("HH:mm:ss")) +
+        QStringLiteral(".%1").arg(timestampUs % 1000000ULL, 6, 10, QLatin1Char('0'));
+}
+
+int timeAxisHeaderHeight(const QFont& font)
+{
+    // Separate the fixed time ticks from the moving crosshair's time tag.
+    return 2 * (QFontMetrics(numericFontFrom(font)).height() + 6);
+}
+
+void drawTimeXAxisTicks(QPainter& painter,
+                        const QRectF& plotRect,
+                        const QVector<quint64>& timestampsUs,
+                        int startIndex,
+                        int count,
+                        const QFont& font,
+                        const QColor& textColor)
+{
+    if (count <= 0 || timestampsUs.isEmpty())
+        return;
+    painter.save();
+    painter.setFont(numericFontFrom(font));
+    painter.setPen(textColor);
+    const QFontMetrics fm = painter.fontMetrics();
+    const int tickWidth = fm.horizontalAdvance(QStringLiteral("00:00:00.000000")) + 12;
+    const int segments = count == 1 ? 0 : std::min({5, count - 1,
+        std::max(1, static_cast<int>(plotRect.width() / (tickWidth * 1.5)))});
+    const qreal endLabelWidth = std::min(plotRect.width(), static_cast<qreal>(
+        fm.horizontalAdvance(formatPlotTime(timestampsUs.value(startIndex + count - 1))) + 8));
+    qreal previousLabelRight = plotRect.left() - 8;
+    for (int i = 0; i <= segments; ++i)
+    {
+        const int relativeIndex = segments == 0 ? 0 : qRound(static_cast<qreal>(count - 1) * i / segments);
+        const qreal ratio = count == 1 ? 0.0 : static_cast<qreal>(relativeIndex) / (count - 1);
+        const qreal x = plotRect.left() + plotRect.width() * ratio;
+        const QString label = formatPlotTime(timestampsUs.value(startIndex + relativeIndex));
+        const qreal labelWidth = std::min(plotRect.width(), static_cast<qreal>(fm.horizontalAdvance(label) + 8));
+        const qreal labelLeft = std::clamp(x - labelWidth * 0.5, plotRect.left(), plotRect.right() - labelWidth);
+        if (i > 0 && i < segments && (labelLeft < previousLabelRight + 8 ||
+                                      labelLeft + labelWidth > plotRect.right() - endLabelWidth - 8))
+            continue;
+        painter.drawLine(QPointF(x, plotRect.top() - 4), QPointF(x, plotRect.top()));
+        painter.drawText(QRectF(labelLeft, plotRect.top() - timeAxisHeaderHeight(font), labelWidth, fm.height()),
+                         Qt::AlignCenter, fm.elidedText(label, Qt::ElideRight, static_cast<int>(labelWidth)));
+        previousLabelRight = labelLeft + labelWidth;
+    }
+    painter.restore();
+}
+
 void drawCurrentPointGuides(QPainter& painter,
                             const QRectF& plotRect,
                             const QPointF& currentPoint,
                             const QString& xLabel,
-                            const QString& yLabel)
+                            const QString& yLabel,
+                            const QString& timeLabel)
 {
     painter.save();
     painter.setPen(QPen(appThemeColor(AppThemeColor::PlotCurrentGuideLine, false), 1, Qt::DashLine));
@@ -227,6 +285,14 @@ void drawCurrentPointGuides(QPainter& painter,
         QRectF(2, yTagTop, plotRect.left() - 6, fm.height() + 2),
         yLabel,
         Qt::AlignRight);
+    painter.setFont(numericFontFrom(painter.font()));
+    const QFontMetrics timeMetrics = painter.fontMetrics();
+    const qreal timeWidth = std::min(plotRect.width(), static_cast<qreal>(timeMetrics.horizontalAdvance(timeLabel) + 12));
+    const qreal timeLeft = std::clamp(currentPoint.x() - timeWidth * 0.5,
+                                      plotRect.left(), plotRect.right() - timeWidth);
+    drawGuideTag(painter,
+        QRectF(timeLeft, plotRect.top() - timeMetrics.height() - 6, timeWidth, timeMetrics.height() + 2),
+        timeMetrics.elidedText(timeLabel, Qt::ElideRight, static_cast<int>(timeWidth) - 8), Qt::AlignCenter);
     painter.restore();
 }
 
@@ -502,7 +568,7 @@ public:
         , is_english_(false)
         , plot_cache_valid_(false)
     {
-        setFixedHeight(kSessionViewerPlotHeight);
+        setFixedHeight(kSessionViewerPlotHeight + timeAxisHeaderHeight(font()));
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     }
 
@@ -513,12 +579,13 @@ public:
         update();
     }
 
-    void setPeakValues(const QVector<float>& values)
+    void setPeakValues(const QVector<float>& values, const QVector<quint64>& timestampsUs) override
     {
         const bool keepTail = peak_values_.isEmpty() ||
             view_count_ <= 0 ||
             (view_start_index_ + visibleCount()) >= peak_values_.size();
         peak_values_ = values;
+        timestamps_us_ = timestampsUs;
         if (current_frame_index_ >= peak_values_.size())
         {
             current_frame_index_ = -1;
@@ -603,6 +670,16 @@ public:
     }
 
 protected:
+    bool event(QEvent *event) override
+    {
+        if (event->type() == QEvent::FontChange)
+        {
+            setFixedHeight(kSessionViewerPlotHeight + timeAxisHeaderHeight(font()));
+            invalidatePlotCache();
+        }
+        return SessionPeakPlotWidget::event(event);
+    }
+
     void paintEvent(QPaintEvent *event) override
     {
         QWidget::paintEvent(event);
@@ -670,7 +747,7 @@ private:
         const int leftMargin = margins.left();
         const QRectF plotRect = rect().adjusted(
             leftMargin,
-            kSessionViewerPlotTopMargin,
+            kSessionViewerPlotTopMargin + timeAxisHeaderHeight(font()),
             -margins.right(),
             -kSessionViewerPlotBottomMargin);
         cache.plot_rect = plotRect;
@@ -701,6 +778,7 @@ private:
         const int count = visibleCount();
         cache.start_index = startIndex;
         cache.count = count;
+        drawTimeXAxisTicks(painter, plotRect, timestamps_us_, startIndex, count, font(), theme.text);
         float minValue = std::numeric_limits<float>::max();
         float maxValue = std::numeric_limits<float>::lowest();
         bool hasFiniteValues = false;
@@ -826,7 +904,8 @@ private:
             cache.plot_rect,
             currentPoint,
             QString::number(current_frame_index_ + 1),
-            formatGuideValue(value, 4));
+            formatGuideValue(value, 4),
+            formatPlotTime(timestamps_us_.value(current_frame_index_)));
         painter.setPen(Qt::NoPen);
         painter.setBrush(appThemeColor(AppThemeColor::PlotCurrentGuideLine, false));
         painter.drawEllipse(currentPoint, 4.0, 4.0);
@@ -889,6 +968,7 @@ private:
     }
 
     QVector<float> peak_values_;
+    QVector<quint64> timestamps_us_;
     int current_frame_index_;
     PlotMode plot_mode_;
     int view_start_index_;
@@ -917,13 +997,14 @@ public:
         , plot_cache_valid_(false)
     {
         setFont(numericFontFrom(font()));
-        setFixedHeight(kSessionViewerPlotHeight);
+        setFixedHeight(kSessionViewerPlotHeight + timeAxisHeaderHeight(font()));
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     }
 
-    void setValues(const QVector<double>& values)
+    void setValues(const QVector<double>& values, const QVector<quint64>& timestampsUs) override
     {
         values_ = values;
+        timestamps_us_ = timestampsUs;
         if (current_index_ >= values_.size())
         {
             current_index_ = -1;
@@ -984,6 +1065,16 @@ public:
     }
 
 protected:
+    bool event(QEvent *event) override
+    {
+        if (event->type() == QEvent::FontChange)
+        {
+            setFixedHeight(kSessionViewerPlotHeight + timeAxisHeaderHeight(font()));
+            invalidatePlotCache();
+        }
+        return SingleSeriesTrendPlotWidget::event(event);
+    }
+
     void paintEvent(QPaintEvent *event) override
     {
         QWidget::paintEvent(event);
@@ -1052,7 +1143,7 @@ private:
             const int leftMargin = margins.left();
             const QRectF emptyPlotRect = rect().adjusted(
                 leftMargin,
-                kSessionViewerPlotTopMargin,
+                kSessionViewerPlotTopMargin + timeAxisHeaderHeight(font()),
                 -margins.right(),
                 -kSessionViewerPlotBottomMargin);
             painter.setPen(QPen(theme.border, 1));
@@ -1087,12 +1178,13 @@ private:
         const int leftMargin = margins.left();
         const QRectF plotRect = rect().adjusted(
             leftMargin,
-            kSessionViewerPlotTopMargin,
+            kSessionViewerPlotTopMargin + timeAxisHeaderHeight(font()),
             -margins.right(),
             -kSessionViewerPlotBottomMargin);
         cache.plot_rect = plotRect;
         cache.start_index = startIndex;
         cache.count = count;
+        drawTimeXAxisTicks(painter, plotRect, timestamps_us_, startIndex, count, font(), theme.text);
 
         painter.setPen(QPen(theme.grid, 1));
         for (int i = 0; i <= 5; ++i)
@@ -1147,7 +1239,8 @@ private:
             cache.plot_rect,
             QPointF(x, y),
             QString::number(current_index_ + 1),
-            formatGuideValue(values_.at(current_index_), 3));
+            formatGuideValue(values_.at(current_index_), 3),
+            formatPlotTime(timestamps_us_.value(current_index_)));
         painter.setPen(Qt::NoPen);
         painter.setBrush(line_color_);
         painter.drawEllipse(QPointF(x, y), 3.0, 3.0);
@@ -1245,6 +1338,7 @@ private:
     QString empty_text_;
     QString unit_;
     QVector<double> values_;
+    QVector<quint64> timestamps_us_;
     int current_index_;
     PlotMode plot_mode_;
     int view_start_index_;

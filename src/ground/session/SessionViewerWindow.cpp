@@ -1129,7 +1129,8 @@ bool SessionViewerWindow::loadSensorsCsv()
     waveform_page_->setEnvironmentSeries(
         temperature_values_,
         humidity_values_,
-        pressure_values_);
+        pressure_values_,
+        csv_timestamps_us_);
     const bool hasEnvironmentSeries =
         std::any_of(temperature_values_.cbegin(), temperature_values_.cend(), [](double value) { return std::isfinite(value); }) ||
         std::any_of(humidity_values_.cbegin(), humidity_values_.cend(), [](double value) { return std::isfinite(value); }) ||
@@ -1221,7 +1222,7 @@ void SessionViewerWindow::applyPeakFilter(int startPercent, int endPercent)
     waveform_peak_values_ = VaporView::Ground::SessionWaveformRepository::applyPeakFilter(
         waveform_peak_raw_values_,
         peak_filter_settings_);
-    waveform_page_->setPeakValues(waveform_peak_values_);
+    waveform_page_->setPeakValues(waveform_peak_values_, waveform_timestamps_us_);
     updateRtkTrackPeakValues();
     if (waveform_page_->frameValue() > 0)
     {

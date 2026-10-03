@@ -68,7 +68,7 @@ public:
     };
 
     virtual void setEnglish(bool english) = 0;
-    virtual void setPeakValues(const QVector<float>& values) = 0;
+    virtual void setPeakValues(const QVector<float>& values, const QVector<quint64>& timestampsUs = {}) = 0;
     virtual void setCurrentFrame(int frameIndex) = 0;
     virtual void setPlotMode(PlotMode mode) = 0;
     virtual void setViewRange(int startIndex, int count) = 0;
@@ -87,7 +87,7 @@ public:
         Polyline
     };
 
-    virtual void setValues(const QVector<double>& values) = 0;
+    virtual void setValues(const QVector<double>& values, const QVector<quint64>& timestampsUs = {}) = 0;
     virtual void setCurrentIndex(int index) = 0;
     virtual void setPlotMode(PlotMode mode) = 0;
     virtual void setViewRange(int startIndex, int count) = 0;
