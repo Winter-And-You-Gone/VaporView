@@ -770,6 +770,14 @@ void testFrameSliderReleaseRestoresDetails()
                 "released slider highlights the matching CSV rows at the top");
     };
 
+    requireAnnotations(1);
+    processEventsFor(100);
+    requireAnnotations(1);
+    viewer.setEnglish(false);
+    requireAnnotations(1);
+    viewer.setEnglish(true);
+    requireAnnotations(1);
+
     slider->setSliderDown(true);
     slider->setSliderPosition(3);
     require(frameInfo->text().contains(QStringLiteral("Previewing")) && spin->value() == 3,
@@ -815,6 +823,8 @@ void testFrameSliderReleaseRestoresDetails()
     requireCommittedFrame(3);
     spin->setValue(1);
     requireCommittedFrame(1);
+    require(viewer.openSessionPath(sessionDir.path()), "viewer reopens the session with its cached waveform index");
+    requireAnnotations(1);
     viewer.close();
     processEventsFor(100);
 }

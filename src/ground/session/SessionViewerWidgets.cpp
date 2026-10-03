@@ -215,8 +215,15 @@ QString formatPlotTime(quint64 timestampUs)
 
 int timeAxisHeaderHeight(const QFont& font)
 {
-    // Separate the fixed time ticks from the moving crosshair's time tag.
-    return 2 * (QFontMetrics(numericFontFrom(font)).height() + 6);
+    return QFontMetrics(numericFontFrom(font)).height() + 6;
+}
+
+QRectF timeGuideTagRect(const QRectF& plotRect, qreal x, const QString& label, const QFont& font)
+{
+    const QFontMetrics fm(numericFontFrom(font));
+    const qreal width = std::min(plotRect.width(), static_cast<qreal>(fm.horizontalAdvance(label) + 12));
+    const qreal left = std::clamp(x - width * 0.5, plotRect.left(), plotRect.right() - width);
+    return QRectF(left, plotRect.top() - timeAxisHeaderHeight(font) - 1, width, fm.height() + 2);
 }
 
 void drawTimeXAxisTicks(QPainter& painter,
@@ -225,7 +232,8 @@ void drawTimeXAxisTicks(QPainter& painter,
                         int startIndex,
                         int count,
                         const QFont& font,
-                        const QColor& textColor)
+                        const QColor& textColor,
+                        int currentIndex)
 {
     if (count <= 0 || timestampsUs.isEmpty())
         return;
@@ -236,6 +244,13 @@ void drawTimeXAxisTicks(QPainter& painter,
     const int tickWidth = fm.horizontalAdvance(QStringLiteral("00:00:00.000000")) + 12;
     const int segments = count == 1 ? 0 : std::min({5, count - 1,
         std::max(1, static_cast<int>(plotRect.width() / (tickWidth * 1.5)))});
+    QRectF currentTag;
+    if (currentIndex >= startIndex && currentIndex < startIndex + count)
+    {
+        const qreal ratio = count == 1 ? 0.0 : static_cast<qreal>(currentIndex - startIndex) / (count - 1);
+        currentTag = timeGuideTagRect(plotRect, plotRect.left() + plotRect.width() * ratio,
+                                     formatPlotTime(timestampsUs.value(currentIndex)), font);
+    }
     const qreal endLabelWidth = std::min(plotRect.width(), static_cast<qreal>(
         fm.horizontalAdvance(formatPlotTime(timestampsUs.value(startIndex + count - 1))) + 8));
     qreal previousLabelRight = plotRect.left() - 8;
@@ -251,8 +266,12 @@ void drawTimeXAxisTicks(QPainter& painter,
                                       labelLeft + labelWidth > plotRect.right() - endLabelWidth - 8))
             continue;
         painter.drawLine(QPointF(x, plotRect.top() - 4), QPointF(x, plotRect.top()));
-        painter.drawText(QRectF(labelLeft, plotRect.top() - timeAxisHeaderHeight(font), labelWidth, fm.height()),
-                         Qt::AlignCenter, fm.elidedText(label, Qt::ElideRight, static_cast<int>(labelWidth)));
+        const QRectF labelRect(labelLeft, plotRect.top() - timeAxisHeaderHeight(font), labelWidth, fm.height());
+        // Suppress an entire overlapping tick label, avoiding exposed fragments
+        // around the opaque crosshair tag as it moves between ticks.
+        if (!labelRect.intersects(currentTag))
+            painter.drawText(labelRect, Qt::AlignCenter,
+                             fm.elidedText(label, Qt::ElideRight, static_cast<int>(labelWidth)));
         previousLabelRight = labelLeft + labelWidth;
     }
     painter.restore();
@@ -287,12 +306,9 @@ void drawCurrentPointGuides(QPainter& painter,
         Qt::AlignRight);
     painter.setFont(numericFontFrom(painter.font()));
     const QFontMetrics timeMetrics = painter.fontMetrics();
-    const qreal timeWidth = std::min(plotRect.width(), static_cast<qreal>(timeMetrics.horizontalAdvance(timeLabel) + 12));
-    const qreal timeLeft = std::clamp(currentPoint.x() - timeWidth * 0.5,
-                                      plotRect.left(), plotRect.right() - timeWidth);
+    const QRectF timeRect = timeGuideTagRect(plotRect, currentPoint.x(), timeLabel, painter.font());
     drawGuideTag(painter,
-        QRectF(timeLeft, plotRect.top() - timeMetrics.height() - 6, timeWidth, timeMetrics.height() + 2),
-        timeMetrics.elidedText(timeLabel, Qt::ElideRight, static_cast<int>(timeWidth) - 8), Qt::AlignCenter);
+        timeRect, timeMetrics.elidedText(timeLabel, Qt::ElideRight, static_cast<int>(timeRect.width()) - 8), Qt::AlignCenter);
     painter.restore();
 }
 
@@ -689,6 +705,11 @@ protected:
         if (ensurePlotCache())
         {
             painter.drawPixmap(0, 0, plot_cache_);
+            const int currentIndex = cached_plot_.has_values && current_frame_index_ >= 0 &&
+                current_frame_index_ < peak_values_.size() && std::isfinite(peak_values_.at(current_frame_index_))
+                ? current_frame_index_ : -1;
+            drawTimeXAxisTicks(painter, cached_plot_.plot_rect, timestamps_us_, cached_plot_.start_index,
+                               cached_plot_.count, font(), sessionPlotThemeFor(this).text, currentIndex);
             drawCurrentFrameMarker(painter, cached_plot_);
         }
     }
@@ -778,7 +799,6 @@ private:
         const int count = visibleCount();
         cache.start_index = startIndex;
         cache.count = count;
-        drawTimeXAxisTicks(painter, plotRect, timestamps_us_, startIndex, count, font(), theme.text);
         float minValue = std::numeric_limits<float>::max();
         float maxValue = std::numeric_limits<float>::lowest();
         bool hasFiniteValues = false;
@@ -1084,6 +1104,11 @@ protected:
         if (ensurePlotCache())
         {
             painter.drawPixmap(0, 0, plot_cache_);
+            const int currentIndex = cached_plot_.has_values && current_index_ >= 0 &&
+                current_index_ < values_.size() && std::isfinite(values_.at(current_index_))
+                ? current_index_ : -1;
+            drawTimeXAxisTicks(painter, cached_plot_.plot_rect, timestamps_us_, cached_plot_.start_index,
+                               cached_plot_.count, font(), sessionPlotThemeFor(this).text, currentIndex);
             drawCurrentIndexMarker(painter, cached_plot_);
         }
     }
@@ -1184,7 +1209,6 @@ private:
         cache.plot_rect = plotRect;
         cache.start_index = startIndex;
         cache.count = count;
-        drawTimeXAxisTicks(painter, plotRect, timestamps_us_, startIndex, count, font(), theme.text);
 
         painter.setPen(QPen(theme.grid, 1));
         for (int i = 0; i <= 5; ++i)

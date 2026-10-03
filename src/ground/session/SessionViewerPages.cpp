@@ -722,6 +722,7 @@ void SessionWaveformWidget::setControlsEnabled(bool enabled)
 
 void SessionWaveformWidget::configureFrames(quint64 totalFrames)
 {
+    const int previousFrame = frame_slider_->sliderPosition();
     has_frames_ = totalFrames > 0;
     const QSignalBlocker sliderBlocker(frame_slider_);
     const QSignalBlocker spinBlocker(frame_spin_);
@@ -747,7 +748,11 @@ void SessionWaveformWidget::configureFrames(quint64 totalFrames)
     }
     const int digits = std::max(1, static_cast<int>(QString::number(std::max<quint64>(totalFrames, 1ULL)).size()));
     frame_total_label_->setText(QStringLiteral("/ %1").arg(fixedIntegerField(totalFrames, digits)));
-    static_cast<SessionFrameSlider *>(frame_slider_)->setTimestamp(0);
+    auto *slider = static_cast<SessionFrameSlider *>(frame_slider_);
+    if (!has_frames_ || frame_slider_->sliderPosition() != previousFrame)
+        slider->setTimestamp(0);
+    else
+        slider->updateAnnotations();
 }
 
 void SessionWaveformWidget::setFrameValueSilently(int value)

@@ -124,6 +124,13 @@ void testPages()
                 !frameInfo->text().contains(QStringLiteral("144783")),
             "waveform details keep the editable counter and remove the repeated frame numbers");
     require(frameIndex->text() == QStringLiteral("74144"), "committed frame annotations follow the editable frame counter");
+    const QString currentTime = frameTime->text();
+    waveform.configureFrames(144783);
+    require(frameTime->text() == currentTime && frameIndex->text() == QStringLiteral("74144"),
+            "refreshing frame controls preserves the loaded frame's timestamp");
+    waveform.configureFrames(2);
+    require(frameTime->text() == QStringLiteral("---"),
+            "clamping to another frame clears the previous frame's timestamp");
     waveform.clear();
     require(frameTime->text() == QStringLiteral("---") && frameIndex->text() == QStringLiteral("---"),
             "clearing a session clears the time and index annotations");
@@ -311,6 +318,26 @@ void testTrendTimeAxes()
                 const QRect tag = timeTagBounds(selected[i]);
                 require(!tag.isEmpty() && selected[i].rect().contains(tag),
                         "current-frame time tags fit above all four crosshair guides");
+                const QImage& axis = withTime[i];
+                const QColor text = VaporView::appThemeColor(VaporView::AppThemeColor::PlotText, dark);
+                const int plotTop = axis.height() - qRound(108 * axis.devicePixelRatio());
+                QRect axisText;
+                for (int y = 0; y < plotTop; ++y)
+                {
+                    QRect row;
+                    int pixels = 0;
+                    for (int x = 0; x < axis.width(); ++x)
+                        if (axis.pixelColor(x, y).rgb() == text.rgb())
+                        {
+                            row |= QRect(x, y, 1, 1);
+                            ++pixels;
+                        }
+                    if (pixels > 8 * axis.devicePixelRatio())
+                        axisText |= row;
+                }
+                require(!axisText.isEmpty() && std::abs(tag.center().y() - axisText.center().y()) <=
+                            4 * axis.devicePixelRatio(),
+                        "crosshair time values overlay the upper time-axis row instead of forming another row");
                 require(selected[i].copy(tag) != changedTime[i].copy(tag),
                         "changing timestamps invalidates cached time labels and preserves microsecond precision");
             }
