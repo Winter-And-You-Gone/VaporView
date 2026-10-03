@@ -23,6 +23,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QPainter>
 #include <QPalette>
 #include <QProgressBar>
 #include <QProgressDialog>
@@ -33,6 +34,7 @@
 #include <QSlider>
 #include <QSpinBox>
 #include <QStyle>
+#include <QStyleOptionSlider>
 #include <QTableView>
 #include <QTimeZone>
 #include <QVBoxLayout>
@@ -51,6 +53,36 @@ namespace
 {
 
 constexpr int kMinimumVisibleCsvRows = 5;
+
+class SessionFrameSlider final : public QSlider
+{
+public:
+    using QSlider::QSlider;
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QStyleOptionSlider option;
+        initStyleOption(&option);
+        const QRect groove = style()->subControlRect(QStyle::CC_Slider, &option,
+                                                     QStyle::SC_SliderGroove, this);
+        const QRect handle = style()->subControlRect(QStyle::CC_Slider, &option,
+                                                     QStyle::SC_SliderHandle, this);
+        const bool dark = VaporView::isDarkThemeEnabled();
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(appThemeColor(AppThemeColor::BorderStrong, dark));
+        painter.drawRoundedRect(QRectF(groove), groove.height() / 2.0, groove.height() / 2.0);
+        // Draw a circle from the actual scaled geometry: independent QSS pixel
+        // rounding can otherwise make the radius exceed half the handle size.
+        const qreal diameter = std::min(handle.width(), handle.height());
+        const QPointF center = QRectF(handle).center();
+        painter.setBrush(appThemeColor(AppThemeColor::Primary, dark));
+        painter.drawEllipse(QRectF(center.x() - diameter / 2.0, center.y() - diameter / 2.0,
+                                  diameter, diameter));
+    }
+};
 
 class SessionCsvTableView final : public QTableView
 {
@@ -436,7 +468,7 @@ SessionWaveformWidget::SessionWaveformWidget(QWidget *parent)
     frame_title_ = new QLabel(this);
     frame_title_->setObjectName(QStringLiteral("fieldLabel"));
     frameLayout->addWidget(frame_title_, 0, 0);
-    frame_slider_ = new QSlider(Qt::Horizontal, this);
+    frame_slider_ = new SessionFrameSlider(Qt::Horizontal, this);
     frame_slider_->setObjectName(QStringLiteral("sessionViewerFrameSlider"));
     frame_slider_->setEnabled(false);
     frame_slider_->setTracking(false);

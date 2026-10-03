@@ -6,15 +6,22 @@
 #include "test_ui_helpers.h"
 
 #include <QApplication>
+#include <QAction>
 #include <QDir>
+#include <QEnterEvent>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QGridLayout>
+#include <QHoverEvent>
+#include <QImage>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMetaObject>
+#include <QMouseEvent>
 #include <QPushButton>
 #include <QSettings>
+#include <QSlider>
+#include <QStyleOptionSlider>
 #include <QTemporaryDir>
 #include <QTimer>
 #include <QToolButton>
@@ -147,6 +154,83 @@ void testOverviewLayout(SessionViewerWindow& viewer)
     VaporViewTest::processEventsFor(180);
 }
 
+void testFrameSliderThemeAndHover(MainWindow& window, SessionViewerWindow& viewer)
+{
+    auto *waveform = viewer.findChild<VaporView::Ground::SessionUi::SessionWaveformWidget *>();
+    auto *slider = viewer.findChild<QSlider *>(QStringLiteral("sessionViewerFrameSlider"));
+    require(waveform && slider, "main-window viewer exposes its frame slider");
+    const QSize originalSize = window.size();
+    const bool originalDark = VaporView::isDarkThemeEnabled();
+    waveform->configureFrames(144783);
+    waveform->setFrameValueSilently(74143);
+    for (int scale : {100, 130, 160})
+    {
+        QAction scaleAction(&window);
+        scaleAction.setData(scale);
+        require(QMetaObject::invokeMethod(&window, "onFontScaleTriggered", Qt::DirectConnection,
+                                         Q_ARG(QAction *, &scaleAction)), "frame slider uses the actual application font scaling");
+        for (bool dark : {false, true})
+        {
+            if (VaporView::isDarkThemeEnabled() != dark)
+                require(QMetaObject::invokeMethod(&window, "onToggleTheme", Qt::DirectConnection),
+                        "frame slider uses the actual application theme switch");
+            VaporViewTest::processEventsFor(100);
+            QHoverEvent leave(QEvent::HoverLeave, QPointF(-1, -1), QPointF(-1, -1));
+            QCoreApplication::sendEvent(slider, &leave);
+            QEvent outside(QEvent::Leave);
+            QCoreApplication::sendEvent(slider, &outside);
+            const QColor accent = VaporView::appThemeColor(VaporView::AppThemeColor::Primary, dark);
+            const auto capture = [&]() {
+                VaporViewTest::processEventsFor(40);
+                QImage image = slider->grab().toImage();
+                QRect bounds;
+                int pixels = 0;
+                for (int y = 0; y < image.height(); ++y)
+                    for (int x = 0; x < image.width(); ++x)
+                        if (image.pixelColor(x, y).rgb() == accent.rgb())
+                        {
+                            ++pixels;
+                            bounds |= QRect(x, y, 1, 1);
+                        }
+                return qMakePair(bounds, pixels);
+            };
+            const auto normal = capture();
+            QStyleOptionSlider option;
+            option.initFrom(slider);
+            option.orientation = Qt::Horizontal;
+            option.minimum = slider->minimum();
+            option.maximum = slider->maximum();
+            option.sliderPosition = slider->sliderPosition();
+            option.sliderValue = slider->value();
+            const QPoint center = slider->style()->subControlRect(QStyle::CC_Slider, &option,
+                                                                 QStyle::SC_SliderHandle, slider).center();
+            QEnterEvent enter(center, center, slider->mapToGlobal(center));
+            QCoreApplication::sendEvent(slider, &enter);
+            QHoverEvent hover(QEvent::HoverMove, center, QPointF(-1, -1));
+            QCoreApplication::sendEvent(slider, &hover);
+            const auto hovered = capture();
+            QMouseEvent press(QEvent::MouseButtonPress, center, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+            QCoreApplication::sendEvent(slider, &press);
+            const auto pressed = capture();
+            QMouseEvent release(QEvent::MouseButtonRelease, center, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+            QCoreApplication::sendEvent(slider, &release);
+            require(normal.second > 50 && hovered.second > normal.second * 1.3 && pressed.second >= hovered.second,
+                    "frame slider retains its theme accent and grows on hover and press in the real application");
+            for (const auto& rendered : {normal, hovered, pressed})
+                require(std::abs(rendered.first.width() - rendered.first.height()) <= 2 &&
+                            rendered.second < rendered.first.width() * rendered.first.height() * 0.85,
+                        "frame slider handle remains circular in every mouse state and font scale");
+        }
+    }
+    QAction scaleAction(&window);
+    scaleAction.setData(100);
+    QMetaObject::invokeMethod(&window, "onFontScaleTriggered", Qt::DirectConnection, Q_ARG(QAction *, &scaleAction));
+    if (VaporView::isDarkThemeEnabled() != originalDark)
+        QMetaObject::invokeMethod(&window, "onToggleTheme", Qt::DirectConnection);
+    window.resize(originalSize);
+    waveform->configureFrames(0);
+}
+
 void testMainWindowDataViewerOpenCanReopen()
 {
     using VaporViewTest::processEventsFor;
@@ -247,6 +331,7 @@ void testMainWindowDataViewerOpenCanReopen()
     requireSamePath(viewer->dataSelectionDirectory(),
                     menuRecordingDir.path(),
                     "data viewer uses the recording directory configured by the main menu");
+    testFrameSliderThemeAndHover(window, *viewer);
     testOverviewLayout(*viewer);
     auto *minimizeButton = viewer->findChild<QToolButton *>(QStringLiteral("windowMinimizeButton"));
     require(minimizeButton != nullptr, "data viewer minimize button exists before reopen");
