@@ -4,6 +4,7 @@
 #include <QColor>
 #include <QFont>
 #include <QHash>
+#include <QMargins>
 #include <QString>
 #include <QStringList>
 #include <QVector>
@@ -30,6 +31,7 @@ struct SessionTableTheme
 };
 
 QFont numericFontFrom(const QFont& base);
+QMargins sessionPlotHorizontalMargins(const QWidget *widget);
 SessionTableTheme sessionTableThemeFor(const QWidget *widget);
 
 class SessionCsvTableModel : public QAbstractTableModel

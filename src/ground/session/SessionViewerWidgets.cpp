@@ -40,6 +40,10 @@ QFont numericFontFrom(const QFont& base)
     {
         font.setPointSizeF(base.pointSizeF());
     }
+    else if (base.pixelSize() > 0)
+    {
+        font.setPixelSize(base.pixelSize());
+    }
     font.setWeight(static_cast<QFont::Weight>(base.weight()));
     font.setBold(base.bold());
     return font;
@@ -114,22 +118,23 @@ QString formatGuideValue(double value, int decimals, const QString& unit = QStri
     return unit.isEmpty() ? number : QStringLiteral("%1 %2").arg(number, unit);
 }
 
-int dataPlotLeftMargin(const QFontMetrics& metrics,
-                       const QString& maxLabel = QString(),
-                       const QString& midLabel = QString(),
-                       const QString& minLabel = QString())
+int dataPlotLeftMargin(const QFontMetrics& metrics)
 {
-    int labelWidth = metrics.horizontalAdvance(formatGuideValue(9999.999, 3));
-    for (const QString& label : {maxLabel, midLabel, minLabel})
-    {
-        if (!label.isEmpty())
-        {
-            labelWidth = std::max(labelWidth, metrics.horizontalAdvance(label));
-        }
-    }
+    const int labelWidth = metrics.horizontalAdvance(formatGuideValue(9999.999, 3));
     return std::max(
         kSessionViewerPlotLeftMargin,
         labelWidth + kSessionViewerTrendPlotLeftPadding);
+}
+
+QMargins sessionPlotHorizontalMargins(const QWidget *widget)
+{
+    const QWidget *owner = widget->parentWidget() ? widget->parentWidget() : widget;
+    const QFontMetrics metrics(numericFontFrom(owner->font()));
+    const QString widestValue = owner->property("sessionViewerPlotWidestValue").toString();
+    const int left = std::max(dataPlotLeftMargin(metrics),
+                             metrics.horizontalAdvance(widestValue) + kSessionViewerTrendPlotLeftPadding);
+    const int handleHeight = std::max(metrics.height(), owner->fontMetrics().height());
+    return QMargins(left, 0, std::max(kSessionViewerPlotRightMargin, handleHeight / 2 + 2), 0);
 }
 
 int trendRenderPointCount(int visibleCount, const QRectF& plotRect)
@@ -415,12 +420,12 @@ protected:
         const bool dark = theme.background.lightness() < 128;
         painter.fillRect(rect(), theme.background);
 
-        const QFontMetrics fm = painter.fontMetrics();
-        const int leftMargin = dataPlotLeftMargin(fm);
+        const QMargins margins = sessionPlotHorizontalMargins(this);
+        const int leftMargin = margins.left();
         const QRectF plotRect = rect().adjusted(
             leftMargin,
             kSessionViewerPlotTopMargin,
-            -kSessionViewerPlotRightMargin,
+            -margins.right(),
             -kSessionViewerWaveBottomMargin);
         painter.setPen(QPen(theme.grid, 1));
         for (int i = 0; i <= 5; ++i)
@@ -631,7 +636,8 @@ private:
     bool ensurePlotCache()
     {
         const QColor background = sessionPlotThemeFor(this).background;
-        if (plot_cache_valid_ && plot_cache_.size() == size() && cache_background_ == background)
+        if (plot_cache_valid_ && plot_cache_.size() == size() && cache_background_ == background &&
+            cache_margins_ == sessionPlotHorizontalMargins(this))
         {
             return true;
         }
@@ -646,6 +652,7 @@ private:
         plot_cache_ = QPixmap(size());
         plot_cache_.fill(background);
         cache_background_ = background;
+        cache_margins_ = sessionPlotHorizontalMargins(this);
         QPainter cachePainter(&plot_cache_);
         cachePainter.setRenderHint(QPainter::Antialiasing, true);
         renderPlotBase(cachePainter, cached_plot_);
@@ -659,12 +666,12 @@ private:
         painter.fillRect(rect(), theme.background);
         cache = CachedPlot{};
 
-        const QFontMetrics fm = painter.fontMetrics();
-        const int leftMargin = dataPlotLeftMargin(fm);
+        const QMargins margins = sessionPlotHorizontalMargins(this);
+        const int leftMargin = margins.left();
         const QRectF plotRect = rect().adjusted(
             leftMargin,
             kSessionViewerPlotTopMargin,
-            -kSessionViewerPlotRightMargin,
+            -margins.right(),
             -kSessionViewerPlotBottomMargin);
         cache.plot_rect = plotRect;
 
@@ -890,6 +897,7 @@ private:
     bool plot_cache_valid_;
     QPixmap plot_cache_;
     QColor cache_background_;
+    QMargins cache_margins_;
     CachedPlot cached_plot_;
     std::function<void(int, int, int)> on_view_changed_;
 };
@@ -1008,7 +1016,8 @@ private:
     bool ensurePlotCache()
     {
         const QColor background = sessionPlotThemeFor(this).background;
-        if (plot_cache_valid_ && plot_cache_.size() == size() && cache_background_ == background)
+        if (plot_cache_valid_ && plot_cache_.size() == size() && cache_background_ == background &&
+            cache_margins_ == sessionPlotHorizontalMargins(this))
         {
             return true;
         }
@@ -1023,6 +1032,7 @@ private:
         plot_cache_ = QPixmap(size());
         plot_cache_.fill(background);
         cache_background_ = background;
+        cache_margins_ = sessionPlotHorizontalMargins(this);
         QPainter cachePainter(&plot_cache_);
         cachePainter.setRenderHint(QPainter::Antialiasing, true);
         renderPlotBase(cachePainter, cached_plot_);
@@ -1038,12 +1048,12 @@ private:
 
         if (values_.isEmpty())
         {
-            const QFontMetrics fm = painter.fontMetrics();
-            const int leftMargin = dataPlotLeftMargin(fm);
+            const QMargins margins = sessionPlotHorizontalMargins(this);
+            const int leftMargin = margins.left();
             const QRectF emptyPlotRect = rect().adjusted(
                 leftMargin,
                 kSessionViewerPlotTopMargin,
-                -kSessionViewerPlotRightMargin,
+                -margins.right(),
                 -kSessionViewerPlotBottomMargin);
             painter.setPen(QPen(theme.border, 1));
             painter.drawRect(emptyPlotRect);
@@ -1073,11 +1083,12 @@ private:
         const QString midLabel = hasFiniteValues ? formatGuideValue((maxValue + minValue) * 0.5, 3) : QStringLiteral("---");
         const QString minLabel = hasFiniteValues ? formatGuideValue(minValue, 3) : QStringLiteral("---");
         const QFontMetrics fm = painter.fontMetrics();
-        const int leftMargin = dataPlotLeftMargin(fm, maxLabel, midLabel, minLabel);
+        const QMargins margins = sessionPlotHorizontalMargins(this);
+        const int leftMargin = margins.left();
         const QRectF plotRect = rect().adjusted(
             leftMargin,
             kSessionViewerPlotTopMargin,
-            -kSessionViewerPlotRightMargin,
+            -margins.right(),
             -kSessionViewerPlotBottomMargin);
         cache.plot_rect = plotRect;
         cache.start_index = startIndex;
@@ -1241,6 +1252,7 @@ private:
     bool plot_cache_valid_;
     QPixmap plot_cache_;
     QColor cache_background_;
+    QMargins cache_margins_;
     CachedPlot cached_plot_;
 };
 

@@ -162,6 +162,9 @@ void testFrameSliderThemeAndHover(MainWindow& window, SessionViewerWindow& viewe
     auto *waveform = viewer.findChild<VaporView::Ground::SessionUi::SessionWaveformWidget *>();
     auto *slider = viewer.findChild<QSlider *>(QStringLiteral("sessionViewerFrameSlider"));
     require(waveform && slider, "main-window viewer exposes its frame slider");
+    auto *timeLabel = slider->findChild<QLabel *>(QStringLiteral("sessionViewerFrameTimeLabel"));
+    auto *indexLabel = slider->findChild<QLabel *>(QStringLiteral("sessionViewerFrameIndexLabel"));
+    require(timeLabel && indexLabel, "frame navigator has time and index annotations");
     const QSize originalSize = window.size();
     const bool originalDark = VaporView::isDarkThemeEnabled();
     auto *scrollArea = viewer.findChild<QScrollArea *>(QStringLiteral("sessionViewerScrollArea"));
@@ -182,6 +185,7 @@ void testFrameSliderThemeAndHover(MainWindow& window, SessionViewerWindow& viewe
     viewer.raise();
     viewer.activateWindow();
     waveform->configureFrames(144783);
+    waveform->setEnvironmentSeries({20.125, 21.5}, {50.0, 55.0}, {1000.125, 1001.0});
     waveform->setFrameValueSilently(74143);
     const auto logicalBounds = [slider](const QRect& pixels) {
         const qreal ratio = slider->devicePixelRatioF();
@@ -201,7 +205,7 @@ void testFrameSliderThemeAndHover(MainWindow& window, SessionViewerWindow& viewe
                         "frame slider uses the actual application theme switch");
             for (int frame : {1, 74143, 144783})
             {
-                waveform->setFrameValueSilently(frame);
+                waveform->setFramePreviewInfo(frame - 1, 144783, false, 1782446038573000ULL);
                 VaporViewTest::processEventsFor(100);
                 scrollArea->ensureWidgetVisible(slider, 0, 0);
                 VaporViewTest::processEventsFor(100);
@@ -230,9 +234,17 @@ void testFrameSliderThemeAndHover(MainWindow& window, SessionViewerWindow& viewe
                     return qMakePair(bounds, pixels);
                 };
                 const auto normal = capture();
+                const QRect handleBounds = logicalBounds(normal.first);
+                require(timeLabel->text().endsWith(QStringLiteral(".573000")) && indexLabel->text() == QString::number(frame),
+                        "navigator annotations follow the preview time and frame index");
+                require(timeLabel->geometry().bottom() < handleBounds.top() &&
+                            indexLabel->geometry().top() > handleBounds.bottom() &&
+                            slider->rect().contains(timeLabel->geometry()) && slider->rect().contains(indexLabel->geometry()),
+                        "navigator annotations stay above and below the handle without endpoint clipping");
                 QStyleOptionSlider option;
                 option.initFrom(slider);
                 option.orientation = Qt::Horizontal;
+                option.state |= QStyle::State_Horizontal;
                 option.minimum = slider->minimum();
                 option.maximum = slider->maximum();
                 option.sliderPosition = slider->sliderPosition();
@@ -284,6 +296,37 @@ void testFrameSliderThemeAndHover(MainWindow& window, SessionViewerWindow& viewe
                     require(std::abs(normal.first.center().x() - trackBounds.right()) <= trackBounds.height() / 2 + 2,
                             "the last frame is centered at the visible track's right endpoint");
                 }
+                const QRect logicalTrack = logicalBounds(trackBounds);
+                const int trackLeft = slider->mapTo(waveform, QPoint(logicalTrack.left(), 0)).x();
+                const int trackRight = slider->mapTo(waveform, QPoint(logicalTrack.right(), 0)).x();
+                for (const QString& plotName : {QStringLiteral("sessionViewerWaveformPlot"), QStringLiteral("sessionViewerPeakPlot"),
+                                               QStringLiteral("sessionViewerTemperaturePlot"), QStringLiteral("sessionViewerHumidityPlot"),
+                                               QStringLiteral("sessionViewerPressurePlot")})
+                {
+                    QWidget *plot = waveform->findChild<QWidget *>(plotName);
+                    require(plot != nullptr, "navigator alignment plot exists");
+                    const QImage rendered = plot->grab().toImage();
+                    const QColor background = rendered.pixelColor(0, rendered.height() / 2);
+                    int left = rendered.width();
+                    int right = 0;
+                    for (int x = 0; x < rendered.width(); ++x)
+                    {
+                        int linePixels = 0;
+                        for (int y = rendered.height() / 4; y < rendered.height() / 2; ++y)
+                            if (rendered.pixelColor(x, y).rgb() != background.rgb())
+                                ++linePixels;
+                        if (linePixels > rendered.height() / 5)
+                        {
+                            left = std::min(left, x);
+                            right = std::max(right, x);
+                        }
+                    }
+                    const qreal ratio = plot->devicePixelRatioF();
+                    const int plotX = plot->mapTo(waveform, QPoint()).x();
+                    require(std::abs(plotX + qRound(left / ratio) - trackLeft) <= 3 &&
+                                std::abs(plotX + qRound(right / ratio) - trackRight) <= 3,
+                            "navigator track aligns with the rendered plot area of every waveform and trend chart");
+                }
                 QMouseEvent release(QEvent::MouseButtonRelease, center, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
                 QCoreApplication::sendEvent(slider, &release);
                 require(normal.second > 50 && hovered.second > normal.second * 1.3 && pressed.second >= hovered.second,
@@ -302,6 +345,7 @@ void testFrameSliderThemeAndHover(MainWindow& window, SessionViewerWindow& viewe
         QMetaObject::invokeMethod(&window, "onToggleTheme", Qt::DirectConnection);
     window.resize(originalSize);
     waveform->configureFrames(0);
+    waveform->setEnvironmentSeries({}, {}, {});
     scrollArea->verticalScrollBar()->setValue(originalScroll);
     slider->removeEventFilter(&observer);
 }

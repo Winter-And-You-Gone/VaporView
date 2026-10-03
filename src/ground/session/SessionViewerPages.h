@@ -139,7 +139,7 @@ public:
     int frameValue() const;
     bool frameValueInRange(int value) const;
     void setFrameInfoText(const QString& text);
-    void setFramePreviewInfo(quint64 frameIndex, quint64 totalFrames, bool english);
+    void setFramePreviewInfo(quint64 frameIndex, quint64 totalFrames, bool english, quint64 timestampUs = 0);
     void setFrameDetails(quint64 frameIndex,
                          quint64 totalFrames,
                          quint64 timestampUs,
@@ -176,7 +176,6 @@ signals:
 private:
     void updateFrameCounter(quint64 frameIndex, quint64 totalFrames);
 
-    QLabel *frame_title_;
     QSlider *frame_slider_;
     QLabel *frame_number_prefix_;
     QSpinBox *frame_spin_;

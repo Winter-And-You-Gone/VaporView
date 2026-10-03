@@ -57,12 +57,92 @@ constexpr int kMinimumVisibleCsvRows = 5;
 class SessionFrameSlider final : public QSlider
 {
 public:
-    using QSlider::QSlider;
+    explicit SessionFrameSlider(Qt::Orientation orientation, QWidget *parent)
+        : QSlider(orientation, parent)
+        , time_label_(new QLabel(QStringLiteral("---"), this))
+        , index_label_(new QLabel(QStringLiteral("---"), this))
+        , title_label_(new QLabel(this))
+    {
+        setObjectName(QStringLiteral("sessionViewerFrameSlider"));
+        time_label_->setObjectName(QStringLiteral("sessionViewerFrameTimeLabel"));
+        index_label_->setObjectName(QStringLiteral("sessionViewerFrameIndexLabel"));
+        title_label_->setObjectName(QStringLiteral("fieldLabel"));
+        title_label_->setAttribute(Qt::WA_TransparentForMouseEvents);
+        for (QLabel *label : {time_label_, index_label_})
+        {
+            label->setAlignment(Qt::AlignCenter);
+            label->setAttribute(Qt::WA_TransparentForMouseEvents);
+            label->setStyleSheet(QStringLiteral("background: transparent; border: none; padding: 0px; margin: 0px;"));
+        }
+        connect(this, &QSlider::valueChanged, this, &SessionFrameSlider::updateAnnotations);
+        connect(this, &QSlider::sliderMoved, this, &SessionFrameSlider::updateAnnotations);
+        updateGeometryStyle();
+    }
+
+    void setTitle(const QString& text)
+    {
+        title_label_->setText(text);
+        updateAnnotations();
+    }
+
+    void setTimestamp(quint64 timestampUs)
+    {
+        const QDateTime time = QDateTime::fromMSecsSinceEpoch(timestampUs / 1000ULL, QTimeZone::UTC).toLocalTime();
+        time_label_->setText(timestampUs == 0 ? QStringLiteral("---")
+            : time.toString(QStringLiteral("HH:mm:ss")) + QStringLiteral(".%1").arg(timestampUs % 1000000ULL, 6, 10, QLatin1Char('0')));
+        time_label_->setToolTip(timestampUs == 0 ? QString()
+            : time.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss")) + QStringLiteral(".%1").arg(timestampUs % 1000000ULL, 6, 10, QLatin1Char('0')));
+        updateAnnotations();
+    }
+
+    void updateGeometryStyle()
+    {
+        for (QLabel *label : {time_label_, index_label_})
+            label->setFont(numericFontFrom(parentWidget()->font()));
+        const QFontMetrics metrics = time_label_->fontMetrics();
+        const int diameter = std::max(16, metrics.height());
+        const int thickness = std::max(2, diameter / 5);
+        const QMargins margins = sessionPlotHorizontalMargins(this);
+        const QString geometry = QStringLiteral(
+            "QSlider#sessionViewerFrameSlider { min-height: %1px; max-height: %1px; }"
+            "QSlider#sessionViewerFrameSlider::groove:horizontal { border: none; height: %2px; margin: 0px %3px 0px %4px; }"
+            "QSlider#sessionViewerFrameSlider::handle:horizontal { border: none; width: %5px; margin: -%6px 0px; }")
+            .arg(diameter + 2 * (metrics.height() + 4)).arg(thickness)
+            .arg(margins.right() - diameter / 2).arg(margins.left() - diameter / 2)
+            .arg(diameter).arg((diameter - thickness) / 2);
+        if (styleSheet() != geometry)
+            setStyleSheet(geometry);
+        updateAnnotations();
+        update();
+    }
+
+    void updateAnnotations()
+    {
+        index_label_->setText(maximum() > 0 ? QString::number(sliderPosition()) : QStringLiteral("---"));
+        QStyleOptionSlider option;
+        initStyleOption(&option);
+        const QRect handle = style()->subControlRect(QStyle::CC_Slider, &option, QStyle::SC_SliderHandle, this);
+        title_label_->adjustSize();
+        title_label_->move(0, handle.center().y() - title_label_->height() / 2);
+        for (QLabel *label : {time_label_, index_label_})
+        {
+            label->setFont(numericFontFrom(parentWidget()->font()));
+            const int labelWidth = std::min(width(), label->fontMetrics().horizontalAdvance(label->text()) + 4);
+            const int labelHeight = label->fontMetrics().height();
+            const int x = std::clamp(qRound(QRectF(handle).center().x() - labelWidth / 2.0), 0, width() - labelWidth);
+            const int y = label == time_label_ ? handle.top() - labelHeight - 4 : handle.bottom() + 4;
+            label->setGeometry(x, y, labelWidth, labelHeight);
+        }
+    }
 
 protected:
     bool event(QEvent *event) override
     {
         const bool handled = QSlider::event(event);
+        if (event->type() == QEvent::FontChange || event->type() == QEvent::StyleChange)
+            updateGeometryStyle();
+        else if (event->type() == QEvent::Resize)
+            updateAnnotations();
         if (event->type() == QEvent::HoverEnter || event->type() == QEvent::HoverMove ||
             event->type() == QEvent::HoverLeave)
         {
@@ -107,6 +187,11 @@ protected:
         painter.drawEllipse(QRectF(center.x() - diameter / 2.0, center.y() - diameter / 2.0,
                                   diameter, diameter));
     }
+
+private:
+    QLabel *time_label_;
+    QLabel *index_label_;
+    QLabel *title_label_;
 };
 
 class SessionCsvTableView final : public QTableView
@@ -490,14 +575,11 @@ SessionWaveformWidget::SessionWaveformWidget(QWidget *parent)
     frameLayout->setHorizontalSpacing(8);
     frameLayout->setVerticalSpacing(4);
     frameLayout->setColumnStretch(1, 1);
-    frame_title_ = new QLabel(this);
-    frame_title_->setObjectName(QStringLiteral("fieldLabel"));
-    frameLayout->addWidget(frame_title_, 0, 0);
     frame_slider_ = new SessionFrameSlider(Qt::Horizontal, this);
     frame_slider_->setObjectName(QStringLiteral("sessionViewerFrameSlider"));
     frame_slider_->setEnabled(false);
     frame_slider_->setTracking(false);
-    frameLayout->addWidget(frame_slider_, 0, 1);
+    frameLayout->addWidget(frame_slider_, 0, 0, 1, 2);
     auto *frameInfoLayout = new QHBoxLayout();
     frameInfoLayout->setSpacing(8);
     frame_number_prefix_ = new QLabel(this);
@@ -604,7 +686,7 @@ SessionWaveformWidget::SessionWaveformWidget(QWidget *parent)
 void SessionWaveformWidget::setEnglish(bool english)
 {
     setTitle(english ? QStringLiteral("Normalized Second Harmonic") : QStringLiteral("归一化二次谐波"));
-    frame_title_->setText(english ? QStringLiteral("Frame:") : QStringLiteral("帧:"));
+    static_cast<SessionFrameSlider *>(frame_slider_)->setTitle(english ? QStringLiteral("Frame:") : QStringLiteral("帧:"));
     frame_number_prefix_->setText(english ? QStringLiteral("Frame") : QStringLiteral("第"));
     frame_number_suffix_->setText(QStringLiteral("帧"));
     frame_number_suffix_->setVisible(!english);
@@ -663,6 +745,7 @@ void SessionWaveformWidget::configureFrames(quint64 totalFrames)
     }
     const int digits = std::max(1, static_cast<int>(QString::number(std::max<quint64>(totalFrames, 1ULL)).size()));
     frame_total_label_->setText(QStringLiteral("/ %1").arg(fixedIntegerField(totalFrames, digits)));
+    static_cast<SessionFrameSlider *>(frame_slider_)->setTimestamp(0);
 }
 
 void SessionWaveformWidget::setFrameValueSilently(int value)
@@ -671,6 +754,7 @@ void SessionWaveformWidget::setFrameValueSilently(int value)
     const QSignalBlocker spinBlocker(frame_spin_);
     frame_slider_->setValue(value);
     frame_spin_->setValue(value);
+    static_cast<SessionFrameSlider *>(frame_slider_)->updateAnnotations();
 }
 
 int SessionWaveformWidget::frameValue() const
@@ -697,9 +781,11 @@ void SessionWaveformWidget::updateFrameCounter(quint64 frameIndex, quint64 total
 void SessionWaveformWidget::setFramePreviewInfo(
     quint64 frameIndex,
     quint64 totalFrames,
-    bool english)
+    bool english,
+    quint64 timestampUs)
 {
     updateFrameCounter(frameIndex, totalFrames);
+    static_cast<SessionFrameSlider *>(frame_slider_)->setTimestamp(timestampUs);
     setFrameInfoText(QString(english
         ? "| Previewing. Release the slider to sync CSV and details."
         : "| 正在预览。松开滑块后同步 CSV 和详细信息。"));
@@ -725,6 +811,7 @@ void SessionWaveformWidget::setFrameDetails(
         ? fixedSignedDecimalField(peak, 6, 14)
         : fixedTextField(english ? QStringLiteral("No valid value") : QStringLiteral("无有效值"), 14, Qt::AlignLeft);
     updateFrameCounter(frameIndex, totalFrames);
+    static_cast<SessionFrameSlider *>(frame_slider_)->setTimestamp(timestampUs);
     setFrameInfoText(QString(english
         ? "| %1 | %2 | min=%3 max=%4 peak=%5 | %6"
         : "| %1 | %2 | min=%3 max=%4 峰值=%5 | %6")
@@ -776,6 +863,27 @@ void SessionWaveformWidget::setEnvironmentSeries(
     temperature_values_ = temperature;
     humidity_values_ = humidity;
     pressure_values_ = pressure;
+    QString widestValue;
+    for (const QVector<double> *series : {&temperature_values_, &humidity_values_, &pressure_values_})
+    {
+        double minimum = std::numeric_limits<double>::infinity();
+        double maximum = -std::numeric_limits<double>::infinity();
+        for (double value : *series)
+            if (std::isfinite(value))
+            {
+                minimum = std::min(minimum, value);
+                maximum = std::max(maximum, value);
+            }
+        for (double value : {minimum, maximum})
+            if (std::isfinite(value))
+            {
+                const QString text = QString::number(value, 'f', 3);
+                if (text.size() > widestValue.size())
+                    widestValue = text;
+            }
+    }
+    setProperty("sessionViewerPlotWidestValue", widestValue);
+    static_cast<SessionFrameSlider *>(frame_slider_)->updateGeometryStyle();
     temperature_plot_->setValues(temperature_values_);
     humidity_plot_->setValues(humidity_values_);
     pressure_plot_->setValues(pressure_values_);

@@ -1376,24 +1376,6 @@ QAbstractSpinBox[spinArrowHover="down"]::down-arrow {
     margin-right: 5px;
 }
 
-/* 数据查看器帧滑块：几何交给样式，主题色和圆形由 SessionFrameSlider 绘制 */
-QSlider#sessionViewerFrameSlider {
-    min-height: 24px;
-    max-height: 24px;
-}
-
-QSlider#sessionViewerFrameSlider::groove:horizontal {
-    border: none;
-    height: 4px;
-    margin: 0px;
-}
-
-QSlider#sessionViewerFrameSlider::handle:horizontal {
-    border: none;
-    width: 20px;
-    margin: -8px 0px;
-}
-
 /* 进度条 */
 QProgressBar {
     background-color: @vv-border;

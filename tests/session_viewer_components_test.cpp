@@ -101,9 +101,15 @@ void testPages()
     waveform.setEnvironmentRange(0, 2);
 
     waveform.configureFrames(144783);
-    waveform.setFramePreviewInfo(74142, 144783, false);
+    waveform.setFramePreviewInfo(74142, 144783, false, 1782446038573000ULL);
     auto *frameNumber = waveform.findChild<QSpinBox *>(QStringLiteral("sessionViewerFrameNumberSpin"));
     auto *frameInfo = waveform.findChild<QLabel *>(QStringLiteral("sessionViewerFrameInfoLabel"));
+    auto *frameTime = waveform.findChild<QLabel *>(QStringLiteral("sessionViewerFrameTimeLabel"));
+    auto *frameIndex = waveform.findChild<QLabel *>(QStringLiteral("sessionViewerFrameIndexLabel"));
+    require(frameTime && frameIndex && frameTime->text().endsWith(QStringLiteral(".573000")) &&
+                frameIndex->text() == QStringLiteral("74143") &&
+                frameTime->toolTip().contains(QStringLiteral("2026-06-26")),
+            "frame annotations show the preview timestamp at microsecond precision and the one-based index");
     require(frameNumber && frameInfo && frameNumber->value() == 74143 &&
                 !frameInfo->text().contains(QStringLiteral("74143")) &&
                 !frameInfo->text().contains(QStringLiteral("144783")),
@@ -114,6 +120,10 @@ void testPages()
                 !frameInfo->text().contains(QStringLiteral("74144")) &&
                 !frameInfo->text().contains(QStringLiteral("144783")),
             "waveform details keep the editable counter and remove the repeated frame numbers");
+    require(frameIndex->text() == QStringLiteral("74144"), "committed frame annotations follow the editable frame counter");
+    waveform.clear();
+    require(frameTime->text() == QStringLiteral("---") && frameIndex->text() == QStringLiteral("---"),
+            "clearing a session clears the time and index annotations");
 
     SessionDeviceDataWidget deviceData;
     deviceData.setEnglish(true);

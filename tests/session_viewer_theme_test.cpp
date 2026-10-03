@@ -13,6 +13,7 @@
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDataStream>
+#include <QDateTime>
 #include <QDir>
 #include <QEventLoop>
 #include <QElapsedTimer>
@@ -41,6 +42,7 @@
 #include <QTemporaryDir>
 #include <QThread>
 #include <QTimer>
+#include <QTimeZone>
 #include <QToolButton>
 #include <QTreeWidget>
 #include <QWidget>
@@ -726,7 +728,17 @@ void testFrameSliderReleaseRestoresDetails()
     auto *spin = viewer.findChild<QSpinBox *>();
     auto *table = viewer.findChild<QTableView *>(QStringLiteral("sessionViewerCsvTable"));
     auto *frameInfo = viewer.findChild<QLabel *>(QStringLiteral("sessionViewerFrameInfoLabel"));
-    require(slider && spin && table && frameInfo, "slider release controls and details are available");
+    auto *frameTime = viewer.findChild<QLabel *>(QStringLiteral("sessionViewerFrameTimeLabel"));
+    auto *frameIndex = viewer.findChild<QLabel *>(QStringLiteral("sessionViewerFrameIndexLabel"));
+    require(slider && spin && table && frameInfo && frameTime && frameIndex,
+            "slider release controls, annotations and details are available");
+    const auto requireAnnotations = [&](int frame) {
+        const quint64 timestampUs = 1782446035573000ULL + static_cast<quint64>(frame - 1) * 1000000ULL;
+        const QDateTime time = QDateTime::fromMSecsSinceEpoch(timestampUs / 1000ULL, QTimeZone::UTC).toLocalTime();
+        require(frameIndex->text() == QString::number(frame) &&
+                    frameTime->text() == time.toString(QStringLiteral("HH:mm:ss")) + QStringLiteral(".573000"),
+                "preview and committed annotations follow the actual waveform timestamp and frame index");
+    };
 
     const auto requireCommittedFrame = [&](int frame) {
         processEventsFor(50);
@@ -737,6 +749,7 @@ void testFrameSliderReleaseRestoresDetails()
                 "releasing the slider restores frame details and CSV timing");
         require(slider->value() == frame && spin->value() == frame,
                 "released slider and frame number stay synchronized");
+        requireAnnotations(frame);
         const int firstCsvRow = std::max(0, frame - 2);
         require(table->rowAt(0) == firstCsvRow &&
                     !table->model()->index(frame - 1, 1).data().toString().isEmpty(),
@@ -747,6 +760,7 @@ void testFrameSliderReleaseRestoresDetails()
     slider->setSliderPosition(3);
     require(frameInfo->text().contains(QStringLiteral("Previewing")) && spin->value() == 3,
             "dragging previews the selected waveform before release");
+    requireAnnotations(3);
     slider->setSliderDown(false);
     requireCommittedFrame(3);
 
@@ -761,6 +775,7 @@ void testFrameSliderReleaseRestoresDetails()
     QStyleOptionSlider sliderOption;
     sliderOption.initFrom(slider);
     sliderOption.orientation = slider->orientation();
+    sliderOption.state |= QStyle::State_Horizontal;
     sliderOption.minimum = slider->minimum();
     sliderOption.maximum = slider->maximum();
     sliderOption.sliderPosition = slider->sliderPosition();
@@ -777,6 +792,7 @@ void testFrameSliderReleaseRestoresDetails()
     QCoreApplication::sendEvent(slider, &sliderMove);
     require(slider->isSliderDown() && frameInfo->text().contains(QStringLiteral("Previewing")) && spin->value() == 4,
             "mouse drag previews its waveform while held");
+    requireAnnotations(4);
     QMouseEvent sliderRelease(QEvent::MouseButtonRelease, dragEnd, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
     QCoreApplication::sendEvent(slider, &sliderRelease);
     requireCommittedFrame(4);

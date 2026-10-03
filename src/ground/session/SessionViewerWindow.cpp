@@ -1586,7 +1586,7 @@ bool SessionViewerWindow::previewWaveformFrame(quint64 frameIndex)
     const int previewCsvRow = timestampUs == 0 ? -1 : findClosestCsvRow(timestampUs);
     waveform_page_->setEnvironmentCurrentIndex(previewCsvRow, is_english_);
     previewClosestSensorRow(timestampUs);
-    waveform_page_->setFramePreviewInfo(frameIndex, total_waveform_frames_, is_english_);
+    waveform_page_->setFramePreviewInfo(frameIndex, total_waveform_frames_, is_english_, timestampUs);
     return true;
 }
 
