@@ -1,4 +1,6 @@
 add_library(vaporview_session_format STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/NavigationStatusCsv.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/NavigationStatusCsv.h
     ${CMAKE_CURRENT_SOURCE_DIR}/RecordingOrigin.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/RecordingOrigin.h
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionDeviceConfig.cpp

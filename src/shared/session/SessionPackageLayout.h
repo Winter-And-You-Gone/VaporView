@@ -43,6 +43,7 @@ struct SessionPackageLayout
     QString errorLogPath;
     QString deviceConfigPath;
     QString rawFormatDocumentPath;
+    QString navigationStatusCsvPath;
 };
 
 struct RawFileDefinition

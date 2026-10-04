@@ -32,6 +32,7 @@ struct CaptureMetadata
 struct SessionRecordCounts
 {
     quint64 sensorRows = 0;
+    quint64 navigationStatusRows = 0;
     quint64 laserTemperatureControllerRows = 0;
     quint64 systemTemperatureControllerRows = 0;
     quint64 waveformFrames = 0;

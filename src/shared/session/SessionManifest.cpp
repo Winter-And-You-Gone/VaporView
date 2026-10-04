@@ -63,6 +63,7 @@ QJsonObject countsToJson(const SessionRecordCounts& counts)
 {
     QJsonObject object;
     object.insert(QStringLiteral("sensor_rows"), numberText(counts.sensorRows));
+    object.insert(QStringLiteral("navigation_status_rows"), numberText(counts.navigationStatusRows));
     object.insert(QStringLiteral("laser_temperature_controller_rows"),
                   numberText(counts.laserTemperatureControllerRows));
     object.insert(QStringLiteral("system_temperature_controller_rows"),
@@ -79,6 +80,7 @@ QJsonObject pathsToJson()
     const SessionPackageLayout& layout = standardSessionPackageLayout();
     QJsonObject object;
     object.insert(QStringLiteral("sensor_summary_csv"), layout.sensorSummaryCsvPath);
+    object.insert(QStringLiteral("navigation_status_csv"), layout.navigationStatusCsvPath);
     object.insert(QStringLiteral("laser_temperature_controller_csv"),
                   layout.laserTemperatureControllerCsvPath);
     object.insert(QStringLiteral("system_temperature_controller_csv"),
@@ -326,6 +328,7 @@ SessionManifestParseResult sessionManifestFromJson(const QJsonObject& json)
 
     const QJsonObject counts = json.value(QStringLiteral("counts")).toObject();
     manifest.counts.sensorRows = countFromObjects(counts, json, QStringLiteral("sensor_rows"));
+    manifest.counts.navigationStatusRows = countFromObjects(counts, json, QStringLiteral("navigation_status_rows"));
     manifest.counts.laserTemperatureControllerRows =
         countFromObjects(counts,
                          json,

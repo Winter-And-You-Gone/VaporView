@@ -252,6 +252,8 @@ SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
     connect(&waveform_timer_, &QTimer::timeout, this, &SkyRuntime::sendDownsampledWaveform);
     connect(&heartbeat_timer_, &QTimer::timeout, this, &SkyRuntime::sendHeartbeat);
     connect(&status_timer_, &QTimer::timeout, this, &SkyRuntime::sendTelemetryStatus);
+    navigation_status_timer_.setInterval(1000);
+    connect(&navigation_status_timer_, &QTimer::timeout, this, &SkyRuntime::recordNavigationStatus);
     basic_timer_.setTimerType(Qt::PreciseTimer);
     feature_timer_.setTimerType(Qt::PreciseTimer);
     waveform_timer_.setTimerType(Qt::PreciseTimer);
@@ -440,6 +442,9 @@ bool SkyRuntime::start()
     started_time_us_ = currentTimestampUs();
     rtcm_boot_id_ = QRandomGenerator::global()->generate64() | 1ULL;
     rtcm_link_tracker_.reset();
+    navigation_rtcm_status_.reset();
+    navigation_status_changes_.reset();
+    navigation_status_timer_.start();
     emit runningChanged(true);
     publishRuntimeLog(LogLevel::Info,
                       QStringLiteral("runtime.lifecycle"),
@@ -473,6 +478,7 @@ void SkyRuntime::stop()
     waveform_timer_.stop();
     heartbeat_timer_.stop();
     status_timer_.stop();
+    navigation_status_timer_.stop();
 
     if (session_recorder_.isRecording() || session_recorder_.isPaused())
     {
@@ -575,6 +581,7 @@ bool SkyRuntime::startRecording(QString *error)
     {
         return false;
     }
+    recordNavigationStatus();
     publishRuntimeLog(LogLevel::Info,
                       QStringLiteral("session.recording"),
                       QStringLiteral("sky_recording_started"),
@@ -981,6 +988,49 @@ void SkyRuntime::sendTelemetryStatus()
 {
     const TelemetryStatus status = currentStatus();
     sendFrame(MsgType::TelemetryStatus, TelemetryCodec::serializeTelemetryStatus(status));
+}
+
+void SkyRuntime::recordNavigationStatus()
+{
+    const TelemetryStatus status = currentStatus();
+    const qint64 nowMs = command_clock_.elapsed();
+    navigation_rtcm_status_.setContext(true, true);
+    navigation_rtcm_status_.receiveStatus(status, nowMs);
+    Session::NavigationStatusRecord record;
+    record.timestampUs = status.rtcm_report_time_us;
+    record.skyReportTimeUs = status.rtcm_report_time_us;
+    record.skyBootId = status.rtcm_boot_id;
+    record.rtcmStreamId = status.rtcm_link_stream_id;
+    record.sourceMode = QStringLiteral("sky");
+    // Sky samples arrival directly, even if the Ground connection is absent.
+    record.rtcm = navigation_rtcm_status_.snapshot(true, nowMs);
+    const auto epsilon = device_manager_.latestEpsilon();
+    const auto epsilonStatus = device_manager_.status(SkyDeviceId::Epsilon);
+    record.navigationAvailable = epsilon.valid &&
+        connectedAndFresh(epsilonStatus, record.timestampUs, 2'000'000ULL);
+    record.positionAvailable = record.navigationAvailable && epsilon.gnss_fix_code >= 2 && epsilon.gnss_fix_code <= 9;
+    record.filterStatusAvailable = record.navigationAvailable;
+    record.epsilonTimeUs = record.navigationAvailable ? epsilon.device_timestamp_us : 0;
+    record.gnssFixCode = epsilon.gnss_fix_code;
+    record.satellites = epsilon.gnss_satellites;
+    record.filterStatusBits = epsilon.filter_status_bits;
+    record.updateStatusBits = epsilon.update_status_bits;
+    record.horizontalAccuracyM = epsilon.hacc_m;
+    record.verticalAccuracyM = epsilon.vacc_m;
+    record.latitudeDeg = epsilon.latitude_deg;
+    record.longitudeDeg = epsilon.longitude_deg;
+    record.heightM = epsilon.height_m;
+    session_recorder_.recordNavigationStatus(record);
+    const QVariantMap fields = navigation_status_changes_.observe(record);
+    if (!fields.isEmpty())
+    {
+        const bool degraded = fields.value(QStringLiteral("rtk_fix_transition")) == QStringLiteral("degraded");
+        publishRuntimeLog(degraded || record.rtcm.health == RtcmHealth::Interrupted ? LogLevel::Warning : LogLevel::Info,
+            QStringLiteral("navigation.corrections"), QStringLiteral("navigation_correction_status_changed"),
+            QStringLiteral("导航与差分状态变化：RTCM %1，GNSS 解 %2。")
+                .arg(Session::rtcmHealthCode(record.rtcm.health)).arg(record.navigationAvailable ? record.gnssFixCode : -1),
+            fields);
+    }
 }
 
 void SkyRuntime::sendTemperatureControllerStatus()

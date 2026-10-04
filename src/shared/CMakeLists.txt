@@ -23,6 +23,7 @@ if(BUILD_TESTING)
 endif()
 
 set(PROTOCOL_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/shared/telemetry/RtcmStatusModel.cpp
     ${CMAKE_SOURCE_DIR}/src/shared/telemetry/TelemetryCodec.cpp
     ${CMAKE_SOURCE_DIR}/src/shared/telemetry/TelemetryLink.cpp
     ${CMAKE_SOURCE_DIR}/src/shared/config/SkyConfig.cpp

@@ -8,6 +8,7 @@
 #include "TcpWaveEncoding.h"
 #include "ppk/ObservationStore.h"
 #include "ppk/AttitudeStore.h"
+#include "shared/session/NavigationStatusCsv.h"
 
 #include <QByteArray>
 #include <QFile>
@@ -70,6 +71,7 @@ public:
     bool appendError(const LogRecord& record);
 
     void recordBasicTelemetry(const TelemetryBasic& data);
+    bool recordNavigationStatus(const Session::NavigationStatusRecord& record);
     void recordDeviceSnapshot(quint64 hostTimeUs,
                               quint64 epsilonHostTimeUs,
                               const EpsilonData& epsilon,
@@ -149,6 +151,9 @@ private:
     QString event_log_filename_;
     QString error_log_filename_;
     QFile basic_record_file_;
+    QFile navigation_status_file_;
+    Session::NavigationStatusSampleGate navigation_status_gate_;
+    quint64 navigation_status_rows_ = 0;
     QFile feature_record_file_;
     QFile temperature_controller_record_file_;
     QFile ai8_temperature_controller_record_file_;

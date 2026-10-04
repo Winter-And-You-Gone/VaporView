@@ -2456,6 +2456,48 @@ void MainWindow::setupCentralWidget()
         if (state_->remote_sky_controller_)
             snapshot.rtcm = state_->remote_sky_controller_->rtcmStatus(
                 isRemoteSkyMode(), snapshot.rtkServiceRunning);
+        if (!isUiTestMode())
+        {
+            VaporView::Session::NavigationStatusRecord record;
+            record.timestampUs = VaporView::Ground::Session::GroundRecordingService::currentTimestampUs();
+            record.sourceMode = isRemoteSkyMode() ? QStringLiteral("remote") : QStringLiteral("local");
+            record.rtcm = snapshot.rtcm;
+            if (isRemoteSkyMode())
+            {
+                record.skyReportTimeUs = state_->remote_status_.rtcm_report_time_us;
+                record.skyBootId = state_->remote_status_.rtcm_boot_id;
+                record.rtcmStreamId = state_->remote_status_.rtcm_link_stream_id;
+            }
+            record.rtkServiceKnown = true;
+            record.rtkServiceRunning = snapshot.rtkServiceRunning;
+            record.navigationAvailable = snapshot.navigationDataAvailable;
+            record.positionAvailable = snapshot.positionAvailable;
+            record.filterStatusAvailable = snapshot.filterStatusAvailable;
+            record.epsilonTimeUs = snapshot.epsilonDataFresh ? epsilon.device_timestamp_us : 0;
+            record.gnssFixCode = snapshot.gnssFixCode;
+            record.satellites = snapshot.satelliteCount;
+            record.filterStatusBits = snapshot.filterStatusBits;
+            record.updateStatusBits = snapshot.updateStatusBits;
+            record.horizontalAccuracyM = snapshot.horizontalAccuracyM;
+            record.verticalAccuracyM = epsilon.vacc_m;
+            record.latitudeDeg = snapshot.latitudeDeg;
+            record.longitudeDeg = snapshot.longitudeDeg;
+            record.heightM = snapshot.heightM;
+            state_->recording_service_->recordNavigationStatus(record);
+            const QVariantMap fields = state_->navigation_status_changes_.observe(record);
+            // Keep the empty startup baseline in CSV without adding an idle UI log.
+            if (!fields.isEmpty() && (record.navigationAvailable || record.rtcm.available ||
+                record.rtkServiceRunning || !fields.value(QStringLiteral("baseline_reset")).toBool()))
+            {
+                const bool degraded = fields.value(QStringLiteral("rtk_fix_transition")) == QStringLiteral("degraded");
+                publishGroundLog(degraded || snapshot.rtcm.health == VaporView::RtcmHealth::Interrupted
+                    ? VaporView::LogLevel::Warning : VaporView::LogLevel::Info,
+                    QStringLiteral("navigation.corrections"), QStringLiteral("navigation_correction_status_changed"),
+                    QStringLiteral("导航与差分状态变化：RTCM %1，GNSS 解 %2。")
+                        .arg(VaporView::Session::rtcmHealthCode(snapshot.rtcm.health))
+                        .arg(record.navigationAvailable ? record.gnssFixCode : -1), fields);
+            }
+        }
         return snapshot;
     });
     state_->main_page_stack_->addWidget(state_->combination_navigation_page_);

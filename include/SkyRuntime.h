@@ -97,6 +97,7 @@ private slots:
     void sendDownsampledWaveform();
     void sendHeartbeat();
     void sendTelemetryStatus();
+    void recordNavigationStatus();
     void sendTemperatureControllerStatus();
     void sendAi8TemperatureControllerStatus();
 
@@ -131,6 +132,9 @@ private:
     QTimer waveform_timer_;
     QTimer heartbeat_timer_;
     QTimer status_timer_;
+    QTimer navigation_status_timer_;
+    RtcmStatusModel navigation_rtcm_status_;
+    Session::NavigationStatusChangeTracker navigation_status_changes_;
     quint16 next_frame_seq_ = 1;
     quint32 rx_total_frames_ = 0;
     quint64 last_frame_time_us_ = 0;

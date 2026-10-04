@@ -32,6 +32,7 @@ session_yyyy-MM-dd_HH-mm-ss/
 ├── raw_dat_format.md
 ├── sensors/
 │   ├── sensor_summary.csv
+│   ├── navigation_status.csv
 │   ├── laser_temperature_controller.csv
 │   ├── system_temperature_controller.csv
 │   └── waveform_features.csv
@@ -60,6 +61,9 @@ standard file even when the recorder has no data for that stream.
 ## Empty file rules
 
 - `sensors/sensor_summary.csv` uses the shared `SessionSensorCsv` header.
+- `sensors/navigation_status.csv` contains joint RTCM/navigation snapshots. Its
+  timestamps, sampling, fields and compatibility are documented in
+  [`navigation_correction_recording.md`](navigation_correction_recording.md).
 - `sensors/laser_temperature_controller.csv`,
   `sensors/system_temperature_controller.csv`,
   `sensors/waveform_features.csv`, `raw/waveform_peaks.csv`, and
@@ -106,6 +110,7 @@ When capture values do not apply, the keys remain present and the values are
 `counts` always contains string counters:
 
 - `sensor_rows`
+- `navigation_status_rows`
 - `laser_temperature_controller_rows`
 - `system_temperature_controller_rows`
 - `waveform_frames`
@@ -116,6 +121,7 @@ When capture values do not apply, the keys remain present and the values are
 `paths` always contains every standard relative path:
 
 - `sensor_summary_csv`
+- `navigation_status_csv`
 - `laser_temperature_controller_csv`
 - `system_temperature_controller_csv`
 - `waveform_features_csv`

@@ -26,7 +26,8 @@ const SessionPackageLayout& standardSessionPackageLayout()
         QStringLiteral("logs/event_log.csv"),
         QStringLiteral("logs/error_log.txt"),
         QStringLiteral("config/device_config.json"),
-        QStringLiteral("raw_dat_format.md")
+        QStringLiteral("raw_dat_format.md"),
+        QStringLiteral("sensors/navigation_status.csv")
     };
     return layout;
 }
@@ -48,6 +49,7 @@ QStringList standardSessionFiles()
         layout.manifestPath,
         layout.rawFormatDocumentPath,
         layout.sensorSummaryCsvPath,
+        layout.navigationStatusCsvPath,
         layout.laserTemperatureControllerCsvPath,
         layout.systemTemperatureControllerCsvPath,
         layout.waveformFeaturesCsvPath,

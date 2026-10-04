@@ -1,10 +1,10 @@
-#include "ground/devices/RtcmStatusModel.h"
+#include "RtcmStatusModel.h"
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
 
-namespace VaporView::Ground::Devices
+namespace VaporView
 {
 namespace
 {
@@ -147,4 +147,4 @@ RtcmStatusSnapshot RtcmStatusModel::snapshot(bool linkOpen, qint64 nowMs) const
         result.health = RtcmHealth::Warning;
     return result;
 }
-} // namespace VaporView::Ground::Devices
+} // namespace VaporView

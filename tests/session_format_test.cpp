@@ -648,6 +648,7 @@ void testSessionManifestSchemaAndOriginCompatibility()
                 QStringLiteral("laser_temperature_controller_csv"),
                 QStringLiteral("laser_temperature_controller_raw"),
                 QStringLiteral("navigation_raw"),
+                QStringLiteral("navigation_status_csv"),
                 QStringLiteral("pressure_raw"),
                 QStringLiteral("raw_format_document"),
                 QStringLiteral("sensor_summary_csv"),
@@ -684,6 +685,7 @@ void testSessionManifestSchemaAndOriginCompatibility()
             "empty capture fields are explicit nulls");
     const QJsonObject counts = groundJson.value(QStringLiteral("counts")).toObject();
     require(counts.value(QStringLiteral("sensor_rows")).toString() == QStringLiteral("0") &&
+                counts.value(QStringLiteral("navigation_status_rows")).toString() == QStringLiteral("0") &&
                 counts.value(QStringLiteral("laser_temperature_controller_rows")).toString() == QStringLiteral("0") &&
                 counts.value(QStringLiteral("system_temperature_controller_rows")).toString() == QStringLiteral("0") &&
                 counts.value(QStringLiteral("waveform_frames")).toString() == QStringLiteral("0") &&

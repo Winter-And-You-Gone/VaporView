@@ -12,6 +12,7 @@ struct RecordingSessionLayout
     QString sessionName;
     QString sessionDirectory;
     QString sensorSummaryFilename;
+    QString navigationStatusFilename;
     QString laserTemperatureControllerFilename;
     QString systemTemperatureControllerFilename;
     QString waveformFeaturesFilename;

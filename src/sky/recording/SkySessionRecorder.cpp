@@ -216,6 +216,7 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
         active_segment_timer_.start();
         recording_end_time_us_ = 0;
         recording_state_ = 1;
+        navigation_status_gate_.reset();
         return true;
     }
 
@@ -271,6 +272,8 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
         session_directory_,
         packageLayout.systemTemperatureControllerCsvPath);
     basic_record_file_.setFileName(sensor_summary_filename_);
+    navigation_status_file_.setFileName(VaporView::Session::sessionPackageFilePath(
+        session_directory_, packageLayout.navigationStatusCsvPath));
     feature_record_file_.setFileName(feature_filename_);
     temperature_controller_record_file_.setFileName(temperature_controller_filename_);
     ai8_temperature_controller_record_file_.setFileName(ai8_temperature_controller_filename_);
@@ -292,7 +295,8 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     event_log_file_.setFileName(event_log_filename_);
     error_log_file_.setFileName(error_log_filename_);
 
-    if (!basic_record_file_.open(QIODevice::WriteOnly | QIODevice::Text) ||
+    if (!navigation_status_file_.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Append) ||
+        !basic_record_file_.open(QIODevice::WriteOnly | QIODevice::Text) ||
         !feature_record_file_.open(QIODevice::WriteOnly | QIODevice::Text) ||
         !temperature_controller_record_file_.open(QIODevice::WriteOnly | QIODevice::Text) ||
         !ai8_temperature_controller_record_file_.open(QIODevice::WriteOnly | QIODevice::Text) ||
@@ -355,6 +359,8 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
 
     recording_elapsed_ms_ = 0;
     telemetry_row_count_ = 0;
+    navigation_status_rows_ = 0;
+    navigation_status_gate_.reset();
     waveform_feature_count_ = 0;
     temperature_controller_count_ = 0;
     ai8_temperature_controller_count_ = 0;
@@ -614,6 +620,24 @@ void SkySessionRecorder::recordBasicTelemetry(const TelemetryBasic& data)
                          hasTemperatureHumidity,
                          lidar,
                          hasLidar);
+}
+
+bool SkySessionRecorder::recordNavigationStatus(const Session::NavigationStatusRecord& record)
+{
+    std::lock_guard<std::mutex> lock(files_mutex_);
+    if (!isRecording() || !navigation_status_file_.isOpen() ||
+        !isTimestampInsideRecordingWindow(record.timestampUs, recording_start_time_us_, recording_end_time_us_))
+        return false;
+    if (!navigation_status_gate_.accept(record)) return true;
+    const QByteArray row = Session::navigationStatusCsvRow(record).toUtf8();
+    if (storage_->write(navigation_status_file_, row.constData(), row.size()) != row.size() ||
+        !storage_->flush(navigation_status_file_))
+    {
+        markStorageFailure();
+        return false;
+    }
+    ++navigation_status_rows_;
+    return true;
 }
 
 void SkySessionRecorder::recordDeviceSnapshot(quint64 hostTimeUs,
@@ -1058,6 +1082,7 @@ bool SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc, QString
     manifest.capture.telemetryPort = telemetry_port_;
     manifest.capture.telemetryBaud = telemetry_baud_ > 0 ? QString::number(telemetry_baud_) : QString();
     manifest.counts.sensorRows = telemetry_row_count_;
+    manifest.counts.navigationStatusRows = navigation_status_rows_;
     manifest.counts.laserTemperatureControllerRows = temperature_controller_count_;
     manifest.counts.systemTemperatureControllerRows = ai8_temperature_controller_count_;
     manifest.counts.waveformFrames = raw_waveform_record_count_;
@@ -1082,6 +1107,7 @@ void SkySessionRecorder::closeFiles()
     ppk_observations_.close();
     ppk_attitudes_.close();
     for (QFile *file : {&basic_record_file_,
+                        &navigation_status_file_,
                         &feature_record_file_,
                         &temperature_controller_record_file_,
                         &ai8_temperature_controller_record_file_,

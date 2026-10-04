@@ -1056,6 +1056,8 @@ bool MainWindow::startRecordingSession()
     }
 
     const auto status = state_->recording_service_->status();
+    if (state_->combination_navigation_page_)
+        state_->combination_navigation_page_->refreshStatus();
     updateRecordingStatusLabel();
     if (resuming)
     {

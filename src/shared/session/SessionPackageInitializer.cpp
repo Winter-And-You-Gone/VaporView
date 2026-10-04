@@ -1,4 +1,5 @@
 #include "shared/session/SessionPackageInitializer.h"
+#include "shared/session/NavigationStatusCsv.h"
 
 #include "shared/session/SessionDeviceConfig.h"
 #include "shared/session/SessionSensorCsv.h"
@@ -139,6 +140,11 @@ SessionPackageInitResult initializeSessionPackage(const SessionPackageInitOption
                        &error))
     {
         return fail(QStringLiteral("cannot create sensor_summary.csv: %1").arg(error));
+    }
+    if (!writeTextFile(sessionPackageFilePath(normalizedSessionDirectory, result.layout.navigationStatusCsvPath),
+                       navigationStatusCsvHeader(), &error))
+    {
+        return fail(QStringLiteral("cannot create navigation_status.csv: %1").arg(error));
     }
     if (!writeTextFile(sessionPackageFilePath(normalizedSessionDirectory, result.layout.laserTemperatureControllerCsvPath),
                        laserTemperatureControllerCsvHeader(),

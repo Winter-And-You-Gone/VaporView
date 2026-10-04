@@ -47,6 +47,7 @@ std::optional<RecordingSessionLayout> createRecordingSessionLayout(
     layout.sessionName = finalSessionName;
     layout.sessionDirectory = QDir::fromNativeSeparators(finalSessionDirectory);
     layout.sensorSummaryFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.sensorSummaryCsvPath);
+    layout.navigationStatusFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.navigationStatusCsvPath);
     layout.laserTemperatureControllerFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.laserTemperatureControllerCsvPath);
     layout.systemTemperatureControllerFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.systemTemperatureControllerCsvPath);
     layout.waveformFeaturesFilename = VaporView::Session::sessionPackageFilePath(finalSessionDirectory, packageLayout.waveformFeaturesCsvPath);

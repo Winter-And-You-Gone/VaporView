@@ -3,6 +3,7 @@
 #include "TcpWaveEncoding.h"
 #include "data_types.h"
 #include "EpsilonRawSatellite.h"
+#include "shared/session/NavigationStatusCsv.h"
 
 #include <QByteArray>
 #include <QString>
@@ -163,6 +164,7 @@ public:
                             TcpFloatEncoding floatEncoding);
 
     bool appendEvent(const QString& level, const QString& message);
+    bool recordNavigationStatus(const VaporView::Session::NavigationStatusRecord& record);
     bool appendError(const QString& message);
 
     quint64 steadyToEpochUs(const std::chrono::steady_clock::time_point& timePoint) const;

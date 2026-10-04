@@ -5,6 +5,7 @@
 #include "ground/devices/RemoteSkyLinkConfig.h"
 #include "ground/main/MainWindow.h"
 #include "ground/main/UiLogModel.h"
+#include "shared/session/NavigationStatusCsv.h"
 
 #include <QElapsedTimer>
 #include <QPointer>
@@ -472,6 +473,7 @@ struct MainWindowState
     std::unique_ptr<VaporView::Ground::Map3DController> map3d_controller_;
 #endif
     VaporView::TelemetryStatus remote_status_;
+    VaporView::Session::NavigationStatusChangeTracker navigation_status_changes_;
     VaporView::TelemetryStatus last_remote_recording_status_;
     bool has_last_remote_recording_status_;
     std::atomic<bool> cancel_connection_requested_;

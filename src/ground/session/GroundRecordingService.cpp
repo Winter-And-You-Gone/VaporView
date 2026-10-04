@@ -177,6 +177,7 @@ RecordingSessionLayout groundLayoutFromPackage(const VaporView::Session::Session
     layout.sessionName = init.sessionName;
     layout.sessionDirectory = init.sessionDirectory;
     layout.sensorSummaryFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.sensorSummaryCsvPath);
+    layout.navigationStatusFilename = VaporView::Session::sessionPackageFilePath(init.sessionDirectory, packageLayout.navigationStatusCsvPath);
     layout.laserTemperatureControllerFilename = VaporView::Session::sessionPackageFilePath(
         init.sessionDirectory,
         packageLayout.laserTemperatureControllerCsvPath);
@@ -237,6 +238,7 @@ public:
                 return true;
             }
             activeSegmentTimer.start();
+            navigationStatusGate.reset();
             startWorkers();
             notifyStatus();
             return true;
@@ -295,13 +297,15 @@ public:
         }
 
         sensorSummaryFile = std::make_unique<QFile>(layout.sensorSummaryFilename);
+        navigationStatusFile = std::make_unique<QFile>(layout.navigationStatusFilename);
         temperatureControllerFile = std::make_unique<QFile>(layout.laserTemperatureControllerFilename);
         ai8TemperatureControllerFile = std::make_unique<QFile>(layout.systemTemperatureControllerFilename);
         waveformFeaturesFile = std::make_unique<QFile>(layout.waveformFeaturesFilename);
         eventLogFile = std::make_unique<QFile>(layout.eventLogFilename);
         errorLogFile = std::make_unique<QFile>(layout.errorLogFilename);
         waveformPeaksFile = std::make_unique<QFile>(layout.waveformPeaksFilename);
-        if (!sensorSummaryFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
+        if (!navigationStatusFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Append) ||
+            !sensorSummaryFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
             !temperatureControllerFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
             !ai8TemperatureControllerFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
             !waveformFeaturesFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
@@ -636,6 +640,24 @@ public:
             eventRows.fetch_add(1);
         }
         return ok;
+    }
+
+    bool recordNavigationStatus(const VaporView::Session::NavigationStatusRecord& record)
+    {
+        std::lock_guard<std::mutex> lock(filesMutex);
+        if (!workerRunning.load() || paused.load() || writeFailed.load() || !navigationStatusFile ||
+            !navigationStatusFile->isOpen() || record.timestampUs < sessionStartTimeUs)
+            return false;
+        if (!navigationStatusGate.accept(record)) return true;
+        const QByteArray row = VaporView::Session::navigationStatusCsvRow(record).toUtf8();
+        if (storage->write(*navigationStatusFile, row.constData(), row.size()) != row.size() ||
+            !storage->flush(*navigationStatusFile))
+        {
+            markWriteFailure();
+            return false;
+        }
+        navigationStatusRows.fetch_add(1);
+        return true;
     }
 
     bool appendError(const QString& message)
@@ -1039,6 +1061,7 @@ private:
         manifest.capture.telemetryEndpoint = options.deviceConfig.waveformHost;
         manifest.capture.telemetryPort = QString::number(options.deviceConfig.waveformPort);
         manifest.counts.sensorRows = static_cast<quint64>(std::max<qint64>(0, sensorRows.load()));
+        manifest.counts.navigationStatusRows = navigationStatusRows.load();
         manifest.counts.laserTemperatureControllerRows = 0;
         manifest.counts.systemTemperatureControllerRows = 0;
         manifest.counts.waveformFrames = static_cast<quint64>(std::max<qint64>(0, waveformFrames.load()));
@@ -1069,6 +1092,7 @@ private:
                             systemTemperatureControllerRawFile.get(),
                             waveformPeaksFile.get(),
                             sensorSummaryFile.get(),
+                            navigationStatusFile.get(),
                             temperatureControllerFile.get(),
                             ai8TemperatureControllerFile.get(),
                             waveformFeaturesFile.get(),
@@ -1087,6 +1111,7 @@ private:
     {
         std::lock_guard<std::mutex> lock(filesMutex);
         sensorSummaryFile.reset();
+        navigationStatusFile.reset();
         temperatureControllerFile.reset();
         ai8TemperatureControllerFile.reset();
         waveformFeaturesFile.reset();
@@ -1106,6 +1131,8 @@ private:
     {
         recordingElapsedMs = 0;
         sensorRows.store(0);
+        navigationStatusRows.store(0);
+        navigationStatusGate.reset();
         waveformFrames.store(0);
         waveformFileCount.store(0);
         waveformPointsPerFrame.store(0);
@@ -1145,6 +1172,9 @@ public:
     quint64 recordingElapsedMs = 0;
 
     std::unique_ptr<QFile> sensorSummaryFile;
+    std::unique_ptr<QFile> navigationStatusFile;
+    VaporView::Session::NavigationStatusSampleGate navigationStatusGate;
+    std::atomic<quint64> navigationStatusRows{0};
     std::unique_ptr<QFile> navigationRawFile;
     std::unique_ptr<QFile> pressureRawFile;
     std::unique_ptr<QFile> temperatureHumidityRawFile;
@@ -1388,6 +1418,11 @@ bool GroundRecordingService::recordTcpWaveFrame(quint64 hostTimestampUs,
 bool GroundRecordingService::appendEvent(const QString& level, const QString& message)
 {
     return impl_->appendEvent(level, message);
+}
+
+bool GroundRecordingService::recordNavigationStatus(const VaporView::Session::NavigationStatusRecord& record)
+{
+    return impl_->recordNavigationStatus(record);
 }
 
 bool GroundRecordingService::appendError(const QString& message)
