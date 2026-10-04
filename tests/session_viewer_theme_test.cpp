@@ -35,6 +35,8 @@
 #include <QProgressBar>
 #include <QProgressDialog>
 #include <QPushButton>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QSettings>
 #include <QSize>
 #include <QSlider>
@@ -48,6 +50,7 @@
 #include <QToolButton>
 #include <QTreeWidget>
 #include <QWidget>
+#include <QWheelEvent>
 #include <QtEndian>
 #include <algorithm>
 #include <cmath>
@@ -1346,9 +1349,11 @@ void testTrajectoryViewerUsesSidebarLayout()
             "map panel lets the map fill the rounded card");
     require(mapPanel->layout()->spacing() == 0,
             "map panel has no fixed legend spacing above the map");
-    require(sidebarCard->geometry().left() < mapPanel->geometry().left(),
+    const QPoint sidebarOrigin = sidebarCard->mapTo(&dialog, QPoint(0, 0));
+    const QPoint mapOrigin = mapPanel->mapTo(&dialog, QPoint(0, 0));
+    require(sidebarOrigin.x() < mapOrigin.x(),
             "trajectory sidebar card is positioned to the left of the map panel");
-    require(sidebarCard->geometry().top() == mapPanel->geometry().top(),
+    require(sidebarOrigin.y() == mapOrigin.y(),
             "trajectory sidebar card and map panel share the same row");
     require(map->height() >= 300, "trajectory map keeps usable vertical space");
     const QRect mapPanelContents = mapPanel->contentsRect();
@@ -1559,6 +1564,83 @@ void testTrajectoryViewerUsesSidebarLayout()
 
     dialog.close();
     processEventsFor(100);
+}
+
+void testTrajectoryViewerExternalSidebarScrollBar()
+{
+    const QFont originalFont = qApp->font();
+    const QPalette originalPalette = qApp->palette();
+    const bool originalDark = qApp->property(VaporView::kAppDarkThemeProperty).toBool();
+    for (bool dark : {false, true})
+    {
+        qApp->setProperty(VaporView::kAppDarkThemeProperty, dark);
+        qApp->setPalette(VaporView::appThemePalette(dark));
+        for (double fontScale : {1.0, 1.3})
+        {
+            QFont font = originalFont;
+            font.setPointSizeF(originalFont.pointSizeF() * fontScale);
+            qApp->setFont(font);
+            TrajectoryViewerDialog dialog;
+            dialog.resize(1080, 660);
+            dialog.show();
+            RtkTrackPoint point;
+            point.latitude = 30.23094;
+            point.longitude = 120.13970;
+            point.navigation_source = QStringLiteral("PPK");
+            point.gnss_fix = QStringLiteral("RTK_FIXED");
+            dialog.setTrackPoints({point});
+            auto *sidebar = dialog.findChild<QScrollArea *>(QStringLiteral("trajectoryViewerSidebar"));
+            auto *card = dialog.findChild<QFrame *>(QStringLiteral("trajectoryViewerSidebarCard"));
+            auto *bar = dialog.findChild<QScrollBar *>(QStringLiteral("trajectorySidebarScrollBar"));
+            auto *mapPanel = dialog.findChild<QFrame *>(QStringLiteral("trajectoryViewerMapPanel"));
+            require(sidebar && card && bar && mapPanel, "external sidebar scrollbar and its layout exist");
+            auto *internalBar = sidebar->verticalScrollBar();
+            for (bool english : {false, true})
+            {
+                dialog.setEnglish(english);
+                processEventsFor(100);
+                require(bar->isVisible() && !card->isAncestorOf(bar) && !internalBar->isVisible(),
+                        "overflow scrollbar sits outside the card and the native scrollbar stays hidden");
+                const QRect cardRect(card->mapTo(&dialog, QPoint(0, 0)), card->size());
+                const QRect barRect(bar->mapTo(&dialog, QPoint(0, 0)), bar->size());
+                const QRect mapRect(mapPanel->mapTo(&dialog, QPoint(0, 0)), mapPanel->size());
+                require(cardRect.right() < barRect.left() && barRect.right() < mapRect.left(),
+                        "scrollbar occupies the gutter between the sidebar card and map");
+                require(bar->maximum() == internalBar->maximum() && bar->pageStep() == internalBar->pageStep(),
+                        "external scrollbar range and thumb size follow the viewport");
+                bar->setValue(bar->maximum());
+                processEventsFor(30);
+                require(internalBar->value() == bar->value(), "external scrollbar scrolls the card body");
+                for (auto *button : sidebar->findChildren<QAbstractButton *>())
+                {
+                    if (!button->isVisible())
+                        continue;
+                    const QRect buttonRect(button->mapTo(sidebar->viewport(), QPoint(0, 0)), button->size());
+                    require(buttonRect.left() >= 0 && buttonRect.right() < sidebar->viewport()->width(),
+                            "all sidebar buttons retain their complete horizontal edges");
+                }
+                internalBar->setValue(0);
+                require(bar->value() == 0, "native scrolling keeps the external thumb in sync");
+                const QPoint wheelPosition(20, 20);
+                QWheelEvent wheel(QPointF(wheelPosition), QPointF(sidebar->viewport()->mapToGlobal(wheelPosition)),
+                    QPoint(), QPoint(0, -120), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+                QApplication::sendEvent(sidebar->viewport(), &wheel);
+                require(internalBar->value() > 0 && bar->value() == internalBar->value(),
+                        "mouse wheel still scrolls the card with its native scrollbar hidden");
+            }
+            const int mapLeft = mapPanel->mapTo(&dialog, QPoint(0, 0)).x();
+            dialog.resize(1080, 1400);
+            processEventsFor(100);
+            require(internalBar->maximum() == 0 && !bar->isVisible(),
+                    "external scrollbar hides when the viewport fits all controls");
+            require(mapPanel->mapTo(&dialog, QPoint(0, 0)).x() == mapLeft,
+                    "reserved scrollbar gutter prevents the map from shifting when overflow ends");
+            dialog.close();
+        }
+    }
+    qApp->setFont(originalFont);
+    qApp->setProperty(VaporView::kAppDarkThemeProperty, originalDark);
+    qApp->setPalette(originalPalette);
 }
 
 void testTrajectoryViewerPointNavigationProvenance()
@@ -1845,6 +1927,7 @@ int main(int argc, char **argv)
     {
         testTrajectoryViewerInitialHeatLegendFromPendingPeaks();
         testTrajectoryViewerUsesSidebarLayout();
+        testTrajectoryViewerExternalSidebarScrollBar();
         testTrajectoryViewerPointNavigationProvenance();
         testTrajectoryViewerBridgesFilteredRouteRanges();
         testTrajectoryViewerRouteLodLimitsDenseTracks();

@@ -39,6 +39,7 @@
 #include <QPixmap>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QScrollBar>
 #include <QSet>
 #include <QSettings>
 #include "shared/config/SettingsWriteBarrier.h"
@@ -2931,7 +2932,7 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     sidebar->setWidgetResizable(true);
     sidebar->viewport()->setObjectName(QStringLiteral("trajectoryViewerSidebarViewport"));
     sidebar->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    sidebar->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    sidebar->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     sidebar->setFrameShape(QFrame::NoFrame);
     sidebar->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     auto *sidebarContent = new QWidget(sidebar);
@@ -2941,6 +2942,36 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     sidebarLayout->setSpacing(8);
     sidebar->setWidget(sidebarContent);
     sidebarCardLayout->addWidget(sidebar, 1);
+
+    auto *sidebarPanel = new QWidget(content);
+    sidebarPanel->setObjectName(QStringLiteral("trajectoryViewerSidebarPanel"));
+    sidebarPanel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+    auto *sidebarPanelLayout = new QHBoxLayout(sidebarPanel);
+    sidebarPanelLayout->setContentsMargins(0, 0, 0, 0);
+    sidebarPanelLayout->setSpacing(4);
+    sidebarPanelLayout->addWidget(sidebarCard);
+    auto *scrollBarGutter = new QWidget(sidebarPanel);
+    scrollBarGutter->setFixedWidth(8);
+    auto *scrollBarLayout = new QVBoxLayout(scrollBarGutter);
+    scrollBarLayout->setContentsMargins(0, sidebarTitleBar->height() + 1, 0, 1);
+    auto *externalScrollBar = new QScrollBar(Qt::Vertical, scrollBarGutter);
+    externalScrollBar->setObjectName(QStringLiteral("trajectorySidebarScrollBar"));
+    externalScrollBar->setFixedWidth(8);
+    externalScrollBar->setRange(0, 0);
+    externalScrollBar->hide();
+    scrollBarLayout->addWidget(externalScrollBar);
+    sidebarPanelLayout->addWidget(scrollBarGutter);
+    auto *internalScrollBar = sidebar->verticalScrollBar();
+    connect(internalScrollBar, &QScrollBar::rangeChanged, externalScrollBar,
+        [internalScrollBar, externalScrollBar]() {
+            externalScrollBar->setRange(internalScrollBar->minimum(), internalScrollBar->maximum());
+            externalScrollBar->setPageStep(internalScrollBar->pageStep());
+            externalScrollBar->setSingleStep(internalScrollBar->singleStep());
+            externalScrollBar->setValue(internalScrollBar->value());
+            externalScrollBar->setVisible(internalScrollBar->maximum() > internalScrollBar->minimum());
+        }, Qt::QueuedConnection);
+    connect(internalScrollBar, &QScrollBar::valueChanged, externalScrollBar, &QScrollBar::setValue);
+    connect(externalScrollBar, &QScrollBar::valueChanged, internalScrollBar, &QScrollBar::setValue);
 
     auto *mapPanel = new QFrame(this);
     mapPanel->setObjectName(QStringLiteral("trajectoryViewerMapPanel"));
@@ -3260,7 +3291,7 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
 
     auto *mapControlsLayout = new QHBoxLayout();
     mapControlsLayout->setContentsMargins(0, 0, 0, 0);
-    mapControlsLayout->setSpacing(6);
+    mapControlsLayout->setSpacing(4);
     mapControlsLayout->addWidget(map_source_combo_, 1);
     mapControlsLayout->addWidget(tianditu_key_button_, 0);
     mapControlsLayout->addWidget(zoom_in_button_, 0);
@@ -3288,7 +3319,7 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     mapOverlayLayout->addLayout(mapBottomOverlayLayout);
 
     mapPanelLayout->addWidget(map_widget_, 1);
-    mainLayout->addWidget(sidebarCard);
+    mainLayout->addWidget(sidebarPanel);
     mainLayout->addWidget(mapPanel, 1);
 
     connect(map_source_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -3449,6 +3480,10 @@ void TrajectoryViewerDialog::updateThemeStyles()
         "QDialog#trajectoryViewerDialog QFrame#trajectoryViewerSidebarCard QLabel#sectionTitleLabel { background-color: transparent; border: none; color: @vv-text; font-size: 16px; font-weight: bold; margin: 0px; padding: 0px; }"
         "QDialog#trajectoryViewerDialog QScrollArea#trajectoryViewerSidebar { background-color: @vv-surface; border: none; border-bottom-left-radius: 7px; border-bottom-right-radius: 7px; }"
         "QDialog#trajectoryViewerDialog QWidget#trajectoryViewerSidebarViewport, QDialog#trajectoryViewerDialog QWidget#trajectoryViewerSidebarContent { background-color: @vv-surface; border: none; }"
+        "QDialog#trajectoryViewerDialog QScrollBar#trajectorySidebarScrollBar:vertical { background-color: @vv-surface; border: none; width: 8px; }"
+        "QDialog#trajectoryViewerDialog QScrollBar#trajectorySidebarScrollBar::handle:vertical { background-color: @vv-scrollbar-handle; min-height: 30px; border-radius: 4px; }"
+        "QDialog#trajectoryViewerDialog QScrollBar#trajectorySidebarScrollBar::handle:vertical:hover { background-color: @vv-scrollbar-handle-hover; }"
+        "QDialog#trajectoryViewerDialog QScrollBar#trajectorySidebarScrollBar::add-page:vertical, QDialog#trajectoryViewerDialog QScrollBar#trajectorySidebarScrollBar::sub-page:vertical { background-color: @vv-surface; }"
         "QDialog#trajectoryViewerDialog QLabel#trajectorySidebarSummaryLabel { color: @vv-text; background-color: transparent; border: none; font-size: 14px; font-weight: 500; line-height: 140%; }"
         "QDialog#trajectoryViewerDialog QFrame#trajectoryPeakCard { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 8px; }"
         "QDialog#trajectoryViewerDialog QLabel#trajectoryPeakTitle { color: @vv-text-strong; background-color: transparent; border: none; font-size: 14px; font-weight: 700; }"
