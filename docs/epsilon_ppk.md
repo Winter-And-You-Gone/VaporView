@@ -87,8 +87,11 @@ files beside imported Base OBS are archived automatically; navigation already
 readable within Base input is also passed to RTKLIB. No ephemerides are fabricated
 from `0x77`.
 
-The Positioning Trajectory viewer shows **Trajectory source** and **Solution
-status** for the selected point. Original receiver records distinguish real-time
+The Positioning Trajectory viewer shows **Trajectory source** at the top of its
+sidebar, and **Trajectory source** and **Solution status** for the selected point.
+The sidebar summarizes all displayed points; mixed receiver fix states retain
+Original provenance, while a track containing both Original and PPK coordinates
+is labelled Mixed sources. Original receiver records distinguish real-time
 RTK from other GNSS solutions; PPK FIX/FLOAT points are labelled post-processing.
 These fields follow the selected navigation source, so completing PPK does not
 relabel a trajectory that is still using Original coordinates.

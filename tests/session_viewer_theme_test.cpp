@@ -1569,6 +1569,9 @@ void testTrajectoryViewerPointNavigationProvenance()
     processEventsFor(100);
     auto *details = dialog.findChild<QLabel *>(QStringLiteral("trajectoryPointDetailLabel"));
     require(details != nullptr, "trajectory point details exist for navigation provenance");
+    auto *summary = dialog.findChild<QLabel *>(QStringLiteral("trajectorySidebarSummaryLabel"));
+    auto *detailCard = dialog.findChild<QFrame *>(QStringLiteral("trajectoryPointDetailCard"));
+    require(summary && detailCard, "sidebar summary and floating point details exist");
 
     RtkTrackPoint point;
     point.latitude = 30.23094;
@@ -1623,6 +1626,14 @@ void testTrajectoryViewerPointNavigationProvenance()
                 point.navigation_source = example.source;
                 point.gnss_fix = example.fix;
                 dialog.setTrackPoints({point});
+                const QString sourceLabel = english ? QStringLiteral("Trajectory source") : QStringLiteral("轨迹来源");
+                require(summary->isVisible() && !detailCard->isVisible() &&
+                            summary->text().contains(sourceLabel) &&
+                            summary->text().contains(english ? example.englishSource : example.chineseSource),
+                        "sidebar shows the trajectory source before selecting a map point");
+                require(summary->text().indexOf(sourceLabel) <
+                            summary->text().indexOf(english ? QStringLiteral("Points") : QStringLiteral("点数")),
+                        "trajectory source is the first sidebar summary field");
                 const QString text = details->text();
                 require(text.contains(english ? QStringLiteral("Trajectory source") : QStringLiteral("轨迹来源")) &&
                             text.contains(english ? example.englishSource : example.chineseSource),
@@ -1634,6 +1645,26 @@ void testTrajectoryViewerPointNavigationProvenance()
                     require(!text.contains(QStringLiteral("实时 RTK")) && !text.contains(QStringLiteral("real-time RTK")),
                             "PPK FIX/FLOAT must not be labelled real-time RTK");
             }
+            point.navigation_source = QStringLiteral("PPK");
+            point.gnss_fix = QStringLiteral("RTK_FIXED");
+            RtkTrackPoint secondPoint = point;
+            secondPoint.gnss_fix = QStringLiteral("RTK_FLOAT");
+            dialog.setTrackPoints({point, secondPoint});
+            require(summary->text().contains(english ? QStringLiteral("PPK post-processing") : QStringLiteral("PPK 后处理")),
+                    "FIX and FLOAT share the same PPK trajectory source");
+            point.navigation_source = QStringLiteral("ORIGINAL");
+            secondPoint.navigation_source = QStringLiteral("EPSILON_REALTIME");
+            secondPoint.gnss_fix = QStringLiteral("3D");
+            dialog.setTrackPoints({point, secondPoint});
+            require(summary->text().contains(english ? QStringLiteral("Original (includes real-time RTK)") : QStringLiteral("原始记录（含实时 RTK）")),
+                    "changing receiver fix quality does not turn Original into mixed navigation sources");
+            point.navigation_source = QStringLiteral("PPK");
+            dialog.setTrackPoints({point, secondPoint});
+            require(summary->text().contains(english ? QStringLiteral("Mixed sources") : QStringLiteral("混合来源")),
+                    "partially corrected tracks do not claim one uniform coordinate source");
+            dialog.setTrackPoints({});
+            require(!summary->text().contains(english ? QStringLiteral("Trajectory source") : QStringLiteral("轨迹来源")),
+                    "clearing the track also clears the previous sidebar source");
         }
     }
     qApp->setProperty(VaporView::kAppDarkThemeProperty, originalDark);

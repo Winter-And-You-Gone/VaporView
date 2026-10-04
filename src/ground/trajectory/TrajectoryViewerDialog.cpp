@@ -629,6 +629,26 @@ QString trajectoryInfoRow(const QString& label, const QString& value, bool dark)
              value.toHtmlEscaped());
 }
 
+QString trajectorySourceText(const RtkTrackPoint& point, bool english)
+{
+    const QString source = point.navigation_source.trimmed().toUpper();
+    if (source == QStringLiteral("PPK"))
+        return english ? QStringLiteral("PPK post-processing") : QStringLiteral("PPK 后处理");
+    if (source == QStringLiteral("EPSILON_REALTIME") || source == QStringLiteral("ORIGINAL"))
+    {
+        const QString fix = point.gnss_fix.trimmed().toUpper();
+        const bool rtk = fix == QStringLiteral("RTK_FIXED") || fix == QStringLiteral("RTK_DUAL") ||
+            fix == QStringLiteral("FIXED") || fix == QStringLiteral("FIX") ||
+            fix == QStringLiteral("RTK_FLOAT") || fix == QStringLiteral("FLOAT");
+        return rtk
+            ? (english ? QStringLiteral("Original · real-time RTK") : QStringLiteral("原始记录 · 实时 RTK"))
+            : (english ? QStringLiteral("Original receiver record") : QStringLiteral("原始接收机记录"));
+    }
+    return source.isEmpty()
+        ? (english ? QStringLiteral("Unknown") : QStringLiteral("未知"))
+        : (english ? QStringLiteral("Unknown (%1)") : QStringLiteral("未知（%1）")).arg(point.navigation_source);
+}
+
 QString trajectoryInfoTable(const QString& title,
                             const QVector<QPair<QString, QString>>& rows,
                             bool dark)
@@ -3927,22 +3947,11 @@ void TrajectoryViewerDialog::updateSelectedPointDetails()
     }
 
     const RtkTrackPoint& point = track_points_.at(selected_track_index_);
-    const QString source = point.navigation_source.trimmed().toUpper();
     const QString fix = point.gnss_fix.trimmed().toUpper();
     const bool fixed = fix == QStringLiteral("RTK_FIXED") || fix == QStringLiteral("RTK_DUAL") ||
         fix == QStringLiteral("FIXED") || fix == QStringLiteral("FIX");
     const bool floating = fix == QStringLiteral("RTK_FLOAT") || fix == QStringLiteral("FLOAT");
-    QString sourceText;
-    if (source == QStringLiteral("PPK"))
-        sourceText = is_english_ ? QStringLiteral("PPK post-processing") : QStringLiteral("PPK 后处理");
-    else if (source == QStringLiteral("EPSILON_REALTIME") || source == QStringLiteral("ORIGINAL"))
-        sourceText = fixed || floating
-            ? (is_english_ ? QStringLiteral("Original · real-time RTK") : QStringLiteral("原始记录 · 实时 RTK"))
-            : (is_english_ ? QStringLiteral("Original receiver record") : QStringLiteral("原始接收机记录"));
-    else
-        sourceText = source.isEmpty()
-            ? (is_english_ ? QStringLiteral("Unknown") : QStringLiteral("未知"))
-            : (is_english_ ? QStringLiteral("Unknown (%1)") : QStringLiteral("未知（%1）")).arg(point.navigation_source);
+    const QString sourceText = trajectorySourceText(point, is_english_);
 
     QString fixText;
     if (fixed)
@@ -4330,8 +4339,10 @@ void TrajectoryViewerDialog::updateSummary()
     double totalDistance = 0.0;
     double maxSpeed = 0.0;
     int speedCount = 0;
+    QSet<QString> sourceLabels;
     for (const RtkTrackPoint& point : track_points_)
     {
+        sourceLabels.insert(trajectorySourceText(point, is_english_));
         minLat = std::min(minLat, point.latitude);
         maxLat = std::max(maxLat, point.latitude);
         minLon = std::min(minLon, point.longitude);
@@ -4368,7 +4379,18 @@ void TrajectoryViewerDialog::updateSummary()
         .arg(QString::number(track_stats_.jump_threshold_m, 'f', 1))
         .arg(track_stats_.rejected_jump);
 
+    QString sourceText;
+    if (sourceLabels.size() == 1)
+        sourceText = *sourceLabels.cbegin();
+    else if (sourceLabels.size() == 2 &&
+             sourceLabels.contains(is_english_ ? QStringLiteral("Original receiver record") : QStringLiteral("原始接收机记录")) &&
+             sourceLabels.contains(is_english_ ? QStringLiteral("Original · real-time RTK") : QStringLiteral("原始记录 · 实时 RTK")))
+        sourceText = is_english_ ? QStringLiteral("Original (includes real-time RTK)") : QStringLiteral("原始记录（含实时 RTK）");
+    else
+        sourceText = is_english_ ? QStringLiteral("Mixed sources") : QStringLiteral("混合来源");
+
     QVector<QPair<QString, QString>> rows = {
+        {is_english_ ? QStringLiteral("Trajectory source") : QStringLiteral("轨迹来源"), sourceText},
         {is_english_ ? QStringLiteral("Points") : QStringLiteral("点数"), QString::number(track_points_.size())},
         {is_english_ ? QStringLiteral("Distance") : QStringLiteral("里程"), formatDistanceMeters(totalDistance)},
         {is_english_ ? QStringLiteral("Max speed") : QStringLiteral("最大速度"), speedCount > 0 ? formatSpeed(maxSpeed) : QStringLiteral("--")},

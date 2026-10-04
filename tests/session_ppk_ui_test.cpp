@@ -244,15 +244,20 @@ int main(int argc, char **argv)
                 "open positioning trajectory after PPK completes with Original still selected");
         auto *trajectory = viewer.findChild<TrajectoryViewerDialog *>();
         auto *pointDetails = trajectory ? trajectory->findChild<QLabel *>("trajectoryPointDetailLabel") : nullptr;
+        auto *trackSummary = trajectory ? trajectory->findChild<QLabel *>("trajectorySidebarSummaryLabel") : nullptr;
         require(pointDetails && pointDetails->text().contains("Original receiver record") &&
                     pointDetails->text().contains("Single"),
                 "completed PPK does not relabel coordinates while Original is selected");
+        require(trackSummary && trackSummary->isVisible() && trackSummary->text().contains("Original receiver record"),
+                "sidebar shows Original immediately when the trajectory window opens");
         source->setCurrentIndex(1);
         require(sessionNavigationSource(session.path()) == NavigationSource::Ppk, "UI activates PPK");
         require(VaporViewTest::processEventsUntil(5000, [&] { return navigation->text() == "PPK corrected"; }),
                 "PPK source updates main summary via navigation events");
         require(VaporViewTest::processEventsUntil(5000, [&] { return pointDetails->text().contains("PPK post-processing"); }),
                 "open trajectory point details follow the actual PPK coordinate reload");
+        require(trackSummary->text().contains("PPK post-processing"),
+                "open trajectory sidebar follows the PPK coordinate reload");
         require(pointDetails->text().contains("Solution status") && !pointDetails->text().contains("real-time RTK"),
                 "real solver FIX/FLOAT is separate from the PPK provenance");
         require(panel.findChild<QLabel *>("sessionPpkQuality")->text().contains("FIX"), "UI exposes FIX FLOAT quality");
@@ -266,6 +271,8 @@ int main(int argc, char **argv)
                 "external source updates both windows");
         require(VaporViewTest::processEventsUntil(5000, [&] { return pointDetails->text().contains("Original receiver record"); }),
                 "returning to Original updates the existing trajectory details");
+        require(trackSummary->text().contains("Original receiver record"),
+                "returning to Original also updates the existing trajectory sidebar");
         trajectory->close();
         QFile style(QStringLiteral(VAPORVIEW_SOURCE_DIR "/resources/modern_style.qss"));
         require(style.open(QIODevice::ReadOnly), "load actual runtime stylesheet");
