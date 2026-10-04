@@ -2,7 +2,19 @@
 #include "ground/session/SessionMapCoordinator.h"
 #include "ground/session/SessionViewerPages.h"
 #include "ground/session/SessionPpkWidget.h"
-#include "ground/session/SessionPpkWindow.h"
+#include "shared/theme/TopLevelCardStyle.h"
+#include "shared/theme/AppTheme.h"
+#include <QButtonGroup>
+#include <QCoreApplication>
+#include <QFrame>
+#include <QLabel>
+#include <QPushButton>
+#include <QToolButton>
+#include <QStackedWidget>
+#include <QStyle>
+#include <QShowEvent>
+#include <QPainter>
+#include <QFile>
 #include "ppk/SessionNavigationSource.h"
 #include "ground/widgets/CustomTitleBar.h"
 #include "ground/wave/RawDataParserWindow.h"
@@ -179,6 +191,21 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
             this,
             &SessionViewerWindow::applyPeakSettingsFromTrajectory);
     VaporView::installCustomTitleBar(this);
+    sidebar_toggle_ = new QToolButton(this);
+    sidebar_toggle_->setObjectName(QStringLiteral("sessionViewerSidebarToggle"));
+    sidebar_toggle_->setText(QStringLiteral("☰"));
+    sidebar_toggle_->setFocusPolicy(Qt::TabFocus);
+    sidebar_toggle_->setAutoRaise(true);
+    VaporView::addWidgetToCustomTitleBar(this, sidebar_toggle_);
+    connect(sidebar_toggle_, &QToolButton::clicked, this, [this]() {
+        const int width = navigation_splitter_->sizes().value(0);
+        const int target = width == 0 ? 190 : width < 120 ? 0 : 64;
+        updateNavigation(target);
+        sidebar_->layout()->activate();
+        navigation_splitter_->setSizes({target, std::max(1, navigation_splitter_->width() - target)});
+        updateNavigation();
+        saveSidebarWidth();
+    });
     resize(kSessionViewerDefaultWidth, kSessionViewerDefaultHeight);
     setEnglish(false);
     VaporView::centerWindowOnScreen(this, parent);
@@ -218,10 +245,11 @@ SessionViewerWindow::~SessionViewerWindow()
 {
     cancelBackgroundWaveformPeakSeries(false);
     // The panel cancels and joins its worker before the viewer's state is destroyed.
-    if (ppk_window_)
+    if (ppk_panel_)
     {
-        delete ppk_window_;
-        ppk_window_ = nullptr;
+        disconnect(ppk_panel_, nullptr, this, nullptr);
+        delete ppk_panel_;
+        ppk_panel_ = nullptr;
     }
     if (raw_data_parser_window_)
     {
@@ -232,14 +260,24 @@ SessionViewerWindow::~SessionViewerWindow()
 
 void SessionViewerWindow::closeEvent(QCloseEvent *event)
 {
-    if (ppk_window_)
-    {
-        delete ppk_window_;
-        ppk_window_ = nullptr;
-        overview_page_->setSessionChangesEnabled(true);
-        updatePpkSummary();
-    }
+    // Closing the workspace hides it; only destruction stops its workers.
+    saveSidebarWidth();
     QMainWindow::closeEvent(event);
+}
+
+void SessionViewerWindow::showEvent(QShowEvent *event)
+{
+    QMainWindow::showEvent(event);
+    if (!navigation_shown_)
+    {
+        navigation_shown_ = true;
+        QSettings settings("VaporView", "SessionViewer");
+        const int width = std::clamp(settings.value("sidebar_width", 190).toInt(), 0, 400);
+        updateNavigation(width);
+        sidebar_->layout()->activate();
+        navigation_splitter_->setSizes({width, std::max(1, navigation_splitter_->width() - width)});
+        updateNavigation();
+    }
 }
 
 void SessionViewerWindow::setupUi()
@@ -258,7 +296,7 @@ void SessionViewerWindow::setupUi()
     scrollArea->setWidgetResizable(true);
     scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    setCentralWidget(scrollArea);
+    setupNavigation(scrollArea);
 
     auto *content = new QWidget(scrollArea);
     content->setObjectName(QStringLiteral("sessionViewerCentralWidget"));
@@ -333,6 +371,201 @@ void SessionViewerWindow::setupUi()
     connect(waveform_page_, &SessionWaveformWidget::visibleRangeChanged,
             this, &SessionViewerWindow::syncEnvironmentRangeToWaveformRange);
 }
+void SessionViewerWindow::setupNavigation(QWidget *dataPage)
+{
+    auto *central = new QWidget(this);
+    auto *layout = new QVBoxLayout(central);
+    layout->setContentsMargins(8, 8, 8, 8);
+    navigation_splitter_ = new QSplitter(Qt::Horizontal, central);
+    navigation_splitter_->setObjectName(QStringLiteral("sessionViewerNavigationSplitter"));
+    sidebar_ = new QFrame(navigation_splitter_);
+    sidebar_->setObjectName(QStringLiteral("appSidebar"));
+    sidebar_->setMinimumWidth(0);
+    VaporView::configureTopLevelCard(sidebar_);
+    auto *navLayout = new QVBoxLayout(sidebar_);
+    navLayout->setContentsMargins(8, 12, 8, 12);
+    navLayout->setSpacing(6);
+    navigation_buttons_ = new QButtonGroup(this);
+    navigation_buttons_->setExclusive(true);
+    for (int i = 0; i < 4; ++i)
+    {
+        auto *button = new QPushButton(sidebar_);
+        button->setObjectName(QStringLiteral("appSidebarButton"));
+        button->setProperty("sessionViewerPage", i);
+        button->setCheckable(true);
+        button->setFocusPolicy(Qt::TabFocus);
+        button->setMinimumWidth(0);
+        navigation_buttons_->addButton(button, i);
+        navLayout->addWidget(button);
+    }
+    navLayout->addStretch(1);
+    navigation_buttons_->button(0)->setChecked(true);
+    page_stack_ = new QStackedWidget(navigation_splitter_);
+    page_stack_->setObjectName(QStringLiteral("sessionViewerPageStack"));
+    page_stack_->addWidget(dataPage);
+    for (int i = 0; i < 3; ++i)
+    {
+        tool_pages_[i] = new QWidget(page_stack_);
+        tool_pages_[i]->setObjectName(QStringLiteral("sessionViewerToolPage%1").arg(i + 1));
+        auto *pageLayout = new QVBoxLayout(tool_pages_[i]);
+        pageLayout->setContentsMargins(0, 0, 0, 0);
+        empty_pages_[i] = new QWidget(tool_pages_[i]);
+        auto *emptyLayout = new QVBoxLayout(empty_pages_[i]);
+        emptyLayout->addStretch();
+        empty_labels_[i] = new QLabel(empty_pages_[i]);
+        empty_labels_[i]->setWordWrap(true);
+        empty_labels_[i]->setAlignment(Qt::AlignCenter);
+        empty_actions_[i] = new QPushButton(empty_pages_[i]);
+        emptyLayout->addWidget(empty_labels_[i]);
+        emptyLayout->addWidget(empty_actions_[i], 0, Qt::AlignHCenter);
+        emptyLayout->addStretch();
+        connect(empty_actions_[i], &QPushButton::clicked, this, [this]() { setCurrentPage(Page::Data); });
+        pageLayout->addWidget(empty_pages_[i]);
+        page_stack_->addWidget(tool_pages_[i]);
+    }
+    navigation_splitter_->setCollapsible(0, true);
+    navigation_splitter_->setCollapsible(1, false);
+    navigation_splitter_->setStretchFactor(0, 0);
+    navigation_splitter_->setStretchFactor(1, 1);
+    QSettings settings("VaporView", "SessionViewer");
+    const int width = std::clamp(settings.value("sidebar_width", 190).toInt(), 0, 400);
+    navigation_splitter_->setSizes({width, kSessionViewerDefaultWidth - width});
+    connect(navigation_splitter_, &QSplitter::splitterMoved, this, [this]() {
+        updateNavigation();
+        saveSidebarWidth();
+    });
+    connect(navigation_buttons_, &QButtonGroup::idClicked, this, [this](int id) {
+        setCurrentPage(static_cast<Page>(id));
+    });
+    layout->addWidget(navigation_splitter_);
+    setCentralWidget(central);
+}
+
+SessionViewerWindow::Page SessionViewerWindow::currentPage() const
+{
+    return static_cast<Page>(page_stack_->currentIndex());
+}
+
+void SessionViewerWindow::setCurrentPage(Page page)
+{
+    if (session_loading_)
+    {
+        navigation_buttons_->button(page_stack_->currentIndex())->setChecked(true);
+        return;
+    }
+    if (page == Page::Trajectory)
+    {
+        if (trajectory_controller_.hasTrack() && !ensureTrajectoryPeakValuesReady())
+            return;
+        if (!trajectory_page_)
+        {
+            syncPeakSettingsToTrajectoryViewer();
+            trajectory_page_ = map_coordinator_->embeddedPage(tool_pages_[0]);
+            tool_pages_[0]->layout()->addWidget(trajectory_page_);
+            map_coordinator_->updateTrack(trajectory_controller_.trackPoints(), trajectory_controller_.trackStats());
+        }
+    }
+    if (page == Page::Ppk)
+        ensurePpkPage();
+    if (page == Page::RawData)
+    {
+        if (!raw_data_parser_window_)
+        {
+            raw_scroll_ = new QScrollArea(tool_pages_[2]);
+            raw_scroll_->setObjectName(QStringLiteral("sessionRawDataScrollArea"));
+            raw_scroll_->setWidgetResizable(true);
+            raw_scroll_->setFrameShape(QFrame::NoFrame);
+            raw_data_parser_window_ = new RawDataParserWindow(raw_scroll_, true);
+            raw_scroll_->setWidget(raw_data_parser_window_);
+            tool_pages_[2]->layout()->addWidget(raw_scroll_);
+            raw_data_parser_window_->setEnglish(is_english_);
+        }
+        if (ppk_session_available_ && raw_session_directory_ != session_directory_)
+        {
+            raw_session_directory_ = session_directory_;
+            raw_data_parser_window_->openSessionPath(session_directory_);
+        }
+    }
+    page_stack_->setCurrentIndex(static_cast<int>(page));
+    navigation_buttons_->button(static_cast<int>(page))->setChecked(true);
+    updatePageAvailability();
+    updateNavigation();
+}
+
+void SessionViewerWindow::updatePageAvailability()
+{
+    if (!page_stack_)
+        return;
+    const bool available[] = {trajectory_controller_.hasTrack(), ppk_session_available_, ppk_session_available_};
+    for (int i = 0; i < 3; ++i)
+    {
+        empty_pages_[i]->setVisible(!available[i]);
+        empty_labels_[i]->setText(i == 0 && ppk_session_available_
+            ? (is_english_ ? QStringLiteral("No trajectory loaded. Load session data with valid position samples in Data View.")
+                           : QStringLiteral("尚无可用轨迹，请在数据查看页加载包含有效定位数据的会话。"))
+            : (is_english_ ? QStringLiteral("Choose or reload a session in Data View first.")
+                           : QStringLiteral("请先在数据查看页选择或重新加载会话。")));
+        empty_actions_[i]->setText(is_english_ ? QStringLiteral("Go to Data View") : QStringLiteral("前往数据查看"));
+    }
+    if (trajectory_page_)
+        trajectory_page_->setVisible(available[0]);
+    if (ppk_scroll_)
+        ppk_scroll_->setVisible(available[1]);
+    if (raw_scroll_)
+        raw_scroll_->setVisible(available[2]);
+}
+
+void SessionViewerWindow::saveSidebarWidth()
+{
+    if (ui_test_mode_)
+        return;
+    QSettings settings("VaporView", "SessionViewer");
+    VaporView::setPersistentSetting(settings, QStringLiteral("sidebar_width"), navigation_splitter_->sizes().value(0));
+}
+
+void SessionViewerWindow::updateNavigation(int sidebarWidth)
+{
+    if (!page_stack_)
+        return;
+    const QStringList labels = is_english_
+        ? QStringList{QStringLiteral("Data View"), QStringLiteral("Trajectory"), QStringLiteral("PPK Processing"), QStringLiteral("Raw Data Parser")}
+        : QStringList{QStringLiteral("数据查看"), QStringLiteral("轨迹查看"), QStringLiteral("PPK 后处理"), QStringLiteral("原始数据解析")};
+    const QStringList icons = {QStringLiteral("audio-waveform"), QStringLiteral("route"), QStringLiteral("satellite"), QStringLiteral("scroll-text")};
+    const bool compact = (sidebarWidth >= 0 ? sidebarWidth : navigation_splitter_->sizes().value(0)) < 120;
+    for (int i = 0; i < 4; ++i)
+    {
+        auto *button = navigation_buttons_->button(i);
+        button->setText(compact ? QString() : labels[i]);
+        button->setToolTip(labels[i]);
+        button->setAccessibleName(labels[i]);
+        if (button->property("_vv_sidebar_compact").toBool() != compact)
+        {
+            button->setProperty("_vv_sidebar_compact", compact);
+            button->style()->unpolish(button);
+            button->style()->polish(button);
+        }
+        const QColor color = button->isChecked() ? QColor(Qt::white) : palette().color(QPalette::WindowText);
+        QFile svg(QCoreApplication::applicationDirPath() + QStringLiteral("/resources/lucide/%1.svg").arg(icons[i]));
+        if (svg.open(QIODevice::ReadOnly))
+        {
+            QPixmap pixmap = QIcon(svg.fileName()).pixmap(32, 32);
+            QPainter painter(&pixmap);
+            painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
+            painter.fillRect(pixmap.rect(), color);
+            painter.end();
+            button->setIcon(QIcon(pixmap));
+            button->setIconSize(QSize(20, 20));
+        }
+    }
+    const QString title = is_english_ ? QStringLiteral("Data Viewer") : QStringLiteral("数据查看器");
+    setWindowTitle(page_stack_->currentIndex() == 0 ? title : title + QStringLiteral(" · ") + labels[page_stack_->currentIndex()]);
+    if (sidebar_toggle_)
+    {
+        sidebar_toggle_->setToolTip(is_english_ ? QStringLiteral("Sidebar: expanded / compact / hidden") : QStringLiteral("侧栏：展开 / 紧凑 / 隐藏"));
+        sidebar_toggle_->setAccessibleName(sidebar_toggle_->toolTip());
+    }
+}
+
 void SessionViewerWindow::setEnglish(bool english)
 {
     is_english_ = english;
@@ -344,10 +577,11 @@ void SessionViewerWindow::changeEvent(QEvent *event)
     QMainWindow::changeEvent(event);
     if (event && (event->type() == QEvent::PaletteChange ||
                   event->type() == QEvent::ApplicationPaletteChange ||
-                  event->type() == QEvent::StyleChange))
+                  event->type() == QEvent::StyleChange || event->type() == QEvent::FontChange))
     {
         device_data_page_->applyTheme();
         loading_dialog_->applyTheme();
+        updateNavigation();
     }
 }
 
@@ -407,10 +641,11 @@ void SessionViewerWindow::setUiTestMode(bool enabled)
 
 void SessionViewerWindow::updateTexts()
 {
-    setWindowTitle(is_english_ ? QStringLiteral("Data Viewer") : QStringLiteral("数据查看器"));
+    updateNavigation();
+    updatePageAvailability();
     overview_page_->setEnglish(is_english_);
-    if (ppk_window_)
-        ppk_window_->setEnglish(is_english_);
+    if (ppk_panel_)
+        ppk_panel_->setEnglish(is_english_);
     updatePpkSummary();
     waveform_page_->setEnglish(is_english_);
     device_data_page_->setEnglish(is_english_);
@@ -587,8 +822,8 @@ void SessionViewerWindow::setSessionLoadingControlsEnabled(bool enabled)
     overview_page_->setControlsEnabled(enabled);
     overview_page_->setTrajectoryAvailable(trajectory_controller_.hasTrack());
     waveform_page_->setControlsEnabled(enabled);
-    if (ppk_window_)
-        ppk_window_->setEnabled(enabled);
+    if (ppk_panel_)
+        ppk_panel_->setEnabled(enabled);
     if (enabled)
     {
         updateWaveformControls();
@@ -618,6 +853,12 @@ void SessionViewerWindow::finishSessionLoading()
     loading_dialog_->finish(overview_page_->statusText());
     session_loading_ = false;
     setSessionLoadingControlsEnabled(true);
+    updatePageAvailability();
+    if (raw_data_parser_window_ && ppk_session_available_ && raw_session_directory_ != session_directory_)
+    {
+        raw_session_directory_ = session_directory_;
+        raw_data_parser_window_->openSessionPath(session_directory_);
+    }
     if (navigation_refresh_pending_ && !ppkBusy())
     {
         navigation_refresh_pending_ = false;
@@ -630,6 +871,9 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     cancelBackgroundWaveformPeakSeries(false);
     session_directory_.clear();
     syncPpkSession(false);
+    raw_session_directory_.clear();
+    if (raw_data_parser_window_)
+        raw_data_parser_window_->clearSession();
     metadata_filename_.clear();
     recording_origin_ = VaporView::Session::RecordingOrigin::Ground;
     sensors_csv_filename_.clear();
@@ -663,6 +907,7 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     waveform_page_->clear();
     overview_page_->setTrajectoryAvailable(false);
     map_coordinator_->updateTrack({}, trajectory_controller_.trackStats());
+    updatePageAvailability();
     waveform_page_->setFrameInfoText(is_english_ ? QStringLiteral("No waveform frame loaded") : QStringLiteral("尚未加载波形帧"));
     device_data_page_->setInfoText(is_english_ ? QStringLiteral("No CSV loaded") : QStringLiteral("尚未加载 CSV"));
     waveform_page_->setEnvironmentInfoText(is_english_ ? QStringLiteral("No environmental series loaded") : QStringLiteral("尚未加载环境趋势数据"));
@@ -770,29 +1015,7 @@ void SessionViewerWindow::onClearViewClicked()
 
 void SessionViewerWindow::onViewTrajectoryClicked()
 {
-    if (!trajectory_controller_.hasTrack())
-    {
-        QMessageBox::information(this,
-            is_english_ ? QStringLiteral("Positioning Trajectory") : QStringLiteral("定位轨迹"),
-            is_english_ ? QStringLiteral("No valid position latitude/longitude samples were found in the current session.")
-                        : QStringLiteral("当前会话中没有找到有效的定位经纬度轨迹点。"));
-        return;
-    }
-
-    if (!ensureTrajectoryPeakValuesReady())
-    {
-        QMessageBox::warning(this,
-            is_english_ ? QStringLiteral("Positioning Trajectory") : QStringLiteral("定位轨迹"),
-            is_english_ ? QStringLiteral("Failed to prepare waveform peak values for the trajectory viewer.")
-                        : QStringLiteral("无法为轨迹查看器准备波形峰值。"));
-        return;
-    }
-
-    syncPeakSettingsToTrajectoryViewer();
-    map_coordinator_->showTrajectory(
-        this,
-        trajectory_controller_.trackPoints(),
-        trajectory_controller_.trackStats());
+    setCurrentPage(Page::Trajectory);
 }
 
 bool SessionViewerWindow::ensureTrajectoryPeakValuesReady()
@@ -825,63 +1048,43 @@ bool SessionViewerWindow::ensureTrajectoryPeakValuesReady()
 
 void SessionViewerWindow::onRawDataParserClicked()
 {
-    if (session_directory_.isEmpty())
-    {
-        QMessageBox::information(this,
-            is_english_ ? "Raw Data Parser" : "原始数据解析器",
-            is_english_ ? "Choose or restore a session directory first."
-                        : "请先选择或恢复一个 session 目录。");
-        return;
-    }
-
-    if (!raw_data_parser_window_)
-    {
-        raw_data_parser_window_ = new RawDataParserWindow();
-        raw_data_parser_window_->setAttribute(Qt::WA_QuitOnClose, false);
-        raw_data_parser_window_->setAttribute(Qt::WA_DeleteOnClose, false);
-        connect(raw_data_parser_window_, &QObject::destroyed, this, [this]() {
-            raw_data_parser_window_ = nullptr;
-        });
-    }
-
-    raw_data_parser_window_->setEnglish(is_english_);
-    VaporView::centerWindowOnScreen(raw_data_parser_window_, this);
-    raw_data_parser_window_->show();
-    raw_data_parser_window_->raise();
-    raw_data_parser_window_->activateWindow();
-    raw_data_parser_window_->openSessionPath(session_directory_);
+    setCurrentPage(Page::RawData);
 }
 
 void SessionViewerWindow::onPpkProcessingClicked()
 {
-    if (!ppk_session_available_ || session_loading_)
+    setCurrentPage(Page::Ppk);
+}
+
+void SessionViewerWindow::ensurePpkPage()
+{
+    if (ppk_panel_)
         return;
-    if (!ppk_window_)
-    {
-        ppk_window_ = new SessionPpkWindow(this);
-        ppk_window_->setSessionDirectory(session_directory_);
-        connect(ppk_window_, &SessionPpkWindow::busyChanged, this, [this](bool busy) {
-            overview_page_->setSessionChangesEnabled(!busy);
-            updatePpkSummary();
-            if (!busy && navigation_refresh_pending_)
-            {
-                navigation_refresh_pending_ = false;
-                QMetaObject::invokeMethod(this, &SessionViewerWindow::onReloadClicked, Qt::QueuedConnection);
-            }
-        });
-    }
-    ppk_window_->setEnglish(is_english_);
-    if (ppk_window_->isMinimized())
-        ppk_window_->showNormal();
-    else
-        ppk_window_->show();
-    ppk_window_->raise();
-    ppk_window_->activateWindow();
+    auto *scroll = new QScrollArea(tool_pages_[1]);
+    ppk_scroll_ = scroll;
+    scroll->setObjectName(QStringLiteral("sessionPpkScrollArea"));
+    scroll->viewport()->setObjectName(QStringLiteral("sessionPpkViewport"));
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    ppk_panel_ = new SessionPpkWidget(scroll);
+    scroll->setWidget(ppk_panel_);
+    tool_pages_[1]->layout()->addWidget(scroll);
+    ppk_panel_->setEnglish(is_english_);
+    ppk_panel_->setSessionDirectory(ppk_session_available_ ? session_directory_ : QString());
+    connect(ppk_panel_, &SessionPpkWidget::busyChanged, this, [this](bool busy) {
+        overview_page_->setSessionChangesEnabled(!busy);
+        updatePpkSummary();
+        if (!busy && navigation_refresh_pending_)
+        {
+            navigation_refresh_pending_ = false;
+            QMetaObject::invokeMethod(this, &SessionViewerWindow::onReloadClicked, Qt::QueuedConnection);
+        }
+    });
 }
 
 bool SessionViewerWindow::ppkBusy() const
 {
-    return ppk_window_ && ppk_window_->busy();
+    return ppk_panel_ && ppk_panel_->busy();
 }
 
 void SessionViewerWindow::syncPpkSession(bool available)
@@ -890,9 +1093,10 @@ void SessionViewerWindow::syncPpkSession(bool available)
     if (!available)
         navigation_refresh_pending_ = false;
     overview_page_->setPpkAvailable(available);
-    if (ppk_window_)
-        ppk_window_->setSessionDirectory(available ? session_directory_ : QString());
+    if (ppk_panel_)
+        ppk_panel_->setSessionDirectory(available ? session_directory_ : QString());
     updatePpkSummary();
+    updatePageAvailability();
 }
 
 void SessionViewerWindow::updatePpkSummary()
@@ -1667,6 +1871,7 @@ void SessionViewerWindow::focusTrajectoryPoint(int trackPointIndex)
         highlightClosestSensorRow(focus.timestampUs, true);
     }
 
+    setCurrentPage(Page::Data);
     setStatusText(QString(is_english_
         ? "Focused trajectory point #%1 at CSV row %2."
         : "已定位轨迹点 #%1，对应 CSV 第 %2 行。")

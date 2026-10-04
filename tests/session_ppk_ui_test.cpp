@@ -1,5 +1,5 @@
 #include "ground/session/SessionPpkWidget.h"
-#include "ground/session/SessionPpkWindow.h"
+#include <QSplitter>
 #include "ground/session/SessionViewerWindow.h"
 #include "ground/session/SessionViewerPages.h"
 #include "ground/trajectory/TrajectoryViewerDialog.h"
@@ -24,6 +24,7 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QTableView>
+#include <QToolButton>
 #include <QPushButton>
 #include <QSettings>
 #include <QStandardItemModel>
@@ -118,7 +119,8 @@ int main(int argc, char **argv)
         makeSession(session);
         makeSession(otherSession);
         ScopedViewerSettings settingsGuard;
-        SessionViewerWindow viewer;
+        auto viewerOwner = std::make_unique<SessionViewerWindow>();
+        auto &viewer = *viewerOwner;
         viewer.setUiTestMode(true);
         viewer.resize(1280, 800);
         viewer.show();
@@ -131,17 +133,17 @@ int main(int argc, char **argv)
         require(viewer.openSessionPath(session.path()) && openPpk->isEnabled(), "old Session enables PPK entry without observations");
         require(summary->text() == QString::fromUtf8("未处理"), "old Session summary is Not processed");
         openPpk->click();
-        auto *window = viewer.findChild<SessionPpkWindow *>();
-        require(window && window->isWindow() && window->isVisible(), "PPK entry opens a dedicated window");
-        require(window->findChild<QWidget *>("customTitleBar"), "PPK window uses custom title bar");
-        require(!viewer.centralWidget()->isAncestorOf(window), "PPK workflow is outside main page");
+        auto *window = viewer.findChild<SessionPpkWidget *>();
+        require(window && !window->isWindow() && window->isVisible(), "PPK entry opens the embedded page");
+        require(!window->findChild<QWidget *>("customTitleBar"), "PPK page has no nested title bar");
+        require(viewer.centralWidget()->isAncestorOf(window), "PPK belongs to the independent data viewer workspace");
         openPpk->click();
-        require(viewer.findChildren<SessionPpkWindow *>().size() == 1, "repeated clicks reuse PPK window");
+        require(viewer.findChildren<SessionPpkWidget *>().size() == 1, "repeated clicks reuse PPK window");
         require(window->sessionDirectory() == QDir::fromNativeSeparators(session.path()), "PPK binds current Session");
         require(viewer.openSessionPath(otherSession.path()), "switch to Session B");
         require(window->sessionDirectory() == QDir::fromNativeSeparators(otherSession.path()), "PPK follows Session B");
         require(viewer.openSessionPath(session.path()), "switch back to Session A");
-        auto &panel = *window->findChild<SessionPpkWidget *>();
+        auto &panel = *window;
         require(panel.findChild<QLabel *>("sessionPpkRoverStatus")->text().contains(QString::fromUtf8("缺少")),
                 "missing Rover is visible in PPK window");
         auto *run = panel.findChild<QPushButton *>("sessionPpkRunButton");
@@ -152,11 +154,11 @@ int main(int argc, char **argv)
         require(model && !model->item(1)->isEnabled(), "old Session only enables Original");
         viewer.setEnglish(true);
         require(run->text() == "Run PPK", "PPK uses Session English translations");
-        require(openPpk->text() == "PPK Processing" && window->windowTitle() == "PPK Processing", "both windows switch to English");
+        require(openPpk->text() == "PPK Processing" && viewer.windowTitle().contains("PPK Processing"), "both windows switch to English");
         require(navigation->text() == "Original", "English navigation summary");
         viewer.setEnglish(false);
         require(run->text() == QString::fromUtf8("运行 PPK"), "PPK uses Session Chinese translations");
-        require(window->windowTitle() == QString::fromUtf8("PPK 后处理"), "PPK title switches to Chinese");
+        require(viewer.windowTitle().contains(QString::fromUtf8("PPK 后处理")), "PPK title switches to Chinese");
         writeFile(session.filePath("ppk/ppk_quality.json"), R"({"state":"Failed","error":"TEST_FAILURE"})");
         SessionNavigationEvents::instance()->notify(QFileInfo(session.path()).absoluteFilePath());
         require(VaporViewTest::processEventsUntil(5000, [&] { return summary->text() == QString::fromUtf8("失败"); }),
@@ -220,10 +222,10 @@ int main(int argc, char **argv)
         QMetaObject::invokeMethod(&viewer, "onClearViewClicked", Qt::DirectConnection);
         QMetaObject::invokeMethod(&viewer, "onReloadClicked", Qt::DirectConnection);
         require(window->sessionDirectory() == QDir::fromNativeSeparators(session.path()), "busy clear and reload cannot change binding");
-        window->close();
+        viewer.setCurrentPage(SessionViewerWindow::Page::Data);
         require(panel.busy() && !window->isVisible(), "closing PPK window retains active worker");
         openPpk->click();
-        require(window->isVisible() && panel.busy() && viewer.findChildren<SessionPpkWindow *>().size() == 1,
+        require(window->isVisible() && panel.busy() && viewer.findChildren<SessionPpkWidget *>().size() == 1,
                 "reopening busy PPK reuses the worker");
         cancel->click();
         require(VaporViewTest::processEventsUntil(5000, [&] { return !panel.busy(); }), "UI cancellation completes");
@@ -261,10 +263,10 @@ int main(int argc, char **argv)
         require(pointDetails->text().contains("Solution status") && !pointDetails->text().contains("real-time RTK"),
                 "real solver FIX/FLOAT is separate from the PPK provenance");
         require(panel.findChild<QLabel *>("sessionPpkQuality")->text().contains("FIX"), "UI exposes FIX FLOAT quality");
-        window->close();
+        viewer.setCurrentPage(SessionViewerWindow::Page::Data);
         require(sessionNavigationSource(session.path()) == NavigationSource::Ppk, "closing PPK window preserves source");
         openPpk->click();
-        require(window->isVisible() && viewer.findChildren<SessionPpkWindow *>().size() == 1 && source->currentIndex() == 1,
+        require(window->isVisible() && viewer.findChildren<SessionPpkWidget *>().size() == 1 && source->currentIndex() == 1,
                 "reopening preserves result and source");
         require(setSessionNavigationSource(session.path(), NavigationSource::Original), "external navigation source update");
         require(VaporViewTest::processEventsUntil(5000, [&] { return source->currentIndex() == 0 && navigation->text() == "Original"; }),
@@ -273,7 +275,7 @@ int main(int argc, char **argv)
                 "returning to Original updates the existing trajectory details");
         require(trackSummary->text().contains("Original receiver record"),
                 "returning to Original also updates the existing trajectory sidebar");
-        trajectory->close();
+        viewer.setCurrentPage(SessionViewerWindow::Page::Ppk);
         QFile style(QStringLiteral(VAPORVIEW_SOURCE_DIR "/resources/modern_style.qss"));
         require(style.open(QIODevice::ReadOnly), "load actual runtime stylesheet");
         auto styleText = QString::fromUtf8(style.readAll());
@@ -301,17 +303,41 @@ int main(int argc, char **argv)
                     viewer.resize(1900, 1000);
                     VaporViewTest::processEventsFor(20);
                     viewer.resize(1280, 800);
-                    window->resize(820, 780);
+
                     VaporViewTest::processEventsFor(100);
                     auto *scroll = viewer.findChild<QScrollArea *>("sessionViewerScrollArea");
                     require(scroll && scroll->horizontalScrollBar()->maximum() == 0, "viewer has no unnecessary horizontal scrollbar");
-                    auto *ppkScroll = window->findChild<QScrollArea *>("sessionPpkScrollArea");
+                    auto *ppkScroll = viewer.findChild<QScrollArea *>("sessionPpkScrollArea");
                     require(ppkScroll && ppkScroll->horizontalScrollBar()->maximum() == 0, "PPK layout fits both themes and languages");
                     for (auto *action : overview->findChildren<QPushButton *>())
                         require(overview->rect().contains(action->mapTo(overview, action->rect().bottomRight())), "top buttons remain inside overview");
-                    require(window->grab().toImage().pixelColor(4, window->height() - 4) ==
-                                VaporView::appThemeColor(dark ? VaporView::AppThemeColor::Window : VaporView::AppThemeColor::Surface, dark),
-                            "PPK window follows real application theme");
+                    require(!window->isWindow() && window->window() == &viewer,
+                            "PPK page shares the data viewer window in both themes");
+                    if (!english)
+                    {
+                        for (int page = 0; page < 4; ++page)
+                        {
+                            viewer.setCurrentPage(static_cast<SessionViewerWindow::Page>(page));
+                            for (int sidebarWidth : {190, 64})
+                            {
+                                auto *splitter = viewer.findChild<QSplitter *>("sessionViewerNavigationSplitter");
+                                auto *toggle = viewer.findChild<QToolButton *>("sessionViewerSidebarToggle");
+                                for (int attempt = 0; attempt < 3; ++attempt)
+                                {
+                                    const int width = splitter->sizes().value(0);
+                                    if ((sidebarWidth == 190 && width >= 120) || (sidebarWidth == 64 && width > 0 && width < 120))
+                                        break;
+                                    toggle->click();
+                                }
+                                require(viewer.width() == 1280, "embedded pages must not force the workspace wider");
+                                VaporViewTest::processEventsFor(80);
+                                require((sidebarWidth == 190 && splitter->sizes().value(0) >= 120) ||
+                                            (sidebarWidth == 64 && splitter->sizes().value(0) > 0 && splitter->sizes().value(0) < 120),
+                                        "page switching retains the requested sidebar mode");
+                            }
+                        }
+                        viewer.setCurrentPage(SessionViewerWindow::Page::Ppk);
+                    }
                 }
             }
         }
@@ -325,9 +351,18 @@ int main(int argc, char **argv)
         require(viewer.openSessionPath(session.path()), "Session reload restores PPK binding");
         run->click();
         require(panel.busy(), "start worker before closing viewer");
-        QPointer<SessionPpkWindow> lifetime(window);
+        QPointer<SessionPpkWidget> lifetime(window);
         viewer.close();
-        require(!lifetime, "viewer close cancels worker and destroys PPK window safely");
+        require(lifetime && panel.busy(), "closing viewer preserves the running PPK task");
+        viewer.show();
+        viewer.setCurrentPage(SessionViewerWindow::Page::Ppk);
+        require(window->isVisible(), "reopening restores the existing PPK page");
+        cancel->click();
+        require(VaporViewTest::processEventsUntil(15000, [&] { return !panel.busy(); }), "cancel task before cleanup");
+        run->click();
+        require(panel.busy(), "start worker before destroying workspace");
+        viewerOwner.reset();
+        require(lifetime.isNull(), "destroying workspace joins its PPK worker and releases the panel");
         return 0;
     }
     catch (const std::exception &error)

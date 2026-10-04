@@ -26,6 +26,7 @@ public:
                          double filterMin,
                          double filterMax);
     void updateTrack(const QVector<SessionTrackPoint>& points, const SessionTrackStats& stats);
+    QWidget *embeddedPage(QWidget *parent);
     bool showTrajectory(QWidget *owner,
                         const QVector<SessionTrackPoint>& points,
                         const SessionTrackStats& stats);
@@ -42,7 +43,7 @@ signals:
                                      double filterMax);
 
 private:
-    void ensureDialog(QWidget *owner);
+    void ensureDialog(QWidget *owner, bool embedded = false);
 
     QPointer<TrajectoryViewerDialog> dialog_;
     bool is_english_ = false;

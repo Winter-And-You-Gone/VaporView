@@ -17,6 +17,14 @@ class QEvent;
 class QCloseEvent;
 template <typename T> class QFutureWatcher;
 class RawDataParserWindow;
+class QStackedWidget;
+class QButtonGroup;
+class QSplitter;
+class QToolButton;
+class QLabel;
+class QPushButton;
+class QShowEvent;
+class QScrollArea;
 
 namespace VaporView::Ground
 {
@@ -29,7 +37,7 @@ namespace VaporView::Ground::SessionUi
 class SessionDeviceDataWidget;
 class SessionLoadingDialog;
 class SessionOverviewWidget;
-class SessionPpkWindow;
+class SessionPpkWidget;
 class SessionWaveformWidget;
 }
 
@@ -38,6 +46,8 @@ class SessionViewerWindow : public QMainWindow
     Q_OBJECT
 
 public:
+    enum class Page { Data, Trajectory, Ppk, RawData };
+    Q_ENUM(Page)
     using RecordingDirectoryProvider = std::function<QString()>;
 
     explicit SessionViewerWindow(QWidget *parent = nullptr);
@@ -47,10 +57,13 @@ public:
     QString dataSelectionDirectory() const;
     bool openSessionPath(const QString& path);
     void setUiTestMode(bool enabled);
+    void setCurrentPage(Page page);
+    Page currentPage() const;
 
 protected:
     void changeEvent(QEvent *event) override;
     void closeEvent(QCloseEvent *event) override;
+    void showEvent(QShowEvent *event) override;
 
 private slots:
     void onChooseSessionClicked();
@@ -70,6 +83,11 @@ private:
     using PeakFilterMode = VaporView::Ground::SessionPeakFilterMode;
 
     void setupUi();
+    void setupNavigation(QWidget *dataPage);
+    void updateNavigation(int sidebarWidth = -1);
+    void updatePageAvailability();
+    void ensurePpkPage();
+    void saveSidebarWidth();
     void updateTexts();
     void updateSummaryLabels();
     void updatePpkSummary();
@@ -123,7 +141,21 @@ private:
     QVector<float> visibleWaveformSamples(const QVector<float>& samples, int& firstSampleIndex) const;
 
     VaporView::Ground::SessionUi::SessionOverviewWidget *overview_page_;
-    VaporView::Ground::SessionUi::SessionPpkWindow *ppk_window_ = nullptr;
+    QStackedWidget *page_stack_ = nullptr;
+    QSplitter *navigation_splitter_ = nullptr;
+    QWidget *sidebar_ = nullptr;
+    QButtonGroup *navigation_buttons_ = nullptr;
+    QToolButton *sidebar_toggle_ = nullptr;
+    QWidget *tool_pages_[3]{};
+    QWidget *empty_pages_[3]{};
+    QLabel *empty_labels_[3]{};
+    QPushButton *empty_actions_[3]{};
+    QWidget *trajectory_page_ = nullptr;
+    QScrollArea *ppk_scroll_ = nullptr;
+    QScrollArea *raw_scroll_ = nullptr;
+    bool navigation_shown_ = false;
+    VaporView::Ground::SessionUi::SessionPpkWidget *ppk_panel_ = nullptr;
+    QString raw_session_directory_;
     bool ppk_session_available_ = false;
     bool navigation_refresh_pending_ = false;
     VaporView::Ground::SessionUi::SessionWaveformWidget *waveform_page_;

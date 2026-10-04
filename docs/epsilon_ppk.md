@@ -77,11 +77,15 @@ Original navigation.
 
 ## Session workflow
 
-Open a Session in the Data Viewer, click **PPK Processing**, then select Base OBS
-and one or more Navigation RINEX files in the dedicated PPK window. The main
-Data Viewer only shows PPK status (with FIX percentage after completion) and the
-current navigation source in Data Summary. Files are validated and copied into
-the Session. EPSILON `XXX-BASE.NAV`
+The Data Viewer remains a separate window from the main application. Its left
+sidebar switches between Data View, Trajectory, PPK Processing and Raw Data
+Parser, sharing one Session. The title-bar sidebar button cycles through expanded,
+compact and hidden modes; the viewer saves its own sidebar width.
+
+Open a Session in Data View, select **PPK Processing**, then select Base OBS
+and one or more Navigation RINEX files on that page. Data View retains PPK status
+(with FIX percentage after completion) and the current navigation source in Data
+Summary. Files are validated and copied into the Session. EPSILON `XXX-BASE.NAV`
 and CORS navigation files use the same import path. Recognized companion NAV
 files beside imported Base OBS are archived automatically; navigation already
 readable within Base input is also passed to RTKLIB. No ephemerides are fabricated
@@ -96,19 +100,21 @@ RTK from other GNSS solutions; PPK FIX/FLOAT points are labelled post-processing
 These fields follow the selected navigation source, so completing PPK does not
 relabel a trajectory that is still using Original coordinates.
 
-The PPK window shows Rover/Base/NAV availability, readiness, processing progress,
+The PPK page shows Rover/Base/NAV availability, readiness, processing progress,
 failures, FIX/FLOAT counts and percentages, UTC start/end, sample count, RMS of
 the reported N/E/U standard deviations and solution path. It supports running,
 rerunning, cancellation and clearing results. Clearing preserves inputs and
 Original navigation. All controls follow the existing Session language switch
-and Light/Dark theme. Repeated clicks reuse the window; closing it preserves
-the selected navigation source and any running worker. Reopening restores its
-current state. Opening or reloading a Session synchronizes the PPK window, and
-Clear Page leaves it in No Session state (the retained path can still be reloaded).
-During processing or input import, Open Data, Reload and Clear Page are disabled;
-waveform and device data browsing remain available. Closing the Data Viewer
-cancels and joins its PPK worker. Navigation source changes continue through
-the shared Session navigation events used by 3D, Heat, Sensor and Export.
+and Light/Dark theme. Switching pages preserves the loaded data, filters,
+selected navigation source and any running worker. Trajectory point selection
+returns to the matching waveform frame or CSV row in Data View. Opening or
+reloading a Session synchronizes the created pages; Clear Page clears their data
+(the retained path can still be reloaded). During processing or input import,
+Open Data, Reload and Clear Page are disabled; page switching and data browsing
+remain available. Closing the Data Viewer hides it and preserves its state and
+workers for reopening. Exiting the application cancels and joins its workers.
+Navigation source changes continue through the shared Session navigation events
+used by 3D, Heat, Sensor and Export.
 
 Main Antenna Lever Arm is snapshotted from the existing Ground RTK settings or
 SkyConfig when recording begins. The Session keeps its own copy, so later device

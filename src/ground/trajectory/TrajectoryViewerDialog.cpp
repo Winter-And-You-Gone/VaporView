@@ -2815,7 +2815,7 @@ private:
 };
 }
 
-TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
+TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent, bool embedded)
     : QDialog(parent)
     , summary_label_(new QLabel(this))
     , sidebar_title_label_(new VaporView::VisualTextLabel(this))
@@ -2884,7 +2884,10 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     , point_detail_visible_(false)
 {
     setObjectName(QStringLiteral("trajectoryViewerDialog"));
-    setWindowFlag(Qt::Window, true);
+    embedded_ = embedded;
+    setWindowFlags(embedded ? Qt::Widget : Qt::Window);
+    if (embedded_)
+        map_widget_->setMinimumSize(420, 360);
     setModal(false);
     resize(1080, 680);
 
@@ -3427,10 +3430,17 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
         mapWidget->setTileProvider(providerEnum);
     }
 
-    VaporView::installCustomTitleBar(this);
+    if (!embedded_)
+        VaporView::installCustomTitleBar(this);
     updateThemeStyles();
     updateTexts();
     updateSelectedPointDetails();
+}
+
+void TrajectoryViewerDialog::reject()
+{
+    if (!embedded_)
+        QDialog::reject();
 }
 
 TrajectoryViewerDialog::~TrajectoryViewerDialog()

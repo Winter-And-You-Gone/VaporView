@@ -14,6 +14,7 @@
 #include <QComboBox>
 #include <QDateTime>
 #include <QDir>
+#include <QEvent>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -808,6 +809,7 @@ struct RawDataParserWindow::Impl
 
     RawDataParserWindow *owner = nullptr;
     bool english = false;
+    bool embedded = false;
     QString session_directory;
     QVector<RawRecordIndex> records;
     QVector<int> visible_rows;
@@ -850,6 +852,7 @@ struct RawDataParserWindow::Impl
     void setupUi();
     void shutdown();
     void setEnglish(bool value);
+    void applyTheme();
     bool openSessionPath(const QString& path);
     QString resolveSessionDirectory(const QString& path) const;
     void scanSession();
@@ -880,14 +883,37 @@ struct RawDataParserWindow::Impl
     bool parseTypeFilter(quint16& value) const;
 };
 
-RawDataParserWindow::RawDataParserWindow(QWidget *parent)
+RawDataParserWindow::RawDataParserWindow(QWidget *parent, bool embedded)
     : QMainWindow(parent)
     , impl_(std::make_unique<Impl>(this))
 {
-    setWindowFlag(Qt::Window, true);
+    setWindowFlags(embedded ? Qt::Widget : Qt::Window);
+    setObjectName(QStringLiteral("rawDataParserWindow"));
+    impl_->embedded = embedded;
     impl_->setupUi();
-    VaporView::installCustomTitleBar(this);
+    if (!embedded)
+        VaporView::installCustomTitleBar(this);
     impl_->setEnglish(false);
+    impl_->applyTheme();
+}
+
+void RawDataParserWindow::changeEvent(QEvent *event)
+{
+    QMainWindow::changeEvent(event);
+    if (impl_ && impl_->record_table && impl_->detail_tree &&
+        (event->type() == QEvent::PaletteChange || event->type() == QEvent::ApplicationPaletteChange))
+        impl_->applyTheme();
+}
+
+void RawDataParserWindow::Impl::applyTheme()
+{
+    const bool dark = VaporView::isDarkThemeEnabled();
+    const QString style = QStringLiteral("QHeaderView::section { background-color: %1; color: %2; border: 1px solid %3; padding: 4px; }")
+        .arg(VaporView::appThemeColor(VaporView::AppThemeColor::SurfaceAlt, dark).name(),
+             VaporView::appThemeColor(VaporView::AppThemeColor::Text, dark).name(),
+             VaporView::appThemeColor(VaporView::AppThemeColor::Border, dark).name());
+    record_table->horizontalHeader()->setStyleSheet(style);
+    detail_tree->header()->setStyleSheet(style);
 }
 
 RawDataParserWindow::~RawDataParserWindow()
@@ -902,7 +928,16 @@ void RawDataParserWindow::setEnglish(bool english)
 
 bool RawDataParserWindow::openSessionPath(const QString& path)
 {
+    impl_->shutdown();
     return impl_->openSessionPath(path);
+}
+
+void RawDataParserWindow::clearSession()
+{
+    impl_->shutdown();
+    impl_->session_directory.clear();
+    impl_->scanSession();
+    impl_->setScanControlsEnabled(true);
 }
 
 void RawDataParserWindow::Impl::setupUi()
@@ -939,15 +974,16 @@ void RawDataParserWindow::Impl::setupUi()
     export_decoded_csv_btn = new QPushButton(owner);
     export_decoded_json_btn = new QPushButton(owner);
 
-    device_combo->setMinimumWidth(170);
-    type_filter->setFixedWidth(170);
-    time_from->setFixedWidth(170);
-    time_to->setFixedWidth(170);
-    seq_from->setFixedWidth(170);
-    seq_to->setFixedWidth(170);
-    payload_min->setFixedWidth(170);
-    payload_max->setFixedWidth(170);
-    search_edit->setMinimumWidth(170);
+    const int fieldWidth = embedded ? 140 : 170;
+    device_combo->setMinimumWidth(fieldWidth);
+    type_filter->setFixedWidth(fieldWidth);
+    time_from->setFixedWidth(fieldWidth);
+    time_to->setFixedWidth(fieldWidth);
+    seq_from->setFixedWidth(fieldWidth);
+    seq_to->setFixedWidth(fieldWidth);
+    payload_min->setFixedWidth(fieldWidth);
+    payload_max->setFixedWidth(fieldWidth);
+    search_edit->setMinimumWidth(fieldWidth);
 
     auto makePair = [this](const QString& labelText, QWidget *control) {
         auto *container = new QWidget(owner);
@@ -980,8 +1016,11 @@ void RawDataParserWindow::Impl::setupUi()
     filterRow1->addWidget(makePair(QStringLiteral("Type"), type_filter), 0);
     filterRow1->addWidget(makeRangePair(QStringLiteral("Time us"), time_from, time_to), 0);
     filterRow1->addStretch(1);
-    filterRow1->addWidget(abnormal_only, 0);
-    filterRow1->addWidget(reload_btn, 0);
+    if (!embedded)
+    {
+        filterRow1->addWidget(abnormal_only, 0);
+        filterRow1->addWidget(reload_btn, 0);
+    }
     filterLayout->addLayout(filterRow1);
 
     auto *filterRow2 = new QHBoxLayout();
@@ -990,10 +1029,25 @@ void RawDataParserWindow::Impl::setupUi()
     filterRow2->addWidget(makeRangePair(QStringLiteral("Seq"), seq_from, seq_to), 0);
     filterRow2->addWidget(makeRangePair(QStringLiteral("Payload"), payload_min, payload_max), 0);
     filterRow2->addWidget(search_edit, 1);
-    filterRow2->addWidget(export_csv_btn, 0);
-    filterRow2->addWidget(export_json_btn, 0);
-    filterRow2->addWidget(export_bin_btn, 0);
+    if (!embedded)
+    {
+        filterRow2->addWidget(export_csv_btn, 0);
+        filterRow2->addWidget(export_json_btn, 0);
+        filterRow2->addWidget(export_bin_btn, 0);
+    }
     filterLayout->addLayout(filterRow2);
+
+    if (embedded)
+    {
+        auto *actions = new QHBoxLayout();
+        actions->addWidget(abnormal_only);
+        actions->addWidget(reload_btn);
+        actions->addStretch();
+        actions->addWidget(export_csv_btn);
+        actions->addWidget(export_json_btn);
+        actions->addWidget(export_bin_btn);
+        filterLayout->addLayout(actions);
+    }
 
     auto *filterRow3 = new QHBoxLayout();
     filterRow3->setContentsMargins(0, 0, 0, 0);
@@ -1070,10 +1124,6 @@ void RawDataParserWindow::Impl::setupUi()
     status_label->setWordWrap(true);
     mainLayout->addWidget(status_label);
 
-    scan_watcher = new QFutureWatcher<RawScanResult>(owner);
-    QObject::connect(scan_watcher, &QFutureWatcher<RawScanResult>::finished, owner, [this]() {
-        finishScanSession();
-    });
     scan_progress_timer = new QTimer(owner);
     scan_progress_timer->setInterval(120);
     QObject::connect(scan_progress_timer, &QTimer::timeout, owner, [this]() {
@@ -1255,6 +1305,13 @@ void RawDataParserWindow::Impl::scanSession()
     const QString scanDirectory = session_directory;
     const bool scanEnglish = english;
     const std::shared_ptr<RawScanProgress> progress = scan_progress;
+    if (!scan_watcher)
+    {
+        scan_watcher = new QFutureWatcher<RawScanResult>(owner);
+        QObject::connect(scan_watcher, &QFutureWatcher<RawScanResult>::finished, owner, [this]() {
+            finishScanSession();
+        });
+    }
     scan_watcher->setFuture(QtConcurrent::run([scanDirectory, scanEnglish, progress]() {
         return scanRawSession(scanDirectory, scanEnglish, progress);
     }));

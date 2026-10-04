@@ -10,11 +10,15 @@ class QString;
 class RawDataParserWindow : public QMainWindow
 {
 public:
-    explicit RawDataParserWindow(QWidget *parent = nullptr);
+    explicit RawDataParserWindow(QWidget *parent = nullptr, bool embedded = false);
     ~RawDataParserWindow() override;
 
     void setEnglish(bool english);
     bool openSessionPath(const QString& path);
+    void clearSession();
+
+protected:
+    void changeEvent(QEvent *event) override;
 
 private:
     struct Impl;

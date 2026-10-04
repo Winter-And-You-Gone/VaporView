@@ -27,7 +27,7 @@ class TrajectoryViewerDialog : public QDialog
     Q_OBJECT
 
 public:
-    explicit TrajectoryViewerDialog(QWidget *parent = nullptr);
+    explicit TrajectoryViewerDialog(QWidget *parent = nullptr, bool embedded = false);
     ~TrajectoryViewerDialog() override;
 
     void setEnglish(bool english);
@@ -35,6 +35,7 @@ public:
     void setTrackPoints(const QVector<RtkTrackPoint>& points);
     void setTrackStats(const RtkTrackStats& stats);
     void setPeakSettings(int searchStartIndex, int searchEndIndex, int filterMode, double filterMin, double filterMax);
+    void reject() override;
 
 signals:
     void trackPointActivated(int index);
@@ -45,6 +46,7 @@ protected:
     void closeEvent(QCloseEvent *event) override;
 
 private:
+    bool embedded_ = false;
     void applyMapSourceSelection(int index);
     void applyTiandituKeyEdit();
     void showTiandituKeyMenu();

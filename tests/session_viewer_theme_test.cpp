@@ -11,6 +11,8 @@
 
 #include <QAbstractItemView>
 #include <QApplication>
+#include <QStackedWidget>
+#include <QSplitter>
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDataStream>
@@ -169,7 +171,7 @@ SessionViewerWindow *visibleSessionViewerWindow()
 
 TrajectoryViewerDialog *visibleTrajectoryViewerDialog()
 {
-    for (QWidget *widget : QApplication::topLevelWidgets())
+    for (QWidget *widget : QApplication::allWidgets())
     {
         auto *dialog = qobject_cast<TrajectoryViewerDialog *>(widget);
         if (dialog && dialog->isVisible())
@@ -946,7 +948,7 @@ void testSessionViewerTrajectoryActionLifetime()
 
     TrajectoryViewerDialog *dialog = nullptr;
     require(processEventsUntil(2000, [&dialog]() {
-                for (QWidget *widget : QApplication::topLevelWidgets())
+                for (QWidget *widget : QApplication::allWidgets())
                 {
                     dialog = qobject_cast<TrajectoryViewerDialog *>(widget);
                     if (dialog && dialog->isVisible())
@@ -1859,6 +1861,89 @@ void testTrajectoryViewerRouteLodLimitsDenseTracks()
     processEventsFor(100);
 }
 
+void testSessionWorkspaceNavigation()
+{
+    using Page = SessionViewerWindow::Page;
+    QTemporaryDir session;
+    require(session.isValid(), "temporary workspace session");
+    writeTrajectorySessionWithRawTcpPeaks(session.path());
+    SessionViewerWindow viewer;
+    viewer.setUiTestMode(true);
+    viewer.setEnglish(true);
+    viewer.resize(1280, 800);
+    viewer.show();
+    processEventsFor(100);
+    auto *stack = viewer.findChild<QStackedWidget *>("sessionViewerPageStack");
+    auto *splitter = viewer.findChild<QSplitter *>("sessionViewerNavigationSplitter");
+    auto *toggle = viewer.findChild<QToolButton *>("sessionViewerSidebarToggle");
+    require(stack && stack->count() == 4 && viewer.currentPage() == Page::Data,
+            "independent viewer starts with four pages and Data selected");
+    require(viewer.isWindow() && toggle && splitter, "viewer keeps one independent window and sidebar toggle");
+    for (int i = 0; i < 4; ++i)
+    {
+        QPushButton *nav = nullptr;
+        for (auto *button : viewer.findChildren<QPushButton *>("appSidebarButton"))
+            if (button->property("sessionViewerPage").toInt() == i)
+                nav = button;
+        require(nav, "all four sidebar entries exist");
+        nav->click();
+        require(stack->currentIndex() == i && nav->isChecked(), "sidebar selects its page");
+    }
+    viewer.setCurrentPage(Page::Data);
+    require(viewer.openSessionPath(session.path()), "workspace loads shared session");
+    viewer.setCurrentPage(Page::Trajectory);
+    auto *trajectory = viewer.findChild<TrajectoryViewerDialog *>();
+    require(trajectory && !trajectory->isWindow() && trajectory->isVisible(), "trajectory is embedded");
+    require(!trajectory->findChild<QWidget *>("customTitleBar"), "trajectory has no nested title bar");
+    auto *peakStart = trajectory->findChild<QSpinBox *>("trajectoryPeakSearchStartSpin");
+    require(peakStart, "embedded trajectory exposes peak settings");
+    peakStart->setValue(321);
+    QKeyEvent escape(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+    QApplication::sendEvent(trajectory, &escape);
+    require(trajectory->isVisible(), "Escape does not dismiss an embedded trajectory");
+    viewer.setCurrentPage(Page::RawData);
+    RawDataParserWindow *raw = nullptr;
+    for (auto *child : viewer.findChildren<QMainWindow *>())
+        if (auto *parser = dynamic_cast<RawDataParserWindow *>(child))
+            raw = parser;
+    require(raw && !raw->isWindow() && raw->isVisible(), "parser is embedded in workspace");
+    auto *table = raw->findChild<QTableView *>();
+    require(processEventsUntil(5000, [&] { return table && table->model()->rowCount() > 0; }), "embedded parser indexes shared session");
+    auto *model = table->model();
+    const int rows = model->rowCount();
+    auto *filter = raw->findChild<QLineEdit *>();
+    require(filter, "parser filter exists");
+    filter->setText(QStringLiteral("0x50"));
+    viewer.setCurrentPage(Page::Data);
+    viewer.setCurrentPage(Page::RawData);
+    require(table->model() == model && model->rowCount() == rows && filter->text() == QStringLiteral("0x50"),
+            "switching pages preserves parser index and filter without rescanning");
+    viewer.setCurrentPage(Page::Trajectory);
+    require(viewer.findChild<TrajectoryViewerDialog *>() == trajectory, "trajectory page is reused");
+    require(peakStart->value() == 321, "page switching preserves unsubmitted trajectory settings");
+    trajectory->trackPointActivated(0);
+    require(viewer.currentPage() == Page::Data, "trajectory selection returns to linked data");
+    viewer.setCurrentPage(Page::RawData);
+    viewer.close();
+    viewer.show();
+    processEventsFor(50);
+    require(viewer.currentPage() == Page::RawData && raw->isVisible() && model->rowCount() == rows,
+            "closing and reopening preserves current page and loaded records");
+    splitter->setSizes({190, 1000});
+    toggle->click();
+    require(splitter->sizes().value(0) > 0 && splitter->sizes().value(0) < 120, "sidebar supports compact mode");
+    toggle->click();
+    require(splitter->sizes().value(0) == 0, "sidebar supports hidden mode");
+    toggle->click();
+    require(splitter->sizes().value(0) >= 120, "title bar restores hidden sidebar");
+    viewer.setCurrentPage(Page::Data);
+    require(QMetaObject::invokeMethod(&viewer, "onClearViewClicked", Qt::DirectConnection), "clear shared session data");
+    require(model->rowCount() == 0, "clearing shared data clears parser records");
+    viewer.setCurrentPage(Page::RawData);
+    require(!raw->isVisible(), "cleared parser shows empty state instead of stale content");
+    viewer.close();
+}
+
 void testSessionViewerTitleBarWindowButtons()
 {
     SessionViewerWindow viewer;
@@ -1922,6 +2007,7 @@ int main(int argc, char **argv)
     if (runsGroup(QStringLiteral("window-state")))
     {
         testSessionViewerTitleBarWindowButtons();
+        testSessionWorkspaceNavigation();
     }
     if (runsGroup(QStringLiteral("trajectory")))
     {

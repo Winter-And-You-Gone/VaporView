@@ -112,14 +112,23 @@ bool SessionMapCoordinator::isVisible() const
     return dialog_ && dialog_->isVisible();
 }
 
-void SessionMapCoordinator::ensureDialog(QWidget *owner)
+QWidget *SessionMapCoordinator::embeddedPage(QWidget *parent)
+{
+    ensureDialog(parent, true);
+    return dialog_;
+}
+
+void SessionMapCoordinator::ensureDialog(QWidget *owner, bool embedded)
 {
     if (dialog_)
     {
         return;
     }
 
-    dialog_ = new TrajectoryViewerDialog(owner);
+    dialog_ = new TrajectoryViewerDialog(owner, embedded);
+    dialog_->setEnglish(is_english_);
+    dialog_->setPeakSettings(peak_search_start_index_, peak_search_end_index_,
+                             peak_filter_mode_, peak_filter_min_, peak_filter_max_);
     dialog_->setAttribute(Qt::WA_QuitOnClose, false);
     dialog_->setAttribute(Qt::WA_DeleteOnClose, false);
     connect(dialog_, &TrajectoryViewerDialog::trackPointActivated,
