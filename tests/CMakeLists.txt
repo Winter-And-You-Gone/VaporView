@@ -595,6 +595,11 @@ add_executable(remote_telemetry_state_test
 target_link_libraries(remote_telemetry_state_test PRIVATE vaporview_ground_device_core)
 add_test(NAME remote_telemetry_state_test COMMAND remote_telemetry_state_test)
 
+add_executable(rtcm_observability_test rtcm_observability_test.cpp)
+target_link_libraries(rtcm_observability_test PRIVATE vaporview_ground_device_core vaporview_sky_core)
+add_test(NAME rtcm_observability_test COMMAND rtcm_observability_test)
+set_tests_properties(rtcm_observability_test PROPERTIES LABELS "rtcm;telemetry;integration" TIMEOUT 30)
+
 add_executable(local_device_connection_controller_test
     ${CMAKE_CURRENT_SOURCE_DIR}/local_device_connection_controller_test.cpp
 )

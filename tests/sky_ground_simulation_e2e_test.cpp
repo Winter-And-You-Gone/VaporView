@@ -359,7 +359,11 @@ int main(int argc, char **argv)
                 return lastStatus.rtcm_correction_bytes_received >=
                            static_cast<quint64>(rtcmBytes.size()) &&
                        lastStatus.rtcm_correction_chunks_received > 0 &&
-                       lastStatus.rtcm_correction_last_receive_time_us > 0;
+                       lastStatus.rtcm_correction_last_receive_time_us > 0 &&
+                       lastStatus.rtcm_observability_version == 1 &&
+                       lastStatus.rtcm_link_stream_id != 0 &&
+                       lastStatus.rtcm_link_frames_received > 0 &&
+                       lastStatus.rtcm_link_frames_lost == 0;
             }, &process, 10000),
             "SkyCore receives RTCM correction data over the telemetry link");
 

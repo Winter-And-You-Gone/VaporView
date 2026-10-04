@@ -776,11 +776,19 @@ QByteArray TelemetryCodec::serializeTelemetryStatus(const TelemetryStatus& statu
     appendLe<quint64>(payload, status.rtcm_correction_last_receive_time_us);
     appendLe<quint64>(payload, status.raw_laser_temperature_controller_record_count);
     appendLe<quint64>(payload, status.raw_system_temperature_controller_record_count);
+    appendLe<quint64>(payload, status.rtcm_observability_version);
+    appendLe<quint64>(payload, status.rtcm_report_time_us);
+    appendLe<quint64>(payload, status.rtcm_boot_id);
+    appendLe<quint64>(payload, status.rtcm_forward_enabled);
+    appendLe<quint64>(payload, status.rtcm_link_stream_id);
+    appendLe<quint64>(payload, status.rtcm_link_frames_received);
+    appendLe<quint64>(payload, status.rtcm_link_frames_lost);
     return payload;
 }
 
 bool TelemetryCodec::parseTelemetryStatus(const QByteArray& payload, TelemetryStatus& status)
 {
+    status = TelemetryStatus{};
     qsizetype offset = 0;
     if (payload.size() < 2)
     {
@@ -857,7 +865,16 @@ bool TelemetryCodec::parseTelemetryStatus(const QByteArray& payload, TelemetrySt
            readOptionalU64(status.rtcm_correction_dropped_chunks) &&
            readOptionalU64(status.rtcm_correction_last_receive_time_us) &&
            readOptionalU64(status.raw_laser_temperature_controller_record_count) &&
-           readOptionalU64(status.raw_system_temperature_controller_record_count);
+           readOptionalU64(status.raw_system_temperature_controller_record_count) &&
+           // Unlike earlier optional counters, accept this extension only as a complete block.
+           (offset == payload.size() ||
+            (readLe(payload, offset, status.rtcm_observability_version) &&
+             readLe(payload, offset, status.rtcm_report_time_us) &&
+             readLe(payload, offset, status.rtcm_boot_id) &&
+             readLe(payload, offset, status.rtcm_forward_enabled) &&
+             readLe(payload, offset, status.rtcm_link_stream_id) &&
+             readLe(payload, offset, status.rtcm_link_frames_received) &&
+             readLe(payload, offset, status.rtcm_link_frames_lost)));
 }
 
 QByteArray TelemetryCodec::serializeCommand(const CommandMessage& command)
@@ -1817,26 +1834,49 @@ bool TelemetryCodec::parseEpsilonRtcmInputOperation(
     return true;
 }
 
-QByteArray TelemetryCodec::serializeRtcmCorrectionData(const QByteArray& data)
+QByteArray TelemetryCodec::serializeRtcmCorrectionData(const QByteArray& data,
+                                                       const RtcmFrameSequence& sequence)
 {
     QByteArray payload;
     appendLe<quint32>(payload, static_cast<quint32>(data.size()));
     payload.append(data);
+    if (sequence.stream_id != 0 && sequence.sequence != 0)
+    {
+        appendLe<quint64>(payload, sequence.stream_id);
+        appendLe<quint64>(payload, sequence.sequence);
+    }
     return payload;
 }
 
-bool TelemetryCodec::parseRtcmCorrectionData(const QByteArray& payload, QByteArray& data)
+bool TelemetryCodec::parseRtcmCorrectionData(const QByteArray& payload, QByteArray& data,
+                                            RtcmFrameSequence *sequence)
 {
+    data.clear();
+    if (sequence) *sequence = {};
     qsizetype offset = 0;
     quint32 size = 0;
     if (!readLe(payload, offset, size) ||
         size == 0 ||
         size > 4096 ||
-        offset + static_cast<qsizetype>(size) != payload.size())
+        (payload.size() - offset - static_cast<qsizetype>(size) != 0 &&
+         payload.size() - offset - static_cast<qsizetype>(size) != 16))
     {
         return false;
     }
     data = payload.mid(offset, static_cast<int>(size));
+    offset += size;
+    if (offset < payload.size())
+    {
+        RtcmFrameSequence parsed;
+        if (!readLe(payload, offset, parsed.stream_id) ||
+            !readLe(payload, offset, parsed.sequence) ||
+            parsed.stream_id == 0 || parsed.sequence == 0)
+        {
+            data.clear();
+            return false;
+        }
+        if (sequence) *sequence = parsed;
+    }
     return true;
 }
 

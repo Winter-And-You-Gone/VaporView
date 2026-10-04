@@ -7,6 +7,7 @@
 #include "SkyDeviceManager.h"
 #include "SkySessionRecorder.h"
 #include "TelemetryCodec.h"
+#include "RtcmLinkTracker.h"
 #include "TelemetryLink.h"
 
 #include <QJsonObject>
@@ -149,6 +150,8 @@ private:
     std::thread device_command_thread_;
     quint64 device_command_generation_ = 0;
     quint64 telemetry_stream_generation_ = 0;
+    RtcmLinkTracker rtcm_link_tracker_;
+    quint64 rtcm_boot_id_ = 0;
 };
 
 }  // namespace VaporView

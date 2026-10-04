@@ -2453,6 +2453,9 @@ void MainWindow::setupCentralWidget()
         snapshot.headingDeg = epsilon.yaw_deg;
         snapshot.rtkServiceRunning =
             state_->rtk_config_dialog_ && state_->rtk_config_dialog_->isRunning();
+        if (state_->remote_sky_controller_)
+            snapshot.rtcm = state_->remote_sky_controller_->rtcmStatus(
+                isRemoteSkyMode(), snapshot.rtkServiceRunning);
         return snapshot;
     });
     state_->main_page_stack_->addWidget(state_->combination_navigation_page_);

@@ -1935,8 +1935,8 @@ void requireRtkSidebarPage(
                 ntripStatus != nullptr && rtcmStatus != nullptr &&
                 longitudeValue != nullptr && differentialStatusCard != nullptr &&
                 differentialStatusCard->isVisible() &&
-                ntripStatus->text() == QStringLiteral("--") && rtcmStatus->text() == QStringLiteral("--"),
-            "status page keeps its differential region without fabricating NTRIP or RTCM health state");
+                ntripStatus->text() == QStringLiteral("--") && rtcmStatus->text() == QStringLiteral("未启用"),
+            "status page keeps its differential region with explicit disabled RTCM state");
     VaporView::Ground::Navigation::CombinationNavigationPage::StatusSnapshot sampleStatus;
     sampleStatus.epsilonOnline = true;
     sampleStatus.epsilonDataFresh = true;
@@ -1959,7 +1959,7 @@ void requireRtkSidebarPage(
                 positioningMode->text() == QStringLiteral("RTK固定解") &&
                 longitudeValue->text() != QStringLiteral("--") &&
                 ntripStatus->text() == QStringLiteral("--") &&
-                rtcmStatus->text() == QStringLiteral("--"),
+                rtcmStatus->text() == QStringLiteral("未启用"),
             "status page displays reliable navigation and RTK-service data without inferring connection health");
     combinationPage->refreshStatus();
     require(gnssStatus->text() == QStringLiteral("--") &&

@@ -101,6 +101,8 @@ private:
     quint64 link_generation_ = 0;
     quint16 next_frame_seq_ = 1;
     quint16 next_command_seq_ = 1;
+    RtcmFrameSequence rtcm_sequence_;
+    bool rtcm_observability_supported_ = false;
     QHash<quint16, PendingCommand> pending_commands_;
 
     QVector<ByteSample> rx_byte_samples_;

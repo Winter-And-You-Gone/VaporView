@@ -16,6 +16,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
+#include <QRandomGenerator>
 #include <QStorageInfo>
 #include <QtGlobal>
 #include <algorithm>
@@ -330,10 +331,12 @@ bool SkyRuntime::start()
         connect(link, &TelemetryLink::streamReset, this, [this]() {
             ++telemetry_stream_generation_;
             codec_.reset();
+            rtcm_link_tracker_.reset();
         });
         connect(link, &TelemetryLink::openChanged, this, [this](bool) {
             ++telemetry_stream_generation_;
             codec_.reset();
+            rtcm_link_tracker_.reset();
         });
         connect(link, &TelemetryLink::bytesReceived, this, [this](const QByteArray& bytes) {
             onBytesReceived(bytes);
@@ -435,6 +438,8 @@ bool SkyRuntime::start()
     status_timer_.start();
     running_ = true;
     started_time_us_ = currentTimestampUs();
+    rtcm_boot_id_ = QRandomGenerator::global()->generate64() | 1ULL;
+    rtcm_link_tracker_.reset();
     emit runningChanged(true);
     publishRuntimeLog(LogLevel::Info,
                       QStringLiteral("runtime.lifecycle"),
@@ -669,6 +674,13 @@ TelemetryStatus SkyRuntime::currentStatus() const
     status.rtcm_correction_dropped_bytes = rtcmStats.dropped_bytes;
     status.rtcm_correction_dropped_chunks = rtcmStats.dropped_chunks;
     status.rtcm_correction_last_receive_time_us = rtcmStats.last_receive_time_us;
+    status.rtcm_observability_version = 1;
+    status.rtcm_report_time_us = currentTimestampUs();
+    status.rtcm_boot_id = rtcm_boot_id_;
+    status.rtcm_forward_enabled = device_manager_.config().epsilon_rtcm.enabled;
+    status.rtcm_link_stream_id = rtcm_link_tracker_.streamId();
+    status.rtcm_link_frames_received = rtcm_link_tracker_.received();
+    status.rtcm_link_frames_lost = rtcm_link_tracker_.lost();
     return status;
 }
 
@@ -1013,9 +1025,11 @@ void SkyRuntime::dispatchFrame(const TelemetryFrame& frame)
     else if (frame.type == MsgType::RtcmCorrectionData)
     {
         QByteArray data;
+        RtcmFrameSequence sequence;
         CommandErrorCode ignored = CommandErrorCode::Ok;
-        if (TelemetryCodec::parseRtcmCorrectionData(frame.payload, data))
+        if (TelemetryCodec::parseRtcmCorrectionData(frame.payload, data, &sequence))
         {
+            rtcm_link_tracker_.receive(sequence);
             device_manager_.receiveRtcmCorrectionData(data, &ignored);
         }
     }

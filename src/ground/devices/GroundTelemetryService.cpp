@@ -7,6 +7,8 @@
 
 #include <QDateTime>
 #include <QJsonDocument>
+#include <QRandomGenerator>
+#include <limits>
 #include <algorithm>
 #include <chrono>
 #include <memory>
@@ -222,7 +224,12 @@ bool GroundTelemetryService::sendRtcmCorrectionData(const QByteArray& data)
     {
         return false;
     }
-    const QByteArray payload = TelemetryCodec::serializeRtcmCorrectionData(data);
+    if (rtcm_sequence_.sequence == std::numeric_limits<quint64>::max())
+        rtcm_sequence_ = {QRandomGenerator::global()->generate64() | 1ULL, 0};
+    RtcmFrameSequence sequence = rtcm_sequence_;
+    ++sequence.sequence;
+    const QByteArray payload = TelemetryCodec::serializeRtcmCorrectionData(
+        data, rtcm_observability_supported_ ? sequence : RtcmFrameSequence{});
     const QByteArray frame = codec_.encodeFrame(
         MsgType::RtcmCorrectionData,
         payload,
@@ -231,6 +238,9 @@ bool GroundTelemetryService::sendRtcmCorrectionData(const QByteArray& data)
     const qint64 written = link_->writeBytes(frame);
     if (written > 0)
     {
+        // A zero/failed write sent nothing and must not become a link loss.
+        // Partial writes consume the sequence: that frame cannot be decoded.
+        rtcm_sequence_ = sequence;
         noteTransmittedBytes(written);
     }
     return written == frame.size();
@@ -402,6 +412,7 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         TelemetryStatus status;
         if (TelemetryCodec::parseTelemetryStatus(frame.payload, status))
         {
+            rtcm_observability_supported_ = status.rtcm_observability_version == 1;
             emit statusUpdated(status);
         }
         else
@@ -608,6 +619,8 @@ bool GroundTelemetryService::openLink(std::unique_ptr<TelemetryLink> link)
 {
     codec_.reset();
     close();
+    rtcm_sequence_ = {QRandomGenerator::global()->generate64() | 1ULL, 0};
+    rtcm_observability_supported_ = false;
     link_ = std::move(link);
     attachLinkSignals();
     ++link_generation_;

@@ -79,8 +79,10 @@ public:
     static bool parseEpsilonRtcmInputOperation(
         const QByteArray& payload,
         EpsilonRtcmInputOperation& operation);
-    static QByteArray serializeRtcmCorrectionData(const QByteArray& data);
-    static bool parseRtcmCorrectionData(const QByteArray& payload, QByteArray& data);
+    static QByteArray serializeRtcmCorrectionData(const QByteArray& data,
+                                                 const RtcmFrameSequence& sequence = {});
+    static bool parseRtcmCorrectionData(const QByteArray& payload, QByteArray& data,
+                                         RtcmFrameSequence *sequence = nullptr);
     static QByteArray serializeDeviceOperationRequest(const DeviceOperationRequest& request);
     static bool parseDeviceOperationRequest(const QByteArray& payload,
                                             DeviceOperationRequest& request);

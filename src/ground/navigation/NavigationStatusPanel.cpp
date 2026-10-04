@@ -297,6 +297,14 @@ NavigationStatusPanel::NavigationStatusPanel(QWidget *parent)
         differentialGrid, 1, 0, differential_card_, QStringLiteral("navigationStatusRtcmValue"));
     differential_age_ = addField(
         differentialGrid, 2, 0, differential_card_, QStringLiteral("navigationStatusDifferentialAgeValue"));
+    rtcm_age_ = addField(
+        differentialGrid, 3, 0, differential_card_, QStringLiteral("navigationStatusRtcmAgeValue"));
+    rtcm_rate_ = addField(
+        differentialGrid, 4, 0, differential_card_, QStringLiteral("navigationStatusRtcmRateValue"));
+    rtcm_link_loss_ = addField(
+        differentialGrid, 5, 0, differential_card_, QStringLiteral("navigationStatusRtcmLinkLossValue"));
+    rtcm_sky_drops_ = addField(
+        differentialGrid, 6, 0, differential_card_, QStringLiteral("navigationStatusRtcmSkyDropsValue"));
     differentialLayout->addLayout(differentialGrid);
     quality_layout_->addWidget(differential_card_, 1);
     rootLayout->addWidget(quality_row_);
@@ -429,9 +437,59 @@ void NavigationStatusPanel::setSnapshot(const NavigationStatusSnapshot& snapshot
     applyValueLabel(ntrip_status_.value,
                     snapshot.differentialAvailable && !ntripText.isEmpty()
                         ? ntripText : unavailableText());
-    applyValueLabel(rtcm_status_.value,
-                    snapshot.differentialAvailable && !rtcmText.isEmpty()
-                        ? rtcmText : unavailableText());
+    using Devices::RtcmHealth;
+    const auto& rtcm = snapshot.rtcm;
+    QString rtcmHealthText, rtcmKind = QStringLiteral("inactive");
+    switch (rtcm.health)
+    {
+    case RtcmHealth::Normal:
+        rtcmHealthText = is_english_ ? QStringLiteral("● Normal") : QStringLiteral("● 正常");
+        rtcmKind = QStringLiteral("healthy"); break;
+    case RtcmHealth::Warning:
+        rtcmHealthText = is_english_ ? QStringLiteral("● Unstable") : QStringLiteral("● 不稳定");
+        rtcmKind = QStringLiteral("warning"); break;
+    case RtcmHealth::Delayed:
+        rtcmHealthText = is_english_ ? QStringLiteral("● Delayed") : QStringLiteral("● 严重延迟");
+        rtcmKind = QStringLiteral("warning"); break;
+    case RtcmHealth::Interrupted:
+        rtcmHealthText = is_english_ ? QStringLiteral("● Interrupted") : QStringLiteral("● 中断");
+        rtcmKind = QStringLiteral("critical"); break;
+    case RtcmHealth::LinkDisconnected:
+        rtcmHealthText = is_english_ ? QStringLiteral("● Link disconnected") : QStringLiteral("● 链路断开");
+        rtcmKind = QStringLiteral("critical"); break;
+    case RtcmHealth::Waiting:
+        rtcmHealthText = is_english_ ? QStringLiteral("Waiting") : QStringLiteral("未收到"); break;
+    case RtcmHealth::StatusUnavailable:
+        rtcmHealthText = is_english_ ? QStringLiteral("Status unavailable") : QStringLiteral("状态不可用"); break;
+    case RtcmHealth::Local:
+        rtcmHealthText = is_english_ ? QStringLiteral("Local output") : QStringLiteral("本地输出"); break;
+    case RtcmHealth::Disabled:
+        rtcmHealthText = is_english_ ? QStringLiteral("Disabled") : QStringLiteral("未启用"); break;
+    }
+    applyStatusLabel(rtcm_status_.value, rtcmHealthText, rtcmKind);
+    applyValueLabel(rtcm_age_.value, !rtcm.remote ? QStringLiteral("—")
+        : !rtcm.available ? QStringLiteral("—")
+        : rtcm.ageMs < 0 ? (is_english_ ? QStringLiteral("Never received") : QStringLiteral("未收到"))
+        : rtcm.ageMs < 1000 ? QStringLiteral("%1 ms").arg(rtcm.ageMs)
+        : QStringLiteral("%1 s").arg(locale.toString(rtcm.ageMs / 1000.0, 'f', 1)));
+    applyValueLabel(rtcm_rate_.value, !rtcm.remote || !rtcm.available ? QStringLiteral("—")
+        : rtcm.bytesPerSecond >= 1000.0
+            ? QStringLiteral("%1 kB/s").arg(locale.toString(rtcm.bytesPerSecond / 1000.0, 'f', 1))
+            : QStringLiteral("%1 B/s").arg(locale.toString(rtcm.bytesPerSecond, 'f', 0)));
+    applyValueLabel(rtcm_link_loss_.value, rtcm.remote && rtcm.lossAvailable
+        ? QStringLiteral("%1%").arg(locale.toString(rtcm.lossPercent, 'f', 1)) : QStringLiteral("—"));
+    applyValueLabel(rtcm_sky_drops_.value, rtcm.remote && rtcm.available
+        ? locale.toString(rtcm.droppedChunks) : QStringLiteral("—"));
+    rtcm_link_loss_.value->setToolTip(is_english_
+        ? QStringLiteral("Last 10 s; missing RTCM telemetry frames between observed frames. Received: %1; lost: %2.")
+            .arg(rtcm.linkFramesReceived).arg(rtcm.linkFramesLost)
+        : QStringLiteral("最近 10 秒；已观测帧之间缺失的 RTCM 遥测帧。已接收：%1；丢失：%2。")
+            .arg(rtcm.linkFramesReceived).arg(rtcm.linkFramesLost));
+    rtcm_sky_drops_.value->setToolTip(is_english_
+        ? QStringLiteral("Sky local forwarding drops: %1 chunks / %2 B. Received: %3 chunks / %4 B.")
+            .arg(rtcm.droppedChunks).arg(rtcm.droppedBytes).arg(rtcm.receivedChunks).arg(rtcm.receivedBytes)
+        : QStringLiteral("天空端本地转发丢弃：%1 chunks / %2 B。已接收：%3 chunks / %4 B。")
+            .arg(rtcm.droppedChunks).arg(rtcm.droppedBytes).arg(rtcm.receivedChunks).arg(rtcm.receivedBytes));
     applyValueLabel(differential_age_.value, differentialAgeUsable
         ? QStringLiteral("%1 s").arg(locale.toString(snapshot.differentialAgeS, 'f', 1))
         : unavailableText());
@@ -527,7 +585,7 @@ void NavigationStatusPanel::updateTexts()
     position_title_->setText(is_english_ ? QStringLiteral("Position") : QStringLiteral("位置"));
     attitude_title_->setText(is_english_ ? QStringLiteral("Attitude") : QStringLiteral("姿态"));
     gnss_title_->setText(is_english_ ? QStringLiteral("GNSS Quality") : QStringLiteral("GNSS 质量"));
-    differential_title_->setText(is_english_ ? QStringLiteral("Differential Data") : QStringLiteral("差分数据"));
+    differential_title_->setText(is_english_ ? QStringLiteral("RTCM Corrections") : QStringLiteral("RTCM 差分"));
     empty_state_title_->setText(is_english_
         ? QStringLiteral("No confirmed field-level navigation data")
         : QStringLiteral("暂无可确认的字段级导航数据"));
@@ -554,12 +612,17 @@ void NavigationStatusPanel::updateTexts()
     ntrip_status_.name->setText(QStringLiteral("NTRIP"));
     rtcm_status_.name->setText(QStringLiteral("RTCM"));
     differential_age_.name->setText(is_english_ ? QStringLiteral("Age") : QStringLiteral("差分龄期"));
+    rtcm_age_.name->setText(is_english_ ? QStringLiteral("Last data") : QStringLiteral("最近数据"));
+    rtcm_rate_.name->setText(is_english_ ? QStringLiteral("Receive rate") : QStringLiteral("接收速率"));
+    rtcm_link_loss_.name->setText(is_english_ ? QStringLiteral("Link loss (10 s)") : QStringLiteral("天地链路丢失"));
+    rtcm_sky_drops_.name->setText(is_english_ ? QStringLiteral("Sky local drops") : QStringLiteral("天空端丢弃"));
 
-    const std::array<FieldWidgets *, 19> fields{{
+    const std::array<FieldWidgets *, 23> fields{{
         &epsilon_status_, &gnss_status_, &ins_status_, &positioning_mode_,
         &data_freshness_, &rtk_status_, &longitude_, &latitude_, &height_, &speed_,
         &roll_, &pitch_, &heading_, &gnss_fix_, &satellites_, &horizontal_accuracy_,
         &ntrip_status_, &rtcm_status_, &differential_age_,
+        &rtcm_age_, &rtcm_rate_, &rtcm_link_loss_, &rtcm_sky_drops_,
     }};
     for (FieldWidgets *field : fields)
     {
@@ -583,6 +646,8 @@ void NavigationStatusPanel::applyAppearance()
         "QLabel[navigationStatusEmptyStateDetail=\"true\"] { color: @vv-text-muted; font-weight: 400; }"
         "QLabel[navigationStatusKind=\"healthy\"] { color: @vv-hd-ok; }"
         "QLabel[navigationStatusKind=\"active\"] { color: @vv-primary; }"
+        "QLabel[navigationStatusKind=\"warning\"] { color: @vv-warning; }"
+        "QLabel[navigationStatusKind=\"critical\"] { color: @vv-danger; }"
         "QLabel[navigationStatusKind=\"inactive\"] { color: @vv-text-muted; }");
     const QString resolvedStyle =
         VaporView::applyAppThemeTokens(style, VaporView::isDarkThemeEnabled());

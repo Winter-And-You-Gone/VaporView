@@ -4,6 +4,10 @@
 
 | source | category | event | recommended level | 中文 message | required fields | optional fields | error_code / reason_code |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| Ground | telemetry.rtcm | rtcm_stream_interrupted | Warning | 天空端 RTCM 数据已中断。 | age_ms |  |  |
+| Ground | telemetry.rtcm | rtcm_stream_recovered | Info | 天空端 RTCM 数据已恢复。 | age_ms |  |  |
+| Ground | telemetry.rtcm | rtcm_sky_drops_increased | Warning | 天空端 RTCM 本地丢弃明显增加。 | dropped_chunks, delta_chunks |  |  |
+| Ground | telemetry.rtcm | rtcm_link_loss_increased | Warning | RTCM 天地链路丢失率升高。 | loss_percent |  |  |
 | SkyCore | device.navigation.ppk | epsilon_raw_satellite_decode_failed | Warning | EPSILON PPK 原始观测数据包解析失败。 | reason_code |  | CRC_MISMATCH / INVALID_FRAME / INVALID_UTC / INVALID_PACKET_NUMBER / TRUNCATED_HEADER / TRUNCATED_SATELLITE / TRUNCATED_FREQUENCY / INVALID_FREQUENCY_COUNT / PAYLOAD_SIZE_MISMATCH / NONFINITE_OBSERVATION / DUPLICATE_OBSERVATION |
 | SkyCore | device.navigation.ppk | epsilon_raw_satellite_epoch_completed | Debug | EPSILON PPK 原始观测历元状态已更新。 | reason_code, receiver, utc_ns, received_packets, expected_packets |  | COMPLETE |
 | SkyCore | device.navigation.ppk | epsilon_raw_satellite_epoch_incomplete | Warning | EPSILON PPK 原始观测历元状态已更新。 | reason_code, receiver, utc_ns, received_packets, expected_packets |  | MISSING_PACKETS / HEADER_CONFLICT / OBSERVATION_CONFLICT / STREAM_ENDED |

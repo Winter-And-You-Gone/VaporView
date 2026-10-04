@@ -157,8 +157,8 @@ void testStateVisibilityAndFormatting()
             "no-data state provides an explicit compact trust boundary instead of a blank canvas");
     require(label(panel, "navigationStatusFixValue")->text() == QStringLiteral("--") &&
                 label(panel, "navigationStatusNtripValue")->text() == QStringLiteral("--") &&
-                label(panel, "navigationStatusRtcmValue")->text() == QStringLiteral("--"),
-            "no-data state uses a single unavailable representation");
+                label(panel, "navigationStatusRtcmValue")->text() == QStringLiteral("未启用"),
+            "no-data RTCM is explicitly disabled while navigation values remain unavailable");
     require(panel.findChildren<QAbstractButton *>().isEmpty(),
             "read-only dashboard does not introduce interactive controls");
 
@@ -171,8 +171,8 @@ void testStateVisibilityAndFormatting()
             "reliable detail data removes the no-data state");
     require(differentialCard->isVisible() &&
                 label(panel, "navigationStatusNtripValue")->text() == QStringLiteral("--") &&
-                label(panel, "navigationStatusRtcmValue")->text() == QStringLiteral("--"),
-            "differential card stays visible without inferring NTRIP or RTCM health");
+                label(panel, "navigationStatusRtcmValue")->text() == QStringLiteral("未启用"),
+            "differential card stays visible and does not infer enabled RTCM");
     require(label(panel, "navigationStatusLongitudeValue")->text().endsWith(QStringLiteral("°")) &&
                 label(panel, "navigationStatusHeightValue")->text().endsWith(QStringLiteral(" m")) &&
                 label(panel, "navigationStatusSpeedValue")->text().endsWith(QStringLiteral(" m/s")) &&
@@ -277,9 +277,81 @@ void testStateVisibilityAndFormatting()
     processEventsFor(30);
     require(differentialCard->isVisible() &&
                 label(panel, "navigationStatusNtripValue")->text() == QStringLiteral("Connected") &&
-                label(panel, "navigationStatusRtcmValue")->text() == QStringLiteral("--") &&
+                label(panel, "navigationStatusRtcmValue")->text() == QStringLiteral("未启用") &&
                 label(panel, "navigationStatusDifferentialAgeValue")->text() == QStringLiteral("--"),
             "differential card supports partial explicit state without inferring missing health");
+}
+
+void testRtcmStatus(QApplication& app)
+{
+    using VaporView::Ground::Devices::RtcmHealth;
+    for (bool dark : {false, true})
+    {
+        applyTheme(app, dark);
+        for (bool english : {false, true})
+        {
+            NavigationStatusPanel panel;
+            panel.setEnglish(english);
+            auto snapshot = reliableSnapshot();
+            snapshot.rtcm.remote = true;
+            snapshot.rtcm.available = true;
+            snapshot.rtcm.health = RtcmHealth::Normal;
+            snapshot.rtcm.ageMs = 85;
+            snapshot.rtcm.bytesPerSecond = 1600;
+            snapshot.rtcm.lossAvailable = true;
+            snapshot.rtcm.lossPercent = 0.1;
+            snapshot.rtcm.droppedChunks = 3;
+            panel.setSnapshot(snapshot);
+            panel.resize(1180, 800);
+            panel.show();
+            processEventsFor(80);
+            require(label(panel, "navigationStatusRtcmValue")->property("navigationStatusKind") == QStringLiteral("healthy") &&
+                    label(panel, "navigationStatusRtcmAgeValue")->text() == QStringLiteral("85 ms") &&
+                    label(panel, "navigationStatusRtcmRateValue")->text().contains(QStringLiteral("kB/s")) &&
+                    label(panel, "navigationStatusRtcmLinkLossValue")->text().contains(QLatin1Char('%')) &&
+                    label(panel, "navigationStatusRtcmSkyDropsValue")->text() == QStringLiteral("3"),
+                    "Remote RTCM renders measured age, rate, link loss and separate Sky drops");
+            for (RtcmHealth health : {RtcmHealth::Warning, RtcmHealth::Delayed, RtcmHealth::Interrupted, RtcmHealth::LinkDisconnected})
+            {
+                snapshot.rtcm.health = health;
+                snapshot.rtcm.ageMs = 12400;
+                snapshot.rtcm.bytesPerSecond = 0;
+                snapshot.rtcm.lossAvailable = false;
+                panel.setSnapshot(snapshot);
+                require(label(panel, "navigationStatusRtcmValue")->property("navigationStatusKind") ==
+                        (health == RtcmHealth::Warning || health == RtcmHealth::Delayed
+                            ? QStringLiteral("warning") : QStringLiteral("critical")), "RTCM health uses theme semantic colors");
+                require(label(panel, "navigationStatusRtcmLinkLossValue")->text() == QStringLiteral("—") &&
+                        label(panel, "navigationStatusRtcmRateValue")->text() == QStringLiteral("0 B/s"),
+                        "disconnected/unmeasured loss is a dash, rate is zero");
+            }
+            snapshot.rtcm.remote = false;
+            snapshot.rtcm.health = RtcmHealth::Local;
+            panel.setSnapshot(snapshot);
+            require(label(panel, "navigationStatusRtcmLinkLossValue")->text() == QStringLiteral("—") &&
+                    label(panel, "navigationStatusRtcmSkyDropsValue")->text() == QStringLiteral("—"),
+                    "Local has no fictional Sky loss or drop counters");
+            snapshot.rtcm.remote = true;
+            snapshot.rtcm.ageMs = -1;
+            snapshot.rtcm.health = RtcmHealth::Waiting;
+            panel.setSnapshot(snapshot);
+            require(label(panel, "navigationStatusRtcmAgeValue")->text() ==
+                    (english ? QStringLiteral("Never received") : QStringLiteral("未收到")), "never received is explicit in both languages");
+            QFont scaled = panel.font();
+            scaled.setPointSizeF(scaled.pointSizeF() * 1.3);
+            panel.setFont(scaled);
+            panel.resize(620, 1200);
+            processEventsFor(80);
+            for (const char *name : {"navigationStatusRtcmAgeValue", "navigationStatusRtcmRateValue",
+                                    "navigationStatusRtcmLinkLossValue", "navigationStatusRtcmSkyDropsValue"})
+            {
+                auto *value = label(panel, name);
+                require(value->rect().width() >= value->fontMetrics().horizontalAdvance(value->text()),
+                        "RTCM values fit narrow layout at 130 percent font");
+            }
+        }
+    }
+    applyTheme(app, false);
 }
 
 void testResponsiveGeometry()
@@ -339,6 +411,7 @@ int main(int argc, char **argv)
     applyTheme(app, false);
 
     testStateVisibilityAndFormatting();
+    testRtcmStatus(app);
     testResponsiveGeometry();
     testGrabs(app);
 

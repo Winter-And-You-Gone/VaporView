@@ -1235,11 +1235,13 @@ bool SkyDeviceManager::receiveRtcmCorrectionData(
         if (errorCode) *errorCode = CommandErrorCode::InvalidPayload;
         return false;
     }
+    // Arrival and forwarding are distinct: even a locally rejected chunk has
+    // reached Sky and must contribute to the receive rate and last-arrival age.
+    rtcm_correction_bytes_received_.fetch_add(static_cast<quint64>(data.size()));
+    rtcm_correction_chunks_received_.fetch_add(1);
+    rtcm_correction_last_receive_time_us_.store(nowUs());
     if (simulate_data_)
     {
-        rtcm_correction_bytes_received_.fetch_add(static_cast<quint64>(data.size()));
-        rtcm_correction_chunks_received_.fetch_add(1);
-        rtcm_correction_last_receive_time_us_.store(nowUs());
         if (errorCode) *errorCode = CommandErrorCode::Ok;
         return true;
     }
@@ -1258,9 +1260,6 @@ bool SkyDeviceManager::receiveRtcmCorrectionData(
         if (errorCode) *errorCode = CommandErrorCode::ConfigApplyFailed;
         return false;
     }
-    rtcm_correction_bytes_received_.fetch_add(static_cast<quint64>(data.size()));
-    rtcm_correction_chunks_received_.fetch_add(1);
-    rtcm_correction_last_receive_time_us_.store(nowUs());
     if (errorCode) *errorCode = CommandErrorCode::Ok;
     return true;
 }

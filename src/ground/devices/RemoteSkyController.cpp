@@ -2,6 +2,7 @@
 
 #include "ground/devices/RemoteTelemetryDecoder.h"
 #include "shared/config/SettingsWriteBarrier.h"
+#include "LogService.h"
 
 #include <QDateTime>
 #include <QMetaObject>
@@ -15,6 +16,7 @@ namespace VaporView::Ground::Devices
 RemoteSkyController::RemoteSkyController(QObject *parent)
     : QObject(parent)
 {
+    rtcm_clock_.start();
     next_device_operation_request_id_ = QRandomGenerator::global()->generate();
     connect(&service_, &GroundTelemetryService::linkOpenChanged,
             this, [this](bool open) {
@@ -22,6 +24,11 @@ RemoteSkyController::RemoteSkyController(QObject *parent)
                 QMetaObject::invokeMethod(this, [this, generation, open]() {
                     if (isCurrentEvent(generation))
                     {
+                        if (open)
+                        {
+                            rtcm_status_.reconnect();
+                            rtcm_diagnostics_need_baseline_ = true;
+                        }
                         emit linkOpenChanged(open);
                     }
                 }, Qt::QueuedConnection);
@@ -284,6 +291,8 @@ GroundTelemetryService *RemoteSkyController::telemetryService()
 void RemoteSkyController::resetState()
 {
     state_.reset();
+    rtcm_status_.reset();
+    rtcm_diagnostics_need_baseline_ = true;
     device_operation_requests_.clear();
     device_operation_commands_.clear();
     device_operation_support_ = DeviceOperationSupport::Unknown;
@@ -405,6 +414,14 @@ void RemoteSkyController::updateBasicState(const TelemetryBasic& telemetry)
 
 void RemoteSkyController::updateStatusState(const TelemetryStatus& status)
 {
+    if (rtcm_diagnostics_need_baseline_ || status.rtcm_boot_id != last_rtcm_boot_id_)
+    {
+        last_rtcm_drop_logged_ = status.rtcm_correction_dropped_chunks;
+        rtcm_loss_warning_logged_ = false;
+        rtcm_diagnostics_need_baseline_ = false;
+    }
+    last_rtcm_boot_id_ = status.rtcm_boot_id;
+    rtcm_status_.receiveStatus(status, rtcm_clock_.elapsed());
     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
     state_.notePacket(MsgType::TelemetryStatus, nowMs);
     state_.noteStatus(nowMs);
@@ -416,6 +433,64 @@ void RemoteSkyController::updateStatusState(const TelemetryStatus& status)
             state_.clearDeviceData(item.device_id);
         }
     }
+}
+
+RtcmStatusSnapshot RemoteSkyController::rtcmStatus(bool remote, bool rtkRunning)
+{
+    rtcm_status_.setContext(remote, rtkRunning);
+    const RtcmStatusSnapshot snapshot = rtcm_status_.snapshot(isOpen(), rtcm_clock_.elapsed());
+    const bool interrupted = snapshot.health == RtcmHealth::Interrupted ||
+        snapshot.health == RtcmHealth::LinkDisconnected;
+    const bool wasInterrupted = last_rtcm_health_ == RtcmHealth::Interrupted ||
+        last_rtcm_health_ == RtcmHealth::LinkDisconnected;
+    if ((interrupted && !wasInterrupted && remote && rtkRunning) ||
+        (wasInterrupted && (snapshot.health == RtcmHealth::Normal || snapshot.health == RtcmHealth::Warning)))
+    {
+        LogService::withCurrentInstance([&](LogService& logs) {
+            if (interrupted)
+                logs.publish(LogLevel::Warning, QStringLiteral("Ground"), QStringLiteral("telemetry.rtcm"),
+                    QStringLiteral("天空端 RTCM 数据已中断。"),
+                    {{QStringLiteral("event"), QStringLiteral("rtcm_stream_interrupted")},
+                     {QStringLiteral("age_ms"), snapshot.ageMs}});
+            else
+                logs.publish(LogLevel::Info, QStringLiteral("Ground"), QStringLiteral("telemetry.rtcm"),
+                    QStringLiteral("天空端 RTCM 数据已恢复。"),
+                    {{QStringLiteral("event"), QStringLiteral("rtcm_stream_recovered")},
+                     {QStringLiteral("age_ms"), snapshot.ageMs}});
+        });
+    }
+    if (!remote || !rtkRunning || !snapshot.available || snapshot.droppedChunks < last_rtcm_drop_logged_)
+        last_rtcm_drop_logged_ = snapshot.droppedChunks;
+    if (!snapshot.lossWarning) rtcm_loss_warning_logged_ = false;
+    const qint64 nowMs = rtcm_clock_.elapsed();
+    if (remote && rtkRunning && snapshot.available && nowMs - last_rtcm_diagnostic_ms_ >= 10000)
+    {
+        if (snapshot.droppedChunks - last_rtcm_drop_logged_ >= 10)
+        {
+            LogService::withCurrentInstance([&](LogService& logs) {
+                logs.publish(LogLevel::Warning, QStringLiteral("Ground"), QStringLiteral("telemetry.rtcm"),
+                    QStringLiteral("天空端 RTCM 本地丢弃明显增加。"),
+                    {{QStringLiteral("event"), QStringLiteral("rtcm_sky_drops_increased")},
+                     {QStringLiteral("dropped_chunks"), snapshot.droppedChunks},
+                     {QStringLiteral("delta_chunks"), snapshot.droppedChunks - last_rtcm_drop_logged_}});
+            });
+            last_rtcm_drop_logged_ = snapshot.droppedChunks;
+            last_rtcm_diagnostic_ms_ = nowMs;
+        }
+        if (snapshot.lossWarning && !rtcm_loss_warning_logged_)
+        {
+            LogService::withCurrentInstance([&](LogService& logs) {
+                logs.publish(LogLevel::Warning, QStringLiteral("Ground"), QStringLiteral("telemetry.rtcm"),
+                    QStringLiteral("RTCM 天地链路丢失率升高。"),
+                    {{QStringLiteral("event"), QStringLiteral("rtcm_link_loss_increased")},
+                     {QStringLiteral("loss_percent"), snapshot.lossPercent}});
+            });
+            rtcm_loss_warning_logged_ = true;
+            last_rtcm_diagnostic_ms_ = nowMs;
+        }
+    }
+    last_rtcm_health_ = snapshot.health;
+    return snapshot;
 }
 
 quint32 RemoteSkyController::sendDeviceOperation(

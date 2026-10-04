@@ -2,6 +2,8 @@
 
 #include "ground/devices/GroundTelemetryService.h"
 #include "ground/devices/RemoteTelemetryState.h"
+#include "ground/devices/RtcmStatusModel.h"
+#include <QElapsedTimer>
 
 #include <QHash>
 #include <QObject>
@@ -66,6 +68,7 @@ public:
     qint64 lastDeviceDataMs(SkyDeviceId device) const;
     double packetRate(MsgType type) const;
     double waveformPacketRate(quint16 channelId) const;
+    RtcmStatusSnapshot rtcmStatus(bool remote, bool rtkRunning);
 
 signals:
     void linkOpenChanged(bool open);
@@ -95,6 +98,14 @@ private:
 
     GroundTelemetryService service_;
     RemoteTelemetryState state_;
+    RtcmStatusModel rtcm_status_;
+    QElapsedTimer rtcm_clock_;
+    RtcmHealth last_rtcm_health_ = RtcmHealth::Disabled;
+    quint64 last_rtcm_drop_logged_ = 0;
+    bool rtcm_loss_warning_logged_ = false;
+    qint64 last_rtcm_diagnostic_ms_ = -10000;
+    quint64 last_rtcm_boot_id_ = 0;
+    bool rtcm_diagnostics_need_baseline_ = true;
     QHash<quint16, quint32> device_operation_requests_;
     QHash<quint32, quint16> device_operation_commands_;
     quint32 next_device_operation_request_id_ = 1;

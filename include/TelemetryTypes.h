@@ -360,6 +360,20 @@ struct TelemetryStatus
     quint64 rtcm_correction_last_receive_time_us = 0;
     quint64 raw_laser_temperature_controller_record_count = 0;
     quint64 raw_system_temperature_controller_record_count = 0;
+    // Optional RTCM observability v1 extension. Zero version means an older peer.
+    quint64 rtcm_observability_version = 0;
+    quint64 rtcm_report_time_us = 0;
+    quint64 rtcm_boot_id = 0;
+    quint64 rtcm_forward_enabled = 0;
+    quint64 rtcm_link_stream_id = 0;
+    quint64 rtcm_link_frames_received = 0;
+    quint64 rtcm_link_frames_lost = 0;
+};
+
+struct RtcmFrameSequence
+{
+    quint64 stream_id = 0;
+    quint64 sequence = 0;
 };
 
 struct CommandMessage

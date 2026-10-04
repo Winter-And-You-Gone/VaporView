@@ -52,6 +52,8 @@ add_library(vaporview_ground_device_core STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/RemoteTelemetryState.h
     ${CMAKE_CURRENT_SOURCE_DIR}/RemoteSkyController.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/RemoteSkyController.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/RtcmStatusModel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/RtcmStatusModel.h
     ${CMAKE_CURRENT_SOURCE_DIR}/UiTestDataModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/UiTestDataModel.h
 )

@@ -4,6 +4,7 @@
 #include <QString>
 #include <QWidget>
 #include <QtGlobal>
+#include "ground/devices/RtcmStatusModel.h"
 
 #include <limits>
 
@@ -51,6 +52,7 @@ struct NavigationStatusSnapshot
     QString ntripStatusText;
     QString rtcmStatusText;
     double differentialAgeS = std::numeric_limits<double>::quiet_NaN();
+    Devices::RtcmStatusSnapshot rtcm;
 };
 
 class NavigationStatusPanel final : public QWidget
@@ -133,6 +135,10 @@ private:
     FieldWidgets ntrip_status_;
     FieldWidgets rtcm_status_;
     FieldWidgets differential_age_;
+    FieldWidgets rtcm_age_;
+    FieldWidgets rtcm_rate_;
+    FieldWidgets rtcm_link_loss_;
+    FieldWidgets rtcm_sky_drops_;
 };
 
 } // namespace VaporView::Ground::Navigation
