@@ -1,4 +1,5 @@
 #include "SkySessionRecorder.h"
+#include "LogService.h"
 #include "FailingRecordingStorage.h"
 #include "geo/CoordinateTransform.h"
 #include "shared/session/SessionDeviceConfig.h"
@@ -135,6 +136,38 @@ void verifyWaveformFeatureRecordingBoundaries()
 
 }
 
+void verifyObservationCloseCanAppendSessionLog()
+{
+    QTemporaryDir tempDir;
+    require(tempDir.isValid(), "temporary observation/log close directory");
+    VaporView::LogService logs(QStringLiteral("SkyRecorderCloseTest"), nullptr,
+                               tempDir.path() + QStringLiteral("/diagnostics"), tempDir.path());
+    VaporView::SkySessionRecorder recorder;
+    int completionEvents = 0;
+    const auto connection = QObject::connect(&logs, &VaporView::LogService::recordPublished,
+        QCoreApplication::instance(), [&](const VaporView::LogRecord& record) {
+            if (!recorder.isRecording() && !recorder.isPaused()) return;
+            require(recorder.appendEvent(record), "synchronous PPK log appends to session");
+            if (record.fields.value(QStringLiteral("event")) == QStringLiteral("ppk_rover_observation_completed"))
+                ++completionEvents;
+        }, Qt::DirectConnection);
+    QString error;
+    require(recorder.start(tempDir.path(), QStringLiteral("tcp://127.0.0.1:39100"), 0,
+                           &error, QStringLiteral("tcp"), QStringLiteral("tcp://127.0.0.1:39100")),
+            "start recorder with live logging");
+    VaporView::Ppk::RawSatelliteEpoch epoch;
+    epoch.unixSeconds = static_cast<quint32>(QDateTime::currentSecsSinceEpoch());
+    epoch.hostTimestampUs = currentTimestampUs();
+    recorder.recordEpsilonObservationEpoch(VaporView::Ppk::encodeEpoch(epoch));
+    require(recorder.stop(&error), "stop recorder after observations with synchronous logging");
+    require(completionEvents == 1, "PPK close completion log written before event file closes");
+    QObject::disconnect(connection);
+    QFile eventFile(recorder.sessionDirectory() + QStringLiteral("/logs/event_log.csv"));
+    require(eventFile.open(QIODevice::ReadOnly), "read closed session event log");
+    require(eventFile.readAll().contains(QStringLiteral("完成 PPK Rover 原始观测记录。").toUtf8()),
+            "completed observation log persisted in session");
+}
+
 int main(int argc, char *argv[])
 {
     QCoreApplication app(argc, argv);
@@ -184,6 +217,7 @@ int main(int argc, char *argv[])
     require(!recorder.sessionName().isEmpty(), "session name");
 
     verifyWaveformFeatureRecordingBoundaries();
+    verifyObservationCloseCanAppendSessionLog();
 
     VaporView::LogRecord eventRecord;
     eventRecord.timestamp_utc = QStringLiteral("2026-07-30T12:00:00.000Z");

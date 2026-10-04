@@ -1103,9 +1103,10 @@ bool SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc, QString
 
 void SkySessionRecorder::closeFiles()
 {
-    std::lock_guard<std::mutex> lock(files_mutex_);
+    // Observation close publishes a log that can synchronously appendEvent().
     ppk_observations_.close();
     ppk_attitudes_.close();
+    std::lock_guard<std::mutex> lock(files_mutex_);
     for (QFile *file : {&basic_record_file_,
                         &navigation_status_file_,
                         &feature_record_file_,
