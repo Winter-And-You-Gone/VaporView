@@ -1,3 +1,4 @@
+#include "test_settings_sandbox.h"
 #include "app/StartupSplash.h"
 
 #include <QApplication>

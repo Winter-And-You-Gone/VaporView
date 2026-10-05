@@ -1049,6 +1049,13 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         }
     }
 
+    if (state_->app_layout_splitter_ && state_->app_sidebar_ &&
+        watched == state_->app_layout_splitter_->handle(1) &&
+        eventType == QEvent::MouseButtonPress)
+    {
+        state_->app_sidebar_->setMaximumWidth(QWIDGETSIZE_MAX);
+    }
+
     if (state_->app_layout_splitter_ &&
         watched == state_->app_layout_splitter_->handle(1) &&
         eventType == QEvent::MouseButtonRelease)

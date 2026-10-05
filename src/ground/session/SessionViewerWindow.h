@@ -64,6 +64,7 @@ protected:
     void changeEvent(QEvent *event) override;
     void closeEvent(QCloseEvent *event) override;
     void showEvent(QShowEvent *event) override;
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
 private slots:
     void onChooseSessionClicked();
@@ -88,6 +89,7 @@ private:
     void updatePageAvailability();
     void ensurePpkPage();
     void saveSidebarWidth();
+    void setSidebarWidth(int width);
     void updateTexts();
     void updateSummaryLabels();
     void updatePpkSummary();

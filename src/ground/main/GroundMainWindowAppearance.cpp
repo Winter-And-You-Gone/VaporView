@@ -515,7 +515,8 @@ void MainWindow::setAppSidebarWidth(int width)
     if (state_->app_sidebar_)
     {
         state_->app_sidebar_->setMinimumWidth(0);
-        state_->app_sidebar_->setMaximumWidth(QWIDGETSIZE_MAX);
+        state_->app_sidebar_->setMaximumWidth(
+            state_->app_sidebar_mode_ == AppSidebarMode::Full ? QWIDGETSIZE_MAX : sidebarWidth);
     }
 }
 
@@ -630,10 +631,7 @@ void MainWindow::updateAppSidebarForWidth(int width, bool snapToNearest)
     {
         state_->last_app_sidebar_visible_width_ = snapWidth;
     }
-    if (snapWidth != normalizedWidth)
-    {
-        setAppSidebarWidth(snapWidth);
-    }
+    setAppSidebarWidth(snapWidth);
     updateCustomLogoPixmap();
     updateCustomLogoTooltip();
 }

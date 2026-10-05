@@ -1,3 +1,4 @@
+#include "test_settings_sandbox.h"
 #include <QPainter>
 #include <QKeyEvent>
 #include <QHelpEvent>

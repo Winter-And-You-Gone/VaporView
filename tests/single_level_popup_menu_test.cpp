@@ -1,3 +1,4 @@
+#include "test_settings_sandbox.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
 #include "shared/theme/AppTheme.h"
 

@@ -207,6 +207,9 @@ void testFrameSliderThemeAndHover(MainWindow& window, SessionViewerWindow& viewe
             {
                 waveform->setFramePreviewInfo(frame - 1, 144783, false, 1782446038573000ULL);
                 VaporViewTest::processEventsFor(100);
+                auto *sidebar = viewer.findChild<QWidget *>(QStringLiteral("appSidebar"));
+                require(sidebar && sidebar->width() >= sidebar->layout()->minimumSize().width(),
+                        "scaled viewer navigation fits inside its compact sidebar");
                 scrollArea->ensureWidgetVisible(slider, 0, 0);
                 VaporViewTest::processEventsFor(100);
                 QHoverEvent leave(QEvent::HoverLeave, QPointF(-1, -1), QPointF(-1, -1));
@@ -397,6 +400,9 @@ void testFrameSliderThemeAndHover(MainWindow& window, SessionViewerWindow& viewe
     waveform->setEnvironmentSeries({}, {}, {});
     scrollArea->verticalScrollBar()->setValue(originalScroll);
     slider->removeEventFilter(&observer);
+    VaporViewTest::processEventsFor(100);
+    require(viewer.findChild<QWidget *>(QStringLiteral("appSidebar"))->width() == 62,
+            "restoring standard font scale restores single-icon sidebar width");
 }
 
 void testMainWindowDataViewerOpenCanReopen()
@@ -443,6 +449,7 @@ void testMainWindowDataViewerOpenCanReopen()
         settings.setValue(QStringLiteral("last_session_directory"), sessionDir.path());
     }
 
+    QSettings("VaporView", "MainWindow").setValue("font_scale_percent", 100);
     MainWindow window;
     window.resize(1280, 800);
     window.show();
@@ -496,6 +503,18 @@ void testMainWindowDataViewerOpenCanReopen()
 
     auto *viewer = visibleSessionViewerWindow();
     require(viewer != nullptr, "active data viewer is available");
+    for (QWidget *host : {static_cast<QWidget *>(&window), static_cast<QWidget *>(viewer)})
+    {
+        auto *sidebar = host->findChild<QWidget *>(QStringLiteral("appSidebar"));
+        require(sidebar != nullptr, "window has navigation sidebar");
+        const QSize originalSize = host->size();
+        for (const QSize size : {QSize(1280, 800), QSize(1800, 1000), originalSize})
+        {
+            host->resize(size);
+            processEventsFor(100);
+            require(sidebar->width() == 62, "compact sidebar keeps default single-icon width after resize");
+        }
+    }
     requireSamePath(viewer->dataSelectionDirectory(),
                     menuRecordingDir.path(),
                     "data viewer uses the recording directory configured by the main menu");

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "test_settings_sandbox.h"
+
 #include "shared/theme/AppTheme.h"
 
 #include <QAbstractItemView>

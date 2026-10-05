@@ -1,3 +1,4 @@
+#include "test_settings_sandbox.h"
 #include "ground/widgets/DevicePanelCoordinator.h"
 #include "ground/widgets/EpsilonPanel.h"
 #include "ground/widgets/TelemetryPanels.h"

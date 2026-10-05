@@ -2223,7 +2223,7 @@ void MainWindow::setupCentralWidget()
         QSettings settings("VaporView", "MainWindow");
         const int restoredAppSidebarWidth = std::max(0, settings.value(
             QStringLiteral("app_sidebar_width"),
-            appSidebarDefaultWidth()).toInt());
+            appSidebarIconOnlyWidth()).toInt());
         const int initialAppSidebarWidth = snappedAppSidebarWidth(restoredAppSidebarWidth);
         if (initialAppSidebarWidth > 0)
         {
@@ -2231,7 +2231,7 @@ void MainWindow::setupCentralWidget()
         }
         state_->app_sidebar_mode_ = appSidebarModeForWidth(initialAppSidebarWidth);
         updateAppSidebarButtonTexts();
-        state_->app_layout_splitter_->setSizes({initialAppSidebarWidth, 1600});
+        setAppSidebarWidth(initialAppSidebarWidth);
     }
     connect(state_->app_layout_splitter_, &QSplitter::splitterMoved, this, [this]() {
         if (state_->app_sidebar_adjusting_ || !state_->app_layout_splitter_)

@@ -1,3 +1,4 @@
+#include "test_settings_sandbox.h"
 #include "ground/session/SessionMapCoordinator.h"
 #include "ground/session/SessionViewerPages.h"
 #include "ground/session/SessionViewerWidgets.h"

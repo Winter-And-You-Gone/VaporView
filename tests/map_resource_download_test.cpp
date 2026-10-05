@@ -1,3 +1,4 @@
+#include "test_settings_sandbox.h"
 #include "map3d/MapResourceManager.h"
 
 #include <QCoreApplication>

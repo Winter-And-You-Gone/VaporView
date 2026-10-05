@@ -1,3 +1,4 @@
+#include "test_settings_sandbox.h"
 #include "ground/main/MainWindow.h"
 #include "map3d/OsgEarthViewWidget.h"
 

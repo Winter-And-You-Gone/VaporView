@@ -1,3 +1,4 @@
+#include "test_settings_sandbox.h"
 #include "ground/widgets/Ai8TemperatureControllerPanel.h"
 #include "ground/widgets/TemperatureTrendPlotWidget.h"
 #include "shared/theme/AppTheme.h"

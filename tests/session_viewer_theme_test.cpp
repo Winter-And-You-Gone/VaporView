@@ -1929,9 +1929,11 @@ void testSessionWorkspaceNavigation()
     processEventsFor(50);
     require(viewer.currentPage() == Page::RawData && raw->isVisible() && model->rowCount() == rows,
             "closing and reopening preserves current page and loaded records");
-    splitter->setSizes({190, 1000});
+    for (int attempt = 0; attempt < 3 && splitter->sizes().value(0) < 120; ++attempt)
+        toggle->click();
+    require(splitter->sizes().value(0) >= 120, "sidebar expands through its toggle");
     toggle->click();
-    require(splitter->sizes().value(0) > 0 && splitter->sizes().value(0) < 120, "sidebar supports compact mode");
+    require(splitter->sizes().value(0) == 62, "sidebar supports single-icon compact mode");
     toggle->click();
     require(splitter->sizes().value(0) == 0, "sidebar supports hidden mode");
     toggle->click();

@@ -1,3 +1,4 @@
+#include "test_settings_sandbox.h"
 #include "ground/navigation/NavigationStatusPanel.h"
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/TopLevelCardStyle.h"

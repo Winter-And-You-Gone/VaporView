@@ -1,3 +1,4 @@
+#include "test_settings_sandbox.h"
 #include "ground/widgets/LabelTextSelection.h"
 #include "ground/widgets/VisualTextLabel.h"
 

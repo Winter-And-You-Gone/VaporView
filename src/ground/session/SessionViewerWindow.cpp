@@ -41,6 +41,8 @@
 #include "shared/config/SettingsWriteBarrier.h"
 #include "shared/config/ApplicationConfig.h"
 #include <QSplitter>
+#include <QSplitterHandle>
+#include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
 #include <QtConcurrent/QtConcurrentRun>
@@ -199,11 +201,8 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     VaporView::addWidgetToCustomTitleBar(this, sidebar_toggle_);
     connect(sidebar_toggle_, &QToolButton::clicked, this, [this]() {
         const int width = navigation_splitter_->sizes().value(0);
-        const int target = width == 0 ? 190 : width < 120 ? 0 : 64;
-        updateNavigation(target);
-        sidebar_->layout()->activate();
-        navigation_splitter_->setSizes({target, std::max(1, navigation_splitter_->width() - target)});
-        updateNavigation();
+        const int target = width == 0 ? 190 : width < 120 ? 0 : 62;
+        setSidebarWidth(target);
         saveSidebarWidth();
     });
     resize(kSessionViewerDefaultWidth, kSessionViewerDefaultHeight);
@@ -272,11 +271,8 @@ void SessionViewerWindow::showEvent(QShowEvent *event)
     {
         navigation_shown_ = true;
         QSettings settings("VaporView", "SessionViewer");
-        const int width = std::clamp(settings.value("sidebar_width", 190).toInt(), 0, 400);
-        updateNavigation(width);
-        sidebar_->layout()->activate();
-        navigation_splitter_->setSizes({width, std::max(1, navigation_splitter_->width() - width)});
-        updateNavigation();
+        const int width = std::clamp(settings.value("sidebar_width", 62).toInt(), 0, 400);
+        setSidebarWidth(width);
     }
 }
 
@@ -428,8 +424,9 @@ void SessionViewerWindow::setupNavigation(QWidget *dataPage)
     navigation_splitter_->setStretchFactor(0, 0);
     navigation_splitter_->setStretchFactor(1, 1);
     QSettings settings("VaporView", "SessionViewer");
-    const int width = std::clamp(settings.value("sidebar_width", 190).toInt(), 0, 400);
-    navigation_splitter_->setSizes({width, kSessionViewerDefaultWidth - width});
+    const int width = std::clamp(settings.value("sidebar_width", 62).toInt(), 0, 400);
+    setSidebarWidth(width);
+    navigation_splitter_->handle(1)->installEventFilter(this);
     connect(navigation_splitter_, &QSplitter::splitterMoved, this, [this]() {
         updateNavigation();
         saveSidebarWidth();
@@ -515,6 +512,36 @@ void SessionViewerWindow::updatePageAvailability()
         raw_scroll_->setVisible(available[2]);
 }
 
+void SessionViewerWindow::setSidebarWidth(int width)
+{
+    int target = width < 31 ? 0 : width < 120 ? 62 : std::max(190, width);
+    updateNavigation(target);
+    if (target == 62)
+        target = std::max(target, sidebar_->layout()->minimumSize().width());
+    sidebar_->setMinimumWidth(target);
+    sidebar_->setMaximumWidth(target);
+    sidebar_->layout()->activate();
+    navigation_splitter_->setSizes({target, std::max(1, navigation_splitter_->width()
+                                                    - navigation_splitter_->handleWidth() - target)});
+    sidebar_->setMinimumWidth(0);
+    sidebar_->setMaximumWidth(target < 120 ? target : QWIDGETSIZE_MAX);
+}
+
+bool SessionViewerWindow::eventFilter(QObject *watched, QEvent *event)
+{
+    if (navigation_splitter_ && watched == navigation_splitter_->handle(1))
+    {
+        if (event->type() == QEvent::MouseButtonPress)
+            sidebar_->setMaximumWidth(QWIDGETSIZE_MAX);
+        else if (event->type() == QEvent::MouseButtonRelease)
+            QTimer::singleShot(0, this, [this]() {
+                setSidebarWidth(navigation_splitter_->sizes().value(0));
+                saveSidebarWidth();
+            });
+    }
+    return QMainWindow::eventFilter(watched, event);
+}
+
 void SessionViewerWindow::saveSidebarWidth()
 {
     if (ui_test_mode_)
@@ -582,6 +609,13 @@ void SessionViewerWindow::changeEvent(QEvent *event)
         device_data_page_->applyTheme();
         loading_dialog_->applyTheme();
         updateNavigation();
+        // Wait for the new stylesheet to reach the navigation buttons before
+        // measuring them, including when returning to the standard font size.
+        QTimer::singleShot(0, this, [this]() {
+            const int width = navigation_splitter_->sizes().value(0);
+            if (width < 120)
+                setSidebarWidth(width);
+        });
     }
 }
 

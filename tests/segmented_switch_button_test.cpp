@@ -1,3 +1,4 @@
+#include "test_settings_sandbox.h"
 #include "ground/widgets/SegmentedSwitchButton.h"
 #include "ground/widgets/TemperatureControllerWidgets.h"
 #include "shared/theme/AppTheme.h"

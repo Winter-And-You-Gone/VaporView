@@ -1,3 +1,4 @@
+#include "test_settings_sandbox.h"
 #include "ground/wave/TcpWavePanel.h"
 #include "LogService.h"
 
