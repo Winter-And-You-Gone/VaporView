@@ -863,6 +863,7 @@ struct RawDataParserWindow::Impl
     void refreshFileList();
     void refreshDeviceFilter();
     void applyFilters();
+    void resizeTableColumnsToContents();
     bool recordMatches(const RawRecordIndex& record, const QString& searchLower, bool requireDecoded) const;
     QByteArray readPayload(const RawRecordIndex& record) const;
     RawDecodedRecord decodeRecord(const RawRecordIndex& record);
@@ -1089,6 +1090,8 @@ void RawDataParserWindow::Impl::setupUi()
     record_table->setSelectionMode(QAbstractItemView::SingleSelection);
     record_table->setSortingEnabled(false);
     record_table->verticalHeader()->setVisible(false);
+    record_table->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+    record_table->horizontalHeader()->setDefaultSectionSize(100);
     record_table->horizontalHeader()->setStretchLastSection(true);
     splitter->addWidget(record_table);
 
@@ -1104,6 +1107,12 @@ void RawDataParserWindow::Impl::setupUi()
     detail_tree->setColumnWidth(2, 210);
     detail_tree->setColumnWidth(3, 80);
     detail_tree->setColumnWidth(4, 90);
+    const QList<int> detailMaximumWidths{180, 150, 210, 80, 90};
+    for (int column = 0; column < detailMaximumWidths.size(); ++column)
+    {
+        detail_tree->resizeColumnToContents(column);
+        detail_tree->setColumnWidth(column, std::min(detail_tree->columnWidth(column), detailMaximumWidths.at(column)));
+    }
     detailSplitter->addWidget(detail_tree);
 
     hex_view = new QPlainTextEdit(owner);
@@ -1270,6 +1279,7 @@ void RawDataParserWindow::Impl::scanSession()
     file_list->clear();
     refreshDeviceFilter();
     record_model->setSource(&records, &visible_rows);
+    resizeTableColumnsToContents();
     if (scan_progress_panel)
     {
         scan_progress_panel->setVisible(false);
@@ -1695,6 +1705,17 @@ void RawDataParserWindow::Impl::applyFilters()
         .arg(records.size()));
 }
 
+void RawDataParserWindow::Impl::resizeTableColumnsToContents()
+{
+    if (!record_table || !record_model)
+        return;
+    auto *header = record_table->horizontalHeader();
+    record_table->resizeColumnsToContents();
+    const int maximumWidth = header->defaultSectionSize();
+    for (int column = 0; column < record_model->columnCount(); ++column)
+        record_table->setColumnWidth(column, std::min(record_table->columnWidth(column), maximumWidth));
+}
+
 void RawDataParserWindow::Impl::showSelectedRecord()
 {
     const QModelIndex current = record_table->currentIndex();
@@ -1744,6 +1765,12 @@ void RawDataParserWindow::Impl::showDecodedRecord(const RawRecordIndex& record, 
         }
     }
     detail_tree->expandAll();
+    const QList<int> detailMaximumWidths{180, 150, 210, 80, 90};
+    for (int column = 0; column < detailMaximumWidths.size(); ++column)
+    {
+        detail_tree->resizeColumnToContents(column);
+        detail_tree->setColumnWidth(column, std::min(detail_tree->columnWidth(column), detailMaximumWidths.at(column)));
+    }
     setHexPayload(payload);
     status_label->setText(QStringLiteral("%1 | %2 | %3")
         .arg(record.device_name, decoded.status, decoded.summary));

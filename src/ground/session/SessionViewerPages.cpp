@@ -953,6 +953,9 @@ void SessionDeviceDataWidget::setRows(const QStringList& headers, QVector<QStrin
     csv_model_->setRows(displayHeaders, std::move(rows));
     csv_model_->setTheme(sessionTableThemeFor(this));
     csv_table_->resizeColumnsToContents();
+    for (int column = 0; column < csv_table_->model()->columnCount(); ++column)
+        csv_table_->setColumnWidth(column, std::min(csv_table_->columnWidth(column),
+                                                    csv_table_->horizontalHeader()->defaultSectionSize()));
 }
 
 void SessionDeviceDataWidget::clear()
@@ -1071,6 +1074,9 @@ void SessionDeviceDataWidget::updateDisplayHeaders()
     displayHeaders << csv_headers_;
     csv_model_->setHeaders(displayHeaders);
     csv_table_->resizeColumnsToContents();
+    auto *header = csv_table_->horizontalHeader();
+    for (int column = 0; column < csv_table_->model()->columnCount(); ++column)
+        csv_table_->setColumnWidth(column, std::min(csv_table_->columnWidth(column), header->defaultSectionSize()));
 }
 
 bool editSessionPeakSettings(

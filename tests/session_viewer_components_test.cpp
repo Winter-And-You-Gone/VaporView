@@ -169,11 +169,10 @@ void testPages()
     QCoreApplication::processEvents();
     require(table->viewport()->height() >= table->verticalHeader()->defaultSectionSize() * 5,
             "device data page keeps at least five CSV rows visible");
-    require(table->columnWidth(2) >=
-                table->horizontalHeader()->fontMetrics().horizontalAdvance(headerDrivenColumn),
-            "device data page sizes a CSV column from its widest header");
-    require(table->columnWidth(3) >= table->fontMetrics().horizontalAdvance(sampledValueText),
-            "device data page sizes a CSV column from the first two rows");
+    require(table->columnWidth(2) <= table->horizontalHeader()->defaultSectionSize(),
+            "device data page caps a CSV column at its default width");
+    require(table->columnWidth(3) == table->horizontalHeader()->defaultSectionSize(),
+            "device data page caps wide content at the default width");
     require(table->columnWidth(3) < table->fontMetrics().horizontalAdvance(ignoredLaterValueText),
             "device data page does not scan later CSV rows for column width");
     const SessionCsvHighlightResult highlight = deviceData.highlightTimestamp(timestamps, 1700, true);
