@@ -421,7 +421,12 @@ void SessionViewerWindow::setupNavigation(QWidget *dataPage)
         emptyLayout->addWidget(empty_labels_[i]);
         emptyLayout->addWidget(empty_actions_[i], 0, Qt::AlignHCenter);
         emptyLayout->addStretch();
-        connect(empty_actions_[i], &QPushButton::clicked, this, [this]() { setCurrentPage(Page::Data); });
+        connect(empty_actions_[i], &QPushButton::clicked, this, [this]() {
+            if (session_directory_.isEmpty())
+                onChooseSessionClicked();
+            else
+                onReloadClicked();
+        });
         pageLayout->addWidget(empty_pages_[i]);
         page_stack_->addWidget(tool_pages_[i]);
     }
@@ -508,7 +513,9 @@ void SessionViewerWindow::updatePageAvailability()
                            : QStringLiteral("尚无可用轨迹，请在数据查看页加载包含有效定位数据的会话。"))
             : (is_english_ ? QStringLiteral("Choose or reload a session in Data View first.")
                            : QStringLiteral("请先选择或重新加载会话。")));
-        empty_actions_[i]->setText(is_english_ ? QStringLiteral("Go to Data View") : QStringLiteral("前往数据查看"));
+        empty_actions_[i]->setText(session_directory_.isEmpty()
+            ? (is_english_ ? QStringLiteral("Open Data") : QStringLiteral("打开数据"))
+            : (is_english_ ? QStringLiteral("Reload") : QStringLiteral("重新加载")));
     }
     if (trajectory_page_)
         trajectory_page_->setVisible(available[0]);
