@@ -1092,6 +1092,7 @@ void RawDataParserWindow::Impl::setupUi()
     record_table->verticalHeader()->setVisible(false);
     record_table->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
     record_table->horizontalHeader()->setDefaultSectionSize(100);
+    record_table->horizontalHeader()->setStretchLastSection(false);
     record_table->horizontalHeader()->setStretchLastSection(true);
     splitter->addWidget(record_table);
 
@@ -1711,9 +1712,13 @@ void RawDataParserWindow::Impl::resizeTableColumnsToContents()
         return;
     auto *header = record_table->horizontalHeader();
     record_table->resizeColumnsToContents();
-    const int maximumWidth = header->defaultSectionSize();
+    static constexpr int maximumWidths[] = {50, 140, 110, 90, 70, 70, 100, 320};
     for (int column = 0; column < record_model->columnCount(); ++column)
+    {
+        const int maximumWidth = column < static_cast<int>(sizeof(maximumWidths) / sizeof(maximumWidths[0]))
+            ? maximumWidths[column] : header->defaultSectionSize();
         record_table->setColumnWidth(column, std::min(record_table->columnWidth(column), maximumWidth));
+    }
 }
 
 void RawDataParserWindow::Impl::showSelectedRecord()
