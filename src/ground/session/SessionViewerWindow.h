@@ -20,7 +20,6 @@ class RawDataParserWindow;
 class QStackedWidget;
 class QButtonGroup;
 class QSplitter;
-class QToolButton;
 class QLabel;
 class QPushButton;
 class QShowEvent;
@@ -90,6 +89,7 @@ private:
     void ensurePpkPage();
     void saveSidebarWidth();
     void setSidebarWidth(int width);
+    void toggleSidebarFromLogo();
     void updateTexts();
     void updateSummaryLabels();
     void updatePpkSummary();
@@ -147,7 +147,9 @@ private:
     QSplitter *navigation_splitter_ = nullptr;
     QWidget *sidebar_ = nullptr;
     QButtonGroup *navigation_buttons_ = nullptr;
-    QToolButton *sidebar_toggle_ = nullptr;
+    QLabel *sidebar_logo_ = nullptr;
+    bool sidebar_logo_hovered_ = false;
+    int last_sidebar_visible_width_ = 62;
     QWidget *tool_pages_[3]{};
     QWidget *empty_pages_[3]{};
     QLabel *empty_labels_[3]{};

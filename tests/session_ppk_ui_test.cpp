@@ -1,5 +1,7 @@
 #include "ground/session/SessionPpkWidget.h"
 #include <QSplitter>
+#include <QSplitterHandle>
+#include <QMouseEvent>
 #include "ground/session/SessionViewerWindow.h"
 #include "ground/session/SessionViewerPages.h"
 #include "ground/trajectory/TrajectoryViewerDialog.h"
@@ -325,14 +327,16 @@ int main(int argc, char **argv)
                             for (int sidebarWidth : {190, 64})
                             {
                                 auto *splitter = viewer.findChild<QSplitter *>("sessionViewerNavigationSplitter");
-                                auto *toggle = viewer.findChild<QToolButton *>("sessionViewerSidebarToggle");
-                                for (int attempt = 0; attempt < 3; ++attempt)
-                                {
-                                    const int width = splitter->sizes().value(0);
-                                    if ((sidebarWidth == 190 && width >= 120) || (sidebarWidth == 64 && width > 0 && width < 120))
-                                        break;
-                                    toggle->click();
-                                }
+                                auto *handle = splitter->handle(1);
+                                QMouseEvent press(QEvent::MouseButtonPress, QPointF(1, 1),
+                                                  QPointF(handle->mapToGlobal(QPoint(1, 1))),
+                                                  Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+                                QCoreApplication::sendEvent(handle, &press);
+                                splitter->setSizes({sidebarWidth, splitter->width() - splitter->handleWidth() - sidebarWidth});
+                                QMouseEvent release(QEvent::MouseButtonRelease, QPointF(1, 1),
+                                                    QPointF(handle->mapToGlobal(QPoint(1, 1))),
+                                                    Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+                                QCoreApplication::sendEvent(handle, &release);
                                 require(viewer.width() == 1280, "embedded pages must not force the workspace wider");
                                 VaporViewTest::processEventsFor(80);
                                 require((sidebarWidth == 190 && splitter->sizes().value(0) >= 120) ||

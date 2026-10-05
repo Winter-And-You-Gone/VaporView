@@ -9,7 +9,8 @@
 #include <QFrame>
 #include <QLabel>
 #include <QPushButton>
-#include <QToolButton>
+#include <QMouseEvent>
+#include <QKeyEvent>
 #include <QStackedWidget>
 #include <QStyle>
 #include <QShowEvent>
@@ -56,6 +57,18 @@ using namespace VaporView::Ground::SessionUi;
 
 namespace
 {
+
+class SessionSidebarFrame final : public QFrame
+{
+public:
+    using QFrame::QFrame;
+    QSize minimumSizeHint() const override
+    {
+        QSize size = QFrame::minimumSizeHint();
+        size.setWidth(0);
+        return size;
+    }
+};
 
 constexpr int kDefaultPeakSearchStartIndex = 0;
 constexpr int kDefaultPeakSearchEndIndex = 0;
@@ -193,24 +206,17 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
             this,
             &SessionViewerWindow::applyPeakSettingsFromTrajectory);
     VaporView::installCustomTitleBar(this);
-    sidebar_toggle_ = new QToolButton(this);
-    sidebar_toggle_->setObjectName(QStringLiteral("sessionViewerSidebarToggle"));
-    sidebar_toggle_->setText(QStringLiteral("☰"));
-    sidebar_toggle_->setFocusPolicy(Qt::TabFocus);
-    sidebar_toggle_->setAutoRaise(true);
-    VaporView::addWidgetToCustomTitleBar(this, sidebar_toggle_);
+    sidebar_logo_ = findChild<QLabel *>(QStringLiteral("customTitleLogo"));
+    sidebar_logo_->setCursor(Qt::PointingHandCursor);
+    sidebar_logo_->setFocusPolicy(Qt::TabFocus);
+    sidebar_logo_->setAttribute(Qt::WA_Hover, true);
+    sidebar_logo_->installEventFilter(this);
     auto *sessionControls = overview_page_->sessionControls();
     overview_page_->layout()->removeWidget(sessionControls);
     VaporView::addWidgetToCustomTitleBar(this, sessionControls);
     auto *titleLayout = qobject_cast<QHBoxLayout *>(sessionControls->parentWidget()->layout());
     for (int i = 0; i < titleLayout->count(); ++i)
         titleLayout->setStretch(i, titleLayout->itemAt(i)->widget() == sessionControls ? 1 : 0);
-    connect(sidebar_toggle_, &QToolButton::clicked, this, [this]() {
-        const int width = navigation_splitter_->sizes().value(0);
-        const int target = width == 0 ? 190 : width < 120 ? 0 : 62;
-        setSidebarWidth(target);
-        saveSidebarWidth();
-    });
     resize(kSessionViewerDefaultWidth, kSessionViewerDefaultHeight);
     setEnglish(false);
     VaporView::centerWindowOnScreen(this, parent);
@@ -374,7 +380,7 @@ void SessionViewerWindow::setupNavigation(QWidget *dataPage)
     layout->setContentsMargins(8, 8, 8, 8);
     navigation_splitter_ = new QSplitter(Qt::Horizontal, central);
     navigation_splitter_->setObjectName(QStringLiteral("sessionViewerNavigationSplitter"));
-    sidebar_ = new QFrame(navigation_splitter_);
+    sidebar_ = new SessionSidebarFrame(navigation_splitter_);
     sidebar_->setObjectName(QStringLiteral("appSidebar"));
     sidebar_->setMinimumWidth(0);
     VaporView::configureTopLevelCard(sidebar_);
@@ -525,10 +531,51 @@ void SessionViewerWindow::setSidebarWidth(int width)
                                                     - navigation_splitter_->handleWidth() - target)});
     sidebar_->setMinimumWidth(0);
     sidebar_->setMaximumWidth(target < 120 ? target : QWIDGETSIZE_MAX);
+    if (target > 0)
+        last_sidebar_visible_width_ = target;
+}
+
+void SessionViewerWindow::toggleSidebarFromLogo()
+{
+    const int width = navigation_splitter_->sizes().value(0);
+    if (width > 0)
+        last_sidebar_visible_width_ = width;
+    setSidebarWidth(width > 0 ? 0 : last_sidebar_visible_width_);
+    saveSidebarWidth();
 }
 
 bool SessionViewerWindow::eventFilter(QObject *watched, QEvent *event)
 {
+    if (watched == sidebar_logo_)
+    {
+        const auto type = event->type();
+        if (type == QEvent::Enter || type == QEvent::HoverEnter ||
+            type == QEvent::Leave || type == QEvent::HoverLeave)
+        {
+            sidebar_logo_hovered_ = type == QEvent::Enter || type == QEvent::HoverEnter;
+            updateNavigation();
+        }
+        else if (type == QEvent::MouseButtonPress || type == QEvent::MouseButtonDblClick)
+        {
+            if (static_cast<QMouseEvent *>(event)->button() == Qt::LeftButton)
+            {
+                toggleSidebarFromLogo();
+                return true;
+            }
+        }
+        else if (type == QEvent::MouseButtonRelease &&
+                 static_cast<QMouseEvent *>(event)->button() == Qt::LeftButton)
+            return true;
+        else if (type == QEvent::KeyPress)
+        {
+            const auto key = static_cast<QKeyEvent *>(event)->key();
+            if (key == Qt::Key_Return || key == Qt::Key_Enter || key == Qt::Key_Space)
+            {
+                toggleSidebarFromLogo();
+                return true;
+            }
+        }
+    }
     if (navigation_splitter_ && watched == navigation_splitter_->handle(1))
     {
         if (event->type() == QEvent::MouseButtonPress)
@@ -586,10 +633,15 @@ void SessionViewerWindow::updateNavigation(int sidebarWidth)
     }
     const QString title = is_english_ ? QStringLiteral("Data Viewer") : QStringLiteral("数据查看器");
     setWindowTitle(page_stack_->currentIndex() == 0 ? title : title + QStringLiteral(" · ") + labels[page_stack_->currentIndex()]);
-    if (sidebar_toggle_)
+    if (sidebar_logo_)
     {
-        sidebar_toggle_->setToolTip(is_english_ ? QStringLiteral("Sidebar: expanded / compact / hidden") : QStringLiteral("侧栏：展开 / 紧凑 / 隐藏"));
-        sidebar_toggle_->setAccessibleName(sidebar_toggle_->toolTip());
+        const bool collapsed = (sidebarWidth >= 0 ? sidebarWidth : navigation_splitter_->sizes().value(0)) == 0;
+        const QString tip = collapsed
+            ? (is_english_ ? QStringLiteral("Show left sidebar") : QStringLiteral("展开左侧栏"))
+            : (is_english_ ? QStringLiteral("Hide left sidebar") : QStringLiteral("收起左侧栏"));
+        sidebar_logo_->setToolTip(tip);
+        sidebar_logo_->setAccessibleName(tip);
+        VaporView::updateCustomTitleBarSidebarLogo(this, collapsed, sidebar_logo_hovered_);
     }
 }
 

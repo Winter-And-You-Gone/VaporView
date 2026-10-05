@@ -196,6 +196,22 @@ QPixmap renderLogo(bool dark, int size, qreal devicePixelRatio)
     return pixmap;
 }
 
+void updateTitleLogo(QLabel *logo, bool dark)
+{
+    const int size = std::max(1, logo->property(kTitleLogoSizeProperty).toInt());
+    const int renderSize = std::max(1, logo->property(kTitleLogoRenderSizeProperty).toInt());
+    logo->setFixedSize(size > 1 ? size : 44, size > 1 ? size : 44);
+    const QString state = logo->property("_vv_logo_state").toString();
+    if (state == QStringLiteral("open-sidebar") || state == QStringLiteral("close-sidebar"))
+    {
+        const auto icon = createToolbarIcon(state == QStringLiteral("open-sidebar")
+            ? QStringLiteral("panel-right-open") : QStringLiteral("panel-right-close"));
+        logo->setPixmap(icon.pixmap(24, 24).transformed(QTransform().scale(-1, 1)));
+    }
+    else
+        logo->setPixmap(renderLogo(dark, renderSize > 1 ? renderSize : 44, logo->devicePixelRatioF()));
+}
+
 QRect availableGeometryFor(QWidget *window)
 {
     QScreen *screen = window && window->windowHandle() ? window->windowHandle()->screen() : nullptr;
@@ -678,14 +694,7 @@ private:
         }
         if (logo_label_)
         {
-            const int logoSize = std::max(1, logo_label_->property(kTitleLogoSizeProperty).toInt());
-            const int renderSize =
-                std::max(1, logo_label_->property(kTitleLogoRenderSizeProperty).toInt());
-            logo_label_->setFixedSize(logoSize > 1 ? logoSize : 44,
-                                      logoSize > 1 ? logoSize : 44);
-            logo_label_->setPixmap(renderLogo(dark,
-                                              renderSize > 1 ? renderSize : 44,
-                                              logo_label_->devicePixelRatioF()));
+            updateTitleLogo(logo_label_, dark);
         }
         if (minimize_button_)
         {
@@ -1045,6 +1054,18 @@ void installCustomTitleBar(QWidget *window, bool showMaximizeButton)
     }
 
     new CustomTitleBarController(window, showMaximizeButton);
+}
+
+void updateCustomTitleBarSidebarLogo(QWidget *window, bool collapsed, bool hovered)
+{
+    auto *logo = window->findChild<QLabel *>(QStringLiteral("customTitleLogo"));
+    if (!logo)
+        return;
+    logo->setProperty("_vv_logo_state", hovered
+        ? (collapsed ? QStringLiteral("open-sidebar") : QStringLiteral("close-sidebar"))
+        : QStringLiteral("logo"));
+    setTitleBarButtonHovered(logo, hovered);
+    updateTitleLogo(logo, VaporView::isDarkThemeEnabled());
 }
 
 bool addWidgetToCustomTitleBar(QWidget *window, QWidget *widget)

@@ -13,6 +13,7 @@
 #include <QApplication>
 #include <QStackedWidget>
 #include <QSplitter>
+#include <QSplitterHandle>
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDataStream>
@@ -1875,7 +1876,8 @@ void testSessionWorkspaceNavigation()
     processEventsFor(100);
     auto *stack = viewer.findChild<QStackedWidget *>("sessionViewerPageStack");
     auto *splitter = viewer.findChild<QSplitter *>("sessionViewerNavigationSplitter");
-    auto *toggle = viewer.findChild<QToolButton *>("sessionViewerSidebarToggle");
+    auto *toggle = viewer.findChild<QLabel *>("customTitleLogo");
+    require(!viewer.findChild<QWidget *>("sessionViewerSidebarToggle"), "viewer has no redundant hamburger button");
     require(stack && stack->count() == 4 && viewer.currentPage() == Page::Data,
             "independent viewer starts with four pages and Data selected");
     require(viewer.isWindow() && toggle && splitter, "viewer keeps one independent window and sidebar toggle");
@@ -1935,15 +1937,47 @@ void testSessionWorkspaceNavigation()
     processEventsFor(50);
     require(viewer.currentPage() == Page::RawData && raw->isVisible() && model->rowCount() == rows,
             "closing and reopening preserves current page and loaded records");
-    for (int attempt = 0; attempt < 3 && splitter->sizes().value(0) < 120; ++attempt)
-        toggle->click();
-    require(splitter->sizes().value(0) >= 120, "sidebar expands through its toggle");
-    toggle->click();
-    require(splitter->sizes().value(0) == 62, "sidebar supports single-icon compact mode");
-    toggle->click();
-    require(splitter->sizes().value(0) == 0, "sidebar supports hidden mode");
-    toggle->click();
-    require(splitter->sizes().value(0) >= 120, "title bar restores hidden sidebar");
+    QEvent enter(QEvent::Enter);
+    QCoreApplication::sendEvent(toggle, &enter);
+    require(toggle->property("_vv_logo_state").toString() == "close-sidebar", "logo hover offers sidebar collapse");
+    require(toggle->focusPolicy() == Qt::TabFocus, "sidebar logo is keyboard accessible");
+    clickWidgetAt(toggle, toggle->rect().center(), 50);
+    require(splitter->sizes().value(0) == 0 && toggle->toolTip() == "Show left sidebar",
+            "logo hides sidebar and updates accessible action");
+    require(toggle->property("_vv_logo_state").toString() == "open-sidebar", "hidden sidebar hover offers expansion");
+    clickWidgetAt(toggle, toggle->rect().center(), 50);
+    require(splitter->sizes().value(0) == 62, "logo restores single-icon width rather than expanded mode");
+    QKeyEvent space(QEvent::KeyPress, Qt::Key_Space, Qt::NoModifier);
+    QCoreApplication::sendEvent(toggle, &space);
+    require(splitter->sizes().value(0) == 0, "space collapses sidebar");
+    QKeyEvent enterKey(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+    QCoreApplication::sendEvent(toggle, &enterKey);
+    require(splitter->sizes().value(0) == 62, "enter restores sidebar");
+    auto *handle = splitter->handle(1);
+    QMouseEvent press(QEvent::MouseButtonPress, QPointF(1, 1), QPointF(handle->mapToGlobal(QPoint(1, 1))),
+                      Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(handle, &press);
+    splitter->setSizes({190, splitter->width() - splitter->handleWidth() - 190});
+    QMouseEvent release(QEvent::MouseButtonRelease, QPointF(1, 1), QPointF(handle->mapToGlobal(QPoint(1, 1))),
+                        Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(handle, &release);
+    processEventsFor(50);
+    const int expandedWidth = splitter->sizes().value(0);
+    require(expandedWidth >= 190, "splitter still supports expanded sidebar");
+    clickWidgetAt(toggle, toggle->rect().center(), 50);
+    clickWidgetAt(toggle, toggle->rect().center(), 50);
+    require(splitter->sizes().value(0) == expandedWidth, "logo remembers manually expanded sidebar width");
+    const bool maximized = viewer.isMaximized();
+    QMouseEvent doubleClick(QEvent::MouseButtonDblClick, QPointF(toggle->rect().center()),
+                            QPointF(toggle->mapToGlobal(toggle->rect().center())),
+                            Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(toggle, &doubleClick);
+    require(viewer.isMaximized() == maximized && splitter->sizes().value(0) == 0,
+            "logo double-click toggles sidebar without maximizing the window");
+    QEvent leave(QEvent::Leave);
+    QCoreApplication::sendEvent(toggle, &leave);
+    require(toggle->property("_vv_logo_state").toString() == "logo", "logo returns when pointer leaves");
+    clickWidgetAt(toggle, toggle->rect().center(), 50);
     viewer.setCurrentPage(Page::Data);
     require(QMetaObject::invokeMethod(&viewer, "onClearViewClicked", Qt::DirectConnection), "clear shared session data");
     require(model->rowCount() == 0, "clearing shared data clears parser records");
