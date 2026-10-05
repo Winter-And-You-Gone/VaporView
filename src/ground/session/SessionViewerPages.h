@@ -61,8 +61,7 @@ public:
     void setStatusToolTip(const QString& text);
     void focusStatus();
     void setControlsEnabled(bool enabled);
-    void setTrajectoryAvailable(bool available);
-    void setPpkAvailable(bool available);
+    QWidget *sessionControls() const { return session_controls_; }
     void setSessionChangesEnabled(bool enabled);
     void setPpkSummary(const QString& status, const QString& navigationSource);
     void setSummary(const SessionOverviewSummary& summary);
@@ -71,23 +70,17 @@ public:
 signals:
     void chooseSessionRequested();
     void reloadRequested();
-    void trajectoryRequested();
-    void ppkProcessingRequested();
-    void rawDataParserRequested();
     void clearRequested();
 
 protected:
     void resizeEvent(QResizeEvent *event) override;
 
 private:
-    void relayoutActions();
-    QGridLayout *actions_layout_;
+    QWidget *session_controls_;
+    QLabel *session_path_label_;
     QLineEdit *session_path_edit_;
     QPushButton *choose_session_btn_;
     QPushButton *reload_btn_;
-    QPushButton *trajectory_view_btn_;
-    QPushButton *ppk_processing_btn_;
-    QPushButton *raw_data_parser_btn_;
     QPushButton *clear_view_btn_;
     QLabel *status_label_;
     QGroupBox *summary_group_;
@@ -117,8 +110,6 @@ private:
     QLabel *navigation_source_title_;
     QLabel *navigation_source_value_;
     bool controls_enabled_ = true;
-    bool trajectory_available_ = false;
-    bool ppk_available_ = false;
     bool session_changes_enabled_ = true;
 };
 

@@ -199,6 +199,12 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     sidebar_toggle_->setFocusPolicy(Qt::TabFocus);
     sidebar_toggle_->setAutoRaise(true);
     VaporView::addWidgetToCustomTitleBar(this, sidebar_toggle_);
+    auto *sessionControls = overview_page_->sessionControls();
+    overview_page_->layout()->removeWidget(sessionControls);
+    VaporView::addWidgetToCustomTitleBar(this, sessionControls);
+    auto *titleLayout = qobject_cast<QHBoxLayout *>(sessionControls->parentWidget()->layout());
+    for (int i = 0; i < titleLayout->count(); ++i)
+        titleLayout->setStretch(i, titleLayout->itemAt(i)->widget() == sessionControls ? 1 : 0);
     connect(sidebar_toggle_, &QToolButton::clicked, this, [this]() {
         const int width = navigation_splitter_->sizes().value(0);
         const int target = width == 0 ? 190 : width < 120 ? 0 : 62;
@@ -344,12 +350,6 @@ void SessionViewerWindow::setupUi()
             this, &SessionViewerWindow::onChooseSessionClicked);
     connect(overview_page_, &SessionOverviewWidget::reloadRequested,
             this, &SessionViewerWindow::onReloadClicked);
-    connect(overview_page_, &SessionOverviewWidget::trajectoryRequested,
-            this, &SessionViewerWindow::onViewTrajectoryClicked);
-    connect(overview_page_, &SessionOverviewWidget::ppkProcessingRequested,
-            this, &SessionViewerWindow::onPpkProcessingClicked);
-    connect(overview_page_, &SessionOverviewWidget::rawDataParserRequested,
-            this, &SessionViewerWindow::onRawDataParserClicked);
     connect(overview_page_, &SessionOverviewWidget::clearRequested,
             this, &SessionViewerWindow::onClearViewClicked);
     connect(waveform_page_, &SessionWaveformWidget::frameSliderMoved,
@@ -854,7 +854,6 @@ void SessionViewerWindow::setStatusText(const QString& text)
 void SessionViewerWindow::setSessionLoadingControlsEnabled(bool enabled)
 {
     overview_page_->setControlsEnabled(enabled);
-    overview_page_->setTrajectoryAvailable(trajectory_controller_.hasTrack());
     waveform_page_->setControlsEnabled(enabled);
     if (ppk_panel_)
         ppk_panel_->setEnabled(enabled);
@@ -939,7 +938,6 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
 
     device_data_page_->clear();
     waveform_page_->clear();
-    overview_page_->setTrajectoryAvailable(false);
     map_coordinator_->updateTrack({}, trajectory_controller_.trackStats());
     updatePageAvailability();
     waveform_page_->setFrameInfoText(is_english_ ? QStringLiteral("No waveform frame loaded") : QStringLiteral("尚未加载波形帧"));
@@ -1126,7 +1124,6 @@ void SessionViewerWindow::syncPpkSession(bool available)
     ppk_session_available_ = available;
     if (!available)
         navigation_refresh_pending_ = false;
-    overview_page_->setPpkAvailable(available);
     if (ppk_panel_)
         ppk_panel_->setSessionDirectory(available ? session_directory_ : QString());
     updatePpkSummary();
@@ -1374,7 +1371,6 @@ bool SessionViewerWindow::loadSensorsCsv()
         std::any_of(humidity_values_.cbegin(), humidity_values_.cend(), [](double value) { return std::isfinite(value); }) ||
         std::any_of(pressure_values_.cbegin(), pressure_values_.cend(), [](double value) { return std::isfinite(value); });
     updateRtkTrackPeakValues();
-    overview_page_->setTrajectoryAvailable(trajectory_controller_.hasTrack());
     waveform_page_->setEnvironmentInfoText(hasEnvironmentSeries
         ? (is_english_
             ? QStringLiteral("Loaded temperature, humidity, and pressure trend series.")

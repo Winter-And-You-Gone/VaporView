@@ -65,23 +65,25 @@ void testPages()
     using namespace VaporView::Ground::SessionUi;
     SessionOverviewWidget overview;
     int chooseCount = 0;
-    int trajectoryCount = 0;
+    int reloadCount = 0;
     QObject::connect(&overview, &SessionOverviewWidget::chooseSessionRequested,
                      [&chooseCount]() { ++chooseCount; });
-    QObject::connect(&overview, &SessionOverviewWidget::trajectoryRequested,
-                     [&trajectoryCount]() { ++trajectoryCount; });
+    QObject::connect(&overview, &SessionOverviewWidget::reloadRequested,
+                     [&reloadCount]() { ++reloadCount; });
     overview.setEnglish(true);
     QPushButton *chooseButton = buttonWithText(overview, QStringLiteral("Open Data"));
-    QPushButton *trajectoryButton = buttonWithText(overview, QStringLiteral("View Trajectory"));
-    require(chooseButton && trajectoryButton, "overview page creates its command controls");
+    QPushButton *reloadButton = buttonWithText(overview, QStringLiteral("Reload"));
+    require(chooseButton && reloadButton, "overview page creates its command controls");
     chooseButton->click();
     require(chooseCount == 1, "overview choose command emits a semantic signal");
-    require(!trajectoryButton->isEnabled(), "trajectory command stays disabled without a track");
-    overview.setTrajectoryAvailable(true);
-    trajectoryButton->click();
-    require(trajectoryCount == 1, "overview trajectory command emits a semantic signal");
+    reloadButton->click();
+    require(reloadCount == 1, "overview reload command emits a semantic signal");
+    require(!buttonWithText(overview, QStringLiteral("View Trajectory")) &&
+            !buttonWithText(overview, QStringLiteral("PPK Processing")) &&
+            !buttonWithText(overview, QStringLiteral("Raw Data Parser")),
+            "overview does not duplicate sidebar navigation");
     overview.setControlsEnabled(false);
-    require(!chooseButton->isEnabled() && !trajectoryButton->isEnabled(),
+    require(!chooseButton->isEnabled() && !reloadButton->isEnabled(),
             "overview loading state disables commands");
     SessionOverviewSummary summary;
     summary.sessionName = QStringLiteral("test-session");

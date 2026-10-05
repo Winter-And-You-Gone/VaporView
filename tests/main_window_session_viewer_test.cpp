@@ -91,10 +91,13 @@ QString expectedRecordingDirectoryDialogFallback()
 void testOverviewLayout(SessionViewerWindow& viewer)
 {
     auto *overview = viewer.findChild<VaporView::Ground::SessionUi::SessionOverviewWidget *>();
-    auto *path = overview ? overview->findChild<QLineEdit *>() : nullptr;
+    auto *controls = viewer.findChild<QWidget *>(QStringLiteral("sessionViewerSessionControls"));
+    auto *bar = viewer.findChild<QWidget *>(QStringLiteral("customTitleBar"));
+    auto *path = controls ? controls->findChild<QLineEdit *>() : nullptr;
     auto *summary = overview ? overview->findChild<QGroupBox *>() : nullptr;
     auto *grid = summary ? qobject_cast<QGridLayout *>(summary->layout()) : nullptr;
-    require(overview && path && grid, "data viewer exposes its overview layout");
+    require(overview && path && grid && bar && bar->isAncestorOf(controls),
+            "session controls belong to the shared title bar");
     const QSize originalSize = viewer.size();
     for (bool english : {false, true})
     {
@@ -141,10 +144,12 @@ void testOverviewLayout(SessionViewerWindow& viewer)
                         sameRow(english ? QStringLiteral("Wave Files:") : QStringLiteral("波形文件数:"),
                                 english ? QStringLiteral("Wave Frames:") : QStringLiteral("波形帧数:")),
                     "overview keeps related navigation, time, and waveform fields adjacent");
-            for (QPushButton *button : overview->findChildren<QPushButton *>())
+            require(bar->rect().contains(QRect(controls->mapTo(bar, QPoint()), controls->size())),
+                    "session controls fit inside the title bar in both languages and window sizes");
+            for (QPushButton *button : controls->findChildren<QPushButton *>())
             {
-                const QRect rect(button->mapTo(overview, QPoint()), button->size());
-                require(overview->rect().contains(rect) && !path->geometry().intersects(rect),
+                const QRect rect(button->mapTo(controls, QPoint()), button->size());
+                require(controls->rect().contains(rect) && !path->geometry().intersects(rect),
                         "overview path and command buttons fit without overlap");
                 if (width == 1280)
                     require(std::abs(path->geometry().center().y() - rect.center().y()) <= 1,
@@ -210,6 +215,11 @@ void testFrameSliderThemeAndHover(MainWindow& window, SessionViewerWindow& viewe
                 auto *sidebar = viewer.findChild<QWidget *>(QStringLiteral("appSidebar"));
                 require(sidebar && sidebar->width() >= sidebar->layout()->minimumSize().width(),
                         "scaled viewer navigation fits inside its compact sidebar");
+                auto *titleBar = viewer.findChild<QWidget *>(QStringLiteral("customTitleBar"));
+                auto *controls = viewer.findChild<QWidget *>(QStringLiteral("sessionViewerSessionControls"));
+                require(titleBar && controls && titleBar->rect().contains(
+                            QRect(controls->mapTo(titleBar, QPoint()), controls->size())),
+                        "scaled session controls stay inside the title bar");
                 scrollArea->ensureWidgetVisible(slider, 0, 0);
                 VaporViewTest::processEventsFor(100);
                 QHoverEvent leave(QEvent::HoverLeave, QPointF(-1, -1), QPointF(-1, -1));

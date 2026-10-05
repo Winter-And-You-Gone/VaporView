@@ -1879,6 +1879,11 @@ void testSessionWorkspaceNavigation()
     require(stack && stack->count() == 4 && viewer.currentPage() == Page::Data,
             "independent viewer starts with four pages and Data selected");
     require(viewer.isWindow() && toggle && splitter, "viewer keeps one independent window and sidebar toggle");
+    auto *titleBar = viewer.findChild<QWidget *>("customTitleBar");
+    auto *controls = viewer.findChild<QWidget *>("sessionViewerSessionControls");
+    require(titleBar && controls && titleBar->isAncestorOf(controls), "session actions live in the shared title bar");
+    require(controls->findChildren<QPushButton *>().size() == 3,
+            "title bar contains only open, reload, and clear actions");
     for (int i = 0; i < 4; ++i)
     {
         QPushButton *nav = nullptr;
@@ -1888,6 +1893,7 @@ void testSessionWorkspaceNavigation()
         require(nav, "all four sidebar entries exist");
         nav->click();
         require(stack->currentIndex() == i && nav->isChecked(), "sidebar selects its page");
+        require(controls->isVisible(), "session title controls remain visible on every page");
     }
     viewer.setCurrentPage(Page::Data);
     require(viewer.openSessionPath(session.path()), "workspace loads shared session");

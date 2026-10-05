@@ -125,10 +125,14 @@ int main(int argc, char **argv)
         viewer.resize(1280, 800);
         viewer.show();
         auto *overview = viewer.findChild<SessionOverviewWidget *>();
-        auto *openPpk = viewer.findChild<QPushButton *>("sessionPpkProcessingButton");
+        auto *controls = viewer.findChild<QWidget *>("sessionViewerSessionControls");
+        QPushButton *openPpk = nullptr;
+        for (auto *candidate : viewer.findChildren<QPushButton *>("appSidebarButton"))
+            if (candidate->property("sessionViewerPage").toInt() == 2)
+                openPpk = candidate;
         auto *summary = viewer.findChild<QLabel *>("sessionPpkSummaryStatus");
         auto *navigation = viewer.findChild<QLabel *>("sessionPpkSummarySource");
-        require(overview && openPpk && summary && navigation && !openPpk->isEnabled(), "no Session disables PPK entry");
+        require(overview && controls && openPpk && summary && navigation && openPpk->isEnabled(), "sidebar PPK entry remains accessible without a session");
         require(!viewer.findChild<SessionPpkWidget *>(), "main viewer has no embedded PPK panel");
         require(viewer.openSessionPath(session.path()) && openPpk->isEnabled(), "old Session enables PPK entry without observations");
         require(summary->text() == QString::fromUtf8("未处理"), "old Session summary is Not processed");
@@ -154,7 +158,7 @@ int main(int argc, char **argv)
         require(model && !model->item(1)->isEnabled(), "old Session only enables Original");
         viewer.setEnglish(true);
         require(run->text() == "Run PPK", "PPK uses Session English translations");
-        require(openPpk->text() == "PPK Processing" && viewer.windowTitle().contains("PPK Processing"), "both windows switch to English");
+        require(openPpk->accessibleName() == "PPK Processing" && viewer.windowTitle().contains("PPK Processing"), "sidebar and window title switch to English");
         require(navigation->text() == "Original", "English navigation summary");
         viewer.setEnglish(false);
         require(run->text() == QString::fromUtf8("运行 PPK"), "PPK uses Session Chinese translations");
@@ -211,10 +215,10 @@ int main(int argc, char **argv)
         require(summary->text() == "Ready", "ready status uses formal PPK model");
         run->click();
         require(panel.busy(), "UI dispatches processing asynchronously");
-        require(summary->text() == "Processing" && !button(*overview, "Open Data")->isEnabled() &&
-                    !button(*overview, "Reload")->isEnabled() && !button(*overview, "Clear Page")->isEnabled(),
+        require(summary->text() == "Processing" && !button(*controls, "Open Data")->isEnabled() &&
+                    !button(*controls, "Reload")->isEnabled() && !button(*controls, "Clear Page")->isEnabled(),
                 "busy disables only Session mutations");
-        require(openPpk->isEnabled() && button(*overview, "Raw Data Parser")->isEnabled() &&
+        require(openPpk->isEnabled() &&
                     viewer.findChild<QTableView *>()->isEnabled() && viewer.findChild<SessionWaveformWidget *>()->isEnabled(),
                 "PPK window and data browsing remain usable");
         require(!viewer.openSessionPath(otherSession.path()) && window->sessionDirectory() == QDir::fromNativeSeparators(session.path()),
@@ -309,8 +313,8 @@ int main(int argc, char **argv)
                     require(scroll && scroll->horizontalScrollBar()->maximum() == 0, "viewer has no unnecessary horizontal scrollbar");
                     auto *ppkScroll = viewer.findChild<QScrollArea *>("sessionPpkScrollArea");
                     require(ppkScroll && ppkScroll->horizontalScrollBar()->maximum() == 0, "PPK layout fits both themes and languages");
-                    for (auto *action : overview->findChildren<QPushButton *>())
-                        require(overview->rect().contains(action->mapTo(overview, action->rect().bottomRight())), "top buttons remain inside overview");
+                    for (auto *action : controls->findChildren<QPushButton *>())
+                        require(controls->rect().contains(action->mapTo(controls, action->rect().bottomRight())), "session buttons remain inside title controls");
                     require(!window->isWindow() && window->window() == &viewer,
                             "PPK page shares the data viewer window in both themes");
                     if (!english)
@@ -346,8 +350,8 @@ int main(int argc, char **argv)
         viewer.setEnglish(true);
         source->setCurrentIndex(0);
         require(sessionNavigationSource(session.path()) == NavigationSource::Original, "UI restores Original");
-        button(*overview, "Clear Page")->click();
-        require(window->sessionDirectory().isEmpty() && !openPpk->isEnabled(), "clear page resets PPK to No Session");
+        button(*controls, "Clear Page")->click();
+        require(window->sessionDirectory().isEmpty() && openPpk->isEnabled(), "clear page resets PPK to No Session");
         require(viewer.openSessionPath(session.path()), "Session reload restores PPK binding");
         run->click();
         require(panel.busy(), "start worker before closing viewer");

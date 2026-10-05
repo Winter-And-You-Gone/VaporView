@@ -318,12 +318,11 @@ QString formatSessionMeasuredRateText(
 
 SessionOverviewWidget::SessionOverviewWidget(QWidget *parent)
     : QWidget(parent)
-    , session_path_edit_(new QLineEdit(this))
+    , session_controls_(new QWidget(this))
+    , session_path_label_(new QLabel(session_controls_))
+    , session_path_edit_(new QLineEdit(session_controls_))
     , choose_session_btn_(new QPushButton(this))
     , reload_btn_(new QPushButton(this))
-    , trajectory_view_btn_(new QPushButton(this))
-    , ppk_processing_btn_(new QPushButton(this))
-    , raw_data_parser_btn_(new QPushButton(this))
     , clear_view_btn_(new QPushButton(this))
     , status_label_(new QLabel(this))
     , summary_group_(new QGroupBox(this))
@@ -334,26 +333,27 @@ SessionOverviewWidget::SessionOverviewWidget(QWidget *parent)
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(8);
 
-    auto *controlLayout = new QGridLayout();
-    controlLayout->setHorizontalSpacing(8);
-    controlLayout->setVerticalSpacing(4);
-    controlLayout->setColumnStretch(1, 1);
-    auto *pathTitle = new QLabel(tr("Session:"), this);
-    pathTitle->setObjectName(QStringLiteral("fieldLabel"));
-    controlLayout->addWidget(pathTitle, 0, 0);
+    session_controls_->setObjectName(QStringLiteral("sessionViewerSessionControls"));
+    auto *controlLayout = new QHBoxLayout(session_controls_);
+    controlLayout->setContentsMargins(0, 0, 0, 0);
+    controlLayout->setSpacing(6);
+    session_path_label_->setObjectName(QStringLiteral("sessionViewerPathLabel"));
+    controlLayout->addWidget(session_path_label_);
+    session_path_edit_->setObjectName(QStringLiteral("sessionViewerSessionPath"));
     session_path_edit_->setReadOnly(true);
-    session_path_edit_->setMinimumWidth(180);
-    controlLayout->addWidget(session_path_edit_, 0, 1);
-    actions_layout_ = new QGridLayout();
-    actions_layout_->setHorizontalSpacing(8);
-    actions_layout_->setVerticalSpacing(4);
-    controlLayout->addLayout(actions_layout_, 0, 2);
-    ppk_processing_btn_->setObjectName(QStringLiteral("sessionPpkProcessingButton"));
+    session_path_edit_->setMinimumWidth(60);
+    session_path_edit_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    controlLayout->addWidget(session_path_edit_, 1);
+    choose_session_btn_->setObjectName(QStringLiteral("sessionViewerOpenButton"));
+    reload_btn_->setObjectName(QStringLiteral("sessionViewerReloadButton"));
+    clear_view_btn_->setObjectName(QStringLiteral("sessionViewerClearButton"));
+    for (auto *button : {choose_session_btn_, reload_btn_, clear_view_btn_})
+        controlLayout->addWidget(button);
+    layout->addWidget(session_controls_);
     status_label_->setObjectName(QStringLiteral("sessionViewerStatusLabel"));
     status_label_->setWordWrap(true);
     status_label_->setFocusPolicy(Qt::StrongFocus);
-    controlLayout->addWidget(status_label_, 1, 0, 1, 3);
-    layout->addLayout(controlLayout);
+    layout->addWidget(status_label_);
 
     summary_group_->setObjectName(QStringLiteral("sensorGroupBox"));
     summary_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
@@ -390,23 +390,16 @@ SessionOverviewWidget::SessionOverviewWidget(QWidget *parent)
 
     connect(choose_session_btn_, &QPushButton::clicked, this, &SessionOverviewWidget::chooseSessionRequested);
     connect(reload_btn_, &QPushButton::clicked, this, &SessionOverviewWidget::reloadRequested);
-    connect(trajectory_view_btn_, &QPushButton::clicked, this, &SessionOverviewWidget::trajectoryRequested);
-    connect(ppk_processing_btn_, &QPushButton::clicked, this, &SessionOverviewWidget::ppkProcessingRequested);
-    connect(raw_data_parser_btn_, &QPushButton::clicked, this, &SessionOverviewWidget::rawDataParserRequested);
     connect(clear_view_btn_, &QPushButton::clicked, this, &SessionOverviewWidget::clearRequested);
     setEnglish(false);
-    setTrajectoryAvailable(false);
-    setPpkAvailable(false);
     relayoutSummaryFields();
 }
 
 void SessionOverviewWidget::setEnglish(bool english)
 {
+    session_path_label_->setText(english ? QStringLiteral("Session:") : QStringLiteral("会话:"));
     choose_session_btn_->setText(english ? QStringLiteral("Open Data") : QStringLiteral("打开数据"));
     reload_btn_->setText(english ? QStringLiteral("Reload") : QStringLiteral("重新加载"));
-    trajectory_view_btn_->setText(english ? QStringLiteral("View Trajectory") : QStringLiteral("轨迹查看"));
-    ppk_processing_btn_->setText(english ? QStringLiteral("PPK Processing") : QStringLiteral("PPK 后处理"));
-    raw_data_parser_btn_->setText(english ? QStringLiteral("Raw Data Parser") : QStringLiteral("原始数据解析"));
     clear_view_btn_->setText(english ? QStringLiteral("Clear Page") : QStringLiteral("清空页面"));
     summary_group_->setTitle(english ? QStringLiteral("Data Summary") : QStringLiteral("数据概览"));
     session_name_title_->setText(english ? QStringLiteral("Session:") : QStringLiteral("会话:"));
@@ -421,18 +414,19 @@ void SessionOverviewWidget::setEnglish(bool english)
     waveform_frames_title_->setText(english ? QStringLiteral("Wave Frames:") : QStringLiteral("波形帧数:"));
     ppk_status_title_->setText(english ? QStringLiteral("PPK Status:") : QStringLiteral("PPK 状态:"));
     navigation_source_title_->setText(english ? QStringLiteral("Navigation source:") : QStringLiteral("导航来源:"));
-    relayoutActions();
     relayoutSummaryFields();
 }
 
 void SessionOverviewWidget::setSessionPath(const QString& path)
 {
     session_path_edit_->setText(path);
+    session_path_edit_->setToolTip(path);
 }
 
 void SessionOverviewWidget::clearSessionPath()
 {
     session_path_edit_->clear();
+    session_path_edit_->setToolTip(QString());
 }
 
 void SessionOverviewWidget::setStatusText(const QString& text)
@@ -460,10 +454,7 @@ void SessionOverviewWidget::setControlsEnabled(bool enabled)
     controls_enabled_ = enabled;
     choose_session_btn_->setEnabled(enabled && session_changes_enabled_);
     reload_btn_->setEnabled(enabled && session_changes_enabled_);
-    raw_data_parser_btn_->setEnabled(enabled);
     clear_view_btn_->setEnabled(enabled && session_changes_enabled_);
-    trajectory_view_btn_->setEnabled(enabled && trajectory_available_);
-    ppk_processing_btn_->setEnabled(enabled && ppk_available_);
 }
 
 void SessionOverviewWidget::setSessionChangesEnabled(bool enabled)
@@ -472,22 +463,10 @@ void SessionOverviewWidget::setSessionChangesEnabled(bool enabled)
     setControlsEnabled(controls_enabled_);
 }
 
-void SessionOverviewWidget::setPpkAvailable(bool available)
-{
-    ppk_available_ = available;
-    ppk_processing_btn_->setEnabled(controls_enabled_ && available);
-}
-
 void SessionOverviewWidget::setPpkSummary(const QString& status, const QString& navigationSource)
 {
     ppk_status_value_->setText(status);
     navigation_source_value_->setText(navigationSource);
-}
-
-void SessionOverviewWidget::setTrajectoryAvailable(bool available)
-{
-    trajectory_available_ = available;
-    trajectory_view_btn_->setEnabled(controls_enabled_ && available);
 }
 
 void SessionOverviewWidget::setSummary(const SessionOverviewSummary& summary)
@@ -544,27 +523,9 @@ void SessionOverviewWidget::relayoutSummaryFields()
 void SessionOverviewWidget::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
-    relayoutActions();
     relayoutSummaryFields();
 }
 
-void SessionOverviewWidget::relayoutActions()
-{
-    const QVector<QPushButton *> buttons = {choose_session_btn_, reload_btn_, trajectory_view_btn_,
-                                           ppk_processing_btn_, raw_data_parser_btn_, clear_view_btn_};
-    int requiredWidth = 5 * actions_layout_->horizontalSpacing();
-    for (auto *button : buttons)
-        requiredWidth += button->sizeHint().width();
-    const int pathWidth = session_path_edit_->minimumWidth() +
-        fontMetrics().horizontalAdvance(QStringLiteral("Session:")) + 16;
-    const int columns = width() >= requiredWidth + pathWidth ? 6 : 3;
-    while (actions_layout_->count())
-        delete actions_layout_->takeAt(0);
-    for (int i = 0; i < 7; ++i)
-        actions_layout_->setColumnStretch(i, 0);
-    for (int i = 0; i < buttons.size(); ++i)
-        actions_layout_->addWidget(buttons[i], i / columns, i % columns);
-}
 
 SessionWaveformWidget::SessionWaveformWidget(QWidget *parent)
     : QGroupBox(parent)
