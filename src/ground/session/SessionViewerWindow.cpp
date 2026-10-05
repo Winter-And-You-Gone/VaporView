@@ -507,7 +507,7 @@ void SessionViewerWindow::updatePageAvailability()
             ? (is_english_ ? QStringLiteral("No trajectory loaded. Load session data with valid position samples in Data View.")
                            : QStringLiteral("尚无可用轨迹，请在数据查看页加载包含有效定位数据的会话。"))
             : (is_english_ ? QStringLiteral("Choose or reload a session in Data View first.")
-                           : QStringLiteral("请先在数据查看页选择或重新加载会话。")));
+                           : QStringLiteral("请先选择或重新加载会话。")));
         empty_actions_[i]->setText(is_english_ ? QStringLiteral("Go to Data View") : QStringLiteral("前往数据查看"));
     }
     if (trajectory_page_)
