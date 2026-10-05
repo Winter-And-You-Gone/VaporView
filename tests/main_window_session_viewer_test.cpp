@@ -220,6 +220,15 @@ void testFrameSliderThemeAndHover(MainWindow& window, SessionViewerWindow& viewe
                 require(titleBar && controls && titleBar->rect().contains(
                             QRect(controls->mapTo(titleBar, QPoint()), controls->size())),
                         "scaled session controls stay inside the title bar");
+                if (frame == 1)
+                {
+                    auto *mainSidebar = window.findChild<QWidget *>(QStringLiteral("appSidebar"));
+                    const QImage mainImage = mainSidebar->grab().toImage();
+                    const QImage viewerImage = sidebar->grab().toImage();
+                    require(mainImage.pixelColor(mainImage.width() / 2, mainImage.height() - 20) ==
+                                viewerImage.pixelColor(viewerImage.width() / 2, viewerImage.height() - 20),
+                            "viewer sidebar background matches main window in each theme and scale");
+                }
                 scrollArea->ensureWidgetVisible(slider, 0, 0);
                 VaporViewTest::processEventsFor(100);
                 QHoverEvent leave(QEvent::HoverLeave, QPointF(-1, -1), QPointF(-1, -1));

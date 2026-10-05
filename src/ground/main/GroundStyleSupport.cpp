@@ -382,6 +382,7 @@ QSplitter {
 }
 QSplitter#appLayoutSplitter,
 QSplitter#appLayoutSplitter > QWidget,
+QSplitter#sessionViewerNavigationSplitter > QFrame#appSidebar,
 QSplitter#mainContentSplitter,
 QSplitter#mainContentSplitter > QWidget,
 QSplitter#homeOverviewSplitter,
