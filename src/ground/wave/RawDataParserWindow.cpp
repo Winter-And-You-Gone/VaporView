@@ -892,6 +892,11 @@ RawDataParserWindow::RawDataParserWindow(QWidget *parent, bool embedded)
     , impl_(std::make_unique<Impl>(this))
 {
     setWindowFlags(embedded ? Qt::Widget : Qt::Window);
+    if (embedded)
+    {
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        setMinimumSize(0, 0);
+    }
     setObjectName(QStringLiteral("rawDataParserWindow"));
     impl_->embedded = embedded;
     impl_->setupUi();
