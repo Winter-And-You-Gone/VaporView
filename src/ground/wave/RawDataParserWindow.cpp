@@ -1728,18 +1728,16 @@ void RawDataParserWindow::Impl::resizeTableColumnsToContents()
     if (manual_record_column_widths.size() != columnCount)
         manual_record_column_widths.resize(columnCount);
     QVector<int> widths(columnCount);
-    static constexpr int minimumWidths[] = {50, 140, 110, 90, 70, 70, 100, 180};
-    static constexpr int maximumWidths[] = {50, 140, 110, 90, 70, 70, 100, 320};
+    static constexpr int minimumWidths[] = {50, 80, 90, 70, 55, 55, 80, 140};
+    QVector<int> contentWidths(columnCount);
     for (int column = 0; column < columnCount; ++column)
     {
-        const int maximumWidth = column < static_cast<int>(sizeof(maximumWidths) / sizeof(maximumWidths[0]))
-            ? maximumWidths[column] : header->defaultSectionSize();
+        const int minimumWidth = column < static_cast<int>(sizeof(minimumWidths) / sizeof(minimumWidths[0]))
+            ? minimumWidths[column] : 44;
+        contentWidths[column] = std::max(minimumWidth, record_table->columnWidth(column));
         widths[column] = manual_record_column_widths[column]
             ? record_table->columnWidth(column)
-            : std::clamp(record_table->columnWidth(column),
-                         column < static_cast<int>(sizeof(minimumWidths) / sizeof(minimumWidths[0]))
-                             ? minimumWidths[column] : 44,
-                         maximumWidth);
+            : contentWidths[column];
     }
     const int scrollbarWidth = record_table->verticalScrollBar()->isVisible()
         ? record_table->verticalScrollBar()->width() : 0;
@@ -1757,8 +1755,7 @@ void RawDataParserWindow::Impl::resizeTableColumnsToContents()
         QVector<int> next;
         for (int column : active)
         {
-            const int maximumWidth = column < static_cast<int>(sizeof(maximumWidths) / sizeof(maximumWidths[0]))
-                ? maximumWidths[column] : header->defaultSectionSize();
+            const int maximumWidth = contentWidths[column];
             if (widths[column] < share && widths[column] < maximumWidth)
             {
                 const int grow = std::min(share - widths[column], maximumWidth - widths[column]);
