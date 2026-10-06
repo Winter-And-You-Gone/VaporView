@@ -1728,7 +1728,7 @@ void RawDataParserWindow::Impl::resizeTableColumnsToContents()
     if (manual_record_column_widths.size() != columnCount)
         manual_record_column_widths.resize(columnCount);
     QVector<int> widths(columnCount);
-    static constexpr int minimumWidth = 44;
+    static constexpr int minimumWidths[] = {50, 140, 110, 90, 70, 70, 100, 180};
     static constexpr int maximumWidths[] = {50, 140, 110, 90, 70, 70, 100, 320};
     for (int column = 0; column < columnCount; ++column)
     {
@@ -1736,7 +1736,10 @@ void RawDataParserWindow::Impl::resizeTableColumnsToContents()
             ? maximumWidths[column] : header->defaultSectionSize();
         widths[column] = manual_record_column_widths[column]
             ? record_table->columnWidth(column)
-            : std::clamp(record_table->columnWidth(column), minimumWidth, maximumWidth);
+            : std::clamp(record_table->columnWidth(column),
+                         column < static_cast<int>(sizeof(minimumWidths) / sizeof(minimumWidths[0]))
+                             ? minimumWidths[column] : 44,
+                         maximumWidth);
     }
     const int scrollbarWidth = record_table->verticalScrollBar()->isVisible()
         ? record_table->verticalScrollBar()->width() : 0;
@@ -1773,8 +1776,6 @@ void RawDataParserWindow::Impl::resizeTableColumnsToContents()
         header->setSectionResizeMode(column, QHeaderView::Interactive);
     for (int column = 0; column < columnCount; ++column)
         record_table->setColumnWidth(column, widths[column]);
-    if (columnCount > 0 && !manual_record_column_widths[columnCount - 1])
-        header->setSectionResizeMode(columnCount - 1, QHeaderView::Stretch);
     resizing_record_columns = false;
 }
 
