@@ -1739,59 +1739,26 @@ void RawDataParserWindow::Impl::resizeTableColumnsToContents()
     resizing_record_columns = true;
     record_table->resizeColumnsToContents();
     const int columnCount = record_model->columnCount();
-    if (manual_record_column_widths.size() != columnCount)
-        manual_record_column_widths.resize(columnCount);
-    // Section-resized signals can be emitted by Qt while changing models or layouts;
-    // those are automatic changes and must not permanently lock columns out of redistribution.
-    manual_record_column_widths.fill(false);
-
-    static constexpr int minimumWidths[] = {50, 80, 90, 70, 55, 55, 80, 140};
-    QVector<int> desired(columnCount);
     QVector<int> widths(columnCount);
+    int contentTotal = 0;
     for (int column = 0; column < columnCount; ++column)
     {
-        const int minimumWidth = column < static_cast<int>(sizeof(minimumWidths) / sizeof(minimumWidths[0]))
-            ? minimumWidths[column] : 44;
-        desired[column] = std::max(minimumWidth, record_table->columnWidth(column));
-        widths[column] = manual_record_column_widths[column] ? record_table->columnWidth(column) : 0;
+        widths[column] = std::max(44, record_table->columnWidth(column));
+        contentTotal += widths[column];
     }
 
     const int scrollbarWidth = record_table->verticalScrollBar()->isVisible()
         ? record_table->verticalScrollBar()->width() : 0;
-    int remaining = std::max(0, record_table->viewport()->width() - scrollbarWidth);
-    QVector<int> active;
-    for (int column = 0; column < columnCount; ++column)
+    const int available = std::max(0, record_table->viewport()->width() - scrollbarWidth);
+    if (available > contentTotal && columnCount > 0)
     {
-        if (manual_record_column_widths[column])
-            remaining -= widths[column];
-        else
-            active.append(column);
+        const int extra = available - contentTotal;
+        const int each = extra / columnCount;
+        int remainder = extra % columnCount;
+        for (int column = 0; column < columnCount; ++column)
+            widths[column] += each + (remainder-- > 0 ? 1 : 0);
     }
-    while (!active.isEmpty() && remaining > 0)
-    {
-        const int share = std::max(1, remaining / static_cast<int>(active.size()));
-        QVector<int> next;
-        int allocated = 0;
-        for (int column : active)
-        {
-            const bool compactColumn = column == 0 || column == 4 || column == 5;
-            if (compactColumn && desired[column] <= share)
-            {
-                widths[column] = desired[column];
-                allocated += widths[column];
-            }
-            else
-            {
-                widths[column] = share;
-                allocated += share;
-                next.append(column);
-            }
-        }
-        remaining -= allocated;
-        if (next.size() == active.size() && allocated == 0)
-            break;
-        active = next;
-    }
+
     for (int column = 0; column < columnCount; ++column)
         header->setSectionResizeMode(column, QHeaderView::Interactive);
     for (int column = 0; column < columnCount; ++column)
