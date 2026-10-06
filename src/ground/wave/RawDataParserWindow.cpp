@@ -1140,6 +1140,13 @@ void RawDataParserWindow::Impl::setupUi()
     splitter->setStretchFactor(0, 0);
     splitter->setStretchFactor(1, 5);
     splitter->setStretchFactor(2, 3);
+    QTimer::singleShot(0, splitter, [splitter]() {
+        const int total = splitter->width() - splitter->handleWidth() * 2;
+        if (total > 0)
+            splitter->setSizes({std::max(220, total / 5),
+                                std::max(520, total * 3 / 5),
+                                std::max(360, total * 2 / 5)});
+    });
     mainLayout->addWidget(splitter, 1);
 
     status_label = new QLabel(owner);
