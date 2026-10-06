@@ -1773,6 +1773,8 @@ void RawDataParserWindow::Impl::resizeTableColumnsToContents()
         header->setSectionResizeMode(column, QHeaderView::Interactive);
     for (int column = 0; column < columnCount; ++column)
         record_table->setColumnWidth(column, widths[column]);
+    if (columnCount > 0 && !manual_record_column_widths[columnCount - 1])
+        header->setSectionResizeMode(columnCount - 1, QHeaderView::Stretch);
     resizing_record_columns = false;
 }
 
