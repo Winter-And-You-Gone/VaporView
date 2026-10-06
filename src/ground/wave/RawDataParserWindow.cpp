@@ -1774,7 +1774,8 @@ void RawDataParserWindow::Impl::resizeTableColumnsToContents()
         int allocated = 0;
         for (int column : active)
         {
-            if (desired[column] <= share)
+            const bool compactColumn = column == 0 || column == 4 || column == 5;
+            if (compactColumn && desired[column] <= share)
             {
                 widths[column] = desired[column];
                 allocated += widths[column];
