@@ -39,6 +39,7 @@
 #include <QSharedPointer>
 #include <QSignalBlocker>
 #include <QSizePolicy>
+#include <QScrollBar>
 #include <QSplitter>
 #include <QTableView>
 #include <QTextCursor>
@@ -848,6 +849,8 @@ struct RawDataParserWindow::Impl
     RawRecordModel *record_model = nullptr;
     QTreeWidget *detail_tree = nullptr;
     QPlainTextEdit *hex_view = nullptr;
+    QVector<bool> manual_record_column_widths;
+    bool resizing_record_columns = false;
 
     void setupUi();
     void shutdown();
@@ -1093,6 +1096,15 @@ void RawDataParserWindow::Impl::setupUi()
     record_table->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
     record_table->horizontalHeader()->setDefaultSectionSize(100);
     record_table->horizontalHeader()->setStretchLastSection(false);
+    QObject::connect(record_table->horizontalHeader(), &QHeaderView::sectionResized, owner,
+        [this](int section, int, int) {
+            if (!resizing_record_columns && section >= 0)
+            {
+                if (manual_record_column_widths.size() <= section)
+                    manual_record_column_widths.resize(section + 1);
+                manual_record_column_widths[section] = true;
+            }
+        });
     splitter->addWidget(record_table);
 
     auto *detailSplitter = new QSplitter(Qt::Vertical, owner);
@@ -1710,19 +1722,58 @@ void RawDataParserWindow::Impl::resizeTableColumnsToContents()
     if (!record_table || !record_model)
         return;
     auto *header = record_table->horizontalHeader();
+    resizing_record_columns = true;
     record_table->resizeColumnsToContents();
+    const int columnCount = record_model->columnCount();
+    if (manual_record_column_widths.size() != columnCount)
+        manual_record_column_widths.resize(columnCount);
+    QVector<int> widths(columnCount);
+    static constexpr int minimumWidth = 44;
     static constexpr int maximumWidths[] = {50, 140, 110, 90, 70, 70, 100, 320};
-    for (int column = 0; column < record_model->columnCount(); ++column)
+    for (int column = 0; column < columnCount; ++column)
     {
         const int maximumWidth = column < static_cast<int>(sizeof(maximumWidths) / sizeof(maximumWidths[0]))
             ? maximumWidths[column] : header->defaultSectionSize();
-        record_table->setColumnWidth(column, std::min(record_table->columnWidth(column), maximumWidth));
+        widths[column] = manual_record_column_widths[column]
+            ? record_table->columnWidth(column)
+            : std::clamp(record_table->columnWidth(column), minimumWidth, maximumWidth);
     }
-    if (record_model->columnCount() > 0)
+    const int scrollbarWidth = record_table->verticalScrollBar()->isVisible()
+        ? record_table->verticalScrollBar()->width() : 0;
+    int remaining = std::max(0, record_table->viewport()->width() - scrollbarWidth);
+    QVector<int> active;
+    for (int column = 0; column < columnCount; ++column)
     {
-        header->setSectionResizeMode(record_model->columnCount() - 1, QHeaderView::Stretch);
-        header->setStretchLastSection(true);
+        remaining -= widths[column];
+        if (!manual_record_column_widths[column])
+            active.append(column);
     }
+    while (!active.isEmpty() && remaining > 0)
+    {
+        const int share = std::max(1, remaining / static_cast<int>(active.size()));
+        QVector<int> next;
+        for (int column : active)
+        {
+            const int maximumWidth = column < static_cast<int>(sizeof(maximumWidths) / sizeof(maximumWidths[0]))
+                ? maximumWidths[column] : header->defaultSectionSize();
+            if (widths[column] < share && widths[column] < maximumWidth)
+            {
+                const int grow = std::min(share - widths[column], maximumWidth - widths[column]);
+                widths[column] += grow;
+                remaining -= grow;
+            }
+            if (widths[column] < maximumWidth && widths[column] < share)
+                next.append(column);
+        }
+        if (next.size() == active.size() && share <= 1)
+            break;
+        active = next;
+    }
+    for (int column = 0; column < columnCount; ++column)
+        header->setSectionResizeMode(column, QHeaderView::Interactive);
+    for (int column = 0; column < columnCount; ++column)
+        record_table->setColumnWidth(column, widths[column]);
+    resizing_record_columns = false;
 }
 
 void RawDataParserWindow::Impl::showSelectedRecord()
