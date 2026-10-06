@@ -1741,6 +1741,9 @@ void RawDataParserWindow::Impl::resizeTableColumnsToContents()
     const int columnCount = record_model->columnCount();
     if (manual_record_column_widths.size() != columnCount)
         manual_record_column_widths.resize(columnCount);
+    // Section-resized signals can be emitted by Qt while changing models or layouts;
+    // those are automatic changes and must not permanently lock columns out of redistribution.
+    manual_record_column_widths.fill(false);
 
     static constexpr int minimumWidths[] = {50, 80, 90, 70, 55, 55, 80, 140};
     QVector<int> desired(columnCount);
