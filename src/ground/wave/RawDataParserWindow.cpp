@@ -1727,45 +1727,50 @@ void RawDataParserWindow::Impl::resizeTableColumnsToContents()
     const int columnCount = record_model->columnCount();
     if (manual_record_column_widths.size() != columnCount)
         manual_record_column_widths.resize(columnCount);
-    QVector<int> widths(columnCount);
+
     static constexpr int minimumWidths[] = {50, 80, 90, 70, 55, 55, 80, 140};
-    QVector<int> contentWidths(columnCount);
+    QVector<int> desired(columnCount);
+    QVector<int> widths(columnCount);
     for (int column = 0; column < columnCount; ++column)
     {
         const int minimumWidth = column < static_cast<int>(sizeof(minimumWidths) / sizeof(minimumWidths[0]))
             ? minimumWidths[column] : 44;
-        contentWidths[column] = std::max(minimumWidth, record_table->columnWidth(column));
-        widths[column] = manual_record_column_widths[column]
-            ? record_table->columnWidth(column)
-            : contentWidths[column];
+        desired[column] = std::max(minimumWidth, record_table->columnWidth(column));
+        widths[column] = manual_record_column_widths[column] ? record_table->columnWidth(column) : 0;
     }
+
     const int scrollbarWidth = record_table->verticalScrollBar()->isVisible()
         ? record_table->verticalScrollBar()->width() : 0;
     int remaining = std::max(0, record_table->viewport()->width() - scrollbarWidth);
     QVector<int> active;
     for (int column = 0; column < columnCount; ++column)
     {
-        remaining -= widths[column];
-        if (!manual_record_column_widths[column])
+        if (manual_record_column_widths[column])
+            remaining -= widths[column];
+        else
             active.append(column);
     }
     while (!active.isEmpty() && remaining > 0)
     {
         const int share = std::max(1, remaining / static_cast<int>(active.size()));
         QVector<int> next;
+        int allocated = 0;
         for (int column : active)
         {
-            const int maximumWidth = contentWidths[column];
-            if (widths[column] < share && widths[column] < maximumWidth)
+            if (desired[column] <= share)
             {
-                const int grow = std::min(share - widths[column], maximumWidth - widths[column]);
-                widths[column] += grow;
-                remaining -= grow;
+                widths[column] = desired[column];
+                allocated += widths[column];
             }
-            if (widths[column] < maximumWidth && widths[column] < share)
+            else
+            {
+                widths[column] = share;
+                allocated += share;
                 next.append(column);
+            }
         }
-        if (next.size() == active.size() && share <= 1)
+        remaining -= allocated;
+        if (next.size() == active.size() && allocated == 0)
             break;
         active = next;
     }
@@ -1775,7 +1780,6 @@ void RawDataParserWindow::Impl::resizeTableColumnsToContents()
         record_table->setColumnWidth(column, widths[column]);
     resizing_record_columns = false;
 }
-
 void RawDataParserWindow::Impl::showSelectedRecord()
 {
     const QModelIndex current = record_table->currentIndex();
