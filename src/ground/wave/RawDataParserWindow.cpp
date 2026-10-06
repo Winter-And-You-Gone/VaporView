@@ -1718,6 +1718,11 @@ void RawDataParserWindow::Impl::resizeTableColumnsToContents()
             ? maximumWidths[column] : header->defaultSectionSize();
         record_table->setColumnWidth(column, std::min(record_table->columnWidth(column), maximumWidth));
     }
+    if (record_model->columnCount() > 0)
+    {
+        header->setSectionResizeMode(record_model->columnCount() - 1, QHeaderView::Stretch);
+        header->setStretchLastSection(true);
+    }
 }
 
 void RawDataParserWindow::Impl::showSelectedRecord()
