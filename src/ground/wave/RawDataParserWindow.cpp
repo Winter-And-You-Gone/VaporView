@@ -1092,6 +1092,8 @@ void RawDataParserWindow::Impl::setupUi()
     record_table->setSelectionBehavior(QAbstractItemView::SelectRows);
     record_table->setSelectionMode(QAbstractItemView::SingleSelection);
     record_table->setSortingEnabled(false);
+    record_table->setMinimumWidth(600);
+    record_table->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     record_table->verticalHeader()->setVisible(false);
     record_table->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
     record_table->horizontalHeader()->setDefaultSectionSize(100);
@@ -1136,8 +1138,8 @@ void RawDataParserWindow::Impl::setupUi()
     detailSplitter->setStretchFactor(1, 1);
     splitter->addWidget(detailSplitter);
     splitter->setStretchFactor(0, 0);
-    splitter->setStretchFactor(1, 3);
-    splitter->setStretchFactor(2, 2);
+    splitter->setStretchFactor(1, 5);
+    splitter->setStretchFactor(2, 3);
     mainLayout->addWidget(splitter, 1);
 
     status_label = new QLabel(owner);
