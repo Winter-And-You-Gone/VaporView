@@ -39,6 +39,7 @@
 #include <QSharedPointer>
 #include <QSignalBlocker>
 #include <QSizePolicy>
+#include <QBuffer>
 #include <QScrollBar>
 #include <QSplitter>
 #include <QTableView>
@@ -418,8 +419,20 @@ void scanRawFileIndex(const QString& filename,
                 std::memory_order_relaxed);
         }
     };
-    const VaporView::SessionRawDat::RawScanResult scanResult =
-        VaporView::SessionRawDat::scan(file, scanOptions);
+    // Read-only mapping avoids a file seek/read for every small record header.
+    // Keep the same scanner (including all validation and cancellation checks).
+    uchar *mapped = file.map(0, file.size());
+    QBuffer mappedFile;
+    if (mapped)
+    {
+        mappedFile.setData(QByteArray::fromRawData(reinterpret_cast<const char *>(mapped), file.size()));
+        mappedFile.open(QIODevice::ReadOnly);
+    }
+    const auto scanResult = VaporView::SessionRawDat::scan(mapped ? static_cast<QIODevice&>(mappedFile) : file, scanOptions);
+    mappedFile.close();
+    mappedFile.setData(QByteArray());
+    if (mapped)
+        file.unmap(mapped);
     if (scanResult.status == VaporView::SessionRawDat::RawReadStatus::Cancelled)
     {
         summary.status = english ? QStringLiteral("Canceled") : QStringLiteral("已取消");
@@ -453,6 +466,7 @@ void scanRawFileIndex(const QString& filename,
     }
 
     summary.record_count = static_cast<quint64>(scanResult.records.size());
+    result.records.reserve(result.records.size() + scanResult.records.size());
     for (const VaporView::SessionRawDat::RawRecordIndex& rawRecord : scanResult.records)
     {
         RawRecordIndex record;
@@ -465,7 +479,7 @@ void scanRawFileIndex(const QString& filename,
         record.payload_size = rawRecord.header.payloadSize;
         record.record_offset = rawRecord.recordOffset;
         record.payload_offset = rawRecord.payloadOffset;
-        record.device_name = sourceName(record.source_id, english);
+        record.device_name = summary.device_name;
         result.records.push_back(record);
 
         if (summary.first_timestamp_us == 0)
@@ -851,6 +865,7 @@ struct RawDataParserWindow::Impl
     QPlainTextEdit *hex_view = nullptr;
     QVector<bool> manual_record_column_widths;
     bool resizing_record_columns = false;
+    QTimer *column_resize_timer = nullptr;
 
     void setupUi();
     void shutdown();
@@ -912,6 +927,14 @@ void RawDataParserWindow::changeEvent(QEvent *event)
     if (impl_ && impl_->record_table && impl_->detail_tree &&
         (event->type() == QEvent::PaletteChange || event->type() == QEvent::ApplicationPaletteChange))
         impl_->applyTheme();
+}
+
+bool RawDataParserWindow::eventFilter(QObject *watched, QEvent *event)
+{
+    if (impl_ && impl_->record_table && watched == impl_->record_table->viewport() &&
+        (event->type() == QEvent::Resize || event->type() == QEvent::Show))
+        impl_->column_resize_timer->start();
+    return QMainWindow::eventFilter(watched, event);
 }
 
 void RawDataParserWindow::Impl::applyTheme()
@@ -1093,6 +1116,11 @@ void RawDataParserWindow::Impl::setupUi()
 
     record_model = new RawRecordModel(owner);
     record_table = new QTableView(owner);
+    column_resize_timer = new QTimer(owner);
+    column_resize_timer->setSingleShot(true);
+    column_resize_timer->setInterval(60);
+    QObject::connect(column_resize_timer, &QTimer::timeout, owner, [this]() { resizeTableColumnsToContents(); });
+    record_table->viewport()->installEventFilter(owner);
     record_table->setModel(record_model);
     record_table->setSelectionBehavior(QAbstractItemView::SelectRows);
     record_table->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -1724,6 +1752,7 @@ void RawDataParserWindow::Impl::applyFilters()
         detail_tree->clear();
         hex_view->clear();
     }
+    column_resize_timer->start();
     status_label->setText((english
         ? QStringLiteral("Showing %1 / %2 indexed records.")
         : QStringLiteral("正在显示 %1 / %2 条索引记录。"))
@@ -1747,9 +1776,7 @@ void RawDataParserWindow::Impl::resizeTableColumnsToContents()
         contentTotal += widths[column];
     }
 
-    const int scrollbarWidth = record_table->verticalScrollBar()->isVisible()
-        ? record_table->verticalScrollBar()->width() : 0;
-    const int available = std::max(0, record_table->viewport()->width() - scrollbarWidth);
+    const int available = record_table->viewport()->width();
     if (available > contentTotal && columnCount > 0)
     {
         const int extra = available - contentTotal;

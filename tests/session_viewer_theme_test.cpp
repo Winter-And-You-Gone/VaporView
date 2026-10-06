@@ -21,6 +21,8 @@
 #include <QDir>
 #include <QEventLoop>
 #include <QElapsedTimer>
+#include <QBuffer>
+#include <QHeaderView>
 #include <QFile>
 #include <QFrame>
 #include <QFontMetrics>
@@ -452,6 +454,34 @@ void testRawDataParserOpenIsNonBlocking()
     require(dir.mkpath(QStringLiteral("raw")), "temporary raw directory can be created");
     writeUnifiedRawFile(dir.filePath(QStringLiteral("raw/epsilon.dat")), 300000);
 
+    QFile indexFile(dir.filePath(QStringLiteral("raw/epsilon.dat")));
+    require(indexFile.open(QIODevice::ReadOnly), "open index comparison file");
+    const auto fileIndex = VaporView::SessionRawDat::scan(indexFile);
+    uchar *mapped = indexFile.map(0, indexFile.size());
+    require(mapped != nullptr, "map index comparison file");
+    QBuffer mappedFile;
+    mappedFile.setData(QByteArray::fromRawData(reinterpret_cast<const char *>(mapped), indexFile.size()));
+    mappedFile.open(QIODevice::ReadOnly);
+    const auto mappedIndex = VaporView::SessionRawDat::scan(mappedFile);
+    require(fileIndex.status == mappedIndex.status && fileIndex.error == mappedIndex.error &&
+                fileIndex.warning == mappedIndex.warning && fileIndex.records.size() == mappedIndex.records.size() &&
+                fileIndex.lastValidOffset == mappedIndex.lastValidOffset,
+            "mapped scan preserves index status and size");
+    for (qsizetype i = 0; i < fileIndex.records.size(); ++i)
+    {
+        const auto &a = fileIndex.records[i];
+        const auto &b = mappedIndex.records[i];
+        require(a.recordOffset == b.recordOffset && a.payloadOffset == b.payloadOffset &&
+                    a.header.sequence == b.header.sequence && a.header.hostTimestampUs == b.header.hostTimestampUs &&
+                    a.header.sourceId == b.header.sourceId && a.header.recordType == b.header.recordType &&
+                    a.header.flags == b.header.flags && a.header.payloadSize == b.header.payloadSize &&
+                    a.waveformHarmonicOffset == b.waveformHarmonicOffset && a.waveformHarmonicSize == b.waveformHarmonicSize,
+                "mapped scan preserves every record field");
+    }
+    mappedFile.close();
+    mappedFile.setData(QByteArray());
+    indexFile.unmap(mapped);
+
     RawDataParserWindow parser;
     parser.setEnglish(false);
     parser.show();
@@ -477,6 +507,19 @@ void testRawDataParserOpenIsNonBlocking()
                        text.contains(QStringLiteral("Indexed 300000"));
             }),
             "raw parser background indexing completes");
+
+    auto *table = parser.findChild<QTableView *>();
+    require(table != nullptr, "raw parser record table exists");
+    table->setFixedWidth(1800);
+    processEventsFor(200);
+    const int wideWidth = table->horizontalHeader()->length();
+    require(wideWidth >= table->viewport()->width(), "expanded record columns fill the viewport");
+    table->setFixedWidth(900);
+    processEventsFor(200);
+    require(table->horizontalHeader()->length() < wideWidth, "record columns recalculate when shrinking");
+    table->setFixedWidth(1800);
+    processEventsFor(200);
+    require(table->horizontalHeader()->length() == wideWidth, "record columns recalculate when expanding again");
 
     parser.close();
     processEventsFor(100);
