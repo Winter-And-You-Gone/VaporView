@@ -1093,7 +1093,6 @@ void RawDataParserWindow::Impl::setupUi()
     record_table->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
     record_table->horizontalHeader()->setDefaultSectionSize(100);
     record_table->horizontalHeader()->setStretchLastSection(false);
-    record_table->horizontalHeader()->setStretchLastSection(true);
     splitter->addWidget(record_table);
 
     auto *detailSplitter = new QSplitter(Qt::Vertical, owner);
