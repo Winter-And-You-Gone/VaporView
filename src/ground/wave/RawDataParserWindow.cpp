@@ -39,6 +39,8 @@
 #include <QProgressDialog>
 #include <QPushButton>
 #include <QSaveFile>
+#include <QSet>
+#include <QTemporaryDir>
 #include <QSharedPointer>
 #include <QSignalBlocker>
 #include <QSizePolicy>
@@ -762,6 +764,35 @@ public:
         endResetModel();
     }
 
+    QSet<int> checkedRecords;
+
+    QVector<int> checkedIndices() const
+    {
+        QVector<int> result(checkedRecords.begin(), checkedRecords.end());
+        std::sort(result.begin(), result.end());
+        return result;
+    }
+
+    Qt::ItemFlags flags(const QModelIndex& index) const override
+    {
+        return QAbstractTableModel::flags(index) |
+            (index.isValid() && index.column() == 0 ? Qt::ItemIsUserCheckable : Qt::NoItemFlags);
+    }
+
+    bool setData(const QModelIndex& index, const QVariant& value, int role) override
+    {
+        if (!index.isValid() || index.column() != 0 || role != Qt::CheckStateRole ||
+            !visible_rows_ || index.row() >= visible_rows_->size())
+            return false;
+        const int record = visible_rows_->at(index.row());
+        if (value.toInt() == Qt::Checked)
+            checkedRecords.insert(record);
+        else
+            checkedRecords.remove(record);
+        emit dataChanged(index, index, {Qt::CheckStateRole});
+        return true;
+    }
+
     int rowCount(const QModelIndex& parent = QModelIndex()) const override
     {
         if (parent.isValid() || !visible_rows_)
@@ -807,6 +838,8 @@ public:
         {
             return visible_rows_->at(index.row());
         }
+        if (role == Qt::CheckStateRole && index.column() == 0)
+            return checkedRecords.contains(visible_rows_->at(index.row())) ? Qt::Checked : Qt::Unchecked;
         if (role != Qt::DisplayRole)
         {
             return QVariant();
@@ -925,9 +958,9 @@ struct RawDataParserWindow::Impl
     void exportSelectedJson();
     void exportSelectedPayload();
     void exportDecodedCsv();
-    void exportDecodedJson();
+    void exportDecodedJson(bool checkedOnly = false);
+    void updateCheckedCount();
     QJsonObject decodedRecordToJson(const RawRecordIndex& record, const RawDecodedRecord& decoded) const;
-    int currentRecordIndex() const;
     int selectedSourceId() const;
     bool parseFilterNumber(const QLineEdit *edit, quint64& value) const;
     bool parseTypeFilter(quint16& value) const;
@@ -1146,6 +1179,7 @@ void RawDataParserWindow::Impl::setupUi()
     splitter->addWidget(file_list);
 
     record_model = new RawRecordModel(owner);
+    QObject::connect(record_model, &QAbstractItemModel::dataChanged, owner, [this]() { updateCheckedCount(); });
     record_table = new QTableView(owner);
     column_resize_timer = new QTimer(owner);
     column_resize_timer->setSingleShot(true);
@@ -1290,10 +1324,10 @@ void RawDataParserWindow::Impl::setEnglish(bool value)
     english = value;
     owner->setWindowTitle(english ? QStringLiteral("Raw Data Parser") : QStringLiteral("原始数据解析器"));
     reload_btn->setText(english ? QStringLiteral("Reload") : QStringLiteral("重新加载"));
-    export_btn->setText(english ? QStringLiteral("Export ▾") : QStringLiteral("导出 ▾"));
+    updateCheckedCount();
     export_csv_action->setText(english ? QStringLiteral("Export List CSV") : QStringLiteral("导出列表CSV"));
-    export_json_action->setText(english ? QStringLiteral("Export Selected JSON") : QStringLiteral("导出选中JSON"));
-    export_bin_action->setText(english ? QStringLiteral("Export Selected BIN") : QStringLiteral("导出选中BIN"));
+    export_json_action->setText(english ? QStringLiteral("Export Checked JSON") : QStringLiteral("导出勾选JSON"));
+    export_bin_action->setText(english ? QStringLiteral("Export Checked BIN") : QStringLiteral("导出勾选BIN"));
     export_decoded_csv_action->setText(english ? QStringLiteral("Export Decoded CSV") : QStringLiteral("导出解析CSV"));
     export_decoded_json_action->setText(english ? QStringLiteral("Export Decoded JSON") : QStringLiteral("导出解析JSON"));
     abnormal_only->setText(english ? QStringLiteral("Issues only") : QStringLiteral("只看异常"));
@@ -1356,6 +1390,8 @@ void RawDataParserWindow::Impl::scanSession()
         return;
     }
 
+    record_model->checkedRecords.clear();
+    updateCheckedCount();
     records.clear();
     visible_rows.clear();
     file_summaries.clear();
@@ -1938,23 +1974,15 @@ void RawDataParserWindow::Impl::highlightHexRange(int offset, int length)
     hex_view->setExtraSelections(selections);
 }
 
-int RawDataParserWindow::Impl::currentRecordIndex() const
+void RawDataParserWindow::Impl::updateCheckedCount()
 {
-    if (record_table && record_table->selectionModel())
-    {
-        const QModelIndexList selectedRows = record_table->selectionModel()->selectedRows();
-        if (!selectedRows.isEmpty())
-        {
-            return selectedRows.first().data(Qt::UserRole).toInt();
-        }
-    }
-
-    const QModelIndex current = record_table ? record_table->currentIndex() : QModelIndex();
-    if (!current.isValid())
-    {
-        return -1;
-    }
-    return current.sibling(current.row(), 0).data(Qt::UserRole).toInt();
+    const int count = record_model->checkedRecords.size();
+    export_btn->setText(count == 0
+        ? (english ? QStringLiteral("Export ▾") : QStringLiteral("导出 ▾"))
+        : (english ? QStringLiteral("Export (%1 checked) ▾") : QStringLiteral("导出（已勾选 %1 条）▾")).arg(count));
+    record_table->setToolTip(english
+        ? QStringLiteral("Check boxes in the # column to export records. Checks survive filtering, including hidden records; reload clears them.")
+        : QStringLiteral("勾选 # 列中的复选框后导出；筛选会保留勾选（含隐藏记录），重新加载会清空勾选。"));
 }
 
 void RawDataParserWindow::Impl::exportFilteredCsv()
@@ -2048,20 +2076,25 @@ void RawDataParserWindow::Impl::exportSelectedJson()
             : QStringLiteral("[界面测试] 已模拟导出；未创建文件。"));
         return;
     }
-    const int recordIndex = currentRecordIndex();
-    if (recordIndex < 0 || recordIndex >= records.size())
+    const QVector<int> checked = record_model->checkedIndices();
+    if (checked.isEmpty())
     {
         QMessageBox::information(owner,
             owner->windowTitle(),
-            english ? QStringLiteral("Select one raw record before exporting JSON.")
-                    : QStringLiteral("请先在记录列表中选择一条原始记录，再导出 JSON。"));
+            english ? QStringLiteral("Check at least one raw record before exporting JSON.")
+                    : QStringLiteral("请先勾选至少一条原始记录，再导出 JSON。"));
         return;
     }
-    const RawRecordIndex& record = records.at(recordIndex);
+    if (checked.size() > 1)
+    {
+        exportDecodedJson(true);
+        return;
+    }
+    const RawRecordIndex& record = records.at(checked.first());
     const RawDecodedRecord decoded = decodeRecord(record);
 
     const QString filename = QFileDialog::getSaveFileName(owner,
-        english ? QStringLiteral("Export Selected Decoded Record JSON") : QStringLiteral("导出选中解析记录JSON"),
+        english ? QStringLiteral("Export Checked Record JSON") : QStringLiteral("导出勾选记录JSON"),
         QDir(session_directory).filePath(QStringLiteral("raw_record_%1.json").arg(record.sequence)),
         QStringLiteral("JSON (*.json)"));
     if (filename.isEmpty())
@@ -2091,16 +2124,64 @@ void RawDataParserWindow::Impl::exportSelectedPayload()
             : QStringLiteral("[界面测试] 已模拟导出；未创建文件。"));
         return;
     }
-    const int recordIndex = currentRecordIndex();
-    if (recordIndex < 0 || recordIndex >= records.size())
+    const QVector<int> checked = record_model->checkedIndices();
+    if (checked.isEmpty())
     {
         QMessageBox::information(owner,
             owner->windowTitle(),
-            english ? QStringLiteral("Select one raw record before exporting BIN.")
-                    : QStringLiteral("请先在记录列表中选择一条原始记录，再导出 BIN。"));
+            english ? QStringLiteral("Check at least one raw record before exporting BIN.")
+                    : QStringLiteral("请先勾选至少一条原始记录，再导出 BIN。"));
         return;
     }
-    const RawRecordIndex& record = records.at(recordIndex);
+    if (checked.size() > 1)
+    {
+        const QString parent = QFileDialog::getExistingDirectory(owner,
+            english ? QStringLiteral("Choose folder for BIN batch") : QStringLiteral("选择批量 BIN 导出目录"), session_directory);
+        if (parent.isEmpty())
+            return;
+        // A fresh subfolder prevents collisions and removes partial batches on failure/cancel.
+        QTemporaryDir batch(QDir(parent).filePath(QStringLiteral("raw_payloads_XXXXXX")));
+        if (!batch.isValid())
+        {
+            QMessageBox::warning(owner, owner->windowTitle(), english ? QStringLiteral("Failed to create export folder.") : QStringLiteral("无法创建导出目录。"));
+            return;
+        }
+        RawDataProgressDialog progress(english ? QStringLiteral("Exporting checked payloads...") : QStringLiteral("正在导出勾选记录..."),
+            english ? QStringLiteral("Cancel") : QStringLiteral("取消"), 0, checked.size(), owner);
+        progress.setWindowTitle(english ? QStringLiteral("Export Checked BIN") : QStringLiteral("导出勾选BIN"));
+        progress.setWindowModality(Qt::WindowModal);
+        progress.setMinimumWidth(380);
+        VaporView::installCustomTitleBar(&progress, false);
+        applyRawDataProgressDialogStyle(&progress);
+        for (int row = 0; row < checked.size(); ++row)
+        {
+            if (row % 100 == 0)
+            {
+                progress.setValue(row);
+                QApplication::processEvents();
+                if (progress.wasCanceled())
+                    return;
+            }
+            const int index = checked.at(row);
+            const auto& record = records.at(index);
+            const QByteArray payload = readPayload(record);
+            QFile file(batch.filePath(QStringLiteral("record_%1_source_%2_seq_%3.bin")
+                .arg(index + 1).arg(record.source_id).arg(record.sequence)));
+            if (payload.size() != record.payload_size || !file.open(QIODevice::WriteOnly) ||
+                file.write(payload) != payload.size() || !file.flush())
+            {
+                QMessageBox::warning(owner, owner->windowTitle(), english ? QStringLiteral("Failed to export BIN batch.") : QStringLiteral("批量导出 BIN 失败。"));
+                return;
+            }
+        }
+        progress.setValue(checked.size());
+        batch.setAutoRemove(false);
+        QMessageBox::information(owner, owner->windowTitle(),
+            (english ? QStringLiteral("Exported %1 records to:\n%2") : QStringLiteral("已导出 %1 条记录至：\n%2"))
+                .arg(checked.size()).arg(QDir::toNativeSeparators(batch.path())));
+        return;
+    }
+    const RawRecordIndex& record = records.at(checked.first());
     const QByteArray payload = readPayload(record);
     const QString filename = QFileDialog::getSaveFileName(owner,
         english ? QStringLiteral("Export Raw Payload") : QStringLiteral("导出原始Payload"),
@@ -2221,7 +2302,7 @@ void RawDataParserWindow::Impl::exportDecodedCsv()
     }
 }
 
-void RawDataParserWindow::Impl::exportDecodedJson()
+void RawDataParserWindow::Impl::exportDecodedJson(bool checkedOnly)
 {
     if (VaporView::settingsWritesSuspended())
     {
@@ -2230,7 +2311,8 @@ void RawDataParserWindow::Impl::exportDecodedJson()
             : QStringLiteral("[界面测试] 已模拟导出；未创建文件。"));
         return;
     }
-    if (visible_rows.isEmpty())
+    const QVector<int> exportRows = checkedOnly ? record_model->checkedIndices() : visible_rows;
+    if (exportRows.isEmpty())
     {
         QMessageBox::information(owner,
             owner->windowTitle(),
@@ -2241,7 +2323,7 @@ void RawDataParserWindow::Impl::exportDecodedJson()
 
     const QString filename = QFileDialog::getSaveFileName(owner,
         english ? QStringLiteral("Export Decoded Records JSON") : QStringLiteral("导出解析记录JSON"),
-        QDir(session_directory).filePath(QStringLiteral("raw_decoded_records.json")),
+        QDir(session_directory).filePath(checkedOnly ? QStringLiteral("raw_checked_records.json") : QStringLiteral("raw_decoded_records.json")),
         QStringLiteral("JSON (*.json)"));
     if (filename.isEmpty())
     {
@@ -2251,7 +2333,7 @@ void RawDataParserWindow::Impl::exportDecodedJson()
     RawDataProgressDialog progress(english ? QStringLiteral("Exporting decoded records...") : QStringLiteral("正在导出解析记录..."),
                              english ? QStringLiteral("Cancel") : QStringLiteral("取消"),
                              0,
-                             visible_rows.size(),
+                             exportRows.size(),
                              owner);
     progress.setWindowTitle(english ? QStringLiteral("Export Decoded Records") : QStringLiteral("导出解析记录"));
     progress.setWindowModality(Qt::WindowModal);
@@ -2271,7 +2353,8 @@ void RawDataParserWindow::Impl::exportDecodedJson()
     QByteArray encodedSession = QJsonDocument(sessionValue).toJson(QJsonDocument::Compact);
     encodedSession = encodedSession.mid(1, encodedSession.size() - 2);
     const QByteArray header = QByteArrayLiteral("{\n  \"session\": ") + encodedSession +
-        QByteArrayLiteral(",\n  \"filtered_record_count\": ") + QByteArray::number(visible_rows.size()) +
+        (checkedOnly ? QByteArrayLiteral(",\n  \"selected_record_count\": ")
+                     : QByteArrayLiteral(",\n  \"filtered_record_count\": ")) + QByteArray::number(exportRows.size()) +
         QByteArrayLiteral(",\n  \"records\": [\n");
     if (file.write(header) != header.size())
     {
@@ -2280,7 +2363,7 @@ void RawDataParserWindow::Impl::exportDecodedJson()
         return;
     }
 
-    for (int row = 0; row < visible_rows.size(); ++row)
+    for (int row = 0; row < exportRows.size(); ++row)
     {
         if (row % 100 == 0)
         {
@@ -2292,7 +2375,7 @@ void RawDataParserWindow::Impl::exportDecodedJson()
                 return;
             }
         }
-        const RawRecordIndex& record = records.at(visible_rows.at(row));
+        const RawRecordIndex& record = records.at(exportRows.at(row));
         const QByteArray prefix = row == 0 ? QByteArrayLiteral("    ") : QByteArrayLiteral(",\n    ");
         const QByteArray encodedRecord = QJsonDocument(
             decodedRecordToJson(record, decodeRecord(record))).toJson(QJsonDocument::Compact);
@@ -2304,7 +2387,7 @@ void RawDataParserWindow::Impl::exportDecodedJson()
             return;
         }
     }
-    progress.setValue(visible_rows.size());
+    progress.setValue(exportRows.size());
 
     const QByteArray footer = QByteArrayLiteral("\n  ]\n}\n");
     if (file.write(footer) != footer.size())

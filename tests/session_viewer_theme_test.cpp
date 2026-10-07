@@ -26,6 +26,10 @@
 #include <QBuffer>
 #include <QHeaderView>
 #include <QFile>
+#include <QFileDialog>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
 #include <QFrame>
 #include <QFontMetrics>
 #include <QImage>
@@ -50,6 +54,7 @@
 #include <QSlider>
 #include <QSpinBox>
 #include <QStyleOptionSlider>
+#include <QStyleOptionViewItem>
 #include <QTableView>
 #include <QTemporaryDir>
 #include <QThread>
@@ -483,8 +488,8 @@ void testRawDataExportMenu()
                 processEventsFor(50);
                 require(menu->isVisible(), "export button opens menu");
                 const QStringList expected = english
-                    ? QStringList{"Export List CSV", "Export Selected JSON", "Export Selected BIN", "Export Decoded CSV", "Export Decoded JSON"}
-                    : QStringList{QStringLiteral("导出列表CSV"), QStringLiteral("导出选中JSON"), QStringLiteral("导出选中BIN"), QStringLiteral("导出解析CSV"), QStringLiteral("导出解析JSON")};
+                    ? QStringList{"Export List CSV", "Export Checked JSON", "Export Checked BIN", "Export Decoded CSV", "Export Decoded JSON"}
+                    : QStringList{QStringLiteral("导出列表CSV"), QStringLiteral("导出勾选JSON"), QStringLiteral("导出勾选BIN"), QStringLiteral("导出解析CSV"), QStringLiteral("导出解析JSON")};
                 for (int index = 0; index < 5; ++index)
                 {
                     auto *row = menu->rows().at(index);
@@ -512,6 +517,126 @@ void testRawDataExportMenu()
     VaporView::setSettingsWritesSuspended(writesSuspended);
     qApp->setProperty(VaporView::kAppDarkThemeProperty, false);
     qApp->setPalette(VaporView::appThemePalette(false));
+}
+
+void testRawDataCheckedExport()
+{
+    QTemporaryDir sessionDir;
+    QTemporaryDir outputDir;
+    require(QDir(sessionDir.path()).mkpath(QStringLiteral("raw")), "batch fixture directory");
+    const QString rawPath = sessionDir.filePath(QStringLiteral("raw/tcp_wave.dat"));
+    writeMinimalRawTcpWaveFile(rawPath, {1700000000000000ULL, 1700000000000001ULL,
+                                       1700000000000002ULL, 1700000000000003ULL});
+    RawDataParserWindow parser;
+    parser.setEnglish(true);
+    parser.show();
+    auto *table = parser.findChild<QTableView *>();
+    auto *button = parser.findChild<QPushButton *>(QStringLiteral("rawDataExportButton"));
+    auto *menu = parser.findChild<VaporView::SingleLevelPopupMenu *>(QStringLiteral("rawDataExportMenu"));
+    require(parser.openSessionPath(sessionDir.path()), "batch fixture opens");
+    require(processEventsUntil(5000, [&] { return table->model()->rowCount() == 4; }), "batch fixture indexed");
+    auto *model = table->model();
+    require(model->index(0, 0).data(Qt::CheckStateRole).toInt() == Qt::Unchecked, "viewing first record does not check it");
+    require(model->flags(model->index(0, 0)).testFlag(Qt::ItemIsUserCheckable), "record checkbox is interactive");
+    processEventsFor(100);
+    QStyleOptionViewItem option;
+    option.initFrom(table);
+    option.rect = table->visualRect(model->index(0, 0));
+    option.features = QStyleOptionViewItem::HasCheckIndicator | QStyleOptionViewItem::HasDisplay;
+    option.text = QStringLiteral("1");
+    const QRect indicator = table->style()->subElementRect(QStyle::SE_ItemViewItemCheckIndicator, &option, table);
+    clickWidgetAt(table->viewport(), indicator.center(), 0);
+    require(model->index(0, 0).data(Qt::CheckStateRole).toInt() == Qt::Checked, "mouse click checks record");
+    model->setData(model->index(2, 0), Qt::Checked, Qt::CheckStateRole);
+    table->selectRow(1);
+    require(button->text().contains(QStringLiteral("2 checked")), "detail selection does not alter checked count");
+    QLineEdit *sequenceFrom = nullptr;
+    for (auto *edit : parser.findChildren<QLineEdit *>())
+        if (edit->placeholderText() == QStringLiteral("seq from")) sequenceFrom = edit;
+    require(sequenceFrom != nullptr, "sequence filter located");
+    sequenceFrom->setText(QStringLiteral("2"));
+    QMetaObject::invokeMethod(sequenceFrom, "editingFinished");
+    require(processEventsUntil(2000, [&] { return model->rowCount() == 2; }), "batch filter applied");
+    require(model->index(0, 0).data(Qt::UserRole).toInt() == 2 &&
+            model->index(0, 0).data(Qt::CheckStateRole).toInt() == Qt::Checked &&
+            button->text().contains(QStringLiteral("2 checked")), "checks use record identity and include hidden records");
+
+    const bool suspended = VaporView::settingsWritesSuspended();
+    const bool nativeDisabled = qApp->testAttribute(Qt::AA_DontUseNativeDialogs);
+    VaporView::setSettingsWritesSuspended(false);
+    qApp->setAttribute(Qt::AA_DontUseNativeDialogs, true);
+    auto runExport = [&](int action, const QString& destination, bool cancel = false) {
+        QTimer responder;
+        bool dialogHandled = false;
+        bool messageHandled = false;
+        QObject::connect(&responder, &QTimer::timeout, &parser, [&] {
+            if (auto *dialog = qobject_cast<QFileDialog *>(QApplication::activeModalWidget()))
+            {
+                if (dialogHandled) return;
+                dialogHandled = true;
+                if (cancel) dialog->reject();
+                else
+                {
+                    dialog->selectFile(destination);
+                    QMetaObject::invokeMethod(dialog, "accept", Qt::DirectConnection);
+                }
+            }
+            else if (auto *message = qobject_cast<QMessageBox *>(QApplication::activeModalWidget()))
+            {
+                require(message->icon() != QMessageBox::Warning, "batch export has no write error");
+                messageHandled = true;
+                message->accept();
+            }
+        });
+        responder.start(20);
+        menu->actions().at(action)->trigger();
+        require(dialogHandled || messageHandled, "export dialog handled");
+    };
+    const QString jsonPath = outputDir.filePath(QStringLiteral("checked.json"));
+    runExport(1, jsonPath);
+    QFile jsonFile(jsonPath);
+    require(jsonFile.open(QIODevice::ReadOnly), "checked JSON written");
+    const auto root = QJsonDocument::fromJson(jsonFile.readAll()).object();
+    const auto exported = root.value(QStringLiteral("records")).toArray();
+    require(root.value(QStringLiteral("selected_record_count")).toInt() == 2 && exported.size() == 2 &&
+            exported.at(0).toObject().value(QStringLiteral("sequence")).toString() == QStringLiteral("0") &&
+            exported.at(1).toObject().value(QStringLiteral("sequence")).toString() == QStringLiteral("2"),
+            "JSON exports exactly arbitrary checked records including hidden one");
+    runExport(2, outputDir.path());
+    const auto batches = QDir(outputDir.path()).entryList({QStringLiteral("raw_payloads_*")}, QDir::Dirs | QDir::NoDotAndDotDot);
+    require(batches.size() == 1, "BIN batch has one fresh subfolder");
+    QDir batch(outputDir.filePath(batches.first()));
+    const auto bins = batch.entryList({QStringLiteral("*.bin")}, QDir::Files, QDir::Name);
+    require(bins.size() == 2, "BIN exports two separate records");
+    QFile original(rawPath);
+    require(original.open(QIODevice::ReadOnly), "batch source readable");
+    for (int i = 0; i < 2; ++i)
+    {
+        QFile bin(batch.filePath(bins.at(i)));
+        require(bin.open(QIODevice::ReadOnly), "BIN readable");
+        original.seek(kTestRawHeaderSize + (i * 2) * (kTestRawRecordHeaderSize + 32) + kTestRawRecordHeaderSize);
+        require(bin.readAll() == original.read(32), "BIN preserves exact selected payload bytes");
+    }
+    runExport(1, outputDir.filePath(QStringLiteral("cancelled.json")), true);
+    require(!QFile::exists(outputDir.filePath(QStringLiteral("cancelled.json"))), "cancel does not create export");
+    sequenceFrom->clear();
+    QMetaObject::invokeMethod(sequenceFrom, "editingFinished");
+    require(processEventsUntil(2000, [&] { return model->rowCount() == 4; }), "filter cleared");
+    model->setData(model->index(2, 0), Qt::Unchecked, Qt::CheckStateRole);
+    const QString singlePath = outputDir.filePath(QStringLiteral("single.json"));
+    runExport(1, singlePath);
+    QFile single(singlePath);
+    require(single.open(QIODevice::ReadOnly) && QJsonDocument::fromJson(single.readAll()).object()
+            .value(QStringLiteral("sequence")).toString() == QStringLiteral("0"), "one checked record preserves single JSON format");
+    model->setData(model->index(0, 0), Qt::Unchecked, Qt::CheckStateRole);
+    runExport(1, QString());
+    model->setData(model->index(2, 0), Qt::Checked, Qt::CheckStateRole);
+    require(parser.openSessionPath(sessionDir.path()), "batch fixture reloads");
+    require(processEventsUntil(5000, [&] { return model->rowCount() == 4; }), "batch fixture reindexed");
+    require(!button->text().contains(QStringLiteral("checked")) &&
+            model->index(2, 0).data(Qt::CheckStateRole).toInt() == Qt::Unchecked, "reload clears checked identities");
+    VaporView::setSettingsWritesSuspended(suspended);
+    qApp->setAttribute(Qt::AA_DontUseNativeDialogs, nativeDisabled);
 }
 
 void testRawDataIssuesMatchDetails()
@@ -2359,6 +2484,7 @@ int main(int argc, char **argv)
 
     if (runsGroup(QStringLiteral("io")))
     {
+        testRawDataCheckedExport();
         testRawDataIssuesFilter();
         testRawDataIssuesMatchDetails();
         testRawDataScanProgressVisible();
