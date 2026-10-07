@@ -983,7 +983,7 @@ struct RawDataParserWindow::Impl
     void applyFilters();
     void resizeTableColumnsToContents();
     bool recordMatches(const RawRecordIndex& record, const QString& searchLower, bool requireDecoded) const;
-    QByteArray readPayload(const RawRecordIndex& record) const;
+    QByteArray readPayload(const RawRecordIndex& record, qint64 maxBytes = -1) const;
     RawDecodedRecord decodeRecord(const RawRecordIndex& record);
     QString cacheKey(const RawRecordIndex& record) const;
     void showSelectedRecord();
@@ -1686,7 +1686,7 @@ QString RawDataParserWindow::Impl::cacheKey(const RawRecordIndex& record) const
     return QStringLiteral("%1:%2").arg(record.filename).arg(record.payload_offset);
 }
 
-QByteArray RawDataParserWindow::Impl::readPayload(const RawRecordIndex& record) const
+QByteArray RawDataParserWindow::Impl::readPayload(const RawRecordIndex& record, qint64 maxBytes) const
 {
     QSharedPointer<QFile> file = payload_files.value(record.filename);
     if (!file)
@@ -1699,11 +1699,14 @@ QByteArray RawDataParserWindow::Impl::readPayload(const RawRecordIndex& record) 
         payload_files.insert(record.filename, file);
     }
 
-    if (!file->seek(static_cast<qint64>(record.payload_offset)))
+    const qint64 fileSize = file->size();
+    if (fileSize < 0 || record.payload_offset > static_cast<quint64>(fileSize) ||
+        record.payload_size > static_cast<quint64>(fileSize) - record.payload_offset ||
+        !file->seek(static_cast<qint64>(record.payload_offset)))
     {
         return QByteArray();
     }
-    return file->read(static_cast<qint64>(record.payload_size));
+    return file->read(maxBytes < 0 ? record.payload_size : std::min<qint64>(record.payload_size, maxBytes));
 }
 
 RawDecodedRecord RawDataParserWindow::Impl::decodeRecord(const RawRecordIndex& record)
@@ -1790,7 +1793,17 @@ bool RawDataParserWindow::Impl::recordMatches(const RawRecordIndex& record, cons
     if (requireDecoded)
     {
         if (record.decode_ok < 0)
-            record.decode_ok = decodeRawRecord(record, readPayload(record), english, false).ok ? 1 : 0;
+        {
+            if (record.source_id == VaporView::SessionRawDat::kSourceWaveform)
+            {
+                const auto prefix = readPayload(record, VaporView::SessionRawDat::kWaveformPayloadPrefixSize);
+                VaporView::SessionRawDat::WaveformPayloadLayout layout;
+                record.decode_ok = VaporView::SessionRawDat::parseWaveformPayloadLayout(
+                    prefix, record.payload_size, &layout) ? 1 : 0;
+            }
+            else
+                record.decode_ok = decodeRawRecord(record, readPayload(record), english, false).ok ? 1 : 0;
+        }
         if (record.decode_ok != 0)
         {
             return false;

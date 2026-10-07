@@ -726,6 +726,18 @@ void testRawDataIssuesMatchDetails()
     require(table->model()->rowCount() == expected.size(), "lightweight validation matches full detail flags");
     for (int row = 0; row < expected.size(); ++row)
         require(table->model()->index(row, 0).data(Qt::UserRole).toInt() == expected.at(row), "lightweight validation preserves damaged record identities");
+    // An indexed waveform truncated later must not pass merely because its prefix remains intact.
+    issues->setChecked(false);
+    parser.clearSession();
+    open();
+    QFile truncatedWave(sessionDir.filePath(QStringLiteral("raw/tcp_wave.dat")));
+    require(truncatedWave.open(QIODevice::ReadWrite), "waveform can be truncated after indexing");
+    require(truncatedWave.resize(kTestRawHeaderSize + kTestRawRecordHeaderSize + 8),
+            "truncate first waveform after its length prefix");
+    truncatedWave.close();
+    issues->setChecked(true);
+    require(table->model()->rowCount() == expected.size() + 1,
+            "prefix-only validation detects truncated waveform data");
 }
 
 void testRawDataIssuesFilter()
