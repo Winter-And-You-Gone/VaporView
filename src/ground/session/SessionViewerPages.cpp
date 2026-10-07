@@ -1191,14 +1191,15 @@ bool editSessionPeakSettings(
     formLayout->setContentsMargins(0, 0, 0, 0);
     formLayout->setHorizontalSpacing(14);
     formLayout->setVerticalSpacing(10);
-    const int labelColumnWidth = english ? 104 : 86;
+    const int labelColumnWidth = QFontMetrics(formWidget->font()).horizontalAdvance(
+        english ? QStringLiteral("Search Start") : QStringLiteral("区间最小值"));
     const int inputColumnWidth = 240;
     auto addFormRow = [formWidget, formLayout, labelColumnWidth](int row, const QString& text, QWidget *editor) {
         auto *label = new QLabel(text, formWidget);
         label->setMinimumWidth(labelColumnWidth);
-        label->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
         editor->setMinimumHeight(34);
-        formLayout->addWidget(label, row, 0, Qt::AlignRight | Qt::AlignVCenter);
+        formLayout->addWidget(label, row, 0, Qt::AlignLeft | Qt::AlignVCenter);
         formLayout->addWidget(editor, row, 1);
     };
     auto *startSpin = new QSpinBox(formWidget);
@@ -1207,13 +1208,16 @@ bool editSessionPeakSettings(
     startSpin->setValue(searchStartIndex);
     startSpin->setMinimumWidth(inputColumnWidth);
     addFormRow(0, english ? QStringLiteral("Search Start") : QStringLiteral("搜索起点"), startSpin);
-    auto *endSpin = new QSpinBox(formWidget);
-    endSpin->setRange(0, 10000000);
-    endSpin->setSingleStep(1000);
-    endSpin->setSpecialValueText(english ? QStringLiteral("Full Frame") : QStringLiteral("整帧"));
-    endSpin->setValue(std::max(0, searchEndIndex));
-    endSpin->setMinimumWidth(inputColumnWidth);
-    addFormRow(1, english ? QStringLiteral("Search End") : QStringLiteral("搜索终点"), endSpin);
+    auto *endCombo = new QComboBox(formWidget);
+    endCombo->setEditable(true);
+    endCombo->setInsertPolicy(QComboBox::NoInsert);
+    const QString fullFrameText = english ? QStringLiteral("Full Frame") : QStringLiteral("整帧");
+    endCombo->addItem(fullFrameText);
+    if (searchEndIndex > 0)
+        endCombo->setEditText(QString::number(searchEndIndex));
+    endCombo->setMinimumWidth(inputColumnWidth);
+    VaporView::configureComboBoxPopup(endCombo, VaporView::isDarkThemeEnabled());
+    addFormRow(1, english ? QStringLiteral("Search End") : QStringLiteral("搜索终点"), endCombo);
     auto *modeCombo = new VaporView::SingleLevelPopupComboBox(formWidget);
     // This compact dialog cannot contain the full popup plus its shadow.
     // Keep the dropdown anchored to its editor and constrain it to the screen.
@@ -1258,9 +1262,11 @@ bool editSessionPeakSettings(
     const double minValue = minEdit->text().trimmed().toDouble(&minOk);
     const double maxValue = maxEdit->text().trimmed().toDouble(&maxOk);
     const int start = startSpin->value();
-    const int end = endSpin->value();
+    const QString endText = endCombo->currentText().trimmed();
+    bool endOk = endText == fullFrameText;
+    const int end = endOk ? 0 : endText.toInt(&endOk);
     const PeakFilterMode mode = static_cast<PeakFilterMode>(modeCombo->currentData().toInt());
-    if (end > 0 && end <= start)
+    if (!endOk || end < 0 || end > 10000000 || (end > 0 && end <= start))
     {
         QMessageBox::warning(parent, dialog.windowTitle(), english
             ? QStringLiteral("Search End must be greater than Search Start, or set to Full Frame.")
