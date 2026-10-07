@@ -1215,6 +1215,12 @@ void testFrameSliderReleaseRestoresDetails()
     auto *frameIndex = viewer.findChild<QLabel *>(QStringLiteral("sessionViewerFrameIndexLabel"));
     require(slider && spin && table && frameInfo && frameTime && frameIndex,
             "slider release controls, annotations and details are available");
+    for (const char *name : {"sessionViewerTemperaturePlot", "sessionViewerHumidityPlot", "sessionViewerPressurePlot"})
+    {
+        auto *plot = viewer.findChild<QWidget *>(name);
+        auto *title = plot->findChild<QLabel *>("fieldLabel");
+        require(title && title->y() == 11, "environment title shares the plot time axis header");
+    }
     require(slider->parentWidget()->layout()->contentsMargins().top() == 10,
             "frame selector has compact top padding");
     for (int delta : {120, -120})

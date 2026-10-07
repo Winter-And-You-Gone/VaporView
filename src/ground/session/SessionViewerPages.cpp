@@ -668,27 +668,42 @@ SessionWaveformWidget::SessionWaveformWidget(QWidget *parent)
 
     temperature_plot_title_ = new QLabel(this);
     temperature_plot_title_->setObjectName(QStringLiteral("fieldLabel"));
-    layout->addWidget(temperature_plot_title_);
     temperature_plot_ = createSingleSeriesTrendPlotWidget(
         appThemeColor(AppThemeColor::PlotSeriesTemperature, false),
         QStringLiteral("没有温度趋势数据"), QStringLiteral("°C"), this);
     temperature_plot_->setObjectName(QStringLiteral("sessionViewerTemperaturePlot"));
+    temperature_plot_title_->setParent(temperature_plot_);
+    temperature_plot_title_->setFont(font());
+    auto *temperatureHeader = new QVBoxLayout(temperature_plot_);
+    temperatureHeader->setContentsMargins(0, 11, 0, 0);
+    temperatureHeader->addWidget(temperature_plot_title_, 0, Qt::AlignLeft | Qt::AlignTop);
+    temperatureHeader->addStretch();
     layout->addWidget(temperature_plot_);
     humidity_plot_title_ = new QLabel(this);
     humidity_plot_title_->setObjectName(QStringLiteral("fieldLabel"));
-    layout->addWidget(humidity_plot_title_);
     humidity_plot_ = createSingleSeriesTrendPlotWidget(
         appThemeColor(AppThemeColor::PlotSeriesHumidity, false),
         QStringLiteral("没有湿度趋势数据"), QStringLiteral("%RH"), this);
     humidity_plot_->setObjectName(QStringLiteral("sessionViewerHumidityPlot"));
+    humidity_plot_title_->setParent(humidity_plot_);
+    humidity_plot_title_->setFont(font());
+    auto *humidityHeader = new QVBoxLayout(humidity_plot_);
+    humidityHeader->setContentsMargins(0, 11, 0, 0);
+    humidityHeader->addWidget(humidity_plot_title_, 0, Qt::AlignLeft | Qt::AlignTop);
+    humidityHeader->addStretch();
     layout->addWidget(humidity_plot_);
     pressure_plot_title_ = new QLabel(this);
     pressure_plot_title_->setObjectName(QStringLiteral("fieldLabel"));
-    layout->addWidget(pressure_plot_title_);
     pressure_plot_ = createSingleSeriesTrendPlotWidget(
         appThemeColor(AppThemeColor::PlotSeriesPressure, false),
         QStringLiteral("没有气压趋势数据"), QStringLiteral("hPa"), this);
     pressure_plot_->setObjectName(QStringLiteral("sessionViewerPressurePlot"));
+    pressure_plot_title_->setParent(pressure_plot_);
+    pressure_plot_title_->setFont(font());
+    auto *pressureHeader = new QVBoxLayout(pressure_plot_);
+    pressureHeader->setContentsMargins(0, 11, 0, 0);
+    pressureHeader->addWidget(pressure_plot_title_, 0, Qt::AlignLeft | Qt::AlignTop);
+    pressureHeader->addStretch();
     layout->addWidget(pressure_plot_);
     environment_info_label_ = new QLabel(this);
     environment_info_label_->setFont(numericFontFrom(environment_info_label_->font()));
@@ -726,7 +741,7 @@ void SessionWaveformWidget::setEnglish(bool english)
     frame_number_suffix_->setText(QStringLiteral("帧"));
     frame_number_suffix_->setVisible(!english);
     waveform_plot_title_->setText(english ? QStringLiteral("Current Frame Waveform") : QStringLiteral("当前帧波形"));
-    waveform_peak_plot_title_->setText(english ? QStringLiteral("Peak Value of Each Frame") : QStringLiteral("每帧峰值"));
+    waveform_peak_plot_title_->setText(english ? QStringLiteral("Peak Trend") : QStringLiteral("峰值趋势"));
     waveform_peak_plot_->setEnglish(english);
     temperature_plot_title_->setText(english ? QStringLiteral("Temperature  °C") : QStringLiteral("温度  ℃"));
     humidity_plot_title_->setText(english ? QStringLiteral("Humidity  %RH") : QStringLiteral("湿度  %RH"));
