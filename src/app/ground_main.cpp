@@ -663,6 +663,7 @@ void startRemoteDeviceE2e(QApplication& app, MainWindow& window, const QString& 
 int runApplication(int argc, char *argv[])
 {
     QApplication app(argc, argv);
+    VaporView::installButtonFocusStyle();
     configureSettingsDirectoryFromEnvironment();
     VaporView::writeLifecycleBreadcrumb("qapplication_constructed");
     QObject::connect(&app, &QCoreApplication::aboutToQuit, &app, []() {

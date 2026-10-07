@@ -125,6 +125,10 @@ target_include_directories(single_level_popup_menu_test PRIVATE
 )
 target_link_libraries(single_level_popup_menu_test PRIVATE vaporview_app_theme)
 add_test(NAME single_level_popup_menu_test COMMAND single_level_popup_menu_test)
+add_executable(button_focus_style_test button_focus_style_test.cpp)
+target_link_libraries(button_focus_style_test PRIVATE vaporview_app_theme)
+add_test(NAME button_focus_style_test COMMAND button_focus_style_test)
+set_tests_properties(button_focus_style_test PROPERTIES TIMEOUT 30 LABELS "fast;ui;accessibility" RUN_SERIAL TRUE)
 set_tests_properties(ui_log_model_test PROPERTIES
     TIMEOUT 30
     LABELS "fast;unit;logging;ui"

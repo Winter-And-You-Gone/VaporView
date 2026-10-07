@@ -10,6 +10,9 @@ class QComboBox;
 namespace VaporView
 {
 
+// Suppress native dotted button focus after pointer input, preserving keyboard focus.
+void installButtonFocusStyle();
+
 enum class AppThemeColor
 {
     Window,

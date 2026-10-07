@@ -4,6 +4,7 @@
 
 void MainWindow::loadModernStyleSheet()
 {
+    VaporView::installButtonFocusStyle();
     if (!qApp->property("spinArrowHoverFilterInstalled").toBool())
     {
         installSpinBoxArrowHoverFilter(qApp);

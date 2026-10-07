@@ -1,10 +1,15 @@
 #include "shared/theme/AppTheme.h"
 
 #include <QAbstractItemView>
+#include <QAbstractButton>
 #include <QApplication>
 #include <QComboBox>
 #include <QEvent>
 #include <QFrame>
+#include <QFocusEvent>
+#include <QPainter>
+#include <QProxyStyle>
+#include <QStyleOption>
 #include <QPainterPath>
 #include <QRegion>
 #include <QTimer>
@@ -17,6 +22,59 @@ namespace VaporView
 {
 namespace
 {
+
+constexpr const char *kKeyboardButtonFocus = "vaporViewKeyboardButtonFocus";
+
+class ButtonFocusStyle final : public QProxyStyle
+{
+public:
+    void drawPrimitive(PrimitiveElement element, const QStyleOption *option,
+                       QPainter *painter, const QWidget *widget = nullptr) const override
+    {
+        if (element == PE_FrameFocusRect && qobject_cast<const QAbstractButton *>(widget))
+        {
+            if (widget->property(kKeyboardButtonFocus).toBool())
+                drawKeyboardFocus(option, painter);
+            return;
+        }
+        QProxyStyle::drawPrimitive(element, option, painter, widget);
+    }
+
+protected:
+    bool eventFilter(QObject *object, QEvent *event) override
+    {
+        if (auto *button = qobject_cast<QAbstractButton *>(object))
+        {
+            if (event->type() == QEvent::MouseButtonPress)
+            {
+                button->setProperty(kKeyboardButtonFocus, false);
+                button->update();
+            }
+            else if (event->type() == QEvent::FocusIn)
+            {
+                const auto reason = static_cast<QFocusEvent *>(event)->reason();
+                // Popup/activation focus restoration must retain the input mode
+                // that opened the menu or dialog, not create a mouse focus ring.
+                if (reason != Qt::PopupFocusReason && reason != Qt::ActiveWindowFocusReason)
+                    button->setProperty(kKeyboardButtonFocus,
+                        reason == Qt::TabFocusReason || reason == Qt::BacktabFocusReason ||
+                        reason == Qt::ShortcutFocusReason);
+            }
+        }
+        return QProxyStyle::eventFilter(object, event);
+    }
+
+private:
+    static void drawKeyboardFocus(const QStyleOption *option, QPainter *painter)
+    {
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing);
+        painter->setPen(QPen(option->palette.color(QPalette::WindowText), 1));
+        painter->setBrush(Qt::NoBrush);
+        painter->drawRoundedRect(QRectF(option->rect).adjusted(0.5, 0.5, -0.5, -0.5), 3, 3);
+        painter->restore();
+    }
+};
 
 constexpr int kComboPopupCornerRadius = 10;
 constexpr int kComboPopupAnchorGap = 0;
@@ -780,6 +838,16 @@ bool isDarkThemePalette(const QPalette& palette)
 {
     return palette.color(QPalette::Window).lightness() < 128 ||
            palette.color(QPalette::Base).lightness() < 128;
+}
+
+void installButtonFocusStyle()
+{
+    if (!qApp || qApp->property("vaporViewButtonFocusStyleInstalled").toBool())
+        return;
+    auto *style = new ButtonFocusStyle;
+    QApplication::setStyle(style);
+    qApp->installEventFilter(style);
+    qApp->setProperty("vaporViewButtonFocusStyleInstalled", true);
 }
 
 bool isDarkThemeEnabled()

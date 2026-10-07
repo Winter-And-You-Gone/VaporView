@@ -2180,6 +2180,7 @@ int main(int argc, char **argv)
     QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, settingsDir.path());
 
     QApplication app(argc, argv);
+    VaporView::installButtonFocusStyle();
     app.setOrganizationName(QStringLiteral("VaporViewSessionViewerThemeTest"));
     app.setApplicationName(QStringLiteral("session_viewer_theme_test"));
     app.setProperty(VaporView::kAppDarkThemeProperty, false);
