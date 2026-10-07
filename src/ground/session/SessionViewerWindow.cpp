@@ -628,16 +628,25 @@ void SessionViewerWindow::updateNavigation(int sidebarWidth)
             button->style()->unpolish(button);
             button->style()->polish(button);
         }
-        const QColor color = button->isChecked() ? QColor(Qt::white) : palette().color(QPalette::WindowText);
         QFile svg(QCoreApplication::applicationDirPath() + QStringLiteral("/resources/lucide/%1.svg").arg(icons[i]));
         if (svg.open(QIODevice::ReadOnly))
         {
-            QPixmap pixmap = QIcon(svg.fileName()).pixmap(32, 32);
-            QPainter painter(&pixmap);
-            painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
-            painter.fillRect(pixmap.rect(), color);
-            painter.end();
-            button->setIcon(QIcon(pixmap));
+            QIcon icon;
+            const QPixmap source = QIcon(svg.fileName()).pixmap(32, 32);
+            // The exclusive button group changes state before page loading can
+            // process events. Let Qt select the matching icon immediately.
+            for (QIcon::State state : {QIcon::Off, QIcon::On})
+            {
+                QPixmap pixmap = source;
+                QPainter painter(&pixmap);
+                painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
+                painter.fillRect(pixmap.rect(), state == QIcon::On
+                    ? QColor(Qt::white) : palette().color(QPalette::WindowText));
+                painter.end();
+                for (QIcon::Mode mode : {QIcon::Normal, QIcon::Active, QIcon::Selected})
+                    icon.addPixmap(pixmap, mode, state);
+            }
+            button->setIcon(icon);
             button->setIconSize(QSize(20, 20));
         }
     }

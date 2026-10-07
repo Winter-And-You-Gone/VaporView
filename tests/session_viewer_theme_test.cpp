@@ -2395,6 +2395,30 @@ void testSessionWorkspaceNavigation()
     require(titleBar && controls && titleBar->isAncestorOf(controls), "session actions live in the shared title bar");
     require(controls->findChildren<QPushButton *>().size() == 3,
             "title bar contains only open, reload, and clear actions");
+    int deselectedIconsChecked = 0;
+    for (auto *button : viewer.findChildren<QPushButton *>("appSidebarButton"))
+        QObject::connect(button, &QPushButton::toggled, &viewer, [&, button](bool checked) {
+            if (checked)
+                return;
+            // Inspect during the state change, before the clicked handler loads a page.
+            for (QIcon::Mode mode : {QIcon::Normal, QIcon::Active, QIcon::Selected})
+            {
+                const QImage image = button->icon().pixmap(QSize(20, 20), mode, QIcon::Off).toImage();
+                bool foundInk = false;
+                for (int y = 0; y < image.height(); ++y)
+                    for (int x = 0; x < image.width(); ++x)
+                    {
+                        const QColor pixel = image.pixelColor(x, y);
+                        if (pixel.alpha() != 255)
+                            continue;
+                        foundInk = true;
+                        require(pixel.rgb() == viewer.palette().color(QPalette::WindowText).rgb(),
+                                "deselected sidebar icon immediately uses foreground color");
+                    }
+                require(foundInk, "deselected sidebar icon retains visible strokes");
+            }
+            ++deselectedIconsChecked;
+        });
     for (int i = 0; i < 4; ++i)
     {
         QPushButton *nav = nullptr;
@@ -2406,6 +2430,7 @@ void testSessionWorkspaceNavigation()
         require(stack->currentIndex() == i && nav->isChecked(), "sidebar selects its page");
         require(controls->isVisible(), "session title controls remain visible on every page");
     }
+    require(deselectedIconsChecked == 3, "each previous sidebar icon is checked during navigation");
     viewer.setCurrentPage(Page::Data);
     auto *pathEdit = controls->findChild<QLineEdit *>("sessionViewerSessionPath");
     auto *reload = controls->findChild<QPushButton *>("sessionViewerReloadButton");
