@@ -1,4 +1,5 @@
 #include "shared/theme/AppTheme.h"
+#include "shared/theme/SingleLevelPopupMenu.h"
 #include "RawDataParserWindow.h"
 #include "BoundedLruCache.h"
 #include "ground/widgets/CustomTitleBar.h"
@@ -8,6 +9,8 @@
 #include "TcpWaveEncoding.h"
 
 #include <QAbstractTableModel>
+#include <QAction>
+#include <QWidgetAction>
 #include <QApplication>
 #include <QByteArray>
 #include <QCheckBox>
@@ -878,11 +881,13 @@ struct RawDataParserWindow::Impl
     QLineEdit *search_edit = nullptr;
     QCheckBox *abnormal_only = nullptr;
     QPushButton *reload_btn = nullptr;
-    QPushButton *export_csv_btn = nullptr;
-    QPushButton *export_json_btn = nullptr;
-    QPushButton *export_bin_btn = nullptr;
-    QPushButton *export_decoded_csv_btn = nullptr;
-    QPushButton *export_decoded_json_btn = nullptr;
+    QPushButton *export_btn = nullptr;
+    VaporView::SingleLevelPopupMenu *export_menu = nullptr;
+    QAction *export_csv_action = nullptr;
+    QAction *export_json_action = nullptr;
+    QAction *export_bin_action = nullptr;
+    QAction *export_decoded_csv_action = nullptr;
+    QAction *export_decoded_json_action = nullptr;
     QTableView *record_table = nullptr;
     RawRecordModel *record_model = nullptr;
     QTreeWidget *detail_tree = nullptr;
@@ -1024,11 +1029,22 @@ void RawDataParserWindow::Impl::setupUi()
     search_edit = new QLineEdit(owner);
     abnormal_only = new QCheckBox(owner);
     reload_btn = new QPushButton(owner);
-    export_csv_btn = new QPushButton(owner);
-    export_json_btn = new QPushButton(owner);
-    export_bin_btn = new QPushButton(owner);
-    export_decoded_csv_btn = new QPushButton(owner);
-    export_decoded_json_btn = new QPushButton(owner);
+    export_btn = new QPushButton(owner);
+    export_btn->setObjectName(QStringLiteral("rawDataExportButton"));
+    export_menu = new VaporView::SingleLevelPopupMenu(owner);
+    export_menu->setObjectName(QStringLiteral("rawDataExportMenu"));
+    auto addExportAction = [this]() -> QAction * {
+        auto *row = new VaporView::SingleLevelPopupMenuRow(export_menu);
+        row->setCheckSlotWidth(0);
+        row->setRowSpacing(0);
+        row->setCloseOnClick(true);
+        return export_menu->addRow(row);
+    };
+    export_csv_action = addExportAction();
+    export_json_action = addExportAction();
+    export_bin_action = addExportAction();
+    export_decoded_csv_action = addExportAction();
+    export_decoded_json_action = addExportAction();
 
     const int fieldWidth = embedded ? 140 : 170;
     device_combo->setMinimumWidth(fieldWidth);
@@ -1087,9 +1103,7 @@ void RawDataParserWindow::Impl::setupUi()
     filterRow2->addWidget(search_edit, 1);
     if (!embedded)
     {
-        filterRow2->addWidget(export_csv_btn, 0);
-        filterRow2->addWidget(export_json_btn, 0);
-        filterRow2->addWidget(export_bin_btn, 0);
+        filterRow2->addWidget(export_btn, 0);
     }
     filterLayout->addLayout(filterRow2);
 
@@ -1099,19 +1113,10 @@ void RawDataParserWindow::Impl::setupUi()
         actions->addWidget(abnormal_only);
         actions->addWidget(reload_btn);
         actions->addStretch();
-        actions->addWidget(export_csv_btn);
-        actions->addWidget(export_json_btn);
-        actions->addWidget(export_bin_btn);
+        actions->addWidget(export_btn);
         filterLayout->addLayout(actions);
     }
 
-    auto *filterRow3 = new QHBoxLayout();
-    filterRow3->setContentsMargins(0, 0, 0, 0);
-    filterRow3->setSpacing(8);
-    filterRow3->addStretch(1);
-    filterRow3->addWidget(export_decoded_csv_btn, 0);
-    filterRow3->addWidget(export_decoded_json_btn, 0);
-    filterLayout->addLayout(filterRow3);
     mainLayout->addWidget(filterGroup);
 
     scan_progress_panel = new QWidget(owner);
@@ -1243,11 +1248,14 @@ void RawDataParserWindow::Impl::setupUi()
         }
         highlightHexRange(current->data(0, Qt::UserRole).toInt(), current->data(0, Qt::UserRole + 1).toInt());
     });
-    QObject::connect(export_csv_btn, &QPushButton::clicked, owner, [this]() { exportFilteredCsv(); });
-    QObject::connect(export_json_btn, &QPushButton::clicked, owner, [this]() { exportSelectedJson(); });
-    QObject::connect(export_bin_btn, &QPushButton::clicked, owner, [this]() { exportSelectedPayload(); });
-    QObject::connect(export_decoded_csv_btn, &QPushButton::clicked, owner, [this]() { exportDecodedCsv(); });
-    QObject::connect(export_decoded_json_btn, &QPushButton::clicked, owner, [this]() { exportDecodedJson(); });
+    QObject::connect(export_btn, &QPushButton::clicked, owner, [this]() {
+        export_menu->popupFrom(export_btn, VaporView::SingleLevelPopupAnchor::Right);
+    });
+    QObject::connect(export_csv_action, &QAction::triggered, owner, [this]() { exportFilteredCsv(); });
+    QObject::connect(export_json_action, &QAction::triggered, owner, [this]() { exportSelectedJson(); });
+    QObject::connect(export_bin_action, &QAction::triggered, owner, [this]() { exportSelectedPayload(); });
+    QObject::connect(export_decoded_csv_action, &QAction::triggered, owner, [this]() { exportDecodedCsv(); });
+    QObject::connect(export_decoded_json_action, &QAction::triggered, owner, [this]() { exportDecodedJson(); });
 }
 
 void RawDataParserWindow::Impl::shutdown()
@@ -1280,11 +1288,12 @@ void RawDataParserWindow::Impl::setEnglish(bool value)
     english = value;
     owner->setWindowTitle(english ? QStringLiteral("Raw Data Parser") : QStringLiteral("原始数据解析器"));
     reload_btn->setText(english ? QStringLiteral("Reload") : QStringLiteral("重新加载"));
-    export_csv_btn->setText(english ? QStringLiteral("Export List CSV") : QStringLiteral("导出列表CSV"));
-    export_json_btn->setText(english ? QStringLiteral("Export Selected JSON") : QStringLiteral("导出选中JSON"));
-    export_bin_btn->setText(english ? QStringLiteral("Export Selected BIN") : QStringLiteral("导出选中BIN"));
-    export_decoded_csv_btn->setText(english ? QStringLiteral("Export Decoded CSV") : QStringLiteral("导出解析CSV"));
-    export_decoded_json_btn->setText(english ? QStringLiteral("Export Decoded JSON") : QStringLiteral("导出解析JSON"));
+    export_btn->setText(english ? QStringLiteral("Export ▾") : QStringLiteral("导出 ▾"));
+    export_csv_action->setText(english ? QStringLiteral("Export List CSV") : QStringLiteral("导出列表CSV"));
+    export_json_action->setText(english ? QStringLiteral("Export Selected JSON") : QStringLiteral("导出选中JSON"));
+    export_bin_action->setText(english ? QStringLiteral("Export Selected BIN") : QStringLiteral("导出选中BIN"));
+    export_decoded_csv_action->setText(english ? QStringLiteral("Export Decoded CSV") : QStringLiteral("导出解析CSV"));
+    export_decoded_json_action->setText(english ? QStringLiteral("Export Decoded JSON") : QStringLiteral("导出解析JSON"));
     abnormal_only->setText(english ? QStringLiteral("Issues only") : QStringLiteral("只看异常"));
     type_filter->setPlaceholderText(english ? QStringLiteral("type, e.g. 0x40") : QStringLiteral("类型，如 0x40"));
     time_from->setPlaceholderText(english ? QStringLiteral("from us") : QStringLiteral("起始us"));
@@ -1471,11 +1480,7 @@ void RawDataParserWindow::Impl::setScanControlsEnabled(bool enabled)
              static_cast<QWidget *>(search_edit),
              static_cast<QWidget *>(abnormal_only),
              static_cast<QWidget *>(reload_btn),
-             static_cast<QWidget *>(export_csv_btn),
-             static_cast<QWidget *>(export_json_btn),
-             static_cast<QWidget *>(export_bin_btn),
-             static_cast<QWidget *>(export_decoded_csv_btn),
-             static_cast<QWidget *>(export_decoded_json_btn),
+             static_cast<QWidget *>(export_btn),
          })
     {
         if (widget)

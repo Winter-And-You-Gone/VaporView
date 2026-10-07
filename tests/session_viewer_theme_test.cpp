@@ -1,4 +1,5 @@
 #include "shared/theme/AppTheme.h"
+#include "shared/config/SettingsWriteBarrier.h"
 #include "ground/wave/RawDataParserWindow.h"
 #include "ground/session/SessionViewerWindow.h"
 #include "ground/session/SessionViewerWidgets.h"
@@ -35,6 +36,7 @@
 #include <QMargins>
 #include <QMetaObject>
 #include <QMouseEvent>
+#include <QMessageBox>
 #include <QPalette>
 #include <QPixmap>
 #include <QProgressBar>
@@ -55,6 +57,7 @@
 #include <QToolButton>
 #include <QTreeWidget>
 #include <QWidget>
+#include <QVBoxLayout>
 #include <QWheelEvent>
 #include <QtEndian>
 #include <algorithm>
@@ -444,6 +447,70 @@ void writeTrajectorySessionWithRawTcpPeaks(const QString& sessionPath)
     sensors.close();
 
     writeMinimalRawTcpWaveFile(dir.filePath(QStringLiteral("raw/tcp_wave.dat")), timestampsUs);
+}
+
+void testRawDataExportMenu()
+{
+    const bool writesSuspended = VaporView::settingsWritesSuspended();
+    VaporView::setSettingsWritesSuspended(true);
+    for (bool dark : {false, true})
+    {
+        qApp->setProperty(VaporView::kAppDarkThemeProperty, dark);
+        qApp->setPalette(VaporView::appThemePalette(dark));
+        for (bool embedded : {false, true})
+        {
+            QWidget host;
+            RawDataParserWindow parser(embedded ? &host : nullptr, embedded);
+            QWidget *window = embedded ? &host : &parser;
+            if (embedded)
+            {
+                auto *layout = new QVBoxLayout(&host);
+                layout->addWidget(&parser);
+                host.resize(1280, 800);
+            }
+            window->show();
+            window->raise();
+            window->activateWindow();
+            require(waitForWindowExposed(window), "export menu parser exposed");
+            auto *button = parser.findChild<QPushButton *>(QStringLiteral("rawDataExportButton"));
+            auto *menu = parser.findChild<VaporView::SingleLevelPopupMenu *>(QStringLiteral("rawDataExportMenu"));
+            require(button && menu && menu->actions().size() == 5, "one export button provides five actions");
+            for (bool english : {false, true})
+            {
+                parser.setEnglish(english);
+                button->click();
+                processEventsFor(50);
+                require(menu->isVisible(), "export button opens menu");
+                const QStringList expected = english
+                    ? QStringList{"Export List CSV", "Export Selected JSON", "Export Selected BIN", "Export Decoded CSV", "Export Decoded JSON"}
+                    : QStringList{QStringLiteral("导出列表CSV"), QStringLiteral("导出选中JSON"), QStringLiteral("导出选中BIN"), QStringLiteral("导出解析CSV"), QStringLiteral("导出解析JSON")};
+                for (int index = 0; index < 5; ++index)
+                {
+                    auto *row = menu->rows().at(index);
+                    require(row->text() == expected.at(index) && row->isVisible(), "all export choices are visible and translated");
+                }
+                menu->hide();
+            }
+            for (auto *row : menu->rows())
+            {
+                button->click();
+                bool handled = false;
+                QTimer::singleShot(0, &parser, [&] {
+                    auto *message = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+                    require(message != nullptr && message->text().contains(QStringLiteral("Export simulated")),
+                            "export menu action reaches export handler");
+                    handled = true;
+                    message->accept();
+                });
+                row->click();
+                require(handled && !menu->isVisible(), "export action dismisses menu before opening dialog");
+            }
+            window->close();
+        }
+    }
+    VaporView::setSettingsWritesSuspended(writesSuspended);
+    qApp->setProperty(VaporView::kAppDarkThemeProperty, false);
+    qApp->setPalette(VaporView::appThemePalette(false));
 }
 
 void testRawDataScanProgressVisible()
@@ -2168,6 +2235,7 @@ int main(int argc, char **argv)
 
     if (runsGroup(QStringLiteral("theme")))
     {
+        testRawDataExportMenu();
         app.setProperty(VaporView::kAppDarkThemeProperty, false);
         app.setPalette(VaporView::appThemePalette(false));
         {
