@@ -2365,6 +2365,23 @@ void testSessionWorkspaceNavigation()
         require(controls->isVisible(), "session title controls remain visible on every page");
     }
     viewer.setCurrentPage(Page::Data);
+    auto *pathEdit = controls->findChild<QLineEdit *>("sessionViewerSessionPath");
+    auto *reload = controls->findChild<QPushButton *>("sessionViewerReloadButton");
+    require(pathEdit && !pathEdit->isReadOnly() && reload, "session path can be edited");
+    require(controls->findChild<QFrame *>("titleBarSeparator"), "session actions end with title bar separator");
+    const QString editedPath = session.filePath(QStringLiteral("session.json"));
+    pathEdit->setText(editedPath);
+    QMetaObject::invokeMethod(pathEdit, "editingFinished");
+    QMetaObject::invokeMethod(pathEdit, "returnPressed");
+    processEventsFor(100);
+    require(pathEdit->text() == editedPath, "editing or Enter does not resolve or load the pending path");
+    reload->click();
+    require(processEventsUntil(5000, [&] { return pathEdit->text() == session.path() && reload->isEnabled(); }),
+            "explicit reload loads edited session.json and normalizes its path");
+    pathEdit->setText(session.filePath(QStringLiteral("does-not-exist")));
+    reload->click();
+    require(pathEdit->text().endsWith(QStringLiteral("does-not-exist")), "invalid edited path remains available to correct");
+    pathEdit->setText(session.path());
     require(viewer.openSessionPath(session.path()), "workspace loads shared session");
     viewer.setCurrentPage(Page::Trajectory);
     auto *trajectory = viewer.findChild<TrajectoryViewerDialog *>();

@@ -16,6 +16,7 @@
 #include <QEventLoop>
 #include <QFileInfo>
 #include <QFontMetrics>
+#include <QFrame>
 #include <QGridLayout>
 #include <QHash>
 #include <QHeaderView>
@@ -319,6 +320,19 @@ QString formatSessionMeasuredRateText(
 
 namespace
 {
+class SessionActionSeparator final : public QFrame
+{
+public:
+    using QFrame::QFrame;
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter painter(this);
+        painter.fillRect(rect(), VaporView::appThemeColor(VaporView::AppThemeColor::Border,
+                                                        VaporView::isDarkThemeEnabled()));
+    }
+};
+
 class SessionActionButton final : public QPushButton
 {
 public:
@@ -373,7 +387,7 @@ SessionOverviewWidget::SessionOverviewWidget(QWidget *parent)
     session_path_label_->setObjectName(QStringLiteral("sessionViewerPathLabel"));
     controlLayout->addWidget(session_path_label_);
     session_path_edit_->setObjectName(QStringLiteral("sessionViewerSessionPath"));
-    session_path_edit_->setReadOnly(true);
+    session_path_edit_->setReadOnly(false);
     session_path_edit_->setMinimumWidth(60);
     session_path_edit_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     controlLayout->addWidget(session_path_edit_, 1);
@@ -390,6 +404,10 @@ SessionOverviewWidget::SessionOverviewWidget(QWidget *parent)
     choose_session_btn_->setIcon(QIcon(QCoreApplication::applicationDirPath() + QStringLiteral("/resources/lucide/folder-open.svg")));
     reload_btn_->setIcon(QIcon(QCoreApplication::applicationDirPath() + QStringLiteral("/resources/lucide/refresh-cw.svg")));
     clear_view_btn_->setIcon(QIcon(QCoreApplication::applicationDirPath() + QStringLiteral("/resources/lucide/trash-2.svg")));
+    auto *separator = new SessionActionSeparator(session_controls_);
+    separator->setObjectName(QStringLiteral("titleBarSeparator"));
+    separator->setFixedSize(1, 28);
+    controlLayout->addWidget(separator, 0, Qt::AlignVCenter);
     layout->addWidget(session_controls_);
     status_label_->setObjectName(QStringLiteral("sessionViewerStatusLabel"));
     status_label_->setWordWrap(true);
@@ -466,6 +484,11 @@ void SessionOverviewWidget::setSessionPath(const QString& path)
     session_path_edit_->setToolTip(path);
 }
 
+QString SessionOverviewWidget::sessionPath() const
+{
+    return session_path_edit_->text().trimmed();
+}
+
 void SessionOverviewWidget::clearSessionPath()
 {
     session_path_edit_->clear();
@@ -495,6 +518,7 @@ void SessionOverviewWidget::focusStatus()
 void SessionOverviewWidget::setControlsEnabled(bool enabled)
 {
     controls_enabled_ = enabled;
+    session_path_edit_->setEnabled(enabled && session_changes_enabled_);
     choose_session_btn_->setEnabled(enabled && session_changes_enabled_);
     reload_btn_->setEnabled(enabled && session_changes_enabled_);
     clear_view_btn_->setEnabled(enabled && session_changes_enabled_);

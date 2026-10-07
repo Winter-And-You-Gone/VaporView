@@ -55,6 +55,7 @@ public:
 
     void setEnglish(bool english);
     void setSessionPath(const QString& path);
+    QString sessionPath() const;
     void clearSessionPath();
     void setStatusText(const QString& text);
     QString statusText() const;

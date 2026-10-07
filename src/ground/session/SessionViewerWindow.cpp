@@ -1075,20 +1075,13 @@ void SessionViewerWindow::onReloadClicked()
 {
     if (session_loading_ || ppkBusy())
         return;
-    if (session_directory_.isEmpty())
+    const QString requestedPath = overview_page_->sessionPath();
+    if (requestedPath.isEmpty())
     {
-        QSettings settings("VaporView", "SessionViewer");
-        const QString lastSessionDirectory = resolveSessionDirectory(settings.value("last_session_directory").toString());
-        if (lastSessionDirectory.isEmpty())
-        {
-            setStatusText(is_english_ ? "No session is currently loaded." : "当前没有已加载的会话。");
-            return;
-        }
-        session_directory_ = lastSessionDirectory;
-        overview_page_->setSessionPath(session_directory_);
+        setStatusText(is_english_ ? "Enter a session path before reloading." : "请先输入会话路径，再重新加载。");
+        return;
     }
-
-    loadSessionDirectory(session_directory_);
+    openSessionPath(requestedPath);
 }
 
 void SessionViewerWindow::onClearViewClicked()
