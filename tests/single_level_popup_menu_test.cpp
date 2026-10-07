@@ -275,5 +275,21 @@ int main(int argc, char **argv)
     require(deletedRow.isNull(),
             "destroyed QAction removes orphaned menu row safely");
 
+    QWidget compactHost;
+    compactHost.setGeometry(100, 100, 300, 100);
+    QWidget editor(&compactHost);
+    editor.setGeometry(140, 60, 140, 30);
+    compactHost.show();
+    VaporView::SingleLevelPopupMenu dropdown(&editor);
+    dropdown.setPanelPadding(12);
+    dropdown.setProperty("popupUseScreenBounds", true);
+    for (int i = 0; i < 4; ++i)
+        addActionRow(dropdown, QString::number(i), QStringLiteral("Filter method"));
+    dropdown.popupFrom(&editor);
+    pump();
+    const QPoint panelTopLeft = dropdown.pos() + QPoint(dropdown.property("shadowMargin").toInt(), dropdown.property("shadowMargin").toInt());
+    require(panelTopLeft == editor.mapToGlobal(QPoint(0, editor.height())),
+            "screen-bounded dropdown stays below editor even in compact host");
+    dropdown.hide();
     return 0;
 }

@@ -65,7 +65,8 @@ QRect popupAvailableGeometry(const QWidget *popup, QWidget *anchor)
                                                -kPopupBoundaryMargin)
         : QRect();
 
-    if (QWidget *hostWindow = popupHostWindow(popup, anchor))
+    if (QWidget *hostWindow = popup && popup->property("popupUseScreenBounds").toBool()
+            ? nullptr : popupHostWindow(popup, anchor))
     {
         const QRect hostAvailable(
             hostWindow->mapToGlobal(hostWindow->rect().topLeft()),

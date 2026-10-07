@@ -6,6 +6,7 @@
 #include "ground/widgets/RangeSelectionAxisWidget.h"
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/SingleLevelPopupComboBox.h"
+#include "shared/theme/SingleLevelPopupMenu.h"
 
 #include <QAbstractItemView>
 #include <QApplication>
@@ -1214,6 +1215,9 @@ bool editSessionPeakSettings(
     endSpin->setMinimumWidth(inputColumnWidth);
     addFormRow(1, english ? QStringLiteral("Search End") : QStringLiteral("搜索终点"), endSpin);
     auto *modeCombo = new VaporView::SingleLevelPopupComboBox(formWidget);
+    // This compact dialog cannot contain the full popup plus its shadow.
+    // Keep the dropdown anchored to its editor and constrain it to the screen.
+    modeCombo->popupMenu()->setProperty("popupUseScreenBounds", true);
     modeCombo->addItem(english ? QStringLiteral("Off") : QStringLiteral("关闭"), static_cast<int>(PeakFilterMode::None));
     modeCombo->addItem(english ? QStringLiteral("IQR Outlier Filter") : QStringLiteral("IQR 异常值过滤"), static_cast<int>(PeakFilterMode::IqrOutlier));
     modeCombo->addItem(english ? QStringLiteral("Keep Range") : QStringLiteral("保留区间"), static_cast<int>(PeakFilterMode::KeepRange));
