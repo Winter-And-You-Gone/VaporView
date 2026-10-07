@@ -5,6 +5,7 @@
 #include "ground/widgets/CustomTitleBar.h"
 #include "ground/widgets/RangeSelectionAxisWidget.h"
 #include "shared/theme/AppTheme.h"
+#include "shared/theme/SingleLevelPopupComboBox.h"
 
 #include <QAbstractItemView>
 #include <QApplication>
@@ -1212,14 +1213,13 @@ bool editSessionPeakSettings(
     endSpin->setValue(std::max(0, searchEndIndex));
     endSpin->setMinimumWidth(inputColumnWidth);
     addFormRow(1, english ? QStringLiteral("Search End") : QStringLiteral("搜索终点"), endSpin);
-    auto *modeCombo = new QComboBox(formWidget);
+    auto *modeCombo = new VaporView::SingleLevelPopupComboBox(formWidget);
     modeCombo->addItem(english ? QStringLiteral("Off") : QStringLiteral("关闭"), static_cast<int>(PeakFilterMode::None));
     modeCombo->addItem(english ? QStringLiteral("IQR Outlier Filter") : QStringLiteral("IQR 异常值过滤"), static_cast<int>(PeakFilterMode::IqrOutlier));
     modeCombo->addItem(english ? QStringLiteral("Keep Range") : QStringLiteral("保留区间"), static_cast<int>(PeakFilterMode::KeepRange));
     modeCombo->addItem(english ? QStringLiteral("Exclude Range") : QStringLiteral("排除区间"), static_cast<int>(PeakFilterMode::ExcludeRange));
     modeCombo->setCurrentIndex(std::max(0, modeCombo->findData(static_cast<int>(filter.mode))));
     modeCombo->setMinimumWidth(inputColumnWidth);
-    VaporView::configureComboBoxPopup(modeCombo, VaporView::isDarkThemeEnabled());
     addFormRow(2, english ? QStringLiteral("Method") : QStringLiteral("方式"), modeCombo);
     auto *minEdit = new QLineEdit(QString::number(filter.minValue, 'f', 6), formWidget);
     auto *maxEdit = new QLineEdit(QString::number(filter.maxValue, 'f', 6), formWidget);
