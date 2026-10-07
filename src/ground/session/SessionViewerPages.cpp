@@ -142,6 +142,11 @@ public:
 protected:
     bool event(QEvent *event) override
     {
+        if (event->type() == QEvent::Wheel)
+        {
+            event->ignore();
+            return false;
+        }
         const bool handled = QSlider::event(event);
         if (event->type() == QEvent::FontChange || event->type() == QEvent::StyleChange)
             updateGeometryStyle();
@@ -599,7 +604,7 @@ SessionWaveformWidget::SessionWaveformWidget(QWidget *parent)
 {
     setObjectName(QStringLiteral("sensorGroupBox"));
     auto *layout = new QVBoxLayout(this);
-    layout->setContentsMargins(10, 30, 10, 10);
+    layout->setContentsMargins(10, 10, 10, 10);
     layout->setSpacing(6);
     auto *frameLayout = new QGridLayout();
     frameLayout->setHorizontalSpacing(8);

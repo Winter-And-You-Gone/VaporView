@@ -1215,6 +1215,18 @@ void testFrameSliderReleaseRestoresDetails()
     auto *frameIndex = viewer.findChild<QLabel *>(QStringLiteral("sessionViewerFrameIndexLabel"));
     require(slider && spin && table && frameInfo && frameTime && frameIndex,
             "slider release controls, annotations and details are available");
+    require(slider->parentWidget()->layout()->contentsMargins().top() == 10,
+            "frame selector has compact top padding");
+    for (int delta : {120, -120})
+    {
+        QWheelEvent wheel(QPointF(slider->rect().center()),
+                          QPointF(slider->mapToGlobal(slider->rect().center())),
+                          QPoint(), QPoint(0, delta), Qt::NoButton, Qt::NoModifier,
+                          Qt::NoScrollPhase, false);
+        QApplication::sendEvent(slider, &wheel);
+        require(slider->value() == 1 && spin->value() == 1,
+                "wheel over frame slider does not change selected frame");
+    }
     const auto requireAnnotations = [&](int frame) {
         const quint64 timestampUs = 1782446035573000ULL + static_cast<quint64>(frame - 1) * 1000000ULL;
         const QDateTime time = QDateTime::fromMSecsSinceEpoch(timestampUs / 1000ULL, QTimeZone::UTC).toLocalTime();
