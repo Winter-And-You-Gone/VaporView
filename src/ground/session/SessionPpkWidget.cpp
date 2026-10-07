@@ -1,6 +1,10 @@
 #include "ground/session/SessionPpkWidget.h"
 #include "ppk/SessionNavigationSource.h"
 #include <QCheckBox>
+#include "shared/theme/AppTheme.h"
+#include <QPainter>
+#include <QPainterPath>
+#include <QStyleOptionButton>
 #include <QComboBox>
 #include <QDateTime>
 #include <QDir>
@@ -28,6 +32,43 @@ using namespace Ppk;
 namespace
 {
 constexpr std::array<int, 5> systemMasks{1, 4, 32, 8, 16};
+
+class PpkSystemCheckBox final : public QCheckBox
+{
+public:
+    PpkSystemCheckBox(const QString& text, QWidget *parent) : QCheckBox(text, parent)
+    {
+        setStyleSheet(QStringLiteral("QCheckBox::indicator, QCheckBox::indicator:checked, "
+            "QCheckBox::indicator:hover { background: transparent; border: none; image: none; }"));
+    }
+
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        QCheckBox::paintEvent(event);
+        QStyleOptionButton option;
+        initStyleOption(&option);
+        const QRect rect = style()->subElementRect(QStyle::SE_CheckBoxIndicator, &option, this);
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.translate(rect.topLeft());
+        painter.scale(rect.width() / 24.0, rect.height() / 24.0);
+        QColor color = appThemeColor(AppThemeColor::Primary, isDarkThemeEnabled());
+        if (!isEnabled())
+            color.setAlphaF(0.4);
+        painter.setPen(QPen(color, 2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRoundedRect(QRectF(3, 3, 18, 18), 2, 2);
+        if (isChecked())
+        {
+            QPainterPath check;
+            check.moveTo(7, 12);
+            check.lineTo(10, 15);
+            check.lineTo(17, 8);
+            painter.drawPath(check);
+        }
+    }
+};
 }
 QString ppkStatusText(const PpkStatus &status, bool hasSession, bool busy, bool english)
 {
@@ -144,7 +185,7 @@ SessionPpkWidget::SessionPpkWidget(QWidget *parent) : QWidget(parent)
     const std::array<const char *, 5> names{"GPS", "GLONASS", "BDS", "Galileo", "QZSS"};
     for (int i = 0; i < 5; ++i)
     {
-        systems_[i] = new QCheckBox(QString::fromLatin1(names[i]), this);
+        systems_[i] = new PpkSystemCheckBox(QString::fromLatin1(names[i]), this);
         systemLayout->addWidget(systems_[i]);
     }
     systemLayout->addStretch();
