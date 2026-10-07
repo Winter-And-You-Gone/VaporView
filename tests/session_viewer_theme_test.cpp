@@ -2032,6 +2032,22 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(!detailLabel->text().contains(QStringLiteral(" | ")),
             "trajectory detail no longer uses a dense pipe-delimited sentence");
 
+    auto *filterScroll = dialog.findChild<QScrollArea *>(QStringLiteral("trajectoryFilterScroll"));
+    require(filterScroll, "filter list has its own scroll area");
+    filterCurrentButton->click();
+    processEventsFor(50);
+    const int threeRowHeight = filterCard->height();
+    filterCurrentButton->click();
+    filterCurrentButton->click();
+    processEventsFor(100);
+    require(filterCard->height() == threeRowHeight, "filter card stops growing after three rows");
+    require(filterScroll->verticalScrollBar()->maximum() > 0, "additional filters scroll inside their card");
+    filterScroll->verticalScrollBar()->setValue(filterScroll->verticalScrollBar()->maximum());
+    const auto lastRows = visibleFilterRows();
+    require(filterScroll->viewport()->rect().contains(
+                lastRows.last()->mapTo(filterScroll->viewport(), lastRows.last()->rect().bottomLeft())),
+            "last filter and its remove action remain reachable by scrolling");
+
     dialog.close();
     processEventsFor(100);
 }

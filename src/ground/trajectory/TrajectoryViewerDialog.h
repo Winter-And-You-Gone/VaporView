@@ -17,6 +17,7 @@ class QSpinBox;
 class QToolButton;
 class QWidget;
 class QSlider;
+class QScrollArea;
 class QPushButton;
 class QVBoxLayout;
 
@@ -93,6 +94,7 @@ private:
     QLabel *filter_title_label_;
     QLabel *filter_empty_label_;
     QWidget *filter_list_widget_;
+    QScrollArea *filter_scroll_ = nullptr;
     QVBoxLayout *filter_list_layout_;
     QVector<QLabel*> filter_row_labels_;
     QFrame *peak_card_;

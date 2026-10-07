@@ -3070,7 +3070,16 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent, bool embedded)
     filter_list_layout_ = new QVBoxLayout(filter_list_widget_);
     filter_list_layout_->setContentsMargins(0, 0, 0, 0);
     filter_list_layout_->setSpacing(6);
-    filterCardLayout->addWidget(filter_list_widget_);
+    filter_list_layout_->setAlignment(Qt::AlignTop);
+    filter_scroll_ = new QScrollArea(filter_card_);
+    filter_scroll_->setObjectName(QStringLiteral("trajectoryFilterScroll"));
+    filter_scroll_->setFrameShape(QFrame::NoFrame);
+    filter_scroll_->setWidgetResizable(true);
+    filter_scroll_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    filter_scroll_->setWidget(filter_list_widget_);
+    filter_list_widget_->setAutoFillBackground(false);
+    filter_scroll_->viewport()->setAutoFillBackground(false);
+    filterCardLayout->addWidget(filter_scroll_);
     sidebarLayout->addWidget(filter_card_);
 
     auto *actionLayout = new QHBoxLayout();
@@ -4171,7 +4180,14 @@ void TrajectoryViewerDialog::updateFilterSummary()
         rowLabel->setAccessibleName(removeTitle);
         rowLabel->setProperty("filterRowIndex", index);
     }
-    filter_list_widget_->setVisible(!trajectory_filters_.isEmpty());
+    int rowHeight = 0;
+    for (int index = 0; index < trajectory_filters_.size(); ++index)
+        rowHeight = std::max(rowHeight, filter_row_labels_.at(index)->sizeHint().height());
+    for (QLabel *row : std::as_const(filter_row_labels_))
+        row->setFixedHeight(rowHeight);
+    const int visibleRows = std::min(3, static_cast<int>(trajectory_filters_.size()));
+    filter_scroll_->setFixedHeight(visibleRows * rowHeight + std::max(0, visibleRows - 1) * filter_list_layout_->spacing());
+    filter_scroll_->setVisible(visibleRows > 0);
     if (!trajectory_filters_.isEmpty())
     {
         const int visiblePointCount = filterActive
