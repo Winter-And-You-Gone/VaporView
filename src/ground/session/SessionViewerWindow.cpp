@@ -509,10 +509,10 @@ void SessionViewerWindow::updatePageAvailability()
     {
         empty_pages_[i]->setVisible(!available[i]);
         empty_labels_[i]->setText(i == 0 && ppk_session_available_
-            ? (is_english_ ? QStringLiteral("No trajectory loaded. Load session data with valid position samples in Data View.")
-                           : QStringLiteral("尚无可用轨迹，请在数据查看页加载包含有效定位数据的会话。"))
-            : (is_english_ ? QStringLiteral("Choose or reload a session in Data View first.")
-                           : QStringLiteral("请先选择或重新加载会话。")));
+            ? (is_english_ ? QStringLiteral("No trajectory available. Use the title bar to load a session containing valid position data.")
+                           : QStringLiteral("尚无可用轨迹，请通过标题栏加载包含有效定位数据的会话。"))
+            : (is_english_ ? QStringLiteral("Use the title bar to open or reload a session.")
+                           : QStringLiteral("请通过标题栏打开或重新加载会话。")));
         empty_actions_[i]->setText(session_directory_.isEmpty()
             ? (is_english_ ? QStringLiteral("Open Data") : QStringLiteral("打开数据"))
             : (is_english_ ? QStringLiteral("Reload") : QStringLiteral("重新加载")));
