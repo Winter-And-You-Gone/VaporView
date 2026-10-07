@@ -1953,7 +1953,6 @@ void SessionViewerWindow::focusTrajectoryPoint(int trackPointIndex)
         highlightClosestSensorRow(focus.timestampUs, true);
     }
 
-    setCurrentPage(Page::Data);
     setStatusText(QString(is_english_
         ? "Focused trajectory point #%1 at CSV row %2."
         : "已定位轨迹点 #%1，对应 CSV 第 %2 行。")

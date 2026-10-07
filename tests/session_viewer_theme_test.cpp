@@ -2413,8 +2413,19 @@ void testSessionWorkspaceNavigation()
     viewer.setCurrentPage(Page::Trajectory);
     require(viewer.findChild<TrajectoryViewerDialog *>() == trajectory, "trajectory page is reused");
     require(peakStart->value() == 321, "page switching preserves unsubmitted trajectory settings");
-    trajectory->trackPointActivated(0);
-    require(viewer.currentPage() == Page::Data, "trajectory selection returns to linked data");
+    auto *linkedFrame = viewer.findChild<QSpinBox *>("sessionViewerFrameNumberSpin");
+    require(linkedFrame && linkedFrame->maximum() >= 3, "trajectory fixture has linked waveform frames");
+    // The fixture's later GPS points exceed the jump threshold; only point 0 is retained.
+    for (int frame : {3, 2})
+    {
+        linkedFrame->setValue(frame);
+        trajectory->trackPointActivated(0);
+        require(viewer.currentPage() == Page::Trajectory && trajectory->isVisible(),
+                "trajectory point navigation preserves the active map page");
+        require(linkedFrame->value() == 1, "trajectory selection still locates the matching waveform");
+    }
+    trajectory->trackPointActivated(-1);
+    require(viewer.currentPage() == Page::Trajectory, "invalid point selection does not navigate");
     viewer.setCurrentPage(Page::RawData);
     viewer.close();
     viewer.show();
