@@ -44,7 +44,6 @@
 #include <QSharedPointer>
 #include <QSignalBlocker>
 #include <QSizePolicy>
-#include <QBuffer>
 #include <QScrollBar>
 #include <QSplitter>
 #include <QTableView>
@@ -452,18 +451,11 @@ void scanRawFileIndex(const QString& filename,
                 std::memory_order_relaxed);
         }
     };
-    // Read-only mapping avoids a file seek/read for every small record header.
-    // Keep the same scanner (including all validation and cancellation checks).
+    // Read headers directly from mapped bytes; retain the device fallback.
     uchar *mapped = file.map(0, file.size());
-    QBuffer mappedFile;
-    if (mapped)
-    {
-        mappedFile.setData(QByteArray::fromRawData(reinterpret_cast<const char *>(mapped), file.size()));
-        mappedFile.open(QIODevice::ReadOnly);
-    }
-    const auto scanResult = VaporView::SessionRawDat::scan(mapped ? static_cast<QIODevice&>(mappedFile) : file, scanOptions);
-    mappedFile.close();
-    mappedFile.setData(QByteArray());
+    const auto scanResult = mapped
+        ? VaporView::SessionRawDat::scan(QByteArrayView(reinterpret_cast<const char *>(mapped), file.size()), scanOptions)
+        : VaporView::SessionRawDat::scan(file, scanOptions);
     if (mapped)
         file.unmap(mapped);
     if (scanResult.status == VaporView::SessionRawDat::RawReadStatus::Cancelled)

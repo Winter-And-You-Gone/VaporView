@@ -883,10 +883,8 @@ void testRawDataParserOpenIsNonBlocking()
     const auto fileIndex = VaporView::SessionRawDat::scan(indexFile);
     uchar *mapped = indexFile.map(0, indexFile.size());
     require(mapped != nullptr, "map index comparison file");
-    QBuffer mappedFile;
-    mappedFile.setData(QByteArray::fromRawData(reinterpret_cast<const char *>(mapped), indexFile.size()));
-    mappedFile.open(QIODevice::ReadOnly);
-    const auto mappedIndex = VaporView::SessionRawDat::scan(mappedFile);
+    const auto mappedIndex = VaporView::SessionRawDat::scan(
+        QByteArrayView(reinterpret_cast<const char *>(mapped), indexFile.size()));
     require(fileIndex.status == mappedIndex.status && fileIndex.error == mappedIndex.error &&
                 fileIndex.warning == mappedIndex.warning && fileIndex.records.size() == mappedIndex.records.size() &&
                 fileIndex.lastValidOffset == mappedIndex.lastValidOffset,
@@ -902,8 +900,6 @@ void testRawDataParserOpenIsNonBlocking()
                     a.waveformHarmonicOffset == b.waveformHarmonicOffset && a.waveformHarmonicSize == b.waveformHarmonicSize,
                 "mapped scan preserves every record field");
     }
-    mappedFile.close();
-    mappedFile.setData(QByteArray());
     indexFile.unmap(mapped);
 
     RawDataParserWindow parser;

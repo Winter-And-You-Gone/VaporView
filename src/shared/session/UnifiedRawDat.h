@@ -140,5 +140,7 @@ bool writeRecord(QIODevice& device,
                  QByteArrayView payload,
                  QString *error = nullptr);
 RawScanResult scan(QIODevice& device, const RawScanOptions& options = {});
+// Scans mapped/contiguous bytes without allocating a buffer for each record header.
+RawScanResult scan(QByteArrayView bytes, const RawScanOptions& options = {});
 
 }  // namespace VaporView::SessionRawDat

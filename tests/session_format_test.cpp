@@ -185,7 +185,26 @@ RawScanResult scanBytes(QByteArray bytes, quint16 expectedSourceId = kSourceWave
     require(buffer.open(QIODevice::ReadOnly), "raw DAT scan buffer opens");
     RawScanOptions options;
     options.expectedSourceId = expectedSourceId;
-    return scan(buffer, options);
+    const auto result = scan(buffer, options);
+    const auto direct = scan(QByteArrayView(bytes), options);
+    require(result.status == direct.status && result.error == direct.error &&
+                result.warning == direct.warning && result.lastValidOffset == direct.lastValidOffset &&
+                result.records.size() == direct.records.size(),
+            "direct scan preserves validation and recovery results");
+    for (qsizetype i = 0; i < result.records.size(); ++i)
+    {
+        const auto& a = result.records.at(i);
+        const auto& b = direct.records.at(i);
+        require(a.recordOffset == b.recordOffset && a.payloadOffset == b.payloadOffset &&
+                    a.header.hostTimestampUs == b.header.hostTimestampUs &&
+                    a.header.payloadSize == b.header.payloadSize && a.header.sourceId == b.header.sourceId &&
+                    a.header.recordType == b.header.recordType && a.header.flags == b.header.flags &&
+                    a.header.sequence == b.header.sequence &&
+                    a.waveformHarmonicOffset == b.waveformHarmonicOffset &&
+                    a.waveformHarmonicSize == b.waveformHarmonicSize,
+                "direct scan returns identical record indexes");
+    }
+    return result;
 }
 
 void testFormatConstantsAndGoldenBytes()
@@ -256,6 +275,28 @@ void testFormatConstantsAndGoldenBytes()
                 result.records.first().header.flags == 0x11223344u &&
                 result.records.first().payloadOffset == 56u,
             "golden raw DAT record header decodes");
+}
+
+void testDirectScanProgressAndCancellation()
+{
+    const auto bytes = makeRawFile(1100);
+    RawScanOptions options;
+    quint64 completed = 0;
+    options.progress = [&](quint64 current, quint64 total) {
+        require(current >= completed && current <= total && total == quint64(bytes.size()),
+                "direct scan progress is monotonic and bounded");
+        completed = current;
+    };
+    require(scan(QByteArrayView(bytes), options).records.size() == 1100 && completed == quint64(bytes.size()),
+            "direct scan reports final progress");
+    completed = 0;
+    options.isCancelled = [&] { return completed > 0; };
+    const auto cancelled = scan(QByteArrayView(bytes), options);
+    require(cancelled.status == RawReadStatus::Cancelled && cancelled.records.size() == 512,
+            "direct scan honors cancellation during scanning");
+    scanBytes(QByteArray());
+    for (int length = 1; length < int(kFileHeaderSize); ++length)
+        scanBytes(bytes.left(length));
 }
 
 void testVersionValidation()
@@ -742,6 +783,7 @@ int main(int argc, char *argv[])
 {
     QCoreApplication app(argc, argv);
     testFormatConstantsAndGoldenBytes();
+    testDirectScanProgressAndCancellation();
     testVersionValidation();
     testTcpWavePayloadCodec();
     testTruncatedTailRecovery();

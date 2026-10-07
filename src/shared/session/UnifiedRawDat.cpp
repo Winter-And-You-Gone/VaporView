@@ -297,7 +297,38 @@ bool writeRecord(QIODevice& device,
     return writeBytes(device, bytes, error) && writeBytes(device, payload, error);
 }
 
-RawScanResult scan(QIODevice& device, const RawScanOptions& options)
+namespace
+{
+class MemoryReader
+{
+public:
+    explicit MemoryReader(QByteArrayView bytes) : bytes_(bytes) {}
+    bool isReadable() const { return true; }
+    bool isSequential() const { return false; }
+    qint64 size() const { return bytes_.size(); }
+    qint64 pos() const { return offset_; }
+    QString errorString() const { return QStringLiteral("Read outside raw DAT memory view"); }
+    bool seek(qint64 offset)
+    {
+        if (offset < 0 || offset > size())
+            return false;
+        offset_ = offset;
+        return true;
+    }
+    QByteArrayView read(qint64 count)
+    {
+        const auto bytes = bytes_.sliced(offset_, std::min(count, size() - offset_));
+        offset_ += bytes.size();
+        return bytes;
+    }
+private:
+    QByteArrayView bytes_;
+    qint64 offset_ = 0;
+};
+
+// Both readers use exactly the same validation, recovery and cancellation logic.
+template <typename Reader>
+RawScanResult scanReader(Reader& device, const RawScanOptions& options)
 {
     if (!device.isReadable() || device.isSequential())
     {
@@ -318,7 +349,7 @@ RawScanResult scan(QIODevice& device, const RawScanOptions& options)
                             QStringLiteral("Failed to seek raw DAT file header: %1").arg(device.errorString()));
     }
 
-    const QByteArray magic = device.read(static_cast<qint64>(kFileMagic.size()));
+    const auto magic = device.read(static_cast<qint64>(kFileMagic.size()));
     if (magic.size() != static_cast<qsizetype>(kFileMagic.size()))
     {
         return failedResult(RawReadStatus::IoError,
@@ -342,7 +373,7 @@ RawScanResult scan(QIODevice& device, const RawScanOptions& options)
                             QStringLiteral("Failed to seek raw DAT file header: %1").arg(device.errorString()));
     }
 
-    const QByteArray headerBytes = device.read(kFileHeaderSize);
+    const auto headerBytes = device.read(kFileHeaderSize);
     if (headerBytes.size() != static_cast<qsizetype>(kFileHeaderSize))
     {
         return failedResult(RawReadStatus::IoError,
@@ -431,7 +462,7 @@ RawScanResult scan(QIODevice& device, const RawScanOptions& options)
             return result;
         }
 
-        const QByteArray recordBytes = device.read(kRecordHeaderSize);
+        const auto recordBytes = device.read(kRecordHeaderSize);
         if (recordBytes.size() != static_cast<qsizetype>(kRecordHeaderSize))
         {
             result.status = RawReadStatus::IoError;
@@ -530,7 +561,7 @@ RawScanResult scan(QIODevice& device, const RawScanOptions& options)
                                    .arg(device.errorString());
                 return result;
             }
-            const QByteArray prefix = device.read(std::min(header.payloadSize, kWaveformPayloadPrefixSize));
+            const auto prefix = device.read(std::min(header.payloadSize, kWaveformPayloadPrefixSize));
             QString layoutError;
             if (!parseWaveformPayloadLayout(prefix, header.payloadSize, &layout, &layoutError))
             {
@@ -584,6 +615,19 @@ RawScanResult scan(QIODevice& device, const RawScanOptions& options)
         options.progress(result.lastValidOffset, static_cast<quint64>(fileSize));
     }
     return result;
+}
+
+}  // namespace
+
+RawScanResult scan(QIODevice& device, const RawScanOptions& options)
+{
+    return scanReader(device, options);
+}
+
+RawScanResult scan(QByteArrayView bytes, const RawScanOptions& options)
+{
+    MemoryReader reader(bytes);
+    return scanReader(reader, options);
 }
 
 }  // namespace VaporView::SessionRawDat
