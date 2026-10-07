@@ -298,6 +298,21 @@ int main(int argc, char **argv)
                 themeStyle.replace("url(lucide/", "url(" + QStringLiteral(VAPORVIEW_SOURCE_DIR "/resources/lucide/"));
             }
             app.setStyleSheet(themeStyle);
+            auto *hoverButton = controls->findChild<QPushButton *>("sessionViewerReloadButton");
+            require(hoverButton != nullptr, "reload icon exists");
+            const bool actionEnabled = hoverButton->isEnabled();
+            hoverButton->setEnabled(true);
+            hoverButton->setAttribute(Qt::WA_UnderMouse, false);
+            const auto idleIcon = hoverButton->grab().toImage();
+            hoverButton->setAttribute(Qt::WA_UnderMouse, true);
+            const auto hoveredIcon = hoverButton->grab().toImage();
+            require(idleIcon != hoveredIcon, "title action hover changes its background");
+            hoverButton->setAttribute(Qt::WA_UnderMouse, false);
+            require(hoverButton->grab().toImage() == idleIcon, "title action leaving restores transparent background");
+            hoverButton->setDown(true);
+            require(hoverButton->grab().toImage() != idleIcon, "pressed title action retains feedback");
+            hoverButton->setDown(false);
+            hoverButton->setEnabled(actionEnabled);
             for (bool english : {false, true})
             {
                 viewer.setEnglish(english);

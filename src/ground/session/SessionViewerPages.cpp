@@ -336,7 +336,15 @@ protected:
         tint.end();
         option.icon = QIcon(pixmap);
         QPainter painter(this);
-        style()->drawControl(QStyle::CE_PushButton, &option, &painter, this);
+        if (isEnabled() && (underMouse() || isDown()))
+        {
+            painter.setRenderHint(QPainter::Antialiasing);
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(VaporView::appThemeColor(VaporView::AppThemeColor::TitleBarHover,
+                                                     VaporView::isDarkThemeEnabled()));
+            painter.drawRoundedRect(rect(), 6, 6);
+        }
+        style()->drawControl(QStyle::CE_PushButtonLabel, &option, &painter, this);
     }
 };
 }
