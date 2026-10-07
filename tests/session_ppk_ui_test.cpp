@@ -99,7 +99,7 @@ void makeSession(const QTemporaryDir &session)
 QPushButton *button(QWidget &widget, const QString &text)
 {
     for (auto *candidate : widget.findChildren<QPushButton *>())
-        if (candidate->text() == text)
+        if (candidate->text() == text || candidate->accessibleName() == text)
             return candidate;
     return nullptr;
 }

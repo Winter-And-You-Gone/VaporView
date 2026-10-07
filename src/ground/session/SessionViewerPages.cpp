@@ -348,7 +348,24 @@ SessionOverviewWidget::SessionOverviewWidget(QWidget *parent)
     reload_btn_->setObjectName(QStringLiteral("sessionViewerReloadButton"));
     clear_view_btn_->setObjectName(QStringLiteral("sessionViewerClearButton"));
     for (auto *button : {choose_session_btn_, reload_btn_, clear_view_btn_})
+    {
+        button->setFixedSize(36, 36);
+        button->setIconSize(QSize(22, 22));
+        button->setStyleSheet(QStringLiteral("QPushButton { padding: 4px; }"));
         controlLayout->addWidget(button);
+    }
+    choose_session_btn_->setIcon(style()->standardIcon(QStyle::SP_DirOpenIcon));
+    reload_btn_->setIcon(QIcon(QCoreApplication::applicationDirPath() + QStringLiteral("/resources/lucide/refresh-cw.svg")));
+    clear_view_btn_->setIcon(QIcon(QCoreApplication::applicationDirPath() + QStringLiteral("/resources/lucide/trash-2.svg")));
+    for (auto *button : {choose_session_btn_, reload_btn_, clear_view_btn_})
+    {
+        QPixmap pixmap = button->icon().pixmap(44, 44);
+        QPainter painter(&pixmap);
+        painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
+        painter.fillRect(pixmap.rect(), Qt::white);
+        painter.end();
+        button->setIcon(QIcon(pixmap));
+    }
     layout->addWidget(session_controls_);
     status_label_->setObjectName(QStringLiteral("sessionViewerStatusLabel"));
     status_label_->setWordWrap(true);
@@ -398,9 +415,11 @@ SessionOverviewWidget::SessionOverviewWidget(QWidget *parent)
 void SessionOverviewWidget::setEnglish(bool english)
 {
     session_path_label_->setText(english ? QStringLiteral("Session:") : QStringLiteral("会话:"));
-    choose_session_btn_->setText(english ? QStringLiteral("Open Data") : QStringLiteral("打开数据"));
-    reload_btn_->setText(english ? QStringLiteral("Reload") : QStringLiteral("重新加载"));
-    clear_view_btn_->setText(english ? QStringLiteral("Clear Page") : QStringLiteral("清空页面"));
+    choose_session_btn_->setToolTip(english ? QStringLiteral("Open Data") : QStringLiteral("打开数据"));
+    reload_btn_->setToolTip(english ? QStringLiteral("Reload") : QStringLiteral("重新加载"));
+    clear_view_btn_->setToolTip(english ? QStringLiteral("Clear Page") : QStringLiteral("清空页面"));
+    for (auto *button : {choose_session_btn_, reload_btn_, clear_view_btn_})
+        button->setAccessibleName(button->toolTip());
     summary_group_->setTitle(english ? QStringLiteral("Data Summary") : QStringLiteral("数据概览"));
     session_name_title_->setText(english ? QStringLiteral("Session:") : QStringLiteral("会话:"));
     recording_origin_title_->setText(english ? QStringLiteral("Origin:") : QStringLiteral("记录来源:"));
