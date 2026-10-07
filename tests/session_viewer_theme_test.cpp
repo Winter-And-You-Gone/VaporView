@@ -546,9 +546,9 @@ void testRawDataCheckedExport()
     require(model->columnCount() == 9 && !model->index(0, 0).data().isValid() &&
             model->index(0, 1).data().toInt() == 1 &&
             !model->index(0, 1).data(Qt::CheckStateRole).isValid(), "checkbox and row number occupy separate columns");
-    require(table->columnWidth(0) == 32 && table->horizontalHeader()->sectionResizeMode(0) == QHeaderView::Fixed,
+    require(table->columnWidth(0) == 24 && table->horizontalHeader()->sectionResizeMode(0) == QHeaderView::Fixed,
             "checkbox column stays narrow and fixed");
-    const QRect indicator = table->style()->subElementRect(QStyle::SE_ItemViewItemCheckIndicator, &option, table);
+    const QRect indicator = option.rect;
     clickWidgetAt(table->viewport(), indicator.center(), 0);
     require(model->index(0, 0).data(Qt::CheckStateRole).toInt() == Qt::Checked, "mouse click checks record");
     model->setData(model->index(2, 0), Qt::Checked, Qt::CheckStateRole);

@@ -48,6 +48,8 @@
 #include <QScrollBar>
 #include <QSplitter>
 #include <QTableView>
+#include <QStyledItemDelegate>
+#include <QMouseEvent>
 #include <QTextCursor>
 #include <QTextEdit>
 #include <QTextStream>
@@ -748,6 +750,47 @@ QString hexPreview(const QByteArray& data, int maxBytes = 64)
     return text;
 }
 
+class CenteredCheckDelegate final : public QStyledItemDelegate
+{
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+
+    void paint(QPainter *painter, const QStyleOptionViewItem& option, const QModelIndex& index) const override
+    {
+        QStyleOptionViewItem background(option);
+        initStyleOption(&background, index);
+        const auto checkState = background.checkState;
+        background.features &= ~QStyleOptionViewItem::HasCheckIndicator;
+        const QStyle *style = option.widget ? option.widget->style() : QApplication::style();
+        style->drawControl(QStyle::CE_ItemViewItem, &background, painter, option.widget);
+        QStyleOptionViewItem indicator(option);
+        indicator.rect = QStyle::alignedRect(option.direction, Qt::AlignCenter,
+            QSize(style->pixelMetric(QStyle::PM_IndicatorWidth, &option, option.widget),
+                  style->pixelMetric(QStyle::PM_IndicatorHeight, &option, option.widget)), option.rect);
+        indicator.state &= ~(QStyle::State_On | QStyle::State_Off | QStyle::State_NoChange);
+        indicator.state |= checkState == Qt::Checked ? QStyle::State_On : QStyle::State_Off;
+        style->drawPrimitive(QStyle::PE_IndicatorItemViewItemCheck, &indicator, painter, option.widget);
+    }
+
+    bool editorEvent(QEvent *event, QAbstractItemModel *model, const QStyleOptionViewItem& option,
+                     const QModelIndex& index) override
+    {
+        if (event->type() == QEvent::MouseButtonPress || event->type() == QEvent::MouseButtonRelease ||
+            event->type() == QEvent::MouseButtonDblClick)
+        {
+            const auto *mouse = static_cast<QMouseEvent *>(event);
+            if (mouse->button() != Qt::LeftButton || !option.rect.contains(mouse->position().toPoint()) ||
+                !index.flags().testFlag(Qt::ItemIsEnabled))
+                return false;
+            if (event->type() == QEvent::MouseButtonRelease)
+                return model->setData(index, index.data(Qt::CheckStateRole).toInt() == Qt::Checked
+                    ? Qt::Unchecked : Qt::Checked, Qt::CheckStateRole);
+            return true;
+        }
+        return QStyledItemDelegate::editorEvent(event, model, option, index);
+    }
+};
+
 class RawRecordModel : public QAbstractTableModel
 {
 public:
@@ -1188,6 +1231,8 @@ void RawDataParserWindow::Impl::setupUi()
     QObject::connect(column_resize_timer, &QTimer::timeout, owner, [this]() { resizeTableColumnsToContents(); });
     record_table->viewport()->installEventFilter(owner);
     record_table->setModel(record_model);
+    record_table->setItemDelegateForColumn(0, new CenteredCheckDelegate(record_table));
+    record_table->horizontalHeader()->setMinimumSectionSize(24);
     record_table->setSelectionBehavior(QAbstractItemView::SelectRows);
     record_table->setSelectionMode(QAbstractItemView::SingleSelection);
     record_table->setSortingEnabled(false);
@@ -1842,7 +1887,7 @@ void RawDataParserWindow::Impl::resizeTableColumnsToContents()
     int contentTotal = 0;
     for (int column = 0; column < columnCount; ++column)
     {
-        widths[column] = column == 0 ? 32 : std::max(44, record_table->columnWidth(column));
+        widths[column] = column == 0 ? 24 : std::max(44, record_table->columnWidth(column));
         contentTotal += widths[column];
     }
 
