@@ -58,15 +58,25 @@ protected:
             color.setAlphaF(0.4);
         painter.setPen(QPen(color, 2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
         painter.setBrush(Qt::NoBrush);
-        painter.drawRoundedRect(QRectF(3, 3, 18, 18), 2, 2);
         if (isChecked())
         {
             QPainterPath check;
-            check.moveTo(7, 12);
-            check.lineTo(10, 15);
-            check.lineTo(17, 8);
+            // Match resources/lucide/square-check-big.svg, including its open corner.
+            check.moveTo(21, 10.656);
+            check.lineTo(21, 19);
+            check.arcTo(QRectF(17, 17, 4, 4), 0, -90);
+            check.lineTo(5, 21);
+            check.arcTo(QRectF(3, 17, 4, 4), -90, -90);
+            check.lineTo(3, 5);
+            check.arcTo(QRectF(3, 3, 4, 4), 180, -90);
+            check.lineTo(17.344, 3);
+            check.moveTo(9, 11);
+            check.lineTo(12, 14);
+            check.lineTo(22, 4);
             painter.drawPath(check);
         }
+        else
+            painter.drawRoundedRect(QRectF(3, 3, 18, 18), 2, 2);
     }
 };
 }
