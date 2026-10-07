@@ -476,28 +476,31 @@ void SessionViewerWindow::setCurrentPage(Page page)
     if (page == Page::Ppk)
         ensurePpkPage();
     if (page == Page::RawData)
-    {
-        if (!raw_data_parser_window_)
-        {
-            raw_scroll_ = new QScrollArea(tool_pages_[2]);
-            raw_scroll_->setObjectName(QStringLiteral("sessionRawDataScrollArea"));
-            raw_scroll_->setWidgetResizable(true);
-            raw_scroll_->setFrameShape(QFrame::NoFrame);
-            raw_data_parser_window_ = new RawDataParserWindow(raw_scroll_, true);
-            raw_scroll_->setWidget(raw_data_parser_window_);
-            tool_pages_[2]->layout()->addWidget(raw_scroll_);
-            raw_data_parser_window_->setEnglish(is_english_);
-        }
-        if (ppk_session_available_ && raw_session_directory_ != session_directory_)
-        {
-            raw_session_directory_ = session_directory_;
-            raw_data_parser_window_->openSessionPath(session_directory_);
-        }
-    }
+        ensureRawDataPage();
     page_stack_->setCurrentIndex(static_cast<int>(page));
     navigation_buttons_->button(static_cast<int>(page))->setChecked(true);
     updatePageAvailability();
     updateNavigation();
+}
+
+void SessionViewerWindow::ensureRawDataPage()
+{
+    if (!raw_data_parser_window_)
+    {
+        raw_scroll_ = new QScrollArea(tool_pages_[2]);
+        raw_scroll_->setObjectName(QStringLiteral("sessionRawDataScrollArea"));
+        raw_scroll_->setWidgetResizable(true);
+        raw_scroll_->setFrameShape(QFrame::NoFrame);
+        raw_data_parser_window_ = new RawDataParserWindow(raw_scroll_, true);
+        raw_scroll_->setWidget(raw_data_parser_window_);
+        tool_pages_[2]->layout()->addWidget(raw_scroll_);
+        raw_data_parser_window_->setEnglish(is_english_);
+    }
+    if (ppk_session_available_ && raw_session_directory_ != session_directory_)
+    {
+        raw_session_directory_ = session_directory_;
+        raw_data_parser_window_->openSessionPath(session_directory_);
+    }
 }
 
 void SessionViewerWindow::updatePageAvailability()
@@ -946,11 +949,6 @@ void SessionViewerWindow::finishSessionLoading()
     session_loading_ = false;
     setSessionLoadingControlsEnabled(true);
     updatePageAvailability();
-    if (raw_data_parser_window_ && ppk_session_available_ && raw_session_directory_ != session_directory_)
-    {
-        raw_session_directory_ = session_directory_;
-        raw_data_parser_window_->openSessionPath(session_directory_);
-    }
     if (navigation_refresh_pending_ && !ppkBusy())
     {
         navigation_refresh_pending_ = false;
@@ -1290,6 +1288,7 @@ bool SessionViewerWindow::loadSessionDirectory(QString sessionDirectory)
     overview_page_->setStatusToolTip(statusToolTip);
     setStatusText(statusText);
     finishSessionLoading();
+    ensureRawDataPage();
     return true;
 }
 

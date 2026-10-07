@@ -2407,6 +2407,17 @@ void testSessionWorkspaceNavigation()
     require(pathEdit->text().endsWith(QStringLiteral("does-not-exist")), "invalid edited path remains available to correct");
     pathEdit->setText(session.path());
     require(viewer.openSessionPath(session.path()), "workspace loads shared session");
+    auto *preloadedParser = viewer.findChild<QMainWindow *>("rawDataParserWindow");
+    require(preloadedParser && !preloadedParser->isVisible() && viewer.currentPage() == Page::Data,
+            "loading data starts raw preload without switching pages");
+    auto *preloadProgress = preloadedParser->findChild<QWidget *>("rawDataParserProgressPanel");
+    auto *preloadTable = preloadedParser->findChild<QTableView *>();
+    require(processEventsUntil(5000, [&] { return preloadProgress->isHidden(); }),
+            "raw index finishes while data page stays active");
+    require(preloadTable->model()->rowCount() == 0,
+            "hidden preload defers filtering and detail decoding");
+    for (auto *dialog : viewer.findChildren<QProgressDialog *>())
+        require(!dialog->isVisible(), "background preload leaves no modal progress dialog");
     viewer.setCurrentPage(Page::Trajectory);
     auto *trajectory = viewer.findChild<TrajectoryViewerDialog *>();
     require(trajectory && !trajectory->isWindow() && trajectory->isVisible(), "trajectory is embedded");
@@ -2423,6 +2434,8 @@ void testSessionWorkspaceNavigation()
         if (auto *parser = dynamic_cast<RawDataParserWindow *>(child))
             raw = parser;
     require(raw && !raw->isWindow() && raw->isVisible(), "parser is embedded in workspace");
+    require(raw == preloadedParser && preloadProgress->isHidden(),
+            "opening raw page reuses completed index without rescanning");
     auto *table = raw->findChild<QTableView *>();
     require(processEventsUntil(5000, [&] { return table && table->model()->rowCount() > 0; }), "embedded parser indexes shared session");
     auto *model = table->model();
@@ -2502,6 +2515,26 @@ void testSessionWorkspaceNavigation()
     require(model->rowCount() == 0, "clearing shared data clears parser records");
     viewer.setCurrentPage(Page::RawData);
     require(!raw->isVisible(), "cleared parser shows empty state instead of stale content");
+    viewer.setCurrentPage(Page::Data);
+    QTemporaryDir replacement;
+    require(replacement.isValid(), "replacement preload session");
+    writeTrajectorySessionWithRawTcpPeaks(replacement.path());
+    writeMinimalRawTcpWaveFile(replacement.filePath(QStringLiteral("raw/tcp_wave.dat")),
+                              {1782446035573000ULL});
+    filter->clear();
+    require(viewer.openSessionPath(session.path()), "start original preload");
+    require(viewer.openSessionPath(replacement.path()), "replace session during preload");
+    require(processEventsUntil(5000, [&] { return preloadProgress->isHidden(); }),
+            "replacement preload completes");
+    viewer.setCurrentPage(Page::RawData);
+    require(model->rowCount() == 1, "replacement index contains only new session records");
+    viewer.setCurrentPage(Page::Data);
+    require(viewer.openSessionPath(session.path()), "start preload before clear");
+    require(QMetaObject::invokeMethod(&viewer, "onClearViewClicked", Qt::DirectConnection),
+            "clear during preload");
+    processEventsFor(100);
+    require(model->rowCount() == 0 && preloadProgress->isHidden(),
+            "cancelled preload cannot repopulate cleared data");
     viewer.close();
 }
 

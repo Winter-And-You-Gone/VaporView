@@ -87,6 +87,7 @@ private:
     void updateNavigation(int sidebarWidth = -1);
     void updatePageAvailability();
     void ensurePpkPage();
+    void ensureRawDataPage();
     void saveSidebarWidth();
     void setSidebarWidth(int width);
     void toggleSidebarFromLogo();

@@ -923,6 +923,7 @@ struct RawDataParserWindow::Impl
     RawDataParserWindow *owner = nullptr;
     bool english = false;
     bool embedded = false;
+    bool filters_pending = false;
     QString session_directory;
     QVector<RawRecordIndex> records;
     QVector<int> visible_rows;
@@ -1028,6 +1029,13 @@ void RawDataParserWindow::changeEvent(QEvent *event)
     if (impl_ && impl_->record_table && impl_->detail_tree &&
         (event->type() == QEvent::PaletteChange || event->type() == QEvent::ApplicationPaletteChange))
         impl_->applyTheme();
+}
+
+void RawDataParserWindow::showEvent(QShowEvent *event)
+{
+    QMainWindow::showEvent(event);
+    if (impl_->filters_pending)
+        impl_->applyFilters();
 }
 
 bool RawDataParserWindow::eventFilter(QObject *watched, QEvent *event)
@@ -1429,6 +1437,7 @@ void RawDataParserWindow::Impl::scanSession()
         return;
     }
 
+    filters_pending = false;
     record_model->checkedRecords.clear();
     updateCheckedCount();
     records.clear();
@@ -1815,6 +1824,14 @@ bool RawDataParserWindow::Impl::recordMatches(const RawRecordIndex& record, cons
 
 void RawDataParserWindow::Impl::applyFilters()
 {
+    // Hidden embedded pages preload only the index. Defer UI filtering, decoding
+    // and progress dialogs until the user actually visits the page.
+    if (embedded && !owner->isVisible())
+    {
+        filters_pending = true;
+        return;
+    }
+    filters_pending = false;
     visible_rows.clear();
     const QString searchLower = search_edit->text().trimmed().toLower();
     const bool requireDecoded = abnormal_only->isChecked();
