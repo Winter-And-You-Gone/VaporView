@@ -446,6 +446,67 @@ void writeTrajectorySessionWithRawTcpPeaks(const QString& sessionPath)
     writeMinimalRawTcpWaveFile(dir.filePath(QStringLiteral("raw/tcp_wave.dat")), timestampsUs);
 }
 
+void testRawDataScanProgressVisible()
+{
+    QTemporaryDir sessionDir;
+    require(sessionDir.isValid(), "temporary scan progress session");
+    require(QDir(sessionDir.path()).mkpath(QStringLiteral("raw")), "scan progress raw directory");
+    writeUnifiedRawFile(sessionDir.filePath(QStringLiteral("raw/epsilon.dat")), 60000);
+    for (bool dark : {false, true})
+    {
+        qApp->setProperty(VaporView::kAppDarkThemeProperty, dark);
+        qApp->setPalette(VaporView::appThemePalette(dark));
+        RawDataParserWindow parser;
+        parser.show();
+        require(waitForWindowExposed(&parser), "scan progress parser exposed");
+        bool inspected = false;
+        QTimer inspect;
+        QObject::connect(&inspect, &QTimer::timeout, &parser, [&] {
+            auto *dialog = parser.findChild<QProgressDialog *>();
+            if (!dialog || dialog->value() <= 0) return;
+            inspect.stop();
+            dialog->show();
+            dialog->layout()->activate();
+            auto *content = dialog->findChild<QWidget *>(QStringLiteral("customTitleBarContent"));
+            require(content != nullptr, "scan progress has title bar content");
+            auto *label = content->findChild<QLabel *>();
+            auto *bar = content->findChild<QProgressBar *>();
+            auto *cancel = content->findChild<QPushButton *>();
+            require(label && bar && cancel, "scan text, progress and cancel belong to content layout");
+            content->layout()->activate();
+            for (QWidget *widget : {static_cast<QWidget *>(label), static_cast<QWidget *>(bar), static_cast<QWidget *>(cancel)})
+            {
+                require(widget->isVisible() && !widget->visibleRegion().isEmpty(), "scan control is visible and unobscured");
+                require(content->rect().contains(widget->geometry()), "scan control fits inside content");
+            }
+            require(label->geometry().bottom() < bar->geometry().top() &&
+                        bar->geometry().bottom() < cancel->geometry().top(), "scan controls do not overlap");
+            require(bar->maximum() == 60000 && bar->value() > 0 && bar->value() < bar->maximum(),
+                    "scan bar reports actual partial record progress");
+            dialog->resize(dialog->size() + QSize(100, 60));
+            dialog->layout()->activate();
+            content->layout()->activate();
+            require(content->rect().contains(bar->geometry()) && !bar->visibleRegion().isEmpty(),
+                    "scan progress remains visible after resizing");
+            inspected = true;
+            if (dark)
+            {
+                cancel->click();
+                require(dialog->wasCanceled(), "scan cancel button cancels the dialog");
+            }
+        });
+        inspect.start(0);
+        require(parser.openSessionPath(sessionDir.path()), "scan progress session opens");
+        require(processEventsUntil(10000, [&] { return inspected; }), "scan progress inspected during filtering");
+        require(parser.findChild<QProgressDialog *>() == nullptr, "scan dialog destroyed after completion or cancel");
+        if (!dark)
+            require(parser.findChild<QTableView *>()->model()->rowCount() == 60000, "normal scan retains all records");
+        parser.close();
+    }
+    qApp->setProperty(VaporView::kAppDarkThemeProperty, false);
+    qApp->setPalette(VaporView::appThemePalette(false));
+}
+
 void testRawDataParserOpenIsNonBlocking()
 {
     QTemporaryDir sessionDir;
@@ -2080,6 +2141,7 @@ int main(int argc, char **argv)
 
     if (runsGroup(QStringLiteral("io")))
     {
+        testRawDataScanProgressVisible();
         testRawDataParserOpenIsNonBlocking();
         testRawDataParserRejectsTruncatedFdilinkFrame();
         testRawDataParserUsesHardwareTemperatureSourceNames();

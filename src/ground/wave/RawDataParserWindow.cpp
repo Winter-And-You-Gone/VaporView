@@ -72,6 +72,30 @@ namespace
 {
 constexpr int kDecodeCacheCapacity = 256;
 
+class RawDataProgressDialog final : public QProgressDialog
+{
+public:
+    RawDataProgressDialog(const QString &label, const QString &cancel, int minimum, int maximum, QWidget *parent)
+        : QProgressDialog(label, cancel, minimum, maximum, parent)
+    {
+        // QProgressDialog positions its children manually, so the title-bar
+        // wrapper needs an explicit layout to migrate them into its content.
+        auto *layout = new QVBoxLayout(this);
+        layout->addWidget(findChild<QLabel *>(QString(), Qt::FindDirectChildrenOnly));
+        layout->addWidget(findChild<QProgressBar *>(QString(), Qt::FindDirectChildrenOnly));
+        layout->addWidget(findChild<QPushButton *>(QString(), Qt::FindDirectChildrenOnly), 0, Qt::AlignRight);
+    }
+
+    QSize sizeHint() const override { return QDialog::sizeHint(); }
+
+protected:
+    void resizeEvent(QResizeEvent *event) override
+    {
+        // The wrapper layout now owns child geometry, not QProgressDialog.
+        QDialog::resizeEvent(event);
+    }
+};
+
 void applyRawDataProgressDialogStyle(QProgressDialog *dialog)
 {
     if (!dialog)
@@ -1705,7 +1729,7 @@ void RawDataParserWindow::Impl::applyFilters()
         const QString progressText = expensive
             ? (english ? QStringLiteral("Scanning decoded records...") : QStringLiteral("正在扫描解析字段..."))
             : (english ? QStringLiteral("Preparing raw record list...") : QStringLiteral("正在准备原始记录列表..."));
-        progress = new QProgressDialog(progressText,
+        progress = new RawDataProgressDialog(progressText,
                                        english ? QStringLiteral("Cancel") : QStringLiteral("取消"),
                                        0,
                                        records.size(),
@@ -2124,7 +2148,7 @@ void RawDataParserWindow::Impl::exportDecodedCsv()
         return;
     }
 
-    QProgressDialog progress(english ? QStringLiteral("Exporting decoded fields...") : QStringLiteral("正在导出解析字段..."),
+    RawDataProgressDialog progress(english ? QStringLiteral("Exporting decoded fields...") : QStringLiteral("正在导出解析字段..."),
                              english ? QStringLiteral("Cancel") : QStringLiteral("取消"),
                              0,
                              visible_rows.size(),
@@ -2215,7 +2239,7 @@ void RawDataParserWindow::Impl::exportDecodedJson()
         return;
     }
 
-    QProgressDialog progress(english ? QStringLiteral("Exporting decoded records...") : QStringLiteral("正在导出解析记录..."),
+    RawDataProgressDialog progress(english ? QStringLiteral("Exporting decoded records...") : QStringLiteral("正在导出解析记录..."),
                              english ? QStringLiteral("Cancel") : QStringLiteral("取消"),
                              0,
                              visible_rows.size(),
