@@ -569,6 +569,8 @@ void testRawDataCheckedExport()
     const bool nativeDisabled = qApp->testAttribute(Qt::AA_DontUseNativeDialogs);
     VaporView::setSettingsWritesSuspended(false);
     qApp->setAttribute(Qt::AA_DontUseNativeDialogs, true);
+    QString expectedDefaultName;
+    const QString sessionPrefix = QDir(sessionDir.path()).dirName() + QLatin1Char('_');
     auto runExport = [&](int action, const QString& destination, bool cancel = false) {
         QTimer responder;
         bool dialogHandled = false;
@@ -578,6 +580,9 @@ void testRawDataCheckedExport()
             {
                 if (dialogHandled) return;
                 dialogHandled = true;
+                if (!expectedDefaultName.isEmpty())
+                    require(QFileInfo(dialog->selectedFiles().value(0)).fileName() == expectedDefaultName,
+                            "default export filename identifies session and export contents");
                 if (cancel) dialog->reject();
                 else
                 {
@@ -597,6 +602,7 @@ void testRawDataCheckedExport()
         require(dialogHandled || messageHandled, "export dialog handled");
     };
     const QString jsonPath = outputDir.filePath(QStringLiteral("checked.json"));
+    expectedDefaultName = sessionPrefix + QStringLiteral("raw_checked_records.json");
     runExport(1, jsonPath);
     QFile jsonFile(jsonPath);
     require(jsonFile.open(QIODevice::ReadOnly), "checked JSON written");
@@ -606,8 +612,9 @@ void testRawDataCheckedExport()
             exported.at(0).toObject().value(QStringLiteral("sequence")).toString() == QStringLiteral("0") &&
             exported.at(1).toObject().value(QStringLiteral("sequence")).toString() == QStringLiteral("2"),
             "JSON exports exactly arbitrary checked records including hidden one");
+    expectedDefaultName.clear();
     runExport(2, outputDir.path());
-    const auto batches = QDir(outputDir.path()).entryList({QStringLiteral("raw_payloads_*")}, QDir::Dirs | QDir::NoDotAndDotDot);
+    const auto batches = QDir(outputDir.path()).entryList({sessionPrefix + QStringLiteral("raw_payloads_*")}, QDir::Dirs | QDir::NoDotAndDotDot);
     require(batches.size() == 1, "BIN batch has one fresh subfolder");
     QDir batch(outputDir.filePath(batches.first()));
     const auto bins = batch.entryList({QStringLiteral("*.bin")}, QDir::Files, QDir::Name);
@@ -616,6 +623,8 @@ void testRawDataCheckedExport()
     require(original.open(QIODevice::ReadOnly), "batch source readable");
     for (int i = 0; i < 2; ++i)
     {
+        require(bins.at(i) == sessionPrefix + QStringLiteral("tcp_wave_seq_%1_record_%2.bin").arg(i * 2).arg(i * 2 + 1),
+                "batch BIN names retain session device sequence and unique record identity");
         QFile bin(batch.filePath(bins.at(i)));
         require(bin.open(QIODevice::ReadOnly), "BIN readable");
         original.seek(kTestRawHeaderSize + (i * 2) * (kTestRawRecordHeaderSize + 32) + kTestRawRecordHeaderSize);
@@ -628,10 +637,19 @@ void testRawDataCheckedExport()
     require(processEventsUntil(2000, [&] { return model->rowCount() == 4; }), "filter cleared");
     model->setData(model->index(2, 0), Qt::Unchecked, Qt::CheckStateRole);
     const QString singlePath = outputDir.filePath(QStringLiteral("single.json"));
+    expectedDefaultName = sessionPrefix + QStringLiteral("tcp_wave_seq_0.json");
     runExport(1, singlePath);
     QFile single(singlePath);
     require(single.open(QIODevice::ReadOnly) && QJsonDocument::fromJson(single.readAll()).object()
             .value(QStringLiteral("sequence")).toString() == QStringLiteral("0"), "one checked record preserves single JSON format");
+    expectedDefaultName = sessionPrefix + QStringLiteral("tcp_wave_seq_0.bin");
+    runExport(2, QString(), true);
+    expectedDefaultName = sessionPrefix + QStringLiteral("raw_records.csv");
+    runExport(0, QString(), true);
+    expectedDefaultName = sessionPrefix + QStringLiteral("raw_decoded_fields.csv");
+    runExport(3, QString(), true);
+    expectedDefaultName = sessionPrefix + QStringLiteral("raw_decoded_records.json");
+    runExport(4, QString(), true);
     model->setData(model->index(0, 0), Qt::Unchecked, Qt::CheckStateRole);
     runExport(1, QString());
     model->setData(model->index(2, 0), Qt::Checked, Qt::CheckStateRole);

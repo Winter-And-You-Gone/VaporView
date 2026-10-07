@@ -998,6 +998,7 @@ struct RawDataParserWindow::Impl
     void showDecodedRecord(const RawRecordIndex& record, const QByteArray& payload, const RawDecodedRecord& decoded);
     void setHexPayload(const QByteArray& payload);
     void highlightHexRange(int offset, int length);
+    QString exportFileName(const QString& suffix) const;
     void exportFilteredCsv();
     void exportSelectedJson();
     void exportSelectedPayload();
@@ -2031,6 +2032,19 @@ void RawDataParserWindow::Impl::updateCheckedCount()
         : QStringLiteral("勾选首列中的复选框后导出；筛选会保留勾选（含隐藏记录），重新加载会清空勾选。"));
 }
 
+QString RawDataParserWindow::Impl::exportFileName(const QString& suffix) const
+{
+    QString sessionName = QDir(session_directory).dirName().trimmed();
+    for (QChar& character : sessionName)
+    {
+        if (character.unicode() < 32 || QStringLiteral("<>:\"/\\|?*").contains(character))
+            character = QLatin1Char('_');
+    }
+    if (sessionName.isEmpty())
+        sessionName = QStringLiteral("session");
+    return sessionName + QLatin1Char('_') + suffix;
+}
+
 void RawDataParserWindow::Impl::exportFilteredCsv()
 {
     if (VaporView::settingsWritesSuspended())
@@ -2042,7 +2056,7 @@ void RawDataParserWindow::Impl::exportFilteredCsv()
     }
     const QString filename = QFileDialog::getSaveFileName(owner,
         english ? QStringLiteral("Export Raw Record List CSV") : QStringLiteral("导出原始记录列表CSV"),
-        QDir(session_directory).filePath(QStringLiteral("raw_records.csv")),
+        QDir(session_directory).filePath(exportFileName(QStringLiteral("raw_records.csv"))),
         QStringLiteral("CSV (*.csv)"));
     if (filename.isEmpty())
     {
@@ -2141,7 +2155,8 @@ void RawDataParserWindow::Impl::exportSelectedJson()
 
     const QString filename = QFileDialog::getSaveFileName(owner,
         english ? QStringLiteral("Export Checked Record JSON") : QStringLiteral("导出勾选记录JSON"),
-        QDir(session_directory).filePath(QStringLiteral("raw_record_%1.json").arg(record.sequence)),
+        QDir(session_directory).filePath(exportFileName(QStringLiteral("%1_seq_%2.json")
+            .arg(QFileInfo(record.filename).completeBaseName()).arg(record.sequence))),
         QStringLiteral("JSON (*.json)"));
     if (filename.isEmpty())
     {
@@ -2186,7 +2201,7 @@ void RawDataParserWindow::Impl::exportSelectedPayload()
         if (parent.isEmpty())
             return;
         // A fresh subfolder prevents collisions and removes partial batches on failure/cancel.
-        QTemporaryDir batch(QDir(parent).filePath(QStringLiteral("raw_payloads_XXXXXX")));
+        QTemporaryDir batch(QDir(parent).filePath(exportFileName(QStringLiteral("raw_payloads_XXXXXX"))));
         if (!batch.isValid())
         {
             QMessageBox::warning(owner, owner->windowTitle(), english ? QStringLiteral("Failed to create export folder.") : QStringLiteral("无法创建导出目录。"));
@@ -2211,8 +2226,8 @@ void RawDataParserWindow::Impl::exportSelectedPayload()
             const int index = checked.at(row);
             const auto& record = records.at(index);
             const QByteArray payload = readPayload(record);
-            QFile file(batch.filePath(QStringLiteral("record_%1_source_%2_seq_%3.bin")
-                .arg(index + 1).arg(record.source_id).arg(record.sequence)));
+            QFile file(batch.filePath(exportFileName(QStringLiteral("%1_seq_%2_record_%3.bin")
+                .arg(QFileInfo(record.filename).completeBaseName()).arg(record.sequence).arg(index + 1))));
             if (payload.size() != record.payload_size || !file.open(QIODevice::WriteOnly) ||
                 file.write(payload) != payload.size() || !file.flush())
             {
@@ -2231,7 +2246,8 @@ void RawDataParserWindow::Impl::exportSelectedPayload()
     const QByteArray payload = readPayload(record);
     const QString filename = QFileDialog::getSaveFileName(owner,
         english ? QStringLiteral("Export Raw Payload") : QStringLiteral("导出原始Payload"),
-        QDir(session_directory).filePath(QStringLiteral("raw_payload_%1.bin").arg(record.sequence)),
+        QDir(session_directory).filePath(exportFileName(QStringLiteral("%1_seq_%2.bin")
+            .arg(QFileInfo(record.filename).completeBaseName()).arg(record.sequence))),
         QStringLiteral("Binary (*.bin)"));
     if (filename.isEmpty())
     {
@@ -2270,7 +2286,7 @@ void RawDataParserWindow::Impl::exportDecodedCsv()
 
     const QString filename = QFileDialog::getSaveFileName(owner,
         english ? QStringLiteral("Export Decoded Fields CSV") : QStringLiteral("导出解析字段CSV"),
-        QDir(session_directory).filePath(QStringLiteral("raw_decoded_fields.csv")),
+        QDir(session_directory).filePath(exportFileName(QStringLiteral("raw_decoded_fields.csv"))),
         QStringLiteral("CSV (*.csv)"));
     if (filename.isEmpty())
     {
@@ -2369,7 +2385,7 @@ void RawDataParserWindow::Impl::exportDecodedJson(bool checkedOnly)
 
     const QString filename = QFileDialog::getSaveFileName(owner,
         english ? QStringLiteral("Export Decoded Records JSON") : QStringLiteral("导出解析记录JSON"),
-        QDir(session_directory).filePath(checkedOnly ? QStringLiteral("raw_checked_records.json") : QStringLiteral("raw_decoded_records.json")),
+        QDir(session_directory).filePath(exportFileName(checkedOnly ? QStringLiteral("raw_checked_records.json") : QStringLiteral("raw_decoded_records.json"))),
         QStringLiteral("JSON (*.json)"));
     if (filename.isEmpty())
     {
