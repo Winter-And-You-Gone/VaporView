@@ -35,6 +35,7 @@
 #include <QSpinBox>
 #include <QStyle>
 #include <QStyleOptionSlider>
+#include <QStyleOptionButton>
 #include <QTableView>
 #include <QTimeZone>
 #include <QVBoxLayout>
@@ -316,14 +317,38 @@ QString formatSessionMeasuredRateText(
         : QStringLiteral("---");
 }
 
+namespace
+{
+class SessionActionButton final : public QPushButton
+{
+public:
+    using QPushButton::QPushButton;
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QStyleOptionButton option;
+        initStyleOption(&option);
+        QPixmap pixmap = icon().pixmap(iconSize() * devicePixelRatioF());
+        pixmap.setDevicePixelRatio(devicePixelRatioF());
+        QPainter tint(&pixmap);
+        tint.setCompositionMode(QPainter::CompositionMode_SourceIn);
+        tint.fillRect(pixmap.rect(), VaporView::appThemeColor(VaporView::AppThemeColor::Primary, VaporView::isDarkThemeEnabled()));
+        tint.end();
+        option.icon = QIcon(pixmap);
+        QPainter painter(this);
+        style()->drawControl(QStyle::CE_PushButton, &option, &painter, this);
+    }
+};
+}
+
 SessionOverviewWidget::SessionOverviewWidget(QWidget *parent)
     : QWidget(parent)
     , session_controls_(new QWidget(this))
     , session_path_label_(new QLabel(session_controls_))
     , session_path_edit_(new QLineEdit(session_controls_))
-    , choose_session_btn_(new QPushButton(this))
-    , reload_btn_(new QPushButton(this))
-    , clear_view_btn_(new QPushButton(this))
+    , choose_session_btn_(new SessionActionButton(this))
+    , reload_btn_(new SessionActionButton(this))
+    , clear_view_btn_(new SessionActionButton(this))
     , status_label_(new QLabel(this))
     , summary_group_(new QGroupBox(this))
     , summary_layout_(new QGridLayout(summary_group_))
@@ -351,21 +376,12 @@ SessionOverviewWidget::SessionOverviewWidget(QWidget *parent)
     {
         button->setFixedSize(36, 36);
         button->setIconSize(QSize(22, 22));
-        button->setStyleSheet(QStringLiteral("QPushButton { padding: 4px; }"));
+        button->setStyleSheet(QStringLiteral("QPushButton { padding: 4px; background: transparent; border: none; } QPushButton:hover, QPushButton:pressed, QPushButton:disabled { background: transparent; }"));
         controlLayout->addWidget(button);
     }
-    choose_session_btn_->setIcon(style()->standardIcon(QStyle::SP_DirOpenIcon));
+    choose_session_btn_->setIcon(QIcon(QCoreApplication::applicationDirPath() + QStringLiteral("/resources/lucide/folder-open.svg")));
     reload_btn_->setIcon(QIcon(QCoreApplication::applicationDirPath() + QStringLiteral("/resources/lucide/refresh-cw.svg")));
     clear_view_btn_->setIcon(QIcon(QCoreApplication::applicationDirPath() + QStringLiteral("/resources/lucide/trash-2.svg")));
-    for (auto *button : {choose_session_btn_, reload_btn_, clear_view_btn_})
-    {
-        QPixmap pixmap = button->icon().pixmap(44, 44);
-        QPainter painter(&pixmap);
-        painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
-        painter.fillRect(pixmap.rect(), Qt::white);
-        painter.end();
-        button->setIcon(QIcon(pixmap));
-    }
     layout->addWidget(session_controls_);
     status_label_->setObjectName(QStringLiteral("sessionViewerStatusLabel"));
     status_label_->setWordWrap(true);

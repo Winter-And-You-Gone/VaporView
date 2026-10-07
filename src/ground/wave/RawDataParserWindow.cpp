@@ -1370,7 +1370,7 @@ void RawDataParserWindow::Impl::setEnglish(bool value)
 {
     english = value;
     owner->setWindowTitle(english ? QStringLiteral("Raw Data Parser") : QStringLiteral("原始数据解析器"));
-    reload_btn->setText(english ? QStringLiteral("Reload") : QStringLiteral("重新加载"));
+    reload_btn->setText(english ? QStringLiteral("Rescan DAT") : QStringLiteral("重新扫描 DAT"));
     updateCheckedCount();
     export_csv_action->setText(english ? QStringLiteral("Export List CSV") : QStringLiteral("导出列表CSV"));
     export_json_action->setText(english ? QStringLiteral("Export Checked JSON") : QStringLiteral("导出勾选JSON"));
