@@ -196,6 +196,8 @@ struct RawRecordIndex
     quint64 sequence = 0;
     quint64 host_timestamp_us = 0;
     quint32 payload_size = 0;
+    // -1 means unchecked; this result lives only as long as the session index.
+    mutable qint8 decode_ok = -1;
     quint64 record_offset = 0;
     quint64 payload_offset = 0;
 };
@@ -838,7 +840,7 @@ private:
     const QVector<int> *visible_rows_ = nullptr;
 };
 
-RawDecodedRecord decodeRawRecord(const RawRecordIndex& record, const QByteArray& payload, bool english);
+RawDecodedRecord decodeRawRecord(const RawRecordIndex& record, const QByteArray& payload, bool english, bool details = true);
 
 }  // namespace
 
@@ -1639,6 +1641,7 @@ RawDecodedRecord RawDataParserWindow::Impl::decodeRecord(const RawRecordIndex& r
     }
     const QByteArray payload = readPayload(record);
     decoded = decodeRawRecord(record, payload, english);
+    record.decode_ok = decoded.ok ? 1 : 0;
     decode_cache.insert(key, decoded);
     return decoded;
 }
@@ -1711,8 +1714,9 @@ bool RawDataParserWindow::Impl::recordMatches(const RawRecordIndex& record, cons
 
     if (requireDecoded)
     {
-        RawDataParserWindow::Impl *self = const_cast<RawDataParserWindow::Impl*>(this);
-        if (self->decodeRecord(record).ok)
+        if (record.decode_ok < 0)
+            record.decode_ok = decodeRawRecord(record, readPayload(record), english, false).ok ? 1 : 0;
+        if (record.decode_ok != 0)
         {
             return false;
         }
@@ -2330,11 +2334,13 @@ void addUnifiedRecordFields(RawDecodedRecord& decoded, const RawRecordIndex& rec
     addField(decoded, QStringLiteral("Unified Raw Record"), QStringLiteral("payload_offset"), QString::number(record.payload_offset), QString(), QStringLiteral("bytes"), -1, 0);
 }
 
-void decodeEpsilonPayload(RawDecodedRecord& decoded, const QByteArray& payload, bool english)
+void decodeEpsilonPayload(RawDecodedRecord& decoded, const QByteArray& payload, bool english, bool details)
 {
     decoded.title = QStringLiteral("EPSILON FDILink");
     if (payload.size() < 8)
     {
+        decoded.ok = false;
+        if (!details) return;
         addField(decoded, QStringLiteral("FDILink Header"), QStringLiteral("frame"), QString::number(payload.size()), QString(), QStringLiteral("bytes"), 0, payload.size(), english ? QStringLiteral("Frame is shorter than minimum 8 bytes.") : QStringLiteral("帧长度小于最小 8 字节。"), true);
         decoded.status = english ? QStringLiteral("Invalid") : QStringLiteral("无效");
         decoded.summary = english ? QStringLiteral("Too short") : QStringLiteral("长度过短");
@@ -2353,6 +2359,8 @@ void decodeEpsilonPayload(RawDecodedRecord& decoded, const QByteArray& payload, 
     const bool crc8Ok = fdilinkCrc8(bytes, 4) == crc8;
     const bool crc16Ok = sizeOk && fdilinkCrc16(bytes + 7, payloadSize) == crc16;
     const bool tailOk = sizeOk && bytes[payload.size() - 1] == kFdilinkFrameTail;
+    decoded.ok = headOk && sizeOk && crc8Ok && crc16Ok && tailOk;
+    if (!details) return; // Remaining fields only format diagnostics and values.
 
     addField(decoded, QStringLiteral("FDILink Header"), QStringLiteral("head"), formatHex(bytes[0]), headOk ? QStringLiteral("OK") : QStringLiteral("BAD"), QString(), 0, 1, QStringLiteral("0xFC"), !headOk);
     addField(decoded, QStringLiteral("FDILink Header"), QStringLiteral("packet_id"), formatHex(packetId), epsilonPacketName(packetId), QString(), 1, 1);
@@ -2690,11 +2698,13 @@ void decodeLidarPayload(RawDecodedRecord& decoded, const QByteArray& payload, qu
     }
 }
 
-void decodeTcpWavePayload(RawDecodedRecord& decoded, const QByteArray& payload, quint32 flags, bool english)
+void decodeTcpWavePayload(RawDecodedRecord& decoded, const QByteArray& payload, quint32 flags, bool english, bool details)
 {
     decoded.title = QStringLiteral("TCP Wave");
     if (payload.size() < 8)
     {
+        decoded.ok = false;
+        if (!details) return;
         addField(decoded, QStringLiteral("TCP Wave"), QStringLiteral("payload"), QString::number(payload.size()), QString(), QStringLiteral("bytes"), 0, payload.size(), QStringLiteral("Too short"), true);
         decoded.status = english ? QStringLiteral("Invalid") : QStringLiteral("无效");
         decoded.summary = english ? QStringLiteral("Too short") : QStringLiteral("长度过短");
@@ -2709,6 +2719,8 @@ void decodeTcpWavePayload(RawDecodedRecord& decoded, const QByteArray& payload, 
         static_cast<quint32>(payload.size()),
         &layout,
         &layoutError);
+    decoded.ok = sizeOk;
+    if (!details) return; // Sample decoding/statistics do not affect anomaly status.
     const quint32 rawSize = layout.rawSignalSize;
     const quint32 harmonicSize = layout.harmonicSize;
     addField(decoded, QStringLiteral("TCP Wave"), QStringLiteral("raw_signal_payload_size"), QString::number(rawSize), QString(), QStringLiteral("bytes"), 0, 4, layoutError, !sizeOk);
@@ -2744,16 +2756,21 @@ void decodeTcpWavePayload(RawDecodedRecord& decoded, const QByteArray& payload, 
     }
 }
 
-RawDecodedRecord decodeRawRecord(const RawRecordIndex& record, const QByteArray& payload, bool english)
+RawDecodedRecord decodeRawRecord(const RawRecordIndex& record, const QByteArray& payload, bool english, bool details)
 {
     RawDecodedRecord decoded;
-    decoded.title = recordTypeName(record.source_id, record.record_type, english);
-    decoded.status = english ? QStringLiteral("OK") : QStringLiteral("正常");
-    decoded.summary = QStringLiteral("%1 bytes").arg(payload.size());
-    addUnifiedRecordFields(decoded, record);
+    if (details)
+    {
+        decoded.title = recordTypeName(record.source_id, record.record_type, english);
+        decoded.status = english ? QStringLiteral("OK") : QStringLiteral("正常");
+        decoded.summary = QStringLiteral("%1 bytes").arg(payload.size());
+        addUnifiedRecordFields(decoded, record);
+    }
 
     if (payload.size() != static_cast<int>(record.payload_size))
     {
+        decoded.ok = false;
+        if (!details) return decoded;
         addField(decoded, QStringLiteral("Payload"), QStringLiteral("read_size"), QString::number(payload.size()), QString::number(record.payload_size), QStringLiteral("expected bytes"), 0, payload.size(), QStringLiteral("Could not read complete payload"), true);
         decoded.status = english ? QStringLiteral("Read issue") : QStringLiteral("读取异常");
         return decoded;
@@ -2762,7 +2779,7 @@ RawDecodedRecord decodeRawRecord(const RawRecordIndex& record, const QByteArray&
     switch (record.source_id)
     {
     case VaporView::SessionRawDat::kSourceNavigation:
-        decodeEpsilonPayload(decoded, payload, english);
+        decodeEpsilonPayload(decoded, payload, english, details);
         break;
     case VaporView::SessionRawDat::kSourcePressure:
         decodePtbPayload(decoded, payload, english);
@@ -2774,9 +2791,10 @@ RawDecodedRecord decodeRawRecord(const RawRecordIndex& record, const QByteArray&
         decodeLidarPayload(decoded, payload, record.record_type, english);
         break;
     case VaporView::SessionRawDat::kSourceWaveform:
-        decodeTcpWavePayload(decoded, payload, record.flags, english);
+        decodeTcpWavePayload(decoded, payload, record.flags, english, details);
         break;
     default:
+        if (!details) break;
         addField(decoded, QStringLiteral("Payload"), QStringLiteral("hex_preview"), hexPreview(payload), QString(), QString(), 0, payload.size());
         break;
     }

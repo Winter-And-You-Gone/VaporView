@@ -16,6 +16,7 @@
 #include <QSplitter>
 #include <QSplitterHandle>
 #include <QComboBox>
+#include <QCheckBox>
 #include <QCoreApplication>
 #include <QDataStream>
 #include <QDateTime>
@@ -511,6 +512,154 @@ void testRawDataExportMenu()
     VaporView::setSettingsWritesSuspended(writesSuspended);
     qApp->setProperty(VaporView::kAppDarkThemeProperty, false);
     qApp->setPalette(VaporView::appThemePalette(false));
+}
+
+void testRawDataIssuesMatchDetails()
+{
+    QTemporaryDir sessionDir;
+    require(QDir(sessionDir.path()).mkpath(QStringLiteral("raw")), "validation fixture raw directory");
+    const QByteArray frame = QByteArray::fromHex("fc403800090000") + QByteArray(56, '\0') + QByteArray::fromHex("fd");
+    QList<QByteArray> frames{frame, QByteArray("short"), frame.left(8)};
+    for (int offset : {0, 2, 4, 5, 7, 63})
+    {
+        QByteArray damaged = frame;
+        damaged[offset] = static_cast<char>(damaged.at(offset) ^ 1);
+        frames.append(damaged);
+    }
+    // Combined waveform: 4 raw bytes and 8 harmonic bytes.
+    const QByteArray wave = QByteArray::fromHex("0400000008000000") + QByteArray(12, '\0');
+    QList<QByteArray> waves{wave, QByteArray("short"), wave.left(8), wave + 'x',
+                           QByteArray::fromHex("ffffffffffffffff")};
+    auto write = [&](const QString &name, quint16 source, const QList<QByteArray> &payloads) {
+        QFile file(sessionDir.filePath(QStringLiteral("raw/") + name));
+        require(file.open(QIODevice::WriteOnly), "validation fixtures writable");
+        QDataStream stream(&file);
+        stream.setByteOrder(QDataStream::LittleEndian);
+        stream.writeRawData(kTestRawMagic, sizeof(kTestRawMagic));
+        stream << quint32(2) << quint32(kTestRawHeaderSize) << source << quint16(0);
+        for (int index = 0; index < payloads.size(); ++index)
+        {
+            const auto &payload = payloads.at(index);
+            stream << quint32(kTestRawRecordMarker) << quint32(kTestRawRecordHeaderSize)
+                   << quint64(1700000000000000ULL + index) << quint32(payload.size())
+                   << source << quint16(source == kTestRawSourceTcpWave ? VaporView::SessionRawDat::kRecordTypeWaveformPayload : 0x40)
+                   // Legacy unflagged records reach the viewer even with bad sub-payload sizes.
+                   << quint32(0) << quint64(index);
+            stream.writeRawData(payload.constData(), payload.size());
+        }
+    };
+    write(QStringLiteral("epsilon.dat"), kTestRawSourceEpsilon, frames);
+    write(QStringLiteral("tcp_wave.dat"), kTestRawSourceTcpWave, waves);
+    RawDataParserWindow parser;
+    parser.show();
+    auto *table = parser.findChild<QTableView *>();
+    auto *tree = parser.findChild<QTreeWidget *>();
+    auto *issues = parser.findChild<QCheckBox *>();
+    const int count = frames.size() + waves.size();
+    auto open = [&] {
+        require(parser.openSessionPath(sessionDir.path()), "validation fixtures open");
+        require(processEventsUntil(5000, [&] { return table->model()->rowCount() == count; }), "validation fixtures indexed");
+    };
+    open();
+    QList<int> expected;
+    for (int row = 0; row < count; ++row)
+    {
+        table->setCurrentIndex(table->model()->index(row, 0));
+        bool abnormal = false;
+        for (int group = 0; group < tree->topLevelItemCount(); ++group)
+            for (int field = 0; field < tree->topLevelItem(group)->childCount(); ++field)
+                abnormal |= tree->topLevelItem(group)->child(field)->background(0).style() != Qt::NoBrush;
+        if (abnormal) expected.append(table->model()->index(row, 0).data(Qt::UserRole).toInt());
+    }
+    require(!expected.isEmpty() && expected.size() < count, "fixtures include normal and abnormal full decodes");
+    // Clear the index so cached full decodes cannot mask lightweight-path errors.
+    parser.clearSession();
+    open();
+    issues->setChecked(true);
+    require(table->model()->rowCount() == expected.size(), "lightweight validation matches full detail flags");
+    for (int row = 0; row < expected.size(); ++row)
+        require(table->model()->index(row, 0).data(Qt::UserRole).toInt() == expected.at(row), "lightweight validation preserves damaged record identities");
+}
+
+void testRawDataIssuesFilter()
+{
+    QTemporaryDir sessionDir;
+    require(QDir(sessionDir.path()).mkpath(QStringLiteral("raw")), "issues filter raw directory");
+    constexpr int count = 20000;
+    const QString path = sessionDir.filePath(QStringLiteral("raw/epsilon.dat"));
+    auto writeRecords = [&](bool issues) {
+        QFile file(path);
+        require(file.open(QIODevice::WriteOnly), "issues filter fixture writable");
+        QDataStream stream(&file);
+        stream.setByteOrder(QDataStream::LittleEndian);
+        stream.writeRawData(kTestRawMagic, sizeof(kTestRawMagic));
+        stream << quint32(2) << quint32(kTestRawHeaderSize) << quint16(kTestRawSourceEpsilon) << quint16(0);
+        // Valid IMU frame with a zero-filled body; CRC8=09, CRC16=0000.
+        const QByteArray normal = QByteArray::fromHex("fc403800090000") + QByteArray(56, '\0') + QByteArray::fromHex("fd");
+        for (int index = 0; index < count; ++index)
+        {
+            QByteArray payload = normal;
+            if (issues && index % 10 == 9)
+                payload[4] = '\0'; // Bad header CRC, with a structurally complete record.
+            stream << quint32(kTestRawRecordMarker) << quint32(kTestRawRecordHeaderSize)
+                   << quint64(1700000000000000ULL + index) << quint32(payload.size())
+                   << quint16(kTestRawSourceEpsilon) << quint16(0x40) << quint32(0) << quint64(index);
+            stream.writeRawData(payload.constData(), payload.size());
+        }
+    };
+    writeRecords(true);
+    RawDataParserWindow parser;
+    parser.setEnglish(true);
+    parser.show();
+    require(waitForWindowExposed(&parser), "issues filter parser exposed");
+    auto *table = parser.findChild<QTableView *>();
+    auto *issues = parser.findChild<QCheckBox *>();
+    require(table && issues, "issues filter controls exist");
+    require(parser.openSessionPath(sessionDir.path()), "issues filter session opens");
+    require(processEventsUntil(10000, [&] { return table->model()->rowCount() == count; }), "issues filter index ready");
+    QElapsedTimer elapsed;
+    elapsed.start();
+    issues->setChecked(true);
+    const qint64 coldMs = elapsed.elapsed();
+    require(table->model()->rowCount() == count / 10, "issues filter retains precisely CRC failures");
+    for (int row = 0; row < count / 10; ++row)
+        require(table->model()->index(row, 0).data(Qt::UserRole).toInt() == row * 10 + 9, "issues filter preserves record identities");
+    issues->setChecked(false);
+    elapsed.restart();
+    issues->setChecked(true);
+    const qint64 warmMs = elapsed.elapsed();
+    require(table->model()->rowCount() == count / 10, "repeated issues filter preserves results");
+    std::cout << "issues filter " << count << " records: cold=" << coldMs << " ms warm=" << warmMs << " ms\n";
+    parser.clearSession();
+    writeRecords(false);
+    require(parser.openSessionPath(sessionDir.path()), "issues filter reloads updated data");
+    auto *progress = parser.findChild<QWidget *>(QStringLiteral("rawDataParserProgressPanel"));
+    require(processEventsUntil(10000, [&] { return !progress->isVisible(); }), "issues filter reload completes");
+    require(table->model()->rowCount() == 0, "reload invalidates previous anomaly results");
+    issues->setChecked(false);
+    require(table->model()->rowCount() == count, "disabling issues restores every record");
+    parser.clearSession();
+    writeRecords(true);
+    require(parser.openSessionPath(sessionDir.path()), "cancellation fixture opens");
+    require(processEventsUntil(10000, [&] { return table->model()->rowCount() == count; }), "cancellation fixture indexed");
+    QTimer cancel;
+    bool cancelled = false;
+    QObject::connect(&cancel, &QTimer::timeout, &parser, [&] {
+        auto *dialog = parser.findChild<QProgressDialog *>();
+        if (dialog && dialog->value() > 0)
+        {
+            cancelled = true;
+            cancel.stop();
+            dialog->cancel();
+        }
+    });
+    cancel.start(0);
+    issues->setChecked(true);
+    cancel.stop();
+    require(cancelled && table->model()->rowCount() < count / 10, "issues scan remains cancellable");
+    issues->setChecked(false);
+    issues->setChecked(true);
+    require(table->model()->rowCount() == count / 10, "cancelled scan does not mark unchecked records normal");
 }
 
 void testRawDataScanProgressVisible()
@@ -2198,6 +2347,7 @@ int main(int argc, char **argv)
     const QStringList validGroups = {
         QStringLiteral("all"),
         QStringLiteral("io"),
+        QStringLiteral("issues"),
         QStringLiteral("window-state"),
         QStringLiteral("trajectory"),
         QStringLiteral("theme")
@@ -2209,6 +2359,8 @@ int main(int argc, char **argv)
 
     if (runsGroup(QStringLiteral("io")))
     {
+        testRawDataIssuesFilter();
+        testRawDataIssuesMatchDetails();
         testRawDataScanProgressVisible();
         testRawDataParserOpenIsNonBlocking();
         testRawDataParserRejectsTruncatedFdilinkFrame();
@@ -2218,6 +2370,11 @@ int main(int argc, char **argv)
         testCsvHighlightsStartAtTopWhenLoadingAndChangingFrames();
         testFrameSliderReleaseRestoresDetails();
         testSessionViewerTrajectoryActionLifetime();
+    }
+    if (selectedGroup == QStringLiteral("issues"))
+    {
+        testRawDataIssuesFilter();
+        testRawDataIssuesMatchDetails();
     }
     if (runsGroup(QStringLiteral("window-state")))
     {
