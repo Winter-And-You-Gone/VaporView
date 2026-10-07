@@ -804,7 +804,7 @@ public:
 
     int columnCount(const QModelIndex& parent = QModelIndex()) const override
     {
-        return parent.isValid() ? 0 : 8;
+        return parent.isValid() ? 0 : 9;
     }
 
     QVariant headerData(int section, Qt::Orientation orientation, int role) const override
@@ -814,6 +814,7 @@ public:
             return QVariant();
         }
         static const QStringList headers = {
+            QString(),
             QStringLiteral("#"),
             QStringLiteral("Time"),
             QStringLiteral("Device"),
@@ -845,7 +846,7 @@ public:
             return QVariant();
         }
 
-        switch (index.column())
+        switch (index.column() - 1)
         {
         case 0:
             return index.row() + 1;
@@ -1841,22 +1842,22 @@ void RawDataParserWindow::Impl::resizeTableColumnsToContents()
     int contentTotal = 0;
     for (int column = 0; column < columnCount; ++column)
     {
-        widths[column] = std::max(44, record_table->columnWidth(column));
+        widths[column] = column == 0 ? 32 : std::max(44, record_table->columnWidth(column));
         contentTotal += widths[column];
     }
 
     const int available = record_table->viewport()->width();
-    if (available > contentTotal && columnCount > 0)
+    if (available > contentTotal && columnCount > 1)
     {
         const int extra = available - contentTotal;
-        const int each = extra / columnCount;
-        int remainder = extra % columnCount;
-        for (int column = 0; column < columnCount; ++column)
+        const int each = extra / (columnCount - 1);
+        int remainder = extra % (columnCount - 1);
+        for (int column = 1; column < columnCount; ++column)
             widths[column] += each + (remainder-- > 0 ? 1 : 0);
     }
 
     for (int column = 0; column < columnCount; ++column)
-        header->setSectionResizeMode(column, QHeaderView::Interactive);
+        header->setSectionResizeMode(column, column == 0 ? QHeaderView::Fixed : QHeaderView::Interactive);
     for (int column = 0; column < columnCount; ++column)
         record_table->setColumnWidth(column, widths[column]);
     resizing_record_columns = false;
@@ -1981,8 +1982,8 @@ void RawDataParserWindow::Impl::updateCheckedCount()
         ? (english ? QStringLiteral("Export ▾") : QStringLiteral("导出 ▾"))
         : (english ? QStringLiteral("Export (%1 checked) ▾") : QStringLiteral("导出（已勾选 %1 条）▾")).arg(count));
     record_table->setToolTip(english
-        ? QStringLiteral("Check boxes in the # column to export records. Checks survive filtering, including hidden records; reload clears them.")
-        : QStringLiteral("勾选 # 列中的复选框后导出；筛选会保留勾选（含隐藏记录），重新加载会清空勾选。"));
+        ? QStringLiteral("Check boxes in the first column to export records. Checks survive filtering, including hidden records; reload clears them.")
+        : QStringLiteral("勾选首列中的复选框后导出；筛选会保留勾选（含隐藏记录），重新加载会清空勾选。"));
 }
 
 void RawDataParserWindow::Impl::exportFilteredCsv()

@@ -542,8 +542,12 @@ void testRawDataCheckedExport()
     QStyleOptionViewItem option;
     option.initFrom(table);
     option.rect = table->visualRect(model->index(0, 0));
-    option.features = QStyleOptionViewItem::HasCheckIndicator | QStyleOptionViewItem::HasDisplay;
-    option.text = QStringLiteral("1");
+    option.features = QStyleOptionViewItem::HasCheckIndicator;
+    require(model->columnCount() == 9 && !model->index(0, 0).data().isValid() &&
+            model->index(0, 1).data().toInt() == 1 &&
+            !model->index(0, 1).data(Qt::CheckStateRole).isValid(), "checkbox and row number occupy separate columns");
+    require(table->columnWidth(0) == 32 && table->horizontalHeader()->sectionResizeMode(0) == QHeaderView::Fixed,
+            "checkbox column stays narrow and fixed");
     const QRect indicator = table->style()->subElementRect(QStyle::SE_ItemViewItemCheckIndicator, &option, table);
     clickWidgetAt(table->viewport(), indicator.center(), 0);
     require(model->index(0, 0).data(Qt::CheckStateRole).toInt() == Qt::Checked, "mouse click checks record");
@@ -1020,8 +1024,8 @@ void testRawDataParserUsesHardwareTemperatureSourceNames()
                 return table->model() && table->model()->rowCount() == 1;
             }),
             "system temperature source filter applies");
-    require(table->model()->index(0, 2).data().toString() == QStringLiteral("AI-8288") &&
-                table->model()->index(0, 3).data().toString() == QStringLiteral("AI-8288 测量值"),
+    require(table->model()->index(0, 3).data().toString() == QStringLiteral("AI-8288") &&
+                table->model()->index(0, 4).data().toString() == QStringLiteral("AI-8288 测量值"),
             "system temperature raw record uses the hardware model name");
 
     const int laserIndex = deviceCombo->findData(
@@ -1032,8 +1036,8 @@ void testRawDataParserUsesHardwareTemperatureSourceNames()
                 return table->model() && table->model()->rowCount() == 1;
             }),
             "laser temperature source filter applies");
-    const QString laserType = table->model()->index(0, 3).data().toString();
-    require(table->model()->index(0, 2).data().toString() == QStringLiteral("RD105") &&
+    const QString laserType = table->model()->index(0, 4).data().toString();
+    require(table->model()->index(0, 3).data().toString() == QStringLiteral("RD105") &&
                 laserType.contains(QStringLiteral("RD105")),
             "laser temperature raw record uses the hardware model name");
 
