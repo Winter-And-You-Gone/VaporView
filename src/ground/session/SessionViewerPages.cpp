@@ -1173,6 +1173,7 @@ bool editSessionPeakSettings(
     bool english,
     int searchStartIndex,
     int searchEndIndex,
+    int framePointCount,
     const SessionPeakFilterSettings& filter,
     SessionPeakSettingsInput& output)
 {
@@ -1212,7 +1213,15 @@ bool editSessionPeakSettings(
     endCombo->setEditable(true);
     endCombo->setInsertPolicy(QComboBox::NoInsert);
     const QString fullFrameText = english ? QStringLiteral("Full Frame") : QStringLiteral("整帧");
+    for (int fifth = 1; fifth < 5; ++fifth)
+    {
+        const int endpoint = static_cast<int>(static_cast<qint64>(framePointCount) * fifth / 5);
+        const QString text = QString::number(endpoint);
+        if (endpoint > 0 && endCombo->findText(text) < 0)
+            endCombo->addItem(text);
+    }
     endCombo->addItem(fullFrameText);
+    endCombo->setCurrentIndex(endCombo->count() - 1);
     if (searchEndIndex > 0)
         endCombo->setEditText(QString::number(searchEndIndex));
     endCombo->setMinimumWidth(inputColumnWidth);

@@ -1818,6 +1818,7 @@ void SessionViewerWindow::onConfigurePeakFilterClicked()
             is_english_,
             peak_search_start_index_,
             peak_search_end_index_,
+            static_cast<int>(current_waveform_frame_samples_.size()),
             peak_filter_settings_,
             input))
     {

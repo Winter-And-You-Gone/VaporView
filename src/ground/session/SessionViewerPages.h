@@ -243,6 +243,7 @@ bool editSessionPeakSettings(QWidget *parent,
                              bool english,
                              int searchStartIndex,
                              int searchEndIndex,
+                             int framePointCount,
                              const SessionPeakFilterSettings& filter,
                              SessionPeakSettingsInput& output);
 
