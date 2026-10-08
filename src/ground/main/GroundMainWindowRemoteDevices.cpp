@@ -1273,7 +1273,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
     QStringList summaryStructureTokens{
         QString::number(state_->font_scale_percent_),
         state_->is_english_ ? QStringLiteral("en") : QStringLiteral("zh"),
-        qApp && !qApp->styleSheet().isEmpty() ? QStringLiteral("styled") : QStringLiteral("unstyled")};
+        !VaporView::appStyleSheet().isEmpty() ? QStringLiteral("styled") : QStringLiteral("unstyled")};
     const auto appendSummaryStructureTokens = [&summaryStructureTokens](
                                                   const QList<RemoteTelemetrySummarySections::Item>& items) {
         summaryStructureTokens << QString::number(items.size());

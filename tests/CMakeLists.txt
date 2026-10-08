@@ -652,6 +652,10 @@ add_test(
         -P ${CMAKE_CURRENT_SOURCE_DIR}/sky_link_config_source_audit.cmake
 )
 
+add_executable(app_stylesheet_test ${CMAKE_CURRENT_SOURCE_DIR}/app_stylesheet_test.cpp)
+target_link_libraries(app_stylesheet_test PRIVATE vaporview_app_theme)
+add_test(NAME app_stylesheet_test COMMAND app_stylesheet_test)
+
 add_executable(main_window_layout_test
     ${CMAKE_CURRENT_SOURCE_DIR}/main_window_layout_test.cpp
 )
@@ -1201,6 +1205,7 @@ set(VAPORVIEW_FAST_UNIT_TESTS
     imu_configuration_service_test
     serial_port_detection_service_test
     single_level_popup_menu_test
+    app_stylesheet_test
 )
 set_tests_properties(${VAPORVIEW_FAST_UNIT_TESTS} PROPERTIES TIMEOUT 30)
 set_property(TEST ${VAPORVIEW_FAST_UNIT_TESTS} PROPERTY LABELS fast unit)

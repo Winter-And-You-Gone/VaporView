@@ -1891,6 +1891,9 @@ void MainWindow::updateCustomTitleBarTitleWidth()
                           QStringLiteral("组合导航")};
     }
 
+    // Window-scoped styles are polished lazily on newly created children.
+    // Measure the styled font on the first layout as well as later switches.
+    state_->custom_title_label_->ensurePolished();
     const QFontMetrics metrics(state_->custom_title_label_->font());
     int maxTextWidth = 0;
     for (const QString& title : titleCandidates)

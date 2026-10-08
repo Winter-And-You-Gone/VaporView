@@ -168,6 +168,11 @@ QPalette appThemePalette(bool dark, const QPalette& basePalette);
 
 void configureComboBoxPopup(QComboBox *combo, bool dark);
 
+// Apply the shared stylesheet once per independent widget tree. Parented
+// dialogs and popups inherit it; newly polished windows receive it too.
+void setAppStyleSheet(const QString& styleSheet);
+QString appStyleSheet();
+
 QString applyAppThemeTokens(QString styleSheet, bool dark);
 QString startupAppThemeStyleSheet(bool dark);
 

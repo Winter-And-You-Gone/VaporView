@@ -3035,7 +3035,7 @@ void requireLastStyleRuleContains(const QString& styleSheet,
 
 void requireDarkAi8OverviewCapsulesReadable(MainWindow& window)
 {
-    const QString styleSheet = qApp->styleSheet();
+    const QString styleSheet = VaporView::appStyleSheet();
     requireLastStyleRuleContains(
         styleSheet,
         QStringLiteral("QFrame#ai8TemperatureOverviewCell {"),
@@ -4345,7 +4345,7 @@ void requireHomeThemeLayoutStability()
         QStringLiteral("background-color: ") +
         VaporView::appThemeColorName(VaporView::AppThemeColor::Window, true);
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QSplitter#homeSensorCardSplitter::handle:horizontal {"),
         darkWindowBackground,
         "dark EPSILON/environment separator uses the main window background");
@@ -4914,21 +4914,21 @@ int main(int argc, char **argv)
 #else
     requireMainWindowOmitsMap3DEntries(window);
 #endif
-    require(qApp->styleSheet().contains(QStringLiteral("square.svg")) &&
-                qApp->styleSheet().contains(QStringLiteral("square-check-big.svg")) &&
-                !qApp->styleSheet().contains(QStringLiteral("lucide/check.svg")),
+    require(VaporView::appStyleSheet().contains(QStringLiteral("square.svg")) &&
+                VaporView::appStyleSheet().contains(QStringLiteral("square-check-big.svg")) &&
+                !VaporView::appStyleSheet().contains(QStringLiteral("lucide/check.svg")),
             "checkbox indicators use lucide square and square-check-big icons");
-    require(qApp->styleSheet().contains(QStringLiteral("chevron-up.svg")) &&
-                qApp->styleSheet().contains(QStringLiteral("chevron-down.svg")) &&
-                qApp->styleSheet().contains(QStringLiteral("chevron-up-primary.svg")) &&
-                qApp->styleSheet().contains(QStringLiteral("chevron-down-primary.svg")) &&
-                qApp->styleSheet().contains(QStringLiteral("QAbstractSpinBox::up-arrow")) &&
-                qApp->styleSheet().contains(QStringLiteral("QAbstractSpinBox[spinArrowHover=\"up\"]::up-arrow")) &&
-                qApp->styleSheet().contains(QStringLiteral("QComboBox::down-arrow")) &&
-                qApp->styleSheet().contains(QStringLiteral("background-color: transparent")),
+    require(VaporView::appStyleSheet().contains(QStringLiteral("chevron-up.svg")) &&
+                VaporView::appStyleSheet().contains(QStringLiteral("chevron-down.svg")) &&
+                VaporView::appStyleSheet().contains(QStringLiteral("chevron-up-primary.svg")) &&
+                VaporView::appStyleSheet().contains(QStringLiteral("chevron-down-primary.svg")) &&
+                VaporView::appStyleSheet().contains(QStringLiteral("QAbstractSpinBox::up-arrow")) &&
+                VaporView::appStyleSheet().contains(QStringLiteral("QAbstractSpinBox[spinArrowHover=\"up\"]::up-arrow")) &&
+                VaporView::appStyleSheet().contains(QStringLiteral("QComboBox::down-arrow")) &&
+                VaporView::appStyleSheet().contains(QStringLiteral("background-color: transparent")),
             "spin arrows use enlarged primary lucide hover icons without button backgrounds");
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QComboBox::down-arrow:hover,"),
         QStringLiteral("chevron-down-primary.svg"),
         "light theme combo arrows include the primary hover asset");
@@ -4937,13 +4937,13 @@ int main(int argc, char **argv)
     require(VaporView::appThemeColor(VaporView::AppThemeColor::FieldBackground, false) ==
                 QColor(QStringLiteral("#FFFFFF")),
             "light theme field background is pure white");
-    require(qApp->styleSheet().contains(
+    require(VaporView::appStyleSheet().contains(
                 QStringLiteral("QComboBox {\n    background-color: %1").arg(lightFieldBackground)) &&
-                qApp->styleSheet().contains(
+                VaporView::appStyleSheet().contains(
                     QStringLiteral("QLineEdit {\n    background-color: %1").arg(lightFieldBackground)) &&
-                qApp->styleSheet().contains(
+                VaporView::appStyleSheet().contains(
                     QStringLiteral("QAbstractSpinBox {\n    background-color: %1").arg(lightFieldBackground)) &&
-                qApp->styleSheet().contains(
+                VaporView::appStyleSheet().contains(
                     QStringLiteral("QPlainTextEdit,\nQTextEdit {\n    background-color: %1")
                         .arg(lightFieldBackground)),
             "light theme gives combo, line, spin/date and multiline fields a pure white background");
@@ -4951,118 +4951,118 @@ int main(int argc, char **argv)
                                      "light theme spin arrow hover renders the primary lucide icon");
     requireComboArrowUsesPrimary(false,
                                  "light theme combo arrow renders the primary lucide icon when highlighted");
-    requireMenuPopupStyleUnified(qApp->styleSheet(),
+    requireMenuPopupStyleUnified(VaporView::appStyleSheet(),
                                  false,
                                  "light popup menus use the shared menu hover and rounded panel style");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("QSplitter#mainContentSplitter::handle:horizontal {"),
                                  QStringLiteral("background-color: transparent"),
                                  "main content splitter handle is invisible until hovered");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("QSplitter#mainContentSplitter::handle:horizontal {"),
                                  QStringLiteral("width: 0px"),
                                  "main content splitter does not add a visual card gutter");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("QSplitter#mainContentSplitter::handle:horizontal:hover {"),
                                  VaporView::appThemeRgba(VaporView::AppThemeColor::Primary, false, 0.18),
                                  "main content splitter keeps a resize hover cue");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("QSplitter#mainContentSplitter::handle:horizontal:pressed {"),
                                  VaporView::appThemeRgba(VaporView::AppThemeColor::Primary, false, 0.28),
                                  "main content splitter keeps a resize pressed cue");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("QSplitter#homeOverviewSplitter::handle:horizontal {"),
                                  QStringLiteral("width: 12px"),
                                  "home overview splitter keeps the requested 12px card gap");
     const QString homeOverviewSplitterSurface =
         QStringLiteral("background-color: ") +
         VaporView::appThemeColorName(VaporView::AppThemeColor::Surface, false);
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("QSplitter#homeOverviewSplitter::handle:horizontal:hover {"),
                                  homeOverviewSplitterSurface,
                                  "home overview splitter keeps its surface color while hovered");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("QSplitter#homeOverviewSplitter::handle:horizontal:pressed {"),
                                  homeOverviewSplitterSurface,
                                  "home overview splitter keeps its surface color while pressed");
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QSplitter#homeSensorCardSplitter::handle:horizontal:hover,"),
         VaporView::appThemeRgba(VaporView::AppThemeColor::Primary, false, 0.18),
         "home sensor card splitter keeps a hover resize cue");
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QSplitter#homeSensorCardSplitter::handle:horizontal:pressed,"),
         QStringLiteral("background-color: ") +
             VaporView::appThemeColorName(VaporView::AppThemeColor::Surface, false),
         "home sensor card splitter keeps a neutral pressed state");
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QSplitter#homeSensorCardSplitter::handle:focus {"),
         QStringLiteral("background-color: ") +
             VaporView::appThemeColorName(VaporView::AppThemeColor::Surface, false),
         "home sensor card splitter keeps a neutral focus state");
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar:vertical {"),
         QStringLiteral("background-color: ") +
             VaporView::appThemeColorName(VaporView::AppThemeColor::Surface, false),
         "main card scrollbar track uses an opaque surface plane");
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar:vertical {"),
         QStringLiteral("width: 8px"),
         "main card scrollbar track is an actual 8px rail, not a 12px rail with inset paint");
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar:vertical {"),
         QStringLiteral("border-radius: 4px"),
         "main card scrollbar track keeps proportional rounded ends at 8px width");
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar:vertical {"),
         QStringLiteral("margin: 14px 0px 14px 0px"),
         "main card scrollbar track keeps the shared arrow-button margins");
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar::add-line:vertical, "),
         QStringLiteral("height: 14px"),
         "main card scrollbar line buttons remain visible for arrow indicators");
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QScrollBar::up-arrow:vertical {"),
         QStringLiteral("image: url("),
         "main card scrollbar keeps the shared up-arrow indicator");
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QScrollBar::up-arrow:vertical {"),
         QStringLiteral("width: 8px"),
         "main card scrollbar arrow artwork matches the 8px rail width");
-    require(!qApp->styleSheet().contains(
+    require(!VaporView::appStyleSheet().contains(
                 QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar::up-arrow:vertical")),
             "main card scrollbar does not hide the shared arrow indicators");
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar::handle:vertical, "),
         QStringLiteral("border: none"),
         "main card scrollbar handle has no border paint");
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar::handle:vertical, "),
         QStringLiteral("border-radius: 4px"),
         "main card scrollbar handle keeps rounded ends at the 8px track width");
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar::handle:vertical, "),
         QStringLiteral("margin: 0px"),
         "main card scrollbar handle fills the 8px rail without using margins as fake gutters");
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QDialog#rtkConfigDialog QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"] {"),
         QStringLiteral("border-radius: 12px"),
         "RTK embedded cards use the same 12px top-level radius as their shadow clip");
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QDialog#rtkConfigDialog QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"] > QWidget#sectionTitleBar {"),
         QStringLiteral("border-top-left-radius: 11px"),
         "RTK embedded card title bars do not expose black corner arcs");
@@ -5237,7 +5237,7 @@ int main(int argc, char **argv)
     requireTopLevelCardElevation(appSidebar,
                                  1.0,
                                  "app sidebar uses the shared soft elevation");
-    requireSidebarCardStyle(qApp->styleSheet(), false,
+    requireSidebarCardStyle(VaporView::appStyleSheet(), false,
                             "light sidebar uses a complete rounded card border");
     auto *recordingStatusCard =
         window.findChild<QFrame *>(QStringLiteral("recordingStatusCard"));
@@ -6426,52 +6426,52 @@ int main(int argc, char **argv)
     const bool homeDeviceActionDark =
         qApp->property(VaporView::kAppDarkThemeProperty).toBool();
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QToolButton#homeDeviceActionButton {"),
         QStringLiteral("background-color: ") +
             VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt,
                                          homeDeviceActionDark),
         "home device overview action buttons keep their gray background");
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QToolButton#homeDeviceActionButton {"),
         QStringLiteral("border: 1px solid ") +
             VaporView::appThemeColorName(VaporView::AppThemeColor::Border,
                                          homeDeviceActionDark),
         "home device overview action buttons keep their border");
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QToolButton#homeDeviceActionButton:hover {"),
         QStringLiteral("background-color: ") +
             VaporView::appThemeColorName(VaporView::AppThemeColor::PrimarySubtle,
                                          homeDeviceActionDark),
         "home device overview action buttons keep their primary hover background");
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QToolButton#homeDeviceActionButton:hover {"),
         QStringLiteral("border-color: ") +
             VaporView::appThemeColorName(VaporView::AppThemeColor::BorderStrong,
                                          homeDeviceActionDark),
         "home device overview action buttons keep their hover border");
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QToolButton#homeDeviceActionButton[deviceConfigAction=\"true\"] {"),
         QStringLiteral("background-color: transparent"),
         "serial configuration action buttons are transparent by default");
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QToolButton#homeDeviceActionButton[deviceConfigAction=\"true\"] {"),
         QStringLiteral("border: none"),
         "serial configuration action buttons have no visible edge by default");
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QToolButton#homeDeviceActionButton[deviceConfigAction=\"true\"]:hover {"),
         QStringLiteral("background-color: ") +
             VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt,
                                          homeDeviceActionDark),
         "serial configuration action buttons show a gray background only on hover");
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QToolButton#homeDeviceActionButton[deviceConfigAction=\"true\"]:hover {"),
         QStringLiteral("border: none"),
         "serial configuration action buttons have no hover edge");
@@ -6556,7 +6556,7 @@ int main(int argc, char **argv)
                 ai8TitlePortCombo->font().pointSizeF() == rd105TitlePortCombo->font().pointSizeF(),
             "AI-8 and RD105 title serial selectors share typography");
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QComboBox#ai8TitlePortCombo {"),
         QStringLiteral("background-color: transparent"),
         "AI-8 title serial selector shares the RD105 transparent title style");
@@ -6589,26 +6589,26 @@ int main(int argc, char **argv)
                 !ai8ProtocolStatusLabel->property("protocolReady").toBool(),
             "AI-8 communication backend status sits at the far end of the title bar");
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QToolButton[temperatureTitleAction=\"true\"] {"),
         QStringLiteral("background-color: transparent"),
         "temperature title icon actions are transparent by default");
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QToolButton[temperatureTitleAction=\"true\"] {"),
         QStringLiteral("border: none"),
         "temperature title icon actions have no visible edge by default");
     const bool temperatureTitleActionDark =
         qApp->property(VaporView::kAppDarkThemeProperty).toBool();
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QToolButton[temperatureTitleAction=\"true\"]:hover {"),
         QStringLiteral("background-color: ") +
             VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt,
                                          temperatureTitleActionDark),
         "temperature title icon actions show a gray background only on hover");
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QToolButton[temperatureTitleAction=\"true\"]:hover {"),
         QStringLiteral("border: none"),
         "temperature title icon actions have no hover edge");
@@ -6688,37 +6688,37 @@ int main(int argc, char **argv)
                 temperatureScrollContentForAi8Expansion != nullptr &&
                 temperatureScrollContentForAi8Expansion->layout() != nullptr,
             "AI-8 detail toggle, RD105 card, and temperature scroll content exist for expansion stability checks");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8NavigationBar {"),
                                  QStringLiteral("border-radius: 8px"),
                                  "AI-8 page selectors use the same rounded gray track as temperature parameters");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8NavigationBar QPushButton {"),
                                  QStringLiteral("background-color: transparent"),
                                  "AI-8 page selector buttons override the global primary button fill");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8NavigationBar QPushButton:checked {"),
                                  QStringLiteral("font-weight: 600"),
                                  "AI-8 page selector marks the selected parameter group like the temperature tabs");
     const bool ai8StyleDark =
         qApp->property(VaporView::kAppDarkThemeProperty).toBool();
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8MainContentCard {"),
         QStringLiteral("background-color: %1").arg(
             VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceRaised, ai8StyleDark)),
         "AI-8 common parameters and trend plot use the raised theme surface");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8MainContentCard {"),
                                  QStringLiteral("border-radius: 8px"),
                                  "AI-8 common parameters and trend plot share a bordered content card");
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8DetailParametersCard {"),
         QStringLiteral("background-color: %1").arg(
             VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceRaised, ai8StyleDark)),
         "AI-8 detail parameter cards use the same background as the common parameter card");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("QWidget#ai8TemperatureControllerPanel QFrame#ai8ParameterField {"),
                                  QStringLiteral("border: none"),
                                  "AI-8 common parameter fields have no outer frame");
@@ -6836,13 +6836,13 @@ int main(int argc, char **argv)
             "temperature overview channel selector starts unavailable without controller data");
     require(!temperatureChannelButton->isEnabled(),
             "temperature overview channel selector is disabled without controller data");
-    require(qApp->styleSheet().contains(QStringLiteral("QToolButton#temperatureOverviewChannelButton[available=\"false\"]")),
+    require(VaporView::appStyleSheet().contains(QStringLiteral("QToolButton#temperatureOverviewChannelButton[available=\"false\"]")),
             "temperature overview channel selector has a gray unavailable state");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("QToolButton#temperatureOverviewChannelButton::menu-indicator {"),
                                  QStringLiteral("image: none"),
                                  "temperature overview channel selector hides the default dropdown indicator");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("QToolButton#temperatureOverviewChannelButton {"),
                                  QStringLiteral("font-weight: 500"),
                                  "temperature overview channel selector uses the normal selector font weight");
@@ -6932,7 +6932,7 @@ int main(int argc, char **argv)
             "temperature overview value pills use an overlay attached to the trend plot");
     require(temperatureOverviewValueOverlay->testAttribute(Qt::WA_TransparentForMouseEvents),
             "temperature overview value overlay passes pointer input through to the plot");
-    require(!qApp->styleSheet().contains(QStringLiteral("QLabel#temperatureOverviewValuePill[hasData")),
+    require(!VaporView::appStyleSheet().contains(QStringLiteral("QLabel#temperatureOverviewValuePill[hasData")),
             "temperature overview value pills use the default background without data-state colors");
     const QString targetLegendNumberColor = VaporView::appThemeColor(
         VaporView::AppThemeColor::ToolbarGreen,
@@ -7042,23 +7042,23 @@ int main(int argc, char **argv)
                 valueOverlayRect.right() <= std::floor(plotAreaRight) &&
                 valueOverlayRect.bottom() <= std::floor(plotAreaBottom),
             "temperature overview value overlay stays inside the plot area with an axis-safe inset");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("QLabel#temperatureOverviewValuePill {"),
                                  QStringLiteral("font-size: 17px"),
                                  "temperature overview value pill uses the enlarged value typography");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("QLabel#temperatureOverviewOutputPercentPill {"),
                                  QStringLiteral("font-size: 13px"),
                                  "temperature overview output percent pill matches the value capsule typography");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("QFrame#temperatureOverviewOutputCapsule {"),
                                  QStringLiteral("border-radius: 10px"),
                                  "temperature overview output label and switch share one rounded capsule");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("QLabel#temperatureOverviewOutputLabel {"),
                                  QStringLiteral("font-size: 12px"),
                                  "temperature overview output capsule uses the value-pill title size");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("QPushButton#temperatureOverviewOutputSwitch {"),
                                  QStringLiteral("font-size: 14px"),
                                  "temperature overview output switch font is enlarged for readability");
@@ -7078,7 +7078,7 @@ int main(int argc, char **argv)
         deviceOverviewCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
     require(!homeTelemetryPills.isEmpty(),
             "home device overview telemetry pills exist before dark theme switch");
-    const QString lightOverviewStyleSheet = qApp->styleSheet();
+    const QString lightOverviewStyleSheet = VaporView::appStyleSheet();
     requireLastStyleRuleContains(lightOverviewStyleSheet,
                                  QStringLiteral("QFrame#homeTelemetrySummaryPill {"),
                                  VaporView::appThemeColorName(VaporView::AppThemeColor::FieldBackground, false),
@@ -7262,7 +7262,7 @@ int main(int argc, char **argv)
     require(VaporView::appThemeColor(VaporView::AppThemeColor::SurfaceRaised, true) ==
                 QColor(24, 24, 24),
             "dark top-level card background uses the requested rgb(24, 24, 24) surface");
-    const QString darkOverviewStyleSheet = qApp->styleSheet();
+    const QString darkOverviewStyleSheet = VaporView::appStyleSheet();
     requireLastStyleRuleContains(
         darkOverviewStyleSheet,
         QStringLiteral("QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"],"),
@@ -7398,7 +7398,7 @@ int main(int argc, char **argv)
         darkHomeOverviewSplitterBackground,
         "dark home overview splitter keeps its background while pressed");
     requireLastStyleRuleContains(
-        qApp->styleSheet(),
+        VaporView::appStyleSheet(),
         QStringLiteral("QScrollArea#mainCardsScrollArea QScrollBar:vertical {"),
         QStringLiteral("background-color: ") +
             VaporView::appThemeColorName(VaporView::AppThemeColor::Window, true),
@@ -7704,9 +7704,9 @@ int main(int argc, char **argv)
                 sensorModelPtRadio->property("temperatureSensorModelOption").toBool() &&
                 sensorModelShRadio->property("temperatureSensorModelOption").toBool() &&
                 sensorModelMf501Radio->property("temperatureSensorModelOption").toBool() &&
-                qApp->styleSheet().contains(
+                VaporView::appStyleSheet().contains(
                     QStringLiteral("QRadioButton[temperatureSensorModelOption=\"true\"]::indicator")) &&
-                qApp->styleSheet().contains(
+                VaporView::appStyleSheet().contains(
                     QStringLiteral("QRadioButton[temperatureSensorModelOption=\"true\"]::indicator:checked")),
             "temperature sensor model options use square and square-check-big indicator styling");
     require(controllerModeCombo->property("usesSingleLevelPopupMenu").toBool() &&
@@ -7826,12 +7826,12 @@ int main(int argc, char **argv)
             "temperature title serial selector keeps about one character between the port and chevron");
     const bool temperatureTitlePortDark =
         qApp->property(VaporView::kAppDarkThemeProperty).toBool();
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("QComboBox#temperatureTitlePortCombo:hover,"),
                                  VaporView::appThemeColorName(VaporView::AppThemeColor::TitleBarHover,
                                                               temperatureTitlePortDark),
                                  "temperature title serial selector changes its background on hover");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("QComboBox#temperatureTitlePortCombo::down-arrow,"),
                                  temperatureTitlePortDark
                                      ? QStringLiteral("chevron-down-dark.svg")
@@ -7840,7 +7840,7 @@ int main(int argc, char **argv)
     if (temperatureTitlePortDark)
     {
         requireLastStyleRuleContains(
-            qApp->styleSheet(),
+            VaporView::appStyleSheet(),
             QStringLiteral("QComboBox#temperatureTitlePortCombo::down-arrow:hover,"),
             QStringLiteral("chevron-down-primary-dark.svg"),
             "dark temperature title serial selector highlights its chevron in orange");
@@ -8461,57 +8461,57 @@ int main(int argc, char **argv)
     require(controlsCardRectAfterChannelSwitch.width() <= 280 &&
                 plotRectAfterChannelSwitch.width() > controlsCardRectAfterChannelSwitch.width(),
             "temperature controller gives the narrowed parameter card less width than the trend plot");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("TemperatureControllerPanel QFrame#temperatureConfigCard {"),
                                  QStringLiteral("border-radius: 8px"),
                                  "temperature channel controls are wrapped in an internal rounded card");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("TemperatureControllerPanel QFrame#temperatureChannelTopBar {"),
                                  QStringLiteral("border-radius: 8px"),
                                  "temperature channel selector uses a rounded top bar");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"] {"),
                                  QStringLiteral("background-color: transparent"),
                                  "temperature channel top bar buttons override the global primary button fill");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"] {"),
                                  QStringLiteral("outline: none"),
                                  "temperature channel top bar buttons suppress native dotted focus outlines");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("TemperatureControllerPanel QPushButton[temperatureChannelSelector=\"true\"]:checked {"),
                                  QStringLiteral("font-weight: 600"),
                                  "temperature channel top bar marks the selected channel without native tab chrome");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("TemperatureControllerPanel QFrame#temperatureChannelSubTopBar {"),
                                  QStringLiteral("border-radius: 8px"),
                                  "temperature lower parameter selector uses a rounded segmented bar");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("TemperatureControllerPanel QPushButton[temperatureChannelSubSelector=\"true\"] {"),
                                  QStringLiteral("background-color: transparent"),
                                  "temperature lower parameter selector buttons override the global primary button fill");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("TemperatureControllerPanel QPushButton[temperatureChannelSubSelector=\"true\"] {"),
                                  QStringLiteral("outline: none"),
                                  "temperature lower parameter selector buttons suppress native dotted focus outlines");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("TemperatureControllerPanel QPushButton[temperatureChannelSubSelector=\"true\"]:checked {"),
                                  QStringLiteral("font-weight: 600"),
                                  "temperature lower parameter selector marks the selected page like the top bar");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("TemperatureControllerPanel QPushButton[temperatureOutputEnableSwitch=\"true\"] {"),
                                  QStringLiteral("min-height: 34px"),
                                  "temperature output enable switch uses compact top-row painting");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("QPushButton#appSidebarButton {"),
                                  QStringLiteral("outline: none"),
                                  "sidebar buttons suppress native dotted focus outlines");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("QPushButton#appSidebarButton:hover,"),
                                  QStringLiteral("background-color: %1")
                                      .arg(VaporView::appThemeColorName(
                                          VaporView::AppThemeColor::TitleBarHover, false)),
                                  "sidebar button hover uses the same neutral highlight as title-bar icons");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("QPushButton#appSidebarButton:hover,"),
                                  QStringLiteral("color: %1")
                                      .arg(VaporView::appThemeColorName(
@@ -8548,15 +8548,15 @@ int main(int argc, char **argv)
         }
         require(hasVisiblePixel, "scrollbar arrow image contains a visible triangle");
     }
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("TemperatureControllerPanel QPushButton#temperatureFactoryResetButton {"),
                                  VaporView::appThemeColorName(VaporView::AppThemeColor::ToolbarRed, false),
                                  "temperature factory reset button uses the vivid red toolbar token");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("TemperatureControllerPanel QLabel#fieldLabel[temperatureMaxOutputWarning=\"true\"] {"),
                                  VaporView::appThemeColorName(VaporView::AppThemeColor::Danger, false),
                                  "temperature max output label is marked red");
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("TemperatureControllerPanel QSpinBox[temperatureMaxOutputWarning=\"true\"] {"),
                                  VaporView::appThemeColorName(VaporView::AppThemeColor::Danger, false),
                                  "temperature max output value is marked red");
@@ -9741,7 +9741,7 @@ int main(int argc, char **argv)
         require(outline->testAttribute(Qt::WA_TransparentForMouseEvents),
                 "TCP wave subcard outline does not intercept plot interaction");
     }
-    requireLastStyleRuleContains(qApp->styleSheet(),
+    requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("QWidget#tcpWaveCardOutline {"),
                                  QStringLiteral("border: 1px solid %1")
                                      .arg(VaporView::appThemeColorName(
@@ -10477,7 +10477,7 @@ int main(int argc, char **argv)
                         QStringList{QStringLiteral("设备配置 [本机]"), QStringLiteral("Device Configuration [Local]")},
                         QStringLiteral("usb"),
                         "device serial configuration card uses the standard icon title bar");
-    const QString appStyleSheet = qApp->styleSheet();
+    const QString appStyleSheet = VaporView::appStyleSheet();
     const int serialCardStyleIndex = appStyleSheet.indexOf(
         QStringLiteral("QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"]"));
     require(serialCardStyleIndex >= 0 &&

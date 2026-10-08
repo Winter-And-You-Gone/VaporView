@@ -532,7 +532,7 @@ int main(int argc, char **argv)
     }
     require(qApp->property(VaporView::kAppDarkThemeProperty).toBool(),
             "main window is in dark theme for new log indicator style checks");
-    const QString darkStyleSheet = qApp->styleSheet();
+    const QString darkStyleSheet = VaporView::appStyleSheet();
     requireLastRuleContains(
         darkStyleSheet,
         QStringLiteral("QPushButton#logNewEntriesButton {"),

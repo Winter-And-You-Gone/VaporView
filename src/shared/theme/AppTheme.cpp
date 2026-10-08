@@ -6,12 +6,14 @@
 #include <QComboBox>
 #include <QEvent>
 #include <QFrame>
+#include <QHash>
 #include <QFocusEvent>
 #include <QPainter>
 #include <QProxyStyle>
 #include <QStyleOption>
 #include <QPainterPath>
 #include <QRegion>
+#include <QScopedValueRollback>
 #include <QTimer>
 #include <QVariant>
 #include <QWidget>
@@ -24,6 +26,96 @@ namespace
 {
 
 constexpr const char *kKeyboardButtonFocus = "vaporViewKeyboardButtonFocus";
+
+class AppStyleSheetController final : public QObject
+{
+public:
+    explicit AppStyleSheetController(QObject *parent) : QObject(parent)
+    {
+        setObjectName(QStringLiteral("vaporViewAppStyleSheetController"));
+        qApp->installEventFilter(this);
+    }
+
+    QString styleSheet() const { return style_sheet_; }
+
+    void setStyleSheet(const QString& styleSheet)
+    {
+        style_sheet_ = styleSheet;
+        // The startup splash may have installed a small application stylesheet.
+        // Remove it once; subsequent switches only repolish independent roots.
+        if (!qApp->styleSheet().isEmpty())
+        {
+            const QScopedValueRollback<bool> guard(updating_, true);
+            qApp->setStyleSheet(QString());
+        }
+        const auto windows = QApplication::topLevelWidgets();
+        for (QWidget *window : windows)
+        {
+            if (!window->parentWidget())
+                applyTo(window);
+        }
+    }
+
+protected:
+    bool eventFilter(QObject *object, QEvent *event) override
+    {
+        if (updating_)
+            return false;
+        if (event->type() != QEvent::Polish && event->type() != QEvent::StyleChange &&
+            event->type() != QEvent::ParentChange)
+            return false;
+        auto *widget = qobject_cast<QWidget *>(object);
+        if (!widget)
+            return false;
+        if (!widget->parentWidget())
+            applyTo(widget);
+        else if (event->type() == QEvent::ParentChange)
+        {
+            auto it = windows_.find(widget);
+            if (it != windows_.end())
+            {
+                const QString localStyle = it->local;
+                windows_.erase(it);
+                const QScopedValueRollback<bool> guard(updating_, true);
+                widget->setStyleSheet(localStyle);
+            }
+        }
+        return false;
+    }
+
+private:
+    struct WindowStyle { QString local; QString applied; };
+    QString style_sheet_;
+    QHash<QWidget *, WindowStyle> windows_;
+    bool updating_ = false;
+
+    void applyTo(QWidget *window)
+    {
+        auto it = windows_.find(window);
+        if (it == windows_.end())
+        {
+            it = windows_.insert(window, {window->styleSheet(), QString()});
+            connect(window, &QObject::destroyed, this, [this, window]() { windows_.remove(window); });
+        }
+        else if (window->styleSheet() != it->applied)
+            it->local = window->styleSheet();
+
+        const QString applied = style_sheet_.isEmpty() ? it->local
+            : style_sheet_ + QLatin1Char('\n') + it->local;
+        it->applied = applied;
+        if (window->styleSheet() != applied)
+        {
+            const QScopedValueRollback<bool> guard(updating_, true);
+            window->setStyleSheet(applied);
+        }
+    }
+};
+
+AppStyleSheetController *appStyleSheetController()
+{
+    return qApp ? static_cast<AppStyleSheetController *>(qApp->findChild<QObject *>(
+        QStringLiteral("vaporViewAppStyleSheetController"), Qt::FindDirectChildrenOnly)) : nullptr;
+}
 
 class ButtonFocusStyle final : public QProxyStyle
 {
@@ -974,6 +1066,23 @@ void configureComboBoxPopup(QComboBox *combo, bool dark)
              disabledText.name()));
     applyComboPopupOpaqueBackground(view);
     configureComboPopupContainerMask(view);
+}
+
+void setAppStyleSheet(const QString& styleSheet)
+{
+    if (!qApp)
+        return;
+    auto *controller = appStyleSheetController();
+    if (!controller)
+        controller = new AppStyleSheetController(qApp);
+    controller->setStyleSheet(styleSheet);
+}
+
+QString appStyleSheet()
+{
+    if (auto *controller = appStyleSheetController())
+        return controller->styleSheet();
+    return qApp ? qApp->styleSheet() : QString();
 }
 
 QString applyAppThemeTokens(QString styleSheet, bool dark)

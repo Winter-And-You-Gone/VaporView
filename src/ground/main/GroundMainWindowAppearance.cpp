@@ -1388,7 +1388,7 @@ void MainWindow::applyStyleConfiguration()
     appFont.setPointSizeF(state_->base_font_point_size_ * state_->font_scale_percent_ / 100.0);
     qApp->setPalette(appThemePalette(state_->dark_theme_enabled_));
     qApp->setFont(appFont);
-    qApp->setStyleSheet(scaledStyleSheet(themedStyleSheet()));
+    VaporView::setAppStyleSheet(scaledStyleSheet(themedStyleSheet()));
     syncDeviceConfigNumericColumnFonts();
     updateTopLevelCardShadows(this, state_->font_scale_percent_ / 100.0);
     configureComboPopupsIn(this);
