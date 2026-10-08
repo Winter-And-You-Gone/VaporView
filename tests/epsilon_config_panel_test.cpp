@@ -64,7 +64,8 @@ int main(int argc, char *argv[])
     int sectionCardCount = 0;
     for (QFrame *card : panel.findChildren<QFrame *>())
     {
-        if (card->property("epsilonConfigCard").toBool())
+        if (card->property("epsilonConfigCard").toBool() &&
+            !card->property("epsilonParameterCard").toBool())
         {
             ++sectionCardCount;
         }
@@ -534,8 +535,38 @@ int main(int argc, char *argv[])
     for (QWidget *row : panel.findChild<QWidget *>(QStringLiteral("epsilonInstallationPage"))->findChildren<QWidget *>())
         installationHasSecondColumn |= row->property("epsilonSettingsFieldColumn").toInt() == 1;
     require(installationHasSecondColumn, "wide installation form uses two compact columns");
+    auto *parametersCard = panel.findChild<QFrame *>(QStringLiteral("epsilonParameterActionsCard"));
+    require(parametersCard && parametersCard->property("epsilonParameterCard").toBool() &&
+            parametersCard->isAncestorOf(readButton) && parametersCard->isAncestorOf(saveButton) &&
+            parametersCard->isAncestorOf(restartButton) && parametersCard->isAncestorOf(settingsStatus),
+            "device actions, status, and guidance share the standard parameter card");
+    for (int i = 0; i < 3; ++i)
+        require(panel.findChild<QFrame *>(QStringLiteral("epsilonParameterCard_0_%1").arg(i)) != nullptr,
+                "installation uses three standard grouped cards");
+    for (int i = 0; i < 4; ++i)
+        require(panel.findChild<QFrame *>(QStringLiteral("epsilonParameterCard_1_%1").arg(i)) != nullptr,
+                "fusion uses four standard grouped cards");
+    auto *leverCard = panel.findChild<QFrame *>(QStringLiteral("epsilonParameterCard_0_1"));
+    int previousBottom = -1;
+    for (const auto *axis : {"X", "Y", "Z"})
+    {
+        auto *axisRow = panel.findChild<QWidget *>(QStringLiteral("epsilonParameterRow_GNSS_L_IMU_ANT1_%1").arg(QString::fromLatin1(axis)));
+        require(axisRow && leverCard->isAncestorOf(axisRow), "XYZ lever-arm fields remain in their common card");
+        const QRect rect(axisRow->mapTo(leverCard, QPoint()), axisRow->size());
+        require(rect.top() > previousBottom, "XYZ fields are ordered vertically without overlaps");
+        previousBottom = rect.bottom();
+    }
     require(pages->currentIndex() == 1 && readButton->isVisible() && !saveButton->isEnabled(),
             "unread settings cannot be saved");
+    require(firstInstallationRow->findChildren<QLabel *>().last()->isHidden(),
+            "ordinary unread fields omit repetitive visible status lines");
+    auto *dualXRow = panel.findChild<QWidget *>(QStringLiteral("epsilonParameterRow_GNSS_L_ANT2_ANT1_X"));
+    auto *dualYRow = panel.findChild<QWidget *>(QStringLiteral("epsilonParameterRow_GNSS_L_ANT2_ANT1_Y"));
+    auto *dualHeadingRow = panel.findChild<QWidget *>(QStringLiteral("epsilonParameterRow_GNSS_ANTS_HEADING_BIAS"));
+    require(dualXRow && dualYRow && dualHeadingRow &&
+            dualYRow->geometry().top() > dualXRow->geometry().bottom() &&
+            dualHeadingRow->geometry().left() > dualXRow->geometry().right(),
+            "wide dual antenna card keeps XYZ on the left and heading/baseline on the right");
     for (QWidget *editor : panel.findChildren<QWidget *>())
         if (editor->property("epsilonParameterName").isValid())
             require(!editor->isEnabled(), "unread parameter editors remain disabled");
@@ -557,6 +588,7 @@ int main(int argc, char *argv[])
     auto *unsupportedEditor = panel.findChild<QWidget *>(QStringLiteral("epsilonParameter_%1").arg(QString::fromStdString(unsupportedDescriptor->name)));
     require(editor && editor->isEnabled() && unsupportedEditor && !unsupportedEditor->isEnabled() &&
             !saveButton->isEnabled(), "successful reads enable only supported fields and start clean");
+    require(editor->width() <= 170, "numeric device values use compact editors instead of full-width fields");
     require(settingsStatus->text().contains(QStringLiteral("已读取 2 项")) &&
             settingsStatus->text().contains(QStringLiteral("2 项可编辑")) &&
             settingsStatus->text().contains(QStringLiteral("1 项不支持")) &&
@@ -612,6 +644,9 @@ int main(int argc, char *argv[])
     panel.resize(620, 900);
     panel.setEnglish(true);
     QApplication::processEvents();
+    require(dualHeadingRow->geometry().left() == dualXRow->geometry().left() &&
+            dualHeadingRow->geometry().top() > dualYRow->geometry().bottom(),
+            "narrow dual antenna card restores the continuous single-column parameter order");
     require(installationTab->text().contains(QStringLiteral("Installation")) &&
             settingsStatus->text().contains(QStringLiteral("readback confirmed")), "parameter pages translate labels and confirmation state");
     for (auto *button : {installationTab, fusionTab, communicationTab, readButton, saveButton, restartButton})
@@ -628,6 +663,16 @@ int main(int argc, char *argv[])
         require(rect.left() >= 0 && rect.right() < panel.width(), "narrow parameter field rows fit the available width");
     }
     fusionTab->click();
+    QApplication::processEvents();
+    auto *unreadDynamics = panel.findChild<QComboBox *>(QStringLiteral("epsilonParameter_DYNAMICS_MODEL"));
+    require(unreadDynamics && unreadDynamics->currentIndex() == -1 && unreadDynamics->width() >= 190,
+            "unread dynamics combo retains a visible input without inventing a selected value");
+    const QRect dynamicsRect(unreadDynamics->geometry());
+    for (auto *label : unreadDynamics->parentWidget()->findChildren<QLabel *>())
+        if (label->property("epsilonParameterLabel").toBool())
+            require(!label->geometry().intersects(dynamicsRect), "dynamics label and stable-width input do not overlap");
+    for (auto *check : panel.findChild<QWidget *>(QStringLiteral("epsilonFusionPage"))->findChildren<QCheckBox *>())
+        require(check->text() == QStringLiteral("Not read"), "unknown fusion booleans do not look like enabled values");
     VaporView::EpsilonSettingsSnapshot fusionSnapshot;
     fusionSnapshot.group = VaporView::EpsilonSettingsGroup::Fusion;
     const auto& fusionDescriptors = VaporView::epsilonParameterDescriptors(fusionSnapshot.group);

@@ -370,7 +370,8 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
         page_buttons_.append(button);
     }
     page_buttons_.first()->setChecked(true);
-    panelLayout->addWidget(tabs);
+    tabs->setMaximumWidth(720);
+    panelLayout->addWidget(tabs, 0, Qt::AlignHCenter);
     pages_ = new EpsilonPages(this);
     pages_->setObjectName(QStringLiteral("epsilonSettingsPages"));
     pages_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
@@ -634,12 +635,20 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     deviceSettingsCard.body_layout->addLayout(deviceGrid);
     communicationLayout->addWidget(deviceSettingsCard.card);
 
+    const SectionCard settingsActions = createSectionCard(this, QStringLiteral("epsilonParameterActionsCard"), QStringLiteral("sliders-vertical"));
+    settings_actions_card_ = settingsActions.card;
+    settings_actions_card_->setProperty("epsilonParameterCard", true);
+    settings_actions_title_ = settingsActions.title;
+    settings_actions_host_ = settingsActions.title_bar;
+    settings_actions_body_ = settingsActions.card->findChild<QWidget *>(QStringLiteral("epsilonParameterActionsCardBody"));
     createSettingsPages();
     settings_status_label_ = new QLabel(this);
     settings_status_label_->setObjectName(QStringLiteral("epsilonSettingsStatus"));
     settings_status_label_->setWordWrap(true);
     settings_status_label_->setProperty("epsilonSecondaryText", true);
-    panelLayout->addWidget(settings_status_label_);
+    settingsActions.body_layout->addWidget(settings_status_label_);
+    panelLayout->insertWidget(1, settings_actions_card_);
+    settings_actions_card_->hide();
 
     auto *actionsContainer = new QWidget(this);
     actions_container_ = actionsContainer;
@@ -680,17 +689,15 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
         pages_->setCurrentIndex(index);
         auto *rootLayout = qobject_cast<QVBoxLayout *>(layout());
         rootLayout->removeWidget(actions_container_);
-        rootLayout->removeWidget(settings_status_label_);
+        auto *headerLayout = qobject_cast<QHBoxLayout *>(settings_actions_host_->layout());
+        headerLayout->removeWidget(actions_container_);
+        settings_actions_body_->layout()->removeWidget(actions_container_);
         if (index == 0)
-        {
-            rootLayout->addWidget(settings_status_label_);
             rootLayout->addWidget(actions_container_);
-        }
         else
-        {
-            rootLayout->insertWidget(1, actions_container_);
-            rootLayout->insertWidget(2, settings_status_label_);
-        }
+            headerLayout->addWidget(actions_container_, 0, Qt::AlignRight | Qt::AlignVCenter);
+        settings_actions_card_->setVisible(index != 0);
+        arrangeSettingsFields(width() >= 760);
         pages_->updateGeometry();
         updateSettingsTexts();
         updateSettingsControls();
@@ -730,10 +737,10 @@ void EpsilonConfigPanel::createSettingsPages()
         auto *layout = new QVBoxLayout(page);
         layout->setContentsMargins(12, 10, 12, 12);
         layout->setSpacing(10);
-        auto *hint = new QLabel(page);
+        auto *hint = new QLabel(settings_actions_card_);
         hint->setWordWrap(true);
         hint->setProperty("epsilonSecondaryText", true);
-        layout->addWidget(hint);
+        qobject_cast<QVBoxLayout *>(settings_actions_card_->findChild<QWidget *>(QStringLiteral("epsilonParameterActionsCardBody"))->layout())->addWidget(hint);
         settings_hints_.append(hint);
         auto *fields = new QWidget(page);
         fields->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
@@ -744,12 +751,37 @@ void EpsilonConfigPanel::createSettingsPages()
         grid->setAlignment(Qt::AlignTop);
         settings_grids_.append(grid);
         layout->addWidget(fields);
+        QVector<SectionCard> cards;
+        const int cardCount = group == VaporView::EpsilonSettingsGroup::Installation ? 3 : 4;
+        for (int cardIndex = 0; cardIndex < cardCount; ++cardIndex)
+        {
+            const SectionCard card = createSectionCard(fields,
+                QStringLiteral("epsilonParameterCard_%1_%2").arg(static_cast<int>(group)).arg(cardIndex),
+                group == VaporView::EpsilonSettingsGroup::Installation ? QStringLiteral("satellite") : QStringLiteral("activity"));
+            card.card->setProperty("epsilonParameterCard", true);
+            card.card->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
+            cards.append(card);
+            settings_cards_.append(card.card);
+            settings_card_titles_.append(card.title);
+        }
+        if (group == VaporView::EpsilonSettingsGroup::Installation)
+        {
+            dual_antenna_grid_ = new QGridLayout();
+            dual_antenna_grid_->setHorizontalSpacing(24);
+            dual_antenna_grid_->setVerticalSpacing(10);
+            cards[2].body_layout->addLayout(dual_antenna_grid_);
+        }
+        int descriptorIndex = 0;
         for (const auto& descriptor : VaporView::epsilonParameterDescriptors(group))
         {
-            auto *row = new QWidget(page);
+            const int cardIndex = group == VaporView::EpsilonSettingsGroup::Installation
+                ? (descriptorIndex < 3 ? 0 : descriptorIndex < 6 ? 1 : 2)
+                : (descriptorIndex < 4 ? 0 : descriptorIndex < 7 ? 1 : descriptorIndex < 10 ? 2 : 3);
+            ++descriptorIndex;
+            auto *row = new QWidget(cards[cardIndex].card);
             row->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
             row->setObjectName(QStringLiteral("epsilonParameterRow_%1").arg(QString::fromStdString(descriptor.name)));
-            auto *rowLayout = new QVBoxLayout(row);
+            auto *rowLayout = new QGridLayout(row);
             rowLayout->setContentsMargins(0, 0, 0, 0);
             rowLayout->setSpacing(3);
             SettingsField field;
@@ -758,8 +790,10 @@ void EpsilonConfigPanel::createSettingsPages()
             field.group = group;
             field.label = new QLabel(row);
             field.label->setWordWrap(true);
-            field.label->setProperty("epsilonSettingName", true);
-            rowLayout->addWidget(field.label);
+            field.label->setProperty("epsilonParameterLabel", true);
+            field.label->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+            rowLayout->setColumnStretch(0, 1);
+            rowLayout->addWidget(field.label, 0, 0);
             if (descriptor.kind == VaporView::EpsilonParameterKind::Boolean)
             {
                 auto *editor = new EpsilonParameterCheckBox(row);
@@ -772,7 +806,7 @@ void EpsilonConfigPanel::createSettingsPages()
                 for (const auto& option : descriptor.options)
                     editor->addItem(QString::fromStdString(option.label_zh), option.value);
                 editor->setMinimumWidth(0);
-                editor->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+                editor->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
                 VaporView::configureComboBoxPopup(editor, VaporView::isDarkThemeEnabled());
                 field.editor = editor;
                 connect(editor, &QComboBox::currentIndexChanged, this, [this]() { updateSettingsControls(); });
@@ -791,12 +825,18 @@ void EpsilonConfigPanel::createSettingsPages()
             field.editor->setProperty("epsilonParameterName", QString::fromStdString(field.name));
             field.editor->setFixedHeight(VaporView::Ground::MainSupport::kMainPageInputHeight);
             field.editor->setFocusPolicy(Qt::TabFocus);
-            rowLayout->addWidget(field.editor);
+            field.editor->setMinimumWidth(descriptor.kind == VaporView::EpsilonParameterKind::Enumeration ? 190 : 0);
+            field.editor->setMaximumWidth(descriptor.kind == VaporView::EpsilonParameterKind::Enumeration ? 240 : 170);
+            rowLayout->addWidget(field.editor, 0, 1);
             field.state = new QLabel(row);
             field.state->setWordWrap(true);
             field.state->setProperty("epsilonSecondaryText", true);
-            rowLayout->addWidget(field.state);
+            rowLayout->addWidget(field.state, 1, 0, 1, 2);
             settings_fields_.append(field);
+            if (group == VaporView::EpsilonSettingsGroup::Installation && cardIndex == 2)
+                dual_antenna_grid_->addWidget(row, descriptorIndex - 7, 0);
+            else
+                cards[cardIndex].body_layout->addWidget(row);
         }
         layout->addStretch(1);
         pages_->addWidget(page);
@@ -806,19 +846,48 @@ void EpsilonConfigPanel::createSettingsPages()
 
 void EpsilonConfigPanel::arrangeSettingsFields(bool twoColumns)
 {
-    const int columns = twoColumns ? 2 : 1;
+    int cardOffset = 0;
     for (int groupIndex = 0; groupIndex < settings_grids_.size(); ++groupIndex)
     {
         auto *grid = settings_grids_[groupIndex];
+        const int count = groupIndex == 0 ? 3 : 4;
         grid->setColumnStretch(0, 1);
         grid->setColumnStretch(1, twoColumns ? 1 : 0);
+        for (int i = 0; i < count; ++i)
+        {
+            auto *card = settings_cards_[cardOffset + i];
+            grid->removeWidget(card);
+            if (twoColumns && groupIndex == 0 && i == 2)
+                grid->addWidget(card, 1, 0, 1, 2, Qt::AlignTop);
+            else
+                grid->addWidget(card, twoColumns ? i / 2 : i, twoColumns ? i % 2 : 0, Qt::AlignTop);
+            card->setProperty("epsilonSettingsFieldColumn", twoColumns ? i % 2 : 0);
+        }
+        cardOffset += count;
+    }
+    if (actions_container_ && pages_->currentIndex() != 0)
+    {
+        auto *header = qobject_cast<QHBoxLayout *>(settings_actions_host_->layout());
+        auto *body = qobject_cast<QVBoxLayout *>(settings_actions_body_->layout());
+        header->removeWidget(actions_container_);
+        body->removeWidget(actions_container_);
+        if (width() >= 760)
+            header->addWidget(actions_container_, 0, Qt::AlignRight | Qt::AlignVCenter);
+        else
+            body->insertWidget(0, actions_container_);
+    }
+    if (dual_antenna_grid_)
+    {
+        dual_antenna_grid_->setColumnStretch(0, 1);
+        dual_antenna_grid_->setColumnStretch(1, twoColumns ? 1 : 0);
         int index = 0;
         for (auto& field : settings_fields_)
         {
-            if (static_cast<int>(field.group) != groupIndex) continue;
-            grid->removeWidget(field.row);
-            grid->addWidget(field.row, index / columns, index % columns, Qt::AlignTop);
-            field.row->setProperty("epsilonSettingsFieldColumn", index % columns);
+            if (field.name.rfind("GNSS_L_ANT2_ANT1_", 0) != 0 &&
+                field.name != "GNSS_ANTS_HEADING_BIAS" && field.name != "GNSS_L_ANTS_BASE_LINE") continue;
+            dual_antenna_grid_->removeWidget(field.row);
+            dual_antenna_grid_->addWidget(field.row, twoColumns && index >= 3 ? index - 3 : index,
+                                         twoColumns && index >= 3 ? 1 : 0, Qt::AlignTop);
             ++index;
         }
     }
@@ -1022,6 +1091,16 @@ void EpsilonConfigPanel::updateSettingsControls()
 
 void EpsilonConfigPanel::updateSettingsTexts()
 {
+    settings_actions_title_->setText(is_english_ ? QStringLiteral("Device Parameters") : QStringLiteral("设备参数"));
+    const QStringList cardTitles = is_english_
+        ? QStringList{QStringLiteral("Installation Angles"), QStringLiteral("Main Antenna Lever Arm"), QStringLiteral("Dual Antenna Geometry"),
+                      QStringLiteral("GNSS Aids"), QStringLiteral("Magnetometer Aids"), QStringLiteral("Stationary Constraints"), QStringLiteral("Startup Tare and Dynamics")}
+        : QStringList{QStringLiteral("安装角"), QStringLiteral("主天线杆臂"), QStringLiteral("双天线几何"),
+                      QStringLiteral("GNSS 辅助"), QStringLiteral("磁力计辅助"), QStringLiteral("静止约束"), QStringLiteral("启动零偏与动力学")};
+    for (int i = 0; i < settings_card_titles_.size(); ++i)
+        settings_card_titles_[i]->setText(cardTitles[i]);
+    for (int i = 0; i < settings_hints_.size(); ++i)
+        settings_hints_[i]->setVisible(pages_->currentIndex() == i + 1);
     const QStringList names = is_english_
         ? QStringList{QStringLiteral("Communication"), QStringLiteral("Installation & Antennas"), QStringLiteral("Navigation Fusion")}
         : QStringList{QStringLiteral("通信输出"), QStringLiteral("安装与天线"), QStringLiteral("导航融合")};
@@ -1031,11 +1110,11 @@ void EpsilonConfigPanel::updateSettingsTexts()
         page_buttons_[i]->setAccessibleName(names[i]);
     }
     settings_hints_[0]->setText(is_english_
-        ? QStringLiteral("Read device configuration before editing. Navigation collection pauses during reads; a group may take tens of seconds. Wait for completion. Body axes: X forward, Y right, Z down; angles in degrees, lever arms in metres. Check antenna offsets against the installed geometry. Saved changes require a device restart.")
-        : QStringLiteral("编辑前先读取设备配置；读取期间导航采集会暂停，整组读取可能需要几十秒，请等待完成。机体坐标轴：X 向前、Y 向右、Z 向下；角度单位为度，杆臂单位为米。请按实际安装位置核对天线偏移。保存后需要重启设备。"));
+        ? QStringLiteral("Read device configuration before editing. Reads pause navigation collection and may take tens of seconds. X forward, Y right, Z down; angles in degrees, lever arms in metres. Check installed antenna geometry. Restart after saving.")
+        : QStringLiteral("编辑前先读取设备配置；读取期间暂停导航采集，可能需要几十秒。X 向前、Y 向右、Z 向下；角度为度，杆臂为米。请核对实际天线安装几何，保存后重启。"));
     settings_hints_[1]->setText(is_english_
-        ? QStringLiteral("Read device configuration before editing. Navigation collection pauses during reads; a group may take tens of seconds. Wait for completion. Select dynamics for the actual vehicle; motion constraints must match its operating conditions. Unsupported firmware parameters remain disabled. Saved changes require a device restart.")
-        : QStringLiteral("编辑前先读取设备配置；读取期间导航采集会暂停，整组读取可能需要几十秒，请等待完成。动力学模型须匹配实际车型，运动约束须符合车辆运行条件。不支持的固件参数保持禁用。保存后需要重启设备。"));
+        ? QStringLiteral("Read device configuration before editing. Reads pause navigation collection and may take tens of seconds. Match dynamics and motion constraints to the actual vehicle. Unsupported parameters stay disabled. Restart after saving.")
+        : QStringLiteral("编辑前先读取设备配置；读取期间暂停导航采集，可能需要几十秒。动力学与运动约束须匹配实际车辆；不支持的参数禁用，保存后重启。"));
     for (auto& field : settings_fields_)
     {
         const auto *descriptor = VaporView::epsilonParameterDescriptor(field.name);
@@ -1045,14 +1124,19 @@ void EpsilonConfigPanel::updateSettingsTexts()
         field.editor->setAccessibleName(label);
         field.state->setText(field.unsupported
             ? (is_english_ ? QStringLiteral("Unsupported by this device / firmware") : QStringLiteral("当前设备或固件不支持"))
-            : !field.read ? (is_english_ ? QStringLiteral("Not read — current device value unknown") : QStringLiteral("未读取，设备当前值未知"))
+            : !field.read ? QString()
             : !field.value_supported ? (is_english_
                 ? QStringLiteral("Device value %1 is outside the verified editing range; read only").arg(field.original, 0, 'g', 12)
                 : QStringLiteral("设备实际值 %1 不在已确认的编辑范围内，仅供查看").arg(field.original, 0, 'g', 12))
             : !descriptor->writable ? (is_english_ ? QStringLiteral("Read only: parameter range is not verified") : QStringLiteral("只读：参数取值范围尚未确认")) : QString());
         field.state->setVisible(!field.state->text().isEmpty());
+        field.editor->setToolTip(!field.read && !field.unsupported
+            ? (is_english_ ? QStringLiteral("Not read — current device value unknown") : QStringLiteral("未读取，设备当前值未知")) : field.state->text());
         if (auto *checkEditor = qobject_cast<QCheckBox *>(field.editor))
-            checkEditor->setText(is_english_ ? QStringLiteral("Enabled") : QStringLiteral("启用"));
+            checkEditor->setText(!field.read
+                ? (is_english_ ? QStringLiteral("Not read") : QStringLiteral("未读取"))
+                : !field.value_supported ? (is_english_ ? QStringLiteral("Unknown") : QStringLiteral("未知"))
+                : (is_english_ ? QStringLiteral("Enabled") : QStringLiteral("启用")));
         else if (auto *comboEditor = qobject_cast<QComboBox *>(field.editor))
         {
             const QSignalBlocker blocker(comboEditor);
@@ -1449,6 +1533,8 @@ void EpsilonConfigPanel::applyAppearance()
         "QWidget[epsilonConfigCardBody=\"true\"] { background-color: @vv-surface-raised; border-bottom-left-radius: 11px; border-bottom-right-radius: 11px; }"
         "QLabel[epsilonSummaryName=\"true\"] { color: @vv-text-secondary; font-weight: 400; }"
         "QLabel[epsilonSummaryValue=\"true\"], QLabel[epsilonSettingName=\"true\"] { color: @vv-text-strong; font-weight: 600; }"
+        "QLabel[epsilonParameterLabel=\"true\"] { color: @vv-text; font-weight: 400; }"
+        "QFrame[epsilonParameterCard=\"true\"] > QWidget#sectionTitleBar { border-bottom: 1px solid @vv-border; }"
         "QLabel[epsilonLivePacketRateLabel=\"true\"] { color: @vv-text-secondary; font-weight: 400; }"
         "QLabel[epsilonLivePacketRateValue=\"true\"] { color: @vv-text-strong; font-weight: 600; }"
         "QLabel[epsilonPacketGroupHeader=\"true\"] { color: @vv-text-strong; font-weight: 600; padding-top: 2px; }"
@@ -1463,7 +1549,7 @@ void EpsilonConfigPanel::applyAppearance()
         "QWidget#epsilonSettingsTabs QPushButton:focus { border: 1px solid @vv-focus; }"
         "QLabel[epsilonSettingsError=\"true\"] { color: @vv-danger; }"
         "QPushButton#epsilonRecommendedConfigButton { min-height: 28px; max-height: 28px; padding-top: 0px; padding-bottom: 0px; }"
-        "QWidget#epsilonActionsContainer { background-color: @vv-window; border: none; }"
+        "QWidget#epsilonActionsContainer { background-color: transparent; border: none; }"
         "QWidget#epsilonSummaryFields, QWidget#epsilonLivePacketRateGrid, QWidget#epsilonOutputTitleActions, QWidget#epsilonPacketGrid { background-color: transparent; border: none; }"
         "QComboBox[epsilonRtcmDevicePortControl=\"true\"] { background-color: @vv-surface; }");
     const QString resolvedStyle = VaporView::applyAppThemeTokens(

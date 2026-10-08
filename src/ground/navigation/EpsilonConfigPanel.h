@@ -87,6 +87,13 @@ private:
     QVector<QPushButton *> page_buttons_;
     QVector<QLabel *> settings_hints_;
     QVector<QGridLayout *> settings_grids_;
+    QVector<QWidget *> settings_cards_;
+    QVector<QLabel *> settings_card_titles_;
+    QGridLayout *dual_antenna_grid_ = nullptr;
+    QLabel *settings_actions_title_ = nullptr;
+    QWidget *settings_actions_card_ = nullptr;
+    QWidget *settings_actions_host_ = nullptr;
+    QWidget *settings_actions_body_ = nullptr;
     QStackedWidget *pages_ = nullptr;
     QWidget *communication_page_ = nullptr;
     QWidget *actions_container_ = nullptr;
