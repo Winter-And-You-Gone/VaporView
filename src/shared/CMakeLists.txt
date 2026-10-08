@@ -23,6 +23,7 @@ if(BUILD_TESTING)
 endif()
 
 set(PROTOCOL_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/shared/protocol/EpsilonSettings.cpp
     ${CMAKE_SOURCE_DIR}/src/shared/telemetry/RtcmStatusModel.cpp
     ${CMAKE_SOURCE_DIR}/src/shared/telemetry/TelemetryCodec.cpp
     ${CMAKE_SOURCE_DIR}/src/shared/telemetry/TelemetryLink.cpp
@@ -30,6 +31,7 @@ set(PROTOCOL_SOURCES
 )
 
 set(PROTOCOL_HEADERS
+    ${CMAKE_SOURCE_DIR}/include/EpsilonSettings.h
     ${CMAKE_SOURCE_DIR}/include/TelemetryTypes.h
     ${CMAKE_SOURCE_DIR}/include/TelemetryCodec.h
     ${CMAKE_SOURCE_DIR}/include/TelemetryLink.h

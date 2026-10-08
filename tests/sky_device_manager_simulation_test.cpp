@@ -1,4 +1,5 @@
 #include "SkyDeviceManager.h"
+#include "TelemetryCodec.h"
 
 #include <QCoreApplication>
 #include <QMetaObject>
@@ -334,6 +335,20 @@ int main(int argc, char **argv)
     requireConnectedWithData(manager, VaporView::SkyDeviceId::Ai8TemperatureController);
     require(manager.latestAi8TemperatureController().valid,
             "AI-8 simulated data resumes after reconnect");
+    VaporView::DeviceOperationRequest settingsRequest;
+    settingsRequest.device_id = VaporView::SkyDeviceId::Epsilon;
+    settingsRequest.operation = VaporView::DeviceOperation::ReadEpsilonSettings;
+    settingsRequest.payload = VaporView::TelemetryCodec::serializeEpsilonSettingsRead(VaporView::EpsilonSettingsGroup::Installation);
+    auto settingsSnapshot = std::make_shared<VaporView::EpsilonSettingsSnapshot>();
+    require(manager.prepareEpsilonOperation(settingsRequest, settingsSnapshot)() == VaporView::CommandErrorCode::UnknownCommand &&
+            settingsSnapshot->values.empty(), "simulation does not invent EPSILON hardware settings");
+    settingsRequest.payload = "{}";
+    require(manager.prepareEpsilonOperation(settingsRequest)() == VaporView::CommandErrorCode::InvalidPayload,
+            "Sky rejects malformed EPSILON settings read before hardware access");
+    settingsRequest.operation = VaporView::DeviceOperation::RestartEpsilonDevice;
+    require(manager.prepareEpsilonOperation(settingsRequest)() == VaporView::CommandErrorCode::InvalidPayload,
+            "Sky restart accepts only empty payload");
+
     const int logCountBeforeShutdown = ai8DisconnectLogCount;
     manager.setSimulateData(false);
     manager.shutdown(false);

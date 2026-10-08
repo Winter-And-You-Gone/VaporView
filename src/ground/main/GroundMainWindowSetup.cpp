@@ -2340,6 +2340,12 @@ void MainWindow::setupCentralWidget()
                 this, &MainWindow::onConfigureEpsilonRtcmPortClicked);
         connect(state_->epsilon_config_panel_, &EpsilonConfigPanel::reconfigureRequested,
                 this, &MainWindow::onReconfigureEpsilonClicked);
+        connect(state_->epsilon_config_panel_, &EpsilonConfigPanel::settingsReadRequested,
+                this, &MainWindow::onEpsilonSettingsReadRequested);
+        connect(state_->epsilon_config_panel_, &EpsilonConfigPanel::settingsApplyRequested,
+                this, &MainWindow::onEpsilonSettingsApplyRequested);
+        connect(state_->epsilon_config_panel_, &EpsilonConfigPanel::deviceRestartRequested,
+                this, &MainWindow::onEpsilonDeviceRestartRequested);
         state_->epsilon_config_panel_->setEnglish(state_->is_english_);
         syncDeviceConfigEpsilonPanelFromSettings();
         updateDeviceConfigState();
@@ -4033,6 +4039,26 @@ void MainWindow::updateDeviceConfigState()
         const bool operationPending = state_->epsilon_device_session_ &&
                                       state_->epsilon_device_session_->operationPending();
         state_->epsilon_config_panel_->setAvailable(epsilonConfigEnabled && !operationPending);
+        const QString settingsTarget = remote
+            ? QStringLiteral("remote:%1:%2:%3")
+                  .arg(state_->remote_sky_controller_
+                           ? state_->remote_sky_controller_->linkGeneration() : 0)
+                  .arg(state_->remote_sky_config_.epsilon.port)
+                  .arg(state_->remote_sky_config_.epsilon.baud_rate)
+            : QStringLiteral("local:%1:%2")
+                  .arg(state_->local_device_config_.epsilon.port,
+                       state_->local_device_config_.epsilon.baudText);
+        if (state_->epsilon_settings_target_ != settingsTarget)
+        {
+            state_->epsilon_settings_target_ = settingsTarget;
+            state_->epsilon_settings_device_values_.clear();
+            state_->epsilon_config_panel_->invalidateSettings();
+        }
+        state_->epsilon_config_panel_->setSettingsOperationPending(operationPending);
+        state_->epsilon_config_panel_->setSettingsAvailable(
+            epsilonConfigEnabled && !scheduledRecordingSessionOpen() &&
+            state_->epsilon_device_session_ &&
+            state_->epsilon_device_session_->operationsAvailable());
     }
 
     const QList<QWidget *> localWidgets = {

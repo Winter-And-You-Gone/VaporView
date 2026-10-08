@@ -7,6 +7,7 @@
 #include "shared/config/SettingsWriteBarrier.h"
 
 #include <algorithm>
+#include <exception>
 #include <utility>
 
 namespace VaporView::Ground
@@ -124,7 +125,102 @@ EpsilonConfigurationResult finishOperation(
     return result;
 }
 
+EpsilonConfigurationResult performSettingsOperation(
+    const EpsilonDeviceOperation& operation,
+    const QString& name,
+    const std::function<bool(VaporView::EpsilonCollector&, EpsilonSettingsSnapshot&, std::string&)>& command,
+    const EpsilonConfigurationService::LogCallback& log)
+{
+    EpsilonConfigurationResult result;
+    result.live_stream_restarted = !operation.restart_live_stream;
+    const auto collector = prepareCollector(operation, log);
+    if (operation.restart_live_stream)
+    {
+        emitLog(log, LogLevel::Info, QStringLiteral("device.navigation.command"),
+                QStringLiteral("epsilon_live_stream_pause_for_configuration"),
+                QStringLiteral("为读取、应用设置或重启 EPSILON 临时停止实时导航流。"),
+                {{QStringLiteral("operation"), name},
+                 {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
+        collector->stop();
+    }
+    std::string error;
+    try
+    {
+        if (!collector->start(operation.port.toStdString(), VaporView::SerialConfig::N81(operation.baud)))
+            error = "Failed to open EPSILON serial port: " + collector->getLastError();
+        else
+            result.command_succeeded = command(*collector, result.settings_snapshot, error);
+    }
+    catch (const std::exception& exception)
+    {
+        error = std::string("EPSILON settings operation failed: ") + exception.what();
+    }
+    catch (...)
+    {
+        error = "EPSILON settings operation failed";
+    }
+    if (!result.command_succeeded && error.empty())
+        error = "EPSILON settings operation failed";
+    result.error_message = QString::fromStdString(error);
+    QVariantMap fields{{QStringLiteral("operation"), name},
+             {QStringLiteral("command_succeeded"), result.command_succeeded},
+             {QStringLiteral("saved"), result.settings_snapshot.saved},
+             {QStringLiteral("readback_verified"), result.settings_snapshot.readback_verified},
+             {QStringLiteral("restart_required"), result.settings_snapshot.restart_required},
+             {QStringLiteral("error"), result.error_message},
+             {QStringLiteral("ui_visibility"), QStringLiteral("details")}};
+    if (!result.command_succeeded)
+        fields.insert(QStringLiteral("error_code"), QStringLiteral("CONFIG_APPLY_FAILED"));
+    emitLog(log, result.command_succeeded ? LogLevel::Info : LogLevel::Error,
+            QStringLiteral("device.navigation.command"), QStringLiteral("epsilon_settings_result"),
+            result.command_succeeded ? QStringLiteral("EPSILON 设置操作完成；重启后持久化仍需实机验证。")
+                                     : QStringLiteral("EPSILON 设置操作失败，部分设置可能已应用，请重新读取设备。"), fields);
+    return finishOperation(operation, name, collector, std::move(result), log);
+}
+
 } // namespace
+
+EpsilonConfigurationResult EpsilonConfigurationService::readSettings(
+    const EpsilonDeviceOperation& operation, EpsilonSettingsGroup group, const LogCallback& log)
+{
+    auto result = performSettingsOperation(operation, QStringLiteral("read_settings"),
+        [group](VaporView::EpsilonCollector& collector, EpsilonSettingsSnapshot& snapshot, std::string& error) {
+            return collector.readSettings(group, snapshot, error);
+        }, log);
+    result.settings_snapshot.group = group;
+    return result;
+}
+
+EpsilonConfigurationResult EpsilonConfigurationService::applySettings(
+    const EpsilonDeviceOperation& operation, const EpsilonSettingsOperation& settings, const LogCallback& log)
+{
+    std::string error;
+    if (!validateEpsilonSettings(settings, error))
+    {
+        EpsilonConfigurationResult result;
+        result.error_message = QString::fromStdString(error);
+        result.settings_snapshot.group = settings.group;
+        // Validation did not interrupt the original stream.
+        result.live_stream_restarted = !operation.restart_live_stream ||
+            (operation.live_collector && operation.live_collector->isRunning());
+        return result;
+    }
+    auto result = performSettingsOperation(operation, QStringLiteral("apply_settings"),
+        [&settings](VaporView::EpsilonCollector& collector, EpsilonSettingsSnapshot& snapshot, std::string& commandError) {
+            return collector.applySettings(settings, snapshot, commandError);
+        }, log);
+    result.settings_snapshot.group = settings.group;
+    return result;
+}
+
+EpsilonConfigurationResult EpsilonConfigurationService::rebootDevice(
+    const EpsilonDeviceOperation& operation, const LogCallback& log)
+{
+    return performSettingsOperation(operation, QStringLiteral("reboot_device"),
+        [](VaporView::EpsilonCollector& collector, EpsilonSettingsSnapshot&, std::string& error) {
+            return collector.rebootDevice(error);
+        }, log);
+}
 
 EpsilonConfigurationResult EpsilonConfigurationService::applyMainAntennaLeverArm(
     const EpsilonDeviceOperation& operation,

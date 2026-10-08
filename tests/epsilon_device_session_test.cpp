@@ -1,5 +1,6 @@
 #include "ground/devices/EpsilonDeviceSession.h"
 #include "ground/devices/RemoteSkyController.h"
+#include "TelemetryCodec.h"
 
 #include <QCoreApplication>
 #include <QElapsedTimer>
@@ -96,6 +97,22 @@ int main(int argc, char **argv)
         return successResult();
     };
 
+    adapter.readSettings = [](EpsilonSettingsGroup group, const VaporView::Ground::EpsilonDeviceOperation&) {
+        auto result = successResult();
+        result.settings_snapshot.group = group;
+        result.settings_snapshot.values = {{"GNSS_L_IMU_ANT1_X", 1.25}};
+        return result;
+    };
+    adapter.applySettings = [](const EpsilonSettingsOperation& operation, const VaporView::Ground::EpsilonDeviceOperation&) {
+        auto result = successResult();
+        result.settings_snapshot.group = operation.group;
+        result.settings_snapshot.values = operation.values;
+        result.settings_snapshot.saved = true;
+        result.settings_snapshot.readback_verified = true;
+        return result;
+    };
+    adapter.restartDevice = [](const VaporView::Ground::EpsilonDeviceOperation&) { return successResult(); };
+
     EpsilonDeviceSession session(std::move(adapter), nullptr);
     session.setLocalAvailable(true, QStringLiteral("simulated local EPSILON"));
     QVector<EpsilonSessionResult> results;
@@ -135,6 +152,18 @@ int main(int argc, char **argv)
             "local RTCM operation completes");
     results.clear();
 
+    session.readSettings(EpsilonSettingsGroup::Installation);
+    require(waitForResult(app, results) && results.back().success() &&
+            results.back().local_result.settings_snapshot.values.count("GNSS_L_IMU_ANT1_X"), "local settings snapshot survives worker delivery");
+    results.clear();
+    session.applySettings({EpsilonSettingsGroup::Installation, {{"GNSS_L_IMU_ANT1_X", 2.5}}});
+    require(waitForResult(app, results) && results.back().success() && results.back().local_result.settings_snapshot.readback_verified,
+            "local settings apply carries verification");
+    results.clear();
+    session.restartDevice();
+    require(waitForResult(app, results) && results.back().success(), "local restart completes on worker");
+    results.clear();
+
     *slowPacketRates = true;
     const quint64 staleId = session.configurePacketRates(packetRateOperation(), localDevice);
     require(staleId != 0 && session.operationPending(),
@@ -143,6 +172,7 @@ int main(int argc, char **argv)
     require(!results.isEmpty() && results.back().request_id == staleId &&
                 results.back().outcome == EpsilonOperationOutcome::Disconnected,
             "backend switch completes the active EPSILON request as disconnected");
+    require(session.operationPending() && !session.operationsAvailable(), "cancelled local worker retains serial ownership until completion");
     const int resultCountAfterSwitch = results.size();
     QThread::msleep(120);
     app.processEvents(QEventLoop::AllEvents, 50);
@@ -175,6 +205,67 @@ int main(int argc, char **argv)
     }
     require(remoteController.isOpen() && timeoutSocket != nullptr,
             "EPSILON timeout TCP link is established");
+    remoteSession.applySettings({EpsilonSettingsGroup::Installation, {{"GNSS_L_IMU_ANT1_X", 2.5}}});
+    require(!timeoutResults.isEmpty() && timeoutResults.back().outcome == EpsilonOperationOutcome::Unsupported,
+            "legacy detailed-operation support cannot enable unknown settings writes");
+    timeoutResults.clear();
+    TelemetryCodec commandCodec;
+    remoteSession.readSettings(EpsilonSettingsGroup::Installation);
+    DeviceOperationRequest settingsRequest;
+    QElapsedTimer requestTimer;
+    requestTimer.start();
+    while (settingsRequest.request_id == 0 && requestTimer.elapsed() < 1500)
+    {
+        app.processEvents(QEventLoop::AllEvents, 20);
+        for (const auto& frame : commandCodec.feedBytes(timeoutSocket->readAll()))
+        {
+            CommandMessage command;
+            if (frame.type == MsgType::Command && TelemetryCodec::parseCommand(frame.payload, command))
+                TelemetryCodec::parseDeviceOperationRequest(command.payload, settingsRequest);
+        }
+        QThread::msleep(1);
+    }
+    require(settingsRequest.request_id != 0, "remote settings read dispatches typed request");
+    remoteSession.setRemoteAvailable(false, QStringLiteral("navigation stale during settings"));
+    require(remoteSession.operationPending(), "navigation staleness does not cancel an active settings transaction");
+    DeviceOperationResponse settingsResponse;
+    settingsResponse.request_id = settingsRequest.request_id;
+    settingsResponse.device_id = SkyDeviceId::Epsilon;
+    settingsResponse.operation = DeviceOperation::ReadEpsilonSettings;
+    EpsilonSettingsSnapshot snapshot;
+    snapshot.values = {{"GNSS_L_IMU_ANT1_X", 1.25}};
+    settingsResponse.payload = TelemetryCodec::serializeEpsilonSettingsSnapshot(snapshot);
+    timeoutSocket->write(commandCodec.encodeFrame(MsgType::DeviceOperationResponse,
+        TelemetryCodec::serializeDeviceOperationResponse(settingsResponse), 1, 0));
+    timeoutSocket->flush();
+    require(waitForResult(app, timeoutResults) && timeoutResults.back().success() &&
+            timeoutResults.back().local_result.settings_snapshot.values == snapshot.values &&
+            remoteController.epsilonSettingsSupport() == DeviceOperationSupport::Supported,
+            "remote snapshot response confirms separate settings capability");
+    timeoutResults.clear();
+    remoteSession.readSettings(EpsilonSettingsGroup::Installation);
+    requestTimer.restart();
+    settingsRequest.request_id = 0;
+    while (settingsRequest.request_id == 0 && requestTimer.elapsed() < 1500)
+    {
+        app.processEvents(QEventLoop::AllEvents, 20);
+        for (const auto& frame : commandCodec.feedBytes(timeoutSocket->readAll()))
+        {
+            CommandMessage command;
+            if (frame.type == MsgType::Command && TelemetryCodec::parseCommand(frame.payload, command))
+                TelemetryCodec::parseDeviceOperationRequest(command.payload, settingsRequest);
+        }
+        QThread::msleep(1);
+    }
+    settingsResponse.request_id = settingsRequest.request_id;
+    settingsResponse.payload = "{}";
+    timeoutSocket->write(commandCodec.encodeFrame(MsgType::DeviceOperationResponse,
+        TelemetryCodec::serializeDeviceOperationResponse(settingsResponse), 2, 0));
+    timeoutSocket->flush();
+    require(waitForResult(app, timeoutResults) && !timeoutResults.back().success() &&
+            timeoutResults.back().error_code == CommandErrorCode::InvalidPayload,
+            "OK response cannot hide malformed settings snapshot");
+    timeoutResults.clear();
     const quint64 timeoutId = remoteSession.configurePacketRates(packetRateOperation());
     require(timeoutId != 0 && !waitForResult(app, timeoutResults, 5000),
             "slow EPSILON operation is not timed out during its reboot window");

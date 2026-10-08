@@ -21,6 +21,9 @@ QString epsilonOperationName(VaporView::Ground::Devices::EpsilonOperation operat
     case Operation::ConfigurePacketRates: return QStringLiteral("packet_profile");
     case Operation::ConfigureMainAntennaLeverArm: return QStringLiteral("main_antenna_lever_arm");
     case Operation::ConfigureRtcmInput: return QStringLiteral("rtcm_input");
+    case Operation::ReadSettings: return QStringLiteral("read_settings");
+    case Operation::ApplySettings: return QStringLiteral("apply_settings");
+    case Operation::RestartDevice: return QStringLiteral("restart_device");
     }
     return QStringLiteral("unknown");
 }
@@ -86,8 +89,19 @@ bool MainWindow::validateEpsilonPacketBandwidth(
 
 void MainWindow::onEpsilonSessionAvailabilityChanged(bool available, const QString& reason)
 {
-    Q_UNUSED(reason);
-    Q_UNUSED(available);
+    if (state_->epsilon_device_session_)
+    {
+        state_->epsilon_reconfigure_in_progress_ = state_->epsilon_device_session_->operationPending();
+    }
+    if (!available && state_->epsilon_config_panel_ &&
+        state_->epsilon_device_session_ &&
+        !state_->epsilon_device_session_->operationPending())
+    {
+        state_->epsilon_settings_device_values_.clear();
+        state_->epsilon_config_panel_->invalidateSettings();
+        state_->epsilon_config_panel_->setSettingsStatus(reason);
+    }
+    updateConnectionStatus(anyCollectorRunning());
     updateDeviceConfigState();
 }
 
@@ -100,6 +114,17 @@ void MainWindow::onEpsilonSessionOperationStarted(
         startEpsilonReconfigureProgress();
     }
     state_->epsilon_reconfigure_in_progress_ = true;
+    if (state_->epsilon_config_panel_ &&
+        (operation == VaporView::Ground::Devices::EpsilonOperation::ReadSettings ||
+         operation == VaporView::Ground::Devices::EpsilonOperation::ApplySettings ||
+         operation == VaporView::Ground::Devices::EpsilonOperation::RestartDevice))
+    {
+        state_->epsilon_config_panel_->setSettingsOperationPending(true);
+        state_->epsilon_config_panel_->setSettingsStatus(
+            state_->is_english_
+                ? QStringLiteral("Working with the device. Navigation output may pause temporarily.")
+                : QStringLiteral("正在操作设备，导航输出可能暂时中断，请等待完成。"));
+    }
     updateConnectionStatus(anyCollectorRunning());
     updateDeviceConfigState();
 }
@@ -111,7 +136,8 @@ void MainWindow::onEpsilonSessionOperationFinished(
     {
         stopEpsilonReconfigureProgress();
     }
-    state_->epsilon_reconfigure_in_progress_ = false;
+    state_->epsilon_reconfigure_in_progress_ = state_->epsilon_device_session_ &&
+        state_->epsilon_device_session_->operationPending();
     updateConnectionStatus(anyCollectorRunning());
 
     const QString operationName = epsilonOperationName(result.operation);
@@ -124,6 +150,55 @@ void MainWindow::onEpsilonSessionOperationFinished(
                                    : QStringLiteral("EPSILON 操作已完成。"))
             : (state_->is_english_ ? QStringLiteral("EPSILON operation failed.")
                                    : QStringLiteral("EPSILON 操作失败。"));
+    }
+
+    using Operation = VaporView::Ground::Devices::EpsilonOperation;
+    if (state_->epsilon_config_panel_ &&
+        (result.operation == Operation::ReadSettings ||
+         result.operation == Operation::ApplySettings ||
+         result.operation == Operation::RestartDevice))
+    {
+        state_->epsilon_config_panel_->setSettingsOperationPending(false);
+        if (!result.success())
+        {
+            state_->epsilon_settings_device_values_.clear();
+            state_->epsilon_config_panel_->invalidateSettings();
+            state_->epsilon_config_panel_->setSettingsError(statusText);
+        }
+        else if (result.operation == Operation::RestartDevice)
+        {
+            state_->epsilon_settings_device_values_.clear();
+            state_->epsilon_config_panel_->invalidateSettings();
+            state_->epsilon_config_panel_->setSettingsStatus(
+                state_->is_english_
+                    ? QStringLiteral("Device restarted. Read the settings again to verify the saved values.")
+                    : QStringLiteral("设备已重启，请重新读取参数，核对保存后的值。"));
+        }
+        else
+        {
+            if (result.operation == Operation::ReadSettings)
+            {
+                for (const auto& descriptor : VaporView::epsilonParameterDescriptors(
+                         result.local_result.settings_snapshot.group))
+                {
+                    state_->epsilon_settings_device_values_.erase(descriptor.name);
+                }
+            }
+            for (const auto& value : result.local_result.settings_snapshot.values)
+            {
+                state_->epsilon_settings_device_values_[value.first] = value.second;
+            }
+            state_->epsilon_config_panel_->setSettingsSnapshot(
+                result.local_result.settings_snapshot, result.operation == Operation::ApplySettings);
+        }
+    }
+    else if (result.operation == Operation::ConfigureMainAntennaLeverArm)
+    {
+        state_->epsilon_settings_device_values_.clear();
+        if (state_->epsilon_config_panel_)
+        {
+            state_->epsilon_config_panel_->invalidateSettings();
+        }
     }
 
     QVariantMap fields{{QStringLiteral("device"), QStringLiteral("EPSILON")},
@@ -153,6 +228,84 @@ void MainWindow::onEpsilonSessionOperationFinished(
                      fields);
 
     updateDeviceConfigState();
+}
+
+bool MainWindow::prepareEpsilonSettingsOperation(
+    VaporView::Ground::EpsilonDeviceOperation& operation)
+{
+    const auto reject = [this](const QString& message) {
+        if (state_->epsilon_config_panel_)
+        {
+            state_->epsilon_config_panel_->setSettingsError(message);
+        }
+        return false;
+    };
+    if (isUiTestMode())
+    {
+        return reject(state_->is_english_
+            ? QStringLiteral("Device settings require a real EPSILON connection; this is UI test mode.")
+            : QStringLiteral("设备参数需要真实 EPSILON 连接，当前为界面测试模式。"));
+    }
+    if (scheduledRecordingSessionOpen())
+    {
+        return reject(state_->is_english_
+            ? QStringLiteral("Stop recording before reading, applying or restarting device settings.")
+            : QStringLiteral("请先结束记录，再读取、应用参数或重启设备。"));
+    }
+    if (state_->connection_attempt_in_progress_ || state_->port_detection_in_progress_ ||
+        state_->epsilon_reconfigure_in_progress_ || !state_->epsilon_device_session_ ||
+        !state_->epsilon_device_session_->operationsAvailable())
+    {
+        return reject(state_->is_english_
+            ? QStringLiteral("EPSILON is unavailable or busy. Connect it and wait for the current task to finish.")
+            : QStringLiteral("EPSILON 未连接或正忙，请连接设备并等待当前任务结束。"));
+    }
+    if (isRemoteSkyMode())
+    {
+        return true;
+    }
+    const auto baud = VaporView::parseSerialBaudRate(state_->local_device_config_.epsilon.baudText);
+    const auto collector = snapshotCollectors().epsilon;
+    if (!baud || !collector || !collector->isRunning())
+    {
+        return reject(state_->is_english_
+            ? QStringLiteral("Connect EPSILON with a valid port and baud rate before configuring it.")
+            : QStringLiteral("请先使用有效串口和波特率连接 EPSILON。"));
+    }
+    operation.port = state_->local_device_config_.epsilon.port;
+    operation.baud = *baud;
+    operation.baud_text = state_->local_device_config_.epsilon.baudText;
+    operation.english = state_->is_english_;
+    operation.live_collector = collector;
+    operation.restart_live_stream = true;
+    return true;
+}
+
+void MainWindow::onEpsilonSettingsReadRequested(VaporView::EpsilonSettingsGroup group)
+{
+    VaporView::Ground::EpsilonDeviceOperation operation;
+    if (prepareEpsilonSettingsOperation(operation))
+    {
+        state_->epsilon_device_session_->readSettings(group, operation);
+    }
+}
+
+void MainWindow::onEpsilonSettingsApplyRequested(const VaporView::EpsilonSettingsOperation& settings)
+{
+    VaporView::Ground::EpsilonDeviceOperation operation;
+    if (prepareEpsilonSettingsOperation(operation))
+    {
+        state_->epsilon_device_session_->applySettings(settings, operation);
+    }
+}
+
+void MainWindow::onEpsilonDeviceRestartRequested()
+{
+    VaporView::Ground::EpsilonDeviceOperation operation;
+    if (prepareEpsilonSettingsOperation(operation))
+    {
+        state_->epsilon_device_session_->restartDevice(operation);
+    }
 }
 void MainWindow::applyEpsilonMainAntennaLeverArm(
     double xM,

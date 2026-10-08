@@ -106,6 +106,23 @@ RemoteSkyController::RemoteSkyController(QObject *parent)
                         device_operation_support_ = DeviceOperationSupport::Supported;
                         emit deviceOperationSupportChanged(device_operation_support_);
                     }
+                    const auto operation = device_operation_types_.take(response.request_id);
+                    if (operation == DeviceOperation::ReadEpsilonSettings || operation == DeviceOperation::ApplyEpsilonSettings ||
+                        operation == DeviceOperation::RestartEpsilonDevice)
+                    {
+                        EpsilonSettingsSnapshot snapshot;
+                        const bool valid = response.device_id == SkyDeviceId::Epsilon && response.operation == operation &&
+                            (operation == DeviceOperation::RestartEpsilonDevice ||
+                             (TelemetryCodec::parseEpsilonSettingsSnapshot(response.payload, snapshot) && !snapshot.values.empty()));
+                        const auto support = valid && response.error_code == CommandErrorCode::Ok ? DeviceOperationSupport::Supported :
+                            (response.error_code == CommandErrorCode::UnknownCommand || response.error_code == CommandErrorCode::InvalidPayload ?
+                             DeviceOperationSupport::Unsupported : epsilon_settings_support_);
+                        if (support != epsilon_settings_support_)
+                        {
+                            epsilon_settings_support_ = support;
+                            emit epsilonSettingsSupportChanged(support);
+                        }
+                    }
                     const quint16 sequence = device_operation_commands_.take(response.request_id);
                     if (sequence != 0)
                     {
@@ -121,7 +138,10 @@ RemoteSkyController::RemoteSkyController(QObject *parent)
                     if (!isCurrentOpenEvent(generation)) return;
                     if (ack.command_id == CommandId::DeviceOperation && ack.error_code != CommandErrorCode::Ok)
                     {
-                        if (ack.error_code == CommandErrorCode::UnknownCommand &&
+                        const auto requestOperation = device_operation_types_.value(device_operation_requests_.value(ack.command_seq));
+                        const bool settingsOperation = requestOperation == DeviceOperation::ReadEpsilonSettings ||
+                            requestOperation == DeviceOperation::ApplyEpsilonSettings || requestOperation == DeviceOperation::RestartEpsilonDevice;
+                        if (ack.error_code == CommandErrorCode::UnknownCommand && !settingsOperation &&
                             device_operation_support_ != DeviceOperationSupport::Unsupported)
                         {
                             device_operation_support_ = DeviceOperationSupport::Unsupported;
@@ -131,7 +151,17 @@ RemoteSkyController::RemoteSkyController(QObject *parent)
                         if (requestId != 0)
                         {
                             device_operation_commands_.remove(requestId);
-                            emit deviceOperationRejected(requestId, ack);
+                            const auto operation = device_operation_types_.take(requestId);
+                            CommandAck rejection = ack;
+                            if ((operation == DeviceOperation::ReadEpsilonSettings || operation == DeviceOperation::ApplyEpsilonSettings ||
+                                 operation == DeviceOperation::RestartEpsilonDevice) &&
+                                (ack.error_code == CommandErrorCode::UnknownCommand || ack.error_code == CommandErrorCode::InvalidPayload))
+                            {
+                                epsilon_settings_support_ = DeviceOperationSupport::Unsupported;
+                                emit epsilonSettingsSupportChanged(epsilon_settings_support_);
+                                rejection.error_code = CommandErrorCode::UnknownCommand;
+                            }
+                            emit deviceOperationRejected(requestId, rejection);
                         }
                     }
                     emit commandAckReceived(ack);
@@ -148,6 +178,7 @@ RemoteSkyController::RemoteSkyController(QObject *parent)
                         if (requestId != 0)
                         {
                             device_operation_commands_.remove(requestId);
+                            device_operation_types_.remove(requestId);
                             emit deviceOperationTimedOut(requestId);
                         }
                     }
@@ -296,6 +327,9 @@ void RemoteSkyController::resetState()
     device_operation_requests_.clear();
     device_operation_commands_.clear();
     device_operation_support_ = DeviceOperationSupport::Unknown;
+    epsilon_settings_support_ = DeviceOperationSupport::Unknown;
+    device_operation_types_.clear();
+    emit epsilonSettingsSupportChanged(epsilon_settings_support_);
 }
 
 void RemoteSkyController::markLinkClosed()
@@ -304,6 +338,35 @@ void RemoteSkyController::markLinkClosed()
     device_operation_requests_.clear();
     device_operation_commands_.clear();
     device_operation_support_ = DeviceOperationSupport::Unknown;
+    epsilon_settings_support_ = DeviceOperationSupport::Unknown;
+    device_operation_types_.clear();
+    emit epsilonSettingsSupportChanged(epsilon_settings_support_);
+}
+
+quint32 RemoteSkyController::readEpsilonSettings(EpsilonSettingsGroup group)
+{
+    if (static_cast<int>(group) > 1 || epsilon_settings_support_ == DeviceOperationSupport::Unsupported) return 0;
+    return sendDeviceOperation(SkyDeviceId::Epsilon, DeviceOperation::ReadEpsilonSettings,
+                               TelemetryCodec::serializeEpsilonSettingsRead(group));
+}
+
+quint32 RemoteSkyController::applyEpsilonSettings(const EpsilonSettingsOperation& operation)
+{
+    std::string error;
+    if (!validateEpsilonSettings(operation, error) || epsilon_settings_support_ != DeviceOperationSupport::Supported) return 0;
+    return sendDeviceOperation(SkyDeviceId::Epsilon, DeviceOperation::ApplyEpsilonSettings,
+                               TelemetryCodec::serializeEpsilonSettingsOperation(operation));
+}
+
+quint32 RemoteSkyController::restartEpsilonDevice()
+{
+    if (epsilon_settings_support_ != DeviceOperationSupport::Supported) return 0;
+    return sendDeviceOperation(SkyDeviceId::Epsilon, DeviceOperation::RestartEpsilonDevice, QByteArray());
+}
+
+DeviceOperationSupport RemoteSkyController::epsilonSettingsSupport() const
+{
+    return epsilon_settings_support_;
 }
 
 DeviceOperationSupport RemoteSkyController::deviceOperationSupport() const
@@ -519,6 +582,7 @@ quint32 RemoteSkyController::sendDeviceOperation(
     }
     device_operation_requests_.insert(commandSequence, request.request_id);
     device_operation_commands_.insert(request.request_id, commandSequence);
+    device_operation_types_.insert(request.request_id, operation);
     return request.request_id;
 }
 

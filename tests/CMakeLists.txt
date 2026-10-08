@@ -244,6 +244,13 @@ target_link_libraries(ai8_device_session_test PRIVATE
 )
 add_test(NAME ai8_device_session_test COMMAND ai8_device_session_test)
 
+add_executable(epsilon_settings_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/epsilon_settings_test.cpp
+)
+target_link_libraries(epsilon_settings_test PRIVATE vaporview_protocol)
+add_test(NAME epsilon_settings_test COMMAND epsilon_settings_test)
+set_tests_properties(epsilon_settings_test PROPERTIES LABELS "fast;epsilon")
+
 add_executable(epsilon_device_session_test
     ${CMAKE_CURRENT_SOURCE_DIR}/epsilon_device_session_test.cpp
 )

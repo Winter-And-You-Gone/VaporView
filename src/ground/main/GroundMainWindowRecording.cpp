@@ -974,6 +974,15 @@ bool MainWindow::startRecordingSession()
     VaporView::Ground::Session::GroundRecordingOptions options;
     if(state_->rtk_config_dialog_)
         options.imuToMainAntennaBodyM = state_->rtk_config_dialog_->mainAntennaLeverArm();
+    const auto& deviceSettings = state_->epsilon_settings_device_values_;
+    if (deviceSettings.count("GNSS_L_IMU_ANT1_X") &&
+        deviceSettings.count("GNSS_L_IMU_ANT1_Y") &&
+        deviceSettings.count("GNSS_L_IMU_ANT1_Z"))
+    {
+        options.imuToMainAntennaBodyM = {deviceSettings.at("GNSS_L_IMU_ANT1_X"),
+                                       deviceSettings.at("GNSS_L_IMU_ANT1_Y"),
+                                       deviceSettings.at("GNSS_L_IMU_ANT1_Z")};
+    }
     options.baseDirectory = state_->recording_directory_.trimmed();
     if (options.baseDirectory.isEmpty())
     {
@@ -1154,6 +1163,13 @@ QString MainWindow::scheduledRecordingStartBlockReason() const
             return state_->is_english_
                 ? QStringLiteral("Remote Sky telemetry is not connected.")
                 : QStringLiteral("天空端数传未连接。");
+        }
+        if (state_->epsilon_reconfigure_in_progress_ ||
+            (state_->epsilon_device_session_ && state_->epsilon_device_session_->operationPending()))
+        {
+            return state_->is_english_
+                ? QStringLiteral("Wait for the EPSILON device operation to finish before starting recording.")
+                : QStringLiteral("请等待 EPSILON 设备操作完成，再开始记录。");
         }
         if (state_->remote_recording_state_ == 1)
         {
@@ -1736,6 +1752,16 @@ void MainWindow::onStartRecordingClicked()
     }
     if (isRemoteSkyMode())
     {
+        if (state_->epsilon_reconfigure_in_progress_ ||
+            (state_->epsilon_device_session_ && state_->epsilon_device_session_->operationPending()))
+        {
+            publishGroundLog(VaporView::LogLevel::Warning,
+                             QStringLiteral("session.recording"),
+                             QStringLiteral("session_recording_rejected_epsilon_operation"),
+                             QStringLiteral("EPSILON 设备操作尚未完成，暂时不能开始记录。"),
+                             {{QStringLiteral("reason_code"), QStringLiteral("DEVICE_BUSY")}});
+            return;
+        }
         if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
         {
             publishGroundLog(VaporView::LogLevel::Warning,
@@ -1897,7 +1923,9 @@ void MainWindow::updateRecordingActionStates()
         const bool linkOpen = state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen();
         const bool recordingActive = state_->remote_recording_state_ == 1;
         const bool recordingPaused = state_->remote_recording_state_ == 2;
-        if (state_->start_recording_btn_) state_->start_recording_btn_->setEnabled(linkOpen && !recordingActive);
+        const bool epsilonBusy = state_->epsilon_reconfigure_in_progress_ ||
+            (state_->epsilon_device_session_ && state_->epsilon_device_session_->operationPending());
+        if (state_->start_recording_btn_) state_->start_recording_btn_->setEnabled(linkOpen && !recordingActive && !epsilonBusy);
         if (state_->pause_recording_btn_) state_->pause_recording_btn_->setEnabled(linkOpen && recordingActive);
         if (state_->stop_recording_btn_) state_->stop_recording_btn_->setEnabled(linkOpen && (recordingActive || recordingPaused));
         updateScheduledRecordingAction();

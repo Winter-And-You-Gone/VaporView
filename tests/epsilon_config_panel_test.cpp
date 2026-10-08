@@ -2,9 +2,13 @@
 #include "ground/navigation/EpsilonConfigPanel.h"
 #include "shared/theme/AppTheme.h"
 #include "test_ui_helpers.h"
+#include "test_settings_sandbox.h"
 
 #include <QApplication>
 #include <QComboBox>
+#include <QDoubleSpinBox>
+#include <QCheckBox>
+#include <QStackedWidget>
 #include <QFrame>
 #include <QLabel>
 #include <QPushButton>
@@ -504,6 +508,199 @@ int main(int argc, char *argv[])
     panel.setEnglish(false);
     require(!panel.accessibleName().isEmpty(), "Chinese accessible name remains available");
 
+    auto *pages = panel.findChild<QStackedWidget *>(QStringLiteral("epsilonSettingsPages"));
+    auto *installationTab = panel.findChild<QPushButton *>(QStringLiteral("epsilonSettingsTab_1"));
+    auto *fusionTab = panel.findChild<QPushButton *>(QStringLiteral("epsilonSettingsTab_2"));
+    auto *communicationTab = panel.findChild<QPushButton *>(QStringLiteral("epsilonSettingsTab_0"));
+    auto *readButton = panel.findChild<QPushButton *>(QStringLiteral("epsilonSettingsReadButton"));
+    auto *saveButton = panel.findChild<QPushButton *>(QStringLiteral("epsilonSaveButton"));
+    auto *restartButton = panel.findChild<QPushButton *>(QStringLiteral("epsilonDeviceRestartButton"));
+    auto *settingsStatus = panel.findChild<QLabel *>(QStringLiteral("epsilonSettingsStatus"));
+    require(pages && pages->count() == 3 && installationTab && fusionTab && communicationTab &&
+            readButton && saveButton && restartButton && settingsStatus,
+            "EPSILON exposes three internal pages and shared read/save/restart actions");
+    installationTab->click();
+    panel.setSettingsAvailable(true);
+    QApplication::processEvents();
+    auto *firstInstallationRow = panel.findChild<QWidget *>(QStringLiteral("epsilonParameterRow_BODY_TO_VEHICLE_ALGN_ROLL"));
+    require(firstInstallationRow != nullptr, "installation has a first parameter row");
+    const int firstInstallationTop = firstInstallationRow->mapTo(&panel, QPoint()).y();
+    for (auto *button : {readButton, saveButton, restartButton})
+        require(button->mapTo(&panel, QPoint()).y() + button->height() <= firstInstallationTop,
+                "parameter read/save/restart actions precede the first field");
+    require(settingsStatus->mapTo(&panel, QPoint()).y() + settingsStatus->height() <= firstInstallationTop,
+            "parameter operation status appears above the form");
+    bool installationHasSecondColumn = false;
+    for (QWidget *row : panel.findChild<QWidget *>(QStringLiteral("epsilonInstallationPage"))->findChildren<QWidget *>())
+        installationHasSecondColumn |= row->property("epsilonSettingsFieldColumn").toInt() == 1;
+    require(installationHasSecondColumn, "wide installation form uses two compact columns");
+    require(pages->currentIndex() == 1 && readButton->isVisible() && !saveButton->isEnabled(),
+            "unread settings cannot be saved");
+    for (QWidget *editor : panel.findChildren<QWidget *>())
+        if (editor->property("epsilonParameterName").isValid())
+            require(!editor->isEnabled(), "unread parameter editors remain disabled");
+
+    const auto& installationDescriptors = VaporView::epsilonParameterDescriptors(VaporView::EpsilonSettingsGroup::Installation);
+    const auto editable = std::find_if(installationDescriptors.begin(), installationDescriptors.end(),
+        [](const auto& descriptor) { return descriptor.writable && descriptor.kind == VaporView::EpsilonParameterKind::Real; });
+    require(editable != installationDescriptors.end(), "installation has a verified editable real parameter");
+    const auto *unsupportedDescriptor = &installationDescriptors.back();
+    if (unsupportedDescriptor->name == editable->name)
+        unsupportedDescriptor = &installationDescriptors.front();
+    VaporView::EpsilonSettingsSnapshot snapshot;
+    snapshot.group = VaporView::EpsilonSettingsGroup::Installation;
+    snapshot.values[editable->name] = 0;
+    snapshot.values[installationDescriptors[1].name] = 0;
+    snapshot.unsupported.push_back(unsupportedDescriptor->name);
+    panel.setSettingsSnapshot(snapshot);
+    auto *editor = panel.findChild<QDoubleSpinBox *>(QStringLiteral("epsilonParameter_%1").arg(QString::fromStdString(editable->name)));
+    auto *unsupportedEditor = panel.findChild<QWidget *>(QStringLiteral("epsilonParameter_%1").arg(QString::fromStdString(unsupportedDescriptor->name)));
+    require(editor && editor->isEnabled() && unsupportedEditor && !unsupportedEditor->isEnabled() &&
+            !saveButton->isEnabled(), "successful reads enable only supported fields and start clean");
+    require(settingsStatus->text().contains(QStringLiteral("已读取 2 项")) &&
+            settingsStatus->text().contains(QStringLiteral("2 项可编辑")) &&
+            settingsStatus->text().contains(QStringLiteral("1 项不支持")) &&
+            !settingsStatus->text().contains(QStringLiteral("后才能编辑")),
+            "read completion status reports current group values and unsupported fields");
+    auto *unsupportedRow = panel.findChild<QWidget *>(QStringLiteral("epsilonParameterRow_%1").arg(QString::fromStdString(unsupportedDescriptor->name)));
+    bool explainsUnsupported = false;
+    for (auto *label : unsupportedRow->findChildren<QLabel *>())
+        explainsUnsupported |= label->text().contains(QStringLiteral("不支持"));
+    require(explainsUnsupported, "unsupported firmware parameters have a visible explanation");
+    editor->setValue(1);
+    require(saveButton->isEnabled(), "a supported changed field enables saving");
+    fusionTab->click();
+    require(panel.currentSettingsGroup() == VaporView::EpsilonSettingsGroup::Fusion && !saveButton->isEnabled(),
+            "unread fusion page has independent save eligibility");
+    installationTab->click();
+    require(editor->value() == 1 && saveButton->isEnabled(), "switching internal pages preserves edits");
+    VaporView::EpsilonSettingsOperation captured;
+    int settingsApplyCount = 0;
+    QObject::connect(&panel, &EpsilonConfigPanel::settingsApplyRequested, [&captured, &settingsApplyCount](const auto& operation) {
+        captured = operation;
+        ++settingsApplyCount;
+    });
+    save.emitted = false;
+    saveButton->click();
+    require(settingsApplyCount == 1 && captured.values.size() == 1 && captured.values.at(editable->name) == 1,
+            "parameter save submits only changed successfully read values");
+    require(!save.emitted, "device parameter saving does not emit the legacy local packet-profile save signal");
+    panel.setSettingsOperationPending(true);
+    require(!editor->isEnabled() && !saveButton->isEnabled() && !readButton->isEnabled() &&
+            settingsStatus->text().contains(QStringLiteral("正在")), "pending operation disables device actions with visible busy state");
+    panel.setSettingsError(QStringLiteral("测试读取失败"));
+    panel.setSettingsOperationPending(false);
+    require(readButton->isEnabled() && settingsStatus->text() == QStringLiteral("测试读取失败"),
+            "failure restores read eligibility while exposing its reason");
+    snapshot.values[editable->name] = 1;
+    snapshot.values.erase(installationDescriptors[1].name);
+    snapshot.saved = true;
+    snapshot.readback_verified = true;
+    snapshot.restart_required = true;
+    panel.setSettingsSnapshot(snapshot, true);
+    auto *unchangedEditor = panel.findChild<QWidget *>(QStringLiteral("epsilonParameter_%1").arg(QString::fromStdString(installationDescriptors[1].name)));
+    require(!saveButton->isEnabled() && restartButton->isEnabled() &&
+            settingsStatus->text().contains(QStringLiteral("回读确认")) && unchangedEditor && unchangedEditor->isEnabled(),
+            "saved ACK confirms changed values and preserves previously read unchanged editors");
+    snapshot.saved = false;
+    snapshot.restart_required = false;
+    panel.setSettingsSnapshot(snapshot, true);
+    require(restartButton->isEnabled() && unchangedEditor->isEnabled(),
+            "no-op apply partial snapshot preserves unchanged editors and pending restart");
+    require(!settingsStatus->text().contains(QStringLiteral("后才能编辑")),
+            "no-op apply does not revert the status to an unread instruction");
+    panel.resize(620, 900);
+    panel.setEnglish(true);
+    QApplication::processEvents();
+    require(installationTab->text().contains(QStringLiteral("Installation")) &&
+            settingsStatus->text().contains(QStringLiteral("readback confirmed")), "parameter pages translate labels and confirmation state");
+    for (auto *button : {installationTab, fusionTab, communicationTab, readButton, saveButton, restartButton})
+    {
+        const QRect rect(button->mapTo(&panel, QPoint()), button->size());
+        require(panel.rect().contains(rect), "narrow English page keeps navigation and action buttons inside the panel");
+    }
+    for (QWidget *row : panel.findChild<QWidget *>(QStringLiteral("epsilonInstallationPage"))->findChildren<QWidget *>())
+    {
+        if (!row->property("epsilonSettingsFieldColumn").isValid()) continue;
+        require(row->property("epsilonSettingsFieldColumn").toInt() == 0,
+                "narrow installation form collapses to one column");
+        const QRect rect(row->mapTo(&panel, QPoint()), row->size());
+        require(rect.left() >= 0 && rect.right() < panel.width(), "narrow parameter field rows fit the available width");
+    }
+    fusionTab->click();
+    VaporView::EpsilonSettingsSnapshot fusionSnapshot;
+    fusionSnapshot.group = VaporView::EpsilonSettingsGroup::Fusion;
+    const auto& fusionDescriptors = VaporView::epsilonParameterDescriptors(fusionSnapshot.group);
+    const auto boolean = std::find_if(fusionDescriptors.begin(), fusionDescriptors.end(), [](const auto& descriptor) {
+        return descriptor.writable && descriptor.kind == VaporView::EpsilonParameterKind::Boolean;
+    });
+    const auto enumeration = std::find_if(fusionDescriptors.begin(), fusionDescriptors.end(), [](const auto& descriptor) {
+        return descriptor.writable && descriptor.kind == VaporView::EpsilonParameterKind::Enumeration;
+    });
+    require(boolean != fusionDescriptors.end() && enumeration != fusionDescriptors.end(), "fusion exposes boolean and enum parameters");
+    fusionSnapshot.values[boolean->name] = 0;
+    fusionSnapshot.values[enumeration->name] = enumeration->options.front().value;
+    panel.setSettingsSnapshot(fusionSnapshot);
+    auto *booleanEditor = panel.findChild<QCheckBox *>(QStringLiteral("epsilonParameter_%1").arg(QString::fromStdString(boolean->name)));
+    auto *enumEditor = panel.findChild<QComboBox *>(QStringLiteral("epsilonParameter_%1").arg(QString::fromStdString(enumeration->name)));
+    require(booleanEditor && enumEditor && booleanEditor->isEnabled() && enumEditor->isEnabled(), "read boolean and enum editors become available");
+    require(booleanEditor->property("epsilonThemedIndicator").toBool() &&
+            booleanEditor->styleSheet().contains(QStringLiteral("image: none")),
+            "fusion checkbox uses a local theme-painted indicator instead of the dark native glyph");
+    QApplication::processEvents();
+    auto *firstFusionRow = booleanEditor->parentWidget();
+    for (auto *button : {readButton, saveButton, restartButton})
+        require(button->mapTo(&panel, QPoint()).y() + button->height() <= firstFusionRow->mapTo(&panel, QPoint()).y(),
+                "fusion operation actions remain above the first field after switching pages");
+    require(!saveButton->isEnabled() && !booleanEditor->isTristate() && !booleanEditor->isChecked(),
+            "reading an unchecked boolean clears unknown state without creating a dirty value");
+    booleanEditor->setChecked(true);
+    enumEditor->setCurrentIndex(1);
+    saveButton->click();
+    require(captured.group == fusionSnapshot.group && captured.values.size() == 2 &&
+            captured.values.at(boolean->name) == 1 && captured.values.at(enumeration->name) == enumeration->options[1].value,
+            "fusion submission preserves typed boolean and enumeration values");
+    fusionSnapshot.values[enumeration->name] = 99;
+    fusionSnapshot.values[boolean->name] = 7;
+    panel.setSettingsSnapshot(fusionSnapshot);
+    const int applyCountBeforeUnknown = settingsApplyCount;
+    saveButton->click();
+    require(!saveButton->isEnabled() && settingsApplyCount == applyCountBeforeUnknown &&
+            !enumEditor->isEnabled() && enumEditor->currentText().contains(QStringLiteral("99")) &&
+            !booleanEditor->isEnabled() && booleanEditor->checkState() == Qt::PartiallyChecked,
+            "unknown enum and boolean device values stay visible, read only, and cannot create a submission");
+    installationTab->click();
+    VaporView::EpsilonSettingsSnapshot outOfRange;
+    outOfRange.group = VaporView::EpsilonSettingsGroup::Installation;
+    outOfRange.values[editable->name] = editable->maximum + 10;
+    outOfRange.values[installationDescriptors[1].name] = 0;
+    panel.setSettingsSnapshot(outOfRange);
+    const int applyCountBeforeRange = settingsApplyCount;
+    saveButton->click();
+    require(editor->value() == editable->maximum + 10 && !editor->isEnabled() &&
+            !saveButton->isEnabled() && settingsApplyCount == applyCountBeforeRange,
+            "out of range device values are displayed without clamping or automatically becoming dirty");
+    auto *otherEditor = qobject_cast<QDoubleSpinBox *>(unchangedEditor);
+    require(otherEditor && otherEditor->isEnabled(), "an unrelated supported parameter remains editable");
+    otherEditor->setValue(1);
+    saveButton->click();
+    require(captured.values.size() == 1 && captured.values.count(editable->name) == 0 &&
+            captured.values.at(installationDescriptors[1].name) == 1,
+            "saving a different parameter never writes a clamped out of range device value");
+    panel.setSettingsAvailable(false);
+    require(!readButton->isEnabled() && !restartButton->isEnabled() && !editor->isEnabled(),
+            "offline parameter operations remain disabled independently of packet-rate editing");
+    panel.invalidateSettings();
+    panel.setSettingsAvailable(true);
+    require(!editor->isEnabled() && editor->text() == QStringLiteral("--") && !restartButton->isEnabled(),
+            "device invalidation clears current values and pending restart state");
+    communicationTab->click();
+    QApplication::processEvents();
+    require(saveButton->isEnabled() && !readButton->isVisible(), "communication page retains offline save semantics");
+    require(saveButton->mapTo(&panel, QPoint()).y() >= deviceSettingsCard->mapTo(&panel, QPoint()).y() + deviceSettingsCard->height(),
+            "communication save action remains below its existing four cards");
+    panel.setEnglish(false);
+    panel.resize(1100, 420);
     std::cout << "epsilon config panel tests passed\n";
     return 0;
 }

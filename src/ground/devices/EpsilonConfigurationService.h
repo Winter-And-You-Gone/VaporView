@@ -1,6 +1,7 @@
 #pragma once
 
 #include "LogRecord.h"
+#include "EpsilonSettings.h"
 
 #include <QString>
 #include <QVariantMap>
@@ -33,6 +34,7 @@ struct EpsilonConfigurationResult
     bool command_succeeded = false;
     bool live_stream_restarted = false;
     QString error_message;
+    VaporView::EpsilonSettingsSnapshot settings_snapshot;
 
     bool succeeded() const
     {
@@ -55,6 +57,18 @@ public:
     using LogCallback = std::function<void(const EpsilonConfigurationLogEntry&)>;
 
     static constexpr int PacketConfigurationVersion = 3;
+
+    static EpsilonConfigurationResult readSettings(
+        const EpsilonDeviceOperation& operation,
+        VaporView::EpsilonSettingsGroup group,
+        const LogCallback& log);
+    static EpsilonConfigurationResult applySettings(
+        const EpsilonDeviceOperation& operation,
+        const VaporView::EpsilonSettingsOperation& settings,
+        const LogCallback& log);
+    static EpsilonConfigurationResult rebootDevice(
+        const EpsilonDeviceOperation& operation,
+        const LogCallback& log);
 
     static EpsilonConfigurationResult applyMainAntennaLeverArm(
         const EpsilonDeviceOperation& operation,

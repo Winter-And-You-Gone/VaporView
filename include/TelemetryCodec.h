@@ -83,6 +83,14 @@ public:
                                                  const RtcmFrameSequence& sequence = {});
     static bool parseRtcmCorrectionData(const QByteArray& payload, QByteArray& data,
                                          RtcmFrameSequence *sequence = nullptr);
+    static int epsilonDeviceOperationTimeoutMs(const DeviceOperationRequest& request);
+    static QByteArray serializeEpsilonSettingsRead(EpsilonSettingsGroup group);
+    static bool parseEpsilonSettingsRead(const QByteArray& payload, EpsilonSettingsGroup& group);
+    static QByteArray serializeEpsilonSettingsOperation(const EpsilonSettingsOperation& operation);
+    static bool parseEpsilonSettingsOperation(const QByteArray& payload, EpsilonSettingsOperation& operation);
+    static QByteArray serializeEpsilonSettingsSnapshot(const EpsilonSettingsSnapshot& snapshot);
+    static bool parseEpsilonSettingsSnapshot(const QByteArray& payload, EpsilonSettingsSnapshot& snapshot);
+
     static QByteArray serializeDeviceOperationRequest(const DeviceOperationRequest& request);
     static bool parseDeviceOperationRequest(const QByteArray& payload,
                                             DeviceOperationRequest& request);

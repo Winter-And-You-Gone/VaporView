@@ -951,7 +951,8 @@ bool SkyDeviceManager::setPeakSearchRange(quint32 startIndex, quint32 endIndex, 
     return true;
 }
 
-std::function<CommandErrorCode()> SkyDeviceManager::prepareEpsilonOperation(const DeviceOperationRequest& request)
+std::function<CommandErrorCode()> SkyDeviceManager::prepareEpsilonOperation(const DeviceOperationRequest& request,
+    std::shared_ptr<EpsilonSettingsSnapshot> snapshot, std::shared_ptr<QString> message)
 {
     auto rejected = [](CommandErrorCode error) { return [error]() { return error; }; };
     if (epsilon_status_.state != DeviceState::Connected)
@@ -982,6 +983,50 @@ std::function<CommandErrorCode()> SkyDeviceManager::prepareEpsilonOperation(cons
             rtcm.device_port_index < 2 || rtcm.device_port_index > 5 || !supportedEpsilonRtcmBaud(rtcm.forward_baud))
             return rejected(CommandErrorCode::InvalidPayload);
     }
+    else if (request.operation == DeviceOperation::ReadEpsilonSettings ||
+             request.operation == DeviceOperation::ApplyEpsilonSettings ||
+             request.operation == DeviceOperation::RestartEpsilonDevice)
+    {
+        EpsilonSettingsOperation settings;
+        if ((request.operation == DeviceOperation::ReadEpsilonSettings &&
+             !TelemetryCodec::parseEpsilonSettingsRead(request.payload, settings.group)) ||
+            (request.operation == DeviceOperation::ApplyEpsilonSettings &&
+             !TelemetryCodec::parseEpsilonSettingsOperation(request.payload, settings)) ||
+            (request.operation == DeviceOperation::RestartEpsilonDevice && !request.payload.isEmpty()))
+            return rejected(CommandErrorCode::InvalidPayload);
+        // Simulation cannot supply values for hardware parameters it never queried.
+        if (simulate_data_) return rejected(CommandErrorCode::UnknownCommand);
+        const auto collector = epsilon_;
+        if (!collector || !collector->isRunning()) return rejected(CommandErrorCode::DeviceNotConnected);
+        const auto port = config_.epsilon.port.toStdString();
+        const auto serial = SerialConfig::N81(config_.epsilon.baud_rate);
+        return [collector, port, serial, operation = request.operation, settings, snapshot, message]() {
+            collector->stop();
+            bool ok = false;
+            std::string error;
+            EpsilonSettingsSnapshot result;
+            result.group = settings.group;
+            if (collector->start(port, serial))
+            {
+                if (operation == DeviceOperation::ReadEpsilonSettings)
+                    ok = collector->readSettings(settings.group, result, error);
+                else if (operation == DeviceOperation::ApplyEpsilonSettings)
+                    ok = collector->applySettings(settings, result, error);
+                else ok = collector->rebootDevice(error);
+            }
+            else error = "Could not reopen EPSILON for configuration.";
+            if (snapshot) *snapshot = result;
+            if (message) *message = QString::fromStdString(error);
+            collector->stop();
+            // Always attempt restoration, including after a partial write or failed reboot.
+            if (!collector->start(port, serial) || !collector->checkDeviceResponse() || !collector->startStreaming())
+            {
+                if (message) *message += QStringLiteral(" EPSILON live stream could not be restored.");
+                return CommandErrorCode::InternalError;
+            }
+            return ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed;
+        };
+    }
     else return rejected(CommandErrorCode::InvalidPayload);
     if (simulate_data_) return rejected(CommandErrorCode::Ok);
     const auto collector = epsilon_;
@@ -1009,11 +1054,25 @@ std::function<CommandErrorCode()> SkyDeviceManager::prepareEpsilonOperation(cons
     };
 }
 
-void SkyDeviceManager::completeEpsilonOperation(const DeviceOperationRequest& request, CommandErrorCode result)
+void SkyDeviceManager::completeEpsilonOperation(const DeviceOperationRequest& request, CommandErrorCode result,
+    const EpsilonSettingsSnapshot& snapshot)
 {
     if (result == CommandErrorCode::InternalError || result == CommandErrorCode::DeviceConnectFailed)
         setState(SkyDeviceId::Epsilon, DeviceState::Error, static_cast<quint16>(result));
     if (result != CommandErrorCode::Ok) return;
+    if ((request.operation == DeviceOperation::ReadEpsilonSettings || request.operation == DeviceOperation::ApplyEpsilonSettings) &&
+        snapshot.group == EpsilonSettingsGroup::Installation)
+    {
+        const std::array<std::string, 3> names{"GNSS_L_IMU_ANT1_X", "GNSS_L_IMU_ANT1_Y", "GNSS_L_IMU_ANT1_Z"};
+        const bool completeRead = std::all_of(names.begin(), names.end(), [&](const auto& name) { return snapshot.values.count(name); });
+        if (request.operation == DeviceOperation::ApplyEpsilonSettings || completeRead)
+            for (size_t i = 0; i < names.size(); ++i)
+            {
+                const auto value = snapshot.values.find(names[i]);
+                if (value != snapshot.values.end()) config_.epsilon.imu_to_main_antenna_body_m[i] = value->second;
+            }
+    }
+
     if (request.operation == DeviceOperation::ConfigureEpsilonPacketRates)
     {
         EpsilonPacketRatesOperation rates;

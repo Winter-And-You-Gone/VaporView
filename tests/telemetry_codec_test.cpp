@@ -815,6 +815,50 @@ void testEpsilonDeviceOperationPayloads()
             "EPSILON DeviceOperation request round-trip");
 }
 
+void testEpsilonSettingsPayloads()
+{
+    using namespace VaporView;
+    EpsilonSettingsOperation operation{EpsilonSettingsGroup::Installation, {{"GNSS_L_IMU_ANT1_X", 1.25}}};
+    EpsilonSettingsOperation parsed;
+    DeviceOperationRequest request;
+    request.device_id = SkyDeviceId::Epsilon;
+    request.operation = DeviceOperation::ReadEpsilonSettings;
+    request.payload = TelemetryCodec::serializeEpsilonSettingsRead(EpsilonSettingsGroup::Fusion);
+    const int count = static_cast<int>(epsilonParameterDescriptors(EpsilonSettingsGroup::Fusion).size());
+    require(TelemetryCodec::epsilonDeviceOperationTimeoutMs(request) >= 3000 * (count + 6) + 30000,
+            "settings read budget includes vendor delay, read timeout and stream recovery");
+    request.operation = DeviceOperation::ApplyEpsilonSettings;
+    request.payload = TelemetryCodec::serializeEpsilonSettingsOperation(operation);
+    require(TelemetryCodec::epsilonDeviceOperationTimeoutMs(request) >=
+            3000 * (2 * static_cast<int>(epsilonParameterDescriptors(operation.group).size()) + 7) + 30000,
+            "apply budget covers pre-read, writes, save, readback and recovery");
+    request.operation = DeviceOperation::RestartEpsilonDevice;
+    require(TelemetryCodec::epsilonDeviceOperationTimeoutMs(request) == 45000, "restart has a bounded recovery budget");
+    request.operation = DeviceOperation::ConfigureEpsilonPacketRates;
+    require(TelemetryCodec::epsilonDeviceOperationTimeoutMs(request) == 15000, "legacy operation timing is unchanged");
+    require(TelemetryCodec::parseEpsilonSettingsOperation(TelemetryCodec::serializeEpsilonSettingsOperation(operation), parsed) &&
+            parsed.values == operation.values, "EPSILON settings typed round-trip");
+    require(!TelemetryCodec::parseEpsilonSettingsOperation(R"({"version":1,"group":2,"values":{"GNSS_L_IMU_ANT1_X":1}})", parsed), "settings rejects invalid group");
+    require(!TelemetryCodec::parseEpsilonSettingsOperation(R"({"version":1,"group":0,"values":{"unknown":1}})", parsed), "settings rejects unknown key");
+    require(!TelemetryCodec::parseEpsilonSettingsOperation(R"({"version":1,"group":0,"values":{"GNSS_L_IMU_ANT1_X":"1"}})", parsed), "settings rejects string number");
+    require(!TelemetryCodec::parseEpsilonSettingsOperation(R"({"version":1,"group":0,"values":{"GNSS_L_IMU_ANT1_X":1e999}})", parsed), "settings rejects nonfinite value");
+    EpsilonSettingsGroup group;
+    require(!TelemetryCodec::parseEpsilonSettingsRead(QByteArray(8193, ' '), group), "settings rejects oversized payload");
+    EpsilonSettingsSnapshot snapshot;
+    snapshot.group = operation.group;
+    snapshot.values = operation.values;
+    snapshot.unsupported = {"GNSS_L_IMU_ANT1_Y"};
+    snapshot.saved = true;
+    snapshot.readback_verified = true;
+    snapshot.restart_required = true;
+    EpsilonSettingsSnapshot decoded;
+    require(TelemetryCodec::parseEpsilonSettingsSnapshot(TelemetryCodec::serializeEpsilonSettingsSnapshot(snapshot), decoded) &&
+            decoded.values == snapshot.values && decoded.unsupported == snapshot.unsupported && decoded.saved && decoded.readback_verified,
+            "settings snapshot preserves partial support and verification");
+    snapshot.unsupported = {"unknown"};
+    require(!TelemetryCodec::parseEpsilonSettingsSnapshot(TelemetryCodec::serializeEpsilonSettingsSnapshot(snapshot), decoded), "snapshot rejects unknown unsupported key");
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -831,6 +875,7 @@ int main(int argc, char **argv)
     testTelemetryStatus();
     testAi8DeviceOperation();
     testEpsilonDeviceOperationPayloads();
+    testEpsilonSettingsPayloads();
     std::cout << "telemetry_codec_test passed\n";
     return 0;
 }

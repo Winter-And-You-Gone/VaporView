@@ -5,6 +5,7 @@
 #include <QVector>
 
 #include "data_types.h"
+#include "EpsilonSettings.h"
 
 #include <cstdint>
 #include <map>
@@ -16,6 +17,7 @@ class QLabel;
 class QPushButton;
 class QResizeEvent;
 class QWidget;
+class QStackedWidget;
 
 namespace VaporView::Ground::Navigation
 {
@@ -34,12 +36,22 @@ public:
     std::map<uint8_t, int> packetRates() const;
     void setRtcmDevicePortIndex(int portIndex);
     int rtcmDevicePortIndex() const;
+    VaporView::EpsilonSettingsGroup currentSettingsGroup() const;
+    void setSettingsSnapshot(const VaporView::EpsilonSettingsSnapshot& snapshot, bool partial = false);
+    void invalidateSettings();
+    void setSettingsOperationPending(bool pending);
+    void setSettingsAvailable(bool available);
+    void setSettingsStatus(const QString& text);
+    void setSettingsError(const QString& text);
 
 signals:
     void recommendedProfileRequested();
     void saveRequested();
     void rtcmPortRequested();
     void reconfigureRequested();
+    void settingsReadRequested(VaporView::EpsilonSettingsGroup group);
+    void settingsApplyRequested(const VaporView::EpsilonSettingsOperation& operation);
+    void deviceRestartRequested();
 
 protected:
     void changeEvent(QEvent *event) override;
@@ -52,6 +64,41 @@ private:
     void updateLivePacketRateTexts();
     void updateSummaryTexts();
     void updateTexts();
+    void createSettingsPages();
+    void updateSettingsTexts();
+    void updateSettingsControls();
+    void arrangeSettingsFields(bool twoColumns);
+    VaporView::EpsilonSettingsOperation editedSettings() const;
+
+    struct SettingsField
+    {
+        std::string name;
+        VaporView::EpsilonSettingsGroup group;
+        QLabel *label = nullptr;
+        QLabel *state = nullptr;
+        QWidget *editor = nullptr;
+        QWidget *row = nullptr;
+        bool read = false;
+        bool unsupported = false;
+        bool value_supported = false;
+        double original = 0;
+    };
+    QVector<SettingsField> settings_fields_;
+    QVector<QPushButton *> page_buttons_;
+    QVector<QLabel *> settings_hints_;
+    QVector<QGridLayout *> settings_grids_;
+    QStackedWidget *pages_ = nullptr;
+    QWidget *communication_page_ = nullptr;
+    QWidget *actions_container_ = nullptr;
+    QPushButton *settings_read_button_ = nullptr;
+    QPushButton *device_restart_button_ = nullptr;
+    QLabel *settings_status_label_ = nullptr;
+    bool settings_pending_ = false;
+    bool settings_available_ = false;
+    bool settings_restart_required_ = false;
+    bool settings_saved_ = false;
+    bool settings_verified_ = false;
+    bool settings_status_custom_ = false;
 
     bool is_english_ = false;
     bool is_available_ = true;

@@ -60,15 +60,49 @@ EpsilonDeviceSession::EpsilonDeviceSession(LocalAdapter localAdapter,
                     return;
                 }
 
-                const bool ok = response.error_code == CommandErrorCode::Ok;
+                bool ok = response.error_code == CommandErrorCode::Ok;
+                auto error = response.error_code;
+                VaporView::Ground::EpsilonConfigurationResult localResult;
+                DeviceOperation expected = DeviceOperation::ConfigureEpsilonPacketRates;
+                switch (pending.operation)
+                {
+                case EpsilonOperation::ConfigurePacketRates: break;
+                case EpsilonOperation::ConfigureMainAntennaLeverArm: expected = DeviceOperation::ConfigureEpsilonMainAntennaLeverArm; break;
+                case EpsilonOperation::ConfigureRtcmInput: expected = DeviceOperation::ConfigureEpsilonRtcmInput; break;
+                case EpsilonOperation::ReadSettings: expected = DeviceOperation::ReadEpsilonSettings; break;
+                case EpsilonOperation::ApplySettings: expected = DeviceOperation::ApplyEpsilonSettings; break;
+                case EpsilonOperation::RestartDevice: expected = DeviceOperation::RestartEpsilonDevice; break;
+                }
+                if (response.device_id != SkyDeviceId::Epsilon || response.operation != expected)
+                    { ok = false; error = CommandErrorCode::InvalidPayload; }
+                if (pending.operation == EpsilonOperation::ReadSettings || pending.operation == EpsilonOperation::ApplySettings)
+                {
+                    const bool parsed = TelemetryCodec::parseEpsilonSettingsSnapshot(response.payload, localResult.settings_snapshot);
+                    if (ok && (!parsed || localResult.settings_snapshot.group != pending.settings.group ||
+                        localResult.settings_snapshot.values.empty())) { ok = false; error = CommandErrorCode::InvalidPayload; }
+                    if (ok && pending.operation == EpsilonOperation::ApplySettings)
+                    {
+                        if ((!localResult.settings_snapshot.saved && localResult.settings_snapshot.restart_required) ||
+                            !localResult.settings_snapshot.readback_verified)
+                            { ok = false; error = CommandErrorCode::ConfigApplyFailed; }
+                        for (const auto& value : pending.settings.values)
+                        {
+                            const auto it = localResult.settings_snapshot.values.find(value.first);
+                            if (it == localResult.settings_snapshot.values.end() || !epsilonSettingsValuesEqual(it->second, value.second))
+                                { ok = false; error = CommandErrorCode::ConfigApplyFailed; }
+                        }
+                    }
+                }
+                localResult.command_succeeded = ok;
+                localResult.live_stream_restarted = ok;
                 finishPending(pending,
-                              ok ? EpsilonOperationOutcome::Success
-                                 : EpsilonOperationOutcome::Failed,
-                              response.error_code,
+                              ok ? EpsilonOperationOutcome::Success :
+                                  (error == CommandErrorCode::UnknownCommand ? EpsilonOperationOutcome::Unsupported : EpsilonOperationOutcome::Failed),
+                              error,
                               ok ? QString() :
                                    (!response.error_message.isEmpty()
                                         ? response.error_message
-                                        : commandErrorCodeText(response.error_code, english_)));
+                                        : commandErrorCodeText(error, english_)), localResult);
             });
     connect(remote_controller_, &RemoteSkyController::deviceOperationRejected,
             this, [this](quint32 remoteRequestId, const CommandAck& ack) {
@@ -202,7 +236,8 @@ void EpsilonDeviceSession::setRemoteAvailable(bool available, const QString& det
     }
     remote_available_ = available;
     remote_detail_ = detail;
-    if (!available && backend_ == EpsilonBackend::Remote)
+    if (!available && backend_ == EpsilonBackend::Remote &&
+        !(operationPending() && remote_controller_ && remote_controller_->isOpen()))
     {
         failActive(EpsilonOperationOutcome::Disconnected,
                    english_ ? QStringLiteral("Remote Sky EPSILON is disconnected or stale.")
@@ -213,7 +248,7 @@ void EpsilonDeviceSession::setRemoteAvailable(bool available, const QString& det
 
 bool EpsilonDeviceSession::operationsAvailable() const
 {
-    if (!pending_operations_.isEmpty())
+    if (local_worker_busy_ || !pending_operations_.isEmpty())
     {
         return false;
     }
@@ -230,7 +265,7 @@ bool EpsilonDeviceSession::operationsAvailable() const
 
 bool EpsilonDeviceSession::operationPending() const
 {
-    return !pending_operations_.isEmpty();
+    return local_worker_busy_ || !pending_operations_.isEmpty();
 }
 
 quint64 EpsilonDeviceSession::configurePacketRates(
@@ -266,6 +301,34 @@ quint64 EpsilonDeviceSession::configureRtcmInput(
     return beginOperation(pending);
 }
 
+quint64 EpsilonDeviceSession::readSettings(EpsilonSettingsGroup group,
+    const VaporView::Ground::EpsilonDeviceOperation& localDeviceOperation)
+{
+    PendingOperation pending;
+    pending.operation = EpsilonOperation::ReadSettings;
+    pending.settings.group = group;
+    pending.local_device_operation = localDeviceOperation;
+    return beginOperation(pending);
+}
+
+quint64 EpsilonDeviceSession::applySettings(const EpsilonSettingsOperation& operation,
+    const VaporView::Ground::EpsilonDeviceOperation& localDeviceOperation)
+{
+    PendingOperation pending;
+    pending.operation = EpsilonOperation::ApplySettings;
+    pending.settings = operation;
+    pending.local_device_operation = localDeviceOperation;
+    return beginOperation(pending);
+}
+
+quint64 EpsilonDeviceSession::restartDevice(const VaporView::Ground::EpsilonDeviceOperation& localDeviceOperation)
+{
+    PendingOperation pending;
+    pending.operation = EpsilonOperation::RestartDevice;
+    pending.local_device_operation = localDeviceOperation;
+    return beginOperation(pending);
+}
+
 quint64 EpsilonDeviceSession::beginOperation(PendingOperation pending)
 {
     const quint64 requestId = next_request_id_++;
@@ -273,20 +336,31 @@ quint64 EpsilonDeviceSession::beginOperation(PendingOperation pending)
     pending.session_generation = session_generation_;
     pending.backend = backend_;
 
-    if (!operationsAvailable())
+    const bool settingsOperation = pending.operation == EpsilonOperation::ReadSettings ||
+        pending.operation == EpsilonOperation::ApplySettings || pending.operation == EpsilonOperation::RestartDevice;
+    const bool settingsUnsupported = settingsOperation && backend_ == EpsilonBackend::Remote && remote_controller_ &&
+        (remote_controller_->epsilonSettingsSupport() == DeviceOperationSupport::Unsupported ||
+         (pending.operation != EpsilonOperation::ReadSettings && remote_controller_->epsilonSettingsSupport() != DeviceOperationSupport::Supported));
+    const bool localCallbackMissing = backend_ == EpsilonBackend::Local && settingsOperation &&
+        ((pending.operation == EpsilonOperation::ReadSettings && !local_adapter_.readSettings) ||
+         (pending.operation == EpsilonOperation::ApplySettings && !local_adapter_.applySettings) ||
+         (pending.operation == EpsilonOperation::RestartDevice && !local_adapter_.restartDevice));
+    if (!operationsAvailable() || settingsUnsupported || localCallbackMissing)
     {
         EpsilonSessionResult result;
         result.request_id = requestId;
         result.operation = pending.operation;
-        result.outcome = backend_ == EpsilonBackend::Remote && remote_controller_ &&
+        result.outcome = settingsUnsupported || localCallbackMissing || (backend_ == EpsilonBackend::Remote && remote_controller_ &&
                                  remote_controller_->deviceOperationSupport() ==
-                                     DeviceOperationSupport::Unsupported
+                                     DeviceOperationSupport::Unsupported)
             ? EpsilonOperationOutcome::Unsupported
             : EpsilonOperationOutcome::Disconnected;
         result.error_code = result.outcome == EpsilonOperationOutcome::Unsupported
             ? CommandErrorCode::UnknownCommand
             : CommandErrorCode::DeviceNotConnected;
-        result.message = unavailableReason();
+        result.message = settingsUnsupported ?
+            (english_ ? QStringLiteral("Read EPSILON settings first to verify Sky support; this Sky version may not support settings.") :
+                        QStringLiteral("请先读取 EPSILON 参数确认天空端能力；当前版本可能不支持参数操作。")) : unavailableReason();
         emit operationFinished(result);
         return requestId;
     }
@@ -307,6 +381,7 @@ quint64 EpsilonDeviceSession::beginOperation(PendingOperation pending)
 
 void EpsilonDeviceSession::dispatchLocal(PendingOperation pending)
 {
+    local_worker_busy_ = true;
     const LocalAdapter adapter = local_adapter_;
     QPointer<EpsilonDeviceSession> guard(this);
     QMetaObject::invokeMethod(local_worker_, [guard, adapter, pending]() {
@@ -334,6 +409,15 @@ void EpsilonDeviceSession::dispatchLocal(PendingOperation pending)
                     pending.rtcm_input, pending.local_device_operation);
             }
             break;
+        case EpsilonOperation::ReadSettings:
+            if (adapter.readSettings) localResult = adapter.readSettings(pending.settings.group, pending.local_device_operation);
+            break;
+        case EpsilonOperation::ApplySettings:
+            if (adapter.applySettings) localResult = adapter.applySettings(pending.settings, pending.local_device_operation);
+            break;
+        case EpsilonOperation::RestartDevice:
+            if (adapter.restartDevice) localResult = adapter.restartDevice(pending.local_device_operation);
+            break;
         }
         if (!guard)
         {
@@ -344,6 +428,8 @@ void EpsilonDeviceSession::dispatchLocal(PendingOperation pending)
             {
                 return;
             }
+            guard->local_worker_busy_ = false;
+            guard->refreshAvailability();
             const auto pendingIt = guard->pending_operations_.find(pending.request_id);
             if (pendingIt == guard->pending_operations_.end())
             {
@@ -381,6 +467,15 @@ void EpsilonDeviceSession::dispatchRemote(PendingOperation pending)
     case EpsilonOperation::ConfigureRtcmInput:
         remoteRequestId = remote_controller_->configureEpsilonRtcmInput(pending.rtcm_input);
         break;
+    case EpsilonOperation::ReadSettings:
+        remoteRequestId = remote_controller_->readEpsilonSettings(pending.settings.group);
+        break;
+    case EpsilonOperation::ApplySettings:
+        remoteRequestId = remote_controller_->applyEpsilonSettings(pending.settings);
+        break;
+    case EpsilonOperation::RestartDevice:
+        remoteRequestId = remote_controller_->restartEpsilonDevice();
+        break;
     }
     if (remoteRequestId == 0)
     {
@@ -409,6 +504,10 @@ void EpsilonDeviceSession::finishPending(
     const QString& message,
     const VaporView::Ground::EpsilonConfigurationResult& localResult)
 {
+    if (outcome == EpsilonOperationOutcome::Success && pending.backend == EpsilonBackend::Remote &&
+        (pending.operation == EpsilonOperation::ReadSettings || pending.operation == EpsilonOperation::ApplySettings ||
+         pending.operation == EpsilonOperation::RestartDevice) && remote_controller_ && remote_controller_->isOpen())
+        remote_available_ = true;
     EpsilonSessionResult result;
     result.request_id = pending.request_id;
     result.operation = pending.operation;

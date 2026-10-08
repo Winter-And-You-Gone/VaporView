@@ -460,6 +460,7 @@ void SkyRuntime::stop()
     ++device_command_generation_;
     if (device_command_thread_.joinable()) device_command_thread_.join();
     active_command_key_.clear();
+    epsilon_settings_operation_pending_ = false;
     active_command_callbacks_.clear();
     serial_port_detection_cancel_requested_.store(true);
     if (serial_port_detection_thread_.joinable())
@@ -563,6 +564,11 @@ void SkyRuntime::reconnectAllDevices()
 
 bool SkyRuntime::startRecording(QString *error)
 {
+    if (epsilon_settings_operation_pending_)
+    {
+        if (error) *error = QStringLiteral("EPSILON 参数操作尚未完成，请等待操作结束再开始记录。");
+        return false;
+    }
     if (session_recorder_.isRecording())
     {
         if (error) *error = QStringLiteral("会话记录已经开始。");
@@ -1135,20 +1141,30 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
         completion(result);
         return;
     }
+    const bool settingsOperation = request.operation == DeviceOperation::ReadEpsilonSettings ||
+        request.operation == DeviceOperation::ApplyEpsilonSettings || request.operation == DeviceOperation::RestartEpsilonDevice;
+    if (settingsOperation && (session_recorder_.isRecording() || session_recorder_.isPaused()))
+    {
+        busy();
+        return;
+    }
     if (serial_port_detection_in_progress_.load()) { busy(); return; }
-    auto work = device_manager_.prepareEpsilonOperation(request);
+    auto snapshot = std::make_shared<EpsilonSettingsSnapshot>();
+    auto message = std::make_shared<QString>();
+    auto work = device_manager_.prepareEpsilonOperation(request, snapshot, message);
     if (device_command_thread_.joinable()) device_command_thread_.join();
     active_command_key_ = key;
+    epsilon_settings_operation_pending_ = settingsOperation;
     active_command_callbacks_.push_back(std::move(completion));
     const quint64 generation = device_command_generation_;
     try
     {
-    device_command_thread_ = std::thread([this, work = std::move(work), request, command, key, generation]() {
+    device_command_thread_ = std::thread([this, work = std::move(work), request, command, key, generation, snapshot, message]() {
         CommandErrorCode error = CommandErrorCode::InternalError;
         try { error = work(); } catch (...) { }
-        QMetaObject::invokeMethod(this, [this, request, command, key, generation, error]() {
+        QMetaObject::invokeMethod(this, [this, request, command, key, generation, error, snapshot, message]() {
             if (generation != device_command_generation_) return;
-            device_manager_.completeEpsilonOperation(request, error);
+            device_manager_.completeEpsilonOperation(request, error, *snapshot);
             SkyCommandResult result;
             result.ack = makeAck(command, error);
             result.send_status = true;
@@ -1157,10 +1173,14 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
             result.device_operation_response.device_id = request.device_id;
             result.device_operation_response.operation = request.operation;
             result.device_operation_response.error_code = error;
-            if (error != CommandErrorCode::Ok)
+            if (request.operation == DeviceOperation::ReadEpsilonSettings || request.operation == DeviceOperation::ApplyEpsilonSettings)
+                result.device_operation_response.payload = TelemetryCodec::serializeEpsilonSettingsSnapshot(*snapshot);
+            result.device_operation_response.error_message = *message;
+            if (error != CommandErrorCode::Ok && message->isEmpty())
                 result.device_operation_response.error_message = QStringLiteral("EPSILON device operation failed; verify physical state before retrying.");
             command_results_.insert(key, qMakePair(command_clock_.elapsed(), result));
             active_command_key_.clear();
+            epsilon_settings_operation_pending_ = false;
             const auto callbacks = std::move(active_command_callbacks_);
             active_command_callbacks_.clear();
             for (const auto& callback : callbacks) callback(result);
@@ -1170,6 +1190,7 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
     catch (const std::system_error&)
     {
         active_command_key_.clear();
+        epsilon_settings_operation_pending_ = false;
         const auto callbacks = std::move(active_command_callbacks_);
         active_command_callbacks_.clear();
         SkyCommandResult result;
@@ -1233,6 +1254,11 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
                                  : CommandErrorCode::SerialPortDetectionNotRunning);
         break;
     case CommandId::StartRecording:
+        if (epsilon_settings_operation_pending_)
+        {
+            result.ack = makeAck(command, CommandErrorCode::DeviceOperationBusy);
+            break;
+        }
         if (session_recorder_.isRecording())
         {
             result.ack = makeAck(command, CommandErrorCode::RecordingAlreadyStarted);
@@ -1336,6 +1362,17 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
         response.device_id = request.device_id;
         response.operation = request.operation;
         result.send_device_operation_response = true;
+        if (request.device_id == SkyDeviceId::Epsilon &&
+            (request.operation == DeviceOperation::ReadEpsilonSettings || request.operation == DeviceOperation::ApplyEpsilonSettings ||
+             request.operation == DeviceOperation::RestartEpsilonDevice) &&
+            (session_recorder_.isRecording() || session_recorder_.isPaused()))
+        {
+            response.error_code = CommandErrorCode::DeviceOperationBusy;
+            response.error_message = QStringLiteral("Stop the open recording session before changing EPSILON settings.");
+            result.ack = makeAck(command, response.error_code);
+            result.device_operation_response = response;
+            break;
+        }
         if (request.device_id == SkyDeviceId::Epsilon)
         {
             CommandErrorCode error = CommandErrorCode::Ok;
@@ -1380,6 +1417,20 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
                 }
                 ok = device_manager_.configureEpsilonRtcmInput(
                     operation, &error, &errorMessage);
+                break;
+            }
+            case DeviceOperation::ReadEpsilonSettings:
+            case DeviceOperation::ApplyEpsilonSettings:
+            case DeviceOperation::RestartEpsilonDevice:
+            {
+                auto snapshot = std::make_shared<EpsilonSettingsSnapshot>();
+                auto message = std::make_shared<QString>();
+                error = device_manager_.prepareEpsilonOperation(request, snapshot, message)();
+                device_manager_.completeEpsilonOperation(request, error, *snapshot);
+                ok = error == CommandErrorCode::Ok;
+                errorMessage = *message;
+                if (request.operation != DeviceOperation::RestartEpsilonDevice)
+                    response.payload = TelemetryCodec::serializeEpsilonSettingsSnapshot(*snapshot);
                 break;
             }
             case DeviceOperation::ReadParameters:
@@ -1438,6 +1489,9 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
                                                             &error,
                                                             &errorMessage);
             break;
+        case DeviceOperation::ReadEpsilonSettings:
+        case DeviceOperation::ApplyEpsilonSettings:
+        case DeviceOperation::RestartEpsilonDevice:
         case DeviceOperation::ConfigureEpsilonPacketRates:
         case DeviceOperation::ConfigureEpsilonMainAntennaLeverArm:
         case DeviceOperation::ConfigureEpsilonRtcmInput:

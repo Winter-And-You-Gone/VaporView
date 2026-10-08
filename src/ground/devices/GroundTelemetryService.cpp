@@ -204,7 +204,17 @@ quint16 GroundTelemetryService::sendCommand(CommandId commandId, const QByteArra
     DeviceOperationRequest operation;
     if (commandId == CommandId::DeviceOperation &&
         TelemetryCodec::parseDeviceOperationRequest(payload, operation) && operation.device_id == SkyDeviceId::Epsilon)
+    {
         pending.retry_interval_ms = 15000;
+        if (operation.operation == DeviceOperation::ReadEpsilonSettings ||
+            operation.operation == DeviceOperation::ApplyEpsilonSettings ||
+            operation.operation == DeviceOperation::RestartEpsilonDevice)
+        {
+            pending.retry_interval_ms = TelemetryCodec::epsilonDeviceOperationTimeoutMs(operation);
+            // These operations must never be replayed after an ambiguous timeout.
+            pending.retry_count = kCommandMaxRetries;
+        }
+    }
     pending.encodedPayload = TelemetryCodec::serializeCommand(command);
     pending.next_retry_ms = nowMs() + pending.retry_interval_ms;
     sendCommandPayload(pending);
@@ -430,7 +440,15 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         CommandAck ack;
         if (TelemetryCodec::parseCommandAck(frame.payload, ack))
         {
-            pending_commands_.remove(ack.command_seq);
+            const auto pending = pending_commands_.constFind(ack.command_seq);
+            DeviceOperationRequest operation;
+            const bool settingsReplyRequired = pending != pending_commands_.cend() &&
+                pending->command.command_id == CommandId::DeviceOperation &&
+                TelemetryCodec::parseDeviceOperationRequest(pending->command.payload, operation) &&
+                (operation.operation == DeviceOperation::ReadEpsilonSettings || operation.operation == DeviceOperation::ApplyEpsilonSettings ||
+                 operation.operation == DeviceOperation::RestartEpsilonDevice);
+            if (ack.error_code != CommandErrorCode::Ok || !settingsReplyRequired)
+                pending_commands_.remove(ack.command_seq);
             emit commandAckReceived(ack);
         }
         else
@@ -517,6 +535,16 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         DeviceOperationResponse response;
         if (TelemetryCodec::parseDeviceOperationResponse(frame.payload, response))
         {
+            for (auto it = pending_commands_.begin(); it != pending_commands_.end(); ++it)
+            {
+                DeviceOperationRequest request;
+                if (it->command.command_id == CommandId::DeviceOperation &&
+                    TelemetryCodec::parseDeviceOperationRequest(it->command.payload, request) && request.request_id == response.request_id)
+                {
+                    pending_commands_.erase(it);
+                    break;
+                }
+            }
             emit deviceOperationResponseReceived(response);
         }
         else

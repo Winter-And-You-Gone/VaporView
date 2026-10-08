@@ -467,6 +467,8 @@ struct MainWindowState
     std::unique_ptr<VaporView::Ground::Devices::RemoteSkyController> remote_sky_controller_;
     std::unique_ptr<VaporView::Ground::Devices::Ai8DeviceSession> ai8_device_session_;
     std::unique_ptr<VaporView::Ground::Devices::EpsilonDeviceSession> epsilon_device_session_;
+    QString epsilon_settings_target_;
+    std::map<std::string, double> epsilon_settings_device_values_;
     std::unique_ptr<VaporView::Ground::Devices::Rd105DeviceSession> rd105_device_session_;
     QHash<quint16, VaporView::PeakSearchRange> remote_peak_search_commands_;
 #ifdef VAPORVIEW_HAS_OSGEARTH

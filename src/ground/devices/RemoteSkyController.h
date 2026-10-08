@@ -45,7 +45,11 @@ public:
         const EpsilonMainAntennaLeverArmOperation& operation);
     quint32 configureEpsilonRtcmInput(const EpsilonRtcmInputOperation& operation);
     bool sendRtcmCorrectionData(const QByteArray& data);
+    quint32 readEpsilonSettings(EpsilonSettingsGroup group);
+    quint32 applyEpsilonSettings(const EpsilonSettingsOperation& operation);
+    quint32 restartEpsilonDevice();
     DeviceOperationSupport deviceOperationSupport() const;
+    DeviceOperationSupport epsilonSettingsSupport() const;
     quint16 sendDeviceCommand(CommandId command, SkyDeviceId device);
     quint16 sendRateCommand(CommandId command, quint16 rateHz);
     quint16 sendPeakSearchRangeCommand(quint32 startIndex, quint32 endIndex);
@@ -82,6 +86,7 @@ signals:
     void deviceOperationRejected(quint32 requestId, const CommandAck& ack);
     void deviceOperationTimedOut(quint32 requestId);
     void deviceOperationSupportChanged(DeviceOperationSupport support);
+    void epsilonSettingsSupportChanged(DeviceOperationSupport support);
     void commandAckReceived(const CommandAck& ack);
     void commandTimedOut(CommandId command, quint16 sequence);
 
@@ -108,8 +113,10 @@ private:
     bool rtcm_diagnostics_need_baseline_ = true;
     QHash<quint16, quint32> device_operation_requests_;
     QHash<quint32, quint16> device_operation_commands_;
+    QHash<quint32, DeviceOperation> device_operation_types_;
     quint32 next_device_operation_request_id_ = 1;
     DeviceOperationSupport device_operation_support_ = DeviceOperationSupport::Unknown;
+    DeviceOperationSupport epsilon_settings_support_ = DeviceOperationSupport::Unknown;
 };
 
 }  // namespace VaporView::Ground::Devices

@@ -1,6 +1,8 @@
 #ifndef VaporView_TELEMETRY_TYPES_H_
 #define VaporView_TELEMETRY_TYPES_H_
 
+#include "EpsilonSettings.h"
+
 #include <QByteArray>
 #include <QJsonObject>
 #include <QString>
@@ -101,6 +103,9 @@ enum class DeviceOperation : quint8
     ConfigureEpsilonPacketRates = 10,
     ConfigureEpsilonMainAntennaLeverArm = 11,
     ConfigureEpsilonRtcmInput = 12,
+    ReadEpsilonSettings = 13,
+    ApplyEpsilonSettings = 14,
+    RestartEpsilonDevice = 15,
 };
 
 enum class SkyDeviceId : quint8

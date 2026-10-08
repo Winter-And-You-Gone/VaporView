@@ -5,6 +5,7 @@
 #include "data_types.h"
 #include "serial_port.h"
 #include "EpsilonRawSatellite.h"
+#include "EpsilonSettings.h"
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -155,6 +156,9 @@ public:
                             CommandProgressCallback progress = {});
   bool configureRtcmPort(int port_index, int baud_rate);
   bool configureMainAntennaLeverArm(double x_m, double y_m, double z_m);
+  bool readSettings(EpsilonSettingsGroup group, EpsilonSettingsSnapshot& snapshot, std::string& error);
+  bool applySettings(const EpsilonSettingsOperation& settings, EpsilonSettingsSnapshot& snapshot, std::string& error);
+  bool rebootDevice(std::string& error);
   bool checkDeviceResponse() override;
   bool lastDeviceResponseHadFdilinkFrame() const;
   void setRawFrameCallback(RawFrameCallback callback);

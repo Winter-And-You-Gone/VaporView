@@ -156,6 +156,7 @@
 | Ground | session.recording | session_recording_start_failed | Error | 启动记录会话失败。 | error_code | system_error | SESSION_LAYOUT_CREATE_FAILED / SESSION_FILES_OPEN_FAILED / SESSION_METADATA_WRITE_FAILED / SESSION_RECORDING_START_FAILED |
 | Ground | session.recording | session_recording_rejected_dependency_unavailable | Warning | 开始记录前请先连接天空端数传。 | reason_code, dependency, mode | ui_dedupe_key | DEPENDENCY_UNAVAILABLE |
 | Ground | session.recording | session_recording_rejected_no_source | Warning | 开始记录前，至少需要一个串口设备在线或 TCP 波形链路已连接。 | reason_code, mode, serial_connected, tcp_wave_connected | ui_dedupe_key | NO_RECORDING_SOURCE_CONNECTED |
+| Ground | session.recording | session_recording_rejected_epsilon_operation | Warning | EPSILON 设备操作尚未完成，暂时不能开始记录。 | reason_code |  | DEVICE_BUSY |
 | Ground | session.recording | scheduled_recording_configured | Info | 定时记录已配置。 | summary, mode, duration_seconds, interval_seconds, fixed_count_enabled, total_runs, next_start_time | ui_visibility |  |
 | Ground | session.recording | scheduled_recording_canceled | Info | 定时记录已取消。 |  | ui_visibility |  |
 | Ground | session.recording | scheduled_recording_start_failed | Warning | 定时记录未能启动。 | reason_code, failure_reason, mode, next_start_time | ui_dedupe_key | DEPENDENCY_UNAVAILABLE |
@@ -275,6 +276,7 @@
 | Ground | device.navigation.command | epsilon_rtcm_port_config_failed | Error | EPSILON RTCM 串口配置失败。 | device, operation, port, baud, device_port, forward_port, forward_baud, error_code | ui_dedupe_key | CONFIG_APPLY_FAILED |
 | Ground | device.navigation.command | epsilon_rtcm_port_config_completed | Info | EPSILON RTCM 串口配置已完成，RTK 转发配置已预填。 | device, operation, port, device_port, forward_port, forward_baud | ui_visibility |  |
 | Ground | device.navigation.command | epsilon_live_stream_pause_for_configuration | Info | 为配置 EPSILON 临时停止当前数据流。 | device, operation | ui_visibility |  |
+| Ground | device.navigation.command | epsilon_settings_result | Info/Error | EPSILON 设置操作结果已更新，设备重启后的持久化仍需验证。 | operation, command_succeeded, saved, readback_verified, restart_required, error | ui_visibility, error_code | CONFIG_APPLY_FAILED |
 | Ground | device.navigation.command | epsilon_configuration_completed_live_stream_restored | Info | EPSILON 配置已完成，实时导航流已恢复。 | device, operation | ui_visibility |  |
 | Ground | device.navigation.command | epsilon_configuration_failed_live_stream_restored | Error | EPSILON 配置失败，但原实时导航流已恢复。 | device, operation, error_code | ui_visibility | CONFIG_APPLY_FAILED |
 | Ground | device.navigation.command | epsilon_live_stream_restore_failed | Error | EPSILON 实时导航流未能恢复，请手动重新连接 EPSILON。 | device, operation, error_code, recovery_error | ui_dedupe_key | STREAM_RESTORE_FAILED |

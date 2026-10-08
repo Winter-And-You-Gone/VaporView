@@ -1404,7 +1404,10 @@ bool validDeviceOperation(DeviceOperation operation)
            operation == DeviceOperation::FactoryReset ||
            operation == DeviceOperation::ConfigureEpsilonPacketRates ||
            operation == DeviceOperation::ConfigureEpsilonMainAntennaLeverArm ||
-           operation == DeviceOperation::ConfigureEpsilonRtcmInput;
+           operation == DeviceOperation::ConfigureEpsilonRtcmInput ||
+           operation == DeviceOperation::ReadEpsilonSettings ||
+           operation == DeviceOperation::ApplyEpsilonSettings ||
+           operation == DeviceOperation::RestartEpsilonDevice;
 }
 
 QByteArray TelemetryCodec::serializeAi8TemperatureControllerStatus(
@@ -1877,6 +1880,122 @@ bool TelemetryCodec::parseRtcmCorrectionData(const QByteArray& payload, QByteArr
         }
         if (sequence) *sequence = parsed;
     }
+    return true;
+}
+
+int TelemetryCodec::epsilonDeviceOperationTimeoutMs(const DeviceOperationRequest& request)
+{
+    if (request.operation == DeviceOperation::RestartEpsilonDevice) return 45000;
+    EpsilonSettingsGroup group = EpsilonSettingsGroup::Installation;
+    EpsilonSettingsOperation settings;
+    if (request.operation == DeviceOperation::ReadEpsilonSettings)
+    {
+        if (!parseEpsilonSettingsRead(request.payload, group)) return 15000;
+    }
+    else if (request.operation == DeviceOperation::ApplyEpsilonSettings)
+    {
+        if (!parseEpsilonSettingsOperation(request.payload, settings)) return 15000;
+        group = settings.group;
+    }
+    else return 15000;
+    const int count = static_cast<int>(epsilonParameterDescriptors(group).size());
+    // The serial helper both waits the 1500 ms vendor interval and may read
+    // for another 1500 ms. Configuration entry/exit and stream recovery also
+    // need time even when every parameter query exhausts its read timeout.
+    const int commands = request.operation == DeviceOperation::ApplyEpsilonSettings
+        ? count * 2 + static_cast<int>(settings.values.size()) + 6 : count + 6;
+    return 3000 * commands + 30000;
+}
+
+QByteArray TelemetryCodec::serializeEpsilonSettingsRead(EpsilonSettingsGroup group)
+{
+    return QJsonDocument(QJsonObject{{QStringLiteral("version"), 1},
+        {QStringLiteral("group"), static_cast<int>(group)}}).toJson(QJsonDocument::Compact);
+}
+
+bool TelemetryCodec::parseEpsilonSettingsRead(const QByteArray& payload, EpsilonSettingsGroup& group)
+{
+    if (payload.size() > 8192) return false;
+    const auto document = QJsonDocument::fromJson(payload);
+    if (!document.isObject()) return false;
+    const auto object = document.object();
+    int version = 0, value = -1;
+    if (!readRequiredJsonInt(object, QStringLiteral("version"), version) || version != 1 ||
+        !readRequiredJsonInt(object, QStringLiteral("group"), value) || value < 0 || value > 1) return false;
+    group = static_cast<EpsilonSettingsGroup>(value);
+    return true;
+}
+
+QByteArray TelemetryCodec::serializeEpsilonSettingsOperation(const EpsilonSettingsOperation& operation)
+{
+    auto object = QJsonDocument::fromJson(serializeEpsilonSettingsRead(operation.group)).object();
+    QJsonObject values;
+    for (const auto& entry : operation.values) values.insert(QString::fromStdString(entry.first), entry.second);
+    object.insert(QStringLiteral("values"), values);
+    return QJsonDocument(object).toJson(QJsonDocument::Compact);
+}
+
+bool TelemetryCodec::parseEpsilonSettingsOperation(const QByteArray& payload, EpsilonSettingsOperation& operation)
+{
+    EpsilonSettingsOperation parsed;
+    if (!parseEpsilonSettingsRead(payload, parsed.group)) return false;
+    const auto value = QJsonDocument::fromJson(payload).object().value(QStringLiteral("values"));
+    if (!value.isObject() || value.toObject().size() > 64) return false;
+    const auto values = value.toObject();
+    for (auto it = values.begin(); it != values.end(); ++it)
+    {
+        if (!it.value().isDouble() || !std::isfinite(it.value().toDouble())) return false;
+        parsed.values.emplace(it.key().toStdString(), it.value().toDouble());
+    }
+    std::string error;
+    if (!validateEpsilonSettings(parsed, error)) return false;
+    operation = std::move(parsed);
+    return true;
+}
+
+QByteArray TelemetryCodec::serializeEpsilonSettingsSnapshot(const EpsilonSettingsSnapshot& snapshot)
+{
+    auto object = QJsonDocument::fromJson(serializeEpsilonSettingsOperation({snapshot.group, snapshot.values})).object();
+    QJsonArray unsupported;
+    for (const auto& key : snapshot.unsupported) unsupported.append(QString::fromStdString(key));
+    object.insert(QStringLiteral("unsupported"), unsupported);
+    object.insert(QStringLiteral("saved"), snapshot.saved);
+    object.insert(QStringLiteral("readback_verified"), snapshot.readback_verified);
+    object.insert(QStringLiteral("restart_required"), snapshot.restart_required);
+    return QJsonDocument(object).toJson(QJsonDocument::Compact);
+}
+
+bool TelemetryCodec::parseEpsilonSettingsSnapshot(const QByteArray& payload, EpsilonSettingsSnapshot& snapshot)
+{
+    EpsilonSettingsSnapshot parsed;
+    if (!parseEpsilonSettingsRead(payload, parsed.group)) return false;
+    const auto object = QJsonDocument::fromJson(payload).object();
+    const auto values = object.value(QStringLiteral("values"));
+    const auto unsupported = object.value(QStringLiteral("unsupported"));
+    if (!values.isObject() || values.toObject().size() > 64 || !unsupported.isArray() || unsupported.toArray().size() > 64 ||
+        !object.value(QStringLiteral("saved")).isBool() || !object.value(QStringLiteral("readback_verified")).isBool() ||
+        !object.value(QStringLiteral("restart_required")).isBool()) return false;
+    const auto map = values.toObject();
+    for (auto it = map.begin(); it != map.end(); ++it)
+    {
+        const auto* descriptor = epsilonParameterDescriptor(it.key().toStdString());
+        if (!descriptor || descriptor->group != parsed.group || !it.value().isDouble() ||
+            !std::isfinite(it.value().toDouble())) return false;
+        parsed.values.emplace(it.key().toStdString(), it.value().toDouble());
+    }
+    for (const auto& key : unsupported.toArray())
+    {
+        if (!key.isString()) return false;
+        const auto name = key.toString().toStdString();
+        const auto* descriptor = epsilonParameterDescriptor(name);
+        if (!descriptor || descriptor->group != parsed.group || parsed.values.count(name) ||
+            std::find(parsed.unsupported.begin(), parsed.unsupported.end(), name) != parsed.unsupported.end()) return false;
+        parsed.unsupported.push_back(name);
+    }
+    parsed.saved = object.value(QStringLiteral("saved")).toBool();
+    parsed.readback_verified = object.value(QStringLiteral("readback_verified")).toBool();
+    parsed.restart_required = object.value(QStringLiteral("restart_required")).toBool();
+    snapshot = std::move(parsed);
     return true;
 }
 

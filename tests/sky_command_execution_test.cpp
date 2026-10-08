@@ -64,6 +64,27 @@ int main(int argc, char **argv)
     require(completions == 4, "duplicate requests share one completion");
     runtime.submitCommand(command, completed);
     require(completions == 5, "completed retry immediately reuses cached result");
+    operation.request_id = 78;
+    operation.operation = VaporView::DeviceOperation::ReadEpsilonSettings;
+    operation.payload = VaporView::TelemetryCodec::serializeEpsilonSettingsRead(VaporView::EpsilonSettingsGroup::Installation);
+    command.command_seq = 15;
+    command.payload = VaporView::TelemetryCodec::serializeDeviceOperationRequest(operation);
+    bool settingsCompleted = false;
+    runtime.submitCommand(command, [&](const VaporView::SkyCommandResult& result) {
+        require(result.ack.error_code == VaporView::CommandErrorCode::UnknownCommand,
+                "simulation cannot report fabricated hardware parameter values");
+        settingsCompleted = true;
+    });
+    VaporView::CommandMessage startRecording;
+    startRecording.command_id = VaporView::CommandId::StartRecording;
+    require(runtime.executeCommand(startRecording).ack.error_code == VaporView::CommandErrorCode::DeviceOperationBusy,
+            "recording cannot start while a settings transaction owns the collector");
+    QString recordingError;
+    require(!runtime.startRecording(&recordingError), "direct recording API observes settings ownership");
+    deadline.restart();
+    while (!settingsCompleted && deadline.elapsed() < 3000) QCoreApplication::processEvents();
+    require(settingsCompleted, "unsupported settings transaction releases collector ownership");
+
     VaporView::SkyLocalIpcServer ipc(&runtime);
     require(ipc.listen(QStringLiteral("127.0.0.1"), 0), "listen isolated IPC server");
     QTcpSocket slowClient;

@@ -2,6 +2,7 @@
 #define VaporView_MAIN_WINDOW_H_
 
 #include "LogRecord.h"
+#include "EpsilonSettings.h"
 #include "Ai8TemperatureControllerProtocol.h"
 #include "SkyConfig.h"
 #include "data_collector.h"
@@ -92,6 +93,7 @@ namespace VaporView::Ground::Devices { class EpsilonDeviceSession; }
 namespace VaporView::Ground::Devices { enum class EpsilonOperation; struct EpsilonSessionResult; }
 namespace VaporView::Ground::Devices { class Rd105DeviceSession; }
 namespace VaporView::Ground::Devices { struct Rd105SessionResult; }
+namespace VaporView::Ground { struct EpsilonDeviceOperation; }
 namespace VaporView::Ground::Devices { class UiTestDataModel; enum class UiTestScenario; }
 namespace VaporView::Ground::Session { class GroundRecordingService; }
 namespace VaporView::Ground::Session { class RecordingScheduleController; }
@@ -207,6 +209,10 @@ private slots:
         quint64 requestId, VaporView::Ground::Devices::EpsilonOperation operation);
     void onEpsilonSessionOperationFinished(
         const VaporView::Ground::Devices::EpsilonSessionResult& result);
+    void onEpsilonSettingsReadRequested(VaporView::EpsilonSettingsGroup group);
+    void onEpsilonSettingsApplyRequested(const VaporView::EpsilonSettingsOperation& operation);
+    void onEpsilonDeviceRestartRequested();
+    bool prepareEpsilonSettingsOperation(VaporView::Ground::EpsilonDeviceOperation& operation);
     void onRd105SessionAvailabilityChanged(bool available, const QString& reason);
     void onRd105SessionOperationStarted(
         quint64 requestId,

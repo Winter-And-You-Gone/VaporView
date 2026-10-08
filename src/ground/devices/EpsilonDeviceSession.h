@@ -25,6 +25,9 @@ enum class EpsilonOperation
     ConfigurePacketRates,
     ConfigureMainAntennaLeverArm,
     ConfigureRtcmInput,
+    ReadSettings,
+    ApplySettings,
+    RestartDevice,
 };
 
 enum class EpsilonOperationOutcome
@@ -64,6 +67,12 @@ public:
         std::function<VaporView::Ground::EpsilonConfigurationResult(
             const EpsilonRtcmInputOperation&,
             const VaporView::Ground::EpsilonDeviceOperation&)> configureRtcmInput;
+        std::function<VaporView::Ground::EpsilonConfigurationResult(EpsilonSettingsGroup,
+            const VaporView::Ground::EpsilonDeviceOperation&)> readSettings;
+        std::function<VaporView::Ground::EpsilonConfigurationResult(const EpsilonSettingsOperation&,
+            const VaporView::Ground::EpsilonDeviceOperation&)> applySettings;
+        std::function<VaporView::Ground::EpsilonConfigurationResult(
+            const VaporView::Ground::EpsilonDeviceOperation&)> restartDevice;
     };
 
     EpsilonDeviceSession(LocalAdapter localAdapter,
@@ -90,6 +99,12 @@ public:
         const EpsilonRtcmInputOperation& operation,
         const VaporView::Ground::EpsilonDeviceOperation& localDeviceOperation = {});
 
+    quint64 readSettings(EpsilonSettingsGroup group,
+        const VaporView::Ground::EpsilonDeviceOperation& localDeviceOperation = {});
+    quint64 applySettings(const EpsilonSettingsOperation& operation,
+        const VaporView::Ground::EpsilonDeviceOperation& localDeviceOperation = {});
+    quint64 restartDevice(const VaporView::Ground::EpsilonDeviceOperation& localDeviceOperation = {});
+
 signals:
     void availabilityChanged(bool available, const QString& reason);
     void operationStarted(quint64 requestId,
@@ -109,6 +124,7 @@ private:
         EpsilonPacketRatesOperation packet_rates;
         EpsilonMainAntennaLeverArmOperation lever_arm;
         EpsilonRtcmInputOperation rtcm_input;
+        EpsilonSettingsOperation settings;
         VaporView::Ground::EpsilonDeviceOperation local_device_operation;
     };
 
@@ -130,6 +146,7 @@ private:
     QObject *local_worker_ = nullptr;
     EpsilonBackend backend_ = EpsilonBackend::Local;
     bool english_ = false;
+    bool local_worker_busy_ = false;
     bool local_available_ = false;
     bool remote_available_ = false;
     QString local_detail_;
@@ -144,3 +161,7 @@ private:
 
 Q_DECLARE_METATYPE(VaporView::Ground::Devices::EpsilonOperation)
 Q_DECLARE_METATYPE(VaporView::Ground::Devices::EpsilonSessionResult)
+
+Q_DECLARE_METATYPE(VaporView::EpsilonSettingsGroup)
+Q_DECLARE_METATYPE(VaporView::EpsilonSettingsOperation)
+Q_DECLARE_METATYPE(VaporView::EpsilonSettingsSnapshot)

@@ -69,8 +69,10 @@ public:
                                      CommandErrorCode *errorCode = nullptr,
                                      QString *errorMessage = nullptr,
                                      bool forceApply = true);
-    std::function<CommandErrorCode()> prepareEpsilonOperation(const DeviceOperationRequest& request);
-    void completeEpsilonOperation(const DeviceOperationRequest& request, CommandErrorCode result);
+    std::function<CommandErrorCode()> prepareEpsilonOperation(const DeviceOperationRequest& request,
+        std::shared_ptr<EpsilonSettingsSnapshot> snapshot = {}, std::shared_ptr<QString> message = {});
+    void completeEpsilonOperation(const DeviceOperationRequest& request, CommandErrorCode result,
+        const EpsilonSettingsSnapshot& snapshot = {});
     bool configureEpsilonMainAntennaLeverArm(
         const EpsilonMainAntennaLeverArmOperation& operation,
         CommandErrorCode *errorCode = nullptr,

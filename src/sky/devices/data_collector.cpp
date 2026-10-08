@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <exception>
 #include <iomanip>
 #include <limits>
 #include <map>
@@ -2449,6 +2450,130 @@ bool EpsilonCollector::configureRtcmPort(int portIndex, int baudRate)
                                                english
                                                    ? "EPSILON: RTCM port configuration was saved and rebooted, but no FDILink frame was observed after the port returned"
                                                    : "EPSILON：RTCM 串口配置已保存并重启，但串口恢复后没有检测到 FDILink 数据包");
+}
+
+bool EpsilonCollector::readSettings(EpsilonSettingsGroup group, EpsilonSettingsSnapshot& snapshot, std::string& error)
+{
+  snapshot = {};
+  snapshot.group = group;
+  if (running_.load() || !serial_.isOpen())
+  {
+    error = "EPSILON settings require an open serial port and a stopped collector";
+    return false;
+  }
+  const EpsilonLogFn logFn = [this](const std::string& message) { log(message); };
+  const bool english = isEnglishLog();
+  serial_.flush();
+  const EpsilonSettingsExchange exchange = [this, &logFn, english](const std::string& command, int interval) {
+    return sendLoggedEpsilonAsciiCommand(serial_, logFn, english, command, interval);
+  };
+  return readEpsilonSettings(group, exchange, snapshot, error);
+}
+
+bool EpsilonCollector::applySettings(const EpsilonSettingsOperation& settings,
+                                     EpsilonSettingsSnapshot& snapshot, std::string& error)
+{
+  snapshot = {};
+  snapshot.group = settings.group;
+  if (running_.load() || !serial_.isOpen())
+  {
+    error = "EPSILON settings require an open serial port and a stopped collector";
+    return false;
+  }
+  const EpsilonLogFn logFn = [this](const std::string& message) { log(message); };
+  const bool english = isEnglishLog();
+  serial_.flush();
+  const EpsilonSettingsExchange exchange = [this, &logFn, english](const std::string& command, int interval) {
+    return sendLoggedEpsilonAsciiCommand(serial_, logFn, english, command, interval);
+  };
+  return applyEpsilonSettings(settings, exchange, snapshot, error);
+}
+
+bool EpsilonCollector::rebootDevice(std::string& error)
+{
+  error.clear();
+  if (running_.load() || !serial_.isOpen() || port_name_.empty())
+  {
+    error = "EPSILON reboot requires an open serial port and a stopped collector";
+    return false;
+  }
+  const bool english = isEnglishLog();
+  const EpsilonLogFn logFn = [this](const std::string& message) { log(message); };
+  bool configurationAttempted = true;
+  auto exitConfiguration = [&]() {
+    if (configurationAttempted)
+    {
+      configurationAttempted = false;
+      bool exited = false;
+      try
+      {
+        const auto response = sendLoggedEpsilonAsciiCommand(serial_, logFn, english, "#fdeconfig\r\n", 1500);
+        exited = containsEpsilonAsciiOk(response);
+      }
+      catch (...) {}
+      if (!exited)
+        error += "; configuration exit was not acknowledged; reconnect device";
+    }
+    return false;
+  };
+  try
+  {
+    if (!containsEpsilonAsciiOk(sendLoggedEpsilonAsciiCommand(serial_, logFn, english, "#fconfig\r\n", 1500)))
+    {
+      error = "EPSILON reboot configuration entry was not acknowledged";
+      return exitConfiguration();
+    }
+    const auto prompt = sendLoggedEpsilonAsciiCommand(serial_, logFn, english, "#freboot\r\n", 2000);
+    if (prompt.find("(y/n)") == std::string::npos)
+    {
+      error = "EPSILON reboot confirmation prompt was not received";
+      return exitConfiguration();
+    }
+    // FDI_config.c requires 1500 ms after confirmation. A reboot need not return
+    // an ASCII acknowledgement; re-open and navigation response establish success.
+    bool confirmationWritten = false;
+    sendLoggedEpsilonAsciiCommand(serial_, logFn, english, "y\r\n", 1500,
+        [&](const std::string&, bool isReply, bool successful) {
+          if (!isReply && successful)
+          {
+            confirmationWritten = true;
+            configurationAttempted = false; // Device reboot exits configuration.
+          }
+        });
+    if (!confirmationWritten)
+    {
+      error = "EPSILON reboot confirmation could not be sent";
+      return exitConfiguration();
+    }
+    serial_.close();
+    sleepMs(4000);
+    for (int attempt = 0; attempt < 20; ++attempt)
+    {
+      if (serial_.open(port_name_, serial_config_))
+      {
+        serial_.flush();
+        sleepMs(500);
+        if (waitForEpsilonNavigationStreamRestore(serial_, logFn, 8000,
+            "EPSILON: navigation stream observed after reboot",
+            "EPSILON: no navigation frame observed after reboot"))
+          return true;
+        error = "EPSILON port reopened after reboot but navigation response was not confirmed";
+        return exitConfiguration();
+      }
+      sleepMs(500);
+    }
+    error = "EPSILON serial port could not be reopened after reboot";
+    return false;
+  }
+  catch (const std::exception& exception)
+  {
+    error = std::string("EPSILON reboot failed: ") + exception.what();
+  }
+  catch (...)
+  {
+    error = "EPSILON reboot failed";
+  }
+  return exitConfiguration();
 }
 
 bool EpsilonCollector::configureMainAntennaLeverArm(double xM, double yM, double zM)

@@ -458,6 +458,23 @@ MainWindow::MainWindow(QWidget *parent)
                 QString::number(operation.forward_baud),
                 epsilonLogCallback);
         };
+    epsilonLocalAdapter.readSettings =
+        [epsilonLogCallback](VaporView::EpsilonSettingsGroup group,
+                             const VaporView::Ground::EpsilonDeviceOperation& deviceOperation) {
+            return VaporView::Ground::EpsilonConfigurationService::readSettings(
+                deviceOperation, group, epsilonLogCallback);
+        };
+    epsilonLocalAdapter.applySettings =
+        [epsilonLogCallback](const VaporView::EpsilonSettingsOperation& operation,
+                             const VaporView::Ground::EpsilonDeviceOperation& deviceOperation) {
+            return VaporView::Ground::EpsilonConfigurationService::applySettings(
+                deviceOperation, operation, epsilonLogCallback);
+        };
+    epsilonLocalAdapter.restartDevice =
+        [epsilonLogCallback](const VaporView::Ground::EpsilonDeviceOperation& deviceOperation) {
+            return VaporView::Ground::EpsilonConfigurationService::rebootDevice(
+                deviceOperation, epsilonLogCallback);
+        };
     state_->epsilon_device_session_ =
         std::make_unique<VaporView::Ground::Devices::EpsilonDeviceSession>(
             std::move(epsilonLocalAdapter), state_->remote_sky_controller_.get());
