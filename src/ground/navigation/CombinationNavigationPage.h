@@ -21,6 +21,8 @@ namespace VaporView::Ground::Navigation
 
 class EpsilonConfigPanel;
 
+QPushButton *createNavigationSectionButton(QWidget *parent);
+
 class CombinationNavigationPage final : public QWidget
 {
     Q_OBJECT

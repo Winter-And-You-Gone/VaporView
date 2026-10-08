@@ -517,9 +517,19 @@ int main(int argc, char *argv[])
     auto *saveButton = panel.findChild<QPushButton *>(QStringLiteral("epsilonSaveButton"));
     auto *restartButton = panel.findChild<QPushButton *>(QStringLiteral("epsilonDeviceRestartButton"));
     auto *settingsStatus = panel.findChild<QLabel *>(QStringLiteral("epsilonSettingsStatus"));
+    auto *settingsTabs = panel.findChild<QFrame *>(QStringLiteral("epsilonSettingsTabs"));
+    auto *settingsTrack = panel.findChild<QFrame *>(QStringLiteral("epsilonSettingsTabTrack"));
     require(pages && pages->count() == 3 && installationTab && fusionTab && communicationTab &&
             readButton && saveButton && restartButton && settingsStatus,
             "EPSILON exposes three internal pages and shared read/save/restart actions");
+    require(settingsTabs && settingsTabs->height() == 36 && settingsTrack &&
+            settingsTrack->parentWidget() == settingsTabs &&
+            communicationTab->parentWidget() == settingsTrack &&
+            communicationTab->height() == installationTab->height() &&
+            installationTab->height() == fusionTab->height() &&
+            std::abs(communicationTab->width() - installationTab->width()) <= 1 &&
+            std::abs(installationTab->width() - fusionTab->width()) <= 1,
+            "parameter navigation uses the same equal-height three-segment capsule geometry");
     installationTab->click();
     panel.setSettingsAvailable(true);
     QApplication::processEvents();
@@ -536,10 +546,25 @@ int main(int argc, char *argv[])
         installationHasSecondColumn |= row->property("epsilonSettingsFieldColumn").toInt() == 1;
     require(installationHasSecondColumn, "wide installation form uses two compact columns");
     auto *parametersCard = panel.findChild<QFrame *>(QStringLiteral("epsilonParameterActionsCard"));
+    auto requireAlignedParameterCards = [&](int group, bool wide) {
+        const QRect outer(parametersCard->mapTo(&panel, QPoint()), parametersCard->size());
+        const int count = group == 0 ? 3 : 4;
+        for (int i = 0; i < count; ++i)
+        {
+            auto *card = panel.findChild<QFrame *>(QStringLiteral("epsilonParameterCard_%1_%2").arg(group).arg(i));
+            require(card != nullptr, "parameter card exists for edge alignment");
+            const QRect rect(card->mapTo(&panel, QPoint()), card->size());
+            if (!wide || i % 2 == 0)
+                require(rect.left() == outer.left(), "parameter cards share the standard left page inset");
+            if (!wide || i % 2 == 1 || (group == 0 && i == 2))
+                require(rect.right() == outer.right(), "parameter cards share the standard right page inset");
+        }
+    };
     require(parametersCard && parametersCard->property("epsilonParameterCard").toBool() &&
             parametersCard->isAncestorOf(readButton) && parametersCard->isAncestorOf(saveButton) &&
             parametersCard->isAncestorOf(restartButton) && parametersCard->isAncestorOf(settingsStatus),
             "device actions, status, and guidance share the standard parameter card");
+    requireAlignedParameterCards(0, true);
     for (int i = 0; i < 3; ++i)
         require(panel.findChild<QFrame *>(QStringLiteral("epsilonParameterCard_0_%1").arg(i)) != nullptr,
                 "installation uses three standard grouped cards");
@@ -602,6 +627,8 @@ int main(int argc, char *argv[])
     editor->setValue(1);
     require(saveButton->isEnabled(), "a supported changed field enables saving");
     fusionTab->click();
+    QApplication::processEvents();
+    requireAlignedParameterCards(1, true);
     require(panel.currentSettingsGroup() == VaporView::EpsilonSettingsGroup::Fusion && !saveButton->isEnabled(),
             "unread fusion page has independent save eligibility");
     installationTab->click();
@@ -644,6 +671,10 @@ int main(int argc, char *argv[])
     panel.resize(620, 900);
     panel.setEnglish(true);
     QApplication::processEvents();
+    requireAlignedParameterCards(0, false);
+    for (auto *button : {communicationTab, installationTab, fusionTab})
+        require(button->fontMetrics().horizontalAdvance(button->text()) + 20 <= button->width(),
+                "equal navigation segments retain enough room for their complete English labels");
     require(dualHeadingRow->geometry().left() == dualXRow->geometry().left() &&
             dualHeadingRow->geometry().top() > dualYRow->geometry().bottom(),
             "narrow dual antenna card restores the continuous single-column parameter order");
@@ -664,6 +695,7 @@ int main(int argc, char *argv[])
     }
     fusionTab->click();
     QApplication::processEvents();
+    requireAlignedParameterCards(1, false);
     auto *unreadDynamics = panel.findChild<QComboBox *>(QStringLiteral("epsilonParameter_DYNAMICS_MODEL"));
     require(unreadDynamics && unreadDynamics->currentIndex() == -1 && unreadDynamics->width() >= 190,
             "unread dynamics combo retains a visible input without inventing a selected value");

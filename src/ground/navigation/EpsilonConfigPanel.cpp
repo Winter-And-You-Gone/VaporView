@@ -1,4 +1,5 @@
 #include "ground/navigation/EpsilonConfigPanel.h"
+#include "ground/navigation/CombinationNavigationPage.h"
 #include "EpsilonRawSatellite.h"
 
 #include "ground/devices/DeviceRatePolicy.h"
@@ -146,6 +147,29 @@ public:
     QSize minimumSizeHint() const override
     {
         return currentWidget() ? currentWidget()->minimumSizeHint() : QSize();
+    }
+};
+
+class EpsilonSettingsTrack final : public QFrame
+{
+public:
+    using QFrame::QFrame;
+
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        QFrame::paintEvent(event);
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(VaporView::appThemeColor(VaporView::AppThemeColor::Surface,
+                                                 VaporView::isDarkThemeEnabled()));
+        for (auto *button : findChildren<QPushButton *>(QString(), Qt::FindDirectChildrenOnly))
+        {
+            if (!button->isChecked()) continue;
+            const QRectF bounds = QRectF(button->geometry()).adjusted(0.5, 0.5, -0.5, -0.5);
+            painter.drawRoundedRect(bounds, bounds.height() / 2.0, bounds.height() / 2.0);
+        }
     }
 };
 
@@ -354,19 +378,31 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     panelLayout->setContentsMargins(0, 0, 0, 0);
     panelLayout->setSpacing(12);
 
-    auto *tabs = new QWidget(this);
+    auto *tabs = new QFrame(this);
     tabs->setObjectName(QStringLiteral("epsilonSettingsTabs"));
+    tabs->setAttribute(Qt::WA_StyledBackground, true);
+    tabs->setAutoFillBackground(true);
+    tabs->setFixedHeight(36);
+    tabs->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     auto *tabsLayout = new QHBoxLayout(tabs);
-    tabsLayout->setContentsMargins(0, 0, 0, 0);
-    tabsLayout->setSpacing(2);
+    tabsLayout->setContentsMargins(2, 2, 2, 2);
+    tabsLayout->setSpacing(0);
+    auto *track = new EpsilonSettingsTrack(tabs);
+    track->setObjectName(QStringLiteral("epsilonSettingsTabTrack"));
+    track->setAttribute(Qt::WA_StyledBackground, true);
+    track->setAutoFillBackground(true);
+    tabsLayout->addWidget(track);
+    auto *trackLayout = new QHBoxLayout(track);
+    trackLayout->setContentsMargins(2, 2, 2, 2);
+    trackLayout->setSpacing(0);
     auto *tabGroup = new QButtonGroup(this);
     for (int i = 0; i < 3; ++i)
     {
-        auto *button = createActionButton(tabs);
+        auto *button = createNavigationSectionButton(track);
         button->setObjectName(QStringLiteral("epsilonSettingsTab_%1").arg(i));
-        button->setCheckable(true);
+        connect(button, &QPushButton::toggled, track, [track]() { track->update(); });
         tabGroup->addButton(button, i);
-        tabsLayout->addWidget(button, 1);
+        trackLayout->addWidget(button, 1);
         page_buttons_.append(button);
     }
     page_buttons_.first()->setChecked(true);
@@ -735,7 +771,7 @@ void EpsilonConfigPanel::createSettingsPages()
         page->setObjectName(group == VaporView::EpsilonSettingsGroup::Installation
             ? QStringLiteral("epsilonInstallationPage") : QStringLiteral("epsilonFusionPage"));
         auto *layout = new QVBoxLayout(page);
-        layout->setContentsMargins(12, 10, 12, 12);
+        layout->setContentsMargins(0, 10, 0, 12);
         layout->setSpacing(10);
         auto *hint = new QLabel(settings_actions_card_);
         hint->setWordWrap(true);
@@ -1109,6 +1145,13 @@ void EpsilonConfigPanel::updateSettingsTexts()
         page_buttons_[i]->setText(names[i]);
         page_buttons_[i]->setAccessibleName(names[i]);
     }
+    for (auto *button : page_buttons_) button->updateGeometry();
+    auto *track = page_buttons_.first()->parentWidget();
+    track->layout()->invalidate();
+    auto *tabs = track->parentWidget();
+    tabs->layout()->invalidate();
+    tabs->updateGeometry();
+    layout()->invalidate();
     settings_hints_[0]->setText(is_english_
         ? QStringLiteral("Read device configuration before editing. Reads pause navigation collection and may take tens of seconds. X forward, Y right, Z down; angles in degrees, lever arms in metres. Check installed antenna geometry. Restart after saving.")
         : QStringLiteral("编辑前先读取设备配置；读取期间暂停导航采集，可能需要几十秒。X 向前、Y 向右、Z 向下；角度为度，杆臂为米。请核对实际天线安装几何，保存后重启。"));
@@ -1543,15 +1586,21 @@ void EpsilonConfigPanel::applyAppearance()
         "QPushButton[epsilonSecondaryAction=\"true\"]:hover { background-color: @vv-primary-subtle; border-color: @vv-primary; color: @vv-primary; }"
         "QPushButton[epsilonSecondaryAction=\"true\"]:focus { border-color: @vv-focus; }"
         "QPushButton[epsilonSecondaryAction=\"true\"]:disabled { background-color: @vv-surface-alt; border-color: @vv-border; color: @vv-text-muted; }"
-        "QWidget#epsilonSettingsTabs { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; padding: 2px; }"
-        "QWidget#epsilonSettingsTabs QPushButton { background-color: transparent; color: @vv-text-secondary; border: none; border-radius: 6px; padding: 0px 4px; }"
-        "QWidget#epsilonSettingsTabs QPushButton:checked { background-color: @vv-primary-subtle; color: @vv-primary; font-weight: 600; }"
-        "QWidget#epsilonSettingsTabs QPushButton:focus { border: 1px solid @vv-focus; }"
+        "QFrame#epsilonSettingsTabs { background-color: @vv-primary-subtle; border: 1px solid @vv-border-strong; border-radius: 18px; }"
+        "QFrame#epsilonSettingsTabTrack { background-color: @vv-primary; border: 1px solid %1; border-radius: 15px; }"
+        "QFrame#epsilonSettingsTabTrack QPushButton { background-color: transparent; color: @vv-white; border: 1px solid transparent; border-radius: 13px; font-weight: 600; margin: 0; min-height: 0; padding: 0 10px; outline: none; }"
+        "QFrame#epsilonSettingsTabTrack QPushButton:checked { background-color: transparent; color: @vv-primary; }"
+        "QFrame#epsilonSettingsTabTrack QPushButton:!checked:hover { background-color: transparent; color: @vv-white; }"
+        "QFrame#epsilonSettingsTabTrack QPushButton:pressed { background-color: transparent; }"
+        "QFrame#epsilonSettingsTabTrack QPushButton:checked:pressed { background-color: transparent; }"
         "QLabel[epsilonSettingsError=\"true\"] { color: @vv-danger; }"
         "QPushButton#epsilonRecommendedConfigButton { min-height: 28px; max-height: 28px; padding-top: 0px; padding-bottom: 0px; }"
         "QWidget#epsilonActionsContainer { background-color: transparent; border: none; }"
         "QWidget#epsilonSummaryFields, QWidget#epsilonLivePacketRateGrid, QWidget#epsilonOutputTitleActions, QWidget#epsilonPacketGrid { background-color: transparent; border: none; }"
-        "QComboBox[epsilonRtcmDevicePortControl=\"true\"] { background-color: @vv-surface; }");
+        "QComboBox[epsilonRtcmDevicePortControl=\"true\"] { background-color: @vv-surface; }")
+        .arg(VaporView::appThemeColorName(VaporView::isDarkThemeEnabled()
+            ? VaporView::AppThemeColor::BorderStrong : VaporView::AppThemeColor::White,
+            VaporView::isDarkThemeEnabled()));
     const QString resolvedStyle = VaporView::applyAppThemeTokens(
         style, VaporView::isDarkThemeEnabled());
     if (styleSheet() != resolvedStyle)

@@ -26,6 +26,7 @@
 #include <QTimer>
 #include <QVBoxLayout>
 
+#include <algorithm>
 #include <array>
 #include <utility>
 
@@ -93,6 +94,19 @@ class CombinationNavigationSectionButton final : public QPushButton
 {
 public:
     using QPushButton::QPushButton;
+
+    QSize sizeHint() const override
+    {
+        QSize hint = QPushButton::sizeHint();
+        if (QWidget *track = parentWidget())
+        {
+            for (auto *button : track->findChildren<QPushButton *>(QString(), Qt::FindDirectChildrenOnly))
+                hint.setWidth(std::max(hint.width(), button->fontMetrics().horizontalAdvance(button->text()) + 22));
+        }
+        return hint;
+    }
+
+    QSize minimumSizeHint() const override { return sizeHint(); }
 
 protected:
     void paintEvent(QPaintEvent *event) override
@@ -230,6 +244,22 @@ protected:
 
 } // namespace
 
+QPushButton *createNavigationSectionButton(QWidget *parent)
+{
+    auto *button = new CombinationNavigationSectionButton(parent);
+    button->setCheckable(true);
+    button->setAutoDefault(false);
+    button->setDefault(false);
+    button->setFlat(true);
+    button->setFocusPolicy(Qt::TabFocus);
+    button->setCursor(Qt::PointingHandCursor);
+    button->setMinimumWidth(92);
+    button->setMinimumHeight(0);
+    button->setContentsMargins(0, 0, 0, 0);
+    button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    return button;
+}
+
 CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, QWidget *parent)
     : QWidget(parent)
     , differential_page_(differentialPage)
@@ -294,18 +324,8 @@ CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, 
     auto createSectionButton = [this, navigationTrack, navigationLayout](
                                    const QString& objectName,
                                    Section section) {
-        auto *button = new CombinationNavigationSectionButton(navigationTrack);
+        auto *button = createNavigationSectionButton(navigationTrack);
         button->setObjectName(objectName);
-        button->setCheckable(true);
-        button->setAutoDefault(false);
-        button->setDefault(false);
-        button->setFlat(true);
-        button->setFocusPolicy(Qt::TabFocus);
-        button->setCursor(Qt::PointingHandCursor);
-        button->setMinimumWidth(92);
-        button->setMinimumHeight(0);
-        button->setContentsMargins(0, 0, 0, 0);
-        button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
         section_group_->addButton(button, static_cast<int>(section));
         navigationLayout->addWidget(button, 1);
         return button;
@@ -610,6 +630,10 @@ void CombinationNavigationPage::updateTexts()
         button->setToolTip(text);
         button->setAccessibleName(text);
     }
+    for (const auto& entry : sectionButtons) entry.first->updateGeometry();
+    navigation_track_->layout()->invalidate();
+    navigation_track_->parentWidget()->layout()->invalidate();
+    navigation_track_->parentWidget()->updateGeometry();
     if (status_panel_)
     {
         status_panel_->setEnglish(is_english_);
