@@ -165,6 +165,10 @@ flowchart LR
   LC --> CR["CollectorRegistry"]
   CR --> DS["normalized device samples"]
 
+  FU["FPGA USB GP01"] --> FS["FpgaDeviceSession"]
+  FS --> FV["VLP1 parser + sensor/waveform adapters"]
+  FV --> DS
+
   RL["Sky serial/TCP telemetry"] --> RS["RemoteSkyController"]
   RS --> RD["RemoteTelemetryDecoder"]
   RD --> RMS["RemoteTelemetryState"]
@@ -183,6 +187,12 @@ or dispatch individual local sample-rate/RD105 collector methods.
 disconnect behavior, the collector registry, sample-rate application, and
 local RD105 command execution. `ImuConfigurationService` owns the IMU ASCII
 profile sequence, direct-port configuration, and restart behavior.
+`FpgaDeviceSession` is the separate Ground-side VLP1 path for the
+`Vapor_Radar_App_V2` GP01 USB device. It owns the unique IN polling loop,
+incremental VLP1 parsing, serialized command responses, capability/register
+requests, sensor payload decoding, and RAW/DLIA fragment assembly. It does not
+replace the existing serial collectors or the internal Ground/Sky
+`TelemetryCodec`; callers consume its normalized signals and raw-frame signal.
 `RemoteSkyController` owns the remote telemetry link and command sequence.
 `RemoteTelemetryDecoder` and
 `RemoteTelemetryState` turn wire messages into stable ground state.

@@ -57,6 +57,15 @@ cmake --build build/Release --config Release --target temperature_controller_pro
 ctest --test-dir build/Release -C Release -L protocol --output-on-failure
 ```
 
+FPGA VLP1、传感器 payload、RAW/DLIA fragment 和离线会话：
+
+```powershell
+cmake --build build/Release --config Release --target fpga_vlp1_test fpga_waveform_assembler_test fpga_sensor_decoder_test fpga_device_session_test
+ctest --test-dir build/Release -C Release -R "^fpga_" --output-on-failure
+```
+
+这些测试使用 replay 字节流，不需要连接 GP01，也不能替代实机 USB、B0/B1、吞吐和模拟波形验收。实机验证前应确认 WinUSB 驱动、BIT/IMG 哈希，并避免 Cypress Control Center 同时占用端点。
+
 Sky 设备覆盖、模拟模式、本地 IPC/TUI 和统一 Device Config：
 
 ```powershell
@@ -74,6 +83,7 @@ ctest --test-dir build/Release -C Release -R "^(telemetry_codec_test|sky_device_
 | `ui` | Qt Widgets 窗口、布局、主题和启动测试 |
 | `slow` | 大型 GUI 或真实数据测试 |
 | `protocol` | Telemetry、TCP 和温控协议测试 |
+| `fpga` | VLP1、FPGA 传感器和 RAW/DLIA replay 测试 |
 | `3d` | osgEarth/OSG 三维地图测试 |
 | `real-data` | 依赖仓库本地西湖三维数据的测试 |
 

@@ -30,6 +30,12 @@ target_link_libraries(vaporview_ground_temperature_command_state PUBLIC
 add_library(vaporview_ground_device_core STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/Ai8DeviceSession.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Ai8DeviceSession.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/FpgaDeviceSession.cpp
+    ${CMAKE_SOURCE_DIR}/include/FpgaDeviceSession.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/FpgaSensorDecoder.cpp
+    ${CMAKE_SOURCE_DIR}/include/FpgaSensorDecoder.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/FpgaUsbTransport.cpp
+    ${CMAKE_SOURCE_DIR}/include/FpgaUsbTransport.h
     ${CMAKE_CURRENT_SOURCE_DIR}/EpsilonDeviceSession.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/EpsilonDeviceSession.h
     ${CMAKE_CURRENT_SOURCE_DIR}/GroundTelemetryService.cpp

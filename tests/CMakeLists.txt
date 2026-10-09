@@ -299,6 +299,47 @@ target_include_directories(telemetry_codec_test PRIVATE
 target_link_libraries(telemetry_codec_test PRIVATE vaporview_protocol)
 add_test(NAME telemetry_codec_test COMMAND telemetry_codec_test)
 
+add_executable(fpga_vlp1_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/fpga_vlp1_test.cpp
+)
+target_include_directories(fpga_vlp1_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+)
+target_link_libraries(fpga_vlp1_test PRIVATE vaporview_protocol)
+add_test(NAME fpga_vlp1_test COMMAND fpga_vlp1_test)
+set_tests_properties(fpga_vlp1_test PROPERTIES LABELS "fast;unit;fpga")
+
+add_executable(fpga_waveform_assembler_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/fpga_waveform_assembler_test.cpp
+)
+target_include_directories(fpga_waveform_assembler_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+)
+target_link_libraries(fpga_waveform_assembler_test PRIVATE vaporview_protocol)
+add_test(NAME fpga_waveform_assembler_test COMMAND fpga_waveform_assembler_test)
+set_tests_properties(fpga_waveform_assembler_test PROPERTIES LABELS "fast;unit;fpga")
+
+add_executable(fpga_sensor_decoder_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/fpga_sensor_decoder_test.cpp
+)
+target_include_directories(fpga_sensor_decoder_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+)
+target_link_libraries(fpga_sensor_decoder_test PRIVATE vaporview_ground_device_core)
+add_test(NAME fpga_sensor_decoder_test COMMAND fpga_sensor_decoder_test)
+set_tests_properties(fpga_sensor_decoder_test PROPERTIES LABELS "fast;unit;fpga")
+
+add_executable(fpga_device_session_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/fpga_device_session_test.cpp
+)
+target_include_directories(fpga_device_session_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_link_libraries(fpga_device_session_test PRIVATE vaporview_ground_device_core)
+add_test(NAME fpga_device_session_test COMMAND fpga_device_session_test)
+set_tests_properties(fpga_device_session_test PROPERTIES LABELS "fast;unit;fpga")
+
 add_executable(log_service_test
     ${CMAKE_CURRENT_SOURCE_DIR}/log_service_test.cpp
 )

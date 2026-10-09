@@ -23,6 +23,8 @@ if(BUILD_TESTING)
 endif()
 
 set(PROTOCOL_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/shared/fpga/FpgaVlp1.cpp
+    ${CMAKE_SOURCE_DIR}/src/shared/fpga/FpgaWaveformAssembler.cpp
     ${CMAKE_SOURCE_DIR}/src/shared/protocol/EpsilonSettings.cpp
     ${CMAKE_SOURCE_DIR}/src/shared/telemetry/RtcmStatusModel.cpp
     ${CMAKE_SOURCE_DIR}/src/shared/telemetry/TelemetryCodec.cpp
@@ -31,6 +33,8 @@ set(PROTOCOL_SOURCES
 )
 
 set(PROTOCOL_HEADERS
+    ${CMAKE_SOURCE_DIR}/include/FpgaVlp1.h
+    ${CMAKE_SOURCE_DIR}/include/FpgaWaveformAssembler.h
     ${CMAKE_SOURCE_DIR}/include/EpsilonSettings.h
     ${CMAKE_SOURCE_DIR}/include/TelemetryTypes.h
     ${CMAKE_SOURCE_DIR}/include/TelemetryCodec.h
