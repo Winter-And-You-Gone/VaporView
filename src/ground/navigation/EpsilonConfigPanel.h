@@ -13,6 +13,7 @@
 #include <map>
 
 class QComboBox;
+class QButtonGroup;
 class QEvent;
 class QGridLayout;
 class QLabel;
@@ -36,6 +37,7 @@ public:
     void setEnglish(bool english);
     QVector<QPushButton *> takeSettingsNavigationButtons(QWidget *newParent);
     void setSettingsNavigationVisible(bool visible);
+    void clearSettingsNavigationSelection();
     void setAvailable(bool available);
     void setPacketRates(const std::map<uint8_t, int>& packetRates);
     void setLivePacketRates(const VaporView::EpsilonData& epsilonData);
@@ -124,6 +126,7 @@ private:
     };
     QVector<SettingsField> settings_fields_;
     QVector<QPushButton *> page_buttons_;
+    QButtonGroup *settings_tab_group_ = nullptr;
     QPushButton *advanced_features_button_ = nullptr;
     QFrame *settings_navigation_tabs_ = nullptr;
     QFrame *settings_navigation_track_ = nullptr;

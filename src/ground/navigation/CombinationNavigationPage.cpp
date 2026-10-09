@@ -499,6 +499,10 @@ void CombinationNavigationPage::setCurrentSection(Section section)
         // The unified capsule always exposes the same seven primary entries;
         // changing the content page must not resize or collapse the capsule.
         epsilon_config_panel_->setSettingsNavigationVisible(true);
+        if (section != Section::Epsilon)
+        {
+            epsilon_config_panel_->clearSettingsNavigationSelection();
+        }
         navigation_track_->layout()->invalidate();
         navigation_track_->layout()->activate();
         navigation_track_->updateGeometry();

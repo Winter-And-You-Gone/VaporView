@@ -1787,7 +1787,9 @@ void requireRtkSidebarPage(
                 epsilonButton->width() == differentialButton->width() &&
                 epsilonCommunicationTab->parentWidget() == combinationNavigationTrack &&
                 epsilonAdvancedFeatures->parentWidget() == combinationNavigationTrack &&
-                epsilonCommunicationTab->isVisible() && epsilonAdvancedFeatures->isVisible() &&
+                !epsilonCommunicationTab->isChecked() && !epsilonAdvancedFeatures->isChecked(),
+            "combination navigation clears the embedded EPSILON selection at startup");
+    require(epsilonCommunicationTab->isVisible() && epsilonAdvancedFeatures->isVisible() &&
                 !epsilonSettingsTabs->isVisible(),
             "combination navigation keeps one shared seven-entry capsule track visible");
     require(std::abs(combinationNavigationBar->geometry().center().x() -

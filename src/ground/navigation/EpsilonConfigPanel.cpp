@@ -408,6 +408,7 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     trackLayout->setContentsMargins(2, 2, 2, 2);
     trackLayout->setSpacing(0);
     auto *tabGroup = new QButtonGroup(this);
+    settings_tab_group_ = tabGroup;
     for (int i = 0; i < 5; ++i)
     {
         auto *button = createNavigationSectionButton(track);
@@ -936,8 +937,38 @@ QVector<QPushButton *> EpsilonConfigPanel::takeSettingsNavigationButtons(QWidget
 
 void EpsilonConfigPanel::setSettingsNavigationVisible(bool visible)
 {
+    if (settings_navigation_visible_ == visible)
+    {
+        return;
+    }
     settings_navigation_visible_ = visible;
     updateSettingsNavigationVisibility();
+}
+
+void EpsilonConfigPanel::clearSettingsNavigationSelection()
+{
+    const bool wasExclusive = settings_tab_group_ && settings_tab_group_->exclusive();
+    if (settings_tab_group_)
+    {
+        settings_tab_group_->setExclusive(false);
+    }
+    for (QPushButton *button : page_buttons_)
+    {
+        if (!button)
+        {
+            continue;
+        }
+        const QSignalBlocker blocker(button);
+        button->setChecked(false);
+    }
+    if (advanced_features_button_ && advanced_features_button_->isChecked())
+    {
+        advanced_features_button_->setChecked(false);
+    }
+    if (settings_tab_group_ && wasExclusive)
+    {
+        settings_tab_group_->setExclusive(true);
+    }
 }
 
 void EpsilonConfigPanel::updateSettingsNavigationVisibility()
