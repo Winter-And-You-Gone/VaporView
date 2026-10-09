@@ -81,6 +81,7 @@ private:
     void updateSummaryTexts();
     void updateTexts();
     void createSettingsPages();
+    void setAdvancedFeaturesExpanded(bool expanded);
     void updateSettingsTexts();
     void updateSettingsControls();
     void arrangeSettingsFields(bool twoColumns);
@@ -120,6 +121,7 @@ private:
     };
     QVector<SettingsField> settings_fields_;
     QVector<QPushButton *> page_buttons_;
+    QPushButton *advanced_features_button_ = nullptr;
     QVector<QLabel *> settings_hints_;
     QVector<QGridLayout *> settings_grids_;
     QVector<QWidget *> settings_cards_;
@@ -153,6 +155,7 @@ private:
     bool settings_verified_ = false;
     bool settings_status_custom_ = false;
     bool maintenance_verification_pending_ = false;
+    bool advanced_features_expanded_ = false;
 
     bool is_english_ = false;
     bool is_available_ = true;

@@ -388,7 +388,12 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     panelLayout->setContentsMargins(0, 0, 0, 0);
     panelLayout->setSpacing(12);
 
-    auto *tabs = new QFrame(this);
+    auto *navigationRow = new QWidget(this);
+    auto *navigationLayout = new QHBoxLayout(navigationRow);
+    navigationLayout->setContentsMargins(0, 0, 0, 0);
+    navigationLayout->setSpacing(8);
+
+    auto *tabs = new QFrame(navigationRow);
     tabs->setObjectName(QStringLiteral("epsilonSettingsTabs"));
     tabs->setAttribute(Qt::WA_StyledBackground, true);
     tabs->setAutoFillBackground(true);
@@ -417,7 +422,18 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     }
     page_buttons_.first()->setChecked(true);
     tabs->setMaximumWidth(720);
-    panelLayout->addWidget(tabs, 0, Qt::AlignHCenter);
+    navigationLayout->addStretch(1);
+    navigationLayout->addWidget(tabs, 0, Qt::AlignVCenter);
+    advanced_features_button_ = new QPushButton(navigationRow);
+    advanced_features_button_->setObjectName(QStringLiteral("epsilonAdvancedFeaturesButton"));
+    advanced_features_button_->setCheckable(true);
+    advanced_features_button_->setFixedHeight(36);
+    advanced_features_button_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    advanced_features_button_->setAccessibleName(QStringLiteral("高级功能"));
+    connect(advanced_features_button_, &QPushButton::toggled, this, &EpsilonConfigPanel::setAdvancedFeaturesExpanded);
+    navigationLayout->addWidget(advanced_features_button_, 0, Qt::AlignVCenter);
+    navigationLayout->addStretch(1);
+    panelLayout->addWidget(navigationRow, 0, Qt::AlignHCenter);
     pages_ = new EpsilonPages(this);
     pages_->setObjectName(QStringLiteral("epsilonSettingsPages"));
     pages_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
@@ -882,12 +898,36 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     updateTexts();
     applyAppearance();
     invalidateSettings();
+    setAdvancedFeaturesExpanded(false);
 }
 
 void EpsilonConfigPanel::setEnglish(bool english)
 {
     is_english_ = english;
     updateTexts();
+}
+
+void EpsilonConfigPanel::setAdvancedFeaturesExpanded(bool expanded)
+{
+    advanced_features_expanded_ = expanded;
+    if (advanced_features_button_)
+    {
+        const QString label = is_english_ ? QStringLiteral("Advanced features") : QStringLiteral("高级功能");
+        advanced_features_button_->setText(expanded
+            ? (is_english_ ? QStringLiteral("Hide advanced") : QStringLiteral("收起高级功能"))
+            : label);
+        advanced_features_button_->setAccessibleName(label);
+        advanced_features_button_->setToolTip(expanded
+            ? (is_english_ ? QStringLiteral("Hide advanced settings and calibration") : QStringLiteral("收起高级设置和校准维护"))
+            : (is_english_ ? QStringLiteral("Show advanced settings and calibration") : QStringLiteral("展开高级设置和校准维护")));
+    }
+    for (int index = 3; index < page_buttons_.size(); ++index)
+        page_buttons_[index]->setVisible(expanded);
+    if (!expanded && pages_ && pages_->currentIndex() >= 3 && !page_buttons_.isEmpty())
+        page_buttons_.first()->click();
+    if (pages_) pages_->updateGeometry();
+    updateSettingsTexts();
+    updateSettingsControls();
 }
 
 void EpsilonConfigPanel::createSettingsPages()
@@ -1654,6 +1694,17 @@ void EpsilonConfigPanel::updateSettingsTexts()
         page_buttons_[i]->setAccessibleName(names[i]);
         page_buttons_[i]->setToolTip(names[i]);
     }
+    if (advanced_features_button_)
+    {
+        const QString label = is_english_ ? QStringLiteral("Advanced features") : QStringLiteral("高级功能");
+        advanced_features_button_->setText(advanced_features_expanded_
+            ? (is_english_ ? QStringLiteral("Hide advanced") : QStringLiteral("收起高级功能"))
+            : label);
+        advanced_features_button_->setAccessibleName(label);
+        advanced_features_button_->setToolTip(advanced_features_expanded_
+            ? (is_english_ ? QStringLiteral("Hide advanced settings and calibration") : QStringLiteral("收起高级设置和校准维护"))
+            : (is_english_ ? QStringLiteral("Show advanced settings and calibration") : QStringLiteral("展开高级设置和校准维护")));
+    }
     for (auto *button : page_buttons_) button->updateGeometry();
     const QStringList maintenanceNames = is_english_
         ? QStringList{QStringLiteral("Level alignment"), QStringLiteral("Accel bias tare"), QStringLiteral("Gyro bias tare"), QStringLiteral("Magnetometer 2D"), QStringLiteral("Magnetometer 3D")}
@@ -2156,6 +2207,10 @@ void EpsilonConfigPanel::applyAppearance()
         "QFrame#epsilonSettingsTabTrack QPushButton:!checked:hover { background-color: transparent; color: @vv-white; }"
         "QFrame#epsilonSettingsTabTrack QPushButton:pressed { background-color: transparent; }"
         "QFrame#epsilonSettingsTabTrack QPushButton:checked:pressed { background-color: transparent; }"
+        "QPushButton#epsilonAdvancedFeaturesButton { background-color: @vv-surface-raised; color: @vv-primary; border: 1px solid @vv-border-strong; border-radius: 18px; padding: 0 12px; font-weight: 600; outline: none; }"
+        "QPushButton#epsilonAdvancedFeaturesButton:hover { background-color: @vv-primary-subtle; border-color: @vv-primary; }"
+        "QPushButton#epsilonAdvancedFeaturesButton:checked { background-color: @vv-primary; color: @vv-white; border-color: @vv-primary; }"
+        "QPushButton#epsilonAdvancedFeaturesButton:focus { border-color: @vv-focus; }"
         "QLabel[epsilonSettingsError=\"true\"] { color: @vv-danger; }"
         "QPushButton#epsilonRecommendedConfigButton { min-height: 28px; max-height: 28px; padding-top: 0px; padding-bottom: 0px; }"
         "QWidget#epsilonActionsContainer { background-color: transparent; border: none; }"
