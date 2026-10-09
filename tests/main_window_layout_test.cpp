@@ -1787,9 +1787,9 @@ void requireRtkSidebarPage(
                 epsilonButton->width() == differentialButton->width() &&
                 epsilonCommunicationTab->parentWidget() == combinationNavigationTrack &&
                 epsilonAdvancedFeatures->parentWidget() == combinationNavigationTrack &&
-                !epsilonCommunicationTab->isVisible() && !epsilonAdvancedFeatures->isVisible() &&
+                epsilonCommunicationTab->isVisible() && epsilonAdvancedFeatures->isVisible() &&
                 !epsilonSettingsTabs->isVisible(),
-            "combination navigation uses one shared capsule track for global and EPSILON navigation");
+            "combination navigation keeps one shared seven-entry capsule track visible");
     require(std::abs(combinationNavigationBar->geometry().center().x() -
                      combinationNavigationRow->rect().center().x()) <= 1,
             "combination navigation bar is horizontally centered in its page row");
@@ -1994,7 +1994,7 @@ void requireRtkSidebarPage(
             "combination navigation switches from status to EPSILON by keyboard");
     require(epsilonCommunicationTab->isVisible() && epsilonAdvancedFeatures->isVisible() &&
                 epsilonCommunicationTab->parentWidget() == combinationNavigationTrack,
-            "EPSILON navigation entries join the shared capsule when its page is active");
+            "EPSILON navigation entries remain visible when its page is active");
     require(!epsilonOutputResizeRecorder.observedWidthDifferentFrom(epsilonOutputCard->width()),
             "status to EPSILON switching keeps the packet-rate card width stable");
     require(combinationNavigationSelectionAnimation->state() == QAbstractAnimation::Running,
@@ -2016,6 +2016,8 @@ void requireRtkSidebarPage(
     auto *dialog = qobject_cast<RtkConfigDialog *>(combinationStack->currentWidget());
     require(dialog == preDialog && differentialButton->isChecked(),
             "combination navigation switches from EPSILON to the original RTK page");
+    require(epsilonCommunicationTab->isVisible() && epsilonAdvancedFeatures->isVisible(),
+            "shared capsule keeps EPSILON entries visible on the differential page");
     require(!differentialGgaResizeRecorder.observedWidthDifferentFrom(preGgaCard->width()),
             "EPSILON to differential switching keeps the RTK card width stable");
     require(!ggaSourceComboResizeRecorder.observedWidthDifferentFrom(preGgaSourceCombo->width()),

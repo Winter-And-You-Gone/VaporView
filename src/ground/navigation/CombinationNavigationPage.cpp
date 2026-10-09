@@ -419,7 +419,10 @@ CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, 
         });
         button->raise();
     }
-    epsilon_config_panel_->setSettingsNavigationVisible(false);
+    // Keep the shared capsule structurally stable across all three content pages.
+    // The EPSILON entries remain visible while the advanced sub-pages continue
+    // to be controlled by the "高级功能" entry itself.
+    epsilon_config_panel_->setSettingsNavigationVisible(true);
     epsilonContentLayout->addWidget(epsilon_config_panel_);
     epsilonContentLayout->addStretch(1);
     epsilonScrollArea->setWidget(epsilonContent);
@@ -493,7 +496,9 @@ void CombinationNavigationPage::setCurrentSection(Section section)
     stack_->setCurrentIndex(index);
     if (epsilon_config_panel_)
     {
-        epsilon_config_panel_->setSettingsNavigationVisible(section == Section::Epsilon);
+        // The unified capsule always exposes the same seven primary entries;
+        // changing the content page must not resize or collapse the capsule.
+        epsilon_config_panel_->setSettingsNavigationVisible(true);
         navigation_track_->layout()->invalidate();
         navigation_track_->layout()->activate();
         navigation_track_->updateGeometry();
