@@ -242,6 +242,33 @@ protected:
     }
 };
 
+class CombinationNavigationTrack final : public QFrame
+{
+public:
+    using QFrame::QFrame;
+
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        QFrame::paintEvent(event);
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(VaporView::appThemeColor(
+            VaporView::AppThemeColor::Surface, VaporView::isDarkThemeEnabled()));
+        for (QPushButton *button : findChildren<QPushButton *>(QString(), Qt::FindDirectChildrenOnly))
+        {
+            if (!button->property("epsilonUnifiedNavigationButton").toBool() ||
+                !button->isChecked())
+            {
+                continue;
+            }
+            const QRectF bounds = QRectF(button->geometry()).adjusted(0.5, 0.5, -0.5, -0.5);
+            painter.drawRoundedRect(bounds, bounds.height() / 2.0, bounds.height() / 2.0);
+        }
+    }
+};
+
 } // namespace
 
 QPushButton *createNavigationSectionButton(QWidget *parent)
@@ -293,7 +320,7 @@ CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, 
     navigationBarLayout->setContentsMargins(2, 2, 2, 2);
     navigationBarLayout->setSpacing(0);
 
-    auto *navigationTrack = new QFrame(navigationBar);
+    auto *navigationTrack = new CombinationNavigationTrack(navigationBar);
     navigationTrack->setObjectName(QStringLiteral("combinationNavigationNavigationTrack"));
     prepareStyledBackground(navigationTrack);
     navigationTrack->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -377,6 +404,22 @@ CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, 
                                              kPageVerticalInset);
     epsilonContentLayout->setSpacing(kSectionGap);
     epsilon_config_panel_ = new EpsilonConfigPanel(epsilonContent);
+    const QVector<QPushButton *> epsilonNavigationButtons =
+        epsilon_config_panel_->takeSettingsNavigationButtons(navigationTrack);
+    for (QPushButton *button : epsilonNavigationButtons)
+    {
+        if (!button)
+        {
+            continue;
+        }
+        button->setProperty("epsilonUnifiedNavigationButton", true);
+        navigationLayout->addWidget(button, 1);
+        connect(button, &QPushButton::clicked, this, [this]() {
+            setCurrentSection(Section::Epsilon);
+        });
+        button->raise();
+    }
+    epsilon_config_panel_->setSettingsNavigationVisible(false);
     epsilonContentLayout->addWidget(epsilon_config_panel_);
     epsilonContentLayout->addStretch(1);
     epsilonScrollArea->setWidget(epsilonContent);
@@ -448,6 +491,13 @@ void CombinationNavigationPage::setCurrentSection(Section section)
         prepareStackPageForShow(stack_, stack_->widget(index));
     }
     stack_->setCurrentIndex(index);
+    if (epsilon_config_panel_)
+    {
+        epsilon_config_panel_->setSettingsNavigationVisible(section == Section::Epsilon);
+        navigation_track_->layout()->invalidate();
+        navigation_track_->layout()->activate();
+        navigation_track_->updateGeometry();
+    }
     if (freezeUpdatesForSwitch)
     {
         settleStackPageForShow(stack_, stack_->widget(index));
@@ -529,7 +579,14 @@ bool CombinationNavigationPage::eventFilter(QObject *watched, QEvent *event)
         (event->type() == QEvent::Resize || event->type() == QEvent::LayoutRequest ||
          event->type() == QEvent::Show))
     {
-        QTimer::singleShot(0, this, [this]() { syncNavigationSelectionThumb(false); });
+        QTimer::singleShot(0, this, [this]() {
+            if (navigation_selection_animation_ &&
+                navigation_selection_animation_->state() == QAbstractAnimation::Running)
+            {
+                return;
+            }
+            syncNavigationSelectionThumb(false);
+        });
     }
     return QWidget::eventFilter(watched, event);
 }
@@ -641,6 +698,9 @@ void CombinationNavigationPage::updateTexts()
     if (epsilon_config_panel_)
     {
         epsilon_config_panel_->setEnglish(is_english_);
+        navigation_track_->layout()->invalidate();
+        navigation_track_->layout()->activate();
+        navigation_track_->updateGeometry();
     }
 }
 
@@ -696,7 +756,12 @@ void CombinationNavigationPage::applyAppearance()
         "QPushButton#combinationNavigationStatusButton:pressed, QPushButton#combinationNavigationEpsilonButton:pressed, "
         "QPushButton#combinationNavigationDifferentialButton:pressed { background-color: transparent; }"
         "QPushButton#combinationNavigationStatusButton:checked:pressed, QPushButton#combinationNavigationEpsilonButton:checked:pressed, "
-        "QPushButton#combinationNavigationDifferentialButton:checked:pressed { background-color: transparent; }")
+        "QPushButton#combinationNavigationDifferentialButton:checked:pressed { background-color: transparent; }"
+        "QFrame#combinationNavigationNavigationTrack QPushButton[epsilonUnifiedNavigationButton=\"true\"] { background-color: transparent; border: 1px solid transparent; border-radius: 13px; color: @vv-white; font-weight: 600; margin: 0; min-height: 0; padding: 0 10px; outline: none; }"
+        "QFrame#combinationNavigationNavigationTrack QPushButton[epsilonUnifiedNavigationButton=\"true\"]:checked { background-color: transparent; color: @vv-primary; font-weight: 600; }"
+        "QFrame#combinationNavigationNavigationTrack QPushButton[epsilonUnifiedNavigationButton=\"true\"]:!checked:hover { background-color: transparent; color: @vv-white; }"
+        "QFrame#combinationNavigationNavigationTrack QPushButton[epsilonUnifiedNavigationButton=\"true\"]:pressed { background-color: transparent; }"
+        "QFrame#combinationNavigationNavigationTrack QPushButton[epsilonUnifiedNavigationButton=\"true\"]:checked:pressed { background-color: transparent; }")
             .arg(trackOutline);
     const QString resolvedStyle =
         VaporView::applyAppThemeTokens(style, dark);

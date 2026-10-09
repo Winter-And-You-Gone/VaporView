@@ -552,11 +552,14 @@ int main(int argc, char *argv[])
     require(settingsTabs && settingsTabs->height() == 36 && settingsTrack &&
             settingsTrack->parentWidget() == settingsTabs &&
             communicationTab->parentWidget() == settingsTrack &&
+            advancedFeatures->parentWidget() == settingsTrack &&
             communicationTab->height() == installationTab->height() &&
             installationTab->height() == fusionTab->height() &&
+            fusionTab->height() == advancedFeatures->height() &&
             std::abs(communicationTab->width() - installationTab->width()) <= 1 &&
-            std::abs(installationTab->width() - fusionTab->width()) <= 1,
-            "parameter navigation uses the same equal-height three-segment capsule geometry");
+            std::abs(installationTab->width() - fusionTab->width()) <= 1 &&
+            std::abs(fusionTab->width() - advancedFeatures->width()) <= 1,
+            "parameter navigation uses one equal-height four-segment capsule geometry");
     installationTab->click();
     panel.setSettingsAvailable(true);
     QApplication::processEvents();

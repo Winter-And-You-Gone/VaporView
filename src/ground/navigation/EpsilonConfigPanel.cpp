@@ -23,14 +23,11 @@
 #include <QSaveFile>
 #include <QMessageBox>
 #include <QEvent>
-#include <QFocusEvent>
 #include <QFontMetrics>
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
-#include <QMouseEvent>
-#include <QPaintEvent>
 #include <QProgressBar>
 #include <QLayout>
 #include <QPushButton>
@@ -184,85 +181,6 @@ protected:
             painter.drawRoundedRect(bounds, bounds.height() / 2.0, bounds.height() / 2.0);
         }
     }
-};
-
-class EpsilonAdvancedFeaturesButton final : public QPushButton
-{
-public:
-    using QPushButton::QPushButton;
-
-    QSize sizeHint() const override
-    {
-        return QSize(fontMetrics().horizontalAdvance(text()) + 28, 36);
-    }
-
-    QSize minimumSizeHint() const override { return sizeHint(); }
-
-protected:
-    void paintEvent(QPaintEvent *event) override
-    {
-        Q_UNUSED(event);
-
-        const QRectF bounds = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
-        if (bounds.width() <= 0.0 || bounds.height() <= 0.0)
-        {
-            return;
-        }
-
-        const bool dark = VaporView::isDarkThemeEnabled();
-        QPainter painter(this);
-        painter.setRenderHint(QPainter::Antialiasing, true);
-        painter.setPen(QPen(VaporView::appThemeColor(
-            isChecked() ? VaporView::AppThemeColor::Primary : VaporView::AppThemeColor::BorderStrong,
-            dark), 1.0));
-        painter.setBrush(VaporView::appThemeColor(
-            isChecked() ? VaporView::AppThemeColor::Primary
-                        : VaporView::AppThemeColor::PrimarySubtle,
-            dark));
-        painter.drawRoundedRect(bounds, bounds.height() / 2.0, bounds.height() / 2.0);
-
-        painter.setPen(VaporView::appThemeColor(
-            isChecked() ? VaporView::AppThemeColor::White : VaporView::AppThemeColor::Primary,
-            dark));
-        painter.setFont(font());
-        painter.drawText(rect(), Qt::AlignCenter, text());
-
-        if (isEnabled() && keyboard_focus_indicator_visible_)
-        {
-            painter.setPen(QPen(VaporView::appThemeColor(VaporView::AppThemeColor::Focus, dark), 1.0));
-            painter.setBrush(Qt::NoBrush);
-            painter.drawRoundedRect(bounds.adjusted(2.0, 2.0, -2.0, -2.0),
-                                    bounds.height() / 2.0 - 2.0,
-                                    bounds.height() / 2.0 - 2.0);
-        }
-    }
-
-    void focusInEvent(QFocusEvent *event) override
-    {
-        QPushButton::focusInEvent(event);
-        const Qt::FocusReason reason = event ? event->reason() : Qt::OtherFocusReason;
-        keyboard_focus_indicator_visible_ = reason == Qt::TabFocusReason ||
-            reason == Qt::BacktabFocusReason || reason == Qt::ShortcutFocusReason;
-        update();
-    }
-
-    void focusOutEvent(QFocusEvent *event) override
-    {
-        QPushButton::focusOutEvent(event);
-        keyboard_focus_indicator_visible_ = false;
-        update();
-    }
-
-    void mousePressEvent(QMouseEvent *event) override
-    {
-        keyboard_focus_indicator_visible_ = false;
-        clearFocus();
-        QPushButton::mousePressEvent(event);
-        update();
-    }
-
-private:
-    bool keyboard_focus_indicator_visible_ = false;
 };
 
 class EpsilonParameterCheckBox final : public QCheckBox
@@ -470,12 +388,8 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     panelLayout->setContentsMargins(0, 0, 0, 0);
     panelLayout->setSpacing(12);
 
-    auto *navigationRow = new QWidget(this);
-    auto *navigationLayout = new QHBoxLayout(navigationRow);
-    navigationLayout->setContentsMargins(0, 0, 0, 0);
-    navigationLayout->setSpacing(8);
-
-    auto *tabs = new QFrame(navigationRow);
+    auto *tabs = new QFrame(this);
+    settings_navigation_tabs_ = tabs;
     tabs->setObjectName(QStringLiteral("epsilonSettingsTabs"));
     tabs->setAttribute(Qt::WA_StyledBackground, true);
     tabs->setAutoFillBackground(true);
@@ -485,6 +399,7 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     tabsLayout->setContentsMargins(2, 2, 2, 2);
     tabsLayout->setSpacing(0);
     auto *track = new EpsilonSettingsTrack(tabs);
+    settings_navigation_track_ = track;
     track->setObjectName(QStringLiteral("epsilonSettingsTabTrack"));
     track->setAttribute(Qt::WA_StyledBackground, true);
     track->setAutoFillBackground(true);
@@ -503,25 +418,15 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
         page_buttons_.append(button);
     }
     page_buttons_.first()->setChecked(true);
-    tabs->setMaximumWidth(720);
-    navigationLayout->addStretch(1);
-    navigationLayout->addWidget(tabs, 0, Qt::AlignVCenter);
-    advanced_features_button_ = new EpsilonAdvancedFeaturesButton(navigationRow);
+    advanced_features_button_ = createNavigationSectionButton(track);
     advanced_features_button_->setObjectName(QStringLiteral("epsilonAdvancedFeaturesButton"));
     advanced_features_button_->setCheckable(true);
-    advanced_features_button_->setFixedHeight(36);
-    advanced_features_button_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-    advanced_features_button_->setAutoDefault(false);
-    advanced_features_button_->setDefault(false);
-    advanced_features_button_->setFlat(true);
-    advanced_features_button_->setAttribute(Qt::WA_StyledBackground, true);
-    advanced_features_button_->setFocusPolicy(Qt::TabFocus);
-    advanced_features_button_->setCursor(Qt::PointingHandCursor);
     advanced_features_button_->setAccessibleName(QStringLiteral("高级功能"));
+    connect(advanced_features_button_, &QPushButton::toggled, track, [track]() { track->update(); });
     connect(advanced_features_button_, &QPushButton::toggled, this, &EpsilonConfigPanel::setAdvancedFeaturesExpanded);
-    navigationLayout->addWidget(advanced_features_button_, 0, Qt::AlignVCenter);
-    navigationLayout->addStretch(1);
-    panelLayout->addWidget(navigationRow, 0, Qt::AlignHCenter);
+    trackLayout->addWidget(advanced_features_button_, 1);
+    tabs->setMaximumWidth(720);
+    panelLayout->addWidget(tabs, 0, Qt::AlignHCenter);
     pages_ = new EpsilonPages(this);
     pages_->setObjectName(QStringLiteral("epsilonSettingsPages"));
     pages_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
@@ -995,6 +900,59 @@ void EpsilonConfigPanel::setEnglish(bool english)
     updateTexts();
 }
 
+QVector<QPushButton *> EpsilonConfigPanel::takeSettingsNavigationButtons(QWidget *newParent)
+{
+    if (!newParent || !settings_navigation_track_)
+    {
+        return {};
+    }
+
+    auto *trackLayout = qobject_cast<QHBoxLayout *>(settings_navigation_track_->layout());
+    if (!trackLayout)
+    {
+        return {};
+    }
+
+    QVector<QPushButton *> buttons = page_buttons_;
+    if (advanced_features_button_)
+    {
+        buttons.append(advanced_features_button_);
+    }
+    for (QPushButton *button : buttons)
+    {
+        if (!button)
+        {
+            continue;
+        }
+        trackLayout->removeWidget(button);
+        button->setParent(newParent);
+    }
+    if (settings_navigation_tabs_)
+    {
+        settings_navigation_tabs_->hide();
+    }
+    return buttons;
+}
+
+void EpsilonConfigPanel::setSettingsNavigationVisible(bool visible)
+{
+    settings_navigation_visible_ = visible;
+    updateSettingsNavigationVisibility();
+}
+
+void EpsilonConfigPanel::updateSettingsNavigationVisibility()
+{
+    for (int index = 0; index < page_buttons_.size(); ++index)
+    {
+        page_buttons_[index]->setVisible(settings_navigation_visible_ &&
+                                          (index < 3 || advanced_features_expanded_));
+    }
+    if (advanced_features_button_)
+    {
+        advanced_features_button_->setVisible(settings_navigation_visible_);
+    }
+}
+
 void EpsilonConfigPanel::setAdvancedFeaturesExpanded(bool expanded)
 {
     advanced_features_expanded_ = expanded;
@@ -1009,8 +967,7 @@ void EpsilonConfigPanel::setAdvancedFeaturesExpanded(bool expanded)
             ? (is_english_ ? QStringLiteral("Hide advanced settings and calibration") : QStringLiteral("收起高级设置和校准维护"))
             : (is_english_ ? QStringLiteral("Show advanced settings and calibration") : QStringLiteral("展开高级设置和校准维护")));
     }
-    for (int index = 3; index < page_buttons_.size(); ++index)
-        page_buttons_[index]->setVisible(expanded);
+    updateSettingsNavigationVisibility();
     if (!expanded && pages_ && pages_->currentIndex() >= 3 && !page_buttons_.isEmpty())
         page_buttons_.first()->click();
     if (pages_) pages_->updateGeometry();
@@ -2295,10 +2252,6 @@ void EpsilonConfigPanel::applyAppearance()
         "QFrame#epsilonSettingsTabTrack QPushButton:!checked:hover { background-color: transparent; color: @vv-white; }"
         "QFrame#epsilonSettingsTabTrack QPushButton:pressed { background-color: transparent; }"
         "QFrame#epsilonSettingsTabTrack QPushButton:checked:pressed { background-color: transparent; }"
-        "QPushButton#epsilonAdvancedFeaturesButton { background-color: @vv-primary-subtle; color: @vv-primary; border: 1px solid @vv-border-strong; border-radius: 18px; min-height: 0; max-height: 36px; padding: 0 12px; font-weight: 600; outline: none; }"
-        "QPushButton#epsilonAdvancedFeaturesButton:hover { background-color: @vv-primary-subtle; border-color: @vv-primary; }"
-        "QPushButton#epsilonAdvancedFeaturesButton:checked { background-color: @vv-primary; color: @vv-white; border-color: @vv-primary; }"
-        "QPushButton#epsilonAdvancedFeaturesButton:focus { border-color: @vv-focus; }"
         "QLabel[epsilonSettingsError=\"true\"] { color: @vv-danger; }"
         "QPushButton#epsilonRecommendedConfigButton { min-height: 28px; max-height: 28px; padding-top: 0px; padding-bottom: 0px; }"
         "QWidget#epsilonActionsContainer { background-color: transparent; border: none; }"

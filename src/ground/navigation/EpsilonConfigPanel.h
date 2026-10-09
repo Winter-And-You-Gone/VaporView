@@ -34,6 +34,8 @@ public:
     explicit EpsilonConfigPanel(QWidget *parent = nullptr);
 
     void setEnglish(bool english);
+    QVector<QPushButton *> takeSettingsNavigationButtons(QWidget *newParent);
+    void setSettingsNavigationVisible(bool visible);
     void setAvailable(bool available);
     void setPacketRates(const std::map<uint8_t, int>& packetRates);
     void setLivePacketRates(const VaporView::EpsilonData& epsilonData);
@@ -82,6 +84,7 @@ private:
     void updateTexts();
     void createSettingsPages();
     void setAdvancedFeaturesExpanded(bool expanded);
+    void updateSettingsNavigationVisibility();
     void updateSettingsTexts();
     void updateSettingsControls();
     void arrangeSettingsFields(bool twoColumns);
@@ -122,6 +125,9 @@ private:
     QVector<SettingsField> settings_fields_;
     QVector<QPushButton *> page_buttons_;
     QPushButton *advanced_features_button_ = nullptr;
+    QFrame *settings_navigation_tabs_ = nullptr;
+    QFrame *settings_navigation_track_ = nullptr;
+    bool settings_navigation_visible_ = true;
     QVector<QLabel *> settings_hints_;
     QVector<QGridLayout *> settings_grids_;
     QVector<QWidget *> settings_cards_;

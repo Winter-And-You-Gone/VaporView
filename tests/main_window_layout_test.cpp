@@ -1744,6 +1744,12 @@ void requireRtkSidebarPage(
         QStringLiteral("combinationNavigationEpsilonButton"));
     auto *differentialButton = combinationPage->findChild<QPushButton *>(
         QStringLiteral("combinationNavigationDifferentialButton"));
+    auto *epsilonCommunicationTab = combinationPage->findChild<QPushButton *>(
+        QStringLiteral("epsilonSettingsTab_0"));
+    auto *epsilonAdvancedFeatures = combinationPage->findChild<QPushButton *>(
+        QStringLiteral("epsilonAdvancedFeaturesButton"));
+    auto *epsilonSettingsTabs = combinationPage->findChild<QFrame *>(
+        QStringLiteral("epsilonSettingsTabs"));
     auto *statusPage = combinationPage->findChild<QWidget *>(
         QStringLiteral("combinationNavigationStatusPage"));
     auto *epsilonPanel = combinationPage->epsilonConfigPanel();
@@ -1764,6 +1770,8 @@ void requireRtkSidebarPage(
                 combinationNavigationSelectionAnimation != nullptr &&
                 combinationStack != nullptr && combinationStack->count() == 3 &&
                 statusButton != nullptr && epsilonButton != nullptr && differentialButton != nullptr &&
+                epsilonCommunicationTab != nullptr && epsilonAdvancedFeatures != nullptr &&
+                epsilonSettingsTabs != nullptr &&
                 statusPage != nullptr && epsilonPage != nullptr &&
                 statusScrollArea != nullptr && statusContent != nullptr && statusContent->layout() != nullptr &&
                 epsilonScrollArea != nullptr && epsilonContent != nullptr && epsilonContent->layout() != nullptr,
@@ -1776,8 +1784,12 @@ void requireRtkSidebarPage(
                 statusButton->height() == epsilonButton->height() &&
                 epsilonButton->height() == differentialButton->height() &&
                 statusButton->width() == epsilonButton->width() &&
-                epsilonButton->width() == differentialButton->width(),
-            "combination navigation uses an equal three-segment capsule layout");
+                epsilonButton->width() == differentialButton->width() &&
+                epsilonCommunicationTab->parentWidget() == combinationNavigationTrack &&
+                epsilonAdvancedFeatures->parentWidget() == combinationNavigationTrack &&
+                !epsilonCommunicationTab->isVisible() && !epsilonAdvancedFeatures->isVisible() &&
+                !epsilonSettingsTabs->isVisible(),
+            "combination navigation uses one shared capsule track for global and EPSILON navigation");
     require(std::abs(combinationNavigationBar->geometry().center().x() -
                      combinationNavigationRow->rect().center().x()) <= 1,
             "combination navigation bar is horizontally centered in its page row");
@@ -1980,6 +1992,9 @@ void requireRtkSidebarPage(
     processEventsFor(50);
     require(combinationStack->currentWidget() == epsilonPage && epsilonButton->isChecked(),
             "combination navigation switches from status to EPSILON by keyboard");
+    require(epsilonCommunicationTab->isVisible() && epsilonAdvancedFeatures->isVisible() &&
+                epsilonCommunicationTab->parentWidget() == combinationNavigationTrack,
+            "EPSILON navigation entries join the shared capsule when its page is active");
     require(!epsilonOutputResizeRecorder.observedWidthDifferentFrom(epsilonOutputCard->width()),
             "status to EPSILON switching keeps the packet-rate card width stable");
     require(combinationNavigationSelectionAnimation->state() == QAbstractAnimation::Running,
