@@ -641,6 +641,12 @@ void SkyLocalIpcClient::updateFromBasic(const TelemetryBasic& basic)
     }
     if ((basic.validity_flags & BasicHasEpsilonDiagnostics) != 0)
     {
+        dashboard_.epsilon.device_info_valid = basic.device_info_valid;
+        dashboard_.epsilon.hardware_name = basic.hardware_name.toStdString();
+        dashboard_.epsilon.firmware_name = basic.firmware_name.toStdString();
+        dashboard_.epsilon.hardware_version = basic.hardware_version;
+        dashboard_.epsilon.firmware_version = basic.firmware_version;
+        dashboard_.epsilon.serial_number = basic.serial_number;
         dashboard_.epsilon.raw_frame_count = basic.raw_frame_count;
         dashboard_.epsilon.dropped_frame_count = basic.dropped_frame_count;
         dashboard_.epsilon.imu_packet_rate_hz = basic.imu_packet_rate_hz;

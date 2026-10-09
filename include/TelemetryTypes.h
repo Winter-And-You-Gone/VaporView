@@ -2,6 +2,7 @@
 #define VaporView_TELEMETRY_TYPES_H_
 
 #include "EpsilonSettings.h"
+#include "EpsilonMaintenance.h"
 
 #include <QByteArray>
 #include <QJsonObject>
@@ -106,6 +107,14 @@ enum class DeviceOperation : quint8
     ReadEpsilonSettings = 13,
     ApplyEpsilonSettings = 14,
     RestartEpsilonDevice = 15,
+    CalibrateEpsilonLevel = 16,
+    CalibrateEpsilonAccelerometer = 17,
+    CalibrateEpsilonGyroscope = 18,
+    ReadEpsilonDgnss = 19,
+    ApplyEpsilonDgnss = 20,
+    CalibrateEpsilonMagnetic2D = 21,
+    CalibrateEpsilonMagnetic3D = 22,
+    CancelEpsilonMagneticCalibration = 23,
 };
 
 enum class SkyDeviceId : quint8
@@ -181,6 +190,13 @@ enum TelemetryBasicValidityFlag : quint32
 
 struct TelemetryBasic
 {
+    bool device_info_valid = false;
+    quint32 hardware_version = 0;
+    quint32 firmware_version = 0;
+    QString hardware_name;
+    QString firmware_name;
+    std::array<quint32, 4> serial_number{};
+
     quint64 host_time_us = 0;
     quint64 epsilon_time_us = 0;
     double latitude_deg = 0.0;

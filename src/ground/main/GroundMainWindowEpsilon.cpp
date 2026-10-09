@@ -24,6 +24,13 @@ QString epsilonOperationName(VaporView::Ground::Devices::EpsilonOperation operat
     case Operation::ReadSettings: return QStringLiteral("read_settings");
     case Operation::ApplySettings: return QStringLiteral("apply_settings");
     case Operation::RestartDevice: return QStringLiteral("restart_device");
+    case Operation::CalibrateLevel: return QStringLiteral("calibrate_level");
+    case Operation::CalibrateAccelerometer: return QStringLiteral("calibrate_accelerometer");
+    case Operation::CalibrateGyroscope: return QStringLiteral("calibrate_gyroscope");
+    case Operation::ReadDgnss: return QStringLiteral("read_dgnss");
+    case Operation::ApplyDgnss: return QStringLiteral("apply_dgnss");
+    case Operation::CalibrateMagnetic2D: return QStringLiteral("calibrate_magnetic_2d");
+    case Operation::CalibrateMagnetic3D: return QStringLiteral("calibrate_magnetic_3d");
     }
     return QStringLiteral("unknown");
 }
@@ -117,7 +124,14 @@ void MainWindow::onEpsilonSessionOperationStarted(
     if (state_->epsilon_config_panel_ &&
         (operation == VaporView::Ground::Devices::EpsilonOperation::ReadSettings ||
          operation == VaporView::Ground::Devices::EpsilonOperation::ApplySettings ||
-         operation == VaporView::Ground::Devices::EpsilonOperation::RestartDevice))
+         operation == VaporView::Ground::Devices::EpsilonOperation::RestartDevice ||
+         operation == VaporView::Ground::Devices::EpsilonOperation::CalibrateLevel ||
+         operation == VaporView::Ground::Devices::EpsilonOperation::CalibrateAccelerometer ||
+         operation == VaporView::Ground::Devices::EpsilonOperation::CalibrateGyroscope ||
+         operation == VaporView::Ground::Devices::EpsilonOperation::CalibrateMagnetic2D ||
+         operation == VaporView::Ground::Devices::EpsilonOperation::CalibrateMagnetic3D ||
+         operation == VaporView::Ground::Devices::EpsilonOperation::ReadDgnss ||
+         operation == VaporView::Ground::Devices::EpsilonOperation::ApplyDgnss))
     {
         state_->epsilon_config_panel_->setSettingsOperationPending(true);
         state_->epsilon_config_panel_->setSettingsStatus(
@@ -153,16 +167,73 @@ void MainWindow::onEpsilonSessionOperationFinished(
     }
 
     using Operation = VaporView::Ground::Devices::EpsilonOperation;
+    const bool maintenanceOperation = result.operation == Operation::CalibrateLevel ||
+        result.operation == Operation::CalibrateAccelerometer || result.operation == Operation::CalibrateGyroscope ||
+        result.operation == Operation::CalibrateMagnetic2D || result.operation == Operation::CalibrateMagnetic3D;
+    if (maintenanceOperation)
+    {
+        if (result.success())
+            statusText = (result.operation == Operation::CalibrateMagnetic2D || result.operation == Operation::CalibrateMagnetic3D)
+                ? (state_->is_english_ ? QStringLiteral("Device reported magnetic calibration complete and automatically saved. Navigation restored; restart and verify the physical result.")
+                                      : QStringLiteral("设备报告磁校准完成并自动保存，导航流已恢复；请重启并实机验证效果。"))
+                : result.local_result.maintenance_result.status == VaporView::EpsilonMaintenanceStatus::SentUnverified
+                ? (state_->is_english_
+                    ? QStringLiteral("Calibration command sent without confirmation. Flash save acknowledged; restart the device to apply. Actual calibration remains unverified.")
+                    : QStringLiteral("校准命令已发送但未收到确认，Flash 保存已确认；请重启设备使其生效，实际校准效果仍需实机验证。"))
+                : (state_->is_english_
+                    ? QStringLiteral("Calibration command and Flash save acknowledged. Restart the device to apply; actual calibration remains unverified.")
+                    : QStringLiteral("校准命令和 Flash 保存已确认；请重启设备使其生效，实际校准效果仍需实机验证。"));
+        else if (result.outcome == VaporView::Ground::Devices::EpsilonOperationOutcome::Unsupported)
+            statusText = state_->is_english_
+                ? QStringLiteral("This device or Sky version does not support this maintenance command.")
+                : QStringLiteral("当前设备或天空端版本不支持此维护命令。");
+        if (state_->epsilon_config_panel_)
+        {
+            state_->epsilon_config_panel_->setSettingsOperationPending(false);
+            state_->epsilon_config_panel_->setMaintenanceResult(result.local_result.maintenance_result);
+            if (!result.success() && result.local_result.maintenance_result.restart_required)
+            {
+                const QString guidance = state_->is_english_
+                    ? QStringLiteral("The calibration command may have changed the device. Saving, configuration exit or stream recovery failed; reconnect and verify before retrying or restarting.")
+                    : QStringLiteral("校准命令可能已改变设备，但保存、退出配置或导航流恢复失败；请重新连接并核对设备，再决定重试或重启。");
+                statusText = statusText.isEmpty() ? guidance : statusText + QLatin1Char(' ') + guidance;
+            }
+            if (result.success()) state_->epsilon_config_panel_->setSettingsStatus(statusText);
+            else state_->epsilon_config_panel_->setSettingsError(statusText);
+        }
+    }
+    if (state_->epsilon_config_panel_ && (result.operation == Operation::ReadDgnss || result.operation == Operation::ApplyDgnss))
+    {
+        state_->epsilon_config_panel_->setSettingsOperationPending(false);
+        if (!result.success()) state_->epsilon_config_panel_->invalidateSettings(true);
+        state_->epsilon_config_panel_->setDgnssSnapshot(result.local_result.dgnss_snapshot,
+            result.operation == Operation::ApplyDgnss || !result.success());
+        if (!result.success()) state_->epsilon_config_panel_->setSettingsError(statusText);
+    }
     if (state_->epsilon_config_panel_ &&
         (result.operation == Operation::ReadSettings ||
          result.operation == Operation::ApplySettings ||
          result.operation == Operation::RestartDevice))
     {
         state_->epsilon_config_panel_->setSettingsOperationPending(false);
+        if (result.operation == Operation::RestartDevice)
+            state_->epsilon_config_panel_->setRestartResult(result.success());
         if (!result.success())
         {
             state_->epsilon_settings_device_values_.clear();
-            state_->epsilon_config_panel_->invalidateSettings();
+            // A failed reboot must retain the panel's pending maintenance state.
+            if (result.operation != Operation::RestartDevice)
+                state_->epsilon_config_panel_->invalidateSettings(true);
+            if (result.operation == Operation::ApplySettings)
+            {
+                const auto& snapshot = result.local_result.settings_snapshot;
+                if (VaporView::isValidEpsilonSettingsGroup(snapshot.group))
+                {
+                    for (const auto& value : snapshot.values)
+                        state_->epsilon_settings_device_values_[value.first] = value.second;
+                    state_->epsilon_config_panel_->setSettingsSnapshot(snapshot, true);
+                }
+            }
             state_->epsilon_config_panel_->setSettingsError(statusText);
         }
         else if (result.operation == Operation::RestartDevice)
@@ -197,7 +268,7 @@ void MainWindow::onEpsilonSessionOperationFinished(
         state_->epsilon_settings_device_values_.clear();
         if (state_->epsilon_config_panel_)
         {
-            state_->epsilon_config_panel_->invalidateSettings();
+            state_->epsilon_config_panel_->invalidateSettings(true);
         }
     }
 
@@ -223,7 +294,8 @@ void MainWindow::onEpsilonSessionOperationFinished(
                      QStringLiteral("device.navigation.command"),
                      result.success() ? QStringLiteral("epsilon_operation_completed")
                                       : QStringLiteral("epsilon_operation_failed"),
-                     result.success() ? QStringLiteral("EPSILON 设备操作已完成。")
+                     result.success() ? (maintenanceOperation ? QStringLiteral("EPSILON 维护命令发送及保存阶段已结束，需重启验证实际校准效果。")
+                                                             : QStringLiteral("EPSILON 设备操作已完成。"))
                                       : QStringLiteral("EPSILON 设备操作失败。"),
                      fields);
 
@@ -306,6 +378,32 @@ void MainWindow::onEpsilonDeviceRestartRequested()
     {
         state_->epsilon_device_session_->restartDevice(operation);
     }
+}
+
+void MainWindow::onEpsilonMaintenanceRequested(VaporView::EpsilonMaintenanceAction action)
+{
+    VaporView::Ground::EpsilonDeviceOperation operation;
+    if (prepareEpsilonSettingsOperation(operation))
+    {
+        state_->epsilon_device_session_->calibrate(action, operation);
+    }
+}
+
+void MainWindow::onEpsilonDgnssReadRequested()
+{
+    VaporView::Ground::EpsilonDeviceOperation operation;
+    if (prepareEpsilonSettingsOperation(operation)) state_->epsilon_device_session_->readDgnss(operation);
+}
+
+void MainWindow::onEpsilonDgnssApplyRequested(const VaporView::EpsilonDgnssOperation& settings)
+{
+    VaporView::Ground::EpsilonDeviceOperation operation;
+    if (prepareEpsilonSettingsOperation(operation)) state_->epsilon_device_session_->applyDgnss(settings, operation);
+}
+
+void MainWindow::onEpsilonMaintenanceCancelRequested()
+{
+    if (state_->epsilon_device_session_) state_->epsilon_device_session_->cancelMaintenance();
 }
 void MainWindow::applyEpsilonMainAntennaLeverArm(
     double xM,

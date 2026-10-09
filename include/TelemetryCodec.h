@@ -84,6 +84,14 @@ public:
     static bool parseRtcmCorrectionData(const QByteArray& payload, QByteArray& data,
                                          RtcmFrameSequence *sequence = nullptr);
     static int epsilonDeviceOperationTimeoutMs(const DeviceOperationRequest& request);
+    static QByteArray serializeEpsilonMaintenanceAction(EpsilonMaintenanceAction action);
+    static QByteArray serializeEpsilonDgnssOperation(const EpsilonDgnssOperation& operation);
+    static bool parseEpsilonDgnssOperation(const QByteArray& payload, EpsilonDgnssOperation& operation);
+    static QByteArray serializeEpsilonDgnssSnapshot(const EpsilonDgnssSnapshot& snapshot);
+    static bool parseEpsilonDgnssSnapshot(const QByteArray& payload, EpsilonDgnssSnapshot& snapshot);
+    static bool parseEpsilonMaintenanceAction(const QByteArray& payload, EpsilonMaintenanceAction& action);
+    static QByteArray serializeEpsilonMaintenanceResult(const EpsilonMaintenanceResult& result);
+    static bool parseEpsilonMaintenanceResult(const QByteArray& payload, EpsilonMaintenanceResult& result);
     static QByteArray serializeEpsilonSettingsRead(EpsilonSettingsGroup group);
     static bool parseEpsilonSettingsRead(const QByteArray& payload, EpsilonSettingsGroup& group);
     static QByteArray serializeEpsilonSettingsOperation(const EpsilonSettingsOperation& operation);

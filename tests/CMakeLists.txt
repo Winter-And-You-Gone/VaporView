@@ -1216,7 +1216,7 @@ set(VAPORVIEW_FAST_UNIT_TESTS
 )
 set_tests_properties(${VAPORVIEW_FAST_UNIT_TESTS} PROPERTIES TIMEOUT 30)
 set_property(TEST ${VAPORVIEW_FAST_UNIT_TESTS} PROPERTY LABELS fast unit)
-set_tests_properties(epsilon_device_session_test PROPERTIES LABELS "integration;protocol" TIMEOUT 75)
+set_tests_properties(epsilon_device_session_test PROPERTIES LABELS "integration;protocol" TIMEOUT 120)
 set_property(TEST lifecycle_breadcrumb_test APPEND PROPERTY LABELS logging)
 
 set(VAPORVIEW_FAST_INTEGRATION_TESTS

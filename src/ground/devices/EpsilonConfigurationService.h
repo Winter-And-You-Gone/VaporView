@@ -1,12 +1,14 @@
 #pragma once
 
 #include "LogRecord.h"
+#include "EpsilonMaintenance.h"
 #include "EpsilonSettings.h"
 
 #include <QString>
 #include <QVariantMap>
 
 #include <cstdint>
+#include <atomic>
 #include <functional>
 #include <map>
 #include <memory>
@@ -27,6 +29,8 @@ struct EpsilonDeviceOperation
     bool english = false;
     std::shared_ptr<VaporView::EpsilonCollector> live_collector;
     bool restart_live_stream = false;
+    std::shared_ptr<std::atomic_bool> maintenance_cancel;
+    VaporView::EpsilonMaintenanceProgress maintenance_progress;
 };
 
 struct EpsilonConfigurationResult
@@ -35,6 +39,8 @@ struct EpsilonConfigurationResult
     bool live_stream_restarted = false;
     QString error_message;
     VaporView::EpsilonSettingsSnapshot settings_snapshot;
+    VaporView::EpsilonMaintenanceResult maintenance_result;
+    VaporView::EpsilonDgnssSnapshot dgnss_snapshot;
 
     bool succeeded() const
     {
@@ -69,6 +75,13 @@ public:
     static EpsilonConfigurationResult rebootDevice(
         const EpsilonDeviceOperation& operation,
         const LogCallback& log);
+    static EpsilonConfigurationResult calibrateMaintenance(
+        const EpsilonDeviceOperation& operation,
+        VaporView::EpsilonMaintenanceAction action,
+        const LogCallback& log);
+    static EpsilonConfigurationResult readDgnss(const EpsilonDeviceOperation& operation, const LogCallback& log);
+    static EpsilonConfigurationResult applyDgnss(const EpsilonDeviceOperation& operation,
+        const VaporView::EpsilonDgnssOperation& settings, const LogCallback& log);
 
     static EpsilonConfigurationResult applyMainAntennaLeverArm(
         const EpsilonDeviceOperation& operation,

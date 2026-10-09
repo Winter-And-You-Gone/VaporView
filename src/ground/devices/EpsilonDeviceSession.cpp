@@ -7,12 +7,22 @@
 #include <QPointer>
 
 #include <utility>
+#include <cmath>
 
 namespace VaporView::Ground::Devices
 {
 
 namespace
 {
+
+bool validMagneticCompletion(const EpsilonMaintenanceResult& result)
+{
+    if (result.status != EpsilonMaintenanceStatus::Completed || !result.saved || !result.restart_required) return false;
+    if (result.action == EpsilonMaintenanceAction::Magnetic2D)
+        return result.progress_known && result.progress_percent == 100;
+    return result.action == EpsilonMaintenanceAction::Magnetic3D && result.fit_error_known &&
+        std::isfinite(result.fit_error) && result.fit_error >= 0 && result.fit_error < 3 && result.algorithm == "High";
+}
 
 CommandErrorCode localResultErrorCode(const VaporView::Ground::EpsilonConfigurationResult& result)
 {
@@ -45,14 +55,13 @@ EpsilonDeviceSession::EpsilonDeviceSession(LocalAdapter localAdapter,
 
     connect(remote_controller_, &RemoteSkyController::deviceOperationResponseReceived,
             this, [this](const DeviceOperationResponse& response) {
-                const quint64 sessionRequestId = remote_request_to_session_.take(response.request_id);
+                const quint64 sessionRequestId = remote_request_to_session_.value(response.request_id);
                 const auto pendingIt = pending_operations_.find(sessionRequestId);
                 if (sessionRequestId == 0 || pendingIt == pending_operations_.end())
                 {
                     return;
                 }
                 const PendingOperation pending = pendingIt.value();
-                pending_operations_.erase(pendingIt);
                 if (pending.backend != EpsilonBackend::Remote ||
                     pending.session_generation != session_generation_ ||
                     pending.link_generation != remote_controller_->linkGeneration())
@@ -61,6 +70,25 @@ EpsilonDeviceSession::EpsilonDeviceSession(LocalAdapter localAdapter,
                 }
 
                 bool ok = response.error_code == CommandErrorCode::Ok;
+                const bool magneticOperation = pending.operation == EpsilonOperation::CalibrateMagnetic2D || pending.operation == EpsilonOperation::CalibrateMagnetic3D;
+                if (magneticOperation)
+                {
+                    EpsilonMaintenanceResult progress;
+                    if (response.device_id == SkyDeviceId::Epsilon &&
+                        response.operation == (pending.operation == EpsilonOperation::CalibrateMagnetic2D ? DeviceOperation::CalibrateEpsilonMagnetic2D : DeviceOperation::CalibrateEpsilonMagnetic3D) &&
+                        TelemetryCodec::parseEpsilonMaintenanceResult(response.payload, progress) &&
+                        progress.action == pending.maintenance_action && progress.status == EpsilonMaintenanceStatus::Running)
+                    {
+                        if (ok)
+                        {
+                            pendingIt->last_maintenance_result = progress;
+                            emit maintenanceProgress(progress);
+                        }
+                        return;
+                    }
+                }
+                remote_request_to_session_.remove(response.request_id);
+                pending_operations_.erase(pendingIt);
                 auto error = response.error_code;
                 VaporView::Ground::EpsilonConfigurationResult localResult;
                 DeviceOperation expected = DeviceOperation::ConfigureEpsilonPacketRates;
@@ -72,13 +100,48 @@ EpsilonDeviceSession::EpsilonDeviceSession(LocalAdapter localAdapter,
                 case EpsilonOperation::ReadSettings: expected = DeviceOperation::ReadEpsilonSettings; break;
                 case EpsilonOperation::ApplySettings: expected = DeviceOperation::ApplyEpsilonSettings; break;
                 case EpsilonOperation::RestartDevice: expected = DeviceOperation::RestartEpsilonDevice; break;
+                case EpsilonOperation::CalibrateLevel: expected = DeviceOperation::CalibrateEpsilonLevel; break;
+                case EpsilonOperation::CalibrateAccelerometer: expected = DeviceOperation::CalibrateEpsilonAccelerometer; break;
+                case EpsilonOperation::CalibrateGyroscope: expected = DeviceOperation::CalibrateEpsilonGyroscope; break;
+                case EpsilonOperation::ReadDgnss: expected = DeviceOperation::ReadEpsilonDgnss; break;
+                case EpsilonOperation::ApplyDgnss: expected = DeviceOperation::ApplyEpsilonDgnss; break;
+                case EpsilonOperation::CalibrateMagnetic2D: expected = DeviceOperation::CalibrateEpsilonMagnetic2D; break;
+                case EpsilonOperation::CalibrateMagnetic3D: expected = DeviceOperation::CalibrateEpsilonMagnetic3D; break;
                 }
                 if (response.device_id != SkyDeviceId::Epsilon || response.operation != expected)
                     { ok = false; error = CommandErrorCode::InvalidPayload; }
+                const bool calibrationOperation = pending.operation == EpsilonOperation::CalibrateLevel ||
+                    pending.operation == EpsilonOperation::CalibrateAccelerometer || pending.operation == EpsilonOperation::CalibrateGyroscope || magneticOperation;
+                if (calibrationOperation)
+                {
+                    EpsilonMaintenanceResult parsedResult;
+                    const bool parsed = TelemetryCodec::parseEpsilonMaintenanceResult(response.payload, parsedResult);
+                    if (parsed && parsedResult.action == pending.maintenance_action)
+                        localResult.maintenance_result = parsedResult;
+                    else
+                    {
+                        localResult.maintenance_result.action = pending.maintenance_action;
+                        // Failed responses must not attach another action's restart state.
+                        if (ok || !response.payload.isEmpty()) { ok = false; error = CommandErrorCode::InvalidPayload; }
+                    }
+                    if (ok && (!parsed || parsedResult.action != pending.maintenance_action ||
+                        (magneticOperation ? !validMagneticCompletion(localResult.maintenance_result) :
+                         (localResult.maintenance_result.status != EpsilonMaintenanceStatus::Acknowledged &&
+                          localResult.maintenance_result.status != EpsilonMaintenanceStatus::SentUnverified)) ||
+                        !localResult.maintenance_result.saved || !localResult.maintenance_result.restart_required))
+                    { ok = false; error = localResult.maintenance_result.status == EpsilonMaintenanceStatus::Unsupported ? CommandErrorCode::UnknownCommand : CommandErrorCode::InvalidPayload; }
+                    localResult.command_succeeded = ok;
+                    localResult.live_stream_restarted = ok;
+                }
                 if (pending.operation == EpsilonOperation::ReadSettings || pending.operation == EpsilonOperation::ApplySettings)
                 {
-                    const bool parsed = TelemetryCodec::parseEpsilonSettingsSnapshot(response.payload, localResult.settings_snapshot);
-                    if (ok && (!parsed || localResult.settings_snapshot.group != pending.settings.group ||
+                    EpsilonSettingsSnapshot parsedSnapshot;
+                    const bool parsed = TelemetryCodec::parseEpsilonSettingsSnapshot(response.payload, parsedSnapshot);
+                    if (parsed && parsedSnapshot.group == pending.settings.group)
+                        localResult.settings_snapshot = std::move(parsedSnapshot);
+                    else
+                        localResult.settings_snapshot.group = pending.settings.group;
+                    if (ok && (!parsed || parsedSnapshot.group != pending.settings.group ||
                         localResult.settings_snapshot.values.empty())) { ok = false; error = CommandErrorCode::InvalidPayload; }
                     if (ok && pending.operation == EpsilonOperation::ApplySettings)
                     {
@@ -91,6 +154,20 @@ EpsilonDeviceSession::EpsilonDeviceSession(LocalAdapter localAdapter,
                             if (it == localResult.settings_snapshot.values.end() || !epsilonSettingsValuesEqual(it->second, value.second))
                                 { ok = false; error = CommandErrorCode::ConfigApplyFailed; }
                         }
+                    }
+                }
+                if (pending.operation == EpsilonOperation::ReadDgnss || pending.operation == EpsilonOperation::ApplyDgnss)
+                {
+                    const bool parsed = TelemetryCodec::parseEpsilonDgnssSnapshot(response.payload, localResult.dgnss_snapshot);
+                    if (ok && (!parsed || localResult.dgnss_snapshot.values.empty())) { ok = false; error = CommandErrorCode::InvalidPayload; }
+                    if (ok && pending.operation == EpsilonOperation::ApplyDgnss)
+                    {
+                        if (!localResult.dgnss_snapshot.readback_verified ||
+                            (localResult.dgnss_snapshot.restart_required && !localResult.dgnss_snapshot.saved))
+                            { ok = false; error = CommandErrorCode::ConfigApplyFailed; }
+                        for (const auto& value : pending.dgnss.values)
+                            if (!localResult.dgnss_snapshot.values.count(value.first) || localResult.dgnss_snapshot.values.at(value.first) != value.second)
+                                { ok = false; error = CommandErrorCode::ConfigApplyFailed; }
                     }
                 }
                 localResult.command_succeeded = ok;
@@ -141,6 +218,8 @@ EpsilonDeviceSession::EpsilonDeviceSession(LocalAdapter localAdapter,
                     return;
                 }
                 const PendingOperation pending = pendingIt.value();
+                if (pending.operation == EpsilonOperation::CalibrateMagnetic2D || pending.operation == EpsilonOperation::CalibrateMagnetic3D)
+                    remote_controller_->cancelEpsilonMagneticCalibration(pending.remote_request_id);
                 pending_operations_.erase(pendingIt);
                 if (pending.session_generation != session_generation_)
                 {
@@ -177,6 +256,7 @@ EpsilonDeviceSession::EpsilonDeviceSession(LocalAdapter localAdapter,
 
 EpsilonDeviceSession::~EpsilonDeviceSession()
 {
+    cancelMaintenance();
     ++session_generation_;
     pending_operations_.clear();
     remote_request_to_session_.clear();
@@ -329,6 +409,45 @@ quint64 EpsilonDeviceSession::restartDevice(const VaporView::Ground::EpsilonDevi
     return beginOperation(pending);
 }
 
+quint64 EpsilonDeviceSession::calibrate(EpsilonMaintenanceAction action,
+    const VaporView::Ground::EpsilonDeviceOperation& localDeviceOperation)
+{
+    PendingOperation pending;
+    pending.operation = action == EpsilonMaintenanceAction::Level ? EpsilonOperation::CalibrateLevel :
+        action == EpsilonMaintenanceAction::Accelerometer ? EpsilonOperation::CalibrateAccelerometer :
+        action == EpsilonMaintenanceAction::Gyroscope ? EpsilonOperation::CalibrateGyroscope :
+        action == EpsilonMaintenanceAction::Magnetic2D ? EpsilonOperation::CalibrateMagnetic2D : EpsilonOperation::CalibrateMagnetic3D;
+    pending.maintenance_action = action;
+    pending.local_device_operation = localDeviceOperation;
+    return beginOperation(pending);
+}
+
+quint64 EpsilonDeviceSession::readDgnss(const VaporView::Ground::EpsilonDeviceOperation& operation)
+{
+    PendingOperation pending;
+    pending.operation = EpsilonOperation::ReadDgnss;
+    pending.local_device_operation = operation;
+    return beginOperation(pending);
+}
+
+quint64 EpsilonDeviceSession::applyDgnss(const EpsilonDgnssOperation& settings, const VaporView::Ground::EpsilonDeviceOperation& operation)
+{
+    PendingOperation pending;
+    pending.operation = EpsilonOperation::ApplyDgnss;
+    pending.dgnss = settings;
+    pending.local_device_operation = operation;
+    return beginOperation(pending);
+}
+
+void EpsilonDeviceSession::cancelMaintenance()
+{
+    if (local_maintenance_cancel_) local_maintenance_cancel_->store(true);
+    for (const auto& pending : pending_operations_)
+        if (pending.backend == EpsilonBackend::Remote && remote_controller_ && remote_controller_->isOpen() &&
+            (pending.operation == EpsilonOperation::CalibrateMagnetic2D || pending.operation == EpsilonOperation::CalibrateMagnetic3D))
+            remote_controller_->cancelEpsilonMagneticCalibration(pending.remote_request_id);
+}
+
 quint64 EpsilonDeviceSession::beginOperation(PendingOperation pending)
 {
     const quint64 requestId = next_request_id_++;
@@ -338,12 +457,18 @@ quint64 EpsilonDeviceSession::beginOperation(PendingOperation pending)
 
     const bool settingsOperation = pending.operation == EpsilonOperation::ReadSettings ||
         pending.operation == EpsilonOperation::ApplySettings || pending.operation == EpsilonOperation::RestartDevice;
+    const bool maintenanceOperation = pending.operation == EpsilonOperation::CalibrateLevel ||
+        pending.operation == EpsilonOperation::CalibrateAccelerometer || pending.operation == EpsilonOperation::CalibrateGyroscope ||
+        pending.operation == EpsilonOperation::CalibrateMagnetic2D || pending.operation == EpsilonOperation::CalibrateMagnetic3D;
     const bool settingsUnsupported = settingsOperation && backend_ == EpsilonBackend::Remote && remote_controller_ &&
         (remote_controller_->epsilonSettingsSupport() == DeviceOperationSupport::Unsupported ||
          (pending.operation != EpsilonOperation::ReadSettings && remote_controller_->epsilonSettingsSupport() != DeviceOperationSupport::Supported));
-    const bool localCallbackMissing = backend_ == EpsilonBackend::Local && settingsOperation &&
-        ((pending.operation == EpsilonOperation::ReadSettings && !local_adapter_.readSettings) ||
+    const bool localCallbackMissing = backend_ == EpsilonBackend::Local &&
+        ((maintenanceOperation && !local_adapter_.calibrate) ||
+         (pending.operation == EpsilonOperation::ReadSettings && !local_adapter_.readSettings) ||
          (pending.operation == EpsilonOperation::ApplySettings && !local_adapter_.applySettings) ||
+         (pending.operation == EpsilonOperation::ReadDgnss && !local_adapter_.readDgnss) ||
+         (pending.operation == EpsilonOperation::ApplyDgnss && !local_adapter_.applyDgnss) ||
          (pending.operation == EpsilonOperation::RestartDevice && !local_adapter_.restartDevice));
     if (!operationsAvailable() || settingsUnsupported || localCallbackMissing)
     {
@@ -381,11 +506,29 @@ quint64 EpsilonDeviceSession::beginOperation(PendingOperation pending)
 
 void EpsilonDeviceSession::dispatchLocal(PendingOperation pending)
 {
+    if (pending.operation == EpsilonOperation::CalibrateMagnetic2D || pending.operation == EpsilonOperation::CalibrateMagnetic3D)
+    {
+        local_maintenance_cancel_ = std::make_shared<std::atomic_bool>(false);
+        pending.local_device_operation.maintenance_cancel = local_maintenance_cancel_;
+        QPointer<EpsilonDeviceSession> progressGuard(this);
+        pending.local_device_operation.maintenance_progress = [progressGuard, id = pending.request_id, generation = pending.session_generation](const EpsilonMaintenanceResult& progress) {
+            if (!progressGuard) return;
+            QMetaObject::invokeMethod(progressGuard, [progressGuard, id, generation, progress]() {
+                if (progressGuard && generation == progressGuard->session_generation_ && progressGuard->pending_operations_.contains(id))
+                {
+                    progressGuard->pending_operations_[id].last_maintenance_result = progress;
+                    emit progressGuard->maintenanceProgress(progress);
+                }
+            }, Qt::QueuedConnection);
+        };
+    }
     local_worker_busy_ = true;
     const LocalAdapter adapter = local_adapter_;
     QPointer<EpsilonDeviceSession> guard(this);
     QMetaObject::invokeMethod(local_worker_, [guard, adapter, pending]() {
         VaporView::Ground::EpsilonConfigurationResult localResult;
+        try
+        {
         switch (pending.operation)
         {
         case EpsilonOperation::ConfigurePacketRates:
@@ -418,6 +561,37 @@ void EpsilonDeviceSession::dispatchLocal(PendingOperation pending)
         case EpsilonOperation::RestartDevice:
             if (adapter.restartDevice) localResult = adapter.restartDevice(pending.local_device_operation);
             break;
+        case EpsilonOperation::ReadDgnss:
+            if (adapter.readDgnss) localResult = adapter.readDgnss(pending.local_device_operation);
+            break;
+        case EpsilonOperation::ApplyDgnss:
+            if (adapter.applyDgnss) localResult = adapter.applyDgnss(pending.dgnss, pending.local_device_operation);
+            break;
+        case EpsilonOperation::CalibrateLevel:
+        case EpsilonOperation::CalibrateAccelerometer:
+        case EpsilonOperation::CalibrateGyroscope:
+        case EpsilonOperation::CalibrateMagnetic2D:
+        case EpsilonOperation::CalibrateMagnetic3D:
+            if (adapter.calibrate) localResult = adapter.calibrate(pending.maintenance_action, pending.local_device_operation);
+            if (localResult.command_succeeded &&
+                (localResult.maintenance_result.action != pending.maintenance_action ||
+                 ((pending.operation == EpsilonOperation::CalibrateMagnetic2D || pending.operation == EpsilonOperation::CalibrateMagnetic3D)
+                    ? !validMagneticCompletion(localResult.maintenance_result)
+                    : (localResult.maintenance_result.status != EpsilonMaintenanceStatus::Acknowledged &&
+                       localResult.maintenance_result.status != EpsilonMaintenanceStatus::SentUnverified)) ||
+                 !localResult.maintenance_result.saved || !localResult.maintenance_result.restart_required))
+            {
+                localResult.command_succeeded = false;
+                localResult.error_message = QStringLiteral("EPSILON maintenance response did not acknowledge the requested action.");
+            }
+            break;
+        }
+        }
+        catch (...)
+        {
+            localResult.error_message = QStringLiteral("EPSILON worker failed unexpectedly; reconnect and verify the device before retrying.");
+            localResult.maintenance_result.action = pending.maintenance_action;
+            localResult.maintenance_result.status = EpsilonMaintenanceStatus::Failed;
         }
         if (!guard)
         {
@@ -429,6 +603,7 @@ void EpsilonDeviceSession::dispatchLocal(PendingOperation pending)
                 return;
             }
             guard->local_worker_busy_ = false;
+            guard->local_maintenance_cancel_.reset();
             guard->refreshAvailability();
             const auto pendingIt = guard->pending_operations_.find(pending.request_id);
             if (pendingIt == guard->pending_operations_.end())
@@ -476,6 +651,19 @@ void EpsilonDeviceSession::dispatchRemote(PendingOperation pending)
     case EpsilonOperation::RestartDevice:
         remoteRequestId = remote_controller_->restartEpsilonDevice();
         break;
+    case EpsilonOperation::ReadDgnss:
+        remoteRequestId = remote_controller_->readEpsilonDgnss();
+        break;
+    case EpsilonOperation::ApplyDgnss:
+        remoteRequestId = remote_controller_->applyEpsilonDgnss(pending.dgnss);
+        break;
+    case EpsilonOperation::CalibrateLevel:
+    case EpsilonOperation::CalibrateAccelerometer:
+    case EpsilonOperation::CalibrateGyroscope:
+    case EpsilonOperation::CalibrateMagnetic2D:
+    case EpsilonOperation::CalibrateMagnetic3D:
+        remoteRequestId = remote_controller_->calibrateEpsilon(pending.maintenance_action);
+        break;
     }
     if (remoteRequestId == 0)
     {
@@ -506,7 +694,11 @@ void EpsilonDeviceSession::finishPending(
 {
     if (outcome == EpsilonOperationOutcome::Success && pending.backend == EpsilonBackend::Remote &&
         (pending.operation == EpsilonOperation::ReadSettings || pending.operation == EpsilonOperation::ApplySettings ||
-         pending.operation == EpsilonOperation::RestartDevice) && remote_controller_ && remote_controller_->isOpen())
+         pending.operation == EpsilonOperation::RestartDevice || pending.operation == EpsilonOperation::CalibrateLevel ||
+         pending.operation == EpsilonOperation::CalibrateAccelerometer || pending.operation == EpsilonOperation::CalibrateGyroscope ||
+         pending.operation == EpsilonOperation::CalibrateMagnetic2D || pending.operation == EpsilonOperation::CalibrateMagnetic3D ||
+         pending.operation == EpsilonOperation::ReadDgnss || pending.operation == EpsilonOperation::ApplyDgnss) &&
+        remote_controller_ && remote_controller_->isOpen())
         remote_available_ = true;
     EpsilonSessionResult result;
     result.request_id = pending.request_id;
@@ -515,12 +707,23 @@ void EpsilonDeviceSession::finishPending(
     result.error_code = errorCode;
     result.message = message;
     result.local_result = localResult;
+    if ((outcome == EpsilonOperationOutcome::Timeout || outcome == EpsilonOperationOutcome::Disconnected) &&
+        (pending.operation == EpsilonOperation::CalibrateMagnetic2D || pending.operation == EpsilonOperation::CalibrateMagnetic3D))
+    {
+        result.local_result.maintenance_result = pending.last_maintenance_result;
+        result.local_result.maintenance_result.action = pending.maintenance_action;
+        result.local_result.maintenance_result.status = EpsilonMaintenanceStatus::Failed;
+        result.message += english_ ? QStringLiteral(" Calibration outcome is unknown; reconnect and verify the device before retrying.")
+                                   : QStringLiteral(" 校准结果未知，请重新连接并核对设备后再重试。");
+    }
+    result.maintenance_result = result.local_result.maintenance_result;
     emit operationFinished(result);
     refreshAvailability();
 }
 
 void EpsilonDeviceSession::failActive(EpsilonOperationOutcome outcome, const QString& message)
 {
+    cancelMaintenance();
     const auto pending = pending_operations_.values();
     pending_operations_.clear();
     remote_request_to_session_.clear();

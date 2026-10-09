@@ -70,7 +70,9 @@ public:
                                      QString *errorMessage = nullptr,
                                      bool forceApply = true);
     std::function<CommandErrorCode()> prepareEpsilonOperation(const DeviceOperationRequest& request,
-        std::shared_ptr<EpsilonSettingsSnapshot> snapshot = {}, std::shared_ptr<QString> message = {});
+        std::shared_ptr<EpsilonSettingsSnapshot> snapshot = {}, std::shared_ptr<QString> message = {},
+        std::shared_ptr<EpsilonMaintenanceResult> maintenance = {}, std::shared_ptr<EpsilonDgnssSnapshot> dgnss = {},
+        std::shared_ptr<std::atomic_bool> cancel = {}, EpsilonMaintenanceProgress progress = {});
     void completeEpsilonOperation(const DeviceOperationRequest& request, CommandErrorCode result,
         const EpsilonSettingsSnapshot& snapshot = {});
     bool configureEpsilonMainAntennaLeverArm(

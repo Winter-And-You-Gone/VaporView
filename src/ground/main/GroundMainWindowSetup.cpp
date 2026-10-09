@@ -2346,6 +2346,14 @@ void MainWindow::setupCentralWidget()
                 this, &MainWindow::onEpsilonSettingsApplyRequested);
         connect(state_->epsilon_config_panel_, &EpsilonConfigPanel::deviceRestartRequested,
                 this, &MainWindow::onEpsilonDeviceRestartRequested);
+        connect(state_->epsilon_config_panel_, &EpsilonConfigPanel::maintenanceRequested,
+                this, &MainWindow::onEpsilonMaintenanceRequested);
+        connect(state_->epsilon_config_panel_, &EpsilonConfigPanel::dgnssReadRequested,
+                this, &MainWindow::onEpsilonDgnssReadRequested);
+        connect(state_->epsilon_config_panel_, &EpsilonConfigPanel::dgnssApplyRequested,
+                this, &MainWindow::onEpsilonDgnssApplyRequested);
+        connect(state_->epsilon_config_panel_, &EpsilonConfigPanel::maintenanceCancelRequested,
+                this, &MainWindow::onEpsilonMaintenanceCancelRequested);
         state_->epsilon_config_panel_->setEnglish(state_->is_english_);
         syncDeviceConfigEpsilonPanelFromSettings();
         updateDeviceConfigState();

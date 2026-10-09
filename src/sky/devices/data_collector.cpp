@@ -753,7 +753,7 @@ bool containsEpsilonAsciiOk(const std::string& text)
       text.find("#OK") != std::string::npos;
 }
 
-std::string readPrintableSerialResponse(SerialPort& serial, int totalWaitMs, bool stopOnAck)
+std::string readPrintableSerialResponse(SerialPort& serial, int totalWaitMs, bool stopOnAck, bool preserveUtf8 = false)
 {
   std::string filtered;
   const auto start = std::chrono::steady_clock::now();
@@ -781,7 +781,8 @@ std::string readPrintableSerialResponse(SerialPort& serial, int totalWaitMs, boo
       for (ssize_t i = 0; i < n; ++i)
       {
         const char ch = static_cast<char>(chunk[i]);
-        if (ch == '\r' || ch == '\n' || ch == '\t' || (ch >= 0x20 && ch <= 0x7E))
+        if (ch == '\r' || ch == '\n' || ch == '\t' || (ch >= 0x20 && ch <= 0x7E) ||
+            (preserveUtf8 && static_cast<unsigned char>(ch) >= 0x80))
         {
           filtered.push_back(ch);
         }
@@ -1533,6 +1534,42 @@ bool decodeCorePacket(EpsilonData& data,
   if (!payload)
   {
     return false;
+  }
+
+  if (packetId == 0x39)
+  {
+    // EPSILON uses two fixed 8-byte names. Other product layouts are distinct.
+    if (payloadSize != 40)
+      return false;
+    const auto readName = [](const uint8_t *bytes, std::string& name) {
+      name.clear();
+      bool padding = false;
+      for (int index = 0; index < 8; ++index)
+      {
+        const auto byte = bytes[index];
+        if (byte == 0) { padding = true; continue; }
+        if (padding && byte != ' ') return false;
+        if (!padding)
+        {
+          if (byte < 32 || byte > 126) return false;
+          name.push_back(static_cast<char>(byte));
+        }
+      }
+      while (!name.empty() && name.back() == ' ') name.pop_back();
+      return !name.empty();
+    };
+    std::string hardwareName, firmwareName;
+    if (!readName(payload + 20, hardwareName) || hardwareName.rfind("EPSILON", 0) != 0 ||
+        !readName(payload + 32, firmwareName))
+      return false;
+    for (int index = 0; index < 4; ++index)
+      data.serial_number[index] = readU32LE(payload + index * 4);
+    data.hardware_version = readU32LE(payload + 16);
+    data.firmware_version = readU32LE(payload + 28);
+    data.hardware_name = std::move(hardwareName);
+    data.firmware_name = std::move(firmwareName);
+    data.device_info_valid = true;
+    return true;
   }
 
   if (packetId == kMsgImu && payloadSize >= 56)
@@ -2574,6 +2611,72 @@ bool EpsilonCollector::rebootDevice(std::string& error)
     error = "EPSILON reboot failed";
   }
   return exitConfiguration();
+}
+
+bool EpsilonCollector::runMaintenance(EpsilonMaintenanceAction action,
+                                      EpsilonMaintenanceResult& result,
+                                      std::string& error)
+{
+  return runMaintenance(action, result, error, {}, {});
+}
+
+bool EpsilonCollector::runMaintenance(EpsilonMaintenanceAction action,
+                                      EpsilonMaintenanceResult& result, std::string& error,
+                                      EpsilonMaintenanceProgress progress, std::function<bool()> shouldCancel)
+{
+  result = {};
+  result.action = action;
+  error.clear();
+  if (!validEpsilonMaintenanceAction(action) || running_.load() || !serial_.isOpen())
+  {
+    result.status = EpsilonMaintenanceStatus::Failed;
+    error = "EPSILON maintenance requires a supported action, open serial port and stopped collector";
+    result.error = error;
+    return false;
+  }
+  const bool english = isEnglishLog();
+  const EpsilonLogFn logFn = [this](const std::string& message) { log(message); };
+  const EpsilonMaintenanceExchange exchange = [this, &logFn, english](
+      const std::string& command, int interval, const EpsilonMaintenanceWriteTrace& written) {
+    if (command.empty())
+      return readLoggedEpsilonAsciiResponse(serial_, logFn, interval);
+    return sendLoggedEpsilonAsciiCommand(serial_, logFn, english, command, interval,
+        [&written](const std::string&, bool isReply, bool successful) {
+          if (!isReply && successful && written) written();
+        });
+  };
+  return runEpsilonMaintenance(action, exchange, result, error, std::move(progress), std::move(shouldCancel));
+}
+
+bool EpsilonCollector::readDgnss(EpsilonDgnssSnapshot& snapshot, std::string& error)
+{
+  snapshot = {};
+  if (running_.load() || !serial_.isOpen())
+  { error = "D4G DGNSS requires an open serial port and stopped collector"; return false; }
+  const EpsilonLogFn logFn = [this](const std::string& message) { log(message); };
+  const EpsilonSettingsExchange exchange = [this, &logFn](const std::string& command, int interval) {
+    logFn("[EPSILON TX] " + trimAscii(command));
+    if (serial_.write(command.data(), command.size()) != static_cast<ssize_t>(command.size())) return std::string();
+    sleepMs(interval);
+    return readPrintableSerialResponse(serial_, interval, false, true);
+  };
+  return readEpsilonDgnss(exchange, snapshot, error);
+}
+
+bool EpsilonCollector::applyDgnss(const EpsilonDgnssOperation& operation,
+                                 EpsilonDgnssSnapshot& snapshot, std::string& error)
+{
+  snapshot = {};
+  if (running_.load() || !serial_.isOpen())
+  { error = "D4G DGNSS requires an open serial port and stopped collector"; return false; }
+  const EpsilonLogFn logFn = [this](const std::string& message) { log(message); };
+  const EpsilonSettingsExchange exchange = [this, &logFn](const std::string& command, int interval) {
+    logFn("[EPSILON TX] " + trimAscii(command));
+    if (serial_.write(command.data(), command.size()) != static_cast<ssize_t>(command.size())) return std::string();
+    sleepMs(interval);
+    return readPrintableSerialResponse(serial_, interval, false, true);
+  };
+  return applyEpsilonDgnss(operation, exchange, snapshot, error);
 }
 
 bool EpsilonCollector::configureMainAntennaLeverArm(double xM, double yM, double zM)

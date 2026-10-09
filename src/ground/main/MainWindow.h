@@ -211,6 +211,10 @@ private slots:
         const VaporView::Ground::Devices::EpsilonSessionResult& result);
     void onEpsilonSettingsReadRequested(VaporView::EpsilonSettingsGroup group);
     void onEpsilonSettingsApplyRequested(const VaporView::EpsilonSettingsOperation& operation);
+    void onEpsilonMaintenanceRequested(VaporView::EpsilonMaintenanceAction action);
+    void onEpsilonDgnssReadRequested();
+    void onEpsilonDgnssApplyRequested(const VaporView::EpsilonDgnssOperation& operation);
+    void onEpsilonMaintenanceCancelRequested();
     void onEpsilonDeviceRestartRequested();
     bool prepareEpsilonSettingsOperation(VaporView::Ground::EpsilonDeviceOperation& operation);
     void onRd105SessionAvailabilityChanged(bool available, const QString& reason);

@@ -48,6 +48,10 @@ public:
     quint32 readEpsilonSettings(EpsilonSettingsGroup group);
     quint32 applyEpsilonSettings(const EpsilonSettingsOperation& operation);
     quint32 restartEpsilonDevice();
+    quint32 calibrateEpsilon(EpsilonMaintenanceAction action);
+    quint32 readEpsilonDgnss();
+    quint32 applyEpsilonDgnss(const EpsilonDgnssOperation& operation);
+    quint32 cancelEpsilonMagneticCalibration(quint32 requestId);
     DeviceOperationSupport deviceOperationSupport() const;
     DeviceOperationSupport epsilonSettingsSupport() const;
     quint16 sendDeviceCommand(CommandId command, SkyDeviceId device);

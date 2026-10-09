@@ -348,6 +348,29 @@ int main(int argc, char **argv)
     settingsRequest.operation = VaporView::DeviceOperation::RestartEpsilonDevice;
     require(manager.prepareEpsilonOperation(settingsRequest)() == VaporView::CommandErrorCode::InvalidPayload,
             "Sky restart accepts only empty payload");
+    settingsRequest.operation = VaporView::DeviceOperation::CalibrateEpsilonLevel;
+    settingsRequest.payload = VaporView::TelemetryCodec::serializeEpsilonMaintenanceAction(VaporView::EpsilonMaintenanceAction::Level);
+    require(manager.prepareEpsilonOperation(settingsRequest)() == VaporView::CommandErrorCode::UnknownCommand,
+            "simulation rejects calibration without a hardware maintenance workflow");
+    settingsRequest.operation = VaporView::DeviceOperation::CalibrateEpsilonGyroscope;
+    settingsRequest.payload = VaporView::TelemetryCodec::serializeEpsilonMaintenanceAction(VaporView::EpsilonMaintenanceAction::Gyroscope);
+    auto maintenance = std::make_shared<VaporView::EpsilonMaintenanceResult>();
+    require(manager.prepareEpsilonOperation(settingsRequest, {}, {}, maintenance)() == VaporView::CommandErrorCode::UnknownCommand &&
+            maintenance->action == VaporView::EpsilonMaintenanceAction::Gyroscope,
+            "simulation rejection retains the requested maintenance action");
+    settingsRequest.payload = "{}";
+    require(manager.prepareEpsilonOperation(settingsRequest, {}, {}, maintenance)() == VaporView::CommandErrorCode::InvalidPayload,
+            "simulation still rejects malformed maintenance payloads");
+    settingsRequest.operation = VaporView::DeviceOperation::CalibrateEpsilonMagnetic2D;
+    settingsRequest.payload = VaporView::TelemetryCodec::serializeEpsilonMaintenanceAction(VaporView::EpsilonMaintenanceAction::Magnetic2D);
+    require(manager.prepareEpsilonOperation(settingsRequest, {}, {}, maintenance)() == VaporView::CommandErrorCode::UnknownCommand &&
+            maintenance->action == VaporView::EpsilonMaintenanceAction::Magnetic2D,
+            "simulation never invents magnetic progress or completion");
+    settingsRequest.operation = VaporView::DeviceOperation::ReadEpsilonDgnss;
+    settingsRequest.payload.clear();
+    auto dgnss = std::make_shared<VaporView::EpsilonDgnssSnapshot>();
+    require(manager.prepareEpsilonOperation(settingsRequest, {}, {}, {}, dgnss)() == VaporView::CommandErrorCode::UnknownCommand && dgnss->values.empty(),
+            "simulation refuses fabricated D4G account and modem fields");
 
     const int logCountBeforeShutdown = ai8DisconnectLogCount;
     manager.setSimulateData(false);

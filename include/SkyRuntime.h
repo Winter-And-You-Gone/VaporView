@@ -77,6 +77,7 @@ public:
     QVector<DownsampledWaveform> currentDownsampledWaveforms() const;
 
     SkyCommandResult executeCommand(const CommandMessage& command);
+    void cancelClientDeviceOperation(const QByteArray& clientScope);
     void submitCommand(const CommandMessage& command,
                        std::function<void(const SkyCommandResult&)> completion,
                        const QByteArray& clientScope = QByteArray());
@@ -151,6 +152,10 @@ private:
     QHash<QByteArray, QPair<qint64, SkyCommandResult>> command_results_;
     QByteArray active_command_key_;
     bool epsilon_settings_operation_pending_ = false;
+    std::shared_ptr<std::atomic_bool> maintenance_cancel_;
+    quint32 maintenance_request_id_ = 0;
+    QByteArray maintenance_client_scope_;
+    DeviceOperation maintenance_operation_ = DeviceOperation::CalibrateEpsilonLevel;
     QVector<std::function<void(const SkyCommandResult&)>> active_command_callbacks_;
     std::thread device_command_thread_;
     quint64 device_command_generation_ = 0;

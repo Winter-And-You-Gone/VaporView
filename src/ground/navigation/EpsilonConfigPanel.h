@@ -3,9 +3,11 @@
 
 #include <QFrame>
 #include <QVector>
+#include <QByteArray>
 
 #include "data_types.h"
 #include "EpsilonSettings.h"
+#include "EpsilonMaintenance.h"
 
 #include <cstdint>
 #include <map>
@@ -18,6 +20,8 @@ class QPushButton;
 class QResizeEvent;
 class QWidget;
 class QStackedWidget;
+class QLineEdit;
+class QProgressBar;
 
 namespace VaporView::Ground::Navigation
 {
@@ -37,12 +41,19 @@ public:
     void setRtcmDevicePortIndex(int portIndex);
     int rtcmDevicePortIndex() const;
     VaporView::EpsilonSettingsGroup currentSettingsGroup() const;
+    bool isDgnssPage() const;
+    void setDgnssSnapshot(const VaporView::EpsilonDgnssSnapshot& snapshot, bool partial = false);
     void setSettingsSnapshot(const VaporView::EpsilonSettingsSnapshot& snapshot, bool partial = false);
-    void invalidateSettings();
+    void invalidateSettings(bool preserveMaintenanceState = false);
     void setSettingsOperationPending(bool pending);
     void setSettingsAvailable(bool available);
     void setSettingsStatus(const QString& text);
     void setSettingsError(const QString& text);
+    QByteArray exportSettingsJson() const;
+    bool previewSettingsImport(const QByteArray& json, VaporView::EpsilonSettingsOperation& changes, QString& error) const;
+    void applyImportedSettings(const VaporView::EpsilonSettingsOperation& changes);
+    void setMaintenanceResult(const VaporView::EpsilonMaintenanceResult& result);
+    void setRestartResult(bool succeeded);
 
 signals:
     void recommendedProfileRequested();
@@ -52,6 +63,10 @@ signals:
     void settingsReadRequested(VaporView::EpsilonSettingsGroup group);
     void settingsApplyRequested(const VaporView::EpsilonSettingsOperation& operation);
     void deviceRestartRequested();
+    void maintenanceRequested(VaporView::EpsilonMaintenanceAction action);
+    void maintenanceCancelRequested();
+    void dgnssReadRequested();
+    void dgnssApplyRequested(const VaporView::EpsilonDgnssOperation& operation);
 
 protected:
     void changeEvent(QEvent *event) override;
@@ -62,13 +77,33 @@ private:
     void applyAppearance();
     void updatePacketLabelWidths();
     void updateLivePacketRateTexts();
+    void updateDeviceInfoTexts();
     void updateSummaryTexts();
     void updateTexts();
     void createSettingsPages();
     void updateSettingsTexts();
     void updateSettingsControls();
     void arrangeSettingsFields(bool twoColumns);
+    void createAdvancedSettingsPage();
+    QWidget *createParameterField(const VaporView::EpsilonParameterDescriptor& descriptor, QWidget *parent);
     VaporView::EpsilonSettingsOperation editedSettings() const;
+    VaporView::EpsilonDgnssOperation editedDgnss() const;
+    struct DgnssField
+    {
+        std::string name;
+        QLabel *label = nullptr;
+        QLabel *state = nullptr;
+        QLineEdit *editor = nullptr;
+        QString original;
+        bool read = false;
+        bool unsupported = false;
+    };
+    QVector<DgnssField> dgnss_fields_;
+    QLabel *dgnss_title_ = nullptr;
+    QPushButton *maintenance_cancel_button_ = nullptr;
+    QProgressBar *maintenance_progress_ = nullptr;
+    bool maintenance_running_ = false;
+    bool maintenance_cancel_requested_ = false;
 
     struct SettingsField
     {
@@ -91,12 +126,23 @@ private:
     QVector<QLabel *> settings_card_titles_;
     QGridLayout *dual_antenna_grid_ = nullptr;
     QLabel *settings_actions_title_ = nullptr;
+    QLabel *device_info_label_ = nullptr;
     QWidget *settings_actions_card_ = nullptr;
     QWidget *settings_actions_host_ = nullptr;
     QWidget *settings_actions_body_ = nullptr;
     QStackedWidget *pages_ = nullptr;
     QWidget *communication_page_ = nullptr;
     QWidget *actions_container_ = nullptr;
+    QComboBox *advanced_group_combo_ = nullptr;
+    QLabel *advanced_group_label_ = nullptr;
+    QStackedWidget *advanced_pages_ = nullptr;
+    QVector<VaporView::EpsilonSettingsGroup> advanced_groups_;
+    QVector<QLabel *> advanced_titles_;
+    QLabel *advanced_hint_ = nullptr;
+    QVector<QPushButton *> maintenance_buttons_;
+    QLabel *maintenance_title_ = nullptr;
+    QPushButton *settings_export_button_ = nullptr;
+    QPushButton *settings_import_button_ = nullptr;
     QPushButton *settings_read_button_ = nullptr;
     QPushButton *device_restart_button_ = nullptr;
     QLabel *settings_status_label_ = nullptr;
@@ -106,6 +152,7 @@ private:
     bool settings_saved_ = false;
     bool settings_verified_ = false;
     bool settings_status_custom_ = false;
+    bool maintenance_verification_pending_ = false;
 
     bool is_english_ = false;
     bool is_available_ = true;

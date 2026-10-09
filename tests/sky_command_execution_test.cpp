@@ -85,6 +85,60 @@ int main(int argc, char **argv)
     while (!settingsCompleted && deadline.elapsed() < 3000) QCoreApplication::processEvents();
     require(settingsCompleted, "unsupported settings transaction releases collector ownership");
 
+    operation.request_id = 79;
+    operation.operation = VaporView::DeviceOperation::CalibrateEpsilonLevel;
+    operation.payload = VaporView::TelemetryCodec::serializeEpsilonMaintenanceAction(VaporView::EpsilonMaintenanceAction::Level);
+    command.command_seq = 16;
+    command.payload = VaporView::TelemetryCodec::serializeDeviceOperationRequest(operation);
+    const auto calibrationResult = runtime.executeCommand(command);
+    require(calibrationResult.ack.error_code == VaporView::CommandErrorCode::UnknownCommand,
+            "Core rejects calibration without a completed maintenance workflow");
+    command.command_seq = 17;
+    operation.request_id = 80;
+    command.payload = VaporView::TelemetryCodec::serializeDeviceOperationRequest(operation);
+    bool maintenanceCompleted = false;
+    runtime.submitCommand(command, [&](const VaporView::SkyCommandResult& result) {
+        require(result.ack.error_code == VaporView::CommandErrorCode::UnknownCommand,
+                "asynchronous simulation also refuses fabricated calibration ACK");
+        maintenanceCompleted = true;
+    });
+    require(runtime.executeCommand(startRecording).ack.error_code == VaporView::CommandErrorCode::DeviceOperationBusy,
+            "recording cannot start while maintenance owns the collector");
+    deadline.restart();
+    while (!maintenanceCompleted && deadline.elapsed() < 3000) QCoreApplication::processEvents();
+    require(maintenanceCompleted, "unsupported maintenance releases collector ownership");
+    operation.operation = VaporView::DeviceOperation::CalibrateEpsilonMagnetic3D;
+    operation.payload = VaporView::TelemetryCodec::serializeEpsilonMaintenanceAction(VaporView::EpsilonMaintenanceAction::Magnetic3D);
+    operation.request_id = 81;
+    command.command_seq = 18;
+    command.payload = VaporView::TelemetryCodec::serializeDeviceOperationRequest(operation);
+    bool magneticCompleted = false;
+    runtime.submitCommand(command, [&](const VaporView::SkyCommandResult& result) {
+        require(result.ack.error_code == VaporView::CommandErrorCode::UnknownCommand,
+                "simulation cannot invent magnetic calibration completion");
+        VaporView::EpsilonMaintenanceResult maintenance;
+        require(VaporView::TelemetryCodec::parseEpsilonMaintenanceResult(result.device_operation_response.payload, maintenance) &&
+                maintenance.action == VaporView::EpsilonMaintenanceAction::Magnetic3D,
+                "unsupported magnetic result matches requested action");
+        magneticCompleted = true;
+    });
+    VaporView::DeviceOperationRequest cancel;
+    cancel.request_id = 82;
+    cancel.device_id = VaporView::SkyDeviceId::Epsilon;
+    cancel.operation = VaporView::DeviceOperation::CancelEpsilonMagneticCalibration;
+    cancel.payload = QByteArray::fromHex("51000000");
+    auto cancelCommand = command;
+    cancelCommand.command_seq = 19;
+    cancelCommand.payload = VaporView::TelemetryCodec::serializeDeviceOperationRequest(cancel);
+    bool cancelAccepted = false;
+    runtime.submitCommand(cancelCommand, [&](const VaporView::SkyCommandResult& result) {
+        cancelAccepted = result.ack.error_code == VaporView::CommandErrorCode::Ok;
+    });
+    require(cancelAccepted && !magneticCompleted, "cancel is accepted before busy check without claiming calibration completion");
+    deadline.restart();
+    while (!magneticCompleted && deadline.elapsed() < 3000) QCoreApplication::processEvents();
+    require(magneticCompleted, "magnetic worker final result releases ownership after cancel");
+
     VaporView::SkyLocalIpcServer ipc(&runtime);
     require(ipc.listen(QStringLiteral("127.0.0.1"), 0), "listen isolated IPC server");
     QTcpSocket slowClient;

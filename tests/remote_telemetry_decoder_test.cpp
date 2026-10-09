@@ -49,12 +49,21 @@ int main(int argc, char** argv)
     telemetry.pitch_deg = -2.0f;
     telemetry.yaw_deg = 93.0f;
     telemetry.raw_frame_count = 99;
+    telemetry.device_info_valid = true;
+    telemetry.hardware_name = QStringLiteral("EPSILON");
+    telemetry.firmware_name = QStringLiteral("EPSILON2");
+    telemetry.hardware_version = 123;
+    telemetry.firmware_version = 456;
+    telemetry.serial_number = {1, 2, 3, 4};
 
     const auto decoded = VaporView::Ground::decodeRemoteEpsilonTelemetry(
         telemetry, std::chrono::steady_clock::time_point{});
     require(decoded.available && decoded.hasPosition, "position telemetry is marked available");
     require(decoded.data.valid && decoded.data.device_timestamp_us == 1230000,
             "remote timestamps and validity are preserved");
+    require(decoded.data.device_info_valid && decoded.data.hardware_name == "EPSILON" &&
+            decoded.data.firmware_version == 456 && decoded.data.serial_number[3] == 4,
+            "remote device identity reaches the EPSILON view model");
     require(decoded.data.gnss_fix_code == 6 && decoded.data.gnss_fix_text == "RTK_FIXED",
             "zero fix code falls back to filter status bits");
     require(VaporView::Geo::isPlausibleEcef(decoded.data.ecef_x_m,

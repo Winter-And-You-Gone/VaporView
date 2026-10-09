@@ -208,7 +208,13 @@ quint16 GroundTelemetryService::sendCommand(CommandId commandId, const QByteArra
         pending.retry_interval_ms = 15000;
         if (operation.operation == DeviceOperation::ReadEpsilonSettings ||
             operation.operation == DeviceOperation::ApplyEpsilonSettings ||
-            operation.operation == DeviceOperation::RestartEpsilonDevice)
+            operation.operation == DeviceOperation::RestartEpsilonDevice ||
+            operation.operation == DeviceOperation::CalibrateEpsilonLevel ||
+            operation.operation == DeviceOperation::CalibrateEpsilonAccelerometer ||
+            operation.operation == DeviceOperation::CalibrateEpsilonGyroscope ||
+            operation.operation == DeviceOperation::ReadEpsilonDgnss || operation.operation == DeviceOperation::ApplyEpsilonDgnss ||
+            operation.operation == DeviceOperation::CalibrateEpsilonMagnetic2D || operation.operation == DeviceOperation::CalibrateEpsilonMagnetic3D ||
+            operation.operation == DeviceOperation::CancelEpsilonMagneticCalibration)
         {
             pending.retry_interval_ms = TelemetryCodec::epsilonDeviceOperationTimeoutMs(operation);
             // These operations must never be replayed after an ambiguous timeout.
@@ -446,8 +452,27 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
                 pending->command.command_id == CommandId::DeviceOperation &&
                 TelemetryCodec::parseDeviceOperationRequest(pending->command.payload, operation) &&
                 (operation.operation == DeviceOperation::ReadEpsilonSettings || operation.operation == DeviceOperation::ApplyEpsilonSettings ||
-                 operation.operation == DeviceOperation::RestartEpsilonDevice);
-            if (ack.error_code != CommandErrorCode::Ok || !settingsReplyRequired)
+                 operation.operation == DeviceOperation::RestartEpsilonDevice ||
+                 operation.operation == DeviceOperation::CalibrateEpsilonLevel ||
+                 operation.operation == DeviceOperation::CalibrateEpsilonAccelerometer ||
+                 operation.operation == DeviceOperation::CalibrateEpsilonGyroscope ||
+                 operation.operation == DeviceOperation::ReadEpsilonDgnss || operation.operation == DeviceOperation::ApplyEpsilonDgnss ||
+                 operation.operation == DeviceOperation::CalibrateEpsilonMagnetic2D || operation.operation == DeviceOperation::CalibrateEpsilonMagnetic3D);
+            const bool typedFailureExpected = settingsReplyRequired && ack.error_code != CommandErrorCode::Ok &&
+                ack.error_code != CommandErrorCode::UnknownCommand && ack.error_code != CommandErrorCode::InvalidPayload;
+            if (typedFailureExpected)
+            {
+                const quint64 generation = link_generation_;
+                const quint32 requestId = operation.request_id;
+                QTimer::singleShot(30000, this, [this, generation, requestId, sequence = ack.command_seq]() {
+                    const auto outstanding = pending_commands_.constFind(sequence);
+                    DeviceOperationRequest request;
+                    if (generation == link_generation_ && outstanding != pending_commands_.cend() &&
+                        TelemetryCodec::parseDeviceOperationRequest(outstanding->command.payload, request) && request.request_id == requestId)
+                        pending_commands_.remove(sequence);
+                });
+            }
+            if ((!typedFailureExpected && ack.error_code != CommandErrorCode::Ok) || !settingsReplyRequired)
                 pending_commands_.remove(ack.command_seq);
             emit commandAckReceived(ack);
         }
@@ -539,8 +564,17 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
             {
                 DeviceOperationRequest request;
                 if (it->command.command_id == CommandId::DeviceOperation &&
-                    TelemetryCodec::parseDeviceOperationRequest(it->command.payload, request) && request.request_id == response.request_id)
+                    TelemetryCodec::parseDeviceOperationRequest(it->command.payload, request) && request.request_id == response.request_id &&
+                    request.device_id == response.device_id && request.operation == response.operation)
                 {
+                    EpsilonMaintenanceResult progress;
+                    if (request.operation == DeviceOperation::CalibrateEpsilonMagnetic2D || request.operation == DeviceOperation::CalibrateEpsilonMagnetic3D)
+                    {
+                        if (response.payload.isEmpty() && response.error_code != CommandErrorCode::Ok) { pending_commands_.erase(it); break; }
+                        if (!TelemetryCodec::parseEpsilonMaintenanceResult(response.payload, progress) ||
+                            progress.action != (request.operation == DeviceOperation::CalibrateEpsilonMagnetic2D ? EpsilonMaintenanceAction::Magnetic2D : EpsilonMaintenanceAction::Magnetic3D) ||
+                            progress.status == EpsilonMaintenanceStatus::Running) break;
+                    }
                     pending_commands_.erase(it);
                     break;
                 }

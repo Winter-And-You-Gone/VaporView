@@ -28,6 +28,13 @@ enum class EpsilonOperation
     ReadSettings,
     ApplySettings,
     RestartDevice,
+    CalibrateLevel,
+    CalibrateAccelerometer,
+    CalibrateGyroscope,
+    ReadDgnss,
+    ApplyDgnss,
+    CalibrateMagnetic2D,
+    CalibrateMagnetic3D,
 };
 
 enum class EpsilonOperationOutcome
@@ -47,6 +54,7 @@ struct EpsilonSessionResult
     CommandErrorCode error_code = CommandErrorCode::Ok;
     QString message;
     VaporView::Ground::EpsilonConfigurationResult local_result;
+    EpsilonMaintenanceResult maintenance_result;
 
     bool success() const { return outcome == EpsilonOperationOutcome::Success; }
 };
@@ -73,6 +81,11 @@ public:
             const VaporView::Ground::EpsilonDeviceOperation&)> applySettings;
         std::function<VaporView::Ground::EpsilonConfigurationResult(
             const VaporView::Ground::EpsilonDeviceOperation&)> restartDevice;
+        std::function<VaporView::Ground::EpsilonConfigurationResult(EpsilonMaintenanceAction,
+            const VaporView::Ground::EpsilonDeviceOperation&)> calibrate;
+        std::function<VaporView::Ground::EpsilonConfigurationResult(const VaporView::Ground::EpsilonDeviceOperation&)> readDgnss;
+        std::function<VaporView::Ground::EpsilonConfigurationResult(const EpsilonDgnssOperation&,
+            const VaporView::Ground::EpsilonDeviceOperation&)> applyDgnss;
     };
 
     EpsilonDeviceSession(LocalAdapter localAdapter,
@@ -104,8 +117,14 @@ public:
     quint64 applySettings(const EpsilonSettingsOperation& operation,
         const VaporView::Ground::EpsilonDeviceOperation& localDeviceOperation = {});
     quint64 restartDevice(const VaporView::Ground::EpsilonDeviceOperation& localDeviceOperation = {});
+    quint64 calibrate(EpsilonMaintenanceAction action,
+        const VaporView::Ground::EpsilonDeviceOperation& localDeviceOperation = {});
+    quint64 readDgnss(const VaporView::Ground::EpsilonDeviceOperation& localDeviceOperation = {});
+    quint64 applyDgnss(const EpsilonDgnssOperation& settings, const VaporView::Ground::EpsilonDeviceOperation& localDeviceOperation = {});
+    void cancelMaintenance();
 
 signals:
+    void maintenanceProgress(const VaporView::EpsilonMaintenanceResult& result);
     void availabilityChanged(bool available, const QString& reason);
     void operationStarted(quint64 requestId,
                           VaporView::Ground::Devices::EpsilonOperation operation);
@@ -125,6 +144,9 @@ private:
         EpsilonMainAntennaLeverArmOperation lever_arm;
         EpsilonRtcmInputOperation rtcm_input;
         EpsilonSettingsOperation settings;
+        EpsilonDgnssOperation dgnss;
+        EpsilonMaintenanceAction maintenance_action = EpsilonMaintenanceAction::Level;
+        EpsilonMaintenanceResult last_maintenance_result;
         VaporView::Ground::EpsilonDeviceOperation local_device_operation;
     };
 
@@ -155,6 +177,7 @@ private:
     quint64 next_request_id_ = 1;
     QHash<quint64, PendingOperation> pending_operations_;
     QHash<quint32, quint64> remote_request_to_session_;
+    std::shared_ptr<std::atomic_bool> local_maintenance_cancel_;
 };
 
 }  // namespace VaporView::Ground::Devices
@@ -165,3 +188,7 @@ Q_DECLARE_METATYPE(VaporView::Ground::Devices::EpsilonSessionResult)
 Q_DECLARE_METATYPE(VaporView::EpsilonSettingsGroup)
 Q_DECLARE_METATYPE(VaporView::EpsilonSettingsOperation)
 Q_DECLARE_METATYPE(VaporView::EpsilonSettingsSnapshot)
+Q_DECLARE_METATYPE(VaporView::EpsilonMaintenanceAction)
+Q_DECLARE_METATYPE(VaporView::EpsilonMaintenanceResult)
+Q_DECLARE_METATYPE(VaporView::EpsilonDgnssOperation)
+Q_DECLARE_METATYPE(VaporView::EpsilonDgnssSnapshot)

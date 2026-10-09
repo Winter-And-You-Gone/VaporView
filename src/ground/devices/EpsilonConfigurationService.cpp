@@ -83,6 +83,7 @@ EpsilonConfigurationResult finishOperation(
 
     if (streaming)
     {
+        const bool maintenance = operationName == QStringLiteral("calibrate_maintenance");
         QVariantMap fields{{QStringLiteral("device"), QStringLiteral("EPSILON")},
                            {QStringLiteral("operation"), operationName},
                            {QStringLiteral("ui_visibility"), result.command_succeeded
@@ -99,7 +100,8 @@ EpsilonConfigurationResult finishOperation(
                     ? QStringLiteral("epsilon_configuration_completed_live_stream_restored")
                     : QStringLiteral("epsilon_configuration_failed_live_stream_restored"),
                 result.command_succeeded
-                    ? QStringLiteral("EPSILON 配置已完成，实时导航流已恢复。")
+                    ? (maintenance ? QStringLiteral("EPSILON 维护命令发送及保存阶段已结束，实时导航流已恢复；请查看确认状态并重启设备验证。")
+                                   : QStringLiteral("EPSILON 配置已完成，实时导航流已恢复。"))
                     : QStringLiteral("EPSILON 配置失败，但原实时导航流已恢复。"),
                 fields);
         return result;
@@ -173,9 +175,25 @@ EpsilonConfigurationResult performSettingsOperation(
         fields.insert(QStringLiteral("error_code"), QStringLiteral("CONFIG_APPLY_FAILED"));
     emitLog(log, result.command_succeeded ? LogLevel::Info : LogLevel::Error,
             QStringLiteral("device.navigation.command"), QStringLiteral("epsilon_settings_result"),
-            result.command_succeeded ? QStringLiteral("EPSILON 设置操作完成；重启后持久化仍需实机验证。")
+            result.command_succeeded ? (name == QStringLiteral("calibrate_maintenance")
+                ? QStringLiteral("EPSILON 维护命令发送及保存阶段已结束；确认状态以维护结果为准，实际校准效果需重启后验证。")
+                : QStringLiteral("EPSILON 设置操作完成；重启后持久化仍需实机验证。"))
                                      : QStringLiteral("EPSILON 设置操作失败，部分设置可能已应用，请重新读取设备。"), fields);
-    return finishOperation(operation, name, collector, std::move(result), log);
+    try
+    {
+        return finishOperation(operation, name, collector, result, log);
+    }
+    catch (...)
+    {
+        try { collector->stop(); } catch (...) { }
+        result.live_stream_restarted = false;
+        const QString recoveryError = operation.english
+            ? QStringLiteral("EPSILON stream recovery failed unexpectedly. Reconnect the device manually.")
+            : QStringLiteral("EPSILON 导航流恢复时发生异常，请手动重新连接设备。");
+        result.error_message = result.error_message.isEmpty() ? recoveryError
+            : result.error_message + QLatin1Char(' ') + recoveryError;
+        return result;
+    }
 }
 
 } // namespace
@@ -220,6 +238,74 @@ EpsilonConfigurationResult EpsilonConfigurationService::rebootDevice(
         [](VaporView::EpsilonCollector& collector, EpsilonSettingsSnapshot&, std::string& error) {
             return collector.rebootDevice(error);
         }, log);
+}
+
+EpsilonConfigurationResult EpsilonConfigurationService::calibrateMaintenance(
+    const EpsilonDeviceOperation& operation,
+    VaporView::EpsilonMaintenanceAction action,
+    const LogCallback& log)
+{
+    EpsilonMaintenanceResult maintenance;
+    maintenance.action = action;
+    if (!validEpsilonMaintenanceAction(action))
+    {
+        EpsilonConfigurationResult result;
+        result.maintenance_result = maintenance;
+        result.error_message = QStringLiteral("Invalid EPSILON maintenance action.");
+        result.live_stream_restarted = !operation.restart_live_stream ||
+            (operation.live_collector && operation.live_collector->isRunning());
+        return result;
+    }
+    auto result = performSettingsOperation(
+        operation,
+        QStringLiteral("calibrate_maintenance"),
+        [action, &maintenance, &operation](VaporView::EpsilonCollector& collector,
+                               EpsilonSettingsSnapshot&, std::string& error) {
+            maintenance.action = action;
+            return collector.runMaintenance(action, maintenance, error, operation.maintenance_progress,
+                [cancel = operation.maintenance_cancel]() { return cancel && cancel->load(); });
+        },
+        log);
+    if (!result.live_stream_restarted)
+    {
+        maintenance.status = EpsilonMaintenanceStatus::Failed;
+        maintenance.error = result.error_message.toStdString();
+    }
+    result.maintenance_result = std::move(maintenance);
+    return result;
+}
+
+EpsilonConfigurationResult EpsilonConfigurationService::readDgnss(
+    const EpsilonDeviceOperation& operation, const LogCallback& log)
+{
+    EpsilonDgnssSnapshot snapshot;
+    auto result = performSettingsOperation(operation, QStringLiteral("read_dgnss"),
+        [&snapshot](VaporView::EpsilonCollector& collector, EpsilonSettingsSnapshot&, std::string& error) {
+            return collector.readDgnss(snapshot, error);
+        }, log);
+    result.dgnss_snapshot = std::move(snapshot);
+    return result;
+}
+
+EpsilonConfigurationResult EpsilonConfigurationService::applyDgnss(
+    const EpsilonDeviceOperation& operation, const EpsilonDgnssOperation& settings, const LogCallback& log)
+{
+    std::string error;
+    if (!validateEpsilonDgnss(settings, error))
+    {
+        EpsilonConfigurationResult result;
+        result.error_message = QString::fromStdString(error);
+        result.live_stream_restarted = !operation.restart_live_stream ||
+            (operation.live_collector && operation.live_collector->isRunning());
+        return result;
+    }
+    EpsilonDgnssSnapshot snapshot;
+    auto result = performSettingsOperation(operation, QStringLiteral("apply_dgnss"),
+        [&snapshot, &settings](VaporView::EpsilonCollector& collector, EpsilonSettingsSnapshot&, std::string& commandError) {
+            return collector.applyDgnss(settings, snapshot, commandError);
+        }, log);
+    result.dgnss_snapshot = std::move(snapshot);
+    return result;
 }
 
 EpsilonConfigurationResult EpsilonConfigurationService::applyMainAntennaLeverArm(

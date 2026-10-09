@@ -15,11 +15,20 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QStyleOptionButton>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QFileDialog>
+#include <QFile>
+#include <QSaveFile>
+#include <QMessageBox>
 #include <QEvent>
 #include <QFontMetrics>
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLineEdit>
+#include <QProgressBar>
 #include <QLayout>
 #include <QPushButton>
 #include <QResizeEvent>
@@ -29,6 +38,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <set>
 
 namespace VaporView::Ground::Navigation
 {
@@ -396,7 +406,7 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     trackLayout->setContentsMargins(2, 2, 2, 2);
     trackLayout->setSpacing(0);
     auto *tabGroup = new QButtonGroup(this);
-    for (int i = 0; i < 3; ++i)
+    for (int i = 0; i < 5; ++i)
     {
         auto *button = createNavigationSectionButton(track);
         button->setObjectName(QStringLiteral("epsilonSettingsTab_%1").arg(i));
@@ -677,7 +687,71 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     settings_actions_title_ = settingsActions.title;
     settings_actions_host_ = settingsActions.title_bar;
     settings_actions_body_ = settingsActions.card->findChild<QWidget *>(QStringLiteral("epsilonParameterActionsCardBody"));
+    device_info_label_ = new QLabel(settingsActions.card);
+    device_info_label_->setObjectName(QStringLiteral("epsilonDeviceInfo"));
+    device_info_label_->setWordWrap(true);
+    device_info_label_->setProperty("epsilonSecondaryText", true);
+    device_info_label_->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
+    settingsActions.body_layout->addWidget(device_info_label_);
     createSettingsPages();
+    createAdvancedSettingsPage();
+    auto *maintenancePage = new QWidget(pages_);
+    maintenancePage->setObjectName(QStringLiteral("epsilonMaintenancePage"));
+    auto *maintenanceLayout = new QVBoxLayout(maintenancePage);
+    maintenanceLayout->setContentsMargins(0, 10, 0, 12);
+    auto maintenanceCard = createSectionCard(maintenancePage, QStringLiteral("epsilonMaintenanceCard"), QStringLiteral("sliders-vertical"));
+    maintenanceCard.card->setProperty("epsilonParameterCard", true);
+    maintenance_title_ = maintenanceCard.title;
+    const QStringList maintenanceZh = {QStringLiteral("调平"), QStringLiteral("加表静态零偏"), QStringLiteral("陀螺静态零偏"), QStringLiteral("磁力计 2D 校准"), QStringLiteral("磁力计 3D 校准")};
+    for (int i = 0; i < maintenanceZh.size(); ++i)
+    {
+        auto *button = createActionButton(maintenanceCard.card);
+        button->setObjectName(QStringLiteral("epsilonMaintenanceButton_%1").arg(i));
+        button->setProperty("epsilonMaintenanceAction", i);
+        button->setText(maintenanceZh[i]);
+        button->setToolTip(QStringLiteral("请确认设备静止、安装条件满足，并等待校准完成"));
+        maintenanceCard.body_layout->addWidget(button, 0, Qt::AlignLeft);
+        maintenance_buttons_.append(button);
+        connect(button, &QPushButton::clicked, this, [this, i]() {
+            const QString condition = i >= 3
+                ? (i == 3 ? (is_english_ ? QStringLiteral("Avoid magnetic interference. Rotate slowly through one full turn in a level plane.") : QStringLiteral("避开磁干扰，在水平面缓慢旋转一周。"))
+                          : (is_english_ ? QStringLiteral("Avoid magnetic interference. Move through spatial figure-eight orientations.") : QStringLiteral("避开磁干扰，以空间 ∞ 字改变设备姿态。")))
+                : i == 2
+                ? (is_english_ ? QStringLiteral("The device must be stationary.") : QStringLiteral("设备必须保持静止。"))
+                : (is_english_ ? QStringLiteral("The device must be level and stationary.") : QStringLiteral("设备必须保持水平并静止。"));
+            const QString explanation = i >= 3
+                ? (is_english_ ? QStringLiteral("ACK only starts calibration. Wait for device progress or fit results and navigation recovery. Save and restart may be required; verify the physical result. Continue?")
+                               : QStringLiteral("ACK 仅表示开始校准。请等待设备进度或拟合结果及导航恢复；完成后可能需要保存和重启，并实机核对效果。是否继续？"))
+                : is_english_
+                ? QStringLiteral("The command will be sent and saved, then the device must be restarted. ACK does not prove calibration completion or its physical effect. Verify the result on the device before repeating. Continue?")
+                : QStringLiteral("将发送并保存该操作，之后需要重启设备。ACK 不能证明校准已完成或实际效果，请实机核对后再重复操作。是否继续？");
+            if (QMessageBox::question(this, is_english_ ? QStringLiteral("Confirm maintenance conditions") : QStringLiteral("确认维护前置条件"),
+                condition + QStringLiteral("\n") + explanation, QMessageBox::Yes | QMessageBox::No, QMessageBox::No) == QMessageBox::Yes)
+                emit maintenanceRequested(static_cast<VaporView::EpsilonMaintenanceAction>(i));
+        });
+    }
+    maintenance_progress_ = new QProgressBar(maintenanceCard.card);
+    maintenance_progress_->setObjectName(QStringLiteral("epsilonMaintenanceProgress"));
+    maintenance_progress_->hide();
+    maintenanceCard.body_layout->addWidget(maintenance_progress_);
+    maintenance_cancel_button_ = createActionButton(maintenanceCard.card);
+    maintenance_cancel_button_->setObjectName(QStringLiteral("epsilonMaintenanceCancelButton"));
+    maintenance_cancel_button_->hide();
+    maintenanceCard.body_layout->addWidget(maintenance_cancel_button_, 0, Qt::AlignLeft);
+    connect(maintenance_cancel_button_, &QPushButton::clicked, this, [this]() {
+        maintenance_cancel_button_->setEnabled(false);
+        maintenance_cancel_requested_ = true;
+        setSettingsStatus(is_english_ ? QStringLiteral("Exit requested; device stop and navigation recovery are not yet confirmed.") : QStringLiteral("已请求退出；设备停止与导航恢复尚未确认。"));
+        emit maintenanceCancelRequested();
+    });
+    maintenanceLayout->addWidget(maintenanceCard.card);
+    auto *maintenanceHint = new QLabel(maintenancePage);
+    maintenanceHint->setWordWrap(true);
+    maintenanceHint->setProperty("epsilonSecondaryText", true);
+    maintenanceHint->setObjectName(QStringLiteral("epsilonMaintenanceHint"));
+    maintenanceLayout->addWidget(maintenanceHint);
+    maintenanceLayout->addStretch(1);
+    pages_->addWidget(maintenancePage);
     settings_status_label_ = new QLabel(this);
     settings_status_label_->setObjectName(QStringLiteral("epsilonSettingsStatus"));
     settings_status_label_->setWordWrap(true);
@@ -690,8 +764,9 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     actions_container_ = actionsContainer;
     actionsContainer->setObjectName(QStringLiteral("epsilonActionsContainer"));
     actionsContainer->setAttribute(Qt::WA_StyledBackground, true);
+    actionsContainer->setFixedHeight(VaporView::Ground::MainSupport::kMainPageButtonHeight);
     auto *actionsLayout = new QHBoxLayout(actionsContainer);
-    actionsLayout->setContentsMargins(0, 0, 0, 2);
+    actionsLayout->setContentsMargins(0, 0, 0, 0);
     actionsLayout->setSpacing(8);
     save_button_ = createActionButton(actionsContainer);
     save_button_->setObjectName(QStringLiteral("epsilonSaveButton"));
@@ -704,12 +779,64 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     actionsLayout->addWidget(device_restart_button_);
     actionsLayout->addStretch(1);
     actionsLayout->addWidget(save_button_, 0, Qt::AlignRight | Qt::AlignVCenter);
+    auto *snapshotTools = new QWidget(settings_actions_body_);
+    auto *snapshotLayout = new QHBoxLayout(snapshotTools);
+    snapshotLayout->setContentsMargins(0, 0, 0, 0);
+    settings_export_button_ = createActionButton(snapshotTools);
+    settings_import_button_ = createActionButton(snapshotTools);
+    settings_export_button_->setObjectName(QStringLiteral("epsilonSettingsExportButton"));
+    settings_import_button_->setObjectName(QStringLiteral("epsilonSettingsImportButton"));
+    snapshotLayout->addWidget(settings_export_button_);
+    snapshotLayout->addWidget(settings_import_button_);
+    snapshotLayout->addStretch(1);
+    qobject_cast<QVBoxLayout *>(settings_actions_body_->layout())->addWidget(snapshotTools);
+    connect(settings_export_button_, &QPushButton::clicked, this, [this]() {
+        const QString path = QFileDialog::getSaveFileName(this, is_english_ ? QStringLiteral("Export device snapshot") : QStringLiteral("导出设备快照"), QString(), QStringLiteral("JSON (*.json)"));
+        if (path.isEmpty()) return;
+        QSaveFile file(path);
+        const QByteArray snapshot = exportSettingsJson();
+        if (snapshot.isEmpty() || !file.open(QIODevice::WriteOnly) ||
+            file.write(snapshot) != snapshot.size() || !file.commit())
+            setSettingsError(is_english_ ? QStringLiteral("Snapshot export failed") : QStringLiteral("快照导出失败"));
+    });
+    connect(settings_import_button_, &QPushButton::clicked, this, [this]() {
+        const QString path = QFileDialog::getOpenFileName(this, is_english_ ? QStringLiteral("Import snapshot differences") : QStringLiteral("导入快照差异"), QString(), QStringLiteral("JSON (*.json)"));
+        if (path.isEmpty()) return;
+        QFile file(path);
+        if (!file.open(QIODevice::ReadOnly))
+        {
+            setSettingsError(is_english_ ? QStringLiteral("Snapshot could not be opened") : QStringLiteral("无法打开快照文件"));
+            return;
+        }
+        VaporView::EpsilonSettingsOperation changes;
+        QString error;
+        if (!previewSettingsImport(file.read(1024 * 1024 + 1), changes, error)) { setSettingsError(error); return; }
+        QStringList lines;
+        for (const auto& change : changes.values)
+        {
+            const auto *descriptor = VaporView::epsilonParameterDescriptor(change.first);
+            const auto field = std::find_if(settings_fields_.begin(), settings_fields_.end(), [&](const auto& entry) { return entry.name == change.first; });
+            lines.append(QStringLiteral("%1: %2 → %3 %4")
+                .arg(QString::fromStdString(is_english_ ? descriptor->label_en : descriptor->label_zh))
+                .arg(field->original, 0, 'g', 12).arg(change.second, 0, 'g', 12).arg(QString::fromStdString(descriptor->unit)));
+        }
+        if (QMessageBox::question(this, is_english_ ? QStringLiteral("Review differences") : QStringLiteral("确认差异"),
+            lines.join(QLatin1Char('\n')) + (is_english_ ? QStringLiteral("\nFill editors only; Save + Apply sends changes to the device.") : QStringLiteral("\n仅填入编辑器；保存并应用后才下发设备。"))) == QMessageBox::Yes)
+            applyImportedSettings(changes);
+    });
     panelLayout->addWidget(actionsContainer);
 
     connect(recommended_button_, &QPushButton::clicked, this, &EpsilonConfigPanel::recommendedProfileRequested);
     connect(save_button_, &QPushButton::clicked, this, [this]() {
         if (pages_->currentIndex() == 0)
             emit saveRequested();
+        else if (isDgnssPage())
+        {
+            const auto operation = editedDgnss();
+            std::string error;
+            if (!VaporView::validateEpsilonDgnss(operation, error)) setSettingsError(QString::fromStdString(error));
+            else if (!operation.values.empty() && !settings_pending_) emit dgnssApplyRequested(operation);
+        }
         else
         {
             const auto operation = editedSettings();
@@ -718,7 +845,8 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
         }
     });
     connect(settings_read_button_, &QPushButton::clicked, this, [this]() {
-        emit settingsReadRequested(currentSettingsGroup());
+        if (isDgnssPage()) emit dgnssReadRequested();
+        else emit settingsReadRequested(currentSettingsGroup());
     });
     connect(device_restart_button_, &QPushButton::clicked, this, &EpsilonConfigPanel::deviceRestartRequested);
     connect(tabGroup, &QButtonGroup::idClicked, this, [this](int index) {
@@ -814,61 +942,7 @@ void EpsilonConfigPanel::createSettingsPages()
                 ? (descriptorIndex < 3 ? 0 : descriptorIndex < 6 ? 1 : 2)
                 : (descriptorIndex < 4 ? 0 : descriptorIndex < 7 ? 1 : descriptorIndex < 10 ? 2 : 3);
             ++descriptorIndex;
-            auto *row = new QWidget(cards[cardIndex].card);
-            row->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
-            row->setObjectName(QStringLiteral("epsilonParameterRow_%1").arg(QString::fromStdString(descriptor.name)));
-            auto *rowLayout = new QGridLayout(row);
-            rowLayout->setContentsMargins(0, 0, 0, 0);
-            rowLayout->setSpacing(3);
-            SettingsField field;
-            field.row = row;
-            field.name = descriptor.name;
-            field.group = group;
-            field.label = new QLabel(row);
-            field.label->setWordWrap(true);
-            field.label->setProperty("epsilonParameterLabel", true);
-            field.label->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-            rowLayout->setColumnStretch(0, 1);
-            rowLayout->addWidget(field.label, 0, 0);
-            if (descriptor.kind == VaporView::EpsilonParameterKind::Boolean)
-            {
-                auto *editor = new EpsilonParameterCheckBox(row);
-                field.editor = editor;
-                connect(editor, &QCheckBox::toggled, this, [this]() { updateSettingsControls(); });
-            }
-            else if (descriptor.kind == VaporView::EpsilonParameterKind::Enumeration)
-            {
-                auto *editor = new QComboBox(row);
-                for (const auto& option : descriptor.options)
-                    editor->addItem(QString::fromStdString(option.label_zh), option.value);
-                editor->setMinimumWidth(0);
-                editor->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-                VaporView::configureComboBoxPopup(editor, VaporView::isDarkThemeEnabled());
-                field.editor = editor;
-                connect(editor, &QComboBox::currentIndexChanged, this, [this]() { updateSettingsControls(); });
-            }
-            else
-            {
-                auto *editor = new QDoubleSpinBox(row);
-                editor->setDecimals(6);
-                editor->setRange(descriptor.has_range ? descriptor.minimum : -1e9,
-                                 descriptor.has_range ? descriptor.maximum : 1e9);
-                editor->setSuffix(descriptor.unit.empty() ? QString() : QStringLiteral(" ") + QString::fromStdString(descriptor.unit));
-                field.editor = editor;
-                connect(editor, &QDoubleSpinBox::valueChanged, this, [this]() { updateSettingsControls(); });
-            }
-            field.editor->setObjectName(QStringLiteral("epsilonParameter_%1").arg(QString::fromStdString(field.name)));
-            field.editor->setProperty("epsilonParameterName", QString::fromStdString(field.name));
-            field.editor->setFixedHeight(VaporView::Ground::MainSupport::kMainPageInputHeight);
-            field.editor->setFocusPolicy(Qt::TabFocus);
-            field.editor->setMinimumWidth(descriptor.kind == VaporView::EpsilonParameterKind::Enumeration ? 190 : 0);
-            field.editor->setMaximumWidth(descriptor.kind == VaporView::EpsilonParameterKind::Enumeration ? 240 : 170);
-            rowLayout->addWidget(field.editor, 0, 1);
-            field.state = new QLabel(row);
-            field.state->setWordWrap(true);
-            field.state->setProperty("epsilonSecondaryText", true);
-            rowLayout->addWidget(field.state, 1, 0, 1, 2);
-            settings_fields_.append(field);
+            auto *row = createParameterField(descriptor, cards[cardIndex].card);
             if (group == VaporView::EpsilonSettingsGroup::Installation && cardIndex == 2)
                 dual_antenna_grid_->addWidget(row, descriptorIndex - 7, 0);
             else
@@ -878,6 +952,66 @@ void EpsilonConfigPanel::createSettingsPages()
         pages_->addWidget(page);
     }
     arrangeSettingsFields(width() >= 760);
+}
+
+QWidget *EpsilonConfigPanel::createParameterField(const VaporView::EpsilonParameterDescriptor& descriptor, QWidget *parent)
+{
+    auto *row = new QWidget(parent);
+    row->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
+    row->setObjectName(QStringLiteral("epsilonParameterRow_%1").arg(QString::fromStdString(descriptor.name)));
+    auto *rowLayout = new QGridLayout(row);
+    rowLayout->setContentsMargins(0, 0, 0, 0);
+    rowLayout->setSpacing(3);
+    SettingsField field;
+    field.row = row;
+    field.name = descriptor.name;
+    field.group = descriptor.group;
+    field.label = new QLabel(row);
+    field.label->setWordWrap(true);
+    field.label->setProperty("epsilonParameterLabel", true);
+    field.label->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    rowLayout->setColumnStretch(0, 1);
+    rowLayout->addWidget(field.label, 0, 0);
+    if (descriptor.kind == VaporView::EpsilonParameterKind::Boolean)
+    {
+        auto *editor = new EpsilonParameterCheckBox(row);
+        field.editor = editor;
+        connect(editor, &QCheckBox::toggled, this, [this]() { updateSettingsControls(); });
+    }
+    else if (descriptor.kind == VaporView::EpsilonParameterKind::Enumeration)
+    {
+        auto *editor = new QComboBox(row);
+        for (const auto& option : descriptor.options)
+            editor->addItem(QString::fromStdString(option.label_zh), option.value);
+        editor->setMinimumWidth(0);
+        editor->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        VaporView::configureComboBoxPopup(editor, VaporView::isDarkThemeEnabled());
+        field.editor = editor;
+        connect(editor, &QComboBox::currentIndexChanged, this, [this]() { updateSettingsControls(); });
+    }
+    else
+    {
+        auto *editor = new QDoubleSpinBox(row);
+        editor->setDecimals(6);
+        editor->setRange(descriptor.has_range ? descriptor.minimum : -1e9,
+                 descriptor.has_range ? descriptor.maximum : 1e9);
+        editor->setSuffix(descriptor.unit.empty() ? QString() : QStringLiteral(" ") + QString::fromStdString(descriptor.unit));
+        field.editor = editor;
+        connect(editor, &QDoubleSpinBox::valueChanged, this, [this]() { updateSettingsControls(); });
+    }
+    field.editor->setObjectName(QStringLiteral("epsilonParameter_%1").arg(QString::fromStdString(field.name)));
+    field.editor->setProperty("epsilonParameterName", QString::fromStdString(field.name));
+    field.editor->setFixedHeight(VaporView::Ground::MainSupport::kMainPageInputHeight);
+    field.editor->setFocusPolicy(Qt::TabFocus);
+    field.editor->setMinimumWidth(descriptor.kind == VaporView::EpsilonParameterKind::Enumeration ? 190 : 0);
+    field.editor->setMaximumWidth(descriptor.kind == VaporView::EpsilonParameterKind::Enumeration ? 240 : 170);
+    rowLayout->addWidget(field.editor, 0, 1);
+    field.state = new QLabel(row);
+    field.state->setWordWrap(true);
+    field.state->setProperty("epsilonSecondaryText", true);
+    rowLayout->addWidget(field.state, 1, 0, 1, 2);
+    settings_fields_.append(field);
+    return row;
 }
 
 void EpsilonConfigPanel::arrangeSettingsFields(bool twoColumns)
@@ -930,10 +1064,146 @@ void EpsilonConfigPanel::arrangeSettingsFields(bool twoColumns)
     if (pages_) pages_->updateGeometry();
 }
 
+void EpsilonConfigPanel::createAdvancedSettingsPage()
+{
+    auto *page = new QWidget(pages_);
+    page->setObjectName(QStringLiteral("epsilonAdvancedPage"));
+    auto *layout = new QVBoxLayout(page);
+    layout->setContentsMargins(0, 10, 0, 12);
+    layout->setSpacing(10);
+    auto *selectorRow = new QWidget(page);
+    auto *selectorLayout = new QHBoxLayout(selectorRow);
+    selectorLayout->setContentsMargins(0, 0, 0, 0);
+    auto *selectorLabel = new QLabel(selectorRow);
+    selectorLabel->setObjectName(QStringLiteral("epsilonAdvancedGroupLabel"));
+    advanced_group_label_ = selectorLabel;
+    advanced_group_combo_ = new QComboBox(selectorRow);
+    advanced_group_combo_->setObjectName(QStringLiteral("epsilonAdvancedGroupCombo"));
+    advanced_group_combo_->setMinimumWidth(220);
+    VaporView::configureComboBoxPopup(advanced_group_combo_, VaporView::isDarkThemeEnabled());
+    advanced_groups_ = {VaporView::EpsilonSettingsGroup::Communication, VaporView::EpsilonSettingsGroup::Filters,
+                        VaporView::EpsilonSettingsGroup::Sensors, VaporView::EpsilonSettingsGroup::InitialState,
+                        VaporView::EpsilonSettingsGroup::ReferencePoint, VaporView::EpsilonSettingsGroup::ExternalAids};
+    for (auto group : advanced_groups_)
+        advanced_group_combo_->addItem(QString::number(static_cast<int>(group)), static_cast<int>(group));
+    selectorLayout->addWidget(selectorLabel);
+    selectorLayout->addWidget(advanced_group_combo_);
+    selectorLayout->addStretch(1);
+    layout->addWidget(selectorRow);
+    advanced_hint_ = new QLabel(page);
+    advanced_hint_->setWordWrap(true);
+    advanced_hint_->setProperty("epsilonSecondaryText", true);
+    layout->addWidget(advanced_hint_);
+    advanced_pages_ = new EpsilonPages(page);
+    advanced_pages_->setObjectName(QStringLiteral("epsilonAdvancedGroupPages"));
+    layout->addWidget(advanced_pages_, 1);
+    for (auto group : advanced_groups_)
+    {
+        auto *groupPage = new QWidget(advanced_pages_);
+        auto *groupLayout = new QVBoxLayout(groupPage);
+        groupLayout->setContentsMargins(0, 0, 0, 0);
+        const auto descriptors = VaporView::epsilonParameterDescriptors(group);
+        auto card = createSectionCard(groupPage, QStringLiteral("epsilonAdvancedCard_%1").arg(static_cast<int>(group)), QStringLiteral("sliders-vertical"));
+        card.card->setProperty("epsilonParameterCard", true);
+        advanced_titles_.append(card.title);
+        for (const auto& descriptor : descriptors)
+            card.body_layout->addWidget(createParameterField(descriptor, card.card));
+        groupLayout->addWidget(card.card);
+        groupLayout->addStretch(1);
+        advanced_pages_->addWidget(groupPage);
+    }
+    advanced_group_combo_->addItem(QStringLiteral("D4G"));
+    auto *dgnssPage = new QWidget(advanced_pages_);
+    auto *dgnssLayout = new QVBoxLayout(dgnssPage);
+    dgnssLayout->setContentsMargins(0, 0, 0, 0);
+    auto dgnssCard = createSectionCard(dgnssPage, QStringLiteral("epsilonDgnssCard"), QStringLiteral("sliders-vertical"));
+    dgnssCard.card->setProperty("epsilonParameterCard", true);
+    dgnss_title_ = dgnssCard.title;
+    for (const auto& descriptor : VaporView::epsilonDgnssDescriptors())
+    {
+        DgnssField field;
+        field.name = descriptor.name;
+        auto *row = new QWidget(dgnssCard.card);
+        auto *rowLayout = new QGridLayout(row);
+        rowLayout->setContentsMargins(0, 0, 0, 0);
+        field.label = new QLabel(row);
+        field.label->setWordWrap(true);
+        field.label->setProperty("epsilonParameterLabel", true);
+        field.editor = new QLineEdit(row);
+        field.editor->setObjectName(QStringLiteral("epsilonDgnssField_%1").arg(QString::fromStdString(field.name)));
+        field.editor->setMinimumHeight(36);
+        field.editor->setMaximumWidth(240);
+        field.editor->setMinimumWidth(120);
+        field.editor->setPlaceholderText(QStringLiteral("--"));
+        if (descriptor.secret) field.editor->setEchoMode(QLineEdit::Password);
+        field.state = new QLabel(row);
+        field.state->setWordWrap(true);
+        field.state->setProperty("epsilonSecondaryText", true);
+        rowLayout->addWidget(field.label, 0, 0);
+        rowLayout->addWidget(field.editor, 0, 1);
+        rowLayout->addWidget(field.state, 1, 0, 1, 2);
+        rowLayout->setColumnStretch(0, 1);
+        dgnssCard.body_layout->addWidget(row);
+        connect(field.editor, &QLineEdit::textChanged, this, [this]() { updateSettingsControls(); });
+        dgnss_fields_.append(field);
+    }
+    dgnssLayout->addWidget(dgnssCard.card);
+    dgnssLayout->addStretch(1);
+    advanced_pages_->addWidget(dgnssPage);
+    connect(advanced_group_combo_, &QComboBox::currentIndexChanged, this, [this](int index) {
+        advanced_pages_->setCurrentIndex(index);
+        updateSettingsTexts();
+        updateSettingsControls();
+    });
+    pages_->addWidget(page);
+}
+
 VaporView::EpsilonSettingsGroup EpsilonConfigPanel::currentSettingsGroup() const
 {
+    if (isDgnssPage()) return VaporView::EpsilonSettingsGroup::Communication;
+    if (pages_->currentIndex() == 3 && advanced_group_combo_)
+        return static_cast<VaporView::EpsilonSettingsGroup>(advanced_group_combo_->currentData().toInt());
     return pages_->currentIndex() == 2 ? VaporView::EpsilonSettingsGroup::Fusion
                                     : VaporView::EpsilonSettingsGroup::Installation;
+}
+
+bool EpsilonConfigPanel::isDgnssPage() const
+{
+    return pages_->currentIndex() == 3 && advanced_group_combo_ && advanced_group_combo_->currentIndex() == advanced_groups_.size();
+}
+
+VaporView::EpsilonDgnssOperation EpsilonConfigPanel::editedDgnss() const
+{
+    VaporView::EpsilonDgnssOperation operation;
+    for (const auto& field : dgnss_fields_)
+    {
+        const auto *descriptor = VaporView::epsilonDgnssDescriptor(field.name);
+        if (field.read && !field.unsupported && descriptor && descriptor->writable && field.editor->text() != field.original)
+            operation.values.emplace(field.name, field.editor->text().toStdString());
+    }
+    return operation;
+}
+
+void EpsilonConfigPanel::setDgnssSnapshot(const VaporView::EpsilonDgnssSnapshot& snapshot, bool partial)
+{
+    settings_saved_ = snapshot.saved;
+    settings_verified_ = snapshot.readback_verified;
+    settings_restart_required_ = settings_restart_required_ || snapshot.restart_required;
+    settings_status_custom_ = false;
+    settings_status_label_->setProperty("epsilonSettingsError", false);
+    for (auto& field : dgnss_fields_)
+    {
+        const auto value = snapshot.values.find(field.name);
+        const bool unsupported = std::find(snapshot.unsupported.begin(), snapshot.unsupported.end(), field.name) != snapshot.unsupported.end();
+        if (partial && value == snapshot.values.end() && !unsupported) continue;
+        field.read = value != snapshot.values.end() && !unsupported;
+        field.unsupported = unsupported;
+        field.original = field.read ? QString::fromStdString(value->second) : QString();
+        const QSignalBlocker blocker(field.editor);
+        field.editor->setText(field.original);
+    }
+    updateSettingsTexts();
+    updateSettingsControls();
 }
 
 VaporView::EpsilonSettingsOperation EpsilonConfigPanel::editedSettings() const
@@ -963,10 +1233,29 @@ VaporView::EpsilonSettingsOperation EpsilonConfigPanel::editedSettings() const
     return operation;
 }
 
-void EpsilonConfigPanel::invalidateSettings()
+void EpsilonConfigPanel::invalidateSettings(bool preserveMaintenanceState)
 {
     settings_pending_ = false;
-    settings_restart_required_ = false;
+    if (!preserveMaintenanceState)
+    {
+        settings_restart_required_ = false;
+        maintenance_verification_pending_ = false;
+        maintenance_running_ = false;
+        maintenance_cancel_requested_ = false;
+        live_epsilon_data_.device_info_valid = false;
+        live_epsilon_data_.hardware_name.clear();
+        live_epsilon_data_.firmware_name.clear();
+        live_epsilon_data_.serial_number.fill(0);
+        updateDeviceInfoTexts();
+    }
+    for (auto& field : dgnss_fields_)
+    {
+        field.read = false;
+        field.unsupported = false;
+        field.original.clear();
+        const QSignalBlocker blocker(field.editor);
+        field.editor->clear();
+    }
     settings_saved_ = false;
     settings_verified_ = false;
     settings_status_custom_ = false;
@@ -1014,7 +1303,7 @@ void EpsilonConfigPanel::setSettingsSnapshot(const VaporView::EpsilonSettingsSna
                 comboEditor->removeItem(comboEditor->count() - 1);
         if (field.read && descriptor)
         {
-            if (descriptor->has_range && (value->second < descriptor->minimum || value->second > descriptor->maximum))
+            if (descriptor->kind == VaporView::EpsilonParameterKind::Real && descriptor->has_range && (value->second < descriptor->minimum || value->second > descriptor->maximum))
                 field.value_supported = false;
             if (descriptor->kind == VaporView::EpsilonParameterKind::Boolean && value->second != 0 && value->second != 1)
                 field.value_supported = false;
@@ -1074,6 +1363,7 @@ void EpsilonConfigPanel::setSettingsSnapshot(const VaporView::EpsilonSettingsSna
 
 void EpsilonConfigPanel::setSettingsOperationPending(bool pending)
 {
+    if (maintenance_running_ && !pending) return;
     if (settings_pending_ == pending)
         return;
     settings_pending_ = pending;
@@ -1085,6 +1375,154 @@ void EpsilonConfigPanel::setSettingsOperationPending(bool pending)
 void EpsilonConfigPanel::setSettingsAvailable(bool available)
 {
     settings_available_ = available;
+    updateSettingsControls();
+}
+
+void EpsilonConfigPanel::setMaintenanceResult(const VaporView::EpsilonMaintenanceResult& result)
+{
+    const bool magnetic = result.action == VaporView::EpsilonMaintenanceAction::Magnetic2D || result.action == VaporView::EpsilonMaintenanceAction::Magnetic3D;
+    maintenance_running_ = result.status == VaporView::EpsilonMaintenanceStatus::Running ||
+        (magnetic && result.status == VaporView::EpsilonMaintenanceStatus::Acknowledged);
+    settings_pending_ = maintenance_running_;
+    if (!maintenance_running_) maintenance_cancel_requested_ = false;
+    maintenance_progress_->setVisible(magnetic && (maintenance_running_ || result.progress_known));
+    maintenance_progress_->setRange(0, result.progress_known ? 100 : 0);
+    if (result.progress_known) maintenance_progress_->setValue(std::clamp(result.progress_percent, 0, 100));
+    settings_restart_required_ = settings_restart_required_ || result.restart_required;
+    maintenance_verification_pending_ = maintenance_verification_pending_ || maintenance_running_ || result.restart_required || result.status == VaporView::EpsilonMaintenanceStatus::Completed ||
+        result.status == VaporView::EpsilonMaintenanceStatus::Acknowledged ||
+        result.status == VaporView::EpsilonMaintenanceStatus::SentUnverified;
+    const QStringList statusNames = is_english_
+        ? QStringList{QStringLiteral("Acknowledged, completion unverified"), QStringLiteral("Completion reported"), QStringLiteral("Failed"), QStringLiteral("Unsupported"), QStringLiteral("Sent, result unverified")}
+        : QStringList{QStringLiteral("已确认接收，完成未验证"), QStringLiteral("已报告完成"), QStringLiteral("失败"), QStringLiteral("不支持"), QStringLiteral("已发送，结果未验证")};
+    const int statusIndex = static_cast<int>(result.status);
+    const QString status = result.status == VaporView::EpsilonMaintenanceStatus::Running
+        ? (is_english_ ? QStringLiteral("Running; navigation collection paused") : QStringLiteral("正在校准；导航采集暂停"))
+        : result.status == VaporView::EpsilonMaintenanceStatus::Cancelled
+        ? (is_english_ ? QStringLiteral("Exit requested; device stop is unverified") : QStringLiteral("已请求退出，停止状态未验证"))
+        : statusNames.value(statusIndex, is_english_ ? QStringLiteral("Unknown") : QStringLiteral("未知"));
+    const QString saveStatus = magnetic
+        ? (is_english_ ? QStringLiteral("Device auto-save: %1").arg(result.saved ? QStringLiteral("reported") : QStringLiteral("unconfirmed"))
+                       : QStringLiteral("设备自动保存：%1").arg(result.saved ? QStringLiteral("已报告") : QStringLiteral("未确认")))
+        : (is_english_ ? QStringLiteral("Save ACK: %1").arg(result.saved ? QStringLiteral("received") : QStringLiteral("unconfirmed"))
+                       : QStringLiteral("保存 ACK：%1").arg(result.saved ? QStringLiteral("已收到") : QStringLiteral("未确认")));
+    const QString nextStep = maintenance_running_
+        ? (is_english_ ? QStringLiteral("Wait for device results and navigation recovery; edits and restart are disabled while running.")
+                       : QStringLiteral("请等待设备结果及导航恢复；运行期间编辑和重启均已禁用。"))
+        : (is_english_ ? QStringLiteral("Restart is available for verification; verify the physical result before repeating.")
+                       : QStringLiteral("可重启设备进行核对；再次校准前须实机核对结果。"));
+    const QString text = is_english_
+        ? QStringLiteral("Maintenance status: %1; %2. %3").arg(status, saveStatus, nextStep)
+        : QStringLiteral("维护状态：%1；%2。%3").arg(status, saveStatus, nextStep);
+    QString details = text;
+    if (result.progress_known) details += QStringLiteral(" %1%").arg(result.progress_percent);
+    if (result.fit_error_known) details += (is_english_ ? QStringLiteral(" Fit error: %1.") : QStringLiteral(" 拟合误差：%1。" )).arg(result.fit_error);
+    if (!result.algorithm.empty()) details += (is_english_ ? QStringLiteral(" Algorithm: ") : QStringLiteral(" 等级：")) + QString::fromStdString(result.algorithm);
+    setSettingsStatus(result.error.empty() ? details : details + QStringLiteral(" ") + QString::fromStdString(result.error));
+    updateSettingsControls();
+}
+
+void EpsilonConfigPanel::setRestartResult(bool succeeded)
+{
+    if (succeeded)
+    {
+        maintenance_verification_pending_ = false;
+        settings_restart_required_ = false;
+        maintenance_running_ = false;
+        maintenance_cancel_requested_ = false;
+    }
+    updateSettingsControls();
+}
+
+QByteArray EpsilonConfigPanel::exportSettingsJson() const
+{
+    QJsonArray groups;
+    for (auto group : VaporView::epsilonSettingsGroups())
+    {
+        QJsonObject values;
+        for (const auto& field : settings_fields_)
+            if (field.group == group && field.read && !field.unsupported)
+                values.insert(QString::fromStdString(field.name), field.original);
+        if (!values.isEmpty()) groups.append(QJsonObject{{QStringLiteral("group"), static_cast<int>(group)}, {QStringLiteral("values"), values}});
+    }
+    if (groups.isEmpty()) return {};
+    return QJsonDocument(QJsonObject{{QStringLiteral("schema_version"), 1}, {QStringLiteral("device"), QStringLiteral("EPSILON")}, {QStringLiteral("groups"), groups}}).toJson();
+}
+
+bool EpsilonConfigPanel::previewSettingsImport(const QByteArray& json, VaporView::EpsilonSettingsOperation& changes, QString& error) const
+{
+    changes = {};
+    changes.group = currentSettingsGroup();
+    error.clear();
+    auto fail = [&](const QString& text) { changes.values.clear(); error = text; return false; };
+    if (json.size() > 1024 * 1024)
+        return fail(is_english_ ? QStringLiteral("Snapshot exceeds 1 MB") : QStringLiteral("快照超过 1 MB"));
+    const auto document = QJsonDocument::fromJson(json);
+    const auto root = document.object();
+    auto integer = [](const QJsonValue& value, int minimum, int maximum) {
+        return value.isDouble() && std::isfinite(value.toDouble()) &&
+            value.toDouble() >= minimum && value.toDouble() <= maximum &&
+            std::floor(value.toDouble()) == value.toDouble();
+    };
+    if (!document.isObject() || !integer(root.value(QStringLiteral("schema_version")), 1, 1) ||
+        root.value(QStringLiteral("device")).toString() != QStringLiteral("EPSILON") || !root.value(QStringLiteral("groups")).isArray())
+        return fail(is_english_ ? QStringLiteral("Invalid EPSILON snapshot schema") : QStringLiteral("EPSILON 快照格式无效"));
+    std::set<int> seenGroups;
+    for (const auto& groupValue : root.value(QStringLiteral("groups")).toArray())
+    {
+        const auto object = groupValue.toObject();
+        const auto groupNumber = object.value(QStringLiteral("group"));
+        if (!groupValue.isObject() || !integer(groupNumber, 0, 255))
+            return fail(is_english_ ? QStringLiteral("Snapshot group must be an integer") : QStringLiteral("快照分组必须是整数"));
+        const int groupId = static_cast<int>(groupNumber.toDouble());
+        const auto group = static_cast<VaporView::EpsilonSettingsGroup>(groupId);
+        if (!VaporView::isValidEpsilonSettingsGroup(group) || !seenGroups.insert(groupId).second || !object.value(QStringLiteral("values")).isObject())
+            return fail(is_english_ ? QStringLiteral("Unknown, repeated, or invalid snapshot group") : QStringLiteral("快照分组未知、重复或无效"));
+        const auto values = object.value(QStringLiteral("values")).toObject();
+        for (auto it = values.begin(); it != values.end(); ++it)
+        {
+            const std::string name = it.key().toStdString();
+            const auto *descriptor = VaporView::epsilonParameterDescriptor(name);
+            if (!descriptor || descriptor->group != group || !it.value().isDouble() || !std::isfinite(it.value().toDouble()))
+                return fail(is_english_ ? QStringLiteral("Snapshot contains an unknown, misplaced or invalid parameter") : QStringLiteral("快照包含未知、跨组或无效参数"));
+            if (group != changes.group) continue;
+            const auto field = std::find_if(settings_fields_.begin(), settings_fields_.end(), [&](const auto& entry) { return entry.name == name && entry.group == changes.group; });
+            if (field == settings_fields_.end() || !field->read || !field->value_supported || field->unsupported || !descriptor->writable) continue;
+            const double value = it.value().toDouble();
+            if (auto *spin = qobject_cast<QDoubleSpinBox *>(field->editor))
+                if (value < spin->minimum() || value > spin->maximum())
+                    return fail(is_english_ ? QStringLiteral("Imported value exceeds the editor range") : QStringLiteral("导入值超出编辑器范围"));
+            if (!VaporView::epsilonSettingsValuesEqual(field->original, value)) changes.values.emplace(name, value);
+        }
+    }
+    if (changes.values.empty())
+    { error = is_english_ ? QStringLiteral("No editable differences in the current group; read the target device first") : QStringLiteral("当前分组没有可编辑差异；请先读取目标设备"); return false; }
+    std::string validationError;
+    if (!VaporView::validateEpsilonSettings(changes, validationError)) return fail(QString::fromStdString(validationError));
+    return true;
+}
+
+void EpsilonConfigPanel::applyImportedSettings(const VaporView::EpsilonSettingsOperation& changes)
+{
+    if (settings_pending_ || changes.group != currentSettingsGroup()) return;
+    std::string error;
+    if (!VaporView::validateEpsilonSettings(changes, error)) return;
+    for (const auto& field : settings_fields_)
+    {
+        const auto value = changes.values.find(field.name);
+        if (value == changes.values.end()) continue;
+        if (auto *spin = qobject_cast<QDoubleSpinBox *>(field.editor))
+            if (value->second < spin->minimum() || value->second > spin->maximum()) return;
+    }
+    for (auto& field : settings_fields_)
+    {
+        const auto value = changes.values.find(field.name);
+        const auto *descriptor = VaporView::epsilonParameterDescriptor(field.name);
+        if (value == changes.values.end() || field.group != changes.group || !field.read || !field.value_supported || field.unsupported || !descriptor || !descriptor->writable) continue;
+        if (auto *spin = qobject_cast<QDoubleSpinBox *>(field.editor)) spin->setValue(value->second);
+        else if (auto *check = qobject_cast<QCheckBox *>(field.editor)) check->setChecked(value->second != 0);
+        else if (auto *combo = qobject_cast<QComboBox *>(field.editor)) combo->setCurrentIndex(combo->findData(value->second));
+    }
     updateSettingsControls();
 }
 
@@ -1110,24 +1548,60 @@ void EpsilonConfigPanel::updateSettingsControls()
 {
     if (!save_button_)
         return;
-    const bool settingsPage = pages_->currentIndex() != 0;
+    const bool settingsPage = pages_->currentIndex() != 0 && pages_->currentIndex() != 4;
+    const bool busy = settings_pending_ || maintenance_running_;
     settings_read_button_->setVisible(settingsPage);
-    device_restart_button_->setVisible(settingsPage);
-    settings_status_label_->setVisible(settingsPage);
-    settings_read_button_->setEnabled(settings_available_ && !settings_pending_);
-    device_restart_button_->setEnabled(settings_available_ && !settings_pending_ && settings_restart_required_);
-    communication_page_->setEnabled(!settings_pending_);
-    save_button_->setEnabled(!settings_pending_ && (!settingsPage || (settings_available_ && !editedSettings().values.empty())));
+    device_restart_button_->setVisible(pages_->currentIndex() != 0);
+    settings_status_label_->setVisible(pages_->currentIndex() != 0);
+    actions_container_->setVisible(true);
+    save_button_->setVisible(pages_->currentIndex() != 4);
+    settings_export_button_->setVisible(settingsPage && !isDgnssPage());
+    settings_import_button_->setVisible(settingsPage && !isDgnssPage());
+    settings_export_button_->setEnabled(!busy && !exportSettingsJson().isEmpty());
+    settings_import_button_->setEnabled(settings_available_ && !busy);
+    settings_read_button_->setEnabled(settings_available_ && !busy);
+    device_restart_button_->setEnabled(settings_available_ && !busy &&
+        (settings_restart_required_ || (pages_->currentIndex() == 4 && maintenance_verification_pending_)));
+    communication_page_->setEnabled(!busy);
+    save_button_->setEnabled(!busy && (!settingsPage || (settings_available_ && (isDgnssPage() ? !editedDgnss().values.empty() : !editedSettings().values.empty()))));
+    for (auto& field : dgnss_fields_)
+    {
+        const auto *descriptor = VaporView::epsilonDgnssDescriptor(field.name);
+        field.editor->setEnabled(settings_available_ && !busy && field.read && !field.unsupported && descriptor && descriptor->writable);
+    }
+    maintenance_cancel_button_->setVisible(maintenance_running_);
+    maintenance_cancel_button_->setEnabled(maintenance_running_ && !maintenance_cancel_requested_);
+    if (!maintenance_running_ && !maintenance_verification_pending_) maintenance_progress_->hide();
     for (auto& field : settings_fields_)
     {
         const auto *descriptor = VaporView::epsilonParameterDescriptor(field.name);
-        field.editor->setEnabled(settings_available_ && !settings_pending_ && field.read && field.value_supported && !field.unsupported && descriptor && descriptor->writable);
+        field.editor->setEnabled(settings_available_ && !busy && field.read && field.value_supported && !field.unsupported && descriptor && descriptor->writable);
     }
+    for (auto *button : maintenance_buttons_)
+        button->setEnabled(settings_available_ && !busy && !settings_restart_required_ && !maintenance_verification_pending_);
 }
 
 void EpsilonConfigPanel::updateSettingsTexts()
 {
+    updateDeviceInfoTexts();
     settings_actions_title_->setText(is_english_ ? QStringLiteral("Device Parameters") : QStringLiteral("设备参数"));
+    if (maintenance_title_)
+        maintenance_title_->setText(is_english_ ? QStringLiteral("Calibration and Maintenance") : QStringLiteral("校准与维护"));
+    if (dgnss_title_) dgnss_title_->setText(is_english_ ? QStringLiteral("Built-in 4G (D4G)") : QStringLiteral("内置 4G（D4G）"));
+    if (maintenance_cancel_button_) maintenance_cancel_button_->setText(is_english_ ? QStringLiteral("Request Exit") : QStringLiteral("请求退出校准"));
+    for (auto& field : dgnss_fields_)
+    {
+        const auto *descriptor = VaporView::epsilonDgnssDescriptor(field.name);
+        field.label->setText(QString::fromStdString(is_english_ ? descriptor->label_en : descriptor->label_zh));
+        field.state->setText(field.unsupported ? (is_english_ ? QStringLiteral("Not supported by this device") : QStringLiteral("当前设备不支持"))
+            : !descriptor->writable ? (is_english_ ? QStringLiteral("Read only") : QStringLiteral("只读")) : QString());
+        field.state->setVisible(field.unsupported || !descriptor->writable);
+        field.editor->setToolTip(field.name == "RTCM_TYPE"
+            ? (is_english_ ? QStringLiteral("Raw firmware value. The documented Ntrip mapping conflicts with the example; mapping is unverified.") : QStringLiteral("固件原始编号；官方表与示例的 Ntrip 映射矛盾，映射尚待核实。"))
+            : !field.read ? (is_english_ ? QStringLiteral("Read this device before editing") : QStringLiteral("先读取当前设备，才能编辑")) : QString());
+    }
+    if (settings_export_button_) settings_export_button_->setText(is_english_ ? QStringLiteral("Export") : QStringLiteral("导出快照"));
+    if (settings_import_button_) settings_import_button_->setText(is_english_ ? QStringLiteral("Import") : QStringLiteral("导入差异"));
     const QStringList cardTitles = is_english_
         ? QStringList{QStringLiteral("Installation Angles"), QStringLiteral("Main Antenna Lever Arm"), QStringLiteral("Dual Antenna Geometry"),
                       QStringLiteral("GNSS Aids"), QStringLiteral("Magnetometer Aids"), QStringLiteral("Stationary Constraints"), QStringLiteral("Startup Tare and Dynamics")}
@@ -1137,15 +1611,58 @@ void EpsilonConfigPanel::updateSettingsTexts()
         settings_card_titles_[i]->setText(cardTitles[i]);
     for (int i = 0; i < settings_hints_.size(); ++i)
         settings_hints_[i]->setVisible(pages_->currentIndex() == i + 1);
+    if (advanced_group_combo_)
+    {
+        const QStringList advancedNames = is_english_
+            ? QStringList{QStringLiteral("Communication"), QStringLiteral("Filters"), QStringLiteral("Sensors"), QStringLiteral("Initial State"), QStringLiteral("Reference Point"), QStringLiteral("External Aids")}
+            : QStringList{QStringLiteral("通信设置"), QStringLiteral("滤波器"), QStringLiteral("传感器"), QStringLiteral("初始状态"), QStringLiteral("参考点"), QStringLiteral("外部辅助")};
+        for (int i = 0; i < advanced_group_combo_->count() && i < advancedNames.size(); ++i)
+            advanced_group_combo_->setItemText(i, advancedNames[i]);
+        advanced_group_combo_->setItemText(advanced_groups_.size(), is_english_ ? QStringLiteral("Built-in 4G (D4G)") : QStringLiteral("内置 4G（D4G）"));
+        if (pages_->currentIndex() == 3)
+        {
+            const QStringList hints = is_english_
+                ? QStringList{QStringLiteral("Read before editing. The Main control port is protected; COMM1 settings stay read only."),
+                    QStringLiteral("Read before editing. Zero disables a filter; no preset is applied automatically."),
+                    QStringLiteral("Read before editing. GPIO1 is reserved for internal GNSS PPS; use options supported by this firmware."),
+                    QStringLiteral("Zero restores device defaults. Initial yaw depends on heading/magnetic conditions; roll and pitch depend on gravity alignment. Fusion options are not changed automatically."),
+                    QStringLiteral("Reference point uses the IMU frame: X forward, Y right, Z down, in metres. Zero disables mapping. This is separate from antenna lever arms."),
+                    QStringLiteral("External aids require an actual input link and adequate data quality. No aiding option is enabled automatically.")}
+                : QStringList{QStringLiteral("编辑前先读取。Main 控制端口受保护；COMM1 设置保持只读。"),
+                    QStringLiteral("编辑前先读取。滤波参数 0 表示关闭；不会自动套用预设。"),
+                    QStringLiteral("编辑前先读取。GPIO1 为内部 GNSS PPS 保留；仅使用当前固件支持的选项。"),
+                    QStringLiteral("0 恢复设备默认值。初始航向与航向/磁辅助条件有关，横滚和俯仰与重力对准约束有关；不会自动修改融合开关。"),
+                    QStringLiteral("参考点采用 IMU 坐标系：X 向前、Y 向右、Z 向下，单位为米。0 关闭映射；与天线杆臂设置不同。"),
+                    QStringLiteral("外部辅助需要真实输入链路及满足要求的数据质量，不会自动开启辅助选项。")};
+            advanced_hint_->setText(hints.value(advanced_group_combo_->currentIndex()));
+            if (isDgnssPage()) advanced_hint_->setText(is_english_ ? QStringLiteral("D4G model only; read supported keys before editing. Navigation collection pauses during configuration. Credentials stay in memory and are excluded from JSON snapshots.") : QStringLiteral("仅适用于 D4G 型号；先读取支持键再编辑。配置期间导航采集暂停；凭据仅保留在内存，不进入 JSON 快照。"));
+        }
+        advanced_group_label_->setText(is_english_ ? QStringLiteral("Parameter group") : QStringLiteral("参数分组"));
+        const QStringList advancedCardTitles = is_english_
+            ? QStringList{QStringLiteral("Communication"), QStringLiteral("Filters"), QStringLiteral("Sensors"), QStringLiteral("Initial State"), QStringLiteral("Reference Point"), QStringLiteral("External Aids")}
+            : QStringList{QStringLiteral("通信设置"), QStringLiteral("滤波器"), QStringLiteral("传感器"), QStringLiteral("初始状态"), QStringLiteral("参考点"), QStringLiteral("外部辅助")};
+        for (int i = 0; i < advanced_titles_.size(); ++i)
+            advanced_titles_[i]->setText(advancedCardTitles[i]);
+    }
     const QStringList names = is_english_
-        ? QStringList{QStringLiteral("Communication"), QStringLiteral("Installation & Antennas"), QStringLiteral("Navigation Fusion")}
-        : QStringList{QStringLiteral("通信输出"), QStringLiteral("安装与天线"), QStringLiteral("导航融合")};
+        ? QStringList{QStringLiteral("Communication"), QStringLiteral("Installation & Antennas"), QStringLiteral("Navigation Fusion"), QStringLiteral("Advanced"), QStringLiteral("Calibration & Maintenance")}
+        : QStringList{QStringLiteral("通信输出"), QStringLiteral("安装与天线"), QStringLiteral("导航融合"), QStringLiteral("高级设置"), QStringLiteral("校准与维护")};
     for (int i = 0; i < page_buttons_.size(); ++i)
     {
-        page_buttons_[i]->setText(names[i]);
+        const QStringList shortNames = {QStringLiteral("Output"), QStringLiteral("Installation"), QStringLiteral("Fusion"), QStringLiteral("Advanced"), QStringLiteral("Calibration")};
+        page_buttons_[i]->setText(is_english_ ? shortNames[i] : names[i]);
         page_buttons_[i]->setAccessibleName(names[i]);
+        page_buttons_[i]->setToolTip(names[i]);
     }
     for (auto *button : page_buttons_) button->updateGeometry();
+    const QStringList maintenanceNames = is_english_
+        ? QStringList{QStringLiteral("Level alignment"), QStringLiteral("Accel bias tare"), QStringLiteral("Gyro bias tare"), QStringLiteral("Magnetometer 2D"), QStringLiteral("Magnetometer 3D")}
+        : QStringList{QStringLiteral("调平"), QStringLiteral("加表静态零偏"), QStringLiteral("陀螺静态零偏"), QStringLiteral("磁力计 2D 校准"), QStringLiteral("磁力计 3D 校准")};
+    for (int i = 0; i < maintenance_buttons_.size(); ++i)
+        maintenance_buttons_[i]->setText(maintenanceNames[i]);
+    if (auto *hint = findChild<QLabel *>(QStringLiteral("epsilonMaintenanceHint")))
+        hint->setText(is_english_ ? QStringLiteral("Level alignment and accel bias tare require a level, stationary device; gyro tare requires a stationary device. ACK does not confirm completion. Save and restart are required; verify the physical result before another calibration.")
+                                  : QStringLiteral("调平和加表静态零偏要求设备水平静止；陀螺零偏要求静止。ACK 不代表完成。操作需要保存和重启；再次校准前须实机核对结果。"));
     auto *track = page_buttons_.first()->parentWidget();
     track->layout()->invalidate();
     auto *tabs = track->parentWidget();
@@ -1165,13 +1682,27 @@ void EpsilonConfigPanel::updateSettingsTexts()
         const QString label = QString::fromStdString(is_english_ ? descriptor->label_en : descriptor->label_zh);
         field.label->setText(label);
         field.editor->setAccessibleName(label);
+        QString readOnlyReason = is_english_ ? QStringLiteral("Read only") : QStringLiteral("只读");
+        if (!descriptor->writable)
+        {
+            if (field.name == "COMM_BAUD1" || field.name == "COMM_STREAM_TYP1")
+                readOnlyReason = is_english_ ? QStringLiteral("Read only: protects the Main control link") : QStringLiteral("只读：保护 Main 控制链路");
+            else if (field.name == "GPIO_1_FUNCTION")
+                readOnlyReason = is_english_ ? QStringLiteral("Read only: reserved for internal GNSS PPS") : QStringLiteral("只读：内部 GNSS PPS 占用");
+            else if (field.name == "GNSS_L_ANTS_BASE_LINE")
+                readOnlyReason = is_english_ ? QStringLiteral("Read only: calculated by the device") : QStringLiteral("只读：由设备计算");
+            else if (field.name.rfind("USER_DEFINE_HOLD", 0) == 0)
+                readOnlyReason = is_english_ ? QStringLiteral("Read only: origin encoding is not verified") : QStringLiteral("只读：原点编码尚未确认");
+            else if (field.name == "COMM_STREAM_TYP5")
+                readOnlyReason = is_english_ ? QStringLiteral("Read only: device CAN protocol is protected") : QStringLiteral("只读：保护设备 CAN 协议");
+        }
         field.state->setText(field.unsupported
             ? (is_english_ ? QStringLiteral("Unsupported by this device / firmware") : QStringLiteral("当前设备或固件不支持"))
             : !field.read ? QString()
             : !field.value_supported ? (is_english_
                 ? QStringLiteral("Device value %1 is outside the verified editing range; read only").arg(field.original, 0, 'g', 12)
                 : QStringLiteral("设备实际值 %1 不在已确认的编辑范围内，仅供查看").arg(field.original, 0, 'g', 12))
-            : !descriptor->writable ? (is_english_ ? QStringLiteral("Read only: parameter range is not verified") : QStringLiteral("只读：参数取值范围尚未确认")) : QString());
+            : !descriptor->writable ? readOnlyReason : QString());
         field.state->setVisible(!field.state->text().isEmpty());
         field.editor->setToolTip(!field.read && !field.unsupported
             ? (is_english_ ? QStringLiteral("Not read — current device value unknown") : QStringLiteral("未读取，设备当前值未知")) : field.state->text());
@@ -1211,6 +1742,17 @@ void EpsilonConfigPanel::updateSettingsTexts()
             editableCount += field.read && field.value_supported && descriptor && descriptor->writable ? 1 : 0;
             unsupportedCount += field.unsupported ? 1 : 0;
             unreadCount += !field.read && !field.unsupported ? 1 : 0;
+        }
+        if (isDgnssPage())
+        {
+            readCount = editableCount = unsupportedCount = unreadCount = 0;
+            for (const auto& field : dgnss_fields_)
+            {
+                readCount += field.read ? 1 : 0;
+                editableCount += field.read && !field.unsupported && VaporView::epsilonDgnssDescriptor(field.name)->writable ? 1 : 0;
+                unsupportedCount += field.unsupported ? 1 : 0;
+                unreadCount += !field.read && !field.unsupported ? 1 : 0;
+            }
         }
         const QString readStatus = readCount > 0
             ? (is_english_
@@ -1266,6 +1808,27 @@ void EpsilonConfigPanel::setLivePacketRates(const VaporView::EpsilonData& epsilo
 {
     live_epsilon_data_ = epsilonData;
     updateLivePacketRateTexts();
+    updateDeviceInfoTexts();
+}
+
+void EpsilonConfigPanel::updateDeviceInfoTexts()
+{
+    if (!device_info_label_) return;
+    if (!live_epsilon_data_.device_info_valid)
+    {
+        device_info_label_->setText(is_english_ ? QStringLiteral("Version packet not received") : QStringLiteral("未收到版本报文"));
+        device_info_label_->setToolTip(QString());
+        return;
+    }
+    QStringList serial;
+    for (uint32_t part : live_epsilon_data_.serial_number)
+        serial.append(QStringLiteral("%1").arg(part, 8, 16, QLatin1Char('0')));
+    const QString text = (is_english_ ? QStringLiteral("Hardware: %1 [%2]; Firmware: %3 [%4]; SN: %5") : QStringLiteral("硬件：%1 [%2]；固件：%3 [%4]；序列号：%5"))
+        .arg(QString::fromStdString(live_epsilon_data_.hardware_name)).arg(live_epsilon_data_.hardware_version)
+        .arg(QString::fromStdString(live_epsilon_data_.firmware_name)).arg(live_epsilon_data_.firmware_version)
+        .arg(serial.join(QLatin1Char('-')));
+    device_info_label_->setText(text);
+    device_info_label_->setToolTip(text);
 }
 
 std::map<uint8_t, int> EpsilonConfigPanel::packetRates() const
@@ -1596,6 +2159,8 @@ void EpsilonConfigPanel::applyAppearance()
         "QLabel[epsilonSettingsError=\"true\"] { color: @vv-danger; }"
         "QPushButton#epsilonRecommendedConfigButton { min-height: 28px; max-height: 28px; padding-top: 0px; padding-bottom: 0px; }"
         "QWidget#epsilonActionsContainer { background-color: transparent; border: none; }"
+        "QProgressBar#epsilonMaintenanceProgress { background-color: @vv-surface-alt; color: @vv-text; border: 1px solid @vv-border; border-radius: 4px; min-height: 18px; text-align: center; }"
+        "QProgressBar#epsilonMaintenanceProgress::chunk { background-color: @vv-primary; border-radius: 3px; }"
         "QWidget#epsilonSummaryFields, QWidget#epsilonLivePacketRateGrid, QWidget#epsilonOutputTitleActions, QWidget#epsilonPacketGrid { background-color: transparent; border: none; }"
         "QComboBox[epsilonRtcmDevicePortControl=\"true\"] { background-color: @vv-surface; }")
         .arg(VaporView::appThemeColorName(VaporView::isDarkThemeEnabled()

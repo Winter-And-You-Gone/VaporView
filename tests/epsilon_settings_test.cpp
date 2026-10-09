@@ -1,4 +1,5 @@
 #include "EpsilonSettings.h"
+#include "EpsilonMaintenance.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -33,7 +34,7 @@ struct Device
 
     Device()
     {
-        for (const auto group : {EpsilonSettingsGroup::Installation, EpsilonSettingsGroup::Fusion})
+        for (const auto group : epsilonSettingsGroups())
             for (const auto& descriptor : epsilonParameterDescriptors(group))
                 values[descriptor.name] = 0;
     }
@@ -92,6 +93,276 @@ struct Device
 
 int main()
 {
+    {
+        std::string value, error;
+        require(parseEpsilonDgnssResponse("NTRIP_PASSWORD：failed-error-password\r\n", "NTRIP_PASSWORD", value) && value == "failed-error-password",
+                "DGNSS values may contain ordinary error words and fullwidth delimiter");
+        require(!parseEpsilonDgnssResponse("NTRIP_ACCOUNT=a\r\nNTRIP_ACCOUNT=b\r\n", "NTRIP_ACCOUNT", value), "DGNSS rejects conflicting duplicate values");
+        require(!validateEpsilonDgnss({{{"NTRIP_PASSWORD", "bad\r\n#freboot"}}}, error), "DGNSS rejects injection");
+        require(!validateEpsilonDgnss({{{"RTCM_TYPE", "2"}}}, error), "conflicting RTCM type mapping is read-only");
+        std::map<std::string,std::string> values{{"NTRIP_ACCOUNT","old"}};
+        int saves = 0;
+        std::vector<std::string> commands;
+        const EpsilonSettingsExchange exchange = [&](const std::string& command,int) {
+            commands.push_back(command);
+            if (command == "#fsave\r\n") { ++saves; return std::string("*#OK\r\n"); }
+            if (command.find("#fdgnss get ") == 0) return "NTRIP_ACCOUNT=" + values["NTRIP_ACCOUNT"] + "\r\n";
+            if (command.find("#fdgnss set ") == 0) values["NTRIP_ACCOUNT"] = "new";
+            return std::string("*#OK\r\n");
+        };
+        EpsilonDgnssSnapshot snapshot;
+        require(applyEpsilonDgnss({{{"NTRIP_ACCOUNT","new"}}}, exchange, snapshot, error) && saves == 1 &&
+                snapshot.saved && snapshot.readback_verified && commands.back() == "#fdeconfig\r\n", "real DGNSS helper writes saves verifies and exits");
+    }
+    for (const std::string failureLine : {"", "ERROR write rejected\r\n", "FAILED write rejected\r\n", "UNSUPPORTED field\r\n", "*#ERROR\r\n"})
+    {
+        const std::string requested = "error-failed-unsupported.example";
+        std::string value = "old", error;
+        int saves = 0;
+        std::vector<std::string> commands;
+        const EpsilonSettingsExchange exchange = [&](const std::string& command, int) {
+            commands.push_back(command);
+            if (command.find("#fdgnss get ") == 0) return "NTRIP_PASSWORD=" + value + "\r\n";
+            if (command.find("#fdgnss set ") == 0)
+            {
+                value = requested;
+                return command + failureLine + "*#OK\r\n";
+            }
+            if (command == "#fsave\r\n") ++saves;
+            return std::string("*#OK\r\n");
+        };
+        EpsilonDgnssSnapshot snapshot;
+        const bool success = applyEpsilonDgnss({{{"NTRIP_PASSWORD", requested}}}, exchange, snapshot, error);
+        require(success == failureLine.empty(), "DGNSS write ACK ignores error words in echoed values but rejects independent error lines");
+        require(commands.back() == "#fdeconfig\r\n" && snapshot.restart_required,
+                "DGNSS echoed write preserves write risk and exits configuration");
+        require(failureLine.empty() ? snapshot.saved && snapshot.readback_verified && saves == 1
+                                    : !snapshot.saved && !snapshot.readback_verified && saves == 0 && !error.empty(),
+                "DGNSS rejected ACK cannot claim save or readback success");
+    }
+    {
+        EpsilonMaintenanceResult result;
+        std::string error;
+        int exits = 0, aidWrites = 0, saves = 0;
+        const EpsilonMaintenanceExchange exchange = [&](const std::string& command, int, const EpsilonMaintenanceWriteTrace& written) {
+            if (written) written();
+            if (command.find("#fparam get ") == 0)
+            { const auto key = command.substr(12, command.size()-14); return key + "=1\r\n"; }
+            if (command.find("#fparam set ") == 0) ++aidWrites;
+            if (command == "#fsave\r\n") ++saves;
+            if (command == "#fdeconfig\r\n" && ++exits == 1) throw std::runtime_error("exit read disconnected");
+            return std::string("*#OK\r\n");
+        };
+        require(!runEpsilonMaintenance(EpsilonMaintenanceAction::Magnetic2D, exchange, result, error, {}, [] { return true; }) &&
+                aidWrites == 6 && saves == 1 && exits == 2,
+                "magnetic first exit exception still restores and saves every changed AID");
+        require(result.status == EpsilonMaintenanceStatus::Cancelled && result.restart_required && !result.saved &&
+                error.find("exit request") != std::string::npos && result.error == error,
+                "magnetic exit exception remains an unverified failure after successful AID restoration");
+    }
+    for (int scenario = 0; scenario < 5; ++scenario)
+    {
+        int poll = 0;
+        std::string error;
+        EpsilonMaintenanceResult result;
+        std::vector<std::string> commands;
+        const EpsilonMaintenanceExchange exchange = [&](const std::string& command, int, const EpsilonMaintenanceWriteTrace& written) {
+            commands.push_back(command);
+            if (written) written();
+            if (command.find("#fparam get ") == 0)
+            { const auto key = command.substr(12, command.size()-14); return key + "=1\r\n"; }
+            if (command == "#fmagcal2d\r\n") return std::string("*#OK\r\nNow: 1");
+            if (command.empty())
+            {
+                ++poll;
+                if (scenario == 0 || scenario == 4) return std::string("00 percent\r\n");
+                return std::string("\r\n*#OK\r\n");
+            }
+            if (scenario == 4 && poll && command.find("#fparam set ") == 0) return std::string("*#ERROR\r\n");
+            return std::string("*#OK\r\n");
+        };
+        const bool success = runEpsilonMaintenance(EpsilonMaintenanceAction::Magnetic2D, exchange, result, error, {},
+            [&]() { return scenario == 2 && poll > 0; });
+        require(success == (scenario == 0), "magnetic completion requires real progress and successful AID restoration");
+        if (scenario == 2) require(result.status == EpsilonMaintenanceStatus::Cancelled, "magnetic cancellation is explicitly unverified");
+        if (scenario == 4) require(result.saved && result.status == EpsilonMaintenanceStatus::Failed, "auto-save survives AID restore failure");
+        if (scenario == 1 || scenario == 3) require(poll == 300, "ACK-only magnetic reports never complete before timeout");
+    }
+    {
+        EpsilonMaintenanceResult result;
+        std::string error;
+        int polls = 0, aidWrites = 0;
+        const EpsilonMaintenanceExchange exchange = [&](const std::string& command, int, const EpsilonMaintenanceWriteTrace& written) {
+            if (command == "#fmagcal2d\r\n") return std::string(); // Short write: no trace.
+            if (written) written();
+            if (command.empty()) ++polls;
+            if (command.find("#fparam set ") == 0) ++aidWrites;
+            if (command.find("#fparam get ") == 0)
+            { const auto key = command.substr(12, command.size()-14); return key + "=1\r\n"; }
+            return std::string("*#OK\r\n");
+        };
+        require(!runEpsilonMaintenance(EpsilonMaintenanceAction::Magnetic2D, exchange, result, error) &&
+                result.status == EpsilonMaintenanceStatus::Failed && result.restart_required && polls == 0 && aidWrites == 6,
+                "short magnetic command write fails without polling and restores AID despite earlier successful AID writes");
+    }
+    for (int scenario = 0; scenario < 3; ++scenario)
+    {
+        int poll = 0;
+        EpsilonMaintenanceResult result;
+        std::string error;
+        const EpsilonMaintenanceExchange exchange = [&](const std::string& command, int, const EpsilonMaintenanceWriteTrace& written) {
+            if (written) written();
+            if (command.find("#fparam get ") == 0)
+            { const auto key = command.substr(12, command.size()-14); return key + "=0\r\n"; }
+            if (command == "#fmagcal3d\r\n") return std::string("*#OK\r\n");
+            if (command.empty())
+            {
+                ++poll;
+                if (scenario == 0) return std::string("The fitting error of the current calculation: 2.5\r\nCalibration Algorithm: High\r\n");
+                if (poll == 1) return std::string("The fitting error of the current calculation: 1\r\nCalibration Algorithm: Low\r\n");
+                if (scenario == 1) return std::string("This is a magnetometer 3D calibration.\r\nCalibration Algorithm: High\r\n");
+                return std::string("The fitting error of the current calculation: NaN\r\nCalibration Algorithm: High\r\n");
+            }
+            return std::string("*#OK\r\n");
+        };
+        require(runEpsilonMaintenance(EpsilonMaintenanceAction::Magnetic3D, exchange, result, error) == (scenario == 0),
+                "3D magnetic calibration requires same report finite fitting error below three and High algorithm");
+    }
+    for (int scenario = 0; scenario < 3; ++scenario)
+    {
+        EpsilonMaintenanceResult result;
+        std::string error;
+        int aidWrites = 0;
+        const EpsilonMaintenanceExchange exchange = [&](const std::string& command, int, const EpsilonMaintenanceWriteTrace& written) {
+            if (written) written();
+            if (command.find("#fparam set ") == 0) ++aidWrites;
+            if (command == "#fparam get AID_MAG_2D_MAGNETIC\r\n") return std::string("AID_MAG_2D_MAGNETIC=1\r\n");
+            if (command == "#fparam get AID_MAG_3D_MAGNETIC\r\n") return scenario == 0 ? std::string("*#ERROR\r\n") : std::string("AID_MAG_3D_MAGNETIC=0\r\n");
+            if (command == "#fparam get AID_MAG_V_MAGNETIC\r\n") return std::string("AID_MAG_V_MAGNETIC=1\r\n");
+            if (command == "#fdeconfig\r\n" && scenario == 2) return std::string("*#ERROR\r\n");
+            return std::string("*#OK\r\n");
+        };
+        require(!runEpsilonMaintenance(EpsilonMaintenanceAction::Magnetic2D, exchange, result, error, {}, [] { return true; }),
+                "magnetic alias conflict or cancellation does not claim completion");
+        if (scenario == 0) require(result.restart_required && aidWrites > 0, "cancel after disabling supported MAG_V alias preserves reboot risk and restores AID");
+        else require(aidWrites == 0, "conflicting aliases issue no AID writes");
+        if (scenario == 2) require(error.find("exit request") != std::string::npos, "failed magnetic exit is retained even without AID changes");
+    }
+    for (int scenario = 0; scenario < 7; ++scenario)
+    {
+        std::vector<std::string> commands;
+        EpsilonMaintenanceResult result;
+        std::string error;
+        const EpsilonMaintenanceExchange exchange = [&](const std::string& command, int interval,
+                                                        const EpsilonMaintenanceWriteTrace& written) {
+            require(interval == 1500, "maintenance preserves official command interval");
+            commands.push_back(command);
+            if (command == "#fimucal_acce\r\n")
+            {
+                if (written) written();
+                if (scenario == 5) throw std::runtime_error("read after successful write failed");
+                return scenario == 1 ? std::string() : std::string("*#OK\r\n");
+            }
+            if ((scenario == 2 && command == "#fconfig\r\n") ||
+                (scenario == 3 && command == "#fsave\r\n") ||
+                (scenario == 4 && command == "#fdeconfig\r\n"))
+                return std::string("*#ERROR\r\n*#OK\r\n");
+            if (scenario == 6 && command == "#fdeconfig\r\n")
+                throw std::runtime_error("exit disconnected");
+            return std::string("*#OK\r\n");
+        };
+        const bool success = runEpsilonMaintenance(EpsilonMaintenanceAction::Accelerometer, exchange, result, error);
+        require(success == (scenario <= 1), "real maintenance helper distinguishes acknowledgement, silence and failures");
+        require(commands.back() == "#fdeconfig\r\n", "maintenance always attempts configuration exit");
+        if (scenario == 0)
+            require(result.status == EpsilonMaintenanceStatus::Acknowledged && result.saved && result.restart_required,
+                    "acknowledged static tare is saved and needs restart, not completed");
+        if (scenario == 1)
+            require(result.status == EpsilonMaintenanceStatus::SentUnverified && result.saved && result.restart_required,
+                    "silent action response stays sent-unverified despite save acknowledgement");
+        if (scenario == 2)
+            require(commands.size() == 2 && !result.restart_required, "mixed error and OK entry does not send tare");
+        if (scenario == 3)
+            require(!result.saved && result.restart_required, "mixed save response is not persistence acknowledgement");
+        if (scenario == 5)
+            require(result.restart_required && !result.saved, "read exception preserves completed action write fact");
+    }
+    for (const auto group : epsilonSettingsGroups())
+    {
+        Device device;
+        EpsilonSettingsSnapshot groupSnapshot;
+        std::string groupError;
+        require(readEpsilonSettings(group, device.channel(), groupSnapshot, groupError), "all seven groups can read independently");
+        require(groupSnapshot.values.size() == epsilonParameterDescriptors(group).size(), "each group snapshot includes its own descriptors");
+    }
+    for (const double currentProtocol : {0.0, 1.0, 2.0, 999.0})
+    {
+        Device device;
+        device.values["COMM_BAUD2"] = 5;
+        device.values["COMM_STREAM_TYP2"] = currentProtocol;
+        EpsilonSettingsSnapshot communicationSnapshot;
+        std::string communicationError;
+        const bool applied = applyEpsilonSettings({EpsilonSettingsGroup::Communication, {{"COMM_BAUD2", 6}}},
+                                                  device.channel(), communicationSnapshot, communicationError);
+        require(applied == (currentProtocol == 0 || currentProtocol == 2), "Main and unknown protocol prevent baud writes");
+        require(device.writes() == (applied ? 1 : 0), "protected communication request issues no write");
+        device.requireExited();
+    }
+    {
+        Device device;
+        device.missing = "COMM_STREAM_TYP3";
+        EpsilonSettingsSnapshot communicationSnapshot;
+        std::string communicationError;
+        require(!applyEpsilonSettings({EpsilonSettingsGroup::Communication, {{"COMM_BAUD3", 6}}}, device.channel(),
+                                      communicationSnapshot, communicationError) && device.writes() == 0,
+                "unreadable control protocol prevents baud writes");
+        device.requireExited();
+    }
+    require(epsilonSettingsGroups().size() == 8, "all documented settings groups are exposed");
+    require(epsilonParameterDescriptor("COMM_BAUD2") != nullptr &&
+            epsilonParameterDescriptor("FILT_LPF_CUTOFF_FREQ_ACC_XY") != nullptr &&
+            epsilonParameterDescriptor("IMU_RANGE_ACC") != nullptr &&
+            epsilonParameterDescriptor("USER_DEFINE_L_IMU_POINT_X") != nullptr,
+            "second-stage parameter descriptors are discoverable");
+    {
+        std::string descriptorError;
+        require(validateEpsilonSettings({EpsilonSettingsGroup::Sensors, {{"IMU_RANGE_ACC", 0}}}, descriptorError),
+                "documented non-monotonic sensor enum value is accepted");
+        require(!validateEpsilonSettings({EpsilonSettingsGroup::Filters, {{"FILT_LPF_CUTOFF_FREQ_ACC_XY", -1}}}, descriptorError),
+                "filter cutoff cannot be negative");
+        require(validateEpsilonSettings({EpsilonSettingsGroup::Communication, {{"COMM_STREAM_TYP2", 2}}}, descriptorError),
+                "secondary stream can use documented NAV protocol");
+        require(!validateEpsilonSettings({EpsilonSettingsGroup::Communication, {{"COMM_STREAM_TYP2", 1}}}, descriptorError),
+                "cannot create a second Main stream");
+        require(!validateEpsilonSettings({EpsilonSettingsGroup::ExternalAids, {{"ODOM_SCAL1", 0}}}, descriptorError),
+                "odometer scale must be positive");
+        require(validateEpsilonSettings({EpsilonSettingsGroup::ExternalAids, {{"ODOM_TYPE", 3}, {"ODOM_SCAL1", 1.02}}}, descriptorError),
+                "user odometer settings accept documented type and positive scale");
+        require(!validateEpsilonSettings({EpsilonSettingsGroup::Sensors, {{"GPIO_1_FUNCTION", 0}}}, descriptorError),
+                "internal GNSS PPS GPIO1 cannot be reconfigured");
+        require(validateEpsilonSettings({EpsilonSettingsGroup::Sensors, {{"GPIO_2_FUNCTION", 2}}}, descriptorError),
+                "external GPIO2 PPS input can be configured");
+        for (int code = 10; code <= 24; ++code)
+            require(validateEpsilonSettings({EpsilonSettingsGroup::Communication, {{"COMM_STREAM_TYP2", static_cast<double>(code)}}}, descriptorError),
+                    "EPSILON common external input protocol enum is accepted");
+        require(!validateEpsilonSettings({EpsilonSettingsGroup::Communication, {{"COMM_STREAM_TYP2", 25}}}, descriptorError),
+                "unverified DroneCAN protocol remains unavailable");
+        require(validateEpsilonSettings({EpsilonSettingsGroup::Communication, {{"MSG_OUT_NMEA", 4}}}, descriptorError),
+                "NMEA five Hz uses documented enum four");
+        require(!validateEpsilonSettings({EpsilonSettingsGroup::Communication, {{"MSG_OUT_NMEA", 3}}}, descriptorError),
+                "NMEA frequency does not accept invented sequential enum");
+    }
+    for (const double currentProtocol : {0.0, 1.0, 2.0})
+    {
+        Device device;
+        device.values["COMM_STREAM_TYP3"] = currentProtocol;
+        EpsilonSettingsSnapshot streamSnapshot;
+        std::string streamError;
+        const bool applied = applyEpsilonSettings({EpsilonSettingsGroup::Communication, {{"COMM_STREAM_TYP3", 3}}},
+                                                  device.channel(), streamSnapshot, streamError);
+        require(applied == (currentProtocol != 1), "secondary protocol applies while Main remains protected");
+        require(device.writes() == (applied ? 1 : 0), "Main protocol protection prevents writes");
+    }
     const std::string roll = "BODY_TO_VEHICLE_ALGN_ROLL";
     double value = 123;
     require(parseEpsilonParameterResponse("#fparam get BODY_TO_VEHICLE_ALGN_ROLL\r\nBODY_TO_VEHICLE_ALGN_ROLL=-1.25e+1\r\n*#OK\r\n", roll, value) && value == -12.5,

@@ -11,6 +11,8 @@
 #include <QStackedWidget>
 #include <QFrame>
 #include <QLabel>
+#include <QLineEdit>
+#include <QProgressBar>
 #include <QPushButton>
 #include <QSet>
 
@@ -62,7 +64,9 @@ int main(int argc, char *argv[])
     QApplication::processEvents();
 
     int sectionCardCount = 0;
-    for (QFrame *card : panel.findChildren<QFrame *>())
+    auto *communicationPage = panel.findChild<QWidget *>(QStringLiteral("epsilonCommunicationPage"));
+    require(communicationPage != nullptr, "communication page exists");
+    for (QFrame *card : communicationPage->findChildren<QFrame *>())
     {
         if (card->property("epsilonConfigCard").toBool() &&
             !card->property("epsilonParameterCard").toBool())
@@ -519,9 +523,25 @@ int main(int argc, char *argv[])
     auto *settingsStatus = panel.findChild<QLabel *>(QStringLiteral("epsilonSettingsStatus"));
     auto *settingsTabs = panel.findChild<QFrame *>(QStringLiteral("epsilonSettingsTabs"));
     auto *settingsTrack = panel.findChild<QFrame *>(QStringLiteral("epsilonSettingsTabTrack"));
-    require(pages && pages->count() == 3 && installationTab && fusionTab && communicationTab &&
+    require(pages && pages->count() == 5 && installationTab && fusionTab && communicationTab &&
             readButton && saveButton && restartButton && settingsStatus,
             "EPSILON exposes three internal pages and shared read/save/restart actions");
+    auto *maintenanceTab = panel.findChild<QPushButton *>(QStringLiteral("epsilonSettingsTab_4"));
+    auto *maintenanceCard = panel.findChild<QFrame *>(QStringLiteral("epsilonMaintenanceCard"));
+    require(maintenanceTab && maintenanceCard && panel.findChildren<QPushButton *>(QStringLiteral("epsilonMaintenanceButton_0")).size() == 1,
+            "calibration maintenance page exposes concrete vendor backed actions");
+    auto *maintenanceHeading = maintenanceCard->findChild<QLabel *>(QStringLiteral("sectionTitleLabel"));
+    auto *maintenanceIcon = maintenanceCard->findChild<QLabel *>(QStringLiteral("sectionTitleIcon"));
+    require(maintenanceHeading && maintenanceHeading->text() == QStringLiteral("校准与维护") &&
+            maintenanceIcon && !maintenanceIcon->pixmap().isNull(),
+            "maintenance card preserves the shared heading name and a supported rendered icon");
+    auto *levelButton = panel.findChild<QPushButton *>(QStringLiteral("epsilonMaintenanceButton_0"));
+    auto *accelerometerButton = panel.findChild<QPushButton *>(QStringLiteral("epsilonMaintenanceButton_1"));
+    auto *gyroButton = panel.findChild<QPushButton *>(QStringLiteral("epsilonMaintenanceButton_2"));
+    require(levelButton && gyroButton && !levelButton->isEnabled() && !gyroButton->isEnabled() &&
+            accelerometerButton && !accelerometerButton->isEnabled() &&
+            accelerometerButton->text() == QStringLiteral("加表静态零偏"),
+            "maintenance actions start disabled and acceleration is a static bias tare");
     require(settingsTabs && settingsTabs->height() == 36 && settingsTrack &&
             settingsTrack->parentWidget() == settingsTabs &&
             communicationTab->parentWidget() == settingsTrack &&
@@ -613,6 +633,33 @@ int main(int argc, char *argv[])
     auto *unsupportedEditor = panel.findChild<QWidget *>(QStringLiteral("epsilonParameter_%1").arg(QString::fromStdString(unsupportedDescriptor->name)));
     require(editor && editor->isEnabled() && unsupportedEditor && !unsupportedEditor->isEnabled() &&
             !saveButton->isEnabled(), "successful reads enable only supported fields and start clean");
+    const QByteArray exportedSnapshot = panel.exportSettingsJson();
+    require(!exportedSnapshot.isEmpty() && exportedSnapshot.contains("schema_version"), "successfully read values export in a versioned snapshot");
+    QByteArray importedSnapshot = exportedSnapshot;
+    importedSnapshot.replace("\"BODY_TO_VEHICLE_ALGN_ROLL\": 0", "\"BODY_TO_VEHICLE_ALGN_ROLL\": 2");
+    VaporView::EpsilonSettingsOperation importedChanges;
+    QString importError;
+    require(panel.previewSettingsImport(importedSnapshot, importedChanges, importError) && importedChanges.values.size() == 1,
+            "import preview produces only editable current-group differences");
+    auto importJson = [](double version, double group, const QByteArray& values) {
+        return QByteArray("{\"device\":\"EPSILON\",\"schema_version\":") + QByteArray::number(version) +
+            ",\"groups\":[{\"group\":" + QByteArray::number(group) + ",\"values\":" + values + "}]}";
+    };
+    VaporView::EpsilonSettingsOperation rejectedChanges;
+    for (const QByteArray& invalid : {QByteArray("malformed"), importJson(1.5, 0, "{}"), importJson(1, 0.5, "{}"),
+        importJson(1, 0, "{\"DYNAMICS_MODEL\":1}"), importJson(1, 0, "{\"BODY_TO_VEHICLE_ALGN_ROLL\":999}"),
+        importJson(1, 0, "{\"BODY_TO_VEHICLE_ALGN_ROLL\":\"2\"}"), QByteArray(1024 * 1024 + 1, ' '),
+        QByteArray("{\"device\":\"EPSILON\",\"schema_version\":1,\"groups\":[{\"group\":0,\"values\":{}},{\"group\":0,\"values\":{}}]}")})
+        require(!panel.previewSettingsImport(invalid, rejectedChanges, importError) && rejectedChanges.values.empty(),
+                "malformed, fractional, repeated, oversized and cross-group imports are rejected without edits");
+    require(!panel.previewSettingsImport(importJson(1, 0, "{\"BODY_TO_VEHICLE_ALGN_YAW\":5}"), rejectedChanges, importError),
+            "unread target values cannot be filled by importing a snapshot");
+    require(!panel.previewSettingsImport(importJson(1, 0, "{\"GNSS_L_ANTS_BASE_LINE\":5}"), rejectedChanges, importError),
+            "read-only and unsupported values never become imported differences");
+    require(panel.previewSettingsImport(importedSnapshot, importedChanges, importError), "valid differences remain usable after invalid imports");
+    panel.applyImportedSettings(importedChanges);
+    require(editor->value() == 2, "confirmed import fills editors without issuing a device operation");
+    editor->setValue(0);
     require(editor->width() <= 170, "numeric device values use compact editors instead of full-width fields");
     require(settingsStatus->text().contains(QStringLiteral("已读取 2 项")) &&
             settingsStatus->text().contains(QStringLiteral("2 项可编辑")) &&
@@ -721,6 +768,8 @@ int main(int argc, char *argv[])
     auto *booleanEditor = panel.findChild<QCheckBox *>(QStringLiteral("epsilonParameter_%1").arg(QString::fromStdString(boolean->name)));
     auto *enumEditor = panel.findChild<QComboBox *>(QStringLiteral("epsilonParameter_%1").arg(QString::fromStdString(enumeration->name)));
     require(booleanEditor && enumEditor && booleanEditor->isEnabled() && enumEditor->isEnabled(), "read boolean and enum editors become available");
+    require(!panel.previewSettingsImport(importJson(1, 1, "{\"DYNAMICS_MODEL\":99}"), rejectedChanges, importError),
+            "imported unknown enum options are rejected");
     require(booleanEditor->property("epsilonThemedIndicator").toBool() &&
             booleanEditor->styleSheet().contains(QStringLiteral("image: none")),
             "fusion checkbox uses a local theme-painted indicator instead of the dark native glyph");
@@ -771,6 +820,147 @@ int main(int argc, char *argv[])
     panel.setSettingsAvailable(true);
     require(!editor->isEnabled() && editor->text() == QStringLiteral("--") && !restartButton->isEnabled(),
             "device invalidation clears current values and pending restart state");
+    VaporView::EpsilonMaintenanceResult maintenanceResult;
+    maintenanceResult.status = VaporView::EpsilonMaintenanceStatus::SentUnverified;
+    maintenanceResult.saved = true;
+    maintenanceResult.restart_required = true;
+    panel.setMaintenanceResult(maintenanceResult);
+    require(!levelButton->isEnabled() && !accelerometerButton->isEnabled() && !gyroButton->isEnabled(),
+            "ambiguous maintenance result blocks repeated actions until restart");
+    panel.invalidateSettings(true);
+    require(!levelButton->isEnabled() && !accelerometerButton->isEnabled() && !gyroButton->isEnabled() && restartButton->isEnabled(),
+            "same device recovery invalidation preserves maintenance lock and pending restart");
+    panel.setRestartResult(false);
+    require(!levelButton->isEnabled(), "failed restart preserves maintenance verification lock");
+    panel.setRestartResult(true);
+    require(levelButton->isEnabled() && accelerometerButton->isEnabled() && gyroButton->isEnabled(),
+            "successful restart releases maintenance repeat lock");
+    panel.setMaintenanceResult(maintenanceResult);
+    panel.invalidateSettings();
+    require(levelButton->isEnabled() && accelerometerButton->isEnabled() && gyroButton->isEnabled() && !restartButton->isEnabled(),
+            "new device invalidation clears previous maintenance lock and pending restart");
+    auto *advancedTab = panel.findChild<QPushButton *>(QStringLiteral("epsilonSettingsTab_3"));
+    auto *advancedSelector = panel.findChild<QComboBox *>(QStringLiteral("epsilonAdvancedGroupCombo"));
+    require(advancedTab && advancedSelector && advancedSelector->count() == 7,
+            "D4G is an advanced subpage without creating another navigation tab");
+    advancedTab->click();
+    advancedSelector->setCurrentIndex(6);
+    auto *accountEditor = panel.findChild<QLineEdit *>(QStringLiteral("epsilonDgnssField_NTRIP_ACCOUNT"));
+    auto *passwordEditor = panel.findChild<QLineEdit *>(QStringLiteral("epsilonDgnssField_NTRIP_PASSWORD"));
+    auto *typeEditor = panel.findChild<QLineEdit *>(QStringLiteral("epsilonDgnssField_RTCM_TYPE"));
+    require(panel.isDgnssPage() && VaporView::isValidEpsilonSettingsGroup(panel.currentSettingsGroup()) &&
+            accountEditor && !accountEditor->isEnabled() && passwordEditor->echoMode() == QLineEdit::Password,
+            "unread D4G strings remain disabled and passwords are masked without an invented group");
+    int dgnssReads = 0;
+    VaporView::EpsilonDgnssOperation dgnssApplied;
+    QObject::connect(&panel, &EpsilonConfigPanel::dgnssReadRequested, [&]() { ++dgnssReads; });
+    QObject::connect(&panel, &EpsilonConfigPanel::dgnssApplyRequested, [&](const auto& operation) { dgnssApplied = operation; });
+    readButton->click();
+    require(dgnssReads == 1, "D4G read dispatches independently of numeric settings");
+    VaporView::EpsilonDgnssSnapshot dgnssSnapshot;
+    dgnssSnapshot.values = {{"RTCM_TYPE", "3"}, {"NTRIP_ACCOUNT", "private-account"}, {"NTRIP_PASSWORD", "private-password"}};
+    dgnssSnapshot.unsupported = {"FDI_AUTH"};
+    panel.setDgnssSnapshot(dgnssSnapshot);
+    require(accountEditor->isEnabled() && !typeEditor->isEnabled() && typeEditor->text() == QStringLiteral("3") &&
+            !saveButton->isEnabled(), "D4G reads preserve raw RTCM values and never become dirty");
+    auto *authEditor = panel.findChild<QLineEdit *>(QStringLiteral("epsilonDgnssField_FDI_AUTH"));
+    require(authEditor && !authEditor->isEnabled() && authEditor->echoMode() == QLineEdit::Password,
+            "unsupported authorization is disabled and masked");
+    accountEditor->setText(QStringLiteral("edited-account"));
+    saveButton->click();
+    require(dgnssApplied.values.size() == 1 && dgnssApplied.values.at("NTRIP_ACCOUNT") == "edited-account" &&
+            !panel.exportSettingsJson().contains("private-account") && !panel.exportSettingsJson().contains("private-password"),
+            "D4G save sends only read writable differences and ordinary snapshots omit credentials");
+    VaporView::EpsilonDgnssSnapshot dgnssPartial;
+    dgnssPartial.values = {{"NTRIP_ACCOUNT", "edited-account"}};
+    panel.setDgnssSnapshot(dgnssPartial, true);
+    require(passwordEditor->text() == QStringLiteral("private-password") && !saveButton->isEnabled(),
+            "D4G partial acknowledgement preserves untouched fields without dirty values");
+    accountEditor->setText(QStringLiteral("invalid account"));
+    saveButton->click();
+    require(dgnssApplied.values.at("NTRIP_ACCOUNT") == "edited-account" && settingsStatus->text().contains(QStringLiteral("Invalid")),
+            "D4G invalid string is rejected with the backend validator error");
+    panel.setMaintenanceResult(maintenanceResult);
+    panel.invalidateSettings(true);
+    panel.setDgnssSnapshot(VaporView::EpsilonDgnssSnapshot{}, true);
+    require(accountEditor->text().isEmpty() && passwordEditor->text().isEmpty() && !accountEditor->isEnabled() &&
+            !passwordEditor->isEnabled() && restartButton->isEnabled(),
+            "empty failed D4G partial clears old credentials while preserving maintenance restart state");
+    panel.invalidateSettings();
+    require(accountEditor->text().isEmpty() && passwordEditor->text().isEmpty() && !accountEditor->isEnabled(),
+            "target invalidation clears D4G credentials and read eligibility");
+    auto *deviceInfo = panel.findChild<QLabel *>(QStringLiteral("epsilonDeviceInfo"));
+    require(deviceInfo && deviceInfo->text().contains(QStringLiteral("Version packet not received")),
+            "device information stays unknown until the real version packet arrives");
+    VaporView::EpsilonData versionData;
+    versionData.device_info_valid = true;
+    versionData.hardware_name = "EPSILON";
+    versionData.firmware_name = "vendor-fw";
+    versionData.hardware_version = 123456;
+    versionData.firmware_version = 654321;
+    versionData.serial_number = {1, 2, 3, 4};
+    panel.setLivePacketRates(versionData);
+    require(deviceInfo->text().contains(QStringLiteral("123456")) && deviceInfo->text().contains(QStringLiteral("654321")) &&
+            deviceInfo->text().contains(QStringLiteral("00000001-00000002-00000003-00000004")) &&
+            deviceInfo->textInteractionFlags().testFlag(Qt::TextSelectableByMouse),
+            "device versions remain raw numbers and serial number text is copyable");
+    panel.invalidateSettings();
+    require(deviceInfo->text().contains(QStringLiteral("Version packet not received")) && deviceInfo->toolTip().isEmpty(),
+            "new target clears prior device information");
+    maintenanceTab->click();
+    VaporView::EpsilonMaintenanceResult magneticResult;
+    magneticResult.action = VaporView::EpsilonMaintenanceAction::Magnetic2D;
+    magneticResult.status = VaporView::EpsilonMaintenanceStatus::Running;
+    panel.setMaintenanceResult(magneticResult);
+    auto *progress = panel.findChild<QProgressBar *>(QStringLiteral("epsilonMaintenanceProgress"));
+    auto *cancelMaintenance = panel.findChild<QPushButton *>(QStringLiteral("epsilonMaintenanceCancelButton"));
+    require(progress && progress->maximum() == 0 && cancelMaintenance && cancelMaintenance->isEnabled() && !levelButton->isEnabled(),
+            "unknown magnetic progress is indeterminate and blocks other operations");
+    panel.resize(620, 800);
+    QApplication::processEvents();
+    const QRect restartRect(restartButton->mapTo(restartButton->parentWidget(), QPoint()), restartButton->size());
+    require(restartButton->parentWidget()->rect().contains(restartRect),
+            "narrow maintenance actions reserve the full restart button height without clipping");
+    require(settingsStatus->text().contains(QStringLiteral("restart are disabled")) &&
+            !settingsStatus->text().contains(QStringLiteral("Restart is available")),
+            "running maintenance explains that restart stays disabled");
+    require(panel.styleSheet().contains(QStringLiteral("QProgressBar#epsilonMaintenanceProgress::chunk")),
+            "magnetic progress uses the panel theme rather than the native blue progress chunk");
+    panel.setSettingsOperationPending(false);
+    require(!readButton->isEnabled() && !restartButton->isEnabled(),
+            "generic pending updates cannot unlock an active magnetic calibration");
+    magneticResult.progress_known = true;
+    magneticResult.progress_percent = 37;
+    panel.setMaintenanceResult(magneticResult);
+    require(progress->maximum() == 100 && progress->value() == 37, "magnetic progress displays the actual device percentage");
+    cancelMaintenance->click();
+    panel.setMaintenanceResult(magneticResult);
+    require(!cancelMaintenance->isEnabled() && !levelButton->isEnabled(), "cancel request does not claim device stop or unlock edits");
+    magneticResult.status = VaporView::EpsilonMaintenanceStatus::Completed;
+    magneticResult.restart_required = true;
+    magneticResult.saved = true;
+    magneticResult.fit_error_known = true;
+    magneticResult.fit_error = 2.1;
+    magneticResult.algorithm = "High";
+    panel.setMaintenanceResult(magneticResult);
+    require(!levelButton->isEnabled() && restartButton->isEnabled() && settingsStatus->text().contains(QStringLiteral("High")),
+            "final magnetic result shows device fit grade and retains verification lock with restart available");
+    require(settingsStatus->text().contains(QStringLiteral("Device auto-save: reported")) && !settingsStatus->text().contains(QStringLiteral("Save ACK")),
+            "magnetic completion reports device auto-save without inventing an fsave acknowledgement");
+    panel.invalidateSettings();
+    magneticResult.status = VaporView::EpsilonMaintenanceStatus::Running;
+    magneticResult.restart_required = false;
+    magneticResult.saved = false;
+    panel.setMaintenanceResult(magneticResult);
+    magneticResult.status = VaporView::EpsilonMaintenanceStatus::Failed;
+    panel.setMaintenanceResult(magneticResult);
+    require(!levelButton->isEnabled() && restartButton->isEnabled(),
+            "unverified magnetic failure offers a verification restart even without a required restart flag");
+    magneticResult.status = VaporView::EpsilonMaintenanceStatus::Cancelled;
+    panel.setMaintenanceResult(magneticResult);
+    require(settingsStatus->text().contains(QStringLiteral("Exit requested; device stop is unverified")),
+            "cancelled maintenance never claims the device has stopped");
+    panel.invalidateSettings();
     communicationTab->click();
     QApplication::processEvents();
     require(saveButton->isEnabled() && !readButton->isVisible(), "communication page retains offline save semantics");

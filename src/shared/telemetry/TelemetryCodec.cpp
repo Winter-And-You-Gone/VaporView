@@ -526,6 +526,14 @@ QByteArray TelemetryCodec::serializeBasicTelemetry(const TelemetryBasic& data)
     appendFloatLe(payload, data.euler_orien_packet_rate_hz);
     appendFloatLe(payload, data.quat_orien_packet_rate_hz);
     appendFloatLe(payload, data.raw_satellite_epoch_rate_hz);
+    if (data.device_info_valid)
+    {
+        for (quint32 value : data.serial_number) appendLe<quint32>(payload, value);
+        appendLe<quint32>(payload, data.hardware_version);
+        payload.append(data.hardware_name.toLatin1().left(8).leftJustified(8, '\0'));
+        appendLe<quint32>(payload, data.firmware_version);
+        payload.append(data.firmware_name.toLatin1().left(8).leftJustified(8, '\0'));
+    }
     return payload;
 }
 
@@ -625,6 +633,28 @@ bool TelemetryCodec::parseBasicTelemetry(const QByteArray& payload, TelemetryBas
     }
     if(payload.size()-offset>=static_cast<qsizetype>(sizeof(float)) &&
        !readFloatLe(payload,offset,data.raw_satellite_epoch_rate_hz))return false;
+    if (payload.size() > offset)
+    {
+        if (payload.size() - offset != 40) return false;
+        for (auto& value : data.serial_number)
+            if (!readLe(payload, offset, value)) return false;
+        if (!readLe(payload, offset, data.hardware_version)) return false;
+        const auto readName = [&](QString& name) {
+            const QByteArray bytes = payload.mid(offset, 8);
+            offset += 8;
+            const auto nul = bytes.indexOf('\0');
+            const auto text = nul < 0 ? bytes : bytes.left(nul);
+            for (char byte : text)
+                if (static_cast<unsigned char>(byte) < 32 || static_cast<unsigned char>(byte) > 126) return false;
+            if (nul >= 0)
+                for (char byte : bytes.mid(nul)) if (byte != '\0' && byte != ' ') return false;
+            name = QString::fromLatin1(text).trimmed();
+            return !name.isEmpty();
+        };
+        if (!readName(data.hardware_name) || !readLe(payload, offset, data.firmware_version) ||
+            !readName(data.firmware_name)) return false;
+        data.device_info_valid = true;
+    }
     return true;
 }
 
@@ -1407,7 +1437,13 @@ bool validDeviceOperation(DeviceOperation operation)
            operation == DeviceOperation::ConfigureEpsilonRtcmInput ||
            operation == DeviceOperation::ReadEpsilonSettings ||
            operation == DeviceOperation::ApplyEpsilonSettings ||
-           operation == DeviceOperation::RestartEpsilonDevice;
+           operation == DeviceOperation::RestartEpsilonDevice ||
+           operation == DeviceOperation::CalibrateEpsilonLevel ||
+           operation == DeviceOperation::CalibrateEpsilonAccelerometer ||
+           operation == DeviceOperation::CalibrateEpsilonGyroscope ||
+           operation == DeviceOperation::ReadEpsilonDgnss || operation == DeviceOperation::ApplyEpsilonDgnss ||
+           operation == DeviceOperation::CalibrateEpsilonMagnetic2D || operation == DeviceOperation::CalibrateEpsilonMagnetic3D ||
+           operation == DeviceOperation::CancelEpsilonMagneticCalibration;
 }
 
 QByteArray TelemetryCodec::serializeAi8TemperatureControllerStatus(
@@ -1885,7 +1921,12 @@ bool TelemetryCodec::parseRtcmCorrectionData(const QByteArray& payload, QByteArr
 
 int TelemetryCodec::epsilonDeviceOperationTimeoutMs(const DeviceOperationRequest& request)
 {
+    if (request.operation == DeviceOperation::CalibrateEpsilonMagnetic2D || request.operation == DeviceOperation::CalibrateEpsilonMagnetic3D) return 420000;
+    if (request.operation == DeviceOperation::ReadEpsilonDgnss || request.operation == DeviceOperation::ApplyEpsilonDgnss) return 240000;
     if (request.operation == DeviceOperation::RestartEpsilonDevice) return 45000;
+    if (request.operation == DeviceOperation::CalibrateEpsilonLevel ||
+        request.operation == DeviceOperation::CalibrateEpsilonAccelerometer ||
+        request.operation == DeviceOperation::CalibrateEpsilonGyroscope) return 45000;
     EpsilonSettingsGroup group = EpsilonSettingsGroup::Installation;
     EpsilonSettingsOperation settings;
     if (request.operation == DeviceOperation::ReadEpsilonSettings)
@@ -1907,6 +1948,164 @@ int TelemetryCodec::epsilonDeviceOperationTimeoutMs(const DeviceOperationRequest
     return 3000 * commands + 30000;
 }
 
+QByteArray TelemetryCodec::serializeEpsilonMaintenanceAction(EpsilonMaintenanceAction action)
+{
+    if (!validEpsilonMaintenanceAction(action)) return {};
+    return QByteArray(1, static_cast<char>(action));
+}
+
+bool TelemetryCodec::parseEpsilonMaintenanceAction(const QByteArray& payload, EpsilonMaintenanceAction& action)
+{
+    if (payload.size() != 1) return false;
+    const auto parsed = static_cast<EpsilonMaintenanceAction>(static_cast<quint8>(payload.at(0)));
+    if (!validEpsilonMaintenanceAction(parsed)) return false;
+    action = parsed;
+    return true;
+}
+
+QByteArray TelemetryCodec::serializeEpsilonMaintenanceResult(const EpsilonMaintenanceResult& result)
+{
+    if (!validEpsilonMaintenanceAction(result.action) || result.status > EpsilonMaintenanceStatus::Cancelled ||
+        result.progress_percent < 0 || result.progress_percent > 100 || !std::isfinite(result.fit_error) ||
+        result.fit_error < 0 || result.algorithm.size() > 128 ||
+        (!result.fit_error_known && result.fit_error != 0)) return {};
+    QByteArray payload;
+    payload.append(static_cast<char>(result.action));
+    payload.append(static_cast<char>(result.status));
+    appendLe<quint16>(payload, static_cast<quint16>(result.progress_percent));
+    const QByteArray error = QByteArray::fromStdString(result.error).left(4096);
+    appendLe<quint16>(payload, static_cast<quint16>(error.size()));
+    payload.append(error);
+    payload.append(result.saved ? '\1' : '\0');
+    payload.append(result.restart_required ? '\1' : '\0');
+    payload.append(result.progress_known ? '\1' : '\0');
+    payload.append(result.fit_error_known ? '\1' : '\0');
+    appendDoubleLe(payload, result.fit_error);
+    const auto algorithm = QByteArray::fromStdString(result.algorithm);
+    appendLe<quint16>(payload, static_cast<quint16>(algorithm.size()));
+    payload.append(algorithm);
+    return payload;
+}
+
+bool TelemetryCodec::parseEpsilonMaintenanceResult(const QByteArray& payload, EpsilonMaintenanceResult& result)
+{
+    if (payload.size() < 8) return false;
+    qsizetype offset = 0;
+    const auto action = static_cast<EpsilonMaintenanceAction>(static_cast<quint8>(payload.at(offset++)));
+    const auto status = static_cast<EpsilonMaintenanceStatus>(static_cast<quint8>(payload.at(offset++)));
+    quint16 progress = 0, errorSize = 0;
+    if (!validEpsilonMaintenanceAction(action) || status > EpsilonMaintenanceStatus::Cancelled ||
+        !readLe(payload, offset, progress) || progress > 100 || !readLe(payload, offset, errorSize) ||
+        errorSize > 4096 || offset + errorSize + 2 > payload.size()) return false;
+    const auto saved = static_cast<quint8>(payload.at(offset + errorSize));
+    const auto restartRequired = static_cast<quint8>(payload.at(offset + errorSize + 1));
+    if (saved > 1 || restartRequired > 1) return false;
+    result.action = action;
+    result.status = status;
+    result.progress_percent = progress;
+    result.error = payload.mid(offset, errorSize).toStdString();
+    result.saved = saved != 0;
+    result.restart_required = restartRequired != 0;
+    result.progress_known = false;
+    result.fit_error_known = false;
+    result.fit_error = 0;
+    result.algorithm.clear();
+    offset += errorSize + 2;
+    if (offset == payload.size()) return action <= EpsilonMaintenanceAction::Gyroscope;
+    if (offset + 2 > payload.size()) return false;
+    const quint8 progressKnown = static_cast<quint8>(payload.at(offset++));
+    const quint8 fitKnown = static_cast<quint8>(payload.at(offset++));
+    quint16 algorithmSize = 0;
+    if (progressKnown > 1 || fitKnown > 1 || !readDoubleLe(payload, offset, result.fit_error) ||
+        !std::isfinite(result.fit_error) || result.fit_error < 0 || !readLe(payload, offset, algorithmSize) || algorithmSize > 128 ||
+        offset + algorithmSize != payload.size()) return false;
+    result.progress_known = progressKnown != 0;
+    result.fit_error_known = fitKnown != 0;
+    result.algorithm = payload.mid(offset, algorithmSize).toStdString();
+    if (!result.fit_error_known && result.fit_error != 0) return false;
+    return true;
+}
+
+QByteArray TelemetryCodec::serializeEpsilonDgnssOperation(const EpsilonDgnssOperation& operation)
+{
+    QJsonObject values;
+    for (const auto& entry : operation.values)
+        values.insert(QString::fromStdString(entry.first), QString::fromStdString(entry.second));
+    return QJsonDocument(QJsonObject{{QStringLiteral("version"), 1}, {QStringLiteral("values"), values}}).toJson(QJsonDocument::Compact);
+}
+
+bool TelemetryCodec::parseEpsilonDgnssOperation(const QByteArray& payload, EpsilonDgnssOperation& operation)
+{
+    if (payload.size() > 16384) return false;
+    const auto document = QJsonDocument::fromJson(payload);
+    if (!document.isObject()) return false;
+    const auto object = document.object();
+    int version = 0;
+    if (!readRequiredJsonInt(object, QStringLiteral("version"), version) || version != 1 ||
+        !object.value(QStringLiteral("values")).isObject()) return false;
+    const auto values = object.value(QStringLiteral("values")).toObject();
+    EpsilonDgnssOperation parsed;
+    if (values.size() > 32) return false;
+    for (auto it = values.begin(); it != values.end(); ++it)
+    {
+        if (!it.value().isString()) return false;
+        parsed.values.emplace(it.key().toStdString(), it.value().toString().toStdString());
+    }
+    std::string error;
+    if (!validateEpsilonDgnss(parsed, error)) return false;
+    operation = std::move(parsed);
+    return true;
+}
+
+QByteArray TelemetryCodec::serializeEpsilonDgnssSnapshot(const EpsilonDgnssSnapshot& snapshot)
+{
+    auto object = QJsonDocument::fromJson(serializeEpsilonDgnssOperation({snapshot.values})).object();
+    QJsonArray unsupported;
+    for (const auto& name : snapshot.unsupported) unsupported.append(QString::fromStdString(name));
+    object.insert(QStringLiteral("unsupported"), unsupported);
+    object.insert(QStringLiteral("saved"), snapshot.saved);
+    object.insert(QStringLiteral("readback_verified"), snapshot.readback_verified);
+    object.insert(QStringLiteral("restart_required"), snapshot.restart_required);
+    return QJsonDocument(object).toJson(QJsonDocument::Compact);
+}
+
+bool TelemetryCodec::parseEpsilonDgnssSnapshot(const QByteArray& payload, EpsilonDgnssSnapshot& snapshot)
+{
+    if (payload.size() > 16384) return false;
+    const auto document = QJsonDocument::fromJson(payload);
+    if (!document.isObject()) return false;
+    const auto object = document.object();
+    int version = 0;
+    if (!readRequiredJsonInt(object, QStringLiteral("version"), version) || version != 1 ||
+        !object.value(QStringLiteral("values")).isObject() || !object.value(QStringLiteral("unsupported")).isArray() ||
+        !object.value(QStringLiteral("saved")).isBool() || !object.value(QStringLiteral("readback_verified")).isBool() ||
+        !object.value(QStringLiteral("restart_required")).isBool()) return false;
+    EpsilonDgnssSnapshot parsed;
+    const auto values = object.value(QStringLiteral("values")).toObject();
+    const auto unsupported = object.value(QStringLiteral("unsupported")).toArray();
+    if (values.size() > 32 || unsupported.size() > 32) return false;
+    for (auto it = values.begin(); it != values.end(); ++it)
+    {
+        if (!epsilonDgnssDescriptor(it.key().toStdString()) || !it.value().isString() ||
+            it.value().toString().toUtf8().size() > 2048 || it.value().toString().contains(QChar(0)) ||
+            it.value().toString().contains(QLatin1Char('\r')) || it.value().toString().contains(QLatin1Char('\n'))) return false;
+        parsed.values.emplace(it.key().toStdString(), it.value().toString().toStdString());
+    }
+    for (const auto& value : unsupported)
+    {
+        if (!value.isString()) return false;
+        const auto name = value.toString().toStdString();
+        if (!epsilonDgnssDescriptor(name) || parsed.values.count(name) ||
+            std::find(parsed.unsupported.begin(), parsed.unsupported.end(), name) != parsed.unsupported.end()) return false;
+        parsed.unsupported.push_back(name);
+    }
+    parsed.saved = object.value(QStringLiteral("saved")).toBool();
+    parsed.readback_verified = object.value(QStringLiteral("readback_verified")).toBool();
+    parsed.restart_required = object.value(QStringLiteral("restart_required")).toBool();
+    snapshot = std::move(parsed);
+    return true;
+}
+
 QByteArray TelemetryCodec::serializeEpsilonSettingsRead(EpsilonSettingsGroup group)
 {
     return QJsonDocument(QJsonObject{{QStringLiteral("version"), 1},
@@ -1921,7 +2120,8 @@ bool TelemetryCodec::parseEpsilonSettingsRead(const QByteArray& payload, Epsilon
     const auto object = document.object();
     int version = 0, value = -1;
     if (!readRequiredJsonInt(object, QStringLiteral("version"), version) || version != 1 ||
-        !readRequiredJsonInt(object, QStringLiteral("group"), value) || value < 0 || value > 1) return false;
+        !readRequiredJsonInt(object, QStringLiteral("group"), value) || value < 0 || value > 255 ||
+        !isValidEpsilonSettingsGroup(static_cast<EpsilonSettingsGroup>(value))) return false;
     group = static_cast<EpsilonSettingsGroup>(value);
     return true;
 }

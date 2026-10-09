@@ -37,6 +37,21 @@ int main()
 {
     VaporView::EpsilonData data;
 
+    std::vector<std::uint8_t> version(40, 0);
+    for (int index = 0; index < 4; ++index) writeValue<std::uint32_t>(version, index * 4, index + 1);
+    writeValue<std::uint32_t>(version, 16, 123);
+    std::memcpy(version.data() + 20, "EPSILON", 7);
+    writeValue<std::uint32_t>(version, 28, 456);
+    std::memcpy(version.data() + 32, "EPSILON", 7);
+    require(VaporView::EpsilonProtocol::decodeCorePacket(data, 0x39, version.data(), version.size()) &&
+            data.device_info_valid && data.hardware_version == 123 && data.firmware_version == 456 &&
+            data.serial_number[3] == 4 && data.hardware_name == "EPSILON", "decode fixed EPSILON version layout");
+    require(!VaporView::EpsilonProtocol::decodeCorePacket(data, 0x39, version.data(), 39) &&
+            data.firmware_version == 456, "truncated version preserves the previous valid identity");
+    version[20] = 1;
+    require(!VaporView::EpsilonProtocol::decodeCorePacket(data, 0x39, version.data(), version.size()),
+            "reject nonprintable version names");
+
     std::vector<std::uint8_t> imu(56, 0);
     writeValue<float>(imu, 36, 42.5f);
     writeValue<float>(imu, 40, 100125.0f);

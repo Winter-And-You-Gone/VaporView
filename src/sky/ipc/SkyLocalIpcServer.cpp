@@ -151,6 +151,8 @@ void SkyLocalIpcServer::close()
     {
         if (state && state->socket)
         {
+            if (runtime_)
+                runtime_->cancelClientDeviceOperation(QByteArray("ipc:") + QByteArray::number(state->connection_id));
             state->socket->disconnect(this);
             state->socket->disconnectFromHost();
         }
@@ -227,6 +229,8 @@ void SkyLocalIpcServer::removeClient(QTcpSocket *socket)
         ClientState *state = clients_.at(i);
         if (state && state->socket == socket)
         {
+            if (runtime_)
+                runtime_->cancelClientDeviceOperation(QByteArray("ipc:") + QByteArray::number(state->connection_id));
             clients_.removeAt(i);
             publishIpcLog(LogLevel::Info,
                           QStringLiteral("sky_ipc_client_disconnected"),

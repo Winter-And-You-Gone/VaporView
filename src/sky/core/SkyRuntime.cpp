@@ -19,6 +19,7 @@
 #include <QRandomGenerator>
 #include <QStorageInfo>
 #include <QtGlobal>
+#include <QtEndian>
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -331,11 +332,13 @@ bool SkyRuntime::start()
 
     auto attachLinkSignals = [this](TelemetryLink *link) {
         connect(link, &TelemetryLink::streamReset, this, [this]() {
+            if (maintenance_client_scope_ == QByteArrayLiteral("telemetry") && maintenance_cancel_) maintenance_cancel_->store(true);
             ++telemetry_stream_generation_;
             codec_.reset();
             rtcm_link_tracker_.reset();
         });
-        connect(link, &TelemetryLink::openChanged, this, [this](bool) {
+        connect(link, &TelemetryLink::openChanged, this, [this](bool open) {
+            if (!open && maintenance_client_scope_ == QByteArrayLiteral("telemetry") && maintenance_cancel_) maintenance_cancel_->store(true);
             ++telemetry_stream_generation_;
             codec_.reset();
             rtcm_link_tracker_.reset();
@@ -458,8 +461,11 @@ bool SkyRuntime::start()
 void SkyRuntime::stop()
 {
     ++device_command_generation_;
+    if (maintenance_cancel_) maintenance_cancel_->store(true);
     if (device_command_thread_.joinable()) device_command_thread_.join();
     active_command_key_.clear();
+    maintenance_cancel_.reset();
+    maintenance_request_id_ = 0;
     epsilon_settings_operation_pending_ = false;
     active_command_callbacks_.clear();
     serial_port_detection_cancel_requested_.store(true);
@@ -829,6 +835,12 @@ void SkyRuntime::sendBasicTelemetry()
 
     if (hasEpsilon)
     {
+        data.device_info_valid = epsilon.device_info_valid;
+        data.hardware_name = QString::fromStdString(epsilon.hardware_name);
+        data.firmware_name = QString::fromStdString(epsilon.firmware_name);
+        data.hardware_version = epsilon.hardware_version;
+        data.firmware_version = epsilon.firmware_version;
+        data.serial_number = epsilon.serial_number;
         data.validity_flags |= BasicHasEpsilonTime | BasicHasPosition;
         data.epsilon_time_us = epsilon.device_timestamp_us;
         data.latitude_deg = epsilon.latitude_deg;
@@ -1101,6 +1113,12 @@ void SkyRuntime::handleCommand(const CommandMessage& command)
     }, QByteArrayLiteral("telemetry"));
 }
 
+void SkyRuntime::cancelClientDeviceOperation(const QByteArray& clientScope)
+{
+    if (maintenance_cancel_ && maintenance_client_scope_ == clientScope)
+        maintenance_cancel_->store(true);
+}
+
 void SkyRuntime::submitCommand(const CommandMessage& command,
                               std::function<void(const SkyCommandResult&)> completion,
                               const QByteArray& clientScope)
@@ -1121,6 +1139,26 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
         result.ack = makeAck(command, CommandErrorCode::DeviceOperationBusy);
         completion(result);
     };
+    DeviceOperationRequest cancellation;
+    if (command.command_id == CommandId::DeviceOperation &&
+        TelemetryCodec::parseDeviceOperationRequest(command.payload, cancellation) &&
+        cancellation.device_id == SkyDeviceId::Epsilon && cancellation.operation == DeviceOperation::CancelEpsilonMagneticCalibration)
+    {
+        CommandErrorCode error = CommandErrorCode::InvalidPayload;
+        if (cancellation.payload.size() == 4)
+        {
+            const quint32 target = qFromLittleEndian<quint32>(reinterpret_cast<const uchar*>(cancellation.payload.constData()));
+            if (maintenance_cancel_ && target == maintenance_request_id_ && clientScope == maintenance_client_scope_)
+            { maintenance_cancel_->store(true); error = CommandErrorCode::Ok; }
+            else error = CommandErrorCode::UnknownCommand;
+        }
+        SkyCommandResult result;
+        result.ack = makeAck(command, error);
+        result.send_device_operation_response = true;
+        result.device_operation_response = {cancellation.request_id, cancellation.device_id, cancellation.operation, error, {}, {}};
+        completion(result);
+        return;
+    }
     const bool mutatesDevice = command.command_id != CommandId::RequestStatus &&
         command.command_id != CommandId::QueryDeviceStatus && command.command_id != CommandId::GetSkyConfig &&
         command.command_id != CommandId::StartRecording && command.command_id != CommandId::PauseRecording &&
@@ -1142,7 +1180,11 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
         return;
     }
     const bool settingsOperation = request.operation == DeviceOperation::ReadEpsilonSettings ||
-        request.operation == DeviceOperation::ApplyEpsilonSettings || request.operation == DeviceOperation::RestartEpsilonDevice;
+        request.operation == DeviceOperation::ApplyEpsilonSettings || request.operation == DeviceOperation::RestartEpsilonDevice ||
+        request.operation == DeviceOperation::CalibrateEpsilonLevel || request.operation == DeviceOperation::CalibrateEpsilonAccelerometer ||
+        request.operation == DeviceOperation::CalibrateEpsilonGyroscope ||
+        request.operation == DeviceOperation::ReadEpsilonDgnss || request.operation == DeviceOperation::ApplyEpsilonDgnss ||
+        request.operation == DeviceOperation::CalibrateEpsilonMagnetic2D || request.operation == DeviceOperation::CalibrateEpsilonMagnetic3D;
     if (settingsOperation && (session_recorder_.isRecording() || session_recorder_.isPaused()))
     {
         busy();
@@ -1151,7 +1193,30 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
     if (serial_port_detection_in_progress_.load()) { busy(); return; }
     auto snapshot = std::make_shared<EpsilonSettingsSnapshot>();
     auto message = std::make_shared<QString>();
-    auto work = device_manager_.prepareEpsilonOperation(request, snapshot, message);
+    auto maintenance = std::make_shared<EpsilonMaintenanceResult>();
+    auto dgnss = std::make_shared<EpsilonDgnssSnapshot>();
+    const bool magnetic = request.operation == DeviceOperation::CalibrateEpsilonMagnetic2D || request.operation == DeviceOperation::CalibrateEpsilonMagnetic3D;
+    maintenance_cancel_ = magnetic ? std::make_shared<std::atomic_bool>(false) : nullptr;
+    maintenance_request_id_ = magnetic ? request.request_id : 0;
+    maintenance_client_scope_ = clientScope;
+    maintenance_operation_ = request.operation;
+    const quint64 progressGeneration = device_command_generation_;
+    EpsilonMaintenanceProgress progress = magnetic ? EpsilonMaintenanceProgress([this, request, command, progressGeneration](const EpsilonMaintenanceResult& value) {
+        QMetaObject::invokeMethod(this, [this, request, command, progressGeneration, value]() {
+            if (progressGeneration != device_command_generation_ || maintenance_request_id_ != request.request_id ||
+                active_command_key_.isEmpty() || value.status != EpsilonMaintenanceStatus::Running) return;
+            SkyCommandResult result;
+            result.ack = makeAck(command, CommandErrorCode::Ok);
+            result.send_device_operation_response = true;
+            result.device_operation_response.request_id = request.request_id;
+            result.device_operation_response.device_id = request.device_id;
+            result.device_operation_response.operation = request.operation;
+            result.device_operation_response.payload = TelemetryCodec::serializeEpsilonMaintenanceResult(value);
+            const auto callbacks = active_command_callbacks_;
+            for (const auto& callback : callbacks) callback(result);
+        }, Qt::QueuedConnection);
+    }) : EpsilonMaintenanceProgress();
+    auto work = device_manager_.prepareEpsilonOperation(request, snapshot, message, maintenance, dgnss, maintenance_cancel_, progress);
     if (device_command_thread_.joinable()) device_command_thread_.join();
     active_command_key_ = key;
     epsilon_settings_operation_pending_ = settingsOperation;
@@ -1159,10 +1224,10 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
     const quint64 generation = device_command_generation_;
     try
     {
-    device_command_thread_ = std::thread([this, work = std::move(work), request, command, key, generation, snapshot, message]() {
+    device_command_thread_ = std::thread([this, work = std::move(work), request, command, key, generation, snapshot, message, maintenance, dgnss]() {
         CommandErrorCode error = CommandErrorCode::InternalError;
         try { error = work(); } catch (...) { }
-        QMetaObject::invokeMethod(this, [this, request, command, key, generation, error, snapshot, message]() {
+        QMetaObject::invokeMethod(this, [this, request, command, key, generation, error, snapshot, message, maintenance, dgnss]() {
             if (generation != device_command_generation_) return;
             device_manager_.completeEpsilonOperation(request, error, *snapshot);
             SkyCommandResult result;
@@ -1175,11 +1240,18 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
             result.device_operation_response.error_code = error;
             if (request.operation == DeviceOperation::ReadEpsilonSettings || request.operation == DeviceOperation::ApplyEpsilonSettings)
                 result.device_operation_response.payload = TelemetryCodec::serializeEpsilonSettingsSnapshot(*snapshot);
+            else if (request.operation == DeviceOperation::ReadEpsilonDgnss || request.operation == DeviceOperation::ApplyEpsilonDgnss)
+                result.device_operation_response.payload = TelemetryCodec::serializeEpsilonDgnssSnapshot(*dgnss);
+            else if (request.operation == DeviceOperation::CalibrateEpsilonLevel || request.operation == DeviceOperation::CalibrateEpsilonAccelerometer || request.operation == DeviceOperation::CalibrateEpsilonGyroscope ||
+                     request.operation == DeviceOperation::CalibrateEpsilonMagnetic2D || request.operation == DeviceOperation::CalibrateEpsilonMagnetic3D)
+                result.device_operation_response.payload = TelemetryCodec::serializeEpsilonMaintenanceResult(*maintenance);
             result.device_operation_response.error_message = *message;
             if (error != CommandErrorCode::Ok && message->isEmpty())
                 result.device_operation_response.error_message = QStringLiteral("EPSILON device operation failed; verify physical state before retrying.");
             command_results_.insert(key, qMakePair(command_clock_.elapsed(), result));
             active_command_key_.clear();
+            maintenance_cancel_.reset();
+            maintenance_request_id_ = 0;
             epsilon_settings_operation_pending_ = false;
             const auto callbacks = std::move(active_command_callbacks_);
             active_command_callbacks_.clear();
@@ -1189,6 +1261,9 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
     }
     catch (const std::system_error&)
     {
+        if (maintenance_cancel_) maintenance_cancel_->store(true);
+        maintenance_cancel_.reset();
+        maintenance_request_id_ = 0;
         active_command_key_.clear();
         epsilon_settings_operation_pending_ = false;
         const auto callbacks = std::move(active_command_callbacks_);
@@ -1364,7 +1439,10 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
         result.send_device_operation_response = true;
         if (request.device_id == SkyDeviceId::Epsilon &&
             (request.operation == DeviceOperation::ReadEpsilonSettings || request.operation == DeviceOperation::ApplyEpsilonSettings ||
-             request.operation == DeviceOperation::RestartEpsilonDevice) &&
+             request.operation == DeviceOperation::RestartEpsilonDevice || request.operation == DeviceOperation::CalibrateEpsilonLevel ||
+             request.operation == DeviceOperation::CalibrateEpsilonAccelerometer || request.operation == DeviceOperation::CalibrateEpsilonGyroscope ||
+             request.operation == DeviceOperation::ReadEpsilonDgnss || request.operation == DeviceOperation::ApplyEpsilonDgnss ||
+             request.operation == DeviceOperation::CalibrateEpsilonMagnetic2D || request.operation == DeviceOperation::CalibrateEpsilonMagnetic3D) &&
             (session_recorder_.isRecording() || session_recorder_.isPaused()))
         {
             response.error_code = CommandErrorCode::DeviceOperationBusy;
@@ -1422,18 +1500,50 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
             case DeviceOperation::ReadEpsilonSettings:
             case DeviceOperation::ApplyEpsilonSettings:
             case DeviceOperation::RestartEpsilonDevice:
+            case DeviceOperation::ReadEpsilonDgnss:
+            case DeviceOperation::ApplyEpsilonDgnss:
             {
                 auto snapshot = std::make_shared<EpsilonSettingsSnapshot>();
                 auto message = std::make_shared<QString>();
-                error = device_manager_.prepareEpsilonOperation(request, snapshot, message)();
+                auto maintenance = std::make_shared<EpsilonMaintenanceResult>();
+                auto dgnss = std::make_shared<EpsilonDgnssSnapshot>();
+                error = device_manager_.prepareEpsilonOperation(request, snapshot, message, maintenance, dgnss)();
                 device_manager_.completeEpsilonOperation(request, error, *snapshot);
                 ok = error == CommandErrorCode::Ok;
                 errorMessage = *message;
-                if (request.operation != DeviceOperation::RestartEpsilonDevice)
+                if (request.operation == DeviceOperation::ReadEpsilonDgnss || request.operation == DeviceOperation::ApplyEpsilonDgnss)
+                    response.payload = TelemetryCodec::serializeEpsilonDgnssSnapshot(*dgnss);
+                else if (request.operation != DeviceOperation::RestartEpsilonDevice)
                     response.payload = TelemetryCodec::serializeEpsilonSettingsSnapshot(*snapshot);
                 break;
             }
+            case DeviceOperation::CalibrateEpsilonLevel:
+            case DeviceOperation::CalibrateEpsilonAccelerometer:
+            case DeviceOperation::CalibrateEpsilonGyroscope:
+            {
+                auto snapshot = std::make_shared<EpsilonSettingsSnapshot>();
+                auto message = std::make_shared<QString>();
+                auto maintenance = std::make_shared<EpsilonMaintenanceResult>();
+                error = device_manager_.prepareEpsilonOperation(request, snapshot, message, maintenance)();
+                ok = error == CommandErrorCode::Ok;
+                errorMessage = *message;
+                response.payload = TelemetryCodec::serializeEpsilonMaintenanceResult(*maintenance);
+                break;
+            }
+            case DeviceOperation::CalibrateEpsilonMagnetic2D:
+            case DeviceOperation::CalibrateEpsilonMagnetic3D:
+            {
+                EpsilonMaintenanceResult maintenance;
+                maintenance.action = request.operation == DeviceOperation::CalibrateEpsilonMagnetic2D ? EpsilonMaintenanceAction::Magnetic2D : EpsilonMaintenanceAction::Magnetic3D;
+                EpsilonMaintenanceAction action;
+                error = !TelemetryCodec::parseEpsilonMaintenanceAction(request.payload, action) || action != maintenance.action
+                    ? CommandErrorCode::InvalidPayload : options_.simulate_data ? CommandErrorCode::UnknownCommand : CommandErrorCode::DeviceOperationBusy;
+                response.payload = TelemetryCodec::serializeEpsilonMaintenanceResult(maintenance);
+                errorMessage = QStringLiteral("Magnetic calibration requires asynchronous submitCommand and physical device support.");
+                break;
+            }
             case DeviceOperation::ReadParameters:
+            case DeviceOperation::CancelEpsilonMagneticCalibration:
             case DeviceOperation::WriteParameters:
             case DeviceOperation::FactoryReset:
                 error = CommandErrorCode::InvalidPayload;
@@ -1492,6 +1602,14 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
         case DeviceOperation::ReadEpsilonSettings:
         case DeviceOperation::ApplyEpsilonSettings:
         case DeviceOperation::RestartEpsilonDevice:
+        case DeviceOperation::CalibrateEpsilonLevel:
+        case DeviceOperation::CalibrateEpsilonAccelerometer:
+        case DeviceOperation::CalibrateEpsilonGyroscope:
+        case DeviceOperation::ReadEpsilonDgnss:
+        case DeviceOperation::ApplyEpsilonDgnss:
+        case DeviceOperation::CalibrateEpsilonMagnetic2D:
+        case DeviceOperation::CalibrateEpsilonMagnetic3D:
+        case DeviceOperation::CancelEpsilonMagneticCalibration:
         case DeviceOperation::ConfigureEpsilonPacketRates:
         case DeviceOperation::ConfigureEpsilonMainAntennaLeverArm:
         case DeviceOperation::ConfigureEpsilonRtcmInput:

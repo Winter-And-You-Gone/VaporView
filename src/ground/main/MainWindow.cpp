@@ -475,6 +475,19 @@ MainWindow::MainWindow(QWidget *parent)
             return VaporView::Ground::EpsilonConfigurationService::rebootDevice(
                 deviceOperation, epsilonLogCallback);
         };
+    epsilonLocalAdapter.calibrate =
+        [epsilonLogCallback](VaporView::EpsilonMaintenanceAction action,
+                             const VaporView::Ground::EpsilonDeviceOperation& deviceOperation) {
+            return VaporView::Ground::EpsilonConfigurationService::calibrateMaintenance(
+                deviceOperation, action, epsilonLogCallback);
+        };
+    epsilonLocalAdapter.readDgnss = [epsilonLogCallback](const VaporView::Ground::EpsilonDeviceOperation& operation) {
+        return VaporView::Ground::EpsilonConfigurationService::readDgnss(operation, epsilonLogCallback);
+    };
+    epsilonLocalAdapter.applyDgnss = [epsilonLogCallback](const VaporView::EpsilonDgnssOperation& settings,
+        const VaporView::Ground::EpsilonDeviceOperation& operation) {
+        return VaporView::Ground::EpsilonConfigurationService::applyDgnss(operation, settings, epsilonLogCallback);
+    };
     state_->epsilon_device_session_ =
         std::make_unique<VaporView::Ground::Devices::EpsilonDeviceSession>(
             std::move(epsilonLocalAdapter), state_->remote_sky_controller_.get());
@@ -488,6 +501,10 @@ MainWindow::MainWindow(QWidget *parent)
     connect(state_->epsilon_device_session_.get(),
             &VaporView::Ground::Devices::EpsilonDeviceSession::operationFinished,
             this, &MainWindow::onEpsilonSessionOperationFinished);
+    connect(state_->epsilon_device_session_.get(), &VaporView::Ground::Devices::EpsilonDeviceSession::maintenanceProgress,
+            this, [this](const VaporView::EpsilonMaintenanceResult& progress) {
+                if (state_->epsilon_config_panel_) state_->epsilon_config_panel_->setMaintenanceResult(progress);
+            });
     configureLocalConnectionCoordinator();
     setupWindowBorderFrames();
     setupWindowResizeHandles();

@@ -54,6 +54,9 @@ void testProtocolEnumValues()
     require(static_cast<quint8>(VaporView::DeviceOperation::ConfigureEpsilonPacketRates) == 10, "DeviceOperation ConfigureEpsilonPacketRates value");
     require(static_cast<quint8>(VaporView::DeviceOperation::ConfigureEpsilonMainAntennaLeverArm) == 11, "DeviceOperation ConfigureEpsilonMainAntennaLeverArm value");
     require(static_cast<quint8>(VaporView::DeviceOperation::ConfigureEpsilonRtcmInput) == 12, "DeviceOperation ConfigureEpsilonRtcmInput value");
+    require(static_cast<quint8>(VaporView::DeviceOperation::CalibrateEpsilonLevel) == 16, "DeviceOperation CalibrateEpsilonLevel append value");
+    require(static_cast<quint8>(VaporView::DeviceOperation::CalibrateEpsilonAccelerometer) == 17, "DeviceOperation CalibrateEpsilonAccelerometer append value");
+    require(static_cast<quint8>(VaporView::DeviceOperation::CalibrateEpsilonGyroscope) == 18, "DeviceOperation CalibrateEpsilonGyroscope append value");
     require(static_cast<quint8>(VaporView::SkyDeviceId::Ai8TemperatureController) == 7, "SkyDeviceId AI-8 value");
 }
 
@@ -163,6 +166,29 @@ void testFrameRoundTrip()
     require(std::fabs(parsed.yaw_deg - basic.yaw_deg) < 0.000001f, "basic attitude");
     require(parsed.raw_frame_count == basic.raw_frame_count, "basic raw frame count");
     require(parsed.dropped_frame_count == basic.dropped_frame_count, "basic dropped frame count");
+    auto identityBasic = basic;
+    identityBasic.device_info_valid = true;
+    identityBasic.hardware_name = QStringLiteral("EPSILON");
+    identityBasic.firmware_name = QStringLiteral("EPSILON2");
+    identityBasic.hardware_version = 123;
+    identityBasic.firmware_version = 456;
+    identityBasic.serial_number = {1, 2, 3, 4};
+    const auto identityPayload = VaporView::TelemetryCodec::serializeBasicTelemetry(identityBasic);
+    VaporView::TelemetryBasic identityParsed;
+    require(identityPayload.left(payload.size()) == payload &&
+            VaporView::TelemetryCodec::parseBasicTelemetry(identityPayload, identityParsed) &&
+            identityParsed.device_info_valid && identityParsed.hardware_name == identityBasic.hardware_name &&
+            identityParsed.firmware_name == identityBasic.firmware_name &&
+            identityParsed.firmware_version == 456 && identityParsed.serial_number[3] == 4,
+            "optional version tail preserves existing telemetry prefix and identity");
+    require(VaporView::TelemetryCodec::parseBasicTelemetry(identityPayload.left(payload.size()), identityParsed) &&
+            !identityParsed.device_info_valid, "old Sky telemetry does not fabricate identity");
+    require(!VaporView::TelemetryCodec::parseBasicTelemetry(identityPayload.chopped(1), identityParsed),
+            "reject truncated identity extension");
+    auto invalidIdentity = identityPayload;
+    invalidIdentity[payload.size() + 20] = '\1';
+    require(!VaporView::TelemetryCodec::parseBasicTelemetry(invalidIdentity, identityParsed),
+            "reject unsafe version text in telemetry");
     require(std::fabs(parsed.imu_packet_rate_hz - basic.imu_packet_rate_hz) < 0.000001f, "basic imu packet rate");
     require(std::fabs(parsed.ecef_packet_rate_hz - basic.ecef_packet_rate_hz) < 0.000001f, "basic ecef packet rate");
     require(std::fabs(parsed.status_packet_rate_hz - basic.status_packet_rate_hz) < 0.000001f, "basic status packet rate");
@@ -818,6 +844,12 @@ void testEpsilonDeviceOperationPayloads()
 void testEpsilonSettingsPayloads()
 {
     using namespace VaporView;
+    require(static_cast<int>(DeviceOperation::ReadEpsilonDgnss) == 19 &&
+            static_cast<int>(DeviceOperation::ApplyEpsilonDgnss) == 20 &&
+            static_cast<int>(DeviceOperation::CalibrateEpsilonMagnetic2D) == 21 &&
+            static_cast<int>(DeviceOperation::CalibrateEpsilonMagnetic3D) == 22 &&
+            static_cast<int>(DeviceOperation::CancelEpsilonMagneticCalibration) == 23,
+            "D4G and magnetic operations append without renumbering old commands");
     EpsilonSettingsOperation operation{EpsilonSettingsGroup::Installation, {{"GNSS_L_IMU_ANT1_X", 1.25}}};
     EpsilonSettingsOperation parsed;
     DeviceOperationRequest request;
@@ -834,8 +866,63 @@ void testEpsilonSettingsPayloads()
             "apply budget covers pre-read, writes, save, readback and recovery");
     request.operation = DeviceOperation::RestartEpsilonDevice;
     require(TelemetryCodec::epsilonDeviceOperationTimeoutMs(request) == 45000, "restart has a bounded recovery budget");
+    request.operation = DeviceOperation::CalibrateEpsilonAccelerometer;
+    require(TelemetryCodec::epsilonDeviceOperationTimeoutMs(request) == 45000,
+            "maintenance waits for command acknowledgement and stream recovery without a short legacy timeout");
     request.operation = DeviceOperation::ConfigureEpsilonPacketRates;
     require(TelemetryCodec::epsilonDeviceOperationTimeoutMs(request) == 15000, "legacy operation timing is unchanged");
+    EpsilonMaintenanceAction action = EpsilonMaintenanceAction::Level;
+    require(TelemetryCodec::parseEpsilonMaintenanceAction(TelemetryCodec::serializeEpsilonMaintenanceAction(EpsilonMaintenanceAction::Gyroscope), action) &&
+            action == EpsilonMaintenanceAction::Gyroscope, "maintenance action round-trip");
+    require(!TelemetryCodec::parseEpsilonMaintenanceAction(QByteArray(2, '\0'), action), "maintenance rejects malformed action");
+    EpsilonMaintenanceResult maintenance{EpsilonMaintenanceAction::Level, EpsilonMaintenanceStatus::Completed, 100, {}};
+    EpsilonMaintenanceResult parsedMaintenance;
+    require(TelemetryCodec::parseEpsilonMaintenanceResult(TelemetryCodec::serializeEpsilonMaintenanceResult(maintenance), parsedMaintenance) &&
+            parsedMaintenance.succeeded(), "maintenance result round-trip distinguishes completed");
+    maintenance.status = EpsilonMaintenanceStatus::SentUnverified;
+    maintenance.saved = true;
+    maintenance.restart_required = true;
+    require(TelemetryCodec::parseEpsilonMaintenanceResult(TelemetryCodec::serializeEpsilonMaintenanceResult(maintenance), parsedMaintenance) &&
+            parsedMaintenance.status == EpsilonMaintenanceStatus::SentUnverified && parsedMaintenance.saved &&
+            parsedMaintenance.restart_required && !parsedMaintenance.succeeded(),
+            "sent-unverified maintenance preserves save and restart flags without completed status");
+    QByteArray invalidFlags = TelemetryCodec::serializeEpsilonMaintenanceResult(maintenance);
+    invalidFlags[7] = '\2';
+    require(!TelemetryCodec::parseEpsilonMaintenanceResult(invalidFlags, parsedMaintenance), "maintenance rejects nonboolean restart flag");
+    QByteArray malformedMaintenance = QByteArray::fromHex("0003ff000000");
+    require(!TelemetryCodec::parseEpsilonMaintenanceResult(malformedMaintenance, parsedMaintenance), "maintenance rejects invalid status and progress");
+    maintenance.action = EpsilonMaintenanceAction::Magnetic3D;
+    maintenance.status = EpsilonMaintenanceStatus::Running;
+    maintenance.progress_known = true;
+    maintenance.progress_percent = 42;
+    maintenance.fit_error_known = true;
+    maintenance.fit_error = 0.75;
+    maintenance.algorithm = "3D";
+    require(TelemetryCodec::parseEpsilonMaintenanceResult(TelemetryCodec::serializeEpsilonMaintenanceResult(maintenance), parsedMaintenance) &&
+            parsedMaintenance.progress_known && parsedMaintenance.progress_percent == 42 &&
+            parsedMaintenance.fit_error_known && parsedMaintenance.fit_error == 0.75 && parsedMaintenance.algorithm == "3D",
+            "magnetic progress carries measured fit and known-state flags");
+    auto invalidKnownState = maintenance;
+    invalidKnownState.fit_error_known = false;
+    require(TelemetryCodec::serializeEpsilonMaintenanceResult(invalidKnownState).isEmpty(),
+            "unknown fit cannot carry a stale measured fit value");
+    invalidKnownState = maintenance;
+    invalidKnownState.fit_error = -0.1;
+    require(TelemetryCodec::serializeEpsilonMaintenanceResult(invalidKnownState).isEmpty(), "negative fit is invalid");
+    request.operation = DeviceOperation::CalibrateEpsilonMagnetic3D;
+    require(TelemetryCodec::epsilonDeviceOperationTimeoutMs(request) == 420000, "magnetic timeout covers bounded 300 second workflow and recovery");
+    EpsilonDgnssOperation dgnss{{{"NTRIP_SVR_DOMAIN", "synthetic.invalid"}, {"NTRIP_SVR_PORT", "2101"}}};
+    EpsilonDgnssOperation parsedDgnss;
+    require(TelemetryCodec::parseEpsilonDgnssOperation(TelemetryCodec::serializeEpsilonDgnssOperation(dgnss), parsedDgnss) &&
+            parsedDgnss.values == dgnss.values, "DGNSS strings round-trip independently of numeric settings");
+    require(!TelemetryCodec::parseEpsilonDgnssOperation(R"({"version":1,"values":{"RTCM_TYPE":"2"}})", parsedDgnss), "ambiguous RTCM source enum remains read-only");
+    require(!TelemetryCodec::parseEpsilonDgnssOperation(R"({"version":1,"values":{"NTRIP_SVR_PORT":2101}})", parsedDgnss), "DGNSS requires typed strings");
+    require(!TelemetryCodec::parseEpsilonDgnssOperation(QByteArray(16385, ' '), parsedDgnss), "DGNSS rejects oversized payloads");
+    EpsilonDgnssSnapshot dgnssSnapshot{dgnss.values, {"NET_INFO_IMEI"}, true, false, true};
+    EpsilonDgnssSnapshot parsedDgnssSnapshot;
+    require(TelemetryCodec::parseEpsilonDgnssSnapshot(TelemetryCodec::serializeEpsilonDgnssSnapshot(dgnssSnapshot), parsedDgnssSnapshot) &&
+            parsedDgnssSnapshot.values == dgnss.values && parsedDgnssSnapshot.saved && parsedDgnssSnapshot.restart_required,
+            "partial DGNSS snapshot retains save and restart facts");
     require(TelemetryCodec::parseEpsilonSettingsOperation(TelemetryCodec::serializeEpsilonSettingsOperation(operation), parsed) &&
             parsed.values == operation.values, "EPSILON settings typed round-trip");
     require(!TelemetryCodec::parseEpsilonSettingsOperation(R"({"version":1,"group":2,"values":{"GNSS_L_IMU_ANT1_X":1}})", parsed), "settings rejects invalid group");
@@ -843,6 +930,23 @@ void testEpsilonSettingsPayloads()
     require(!TelemetryCodec::parseEpsilonSettingsOperation(R"({"version":1,"group":0,"values":{"GNSS_L_IMU_ANT1_X":"1"}})", parsed), "settings rejects string number");
     require(!TelemetryCodec::parseEpsilonSettingsOperation(R"({"version":1,"group":0,"values":{"GNSS_L_IMU_ANT1_X":1e999}})", parsed), "settings rejects nonfinite value");
     EpsilonSettingsGroup group;
+    for (const auto expectedGroup : epsilonSettingsGroups())
+    {
+        require(TelemetryCodec::parseEpsilonSettingsRead(TelemetryCodec::serializeEpsilonSettingsRead(expectedGroup), group) &&
+                group == expectedGroup, "all seven EPSILON groups round-trip safely");
+        EpsilonSettingsSnapshot expectedSnapshot;
+        expectedSnapshot.group = expectedGroup;
+        for (const auto& descriptor : epsilonParameterDescriptors(expectedGroup))
+            expectedSnapshot.values[descriptor.name] = 0;
+        EpsilonSettingsSnapshot parsedSnapshot;
+        require(TelemetryCodec::parseEpsilonSettingsSnapshot(TelemetryCodec::serializeEpsilonSettingsSnapshot(expectedSnapshot), parsedSnapshot) &&
+                parsedSnapshot.group == expectedGroup && parsedSnapshot.values == expectedSnapshot.values,
+                "all seven parameter snapshots round-trip including read-only fields");
+    }
+    require(!TelemetryCodec::parseEpsilonSettingsRead(R"({"version":1,"group":8})", group), "settings rejects group beyond registered groups");
+    require(!TelemetryCodec::parseEpsilonSettingsRead(R"({"version":1,"group":256})", group), "settings rejects group truncation into uint8");
+    require(TelemetryCodec::parseEpsilonSettingsOperation(R"({"version":1,"group":6,"values":{"USER_DEFINE_L_IMU_POINT_X":1.5}})", parsed),
+            "advanced writable settings operation is decoded");
     require(!TelemetryCodec::parseEpsilonSettingsRead(QByteArray(8193, ' '), group), "settings rejects oversized payload");
     EpsilonSettingsSnapshot snapshot;
     snapshot.group = operation.group;

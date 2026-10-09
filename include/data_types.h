@@ -86,6 +86,13 @@ struct ImuData
 
 struct EpsilonData
 {
+  bool device_info_valid = false;
+  uint32_t hardware_version = 0;
+  uint32_t firmware_version = 0;
+  std::string hardware_name;
+  std::string firmware_name;
+  std::array<uint32_t, 4> serial_number{};
+
   double latitude_deg = 0.0;
   double longitude_deg = 0.0;
   double height_m = 0.0;

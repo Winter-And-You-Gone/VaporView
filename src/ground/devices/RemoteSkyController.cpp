@@ -1,4 +1,5 @@
 #include "ground/devices/RemoteSkyController.h"
+#include <QtEndian>
 
 #include "ground/devices/RemoteTelemetryDecoder.h"
 #include "shared/config/SettingsWriteBarrier.h"
@@ -7,6 +8,7 @@
 #include <QDateTime>
 #include <QMetaObject>
 #include <QRandomGenerator>
+#include <QTimer>
 
 #include <chrono>
 
@@ -106,7 +108,27 @@ RemoteSkyController::RemoteSkyController(QObject *parent)
                         device_operation_support_ = DeviceOperationSupport::Supported;
                         emit deviceOperationSupportChanged(device_operation_support_);
                     }
-                    const auto operation = device_operation_types_.take(response.request_id);
+                    const auto operation = device_operation_types_.value(response.request_id);
+                    const bool epsilonOperation = response.device_id == SkyDeviceId::Epsilon ||
+                        static_cast<quint8>(response.operation) >= static_cast<quint8>(DeviceOperation::ConfigureEpsilonPacketRates) ||
+                        static_cast<quint8>(operation) >= static_cast<quint8>(DeviceOperation::ConfigureEpsilonPacketRates);
+                    // Other devices historically forward their typed failure after an error ACK
+                    // has removed the request. EPSILON progress requires a still-active match.
+                    if (epsilonOperation && (response.device_id != SkyDeviceId::Epsilon ||
+                        !device_operation_types_.contains(response.request_id) || response.operation != operation)) return;
+                    if (operation == DeviceOperation::CalibrateEpsilonMagnetic2D || operation == DeviceOperation::CalibrateEpsilonMagnetic3D)
+                    {
+                        EpsilonMaintenanceResult progress;
+                        if (!(response.payload.isEmpty() && response.error_code != CommandErrorCode::Ok) && (response.device_id != SkyDeviceId::Epsilon ||
+                            !TelemetryCodec::parseEpsilonMaintenanceResult(response.payload, progress) ||
+                            progress.action != (operation == DeviceOperation::CalibrateEpsilonMagnetic2D ? EpsilonMaintenanceAction::Magnetic2D : EpsilonMaintenanceAction::Magnetic3D))) return;
+                        if (progress.status == EpsilonMaintenanceStatus::Running)
+                        {
+                            if (response.error_code == CommandErrorCode::Ok) emit deviceOperationResponseReceived(response);
+                            return;
+                        }
+                    }
+                    device_operation_types_.remove(response.request_id);
                     if (operation == DeviceOperation::ReadEpsilonSettings || operation == DeviceOperation::ApplyEpsilonSettings ||
                         operation == DeviceOperation::RestartEpsilonDevice)
                     {
@@ -140,12 +162,35 @@ RemoteSkyController::RemoteSkyController(QObject *parent)
                     {
                         const auto requestOperation = device_operation_types_.value(device_operation_requests_.value(ack.command_seq));
                         const bool settingsOperation = requestOperation == DeviceOperation::ReadEpsilonSettings ||
-                            requestOperation == DeviceOperation::ApplyEpsilonSettings || requestOperation == DeviceOperation::RestartEpsilonDevice;
+                            requestOperation == DeviceOperation::ApplyEpsilonSettings || requestOperation == DeviceOperation::RestartEpsilonDevice ||
+                            requestOperation == DeviceOperation::CalibrateEpsilonLevel || requestOperation == DeviceOperation::CalibrateEpsilonAccelerometer ||
+                            requestOperation == DeviceOperation::CalibrateEpsilonGyroscope ||
+                            requestOperation == DeviceOperation::ReadEpsilonDgnss || requestOperation == DeviceOperation::ApplyEpsilonDgnss ||
+                            requestOperation == DeviceOperation::CalibrateEpsilonMagnetic2D || requestOperation == DeviceOperation::CalibrateEpsilonMagnetic3D ||
+                            requestOperation == DeviceOperation::CancelEpsilonMagneticCalibration;
                         if (ack.error_code == CommandErrorCode::UnknownCommand && !settingsOperation &&
                             device_operation_support_ != DeviceOperationSupport::Unsupported)
                         {
                             device_operation_support_ = DeviceOperationSupport::Unsupported;
                             emit deviceOperationSupportChanged(device_operation_support_);
+                        }
+                        // New Sky sends a typed failure after its ACK, carrying partial writes
+                        // and restart risk. Allow that response before falling back for old peers.
+                        const quint32 acknowledgedRequest = device_operation_requests_.value(ack.command_seq);
+                        if (settingsOperation && acknowledgedRequest != 0 &&
+                            ack.error_code != CommandErrorCode::UnknownCommand &&
+                            ack.error_code != CommandErrorCode::InvalidPayload)
+                        {
+                            QTimer::singleShot(30000, this, [this, generation, acknowledgedRequest, ack]() {
+                                if (!isCurrentOpenEvent(generation) ||
+                                    device_operation_requests_.value(ack.command_seq) != acknowledgedRequest) return;
+                                device_operation_requests_.remove(ack.command_seq);
+                                device_operation_commands_.remove(acknowledgedRequest);
+                                device_operation_types_.remove(acknowledgedRequest);
+                                emit deviceOperationRejected(acknowledgedRequest, ack);
+                            });
+                            emit commandAckReceived(ack);
+                            return;
                         }
                         const quint32 requestId = device_operation_requests_.take(ack.command_seq);
                         if (requestId != 0)
@@ -345,7 +390,7 @@ void RemoteSkyController::markLinkClosed()
 
 quint32 RemoteSkyController::readEpsilonSettings(EpsilonSettingsGroup group)
 {
-    if (static_cast<int>(group) > 1 || epsilon_settings_support_ == DeviceOperationSupport::Unsupported) return 0;
+    if (!isValidEpsilonSettingsGroup(group) || epsilon_settings_support_ == DeviceOperationSupport::Unsupported) return 0;
     return sendDeviceOperation(SkyDeviceId::Epsilon, DeviceOperation::ReadEpsilonSettings,
                                TelemetryCodec::serializeEpsilonSettingsRead(group));
 }
@@ -356,6 +401,37 @@ quint32 RemoteSkyController::applyEpsilonSettings(const EpsilonSettingsOperation
     if (!validateEpsilonSettings(operation, error) || epsilon_settings_support_ != DeviceOperationSupport::Supported) return 0;
     return sendDeviceOperation(SkyDeviceId::Epsilon, DeviceOperation::ApplyEpsilonSettings,
                                TelemetryCodec::serializeEpsilonSettingsOperation(operation));
+}
+
+quint32 RemoteSkyController::calibrateEpsilon(EpsilonMaintenanceAction action)
+{
+    if (!validEpsilonMaintenanceAction(action)) return 0;
+    const auto operation = action == EpsilonMaintenanceAction::Level ? DeviceOperation::CalibrateEpsilonLevel :
+        action == EpsilonMaintenanceAction::Accelerometer ? DeviceOperation::CalibrateEpsilonAccelerometer :
+        action == EpsilonMaintenanceAction::Gyroscope ? DeviceOperation::CalibrateEpsilonGyroscope :
+        action == EpsilonMaintenanceAction::Magnetic2D ? DeviceOperation::CalibrateEpsilonMagnetic2D : DeviceOperation::CalibrateEpsilonMagnetic3D;
+    return sendDeviceOperation(SkyDeviceId::Epsilon, operation, TelemetryCodec::serializeEpsilonMaintenanceAction(action));
+}
+
+quint32 RemoteSkyController::readEpsilonDgnss()
+{
+    return sendDeviceOperation(SkyDeviceId::Epsilon, DeviceOperation::ReadEpsilonDgnss, {});
+}
+
+quint32 RemoteSkyController::applyEpsilonDgnss(const EpsilonDgnssOperation& operation)
+{
+    std::string error;
+    if (!validateEpsilonDgnss(operation, error)) return 0;
+    return sendDeviceOperation(SkyDeviceId::Epsilon, DeviceOperation::ApplyEpsilonDgnss,
+                               TelemetryCodec::serializeEpsilonDgnssOperation(operation));
+}
+
+quint32 RemoteSkyController::cancelEpsilonMagneticCalibration(quint32 requestId)
+{
+    if (!requestId) return 0;
+    QByteArray payload(4, '\0');
+    qToLittleEndian<quint32>(requestId, reinterpret_cast<uchar*>(payload.data()));
+    return sendDeviceOperation(SkyDeviceId::Epsilon, DeviceOperation::CancelEpsilonMagneticCalibration, payload);
 }
 
 quint32 RemoteSkyController::restartEpsilonDevice()

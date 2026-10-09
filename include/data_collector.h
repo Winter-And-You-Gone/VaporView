@@ -6,6 +6,7 @@
 #include "serial_port.h"
 #include "EpsilonRawSatellite.h"
 #include "EpsilonSettings.h"
+#include "EpsilonMaintenance.h"
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -159,6 +160,11 @@ public:
   bool readSettings(EpsilonSettingsGroup group, EpsilonSettingsSnapshot& snapshot, std::string& error);
   bool applySettings(const EpsilonSettingsOperation& settings, EpsilonSettingsSnapshot& snapshot, std::string& error);
   bool rebootDevice(std::string& error);
+  bool runMaintenance(EpsilonMaintenanceAction action, EpsilonMaintenanceResult& result, std::string& error);
+  bool runMaintenance(EpsilonMaintenanceAction action, EpsilonMaintenanceResult& result, std::string& error,
+                      EpsilonMaintenanceProgress progress, std::function<bool()> shouldCancel);
+  bool readDgnss(EpsilonDgnssSnapshot& snapshot, std::string& error);
+  bool applyDgnss(const EpsilonDgnssOperation& operation, EpsilonDgnssSnapshot& snapshot, std::string& error);
   bool checkDeviceResponse() override;
   bool lastDeviceResponseHadFdilinkFrame() const;
   void setRawFrameCallback(RawFrameCallback callback);

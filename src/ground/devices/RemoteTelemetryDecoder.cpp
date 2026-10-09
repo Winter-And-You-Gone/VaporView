@@ -99,6 +99,12 @@ RemoteEpsilonTelemetry decodeRemoteEpsilonTelemetry(
     }
 
     result.data.valid = true;
+    result.data.device_info_valid = telemetry.device_info_valid;
+    result.data.hardware_name = telemetry.hardware_name.toStdString();
+    result.data.firmware_name = telemetry.firmware_name.toStdString();
+    result.data.hardware_version = telemetry.hardware_version;
+    result.data.firmware_version = telemetry.firmware_version;
+    result.data.serial_number = telemetry.serial_number;
     result.data.timestamp = timestamp;
     result.data.device_timestamp_us = telemetry.epsilon_time_us;
     result.data.utc_unix_s = telemetry.host_time_us / 1000000ULL;

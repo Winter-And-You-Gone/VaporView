@@ -952,11 +952,93 @@ bool SkyDeviceManager::setPeakSearchRange(quint32 startIndex, quint32 endIndex, 
 }
 
 std::function<CommandErrorCode()> SkyDeviceManager::prepareEpsilonOperation(const DeviceOperationRequest& request,
-    std::shared_ptr<EpsilonSettingsSnapshot> snapshot, std::shared_ptr<QString> message)
+    std::shared_ptr<EpsilonSettingsSnapshot> snapshot, std::shared_ptr<QString> message,
+    std::shared_ptr<EpsilonMaintenanceResult> maintenance, std::shared_ptr<EpsilonDgnssSnapshot> dgnss,
+    std::shared_ptr<std::atomic_bool> cancel, EpsilonMaintenanceProgress progress)
 {
     auto rejected = [](CommandErrorCode error) { return [error]() { return error; }; };
+    if (request.operation == DeviceOperation::CalibrateEpsilonLevel ||
+        request.operation == DeviceOperation::CalibrateEpsilonAccelerometer ||
+        request.operation == DeviceOperation::CalibrateEpsilonGyroscope ||
+        request.operation == DeviceOperation::CalibrateEpsilonMagnetic2D || request.operation == DeviceOperation::CalibrateEpsilonMagnetic3D)
+    {
+        const auto expectedAction = request.operation == DeviceOperation::CalibrateEpsilonLevel ? EpsilonMaintenanceAction::Level :
+            request.operation == DeviceOperation::CalibrateEpsilonAccelerometer ? EpsilonMaintenanceAction::Accelerometer :
+            request.operation == DeviceOperation::CalibrateEpsilonGyroscope ? EpsilonMaintenanceAction::Gyroscope :
+            request.operation == DeviceOperation::CalibrateEpsilonMagnetic2D ? EpsilonMaintenanceAction::Magnetic2D : EpsilonMaintenanceAction::Magnetic3D;
+        if (maintenance) maintenance->action = expectedAction;
+        EpsilonMaintenanceAction action = expectedAction;
+        if (!TelemetryCodec::parseEpsilonMaintenanceAction(request.payload, action) || action != expectedAction)
+            return rejected(CommandErrorCode::InvalidPayload);
+        if (epsilon_status_.state != DeviceState::Connected) return rejected(CommandErrorCode::DeviceNotConnected);
+        if (simulate_data_) return rejected(CommandErrorCode::UnknownCommand);
+        const auto collector = epsilon_;
+        if (!collector || !collector->isRunning()) return rejected(CommandErrorCode::DeviceNotConnected);
+        const auto port = config_.epsilon.port.toStdString();
+        const auto serial = SerialConfig::N81(config_.epsilon.baud_rate);
+        return [collector, port, serial, action, maintenance, message, cancel, progress]() {
+            collector->stop();
+            EpsilonMaintenanceResult result;
+            result.action = action;
+            std::string error;
+            const bool ok = collector->start(port, serial) && collector->runMaintenance(action, result, error, progress,
+                [cancel]() { return cancel && cancel->load(); });
+            bool restored = false;
+            try
+            {
+                collector->stop();
+                restored = collector->start(port, serial) && collector->checkDeviceResponse() && collector->startStreaming();
+            }
+            catch (...) { }
+            if (!restored)
+            {
+                try { collector->stop(); } catch (...) { }
+                result.status = EpsilonMaintenanceStatus::Failed;
+                if (!error.empty()) error += "; ";
+                error += "EPSILON navigation stream recovery failed; reconnect the device manually";
+                result.error = error;
+                if (maintenance) *maintenance = result;
+                if (message) *message = QString::fromStdString(error);
+                return CommandErrorCode::InternalError;
+            }
+            if (maintenance) *maintenance = result;
+            if (message) *message = QString::fromStdString(error);
+            return ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed;
+        };
+    }
     if (epsilon_status_.state != DeviceState::Connected)
         return rejected(CommandErrorCode::DeviceNotConnected);
+    if (request.operation == DeviceOperation::ReadEpsilonDgnss || request.operation == DeviceOperation::ApplyEpsilonDgnss)
+    {
+        EpsilonDgnssOperation operation;
+        if ((request.operation == DeviceOperation::ReadEpsilonDgnss && !request.payload.isEmpty()) ||
+            (request.operation == DeviceOperation::ApplyEpsilonDgnss && !TelemetryCodec::parseEpsilonDgnssOperation(request.payload, operation)))
+            return rejected(CommandErrorCode::InvalidPayload);
+        if (simulate_data_) return rejected(CommandErrorCode::UnknownCommand);
+        const auto collector = epsilon_;
+        if (!collector || !collector->isRunning()) return rejected(CommandErrorCode::DeviceNotConnected);
+        const auto port = config_.epsilon.port.toStdString();
+        const auto serial = SerialConfig::N81(config_.epsilon.baud_rate);
+        return [collector, port, serial, operation, type = request.operation, dgnss, message]() {
+            EpsilonDgnssSnapshot result;
+            std::string error;
+            collector->stop();
+            const bool ok = collector->start(port, serial) && (type == DeviceOperation::ReadEpsilonDgnss
+                ? collector->readDgnss(result, error) : collector->applyDgnss(operation, result, error));
+            if (dgnss) *dgnss = result;
+            bool restored = false;
+            try { collector->stop(); restored = collector->start(port, serial) && collector->checkDeviceResponse() && collector->startStreaming(); }
+            catch (...) { }
+            if (!restored)
+            {
+                try { collector->stop(); } catch (...) { }
+                if (!error.empty()) error += "; ";
+                error += "EPSILON navigation stream recovery failed; reconnect manually";
+            }
+            if (message) *message = QString::fromStdString(error);
+            return !restored ? CommandErrorCode::InternalError : ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed;
+        };
+    }
     EpsilonPacketRatesOperation rates;
     EpsilonMainAntennaLeverArmOperation lever;
     EpsilonRtcmInputOperation rtcm;
