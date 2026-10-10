@@ -98,6 +98,35 @@ RemoteSkyController::RemoteSkyController(QObject *parent)
                     emit ai8TemperatureControllerStatusUpdated(data);
                 }, Qt::QueuedConnection);
             }, Qt::DirectConnection);
+    connect(&service_, &GroundTelemetryService::fpgaStatusUpdated, this, [this](const QJsonObject& status) {
+        const auto generation = service_.linkGeneration();
+        QMetaObject::invokeMethod(this, [this, generation, status] {
+            if (!isCurrentOpenEvent(generation)) return;
+            state_.notePacket(MsgType::FpgaStatus, QDateTime::currentMSecsSinceEpoch());
+            state_.setDeviceState(SkyDeviceId::Fpga, status.value("connected").toBool() ? DeviceState::Connected : DeviceState::Disconnected);
+            emit fpgaStatusUpdated(status);
+        }, Qt::QueuedConnection);
+    }, Qt::DirectConnection);
+    connect(&service_, &GroundTelemetryService::fpgaSensorUpdated, this, [this](const FpgaSensor::Reading& reading) {
+        const auto generation = service_.linkGeneration();
+        QMetaObject::invokeMethod(this, [this, generation, reading] {
+            if (!isCurrentOpenEvent(generation)) return;
+            const auto now = QDateTime::currentMSecsSinceEpoch();
+            state_.notePacket(MsgType::FpgaSensor, now);
+            if (reading.validity.measurement) state_.noteDeviceData(SkyDeviceId::Fpga, now);
+            emit fpgaSensorUpdated(reading);
+        }, Qt::QueuedConnection);
+    }, Qt::DirectConnection);
+    connect(&service_, &GroundTelemetryService::fpgaWaveformUpdated, this, [this](const FpgaWave::CompletedStream& stream) {
+        const auto generation = service_.linkGeneration();
+        QMetaObject::invokeMethod(this, [this, generation, stream] {
+            if (!isCurrentOpenEvent(generation)) return;
+            const auto now = QDateTime::currentMSecsSinceEpoch();
+            state_.notePacket(MsgType::FpgaWaveformPreview, now);
+            state_.noteDeviceData(SkyDeviceId::Fpga, now);
+            emit fpgaWaveformUpdated(stream);
+        }, Qt::QueuedConnection);
+    }, Qt::DirectConnection);
     connect(&service_, &GroundTelemetryService::deviceOperationResponseReceived,
             this, [this](const DeviceOperationResponse& response) {
                 const quint64 generation = service_.linkGeneration();
@@ -110,8 +139,10 @@ RemoteSkyController::RemoteSkyController(QObject *parent)
                     }
                     const auto operation = device_operation_types_.value(response.request_id);
                     const bool epsilonOperation = response.device_id == SkyDeviceId::Epsilon ||
-                        static_cast<quint8>(response.operation) >= static_cast<quint8>(DeviceOperation::ConfigureEpsilonPacketRates) ||
-                        static_cast<quint8>(operation) >= static_cast<quint8>(DeviceOperation::ConfigureEpsilonPacketRates);
+                        (static_cast<quint8>(response.operation) >= 10 && static_cast<quint8>(response.operation) <= 23) ||
+                        (static_cast<quint8>(operation) >= 10 && static_cast<quint8>(operation) <= 23);
+                    if ((response.operation == DeviceOperation::FpgaControl || operation == DeviceOperation::FpgaControl) &&
+                        (response.device_id != SkyDeviceId::Fpga || !device_operation_types_.contains(response.request_id) || response.operation != operation)) return;
                     // Other devices historically forward their typed failure after an error ACK
                     // has removed the request. EPSILON progress requires a still-active match.
                     if (epsilonOperation && (response.device_id != SkyDeviceId::Epsilon ||
@@ -161,7 +192,7 @@ RemoteSkyController::RemoteSkyController(QObject *parent)
                     if (ack.command_id == CommandId::DeviceOperation && ack.error_code != CommandErrorCode::Ok)
                     {
                         const auto requestOperation = device_operation_types_.value(device_operation_requests_.value(ack.command_seq));
-                        const bool settingsOperation = requestOperation == DeviceOperation::ReadEpsilonSettings ||
+                        const bool settingsOperation = requestOperation == DeviceOperation::FpgaControl || requestOperation == DeviceOperation::ReadEpsilonSettings ||
                             requestOperation == DeviceOperation::ApplyEpsilonSettings || requestOperation == DeviceOperation::RestartEpsilonDevice ||
                             requestOperation == DeviceOperation::CalibrateEpsilonLevel || requestOperation == DeviceOperation::CalibrateEpsilonAccelerometer ||
                             requestOperation == DeviceOperation::CalibrateEpsilonGyroscope ||
@@ -672,3 +703,10 @@ quint32 RemoteSkyController::sendAi8Operation(
 }
 
 }  // namespace VaporView::Ground::Devices
+
+quint32 VaporView::Ground::Devices::RemoteSkyController::sendFpgaControl(const QJsonObject& control)
+{
+    const auto payload = FpgaRemote::encodeControl(control);
+    if (payload.isEmpty()) return 0;
+    return sendDeviceOperation(SkyDeviceId::Fpga, DeviceOperation::FpgaControl, payload);
+}

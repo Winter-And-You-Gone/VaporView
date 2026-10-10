@@ -293,6 +293,10 @@ struct MainWindowState
     QThread *fpga_thread_ = nullptr;
     VaporView::Ground::Devices::FpgaDeviceController *fpga_controller_ = nullptr;
     FpgaControlConfig fpga_config_;
+    FpgaControlConfig fpga_remote_config_;
+    QJsonObject fpga_remote_status_;
+    quint32 fpga_remote_request_id_ = 0;
+    std::chrono::steady_clock::time_point fpga_remote_status_time_{};
     bool fpga_connected_ = false;
     bool fpga_ready_ = false;
     bool fpga_busy_ = false;

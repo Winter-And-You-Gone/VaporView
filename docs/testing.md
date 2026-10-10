@@ -57,14 +57,14 @@ cmake --build build/Release --config Release --target temperature_controller_pro
 ctest --test-dir build/Release -C Release -L protocol --output-on-failure
 ```
 
-FPGA VLP1、传感器 payload、RAW/DLIA fragment 和离线会话：
+FPGA VLP1、传感器 payload、RAW/DLIA fragment、离线会话和天空端远程对接：
 
 ```powershell
-cmake --build build/Release --config Release --target fpga_vlp1_test fpga_waveform_assembler_test fpga_sensor_decoder_test fpga_device_session_test
-ctest --test-dir build/Release -C Release -R "^fpga_" --output-on-failure
+cmake --build build/Release --config Release -- -j4
+ctest --test-dir build/Release -C Release -L fpga --output-on-failure
 ```
 
-这些测试使用 replay 字节流，不需要连接 GP01，也不能替代实机 USB、B0/B1、吞吐和模拟波形验收。实机验证前应确认 WinUSB 驱动、BIT/IMG 哈希，并避免 Cypress Control Center 同时占用端点。
+`fpga` 标签同时包含 `fpga_*` 和 `sky_fpga_*`：协议、USB/replay、控制器、归档、页面，以及 SkyCore 唯一 USB 后台、真实本机 TCP 模拟控制、串口带宽预算、并发录制及失败注入。仅用 `-R "^fpga_"` 会漏掉天空端测试。这些测试使用 fixture 和模拟传输，不需要连接 GP01，也不能替代实机 USB、B0/B1、无线吞吐和模拟波形验收。配置部署见 [天空拓扑](fpga_sky_topology.md)，实机验证前应确认驱动、BIT/IMG 哈希，并避免 Cypress Control Center 同时占用端点。
 
 Sky 设备覆盖、模拟模式、本地 IPC/TUI 和统一 Device Config：
 
@@ -83,7 +83,7 @@ ctest --test-dir build/Release -C Release -R "^(telemetry_codec_test|sky_device_
 | `ui` | Qt Widgets 窗口、布局、主题和启动测试 |
 | `slow` | 大型 GUI 或真实数据测试 |
 | `protocol` | Telemetry、TCP 和温控协议测试 |
-| `fpga` | VLP1、FPGA 传感器和 RAW/DLIA replay 测试 |
+| `fpga` | VLP1、传感器、RAW/DLIA replay、页面及 SkyCore 远程控制/归档/带宽测试 |
 | `3d` | osgEarth/OSG 三维地图测试 |
 | `real-data` | 依赖仓库本地西湖三维数据的测试 |
 

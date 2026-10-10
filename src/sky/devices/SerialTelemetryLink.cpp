@@ -1,5 +1,6 @@
 #include "SerialTelemetryLink.h"
 #include "SerialBaudRate.h"
+#include "FpgaSerialBudget.h"
 
 #include <QRegularExpression>
 
@@ -68,6 +69,13 @@ qint64 SerialTelemetryLink::writeBytes(const QByteArray& bytes)
 {
     if (!port_.isOpen())
     {
+        return -1;
+    }
+    if (!FpgaSerialBudget::queueFits(port_.baudRate(), port_.bytesToWrite(), bytes.size()))
+    {
+        close();
+        emit errorOccurred(QStringLiteral("Serial telemetry peer is too slow; pending output exceeded the bounded queue (%1 bytes). Control delivery is not confirmed.")
+            .arg(FpgaSerialBudget::maximumPendingBytes(port_.baudRate())));
         return -1;
     }
     return port_.write(bytes);

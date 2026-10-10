@@ -1,6 +1,6 @@
 # FPGA VLP1 软件适配与对接计划
 
-本文说明 VaporView 的本机 FPGA 控制、记录和离线查看边界。协议对象为 XCKU11P + FX3 GP01 正式双 AD4630 系统；页面独立于既有串口 Device Configuration。本文所说“已实现”指本轮代码提供了接口与处理路径，不代表本机已接实板、Cypress SDK 分支已编译或硬件功能已验收。最终软件构建及测试结果见第 11 节。
+本文说明天空端 FPGA 控制、记录和离线查看边界。用户最终确认：VaporView 所在工控机位于天空端，USB/VLP1 连接 FPGA，其他设备全部连接 FPGA；数传另一路直连工控机，将天空数据发送地面并接收地面控制。SkyCore 是唯一 USB 所有者，同机 GUI 和地面 GUI 均通过 SkyCore 控制设备。协议对象为 XCKU11P + FX3 GP01 正式双 AD4630 系统；页面独立于既有串口 Device Configuration。本文所说“已实现”仅表示代码提供接口与处理路径，不代表接板、SDK 分支或硬件验收通过。第 11 节是历史 Ground 本机适配结果，不能作为本轮天空拓扑验证；本轮最终结果由第 12 节另行记录。配置和启动步骤见 [天空拓扑部署](fpga_sky_topology.md)。
 
 ## 1. 事实来源与适用版本
 
@@ -30,12 +30,12 @@
 
 | 用户需求 | 软件责任 | 本轮实现与验收边界 |
 |---|---|---|
-| 独立 FPGA 控制页 | `FpgaControlPage`、主窗口 FPGA 接线 | 本机 USB 连接、参数、传感器、波形、诊断、记录、回放/导出入口；真实 GUI 与界面状态测试由最终验证记录确认 |
+| 独立 FPGA 控制页 | `FpgaControlPage`、`RemoteSkyController` | Remote 模式经本机 IPC 或数传发送 FPGA 控制，GUI 不直接持有 USB；等待最终异步事务及读回，不把受理 ACK 显示为完成 |
 | 唯一后台 IN 接收 | `FpgaDeviceSession`、`FpgaUsbTransport` | 增量拆包、CRC、命令串行匹配、掉线清理；吞吐与拔插仍待实板 |
 | 保守配置及启停 | `FpgaDeviceController`、`FpgaControlConfig` | 期望配置与硬件读回分离，shadow/commit/读回确认；命令计划与状态边界按下文逐项验证 |
 | 默认 PTB210 | 传感器适配和压力来源选择 | `0x0040` 为默认来源，BMP390 可显式选择；不能无提示回退或混用两者校准 |
 | 六传感器物理量与质量 | `FpgaSensorDecoder`、`FpgaSensorAdapter` | TLV、FDILink、BMP 补偿、AI8 状态；通信成功不等于测量有效 |
-| 传感器和 DLIA 连续记录 | `GroundRecordingService`、`FpgaSessionArchive` | 后台落盘、精确 USB/命令/配置快照、分段与完整性标志 |
+| 传感器和 DLIA 连续记录 | `SkySessionRecorder`、`FpgaSessionArchive` | 完整 USB/命令/帧/快照在天空端后台落盘；地面只保存收到的标准遥测，新增预览用于界面观察 |
 | RAW 按需诊断 | 控制器、RAW 定时器和记录配置 | 默认关闭；默认诊断窗口 10 秒，到期请求关闭上传；结束确认必须检查命令及掩码读回 |
 | 原码与校准边界 | 前端配置、波形展示 | 未确认独立通道校准时只显示原码/数字幅值；不输出电压或 ppm |
 | 离线回放与导出 | Archive、原始解析页、FPGA 页 | 复用 live codec；CSV/JSON/BIN；离线状态不得伪装在线设备 |
@@ -61,7 +61,7 @@ CMD/RESP=`0x01/0x02`，DATA=`0x10`，EVENT/STATUS=`0x11/0x12`，PROTOCOL_ERROR=`
 
 ### 4.1 连接、探测和配置
 
-1. 选择本机后端并连接；核对端点及 GP01 B1/B0。先开始后台 IN，再 PING、GET_CAPABILITIES 和合法寄存器读回。
+1. 天空工控机的 SkyCore 选择 USB 后端并连接；GUI 通过 Remote 模式请求操作。核对端点及 GP01 B1/B0。先开始后台 IN，再 PING、GET_CAPABILITIES 和合法寄存器读回。
 2. 核验协议、时钟、payload 上限及上表模块版本。保存版本、配置、B0/B1、错误/drop 初值。探测前后的“连接成功”和“可应用当前配置”分别表达。
 3. 首次不自动启用 HMP `0x0041`、电机或 RAW。六传感器配置保持 PTB210 为默认压力源。
 4. 配置采样时序前，停止双 ADC、等待 PHY 空闲并排空旧队列，停止/排空双 DLIA。保持接收循环运行；不要无条件停止两条 WMS/DAC。
@@ -122,7 +122,7 @@ DLIA `0030/0031, msg1001` 的当前协议仅 schema2，头32B。format0为I32 H1
 
 ## 7. Session、离线回放与导出
 
-本轮在既有 Ground Session 中按需新增：
+本轮在既有天空端 Session 中保存完整 FPGA 归档；历史 Ground 本机 FPGA Session 仍可读取，文件格式保持一致：
 
 | 路径 | 内容 |
 |---|---|
@@ -130,9 +130,9 @@ DLIA `0030/0031, msg1001` 的当前协议仅 schema2，头32B。format0为I32 H1
 | `sensors/fpga_frames.jsonl` | 完整帧/OUT命令元数据、typed payload摘要及配置/校准/连接段快照 |
 | `session.json` 的可选FPGA字段 | raw_files.fpga_vlp1和FPGA路径、记录计数；旧session无此项 |
 
-record_type=1为IN完整帧，2为OUT命令，3为JSON快照，4为原始USB IN块。“记录传感器/记录解调数据/记录RAW”选项只筛选type1完整帧与对应解析摘要，不筛选精确type4 USB流、type2 OUT或type3快照；活动Ground Session保留接收到的完整USB流，包含未勾选的source。要降低高吞吐USB数据量必须关闭硬件RAW上传，不能靠解析记录筛选。原始USB包括半帧、多帧、填充、CRC损坏和不能解析的字节；完整帧与USB重复记录用于诊断，但回放/流BIN选择USB优先，不能重复计数。外层host时间、内层tick/source/msg/sequence/cycle/flags以及raw payload都可追溯；tick/host time等uint64字段的JSON使用十进制字符串避免精度损失。
+record_type=1为IN完整帧，2为OUT命令，3为JSON快照，4为原始USB IN块。“记录传感器/记录解调数据/记录RAW”选项只筛选type1完整帧与对应解析摘要，不筛选精确type4 USB流、type2 OUT或type3快照；活动天空 Session保留接收到的完整USB流，包含未勾选的source。要降低高吞吐USB数据量必须关闭硬件RAW上传，不能靠解析记录筛选。原始USB包括半帧、多帧、填充、CRC损坏和不能解析的字节；完整帧与USB重复记录用于诊断，但回放/流BIN选择USB优先，不能重复计数。外层host时间、内层tick/source/msg/sequence/cycle/flags以及raw payload都可追溯；tick/host time等uint64字段的JSON使用十进制字符串避免精度损失。
 
-`GroundRecordingStatus::rawFpgaRecords`供记录状态/摘要显示，并与manifest `raw_files.fpga_vlp1.records`对应；它统计后台成功写入的四类记录总数，不是测量点数、USB字节数或有效VLP帧数。刚入队的记录尚未计入，pause/stop排空后得到最终值；不用PTB/raw waveform旧计数冒充FPGA数量。
+天空端 `SkySessionRecorder::rawFpgaRecordCount()` 与 manifest `raw_files.fpga_vlp1.records` 对应；历史 Ground 本机记录仍保留 `GroundRecordingStatus::rawFpgaRecords`。这些值统计后台成功写入的四类记录总数，不是测量点数、USB 字节数或有效 VLP 帧数。刚入队尚未计入，pause/stop 排空后得到最终值；不用 PTB/raw waveform 旧计数冒充 FPGA 数量。地面数传 Session 保存既有标准遥测测量；新 FPGA 状态和有限波形预览仅用于界面，不作为完整原始归档保存。
 
 记录经有界后台队列写入，GUI不做高频同步落盘。pause先排空、resume沿用session并写段标记；关闭排空后flush，写入/队列/flush失败标记incomplete，不宣称完整记录。配置、校准、连接和重连事件保存快照。FPGA记录不写入PTB/HMP旧raw文件，也不修改已有session。
 
@@ -142,7 +142,7 @@ CSV/JSON导出包括各record kind、元数据、原始payload和配置快照；
 
 ## 8. 结构化诊断与可追溯状态
 
-FPGA操作诊断通过统一 `LogRecord/LogService` 发布：source=`Ground`、category=`device.fpga`，fields包含event=`fpga_operation_diagnostic`、operation、ready、busy；错误等级附error_code=`FPGA_OPERATION_FAILED`。页面诊断框展示message，统一日志保留结构化字段，不能以页面临时文本代替可审计错误记录。周期不完整、命令超时、版本不匹配及读回失败均应有诊断，并保留原始帧/USB证据。
+FPGA操作诊断通过统一 `LogRecord/LogService` 发布：天空后端将共享控制器日志标记为 source=`SkyCore`、category=`device.fpga`，执行角色与会话 origin 一致，fields包含event=`fpga_operation_diagnostic`、operation、ready、busy；错误等级附error_code=`FPGA_OPERATION_FAILED`。页面诊断框展示message，统一日志保留结构化字段，不能以页面临时文本代替可审计错误记录。周期不完整、命令超时、版本不匹配及读回失败均应有诊断，并保留原始帧/USB证据。
 
 config snapshot同时保存期望configuration、hardware_registers、ready、usb_connected和USB诊断字段。期望配置并不自动变成硬件实际值，USB opened也不自动变成ready；操作失败快照记录event=operation_failed和detail。现场需要结合原始OUT/RESP、B0/B1及状态初末值判断错误，不能从日志中的一个“ACK”推导采集、设温或模拟输出通过。
 
@@ -161,7 +161,7 @@ config snapshot同时保存期望configuration、hardware_registers、ready、us
 
 ## 10. 使用入口与可选 SDK 构建
 
-1. 从左侧 `FPGA` 进入独立页面，选择后端及可选设备路径。启动程序和切页都不会自动连接、启用输出或恢复历史 enable。
+1. 按 [天空拓扑部署](fpga_sky_topology.md) 配置并启动 `VaporViewSkyCore`。`fpga.enabled=true` 允许 SkyCore 连接和探测 USB，但不代表已启用传感器、ADC、DLIA 或 DAC 输出；本机 GUI 与地面 GUI 均进入 Remote 模式。
 2. 本机当前构建没有 CyAPI SDK，提供 WinUSB 后端及明确的 Cypress 不可用提示；WinUSB 要求设备绑定兼容驱动。若使用下位机文档中的 Cypress 驱动，须先安装匹配的官方 SDK，再在 MSVC Developer 环境、UTF-8 代码页下配置并构建：
 
    ```text
@@ -170,12 +170,16 @@ config snapshot同时保存期望configuration、hardware_registers、ready、us
    ```
 
    CMake 必须同时找到 `CyAPI.h` 和 x64 `CyAPI` 库才会启用该分支；仅填写目录不代表编译或驱动验收通过。应用不自动更换驱动或下载固件。
-3. 切换到本地模式并断开既有串口/TCP 数据源后连接。核验 GP01、模块版本和上传通路，查看实际读回；编辑参数只是修改期望配置，须明确执行配置提交。
+3. 同机 GUI 经 TCP `127.0.0.1:39001` 接入本机 IPC；地面 GUI 经天空数传的串口或 TCP 接入原遥测链路，两者可并存。独立 FPGA 页通过 `DeviceOperation::FpgaControl` 请求允许的操作，SkyCore 执行并异步返回最终读回；页面不再直接打开 USB。核验 GP01、模块版本和上传通路，编辑配置仍需明确提交。
 4. 传感器页逐路启用并检查有效性，压力默认 PTB210，可显式选择 BMP390。采集按钮按 WMS 标签、DLIA、ADC 顺序启用数字采集；DAC 输出需要独立操作，软件计数不能证明模拟波形正确。
-5. 记录页使用既有 Ground Session。默认记录传感器和 DLIA，RAW 诊断需显式开启，默认 10 秒；关闭解析记录筛选不会删除精确 USB 归档。
-6. 停采后继续排空并保存最后状态。离线回放和 FPGA 会话导出前断开 USB；回放不发送归档命令。导出支持 CSV/JSON/BIN，应用关闭会取消扫描或尚未提交的导出，保留原输出文件。
+5. 完整 FPGA Session 在天空工控机录制。默认记录传感器和 DLIA，RAW 诊断需显式开启，默认 10 秒；关闭解析记录筛选不会删除精确 USB 归档。数传默认仅承载标准化数据和有界波形预览，不发送全量 RAW/USB。
+6. 停采后由 SkyCore 继续排空并保存最后状态。同机或地面 GUI 掉线不应自动停止 SkyCore 持续采集和录制。离线回放/导出读取天空 Session 的本地副本，不向设备发送归档 OUT；CSV/JSON/BIN 支持取消和原子提交。
 
-## 11. 本轮软件验证记录（2026-10-10）
+VLP1 当前没有实现的 RTCM 下行和 EPSILON 高级参数操作返回 `Unsupported`，不得为完成旧串口操作绕过 FPGA 另开 EPSILON 串口。只有已明确映射和允许的 FPGA 动作可下发；请求受理不是最终硬件成功。
+
+## 11. 历史第一阶段 Ground 本机软件验证记录（2026-10-10，7b68482）
+
+以下结果只覆盖 `7b68482` 的 Ground 本机 USB 适配与离线流程，发生在天空端部署拓扑澄清之前。不能据此声明 SkyCore USB 所有权、本机 IPC 与数传并存、远程 FPGA 控制或天空归档已通过；本轮最终结果由第 12 节追加。
 
 最终代码在本机 MSVC Developer 环境、UTF-8 代码页下完成 `build/Release` 全目标构建，osgEarth 保持开启，构建退出码为 0：
 
@@ -204,3 +208,47 @@ ctest --test-dir build/Release --build-config Release --output-on-failure --time
 `update_relauncher_elevated_parent_test` 在当前非提权环境跳过。菜单/布局和旧数据查看器失败保留为后续排查项；本轮没有为取得通过结果关闭这些测试或削弱其断言。`session_viewer_theme_test` 曾在此前直接相关回归中通过，最终完整回归仍按失败记录。
 
 软件验收结论仅适用于当前构建的 WinUSB 路径、协议 fixtures、模拟传输和离线流程。没有接板实测；本机缺少 Cypress SDK，启用 CyAPI 的编译/链接及 Cypress 驱动连接尚未验证。吞吐、模拟输出、物理校准、拔插和持续采集验收全部保留在 `fpga_hardware_validation.md`，未预填完成。临时构建/测试日志及现场生成物不纳入版本库。
+
+## 12. 天空端拓扑最终软件验证记录（2026-10-10）
+
+本节覆盖用户最终确认的天空工控机拓扑：SkyCore 唯一持有 FPGA USB，同机 GUI 经本机 IPC 控制，数传另接工控机并服务地面 GUI。下位机事实来源为本地 `Vapor_Radar_App_V2` 的 `4914e1d` 及第 1 节交接文档；本轮未修改下位机仓库。
+
+最终可执行输入在 MSVC Developer 环境、UTF-8 代码页下完成全目标 Release 构建 `[189/189]`，退出码 0，osgEarth 保持 ON：
+
+```text
+cmake --build build/Release --config Release -- -j4
+ctest --test-dir build/Release --build-config Release -L fpga --output-on-failure --timeout 90
+```
+
+16 项 FPGA 专项测试全部通过，用时 25.05 秒。除第 11 节已有协议/控制/归档/页面测试外，新增 `fpga_telemetry_test`、`fpga_serial_budget_test`、`fpga_remote_controller_test`、`sky_fpga_backend_test`、`sky_fpga_runtime_test`、`sky_fpga_recording_test`。覆盖以下软件行为：
+
+- 只有一个 USB controller/持续 IN；关闭后台时等待生产者退出，停止后创建的新后台也能关闭。
+- 标准测量与 FPGA 诊断传输兼容；波形预览保留原始点数/速率及组合 stride，界面只绘制实际收到的点。
+- 实际本机 TCP 模拟控制、受理 ACK 与最终响应区分、120 秒最终超时不自动重发；IPC 客户端/数传连接代际隔离、重复请求不重复物理写、同 ID 不同 payload 被拒绝。
+- 4 秒远程状态门控和逐源历史标记；状态更新不会把旧波形刷新为新样本，Local/Remote 期望配置分别持久化。
+- 精确 USB/OUT/帧/快照在天空后台队列归档，pause/stop 排空，12 轮并发开始/暂停/继续/停止，以及短写、溢出、flush 失败保守标记。
+- 物理串口的诊断令牌预算、降点、队列上限与 IPC 预览保留；低速无线实际可用吞吐仍需实测。
+
+页面完成主窗口内的中英文、明暗主题 Qt 实际渲染检查，修正英文连接按钮裁切和暗色波形对比度。临时截图逻辑与图片均已删除，再构建上述最终输入并运行专项测试。GUI 测试使用隔离配置；字体 100%、紧凑侧栏 62 逻辑像素，测试窗口和后台线程均已退出。
+
+共享协议/记录链路及 CMake 改动另运行完整回归：
+
+```text
+ctest --test-dir build/Release --build-config Release --output-on-failure --timeout 180
+```
+
+完整运行用时 484.23 秒，131 项中 122 项通过、8 项失败、1 项跳过，CTest 返回非零。16 项 FPGA 测试在完整运行中也全部通过。其中 `logging_event_catalog_audit_test` 发现本次新增的 `fpga_recording_storage_failed` 与 `fpga_storage_failure_usb_closed` 缺目录登记；已补齐 `docs/logging_events.md`，最终单项复验通过，用时 1.21 秒。该修复只修改文档，复用已成功的可执行构建和 FPGA 测试结果。
+
+最终仍有以下 7 项 UI/菜单断言未解决，不能声明完整回归通过。部分同名测试在第 11 节已失败，但断言并非都相同；其余失败未逐项判定原因，不能一概称为已证明的环境或基线故障。本轮未修改其测试或削弱断言：
+
+| 测试 | 本轮完整回归失败断言 |
+|---|---|
+| `visual_text_label_test` | `repeated drag keeps keyboard focus on the selected title` |
+| `session_viewer_components_test` | `overview page creates its command controls` |
+| `main_window_layout_test` | `log search icon opens a popup search field` |
+| `spin_arrow_disabled_test` | `enabled spin arrow hover does not duplicate the primary icon in the text area` |
+| `title_application_menu_test` | `View submenu opens for trigger regression` |
+| `session_viewer_theme_test` | `export button opens menu` |
+| `main_window_map3d_open_test` | `map title switches immediately` |
+
+`update_relauncher_elevated_parent_test` 在当前非提权环境跳过。实机 USB、Cypress SDK 编译/驱动分支、数传无线吞吐、模拟输出、物理校准和拔插均未验证；RTCM/EPSILON 高级参数等无 VLP1 下行定义的功能明确返回 Unsupported。部署步骤、带宽及地面/天空保存边界见 `fpga_sky_topology.md`，接板验收见 `fpga_hardware_validation.md`。构建日志、截图、现场 Session 和含凭据生成物不纳入 Git。

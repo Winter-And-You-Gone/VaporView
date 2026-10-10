@@ -6,6 +6,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSaveFile>
+#include <QStringList>
 #include <QtGlobal>
 #include <cmath>
 #include <limits>
@@ -701,6 +702,17 @@ bool SkyConfig::fromJson(const QJsonObject& object, SkyConfig& config, QString *
 {
     SkyConfig next = SkyConfig::defaults();
     QJsonObject section;
+    if (object.contains("fpga")) {
+        if (!readSectionObject(object, QStringLiteral("fpga"), section, errorMessage)) return false;
+        if ((section.contains("enabled") && !section.value("enabled").isBool()) ||
+            (section.contains("locator") && !section.value("locator").isString()) ||
+            (section.contains("configuration") && !section.value("configuration").isObject())) {
+            if (errorMessage) *errorMessage = QStringLiteral("Invalid fpga configuration types."); return false;
+        }
+        next.fpga.enabled = section.value("enabled").toBool(false);
+        next.fpga.locator = section.value("locator").toString();
+        next.fpga.configuration = FpgaControlConfig::fromJson(section.value("configuration").toObject());
+    }
     if (object.contains("epsilon"))
     {
         if (!readSectionObject(object, QStringLiteral("epsilon"), section, errorMessage) ||
@@ -755,6 +767,7 @@ bool SkyConfig::fromJson(const QJsonObject& object, SkyConfig& config, QString *
 QJsonObject SkyConfig::toJson() const
 {
     QJsonObject root;
+    root["fpga"] = QJsonObject{{"enabled", fpga.enabled}, {"locator", fpga.locator}, {"configuration", fpga.configuration.toJson()}};
     QJsonObject epsilonObject = epsilonToJson(epsilon);
     epsilonObject["rtcm"] = epsilonRtcmToJson(epsilon_rtcm);
     root["epsilon"] = epsilonObject;
@@ -770,6 +783,10 @@ QJsonObject SkyConfig::toJson() const
 
 bool SkyConfig::validate(QString *errorMessage) const
 {
+    if (!QStringList{"auto","cypress","winusb"}.contains(fpga.configuration.backend) ||
+        (fpga.configuration.pressureSource!=0x40 && fpga.configuration.pressureSource!=0x43)) {
+        if (errorMessage) *errorMessage=QStringLiteral("Invalid FPGA backend or pressure source."); return false;
+    }
     SkyConfig copy = *this;
     if (!validateSource(QStringLiteral("ptb"),
                         ptb.source,
@@ -816,6 +833,8 @@ bool SkyConfig::validate(QString *errorMessage) const
 SkyConfigDiff SkyConfig::diff(const SkyConfig& other) const
 {
     SkyConfigDiff result;
+    result.fpga_changed = fpga.enabled != other.fpga.enabled || fpga.locator != other.fpga.locator ||
+        fpga.configuration.toJson() != other.fpga.configuration.toJson();
     result.epsilon_changed = epsilon.enabled != other.epsilon.enabled ||
         epsilon.port != other.epsilon.port ||
         epsilon.baud_rate != other.epsilon.baud_rate;

@@ -114,6 +114,7 @@ public:
     ~MainWindow() override;
 
 #ifdef VAPORVIEW_MAIN_WINDOW_TESTING
+    VaporView::Ground::Devices::RemoteSkyController *testRemoteSkyController();
     void testSetLocalTemperatureCommandObserver(std::function<void(VaporView::CommandId)> observer);
     void testInjectRemoteSkyConfig(const QJsonObject& object);
     void testInjectRemoteSkyApplyResult(const QJsonObject& result);
@@ -248,6 +249,9 @@ private:
     void setupFpgaControlPage();
     void shutdownFpgaWorker();
     void invalidateFpgaMeasurements();
+    void updateFpgaPageBackend();
+    void sendRemoteFpgaControl(const QJsonObject& request);
+    void receiveRemoteFpgaStatus(const QJsonObject& status);
     void setupDataPanels();
     void setupLogPanel();
     void configureComboPopup(QComboBox *combo) const;

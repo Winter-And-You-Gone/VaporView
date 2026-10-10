@@ -70,6 +70,14 @@ int main(int argc,char **argv) {
     auto partial=wave;partial.complete=false;partial.partial=true;partial.pointBytes.truncate(24);page.updateWaveform(partial);
     require(plot->property("sampleCount").toInt()==0&&page.findChild<QLabel*>("fpgaWaveSummary48")->text().contains("missing fragments"),"partial cycle does not draw a fabricated connected trace");
     page.updateWaveform(wave);
+    auto preview=wave;preview.preview=true;preview.previewStride=1024;preview.totalPoints=2048;
+    page.updateWaveform(preview);
+    require(plot->property("sampleCount").toInt()==2 && plot->property("previewStride").toInt()==1024,
+        "bounded preview displays actual received points while preserving original stride");
+    const auto previewLabel=page.findChild<QLabel*>("fpgaWaveSummary48")->text();
+    require(previewLabel.contains("Sky waveform preview") && previewLabel.contains("2/2048") && !previewLabel.contains("Complete cycle"),
+        "preview cannot claim a full cycle or original-length sample buffer");
+    page.updateWaveform(wave);
     auto volts=page.configuration();volts.frontend[0].calibrated=true;volts.frontend[0].voltsPerCode=0.001;page.setConfiguration(volts);
     VaporView::FpgaWave::CompletedStream adc;adc.source=0x20;adc.message=0x1000;adc.bytesPerPoint=4;adc.totalPoints=3;adc.rate=1000000;adc.complete=true;
     for(qint32 value:{0,100,200})appendWord(adc.pointBytes,value);page.updateWaveform(adc);

@@ -4,6 +4,7 @@
 #include "FpgaSensorDecoder.h"
 #include "FpgaWaveformAssembler.h"
 #include <QMap>
+#include <QElapsedTimer>
 #include <QSet>
 #include <QWidget>
 #include <functional>
@@ -71,6 +72,8 @@ private:
     QMap<quint16, VaporView::FpgaWave::CompletedStream> latestWaves_;
     QMap<quint16, VaporView::FpgaSensor::Reading> latestReadings_;
     QSet<quint16> historicalReadings_, historicalWaves_;
+    QElapsedTimer measurementClock_;
+    QMap<quint16, qint64> readingTimes_, waveTimes_;
     bool rerendering_ = false;
     QLineEdit *locator_ = nullptr;
     QAbstractButton *connect_ = nullptr, *disconnect_ = nullptr;

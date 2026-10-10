@@ -524,6 +524,11 @@ void MainWindow::onDataSourceModeChanged(int index)
     // disabled output combo) after switching back to Local.
     syncRtkConfigPageState();
     requestRemoteSkyConfigIfAvailable(false);
+    if (state_->fpga_page_) {
+        state_->fpga_page_->setTransportConnected(false);
+        state_->fpga_page_->setConfiguration(isRemoteSkyMode() ? state_->fpga_remote_config_ : state_->fpga_config_);
+        updateFpgaPageBackend();
+    }
     updateRecordingStatusLabel();
 }
 

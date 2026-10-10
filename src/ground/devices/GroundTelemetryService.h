@@ -4,6 +4,7 @@
 #include "TelemetryCodec.h"
 #include "TelemetryLink.h"
 
+#include "FpgaTelemetry.h"
 #include <QHash>
 #include <QObject>
 #include <QTimer>
@@ -56,6 +57,9 @@ signals:
     void statusUpdated(const TelemetryStatus& status);
     void temperatureControllerStatusUpdated(const TemperatureControllerData& data);
     void ai8TemperatureControllerStatusUpdated(const Ai8TemperatureControllerProtocol::LiveData& data);
+    void fpgaStatusUpdated(const QJsonObject& status);
+    void fpgaSensorUpdated(const VaporView::FpgaSensor::Reading& reading);
+    void fpgaWaveformUpdated(const VaporView::FpgaWave::CompletedStream& stream);
     void deviceOperationResponseReceived(const DeviceOperationResponse& response);
     void commandAckReceived(const CommandAck& ack);
     void commandTimedOut(CommandId commandId, quint16 commandSeq);

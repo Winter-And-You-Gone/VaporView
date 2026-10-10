@@ -347,6 +347,28 @@ foreach(fpga_test sensor_adapter usb_transport controller)
     set_tests_properties(fpga_${fpga_test}_test PROPERTIES LABELS "fast;unit;fpga" TIMEOUT 60)
 endforeach()
 
+add_executable(fpga_telemetry_test ${CMAKE_CURRENT_SOURCE_DIR}/fpga_telemetry_test.cpp)
+target_link_libraries(fpga_telemetry_test PRIVATE vaporview_fpga_device_core)
+add_test(NAME fpga_telemetry_test COMMAND fpga_telemetry_test)
+set_tests_properties(fpga_telemetry_test PROPERTIES LABELS "fast;unit;fpga" TIMEOUT 60)
+
+add_executable(fpga_serial_budget_test ${CMAKE_CURRENT_SOURCE_DIR}/fpga_serial_budget_test.cpp)
+target_link_libraries(fpga_serial_budget_test PRIVATE vaporview_fpga_device_core)
+add_test(NAME fpga_serial_budget_test COMMAND fpga_serial_budget_test)
+set_tests_properties(fpga_serial_budget_test PROPERTIES LABELS "fast;unit;fpga" TIMEOUT 60)
+
+add_executable(fpga_remote_controller_test ${CMAKE_CURRENT_SOURCE_DIR}/fpga_remote_controller_test.cpp)
+target_link_libraries(fpga_remote_controller_test PRIVATE vaporview_ground_device_core)
+add_test(NAME fpga_remote_controller_test COMMAND fpga_remote_controller_test)
+set_tests_properties(fpga_remote_controller_test PROPERTIES LABELS "fast;unit;fpga" TIMEOUT 60)
+
+foreach(sky_fpga_test backend runtime recording)
+    add_executable(sky_fpga_${sky_fpga_test}_test ${CMAKE_CURRENT_SOURCE_DIR}/sky_fpga_${sky_fpga_test}_test.cpp)
+    target_link_libraries(sky_fpga_${sky_fpga_test}_test PRIVATE vaporview_sky_core)
+    add_test(NAME sky_fpga_${sky_fpga_test}_test COMMAND sky_fpga_${sky_fpga_test}_test)
+    set_tests_properties(sky_fpga_${sky_fpga_test}_test PROPERTIES LABELS "fast;unit;fpga;sky" TIMEOUT 90)
+endforeach()
+
 add_executable(fpga_session_archive_test ${CMAKE_CURRENT_SOURCE_DIR}/fpga_session_archive_test.cpp)
 target_link_libraries(fpga_session_archive_test PRIVATE vaporview_ground_session_core)
 add_test(NAME fpga_session_archive_test COMMAND fpga_session_archive_test)
@@ -360,7 +382,7 @@ set_tests_properties(fpga_control_page_test PROPERTIES LABELS "gui;fpga" TIMEOUT
 
 add_executable(fpga_main_window_test ${CMAKE_CURRENT_SOURCE_DIR}/fpga_main_window_test.cpp)
 target_compile_definitions(fpga_main_window_test PRIVATE VAPORVIEW_MAIN_WINDOW_TESTING=1)
-target_link_libraries(fpga_main_window_test PRIVATE vaporview_main_window)
+target_link_libraries(fpga_main_window_test PRIVATE vaporview_main_window vaporview_ground_device_core)
 add_dependencies(fpga_main_window_test VaporViewRuntimeResources)
 if(COMMAND vaporview_stage_osgearth_runtime)
     vaporview_stage_osgearth_runtime(fpga_main_window_test)

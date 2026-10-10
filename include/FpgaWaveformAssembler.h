@@ -38,6 +38,8 @@ struct CompletedStream
     bool partial = false;
     bool overflow = false;
     bool continuityError = false;
+    bool preview = false;
+    quint32 previewStride = 1;
     QVector<qint32> signed32Samples;
     QVector<quint32> unsigned32Samples;
     struct DliaPoint {

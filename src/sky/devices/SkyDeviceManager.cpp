@@ -579,7 +579,7 @@ void SkyDeviceManager::drainRawEvents()
 void SkyDeviceManager::setSimulateData(bool simulate)
 {
     simulate_data_ = simulate;
-    if (simulate_data_)
+    if (simulate_data_ && !config_.fpga.enabled)
     {
         stopRtcmWriter();
         simulate_timer_.start(100);
@@ -593,7 +593,9 @@ void SkyDeviceManager::setSimulateData(bool simulate)
 
 void SkyDeviceManager::loadConfig(const SkyConfig& config)
 {
+    if (config.fpga.enabled) disconnectAll(false);
     config_ = config;
+    if (fpga_backend_) fpga_backend_->setConfiguration(config_.fpga.configuration);
     simulated_epsilon_packet_rates_ = config_.epsilon.packet_rates;
     restartRtcmWriter();
 }
@@ -603,8 +605,119 @@ const SkyConfig& SkyDeviceManager::config() const
     return config_;
 }
 
+void SkyDeviceManager::setFpgaTransportForTesting(std::unique_ptr<Ground::Devices::FpgaUsbTransport> transport)
+{
+    if (fpga_backend_) { fpga_backend_->shutdown(); fpga_backend_.reset(); }
+    fpga_test_transport_ = std::move(transport);
+}
+
+QJsonObject SkyDeviceManager::fpgaStatus() const
+{
+    return fpga_backend_ ? fpga_backend_->statusDocument() : QJsonObject{{"version",1},{"connected",false},{"ready",false},
+        {"busy",false},{"detail",QStringLiteral("FPGA disconnected")},{"configuration",config_.fpga.configuration.toJson()},
+        {"registers",QJsonObject{}},{"archived_records",QStringLiteral("0")}};
+}
+
+void SkyDeviceManager::ensureFpgaBackend()
+{
+    if (fpga_backend_) return;
+    fpga_backend_ = std::make_unique<SkyFpgaBackend>(std::move(fpga_test_transport_));
+    fpga_backend_->setConfiguration(config_.fpga.configuration);
+    connect(fpga_backend_.get(), &SkyFpgaBackend::statusChanged, this, [this](QJsonObject document) {
+        const bool ready = document.value("ready").toBool();
+        setState(SkyDeviceId::Fpga, document.value("busy").toBool() ? DeviceState::Connecting :
+            ready ? DeviceState::Connected : document.value("connected").toBool() ? DeviceState::Error : DeviceState::Disconnected);
+        if (!ready) invalidateFpgaMeasurements();
+        emit fpgaStatusChanged(document);
+    });
+    connect(fpga_backend_.get(), &SkyFpgaBackend::measurementUpdated, this, &SkyDeviceManager::acceptFpgaMeasurement);
+    connect(fpga_backend_.get(), &SkyFpgaBackend::waveformUpdated, this, &SkyDeviceManager::fpgaWaveformUpdated);
+    connect(fpga_backend_.get(), &SkyFpgaBackend::rawFrame, this, &SkyDeviceManager::fpgaRawFrameReceived, Qt::DirectConnection);
+    connect(fpga_backend_.get(), &SkyFpgaBackend::rawCommand, this, &SkyDeviceManager::fpgaRawCommandReceived, Qt::DirectConnection);
+    connect(fpga_backend_.get(), &SkyFpgaBackend::rawUsbBytes, this, &SkyDeviceManager::fpgaRawUsbBytesReceived, Qt::DirectConnection);
+    connect(fpga_backend_.get(), &SkyFpgaBackend::snapshot, this, &SkyDeviceManager::fpgaSnapshotReceived, Qt::DirectConnection);
+    connect(fpga_backend_.get(), &SkyFpgaBackend::logRecord, this, &SkyDeviceManager::logRecord);
+}
+
+void SkyDeviceManager::submitFpgaControl(QJsonObject operation, SkyFpgaBackend::Completion completion)
+{
+    if (!config_.fpga.enabled) { completion(CommandErrorCode::ConfigInvalid, QStringLiteral("Enable fpga.enabled in Sky config first."), fpgaStatus()); return; }
+    ensureFpgaBackend();
+    // Configuration/USB selection comes from the request only when explicitly present.
+    if (operation.value("op").toString() == "connect") {
+        if (!operation.contains("locator")) operation["locator"] = config_.fpga.locator;
+        if (!operation.contains("backend")) operation["backend"] = config_.fpga.configuration.backend;
+    }
+    fpga_backend_->submit(operation, [this, operation, completion = std::move(completion)](CommandErrorCode code, QString error, QJsonObject document) {
+        if (code == CommandErrorCode::Ok && operation.value("op").toString() == "configure")
+            config_.fpga.configuration = FpgaControlConfig::fromJson(operation.value("configuration").toObject());
+        completion(code, error, document);
+    });
+}
+
+void SkyDeviceManager::invalidateFpgaMeasurements()
+{
+    fpga_position_valid_ = fpga_velocity_valid_ = false;
+    fpga_position_time_us_ = fpga_velocity_time_us_ = 0;
+    for (auto id : {SkyDeviceId::Epsilon,SkyDeviceId::Ptb,SkyDeviceId::Hmp,SkyDeviceId::Lidar,SkyDeviceId::Ai8TemperatureController,SkyDeviceId::WaveTcp}) {
+        invalidateDeviceData(id); setState(id, DeviceState::Disconnected);
+    }
+    latest_ai8_temperature_controller_.measuredC.fill(std::numeric_limits<double>::quiet_NaN());
+}
+
+void SkyDeviceManager::acceptFpgaMeasurement(const FpgaSensor::AdaptedMeasurements& m)
+{
+    if (!config_.fpga.enabled || !fpgaStatus().value("ready").toBool()) return;
+    const auto& r = m.reading;
+    const bool valid = r.validity.structure && r.validity.crc && r.validity.deviceOnline && r.validity.measurement;
+    const auto timestamp = std::chrono::steady_clock::now();
+    if ((r.kind == FpgaSensor::SensorKind::Ptb210 || r.kind == FpgaSensor::SensorKind::Bmp390) && r.source == config_.fpga.configuration.pressureSource) {
+        PtbData data; if (valid && r.pressurePa) { data.pressure_hpa = *r.pressurePa/100.; data.valid=true; data.timestamp=timestamp; }
+        setState(SkyDeviceId::Ptb, valid ? DeviceState::Connected : DeviceState::Error); handlePtbData(data);
+    } else if (r.kind == FpgaSensor::SensorKind::Sht45) {
+        HmpData data; if (valid && r.temperatureC && r.humidityPct) { data.temperature=*r.temperatureC;data.humidity=*r.humidityPct;data.valid=true;data.timestamp=timestamp; }
+        setState(SkyDeviceId::Hmp, valid ? DeviceState::Connected : DeviceState::Error); handleHmpData(data);
+    } else if (r.kind == FpgaSensor::SensorKind::Tfa1500) {
+        LidarData data; if (valid && r.distanceMm) { data.distance_m=*r.distanceMm/1000.;data.valid=true;data.timestamp=timestamp; }
+        setState(SkyDeviceId::Lidar, valid ? DeviceState::Connected : DeviceState::Error); handleLidarData(data);
+    } else if (r.kind == FpgaSensor::SensorKind::Epsilon) {
+        EpsilonData data = m.epsilon.value_or(EpsilonData{});
+        const int id = r.epsilonMessageId.value_or(0);
+        if (id==0x50 || id==0x5c || id==0x59) { fpga_position_valid_=m.navigationValid; fpga_position_time_us_=nowUs(); }
+        if (id==0x42 || id==0x50 || id==0x5f || id==0x59) { fpga_velocity_valid_=m.navigationValid && (id!=0x59 || data.gnss_velocity_valid); fpga_velocity_time_us_=nowUs(); }
+        if (!m.epsilonStatusFresh && id!=0x59) fpga_position_valid_=fpga_velocity_valid_=false;
+        data.timestamp=timestamp; data.valid=valid && data.valid && (m.attitudeValid || m.navigationValid);
+        if (!m.epsilonStatusFresh) data.filter_status_bits &= ~quint16(0xf);
+        if (!fpga_position_valid_) data.latitude_deg=data.longitude_deg=data.height_m=std::numeric_limits<double>::quiet_NaN();
+        if (!fpga_velocity_valid_) data.vel_n_mps=data.vel_e_mps=data.vel_d_mps=std::numeric_limits<float>::quiet_NaN();
+        setState(SkyDeviceId::Epsilon, data.valid ? DeviceState::Connected : DeviceState::Error); handleEpsilonData(data);
+    } else if (r.kind == FpgaSensor::SensorKind::Ai8) {
+        auto data = latest_ai8_temperature_controller_;
+        const int channel = m.ai8 ? m.ai8->channel-1 : config_.fpga.configuration.ai8.channel-1;
+        if (channel>=0 && channel<Ai8TemperatureControllerProtocol::kChannelCount) {
+            data.measuredC[channel] = valid && m.ai8 && m.ai8->measurementValid ? m.ai8->measuredC : std::numeric_limits<double>::quiet_NaN();
+            data.valid=std::any_of(data.measuredC.begin(),data.measuredC.end(),[](double v){return std::isfinite(v);});
+            if (m.ai8) { data.mainStatusRaw=m.ai8->host; data.mainStatusValid=m.ai8->measurementValid; }
+        }
+        setState(SkyDeviceId::Ai8TemperatureController, data.valid ? DeviceState::Connected : DeviceState::Error);handleAi8TemperatureControllerData(data);
+    }
+    fpga_status_.rx_count++; fpga_status_.last_data_time_us=nowUs();
+    emit fpgaSensorUpdated(r);
+}
+
 bool SkyDeviceManager::connectDevice(SkyDeviceId id, CommandErrorCode *errorCode)
 {
+    if (id == SkyDeviceId::Fpga || config_.fpga.enabled) {
+        if (id != SkyDeviceId::Fpga && id != SkyDeviceId::All) {
+            if (errorCode) *errorCode = CommandErrorCode::UnknownCommand; return false;
+        }
+        if (!config_.fpga.enabled) { if (errorCode) *errorCode = CommandErrorCode::ConfigInvalid; return false; }
+        ensureFpgaBackend();
+        submitFpgaControl({{"op","connect"},{"locator",config_.fpga.locator},{"backend",config_.fpga.configuration.backend}},
+                          [](CommandErrorCode, QString, QJsonObject) {});
+        // Connecting is asynchronous; this return only schedules startup, never a remote command ACK.
+        if (errorCode) *errorCode = CommandErrorCode::Ok; return true;
+    }
     if (id == SkyDeviceId::All)
     {
         connectAll();
@@ -675,6 +788,10 @@ bool SkyDeviceManager::disconnectDeviceInternal(SkyDeviceId id,
         previousStatus.state != DeviceState::Disabled;
     switch (id)
     {
+    case SkyDeviceId::Fpga:
+        if (fpga_backend_) { fpga_backend_->shutdown(); fpga_backend_.reset(); }
+        invalidateFpgaMeasurements();
+        break;
     case SkyDeviceId::Epsilon:
         stopCollector(epsilon_);
         break;
@@ -728,6 +845,7 @@ bool SkyDeviceManager::reconnectDevice(SkyDeviceId id, CommandErrorCode *errorCo
 
 void SkyDeviceManager::connectAll()
 {
+    if (config_.fpga.enabled) { connectDevice(SkyDeviceId::Fpga); return; }
     for (SkyDeviceId id : {SkyDeviceId::Epsilon, SkyDeviceId::Ptb, SkyDeviceId::Hmp, SkyDeviceId::Lidar, SkyDeviceId::TemperatureController, SkyDeviceId::Ai8TemperatureController, SkyDeviceId::WaveTcp})
     {
         if (deviceEnabled(config_, id))
@@ -744,6 +862,7 @@ void SkyDeviceManager::connectAll()
 
 void SkyDeviceManager::disconnectAll(bool publishLogs)
 {
+    if (fpga_backend_) disconnectDeviceInternal(SkyDeviceId::Fpga, nullptr, publishLogs);
     for (SkyDeviceId id : {SkyDeviceId::Epsilon, SkyDeviceId::Ptb, SkyDeviceId::Hmp, SkyDeviceId::Lidar, SkyDeviceId::TemperatureController, SkyDeviceId::Ai8TemperatureController, SkyDeviceId::WaveTcp})
     {
         disconnectDeviceInternal(id, nullptr, publishLogs);
@@ -768,6 +887,7 @@ DeviceStatusItem SkyDeviceManager::status(SkyDeviceId id) const
 {
     switch (id)
     {
+    case SkyDeviceId::Fpga: return fpga_status_;
     case SkyDeviceId::Epsilon:
         return epsilon_status_;
     case SkyDeviceId::Ptb:
@@ -790,6 +910,7 @@ DeviceStatusItem SkyDeviceManager::status(SkyDeviceId id) const
 
 QVector<DeviceStatusItem> SkyDeviceManager::allStatuses() const
 {
+    if (config_.fpga.enabled) return {fpga_status_,epsilon_status_,ptb_status_,hmp_status_,lidar_status_,ai8_temperature_controller_status_,wave_tcp_status_};
     return {epsilon_status_, ptb_status_, hmp_status_, lidar_status_, temperature_controller_status_, ai8_temperature_controller_status_, wave_tcp_status_};
 }
 
@@ -798,6 +919,14 @@ ApplyConfigResult SkyDeviceManager::applyConfig(const SkyConfig& newConfig)
     ApplyConfigResult result;
     const SkyConfig oldConfig = config_;
     const SkyConfigDiff diff = oldConfig.diff(newConfig);
+    if (newConfig.fpga.enabled || oldConfig.fpga.enabled) {
+        if (diff.fpga_changed) disconnectAll(false);
+        config_ = newConfig;
+        restartRtcmWriter();
+        // Persist desired config only; hardware writes require the verified asynchronous FPGA operation.
+        result.json = {{"success",true},{"fpga_pending",newConfig.fpga.enabled}};
+        return result;
+    }
     config_ = newConfig;
 
     auto reconfigureDevice = [this, &result](SkyDeviceId id, bool changed, bool enabled) {
@@ -957,6 +1086,10 @@ std::function<CommandErrorCode()> SkyDeviceManager::prepareEpsilonOperation(cons
     std::shared_ptr<std::atomic_bool> cancel, EpsilonMaintenanceProgress progress)
 {
     auto rejected = [](CommandErrorCode error) { return [error]() { return error; }; };
+    if (config_.fpga.enabled) {
+        if (message) *message = QStringLiteral("Unsupported: VLP1 has no EPSILON device downlink operation.");
+        return rejected(CommandErrorCode::UnknownCommand);
+    }
     if (request.operation == DeviceOperation::CalibrateEpsilonLevel ||
         request.operation == DeviceOperation::CalibrateEpsilonAccelerometer ||
         request.operation == DeviceOperation::CalibrateEpsilonGyroscope ||
@@ -1186,6 +1319,10 @@ bool SkyDeviceManager::configureEpsilonPacketRates(
     QString *errorMessage,
     bool forceApply)
 {
+    if (config_.fpga.enabled) {
+        if (errorCode) *errorCode=CommandErrorCode::UnknownCommand;
+        if (errorMessage) *errorMessage=QStringLiteral("Unsupported: no VLP1 EPSILON downlink."); return false;
+    }
     if (operation.output_rate_hz <= 0 || operation.output_rate_hz > 1000 ||
         operation.callback_rate_hz <= 0 || operation.callback_rate_hz > 1000 ||
         operation.packet_rates.empty())
@@ -1239,6 +1376,10 @@ bool SkyDeviceManager::configureEpsilonMainAntennaLeverArm(
     CommandErrorCode *errorCode,
     QString *errorMessage)
 {
+    if (config_.fpga.enabled) {
+        if (errorCode) *errorCode=CommandErrorCode::UnknownCommand;
+        if (errorMessage) *errorMessage=QStringLiteral("Unsupported: no VLP1 EPSILON downlink."); return false;
+    }
     if (!std::isfinite(operation.x_m) || !std::isfinite(operation.y_m) ||
         !std::isfinite(operation.z_m) || std::abs(operation.x_m) > 100.0 ||
         std::abs(operation.y_m) > 100.0 || std::abs(operation.z_m) > 100.0)
@@ -1301,6 +1442,10 @@ bool SkyDeviceManager::configureEpsilonRtcmInput(
     CommandErrorCode *errorCode,
     QString *errorMessage)
 {
+    if (config_.fpga.enabled) {
+        if (errorCode) *errorCode=CommandErrorCode::UnknownCommand;
+        if (errorMessage) *errorMessage=QStringLiteral("Unsupported: no VLP1 RTCM downlink."); return false;
+    }
     if (operation.device_port_index < 2 || operation.device_port_index > 5 ||
         !supportedEpsilonRtcmBaud(operation.forward_baud))
     {
@@ -1371,6 +1516,11 @@ bool SkyDeviceManager::receiveRtcmCorrectionData(
     const QByteArray& data,
     CommandErrorCode *errorCode)
 {
+    if (config_.fpga.enabled) {
+        rtcm_correction_dropped_bytes_.fetch_add(static_cast<quint64>(data.size()));
+        rtcm_correction_dropped_chunks_.fetch_add(1);
+        if (errorCode) *errorCode = CommandErrorCode::UnknownCommand; return false;
+    }
     if (data.isEmpty() || data.size() > kMaxRtcmCorrectionPayloadBytes)
     {
         if (errorCode) *errorCode = CommandErrorCode::InvalidPayload;
@@ -1419,7 +1569,7 @@ RtcmCorrectionStats SkyDeviceManager::rtcmCorrectionStats() const
 void SkyDeviceManager::restartRtcmWriter()
 {
     stopRtcmWriter();
-    if (simulate_data_ ||
+    if (config_.fpga.enabled || simulate_data_ ||
         !config_.epsilon_rtcm.enabled ||
         config_.epsilon_rtcm.forward_port.trimmed().isEmpty() ||
         config_.epsilon_rtcm.baud_rate <= 0)
@@ -1850,6 +2000,8 @@ bool SkyDeviceManager::readAi8Page(Ai8TemperatureControllerProtocol::Page page,
                                    CommandErrorCode *errorCode,
                                    QString *errorMessage)
 {
+    if (config_.fpga.enabled) { setAi8Error(errorCode,errorMessage,CommandErrorCode::UnknownCommand,
+        QStringLiteral("Unsupported: VLP1 does not expose AI8 parameter pages."));return false; }
     if (!validAi8Page(page) || !validAi8Selection(selection))
     {
         setAi8Error(errorCode, errorMessage, CommandErrorCode::InvalidPayload,
@@ -1901,6 +2053,8 @@ bool SkyDeviceManager::writeAi8Page(const Ai8TemperatureControllerProtocol::Page
                                     CommandErrorCode *errorCode,
                                     QString *errorMessage)
 {
+    if (config_.fpga.enabled) { setAi8Error(errorCode,errorMessage,CommandErrorCode::UnknownCommand,
+        QStringLiteral("Unsupported: VLP1 does not expose AI8 parameter pages."));return false; }
     if (!validAi8Page(requested.page) || !validAi8Selection(requested.selection) ||
         !validAi8PageValues(requested))
     {
@@ -1977,6 +2131,8 @@ bool SkyDeviceManager::restoreAi8FactoryDefaults(Ai8TemperatureControllerProtoco
                                                  CommandErrorCode *errorCode,
                                                  QString *errorMessage)
 {
+    if (config_.fpga.enabled) { setAi8Error(errorCode,errorMessage,CommandErrorCode::UnknownCommand,
+        QStringLiteral("Unsupported: VLP1 does not expose AI8 factory reset."));return false; }
     if (!validAi8Page(page) || !validAi8Selection(selection))
     {
         setAi8Error(errorCode, errorMessage, CommandErrorCode::InvalidPayload,
@@ -2013,7 +2169,18 @@ bool SkyDeviceManager::restoreAi8FactoryDefaults(Ai8TemperatureControllerProtoco
 
 EpsilonData SkyDeviceManager::latestEpsilon() const
 {
-    return latest_epsilon_;
+    auto data=latest_epsilon_;
+    if (config_.fpga.enabled) {
+        const quint64 now=nowUs();
+        if (!fpga_position_valid_ || !fpga_position_time_us_ || now-fpga_position_time_us_>2000000) {
+            data.latitude_deg=data.longitude_deg=data.height_m=std::numeric_limits<double>::quiet_NaN();
+            data.ecef_x_m=data.ecef_y_m=data.ecef_z_m=std::numeric_limits<double>::quiet_NaN();
+            data.heading_valid=false;
+        }
+        if (!fpga_velocity_valid_ || !fpga_velocity_time_us_ || now-fpga_velocity_time_us_>2000000)
+            data.vel_n_mps=data.vel_e_mps=data.vel_d_mps=std::numeric_limits<double>::quiet_NaN();
+    }
+    return data;
 }
 
 PtbData SkyDeviceManager::latestPtb() const
@@ -2359,6 +2526,7 @@ void SkyDeviceManager::onWaveTcpError()
 
 void SkyDeviceManager::initializeStatuses()
 {
+    fpga_status_.device_id = SkyDeviceId::Fpga;
     epsilon_status_.device_id = SkyDeviceId::Epsilon;
     ptb_status_.device_id = SkyDeviceId::Ptb;
     hmp_status_.device_id = SkyDeviceId::Hmp;
@@ -2384,6 +2552,7 @@ DeviceStatusItem& SkyDeviceManager::mutableStatus(SkyDeviceId id)
 {
     switch (id)
     {
+    case SkyDeviceId::Fpga: return fpga_status_;
     case SkyDeviceId::Epsilon:
         return epsilon_status_;
     case SkyDeviceId::Ptb:

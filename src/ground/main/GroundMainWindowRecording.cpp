@@ -582,7 +582,7 @@ void MainWindow::updateLogFilterAction()
 
 void MainWindow::updateRecordingStatusLabel()
 {
-    if (state_->fpga_page_ && state_->recording_service_)
+    if (!isRemoteSkyMode() && state_->fpga_page_ && state_->recording_service_)
     {
         const auto status = state_->recording_service_->status();
         const QString detail = (status.sessionDirectory.isEmpty() ? QStringLiteral("--") : status.sessionDirectory)

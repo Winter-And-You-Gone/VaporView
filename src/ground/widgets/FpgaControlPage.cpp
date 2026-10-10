@@ -17,6 +17,7 @@
 #include <QScrollArea>
 #include <QSignalBlocker>
 #include <QTabWidget>
+#include <QTimer>
 #include <QVBoxLayout>
 #include <QtEndian>
 #include <algorithm>
@@ -42,7 +43,9 @@ protected:
             const QPointF point(area.left()+area.width()*i/(samples.size()-1), area.bottom()-area.height()*(samples[i]-low)/span);
             if (!i) path.moveTo(point); else path.lineTo(point);
         }
-        p.setRenderHint(QPainter::Antialiasing); p.setPen(QPen(palette().highlight().color(),1.5)); p.drawPath(path);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setPen(QPen(VaporView::appThemeColor(VaporView::AppThemeColor::PlotSeriesWaveBlue,
+            VaporView::isDarkThemePalette(palette())),1.5)); p.drawPath(path);
     }
 };
 }
@@ -51,11 +54,16 @@ QString FpgaControlPage::text(const char *zh, const char *en) const { return QSt
 void FpgaControlPage::label(QWidget *w, const QString &zh, const QString &en) {
     w->setProperty("fpgaZh",zh); w->setProperty("fpgaEn",en);
     if (auto *l=qobject_cast<QLabel*>(w)) l->setText(english_?en:zh);
-    if (auto *b=qobject_cast<QAbstractButton*>(w)) b->setText(english_?en:zh);
+    if (auto *b=qobject_cast<QAbstractButton*>(w)) {
+        b->setText(english_?en:zh);
+        const auto metrics=b->fontMetrics();
+        b->setMinimumWidth(std::max(metrics.horizontalAdvance(zh),metrics.horizontalAdvance(en))+2*metrics.height());
+    }
     if (auto *g=qobject_cast<QGroupBox*>(w)) g->setTitle(english_?en:zh);
 }
 
 FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
+    measurementClock_.start();
     setObjectName("fpgaControlPage");
     auto *root=new QVBoxLayout(this); root->setContentsMargins(12,12,12,12); root->setSpacing(12);
     auto *connection=new QGroupBox(this); label(connection,QStringLiteral("FPGA 连接"),QStringLiteral("FPGA connection"));
@@ -66,7 +74,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     connect_=new QPushButton(connection); label(connect_,QStringLiteral("连接"),QStringLiteral("Connect")); connect_->setObjectName("fpgaConnect");
     disconnect_=new QPushButton(connection);disconnect_->setObjectName("fpgaDisconnect"); label(disconnect_,QStringLiteral("断开"),QStringLiteral("Disconnect"));
     status_=new QLabel(connection); status_->setWordWrap(true); status_->setObjectName("fpgaConnectionStatus");
-    cl->addWidget(locator_,0,0); cl->addWidget(backend_,0,1);cl->addWidget(connect_,0,2); cl->addWidget(disconnect_,0,3); cl->addWidget(status_,1,0,1,4); root->addWidget(connection);
+    cl->addWidget(locator_,0,0); cl->addWidget(backend_,0,1);cl->addWidget(connect_,0,2); cl->addWidget(disconnect_,0,3); cl->addWidget(status_,1,0,1,4); cl->setColumnStretch(0,1); root->addWidget(connection);
     connect(connect_,&QAbstractButton::clicked,this,[this]{ lockOperation(); emit connectRequested(locator_->text(),backend_->currentData().toString()); });
     connect(disconnect_,&QAbstractButton::clicked,this,[this]{ lockOperation(); emit disconnectRequested(); });
     tabs_=new QTabWidget(this); root->addWidget(tabs_,1);
@@ -211,6 +219,19 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     connect(exportButton,&QPushButton::clicked,this,[this]{emit exportRequested({});});
     diagnostics_=new QPlainTextEdit(recording); diagnostics_->setObjectName("fpgaDiagnostics"); diagnostics_->setReadOnly(true); diagnostics_->setMaximumBlockCount(2000); rl->addWidget(diagnostics_,1);
     setConfiguration(config_); setLanguage(false);setTheme(false); setConnectionState(false,false); setRecordingState(false);
+    auto *freshnessTimer = new QTimer(this);
+    freshnessTimer->setInterval(1000);
+    connect(freshnessTimer, &QTimer::timeout, this, [this] {
+        if (!connected_) return;
+        bool changed = false;
+        const auto now = measurementClock_.elapsed();
+        for (auto it = readingTimes_.cbegin(); it != readingTimes_.cend(); ++it)
+            if (now-it.value() >= 4000 && !historicalReadings_.contains(it.key())) { historicalReadings_.insert(it.key()); changed = true; }
+        for (auto it = waveTimes_.cbegin(); it != waveTimes_.cend(); ++it)
+            if (now-it.value() >= 4000 && !historicalWaves_.contains(it.key())) { historicalWaves_.insert(it.key()); changed = true; }
+        if (changed) refreshMeasurements();
+    });
+    freshnessTimer->start();
 }
 
 FpgaControlConfig FpgaControlPage::configuration() const {
@@ -256,6 +277,7 @@ void FpgaControlPage::setHardwareValues(const QMap<quint32,quint32> &v){
 }
 void FpgaControlPage::updateSensor(const VaporView::FpgaSensor::Reading &r){
     auto *l=sensorLabels_.value(r.source);if(!l)return;latestReadings_[r.source]=r;if(!rerendering_&&connected_)historicalReadings_.remove(r.source);QStringList parts;
+    if (!rerendering_) readingTimes_[r.source] = measurementClock_.elapsed();
     if(r.pressurePa)parts<<QString::number(*r.pressurePa,'f',3)+" Pa";if(r.temperatureC)parts<<QString::number(*r.temperatureC,'f',2)+" °C";
     if(r.humidityPct)parts<<QString::number(*r.humidityPct,'f',2)+" %RH";if(r.distanceMm)parts<<QString::number(*r.distanceMm)+" mm";
     if(r.ai8PvRaw)parts<<"PV "+QString::number(*r.ai8PvRaw*0.1,'f',1)+" °C";if(r.ai8SpRaw)parts<<"SP "+QString::number(*r.ai8SpRaw*0.1,'f',1)+" °C";
@@ -272,6 +294,7 @@ void FpgaControlPage::updateSensor(const VaporView::FpgaSensor::Reading &r){
 void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream &s){
     auto *plot=static_cast<SamplePlot*>(plots_.value(s.source));auto *l=waveLabels_.value(s.source);if(!plot||!l)return;
     latestWaves_[s.source]=s;if(!rerendering_&&connected_)historicalWaves_.remove(s.source);
+    if (!rerendering_) waveTimes_[s.source] = measurementClock_.elapsed();
     const auto historyPrefix=!connected_||historicalWaves_.contains(s.source)?text("离线记录 / 历史值 · ","Offline / historical · "):QString();
     const bool adc=s.source<0x30;const int channel=adc?s.source-0x20:s.source-0x30;const auto c=configuration();const bool volts=adc&&c.frontend[channel].calibrated;
     int component=0;
@@ -286,11 +309,15 @@ void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream 
         plot->samples.clear();plot->setProperty("sampleCount",0);plot->update();
         l->setText(historyPrefix+text("周期缺片或质量异常；不连接缺失区间。可用原始点保留在记录中。","Cycle has missing fragments or quality faults; gaps are not joined. Available raw points remain in the recording."));return;
     }
-    if(!expectedBytes||s.bytesPerPoint!=expectedBytes||quint64(s.totalPoints)*expectedBytes>quint64(s.pointBytes.size())) {
-        plot->samples.clear();plot->update();l->setText(historyPrefix+text("波形格式或长度无效；保留原始记录供诊断","Invalid waveform format or length; raw recording retained for diagnostics"));return;
+    const quint32 availablePoints = expectedBytes ? quint32(s.pointBytes.size() / expectedBytes) : 0;
+    const quint32 displayPoints = s.preview ? availablePoints : s.totalPoints;
+    if(!expectedBytes||s.bytesPerPoint!=expectedBytes||!displayPoints
+        || s.pointBytes.size() % expectedBytes != 0 || displayPoints > availablePoints
+        || (s.preview && (!s.previewStride || displayPoints > 64 || quint64(displayPoints-1)*s.previewStride >= s.totalPoints))) {
+        plot->samples.clear();plot->setProperty("sampleCount",0);plot->update();l->setText(historyPrefix+text("波形格式或长度无效；保留原始记录供诊断","Invalid waveform format or length; raw recording retained for diagnostics"));return;
     }
-    plot->samples.clear();double maxH2=0;const int stride=qMax(1,int(s.totalPoints)/1000);const int components=adc?1:int(s.bytesPerPoint/4);
-    for(int point=0;point<int(s.totalPoints);++point){const int offset=point*components*4;if(offset+components*4>s.pointBytes.size())break;
+    plot->samples.clear();double maxH2=0;const int stride=qMax(1,int(displayPoints)/1000);const int components=adc?1:int(s.bytesPerPoint/4);
+    for(int point=0;point<int(displayPoints);++point){const int offset=point*components*4;if(offset+components*4>s.pointBytes.size())break;
         const double value=adc&&s.format==1?double(qFromLittleEndian<quint32>(reinterpret_cast<const uchar*>(s.pointBytes.constData()+offset))):double(qFromLittleEndian<qint32>(reinterpret_cast<const uchar*>(s.pointBytes.constData()+offset+component*4)));
         if(!adc&&s.format==0&&components>=2){const qint32 h2=qFromLittleEndian<qint32>(reinterpret_cast<const uchar*>(s.pointBytes.constData()+offset+4));maxH2=qMax(maxH2,double(h2));}
         if(point%stride==0)plot->samples.append(volts?value*c.frontend[channel].voltsPerCode*c.frontend[channel].polarity:double(value));
@@ -299,10 +326,13 @@ void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream 
     l->setText(QString("%1 · %2 · %3 Hz · %4 %5 · %6%7").arg(adc?QString("ADC %1").arg(channel):QString("DLIA %1").arg(channel))
         .arg(s.totalPoints).arg(s.rate).arg(text("点","points")).arg(volts?"V":text("原码 / 数字幅值","raw / digital amplitude"))
         .arg(text(valid?"完整周期":"异常 / 不完整周期",valid?"Complete cycle":"Invalid / partial cycle"))
-        .arg(!adc&&s.format==0?text(" · 本周期 2f 最大值 "," · Cycle 2f maximum ")+QString::number(maxH2):QString()));
+        .arg(!adc&&s.format==0&&!s.preview?text(" · 本周期 2f 最大值 "," · Cycle 2f maximum ")+QString::number(maxH2):QString()));
+    if(s.preview)l->setText(QString("%1 · %2/%3 %4 · %5 %6 · %7 Hz · %8").arg(text("天空端波形预览","Sky waveform preview"))
+        .arg(displayPoints).arg(s.totalPoints).arg(text("点","points")).arg(text("抽稀间隔","stride")).arg(s.previewStride).arg(s.rate)
+        .arg(volts?"V":text("原码 / 数字幅值","raw / digital amplitude")));
     if(!adc)l->setText(l->text()+" · "+waveComponents_.value(s.source)->currentText());
     l->setText(historyPrefix+l->text());
-    plot->setProperty("sampleCount",plot->samples.size());if(!plot->samples.isEmpty()){const auto mm=std::minmax_element(plot->samples.cbegin(),plot->samples.cend());plot->setProperty("sampleMinimum",*mm.first);plot->setProperty("sampleMaximum",*mm.second);}plot->update();
+    plot->setProperty("sampleCount",plot->samples.size());plot->setProperty("previewStride",s.preview?s.previewStride:1);if(!plot->samples.isEmpty()){const auto mm=std::minmax_element(plot->samples.cbegin(),plot->samples.cend());plot->setProperty("sampleMinimum",*mm.first);plot->setProperty("sampleMaximum",*mm.second);}plot->update();
 }
 void FpgaControlPage::appendDiagnostic(const QString &s){diagnostics_->appendPlainText(s);}
 void FpgaControlPage::setLanguage(bool en){english_=en;for(auto *w:findChildren<QWidget*>())if(w->property("fpgaZh").isValid())label(w,w->property("fpgaZh").toString(),w->property("fpgaEn").toString());

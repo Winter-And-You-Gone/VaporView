@@ -1,4 +1,5 @@
 #include "SkyLocalIpcServer.h"
+#include "FpgaTelemetry.h"
 #include "LogService.h"
 
 #include <QAbstractSocket>
@@ -20,6 +21,9 @@ bool shouldBroadcastRuntimeFrame(MsgType type)
     switch (type)
     {
     case MsgType::TelemetryBasic:
+    case MsgType::FpgaStatus:
+    case MsgType::FpgaSensor:
+    case MsgType::FpgaWaveformPreview:
     case MsgType::WaveformDownsampled:
     case MsgType::WaveformFeature:
     case MsgType::TelemetryStatus:
@@ -202,6 +206,7 @@ void SkyLocalIpcServer::onNewConnection()
                        {QStringLiteral("peer_port"), socket->peerPort()}});
         sendStatus(socket);
         sendSkyConfig(socket);
+        sendFrame(socket, MsgType::FpgaStatus, FpgaRemote::encodeStatus(runtime_->currentFpgaStatus()));
     }
 }
 

@@ -127,6 +127,8 @@ QString skyDeviceIdName(SkyDeviceId id)
         return QStringLiteral("temperature_controller");
     case SkyDeviceId::Ai8TemperatureController:
         return QStringLiteral("ai8_temperature_controller");
+    case SkyDeviceId::Fpga:
+        return QStringLiteral("fpga");
     case SkyDeviceId::All:
         return QStringLiteral("all");
     }
@@ -272,6 +274,9 @@ bool skyDeviceIdFromValue(quint8 value, SkyDeviceId& id)
         return true;
     case 7:
         id = SkyDeviceId::Ai8TemperatureController;
+        return true;
+    case 8:
+        id = SkyDeviceId::Fpga;
         return true;
     case 255:
         id = SkyDeviceId::All;
@@ -1443,7 +1448,7 @@ bool validDeviceOperation(DeviceOperation operation)
            operation == DeviceOperation::CalibrateEpsilonGyroscope ||
            operation == DeviceOperation::ReadEpsilonDgnss || operation == DeviceOperation::ApplyEpsilonDgnss ||
            operation == DeviceOperation::CalibrateEpsilonMagnetic2D || operation == DeviceOperation::CalibrateEpsilonMagnetic3D ||
-           operation == DeviceOperation::CancelEpsilonMagneticCalibration;
+           operation == DeviceOperation::CancelEpsilonMagneticCalibration || operation == DeviceOperation::FpgaControl;
 }
 
 QByteArray TelemetryCodec::serializeAi8TemperatureControllerStatus(

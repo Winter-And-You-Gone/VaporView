@@ -22,6 +22,8 @@ public:
     QString portName() const;
     QString endpointDescription() const override;
     qint64 writeBytes(const QByteArray& bytes) override;
+    qint64 pendingBytes() const { return port_.bytesToWrite(); }
+    int baudRate() const { return port_.baudRate(); }
 
 private slots:
     void onReadyRead();

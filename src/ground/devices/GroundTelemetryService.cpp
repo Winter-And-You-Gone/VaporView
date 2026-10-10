@@ -221,6 +221,13 @@ quint16 GroundTelemetryService::sendCommand(CommandId commandId, const QByteArra
             pending.retry_count = kCommandMaxRetries;
         }
     }
+    if (commandId == CommandId::DeviceOperation &&
+        TelemetryCodec::parseDeviceOperationRequest(payload, operation) &&
+        operation.device_id == SkyDeviceId::Fpga && operation.operation == DeviceOperation::FpgaControl)
+    {
+        pending.retry_interval_ms = 120000;
+        pending.retry_count = kCommandMaxRetries; // Never replay hardware writes.
+    }
     pending.encodedPayload = TelemetryCodec::serializeCommand(command);
     pending.next_retry_ms = nowMs() + pending.retry_interval_ms;
     sendCommandPayload(pending);
@@ -451,7 +458,7 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
             const bool settingsReplyRequired = pending != pending_commands_.cend() &&
                 pending->command.command_id == CommandId::DeviceOperation &&
                 TelemetryCodec::parseDeviceOperationRequest(pending->command.payload, operation) &&
-                (operation.operation == DeviceOperation::ReadEpsilonSettings || operation.operation == DeviceOperation::ApplyEpsilonSettings ||
+                (operation.operation == DeviceOperation::FpgaControl || operation.operation == DeviceOperation::ReadEpsilonSettings || operation.operation == DeviceOperation::ApplyEpsilonSettings ||
                  operation.operation == DeviceOperation::RestartEpsilonDevice ||
                  operation.operation == DeviceOperation::CalibrateEpsilonLevel ||
                  operation.operation == DeviceOperation::CalibrateEpsilonAccelerometer ||
@@ -636,6 +643,24 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
                                      {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
                                       {QStringLiteral("payload_bytes"), frame.payload.size()}});
         }
+        break;
+    }
+    case MsgType::FpgaStatus:
+    {
+        QJsonObject status;
+        if (FpgaRemote::parseStatus(frame.payload, status)) emit fpgaStatusUpdated(status);
+        break;
+    }
+    case MsgType::FpgaSensor:
+    {
+        FpgaSensor::Reading reading;
+        if (FpgaRemote::parseSensor(frame.payload, reading)) emit fpgaSensorUpdated(reading);
+        break;
+    }
+    case MsgType::FpgaWaveformPreview:
+    {
+        FpgaWave::CompletedStream stream;
+        if (FpgaRemote::parseWaveformPreview(frame.payload, stream)) emit fpgaWaveformUpdated(stream);
         break;
     }
     case MsgType::Heartbeat:

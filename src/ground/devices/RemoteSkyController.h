@@ -5,6 +5,7 @@
 #include "ground/devices/RtcmStatusModel.h"
 #include <QElapsedTimer>
 
+#include "FpgaTelemetry.h"
 #include <QHash>
 #include <QObject>
 
@@ -35,6 +36,7 @@ public:
     double transmitBitsPerSecond() const;
 
     quint16 sendCommand(CommandId command, const QByteArray& payload = QByteArray());
+    quint32 sendFpgaControl(const QJsonObject& control);
     quint32 readAi8Page(Ai8TemperatureControllerProtocol::Page page,
                         const Ai8TemperatureControllerProtocol::Selection& selection);
     quint32 writeAi8Page(const Ai8TemperatureControllerProtocol::PageData& data);
@@ -86,6 +88,9 @@ signals:
     void statusUpdated(const TelemetryStatus& status);
     void temperatureControllerStatusUpdated(const TemperatureControllerData& data);
     void ai8TemperatureControllerStatusUpdated(const Ai8TemperatureControllerProtocol::LiveData& data);
+    void fpgaStatusUpdated(const QJsonObject& status);
+    void fpgaSensorUpdated(const VaporView::FpgaSensor::Reading& reading);
+    void fpgaWaveformUpdated(const VaporView::FpgaWave::CompletedStream& stream);
     void deviceOperationResponseReceived(const DeviceOperationResponse& response);
     void deviceOperationRejected(quint32 requestId, const CommandAck& ack);
     void deviceOperationTimedOut(quint32 requestId);

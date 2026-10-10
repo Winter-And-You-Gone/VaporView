@@ -1,6 +1,14 @@
 #include "ground/main/GroundMainWindowImplementation.h"
 #include <QFileDialog>
 #include <QJsonDocument>
+#include "FpgaTelemetry.h"
+
+#ifdef VAPORVIEW_MAIN_WINDOW_TESTING
+VaporView::Ground::Devices::RemoteSkyController *MainWindow::testRemoteSkyController()
+{
+    return state_->remote_sky_controller_.get();
+}
+#endif
 
 void MainWindow::setupFpgaControlPage()
 {
@@ -9,9 +17,11 @@ void MainWindow::setupFpgaControlPage()
     QSettings settings = VaporView::applicationConfigSettings();
     const auto saved = QJsonDocument::fromJson(settings.value(QStringLiteral("Fpga/desiredConfiguration")).toByteArray());
     state_->fpga_config_ = FpgaControlConfig::fromJson(saved.object());
+    state_->fpga_remote_config_ = FpgaControlConfig::fromJson(
+        QJsonDocument::fromJson(settings.value(QStringLiteral("Fpga/remoteDesiredConfiguration")).toByteArray()).object());
     state_->fpga_page_ = new FpgaControlPage(state_->main_page_stack_);
     state_->fpga_page_->setObjectName(QStringLiteral("fpgaControlPage"));
-    state_->fpga_page_->setConfiguration(state_->fpga_config_);
+    state_->fpga_page_->setConfiguration(isRemoteSkyMode() ? state_->fpga_remote_config_ : state_->fpga_config_);
     state_->fpga_page_->setLanguage(state_->is_english_);
     state_->fpga_page_->setTheme(state_->dark_theme_enabled_);
     state_->main_page_stack_->addWidget(state_->fpga_page_);
@@ -23,8 +33,17 @@ void MainWindow::setupFpgaControlPage()
     auto *page = state_->fpga_page_;
     controller->moveToThread(state_->fpga_thread_);
     connect(state_->fpga_thread_, &QThread::finished, controller, &QObject::deleteLater);
+    const auto dispatch = [this, controller](const QJsonObject& request, std::function<void()> local) {
+        if (isRemoteSkyMode()) sendRemoteFpgaControl(request);
+        else QMetaObject::invokeMethod(controller, std::move(local), Qt::QueuedConnection);
+    };
 
     connect(page, &FpgaControlPage::connectRequested, this, [this, controller](const QString &locator, const QString &backend) {
+        if (isRemoteSkyMode())
+        {
+            sendRemoteFpgaControl({{"op", "connect"}, {"locator", locator}, {"backend", backend}});
+            return;
+        }
         if (state_->fpga_connected_ || state_->fpga_busy_ || state_->fpga_replaying_ || isUiTestMode() || isRemoteSkyMode() || anyCollectorRunning() || state_->connection_attempt_in_progress_
             || (state_->tcp_wave_panel_ && (state_->tcp_wave_panel_->isConnected() || state_->tcp_wave_panel_->isConnecting())))
         {
@@ -35,9 +54,20 @@ void MainWindow::setupFpgaControlPage()
         }
         QMetaObject::invokeMethod(controller, [controller, locator, backend] { controller->connectDevice(locator,backend); }, Qt::QueuedConnection);
     });
-    connect(page, &FpgaControlPage::disconnectRequested, controller, &Controller::disconnectDevice, Qt::QueuedConnection);
-    connect(page, &FpgaControlPage::applyRequested, controller, &Controller::applyConfiguration, Qt::QueuedConnection);
+    connect(page, &FpgaControlPage::disconnectRequested, this, [dispatch, controller] {
+        dispatch({{"op", "disconnect"}}, [controller] { controller->disconnectDevice(); });
+    });
+    connect(page, &FpgaControlPage::applyRequested, this, [dispatch, controller](const FpgaControlConfig& config) {
+        dispatch({{"op", "configure"}, {"configuration", config.toJson()}}, [controller, config] { controller->applyConfiguration(config); });
+    });
     connect(page, &FpgaControlPage::configurationChanged, this, [this, controller](const FpgaControlConfig &config) {
+        if (isRemoteSkyMode())
+        {
+            state_->fpga_remote_config_ = config;
+            QSettings settings = VaporView::applicationConfigSettings();
+            VaporView::setPersistentSetting(settings, QStringLiteral("Fpga/remoteDesiredConfiguration"), QJsonDocument(config.toJson()).toJson(QJsonDocument::Compact));
+            return;
+        }
         const bool pressureChanged = state_->fpga_config_.pressureSource != config.pressureSource;
         state_->fpga_config_ = config;
         QSettings settings = VaporView::applicationConfigSettings();
@@ -51,13 +81,27 @@ void MainWindow::setupFpgaControlPage()
             onRefreshTimer();
         }
     });
-    connect(page, &FpgaControlPage::refreshRequested, controller, &Controller::refresh, Qt::QueuedConnection);
-    connect(page, &FpgaControlPage::acquisitionRequested, controller, &Controller::setAcquisition, Qt::QueuedConnection);
-    connect(page, &FpgaControlPage::waveformRequested, controller, &Controller::setWaveform, Qt::QueuedConnection);
-    connect(page, &FpgaControlPage::dacRequested, controller, &Controller::setDac, Qt::QueuedConnection);
-    connect(page, &FpgaControlPage::sensorEnableRequested, controller, &Controller::setSensorEnabled, Qt::QueuedConnection);
-    connect(page, &FpgaControlPage::rawRequested, controller, &Controller::setRawEnabled, Qt::QueuedConnection);
-    connect(page, &FpgaControlPage::setTemperatureRequested, controller, &Controller::setTemperature, Qt::QueuedConnection);
+    connect(page, &FpgaControlPage::refreshRequested, this, [dispatch, controller] {
+        dispatch({{"op", "refresh"}}, [controller] { controller->refresh(); });
+    });
+    connect(page, &FpgaControlPage::acquisitionRequested, this, [dispatch, controller](bool enabled) {
+        dispatch({{"op", "acquisition"}, {"enabled", enabled}}, [controller, enabled] { controller->setAcquisition(enabled); });
+    });
+    connect(page, &FpgaControlPage::waveformRequested, this, [dispatch, controller](int channel, bool enabled) {
+        dispatch({{"op", "wms"}, {"channel", channel}, {"enabled", enabled}}, [controller, channel, enabled] { controller->setWaveform(channel, enabled); });
+    });
+    connect(page, &FpgaControlPage::dacRequested, this, [dispatch, controller](int channel, bool enabled) {
+        dispatch({{"op", "dac"}, {"channel", channel}, {"enabled", enabled}}, [controller, channel, enabled] { controller->setDac(channel, enabled); });
+    });
+    connect(page, &FpgaControlPage::sensorEnableRequested, this, [dispatch, controller](quint16 source, bool enabled) {
+        dispatch({{"op", "sensor"}, {"source", source}, {"enabled", enabled}}, [controller, source, enabled] { controller->setSensorEnabled(source, enabled); });
+    });
+    connect(page, &FpgaControlPage::rawRequested, this, [dispatch, controller](bool enabled) {
+        dispatch({{"op", "raw"}, {"enabled", enabled}}, [controller, enabled] { controller->setRawEnabled(enabled); });
+    });
+    connect(page, &FpgaControlPage::setTemperatureRequested, this, [dispatch, controller](double celsius) {
+        dispatch({{"op", "temperature"}, {"celsius", celsius}}, [controller, celsius] { controller->setTemperature(celsius); });
+    });
     connect(page, &FpgaControlPage::recordingRequested, this, [this](bool enable) {
         if (enable) onStartRecordingClicked(); else onStopRecordingClicked();
         updateRecordingStatusLabel();
@@ -81,7 +125,7 @@ void MainWindow::setupFpgaControlPage()
     connect(controller, &Controller::transportConnectionChanged, this, [this](bool connected) {
         const bool wasConnected = state_->fpga_connected_;
         state_->fpga_connected_ = connected;
-        state_->fpga_page_->setTransportConnected(connected);
+        if (!isRemoteSkyMode()) state_->fpga_page_->setTransportConnected(connected);
         if (!connected)
         {
             state_->fpga_ready_ = false;
@@ -93,7 +137,7 @@ void MainWindow::setupFpgaControlPage()
     connect(controller, &Controller::connectionChanged, this, [this](bool ready, bool busy, const QString &detail) {
         const bool wasReady = state_->fpga_ready_;
         state_->fpga_ready_ = ready; state_->fpga_busy_ = busy;
-        state_->fpga_page_->setConnectionState(ready,busy,detail);
+        if (!isRemoteSkyMode()) state_->fpga_page_->setConnectionState(ready,busy,detail);
         if (wasReady && !ready)
         {
             invalidateFpgaMeasurements();
@@ -106,12 +150,16 @@ void MainWindow::setupFpgaControlPage()
                 : QStringLiteral("FPGA AI8 设温请使用 FPGA 页面；此处串口参数命令不可用。"));
         updateRecordingActionStates();
     }, Qt::QueuedConnection);
-    connect(controller, &Controller::hardwareValuesChanged, page, &FpgaControlPage::setHardwareValues, Qt::QueuedConnection);
+    connect(controller, &Controller::hardwareValuesChanged, this, [this, page](const QMap<quint32, quint32>& values) {
+        if (!isRemoteSkyMode()) page->setHardwareValues(values);
+    }, Qt::QueuedConnection);
     connect(controller, &Controller::logRecordGenerated, this, [page](const VaporView::LogRecord &record) {
         page->appendDiagnostic(record.message);
         VaporView::LogService::withCurrentInstance([&record](VaporView::LogService &service) { service.publish(record); });
     }, Qt::QueuedConnection);
-    connect(controller, &Controller::waveformUpdated, page, &FpgaControlPage::updateWaveform, Qt::QueuedConnection);
+    connect(controller, &Controller::waveformUpdated, this, [this, page](const VaporView::FpgaWave::CompletedStream& stream) {
+        if (!isRemoteSkyMode()) page->updateWaveform(stream);
+    }, Qt::QueuedConnection);
     connect(controller, &Controller::replayFinished, this, [this](bool, const QString &detail) {
         state_->fpga_replaying_ = false;
         state_->fpga_page_->appendDiagnostic(detail);
@@ -203,6 +251,131 @@ void MainWindow::setupFpgaControlPage()
     state_->fpga_thread_->start();
     const auto config = state_->fpga_config_;
     QMetaObject::invokeMethod(controller,[controller,config]{controller->setConfiguration(config);},Qt::QueuedConnection);
+
+    using Remote = VaporView::Ground::Devices::RemoteSkyController;
+    auto *remote = state_->remote_sky_controller_.get();
+    connect(remote, &Remote::fpgaStatusUpdated, this, &MainWindow::receiveRemoteFpgaStatus);
+    connect(remote, &Remote::fpgaSensorUpdated, this, [this, page](const VaporView::FpgaSensor::Reading& reading) {
+        if (isRemoteSkyMode() && state_->remote_sky_controller_->isOpen()
+            && state_->fpga_remote_status_.value("ready").toBool()
+            && std::chrono::steady_clock::now() - state_->fpga_remote_status_time_ < std::chrono::seconds(4))
+            page->updateSensor(reading);
+    });
+    connect(remote, &Remote::fpgaWaveformUpdated, this, [this, page](const VaporView::FpgaWave::CompletedStream& stream) {
+        if (isRemoteSkyMode() && state_->remote_sky_controller_->isOpen()
+            && state_->fpga_remote_status_.value("ready").toBool()
+            && std::chrono::steady_clock::now() - state_->fpga_remote_status_time_ < std::chrono::seconds(4))
+            page->updateWaveform(stream);
+    });
+    connect(remote, &Remote::deviceOperationResponseReceived, this, [this, page](const VaporView::DeviceOperationResponse& response) {
+        if (response.device_id != VaporView::SkyDeviceId::Fpga
+            || response.operation != VaporView::DeviceOperation::FpgaControl
+            || response.request_id != state_->fpga_remote_request_id_) return;
+        state_->fpga_remote_request_id_ = 0;
+        QJsonObject status;
+        if (VaporView::FpgaRemote::parseStatus(response.payload, status)) receiveRemoteFpgaStatus(status);
+        page->appendDiagnostic(response.error_code == VaporView::CommandErrorCode::Ok
+            ? (state_->is_english_ ? QStringLiteral("Sky FPGA operation confirmed by final readback.") : QStringLiteral("天空端 FPGA 操作已由最终读回确认。"))
+            : (state_->is_english_ ? QStringLiteral("Sky FPGA operation failed: ") : QStringLiteral("天空端 FPGA 操作失败：")) + response.error_message);
+        updateFpgaPageBackend();
+    });
+    connect(remote, &Remote::deviceOperationRejected, this, [this, page](quint32 requestId, const VaporView::CommandAck& ack) {
+        if (requestId != state_->fpga_remote_request_id_) return;
+        state_->fpga_remote_request_id_ = 0;
+        page->appendDiagnostic((state_->is_english_ ? QStringLiteral("Sky rejected FPGA command: ") : QStringLiteral("天空端拒绝 FPGA 命令：")) + VaporView::commandErrorCodeText(ack.error_code, state_->is_english_));
+        updateFpgaPageBackend();
+    });
+    connect(remote, &Remote::deviceOperationTimedOut, this, [this, page](quint32 requestId) {
+        if (requestId != state_->fpga_remote_request_id_) return;
+        state_->fpga_remote_request_id_ = 0;
+        page->appendDiagnostic(state_->is_english_ ? QStringLiteral("FPGA command timed out; execution is unknown. Read status before issuing another write; no automatic retry.")
+            : QStringLiteral("FPGA 命令超时，执行结果未知。再次写入前请读取状态；系统不会自动重发。"));
+        updateFpgaPageBackend();
+    });
+    connect(remote, &Remote::linkOpenChanged, this, [this](bool open) {
+        if (!open) {
+            state_->fpga_remote_status_ = {};
+            state_->fpga_remote_status_time_ = {};
+            state_->fpga_remote_request_id_ = 0;
+        }
+        if (isRemoteSkyMode()) updateFpgaPageBackend();
+    });
+    auto *freshnessTimer = new QTimer(this);
+    freshnessTimer->setInterval(1000);
+    connect(freshnessTimer, &QTimer::timeout, this, [this] { if (isRemoteSkyMode()) updateFpgaPageBackend(); });
+    freshnessTimer->start();
+    updateFpgaPageBackend();
+}
+
+void MainWindow::sendRemoteFpgaControl(const QJsonObject& request)
+{
+    auto *remote = state_->remote_sky_controller_.get();
+    QString error;
+    if (!remote || !remote->isOpen()) {
+        state_->fpga_page_->appendDiagnostic(state_->is_english_ ? QStringLiteral("Connect to SkyCore via local IPC or the telemetry link first.")
+            : QStringLiteral("请先通过本机 IPC 或数传链路连接 SkyCore。"));
+        updateFpgaPageBackend();
+        return;
+    }
+    if (state_->fpga_remote_request_id_) return;
+    const auto op = request.value("op").toString();
+    if (op != "connect" && op != "disconnect" && op != "refresh"
+        && (!state_->fpga_remote_status_.value("ready").toBool()
+            || std::chrono::steady_clock::now() - state_->fpga_remote_status_time_ >= std::chrono::seconds(4))) {
+        state_->fpga_page_->appendDiagnostic(state_->is_english_ ? QStringLiteral("Fresh Sky FPGA ready status is required before writing.")
+            : QStringLiteral("写入前必须收到新鲜且就绪的天空端 FPGA 状态。"));
+        updateFpgaPageBackend();
+        return;
+    }
+    if (!VaporView::FpgaRemote::validateControl(request, &error)) {
+        state_->fpga_page_->appendDiagnostic(error);
+        return;
+    }
+    state_->fpga_remote_request_id_ = remote->sendFpgaControl(request);
+    updateFpgaPageBackend();
+}
+
+void MainWindow::receiveRemoteFpgaStatus(const QJsonObject& status)
+{
+    const auto configuration = status.value("configuration").toObject();
+    const bool configurationChanged = configuration != state_->fpga_remote_status_.value("configuration").toObject();
+    state_->fpga_remote_status_ = status;
+    state_->fpga_remote_status_time_ = std::chrono::steady_clock::now();
+    if (configurationChanged) {
+        state_->fpga_remote_config_ = FpgaControlConfig::fromJson(configuration);
+        if (isRemoteSkyMode()) state_->fpga_page_->setConfiguration(state_->fpga_remote_config_);
+    }
+    if (isRemoteSkyMode()) {
+        QMap<quint32, quint32> values;
+        const auto registers = status.value("registers").toObject();
+        for (auto it = registers.begin(); it != registers.end(); ++it) values.insert(it.key().toUInt(), quint32(it.value().toDouble()));
+        state_->fpga_page_->setHardwareValues(values);
+        updateFpgaPageBackend();
+    }
+}
+
+void MainWindow::updateFpgaPageBackend()
+{
+    if (!state_->fpga_page_) return;
+    if (!isRemoteSkyMode()) {
+        state_->fpga_page_->setTransportConnected(state_->fpga_connected_);
+        state_->fpga_page_->setConnectionState(state_->fpga_ready_, state_->fpga_busy_, state_->is_english_
+            ? QStringLiteral("Local USB (bench mode)") : QStringLiteral("本机 USB（调试模式）"));
+        return;
+    }
+    const bool link = state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen();
+    const bool fresh = link && !state_->fpga_remote_status_.isEmpty()
+        && std::chrono::steady_clock::now() - state_->fpga_remote_status_time_ < std::chrono::seconds(4);
+    const auto& status = state_->fpga_remote_status_;
+    const QString detail = fresh ? QStringLiteral("SkyCore USB · ") + status.value("detail").toString()
+        : state_->is_english_ ? QStringLiteral("Connect local IPC or telemetry; enable fpga.enabled in Sky config. Link closure leaves Sky acquisition running.")
+                             : QStringLiteral("请连接本机 IPC 或数传，并在天空配置启用 fpga.enabled。此链路断开不停止天空端采集。");
+    state_->fpga_page_->setTransportConnected(fresh && status.value("connected").toBool());
+    state_->fpga_page_->setConnectionState(fresh && status.value("ready").toBool(),
+        state_->fpga_remote_request_id_ != 0 || (fresh && status.value("busy").toBool()), detail);
+    state_->fpga_page_->setRecordingState(fresh && status.value("recording_state").toInt() == 1,
+        fresh ? status.value("session_directory").toString() + (state_->is_english_ ? QStringLiteral("\nSky FPGA archived: ") : QStringLiteral("\n天空端 FPGA 归档：")) + status.value("archived_records").toString()
+              : (state_->is_english_ ? QStringLiteral("Sky recording status unavailable") : QStringLiteral("天空端记录状态未知")));
 }
 
 void MainWindow::shutdownFpgaWorker()

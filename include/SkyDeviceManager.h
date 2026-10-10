@@ -7,6 +7,7 @@
 #include "TelemetryTypes.h"
 #include "TcpWaveEncoding.h"
 #include "data_collector.h"
+#include "SkyFpgaBackend.h"
 
 #include <QObject>
 #include <QTcpSocket>
@@ -52,6 +53,9 @@ public:
     void setSimulateData(bool simulate);
     void loadConfig(const SkyConfig& config);
     const SkyConfig& config() const;
+    void submitFpgaControl(QJsonObject operation, SkyFpgaBackend::Completion completion);
+    QJsonObject fpgaStatus() const;
+    void setFpgaTransportForTesting(std::unique_ptr<Ground::Devices::FpgaUsbTransport> transport);
 
     bool connectDevice(SkyDeviceId id, CommandErrorCode *errorCode = nullptr);
     bool disconnectDevice(SkyDeviceId id, CommandErrorCode *errorCode = nullptr);
@@ -128,6 +132,13 @@ public:
     double waveTcpActualRateHz() const;
 
 signals:
+    void fpgaStatusChanged(QJsonObject document);
+    void fpgaSensorUpdated(const VaporView::FpgaSensor::Reading& reading);
+    void fpgaWaveformUpdated(const VaporView::FpgaWave::CompletedStream& stream);
+    void fpgaRawFrameReceived(quint64 time, QByteArray bytes);
+    void fpgaRawCommandReceived(quint64 time, QByteArray bytes);
+    void fpgaRawUsbBytesReceived(quint64 time, QByteArray bytes);
+    void fpgaSnapshotReceived(quint64 time, QJsonObject document);
     void deviceStatusChanged(SkyDeviceId id, DeviceStatusItem status);
     void epsilonDataUpdated(const EpsilonData& data);
     void ptbDataUpdated(const PtbData& data);
@@ -162,6 +173,14 @@ private slots:
     void onWaveTcpError();
 
 private:
+    void ensureFpgaBackend();
+    void acceptFpgaMeasurement(const FpgaSensor::AdaptedMeasurements& measurement);
+    void invalidateFpgaMeasurements();
+    std::unique_ptr<SkyFpgaBackend> fpga_backend_;
+    std::unique_ptr<Ground::Devices::FpgaUsbTransport> fpga_test_transport_;
+    DeviceStatusItem fpga_status_;
+    bool fpga_position_valid_ = false, fpga_velocity_valid_ = false;
+    quint64 fpga_position_time_us_ = 0, fpga_velocity_time_us_ = 0;
     void initializeStatuses();
     bool disconnectDeviceInternal(SkyDeviceId id, CommandErrorCode *errorCode, bool publishLog);
     void setState(SkyDeviceId id, DeviceState state, quint16 errorCode = 0);

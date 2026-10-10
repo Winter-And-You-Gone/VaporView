@@ -8,6 +8,7 @@
 #include <map>
 #include <array>
 #include "EpsilonRawSatellite.h"
+#include "FpgaControlConfig.h"
 
 namespace VaporView
 {
@@ -106,6 +107,7 @@ struct TelemetryRateConfig
 
 struct SkyConfigDiff
 {
+    bool fpga_changed = false;
     bool epsilon_changed = false;
     bool epsilon_packet_rates_changed = false;
     bool epsilon_rtcm_changed = false;
@@ -120,6 +122,11 @@ struct SkyConfigDiff
 
 struct SkyConfig
 {
+    struct FpgaConfig {
+        bool enabled = false;
+        QString locator;
+        FpgaControlConfig configuration;
+    } fpga;
     EpsilonSerialConfig epsilon;
     EpsilonRtcmConfig epsilon_rtcm;
     SerialDeviceConfig ptb;

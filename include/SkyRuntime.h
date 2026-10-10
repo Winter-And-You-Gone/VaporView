@@ -9,6 +9,7 @@
 #include "TelemetryCodec.h"
 #include "RtcmLinkTracker.h"
 #include "TelemetryLink.h"
+#include "FpgaSerialBudget.h"
 
 #include <QJsonObject>
 #include <QObject>
@@ -73,6 +74,8 @@ public:
 
     TelemetryStatus currentStatus() const;
     SkyConfig currentConfig() const;
+    QJsonObject currentFpgaStatus() const;
+    void setFpgaTransportForTesting(std::unique_ptr<Ground::Devices::FpgaUsbTransport> transport);
     SkyDashboardSnapshot dashboardSnapshot() const;
     QVector<DownsampledWaveform> currentDownsampledWaveforms() const;
 
@@ -107,6 +110,7 @@ private:
     void handleCommand(const CommandMessage& command);
     void sendCommandResultFrames(const SkyCommandResult& result);
     void sendFrame(MsgType type, const QByteArray& payload);
+    void sendLinkFrame(MsgType type, const QByteArray& payload);
     void sendAck(const CommandAck& ack);
     void sendSkyConfig();
     void sendSkyConfigApplyResult(const QJsonObject& result);
@@ -134,6 +138,10 @@ private:
     QTimer heartbeat_timer_;
     QTimer status_timer_;
     QTimer navigation_status_timer_;
+    QTimer fpga_serial_status_timer_;
+    QByteArray fpga_serial_status_pending_;
+    qint64 fpga_serial_status_sent_ms_ = -1000;
+    FpgaSerialBudget fpga_serial_budget_;
     RtcmStatusModel navigation_rtcm_status_;
     Session::NavigationStatusChangeTracker navigation_status_changes_;
     quint16 next_frame_seq_ = 1;
@@ -141,6 +149,9 @@ private:
     quint64 last_frame_time_us_ = 0;
     SkySessionRecorder session_recorder_;
     bool running_ = false;
+    bool fpga_storage_failure_handled_ = false;
+    qint64 fpga_status_last_sent_ms_ = -1000;
+    QHash<quint16, qint64> fpga_preview_sent_ms_;
     bool waveform_streaming_enabled_ = false;
     quint64 started_time_us_ = 0;
     quint64 last_sent_feature_time_us_ = 0;
@@ -150,6 +161,7 @@ private:
     std::thread serial_port_detection_thread_;
     QElapsedTimer command_clock_;
     QHash<QByteArray, QPair<qint64, SkyCommandResult>> command_results_;
+    QHash<QByteArray, QByteArray> fpga_request_payloads_;
     QByteArray active_command_key_;
     bool epsilon_settings_operation_pending_ = false;
     std::shared_ptr<std::atomic_bool> maintenance_cancel_;

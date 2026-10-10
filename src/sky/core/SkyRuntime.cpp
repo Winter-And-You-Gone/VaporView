@@ -1,4 +1,5 @@
 #include "SkyRuntime.h"
+#include "FpgaTelemetry.h"
 #include "LogService.h"
 #include "SerialBaudRate.h"
 #include "ground/devices/SerialPortDetectionService.h"
@@ -153,6 +154,14 @@ SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
     , codec_(1024u * 1024u)
     , device_manager_(this)
 {
+    fpga_serial_status_timer_.setSingleShot(true);
+    connect(&fpga_serial_status_timer_, &QTimer::timeout, this, [this] {
+        if (!fpga_serial_status_pending_.isEmpty()) {
+            const auto latest=std::move(fpga_serial_status_pending_);
+            fpga_serial_status_pending_.clear();
+            sendLinkFrame(MsgType::FpgaStatus,latest);
+        }
+    });
     connect(&device_manager_, &SkyDeviceManager::logRecord, this, [this](LogRecord record) {
         const bool published = LogService::withCurrentInstance([&](LogService& logService) {
             logService.publish(record);
@@ -260,7 +269,47 @@ SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
     waveform_timer_.setTimerType(Qt::PreciseTimer);
     heartbeat_timer_.setTimerType(Qt::PreciseTimer);
     status_timer_.setTimerType(Qt::PreciseTimer);
+    connect(&device_manager_, &SkyDeviceManager::fpgaRawFrameReceived, this,
+        [this](quint64 t,const QByteArray& b){session_recorder_.recordFpgaFrame(t,b);}, Qt::DirectConnection);
+    connect(&device_manager_, &SkyDeviceManager::fpgaRawCommandReceived, this,
+        [this](quint64 t,const QByteArray& b){session_recorder_.recordFpgaCommand(t,b);}, Qt::DirectConnection);
+    connect(&device_manager_, &SkyDeviceManager::fpgaRawUsbBytesReceived, this,
+        [this](quint64 t,const QByteArray& b){session_recorder_.recordFpgaUsbBytes(t,b);}, Qt::DirectConnection);
+    connect(&device_manager_, &SkyDeviceManager::fpgaSnapshotReceived, this,
+        [this](quint64 t,const QJsonObject& o){session_recorder_.recordFpgaSnapshot(t,o);}, Qt::DirectConnection);
+    connect(&device_manager_, &SkyDeviceManager::fpgaStatusChanged, this, [this](const QJsonObject&) {
+        sendFrame(MsgType::FpgaStatus, FpgaRemote::encodeStatus(currentFpgaStatus()));
+    });
+    connect(&status_timer_, &QTimer::timeout, this, [this] {
+        const qint64 now=command_clock_.elapsed();
+        if (device_manager_.config().fpga.enabled && now-fpga_status_last_sent_ms_>=1000) {
+            fpga_status_last_sent_ms_=now;
+            sendFrame(MsgType::FpgaStatus, FpgaRemote::encodeStatus(currentFpgaStatus()));
+        }
+    });
+    connect(&device_manager_, &SkyDeviceManager::fpgaSensorUpdated, this, [this](const FpgaSensor::Reading& r) {
+        sendFrame(MsgType::FpgaSensor, FpgaRemote::encodeSensor(r,currentTimestampUs()));
+    });
+    connect(&device_manager_, &SkyDeviceManager::fpgaWaveformUpdated, this, [this](const FpgaWave::CompletedStream& stream) {
+        const qint64 now=command_clock_.elapsed();
+        if (fpga_preview_sent_ms_.contains(stream.source) && now-fpga_preview_sent_ms_.value(stream.source)<500) return;
+        fpga_preview_sent_ms_[stream.source]=now;
+        sendFrame(MsgType::FpgaWaveformPreview, FpgaRemote::encodeWaveformPreview(stream));
+    });
 }
+
+QJsonObject SkyRuntime::currentFpgaStatus() const
+{
+    auto document = device_manager_.fpgaStatus();
+    document["recording_state"] = int(session_recorder_.recordingState());
+    document["session_directory"] = session_recorder_.sessionDirectory();
+    document["archived_records"] = QString::number(session_recorder_.rawFpgaRecordCount());
+    document["storage_failed"] = session_recorder_.storageFailed();
+    document["recording_incomplete"] = session_recorder_.storageFailed();
+    return document;
+}
+void SkyRuntime::setFpgaTransportForTesting(std::unique_ptr<Ground::Devices::FpgaUsbTransport> transport)
+{ device_manager_.setFpgaTransportForTesting(std::move(transport)); }
 
 SkyRuntime::~SkyRuntime()
 {
@@ -337,7 +386,12 @@ bool SkyRuntime::start()
             codec_.reset();
             rtcm_link_tracker_.reset();
         });
-        connect(link, &TelemetryLink::openChanged, this, [this](bool open) {
+        connect(link, &TelemetryLink::openChanged, this, [this,link](bool open) {
+            fpga_serial_status_timer_.stop();
+            fpga_serial_status_pending_.clear();
+            fpga_serial_status_sent_ms_=-1000;
+            if (const auto serial=qobject_cast<SerialTelemetryLink*>(link))
+                fpga_serial_budget_.reset(serial->baudRate(),command_clock_.elapsed());
             if (!open && maintenance_client_scope_ == QByteArrayLiteral("telemetry") && maintenance_cancel_) maintenance_cancel_->store(true);
             ++telemetry_stream_generation_;
             codec_.reset();
@@ -477,6 +531,9 @@ void SkyRuntime::stop()
 
     if (!running_)
     {
+        // Startup may have failed, or an IPC request may have created a backend
+        // after stop(). Join raw-data producers before the recorder is destroyed.
+        device_manager_.shutdown(false);
         return;
     }
 
@@ -486,6 +543,8 @@ void SkyRuntime::stop()
     heartbeat_timer_.stop();
     status_timer_.stop();
     navigation_status_timer_.stop();
+    fpga_serial_status_timer_.stop();
+    fpga_serial_status_pending_.clear();
 
     if (session_recorder_.isRecording() || session_recorder_.isPaused())
     {
@@ -589,11 +648,15 @@ bool SkyRuntime::startRecording(QString *error)
         ? 0
         : options_.telemetry_baud;
     session_recorder_.setMainAntennaLeverArm(device_manager_.config().epsilon.imu_to_main_antenna_body_m);
+    session_recorder_.setFpgaConfiguration(device_manager_.config().fpga.configuration);
     if (!session_recorder_.start(defaultRecordingDirectory(), legacyPort, legacyBaud, error, transport, endpoint))
     {
         return false;
     }
+    fpga_storage_failure_handled_=false;
     recordNavigationStatus();
+    if (device_manager_.config().fpga.enabled)
+        session_recorder_.recordFpgaSnapshot(currentTimestampUs(), {{"event","recording_started"},{"status",currentFpgaStatus()}});
     publishRuntimeLog(LogLevel::Info,
                       QStringLiteral("session.recording"),
                       QStringLiteral("sky_recording_started"),
@@ -891,6 +954,12 @@ void SkyRuntime::sendBasicTelemetry()
         data.ecef_packet_rate_hz = static_cast<float>(epsilon.ecef_packet_rate_hz);
         data.euler_orien_packet_rate_hz = static_cast<float>(epsilon.euler_orien_packet_rate_hz);
         data.quat_orien_packet_rate_hz = static_cast<float>(epsilon.quat_orien_packet_rate_hz);
+        if (device_manager_.config().fpga.enabled) {
+            if (!std::isfinite(epsilon.latitude_deg) || !std::isfinite(epsilon.longitude_deg) || !std::isfinite(epsilon.height_m))
+                data.validity_flags &= ~(BasicHasPosition|BasicHasEcef);
+            if (!std::isfinite(epsilon.vel_n_mps) || !std::isfinite(epsilon.vel_e_mps) || !std::isfinite(epsilon.vel_d_mps))
+                data.validity_flags &= ~BasicHasNedVelocity;
+        }
     }
 
     if (hasLidar)
@@ -1004,6 +1073,23 @@ void SkyRuntime::sendHeartbeat()
 
 void SkyRuntime::sendTelemetryStatus()
 {
+    if (device_manager_.config().fpga.enabled && session_recorder_.storageFailed() && !fpga_storage_failure_handled_) {
+        fpga_storage_failure_handled_=true;
+        session_recorder_.pause();
+        publishRuntimeLog(LogLevel::Error,QStringLiteral("session.write"),QStringLiteral("fpga_recording_storage_failed"),
+            QStringLiteral("FPGA 存储写入失败，会话已暂停并标记为不完整，正在停止采集。"),
+            {{QStringLiteral("error_code"),QStringLiteral("FPGA_RECORDING_STORAGE_FAILED")},{QStringLiteral("session_sink_failure"),true}});
+        device_manager_.submitFpgaControl({{"op","acquisition"},{"enabled",false}},[this](CommandErrorCode code,QString detail,QJsonObject) {
+            if(code!=CommandErrorCode::Ok) {
+                // No retry of an uncertain write. Closing USB cancels current work and stops host ingestion.
+                device_manager_.disconnectDevice(SkyDeviceId::Fpga);
+                publishRuntimeLog(LogLevel::Error,QStringLiteral("device.fpga"),QStringLiteral("fpga_storage_failure_usb_closed"),
+                    QStringLiteral("采集停止未确认，USB 接收已关闭；请核对下位机物理状态。"),
+                    {{QStringLiteral("error_code"),QStringLiteral("FPGA_STOP_UNCONFIRMED")},{QStringLiteral("detail"),detail}});
+            }
+            sendFrame(MsgType::FpgaStatus,FpgaRemote::encodeStatus(currentFpgaStatus()));
+        });
+    }
     const TelemetryStatus status = currentStatus();
     sendFrame(MsgType::TelemetryStatus, TelemetryCodec::serializeTelemetryStatus(status));
 }
@@ -1123,10 +1209,31 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
                               std::function<void(const SkyCommandResult&)> completion,
                               const QByteArray& clientScope)
 {
-    const QByteArray key = clientScope + '\0' + TelemetryCodec::serializeCommand(command);
+    DeviceOperationRequest fpgaIdentity;
+    const bool hasFpgaIdentity=command.command_id==CommandId::DeviceOperation &&
+        TelemetryCodec::parseDeviceOperationRequest(command.payload,fpgaIdentity) && fpgaIdentity.device_id==SkyDeviceId::Fpga;
+    QByteArray key = clientScope + '\0' + TelemetryCodec::serializeCommand(command);
+    if(hasFpgaIdentity) {
+        key=clientScope+'\1'+QByteArrayLiteral("fpga:")+QByteArray::number(device_command_generation_)+':';
+        if(clientScope==QByteArrayLiteral("telemetry")) key+=QByteArray::number(telemetry_stream_generation_)+':';
+        key+=QByteArray::number(fpgaIdentity.request_id);
+        auto callback=std::move(completion);
+        completion=[callback=std::move(callback),sequence=command.command_seq](const SkyCommandResult& original) {
+            auto result=original;result.ack.command_seq=sequence;callback(result);
+        };
+    }
     const qint64 now = command_clock_.elapsed();
     for (auto it = command_results_.begin(); it != command_results_.end();)
-        if (now - it.value().first >= 120000) it = command_results_.erase(it); else ++it;
+        if (now - it.value().first >= 120000) {
+            fpga_request_payloads_.remove(it.key());it = command_results_.erase(it);
+        } else ++it;
+    if(hasFpgaIdentity && fpga_request_payloads_.contains(key) && fpga_request_payloads_.value(key)!=command.payload) {
+        SkyCommandResult result;result.ack=makeAck(command,CommandErrorCode::InvalidPayload);
+        result.send_device_operation_response=true;
+        result.device_operation_response={fpgaIdentity.request_id,fpgaIdentity.device_id,fpgaIdentity.operation,
+            CommandErrorCode::InvalidPayload,QStringLiteral("Request ID already belongs to a different FPGA operation payload."),{}};
+        completion(result);return;
+    }
     const auto cached = command_results_.constFind(key);
     if (cached != command_results_.cend()) { completion(cached.value().second); return; }
     if (key == active_command_key_ && active_command_callbacks_.size() < 16)
@@ -1170,6 +1277,44 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
         return;
     }
     DeviceOperationRequest request;
+    QJsonObject connectionOperation;
+    if (device_manager_.config().fpga.enabled) {
+        const auto id = command.command_id;
+        if (id==CommandId::ConnectDevice || id==CommandId::DisconnectDevice || id==CommandId::ReconnectDevice) {
+            SkyDeviceId device;
+            if (TelemetryCodec::parseDeviceCommand(command.payload,device) && (device==SkyDeviceId::Fpga || device==SkyDeviceId::All))
+                connectionOperation["op"] = id==CommandId::DisconnectDevice ? "disconnect" : "connect";
+        } else if (id==CommandId::ConnectAllDevices || id==CommandId::ReconnectAllDevices || id==CommandId::DisconnectAllDevices)
+            connectionOperation["op"] = id==CommandId::DisconnectAllDevices ? "disconnect" : "connect";
+    }
+    const bool fpgaDeviceOperation = command.command_id == CommandId::DeviceOperation &&
+        TelemetryCodec::parseDeviceOperationRequest(command.payload, request) &&
+        request.device_id == SkyDeviceId::Fpga && request.operation == DeviceOperation::FpgaControl;
+    if (fpgaDeviceOperation || !connectionOperation.isEmpty())
+    {
+        QJsonObject operation=connectionOperation;
+        QString error;
+        if (fpgaDeviceOperation && !FpgaRemote::parseControl(request.payload, operation, &error)) {
+            SkyCommandResult result; result.ack=makeAck(command,CommandErrorCode::InvalidPayload);
+            result.send_device_operation_response=true;
+            result.device_operation_response={request.request_id,request.device_id,request.operation,CommandErrorCode::InvalidPayload,error,{}};
+            completion(result); return;
+        }
+        active_command_key_=key; active_command_callbacks_.push_back(std::move(completion));
+        if(fpgaDeviceOperation) fpga_request_payloads_.insert(key,command.payload);
+        const quint64 generation=device_command_generation_;
+        device_manager_.submitFpgaControl(operation, [this,command,request,key,generation,fpgaDeviceOperation](CommandErrorCode code,QString error,QJsonObject) {
+            if (generation!=device_command_generation_ || active_command_key_!=key) return;
+            session_recorder_.setFpgaConfiguration(device_manager_.config().fpga.configuration);
+            SkyCommandResult result; result.ack=makeAck(command,code); result.send_status=true;
+            result.send_device_operation_response=fpgaDeviceOperation;
+            result.device_operation_response={request.request_id,request.device_id,request.operation,code,error,FpgaRemote::encodeStatus(currentFpgaStatus())};
+            command_results_.insert(key,qMakePair(command_clock_.elapsed(),result)); active_command_key_.clear();
+            const auto callbacks=std::move(active_command_callbacks_); active_command_callbacks_.clear();
+            for (const auto& callback:callbacks) callback(result);
+        });
+        return;
+    }
     if (command.command_id != CommandId::DeviceOperation ||
         !TelemetryCodec::parseDeviceOperationRequest(command.payload, request) ||
         request.device_id != SkyDeviceId::Epsilon)
@@ -1939,11 +2084,49 @@ void SkyRuntime::sendCommandResultFrames(const SkyCommandResult& result)
 void SkyRuntime::sendFrame(MsgType type, const QByteArray& payload)
 {
     emit telemetryFrameReady(type, payload);
+    sendLinkFrame(type,payload);
+}
+
+void SkyRuntime::sendLinkFrame(MsgType type, const QByteArray& payload)
+{
     if (!link_ || !link_->isOpen())
     {
         return;
     }
-    link_->writeBytes(codec_.encodeFrame(type, payload, next_frame_seq_++, currentTimestampUs()));
+    QByteArray physicalPayload=payload;
+    if (auto serial=qobject_cast<SerialTelemetryLink*>(link_.get()))
+    {
+        const qint64 now=command_clock_.elapsed();
+        if (type==MsgType::FpgaStatus)
+        {
+            const qint64 remaining=1000-(now-fpga_serial_status_sent_ms_);
+            if (remaining>0) {
+                fpga_serial_status_pending_=payload;
+                if (!fpga_serial_status_timer_.isActive()) fpga_serial_status_timer_.start(int(remaining));
+                return;
+            }
+            fpga_serial_status_timer_.stop();
+            fpga_serial_status_pending_.clear();
+            fpga_serial_status_sent_ms_=now;
+        }
+        if (type==MsgType::FpgaSensor || type==MsgType::FpgaWaveformPreview)
+        {
+            // Never add diagnostic backlog ahead of control results. USB capture
+            // and the full-size IPC payload were already handled independently.
+            if (serial->pendingBytes()>serial->baudRate()/50) return; // 200 ms of 8N1 payload.
+            int source=-1;
+            if (type==MsgType::FpgaWaveformPreview) {
+                physicalPayload=fpga_serial_budget_.previewPayload(payload);
+                if (physicalPayload.isEmpty()) return;
+            } else {
+                const auto value=QJsonDocument::fromJson(payload).object().value("source");
+                if (!value.isDouble()) return;
+                source=value.toInt();
+            }
+            if (!fpga_serial_budget_.accept(physicalPayload.size()+21,now,source)) return;
+        }
+    }
+    link_->writeBytes(codec_.encodeFrame(type, physicalPayload, next_frame_seq_++, currentTimestampUs()));
 }
 
 void SkyRuntime::sendAck(const CommandAck& ack)

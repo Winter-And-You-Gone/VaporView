@@ -42,6 +42,9 @@ enum class MsgType : quint8
     DeviceOperationResponse = 0x09,
     RtcmCorrectionData = 0x0A,
     SerialPortDetectionResult = 0x0B,
+    FpgaStatus = 0x0C,
+    FpgaSensor = 0x0D,
+    FpgaWaveformPreview = 0x0E,
     Command = 0x10,
     CommandAck = 0x11,
     Heartbeat = 0x20,
@@ -115,6 +118,7 @@ enum class DeviceOperation : quint8
     CalibrateEpsilonMagnetic2D = 21,
     CalibrateEpsilonMagnetic3D = 22,
     CancelEpsilonMagneticCalibration = 23,
+    FpgaControl = 30,
 };
 
 enum class SkyDeviceId : quint8
@@ -126,6 +130,7 @@ enum class SkyDeviceId : quint8
     WaveTcp = 5,
     TemperatureController = 6,
     Ai8TemperatureController = 7,
+    Fpga = 8,
     All = 255,
 };
 

@@ -6,6 +6,7 @@
 #include "LogRecord.h"
 #include "data_types.h"
 #include "TcpWaveEncoding.h"
+#include "FpgaControlConfig.h"
 #include "ppk/ObservationStore.h"
 #include "ppk/AttitudeStore.h"
 #include "shared/session/NavigationStatusCsv.h"
@@ -26,10 +27,23 @@ class RecordingStorage;
 class SkySessionRecorder
 {
 public:
-    void setMainAntennaLeverArm(const std::array<double,3>& arm) { imu_to_main_antenna_body_m_ = arm; }
+    void setMainAntennaLeverArm(const std::array<double,3>& arm) {
+        std::lock_guard<std::recursive_mutex> lock(recording_mutex_);
+        imu_to_main_antenna_body_m_ = arm;
+    }
     explicit SkySessionRecorder(std::shared_ptr<RecordingStorage> storage = {});
-    void setStorageFailureCallback(std::function<void()> callback) { storage_failure_callback_ = std::move(callback); }
-    bool storageFailed() const { return storage_failed_; }
+    ~SkySessionRecorder();
+    void setStorageFailureCallback(std::function<void()> callback) {
+        std::lock_guard<std::recursive_mutex> lock(recording_mutex_);
+        storage_failure_callback_ = std::move(callback);
+    }
+    bool storageFailed() const;
+    void setFpgaConfiguration(const FpgaControlConfig& configuration);
+    bool recordFpgaFrame(quint64 hostTimeUs, const QByteArray& frame);
+    bool recordFpgaCommand(quint64 hostTimeUs, const QByteArray& command);
+    bool recordFpgaUsbBytes(quint64 hostTimeUs, const QByteArray& bytes);
+    bool recordFpgaSnapshot(quint64 hostTimeUs, const QJsonObject& snapshot);
+    quint64 rawFpgaRecordCount() const;
     bool start(const QString& baseDirectory,
                const QString& telemetryPort,
                int telemetryBaud,
@@ -110,6 +124,15 @@ public:
                                TcpFloatEncoding floatEncoding);
 
 private:
+    // Direct USB callbacks and main-thread lifecycle share one admission gate.
+    // Recursive entry permits synchronous LogService/storage callbacks on the same thread.
+    mutable std::recursive_mutex recording_mutex_;
+    struct FpgaWriter;
+    std::unique_ptr<FpgaWriter> fpga_writer_;
+    FpgaControlConfig fpga_configuration_;
+    QJsonObject fpga_snapshot_;
+    bool enqueueFpga(quint64 hostTimeUs, quint16 kind, const QByteArray& bytes);
+    void recordFpgaBoundary(const QString& event);
     std::array<double,3> imu_to_main_antenna_body_m_{};
     bool openRawDatFile(QFile& file, const QString& filename, quint16 sourceId, QString *errorMessage);
     bool writeRawRecord(QFile& file,

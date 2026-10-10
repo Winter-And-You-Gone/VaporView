@@ -90,6 +90,8 @@ lists and target-specific dependencies are owned by module CMake files under
 | Target | Purpose | Important dependencies |
 | --- | --- | --- |
 | `vaporview_sky_core` | Device collectors, transports, protocol execution, recording, and IPC server | protocol, wave encoding, geo, Qt Core/Network/SerialPort |
+| `vaporview_device_collectors` | Shared legacy serial collectors and device protocols | protocol, geo, PPK, session format, wave encoding, Qt Core/Network/SerialPort |
+| `vaporview_fpga_device_core` | Shared USB/VLP1 controller and sensor adapters, used by Sky and retained local workflows | protocol, session format, device collectors, Qt Core |
 | `vaporview_sky_tui` | Sky TUI and IPC client | protocol, app theme, Qt Core/Network/Widgets |
 
 ### Ground targets
@@ -165,10 +167,6 @@ flowchart LR
   LC --> CR["CollectorRegistry"]
   CR --> DS["normalized device samples"]
 
-  FU["FPGA USB GP01"] --> FS["FpgaDeviceSession"]
-  FS --> FV["VLP1 parser + sensor/waveform adapters"]
-  FV --> DS
-
   RL["Sky serial/TCP telemetry"] --> RS["RemoteSkyController"]
   RS --> RD["RemoteTelemetryDecoder"]
   RD --> RMS["RemoteTelemetryState"]
@@ -187,12 +185,18 @@ or dispatch individual local sample-rate/RD105 collector methods.
 disconnect behavior, the collector registry, sample-rate application, and
 local RD105 command execution. `ImuConfigurationService` owns the IMU ASCII
 profile sequence, direct-port configuration, and restart behavior.
-`FpgaDeviceSession` is the separate Ground-side VLP1 path for the
-`Vapor_Radar_App_V2` GP01 USB device. It owns the unique IN polling loop,
+For the confirmed airborne IPC deployment, SkyCore owns the GP01 USB device;
+both the same-machine GUI and the ground GUI select Remote mode. The local GUI
+uses existing `RemoteSkyController` TCP IPC at `127.0.0.1:39001`, while the ground
+GUI uses the independent serial/TCP telemetry link. Neither GUI opens USB.
+`FpgaDeviceSession`, instantiated by the Sky FPGA backend, owns the unique IN polling loop,
 incremental VLP1 parsing, serialized command responses, capability/register
-requests, sensor payload decoding, and RAW/DLIA fragment assembly. It does not
-replace the existing serial collectors or the internal Ground/Sky
-`TelemetryCodec`; callers consume its normalized signals and raw-frame signal.
+requests, sensor payload decoding, and RAW/DLIA fragment assembly. Legacy local
+serial workflows remain available outside this deployment; the FPGA path reuses
+existing normalized models and the internal Ground/Sky `TelemetryCodec`.
+The independent FPGA page sends allowlisted `DeviceOperation::FpgaControl`
+requests and observes asynchronous final readback. Unsupported VLP1 RTCM/EPSILON
+advanced operations cannot bypass FPGA by opening another device serial port.
 `RemoteSkyController` owns the remote telemetry link and command sequence.
 `RemoteTelemetryDecoder` and
 `RemoteTelemetryState` turn wire messages into stable ground state.
@@ -245,11 +249,15 @@ legacy `mode=sky`, and old path/raw-file keys without modifying old sessions.
 
 ```mermaid
 flowchart LR
-  HW["serial/TCP devices"] --> DM["SkyDeviceManager / collectors"]
+  HW["all peripheral devices"] <--> FPGA["FPGA GP01"]
+  FPGA <-- USB/VLP1 --> Backend["SkyFpgaBackend / shared FPGA device core"]
+  Backend <--> DM["SkyDeviceManager"]
   DM --> SR["SkyRuntime"]
   SR --> REC["SkySessionRecorder"]
-  SR --> TL["TelemetryLink"]
-  SR --> IPCS["SkyLocalIpcServer"]
+  SR <--> TL["TelemetryLink / direct-connected radio"]
+  TL <--> Ground["Ground RemoteSkyController"]
+  SR <--> IPCS["SkyLocalIpcServer 127.0.0.1:39001"]
+  GUI["Same-machine GUI RemoteSkyController"] <--> IPCS
   TUI["SkyTuiController"] --> IPCC["SkyLocalIpcClient"]
   IPCC <--> IPCS
 ```
@@ -258,6 +266,16 @@ Device protocols and collectors remain owned by Sky Core. The TUI observes and
 commands the core through local IPC; it does not directly open device ports.
 The shared telemetry codec is used on both sides so command IDs and payload
 formats remain compatible.
+
+The shared collectors target does not depend on SkyCore. The shared FPGA device
+core depends on those collectors, and SkyCore depends on the FPGA device core;
+Ground can reuse the shared core without a Ground/Sky application dependency cycle.
+Full exact USB/OUT/frame/snapshot recording stays in the airborne Session through
+the bounded Sky recorder worker. Telemetry carries normalized data and bounded
+waveform previews, with RAW disabled by default; a ground Session is not the full
+airborne raw archive. IPC/telemetry client disconnect must not stop Sky acquisition
+or recording. See [deployment steps](fpga_sky_topology.md) and the pending
+[hardware validation checklist](fpga_hardware_validation.md).
 
 ## MainWindow boundary
 
