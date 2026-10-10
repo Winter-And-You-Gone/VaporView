@@ -201,6 +201,16 @@ advanced operations cannot bypass FPGA by opening another device serial port.
 `RemoteTelemetryDecoder` and
 `RemoteTelemetryState` turn wire messages into stable ground state.
 
+The host selection above is independent from the sensor transport path. The
+shared `SensorTransportPath` model has two values: `DirectDevices` means the
+selected host opens the sensor ports itself, while `FpgaRelay` means all VLP1
+supported sensors reach that host through `FPGA -> USB/VLP1`. Thus Local and
+Remote each have both a direct and a relay variant. The Device Configuration
+page owns this second selector; the FPGA page reports it but does not redefine
+it as FPGA USB ownership. The current VLP1 source set covers PTB210/BMP390,
+EPSILON, SHT45, TFA1500-L and AI8. RD105 remains a serial-only compatibility
+device until a documented FPGA source is available.
+
 ### Session recording and viewing
 
 ```mermaid

@@ -579,7 +579,7 @@ void SkyDeviceManager::drainRawEvents()
 void SkyDeviceManager::setSimulateData(bool simulate)
 {
     simulate_data_ = simulate;
-    if (simulate_data_ && !config_.fpga.enabled)
+    if (simulate_data_ && config_.sensor_transport_path == SensorTransportPath::DirectDevices)
     {
         stopRtcmWriter();
         simulate_timer_.start(100);
@@ -593,7 +593,11 @@ void SkyDeviceManager::setSimulateData(bool simulate)
 
 void SkyDeviceManager::loadConfig(const SkyConfig& config)
 {
-    if (config.fpga.enabled) disconnectAll(false);
+    if (config.sensor_transport_path == SensorTransportPath::FpgaRelay ||
+        config_.sensor_transport_path == SensorTransportPath::FpgaRelay)
+    {
+        disconnectAll(false);
+    }
     config_ = config;
     if (fpga_backend_) fpga_backend_->setConfiguration(config_.fpga.configuration);
     simulated_epsilon_packet_rates_ = config_.epsilon.packet_rates;
@@ -667,7 +671,8 @@ void SkyDeviceManager::invalidateFpgaMeasurements()
 
 void SkyDeviceManager::acceptFpgaMeasurement(const FpgaSensor::AdaptedMeasurements& m)
 {
-    if (!config_.fpga.enabled || !fpgaStatus().value("ready").toBool()) return;
+    if (config_.sensor_transport_path != SensorTransportPath::FpgaRelay ||
+        !fpgaStatus().value("ready").toBool()) return;
     const auto& r = m.reading;
     const bool valid = r.validity.structure && r.validity.crc && r.validity.deviceOnline && r.validity.measurement;
     const auto timestamp = std::chrono::steady_clock::now();
@@ -707,7 +712,7 @@ void SkyDeviceManager::acceptFpgaMeasurement(const FpgaSensor::AdaptedMeasuremen
 
 bool SkyDeviceManager::connectDevice(SkyDeviceId id, CommandErrorCode *errorCode)
 {
-    if (id == SkyDeviceId::Fpga || config_.fpga.enabled) {
+    if (id == SkyDeviceId::Fpga || config_.sensor_transport_path == SensorTransportPath::FpgaRelay) {
         if (id != SkyDeviceId::Fpga && id != SkyDeviceId::All) {
             if (errorCode) *errorCode = CommandErrorCode::UnknownCommand; return false;
         }
@@ -845,7 +850,11 @@ bool SkyDeviceManager::reconnectDevice(SkyDeviceId id, CommandErrorCode *errorCo
 
 void SkyDeviceManager::connectAll()
 {
-    if (config_.fpga.enabled) { connectDevice(SkyDeviceId::Fpga); return; }
+    if (config_.sensor_transport_path == SensorTransportPath::FpgaRelay)
+    {
+        connectDevice(SkyDeviceId::Fpga);
+        return;
+    }
     for (SkyDeviceId id : {SkyDeviceId::Epsilon, SkyDeviceId::Ptb, SkyDeviceId::Hmp, SkyDeviceId::Lidar, SkyDeviceId::TemperatureController, SkyDeviceId::Ai8TemperatureController, SkyDeviceId::WaveTcp})
     {
         if (deviceEnabled(config_, id))
@@ -910,7 +919,10 @@ DeviceStatusItem SkyDeviceManager::status(SkyDeviceId id) const
 
 QVector<DeviceStatusItem> SkyDeviceManager::allStatuses() const
 {
-    if (config_.fpga.enabled) return {fpga_status_,epsilon_status_,ptb_status_,hmp_status_,lidar_status_,ai8_temperature_controller_status_,wave_tcp_status_};
+    if (config_.sensor_transport_path == SensorTransportPath::FpgaRelay)
+    {
+        return {fpga_status_,epsilon_status_,ptb_status_,hmp_status_,lidar_status_,ai8_temperature_controller_status_,wave_tcp_status_};
+    }
     return {epsilon_status_, ptb_status_, hmp_status_, lidar_status_, temperature_controller_status_, ai8_temperature_controller_status_, wave_tcp_status_};
 }
 
@@ -919,15 +931,28 @@ ApplyConfigResult SkyDeviceManager::applyConfig(const SkyConfig& newConfig)
     ApplyConfigResult result;
     const SkyConfig oldConfig = config_;
     const SkyConfigDiff diff = oldConfig.diff(newConfig);
-    if (newConfig.fpga.enabled || oldConfig.fpga.enabled) {
-        if (diff.fpga_changed) disconnectAll(false);
-        config_ = newConfig;
-        restartRtcmWriter();
-        // Persist desired config only; hardware writes require the verified asynchronous FPGA operation.
-        result.json = {{"success",true},{"fpga_pending",newConfig.fpga.enabled}};
-        return result;
+    if (diff.fpga_changed || diff.sensor_transport_path_changed)
+    {
+        disconnectAll(false);
     }
     config_ = newConfig;
+
+    if (newConfig.sensor_transport_path == SensorTransportPath::FpgaRelay)
+    {
+        restartRtcmWriter();
+        // Persist desired config only; hardware writes require the verified asynchronous FPGA operation.
+        result.json = {{"success",true},
+                       {"fpga_pending",newConfig.fpga.enabled},
+                       {"sensor_transport_path",sensorTransportPathToString(newConfig.sensor_transport_path)}};
+        return result;
+    }
+    if (diff.sensor_transport_path_changed)
+    {
+        connectAll();
+        result.json = {{"success", true},
+                       {"sensor_transport_path", sensorTransportPathToString(newConfig.sensor_transport_path)}};
+        return result;
+    }
 
     auto reconfigureDevice = [this, &result](SkyDeviceId id, bool changed, bool enabled) {
         bool reconfigured = false;
@@ -1086,7 +1111,7 @@ std::function<CommandErrorCode()> SkyDeviceManager::prepareEpsilonOperation(cons
     std::shared_ptr<std::atomic_bool> cancel, EpsilonMaintenanceProgress progress)
 {
     auto rejected = [](CommandErrorCode error) { return [error]() { return error; }; };
-    if (config_.fpga.enabled) {
+    if (config_.sensor_transport_path == SensorTransportPath::FpgaRelay) {
         if (message) *message = QStringLiteral("Unsupported: VLP1 has no EPSILON device downlink operation.");
         return rejected(CommandErrorCode::UnknownCommand);
     }
@@ -1319,7 +1344,7 @@ bool SkyDeviceManager::configureEpsilonPacketRates(
     QString *errorMessage,
     bool forceApply)
 {
-    if (config_.fpga.enabled) {
+    if (config_.sensor_transport_path == SensorTransportPath::FpgaRelay) {
         if (errorCode) *errorCode=CommandErrorCode::UnknownCommand;
         if (errorMessage) *errorMessage=QStringLiteral("Unsupported: no VLP1 EPSILON downlink."); return false;
     }
@@ -1376,7 +1401,7 @@ bool SkyDeviceManager::configureEpsilonMainAntennaLeverArm(
     CommandErrorCode *errorCode,
     QString *errorMessage)
 {
-    if (config_.fpga.enabled) {
+    if (config_.sensor_transport_path == SensorTransportPath::FpgaRelay) {
         if (errorCode) *errorCode=CommandErrorCode::UnknownCommand;
         if (errorMessage) *errorMessage=QStringLiteral("Unsupported: no VLP1 EPSILON downlink."); return false;
     }
@@ -1442,7 +1467,7 @@ bool SkyDeviceManager::configureEpsilonRtcmInput(
     CommandErrorCode *errorCode,
     QString *errorMessage)
 {
-    if (config_.fpga.enabled) {
+    if (config_.sensor_transport_path == SensorTransportPath::FpgaRelay) {
         if (errorCode) *errorCode=CommandErrorCode::UnknownCommand;
         if (errorMessage) *errorMessage=QStringLiteral("Unsupported: no VLP1 RTCM downlink."); return false;
     }
@@ -1516,7 +1541,7 @@ bool SkyDeviceManager::receiveRtcmCorrectionData(
     const QByteArray& data,
     CommandErrorCode *errorCode)
 {
-    if (config_.fpga.enabled) {
+    if (config_.sensor_transport_path == SensorTransportPath::FpgaRelay) {
         rtcm_correction_dropped_bytes_.fetch_add(static_cast<quint64>(data.size()));
         rtcm_correction_dropped_chunks_.fetch_add(1);
         if (errorCode) *errorCode = CommandErrorCode::UnknownCommand; return false;
@@ -1569,7 +1594,7 @@ RtcmCorrectionStats SkyDeviceManager::rtcmCorrectionStats() const
 void SkyDeviceManager::restartRtcmWriter()
 {
     stopRtcmWriter();
-    if (config_.fpga.enabled || simulate_data_ ||
+    if (config_.sensor_transport_path == SensorTransportPath::FpgaRelay || simulate_data_ ||
         !config_.epsilon_rtcm.enabled ||
         config_.epsilon_rtcm.forward_port.trimmed().isEmpty() ||
         config_.epsilon_rtcm.baud_rate <= 0)
@@ -2000,7 +2025,7 @@ bool SkyDeviceManager::readAi8Page(Ai8TemperatureControllerProtocol::Page page,
                                    CommandErrorCode *errorCode,
                                    QString *errorMessage)
 {
-    if (config_.fpga.enabled) { setAi8Error(errorCode,errorMessage,CommandErrorCode::UnknownCommand,
+    if (config_.sensor_transport_path == SensorTransportPath::FpgaRelay) { setAi8Error(errorCode,errorMessage,CommandErrorCode::UnknownCommand,
         QStringLiteral("Unsupported: VLP1 does not expose AI8 parameter pages."));return false; }
     if (!validAi8Page(page) || !validAi8Selection(selection))
     {
@@ -2053,7 +2078,7 @@ bool SkyDeviceManager::writeAi8Page(const Ai8TemperatureControllerProtocol::Page
                                     CommandErrorCode *errorCode,
                                     QString *errorMessage)
 {
-    if (config_.fpga.enabled) { setAi8Error(errorCode,errorMessage,CommandErrorCode::UnknownCommand,
+    if (config_.sensor_transport_path == SensorTransportPath::FpgaRelay) { setAi8Error(errorCode,errorMessage,CommandErrorCode::UnknownCommand,
         QStringLiteral("Unsupported: VLP1 does not expose AI8 parameter pages."));return false; }
     if (!validAi8Page(requested.page) || !validAi8Selection(requested.selection) ||
         !validAi8PageValues(requested))
@@ -2131,7 +2156,7 @@ bool SkyDeviceManager::restoreAi8FactoryDefaults(Ai8TemperatureControllerProtoco
                                                  CommandErrorCode *errorCode,
                                                  QString *errorMessage)
 {
-    if (config_.fpga.enabled) { setAi8Error(errorCode,errorMessage,CommandErrorCode::UnknownCommand,
+    if (config_.sensor_transport_path == SensorTransportPath::FpgaRelay) { setAi8Error(errorCode,errorMessage,CommandErrorCode::UnknownCommand,
         QStringLiteral("Unsupported: VLP1 does not expose AI8 factory reset."));return false; }
     if (!validAi8Page(page) || !validAi8Selection(selection))
     {
@@ -2170,7 +2195,7 @@ bool SkyDeviceManager::restoreAi8FactoryDefaults(Ai8TemperatureControllerProtoco
 EpsilonData SkyDeviceManager::latestEpsilon() const
 {
     auto data=latest_epsilon_;
-    if (config_.fpga.enabled) {
+    if (config_.sensor_transport_path == SensorTransportPath::FpgaRelay) {
         const quint64 now=nowUs();
         if (!fpga_position_valid_ || !fpga_position_time_us_ || now-fpga_position_time_us_>2000000) {
             data.latitude_deg=data.longitude_deg=data.height_m=std::numeric_limits<double>::quiet_NaN();

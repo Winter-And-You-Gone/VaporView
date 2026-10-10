@@ -58,6 +58,7 @@ struct DeviceConfigPageWidgets
 {
     QWidget *page = nullptr;
     QLabel *serial_title_lbl = nullptr;
+    QLabel *sensor_transport_path_lbl = nullptr;
     QLabel *sky_telemetry_transport_lbl = nullptr;
     QLabel *sky_telemetry_port_lbl = nullptr;
     QLabel *sky_telemetry_baud_lbl = nullptr;
@@ -109,6 +110,7 @@ struct DeviceConfigPageWidgets
     QVBoxLayout *data_telemetry_device_summary_layout = nullptr;
     QPushButton *auto_detect_ports_btn = nullptr;
     QComboBox *sky_telemetry_transport_combo = nullptr;
+    QComboBox *sensor_transport_path_combo = nullptr;
     QComboBox *sky_telemetry_port_combo = nullptr;
     QComboBox *sky_telemetry_baud_combo = nullptr;
     QLineEdit *sky_telemetry_tcp_host_edit = nullptr;
@@ -449,6 +451,8 @@ struct MainWindowState
     int ui_test_saved_sidebar_width_;
     int ui_test_saved_font_scale_percent_;
     bool ui_test_saved_dark_theme_enabled_;
+    VaporView::SensorTransportPath ui_test_saved_local_sensor_transport_path_;
+    VaporView::SensorTransportPath ui_test_saved_remote_sensor_transport_path_;
     bool ui_test_session_viewer_existed_;
 #ifdef VAPORVIEW_HAS_OSGEARTH
     bool ui_test_map3d_window_existed_;

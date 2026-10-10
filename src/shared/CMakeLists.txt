@@ -40,6 +40,7 @@ set(PROTOCOL_HEADERS
     ${CMAKE_SOURCE_DIR}/include/TelemetryCodec.h
     ${CMAKE_SOURCE_DIR}/include/TelemetryLink.h
     ${CMAKE_SOURCE_DIR}/include/SkyConfig.h
+    ${CMAKE_SOURCE_DIR}/include/SensorTransportPath.h
 )
 
 add_library(vaporview_protocol STATIC

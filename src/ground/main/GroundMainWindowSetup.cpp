@@ -2608,7 +2608,6 @@ void MainWindow::setupDeviceConfigPage()
     connect(state_->device_config_.auto_detect_ports_btn, &QPushButton::clicked, this, &MainWindow::onAutoDetectPortsClicked);
     serialTitleLayout->addWidget(state_->device_config_.auto_detect_ports_btn, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
-    serialTitleLayout->addStretch(1);
     serialLayout->addWidget(serialTitleBar);
 
     constexpr int kDeviceConfigPortComboWidth = 108;
@@ -2625,6 +2624,29 @@ void MainWindow::setupDeviceConfigPage()
         configureComboPopup(combo);
         return combo;
     };
+
+    state_->device_config_.sensor_transport_path_lbl = new QLabel(serialTitleBar);
+    state_->device_config_.sensor_transport_path_lbl->setObjectName(QStringLiteral("fieldLabel"));
+    state_->device_config_.sensor_transport_path_combo = createCombo(serialTitleBar, 128);
+    state_->device_config_.sensor_transport_path_combo->setObjectName(
+        QStringLiteral("deviceSensorTransportPathCombo"));
+    state_->device_config_.sensor_transport_path_combo->addItem(
+        QStringLiteral("传感器直连"),
+        VaporView::sensorTransportPathToString(VaporView::SensorTransportPath::DirectDevices));
+    state_->device_config_.sensor_transport_path_combo->addItem(
+        QStringLiteral("FPGA 中转"),
+        VaporView::sensorTransportPathToString(VaporView::SensorTransportPath::FpgaRelay));
+    serialTitleLayout->addWidget(state_->device_config_.sensor_transport_path_lbl,
+                                 0,
+                                 Qt::AlignVCenter | Qt::AlignLeft);
+    serialTitleLayout->addWidget(state_->device_config_.sensor_transport_path_combo,
+                                 0,
+                                 Qt::AlignVCenter | Qt::AlignLeft);
+    serialTitleLayout->addStretch(1);
+    connect(state_->device_config_.sensor_transport_path_combo,
+            qOverload<int>(&QComboBox::currentIndexChanged),
+            this,
+            &MainWindow::onSensorTransportPathChanged);
 
     auto *skyTelemetryRow = new QWidget(serialCard);
     state_->device_config_.sky_telemetry_row_widget = skyTelemetryRow;
@@ -3627,6 +3649,15 @@ void MainWindow::updateLocalDeviceConfigFromUi() const
     if (state_->device_config_.temperature_enabled_check) state_->local_device_config_.temperatureController.enabled = state_->device_config_.temperature_enabled_check->isChecked();
     if (state_->device_config_.ai8_temperature_enabled_check) state_->local_device_config_.ai8TemperatureController.enabled = state_->device_config_.ai8_temperature_enabled_check->isChecked();
     if (state_->device_config_.tcp_wave_enabled_check) state_->local_device_config_.waveTcpEnabled = state_->device_config_.tcp_wave_enabled_check->isChecked();
+    if (state_->device_config_.sensor_transport_path_combo)
+    {
+        VaporView::SensorTransportPath path = state_->local_device_config_.sensorTransportPath;
+        if (VaporView::parseSensorTransportPath(
+                state_->device_config_.sensor_transport_path_combo->currentData().toString(), path))
+        {
+            state_->local_device_config_.sensorTransportPath = path;
+        }
+    }
     if (state_->device_config_.ptb_source_combo) state_->local_device_config_.pressureSource = state_->device_config_.ptb_source_combo->currentData().toString();
     if (state_->device_config_.hmp_source_combo) state_->local_device_config_.humiditySource = state_->device_config_.hmp_source_combo->currentData().toString();
     state_->local_device_config_.pressureProtocol = state_->local_device_config_.pressureSource == QStringLiteral("bmp390") ? VaporView::PressureSensorProtocol::Bmp390Serial : VaporView::PressureSensorProtocol::Ptb210;
@@ -3645,6 +3676,13 @@ void MainWindow::updateLocalDeviceConfigFromUi() const
 void MainWindow::refreshDeviceConfigUiFromLocalModel()
 {
     const auto& c = state_->local_device_config_;
+    if (state_->device_config_.sensor_transport_path_combo)
+    {
+        const QSignalBlocker blocker(state_->device_config_.sensor_transport_path_combo);
+        const int index = state_->device_config_.sensor_transport_path_combo->findData(
+            VaporView::sensorTransportPathToString(c.sensorTransportPath));
+        state_->device_config_.sensor_transport_path_combo->setCurrentIndex(index >= 0 ? index : 0);
+    }
     auto apply = [this](QComboBox *port,
                         QComboBox *baud,
                         const VaporView::Ground::Devices::LocalSerialDeviceSettings& value,
@@ -3829,6 +3867,79 @@ void MainWindow::applyDeviceConfigTcpWaveEndpoint()
     markRemoteSkyConfigDirty();
 }
 
+VaporView::SensorTransportPath MainWindow::currentSensorTransportPath() const
+{
+    return isRemoteSkyMode()
+        ? state_->remote_sky_config_.sensor_transport_path
+        : state_->local_device_config_.sensorTransportPath;
+}
+
+bool MainWindow::isFpgaRelayPath() const
+{
+    return currentSensorTransportPath() == VaporView::SensorTransportPath::FpgaRelay;
+}
+
+void MainWindow::onSensorTransportPathChanged(int index)
+{
+    if (!state_->device_config_.sensor_transport_path_combo ||
+        state_->remote_sky_config_updating_ui_)
+    {
+        return;
+    }
+    VaporView::SensorTransportPath path = currentSensorTransportPath();
+    if (!VaporView::parseSensorTransportPath(
+            state_->device_config_.sensor_transport_path_combo->itemData(index).toString(),
+            path))
+    {
+        return;
+    }
+    if (path == currentSensorTransportPath())
+    {
+        updateDeviceConfigState();
+        return;
+    }
+
+    const bool active = state_->is_connected_ || state_->connection_attempt_in_progress_ ||
+        anyCollectorRunning() || state_->fpga_connected_ || state_->fpga_busy_ ||
+        state_->fpga_replaying_ || (isRemoteSkyMode() && state_->remote_sky_controller_ &&
+                                    state_->remote_sky_controller_->isOpen());
+    if (active && !isUiTestMode())
+    {
+        onDisconnectClicked();
+    }
+
+    if (isRemoteSkyMode())
+    {
+        state_->remote_sky_config_.sensor_transport_path = path;
+        if (state_->remote_sky_config_loaded_)
+        {
+            markRemoteSkyConfigDirty();
+        }
+    }
+    else
+    {
+        state_->local_device_config_.sensorTransportPath = path;
+        saveRememberedInputState();
+    }
+    updateDeviceConfigTexts();
+    updateDeviceConfigState();
+    if (state_->fpga_page_)
+    {
+        state_->fpga_page_->setSensorTransportPath(path);
+    }
+    publishGroundLog(VaporView::LogLevel::Info,
+                     QStringLiteral("device.configuration"),
+                     QStringLiteral("sensor_transport_path_changed"),
+                     path == VaporView::SensorTransportPath::FpgaRelay
+                         ? QStringLiteral("传感器路径已切换为 FPGA 中转。")
+                         : QStringLiteral("传感器路径已切换为设备直连。"),
+                     {{QStringLiteral("sensor_transport_path"),
+                       VaporView::sensorTransportPathToString(path)},
+                      {QStringLiteral("host_mode"), isRemoteSkyMode()
+                           ? QStringLiteral("remote_sky")
+                           : QStringLiteral("local_vaporview")}});
+}
+
 void MainWindow::updateDeviceConfigTexts()
 {
     if (!state_->device_config_.page)
@@ -3844,6 +3955,26 @@ void MainWindow::updateDeviceConfigTexts()
         state_->device_config_.serial_title_lbl->setText(remote
             ? (state_->is_english_ ? "Device Configuration [Remote]" : "设备配置 [远程]")
             : (state_->is_english_ ? "Device Configuration [Local]" : "设备配置 [本机]"));
+    }
+    if (state_->device_config_.sensor_transport_path_lbl)
+    {
+        state_->device_config_.sensor_transport_path_lbl->setText(
+            state_->is_english_ ? QStringLiteral("Sensor path:") : QStringLiteral("传感器路径："));
+    }
+    if (state_->device_config_.sensor_transport_path_combo)
+    {
+        const QSignalBlocker blocker(state_->device_config_.sensor_transport_path_combo);
+        state_->device_config_.sensor_transport_path_combo->setItemText(
+            0, state_->is_english_ ? QStringLiteral("Direct devices") : QStringLiteral("传感器直连"));
+        state_->device_config_.sensor_transport_path_combo->setItemText(
+            1, state_->is_english_ ? QStringLiteral("FPGA relay") : QStringLiteral("FPGA 中转"));
+        const int index = state_->device_config_.sensor_transport_path_combo->findData(
+            VaporView::sensorTransportPathToString(currentSensorTransportPath()));
+        state_->device_config_.sensor_transport_path_combo->setCurrentIndex(index >= 0 ? index : 0);
+        state_->device_config_.sensor_transport_path_combo->setToolTip(
+            state_->is_english_
+                ? QStringLiteral("Direct: VaporView or SkyCore opens each sensor. FPGA relay: sensors connect to FPGA first, then normalized data reaches the selected host.")
+                : QStringLiteral("设备直连：VaporView 或 SkyCore 分别打开传感器；FPGA 中转：传感器先接入 FPGA，再由 FPGA 将标准化数据转发到当前数据源。"));
     }
     if (state_->device_config_.sky_telemetry_transport_lbl) state_->device_config_.sky_telemetry_transport_lbl->setText(state_->is_english_ ? "Sky Link:" : "天地链路:");
     updateSkyTelemetryTransportComboTexts(state_->device_config_.sky_telemetry_transport_combo, state_->is_english_);
@@ -4047,12 +4178,22 @@ void MainWindow::updateDeviceConfigState()
     const bool localInputsEnabled = !remote && (isUiTestMode() || !state_->is_connected_) &&
         !state_->connection_attempt_in_progress_ && !state_->port_detection_in_progress_ && !state_->epsilon_reconfigure_in_progress_;
     const bool remoteInputsEnabled = remote && (isUiTestMode() || !state_->is_connected_) && !state_->connection_attempt_in_progress_;
+    const bool fpgaRelay = currentSensorTransportPath() == VaporView::SensorTransportPath::FpgaRelay;
+    const bool sensorInputsEnabled = (remote ? remoteInputsEnabled : localInputsEnabled) && !fpgaRelay;
+    if (state_->device_config_.sensor_transport_path_combo)
+    {
+        state_->device_config_.sensor_transport_path_combo->setEnabled(
+            remote ? (isUiTestMode() || (!state_->is_connected_ && !state_->connection_attempt_in_progress_))
+                   : localInputsEnabled);
+    }
     const bool epsilonConfigEnabled = !state_->connection_attempt_in_progress_ &&
         !state_->port_detection_in_progress_ && !state_->epsilon_reconfigure_in_progress_;
 
     if (state_->device_config_.auto_detect_ports_btn)
     {
         state_->device_config_.auto_detect_ports_btn->setVisible(true);
+        state_->device_config_.auto_detect_ports_btn->setEnabled(
+            (remote ? remoteInputsEnabled : localInputsEnabled) && !fpgaRelay);
         fitButtonFixedWidth(state_->device_config_.auto_detect_ports_btn,
                             kDeviceConfigAutoDetectButtonMinWidth,
                             kDeviceConfigTopButtonPadding);
@@ -4084,7 +4225,7 @@ void MainWindow::updateDeviceConfigState()
             state_->epsilon_device_session_->operationsAvailable());
     }
 
-    const QList<QWidget *> localWidgets = {
+    const QList<QWidget *> directSensorWidgets = {
         state_->device_config_.epsilon_port_combo,
         state_->device_config_.epsilon_baud_combo,
         state_->device_config_.ptb_port_combo,
@@ -4102,14 +4243,22 @@ void MainWindow::updateDeviceConfigState()
         state_->device_config_.ai8_temperature_rate_combo,
         state_->device_config_.ptb_rate_combo,
         state_->device_config_.hmp_rate_combo,
-        state_->device_config_.lidar_rate_combo,
-        state_->device_config_.temperature_rate_combo
+        state_->device_config_.lidar_rate_combo
     };
-    for (QWidget *widget : localWidgets)
+    for (QWidget *widget : directSensorWidgets)
     {
         if (widget)
         {
-            widget->setEnabled(localInputsEnabled);
+            widget->setEnabled(sensorInputsEnabled);
+        }
+    }
+    for (QWidget *widget : {static_cast<QWidget *>(state_->device_config_.temperature_port_combo),
+                            static_cast<QWidget *>(state_->device_config_.temperature_baud_combo),
+                            static_cast<QWidget *>(state_->device_config_.temperature_rate_combo)})
+    {
+        if (widget)
+        {
+            widget->setEnabled(remote ? remoteInputsEnabled : localInputsEnabled);
         }
     }
 
@@ -4153,7 +4302,10 @@ void MainWindow::updateDeviceConfigState()
         if (check)
         {
             check->setVisible(true);
-            check->setEnabled(remote ? remoteInputsEnabled : localInputsEnabled);
+            const bool relaySupported = check != state_->device_config_.temperature_enabled_check &&
+                check != state_->device_config_.tcp_wave_enabled_check;
+            check->setEnabled(relaySupported ? sensorInputsEnabled
+                                             : (remote ? remoteInputsEnabled : localInputsEnabled));
         }
     }
     const QList<QWidget *> ai8Widgets = {
@@ -4193,6 +4345,16 @@ void MainWindow::updateDeviceConfigState()
     if (state_->device_config_.remote_sky_config_card)
     {
         state_->device_config_.remote_sky_config_card->setVisible(remote);
+    }
+
+    if (state_->device_config_.temperature_lbl)
+    {
+        state_->device_config_.temperature_lbl->setToolTip(
+            fpgaRelay
+                ? (state_->is_english_
+                    ? QStringLiteral("RD105 remains a direct serial device; the current FPGA VLP1 relay does not expose an RD105 source.")
+                    : QStringLiteral("RD105 仍通过串口直连；当前 FPGA VLP1 中转协议未提供 RD105 通道。"))
+                : QString());
     }
 
     for (QWidget *widget : {state_->device_config_.epsilon_remote_buttons_widget,

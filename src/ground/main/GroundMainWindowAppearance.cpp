@@ -1712,6 +1712,16 @@ void MainWindow::loadRememberedInputState()
 {
     QSettings settings = VaporView::applicationConfigSettings();
     settings.beginGroup(QStringLiteral("MainWindow"));
+    {
+        VaporView::SensorTransportPath sensorPath = state_->local_device_config_.sensorTransportPath;
+        const QString storedPath = settings.value(
+            QStringLiteral("sensor/transport_path"),
+            VaporView::sensorTransportPathToString(sensorPath)).toString();
+        if (VaporView::parseSensorTransportPath(storedPath, sensorPath))
+        {
+            state_->local_device_config_.sensorTransportPath = sensorPath;
+        }
+    }
     auto loadCombo = [this, &settings](QComboBox *combo, const QString& key, const QString& fallbackKey = QString()) {
         if (!combo)
         {
@@ -1944,6 +1954,10 @@ void MainWindow::saveRememberedInputState() const
     updateLocalDeviceConfigFromUi();
     updateRemoteSkyLinkConfigFromUi();
     settings.beginGroup(QStringLiteral("MainWindow"));
+    VaporView::setPersistentSetting(
+        settings,
+        QStringLiteral("sensor/transport_path"),
+        VaporView::sensorTransportPathToString(state_->local_device_config_.sensorTransportPath));
 
     auto saveCombo = [this, &settings](const QString& key, QComboBox *combo) {
         if (combo)

@@ -444,8 +444,16 @@ void FpgaControlPage::setTheme(bool dark,int fontScalePercent){
     updateTopLevelCardShadows(this,scale);update();
 }
 void FpgaControlPage::setRecordingState(bool active,const QString &detail){recording_=active;recordingDetail_=detail;record_->setText(text(active?"停止记录":"开始记录",active?"Stop recording":"Start recording"));recordStatus_->setText(text(active?"正在记录":"未记录",active?"Recording":"Not recording")+(detail.isEmpty()?QString():" · "+detail));updateActions();}
-void FpgaControlPage::setUiTestState(bool enabled, bool dataStalled, bool partialFailure, qint64 elapsedMs)
+void FpgaControlPage::setSensorTransportPath(VaporView::SensorTransportPath path)
 {
+    sensorTransportPath_ = path;
+    setProperty("sensorTransportPath", VaporView::sensorTransportPathToString(path));
+}
+
+void FpgaControlPage::setUiTestState(bool enabled, bool dataStalled, bool partialFailure,
+                                      qint64 elapsedMs, VaporView::SensorTransportPath path)
+{
+    setSensorTransportPath(path);
     setProperty("fpgaUiTestMode", enabled);
     if (!enabled)
     {
@@ -481,9 +489,12 @@ void FpgaControlPage::setUiTestState(bool enabled, bool dataStalled, bool partia
     const bool live = !dataStalled;
     const quint64 timestamp = static_cast<quint64>(std::max<qint64>(1, elapsedMs)) * 1000;
     setTransportConnected(true);
+    const QString route = path == VaporView::SensorTransportPath::FpgaRelay
+        ? text("传感器 → 模拟 FPGA → VaporView", "Sensors -> mock FPGA -> VaporView")
+        : text("传感器直连 VaporView", "Sensors directly connected to VaporView");
     setConnectionState(true, false,
-                       text("界面测试数据 · 不会写入硬件",
-                            "UI test data · hardware writes disabled"));
+                       text("界面测试数据 · 不会写入硬件 · ",
+                            "UI test data · hardware writes disabled · ") + route);
 
     const auto makeReading = [this, timestamp, live, partialFailure](
                                   quint16 source, VaporView::FpgaSensor::SensorKind kind) {
@@ -587,7 +598,10 @@ void FpgaControlPage::setUiTestState(bool enabled, bool dataStalled, bool partia
                                 "UI-TEST-FPGA · sensors/DLIA recording, RAW on demand"));
     if (diagnostics_)
     {
-        diagnostics_->setPlainText(text(
+        const QString routeDetail = path == VaporView::SensorTransportPath::FpgaRelay
+            ? text("传感器→模拟 FPGA→VaporView；", "sensors -> mock FPGA -> VaporView; ")
+            : text("传感器直连 VaporView；", "sensors directly connected to VaporView; ");
+        diagnostics_->setPlainText(routeDetail + text(
             dataStalled ? "[界面测试] FPGA 数据停更：保留最后周期并标记为异常。"
                         : partialFailure ? "[界面测试] FPGA 部分设备异常：PTB210/SHT45 离线。"
                         : "[界面测试] FPGA 正常运行：PTB210、SHT45、TFA1500、AI8、ADC、DLIA 已模拟。",

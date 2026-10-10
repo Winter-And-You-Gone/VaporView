@@ -3,6 +3,7 @@
 #include "FpgaControlConfig.h"
 #include "FpgaSensorDecoder.h"
 #include "FpgaWaveformAssembler.h"
+#include "SensorTransportPath.h"
 #include <QMap>
 #include <QElapsedTimer>
 #include <QSet>
@@ -34,8 +35,10 @@ public:
     void setLanguage(bool english);
     void setTheme(bool dark, int fontScalePercent = 100);
     void setRecordingState(bool active, const QString &detail = {});
+    void setSensorTransportPath(VaporView::SensorTransportPath path);
     void setUiTestState(bool enabled, bool dataStalled = false,
-                        bool partialFailure = false, qint64 elapsedMs = 0);
+                        bool partialFailure = false, qint64 elapsedMs = 0,
+                        VaporView::SensorTransportPath path = VaporView::SensorTransportPath::DirectDevices);
 signals:
     void connectRequested(const QString &locator, const QString &backend);
     void disconnectRequested();
@@ -88,5 +91,6 @@ private:
     QCheckBox *recordSensors_ = nullptr, *recordDlia_ = nullptr, *recordRaw_ = nullptr;
     QTabWidget *tabs_ = nullptr;
     QString connectionDetail_, recordingDetail_;
+    VaporView::SensorTransportPath sensorTransportPath_ = VaporView::SensorTransportPath::DirectDevices;
     bool connected_ = false, ready_ = false, busy_ = false, english_ = false, recording_ = false;
 };

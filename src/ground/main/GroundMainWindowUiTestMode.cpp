@@ -306,6 +306,10 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
         state_->ui_test_saved_sidebar_width_ = currentAppSidebarWidth();
         state_->ui_test_saved_font_scale_percent_ = state_->font_scale_percent_;
         state_->ui_test_saved_dark_theme_enabled_ = state_->dark_theme_enabled_;
+        state_->ui_test_saved_local_sensor_transport_path_ =
+            state_->local_device_config_.sensorTransportPath;
+        state_->ui_test_saved_remote_sensor_transport_path_ =
+            state_->remote_sky_config_.sensor_transport_path;
         state_->ui_test_saved_recording_directory_ = state_->recording_directory_;
         state_->ui_test_session_viewer_existed_ = state_->session_viewer_window_ != nullptr;
 #ifdef VAPORVIEW_HAS_OSGEARTH
@@ -318,6 +322,17 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
         resetUiTestRecording();
         startOrResumeUiTestRecording();
         state_->ui_test_model_->reset(0);
+        state_->local_device_config_.sensorTransportPath =
+            VaporView::SensorTransportPath::FpgaRelay;
+        state_->remote_sky_config_.sensor_transport_path =
+            VaporView::SensorTransportPath::FpgaRelay;
+        if (state_->device_config_.sensor_transport_path_combo)
+        {
+            const QSignalBlocker blocker(state_->device_config_.sensor_transport_path_combo);
+            const int index = state_->device_config_.sensor_transport_path_combo->findData(
+                VaporView::sensorTransportPathToString(VaporView::SensorTransportPath::FpgaRelay));
+            state_->device_config_.sensor_transport_path_combo->setCurrentIndex(index >= 0 ? index : 1);
+        }
         state_->ui_test_mode_enabled_ = true;
         if (state_->tcp_wave_panel_)
         {
@@ -428,6 +443,15 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
 #endif
 
     loadRememberedInputState();
+    state_->local_device_config_.sensorTransportPath =
+        state_->ui_test_saved_local_sensor_transport_path_;
+    state_->remote_sky_config_.sensor_transport_path =
+        state_->ui_test_saved_remote_sensor_transport_path_;
+    refreshDeviceConfigUiFromLocalModel();
+    if (isRemoteSkyMode())
+    {
+        setRemoteSkyConfigUi(state_->remote_sky_config_);
+    }
     state_->recording_directory_ = state_->ui_test_saved_recording_directory_;
     if (state_->font_scale_percent_ != state_->ui_test_saved_font_scale_percent_)
     {
@@ -601,7 +625,8 @@ void MainWindow::applyUiTestSnapshot()
         const auto scenario = state_->ui_test_model_->scenario();
         state_->fpga_page_->setUiTestState(
             true, snapshot.dataStalled || scenario == UiTestScenario::DataStalled,
-            scenario == UiTestScenario::PartialFailure, elapsed);
+            scenario == UiTestScenario::PartialFailure, elapsed,
+            VaporView::SensorTransportPath::FpgaRelay);
     }
 #ifdef VAPORVIEW_HAS_OSGEARTH
     if (snapshot.epsilon.valid)

@@ -403,6 +403,7 @@ void MainWindow::receiveRemoteFpgaStatus(const QJsonObject& status)
 void MainWindow::updateFpgaPageBackend()
 {
     if (!state_->fpga_page_) return;
+    state_->fpga_page_->setSensorTransportPath(currentSensorTransportPath());
     if (isUiTestMode() && state_->ui_test_model_)
     {
         const qint64 elapsed = QDateTime::currentMSecsSinceEpoch() - state_->ui_test_started_ms_;
@@ -410,20 +411,32 @@ void MainWindow::updateFpgaPageBackend()
         const bool stalled = scenario == VaporView::Ground::Devices::UiTestScenario::DataStalled;
         state_->fpga_page_->setUiTestState(
             true, stalled,
-            scenario == VaporView::Ground::Devices::UiTestScenario::PartialFailure, elapsed);
+            scenario == VaporView::Ground::Devices::UiTestScenario::PartialFailure, elapsed,
+            VaporView::SensorTransportPath::FpgaRelay);
         return;
     }
     if (!isRemoteSkyMode()) {
         state_->fpga_page_->setTransportConnected(state_->fpga_connected_);
+        const QString routeDetail = currentSensorTransportPath() == VaporView::SensorTransportPath::FpgaRelay
+            ? (state_->is_english_ ? QStringLiteral("Sensors -> FPGA relay -> VaporView · ")
+                                   : QStringLiteral("传感器 -> FPGA 中转 -> VaporView · "))
+            : (state_->is_english_ ? QStringLiteral("FPGA control page · direct sensors · ")
+                                   : QStringLiteral("FPGA 控制页 · 传感器直连 · "));
         state_->fpga_page_->setConnectionState(state_->fpga_ready_, state_->fpga_busy_, state_->is_english_
-            ? QStringLiteral("Local USB (bench mode)") : QStringLiteral("本机 USB（调试模式）"));
+            ? routeDetail + QStringLiteral("Local USB (bench mode)")
+            : routeDetail + QStringLiteral("本机 USB（调试模式）"));
         return;
     }
     const bool link = state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen();
     const bool fresh = link && !state_->fpga_remote_status_.isEmpty()
         && std::chrono::steady_clock::now() - state_->fpga_remote_status_time_ < std::chrono::seconds(4);
     const auto& status = state_->fpga_remote_status_;
-    const QString detail = fresh ? QStringLiteral("SkyCore USB · ") + status.value("detail").toString()
+    const QString routeDetail = currentSensorTransportPath() == VaporView::SensorTransportPath::FpgaRelay
+        ? (state_->is_english_ ? QStringLiteral("Sensors -> FPGA relay -> SkyCore · ")
+                               : QStringLiteral("传感器 -> FPGA 中转 -> SkyCore · "))
+        : (state_->is_english_ ? QStringLiteral("SkyCore direct sensors · ")
+                               : QStringLiteral("SkyCore 直连传感器 · "));
+    const QString detail = fresh ? routeDetail + status.value("detail").toString()
         : state_->is_english_ ? QStringLiteral("Connect local IPC or telemetry; enable fpga.enabled in Sky config. Link closure leaves Sky acquisition running.")
                              : QStringLiteral("请连接本机 IPC 或数传，并在天空配置启用 fpga.enabled。此链路断开不停止天空端采集。");
     state_->fpga_page_->setTransportConnected(fresh && status.value("connected").toBool());

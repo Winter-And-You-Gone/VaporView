@@ -487,6 +487,8 @@ void testAi8TemperatureControllerStatus()
 void testSkyConfigDiff()
 {
     VaporView::SkyConfig a = VaporView::SkyConfig::defaults();
+    require(a.sensor_transport_path == VaporView::SensorTransportPath::DirectDevices,
+            "sky config defaults to direct sensor path");
     require(a.temperature_controller.baud_rate == 38400, "sky config RD105 default baud");
     require(a.ptb.source == QStringLiteral("ptb210") &&
                 a.hmp.source == QStringLiteral("hmp3") &&
@@ -502,6 +504,10 @@ void testSkyConfigDiff()
     const VaporView::SkyConfigDiff diff = a.diff(b);
     require(diff.epsilon_changed, "epsilon changed");
     require(!diff.ptb_changed && !diff.telemetry_changed, "other config unchanged");
+
+    b.sensor_transport_path = VaporView::SensorTransportPath::FpgaRelay;
+    require(a.diff(b).sensor_transport_path_changed,
+            "sky config diff detects sensor transport path change");
 
     b.ptb.source = QStringLiteral("bmp390");
     b.hmp.source = QStringLiteral("sht45");
@@ -524,6 +530,8 @@ void testSkyConfigDiff()
     QString error;
     require(VaporView::SkyConfig::fromJson(json, parsed, &error), "sky config parse");
     require(parsed.epsilon.baud_rate == 115200, "sky config baud");
+    require(parsed.sensor_transport_path == VaporView::SensorTransportPath::FpgaRelay,
+            "sky config sensor transport path round-trip");
     require(parsed.epsilon.packet_rates == b.epsilon.packet_rates,
             "sky config EPSILON packet-rate profile round-trip");
     require(parsed.ptb.source == QStringLiteral("bmp390") &&
@@ -551,6 +559,7 @@ void testSkyConfigDiff()
     legacyEpsilon.insert(QStringLiteral("frequency_hz"), 100.0);
     legacy.insert(QStringLiteral("epsilon"), legacyEpsilon);
     legacy.remove(QStringLiteral("epsilon_rtcm"));
+    legacy.remove(QStringLiteral("sensor_transport_path"));
     error.clear();
     require(VaporView::SkyConfig::fromJson(legacy, parsed, &error), "sky config legacy parse");
     require(parsed.ptb.source == QStringLiteral("ptb210") &&
@@ -559,6 +568,7 @@ void testSkyConfigDiff()
                 !parsed.epsilon_rtcm.enabled &&
                 parsed.epsilon_rtcm.device_port_index == 2 &&
                 parsed.epsilon.packet_rates == VaporView::defaultSkyEpsilonPacketRates() &&
+                parsed.sensor_transport_path == VaporView::SensorTransportPath::DirectDevices &&
                 !parsed.toJson().value(QStringLiteral("epsilon")).toObject().contains(QStringLiteral("frequency_hz")),
             "sky config legacy source, AI-8, EPSILON frequency, and EPSILON RTCM defaults");
 }
@@ -638,6 +648,14 @@ void testSkyConfigRejectsInvalidJsonTypes()
     require(!VaporView::SkyConfig::fromJson(badSource, parsed, &error),
             "sky config rejects invalid pressure source");
     require(error.contains(QStringLiteral("ptb source")), "sky config source error message");
+
+    QJsonObject badSensorPath = VaporView::SkyConfig::defaults().toJson();
+    badSensorPath.insert(QStringLiteral("sensor_transport_path"), QStringLiteral("unknown"));
+    error.clear();
+    require(!VaporView::SkyConfig::fromJson(badSensorPath, parsed, &error),
+            "sky config rejects invalid sensor transport path");
+    require(error.contains(QStringLiteral("transport path")),
+            "sensor transport path error message");
 }
 
 void testTelemetryStatus()

@@ -9,6 +9,7 @@
 #include <array>
 #include "EpsilonRawSatellite.h"
 #include "FpgaControlConfig.h"
+#include "SensorTransportPath.h"
 
 namespace VaporView
 {
@@ -118,10 +119,12 @@ struct SkyConfigDiff
     bool ai8_temperature_controller_changed = false;
     bool wave_tcp_changed = false;
     bool telemetry_changed = false;
+    bool sensor_transport_path_changed = false;
 };
 
 struct SkyConfig
 {
+    SensorTransportPath sensor_transport_path = SensorTransportPath::DirectDevices;
     struct FpgaConfig {
         bool enabled = false;
         QString locator;

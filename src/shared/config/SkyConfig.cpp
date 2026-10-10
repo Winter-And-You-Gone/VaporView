@@ -645,6 +645,7 @@ bool TelemetryRateConfig::operator!=(const TelemetryRateConfig& other) const
 SkyConfig SkyConfig::defaults()
 {
     SkyConfig config;
+    config.sensor_transport_path = SensorTransportPath::DirectDevices;
 #ifdef _WIN32
     config.epsilon = {true, QStringLiteral("COM3"), 921600};
     config.epsilon_rtcm = {false, 2, QString(), 115200};
@@ -702,6 +703,16 @@ bool SkyConfig::fromJson(const QJsonObject& object, SkyConfig& config, QString *
 {
     SkyConfig next = SkyConfig::defaults();
     QJsonObject section;
+    if (object.contains(QStringLiteral("sensor_transport_path")))
+    {
+        if (!object.value(QStringLiteral("sensor_transport_path")).isString() ||
+            !parseSensorTransportPath(object.value(QStringLiteral("sensor_transport_path")).toString(),
+                                      next.sensor_transport_path))
+        {
+            if (errorMessage) *errorMessage = QStringLiteral("Invalid sensor transport path.");
+            return false;
+        }
+    }
     if (object.contains("fpga")) {
         if (!readSectionObject(object, QStringLiteral("fpga"), section, errorMessage)) return false;
         if ((section.contains("enabled") && !section.value("enabled").isBool()) ||
@@ -767,6 +778,7 @@ bool SkyConfig::fromJson(const QJsonObject& object, SkyConfig& config, QString *
 QJsonObject SkyConfig::toJson() const
 {
     QJsonObject root;
+    root[QStringLiteral("sensor_transport_path")] = sensorTransportPathToString(sensor_transport_path);
     root["fpga"] = QJsonObject{{"enabled", fpga.enabled}, {"locator", fpga.locator}, {"configuration", fpga.configuration.toJson()}};
     QJsonObject epsilonObject = epsilonToJson(epsilon);
     epsilonObject["rtcm"] = epsilonRtcmToJson(epsilon_rtcm);
@@ -783,6 +795,12 @@ QJsonObject SkyConfig::toJson() const
 
 bool SkyConfig::validate(QString *errorMessage) const
 {
+    if (sensor_transport_path != SensorTransportPath::DirectDevices &&
+        sensor_transport_path != SensorTransportPath::FpgaRelay)
+    {
+        if (errorMessage) *errorMessage = QStringLiteral("Invalid sensor transport path.");
+        return false;
+    }
     if (!QStringList{"auto","cypress","winusb"}.contains(fpga.configuration.backend) ||
         (fpga.configuration.pressureSource!=0x40 && fpga.configuration.pressureSource!=0x43)) {
         if (errorMessage) *errorMessage=QStringLiteral("Invalid FPGA backend or pressure source."); return false;
@@ -847,6 +865,7 @@ SkyConfigDiff SkyConfig::diff(const SkyConfig& other) const
     result.ai8_temperature_controller_changed = ai8_temperature_controller != other.ai8_temperature_controller;
     result.wave_tcp_changed = wave_tcp != other.wave_tcp;
     result.telemetry_changed = telemetry != other.telemetry;
+    result.sensor_transport_path_changed = sensor_transport_path != other.sensor_transport_path;
     return result;
 }
 

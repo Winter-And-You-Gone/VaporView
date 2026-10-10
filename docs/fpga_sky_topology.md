@@ -14,12 +14,35 @@ flowchart LR
 
 SkyCore 唯一打开 USB 并持续接收 VLP1。同机 GUI 复用 `RemoteSkyController`，连接本机 IPC；地面 GUI 连接数传串口或 TCP 遥测。两个客户端可同时观察和控制同一 SkyCore，均不另开 USB 或设备串口。`fpga.enabled` 默认 false；显式启用后连接/探测不等于打开物理输出。
 
+## 数据源与传感器路径是两个独立维度
+
+Ground 的 Local/Remote 只表示“当前由谁持有上位机链路”：Local 是
+VaporView 本机，Remote 是 SkyCore。它不表示传感器是否经过 FPGA。设备配置页另有
+“传感器路径”选择：
+
+| 数据源主机 | 传感器直连 | FPGA 中转 |
+| --- | --- | --- |
+| VaporView Local | 传感器串口 → VaporView | 传感器 → FPGA → VaporView 的 FPGA USB/VLP1 |
+| SkyCore Remote | 传感器串口 → SkyCore → 遥测 → VaporView | 传感器 → FPGA → SkyCore → 遥测/IPC → VaporView |
+
+本地配置保存为 `MainWindow/sensor/transport_path`，天空端 `SkyConfig` 使用
+`sensor_transport_path`，取值为 `direct_devices` 或 `fpga_relay`。默认值是
+`direct_devices`，以兼容已有设备现场配置。选择 `fpga_relay` 后，Ground 不再启动
+EPSILON、PTB/BMP390、HMP/SHT45、TFA1500-L、AI-8 的直连串口采集；SkyCore 也只走
+FPGA 标准化测量。当前 VLP1 正式六路不包含 VaporView 的 RD105 温控器，因此 RD105
+仍显示为独立直连设备，不能把它误报为 FPGA 中转。
+
+界面测试模式会临时把上述路径切换为 `fpga_relay`，并在 FPGA 页面显示“传感器 →
+模拟 FPGA → VaporView”的软件链路；它用于验证布局、状态和路由语义，不创建真实
+Windows USB 设备，也不代表已经完成 GP01 实板或 VLP1 原始字节实测。
+
 ## 配置与启动
 
 将以下 JSON 保存为工控机上的 `sky-fpga.json`。未提供的 FPGA 配置字段按 `FpgaControlConfig` 默认值处理；旧串口/TCP 采集项显式关闭，避免该部署开启第二套设备链路。空 `locator` 交由后端枚举，必须确认唯一目标设备；多设备时填入该后端诊断显示的设备路径。
 
 ```json
 {
+  "sensor_transport_path": "fpga_relay",
   "fpga": {
     "enabled": true,
     "locator": "",

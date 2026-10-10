@@ -238,6 +238,8 @@ MainWindowState::MainWindowState()
     , ui_test_saved_sidebar_width_(0)
     , ui_test_saved_font_scale_percent_(100)
     , ui_test_saved_dark_theme_enabled_(false)
+    , ui_test_saved_local_sensor_transport_path_(VaporView::SensorTransportPath::DirectDevices)
+    , ui_test_saved_remote_sensor_transport_path_(VaporView::SensorTransportPath::DirectDevices)
     , ui_test_session_viewer_existed_(false)
 #ifdef VAPORVIEW_HAS_OSGEARTH
     , ui_test_map3d_window_existed_(false)

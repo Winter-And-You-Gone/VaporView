@@ -423,6 +423,14 @@ void MainWindow::setRemoteSkyConfigUi(const VaporView::SkyConfig& config)
         state_->remote_sky_config_updating_ui_ = false;
     });
 
+    if (state_->device_config_.sensor_transport_path_combo)
+    {
+        const QSignalBlocker blocker(state_->device_config_.sensor_transport_path_combo);
+        const int index = state_->device_config_.sensor_transport_path_combo->findData(
+            VaporView::sensorTransportPathToString(config.sensor_transport_path));
+        state_->device_config_.sensor_transport_path_combo->setCurrentIndex(index >= 0 ? index : 0);
+    }
+
     auto setSerial = [this](QCheckBox *enabled,
                             QComboBox *port,
                             QComboBox *baud,
@@ -625,6 +633,16 @@ VaporView::SkyConfig MainWindow::remoteSkyConfigFromDeviceConfigUi(QString *erro
     VaporView::SkyConfig config = state_->remote_sky_config_loaded_
         ? state_->remote_sky_config_
         : VaporView::SkyConfig::defaults();
+    if (state_->device_config_.sensor_transport_path_combo)
+    {
+        VaporView::SensorTransportPath path = config.sensor_transport_path;
+        if (VaporView::parseSensorTransportPath(
+                state_->device_config_.sensor_transport_path_combo->currentData().toString(),
+                path))
+        {
+            config.sensor_transport_path = path;
+        }
+    }
     auto readSerial = [this, errorMessage](const QString& deviceName,
                                            QCheckBox *enabled,
                                            QComboBox *port,
@@ -911,6 +929,7 @@ void MainWindow::updateRemoteSkyConfigControlsState()
     const bool localInputsEnabled = !remote && (isUiTestMode() || !state_->is_connected_) &&
         !state_->connection_attempt_in_progress_ && !state_->port_detection_in_progress_ &&
         !state_->epsilon_reconfigure_in_progress_;
+    const bool fpgaRelay = currentSensorTransportPath() == VaporView::SensorTransportPath::FpgaRelay;
     const QList<QWidget *> targetWidgets = {
         state_->device_config_.epsilon_port_combo,
         state_->device_config_.epsilon_baud_combo,
@@ -931,6 +950,7 @@ void MainWindow::updateRemoteSkyConfigControlsState()
         state_->device_config_.ai8_temperature_port_combo,
         state_->device_config_.ai8_temperature_baud_combo,
         state_->device_config_.ai8_temperature_rate_combo,
+        state_->device_config_.sensor_transport_path_combo,
     };
     if (remote)
     {
@@ -939,6 +959,31 @@ void MainWindow::updateRemoteSkyConfigControlsState()
             if (widget)
             {
                 widget->setEnabled(fieldsEnabled);
+            }
+        }
+        if (fpgaRelay)
+        {
+            for (QWidget *widget : {state_->device_config_.epsilon_port_combo,
+                                    state_->device_config_.epsilon_baud_combo,
+                                    state_->device_config_.ptb_port_combo,
+                                    state_->device_config_.ptb_baud_combo,
+                                    state_->device_config_.ptb_rate_combo,
+                                    state_->device_config_.ptb_source_combo,
+                                    state_->device_config_.hmp_port_combo,
+                                    state_->device_config_.hmp_baud_combo,
+                                    state_->device_config_.hmp_rate_combo,
+                                    state_->device_config_.hmp_source_combo,
+                                    state_->device_config_.lidar_port_combo,
+                                    state_->device_config_.lidar_baud_combo,
+                                    state_->device_config_.lidar_rate_combo,
+                                    state_->device_config_.ai8_temperature_port_combo,
+                                    state_->device_config_.ai8_temperature_baud_combo,
+                                    state_->device_config_.ai8_temperature_rate_combo})
+            {
+                if (widget)
+                {
+                    widget->setEnabled(false);
+                }
             }
         }
     }
@@ -957,7 +1002,11 @@ void MainWindow::updateRemoteSkyConfigControlsState()
     {
         if (check)
         {
-            check->setEnabled(remote ? fieldsEnabled : localInputsEnabled);
+            const bool relaySupported = check != state_->device_config_.temperature_enabled_check &&
+                check != state_->device_config_.tcp_wave_enabled_check;
+            check->setEnabled(relaySupported && fpgaRelay
+                                  ? false
+                                  : (remote ? fieldsEnabled : localInputsEnabled));
         }
     }
 

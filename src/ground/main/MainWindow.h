@@ -468,6 +468,9 @@ private:
     void applyDeviceConfigTcpWaveEndpoint();
     void updateDeviceConfigTexts();
     void updateDeviceConfigState();
+    VaporView::SensorTransportPath currentSensorTransportPath() const;
+    bool isFpgaRelayPath() const;
+    void onSensorTransportPathChanged(int index);
     void clearRemoteSkyDataUi();
     void markRemoteSkyLinkClosed();
     void refreshRemoteSkyDataUi();

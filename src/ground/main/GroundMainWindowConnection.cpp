@@ -160,7 +160,7 @@ bool MainWindow::homeDeviceConnected(VaporView::SkyDeviceId device) const
     }
 
     const CollectorSnapshot collectors = snapshotCollectors();
-    if (state_->fpga_ready_)
+    if (isFpgaRelayPath() && state_->fpga_ready_)
     {
         switch (device)
         {
@@ -228,6 +228,23 @@ bool MainWindow::homeDevicePortSelected(VaporView::SkyDeviceId device) const
     if (device == VaporView::SkyDeviceId::WaveTcp)
     {
         return state_->tcp_wave_panel_ != nullptr;
+    }
+
+    if (isFpgaRelayPath())
+    {
+        switch (device)
+        {
+        case VaporView::SkyDeviceId::Epsilon:
+        case VaporView::SkyDeviceId::Ptb:
+        case VaporView::SkyDeviceId::Hmp:
+        case VaporView::SkyDeviceId::Lidar:
+        case VaporView::SkyDeviceId::Ai8TemperatureController:
+            return true;
+        case VaporView::SkyDeviceId::TemperatureController:
+        case VaporView::SkyDeviceId::WaveTcp:
+        case VaporView::SkyDeviceId::All:
+            break;
+        }
     }
 
     auto portSelected = [](const QString& text, bool manualEntry) {
@@ -320,7 +337,8 @@ VaporView::DeviceState MainWindow::homeDeviceActionState(VaporView::SkyDeviceId 
 
 void MainWindow::triggerHomeDeviceAction(VaporView::SkyDeviceId device)
 {
-    if (state_->fpga_connected_ || state_->fpga_busy_ || state_->fpga_replaying_)
+    if (isFpgaRelayPath() &&
+        (state_->fpga_connected_ || state_->fpga_busy_ || state_->fpga_replaying_))
     {
         state_->main_page_stack_->setCurrentIndex(4);
         state_->fpga_nav_btn_->setChecked(true);
@@ -712,7 +730,7 @@ bool MainWindow::anyCollectorRunning() const
 
 bool MainWindow::anyLocalDeviceConnected() const
 {
-    return state_->fpga_ready_ || anyCollectorRunning() ||
+    return (isFpgaRelayPath() && state_->fpga_ready_) || anyCollectorRunning() ||
         (!isRemoteSkyMode() && state_->tcp_wave_panel_ && state_->tcp_wave_panel_->isConnected());
 }
 
@@ -1414,7 +1432,8 @@ void MainWindow::testApplyLocalPortDetection(const QString& deviceKey,
 
 void MainWindow::onConnectClicked()
 {
-    if (state_->fpga_connected_ || state_->fpga_busy_ || state_->fpga_replaying_)
+    if (isFpgaRelayPath() &&
+        (state_->fpga_connected_ || state_->fpga_busy_ || state_->fpga_replaying_))
     {
         state_->fpga_page_->appendDiagnostic(state_->is_english_ ? QStringLiteral("Disconnect FPGA before connecting serial sources.") : QStringLiteral("连接串口前请先断开 FPGA。"));
         return;
@@ -1454,6 +1473,19 @@ void MainWindow::onConnectClicked()
                                state_->is_english_ ? QStringLiteral("All simulated devices connected")
                                                    : QStringLiteral("所有模拟设备已连接"));
         });
+        return;
+    }
+    if (!isRemoteSkyMode() && isFpgaRelayPath())
+    {
+        state_->main_page_stack_->setCurrentIndex(4);
+        state_->fpga_nav_btn_->setChecked(true);
+        state_->fpga_page_->appendDiagnostic(
+            state_->is_english_
+                ? QStringLiteral("FPGA relay is selected. Connect the FPGA on the FPGA page; direct sensor serial collectors are disabled.")
+                : QStringLiteral("当前选择了 FPGA 中转，请在 FPGA 页面连接 FPGA；传感器直连串口采集已禁用。"));
+        updateSidebarNavIcons();
+        updateCustomTitleBarTexts();
+        updateConnectionStatus(false);
         return;
     }
     if (isRemoteSkyMode())
@@ -1711,7 +1743,8 @@ void MainWindow::onConnectClicked()
 }
 void MainWindow::onDisconnectClicked()
 {
-    if (state_->fpga_connected_ || state_->fpga_busy_ || state_->fpga_replaying_)
+    if (isFpgaRelayPath() &&
+        (state_->fpga_connected_ || state_->fpga_busy_ || state_->fpga_replaying_))
     {
         QMetaObject::invokeMethod(state_->fpga_controller_, &VaporView::Ground::Devices::FpgaDeviceController::disconnectDevice, Qt::QueuedConnection);
         return;

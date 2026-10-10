@@ -3,6 +3,7 @@
 #include "LogRecord.h"
 #include "ground/devices/CollectorRegistry.h"
 #include "TelemetryTypes.h"
+#include "SensorTransportPath.h"
 
 #include <QString>
 #include <QVariantMap>
@@ -43,6 +44,7 @@ struct LocalSerialDeviceSettings
 // paths do not need to inspect QWidget state.
 struct LocalDeviceConfig
 {
+    VaporView::SensorTransportPath sensorTransportPath = VaporView::SensorTransportPath::DirectDevices;
     LocalSerialDeviceSettings epsilon{true, true, {}, QStringLiteral("921600"), 100, false};
     LocalSerialDeviceSettings ptb{true, true, {}, QStringLiteral("9600"), 1, false};
     LocalSerialDeviceSettings hmp{true, true, {}, QStringLiteral("19200"), 1, false};
