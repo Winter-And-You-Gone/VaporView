@@ -4182,8 +4182,15 @@ void MainWindow::updateDeviceConfigState()
     const bool sensorInputsEnabled = (remote ? remoteInputsEnabled : localInputsEnabled) && !fpgaRelay;
     if (state_->device_config_.sensor_transport_path_combo)
     {
+        const bool remoteLinkOpen = isUiTestMode() ||
+            (state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen());
+        const bool remoteConfigEditable = remote && remoteLinkOpen &&
+            (isUiTestMode() || state_->remote_sky_config_loaded_) &&
+            !state_->remote_sky_config_loading_ &&
+            !state_->remote_sky_config_applying_ &&
+            !state_->remote_sky_config_saving_;
         state_->device_config_.sensor_transport_path_combo->setEnabled(
-            remote ? (isUiTestMode() || (!state_->is_connected_ && !state_->connection_attempt_in_progress_))
+            remote ? remoteConfigEditable
                    : localInputsEnabled);
     }
     const bool epsilonConfigEnabled = !state_->connection_attempt_in_progress_ &&

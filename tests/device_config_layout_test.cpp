@@ -848,13 +848,15 @@ int main(int argc, char **argv)
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceAi8TemperatureBaudCombo"));
     auto *ai8RateCombo =
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceAi8TemperatureRateCombo"));
+    auto *sensorTransportPathCombo =
+        serialCard->findChild<QComboBox *>(QStringLiteral("deviceSensorTransportPathCombo"));
     auto *skyTelemetryBaudCombo =
         deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceSkyTelemetryBaudCombo"));
     require(dataSourceModeSwitch && dataSourceModeSegmentedSwitch && titleBar &&
                 epsilonPortCombo && epsilonBaudCombo && epsilonRateCombo &&
                 pressurePortCombo && pressureBaudCombo &&
                 humidityPortCombo && humidityBaudCombo && lidarBaudCombo &&
-                epsilonPacketRatesButton,
+                epsilonPacketRatesButton && sensorTransportPathCombo,
             "shared device config controls exist for target switching");
     require(epsilonPortCombo->currentText() == QStringLiteral("COM7") &&
                 epsilonBaudCombo->currentText() == QStringLiteral("460800"),
@@ -1490,6 +1492,7 @@ int main(int argc, char **argv)
             "disconnected remote mode disables apply and save operations");
     require(!epsilonPortCombo->isEnabled() &&
                 ai8PortCombo && !ai8PortCombo->isEnabled() &&
+                !sensorTransportPathCombo->isEnabled() &&
                 !deviceTcpWaveEnabledCheck->isEnabled() &&
                 !deviceTcpWaveHostEdit->isEnabled() &&
                 !deviceTcpWavePortSpin->isEnabled(),
@@ -1629,6 +1632,7 @@ int main(int argc, char **argv)
                     ai8PortCombo->isEnabled() &&
                     ai8BaudCombo->isEnabled() &&
                     ai8RateCombo->isEnabled() &&
+                    sensorTransportPathCombo->isEnabled() &&
                     deviceTcpWaveHostEdit->isEnabled() &&
                     deviceTcpWavePortSpin->isEnabled() &&
                     epsilonPortCombo->currentText() == QStringLiteral("/dev/ttyEPSILON") &&
@@ -1652,6 +1656,8 @@ int main(int argc, char **argv)
     }
     require(remoteConfigAutoLoaded,
             "page-open-before-Sky lifecycle auto-reads SkyConfig and enables remote serial fields");
+    require(sensorTransportPathCombo->isEnabled(),
+            "remote telemetry keeps the FPGA relay path selector enabled after SkyConfig loads");
     VaporViewTest::processEventsFor(160);
     require(getSkyConfigRequests == 1,
             "Remote link-open lifecycle sends one automatic GetSkyConfig request");
