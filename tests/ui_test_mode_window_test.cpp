@@ -1095,9 +1095,12 @@ int main(int argc, char **argv)
     epsilonPort->setCurrentIndex(epsilonPort->count() - 1);
     rtkServer->setText(QStringLiteral("normal.unpersisted.caster"));
     QStringList epsilonItemsBefore;
+    QList<QVariant> epsilonItemDataBefore;
+    const int epsilonCurrentIndexBefore = epsilonPort->currentIndex();
     for (int index = 0; index < epsilonPort->count(); ++index)
     {
         epsilonItemsBefore.push_back(epsilonPort->itemText(index));
+        epsilonItemDataBefore.push_back(epsilonPort->itemData(index));
     }
     const auto before = snapshotAll();
 
@@ -1106,9 +1109,54 @@ int main(int argc, char **argv)
     QPointer<QMenu> scenarioMenu =
         window->findChild<QMenu *>(QStringLiteral("uiTestScenarioMenu"));
     require(modeAction && badge && !scenarioMenu.isNull(), "UI test menu actions and title badge exist");
+
+    // Reproduce the reported path: enter UI test mode while Remote Device
+    // Configuration is already the visible page. Its controls must be ready
+    // immediately, without a page switch to trigger the sync callback.
+    sourceModeSwitch->click();
+    processEvents();
+    auto *uiTestDeviceConfigPage = window->findChild<QWidget *>(QStringLiteral("deviceConfigPage"));
+    require(uiTestDeviceConfigPage != nullptr, "UI-test immediate-control regression page exists");
+    mainPageStack->setCurrentWidget(uiTestDeviceConfigPage);
+    processEvents();
+    auto *uiTestSensorPath = uiTestDeviceConfigPage->findChild<QComboBox *>(
+        QStringLiteral("deviceSensorTransportPathCombo"));
+    auto *uiTestEpsilonPort = uiTestDeviceConfigPage->findChild<QComboBox *>(
+        QStringLiteral("deviceEpsilonPortCombo"));
+    auto *uiTestPtbRate = uiTestDeviceConfigPage->findChild<QComboBox *>(
+        QStringLiteral("devicePressureRateCombo"));
+    require(uiTestSensorPath && uiTestEpsilonPort && uiTestPtbRate,
+            "UI-test immediate-control regression fields exist");
     modeAction->trigger();
     processEvents();
     require(modeAction->isChecked(), "UI test mode action becomes checked");
+    require(uiTestSensorPath->currentData().toString() == QStringLiteral("fpga_relay") &&
+                uiTestSensorPath->isEnabled() && uiTestEpsilonPort->isEnabled() &&
+                uiTestPtbRate->isEnabled(),
+            "remote Device Configuration controls are enabled immediately when UI test mode opens");
+    // The long-running assertions below intentionally continue in the normal
+    // local fixture. Re-enter test mode after restoring the pre-regression
+    // local combo snapshot so this focused remote check does not change the
+    // state that the remainder of this test verifies on exit.
+    modeAction->trigger();
+    processEvents();
+    sourceModeSwitch->click();
+    processEvents();
+    {
+        const QSignalBlocker blocker(epsilonPort);
+        epsilonPort->clear();
+        for (int index = 0; index < epsilonItemsBefore.size(); ++index)
+        {
+            epsilonPort->addItem(epsilonItemsBefore.at(index), epsilonItemDataBefore.value(index));
+        }
+        epsilonPort->setCurrentIndex(
+            std::clamp(epsilonCurrentIndexBefore, 0, epsilonPort->count() - 1));
+    }
+    mainPageStack->setCurrentWidget(homeScrollArea);
+    processEvents();
+    modeAction->trigger();
+    processEvents();
+    require(modeAction->isChecked(), "local UI test mode remains enabled for the shared fixture assertions");
     require(!badge->isHidden(), "persistent UI test badge is visible");
     auto *fpgaPage = window->findChild<FpgaControlPage *>(QStringLiteral("fpgaControlPage"));
     auto *fpgaStatus = fpgaPage ? fpgaPage->findChild<QLabel *>(QStringLiteral("fpgaConnectionStatus")) : nullptr;

@@ -391,6 +391,15 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
                        QStringLiteral("5"));
         refreshAi8TemperatureTitlePortOptions(testPorts, QStringLiteral("UI-TEST-AI8"));
         updateLocalDeviceConfigFromUi();
+        // When test mode is entered while the Device Configuration page is
+        // already visible, load the in-memory Remote Sky fixture immediately.
+        // Otherwise the remote field-state guard still sees an unloaded
+        // SkyConfig until the user changes pages and the page-sync callback
+        // happens to run.
+        if (isRemoteSkyMode())
+        {
+            requestRemoteSkyConfigIfAvailable(false);
+        }
         updateUiTestModeUi();
         updateConnectionStatus(false);
         applyUiTestSnapshot();

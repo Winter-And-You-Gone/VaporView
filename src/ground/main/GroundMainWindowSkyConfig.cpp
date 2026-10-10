@@ -1042,6 +1042,7 @@ void MainWindow::requestRemoteSkyConfigIfAvailable(bool force)
     if (isUiTestMode())
     {
         VaporView::SkyConfig config = VaporView::SkyConfig::defaults();
+        config.sensor_transport_path = VaporView::SensorTransportPath::FpgaRelay;
         config.epsilon.port = QStringLiteral("UI-TEST-EPSILON");
         config.ptb.port = QStringLiteral("UI-TEST-PTB");
         config.hmp.port = QStringLiteral("UI-TEST-HMP");
