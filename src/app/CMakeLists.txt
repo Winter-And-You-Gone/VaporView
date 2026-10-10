@@ -42,6 +42,7 @@ set(LUCIDE_RESOURCES
     ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-up-primary.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/circle-x.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/copy.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/cpu.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/earth.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/flag-triangle-left.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/flag-triangle-right.svg
