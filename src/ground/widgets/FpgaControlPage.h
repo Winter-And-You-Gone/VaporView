@@ -32,7 +32,7 @@ public:
     void updateWaveform(const VaporView::FpgaWave::CompletedStream &stream);
     void appendDiagnostic(const QString &text);
     void setLanguage(bool english);
-    void setTheme(bool dark);
+    void setTheme(bool dark, int fontScalePercent = 100);
     void setRecordingState(bool active, const QString &detail = {});
 signals:
     void connectRequested(const QString &locator, const QString &backend);

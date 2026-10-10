@@ -4,6 +4,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QFrame>
 #include <QLabel>
 #include <QPushButton>
 #include <QScrollArea>
@@ -82,7 +83,7 @@ int main(int argc,char **argv) {
     VaporView::FpgaWave::CompletedStream adc;adc.source=0x20;adc.message=0x1000;adc.bytesPerPoint=4;adc.totalPoints=3;adc.rate=1000000;adc.complete=true;
     for(qint32 value:{0,100,200})appendWord(adc.pointBytes,value);page.updateWaveform(adc);
     auto *adcPlot=page.findChild<QWidget*>("fpgaWavePlot32");require(adcPlot->property("sampleMaximum").toDouble()==0.2,"calibrated subvolt waveform retains physical range");
-    page.setTheme(true);require(page.styleSheet().contains("QTabBar::tab")&&page.styleSheet().contains("QGroupBox::title"),"page scopes readable tabs and titles to its theme");
+    page.setTheme(true);
     page.setTransportConnected(true);page.setConnectionState(true,false);
     VaporView::FpgaSensor::Reading live;live.source=0x40;live.pressurePa=101325;live.validity.measurement=true;page.updateSensor(live);page.updateWaveform(adc);
     require(!sensor->text().contains("historical"),"fresh connected measurement is live");
@@ -95,11 +96,19 @@ int main(int argc,char **argv) {
     page.setConnectionState(true,false);page.updateSensor(live);
     require(!sensor->text().contains("historical")&&page.findChild<QLabel*>("fpgaWaveSummary32")->text().contains("historical"),"new sensor sample refreshes only its source while old waveform remains historical");
     page.resize(720,540);page.show();app.processEvents();
-    for(bool english : {false,true}) {
-        page.setLanguage(english); QFont font=page.font();font.setPointSizeF(app.font().pointSizeF()*1.5);page.setFont(font);
+    for(bool dark : {false,true}) for(bool english : {false,true}) for(int scale : {100,150}) {
+        page.setLanguage(english); page.setTheme(dark,scale);
+        QFont font=app.font();font.setPointSizeF(app.font().pointSizeF()*scale/100.0);page.setFont(font);
         auto *tabs=page.findChild<QTabWidget*>();
         for(int i=0;i<tabs->count();++i){tabs->setCurrentIndex(i);app.processEvents();auto *scroll=qobject_cast<QScrollArea*>(tabs->widget(i));require(scroll&&scroll->widgetResizable(),"all tabs remain scrollable at large fonts");require(scroll->viewport()->width()>0,"tab viewport remains visible");}
+        for(auto *card : page.findChildren<QFrame*>("fpgaSectionCard")) {
+            require(card->property("vaporViewTopLevelCard").toBool(),"FPGA sections use shared card shadow and radius behavior");
+            auto *header=card->findChild<QWidget*>("sectionTitleBar");
+            auto *title=header->findChild<QLabel*>("sectionTitleLabel");
+            require(header->height()>=title->fontMetrics().height()+4,"scaled section titles fit inside their headers");
+            require(title->textInteractionFlags().testFlag(Qt::TextSelectableByKeyboard)&&title->cursor().shape()==Qt::IBeamCursor,"card titles preserve shared selection and copying behavior");
+        }
     }
-    page.setFont(app.font());
+    page.setFont(app.font());page.setTheme(false);page.setLanguage(false);
     page.close();std::puts("FPGA control page tests passed");return 0;
 }

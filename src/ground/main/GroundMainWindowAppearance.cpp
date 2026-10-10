@@ -1385,7 +1385,7 @@ void MainWindow::syncDeviceConfigNumericColumnFonts()
 
 void MainWindow::applyStyleConfiguration()
 {
-    if (state_->fpga_page_) state_->fpga_page_->setTheme(state_->dark_theme_enabled_);
+    if (state_->fpga_page_) state_->fpga_page_->setTheme(state_->dark_theme_enabled_, state_->font_scale_percent_);
     QFont appFont = qApp->font();
     appFont.setPointSizeF(state_->base_font_point_size_ * state_->font_scale_percent_ / 100.0);
     qApp->setPalette(appThemePalette(state_->dark_theme_enabled_));

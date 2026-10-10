@@ -1,13 +1,19 @@
 #include "FpgaControlPage.h"
 #include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/AppTheme.h"
+#include "shared/theme/TopLevelCardStyle.h"
+#include "VisualTextLabel.h"
+#include "LabelTextSelection.h"
 
 #include <QAbstractButton>
 #include <QCheckBox>
 #include <QDoubleSpinBox>
+#include <QCoreApplication>
+#include <QDir>
+#include <QFile>
 #include <QFormLayout>
 #include <QGridLayout>
-#include <QGroupBox>
+#include <QFrame>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPainter>
@@ -16,6 +22,8 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSignalBlocker>
+#include <QStyleOptionButton>
+#include <QSvgRenderer>
 #include <QTabWidget>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -25,6 +33,30 @@
 #include <type_traits>
 
 namespace {
+class FpgaCheckBox final : public QCheckBox {
+public:
+    explicit FpgaCheckBox(QWidget *parent) : QCheckBox(parent) {
+        setStyleSheet(QStringLiteral("QCheckBox::indicator, QCheckBox::indicator:checked, QCheckBox::indicator:hover { background: transparent; border: none; image: none; }"));
+    }
+protected:
+    void paintEvent(QPaintEvent *event) override {
+        QCheckBox::paintEvent(event);
+        QStyleOptionButton option; initStyleOption(&option);
+        const QRect indicator=style()->subElementRect(QStyle::SE_CheckBoxIndicator,&option,this);
+        const bool dark=VaporView::isDarkThemePalette(palette());
+        QColor color=VaporView::appThemeColor(isChecked()?VaporView::AppThemeColor::Primary:VaporView::AppThemeColor::TextSecondary,dark);
+        if (!isEnabled()) color.setAlphaF(0.6f);
+        QPainter painter(this); painter.setRenderHint(QPainter::Antialiasing);
+        painter.translate(indicator.topLeft()); painter.scale(indicator.width()/20.0,indicator.height()/20.0);
+        painter.setPen(QPen(color,1.6,Qt::SolidLine,Qt::RoundCap,Qt::RoundJoin));
+        painter.setBrush(VaporView::appThemeColor(isChecked()?VaporView::AppThemeColor::PrimarySubtle:VaporView::AppThemeColor::Surface,dark));
+        painter.drawRoundedRect(QRectF(1,1,18,18),3,3);
+        if (isChecked()) {
+            QPainterPath check; check.moveTo(5,10); check.lineTo(8,13); check.lineTo(15,6); painter.drawPath(check);
+        }
+    }
+};
+
 class SamplePlot final : public QWidget {
 public:
     QVector<double> samples;
@@ -59,14 +91,32 @@ void FpgaControlPage::label(QWidget *w, const QString &zh, const QString &en) {
         const auto metrics=b->fontMetrics();
         b->setMinimumWidth(std::max(metrics.horizontalAdvance(zh),metrics.horizontalAdvance(en))+2*metrics.height());
     }
-    if (auto *g=qobject_cast<QGroupBox*>(w)) g->setTitle(english_?en:zh);
 }
 
 FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     measurementClock_.start();
     setObjectName("fpgaControlPage");
-    auto *root=new QVBoxLayout(this); root->setContentsMargins(12,12,12,12); root->setSpacing(12);
-    auto *connection=new QGroupBox(this); label(connection,QStringLiteral("FPGA 连接"),QStringLiteral("FPGA connection"));
+    setAttribute(Qt::WA_StyledBackground, true);
+    auto *root=new QVBoxLayout(this); root->setContentsMargins(18,4,5,8); root->setSpacing(12);
+    auto card = [this](QWidget *parent, QVBoxLayout *layout, const QString &zh, const QString &en, const QString &iconName) {
+        auto *frame = new QFrame(parent);
+        frame->setObjectName(QStringLiteral("fpgaSectionCard"));
+        VaporView::configureTopLevelCard(frame);
+        auto *cardLayout = new QVBoxLayout(frame);
+        cardLayout->setContentsMargins(1,0,1,1); cardLayout->setSpacing(0);
+        auto *header = new QWidget(frame); header->setObjectName(QStringLiteral("sectionTitleBar"));
+        auto *headerLayout = new QHBoxLayout(header); headerLayout->setContentsMargins(10,2,10,2); headerLayout->setSpacing(6);
+        auto *icon = new QLabel(header); icon->setObjectName(QStringLiteral("fpgaCardIcon"));
+        icon->setProperty("fpgaIconName",iconName); icon->setFixedSize(20,20);
+        headerLayout->addWidget(icon,0,Qt::AlignVCenter);
+        auto *title = new VaporView::VisualTextLabel(header); title->setObjectName(QStringLiteral("sectionTitleLabel"));
+        VaporView::configureSelectableCardTitle(title); label(title,zh,en);
+        headerLayout->addWidget(title,1); cardLayout->addWidget(header);
+        auto *body = new QWidget(frame); body->setObjectName(QStringLiteral("fpgaCardBody"));
+        body->setAttribute(Qt::WA_StyledBackground,true); cardLayout->addWidget(body);
+        layout->addWidget(frame); return body;
+    };
+    auto *connection=card(this,root,QStringLiteral("FPGA 连接"),QStringLiteral("FPGA connection"),QStringLiteral("cpu"));
     auto *cl=new QGridLayout(connection);
     locator_=new QLineEdit(connection); locator_->setObjectName("fpgaLocator"); locator_->setPlaceholderText("USB device path (optional)");
     backend_=new VaporView::SingleLevelPopupComboBox(connection); backend_->setObjectName("fpgaBackend");
@@ -74,12 +124,12 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     connect_=new QPushButton(connection); label(connect_,QStringLiteral("连接"),QStringLiteral("Connect")); connect_->setObjectName("fpgaConnect");
     disconnect_=new QPushButton(connection);disconnect_->setObjectName("fpgaDisconnect"); label(disconnect_,QStringLiteral("断开"),QStringLiteral("Disconnect"));
     status_=new QLabel(connection); status_->setWordWrap(true); status_->setObjectName("fpgaConnectionStatus");
-    cl->addWidget(locator_,0,0); cl->addWidget(backend_,0,1);cl->addWidget(connect_,0,2); cl->addWidget(disconnect_,0,3); cl->addWidget(status_,1,0,1,4); cl->setColumnStretch(0,1); root->addWidget(connection);
+    cl->addWidget(locator_,0,0); cl->addWidget(backend_,0,1);cl->addWidget(connect_,0,2); cl->addWidget(disconnect_,0,3); cl->addWidget(status_,1,0,1,4); cl->setColumnStretch(0,1);
     connect(connect_,&QAbstractButton::clicked,this,[this]{ lockOperation(); emit connectRequested(locator_->text(),backend_->currentData().toString()); });
     connect(disconnect_,&QAbstractButton::clicked,this,[this]{ lockOperation(); emit disconnectRequested(); });
-    tabs_=new QTabWidget(this); root->addWidget(tabs_,1);
+    tabs_=new QTabWidget(this); tabs_->setObjectName(QStringLiteral("fpgaTabs")); root->addWidget(tabs_,1);
     auto tab=[this](const QString &zh,const QString &en) {
-        auto *scroll=new QScrollArea(tabs_); scroll->setWidgetResizable(true); scroll->setFrameShape(QFrame::NoFrame);
+        auto *scroll=new QScrollArea(tabs_); scroll->setObjectName(QStringLiteral("mainCardsScrollArea")); scroll->setWidgetResizable(true); scroll->setFrameShape(QFrame::NoFrame);
         auto *body=new QWidget(scroll); scroll->setWidget(body); scroll->setProperty("fpgaZh",zh); scroll->setProperty("fpgaEn",en);
         tabs_->addTab(scroll,zh); return body;
     };
@@ -94,21 +144,22 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     action(actions,0,2,"开始采集","Start acquisition","fpgaAcquisitionStart",[this]{emit acquisitionRequested(true);});
     action(actions,0,3,"停止采集","Stop acquisition","fpgaAcquisitionStop",[this]{emit acquisitionRequested(false);});
     auto *hint=new QLabel(parameters); label(hint,QStringLiteral("采集与模拟输出独立控制。停止 DAC 可能保留最后码，不保证归零。"),QStringLiteral("Acquisition and analog output are independent. Stopping DAC may hold its last code.")); hint->setWordWrap(true); pl->addWidget(hint);
-    auto *shared=new QGroupBox(parameters); label(shared,QStringLiteral("共同采样时序"),QStringLiteral("Shared sampling")); auto *sl=new QGridLayout(shared); pl->addWidget(shared);
+    auto *shared=card(parameters,pl,QStringLiteral("共同采样时序"),QStringLiteral("Shared sampling"),QStringLiteral("timer")); auto *sl=new QGridLayout(shared);
     auto field=[this](QGridLayout *layout,int row,const char *zh,const char *en,const QString &name,quint32 address,double min,double max,int decimals,
                       std::function<double(const FpgaControlConfig&)> read,std::function<void(FpgaControlConfig&,double)> write) {
         auto *title=new QLabel(this); label(title,QString::fromUtf8(zh),QString::fromUtf8(en));
         auto *input=new QDoubleSpinBox(this); input->setObjectName(name); input->setRange(min,max); input->setDecimals(decimals); input->setKeyboardTracking(false);
         input->setAccessibleName(QString::fromUtf8(zh)); title->setBuddy(input);
-        auto *actual=new QLabel(QStringLiteral("—"),this); actual->setObjectName(name+"Actual");
+        auto *actual=new QLabel(QStringLiteral("—"),this); actual->setObjectName(name+"Actual"); actual->setProperty("fpgaSecondaryText",true); actual->setWordWrap(true);
         layout->addWidget(title,row,0); layout->addWidget(input,row,1); layout->addWidget(actual,row,2);
+        layout->setColumnStretch(2,1);
         fields_.append({input,read,write}); if (address) hardwareLabels_[address]=actual;
         connect(input,&QDoubleSpinBox::valueChanged,this,[this]{emit configurationChanged(configuration());});
     };
     field(sl,0,"请求采样率 / Hz","Requested sampling / Hz","fpgaAdcRate",0x4014,1,1000000,0,[](const auto &c){return c.adcRateHz;},[](auto &c,double v){c.adcRateHz=quint32(v);});
     for(int channel=0;channel<2;++channel) {
-        auto *group=new QGroupBox(parameters); label(group,QStringLiteral("通道 %1").arg(channel+1),QStringLiteral("Channel %1").arg(channel+1));
-        auto *grid=new QGridLayout(group); pl->addWidget(group);
+        auto *group=card(parameters,pl,QStringLiteral("通道 %1").arg(channel+1),QStringLiteral("Channel %1").arg(channel+1),QStringLiteral("audio-waveform"));
+        auto *grid=new QGridLayout(group);
         const quint32 w=0x2000+channel*0x100,d=0x5000+channel*0x100;
         auto *buttons=new QGridLayout; grid->addLayout(buttons,0,0,1,3);
         action(buttons,0,0,"扫描开","Scan on","",[this,channel]{emit waveformRequested(channel,true);});
@@ -170,14 +221,14 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     connect(pressure_,&QComboBox::currentIndexChanged,this,[this]{emit pressureSourceChanged(quint16(pressure_->currentData().toUInt()));emit configurationChanged(configuration());});
     const char *names[]={"PTB210","EPSILON","BMP390","SHT45","TFA1500-L","AI8"}; const quint16 sources[]={0x40,0x42,0x43,0x44,0x45,0x46};
     for(int i=0;i<6;++i) {
-        auto *g=new QGroupBox(QString::fromLatin1(names[i]),sensors); auto *grid=new QGridLayout(g); sensorLayout->addWidget(g);
+        auto *g=card(sensors,sensorLayout,QString::fromLatin1(names[i]),QString::fromLatin1(names[i]),QStringLiteral("activity")); auto *grid=new QGridLayout(g);
         auto *l=new QLabel(g); l->setObjectName(QString("fpgaSensor%1").arg(sources[i],4,16,QChar('0'))); l->setWordWrap(true); sensorLabels_[sources[i]]=l;
         grid->addWidget(l,0,0,1,2); const auto source=sources[i];
         action(grid,1,0,"启用","Enable","",[this,source]{emit sensorEnableRequested(source,true);});
         action(grid,1,1,"停用","Disable","",[this,source]{emit sensorEnableRequested(source,false);});
     }
     auto *tempGrid=new QGridLayout; sensorLayout->addLayout(tempGrid); auto *temperature=new QDoubleSpinBox(sensors); temperature->setRange(-999.0,2147.4);temperature->setDecimals(1);temperature->setSingleStep(0.1); temperature->setSuffix(" °C"); tempGrid->addWidget(temperature,0,0);
-    auto *ai8config=new QGroupBox(sensors);label(ai8config,QStringLiteral("AI8 轮询配置（停用时提交）"),QStringLiteral("AI8 polling configuration (apply while disabled)"));auto *ai8grid=new QGridLayout(ai8config);sensorLayout->addWidget(ai8config);
+    auto *ai8config=card(sensors,sensorLayout,QStringLiteral("AI8 轮询配置（停用时提交）"),QStringLiteral("AI8 polling configuration (apply while disabled)"),QStringLiteral("sliders-vertical"));auto *ai8grid=new QGridLayout(ai8config);
     field(ai8grid,0,"仪表地址","Instrument address","fpgaAi8Address",0x6614,1,80,0,[](const auto &c){return c.ai8.slaveAddress;},[](auto &c,double v){c.ai8.slaveAddress=quint32(v);});
     field(ai8grid,1,"仪表通道","Instrument channel","fpgaAi8Channel",0x661c,1,8,0,[](const auto &c){return c.ai8.channel;},[](auto &c,double v){c.ai8.channel=quint32(v);});
     field(ai8grid,2,"轮询间隔 / ms","Polling interval / ms","fpgaAi8Interval",0x662c,1,3600000,0,[](const auto &c){return c.ai8.pollIntervalMs;},[](auto &c,double v){c.ai8.pollIntervalMs=quint32(v);});
@@ -188,11 +239,11 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     auto *waves=tab(QStringLiteral("波形"),QStringLiteral("Waveforms")); auto *waveLayout=new QVBoxLayout(waves);
     auto *waveHint=new QLabel(waves); label(waveHint,QStringLiteral("ADC 未确认前端校准时显示原码；解调显示数字幅值，不代表气体浓度。"),QStringLiteral("ADC displays raw codes until frontend calibration is confirmed. Demodulation displays digital amplitude, not concentration.")); waveHint->setWordWrap(true); waveLayout->addWidget(waveHint);
     for(int i=0;i<2;++i) {
-        auto *g=new QGroupBox(QString("ADC %1 / DLIA %1").arg(i),waves); auto *l=new QVBoxLayout(g); waveLayout->addWidget(g);
+        auto *g=card(waves,waveLayout,QString("ADC %1 / DLIA %1").arg(i),QString("ADC %1 / DLIA %1").arg(i),QStringLiteral("audio-waveform")); auto *l=new QVBoxLayout(g);
         auto *frontend=new QGridLayout; l->addLayout(frontend);
         field(frontend,0,"电压系数 / V·code⁻¹","Voltage scale / V per code",QString("fpga%1Scale").arg(i),0,0.000000000001,100,12,[i](const auto &c){return c.frontend[i].voltsPerCode;},[i](auto &c,double v){c.frontend[i].voltsPerCode=v;});
         field(frontend,1,"极性 (+1 / -1)","Polarity (+1 / -1)",QString("fpga%1Polarity").arg(i),0,-1,1,0,[i](const auto &c){return c.frontend[i].polarity;},[i](auto &c,double v){c.frontend[i].polarity=v<0?-1:1;});
-        auto *cal=new QCheckBox(g); label(cal,QStringLiteral("已确认本路前端校准"),QStringLiteral("Frontend calibration confirmed")); cal->setObjectName(QString("fpga%1Calibrated").arg(i)); l->addWidget(cal);
+        auto *cal=new FpgaCheckBox(g); label(cal,QStringLiteral("已确认本路前端校准"),QStringLiteral("Frontend calibration confirmed")); cal->setObjectName(QString("fpga%1Calibrated").arg(i)); l->addWidget(cal);
         connect(cal,&QCheckBox::toggled,this,[this,i](bool v){config_.frontend[i].calibrated=v;emit configurationChanged(configuration());});
         for(quint16 source : {quint16(0x20+i),quint16(0x30+i)}) {
             auto *summary=new QLabel(g);summary->setObjectName(QString("fpgaWaveSummary%1").arg(source));summary->setWordWrap(true);waveLabels_[source]=summary;l->addWidget(summary);
@@ -204,8 +255,9 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
             auto *plot=new SamplePlot(g);plot->setObjectName(QString("fpgaWavePlot%1").arg(source));plots_[source]=plot;l->addWidget(plot);
         }
     }
-    auto *recording=tab(QStringLiteral("记录与诊断"),QStringLiteral("Recording & diagnostics")); auto *rl=new QVBoxLayout(recording);
-    recordSensors_=new QCheckBox(recording); label(recordSensors_,QStringLiteral("记录传感器"),QStringLiteral("Record sensors")); recordDlia_=new QCheckBox(recording); label(recordDlia_,QStringLiteral("记录解调数据"),QStringLiteral("Record demodulation")); recordRaw_=new QCheckBox(recording); label(recordRaw_,QStringLiteral("记录 RAW（高吞吐）"),QStringLiteral("Record RAW (high throughput)")); rl->addWidget(recordSensors_); rl->addWidget(recordDlia_); rl->addWidget(recordRaw_);
+    auto *recordingTab=tab(QStringLiteral("记录与诊断"),QStringLiteral("Recording & diagnostics")); auto *recordingLayout=new QVBoxLayout(recordingTab);
+    auto *recording=card(recordingTab,recordingLayout,QStringLiteral("采集记录"),QStringLiteral("Acquisition recording"),QStringLiteral("scroll-text")); auto *rl=new QVBoxLayout(recording);
+    recordSensors_=new FpgaCheckBox(recording); label(recordSensors_,QStringLiteral("记录传感器"),QStringLiteral("Record sensors")); recordDlia_=new FpgaCheckBox(recording); label(recordDlia_,QStringLiteral("记录解调数据"),QStringLiteral("Record demodulation")); recordRaw_=new FpgaCheckBox(recording); label(recordRaw_,QStringLiteral("记录 RAW（高吞吐）"),QStringLiteral("Record RAW (high throughput)")); rl->addWidget(recordSensors_); rl->addWidget(recordDlia_); rl->addWidget(recordRaw_);
     for(auto *c : {recordSensors_,recordDlia_,recordRaw_}) connect(c,&QCheckBox::toggled,this,[this]{emit configurationChanged(configuration());});
     auto *rawGrid=new QGridLayout; rl->addLayout(rawGrid);
     field(rawGrid,0,"RAW 诊断窗口 / 秒","RAW diagnostic window / s","fpgaRawSeconds",0,1,60,0,[](const auto &c){return c.rawWindowSeconds;},[](auto &c,double v){c.rawWindowSeconds=int(v);});
@@ -217,7 +269,21 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     auto *exportButton=new QPushButton(recording);exportButton->setObjectName("fpgaExport"); label(exportButton,QStringLiteral("导出记录"),QStringLiteral("Export recording")); files->addWidget(exportButton);
     connect(replay,&QPushButton::clicked,this,[this]{emit replayRequested({});});
     connect(exportButton,&QPushButton::clicked,this,[this]{emit exportRequested({});});
-    diagnostics_=new QPlainTextEdit(recording); diagnostics_->setObjectName("fpgaDiagnostics"); diagnostics_->setReadOnly(true); diagnostics_->setMaximumBlockCount(2000); rl->addWidget(diagnostics_,1);
+    auto *diagnosticCard=card(recordingTab,recordingLayout,QStringLiteral("诊断日志"),QStringLiteral("Diagnostics"),QStringLiteral("list-filter"));
+    auto *diagnosticLayout=new QVBoxLayout(diagnosticCard);
+    diagnostics_=new QPlainTextEdit(diagnosticCard); diagnostics_->setObjectName("fpgaDiagnostics"); diagnostics_->setReadOnly(true); diagnostics_->setMaximumBlockCount(2000); diagnostics_->setMinimumHeight(180); diagnosticLayout->addWidget(diagnostics_,1);
+    hint->setProperty("fpgaSecondaryText",true); waveHint->setProperty("fpgaSecondaryText",true); ai8hint->setProperty("fpgaSecondaryText",true);
+    status_->setProperty("fpgaSecondaryText",true); recordStatus_->setProperty("fpgaSecondaryText",true);
+    for (auto *body : findChildren<QWidget*>(QStringLiteral("fpgaCardBody"))) {
+        body->layout()->setContentsMargins(12,10,12,12); body->layout()->setSpacing(8);
+    }
+    for (auto *body : {parameters,sensors,waves,recordingTab}) {
+        body->layout()->setContentsMargins(5,12,5,8); body->layout()->setSpacing(12);
+    }
+    for (auto *button : findChildren<QPushButton*>()) button->setFocusPolicy(Qt::TabFocus);
+    for (auto *button : {disconnect_,refresh_}) button->setProperty("fpgaSecondaryAction",true);
+    replay->setProperty("fpgaSecondaryAction",true); exportButton->setProperty("fpgaSecondaryAction",true);
+    for (const char *name : {"fpgaAcquisitionStop","fpgaRawStop"}) findChild<QPushButton*>(QString::fromLatin1(name))->setProperty("fpgaSecondaryAction",true);
     setConfiguration(config_); setLanguage(false);setTheme(false); setConnectionState(false,false); setRecordingState(false);
     auto *freshnessTimer = new QTimer(this);
     freshnessTimer->setInterval(1000);
@@ -343,17 +409,37 @@ void FpgaControlPage::setLanguage(bool en){english_=en;for(auto *w:findChildren<
     locator_->setPlaceholderText(text("USB 设备路径（可选）","USB device path (optional)"));setConnectionState(ready_,busy_,connectionDetail_);setRecordingState(recording_,recordingDetail_);
 }
 void FpgaControlPage::refreshMeasurements(){rerendering_=true;const auto readings=latestReadings_;for(const auto &reading:readings)updateSensor(reading);const auto waves=latestWaves_;for(const auto &wave:waves)updateWaveform(wave);rerendering_=false;}
-void FpgaControlPage::setTheme(bool dark){
+void FpgaControlPage::setTheme(bool dark,int fontScalePercent){
     using namespace VaporView;setProperty(kAppDarkThemeProperty,dark);setPalette(appThemePalette(dark,palette()));
-    const auto surface=appThemeColorName(AppThemeColor::Surface,dark),border=appThemeColorName(AppThemeColor::Border,dark);
-    const auto foreground=appThemeColorName(AppThemeColor::Text,dark),muted=appThemeColorName(AppThemeColor::TextSecondary,dark),primary=appThemeColorName(AppThemeColor::Primary,dark);
-    setStyleSheet(QStringLiteral(
-        "QWidget#fpgaControlPage QGroupBox { background: %1; border: 1px solid %2; border-top: 1px solid %2; border-radius: 8px; margin-top: 1.3em; padding: 10px; color: %3; }"
-        "QWidget#fpgaControlPage QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 12px; top: 0px; padding: 0px 4px; color: %3; background: %1; }"
-        "QWidget#fpgaControlPage QTabWidget::pane { border: 1px solid %2; background: %1; }"
-        "QWidget#fpgaControlPage QTabBar::tab { background: %1; color: %4; border: 1px solid %2; padding: 8px 12px; }"
-        "QWidget#fpgaControlPage QTabBar::tab:selected { color: %3; border-bottom: 2px solid %5; }"
-        "QWidget#fpgaControlPage QScrollArea, QWidget#fpgaControlPage QScrollArea > QWidget > QWidget { background: %1; }")
-        .arg(surface,border,foreground,muted,primary));update();
+    const qreal scale=qBound(60,fontScalePercent,180)/100.0;
+    const auto pixels=[scale](int value){return qRound(value*scale);};
+    setStyleSheet(applyAppThemeTokens(QStringLiteral(
+        "QWidget#fpgaControlPage { background-color: @vv-window; }"
+        "QWidget#fpgaControlPage QFrame#fpgaSectionCard { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 12px; }"
+        "QWidget#fpgaControlPage QFrame#fpgaSectionCard > QWidget#sectionTitleBar { background-color: @vv-surface-raised; border: none; border-bottom: 1px solid @vv-border; border-top-left-radius: 11px; border-top-right-radius: 11px; min-height: %1px; max-height: %1px; }"
+        "QWidget#fpgaControlPage QWidget#fpgaCardBody { background-color: @vv-surface-raised; border: none; border-bottom-left-radius: 11px; border-bottom-right-radius: 11px; }"
+        "QWidget#fpgaControlPage QLabel { background-color: transparent; border: none; color: @vv-text; }"
+        "QWidget#fpgaControlPage QLabel#sectionTitleLabel { font-size: %2px; font-weight: 700; padding: 0; margin: 0; }"
+        "QWidget#fpgaControlPage QLabel[fpgaSecondaryText=\"true\"] { color: @vv-text-secondary; font-weight: 400; }"
+        "QWidget#fpgaControlPage QTabWidget::pane { border: none; background-color: @vv-window; }"
+        "QWidget#fpgaControlPage QTabBar::tab { background-color: @vv-surface-alt; color: @vv-text; border: 1px solid transparent; border-radius: 6px; padding: 0 %3px; margin-right: 4px; min-height: %4px; font-weight: 600; }"
+        "QWidget#fpgaControlPage QTabBar::tab:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
+        "QWidget#fpgaControlPage QTabBar::tab:selected { background-color: @vv-primary; color: @vv-white; }"
+        "QWidget#fpgaControlPage QTabBar::tab:focus { border-color: @vv-focus; }"
+        "QWidget#fpgaControlPage QScrollArea, QWidget#fpgaControlPage QScrollArea > QWidget, QWidget#fpgaControlPage QScrollArea > QWidget > QWidget { background-color: @vv-window; border: none; }"
+        "QWidget#fpgaControlPage QPushButton[fpgaSecondaryAction=\"true\"] { background-color: @vv-surface-alt; color: @vv-text; border: 1px solid @vv-border; }"
+        "QWidget#fpgaControlPage QPushButton[fpgaSecondaryAction=\"true\"]:hover { background-color: @vv-primary-subtle; color: @vv-primary; border-color: @vv-primary; }"
+        "QWidget#fpgaControlPage QPushButton[fpgaSecondaryAction=\"true\"]:focus { border-color: @vv-focus; }"
+        "QWidget#fpgaControlPage QPushButton[fpgaSecondaryAction=\"true\"]:disabled { background-color: @vv-surface-alt; color: @vv-text-muted; border-color: @vv-border; }")
+        .arg(pixels(40)).arg(pixels(16)).arg(pixels(12)).arg(pixels(36)),dark));
+    for (auto *icon : findChildren<QLabel*>(QStringLiteral("fpgaCardIcon"))) {
+        const int size=pixels(20); icon->setFixedSize(size,size);
+        QFile file(QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/lucide/%1.svg").arg(icon->property("fpgaIconName").toString())));
+        if (!file.open(QIODevice::ReadOnly)) continue;
+        QByteArray svg=file.readAll(); svg.replace("currentColor",appThemeColorName(AppThemeColor::TextTitle,dark).toUtf8());
+        const qreal dpr=icon->devicePixelRatioF(); QPixmap pixmap(qRound(size*dpr),qRound(size*dpr)); pixmap.setDevicePixelRatio(dpr); pixmap.fill(Qt::transparent);
+        QSvgRenderer renderer(svg); QPainter painter(&pixmap); renderer.render(&painter,QRectF(0,0,size,size)); painter.end(); icon->setPixmap(pixmap);
+    }
+    updateTopLevelCardShadows(this,scale);update();
 }
 void FpgaControlPage::setRecordingState(bool active,const QString &detail){recording_=active;recordingDetail_=detail;record_->setText(text(active?"停止记录":"开始记录",active?"Stop recording":"Start recording"));recordStatus_->setText(text(active?"正在记录":"未记录",active?"Recording":"Not recording")+(detail.isEmpty()?QString():" · "+detail));updateActions();}

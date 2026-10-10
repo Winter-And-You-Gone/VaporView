@@ -23,7 +23,7 @@ void MainWindow::setupFpgaControlPage()
     state_->fpga_page_->setObjectName(QStringLiteral("fpgaControlPage"));
     state_->fpga_page_->setConfiguration(isRemoteSkyMode() ? state_->fpga_remote_config_ : state_->fpga_config_);
     state_->fpga_page_->setLanguage(state_->is_english_);
-    state_->fpga_page_->setTheme(state_->dark_theme_enabled_);
+    state_->fpga_page_->setTheme(state_->dark_theme_enabled_, state_->font_scale_percent_);
     state_->main_page_stack_->addWidget(state_->fpga_page_);
     state_->fpga_ai8_live_.measuredC.fill(std::numeric_limits<double>::quiet_NaN());
     state_->fpga_thread_ = new QThread(this);
