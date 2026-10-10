@@ -582,6 +582,14 @@ void MainWindow::updateLogFilterAction()
 
 void MainWindow::updateRecordingStatusLabel()
 {
+    if (state_->fpga_page_ && state_->recording_service_)
+    {
+        const auto status = state_->recording_service_->status();
+        const QString detail = (status.sessionDirectory.isEmpty() ? QStringLiteral("--") : status.sessionDirectory)
+            + QString(state_->is_english_ ? "\nFPGA archived: %1 records" : "\nFPGA 归档记录：%1 条")
+                  .arg(static_cast<qulonglong>(status.rawFpgaRecords));
+        state_->fpga_page_->setRecordingState(status.active, detail);
+    }
     if (state_->recording_status_title_lbl_)
     {
         state_->recording_status_title_lbl_->setText(
@@ -851,8 +859,9 @@ void MainWindow::updateRecordingStatusLabel()
         recordingStatus.rawDistanceRecords +
         recordingStatus.rawWaveformRecords +
         recordingStatus.rawLaserTemperatureControllerRecords +
-        recordingStatus.rawSystemTemperatureControllerRecords;
-    const QString detail = localDetailText(
+        recordingStatus.rawSystemTemperatureControllerRecords +
+        recordingStatus.rawFpgaRecords;
+    QString detail = localDetailText(
         session,
         formatElapsedCompact(recordingStatus.recordingElapsedMs),
         static_cast<qlonglong>(recordingStatus.sensorRows),
@@ -865,6 +874,9 @@ void MainWindow::updateRecordingStatusLabel()
         static_cast<qulonglong>(recordingStatus.rawLaserTemperatureControllerRecords),
         static_cast<qulonglong>(recordingStatus.rawSystemTemperatureControllerRecords),
         rawTotal);
+    if (state_->fpga_connected_ || recordingStatus.rawFpgaRecords != 0)
+        detail += QString(state_->is_english_ ? "\nRecorded RAW FPGA: %1 records" : "\nRAW FPGA 归档记录：%1 条")
+                      .arg(static_cast<qulonglong>(recordingStatus.rawFpgaRecords));
     if (recordingStatus.sessionOpen)
     {
         if (recordingStatus.writeFailed)
@@ -1065,6 +1077,8 @@ bool MainWindow::startRecordingSession()
     }
 
     const auto status = state_->recording_service_->status();
+    if (state_->fpga_ready_ && state_->fpga_controller_)
+        QMetaObject::invokeMethod(state_->fpga_controller_, &VaporView::Ground::Devices::FpgaDeviceController::snapshotConfiguration, Qt::QueuedConnection);
     if (state_->combination_navigation_page_)
         state_->combination_navigation_page_->refreshStatus();
     updateRecordingStatusLabel();
@@ -1191,13 +1205,15 @@ QString MainWindow::scheduledRecordingStartBlockReason() const
     }
 
     const bool tcpConnected = state_->tcp_wave_panel_ && state_->tcp_wave_panel_->isConnected();
-    const bool recordingSourceAvailable = state_->is_connected_ || tcpConnected;
+    const bool recordingSourceAvailable = state_->is_connected_ || state_->fpga_ready_ || tcpConnected;
     if (!recordingSourceAvailable)
     {
         return state_->is_english_
             ? QStringLiteral("No local recording source is connected.")
             : QStringLiteral("本地记录源未连接。");
     }
+    if (state_->fpga_busy_)
+        return state_->is_english_ ? QStringLiteral("Wait for the FPGA operation to finish.") : QStringLiteral("请等待 FPGA 当前操作完成。");
     if (state_->connection_attempt_in_progress_)
     {
         return state_->is_english_
@@ -1779,7 +1795,7 @@ void MainWindow::onStartRecordingClicked()
     }
 
     const bool tcpConnected = state_->tcp_wave_panel_ && state_->tcp_wave_panel_->isConnected();
-    if (!state_->is_connected_ && !tcpConnected)
+    if (!state_->is_connected_ && !state_->fpga_ready_ && !tcpConnected)
     {
         publishGroundLog(VaporView::LogLevel::Warning,
                          QStringLiteral("session.recording"),
@@ -1933,11 +1949,11 @@ void MainWindow::updateRecordingActionStates()
     }
 
     const bool tcpConnected = state_->tcp_wave_panel_ && state_->tcp_wave_panel_->isConnected();
-    const bool recordingSourceAvailable = state_->is_connected_ || tcpConnected;
+    const bool recordingSourceAvailable = state_->is_connected_ || state_->fpga_ready_ || tcpConnected;
     const bool sessionOpen = state_->recording_service_->isSessionOpen();
     const bool recordingPaused = state_->recording_service_->isPaused();
     const bool recordingActive = state_->recording_service_->isActive();
-    const bool uiBusy = state_->connection_attempt_in_progress_ || state_->port_detection_in_progress_ || state_->epsilon_reconfigure_in_progress_;
+    const bool uiBusy = state_->fpga_busy_ || state_->connection_attempt_in_progress_ || state_->port_detection_in_progress_ || state_->epsilon_reconfigure_in_progress_;
     const bool canStart = recordingSourceAvailable && !uiBusy && (!sessionOpen || recordingPaused);
     const bool canPause = !uiBusy && recordingActive;
     const bool canStop = sessionOpen && !uiBusy;

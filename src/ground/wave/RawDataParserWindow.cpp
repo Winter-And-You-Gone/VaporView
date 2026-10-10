@@ -1,3 +1,4 @@
+#include "shared/session/FpgaSessionArchive.h"
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
 #include "RawDataParserWindow.h"
@@ -300,6 +301,8 @@ QString sourceName(quint16 sourceId, bool english)
 {
     switch (sourceId)
     {
+    case VaporView::Session::kFpgaRawSource:
+        return QStringLiteral("FPGA VLP1");
     case VaporView::SessionRawDat::kSourceNavigation:
         return english ? QStringLiteral("EPSILON") : QStringLiteral("EPSILON组合导航");
     case VaporView::SessionRawDat::kSourcePressure:
@@ -357,6 +360,8 @@ QString recordTypeName(quint16 sourceId, quint16 recordType, bool english)
 {
     switch (sourceId)
     {
+    case VaporView::Session::kFpgaRawSource:
+        return QStringLiteral("VLP1 %1").arg(recordType);
     case VaporView::SessionRawDat::kSourceNavigation:
         return epsilonPacketName(recordType);
     case VaporView::SessionRawDat::kSourcePressure:
@@ -539,6 +544,9 @@ RawScanResult scanRawSession(const QString& sessionDirectory,
             VaporView::Session::resolveSessionPath(pathContext, definition.kind);
         files.push_back({resolved.absolutePath, definition.sourceId});
     }
+
+    const QString fpgaPath = VaporView::Session::FpgaSessionArchive::rawPath(sessionDirectory);
+    if (QFileInfo::exists(fpgaPath)) files.push_back({fpgaPath, VaporView::Session::kFpgaRawSource});
 
     if (progress)
     {
@@ -1642,7 +1650,7 @@ void RawDataParserWindow::Impl::refreshDeviceFilter()
     const QSignalBlocker blocker(device_combo);
     device_combo->clear();
     device_combo->addItem(english ? QStringLiteral("All devices") : QStringLiteral("全部设备"), 0);
-    for (quint16 sourceId : {VaporView::SessionRawDat::kSourceNavigation,
+    for (quint16 sourceId : {VaporView::Session::kFpgaRawSource, VaporView::SessionRawDat::kSourceNavigation,
                              VaporView::SessionRawDat::kSourcePressure,
                              VaporView::SessionRawDat::kSourceTemperatureHumidity,
                              VaporView::SessionRawDat::kSourceDistance,
@@ -2945,6 +2953,21 @@ RawDecodedRecord decodeRawRecord(const RawRecordIndex& record, const QByteArray&
 
     switch (record.source_id)
     {
+    case VaporView::Session::kFpgaRawSource:
+    {
+        const auto object = VaporView::Session::FpgaSessionArchive::describe(record.host_timestamp_us,
+            VaporView::Session::FpgaArchiveKind(record.record_type), payload);
+        if (object.contains(QStringLiteral("crc_valid"))) decoded.ok = object.value(QStringLiteral("crc_valid")).toBool();
+        if (details) {
+            decoded.status = decoded.ok ? QStringLiteral("OK") : QStringLiteral("VLP CRC / frame error");
+            for (auto it = object.begin(); it != object.end(); ++it) {
+                if (it.key() == QStringLiteral("wire_hex")) continue;
+                const QString value = it.value().isObject() ? QString::fromUtf8(QJsonDocument(it.value().toObject()).toJson(QJsonDocument::Compact)) : it.value().toVariant().toString();
+                addField(decoded, QStringLiteral("VLP1"), it.key(), value, value, QString(), 0, payload.size());
+            }
+        }
+        break;
+    }
     case VaporView::SessionRawDat::kSourceNavigation:
         decodeEpsilonPayload(decoded, payload, english, details);
         break;

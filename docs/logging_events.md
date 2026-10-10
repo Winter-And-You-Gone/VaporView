@@ -4,6 +4,7 @@
 
 | source | category | event | recommended level | 中文 message | required fields | optional fields | error_code / reason_code |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| Ground | device.fpga | fpga_operation_diagnostic | Info/Warning/Error | FPGA 操作诊断；具体原因保留在 message。 | operation, ready, busy | error_code | FPGA_OPERATION_FAILED |
 | Ground/SkyCore | navigation.corrections | navigation_correction_status_changed | Info/Warning | 导航与差分状态变化。 | record_timestamp_us, source_mode, rtcm_health, rtcm_age_ms, navigation_available, gnss_fix_code, rtk_fix_transition, baseline_reset | epsilon_device_timestamp_us, sky_report_timestamp_us, sky_boot_id, rtcm_stream_id, hacc_m, latitude_deg, longitude_deg |  |
 | Ground | telemetry.rtcm | rtcm_stream_interrupted | Warning | 天空端 RTCM 数据已中断。 | age_ms |  |  |
 | Ground | telemetry.rtcm | rtcm_stream_recovered | Info | 天空端 RTCM 数据已恢复。 | age_ms |  |  |

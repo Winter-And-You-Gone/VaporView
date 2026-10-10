@@ -1,4 +1,7 @@
 add_library(vaporview_ground_widgets STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/FpgaControlPage.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/FpgaControlPage.h
+    ${CMAKE_SOURCE_DIR}/include/FpgaControlConfig.h
     ${CMAKE_CURRENT_SOURCE_DIR}/Ai8TemperatureControllerPanel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Ai8TemperatureControllerPanel.h
     ${CMAKE_CURRENT_SOURCE_DIR}/DevicePanelCoordinator.cpp
@@ -22,6 +25,7 @@ target_include_directories(vaporview_ground_widgets PUBLIC
 )
 
 target_link_libraries(vaporview_ground_widgets PUBLIC
+    vaporview_protocol
     Qt6::Widgets
 )
 

@@ -7,6 +7,7 @@
 
 #include <QByteArray>
 #include <QString>
+#include <QJsonObject>
 
 #include <chrono>
 #include <cstddef>
@@ -77,6 +78,7 @@ struct GroundRecordingStatus
     quint64 rawWaveformRecords = 0;
     quint64 rawLaserTemperatureControllerRecords = 0;
     quint64 rawSystemTemperatureControllerRecords = 0;
+    quint64 rawFpgaRecords = 0;
 };
 
 struct GroundRecordingStopSummary
@@ -162,6 +164,11 @@ public:
                             const QByteArray& rawSignalPayload,
                             const QByteArray& harmonicPayload,
                             TcpFloatEncoding floatEncoding);
+
+    bool recordFpgaFrame(quint64 hostTimestampUs, const QByteArray& wireBytes);
+    bool recordFpgaCommand(quint64 hostTimestampUs, const QByteArray& wireBytes);
+    bool recordFpgaUsbBytes(quint64 hostTimestampUs, const QByteArray& usbBytes);
+    bool recordFpgaSnapshot(quint64 hostTimestampUs, const QJsonObject& snapshot);
 
     bool appendEvent(const QString& level, const QString& message);
     bool recordNavigationStatus(const VaporView::Session::NavigationStatusRecord& record);

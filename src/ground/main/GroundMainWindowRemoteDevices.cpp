@@ -271,6 +271,14 @@ void MainWindow::requestSourceModeSelection(bool remoteSelected)
 
 void MainWindow::onDataSourceModeChanged(int index)
 {
+    if (index == 1 && (state_->fpga_connected_ || state_->fpga_busy_ || state_->fpga_replaying_))
+    {
+        const QSignalBlocker blocker(state_->data_source_mode_combo_);
+        state_->data_source_mode_combo_->setCurrentIndex(0);
+        state_->fpga_page_->appendDiagnostic(state_->is_english_ ? QStringLiteral("Disconnect FPGA before switching to Remote Sky.") : QStringLiteral("切换天空端模式前请先断开 FPGA。"));
+        updateSourceModeUi();
+        return;
+    }
     const bool wasRemoteSkyMode = state_->remote_sky_mode_;
     if (!wasRemoteSkyMode && index == 1)
     {

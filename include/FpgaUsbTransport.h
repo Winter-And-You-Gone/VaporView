@@ -60,6 +60,7 @@ public:
     virtual qint64 read(QByteArray &destination, qint64 maxBytes) = 0;
     virtual qint64 write(const QByteArray &source) = 0;
     virtual FpgaUsbDiagnostic diagnostic() const = 0;
+    virtual bool readDiagnostic(quint8 request, QByteArray &response);
 
 signals:
     void stateChanged(VaporView::Ground::Devices::FpgaUsbTransportState state);
@@ -90,7 +91,7 @@ public:
 
     // Read one of the GP01 vendor diagnostic pages (B0 or B1), 32 bytes.
     // This is available only when the native Windows backend is compiled.
-    bool readDiagnostic(quint8 request, QByteArray &response);
+    bool readDiagnostic(quint8 request, QByteArray &response) override;
 
 private:
     FpgaUsbDiagnostic diagnostic_;
@@ -125,6 +126,8 @@ private:
 };
 
 std::unique_ptr<FpgaUsbTransport> makeFpgaUsbHardwareTransport(QObject *parent = nullptr);
+std::unique_ptr<FpgaUsbTransport> makeFpgaUsbHardwareTransport(const QString &backend,
+                                                           QObject *parent = nullptr);
 std::unique_ptr<FpgaUsbTransport> makeFpgaUsbReplayTransport(const QByteArray &incoming = {},
                                                               QObject *parent = nullptr);
 

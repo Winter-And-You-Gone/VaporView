@@ -30,6 +30,7 @@ bool FpgaSensorDecoder::parseTlv(const QByteArray &payload, quint16 &schema, std
     for (quint16 i=0;i<count;++i) {
         if (off+4>payload.size()) return false;
         const quint16 tag=u16(payload.constData()+off); const quint8 type=quint8(payload[off+2]); const int len=quint8(payload[off+3]); off+=4;
+        if (find(records,tag)) return false;
         if (off+len>payload.size()) return false;
         records.push_back({tag,type,payload.mid(off,len)}); off += len;
         off = (off+3)&~3;
@@ -49,7 +50,18 @@ Reading FpgaSensorDecoder::decode(const QByteArray &payload, quint16 source, qui
         if (!out.validity.structure) return out;
         const quint8 id=quint8(payload[1]); out.epsilonMessageId=id; out.epsilonSequence=quint8(payload[3]); out.epsilonData=payload.mid(7,len);
         out.validity.crc=(crc8(payload,4)==quint8(payload[4])) && (crc16(payload.constData()+7,len)==be16(payload.constData()+5));
-        if (out.validity.crc && id==0x41 && len==48) { out.epsilonDeviceTimestampUs=qint64(u64le(payload.constData()+47)); out.validity.measurement=true; }
+        int expected = -1;
+        switch(id) {
+        case 0x39: expected=40; break; case 0x40: expected=56; break;
+        case 0x41: expected=48; break; case 0x42: expected=72; break;
+        case 0x50: expected=102; break; case 0x51: expected=8; break;
+        case 0x53: expected=4; break; case 0x59: expected=74; break;
+        case 0x5a: expected=9; break; case 0x5c: expected=32; break;
+        case 0x5d: expected=24; break; case 0x5f: expected=12; break;
+        case 0x63: expected=12; break; case 0x64: expected=16; break;
+        }
+        out.validity.measurement=out.validity.crc && len==expected && !(flags&(1u<<4));
+        if (out.validity.measurement && id==0x41) out.epsilonDeviceTimestampUs=qint64(u64le(payload.constData()+47));
         return out;
     }
     out.kind = source==0x0040?SensorKind::Ptb210:source==0x0043?SensorKind::Bmp390:source==0x0044?SensorKind::Sht45:source==0x0045?SensorKind::Tfa1500:source==0x0046?SensorKind::Ai8:SensorKind::Unknown;
@@ -60,8 +72,9 @@ Reading FpgaSensorDecoder::decode(const QByteArray &payload, quint16 source, qui
     else if(out.kind==SensorKind::Sht45 && out.schema==1){ std::optional<qint32> t; scalarI(0x10,t); if(t) out.temperatureC=*t/1000.; if(auto r=find(out.records,0x11)){quint32 v; if(readU32(*r,v)) out.humidityPct=v/1000.;} scalarU(1,out.heaterMode); }
     else if(out.kind==SensorKind::Tfa1500 && out.schema==1) scalarU(0x13,out.distanceMm);
     else if(out.kind==SensorKind::Bmp390 && out.schema==1){ if(auto r=find(out.records,0x100);r&&r->type==11)out.bmpCalibration=r->value; scalarU(0x101,out.bmpPressureRaw); scalarU(0x102,out.bmpTemperatureRaw); }
-    else if(out.kind==SensorKind::Ai8 && out.schema==2){ scalarI(0x460,out.ai8PvRaw); scalarI(0x461,out.ai8SpRaw); scalarI(0x462,out.ai8SvRaw); scalarU(0x463,out.ai8OpRaw); scalarU(0x464,out.ai8Alarm); scalarU(0x465,out.ai8Control); scalarU(0x466,out.ai8Host); scalarU(0x467,out.ai8SetResult); scalarU(1,out.ai8DeviceStatus); scalarU(2,out.ai8DeviceError); scalarU(4,out.ai8SampleCounter); scalarI(0x14,out.ai8PvMicroC); scalarI(0x15,out.ai8SpMicroC); if(out.ai8DeviceStatus) out.validity.deviceOnline=(*out.ai8DeviceStatus&1)!=0; }
-    out.validity.measurement = out.kind!=SensorKind::Unknown;
+    else if(out.kind==SensorKind::Ai8 && out.schema==2){ scalarI(0x460,out.ai8PvRaw); scalarI(0x461,out.ai8SpRaw); scalarI(0x462,out.ai8SvRaw); scalarU(0x463,out.ai8OpRaw); scalarU(0x464,out.ai8Alarm); scalarU(0x465,out.ai8Control); scalarU(0x466,out.ai8Host); scalarU(0x467,out.ai8SetResult); scalarU(1,out.ai8DeviceStatus); scalarU(2,out.ai8DeviceError); scalarU(4,out.ai8SampleCounter); scalarI(0x14,out.ai8SpMicroC); scalarI(0x15,out.ai8PvMicroC); if(out.ai8DeviceStatus) out.validity.deviceOnline=(*out.ai8DeviceStatus&1)!=0; }
+    out.validity.measurement = false;
+    if (out.kind==SensorKind::Bmp390) out.validity.measurement=out.schema==1 && out.bmpPressureRaw && out.bmpTemperatureRaw && *out.bmpPressureRaw<0x1000000 && *out.bmpTemperatureRaw<0x1000000;
     if (out.kind==SensorKind::Ptb210) out.validity.measurement=out.pressureMilliPa.has_value();
     if (out.kind==SensorKind::Sht45) out.validity.measurement=out.temperatureC.has_value()&&out.humidityPct.has_value()&&out.heaterMode.has_value();
     if (out.kind==SensorKind::Tfa1500) out.validity.measurement=out.distanceMm.has_value();

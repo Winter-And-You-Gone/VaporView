@@ -6,6 +6,14 @@
 #include "ground/main/MainWindow.h"
 #include "ground/main/UiLogModel.h"
 #include "shared/session/NavigationStatusCsv.h"
+#include "FpgaControlConfig.h"
+#include "FpgaSensorAdapter.h"
+#include "ground/session/GroundRecordingService.h"
+#include <QSet>
+
+class FpgaControlPage;
+class QThread;
+namespace VaporView::Ground::Devices { class FpgaDeviceController; }
 
 #include <QElapsedTimer>
 #include <QPointer>
@@ -280,6 +288,24 @@ struct MainWindowState
     QPushButton *temperature_nav_btn_;
     QPushButton *rtk_config_nav_btn_;
     QPushButton *device_config_nav_btn_;
+    QPushButton *fpga_nav_btn_ = nullptr;
+    FpgaControlPage *fpga_page_ = nullptr;
+    QThread *fpga_thread_ = nullptr;
+    VaporView::Ground::Devices::FpgaDeviceController *fpga_controller_ = nullptr;
+    FpgaControlConfig fpga_config_;
+    bool fpga_connected_ = false;
+    bool fpga_ready_ = false;
+    bool fpga_busy_ = false;
+    bool fpga_replaying_ = false;
+    bool fpga_epsilon_status_fresh_ = false;
+    bool fpga_position_valid_ = false;
+    bool fpga_velocity_valid_ = false;
+    std::chrono::steady_clock::time_point fpga_position_time_{};
+    std::chrono::steady_clock::time_point fpga_velocity_time_{};
+    QSet<quint16> fpga_sources_;
+    std::mutex fpga_snapshot_mutex_;
+    VaporView::Ground::Session::GroundSensorSnapshot fpga_recording_snapshot_;
+    VaporView::Ai8TemperatureControllerProtocol::LiveData fpga_ai8_live_;
     QStackedWidget *main_page_stack_;
     AppSidebarMode app_sidebar_mode_;
     bool app_sidebar_adjusting_;

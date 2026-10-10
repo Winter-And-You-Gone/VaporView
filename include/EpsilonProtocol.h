@@ -11,6 +11,8 @@
 namespace VaporView::EpsilonProtocol
 {
 
+// Shared by the serial collector and FPGA adapter. Callers set data.timestamp
+// to the current monotonic frame time before decoding attitude-bearing packets.
 bool decodeCorePacket(EpsilonData& data,
                       std::uint8_t packetId,
                       const std::uint8_t *payload,

@@ -1,6 +1,6 @@
 # VaporView Unified Raw DAT Format
 
-本文档说明 `session_*/raw/*.dat` 的统一原始数据记录格式。该格式只保存设备返回的原始帧或原始响应字节，不保存解析后的字段；解析摘要仍在 `sensors/sensor_summary.csv` 中。
+本文档说明 `session_*/raw/*.dat` 的统一原始数据记录格式。常规设备source保存原始帧或响应字节，解析摘要在 `sensors/sensor_summary.csv` 中。可选FPGA source=8还保存原始USB IN块、OUT命令和JSON配置/连接快照；其帧摘要位于 `sensors/fpga_frames.jsonl`，不能把快照误作传感器测量。
 
 地面端和天空端共用 `src/shared/session/UnifiedRawDat.*` 中的 raw DAT 常量、header 编解码和记录读写逻辑；`sensors/sensor_summary.csv` 的表头、字段顺序、转义和行格式化共用 `src/shared/session/SessionSensorCsv.*`。文件名描述数据类型，设备型号保存在 session metadata 中。生产代码不再分别维护 raw magic、record marker、format version、source ID 或 CSV schema。
 
@@ -17,8 +17,9 @@
 | `raw/waveform.dat` | 5 | TCP 原始信号 payload 和二次谐波 payload |
 | `raw/laser_temperature_controller.dat` | 6 | 激光温控完整、已校验 Modbus RTU response frame |
 | `raw/system_temperature_controller.dat` | 7 | 系统温控完整、已校验 Modbus RTU response frame |
+| `raw/fpga_vlp1.dat`（按需创建） | 8 | FPGA完整IN帧、OUT命令、JSON快照、精确USB IN块 |
 
-新记录会话只写这些统一 raw DAT 文件，不再额外生成旧型号文件名或 `waveform/*.dat`。数据查看器仍保留对旧会话 `raw/epsilon.dat`、`raw/tcp_wave.dat`、`raw/rd105.dat`、`raw/ai8.dat`、`raw/ai8288.dat` 和 `waveform/*.dat` 的读取兼容。缺少统一 raw magic 的历史波形文件仍按旧格式回退读取；带有合法统一 raw magic 但版本不受支持的文件会被明确拒绝，不会回退为旧格式。
+常规新记录会话写上述source=1..7统一raw文件；地面FPGA会话在收到FPGA记录时按需创建source=8文件。不再额外生成旧型号文件名或 `waveform/*.dat`。数据查看器仍保留对旧会话 `raw/epsilon.dat`、`raw/tcp_wave.dat`、`raw/rd105.dat`、`raw/ai8.dat`、`raw/ai8288.dat` 和 `waveform/*.dat` 的读取兼容。缺少统一 raw magic 的历史波形文件仍按旧格式回退读取；带有合法统一 raw magic 但版本不受支持的文件会被明确拒绝，不会回退为旧格式。
 
 ## 字节序
 
@@ -66,6 +67,24 @@
 - TCP 波形：`record_type = 1`，`flags` bit0 表示 payload 内含两个 length-prefixed 子 payload；`flags` bits8-9 记录 payload 浮点编码，`0=legacy/unknown`、`1=little-endian float32`、`2=big-endian float32`、`3=word-swapped float32`。
 - 激光温控：`record_type` 使用已校验 Modbus RTU response 的起始寄存器地址，`flags = 0`。
 - 系统温控：`record_type = 1` 表示 8 路测量值响应，`2` 表示报警状态响应，`3` 表示主状态响应，`4` 表示 8 路控制状态响应；`flags = 0`。
+- FPGA source=8：`record_type=1`完整IN帧，`2`主机OUT命令，`3`JSON快照，`4`精确USB IN块；外层`flags=0`，VLP flags保留在内层原始帧。
+
+## FPGA source=8 payload与计数
+
+| record_type | payload | 解释边界 |
+| ---: | --- | --- |
+| 1 | 一条完整VLP1 IN帧的头、payload、CRC及接收时保留的padding | shared codec的Frame.bytes可不含padding；归档不擅改原始字节 |
+| 2 | 主机发送的VLP1 OUT命令字节 | 保留发送证据；离线回放绝不发送到硬件 |
+| 3 | UTF-8 JSON配置、校准、连接、操作及pause/resume快照 | 是事件/上下文，不是测量点 |
+| 4 | 一次USB IN read返回的全部字节 | 可含半帧、多帧、padding、坏CRC及未知内容，完整保留 |
+
+FPGA的VLP1头、tick/source/msg/flags/sequence/cycle位于内层payload，其定义见 [`fpga_vlp1_integration.md`](fpga_vlp1_integration.md)。外层`host_timestamp_us`是主机UTC微秒，外层`sequence`是归档文件内序号，两者不能替代FPGA tick和VLP sequence。FPGA tick为100MHz本地uint64计数，不是UTC。
+
+完整原始USB归档不受“记录传感器/记录DLIA/记录RAW”筛选影响：这些选项只决定type1完整帧及对应解析摘要是否记录。只要Ground Session处于活动记录，接收到的USB块type4、发送OUT type2、快照type3都保留；关闭RAW上传才会降低真实USB流量。不得把筛选关闭误解释为精确USB流中已不存在该source。
+
+`GroundRecordingStatus::rawFpgaRecords`及manifest `raw_files.fpga_vlp1.records`统计后台成功写入的所有四类归档记录，包含USB块、帧、OUT和快照，**不是采样点数或仅有效VLP帧数**。暂停或停止会排空队列；UI计数可能落后于刚入队的记录。source=1..7旧计数、旧文件名和旧CSV不变。
+
+离线codec回放和流BIN优先选择type4；没有USB块的历史FPGA记录才回退type1，避免USB与完整帧重复。坏VLP CRC不会生成测量，但其type4字节可从BIN恢复。外层VVRAWDAT合法与内层VLP CRC通过是两种不同完整性结论。CSV/JSON保留record kind、内层元数据、payload及snapshot；uint64时间/tick以十进制字符串保存，避免JSON精度损失。
 
 ## TCP 波形 payload
 

@@ -2159,10 +2159,12 @@ void MainWindow::setupCentralWidget()
     state_->device_config_nav_btn_ = createNavButton(QStringLiteral("设备配置"), QStringLiteral("sliders-vertical"));
     state_->temperature_nav_btn_ = createNavButton(QStringLiteral("温控"), QStringLiteral("thermometer"));
     state_->rtk_config_nav_btn_ = createNavButton(QStringLiteral("组合导航"), QStringLiteral("satellite"));
+    state_->fpga_nav_btn_ = createNavButton(QStringLiteral("FPGA"), QStringLiteral("usb"));
     state_->app_nav_button_group_->addButton(state_->home_nav_btn_, 0);
     state_->app_nav_button_group_->addButton(state_->device_config_nav_btn_, 1);
     state_->app_nav_button_group_->addButton(state_->temperature_nav_btn_, 2);
     state_->app_nav_button_group_->addButton(state_->rtk_config_nav_btn_, 3);
+    state_->app_nav_button_group_->addButton(state_->fpga_nav_btn_, 4);
     sidebarLayout->addStretch(1);
     state_->home_nav_btn_->setChecked(true);
     updateSidebarNavIcons();
@@ -2382,11 +2384,11 @@ void MainWindow::setupCentralWidget()
             else
             {
                 const CollectorSnapshot collectors = snapshotCollectors();
-                if (collectors.epsilon &&
+                if ((collectors.epsilon || state_->fpga_ready_) &&
                     epsilon.timestamp != std::chrono::steady_clock::time_point{})
                 {
-                    const int rate = std::max(1, collectors.epsilon->getSampleRate());
-                    const int timeoutMs = std::max(
+                    const int rate = collectors.epsilon ? std::max(1, collectors.epsilon->getSampleRate()) : 1;
+                    const int timeoutMs = state_->fpga_ready_ ? 2000 : std::max(
                         250, static_cast<int>(std::ceil(3000.0 / rate)));
                     const auto ageMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                         std::chrono::steady_clock::now() - epsilon.timestamp).count();
@@ -2428,6 +2430,18 @@ void MainWindow::setupCentralWidget()
             snapshot.attitudeAvailable = epsilon.ahrs_attitude_valid ||
                 epsilon.euler_orien_valid || epsilon.quat_orien_valid ||
                 epsilon.system_state_attitude_valid;
+        }
+        else if (state_->fpga_ready_)
+        {
+            const auto now = std::chrono::steady_clock::now();
+            const auto fresh = [now](const std::chrono::steady_clock::time_point& time) {
+                return time != std::chrono::steady_clock::time_point{} && now >= time && now-time <= std::chrono::seconds(2);
+            };
+            snapshot.navigationDataAvailable = epsilonDataFresh && state_->fpga_epsilon_status_fresh_;
+            snapshot.gnssQualityAvailable = snapshot.navigationDataAvailable;
+            snapshot.positionAvailable = epsilonDataFresh && state_->fpga_position_valid_ && fresh(state_->fpga_position_time_);
+            snapshot.speedAvailable = epsilonDataFresh && state_->fpga_velocity_valid_ && fresh(state_->fpga_velocity_time_);
+            snapshot.attitudeAvailable = epsilonDataFresh && (epsilon.ahrs_attitude_valid || epsilon.euler_orien_valid || epsilon.quat_orien_valid || epsilon.system_state_attitude_valid);
         }
         else
         {
@@ -2515,6 +2529,7 @@ void MainWindow::setupCentralWidget()
         return snapshot;
     });
     state_->main_page_stack_->addWidget(state_->combination_navigation_page_);
+    setupFpgaControlPage();
 
     connect(state_->app_nav_button_group_, &QButtonGroup::idClicked, this, [this](int id) {
         if (id == 3)
@@ -3545,7 +3560,7 @@ void MainWindow::updateSidebarNavIcons()
     const bool dark = state_->dark_theme_enabled_;
     const QColor normalColor = appThemeColor(AppThemeColor::Text, dark);
     const QColor activeColor = QColor(255, 255, 255);
-    for (QPushButton *button : {state_->home_nav_btn_, state_->temperature_nav_btn_, state_->rtk_config_nav_btn_, state_->device_config_nav_btn_})
+    for (QPushButton *button : {state_->home_nav_btn_, state_->temperature_nav_btn_, state_->rtk_config_nav_btn_, state_->device_config_nav_btn_, state_->fpga_nav_btn_})
     {
         if (!button)
         {

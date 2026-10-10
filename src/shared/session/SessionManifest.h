@@ -75,6 +75,7 @@ struct SessionManifest
     QString waveformValueType = QStringLiteral("float32");
     QString waveformTimestampType = QStringLiteral("uint64");
     quint64 waveformFileCount = 0;
+    quint64 fpgaRecords = 0;
     CaptureMetadata capture;
     SessionRecordCounts counts;
     RawFileRecordCounts rawRecords;

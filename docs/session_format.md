@@ -58,6 +58,30 @@ transport. Device models, ports, and serial details remain in
 and are defined by `SessionPackageLayout`. Ground and Sky both create every
 standard file even when the recorder has no data for that stream.
 
+## Optional FPGA extension (Ground)
+
+FPGA recording adds `raw/fpga_vlp1.dat` (UnifiedRawDat source=8) and
+`sensors/fpga_frames.jsonl` only when FPGA records are captured. The seven
+standard RAW sources and legacy path aliases remain unchanged; old Sessions
+need no FPGA files. Source=8 retains four kinds: complete IN frame=1, OUT
+command=2, JSON snapshot=3, and exact USB IN chunk=4. The exact USB stream
+includes split frames, padding, malformed bytes and CRC failures. Sensor,
+DLIA and RAW selection filters only affect complete-frame/decoded records;
+they do not filter the exact USB evidence while a Ground recording is active.
+
+When FPGA records exist, `session.json` additionally includes
+`raw_files.fpga_vlp1` with `path`, `source_id`, `format_version`, and string
+`records`, plus `paths.fpga_raw` and `paths.fpga_semantic_jsonl`.
+`GroundRecordingStatus::rawFpgaRecords` counts all four persisted kinds, not
+measurement points or valid VLP frames. These additions do not change the
+base package version or rewrite older Session files.
+
+Offline replay and stream BIN prefer USB chunks over duplicate IN-frame
+records, reset at connection/pause/resume boundaries, and never transmit
+archived OUT commands. See [`raw_dat_format.md`](raw_dat_format.md) and
+[`fpga_vlp1_integration.md`](fpga_vlp1_integration.md) for payload and control
+semantics.
+
 ## Empty file rules
 
 - `sensors/sensor_summary.csv` uses the shared `SessionSensorCsv` header.

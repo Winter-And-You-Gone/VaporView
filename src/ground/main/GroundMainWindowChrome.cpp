@@ -362,6 +362,7 @@ VaporViewUpdateCheckResult vaporViewClassifyRepositoryReply(QNetworkReply *reply
 
 void MainWindow::setEnglish(bool english)
 {
+    if (state_->fpga_page_) state_->fpga_page_->setLanguage(english);
     auto setNativeMenuTitle = [this](QMenu *menu, const QString& title) {
         if (!menu || state_->custom_title_bar_)
         {
@@ -1842,6 +1843,8 @@ QString MainWindow::currentMainPageTitleText() const
         return state_->is_english_ ? QStringLiteral("Thermal") : QStringLiteral("温控");
     case 3:
         return state_->is_english_ ? QStringLiteral("Combination Navigation") : QStringLiteral("组合导航");
+    case 4:
+        return QStringLiteral("FPGA");
     case 0:
     default:
         return state_->is_english_ ? QStringLiteral("Home") : QStringLiteral("首页");

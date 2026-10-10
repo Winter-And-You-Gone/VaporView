@@ -1692,8 +1692,9 @@ void requireRtkSidebarPage(
     const qint64 stoppedIconKey = rtkButton->icon().pixmap(iconSize).cacheKey();
 
     auto *pageStack = window.findChild<QStackedWidget *>(QStringLiteral("mainPageStack"));
-    require(pageStack != nullptr && pageStack->count() == 4,
-            "main page stack keeps the existing four-page order");
+    require(pageStack != nullptr && pageStack->count() == 5 &&
+                pageStack->widget(4)->objectName() == QStringLiteral("fpgaControlPage"),
+            "main page stack preserves the existing page order and appends FPGA control");
     auto *preDialog = window.findChild<RtkConfigDialog *>();
     require(preDialog != nullptr, "embedded RTK dialog exists before sidebar click");
     auto *preGgaCard = findCardByTitle(preDialog,

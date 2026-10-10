@@ -1641,6 +1641,153 @@ bool decodeCorePacket(EpsilonData& data,
     return true;
   }
 
+  if (packetId == kMsgAhrs && payloadSize >= 48)
+  {
+    data.ang_vel_x_radps = readFloatLE(payload + 0);
+    data.ang_vel_y_radps = readFloatLE(payload + 4);
+    data.ang_vel_z_radps = readFloatLE(payload + 8);
+    data.ahrs_roll_deg = radToDeg(readFloatLE(payload + 12));
+    data.ahrs_pitch_deg = radToDeg(readFloatLE(payload + 16));
+    data.ahrs_yaw_deg = radToDeg(readFloatLE(payload + 20));
+    data.ahrs_quat_w = readFloatLE(payload + 24);
+    data.ahrs_quat_x = readFloatLE(payload + 28);
+    data.ahrs_quat_y = readFloatLE(payload + 32);
+    data.ahrs_quat_z = readFloatLE(payload + 36);
+    data.ahrs_attitude_valid = true;
+    data.ahrs_attitude_timestamp = data.timestamp;
+    data.device_timestamp_us = static_cast<uint64_t>(readI64LE(payload + 40));
+    updateEpsilonAttitudeState(data, data.timestamp);
+    return true;
+  }
+  if (packetId == kMsgSystemState && payloadSize >= 14)
+  {
+    data.system_status_bits = readU16LE(payload + 0);
+    data.filter_status_bits = readU16LE(payload + 2);
+    data.update_status_bits = readU16LE(payload + 4);
+    data.utc_unix_s = readU32LE(payload + 6);
+    data.utc_microseconds = readU32LE(payload + 10);
+    data.gnss_fix_code = static_cast<int>((data.filter_status_bits >> 4) & 0x0F);
+    data.gnss_fix_text = epsilonGnssFixName(data.gnss_fix_code);
+    if (payloadSize >= 38)
+    {
+      data.latitude_deg = radToDeg(readDoubleLE(payload + 14));
+      data.longitude_deg = radToDeg(readDoubleLE(payload + 22));
+      data.height_m = readDoubleLE(payload + 30);
+      resolveEpsilonEcefFromLlh(data, true);
+    }
+    if (payloadSize >= 50)
+    {
+      data.vel_n_mps = readFloatLE(payload + 38);
+      data.vel_e_mps = readFloatLE(payload + 42);
+      data.vel_d_mps = readFloatLE(payload + 46);
+    }
+    if (payloadSize >= 62)
+    {
+      data.body_acc_x_mps2 = readFloatLE(payload + 50);
+      data.body_acc_y_mps2 = readFloatLE(payload + 54);
+      data.body_acc_z_mps2 = readFloatLE(payload + 58);
+    }
+    if (payloadSize >= 78)
+    {
+      data.system_state_roll_deg = radToDeg(readFloatLE(payload + 66));
+      data.system_state_pitch_deg = radToDeg(readFloatLE(payload + 70));
+      data.system_state_yaw_deg = radToDeg(readFloatLE(payload + 74));
+      data.system_state_attitude_valid = true;
+      data.system_state_attitude_timestamp = data.timestamp;
+      updateEpsilonAttitudeState(data, data.timestamp);
+    }
+    if (payloadSize >= 90)
+    {
+      data.ang_vel_x_radps = readFloatLE(payload + 78);
+      data.ang_vel_y_radps = readFloatLE(payload + 82);
+      data.ang_vel_z_radps = readFloatLE(payload + 86);
+    }
+    if (payloadSize >= 102)
+    {
+      data.lat_std_m = readFloatLE(payload + 90);
+      data.lon_std_m = readFloatLE(payload + 94);
+      data.height_std_m = readFloatLE(payload + 98);
+    }
+    return true;
+  }
+  if (packetId == kMsgUnixTime && payloadSize >= 8)
+  {
+    data.utc_unix_s = readU32LE(payload + 0);
+    data.utc_microseconds = readU32LE(payload + 4);
+    return true;
+  }
+  if (packetId == kMsgStatus && payloadSize >= 4)
+  {
+    data.system_status_bits = readU16LE(payload + 0);
+    data.filter_status_bits = readU16LE(payload + 2);
+    data.gnss_fix_code = static_cast<int>((data.filter_status_bits >> 4) & 0x0F);
+    data.gnss_fix_text = epsilonGnssFixName(data.gnss_fix_code);
+    return true;
+  }
+  if (packetId == kMsgSatellites && payloadSize >= 9)
+  {
+    data.hdop = readFloatLE(payload + 0);
+    data.vdop = readFloatLE(payload + 4);
+    data.gnss_satellites = static_cast<int>(payload[8]);
+    return true;
+  }
+  if (packetId == kMsgGeodeticPos && payloadSize >= 32)
+  {
+    data.latitude_deg = radToDeg(readDoubleLE(payload + 0));
+    data.longitude_deg = radToDeg(readDoubleLE(payload + 8));
+    data.height_m = readDoubleLE(payload + 16);
+    data.hacc_m = readFloatLE(payload + 24);
+    data.vacc_m = readFloatLE(payload + 28);
+    resolveEpsilonEcefFromLlh(data, true);
+    return true;
+  }
+  if (packetId == kMsgEulerOrien && payloadSize >= 12)
+  {
+    data.euler_orien_roll_deg = radToDeg(readFloatLE(payload + 0));
+    data.euler_orien_pitch_deg = radToDeg(readFloatLE(payload + 4));
+    data.euler_orien_yaw_deg = radToDeg(readFloatLE(payload + 8));
+    data.euler_orien_valid = true;
+    data.euler_orien_timestamp = data.timestamp;
+    updateEpsilonAttitudeState(data, data.timestamp);
+    return true;
+  }
+  if (packetId == kMsgQuatOrien && payloadSize >= 16)
+  {
+    data.quat_orien_w = readFloatLE(payload + 0);
+    data.quat_orien_x = readFloatLE(payload + 4);
+    data.quat_orien_y = readFloatLE(payload + 8);
+    data.quat_orien_z = readFloatLE(payload + 12);
+    quaternionToEulerDeg(data.quat_orien_w,
+                         data.quat_orien_x,
+                         data.quat_orien_y,
+                         data.quat_orien_z,
+                         data.quat_orien_roll_deg,
+                         data.quat_orien_pitch_deg,
+                         data.quat_orien_yaw_deg);
+    data.quat_orien_valid = true;
+    data.quat_orien_timestamp = data.timestamp;
+    updateEpsilonAttitudeState(data, data.timestamp);
+    return true;
+  }
+  if (packetId == 0x5D && payloadSize == 24)
+  {
+    const double x = readDoubleLE(payload);
+    const double y = readDoubleLE(payload + 8);
+    const double z = readDoubleLE(payload + 16);
+    if (!Geo::isPlausibleEcef(x, y, z)) return false;
+    data.ecef_x_m = x;
+    data.ecef_y_m = y;
+    data.ecef_z_m = z;
+    return true;
+  }
+  if (packetId == 0x5F && payloadSize >= 12)
+  {
+    data.vel_n_mps = readFloatLE(payload + 0);
+    data.vel_e_mps = readFloatLE(payload + 4);
+    data.vel_d_mps = readFloatLE(payload + 8);
+    return true;
+  }
+
   return false;
 }
 
@@ -2934,84 +3081,12 @@ void EpsilonCollector::run()
           latest_data_, packetId, payload, payloadSize);
       if (decodedCorePacket)
       {
-        if (packetId == kMsgRawGnss)
+        if (packetId == kMsgUnixTime) sysStateRateTracker.record();
+        if (packetId == kMsgEcefPos) reportedInvalidEcef = false;
+        if (packetId == kMsgRawGnss || (packetId == kMsgSystemState && payloadSize >= 38) || packetId == kMsgGeodeticPos)
         {
           hasResolvedLlh = true;
         }
-      }
-      else if (packetId == kMsgAhrs && payloadSize >= 48)
-      {
-        latest_data_.ang_vel_x_radps = readFloatLE(payload + 0);
-        latest_data_.ang_vel_y_radps = readFloatLE(payload + 4);
-        latest_data_.ang_vel_z_radps = readFloatLE(payload + 8);
-        latest_data_.ahrs_roll_deg = radToDeg(readFloatLE(payload + 12));
-        latest_data_.ahrs_pitch_deg = radToDeg(readFloatLE(payload + 16));
-        latest_data_.ahrs_yaw_deg = radToDeg(readFloatLE(payload + 20));
-        latest_data_.ahrs_quat_w = readFloatLE(payload + 24);
-        latest_data_.ahrs_quat_x = readFloatLE(payload + 28);
-        latest_data_.ahrs_quat_y = readFloatLE(payload + 32);
-        latest_data_.ahrs_quat_z = readFloatLE(payload + 36);
-        latest_data_.ahrs_attitude_valid = true;
-        latest_data_.ahrs_attitude_timestamp = frameTimestamp;
-        latest_data_.device_timestamp_us = static_cast<uint64_t>(readI64LE(payload + 40));
-        updateEpsilonAttitudeState(latest_data_, frameTimestamp);
-      }
-      else if (packetId == kMsgSystemState && payloadSize >= 14)
-      {
-        latest_data_.system_status_bits = readU16LE(payload + 0);
-        latest_data_.filter_status_bits = readU16LE(payload + 2);
-        latest_data_.update_status_bits = readU16LE(payload + 4);
-        latest_data_.utc_unix_s = readU32LE(payload + 6);
-        latest_data_.utc_microseconds = readU32LE(payload + 10);
-        latest_data_.gnss_fix_code = static_cast<int>((latest_data_.filter_status_bits >> 4) & 0x0F);
-        latest_data_.gnss_fix_text = epsilonGnssFixName(latest_data_.gnss_fix_code);
-        if (payloadSize >= 38)
-        {
-          latest_data_.latitude_deg = radToDeg(readDoubleLE(payload + 14));
-          latest_data_.longitude_deg = radToDeg(readDoubleLE(payload + 22));
-          latest_data_.height_m = readDoubleLE(payload + 30);
-          hasResolvedLlh = true;
-          resolveEpsilonEcefFromLlh(latest_data_, hasResolvedLlh);
-        }
-        if (payloadSize >= 50)
-        {
-          latest_data_.vel_n_mps = readFloatLE(payload + 38);
-          latest_data_.vel_e_mps = readFloatLE(payload + 42);
-          latest_data_.vel_d_mps = readFloatLE(payload + 46);
-        }
-        if (payloadSize >= 62)
-        {
-          latest_data_.body_acc_x_mps2 = readFloatLE(payload + 50);
-          latest_data_.body_acc_y_mps2 = readFloatLE(payload + 54);
-          latest_data_.body_acc_z_mps2 = readFloatLE(payload + 58);
-        }
-        if (payloadSize >= 78)
-        {
-          latest_data_.system_state_roll_deg = radToDeg(readFloatLE(payload + 66));
-          latest_data_.system_state_pitch_deg = radToDeg(readFloatLE(payload + 70));
-          latest_data_.system_state_yaw_deg = radToDeg(readFloatLE(payload + 74));
-          latest_data_.system_state_attitude_valid = true;
-          latest_data_.system_state_attitude_timestamp = frameTimestamp;
-          updateEpsilonAttitudeState(latest_data_, frameTimestamp);
-        }
-        if (payloadSize >= 90)
-        {
-          latest_data_.ang_vel_x_radps = readFloatLE(payload + 78);
-          latest_data_.ang_vel_y_radps = readFloatLE(payload + 82);
-          latest_data_.ang_vel_z_radps = readFloatLE(payload + 86);
-        }
-        if (payloadSize >= 102)
-        {
-          latest_data_.lat_std_m = readFloatLE(payload + 90);
-          latest_data_.lon_std_m = readFloatLE(payload + 94);
-          latest_data_.height_std_m = readFloatLE(payload + 98);
-        }
-      }
-      else if (packetId == kMsgUnixTime && payloadSize >= 8)
-      {
-        sysStateRateTracker.record();
-        latest_data_.utc_unix_s = readU32LE(payload + 0);
-        latest_data_.utc_microseconds = readU32LE(payload + 4);
       }
       else if (packetId == kMsgFormattedTime && payloadSize >= 14)
       {
@@ -3032,29 +3107,6 @@ void EpsilonCollector::run()
           latest_data_.utc_unix_s = utcSeconds;
           latest_data_.utc_microseconds = utcMicroseconds;
         }
-      }
-      else if (packetId == kMsgStatus && payloadSize >= 4)
-      {
-        latest_data_.system_status_bits = readU16LE(payload + 0);
-        latest_data_.filter_status_bits = readU16LE(payload + 2);
-        latest_data_.gnss_fix_code = static_cast<int>((latest_data_.filter_status_bits >> 4) & 0x0F);
-        latest_data_.gnss_fix_text = epsilonGnssFixName(latest_data_.gnss_fix_code);
-      }
-      else if (packetId == kMsgSatellites && payloadSize >= 9)
-      {
-        latest_data_.hdop = readFloatLE(payload + 0);
-        latest_data_.vdop = readFloatLE(payload + 4);
-        latest_data_.gnss_satellites = static_cast<int>(payload[8]);
-      }
-      else if (packetId == kMsgGeodeticPos && payloadSize >= 32)
-      {
-        latest_data_.latitude_deg = radToDeg(readDoubleLE(payload + 0));
-        latest_data_.longitude_deg = radToDeg(readDoubleLE(payload + 8));
-        latest_data_.height_m = readDoubleLE(payload + 16);
-        latest_data_.hacc_m = readFloatLE(payload + 24);
-        latest_data_.vacc_m = readFloatLE(payload + 28);
-        hasResolvedLlh = true;
-        resolveEpsilonEcefFromLlh(latest_data_, hasResolvedLlh);
       }
       else if (packetId == kMsgEcefPos && payloadSize >= 24)
       {
@@ -3085,32 +3137,6 @@ void EpsilonCollector::run()
             reportedInvalidEcef = true;
           }
         }
-      }
-      else if (packetId == kMsgEulerOrien && payloadSize >= 12)
-      {
-        latest_data_.euler_orien_roll_deg = radToDeg(readFloatLE(payload + 0));
-        latest_data_.euler_orien_pitch_deg = radToDeg(readFloatLE(payload + 4));
-        latest_data_.euler_orien_yaw_deg = radToDeg(readFloatLE(payload + 8));
-        latest_data_.euler_orien_valid = true;
-        latest_data_.euler_orien_timestamp = frameTimestamp;
-        updateEpsilonAttitudeState(latest_data_, frameTimestamp);
-      }
-      else if (packetId == kMsgQuatOrien && payloadSize >= 16)
-      {
-        latest_data_.quat_orien_w = readFloatLE(payload + 0);
-        latest_data_.quat_orien_x = readFloatLE(payload + 4);
-        latest_data_.quat_orien_y = readFloatLE(payload + 8);
-        latest_data_.quat_orien_z = readFloatLE(payload + 12);
-        quaternionToEulerDeg(latest_data_.quat_orien_w,
-                             latest_data_.quat_orien_x,
-                             latest_data_.quat_orien_y,
-                             latest_data_.quat_orien_z,
-                             latest_data_.quat_orien_roll_deg,
-                             latest_data_.quat_orien_pitch_deg,
-                             latest_data_.quat_orien_yaw_deg);
-        latest_data_.quat_orien_valid = true;
-        latest_data_.quat_orien_timestamp = frameTimestamp;
-        updateEpsilonAttitudeState(latest_data_, frameTimestamp);
       }
       else if (packetId == kMsgMainMavlinkTunnel && payloadSize >= 8)
       {

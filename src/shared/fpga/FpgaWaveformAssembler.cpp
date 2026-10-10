@@ -1,204 +1,200 @@
 #include "FpgaWaveformAssembler.h"
-
 #include <algorithm>
+#include <stdexcept>
+#include <vector>
 
-namespace VaporView::FpgaWave
-{
-namespace
-{
-quint16 u16(const char *data)
-{
-    return quint16(static_cast<unsigned char>(data[0]))
-        | (quint16(static_cast<unsigned char>(data[1])) << 8);
+namespace VaporView::FpgaWave {
+namespace {
+quint16 u16(const char *p) { return quint16(quint8(p[0])) | (quint16(quint8(p[1])) << 8); }
+quint32 u32(const char *p) { return quint32(quint8(p[0])) | (quint32(quint8(p[1])) << 8) | (quint32(quint8(p[2])) << 16) | (quint32(quint8(p[3])) << 24); }
+bool rawSource(quint16 source) { return source==0x20 || source==0x21; }
+bool dliaSource(quint16 source) { return source==0x30 || source==0x31; }
+constexpr quint32 maxPoints = 1u << 20;
+constexpr quint16 maxFragments = 8192;
+constexpr qint64 maxPayloadBytes = 8192;
 }
 
-quint32 u32(const char *data)
+Assembler::Assembler(std::size_t limit) : maxPendingGroupsPerSource_(limit)
 {
-    return quint32(static_cast<unsigned char>(data[0]))
-        | (quint32(static_cast<unsigned char>(data[1])) << 8)
-        | (quint32(static_cast<unsigned char>(data[2])) << 16)
-        | (quint32(static_cast<unsigned char>(data[3])) << 24);
+    if(limit==0 || limit>16) throw std::invalid_argument("FPGA pending cycle limit must be 1..16");
 }
 
-bool isRawSource(quint16 source)
+bool Assembler::parseHeader(const Fragment& f, Pending& p, quint16& index,
+    quint32& first, quint32& points, quint32& bpp, quint32& headerBytes)
 {
-    return source == 0x0020 || source == 0x0021;
-}
-
-bool isDliaSource(quint16 source)
-{
-    return source == 0x0030 || source == 0x0031;
-}
-}
-
-bool Assembler::parseHeader(const Fragment& fragment, Pending& pending,
-                            quint16& fragmentIndex, quint32& firstPoint,
-                            quint32& fragmentPoints, quint32& bytesPerPoint)
-{
-    const QByteArray& payload = fragment.payload;
-    if (payload.size() < 32)
-        return false;
-
-    const char *data = payload.constData();
-    const quint16 schema = u16(data);
-    pending.stream.schema = schema;
-    if (schema != 2)
-        return false;
-
-    if (isRawSource(fragment.source))
-    {
-        pending.stream.format = u16(data + 12);
-        pending.stream.rate = u32(data + 4);
-        pending.stream.totalPoints = u32(data + 8);
-        fragmentIndex = u16(data + 16);
-        pending.fragmentCount = u16(data + 18);
-        firstPoint = u32(data + 20);
-        fragmentPoints = u32(data + 24);
-        bytesPerPoint = 4;
+    if(f.payload.size()<20 || f.payload.size()>maxPayloadBytes)return false;
+    const bool raw=rawSource(f.source) && f.message==0x1000;
+    const bool dlia=dliaSource(f.source) && f.message==0x1001;
+    if(!raw && !dlia)return false;
+    const char *data=f.payload.constData();
+    p.stream.schema=u16(data);
+    if(p.stream.schema!=2 && !(raw && p.stream.schema==1))return false;
+    headerBytes=p.stream.schema==1?20:32;
+    if(f.payload.size()<headerBytes)return false;
+    p.stream.rate=u32(data+4);
+    p.stream.totalPoints=u32(data+8);
+    if(p.stream.rate==0 || p.stream.totalPoints==0 || p.stream.totalPoints>maxPoints)return false;
+    if(raw) {
+        const quint32 format=u32(data+12);
+        if(format>1)return false;
+        p.stream.format=quint16(format);
+        p.stream.adcBits=u16(data+2);
+        if(p.stream.adcBits==0 || p.stream.adcBits>32)return false;
+        bpp=4;
+        if(p.stream.schema==1) {
+            if(p.stream.totalPoints>2043 || u32(data+16)!=0)return false;
+            index=0;p.fragmentCount=1;first=0;points=p.stream.totalPoints;
+        } else {
+            index=u16(data+16);p.fragmentCount=u16(data+18);first=u32(data+20);points=u32(data+24);
+            if(u32(data+28)!=0)return false;
+        }
+    } else {
+        p.stream.format=u16(data+2);
+        if(p.stream.format>2)return false;
+        index=u16(data+12);p.fragmentCount=u16(data+14);first=u32(data+16);points=u32(data+20);bpp=u32(data+24);
+        const quint32 expected=p.stream.format==0?8:p.stream.format==1?16:24;
+        if(bpp!=expected || u32(data+28)!=0)return false;
     }
-    else if (isDliaSource(fragment.source))
-    {
-        pending.stream.format = u16(data + 2);
-        pending.stream.rate = u32(data + 4);
-        pending.stream.totalPoints = u32(data + 8);
-        fragmentIndex = u16(data + 12);
-        pending.fragmentCount = u16(data + 14);
-        firstPoint = u32(data + 16);
-        fragmentPoints = u32(data + 20);
-        bytesPerPoint = u32(data + 24);
-        if (bytesPerPoint == 0)
-            return false;
-    }
-    else
-    {
-        return false;
-    }
-
-    pending.stream.bytesPerPoint = bytesPerPoint;
-    if (pending.fragmentCount == 0 || fragmentIndex >= pending.fragmentCount)
-        return false;
-    const qint64 expectedBytes = 32LL + qint64(fragmentPoints) * bytesPerPoint;
-    if (expectedBytes != payload.size())
-        return false;
+    p.stream.bytesPerPoint=bpp;
+    if(p.fragmentCount==0 || p.fragmentCount>maxFragments || index>=p.fragmentCount ||
+       points==0 || quint64(first)+points>p.stream.totalPoints)return false;
+    if(quint64(headerBytes)+quint64(points)*bpp!=quint64(f.payload.size()))return false;
     return true;
 }
 
-std::optional<CompletedStream> Assembler::finish(Pending& pending)
+CompletedStream Assembler::finish(const Pending& pending,bool expired)
 {
-    if (pending.fragmentCount == 0 || pending.fragments.size() != pending.fragmentCount)
-        return std::nullopt;
-
-    CompletedStream result = pending.stream;
-    // A full fragment set is only a valid completed scan when the protocol
-    // does not mark it partial/overflow and all indices are continuous.
-    result.complete = true;
-    // VLP1 flags: bit3 is OVERFLOW_SINCE_LAST and bit5 is PARTIAL_DATA.
-    result.overflow = (result.flags & (1u << 3)) != 0;
-    result.partial = (result.flags & (1u << 5)) != 0;
-
-    quint32 expectedPoint = 0;
-    for (quint16 index = 0; index < pending.fragmentCount; ++index)
-    {
-        const auto first = pending.firstPoints.find(index);
-        const auto count = pending.pointCounts.find(index);
-        const auto bytes = pending.fragments.find(index);
-        if (first == pending.firstPoints.end() || count == pending.pointCounts.end()
-            || bytes == pending.fragments.end() || first->second != expectedPoint)
-        {
-            result.continuityError = true;
-        }
-        if (bytes != pending.fragments.end())
-            result.pointBytes.append(bytes->second);
-        if (count != pending.pointCounts.end())
-            expectedPoint += count->second;
+    CompletedStream result=pending.stream;
+    result.overflow=(result.flags & (1u<<3))!=0;
+    result.partial=result.partial || (result.flags & (1u<<5))!=0 || expired;
+    if(expired || pending.fragments.size()!=pending.fragmentCount)result.continuityError=true;
+    std::vector<quint16> order;
+    for(const auto& entry:pending.fragments)order.push_back(entry.first);
+    std::sort(order.begin(),order.end(),[&](quint16 a,quint16 b){
+        if(pending.firstPoints.at(a)!=pending.firstPoints.at(b))return pending.firstPoints.at(a)<pending.firstPoints.at(b);
+        return a<b;
+    });
+    quint64 next=0;
+    quint16 nextIndex=0;
+    for(quint16 index:order) {
+        const quint32 first=pending.firstPoints.at(index),count=pending.pointCounts.at(index);
+        if(first!=next || index!=nextIndex)result.continuityError=true;
+        next=quint64(first)+count;++nextIndex;
+        result.fragmentFirstPoints.push_back(first);
+        result.fragmentPointCounts.push_back(count);
+        result.pointBytes.append(pending.fragments.at(index));
     }
-
-    if (result.totalPoints != 0 && expectedPoint != result.totalPoints)
-        result.continuityError = true;
-
-    result.complete = !result.partial && !result.overflow && !result.continuityError;
-
-    if (result.format == 0 && result.bytesPerPoint == 4
-        && result.pointBytes.size() % 4 == 0)
-    {
-        result.signed32Samples.reserve(result.pointBytes.size() / 4);
-        for (int offset = 0; offset < result.pointBytes.size(); offset += 4)
-        {
-            const quint32 value = u32(result.pointBytes.constData() + offset);
-            result.signed32Samples.push_back(static_cast<qint32>(value));
+    if(next!=result.totalPoints)result.continuityError=true;
+    result.complete=!result.partial && !result.overflow && !result.continuityError;
+    if(rawSource(result.source)) {
+        for(qsizetype offset=0;offset<result.pointBytes.size();offset+=4) {
+            const auto value=u32(result.pointBytes.constData()+offset);
+            if(result.format==0)result.signed32Samples.push_back(qint32(value));
+            else result.unsigned32Samples.push_back(value);
+        }
+    } else {
+        for(qsizetype offset=0;offset<result.pointBytes.size();offset+=result.bytesPerPoint) {
+            const char *data=result.pointBytes.constData()+offset;
+            CompletedStream::DliaPoint point;
+            if(result.format==0) {point.hasHarmonics=true;point.h1=qint32(u32(data));point.h2=qint32(u32(data+4));}
+            else {
+                point.hasIq=true;point.i1=qint32(u32(data));point.q1=qint32(u32(data+4));point.i2=qint32(u32(data+8));point.q2=qint32(u32(data+12));
+                if(result.format==2){point.hasHarmonics=true;point.h1=qint32(u32(data+16));point.h2=qint32(u32(data+20));}
+            }
+            result.dliaPoints.push_back(point);
         }
     }
     return result;
+}
+
+void Assembler::expireOldest(quint16 source)
+{
+    auto oldest=pending_.end();
+    for(auto it=pending_.begin();it!=pending_.end();++it) {
+        if(it->first.source==source && (oldest==pending_.end() || it->second.arrivalOrder<oldest->second.arrivalOrder))oldest=it;
+    }
+    if(oldest!=pending_.end()){expired_.push_back(finish(oldest->second,true));pending_.erase(oldest);}
+}
+
+void Assembler::rememberCompleted(const Key& key)
+{
+    completed_[key]=++arrivalOrder_;
+    std::size_t count=0;
+    auto oldest=completed_.end();
+    for(auto it=completed_.begin();it!=completed_.end();++it)if(it->first.source==key.source) {
+        ++count;
+        if(oldest==completed_.end() || it->second<oldest->second)oldest=it;
+    }
+    if(count>16)completed_.erase(oldest);
 }
 
 std::optional<CompletedStream> Assembler::accept(const Fragment& fragment)
 {
-    Key key{fragment.source, fragment.message, fragment.cycleId, fragment.timestamp};
-    Pending& pending = pending_[key];
-    if (pending.fragments.empty())
-    {
-        pending.stream.source = fragment.source;
-        pending.stream.message = fragment.message;
-        pending.stream.flags = fragment.flags;
-        pending.stream.cycleId = fragment.cycleId;
-        pending.stream.timestamp = fragment.timestamp;
-    }
-
-    quint16 fragmentIndex = 0;
-    quint32 firstPoint = 0;
-    quint32 fragmentPoints = 0;
-    quint32 bytesPerPoint = 0;
-    const bool hasExisting = !pending.fragments.empty();
-    const quint16 oldSchema = pending.stream.schema;
-    const quint16 oldFormat = pending.stream.format;
-    const quint32 oldRate = pending.stream.rate;
-    const quint32 oldTotalPoints = pending.stream.totalPoints;
-    const quint32 oldBytesPerPoint = pending.stream.bytesPerPoint;
-    if (!parseHeader(fragment, pending, fragmentIndex, firstPoint, fragmentPoints, bytesPerPoint))
-    {
-        pending.stream.partial = true;
-        pending.stream.continuityError = true;
+    Pending parsed;
+    parsed.stream.source=fragment.source;parsed.stream.message=fragment.message;parsed.stream.flags=fragment.flags;
+    parsed.stream.cycleId=fragment.cycleId;parsed.stream.timestamp=fragment.timestamp;
+    quint16 index=0;quint32 first=0,points=0,bpp=0,headerBytes=0;
+    const Key key{fragment.source,fragment.message,fragment.cycleId,fragment.timestamp};
+    auto existing=pending_.find(key);
+    if(!parseHeader(fragment,parsed,index,first,points,bpp,headerBytes)) {
+        // Unknown schema remains an opaque archived packet, never a numerical stream.
+        // A malformed continuation invalidates an otherwise known pending cycle.
+        if(existing!=pending_.end())existing->second.stream.continuityError=true;
         return std::nullopt;
     }
-
-    if (hasExisting && (oldSchema != pending.stream.schema || oldFormat != pending.stream.format
-                        || oldRate != pending.stream.rate
-                        || oldTotalPoints != pending.stream.totalPoints
-                        || oldBytesPerPoint != pending.stream.bytesPerPoint))
-    {
-        pending.stream.continuityError = true;
+    if(completed_.count(key)) {
+        parsed.stream.continuityError=true;
+        parsed.fragments.emplace(index,fragment.payload.mid(headerBytes));
+        parsed.firstPoints.emplace(index,first);parsed.pointCounts.emplace(index,points);
+        return finish(parsed,true);
     }
-
-    if (!pending.fragments.empty() && pending.stream.flags != fragment.flags)
-    {
-        pending.stream.continuityError = true;
-        pending.stream.flags |= fragment.flags;
+    if(existing==pending_.end()) {
+        size_t count=0;for(const auto& entry:pending_)if(entry.first.source==fragment.source)++count;
+        if(count>=maxPendingGroupsPerSource_)expireOldest(fragment.source);
+        parsed.arrivalOrder=++arrivalOrder_;
+        existing=pending_.emplace(key,std::move(parsed)).first;
+    } else {
+        const auto& previous=existing->second.stream;
+        if(previous.schema!=parsed.stream.schema || previous.format!=parsed.stream.format ||
+           previous.rate!=parsed.stream.rate || previous.totalPoints!=parsed.stream.totalPoints ||
+           previous.bytesPerPoint!=bpp || previous.adcBits!=parsed.stream.adcBits ||
+           existing->second.fragmentCount!=parsed.fragmentCount) {
+            existing->second.stream.continuityError=true;
+            return std::nullopt;
+        }
+        if(previous.flags!=fragment.flags)existing->second.stream.continuityError=true;
+        existing->second.stream.flags|=fragment.flags;
     }
-
-    const qint64 pointByteCount = qint64(fragmentPoints) * bytesPerPoint;
-    const QByteArray pointBytes = fragment.payload.mid(32, static_cast<int>(pointByteCount));
-    if (pending.fragments.find(fragmentIndex) != pending.fragments.end())
-        pending.stream.continuityError = true;
-    pending.fragments[fragmentIndex] = pointBytes;
-    pending.firstPoints[fragmentIndex] = firstPoint;
-    pending.pointCounts[fragmentIndex] = fragmentPoints;
-
-    if (pending.fragments.size() != pending.fragmentCount)
+    auto& pending=existing->second;
+    if(pending.fragments.count(index)) {
+        // Do not overwrite the first copy: duplicate/overlap evidence must survive.
+        pending.stream.continuityError=true;
         return std::nullopt;
-
-    auto result = finish(pending);
-    pending_.erase(key);
-    return result;
+    }
+    const quint64 incomingBytes=quint64(points)*bpp;
+    if(pending.pointByteCount+incomingBytes>quint64(pending.stream.totalPoints)*bpp) {
+        pending.stream.continuityError=true;
+        return std::nullopt;
+    }
+    for(const auto& span:pending.firstPoints) {
+        const quint64 end=quint64(span.second)+pending.pointCounts.at(span.first);
+        if(quint64(first)<end && quint64(span.second)<quint64(first)+points)pending.stream.continuityError=true;
+    }
+    pending.fragments.emplace(index,fragment.payload.mid(headerBytes));
+    pending.pointByteCount+=incomingBytes;
+    pending.firstPoints.emplace(index,first);pending.pointCounts.emplace(index,points);
+    if(pending.fragments.size()!=pending.fragmentCount)return std::nullopt;
+    auto result=finish(pending);pending_.erase(existing);rememberCompleted(key);return result;
 }
 
-void Assembler::clear()
+QVector<CompletedStream> Assembler::takeExpired()
+{ QVector<CompletedStream> result;result.swap(expired_);return result; }
+QVector<CompletedStream> Assembler::flush()
 {
-    pending_.clear();
+    auto result=takeExpired();
+    for(const auto& entry:pending_)result.push_back(finish(entry.second,true));
+    pending_.clear();return result;
 }
-
-std::size_t Assembler::pendingStreamCount() const
-{
-    return pending_.size();
-}
-
-}  // namespace VaporView::FpgaWave
+void Assembler::clear() {pending_.clear();completed_.clear();expired_.clear();arrivalOrder_=0;}
+std::size_t Assembler::pendingStreamCount() const {return pending_.size();}
+} // namespace VaporView::FpgaWave

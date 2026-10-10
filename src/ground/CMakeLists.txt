@@ -47,6 +47,7 @@ set(NAV_WINDOW_SOURCES
     ${CMAKE_SOURCE_DIR}/src/ground/main/GroundMainWindowChrome.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/main/GroundMainWindowConnection.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/main/GroundMainWindowEpsilon.cpp
+    ${CMAKE_SOURCE_DIR}/src/ground/main/GroundMainWindowFpga.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/main/GroundMainWindowRates.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/main/GroundMainWindowRecording.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/main/GroundMainWindowRemoteDevices.cpp

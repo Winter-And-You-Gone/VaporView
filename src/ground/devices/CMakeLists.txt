@@ -32,10 +32,17 @@ add_library(vaporview_ground_device_core STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/Ai8DeviceSession.h
     ${CMAKE_CURRENT_SOURCE_DIR}/FpgaDeviceSession.cpp
     ${CMAKE_SOURCE_DIR}/include/FpgaDeviceSession.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/FpgaDeviceController.cpp
+    ${CMAKE_SOURCE_DIR}/include/FpgaDeviceController.h
+    ${CMAKE_SOURCE_DIR}/include/FpgaControlConfig.h
     ${CMAKE_CURRENT_SOURCE_DIR}/FpgaSensorDecoder.cpp
     ${CMAKE_SOURCE_DIR}/include/FpgaSensorDecoder.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/FpgaSensorAdapter.cpp
+    ${CMAKE_SOURCE_DIR}/include/FpgaSensorAdapter.h
     ${CMAKE_CURRENT_SOURCE_DIR}/FpgaUsbTransport.cpp
     ${CMAKE_SOURCE_DIR}/include/FpgaUsbTransport.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/FpgaCyApiTransport.cpp
+    ${CMAKE_SOURCE_DIR}/include/FpgaCyApiTransport.h
     ${CMAKE_CURRENT_SOURCE_DIR}/EpsilonDeviceSession.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/EpsilonDeviceSession.h
     ${CMAKE_CURRENT_SOURCE_DIR}/GroundTelemetryService.cpp
@@ -78,4 +85,20 @@ target_link_libraries(vaporview_ground_device_core PUBLIC
 
 target_link_libraries(vaporview_ground_device_core PRIVATE
     vaporview_sky_core
+    vaporview_session_format
 )
+
+if(WIN32)
+    set(VAPORVIEW_CYAPI_ROOT "" CACHE PATH "Cypress USB Suite SDK root (optional CyAPI backend)")
+    find_path(VAPORVIEW_CYAPI_INCLUDE_DIR CyAPI.h
+        HINTS "${VAPORVIEW_CYAPI_ROOT}"
+        PATH_SUFFIXES inc include library/cpp/inc)
+    find_library(VAPORVIEW_CYAPI_LIBRARY NAMES CyAPI
+        HINTS "${VAPORVIEW_CYAPI_ROOT}"
+        PATH_SUFFIXES lib/x64 lib/x64/Release library/cpp/lib/x64 library/cpp/lib/x64/Release)
+    if(VAPORVIEW_CYAPI_INCLUDE_DIR AND VAPORVIEW_CYAPI_LIBRARY)
+        target_include_directories(vaporview_ground_device_core PRIVATE "${VAPORVIEW_CYAPI_INCLUDE_DIR}")
+        target_link_libraries(vaporview_ground_device_core PRIVATE "${VAPORVIEW_CYAPI_LIBRARY}")
+        target_compile_definitions(vaporview_ground_device_core PUBLIC VAPORVIEW_HAS_CYAPI=1)
+    endif()
+endif()

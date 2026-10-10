@@ -245,6 +245,9 @@ private:
     void setupCentralWidget();
     void setupConfigPanel();
     void setupDeviceConfigPage();
+    void setupFpgaControlPage();
+    void shutdownFpgaWorker();
+    void invalidateFpgaMeasurements();
     void setupDataPanels();
     void setupLogPanel();
     void configureComboPopup(QComboBox *combo) const;

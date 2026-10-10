@@ -260,6 +260,17 @@ QJsonObject sessionManifestToJson(const SessionManifest& manifest)
     root.insert(QStringLiteral("counts"), countsToJson(manifest.counts));
     root.insert(QStringLiteral("paths"), pathsToJson());
     root.insert(QStringLiteral("raw_files"), rawFilesToJson(manifest.rawRecords, manifest.rawDatFormatVersion));
+    if (manifest.fpgaRecords > 0) {
+        QJsonObject raw = root.value(QStringLiteral("raw_files")).toObject();
+        raw.insert(QStringLiteral("fpga_vlp1"), QJsonObject{{QStringLiteral("path"),QStringLiteral("raw/fpga_vlp1.dat")},
+            {QStringLiteral("source_id"),8},{QStringLiteral("records"),QString::number(manifest.fpgaRecords)},
+            {QStringLiteral("format_version"),manifest.rawDatFormatVersion}});
+        root.insert(QStringLiteral("raw_files"),raw);
+        QJsonObject paths = root.value(QStringLiteral("paths")).toObject();
+        paths.insert(QStringLiteral("fpga_raw"),QStringLiteral("raw/fpga_vlp1.dat"));
+        paths.insert(QStringLiteral("fpga_semantic_jsonl"),QStringLiteral("sensors/fpga_frames.jsonl"));
+        root.insert(QStringLiteral("paths"),paths);
+    }
     return root;
 }
 
@@ -349,6 +360,7 @@ SessionManifestParseResult sessionManifestFromJson(const QJsonObject& json)
     manifest.counts.errorRows = countFromObjects(counts, json, QStringLiteral("error_rows"));
 
     const QJsonObject rawFiles = json.value(QStringLiteral("raw_files")).toObject();
+    manifest.fpgaRecords = rawFiles.value(QStringLiteral("fpga_vlp1")).toObject().value(QStringLiteral("records")).toVariant().toULongLong();
     for (const RawFileDefinition& definition : standardRawFileDefinitions())
     {
         const QJsonObject raw = rawFileObjectCompat(rawFiles, definition);

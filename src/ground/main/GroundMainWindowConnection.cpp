@@ -76,14 +76,14 @@ void MainWindow::updateConnectionStatus(bool connected)
     }
     const bool localWaveformConnected = !isRemoteSkyMode() && state_->tcp_wave_panel_ && state_->tcp_wave_panel_->isConnected();
     const bool localWaveformConnecting = !isRemoteSkyMode() && state_->tcp_wave_panel_ && state_->tcp_wave_panel_->isConnecting();
-    connected = connected || localWaveformConnected;
+    connected = connected || localWaveformConnected || state_->fpga_ready_;
     state_->is_connected_ = connected;
     const bool uiBusy = state_->connection_attempt_in_progress_ || state_->port_detection_in_progress_ || state_->epsilon_reconfigure_in_progress_ || localWaveformConnecting;
-    const bool inputsEnabled = !connected && !uiBusy;
+    const bool inputsEnabled = !connected && !state_->fpga_connected_ && !state_->fpga_busy_ && !state_->fpga_replaying_ && !uiBusy;
 
     state_->connect_btn_->setEnabled(inputsEnabled);
     state_->cancel_connect_btn_->setEnabled(state_->connection_attempt_in_progress_);
-    state_->disconnect_btn_->setEnabled(connected && !state_->connection_attempt_in_progress_ && !state_->epsilon_reconfigure_in_progress_);
+    state_->disconnect_btn_->setEnabled((connected || state_->fpga_connected_) && !state_->connection_attempt_in_progress_ && !state_->epsilon_reconfigure_in_progress_);
     state_->refresh_ports_btn_->setEnabled(inputsEnabled);
     if (state_->epsilon_reconfigure_action_)
     {
@@ -103,7 +103,7 @@ void MainWindow::updateConnectionStatus(bool connected)
             (isUiTestMode() || (state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen()));
         state_->device_config_.auto_detect_ports_btn->setEnabled(isRemoteSkyMode()
             ? remoteDetectionAvailable
-            : (!connected && !state_->connection_attempt_in_progress_ && !state_->epsilon_reconfigure_in_progress_));
+            : (!connected && !state_->fpga_connected_ && !state_->fpga_busy_ && !state_->fpga_replaying_ && !state_->connection_attempt_in_progress_ && !state_->epsilon_reconfigure_in_progress_));
         state_->device_config_.auto_detect_ports_btn->setText(state_->port_detection_in_progress_
             ? (state_->is_english_ ? "Cancel Auto Detect" : "取消自动识别")
             : (state_->is_english_ ? "Auto Detect Ports" : "自动识别串口"));
@@ -160,6 +160,18 @@ bool MainWindow::homeDeviceConnected(VaporView::SkyDeviceId device) const
     }
 
     const CollectorSnapshot collectors = snapshotCollectors();
+    if (state_->fpga_ready_)
+    {
+        switch (device)
+        {
+        case VaporView::SkyDeviceId::Epsilon: return state_->fpga_sources_.contains(0x42);
+        case VaporView::SkyDeviceId::Ptb: return state_->fpga_sources_.contains(state_->fpga_config_.pressureSource);
+        case VaporView::SkyDeviceId::Hmp: return state_->fpga_sources_.contains(0x44);
+        case VaporView::SkyDeviceId::Lidar: return state_->fpga_sources_.contains(0x45);
+        case VaporView::SkyDeviceId::Ai8TemperatureController: return state_->fpga_sources_.contains(0x46);
+        default: break;
+        }
+    }
     switch (device)
     {
     case VaporView::SkyDeviceId::Epsilon:
@@ -308,6 +320,16 @@ VaporView::DeviceState MainWindow::homeDeviceActionState(VaporView::SkyDeviceId 
 
 void MainWindow::triggerHomeDeviceAction(VaporView::SkyDeviceId device)
 {
+    if (state_->fpga_connected_ || state_->fpga_busy_ || state_->fpga_replaying_)
+    {
+        state_->main_page_stack_->setCurrentIndex(4);
+        state_->fpga_nav_btn_->setChecked(true);
+        state_->fpga_page_->appendDiagnostic(state_->is_english_
+            ? QStringLiteral("Use the FPGA page to enable/disable FPGA sensors. Serial settings remain separate.")
+            : QStringLiteral("请在 FPGA 页面启停 FPGA 传感器；串口配置保持独立。"));
+        updateSidebarNavIcons(); updateCustomTitleBarTexts();
+        return;
+    }
     const VaporView::DeviceState state = homeDeviceActionState(device);
     if (state == VaporView::DeviceState::Disabled ||
         state == VaporView::DeviceState::Connecting ||
@@ -690,7 +712,7 @@ bool MainWindow::anyCollectorRunning() const
 
 bool MainWindow::anyLocalDeviceConnected() const
 {
-    return anyCollectorRunning() ||
+    return state_->fpga_ready_ || anyCollectorRunning() ||
         (!isRemoteSkyMode() && state_->tcp_wave_panel_ && state_->tcp_wave_panel_->isConnected());
 }
 
@@ -721,7 +743,7 @@ void MainWindow::configureLocalConnectionCoordinator()
                state_->tcp_wave_panel_->isConnected();
     };
     hooks.startWaveform = [this]() {
-        if (isRemoteSkyMode() || !state_->tcp_wave_panel_ ||
+        if (state_->fpga_connected_ || state_->fpga_busy_ || state_->fpga_replaying_ || isRemoteSkyMode() || !state_->tcp_wave_panel_ ||
             state_->tcp_wave_panel_->isConnected() || state_->tcp_wave_panel_->isConnecting())
         {
             return false;
@@ -1392,6 +1414,11 @@ void MainWindow::testApplyLocalPortDetection(const QString& deviceKey,
 
 void MainWindow::onConnectClicked()
 {
+    if (state_->fpga_connected_ || state_->fpga_busy_ || state_->fpga_replaying_)
+    {
+        state_->fpga_page_->appendDiagnostic(state_->is_english_ ? QStringLiteral("Disconnect FPGA before connecting serial sources.") : QStringLiteral("连接串口前请先断开 FPGA。"));
+        return;
+    }
     if (isUiTestMode())
     {
         if (state_->ui_test_connection_in_progress_)
@@ -1684,6 +1711,11 @@ void MainWindow::onConnectClicked()
 }
 void MainWindow::onDisconnectClicked()
 {
+    if (state_->fpga_connected_ || state_->fpga_busy_ || state_->fpga_replaying_)
+    {
+        QMetaObject::invokeMethod(state_->fpga_controller_, &VaporView::Ground::Devices::FpgaDeviceController::disconnectDevice, Qt::QueuedConnection);
+        return;
+    }
     if (isUiTestMode())
     {
         state_->ui_test_connection_in_progress_ = false;

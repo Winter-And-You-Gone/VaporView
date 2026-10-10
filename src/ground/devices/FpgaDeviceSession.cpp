@@ -59,7 +59,8 @@ FpgaDeviceSession::FpgaDeviceSession(std::unique_ptr<FpgaUsbTransport> transport
 {
     if (transport_)
         transport_->setParent(this);
-    pollTimer_.setInterval(10);
+    pollTimer_.setParent(this);
+    pollTimer_.setInterval(1);
     connect(&pollTimer_, &QTimer::timeout, this, &FpgaDeviceSession::poll);
     qRegisterMetaType<FpgaSensor::Reading>();
     qRegisterMetaType<FpgaCapabilities>();
@@ -91,7 +92,6 @@ bool FpgaDeviceSession::open(const QString& locator, QString *errorMessage)
     waveformAssembler_.clear();
     commandQueue_.clear();
     pendingCommand_.reset();
-    waveformAssembler_.clear();
     capabilities_ = {};
     if (!transport_->open(locator))
     {
@@ -114,6 +114,9 @@ void FpgaDeviceSession::close()
     pollTimer_.stop();
     commandQueue_.clear();
     pendingCommand_.reset();
+    parser_ = FpgaVlp1::StreamParser();
+    flushWaveforms();
+    waveformAssembler_.clear();
     if (transport_ && transport_->isOpen())
         transport_->close();
     if (state_ != FpgaSessionState::Closed)
@@ -155,6 +158,10 @@ void FpgaDeviceSession::poll()
     if (count < 0)
     {
         const QString message = QStringLiteral("FPGA transport read failed");
+        pollTimer_.stop();
+        cancelQueuedCommands();
+        flushWaveforms();
+        transport_->close();
         setState(FpgaSessionState::Error, message);
         emit errorOccurred(message);
         return;
@@ -162,11 +169,7 @@ void FpgaDeviceSession::poll()
 
     if (!bytes.isEmpty())
     {
-        const auto frames = parser_.feed(
-            reinterpret_cast<const std::uint8_t *>(bytes.constData()),
-            static_cast<std::size_t>(bytes.size()));
-        for (const auto& frame : frames)
-            processFrame(frame);
+        ingestReplayBytes(bytes);
     }
 
     if (pendingCommand_ && pendingCommand_->timer.elapsed() > commandTimeoutMs_)
@@ -176,6 +179,28 @@ void FpgaDeviceSession::poll()
         emit commandTimedOut(command.sequence, command.message);
         dispatchNext();
     }
+}
+
+void FpgaDeviceSession::cancelQueuedCommands()
+{
+    commandQueue_.clear();
+    pendingCommand_.reset();
+}
+
+void FpgaDeviceSession::ingestReplayBytes(const QByteArray& bytes)
+{
+    emit usbBytesReceived(bytes);
+    const auto frames = parser_.feed(
+        reinterpret_cast<const std::uint8_t *>(bytes.constData()),
+        static_cast<std::size_t>(bytes.size()));
+    for (const auto& frame : frames)
+        processFrame(frame);
+}
+
+void FpgaDeviceSession::flushWaveforms()
+{
+    for (const auto& stream : waveformAssembler_.flush())
+        emit waveformCompleted(stream);
 }
 
 quint32 FpgaDeviceSession::ping(const QByteArray& echo, quint16 source)
@@ -340,6 +365,7 @@ void FpgaDeviceSession::dispatchNext()
     pending.command = std::move(command);
     pending.timer.start();
     pendingCommand_ = std::move(pending);
+    emit commandSent(pendingCommand_->command.bytes);
 }
 
 void FpgaDeviceSession::processFrame(const FpgaVlp1::Frame& frame)
@@ -368,6 +394,8 @@ void FpgaDeviceSession::processFrame(const FpgaVlp1::Frame& frame)
                 payload});
             if (stream)
                 emit waveformCompleted(*stream);
+            for (const auto& expired : waveformAssembler_.takeExpired())
+                emit waveformCompleted(expired);
             return;
         }
         const auto reading = FpgaSensor::FpgaSensorDecoder::decode(
@@ -414,12 +442,13 @@ void FpgaDeviceSession::processFrame(const FpgaVlp1::Frame& frame)
         return;
 
     quint32 status = std::numeric_limits<quint32>::max();
-    const bool success = FpgaVlp1::responseSucceeded(frame, &status);
+    bool success = FpgaVlp1::responseSucceeded(frame, &status);
     const auto command = pendingCommand_->command;
     if (success && command.message == kGetCapabilities)
     {
         FpgaCapabilities capabilities;
-        if (parseCapabilities(payload, capabilities))
+        success = parseCapabilities(payload, capabilities);
+        if (success)
         {
             capabilities_ = capabilities;
             emit capabilitiesChanged(capabilities_);
@@ -428,11 +457,20 @@ void FpgaDeviceSession::processFrame(const FpgaVlp1::Frame& frame)
     if (success && command.message == kReadRegister)
     {
         FpgaRegisterReadResult result;
-        if (parseRegisterRead(payload, result))
+        success = parseRegisterRead(payload, result)
+            && command.bytes.size() >= 48
+            && result.address == readU32(command.bytes.constData() + 40)
+            && result.values.size() == (quint16(quint8(command.bytes[44]))
+                | (quint16(quint8(command.bytes[45])) << 8));
+        if (success)
             emit registerReadCompleted(command.sequence, result.address, result.values);
     }
-    emit commandCompleted(command.sequence, command.message, success, status, payload);
+    if (success && command.message == kPing)
+        success = payload.mid(4) == command.bytes.mid(40, readU32(command.bytes.constData() + 36));
+    if (!success && status == 0)
+        status = 12; // A CRC-valid response can still violate the command payload contract.
     pendingCommand_.reset();
+    emit commandCompleted(command.sequence, command.message, success, status, payload);
     dispatchNext();
 }
 
@@ -454,7 +492,7 @@ quint32 FpgaDeviceSession::readU32(const char *data)
 bool FpgaDeviceSession::parseCapabilities(const QByteArray& payload,
                                            FpgaCapabilities& result)
 {
-    if (payload.size() < 28)
+    if (payload.size() != 28)
         return false;
     result.status = readU32(payload.constData());
     result.capabilities = readU32(payload.constData() + 4);
@@ -475,7 +513,8 @@ bool FpgaDeviceSession::parseRegisterRead(const QByteArray& payload,
     const quint32 status = readU32(payload.constData());
     const quint16 count = quint16(static_cast<unsigned char>(payload[8]))
         | (quint16(static_cast<unsigned char>(payload[9])) << 8);
-    if (status != 0 || payload.size() < 12 + 4 * count)
+    if (status != 0 || count == 0 || payload.size() != 12 + 4 * count
+        || payload[10] != 0 || payload[11] != 0)
         return false;
     result.address = readU32(payload.constData() + 4);
     result.values.clear();

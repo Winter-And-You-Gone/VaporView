@@ -116,13 +116,15 @@ QString supportedFormatVersionsText()
 
 bool isKnownSourceId(quint16 sourceId)
 {
-    return sourceId >= kSourceNavigation && sourceId <= kSourceSystemTemperatureController;
+    return sourceId >= kSourceNavigation && sourceId <= kSourceFpga;
 }
 
 bool isValidRecordType(quint16 sourceId, quint16 recordType)
 {
     switch (static_cast<RawSourceId>(sourceId))
     {
+    case RawSourceId::Fpga:
+        return recordType >= 1u && recordType <= 4u;
     case RawSourceId::Navigation:
         return recordType > 0u && recordType <= std::numeric_limits<quint8>::max();
     case RawSourceId::Pressure:

@@ -138,6 +138,16 @@ MainWindow::MainWindow(QWidget *parent)
             snapshot.lidar = collectors.lidar->getLatestData();
             snapshot.hasLidar = isFresh(collectors.lidar.get(), snapshot.lidar);
         }
+        VaporView::Ground::Session::GroundSensorSnapshot fpga;
+        { const std::lock_guard<std::mutex> lock(state_->fpga_snapshot_mutex_); fpga = state_->fpga_recording_snapshot_; }
+        const auto fpgaFresh = [now](const auto &sample) {
+            return sample.valid && sample.timestamp != std::chrono::steady_clock::time_point{}
+                && now >= sample.timestamp && now-sample.timestamp <= std::chrono::seconds(2);
+        };
+        if (fpga.hasEpsilon && fpgaFresh(fpga.epsilon)) { snapshot.epsilon=fpga.epsilon; snapshot.hasEpsilon=true; }
+        if (fpga.hasPtb && fpgaFresh(fpga.ptb)) { snapshot.ptb=fpga.ptb; snapshot.hasPtb=true; }
+        if (fpga.hasHmp && fpgaFresh(fpga.hmp)) { snapshot.hmp=fpga.hmp; snapshot.hasHmp=true; }
+        if (fpga.hasLidar && fpgaFresh(fpga.lidar)) { snapshot.lidar=fpga.lidar; snapshot.hasLidar=true; }
         return snapshot;
     });
     state_->recording_service_->setStatusCallback([this]() {
@@ -687,6 +697,7 @@ MainWindow::~MainWindow()
     {
         state_->port_detection_thread_.join();
     }
+    shutdownFpgaWorker();
     stopRecording(false);
     state_->recording_service_->setStatusCallback({});
     state_->recording_service_->setWarningCallback({});
@@ -806,6 +817,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
                 state_->device_config_nav_btn_,
                 state_->temperature_nav_btn_,
                 state_->rtk_config_nav_btn_,
+                state_->fpga_nav_btn_,
             };
             const int currentIndex = buttons.indexOf(sidebarButton);
             if (currentIndex >= 0)

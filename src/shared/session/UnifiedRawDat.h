@@ -31,7 +31,8 @@ enum class RawSourceId : quint16
     Distance = 4u,
     Waveform = 5u,
     LaserTemperatureController = 6u,
-    SystemTemperatureController = 7u
+    SystemTemperatureController = 7u,
+    Fpga = 8u
 };
 
 inline constexpr quint16 kSourceNavigation = static_cast<quint16>(RawSourceId::Navigation);
@@ -43,6 +44,7 @@ inline constexpr quint16 kSourceLaserTemperatureController =
     static_cast<quint16>(RawSourceId::LaserTemperatureController);
 inline constexpr quint16 kSourceSystemTemperatureController =
     static_cast<quint16>(RawSourceId::SystemTemperatureController);
+inline constexpr quint16 kSourceFpga = static_cast<quint16>(RawSourceId::Fpga);
 inline constexpr quint16 kRecordTypePressureResponse = 1u;
 inline constexpr quint16 kRecordTypeTemperatureHumidityModbusResponse = 0x03u;
 inline constexpr quint16 kRecordTypeWaveformPayload = 1u;

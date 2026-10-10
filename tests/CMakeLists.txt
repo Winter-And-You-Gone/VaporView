@@ -340,6 +340,34 @@ target_link_libraries(fpga_device_session_test PRIVATE vaporview_ground_device_c
 add_test(NAME fpga_device_session_test COMMAND fpga_device_session_test)
 set_tests_properties(fpga_device_session_test PROPERTIES LABELS "fast;unit;fpga")
 
+foreach(fpga_test sensor_adapter usb_transport controller)
+    add_executable(fpga_${fpga_test}_test ${CMAKE_CURRENT_SOURCE_DIR}/fpga_${fpga_test}_test.cpp)
+    target_link_libraries(fpga_${fpga_test}_test PRIVATE vaporview_ground_device_core)
+    add_test(NAME fpga_${fpga_test}_test COMMAND fpga_${fpga_test}_test)
+    set_tests_properties(fpga_${fpga_test}_test PROPERTIES LABELS "fast;unit;fpga" TIMEOUT 60)
+endforeach()
+
+add_executable(fpga_session_archive_test ${CMAKE_CURRENT_SOURCE_DIR}/fpga_session_archive_test.cpp)
+target_link_libraries(fpga_session_archive_test PRIVATE vaporview_ground_session_core)
+add_test(NAME fpga_session_archive_test COMMAND fpga_session_archive_test)
+set_tests_properties(fpga_session_archive_test PROPERTIES LABELS "fast;unit;fpga" TIMEOUT 60)
+
+add_executable(fpga_control_page_test ${CMAKE_CURRENT_SOURCE_DIR}/fpga_control_page_test.cpp)
+target_link_libraries(fpga_control_page_test PRIVATE vaporview_ground_widgets vaporview_app_config)
+add_dependencies(fpga_control_page_test VaporViewRuntimeResources)
+add_test(NAME fpga_control_page_test COMMAND fpga_control_page_test)
+set_tests_properties(fpga_control_page_test PROPERTIES LABELS "gui;fpga" TIMEOUT 60 RUN_SERIAL TRUE)
+
+add_executable(fpga_main_window_test ${CMAKE_CURRENT_SOURCE_DIR}/fpga_main_window_test.cpp)
+target_compile_definitions(fpga_main_window_test PRIVATE VAPORVIEW_MAIN_WINDOW_TESTING=1)
+target_link_libraries(fpga_main_window_test PRIVATE vaporview_main_window)
+add_dependencies(fpga_main_window_test VaporViewRuntimeResources)
+if(COMMAND vaporview_stage_osgearth_runtime)
+    vaporview_stage_osgearth_runtime(fpga_main_window_test)
+endif()
+add_test(NAME fpga_main_window_test COMMAND fpga_main_window_test)
+set_tests_properties(fpga_main_window_test PROPERTIES LABELS "gui;fpga" TIMEOUT 60 RUN_SERIAL TRUE)
+
 add_executable(log_service_test
     ${CMAKE_CURRENT_SOURCE_DIR}/log_service_test.cpp
 )

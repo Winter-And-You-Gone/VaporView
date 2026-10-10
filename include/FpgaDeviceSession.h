@@ -69,6 +69,9 @@ public:
     // Polling is timer-driven after open(), and remains public for deterministic
     // replay tests and callers that own their event loop.
     void poll();
+    void cancelQueuedCommands();
+    void ingestReplayBytes(const QByteArray& bytes);
+    void flushWaveforms();
 
     quint32 ping(const QByteArray& echo = {}, quint16 source = 0x0001);
     quint32 requestCapabilities(quint16 source = 0x0001);
@@ -85,6 +88,8 @@ public:
     quint32 sensorAction(quint32 action, quint32 value, quint16 source = 0x0001);
 
 signals:
+    void usbBytesReceived(const QByteArray& bytes);
+    void commandSent(const QByteArray& wireBytes);
     void stateChanged(VaporView::Ground::Devices::FpgaSessionState state,
                       const QString& detail);
     void frameReceived(quint8 frameType, quint32 sequence, quint16 source,
@@ -147,4 +152,3 @@ private:
 Q_DECLARE_METATYPE(VaporView::Ground::Devices::FpgaCapabilities)
 Q_DECLARE_METATYPE(VaporView::Ground::Devices::FpgaSessionState)
 Q_DECLARE_METATYPE(VaporView::FpgaSensor::Reading)
-Q_DECLARE_METATYPE(VaporView::FpgaWave::CompletedStream)

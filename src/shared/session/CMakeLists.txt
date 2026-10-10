@@ -1,4 +1,6 @@
 add_library(vaporview_session_format STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/FpgaSessionArchive.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/FpgaSessionArchive.h
     ${CMAKE_CURRENT_SOURCE_DIR}/NavigationStatusCsv.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/NavigationStatusCsv.h
     ${CMAKE_CURRENT_SOURCE_DIR}/RecordingOrigin.cpp
@@ -25,5 +27,6 @@ target_include_directories(vaporview_session_format PUBLIC
 )
 
 target_link_libraries(vaporview_session_format PUBLIC
+    vaporview_protocol
     Qt6::Core
 )

@@ -44,6 +44,9 @@
 #include "ground/wave/TcpWavePanel.h"
 #include "ground/widgets/VisualTextLabel.h"
 #include "ground/widgets/JsonConfigEditor.h"
+#include "ground/widgets/FpgaControlPage.h"
+#include "FpgaDeviceController.h"
+#include <QThread>
 #include "ground/widgets/WindowSizing.h"
 #include "data_collector.h"
 #include "data_types.h"

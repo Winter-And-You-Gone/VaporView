@@ -1,4 +1,6 @@
 #include "FpgaUsbTransport.h"
+#include "FpgaCyApiTransport.h"
+#include <QStringList>
 
 #include <QtGlobal>
 
@@ -7,6 +9,9 @@
 #include <utility>
 
 #ifdef Q_OS_WIN
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
 #  include <windows.h>
 #  include <setupapi.h>
 #  include <initguid.h>
@@ -26,6 +31,13 @@ FpgaUsbTransport::FpgaUsbTransport(QObject *parent)
 
 FpgaUsbTransport::~FpgaUsbTransport() = default;
 
+bool FpgaUsbTransport::readDiagnostic(quint8 request, QByteArray &response)
+{
+    Q_UNUSED(request);
+    response.clear();
+    return false;
+}
+
 void FpgaUsbTransport::publishState(FpgaUsbTransportState state)
 {
     emit stateChanged(state);
@@ -42,6 +54,7 @@ FpgaUsbHardwareTransport::FpgaUsbHardwareTransport(QObject *parent)
 #ifdef Q_OS_WIN
     diagnostic_.hardwareBackendAvailable = true;
     diagnostic_.detail = QStringLiteral("native WinUSB backend (GP01 FX3)");
+    diagnostic_.fields.insert(QStringLiteral("backend"), QStringLiteral("winusb"));
 #else
     diagnostic_.detail = QStringLiteral("native WinUSB backend is available on Windows only");
 #endif
@@ -73,6 +86,7 @@ bool FpgaUsbHardwareTransport::open(const QString &locator)
     };
 
     QString path = locator;
+    QStringList candidates;
     HDEVINFO info = INVALID_HANDLE_VALUE;
     SP_DEVICE_INTERFACE_DATA interfaceData{};
     if (path.isEmpty()) {
@@ -96,11 +110,17 @@ bool FpgaUsbHardwareTransport::open(const QString &locator)
                 continue;
             const QString candidate = QString::fromWCharArray(detail->DevicePath);
             if (candidate.contains(QStringLiteral("vid_04b4&pid_00f1"), Qt::CaseInsensitive)) {
-                path = candidate;
-                break;
+                candidates.append(candidate);
             }
         }
         SetupDiDestroyDeviceInfoList(info);
+        diagnostic_.fields.insert(QStringLiteral("locators"), candidates);
+        if (candidates.size() > 1) {
+            diagnostic_.detail = QStringLiteral("Multiple GP01 devices found; select a USB locator: %1").arg(candidates.join(QStringLiteral("; ")));
+            diagnostic_.state = FpgaUsbTransportState::Error;
+            publishState(diagnostic_.state); publishError(diagnostic_.detail); return false;
+        }
+        if (candidates.size() == 1) path = candidates.front();
     }
     if (path.isEmpty()) {
         diagnostic_.detail = QStringLiteral("GP01 FX3 device 04B4:00F1 was not found");
@@ -114,7 +134,7 @@ bool FpgaUsbHardwareTransport::open(const QString &locator)
     }
     const HANDLE device = CreateFileW(reinterpret_cast<LPCWSTR>(path.utf16()), GENERIC_READ | GENERIC_WRITE,
                                        FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
-                                       FILE_ATTRIBUTE_NORMAL, nullptr);
+                                       FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, nullptr);
     if (device == INVALID_HANDLE_VALUE) {
         diagnostic_.detail = winError(QStringLiteral("opening GP01 USB interface failed"));
         diagnostic_.state = FpgaUsbTransportState::Error;
@@ -146,8 +166,10 @@ bool FpgaUsbHardwareTransport::open(const QString &locator)
     }
     ULONG readTimeoutMs = 50;
     if (!WinUsb_SetPipePolicy(usb, FpgaUsbTransportInfo::BulkInEndpoint,
+                              PIPE_TRANSFER_TIMEOUT, sizeof(readTimeoutMs), &readTimeoutMs) ||
+        !WinUsb_SetPipePolicy(usb, FpgaUsbTransportInfo::BulkOutEndpoint,
                               PIPE_TRANSFER_TIMEOUT, sizeof(readTimeoutMs), &readTimeoutMs)) {
-        diagnostic_.detail = winError(QStringLiteral("WinUsb_SetPipePolicy(IN timeout) failed"));
+        diagnostic_.detail = winError(QStringLiteral("WinUsb_SetPipePolicy(timeout) failed"));
         WinUsb_Free(usb); CloseHandle(device); diagnostic_.state = FpgaUsbTransportState::Error;
         publishState(diagnostic_.state); publishError(diagnostic_.detail); return false;
     }
@@ -161,6 +183,8 @@ bool FpgaUsbHardwareTransport::open(const QString &locator)
     }
     diagnostic_.fields.insert(QStringLiteral("diagnostic_b1"), QString::fromLatin1(b1.toHex()));
     diagnostic_.fields.insert(QStringLiteral("diagnostic_b0"), QString::fromLatin1(b0.toHex()));
+    diagnostic_.fields.insert(QStringLiteral("backend"), QStringLiteral("winusb"));
+    diagnostic_.fields.insert(QStringLiteral("locator"), path);
     diagnostic_.state = FpgaUsbTransportState::Open;
     diagnostic_.detail = QStringLiteral("GP01 FX3 WinUSB open");
     publishState(diagnostic_.state);
@@ -186,6 +210,7 @@ void FpgaUsbHardwareTransport::close()
     interfaceHandle_ = nullptr;
     deviceHandle_ = nullptr;
 #endif
+    diagnostic_.fields.clear();
     diagnostic_.state = FpgaUsbTransportState::Offline;
     publishState(diagnostic_.state);
 }
@@ -201,6 +226,7 @@ bool FpgaUsbHardwareTransport::isOpen() const
 
 qint64 FpgaUsbHardwareTransport::read(QByteArray &destination, qint64 maxBytes)
 {
+    destination.clear();
 #ifdef Q_OS_WIN
     if (!isOpen() || maxBytes <= 0 || maxBytes > std::numeric_limits<ULONG>::max()) return -1;
     destination.resize(static_cast<qsizetype>(maxBytes));
@@ -208,11 +234,13 @@ qint64 FpgaUsbHardwareTransport::read(QByteArray &destination, qint64 maxBytes)
     if (!WinUsb_ReadPipe(static_cast<WINUSB_INTERFACE_HANDLE>(interfaceHandle_), FpgaUsbTransportInfo::BulkInEndpoint,
                          reinterpret_cast<PUCHAR>(destination.data()), static_cast<ULONG>(maxBytes), &transferred, nullptr)) {
         const DWORD error = GetLastError();
-        if (error == ERROR_SEM_TIMEOUT || error == ERROR_OPERATION_ABORTED) {
+        if (error == ERROR_SEM_TIMEOUT) {
             destination.clear();
             return 0;
         }
-        publishError(QStringLiteral("WinUsb_ReadPipe failed (%1)").arg(error));
+        const QString message = QStringLiteral("WinUsb_ReadPipe failed (%1)").arg(error);
+        close(); diagnostic_.state = FpgaUsbTransportState::Error; diagnostic_.detail = message;
+        publishState(diagnostic_.state); publishError(message);
         destination.clear(); return -1;
     }
     destination.resize(static_cast<qsizetype>(transferred));
@@ -229,14 +257,21 @@ qint64 FpgaUsbHardwareTransport::read(QByteArray &destination, qint64 maxBytes)
 qint64 FpgaUsbHardwareTransport::write(const QByteArray &source)
 {
 #ifdef Q_OS_WIN
-    if (!isOpen() || source.isEmpty() || source.size() % 4 != 0 || source.size() > static_cast<int>(std::numeric_limits<ULONG>::max())) return -1;
+    if (!isOpen() || source.isEmpty() || source.size() % 4 != 0 || quint64(source.size()) > quint64(std::numeric_limits<ULONG>::max())) return -1;
     ULONG transferred = 0;
     if (!WinUsb_WritePipe(static_cast<WINUSB_INTERFACE_HANDLE>(interfaceHandle_), FpgaUsbTransportInfo::BulkOutEndpoint,
                           reinterpret_cast<PUCHAR>(const_cast<char *>(source.constData())), static_cast<ULONG>(source.size()),
                           &transferred, nullptr)) {
-        publishError(QStringLiteral("WinUsb_WritePipe failed (%1)").arg(GetLastError())); return -1;
+        const QString message = QStringLiteral("WinUsb_WritePipe failed (%1)").arg(GetLastError());
+        close(); diagnostic_.state = FpgaUsbTransportState::Error; diagnostic_.detail = message;
+        publishState(diagnostic_.state); publishError(message); return -1;
     }
     diagnostic_.bytesWritten += transferred;
+    if (transferred != quint64(source.size())) {
+        close(); diagnostic_.state = FpgaUsbTransportState::Error;
+        diagnostic_.detail = QStringLiteral("WinUSB partial bulk OUT write");
+        publishState(diagnostic_.state); publishError(diagnostic_.detail); return -1;
+    }
     return transferred;
 #else
     Q_UNUSED(source);
@@ -352,7 +387,90 @@ QByteArray FpgaUsbReplayTransport::writtenBytes() const
 
 std::unique_ptr<FpgaUsbTransport> makeFpgaUsbHardwareTransport(QObject *parent)
 {
-    return std::make_unique<FpgaUsbHardwareTransport>(parent);
+    return makeFpgaUsbHardwareTransport(QStringLiteral("auto"), parent);
+}
+
+namespace
+{
+class AutoUsbTransport final : public FpgaUsbTransport
+{
+public:
+    explicit AutoUsbTransport(QObject *parent) : FpgaUsbTransport(parent) {}
+    bool open(const QString &locator) override
+    {
+        close();
+        auto cypress = std::make_unique<FpgaCyApiTransport>();
+        if (cypress->diagnostic().hardwareBackendAvailable)
+        {
+            if (cypress->open(locator)) { adopt(std::move(cypress)); return true; }
+            const auto d = cypress->diagnostic();
+            // A matched/ambiguous Cypress device must not silently fall through
+            // to another driver or device after identity/endpoint failure.
+            if (!d.fields.value(QStringLiteral("locators")).toStringList().isEmpty()
+                || d.detail.contains(QStringLiteral("diagnostic")) || d.detail.contains(QStringLiteral("endpoint")))
+            { adopt(std::move(cypress)); publishError(d.detail); return false; }
+        }
+        const QString cypressDetail = cypress->diagnostic().detail;
+        auto winusb = std::make_unique<FpgaUsbHardwareTransport>();
+        const bool opened = winusb->open(locator);
+        adopt(std::move(winusb));
+        cypressDetail_ = cypressDetail;
+        if (!opened) publishError(diagnostic().detail);
+        return opened;
+    }
+    void close() override
+    {
+        if (active_) active_->close();
+        active_.reset();
+        cypressDetail_.clear();
+        publishState(FpgaUsbTransportState::Offline);
+    }
+    bool isOpen() const override { return active_ && active_->isOpen(); }
+    qint64 read(QByteArray &destination, qint64 maxBytes) override
+    { if (!active_) { destination.clear(); return -1; } return active_->read(destination,maxBytes); }
+    qint64 write(const QByteArray &source) override { return active_ ? active_->write(source) : -1; }
+    bool readDiagnostic(quint8 request, QByteArray &response) override
+    { if (!active_) { response.clear(); return false; } return active_->readDiagnostic(request,response); }
+    FpgaUsbDiagnostic diagnostic() const override
+    {
+        auto d = active_ ? active_->diagnostic() : FpgaUsbDiagnostic{};
+        if (!cypressDetail_.isEmpty()) d.fields.insert(QStringLiteral("cypress_status"),cypressDetail_);
+        return d;
+    }
+private:
+    void adopt(std::unique_ptr<FpgaUsbTransport> transport)
+    {
+        active_ = std::move(transport);
+        connect(active_.get(), &FpgaUsbTransport::stateChanged, this, &FpgaUsbTransport::stateChanged);
+        connect(active_.get(), &FpgaUsbTransport::errorOccurred, this, &FpgaUsbTransport::errorOccurred);
+        connect(active_.get(), &FpgaUsbTransport::bytesReceived, this, &FpgaUsbTransport::bytesReceived);
+        publishState(active_->diagnostic().state);
+    }
+    std::unique_ptr<FpgaUsbTransport> active_;
+    QString cypressDetail_;
+};
+class UnavailableUsbTransport final : public FpgaUsbTransport
+{
+public:
+    UnavailableUsbTransport(QString name, QObject *parent) : FpgaUsbTransport(parent), name_(std::move(name)) {}
+    bool open(const QString &) override { publishError(diagnostic().detail); publishState(FpgaUsbTransportState::Error); return false; }
+    void close() override {}
+    bool isOpen() const override { return false; }
+    qint64 read(QByteArray &b,qint64) override { b.clear(); return -1; }
+    qint64 write(const QByteArray &) override { return -1; }
+    FpgaUsbDiagnostic diagnostic() const override
+    { FpgaUsbDiagnostic d; d.state=FpgaUsbTransportState::Error; d.detail=QStringLiteral("Unknown FPGA USB backend: %1 (expected auto/cypress/winusb)").arg(name_); return d; }
+private:
+    QString name_;
+};
+}
+std::unique_ptr<FpgaUsbTransport> makeFpgaUsbHardwareTransport(const QString &backend, QObject *parent)
+{
+    const QString name = backend.trimmed().toLower();
+    if (name.isEmpty() || name == QStringLiteral("auto")) return std::make_unique<AutoUsbTransport>(parent);
+    if (name == QStringLiteral("cypress")) return std::make_unique<FpgaCyApiTransport>(parent);
+    if (name == QStringLiteral("winusb")) return std::make_unique<FpgaUsbHardwareTransport>(parent);
+    return std::make_unique<UnavailableUsbTransport>(backend,parent);
 }
 
 std::unique_ptr<FpgaUsbTransport> makeFpgaUsbReplayTransport(const QByteArray &incoming,
