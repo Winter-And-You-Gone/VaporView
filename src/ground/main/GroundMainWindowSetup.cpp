@@ -4179,7 +4179,10 @@ void MainWindow::updateDeviceConfigState()
         !state_->connection_attempt_in_progress_ && !state_->port_detection_in_progress_ && !state_->epsilon_reconfigure_in_progress_;
     const bool remoteInputsEnabled = remote && (isUiTestMode() || !state_->is_connected_) && !state_->connection_attempt_in_progress_;
     const bool fpgaRelay = currentSensorTransportPath() == VaporView::SensorTransportPath::FpgaRelay;
-    const bool sensorInputsEnabled = (remote ? remoteInputsEnabled : localInputsEnabled) && !fpgaRelay;
+    // The transport path changes the command recipient/encoding only.  Keep
+    // the per-device serial, rate, source, and enable controls editable so
+    // they can be translated to direct-device or VLP1 commands later.
+    const bool sensorInputsEnabled = remote ? remoteInputsEnabled : localInputsEnabled;
     if (state_->device_config_.sensor_transport_path_combo)
     {
         const bool remoteLinkOpen = isUiTestMode() ||
@@ -4200,7 +4203,7 @@ void MainWindow::updateDeviceConfigState()
     {
         state_->device_config_.auto_detect_ports_btn->setVisible(true);
         state_->device_config_.auto_detect_ports_btn->setEnabled(
-            (remote ? remoteInputsEnabled : localInputsEnabled) && !fpgaRelay);
+            remote ? remoteInputsEnabled : localInputsEnabled);
         fitButtonFixedWidth(state_->device_config_.auto_detect_ports_btn,
                             kDeviceConfigAutoDetectButtonMinWidth,
                             kDeviceConfigTopButtonPadding);
@@ -4309,10 +4312,7 @@ void MainWindow::updateDeviceConfigState()
         if (check)
         {
             check->setVisible(true);
-            const bool relaySupported = check != state_->device_config_.temperature_enabled_check &&
-                check != state_->device_config_.tcp_wave_enabled_check;
-            check->setEnabled(relaySupported ? sensorInputsEnabled
-                                             : (remote ? remoteInputsEnabled : localInputsEnabled));
+            check->setEnabled(remote ? remoteInputsEnabled : localInputsEnabled);
         }
     }
     const QList<QWidget *> ai8Widgets = {

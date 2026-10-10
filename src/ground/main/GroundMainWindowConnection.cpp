@@ -230,23 +230,6 @@ bool MainWindow::homeDevicePortSelected(VaporView::SkyDeviceId device) const
         return state_->tcp_wave_panel_ != nullptr;
     }
 
-    if (isFpgaRelayPath())
-    {
-        switch (device)
-        {
-        case VaporView::SkyDeviceId::Epsilon:
-        case VaporView::SkyDeviceId::Ptb:
-        case VaporView::SkyDeviceId::Hmp:
-        case VaporView::SkyDeviceId::Lidar:
-        case VaporView::SkyDeviceId::Ai8TemperatureController:
-            return true;
-        case VaporView::SkyDeviceId::TemperatureController:
-        case VaporView::SkyDeviceId::WaveTcp:
-        case VaporView::SkyDeviceId::All:
-            break;
-        }
-    }
-
     auto portSelected = [](const QString& text, bool manualEntry) {
         return !manualEntry && !text.isEmpty() && !text.startsWith(QStringLiteral("--"));
     };
@@ -1481,8 +1464,8 @@ void MainWindow::onConnectClicked()
         state_->fpga_nav_btn_->setChecked(true);
         state_->fpga_page_->appendDiagnostic(
             state_->is_english_
-                ? QStringLiteral("FPGA relay is selected. Connect the FPGA on the FPGA page; direct sensor serial collectors are disabled.")
-                : QStringLiteral("当前选择了 FPGA 中转，请在 FPGA 页面连接 FPGA；传感器直连串口采集已禁用。"));
+                ? QStringLiteral("FPGA relay is selected. Connect the FPGA on the FPGA page; device settings remain editable and are routed through VLP1 where supported.")
+                : QStringLiteral("当前选择了 FPGA 中转，请在 FPGA 页面连接 FPGA；设备配置仍可编辑，并在协议支持时通过 VLP1 下发。"));
         updateSidebarNavIcons();
         updateCustomTitleBarTexts();
         updateConnectionStatus(false);

@@ -27,10 +27,13 @@ VaporView 本机，Remote 是 SkyCore。它不表示传感器是否经过 FPGA�
 
 本地配置保存为 `MainWindow/sensor/transport_path`，天空端 `SkyConfig` 使用
 `sensor_transport_path`，取值为 `direct_devices` 或 `fpga_relay`。默认值是
-`direct_devices`，以兼容已有设备现场配置。选择 `fpga_relay` 后，Ground 不再启动
-EPSILON、PTB/BMP390、HMP/SHT45、TFA1500-L、AI-8 的直连串口采集；SkyCore 也只走
-FPGA 标准化测量。当前 VLP1 正式六路不包含 VaporView 的 RD105 温控器，因此 RD105
-仍显示为独立直连设备，不能把它误报为 FPGA 中转。
+`direct_devices`，以兼容已有设备现场配置。选择 `fpga_relay` 后，采集数据改由
+FPGA 的 VLP1 通道上送，Ground/SkyCore 不再为这些设备启动第二套直连串口采集。
+设备配置页中的串口、波特率、频率、数据源和启停仍属于同一份设备意图模型，不能
+因为切换传输路径而被禁用；执行层再根据路径选择直连串口命令或 FPGA VLP1 命令。
+其中 PC 的 `COMx` 名称不能透传到 FPGA，FPGA 端需要使用板上固定通道/协议支持的
+地址、波特率和轮询寄存器。VLP1 尚未提供的字段必须返回明确的 `Unsupported`，不能
+静默改走直连串口。
 
 界面测试模式会临时把上述路径切换为 `fpga_relay`，并在 FPGA 页面显示“传感器 →
 模拟 FPGA → VaporView”的软件链路；它用于验证布局、状态和路由语义，不创建真实
@@ -89,6 +92,11 @@ Windows USB 设备，也不代表已经完成 GP01 实板或 VLP1 原始字节�
 启动同机 `VaporView.exe`，首页选择 Remote，链路选择 TCP，主机 `127.0.0.1`、端口 `39001`。地面 GUI 同样选择 Remote，但连接地面数传实际串口，或 SkyCore 遥测 TCP `39100` 可达地址。`39001` 是同机 IPC，`39100` 是 TCP 遥测，两者用途不同。观察 FPGA 页的 USB connected、ready、模块版本及硬件实际读回；无设备、驱动缺失或探测失败必须显示失败，不能按配置默认值显示就绪。
 
 ## 控制与记录边界
+
+传感器配置的目标是“设备配置意图 → 传输适配器”：直连路径交给现有串口采集器，
+中转路径交给 VLP1 `WRITE_REG`/`SENSOR_ACTION`，并按下位机要求执行提交、状态等待
+和读回确认。当前界面已经保持两条路径共用设备配置控件；尚未接入实板的字段必须
+在日志和命令结果中标明待映射或不支持，不能把“控件可编辑”当成已经完成硬件下发。
 
 独立 FPGA 页发送 `DeviceOperation::FpgaControl`，SkyCore 对动作执行 allowlist 校验并串行处理，最终结果来自异步事务及读回；请求受理或普通寄存器 ACK 不等于完成。当前 allowlist 包含连接/断开、刷新、配置、采集、WMS、DAC、传感器、限时 RAW 和 AI8 设温，详细确认条件仍见 [协议适配](fpga_vlp1_integration.md)。
 

@@ -929,7 +929,6 @@ void MainWindow::updateRemoteSkyConfigControlsState()
     const bool localInputsEnabled = !remote && (isUiTestMode() || !state_->is_connected_) &&
         !state_->connection_attempt_in_progress_ && !state_->port_detection_in_progress_ &&
         !state_->epsilon_reconfigure_in_progress_;
-    const bool fpgaRelay = currentSensorTransportPath() == VaporView::SensorTransportPath::FpgaRelay;
     const QList<QWidget *> targetWidgets = {
         state_->device_config_.epsilon_port_combo,
         state_->device_config_.epsilon_baud_combo,
@@ -961,31 +960,6 @@ void MainWindow::updateRemoteSkyConfigControlsState()
                 widget->setEnabled(fieldsEnabled);
             }
         }
-        if (fpgaRelay)
-        {
-            for (QWidget *widget : {state_->device_config_.epsilon_port_combo,
-                                    state_->device_config_.epsilon_baud_combo,
-                                    state_->device_config_.ptb_port_combo,
-                                    state_->device_config_.ptb_baud_combo,
-                                    state_->device_config_.ptb_rate_combo,
-                                    state_->device_config_.ptb_source_combo,
-                                    state_->device_config_.hmp_port_combo,
-                                    state_->device_config_.hmp_baud_combo,
-                                    state_->device_config_.hmp_rate_combo,
-                                    state_->device_config_.hmp_source_combo,
-                                    state_->device_config_.lidar_port_combo,
-                                    state_->device_config_.lidar_baud_combo,
-                                    state_->device_config_.lidar_rate_combo,
-                                    state_->device_config_.ai8_temperature_port_combo,
-                                    state_->device_config_.ai8_temperature_baud_combo,
-                                    state_->device_config_.ai8_temperature_rate_combo})
-            {
-                if (widget)
-                {
-                    widget->setEnabled(false);
-                }
-            }
-        }
     }
     if (state_->device_config_.epsilon_rate_combo)
     {
@@ -1002,11 +976,7 @@ void MainWindow::updateRemoteSkyConfigControlsState()
     {
         if (check)
         {
-            const bool relaySupported = check != state_->device_config_.temperature_enabled_check &&
-                check != state_->device_config_.tcp_wave_enabled_check;
-            check->setEnabled(relaySupported && fpgaRelay
-                                  ? false
-                                  : (remote ? fieldsEnabled : localInputsEnabled));
+            check->setEnabled(remote ? fieldsEnabled : localInputsEnabled);
         }
     }
 
