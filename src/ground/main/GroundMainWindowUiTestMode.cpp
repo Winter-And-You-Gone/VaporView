@@ -456,6 +456,10 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
     state_->current_hmp_ = VaporView::HmpData();
     state_->current_lidar_ = VaporView::LidarData();
     state_->current_temperature_controller_ = VaporView::TemperatureControllerData();
+    if (state_->fpga_page_)
+    {
+        state_->fpga_page_->setUiTestState(false);
+    }
     if (state_->ai8_temperature_controller_panel_)
     {
         state_->ai8_temperature_controller_panel_->setBackendConnected(false);
@@ -591,6 +595,13 @@ void MainWindow::applyUiTestSnapshot()
         state_->tcp_wave_panel_->injectRemoteRawSignalFrame(timestampUs, snapshot.rawWaveform);
         state_->tcp_wave_panel_->injectRemoteSecondHarmonicFrame(timestampUs, snapshot.harmonicWaveform);
         state_->tcp_wave_panel_->injectRemoteWaveformFeature(snapshot.waveformFeature);
+    }
+    if (state_->fpga_page_)
+    {
+        const auto scenario = state_->ui_test_model_->scenario();
+        state_->fpga_page_->setUiTestState(
+            true, snapshot.dataStalled || scenario == UiTestScenario::DataStalled,
+            scenario == UiTestScenario::PartialFailure, elapsed);
     }
 #ifdef VAPORVIEW_HAS_OSGEARTH
     if (snapshot.epsilon.valid)

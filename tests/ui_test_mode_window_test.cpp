@@ -5,6 +5,7 @@
 #include "ground/rtk/RtkConfigDialog.h"
 #include "ground/wave/TcpWavePanel.h"
 #include "ground/widgets/Ai8TemperatureControllerPanel.h"
+#include "ground/widgets/FpgaControlPage.h"
 #include "ground/widgets/SegmentedSwitchButton.h"
 #include "ground/widgets/TelemetryPanels.h"
 #include "ground/widgets/TemperatureTrendPlotWidget.h"
@@ -1109,6 +1110,63 @@ int main(int argc, char **argv)
     processEvents();
     require(modeAction->isChecked(), "UI test mode action becomes checked");
     require(!badge->isHidden(), "persistent UI test badge is visible");
+    auto *fpgaPage = window->findChild<FpgaControlPage *>(QStringLiteral("fpgaControlPage"));
+    auto *fpgaStatus = fpgaPage ? fpgaPage->findChild<QLabel *>(QStringLiteral("fpgaConnectionStatus")) : nullptr;
+    auto *fpgaPtb = fpgaPage ? fpgaPage->findChild<QLabel *>(QStringLiteral("fpgaSensor0040")) : nullptr;
+    auto *fpgaWaveSummary = fpgaPage ? fpgaPage->findChild<QLabel *>(QStringLiteral("fpgaWaveSummary32")) : nullptr;
+    auto *fpgaPlot = fpgaPage ? fpgaPage->findChild<QWidget *>(QStringLiteral("fpgaWavePlot32")) : nullptr;
+    auto *fpgaDiagnostics = fpgaPage ? fpgaPage->findChild<QPlainTextEdit *>(QStringLiteral("fpgaDiagnostics")) : nullptr;
+    require(fpgaPage && fpgaStatus && fpgaPtb && fpgaWaveSummary && fpgaPlot && fpgaDiagnostics,
+            "UI test mode exposes the FPGA page status, sensor, waveform, plot and diagnostics widgets");
+    const int pageIndexBeforeFpgaLayout = mainPageStack->currentIndex();
+    mainPageStack->setCurrentWidget(fpgaPage);
+    processEvents();
+    require(fpgaPage->property("fpgaUiTestMode").toBool(),
+            "UI test mode marks the FPGA page as simulated");
+    require(fpgaStatus->text().contains(QStringLiteral("已连接")) ||
+                fpgaStatus->text().contains(QStringLiteral("Connected")),
+            "UI test mode exposes a connected FPGA status");
+    require(fpgaPtb->text().contains(QStringLiteral("Pa")) &&
+                (fpgaPtb->text().contains(QStringLiteral("测量有效")) ||
+                 fpgaPtb->text().contains(QStringLiteral("Valid measurement"))),
+            "UI test mode exposes a valid PTB210 pressure reading");
+    require(VaporViewTest::processEventsUntil(1200, [fpgaPlot, fpgaWaveSummary]() {
+                return fpgaPlot->property("sampleCount").toInt() >= 100 &&
+                       (fpgaWaveSummary->text().contains(QStringLiteral("完整周期")) ||
+                        fpgaWaveSummary->text().contains(QStringLiteral("Complete cycle")));
+            }),
+            "UI test mode exposes a complete FPGA ADC waveform and plot samples");
+    require(fpgaDiagnostics->toPlainText().contains(QStringLiteral("界面测试")) ||
+                fpgaDiagnostics->toPlainText().contains(QStringLiteral("UI test")),
+            "UI test mode exposes FPGA simulation diagnostics");
+    window->findChild<QPushButton *>(QStringLiteral("fpgaAcquisitionStart"))->click();
+    require(fpgaDiagnostics->toPlainText().contains(QStringLiteral("操作已忽略")) ||
+                fpgaDiagnostics->toPlainText().contains(QStringLiteral("command ignored")),
+            "FPGA UI test actions are logged without touching hardware");
+    const auto scenarioAction = [scenarioMenu](int value) {
+        for (QAction *action : scenarioMenu->actions())
+            if (action->data().toInt() == value) return action;
+        return static_cast<QAction *>(nullptr);
+    };
+    QAction *fpgaPartialFailureAction = scenarioAction(1);
+    QAction *fpgaStalledAction = scenarioAction(2);
+    QAction *fpgaNormalAction = scenarioAction(0);
+    require(fpgaPartialFailureAction && fpgaStalledAction && fpgaNormalAction,
+            "UI test FPGA coverage can select all simulation scenarios");
+    fpgaPartialFailureAction->trigger();
+    processEvents();
+    require(fpgaPtb->text().contains(QStringLiteral("设备离线")) ||
+                fpgaPtb->text().contains(QStringLiteral("Device offline")),
+            "FPGA partial-failure scenario marks PTB210 offline");
+    fpgaStalledAction->trigger();
+    processEvents();
+    require(fpgaPtb->text().contains(QStringLiteral("测量无效")) ||
+                fpgaPtb->text().contains(QStringLiteral("Invalid measurement")),
+            "FPGA stalled scenario marks the last pressure sample invalid");
+    fpgaNormalAction->trigger();
+    processEvents();
+    mainPageStack->setCurrentIndex(pageIndexBeforeFpgaLayout);
+    processEvents();
     const auto overviewCells = window->findChildren<QFrame *>(
         QStringLiteral("ai8TemperatureOverviewCell"));
     require(overviewCells.size() == 8, "UI test mode exposes eight temperature capsules");
@@ -2261,6 +2319,9 @@ int main(int argc, char **argv)
     modeAction->trigger();
     processEvents();
     require(!modeAction->isChecked(), "UI test mode action clears after exit");
+    require(!fpgaPage->property("fpgaUiTestMode").toBool() &&
+                fpgaPlot->property("sampleCount").toInt() == 0,
+            "FPGA UI test samples are cleared after leaving UI test mode");
     require(badge->isHidden(), "UI test badge hides after exit");
     QMenu *scenarioMenuAfterExit = window->findChild<QMenu *>(QStringLiteral("uiTestScenarioMenu"));
     const bool cachedScenarioMenuEnabled = !scenarioMenu.isNull() && scenarioMenu->isEnabled();

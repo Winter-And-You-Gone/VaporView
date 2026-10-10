@@ -252,3 +252,9 @@ ctest --test-dir build/Release --build-config Release --output-on-failure --time
 | `main_window_map3d_open_test` | `map title switches immediately` |
 
 `update_relauncher_elevated_parent_test` 在当前非提权环境跳过。实机 USB、Cypress SDK 编译/驱动分支、数传无线吞吐、模拟输出、物理校准和拔插均未验证；RTCM/EPSILON 高级参数等无 VLP1 下行定义的功能明确返回 Unsupported。部署步骤、带宽及地面/天空保存边界见 `fpga_sky_topology.md`，接板验收见 `fpga_hardware_validation.md`。构建日志、截图、现场 Session 和含凭据生成物不纳入 Git。
+
+## 13. FPGA 页面界面测试覆盖（2026-10-11）
+
+主窗口“界面测试模式”现在会同时驱动独立 FPGA 页面，便于在没有板卡和实测数据时检查正常运行布局。进入模式后，页面显示模拟连接/就绪状态、PTB210（默认气压源）、EPSILON、SHT45、TFA1500、AI8 读数，ADC 与 DLIA 完整波形，寄存器读回、记录状态和诊断消息；数据随界面测试刷新周期更新。界面测试场景菜单还覆盖 FPGA 的部分设备异常和数据停更状态，分别显示离线/无效样本与不完整波形。
+
+界面测试中的 FPGA 连接、断开、采集、波形/DAC、传感器启停、RAW、设温、记录、回放和导出操作均被拦截，只在诊断区记录“不会写入硬件”的提示。退出模式会清空模拟传感器、波形、寄存器、记录和诊断内容，并恢复离线页面状态。覆盖由 `fpga_control_page_test`、`fpga_main_window_test` 和 `ui_test_mode_window_test` 验证；这些测试只验证软件渲染与行为，不替代板卡联调。

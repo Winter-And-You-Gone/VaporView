@@ -29,6 +29,7 @@
 #include <QVBoxLayout>
 #include <QtEndian>
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <type_traits>
 
@@ -443,3 +444,155 @@ void FpgaControlPage::setTheme(bool dark,int fontScalePercent){
     updateTopLevelCardShadows(this,scale);update();
 }
 void FpgaControlPage::setRecordingState(bool active,const QString &detail){recording_=active;recordingDetail_=detail;record_->setText(text(active?"停止记录":"开始记录",active?"Stop recording":"Start recording"));recordStatus_->setText(text(active?"正在记录":"未记录",active?"Recording":"Not recording")+(detail.isEmpty()?QString():" · "+detail));updateActions();}
+void FpgaControlPage::setUiTestState(bool enabled, bool dataStalled, bool partialFailure, qint64 elapsedMs)
+{
+    setProperty("fpgaUiTestMode", enabled);
+    if (!enabled)
+    {
+        latestReadings_.clear();
+        latestWaves_.clear();
+        historicalReadings_.clear();
+        historicalWaves_.clear();
+        readingTimes_.clear();
+        waveTimes_.clear();
+        for (auto *label : sensorLabels_)
+            label->setText(text("等待有效样本", "Waiting for valid sample"));
+        for (auto *label : waveLabels_)
+            label->setText(text("等待波形 · ADC 原码 / 解调数字幅值",
+                                "Waiting for waveform · ADC raw / demodulation digital amplitude"));
+        for (auto *plotWidget : plots_)
+        {
+            auto *plot = static_cast<SamplePlot *>(plotWidget);
+            plot->samples.clear();
+            plot->setProperty("sampleCount", 0);
+            plot->update();
+        }
+        for (auto *label : hardwareLabels_)
+            label->setText(QStringLiteral("—"));
+        if (diagnostics_)
+            diagnostics_->clear();
+        setTransportConnected(false);
+        setConnectionState(false, false);
+        setRecordingState(false);
+        return;
+    }
+
+    const double seconds = std::max<qint64>(0, elapsedMs) / 1000.0;
+    const bool live = !dataStalled;
+    const quint64 timestamp = static_cast<quint64>(std::max<qint64>(1, elapsedMs)) * 1000;
+    setTransportConnected(true);
+    setConnectionState(true, false,
+                       text("界面测试数据 · 不会写入硬件",
+                            "UI test data · hardware writes disabled"));
+
+    const auto makeReading = [this, timestamp, live, partialFailure](
+                                  quint16 source, VaporView::FpgaSensor::SensorKind kind) {
+        VaporView::FpgaSensor::Reading reading;
+        reading.source = source;
+        reading.kind = kind;
+        reading.message = 0x1100;
+        reading.schema = kind == VaporView::FpgaSensor::SensorKind::Ai8 ? 2 : 1;
+        reading.timestamp = timestamp;
+        reading.flags = 0x01;
+        reading.validity.structure = true;
+        reading.validity.crc = true;
+        reading.validity.deviceOnline = live && !(partialFailure &&
+            (source == 0x40 || source == 0x44));
+        reading.validity.measurement = reading.validity.deviceOnline;
+        return reading;
+    };
+
+    auto ptb = makeReading(0x40, VaporView::FpgaSensor::SensorKind::Ptb210);
+    ptb.pressureMilliPa = qint32(101325000.0 + std::sin(seconds * 0.7) * 28000.0);
+    ptb.pressurePa = *ptb.pressureMilliPa / 1000.0;
+    updateSensor(ptb);
+
+    auto epsilon = makeReading(0x42, VaporView::FpgaSensor::SensorKind::Epsilon);
+    epsilon.epsilonMessageId = quint8(0x50);
+    epsilon.epsilonSequence = quint8(static_cast<int>(seconds * 10.0) & 0xff);
+    epsilon.epsilonData = QByteArrayLiteral("UI-TEST-EPSILON");
+    updateSensor(epsilon);
+
+    auto sht = makeReading(0x44, VaporView::FpgaSensor::SensorKind::Sht45);
+    sht.temperatureC = 23.5 + std::sin(seconds * 0.45) * 0.8;
+    sht.humidityPct = 47.0 + std::cos(seconds * 0.35) * 2.0;
+    sht.heaterMode = 0;
+    updateSensor(sht);
+
+    auto tfa = makeReading(0x45, VaporView::FpgaSensor::SensorKind::Tfa1500);
+    tfa.distanceMm = quint32(120000.0 + std::sin(seconds * 0.25) * 2400.0);
+    updateSensor(tfa);
+
+    auto ai8 = makeReading(0x46, VaporView::FpgaSensor::SensorKind::Ai8);
+    ai8.ai8PvRaw = qint32(235 + std::sin(seconds * 0.4) * 8.0);
+    ai8.ai8SpRaw = qint32(240);
+    ai8.ai8Alarm = 0;
+    ai8.ai8Host = 1;
+    ai8.ai8DeviceStatus = 1;
+    ai8.ai8DeviceError = 0;
+    ai8.ai8SampleCounter = quint32(seconds * 5.0);
+    updateSensor(ai8);
+
+    auto appendWord = [](QByteArray &bytes, qint32 value) {
+        const quint32 word = quint32(value);
+        for (int byte = 0; byte < 4; ++byte)
+            bytes.append(char(word >> (byte * 8)));
+    };
+    VaporView::FpgaWave::CompletedStream adc;
+    adc.source = 0x20;
+    adc.message = 0x1000;
+    adc.schema = 2;
+    adc.format = 0;
+    adc.rate = 1000000;
+    adc.totalPoints = 128;
+    adc.bytesPerPoint = 4;
+    adc.adcBits = 24;
+    adc.complete = live;
+    adc.partial = !live;
+    for (quint32 point = 0; point < adc.totalPoints; ++point)
+        appendWord(adc.pointBytes, qint32(std::sin(seconds * 2.0 + point * 0.16) * 900000.0));
+    updateWaveform(adc);
+
+    VaporView::FpgaWave::CompletedStream dlia;
+    dlia.source = 0x30;
+    dlia.message = 0x1001;
+    dlia.schema = 2;
+    dlia.format = 2;
+    dlia.rate = 10000;
+    dlia.totalPoints = 96;
+    dlia.bytesPerPoint = 24;
+    dlia.complete = live;
+    dlia.partial = !live;
+    for (quint32 point = 0; point < dlia.totalPoints; ++point)
+    {
+        const double phase = seconds * 1.4 + point * 0.22;
+        const qint32 i1 = qint32(std::sin(phase) * 700000.0);
+        const qint32 q1 = qint32(std::cos(phase) * 500000.0);
+        const qint32 i2 = qint32(std::sin(phase * 2.0) * 300000.0);
+        const qint32 q2 = qint32(std::cos(phase * 2.0) * 240000.0);
+        appendWord(dlia.pointBytes, i1);
+        appendWord(dlia.pointBytes, q1);
+        appendWord(dlia.pointBytes, i2);
+        appendWord(dlia.pointBytes, q2);
+        appendWord(dlia.pointBytes, i1 / 3);
+        appendWord(dlia.pointBytes, q1 / 3);
+    }
+    updateWaveform(dlia);
+
+    setHardwareValues({
+        {0x2008, live ? 0x13u : 0x80u}, {0x3008, live ? 0x13u : 0x80u},
+        {0x4008, live ? 0x13u : 0x80u}, {0x5008, live ? 0x13u : 0x80u},
+        {0x4014, 1000000u}, {0x5014, 10000u}});
+    setRecordingState(true, text("UI-TEST-FPGA · 传感器/DLIA 已记录，RAW 按需",
+                                "UI-TEST-FPGA · sensors/DLIA recording, RAW on demand"));
+    if (diagnostics_)
+    {
+        diagnostics_->setPlainText(text(
+            dataStalled ? "[界面测试] FPGA 数据停更：保留最后周期并标记为异常。"
+                        : partialFailure ? "[界面测试] FPGA 部分设备异常：PTB210/SHT45 离线。"
+                        : "[界面测试] FPGA 正常运行：PTB210、SHT45、TFA1500、AI8、ADC、DLIA 已模拟。",
+            dataStalled ? "[UI test] FPGA data stalled: last cycle retained and marked invalid."
+                        : partialFailure ? "[UI test] FPGA partial failure: PTB210/SHT45 offline."
+                        : "[UI test] FPGA normal operation: PTB210, SHT45, TFA1500, AI8, ADC and DLIA simulated."));
+    }
+}

@@ -34,6 +34,8 @@ public:
     void setLanguage(bool english);
     void setTheme(bool dark, int fontScalePercent = 100);
     void setRecordingState(bool active, const QString &detail = {});
+    void setUiTestState(bool enabled, bool dataStalled = false,
+                        bool partialFailure = false, qint64 elapsedMs = 0);
 signals:
     void connectRequested(const QString &locator, const QString &backend);
     void disconnectRequested();

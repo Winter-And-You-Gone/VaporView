@@ -1,4 +1,5 @@
 #include "ground/main/GroundMainWindowImplementation.h"
+#include "ground/devices/UiTestDataModel.h"
 #include <QFileDialog>
 #include <QJsonDocument>
 #include "FpgaTelemetry.h"
@@ -37,8 +38,22 @@ void MainWindow::setupFpgaControlPage()
         if (isRemoteSkyMode()) sendRemoteFpgaControl(request);
         else QMetaObject::invokeMethod(controller, std::move(local), Qt::QueuedConnection);
     };
+    const auto blockUiTest = [this]() {
+        if (!isUiTestMode()) return false;
+        state_->fpga_page_->appendDiagnostic(state_->is_english_
+            ? QStringLiteral("[UI test] FPGA command ignored; hardware writes are disabled.")
+            : QStringLiteral("[界面测试] FPGA 操作已忽略；界面测试不会写入硬件。"));
+        return true;
+    };
 
     connect(page, &FpgaControlPage::connectRequested, this, [this, controller](const QString &locator, const QString &backend) {
+        if (isUiTestMode())
+        {
+            state_->fpga_page_->appendDiagnostic(state_->is_english_
+                ? QStringLiteral("[UI test] FPGA connect ignored; hardware writes are disabled.")
+                : QStringLiteral("[界面测试] FPGA 连接已忽略；界面测试不会访问硬件。"));
+            return;
+        }
         if (isRemoteSkyMode())
         {
             sendRemoteFpgaControl({{"op", "connect"}, {"locator", locator}, {"backend", backend}});
@@ -54,13 +69,16 @@ void MainWindow::setupFpgaControlPage()
         }
         QMetaObject::invokeMethod(controller, [controller, locator, backend] { controller->connectDevice(locator,backend); }, Qt::QueuedConnection);
     });
-    connect(page, &FpgaControlPage::disconnectRequested, this, [dispatch, controller] {
+    connect(page, &FpgaControlPage::disconnectRequested, this, [dispatch, controller, blockUiTest] {
+        if (blockUiTest()) return;
         dispatch({{"op", "disconnect"}}, [controller] { controller->disconnectDevice(); });
     });
-    connect(page, &FpgaControlPage::applyRequested, this, [dispatch, controller](const FpgaControlConfig& config) {
+    connect(page, &FpgaControlPage::applyRequested, this, [dispatch, controller, blockUiTest](const FpgaControlConfig& config) {
+        if (blockUiTest()) return;
         dispatch({{"op", "configure"}, {"configuration", config.toJson()}}, [controller, config] { controller->applyConfiguration(config); });
     });
     connect(page, &FpgaControlPage::configurationChanged, this, [this, controller](const FpgaControlConfig &config) {
+        if (isUiTestMode()) return;
         if (isRemoteSkyMode())
         {
             state_->fpga_remote_config_ = config;
@@ -81,32 +99,53 @@ void MainWindow::setupFpgaControlPage()
             onRefreshTimer();
         }
     });
-    connect(page, &FpgaControlPage::refreshRequested, this, [dispatch, controller] {
+    connect(page, &FpgaControlPage::refreshRequested, this, [dispatch, controller, blockUiTest] {
+        if (blockUiTest()) return;
         dispatch({{"op", "refresh"}}, [controller] { controller->refresh(); });
     });
-    connect(page, &FpgaControlPage::acquisitionRequested, this, [dispatch, controller](bool enabled) {
+    connect(page, &FpgaControlPage::acquisitionRequested, this, [dispatch, controller, blockUiTest](bool enabled) {
+        if (blockUiTest()) return;
         dispatch({{"op", "acquisition"}, {"enabled", enabled}}, [controller, enabled] { controller->setAcquisition(enabled); });
     });
-    connect(page, &FpgaControlPage::waveformRequested, this, [dispatch, controller](int channel, bool enabled) {
+    connect(page, &FpgaControlPage::waveformRequested, this, [dispatch, controller, blockUiTest](int channel, bool enabled) {
+        if (blockUiTest()) return;
         dispatch({{"op", "wms"}, {"channel", channel}, {"enabled", enabled}}, [controller, channel, enabled] { controller->setWaveform(channel, enabled); });
     });
-    connect(page, &FpgaControlPage::dacRequested, this, [dispatch, controller](int channel, bool enabled) {
+    connect(page, &FpgaControlPage::dacRequested, this, [dispatch, controller, blockUiTest](int channel, bool enabled) {
+        if (blockUiTest()) return;
         dispatch({{"op", "dac"}, {"channel", channel}, {"enabled", enabled}}, [controller, channel, enabled] { controller->setDac(channel, enabled); });
     });
-    connect(page, &FpgaControlPage::sensorEnableRequested, this, [dispatch, controller](quint16 source, bool enabled) {
+    connect(page, &FpgaControlPage::sensorEnableRequested, this, [dispatch, controller, blockUiTest](quint16 source, bool enabled) {
+        if (blockUiTest()) return;
         dispatch({{"op", "sensor"}, {"source", source}, {"enabled", enabled}}, [controller, source, enabled] { controller->setSensorEnabled(source, enabled); });
     });
-    connect(page, &FpgaControlPage::rawRequested, this, [dispatch, controller](bool enabled) {
+    connect(page, &FpgaControlPage::rawRequested, this, [dispatch, controller, blockUiTest](bool enabled) {
+        if (blockUiTest()) return;
         dispatch({{"op", "raw"}, {"enabled", enabled}}, [controller, enabled] { controller->setRawEnabled(enabled); });
     });
-    connect(page, &FpgaControlPage::setTemperatureRequested, this, [dispatch, controller](double celsius) {
+    connect(page, &FpgaControlPage::setTemperatureRequested, this, [dispatch, controller, blockUiTest](double celsius) {
+        if (blockUiTest()) return;
         dispatch({{"op", "temperature"}, {"celsius", celsius}}, [controller, celsius] { controller->setTemperature(celsius); });
     });
     connect(page, &FpgaControlPage::recordingRequested, this, [this](bool enable) {
+        if (isUiTestMode())
+        {
+            state_->fpga_page_->appendDiagnostic(state_->is_english_
+                ? QStringLiteral("[UI test] FPGA recording command ignored; simulated recording remains active.")
+                : QStringLiteral("[界面测试] FPGA 记录操作已忽略；模拟记录保持运行。"));
+            return;
+        }
         if (enable) onStartRecordingClicked(); else onStopRecordingClicked();
         updateRecordingStatusLabel();
     });
     connect(page, &FpgaControlPage::replayRequested, this, [this, controller](const QString &requested) {
+        if (isUiTestMode())
+        {
+            state_->fpga_page_->appendDiagnostic(state_->is_english_
+                ? QStringLiteral("[UI test] FPGA replay ignored.")
+                : QStringLiteral("[界面测试] FPGA 回放操作已忽略。"));
+            return;
+        }
         if (state_->fpga_connected_ || state_->fpga_busy_ || state_->fpga_replaying_ || anyLocalDeviceConnected() || isRemoteSkyMode())
         { state_->fpga_page_->appendDiagnostic(state_->is_english_ ? QStringLiteral("Disconnect live sources before offline replay.") : QStringLiteral("离线回放前请断开所有实时数据源。")); return; }
         QString directory = requested;
@@ -116,6 +155,13 @@ void MainWindow::setupFpgaControlPage()
         QMetaObject::invokeMethod(controller, [controller, directory] { controller->replaySession(directory); }, Qt::QueuedConnection);
     });
     connect(page, &FpgaControlPage::exportRequested, this, [this, controller](const QString &requested) {
+        if (isUiTestMode())
+        {
+            state_->fpga_page_->appendDiagnostic(state_->is_english_
+                ? QStringLiteral("[UI test] FPGA export ignored.")
+                : QStringLiteral("[界面测试] FPGA 导出操作已忽略。"));
+            return;
+        }
         QString directory = requested;
         if (directory.isEmpty()) directory = QFileDialog::getExistingDirectory(this, state_->is_english_ ? QStringLiteral("Select complete session directory") : QStringLiteral("选择完整会话目录"), state_->recording_directory_);
         if (directory.isEmpty()) return;
@@ -357,6 +403,16 @@ void MainWindow::receiveRemoteFpgaStatus(const QJsonObject& status)
 void MainWindow::updateFpgaPageBackend()
 {
     if (!state_->fpga_page_) return;
+    if (isUiTestMode() && state_->ui_test_model_)
+    {
+        const qint64 elapsed = QDateTime::currentMSecsSinceEpoch() - state_->ui_test_started_ms_;
+        const auto scenario = state_->ui_test_model_->scenario();
+        const bool stalled = scenario == VaporView::Ground::Devices::UiTestScenario::DataStalled;
+        state_->fpga_page_->setUiTestState(
+            true, stalled,
+            scenario == VaporView::Ground::Devices::UiTestScenario::PartialFailure, elapsed);
+        return;
+    }
     if (!isRemoteSkyMode()) {
         state_->fpga_page_->setTransportConnected(state_->fpga_connected_);
         state_->fpga_page_->setConnectionState(state_->fpga_ready_, state_->fpga_busy_, state_->is_english_
