@@ -91,6 +91,28 @@ void expiredWaveformsVisible(){
     session.poll();require(evidence.size()==1&&evidence.front().cycleId==1&&evidence.front().partial,"new cycles publish oldest missing-cycle evidence before disconnect");
     session.flushWaveforms();require(evidence.size()==5,"explicit drain publishes remaining partial cycles");session.close();require(evidence.size()==5,"close after explicit drain never double counts");
 }
+void boundedReadRetry(){
+    auto recoveredWire=std::make_unique<FpgaUsbReplayTransport>();auto *recovered=recoveredWire.get();
+    auto missingWire=std::make_unique<FpgaUsbReplayTransport>();auto *missing=missingWire.get();
+    auto writeWire=std::make_unique<FpgaUsbReplayTransport>();auto *written=writeWire.get();
+    FpgaDeviceSession recoverSession(std::move(recoveredWire)),missingSession(std::move(missingWire)),writeSession(std::move(writeWire));
+    require(recoverSession.open()&&missingSession.open()&&writeSession.open(),"open timeout fixtures");
+    int completions=0,readTimeouts=0,writeTimeouts=0;
+    QObject::connect(&recoverSession,&FpgaDeviceSession::commandCompleted,[&](quint32,quint16,bool ok,quint32,const QByteArray&){require(ok,"retried read is valid");++completions;});
+    QObject::connect(&missingSession,&FpgaDeviceSession::commandTimedOut,[&](quint32,quint16){++readTimeouts;});
+    QObject::connect(&writeSession,&FpgaDeviceSession::commandTimedOut,[&](quint32,quint16){++writeTimeouts;});
+    const auto seq=recoverSession.readRegisters(0x6600,1);missingSession.readRegisters(0x6600,1);
+    writeSession.writeRegisters(0x2004,{1});
+    const auto readBytes=recovered->writtenBytes(),writeBytes=written->writtenBytes();
+    QThread::msleep(10020);
+    recoverSession.poll();missingSession.poll();writeSession.poll();
+    require(recovered->writtenBytes()==readBytes+readBytes,"missing register response repeats only the original read");
+    require(written->writtenBytes()==writeBytes&&writeTimeouts==1,"uncertain write reports timeout without replay");
+    recovered->appendIncoming(frame(FpgaVlp1::FrameType::Response,seq,1,2,registers(0x6600,1,{0x00460200})));
+    recoverSession.poll();require(completions==1,"read response accepted after one retry");
+    QThread::msleep(10020);missingSession.poll();
+    require(readTimeouts==1&&missing->writtenBytes()==readBytes+readBytes,"missing read fails after one retry rather than retrying forever");
+}
 void transportErrorRetainsDetail(){
     class FailedRead final : public FpgaUsbTransport {
     public:
@@ -132,5 +154,5 @@ int main(int argc,char **argv){
         require(completed==3 && session.capabilities().valid,"PING, capabilities and register read complete");
         session.close();std::puts("hardware session probe passed");return 0;
     }
-    validContinuousResponses();semanticRejections();partialWaveformsSurviveClose();expiredWaveformsVisible();transportErrorRetainsDetail();std::puts("fpga_device_session_test passed; software fixtures only");return 0;
+    validContinuousResponses();semanticRejections();partialWaveformsSurviveClose();expiredWaveformsVisible();transportErrorRetainsDetail();boundedReadRetry();std::puts("fpga_device_session_test passed; software fixtures only");return 0;
 }

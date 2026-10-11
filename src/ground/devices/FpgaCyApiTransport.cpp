@@ -22,6 +22,7 @@ struct FpgaCyApiTransport::Impl
     OVERLAPPED readOverlapped{};
     PUCHAR readContext = nullptr;
     ULONG readBeginError = ERROR_SUCCESS;
+    unsigned cancelledReads = 0;
 
     void cancelRead()
     {
@@ -121,6 +122,7 @@ void FpgaCyApiTransport::close()
 {
 #if defined(Q_OS_WIN) && defined(VAPORVIEW_HAS_CYAPI)
     impl_->cancelRead();
+    impl_->cancelledReads = 0;
     if (impl_->device) impl_->device->Close();
     impl_->device.reset();
     impl_->in = nullptr;
@@ -154,6 +156,7 @@ qint64 FpgaCyApiTransport::read(QByteArray &destination, qint64 maxBytes)
             fail(QStringLiteral("Cypress bulk IN event creation failed (%1)").arg(GetLastError()));
             return -1;
         }
+        SetLastError(ERROR_SUCCESS);
         impl_->readContext = endpoint->BeginDataXfer(reinterpret_cast<PUCHAR>(impl_->readBuffer.data()),
                                                    LONG(maxBytes), &impl_->readOverlapped);
         impl_->readBeginError = endpoint->LastError;
@@ -168,21 +171,34 @@ qint64 FpgaCyApiTransport::read(QByteArray &destination, qint64 maxBytes)
         return -1;
     }
     LONG length = LONG(impl_->readBuffer.size());
+    SetLastError(ERROR_SUCCESS);
     const bool finished = impl_->readContext && endpoint->FinishDataXfer(
         reinterpret_cast<PUCHAR>(impl_->readBuffer.data()), length, &impl_->readOverlapped, impl_->readContext);
+    const DWORD completionError = finished ? ERROR_SUCCESS : GetLastError();
     impl_->readContext = nullptr;
     CloseHandle(impl_->readOverlapped.hEvent);
     impl_->readOverlapped = {};
     if (!finished)
     {
+        // A cancelled, empty IN request can be rearmed without replaying any
+        // command. Keep this bounded until real data arrives; removal, stalls
+        // and partial transfers must still fail rather than hide data loss.
+        if (length == 0 && endpoint->NtStatus == 0xc0000120UL
+            && endpoint->UsbdStatus == 0xc0010000UL && ++impl_->cancelledReads <= 3) {
+            const auto key = QStringLiteral("cancelled_read_retries");
+            diagnostic_.fields.insert(key, diagnostic_.fields.value(key).toULongLong() + 1);
+            impl_->readBuffer.clear();
+            return 0;
+        }
         fail(QStringLiteral("Cypress bulk IN failed (Win32=%1, NT=0x%2, USBD=0x%3, bytes=%4)")
-                 .arg(beginError).arg(endpoint->NtStatus, 8, 16, QLatin1Char('0'))
+                 .arg(completionError).arg(endpoint->NtStatus, 8, 16, QLatin1Char('0'))
                  .arg(endpoint->UsbdStatus, 8, 16, QLatin1Char('0')).arg(length));
         return -1;
     }
     if (length < 0 || length > impl_->readBuffer.size() || length > maxBytes) {
         fail(QStringLiteral("Cypress invalid read length")); return -1;
     }
+    if (length) impl_->cancelledReads = 0;
     destination = impl_->readBuffer.left(length);
     impl_->readBuffer.clear();
     diagnostic_.bytesRead += quint64(length);

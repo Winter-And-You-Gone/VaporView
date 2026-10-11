@@ -178,6 +178,21 @@ void FpgaDeviceSession::poll()
     if (pendingCommand_ && pendingCommand_->timer.elapsed() > commandTimeoutMs_)
     {
         const auto command = pendingCommand_->command;
+        // A cancelled USB IN can lose a response. Only register reads are safe
+        // to repeat; never replay a write whose execution is unknown.
+        if (command.message == kReadRegister && !pendingCommand_->readRetried) {
+            pendingCommand_->readRetried = true;
+            if (transport_->write(command.bytes) != command.bytes.size()) {
+                pendingCommand_.reset();
+                const QString message = QStringLiteral("FPGA register read retry failed");
+                setState(FpgaSessionState::Error, message);
+                emit errorOccurred(message);
+                return;
+            }
+            pendingCommand_->timer.restart();
+            emit commandSent(command.bytes);
+            return;
+        }
         pendingCommand_.reset();
         emit commandTimedOut(command.sequence, command.message);
         dispatchNext();

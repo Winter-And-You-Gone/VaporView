@@ -123,6 +123,7 @@ private:
     {
         QueuedCommand command;
         QElapsedTimer timer;
+        bool readRetried = false;
     };
 
     quint32 enqueue(quint16 source, quint16 message,

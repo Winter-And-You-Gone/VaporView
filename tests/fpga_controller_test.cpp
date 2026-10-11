@@ -243,6 +243,9 @@ int main(int argc,char **argv){
     QCoreApplication app(argc,argv);
     if(app.arguments().contains("--hardware-probe")) {
         FpgaDeviceController controller;
+        const int durationIndex=app.arguments().indexOf("--hardware-duration-ms");
+        const int durationMs=durationIndex>=0?app.arguments().value(durationIndex+1).toInt():6000;
+        require(durationMs>0,"positive hardware probe duration");
         QString error;
         QObject::connect(&controller,&FpgaDeviceController::logRecordGenerated,[&](const LogRecord &record){
             if(record.level>=LogLevel::Error) error=record.message;
@@ -255,10 +258,16 @@ int main(int argc,char **argv){
             waitUntil([&]{return !controller.busy();},"hardware connection handshake finishes");
             require(error.isEmpty() && controller.ready(),"real board passes complete UI connection handshake");
             QElapsedTimer timer;timer.start();
-            while(timer.elapsed()<6000 && error.isEmpty()) {
+            while(timer.elapsed()<durationMs && error.isEmpty()) {
                 QCoreApplication::processEvents(QEventLoop::AllEvents,10);QThread::msleep(1);
             }
             require(error.isEmpty() && controller.ready(),"idle polling and periodic register refresh remain connected");
+            const auto diagnostic=controller.findChild<FpgaDeviceSession*>()->transport()->diagnostic();
+            std::printf("hardware idle %d ms: cancelled read retries=%llu, bytes=%llu\n",durationMs,
+                diagnostic.fields.value("cancelled_read_retries").toULongLong(),diagnostic.bytesRead);
+            controller.refresh();
+            waitUntil([&]{return !controller.busy();},"readback after extended idle finishes");
+            require(error.isEmpty() && controller.ready(),"readback still succeeds after extended idle");
             controller.disconnectDevice();
         }
         std::puts("hardware controller connect/idle/reconnect probe passed");return 0;
