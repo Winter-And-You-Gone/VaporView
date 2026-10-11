@@ -159,7 +159,6 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     disconnect_=connectionAction("fpgaDisconnect","unlink","断开","Disconnect");
     status_=new ConnectionStatusLabel(connectionHeader); status_->setObjectName("fpgaConnectionStatus");
     cl->addWidget(locator_,3); cl->addWidget(backend_,1); cl->addWidget(discover_); cl->addWidget(connect_); cl->addWidget(disconnect_);
-    cl->addStretch();
     connectionHeaderLayout->addSpacing(12); connectionHeaderLayout->addWidget(discoveryStatus_,1); connectionHeaderLayout->addWidget(status_,2);
     setTabOrder(locator_,backend_); setTabOrder(backend_,discover_); setTabOrder(discover_,connect_); setTabOrder(connect_,disconnect_);
     connect(discover_,&QAbstractButton::clicked,this,&FpgaControlPage::requestUsbDiscovery);
@@ -609,8 +608,8 @@ void FpgaControlPage::setTheme(bool dark,int fontScalePercent){
         "QWidget#fpgaControlPage QPushButton[fpgaIconOnly=\"true\"]:focus { border-color: @vv-focus; }"
         "QWidget#fpgaControlPage QPushButton[fpgaIconOnly=\"true\"]:disabled { background-color: transparent; border-color: transparent; }")
         .arg(pixels(40)).arg(pixels(16)).arg(pixels(12)).arg(pixels(36)).arg(pixels(40)-2),dark));
-    locator_->setMinimumWidth(pixels(200)); locator_->setMaximumWidth(pixels(480)); locator_->setFixedHeight(pixels(40));
-    backend_->setMinimumWidth(pixels(104)); backend_->setMaximumWidth(pixels(180)); backend_->setFixedHeight(pixels(40));
+    locator_->setMinimumWidth(pixels(200)); locator_->setMaximumWidth(QWIDGETSIZE_MAX); locator_->setFixedHeight(pixels(40));
+    backend_->setMinimumWidth(pixels(104)); backend_->setMaximumWidth(QWIDGETSIZE_MAX); backend_->setFixedHeight(pixels(40));
     for (auto *button : {discover_,connect_,disconnect_}) {
         button->setFixedSize(pixels(40),pixels(40)); button->setIconSize(QSize(pixels(20),pixels(20)));
         QFile file(QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/lucide/%1.svg").arg(button->property("fpgaIconName").toString())));

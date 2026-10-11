@@ -204,7 +204,7 @@ int main(int argc,char **argv) {
             require(status->geometry().left()>previousRight&&status->geometry().right()<connectionHeader->width(),"title-bar status labels stay ordered without overlap or overflow");
             previousRight=status->geometry().right();
         }
-        require(devices->width()<=qRound(480*scale/100.0)&&backend->width()<devices->width(),"device and backend selectors expand within their width limits");
+        require(backend->width()<devices->width(),"device selector receives more available width than backend");
         for(auto *button : {scan,connect,disconnect}) {
             require(button->text().isEmpty()&&!button->icon().isNull(),"connection actions render only their icons");
             require(button->width()==button->height()&&button->width()>=40,"icon actions retain square clickable targets");

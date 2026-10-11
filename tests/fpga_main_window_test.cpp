@@ -17,6 +17,7 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QLabel>
+#include <QLayout>
 #include <QPointer>
 #include <QPlainTextEdit>
 #include <QStackedWidget>
@@ -35,6 +36,8 @@ static void verifyConnectionCard(FpgaControlPage *page,int scale)
         auto *button=page->findChild<QAbstractButton*>(name);
         require(button&&button->size()==QSize(side,side),"main-window FPGA icon actions retain square dimensions after global styles");
     }
+    auto *disconnect=page->findChild<QAbstractButton*>("fpgaDisconnect");
+    require(disconnect->geometry().right()==disconnect->parentWidget()->layout()->contentsRect().right(),"FPGA connection controls fill the card to its right content edge");
     auto *discovery=page->findChild<QLabel*>("fpgaDiscoveryStatus");
     auto *status=page->findChild<QLabel*>("fpgaConnectionStatus");
     require(discovery&&status&&discovery->parentWidget()==status->parentWidget()
