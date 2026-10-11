@@ -120,6 +120,19 @@ AppStyleSheetController *appStyleSheetController()
 class ButtonFocusStyle final : public QProxyStyle
 {
 public:
+    int pixelMetric(PixelMetric metric, const QStyleOption *option = nullptr,
+                    const QWidget *widget = nullptr) const override
+    {
+        // Qt 6.10's Windows 11 style passes pixel-font pointSize() (-1) to
+        // QFont::setPointSize when measuring a combo arrow. Use its supported
+        // widget-less metric fallback; keep the widget font and inheritance.
+        if (metric == PM_MenuButtonIndicator && qobject_cast<const QComboBox *>(widget)
+            && widget->font().pointSize() <= 0
+            && baseStyle()->objectName() == QStringLiteral("windows11"))
+            return QProxyStyle::pixelMetric(metric, option, nullptr);
+        return QProxyStyle::pixelMetric(metric, option, widget);
+    }
+
     void drawPrimitive(PrimitiveElement element, const QStyleOption *option,
                        QPainter *painter, const QWidget *widget = nullptr) const override
     {

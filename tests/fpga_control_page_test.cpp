@@ -1,5 +1,6 @@
 #include "test_settings_sandbox.h"
 #include "ground/widgets/FpgaControlPage.h"
+#include "shared/theme/AppTheme.h"
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
@@ -14,12 +15,18 @@
 #include <cstdlib>
 
 namespace {
+int invalidFontWarnings=0;
+void captureFontWarning(QtMsgType, const QMessageLogContext&, const QString& message) {
+    if(message.contains("QFont::setPointSize")&&message.contains("<= 0"))++invalidFontWarnings;
+}
+
 void require(bool value, const char *message) {
     if (!value) { std::fprintf(stderr,"FAIL: %s\n",message); std::exit(1); }
 }
 }
 int main(int argc,char **argv) {
     QApplication app(argc,argv);
+    VaporView::installButtonFocusStyle();
     FpgaControlPage page;
     auto *devices=page.findChild<QComboBox*>("fpgaLocator");
     auto *scan=page.findChild<QPushButton*>("fpgaDiscover");
@@ -139,5 +146,21 @@ int main(int argc,char **argv) {
         }
     }
     page.setFont(app.font());page.setTheme(false);page.setLanguage(false);
+    page.findChild<QTabWidget*>()->setCurrentIndex(2);
+    require(component,"DLIA component selector exists");
+    const auto previousHandler=qInstallMessageHandler(captureFontWarning);
+    const auto originalFont=component->font();
+    const auto originalTheme=app.property(VaporView::kAppDarkThemeProperty);
+    for(bool dark:{false,true}) for(int pixels:{16,24}) {
+        app.setProperty(VaporView::kAppDarkThemeProperty,dark);
+        page.setTheme(dark,pixels==16?100:150);
+        QFont pixelFont=originalFont;pixelFont.setPixelSize(pixels);component->setFont(pixelFont);
+        for(int i=0;i<3;++i){component->showPopup();app.processEvents();component->hidePopup();app.processEvents();}
+        require(component->font().pixelSize()==pixels,"popup workaround preserves pixel font size and scaling");
+    }
+    qInstallMessageHandler(previousHandler);
+    require(invalidFontWarnings==0,"opening H1/H2 popup with pixel font never sets invalid point size");
+    app.setProperty(VaporView::kAppDarkThemeProperty,originalTheme);
+    component->setFont(originalFont);page.setTheme(false);
     page.close();std::puts("FPGA control page tests passed");return 0;
 }
