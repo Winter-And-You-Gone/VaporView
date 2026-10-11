@@ -422,6 +422,15 @@ void FpgaDeviceController::setSensorEnabled(quint16 source, bool enable)
 {
     if (!ready_ || source<0x40 || source>0x46 || source==0x41 || !begin(QStringLiteral("设置传感器状态"))) return;
     if (enable && !enableUpload()) return;
+    if (source==0x40 && enable && registers_.value(0x600c)) {
+        // PTB firmware marks every new pressure sample invalid while any old
+        // error is latched. Preserve evidence before acknowledging those bits;
+        // new communication failures remain visible and invalidate new data.
+        const quint32 errors=registers_.value(0x600c);
+        snapshotConfiguration();
+        report(QStringLiteral("重新启用 PTB210：清除已记录的历史锁存错误 %1，后续按新数据有效位判断。").arg(hex(errors)),LogLevel::Info);
+        write(0x600c,errors);read(0x600c);
+    }
     if (source==0x43 && enable) {
         if (registers_.value(0x6304)&1) { fail(QStringLiteral("修改 BMP 地址前请先禁用 BMP390。")); return; }
         write(0x6310,0x77); verify(0x6310,0x77);

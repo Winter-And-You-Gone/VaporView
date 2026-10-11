@@ -7,6 +7,11 @@
 #include "TelemetryCodec.h"
 #include "FpgaTelemetry.h"
 #include <QApplication>
+#include <QStyleFactory>
+#include <QTabWidget>
+#include <QScrollArea>
+#include "shared/theme/SingleLevelPopupComboBox.h"
+#include "shared/theme/SingleLevelPopupMenu.h"
 #include <QAbstractButton>
 #include <QComboBox>
 #include <QElapsedTimer>
@@ -22,6 +27,8 @@
 #include <cstdlib>
 #include <iostream>
 
+static int fontWarnings=0;
+static void captureFont(QtMsgType,const QMessageLogContext&,const QString &message){if(message.contains("QFont::setPointSize")){++fontWarnings;std::cerr<<message.toStdString()<<'\n';}}
 static void require(bool v,const char *why) { if(!v) {std::cerr<<why<<'\n';std::exit(1);} }
 template<typename Predicate> static bool waitUntil(Predicate predicate, int timeoutMs = 3000)
 {
@@ -189,6 +196,11 @@ int main(int argc,char **argv)
 {
     require(VaporViewTest::SettingsSandbox::initialized,"isolated native/INI application settings");
     QApplication app(argc,argv);
+#ifdef Q_OS_WIN
+    auto *windowsStyle=QStyleFactory::create("windows11");
+    require(windowsStyle,"Windows 11 style is available for font regression");
+    QApplication::setStyle(windowsStyle);
+#endif
     app.setOrganizationName(QStringLiteral("VaporViewFpgaTest"));
     app.setApplicationName(QStringLiteral("fpga_main_window_test"));
     QSettings native("VaporView","MainWindow");
@@ -214,6 +226,18 @@ int main(int argc,char **argv)
         require(page->configuration().pressureSource==0x43,"pressure source edits are model-backed");
         stack->setCurrentIndex(4); stack->setCurrentIndex(0); stack->setCurrentIndex(4);
         require(stack->widget(4)==page && pressure->currentData().toUInt()==0x43,"switching pages preserves editor and choice");
+        window.show();page->findChild<QTabWidget*>("fpgaTabs")->setCurrentIndex(2);processFor(100);
+        auto handler=qInstallMessageHandler(captureFont);
+        VaporView::FpgaWave::CompletedStream wave;wave.source=0x30;wave.message=0x1001;wave.format=0;wave.bytesPerPoint=8;wave.totalPoints=2;wave.rate=10000;wave.complete=true;wave.pointBytes=QByteArray(16,0);
+        page->updateWaveform(wave);
+        auto *component=static_cast<VaporView::SingleLevelPopupComboBox*>(page->findChild<QComboBox*>("fpgaWaveComponent48"));
+        static_cast<QScrollArea*>(page->findChild<QTabWidget*>("fpgaTabs")->currentWidget())->ensureWidgetVisible(component);processFor(100);
+        for(int index:{1,0,1,0}){
+            component->showPopup();processFor(50);component->popupMenu()->rows().at(index)->click();processFor(50);
+            component->hidePopup();page->updateWaveform(wave);processFor(50);
+        }
+        qInstallMessageHandler(handler);require(fontWarnings==0,"main window H2 to H1 produces no font warning");
+        window.close();
         const auto settings=VaporView::applicationConfigSettings();
         const auto saved=QJsonDocument::fromJson(settings.value(QStringLiteral("Fpga/desiredConfiguration")).toByteArray());
         require(saved.object().value("pressureSource").toInt()==0x43,"desired configuration persisted through application settings");

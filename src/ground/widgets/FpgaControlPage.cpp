@@ -456,8 +456,14 @@ void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream 
     if(!adc) {
         auto *selector=waveComponents_.value(s.source);const QSignalBlocker blocker(selector);
         const QStringList names=s.format==0?QStringList{"H1","H2"}:s.format==1?QStringList{"I1","Q1","I2","Q2"}:QStringList{"I1","Q1","I2","Q2","H1","H2"};
-        const auto selected=selector->currentText();selector->clear();for(int i=0;i<names.size();++i)selector->addItem(names[i],i);
-        selector->setCurrentIndex(qMax(0,names.indexOf(selected)));component=selector->currentData().toInt();
+        bool formatChanged=selector->count()!=names.size();
+        for(int i=0;!formatChanged && i<names.size();++i)formatChanged=selector->itemText(i)!=names[i];
+        if(formatChanged) {
+            const auto selected=selector->currentText();selector->clear();
+            for(int i=0;i<names.size();++i)selector->addItem(names[i],i);
+            selector->setCurrentIndex(qMax(0,names.indexOf(selected)));
+        }
+        component=selector->currentData().toInt();
     }
     const quint32 expectedBytes=adc?4u:s.format==0?8u:s.format==1?16u:s.format==2?24u:0u;
     if(!s.complete||s.partial||s.overflow||s.continuityError) {

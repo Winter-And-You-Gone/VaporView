@@ -2,6 +2,10 @@
 #include "ground/widgets/FpgaControlPage.h"
 #include "shared/theme/AppTheme.h"
 #include <QApplication>
+#include <QStyleFactory>
+#include <QAbstractItemModel>
+#include "shared/theme/SingleLevelPopupComboBox.h"
+#include "shared/theme/SingleLevelPopupMenu.h"
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
@@ -26,7 +30,13 @@ void require(bool value, const char *message) {
 }
 int main(int argc,char **argv) {
     QApplication app(argc,argv);
+#ifdef Q_OS_WIN
+    auto *windowsStyle=QStyleFactory::create("windows11");
+    require(windowsStyle,"Windows 11 style is available for font regression");
+    QApplication::setStyle(windowsStyle);
+#endif
     VaporView::installButtonFocusStyle();
+    VaporView::setAppStyleSheet(VaporView::startupAppThemeStyleSheet(false));
     FpgaControlPage page;
     auto *devices=page.findChild<QComboBox*>("fpgaLocator");
     auto *scan=page.findChild<QPushButton*>("fpgaDiscover");
@@ -175,7 +185,17 @@ int main(int argc,char **argv) {
         app.setProperty(VaporView::kAppDarkThemeProperty,dark);
         page.setTheme(dark,pixels==16?100:150);
         QFont pixelFont=originalFont;pixelFont.setPixelSize(pixels);component->setFont(pixelFont);
-        for(int i=0;i<3;++i){component->showPopup();app.processEvents();component->hidePopup();app.processEvents();}
+        auto pair=wave;pair.format=0;pair.bytesPerPoint=8;pair.pointBytes=wave.pointBytes.left(16);page.updateWaveform(pair);
+        int modelResets=0;
+        const auto resetConnection=QObject::connect(component->model(),&QAbstractItemModel::modelReset,[&]{++modelResets;});
+        for(int index:{0,1,0,1,0}){
+            component->showPopup();app.processEvents();
+            auto *menu=static_cast<VaporView::SingleLevelPopupComboBox*>(component)->popupMenu();
+            menu->rows().at(index)->click();app.processEvents();component->hidePopup();app.processEvents();
+            require(component->currentIndex()==index,"popup selects both H1 and H2");
+        }
+        QObject::disconnect(resetConnection);
+        require(modelResets==0,"H1/H2 selection and live samples preserve the combo model");
         require(component->font().pixelSize()==pixels,"popup workaround preserves pixel font size and scaling");
     }
     qInstallMessageHandler(previousHandler);

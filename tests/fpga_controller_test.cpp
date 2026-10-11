@@ -82,7 +82,7 @@ public:
                 append32(response,command.address);append16(response,command.count);append16(response,0);
                 for(int i=0;i<command.count;++i){const auto a=command.address+4*i;quint32 v=regs.value(a);if(pendingReads.value(a)>0){--pendingReads[a];v|=4;}append32(response,v);}
             } else if(command.message==3){
-                for(int i=0;i<command.count;++i){const auto a=command.address+4*i;const auto value=word(f.payload,8+i*4);regs[a]=value;
+                for(int i=0;i<command.count;++i){const auto a=command.address+4*i;const auto value=word(f.payload,8+i*4);regs[a]=(a==0x600c)?regs.value(a)&~value:value;
                     if((a&255)==4&&a>=0x2000&&a<=0x5104){const auto b=a&~255u;regs[b+8]=(value&1)|2;if(b==0x4000||b==0x4100)regs[b+8]|=0x10;
                         if(value&2){regs[b+0xc]=0;regs[b+4]=value&1;}
                     }
@@ -283,6 +283,21 @@ void ai8DisabledConfiguration(){
     config.ai8.channel=3;f.transport->clear();f.controller.applyConfiguration(config);f.finish();
     require(f.transport->writes().isEmpty(),"enabled AI8 configuration changes rejected before any unrelated side effects");
 }
+void ptbHistoricalErrorRecovery(){
+    Fixture f;f.transport->regs[0x600c]=5;f.connect();f.transport->clear();
+    bool evidence=false;
+    QObject::connect(&f.controller,&FpgaDeviceController::snapshot,[&](quint64,const QJsonObject &o){
+        if(o.value("hardware_registers").toObject().value("0x0000600c").toInt()==5)evidence=true;
+    });
+    f.controller.setSensorEnabled(0x40,true);f.finish();
+    require(evidence&&f.transport->regs.value(0x600c)==0,"PTB re-enable preserves evidence and acknowledges stale errors");
+    require(indexOfWrite(f.transport->commands,0x600c,5)>=0,"PTB clears only observed error bits");
+    f.transport->clear();f.controller.setSensorEnabled(0x40,false);f.finish();
+    require(indexOfWrite(f.transport->commands,0x600c,5)<0,"disable never clears diagnostic evidence");
+    f.transport->regs[0x600c]=1;f.controller.refresh();f.finish();f.transport->clear();f.transport->failWriteAddress=0x600c;
+    f.controller.setSensorEnabled(0x40,true);f.finish();
+    for(const auto &c:f.transport->commands)require(c.message!=0xb,"failed error acknowledgement aborts re-enable");
+}
 void threadCleanup(){
     QThread worker;auto *transport=new ScriptedTransport;QPointer<FpgaDeviceController> controller=new FpgaDeviceController(std::unique_ptr<FpgaUsbTransport>(transport));
     controller->moveToThread(&worker);QObject::connect(&worker,&QThread::finished,controller,&QObject::deleteLater);worker.start();
@@ -324,5 +339,5 @@ int main(int argc,char **argv){
         }
         std::puts("hardware controller connect/idle/reconnect probe passed");return 0;
     }
-    connectionAndVersions();backgroundRefresh();independentAndAcquisition();restartClearsDliaState();configurationAndFailure();scopedConfiguration();rawAndBusy();temperature();sensorUploadAndFailure();ai8DisabledConfiguration();threadCleanup();std::puts("FPGA controller tests passed");return 0;
+    connectionAndVersions();backgroundRefresh();independentAndAcquisition();restartClearsDliaState();configurationAndFailure();scopedConfiguration();rawAndBusy();temperature();sensorUploadAndFailure();ai8DisabledConfiguration();ptbHistoricalErrorRecovery();threadCleanup();std::puts("FPGA controller tests passed");return 0;
 }
