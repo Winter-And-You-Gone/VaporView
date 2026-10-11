@@ -2,6 +2,8 @@
 #include "ground/devices/UiTestDataModel.h"
 #include <QFileDialog>
 #include <QJsonDocument>
+#include <QJsonArray>
+#include <QPointer>
 #include "FpgaTelemetry.h"
 
 #ifdef VAPORVIEW_MAIN_WINDOW_TESTING
@@ -45,6 +47,22 @@ void MainWindow::setupFpgaControlPage()
             : QStringLiteral("[界面测试] FPGA 操作已忽略；界面测试不会写入硬件。"));
         return true;
     };
+
+    connect(page, &FpgaControlPage::discoverDevicesRequested, this, [this, controller, page] {
+        if (isUiTestMode()) {
+            page->setUsbDiscoveryResult({{"devices", QJsonArray{}}, {"error", QStringLiteral("UI test: USB discovery disabled")}});
+            return;
+        }
+        if (isRemoteSkyMode()) { sendRemoteFpgaControl({{"op", "discover"}}); return; }
+        const auto generation = page->usbDiscoveryGeneration();
+        QPointer<FpgaControlPage> target(page);
+        QMetaObject::invokeMethod(controller, [controller, target, generation] {
+            const auto result = controller->discoverDevices();
+            if (target) QMetaObject::invokeMethod(target, [target, generation, result] {
+                if (target && target->usbDiscoveryGeneration() == generation) target->setUsbDiscoveryResult(result);
+            }, Qt::QueuedConnection);
+        }, Qt::QueuedConnection);
+    });
 
     connect(page, &FpgaControlPage::connectRequested, this, [this, controller](const QString &locator, const QString &backend) {
         if (isUiTestMode())
@@ -318,24 +336,39 @@ void MainWindow::setupFpgaControlPage()
             || response.operation != VaporView::DeviceOperation::FpgaControl
             || response.request_id != state_->fpga_remote_request_id_) return;
         state_->fpga_remote_request_id_ = 0;
+        const bool discovery = state_->fpga_remote_operation_ == "discover";
         QJsonObject status;
-        if (VaporView::FpgaRemote::parseStatus(response.payload, status)) receiveRemoteFpgaStatus(status);
+        if (VaporView::FpgaRemote::parseStatus(response.payload, status)) {
+            receiveRemoteFpgaStatus(status);
+            if (discovery && isRemoteSkyMode() && page->usbDiscoveryGeneration() == state_->fpga_remote_discovery_generation_)
+                page->setUsbDiscoveryResult(status.contains("usb_discovery") ? status.value("usb_discovery").toObject()
+                    : QJsonObject{{"devices",QJsonArray{}},{"error",response.error_message.isEmpty()?QStringLiteral("SkyCore did not return USB discovery; update SkyCore."):response.error_message}});
+        } else if (discovery && isRemoteSkyMode() && page->usbDiscoveryGeneration() == state_->fpga_remote_discovery_generation_) {
+            page->setUsbDiscoveryResult({{"devices",QJsonArray{}},{"error",QStringLiteral("Invalid Sky USB discovery response")}});
+        }
         page->appendDiagnostic(response.error_code == VaporView::CommandErrorCode::Ok
-            ? (state_->is_english_ ? QStringLiteral("Sky FPGA operation confirmed by final readback.") : QStringLiteral("天空端 FPGA 操作已由最终读回确认。"))
+            ? (discovery ? (state_->is_english_ ? QStringLiteral("Sky USB discovery completed.") : QStringLiteral("天空端 USB 枚举完成。"))
+                : (state_->is_english_ ? QStringLiteral("Sky FPGA operation confirmed by final readback.") : QStringLiteral("天空端 FPGA 操作已由最终读回确认。")))
             : (state_->is_english_ ? QStringLiteral("Sky FPGA operation failed: ") : QStringLiteral("天空端 FPGA 操作失败：")) + response.error_message);
         updateFpgaPageBackend();
     });
     connect(remote, &Remote::deviceOperationRejected, this, [this, page](quint32 requestId, const VaporView::CommandAck& ack) {
         if (requestId != state_->fpga_remote_request_id_) return;
         state_->fpga_remote_request_id_ = 0;
+        if (state_->fpga_remote_operation_ == "discover" && isRemoteSkyMode() && page->usbDiscoveryGeneration() == state_->fpga_remote_discovery_generation_)
+            page->setUsbDiscoveryResult({{"devices",QJsonArray{}},{"error",VaporView::commandErrorCodeText(ack.error_code,state_->is_english_)}});
         page->appendDiagnostic((state_->is_english_ ? QStringLiteral("Sky rejected FPGA command: ") : QStringLiteral("天空端拒绝 FPGA 命令：")) + VaporView::commandErrorCodeText(ack.error_code, state_->is_english_));
         updateFpgaPageBackend();
     });
     connect(remote, &Remote::deviceOperationTimedOut, this, [this, page](quint32 requestId) {
         if (requestId != state_->fpga_remote_request_id_) return;
         state_->fpga_remote_request_id_ = 0;
-        page->appendDiagnostic(state_->is_english_ ? QStringLiteral("FPGA command timed out; execution is unknown. Read status before issuing another write; no automatic retry.")
-            : QStringLiteral("FPGA 命令超时，执行结果未知。再次写入前请读取状态；系统不会自动重发。"));
+        if (state_->fpga_remote_operation_ == "discover" && isRemoteSkyMode() && page->usbDiscoveryGeneration() == state_->fpga_remote_discovery_generation_)
+            page->setUsbDiscoveryResult({{"devices",QJsonArray{}},{"error",QStringLiteral("Sky USB discovery timed out")}});
+        page->appendDiagnostic(state_->fpga_remote_operation_ == "discover"
+            ? (state_->is_english_ ? QStringLiteral("Sky USB discovery timed out.") : QStringLiteral("天空端 USB 枚举超时。"))
+            : (state_->is_english_ ? QStringLiteral("FPGA command timed out; execution is unknown. Read status before issuing another write; no automatic retry.")
+                : QStringLiteral("FPGA 命令超时，执行结果未知。再次写入前请读取状态；系统不会自动重发。")));
         updateFpgaPageBackend();
     });
     connect(remote, &Remote::linkOpenChanged, this, [this](bool open) {
@@ -356,16 +389,20 @@ void MainWindow::setupFpgaControlPage()
 void MainWindow::sendRemoteFpgaControl(const QJsonObject& request)
 {
     auto *remote = state_->remote_sky_controller_.get();
+    const auto op = request.value("op").toString();
     QString error;
     if (!remote || !remote->isOpen()) {
+        if (op == "discover") state_->fpga_page_->setUsbDiscoveryResult({{"devices",QJsonArray{}},{"error",QStringLiteral("Connect to SkyCore first")}});
         state_->fpga_page_->appendDiagnostic(state_->is_english_ ? QStringLiteral("Connect to SkyCore via local IPC or the telemetry link first.")
             : QStringLiteral("请先通过本机 IPC 或数传链路连接 SkyCore。"));
         updateFpgaPageBackend();
         return;
     }
-    if (state_->fpga_remote_request_id_) return;
-    const auto op = request.value("op").toString();
-    if (op != "connect" && op != "disconnect" && op != "refresh"
+    if (state_->fpga_remote_request_id_) {
+        if (op == "discover") state_->fpga_page_->setUsbDiscoveryResult({{"devices",QJsonArray{}},{"error",QStringLiteral("Sky FPGA operation in progress; refresh devices when it completes")}});
+        return;
+    }
+    if (op != "connect" && op != "disconnect" && op != "refresh" && op != "discover"
         && (!state_->fpga_remote_status_.value("ready").toBool()
             || std::chrono::steady_clock::now() - state_->fpga_remote_status_time_ >= std::chrono::seconds(4))) {
         state_->fpga_page_->appendDiagnostic(state_->is_english_ ? QStringLiteral("Fresh Sky FPGA ready status is required before writing.")
@@ -377,6 +414,8 @@ void MainWindow::sendRemoteFpgaControl(const QJsonObject& request)
         state_->fpga_page_->appendDiagnostic(error);
         return;
     }
+    state_->fpga_remote_operation_ = op;
+    state_->fpga_remote_discovery_generation_ = state_->fpga_page_->usbDiscoveryGeneration();
     state_->fpga_remote_request_id_ = remote->sendFpgaControl(request);
     updateFpgaPageBackend();
 }
@@ -403,6 +442,8 @@ void MainWindow::receiveRemoteFpgaStatus(const QJsonObject& status)
 void MainWindow::updateFpgaPageBackend()
 {
     if (!state_->fpga_page_) return;
+    state_->fpga_page_->setUsbDiscoveryHost(isRemoteSkyMode(), !isRemoteSkyMode()
+        || (state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen()));
     state_->fpga_page_->setSensorTransportPath(currentSensorTransportPath());
     if (isUiTestMode() && state_->ui_test_model_)
     {

@@ -13,9 +13,10 @@
 #include <QFile>
 #include <QFormLayout>
 #include <QGridLayout>
+#include <QJsonArray>
+#include <QShowEvent>
 #include <QFrame>
 #include <QLabel>
-#include <QLineEdit>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPlainTextEdit>
@@ -119,14 +120,22 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     };
     auto *connection=card(this,root,QStringLiteral("FPGA 连接"),QStringLiteral("FPGA connection"),QStringLiteral("cpu"));
     auto *cl=new QGridLayout(connection);
-    locator_=new QLineEdit(connection); locator_->setObjectName("fpgaLocator"); locator_->setPlaceholderText("USB device path (optional)");
+    locator_=new VaporView::SingleLevelPopupComboBox(connection); locator_->setObjectName("fpgaLocator");
+    locator_->setMinimumContentsLength(20); locator_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    discover_=new QPushButton(connection); discover_->setObjectName("fpgaDiscover"); label(discover_,QStringLiteral("刷新设备"),QStringLiteral("Refresh devices"));
+    discoveryStatus_=new QLabel(connection); discoveryStatus_->setObjectName("fpgaDiscoveryStatus"); discoveryStatus_->setWordWrap(true);
     backend_=new VaporView::SingleLevelPopupComboBox(connection); backend_->setObjectName("fpgaBackend");
     backend_->addItem(QStringLiteral("Auto"),QStringLiteral("auto"));backend_->addItem(QStringLiteral("Cypress"),QStringLiteral("cypress"));backend_->addItem(QStringLiteral("WinUSB"),QStringLiteral("winusb"));
     connect_=new QPushButton(connection); label(connect_,QStringLiteral("连接"),QStringLiteral("Connect")); connect_->setObjectName("fpgaConnect");
     disconnect_=new QPushButton(connection);disconnect_->setObjectName("fpgaDisconnect"); label(disconnect_,QStringLiteral("断开"),QStringLiteral("Disconnect"));
     status_=new QLabel(connection); status_->setWordWrap(true); status_->setObjectName("fpgaConnectionStatus");
-    cl->addWidget(locator_,0,0); cl->addWidget(backend_,0,1);cl->addWidget(connect_,0,2); cl->addWidget(disconnect_,0,3); cl->addWidget(status_,1,0,1,4); cl->setColumnStretch(0,1);
-    connect(connect_,&QAbstractButton::clicked,this,[this]{ lockOperation(); emit connectRequested(locator_->text(),backend_->currentData().toString()); });
+    cl->addWidget(locator_,0,0,1,3); cl->addWidget(discover_,0,3);
+    cl->addWidget(backend_,1,0);cl->addWidget(connect_,1,1);cl->addWidget(disconnect_,1,2);cl->addWidget(discoveryStatus_,1,3);
+    cl->addWidget(status_,2,0,1,4); cl->setColumnStretch(0,1);
+    connect(discover_,&QAbstractButton::clicked,this,&FpgaControlPage::requestUsbDiscovery);
+    connect(locator_,&QComboBox::currentIndexChanged,this,[this]{updateActions();});
+    connect(backend_,&QComboBox::currentIndexChanged,this,[this]{updateActions();});
+    connect(connect_,&QAbstractButton::clicked,this,[this]{ lockOperation(); emit connectRequested(locator_->currentData().toString(),backend_->currentData().toString()); });
     connect(disconnect_,&QAbstractButton::clicked,this,[this]{ lockOperation(); emit disconnectRequested(); });
     tabs_=new QTabWidget(this); tabs_->setObjectName(QStringLiteral("fpgaTabs")); root->addWidget(tabs_,1);
     auto tab=[this](const QString &zh,const QString &en) {
@@ -312,9 +321,65 @@ void FpgaControlPage::setConfiguration(const FpgaControlConfig &c) {
     const QSignalBlocker bs(recordSensors_),bd(recordDlia_),br(recordRaw_);
     recordSensors_->setChecked(c.recordSensors);recordDlia_->setChecked(c.recordDlia);recordRaw_->setChecked(c.recordRaw);
     for(int i=0;i<2;++i){auto *cal=findChild<QCheckBox*>(QString("fpga%1Calibrated").arg(i));const QSignalBlocker b(cal);cal->setChecked(c.frontend[i].calibrated);}
+    updateActions();
 }
 void FpgaControlPage::lockOperation(){busy_=true;updateActions();}
-void FpgaControlPage::updateActions(){connect_->setEnabled(!connected_&&!busy_);disconnect_->setEnabled(connected_&&!busy_);for(auto *w:onlineControls_)w->setEnabled(ready_&&!busy_);refresh_->setEnabled(connected_&&!busy_);record_->setEnabled(ready_||recording_);}
+void FpgaControlPage::updateActions(){
+    auto selected=locator_->currentData(Qt::UserRole+1).toJsonObject();
+    const auto devices=usbDiscovery_.value("devices").toArray();
+    if(locator_->currentIndex()==0 && devices.size()==1) selected=devices.first().toObject();
+    const auto backend=backend_->currentData().toString();
+    const bool usable=selected.value("available").toBool()&&!selected.value("locator").toString().isEmpty()
+        &&(backend=="auto"||backend==selected.value("backend").toString())&&usbDiscovery_.value("error").toString().isEmpty();
+    connect_->setEnabled(!connected_&&!busy_&&!usbDiscovering_&&usbHostAvailable_&&usable);
+    locator_->setEnabled(!connected_&&!busy_&&!usbDiscovering_&&usbHostAvailable_);
+    backend_->setEnabled(!connected_&&!busy_&&!usbDiscovering_);
+    discover_->setEnabled(!busy_&&!usbDiscovering_&&usbHostAvailable_);
+    disconnect_->setEnabled(connected_&&!busy_);for(auto *w:onlineControls_)w->setEnabled(ready_&&!busy_);refresh_->setEnabled(connected_&&!busy_);record_->setEnabled(ready_||recording_);
+}
+void FpgaControlPage::showEvent(QShowEvent *event){
+    QWidget::showEvent(event);
+    if(usbHostAvailable_&&!usbDiscovering_&&!busy_&&!connected_)requestUsbDiscovery();
+}
+void FpgaControlPage::requestUsbDiscovery(){
+    if(!usbHostAvailable_||usbDiscovering_||busy_)return;
+    ++usbDiscoveryGeneration_;usbDiscovering_=true;
+    discoveryStatus_->setText(text("正在查找…","Searching…"));updateActions();emit discoverDevicesRequested();
+}
+void FpgaControlPage::setUsbDiscoveryHost(bool remote,bool available){
+    if(usbRemote_==remote&&usbHostAvailable_==available)return;
+    usbRemote_=remote;usbHostAvailable_=available;usbDiscovering_=false;++usbDiscoveryGeneration_;usbDiscovery_={};
+    rebuildUsbDevices();
+    if(isVisible()&&available&&!busy_)requestUsbDiscovery();
+}
+void FpgaControlPage::setUsbDiscoveryResult(const QJsonObject &result){
+    usbDiscovery_=result;usbDiscovering_=false;rebuildUsbDevices();
+}
+void FpgaControlPage::rebuildUsbDevices(){
+    const auto previous=locator_->currentData().toString();
+    const QSignalBlocker block(locator_);locator_->clear();
+    locator_->addItem(text("自动选择唯一 GP01 设备","Select the only GP01 device automatically"),QString());
+    const auto devices=usbDiscovery_.value("devices").toArray();
+    for(const auto &value:devices){
+        const auto device=value.toObject();
+        QString title=device.value("label").toString()+" · "+device.value("driver").toString();
+        if(!device.value("available").toBool())title+=text("（驱动后端不可用）"," (driver backend unavailable)");
+        locator_->addItem(title,device.value("locator").toString());
+        const int index=locator_->count()-1;locator_->setItemData(index,device,Qt::UserRole+1);
+        locator_->setItemData(index,title+"\n"+device.value("locator").toString(),Qt::ToolTipRole);
+    }
+    int index=previous.isEmpty()?-1:locator_->findData(previous);
+    if(index<0)index=devices.size()==1?1:0;
+    locator_->setCurrentIndex(index);
+    const QString host=text(usbRemote_?"天空端 USB":"本机 USB",usbRemote_?"Sky USB":"Local USB");
+    const auto error=usbDiscovery_.value("error").toString();
+    discoveryStatus_->setText(!usbHostAvailable_?text("请先连接 SkyCore","Connect to SkyCore first")
+        :!error.isEmpty()?host+" · "+error:!usbDiscovery_.contains("devices")?host+text(" · 等待枚举"," · Awaiting discovery")
+        :devices.isEmpty()?host+text(" · 未发现 04B4:00F1"," · No 04B4:00F1 found")
+        :host+text(" · %1 台设备"," · %1 device(s)").arg(devices.size()));
+    locator_->setToolTip(text("选择 GP01 FX3（04B4:00F1），插拔后点击刷新设备。连接时核验固件身份。","Select GP01 FX3 (04B4:00F1); refresh after plugging/unplugging. Firmware identity is verified on connect."));
+    updateActions();
+}
 void FpgaControlPage::setTransportConnected(bool connected){
     const bool lost=connected_&&!connected;connected_=connected;
     if(!connected_)ready_=false;
@@ -407,7 +472,7 @@ void FpgaControlPage::setLanguage(bool en){english_=en;for(auto *w:findChildren<
     for(auto it=sensorLabels_.cbegin();it!=sensorLabels_.cend();++it)if(!latestReadings_.contains(it.key()))it.value()->setText(text("等待有效样本","Waiting for valid sample"));
     for(auto it=waveLabels_.cbegin();it!=waveLabels_.cend();++it)if(!latestWaves_.contains(it.key()))it.value()->setText(text("等待波形 · ADC 原码 / 解调数字幅值","Waiting for waveform · ADC raw / demodulation digital amplitude"));
     refreshMeasurements();
-    locator_->setPlaceholderText(text("USB 设备路径（可选）","USB device path (optional)"));setConnectionState(ready_,busy_,connectionDetail_);setRecordingState(recording_,recordingDetail_);
+    if(!usbDiscovering_)rebuildUsbDevices();setConnectionState(ready_,busy_,connectionDetail_);setRecordingState(recording_,recordingDetail_);
 }
 void FpgaControlPage::refreshMeasurements(){rerendering_=true;const auto readings=latestReadings_;for(const auto &reading:readings)updateSensor(reading);const auto waves=latestWaves_;for(const auto &wave:waves)updateWaveform(wave);rerendering_=false;}
 void FpgaControlPage::setTheme(bool dark,int fontScalePercent){

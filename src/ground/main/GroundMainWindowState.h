@@ -298,6 +298,8 @@ struct MainWindowState
     FpgaControlConfig fpga_remote_config_;
     QJsonObject fpga_remote_status_;
     quint32 fpga_remote_request_id_ = 0;
+    QString fpga_remote_operation_;
+    quint64 fpga_remote_discovery_generation_ = 0;
     std::chrono::steady_clock::time_point fpga_remote_status_time_{};
     bool fpga_connected_ = false;
     bool fpga_ready_ = false;

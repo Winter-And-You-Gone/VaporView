@@ -5,6 +5,7 @@
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QFrame>
+#include <QJsonArray>
 #include <QLabel>
 #include <QPushButton>
 #include <QScrollArea>
@@ -20,6 +21,34 @@ void require(bool value, const char *message) {
 int main(int argc,char **argv) {
     QApplication app(argc,argv);
     FpgaControlPage page;
+    auto *devices=page.findChild<QComboBox*>("fpgaLocator");
+    auto *scan=page.findChild<QPushButton*>("fpgaDiscover");
+    auto *connect=page.findChild<QPushButton*>("fpgaConnect");
+    const QJsonObject first{{"locator","board-a"},{"label","GP01 A"},{"driver","WinUSB"},{"backend","winusb"},{"available",true}};
+    auto second=first;second["locator"]="board-b";second["label"]="GP01 B";
+    page.setUsbDiscoveryResult({{"devices",QJsonArray{}},{"error",""}});
+    require(!connect->isEnabled(),"no USB devices cannot connect");
+    page.setUsbDiscoveryResult({{"devices",QJsonArray{first,second}},{"error",""}});
+    require(devices->count()==3 && devices->currentIndex()==0 && !connect->isEnabled(),"multiple boards require an explicit selection");
+    devices->setCurrentIndex(2);require(connect->isEnabled(),"enumerated board can be selected");
+    page.setUsbDiscoveryResult({{"devices",QJsonArray{second,first}},{"error",""}});
+    require(devices->currentData().toString()=="board-b","refresh preserves device by path rather than index");
+    QString selected;
+    QObject::connect(&page,&FpgaControlPage::connectRequested,&page,[&](const QString &path,const QString&){selected=path;});
+    connect->click();require(selected=="board-b","connect uses hidden enumerated path");page.setConnectionState(false,false);
+    auto unavailable=first;unavailable["available"]=false;
+    page.setUsbDiscoveryResult({{"devices",QJsonArray{unavailable}},{"error",""}});
+    require(!connect->isEnabled(),"detected device without driver backend cannot claim connectability");
+    page.setUsbDiscoveryResult({{"devices",QJsonArray{first}},{"error",""}});
+    require(devices->currentData().toString()=="board-a" && connect->isEnabled(),"single device selected automatically");
+    auto backendConfig=page.configuration();backendConfig.backend="cypress";page.setConfiguration(backendConfig);
+    require(!connect->isEnabled(),"saved backend incompatible with selected driver cannot connect");
+    backendConfig.backend="auto";page.setConfiguration(backendConfig);require(connect->isEnabled(),"auto backend restores selected device connection");
+    int discoveries=0;QObject::connect(&page,&FpgaControlPage::discoverDevicesRequested,&page,[&]{++discoveries;});
+    scan->click();scan->click();require(discoveries==1 && !connect->isEnabled(),"pending enumeration blocks duplicates and connection");
+    page.setUsbDiscoveryResult({{"devices",QJsonArray{first}},{"error",""}});
+    page.setUsbDiscoveryHost(true,false);require(devices->count()==1&&!scan->isEnabled()&&!connect->isEnabled(),"switch to disconnected Sky clears Local candidates");
+    page.setUsbDiscoveryHost(false);page.setUsbDiscoveryResult({{"devices",QJsonArray{first}},{"error",""}});
     auto c=page.configuration();
     require(c.pressureSource==0x40 && c.backend=="auto","safe PTB210 / auto defaults");
     require(c.adcRateHz==1000000 && c.dlia[0].outputRateHz==10000 && c.dlia[1].mode==3,"shared ADC / DLIA defaults");

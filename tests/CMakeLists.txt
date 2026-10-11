@@ -369,6 +369,9 @@ foreach(sky_fpga_test backend runtime recording)
     set_tests_properties(sky_fpga_${sky_fpga_test}_test PROPERTIES LABELS "fast;unit;fpga;sky" TIMEOUT 90)
 endforeach()
 
+add_test(NAME sky_fpga_usb_discovery_test COMMAND sky_fpga_runtime_test --discovery-only)
+set_tests_properties(sky_fpga_usb_discovery_test PROPERTIES LABELS "fast;unit;fpga;sky" TIMEOUT 30)
+
 add_executable(fpga_session_archive_test ${CMAKE_CURRENT_SOURCE_DIR}/fpga_session_archive_test.cpp)
 target_link_libraries(fpga_session_archive_test PRIVATE vaporview_ground_session_core)
 add_test(NAME fpga_session_archive_test COMMAND fpga_session_archive_test)

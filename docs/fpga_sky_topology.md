@@ -41,7 +41,7 @@ Windows USB 设备，也不代表已经完成 GP01 实板或 VLP1 原始字节�
 
 ## 配置与启动
 
-将以下 JSON 保存为工控机上的 `sky-fpga.json`。未提供的 FPGA 配置字段按 `FpgaControlConfig` 默认值处理；旧串口/TCP 采集项显式关闭，避免该部署开启第二套设备链路。空 `locator` 交由后端枚举，必须确认唯一目标设备；多设备时填入该后端诊断显示的设备路径。
+将以下 JSON 保存为工控机上的 `sky-fpga.json`。未提供的 FPGA 配置字段按 `FpgaControlConfig` 默认值处理；旧串口/TCP 采集项显式关闭，避免该部署开启第二套设备链路。空 `locator` 交由后端枚举，必须确认唯一目标设备；多设备时可在 GUI 的 FPGA 页选择目标后连接，或在启动配置中填写所选设备的路径。
 
 ```json
 {
@@ -91,6 +91,16 @@ Windows USB 设备，也不代表已经完成 GP01 实板或 VLP1 原始字节�
 
 启动同机 `VaporView.exe`，首页选择 Remote，链路选择 TCP，主机 `127.0.0.1`、端口 `39001`。地面 GUI 同样选择 Remote，但连接地面数传实际串口，或 SkyCore 遥测 TCP `39100` 可达地址。`39001` 是同机 IPC，`39100` 是 TCP 遥测，两者用途不同。观察 FPGA 页的 USB connected、ready、模块版本及硬件实际读回；无设备、驱动缺失或探测失败必须显示失败，不能按配置默认值显示就绪。
 
+## USB 自动发现与选择
+
+打开 FPGA 页时自动枚举 GP01 FX3（`04B4:00F1`），下拉列表显示设备名称、实例标识、USB 位置和驱动；只有一台时自动选中，多台时须手动选择。插拔设备后点击“刷新设备”，刷新按设备路径保留已有选择。无需手工查找或输入 Windows USB 路径；连接按钮使用所选项内部保存的路径。
+
+Local 枚举 VaporView 所在电脑；Remote 通过 `FpgaControl` 的只读 `discover` 动作枚举 SkyCore 所在电脑，需先连接 IPC/数传并启用 `fpga.enabled`。切换主机或关闭远程链路时清空原列表，避免误用另一台主机的路径。远程返回的 `usb_discovery` 含 `devices` 和 `error`；每项设备含 `locator`、`label`、`driver`、`backend`、`available`。列表只随请求返回，不加入周期遥测。远程 GUI 与 SkyCore 都需要更新到支持该动作的版本。
+
+枚举只读取 Windows SetupAPI/PnP 信息，不打开 USB 端点、不发送 VLP1 命令；发现设备不等于固件就绪。连接仍核验 GP01 B1 标记、B0、Bulk IN `0x86` / OUT `0x02` 和协议版本。`auto` 根据所选设备绑定的驱动选择后端，不在多设备之间悄悄择一。
+
+绑定 `CYUSB3` / `CyUSB` 的设备使用 Cypress 后端，构建需提供 CyAPI 头文件及匹配架构、运行库的静态库（`VAPORVIEW_CYAPI_ROOT`，或显式设置 `VAPORVIEW_CYAPI_INCLUDE_DIR` 与 `VAPORVIEW_CYAPI_LIBRARY`）。绑定 WinUSB 的设备使用 WinUSB 后端，枚举优先使用驱动注册的接口 GUID。缺少相应后端或驱动时列表仍展示设备并标为不可用，不会假装连接成功。
+
 ## 控制与记录边界
 
 传感器配置的目标是“设备配置意图 → 传输适配器”：直连路径交给现有串口采集器，
@@ -98,7 +108,7 @@ Windows USB 设备，也不代表已经完成 GP01 实板或 VLP1 原始字节�
 和读回确认。当前界面已经保持两条路径共用设备配置控件；尚未接入实板的字段必须
 在日志和命令结果中标明待映射或不支持，不能把“控件可编辑”当成已经完成硬件下发。
 
-独立 FPGA 页发送 `DeviceOperation::FpgaControl`，SkyCore 对动作执行 allowlist 校验并串行处理，最终结果来自异步事务及读回；请求受理或普通寄存器 ACK 不等于完成。当前 allowlist 包含连接/断开、刷新、配置、采集、WMS、DAC、传感器、限时 RAW 和 AI8 设温，详细确认条件仍见 [协议适配](fpga_vlp1_integration.md)。
+独立 FPGA 页发送 `DeviceOperation::FpgaControl`，SkyCore 对动作执行 allowlist 校验并串行处理，最终结果来自异步事务及读回；请求受理或普通寄存器 ACK 不等于完成。当前 allowlist 包含只读设备枚举、连接/断开、刷新、配置、采集、WMS、DAC、传感器、限时 RAW 和 AI8 设温，详细确认条件仍见 [协议适配](fpga_vlp1_integration.md)。
 
 VLP1 尚未提供的 RTCM 下行、EPSILON 高级参数操作应返回 `Unsupported`，不能绕到设备串口或构造未知 VLP1 命令。超时不盲目重发，先读取最终设备状态；本机 IPC 与数传请求均须仅执行一次。
 
@@ -118,4 +128,6 @@ FPGA 诊断 Sensor 和 Preview 共用 `baud / 40` B/s 的令牌预算，即理�
 
 ## 验证状态
 
-本文配置键、启动选项和架构对应当前源码接口。本轮天空拓扑软件构建/测试结果见 [协议适配验证记录](fpga_vlp1_integration.md#12-天空端拓扑最终软件验证记录2026-10-10)；历史 `7b68482` 仅验证 Ground 本机适配。没有 GP01 实板，也没有 Cypress SDK 分支实测。单 USB 所有者、IPC/数传并存、断线连续采集、最终读回、吞吐和归档完整性需按 [实机清单](fpga_hardware_validation.md) 验收。
+本文配置键、启动选项和架构对应当前源码接口。天空拓扑软件构建/测试历史结果见 [协议适配验证记录](fpga_vlp1_integration.md#12-天空端拓扑最终软件验证记录2026-10-10)；历史 `7b68482` 仅验证 Ground 本机适配。上述历史记录未进行 GP01/Cypress 实测。
+
+2026-10-11 的 USB 枚举验证使用 Infineon 官方 CyAPI 1.3.2.0 源码构建 x64 库，并在一台绑定 `CYUSB3` 的 `04B4:00F1` 实板上验证自动枚举、驱动接口路径选择、`auto` 选中 Cypress、B1/B0 身份读取及关闭释放；主窗口浅色/深色设备下拉框已截图检查。此项验证没有发送 VLP1 控制命令，也不覆盖采集、DAC 或吞吐。单 USB 所有者、IPC/数传并存、断线连续采集、最终读回、吞吐和归档完整性仍需按 [实机清单](fpga_hardware_validation.md) 验收。

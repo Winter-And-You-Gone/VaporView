@@ -25,6 +25,7 @@ public:
     bool ready() const { return ready_; }
     bool busy() const { return busy_; }
     const QMap<quint32, quint32>& hardwareValues() const { return registers_; }
+    QJsonObject discoverDevices() const;
 
 public slots:
     void connectDevice(const QString& locator, const QString& backend);

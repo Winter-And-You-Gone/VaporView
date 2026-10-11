@@ -18,6 +18,8 @@ int main(int argc, char **argv)
     using namespace VaporView;
     using namespace FpgaRemote;
     QJsonObject parsed;
+    require(parseControl(encodeControl({{"op","discover"}}),parsed),"read-only discovery operation round trip");
+    require(!validateControl({{"op","discover"},{"address",42}}),"discovery cannot carry a register operation");
     const QJsonObject configure{{"op","configure"},{"configuration",FpgaControlConfig{}.toJson()}};
     require(parseControl(encodeControl(configure),parsed),"full configuration round trip");
     auto bad=configure;auto config=bad.value("configuration").toObject(); config.insert("adcRateHz",1.5);bad.insert("configuration",config);
@@ -35,6 +37,11 @@ int main(int argc, char **argv)
     QJsonObject status{{"connected",true},{"ready",true},{"busy",false},{"detail","ready"},{"configuration",FpgaControlConfig{}.toJson()},
         {"registers",QJsonObject{{"4096",4294967295.0}}},{"archived_records","18446744073709551615"}};
     require(parseStatus(encodeStatus(status),parsed),"uint64 archive precision survives status");
+    status["usb_discovery"]=QJsonObject{{"devices",QJsonArray{QJsonObject{{"locator","opaque-path"},{"label","GP01"},
+        {"driver","CYUSB3"},{"backend","cypress"},{"available",false}}}},{"error",""}};
+    require(parseStatus(encodeStatus(status),parsed) && parsed.value("usb_discovery")==status.value("usb_discovery"),"device list survives remote status codec");
+    auto malformed=status;malformed["usb_discovery"]=QJsonObject{{"devices",QJsonArray{42}},{"error",""}};
+    require(!parseStatus(encodeStatus(malformed),parsed),"malformed discovery result rejected");
     status.insert("archived_records",9007199254740992.0);
     require(!parseStatus(encodeStatus(status),parsed),"numeric uint64 archive rejected");
     FpgaSensor::Reading sensor;sensor.source=0x43;sensor.message=0x1100;sensor.schema=1;sensor.timestamp=0xffffffffffffffffULL;

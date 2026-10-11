@@ -10,6 +10,16 @@ int main(int argc,char **argv)
         require(record.source=="SkyCore","shared controller diagnostics identify actual Sky execution owner");
     });
     int completions=0;
+    bool discovered=false;
+    backend.submit({{"op","discover"}},[&](CommandErrorCode code,QString,QJsonObject status) {
+        require(code==CommandErrorCode::Ok && !status.value("connected").toBool(),"discovery works before USB connection");
+        const auto devices=status.value("usb_discovery").toObject().value("devices").toArray();
+        require(devices.size()==1 && devices.first().toObject().value("locator").toString()=="mock","discovery returns worker's device list");
+        discovered=true;
+    });
+    waitUntil([&]{return discovered;},"read-only discovery completed");
+    require(wire->openCount.load()==0 && wire->commands.isEmpty(),"discovery never opens USB or sends physical commands");
+    require(!backend.statusDocument().contains("usb_discovery"),"paths are returned only on request, not periodic telemetry");
     backend.submit({{"op","connect"},{"backend","auto"},{"locator","mock"}},
         [&](CommandErrorCode code,QString,QJsonObject status) {
             require(code==CommandErrorCode::Ok && status.value("ready").toBool(),"handshake waits for verified versions"); ++completions;

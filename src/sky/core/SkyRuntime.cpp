@@ -1303,12 +1303,14 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
         active_command_key_=key; active_command_callbacks_.push_back(std::move(completion));
         if(fpgaDeviceOperation) fpga_request_payloads_.insert(key,command.payload);
         const quint64 generation=device_command_generation_;
-        device_manager_.submitFpgaControl(operation, [this,command,request,key,generation,fpgaDeviceOperation](CommandErrorCode code,QString error,QJsonObject) {
+        device_manager_.submitFpgaControl(operation, [this,command,request,key,generation,fpgaDeviceOperation](CommandErrorCode code,QString error,QJsonObject document) {
             if (generation!=device_command_generation_ || active_command_key_!=key) return;
             session_recorder_.setFpgaConfiguration(device_manager_.config().fpga.configuration);
             SkyCommandResult result; result.ack=makeAck(command,code); result.send_status=true;
             result.send_device_operation_response=fpgaDeviceOperation;
-            result.device_operation_response={request.request_id,request.device_id,request.operation,code,error,FpgaRemote::encodeStatus(currentFpgaStatus())};
+            auto status = currentFpgaStatus();
+            if (document.contains("usb_discovery")) status["usb_discovery"] = document.value("usb_discovery");
+            result.device_operation_response={request.request_id,request.device_id,request.operation,code,error,FpgaRemote::encodeStatus(status)};
             command_results_.insert(key,qMakePair(command_clock_.elapsed(),result)); active_command_key_.clear();
             const auto callbacks=std::move(active_command_callbacks_); active_command_callbacks_.clear();
             for (const auto& callback:callbacks) callback(result);

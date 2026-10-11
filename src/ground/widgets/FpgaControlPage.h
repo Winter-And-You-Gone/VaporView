@@ -8,6 +8,7 @@
 #include <QElapsedTimer>
 #include <QSet>
 #include <QWidget>
+#include <QJsonObject>
 #include <functional>
 
 class QAbstractButton;
@@ -15,7 +16,6 @@ class QCheckBox;
 class QComboBox;
 class QDoubleSpinBox;
 class QLabel;
-class QLineEdit;
 class QPlainTextEdit;
 class QTabWidget;
 
@@ -28,6 +28,9 @@ public:
     void setConfiguration(const FpgaControlConfig &config);
     void setConnectionState(bool ready, bool busy, const QString &detail = {});
     void setTransportConnected(bool connected);
+    void setUsbDiscoveryHost(bool remote, bool available = true);
+    void setUsbDiscoveryResult(const QJsonObject &result);
+    quint64 usbDiscoveryGeneration() const { return usbDiscoveryGeneration_; }
     void setHardwareValues(const QMap<quint32, quint32> &values);
     void updateSensor(const VaporView::FpgaSensor::Reading &reading);
     void updateWaveform(const VaporView::FpgaWave::CompletedStream &stream);
@@ -40,6 +43,7 @@ public:
                         bool partialFailure = false, qint64 elapsedMs = 0,
                         VaporView::SensorTransportPath path = VaporView::SensorTransportPath::DirectDevices);
 signals:
+    void discoverDevicesRequested();
     void connectRequested(const QString &locator, const QString &backend);
     void disconnectRequested();
     void applyRequested(const FpgaControlConfig &config);
@@ -56,6 +60,9 @@ signals:
     void recordingRequested(bool enable);
     void pressureSourceChanged(quint16 source);
 private:
+    void showEvent(QShowEvent *event) override;
+    void requestUsbDiscovery();
+    void rebuildUsbDevices();
     struct Field {
         QDoubleSpinBox *input = nullptr;
         std::function<double(const FpgaControlConfig&)> read;
@@ -80,7 +87,12 @@ private:
     QElapsedTimer measurementClock_;
     QMap<quint16, qint64> readingTimes_, waveTimes_;
     bool rerendering_ = false;
-    QLineEdit *locator_ = nullptr;
+    QComboBox *locator_ = nullptr;
+    QAbstractButton *discover_ = nullptr;
+    QLabel *discoveryStatus_ = nullptr;
+    QJsonObject usbDiscovery_;
+    quint64 usbDiscoveryGeneration_ = 0;
+    bool usbRemote_ = false, usbHostAvailable_ = true, usbDiscovering_ = false;
     QAbstractButton *connect_ = nullptr, *disconnect_ = nullptr;
     QAbstractButton *refresh_ = nullptr;
     QAbstractButton *record_ = nullptr;

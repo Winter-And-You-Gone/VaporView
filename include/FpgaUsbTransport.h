@@ -5,6 +5,7 @@
 #include <QtGlobal>
 #include <QString>
 #include <QVariantMap>
+#include <QJsonObject>
 
 #include <memory>
 
@@ -44,6 +45,11 @@ struct FpgaUsbDiagnostic
     QVariantMap fields;
 };
 
+// Read-only OS enumeration: never opens an endpoint or sends USB requests.
+// Each device includes its opaque locator, display label, driver, backend and
+// availability in this build. Firmware identity is still verified by open().
+QJsonObject discoverFpgaUsbDevices();
+
 // Transport boundary used by VLP framing. Implementations must not split a
 // VLP frame at USB read boundaries; the caller owns reassembly and CRC checks.
 class FpgaUsbTransport : public QObject
@@ -60,6 +66,7 @@ public:
     virtual qint64 read(QByteArray &destination, qint64 maxBytes) = 0;
     virtual qint64 write(const QByteArray &source) = 0;
     virtual FpgaUsbDiagnostic diagnostic() const = 0;
+    virtual QJsonObject discoverDevices() const;
     virtual bool readDiagnostic(quint8 request, QByteArray &response);
 
 signals:
@@ -72,8 +79,7 @@ protected:
     void publishError(const QString &message);
 };
 
-// Safe placeholder for builds without CyUSB/WinUSB. It never claims that
-// hardware is connected and leaves the integration point replaceable.
+// Native Windows WinUSB backend; explicitly unavailable on other platforms.
 class FpgaUsbHardwareTransport final : public FpgaUsbTransport
 {
     Q_OBJECT

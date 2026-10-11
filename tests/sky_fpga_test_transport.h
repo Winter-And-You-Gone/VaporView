@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QPointer>
+#include <QJsonArray>
 #include <QThread>
 #include <QtEndian>
 #include <cstdio>
@@ -67,6 +68,10 @@ public:
     bool isOpen() const override{return opened;}
     qint64 read(QByteArray& out,qint64 max) override{if(holdResponses)return 0;const auto n=qMin<qint64>(max,incoming.size());out=incoming.left(n);incoming.remove(0,n);return n;}
     FpgaUsbDiagnostic diagnostic() const override{return {};}
+    QJsonObject discoverDevices() const override {
+        return {{"devices",QJsonArray{QJsonObject{{"locator","mock"},{"label","GP01 test board"},
+            {"driver","fixture"},{"backend","winusb"},{"available",true}}}},{"error",""}};
+    }
     qint64 write(const QByteArray& bytes) override {
         FpgaVlp1::StreamParser parser;const auto frames=parser.feed(reinterpret_cast<const std::uint8_t*>(bytes.constData()),bytes.size());
         require(frames.size()==1,"exactly one valid VLP command per mock write");const auto &f=frames.front();

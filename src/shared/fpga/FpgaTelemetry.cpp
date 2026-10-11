@@ -127,7 +127,7 @@ bool validateControl(const QJsonObject& control, QString *error)
         const auto v = control.value("celsius");
         if (!v.isDouble() || !std::isfinite(v.toDouble()) || v.toDouble() < -999 || v.toDouble() > 2147.4 ||
             std::abs(v.toDouble() * 10 - std::round(v.toDouble() * 10)) > 1e-6) return fail();
-    } else if (op != "disconnect" && op != "refresh") return fail();
+    } else if (op != "disconnect" && op != "refresh" && op != "discover") return fail();
     for (auto it = control.begin(); it != control.end(); ++it) if (!keys.contains(it.key())) return fail();
     return true;
 }
@@ -148,6 +148,17 @@ bool parseStatus(const QByteArray& payload, QJsonObject& status)
         !decimal(result.value("archived_records"), archived)) return false;
     if (result.contains("recording_state") && !integer(result.value("recording_state"),0,2)) return false;
     if (result.contains("session_directory") && !result.value("session_directory").isString()) return false;
+    if (result.contains("usb_discovery")) {
+        if (!result.value("usb_discovery").isObject()) return false;
+        const auto discovery = result.value("usb_discovery").toObject();
+        if (!discovery.value("error").isString() || !discovery.value("devices").isArray()) return false;
+        for (const auto &value : discovery.value("devices").toArray()) {
+            if (!value.isObject()) return false;
+            const auto device = value.toObject();
+            for (const auto *key : {"locator","label","driver","backend"}) if (!device.value(QLatin1String(key)).isString()) return false;
+            if (!device.value("available").isBool() || !QStringList{"auto","cypress","winusb"}.contains(device.value("backend").toString())) return false;
+        }
+    }
     const auto registers = result.value("registers").toObject();
     for (auto it = registers.begin(); it != registers.end(); ++it) {
         quint64 address;

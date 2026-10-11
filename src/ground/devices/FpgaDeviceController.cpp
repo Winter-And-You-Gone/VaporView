@@ -34,6 +34,11 @@ FpgaDeviceController::FpgaDeviceController(std::unique_ptr<FpgaUsbTransport> tra
 
 FpgaDeviceController::~FpgaDeviceController() { disconnectDevice(); }
 
+QJsonObject FpgaDeviceController::discoverDevices() const
+{
+    return injected_ ? session_->transport()->discoverDevices() : discoverFpgaUsbDevices();
+}
+
 void FpgaDeviceController::installSession(std::unique_ptr<FpgaUsbTransport> transport)
 {
     delete session_;

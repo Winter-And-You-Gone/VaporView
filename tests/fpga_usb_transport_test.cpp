@@ -1,6 +1,8 @@
 #include "FpgaUsbTransport.h"
 #include "FpgaCyApiTransport.h"
 #include <QCoreApplication>
+#include <QJsonDocument>
+#include <QJsonArray>
 #include <cstdlib>
 #include <iostream>
 using namespace VaporView::Ground::Devices;
@@ -8,6 +10,17 @@ static void require(bool v,const char *why) { if(!v) { std::cerr<<why<<'\n'; std
 int main(int argc,char **argv)
 {
     QCoreApplication app(argc,argv);
+    if (app.arguments().contains("--hardware-probe")) {
+        const auto discovery=discoverFpgaUsbDevices();
+        std::cout<<QJsonDocument(discovery).toJson().constData();
+        require(discovery.value("error").toString().isEmpty(),"OS enumeration succeeds");
+        require(discovery.value("devices").toArray().size()==1,"hardware probe requires exactly one board");
+        auto hardware=makeFpgaUsbHardwareTransport();
+        require(hardware->open(),"automatic driver and device selection verifies GP01 B1/B0 identity");
+        std::cout<<hardware->diagnostic().detail.toStdString()<<'\n';
+        hardware->close();require(!hardware->isOpen(),"hardware probe releases USB");
+        return 0;
+    }
     auto replay=makeFpgaUsbReplayTransport(QByteArray::fromHex("0102030405060708"));
     QByteArray b;
     require(replay->read(b,4)==-1,"closed replay read");

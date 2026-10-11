@@ -1,6 +1,8 @@
 #include "FpgaUsbTransport.h"
 #include "FpgaCyApiTransport.h"
 #include <QStringList>
+#include <QJsonArray>
+#include <QUuid>
 
 #include <QtGlobal>
 
@@ -14,15 +16,125 @@
 #  endif
 #  include <windows.h>
 #  include <setupapi.h>
-#  include <initguid.h>
-#  include <usbiodef.h>
+#  include <cfgmgr32.h>
 #  include <winusb.h>
+#  include <objbase.h>
 #  pragma comment(lib, "setupapi.lib")
 #  pragma comment(lib, "winusb.lib")
+#  pragma comment(lib, "advapi32.lib")
+#  pragma comment(lib, "ole32.lib")
 #endif
 
 namespace VaporView::Ground::Devices
 {
+
+#ifdef Q_OS_WIN
+namespace {
+QString deviceProperty(HDEVINFO info, SP_DEVINFO_DATA &device, DWORD property)
+{
+    DWORD bytes = 0;
+    SetupDiGetDeviceRegistryPropertyW(info, &device, property, nullptr, nullptr, 0, &bytes);
+    if (!bytes) return {};
+    QByteArray buffer(bytes, char(0));
+    if (!SetupDiGetDeviceRegistryPropertyW(info, &device, property, nullptr,
+            reinterpret_cast<PBYTE>(buffer.data()), bytes, nullptr)) return {};
+    return QString::fromWCharArray(reinterpret_cast<const wchar_t*>(buffer.constData()));
+}
+QStringList interfaceGuids(HDEVINFO info, SP_DEVINFO_DATA &device)
+{
+    QStringList result;
+    const HKEY key = SetupDiOpenDevRegKey(info, &device, DICS_FLAG_GLOBAL, 0, DIREG_DEV, KEY_READ);
+    if (key == INVALID_HANDLE_VALUE) return result;
+    for (const auto *name : {L"DeviceInterfaceGUIDs", L"DriverGUID"}) {
+        DWORD type = 0, bytes = 0;
+        if (RegQueryValueExW(key, name, nullptr, &type, nullptr, &bytes) != ERROR_SUCCESS
+            || (type != REG_SZ && type != REG_MULTI_SZ) || !bytes || bytes > 65536) continue;
+        QByteArray buffer(bytes + 2 * sizeof(wchar_t), char(0));
+        if (RegQueryValueExW(key, name, nullptr, &type, reinterpret_cast<LPBYTE>(buffer.data()), &bytes) != ERROR_SUCCESS) continue;
+        const auto values = QString::fromWCharArray(reinterpret_cast<const wchar_t*>(buffer.constData()),
+            int(bytes / sizeof(wchar_t))).split(QChar(0), Qt::SkipEmptyParts);
+        for (const auto &value : values) if (!QUuid(value).isNull()) result.append(value);
+    }
+    RegCloseKey(key);
+    result.removeDuplicates();
+    return result;
+}
+QStringList deviceInterfaces(const QString &guidString, DEVINST instance)
+{
+    GUID guid{};
+    if (FAILED(CLSIDFromString(reinterpret_cast<LPCOLESTR>(guidString.utf16()), &guid))) return {};
+    const HDEVINFO info = SetupDiGetClassDevsW(&guid, nullptr, nullptr, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
+    if (info == INVALID_HANDLE_VALUE) return {};
+    QStringList paths;
+    SP_DEVICE_INTERFACE_DATA item{}; item.cbSize = sizeof(item);
+    for (DWORD i = 0; SetupDiEnumDeviceInterfaces(info, nullptr, &guid, i, &item); ++i) {
+        DWORD bytes = 0;
+        SetupDiGetDeviceInterfaceDetailW(info, &item, nullptr, 0, &bytes, nullptr);
+        if (!bytes) continue;
+        QByteArray buffer(bytes, char(0));
+        auto *detail = reinterpret_cast<SP_DEVICE_INTERFACE_DETAIL_DATA_W*>(buffer.data());
+        detail->cbSize = sizeof(*detail);
+        SP_DEVINFO_DATA device{}; device.cbSize = sizeof(device);
+        if (SetupDiGetDeviceInterfaceDetailW(info, &item, detail, bytes, nullptr, &device)
+            && device.DevInst == instance) paths.append(QString::fromWCharArray(detail->DevicePath));
+    }
+    SetupDiDestroyDeviceInfoList(info);
+    paths.removeDuplicates();
+    return paths;
+}
+}
+#endif
+
+QJsonObject discoverFpgaUsbDevices()
+{
+    QJsonArray devices;
+    QString error;
+#ifdef Q_OS_WIN
+    const HDEVINFO info = SetupDiGetClassDevsW(nullptr, L"USB", nullptr, DIGCF_PRESENT | DIGCF_ALLCLASSES);
+    if (info == INVALID_HANDLE_VALUE)
+        return {{"devices", devices}, {"error", QStringLiteral("SetupAPI USB enumeration failed (%1)").arg(GetLastError())}};
+    SP_DEVINFO_DATA device{}; device.cbSize = sizeof(device);
+    for (DWORD i = 0; SetupDiEnumDeviceInfo(info, i, &device); ++i) {
+        wchar_t instanceId[MAX_DEVICE_ID_LEN]{};
+        if (!SetupDiGetDeviceInstanceIdW(info, &device, instanceId, MAX_DEVICE_ID_LEN, nullptr)) continue;
+        const QString identity = QString::fromWCharArray(instanceId);
+        const QString prefix = QStringLiteral("USB\\VID_04B4&PID_00F1");
+        if (!identity.startsWith(prefix, Qt::CaseInsensitive) || identity.size() <= prefix.size()
+            || (identity.at(prefix.size()) != QLatin1Char('\\') && identity.at(prefix.size()) != QLatin1Char('&'))) continue;
+        const QString driver = deviceProperty(info, device, SPDRP_SERVICE);
+        const bool cypress = driver.compare("CyUSB3", Qt::CaseInsensitive) == 0 || driver.compare("CyUSB", Qt::CaseInsensitive) == 0;
+        const bool winusb = driver.compare("WinUSB", Qt::CaseInsensitive) == 0;
+        const QString backend = cypress ? QStringLiteral("cypress") : winusb ? QStringLiteral("winusb") : QStringLiteral("auto");
+        bool available = winusb;
+#ifdef VAPORVIEW_HAS_CYAPI
+        available = available || cypress;
+#endif
+        auto guids = interfaceGuids(info, device);
+        if (cypress) guids.prepend(QStringLiteral("{AE18AA60-7F6A-11D4-97DD-00010229B959}"));
+        QStringList paths;
+        // Driver interfaces take precedence over the USB hub's generic path.
+        for (const auto &guid : guids) paths.append(deviceInterfaces(guid, device.DevInst));
+        paths.removeDuplicates();
+        if (paths.isEmpty()) paths = deviceInterfaces(QStringLiteral("{A5DCBF10-6530-11D2-901F-00C04FB951ED}"), device.DevInst);
+        if (paths.isEmpty()) { paths.append(QString()); available = false; }
+        QString name = deviceProperty(info, device, SPDRP_FRIENDLYNAME);
+        if (name.isEmpty()) name = deviceProperty(info, device, SPDRP_DEVICEDESC);
+        if (name.isEmpty()) name = QStringLiteral("GP01 FX3");
+        const QString location = deviceProperty(info, device, SPDRP_LOCATION_INFORMATION);
+        const QString label = QStringList{name, identity.section('\\', -1), location}.join(QStringLiteral(" · "));
+        for (const auto &path : paths) devices.append(QJsonObject{{"locator", path}, {"label", label},
+            {"driver", driver}, {"backend", backend}, {"available", available}});
+    }
+    if (GetLastError() != ERROR_NO_MORE_ITEMS)
+        error = QStringLiteral("SetupAPI USB enumeration incomplete (%1)").arg(GetLastError());
+    SetupDiDestroyDeviceInfoList(info);
+#else
+    error = QStringLiteral("GP01 USB discovery requires Windows");
+#endif
+    return {{"devices", devices}, {"error", error}};
+}
+
+QJsonObject FpgaUsbTransport::discoverDevices() const { return discoverFpgaUsbDevices(); }
 
 FpgaUsbTransport::FpgaUsbTransport(QObject *parent)
     : QObject(parent)
@@ -87,33 +199,18 @@ bool FpgaUsbHardwareTransport::open(const QString &locator)
 
     QString path = locator;
     QStringList candidates;
-    HDEVINFO info = INVALID_HANDLE_VALUE;
-    SP_DEVICE_INTERFACE_DATA interfaceData{};
     if (path.isEmpty()) {
-        info = SetupDiGetClassDevsW(&GUID_DEVINTERFACE_USB_DEVICE, nullptr, nullptr,
-                                    DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
-        if (info == INVALID_HANDLE_VALUE) {
-            diagnostic_.detail = winError(QStringLiteral("SetupAPI device enumeration failed"));
+        const auto discovery = discoverDevices();
+        if (!discovery.value("error").toString().isEmpty()) {
+            diagnostic_.detail = discovery.value("error").toString();
             diagnostic_.state = FpgaUsbTransportState::Error;
             publishState(diagnostic_.state); publishError(diagnostic_.detail); return false;
         }
-        interfaceData.cbSize = sizeof(interfaceData);
-        for (DWORD index = 0; SetupDiEnumDeviceInterfaces(info, nullptr, &GUID_DEVINTERFACE_USB_DEVICE,
-                                                           index, &interfaceData); ++index) {
-            DWORD bytes = 0;
-            SetupDiGetDeviceInterfaceDetailW(info, &interfaceData, nullptr, 0, &bytes, nullptr);
-            if (!bytes) continue;
-            QByteArray detailBuffer(static_cast<qsizetype>(bytes), Qt::Uninitialized);
-            auto *detail = reinterpret_cast<SP_DEVICE_INTERFACE_DETAIL_DATA_W *>(detailBuffer.data());
-            detail->cbSize = sizeof(*detail);
-            if (!SetupDiGetDeviceInterfaceDetailW(info, &interfaceData, detail, bytes, nullptr, nullptr))
-                continue;
-            const QString candidate = QString::fromWCharArray(detail->DevicePath);
-            if (candidate.contains(QStringLiteral("vid_04b4&pid_00f1"), Qt::CaseInsensitive)) {
-                candidates.append(candidate);
-            }
+        for (const auto &value : discovery.value("devices").toArray()) {
+            const auto device = value.toObject();
+            if (device.value("backend").toString() == "winusb" && !device.value("locator").toString().isEmpty())
+                candidates.append(device.value("locator").toString());
         }
-        SetupDiDestroyDeviceInfoList(info);
         diagnostic_.fields.insert(QStringLiteral("locators"), candidates);
         if (candidates.size() > 1) {
             diagnostic_.detail = QStringLiteral("Multiple GP01 devices found; select a USB locator: %1").arg(candidates.join(QStringLiteral("; ")));
@@ -399,10 +496,31 @@ public:
     bool open(const QString &locator) override
     {
         close();
+        QString path = locator;
+        const auto discovery = discoverDevices();
+        const auto devices = discovery.value("devices").toArray();
+        if (path.isEmpty() && (devices.size() > 1 || !discovery.value("error").toString().isEmpty())) {
+            discoveryFailure_.state = FpgaUsbTransportState::Error;
+            discoveryFailure_.detail = discovery.value("error").toString();
+            if (discoveryFailure_.detail.isEmpty()) discoveryFailure_.detail = QStringLiteral("Multiple GP01 devices found; select a USB device from the list.");
+            publishState(discoveryFailure_.state); publishError(discoveryFailure_.detail); return false;
+        }
+        if (path.isEmpty() && devices.size() == 1) path = devices.first().toObject().value("locator").toString();
+        for (const auto &value : devices) {
+            const auto device = value.toObject();
+            if (path.isEmpty() || device.value("locator").toString().compare(path, Qt::CaseInsensitive) != 0) continue;
+            const auto backend = device.value("backend").toString();
+            if (backend != "cypress" && backend != "winusb") continue;
+            auto transport = makeFpgaUsbHardwareTransport(backend);
+            const bool opened = transport->open(path);
+            adopt(std::move(transport));
+            if (!opened) publishError(diagnostic().detail);
+            return opened;
+        }
         auto cypress = std::make_unique<FpgaCyApiTransport>();
         if (cypress->diagnostic().hardwareBackendAvailable)
         {
-            if (cypress->open(locator)) { adopt(std::move(cypress)); return true; }
+            if (cypress->open(path)) { adopt(std::move(cypress)); return true; }
             const auto d = cypress->diagnostic();
             // A matched/ambiguous Cypress device must not silently fall through
             // to another driver or device after identity/endpoint failure.
@@ -412,7 +530,7 @@ public:
         }
         const QString cypressDetail = cypress->diagnostic().detail;
         auto winusb = std::make_unique<FpgaUsbHardwareTransport>();
-        const bool opened = winusb->open(locator);
+        const bool opened = winusb->open(path);
         adopt(std::move(winusb));
         cypressDetail_ = cypressDetail;
         if (!opened) publishError(diagnostic().detail);
@@ -423,6 +541,7 @@ public:
         if (active_) active_->close();
         active_.reset();
         cypressDetail_.clear();
+        discoveryFailure_ = {};
         publishState(FpgaUsbTransportState::Offline);
     }
     bool isOpen() const override { return active_ && active_->isOpen(); }
@@ -433,7 +552,7 @@ public:
     { if (!active_) { response.clear(); return false; } return active_->readDiagnostic(request,response); }
     FpgaUsbDiagnostic diagnostic() const override
     {
-        auto d = active_ ? active_->diagnostic() : FpgaUsbDiagnostic{};
+        auto d = active_ ? active_->diagnostic() : discoveryFailure_;
         if (!cypressDetail_.isEmpty()) d.fields.insert(QStringLiteral("cypress_status"),cypressDetail_);
         return d;
     }
@@ -448,6 +567,7 @@ private:
     }
     std::unique_ptr<FpgaUsbTransport> active_;
     QString cypressDetail_;
+    FpgaUsbDiagnostic discoveryFailure_;
 };
 class UnavailableUsbTransport final : public FpgaUsbTransport
 {

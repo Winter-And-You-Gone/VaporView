@@ -12,6 +12,7 @@
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QJsonDocument>
+#include <QJsonArray>
 #include <QLabel>
 #include <QPointer>
 #include <QPlainTextEdit>
@@ -159,7 +160,27 @@ static void remotePageRouting()
         require(!acquisition->isEnabled() && !disconnect->isEnabled(), "Remote acquisition did not open Local USB");
         require(QMetaObject::invokeMethod(&window, "onDataSourceModeChanged", Q_ARG(int, 1)), "return Remote editor");
         require(page->configuration().pressureSource == 0x40, "Remote desired config restored independently");
+        require(remote->openTcp("127.0.0.1", server.localPort()), "reopen Sky for read-only discovery");
+        require(waitUntil([&] { return remote->isOpen(); }), "discovery link opened without ready status");
+        auto *scan = page->findChild<QAbstractButton*>("fpgaDiscover");
+        auto *devices = page->findChild<QComboBox*>("fpgaLocator");
+        scan->click();
+        require(waitUntil([&] { return commands == 2; }), "discovery routes to Sky while USB is disconnected");
+        require(FpgaRemote::parseControl(lastRequest.payload, control) && control.value("op") == "discover", "typed Sky discovery request");
+        status["connected"] = false; status["ready"] = false;
+        status["usb_discovery"] = QJsonObject{{"devices",QJsonArray{QJsonObject{{"locator","sky-only-device"},{"label","GP01 Sky"},
+            {"driver","WinUSB"},{"backend","winusb"},{"available",true}}}},{"error",""}};
+        response.request_id = lastRequest.request_id; response.payload = FpgaRemote::encodeStatus(status);
+        send(MsgType::DeviceOperationResponse, TelemetryCodec::serializeDeviceOperationResponse(response));
+        require(waitUntil([&] { return devices->currentData().toString() == "sky-only-device"; }), "Sky result populates USB selector");
+        page->findChild<QAbstractButton*>("fpgaConnect")->click();
+        require(waitUntil([&] { return commands == 3; }), "selected Sky device connects through remote request");
+        require(FpgaRemote::parseControl(lastRequest.payload, control) && control.value("op") == "connect"
+            && control.value("locator") == "sky-only-device", "Sky opaque locator is preserved by selection");
+        remote->close();
+        require(waitUntil([&] { return devices->count() == 1; }), "link closure clears Sky USB candidates");
         QMetaObject::invokeMethod(&window, "onDataSourceModeChanged", Q_ARG(int, 0));
+        require(devices->count() == 1, "Sky locator never becomes a Local USB candidate");
     }
     require(worker.isNull(), "Remote regression teardown joins and deletes Local USB worker");
     server.close();
@@ -186,7 +207,7 @@ int main(int argc,char **argv)
         require(status && !status->text().contains(QStringLiteral("GP01 FX3")),"construction does not auto-connect hardware");
         auto *acquisition=page->findChild<QAbstractButton*>(QStringLiteral("fpgaAcquisitionStart"));
         auto *connectButton=page->findChild<QAbstractButton*>(QStringLiteral("fpgaConnect"));
-        require(acquisition && !acquisition->isEnabled() && connectButton && connectButton->isEnabled(),"ADC stays stopped and hardware remains disconnected until requested");
+        require(acquisition && !acquisition->isEnabled() && connectButton && !connectButton->isEnabled(),"ADC stays stopped and connect waits for discovery until page is opened");
         auto *pressure=page->findChild<QComboBox*>(QStringLiteral("fpgaPressureSource"));
         require(pressure && pressure->currentData().toUInt()==0x40,"default pressure choice visible");
         pressure->setCurrentIndex(pressure->findData(0x43));

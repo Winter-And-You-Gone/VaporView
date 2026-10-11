@@ -83,15 +83,30 @@ void SkyFpgaBackend::submit(const QJsonObject& operation, Completion completion)
     if (!worker_.isRunning()) { completion(CommandErrorCode::DeviceNotConnected, QStringLiteral("FPGA worker stopped."), status_); return; }
     const quint64 identity = nextRequest_++;
     activeRequest_ = identity; completion_ = std::move(completion);
-    QTimer::singleShot(120000,this,[this,identity] {
+    QTimer::singleShot(120000,this,[this,identity,operation] {
         if (activeRequest_!=identity) return;
         // Cancel the receive/command loop; a timeout never resubmits a physical write.
-        QMetaObject::invokeMethod(controller_, &Ground::Devices::FpgaDeviceController::disconnectDevice,Qt::QueuedConnection);
+        if (operation.value("op").toString() != "discover")
+            QMetaObject::invokeMethod(controller_, &Ground::Devices::FpgaDeviceController::disconnectDevice,Qt::QueuedConnection);
         auto callback=std::move(completion_);activeRequest_=0;
-        if(callback) callback(CommandErrorCode::ConfigApplyFailed,QStringLiteral("FPGA operation timed out; physical outcome is unknown. Reconnect and read back before retrying."),status_);
+        if(callback) callback(CommandErrorCode::ConfigApplyFailed,operation.value("op").toString() == "discover"
+            ? QStringLiteral("USB discovery timed out; USB connection was left unchanged.")
+            : QStringLiteral("FPGA operation timed out; physical outcome is unknown. Reconnect and read back before retrying."),status_);
     });
     QPointer<SkyFpgaBackend> self(this);
     QMetaObject::invokeMethod(controller_, [self, controller = controller_, identity, operation] {
+        if (operation.value("op").toString() == "discover") {
+            const auto discovery = controller->discoverDevices();
+            if (self) QMetaObject::invokeMethod(self, [self, identity, discovery] {
+                if (!self || self->activeRequest_ != identity) return;
+                auto document = self->status_;
+                document["usb_discovery"] = discovery;
+                auto callback = std::move(self->completion_); self->activeRequest_ = 0;
+                const auto error = discovery.value("error").toString();
+                if (callback) callback(error.isEmpty() ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed, error, document);
+            }, Qt::QueuedConnection);
+            return;
+        }
         auto finish = [self, identity, operation, controller](CommandErrorCode code, const QString& detail) {
             if (!self) return;
             QJsonObject registers;
