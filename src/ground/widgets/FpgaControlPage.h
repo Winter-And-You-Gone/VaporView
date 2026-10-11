@@ -84,6 +84,7 @@ private:
         double temperature=24.0;
         QSet<quint16> disabledSensors;
         std::array<bool,2> wms{{true,true}}, dac{{true,true}};
+        std::array<quint32,2> dacWriteCount{{0,0}};
         FpgaControlConfig saved, applied;
         QJsonObject savedUsb;
         bool savedUsbRemote=false, savedUsbAvailable=true;

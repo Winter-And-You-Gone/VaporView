@@ -115,6 +115,29 @@ int main(int argc,char **argv) {
     QObject::connect(&page,&FpgaControlPage::acquisitionRequested,&page,[&](bool){++acquisitions;});
     QObject::connect(&page,&FpgaControlPage::dacRequested,&page,[&](int,bool){++dacs;});
     page.findChild<QPushButton*>("fpgaAcquisitionStop")->click();require(acquisitions==1&&dacs==0,"stop acquisition never stops DAC");
+    auto *wmsGrid=page.findChild<QGridLayout*>("fpgaWmsGrid");
+    require(wmsGrid&&page.findChild<QDoubleSpinBox*>("fpga0Scan")->parentWidget()==page.findChild<QDoubleSpinBox*>("fpga1Scan")->parentWidget(),"WMS and DAC channels share one card");
+    require(page.findChild<QLabel*>("fpga0ScanLabel")&&!page.findChild<QLabel*>("fpga1ScanLabel"),"both channel columns reuse one field label");
+    for(const auto *field : {"Scan","PhaseMode","DacControl","DacSpi"}) {
+        auto *firstInput=page.findChild<QDoubleSpinBox*>(QString("fpga0%1").arg(field));
+        auto *secondInput=page.findChild<QDoubleSpinBox*>(QString("fpga1%1").arg(field));
+        int firstRow,firstColumn,secondRow,secondColumn,rowSpan,columnSpan;
+        wmsGrid->getItemPosition(wmsGrid->indexOf(firstInput),&firstRow,&firstColumn,&rowSpan,&columnSpan);
+        wmsGrid->getItemPosition(wmsGrid->indexOf(secondInput),&secondRow,&secondColumn,&rowSpan,&columnSpan);
+        require(firstRow==secondRow&&firstColumn==1&&secondColumn==3,"merged fields align on one row with independent inputs");
+    }
+    const auto beforeChannelEdit=page.configuration();
+    page.findChild<QDoubleSpinBox*>("fpga1Scan")->setValue(123);
+    require(page.configuration().wms[0].scanMilliHz==beforeChannelEdit.wms[0].scanMilliHz&&page.configuration().wms[1].scanMilliHz==123000,"merged editor preserves channel independence");
+    page.setConfiguration(beforeChannelEdit);
+    QList<QPair<int,bool>> scanCommands,dacCommands;
+    QObject::connect(&page,&FpgaControlPage::waveformRequested,&page,[&](int channel,bool enabled){scanCommands.append({channel,enabled});});
+    QObject::connect(&page,&FpgaControlPage::dacRequested,&page,[&](int channel,bool enabled){dacCommands.append({channel,enabled});});
+    for(int channel=0;channel<2;++channel)for(const auto *suffix : {"ScanOn","ScanOff","DacOn","DacOff"}) {
+        page.setConnectionState(true,false);page.findChild<QPushButton*>(QString("fpga%1%2").arg(channel).arg(suffix))->click();
+    }
+    const QList<QPair<int,bool>> expectedCommands{{0,true},{0,false},{1,true},{1,false}};
+    require(scanCommands==expectedCommands&&dacCommands==expectedCommands,"merged card actions address each channel separately");
     page.setConnectionState(false,false,"Replay");require(!apply->isEnabled(),"offline replay never enables hardware commands");
     int replays=0,exports=0;QObject::connect(&page,&FpgaControlPage::replayRequested,&page,[&](const QString &path){++replays;require(path.isEmpty(),"MainWindow chooses complete offline session directory");});
     QObject::connect(&page,&FpgaControlPage::exportRequested,&page,[&](const QString &path){++exports;require(path.isEmpty(),"MainWindow chooses session and export output");});
@@ -192,7 +215,7 @@ int main(int argc,char **argv) {
                 app.processEvents();
                 auto *scroll=qobject_cast<QScrollArea*>(tabs->widget(i));
                 require(scroll&&scroll->widgetResizable(),"all tabs remain scrollable at large fonts");require(scroll->viewport()->width()>0,"tab viewport remains visible");
-                for(const auto *name : {"fpgaWmsChannels","fpgaDliaChannels","fpgaWaveChannels"}) {
+                for(const auto *name : {"fpgaDliaChannels","fpgaWaveChannels"}) {
                     auto *row=page.findChild<QHBoxLayout*>(name);
                     require(row&&row->count()==2,"each channel row contains two cards");
                     auto *first=row->itemAt(0)->widget(),*second=row->itemAt(1)->widget();
@@ -200,6 +223,14 @@ int main(int argc,char **argv) {
                     const QRect firstRect(first->mapTo(&page,QPoint()),first->size()),secondRect(second->mapTo(&page,QPoint()),second->size());
                     require(firstRect.top()==secondRect.top()&&firstRect.right()<secondRect.left(),"channel cards remain side by side across themes, languages and font scales");
                     require(qAbs(firstRect.width()-secondRect.width())<=1,"channel cards retain equal widths across themes, languages and font scales");
+                }
+                if(i==2)for(int channel=0;channel<2;++channel) {
+                    auto *adc=page.findChild<QWidget*>(QString("fpgaWavePlot%1").arg(32+channel));
+                    auto *h1=page.findChild<QWidget*>(QString("fpgaWavePlot%1").arg(48+channel));
+                    auto *h2=page.findChild<QWidget*>(QString("fpgaWaveSecondPlot%1").arg(48+channel));
+                    require(adc->height()==scale&&h1->height()==scale&&h2->height()==scale,"all three plots retain two-thirds height at each font scale");
+                    require(h1->geometry().left()==h2->geometry().left()&&h1->width()==h2->width()
+                        &&h1->geometry().bottom()<h2->geometry().top(),"harmonic plots fill the same column in vertical order");
                 }
                 if(i==1) {
                     auto *grid=page.findChild<QGridLayout*>("fpgaSensorGrid");
@@ -284,10 +315,25 @@ int main(int argc,char **argv) {
     for(qint32 value:{10,20,30,40})appendWord(pair.pointBytes,value);
     page.updateWaveform(pair);app.processEvents();
     require(plot->property("sampleMaximum").toDouble()==30&&secondPlot->property("sampleMaximum").toDouble()==40,"format0 renders both harmonics together");
-    require(plot->mapTo(&page,QPoint()).x()<secondPlot->mapTo(&page,QPoint()).x()&&plot->height()==secondPlot->height(),"harmonics have side-by-side equal-height plots");
+    require(plot->mapTo(&page,QPoint()).x()==secondPlot->mapTo(&page,QPoint()).x()
+        &&plot->mapTo(&page,QPoint()).y()+plot->height()<secondPlot->mapTo(&page,QPoint()).y()
+        &&plot->height()==100&&secondPlot->height()==100,"harmonics are stacked with compact equal-height plots");
     const auto beforeSimulation=page.configuration().toJson();
     page.setUiTestState(true,false,false,1000);
     page.setLanguage(true);
+    for(int channel=0;channel<2;++channel) {
+        for(const auto *field : {"Update","PhaseMode","DacClear","DacMin","DacMax","DacSpi"})
+            require(page.findChild<QLabel*>(QString("fpga%1%2Actual").arg(channel).arg(field))->text()!=QStringLiteral("—"),"simulation covers all previously missing editable WMS / DAC readbacks");
+        for(quint32 address : {0x2008u,0x200cu,0x3008u,0x300cu,0x203cu,0x2044u,0x3028u,0x302cu,0x400cu,0x4024u,0x5034u,0x5048u,0x5050u})
+            require(page.findChild<QLabel*>(QString("fpgaRegister%1").arg(address+channel*0x100,4,16,QChar('0')))->text()!=QStringLiteral("—"),"simulation covers named status, error and counter readbacks on both channels");
+        require(page.findChild<QLabel*>(QString("fpga%1DacSpiActual").arg(channel))->text().contains("= 16666666 "),"simulated actual SPI rate accounts for the integer divider");
+    }
+    auto *writes0=page.findChild<QLabel*>("fpgaRegister3028"),*writes1=page.findChild<QLabel*>("fpgaRegister3128");
+    page.simulateOperation({{"op","dac"},{"channel",0},{"enabled",false}});
+    const auto stoppedWrites=writes0->text(),runningWrites=writes1->text();
+    page.setUiTestState(true,false,false,1100);
+    require(writes0->text()==stoppedWrites&&writes1->text()!=runningWrites,"DAC write counters stop independently for a disabled channel");
+    page.simulateOperation({{"op","dac"},{"channel",0},{"enabled",true}});
     page.simulateOperation({{"op","raw"},{"enabled",true}});
     require(page.findChild<QWidget*>("fpgaWavePlot33")->property("sampleCount").toInt()>0,"simulator drives second ADC lane");
     require(page.findChild<QWidget*>("fpgaWaveSecondPlot49")->property("sampleCount").toInt()>0,"simulator drives second DLIA harmonic pair");

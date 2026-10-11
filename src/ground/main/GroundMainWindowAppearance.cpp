@@ -835,8 +835,8 @@ void MainWindow::updateLogSidePanelToggleButton()
 void MainWindow::applyScaledUiMetrics()
 {
     auto applyWidgetMetrics = [this](QWidget *widget) {
-        // FPGA icon actions scale their square dimensions in FpgaControlPage::setTheme().
-        if (!widget || widget->property("fpgaIconOnly").toBool())
+        // FPGA icon actions and plots scale their fixed sizes in FpgaControlPage::setTheme().
+        if (!widget || widget->property("fpgaIconOnly").toBool() || widget->property("fpgaFixedPlot").toBool())
         {
             return;
         }

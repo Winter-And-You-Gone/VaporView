@@ -82,7 +82,7 @@ static void verifyCardMargins(MainWindow &window,FpgaControlPage *page,int scale
             if(tab==0)parameterTabs->setCurrentIndex(parameterTab);
             processFor(50);
             QList<QWidget*> channelCards;
-            for(const auto *name : {"fpgaWmsChannels","fpgaDliaChannels","fpgaWaveChannels"}) {
+            for(const auto *name : {"fpgaDliaChannels","fpgaWaveChannels"}) {
                 auto *row=page->findChild<QHBoxLayout*>(name);
                 require(row&&row->count()==2,"parameter and waveform channel rows each retain two cards");
                 auto *first=row->itemAt(0)->widget(),*second=row->itemAt(1)->widget();
@@ -93,6 +93,21 @@ static void verifyCardMargins(MainWindow &window,FpgaControlPage *page,int scale
                 require(qAbs(firstRect.width()-secondRect.width())<=1,"paired channel cards divide the available width equally");
                 require(secondRect.left()-firstRect.right()-1==qRound(12*scale/100.0),"paired cards retain the shared scaled card gap");
                 require(firstRect.left()==homeRect.left()&&secondRect.right()==homeRect.right(),"paired channel cards fill the row within the home outer margins");
+            }
+            if(tab==0&&parameterTab==0) {
+                auto *first=page->findChild<QWidget*>("fpga0Scan"),*second=page->findChild<QWidget*>("fpga1Scan");
+                require(first->parentWidget()==second->parentWidget()&&first->geometry().top()==second->geometry().top(),"merged WMS card aligns independent channel inputs on the same row");
+                require(page->findChild<QLabel*>("fpga0ScanLabel")&&!page->findChild<QLabel*>("fpga1ScanLabel"),"main window shares WMS field labels across channels");
+                require(page->findChild<QLabel*>("fpgaRegister3028")->text()!=QStringLiteral("—")
+                    &&page->findChild<QLabel*>("fpgaRegister3128")->text()!=QStringLiteral("—"),"UI test mode populates both channel diagnostic counters");
+            }
+            if(tab==2)for(int channel=0;channel<2;++channel) {
+                auto *adc=page->findChild<QWidget*>(QString("fpgaWavePlot%1").arg(32+channel));
+                auto *h1=page->findChild<QWidget*>(QString("fpgaWavePlot%1").arg(48+channel));
+                auto *h2=page->findChild<QWidget*>(QString("fpgaWaveSecondPlot%1").arg(48+channel));
+                require(adc->height()==scale&&h1->height()==scale&&h2->height()==scale,"global UI scaling preserves compact FPGA plot heights");
+                require(h1->geometry().left()==h2->geometry().left()&&h1->width()==h2->width()
+                    &&h1->geometry().bottom()<h2->geometry().top(),"main window stacks H1 and H2 at full channel width");
             }
             auto *sensorGrid=page->findChild<QGridLayout*>("fpgaSensorGrid");
             require(sensorGrid&&sensorGrid->count()==5,"sensor grid retains five compact cards");
