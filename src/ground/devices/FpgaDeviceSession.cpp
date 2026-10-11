@@ -105,7 +105,7 @@ bool FpgaDeviceSession::open(const QString& locator, QString *errorMessage)
     }
 
     setState(FpgaSessionState::Ready, QStringLiteral("FPGA transport open"));
-    pollTimer_.start();
+    pollTimer_.start(1);
     return true;
 }
 
@@ -153,27 +153,45 @@ void FpgaDeviceSession::poll()
     if (!isOpen())
         return;
 
-    QByteArray bytes;
-    const qint64 count = transport_->read(bytes, 16 * 1024);
-    if (count < 0)
+    // Drain consecutive USB completions without a timer delay between packets.
+    // Bound each batch so commands and disconnect events still get a turn.
+    QElapsedTimer batchTimer;
+    batchTimer.start();
+    bool drained = false;
+    for (int reads = 0; reads < 64 && isOpen(); ++reads)
     {
-        const auto diagnostic = transport_->diagnostic();
-        const QString message = diagnostic.state == FpgaUsbTransportState::Error && !diagnostic.detail.isEmpty()
-            ? QStringLiteral("FPGA transport read failed: %1").arg(diagnostic.detail)
-            : QStringLiteral("FPGA transport read failed");
-        pollTimer_.stop();
-        cancelQueuedCommands();
-        flushWaveforms();
-        transport_->close();
-        setState(FpgaSessionState::Error, message);
-        emit errorOccurred(message);
-        return;
+        QByteArray bytes;
+        const qint64 count = transport_->read(bytes, 16 * 1024);
+        if (count < 0)
+        {
+            const auto diagnostic = transport_->diagnostic();
+            const QString message = diagnostic.state == FpgaUsbTransportState::Error && !diagnostic.detail.isEmpty()
+                ? QStringLiteral("FPGA transport read failed: %1").arg(diagnostic.detail)
+                : QStringLiteral("FPGA transport read failed");
+            pollTimer_.stop();
+            cancelQueuedCommands();
+            flushWaveforms();
+            transport_->close();
+            setState(FpgaSessionState::Error, message);
+            emit errorOccurred(message);
+            return;
+        }
+
+        if (bytes.isEmpty())
+        {
+            drained = true;
+            break;
+        }
+        ingestReplayBytes(bytes);
+        if (batchTimer.elapsed() >= 4)
+            break;
     }
 
-    if (!bytes.isEmpty())
-    {
-        ingestReplayBytes(bytes);
-    }
+    if (!isOpen())
+        return;
+    // A busy stream resumes on the next event-loop turn, not a 1 ms timer
+    // (which can be much coarser on Windows). Empty reads back off as before.
+    pollTimer_.setInterval(drained ? 1 : 0);
 
     if (pendingCommand_ && pendingCommand_->timer.elapsed() > commandTimeoutMs_)
     {

@@ -1,5 +1,6 @@
 #include "FpgaDeviceSession.h"
 #include <QCoreApplication>
+#include <QEventLoop>
 #include <QThread>
 #include <cstdio>
 #include <cstdlib>
@@ -46,6 +47,45 @@ void validContinuousResponses(){
     require(session.ping("hello")==1,"PING sequence assigned");require(session.requestCapabilities()==2,"capability command queued");require(session.readRegisters(0x6600,2)==3,"READ command queued");
     session.poll();require(completed==3&&capabilitiesDone&&registersDone&&ptbUpdated,"padding and glued frames preserve completions and sensor data");
     require(session.transport()->diagnostic().bytesWritten>0,"command bytes actually sent");session.close();
+}
+void continuousReceiveScheduling(){
+    class Stream final : public FpgaUsbTransport {
+    public:
+        bool open(const QString&) override {opened=true;return true;}
+        void close() override {opened=false;}
+        bool isOpen() const override {return opened;}
+        qint64 read(QByteArray &bytes,qint64) override {
+            ++reads;
+            bytes=available ? pressureFrame : QByteArray{};
+            return bytes.size();
+        }
+        qint64 write(const QByteArray &bytes) override {return bytes.size();}
+        FpgaUsbDiagnostic diagnostic() const override {return {};}
+        QByteArray pressureFrame=frame(FpgaVlp1::FrameType::Data,1,0x40,0x1100,pressure());
+        bool opened=false,available=true;
+        int reads=0;
+    };
+    auto wire=std::make_unique<Stream>();auto *stream=wire.get();
+    FpgaDeviceSession session(std::move(wire));
+    require(session.open(),"open continuous stream");
+    int received=0;
+    QObject::connect(&session,&FpgaDeviceSession::ptbDataUpdated,[&](const PtbData&){++received;});
+    session.poll();
+    require(received>1&&received<=64,"busy stream drains multiple transfers but yields a bounded batch");
+    auto *timer=session.findChild<QTimer*>();
+    require(timer&&timer->isActive()&&timer->interval()==0,"busy stream resumes without a timer delay");
+    stream->available=false;const int previousReads=stream->reads;
+    session.poll();
+    require(stream->reads==previousReads+1&&timer->interval()==1,"empty stream backs off after one read");
+    stream->available=true;
+    QTimer::singleShot(0,&session,[&]{session.close();});
+    QElapsedTimer deadline;deadline.start();
+    while(session.isOpen()&&deadline.elapsed()<1000)QCoreApplication::processEvents();
+    require(!session.isOpen()&&!timer->isActive(),"continuous input does not starve queued disconnect");
+    require(session.open()&&timer->interval()==1,"reopen restores idle polling");
+    QObject::connect(&session,&FpgaDeviceSession::ptbDataUpdated,[&](const PtbData&){session.close();});
+    const int beforeClose=stream->reads;session.poll();
+    require(stream->reads==beforeClose+1&&!timer->isActive(),"close from a receive callback stops draining and never restarts timer");
 }
 void malformedResponse(quint16 message,const QByteArray& payload,const char *description){
     FpgaDeviceSession session(std::make_unique<FpgaUsbReplayTransport>(frame(FpgaVlp1::FrameType::Response,1,1,message,payload)));
@@ -138,6 +178,47 @@ void transportErrorRetainsDetail(){
 }
 int main(int argc,char **argv){
     QCoreApplication app(argc,argv);
+    if(app.arguments().contains("--hardware-stream-probe")) {
+        // Read-only timer-driven streaming check. Acquisition must already be
+        // running, with every other USB reader disconnected. No control writes.
+        FpgaDeviceSession session;
+        QEventLoop loop;
+        QString error;
+        quint64 cycles[2]={},partial[2]={},overflow[2]={},continuity[2]={};
+        QVector<quint32> drops[2];
+        bool measuring=false;
+        QObject::connect(&session,&FpgaDeviceSession::errorOccurred,[&](const QString &value){error=value;loop.quit();});
+        QObject::connect(&session,&FpgaDeviceSession::waveformCompleted,[&](const FpgaWave::CompletedStream &s){
+            if(!measuring||s.source<0x30||s.source>0x31)return;
+            const int ch=s.source-0x30;++cycles[ch];partial[ch]+=s.partial;overflow[ch]+=s.overflow;continuity[ch]+=s.continuityError;
+        });
+        QObject::connect(&session,&FpgaDeviceSession::registerReadCompleted,[&](quint32,quint32 address,const QVector<quint32>& values){
+            if(values.isEmpty())return;
+            if(address==0x5048||address==0x5148)drops[(address-0x5048)/0x100].append(values.front());
+            std::printf("register %04x = %u\n",address,values.front());
+        });
+        require(session.open(),"open exclusive USB stream probe");
+        session.readRegisters(0x5004,1);session.readRegisters(0x5104,1);
+        QTimer::singleShot(3000,&loop,[&]{
+            session.readRegisters(0x5048,1);session.readRegisters(0x5148,1);measuring=true;
+        });
+        QTimer::singleShot(23000,&loop,[&]{
+            measuring=false;session.readRegisters(0x5048,1);session.readRegisters(0x5148,1);
+        });
+        QTimer::singleShot(25000,&loop,&QEventLoop::quit);
+        loop.exec();session.close();
+        bool passed=error.isEmpty();
+        for(int ch=0;ch<2;++ch){
+            const bool valid=drops[ch].size()==2;
+            const quint32 delta=valid?drops[ch][1]-drops[ch][0]:0;
+            std::printf("channel %d: cycles=%llu partial=%llu overflow=%llu continuity=%llu drops_valid=%d drops_delta=%u\n",
+                ch+1,cycles[ch],partial[ch],overflow[ch],continuity[ch],valid,delta);
+            passed=passed&&valid&&cycles[ch]>0&&delta==0&&overflow[ch]==0&&continuity[ch]==0;
+        }
+        if(!error.isEmpty())std::fprintf(stderr,"%s\n",qPrintable(error));
+        require(passed,"timer-driven stream receives active channels without new drops");
+        std::puts("hardware streaming probe passed; partial flags reported separately");return 0;
+    }
     if(app.arguments().contains("--hardware-probe")) {
         FpgaDeviceSession session;
         QObject::connect(&session,&FpgaDeviceSession::errorOccurred,[](const QString &error){std::fprintf(stderr,"%s\n",qPrintable(error));});
@@ -154,5 +235,5 @@ int main(int argc,char **argv){
         require(completed==3 && session.capabilities().valid,"PING, capabilities and register read complete");
         session.close();std::puts("hardware session probe passed");return 0;
     }
-    validContinuousResponses();semanticRejections();partialWaveformsSurviveClose();expiredWaveformsVisible();transportErrorRetainsDetail();boundedReadRetry();std::puts("fpga_device_session_test passed; software fixtures only");return 0;
+    validContinuousResponses();continuousReceiveScheduling();semanticRejections();partialWaveformsSurviveClose();expiredWaveformsVisible();transportErrorRetainsDetail();boundedReadRetry();std::puts("fpga_device_session_test passed; software fixtures only");return 0;
 }
