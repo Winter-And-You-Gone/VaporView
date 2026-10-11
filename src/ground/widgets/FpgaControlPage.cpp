@@ -268,6 +268,13 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     action(tempGrid,0,1,"设置 AI8 温度并读回","Set AI8 temperature & verify","fpgaSetTemperature",[this,temperature]{emit setTemperatureRequested(temperature->value());}); sensorLayout->addStretch();
     auto *waves=tab(QStringLiteral("波形"),QStringLiteral("Waveforms")); auto *waveLayout=new QVBoxLayout(waves);
     auto *waveHint=new QLabel(waves); label(waveHint,QStringLiteral("ADC 未确认前端校准时显示原码；解调显示数字幅值，不代表气体浓度。"),QStringLiteral("ADC displays raw codes until frontend calibration is confirmed. Demodulation displays digital amplitude, not concentration.")); waveHint->setWordWrap(true); waveLayout->addWidget(waveHint);
+    auto *faults=new QHBoxLayout;waveLayout->addLayout(faults);
+    for(const auto &fault:QList<QPair<QString,QString>>{{"missing_cycle",QStringLiteral("模拟单周期丢片")},{"latch_dlia",QStringLiteral("模拟 DLIA 异常锁存")}}) {
+        auto *button=new QPushButton(waves);button->setObjectName("fpgaSimulate_"+fault.first);
+        label(button,fault.second,fault.first=="missing_cycle"?"Simulate one missing fragment":"Simulate latched DLIA fault");
+        button->setProperty("fpgaSimulationControl",true);button->hide();faults->addWidget(button);
+        connect(button,&QPushButton::clicked,this,[this,op=fault.first]{simulateOperation({{"op",op}});});
+    }
     for(int i=0;i<2;++i) {
         auto *g=card(waves,waveLayout,QString("ADC %1 / DLIA %1").arg(i),QString("ADC %1 / DLIA %1").arg(i),QStringLiteral("audio-waveform")); auto *l=new QVBoxLayout(g);
         auto *frontend=new QGridLayout; l->addLayout(frontend);
@@ -358,8 +365,8 @@ void FpgaControlPage::updateActions(){
     const auto devices=usbDiscovery_.value("devices").toArray();
     if(locator_->currentIndex()==0 && devices.size()==1) selected=devices.first().toObject();
     const auto backend=backend_->currentData().toString();
-    const bool usable=selected.value("available").toBool()&&!selected.value("locator").toString().isEmpty()
-        &&(backend=="auto"||backend==selected.value("backend").toString())&&usbDiscovery_.value("error").toString().isEmpty();
+    const bool usable=property("fpgaUiTestMode").toBool() || (selected.value("available").toBool()&&!selected.value("locator").toString().isEmpty()
+        &&(backend=="auto"||backend==selected.value("backend").toString())&&usbDiscovery_.value("error").toString().isEmpty());
     connect_->setEnabled(!connected_&&!busy_&&!usbDiscovering_&&usbHostAvailable_&&usable);
     locator_->setEnabled(!connected_&&!busy_&&!usbDiscovering_&&usbHostAvailable_);
     backend_->setEnabled(!connected_&&!busy_&&!usbDiscovering_);
@@ -583,13 +590,75 @@ void FpgaControlPage::setSensorTransportPath(VaporView::SensorTransportPath path
     setProperty("sensorTransportPath", VaporView::sensorTransportPathToString(path));
 }
 
+void FpgaControlPage::simulateOperation(const QJsonObject &request)
+{
+    if(!property("fpgaUiTestMode").toBool())return;
+    const QString op=request.value("op").toString();
+    const bool enabled=request.value("enabled").toBool();
+    auto &sim=simulation_;
+    if(op=="discover") {
+        setUsbDiscoveryHost(false,true);
+        setUsbDiscoveryResult({{"devices",QJsonArray{QJsonObject{{"locator","simulation://fpga"},{"label","FPGA Simulator"},{"backend","cypress"},{"driver","SIMULATED"},{"available",true}}}},{"error",""}});
+        return;
+    }
+    if(op=="connect") {sim.connected=true;sim.dliaLatched=false;sim.missingCycle=false;}
+    else if(op=="disconnect") {sim.connected=false;sim.rawUntilMs=0;sim.recording=false;}
+    else if(!sim.connected) {appendDiagnostic(text("[界面测试] 请先连接模拟 FPGA。","[UI test] Connect the simulated FPGA first."));return;}
+    else if(op=="acquisition") {sim.acquiring=enabled;if(enabled){sim.dliaLatched=false;sim.missingCycle=false;sim.wms.fill(true);}else if(sim.rawUntilMs>0)sim.rawUntilMs=qMax<qint64>(1,sim.elapsedMs);}
+    else if(op=="raw") {
+        if(enabled&&!sim.acquiring){appendDiagnostic(text("[界面测试] 请先开始采集，再开启 RAW。","[UI test] Start acquisition before RAW."));return;}
+        sim.rawUntilMs=enabled?sim.elapsedMs+qBound(1,configuration().rawWindowSeconds,60)*1000:qMax<qint64>(1,sim.elapsedMs);
+    }
+    else if(op=="sensor") {
+        const auto source=quint16(request.value("source").toInt());
+        if(enabled)sim.disabledSensors.remove(source);else sim.disabledSensors.insert(source);
+    }
+    else if(op=="wms"||op=="dac") {
+        const int channel=request.value("channel").toInt();if(channel<0||channel>1)return;
+        (op=="wms"?sim.wms:sim.dac)[channel]=enabled;
+    }
+    else if(op=="temperature")sim.temperature=request.value("celsius").toDouble();
+    else if(op=="record")sim.recording=enabled;
+    else if(op=="missing_cycle")sim.missingCycle=true;
+    else if(op=="latch_dlia")sim.dliaLatched=true;
+    else if(op=="configure") {
+        const auto desired=FpgaControlConfig::fromJson(request.value("configuration").toObject());
+        const auto section=request.value("section").toString();
+        auto next=sim.applied;
+        if(section=="wms"){next.wms=desired.wms;next.dac=desired.dac;}
+        else if(section=="dlia")next.dlia=desired.dlia;
+        else if(section=="acquisition"){next.adcRateHz=desired.adcRateHz;next.ai8=desired.ai8;}
+        else return;
+        if(next.adcRateHz<1000||next.adcRateHz>1000000||!next.dlia[0].outputRateHz||!next.dlia[1].outputRateHz||
+            next.dlia[0].outputRateHz>next.adcRateHz/8||next.dlia[1].outputRateHz>next.adcRateHz/8) {
+            appendDiagnostic(text("[界面测试] 参数被拒绝：DLIA 输出率必须不大于 ADC 采样率的 1/8。","[UI test] Configuration rejected: DLIA rate must not exceed ADC rate / 8."));
+            setConnectionState(true,false);return;
+        }
+        sim.applied=next;sim.acquiring=false;
+        if(sim.rawUntilMs>0)sim.rawUntilMs=qMax<qint64>(1,sim.elapsedMs);
+    }
+    else if(op!="refresh")return;
+    appendDiagnostic(text("[界面测试] 模拟操作：","[UI test] Simulated operation: ")+op+
+        text("；仅改变模拟状态，不访问 USB。","; simulation only, no USB access."));
+    setUiTestState(true,sim.stalled,sim.partialFailure,sim.elapsedMs+1,sensorTransportPath_);
+}
+
 void FpgaControlPage::setUiTestState(bool enabled, bool dataStalled, bool partialFailure,
                                       qint64 elapsedMs, VaporView::SensorTransportPath path)
 {
     setSensorTransportPath(path);
+    const bool wasEnabled=property("fpgaUiTestMode").toBool();
+    if(enabled&&!wasEnabled) {
+        simulation_=Simulation{};simulation_.saved=configuration();simulation_.applied=configuration();
+        simulation_.savedUsb=usbDiscovery_;simulation_.savedUsbRemote=usbRemote_;simulation_.savedUsbAvailable=usbHostAvailable_;
+        for(auto *l:hardwareLabels_)l->setText(QStringLiteral("—"));
+    }
     setProperty("fpgaUiTestMode", enabled);
+    for(auto *w:findChildren<QWidget*>())if(w->property("fpgaSimulationControl").toBool())w->setVisible(enabled);
     if (!enabled)
     {
+        if(wasEnabled){const QSignalBlocker blocker(this);setConfiguration(simulation_.saved);
+            setUsbDiscoveryHost(simulation_.savedUsbRemote,simulation_.savedUsbAvailable);setUsbDiscoveryResult(simulation_.savedUsb);}
         latestReadings_.clear();
         latestWaves_.clear();
         historicalReadings_.clear();
@@ -618,16 +687,42 @@ void FpgaControlPage::setUiTestState(bool enabled, bool dataStalled, bool partia
         return;
     }
 
-    const double seconds = std::max<qint64>(0, elapsedMs) / 1000.0;
-    const bool live = !dataStalled;
-    const quint64 timestamp = static_cast<quint64>(std::max<qint64>(1, elapsedMs)) * 1000;
-    setTransportConnected(true);
-    const QString route = path == VaporView::SensorTransportPath::FpgaRelay
-        ? text("传感器 → 模拟 FPGA → VaporView", "Sensors -> mock FPGA -> VaporView")
-        : text("传感器直连 VaporView", "Sensors directly connected to VaporView");
-    setConnectionState(true, false,
-                       text("界面测试数据 · 不会写入硬件 · ",
-                            "UI test data · hardware writes disabled · ") + route);
+    auto &sim=simulation_;sim.elapsedMs=elapsedMs;sim.stalled=dataStalled;sim.partialFailure=partialFailure;
+    if(!wasEnabled){simulateOperation({{"op","discover"}});appendDiagnostic(text("[界面测试] 合成 FPGA 数据；可操作启停、参数及故障注入，不访问硬件。","[UI test] Synthetic FPGA data; interactive controls and faults, no hardware access."));}
+    setTransportConnected(sim.connected);
+    setConnectionState(sim.connected,false,text("界面测试 · 模拟 FPGA · 不访问硬件","UI test · Simulated FPGA · No hardware access"));
+    setRecordingState(sim.recording,text("模拟记录状态，不写入现场记录文件","Simulated recording state; no recording files written"));
+    if(!sim.connected)return;
+    if(sim.rawUntilMs>0&&elapsedMs>=sim.rawUntilMs) {
+        sim.rawUntilMs=0;
+        for(quint16 source:{0x20,0x21})if(lastCompleteRaw_.contains(source)) {
+            auto tail=lastCompleteRaw_.value(source);tail.cycleId=++sim.cycle;tail.complete=false;tail.partial=true;
+            tail.pointBytes.truncate(tail.pointBytes.size()/2);updateWaveform(tail);
+        }
+        appendDiagnostic(text("[界面测试] RAW 短窗结束：模拟残缺尾周期，保留上一完整历史图。","[UI test] RAW window ended: partial tail; previous complete plot retained as historical."));
+    }
+    const double seconds=std::max<qint64>(0,elapsedMs)/1000.0;
+    const bool live=!dataStalled;
+    const quint64 timestamp=quint64(std::max<qint64>(1,elapsedMs))*1000;
+    const bool raw=sim.rawUntilMs>elapsedMs&&sim.acquiring;
+    QMap<quint32,quint32> registers{{0x50,raw?3u:0u}};
+    for(int ch=0;ch<2;++ch) {
+        const quint32 offset=ch*0x100;
+        const auto &w=sim.applied.wms[ch];const auto &d=sim.applied.dlia[ch];const auto &dac=sim.applied.dac[ch];
+        registers[0x2004+offset]=sim.wms[ch];registers[0x2008+offset]=sim.wms[ch]?0x13:2;
+        const quint32 words[]={w.scanMilliHz,quint32(w.scanAmplitude),quint32(w.bias),w.sineMilliHz,quint32(w.sineAmplitude),w.phase,w.updateRateHz};
+        for(int i=0;i<7;++i)registers[0x2010+offset+i*4]=words[i];
+        registers[0x3004+offset]=sim.dac[ch];registers[0x3008+offset]=sim.dac[ch]?0x13:2;
+        registers[0x3010+offset]=dac.deviceCtrl;registers[0x3034+offset]=dac.gain;registers[0x3038+offset]=quint32(dac.offset);
+        registers[0x4004+offset]=sim.acquiring;registers[0x4008+offset]=sim.acquiring?0x13:0x12;
+        registers[0x403c+offset]=raw;registers[0x4010+offset]=registers[0x4014+offset]=sim.applied.adcRateHz;
+        registers[0x5004+offset]=sim.acquiring;registers[0x5008+offset]=sim.acquiring?3:2;
+        const quint32 dwords[]={d.referenceMilliHz,d.phase1,d.phase2,d.outputRateHz,d.mode};
+        for(int i=0;i<5;++i)registers[0x5010+offset+i*4]=dwords[i];
+        registers[0x504c+offset]=d.outputRateHz;registers[0x500c+offset]=sim.dliaLatched?0x84:0;
+    }
+    for(quint16 source:{0x40,0x42,0x43,0x44,0x45,0x46})registers[0x6004+(source-0x40)*0x100]=!sim.disabledSensors.contains(source);
+    setHardwareValues(registers);
 
     const auto makeReading = [this, timestamp, live, partialFailure](
                                   quint16 source, VaporView::FpgaSensor::SensorKind kind) {
@@ -640,7 +735,7 @@ void FpgaControlPage::setUiTestState(bool enabled, bool dataStalled, bool partia
         reading.flags = 0x01;
         reading.validity.structure = true;
         reading.validity.crc = true;
-        reading.validity.deviceOnline = live && !(partialFailure &&
+        reading.validity.deviceOnline = live && !simulation_.disabledSensors.contains(source) && !(partialFailure &&
             (source == 0x40 || source == 0x44));
         reading.validity.measurement = reading.validity.deviceOnline;
         return reading;
@@ -650,6 +745,9 @@ void FpgaControlPage::setUiTestState(bool enabled, bool dataStalled, bool partia
     ptb.pressureMilliPa = qint32(101325000.0 + std::sin(seconds * 0.7) * 28000.0);
     ptb.pressurePa = *ptb.pressureMilliPa / 1000.0;
     updateSensor(ptb);
+
+    auto bmp=makeReading(0x43,VaporView::FpgaSensor::SensorKind::Bmp390);
+    bmp.pressurePa=101694.0+std::sin(seconds*0.7)*28.0;bmp.temperatureC=24.0+std::sin(seconds*0.2)*0.3;updateSensor(bmp);
 
     auto epsilon = makeReading(0x42, VaporView::FpgaSensor::SensorKind::Epsilon);
     epsilon.epsilonMessageId = quint8(0x50);
@@ -665,11 +763,12 @@ void FpgaControlPage::setUiTestState(bool enabled, bool dataStalled, bool partia
 
     auto tfa = makeReading(0x45, VaporView::FpgaSensor::SensorKind::Tfa1500);
     tfa.distanceMm = quint32(120000.0 + std::sin(seconds * 0.25) * 2400.0);
+    if(partialFailure)tfa.validity.measurement=false;
     updateSensor(tfa);
 
     auto ai8 = makeReading(0x46, VaporView::FpgaSensor::SensorKind::Ai8);
     ai8.ai8PvRaw = qint32(235 + std::sin(seconds * 0.4) * 8.0);
-    ai8.ai8SpRaw = qint32(240);
+    ai8.ai8SpRaw = qint32(sim.temperature*10);
     ai8.ai8Alarm = 0;
     ai8.ai8Host = 1;
     ai8.ai8DeviceStatus = 1;
@@ -682,64 +781,61 @@ void FpgaControlPage::setUiTestState(bool enabled, bool dataStalled, bool partia
         for (int byte = 0; byte < 4; ++byte)
             bytes.append(char(word >> (byte * 8)));
     };
-    VaporView::FpgaWave::CompletedStream adc;
-    adc.source = 0x20;
-    adc.message = 0x1000;
-    adc.schema = 2;
-    adc.format = 0;
-    adc.rate = 1000000;
-    adc.totalPoints = 128;
-    adc.bytesPerPoint = 4;
-    adc.adcBits = 24;
-    adc.complete = live;
-    adc.partial = !live;
-    for (quint32 point = 0; point < adc.totalPoints; ++point)
-        appendWord(adc.pointBytes, qint32(std::sin(seconds * 2.0 + point * 0.16) * 900000.0));
-    updateWaveform(adc);
-
-    VaporView::FpgaWave::CompletedStream dlia;
-    dlia.source = 0x30;
-    dlia.message = 0x1001;
-    dlia.schema = 2;
-    dlia.format = 2;
-    dlia.rate = 10000;
-    dlia.totalPoints = 96;
-    dlia.bytesPerPoint = 24;
-    dlia.complete = live;
-    dlia.partial = !live;
-    for (quint32 point = 0; point < dlia.totalPoints; ++point)
-    {
-        const double phase = seconds * 1.4 + point * 0.22;
-        const qint32 i1 = qint32(std::sin(phase) * 700000.0);
-        const qint32 q1 = qint32(std::cos(phase) * 500000.0);
-        const qint32 i2 = qint32(std::sin(phase * 2.0) * 300000.0);
-        const qint32 q2 = qint32(std::cos(phase * 2.0) * 240000.0);
-        appendWord(dlia.pointBytes, i1);
-        appendWord(dlia.pointBytes, q1);
-        appendWord(dlia.pointBytes, i2);
-        appendWord(dlia.pointBytes, q2);
-        appendWord(dlia.pointBytes, i1 / 3);
-        appendWord(dlia.pointBytes, q1 / 3);
+    if(dataStalled||!sim.acquiring) {
+        for(quint16 source:{0x20,0x21,0x30,0x31})historicalWaves_.insert(source);
+        refreshMeasurements();return;
     }
-    updateWaveform(dlia);
-
-    setHardwareValues({
-        {0x2008, live ? 0x13u : 0x80u}, {0x3008, live ? 0x13u : 0x80u},
-        {0x4008, live ? 0x13u : 0x80u}, {0x5008, live ? 0x13u : 0x80u},
-        {0x4014, 1000000u}, {0x5014, 10000u}});
-    setRecordingState(true, text("UI-TEST-FPGA · 传感器/DLIA 已记录，RAW 按需",
-                                "UI-TEST-FPGA · sensors/DLIA recording, RAW on demand"));
-    if (diagnostics_)
-    {
-        const QString routeDetail = path == VaporView::SensorTransportPath::FpgaRelay
-            ? text("传感器→模拟 FPGA→VaporView；", "sensors -> mock FPGA -> VaporView; ")
-            : text("传感器直连 VaporView；", "sensors directly connected to VaporView; ");
-        diagnostics_->setPlainText(routeDetail + text(
-            dataStalled ? "[界面测试] FPGA 数据停更：保留最后周期并标记为异常。"
-                        : partialFailure ? "[界面测试] FPGA 部分设备异常：PTB210/SHT45 离线。"
-                        : "[界面测试] FPGA 正常运行：PTB210、SHT45、TFA1500、AI8、ADC、DLIA 已模拟。",
-            dataStalled ? "[UI test] FPGA data stalled: last cycle retained and marked invalid."
-                        : partialFailure ? "[UI test] FPGA partial failure: PTB210/SHT45 offline."
-                        : "[UI test] FPGA normal operation: PTB210, SHT45, TFA1500, AI8, ADC and DLIA simulated."));
+    const quint32 cycle=++sim.cycle;
+    // Exercise the production fragment assembler using generated schema-2 packets.
+    const auto publish=[&](VaporView::FpgaWave::CompletedStream stream,bool missing) {
+        auto &assembler=sim.assembler;
+        stream.cycleId=cycle;stream.timestamp=timestamp;
+        const quint32 perFragment=qMin(8160u/stream.bytesPerPoint,qMax(1u,stream.totalPoints/2));
+        const quint16 fragments=quint16((stream.totalPoints+perFragment-1)/perFragment);
+        for(int part=0;part<fragments;++part) {
+            if(missing&&part==0)continue;
+            QByteArray payload;auto u16=[&](quint16 v){payload.append(char(v));payload.append(char(v>>8));};
+            const quint32 first=part*perFragment,count=qMin(perFragment,stream.totalPoints-first);
+            u16(2);u16(stream.source<0x30?24:stream.format);appendWord(payload,stream.rate);appendWord(payload,stream.totalPoints);
+            if(stream.source<0x30){appendWord(payload,stream.format);u16(part);u16(fragments);appendWord(payload,first);appendWord(payload,count);}
+            else {u16(part);u16(fragments);appendWord(payload,first);appendWord(payload,count);appendWord(payload,stream.bytesPerPoint);}
+            appendWord(payload,0);payload+=stream.pointBytes.mid(first*stream.bytesPerPoint,count*stream.bytesPerPoint);
+            const auto completed=assembler.accept({stream.source,stream.message,stream.partial?0x23u:3u,cycle,timestamp,payload});
+            if(completed)updateWaveform(*completed);
+        }
+        for(const auto &incomplete:assembler.flush(stream.source))updateWaveform(incomplete);
+    };
+    for(int ch=0;ch<2;++ch) {
+        const auto &w=sim.applied.wms[ch];
+        const double scanHz=qMax(0.001,w.scanMilliHz/1000.0);
+        const double amplitude=sim.dac[ch]?double(w.scanAmplitude)/107374182.0:0.0;
+        if(raw) {
+            VaporView::FpgaWave::CompletedStream adc;
+            adc.source=0x20+ch;adc.message=0x1000;adc.format=0;adc.bytesPerPoint=4;adc.adcBits=24;
+            adc.rate=sim.applied.adcRateHz;
+            const double wanted=adc.rate/scanHz;adc.totalPoints=quint32(qBound(2.0,wanted,16384.0));adc.partial=wanted>16384.0;
+            for(quint32 point=0;point<adc.totalPoints;++point) {
+                const double phase=6.283185307179586*point/adc.totalPoints;
+                const double modulation=std::sin(phase*(w.sineMilliHz/double(qMax(1u,w.scanMilliHz))))*double(w.sineAmplitude)/2147483648.0*8388608.0;
+                const double value=sim.dac[ch]?(double(w.bias)/2147483648.0*8388608.0+std::sin(phase+ch*0.25+seconds*0.03)*amplitude*419430.0+modulation):0;
+                appendWord(adc.pointBytes,qint32(qBound(-8388608.0,value,8388607.0)));
+            }
+            publish(adc,sim.missingCycle);
+        }
+        if(sim.wms[ch]) {
+            VaporView::FpgaWave::CompletedStream dlia;
+            dlia.source=0x30+ch;dlia.message=0x1001;dlia.format=2;dlia.bytesPerPoint=24;
+            dlia.rate=sim.applied.dlia[ch].outputRateHz;dlia.totalPoints=quint32(qBound(2.0,dlia.rate/scanHz,2048.0));
+            dlia.partial=sim.dliaLatched;
+            for(quint32 point=0;point<dlia.totalPoints;++point) {
+                const double x=6.0*point/dlia.totalPoints-3.0+std::sin(seconds*0.2+ch)*0.05;
+                const double peak=std::exp(-x*x);
+                const qint32 i1=qint32(x*peak*amplitude*1500000.0),q1=i1/2;
+                const qint32 i2=qint32((1-2*x*x)*peak*amplitude*450000.0),q2=i2/2;
+                for(qint32 value:{i1,q1,i2,q2,qAbs(i1),qAbs(i2)})appendWord(dlia.pointBytes,value);
+            }
+            publish(dlia,sim.missingCycle);
+        }
     }
+    if(sim.missingCycle){appendDiagnostic(text("[界面测试] 本周期丢失首分片；下一周期独立重新拼接。","[UI test] First fragment missing this cycle; next cycle assembles independently."));sim.missingCycle=false;}
 }

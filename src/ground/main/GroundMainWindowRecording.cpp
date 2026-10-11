@@ -588,7 +588,7 @@ void MainWindow::updateRecordingStatusLabel()
         const QString detail = (status.sessionDirectory.isEmpty() ? QStringLiteral("--") : status.sessionDirectory)
             + QString(state_->is_english_ ? "\nFPGA archived: %1 records" : "\nFPGA 归档记录：%1 条")
                   .arg(static_cast<qulonglong>(status.rawFpgaRecords));
-        state_->fpga_page_->setRecordingState(status.active, detail);
+        if (!isUiTestMode()) state_->fpga_page_->setRecordingState(status.active, detail);
     }
     if (state_->recording_status_title_lbl_)
     {

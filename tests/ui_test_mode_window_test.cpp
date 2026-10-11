@@ -1,3 +1,4 @@
+#include "test_settings_sandbox.h"
 #include "ground/main/MainWindow.h"
 #include "ground/main/RecordingStatusView.h"
 #include "ground/devices/RemoteSkyController.h"
@@ -1178,6 +1179,7 @@ int main(int argc, char **argv)
                 (fpgaPtb->text().contains(QStringLiteral("测量有效")) ||
                  fpgaPtb->text().contains(QStringLiteral("Valid measurement"))),
             "UI test mode exposes a valid PTB210 pressure reading");
+    window->findChild<QPushButton *>(QStringLiteral("fpgaRawStart"))->click();
     require(VaporViewTest::processEventsUntil(1200, [fpgaPlot, fpgaWaveSummary]() {
                 return fpgaPlot->property("sampleCount").toInt() >= 100 &&
                        (fpgaWaveSummary->text().contains(QStringLiteral("完整周期")) ||
@@ -1188,9 +1190,14 @@ int main(int argc, char **argv)
                 fpgaDiagnostics->toPlainText().contains(QStringLiteral("UI test")),
             "UI test mode exposes FPGA simulation diagnostics");
     window->findChild<QPushButton *>(QStringLiteral("fpgaAcquisitionStart"))->click();
-    require(fpgaDiagnostics->toPlainText().contains(QStringLiteral("操作已忽略")) ||
-                fpgaDiagnostics->toPlainText().contains(QStringLiteral("command ignored")),
+    require(fpgaDiagnostics->toPlainText().contains(QStringLiteral("模拟操作")) ||
+                fpgaDiagnostics->toPlainText().contains(QStringLiteral("Simulated operation")),
             "FPGA UI test actions are logged without touching hardware");
+    window->findChild<QPushButton *>(QStringLiteral("fpgaDisconnect"))->click();
+    VaporViewTest::processEventsFor(100);
+    require(window->findChild<QPushButton *>(QStringLiteral("fpgaConnect"))->isEnabled(),"UI simulator disconnect routes to simulation");
+    window->findChild<QPushButton *>(QStringLiteral("fpgaConnect"))->click();
+    require(window->findChild<QPushButton *>(QStringLiteral("fpgaAcquisitionStop"))->isEnabled(),"UI simulator reconnect resumes ready state");
     const auto scenarioAction = [scenarioMenu](int value) {
         for (QAction *action : scenarioMenu->actions())
             if (action->data().toInt() == value) return action;

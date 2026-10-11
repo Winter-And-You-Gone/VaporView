@@ -39,6 +39,7 @@ public:
     void setTheme(bool dark, int fontScalePercent = 100);
     void setRecordingState(bool active, const QString &detail = {});
     void setSensorTransportPath(VaporView::SensorTransportPath path);
+    void simulateOperation(const QJsonObject &request);
     void setUiTestState(bool enabled, bool dataStalled = false,
                         bool partialFailure = false, qint64 elapsedMs = 0,
                         VaporView::SensorTransportPath path = VaporView::SensorTransportPath::DirectDevices);
@@ -75,6 +76,19 @@ private:
     void lockOperation();
     void refreshMeasurements();
     void label(QWidget *widget, const QString &zh, const QString &en);
+    struct Simulation {
+        bool connected=true, acquiring=true, recording=true, stalled=false, partialFailure=false;
+        bool missingCycle=false, dliaLatched=false;
+        qint64 elapsedMs=0, rawUntilMs=0;
+        quint32 cycle=0;
+        double temperature=24.0;
+        QSet<quint16> disabledSensors;
+        std::array<bool,2> wms{{true,true}}, dac{{true,true}};
+        FpgaControlConfig saved, applied;
+        QJsonObject savedUsb;
+        bool savedUsbRemote=false, savedUsbAvailable=true;
+        VaporView::FpgaWave::Assembler assembler{4};
+    } simulation_;
     FpgaControlConfig config_;
     QVector<Field> fields_;
     QVector<QWidget*> onlineControls_;

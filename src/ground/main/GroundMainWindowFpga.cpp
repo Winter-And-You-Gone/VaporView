@@ -37,20 +37,13 @@ void MainWindow::setupFpgaControlPage()
     controller->moveToThread(state_->fpga_thread_);
     connect(state_->fpga_thread_, &QThread::finished, controller, &QObject::deleteLater);
     const auto dispatch = [this, controller](const QJsonObject& request, std::function<void()> local) {
-        if (isRemoteSkyMode()) sendRemoteFpgaControl(request);
+        if (isUiTestMode()) state_->fpga_page_->simulateOperation(request);
+        else if (isRemoteSkyMode()) sendRemoteFpgaControl(request);
         else QMetaObject::invokeMethod(controller, std::move(local), Qt::QueuedConnection);
     };
-    const auto blockUiTest = [this]() {
-        if (!isUiTestMode()) return false;
-        state_->fpga_page_->appendDiagnostic(state_->is_english_
-            ? QStringLiteral("[UI test] FPGA command ignored; hardware writes are disabled.")
-            : QStringLiteral("[界面测试] FPGA 操作已忽略；界面测试不会写入硬件。"));
-        return true;
-    };
-
     connect(page, &FpgaControlPage::discoverDevicesRequested, this, [this, controller, page] {
         if (isUiTestMode()) {
-            page->setUsbDiscoveryResult({{"devices", QJsonArray{}}, {"error", QStringLiteral("UI test: USB discovery disabled")}});
+            page->simulateOperation({{"op","discover"}});
             return;
         }
         if (isRemoteSkyMode()) { sendRemoteFpgaControl({{"op", "discover"}}); return; }
@@ -59,7 +52,7 @@ void MainWindow::setupFpgaControlPage()
         QMetaObject::invokeMethod(controller, [controller, target, generation] {
             const auto result = controller->discoverDevices();
             if (target) QMetaObject::invokeMethod(target, [target, generation, result] {
-                if (target && target->usbDiscoveryGeneration() == generation) target->setUsbDiscoveryResult(result);
+                if (target && !target->property("fpgaUiTestMode").toBool() && target->usbDiscoveryGeneration() == generation) target->setUsbDiscoveryResult(result);
             }, Qt::QueuedConnection);
         }, Qt::QueuedConnection);
     });
@@ -67,9 +60,7 @@ void MainWindow::setupFpgaControlPage()
     connect(page, &FpgaControlPage::connectRequested, this, [this, controller](const QString &locator, const QString &backend) {
         if (isUiTestMode())
         {
-            state_->fpga_page_->appendDiagnostic(state_->is_english_
-                ? QStringLiteral("[UI test] FPGA connect ignored; hardware writes are disabled.")
-                : QStringLiteral("[界面测试] FPGA 连接已忽略；界面测试不会访问硬件。"));
+            state_->fpga_page_->simulateOperation({{"op","connect"}});
             return;
         }
         if (isRemoteSkyMode())
@@ -87,20 +78,16 @@ void MainWindow::setupFpgaControlPage()
         }
         QMetaObject::invokeMethod(controller, [controller, locator, backend] { controller->connectDevice(locator,backend); }, Qt::QueuedConnection);
     });
-    connect(page, &FpgaControlPage::disconnectRequested, this, [dispatch, controller, blockUiTest] {
-        if (blockUiTest()) return;
+    connect(page, &FpgaControlPage::disconnectRequested, this, [dispatch, controller] {
         dispatch({{"op", "disconnect"}}, [controller] { controller->disconnectDevice(); });
     });
-    connect(page, &FpgaControlPage::applyRequested, this, [dispatch, controller, blockUiTest](const FpgaControlConfig& config) {
-        if (blockUiTest()) return;
+    connect(page, &FpgaControlPage::applyRequested, this, [dispatch, controller](const FpgaControlConfig& config) {
         dispatch({{"op", "configure"}, {"section", "acquisition"}, {"configuration", config.toJson()}}, [controller, config] { controller->applyConfiguration(config,"acquisition"); });
     });
-    connect(page, &FpgaControlPage::applyWmsRequested, this, [dispatch, controller, blockUiTest](const FpgaControlConfig& config) {
-        if (blockUiTest()) return;
+    connect(page, &FpgaControlPage::applyWmsRequested, this, [dispatch, controller](const FpgaControlConfig& config) {
         dispatch({{"op", "configure"}, {"section", "wms"}, {"configuration", config.toJson()}}, [controller, config] { controller->applyConfiguration(config,"wms"); });
     });
-    connect(page, &FpgaControlPage::applyDliaRequested, this, [dispatch, controller, blockUiTest](const FpgaControlConfig& config) {
-        if (blockUiTest()) return;
+    connect(page, &FpgaControlPage::applyDliaRequested, this, [dispatch, controller](const FpgaControlConfig& config) {
         dispatch({{"op", "configure"}, {"section", "dlia"}, {"configuration", config.toJson()}}, [controller, config] { controller->applyConfiguration(config,"dlia"); });
     });
     connect(page, &FpgaControlPage::configurationChanged, this, [this, controller](const FpgaControlConfig &config) {
@@ -125,40 +112,31 @@ void MainWindow::setupFpgaControlPage()
             onRefreshTimer();
         }
     });
-    connect(page, &FpgaControlPage::refreshRequested, this, [dispatch, controller, blockUiTest] {
-        if (blockUiTest()) return;
+    connect(page, &FpgaControlPage::refreshRequested, this, [dispatch, controller] {
         dispatch({{"op", "refresh"}}, [controller] { controller->refresh(); });
     });
-    connect(page, &FpgaControlPage::acquisitionRequested, this, [dispatch, controller, blockUiTest](bool enabled) {
-        if (blockUiTest()) return;
+    connect(page, &FpgaControlPage::acquisitionRequested, this, [dispatch, controller](bool enabled) {
         dispatch({{"op", "acquisition"}, {"enabled", enabled}}, [controller, enabled] { controller->setAcquisition(enabled); });
     });
-    connect(page, &FpgaControlPage::waveformRequested, this, [dispatch, controller, blockUiTest](int channel, bool enabled) {
-        if (blockUiTest()) return;
+    connect(page, &FpgaControlPage::waveformRequested, this, [dispatch, controller](int channel, bool enabled) {
         dispatch({{"op", "wms"}, {"channel", channel}, {"enabled", enabled}}, [controller, channel, enabled] { controller->setWaveform(channel, enabled); });
     });
-    connect(page, &FpgaControlPage::dacRequested, this, [dispatch, controller, blockUiTest](int channel, bool enabled) {
-        if (blockUiTest()) return;
+    connect(page, &FpgaControlPage::dacRequested, this, [dispatch, controller](int channel, bool enabled) {
         dispatch({{"op", "dac"}, {"channel", channel}, {"enabled", enabled}}, [controller, channel, enabled] { controller->setDac(channel, enabled); });
     });
-    connect(page, &FpgaControlPage::sensorEnableRequested, this, [dispatch, controller, blockUiTest](quint16 source, bool enabled) {
-        if (blockUiTest()) return;
+    connect(page, &FpgaControlPage::sensorEnableRequested, this, [dispatch, controller](quint16 source, bool enabled) {
         dispatch({{"op", "sensor"}, {"source", source}, {"enabled", enabled}}, [controller, source, enabled] { controller->setSensorEnabled(source, enabled); });
     });
-    connect(page, &FpgaControlPage::rawRequested, this, [dispatch, controller, blockUiTest](bool enabled) {
-        if (blockUiTest()) return;
+    connect(page, &FpgaControlPage::rawRequested, this, [dispatch, controller](bool enabled) {
         dispatch({{"op", "raw"}, {"enabled", enabled}}, [controller, enabled] { controller->setRawEnabled(enabled); });
     });
-    connect(page, &FpgaControlPage::setTemperatureRequested, this, [dispatch, controller, blockUiTest](double celsius) {
-        if (blockUiTest()) return;
+    connect(page, &FpgaControlPage::setTemperatureRequested, this, [dispatch, controller](double celsius) {
         dispatch({{"op", "temperature"}, {"celsius", celsius}}, [controller, celsius] { controller->setTemperature(celsius); });
     });
     connect(page, &FpgaControlPage::recordingRequested, this, [this](bool enable) {
         if (isUiTestMode())
         {
-            state_->fpga_page_->appendDiagnostic(state_->is_english_
-                ? QStringLiteral("[UI test] FPGA recording command ignored; simulated recording remains active.")
-                : QStringLiteral("[界面测试] FPGA 记录操作已忽略；模拟记录保持运行。"));
+            state_->fpga_page_->simulateOperation({{"op","record"},{"enabled",enable}});
             return;
         }
         if (enable) onStartRecordingClicked(); else onStopRecordingClicked();
@@ -450,9 +428,6 @@ void MainWindow::receiveRemoteFpgaStatus(const QJsonObject& status)
 void MainWindow::updateFpgaPageBackend()
 {
     if (!state_->fpga_page_) return;
-    state_->fpga_page_->setUsbDiscoveryHost(isRemoteSkyMode(), !isRemoteSkyMode()
-        || (state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen()));
-    state_->fpga_page_->setSensorTransportPath(currentSensorTransportPath());
     if (isUiTestMode() && state_->ui_test_model_)
     {
         const qint64 elapsed = QDateTime::currentMSecsSinceEpoch() - state_->ui_test_started_ms_;
@@ -464,6 +439,9 @@ void MainWindow::updateFpgaPageBackend()
             VaporView::SensorTransportPath::FpgaRelay);
         return;
     }
+    state_->fpga_page_->setUsbDiscoveryHost(isRemoteSkyMode(), !isRemoteSkyMode()
+        || (state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen()));
+    state_->fpga_page_->setSensorTransportPath(currentSensorTransportPath());
     if (!isRemoteSkyMode()) {
         state_->fpga_page_->setTransportConnected(state_->fpga_connected_);
         const QString routeDetail = currentSensorTransportPath() == VaporView::SensorTransportPath::FpgaRelay
