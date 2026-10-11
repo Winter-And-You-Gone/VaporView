@@ -41,6 +41,10 @@ int main(int argc,char **argv) {
     auto *devices=page.findChild<QComboBox*>("fpgaLocator");
     auto *scan=page.findChild<QPushButton*>("fpgaDiscover");
     auto *connect=page.findChild<QPushButton*>("fpgaConnect");
+    auto *disconnect=page.findChild<QPushButton*>("fpgaDisconnect");
+    auto *backend=page.findChild<QComboBox*>("fpgaBackend");
+    auto *discoveryStatus=page.findChild<QLabel*>("fpgaDiscoveryStatus");
+    auto *connectionStatus=page.findChild<QLabel*>("fpgaConnectionStatus");
     const QJsonObject first{{"locator","board-a"},{"label","GP01 A"},{"driver","WinUSB"},{"backend","winusb"},{"available",true}};
     auto second=first;second["locator"]="board-b";second["label"]="GP01 B";
     page.setUsbDiscoveryResult({{"devices",QJsonArray{}},{"error",""}});
@@ -184,6 +188,38 @@ int main(int argc,char **argv) {
         QFont font=app.font();font.setPointSizeF(app.font().pointSizeF()*scale/100.0);page.setFont(font);
         auto *tabs=page.findChild<QTabWidget*>();
         for(int i=0;i<tabs->count();++i){tabs->setCurrentIndex(i);app.processEvents();auto *scroll=qobject_cast<QScrollArea*>(tabs->widget(i));require(scroll&&scroll->widgetResizable(),"all tabs remain scrollable at large fonts");require(scroll->viewport()->width()>0,"tab viewport remains visible");}
+        int previousRight=-1;
+        for(auto *widget : QList<QWidget*>{devices,backend,scan,connect,disconnect,discoveryStatus,connectionStatus}) {
+            const QRect geometry(widget->mapTo(devices->parentWidget(),QPoint()),widget->size());
+            require(qAbs(geometry.center().y()-devices->geometry().center().y())<=1,"all FPGA connection contents share one row");
+            require(geometry.left()>previousRight&&geometry.right()<devices->parentWidget()->width(),"connection row stays ordered without overlap or overflow");
+            previousRight=geometry.right();
+        }
+        require(devices->width()<=qRound(260*scale/100.0)&&backend->width()<devices->width(),"device and backend selectors remain compact");
+        for(auto *button : {scan,connect,disconnect}) {
+            require(button->text().isEmpty()&&!button->icon().isNull(),"connection actions render only their icons");
+            require(button->width()==button->height()&&button->width()>=40,"icon actions retain square clickable targets");
+            require(!button->toolTip().isEmpty()&&button->accessibleName()==button->toolTip(),"icon actions retain translated tooltips and accessible names");
+            button->setAttribute(Qt::WA_UnderMouse,false);button->clearFocus();
+            auto *body=button->parentWidget();
+            const QPoint blankPoint=button->mapTo(body,QPoint(4,button->height()/2));
+            const auto pixel=[](const QImage &image,const QPoint &point) {
+                return image.pixelColor(qRound(point.x()*image.devicePixelRatio()),qRound(point.y()*image.devicePixelRatio())).rgb();
+            };
+            const bool enabled=button->isEnabled();
+            for(bool active : {false,true}) {
+                button->setEnabled(active);
+                const auto idle=body->grab().toImage();
+                require(pixel(idle,blankPoint)==pixel(idle,QPoint(1,blankPoint.y())),"idle and disabled line-icon actions have transparent backgrounds");
+            }
+            button->setDown(true);
+            const auto pressed=body->grab().toImage();
+            require(pixel(pressed,blankPoint)==VaporView::appThemeColor(VaporView::AppThemeColor::SurfaceAlt,dark).rgb(),"pressing a line-icon action highlights its background");
+            button->setDown(false);button->setEnabled(enabled);
+        }
+        require(scan->toolTip()==(english?QStringLiteral("Refresh devices"):QStringLiteral("刷新设备")),"switching language keeps icon-only refresh action localized");
+        require(discoveryStatus->toolTip()==discoveryStatus->text()&&connectionStatus->toolTip()==connectionStatus->text(),"connection status tooltips preserve complete text");
+        require(devices->toolTip().startsWith(devices->currentText()+"\n")&&devices->toolTip().contains("04B4:00F1"),"compact device selector retains its full name and existing connection guidance");
         for(auto *card : page.findChildren<QFrame*>("fpgaSectionCard")) {
             require(card->property("vaporViewTopLevelCard").toBool(),"FPGA sections use shared card shadow and radius behavior");
             auto *header=card->findChild<QWidget*>("sectionTitleBar");

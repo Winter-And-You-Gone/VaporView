@@ -35,6 +35,20 @@
 #include <type_traits>
 
 namespace {
+class ConnectionStatusLabel final : public QLabel {
+public:
+    explicit ConnectionStatusLabel(QWidget *parent) : QLabel(parent) {
+        setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+        setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    }
+protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter painter(this);
+        painter.setPen(palette().color(QPalette::WindowText));
+        painter.drawText(contentsRect(), alignment(), fontMetrics().elidedText(text(), Qt::ElideRight, contentsRect().width()));
+    }
+};
+
 class FpgaCheckBox final : public QCheckBox {
 public:
     explicit FpgaCheckBox(QWidget *parent) : QCheckBox(parent) {
@@ -89,6 +103,10 @@ void FpgaControlPage::label(QWidget *w, const QString &zh, const QString &en) {
     w->setProperty("fpgaZh",zh); w->setProperty("fpgaEn",en);
     if (auto *l=qobject_cast<QLabel*>(w)) l->setText(english_?en:zh);
     if (auto *b=qobject_cast<QAbstractButton*>(w)) {
+        if (b->property("fpgaIconOnly").toBool()) {
+            b->setText(QString()); b->setToolTip(english_?en:zh); b->setAccessibleName(english_?en:zh);
+            return;
+        }
         b->setText(english_?en:zh);
         const auto metrics=b->fontMetrics();
         b->setMinimumWidth(std::max(metrics.horizontalAdvance(zh),metrics.horizontalAdvance(en))+2*metrics.height());
@@ -119,19 +137,26 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
         layout->addWidget(frame); return body;
     };
     auto *connection=card(this,root,QStringLiteral("FPGA 连接"),QStringLiteral("FPGA connection"),QStringLiteral("cpu"));
-    auto *cl=new QGridLayout(connection);
+    auto *cl=new QHBoxLayout(connection);
     locator_=new VaporView::SingleLevelPopupComboBox(connection); locator_->setObjectName("fpgaLocator");
-    locator_->setMinimumContentsLength(20); locator_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-    discover_=new QPushButton(connection); discover_->setObjectName("fpgaDiscover"); label(discover_,QStringLiteral("刷新设备"),QStringLiteral("Refresh devices"));
-    discoveryStatus_=new QLabel(connection); discoveryStatus_->setObjectName("fpgaDiscoveryStatus"); discoveryStatus_->setWordWrap(true);
+    locator_->setMinimumContentsLength(12); locator_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    locator_->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Fixed);
+    auto connectionAction=[this,connection](const char *name,const char *icon,const char *zh,const char *en) {
+        auto *button=new QPushButton(connection); button->setObjectName(QString::fromLatin1(name));
+        button->setFocusPolicy(Qt::TabFocus);
+        button->setProperty("fpgaIconOnly",true); button->setProperty("fpgaIconName",QString::fromLatin1(icon));
+        label(button,QString::fromUtf8(zh),QString::fromUtf8(en)); return button;
+    };
+    discover_=connectionAction("fpgaDiscover","refresh-cw","刷新设备","Refresh devices");
+    discoveryStatus_=new ConnectionStatusLabel(connection); discoveryStatus_->setObjectName("fpgaDiscoveryStatus");
     backend_=new VaporView::SingleLevelPopupComboBox(connection); backend_->setObjectName("fpgaBackend");
     backend_->addItem(QStringLiteral("Auto"),QStringLiteral("auto"));backend_->addItem(QStringLiteral("Cypress"),QStringLiteral("cypress"));backend_->addItem(QStringLiteral("WinUSB"),QStringLiteral("winusb"));
-    connect_=new QPushButton(connection); label(connect_,QStringLiteral("连接"),QStringLiteral("Connect")); connect_->setObjectName("fpgaConnect");
-    disconnect_=new QPushButton(connection);disconnect_->setObjectName("fpgaDisconnect"); label(disconnect_,QStringLiteral("断开"),QStringLiteral("Disconnect"));
-    status_=new QLabel(connection); status_->setWordWrap(true); status_->setObjectName("fpgaConnectionStatus");
-    cl->addWidget(locator_,0,0,1,3); cl->addWidget(discover_,0,3);
-    cl->addWidget(backend_,1,0);cl->addWidget(connect_,1,1);cl->addWidget(disconnect_,1,2);cl->addWidget(discoveryStatus_,1,3);
-    cl->addWidget(status_,2,0,1,4); cl->setColumnStretch(0,1);
+    connect_=connectionAction("fpgaConnect","link","连接","Connect");
+    disconnect_=connectionAction("fpgaDisconnect","unlink","断开","Disconnect");
+    status_=new ConnectionStatusLabel(connection); status_->setObjectName("fpgaConnectionStatus");
+    cl->addWidget(locator_,1); cl->addWidget(backend_); cl->addWidget(discover_); cl->addWidget(connect_); cl->addWidget(disconnect_);
+    cl->addWidget(discoveryStatus_,1); cl->addWidget(status_,2);
+    setTabOrder(locator_,backend_); setTabOrder(backend_,discover_); setTabOrder(discover_,connect_); setTabOrder(connect_,disconnect_);
     connect(discover_,&QAbstractButton::clicked,this,&FpgaControlPage::requestUsbDiscovery);
     connect(locator_,&QComboBox::currentIndexChanged,this,[this]{updateActions();});
     connect(backend_,&QComboBox::currentIndexChanged,this,[this]{updateActions();});
@@ -361,6 +386,7 @@ void FpgaControlPage::setConfiguration(const FpgaControlConfig &c) {
 }
 void FpgaControlPage::lockOperation(){busy_=true;updateActions();}
 void FpgaControlPage::updateActions(){
+    locator_->setToolTip(locator_->currentText()+"\n"+text("选择 GP01 FX3（04B4:00F1），插拔后点击刷新设备。连接时核验固件身份。","Select GP01 FX3 (04B4:00F1); refresh after plugging/unplugging. Firmware identity is verified on connect."));
     auto selected=locator_->currentData(Qt::UserRole+1).toJsonObject();
     const auto devices=usbDiscovery_.value("devices").toArray();
     if(locator_->currentIndex()==0 && devices.size()==1) selected=devices.first().toObject();
@@ -380,7 +406,7 @@ void FpgaControlPage::showEvent(QShowEvent *event){
 void FpgaControlPage::requestUsbDiscovery(){
     if(!usbHostAvailable_||usbDiscovering_||busy_)return;
     ++usbDiscoveryGeneration_;usbDiscovering_=true;
-    discoveryStatus_->setText(text("正在查找…","Searching…"));updateActions();emit discoverDevicesRequested();
+    discoveryStatus_->setText(text("正在查找…","Searching…"));discoveryStatus_->setToolTip(discoveryStatus_->text());updateActions();emit discoverDevicesRequested();
 }
 void FpgaControlPage::setUsbDiscoveryHost(bool remote,bool available){
     if(usbRemote_==remote&&usbHostAvailable_==available)return;
@@ -413,7 +439,7 @@ void FpgaControlPage::rebuildUsbDevices(){
         :!error.isEmpty()?host+" · "+error:!usbDiscovery_.contains("devices")?host+text(" · 等待枚举"," · Awaiting discovery")
         :devices.isEmpty()?host+text(" · 未发现 04B4:00F1"," · No 04B4:00F1 found")
         :host+text(" · %1 台设备"," · %1 device(s)").arg(devices.size()));
-    locator_->setToolTip(text("选择 GP01 FX3（04B4:00F1），插拔后点击刷新设备。连接时核验固件身份。","Select GP01 FX3 (04B4:00F1); refresh after plugging/unplugging. Firmware identity is verified on connect."));
+    discoveryStatus_->setToolTip(discoveryStatus_->text());
     updateActions();
 }
 void FpgaControlPage::setTransportConnected(bool connected){
@@ -430,6 +456,7 @@ void FpgaControlPage::setConnectionState(bool ready,bool busy,const QString &det
     const bool lost=ready_&&!ready;ready_=ready;if(ready_)connected_=true;busy_=busy;connectionDetail_=detail;
     status_->setText(ready?text("已连接","Connected"):connected_?text("已连接未就绪 · 禁止写操作","Connected, not ready · Writes disabled"):text("离线","Offline"));
     status_->setText(status_->text()+(busy?text(" · 正在处理"," · Working"):QString())+(detail.isEmpty()?QString():" · "+detail));
+    status_->setToolTip(status_->text());
     if(lost){for(auto it=latestReadings_.cbegin();it!=latestReadings_.cend();++it)historicalReadings_.insert(it.key());for(auto it=latestWaves_.cbegin();it!=latestWaves_.cend();++it)historicalWaves_.insert(it.key());refreshMeasurements();}
     updateActions();
 }
@@ -571,8 +598,24 @@ void FpgaControlPage::setTheme(bool dark,int fontScalePercent){
         "QWidget#fpgaControlPage QPushButton[fpgaSecondaryAction=\"true\"] { background-color: @vv-surface-alt; color: @vv-text; border: 1px solid @vv-border; }"
         "QWidget#fpgaControlPage QPushButton[fpgaSecondaryAction=\"true\"]:hover { background-color: @vv-primary-subtle; color: @vv-primary; border-color: @vv-primary; }"
         "QWidget#fpgaControlPage QPushButton[fpgaSecondaryAction=\"true\"]:focus { border-color: @vv-focus; }"
-        "QWidget#fpgaControlPage QPushButton[fpgaSecondaryAction=\"true\"]:disabled { background-color: @vv-surface-alt; color: @vv-text-muted; border-color: @vv-border; }")
+        "QWidget#fpgaControlPage QPushButton[fpgaSecondaryAction=\"true\"]:disabled { background-color: @vv-surface-alt; color: @vv-text-muted; border-color: @vv-border; }"
+        "QWidget#fpgaControlPage QPushButton[fpgaIconOnly=\"true\"] { background-color: transparent; border: 1px solid transparent; border-radius: 7px; padding: 0; }"
+        "QWidget#fpgaControlPage QPushButton[fpgaIconOnly=\"true\"]:hover, QWidget#fpgaControlPage QPushButton[fpgaIconOnly=\"true\"]:pressed { background-color: @vv-surface-alt; border-color: transparent; }"
+        "QWidget#fpgaControlPage QPushButton[fpgaIconOnly=\"true\"]:focus { border-color: @vv-focus; }"
+        "QWidget#fpgaControlPage QPushButton[fpgaIconOnly=\"true\"]:disabled { background-color: transparent; border-color: transparent; }")
         .arg(pixels(40)).arg(pixels(16)).arg(pixels(12)).arg(pixels(36)),dark));
+    locator_->setMinimumWidth(pixels(200)); locator_->setMaximumWidth(pixels(260)); locator_->setFixedHeight(pixels(40));
+    backend_->setFixedSize(pixels(104),pixels(40));
+    for (auto *button : {discover_,connect_,disconnect_}) {
+        button->setFixedSize(pixels(40),pixels(40)); button->setIconSize(QSize(pixels(20),pixels(20)));
+        QFile file(QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/lucide/%1.svg").arg(button->property("fpgaIconName").toString())));
+        if (!file.open(QIODevice::ReadOnly)) continue;
+        const auto color=button==connect_?AppThemeColor::HomeDeviceSuccess:AppThemeColor::ToolbarBlue;
+        QByteArray svg=file.readAll(); svg.replace("currentColor",appThemeColorName(color,dark).toUtf8());
+        const qreal dpr=button->devicePixelRatioF(); const int size=pixels(20);
+        QPixmap pixmap(qRound(size*dpr),qRound(size*dpr)); pixmap.setDevicePixelRatio(dpr); pixmap.fill(Qt::transparent);
+        QSvgRenderer renderer(svg); QPainter painter(&pixmap); renderer.render(&painter,QRectF(0,0,size,size)); painter.end(); button->setIcon(QIcon(pixmap));
+    }
     for (auto *icon : findChildren<QLabel*>(QStringLiteral("fpgaCardIcon"))) {
         const int size=pixels(20); icon->setFixedSize(size,size);
         QFile file(QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/lucide/%1.svg").arg(icon->property("fpgaIconName").toString())));
