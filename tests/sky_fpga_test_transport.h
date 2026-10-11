@@ -93,8 +93,8 @@ public:
                 append32(response,command.address);append16(response,command.count);append16(response,0);
                 for(int i=0;i<command.count;++i){const auto a=command.address+4*i;quint32 v=regs.value(a);if(pendingReads.value(a)>0){--pendingReads[a];v|=4;}append32(response,v);}
             } else if(command.message==3){
-                for(int i=0;i<command.count;++i){const auto a=command.address+4*i;const auto value=word(f.payload,8+i*4);regs[a]=value;
-                    if((a&255)==4&&a>=0x2000&&a<=0x5104){const auto b=a&~255u;regs[b+8]=(value&1)|2;if(b==0x4000||b==0x4100)regs[b+8]|=0x10;}
+                for(int i=0;i<command.count;++i){const auto a=command.address+4*i;const auto value=word(f.payload,8+i*4);regs[a]=(a>=0x6000&&a<=0x660c&&(a&255)==12)?regs.value(a)&~value:value;
+                    if((a&255)==4&&a>=0x2000&&a<=0x5104){const auto b=a&~255u;regs[b+8]=(value&1)|2;if(b==0x4000||b==0x4100)regs[b+8]|=0x10;if(value&2){regs[b+0xc]=0;regs[b+4]=value&1;}}
                 }
             } else if(command.message==5){
                 const quint32 base=command.source>=0x30?0x5000+(command.source-0x30)*0x100:
@@ -107,7 +107,7 @@ public:
                 if(base==0x3000||base==0x3100)regs[base+0x3c]=16666666;
             } else if(command.message==0xb){
                 if(command.address==17&&confirmTemperature){++regs[0x6648];regs[0x664c]=0x10000;const auto raw=quint16(qint32(command.value)/100000);regs[0x6654]=(quint32(raw)<<16)|raw;regs[0x6658]=quint32(raw)<<16;}
-                else if(command.address==1){const auto base=0x6000+(command.source-0x40)*0x100;regs[base+4]=command.value;}
+                else if(command.address==1){const auto base=0x6000+(command.source-0x40)*0x100;regs[base+4]=command.value;regs[base+8]=(regs.value(base+8)&~9u)|(command.value&1);}
             }
         }
         const auto wire=FpgaVlp1::buildFrame(FpgaVlp1::FrameType::Response,f.header.sequence,f.header.source,f.header.message,response);

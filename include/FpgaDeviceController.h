@@ -57,7 +57,7 @@ signals:
     void replayFinished(bool success, const QString& detail);
 
 private:
-    enum class Kind { Read, Write, Commit, Ping, Capabilities, Sensor, Wait, CheckVersions, CheckTemperature };
+    enum class Kind { Read, Write, Commit, Ping, Capabilities, Sensor, Wait, CheckVersions, RecoverConnection, CheckTemperature };
     struct Step {
         Kind kind = Kind::Read;
         quint32 address = 0;
@@ -80,6 +80,8 @@ private:
     void readAll();
     bool enableUpload();
     void stopAndDrain();
+    void resetAcquisition();
+    void recoverConnection();
     void acceptReading(const VaporView::FpgaSensor::Reading& reading);
     void flushPresentation();
     bool versionsMatch(QString *detail) const;
@@ -101,7 +103,7 @@ private:
     quint32 temperatureBaseline_ = 0;
     qint16 temperatureTarget_ = 0;
     bool injected_ = false, ready_ = false, busy_ = false, replaying_ = false;
-    bool drainWaveforms_ = false, backgroundRefresh_ = false;
+    bool drainWaveforms_ = false, backgroundRefresh_ = false, recoveringConnection_ = false, connectionRecoveryFailed_ = false;
     QString operation_, detail_;
 };
 }

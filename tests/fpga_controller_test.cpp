@@ -82,7 +82,7 @@ public:
                 append32(response,command.address);append16(response,command.count);append16(response,0);
                 for(int i=0;i<command.count;++i){const auto a=command.address+4*i;quint32 v=regs.value(a);if(pendingReads.value(a)>0){--pendingReads[a];v|=4;}append32(response,v);}
             } else if(command.message==3){
-                for(int i=0;i<command.count;++i){const auto a=command.address+4*i;const auto value=word(f.payload,8+i*4);regs[a]=(a==0x600c)?regs.value(a)&~value:value;
+                for(int i=0;i<command.count;++i){const auto a=command.address+4*i;const auto value=word(f.payload,8+i*4);regs[a]=(a>=0x6000&&a<=0x660c&&(a&255)==12)?regs.value(a)&~value:value;
                     if((a&255)==4&&a>=0x2000&&a<=0x5104){const auto b=a&~255u;regs[b+8]=(value&1)|2;if(b==0x4000||b==0x4100)regs[b+8]|=0x10;
                         if(value&2){regs[b+0xc]=0;regs[b+4]=value&1;}
                     }
@@ -98,7 +98,7 @@ public:
                 if(base==0x3000||base==0x3100)regs[base+0x3c]=16666666;
             } else if(command.message==0xb){
                 if(command.address==17&&confirmTemperature){++regs[0x6648];regs[0x664c]=0x10000;const auto raw=quint16(qint32(command.value)/100000);regs[0x6654]=(quint32(raw)<<16)|raw;regs[0x6658]=quint32(raw)<<16;}
-                else if(command.address==1){const auto base=0x6000+(command.source-0x40)*0x100;regs[base+4]=command.value;}
+                else if(command.address==1){const auto base=0x6000+(command.source-0x40)*0x100;regs[base+4]=command.value;regs[base+8]=(regs.value(base+8)&~9u)|(command.value&1);if(base==0x6000&&!command.value)regs[base+8]|=8;if(base==0x6500)pendingReads[base+8]=2;}
             }
         }
         const auto wire=FpgaVlp1::buildFrame(FpgaVlp1::FrameType::Response,f.header.sequence,f.header.source,f.header.message,response);
@@ -120,7 +120,7 @@ struct Fixture {
 bool inPage(quint32 a,quint32 base){return a>=base&&a<base+0x200;}
 int indexOfWrite(const QVector<Command>& commands,quint32 address,quint32 value){for(int i=0;i<commands.size();++i)if(commands[i].message==3&&commands[i].address==address&&commands[i].value==value)return i;return -1;}
 void connectionAndVersions(){
-    Fixture f;f.transport->regs[0x50]=3;f.transport->regs[0x403c]=f.transport->regs[0x413c]=1;f.connect();for(const auto &c:f.transport->commands)require(c.message==1||c.message==2||c.message==0xfe,"connection only PING, capabilities and legal reads; no output side effects");
+    Fixture f;f.transport->regs[0x50]=3;f.transport->regs[0x403c]=f.transport->regs[0x413c]=1;f.connect();for(const auto &c:f.transport->writes())require(c.address<0x2000||c.address>=0x4000,"connection recovery never changes WMS/DAC outputs");
     require(f.controller.hardwareValues().value(0x50)==3&&f.controller.hardwareValues().value(0x701c)==9&&f.controller.hardwareValues().value(0x802c)==7&&f.controller.hardwareValues().value(0x8034)==3,"connection snapshots existing RAW mask, drop, USB queue and stall evidence");
     require(f.transport->regs.value(0x50)==3&&f.transport->regs.value(0x403c)==1,"connection never disables preexisting RAW streaming");
     for(quint32 address:{0x2cu,0x30u,0x34u,0x7004u,0x8004u,0x7020u,0x7024u,0x7028u,0x702cu,0x6104u,0x6704u,0x1004u})require(f.controller.hardwareValues().contains(address),"connection reads all documented upload controls and diagnostic state without starting modules");
@@ -129,6 +129,41 @@ void connectionAndVersions(){
     wrong.controller.setDac(0,true);wrong.controller.applyConfiguration({});require(wrong.transport->writes().isEmpty(),"version mismatch forbids all writes");
     Fixture disabled;disabled.transport->regs[0x8004]=0;disabled.controller.connectDevice({},"auto");disabled.finish();
     require(!disabled.controller.ready()&&disabled.transport->writes().isEmpty(),"disabled USB transmitter fails ready condition without blind recovery writes");
+}
+void connectionRecovery(){
+    Fixture f;
+    const QMap<quint32,quint32> saved{{0x2004,1},{0x2104,1},{0x3004,1},{0x3104,0},
+        {0x4004,1},{0x4104,0},{0x5004,1},{0x5104,0},{0x403c,1},{0x413c,0},{0x50,1},
+        {0x6004,1},{0x6204,0},{0x6304,1},{0x6404,1},{0x6504,1},{0x6604,0},
+        {0x501c,20000},{0x511c,10000}};
+    for(auto it=saved.cbegin();it!=saved.cend();++it)f.transport->regs[it.key()]=it.value();
+    f.transport->regs[0x600c]=5;f.transport->regs[0x630c]=7;f.transport->regs[0x500c]=0x84;
+    bool evidence=false;
+    QObject::connect(&f.controller,&FpgaDeviceController::snapshot,[&](quint64,const QJsonObject &o){
+        evidence|=o.value("hardware_registers").toObject().value("0x0000600c").toInt()==5;
+    });
+    f.connect();require(evidence,"connection preserves pre-recovery error evidence");
+    for(auto it=saved.cbegin();it!=saved.cend();++it)require(f.transport->regs.value(it.key())==it.value(),"recovery preserves device parameters, outputs, RAW and asymmetric enable states");
+    require(f.transport->regs.value(0x600c)==0&&f.transport->regs.value(0x630c)==0&&f.transport->regs.value(0x500c)==0,"connection clears sensor history and DLIA partial errors");
+    require(indexOfWrite(f.transport->commands,0x4004,2)>indexOfWrite(f.transport->commands,0x5104,0),"connection drains both channels before shared PHY reset");
+    int ptbStops=0,ptbStarts=0;
+    for(const auto &c:f.transport->commands)if(c.message==0xb){
+        require(c.source==0x40||c.source==0x43||c.source==0x44||c.source==0x45,"disabled sensors are never started");
+        if(c.source==0x40){ptbStops+=c.value==0;ptbStarts+=c.value==1;}
+    }
+    bool tfaStopped=false;int tfaTransitionReads=0;
+    for(const auto &c:f.transport->commands){
+        if(c.message==0xb&&c.source==0x45&&c.value==0){tfaStopped=true;tfaTransitionReads=0;}
+        if(tfaStopped&&c.message==2&&c.address==0x6508)++tfaTransitionReads;
+        if(c.message==0xb&&c.source==0x45&&c.value==1)
+            require(tfaStopped&&tfaTransitionReads>=3,"TFA restart waits until its pending serial transition finishes");
+    }
+    require(ptbStops==1&&ptbStarts==1,"enabled PTB restarts exactly once per connection");
+    f.transport->clear();f.controller.refresh();f.finish();require(f.transport->writes().isEmpty(),"manual refresh never repeats connection reset");
+    Fixture failed;failed.transport->failWriteAddress=0x4004;failed.controller.connectDevice({},"auto");failed.finish();
+    require(!failed.controller.ready(),"recovery failure cannot report ready");
+    failed.controller.refresh();failed.finish();require(!failed.controller.ready(),"readback cannot bypass failed connection recovery");
+    for(const auto &c:failed.transport->commands)require(c.message!=0xb,"recovery failure aborts before restarting sensors");
 }
 void backgroundRefresh(){
     Fixture f;f.connect();
@@ -284,7 +319,7 @@ void ai8DisabledConfiguration(){
     require(f.transport->writes().isEmpty(),"enabled AI8 configuration changes rejected before any unrelated side effects");
 }
 void ptbHistoricalErrorRecovery(){
-    Fixture f;f.transport->regs[0x600c]=5;f.connect();f.transport->clear();
+    Fixture f;f.connect();f.transport->regs[0x600c]=5;f.controller.refresh();f.finish();f.transport->clear();
     bool evidence=false;
     QObject::connect(&f.controller,&FpgaDeviceController::snapshot,[&](quint64,const QJsonObject &o){
         if(o.value("hardware_registers").toObject().value("0x0000600c").toInt()==5)evidence=true;
@@ -314,17 +349,39 @@ int main(int argc,char **argv){
         const int durationMs=durationIndex>=0?app.arguments().value(durationIndex+1).toInt():6000;
         require(durationMs>0,"positive hardware probe duration");
         QString error;
+        QJsonObject beforeRecovery;
+        QObject::connect(&controller,&FpgaDeviceController::snapshot,[&](quint64,const QJsonObject &o){
+            if(o.value("event")=="config") {
+                beforeRecovery=o.value("hardware_registers").toObject();
+                for(quint32 b:{0x2000u,0x2100u,0x3000u,0x3100u,0x4000u,0x4100u,0x5000u,0x5100u,0x6000u,0x6200u,0x6300u,0x6400u,0x6500u,0x6600u})
+                    std::printf("before recovery control %04x=%u\n",b+4,quint32(beforeRecovery.value(QString("0x%1").arg(b+4,8,16,QChar('0'))).toDouble()));
+            }
+        });
         QObject::connect(&controller,&FpgaDeviceController::logRecordGenerated,[&](const LogRecord &record){
             if(record.level>=LogLevel::Error) error=record.message;
             std::fprintf(stderr,"%s\n",qPrintable(record.message));
         });
-        // Connection only issues PING/capabilities/register reads. Never start
-        // acquisition, enable outputs, or submit configuration in this probe.
+        // Exercises the production connection recovery, preserving prior enable
+        // states and parameters while clearing historical error/partial state.
         for(int attempt=0;attempt<2;++attempt) {
             controller.connectDevice({},"auto");
             waitUntil([&]{return !controller.busy();},"hardware connection handshake finishes");
             require(error.isEmpty() && controller.ready(),"real board passes complete UI connection handshake");
+            for(quint32 b:{0x2000u,0x2100u,0x3000u,0x3100u,0x4000u,0x4100u,0x5000u,0x5100u,0x6000u,0x6200u,0x6300u,0x6400u,0x6500u,0x6600u}) {
+                const auto key=QString("0x%1").arg(b+4,8,16,QChar('0'));
+                require(beforeRecovery.contains(key)&&controller.hardwareValues().value(b+4)==quint32(beforeRecovery.value(key).toDouble()),"connection preserves existing module enable state");
+            }
+            QMap<quint16,int> completeCycles,incompleteCycles,validSamples,invalidSamples;
             QElapsedTimer timer;timer.start();
+            auto *session=controller.findChild<FpgaDeviceSession*>();
+            const auto waveConnection=QObject::connect(session,&FpgaDeviceSession::waveformCompleted,[&](const VaporView::FpgaWave::CompletedStream &w){
+                if(timer.elapsed()<1500)return;
+                if(w.complete&&!w.partial&&!w.overflow&&!w.continuityError)++completeCycles[w.source];else ++incompleteCycles[w.source];
+            });
+            const auto sensorConnection=QObject::connect(session,&FpgaDeviceSession::sensorReadingReceived,[&](const VaporView::FpgaSensor::Reading &r){
+                if(timer.elapsed()<1500)return;
+                if(r.validity.measurement)++validSamples[r.source];else ++invalidSamples[r.source];
+            });
             while(timer.elapsed()<durationMs && error.isEmpty()) {
                 QCoreApplication::processEvents(QEventLoop::AllEvents,10);QThread::msleep(1);
             }
@@ -335,9 +392,12 @@ int main(int argc,char **argv){
             controller.refresh();
             waitUntil([&]{return !controller.busy();},"readback after extended idle finishes");
             require(error.isEmpty() && controller.ready(),"readback still succeeds after extended idle");
+            QObject::disconnect(waveConnection);QObject::disconnect(sensorConnection);
+            for(quint16 source:{0x30,0x31})std::printf("source=%04x complete=%d incomplete=%d\n",source,completeCycles.value(source),incompleteCycles.value(source));
+            for(quint16 source:{0x40,0x42,0x43,0x44,0x45,0x46})std::printf("sensor=%04x valid=%d invalid=%d\n",source,validSamples.value(source),invalidSamples.value(source));
             controller.disconnectDevice();
         }
         std::puts("hardware controller connect/idle/reconnect probe passed");return 0;
     }
-    connectionAndVersions();backgroundRefresh();independentAndAcquisition();restartClearsDliaState();configurationAndFailure();scopedConfiguration();rawAndBusy();temperature();sensorUploadAndFailure();ai8DisabledConfiguration();ptbHistoricalErrorRecovery();threadCleanup();std::puts("FPGA controller tests passed");return 0;
+    connectionAndVersions();connectionRecovery();backgroundRefresh();independentAndAcquisition();restartClearsDliaState();configurationAndFailure();scopedConfiguration();rawAndBusy();temperature();sensorUploadAndFailure();ai8DisabledConfiguration();ptbHistoricalErrorRecovery();threadCleanup();std::puts("FPGA controller tests passed");return 0;
 }

@@ -63,6 +63,7 @@ void FpgaDeviceController::installSession(std::unique_ptr<FpgaUsbTransport> tran
     connect(session_, &FpgaDeviceSession::sensorReadingReceived, this, &FpgaDeviceController::acceptReading);
     connect(session_, &FpgaDeviceSession::waveformCompleted, this,
         [this](const FpgaWave::CompletedStream& stream) {
+            if (recoveringConnection_) return;
             latestWaves_[stream.source] = stream;
             if (!stream.complete) report(QStringLiteral("source %1 cycle %2：周期不完整，保留原始分片证据。")
                 .arg(hex(stream.source)).arg(stream.cycleId));
@@ -90,12 +91,12 @@ void FpgaDeviceController::connectDevice(const QString& locator, const QString& 
     if (!session_->open(locator, &error)) { fail(error); return; }
     emit transportConnectionChanged(true);
     adapter_.reset();
-    presentationTimer_.start(); statusTimer_.start();
+    recoveringConnection_=true;
     emit snapshot(nowUs(), {{"event","connected"},{"backend",backend},{"locator",locator},
         {"usb", QJsonObject::fromVariantMap(session_->transport()->diagnostic().fields)}});
     begin(QStringLiteral("核验协议和模块版本"));
     steps_.push_back({Kind::Ping}); steps_.push_back({Kind::Capabilities});
-    readAll(); steps_.push_back({Kind::CheckVersions}); advance();
+    readAll(); steps_.push_back({Kind::CheckVersions}); steps_.push_back({Kind::RecoverConnection}); advance();
 }
 
 void FpgaDeviceController::disconnectDevice()
@@ -105,7 +106,7 @@ void FpgaDeviceController::disconnectDevice()
     flushPresentation();
     emit transportConnectionChanged(false);
     steps_.clear(); current_.reset(); pendingSequence_ = 0;
-    ready_ = busy_ = replaying_ = drainWaveforms_ = backgroundRefresh_ = false;
+    ready_ = busy_ = replaying_ = drainWaveforms_ = backgroundRefresh_ = recoveringConnection_ = connectionRecoveryFailed_ = false;
     registers_.clear(); adapter_.reset(); latestReadings_.clear(); latestWaves_.clear(); lastReadingMs_.clear();
     dirtyReadings_.clear(); expiredReadings_.clear();
     emit snapshot(nowUs(), {{"event","disconnected"}});
@@ -192,6 +193,10 @@ void FpgaDeviceController::advance()
     if (!busy_ || current_) return;
     if (steps_.empty()) {
         if (drainWaveforms_) { session_->flushWaveforms(); flushPresentation(); drainWaveforms_ = false; }
+        if(recoveringConnection_) {
+            recoveringConnection_=false;
+            presentationTimer_.start();statusTimer_.start();
+        }
         busy_=false; emit hardwareValuesChanged(registers_);
         if (!backgroundRefresh_) emit connectionChanged(ready_,false,operation_+QStringLiteral("完成"));
         backgroundRefresh_=false;
@@ -201,9 +206,13 @@ void FpgaDeviceController::advance()
     current_=steps_.front(); steps_.pop_front();
     const auto& s=*current_;
     if (s.kind==Kind::CheckVersions) {
+        if(connectionRecoveryFailed_) {fail(QStringLiteral("连接恢复未完成，请排查后重新连接。"));return;}
         QString reason; ready_=versionsMatch(&reason);
         if (!ready_) { fail(reason); return; }
         current_.reset(); advance(); return;
+    }
+    if (s.kind==Kind::RecoverConnection) {
+        current_.reset();recoverConnection();advance();return;
     }
     if (s.kind==Kind::CheckTemperature) {
         const quint32 commandStatus=registers_.value(0x664c);
@@ -225,7 +234,7 @@ void FpgaDeviceController::advance()
     case Kind::Ping: pendingSequence_=session_->ping(QByteArrayLiteral("VaporView")); break;
     case Kind::Capabilities: pendingSequence_=session_->requestCapabilities(); break;
     case Kind::Sensor: pendingSequence_=session_->sensorAction(s.address,s.expected,s.source); break;
-    case Kind::CheckVersions: case Kind::CheckTemperature: break;
+    case Kind::CheckVersions: case Kind::RecoverConnection: case Kind::CheckTemperature: break;
     }
     if (!pendingSequence_) fail(QStringLiteral("命令未发送。"));
 }
@@ -250,6 +259,7 @@ void FpgaDeviceController::completed(quint32 seq, bool success, quint32 status)
 
 void FpgaDeviceController::fail(const QString& detail)
 {
+    if(recoveringConnection_) {ready_=false;recoveringConnection_=false;connectionRecoveryFailed_=true;}
     steps_.clear(); current_.reset(); pendingSequence_=0; busy_=false; drainWaveforms_=false; backgroundRefresh_=false;
     if (session_) session_->cancelQueuedCommands();
     detail_=detail; report(detail, LogLevel::Error);
@@ -292,6 +302,57 @@ void FpgaDeviceController::stopAndDrain()
     for (quint32 b : {0x4000u,0x4100u}) { waitFor(b+8,0xd,0); waitFor(b+0x20,0xffffffff,0); }
     for (quint32 b : {0x5000u,0x5100u}) write(b+4,0);
     for (quint32 b : {0x5000u,0x5100u}) { waitFor(b+8,5,0); waitFor(b+0x3c,0xffffffff,0); }
+}
+
+void FpgaDeviceController::resetAcquisition()
+{
+    write(0x4004,2); waitFor(0x4008,0x92,0x12);
+    write(0x4104,2);
+    for (quint32 b:{0x5000u,0x5100u}) write(b+4,2);
+    // Soft reset preserves shadow settings. Commit those actual settings,
+    // rather than replacing the user's parameters with host defaults.
+    commit(0x20,0x4000);
+    for (quint32 b:{0x4000u,0x4100u}) waitFor(b+8,0x96,0x12);
+    for (quint32 b:{0x5000u,0x5100u}) {
+        commit(quint16(0x30+(b-0x5000)/0x100),b);
+        verify(b+0xc,0);
+    }
+}
+
+void FpgaDeviceController::recoverConnection()
+{
+    // Use device state, never host defaults. This recovery runs once after the
+    // version check, not on the periodic readback path.
+    const auto saved=registers_;
+    operation_=QStringLiteral("连接后恢复采集与传感器");
+    emit connectionChanged(false,true,operation_);
+    snapshotConfiguration();
+    if(!enableUpload())return;
+    stopAndDrain();resetAcquisition();
+    for(quint32 b:{0x6000u,0x6200u,0x6300u,0x6400u,0x6500u,0x6600u}) {
+        if(saved.value(b+4)&1) {
+            Step stop;stop.kind=Kind::Sensor;stop.address=1;stop.source=quint16(0x40+(b-0x6000)/0x100);stop.expected=0;
+            steps_.push_back(stop);verify(b+4,0);
+            // PTB reports BUSY even in ST_DISABLED. TFA must finish its
+            // serial stop/quiet sequence before accepting a new start.
+            const quint32 stoppedMask=b==0x6500?13:(b==0x6300||b==0x6400)?9:1;
+            waitFor(b+8,stoppedMask,0);
+        }
+        if(saved.value(b+0xc)) {
+            report(QStringLiteral("连接恢复：模块 %1 清除已记录的历史错误 %2。").arg(hex(b),hex(saved.value(b+0xc))),LogLevel::Info);
+            write(b+0xc,saved.value(b+0xc));read(b+0xc);
+        }
+        if(saved.value(b+4)&1) {
+            Step start;start.kind=Kind::Sensor;start.address=1;start.source=quint16(0x40+(b-0x6000)/0x100);start.expected=1;
+            steps_.push_back(start);verify(b+4,1);
+            if(b==0x6500)waitFor(b+8,13,1);
+        }
+    }
+    for(quint32 b:{0x4000u,0x4100u}) {write(b+0x3c,saved.value(b+0x3c));verify(b+0x3c,saved.value(b+0x3c));}
+    for(quint32 b:{0x5000u,0x5100u,0x4000u,0x4100u}) {
+        write(b+4,saved.value(b+4));verify(b+4,saved.value(b+4));
+    }
+    readAll();steps_.push_back({Kind::CheckVersions});
 }
 
 void FpgaDeviceController::applyConfiguration(const FpgaControlConfig& config, const QString& section)
@@ -379,17 +440,7 @@ void FpgaDeviceController::setAcquisition(bool enable)
         // only after both ADC producers and DLIA consumers have drained. ADC0
         // reset also reinitializes the shared PHY, so both lanes must be idle.
         stopAndDrain();
-        write(0x4004,2); waitFor(0x4008,0x92,0x12);
-        write(0x4104,2);
-        for (quint32 b:{0x5000u,0x5100u}) write(b+4,2);
-        // Soft reset preserves shadow settings. Commit those actual settings,
-        // rather than replacing the user's parameters with host defaults.
-        commit(0x20,0x4000);
-        for (quint32 b:{0x4000u,0x4100u}) waitFor(b+8,0x96,0x12);
-        for (quint32 b:{0x5000u,0x5100u}) {
-            commit(quint16(0x30+(b-0x5000)/0x100),b);
-            verify(b+0xc,0);
-        }
+        resetAcquisition();
         // WMS supplies cycle labels even with independent DLIA references.
         write(0x0004,registers_.value(4)|1u);
         for (quint32 b:{0x2000u,0x2100u}) { write(b+4,1); verify(b+4,1); }
