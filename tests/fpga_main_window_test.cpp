@@ -12,6 +12,7 @@
 #include <QScrollArea>
 #include <QAbstractButton>
 #include <QComboBox>
+#include <QGridLayout>
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QJsonDocument>
@@ -92,6 +93,23 @@ static void verifyCardMargins(MainWindow &window,FpgaControlPage *page,int scale
                 require(qAbs(firstRect.width()-secondRect.width())<=1,"paired channel cards divide the available width equally");
                 require(secondRect.left()-firstRect.right()-1==qRound(12*scale/100.0),"paired cards retain the shared scaled card gap");
                 require(firstRect.left()==homeRect.left()&&secondRect.right()==homeRect.right(),"paired channel cards fill the row within the home outer margins");
+            }
+            auto *sensorGrid=page->findChild<QGridLayout*>("fpgaSensorGrid");
+            require(sensorGrid&&sensorGrid->count()==5,"sensor grid retains five compact cards");
+            for(int row=0;row<2;++row) {
+                auto *first=sensorGrid->itemAtPosition(row,0)->widget();if(!first->isVisibleTo(page))continue;
+                const QRect firstRect(first->mapTo(stack,QPoint()),first->size());
+                require(firstRect.left()==homeRect.left(),"sensor grid retains the home left card margin");
+                for(int column=0;column<3;++column) {
+                    auto *item=sensorGrid->itemAtPosition(row,column);if(!item)continue;auto *card=item->widget();channelCards.append(card);
+                    const QRect rect(card->mapTo(stack,QPoint()),card->size());
+                    require(qAbs(rect.width()-firstRect.width())<=1&&rect.top()==firstRect.top()&&rect.bottom()==firstRect.bottom(),"sensor cards share equal compact widths and row heights");
+                    if(column>0) {
+                        auto *previous=sensorGrid->itemAtPosition(row,column-1)->widget();const QRect previousRect(previous->mapTo(stack,QPoint()),previous->size());
+                        require(rect.left()-previousRect.right()-1==qRound(12*scale/100.0),"sensor cards retain the shared scaled card gap");
+                    }
+                    if(column==2)require(rect.right()==homeRect.right(),"sensor grid fills the row to the home right card margin");
+                }
             }
             for(auto *card : page->findChildren<QWidget*>("fpgaSectionCard")) {
                 if(!card->isVisibleTo(page)||channelCards.contains(card))continue;

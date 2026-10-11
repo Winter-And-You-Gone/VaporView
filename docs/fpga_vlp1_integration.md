@@ -128,7 +128,7 @@ DLIA `0030/0031, msg1001` 的当前协议仅 schema2，头32B。format0为I32 H1
 
 不完整输出保留实际存在的片段位置，不能自行补0后画成无缺口真实采样。页面清除异常/缺片周期的连线并显示质量提示，原始片段仍保留供诊断。RAW signed/unsigned、DLIA IQ/H1/H2分开保存；H1/H2是数字幅值，滤波不补额外×2。
 
-每路DLIA有分量选择器：format0可选H1/H2，format1可选I1/Q1/I2/Q2，format2可选I1/Q1/I2/Q2/H1/H2。选项来自实际payload格式，选择只改变当前绘图分量，不写MODE或更改硬件输出schema；格式变化时只保留仍存在的选项。完整format0周期可以展示“本周期2f最大值（数字幅值）”，不是ppm。GUI展示的抽稀只影响绘图，归档原始字节不抽稀。
+每路DLIA直接并排显示两个谐波，不再提供分量下拉框：format0和format2显示H1/H2，只有I/Q数据的format1分两行显示I1/Q1和I2/Q2。绘图根据实际payload格式自动适配，不写MODE或更改硬件输出schema；format2的I/Q仍保留在原始记录中。完整format0周期可以展示“本周期2f最大值（数字幅值）”，不是ppm。GUI展示的抽稀只影响绘图，归档原始字节不抽稀。
 
 ## 7. Session、离线回放与导出
 

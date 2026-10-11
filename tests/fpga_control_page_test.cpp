@@ -4,13 +4,11 @@
 #include <QApplication>
 #include <QBoxLayout>
 #include <QStyleFactory>
-#include <QAbstractItemModel>
-#include "shared/theme/SingleLevelPopupComboBox.h"
-#include "shared/theme/SingleLevelPopupMenu.h"
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QFrame>
+#include <QGridLayout>
 #include <QJsonArray>
 #include <QLabel>
 #include <QPushButton>
@@ -20,11 +18,6 @@
 #include <cstdlib>
 
 namespace {
-int invalidFontWarnings=0;
-void captureFontWarning(QtMsgType, const QMessageLogContext&, const QString& message) {
-    if(message.contains("QFont::setPointSize")&&message.contains("<= 0"))++invalidFontWarnings;
-}
-
 void require(bool value, const char *message) {
     if (!value) { std::fprintf(stderr,"FAIL: %s\n",message); std::exit(1); }
 }
@@ -136,16 +129,20 @@ int main(int argc,char **argv) {
     VaporView::FpgaWave::CompletedStream wave;wave.source=0x30;wave.message=0x1001;wave.format=2;wave.bytesPerPoint=24;wave.totalPoints=2;wave.rate=10000;wave.complete=true;
     auto appendWord=[](QByteArray &bytes,qint32 value){for(int i=0;i<4;++i)bytes.append(char(quint32(value)>>(8*i)));};
     for(qint32 value:{1,2,3,4,100,200,11,12,13,14,110,210})appendWord(wave.pointBytes,value);
-    page.updateWaveform(wave);auto *component=page.findChild<QComboBox*>("fpgaWaveComponent48");auto *plot=page.findChild<QWidget*>("fpgaWavePlot48");
+    page.updateWaveform(wave);auto *plot=page.findChild<QWidget*>("fpgaWavePlot48");
     auto *secondPlot=page.findChild<QWidget*>("fpgaWaveSecondPlot48");
-    require(component&&component->count()==3&&secondPlot,"format2 offers paired harmonics and IQ");
+    require(!page.findChild<QComboBox*>("fpgaWaveComponent48")&&!page.findChild<QComboBox*>("fpgaWaveComponent49")&&secondPlot,"both DLIA channels display their data without component selectors");
     require(plot->property("sampleMaximum").toDouble()==110&&secondPlot->property("sampleMaximum").toDouble()==210,"H1 and H2 are displayed together by default");
-    const double expectedMax[]={110,11,13};const double secondMax[]={210,12,14};for(int i=0;i<3;++i){component->setCurrentIndex(i);require(plot->property("sampleCount").toInt()==2&&plot->property("sampleMaximum").toDouble()==expectedMax[i]&&secondPlot->property("sampleMaximum").toDouble()==secondMax[i],"paired plots display the correct independent fields");}
     auto iq=wave;iq.format=1;iq.bytesPerPoint=16;iq.pointBytes.clear();
     for(qint32 value:{1,2,3,4,11,12,13,14})appendWord(iq.pointBytes,value);
-    page.updateWaveform(iq);component->setCurrentIndex(1);
-    require(plot->property("sampleMaximum").toDouble()==13&&secondPlot->property("sampleMaximum").toDouble()==14,"IQ-only format retains paired I2 Q2 view");
+    page.updateWaveform(iq);
+    auto *i2=page.findChild<QWidget*>("fpgaWaveIqPlot48_0"),*q2=page.findChild<QWidget*>("fpgaWaveIqPlot48_1");
+    require(plot->property("sampleMaximum").toDouble()==11&&secondPlot->property("sampleMaximum").toDouble()==12&&i2&&q2
+        &&i2->property("sampleMaximum").toDouble()==13&&q2->property("sampleMaximum").toDouble()==14&&!i2->parentWidget()->isHidden(),"IQ-only format displays all four components without a selector");
+    auto partialIq=iq;partialIq.partial=true;page.updateWaveform(partialIq);
+    require(i2->property("sampleCount").toInt()==0&&q2->property("sampleCount").toInt()==0,"incomplete IQ cycles clear both component pairs");
     page.updateWaveform(wave);
+    require(i2->parentWidget()->isHidden()&&i2->property("sampleCount").toInt()==0,"harmonic format hides and clears the IQ-only pair");
     auto partial=wave;partial.complete=false;partial.partial=true;partial.pointBytes.truncate(24);page.updateWaveform(partial);
     require(plot->property("sampleCount").toInt()==0&&secondPlot->property("sampleCount").toInt()==0&&page.findChild<QLabel*>("fpgaWaveSummary48")->text().contains("missing fragments"),"partial cycle does not draw a fabricated connected trace");
     page.updateWaveform(wave);
@@ -203,6 +200,25 @@ int main(int argc,char **argv) {
                     const QRect firstRect(first->mapTo(&page,QPoint()),first->size()),secondRect(second->mapTo(&page,QPoint()),second->size());
                     require(firstRect.top()==secondRect.top()&&firstRect.right()<secondRect.left(),"channel cards remain side by side across themes, languages and font scales");
                     require(qAbs(firstRect.width()-secondRect.width())<=1,"channel cards retain equal widths across themes, languages and font scales");
+                }
+                if(i==1) {
+                    auto *grid=page.findChild<QGridLayout*>("fpgaSensorGrid");
+                    require(grid&&grid->count()==5&&grid->rowCount()==2&&grid->columnCount()==3&&!grid->itemAtPosition(1,2),"five ordinary sensors occupy three columns in two rows");
+                    const int columnWidth=grid->itemAtPosition(0,0)->widget()->width();
+                    for(int row=0;row<2;++row) {
+                        int previousRight=-1;
+                        for(int column=0;column<3;++column) {
+                            auto *item=grid->itemAtPosition(row,column);if(!item)continue;auto *card=item->widget();
+                            const QRect rect(card->mapTo(&page,QPoint()),card->size());
+                            require(qAbs(card->width()-columnWidth)<=1&&rect.left()>previousRight,"sensor cards use equal compact widths without overlap");previousRight=rect.right();
+                        }
+                    }
+                    auto *ai8Card=page.findChild<QLabel*>("fpgaSensor0046")->parentWidget()->parentWidget();
+                    auto *address=page.findChild<QDoubleSpinBox*>("fpgaAi8Address");
+                    require(address->parentWidget()->parentWidget()==ai8Card&&page.findChild<QPushButton*>("fpgaSetTemperature")->parentWidget()->parentWidget()==ai8Card,"AI8 reading, polling and temperature controls share one card");
+                    const QRect ai8Rect(ai8Card->mapTo(&page,QPoint()),ai8Card->size());
+                    auto *lastSensor=grid->itemAtPosition(1,0)->widget();
+                    require(ai8Rect.top()>lastSensor->mapTo(&page,QPoint()).y()+lastSensor->height()&&ai8Rect.width()>2*columnWidth,"AI8 occupies its own full-width row below the sensor grid");
                 }
             }
         }
@@ -264,35 +280,9 @@ int main(int argc,char **argv) {
     }
     page.setFont(app.font());page.setTheme(false);page.setLanguage(false);
     page.findChild<QTabWidget*>()->setCurrentIndex(2);
-    require(component,"DLIA component selector exists");
-    const auto previousHandler=qInstallMessageHandler(captureFontWarning);
-    const auto originalFont=component->font();
-    const auto originalTheme=app.property(VaporView::kAppDarkThemeProperty);
-    for(bool dark:{false,true}) for(int pixels:{16,24}) {
-        app.setProperty(VaporView::kAppDarkThemeProperty,dark);
-        page.setTheme(dark,pixels==16?100:150);
-        QFont pixelFont=originalFont;pixelFont.setPixelSize(pixels);component->setFont(pixelFont);
-        page.updateWaveform(wave);
-        int modelResets=0;
-        const auto resetConnection=QObject::connect(component->model(),&QAbstractItemModel::modelReset,[&]{++modelResets;});
-        for(int index:{0,1,0,1,0}){
-            component->showPopup();app.processEvents();
-            auto *menu=static_cast<VaporView::SingleLevelPopupComboBox*>(component)->popupMenu();
-            menu->rows().at(index)->click();app.processEvents();component->hidePopup();app.processEvents();
-            require(component->currentIndex()==index,"popup selects paired harmonic and IQ views");
-        }
-        QObject::disconnect(resetConnection);
-        require(modelResets==0,"paired selection and live samples preserve the combo model");
-        require(component->font().pixelSize()==pixels,"popup workaround preserves pixel font size and scaling");
-    }
-    qInstallMessageHandler(previousHandler);
-    require(invalidFontWarnings==0,"opening H1/H2 popup with pixel font never sets invalid point size");
-    app.setProperty(VaporView::kAppDarkThemeProperty,originalTheme);
-    component->setFont(originalFont);page.setTheme(false);
     auto pair=wave;pair.format=0;pair.bytesPerPoint=8;pair.pointBytes.clear();
     for(qint32 value:{10,20,30,40})appendWord(pair.pointBytes,value);
     page.updateWaveform(pair);app.processEvents();
-    require(component->isHidden(),"harmonic-only format needs no selector");
     require(plot->property("sampleMaximum").toDouble()==30&&secondPlot->property("sampleMaximum").toDouble()==40,"format0 renders both harmonics together");
     require(plot->mapTo(&page,QPoint()).x()<secondPlot->mapTo(&page,QPoint()).x()&&plot->height()==secondPlot->height(),"harmonics have side-by-side equal-height plots");
     const auto beforeSimulation=page.configuration().toJson();

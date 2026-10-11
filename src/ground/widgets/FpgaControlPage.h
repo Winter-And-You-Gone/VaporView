@@ -97,7 +97,8 @@ private:
     QMap<quint16, QWidget*> plots_, secondPlots_;
     QMap<quint16, QLabel*> firstPlotTitles_, secondPlotTitles_;
     QMap<quint16, QLabel*> waveLabels_;
-    QMap<quint16, QComboBox*> waveComponents_;
+    QMap<quint16, QWidget*> iqPanels_;
+    QMap<quint16, QVector<QWidget*>> iqPlots_;
     QMap<quint16, VaporView::FpgaWave::CompletedStream> latestWaves_, lastCompleteRaw_;
     QMap<quint16, bool> rawEnabled_;
     QMap<quint16, VaporView::FpgaSensor::Reading> latestReadings_;
