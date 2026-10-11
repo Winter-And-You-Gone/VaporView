@@ -93,7 +93,15 @@ void MainWindow::setupFpgaControlPage()
     });
     connect(page, &FpgaControlPage::applyRequested, this, [dispatch, controller, blockUiTest](const FpgaControlConfig& config) {
         if (blockUiTest()) return;
-        dispatch({{"op", "configure"}, {"configuration", config.toJson()}}, [controller, config] { controller->applyConfiguration(config); });
+        dispatch({{"op", "configure"}, {"section", "acquisition"}, {"configuration", config.toJson()}}, [controller, config] { controller->applyConfiguration(config,"acquisition"); });
+    });
+    connect(page, &FpgaControlPage::applyWmsRequested, this, [dispatch, controller, blockUiTest](const FpgaControlConfig& config) {
+        if (blockUiTest()) return;
+        dispatch({{"op", "configure"}, {"section", "wms"}, {"configuration", config.toJson()}}, [controller, config] { controller->applyConfiguration(config,"wms"); });
+    });
+    connect(page, &FpgaControlPage::applyDliaRequested, this, [dispatch, controller, blockUiTest](const FpgaControlConfig& config) {
+        if (blockUiTest()) return;
+        dispatch({{"op", "configure"}, {"section", "dlia"}, {"configuration", config.toJson()}}, [controller, config] { controller->applyConfiguration(config,"dlia"); });
     });
     connect(page, &FpgaControlPage::configurationChanged, this, [this, controller](const FpgaControlConfig &config) {
         if (isUiTestMode()) return;

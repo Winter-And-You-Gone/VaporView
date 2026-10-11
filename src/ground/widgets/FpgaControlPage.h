@@ -47,6 +47,8 @@ signals:
     void connectRequested(const QString &locator, const QString &backend);
     void disconnectRequested();
     void applyRequested(const FpgaControlConfig &config);
+    void applyWmsRequested(const FpgaControlConfig &config);
+    void applyDliaRequested(const FpgaControlConfig &config);
     void configurationChanged(const FpgaControlConfig &config);
     void refreshRequested();
     void acquisitionRequested(bool enable);

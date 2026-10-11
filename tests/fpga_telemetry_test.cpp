@@ -22,6 +22,13 @@ int main(int argc, char **argv)
     require(!validateControl({{"op","discover"},{"address",42}}),"discovery cannot carry a register operation");
     const QJsonObject configure{{"op","configure"},{"configuration",FpgaControlConfig{}.toJson()}};
     require(parseControl(encodeControl(configure),parsed),"full configuration round trip");
+    for(const QString section:{QString("wms"),QString("dlia"),QString("acquisition"),QString("all")}) {
+        auto scoped=configure;scoped["section"]=section;
+        require(parseControl(encodeControl(scoped),parsed)&&parsed.value("section")==section,"configuration scope survives remote codec");
+    }
+    auto invalidScope=configure;invalidScope["section"]="unknown";
+    require(!validateControl(invalidScope),"unknown scope rejected");
+    invalidScope["section"]=1;require(!validateControl(invalidScope),"non-string scope rejected");
     auto bad=configure;auto config=bad.value("configuration").toObject(); config.insert("adcRateHz",1.5);bad.insert("configuration",config);
     require(!validateControl(bad),"fractional register value rejected before coercion");
     require(!validateControl({{"op","sensor"},{"source",0x41},{"enabled",true}}),"unknown source rejected");

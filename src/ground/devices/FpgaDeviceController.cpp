@@ -294,39 +294,48 @@ void FpgaDeviceController::stopAndDrain()
     for (quint32 b : {0x5000u,0x5100u}) { waitFor(b+8,5,0); waitFor(b+0x3c,0xffffffff,0); }
 }
 
-void FpgaDeviceController::applyConfiguration(const FpgaControlConfig& config)
+void FpgaDeviceController::applyConfiguration(const FpgaControlConfig& config, const QString& section)
 {
     if (busy_ && !backgroundRefresh_) { report(QStringLiteral("配置操作被拒绝：已有事务正在执行。")); return; }
     if (!ready_) { report(QStringLiteral("请先连接并通过模块版本核验。")); return; }
-    if (config.adcRateHz<1000 || config.adcRateHz>1000000 ||
-        config.dlia[0].outputRateHz==0 || config.dlia[1].outputRateHz==0 ||
-        config.dlia[0].outputRateHz>config.adcRateHz/8 || config.dlia[1].outputRateHz>config.adcRateHz/8) {
+    const bool wms=section=="all" || section=="wms";
+    const bool dlia=section=="all" || section=="dlia";
+    const bool acquisition=section=="all" || section=="acquisition";
+    if (!wms && !dlia && !acquisition) { fail(QStringLiteral("未知参数分区。")); return; }
+    const quint32 adcRate=acquisition?config.adcRateHz:registers_.value(0x4014);
+    if ((acquisition && (adcRate<1000 || adcRate>1000000)) ||
+        (dlia && (config.dlia[0].outputRateHz==0 || config.dlia[1].outputRateHz==0 ||
+        config.dlia[0].outputRateHz>adcRate/8 || config.dlia[1].outputRateHz>adcRate/8))) {
         fail(QStringLiteral("采样率或 DLIA 输出率超出当前双 AD4630 接口范围。")); return;
     }
-    if (config.ai8.slaveAddress<1 || config.ai8.slaveAddress>80 || config.ai8.channel<1 || config.ai8.channel>8
+    if (acquisition && !dlia && (registers_.value(0x504c)>adcRate/8 || registers_.value(0x514c)>adcRate/8)) {
+        fail(QStringLiteral("请先降低 DLIA 输出率，再降低 ADC 采样率。")); return;
+    }
+    if (acquisition && (config.ai8.slaveAddress<1 || config.ai8.slaveAddress>80 || config.ai8.channel<1 || config.ai8.channel>8
         || config.ai8.pollIntervalMs<1 || config.ai8.pollIntervalMs>3600000
-        || config.ai8.timeoutMs<1 || config.ai8.timeoutMs>65535 || config.ai8.retryLimit>3) {
+        || config.ai8.timeoutMs<1 || config.ai8.timeoutMs>65535 || config.ai8.retryLimit>3)) {
         fail(QStringLiteral("AI8 地址、通道、轮询、超时或重试参数超出协议范围。")); return;
     }
     for (int ch=0; ch<2; ++ch) {
         const auto& w=config.wms[ch]; const auto& d=config.dlia[ch]; const auto& dac=config.dac[ch];
         const auto& f=config.frontend[ch];
-        if (!w.scanMilliHz || !w.sineMilliHz || !w.updateRateHz || w.phaseMode>2
-            || !d.referenceMilliHz || d.mode>3 || dac.deviceCtrl>0x3ff || dac.clearCode>0xfffff
-            || dac.minCode>dac.maxCode || dac.maxCode>0xfffff || !dac.spiClockHz || dac.spiClockHz>20000000
-            || !std::isfinite(f.voltsPerCode) || f.voltsPerCode<=0 || (f.polarity!=1 && f.polarity!=-1)) {
+        if ((wms && (!w.scanMilliHz || !w.sineMilliHz || !w.updateRateHz || w.phaseMode>2
+            || dac.deviceCtrl>0x3ff || dac.clearCode>0xfffff
+            || dac.minCode>dac.maxCode || dac.maxCode>0xfffff || !dac.spiClockHz || dac.spiClockHz>20000000))
+            || (dlia && (!d.referenceMilliHz || d.mode>3))
+            || (acquisition && (!std::isfinite(f.voltsPerCode) || f.voltsPerCode<=0 || (f.polarity!=1 && f.polarity!=-1)))) {
             fail(QStringLiteral("通道 %1 的波形、DAC、解调或前端标定参数不合法。").arg(ch)); return;
         }
     }
     if (!begin(QStringLiteral("提交并核对配置"))) return;
     configuration_=config; stopAndDrain();
-    const bool ai8Changed=registers_.value(0x6614)!=config.ai8.slaveAddress ||
+    const bool ai8Changed=acquisition && (registers_.value(0x6614)!=config.ai8.slaveAddress ||
         registers_.value(0x661c)!=config.ai8.channel || registers_.value(0x662c)!=config.ai8.pollIntervalMs
-        || registers_.value(0x6660)!=config.ai8.timeoutMs || registers_.value(0x6664)!=config.ai8.retryLimit;
+        || registers_.value(0x6660)!=config.ai8.timeoutMs || registers_.value(0x6664)!=config.ai8.retryLimit);
     if (ai8Changed && (registers_.value(0x6604)&1)) {
         fail(QStringLiteral("AI8 地址、通道或轮询配置只能在禁用时修改；请先禁用 AI8。")); return;
     }
-    for (int ch=0; ch<2; ++ch) {
+    if (wms) for (int ch=0; ch<2; ++ch) {
         const auto &dac=config.dac[ch]; const quint32 db=0x3000+quint32(ch)*0x100;
         const QMap<quint32,quint32> dacWords{{0x10,dac.deviceCtrl},{0x14,dac.clearCode},
             {0x18,dac.minCode},{0x1c,dac.maxCode},{0x24,dac.spiClockHz},{0x34,dac.gain},{0x38,quint32(dac.offset)}};
@@ -347,10 +356,12 @@ void FpgaDeviceController::applyConfiguration(const FpgaControlConfig& config)
         write(0x6660,config.ai8.timeoutMs); verify(0x6660,config.ai8.timeoutMs);
         write(0x6664,config.ai8.retryLimit); verify(0x6664,config.ai8.retryLimit);
     }
-    write(0x4010,config.adcRateHz); verify(0x4010,config.adcRateHz);
-    write(0x401c,0); write(0x411c,0);
-    commit(0x20,0x4000); read(0x4014); read(0x4114);
-    for (int ch=0; ch<2; ++ch) {
+    if (acquisition) {
+        write(0x4010,config.adcRateHz); verify(0x4010,config.adcRateHz);
+        write(0x401c,0); write(0x411c,0);
+        commit(0x20,0x4000); read(0x4014); read(0x4114);
+    }
+    if (dlia) for (int ch=0; ch<2; ++ch) {
         const auto &d=config.dlia[ch]; const quint32 b=0x5000+quint32(ch)*0x100;
         const quint32 vals[]={d.referenceMilliHz,d.phase1,d.phase2,d.outputRateHz,d.mode};
         for (quint32 i=0;i<5;++i) { write(b+0x10+i*4,vals[i]); verify(b+0x10+i*4,vals[i]); }

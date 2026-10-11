@@ -83,6 +83,26 @@ int main(int argc,char **argv) {
     require(page.findChild<QLabel*>("fpgaAdcRateActual")->text().contains("1000000"),"actual rate independently displayed");
     apply->click();apply->click();require(submitted==1 && requested.adcRateHz==500000,"busy state blocks duplicate submission");
     page.setConnectionState(true,false);
+    int wmsApplied=0,dliaApplied=0;
+    QObject::connect(&page,&FpgaControlPage::applyWmsRequested,&page,[&](const FpgaControlConfig &){++wmsApplied;});
+    QObject::connect(&page,&FpgaControlPage::applyDliaRequested,&page,[&](const FpgaControlConfig &){++dliaApplied;});
+    auto *parameterTabs=page.findChild<QTabWidget*>("fpgaParameterTabs");
+    auto *amplitude=page.findChild<QDoubleSpinBox*>("fpga0ScanAmplitude");
+    auto *bias=page.findChild<QDoubleSpinBox*>("fpga0Bias");
+    require(parameterTabs&&parameterTabs->count()==2&&parameterTabs->widget(0)->isAncestorOf(amplitude)
+        &&parameterTabs->widget(1)->isAncestorOf(page.findChild<QDoubleSpinBox*>("fpga0Reference")),"WMS and DLIA fields occupy separate pages");
+    require(amplitude->value()==0.5,"default scan amplitude displayed in volts");
+    auto precise=page.configuration();precise.wms[0].bias=123456789;page.setConfiguration(precise);
+    require(page.configuration().wms[0].bias==123456789,"unchanged voltage display preserves exact stored code");
+    page.setHardwareValues({{0x2018,quint32(-536870912)}});
+    require(page.findChild<QLabel*>("fpga0BiasActual")->text().contains("-2.500 V"),"device readback displays signed voltage");
+    bias->setValue(-2.5);require(page.configuration().wms[0].bias==-536870912,"negative voltage converts to signed Q1.31");
+    amplitude->setValue(10);require(page.configuration().wms[0].scanAmplitude==2147483647,"positive full scale clamps without signed overflow");
+    page.findChild<QPushButton*>("fpgaApplyWms")->click();
+    require(wmsApplied==1&&dliaApplied==0&&submitted==1,"WMS has independent apply signal");
+    page.setConnectionState(true,false);page.findChild<QPushButton*>("fpgaApplyDlia")->click();
+    require(wmsApplied==1&&dliaApplied==1&&submitted==1,"DLIA has independent apply signal");
+    page.setConnectionState(true,false);
     int acquisitions=0,dacs=0;
     QObject::connect(&page,&FpgaControlPage::acquisitionRequested,&page,[&](bool){++acquisitions;});
     QObject::connect(&page,&FpgaControlPage::dacRequested,&page,[&](int,bool){++dacs;});

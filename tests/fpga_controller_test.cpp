@@ -217,6 +217,30 @@ void configurationAndFailure(){
     require(!f.diagnostics.isEmpty(),"failed write reports diagnostic");
     bool failed=false;for(const auto &c:f.transport->commands){if(failed)require(c.message==2,"failed operation cannot continue downstream side effects");if(c.message==3&&c.address==0x2010)failed=true;}require(failed,"failure injected at WMS shadow");
 }
+void scopedConfiguration(){
+    for(const QString section:{QString("wms"),QString("dlia"),QString("acquisition")}) {
+        Fixture f;f.connect();FpgaControlConfig config;f.transport->clear();
+        f.controller.applyConfiguration(config,section);f.finish();
+        require(f.diagnostics.isEmpty(),"scoped configuration completes");
+        bool selected=false;
+        for(const auto &c:f.transport->writes()) {
+            const bool wms=c.address>=0x2000&&c.address<0x3200;
+            const bool dlia=(c.address>=0x5010&&c.address<=0x5020)||(c.address>=0x5110&&c.address<=0x5120);
+            require(section=="wms"||!wms,"other sections never write WMS or DAC");
+            require(section=="dlia"||!dlia,"other sections never write DLIA parameters");
+            require(section=="acquisition"||c.address!=0x4010,"other sections never write ADC rate");
+            selected|=section=="wms"?wms:section=="dlia"?dlia:c.address==0x4010;
+        }
+        require(selected,"selected section writes parameters");
+    }
+    Fixture f;f.connect();FpgaControlConfig config;config.adcRateHz=1000;
+    f.transport->clear();f.controller.applyConfiguration(config,"dlia");f.finish();
+    require(f.diagnostics.isEmpty(),"DLIA validates against device ADC rate, not unrelated edits");
+    f.transport->clear();f.controller.applyConfiguration(config,"acquisition");f.finish();
+    require(f.transport->writes().isEmpty(),"ADC reduction cannot invalidate existing DLIA output rate");
+    f.transport->clear();f.controller.applyConfiguration(config,"invalid");f.finish();
+    require(f.transport->writes().isEmpty(),"unknown section cannot write hardware");
+}
 void rawAndBusy(){
     Fixture f;f.connect();FpgaControlConfig config;config.rawWindowSeconds=1;f.controller.setConfiguration(config);f.transport->clear();
     f.transport->holdResponses=true;f.controller.setRawEnabled(true);const auto commands=f.transport->commands.size();f.controller.setWaveform(1,true);require(f.transport->commands.size()==commands,"busy controller rejects overlapping operation");
@@ -300,5 +324,5 @@ int main(int argc,char **argv){
         }
         std::puts("hardware controller connect/idle/reconnect probe passed");return 0;
     }
-    connectionAndVersions();backgroundRefresh();independentAndAcquisition();restartClearsDliaState();configurationAndFailure();rawAndBusy();temperature();sensorUploadAndFailure();ai8DisabledConfiguration();threadCleanup();std::puts("FPGA controller tests passed");return 0;
+    connectionAndVersions();backgroundRefresh();independentAndAcquisition();restartClearsDliaState();configurationAndFailure();scopedConfiguration();rawAndBusy();temperature();sensorUploadAndFailure();ai8DisabledConfiguration();threadCleanup();std::puts("FPGA controller tests passed");return 0;
 }

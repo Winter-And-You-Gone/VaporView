@@ -149,7 +149,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
         auto *b=new QPushButton(this); label(b,QString::fromUtf8(zh),QString::fromUtf8(en)); b->setObjectName(QString::fromLatin1(name));
         layout->addWidget(b,row,col); onlineControls_.append(b); connect(b,&QPushButton::clicked,this,[this,fn]{ lockOperation(); fn(); }); return b;
     };
-    action(actions,0,0,"提交参数并核验","Apply & verify","fpgaApply",[this]{emit applyRequested(configuration());});
+    action(actions,0,0,"应用采样与 AI8 参数","Apply sampling & AI8","fpgaApply",[this]{emit applyRequested(configuration());});
     refresh_=action(actions,0,1,"刷新读回","Refresh readback","fpgaRefresh",[this]{emit refreshRequested();});
     action(actions,0,2,"开始采集","Start acquisition","fpgaAcquisitionStart",[this]{emit acquisitionRequested(true);});
     action(actions,0,3,"停止采集","Stop acquisition","fpgaAcquisitionStop",[this]{emit acquisitionRequested(false);});
@@ -167,8 +167,19 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
         connect(input,&QDoubleSpinBox::valueChanged,this,[this]{emit configurationChanged(configuration());});
     };
     field(sl,0,"请求采样率 / Hz","Requested sampling / Hz","fpgaAdcRate",0x4014,1,1000000,0,[](const auto &c){return c.adcRateHz;},[](auto &c,double v){c.adcRateHz=quint32(v);});
+    auto *parameterTabs=new QTabWidget(parameters);parameterTabs->setObjectName("fpgaParameterTabs");pl->addWidget(parameterTabs);
+    auto *wmsPage=new QWidget(parameterTabs),*dliaPage=new QWidget(parameterTabs);
+    parameterTabs->addTab(wmsPage,"WMS / DAC");parameterTabs->addTab(dliaPage,"DLIA");
+    auto *wmsLayout=new QVBoxLayout(wmsPage),*dliaLayout=new QVBoxLayout(dliaPage);
+    auto *wmsActions=new QGridLayout;wmsLayout->addLayout(wmsActions);
+    action(wmsActions,0,0,"应用 WMS / DAC 参数","Apply WMS / DAC","fpgaApplyWms",[this]{emit applyWmsRequested(configuration());});
+    auto *dliaActions=new QGridLayout;dliaLayout->addLayout(dliaActions);
+    action(dliaActions,0,0,"应用 DLIA 参数","Apply DLIA","fpgaApplyDlia",[this]{emit applyDliaRequested(configuration());});
+    auto *voltageHint=new QLabel(wmsPage);voltageHint->setWordWrap(true);
+    label(voltageHint,QStringLiteral("幅度为峰值，偏置为直流电压；按 DAC ±10 V 标称量程、增益 1 / 偏移 0 换算，非实测值。应用参数后需重新开始采集。"),QStringLiteral("Amplitudes are peak voltages; bias is DC. Nominal DAC ±10 V, unity gain / zero offset; not measured voltage. Restart acquisition after applying."));wmsLayout->addWidget(voltageHint);
+    auto *dliaHint=new QLabel(dliaPage);dliaHint->setWordWrap(true);label(dliaHint,QStringLiteral("仅提交解调参数，保留 WMS / DAC 设置。应用后需重新开始采集。"),QStringLiteral("Apply demodulation settings only; preserve WMS / DAC. Restart acquisition after applying."));dliaLayout->addWidget(dliaHint);
     for(int channel=0;channel<2;++channel) {
-        auto *group=card(parameters,pl,QStringLiteral("通道 %1").arg(channel+1),QStringLiteral("Channel %1").arg(channel+1),QStringLiteral("audio-waveform"));
+        auto *group=card(wmsPage,wmsLayout,QStringLiteral("WMS / DAC · 通道 %1").arg(channel+1),QStringLiteral("WMS / DAC · Channel %1").arg(channel+1),QStringLiteral("audio-waveform"));
         auto *grid=new QGridLayout(group);
         const quint32 w=0x2000+channel*0x100,d=0x5000+channel*0x100;
         auto *buttons=new QGridLayout; grid->addLayout(buttons,0,0,1,3);
@@ -180,18 +191,26 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
         auto wf=[&,channel](const char *zh,const char *en,const char *name,quint32 offset,double minimum,double maximum,auto member,double scale=1.0) {
             field(grid,row++,zh,en,QString("fpga%1%2").arg(channel).arg(name),w+offset,minimum,maximum,scale==1.0?0:3,
                 [channel,member,scale](const auto &c){return double(c.wms[channel].*member)/scale;},
-                [channel,member,scale](auto &c,double v){c.wms[channel].*member=static_cast<std::remove_reference_t<decltype(c.wms[channel].*member)>>(v*scale);});
+                [channel,member,scale](auto &c,double v){
+                    using Value=std::remove_reference_t<decltype(c.wms[channel].*member)>;
+                    // Keep exact saved Q1.31 codes when the millivolt display is unchanged.
+                    if(scale>1000 && std::abs(v-std::round(double(c.wms[channel].*member)/scale*1000)/1000)<1e-9)return;
+                    c.wms[channel].*member=static_cast<Value>(std::clamp(std::round(v*scale),
+                        double(std::numeric_limits<Value>::lowest()),double(std::numeric_limits<Value>::max())));
+                });
         };
         wf("扫描频率 / Hz","Scan / Hz","Scan",0x10,0.001,1000,&FpgaControlConfig::Wms::scanMilliHz,1000);
         wf("调制频率 / Hz","Modulation / Hz","Sine",0x1c,0.001,100000,&FpgaControlConfig::Wms::sineMilliHz,1000);
         wf("请求更新率 / Hz","Requested update / Hz","Update",0x2c,1,1000000,&FpgaControlConfig::Wms::updateRateHz);
-        wf("扫描幅度 / Q1.31","Scan amplitude / Q1.31","ScanAmplitude",0x14,-2147483648.0,2147483647.0,&FpgaControlConfig::Wms::scanAmplitude);
-        wf("调制幅度 / Q1.31","Modulation amplitude / Q1.31","SineAmplitude",0x20,-2147483648.0,2147483647.0,&FpgaControlConfig::Wms::sineAmplitude);
-        wf("偏置 / Q1.31","Bias / Q1.31","Bias",0x18,-2147483648.0,2147483647.0,&FpgaControlConfig::Wms::bias);
+        wf("扫描峰值 / V","Scan peak / V","ScanAmplitude",0x14,-10.0,10.0-10.0/2147483648.0,&FpgaControlConfig::Wms::scanAmplitude,2147483648.0/10.0);
+        wf("调制峰值 / V","Modulation peak / V","SineAmplitude",0x20,-10.0,10.0-10.0/2147483648.0,&FpgaControlConfig::Wms::sineAmplitude,2147483648.0/10.0);
+        wf("直流偏置 / V","DC bias / V","Bias",0x18,-10.0,10.0-10.0/2147483648.0,&FpgaControlConfig::Wms::bias,2147483648.0/10.0);
         wf("扫描相位 / 整圈码","Scan phase / turn code","Phase",0x24,0,4294967295.0,&FpgaControlConfig::Wms::phase);
         wf("相位模式","Phase mode","PhaseMode",0x40,0,2,&FpgaControlConfig::Wms::phaseMode);
+        auto *dliaGroup=card(dliaPage,dliaLayout,QStringLiteral("DLIA · 通道 %1").arg(channel+1),QStringLiteral("DLIA · Channel %1").arg(channel+1),QStringLiteral("activity"));
+        auto *dliaGrid=new QGridLayout(dliaGroup);int dliaRow=0;
         auto df=[&,channel](const char *zh,const char *en,const char *name,quint32 offset,double minimum,double maximum,auto member,double scale=1.0) {
-            field(grid,row++,zh,en,QString("fpga%1%2").arg(channel).arg(name),d+offset,minimum,maximum,scale==1.0?0:3,
+            field(dliaGrid,dliaRow++,zh,en,QString("fpga%1%2").arg(channel).arg(name),d+offset,minimum,maximum,scale==1.0?0:3,
                 [channel,member,scale](const auto &c){return double(c.dlia[channel].*member)/scale;},
                 [channel,member,scale](auto &c,double v){c.dlia[channel].*member=static_cast<std::remove_reference_t<decltype(c.dlia[channel].*member)>>(v*scale);});
         };
@@ -216,13 +235,14 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
             const QString module=base==w?"WMS":base==d?"DLIA":base<0x4000?"DAC":"ADC";
             for(quint32 offset : {quint32(8),quint32(12)}) {
                 auto *l=new QLabel(module+QStringLiteral(" · —"),group); l->setProperty("fpgaModule",module);
-                grid->addWidget(l,++row,0,1,3);hardwareLabels_[base+offset]=l;
+                if(base==d||base==quint32(0x4000+channel*0x100))dliaGrid->addWidget(l,++dliaRow,0,1,3);else grid->addWidget(l,++row,0,1,3);hardwareLabels_[base+offset]=l;
             }
         }
         for(quint32 address : {w+0x3c,w+0x44,quint32(0x3028+channel*0x100),quint32(0x302c+channel*0x100),quint32(0x4024+channel*0x100),d+0x34,d+0x48,d+0x50}) {
-            auto *l=new QLabel(QStringLiteral("—"),group);grid->addWidget(l,++row,0,1,3);hardwareLabels_[address]=l;
+            auto *l=new QLabel(QStringLiteral("—"),group);if(address>=0x4000)dliaGrid->addWidget(l,++dliaRow,0,1,3);else grid->addWidget(l,++row,0,1,3);hardwareLabels_[address]=l;
         }
     }
+    wmsLayout->addStretch();dliaLayout->addStretch();
     pl->addStretch();
     auto *sensors=tab(QStringLiteral("传感器"),QStringLiteral("Sensors")); auto *sensorLayout=new QVBoxLayout(sensors);
     auto *form=new QFormLayout; sensorLayout->addLayout(form);
@@ -400,7 +420,10 @@ void FpgaControlPage::setConnectionState(bool ready,bool busy,const QString &det
 void FpgaControlPage::setHardwareValues(const QMap<quint32,quint32> &v){
     for(auto it=v.cbegin();it!=v.cend();++it)if(auto *l=hardwareLabels_.value(it.key())) {
         const auto module=l->property("fpgaModule").toString();
-        if((it.key()&0xff)==8 && !module.isEmpty()) {
+        const quint32 base=it.key()&~0xffu,offset=it.key()&0xff;
+        if ((base==0x2000||base==0x2100) && (offset==0x14||offset==0x18||offset==0x20)) {
+            l->setText(text("设备读回：","Readback: ")+QString::number(double(qint32(it.value()))*10.0/2147483648.0,'f',3)+" V");
+        } else if((it.key()&0xff)==8 && !module.isEmpty()) {
             l->setText(QString("%1 · %2 %3 · %4 %5 · %6 %7 · %8 %9").arg(module)
                 .arg(text("启用","Enabled")).arg(bool(it.value()&1)).arg(text("就绪","Ready")).arg(bool(it.value()&(module=="ADC"?0x10:2)))
                 .arg(text("待生效","Pending")).arg(bool(it.value()&4)).arg(text("错误","Error")).arg(bool(it.value()&0x80)));

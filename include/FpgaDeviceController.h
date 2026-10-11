@@ -30,7 +30,7 @@ public:
 public slots:
     void connectDevice(const QString& locator, const QString& backend);
     void disconnectDevice();
-    void applyConfiguration(const FpgaControlConfig& config);
+    void applyConfiguration(const FpgaControlConfig& config, const QString& section = QStringLiteral("all"));
     void setConfiguration(const FpgaControlConfig& config);
     void refresh();
     void setAcquisition(bool enable);

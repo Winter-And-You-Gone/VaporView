@@ -110,7 +110,11 @@ bool validateControl(const QJsonObject& control, QString *error)
             !QStringList{"auto", "cypress", "winusb"}.contains(control.value("backend").toString())) return fail();
     } else if (op == "configure") {
         keys << "configuration";
-        if (!control.value("configuration").isObject() || !configurationValid(control.value("configuration").toObject())) return fail();
+        if (control.contains("section")) {
+            keys << "section";
+            if (!control.value("section").isString() || !QStringList{"all","wms","dlia","acquisition"}.contains(control.value("section").toString())) return fail();
+        }
+        if (!control.value("configuration").isObject() || !(control.value("section").toString("all")=="all" ? configurationValid(control.value("configuration").toObject()) : configurationShape(control.value("configuration"), FpgaControlConfig{}.toJson()))) return fail();
     } else if (op == "acquisition" || op == "wms" || op == "dac" || op == "sensor" || op == "raw") {
         keys << "enabled";
         if (!control.value("enabled").isBool()) return fail();

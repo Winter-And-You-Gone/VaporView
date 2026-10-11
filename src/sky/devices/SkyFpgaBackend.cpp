@@ -144,7 +144,7 @@ void SkyFpgaBackend::submit(const QJsonObject& operation, Completion completion)
         else if (op == "refresh") controller->refresh();
         else if (op == "configure") {
             const auto config = FpgaControlConfig::fromJson(operation.value("configuration").toObject());
-            controller->applyConfiguration(config);
+            controller->applyConfiguration(config,operation.value("section").toString("all"));
         }
         else if (op == "acquisition") controller->setAcquisition(operation.value("enabled").toBool());
         else if (op == "wms") controller->setWaveform(operation.value("channel").toInt(), operation.value("enabled").toBool());
