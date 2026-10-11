@@ -58,6 +58,35 @@ static void processFor(int milliseconds)
     QElapsedTimer elapsed; elapsed.start();
     waitUntil([&] { return elapsed.elapsed() >= milliseconds; }, milliseconds + 1000);
 }
+static void verifyCardMargins(MainWindow &window,FpgaControlPage *page)
+{
+    const QSize originalSize=window.size();
+    window.resize(originalSize.expandedTo(QSize(2000,1000))); processFor(50);
+    auto *stack=window.findChild<QStackedWidget*>("mainPageStack");
+    auto *homeCards=window.findChild<QWidget*>("homeOverviewSplitter");
+    stack->setCurrentIndex(0); processFor(50);
+    const QRect homeRect(homeCards->mapTo(stack,QPoint()),homeCards->size());
+    stack->setCurrentIndex(4); processFor(50);
+    auto *connection=page->findChild<QAbstractButton*>("fpgaDisconnect")->parentWidget()->parentWidget();
+    const QRect connectionRect(connection->mapTo(stack,QPoint()),connection->size());
+    require(connectionRect.left()==homeRect.left()&&connectionRect.right()==homeRect.right(),"FPGA connection card matches the actual home card outer margins");
+    auto *tabs=page->findChild<QTabWidget*>("fpgaTabs");
+    auto *parameterTabs=page->findChild<QTabWidget*>("fpgaParameterTabs");
+    const int originalTab=tabs->currentIndex(),originalParameterTab=parameterTabs->currentIndex();
+    for(int tab=0;tab<tabs->count();++tab) {
+        tabs->setCurrentIndex(tab);
+        for(int parameterTab=0;parameterTab<(tab==0?parameterTabs->count():1);++parameterTab) {
+            if(tab==0)parameterTabs->setCurrentIndex(parameterTab);
+            processFor(50);
+            for(auto *card : page->findChildren<QWidget*>("fpgaSectionCard")) {
+                if(!card->isVisibleTo(page))continue;
+                const QRect cardRect(card->mapTo(stack,QPoint()),card->size());
+                require(cardRect.left()==homeRect.left()&&cardRect.right()==homeRect.right(),"every FPGA card, including WMS/DLIA, aligns with the home card edges");
+            }
+        }
+    }
+    parameterTabs->setCurrentIndex(originalParameterTab); tabs->setCurrentIndex(originalTab); window.resize(originalSize); processFor(50);
+}
 static void remotePageRouting()
 {
     using namespace VaporView;
@@ -242,6 +271,7 @@ int main(int argc,char **argv)
         require(stack->widget(4)==page && pressure->currentData().toUInt()==0x43,"switching pages preserves editor and choice");
         window.show();page->findChild<QTabWidget*>("fpgaTabs")->setCurrentIndex(2);processFor(100);
         verifyConnectionCard(page,100);
+        verifyCardMargins(window,page);
         auto handler=qInstallMessageHandler(captureFont);
         VaporView::FpgaWave::CompletedStream wave;wave.source=0x30;wave.message=0x1001;wave.format=0;wave.bytesPerPoint=8;wave.totalPoints=2;wave.rate=10000;wave.complete=true;wave.pointBytes=QByteArray(16,0);
         page->updateWaveform(wave);
@@ -263,7 +293,8 @@ int main(int argc,char **argv)
         auto *page=restored.findChild<FpgaControlPage*>(QStringLiteral("fpgaControlPage"));
         require(page && page->configuration().pressureSource==0x43,"next window restores desired config without reconnect");
         restored.findChild<QStackedWidget*>("mainPageStack")->setCurrentIndex(4);
-        restored.show();processFor(100);verifyConnectionCard(page,scale);restored.close();
+        restored.show();processFor(100);verifyConnectionCard(page,scale);
+        verifyCardMargins(restored,page);restored.close();
     }
     app.setFont(standardFont);
     remotePageRouting();

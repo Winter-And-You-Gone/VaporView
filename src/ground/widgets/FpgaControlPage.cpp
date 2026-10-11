@@ -117,7 +117,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     measurementClock_.start();
     setObjectName("fpgaControlPage");
     setAttribute(Qt::WA_StyledBackground, true);
-    auto *root=new QVBoxLayout(this); root->setContentsMargins(18,4,5,8); root->setSpacing(12);
+    auto *root=new QVBoxLayout(this); root->setContentsMargins(0,4,0,8); root->setSpacing(12);
     auto card = [this](QWidget *parent, QVBoxLayout *layout, const QString &zh, const QString &en, const QString &iconName) {
         auto *frame = new QFrame(parent);
         frame->setObjectName(QStringLiteral("fpgaSectionCard"));
@@ -136,7 +136,9 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
         body->setAttribute(Qt::WA_StyledBackground,true); cardLayout->addWidget(body);
         layout->addWidget(frame); return body;
     };
-    auto *connection=card(this,root,QStringLiteral("FPGA 连接"),QStringLiteral("FPGA connection"),QStringLiteral("cpu"));
+    auto *connectionContainer=new QWidget(this); connectionContainer->setObjectName("fpgaConnectionContainer");
+    auto *connectionLayout=new QVBoxLayout(connectionContainer); connectionLayout->setContentsMargins(18,0,13,0); connectionLayout->setProperty("fpgaCardOuterMargins",true); root->addWidget(connectionContainer);
+    auto *connection=card(connectionContainer,connectionLayout,QStringLiteral("FPGA 连接"),QStringLiteral("FPGA connection"),QStringLiteral("cpu"));
     auto *connectionHeader=connection->parentWidget()->findChild<QWidget*>(QStringLiteral("sectionTitleBar"),Qt::FindDirectChildrenOnly);
     auto *connectionHeaderLayout=qobject_cast<QHBoxLayout*>(connectionHeader->layout());
     connectionHeaderLayout->setStretch(1,0);
@@ -169,6 +171,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     tabs_=new QTabWidget(this); tabs_->setObjectName(QStringLiteral("fpgaTabs")); root->addWidget(tabs_,1);
     auto tab=[this](const QString &zh,const QString &en) {
         auto *scroll=new QScrollArea(tabs_); scroll->setObjectName(QStringLiteral("mainCardsScrollArea")); scroll->setWidgetResizable(true); scroll->setFrameShape(QFrame::NoFrame);
+        scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
         auto *body=new QWidget(scroll); scroll->setWidget(body); scroll->setProperty("fpgaZh",zh); scroll->setProperty("fpgaEn",en);
         tabs_->addTab(scroll,zh); return body;
     };
@@ -200,6 +203,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     auto *wmsPage=new QWidget(parameterTabs),*dliaPage=new QWidget(parameterTabs);
     parameterTabs->addTab(wmsPage,"WMS / DAC");parameterTabs->addTab(dliaPage,"DLIA");
     auto *wmsLayout=new QVBoxLayout(wmsPage),*dliaLayout=new QVBoxLayout(dliaPage);
+    for(auto *layout : {wmsLayout,dliaLayout}) { const auto margins=layout->contentsMargins(); layout->setContentsMargins(0,margins.top(),0,margins.bottom()); }
     auto *wmsActions=new QGridLayout;wmsLayout->addLayout(wmsActions);
     action(wmsActions,0,0,"应用 WMS / DAC 参数","Apply WMS / DAC","fpgaApplyWms",[this]{emit applyWmsRequested(configuration());});
     auto *dliaActions=new QGridLayout;dliaLayout->addLayout(dliaActions);
@@ -353,7 +357,8 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
         body->layout()->setContentsMargins(12,10,12,12); body->layout()->setSpacing(8);
     }
     for (auto *body : {parameters,sensors,waves,recordingTab}) {
-        body->layout()->setContentsMargins(5,12,5,8); body->layout()->setSpacing(12);
+        body->layout()->setProperty("fpgaCardOuterMargins",true);
+        body->layout()->setContentsMargins(18,12,5,8); body->layout()->setSpacing(12);
     }
     for (auto *button : findChildren<QPushButton*>()) button->setFocusPolicy(Qt::TabFocus);
     for (auto *button : {disconnect_,refresh_}) button->setProperty("fpgaSecondaryAction",true);
@@ -585,6 +590,13 @@ void FpgaControlPage::setTheme(bool dark,int fontScalePercent){
     using namespace VaporView;setProperty(kAppDarkThemeProperty,dark);setPalette(appThemePalette(dark,palette()));
     const qreal scale=qBound(60,fontScalePercent,180)/100.0;
     const auto pixels=[scale](int value){return qRound(value*scale);};
+    // Match the home card inset and reserve the same scrollbar rail above the tabs.
+    const int shadowInset=int(std::ceil(kTopLevelCardShadowBlurRadius*scale*0.6))+1;
+    findChild<QWidget*>("fpgaConnectionContainer")->layout()->setContentsMargins(pixels(18),0,shadowInset+pixels(8),0);
+    for(int i=0;i<tabs_->count();++i) {
+        auto *scroll=qobject_cast<QScrollArea*>(tabs_->widget(i));
+        scroll->widget()->layout()->setContentsMargins(pixels(18),pixels(12),shadowInset,pixels(8));
+    }
     setStyleSheet(applyAppThemeTokens(QStringLiteral(
         "QWidget#fpgaControlPage { background-color: @vv-window; }"
         "QWidget#fpgaControlPage QFrame#fpgaSectionCard { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 12px; }"
@@ -594,11 +606,13 @@ void FpgaControlPage::setTheme(bool dark,int fontScalePercent){
         "QWidget#fpgaControlPage QLabel#sectionTitleLabel { font-size: %2px; font-weight: 700; padding: 0; margin: 0; }"
         "QWidget#fpgaControlPage QLabel[fpgaSecondaryText=\"true\"] { color: @vv-text-secondary; font-weight: 400; }"
         "QWidget#fpgaControlPage QTabWidget::pane { border: none; background-color: @vv-window; }"
+        "QWidget#fpgaControlPage QTabWidget#fpgaTabs::tab-bar { left: %7px; }"
         "QWidget#fpgaControlPage QTabBar::tab { background-color: @vv-surface-alt; color: @vv-text; border: 1px solid transparent; border-radius: 6px; padding: 0 %3px; margin-right: 4px; min-height: %4px; font-weight: 600; }"
         "QWidget#fpgaControlPage QTabBar::tab:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
         "QWidget#fpgaControlPage QTabBar::tab:selected { background-color: @vv-primary; color: @vv-white; }"
         "QWidget#fpgaControlPage QTabBar::tab:focus { border-color: @vv-focus; }"
         "QWidget#fpgaControlPage QScrollArea, QWidget#fpgaControlPage QScrollArea > QWidget, QWidget#fpgaControlPage QScrollArea > QWidget > QWidget { background-color: @vv-window; border: none; }"
+        "QWidget#fpgaControlPage QScrollArea#mainCardsScrollArea QScrollBar:vertical { width: %6px; }"
         "QWidget#fpgaControlPage QPushButton[fpgaSecondaryAction=\"true\"] { background-color: @vv-surface-alt; color: @vv-text; border: 1px solid @vv-border; }"
         "QWidget#fpgaControlPage QPushButton[fpgaSecondaryAction=\"true\"]:hover { background-color: @vv-primary-subtle; color: @vv-primary; border-color: @vv-primary; }"
         "QWidget#fpgaControlPage QPushButton[fpgaSecondaryAction=\"true\"]:focus { border-color: @vv-focus; }"
@@ -607,14 +621,14 @@ void FpgaControlPage::setTheme(bool dark,int fontScalePercent){
         "QWidget#fpgaControlPage QPushButton[fpgaIconOnly=\"true\"]:hover, QWidget#fpgaControlPage QPushButton[fpgaIconOnly=\"true\"]:pressed { background-color: @vv-surface-alt; border-color: transparent; }"
         "QWidget#fpgaControlPage QPushButton[fpgaIconOnly=\"true\"]:focus { border-color: @vv-focus; }"
         "QWidget#fpgaControlPage QPushButton[fpgaIconOnly=\"true\"]:disabled { background-color: transparent; border-color: transparent; }")
-        .arg(pixels(40)).arg(pixels(16)).arg(pixels(12)).arg(pixels(36)).arg(pixels(40)-2),dark));
+        .arg(pixels(40)).arg(pixels(16)).arg(pixels(12)).arg(pixels(36)).arg(pixels(40)-2).arg(pixels(8)).arg(pixels(18)),dark));
     locator_->setMinimumWidth(pixels(200)); locator_->setMaximumWidth(QWIDGETSIZE_MAX); locator_->setFixedHeight(pixels(40));
     backend_->setMinimumWidth(pixels(104)); backend_->setMaximumWidth(QWIDGETSIZE_MAX); backend_->setFixedHeight(pixels(40));
     for (auto *button : {discover_,connect_,disconnect_}) {
         button->setFixedSize(pixels(40),pixels(40)); button->setIconSize(QSize(pixels(20),pixels(20)));
         QFile file(QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/lucide/%1.svg").arg(button->property("fpgaIconName").toString())));
         if (!file.open(QIODevice::ReadOnly)) continue;
-        const auto color=button==connect_?AppThemeColor::HomeDeviceSuccess:AppThemeColor::ToolbarBlue;
+        const auto color=button==connect_?AppThemeColor::HomeDeviceSuccess:button==disconnect_?AppThemeColor::ToolbarRed:AppThemeColor::ToolbarBlue;
         QByteArray svg=file.readAll(); svg.replace("currentColor",appThemeColorName(color,dark).toUtf8());
         const qreal dpr=button->devicePixelRatioF(); const int size=pixels(20);
         QPixmap pixmap(qRound(size*dpr),qRound(size*dpr)); pixmap.setDevicePixelRatio(dpr); pixmap.fill(Qt::transparent);

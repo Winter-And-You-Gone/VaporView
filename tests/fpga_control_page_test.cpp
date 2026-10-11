@@ -226,6 +226,13 @@ int main(int argc,char **argv) {
             require(pixel(pressed,blankPoint)==VaporView::appThemeColor(VaporView::AppThemeColor::SurfaceAlt,dark).rgb(),"pressing a line-icon action highlights its background");
             button->setDown(false);button->setEnabled(enabled);
         }
+        const auto disconnectIcon=disconnect->icon().pixmap(disconnect->iconSize(),QIcon::Normal).toImage();
+        bool redStroke=false;
+        for(int y=0;y<disconnectIcon.height();++y)for(int x=0;x<disconnectIcon.width();++x) {
+            const auto color=disconnectIcon.pixelColor(x,y);
+            redStroke|=color.alpha()>200&&color.rgb()==VaporView::appThemeColor(VaporView::AppThemeColor::ToolbarRed,dark).rgb();
+        }
+        require(redStroke,"disconnect line icon uses the theme's red action color");
         require(scan->toolTip()==(english?QStringLiteral("Refresh devices"):QStringLiteral("刷新设备")),"switching language keeps icon-only refresh action localized");
         require(discoveryStatus->toolTip()==discoveryStatus->text()&&connectionStatus->toolTip()==connectionStatus->text(),"connection status tooltips preserve complete text");
         require(devices->toolTip().startsWith(devices->currentText()+"\n")&&devices->toolTip().contains("04B4:00F1"),"compact device selector retains its full name and existing connection guidance");

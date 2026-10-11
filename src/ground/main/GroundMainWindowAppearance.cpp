@@ -906,6 +906,8 @@ void MainWindow::applyScaledUiMetrics()
             layout->setSpacing(std::max(0, scalePixels(layout->property(kBaseSpacingProperty).toInt())));
         }
 
+        // FPGA card outer margins include its scaled scrollbar and shadow insets.
+        if (layout->property("fpgaCardOuterMargins").toBool()) return;
         const QMargins margins = layout->contentsMargins();
         rememberBaseMetric(layout, kBaseMarginsLeftProperty, margins.left());
         rememberBaseMetric(layout, kBaseMarginsTopProperty, margins.top());
