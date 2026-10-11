@@ -18,6 +18,7 @@
 #include <QJsonArray>
 #include <QLabel>
 #include <QLayout>
+#include <QBoxLayout>
 #include <QPointer>
 #include <QPlainTextEdit>
 #include <QStackedWidget>
@@ -58,7 +59,7 @@ static void processFor(int milliseconds)
     QElapsedTimer elapsed; elapsed.start();
     waitUntil([&] { return elapsed.elapsed() >= milliseconds; }, milliseconds + 1000);
 }
-static void verifyCardMargins(MainWindow &window,FpgaControlPage *page)
+static void verifyCardMargins(MainWindow &window,FpgaControlPage *page,int scale)
 {
     const QSize originalSize=window.size();
     window.resize(originalSize.expandedTo(QSize(2000,1000))); processFor(50);
@@ -67,6 +68,7 @@ static void verifyCardMargins(MainWindow &window,FpgaControlPage *page)
     stack->setCurrentIndex(0); processFor(50);
     const QRect homeRect(homeCards->mapTo(stack,QPoint()),homeCards->size());
     stack->setCurrentIndex(4); processFor(50);
+    page->setUiTestState(true,false,false,5000);processFor(50);
     auto *connection=page->findChild<QAbstractButton*>("fpgaDisconnect")->parentWidget()->parentWidget();
     const QRect connectionRect(connection->mapTo(stack,QPoint()),connection->size());
     require(connectionRect.left()==homeRect.left()&&connectionRect.right()==homeRect.right(),"FPGA connection card matches the actual home card outer margins");
@@ -78,13 +80,27 @@ static void verifyCardMargins(MainWindow &window,FpgaControlPage *page)
         for(int parameterTab=0;parameterTab<(tab==0?parameterTabs->count():1);++parameterTab) {
             if(tab==0)parameterTabs->setCurrentIndex(parameterTab);
             processFor(50);
+            QList<QWidget*> channelCards;
+            for(const auto *name : {"fpgaWmsChannels","fpgaDliaChannels","fpgaWaveChannels"}) {
+                auto *row=page->findChild<QHBoxLayout*>(name);
+                require(row&&row->count()==2,"parameter and waveform channel rows each retain two cards");
+                auto *first=row->itemAt(0)->widget(),*second=row->itemAt(1)->widget();
+                channelCards.append(first);channelCards.append(second);
+                if(!first->isVisibleTo(page))continue;
+                const QRect firstRect(first->mapTo(stack,QPoint()),first->size()),secondRect(second->mapTo(stack,QPoint()),second->size());
+                require(firstRect.top()==secondRect.top()&&firstRect.bottom()==secondRect.bottom(),"paired channel cards share one row and equal heights");
+                require(qAbs(firstRect.width()-secondRect.width())<=1,"paired channel cards divide the available width equally");
+                require(secondRect.left()-firstRect.right()-1==qRound(12*scale/100.0),"paired cards retain the shared scaled card gap");
+                require(firstRect.left()==homeRect.left()&&secondRect.right()==homeRect.right(),"paired channel cards fill the row within the home outer margins");
+            }
             for(auto *card : page->findChildren<QWidget*>("fpgaSectionCard")) {
-                if(!card->isVisibleTo(page))continue;
+                if(!card->isVisibleTo(page)||channelCards.contains(card))continue;
                 const QRect cardRect(card->mapTo(stack,QPoint()),card->size());
-                require(cardRect.left()==homeRect.left()&&cardRect.right()==homeRect.right(),"every FPGA card, including WMS/DLIA, aligns with the home card edges");
+                require(cardRect.left()==homeRect.left()&&cardRect.right()==homeRect.right(),"full-width FPGA cards align with the home card edges");
             }
         }
     }
+    page->setUiTestState(false);
     parameterTabs->setCurrentIndex(originalParameterTab); tabs->setCurrentIndex(originalTab); window.resize(originalSize); processFor(50);
 }
 static void remotePageRouting()
@@ -271,7 +287,7 @@ int main(int argc,char **argv)
         require(stack->widget(4)==page && pressure->currentData().toUInt()==0x43,"switching pages preserves editor and choice");
         window.show();page->findChild<QTabWidget*>("fpgaTabs")->setCurrentIndex(2);processFor(100);
         verifyConnectionCard(page,100);
-        verifyCardMargins(window,page);
+        verifyCardMargins(window,page,100);
         auto handler=qInstallMessageHandler(captureFont);
         VaporView::FpgaWave::CompletedStream wave;wave.source=0x30;wave.message=0x1001;wave.format=0;wave.bytesPerPoint=8;wave.totalPoints=2;wave.rate=10000;wave.complete=true;wave.pointBytes=QByteArray(16,0);
         page->updateWaveform(wave);
@@ -294,7 +310,7 @@ int main(int argc,char **argv)
         require(page && page->configuration().pressureSource==0x43,"next window restores desired config without reconnect");
         restored.findChild<QStackedWidget*>("mainPageStack")->setCurrentIndex(4);
         restored.show();processFor(100);verifyConnectionCard(page,scale);
-        verifyCardMargins(restored,page);restored.close();
+        verifyCardMargins(restored,page,scale);restored.close();
     }
     app.setFont(standardFont);
     remotePageRouting();

@@ -2,6 +2,7 @@
 #include "ground/widgets/FpgaControlPage.h"
 #include "shared/theme/AppTheme.h"
 #include <QApplication>
+#include <QBoxLayout>
 #include <QStyleFactory>
 #include <QAbstractItemModel>
 #include "shared/theme/SingleLevelPopupComboBox.h"
@@ -187,7 +188,24 @@ int main(int argc,char **argv) {
         page.setLanguage(english); page.setTheme(dark,scale);
         QFont font=app.font();font.setPointSizeF(app.font().pointSizeF()*scale/100.0);page.setFont(font);
         auto *tabs=page.findChild<QTabWidget*>();
-        for(int i=0;i<tabs->count();++i){tabs->setCurrentIndex(i);app.processEvents();auto *scroll=qobject_cast<QScrollArea*>(tabs->widget(i));require(scroll&&scroll->widgetResizable(),"all tabs remain scrollable at large fonts");require(scroll->viewport()->width()>0,"tab viewport remains visible");}
+        for(int i=0;i<tabs->count();++i) {
+            tabs->setCurrentIndex(i);
+            for(int subtab=0;subtab<(i==0?parameterTabs->count():1);++subtab) {
+                if(i==0)parameterTabs->setCurrentIndex(subtab);
+                app.processEvents();
+                auto *scroll=qobject_cast<QScrollArea*>(tabs->widget(i));
+                require(scroll&&scroll->widgetResizable(),"all tabs remain scrollable at large fonts");require(scroll->viewport()->width()>0,"tab viewport remains visible");
+                for(const auto *name : {"fpgaWmsChannels","fpgaDliaChannels","fpgaWaveChannels"}) {
+                    auto *row=page.findChild<QHBoxLayout*>(name);
+                    require(row&&row->count()==2,"each channel row contains two cards");
+                    auto *first=row->itemAt(0)->widget(),*second=row->itemAt(1)->widget();
+                    if(!first->isVisibleTo(&page))continue;
+                    const QRect firstRect(first->mapTo(&page,QPoint()),first->size()),secondRect(second->mapTo(&page,QPoint()),second->size());
+                    require(firstRect.top()==secondRect.top()&&firstRect.right()<secondRect.left(),"channel cards remain side by side across themes, languages and font scales");
+                    require(qAbs(firstRect.width()-secondRect.width())<=1,"channel cards retain equal widths across themes, languages and font scales");
+                }
+            }
+        }
         int previousRight=-1;
         for(auto *widget : QList<QWidget*>{devices,backend,scan,connect,disconnect}) {
             const QRect geometry(widget->mapTo(devices->parentWidget(),QPoint()),widget->size());

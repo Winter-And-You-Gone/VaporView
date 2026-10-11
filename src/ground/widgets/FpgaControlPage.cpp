@@ -118,7 +118,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     setObjectName("fpgaControlPage");
     setAttribute(Qt::WA_StyledBackground, true);
     auto *root=new QVBoxLayout(this); root->setContentsMargins(0,4,0,8); root->setSpacing(12);
-    auto card = [this](QWidget *parent, QVBoxLayout *layout, const QString &zh, const QString &en, const QString &iconName) {
+    auto card = [this](QWidget *parent, QBoxLayout *layout, const QString &zh, const QString &en, const QString &iconName) {
         auto *frame = new QFrame(parent);
         frame->setObjectName(QStringLiteral("fpgaSectionCard"));
         VaporView::configureTopLevelCard(frame);
@@ -189,7 +189,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     auto *shared=card(parameters,pl,QStringLiteral("共同采样时序"),QStringLiteral("Shared sampling"),QStringLiteral("timer")); auto *sl=new QGridLayout(shared);
     auto field=[this](QGridLayout *layout,int row,const char *zh,const char *en,const QString &name,quint32 address,double min,double max,int decimals,
                       std::function<double(const FpgaControlConfig&)> read,std::function<void(FpgaControlConfig&,double)> write) {
-        auto *title=new QLabel(this); label(title,QString::fromUtf8(zh),QString::fromUtf8(en));
+        auto *title=new QLabel(this); title->setWordWrap(true); label(title,QString::fromUtf8(zh),QString::fromUtf8(en));
         auto *input=new QDoubleSpinBox(this); input->setObjectName(name); input->setRange(min,max); input->setDecimals(decimals); input->setKeyboardTracking(false);
         input->setAccessibleName(QString::fromUtf8(zh)); title->setBuddy(input);
         auto *actual=new QLabel(QStringLiteral("—"),this); actual->setObjectName(name+"Actual"); actual->setProperty("fpgaSecondaryText",true); actual->setWordWrap(true);
@@ -211,8 +211,12 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     auto *voltageHint=new QLabel(wmsPage);voltageHint->setWordWrap(true);
     label(voltageHint,QStringLiteral("幅度为峰值，偏置为直流电压；按 DAC ±10 V 标称量程、增益 1 / 偏移 0 换算，非实测值。应用参数后需重新开始采集。"),QStringLiteral("Amplitudes are peak voltages; bias is DC. Nominal DAC ±10 V, unity gain / zero offset; not measured voltage. Restart acquisition after applying."));wmsLayout->addWidget(voltageHint);
     auto *dliaHint=new QLabel(dliaPage);dliaHint->setWordWrap(true);label(dliaHint,QStringLiteral("仅提交解调参数，保留 WMS / DAC 设置。应用后需重新开始采集。"),QStringLiteral("Apply demodulation settings only; preserve WMS / DAC. Restart acquisition after applying."));dliaLayout->addWidget(dliaHint);
+    auto *wmsChannels=new QHBoxLayout,*dliaChannels=new QHBoxLayout;
+    wmsChannels->setObjectName("fpgaWmsChannels");dliaChannels->setObjectName("fpgaDliaChannels");
+    for(auto *row : {wmsChannels,dliaChannels})row->setSpacing(12);
+    wmsLayout->addLayout(wmsChannels);dliaLayout->addLayout(dliaChannels);
     for(int channel=0;channel<2;++channel) {
-        auto *group=card(wmsPage,wmsLayout,QStringLiteral("WMS / DAC · 通道 %1").arg(channel+1),QStringLiteral("WMS / DAC · Channel %1").arg(channel+1),QStringLiteral("audio-waveform"));
+        auto *group=card(wmsPage,wmsChannels,QStringLiteral("WMS / DAC · 通道 %1").arg(channel+1),QStringLiteral("WMS / DAC · Channel %1").arg(channel+1),QStringLiteral("audio-waveform"));
         auto *grid=new QGridLayout(group);
         const quint32 w=0x2000+channel*0x100,d=0x5000+channel*0x100;
         auto *buttons=new QGridLayout; grid->addLayout(buttons,0,0,1,3);
@@ -240,7 +244,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
         wf("直流偏置 / V","DC bias / V","Bias",0x18,-10.0,10.0-10.0/2147483648.0,&FpgaControlConfig::Wms::bias,2147483648.0/10.0);
         wf("扫描相位 / 整圈码","Scan phase / turn code","Phase",0x24,0,4294967295.0,&FpgaControlConfig::Wms::phase);
         wf("相位模式","Phase mode","PhaseMode",0x40,0,2,&FpgaControlConfig::Wms::phaseMode);
-        auto *dliaGroup=card(dliaPage,dliaLayout,QStringLiteral("DLIA · 通道 %1").arg(channel+1),QStringLiteral("DLIA · Channel %1").arg(channel+1),QStringLiteral("activity"));
+        auto *dliaGroup=card(dliaPage,dliaChannels,QStringLiteral("DLIA · 通道 %1").arg(channel+1),QStringLiteral("DLIA · Channel %1").arg(channel+1),QStringLiteral("activity"));
         auto *dliaGrid=new QGridLayout(dliaGroup);int dliaRow=0;
         auto df=[&,channel](const char *zh,const char *en,const char *name,quint32 offset,double minimum,double maximum,auto member,double scale=1.0) {
             field(dliaGrid,dliaRow++,zh,en,QString("fpga%1%2").arg(channel).arg(name),d+offset,minimum,maximum,scale==1.0?0:3,
@@ -275,6 +279,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
             auto *l=new QLabel(QStringLiteral("—"),group);if(address>=0x4000)dliaGrid->addWidget(l,++dliaRow,0,1,3);else grid->addWidget(l,++row,0,1,3);hardwareLabels_[address]=l;
         }
     }
+    for(auto *row : {wmsChannels,dliaChannels}) {row->setStretch(0,1);row->setStretch(1,1);}
     wmsLayout->addStretch();dliaLayout->addStretch();
     pl->addStretch();
     auto *sensors=tab(QStringLiteral("传感器"),QStringLiteral("Sensors")); auto *sensorLayout=new QVBoxLayout(sensors);
@@ -308,8 +313,9 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
         button->setProperty("fpgaSimulationControl",true);button->hide();faults->addWidget(button);
         connect(button,&QPushButton::clicked,this,[this,op=fault.first]{simulateOperation({{"op",op}});});
     }
+    auto *waveChannels=new QHBoxLayout;waveChannels->setObjectName("fpgaWaveChannels");waveChannels->setSpacing(12);waveLayout->addLayout(waveChannels);
     for(int i=0;i<2;++i) {
-        auto *g=card(waves,waveLayout,QString("ADC %1 / DLIA %1").arg(i),QString("ADC %1 / DLIA %1").arg(i),QStringLiteral("audio-waveform")); auto *l=new QVBoxLayout(g);
+        auto *g=card(waves,waveChannels,QString("ADC %1 / DLIA %1").arg(i),QString("ADC %1 / DLIA %1").arg(i),QStringLiteral("audio-waveform")); auto *l=new QVBoxLayout(g);
         auto *frontend=new QGridLayout; l->addLayout(frontend);
         field(frontend,0,"电压系数 / V·code⁻¹","Voltage scale / V per code",QString("fpga%1Scale").arg(i),0,0.000000000001,100,12,[i](const auto &c){return c.frontend[i].voltsPerCode;},[i](auto &c,double v){c.frontend[i].voltsPerCode=v;});
         field(frontend,1,"极性 (+1 / -1)","Polarity (+1 / -1)",QString("fpga%1Polarity").arg(i),0,-1,1,0,[i](const auto &c){return c.frontend[i].polarity;},[i](auto &c,double v){c.frontend[i].polarity=v<0?-1:1;});
@@ -334,6 +340,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
             } else l->addWidget(plot);
         }
     }
+    waveChannels->setStretch(0,1);waveChannels->setStretch(1,1);
     auto *recordingTab=tab(QStringLiteral("记录与诊断"),QStringLiteral("Recording & diagnostics")); auto *recordingLayout=new QVBoxLayout(recordingTab);
     auto *recording=card(recordingTab,recordingLayout,QStringLiteral("采集记录"),QStringLiteral("Acquisition recording"),QStringLiteral("scroll-text")); auto *rl=new QVBoxLayout(recording);
     recordSensors_=new FpgaCheckBox(recording); label(recordSensors_,QStringLiteral("记录传感器"),QStringLiteral("Record sensors")); recordDlia_=new FpgaCheckBox(recording); label(recordDlia_,QStringLiteral("记录解调数据"),QStringLiteral("Record demodulation")); recordRaw_=new FpgaCheckBox(recording); label(recordRaw_,QStringLiteral("记录 RAW（高吞吐）"),QStringLiteral("Record RAW (high throughput)")); rl->addWidget(recordSensors_); rl->addWidget(recordDlia_); rl->addWidget(recordRaw_);
