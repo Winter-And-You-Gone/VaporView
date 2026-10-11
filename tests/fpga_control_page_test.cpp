@@ -189,11 +189,20 @@ int main(int argc,char **argv) {
         auto *tabs=page.findChild<QTabWidget*>();
         for(int i=0;i<tabs->count();++i){tabs->setCurrentIndex(i);app.processEvents();auto *scroll=qobject_cast<QScrollArea*>(tabs->widget(i));require(scroll&&scroll->widgetResizable(),"all tabs remain scrollable at large fonts");require(scroll->viewport()->width()>0,"tab viewport remains visible");}
         int previousRight=-1;
-        for(auto *widget : QList<QWidget*>{devices,backend,scan,connect,disconnect,discoveryStatus,connectionStatus}) {
+        for(auto *widget : QList<QWidget*>{devices,backend,scan,connect,disconnect}) {
             const QRect geometry(widget->mapTo(devices->parentWidget(),QPoint()),widget->size());
-            require(qAbs(geometry.center().y()-devices->geometry().center().y())<=1,"all FPGA connection contents share one row");
+            require(qAbs(geometry.center().y()-devices->geometry().center().y())<=1,"FPGA connection controls share one row");
             require(geometry.left()>previousRight&&geometry.right()<devices->parentWidget()->width(),"connection row stays ordered without overlap or overflow");
             previousRight=geometry.right();
+        }
+        auto *connectionHeader=connectionStatus->parentWidget();
+        require(connectionHeader->objectName()=="sectionTitleBar"&&discoveryStatus->parentWidget()==connectionHeader,"both connection status labels occupy the card title bar");
+        auto *connectionTitle=connectionHeader->findChild<QLabel*>("sectionTitleLabel");
+        previousRight=connectionTitle->geometry().right();
+        for(auto *status : {discoveryStatus,connectionStatus}) {
+            require(qAbs(status->geometry().center().y()-connectionTitle->geometry().center().y())<=1,"status text is vertically centered with the card title");
+            require(status->geometry().left()>previousRight&&status->geometry().right()<connectionHeader->width(),"title-bar status labels stay ordered without overlap or overflow");
+            previousRight=status->geometry().right();
         }
         require(devices->width()<=qRound(260*scale/100.0)&&backend->width()<devices->width(),"device and backend selectors remain compact");
         for(auto *button : {scan,connect,disconnect}) {

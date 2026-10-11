@@ -28,6 +28,18 @@
 static int fontWarnings=0;
 static void captureFont(QtMsgType,const QMessageLogContext&,const QString &message){if(message.contains("QFont::setPointSize")){++fontWarnings;std::cerr<<message.toStdString()<<'\n';}}
 static void require(bool v,const char *why) { if(!v) {std::cerr<<why<<'\n';std::exit(1);} }
+static void verifyConnectionCard(FpgaControlPage *page,int scale)
+{
+    const int side=qRound(40*scale/100.0);
+    for(const auto *name : {"fpgaDiscover","fpgaConnect","fpgaDisconnect"}) {
+        auto *button=page->findChild<QAbstractButton*>(name);
+        require(button&&button->size()==QSize(side,side),"main-window FPGA icon actions retain square dimensions after global styles");
+    }
+    auto *discovery=page->findChild<QLabel*>("fpgaDiscoveryStatus");
+    auto *status=page->findChild<QLabel*>("fpgaConnectionStatus");
+    require(discovery&&status&&discovery->parentWidget()==status->parentWidget()
+        &&status->parentWidget()->objectName()=="sectionTitleBar","FPGA discovery and connection status share the card title bar");
+}
 template<typename Predicate> static bool waitUntil(Predicate predicate, int timeoutMs = 3000)
 {
     QElapsedTimer elapsed; elapsed.start();
@@ -204,6 +216,7 @@ int main(int argc,char **argv)
     QSettings native("VaporView","MainWindow");
     native.setValue("font_scale_percent",100);
     native.setValue("app_sidebar_width",62);
+    const auto standardFont=app.font();
     QPointer<QThread> worker;
     {
         MainWindow window;
@@ -225,6 +238,7 @@ int main(int argc,char **argv)
         stack->setCurrentIndex(4); stack->setCurrentIndex(0); stack->setCurrentIndex(4);
         require(stack->widget(4)==page && pressure->currentData().toUInt()==0x43,"switching pages preserves editor and choice");
         window.show();page->findChild<QTabWidget*>("fpgaTabs")->setCurrentIndex(2);processFor(100);
+        verifyConnectionCard(page,100);
         auto handler=qInstallMessageHandler(captureFont);
         VaporView::FpgaWave::CompletedStream wave;wave.source=0x30;wave.message=0x1001;wave.format=0;wave.bytesPerPoint=8;wave.totalPoints=2;wave.rate=10000;wave.complete=true;wave.pointBytes=QByteArray(16,0);
         page->updateWaveform(wave);
@@ -239,11 +253,16 @@ int main(int argc,char **argv)
         require(!window.findChild<QThread*>(QStringLiteral("fpgaUsbWorkerThread"))->isInterruptionRequested(),"worker still alive before teardown");
     }
     require(worker.isNull(),"MainWindow teardown joins and deletes USB worker");
-    {
+    for(int scale : {150,100}) {
+        app.setFont(standardFont);
+        native.setValue("font_scale_percent",scale);
         MainWindow restored;
         auto *page=restored.findChild<FpgaControlPage*>(QStringLiteral("fpgaControlPage"));
         require(page && page->configuration().pressureSource==0x43,"next window restores desired config without reconnect");
+        restored.findChild<QStackedWidget*>("mainPageStack")->setCurrentIndex(4);
+        restored.show();processFor(100);verifyConnectionCard(page,scale);restored.close();
     }
+    app.setFont(standardFont);
     remotePageRouting();
     require(native.value("font_scale_percent").toInt()==100,"font scale stays at standard 100 percent");
     std::cout<<"fpga main window tests passed\n";

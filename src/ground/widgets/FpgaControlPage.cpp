@@ -137,6 +137,9 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
         layout->addWidget(frame); return body;
     };
     auto *connection=card(this,root,QStringLiteral("FPGA 连接"),QStringLiteral("FPGA connection"),QStringLiteral("cpu"));
+    auto *connectionHeader=connection->parentWidget()->findChild<QWidget*>(QStringLiteral("sectionTitleBar"),Qt::FindDirectChildrenOnly);
+    auto *connectionHeaderLayout=qobject_cast<QHBoxLayout*>(connectionHeader->layout());
+    connectionHeaderLayout->setStretch(1,0);
     auto *cl=new QHBoxLayout(connection);
     locator_=new VaporView::SingleLevelPopupComboBox(connection); locator_->setObjectName("fpgaLocator");
     locator_->setMinimumContentsLength(12); locator_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
@@ -148,14 +151,15 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
         label(button,QString::fromUtf8(zh),QString::fromUtf8(en)); return button;
     };
     discover_=connectionAction("fpgaDiscover","refresh-cw","刷新设备","Refresh devices");
-    discoveryStatus_=new ConnectionStatusLabel(connection); discoveryStatus_->setObjectName("fpgaDiscoveryStatus");
+    discoveryStatus_=new ConnectionStatusLabel(connectionHeader); discoveryStatus_->setObjectName("fpgaDiscoveryStatus");
     backend_=new VaporView::SingleLevelPopupComboBox(connection); backend_->setObjectName("fpgaBackend");
     backend_->addItem(QStringLiteral("Auto"),QStringLiteral("auto"));backend_->addItem(QStringLiteral("Cypress"),QStringLiteral("cypress"));backend_->addItem(QStringLiteral("WinUSB"),QStringLiteral("winusb"));
     connect_=connectionAction("fpgaConnect","link","连接","Connect");
     disconnect_=connectionAction("fpgaDisconnect","unlink","断开","Disconnect");
-    status_=new ConnectionStatusLabel(connection); status_->setObjectName("fpgaConnectionStatus");
+    status_=new ConnectionStatusLabel(connectionHeader); status_->setObjectName("fpgaConnectionStatus");
     cl->addWidget(locator_,1); cl->addWidget(backend_); cl->addWidget(discover_); cl->addWidget(connect_); cl->addWidget(disconnect_);
-    cl->addWidget(discoveryStatus_,1); cl->addWidget(status_,2);
+    cl->addStretch(1);
+    connectionHeaderLayout->addSpacing(12); connectionHeaderLayout->addWidget(discoveryStatus_,1); connectionHeaderLayout->addWidget(status_,2);
     setTabOrder(locator_,backend_); setTabOrder(backend_,discover_); setTabOrder(discover_,connect_); setTabOrder(connect_,disconnect_);
     connect(discover_,&QAbstractButton::clicked,this,&FpgaControlPage::requestUsbDiscovery);
     connect(locator_,&QComboBox::currentIndexChanged,this,[this]{updateActions();});
@@ -599,11 +603,11 @@ void FpgaControlPage::setTheme(bool dark,int fontScalePercent){
         "QWidget#fpgaControlPage QPushButton[fpgaSecondaryAction=\"true\"]:hover { background-color: @vv-primary-subtle; color: @vv-primary; border-color: @vv-primary; }"
         "QWidget#fpgaControlPage QPushButton[fpgaSecondaryAction=\"true\"]:focus { border-color: @vv-focus; }"
         "QWidget#fpgaControlPage QPushButton[fpgaSecondaryAction=\"true\"]:disabled { background-color: @vv-surface-alt; color: @vv-text-muted; border-color: @vv-border; }"
-        "QWidget#fpgaControlPage QPushButton[fpgaIconOnly=\"true\"] { background-color: transparent; border: 1px solid transparent; border-radius: 7px; padding: 0; }"
+        "QWidget#fpgaControlPage QPushButton[fpgaIconOnly=\"true\"] { background-color: transparent; border: 1px solid transparent; border-radius: 7px; padding: 0; min-width: %5px; max-width: %5px; min-height: %5px; max-height: %5px; }"
         "QWidget#fpgaControlPage QPushButton[fpgaIconOnly=\"true\"]:hover, QWidget#fpgaControlPage QPushButton[fpgaIconOnly=\"true\"]:pressed { background-color: @vv-surface-alt; border-color: transparent; }"
         "QWidget#fpgaControlPage QPushButton[fpgaIconOnly=\"true\"]:focus { border-color: @vv-focus; }"
         "QWidget#fpgaControlPage QPushButton[fpgaIconOnly=\"true\"]:disabled { background-color: transparent; border-color: transparent; }")
-        .arg(pixels(40)).arg(pixels(16)).arg(pixels(12)).arg(pixels(36)),dark));
+        .arg(pixels(40)).arg(pixels(16)).arg(pixels(12)).arg(pixels(36)).arg(pixels(40)-2),dark));
     locator_->setMinimumWidth(pixels(200)); locator_->setMaximumWidth(pixels(260)); locator_->setFixedHeight(pixels(40));
     backend_->setFixedSize(pixels(104),pixels(40));
     for (auto *button : {discover_,connect_,disconnect_}) {
