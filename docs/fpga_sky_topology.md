@@ -101,6 +101,8 @@ Local 枚举 VaporView 所在电脑；Remote 通过 `FpgaControl` 的只读 `dis
 
 绑定 `CYUSB3` / `CyUSB` 的设备使用 Cypress 后端，构建需提供 CyAPI 头文件及匹配架构、运行库的静态库（`VAPORVIEW_CYAPI_ROOT`，或显式设置 `VAPORVIEW_CYAPI_INCLUDE_DIR` 与 `VAPORVIEW_CYAPI_LIBRARY`）。绑定 WinUSB 的设备使用 WinUSB 后端，枚举优先使用驱动注册的接口 GUID。缺少相应后端或驱动时列表仍展示设备并标为不可用，不会假装连接成功。
 
+本机使用顺序：选择“本地” → FPGA 页选择枚举出的设备 → 保持 `Auto` → 点击“连接” → 等待协议与模块版本核验完成。核验通过后可“刷新读回”；需要修改参数时再“提交参数并核验”，确认后按需启动采集。扫描和 DAC 为独立输出控制，不随连接自动启动。Cypress 空闲读取超时会保留挂起的 IN 请求并继续接收，不应导致断线；真正的读取失败保留 Win32、NT 和 USBD 错误信息。
+
 ## 控制与记录边界
 
 传感器配置的目标是“设备配置意图 → 传输适配器”：直连路径交给现有串口采集器，
@@ -131,3 +133,5 @@ FPGA 诊断 Sensor 和 Preview 共用 `baud / 40` B/s 的令牌预算，即理�
 本文配置键、启动选项和架构对应当前源码接口。天空拓扑软件构建/测试历史结果见 [协议适配验证记录](fpga_vlp1_integration.md#12-天空端拓扑最终软件验证记录2026-10-10)；历史 `7b68482` 仅验证 Ground 本机适配。上述历史记录未进行 GP01/Cypress 实测。
 
 2026-10-11 的 USB 枚举验证使用 Infineon 官方 CyAPI 1.3.2.0 源码构建 x64 库，并在一台绑定 `CYUSB3` 的 `04B4:00F1` 实板上验证自动枚举、驱动接口路径选择、`auto` 选中 Cypress、B1/B0 身份读取及关闭释放；主窗口浅色/深色设备下拉框已截图检查。此项验证没有发送 VLP1 控制命令，也不覆盖采集、DAC 或吞吐。单 USB 所有者、IPC/数传并存、断线连续采集、最终读回、吞吐和归档完整性仍需按 [实机清单](fpga_hardware_validation.md) 验收。
+
+随后针对连接后读取失败的实板回归已覆盖 PING、GET_CAPABILITIES、READ_REG、完整控制器协议/模块核验、空闲持续读取、周期读回以及两轮断开重连。使用 `fpga_device_session_test --hardware-probe` 和 `fpga_controller_test --hardware-probe` 显式运行，普通 CTest 不访问实板；未启动采集、扫描或 DAC，也未提交配置。

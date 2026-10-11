@@ -203,4 +203,29 @@ void threadCleanup(){
     worker.quit();require(worker.wait(3000),"USB worker thread stops promptly");require(controller.isNull(),"controller, session, transport and timers destroyed on owning thread");
 }
 }
-int main(int argc,char **argv){QCoreApplication app(argc,argv);connectionAndVersions();independentAndAcquisition();configurationAndFailure();rawAndBusy();temperature();sensorUploadAndFailure();ai8DisabledConfiguration();threadCleanup();std::puts("FPGA controller tests passed");return 0;}
+int main(int argc,char **argv){
+    QCoreApplication app(argc,argv);
+    if(app.arguments().contains("--hardware-probe")) {
+        FpgaDeviceController controller;
+        QString error;
+        QObject::connect(&controller,&FpgaDeviceController::logRecordGenerated,[&](const LogRecord &record){
+            if(record.level>=LogLevel::Error) error=record.message;
+            std::fprintf(stderr,"%s\n",qPrintable(record.message));
+        });
+        // Connection only issues PING/capabilities/register reads. Never start
+        // acquisition, enable outputs, or submit configuration in this probe.
+        for(int attempt=0;attempt<2;++attempt) {
+            controller.connectDevice({},"auto");
+            waitUntil([&]{return !controller.busy();},"hardware connection handshake finishes");
+            require(error.isEmpty() && controller.ready(),"real board passes complete UI connection handshake");
+            QElapsedTimer timer;timer.start();
+            while(timer.elapsed()<6000 && error.isEmpty()) {
+                QCoreApplication::processEvents(QEventLoop::AllEvents,10);QThread::msleep(1);
+            }
+            require(error.isEmpty() && controller.ready(),"idle polling and periodic register refresh remain connected");
+            controller.disconnectDevice();
+        }
+        std::puts("hardware controller connect/idle/reconnect probe passed");return 0;
+    }
+    connectionAndVersions();independentAndAcquisition();configurationAndFailure();rawAndBusy();temperature();sensorUploadAndFailure();ai8DisabledConfiguration();threadCleanup();std::puts("FPGA controller tests passed");return 0;
+}

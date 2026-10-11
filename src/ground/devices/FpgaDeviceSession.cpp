@@ -157,7 +157,10 @@ void FpgaDeviceSession::poll()
     const qint64 count = transport_->read(bytes, 16 * 1024);
     if (count < 0)
     {
-        const QString message = QStringLiteral("FPGA transport read failed");
+        const auto diagnostic = transport_->diagnostic();
+        const QString message = diagnostic.state == FpgaUsbTransportState::Error && !diagnostic.detail.isEmpty()
+            ? QStringLiteral("FPGA transport read failed: %1").arg(diagnostic.detail)
+            : QStringLiteral("FPGA transport read failed");
         pollTimer_.stop();
         cancelQueuedCommands();
         flushWaveforms();

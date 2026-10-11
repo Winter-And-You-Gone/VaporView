@@ -18,6 +18,12 @@ int main(int argc,char **argv)
         auto hardware=makeFpgaUsbHardwareTransport();
         require(hardware->open(),"automatic driver and device selection verifies GP01 B1/B0 identity");
         std::cout<<hardware->diagnostic().detail.toStdString()<<'\n';
+        QByteArray received;
+        for (int i=0; i<5; ++i) {
+            const auto count=hardware->read(received,16*1024);
+            std::cout<<"bulk IN: "<<count<<" bytes; "<<hardware->diagnostic().detail.toStdString()<<std::endl;
+            require(count>=0 && hardware->isOpen(),"idle bulk IN polling does not disconnect the board");
+        }
         hardware->close();require(!hardware->isOpen(),"hardware probe releases USB");
         return 0;
     }

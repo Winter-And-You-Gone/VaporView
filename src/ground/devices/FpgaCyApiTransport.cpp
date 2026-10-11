@@ -1,7 +1,6 @@
 #include "FpgaCyApiTransport.h"
 
 #include <QStringList>
-#include <QElapsedTimer>
 #include <limits>
 #if defined(Q_OS_WIN) && defined(VAPORVIEW_HAS_CYAPI)
 #  ifndef NOMINMAX
@@ -19,6 +18,24 @@ struct FpgaCyApiTransport::Impl
     std::unique_ptr<CCyUSBDevice> device;
     CCyUSBEndPoint *in = nullptr;
     CCyUSBEndPoint *out = nullptr;
+    QByteArray readBuffer;
+    OVERLAPPED readOverlapped{};
+    PUCHAR readContext = nullptr;
+    ULONG readBeginError = ERROR_SUCCESS;
+
+    void cancelRead()
+    {
+        if (readContext) {
+            in->Abort();
+            WaitForSingleObject(readOverlapped.hEvent, INFINITE);
+            LONG length = LONG(readBuffer.size());
+            in->FinishDataXfer(reinterpret_cast<PUCHAR>(readBuffer.data()), length, &readOverlapped, readContext);
+            readContext = nullptr;
+        }
+        if (readOverlapped.hEvent) CloseHandle(readOverlapped.hEvent);
+        readOverlapped = {};
+        readBuffer.clear();
+    }
 #endif
 };
 
@@ -103,6 +120,7 @@ bool FpgaCyApiTransport::open(const QString &locator)
 void FpgaCyApiTransport::close()
 {
 #if defined(Q_OS_WIN) && defined(VAPORVIEW_HAS_CYAPI)
+    impl_->cancelRead();
     if (impl_->device) impl_->device->Close();
     impl_->device.reset();
     impl_->in = nullptr;
@@ -126,25 +144,47 @@ qint64 FpgaCyApiTransport::read(QByteArray &destination, qint64 maxBytes)
     destination.clear();
 #if defined(Q_OS_WIN) && defined(VAPORVIEW_HAS_CYAPI)
     if (!isOpen() || maxBytes <= 0 || maxBytes > std::numeric_limits<LONG>::max()) return -1;
-    destination.resize(qsizetype(maxBytes));
-    LONG length = LONG(maxBytes);
-    QElapsedTimer elapsed;
-    elapsed.start();
-    if (!impl_->in->XferData(reinterpret_cast<PUCHAR>(destination.data()), length))
-    {
-        const auto error = impl_->in->LastError;
-        destination.clear();
-        // Only an actual timeout is non-fatal; disconnect/abort must clear state.
-        // CyAPI XferData aborts its pending request at TimeOut but older SDKs
-        // leave LastError=ERROR_IO_PENDING; FinishDataXfer reports cancellation.
-        if (error == ERROR_SEM_TIMEOUT || error == WAIT_TIMEOUT
-            || (error == ERROR_IO_PENDING && elapsed.elapsed() >= impl_->in->TimeOut
-                && impl_->in->NtStatus == 0xC0000120UL)) return 0;
-        fail(QStringLiteral("Cypress bulk IN failed (%1)").arg(error));
+    auto *endpoint = impl_->in;
+    // Keep the read pending across idle polls. XferData aborts on every timeout,
+    // and its hidden timeout cannot reliably be inferred from elapsed time.
+    if (!impl_->readContext) {
+        impl_->readBuffer.resize(qsizetype(maxBytes));
+        impl_->readOverlapped.hEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+        if (!impl_->readOverlapped.hEvent) {
+            fail(QStringLiteral("Cypress bulk IN event creation failed (%1)").arg(GetLastError()));
+            return -1;
+        }
+        impl_->readContext = endpoint->BeginDataXfer(reinterpret_cast<PUCHAR>(impl_->readBuffer.data()),
+                                                   LONG(maxBytes), &impl_->readOverlapped);
+        impl_->readBeginError = endpoint->LastError;
+    }
+    const auto beginError = impl_->readBeginError;
+    DWORD waitResult = WAIT_OBJECT_0;
+    if (beginError == ERROR_IO_PENDING)
+        waitResult = WaitForSingleObject(impl_->readOverlapped.hEvent, endpoint->TimeOut);
+    if (impl_->readContext && waitResult == WAIT_TIMEOUT) return 0;
+    if (waitResult != WAIT_OBJECT_0) {
+        fail(QStringLiteral("Cypress bulk IN wait failed (%1)").arg(GetLastError()));
         return -1;
     }
-    if (length < 0 || length > maxBytes) { destination.clear(); fail(QStringLiteral("Cypress invalid read length")); return -1; }
-    destination.resize(length);
+    LONG length = LONG(impl_->readBuffer.size());
+    const bool finished = impl_->readContext && endpoint->FinishDataXfer(
+        reinterpret_cast<PUCHAR>(impl_->readBuffer.data()), length, &impl_->readOverlapped, impl_->readContext);
+    impl_->readContext = nullptr;
+    CloseHandle(impl_->readOverlapped.hEvent);
+    impl_->readOverlapped = {};
+    if (!finished)
+    {
+        fail(QStringLiteral("Cypress bulk IN failed (Win32=%1, NT=0x%2, USBD=0x%3, bytes=%4)")
+                 .arg(beginError).arg(endpoint->NtStatus, 8, 16, QLatin1Char('0'))
+                 .arg(endpoint->UsbdStatus, 8, 16, QLatin1Char('0')).arg(length));
+        return -1;
+    }
+    if (length < 0 || length > impl_->readBuffer.size() || length > maxBytes) {
+        fail(QStringLiteral("Cypress invalid read length")); return -1;
+    }
+    destination = impl_->readBuffer.left(length);
+    impl_->readBuffer.clear();
     diagnostic_.bytesRead += quint64(length);
     if (length) emit bytesReceived(destination);
     return length;

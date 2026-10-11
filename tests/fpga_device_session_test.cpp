@@ -1,5 +1,6 @@
 #include "FpgaDeviceSession.h"
 #include <QCoreApplication>
+#include <QThread>
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
@@ -90,5 +91,46 @@ void expiredWaveformsVisible(){
     session.poll();require(evidence.size()==1&&evidence.front().cycleId==1&&evidence.front().partial,"new cycles publish oldest missing-cycle evidence before disconnect");
     session.flushWaveforms();require(evidence.size()==5,"explicit drain publishes remaining partial cycles");session.close();require(evidence.size()==5,"close after explicit drain never double counts");
 }
+void transportErrorRetainsDetail(){
+    class FailedRead final : public FpgaUsbTransport {
+    public:
+        bool open(const QString&) override {opened=true;return true;}
+        void close() override {opened=false;detail={};}
+        bool isOpen() const override {return opened;}
+        qint64 read(QByteArray &bytes,qint64) override {
+            bytes.clear();opened=false;detail.state=FpgaUsbTransportState::Error;
+            detail.detail="Cypress bulk IN failed (NT=0xc000000e)";return -1;
+        }
+        qint64 write(const QByteArray&) override {return -1;}
+        FpgaUsbDiagnostic diagnostic() const override {return detail;}
+        bool opened=false;FpgaUsbDiagnostic detail;
+    };
+    FpgaDeviceSession session(std::make_unique<FailedRead>());
+    require(session.open(),"open failed-read fixture");
+    QString error;
+    QObject::connect(&session,&FpgaDeviceSession::errorOccurred,[&](const QString &message){error=message;});
+    session.poll();
+    require(!session.isOpen() && session.state()==FpgaSessionState::Error,"read failure closes session");
+    require(error.contains("NT=0xc000000e") && session.stateDetail()==error,"driver error survives transport cleanup");
 }
-int main(int argc,char **argv){QCoreApplication app(argc,argv);validContinuousResponses();semanticRejections();partialWaveformsSurviveClose();expiredWaveformsVisible();std::puts("fpga_device_session_test passed; software fixtures only");return 0;}
+}
+int main(int argc,char **argv){
+    QCoreApplication app(argc,argv);
+    if(app.arguments().contains("--hardware-probe")) {
+        FpgaDeviceSession session;
+        QObject::connect(&session,&FpgaDeviceSession::errorOccurred,[](const QString &error){std::fprintf(stderr,"%s\n",qPrintable(error));});
+        require(session.open(),"open attached GP01 board");
+        int completed=0;
+        QObject::connect(&session,&FpgaDeviceSession::commandCompleted,[&](quint32,quint16 message,bool ok,quint32 status,const QByteArray&){
+            std::printf("command 0x%04x: success=%d status=%u\n",message,ok,status);
+            require(ok,"read-only hardware handshake response succeeds");++completed;
+        });
+        session.ping("VaporView");session.requestCapabilities();session.readRegisters(0,5);
+        QElapsedTimer timer;timer.start();
+        while(timer.elapsed()<12000 && session.isOpen()) {session.poll();QThread::msleep(1);}
+        require(session.isOpen(),"hardware connection survives idle reads after handshake");
+        require(completed==3 && session.capabilities().valid,"PING, capabilities and register read complete");
+        session.close();std::puts("hardware session probe passed");return 0;
+    }
+    validContinuousResponses();semanticRejections();partialWaveformsSurviveClose();expiredWaveformsVisible();transportErrorRetainsDetail();std::puts("fpga_device_session_test passed; software fixtures only");return 0;
+}
