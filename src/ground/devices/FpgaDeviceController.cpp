@@ -27,7 +27,11 @@ FpgaDeviceController::FpgaDeviceController(std::unique_ptr<FpgaUsbTransport> tra
     statusTimer_.setInterval(2000);
     rawTimer_.setSingleShot(true);
     connect(&presentationTimer_, &QTimer::timeout, this, &FpgaDeviceController::flushPresentation);
-    connect(&statusTimer_, &QTimer::timeout, this, [this] { if (ready_ && !busy_) refresh(); });
+    connect(&statusTimer_, &QTimer::timeout, this, [this] {
+        if (ready_ && !busy_ && begin(QStringLiteral("读取实际状态"), true)) {
+            readAll(); steps_.push_back({Kind::CheckVersions}); advance();
+        }
+    });
     connect(&rawTimer_, &QTimer::timeout, this, [this] { setRawEnabled(false); });
     if (transport) installSession(std::move(transport));
 }
@@ -101,7 +105,7 @@ void FpgaDeviceController::disconnectDevice()
     flushPresentation();
     emit transportConnectionChanged(false);
     steps_.clear(); current_.reset(); pendingSequence_ = 0;
-    ready_ = busy_ = replaying_ = drainWaveforms_ = false;
+    ready_ = busy_ = replaying_ = drainWaveforms_ = backgroundRefresh_ = false;
     registers_.clear(); adapter_.reset(); latestReadings_.clear(); latestWaves_.clear(); lastReadingMs_.clear();
     dirtyReadings_.clear(); expiredReadings_.clear();
     emit snapshot(nowUs(), {{"event","disconnected"}});
@@ -109,11 +113,15 @@ void FpgaDeviceController::disconnectDevice()
     emit connectionChanged(false,false,QStringLiteral("USB 未连接"));
 }
 
-bool FpgaDeviceController::begin(const QString& label)
+bool FpgaDeviceController::begin(const QString& label, bool background)
 {
-    if (busy_ || !session_ || !session_->isOpen()) { report(QStringLiteral("当前无法执行：") + label); return false; }
-    busy_=true; operation_=label; detail_=label; steps_.clear(); current_.reset();
-    emit connectionChanged(ready_,true,label); return true;
+    if ((busy_ && !backgroundRefresh_) || !session_ || !session_->isOpen()) { report(QStringLiteral("当前无法执行：") + label); return false; }
+    // A foreground operation replaces the remaining background reads. The session
+    // still serializes it behind any read already on the wire.
+    busy_=true; backgroundRefresh_=background; operation_=label;
+    steps_.clear(); current_.reset(); pendingSequence_=0;
+    if (!background) { detail_=label; emit connectionChanged(ready_,true,label); }
+    return true;
 }
 
 void FpgaDeviceController::read(quint32 address, quint16 count)
@@ -185,7 +193,8 @@ void FpgaDeviceController::advance()
     if (steps_.empty()) {
         if (drainWaveforms_) { session_->flushWaveforms(); flushPresentation(); drainWaveforms_ = false; }
         busy_=false; emit hardwareValuesChanged(registers_);
-        emit connectionChanged(ready_,false,operation_+QStringLiteral("完成"));
+        if (!backgroundRefresh_) emit connectionChanged(ready_,false,operation_+QStringLiteral("完成"));
+        backgroundRefresh_=false;
         emit snapshot(nowUs(),{{"event","operation_completed"},{"operation",operation_},{"configuration",configuration_.toJson()}});
         return;
     }
@@ -241,7 +250,7 @@ void FpgaDeviceController::completed(quint32 seq, bool success, quint32 status)
 
 void FpgaDeviceController::fail(const QString& detail)
 {
-    steps_.clear(); current_.reset(); pendingSequence_=0; busy_=false; drainWaveforms_=false;
+    steps_.clear(); current_.reset(); pendingSequence_=0; busy_=false; drainWaveforms_=false; backgroundRefresh_=false;
     if (session_) session_->cancelQueuedCommands();
     detail_=detail; report(detail, LogLevel::Error);
     emit connectionChanged(ready_,false,detail);
@@ -287,7 +296,7 @@ void FpgaDeviceController::stopAndDrain()
 
 void FpgaDeviceController::applyConfiguration(const FpgaControlConfig& config)
 {
-    if (busy_) { report(QStringLiteral("配置操作被拒绝：已有事务正在执行。")); return; }
+    if (busy_ && !backgroundRefresh_) { report(QStringLiteral("配置操作被拒绝：已有事务正在执行。")); return; }
     if (!ready_) { report(QStringLiteral("请先连接并通过模块版本核验。")); return; }
     if (config.adcRateHz<1000 || config.adcRateHz>1000000 ||
         config.dlia[0].outputRateHz==0 || config.dlia[1].outputRateHz==0 ||
@@ -398,7 +407,7 @@ void FpgaDeviceController::setSensorEnabled(quint16 source, bool enable)
 void FpgaDeviceController::setRawEnabled(bool enable)
 {
     if (!ready_) return;
-    if (busy_) { if (!enable) QTimer::singleShot(100,this,[this]{ setRawEnabled(false); }); return; }
+    if (busy_ && !backgroundRefresh_) { if (!enable) QTimer::singleShot(100,this,[this]{ setRawEnabled(false); }); return; }
     if (!begin(QStringLiteral("设置 RAW 诊断窗口"))) return;
     write(0x0050,enable?3:0);
     verify(0x0050,enable?3:0);
@@ -410,7 +419,7 @@ void FpgaDeviceController::setRawEnabled(bool enable)
 
 void FpgaDeviceController::setTemperature(double celsius)
 {
-    if (busy_) { report(QStringLiteral("设温被拒绝：已有事务正在执行。")); return; }
+    if (busy_ && !backgroundRefresh_) { report(QStringLiteral("设温被拒绝：已有事务正在执行。")); return; }
     const double raw=celsius*10;
     if (!std::isfinite(celsius) || celsius < -999 || celsius > 2147.4 ||
         std::abs(raw-std::round(raw))>1e-6) { fail(QStringLiteral("AI8 温度必须为 0.1℃ 的整数倍，并位于设备允许范围。")); return; }

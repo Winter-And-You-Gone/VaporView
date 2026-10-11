@@ -23,7 +23,7 @@ public:
     explicit FpgaDeviceController(std::unique_ptr<FpgaUsbTransport> transport = {}, QObject *parent = nullptr);
     ~FpgaDeviceController() override;
     bool ready() const { return ready_; }
-    bool busy() const { return busy_; }
+    bool busy() const { return busy_ && !backgroundRefresh_; }
     const QMap<quint32, quint32>& hardwareValues() const { return registers_; }
     QJsonObject discoverDevices() const;
 
@@ -67,7 +67,7 @@ private:
         QString label;
     };
     void installSession(std::unique_ptr<FpgaUsbTransport> transport);
-    bool begin(const QString& label);
+    bool begin(const QString& label, bool background = false);
     void advance();
     void completed(quint32 sequence, bool success, quint32 status);
     void fail(const QString& detail);
@@ -101,7 +101,7 @@ private:
     quint32 temperatureBaseline_ = 0;
     qint16 temperatureTarget_ = 0;
     bool injected_ = false, ready_ = false, busy_ = false, replaying_ = false;
-    bool drainWaveforms_ = false;
+    bool drainWaveforms_ = false, backgroundRefresh_ = false;
     QString operation_, detail_;
 };
 }

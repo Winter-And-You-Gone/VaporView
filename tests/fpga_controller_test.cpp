@@ -127,6 +127,42 @@ void connectionAndVersions(){
     Fixture disabled;disabled.transport->regs[0x8004]=0;disabled.controller.connectDevice({},"auto");disabled.finish();
     require(!disabled.controller.ready()&&disabled.transport->writes().isEmpty(),"disabled USB transmitter fails ready condition without blind recovery writes");
 }
+void backgroundRefresh(){
+    Fixture f;f.connect();
+    QTimer *statusTimer=nullptr;
+    for(auto *timer:f.controller.findChildren<QTimer*>())
+        if(timer->interval()==2000)statusTimer=timer;
+    require(statusTimer,"periodic status timer exists");
+    int stateChanges=0,readbacks=0;
+    bool uiBusy=false;
+    QObject::connect(&f.controller,&FpgaDeviceController::connectionChanged,&f.controller,
+        [&](bool,bool busy,const QString&){++stateChanges;uiBusy=busy;});
+    QObject::connect(&f.controller,&FpgaDeviceController::hardwareValuesChanged,&f.controller,
+        [&](const auto&){++readbacks;});
+    for(int cycle=0;cycle<3;++cycle){
+        f.transport->regs[0x701c]=20+cycle;
+        QMetaObject::invokeMethod(statusTimer,"timeout",Qt::DirectConnection);
+        waitUntil([&]{return readbacks==cycle+1;},"background read completes");
+        require(stateChanges==0&&!uiBusy,"automatic refresh never toggles page busy state or completion text");
+        require(readbacks==cycle+1&&f.controller.hardwareValues().value(0x701c)==quint32(20+cycle),"silent refresh still publishes fresh hardware values");
+    }
+    f.transport->clear();f.transport->holdResponses=true;
+    QMetaObject::invokeMethod(statusTimer,"timeout",Qt::DirectConnection);
+    require(!f.controller.busy()&&!uiBusy&&f.transport->commands.size()==1,"background read leaves local and remote controls available");
+    f.controller.setDac(1,true);
+    require(uiBusy&&stateChanges==1,"user operation takes priority over background refresh");
+    require(f.transport->commands.size()==1,"foreground command waits for in-flight read response");
+    f.transport->holdResponses=false;f.finish();
+    require(!uiBusy&&stateChanges==2&&f.transport->regs.value(0x3104)==1,"user operation completes rather than being rejected by polling");
+    require(f.diagnostics.isEmpty(),"background overlap generates no rejection");
+    stateChanges=0;f.controller.refresh();
+    require(uiBusy,"manual refresh retains visible progress");f.finish();
+    require(stateChanges==2&&!uiBusy,"manual refresh retains completion notification");
+    f.transport->regs[0x5024]=0;
+    QMetaObject::invokeMethod(statusTimer,"timeout",Qt::DirectConnection);
+    waitUntil([&]{return !f.controller.ready();},"background version failure completes");
+    require(!f.controller.ready()&&stateChanges==3&&!f.diagnostics.isEmpty(),"background version failure remains visible and disables writes");
+}
 void independentAndAcquisition(){
     Fixture f;f.connect();f.transport->clear();f.controller.setWaveform(0,true);f.finish();
     for(const auto &c:f.transport->writes())require(c.address==4||inPage(c.address,0x2000),"independent WMS never writes DAC/ADC/DLIA");
@@ -227,5 +263,5 @@ int main(int argc,char **argv){
         }
         std::puts("hardware controller connect/idle/reconnect probe passed");return 0;
     }
-    connectionAndVersions();independentAndAcquisition();configurationAndFailure();rawAndBusy();temperature();sensorUploadAndFailure();ai8DisabledConfiguration();threadCleanup();std::puts("FPGA controller tests passed");return 0;
+    connectionAndVersions();backgroundRefresh();independentAndAcquisition();configurationAndFailure();rawAndBusy();temperature();sensorUploadAndFailure();ai8DisabledConfiguration();threadCleanup();std::puts("FPGA controller tests passed");return 0;
 }
