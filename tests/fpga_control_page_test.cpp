@@ -156,6 +156,16 @@ int main(int argc,char **argv) {
     VaporView::FpgaWave::CompletedStream adc;adc.source=0x20;adc.message=0x1000;adc.bytesPerPoint=4;adc.totalPoints=3;adc.rate=1000000;adc.complete=true;
     for(qint32 value:{0,100,200})appendWord(adc.pointBytes,value);page.updateWaveform(adc);
     auto *adcPlot=page.findChild<QWidget*>("fpgaWavePlot32");require(adcPlot->property("sampleMaximum").toDouble()==0.2,"calibrated subvolt waveform retains physical range");
+    page.setHardwareValues({{0x50,3},{0x403c,1},{0x413c,1}});
+    auto rawTail=adc;rawTail.complete=false;rawTail.partial=true;rawTail.pointBytes.truncate(4);
+    page.updateWaveform(rawTail);
+    require(adcPlot->property("sampleCount").toInt()==3&&adcPlot->property("sampleMaximum").toDouble()==0.2,"incomplete RAW preserves previous complete samples");
+    require(page.findChild<QLabel*>("fpgaWaveSummary32")->text().contains("historical, not current"),"retained RAW never claims current measurement");
+    page.setHardwareValues({{0x50,0},{0x403c,0},{0x413c,0}});
+    require(page.findChild<QLabel*>("fpgaWaveSummary32")->text().contains("RAW upload stopped"),"readback explicitly labels stopped RAW");
+    page.setLanguage(false);page.setLanguage(true);
+    require(adcPlot->property("sampleCount").toInt()==3,"historical RAW survives rerender");
+    page.updateWaveform(adc);
     page.setTheme(true);
     page.setTransportConnected(true);page.setConnectionState(true,false);
     VaporView::FpgaSensor::Reading live;live.source=0x40;live.pressurePa=101325;live.validity.measurement=true;page.updateSensor(live);page.updateWaveform(adc);

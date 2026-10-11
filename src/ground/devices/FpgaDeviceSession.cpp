@@ -233,9 +233,9 @@ void FpgaDeviceSession::ingestReplayBytes(const QByteArray& bytes)
         processFrame(frame);
 }
 
-void FpgaDeviceSession::flushWaveforms()
+void FpgaDeviceSession::flushWaveforms(quint16 source)
 {
-    for (const auto& stream : waveformAssembler_.flush())
+    for (const auto& stream : waveformAssembler_.flush(source))
         emit waveformCompleted(stream);
 }
 

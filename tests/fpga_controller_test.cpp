@@ -83,6 +83,7 @@ public:
                 for(int i=0;i<command.count;++i){const auto a=command.address+4*i;quint32 v=regs.value(a);if(pendingReads.value(a)>0){--pendingReads[a];v|=4;}append32(response,v);}
             } else if(command.message==3){
                 for(int i=0;i<command.count;++i){const auto a=command.address+4*i;const auto value=word(f.payload,8+i*4);regs[a]=(a>=0x6000&&a<=0x660c&&(a&255)==12)?regs.value(a)&~value:value;
+                    if(a==0x50&&value==0)regs[0x7020]=regs[0x7024]=0;
                     if((a&255)==4&&a>=0x2000&&a<=0x5104){const auto b=a&~255u;regs[b+8]=(value&1)|2;if(b==0x4000||b==0x4100)regs[b+8]|=0x10;
                         if(value&2){regs[b+0xc]=0;regs[b+4]=value&1;}
                     }
@@ -283,8 +284,12 @@ void rawAndBusy(){
     require(f.controller.busy()&&f.transport->commands.size()==commands,"invalid overlapping request must not abort in-flight RAW operation");
     f.transport->holdResponses=false;f.finish();for(const auto &c:f.transport->writes())require(c.address==0x50||c.address==0x403c||c.address==0x413c,"RAW streaming is not ADC acquisition enable");
     bool maskVerified=false;for(const auto &c:f.transport->commands)if(c.message==2&&c.address==0x50&&c.count==1)maskVerified=true;require(maskVerified,"RAW high mask write is independently verified before proceeding");
+    f.transport->regs[0x7020]=f.transport->regs[0x7024]=16; // Framer retains the tail until RAW masking finalizes it.
     waitUntil([&]{return f.transport->regs.value(0x50)==0&&!f.controller.busy();},"RAW bounded window automatically disables",4000);
     require(f.transport->regs.value(0x403c)==0&&f.transport->regs.value(0x413c)==0,"RAW stop clears both enables");
+    require(indexOfWrite(f.transport->commands,0x50,0)>indexOfWrite(f.transport->commands,0x413c,0),"stop RAW producers before closing upload gate");
+    int drainReads=0;for(const auto &c:f.transport->commands)if(c.message==2&&c.count==1&&(c.address==0x7020||c.address==0x7024))++drainReads;
+    require(drainReads>=2,"RAW stop waits for both finalized RAW frame buffers");
 }
 void sensorUploadAndFailure(){
     Fixture f;f.transport->regs[0x2c]=0x7d;f.transport->regs[0x30]=0;f.transport->regs[0x7004]=0;f.transport->regs[0x50]=3;f.connect();

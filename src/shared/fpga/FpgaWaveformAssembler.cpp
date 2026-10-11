@@ -189,11 +189,16 @@ std::optional<CompletedStream> Assembler::accept(const Fragment& fragment)
 
 QVector<CompletedStream> Assembler::takeExpired()
 { QVector<CompletedStream> result;result.swap(expired_);return result; }
-QVector<CompletedStream> Assembler::flush()
+QVector<CompletedStream> Assembler::flush(quint16 source)
 {
-    auto result=takeExpired();
-    for(const auto& entry:pending_)result.push_back(finish(entry.second,true));
-    pending_.clear();return result;
+    QVector<CompletedStream> result;
+    for(auto it=expired_.begin();it!=expired_.end();) {
+        if(!source || it->source==source){result.push_back(*it);it=expired_.erase(it);}else ++it;
+    }
+    for(auto it=pending_.begin();it!=pending_.end();) {
+        if(!source || it->first.source==source){result.push_back(finish(it->second,true));it=pending_.erase(it);}else ++it;
+    }
+    return result;
 }
 void Assembler::clear() {pending_.clear();completed_.clear();expired_.clear();arrivalOrder_=0;}
 std::size_t Assembler::pendingStreamCount() const {return pending_.size();}

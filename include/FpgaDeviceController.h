@@ -57,7 +57,7 @@ signals:
     void replayFinished(bool success, const QString& detail);
 
 private:
-    enum class Kind { Read, Write, Commit, Ping, Capabilities, Sensor, Wait, CheckVersions, RecoverConnection, CheckTemperature };
+    enum class Kind { Read, Write, Commit, Ping, Capabilities, Sensor, Wait, CheckVersions, RecoverConnection, FinishRawStop, CheckTemperature };
     struct Step {
         Kind kind = Kind::Read;
         quint32 address = 0;

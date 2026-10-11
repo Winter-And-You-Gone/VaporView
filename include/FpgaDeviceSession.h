@@ -71,7 +71,7 @@ public:
     void poll();
     void cancelQueuedCommands();
     void ingestReplayBytes(const QByteArray& bytes);
-    void flushWaveforms();
+    void flushWaveforms(quint16 source = 0);
 
     quint32 ping(const QByteArray& echo = {}, quint16 source = 0x0001);
     quint32 requestCapabilities(quint16 source = 0x0001);

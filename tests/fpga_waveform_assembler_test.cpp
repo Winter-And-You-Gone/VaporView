@@ -85,6 +85,13 @@ int main()
     check(!bounded.accept(adc(first,50,100)),"first tagged group");
     check(!bounded.accept(adc(second,50,101)),"same cycle different tick isolated");
     check(bounded.flush().size()==2,"timestamp part of group key");
+    check(!bounded.accept(adc(first,60)),"RAW tail pending");
+    check(!bounded.accept({0x30,0x1001,3,60,100,dlia(0,0,2,0,2,{1,2})}),"DLIA pending alongside RAW");
+    auto rawTail=bounded.flush(0x20);
+    check(rawTail.size()==1&&rawTail[0].source==0x20&&!rawTail[0].complete,"selective flush exposes RAW tail evidence");
+    check(bounded.pendingStreamCount()==1&&bounded.flush(0x20).isEmpty(),"RAW tail cannot reappear on later stop");
+    result=bounded.accept({0x30,0x1001,3,60,100,dlia(0,1,2,1,2,{3,4})});
+    check(result.has_value()&&result->complete,"RAW stop does not interrupt concurrent DLIA assembly");
     std::cout<<"fpga_waveform_assembler_test passed; software fixtures only\n";
     return 0;
 }

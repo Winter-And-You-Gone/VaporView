@@ -61,7 +61,7 @@ public:
     explicit Assembler(std::size_t maxPendingGroupsPerSource = 4);
     std::optional<CompletedStream> accept(const Fragment& fragment);
     QVector<CompletedStream> takeExpired();
-    QVector<CompletedStream> flush();
+    QVector<CompletedStream> flush(quint16 source = 0);
     void clear();
     std::size_t pendingStreamCount() const;
 

@@ -84,7 +84,8 @@ private:
     QMap<quint16, QLabel*> firstPlotTitles_, secondPlotTitles_;
     QMap<quint16, QLabel*> waveLabels_;
     QMap<quint16, QComboBox*> waveComponents_;
-    QMap<quint16, VaporView::FpgaWave::CompletedStream> latestWaves_;
+    QMap<quint16, VaporView::FpgaWave::CompletedStream> latestWaves_, lastCompleteRaw_;
+    QMap<quint16, bool> rawEnabled_;
     QMap<quint16, VaporView::FpgaSensor::Reading> latestReadings_;
     QSet<quint16> historicalReadings_, historicalWaves_;
     QElapsedTimer measurementClock_;

@@ -214,6 +214,11 @@ void FpgaDeviceController::advance()
     if (s.kind==Kind::RecoverConnection) {
         current_.reset();recoverConnection();advance();return;
     }
+    if (s.kind==Kind::FinishRawStop) {
+        session_->flushWaveforms(0x20);session_->flushWaveforms(0x21);flushPresentation();
+        report(QStringLiteral("RAW 短窗已停止上传；保留最后完整波形作为历史值，ADC/DLIA 采集状态未改变。"),LogLevel::Info);
+        current_.reset();advance();return;
+    }
     if (s.kind==Kind::CheckTemperature) {
         const quint32 commandStatus=registers_.value(0x664c);
         const quint32 requestedReadback=registers_.value(0x6654);
@@ -234,7 +239,7 @@ void FpgaDeviceController::advance()
     case Kind::Ping: pendingSequence_=session_->ping(QByteArrayLiteral("VaporView")); break;
     case Kind::Capabilities: pendingSequence_=session_->requestCapabilities(); break;
     case Kind::Sensor: pendingSequence_=session_->sensorAction(s.address,s.expected,s.source); break;
-    case Kind::CheckVersions: case Kind::RecoverConnection: case Kind::CheckTemperature: break;
+    case Kind::CheckVersions: case Kind::RecoverConnection: case Kind::FinishRawStop: case Kind::CheckTemperature: break;
     }
     if (!pendingSequence_) fail(QStringLiteral("命令未发送。"));
 }
@@ -494,13 +499,18 @@ void FpgaDeviceController::setRawEnabled(bool enable)
 {
     if (!ready_) return;
     if (busy_ && !backgroundRefresh_) { if (!enable) QTimer::singleShot(100,this,[this]{ setRawEnabled(false); }); return; }
-    if (!begin(QStringLiteral("设置 RAW 诊断窗口"))) return;
-    write(0x0050,enable?3:0);
-    verify(0x0050,enable?3:0);
+    if (!begin(enable?QStringLiteral("启动 RAW 短窗"):QStringLiteral("停止 RAW 短窗"))) return;
+    if(enable) {write(0x0050,3);verify(0x0050,3);}
     for (quint32 b:{0x4000u,0x4100u}) { write(b+0x3c,enable?1:0); verify(b+0x3c,enable?1:0); }
-    if (enable) rawTimer_.start(qBound(1,configuration_.rawWindowSeconds,60)*1000);
-    else rawTimer_.stop();
-    readAll(); advance();
+    if(enable) rawTimer_.start(qBound(1,configuration_.rawWindowSeconds,60)*1000);
+    else {
+        rawTimer_.stop();
+        // Stop RAW producers first. Masking the framer finalizes its partial
+        // tail; only then can its buffered-sample count reach zero.
+        write(0x0050,0);verify(0x0050,0);
+        for(quint32 a:{0x7020u,0x7024u})waitFor(a,0xffffffff,0);
+    }
+    readAll();if(!enable)steps_.push_back({Kind::FinishRawStop});advance();
 }
 
 void FpgaDeviceController::setTemperature(double celsius)
