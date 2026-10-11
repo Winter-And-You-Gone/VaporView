@@ -279,10 +279,19 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
             auto *summary=new QLabel(g);summary->setObjectName(QString("fpgaWaveSummary%1").arg(source));summary->setWordWrap(true);waveLabels_[source]=summary;l->addWidget(summary);
             if(source>=0x30) {
                 auto *selector=new VaporView::SingleLevelPopupComboBox(g);selector->setObjectName(QString("fpgaWaveComponent%1").arg(source));selector->setAccessibleName(QStringLiteral("DLIA component"));
-                selector->addItem("H1",0);selector->addItem("H2",1);waveComponents_[source]=selector;l->addWidget(selector);
+                selector->addItem("H1 / H2",0);waveComponents_[source]=selector;l->addWidget(selector);selector->hide();
                 connect(selector,&QComboBox::currentIndexChanged,this,[this,source]{if(latestWaves_.contains(source)){rerendering_=true;updateWaveform(latestWaves_.value(source));rerendering_=false;}});
             }
-            auto *plot=new SamplePlot(g);plot->setObjectName(QString("fpgaWavePlot%1").arg(source));plots_[source]=plot;l->addWidget(plot);
+            auto *plot=new SamplePlot(g);plot->setObjectName(QString("fpgaWavePlot%1").arg(source));plots_[source]=plot;
+            if(source>=0x30) {
+                auto *pair=new QGridLayout;l->addLayout(pair);
+                auto *firstTitle=new QLabel("H1",g);auto *secondTitle=new QLabel("H2",g);
+                firstPlotTitles_[source]=firstTitle;secondPlotTitles_[source]=secondTitle;
+                auto *second=new SamplePlot(g);second->setObjectName(QString("fpgaWaveSecondPlot%1").arg(source));secondPlots_[source]=second;
+                pair->addWidget(firstTitle,0,0);pair->addWidget(secondTitle,0,1);
+                pair->addWidget(plot,1,0);pair->addWidget(second,1,1);
+                pair->setColumnStretch(0,1);pair->setColumnStretch(1,1);
+            } else l->addWidget(plot);
         }
     }
     auto *recordingTab=tab(QStringLiteral("记录与诊断"),QStringLiteral("Recording & diagnostics")); auto *recordingLayout=new QVBoxLayout(recordingTab);
@@ -452,22 +461,27 @@ void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream 
     if (!rerendering_) waveTimes_[s.source] = measurementClock_.elapsed();
     const auto historyPrefix=!connected_||historicalWaves_.contains(s.source)?text("离线记录 / 历史值 · ","Offline / historical · "):QString();
     const bool adc=s.source<0x30;const int channel=adc?s.source-0x20:s.source-0x30;const auto c=configuration();const bool volts=adc&&c.frontend[channel].calibrated;
+    auto *second=static_cast<SamplePlot*>(secondPlots_.value(s.source));
     int component=0;
     if(!adc) {
         auto *selector=waveComponents_.value(s.source);const QSignalBlocker blocker(selector);
-        const QStringList names=s.format==0?QStringList{"H1","H2"}:s.format==1?QStringList{"I1","Q1","I2","Q2"}:QStringList{"I1","Q1","I2","Q2","H1","H2"};
+        const QStringList names=s.format==0?QStringList{"H1 / H2"}:s.format==1?QStringList{"I1 / Q1","I2 / Q2"}:QStringList{"H1 / H2","I1 / Q1","I2 / Q2"};
         bool formatChanged=selector->count()!=names.size();
         for(int i=0;!formatChanged && i<names.size();++i)formatChanged=selector->itemText(i)!=names[i];
         if(formatChanged) {
             const auto selected=selector->currentText();selector->clear();
-            for(int i=0;i<names.size();++i)selector->addItem(names[i],i);
+            for(int i=0;i<names.size();++i)selector->addItem(names[i],s.format==2?(i==0?4:(i-1)*2):i*2);
             selector->setCurrentIndex(qMax(0,names.indexOf(selected)));
         }
+        selector->setVisible(names.size()>1);
         component=selector->currentData().toInt();
+        const auto titles=selector->currentText().split(" / ");
+        firstPlotTitles_.value(s.source)->setText(titles.value(0));secondPlotTitles_.value(s.source)->setText(titles.value(1));
     }
+    auto clearPlots=[&]{for(auto *p:{plot,second})if(p){p->samples.clear();p->setProperty("sampleCount",0);p->update();}};
     const quint32 expectedBytes=adc?4u:s.format==0?8u:s.format==1?16u:s.format==2?24u:0u;
     if(!s.complete||s.partial||s.overflow||s.continuityError) {
-        plot->samples.clear();plot->setProperty("sampleCount",0);plot->update();
+        clearPlots();
         l->setText(historyPrefix+text("周期缺片或质量异常；不连接缺失区间。可用原始点保留在记录中。","Cycle has missing fragments or quality faults; gaps are not joined. Available raw points remain in the recording."));return;
     }
     const quint32 availablePoints = expectedBytes ? quint32(s.pointBytes.size() / expectedBytes) : 0;
@@ -475,13 +489,16 @@ void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream 
     if(!expectedBytes||s.bytesPerPoint!=expectedBytes||!displayPoints
         || s.pointBytes.size() % expectedBytes != 0 || displayPoints > availablePoints
         || (s.preview && (!s.previewStride || displayPoints > 64 || quint64(displayPoints-1)*s.previewStride >= s.totalPoints))) {
-        plot->samples.clear();plot->setProperty("sampleCount",0);plot->update();l->setText(historyPrefix+text("波形格式或长度无效；保留原始记录供诊断","Invalid waveform format or length; raw recording retained for diagnostics"));return;
+        clearPlots();l->setText(historyPrefix+text("波形格式或长度无效；保留原始记录供诊断","Invalid waveform format or length; raw recording retained for diagnostics"));return;
     }
-    plot->samples.clear();double maxH2=0;const int stride=qMax(1,int(displayPoints)/1000);const int components=adc?1:int(s.bytesPerPoint/4);
+    plot->samples.clear();if(second)second->samples.clear();double maxH2=0;const int stride=qMax(1,int(displayPoints)/1000);const int components=adc?1:int(s.bytesPerPoint/4);
     for(int point=0;point<int(displayPoints);++point){const int offset=point*components*4;if(offset+components*4>s.pointBytes.size())break;
         const double value=adc&&s.format==1?double(qFromLittleEndian<quint32>(reinterpret_cast<const uchar*>(s.pointBytes.constData()+offset))):double(qFromLittleEndian<qint32>(reinterpret_cast<const uchar*>(s.pointBytes.constData()+offset+component*4)));
         if(!adc&&s.format==0&&components>=2){const qint32 h2=qFromLittleEndian<qint32>(reinterpret_cast<const uchar*>(s.pointBytes.constData()+offset+4));maxH2=qMax(maxH2,double(h2));}
-        if(point%stride==0)plot->samples.append(volts?value*c.frontend[channel].voltsPerCode*c.frontend[channel].polarity:double(value));
+        if(point%stride==0) {
+            plot->samples.append(volts?value*c.frontend[channel].voltsPerCode*c.frontend[channel].polarity:double(value));
+            if(second)second->samples.append(double(qFromLittleEndian<qint32>(reinterpret_cast<const uchar*>(s.pointBytes.constData()+offset+(component+1)*4))));
+        }
     }
     const bool valid=s.complete&&!s.partial&&!s.overflow&&!s.continuityError;
     l->setText(QString("%1 · %2 · %3 Hz · %4 %5 · %6%7").arg(adc?QString("ADC %1").arg(channel):QString("DLIA %1").arg(channel))
@@ -493,7 +510,7 @@ void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream 
         .arg(volts?"V":text("原码 / 数字幅值","raw / digital amplitude")));
     if(!adc)l->setText(l->text()+" · "+waveComponents_.value(s.source)->currentText());
     l->setText(historyPrefix+l->text());
-    plot->setProperty("sampleCount",plot->samples.size());plot->setProperty("previewStride",s.preview?s.previewStride:1);if(!plot->samples.isEmpty()){const auto mm=std::minmax_element(plot->samples.cbegin(),plot->samples.cend());plot->setProperty("sampleMinimum",*mm.first);plot->setProperty("sampleMaximum",*mm.second);}plot->update();
+    for(auto *p:{plot,second})if(p){p->setProperty("sampleCount",p->samples.size());p->setProperty("previewStride",s.preview?s.previewStride:1);if(!p->samples.isEmpty()){const auto mm=std::minmax_element(p->samples.cbegin(),p->samples.cend());p->setProperty("sampleMinimum",*mm.first);p->setProperty("sampleMaximum",*mm.second);}p->update();}
 }
 void FpgaControlPage::appendDiagnostic(const QString &s){diagnostics_->appendPlainText(s);}
 void FpgaControlPage::setLanguage(bool en){english_=en;for(auto *w:findChildren<QWidget*>())if(w->property("fpgaZh").isValid())label(w,w->property("fpgaZh").toString(),w->property("fpgaEn").toString());
@@ -562,7 +579,7 @@ void FpgaControlPage::setUiTestState(bool enabled, bool dataStalled, bool partia
         for (auto *label : waveLabels_)
             label->setText(text("等待波形 · ADC 原码 / 解调数字幅值",
                                 "Waiting for waveform · ADC raw / demodulation digital amplitude"));
-        for (auto *plotWidget : plots_)
+        for (auto *plotWidget : plots_.values()+secondPlots_.values())
         {
             auto *plot = static_cast<SamplePlot *>(plotWidget);
             plot->samples.clear();

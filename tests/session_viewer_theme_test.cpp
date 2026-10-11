@@ -1,3 +1,4 @@
+#include "test_settings_sandbox.h"
 #include "shared/theme/AppTheme.h"
 #include "shared/config/SettingsWriteBarrier.h"
 #include "ground/wave/RawDataParserWindow.h"

@@ -80,7 +80,8 @@ private:
     QVector<QWidget*> onlineControls_;
     QMap<quint32, QLabel*> hardwareLabels_;
     QMap<quint16, QLabel*> sensorLabels_;
-    QMap<quint16, QWidget*> plots_;
+    QMap<quint16, QWidget*> plots_, secondPlots_;
+    QMap<quint16, QLabel*> firstPlotTitles_, secondPlotTitles_;
     QMap<quint16, QLabel*> waveLabels_;
     QMap<quint16, QComboBox*> waveComponents_;
     QMap<quint16, VaporView::FpgaWave::CompletedStream> latestWaves_;

@@ -10,8 +10,6 @@
 #include <QStyleFactory>
 #include <QTabWidget>
 #include <QScrollArea>
-#include "shared/theme/SingleLevelPopupComboBox.h"
-#include "shared/theme/SingleLevelPopupMenu.h"
 #include <QAbstractButton>
 #include <QComboBox>
 #include <QElapsedTimer>
@@ -230,13 +228,10 @@ int main(int argc,char **argv)
         auto handler=qInstallMessageHandler(captureFont);
         VaporView::FpgaWave::CompletedStream wave;wave.source=0x30;wave.message=0x1001;wave.format=0;wave.bytesPerPoint=8;wave.totalPoints=2;wave.rate=10000;wave.complete=true;wave.pointBytes=QByteArray(16,0);
         page->updateWaveform(wave);
-        auto *component=static_cast<VaporView::SingleLevelPopupComboBox*>(page->findChild<QComboBox*>("fpgaWaveComponent48"));
-        static_cast<QScrollArea*>(page->findChild<QTabWidget*>("fpgaTabs")->currentWidget())->ensureWidgetVisible(component);processFor(100);
-        for(int index:{1,0,1,0}){
-            component->showPopup();processFor(50);component->popupMenu()->rows().at(index)->click();processFor(50);
-            component->hidePopup();page->updateWaveform(wave);processFor(50);
-        }
-        qInstallMessageHandler(handler);require(fontWarnings==0,"main window H2 to H1 produces no font warning");
+        auto *first=page->findChild<QWidget*>("fpgaWavePlot48");
+        auto *second=page->findChild<QWidget*>("fpgaWaveSecondPlot48");
+        require(first&&second&&first->property("sampleCount").toInt()==2&&second->property("sampleCount").toInt()==2,"main window displays both harmonics from one cycle");
+        qInstallMessageHandler(handler);require(fontWarnings==0,"parallel harmonic update produces no font warning");
         window.close();
         const auto settings=VaporView::applicationConfigSettings();
         const auto saved=QJsonDocument::fromJson(settings.value(QStringLiteral("Fpga/desiredConfiguration")).toByteArray());

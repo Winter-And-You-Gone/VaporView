@@ -132,10 +132,17 @@ int main(int argc,char **argv) {
     auto appendWord=[](QByteArray &bytes,qint32 value){for(int i=0;i<4;++i)bytes.append(char(quint32(value)>>(8*i)));};
     for(qint32 value:{1,2,3,4,100,200,11,12,13,14,110,210})appendWord(wave.pointBytes,value);
     page.updateWaveform(wave);auto *component=page.findChild<QComboBox*>("fpgaWaveComponent48");auto *plot=page.findChild<QWidget*>("fpgaWavePlot48");
-    require(component&&component->count()==6,"format2 offers all IQ and harmonic components");
-    const double expectedMax[]={11,12,13,14,110,210};for(int i=0;i<6;++i){component->setCurrentIndex(i);require(plot->property("sampleCount").toInt()==2&&plot->property("sampleMaximum").toDouble()==expectedMax[i],"component selection displays chosen physical field");}
+    auto *secondPlot=page.findChild<QWidget*>("fpgaWaveSecondPlot48");
+    require(component&&component->count()==3&&secondPlot,"format2 offers paired harmonics and IQ");
+    require(plot->property("sampleMaximum").toDouble()==110&&secondPlot->property("sampleMaximum").toDouble()==210,"H1 and H2 are displayed together by default");
+    const double expectedMax[]={110,11,13};const double secondMax[]={210,12,14};for(int i=0;i<3;++i){component->setCurrentIndex(i);require(plot->property("sampleCount").toInt()==2&&plot->property("sampleMaximum").toDouble()==expectedMax[i]&&secondPlot->property("sampleMaximum").toDouble()==secondMax[i],"paired plots display the correct independent fields");}
+    auto iq=wave;iq.format=1;iq.bytesPerPoint=16;iq.pointBytes.clear();
+    for(qint32 value:{1,2,3,4,11,12,13,14})appendWord(iq.pointBytes,value);
+    page.updateWaveform(iq);component->setCurrentIndex(1);
+    require(plot->property("sampleMaximum").toDouble()==13&&secondPlot->property("sampleMaximum").toDouble()==14,"IQ-only format retains paired I2 Q2 view");
+    page.updateWaveform(wave);
     auto partial=wave;partial.complete=false;partial.partial=true;partial.pointBytes.truncate(24);page.updateWaveform(partial);
-    require(plot->property("sampleCount").toInt()==0&&page.findChild<QLabel*>("fpgaWaveSummary48")->text().contains("missing fragments"),"partial cycle does not draw a fabricated connected trace");
+    require(plot->property("sampleCount").toInt()==0&&secondPlot->property("sampleCount").toInt()==0&&page.findChild<QLabel*>("fpgaWaveSummary48")->text().contains("missing fragments"),"partial cycle does not draw a fabricated connected trace");
     page.updateWaveform(wave);
     auto preview=wave;preview.preview=true;preview.previewStride=1024;preview.totalPoints=2048;
     page.updateWaveform(preview);
@@ -185,22 +192,28 @@ int main(int argc,char **argv) {
         app.setProperty(VaporView::kAppDarkThemeProperty,dark);
         page.setTheme(dark,pixels==16?100:150);
         QFont pixelFont=originalFont;pixelFont.setPixelSize(pixels);component->setFont(pixelFont);
-        auto pair=wave;pair.format=0;pair.bytesPerPoint=8;pair.pointBytes=wave.pointBytes.left(16);page.updateWaveform(pair);
+        page.updateWaveform(wave);
         int modelResets=0;
         const auto resetConnection=QObject::connect(component->model(),&QAbstractItemModel::modelReset,[&]{++modelResets;});
         for(int index:{0,1,0,1,0}){
             component->showPopup();app.processEvents();
             auto *menu=static_cast<VaporView::SingleLevelPopupComboBox*>(component)->popupMenu();
             menu->rows().at(index)->click();app.processEvents();component->hidePopup();app.processEvents();
-            require(component->currentIndex()==index,"popup selects both H1 and H2");
+            require(component->currentIndex()==index,"popup selects paired harmonic and IQ views");
         }
         QObject::disconnect(resetConnection);
-        require(modelResets==0,"H1/H2 selection and live samples preserve the combo model");
+        require(modelResets==0,"paired selection and live samples preserve the combo model");
         require(component->font().pixelSize()==pixels,"popup workaround preserves pixel font size and scaling");
     }
     qInstallMessageHandler(previousHandler);
     require(invalidFontWarnings==0,"opening H1/H2 popup with pixel font never sets invalid point size");
     app.setProperty(VaporView::kAppDarkThemeProperty,originalTheme);
     component->setFont(originalFont);page.setTheme(false);
+    auto pair=wave;pair.format=0;pair.bytesPerPoint=8;pair.pointBytes.clear();
+    for(qint32 value:{10,20,30,40})appendWord(pair.pointBytes,value);
+    page.updateWaveform(pair);app.processEvents();
+    require(component->isHidden(),"harmonic-only format needs no selector");
+    require(plot->property("sampleMaximum").toDouble()==30&&secondPlot->property("sampleMaximum").toDouble()==40,"format0 renders both harmonics together");
+    require(plot->mapTo(&page,QPoint()).x()<secondPlot->mapTo(&page,QPoint()).x()&&plot->height()==secondPlot->height(),"harmonics have side-by-side equal-height plots");
     page.close();std::puts("FPGA control page tests passed");return 0;
 }
