@@ -364,6 +364,21 @@ void FpgaDeviceController::setAcquisition(bool enable)
     if (!ready_ || !begin(enable?QStringLiteral("启动采集"):QStringLiteral("停止并排空采集"))) return;
     if (enable) {
         if (!enableUpload()) return;
+        // DLIA stop latches cycle_partial; enable alone cannot clear it. Reset
+        // only after both ADC producers and DLIA consumers have drained. ADC0
+        // reset also reinitializes the shared PHY, so both lanes must be idle.
+        stopAndDrain();
+        write(0x4004,2); waitFor(0x4008,0x92,0x12);
+        write(0x4104,2);
+        for (quint32 b:{0x5000u,0x5100u}) write(b+4,2);
+        // Soft reset preserves shadow settings. Commit those actual settings,
+        // rather than replacing the user's parameters with host defaults.
+        commit(0x20,0x4000);
+        for (quint32 b:{0x4000u,0x4100u}) waitFor(b+8,0x96,0x12);
+        for (quint32 b:{0x5000u,0x5100u}) {
+            commit(quint16(0x30+(b-0x5000)/0x100),b);
+            verify(b+0xc,0);
+        }
         // WMS supplies cycle labels even with independent DLIA references.
         write(0x0004,registers_.value(4)|1u);
         for (quint32 b:{0x2000u,0x2100u}) { write(b+4,1); verify(b+4,1); }

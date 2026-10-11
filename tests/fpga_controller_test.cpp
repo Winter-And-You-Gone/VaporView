@@ -42,6 +42,7 @@ public:
     bool opened=false,closed=false,strict=true;
     bool holdResponses=false;
     quint32 failWriteAddress=0xffffffff;
+    quint32 failWriteValue=0xffffffff;
     bool failTemperature=false,confirmTemperature=true;
     QMap<quint32,quint32> regs;
     QMap<quint32,int> pendingReads;
@@ -71,7 +72,7 @@ public:
         commands.append(command);
         quint32 status=0;
         if(command.message==2&&strict){for(int i=0;i<command.count;++i)if(!readable(command.address+4*i))status=5;}
-        if(command.message==3&&command.address==failWriteAddress)status=7;
+        if(command.message==3&&command.address==failWriteAddress&&(failWriteValue==0xffffffff||command.value==failWriteValue))status=7;
         if(command.message==0xb&&command.address==17&&failTemperature)status=14;
         std::vector<std::uint8_t> response;append32(response,status);
         if(!status){
@@ -82,7 +83,9 @@ public:
                 for(int i=0;i<command.count;++i){const auto a=command.address+4*i;quint32 v=regs.value(a);if(pendingReads.value(a)>0){--pendingReads[a];v|=4;}append32(response,v);}
             } else if(command.message==3){
                 for(int i=0;i<command.count;++i){const auto a=command.address+4*i;const auto value=word(f.payload,8+i*4);regs[a]=value;
-                    if((a&255)==4&&a>=0x2000&&a<=0x5104){const auto b=a&~255u;regs[b+8]=(value&1)|2;if(b==0x4000||b==0x4100)regs[b+8]|=0x10;}
+                    if((a&255)==4&&a>=0x2000&&a<=0x5104){const auto b=a&~255u;regs[b+8]=(value&1)|2;if(b==0x4000||b==0x4100)regs[b+8]|=0x10;
+                        if(value&2){regs[b+0xc]=0;regs[b+4]=value&1;}
+                    }
                 }
             } else if(command.message==5){
                 const quint32 base=command.source>=0x30?0x5000+(command.source-0x30)*0x100:
@@ -179,6 +182,31 @@ void independentAndAcquisition(){
     require(fifoRead,"stop observes drained ADC FIFO before disabling DLIA");
     for(const auto &c:f.transport->writes())require(!inPage(c.address,0x2000)&&!inPage(c.address,0x3000)&&c.address!=4,"stop preserves WMS, DAC and global enable");
 }
+void restartClearsDliaState(){
+    Fixture f;f.connect();
+    f.transport->regs[0x501c]=20000;f.transport->regs[0x511c]=10000;
+    for(int attempt=0;attempt<2;++attempt){
+        f.transport->regs[0x500c]=f.transport->regs[0x510c]=0x84;
+        f.transport->clear();f.controller.setAcquisition(true);f.finish();
+        const auto commands=f.transport->commands;
+        const int a0=indexOfWrite(commands,0x4004,0),a1=indexOfWrite(commands,0x4104,0);
+        const int d1=indexOfWrite(commands,0x5104,0),resetAdc=indexOfWrite(commands,0x4004,2);
+        const int resetD0=indexOfWrite(commands,0x5004,2),resetD1=indexOfWrite(commands,0x5104,2);
+        const int enable=indexOfWrite(commands,0x5004,1);
+        require(a0>=0&&a1>a0&&d1>a1&&resetAdc>d1&&resetD0>resetAdc&&resetD1>resetD0&&enable>resetD1,"restart drains producers before resetting and enabling consumers");
+        bool adcCommitted=false,d0Committed=false,d1Committed=false;
+        for(int i=resetD1+1;i<enable;++i)if(commands[i].message==5){adcCommitted|=commands[i].source==0x20;d0Committed|=commands[i].source==0x30;d1Committed|=commands[i].source==0x31;}
+        require(adcCommitted&&d0Committed&&d1Committed,"restart commits retained ADC and both DLIA settings before enabling");
+        require(f.transport->regs[0x500c]==0&&f.transport->regs[0x510c]==0,"restart clears sticky DLIA error state");
+        require(f.transport->regs[0x504c]==20000&&f.transport->regs[0x514c]==10000,"restart preserves different per-channel output rates");
+        for(const auto &c:f.transport->writes())require(!((c.address>=0x4010&&c.address<=0x403c)||(c.address>=0x4110&&c.address<=0x413c)||(c.address>=0x5010&&c.address<=0x5054)||(c.address>=0x5110&&c.address<=0x5154)),"start never overwrites user sampling or demodulation parameters");
+        require(f.diagnostics.isEmpty(),"restart completes without diagnostics");
+        f.controller.setAcquisition(false);f.finish();
+    }
+    f.transport->failWriteAddress=0x5004;f.transport->failWriteValue=2;f.transport->clear();
+    f.controller.setAcquisition(true);f.finish();
+    require(indexOfWrite(f.transport->commands,0x4004,1)<0&&indexOfWrite(f.transport->commands,0x4104,1)<0,"failed preparation must not enable ADC capture");
+}
 void configurationAndFailure(){
     Fixture f;f.connect();FpgaControlConfig config;config.adcRateHz=500000;f.transport->clear();f.controller.applyConfiguration(config);f.finish();
     int rateWrites=0;for(const auto &c:f.transport->writes()){if(c.address==0x4010){++rateWrites;require(c.value==500000,"shared ADC requested rate");}require(c.address!=0x4110&&c.address!=0x4130&&c.address!=0x4134,"ADC1 common PHY registers remain read only");}
@@ -272,5 +300,5 @@ int main(int argc,char **argv){
         }
         std::puts("hardware controller connect/idle/reconnect probe passed");return 0;
     }
-    connectionAndVersions();backgroundRefresh();independentAndAcquisition();configurationAndFailure();rawAndBusy();temperature();sensorUploadAndFailure();ai8DisabledConfiguration();threadCleanup();std::puts("FPGA controller tests passed");return 0;
+    connectionAndVersions();backgroundRefresh();independentAndAcquisition();restartClearsDliaState();configurationAndFailure();rawAndBusy();temperature();sensorUploadAndFailure();ai8DisabledConfiguration();threadCleanup();std::puts("FPGA controller tests passed");return 0;
 }

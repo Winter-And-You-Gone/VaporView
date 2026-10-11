@@ -83,6 +83,8 @@ USB 会话对非空读取连续收包，每批最多 64 次读取，每次完成
 
 `fpga_device_session_test --hardware-stream-probe` 使用上述自动定时器做只读实板接收检查：须预先启动双路 DLIA 并断开其他 USB 读取者，预热 3 秒后统计约 20 秒周期，并比较两路丢点计数。无数据、寄存器读取失败、新增丢点、overflow 或分片连续性异常均判失败；partial 单独报告，不将零新增丢点等同于完整周期有效。探针不启停采集、不清计数、不改输出参数。
 
+开始采集会先停止并排空双 ADC/DLIA，然后软复位 ADC0（等待共享 AD4630 PHY 初始化）、ADC1 和双 DLIA，再提交设备保留的 ADC/DLIA 参数并检查状态，最后按 WMS、DLIA、ADC 顺序启用。原因是当前 RTL 在停止 DLIA 时会锁存 `cycle_partial`，直接重新 enable 无法清除；软复位同时清除相关模块的累计诊断计数，开始前的历史诊断需要提前保存。此流程不写入主机默认采样/解调参数，不重置 WMS/DAC，不启停传感器，也不放宽周期质量判断。对照依据为下位机仓库 `0f12988` 的 `host/qt_monitor/src/worker.cpp::startAcquisition` 及 `fpga/rtl/dila/dila_core.v`。
+
 传感器“启用”只开启 FPGA 轮询，不为外部传感器供电。未上电或未接线的 PTB210 不会提供有效气压值；传感器超时与整条 USB 链路异常需分别诊断。
 
 六传感器启动按 HOST_HANDOFF：SHT45、BMP390、PTB210、AI8、EPSILON、TFA1500-L，逐步检查 source、CRC、freshness、ERROR/drop。AI8 启用只开始轮询，不自动改设温或加热。HMP41 未验证，保持禁用。PTB210 超时或 AI8 报警不得以虚构值掩盖。
