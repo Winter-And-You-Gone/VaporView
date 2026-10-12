@@ -90,6 +90,7 @@ private:
     void updateSettingsTexts();
     void updateSettingsControls();
     void arrangeSettingsFields(bool twoColumns);
+    void arrangeAdvancedFields();
     void createAdvancedSettingsPage();
     QWidget *createParameterField(const VaporView::EpsilonParameterDescriptor& descriptor, QWidget *parent);
     VaporView::EpsilonSettingsOperation editedSettings() const;
@@ -148,6 +149,9 @@ private:
     QStackedWidget *advanced_pages_ = nullptr;
     QVector<VaporView::EpsilonSettingsGroup> advanced_groups_;
     QVector<QLabel *> advanced_titles_;
+    QVector<QGridLayout *> advanced_field_grids_;
+    QGridLayout *maintenance_grid_ = nullptr;
+    QGridLayout *settings_information_grid_ = nullptr;
     QLabel *advanced_hint_ = nullptr;
     QVector<QPushButton *> maintenance_buttons_;
     QLabel *maintenance_title_ = nullptr;

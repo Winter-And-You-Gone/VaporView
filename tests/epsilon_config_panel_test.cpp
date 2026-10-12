@@ -14,6 +14,7 @@
 #include <QLineEdit>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QGridLayout>
 #include <QSet>
 
 #include <algorithm>
@@ -564,6 +565,79 @@ int main(int argc, char *argv[])
             std::abs(installationTab->width() - fusionTab->width()) <= 1 &&
             std::abs(fusionTab->width() - advancedFeatures->width()) <= 1,
             "parameter navigation uses one equal-height four-segment capsule geometry");
+    {
+        auto *selector = panel.findChild<QComboBox *>(QStringLiteral("epsilonAdvancedGroupCombo"));
+        auto *groupPages = panel.findChild<QStackedWidget *>(QStringLiteral("epsilonAdvancedGroupPages"));
+        require(selector && groupPages, "advanced parameter groups expose their forms");
+        const QSize originalSize = panel.size();
+        const QFont originalFont = panel.font();
+        int wideCommunicationHeight = 0;
+        for (bool english : {false, true})
+        {
+            QFont font = originalFont;
+            if (english) font.setPointSizeF(originalFont.pointSizeF() * 1.3);
+            panel.setFont(font);
+            panel.setEnglish(english);
+            for (int width : {1250, 1000, 760, 520})
+            {
+                panel.resize(width, 1000);
+                for (int group = 0; group < selector->count(); ++group)
+                {
+                    selector->setCurrentIndex(group);
+                    VaporViewTest::processEventsFor(40);
+                    auto *card = groupPages->currentWidget()->findChild<QFrame *>();
+                    require(card != nullptr, "every advanced group has its parameter card");
+                    auto *grid = card->findChild<QGridLayout *>();
+                    require(grid != nullptr, "every advanced group has a compact field grid");
+                    int columns = 0;
+                    std::vector<QRect> fieldRects;
+                    for (int i = 0; i < grid->count(); ++i)
+                    {
+                        int row, column, rowSpan, columnSpan;
+                        grid->getItemPosition(i, &row, &column, &rowSpan, &columnSpan);
+                        columns = std::max(columns, column + 1);
+                        auto *field = grid->itemAt(i)->widget();
+                        const QRect rect(field->mapTo(card, QPoint()), field->size());
+                        require(card->rect().contains(rect), "advanced fields remain inside their card at every width");
+                        for (const QRect& previous : fieldRects)
+                            require(!rect.intersects(previous), "advanced field cells never overlap");
+                        fieldRects.push_back(rect);
+                        for (auto *label : field->findChildren<QLabel *>())
+                            if (label->isVisible())
+                                require(label->heightForWidth(label->width()) <= label->height(),
+                                        "wrapped advanced labels retain their full height");
+                    }
+                    require(columns >= 1 && columns <= 4 && (width < 1000 || columns >= 2),
+                            "advanced groups use multiple columns when space permits");
+                    if (!english && group == 0)
+                    {
+                        if (width == 1250)
+                        {
+                            require(columns == 4, "wide advanced communication form uses four columns");
+                            wideCommunicationHeight = card->height();
+                        }
+                        if (width == 1000) require(columns == 3, "medium advanced form uses three columns");
+                        if (width == 760) require(columns == 2, "compact advanced form uses two columns");
+                        if (width == 520)
+                            require(columns == 1 && wideCommunicationHeight < card->height() * 0.6,
+                                    "narrow form reflows to one column and wide form is substantially shorter");
+                    }
+                    const int gap = maintenanceCard->mapTo(&panel, QPoint()).y() -
+                        (card->mapTo(&panel, QPoint()).y() + card->height());
+                    require(gap >= 0 && gap <= 16,
+                            "hidden longer parameter groups cannot leave a blank gap before maintenance");
+                }
+                auto *buttons = maintenanceCard->findChild<QGridLayout *>(QStringLiteral("epsilonMaintenanceButtonGrid"));
+                require(buttons && (width < 1000 || buttons->itemAt(0)->widget()->y() == buttons->itemAt(4)->widget()->y()),
+                        "wide calibration actions share one compact row");
+            }
+        }
+        panel.setFont(originalFont);
+        panel.setEnglish(false);
+        selector->setCurrentIndex(0);
+        panel.resize(originalSize);
+        QApplication::processEvents();
+    }
     installationTab->click();
     panel.setSettingsAvailable(true);
     QApplication::processEvents();

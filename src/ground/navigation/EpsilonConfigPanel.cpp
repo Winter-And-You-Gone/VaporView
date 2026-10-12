@@ -149,7 +149,10 @@ struct SectionCard
 class EpsilonPages final : public QStackedWidget
 {
 public:
-    using QStackedWidget::QStackedWidget;
+    explicit EpsilonPages(QWidget *parent = nullptr) : QStackedWidget(parent)
+    {
+        layout()->setSizeConstraint(QLayout::SetNoConstraint);
+    }
     QSize sizeHint() const override
     {
         return currentWidget() ? currentWidget()->sizeHint() : QSize();
@@ -157,6 +160,16 @@ public:
     QSize minimumSizeHint() const override
     {
         return currentWidget() ? currentWidget()->minimumSizeHint() : QSize();
+    }
+    bool hasHeightForWidth() const override
+    {
+        return currentWidget() && currentWidget()->hasHeightForWidth();
+    }
+    int heightForWidth(int width) const override
+    {
+        if (!currentWidget()) return 0;
+        return currentWidget()->hasHeightForWidth() ? currentWidget()->heightForWidth(width)
+                                                   : currentWidget()->sizeHint().height();
     }
 };
 
@@ -267,6 +280,28 @@ SectionCard createSectionCard(QWidget *parent,
     result.body_layout->setSpacing(10);
     cardLayout->addWidget(body);
     return result;
+}
+
+void arrangeCompactGrid(QGridLayout *grid, int availableWidth, int minimumWidth, int maximumColumns)
+{
+    QVector<QWidget *> fields;
+    while (auto *item = grid->takeAt(0))
+    {
+        if (auto *field = item->widget())
+        {
+            fields.append(field);
+            minimumWidth = std::max(minimumWidth, field->minimumSizeHint().width());
+        }
+        delete item;
+    }
+    if (fields.isEmpty()) return;
+    const int spacing = grid->horizontalSpacing();
+    const int columns = std::clamp((availableWidth + spacing) / (minimumWidth + spacing),
+                                   1, std::min(maximumColumns, static_cast<int>(fields.size())));
+    for (int column = 0; column < maximumColumns; ++column)
+        grid->setColumnStretch(column, column < columns ? 1 : 0);
+    for (int index = 0; index < fields.size(); ++index)
+        grid->addWidget(fields[index], index / columns, index % columns, Qt::AlignTop);
 }
 
 struct SummaryField
@@ -696,7 +731,14 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     device_info_label_->setWordWrap(true);
     device_info_label_->setProperty("epsilonSecondaryText", true);
     device_info_label_->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
-    settingsActions.body_layout->addWidget(device_info_label_);
+    auto *information = new QWidget(settings_actions_body_);
+    settings_information_grid_ = new QGridLayout(information);
+    settings_information_grid_->setContentsMargins(0, 0, 0, 0);
+    settings_information_grid_->setHorizontalSpacing(12);
+    settings_information_grid_->setVerticalSpacing(6);
+    settings_information_grid_->setColumnStretch(0, 1);
+    settings_information_grid_->addWidget(device_info_label_, 0, 0);
+    settingsActions.body_layout->addWidget(information);
     createSettingsPages();
     createAdvancedSettingsPage();
     auto *advancedPage = pages_->widget(3);
@@ -704,6 +746,12 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     auto maintenanceCard = createSectionCard(advancedPage, QStringLiteral("epsilonMaintenanceCard"), QStringLiteral("sliders-vertical"));
     maintenanceCard.card->setProperty("epsilonParameterCard", true);
     maintenance_title_ = maintenanceCard.title;
+    maintenance_grid_ = new QGridLayout();
+    maintenance_grid_->setObjectName(QStringLiteral("epsilonMaintenanceButtonGrid"));
+    maintenance_grid_->setContentsMargins(0, 0, 0, 0);
+    maintenance_grid_->setHorizontalSpacing(8);
+    maintenance_grid_->setVerticalSpacing(8);
+    maintenanceCard.body_layout->addLayout(maintenance_grid_);
     const QStringList maintenanceZh = {QStringLiteral("调平"), QStringLiteral("加表静态零偏"), QStringLiteral("陀螺静态零偏"), QStringLiteral("磁力计 2D 校准"), QStringLiteral("磁力计 3D 校准")};
     for (int i = 0; i < maintenanceZh.size(); ++i)
     {
@@ -712,7 +760,7 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
         button->setProperty("epsilonMaintenanceAction", i);
         button->setText(maintenanceZh[i]);
         button->setToolTip(QStringLiteral("请确认设备静止、安装条件满足，并等待校准完成"));
-        maintenanceCard.body_layout->addWidget(button, 0, Qt::AlignLeft);
+        maintenance_grid_->addWidget(button, 0, i);
         maintenance_buttons_.append(button);
         connect(button, &QPushButton::clicked, this, [this, i]() {
             const QString condition = i >= 3
@@ -757,7 +805,7 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     settings_status_label_->setObjectName(QStringLiteral("epsilonSettingsStatus"));
     settings_status_label_->setWordWrap(true);
     settings_status_label_->setProperty("epsilonSecondaryText", true);
-    settingsActions.body_layout->addWidget(settings_status_label_);
+    settings_information_grid_->addWidget(settings_status_label_, 1, 0);
     panelLayout->insertWidget(1, settings_actions_card_);
     settings_actions_card_->hide();
 
@@ -789,8 +837,8 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     settings_import_button_->setObjectName(QStringLiteral("epsilonSettingsImportButton"));
     snapshotLayout->addWidget(settings_export_button_);
     snapshotLayout->addWidget(settings_import_button_);
-    snapshotLayout->addStretch(1);
-    qobject_cast<QVBoxLayout *>(settings_actions_body_->layout())->addWidget(snapshotTools);
+    snapshotTools->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
+    settings_information_grid_->addWidget(snapshotTools, 0, 1, 2, 1, Qt::AlignRight | Qt::AlignVCenter);
     connect(settings_export_button_, &QPushButton::clicked, this, [this]() {
         const QString path = QFileDialog::getSaveFileName(this, is_english_ ? QStringLiteral("Export device snapshot") : QStringLiteral("导出设备快照"), QString(), QStringLiteral("JSON (*.json)"));
         if (path.isEmpty()) return;
@@ -1032,6 +1080,8 @@ void EpsilonConfigPanel::createSettingsPages()
 
 QWidget *EpsilonConfigPanel::createParameterField(const VaporView::EpsilonParameterDescriptor& descriptor, QWidget *parent)
 {
+    const bool compact = descriptor.group != VaporView::EpsilonSettingsGroup::Installation &&
+                         descriptor.group != VaporView::EpsilonSettingsGroup::Fusion;
     auto *row = new QWidget(parent);
     row->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
     row->setObjectName(QStringLiteral("epsilonParameterRow_%1").arg(QString::fromStdString(descriptor.name)));
@@ -1081,17 +1131,25 @@ QWidget *EpsilonConfigPanel::createParameterField(const VaporView::EpsilonParame
     field.editor->setFocusPolicy(Qt::TabFocus);
     field.editor->setMinimumWidth(descriptor.kind == VaporView::EpsilonParameterKind::Enumeration ? 190 : 0);
     field.editor->setMaximumWidth(descriptor.kind == VaporView::EpsilonParameterKind::Enumeration ? 240 : 170);
-    rowLayout->addWidget(field.editor, 0, 1);
+    rowLayout->addWidget(field.editor, compact ? 1 : 0, compact ? 0 : 1);
     field.state = new QLabel(row);
     field.state->setWordWrap(true);
     field.state->setProperty("epsilonSecondaryText", true);
-    rowLayout->addWidget(field.state, 1, 0, 1, 2);
+    rowLayout->addWidget(field.state, compact ? 2 : 1, 0, 1, compact ? 1 : 2);
     settings_fields_.append(field);
     return row;
 }
 
 void EpsilonConfigPanel::arrangeSettingsFields(bool twoColumns)
 {
+    if (settings_information_grid_ && settings_import_button_)
+    {
+        auto *snapshotTools = settings_import_button_->parentWidget();
+        settings_information_grid_->removeWidget(snapshotTools);
+        settings_information_grid_->addWidget(snapshotTools, width() >= 760 ? 0 : 2,
+            width() >= 760 ? 1 : 0, width() >= 760 ? 2 : 1, 1,
+            (width() >= 760 ? Qt::AlignRight : Qt::AlignLeft) | Qt::AlignVCenter);
+    }
     int cardOffset = 0;
     for (int groupIndex = 0; groupIndex < settings_grids_.size(); ++groupIndex)
     {
@@ -1137,7 +1195,32 @@ void EpsilonConfigPanel::arrangeSettingsFields(bool twoColumns)
             ++index;
         }
     }
+    arrangeAdvancedFields();
     if (pages_) pages_->updateGeometry();
+}
+
+void EpsilonConfigPanel::arrangeAdvancedFields()
+{
+    const int availableWidth = std::max(0, width() - 26);
+    const int minimumWidth = std::max(240, fontMetrics().height() * 12);
+    for (auto *grid : advanced_field_grids_)
+        arrangeCompactGrid(grid, availableWidth, minimumWidth, 4);
+    if (maintenance_grid_)
+        arrangeCompactGrid(maintenance_grid_, availableWidth, 1, 5);
+    if (advanced_pages_)
+    {
+        // QWidgetItem otherwise measures every page in the stacked layout.
+        advanced_pages_->setFixedHeight(advanced_pages_->heightForWidth(width()));
+        pages_->widget(3)->layout()->invalidate();
+        if (pages_->currentIndex() == 3)
+            pages_->setFixedHeight(std::max(pages_->heightForWidth(width()), pages_->sizeHint().height()));
+        else
+        {
+            pages_->setMinimumHeight(0);
+            pages_->setMaximumHeight(QWIDGETSIZE_MAX);
+        }
+        advanced_pages_->updateGeometry();
+    }
 }
 
 void EpsilonConfigPanel::createAdvancedSettingsPage()
@@ -1172,6 +1255,7 @@ void EpsilonConfigPanel::createAdvancedSettingsPage()
     layout->addWidget(advanced_hint_);
     advanced_pages_ = new EpsilonPages(page);
     advanced_pages_->setObjectName(QStringLiteral("epsilonAdvancedGroupPages"));
+    advanced_pages_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
     layout->addWidget(advanced_pages_);
     for (auto group : advanced_groups_)
     {
@@ -1182,10 +1266,18 @@ void EpsilonConfigPanel::createAdvancedSettingsPage()
         auto card = createSectionCard(groupPage, QStringLiteral("epsilonAdvancedCard_%1").arg(static_cast<int>(group)), QStringLiteral("sliders-vertical"));
         card.card->setProperty("epsilonParameterCard", true);
         advanced_titles_.append(card.title);
+        auto *fields = new QWidget(card.card);
+        auto *grid = new QGridLayout(fields);
+        grid->setObjectName(QStringLiteral("epsilonAdvancedFieldGrid_%1").arg(static_cast<int>(group)));
+        grid->setContentsMargins(0, 0, 0, 0);
+        grid->setHorizontalSpacing(16);
+        grid->setVerticalSpacing(10);
+        advanced_field_grids_.append(grid);
+        int row = 0;
         for (const auto& descriptor : descriptors)
-            card.body_layout->addWidget(createParameterField(descriptor, card.card));
+            grid->addWidget(createParameterField(descriptor, fields), row++, 0);
+        card.body_layout->addWidget(fields);
         groupLayout->addWidget(card.card);
-        groupLayout->addStretch(1);
         advanced_pages_->addWidget(groupPage);
     }
     advanced_group_combo_->addItem(QStringLiteral("D4G"));
@@ -1195,11 +1287,19 @@ void EpsilonConfigPanel::createAdvancedSettingsPage()
     auto dgnssCard = createSectionCard(dgnssPage, QStringLiteral("epsilonDgnssCard"), QStringLiteral("sliders-vertical"));
     dgnssCard.card->setProperty("epsilonParameterCard", true);
     dgnss_title_ = dgnssCard.title;
+    auto *dgnssFields = new QWidget(dgnssCard.card);
+    auto *dgnssGrid = new QGridLayout(dgnssFields);
+    dgnssGrid->setObjectName(QStringLiteral("epsilonDgnssFieldGrid"));
+    dgnssGrid->setContentsMargins(0, 0, 0, 0);
+    dgnssGrid->setHorizontalSpacing(16);
+    dgnssGrid->setVerticalSpacing(10);
+    advanced_field_grids_.append(dgnssGrid);
+    int dgnssRow = 0;
     for (const auto& descriptor : VaporView::epsilonDgnssDescriptors())
     {
         DgnssField field;
         field.name = descriptor.name;
-        auto *row = new QWidget(dgnssCard.card);
+        auto *row = new QWidget(dgnssFields);
         auto *rowLayout = new QGridLayout(row);
         rowLayout->setContentsMargins(0, 0, 0, 0);
         field.label = new QLabel(row);
@@ -1216,15 +1316,15 @@ void EpsilonConfigPanel::createAdvancedSettingsPage()
         field.state->setWordWrap(true);
         field.state->setProperty("epsilonSecondaryText", true);
         rowLayout->addWidget(field.label, 0, 0);
-        rowLayout->addWidget(field.editor, 0, 1);
-        rowLayout->addWidget(field.state, 1, 0, 1, 2);
+        rowLayout->addWidget(field.editor, 1, 0);
+        rowLayout->addWidget(field.state, 2, 0);
         rowLayout->setColumnStretch(0, 1);
-        dgnssCard.body_layout->addWidget(row);
+        dgnssGrid->addWidget(row, dgnssRow++, 0);
         connect(field.editor, &QLineEdit::textChanged, this, [this]() { updateSettingsControls(); });
         dgnss_fields_.append(field);
     }
+    dgnssCard.body_layout->addWidget(dgnssFields);
     dgnssLayout->addWidget(dgnssCard.card);
-    dgnssLayout->addStretch(1);
     advanced_pages_->addWidget(dgnssPage);
     connect(advanced_group_combo_, &QComboBox::currentIndexChanged, this, [this](int index) {
         advanced_pages_->setCurrentIndex(index);
@@ -1847,6 +1947,9 @@ void EpsilonConfigPanel::updateSettingsTexts()
                                       : (is_english_ ? QStringLiteral("Saved ACK received; changed values readback is not confirmed. Restart required.") : QStringLiteral("已收到保存 ACK；已修改项尚未回读确认。待重启设备。")))
                 : readStatus);
     }
+    arrangeAdvancedFields();
+    if (pages_) pages_->updateGeometry();
+    QTimer::singleShot(0, this, [this]() { arrangeAdvancedFields(); });
 }
 
 void EpsilonConfigPanel::setAvailable(bool available)
