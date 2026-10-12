@@ -4,6 +4,7 @@
 #include "ground/navigation/NavigationStatusPanel.h"
 
 #include <QPointer>
+#include <QRectF>
 #include <QWidget>
 
 #include <functional>
@@ -11,7 +12,7 @@
 class QButtonGroup;
 class QEvent;
 class QFrame;
-class QPropertyAnimation;
+class QVariantAnimation;
 class QPushButton;
 class QStackedWidget;
 class QTimer;
@@ -65,6 +66,7 @@ private:
     void updateTexts();
     void applyAppearance();
     void syncNavigationSelectionThumb(bool animated);
+    void updateNavigationSelectionFrame(qreal progress);
     void activateNavigationPage(Section section, QPushButton *selection);
 
     bool is_english_ = false;
@@ -74,7 +76,14 @@ private:
     QPushButton *differential_button_ = nullptr;
     QWidget *navigation_track_ = nullptr;
     QFrame *navigation_selection_thumb_ = nullptr;
-    QPropertyAnimation *navigation_selection_animation_ = nullptr;
+    QVariantAnimation *navigation_selection_animation_ = nullptr;
+    QRectF navigation_thumb_rect_;
+    QRectF navigation_thumb_start_rect_;
+    QRectF navigation_thumb_target_rect_;
+    qreal navigation_thumb_scale_x_ = 1.0;
+    qreal navigation_thumb_scale_y_ = 1.0;
+    qreal navigation_thumb_start_scale_x_ = 1.0;
+    qreal navigation_thumb_start_scale_y_ = 1.0;
     QStackedWidget *stack_ = nullptr;
     QWidget *status_page_ = nullptr;
     NavigationStatusPanel *status_panel_ = nullptr;

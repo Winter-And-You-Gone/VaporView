@@ -28,18 +28,6 @@ qreal clampUnit(qreal value)
     return std::clamp(value, 0.0, 1.0);
 }
 
-qreal smoothStep(qreal value)
-{
-    const qreal t = clampUnit(value);
-    return t * t * (3.0 - 2.0 * t);
-}
-
-qreal easeOutCubic(qreal value)
-{
-    const qreal t = 1.0 - clampUnit(value);
-    return 1.0 - t * t * t;
-}
-
 qreal mixValue(qreal from, qreal to, qreal progress)
 {
     return from + (to - from) * clampUnit(progress);
@@ -54,16 +42,6 @@ QColor mixColor(const QColor& from, const QColor& to, qreal progress)
                    mixValue(from.blueF(), to.blueF(), t),
                    mixValue(from.alphaF(), to.alphaF(), t));
     return result;
-}
-
-qreal interpolateStage(qreal progress,
-                       qreal startProgress,
-                       qreal endProgress,
-                       qreal from,
-                       qreal to)
-{
-    const qreal duration = std::max<qreal>(0.001, endProgress - startProgress);
-    return mixValue(from, to, smoothStep((progress - startProgress) / duration));
 }
 
 } // namespace
@@ -95,73 +73,13 @@ SegmentedSwitchButton::SegmentedSwitchButton(QWidget *parent)
     thumb_animation_->setEasingCurve(QEasingCurve::Linear);
     connect(thumb_animation_, &QVariantAnimation::valueChanged, this, [this](const QVariant& value) {
         const qreal progress = clampUnit(value.toReal());
-        if (reduced_motion_enabled_)
-        {
-            thumb_position_ = mixValue(thumb_start_position_,
-                                       thumb_target_position_,
-                                       easeOutCubic(progress));
-            thumb_scale_x_ = 1.0;
-            thumb_scale_y_ = 1.0;
-            update();
-            return;
-        }
-
-        const qreal distance = thumb_target_position_ - thumb_start_position_;
-        const qreal launchPosition = thumb_start_position_ + distance * 0.04;
-        const qreal overshootPosition =
-            thumb_target_position_ + thumb_direction_ * thumb_overshoot_position_;
-        const qreal undershootPosition =
-            thumb_target_position_ - thumb_direction_ * thumb_overshoot_position_ * 0.24;
-        if (progress < 0.14)
-        {
-            thumb_position_ = mixValue(thumb_start_position_,
-                                       launchPosition,
-                                       smoothStep(progress / 0.14));
-        }
-        else if (progress < 0.62)
-        {
-            thumb_position_ = mixValue(launchPosition,
-                                       overshootPosition,
-                                       easeOutCubic((progress - 0.14) / 0.48));
-        }
-        else if (progress < 0.80)
-        {
-            thumb_position_ = mixValue(overshootPosition,
-                                       undershootPosition,
-                                       smoothStep((progress - 0.62) / 0.18));
-        }
-        else
-        {
-            thumb_position_ = mixValue(undershootPosition,
-                                       thumb_target_position_,
-                                       smoothStep((progress - 0.80) / 0.20));
-        }
-
-        if (progress < 0.16)
-        {
-            thumb_scale_x_ = interpolateStage(progress, 0.0, 0.16, thumb_start_scale_x_, 1.10);
-            thumb_scale_y_ = interpolateStage(progress, 0.0, 0.16, thumb_start_scale_y_, 0.94);
-        }
-        else if (progress < 0.56)
-        {
-            thumb_scale_x_ = interpolateStage(progress, 0.16, 0.56, 1.10, 1.02);
-            thumb_scale_y_ = interpolateStage(progress, 0.16, 0.56, 0.94, 0.99);
-        }
-        else if (progress < 0.66)
-        {
-            thumb_scale_x_ = interpolateStage(progress, 0.56, 0.66, 1.02, 0.96);
-            thumb_scale_y_ = interpolateStage(progress, 0.56, 0.66, 0.99, 1.025);
-        }
-        else if (progress < 0.82)
-        {
-            thumb_scale_x_ = interpolateStage(progress, 0.66, 0.82, 0.96, 1.025);
-            thumb_scale_y_ = interpolateStage(progress, 0.66, 0.82, 1.025, 0.985);
-        }
-        else
-        {
-            thumb_scale_x_ = interpolateStage(progress, 0.82, 1.0, 1.025, 1.0);
-            thumb_scale_y_ = interpolateStage(progress, 0.82, 1.0, 0.985, 1.0);
-        }
+        const auto motion = sampleSegmentedSwitchMotion(
+            progress, thumb_start_position_, thumb_target_position_,
+            thumb_start_scale_x_, thumb_start_scale_y_, thumb_overshoot_position_,
+            reduced_motion_enabled_);
+        thumb_position_ = motion.position;
+        thumb_scale_x_ = motion.scale_x;
+        thumb_scale_y_ = motion.scale_y;
         update();
     });
     connect(thumb_animation_, &QVariantAnimation::finished, this, [this]() {
@@ -575,7 +493,7 @@ void SegmentedSwitchButton::animateThumbTo(qreal target)
         thumb_scale_y_ = 1.0;
     }
     thumb_animation_->setDuration(reduced_motion_enabled_
-                                      ? std::min(animation_duration_ms_, 150)
+                                      ? std::min(animation_duration_ms_, kSegmentedSwitchReducedMotionDurationMs)
                                       : animation_duration_ms_);
     thumb_animation_->setStartValue(0.0);
     thumb_animation_->setEndValue(1.0);

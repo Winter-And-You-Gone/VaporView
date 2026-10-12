@@ -8,6 +8,7 @@
 #include "ground/rtk/RtkConfigDialog.h"
 #include "ground/widgets/TelemetryPanels.h"
 #include "ground/widgets/EpsilonPanel.h"
+#include "ground/widgets/SegmentedSwitchButton.h"
 #include "ground/widgets/VisualTextLabel.h"
 #include "shared/config/ApplicationConfig.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
@@ -54,7 +55,6 @@
 #include <QStyleOptionFrame>
 #include <QStyleOptionSpinBox>
 #include <QPixmap>
-#include <QPropertyAnimation>
 #include <QSplitter>
 #include <QSpinBox>
 #include <QStackedWidget>
@@ -1750,7 +1750,7 @@ void requireRtkSidebarPage(
         QStringLiteral("combinationNavigationNavigationTrack"));
     auto *combinationNavigationSelectionThumb = combinationPage->findChild<QFrame *>(
         QStringLiteral("combinationNavigationNavigationSelectionThumb"));
-    auto *combinationNavigationSelectionAnimation = combinationPage->findChild<QPropertyAnimation *>(
+    auto *combinationNavigationSelectionAnimation = combinationPage->findChild<QVariantAnimation *>(
         QStringLiteral("combinationNavigationNavigationSelectionAnimation"));
     auto *statusButton = combinationPage->findChild<QPushButton *>(
         QStringLiteral("combinationNavigationStatusButton"));
@@ -1814,9 +1814,8 @@ void requireRtkSidebarPage(
             "combination-navigation scroll areas start at the page top behind the floating navigation");
     require(combinationNavigationSelectionThumb->parentWidget() == combinationNavigationTrack &&
                 combinationNavigationSelectionThumb->geometry() == statusButton->geometry() &&
-                combinationNavigationSelectionAnimation->targetObject() == combinationNavigationSelectionThumb &&
-                combinationNavigationSelectionAnimation->duration() == 240,
-            "combination navigation centers the selected thumb and configures its slide animation");
+                combinationNavigationSelectionAnimation->duration() == 480,
+            "combination navigation centers the selected thumb and uses the shared capsule animation duration");
     const QPoint hoverPoint = epsilonButton->rect().center();
     epsilonButton->setAttribute(Qt::WA_UnderMouse, true);
     QEvent enterEvent(QEvent::Enter);
@@ -2015,7 +2014,7 @@ void requireRtkSidebarPage(
             "status to EPSILON switching keeps the packet-rate card width stable");
     require(combinationNavigationSelectionAnimation->state() == QAbstractAnimation::Running,
             "combination navigation starts the selected-thumb animation when switching sections");
-    processEventsFor(250);
+    processEventsFor(500);
     require(combinationNavigationSelectionThumb->geometry() == epsilonButton->geometry(),
             "combination navigation settles the selected thumb on the new section");
     ggaResizeRecorder.reset();
@@ -4765,7 +4764,7 @@ int main(int argc, char **argv)
             mainStack->setCurrentWidget(navigation);processEventsFor(80);
             auto *track=navigation->findChild<QFrame*>(QStringLiteral("combinationNavigationNavigationTrack"));
             auto *thumb=navigation->findChild<QFrame*>(QStringLiteral("combinationNavigationNavigationSelectionThumb"));
-            auto *animation=navigation->findChild<QPropertyAnimation*>(QStringLiteral("combinationNavigationNavigationSelectionAnimation"));
+            auto *animation=navigation->findChild<QVariantAnimation*>(QStringLiteral("combinationNavigationNavigationSelectionAnimation"));
             auto *pages=navigation->findChild<QStackedWidget*>(QStringLiteral("epsilonSettingsPages"));
             auto *advanced=navigation->findChild<QPushButton*>(QStringLiteral("epsilonAdvancedFeaturesButton"));
             auto *status=navigation->findChild<QPushButton*>(QStringLiteral("combinationNavigationStatusButton"));
@@ -4785,6 +4784,56 @@ int main(int argc, char **argv)
                 }
                 require(selected==1&&settled,"shared navigation has one highlight and its thumb follows the active entry");
             };
+            const auto requireHeaderButtons = [&]() {
+                auto *actions = navigation->findChild<QWidget *>(QStringLiteral("epsilonActionsContainer"));
+                auto *read = navigation->findChild<QPushButton *>(QStringLiteral("epsilonSettingsReadButton"));
+                auto *restart = navigation->findChild<QPushButton *>(QStringLiteral("epsilonDeviceRestartButton"));
+                require(actions && read && restart && actions->rect().contains(restart->geometry()) &&
+                            restart->height() == read->height() &&
+                            actions->parentWidget()->rect().contains(QRect(actions->mapToParent(QPoint()), actions->size())),
+                        "shared parameter header fully contains its outlined restart button");
+            };
+            clickWidget(advanced, 0);requireSelected(advanced);
+            requireHeaderButtons();
+            using VaporView::Ground::Widgets::SegmentedSwitchButton;
+            SegmentedSwitchButton referenceSwitch;
+            referenceSwitch.resize(status->width() * 2, status->height());
+            auto *referenceAnimation = referenceSwitch.findChild<QVariantAnimation *>(
+                QStringLiteral("segmentedSwitchThumbAnimation"));
+            require(referenceAnimation && animation->duration() == referenceSwitch.animationDuration(),
+                    "navigation and local/remote use the same capsule motion duration");
+            status->click();requireSelected(status);
+            advanced->click();
+            referenceSwitch.setSwitchChecked(true, true);
+            for (qreal phase : {0.16, 0.66, 0.82})
+            {
+                animation->setCurrentTime(qRound(animation->duration() * phase));
+                referenceAnimation->setCurrentTime(qRound(referenceAnimation->duration() * phase));
+                require(std::abs(thumb->width() - advanced->width() * referenceSwitch.thumbHorizontalScale()) <= 2 &&
+                            std::abs(thumb->height() - advanced->height() * referenceSwitch.thumbVerticalScale()) <= 2,
+                        "navigation uses the same launch, arrival and rebound deformation as local/remote");
+                if (phase == 0.66)
+                    require(thumb->x() > advanced->x(), "navigation thumb overshoots on arrival");
+                if (phase == 0.82)
+                    require(thumb->x() < advanced->x(), "navigation thumb rebounds before settling");
+            }
+            animation->setCurrentTime(animation->duration());requireSelected(advanced);
+            status->click();
+            animation->setCurrentTime(qRound(animation->duration() * 0.45));
+            const QRect interruptedThumb = thumb->geometry();
+            advanced->click();
+            require(thumb->geometry() == interruptedThumb,
+                    "rapid navigation reversal continues from the current visual position and shape");
+            animation->setCurrentTime(animation->duration());requireSelected(advanced);
+            const QVariant originalReducedMotion = app.property("vaporViewReducedMotion");
+            app.setProperty("vaporViewReducedMotion", true);
+            status->click();
+            require(animation->duration() == 150, "navigation respects the shared reduced-motion duration");
+            animation->setCurrentTime(animation->duration() / 2);
+            require(std::abs(thumb->width() - status->width()) <= 1 && thumb->height() == status->height(),
+                    "reduced-motion navigation slides without deforming the thumb");
+            animation->setCurrentTime(animation->duration());requireSelected(status);
+            app.setProperty("vaporViewReducedMotion", originalReducedMotion);
             for(int index=0;index<3;++index) {
                 auto *tab=navigation->findChild<QPushButton*>(QStringLiteral("epsilonSettingsTab_%1").arg(index));
                 clickWidget(tab,0);requireSelected(tab);
@@ -4854,6 +4903,7 @@ int main(int argc, char **argv)
                                     parameterRecorder.paintedOnlyAtHeight(parameterCard->height()),
                                 "installation parameter card paints only its final height from output and fusion pages");
                         requireParameterCardGaps(0);
+                        requireHeaderButtons();
                     }
                 }
             }
@@ -4969,6 +5019,19 @@ int main(int argc, char **argv)
             triggerFontScaleAction(combinationWindow, 100);processEventsFor(100);
             navigation->setEnglish(originalEnglish);processEventsFor(80);
             combinationWindow.resize(1280, 800);processEventsFor(120);
+            const bool originalDark = VaporView::isDarkThemeEnabled();
+            require(QMetaObject::invokeMethod(&combinationWindow, "onToggleTheme", Qt::DirectConnection),
+                    "parameter header can be checked in both themes");
+            for (int scale : {100, 130})
+            {
+                triggerFontScaleAction(combinationWindow, scale);processEventsFor(100);
+                advanced->click();requireSelected(advanced);
+                requireHeaderButtons();
+            }
+            require(QMetaObject::invokeMethod(&combinationWindow, "onToggleTheme", Qt::DirectConnection) &&
+                        VaporView::isDarkThemeEnabled() == originalDark,
+                    "parameter header validation restores the original theme");
+            triggerFontScaleAction(combinationWindow, 100);processEventsFor(100);
             epsilonScroll->verticalScrollBar()->setValue(originalScroll);
             navigation->setCurrentSection(originalSection);
             mainStack->setCurrentWidget(originalMainPage);processEventsFor(80);

@@ -2,6 +2,7 @@
 
 #include "ground/navigation/EpsilonConfigPanel.h"
 #include "ground/rtk/RtkConfigDialog.h"
+#include "ground/widgets/SegmentedSwitchMotion.h"
 #include "shared/theme/AppTheme.h"
 
 #include <QApplication>
@@ -17,7 +18,7 @@
 #include <QPainter>
 #include <QPaintEvent>
 #include <QPen>
-#include <QPropertyAnimation>
+#include <QVariantAnimation>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSignalBlocker>
@@ -39,7 +40,6 @@ constexpr int kPageVerticalInset = 4;
 constexpr int kSectionGap = 12;
 constexpr int kNavigationBarHeight = 36;
 constexpr int kNavigationRowHeight = kNavigationBarHeight + (kPageVerticalInset * 2);
-constexpr int kNavigationSelectionAnimationDurationMs = 240;
 
 void prepareStackPageForShow(QStackedWidget *stack, QWidget *page)
 {
@@ -134,11 +134,20 @@ protected:
         const QPointF baseline(buttonRect.center().x() - textBounds.center().x(),
                                buttonRect.center().y() - textBounds.center().y());
         const bool dark = VaporView::isDarkThemeEnabled();
-        const auto textColor = !isEnabled()
+        auto textColor = !isEnabled()
             ? VaporView::appThemeColor(VaporView::AppThemeColor::TextDisabled, dark)
             : VaporView::appThemeColor(
                 isChecked() ? VaporView::AppThemeColor::Primary : VaporView::AppThemeColor::White,
                 dark);
+        if (isEnabled() && property("combinationNavigationSelectionProgress").isValid())
+        {
+            const qreal progress = property("combinationNavigationSelectionProgress").toReal();
+            const auto inactive = VaporView::appThemeColor(VaporView::AppThemeColor::White, dark);
+            const auto active = VaporView::appThemeColor(VaporView::AppThemeColor::Primary, dark);
+            textColor.setRgbF(inactive.redF() + (active.redF() - inactive.redF()) * progress,
+                             inactive.greenF() + (active.greenF() - inactive.greenF()) * progress,
+                             inactive.blueF() + (active.blueF() - inactive.blueF()) * progress);
+        }
         painter.setPen(textColor);
         painter.drawText(baseline, buttonText);
 
@@ -312,13 +321,15 @@ CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, 
     navigation_selection_thumb_->setAttribute(Qt::WA_TransparentForMouseEvents);
     navigation_selection_thumb_->setAttribute(Qt::WA_TranslucentBackground);
     navigation_selection_thumb_->setAutoFillBackground(false);
-    navigation_selection_animation_ =
-        new QPropertyAnimation(navigation_selection_thumb_, "geometry", this);
+    navigation_selection_animation_ = new QVariantAnimation(this);
     navigation_selection_animation_->setObjectName(
         QStringLiteral("combinationNavigationNavigationSelectionAnimation"));
-    navigation_selection_animation_->setDuration(kNavigationSelectionAnimationDurationMs);
-    navigation_selection_animation_->setEasingCurve(QEasingCurve::OutCubic);
-    connect(navigation_selection_animation_, &QPropertyAnimation::finished, this, [this]() {
+    navigation_selection_animation_->setDuration(Widgets::kSegmentedSwitchAnimationDurationMs);
+    navigation_selection_animation_->setEasingCurve(QEasingCurve::Linear);
+    connect(navigation_selection_animation_, &QVariantAnimation::valueChanged, this, [this](const QVariant& value) {
+        updateNavigationSelectionFrame(value.toReal());
+    });
+    connect(navigation_selection_animation_, &QVariantAnimation::finished, this, [this]() {
         syncNavigationSelectionThumb(false);
     });
 
@@ -611,23 +622,70 @@ void CombinationNavigationPage::syncNavigationSelectionThumb(bool animated)
 
     navigation_selection_thumb_->show();
     navigation_selection_thumb_->lower();
-    const QRect currentGeometry = navigation_selection_thumb_->geometry();
-    if (!animated || currentGeometry.isNull())
+    if (!animated || navigation_thumb_rect_.isNull())
     {
         navigation_selection_animation_->stop();
-        navigation_selection_thumb_->setGeometry(targetGeometry);
+        navigation_thumb_start_rect_ = targetGeometry;
+        navigation_thumb_target_rect_ = targetGeometry;
+        navigation_thumb_start_scale_x_ = navigation_thumb_start_scale_y_ = 1.0;
+        updateNavigationSelectionFrame(1.0);
         return;
     }
 
-    if (currentGeometry == targetGeometry)
+    if (navigation_thumb_target_rect_ == targetGeometry &&
+        navigation_selection_animation_->state() == QAbstractAnimation::Running)
+        return;
+    if (navigation_thumb_rect_ == targetGeometry && navigation_thumb_scale_x_ == 1.0 &&
+        navigation_thumb_scale_y_ == 1.0)
     {
         return;
     }
 
     navigation_selection_animation_->stop();
-    navigation_selection_animation_->setStartValue(currentGeometry);
-    navigation_selection_animation_->setEndValue(targetGeometry);
+    navigation_thumb_start_rect_ = navigation_thumb_rect_;
+    const QRectF currentBounds(navigation_selection_thumb_->geometry());
+    navigation_thumb_start_rect_.moveLeft(targetGeometry.left() >= navigation_thumb_rect_.left()
+        ? currentBounds.left() : currentBounds.right() - navigation_thumb_rect_.width());
+    navigation_thumb_target_rect_ = targetGeometry;
+    navigation_thumb_start_scale_x_ = navigation_thumb_scale_x_;
+    navigation_thumb_start_scale_y_ = navigation_thumb_scale_y_;
+    navigation_selection_animation_->setDuration(qApp->property("vaporViewReducedMotion").toBool()
+        ? Widgets::kSegmentedSwitchReducedMotionDurationMs : Widgets::kSegmentedSwitchAnimationDurationMs);
+    navigation_selection_animation_->setStartValue(0.0);
+    navigation_selection_animation_->setEndValue(1.0);
     navigation_selection_animation_->start();
+}
+
+void CombinationNavigationPage::updateNavigationSelectionFrame(qreal progress)
+{
+    const bool reducedMotion = qApp->property("vaporViewReducedMotion").toBool();
+    const auto motion = Widgets::sampleSegmentedSwitchMotion(
+        progress, navigation_thumb_start_rect_.left(), navigation_thumb_target_rect_.left(),
+        navigation_thumb_start_scale_x_, navigation_thumb_start_scale_y_,
+        std::clamp(navigation_thumb_target_rect_.width() * 2.0 * 0.014, 2.0, 3.5), reducedMotion);
+    navigation_thumb_scale_x_ = motion.scale_x;
+    navigation_thumb_scale_y_ = motion.scale_y;
+    navigation_thumb_rect_ = QRectF(motion.position, navigation_thumb_target_rect_.top(),
+        navigation_thumb_start_rect_.width() +
+            (navigation_thumb_target_rect_.width() - navigation_thumb_start_rect_.width()) * progress,
+        navigation_thumb_target_rect_.height());
+    QRectF bounds = navigation_thumb_rect_;
+    const qreal scaledWidth = bounds.width() * motion.scale_x;
+    if (navigation_thumb_target_rect_.left() >= navigation_thumb_start_rect_.left())
+        bounds.setWidth(scaledWidth);
+    else
+        bounds.setLeft(bounds.right() - scaledWidth);
+    bounds.setTop(navigation_thumb_rect_.center().y() - navigation_thumb_rect_.height() * motion.scale_y / 2.0);
+    bounds.setBottom(navigation_thumb_rect_.center().y() + navigation_thumb_rect_.height() * motion.scale_y / 2.0);
+    navigation_selection_thumb_->setGeometry(bounds.toRect());
+    for (auto *button : section_group_->buttons())
+    {
+        const qreal coverage = std::clamp(1.0 - std::abs(
+            QRectF(button->geometry()).center().x() - navigation_thumb_rect_.center().x()) /
+            std::max<qreal>(1.0, button->width()), 0.0, 1.0);
+        button->setProperty("combinationNavigationSelectionProgress", coverage);
+        button->update();
+    }
 }
 
 QWidget *CombinationNavigationPage::createStatusPage()

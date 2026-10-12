@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ground/widgets/SegmentedSwitchMotion.h"
+
 #include <QPushButton>
 #include <QSize>
 #include <QString>
@@ -85,7 +87,7 @@ private:
     qreal thumb_overshoot_position_ = 0.0;
     qreal press_progress_ = 0.0;
     int thumb_direction_ = 1;
-    int animation_duration_ms_ = 480;
+    int animation_duration_ms_ = kSegmentedSwitchAnimationDurationMs;
     bool reduced_motion_enabled_ = false;
     QVariantAnimation *thumb_animation_ = nullptr;
     QVariantAnimation *press_animation_ = nullptr;

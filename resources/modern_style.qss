@@ -1235,6 +1235,11 @@ QPushButton:disabled {
     color: @vv-white;
 }
 
+QWidget#epsilonActionsContainer QPushButton[epsilonSecondaryAction="true"] {
+    min-height: 26px;
+    max-height: 26px;
+}
+
 QPushButton#compactTcpButton {
     padding: 4px 14px;
     min-height: 28px;
