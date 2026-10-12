@@ -155,6 +155,7 @@ public:
     void reset()
     {
         observed_heights_.clear();
+        painted_heights_.clear();
     }
 
     bool observedHeightDifferentFrom(int expectedHeight) const
@@ -167,6 +168,13 @@ public:
             });
     }
 
+    bool paintedOnlyAtHeight(int expectedHeight) const
+    {
+        return !painted_heights_.isEmpty() &&
+            std::all_of(painted_heights_.cbegin(), painted_heights_.cend(),
+                        [expectedHeight](int height) { return height == expectedHeight; });
+    }
+
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override
     {
@@ -175,12 +183,17 @@ protected:
             observed_heights_.append(
                 static_cast<QResizeEvent *>(event)->size().height());
         }
+        if (watched == target_ && event->type() == QEvent::Paint)
+        {
+            painted_heights_.append(target_->height());
+        }
         return QObject::eventFilter(watched, event);
     }
 
 private:
     QWidget *target_;
     QVector<int> observed_heights_;
+    QVector<int> painted_heights_;
 };
 
 class ResizeWidthRecorder final : public QObject
@@ -4777,6 +4790,34 @@ int main(int argc, char **argv)
                 clickWidget(tab,0);requireSelected(tab);
                 require(navigation->currentSection()==VaporView::Ground::Navigation::CombinationNavigationPage::Section::Epsilon&&pages->currentIndex()==index,"unified tab selection opens the corresponding EPSILON page");
             }
+            auto *parameterCard = navigation->findChild<QFrame *>(QStringLiteral("epsilonParameterActionsCard"));
+            auto *installation = navigation->findChild<QPushButton *>(QStringLiteral("epsilonSettingsTab_1"));
+            require(parameterCard && installation, "installation page exposes its shared parameter card");
+            ResizeHeightRecorder parameterRecorder(parameterCard);
+            parameterCard->installEventFilter(&parameterRecorder);
+            for (int scale : {100, 130})
+            {
+                triggerFontScaleAction(combinationWindow, scale);processEventsFor(100);
+                for (int width : {1280, 1600})
+                {
+                    combinationWindow.resize(width, 800);processEventsFor(100);
+                    for (int sourceIndex : {0, 2})
+                    {
+                        auto *source = navigation->findChild<QPushButton *>(QStringLiteral("epsilonSettingsTab_%1").arg(sourceIndex));
+                        clickWidget(source, 0);processEventsFor(150);
+                        parameterRecorder.reset();
+                        clickWidget(installation, 0);
+                        const int initialHeight = parameterCard->height();
+                        processEventsFor(200);
+                        require(initialHeight == parameterCard->height() &&
+                                    parameterRecorder.paintedOnlyAtHeight(parameterCard->height()),
+                                "installation parameter card paints only its final height from output and fusion pages");
+                    }
+                }
+            }
+            parameterCard->removeEventFilter(&parameterRecorder);
+            triggerFontScaleAction(combinationWindow, 100);processEventsFor(100);
+            combinationWindow.resize(1280, 800);processEventsFor(100);
             clickWidget(advanced,0);requireSelected(advanced);
             auto *maintenance=navigation->findChild<QFrame*>(QStringLiteral("epsilonMaintenanceCard"));
             auto *groups=navigation->findChild<QComboBox*>(QStringLiteral("epsilonAdvancedGroupCombo"));

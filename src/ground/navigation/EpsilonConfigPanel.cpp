@@ -8,6 +8,7 @@
 #include "shared/theme/TopLevelCardStyle.h"
 
 #include <QComboBox>
+#include <QCoreApplication>
 #include <QCheckBox>
 #include <QDoubleSpinBox>
 #include <QButtonGroup>
@@ -997,6 +998,8 @@ void EpsilonConfigPanel::updateSettingsNavigationVisibility()
 
 void EpsilonConfigPanel::setCurrentSettingsPage(int index)
 {
+    const bool restoreUpdates = updatesEnabled();
+    if (restoreUpdates) setUpdatesEnabled(false);
     pages_->setCurrentIndex(index);
     auto *rootLayout = qobject_cast<QVBoxLayout *>(layout());
     rootLayout->removeWidget(actions_container_);
@@ -1008,10 +1011,23 @@ void EpsilonConfigPanel::setCurrentSettingsPage(int index)
     else
         headerLayout->addWidget(actions_container_, 0, Qt::AlignRight | Qt::AlignVCenter);
     settings_actions_card_->setVisible(index != 0);
-    arrangeSettingsFields(width() >= 760);
-    pages_->updateGeometry();
     updateSettingsTexts();
     updateSettingsControls();
+    arrangeSettingsFields(width() >= 760);
+    // Settle the outgoing/incoming hints and their size hints before painting
+    // resumes; otherwise the shared card can render both hints' combined height.
+    const auto children = findChildren<QObject *>();
+    for (auto child = children.crbegin(); child != children.crend(); ++child)
+        QCoreApplication::sendPostedEvents(*child, QEvent::LayoutRequest);
+    arrangeAdvancedFields();
+    for (QWidget *widget = this; widget; widget = widget->parentWidget())
+    {
+        QCoreApplication::sendPostedEvents(widget, QEvent::LayoutRequest);
+        if (widget->layout()) widget->layout()->activate();
+        widget->updateGeometry();
+        if (widget->objectName() == QStringLiteral("epsilonConfigScrollArea")) break;
+    }
+    if (restoreUpdates) setUpdatesEnabled(true);
 }
 
 void EpsilonConfigPanel::createSettingsPages()
