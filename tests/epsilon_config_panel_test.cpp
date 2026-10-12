@@ -318,6 +318,8 @@ int main(int argc, char *argv[])
                 liveRateRect.left() - summaryRect.right() - 1 == communicationPage->layout()->spacing() &&
                 liveRateRect.width() > summaryRect.width(),
             "summary and live packet rates share one row with more space for the rates");
+    require(summaryRect.width() <= summaryCard->sizeHint().width() + 1,
+            "configuration summary stays at its content width instead of consuming spare row space");
     require(liveRateTitle->font() == summaryCard->findChild<QLabel *>(QStringLiteral("sectionTitleLabel"))->font(),
             "summary and live packet-rate titles use the same font");
     int liveRateValueCount = 0;

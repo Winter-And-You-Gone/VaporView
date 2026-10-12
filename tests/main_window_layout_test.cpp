@@ -4910,6 +4910,9 @@ int main(int argc, char **argv)
                         navigation->setEnglish(english);processEventsFor(80);
                         require(liveTitle->font() == summaryTitle->font() && liveTitle->font().bold(),
                                 "live packet-rate title shares the standard font and weight in both languages and scales");
+                        if (cardRect(summary).top() == cardRect(liveRates).top())
+                            require(summary->width() <= summary->sizeHint().width() + 1,
+                                    "configuration summary keeps a compact content width at every language and scale");
                         for (auto *title : {summaryTitle, liveTitle})
                             require(title->width() >= title->fontMetrics().horizontalAdvance(title->text()),
                                     "overview titles remain fully visible in both languages");

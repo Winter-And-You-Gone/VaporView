@@ -475,8 +475,8 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     overview_grid_ = new QGridLayout(overview);
     overview_grid_->setContentsMargins(0, 0, 0, 0);
     overview_grid_->setSpacing(kCardGap);
-    overview_grid_->setColumnStretch(0, 1);
-    overview_grid_->setColumnStretch(1, 2);
+    overview_grid_->setColumnStretch(0, 0);
+    overview_grid_->setColumnStretch(1, 1);
     communicationLayout->addWidget(overview);
 
     const SectionCard summaryCard = createSectionCard(
@@ -2104,6 +2104,12 @@ void EpsilonConfigPanel::arrangeOverviewCards()
 {
     if (!overview_grid_ || live_packet_rate_fields_.isEmpty()) return;
 
+    // Resolve nested title/body size hints before allocating the compact summary column.
+    const auto summaryWidgets = summary_card_->findChildren<QWidget *>();
+    for (auto it = summaryWidgets.crbegin(); it != summaryWidgets.crend(); ++it)
+        QCoreApplication::sendPostedEvents(*it, QEvent::LayoutRequest);
+    QCoreApplication::sendPostedEvents(summary_card_, QEvent::LayoutRequest);
+
     const auto requiredLiveWidth = [this](int columns) {
         QVector<int> widths(columns, 0);
         for (int index = 0; index < live_packet_rate_fields_.size(); ++index)
@@ -2119,11 +2125,11 @@ void EpsilonConfigPanel::arrangeOverviewCards()
         return required;
     };
     const int gap = overview_grid_->horizontalSpacing();
-    const int summaryWidth = summary_card_->minimumSizeHint().width();
+    const int summaryWidth = summary_card_->sizeHint().width();
     const int twoColumnLiveWidth = requiredLiveWidth(2);
     const bool sideBySide = width() >= summaryWidth + gap + twoColumnLiveWidth;
     const int liveWidth = sideBySide
-        ? std::max(twoColumnLiveWidth, std::min(width() - gap - summaryWidth, (width() - gap) * 2 / 3))
+        ? width() - gap - summaryWidth
         : width();
     int liveColumns = 1;
     while (liveColumns < kLivePacketVisualColumnCount &&
@@ -2131,11 +2137,15 @@ void EpsilonConfigPanel::arrangeOverviewCards()
     {
         ++liveColumns;
     }
-    if (live_packet_rate_columns_ == liveColumns && overview_side_by_side_ == sideBySide) return;
+    if (live_packet_rate_columns_ == liveColumns && overview_side_by_side_ == sideBySide &&
+        (!sideBySide || summary_card_->width() == summaryWidth)) return;
 
     overview_side_by_side_ = sideBySide;
+    summary_card_->setSizePolicy(sideBySide ? QSizePolicy::Maximum : QSizePolicy::Expanding,
+                                 QSizePolicy::Preferred);
     overview_grid_->removeWidget(live_packet_rate_card_);
-    overview_grid_->setColumnStretch(1, sideBySide ? 2 : 0);
+    overview_grid_->setColumnStretch(0, sideBySide ? 0 : 1);
+    overview_grid_->setColumnStretch(1, sideBySide ? 1 : 0);
     overview_grid_->addWidget(live_packet_rate_card_, sideBySide ? 0 : 1, sideBySide ? 1 : 0);
     live_packet_rate_columns_ = liveColumns;
     for (int column = 0; column < kLivePacketVisualColumnCount; ++column)
@@ -2155,7 +2165,9 @@ void EpsilonConfigPanel::arrangeOverviewCards()
         }
         live_packet_rate_grid_->addWidget(field, row, column);
     }
+    summary_card_->updateGeometry();
     overview_grid_->invalidate();
+    overview_grid_->activate();
 }
 
 void EpsilonConfigPanel::arrangePacketFields(bool twoColumns)
