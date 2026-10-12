@@ -4744,6 +4744,59 @@ int main(int argc, char **argv)
         combinationWindow.resize(1280, 800);
         processEventsFor(150);
         activateLayouts(embeddedRtk);
+        {
+            auto *navigation=combinationWindow.findChild<VaporView::Ground::Navigation::CombinationNavigationPage*>();
+            auto *mainStack=combinationWindow.findChild<QStackedWidget*>(QStringLiteral("mainPageStack"));
+            auto *originalMainPage=mainStack->currentWidget();
+            const auto originalSection=navigation->currentSection();
+            mainStack->setCurrentWidget(navigation);processEventsFor(80);
+            auto *track=navigation->findChild<QFrame*>(QStringLiteral("combinationNavigationNavigationTrack"));
+            auto *thumb=navigation->findChild<QFrame*>(QStringLiteral("combinationNavigationNavigationSelectionThumb"));
+            auto *animation=navigation->findChild<QPropertyAnimation*>(QStringLiteral("combinationNavigationNavigationSelectionAnimation"));
+            auto *pages=navigation->findChild<QStackedWidget*>(QStringLiteral("epsilonSettingsPages"));
+            auto *advanced=navigation->findChild<QPushButton*>(QStringLiteral("epsilonAdvancedFeaturesButton"));
+            auto *status=navigation->findChild<QPushButton*>(QStringLiteral("combinationNavigationStatusButton"));
+            auto *differential=navigation->findChild<QPushButton*>(QStringLiteral("combinationNavigationDifferentialButton"));
+            require(track&&thumb&&animation&&pages&&advanced&&!advanced->isCheckable(),"advanced disclosure is separate from page selection");
+            const auto requireSelected=[&](QPushButton *expected) {
+                const bool settled=processEventsUntil(1500,[&]() {
+                    return animation->state()==QAbstractAnimation::Stopped&&thumb->geometry()==expected->geometry();
+                });
+                int selected=0;
+                for(auto *button:track->findChildren<QPushButton*>(QString(),Qt::FindDirectChildrenOnly))if(button->isChecked()) {
+                    ++selected;require(button==expected&&button->isVisible(),"only the active visible navigation entry is checked");
+                }
+                require(selected==1&&settled,"shared navigation has one highlight and its thumb follows the active entry");
+            };
+            for(int index=0;index<3;++index) {
+                auto *tab=navigation->findChild<QPushButton*>(QStringLiteral("epsilonSettingsTab_%1").arg(index));
+                clickWidget(tab,0);requireSelected(tab);
+                require(navigation->currentSection()==VaporView::Ground::Navigation::CombinationNavigationPage::Section::Epsilon&&pages->currentIndex()==index,"unified tab selection opens the corresponding EPSILON page");
+            }
+            auto *fusion=navigation->findChild<QPushButton*>(QStringLiteral("epsilonSettingsTab_2"));
+            clickWidget(advanced,0);requireSelected(fusion);
+            require(pages->currentIndex()==2,"expanding advanced features preserves the active page");
+            for(int index=3;index<5;++index) {
+                auto *tab=navigation->findChild<QPushButton*>(QStringLiteral("epsilonSettingsTab_%1").arg(index));
+                require(tab&&tab->isVisible(),"expanded advanced entries are visible");
+                clickWidget(tab,0);requireSelected(tab);
+                require(pages->currentIndex()==index,"advanced entry selects its corresponding page");
+            }
+            clickWidget(advanced,0);
+            auto *communication=navigation->findChild<QPushButton*>(QStringLiteral("epsilonSettingsTab_0"));
+            requireSelected(communication);
+            require(pages->currentIndex()==0,"collapsing a hidden advanced page returns to communication with one highlight");
+            clickWidget(advanced,0);
+            clickWidget(navigation->findChild<QPushButton*>(QStringLiteral("epsilonSettingsTab_3")),0);
+            clickWidget(status,0);requireSelected(status);
+            require(navigation->currentSection()==VaporView::Ground::Navigation::CombinationNavigationPage::Section::Status,"clearing advanced navigation cannot route back into EPSILON");
+            clickWidget(advanced,0);requireSelected(status);
+            require(navigation->currentSection()==VaporView::Ground::Navigation::CombinationNavigationPage::Section::Status,"advanced disclosure does not select a different content page");
+            clickWidget(navigation->findChild<QPushButton*>(QStringLiteral("epsilonSettingsTab_4")),0);
+            clickWidget(differential,0);requireSelected(differential);
+            navigation->setCurrentSection(originalSection);
+            mainStack->setCurrentWidget(originalMainPage);processEventsFor(80);
+        }
         combinationWindow.close();
         require(processEventsUntil(1000, [&combinationWindow]() {
                     return !combinationWindow.isVisible();

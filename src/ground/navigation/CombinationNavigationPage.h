@@ -65,6 +65,7 @@ private:
     void updateTexts();
     void applyAppearance();
     void syncNavigationSelectionThumb(bool animated);
+    void activateNavigationPage(Section section, QPushButton *selection);
 
     bool is_english_ = false;
     QButtonGroup *section_group_ = nullptr;

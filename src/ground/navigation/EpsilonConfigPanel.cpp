@@ -859,23 +859,10 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
         else emit settingsReadRequested(currentSettingsGroup());
     });
     connect(device_restart_button_, &QPushButton::clicked, this, &EpsilonConfigPanel::deviceRestartRequested);
-    connect(tabGroup, &QButtonGroup::idClicked, this, [this](int index) {
-        pages_->setCurrentIndex(index);
-        auto *rootLayout = qobject_cast<QVBoxLayout *>(layout());
-        rootLayout->removeWidget(actions_container_);
-        auto *headerLayout = qobject_cast<QHBoxLayout *>(settings_actions_host_->layout());
-        headerLayout->removeWidget(actions_container_);
-        settings_actions_body_->layout()->removeWidget(actions_container_);
-        if (index == 0)
-            rootLayout->addWidget(actions_container_);
-        else
-            headerLayout->addWidget(actions_container_, 0, Qt::AlignRight | Qt::AlignVCenter);
-        settings_actions_card_->setVisible(index != 0);
-        arrangeSettingsFields(width() >= 760);
-        pages_->updateGeometry();
-        updateSettingsTexts();
-        updateSettingsControls();
-    });
+    for (int index = 0; index < page_buttons_.size(); ++index)
+        connect(page_buttons_[index], &QPushButton::clicked, this, [this, index]() {
+            setCurrentSettingsPage(index);
+        });
     connect(rtcm_port_button_, &QPushButton::clicked, this, &EpsilonConfigPanel::rtcmPortRequested);
     connect(reconfigure_button_, &QPushButton::clicked, this, &EpsilonConfigPanel::reconfigureRequested);
 
@@ -917,6 +904,10 @@ QVector<QPushButton *> EpsilonConfigPanel::takeSettingsNavigationButtons(QWidget
     QVector<QPushButton *> buttons = page_buttons_;
     if (advanced_features_button_)
     {
+        advanced_features_button_->setCheckable(false);
+        connect(advanced_features_button_, &QPushButton::clicked, this, [this]() {
+            setAdvancedFeaturesExpanded(!advanced_features_expanded_);
+        });
         buttons.append(advanced_features_button_);
     }
     for (QPushButton *button : buttons)
@@ -961,9 +952,12 @@ void EpsilonConfigPanel::clearSettingsNavigationSelection()
         const QSignalBlocker blocker(button);
         button->setChecked(false);
     }
-    if (advanced_features_button_ && advanced_features_button_->isChecked())
+    if (advanced_features_expanded_)
     {
-        advanced_features_button_->setChecked(false);
+        if (advanced_features_button_->isCheckable())
+            advanced_features_button_->setChecked(false);
+        else
+            setAdvancedFeaturesExpanded(false);
     }
     if (settings_tab_group_ && wasExclusive)
     {
@@ -1000,8 +994,30 @@ void EpsilonConfigPanel::setAdvancedFeaturesExpanded(bool expanded)
     }
     updateSettingsNavigationVisibility();
     if (!expanded && pages_ && pages_->currentIndex() >= 3 && !page_buttons_.isEmpty())
-        page_buttons_.first()->click();
+    {
+        setCurrentSettingsPage(0);
+        page_buttons_.first()->setChecked(true);
+    }
     if (pages_) pages_->updateGeometry();
+    updateSettingsTexts();
+    updateSettingsControls();
+}
+
+void EpsilonConfigPanel::setCurrentSettingsPage(int index)
+{
+    pages_->setCurrentIndex(index);
+    auto *rootLayout = qobject_cast<QVBoxLayout *>(layout());
+    rootLayout->removeWidget(actions_container_);
+    auto *headerLayout = qobject_cast<QHBoxLayout *>(settings_actions_host_->layout());
+    headerLayout->removeWidget(actions_container_);
+    settings_actions_body_->layout()->removeWidget(actions_container_);
+    if (index == 0)
+        rootLayout->addWidget(actions_container_);
+    else
+        headerLayout->addWidget(actions_container_, 0, Qt::AlignRight | Qt::AlignVCenter);
+    settings_actions_card_->setVisible(index != 0);
+    arrangeSettingsFields(width() >= 760);
+    pages_->updateGeometry();
     updateSettingsTexts();
     updateSettingsControls();
 }

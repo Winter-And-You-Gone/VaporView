@@ -86,6 +86,7 @@ private:
     void updateTexts();
     void createSettingsPages();
     void setAdvancedFeaturesExpanded(bool expanded);
+    void setCurrentSettingsPage(int index);
     void updateSettingsNavigationVisibility();
     void updateSettingsTexts();
     void updateSettingsControls();

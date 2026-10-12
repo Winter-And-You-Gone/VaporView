@@ -242,33 +242,6 @@ protected:
     }
 };
 
-class CombinationNavigationTrack final : public QFrame
-{
-public:
-    using QFrame::QFrame;
-
-protected:
-    void paintEvent(QPaintEvent *event) override
-    {
-        QFrame::paintEvent(event);
-        QPainter painter(this);
-        painter.setRenderHint(QPainter::Antialiasing, true);
-        painter.setPen(Qt::NoPen);
-        painter.setBrush(VaporView::appThemeColor(
-            VaporView::AppThemeColor::Surface, VaporView::isDarkThemeEnabled()));
-        for (QPushButton *button : findChildren<QPushButton *>(QString(), Qt::FindDirectChildrenOnly))
-        {
-            if (!button->property("epsilonUnifiedNavigationButton").toBool() ||
-                !button->isChecked())
-            {
-                continue;
-            }
-            const QRectF bounds = QRectF(button->geometry()).adjusted(0.5, 0.5, -0.5, -0.5);
-            painter.drawRoundedRect(bounds, bounds.height() / 2.0, bounds.height() / 2.0);
-        }
-    }
-};
-
 } // namespace
 
 QPushButton *createNavigationSectionButton(QWidget *parent)
@@ -320,7 +293,7 @@ CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, 
     navigationBarLayout->setContentsMargins(2, 2, 2, 2);
     navigationBarLayout->setSpacing(0);
 
-    auto *navigationTrack = new CombinationNavigationTrack(navigationBar);
+    auto *navigationTrack = new QFrame(navigationBar);
     navigationTrack->setObjectName(QStringLiteral("combinationNavigationNavigationTrack"));
     prepareStyledBackground(navigationTrack);
     navigationTrack->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -345,6 +318,9 @@ CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, 
         QStringLiteral("combinationNavigationNavigationSelectionAnimation"));
     navigation_selection_animation_->setDuration(kNavigationSelectionAnimationDurationMs);
     navigation_selection_animation_->setEasingCurve(QEasingCurve::OutCubic);
+    connect(navigation_selection_animation_, &QPropertyAnimation::finished, this, [this]() {
+        syncNavigationSelectionThumb(false);
+    });
 
     section_group_ = new QButtonGroup(this);
     section_group_->setExclusive(true);
@@ -406,6 +382,7 @@ CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, 
     epsilon_config_panel_ = new EpsilonConfigPanel(epsilonContent);
     const QVector<QPushButton *> epsilonNavigationButtons =
         epsilon_config_panel_->takeSettingsNavigationButtons(navigationTrack);
+    int settingsButtonId = 3;
     for (QPushButton *button : epsilonNavigationButtons)
     {
         if (!button)
@@ -414,9 +391,10 @@ CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, 
         }
         button->setProperty("epsilonUnifiedNavigationButton", true);
         navigationLayout->addWidget(button, 1);
-        connect(button, &QPushButton::clicked, this, [this]() {
-            setCurrentSection(Section::Epsilon);
-        });
+        if (button->isCheckable())
+        {
+            section_group_->addButton(button, settingsButtonId++);
+        }
         button->raise();
     }
     // Keep the shared capsule structurally stable across all three content pages.
@@ -440,7 +418,13 @@ CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, 
     navigationRow->raise();
 
     connect(section_group_, &QButtonGroup::idClicked, this, [this](int id) {
-        setCurrentSection(static_cast<Section>(id));
+        if (id < 3)
+            setCurrentSection(static_cast<Section>(id));
+        else
+            activateNavigationPage(Section::Epsilon, qobject_cast<QPushButton *>(section_group_->button(id)));
+    });
+    connect(section_group_, &QButtonGroup::buttonToggled, this, [this](QAbstractButton *, bool checked) {
+        if (checked) syncNavigationSelectionThumb(true);
     });
     QWidget::setTabOrder(status_button_, epsilon_button_);
     QWidget::setTabOrder(epsilon_button_, differential_button_);
@@ -475,6 +459,11 @@ EpsilonConfigPanel *CombinationNavigationPage::epsilonConfigPanel() const
 }
 
 void CombinationNavigationPage::setCurrentSection(Section section)
+{
+    activateNavigationPage(section, qobject_cast<QPushButton *>(section_group_->button(static_cast<int>(section))));
+}
+
+void CombinationNavigationPage::activateNavigationPage(Section section, QPushButton *selection)
 {
     const int index = static_cast<int>(section);
     if (!stack_ || index < 0 || index >= stack_->count())
@@ -511,12 +500,12 @@ void CombinationNavigationPage::setCurrentSection(Section section)
     {
         settleStackPageForShow(stack_, stack_->widget(index));
     }
-    if (QPushButton *button = qobject_cast<QPushButton *>(section_group_->button(index)))
+    if (selection)
     {
-        const QSignalBlocker blocker(button);
-        button->setChecked(true);
+        const QSignalBlocker blocker(selection);
+        selection->setChecked(true);
     }
-    syncNavigationSelectionThumb(changed);
+    syncNavigationSelectionThumb(true);
     if (section == Section::Status || section == Section::Epsilon)
     {
         refreshStatus();
@@ -608,7 +597,7 @@ void CombinationNavigationPage::syncNavigationSelectionThumb(bool animated)
         return;
     }
 
-    auto *button = qobject_cast<QPushButton *>(section_group_->button(stack_->currentIndex()));
+    auto *button = qobject_cast<QPushButton *>(section_group_->checkedButton());
     if (!button)
     {
         return;
