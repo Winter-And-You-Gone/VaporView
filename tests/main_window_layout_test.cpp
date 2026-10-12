@@ -4897,12 +4897,52 @@ int main(int argc, char **argv)
                     combinationWindow.resize(width, 800);processEventsFor(120);
                     clickWidget(advanced, 0);groups->setCurrentIndex(2);processEventsFor(120);
                     clickWidget(communication, 0);requireSelected(communication);processEventsFor(120);
-                    navigation->setEnglish(true);processEventsFor(80);
-                    navigation->setEnglish(false);processEventsFor(80);
-                    const auto communicationCards = pages->currentWidget()->findChildren<QFrame *>(QString(), Qt::FindDirectChildrenOnly);
-                    for (int index = 1; index < communicationCards.size(); ++index)
-                        require(cardRect(communicationCards[index]).top() - cardRect(communicationCards[index - 1]).bottom() - 1 == cardGap,
-                                "communication cards use the status-page vertical gap");
+                    auto *overview = navigation->findChild<QWidget *>(QStringLiteral("epsilonCommunicationOverview"));
+                    require(overview != nullptr, "communication overview row exists");
+                    auto *summary = overview->findChild<QFrame *>(QStringLiteral("epsilonStatusCard"));
+                    auto *liveRates = overview->findChild<QFrame *>(QStringLiteral("epsilonLivePacketRateCard"));
+                    require(summary && liveRates, "overview row contains both cards");
+                    auto *summaryTitle = summary->findChild<QLabel *>(QStringLiteral("sectionTitleLabel"));
+                    auto *liveTitle = liveRates->findChild<QLabel *>(QStringLiteral("sectionTitleLabel"));
+                    require(summaryTitle && liveTitle, "overview cards have standard titles");
+                    for (bool english : {true, false})
+                    {
+                        navigation->setEnglish(english);processEventsFor(80);
+                        require(liveTitle->font() == summaryTitle->font() && liveTitle->font().bold(),
+                                "live packet-rate title shares the standard font and weight in both languages and scales");
+                        for (auto *title : {summaryTitle, liveTitle})
+                            require(title->width() >= title->fontMetrics().horizontalAdvance(title->text()),
+                                    "overview titles remain fully visible in both languages");
+                        for (auto *field : liveRates->findChildren<QWidget *>())
+                            if (field->property("epsilonLivePacketRateField").toBool())
+                            {
+                                require(liveRates->rect().contains(QRect(field->mapTo(liveRates, QPoint()), field->size())),
+                                        "live packet-rate fields remain inside their card");
+                                for (auto *label : field->findChildren<QLabel *>())
+                                    require(field->rect().contains(QRect(label->mapTo(field, QPoint()), label->size())) &&
+                                                label->width() >= label->fontMetrics().horizontalAdvance(label->text()),
+                                            "live packet-rate text remains fully visible after scaling and language changes");
+                            }
+                    }
+                    const QRect summaryRect = cardRect(summary);
+                    const QRect liveRect = cardRect(liveRates);
+                    if (width == 1600)
+                        require(summaryRect.top() == liveRect.top(),
+                                "summary and live packet rates share a row in the wide main window");
+                    if (summaryRect.top() == liveRect.top())
+                        require(liveRect.left() - summaryRect.right() - 1 == cardGap &&
+                                    liveRect.bottom() == summaryRect.bottom(),
+                                "overview cards share the status-page gap and aligned bottoms");
+                    else
+                        require(liveRect.top() - summaryRect.bottom() - 1 == cardGap,
+                                "stacked overview cards retain the status-page gap");
+                    QWidget *previous = overview;
+                    for (auto *card : pages->currentWidget()->findChildren<QFrame *>(QString(), Qt::FindDirectChildrenOnly))
+                    {
+                        require(cardRect(card).top() - cardRect(previous).bottom() - 1 == cardGap,
+                                "communication rows use the status-page vertical gap");
+                        previous = card;
+                    }
                     for (auto *combo : navigation->findChildren<QComboBox *>())
                         if (combo->property("epsilonPacketId").isValid())
                         {

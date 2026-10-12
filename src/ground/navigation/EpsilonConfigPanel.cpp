@@ -470,14 +470,24 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     pages_->addWidget(communication_page_);
     panelLayout->addWidget(pages_);
 
+    auto *overview = new QWidget(communication_page_);
+    overview->setObjectName(QStringLiteral("epsilonCommunicationOverview"));
+    overview_grid_ = new QGridLayout(overview);
+    overview_grid_->setContentsMargins(0, 0, 0, 0);
+    overview_grid_->setSpacing(kCardGap);
+    overview_grid_->setColumnStretch(0, 1);
+    overview_grid_->setColumnStretch(1, 2);
+    communicationLayout->addWidget(overview);
+
     const SectionCard summaryCard = createSectionCard(
-        this, QStringLiteral("epsilonStatusCard"), QStringLiteral("satellite"));
+        overview, QStringLiteral("epsilonStatusCard"), QStringLiteral("satellite"));
+    summary_card_ = summaryCard.card;
     summary_title_label_ = summaryCard.title;
     auto *summaryFields = new QWidget(summaryCard.card);
     summaryFields->setObjectName(QStringLiteral("epsilonSummaryFields"));
-    auto *summaryFieldsLayout = new QHBoxLayout(summaryFields);
+    auto *summaryFieldsLayout = new QVBoxLayout(summaryFields);
     summaryFieldsLayout->setContentsMargins(0, 0, 0, 0);
-    summaryFieldsLayout->setSpacing(24);
+    summaryFieldsLayout->setSpacing(10);
     const SummaryField availabilityField = createSummaryField(
         summaryFields, QStringLiteral("epsilonAvailabilitySummary"));
     availability_name_label_ = availabilityField.name;
@@ -501,12 +511,12 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     summaryFieldsLayout->addWidget(packetCountField.field, 1);
     summaryCard.body_layout->addWidget(summaryFields);
 
-    communicationLayout->addWidget(summaryCard.card);
+    overview_grid_->addWidget(summaryCard.card, 0, 0);
 
     const SectionCard livePacketRateCard = createSectionCard(
-        this, QStringLiteral("epsilonLivePacketRateCard"), QStringLiteral("activity"));
+        overview, QStringLiteral("epsilonLivePacketRateCard"), QStringLiteral("activity"));
+    live_packet_rate_card_ = livePacketRateCard.card;
     live_packet_rate_title_label_ = livePacketRateCard.title;
-    live_packet_rate_title_label_->setObjectName(QStringLiteral("epsilonLivePacketRateCardTitle"));
     auto *livePacketRateGridWidget = new QWidget(livePacketRateCard.card);
     livePacketRateGridWidget->setObjectName(QStringLiteral("epsilonLivePacketRateGrid"));
     livePacketRateGridWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
@@ -562,7 +572,7 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
         live_packet_rate_values_.append(value);
     }
     livePacketRateCard.body_layout->addWidget(livePacketRateGridWidget);
-    communicationLayout->addWidget(livePacketRateCard.card);
+    overview_grid_->addWidget(livePacketRateCard.card, 0, 1);
 
     const SectionCard outputCard = createSectionCard(
         this, QStringLiteral("epsilonOutputCard"), QStringLiteral("activity"));
@@ -2090,8 +2100,67 @@ void EpsilonConfigPanel::resizeEvent(QResizeEvent *event)
     arrangeSettingsFields(event && event->size().width() >= 760);
 }
 
+void EpsilonConfigPanel::arrangeOverviewCards()
+{
+    if (!overview_grid_ || live_packet_rate_fields_.isEmpty()) return;
+
+    const auto requiredLiveWidth = [this](int columns) {
+        QVector<int> widths(columns, 0);
+        for (int index = 0; index < live_packet_rate_fields_.size(); ++index)
+        {
+            widths[index % columns] = std::max(widths[index % columns],
+                live_packet_rate_fields_.at(index)->layout()->minimumSize().width());
+        }
+        const QMargins cardMargins = live_packet_rate_card_->layout()->contentsMargins();
+        const QMargins bodyMargins = live_packet_rate_grid_->parentWidget()->parentWidget()->layout()->contentsMargins();
+        int required = cardMargins.left() + cardMargins.right() + bodyMargins.left() + bodyMargins.right() +
+            (columns - 1) * live_packet_rate_grid_->horizontalSpacing();
+        for (int width : widths) required += width;
+        return required;
+    };
+    const int gap = overview_grid_->horizontalSpacing();
+    const int summaryWidth = summary_card_->minimumSizeHint().width();
+    const int twoColumnLiveWidth = requiredLiveWidth(2);
+    const bool sideBySide = width() >= summaryWidth + gap + twoColumnLiveWidth;
+    const int liveWidth = sideBySide
+        ? std::max(twoColumnLiveWidth, std::min(width() - gap - summaryWidth, (width() - gap) * 2 / 3))
+        : width();
+    int liveColumns = 1;
+    while (liveColumns < kLivePacketVisualColumnCount &&
+           requiredLiveWidth(liveColumns + 1) <= liveWidth)
+    {
+        ++liveColumns;
+    }
+    if (live_packet_rate_columns_ == liveColumns && overview_side_by_side_ == sideBySide) return;
+
+    overview_side_by_side_ = sideBySide;
+    overview_grid_->removeWidget(live_packet_rate_card_);
+    overview_grid_->setColumnStretch(1, sideBySide ? 2 : 0);
+    overview_grid_->addWidget(live_packet_rate_card_, sideBySide ? 0 : 1, sideBySide ? 1 : 0);
+    live_packet_rate_columns_ = liveColumns;
+    for (int column = 0; column < kLivePacketVisualColumnCount; ++column)
+        live_packet_rate_grid_->setColumnStretch(column, column < liveColumns ? 1 : 0);
+    for (int index = 0; index < live_packet_rate_fields_.size(); ++index)
+    {
+        QWidget *field = live_packet_rate_fields_.at(index);
+        live_packet_rate_grid_->removeWidget(field);
+        const int row = index / liveColumns;
+        const int column = index % liveColumns;
+        for (QObject *object : {static_cast<QObject *>(field),
+                               static_cast<QObject *>(live_packet_rate_labels_.at(index)),
+                               static_cast<QObject *>(live_packet_rate_values_.at(index))})
+        {
+            object->setProperty("epsilonLivePacketGridRow", row);
+            object->setProperty("epsilonLivePacketGridColumn", column);
+        }
+        live_packet_rate_grid_->addWidget(field, row, column);
+    }
+    overview_grid_->invalidate();
+}
+
 void EpsilonConfigPanel::arrangePacketFields(bool twoColumns)
 {
+    arrangeOverviewCards();
     if (!packet_grid_) return;
     if (twoColumns)
     {
@@ -2133,24 +2202,6 @@ void EpsilonConfigPanel::arrangePacketFields(bool twoColumns)
 
     two_column_layout_ = twoColumns;
     packet_layout_initialized_ = true;
-    const int liveColumns = twoColumns ? kLivePacketVisualColumnCount : 2;
-    for (int column = 0; column < kLivePacketVisualColumnCount; ++column)
-        live_packet_rate_grid_->setColumnStretch(column, column < liveColumns ? 1 : 0);
-    for (int i = 0; i < live_packet_rate_fields_.size(); ++i)
-    {
-        QWidget *field = live_packet_rate_fields_.at(i);
-        live_packet_rate_grid_->removeWidget(field);
-        const int row = i / liveColumns;
-        const int column = i % liveColumns;
-        for (QObject *object : {static_cast<QObject *>(field),
-                               static_cast<QObject *>(live_packet_rate_labels_.at(i)),
-                               static_cast<QObject *>(live_packet_rate_values_.at(i))})
-        {
-            object->setProperty("epsilonLivePacketGridRow", row);
-            object->setProperty("epsilonLivePacketGridColumn", column);
-        }
-        live_packet_rate_grid_->addWidget(field, row, column);
-    }
     if (twoColumns)
     {
         packet_grid_->setColumnMinimumWidth(2, 24);
@@ -2355,6 +2406,7 @@ void EpsilonConfigPanel::updateLivePacketRateTexts()
         value->setToolTip(valueText);
         value->setAccessibleName(QStringLiteral("%1 %2").arg(labelText, valueText));
     }
+    arrangeOverviewCards();
 }
 
 void EpsilonConfigPanel::applyAppearance()

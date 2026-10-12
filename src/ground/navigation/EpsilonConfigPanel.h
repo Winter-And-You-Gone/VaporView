@@ -77,6 +77,7 @@ protected:
     void resizeEvent(QResizeEvent *event) override;
 
 private:
+    void arrangeOverviewCards();
     void arrangePacketFields(bool twoColumns);
     void applyAppearance();
     void updatePacketLabelWidths();
@@ -173,6 +174,11 @@ private:
     bool packet_layout_initialized_ = false;
     bool two_column_layout_ = true;
     QGridLayout *packet_grid_ = nullptr;
+    QGridLayout *overview_grid_ = nullptr;
+    QWidget *summary_card_ = nullptr;
+    QWidget *live_packet_rate_card_ = nullptr;
+    bool overview_side_by_side_ = true;
+    int live_packet_rate_columns_ = 0;
     QGridLayout *live_packet_rate_grid_ = nullptr;
     QLabel *live_packet_rate_title_label_ = nullptr;
     QLabel *summary_title_label_ = nullptr;

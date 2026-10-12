@@ -305,16 +305,21 @@ int main(int argc, char *argv[])
     liveData.quat_orien_packet_rate_hz = 50.0;
     liveData.raw_satellite_epoch_rate_hz = 5.0;
     panel.setLivePacketRates(liveData);
+    VaporViewTest::processEventsFor(40);
     auto *liveRateCard = panel.findChild<QFrame *>(QStringLiteral("epsilonLivePacketRateCard"));
-    auto *liveRateTitle = panel.findChild<QLabel *>(QStringLiteral("epsilonLivePacketRateCardTitle"));
+    auto *liveRateTitle = liveRateCard->findChild<QLabel *>(QStringLiteral("sectionTitleLabel"));
     require(liveRateCard != nullptr && liveRateTitle != nullptr &&
                 liveRateTitle->text() == QStringLiteral("实时数据包频率"),
-            "live packet-rate card appears below the configuration summary");
+            "live packet-rate card uses the shared card title");
     auto *summaryCard = panel.findChild<QFrame *>(QStringLiteral("epsilonStatusCard"));
     const QRect summaryRect(summaryCard->mapTo(&panel, QPoint(0, 0)), summaryCard->size());
     const QRect liveRateRect(liveRateCard->mapTo(&panel, QPoint(0, 0)), liveRateCard->size());
-    require(liveRateRect.top() > summaryRect.bottom(),
-            "live packet-rate card is placed below the summary card");
+    require(liveRateRect.top() == summaryRect.top() && liveRateRect.bottom() == summaryRect.bottom() &&
+                liveRateRect.left() - summaryRect.right() - 1 == communicationPage->layout()->spacing() &&
+                liveRateRect.width() > summaryRect.width(),
+            "summary and live packet rates share one row with more space for the rates");
+    require(liveRateTitle->font() == summaryCard->findChild<QLabel *>(QStringLiteral("sectionTitleLabel"))->font(),
+            "summary and live packet-rate titles use the same font");
     int liveRateValueCount = 0;
     QSet<int> liveRateColumns;
     std::map<std::pair<int, int>, QRect> liveRateCells;
@@ -339,8 +344,15 @@ int main(int argc, char *argv[])
                     label->property("epsilonLivePacketGridColumn").toInt() == column &&
                     value->property("epsilonLivePacketGridRow").toInt() == row &&
                     value->property("epsilonLivePacketGridColumn").toInt() == column,
-                "live packet-rate fields expose their four-column grid position");
+                "live packet-rate fields expose their responsive grid position");
+        for (QLabel *text : {label, value})
+        {
+            require(field->rect().contains(QRect(text->mapTo(field, QPoint()), text->size())) &&
+                        text->width() >= text->fontMetrics().horizontalAdvance(text->text()),
+                    "every live packet-rate label and value fits inside its field");
+        }
         const QRect fieldRect(field->mapTo(liveRateCard, QPoint(0, 0)), field->size());
+        require(liveRateCard->rect().contains(fieldRect), "live packet-rate fields fit inside the card");
         liveRateColumns.insert(column);
         const auto [columnLeft, inserted] = liveRateColumnLefts.emplace(column, fieldRect.left());
         if (!inserted)
@@ -353,8 +365,8 @@ int main(int argc, char *argv[])
         ++liveRateValueCount;
     }
     require(liveRateValueCount == 12, "live packet-rate card exposes all 12 packet rates");
-    require(liveRateColumns == QSet<int>{0, 1, 2, 3},
-            "live packet-rate card lays fields out across four columns");
+    require(liveRateColumns.size() >= 2 && liveRateColumns.size() <= 4,
+            "live packet-rate card uses multiple columns within its allocated width");
     for (const auto& [cell, rect] : liveRateCells)
     {
         if (cell.first == 0)
@@ -465,6 +477,9 @@ int main(int argc, char *argv[])
     panel.resize(560, std::max(900, panel.sizeHint().height()));
     VaporViewTest::processEventsFor(40);
     require(panel.width() < 980, "wide grid minimum does not prevent the narrow layout breakpoint");
+    for (QFrame *card : {summaryCard, liveRateCard})
+        require(panel.rect().contains(QRect(card->mapTo(&panel, QPoint()), card->size())),
+                "narrow overview cards remain fully inside the panel");
     for (QWidget *field : panel.findChildren<QWidget *>())
         if (field->property("epsilonLivePacketRateField").toBool())
         {
