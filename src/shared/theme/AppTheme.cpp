@@ -148,6 +148,18 @@ public:
 protected:
     bool eventFilter(QObject *object, QEvent *event) override
     {
+        const bool pointerInput = event->type() == QEvent::MouseButtonPress;
+        const bool keyboardInput = event->type() == QEvent::KeyPress ||
+            event->type() == QEvent::ShortcutOverride || event->type() == QEvent::Shortcut;
+        if (pointerInput || keyboardInput)
+        {
+            keyboard_input_ = keyboardInput;
+            if (auto *focused = qobject_cast<QAbstractButton *>(QApplication::focusWidget()))
+            {
+                focused->setProperty(kKeyboardButtonFocus, keyboard_input_);
+                focused->update();
+            }
+        }
         if (auto *button = qobject_cast<QAbstractButton *>(object))
         {
             if (event->type() == QEvent::MouseButtonPress)
@@ -160,16 +172,18 @@ protected:
                 const auto reason = static_cast<QFocusEvent *>(event)->reason();
                 // Popup/activation focus restoration must retain the input mode
                 // that opened the menu or dialog, not create a mouse focus ring.
-                if (reason != Qt::PopupFocusReason && reason != Qt::ActiveWindowFocusReason)
-                    button->setProperty(kKeyboardButtonFocus,
-                        reason == Qt::TabFocusReason || reason == Qt::BacktabFocusReason ||
-                        reason == Qt::ShortcutFocusReason);
+                // Qt also uses TabFocusReason to focus a newly opened dialog's
+                // default button, so the reason alone is not keyboard input.
+                button->setProperty(kKeyboardButtonFocus,
+                    keyboard_input_ && reason != Qt::MouseFocusReason);
             }
         }
         return QProxyStyle::eventFilter(object, event);
     }
 
 private:
+    bool keyboard_input_ = false;
+
     static void drawKeyboardFocus(const QStyleOption *option, QPainter *painter)
     {
         painter->save();

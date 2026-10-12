@@ -1051,9 +1051,6 @@ QPushButton#updateCheckCloseButton:hover {
 QPushButton#updateCheckCloseButton:pressed {
     background-color: @vv-surface-sunken;
 }
-QPushButton#updateCheckCloseButton:focus {
-    border: 2px solid @vv-focus;
-}
 QPushButton#updateCheckUpdateButton {
     background-color: @vv-primary;
     color: @vv-white;
@@ -1069,9 +1066,6 @@ QPushButton#updateCheckUpdateButton:hover {
 QPushButton#updateCheckUpdateButton:pressed {
     background-color: @vv-primary-pressed;
     border-color: @vv-primary-pressed;
-}
-QPushButton#updateCheckUpdateButton:focus {
-    border: 2px solid @vv-focus;
 }
 )"), dark));
 
@@ -1665,9 +1659,6 @@ QPushButton#aboutDialogOkButton:hover {
 }
 QPushButton#aboutDialogOkButton:pressed {
     background-color: @vv-surface-sunken;
-}
-QPushButton#aboutDialogOkButton:focus {
-    border: 2px solid @vv-focus;
 }
 )"), dark));
 
