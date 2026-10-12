@@ -96,6 +96,11 @@ bool MainWindow::validateEpsilonPacketBandwidth(
 
 void MainWindow::onEpsilonSessionAvailabilityChanged(bool available, const QString& reason)
 {
+    if (isUiTestMode())
+    {
+        updateDeviceConfigState();
+        return;
+    }
     if (state_->epsilon_device_session_)
     {
         state_->epsilon_reconfigure_in_progress_ = state_->epsilon_device_session_->operationPending();
@@ -355,6 +360,10 @@ bool MainWindow::prepareEpsilonSettingsOperation(
 
 void MainWindow::onEpsilonSettingsReadRequested(VaporView::EpsilonSettingsGroup group)
 {
+    if (runUiTestEpsilonOperation(QStringLiteral("read_settings"), [this, group]() {
+        state_->epsilon_config_panel_->setSettingsSnapshot(state_->ui_test_model_->epsilonSettings(group));
+        return QString();
+    })) return;
     VaporView::Ground::EpsilonDeviceOperation operation;
     if (prepareEpsilonSettingsOperation(operation))
     {
@@ -364,6 +373,14 @@ void MainWindow::onEpsilonSettingsReadRequested(VaporView::EpsilonSettingsGroup 
 
 void MainWindow::onEpsilonSettingsApplyRequested(const VaporView::EpsilonSettingsOperation& settings)
 {
+    if (runUiTestEpsilonOperation(QStringLiteral("apply_settings"), [this, settings]() {
+        std::string error;
+        if (!state_->ui_test_model_->applyEpsilonSettings(settings, error)) return QString::fromStdString(error);
+        auto snapshot = state_->ui_test_model_->epsilonSettings(settings.group);
+        snapshot.saved = snapshot.readback_verified = snapshot.restart_required = true;
+        state_->epsilon_config_panel_->setSettingsSnapshot(snapshot);
+        return QString();
+    })) return;
     VaporView::Ground::EpsilonDeviceOperation operation;
     if (prepareEpsilonSettingsOperation(operation))
     {
@@ -373,6 +390,10 @@ void MainWindow::onEpsilonSettingsApplyRequested(const VaporView::EpsilonSetting
 
 void MainWindow::onEpsilonDeviceRestartRequested()
 {
+    if (runUiTestEpsilonOperation(QStringLiteral("restart_device"), [this]() {
+        state_->epsilon_config_panel_->setRestartResult(true);
+        return QString();
+    })) return;
     VaporView::Ground::EpsilonDeviceOperation operation;
     if (prepareEpsilonSettingsOperation(operation))
     {
@@ -382,6 +403,36 @@ void MainWindow::onEpsilonDeviceRestartRequested()
 
 void MainWindow::onEpsilonMaintenanceRequested(VaporView::EpsilonMaintenanceAction action)
 {
+    if (isUiTestMode())
+    {
+        const bool magnetic = action == VaporView::EpsilonMaintenanceAction::Magnetic2D ||
+                              action == VaporView::EpsilonMaintenanceAction::Magnetic3D;
+        const auto previousGeneration = state_->ui_test_epsilon_operation_generation_;
+        runUiTestEpsilonOperation(QStringLiteral("maintenance"), [this, action]() {
+            VaporView::EpsilonMaintenanceResult result;
+            result.action = action;
+            result.status = VaporView::EpsilonMaintenanceStatus::Completed;
+            result.progress_percent = 100;
+            result.progress_known = result.saved = result.restart_required = true;
+            state_->epsilon_config_panel_->setMaintenanceResult(result);
+            return QString();
+        }, magnetic ? 1500 : 300);
+        if (state_->ui_test_epsilon_operation_generation_ != previousGeneration &&
+            state_->ui_test_epsilon_operation_pending_)
+        {
+            state_->ui_test_epsilon_maintenance_action_ = action;
+            VaporView::EpsilonMaintenanceResult result;
+            result.action = action;
+            result.status = VaporView::EpsilonMaintenanceStatus::Running;
+            result.progress_percent = 20;
+            result.progress_known = true;
+            state_->epsilon_config_panel_->setMaintenanceResult(result);
+            state_->epsilon_config_panel_->setSettingsStatus(state_->is_english_
+                ? QStringLiteral("UI test: simulated calibration is running.")
+                : QStringLiteral("界面测试：正在模拟校准。"));
+        }
+        return;
+    }
     VaporView::Ground::EpsilonDeviceOperation operation;
     if (prepareEpsilonSettingsOperation(operation))
     {
@@ -391,18 +442,44 @@ void MainWindow::onEpsilonMaintenanceRequested(VaporView::EpsilonMaintenanceActi
 
 void MainWindow::onEpsilonDgnssReadRequested()
 {
+    if (runUiTestEpsilonOperation(QStringLiteral("read_dgnss"), [this]() {
+        state_->epsilon_config_panel_->setDgnssSnapshot(state_->ui_test_model_->epsilonDgnss());
+        return QString();
+    })) return;
     VaporView::Ground::EpsilonDeviceOperation operation;
     if (prepareEpsilonSettingsOperation(operation)) state_->epsilon_device_session_->readDgnss(operation);
 }
 
 void MainWindow::onEpsilonDgnssApplyRequested(const VaporView::EpsilonDgnssOperation& settings)
 {
+    if (runUiTestEpsilonOperation(QStringLiteral("apply_dgnss"), [this, settings]() {
+        std::string error;
+        if (!state_->ui_test_model_->applyEpsilonDgnss(settings, error)) return QString::fromStdString(error);
+        auto snapshot = state_->ui_test_model_->epsilonDgnss();
+        snapshot.saved = snapshot.readback_verified = snapshot.restart_required = true;
+        state_->epsilon_config_panel_->setDgnssSnapshot(snapshot);
+        return QString();
+    })) return;
     VaporView::Ground::EpsilonDeviceOperation operation;
     if (prepareEpsilonSettingsOperation(operation)) state_->epsilon_device_session_->applyDgnss(settings, operation);
 }
 
 void MainWindow::onEpsilonMaintenanceCancelRequested()
 {
+    if (isUiTestMode())
+    {
+        state_->ui_test_epsilon_operation_pending_ = false;
+        ++state_->ui_test_epsilon_operation_generation_;
+        VaporView::EpsilonMaintenanceResult result;
+        result.action = state_->ui_test_epsilon_maintenance_action_;
+        result.status = VaporView::EpsilonMaintenanceStatus::Cancelled;
+        state_->epsilon_config_panel_->setMaintenanceResult(result);
+        state_->epsilon_config_panel_->setSettingsStatus(state_->is_english_
+            ? QStringLiteral("UI test: simulated calibration cancelled.")
+            : QStringLiteral("界面测试：模拟校准已取消。"));
+        updateDeviceConfigState();
+        return;
+    }
     if (state_->epsilon_device_session_) state_->epsilon_device_session_->cancelMaintenance();
 }
 void MainWindow::applyEpsilonMainAntennaLeverArm(

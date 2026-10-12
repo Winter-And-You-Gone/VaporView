@@ -2514,6 +2514,16 @@ void MainWindow::setupCentralWidget()
         if (state_->remote_sky_controller_)
             snapshot.rtcm = state_->remote_sky_controller_->rtcmStatus(
                 isRemoteSkyMode(), snapshot.rtkServiceRunning);
+        if (isUiTestMode())
+        {
+            snapshot.rtcm = state_->ui_test_model_->rtcmStatus(
+                QDateTime::currentMSecsSinceEpoch() - state_->ui_test_started_ms_, isRemoteSkyMode());
+            snapshot.differentialAvailable = true;
+            snapshot.differentialAgeS = snapshot.rtcm.ageMs / 1000.0;
+            snapshot.ntripStatusText = state_->ui_test_model_->scenario() == VaporView::Ground::Devices::UiTestScenario::DataStalled
+                ? (state_->is_english_ ? QStringLiteral("Simulated interruption") : QStringLiteral("模拟中断"))
+                : (state_->is_english_ ? QStringLiteral("Simulated connection") : QStringLiteral("模拟已连接"));
+        }
         if (!isUiTestMode())
         {
             VaporView::Session::NavigationStatusRecord record;
@@ -4240,10 +4250,10 @@ void MainWindow::updateDeviceConfigState()
     }
     if (state_->epsilon_config_panel_)
     {
-        const bool operationPending = state_->epsilon_device_session_ &&
-                                      state_->epsilon_device_session_->operationPending();
+        const bool operationPending = isUiTestMode() ? state_->ui_test_epsilon_operation_pending_
+            : state_->epsilon_device_session_ && state_->epsilon_device_session_->operationPending();
         state_->epsilon_config_panel_->setAvailable(epsilonConfigEnabled && !operationPending);
-        const QString settingsTarget = remote
+        const QString settingsTarget = isUiTestMode() ? QStringLiteral("ui-test") : remote
             ? QStringLiteral("remote:%1:%2:%3")
                   .arg(state_->remote_sky_controller_
                            ? state_->remote_sky_controller_->linkGeneration() : 0)
@@ -4257,10 +4267,22 @@ void MainWindow::updateDeviceConfigState()
             state_->epsilon_settings_target_ = settingsTarget;
             state_->epsilon_settings_device_values_.clear();
             state_->epsilon_config_panel_->invalidateSettings();
+            if (isUiTestMode())
+            {
+                for (auto group : VaporView::epsilonSettingsGroups())
+                    state_->epsilon_config_panel_->setSettingsSnapshot(state_->ui_test_model_->epsilonSettings(group));
+                state_->epsilon_config_panel_->setDgnssSnapshot(state_->ui_test_model_->epsilonDgnss());
+                state_->epsilon_config_panel_->setLivePacketRates(state_->current_epsilon_);
+                state_->epsilon_config_panel_->setSettingsStatus(state_->is_english_
+                    ? QStringLiteral("UI test: simulated device parameters; operations update memory only.")
+                    : QStringLiteral("界面测试：模拟设备参数，操作仅更新内存。"));
+            }
         }
         state_->epsilon_config_panel_->setSettingsOperationPending(operationPending);
-        state_->epsilon_config_panel_->setSettingsAvailable(
-            epsilonConfigEnabled && !scheduledRecordingSessionOpen() &&
+        state_->epsilon_config_panel_->setSettingsAvailable(isUiTestMode()
+            ? state_->ui_test_model_->deviceState(VaporView::SkyDeviceId::Epsilon) == VaporView::DeviceState::Connected &&
+              state_->ui_test_model_->scenario() != VaporView::Ground::Devices::UiTestScenario::DataStalled
+            : epsilonConfigEnabled && !scheduledRecordingSessionOpen() &&
             state_->epsilon_device_session_ &&
             state_->epsilon_device_session_->operationsAvailable());
     }

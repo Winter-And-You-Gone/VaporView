@@ -876,6 +876,9 @@ target_include_directories(ui_test_mode_window_test PRIVATE
 target_link_libraries(ui_test_mode_window_test PRIVATE vaporview_main_window Qt6::Network)
 add_dependencies(ui_test_mode_window_test VaporViewRuntimeResources)
 add_test(NAME ui_test_mode_window_test COMMAND ui_test_mode_window_test)
+add_test(NAME ui_test_navigation_coverage_test
+    COMMAND ui_test_mode_window_test --navigation-coverage-only
+)
 add_test(NAME dark_epsilon_layout_test
     COMMAND ui_test_mode_window_test --dark-epsilon-layout-only
 )
@@ -1332,6 +1335,7 @@ set(VAPORVIEW_SLOW_UI_TESTS
     combination_navigation_page_test
     navigation_status_panel_test
     ui_test_mode_window_test
+    ui_test_navigation_coverage_test
     dark_epsilon_layout_test
     main_window_session_viewer_test
     session_viewer_io_test
@@ -1386,6 +1390,7 @@ set_property(TEST spin_arrow_disabled_test APPEND PROPERTY LABELS main-window la
 set_property(TEST combination_navigation_page_test APPEND PROPERTY LABELS main-window layout)
 set_property(TEST navigation_status_panel_test APPEND PROPERTY LABELS navigation-status ui layout)
 set_property(TEST ui_test_mode_window_test APPEND PROPERTY LABELS main-window ui-test-mode)
+set_property(TEST ui_test_navigation_coverage_test APPEND PROPERTY LABELS main-window ui-test-mode navigation)
 set_property(TEST dark_epsilon_layout_test APPEND PROPERTY LABELS main-window ui-test-mode layout)
 set_property(TEST main_window_session_viewer_test APPEND PROPERTY LABELS main-window session-viewer)
 set_property(TEST session_viewer_io_test APPEND PROPERTY LABELS session-viewer io)

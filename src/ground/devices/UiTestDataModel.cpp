@@ -197,6 +197,29 @@ void UiTestDataModel::reset(qint64 elapsedMs)
     scenario_started_ms_ = elapsedMs;
     device_states_.fill(DeviceState::Connected);
     resetTemperatureState();
+    epsilon_settings_.clear();
+    for (auto group : epsilonSettingsGroups())
+        for (const auto& descriptor : epsilonParameterDescriptors(group))
+        {
+            double value = descriptor.kind == EpsilonParameterKind::Boolean ? 1.0 : 0.0;
+            if (descriptor.kind == EpsilonParameterKind::Enumeration && !descriptor.options.empty())
+                value = descriptor.options.front().value;
+            else if (descriptor.unit == "m") value = 0.25;
+            else if (descriptor.unit == "deg") value = 1.5;
+            else if (descriptor.unit == "Hz") value = 25.0;
+            else if (descriptor.unit == "ratio") value = 1.0;
+            if (descriptor.has_range) value = std::clamp(value, descriptor.minimum, descriptor.maximum);
+            epsilon_settings_[descriptor.name] = value;
+        }
+    epsilon_settings_["COMM_BAUD1"] = 8;
+    epsilon_settings_["COMM_BAUD2"] = 5;
+    epsilon_settings_["COMM_STREAM_TYP1"] = 1;
+    epsilon_settings_["COMM_STREAM_TYP2"] = 3;
+    epsilon_settings_["MSG_OUT_NMEA"] = 4;
+    epsilon_dgnss_ = {{"RTCM_TYPE", "1"}, {"NET_INFO_IMEI", "000000000000001"},
+        {"NET_INFO_CCID", "00000000000000000001"}, {"NTRIP_SVR_DOMAIN", "ui-test.invalid"},
+        {"NTRIP_SVR_PORT", "2101"}, {"NTRIP_MOUNT", "UI_TEST_RTCM"},
+        {"NTRIP_ACCOUNT", "ui-test"}, {"NTRIP_PASSWORD", "ui-test"}, {"FDI_AUTH", "ui-test"}};
 }
 
 void UiTestDataModel::setScenario(UiTestScenario scenario, qint64 elapsedMs)
@@ -216,6 +239,85 @@ void UiTestDataModel::setScenario(UiTestScenario scenario, qint64 elapsedMs)
 UiTestScenario UiTestDataModel::scenario() const
 {
     return scenario_;
+}
+
+EpsilonSettingsSnapshot UiTestDataModel::epsilonSettings(EpsilonSettingsGroup group) const
+{
+    EpsilonSettingsSnapshot result;
+    result.group = group;
+    const auto& descriptors = epsilonParameterDescriptors(group);
+    for (const auto& descriptor : descriptors)
+    {
+        if (scenario_ == UiTestScenario::PartialFailure && &descriptor == &descriptors.back())
+            result.unsupported.push_back(descriptor.name);
+        else
+            result.values.emplace(descriptor.name, epsilon_settings_.at(descriptor.name));
+    }
+    return result;
+}
+
+EpsilonDgnssSnapshot UiTestDataModel::epsilonDgnss() const
+{
+    EpsilonDgnssSnapshot result;
+    result.values = epsilon_dgnss_;
+    if (scenario_ == UiTestScenario::PartialFailure)
+    {
+        result.values.erase("FDI_AUTH");
+        result.unsupported.push_back("FDI_AUTH");
+    }
+    return result;
+}
+
+RtcmStatusSnapshot UiTestDataModel::rtcmStatus(qint64 elapsedMs, bool remote) const
+{
+    const bool stalled = scenario_ == UiTestScenario::DataStalled;
+    const bool degraded = scenario_ == UiTestScenario::PartialFailure;
+    RtcmStatusSnapshot result;
+    result.remote = remote;
+    result.available = true;
+    result.health = !remote ? RtcmHealth::Local : stalled ? RtcmHealth::Interrupted
+        : degraded ? RtcmHealth::Warning : RtcmHealth::Normal;
+    result.ageMs = stalled ? 6000 : degraded ? 1800 : 150;
+    result.bytesPerSecond = stalled ? 0.0 : degraded ? 512.0 : 2048.0;
+    result.lossAvailable = remote;
+    result.lossPercent = degraded ? 7.5 : 0.2;
+    result.lossWarning = degraded;
+    const qint64 sampleMs = stalled ? scenario_started_ms_ : elapsedMs;
+    result.receivedChunks = static_cast<quint64>(std::max<qint64>(0, sampleMs) / 1000 + 1);
+    result.receivedBytes = result.receivedChunks * 2048;
+    result.linkFramesReceived = result.receivedChunks * 10;
+    result.linkFramesLost = degraded ? result.receivedChunks : 0;
+    result.droppedChunks = degraded ? result.receivedChunks : 0;
+    result.droppedBytes = result.droppedChunks * 256;
+    return result;
+}
+
+bool UiTestDataModel::applyEpsilonSettings(const EpsilonSettingsOperation& operation, std::string& error)
+{
+    if (!validateEpsilonSettings(operation, error)) return false;
+    const auto snapshot = epsilonSettings(operation.group);
+    for (const auto& entry : operation.values)
+        if (snapshot.values.find(entry.first) == snapshot.values.end())
+        {
+            error = "UI test parameter is unsupported: " + entry.first;
+            return false;
+        }
+    for (const auto& entry : operation.values) epsilon_settings_[entry.first] = entry.second;
+    return true;
+}
+
+bool UiTestDataModel::applyEpsilonDgnss(const EpsilonDgnssOperation& operation, std::string& error)
+{
+    if (!validateEpsilonDgnss(operation, error)) return false;
+    const auto snapshot = epsilonDgnss();
+    for (const auto& entry : operation.values)
+        if (snapshot.values.find(entry.first) == snapshot.values.end())
+        {
+            error = "UI test DGNSS field is unsupported: " + entry.first;
+            return false;
+        }
+    for (const auto& entry : operation.values) epsilon_dgnss_[entry.first] = entry.second;
+    return true;
 }
 
 void UiTestDataModel::setAllDevicesConnected(bool isConnected)
@@ -331,6 +433,12 @@ UiTestSnapshot UiTestDataModel::snapshot(qint64 elapsedMs) const
 
     result.epsilon = EpsilonData();
     result.epsilon.valid = connected(deviceState(SkyDeviceId::Epsilon)) && !stalled;
+    result.epsilon.device_info_valid = result.epsilon.valid;
+    result.epsilon.hardware_name = "UI-TEST-EPSILON-D4G";
+    result.epsilon.firmware_name = "UI-TEST";
+    result.epsilon.hardware_version = 1;
+    result.epsilon.firmware_version = 1;
+    result.epsilon.serial_number = {0x55495445, 0x53540000, 0, 1};
     result.epsilon.timestamp = timestamp;
     result.epsilon.latitude_deg = 30.24620 + slow * 0.00012;
     result.epsilon.longitude_deg = 120.14530 + std::cos(seconds * 0.35) * 0.00015;
@@ -428,6 +536,9 @@ UiTestSnapshot UiTestDataModel::snapshot(qint64 elapsedMs) const
     result.epsilon.ahrs_packet_rate_hz = result.epsilon.valid ? 100.0 : 0.0;
     result.epsilon.insgps_packet_rate_hz = result.epsilon.valid ? 20.0 : 0.0;
     result.epsilon.sys_state_packet_rate_hz = result.epsilon.valid ? 20.0 : 0.0;
+    result.epsilon.status_packet_rate_hz = result.epsilon.valid ? 10.0 : 0.0;
+    result.epsilon.euler_orien_packet_rate_hz = result.epsilon.valid ? 20.0 : 0.0;
+    result.epsilon.quat_orien_packet_rate_hz = result.epsilon.valid ? 20.0 : 0.0;
     result.epsilon.raw_gnss_packet_rate_hz = result.epsilon.valid ? 5.0 : 0.0;
     result.epsilon.raw_satellite_epoch_rate_hz = result.epsilon.valid ? Ppk::kDefaultObservationRateHz : 0.0;
     result.epsilon.satellite_packet_rate_hz = result.epsilon.valid ? 1.0 : 0.0;

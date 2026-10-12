@@ -10,6 +10,8 @@
 #include "ground/widgets/SegmentedSwitchButton.h"
 #include "ground/widgets/TelemetryPanels.h"
 #include "ground/widgets/TemperatureTrendPlotWidget.h"
+#include "ground/navigation/CombinationNavigationPage.h"
+#include "ground/navigation/EpsilonConfigPanel.h"
 #include "LogService.h"
 #include "shared/config/SettingsWriteBarrier.h"
 #include "shared/theme/AppTheme.h"
@@ -23,6 +25,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QDialog>
+#include <QDoubleSpinBox>
 #include <QEventLoop>
 #include <QFrame>
 #include <QGroupBox>
@@ -968,6 +971,115 @@ int main(int argc, char **argv)
     auto *window = new MainWindow();
     window->show();
     processEvents();
+
+    if (application.arguments().contains(QStringLiteral("--navigation-coverage-only")))
+    {
+        using namespace VaporView::Ground::Navigation;
+        const auto before = snapshotAll();
+        auto *mode = window->findChild<QAction *>(QStringLiteral("uiTestModeAction"));
+        auto *navigation = window->findChild<CombinationNavigationPage *>();
+        auto *mainStack = window->findChild<QStackedWidget *>(QStringLiteral("mainPageStack"));
+        require(mode && navigation && mainStack, "navigation coverage finds its mode and page");
+        mode->trigger();processEvents();
+        auto *sourceSwitch = findTitleBarSourceModeSwitch(window);
+        require(sourceSwitch != nullptr, "navigation simulation exposes its source mode switch");
+        if (!sourceSwitch->isChecked()) sourceSwitch->click();
+        processEvents();
+        mainStack->setCurrentWidget(navigation);
+        auto *panel = navigation->epsilonConfigPanel();
+        auto *read = panel->findChild<QPushButton *>(QStringLiteral("epsilonSettingsReadButton"));
+        auto *save = panel->findChild<QPushButton *>(QStringLiteral("epsilonSaveButton"));
+        auto *status = panel->findChild<QLabel *>(QStringLiteral("epsilonSettingsStatus"));
+        auto *version = panel->findChild<QLabel *>(QStringLiteral("epsilonDeviceInfo"));
+        require(read && save && status && version && version->text().contains(QStringLiteral("UI-TEST")),
+                "UI test provides simulated device metadata and parameter actions");
+        navigation->showStatusPage();navigation->refreshStatus();processEvents();
+        auto *rtcmRate = navigation->findChild<QLabel *>(QStringLiteral("navigationStatusRtcmRateValue"));
+        auto *rtcmLoss = navigation->findChild<QLabel *>(QStringLiteral("navigationStatusRtcmLinkLossValue"));
+        require(rtcmRate && rtcmLoss && rtcmRate->text().contains(QStringLiteral("B/s")) &&
+                    rtcmLoss->text().contains(QLatin1Char('%')),
+                "status page receives simulated RTCM rates and link diagnostics");
+        for (const char *name : {"combinationNavigationStatusButton", "combinationNavigationEpsilonButton",
+                 "combinationNavigationDifferentialButton", "epsilonSettingsTab_0", "epsilonSettingsTab_1",
+                 "epsilonSettingsTab_2", "epsilonAdvancedFeaturesButton"})
+        {
+            auto *button = navigation->findChild<QPushButton *>(QString::fromLatin1(name));
+            require(button && button->isVisible(), "all seven navigation entries are available in UI test");
+            button->click();processEvents();
+            require(button->isChecked(), "each navigation entry opens its simulated page");
+        }
+        auto *groups = panel->findChild<QComboBox *>(QStringLiteral("epsilonAdvancedGroupCombo"));
+        require(groups && groups->count() == 7, "advanced UI test includes all groups and built-in 4G");
+        for (bool remote : {false, true})
+        {
+            if (sourceSwitch->isChecked() != remote) sourceSwitch->click();
+            processEvents();
+            for (auto group : VaporView::epsilonSettingsGroups())
+                for (const auto& descriptor : VaporView::epsilonParameterDescriptors(group))
+            {
+                auto *field = panel->findChild<QWidget *>(QStringLiteral("epsilonParameter_%1").arg(QString::fromStdString(descriptor.name)));
+                require(field && field->isEnabled() == descriptor.writable,
+                        "every parameter has a simulated read value and preserves read-only protection");
+                if (auto *combo = qobject_cast<QComboBox *>(field))
+                    require(combo->currentIndex() >= 0, "every parameter dropdown has a simulated selection");
+            }
+        }
+        auto *install = navigation->findChild<QPushButton *>(QStringLiteral("epsilonSettingsTab_1"));
+        install->click();processEvents();
+        auto *roll = panel->findChild<QDoubleSpinBox *>(QStringLiteral("epsilonParameter_BODY_TO_VEHICLE_ALGN_ROLL"));
+        require(roll && roll->isEnabled(), "installation parameters are editable in UI test");
+        roll->setValue(12.5);save->click();
+        require(!read->isEnabled(), "simulated save shows a pending operation");
+        const auto waitForOperation = [&]() {
+            require(VaporViewTest::processEventsUntil(2500, [&]() { return read->isEnabled(); }),
+                    "simulated operation finishes and restores the actions");
+            require(status->text().contains(QStringLiteral("界面测试")), "operation feedback identifies the simulation");
+        };
+        waitForOperation();
+        read->click();waitForOperation();
+        require(roll->value() == 12.5, "simulated save survives a subsequent read");
+        auto *advanced = navigation->findChild<QPushButton *>(QStringLiteral("epsilonAdvancedFeaturesButton"));
+        advanced->click();groups->setCurrentIndex(6);processEvents();
+        auto *domain = panel->findChild<QLineEdit *>(QStringLiteral("epsilonDgnssField_NTRIP_SVR_DOMAIN"));
+        require(domain && domain->isEnabled() && domain->text() == QStringLiteral("ui-test.invalid"),
+                "built-in 4G supplies simulated editable values");
+        domain->setText(QStringLiteral("edited.invalid"));save->click();waitForOperation();
+        read->click();waitForOperation();
+        require(domain->text() == QStringLiteral("edited.invalid"), "built-in 4G changes remain in memory");
+        auto *scenarioMenu = window->findChild<QMenu *>(QStringLiteral("uiTestScenarioMenu"));
+        require(scenarioMenu && scenarioMenu->actions().size() == 3, "UI test exposes all three scenarios");
+        scenarioMenu->actions().at(1)->trigger();processEvents();
+        for (auto group : VaporView::epsilonSettingsGroups())
+        {
+            const auto& descriptor = VaporView::epsilonParameterDescriptors(group).back();
+            auto *field = panel->findChild<QWidget *>(QStringLiteral("epsilonParameter_%1").arg(QString::fromStdString(descriptor.name)));
+            require(!field->isEnabled(), "partial failures disable unsupported simulated parameters");
+        }
+        scenarioMenu->actions().at(2)->trigger();processEvents();
+        require(!read->isEnabled(), "data-stalled scenario disables device operations");
+        scenarioMenu->actions().at(0)->trigger();processEvents();
+        require(read->isEnabled(), "normal scenario restores simulated operations");
+        for (int action = 0; action < 5; ++action)
+        {
+            panel->maintenanceRequested(static_cast<VaporView::EpsilonMaintenanceAction>(action));
+            waitForOperation();
+            panel->deviceRestartRequested();waitForOperation();
+        }
+        panel->maintenanceRequested(VaporView::EpsilonMaintenanceAction::Magnetic2D);
+        panel->maintenanceCancelRequested();processEvents();
+        require(read->isEnabled(), "simulated magnetic calibration can be cancelled");
+        panel->settingsReadRequested(VaporView::EpsilonSettingsGroup::Installation);
+        mode->trigger();processEvents();
+        require(!mode->isChecked() && panel->exportSettingsJson().isEmpty(),
+                "leaving UI test clears simulated read state while an operation is pending");
+        VaporViewTest::processEventsFor(1700);
+        require(panel->exportSettingsJson().isEmpty(), "pending simulation callbacks cannot refill the normal page");
+        require(settingsSnapshotsEqual(snapshotAll(), before, "navigation UI test preserves persistent settings"),
+                "all navigation simulations leave persistent settings unchanged");
+        window->close();delete window;
+        std::cout << "ui_test_navigation_coverage_test passed\n";
+        return 0;
+    }
 
     if (darkEpsilonLayoutOnly)
     {

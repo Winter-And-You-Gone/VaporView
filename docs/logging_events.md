@@ -255,6 +255,7 @@
 | Ground | ui.test | ui_test_epsilon_main_antenna_lever_arm_applied | Info | 界面测试日志已更新。 | execution_path, ui_message, device, x_m, y_m, z_m | ui_visibility |  |
 | Ground | ui.test | ui_test_epsilon_rtcm_port_config_accepted | Info | 界面测试日志已更新。 | execution_path, ui_message, device | ui_visibility |  |
 | Ground | ui.test | ui_test_epsilon_output_reconfigure_completed | Info | 界面测试日志已更新。 | execution_path, ui_message, device | ui_visibility |  |
+| Ground | ui.test | ui_test_epsilon_settings_operation_completed | Info | 界面测试中的设备参数或维护操作已完成。 | execution_path, ui_message, operation, success | ui_visibility |  |
 | Ground | ui.test | ui_test_recording_started | Info | 界面测试日志已更新。 | execution_path, ui_message | ui_visibility |  |
 | Ground | ui.test | ui_test_scheduled_recording_stopped | Info | 界面测试日志已更新。 | execution_path, ui_message | ui_visibility |  |
 | Ground | ui.test | ui_test_recording_paused | Info | 界面测试日志已更新。 | execution_path, ui_message | ui_visibility |  |

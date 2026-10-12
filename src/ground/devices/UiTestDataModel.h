@@ -1,6 +1,8 @@
 #pragma once
 
 #include "Ai8TemperatureControllerProtocol.h"
+#include "EpsilonSettings.h"
+#include "RtcmStatusModel.h"
 #include "TelemetryTypes.h"
 #include "data_types.h"
 
@@ -61,6 +63,12 @@ public:
     void setDeviceState(SkyDeviceId device, DeviceState state);
     DeviceState deviceState(SkyDeviceId device) const;
 
+    EpsilonSettingsSnapshot epsilonSettings(EpsilonSettingsGroup group) const;
+    EpsilonDgnssSnapshot epsilonDgnss() const;
+    RtcmStatusSnapshot rtcmStatus(qint64 elapsedMs, bool remote) const;
+    bool applyEpsilonSettings(const EpsilonSettingsOperation& operation, std::string& error);
+    bool applyEpsilonDgnss(const EpsilonDgnssOperation& operation, std::string& error);
+
     void applyTemperatureCommand(CommandId command,
                                  const TemperatureControllerCommand& payload);
     UiTestSnapshot snapshot(qint64 elapsedMs) const;
@@ -73,6 +81,8 @@ private:
     qint64 scenario_started_ms_ = 0;
     std::array<DeviceState, 7> device_states_{};
     TemperatureControllerData temperature_state_;
+    std::map<std::string, double> epsilon_settings_;
+    std::map<std::string, std::string> epsilon_dgnss_;
 };
 
 } // namespace VaporView::Ground::Devices

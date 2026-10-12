@@ -6,6 +6,7 @@
 #include <QTemporaryDir>
 
 #include <array>
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -34,6 +35,66 @@ int main(int argc, char **argv)
     UiTestDataModel second;
     const UiTestSnapshot firstSnapshot = first.snapshot(2500);
     const UiTestSnapshot secondSnapshot = second.snapshot(2500);
+    require(firstSnapshot.epsilon.device_info_valid &&
+                firstSnapshot.epsilon.hardware_name.find("UI-TEST") != std::string::npos &&
+                firstSnapshot.epsilon.status_packet_rate_hz > 0 &&
+                firstSnapshot.epsilon.euler_orien_packet_rate_hz > 0 &&
+                firstSnapshot.epsilon.quat_orien_packet_rate_hz > 0,
+            "UI test supplies device version and every configured live packet rate");
+    for (auto group : epsilonSettingsGroups())
+    {
+        const auto settings = first.epsilonSettings(group);
+        require(settings.values.size() == epsilonParameterDescriptors(group).size(),
+                "normal UI test supplies every EPSILON parameter group");
+        for (const auto& descriptor : epsilonParameterDescriptors(group))
+        {
+            const double value = settings.values.at(descriptor.name);
+            require(!descriptor.has_range || (value >= descriptor.minimum && value <= descriptor.maximum),
+                    "simulated parameter values fit their descriptor ranges");
+            require(descriptor.options.empty() || std::any_of(descriptor.options.begin(), descriptor.options.end(),
+                        [value](const auto& option) { return option.value == value; }),
+                    "simulated parameter dropdown values use supported options");
+        }
+    }
+    std::string settingsError;
+    EpsilonSettingsOperation simulatedEdit;
+    simulatedEdit.values["BODY_TO_VEHICLE_ALGN_ROLL"] = 12.5;
+    require(first.applyEpsilonSettings(simulatedEdit, settingsError) &&
+                first.epsilonSettings(EpsilonSettingsGroup::Installation).values.at("BODY_TO_VEHICLE_ALGN_ROLL") == 12.5,
+            "simulated changes survive a settings read");
+    simulatedEdit.values = {{"GNSS_L_ANTS_BASE_LINE", 4.0}};
+    require(!first.applyEpsilonSettings(simulatedEdit, settingsError),
+            "UI test retains read-only parameter protection");
+    require(first.epsilonDgnss().values.size() == epsilonDgnssDescriptors().size(),
+            "UI test supplies every built-in 4G field");
+    EpsilonDgnssOperation dgnssEdit;
+    dgnssEdit.values["NTRIP_SVR_DOMAIN"] = "edited.invalid";
+    require(first.applyEpsilonDgnss(dgnssEdit, settingsError) &&
+                first.epsilonDgnss().values.at("NTRIP_SVR_DOMAIN") == "edited.invalid",
+            "UI test applies built-in 4G changes in memory");
+    first.setScenario(UiTestScenario::PartialFailure, 0);
+    require(first.rtcmStatus(2500, true).health == RtcmHealth::Warning &&
+                first.rtcmStatus(2500, true).droppedChunks > 0,
+            "partial failure supplies RTCM link loss and drop diagnostics");
+    for (auto group : epsilonSettingsGroups())
+        require(first.epsilonSettings(group).unsupported.size() == 1,
+                "partial-failure scenario covers unsupported fields in every group");
+    require(first.epsilonDgnss().unsupported.size() == 1,
+            "partial-failure scenario covers unsupported built-in 4G fields");
+    first.reset();
+    require(first.rtcmStatus(2500, true).health == RtcmHealth::Normal &&
+                first.rtcmStatus(2500, true).bytesPerSecond > 0 &&
+                first.rtcmStatus(2500, false).health == RtcmHealth::Local,
+            "normal RTCM simulation respects local and remote source modes");
+    first.setScenario(UiTestScenario::DataStalled, 2500);
+    require(first.rtcmStatus(3000, true).health == RtcmHealth::Interrupted &&
+                first.rtcmStatus(3000, true).bytesPerSecond == 0 &&
+                first.rtcmStatus(4000, true).receivedChunks == first.rtcmStatus(3000, true).receivedChunks,
+            "stalled RTCM stops its counters and displays interruption");
+    first.reset();
+    require(first.epsilonSettings(EpsilonSettingsGroup::Installation).values.at("BODY_TO_VEHICLE_ALGN_ROLL") != 12.5 &&
+                first.epsilonDgnss().values.at("NTRIP_SVR_DOMAIN") == "ui-test.invalid",
+            "reset discards simulated parameter edits");
     require(firstSnapshot.epsilon.valid, "normal scenario supplies EPSILON data");
     require(firstSnapshot.rawWaveform.size() == 512, "normal scenario supplies raw waveform");
     require(firstSnapshot.harmonicWaveform.size() == 512, "normal scenario supplies harmonic waveform");

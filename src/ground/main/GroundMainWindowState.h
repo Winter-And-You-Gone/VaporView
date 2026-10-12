@@ -444,6 +444,9 @@ struct MainWindowState
     QElapsedTimer epsilon_reconfigure_progress_elapsed_;
     bool is_connected_;
     bool ui_test_mode_enabled_;
+    bool ui_test_epsilon_operation_pending_ = false;
+    quint64 ui_test_epsilon_operation_generation_ = 0;
+    VaporView::EpsilonMaintenanceAction ui_test_epsilon_maintenance_action_ = VaporView::EpsilonMaintenanceAction::Level;
     bool ui_test_application_closing_;
     bool ui_test_connection_in_progress_;
     int ui_test_recording_state_;

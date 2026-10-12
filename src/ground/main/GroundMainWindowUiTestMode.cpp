@@ -334,6 +334,7 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
             state_->device_config_.sensor_transport_path_combo->setCurrentIndex(index >= 0 ? index : 1);
         }
         state_->ui_test_mode_enabled_ = true;
+        state_->ui_test_epsilon_operation_pending_ = false;
         if (state_->tcp_wave_panel_)
         {
             state_->tcp_wave_panel_->setUiTestMode(true);
@@ -422,6 +423,10 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
     state_->ui_test_connection_in_progress_ = false;
     resetUiTestRecording();
     state_->ui_test_mode_enabled_ = false;
+    state_->ui_test_epsilon_operation_pending_ = false;
+    if (state_->epsilon_config_panel_) state_->epsilon_config_panel_->invalidateSettings();
+    ++state_->ui_test_epsilon_operation_generation_;
+    state_->ui_test_model_->reset();
     if (state_->tcp_wave_panel_)
     {
         state_->tcp_wave_panel_->setUiTestMode(false);
@@ -526,6 +531,9 @@ void MainWindow::setUiTestScenario(UiTestScenario scenario)
     }
     const qint64 elapsed = QDateTime::currentMSecsSinceEpoch() - state_->ui_test_started_ms_;
     state_->ui_test_model_->setScenario(scenario, elapsed);
+    state_->ui_test_epsilon_operation_pending_ = false;
+    ++state_->ui_test_epsilon_operation_generation_;
+    state_->epsilon_settings_target_.clear();
     updateUiTestModeUi();
     const QString name = scenario == UiTestScenario::Normal
         ? (state_->is_english_ ? QStringLiteral("Normal operation") : QStringLiteral("正常运行"))
@@ -571,6 +579,46 @@ void MainWindow::updateUiTestModeUi()
     }
     discardTitleApplicationMenuPanel();
     updateCustomTitleBarTexts();
+}
+
+bool MainWindow::runUiTestEpsilonOperation(const QString& operation, std::function<QString()> completion, int delayMs)
+{
+    if (!isUiTestMode()) return false;
+    auto *panel = state_->epsilon_config_panel_;
+    if (!panel) return true;
+    if (state_->ui_test_epsilon_operation_pending_ ||
+        state_->ui_test_model_->deviceState(VaporView::SkyDeviceId::Epsilon) != VaporView::DeviceState::Connected ||
+        state_->ui_test_model_->scenario() == UiTestScenario::DataStalled)
+    {
+        panel->setSettingsError(state_->is_english_
+            ? QStringLiteral("UI test: simulated device unavailable or busy.")
+            : QStringLiteral("界面测试：模拟设备未连接、数据停更或正在操作。"));
+        return true;
+    }
+    state_->ui_test_epsilon_operation_pending_ = true;
+    panel->setSettingsOperationPending(true);
+    panel->setSettingsStatus(state_->is_english_
+        ? QStringLiteral("UI test: simulating a device operation…")
+        : QStringLiteral("界面测试：正在模拟设备操作…"));
+    updateDeviceConfigState();
+    const auto generation = ++state_->ui_test_epsilon_operation_generation_;
+    QTimer::singleShot(delayMs, this, [this, generation, operation, completion]() {
+        if (!isUiTestMode() || generation != state_->ui_test_epsilon_operation_generation_ ||
+            !state_->ui_test_epsilon_operation_pending_) return;
+        state_->ui_test_epsilon_operation_pending_ = false;
+        const QString error = completion();
+        state_->epsilon_config_panel_->setSettingsOperationPending(false);
+        updateDeviceConfigState();
+        const QString message = error.isEmpty()
+            ? (state_->is_english_ ? QStringLiteral("UI test: simulated operation completed in memory only.")
+                                  : QStringLiteral("界面测试：模拟操作已完成，仅更新内存。"))
+            : QStringLiteral("UI test: %1").arg(error);
+        if (error.isEmpty()) state_->epsilon_config_panel_->setSettingsStatus(message);
+        else state_->epsilon_config_panel_->setSettingsError(message);
+        publishUiTestEvent(QStringLiteral("ui_test_epsilon_settings_operation_completed"), message,
+            {{QStringLiteral("operation"), operation}, {QStringLiteral("success"), error.isEmpty()}});
+    });
+    return true;
 }
 
 void MainWindow::applyUiTestSnapshot()

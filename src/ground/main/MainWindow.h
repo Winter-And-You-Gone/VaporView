@@ -300,6 +300,7 @@ private:
     void setUiTestModeEnabled(bool enabled);
     void setUiTestScenario(VaporView::Ground::Devices::UiTestScenario scenario);
     void applyUiTestSnapshot();
+    bool runUiTestEpsilonOperation(const QString& operation, std::function<QString()> completion, int delayMs = 300);
     void updateUiTestModeUi();
     void publishUiTestEvent(const QString& event,
                             const QString& message,
