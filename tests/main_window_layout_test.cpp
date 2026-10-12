@@ -4793,18 +4793,59 @@ int main(int argc, char **argv)
             auto *parameterCard = navigation->findChild<QFrame *>(QStringLiteral("epsilonParameterActionsCard"));
             auto *installation = navigation->findChild<QPushButton *>(QStringLiteral("epsilonSettingsTab_1"));
             require(parameterCard && installation, "installation page exposes its shared parameter card");
+            auto *statusPanel = navigation->findChild<QWidget *>(QStringLiteral("navigationStatusPanel"));
+            require(statusPanel && statusPanel->layout(), "status page supplies the reference card spacing");
+            int cardGap = statusPanel->layout()->spacing();
+            auto *epsilonPanel = navigation->epsilonConfigPanel();
+            const auto cardRect = [&](QWidget *card) {
+                return QRect(card->mapTo(epsilonPanel, QPoint()), card->size());
+            };
+            const auto requireParameterCardGaps = [&](int group) {
+                QVector<QRect> rects;
+                for (int index = 0; index < (group == 0 ? 3 : 4); ++index)
+                {
+                    auto *card = navigation->findChild<QFrame *>(QStringLiteral("epsilonParameterCard_%1_%2").arg(group).arg(index));
+                    require(card && card->isVisible(), "parameter cards are visible for gap checks");
+                    rects.append(cardRect(card));
+                }
+                require(rects[0].top() - cardRect(parameterCard).bottom() - 1 == cardGap,
+                        "parameter header and first card use the status-page vertical gap");
+                if (rects[0].top() == rects[1].top())
+                {
+                    require(rects[1].left() - rects[0].right() - 1 == cardGap &&
+                                rects[0].bottom() == rects[1].bottom(),
+                            "paired parameter cards share the status-page horizontal gap and aligned bottoms");
+                    require(rects[2].top() - rects[0].bottom() - 1 == cardGap,
+                            "parameter rows share the status-page vertical gap");
+                    if (group == 1)
+                        require(rects[3].bottom() == rects[2].bottom(), "second fusion row has aligned card bottoms");
+                }
+                else
+                    for (int index = 1; index < rects.size(); ++index)
+                        require(rects[index].top() - rects[index - 1].bottom() - 1 == cardGap,
+                                "narrow parameter cards share the status-page vertical gap");
+            };
             ResizeHeightRecorder parameterRecorder(parameterCard);
             parameterCard->installEventFilter(&parameterRecorder);
             for (int scale : {100, 130})
             {
                 triggerFontScaleAction(combinationWindow, scale);processEventsFor(100);
-                for (int width : {1280, 1600})
+                cardGap = statusPanel->layout()->spacing();
+                for (int width : {1024, 1280, 1600})
                 {
                     combinationWindow.resize(width, 800);processEventsFor(100);
+                    clickWidget(differential, 0);processEventsFor(100);
+                    const QRect rtkTop(rtkNtripCard->mapTo(embeddedRtk, QPoint()), rtkNtripCard->size());
+                    const QRect rtkRight(rtkGgaCard->mapTo(embeddedRtk, QPoint()), rtkGgaCard->size());
+                    const QRect rtkBottom(rtkRtcmCard->mapTo(embeddedRtk, QPoint()), rtkRtcmCard->size());
+                    require(rtkRight.left() - rtkTop.right() - 1 == cardGap &&
+                                rtkBottom.top() - rtkTop.bottom() - 1 == cardGap,
+                            "embedded differential cards use the status-page horizontal and vertical gaps");
                     for (int sourceIndex : {0, 2})
                     {
                         auto *source = navigation->findChild<QPushButton *>(QStringLiteral("epsilonSettingsTab_%1").arg(sourceIndex));
                         clickWidget(source, 0);processEventsFor(150);
+                        if (sourceIndex == 2) requireParameterCardGaps(1);
                         parameterRecorder.reset();
                         clickWidget(installation, 0);
                         const int initialHeight = parameterCard->height();
@@ -4812,17 +4853,23 @@ int main(int argc, char **argv)
                         require(initialHeight == parameterCard->height() &&
                                     parameterRecorder.paintedOnlyAtHeight(parameterCard->height()),
                                 "installation parameter card paints only its final height from output and fusion pages");
+                        requireParameterCardGaps(0);
                     }
                 }
             }
             parameterCard->removeEventFilter(&parameterRecorder);
             triggerFontScaleAction(combinationWindow, 100);processEventsFor(100);
+            cardGap = statusPanel->layout()->spacing();
             combinationWindow.resize(1280, 800);processEventsFor(100);
             clickWidget(advanced,0);requireSelected(advanced);
             auto *maintenance=navigation->findChild<QFrame*>(QStringLiteral("epsilonMaintenanceCard"));
             auto *groups=navigation->findChild<QComboBox*>(QStringLiteral("epsilonAdvancedGroupCombo"));
             require(pages->currentIndex()==3&&maintenance&&maintenance->isVisible()&&maintenance->parentWidget()==pages->currentWidget(),"advanced page contains the calibration and maintenance card");
             require(groups&&groups->isVisible(),"advanced parameter groups share the maintenance page");
+            auto *advancedPages = navigation->findChild<QStackedWidget *>(QStringLiteral("epsilonAdvancedGroupPages"));
+            auto *advancedCard = advancedPages->currentWidget()->findChild<QFrame *>();
+            require(cardRect(maintenance).top() - cardRect(advancedCard).bottom() - 1 == cardGap,
+                    "advanced parameter and maintenance cards use the status-page vertical gap");
             groups->setCurrentIndex(1);processEventsFor(80);
             clickWidget(advanced,0);requireSelected(advanced);
             require(pages->currentIndex()==3&&groups->currentIndex()==1,"reselecting advanced features preserves the active parameter group");
@@ -4844,6 +4891,7 @@ int main(int argc, char **argv)
             for (int scale : {100, 130})
             {
                 triggerFontScaleAction(combinationWindow, scale);processEventsFor(100);
+                cardGap = statusPanel->layout()->spacing();
                 for (int width : {1600, 1400, 1280, 1024})
                 {
                     combinationWindow.resize(width, 800);processEventsFor(120);
@@ -4851,6 +4899,10 @@ int main(int argc, char **argv)
                     clickWidget(communication, 0);requireSelected(communication);processEventsFor(120);
                     navigation->setEnglish(true);processEventsFor(80);
                     navigation->setEnglish(false);processEventsFor(80);
+                    const auto communicationCards = pages->currentWidget()->findChildren<QFrame *>(QString(), Qt::FindDirectChildrenOnly);
+                    for (int index = 1; index < communicationCards.size(); ++index)
+                        require(cardRect(communicationCards[index]).top() - cardRect(communicationCards[index - 1]).bottom() - 1 == cardGap,
+                                "communication cards use the status-page vertical gap");
                     for (auto *combo : navigation->findChildren<QComboBox *>())
                         if (combo->property("epsilonPacketId").isValid())
                         {
@@ -4862,10 +4914,12 @@ int main(int argc, char **argv)
                                     "packet-rate selectors stay inside the visible grid after font and language changes");
                         }
                     auto *bar = epsilonScroll->verticalScrollBar();
-                    bar->setValue(bar->maximum());processEventsFor(80);
-                    const int saveBottom = saveOutput->mapTo(epsilonScroll->viewport(), QPoint(0, saveOutput->height())).y();
-                    const int trailingSpace = epsilonScroll->viewport()->height() - saveBottom;
-                    require(bar->maximum() == 0 || (trailingSpace >= 0 && trailingSpace <= 24),
+                    require(processEventsUntil(1000, [&]() {
+                        bar->setValue(bar->maximum());
+                        const int saveBottom = saveOutput->mapTo(epsilonScroll->viewport(), QPoint(0, saveOutput->height())).y();
+                        const int trailingSpace = epsilonScroll->viewport()->height() - saveBottom;
+                        return bar->maximum() == 0 || (trailingSpace >= 0 && trailingSpace <= 24);
+                    }),
                             "communication output scrolling ends directly after Save + Apply without an empty tail");
                 }
             }

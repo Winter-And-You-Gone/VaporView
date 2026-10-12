@@ -45,6 +45,7 @@ namespace VaporView::Ground::Navigation
 {
 namespace
 {
+constexpr int kCardGap = VaporView::Ground::MainSupport::kTopLevelCardGap;
 
 constexpr int kTwoColumnMinimumWidth = 980;
 constexpr int kPacketWideGridColumnCount = 5;
@@ -422,7 +423,7 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
 
     auto *panelLayout = new QVBoxLayout(this);
     panelLayout->setContentsMargins(0, 0, 0, 0);
-    panelLayout->setSpacing(12);
+    panelLayout->setSpacing(kCardGap);
 
     auto *tabs = new QFrame(this);
     settings_navigation_tabs_ = tabs;
@@ -465,7 +466,7 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     communication_page_->setObjectName(QStringLiteral("epsilonCommunicationPage"));
     auto *communicationLayout = new QVBoxLayout(communication_page_);
     communicationLayout->setContentsMargins(0, 0, 0, 0);
-    communicationLayout->setSpacing(12);
+    communicationLayout->setSpacing(kCardGap);
     pages_->addWidget(communication_page_);
     panelLayout->addWidget(pages_);
 
@@ -1039,8 +1040,8 @@ void EpsilonConfigPanel::createSettingsPages()
         page->setObjectName(group == VaporView::EpsilonSettingsGroup::Installation
             ? QStringLiteral("epsilonInstallationPage") : QStringLiteral("epsilonFusionPage"));
         auto *layout = new QVBoxLayout(page);
-        layout->setContentsMargins(0, 10, 0, 12);
-        layout->setSpacing(10);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->setSpacing(kCardGap);
         auto *hint = new QLabel(settings_actions_card_);
         hint->setWordWrap(true);
         hint->setProperty("epsilonSecondaryText", true);
@@ -1050,8 +1051,8 @@ void EpsilonConfigPanel::createSettingsPages()
         fields->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
         auto *grid = new QGridLayout(fields);
         grid->setContentsMargins(0, 0, 0, 0);
-        grid->setHorizontalSpacing(24);
-        grid->setVerticalSpacing(8);
+        grid->setHorizontalSpacing(kCardGap);
+        grid->setVerticalSpacing(kCardGap);
         grid->setAlignment(Qt::AlignTop);
         settings_grids_.append(grid);
         layout->addWidget(fields);
@@ -1063,7 +1064,7 @@ void EpsilonConfigPanel::createSettingsPages()
                 QStringLiteral("epsilonParameterCard_%1_%2").arg(static_cast<int>(group)).arg(cardIndex),
                 group == VaporView::EpsilonSettingsGroup::Installation ? QStringLiteral("satellite") : QStringLiteral("activity"));
             card.card->setProperty("epsilonParameterCard", true);
-            card.card->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
+            card.card->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
             cards.append(card);
             settings_cards_.append(card.card);
             settings_card_titles_.append(card.title);
@@ -1178,9 +1179,9 @@ void EpsilonConfigPanel::arrangeSettingsFields(bool twoColumns)
             auto *card = settings_cards_[cardOffset + i];
             grid->removeWidget(card);
             if (twoColumns && groupIndex == 0 && i == 2)
-                grid->addWidget(card, 1, 0, 1, 2, Qt::AlignTop);
+                grid->addWidget(card, 1, 0, 1, 2);
             else
-                grid->addWidget(card, twoColumns ? i / 2 : i, twoColumns ? i % 2 : 0, Qt::AlignTop);
+                grid->addWidget(card, twoColumns ? i / 2 : i, twoColumns ? i % 2 : 0);
             card->setProperty("epsilonSettingsFieldColumn", twoColumns ? i % 2 : 0);
         }
         cardOffset += count;
@@ -1238,8 +1239,8 @@ void EpsilonConfigPanel::createAdvancedSettingsPage()
     auto *page = new QWidget(pages_);
     page->setObjectName(QStringLiteral("epsilonAdvancedPage"));
     auto *layout = new QVBoxLayout(page);
-    layout->setContentsMargins(0, 10, 0, 12);
-    layout->setSpacing(10);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(kCardGap);
     auto *selectorRow = new QWidget(page);
     auto *selectorLayout = new QHBoxLayout(selectorRow);
     selectorLayout->setContentsMargins(0, 0, 0, 0);

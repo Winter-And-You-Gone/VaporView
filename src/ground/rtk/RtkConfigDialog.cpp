@@ -2340,7 +2340,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
         {
             if (QLayout *runtimeLayout = runtimeRow->layout())
             {
-                runtimeLayout->setSpacing(scalePixels(compactLayout ? 6 : kEmbeddedTopLevelCardGap));
+                runtimeLayout->setSpacing(scalePixels(kEmbeddedTopLevelCardGap));
             }
         }
     }
