@@ -4797,18 +4797,39 @@ int main(int argc, char **argv)
             auto *communication = navigation->findChild<QPushButton *>(QStringLiteral("epsilonSettingsTab_0"));
             require(epsilonScroll && saveOutput && communication, "communication output has its scroll area and final action");
             const int originalScroll = epsilonScroll->verticalScrollBar()->value();
-            for (int width : {1280, 1024})
+            const bool originalEnglish = communication->text() == QStringLiteral("Output");
+            auto *packetGrid = navigation->findChild<QWidget *>(QStringLiteral("epsilonPacketGrid"));
+            require(packetGrid != nullptr, "communication output exposes its packet grid");
+            for (int scale : {100, 130})
             {
-                combinationWindow.resize(width, 800);processEventsFor(120);
-                clickWidget(advanced, 0);groups->setCurrentIndex(2);processEventsFor(120);
-                clickWidget(communication, 0);requireSelected(communication);processEventsFor(120);
-                auto *bar = epsilonScroll->verticalScrollBar();
-                bar->setValue(bar->maximum());processEventsFor(80);
-                const int saveBottom = saveOutput->mapTo(epsilonScroll->viewport(), QPoint(0, saveOutput->height())).y();
-                const int trailingSpace = epsilonScroll->viewport()->height() - saveBottom;
-                require(bar->maximum() == 0 || (trailingSpace >= 0 && trailingSpace <= 24),
-                        "communication output scrolling ends directly after Save + Apply without an empty tail");
+                triggerFontScaleAction(combinationWindow, scale);processEventsFor(100);
+                for (int width : {1600, 1400, 1280, 1024})
+                {
+                    combinationWindow.resize(width, 800);processEventsFor(120);
+                    clickWidget(advanced, 0);groups->setCurrentIndex(2);processEventsFor(120);
+                    clickWidget(communication, 0);requireSelected(communication);processEventsFor(120);
+                    navigation->setEnglish(true);processEventsFor(80);
+                    navigation->setEnglish(false);processEventsFor(80);
+                    for (auto *combo : navigation->findChildren<QComboBox *>())
+                        if (combo->property("epsilonPacketId").isValid())
+                        {
+                            const QRect rect(combo->mapTo(combo->parentWidget(), QPoint()), combo->size());
+                            require(combo->parentWidget()->rect().contains(rect),
+                                    "every packet-rate selector fits completely inside its field container");
+                            const QRect gridRect(combo->mapTo(packetGrid, QPoint()), combo->size());
+                            require(packetGrid->rect().contains(gridRect),
+                                    "packet-rate selectors stay inside the visible grid after font and language changes");
+                        }
+                    auto *bar = epsilonScroll->verticalScrollBar();
+                    bar->setValue(bar->maximum());processEventsFor(80);
+                    const int saveBottom = saveOutput->mapTo(epsilonScroll->viewport(), QPoint(0, saveOutput->height())).y();
+                    const int trailingSpace = epsilonScroll->viewport()->height() - saveBottom;
+                    require(bar->maximum() == 0 || (trailingSpace >= 0 && trailingSpace <= 24),
+                            "communication output scrolling ends directly after Save + Apply without an empty tail");
+                }
             }
+            triggerFontScaleAction(combinationWindow, 100);processEventsFor(100);
+            navigation->setEnglish(originalEnglish);processEventsFor(80);
             combinationWindow.resize(1280, 800);processEventsFor(120);
             epsilonScroll->verticalScrollBar()->setValue(originalScroll);
             navigation->setCurrentSection(originalSection);

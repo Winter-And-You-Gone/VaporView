@@ -2051,6 +2051,14 @@ int EpsilonConfigPanel::rtcmDevicePortIndex() const
 void EpsilonConfigPanel::changeEvent(QEvent *event)
 {
     QFrame::changeEvent(event);
+    if (event && (event->type() == QEvent::FontChange || event->type() == QEvent::ApplicationFontChange))
+    {
+        QTimer::singleShot(0, this, [this]() {
+            updatePacketLabelWidths();
+            arrangePacketFields(width() >= kTwoColumnMinimumWidth);
+            arrangeAdvancedFields();
+        });
+    }
     if (event && (event->type() == QEvent::ApplicationPaletteChange ||
                   event->type() == QEvent::PaletteChange))
     {
@@ -2067,8 +2075,27 @@ void EpsilonConfigPanel::resizeEvent(QResizeEvent *event)
 
 void EpsilonConfigPanel::arrangePacketFields(bool twoColumns)
 {
-    if (!packet_grid_ ||
-        (packet_layout_initialized_ && twoColumns == two_column_layout_))
+    if (!packet_grid_) return;
+    if (twoColumns)
+    {
+        QVector<int> columnWidths(kPacketVisualColumnCount, 0);
+        int groupPositions[kPacketRateGroupCount] = {};
+        for (int index = 0; index < packet_rate_fields_.size(); ++index)
+        {
+            const int group = packet_rate_group_ids_.at(index);
+            const int column = (group % kPacketOuterGroupColumns) * kPacketInnerFieldColumns +
+                groupPositions[group]++ % kPacketInnerFieldColumns;
+            const int otherWidth = packet_rate_fields_.at(index)->layout()->minimumSize().width() -
+                packet_rate_labels_.at(index)->minimumWidth();
+            const int requiredWidth = packet_rate_labels_.at(index)->fontMetrics().horizontalAdvance(
+                packet_rate_labels_.at(index)->text()) + 4 + otherWidth;
+            columnWidths[column] = std::max(columnWidths[column], requiredWidth);
+        }
+        int requiredWidth = 26 + 24 + packet_grid_->horizontalSpacing() * (kPacketWideGridColumnCount - 1);
+        for (int columnWidth : columnWidths) requiredWidth += columnWidth;
+        twoColumns = width() >= requiredWidth;
+    }
+    if (packet_layout_initialized_ && twoColumns == two_column_layout_)
     {
         return;
     }
@@ -2236,6 +2263,7 @@ void EpsilonConfigPanel::arrangePacketFields(bool twoColumns)
                 break;
             }
         }
+        arrangeAdvancedFields();
     });
 }
 
@@ -2273,6 +2301,15 @@ void EpsilonConfigPanel::updatePacketLabelWidths()
         label->setMinimumWidth(labelWidth);
         label->setMaximumWidth(labelWidth);
         label->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        auto *field = label->parentWidget();
+        field->layout()->invalidate();
+        field->setMinimumSize(field->layout()->minimumSize());
+        field->updateGeometry();
+    }
+    if (packet_grid_)
+    {
+        packet_grid_->invalidate();
+        packet_grid_->parentWidget()->setMinimumHeight(packet_grid_->minimumSize().height());
     }
 }
 
@@ -2433,6 +2470,7 @@ void EpsilonConfigPanel::updateTexts()
         label->setAccessibleName(label->text());
     }
     updatePacketLabelWidths();
+    arrangePacketFields(width() >= kTwoColumnMinimumWidth);
     for (int groupIndex = 0; groupIndex < packet_group_labels_.size(); ++groupIndex)
     {
         QLabel *groupLabel = packet_group_labels_.at(groupIndex);

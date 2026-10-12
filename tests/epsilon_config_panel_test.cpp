@@ -461,6 +461,9 @@ int main(int argc, char *argv[])
 
     panel.resize(560, 900);
     QApplication::processEvents();
+    // The standalone panel has no scroll area; give the one-column content its natural height.
+    panel.resize(560, std::max(900, panel.sizeHint().height()));
+    VaporViewTest::processEventsFor(40);
     require(panel.width() < 980, "wide grid minimum does not prevent the narrow layout breakpoint");
     for (QWidget *field : panel.findChildren<QWidget *>())
         if (field->property("epsilonLivePacketRateField").toBool())
@@ -480,6 +483,9 @@ int main(int argc, char *argv[])
         const QRect comboRect(combo->mapTo(&panel, QPoint(0, 0)), combo->size());
         require(panel.rect().contains(comboRect),
                 "narrow packet-rate controls remain inside the panel");
+        const QRect fieldRect(combo->mapTo(combo->parentWidget(), QPoint()), combo->size());
+        require(combo->parentWidget()->rect().contains(fieldRect),
+                "narrow packet-rate controls remain fully inside their field containers");
     }
     panel.resize(1100, 420);
     QApplication::processEvents();
