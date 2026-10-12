@@ -4792,6 +4792,25 @@ int main(int argc, char **argv)
             clickWidget(advanced,0);requireSelected(advanced);
             require(navigation->currentSection()==VaporView::Ground::Navigation::CombinationNavigationPage::Section::Epsilon&&pages->currentIndex()==3,"advanced features opens its page directly from status");
             clickWidget(differential,0);requireSelected(differential);
+            auto *epsilonScroll = navigation->findChild<QScrollArea *>(QStringLiteral("epsilonConfigScrollArea"));
+            auto *saveOutput = navigation->findChild<QPushButton *>(QStringLiteral("epsilonSaveButton"));
+            auto *communication = navigation->findChild<QPushButton *>(QStringLiteral("epsilonSettingsTab_0"));
+            require(epsilonScroll && saveOutput && communication, "communication output has its scroll area and final action");
+            const int originalScroll = epsilonScroll->verticalScrollBar()->value();
+            for (int width : {1280, 1024})
+            {
+                combinationWindow.resize(width, 800);processEventsFor(120);
+                clickWidget(advanced, 0);groups->setCurrentIndex(2);processEventsFor(120);
+                clickWidget(communication, 0);requireSelected(communication);processEventsFor(120);
+                auto *bar = epsilonScroll->verticalScrollBar();
+                bar->setValue(bar->maximum());processEventsFor(80);
+                const int saveBottom = saveOutput->mapTo(epsilonScroll->viewport(), QPoint(0, saveOutput->height())).y();
+                const int trailingSpace = epsilonScroll->viewport()->height() - saveBottom;
+                require(bar->maximum() == 0 || (trailingSpace >= 0 && trailingSpace <= 24),
+                        "communication output scrolling ends directly after Save + Apply without an empty tail");
+            }
+            combinationWindow.resize(1280, 800);processEventsFor(120);
+            epsilonScroll->verticalScrollBar()->setValue(originalScroll);
             navigation->setCurrentSection(originalSection);
             mainStack->setCurrentWidget(originalMainPage);processEventsFor(80);
         }

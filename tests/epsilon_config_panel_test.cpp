@@ -1054,7 +1054,10 @@ int main(int argc, char *argv[])
     communicationTab->click();
     QApplication::processEvents();
     require(saveButton->isEnabled() && !readButton->isVisible(), "communication page retains offline save semantics");
-    require(saveButton->mapTo(&panel, QPoint()).y() >= deviceSettingsCard->mapTo(&panel, QPoint()).y() + deviceSettingsCard->height(),
+    require(VaporViewTest::processEventsUntil(500, [&]() {
+        return saveButton->mapTo(&panel, QPoint()).y() >=
+            deviceSettingsCard->mapTo(&panel, QPoint()).y() + deviceSettingsCard->height();
+    }),
             "communication save action remains below its existing four cards");
     panel.setEnglish(false);
     panel.resize(1100, 420);

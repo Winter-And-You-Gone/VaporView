@@ -1211,14 +1211,8 @@ void EpsilonConfigPanel::arrangeAdvancedFields()
     {
         // QWidgetItem otherwise measures every page in the stacked layout.
         advanced_pages_->setFixedHeight(advanced_pages_->heightForWidth(width()));
-        pages_->widget(3)->layout()->invalidate();
-        if (pages_->currentIndex() == 3)
-            pages_->setFixedHeight(std::max(pages_->heightForWidth(width()), pages_->sizeHint().height()));
-        else
-        {
-            pages_->setMinimumHeight(0);
-            pages_->setMaximumHeight(QWIDGETSIZE_MAX);
-        }
+        pages_->currentWidget()->layout()->invalidate();
+        pages_->setFixedHeight(std::max(pages_->heightForWidth(width()), pages_->sizeHint().height()));
         advanced_pages_->updateGeometry();
     }
 }
