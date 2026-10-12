@@ -421,6 +421,7 @@ struct MainWindowState
     VaporView::TemperatureControllerData current_temperature_controller_;
 
     bool is_english_;
+    LogUiViewMode default_log_view_mode_;
     LogUiViewMode log_view_mode_;
     bool log_auto_follow_enabled_;
     bool log_hide_source_category_enabled_;

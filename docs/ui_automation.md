@@ -46,6 +46,7 @@ objectName=map3DLayer_satelliteImagery
 | --- | --- | --- |
 | 标题栏应用菜单 | `titleMenuRecordingFolderAction` / `titleMenuDataViewerAction` / `titleMenuExitAction` | 自绘标题栏菜单的文件命令 |
 | 标题栏视图菜单 | `titleMenuViewLogPanelAction` / `titleMenuLanguageChineseAction` / `titleMenuLanguageEnglishAction` | 自绘标题栏菜单的视图和语言命令 |
+| 默认显示日志级别 | `titleMenuDefaultLogLevelAction` / `titleMenuDefaultLogattentionAction` / `titleMenuDefaultLogallAction` / `titleMenuDefaultLogdebugAction` | 视图菜单内的启动日志级别，选择后立即应用并持久化 |
 | 日志筛选 | `logFilterAttentionMenuAction` / `logFilterAllMenuAction` / `logFilterDebugMenuAction` / `logFilterAutoFollowMenuAction` | 主窗口日志筛选 Popup |
 | 3D 图层 | `map3DLayer_<layerKey>` | 3D 地图图层显隐，多选项 closeOnClick=false |
 | 3D 本地影像 | `map3DLocalImagery_<optionKey>` | 动态本地影像模板项 |

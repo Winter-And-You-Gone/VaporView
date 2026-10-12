@@ -1134,6 +1134,27 @@ void MainWindow::createTitleApplicationMenuPanel()
     const auto adjustViewSize = [this](int deltaPercent) {
         setFontScale(std::clamp(state_->font_scale_percent_ + deltaPercent, 60, 180));
     };
+    const auto logModeText = [this](VaporView::Ground::Main::LogUiViewMode mode) {
+        using VaporView::Ground::Main::LogUiViewMode;
+        switch(mode)
+        {
+        case LogUiViewMode::Attention: return state_->is_english_ ? QStringLiteral("Attention") : QStringLiteral("关注");
+        case LogUiViewMode::All: return state_->is_english_ ? QStringLiteral("All") : QStringLiteral("全部");
+        case LogUiViewMode::Debug: return state_->is_english_ ? QStringLiteral("Debug") : QStringLiteral("调试");
+        }
+        return QString();
+    };
+    QVector<TitleMenuCommand> defaultLogModeCommands;
+    for(auto mode : {VaporView::Ground::Main::LogUiViewMode::Attention,
+                    VaporView::Ground::Main::LogUiViewMode::All,
+                    VaporView::Ground::Main::LogUiViewMode::Debug})
+    {
+        defaultLogModeCommands.push_back(command(
+            QStringLiteral("titleMenuDefaultLog%1Action").arg(VaporView::Ground::Main::uiLogViewModeToSetting(mode)),
+            logModeText(mode), QString(), true, true,
+            mode == state_->default_log_view_mode_, false,
+            [this, mode]() { setDefaultLogViewMode(mode); }));
+    }
     TitleMenuSection viewSection{
         state_->is_english_ ? QStringLiteral("View") : QStringLiteral("视图"),
         {
@@ -1169,6 +1190,15 @@ void MainWindow::createTitleApplicationMenuPanel()
                     !state_->log_side_panel_collapsed_,
                     true,
                     [this]() { toggleLogSidePanel(); }),
+            command(QStringLiteral("titleMenuDefaultLogLevelAction"),
+                    state_->is_english_ ? QStringLiteral("Default log display level") : QStringLiteral("默认显示日志级别"),
+                    logModeText(state_->default_log_view_mode_),
+                    true,
+                    false,
+                    false,
+                    false,
+                    {},
+                    defaultLogModeCommands),
             command(QStringLiteral("titleMenuLanguageAction"),
                     state_->is_english_ ? QStringLiteral("Language") : QStringLiteral("语言"),
                     state_->is_english_ ? QStringLiteral("English") : QStringLiteral("中文"),

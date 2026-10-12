@@ -314,7 +314,8 @@ private:
                                        const QString& stage = QString());
     void updateEpsilonReconfigureProgress();
     void stopEpsilonReconfigureProgress();
-    void setLogViewMode(VaporView::Ground::Main::LogUiViewMode mode, bool persist = true);
+    void setLogViewMode(VaporView::Ground::Main::LogUiViewMode mode);
+    void setDefaultLogViewMode(VaporView::Ground::Main::LogUiViewMode mode);
     void settleLogViewAtBottom();
     void scheduleLogViewBottomFollow();
     void scrollLogViewToBottom();

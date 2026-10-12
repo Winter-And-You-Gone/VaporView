@@ -182,6 +182,8 @@ RD105 温控命令统一使用 `Ground / device.temperature.command`。典型事
 - `关注`：只显示 Warning、Error、Critical，以及显式 `ui_visibility=attention` 的 Info。
 - `调试`：显示 Debug、Info、Warning、Error、Critical，用于现场诊断和 Qt/内部细节。
 
+在“标题栏菜单 → 视图 → 默认显示日志级别”中选择启动级别，选项为“关注 / 全部 / 调试”，选择后立即应用并保存到 `default_log_view_mode`。日志卡片的筛选菜单只改变本次查看，不覆盖启动默认值。未设置时默认“全部”；旧版本保存的临时筛选 `log_view_mode` 不再覆盖此默认值。
+
 生产者可在 `fields` 中设置稳定英文字段 `ui_visibility`：
 
 - `attention`：进入关注视图，用于用户需要即时知道的重要状态变化。

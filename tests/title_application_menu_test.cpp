@@ -1,8 +1,10 @@
 #include "ground/main/MainWindow.h"
+#include "ground/main/UiLogModel.h"
 #include "test_ui_helpers.h"
 
 #include <QAction>
 #include <QApplication>
+#include <QCursor>
 #include <QEnterEvent>
 #include <QEventLoop>
 #include <QFrame>
@@ -11,6 +13,7 @@
 #include <QMouseEvent>
 #include <QSet>
 #include <QSettings>
+#include <QScreen>
 #include <QTemporaryDir>
 #include <QToolButton>
 #include <QWidget>
@@ -20,6 +23,16 @@
 
 namespace
 {
+
+QPoint originalCursorPosition;
+bool cursorNeedsRestoring=false;
+void restoreCursorPosition()
+{
+    if(cursorNeedsRestoring) {
+        QCursor::setPos(originalCursorPosition);
+        cursorNeedsRestoring=false;
+    }
+}
 
 void require(bool condition, const char *message)
 {
@@ -165,14 +178,22 @@ int main(int argc, char **argv)
     QApplication application(argc, argv);
     application.setOrganizationName(QStringLiteral("VaporViewTitleApplicationMenuTest"));
     application.setApplicationName(QStringLiteral("title_application_menu_test"));
+    // Native hover must not override the synthetic keyboard events below.
+    originalCursorPosition=QCursor::pos();cursorNeedsRestoring=true;
+    std::atexit(restoreCursorPosition);
+    QCursor::setPos(application.primaryScreen()->availableGeometry().bottomRight()-QPoint(1,1));
 
     QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
     settings.setValue(QStringLiteral("dark_theme_enabled"), false);
     settings.setValue(QStringLiteral("font_scale_percent"), 100);
     settings.setValue(QStringLiteral("recording_directory"), settingsDirectory.path());
+    settings.setValue(QStringLiteral("log_view_mode"), QStringLiteral("attention"));
     settings.sync();
 
     MainWindow window;
+    auto *logProxy=window.findChild<VaporView::Ground::Main::UiLogFilterProxyModel*>();
+    require(logProxy&&logProxy->viewMode()==VaporView::Ground::Main::LogUiViewMode::All,
+            "legacy temporary attention filter cannot override the default All startup view");
     window.resize(1100, 720);
     window.show();
     require(VaporViewTest::waitForWindowExposed(&window),
@@ -481,6 +502,60 @@ int main(int argc, char **argv)
             "Standard resets the bounded view size to one hundred percent");
     VaporViewTest::processEventsFor(120);
 
+    const auto openDefaultLogMenu = [&]() {
+        // Replaced title panels use deleteLater; discard their old widget trees.
+        QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
+        titleMenuButton->click();VaporViewTest::processEventsFor(80);
+        auto *main=window.findChild<QFrame*>(QStringLiteral("titleApplicationMainMenu"));
+        auto *sub=window.findChild<QFrame*>(QStringLiteral("titleApplicationSubMenu"));
+        auto *nested=window.findChild<QFrame*>(QStringLiteral("titleApplicationNestedMenu"));
+        auto *view=findRow(main,QStringLiteral("titleMenuViewSectionAction"));
+        require(view&&sub&&nested,"default log menu retains the existing title-menu containers");
+        sendKey(view,Qt::Key_Right);
+        auto *level=findRow(sub,QStringLiteral("titleMenuDefaultLogLevelAction"));
+        const bool english=qApp->property("vaporViewEnglish").toBool();
+        require(level&&level->accessibleName()==(english?QStringLiteral("Default log display level"):QStringLiteral("默认显示日志级别")),"View exposes the localized default log level submenu");
+        sendKey(level,Qt::Key_Right);
+        require(nested->isVisible(),"default log submenu opens using the existing nested menu");
+        return nested;
+    };
+    using VaporView::Ground::Main::LogUiViewMode;
+    for(auto mode : {LogUiViewMode::Debug,LogUiViewMode::Attention,LogUiViewMode::All}) {
+        auto *nested=openDefaultLogMenu();
+        auto *row=findRow(nested,QStringLiteral("titleMenuDefaultLog%1Action").arg(VaporView::Ground::Main::uiLogViewModeToSetting(mode)));
+        require(row&&row->defaultAction()->isCheckable(),"default log choices are selectable checked commands");
+        sendMouseClick(row);VaporViewTest::processEventsFor(80);
+        require(logProxy->viewMode()==mode,"title default selection immediately applies to the current log view");
+        settings.sync();
+        require(settings.value(QStringLiteral("default_log_view_mode")).toString()==VaporView::Ground::Main::uiLogViewModeToSetting(mode),"title default log selection is persisted independently");
+        auto *temporary=window.findChild<QAction*>(mode==LogUiViewMode::All?QStringLiteral("logFilterDebugMenuAction"):QStringLiteral("logFilterAllMenuAction"));
+        temporary->trigger();
+        require(logProxy->viewMode()!=mode,"log panel can temporarily switch away from the saved default");
+        nested=openDefaultLogMenu();
+        for(auto choice : {LogUiViewMode::Attention,LogUiViewMode::All,LogUiViewMode::Debug}) {
+            auto *choiceRow=findRow(nested,QStringLiteral("titleMenuDefaultLog%1Action").arg(VaporView::Ground::Main::uiLogViewModeToSetting(choice)));
+            require(choiceRow&&choiceRow->defaultAction()->isChecked()==(choice==mode),"reopened submenu checks the saved default rather than the temporary current view");
+        }
+        nested->window()->hide();
+        window.findChild<QFrame*>(QStringLiteral("titleApplicationSubMenu"))->window()->hide();
+        window.findChild<QFrame*>(QStringLiteral("titleApplicationPanel"))->hide();
+        VaporViewTest::processEventsFor(30);
+        {
+            MainWindow restarted;
+            auto *restored=restarted.findChild<VaporView::Ground::Main::UiLogFilterProxyModel*>();
+            require(restored&&restored->viewMode()==mode,"next window restores the title-menu default rather than the temporary filter");
+        }
+        VaporViewTest::processEventsFor(150);
+    }
+
+    require(QMetaObject::invokeMethod(&window,"onSwitchLanguage",Qt::DirectConnection),"default log menu can switch language");
+    require(VaporViewTest::processEventsUntil(1000,[](){return qApp->property("vaporViewEnglish").toBool();}),"queued language switch completes before opening the menu");
+    auto *englishDefaultMenu=openDefaultLogMenu();
+    auto *englishAll=findRow(englishDefaultMenu,QStringLiteral("titleMenuDefaultLogallAction"));
+    require(englishAll&&englishAll->accessibleName()==QStringLiteral("All")&&englishAll->defaultAction()->isChecked(),"English default log menu preserves the selected startup level");
+    require(QMetaObject::invokeMethod(&window,"onSwitchLanguage",Qt::DirectConnection),"default log menu restores Chinese");
+    require(VaporViewTest::processEventsUntil(1000,[](){return !qApp->property("vaporViewEnglish").toBool();}),"queued language restoration completes");
+    restoreCursorPosition();
     std::cout << "title_application_menu_test passed\n";
     return 0;
 }

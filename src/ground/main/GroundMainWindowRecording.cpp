@@ -316,7 +316,7 @@ void MainWindow::renderLogView()
     updateLogUnreadUi();
 }
 
-void MainWindow::setLogViewMode(VaporView::Ground::Main::LogUiViewMode mode, bool persist)
+void MainWindow::setLogViewMode(VaporView::Ground::Main::LogUiViewMode mode)
 {
     if (state_->log_view_mode_ == mode)
     {
@@ -324,14 +324,18 @@ void MainWindow::setLogViewMode(VaporView::Ground::Main::LogUiViewMode mode, boo
         return;
     }
     state_->log_view_mode_ = mode;
-    if (persist)
-    {
-        QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
-        VaporView::setPersistentSetting(settings,
-                                        QStringLiteral("log_view_mode"),
-                                        VaporView::Ground::Main::uiLogViewModeToSetting(mode));
-    }
     renderLogView();
+}
+
+void MainWindow::setDefaultLogViewMode(VaporView::Ground::Main::LogUiViewMode mode)
+{
+    state_->default_log_view_mode_ = mode;
+    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+    VaporView::setPersistentSetting(settings,
+                                    QStringLiteral("default_log_view_mode"),
+                                    VaporView::Ground::Main::uiLogViewModeToSetting(mode));
+    setLogViewMode(mode);
+    discardTitleApplicationMenuPanel();
 }
 
 bool MainWindow::isLogViewNearBottom() const
