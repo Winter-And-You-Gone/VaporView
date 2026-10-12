@@ -409,23 +409,17 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     trackLayout->setSpacing(0);
     auto *tabGroup = new QButtonGroup(this);
     settings_tab_group_ = tabGroup;
-    for (int i = 0; i < 5; ++i)
+    for (int i = 0; i < 4; ++i)
     {
         auto *button = createNavigationSectionButton(track);
-        button->setObjectName(QStringLiteral("epsilonSettingsTab_%1").arg(i));
+        button->setObjectName(i == 3 ? QStringLiteral("epsilonAdvancedFeaturesButton")
+                                    : QStringLiteral("epsilonSettingsTab_%1").arg(i));
         connect(button, &QPushButton::toggled, track, [track]() { track->update(); });
         tabGroup->addButton(button, i);
         trackLayout->addWidget(button, 1);
         page_buttons_.append(button);
     }
     page_buttons_.first()->setChecked(true);
-    advanced_features_button_ = createNavigationSectionButton(track);
-    advanced_features_button_->setObjectName(QStringLiteral("epsilonAdvancedFeaturesButton"));
-    advanced_features_button_->setCheckable(true);
-    advanced_features_button_->setAccessibleName(QStringLiteral("高级功能"));
-    connect(advanced_features_button_, &QPushButton::toggled, track, [track]() { track->update(); });
-    connect(advanced_features_button_, &QPushButton::toggled, this, &EpsilonConfigPanel::setAdvancedFeaturesExpanded);
-    trackLayout->addWidget(advanced_features_button_, 1);
     tabs->setMaximumWidth(720);
     panelLayout->addWidget(tabs, 0, Qt::AlignHCenter);
     pages_ = new EpsilonPages(this);
@@ -705,11 +699,9 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     settingsActions.body_layout->addWidget(device_info_label_);
     createSettingsPages();
     createAdvancedSettingsPage();
-    auto *maintenancePage = new QWidget(pages_);
-    maintenancePage->setObjectName(QStringLiteral("epsilonMaintenancePage"));
-    auto *maintenanceLayout = new QVBoxLayout(maintenancePage);
-    maintenanceLayout->setContentsMargins(0, 10, 0, 12);
-    auto maintenanceCard = createSectionCard(maintenancePage, QStringLiteral("epsilonMaintenanceCard"), QStringLiteral("sliders-vertical"));
+    auto *advancedPage = pages_->widget(3);
+    auto *advancedLayout = qobject_cast<QVBoxLayout *>(advancedPage->layout());
+    auto maintenanceCard = createSectionCard(advancedPage, QStringLiteral("epsilonMaintenanceCard"), QStringLiteral("sliders-vertical"));
     maintenanceCard.card->setProperty("epsilonParameterCard", true);
     maintenance_title_ = maintenanceCard.title;
     const QStringList maintenanceZh = {QStringLiteral("调平"), QStringLiteral("加表静态零偏"), QStringLiteral("陀螺静态零偏"), QStringLiteral("磁力计 2D 校准"), QStringLiteral("磁力计 3D 校准")};
@@ -754,14 +746,13 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
         setSettingsStatus(is_english_ ? QStringLiteral("Exit requested; device stop and navigation recovery are not yet confirmed.") : QStringLiteral("已请求退出；设备停止与导航恢复尚未确认。"));
         emit maintenanceCancelRequested();
     });
-    maintenanceLayout->addWidget(maintenanceCard.card);
-    auto *maintenanceHint = new QLabel(maintenancePage);
+    advancedLayout->addWidget(maintenanceCard.card);
+    auto *maintenanceHint = new QLabel(advancedPage);
     maintenanceHint->setWordWrap(true);
     maintenanceHint->setProperty("epsilonSecondaryText", true);
     maintenanceHint->setObjectName(QStringLiteral("epsilonMaintenanceHint"));
-    maintenanceLayout->addWidget(maintenanceHint);
-    maintenanceLayout->addStretch(1);
-    pages_->addWidget(maintenancePage);
+    advancedLayout->addWidget(maintenanceHint);
+    advancedLayout->addStretch(1);
     settings_status_label_ = new QLabel(this);
     settings_status_label_->setObjectName(QStringLiteral("epsilonSettingsStatus"));
     settings_status_label_->setWordWrap(true);
@@ -879,7 +870,7 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     updateTexts();
     applyAppearance();
     invalidateSettings();
-    setAdvancedFeaturesExpanded(false);
+    updateSettingsNavigationVisibility();
 }
 
 void EpsilonConfigPanel::setEnglish(bool english)
@@ -902,14 +893,6 @@ QVector<QPushButton *> EpsilonConfigPanel::takeSettingsNavigationButtons(QWidget
     }
 
     QVector<QPushButton *> buttons = page_buttons_;
-    if (advanced_features_button_)
-    {
-        advanced_features_button_->setCheckable(false);
-        connect(advanced_features_button_, &QPushButton::clicked, this, [this]() {
-            setAdvancedFeaturesExpanded(!advanced_features_expanded_);
-        });
-        buttons.append(advanced_features_button_);
-    }
     for (QPushButton *button : buttons)
     {
         if (!button)
@@ -952,13 +935,6 @@ void EpsilonConfigPanel::clearSettingsNavigationSelection()
         const QSignalBlocker blocker(button);
         button->setChecked(false);
     }
-    if (advanced_features_expanded_)
-    {
-        if (advanced_features_button_->isCheckable())
-            advanced_features_button_->setChecked(false);
-        else
-            setAdvancedFeaturesExpanded(false);
-    }
     if (settings_tab_group_ && wasExclusive)
     {
         settings_tab_group_->setExclusive(true);
@@ -967,40 +943,8 @@ void EpsilonConfigPanel::clearSettingsNavigationSelection()
 
 void EpsilonConfigPanel::updateSettingsNavigationVisibility()
 {
-    for (int index = 0; index < page_buttons_.size(); ++index)
-    {
-        page_buttons_[index]->setVisible(settings_navigation_visible_ &&
-                                          (index < 3 || advanced_features_expanded_));
-    }
-    if (advanced_features_button_)
-    {
-        advanced_features_button_->setVisible(settings_navigation_visible_);
-    }
-}
-
-void EpsilonConfigPanel::setAdvancedFeaturesExpanded(bool expanded)
-{
-    advanced_features_expanded_ = expanded;
-    if (advanced_features_button_)
-    {
-        const QString label = is_english_ ? QStringLiteral("Advanced features") : QStringLiteral("高级功能");
-        advanced_features_button_->setText(expanded
-            ? (is_english_ ? QStringLiteral("Hide advanced") : QStringLiteral("收起高级功能"))
-            : label);
-        advanced_features_button_->setAccessibleName(label);
-        advanced_features_button_->setToolTip(expanded
-            ? (is_english_ ? QStringLiteral("Hide advanced settings and calibration") : QStringLiteral("收起高级设置和校准维护"))
-            : (is_english_ ? QStringLiteral("Show advanced settings and calibration") : QStringLiteral("展开高级设置和校准维护")));
-    }
-    updateSettingsNavigationVisibility();
-    if (!expanded && pages_ && pages_->currentIndex() >= 3 && !page_buttons_.isEmpty())
-    {
-        setCurrentSettingsPage(0);
-        page_buttons_.first()->setChecked(true);
-    }
-    if (pages_) pages_->updateGeometry();
-    updateSettingsTexts();
-    updateSettingsControls();
+    for (QPushButton *button : page_buttons_)
+        button->setVisible(settings_navigation_visible_);
 }
 
 void EpsilonConfigPanel::setCurrentSettingsPage(int index)
@@ -1228,7 +1172,7 @@ void EpsilonConfigPanel::createAdvancedSettingsPage()
     layout->addWidget(advanced_hint_);
     advanced_pages_ = new EpsilonPages(page);
     advanced_pages_->setObjectName(QStringLiteral("epsilonAdvancedGroupPages"));
-    layout->addWidget(advanced_pages_, 1);
+    layout->addWidget(advanced_pages_);
     for (auto group : advanced_groups_)
     {
         auto *groupPage = new QWidget(advanced_pages_);
@@ -1680,20 +1624,20 @@ void EpsilonConfigPanel::updateSettingsControls()
 {
     if (!save_button_)
         return;
-    const bool settingsPage = pages_->currentIndex() != 0 && pages_->currentIndex() != 4;
+    const bool settingsPage = pages_->currentIndex() != 0;
     const bool busy = settings_pending_ || maintenance_running_;
     settings_read_button_->setVisible(settingsPage);
     device_restart_button_->setVisible(pages_->currentIndex() != 0);
     settings_status_label_->setVisible(pages_->currentIndex() != 0);
     actions_container_->setVisible(true);
-    save_button_->setVisible(pages_->currentIndex() != 4);
+    save_button_->setVisible(true);
     settings_export_button_->setVisible(settingsPage && !isDgnssPage());
     settings_import_button_->setVisible(settingsPage && !isDgnssPage());
     settings_export_button_->setEnabled(!busy && !exportSettingsJson().isEmpty());
     settings_import_button_->setEnabled(settings_available_ && !busy);
     settings_read_button_->setEnabled(settings_available_ && !busy);
     device_restart_button_->setEnabled(settings_available_ && !busy &&
-        (settings_restart_required_ || (pages_->currentIndex() == 4 && maintenance_verification_pending_)));
+        (settings_restart_required_ || maintenance_verification_pending_));
     communication_page_->setEnabled(!busy);
     save_button_->setEnabled(!busy && (!settingsPage || (settings_available_ && (isDgnssPage() ? !editedDgnss().values.empty() : !editedSettings().values.empty()))));
     for (auto& field : dgnss_fields_)
@@ -1777,25 +1721,14 @@ void EpsilonConfigPanel::updateSettingsTexts()
             advanced_titles_[i]->setText(advancedCardTitles[i]);
     }
     const QStringList names = is_english_
-        ? QStringList{QStringLiteral("Communication"), QStringLiteral("Installation & Antennas"), QStringLiteral("Navigation Fusion"), QStringLiteral("Advanced"), QStringLiteral("Calibration & Maintenance")}
-        : QStringList{QStringLiteral("通信输出"), QStringLiteral("安装与天线"), QStringLiteral("导航融合"), QStringLiteral("高级设置"), QStringLiteral("校准与维护")};
+        ? QStringList{QStringLiteral("Communication"), QStringLiteral("Installation & Antennas"), QStringLiteral("Navigation Fusion"), QStringLiteral("Advanced Features")}
+        : QStringList{QStringLiteral("通信输出"), QStringLiteral("安装与天线"), QStringLiteral("导航融合"), QStringLiteral("高级功能")};
     for (int i = 0; i < page_buttons_.size(); ++i)
     {
-        const QStringList shortNames = {QStringLiteral("Output"), QStringLiteral("Installation"), QStringLiteral("Fusion"), QStringLiteral("Advanced"), QStringLiteral("Calibration")};
+        const QStringList shortNames = {QStringLiteral("Output"), QStringLiteral("Installation"), QStringLiteral("Fusion"), QStringLiteral("Advanced")};
         page_buttons_[i]->setText(is_english_ ? shortNames[i] : names[i]);
         page_buttons_[i]->setAccessibleName(names[i]);
         page_buttons_[i]->setToolTip(names[i]);
-    }
-    if (advanced_features_button_)
-    {
-        const QString label = is_english_ ? QStringLiteral("Advanced features") : QStringLiteral("高级功能");
-        advanced_features_button_->setText(advanced_features_expanded_
-            ? (is_english_ ? QStringLiteral("Hide advanced") : QStringLiteral("收起高级功能"))
-            : label);
-        advanced_features_button_->setAccessibleName(label);
-        advanced_features_button_->setToolTip(advanced_features_expanded_
-            ? (is_english_ ? QStringLiteral("Hide advanced settings and calibration") : QStringLiteral("收起高级设置和校准维护"))
-            : (is_english_ ? QStringLiteral("Show advanced settings and calibration") : QStringLiteral("展开高级设置和校准维护")));
     }
     for (auto *button : page_buttons_) button->updateGeometry();
     const QStringList maintenanceNames = is_english_

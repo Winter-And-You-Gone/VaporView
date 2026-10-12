@@ -524,17 +524,21 @@ int main(int argc, char *argv[])
     auto *settingsTabs = panel.findChild<QFrame *>(QStringLiteral("epsilonSettingsTabs"));
     auto *settingsTrack = panel.findChild<QFrame *>(QStringLiteral("epsilonSettingsTabTrack"));
     auto *advancedFeatures = panel.findChild<QPushButton *>(QStringLiteral("epsilonAdvancedFeaturesButton"));
-    require(pages && pages->count() == 5 && installationTab && fusionTab && communicationTab &&
+    require(pages && pages->count() == 4 && installationTab && fusionTab && communicationTab &&
             readButton && saveButton && restartButton && settingsStatus,
-            "EPSILON exposes three internal pages and shared read/save/restart actions");
-    auto *maintenanceTab = panel.findChild<QPushButton *>(QStringLiteral("epsilonSettingsTab_4"));
+            "EPSILON exposes four internal pages and shared read/save/restart actions");
     auto *maintenanceCard = panel.findChild<QFrame *>(QStringLiteral("epsilonMaintenanceCard"));
-    auto *advancedTab = panel.findChild<QPushButton *>(QStringLiteral("epsilonSettingsTab_3"));
-    require(advancedFeatures && advancedTab && maintenanceTab && !advancedTab->isVisible() && !maintenanceTab->isVisible(),
-            "advanced settings and calibration stay behind the optional advanced features entry");
+    auto *advancedTab = advancedFeatures;
+    require(advancedFeatures && advancedFeatures->isVisible() && advancedFeatures->isCheckable() &&
+            !panel.findChild<QPushButton *>(QStringLiteral("epsilonSettingsTab_3")) &&
+            !panel.findChild<QPushButton *>(QStringLiteral("epsilonSettingsTab_4")),
+            "advanced features is one permanent page entry without extra navigation tabs");
     advancedFeatures->click();
-    require(advancedTab->isVisible() && maintenanceTab->isVisible() && advancedFeatures->isChecked(),
-            "advanced features entry reveals advanced settings and calibration pages");
+    QApplication::processEvents();
+    require(pages->currentIndex() == 3 && advancedFeatures->isChecked() &&
+            maintenanceCard && maintenanceCard->isVisible() && maintenanceCard->parentWidget() == pages->currentWidget() &&
+            panel.findChild<QStackedWidget *>(QStringLiteral("epsilonAdvancedGroupPages"))->isVisible(),
+            "advanced features shows settings and maintenance together on one page");
     require(maintenanceCard && panel.findChildren<QPushButton *>(QStringLiteral("epsilonMaintenanceButton_0")).size() == 1,
             "calibration maintenance page exposes concrete vendor backed actions");
     auto *maintenanceHeading = maintenanceCard->findChild<QLabel *>(QStringLiteral("sectionTitleLabel"));
@@ -916,7 +920,7 @@ int main(int argc, char *argv[])
     panel.invalidateSettings();
     require(deviceInfo->text().contains(QStringLiteral("Version packet not received")) && deviceInfo->toolTip().isEmpty(),
             "new target clears prior device information");
-    maintenanceTab->click();
+    advancedFeatures->click();
     VaporView::EpsilonMaintenanceResult magneticResult;
     magneticResult.action = VaporView::EpsilonMaintenanceAction::Magnetic2D;
     magneticResult.status = VaporView::EpsilonMaintenanceStatus::Running;
@@ -971,8 +975,8 @@ int main(int argc, char *argv[])
             "cancelled maintenance never claims the device has stopped");
     panel.invalidateSettings();
     advancedFeatures->click();
-    require(!advancedFeatures->isChecked() && !advancedTab->isVisible() && !maintenanceTab->isVisible() && pages->currentIndex() == 0,
-            "collapsing advanced features returns to the common output page");
+    require(advancedFeatures->isChecked() && pages->currentIndex() == 3 && advancedFeatures->isVisible(),
+            "clicking the active advanced entry keeps the merged page selected");
     communicationTab->click();
     QApplication::processEvents();
     require(saveButton->isEnabled() && !readButton->isVisible(), "communication page retains offline save semantics");

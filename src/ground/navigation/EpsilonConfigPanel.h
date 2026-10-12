@@ -85,7 +85,6 @@ private:
     void updateSummaryTexts();
     void updateTexts();
     void createSettingsPages();
-    void setAdvancedFeaturesExpanded(bool expanded);
     void setCurrentSettingsPage(int index);
     void updateSettingsNavigationVisibility();
     void updateSettingsTexts();
@@ -128,7 +127,6 @@ private:
     QVector<SettingsField> settings_fields_;
     QVector<QPushButton *> page_buttons_;
     QButtonGroup *settings_tab_group_ = nullptr;
-    QPushButton *advanced_features_button_ = nullptr;
     QFrame *settings_navigation_tabs_ = nullptr;
     QFrame *settings_navigation_track_ = nullptr;
     bool settings_navigation_visible_ = true;
@@ -165,7 +163,6 @@ private:
     bool settings_verified_ = false;
     bool settings_status_custom_ = false;
     bool maintenance_verification_pending_ = false;
-    bool advanced_features_expanded_ = false;
 
     bool is_english_ = false;
     bool is_available_ = true;

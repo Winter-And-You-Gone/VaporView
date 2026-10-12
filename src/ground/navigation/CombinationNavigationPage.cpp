@@ -398,8 +398,7 @@ CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, 
         button->raise();
     }
     // Keep the shared capsule structurally stable across all three content pages.
-    // The EPSILON entries remain visible while the advanced sub-pages continue
-    // to be controlled by the "高级功能" entry itself.
+    // The EPSILON entries, including the merged advanced page, remain visible.
     epsilon_config_panel_->setSettingsNavigationVisible(true);
     epsilonContentLayout->addWidget(epsilon_config_panel_);
     epsilonContentLayout->addStretch(1);
