@@ -38,6 +38,8 @@
 #include <QStandardItemModel>
 #include <QSet>
 #include <stdexcept>
+#include <cmath>
+#include <QtEndian>
 #include <cstdlib>
 #include <iostream>
 
@@ -428,13 +430,28 @@ static void relayConfigurationPresentation()
     stack->setCurrentIndex(0);processFor(80);
     const auto adcBefore=window.findChild<QWidget*>("tcpWaveRawPlot")->property("sampleCount").toInt();
     require(adcBefore>0,"bounded simulated RAW reaches the home ADC graph");
+    auto *monitor=window.findChild<TcpWavePanel*>();
+    auto *page=window.findChild<FpgaControlPage*>();
+    QMetaObject::invokeMethod(monitor,"onClearPeakPlotClicked");
+    VaporView::FpgaWave::CompletedStream full;full.source=0x30;full.format=0;full.bytesPerPoint=8;
+    full.totalPoints=2002;full.complete=true;full.cycleId=9001;full.timestamp=900100;
+    for(quint32 i=0;i<full.totalPoints;++i) {
+        char word[4];qToLittleEndian<qint32>(900000,reinterpret_cast<uchar*>(word));full.pointBytes.append(word,4);
+        qToLittleEndian<qint32>(i==1?1234:-5,reinterpret_cast<uchar*>(word));full.pointBytes.append(word,4);
+    }
+    page->updateWaveform(full);
+    require(monitor->testPeakValues()==QVector<float>({1234}),"H2 peak is computed before display decimation and never divided by H1");
+    require(monitor->testHarmonicSamples().first()==-5,"home waveform selects H2 rather than H1");
+    page->setLanguage(true);page->setLanguage(false);page->updateWaveform(full);
+    require(monitor->testPeakValues()==QVector<float>({1234}),"FPGA rerender and repeated cycle do not duplicate trend entries");
     VaporView::FpgaWave::CompletedStream partial;partial.source=0x20;partial.totalPoints=2;partial.partial=true;
     window.findChild<FpgaControlPage*>()->updateWaveform(partial);
     require(window.findChild<QWidget*>("tcpWaveRawPlot")->property("sampleCount").toInt()==adcBefore,
         "incomplete ADC retains the same historical cycle on both FPGA and home pages");
-    partial.source=0x30;window.findChild<FpgaControlPage*>()->updateWaveform(partial);
+    partial.source=0x30;partial.cycleId=9002;window.findChild<FpgaControlPage*>()->updateWaveform(partial);
     require(window.findChild<QWidget*>("tcpWaveHarmonicPlot")->property("sampleCount").toInt()==0,
         "incomplete DLIA clears the home graph through the shared validated display");
+    require(monitor->testPeakValues().size()==2&&std::isnan(monitor->testPeakValues().last()),"missing DLIA fragments create a trend gap");
     window.findChild<FpgaControlPage*>()->setUiTestState(false);
     stack->setCurrentWidget(configPage);
     baud->setCurrentIndex(baud->findText("460800"));

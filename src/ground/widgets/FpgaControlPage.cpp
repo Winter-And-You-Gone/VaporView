@@ -572,13 +572,16 @@ void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream 
     }
     QVector<SamplePlot*> activePlots{plot};if(second)activePlots.append(second);
     for(auto *iq:iqPlots_.value(s.source))activePlots.append(static_cast<SamplePlot*>(iq));
+    double maxH2 = std::numeric_limits<double>::quiet_NaN();
     const auto publishDisplay = [&](quint32 totalPoints = 0) {
         QVector<QVector<double>> samples;
         for (auto *p : activePlots) samples.append(p->samples);
         const QStringList components = adc ? QStringList{QStringLiteral("ADC")}
             : s.format == 1 ? QStringList{QStringLiteral("I1"), QStringLiteral("Q1"), QStringLiteral("I2"), QStringLiteral("Q2")}
                             : QStringList{QStringLiteral("H1"), QStringLiteral("H2")};
-        emit waveformDisplayUpdated(s.source, samples, components, l->text(), totalPoints ? totalPoints : s.totalPoints);
+        emit waveformDisplayUpdated(s.source, samples, components, l->text(), totalPoints ? totalPoints : s.totalPoints, s.preview);
+        if (!adc && !rerendering_)
+            emit secondHarmonicPeakReady(s.source, s.cycleId, s.timestamp, maxH2, s.preview);
     };
     auto retainRaw=[&](const QString &reason){
         if(!adc||!lastCompleteRaw_.contains(s.source))return false;
@@ -606,10 +609,14 @@ void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream 
         clearPlots();l->setText(historyPrefix+text("波形格式或长度无效；保留原始记录供诊断","Invalid waveform format or length; raw recording retained for diagnostics"));publishDisplay();return;
     }
     if(adc)lastCompleteRaw_[s.source]=s;
-    for(auto *p:activePlots)p->samples.clear();double maxH2=0;const int stride=qMax(1,int(displayPoints)/1000);const int components=adc?1:int(s.bytesPerPoint/4);
+    for(auto *p:activePlots)p->samples.clear();const int stride=qMax(1,int(displayPoints)/1000);const int components=adc?1:int(s.bytesPerPoint/4);
     for(int point=0;point<int(displayPoints);++point){const int offset=point*components*4;if(offset+components*4>s.pointBytes.size())break;
         const double value=adc&&s.format==1?double(qFromLittleEndian<quint32>(reinterpret_cast<const uchar*>(s.pointBytes.constData()+offset))):double(qFromLittleEndian<qint32>(reinterpret_cast<const uchar*>(s.pointBytes.constData()+offset+component*4)));
-        if(!adc&&s.format==0&&components>=2){const qint32 h2=qFromLittleEndian<qint32>(reinterpret_cast<const uchar*>(s.pointBytes.constData()+offset+4));maxH2=qMax(maxH2,double(h2));}
+        if (!adc) {
+            const auto read = [&](int index) { return double(qFromLittleEndian<qint32>(reinterpret_cast<const uchar*>(s.pointBytes.constData()+offset+index*4))); };
+            const double h2 = s.format == 1 ? std::hypot(read(2), read(3)) : read(component+1);
+            maxH2 = std::isfinite(maxH2) ? qMax(maxH2, h2) : h2;
+        }
         if(point%stride==0) {
             plot->samples.append(volts?value*c.frontend[channel].voltsPerCode*c.frontend[channel].polarity:double(value));
             if(second)second->samples.append(double(qFromLittleEndian<qint32>(reinterpret_cast<const uchar*>(s.pointBytes.constData()+offset+(component+1)*4))));

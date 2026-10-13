@@ -51,7 +51,8 @@ public:
     void setRemoteSkyMode(bool enabled);
     void setFpgaMode(bool enabled);
     void setFpgaWaveform(quint16 source, const QVector<QVector<double>> &samples,
-                         const QStringList &components, const QString &detail, quint32 totalPoints);
+                         const QStringList &components, const QString &detail, quint32 totalPoints, bool preview = false);
+    void setFpgaSecondHarmonicPeak(quint16 source, quint32 cycleId, quint64 timestamp, double peak, bool preview);
     void setUiTestMode(bool enabled);
     void setUiTestConnected(bool connected);
     void setRemoteWaveTcpState(VaporView::DeviceState state);
@@ -67,6 +68,8 @@ public:
     void testSetConnectionEndpoint(const QString& host, const QString& portText);
     qsizetype testBufferedByteCount() const;
     void testFlushLiveDisplay();
+    QVector<float> testHarmonicSamples() const;
+    QVector<float> testPeakValues() const;
     QString testRawXAxisLabel() const;
     QString testHarmonicXAxisLabel() const;
     QString testPeakXAxisLabel() const;
@@ -258,11 +261,21 @@ private:
         QStringList components;
         QString detail;
         quint32 totalPoints = 0;
+        bool preview = false;
+    };
+    struct FpgaPeakTrend {
+        QVector<float> values;
+        QVector<qint64> wallMsecs;
+        quint32 lastCycleId = 0;
+        quint64 lastTimestamp = 0;
+        bool hasCycle = false;
+        bool preview = false;
     };
     bool fpga_mode_ = false;
     QComboBox *fpga_channel_combo_ = nullptr;
-    QComboBox *fpga_component_combo_ = nullptr;
+    QLabel *fpga_peak_info_label_ = nullptr;
     QMap<quint16, FpgaWaveDisplay> fpga_waves_;
+    QMap<quint16, FpgaPeakTrend> fpga_peaks_;
     bool ui_test_connected_ = false;
     QString ui_test_saved_host_;
     QString ui_test_saved_port_;

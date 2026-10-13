@@ -45,7 +45,8 @@ public:
                         VaporView::SensorTransportPath path = VaporView::SensorTransportPath::DirectDevices);
 signals:
     void waveformDisplayUpdated(quint16 source, const QVector<QVector<double>> &samples,
-                                const QStringList &components, const QString &detail, quint32 totalPoints);
+                                const QStringList &components, const QString &detail, quint32 totalPoints, bool preview);
+    void secondHarmonicPeakReady(quint16 source, quint32 cycleId, quint64 timestamp, double peak, bool preview);
     void discoverDevicesRequested();
     void connectRequested(const QString &locator, const QString &backend);
     void disconnectRequested();

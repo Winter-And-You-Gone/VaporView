@@ -36,9 +36,14 @@ void MainWindow::setupFpgaControlPage()
     auto *page = state_->fpga_page_;
     connect(page, &FpgaControlPage::waveformDisplayUpdated, this,
         [this](quint16 source, const QVector<QVector<double>> &samples,
-               const QStringList &components, const QString &detail, quint32 totalPoints) {
+               const QStringList &components, const QString &detail, quint32 totalPoints, bool preview) {
             if (state_->tcp_wave_panel_)
-                state_->tcp_wave_panel_->setFpgaWaveform(source, samples, components, detail, totalPoints);
+                state_->tcp_wave_panel_->setFpgaWaveform(source, samples, components, detail, totalPoints, preview);
+        });
+    connect(page, &FpgaControlPage::secondHarmonicPeakReady, this,
+        [this](quint16 source, quint32 cycleId, quint64 timestamp, double peak, bool preview) {
+            if (state_->tcp_wave_panel_)
+                state_->tcp_wave_panel_->setFpgaSecondHarmonicPeak(source, cycleId, timestamp, peak, preview);
         });
     controller->moveToThread(state_->fpga_thread_);
     connect(state_->fpga_thread_, &QThread::finished, controller, &QObject::deleteLater);

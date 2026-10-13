@@ -16,6 +16,7 @@
 #include <QTabWidget>
 #include <cstdio>
 #include <cstdlib>
+#include <cmath>
 
 namespace {
 void require(bool value, const char *message) {
@@ -150,15 +151,22 @@ int main(int argc,char **argv) {
     require(page.findChild<QLabel*>("fpgaWaveSummary32")->text().startsWith("Waiting for waveform"),"unreceived waveform placeholder follows language changes");
     require(page.findChild<QLabel*>("fpgaSensor0043")->text().contains("Waiting for session calibration"),"cached sensor metadata rerenders in English");
     VaporView::FpgaWave::CompletedStream wave;wave.source=0x30;wave.message=0x1001;wave.format=2;wave.bytesPerPoint=24;wave.totalPoints=2;wave.rate=10000;wave.complete=true;
+    double cyclePeak=0;bool peakPreview=false;int peakEvents=0;
+    QObject::connect(&page,&FpgaControlPage::secondHarmonicPeakReady,&page,
+        [&](quint16,quint32,quint64,double peak,bool preview){cyclePeak=peak;peakPreview=preview;++peakEvents;});
     auto appendWord=[](QByteArray &bytes,qint32 value){for(int i=0;i<4;++i)bytes.append(char(quint32(value)>>(8*i)));};
     for(qint32 value:{1,2,3,4,100,200,11,12,13,14,110,210})appendWord(wave.pointBytes,value);
     page.updateWaveform(wave);auto *plot=page.findChild<QWidget*>("fpgaWavePlot48");
     auto *secondPlot=page.findChild<QWidget*>("fpgaWaveSecondPlot48");
     require(!page.findChild<QComboBox*>("fpgaWaveComponent48")&&!page.findChild<QComboBox*>("fpgaWaveComponent49")&&secondPlot,"both DLIA channels display their data without component selectors");
     require(plot->property("sampleMaximum").toDouble()==110&&secondPlot->property("sampleMaximum").toDouble()==210,"H1 and H2 are displayed together by default");
+    require(cyclePeak==210&&!peakPreview,"format2 publishes the raw H2 cycle maximum");
+    const int beforeRerender=peakEvents;page.setLanguage(false);page.setLanguage(true);
+    require(peakEvents==beforeRerender,"language rerender does not publish a new peak event");
     auto iq=wave;iq.format=1;iq.bytesPerPoint=16;iq.pointBytes.clear();
     for(qint32 value:{1,2,3,4,11,12,13,14})appendWord(iq.pointBytes,value);
     page.updateWaveform(iq);
+    require(std::abs(cyclePeak-std::hypot(13.0,14.0))<0.0001,"IQ format publishes the unnormalized second harmonic magnitude peak");
     auto *i2=page.findChild<QWidget*>("fpgaWaveIqPlot48_0"),*q2=page.findChild<QWidget*>("fpgaWaveIqPlot48_1");
     require(plot->property("sampleMaximum").toDouble()==11&&secondPlot->property("sampleMaximum").toDouble()==12&&i2&&q2
         &&i2->property("sampleMaximum").toDouble()==13&&q2->property("sampleMaximum").toDouble()==14&&!i2->parentWidget()->isHidden(),"IQ-only format displays all four components without a selector");
@@ -167,10 +175,12 @@ int main(int argc,char **argv) {
     page.updateWaveform(wave);
     require(i2->parentWidget()->isHidden()&&i2->property("sampleCount").toInt()==0,"harmonic format hides and clears the IQ-only pair");
     auto partial=wave;partial.complete=false;partial.partial=true;partial.pointBytes.truncate(24);page.updateWaveform(partial);
+    require(std::isnan(cyclePeak),"invalid DLIA publishes a trend gap instead of a peak");
     require(plot->property("sampleCount").toInt()==0&&secondPlot->property("sampleCount").toInt()==0&&page.findChild<QLabel*>("fpgaWaveSummary48")->text().contains("missing fragments"),"partial cycle does not draw a fabricated connected trace");
     page.updateWaveform(wave);
     auto preview=wave;preview.preview=true;preview.previewStride=1024;preview.totalPoints=2048;
     page.updateWaveform(preview);
+    require(cyclePeak==210&&peakPreview,"preview maximum is marked as a preview peak");
     require(plot->property("sampleCount").toInt()==2 && plot->property("previewStride").toInt()==1024,
         "bounded preview displays actual received points while preserving original stride");
     const auto previewLabel=page.findChild<QLabel*>("fpgaWaveSummary48")->text();

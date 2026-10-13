@@ -1725,7 +1725,7 @@ int TcpWavePanel::preferredPanelHeight() const
 
     const bool showRawWave = fpga_mode_ || wave_display_all_ || wave_display_raw_;
     const bool showHarmonicWave = fpga_mode_ || wave_display_all_ || wave_display_harmonic_;
-    const bool showPeakTrend = !fpga_mode_ && (wave_display_all_ || wave_display_peak_trend_);
+    const bool showPeakTrend = fpga_mode_ || wave_display_all_ || wave_display_peak_trend_;
     const int visibleWaveRows = (showRawWave ? 1 : 0) + (showHarmonicWave ? 1 : 0);
 
     if (visibleWaveRows > 0)
@@ -1868,15 +1868,10 @@ void TcpWavePanel::setupUi()
     fpga_channel_combo_ = new QComboBox(topControlsBar);
     fpga_channel_combo_->setObjectName(QStringLiteral("fpgaMonitorChannelCombo"));
     fpga_channel_combo_->addItems({QStringLiteral("ADC 0 / DLIA 0"), QStringLiteral("ADC 1 / DLIA 1")});
-    fpga_component_combo_ = new QComboBox(topControlsBar);
-    fpga_component_combo_->setObjectName(QStringLiteral("fpgaMonitorComponentCombo"));
-    fpga_component_combo_->addItems({QStringLiteral("H1"), QStringLiteral("H2")});
-    for (auto *combo : {fpga_channel_combo_, fpga_component_combo_}) {
-        combo->setFixedHeight(kTcpControlHeight);
-        combo->hide();
-        top_controls_layout_->addWidget(combo, 0, Qt::AlignVCenter);
-        connect(combo, &QComboBox::currentIndexChanged, this, [this] { refreshFpgaWaveform(); });
-    }
+    fpga_channel_combo_->setFixedHeight(kTcpControlHeight);
+    fpga_channel_combo_->hide();
+    top_controls_layout_->addWidget(fpga_channel_combo_, 0, Qt::AlignVCenter);
+    connect(fpga_channel_combo_, &QComboBox::currentIndexChanged, this, [this] { refreshFpgaWaveform(); });
 
     status_label_ = new VaporView::VisualTextLabel(this);
     status_label_->setObjectName("fieldLabel");
@@ -1993,6 +1988,10 @@ void TcpWavePanel::setupUi()
     peak_title_label_->setContentsMargins(0, 0, 0, 0);
     peak_title_label_->setFixedHeight(kTcpButtonHeight);
     peakHeaderLayout->addWidget(peak_title_label_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    fpga_peak_info_label_ = new QLabel(peakHeaderBar);
+    fpga_peak_info_label_->setObjectName(QStringLiteral("fpgaMonitorPeakInfo"));
+    fpga_peak_info_label_->hide();
+    peakHeaderLayout->addWidget(fpga_peak_info_label_, 0, Qt::AlignVCenter);
     peak_filter_button_ = new QPushButton(this);
     peak_filter_button_->setObjectName("compactTcpButton");
     peak_filter_button_->setFixedHeight(kTcpButtonHeight);
@@ -2119,7 +2118,6 @@ void TcpWavePanel::setEnglish(bool english)
 {
     is_english_ = english;
     fpga_channel_combo_->setAccessibleName(english ? QStringLiteral("FPGA channel") : QStringLiteral("FPGA 通道"));
-    fpga_component_combo_->setAccessibleName(english ? QStringLiteral("DLIA component") : QStringLiteral("DLIA 分量"));
     if (panel_title_label_)
     {
         panel_title_label_->setText(english ? "Wave Monitor" : "波形监控");
@@ -2151,13 +2149,15 @@ void TcpWavePanel::setEnglish(bool english)
     }
     if (wave4_title_label_)
     {
-        wave4_title_label_->setText(english ? "Normalized Second Harmonic" : "归一化二次谐波");
+        wave4_title_label_->setText(fpga_mode_
+            ? (english ? "Second Harmonic" : "二次谐波")
+            : (english ? "Normalized Second Harmonic" : "归一化二次谐波"));
     }
     if (peak_title_label_)
     {
-        const QString titleText = english
-            ? QStringLiteral("Normalized Second Harmonic Peak Trend")
-            : QStringLiteral("归一化二次谐波峰值趋势");
+        const QString titleText = fpga_mode_
+            ? (english ? QStringLiteral("Second Harmonic Peak Trend") : QStringLiteral("二次谐波峰值趋势"))
+            : (english ? QStringLiteral("Normalized Second Harmonic Peak Trend") : QStringLiteral("归一化二次谐波峰值趋势"));
         peak_title_label_->setText(titleText);
         peak_title_label_->setToolTip(titleText);
     }
@@ -2209,10 +2209,10 @@ void TcpWavePanel::setFpgaMode(bool enabled)
         widget->setVisible(!enabled);
     panel_title_label_->setAttribute(Qt::WA_TransparentForMouseEvents, enabled);
     fpga_channel_combo_->setVisible(enabled);
-    fpga_component_combo_->setVisible(enabled);
-    wave1_history_.clear(); wave4_history_.clear();
-    live_display_dirty_ = false;
-    if (!enabled) fpga_waves_.clear();
+    fpga_peak_info_label_->setVisible(enabled);
+    peak_filter_button_->setVisible(!enabled);
+    clearRemoteWaveformDisplay();
+    if (!enabled) { fpga_waves_.clear(); fpga_peaks_.clear(); }
     wave1_plot_->setSampleAxis(enabled);
     wave4_plot_->setSampleAxis(enabled);
     updateEndpointEditorState();
@@ -2220,46 +2220,65 @@ void TcpWavePanel::setFpgaMode(bool enabled)
 }
 
 void TcpWavePanel::setFpgaWaveform(quint16 source, const QVector<QVector<double>> &samples,
-                                  const QStringList &components, const QString &detail, quint32 totalPoints)
+                                  const QStringList &components, const QString &detail, quint32 totalPoints, bool preview)
 {
     if (source != 0x20 && source != 0x21 && source != 0x30 && source != 0x31) return;
-    fpga_waves_[source] = {samples, components, detail, totalPoints};
+    fpga_waves_[source] = {samples, components, detail, totalPoints, preview};
     if (fpga_mode_) refreshFpgaWaveform();
+}
+
+void TcpWavePanel::setFpgaSecondHarmonicPeak(quint16 source, quint32 cycleId, quint64 timestamp, double peak, bool preview)
+{
+    if (!fpga_mode_ || (source != 0x30 && source != 0x31)) return;
+    auto &trend = fpga_peaks_[source];
+    if (trend.hasCycle && trend.lastCycleId == cycleId && trend.lastTimestamp == timestamp) return;
+    trend.hasCycle = true;
+    trend.lastCycleId = cycleId;
+    trend.lastTimestamp = timestamp;
+    trend.preview = preview;
+    trend.values.append(float(peak));
+    // FPGA timestamps are device ticks; label the trend with host receipt time.
+    trend.wallMsecs.append(QDateTime::currentMSecsSinceEpoch());
+    if (trend.values.size() > kPeakTrendFrameWindow) {
+        const int count = trend.values.size() - kPeakTrendFrameWindow;
+        trend.values.remove(0, count);
+        trend.wallMsecs.remove(0, count);
+    }
+    refreshFpgaWaveform();
 }
 
 void TcpWavePanel::refreshFpgaWaveform()
 {
     if (!fpga_mode_) return;
-    panel_title_label_->setText(is_english_ ? QStringLiteral("ADC / DLIA Waveforms") : QStringLiteral("ADC / DLIA 波形"));
-    if (auto *title = dynamic_cast<WaveDisplayTitleLabel *>(panel_title_label_)) title->refreshFixedWidth();
     const int channel = fpga_channel_combo_->currentIndex();
     const auto adc = fpga_waves_.value(0x20 + channel);
     const auto dlia = fpga_waves_.value(0x30 + channel);
-    const QStringList components = dlia.components.isEmpty()
-        ? QStringList{QStringLiteral("H1"), QStringLiteral("H2")} : dlia.components;
-    if (fpga_component_combo_->itemText(0) != components.first() || fpga_component_combo_->count() != components.size()) {
-        const int index = fpga_component_combo_->currentIndex();
-        const QSignalBlocker blocker(fpga_component_combo_);
-        fpga_component_combo_->clear(); fpga_component_combo_->addItems(components);
-        fpga_component_combo_->setCurrentIndex(qBound(0, index, int(components.size()) - 1));
-    }
     const auto convert = [](const QVector<double> &values) {
         QVector<float> result; result.reserve(values.size());
         for (double value : values) result.append(float(value));
         return result;
     };
     wave1_history_ = convert(adc.samples.value(0));
-    wave4_history_ = convert(dlia.samples.value(fpga_component_combo_->currentIndex()));
-    wave1_title_label_->setText(QStringLiteral("ADC %1").arg(channel));
-    wave4_title_label_->setText(QStringLiteral("DLIA %1 · %2").arg(channel).arg(fpga_component_combo_->currentText()));
+    wave4_history_.clear();
+    const int h2 = dlia.components.indexOf(QStringLiteral("H2"));
+    if (h2 >= 0) wave4_history_ = convert(dlia.samples.value(h2));
+    else {
+        const auto i2 = dlia.samples.value(dlia.components.indexOf(QStringLiteral("I2")));
+        const auto q2 = dlia.samples.value(dlia.components.indexOf(QStringLiteral("Q2")));
+        for (int i = 0; i < qMin(i2.size(), q2.size()); ++i)
+            wave4_history_.append(float(std::hypot(i2[i], q2[i])));
+    }
     const QString waiting = is_english_ ? QStringLiteral("Waiting for FPGA waveform") : QStringLiteral("等待 FPGA 波形");
     const auto present = [this, &waiting](QLabel *label, const FpgaWaveDisplay &wave, bool empty) {
         const bool historical = wave.detail.contains(QStringLiteral("历史")) || wave.detail.contains(QStringLiteral("historical"), Qt::CaseInsensitive);
         const QString quality = historical ? (is_english_ ? QStringLiteral("Historical") : QStringLiteral("历史值"))
             : empty ? (is_english_ ? QStringLiteral("Unavailable") : QStringLiteral("无有效波形"))
-                    : (is_english_ ? QStringLiteral("Complete") : QStringLiteral("完整周期"));
+                    : wave.preview ? (is_english_ ? QStringLiteral("Preview") : QStringLiteral("预览"))
+                                   : (is_english_ ? QStringLiteral("Complete") : QStringLiteral("完整周期"));
         label->setText(wave.detail.isEmpty() ? waiting
-            : QString(is_english_ ? "%1 points · %2" : "%1 点 · %2").arg(wave.totalPoints).arg(quality));
+            : QString(is_english_ ? "%1 points · %2" : "%1 点 · %2")
+                .arg(wave.preview ? QStringLiteral("%1/%2").arg(wave.samples.value(0).size()).arg(wave.totalPoints)
+                                  : QString::number(wave.totalPoints)).arg(quality));
         label->setToolTip(wave.detail);
     };
     present(wave1_info_label_, adc, wave1_history_.isEmpty());
@@ -2268,6 +2287,16 @@ void TcpWavePanel::refreshFpgaWaveform()
     wave4_plot_->setSampleAxis(true, dlia.totalPoints);
     wave1_plot_->setSamples(wave1_history_);
     wave4_plot_->setSamples(wave4_history_);
+    const auto trend = fpga_peaks_.value(0x30 + channel);
+    peak_history_ = trend.values;
+    peak_wall_msecs_ = trend.wallMsecs;
+    peak_plot_->setPeakValues(peak_history_, peak_wall_msecs_);
+    fpga_peak_info_label_->setText(trend.values.isEmpty() ? waiting
+        : trend.preview ? (is_english_ ? QStringLiteral("Preview peaks") : QStringLiteral("预览峰值"))
+                        : (is_english_ ? QStringLiteral("Cycle peaks") : QStringLiteral("周期峰值")));
+    fpga_peak_info_label_->setToolTip(is_english_
+        ? QStringLiteral("H2 digital amplitude maximum per cycle; IQ-only format uses second harmonic magnitude. Preview peaks cover received points only. Time is host receipt time.")
+        : QStringLiteral("每周期 H2 数字幅值最大值；仅 IQ 格式使用二次谐波 I/Q 合成幅值。预览峰值仅覆盖收到的点，时间为本机接收时间。"));
 }
 
 void TcpWavePanel::changeEvent(QEvent *event)
@@ -2325,7 +2354,7 @@ void TcpWavePanel::applyWaveDisplayMode()
 {
     const bool showRawWave = fpga_mode_ || wave_display_all_ || wave_display_raw_;
     const bool showHarmonicWave = fpga_mode_ || wave_display_all_ || wave_display_harmonic_;
-    const bool showPeakTrend = !fpga_mode_ && (wave_display_all_ || wave_display_peak_trend_);
+    const bool showPeakTrend = fpga_mode_ || wave_display_all_ || wave_display_peak_trend_;
 
     if (auto *titleLabel = dynamic_cast<WaveDisplayTitleLabel *>(panel_title_label_))
     {
@@ -2693,7 +2722,7 @@ void TcpWavePanel::toggleConnection()
 
 void TcpWavePanel::setRemoteSkyMode(bool enabled)
 {
-    if (remote_sky_mode_ != enabled) fpga_waves_.clear();
+    if (remote_sky_mode_ != enabled) { fpga_waves_.clear(); fpga_peaks_.clear(); }
     remote_sky_mode_ = enabled;
     if (host_label_)
     {
@@ -2904,6 +2933,7 @@ void TcpWavePanel::setUiTestMode(bool enabled)
         return;
     }
     fpga_waves_.clear();
+    fpga_peaks_.clear();
     if (fpga_mode_) refreshFpgaWaveform();
     if (enabled)
     {
@@ -2943,6 +2973,9 @@ void TcpWavePanel::testFlushLiveDisplay()
 {
     updateLiveDisplay();
 }
+
+QVector<float> TcpWavePanel::testHarmonicSamples() const { return wave4_history_; }
+QVector<float> TcpWavePanel::testPeakValues() const { return peak_history_; }
 
 QString TcpWavePanel::testRawXAxisLabel() const
 {
@@ -3180,6 +3213,11 @@ void TcpWavePanel::onTogglePeakPlotModeClicked()
 
 void TcpWavePanel::onClearPeakPlotClicked()
 {
+    if (fpga_mode_) {
+        auto &trend = fpga_peaks_[0x30 + fpga_channel_combo_->currentIndex()];
+        trend.values.clear();
+        trend.wallMsecs.clear();
+    }
     peak_raw_history_.clear();
     peak_history_.clear();
     peak_wall_msecs_.clear();
@@ -3188,6 +3226,7 @@ void TcpWavePanel::onClearPeakPlotClicked()
     {
         peak_plot_->setPeakValues({});
     }
+    if (fpga_mode_) refreshFpgaWaveform();
 }
 
 void TcpWavePanel::onConfigurePeakFilterClicked()
