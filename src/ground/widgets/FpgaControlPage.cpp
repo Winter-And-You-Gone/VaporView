@@ -380,7 +380,8 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     }
     waveChannels->setStretch(0,1);waveChannels->setStretch(1,1);
     auto *recordingTab=tab(QStringLiteral("记录与诊断"),QStringLiteral("Recording & diagnostics")); auto *recordingLayout=new QVBoxLayout(recordingTab);
-    auto *recording=card(recordingTab,recordingLayout,QStringLiteral("采集记录"),QStringLiteral("Acquisition recording"),QStringLiteral("scroll-text")); auto *rl=new QVBoxLayout(recording);
+    auto *recordingCards=new QHBoxLayout;recordingCards->setObjectName("fpgaRecordingCards");recordingCards->setSpacing(12);recordingLayout->addLayout(recordingCards);
+    auto *recording=card(recordingTab,recordingCards,QStringLiteral("采集记录"),QStringLiteral("Acquisition recording"),QStringLiteral("scroll-text")); auto *rl=new QVBoxLayout(recording);
     recordSensors_=new FpgaCheckBox(recording); label(recordSensors_,QStringLiteral("记录传感器"),QStringLiteral("Record sensors")); recordDlia_=new FpgaCheckBox(recording); label(recordDlia_,QStringLiteral("记录解调数据"),QStringLiteral("Record demodulation")); recordRaw_=new FpgaCheckBox(recording); label(recordRaw_,QStringLiteral("记录 RAW（高吞吐）"),QStringLiteral("Record RAW (high throughput)")); rl->addWidget(recordSensors_); rl->addWidget(recordDlia_); rl->addWidget(recordRaw_);
     for(auto *c : {recordSensors_,recordDlia_,recordRaw_}) connect(c,&QCheckBox::toggled,this,[this]{emit configurationChanged(configuration());});
     auto *rawGrid=new QGridLayout; rl->addLayout(rawGrid);
@@ -392,9 +393,10 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     auto *exportButton=new QPushButton(recording);exportButton->setObjectName("fpgaExport"); label(exportButton,QStringLiteral("导出记录"),QStringLiteral("Export recording")); files->addWidget(exportButton);
     connect(replay,&QPushButton::clicked,this,[this]{emit replayRequested({});});
     connect(exportButton,&QPushButton::clicked,this,[this]{emit exportRequested({});});
-    auto *diagnosticCard=card(recordingTab,recordingLayout,QStringLiteral("诊断日志"),QStringLiteral("Diagnostics"),QStringLiteral("list-filter"));
+    auto *diagnosticCard=card(recordingTab,recordingCards,QStringLiteral("诊断日志"),QStringLiteral("Diagnostics"),QStringLiteral("list-filter"));
     auto *diagnosticLayout=new QVBoxLayout(diagnosticCard);
     diagnostics_=new QPlainTextEdit(diagnosticCard); diagnostics_->setObjectName("fpgaDiagnostics"); diagnostics_->setReadOnly(true); diagnostics_->setMaximumBlockCount(2000); diagnostics_->setMinimumHeight(180); diagnosticLayout->addWidget(diagnostics_,1);
+    recordingCards->setStretch(0,1);recordingCards->setStretch(1,1);recordingLayout->addStretch();
     hint->setProperty("fpgaSecondaryText",true); waveHint->setProperty("fpgaSecondaryText",true); ai8hint->setProperty("fpgaSecondaryText",true);
     status_->setProperty("fpgaSecondaryText",true); recordStatus_->setProperty("fpgaSecondaryText",true);
     for (auto *body : findChildren<QWidget*>(QStringLiteral("fpgaCardBody"))) {

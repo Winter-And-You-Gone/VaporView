@@ -237,13 +237,13 @@ int main(int argc,char **argv) {
                 app.processEvents();
                 auto *scroll=qobject_cast<QScrollArea*>(tabs->widget(i));
                 require(scroll&&scroll->widgetResizable(),"all tabs remain scrollable at large fonts");require(scroll->viewport()->width()>0,"tab viewport remains visible");
-                for(const auto *name : {"fpgaDliaChannels","fpgaWaveChannels"}) {
+                for(const auto *name : {"fpgaDliaChannels","fpgaWaveChannels","fpgaRecordingCards"}) {
                     auto *row=page.findChild<QHBoxLayout*>(name);
-                    require(row&&row->count()==2,"each channel row contains two cards");
+                    require(row&&row->count()==2,"each paired row contains two cards");
                     auto *first=row->itemAt(0)->widget(),*second=row->itemAt(1)->widget();
                     if(!first->isVisibleTo(&page))continue;
                     const QRect firstRect(first->mapTo(&page,QPoint()),first->size()),secondRect(second->mapTo(&page,QPoint()),second->size());
-                    require(firstRect.top()==secondRect.top()&&firstRect.right()<secondRect.left(),"channel cards remain side by side across themes, languages and font scales");
+                    require(firstRect.top()==secondRect.top()&&firstRect.bottom()==secondRect.bottom()&&firstRect.right()<secondRect.left(),"paired cards remain side by side with equal heights across themes, languages and font scales");
                     require(qAbs(firstRect.width()-secondRect.width())<=1,"channel cards retain equal widths across themes, languages and font scales");
                 }
                 if(i==2)for(int channel=0;channel<2;++channel) {

@@ -110,9 +110,9 @@ static void verifyCardMargins(MainWindow &window,FpgaControlPage *page,int scale
             if(tab==0)parameterTabs->setCurrentIndex(parameterTab);
             processFor(50);
             QList<QWidget*> channelCards;
-            for(const auto *name : {"fpgaDliaChannels","fpgaWaveChannels"}) {
+            for(const auto *name : {"fpgaDliaChannels","fpgaWaveChannels","fpgaRecordingCards"}) {
                 auto *row=page->findChild<QHBoxLayout*>(name);
-                require(row&&row->count()==2,"parameter and waveform channel rows each retain two cards");
+                require(row&&row->count()==2,"paired FPGA rows each retain two cards");
                 auto *first=row->itemAt(0)->widget(),*second=row->itemAt(1)->widget();
                 channelCards.append(first);channelCards.append(second);
                 if(!first->isVisibleTo(page))continue;
@@ -121,6 +121,14 @@ static void verifyCardMargins(MainWindow &window,FpgaControlPage *page,int scale
                 require(qAbs(firstRect.width()-secondRect.width())<=1,"paired channel cards divide the available width equally");
                 require(secondRect.left()-firstRect.right()-1==qRound(12*scale/100.0),"paired cards retain the shared scaled card gap");
                 require(firstRect.left()==homeRect.left()&&secondRect.right()==homeRect.right(),"paired channel cards fill the row within the home outer margins");
+            }
+            if(tab==3) {
+                auto *row=page->findChild<QHBoxLayout*>("fpgaRecordingCards");auto *recording=row->itemAt(0)->widget();
+                for(const auto *name:{"fpgaRawStart","fpgaRawStop","fpgaRecord","fpgaReplay","fpgaExport"}) {
+                    auto *button=page->findChild<QAbstractButton*>(name);const QRect rect(button->mapTo(recording,QPoint()),button->size());
+                    require(recording->rect().contains(rect)&&button->width()<recording->width(),"recording buttons fit inside the half-width card");
+                    require(button->fontMetrics().horizontalAdvance(button->text())<=button->contentsRect().width(),"half-width recording buttons retain their full text at large fonts");
+                }
             }
             if(tab==0&&parameterTab==0) {
                 auto *first=page->findChild<QWidget*>("fpga0Scan"),*second=page->findChild<QWidget*>("fpga1Scan");
