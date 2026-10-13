@@ -103,6 +103,7 @@
         "outputOnFailure": true
       },
       "execution": {
+        "jobs": 2,
         "timeout": 180,
         "noTestsAction": "error"
       }

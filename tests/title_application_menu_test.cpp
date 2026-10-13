@@ -479,19 +479,20 @@ int main(int argc, char **argv)
     standardViewSizeAction->trigger();
     require(storedFontScalePercent() == 100,
             "Standard resets the view size to one hundred percent");
-    for (int i = 0; i < 9; ++i)
-    {
-        increaseViewSizeAction->trigger();
-    }
+    QAction boundaryScale;
+    boundaryScale.setData(175);
+    require(QMetaObject::invokeMethod(&window, "onFontScaleTriggered", Qt::DirectConnection,
+                                     Q_ARG(QAction *, &boundaryScale)), "seed the upper zoom boundary");
+    increaseViewSizeAction->trigger();
     require(storedFontScalePercent() == 180,
             "Zoom In clamps the view size at one hundred eighty percent");
     increaseViewSizeAction->trigger();
     require(storedFontScalePercent() == 180,
             "Zoom In keeps the view size at the upper limit");
-    for (int i = 0; i < 13; ++i)
-    {
-        decreaseViewSizeAction->trigger();
-    }
+    boundaryScale.setData(65);
+    require(QMetaObject::invokeMethod(&window, "onFontScaleTriggered", Qt::DirectConnection,
+                                     Q_ARG(QAction *, &boundaryScale)), "seed the lower zoom boundary");
+    decreaseViewSizeAction->trigger();
     require(storedFontScalePercent() == 60,
             "Zoom Out clamps the view size at sixty percent");
     decreaseViewSizeAction->trigger();

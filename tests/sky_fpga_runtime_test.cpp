@@ -11,7 +11,7 @@ int main(int argc,char **argv)
     QTemporaryDir directory; require(directory.isValid(),"isolated config directory");
     auto config=SkyConfig::defaults(); config.fpga.enabled=true; config.fpga.locator="mock";
     const bool discoveryOnly=app.arguments().contains("--discovery-only");
-    if(discoveryOnly)config.sensor_transport_path=SensorTransportPath::DirectDevices;
+    config.sensor_transport_path=discoveryOnly ? SensorTransportPath::DirectDevices : SensorTransportPath::FpgaRelay;
     config.epsilon_rtcm.enabled=true; config.epsilon_rtcm.forward_port="FORBIDDEN_DIRECT_SERIAL";
     auto file=directory.filePath("sky.json"); require(config.saveToFile(file),"save FPGA deployment configuration");
     SkyRuntimeOptions options; options.config_path=file; options.telemetry_tcp_port=0;
@@ -39,6 +39,7 @@ int main(int argc,char **argv)
     });
     runtime.setFpgaTransportForTesting(std::move(mock));
     require(runtime.start(),"start FPGA-only SkyCore");
+    if(!discoveryOnly) waitUntil([&]{return runtime.currentFpgaStatus().value("ready").toBool();},"Sky FPGA handshake ready");
     DeviceOperationRequest discoveryRequest;discoveryRequest.request_id=100;discoveryRequest.device_id=SkyDeviceId::Fpga;
     discoveryRequest.operation=DeviceOperation::FpgaControl;discoveryRequest.payload=FpgaRemote::encodeControl({{"op","discover"}});
     CommandMessage discoveryCommand;discoveryCommand.command_id=CommandId::DeviceOperation;discoveryCommand.command_seq=100;
@@ -57,7 +58,6 @@ int main(int argc,char **argv)
         require(!runtime.currentFpgaStatus().contains("usb_discovery"),"device paths are absent from periodic Sky status");
         runtime.stop();return 0;
     }
-    waitUntil([&]{return runtime.currentFpgaStatus().value("ready").toBool();},"Sky FPGA handshake ready");
     require(wire->openCount.load()==1,"startup owns one USB receive loop");
     DeviceOperationRequest operation;operation.request_id=7;operation.device_id=SkyDeviceId::Fpga;operation.operation=DeviceOperation::FpgaControl;
     operation.payload=FpgaRemote::encodeControl({{"op","temperature"},{"celsius",26.0}});

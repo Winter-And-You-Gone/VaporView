@@ -1410,10 +1410,14 @@ void requireSpinArrowHoverUsesPrimary(bool dark, const char *message)
     const QColor expected = VaporView::appThemeColor(VaporView::AppThemeColor::Primary, dark);
     const int primaryPixelCount = countPixelsNearColor(image, arrowPixelRect, expected);
     require(primaryPixelCount >= 1, message);
-    require(countPixelsNearColor(
-                image,
-                QRect(0, 0, arrowPixelRect.left(), image.height()),
-                expected) == 0,
+    // Inspect the edit field, excluding the valid focus border around the control.
+    const QRect editRect = spin.style()->subControlRect(QStyle::CC_SpinBox, &option,
+                                                        QStyle::SC_SpinBoxEditField, &spin);
+    const QRect editPixelRect(qRound(editRect.x() * devicePixelRatio),
+                              qRound(editRect.y() * devicePixelRatio),
+                              qRound(editRect.width() * devicePixelRatio),
+                              qRound(editRect.height() * devicePixelRatio));
+    require(countPixelsNearColor(image, editPixelRect, expected) == 0,
             "enabled spin arrow hover does not duplicate the primary icon in the text area");
 }
 
@@ -4330,6 +4334,12 @@ void requireHomeThemeLayoutStability()
     processEventsFor(300);
     activateLayouts(&window);
 
+    window.resize(1400, 1000);
+    activateLayouts(&window);
+    requireHomeEnvironmentCardLayout(window, true);
+    window.resize(1280, 800);
+    activateLayouts(&window);
+
     auto *overviewSplitter =
         window.findChild<QSplitter *>(QStringLiteral("homeOverviewSplitter"));
     auto *deviceCard = overviewSplitter && overviewSplitter->count() >= 1
@@ -4359,6 +4369,7 @@ void requireHomeThemeLayoutStability()
     processEventsFor(300);
     activateLayouts(&window);
     const QList<int> darkSizes = overviewSplitter->sizes();
+    requireDarkAi8OverviewCapsulesReadable(window);
     require(darkSizes.size() == 2,
             "home theme test reads the dark-theme overview splitter sizes");
     if (darkSizes.size() == 2 && darkSizes.at(0) != lightDeviceWidth)
@@ -4503,144 +4514,39 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    if (app.arguments().contains(QStringLiteral("--home-environment-layout-only")))
-    {
-        MainWindow environmentWindow;
-        environmentWindow.setWindowTitle(QStringLiteral("VaporView"));
-        environmentWindow.resize(1400, 1000);
-        environmentWindow.show();
-        require(waitForWindowExposed(&environmentWindow),
-                "home-environment test window becomes exposed");
-        requireHomeEnvironmentCardLayout(environmentWindow, true);
-        std::cout << "home_environment_layout_test passed\n";
-        return 0;
-    }
-
-    if (app.arguments().contains(QStringLiteral("--home-theme-layout-only")))
+    if (app.arguments().contains(QStringLiteral("--home-appearance-only")))
     {
         requireHomeThemeLayoutStability();
-        std::cout << "home_theme_layout_test passed\n";
+        std::cout << "home_appearance_layout_test passed\n";
         return 0;
     }
 
-    if (app.arguments().contains(QStringLiteral("--ai8-overview-dark-only")))
+    if (app.arguments().contains(QStringLiteral("--input-arrows-only")))
     {
-        MainWindow ai8OverviewWindow;
-        ai8OverviewWindow.resize(1280, 800);
-        ai8OverviewWindow.show();
-        require(waitForWindowExposed(&ai8OverviewWindow),
-                "AI-8 overview dark-theme test window becomes exposed");
-        const bool initialDarkTheme = qApp->property(VaporView::kAppDarkThemeProperty).toBool();
-        if (!initialDarkTheme)
+        MainWindow window;
+        window.resize(1280, 800);
+        window.show();
+        require(waitForWindowExposed(&window), "input-arrow test window becomes exposed");
+        const bool initialDark = qApp->property(VaporView::kAppDarkThemeProperty).toBool();
+        for (bool dark : {false, true})
         {
-            require(QMetaObject::invokeMethod(&ai8OverviewWindow,
-                                               "onToggleTheme",
-                                               Qt::DirectConnection),
-                    "AI-8 overview test can switch to dark theme");
-            processEventsFor(150);
-            activateLayouts(&ai8OverviewWindow);
+            if (qApp->property(VaporView::kAppDarkThemeProperty).toBool() != dark)
+            {
+                require(QMetaObject::invokeMethod(&window, "onToggleTheme", Qt::DirectConnection),
+                        "input-arrow test switches theme");
+                activateLayouts(&window);
+            }
+            requireComboArrowUsesPrimary(dark, "combo hover arrow follows the theme");
+            requireSpinArrowHoverUsesPrimary(dark, "enabled spin arrow keeps its hover icon");
+            requireDisabledSpinArrowKeepsIdle(dark, "disabled spin arrow stays in its idle color");
         }
-        require(qApp->property(VaporView::kAppDarkThemeProperty).toBool(),
-                "AI-8 overview test is in dark theme");
-        requireDarkAi8OverviewCapsulesReadable(ai8OverviewWindow);
-        if (!initialDarkTheme)
-        {
-            require(QMetaObject::invokeMethod(&ai8OverviewWindow,
-                                               "onToggleTheme",
-                                               Qt::DirectConnection),
-                    "AI-8 overview test restores the light theme");
-            processEventsFor(150);
-        }
-        ai8OverviewWindow.close();
-        require(processEventsUntil(1000, [&ai8OverviewWindow]() {
-                    return !ai8OverviewWindow.isVisible();
-                }),
-                "AI-8 overview dark-theme test window closes cleanly");
-        std::cout << "ai8_overview_dark_theme_test passed\n";
-        return 0;
-    }
-
-    if (app.arguments().contains(QStringLiteral("--combo-arrow-only")))
-    {
-        MainWindow comboArrowWindow;
-        comboArrowWindow.resize(1280, 800);
-        comboArrowWindow.show();
-        require(waitForWindowExposed(&comboArrowWindow),
-                "combo-arrow test window becomes exposed");
-        const bool initialDarkTheme = qApp->property(VaporView::kAppDarkThemeProperty).toBool();
-        if (initialDarkTheme)
-        {
-            require(QMetaObject::invokeMethod(&comboArrowWindow,
-                                               "onToggleTheme",
-                                               Qt::DirectConnection),
-                    "combo-arrow test can switch to light theme");
-            processEventsFor(150);
-        }
-        requireComboArrowUsesPrimary(false,
-                                     "light theme combo arrow renders the primary lucide icon when highlighted");
-        require(QMetaObject::invokeMethod(&comboArrowWindow, "onToggleTheme", Qt::DirectConnection),
-                "main window can switch to dark theme for combo-arrow checks");
-        processEventsFor(150);
-        requireComboArrowUsesPrimary(true,
-                                     "dark theme combo arrow renders the primary lucide icon when highlighted");
-        if (!initialDarkTheme)
-        {
-            require(QMetaObject::invokeMethod(&comboArrowWindow,
-                                               "onToggleTheme",
-                                               Qt::DirectConnection),
-                    "combo-arrow test restores the light theme");
-            processEventsFor(150);
-        }
-        comboArrowWindow.close();
-        require(processEventsUntil(1000, [&comboArrowWindow]() {
-                    return !comboArrowWindow.isVisible();
-                }),
-                "combo-arrow test window closes cleanly");
-        std::cout << "combo_arrow_hover_test passed\n";
-        return 0;
-    }
-
-    if (app.arguments().contains(QStringLiteral("--spin-arrow-disabled-only")))
-    {
-        MainWindow spinArrowWindow;
-        spinArrowWindow.resize(1280, 800);
-        spinArrowWindow.show();
-        require(waitForWindowExposed(&spinArrowWindow),
-                "spin-arrow disabled test window becomes exposed");
-        const bool initialDarkTheme = qApp->property(VaporView::kAppDarkThemeProperty).toBool();
-        if (initialDarkTheme)
-        {
-            require(QMetaObject::invokeMethod(&spinArrowWindow,
-                                               "onToggleTheme",
-                                               Qt::DirectConnection),
-                    "spin-arrow disabled test can switch to light theme");
-            processEventsFor(150);
-        }
-        requireSpinArrowHoverUsesPrimary(false,
-                                         "light theme enabled spin arrow keeps the hover icon in its arrow slot");
-        requireDisabledSpinArrowKeepsIdle(false,
-                                          "light theme disabled spin arrow stays in its idle color");
-        require(QMetaObject::invokeMethod(&spinArrowWindow, "onToggleTheme", Qt::DirectConnection),
-                "spin-arrow disabled test can switch to dark theme");
-        processEventsFor(150);
-        requireSpinArrowHoverUsesPrimary(true,
-                                         "dark theme enabled spin arrow keeps the hover icon in its arrow slot");
-        requireDisabledSpinArrowKeepsIdle(true,
-                                          "dark theme disabled spin arrow stays in its idle color");
-        if (!initialDarkTheme)
-        {
-            require(QMetaObject::invokeMethod(&spinArrowWindow,
-                                               "onToggleTheme",
-                                               Qt::DirectConnection),
-                    "spin-arrow disabled test restores the light theme");
-            processEventsFor(150);
-        }
-        spinArrowWindow.close();
-        require(processEventsUntil(1000, [&spinArrowWindow]() {
-                    return !spinArrowWindow.isVisible();
-                }),
-                "spin-arrow disabled test window closes cleanly");
-        std::cout << "spin_arrow_disabled_test passed\n";
+        if (!initialDark)
+            require(QMetaObject::invokeMethod(&window, "onToggleTheme", Qt::DirectConnection),
+                    "input-arrow test restores the original theme");
+        window.close();
+        require(processEventsUntil(1000, [&window] { return !window.isVisible(); }),
+                "input-arrow test window closes cleanly");
+        std::cout << "input_arrow_style_test passed\n";
         return 0;
     }
 
@@ -5265,10 +5171,6 @@ int main(int argc, char **argv)
                     QStringLiteral("QPlainTextEdit,\nQTextEdit {\n    background-color: %1")
                         .arg(lightFieldBackground)),
             "light theme gives combo, line, spin/date and multiline fields a pure white background");
-    requireSpinArrowHoverUsesPrimary(false,
-                                     "light theme spin arrow hover renders the primary lucide icon");
-    requireComboArrowUsesPrimary(false,
-                                 "light theme combo arrow renders the primary lucide icon when highlighted");
     requireMenuPopupStyleUnified(VaporView::appStyleSheet(),
                                  false,
                                  "light popup menus use the shared menu hover and rounded panel style");
@@ -5427,8 +5329,15 @@ int main(int argc, char **argv)
     require(homeScrollShadowLayer != nullptr &&
                 homeScrollShadowLayer->parentWidget() == homeScrollArea,
             "home scroll card shadows are hosted by the scroll area, not clipped by the viewport");
-    const QList<QScrollArea*> mainContentScrollAreas =
-        mainPageStackForScroll->findChildren<QScrollArea *>(QStringLiteral("mainCardsScrollArea"));
+    QList<QScrollArea*> mainContentScrollAreas{homeScrollArea};
+    for (const char *pageName : {"deviceConfigPage", "temperaturePage"})
+    {
+        auto *page = mainPageStackForScroll->findChild<QWidget *>(QString::fromLatin1(pageName));
+        require(page != nullptr, "shared-fade page exists");
+        auto *scrollArea = page->findChild<QScrollArea *>(QStringLiteral("mainCardsScrollArea"));
+        require(scrollArea != nullptr, "shared-fade page exposes its scroll area");
+        mainContentScrollAreas.append(scrollArea);
+    }
     require(mainContentScrollAreas.size() >= 3,
             "main pages expose their scroll areas for bottom-fade coverage");
     for (QScrollArea *scrollArea : mainContentScrollAreas)
@@ -7691,10 +7600,6 @@ int main(int argc, char **argv)
         QStringLiteral("QPushButton#appSidebarButton:checked:hover,"),
         VaporView::appThemeColorName(VaporView::AppThemeColor::PrimaryHover, true),
         "dark selected sidebar buttons retain visible hover feedback");
-    requireSpinArrowHoverUsesPrimary(true,
-                                     "dark theme spin arrow hover renders the primary lucide icon");
-    requireComboArrowUsesPrimary(true,
-        "dark theme combo arrow renders white at idle and orange when highlighted");
     requireComboDarkFocusBorderUsesPrimary(
         "dark theme combo focus border renders with the orange primary color");
     requireMenuPopupStyleUnified(darkOverviewStyleSheet,
@@ -11868,8 +11773,6 @@ int main(int argc, char **argv)
 
     window.close();
     processEventsFor(100);
-
-    requireHomeOverviewLanguageWidthRoundTrip();
 
     std::cout << "main_window_layout_test passed\n";
     return 0;

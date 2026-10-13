@@ -66,6 +66,7 @@
 | SkyCore | device.raw_queue | raw_frame_queue_overloaded | Warning | 原始数据帧队列已满，已丢弃部分数据。 | dropped_count, total_dropped_count |  | RAW_FRAME_QUEUE_FULL |
 | SkyCore | device.connection | device_disconnected | Info | 设备已断开，缓存数据已失效。 | device_id |  |  |
 | SkyCore | device.collector | device_collector_output | Info | 设备采集器输出了原始诊断信息。 | device_id, process_output, external_raw_text |  |  |
+| Ground | device.configuration | sensor_transport_path_changed | Info | 传感器路径已切换。 | sensor_transport_path, host_mode |  |  |
 | Ground | device.collector | epsilon_configuration_collector_output | Info | EPSILON 配置过程输出了采集器诊断信息。 | device, process_output, external_raw_text | ui_visibility |  |
 | SkyCore | device.navigation.command | rtk_command_write_failed | Error | RTK 命令发送失败。 | device_id, command, requested_rate_hz, error_code |  | SERIAL_WRITE_FAILED |
 | SkyCore | device.navigation.command | rtk_command_response_timeout | Warning | RTK 命令未收到响应。 | device_id, command, requested_rate_hz, error_code |  | COMMAND_TIMEOUT |

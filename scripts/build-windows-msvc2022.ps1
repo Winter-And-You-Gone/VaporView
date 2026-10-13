@@ -147,8 +147,8 @@ $osgEarthArgument = if ($EnableOsgEarth) { " -DVAPORVIEW_ENABLE_OSGEARTH=ON" } e
 $configureCommand = "`"$cmakeExe`" --preset $presetName -DCMAKE_PREFIX_PATH=`"$QtPrefix`" -DCMAKE_MAKE_PROGRAM=`"$ninjaExe`"$osgEarthArgument"
 $buildCommand = "`"$cmakeExe`" --build --preset $presetName"
 $buildAppCommand = "`"$cmakeExe`" --build --preset $presetName-app-only"
-$testCommand = "`"$cmakeExe`" --build --preset $presetName && ctest --preset $presetName"
-$fastTestCommand = "`"$cmakeExe`" --build --preset $presetName && ctest --preset $presetName-fast"
+$testCommand = "`"$cmakeExe`" --build --preset $presetName --target VaporViewTests && ctest --preset $presetName"
+$fastTestCommand = "`"$cmakeExe`" --build --preset $presetName --target VaporViewFastTests && ctest --preset $presetName-fast"
 
 switch ($Action) {
     "Clean" {

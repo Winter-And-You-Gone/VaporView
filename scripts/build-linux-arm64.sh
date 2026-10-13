@@ -51,12 +51,12 @@ case "${action}" in
     ;;
   test)
     cmake "${cmake_args[@]}"
-    cmake --build --preset "${preset_name}"
+    cmake --build --preset "${preset_name}" --target VaporViewTests
     ctest --preset "${preset_name}"
     ;;
   test-fast)
     cmake "${cmake_args[@]}"
-    cmake --build --preset "${preset_name}"
+    cmake --build --preset "${preset_name}" --target VaporViewFastTests
     ctest --preset "${preset_name}-fast"
     ;;
   *)

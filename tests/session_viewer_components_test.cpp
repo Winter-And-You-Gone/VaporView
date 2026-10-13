@@ -36,11 +36,11 @@ void require(bool condition, const char *message)
     }
 }
 
-QPushButton *buttonWithText(QWidget& widget, const QString& text)
+QPushButton *buttonWithAccessibleName(QWidget& widget, const QString& text)
 {
     for (QPushButton *button : widget.findChildren<QPushButton *>())
     {
-        if (button->text() == text)
+        if (button->accessibleName() == text)
         {
             return button;
         }
@@ -71,16 +71,16 @@ void testPages()
     QObject::connect(&overview, &SessionOverviewWidget::reloadRequested,
                      [&reloadCount]() { ++reloadCount; });
     overview.setEnglish(true);
-    QPushButton *chooseButton = buttonWithText(overview, QStringLiteral("Open Data"));
-    QPushButton *reloadButton = buttonWithText(overview, QStringLiteral("Reload"));
+    QPushButton *chooseButton = buttonWithAccessibleName(overview, QStringLiteral("Open Data"));
+    QPushButton *reloadButton = buttonWithAccessibleName(overview, QStringLiteral("Reload"));
     require(chooseButton && reloadButton, "overview page creates its command controls");
     chooseButton->click();
     require(chooseCount == 1, "overview choose command emits a semantic signal");
     reloadButton->click();
     require(reloadCount == 1, "overview reload command emits a semantic signal");
-    require(!buttonWithText(overview, QStringLiteral("View Trajectory")) &&
-            !buttonWithText(overview, QStringLiteral("PPK Processing")) &&
-            !buttonWithText(overview, QStringLiteral("Raw Data Parser")),
+    require(!buttonWithAccessibleName(overview, QStringLiteral("View Trajectory")) &&
+            !buttonWithAccessibleName(overview, QStringLiteral("PPK Processing")) &&
+            !buttonWithAccessibleName(overview, QStringLiteral("Raw Data Parser")),
             "overview does not duplicate sidebar navigation");
     overview.setControlsEnabled(false);
     require(!chooseButton->isEnabled() && !reloadButton->isEnabled(),
