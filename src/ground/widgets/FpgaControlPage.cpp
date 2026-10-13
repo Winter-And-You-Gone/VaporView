@@ -312,15 +312,18 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     pressure_=new VaporView::SingleLevelPopupComboBox(sensors); pressure_->setObjectName("fpgaPressureSource"); pressure_->addItem("PTB210",0x40); pressure_->addItem("BMP390",0x43);
     auto *pressureLabel=new QLabel(sensors); label(pressureLabel,QStringLiteral("气压来源"),QStringLiteral("Pressure source")); pressureLabel->setBuddy(pressure_); form->addRow(pressureLabel,pressure_);
     connect(pressure_,&QComboBox::currentIndexChanged,this,[this]{emit pressureSourceChanged(quint16(pressure_->currentData().toUInt()));emit configurationChanged(configuration());});
-    auto *sensorGrid=new QGridLayout;sensorGrid->setObjectName("fpgaSensorGrid");sensorGrid->setSpacing(12);sensorLayout->addLayout(sensorGrid);
-    for(int column=0;column<3;++column)sensorGrid->setColumnStretch(column,1);
+    auto *sensorCard=card(sensors,sensorLayout,QStringLiteral("传感器状态"),QStringLiteral("Sensor status"),QStringLiteral("activity"));
+    auto *sensorGrid=new QGridLayout(sensorCard);sensorGrid->setObjectName("fpgaSensorGrid");sensorGrid->setSpacing(12);sensorGrid->setColumnStretch(1,1);
     const char *names[]={"PTB210","EPSILON","BMP390","SHT45","TFA1500-L"}; const quint16 sources[]={0x40,0x42,0x43,0x44,0x45};
     for(int i=0;i<5;++i) {
-        auto *g=card(sensors,nullptr,QString::fromLatin1(names[i]),QString::fromLatin1(names[i]),QStringLiteral("activity"));sensorGrid->addWidget(g->parentWidget(),i/3,i%3);auto *grid=new QGridLayout(g);
-        auto *l=new QLabel(g); l->setObjectName(QString("fpgaSensor%1").arg(sources[i],4,16,QChar('0'))); l->setWordWrap(true); sensorLabels_[sources[i]]=l;
-        grid->addWidget(l,0,0,1,2); const auto source=sources[i];
-        action(grid,1,0,"启用","Enable","",[this,source]{emit sensorEnableRequested(source,true);});
-        action(grid,1,1,"停用","Disable","",[this,source]{emit sensorEnableRequested(source,false);});
+        const auto source=sources[i]; const auto suffix=QString::number(source,16).rightJustified(4,QChar('0'));
+        auto *name=new QLabel(QString::fromLatin1(names[i]),sensorCard); name->setObjectName("fpgaSensorName"+suffix);
+        auto nameFont=name->font(); nameFont.setBold(true); name->setFont(nameFont); name->setAlignment(Qt::AlignLeft|Qt::AlignVCenter);
+        sensorGrid->addWidget(name,i,0);
+        auto *l=new ConnectionStatusLabel(sensorCard); l->setObjectName("fpgaSensor"+suffix); sensorLabels_[source]=l;
+        sensorGrid->addWidget(l,i,1);
+        action(sensorGrid,i,2,"启用","Enable","fpgaSensorEnable"+suffix,[this,source]{emit sensorEnableRequested(source,true);});
+        action(sensorGrid,i,3,"停用","Disable","fpgaSensorDisable"+suffix,[this,source]{emit sensorEnableRequested(source,false);});
     }
     auto *ai8config=card(sensors,sensorLayout,QStringLiteral("AI8 轮询配置（停用时提交）"),QStringLiteral("AI8 polling configuration (apply while disabled)"),QStringLiteral("sliders-vertical"));
     auto *ai8layout=new QHBoxLayout(ai8config);auto *ai8controls=new QVBoxLayout;auto *ai8grid=new QGridLayout;
@@ -554,6 +557,7 @@ void FpgaControlPage::updateSensor(const VaporView::FpgaSensor::Reading &r){
     parts<<text(r.validity.measurement?"测量有效":"测量无效",r.validity.measurement?"Valid measurement":"Invalid measurement");
     parts<<QString("flags 0x%1 · tick %2").arg(r.flags,0,16).arg(r.timestamp);
     if(!connected_||historicalReadings_.contains(r.source))parts.prepend(text("离线记录 / 历史值","Offline / historical"));l->setText(parts.join(" · "));
+    if(r.source!=0x46)l->setToolTip(l->text());
 }
 void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream &s){
     auto *plot=static_cast<SamplePlot*>(plots_.value(s.source));auto *l=waveLabels_.value(s.source);if(!plot||!l)return;

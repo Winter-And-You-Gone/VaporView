@@ -138,22 +138,7 @@ static void verifyCardMargins(MainWindow &window,FpgaControlPage *page,int scale
                     &&h1->geometry().bottom()<h2->geometry().top(),"main window stacks H1 and H2 at full channel width");
             }
             auto *sensorGrid=page->findChild<QGridLayout*>("fpgaSensorGrid");
-            require(sensorGrid&&sensorGrid->count()==5,"sensor grid retains five compact cards");
-            for(int row=0;row<2;++row) {
-                auto *first=sensorGrid->itemAtPosition(row,0)->widget();if(!first->isVisibleTo(page))continue;
-                const QRect firstRect(first->mapTo(stack,QPoint()),first->size());
-                require(firstRect.left()==homeRect.left(),"sensor grid retains the home left card margin");
-                for(int column=0;column<3;++column) {
-                    auto *item=sensorGrid->itemAtPosition(row,column);if(!item)continue;auto *card=item->widget();channelCards.append(card);
-                    const QRect rect(card->mapTo(stack,QPoint()),card->size());
-                    require(qAbs(rect.width()-firstRect.width())<=1&&rect.top()==firstRect.top()&&rect.bottom()==firstRect.bottom(),"sensor cards share equal compact widths and row heights");
-                    if(column>0) {
-                        auto *previous=sensorGrid->itemAtPosition(row,column-1)->widget();const QRect previousRect(previous->mapTo(stack,QPoint()),previous->size());
-                        require(rect.left()-previousRect.right()-1==qRound(12*scale/100.0),"sensor cards retain the shared scaled card gap");
-                    }
-                    if(column==2)require(rect.right()==homeRect.right(),"sensor grid fills the row to the home right card margin");
-                }
-            }
+            require(sensorGrid&&sensorGrid->rowCount()==5&&sensorGrid->columnCount()==4,"sensor card has five device rows");
             for(auto *card : page->findChildren<QWidget*>("fpgaSectionCard")) {
                 if(!card->isVisibleTo(page)||channelCards.contains(card))continue;
                 const QRect cardRect(card->mapTo(stack,QPoint()),card->size());

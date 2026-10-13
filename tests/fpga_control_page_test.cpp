@@ -216,6 +216,15 @@ int main(int argc,char **argv) {
     require(sensor->text().contains("historical"),"language changes and reconnect cannot promote old cached measurement to live");
     page.setConnectionState(true,false);page.updateSensor(live);
     require(!sensor->text().contains("historical")&&page.findChild<QLabel*>("fpgaWaveSummary32")->text().contains("historical"),"new sensor sample refreshes only its source while old waveform remains historical");
+    quint16 requestedSensor=0;bool requestedEnabled=false;
+    QObject::connect(&page,&FpgaControlPage::sensorEnableRequested,&page,[&](quint16 source,bool enabled){requestedSensor=source;requestedEnabled=enabled;});
+    for(quint16 source:{0x40,0x42,0x43,0x44,0x45})for(bool enabled:{true,false}) {
+        page.setConnectionState(true,false);
+        auto *button=page.findChild<QPushButton*>(QString(enabled?"fpgaSensorEnable%1":"fpgaSensorDisable%1").arg(source,4,16,QChar('0')));
+        require(button&&button->isEnabled(),"each merged device row retains its enabled control");button->click();
+        require(requestedSensor==source&&requestedEnabled==enabled,"merged rows retain per-device enable and disable routing");
+    }
+    page.setConnectionState(true,false);
     page.resize(720,540);page.show();app.processEvents();
     for(bool dark : {false,true}) for(bool english : {false,true}) for(int scale : {100,150}) {
         page.setLanguage(english); page.setTheme(dark,scale);
@@ -247,22 +256,29 @@ int main(int argc,char **argv) {
                 }
                 if(i==1) {
                     auto *grid=page.findChild<QGridLayout*>("fpgaSensorGrid");
-                    require(grid&&grid->count()==5&&grid->rowCount()==2&&grid->columnCount()==3&&!grid->itemAtPosition(1,2),"five ordinary sensors occupy three columns in two rows");
-                    const int columnWidth=grid->itemAtPosition(0,0)->widget()->width();
-                    for(int row=0;row<2;++row) {
+                    require(grid&&grid->count()==20&&grid->rowCount()==5&&grid->columnCount()==4,"five ordinary sensors share one card with one row each");
+                    auto *sensorBody=grid->parentWidget();
+                    int previousBottom=-1;
+                    for(int row=0;row<5;++row) {
                         int previousRight=-1;
-                        for(int column=0;column<3;++column) {
-                            auto *item=grid->itemAtPosition(row,column);if(!item)continue;auto *card=item->widget();
-                            const QRect rect(card->mapTo(&page,QPoint()),card->size());
-                            require(qAbs(card->width()-columnWidth)<=1&&rect.left()>previousRight,"sensor cards use equal compact widths without overlap");previousRight=rect.right();
+                        const auto *reading=qobject_cast<QLabel*>(grid->itemAtPosition(row,1)->widget());
+                        require(reading&&reading->parentWidget()==sensorBody&&!reading->wordWrap(),"sensor readings stay on one line in the shared card");
+                        const int center=reading->geometry().center().y();
+                        for(int column=0;column<4;++column) {
+                            auto *widget=grid->itemAtPosition(row,column)->widget();const QRect rect=widget->geometry();
+                            require(widget->parentWidget()==sensorBody&&rect.left()>previousRight&&qAbs(rect.center().y()-center)<=1,
+                                "sensor names, readings and controls align in one row without overlap");
+                            require(rect.top()>previousBottom,"device rows do not overlap at large fonts");previousRight=rect.right();
                         }
+                        previousBottom=grid->itemAtPosition(row,3)->widget()->geometry().bottom();
                     }
                     auto *ai8Card=page.findChild<QLabel*>("fpgaSensor0046")->parentWidget()->parentWidget();
                     auto *address=page.findChild<QDoubleSpinBox*>("fpgaAi8Address");
                     require(address->parentWidget()->parentWidget()==ai8Card&&page.findChild<QPushButton*>("fpgaSetTemperature")->parentWidget()->parentWidget()==ai8Card,"AI8 reading, polling and temperature controls share one card");
                     const QRect ai8Rect(ai8Card->mapTo(&page,QPoint()),ai8Card->size());
-                    auto *lastSensor=grid->itemAtPosition(1,0)->widget();
-                    require(ai8Rect.top()>lastSensor->mapTo(&page,QPoint()).y()+lastSensor->height()&&ai8Rect.width()>2*columnWidth,"AI8 occupies its own full-width row below the sensor grid");
+                    auto *sensorCard=sensorBody->parentWidget();const QRect sensorRect(sensorCard->mapTo(&page,QPoint()),sensorCard->size());
+                    require(ai8Rect.top()>sensorRect.bottom()&&ai8Rect.left()==sensorRect.left()&&ai8Rect.width()==sensorRect.width(),
+                        "AI8 retains its separate full-width card below the combined sensors");
                 }
             }
         }
