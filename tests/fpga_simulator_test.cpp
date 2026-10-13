@@ -95,7 +95,7 @@ void controls()
     check(controller.hardwareValues().value(0x2010)==125000&&controller.hardwareValues().value(0x504c)==5000,
           "actual register readbacks reflect applied configuration");
     controller.setAcquisition(true);wait(idle,"acquisition starts through normal controller commands");
-    controller.setRawEnabled(true);wait(idle,"RAW diagnostic window starts");
+    controller.setRawEnabled(true);wait(idle,"RAW upload starts");
     wait([&]{return waves.contains(0x20)&&waves.contains(0x21);},"multi-fragment RAW cycles complete on both channels");
     check(configuredRaw,"applied scan frequency, amplitudes and DC bias change actual generated ADC bytes");
     controller.setWaveform(0,false);wait(idle,"channel one WMS stops independently");

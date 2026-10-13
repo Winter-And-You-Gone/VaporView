@@ -97,7 +97,7 @@ private:
     QMap<quint16, FpgaWave::CompletedStream> latestWaves_;
     QMap<quint16, qint64> lastReadingMs_;
     QSet<quint16> dirtyReadings_, expiredReadings_;
-    QTimer presentationTimer_, statusTimer_, rawTimer_;
+    QTimer presentationTimer_, statusTimer_;
     QElapsedTimer waitTimer_;
     quint32 pendingSequence_ = 0;
     quint32 temperatureBaseline_ = 0;

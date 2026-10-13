@@ -63,8 +63,7 @@ Windows USB 设备，也不代表已经完成 GP01 实板或 VLP1 原始字节�
       "pressureSource": 64,
       "recordSensors": true,
       "recordDlia": true,
-      "recordRaw": false,
-      "rawWindowSeconds": 10
+      "recordRaw": false
     }
   },
   "epsilon": {"enabled": false, "rtcm": {"enabled": false}},

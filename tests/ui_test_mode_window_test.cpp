@@ -1317,9 +1317,9 @@ int main(int argc, char **argv)
     processEvents();
     require(modeAction->isChecked(), "UI test mode action becomes checked");
     require(uiTestSensorPath->currentData().toString() == QStringLiteral("fpga_relay") &&
-                uiTestSensorPath->isEnabled() && uiTestEpsilonPort->isEnabled() &&
+                uiTestSensorPath->isEnabled() && !uiTestEpsilonPort->isEnabled() &&
                 uiTestPtbRate->isEnabled(),
-            "remote Device Configuration controls are enabled immediately when UI test mode opens");
+            "remote FPGA configuration enables editable settings while keeping serial selection disabled");
     // The long-running assertions below intentionally continue in the normal
     // local fixture. Re-enter test mode after restoring the pre-regression
     // local combo snapshot so this focused remote check does not change the
@@ -2023,6 +2023,10 @@ int main(int argc, char **argv)
     testCreatedAuxiliary.show();
     processEvents();
     require(testCreatedAuxiliary.isVisible(), "test-created auxiliary window is visible during UI test mode");
+    // TCP connection controls belong to the Direct path; FPGA uses acquisition controls.
+    const int waveformPathBefore = uiTestSensorPath->currentIndex();
+    uiTestSensorPath->setCurrentIndex(uiTestSensorPath->findData(QStringLiteral("direct_devices")));
+    processEvents();
     TcpWavePanel *wavePanel = window->findChild<TcpWavePanel *>();
     RtkConfigDialog *rtkDialog = window->findChild<RtkConfigDialog *>();
     require(wavePanel && rtkDialog, "TCP waveform and RTK test-session participants exist");
@@ -2039,6 +2043,8 @@ int main(int argc, char **argv)
     require(!wavePanel->isConnected(), "TCP waveform disconnect is simulated in memory");
     wavePanel->toggleConnection();
     require(wavePanel->isConnected(), "TCP waveform reconnect is simulated in memory");
+    uiTestSensorPath->setCurrentIndex(waveformPathBefore);
+    processEvents();
 
     QTcpServer mountpointCaster;
     require(mountpointCaster.listen(QHostAddress::LocalHost, 0),

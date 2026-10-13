@@ -381,8 +381,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     recordSensors_=new FpgaCheckBox(recording); label(recordSensors_,QStringLiteral("记录传感器"),QStringLiteral("Record sensors")); recordDlia_=new FpgaCheckBox(recording); label(recordDlia_,QStringLiteral("记录解调数据"),QStringLiteral("Record demodulation")); recordRaw_=new FpgaCheckBox(recording); label(recordRaw_,QStringLiteral("记录 RAW（高吞吐）"),QStringLiteral("Record RAW (high throughput)")); rl->addWidget(recordSensors_); rl->addWidget(recordDlia_); rl->addWidget(recordRaw_);
     for(auto *c : {recordSensors_,recordDlia_,recordRaw_}) connect(c,&QCheckBox::toggled,this,[this]{emit configurationChanged(configuration());});
     auto *rawGrid=new QGridLayout; rl->addLayout(rawGrid);
-    field(rawGrid,0,"RAW 诊断窗口 / 秒","RAW diagnostic window / s","fpgaRawSeconds",0,1,60,0,[](const auto &c){return c.rawWindowSeconds;},[](auto &c,double v){c.rawWindowSeconds=int(v);});
-    action(rawGrid,1,0,"开始短窗 RAW","Start bounded RAW","fpgaRawStart",[this]{emit rawRequested(true);}); action(rawGrid,1,1,"停止 RAW","Stop RAW","fpgaRawStop",[this]{emit rawRequested(false);});
+    action(rawGrid,0,0,"开始 RAW","Start RAW","fpgaRawStart",[this]{emit rawRequested(true);}); action(rawGrid,0,1,"停止 RAW","Stop RAW","fpgaRawStop",[this]{emit rawRequested(false);});
     record_=new QPushButton(recording); record_->setObjectName("fpgaRecord"); rl->addWidget(record_); connect(record_,&QAbstractButton::clicked,this,[this]{emit recordingRequested(!recording_);});
     recordStatus_=new QLabel(recording); recordStatus_->setWordWrap(true); rl->addWidget(recordStatus_);
     auto *files=new QHBoxLayout; rl->addLayout(files);
@@ -727,12 +726,13 @@ void FpgaControlPage::simulateOperation(const QJsonObject &request)
         return;
     }
     if(op=="connect") {sim.connected=true;sim.dliaLatched=false;sim.missingCycle=false;}
-    else if(op=="disconnect") {sim.connected=false;sim.rawUntilMs=0;sim.recording=false;}
+    else if(op=="disconnect") {sim.connected=false;sim.rawEnabled=sim.rawStopPending=false;sim.recording=false;}
     else if(!sim.connected) {appendDiagnostic(text("[界面测试] 请先连接模拟 FPGA。","[UI test] Connect the simulated FPGA first."));return;}
-    else if(op=="acquisition") {sim.acquiring=enabled;if(enabled){sim.dliaLatched=false;sim.missingCycle=false;sim.wms.fill(true);}else if(sim.rawUntilMs>0)sim.rawUntilMs=qMax<qint64>(1,sim.elapsedMs);}
+    else if(op=="acquisition") {sim.acquiring=enabled;if(enabled){sim.dliaLatched=false;sim.missingCycle=false;sim.wms.fill(true);}else if(sim.rawEnabled){sim.rawStopPending=true;sim.rawEnabled=false;}}
     else if(op=="raw") {
         if(enabled&&!sim.acquiring){appendDiagnostic(text("[界面测试] 请先开始采集，再开启 RAW。","[UI test] Start acquisition before RAW."));return;}
-        sim.rawUntilMs=enabled?sim.elapsedMs+qBound(1,configuration().rawWindowSeconds,60)*1000:qMax<qint64>(1,sim.elapsedMs);
+        if (!enabled && sim.rawEnabled) sim.rawStopPending=true;
+        sim.rawEnabled=enabled;
     }
     else if(op=="sensor") {
         const auto source=quint16(request.value("source").toInt());
@@ -760,7 +760,7 @@ void FpgaControlPage::simulateOperation(const QJsonObject &request)
             setConnectionState(true,false);return;
         }
         sim.applied=next;sim.acquiring=false;
-        if(sim.rawUntilMs>0)sim.rawUntilMs=qMax<qint64>(1,sim.elapsedMs);
+        if(sim.rawEnabled){sim.rawStopPending=true;sim.rawEnabled=false;}
     }
     else if(op!="refresh")return;
     appendDiagnostic(text("[界面测试] 模拟操作：","[UI test] Simulated operation: ")+op+
@@ -824,18 +824,18 @@ void FpgaControlPage::setUiTestState(bool enabled, bool dataStalled, bool partia
     setConnectionState(sim.connected,false,text("界面测试 · 模拟 FPGA · 不访问硬件","UI test · Simulated FPGA · No hardware access"));
     setRecordingState(sim.recording,text("模拟记录状态，不写入现场记录文件","Simulated recording state; no recording files written"));
     if(!sim.connected)return;
-    if(sim.rawUntilMs>0&&elapsedMs>=sim.rawUntilMs) {
-        sim.rawUntilMs=0;
+    if(sim.rawStopPending) {
+        sim.rawStopPending=false;
         for(quint16 source:{0x20,0x21})if(lastCompleteRaw_.contains(source)) {
             auto tail=lastCompleteRaw_.value(source);tail.cycleId=++sim.cycle;tail.complete=false;tail.partial=true;
             tail.pointBytes.truncate(tail.pointBytes.size()/2);updateWaveform(tail);
         }
-        appendDiagnostic(text("[界面测试] RAW 短窗结束：模拟残缺尾周期，保留上一完整历史图。","[UI test] RAW window ended: partial tail; previous complete plot retained as historical."));
+        appendDiagnostic(text("[界面测试] RAW 已停止：模拟残缺尾周期，保留上一完整历史图。","[UI test] RAW stopped: partial tail; previous complete plot retained as historical."));
     }
     const double seconds=std::max<qint64>(0,elapsedMs)/1000.0;
     const bool live=!dataStalled;
     const quint64 timestamp=quint64(std::max<qint64>(1,elapsedMs))*1000;
-    const bool raw=sim.rawUntilMs>elapsedMs&&sim.acquiring;
+    const bool raw=sim.rawEnabled&&sim.acquiring;
     QMap<quint32,quint32> registers{{0x50,raw?3u:0u}};
     for(int ch=0;ch<2;++ch) {
         const quint32 offset=ch*0x100;

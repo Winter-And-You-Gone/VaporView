@@ -22,6 +22,13 @@ int main(int argc, char **argv)
     require(!validateControl({{"op","discover"},{"address",42}}),"discovery cannot carry a register operation");
     const QJsonObject configure{{"op","configure"},{"configuration",FpgaControlConfig{}.toJson()}};
     require(parseControl(encodeControl(configure),parsed),"full configuration round trip");
+    require(!configure.value("configuration").toObject().contains("rawWindowSeconds"),"remote configuration does not publish a RAW duration");
+    auto legacyConfigure=configure;auto legacyConfig=FpgaControlConfig{}.toJson();legacyConfig.insert("rawWindowSeconds",10);
+    legacyConfigure.insert("configuration",legacyConfig);
+    require(parseControl(encodeControl(legacyConfigure),parsed)&&!FpgaControlConfig::fromJson(parsed.value("configuration").toObject()).toJson().contains("rawWindowSeconds"),"legacy remote RAW duration is accepted and discarded");
+    legacyConfigure.insert("section","wms");require(validateControl(legacyConfigure),"scoped legacy configuration remains compatible");
+    legacyConfig.insert("rawWindowSeconds",1.5);legacyConfigure.insert("configuration",legacyConfig);
+    require(!validateControl(legacyConfigure),"malformed legacy duration still fails remote validation");
     for(const QString section:{QString("wms"),QString("dlia"),QString("acquisition"),QString("all")}) {
         auto scoped=configure;scoped["section"]=section;
         require(parseControl(encodeControl(scoped),parsed)&&parsed.value("section")==section,"configuration scope survives remote codec");
@@ -44,6 +51,8 @@ int main(int argc, char **argv)
     QJsonObject status{{"connected",true},{"ready",true},{"busy",false},{"detail","ready"},{"configuration",FpgaControlConfig{}.toJson()},
         {"registers",QJsonObject{{"4096",4294967295.0}}},{"archived_records","18446744073709551615"}};
     require(parseStatus(encodeStatus(status),parsed),"uint64 archive precision survives status");
+    auto legacyStatus=status;legacyConfig.insert("rawWindowSeconds",10);legacyStatus.insert("configuration",legacyConfig);
+    require(parseStatus(encodeStatus(legacyStatus),parsed),"status from older peers accepts the obsolete RAW field");
     status["usb_discovery"]=QJsonObject{{"devices",QJsonArray{QJsonObject{{"locator","opaque-path"},{"label","GP01"},
         {"driver","CYUSB3"},{"backend","cypress"},{"available",false}}}},{"error",""}};
     require(parseStatus(encodeStatus(status),parsed) && parsed.value("usb_discovery")==status.value("usb_discovery"),"device list survives remote status codec");

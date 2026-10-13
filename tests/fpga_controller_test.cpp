@@ -278,14 +278,19 @@ void scopedConfiguration(){
     require(f.transport->writes().isEmpty(),"unknown section cannot write hardware");
 }
 void rawAndBusy(){
-    Fixture f;f.connect();FpgaControlConfig config;config.rawWindowSeconds=1;f.controller.setConfiguration(config);f.transport->clear();
+    Fixture f;f.connect();f.controller.setConfiguration(FpgaControlConfig::fromJson({{"rawWindowSeconds",1}}));f.transport->clear();
     f.transport->holdResponses=true;f.controller.setRawEnabled(true);const auto commands=f.transport->commands.size();f.controller.setWaveform(1,true);require(f.transport->commands.size()==commands,"busy controller rejects overlapping operation");
     f.controller.setTemperature(std::numeric_limits<double>::quiet_NaN());
     require(f.controller.busy()&&f.transport->commands.size()==commands,"invalid overlapping request must not abort in-flight RAW operation");
     f.transport->holdResponses=false;f.finish();for(const auto &c:f.transport->writes())require(c.address==0x50||c.address==0x403c||c.address==0x413c,"RAW streaming is not ADC acquisition enable");
     bool maskVerified=false;for(const auto &c:f.transport->commands)if(c.message==2&&c.address==0x50&&c.count==1)maskVerified=true;require(maskVerified,"RAW high mask write is independently verified before proceeding");
+    f.transport->clear();QElapsedTimer observation;observation.start();
+    waitUntil([&]{return observation.elapsed()>11000;},"observe RAW beyond the former default window",12500);
+    require(f.transport->regs.value(0x50)==3&&f.transport->regs.value(0x403c)==1&&f.transport->regs.value(0x413c)==1,
+        "RAW remains enabled beyond ten seconds and ignores a saved legacy window");
+    require(f.transport->writes().isEmpty(),"elapsed time never sends a RAW stop command");
     f.transport->regs[0x7020]=f.transport->regs[0x7024]=16; // Framer retains the tail until RAW masking finalizes it.
-    waitUntil([&]{return f.transport->regs.value(0x50)==0&&!f.controller.busy();},"RAW bounded window automatically disables",4000);
+    f.controller.setRawEnabled(false);f.finish();
     require(f.transport->regs.value(0x403c)==0&&f.transport->regs.value(0x413c)==0,"RAW stop clears both enables");
     require(indexOfWrite(f.transport->commands,0x50,0)>indexOfWrite(f.transport->commands,0x413c,0),"stop RAW producers before closing upload gate");
     int drainReads=0;for(const auto &c:f.transport->commands)if(c.message==2&&c.count==1&&(c.address==0x7020||c.address==0x7024))++drainReads;
@@ -295,7 +300,7 @@ void sensorUploadAndFailure(){
     Fixture f;f.transport->regs[0x2c]=0x7d;f.transport->regs[0x30]=0;f.transport->regs[0x7004]=0;f.transport->regs[0x50]=3;f.connect();
     f.transport->clear();f.controller.setSensorEnabled(0x40,true);f.finish();
     require(f.transport->regs.value(0x2c)==0xffffffff&&f.transport->regs.value(0x30)==0xffffffff&&f.transport->regs.value(0x7004)==1&&f.transport->regs.value(0x8004)==1,"sensor enable restores management/time upload bits and STREAM/USB path");
-    require(f.transport->regs.value(0x50)==3,"sensor enable does not turn off existing RAW window");
+    require(f.transport->regs.value(0x50)==3,"sensor enable does not turn off existing RAW upload");
     for(const auto &c:f.transport->writes())require(c.address!=0x6104&&c.address!=0x6704&&c.address!=0x1004&&c.address!=0x50,"upload preparation never starts HMP, motor, time or modifies RAW mask");
     f.transport->clear();f.transport->failWriteAddress=0x2c;f.controller.setAcquisition(true);f.finish();
     require(f.transport->commands.size()==1&&f.transport->commands.front().address==0x2c,"upload mask failure aborts before acquisition side effects");

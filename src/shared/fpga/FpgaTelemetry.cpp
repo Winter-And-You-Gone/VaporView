@@ -79,7 +79,6 @@ bool configurationShape(const QJsonValue& value, const QJsonValue& model, const 
     if (key == "scanAmplitude" || key == "sineAmplitude" || key == "bias" || key == "offset") return integer(value, -2147483648.0, 2147483647.0);
     if (!integer(value)) return false;
     if (key == "pressureSource") return value.toInt() == 0x40 || value.toInt() == 0x43;
-    if (key == "rawWindowSeconds") return integer(value, 1, 60);
     if (key == "phaseMode") return integer(value, 0, 2);
     if (key == "mode") return integer(value, 0, 3);
     if (key == "slaveAddress") return integer(value, 1, 247);
@@ -88,9 +87,15 @@ bool configurationShape(const QJsonValue& value, const QJsonValue& model, const 
     if (key == "adcRateHz" || key == "updateRateHz" || key == "outputRateHz" || key == "spiClockHz" || key == "timeoutMs" || key == "pollIntervalMs") return integer(value, 1);
     return true;
 }
+bool configurationShapeValid(QJsonObject object)
+{
+    // Accept the obsolete field from older peers, without retaining its timer policy.
+    if (object.contains("rawWindowSeconds") && !integer(object.take("rawWindowSeconds"), 1, 60)) return false;
+    return configurationShape(object, FpgaControlConfig{}.toJson());
+}
 bool configurationValid(const QJsonObject& object)
 {
-    if (!configurationShape(object, FpgaControlConfig{}.toJson())) return false;
+    if (!configurationShapeValid(object)) return false;
     const auto c = FpgaControlConfig::fromJson(object);
     for (int i = 0; i < 2; ++i) if (c.dac[i].minCode > c.dac[i].maxCode || c.dlia[i].outputRateHz > c.adcRateHz) return false;
     return true;
@@ -114,7 +119,7 @@ bool validateControl(const QJsonObject& control, QString *error)
             keys << "section";
             if (!control.value("section").isString() || !QStringList{"all","wms","dlia","acquisition"}.contains(control.value("section").toString())) return fail();
         }
-        if (!control.value("configuration").isObject() || !(control.value("section").toString("all")=="all" ? configurationValid(control.value("configuration").toObject()) : configurationShape(control.value("configuration"), FpgaControlConfig{}.toJson()))) return fail();
+        if (!control.value("configuration").isObject() || !(control.value("section").toString("all")=="all" ? configurationValid(control.value("configuration").toObject()) : configurationShapeValid(control.value("configuration").toObject()))) return fail();
     } else if (op == "acquisition" || op == "wms" || op == "dac" || op == "sensor" || op == "raw") {
         keys << "enabled";
         if (!control.value("enabled").isBool()) return fail();

@@ -82,7 +82,8 @@ private:
     struct Simulation {
         bool connected=true, acquiring=true, recording=true, stalled=false, partialFailure=false;
         bool missingCycle=false, dliaLatched=false;
-        qint64 elapsedMs=0, rawUntilMs=0;
+        bool rawEnabled=false, rawStopPending=false;
+        qint64 elapsedMs=0;
         quint32 cycle=0;
         double temperature=24.0;
         QSet<quint16> disabledSensors;

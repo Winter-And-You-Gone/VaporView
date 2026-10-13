@@ -23,17 +23,15 @@ FpgaDeviceController::FpgaDeviceController(std::unique_ptr<FpgaUsbTransport> tra
     qRegisterMetaType<FpgaControlConfig>();
     qRegisterMetaType<FpgaSensor::AdaptedMeasurements>();
     qRegisterMetaType<LogRecord>();
-    presentationTimer_.setParent(this); statusTimer_.setParent(this); rawTimer_.setParent(this);
+    presentationTimer_.setParent(this); statusTimer_.setParent(this);
     presentationTimer_.setInterval(50);
     statusTimer_.setInterval(2000);
-    rawTimer_.setSingleShot(true);
     connect(&presentationTimer_, &QTimer::timeout, this, &FpgaDeviceController::flushPresentation);
     connect(&statusTimer_, &QTimer::timeout, this, [this] {
         if (ready_ && !busy_ && begin(QStringLiteral("读取实际状态"), true)) {
             readAll(); steps_.push_back({Kind::CheckVersions}); advance();
         }
     });
-    connect(&rawTimer_, &QTimer::timeout, this, [this] { setRawEnabled(false); });
     if (transport) installSession(std::move(transport));
 }
 
@@ -105,7 +103,7 @@ void FpgaDeviceController::connectDevice(const QString& locator, const QString& 
 
 void FpgaDeviceController::disconnectDevice()
 {
-    presentationTimer_.stop(); statusTimer_.stop(); rawTimer_.stop();
+    presentationTimer_.stop(); statusTimer_.stop();
     if (session_) session_->close();
     flushPresentation();
     emit transportConnectionChanged(false);
@@ -220,7 +218,7 @@ void FpgaDeviceController::advance()
     }
     if (s.kind==Kind::FinishRawStop) {
         session_->flushWaveforms(0x20);session_->flushWaveforms(0x21);flushPresentation();
-        report(QStringLiteral("RAW 短窗已停止上传；保留最后完整波形作为历史值，ADC/DLIA 采集状态未改变。"),LogLevel::Info);
+        report(QStringLiteral("RAW 已停止上传；保留最后完整波形作为历史值，ADC/DLIA 采集状态未改变。"),LogLevel::Info);
         current_.reset();advance();return;
     }
     if (s.kind==Kind::CheckTemperature) {
@@ -456,7 +454,7 @@ void FpgaDeviceController::setAcquisition(bool enable)
         for (quint32 b:{0x5000u,0x5100u}) { write(b+4,1); waitFor(b+8,7,3); }
         for (quint32 b:{0x4000u,0x4100u}) { write(b+4,1); waitFor(b+8,5,1); }
     } else {
-        rawTimer_.stop(); stopAndDrain();
+        stopAndDrain();
         write(0x403c,0); write(0x413c,0); write(0x0050,0);
     }
     readAll(); advance();
@@ -503,12 +501,10 @@ void FpgaDeviceController::setRawEnabled(bool enable)
 {
     if (!ready_) return;
     if (busy_ && !backgroundRefresh_) { if (!enable) QTimer::singleShot(100,this,[this]{ setRawEnabled(false); }); return; }
-    if (!begin(enable?QStringLiteral("启动 RAW 短窗"):QStringLiteral("停止 RAW 短窗"))) return;
+    if (!begin(enable?QStringLiteral("启动 RAW 上传"):QStringLiteral("停止 RAW 上传"))) return;
     if(enable) {write(0x0050,3);verify(0x0050,3);}
     for (quint32 b:{0x4000u,0x4100u}) { write(b+0x3c,enable?1:0); verify(b+0x3c,enable?1:0); }
-    if(enable) rawTimer_.start(qBound(1,configuration_.rawWindowSeconds,60)*1000);
-    else {
-        rawTimer_.stop();
+    if(!enable) {
         // Stop RAW producers first. Masking the framer finalizes its partial
         // tail; only then can its buffered-sample count reach zero.
         write(0x0050,0);verify(0x0050,0);
