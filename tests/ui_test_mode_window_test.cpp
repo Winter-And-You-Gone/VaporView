@@ -983,6 +983,14 @@ int main(int argc, char **argv)
         mode->trigger();processEvents();
         auto *sourceSwitch = findTitleBarSourceModeSwitch(window);
         require(sourceSwitch != nullptr, "navigation simulation exposes its source mode switch");
+        auto *transportSwitch = window->findChild<VaporView::Ground::Widgets::SegmentedSwitchButton *>(
+            QStringLiteral("titleSensorTransportSwitch"));
+        auto *transportCombo = window->findChild<QComboBox *>(QStringLiteral("deviceSensorTransportPathCombo"));
+        require(transportSwitch && transportCombo && transportSwitch->parentWidget() == sourceSwitch->parentWidget() &&
+                    transportSwitch->x() >= sourceSwitch->geometry().right() &&
+                    transportSwitch->size() == sourceSwitch->size() &&
+                    transportSwitch->animationDuration() == sourceSwitch->animationDuration(),
+                "title sensor path capsule sits immediately after source mode with matching sizing and motion");
         if (!sourceSwitch->isChecked()) sourceSwitch->click();
         processEvents();
         mainStack->setCurrentWidget(navigation);
@@ -999,12 +1007,12 @@ int main(int argc, char **argv)
         require(rtcmRate && rtcmLoss && rtcmRate->text().contains(QStringLiteral("B/s")) &&
                     rtcmLoss->text().contains(QLatin1Char('%')),
                 "status page receives simulated RTCM rates and link diagnostics");
-        for (const char *name : {"combinationNavigationStatusButton", "combinationNavigationEpsilonButton",
+        for (const char *name : {"combinationNavigationStatusButton",
                  "combinationNavigationDifferentialButton", "epsilonSettingsTab_0", "epsilonSettingsTab_1",
                  "epsilonSettingsTab_2", "epsilonAdvancedFeaturesButton"})
         {
             auto *button = navigation->findChild<QPushButton *>(QString::fromLatin1(name));
-            require(button && button->isVisible(), "all seven navigation entries are available in UI test");
+            require(button && button->isVisible(), "all six navigation entries are available in UI test");
             button->click();processEvents();
             require(button->isChecked(), "each navigation entry opens its simulated page");
         }
@@ -1014,6 +1022,16 @@ int main(int argc, char **argv)
         {
             if (sourceSwitch->isChecked() != remote) sourceSwitch->click();
             processEvents();
+            require(transportSwitch->isEnabled() == transportCombo->isEnabled() && transportSwitch->switchChecked(),
+                    "local and remote sensor path capsules reflect the current FPGA fixture");
+            transportSwitch->click();processEvents();
+            require(!transportSwitch->switchChecked() && transportCombo->currentData().toString() == QStringLiteral("direct_devices"),
+                    "title sensor path capsule updates the selected host to direct devices");
+            transportCombo->setCurrentIndex(1);processEvents();
+            require(transportSwitch->switchChecked(), "device configuration changes synchronize back to the title capsule");
+            transportSwitch->click();transportSwitch->click();processEvents();
+            require(transportSwitch->switchChecked() && transportCombo->currentData().toString() == QStringLiteral("fpga_relay"),
+                    "rapid title path changes settle on the selected host's FPGA path");
             for (auto group : VaporView::epsilonSettingsGroups())
                 for (const auto& descriptor : VaporView::epsilonParameterDescriptors(group))
             {
@@ -1076,6 +1094,61 @@ int main(int argc, char **argv)
         require(panel->exportSettingsJson().isEmpty(), "pending simulation callbacks cannot refill the normal page");
         require(settingsSnapshotsEqual(snapshotAll(), before, "navigation UI test preserves persistent settings"),
                 "all navigation simulations leave persistent settings unchanged");
+        const auto sidebarButtons = window->findChildren<QPushButton *>(QStringLiteral("appSidebarButton"));
+        require(sidebarButtons.size() == 5, "sidebar restoration covers every navigation icon");
+        const auto requireSidebarColors = [&]() {
+            for (auto *button : sidebarButtons)
+            {
+                const QColor expected = button->isChecked() ? QColor(Qt::white)
+                    : VaporView::appThemeColor(VaporView::AppThemeColor::Text, VaporView::isDarkThemeEnabled());
+                const QImage pixels = button->icon().pixmap(QSize(32, 32)).toImage();
+                int opaquePixels = 0;
+                for (int y = 0; y < pixels.height(); ++y)
+                    for (int x = 0; x < pixels.width(); ++x)
+                    {
+                        const QColor pixel = pixels.pixelColor(x, y);
+                        if (pixel.alpha() < 200) continue;
+                        ++opaquePixels;
+                        require(std::abs(pixel.red() - expected.red()) <= 2 &&
+                                    std::abs(pixel.green() - expected.green()) <= 2 &&
+                                    std::abs(pixel.blue() - expected.blue()) <= 2,
+                                "restored sidebar icons use white for selected and theme text color for unselected");
+                    }
+                require(opaquePixels > 0, "restored sidebar icon remains visible");
+            }
+        };
+        for (bool dark : {false, true})
+        {
+            if (VaporView::isDarkThemeEnabled() != dark)
+                QMetaObject::invokeMethod(window, "onToggleTheme", Qt::DirectConnection);
+            for (int scale : {100, 130})
+            {
+                for (auto *action : window->findChildren<QAction *>())
+                    if (action->data().toInt() == scale) { action->trigger(); break; }
+                processEvents();
+                require(transportSwitch->size() == sourceSwitch->size(),
+                        "title sensor path and source capsules scale together");
+                for (int index = 0; index < sidebarButtons.size(); ++index)
+                {
+                    sidebarButtons[index]->click();processEvents();
+                    mode->trigger();processEvents();
+                    sidebarButtons[(index + 1) % sidebarButtons.size()]->click();processEvents();
+                    mode->trigger();processEvents();
+                    require(sidebarButtons[index]->isChecked(), "UI test exit restores the original sidebar selection");
+                    requireSidebarColors();
+                }
+            }
+        }
+        for (auto *action : window->findChildren<QAction *>())
+            if (action->data().toInt() == 100) { action->trigger(); break; }
+        QMetaObject::invokeMethod(window, "onToggleTheme", Qt::DirectConnection);processEvents();
+        sidebarButtons[3]->click();VaporViewTest::processEventsFor(550);
+        auto *navigationThumb = navigation->findChild<QFrame *>(QStringLiteral("combinationNavigationNavigationSelectionThumb"));
+        auto *navigationStatusButton = navigation->findChild<QPushButton *>(QStringLiteral("combinationNavigationStatusButton"));
+        require(navigationThumb && navigationStatusButton && VaporViewTest::processEventsUntil(2000, [&]() {
+                    return navigationThumb->geometry() == navigationStatusButton->geometry();
+                }),
+                "navigation thumb follows the restored selected button after scaling a hidden page");
         window->close();delete window;
         std::cout << "ui_test_navigation_coverage_test passed\n";
         return 0;

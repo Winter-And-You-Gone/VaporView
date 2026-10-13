@@ -487,6 +487,7 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
         state_->main_page_stack_->setCurrentIndex(state_->ui_test_saved_page_index_);
     }
     restoreUiTestWidgetState();
+    updateSidebarNavIcons();
     state_->current_epsilon_ = VaporView::EpsilonData();
     state_->current_gnss_ = VaporView::GnssData();
     state_->current_imu_ = VaporView::ImuData();

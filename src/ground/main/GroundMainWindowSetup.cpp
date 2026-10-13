@@ -782,6 +782,20 @@ void MainWindow::setupCustomTitleBar()
             });
 
     titleLayout->addWidget(state_->source_mode_switch_, 0, Qt::AlignVCenter);
+    state_->sensor_transport_switch_ = new VaporView::Ground::Widgets::SegmentedSwitchButton(state_->custom_title_bar_);
+    state_->sensor_transport_switch_->setObjectName(QStringLiteral("titleSensorTransportSwitch"));
+    state_->sensor_transport_switch_->setFixedSize(128, kMainPageButtonHeight);
+    state_->sensor_transport_switch_->setAutoToggle(false);
+    connect(state_->sensor_transport_switch_,
+            &VaporView::Ground::Widgets::SegmentedSwitchButton::selectionRequested,
+            this, [this](bool fpgaSelected) {
+                auto *combo = state_->device_config_.sensor_transport_path_combo;
+                if (!combo || !combo->isEnabled()) return;
+                const int index = combo->findData(VaporView::sensorTransportPathToString(fpgaSelected
+                    ? VaporView::SensorTransportPath::FpgaRelay : VaporView::SensorTransportPath::DirectDevices));
+                if (index >= 0) combo->setCurrentIndex(index);
+            });
+    titleLayout->addWidget(state_->sensor_transport_switch_, 0, Qt::AlignVCenter);
     addTitleBarSeparator(titleLayout);
     titleLayout->addWidget(createTitleBarActionButton(state_->refresh_ports_btn_, state_->custom_title_bar_), 0, Qt::AlignVCenter);
     titleLayout->addWidget(createTitleBarActionButton(state_->connect_btn_, state_->custom_title_bar_), 0, Qt::AlignVCenter);
@@ -3982,6 +3996,14 @@ void MainWindow::onSensorTransportPathChanged(int index)
 
 void MainWindow::updateDeviceConfigTexts()
 {
+    if (state_->sensor_transport_switch_)
+    {
+        state_->sensor_transport_switch_->setSegmentTexts(
+            state_->is_english_ ? QStringLiteral("Direct") : QStringLiteral("直连"), QStringLiteral("FPGA"));
+        state_->sensor_transport_switch_->setStateDescription(
+            state_->is_english_ ? QStringLiteral("Sensor path") : QStringLiteral("传感器路径"),
+            state_->is_english_ ? QStringLiteral(": ") : QStringLiteral("："));
+    }
     if (!state_->device_config_.page)
     {
         return;
@@ -4235,6 +4257,13 @@ void MainWindow::updateDeviceConfigState()
         state_->device_config_.sensor_transport_path_combo->setEnabled(
             remote ? remoteConfigEditable
                    : localInputsEnabled);
+    }
+    if (state_->sensor_transport_switch_)
+    {
+        state_->sensor_transport_switch_->setSwitchChecked(fpgaRelay,
+            state_->sensor_transport_switch_->switchChecked() != fpgaRelay);
+        state_->sensor_transport_switch_->setEnabled(state_->device_config_.sensor_transport_path_combo &&
+            state_->device_config_.sensor_transport_path_combo->isEnabled());
     }
     const bool epsilonConfigEnabled = !state_->connection_attempt_in_progress_ &&
         !state_->port_detection_in_progress_ && !state_->epsilon_reconfigure_in_progress_;

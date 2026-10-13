@@ -14,6 +14,7 @@
 class FpgaControlPage;
 class QThread;
 namespace VaporView::Ground::Devices { class FpgaDeviceController; }
+namespace VaporView::Ground::Widgets { class SegmentedSwitchButton; }
 
 #include <QElapsedTimer>
 #include <QPointer>
@@ -387,6 +388,7 @@ struct MainWindowState
     VaporView::Ground::Widgets::Ai8TemperatureOverviewPanel *ai8_temperature_overview_panel_;
     QLabel *config_inline_title_lbl_;
     VaporView::Ground::Widgets::SourceModeOverviewSwitchButton *source_mode_switch_;
+    VaporView::Ground::Widgets::SegmentedSwitchButton *sensor_transport_switch_;
 
     QComboBox *data_source_mode_combo_;
     QComboBox *imu_format_combo_;

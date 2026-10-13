@@ -1755,7 +1755,7 @@ void requireRtkSidebarPage(
     auto *statusButton = combinationPage->findChild<QPushButton *>(
         QStringLiteral("combinationNavigationStatusButton"));
     auto *epsilonButton = combinationPage->findChild<QPushButton *>(
-        QStringLiteral("combinationNavigationEpsilonButton"));
+        QStringLiteral("epsilonSettingsTab_0"));
     auto *differentialButton = combinationPage->findChild<QPushButton *>(
         QStringLiteral("combinationNavigationDifferentialButton"));
     auto *epsilonCommunicationTab = combinationPage->findChild<QPushButton *>(
@@ -1805,7 +1805,7 @@ void requireRtkSidebarPage(
             "combination navigation clears the embedded EPSILON selection at startup");
     require(epsilonCommunicationTab->isVisible() && epsilonAdvancedFeatures->isVisible() &&
                 !epsilonSettingsTabs->isVisible(),
-            "combination navigation keeps one shared seven-entry capsule track visible");
+            "combination navigation keeps one shared six-entry capsule track visible");
     require(std::abs(combinationNavigationBar->geometry().center().x() -
                      combinationNavigationRow->rect().center().x()) <= 1,
             "combination navigation bar is horizontally centered in its page row");
@@ -1848,7 +1848,7 @@ void requireRtkSidebarPage(
             "combination navigation opens on the status page by default");
     const std::array<std::pair<QPushButton *, QString>, 3> combinationButtons{{
         {statusButton, QStringLiteral("状态")},
-        {epsilonButton, QStringLiteral("EPSILON")},
+        {epsilonButton, QStringLiteral("通信输出")},
         {differentialButton, QStringLiteral("差分定位")},
     }};
     for (const auto& [button, expectedText] : combinationButtons)
@@ -2834,8 +2834,8 @@ void requireRtkSidebarPage(
     processEventsFor(100);
     require(statusButton->text() == QStringLiteral("Status") &&
                 statusButton->accessibleName() == statusButton->text() &&
-                epsilonButton->text() == QStringLiteral("EPSILON") &&
-                epsilonButton->accessibleName() == epsilonButton->text() &&
+                epsilonButton->text() == QStringLiteral("Output") &&
+                epsilonButton->accessibleName() == QStringLiteral("Communication") &&
                 differentialButton->text() == QStringLiteral("Differential Positioning") &&
                 differentialButton->accessibleName() == differentialButton->text() &&
                 rtkButton->accessibleName() == QStringLiteral("Combination Navigation"),
@@ -4771,7 +4771,9 @@ int main(int argc, char **argv)
             auto *differential=navigation->findChild<QPushButton*>(QStringLiteral("combinationNavigationDifferentialButton"));
             require(track&&thumb&&animation&&pages&&advanced&&advanced->isCheckable()&&pages->count()==4,"advanced features is a regular merged page entry");
             const auto entries=track->findChildren<QPushButton*>(QString(),Qt::FindDirectChildrenOnly);
-            require(entries.size()==7,"unified navigation always has seven entries");
+            require(entries.size()==6 && !navigation->findChild<QPushButton *>(
+                        QStringLiteral("combinationNavigationEpsilonButton")),
+                    "unified navigation has six distinct entries without a duplicate EPSILON entry");
             QVector<QRect> entryRects;
             for(auto *button:entries)entryRects.append(button->geometry());
             const auto requireSelected=[&](QPushButton *expected) {
@@ -4795,6 +4797,10 @@ int main(int argc, char **argv)
             };
             clickWidget(advanced, 0);requireSelected(advanced);
             requireHeaderButtons();
+            navigation->setCurrentSection(VaporView::Ground::Navigation::CombinationNavigationPage::Section::Epsilon);
+            auto *output = navigation->findChild<QPushButton *>(QStringLiteral("epsilonSettingsTab_0"));
+            requireSelected(output);
+            require(pages->currentIndex() == 0, "programmatic EPSILON entry opens the communication output page");
             using VaporView::Ground::Widgets::SegmentedSwitchButton;
             SegmentedSwitchButton referenceSwitch;
             referenceSwitch.resize(status->width() * 2, status->height());

@@ -340,6 +340,7 @@ CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, 
                                    Section section) {
         auto *button = createNavigationSectionButton(navigationTrack);
         button->setObjectName(objectName);
+        button->installEventFilter(this);
         section_group_->addButton(button, static_cast<int>(section));
         navigationLayout->addWidget(button, 1);
         return button;
@@ -347,13 +348,10 @@ CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, 
 
     status_button_ = createSectionButton(
         QStringLiteral("combinationNavigationStatusButton"), Section::Status);
-    epsilon_button_ = createSectionButton(
-        QStringLiteral("combinationNavigationEpsilonButton"), Section::Epsilon);
     differential_button_ = createSectionButton(
         QStringLiteral("combinationNavigationDifferentialButton"), Section::Differential);
     navigation_selection_thumb_->lower();
     status_button_->raise();
-    epsilon_button_->raise();
     differential_button_->raise();
     navigationRowLayout->addWidget(navigationBar, 0, Qt::AlignHCenter | Qt::AlignVCenter);
 
@@ -401,6 +399,9 @@ CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, 
             continue;
         }
         button->setProperty("epsilonUnifiedNavigationButton", true);
+        button->installEventFilter(this);
+        if (!epsilon_button_)
+            epsilon_button_ = button;
         navigationLayout->addWidget(button, 1);
         if (button->isCheckable())
         {
@@ -436,8 +437,8 @@ CombinationNavigationPage::CombinationNavigationPage(QWidget *differentialPage, 
     connect(section_group_, &QButtonGroup::buttonToggled, this, [this](QAbstractButton *, bool checked) {
         if (checked) syncNavigationSelectionThumb(true);
     });
-    QWidget::setTabOrder(status_button_, epsilon_button_);
-    QWidget::setTabOrder(epsilon_button_, differential_button_);
+    QWidget::setTabOrder(status_button_, differential_button_);
+    QWidget::setTabOrder(differential_button_, epsilon_button_);
 
     status_refresh_timer_ = new QTimer(this);
     status_refresh_timer_->setInterval(1000);
@@ -470,6 +471,11 @@ EpsilonConfigPanel *CombinationNavigationPage::epsilonConfigPanel() const
 
 void CombinationNavigationPage::setCurrentSection(Section section)
 {
+    if (section == Section::Epsilon)
+    {
+        epsilon_button_->click();
+        return;
+    }
     activateNavigationPage(section, qobject_cast<QPushButton *>(section_group_->button(static_cast<int>(section))));
 }
 
@@ -495,7 +501,7 @@ void CombinationNavigationPage::activateNavigationPage(Section section, QPushBut
     stack_->setCurrentIndex(index);
     if (epsilon_config_panel_)
     {
-        // The unified capsule always exposes the same seven primary entries;
+        // The unified capsule always exposes the same six primary entries;
         // changing the content page must not resize or collapse the capsule.
         epsilon_config_panel_->setSettingsNavigationVisible(true);
         if (section != Section::Epsilon)
@@ -583,7 +589,7 @@ void CombinationNavigationPage::changeEvent(QEvent *event)
 
 bool CombinationNavigationPage::eventFilter(QObject *watched, QEvent *event)
 {
-    if (watched == navigation_track_ && event &&
+    if ((watched == navigation_track_ || (section_group_ && watched == section_group_->checkedButton())) && event &&
         (event->type() == QEvent::Resize || event->type() == QEvent::LayoutRequest ||
          event->type() == QEvent::Show))
     {
@@ -730,9 +736,8 @@ void CombinationNavigationPage::updateTexts()
         : QStringLiteral("组合导航");
     setAccessibleName(pageName);
 
-    const std::array<std::pair<QPushButton *, QString>, 3> sectionButtons{{
+    const std::array<std::pair<QPushButton *, QString>, 2> sectionButtons{{
         {status_button_, is_english_ ? QStringLiteral("Status") : QStringLiteral("状态")},
-        {epsilon_button_, QStringLiteral("EPSILON")},
         {differential_button_, is_english_ ? QStringLiteral("Differential Positioning")
                                            : QStringLiteral("差分定位")},
     }};
@@ -802,15 +807,15 @@ void CombinationNavigationPage::applyAppearance()
         "background-color: @vv-window; border: none; height: 0px; }"
         "QFrame#combinationNavigationNavigationBar { background-color: @vv-primary-subtle; border: 1px solid @vv-border-strong; border-radius: 18px; }"
         "QFrame#combinationNavigationNavigationTrack { background-color: @vv-primary; border: 1px solid %1; border-radius: 15px; }"
-        "QPushButton#combinationNavigationStatusButton, QPushButton#combinationNavigationEpsilonButton, "
+        "QPushButton#combinationNavigationStatusButton, "
         "QPushButton#combinationNavigationDifferentialButton { background-color: transparent; border: 1px solid transparent; border-radius: 13px; color: @vv-white; font-weight: 600; margin: 0; min-height: 0; padding: 0 10px; outline: none; }"
-        "QPushButton#combinationNavigationStatusButton:checked, QPushButton#combinationNavigationEpsilonButton:checked, "
+        "QPushButton#combinationNavigationStatusButton:checked, "
         "QPushButton#combinationNavigationDifferentialButton:checked { background-color: transparent; color: @vv-primary; font-weight: 600; }"
-        "QPushButton#combinationNavigationStatusButton:!checked:hover, QPushButton#combinationNavigationEpsilonButton:!checked:hover, "
+        "QPushButton#combinationNavigationStatusButton:!checked:hover, "
         "QPushButton#combinationNavigationDifferentialButton:!checked:hover { background-color: transparent; color: @vv-white; }"
-        "QPushButton#combinationNavigationStatusButton:pressed, QPushButton#combinationNavigationEpsilonButton:pressed, "
+        "QPushButton#combinationNavigationStatusButton:pressed, "
         "QPushButton#combinationNavigationDifferentialButton:pressed { background-color: transparent; }"
-        "QPushButton#combinationNavigationStatusButton:checked:pressed, QPushButton#combinationNavigationEpsilonButton:checked:pressed, "
+        "QPushButton#combinationNavigationStatusButton:checked:pressed, "
         "QPushButton#combinationNavigationDifferentialButton:checked:pressed { background-color: transparent; }"
         "QFrame#combinationNavigationNavigationTrack QPushButton[epsilonUnifiedNavigationButton=\"true\"] { background-color: transparent; border: 1px solid transparent; border-radius: 13px; color: @vv-white; font-weight: 600; margin: 0; min-height: 0; padding: 0 10px; outline: none; }"
         "QFrame#combinationNavigationNavigationTrack QPushButton[epsilonUnifiedNavigationButton=\"true\"]:checked { background-color: transparent; color: @vv-primary; font-weight: 600; }"
