@@ -23,6 +23,7 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSignalBlocker>
+#include <QStandardItemModel>
 #include <QStyleOptionButton>
 #include <QSvgRenderer>
 #include <QTabWidget>
@@ -157,6 +158,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     backend_=new VaporView::SingleLevelPopupComboBox(connection); backend_->setObjectName("fpgaBackend");
     backend_->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Fixed);
     backend_->addItem(QStringLiteral("Auto"),QStringLiteral("auto"));backend_->addItem(QStringLiteral("Cypress"),QStringLiteral("cypress"));backend_->addItem(QStringLiteral("WinUSB"),QStringLiteral("winusb"));
+    backend_->addItem(QStringLiteral("模拟器"),QStringLiteral("simulator"));
     connect_=connectionAction("fpgaConnect","link","连接","Connect");
     disconnect_=connectionAction("fpgaDisconnect","unlink","断开","Disconnect");
     status_=new ConnectionStatusLabel(connectionHeader); status_->setObjectName("fpgaConnectionStatus");
@@ -165,7 +167,15 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     setTabOrder(locator_,backend_); setTabOrder(backend_,discover_); setTabOrder(discover_,connect_); setTabOrder(connect_,disconnect_);
     connect(discover_,&QAbstractButton::clicked,this,&FpgaControlPage::requestUsbDiscovery);
     connect(locator_,&QComboBox::currentIndexChanged,this,[this]{updateActions();});
-    connect(backend_,&QComboBox::currentIndexChanged,this,[this]{updateActions();});
+    connect(backend_,&QComboBox::currentIndexChanged,this,[this]{
+        emit configurationChanged(configuration());
+        if(!usbRemote_&&!busy_&&!connected_) {
+            // A backend change supersedes an outstanding discovery result.
+            ++usbDiscoveryGeneration_;usbDiscovering_=false;usbDiscovery_={};
+            requestUsbDiscovery();
+        }
+        else updateActions();
+    });
     connect(connect_,&QAbstractButton::clicked,this,[this]{ lockOperation(); emit connectRequested(locator_->currentData().toString(),backend_->currentData().toString()); });
     connect(disconnect_,&QAbstractButton::clicked,this,[this]{ lockOperation(); emit disconnectRequested(); });
     tabs_=new QTabWidget(this); tabs_->setObjectName(QStringLiteral("fpgaTabs")); root->addWidget(tabs_,1);
@@ -427,12 +437,14 @@ void FpgaControlPage::setConfiguration(const FpgaControlConfig &c) {
 }
 void FpgaControlPage::lockOperation(){busy_=true;updateActions();}
 void FpgaControlPage::updateActions(){
-    locator_->setToolTip(locator_->currentText()+"\n"+text("选择 GP01 FX3（04B4:00F1），插拔后点击刷新设备。连接时核验固件身份。","Select GP01 FX3 (04B4:00F1); refresh after plugging/unplugging. Firmware identity is verified on connect."));
+    locator_->setToolTip(locator_->currentText()+"\n"+(backend_->currentData().toString()==QStringLiteral("simulator")
+        ?text("本地 VLP1 协议模拟器，不打开实体 USB。","Local VLP1 protocol simulator; no physical USB access.")
+        :text("选择 GP01 FX3（04B4:00F1），插拔后点击刷新设备。连接时核验固件身份。","Select GP01 FX3 (04B4:00F1); refresh after plugging/unplugging. Firmware identity is verified on connect.")));
     auto selected=locator_->currentData(Qt::UserRole+1).toJsonObject();
     const auto devices=usbDiscovery_.value("devices").toArray();
     if(locator_->currentIndex()==0 && devices.size()==1) selected=devices.first().toObject();
     const auto backend=backend_->currentData().toString();
-    const bool usable=property("fpgaUiTestMode").toBool() || (selected.value("available").toBool()&&!selected.value("locator").toString().isEmpty()
+    const bool usable=property("fpgaUiTestMode").toBool() || ((!usbRemote_||backend!="simulator")&&selected.value("available").toBool()&&!selected.value("locator").toString().isEmpty()
         &&(backend=="auto"||backend==selected.value("backend").toString())&&usbDiscovery_.value("error").toString().isEmpty());
     connect_->setEnabled(!connected_&&!busy_&&!usbDiscovering_&&usbHostAvailable_&&usable);
     locator_->setEnabled(!connected_&&!busy_&&!usbDiscovering_&&usbHostAvailable_);
@@ -452,6 +464,8 @@ void FpgaControlPage::requestUsbDiscovery(){
 void FpgaControlPage::setUsbDiscoveryHost(bool remote,bool available){
     if(usbRemote_==remote&&usbHostAvailable_==available)return;
     usbRemote_=remote;usbHostAvailable_=available;usbDiscovering_=false;++usbDiscoveryGeneration_;usbDiscovery_={};
+    if(auto *model=qobject_cast<QStandardItemModel*>(backend_->model()))
+        model->item(backend_->findData(QStringLiteral("simulator")))->setEnabled(!remote);
     rebuildUsbDevices();
     if(isVisible()&&available&&!busy_)requestUsbDiscovery();
 }
@@ -474,7 +488,9 @@ void FpgaControlPage::rebuildUsbDevices(){
     int index=previous.isEmpty()?-1:locator_->findData(previous);
     if(index<0)index=devices.size()==1?1:0;
     locator_->setCurrentIndex(index);
-    const QString host=text(usbRemote_?"天空端 USB":"本机 USB",usbRemote_?"Sky USB":"Local USB");
+    const bool simulated=backend_->currentData().toString()==QStringLiteral("simulator");
+    const QString host=text(simulated?"本地模拟器":usbRemote_?"天空端 USB":"本机 USB",
+                            simulated?"Local simulator":usbRemote_?"Sky USB":"Local USB");
     const auto error=usbDiscovery_.value("error").toString();
     discoveryStatus_->setText(!usbHostAvailable_?text("请先连接 SkyCore","Connect to SkyCore first")
         :!error.isEmpty()?host+" · "+error:!usbDiscovery_.contains("devices")?host+text(" · 等待枚举"," · Awaiting discovery")
@@ -496,6 +512,8 @@ void FpgaControlPage::setTransportConnected(bool connected){
 void FpgaControlPage::setConnectionState(bool ready,bool busy,const QString &detail){
     const bool lost=ready_&&!ready;ready_=ready;if(ready_)connected_=true;busy_=busy;connectionDetail_=detail;
     status_->setText(ready?text("已连接","Connected"):connected_?text("已连接未就绪 · 禁止写操作","Connected, not ready · Writes disabled"):text("离线","Offline"));
+    if(!usbRemote_&&backend_->currentData().toString()==QStringLiteral("simulator"))
+        status_->setText(text("协议模拟 · ","Protocol simulation · ")+status_->text());
     status_->setText(status_->text()+(busy?text(" · 正在处理"," · Working"):QString())+(detail.isEmpty()?QString():" · "+detail));
     status_->setToolTip(status_->text());
     if(lost){for(auto it=latestReadings_.cbegin();it!=latestReadings_.cend();++it)historicalReadings_.insert(it.key());for(auto it=latestWaves_.cbegin();it!=latestWaves_.cend();++it)historicalWaves_.insert(it.key());refreshMeasurements();}
@@ -606,6 +624,7 @@ void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream 
 }
 void FpgaControlPage::appendDiagnostic(const QString &s){diagnostics_->appendPlainText(s);}
 void FpgaControlPage::setLanguage(bool en){english_=en;for(auto *w:findChildren<QWidget*>())if(w->property("fpgaZh").isValid())label(w,w->property("fpgaZh").toString(),w->property("fpgaEn").toString());
+    backend_->setItemText(backend_->findData(QStringLiteral("simulator")),text("模拟器","Simulator"));
     for(int i=0;i<tabs_->count();++i)tabs_->setTabText(i,tabs_->widget(i)->property(en?"fpgaEn":"fpgaZh").toString());
     for(auto it=sensorLabels_.cbegin();it!=sensorLabels_.cend();++it)if(!latestReadings_.contains(it.key()))it.value()->setText(text("等待有效样本","Waiting for valid sample"));
     for(auto it=waveLabels_.cbegin();it!=waveLabels_.cend();++it)if(!latestWaves_.contains(it.key()))it.value()->setText(text("等待波形 · ADC 原码 / 解调数字幅值","Waiting for waveform · ADC raw / demodulation digital amplitude"));

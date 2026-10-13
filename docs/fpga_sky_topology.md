@@ -14,7 +14,7 @@ flowchart LR
 
 SkyCore 唯一打开 USB 并持续接收 VLP1。同机 GUI 复用 `RemoteSkyController`，连接本机 IPC；地面 GUI 连接数传串口或 TCP 遥测。两个客户端可同时观察和控制同一 SkyCore，均不另开 USB 或设备串口。`fpga.enabled` 默认 false；显式启用后连接/探测不等于打开物理输出。
 
-无实体板卡时，可运行 [VaporViewFpgaSimulator](fpga_simulator.md)。它复用这条 SkyCore/Ground 链路，在 USB 传输接口处生成 VLP1 模拟字节，独立保存模拟配置和记录；不注册系统 USB 设备，也不代表实板验收。
+无实体板卡时，可使用 [FPGA 协议模拟器](fpga_simulator.md)：Local 在 FPGA 页选择“模拟器”后端，由 Ground 直接生成并解析 VLP1；Remote 运行 `VaporViewFpgaSimulator.exe`，复用 SkyCore/Ground 链路。两种模式独立保存模拟记录，不注册系统 USB 设备，也不代表实板验收。
 
 ## 数据源与传感器路径是两个独立维度
 

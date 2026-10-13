@@ -6,6 +6,7 @@
 #include "TcpTelemetryLink.h"
 #include "TelemetryCodec.h"
 #include "FpgaTelemetry.h"
+#include "shared/session/FpgaSessionArchive.h"
 #include <QApplication>
 #include <QStyleFactory>
 #include <QTabWidget>
@@ -25,6 +26,12 @@
 #include <QStackedWidget>
 #include <QThread>
 #include <QTimer>
+#include <QDoubleSpinBox>
+#include <QTemporaryDir>
+#include <QDir>
+#include <QStandardItemModel>
+#include <QSet>
+#include <stdexcept>
 #include <cstdlib>
 #include <iostream>
 
@@ -283,6 +290,66 @@ static void remotePageRouting()
     require(worker.isNull(), "Remote regression teardown joins and deletes Local USB worker");
     server.close();
 }
+static void localSimulatorRouting()
+{
+    const auto check=[](bool ok,const char *message){if(!ok)throw std::runtime_error(message);};
+    QTemporaryDir output;check(output.isValid(),"isolated local recording directory");
+    auto settings=VaporView::applicationConfigSettings();
+    QSettings native("VaporView","MainWindow");
+    native.setValue("recording_directory",output.path());
+    settings.remove("Fpga/desiredConfiguration");
+    MainWindow window;
+    window.resize(1600,1000);
+    QMetaObject::invokeMethod(&window,"onDataSourceModeChanged",Q_ARG(int,0));
+    auto *path=window.findChild<QComboBox*>("deviceSensorTransportPathCombo");
+    check(path,"local sensor path selector exists");path->setCurrentIndex(path->findData("fpga_relay"));
+    auto *page=window.findChild<FpgaControlPage*>("fpgaControlPage");
+    window.findChild<QStackedWidget*>("mainPageStack")->setCurrentWidget(page);window.show();
+    auto *backend=page->findChild<QComboBox*>("fpgaBackend");
+    auto *devices=page->findChild<QComboBox*>("fpgaLocator");
+    auto *connectButton=page->findChild<QAbstractButton*>("fpgaConnect");
+    auto *disconnect=page->findChild<QAbstractButton*>("fpgaDisconnect");
+    auto *acquisition=page->findChild<QAbstractButton*>("fpgaAcquisitionStart");
+    check(backend&&devices&&connectButton&&disconnect&&acquisition,"normal FPGA controls are present");
+    backend->setCurrentIndex(backend->findData("simulator"));
+    check(waitUntil([&]{return devices->currentData().toString()=="simulation://fpga"&&connectButton->isEnabled();},10000),
+          "local simulator is enumerated and connectable");
+    check(!page->property("fpgaUiTestMode").toBool(),"local protocol test does not use UI test mode");
+    connectButton->click();
+    check(waitUntil([&]{return acquisition->isEnabled()&&disconnect->isEnabled();},12000),"local factory handshake enables normal controls");
+    auto *first=page->findChild<QWidget*>("fpgaWavePlot48");
+    auto *second=page->findChild<QWidget*>("fpgaWavePlot49");
+    auto *pressure=page->findChild<QLabel*>("fpgaSensor0040");
+    check(waitUntil([&]{return first->property("sampleCount").toInt()>0&&second->property("sampleCount").toInt()>0&&pressure->text().contains("Pa");}),
+          "normal local GUI receives both decoded DLIA channels and sensor readings");
+    QDoubleSpinBox *target=nullptr;
+    for(auto *spin:page->findChildren<QDoubleSpinBox*>())if(spin->suffix()==QStringLiteral(" °C"))target=spin;
+    check(target,"AI8 target editor exists");target->setValue(31.5);
+    auto *temperature=page->findChild<QAbstractButton*>("fpgaSetTemperature");temperature->click();
+    check(waitUntil([&]{return temperature->isEnabled();}),"local AI8 transaction finishes");
+    check(page->findChild<QLabel*>("fpgaConnectionStatus")->text().contains("AI8"),"local setpoint completion is visible in connection status");
+    auto *raw=page->findChild<QAbstractButton*>("fpgaRawStart");raw->click();
+    check(waitUntil([&]{return page->findChild<QWidget*>("fpgaWavePlot32")->property("sampleCount").toInt()>0;}),
+          "normal local RAW control receives fragmented ADC data");
+    auto *record=page->findChild<QAbstractButton*>("fpgaRecord");record->click();
+    check(waitUntil([&]{return record->text().contains("停止");}),"local record action starts recording");
+    processFor(500);record->click();check(waitUntil([&]{return record->text().contains("开始");}),"local record action stops and drains");
+    const QDir recordings(output.filePath("simulated_sessions"));
+    const auto sessions=recordings.entryList(QDir::Dirs|QDir::NoDotAndDotDot);
+    check(sessions.size()==1,"local simulator records one isolated session");
+    QSet<quint16> sources;QString error;
+    check(VaporView::Session::FpgaSessionArchive::replay(recordings.filePath(sessions.first()),[&](quint64,const auto& frame){
+        if(frame.header.frameType==VaporView::FpgaVlp1::FrameType::Data)sources.insert(frame.header.source);return true;
+    },&error),qPrintable(error));
+    check(sources.size()==10,"local recording replays six sensor sources and four waveform sources");
+    disconnect->click();check(waitUntil([&]{return connectButton->isEnabled();}),"local disconnect releases the simulator");
+    QMetaObject::invokeMethod(&window,"onDataSourceModeChanged",Q_ARG(int,1));
+    auto *model=qobject_cast<QStandardItemModel*>(backend->model());
+    check(model&&!model->item(backend->findData("simulator"))->isEnabled(),"local simulator option is disabled in Remote mode");
+    QMetaObject::invokeMethod(&window,"onDataSourceModeChanged",Q_ARG(int,0));
+    check(model->item(backend->findData("simulator"))->isEnabled(),"returning to Local restores the simulator option");
+    window.close();
+}
 int main(int argc,char **argv)
 {
     require(VaporViewTest::SettingsSandbox::initialized,"isolated native/INI application settings");
@@ -297,6 +364,10 @@ int main(int argc,char **argv)
     QSettings native("VaporView","MainWindow");
     native.setValue("font_scale_percent",100);
     native.setValue("app_sidebar_width",62);
+    if(app.arguments().contains("--local-simulator")) {
+        try { localSimulatorRouting();std::cout<<"Local FPGA simulator GUI test passed\n";return 0; }
+        catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}
+    }
     const auto standardFont=app.font();
     QPointer<QThread> worker;
     {

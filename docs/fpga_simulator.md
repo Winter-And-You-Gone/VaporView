@@ -1,8 +1,21 @@
-# FPGA 协议模拟程序
+# FPGA 协议模拟器（本地与远程）
 
 `VaporViewFpgaSimulator.exe` 是可独立启动的测试服务，无需板卡、Cypress SDK 或 USB 驱动。它在 FPGA 传输接口处生成完整 VLP1 字节流，经正常的拆包、CRC、传感器解码、波形重组、SkyCore 遥测与记录链路送入 VaporView；没有开启“界面测试模式”。
 
-## 启动与连接
+同一模拟后端也已接入 VaporView 的本地 FPGA 控制器。本地模式直接使用它，不需要启动独立服务或连接 TCP；远程模式使用上述独立 EXE。
+
+## 本地模式
+
+1. 打开 `build/Release/VaporView.exe`，在标题栏选择“本地”和“FPGA”。
+2. 打开 FPGA 页面，在后端下拉框（原 Auto/Cypress/WinUSB）中选择“模拟器”。
+3. 等待设备列表显示 `FPGA Protocol Simulator · SIMULATED`，点击连接。
+4. 握手完成后可测试传感器、双通道解调、参数、启停和 AI8 设温；点击 RAW 短窗查看 ADC。
+
+本地连接、控制、记录与回放使用正常的 Ground 工作线程和会话服务，不依赖界面测试模式。切回 Auto/Cypress/WinUSB 后枚举真实 USB，模拟器不会混入物理设备的自动选择。远程模式中这个本地模拟选项禁用。
+
+本地模拟记录保存在当前记录目录的 `simulated_sessions` 子目录，配置仍保存到本地 FPGA 的期望配置；退出模拟连接后可重新选择真实驱动后端。
+
+## 远程服务的启动与连接
 
 1. 双击 `build/Release/StartFpgaSimulator.cmd`，保持控制台运行。
 2. 打开 `build/Release/VaporView.exe`，在标题栏选择“远程”。
@@ -44,7 +57,7 @@
 
 ## 配置与记录
 
-默认配置位于 Qt 的本机应用数据目录下 `VaporView/VaporViewFpgaSimulator/fpga_simulator/sky_config.json`。启动时会打印完整路径；不会读取正式 `build/Release/sky_config.json`。
+远程独立服务的默认配置位于 Qt 的本机应用数据目录下 `VaporView/VaporViewFpgaSimulator/fpga_simulator/sky_config.json`。启动时会打印完整路径；不会读取正式 `build/Release/sky_config.json`。
 
 也可指定独立配置文件：
 
@@ -68,8 +81,10 @@ FPGA 当前接入的是 PTB210、EPSILON、BMP390、SHT45、TFA1500 和 AI8 六�
 
 ```powershell
 cmake -S . -B build/Release
-cmake --build build/Release --config Release --target VaporViewFpgaSimulator fpga_simulator_test -- -j4
-ctest --test-dir build/Release -C Release -R '^fpga_simulator(_e2e)?_test$' --output-on-failure
+cmake --build build/Release --config Release --target VaporView VaporViewFpgaSimulator fpga_simulator_test fpga_main_window_test -- -j4
+ctest --test-dir build/Release -C Release -R '^fpga_(local_simulator|simulator(_e2e)?)_test$' --output-on-failure
 ```
 
 协议/控制测试覆盖真实解码、无效寄存器、设温确认、配置回读、两路 RAW、独立启停、停止排空和重连。跨进程测试启动真实模拟 EXE，通过 Ground 的 `RemoteSkyController` 收发，检查遥测、波形预览、记录落盘和重连，并正常退出子进程。测试使用临时配置和记录目录。
+
+`fpga_local_simulator_test` 通过真实 MainWindow 的本地连接按钮验证工厂后端、传感器、双路解调、RAW、设温、独立记录与回放，以及本地/远程切换后的选项状态。

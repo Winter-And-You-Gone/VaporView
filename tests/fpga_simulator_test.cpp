@@ -71,14 +71,17 @@ void protocol()
 }
 void controls()
 {
-    FpgaDeviceController controller(makeFpgaUsbSimulator());
+    FpgaDeviceController controller;
+    FpgaControlConfig desired;desired.backend="simulator";controller.setConfiguration(desired);
+    check(controller.discoverDevices().value("devices").toArray().size()==1,
+          "local factory discovers a simulator independently of physical USB");
     QSet<quint16> sensors,waves;QMap<quint16,int> waveCount;QString failure;bool configuredRaw=false;
     QObject::connect(&controller,&FpgaDeviceController::logRecordGenerated,[&](const LogRecord& r){if(r.level>=LogLevel::Error)failure=r.message;});
     QObject::connect(&controller,&FpgaDeviceController::measurementUpdated,[&](const auto& r){if(r.reading.validity.measurement)sensors.insert(r.reading.source);});
     QObject::connect(&controller,&FpgaDeviceController::waveformUpdated,[&](const auto& w){if(w.complete){waves.insert(w.source);++waveCount[w.source];
         if(w.source==0x20)configuredRaw=w.totalPoints==8000&&w.signed32Samples.size()==8000&&
             std::all_of(w.signed32Samples.cbegin(),w.signed32Samples.cend(),[](qint32 v){return v==83886;});}});
-    controller.connectDevice("simulation://fpga","auto");
+    controller.connectDevice("simulation://fpga","simulator");
     const auto idle=[&]{check(failure.isEmpty(),qPrintable(failure));return controller.ready()&&!controller.busy();};
     wait(idle,"real controller handshake and connection recovery complete");
     wait([&]{return sensors.size()==6&&waves.size()==2;},"controller receives six sensors and both DLIA channels");
@@ -86,6 +89,7 @@ void controls()
     check(qint16(controller.hardwareValues().value(0x6654))==-25&&controller.hardwareValues().value(0x6648)==1,
           "AI8 setpoint confirmation and readback are observable");
     auto config=FpgaControlConfig{};config.wms[0].scanMilliHz=125000;config.dlia[0].outputRateHz=5000;
+    config.backend="simulator";
     config.wms[0].scanAmplitude=0;config.wms[0].sineAmplitude=0;config.wms[0].bias=21474836;
     controller.applyConfiguration(config);wait(idle,"WMS, DAC, shared ADC and DLIA configuration commits pass");
     check(controller.hardwareValues().value(0x2010)==125000&&controller.hardwareValues().value(0x504c)==5000,
@@ -104,7 +108,7 @@ void controls()
     controller.setAcquisition(false);wait(idle,"stop and drain succeeds");events(300);const auto stopped=waveCount;
     events(300);check(waveCount==stopped,"stopped ADC and DLIA no longer emit new waves");
     controller.disconnectDevice();check(!controller.ready(),"disconnect clears readiness");
-    controller.connectDevice("simulation://fpga","auto");wait(idle,"simulator reconnect performs a fresh handshake");
+    controller.connectDevice("simulation://fpga","simulator");wait(idle,"simulator reconnect performs a fresh handshake");
 }
 struct Child
 {

@@ -1,4 +1,5 @@
 #include "FpgaUsbTransport.h"
+#include "FpgaUsbSimulator.h"
 #include "FpgaCyApiTransport.h"
 #include <QStringList>
 #include <QJsonArray>
@@ -590,6 +591,7 @@ std::unique_ptr<FpgaUsbTransport> makeFpgaUsbHardwareTransport(const QString &ba
     if (name.isEmpty() || name == QStringLiteral("auto")) return std::make_unique<AutoUsbTransport>(parent);
     if (name == QStringLiteral("cypress")) return std::make_unique<FpgaCyApiTransport>(parent);
     if (name == QStringLiteral("winusb")) return std::make_unique<FpgaUsbHardwareTransport>(parent);
+    if (name == QStringLiteral("simulator")) return makeFpgaUsbSimulator(parent);
     return std::make_unique<UnavailableUsbTransport>(backend,parent);
 }
 

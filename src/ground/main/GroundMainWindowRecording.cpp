@@ -1004,6 +1004,8 @@ bool MainWindow::startRecordingSession()
     {
         options.baseDirectory = defaultRecordingDirectory();
     }
+    if (!isRemoteSkyMode() && isFpgaRelayPath() && state_->fpga_config_.backend == QStringLiteral("simulator"))
+        options.baseDirectory = QDir(options.baseDirectory).filePath(QStringLiteral("simulated_sessions"));
     options.exportRateHz = state_->recording_export_rate_hz_;
     options.deviceConfig.waveformHost = state_->tcp_wave_panel_
         ? state_->tcp_wave_panel_->host()

@@ -73,7 +73,7 @@ public:
     QJsonObject discoverDevices() const override
     {
         return {{"devices", QJsonArray{QJsonObject{{"locator", "simulation://fpga"},
-            {"label", "FPGA Protocol Simulator"}, {"backend", "auto"},
+            {"label", "FPGA Protocol Simulator"}, {"backend", "simulator"},
             {"driver", "SIMULATED"}, {"available", true}}}}, {"error", ""}};
     }
     bool readDiagnostic(quint8 request, QByteArray &response) override

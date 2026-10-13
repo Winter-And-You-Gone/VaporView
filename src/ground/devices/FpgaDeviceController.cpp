@@ -1,4 +1,5 @@
 #include "FpgaDeviceController.h"
+#include "FpgaUsbSimulator.h"
 #include "shared/session/FpgaSessionArchive.h"
 
 #include <QDateTime>
@@ -38,9 +39,12 @@ FpgaDeviceController::FpgaDeviceController(std::unique_ptr<FpgaUsbTransport> tra
 
 FpgaDeviceController::~FpgaDeviceController() { disconnectDevice(); }
 
-QJsonObject FpgaDeviceController::discoverDevices() const
+QJsonObject FpgaDeviceController::discoverDevices(const QString& backend) const
 {
-    return injected_ ? session_->transport()->discoverDevices() : discoverFpgaUsbDevices();
+    if (injected_) return session_->transport()->discoverDevices();
+    if ((backend.isEmpty() ? configuration_.backend : backend) == QStringLiteral("simulator"))
+        return makeFpgaUsbSimulator()->discoverDevices();
+    return discoverFpgaUsbDevices();
 }
 
 void FpgaDeviceController::installSession(std::unique_ptr<FpgaUsbTransport> transport)

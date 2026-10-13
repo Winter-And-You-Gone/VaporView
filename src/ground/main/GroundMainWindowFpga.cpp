@@ -48,9 +48,10 @@ void MainWindow::setupFpgaControlPage()
         }
         if (isRemoteSkyMode()) { sendRemoteFpgaControl({{"op", "discover"}}); return; }
         const auto generation = page->usbDiscoveryGeneration();
+        const auto backend = page->configuration().backend;
         QPointer<FpgaControlPage> target(page);
-        QMetaObject::invokeMethod(controller, [controller, target, generation] {
-            const auto result = controller->discoverDevices();
+        QMetaObject::invokeMethod(controller, [controller, target, generation, backend] {
+            const auto result = controller->discoverDevices(backend);
             if (target) QMetaObject::invokeMethod(target, [target, generation, result] {
                 if (target && !target->property("fpgaUiTestMode").toBool() && target->usbDiscoveryGeneration() == generation) target->setUsbDiscoveryResult(result);
             }, Qt::QueuedConnection);
