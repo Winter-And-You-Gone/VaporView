@@ -1,6 +1,7 @@
 #include "test_settings_sandbox.h"
 #include "ground/main/MainWindow.h"
 #include "ground/widgets/FpgaControlPage.h"
+#include "ground/widgets/SegmentedSwitchButton.h"
 #include "shared/config/ApplicationConfig.h"
 #include "ground/devices/RemoteSkyController.h"
 #include "TcpTelemetryLink.h"
@@ -19,6 +20,9 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QLabel>
+#include <QMessageBox>
+#include <QImage>
+#include <QPixmap>
 #include <QLayout>
 #include <QBoxLayout>
 #include <QPointer>
@@ -315,8 +319,35 @@ static void localSimulatorRouting()
     check(waitUntil([&]{return devices->currentData().toString()=="simulation://fpga"&&connectButton->isEnabled();},10000),
           "local simulator is enumerated and connectable");
     check(!page->property("fpgaUiTestMode").toBool(),"local protocol test does not use UI test mode");
+    using VaporView::Ground::Widgets::SegmentedSwitchButton;
+    auto *sourceSwitch=window.findChild<SegmentedSwitchButton*>("sourceModeOverviewSwitch");
+    auto *pathSwitch=window.findChild<SegmentedSwitchButton*>("titleSensorTransportSwitch");
+    check(sourceSwitch&&pathSwitch,"both title-bar mode capsules exist");
+    check(waitUntil([&]{return !sourceSwitch->switchAnimationRunning()&&!pathSwitch->switchAnimationRunning();}),
+          "mode capsule appearances settle before connecting");
+    const QImage sourceAppearance=sourceSwitch->grab().toImage(),pathAppearance=pathSwitch->grab().toImage();
+    const auto expectLockedPrompt=[&](SegmentedSwitchButton *button,const QString &expectedText){
+        QString message;
+        QTimer closePrompt;
+        QObject::connect(&closePrompt,&QTimer::timeout,&window,[&]{
+            if(auto *box=qobject_cast<QMessageBox*>(QApplication::activeModalWidget())){
+                message=box->text();box->accept();
+            }
+        });
+        closePrompt.start(10);button->click();closePrompt.stop();
+        check(message.contains(expectedText),"locked capsule click explains how to unlock switching");
+    };
     connectButton->click();
     check(waitUntil([&]{return acquisition->isEnabled()&&disconnect->isEnabled();},12000),"local factory handshake enables normal controls");
+    check(sourceSwitch->isEnabled()&&pathSwitch->isEnabled()&&!sourceSwitch->switchChecked()&&pathSwitch->switchChecked()&&!path->isEnabled(),
+          "connected capsules stay clickable and display Local/FPGA while the mode is locked");
+    check(sourceSwitch->grab().toImage()==sourceAppearance&&pathSwitch->grab().toImage()==pathAppearance,
+          "locking either capsule preserves its rendered colors and selection");
+    expectLockedPrompt(sourceSwitch,QStringLiteral("先断开连接"));
+    expectLockedPrompt(pathSwitch,QStringLiteral("先断开连接"));
+    check(!sourceSwitch->switchChecked()&&pathSwitch->switchChecked()&&path->currentData().toString()=="fpga_relay"&&
+          !sourceSwitch->switchAnimationRunning()&&!pathSwitch->switchAnimationRunning()&&acquisition->isEnabled()&&disconnect->isEnabled(),
+          "locked requests keep both modes and the active FPGA connection unchanged without selection animation");
     auto *first=page->findChild<QWidget*>("fpgaWavePlot48");
     auto *second=page->findChild<QWidget*>("fpgaWavePlot49");
     auto *pressure=page->findChild<QLabel*>("fpgaSensor0040");
@@ -343,11 +374,18 @@ static void localSimulatorRouting()
     },&error),qPrintable(error));
     check(sources.size()==10,"local recording replays six sensor sources and four waveform sources");
     disconnect->click();check(waitUntil([&]{return connectButton->isEnabled();}),"local disconnect releases the simulator");
-    QMetaObject::invokeMethod(&window,"onDataSourceModeChanged",Q_ARG(int,1));
+    sourceSwitch->click();
     auto *model=qobject_cast<QStandardItemModel*>(backend->model());
-    check(model&&!model->item(backend->findData("simulator"))->isEnabled(),"local simulator option is disabled in Remote mode");
-    QMetaObject::invokeMethod(&window,"onDataSourceModeChanged",Q_ARG(int,0));
-    check(model->item(backend->findData("simulator"))->isEnabled(),"returning to Local restores the simulator option");
+    check(sourceSwitch->switchChecked()&&model&&!model->item(backend->findData("simulator"))->isEnabled(),"unlocked capsule switches to Remote and disables the local simulator option");
+    const bool remoteFpgaSelected=pathSwitch->switchChecked();
+    expectLockedPrompt(pathSwitch,QStringLiteral("连接天空端并读取设备配置"));
+    check(pathSwitch->switchChecked()==remoteFpgaSelected,"offline Remote transport keeps its current mode after its prerequisite prompt");
+    sourceSwitch->click();
+    check(!sourceSwitch->switchChecked()&&model->item(backend->findData("simulator"))->isEnabled(),"unlocked capsule returns to Local and restores the simulator option");
+    pathSwitch->click();
+    check(!pathSwitch->switchChecked()&&path->currentData().toString()=="direct_devices","unlocked capsule switches to Direct devices");
+    pathSwitch->click();
+    check(pathSwitch->switchChecked()&&path->currentData().toString()=="fpga_relay","unlocked capsule switches back to FPGA");
     window.close();
 }
 int main(int argc,char **argv)

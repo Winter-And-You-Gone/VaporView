@@ -247,14 +247,6 @@ bool MainWindow::isRemoteSkyTcpMode() const
 
 void MainWindow::requestSourceModeSelection(bool remoteSelected)
 {
-    auto syncSwitch = [remoteSelected](VaporView::Ground::Widgets::SourceModeOverviewSwitchButton *button) {
-        if (button)
-        {
-            button->setSwitchChecked(remoteSelected, button->switchChecked() != remoteSelected);
-        }
-    };
-    syncSwitch(state_->source_mode_switch_);
-
     if (!state_->data_source_mode_combo_)
     {
         return;
@@ -265,6 +257,26 @@ void MainWindow::requestSourceModeSelection(bool remoteSelected)
     {
         updateSourceModeUi();
         return;
+    }
+    // Keep the capsule readable while locked, and reject requests before animating.
+    if (!isUiTestMode() && (state_->is_connected_ || state_->connection_attempt_in_progress_ ||
+        state_->fpga_connected_ || state_->fpga_busy_ || state_->fpga_replaying_))
+    {
+        const bool connected = state_->is_connected_ || state_->fpga_connected_;
+        QMessageBox::information(this,
+            state_->is_english_ ? QStringLiteral("Switch Data Source") : QStringLiteral("切换数据源"),
+            connected
+                ? (state_->is_english_
+                    ? QStringLiteral("A device is connected. Disconnect before switching Local/Remote mode.")
+                    : QStringLiteral("当前设备已连接。请先断开连接，再切换本地/远程模式。"))
+                : (state_->is_english_
+                    ? QStringLiteral("A connection, operation or replay is in progress. Wait for it to finish or stop replay before switching Local/Remote mode.")
+                    : QStringLiteral("当前正在连接、操作或回放。请等待操作完成或停止回放后，再切换本地/远程模式。")));
+        return;
+    }
+    if (state_->source_mode_switch_)
+    {
+        state_->source_mode_switch_->setSwitchChecked(remoteSelected, true);
     }
     state_->data_source_mode_combo_->setCurrentIndex(targetIndex);
 }
@@ -565,7 +577,6 @@ void MainWindow::updateSourceModeUi()
     }
     if (state_->source_mode_switch_)
     {
-        state_->source_mode_switch_->setEnabled(isUiTestMode() || (!state_->is_connected_ && !state_->connection_attempt_in_progress_));
         state_->source_mode_switch_->setSwitchChecked(remote, state_->source_mode_switch_->switchChecked() != remote);
     }
     const bool remoteActionsAvailable = remote && (isUiTestMode() ||

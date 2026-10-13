@@ -790,10 +790,38 @@ void MainWindow::setupCustomTitleBar()
             &VaporView::Ground::Widgets::SegmentedSwitchButton::selectionRequested,
             this, [this](bool fpgaSelected) {
                 auto *combo = state_->device_config_.sensor_transport_path_combo;
-                if (!combo || !combo->isEnabled()) return;
+                if (!combo) return;
                 const int index = combo->findData(VaporView::sensorTransportPathToString(fpgaSelected
                     ? VaporView::SensorTransportPath::FpgaRelay : VaporView::SensorTransportPath::DirectDevices));
-                if (index >= 0) combo->setCurrentIndex(index);
+                if (index < 0 || index == combo->currentIndex()) return;
+                if (!combo->isEnabled())
+                {
+                    QString message;
+                    if (isRemoteSkyMode() && !state_->remote_sky_config_loading_ &&
+                        !state_->remote_sky_config_applying_ && !state_->remote_sky_config_saving_)
+                    {
+                        message = state_->is_english_
+                            ? QStringLiteral("Connect to Sky and read its device configuration before switching Direct/FPGA mode.")
+                            : QStringLiteral("请先连接天空端并读取设备配置，再切换直连/FPGA模式。");
+                    }
+                    else if (!isRemoteSkyMode() && state_->is_connected_)
+                    {
+                        message = state_->is_english_
+                            ? QStringLiteral("A device is connected. Disconnect before switching Direct/FPGA mode.")
+                            : QStringLiteral("当前设备已连接。请先断开连接，再切换直连/FPGA模式。");
+                    }
+                    else
+                    {
+                        message = state_->is_english_
+                            ? QStringLiteral("An operation is in progress. Wait for it to finish before switching Direct/FPGA mode.")
+                            : QStringLiteral("当前操作进行中。请等待操作完成，再切换直连/FPGA模式。");
+                    }
+                    QMessageBox::information(this,
+                        state_->is_english_ ? QStringLiteral("Switch Sensor Transport") : QStringLiteral("切换连接方式"),
+                        message);
+                    return;
+                }
+                combo->setCurrentIndex(index);
             });
     titleLayout->addWidget(state_->sensor_transport_switch_, 0, Qt::AlignVCenter);
     addTitleBarSeparator(titleLayout);
@@ -4262,8 +4290,6 @@ void MainWindow::updateDeviceConfigState()
     {
         state_->sensor_transport_switch_->setSwitchChecked(fpgaRelay,
             state_->sensor_transport_switch_->switchChecked() != fpgaRelay);
-        state_->sensor_transport_switch_->setEnabled(state_->device_config_.sensor_transport_path_combo &&
-            state_->device_config_.sensor_transport_path_combo->isEnabled());
     }
     const bool epsilonConfigEnabled = !state_->connection_attempt_in_progress_ &&
         !state_->port_detection_in_progress_ && !state_->epsilon_reconfigure_in_progress_;
