@@ -150,7 +150,7 @@ void MainWindow::updateConnectionStatus(bool connected)
 
 bool MainWindow::homeDeviceConnected(VaporView::SkyDeviceId device) const
 {
-    if (isFpgaRelayPath()) return homeFpgaDeviceActionState(device)==VaporView::DeviceState::Connected;
+    if (isFpgaRelayPath()) return homeFpgaDeviceState(device)==VaporView::DeviceState::Connected;
     if (isUiTestMode())
     {
         return state_->ui_test_model_->deviceState(device) == VaporView::DeviceState::Connected;

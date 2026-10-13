@@ -31,24 +31,35 @@ VaporView::DeviceState MainWindow::homeFpgaDeviceActionState(VaporView::SkyDevic
 {
     using VaporView::DeviceState;
     using VaporView::SkyDeviceId;
-    const auto source = homeFpgaSensorSource(device);
-    if (!source && device != SkyDeviceId::WaveTcp) return DeviceState::Disabled;
+    if (!homeFpgaSensorSource(device) && device != SkyDeviceId::WaveTcp) return DeviceState::Disabled;
     if (state_->fpga_home_action_device_ != SkyDeviceId::All)
         return state_->fpga_home_action_device_ == device ? DeviceState::Connecting : DeviceState::Disabled;
-    QMap<quint32, quint32> registers;
     if (isUiTestMode()) {
         if (state_->ui_test_connection_in_progress_) return DeviceState::Connecting;
+    } else if (isRemoteSkyMode()) {
+        if (state_->fpga_remote_request_id_ || state_->fpga_remote_status_.value("busy").toBool()) return DeviceState::Disabled;
+    } else if (state_->fpga_busy_ || state_->fpga_replaying_ || anyCollectorRunning()
+        || state_->connection_attempt_in_progress_) return DeviceState::Disabled;
+    return homeFpgaDeviceState(device);
+}
+
+VaporView::DeviceState MainWindow::homeFpgaDeviceState(VaporView::SkyDeviceId device) const
+{
+    using VaporView::DeviceState;
+    const auto source = homeFpgaSensorSource(device);
+    if (!source && device != VaporView::SkyDeviceId::WaveTcp) return DeviceState::Disabled;
+    // Command serialization locks actions, but does not disconnect other devices.
+    QMap<quint32, quint32> registers;
+    if (isUiTestMode()) {
         if (!state_->fpga_sim_ready_) return DeviceState::Disconnected;
         registers = state_->fpga_sim_registers_;
     } else if (isRemoteSkyMode()) {
         if (!state_->remote_sky_controller_->isOpen() || !state_->fpga_remote_status_.value("ready").toBool()
-            || std::chrono::steady_clock::now() - state_->fpga_remote_status_time_ >= std::chrono::seconds(4)
-            || state_->fpga_remote_request_id_ || state_->fpga_remote_status_.value("busy").toBool()) return DeviceState::Disabled;
+            || std::chrono::steady_clock::now() - state_->fpga_remote_status_time_ >= std::chrono::seconds(4)) return DeviceState::Disabled;
         const auto values = state_->fpga_remote_status_.value("registers").toObject();
         for (auto it = values.begin(); it != values.end(); ++it) registers.insert(it.key().toUInt(), quint32(it.value().toDouble()));
     } else {
-        if (state_->fpga_busy_ || state_->fpga_replaying_ || anyCollectorRunning()
-            || state_->connection_attempt_in_progress_) return DeviceState::Disabled;
+        if (state_->fpga_replaying_) return DeviceState::Disabled;
         if (!state_->fpga_ready_) return DeviceState::Disconnected;
         registers = state_->fpga_registers_;
     }

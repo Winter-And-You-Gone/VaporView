@@ -1,6 +1,8 @@
 #include "test_settings_sandbox.h"
 #include "ground/main/MainWindow.h"
 #include "ground/widgets/FpgaControlPage.h"
+#include "ground/navigation/CombinationNavigationPage.h"
+#include "LogService.h"
 #include "ground/widgets/SegmentedSwitchButton.h"
 #include "shared/config/ApplicationConfig.h"
 #include "ground/devices/RemoteSkyController.h"
@@ -309,8 +311,14 @@ static void remotePageRouting()
 static void remoteHomeActions()
 {
     using namespace VaporView;
+    QTemporaryDir logs;require(logs.isValid(),"isolated remote home action logs");
+    LogService logService("FpgaHomeActionsTest",nullptr,logs.path(),logs.path());
     TcpTelemetryLink server;require(server.listen("127.0.0.1",0),"home control fake Sky server");
     MainWindow window;
+    int navigationChanges=0;
+    QObject::connect(&logService,&LogService::recordPublished,&window,[&](const LogRecord& record) {
+        if(record.fields.value("event")=="navigation_correction_status_changed")++navigationChanges;
+    });
     QMetaObject::invokeMethod(&window,"onDataSourceModeChanged",Q_ARG(int,1));
     auto sky=SkyConfig::defaults();sky.sensor_transport_path=SensorTransportPath::FpgaRelay;
     window.testInjectRemoteSkyConfig(sky.toJson());
@@ -340,6 +348,20 @@ static void remoteHomeActions()
         const auto bytes=encoder.encodeFrame(type,payload,sequence++,1);
         require(server.writeBytes(bytes)==bytes.size(),"home control Sky frame sent");
     };
+    auto *navigation=window.findChild<Ground::Navigation::CombinationNavigationPage*>("combinationNavigationPage");
+    auto *navigationPanel=static_cast<Ground::Navigation::NavigationStatusPanel*>(window.findChild<QWidget*>("navigationStatusPanel"));
+    require(navigation&&navigationPanel,"remote navigation status widgets exist");
+    const auto refreshNavigation=[&] {
+        TelemetryStatus telemetryStatus;
+        DeviceStatusItem epsilonStatus;epsilonStatus.device_id=SkyDeviceId::Epsilon;epsilonStatus.state=DeviceState::Connected;
+        telemetryStatus.devices.append(epsilonStatus);
+        send(MsgType::TelemetryStatus,TelemetryCodec::serializeTelemetryStatus(telemetryStatus));
+        TelemetryBasic basic;basic.validity_flags=BasicHasEpsilonTime|BasicHasGnssQuality;
+        basic.epsilon_time_us=1;basic.gnss_fix_code=6;basic.gnss_satellites=18;
+        send(MsgType::TelemetryBasic,TelemetryCodec::serializeBasicTelemetry(basic));
+        require(waitUntil([&]{navigation->refreshStatus();return navigationPanel->snapshot().navigationDataAvailable
+            &&navigationPanel->snapshot().gnssFixCode==6;}),"fresh remote navigation baseline is available");
+    };
     send(MsgType::FpgaStatus,FpgaRemote::encodeStatus(status));
     auto *epsilon=homeAction(window,"EPSILON");
     require(waitUntil([&]{return epsilon->isEnabled()&&epsilon->property("state")=="connected";}),
@@ -350,6 +372,8 @@ static void remoteHomeActions()
     for (int index=0;index<names.size();++index) {
         auto *button=homeAction(window,names[index]);
         for (bool enabled:{false,true}) {
+            if(sources[index]!=0x42)refreshNavigation();
+            const int changesBefore=navigationChanges;
             const auto before=registers;const int count=requests.size();button->click();
             require(waitUntil([&]{return requests.size()==count+1;}),"home click sends one FPGA request");
             require(stack->currentIndex()==0,"remote per-device action keeps the home page selected");
@@ -360,21 +384,34 @@ static void remoteHomeActions()
             CommandAck ack;ack.command_id=CommandId::DeviceOperation;ack.command_seq=commandSequence;
             send(MsgType::CommandAck,TelemetryCodec::serializeCommandAck(ack));processFor(30);
             require(!button->isEnabled()&&button->property("state")=="connecting","ACK does not change confirmed device state");
+            if(sources[index]!=0x42) {
+                status["busy"]=true;send(MsgType::FpgaStatus,FpgaRemote::encodeStatus(status));processFor(20);
+                navigation->refreshStatus();
+                require(navigationPanel->snapshot().navigationDataAvailable&&navigationPanel->snapshot().gnssFixCode==6,
+                    "a pending remote sensor command preserves EPSILON navigation");
+                require(!epsilon->isEnabled(),"unrelated EPSILON action remains locked during the remote transaction");
+            }
             button->click();processFor(20);require(requests.size()==count+1,"in-flight home action cannot be duplicated");
             if(sources[index])registers[QString::number(0x6004+(sources[index]-0x40)*0x100)]=enabled?1:0;
             else for(quint32 address:{0x4004u,0x4104u,0x5004u,0x5104u})registers[QString::number(address)]=enabled?1:0;
-            status["registers"]=registers;
+            status["registers"]=registers;status["busy"]=false;
             DeviceOperationResponse response;response.request_id=requests.last().request_id;response.device_id=SkyDeviceId::Fpga;
             response.operation=DeviceOperation::FpgaControl;response.payload=FpgaRemote::encodeStatus(status);
             send(MsgType::DeviceOperationResponse,TelemetryCodec::serializeDeviceOperationResponse(response));
             require(waitUntil([&]{return button->isEnabled()&&button->property("state")== (enabled?"connected":"disconnected");}),
                 "final register readback confirms the home connection state");
+            if(sources[index]!=0x42) {
+                navigation->refreshStatus();
+                require(navigationChanges==changesBefore,"remote sensor actions do not log false GNSS loss and recovery");
+            }
             if(sources[index])for(const auto &key:before.keys())
                 if(key!=QString::number(0x6004+(sources[index]-0x40)*0x100))require(registers.value(key)==before.value(key),"one sensor action preserves other modules");
         }
     }
     const int count=requests.size();remote->close();
     require(waitUntil([&]{return !epsilon->isEnabled();}),"telemetry loss disables FPGA home controls");
+    navigation->refreshStatus();
+    require(!navigationPanel->snapshot().navigationDataAvailable,"real telemetry loss still clears navigation availability");
     processFor(50);require(requests.size()==count&&stack->currentIndex()==0,"link closure sends no FPGA stop and never changes page");
     QMetaObject::invokeMethod(&window,"onDataSourceModeChanged",Q_ARG(int,0));window.close();server.close();
 }
@@ -382,6 +419,7 @@ static void localSimulatorRouting()
 {
     const auto check=[](bool ok,const char *message){if(!ok)throw std::runtime_error(message);};
     QTemporaryDir output;check(output.isValid(),"isolated local recording directory");
+    VaporView::LogService logService("FpgaLocalHomeActionsTest",nullptr,output.filePath("logs"),output.filePath("logs"));
     auto settings=VaporView::applicationConfigSettings();
     QSettings native("VaporView","MainWindow");
     native.setValue("recording_directory",output.path());
@@ -442,6 +480,37 @@ static void localSimulatorRouting()
         }
     }
     check(!homeAction(window,"RD105")->isEnabled(),"local relay does not invent RD105 support");
+    auto *navigation=window.findChild<VaporView::Ground::Navigation::CombinationNavigationPage*>("combinationNavigationPage");
+    auto *navigationPanel=static_cast<VaporView::Ground::Navigation::NavigationStatusPanel*>(window.findChild<QWidget*>("navigationStatusPanel"));
+    check(navigation&&navigationPanel,"local navigation status widgets exist");
+    pressureSource->setCurrentIndex(pressureSource->findData(0x40));
+    check(waitUntil([&]{navigation->refreshStatus();return navigationPanel->snapshot().navigationDataAvailable
+        &&navigationPanel->snapshot().gnssFixCode==6;}),"local simulator supplies a fresh GNSS fix");
+    int navigationChanges=0;
+    QObject::connect(&logService,&VaporView::LogService::recordPublished,&window,[&](const VaporView::LogRecord& record) {
+        if(record.fields.value("event")=="navigation_correction_status_changed")++navigationChanges;
+    });
+    for(bool enabled:{false,true}) {
+        pressureAction->click();navigation->refreshStatus();
+        check(!homeAction(window,"EPSILON")->isEnabled(),"EPSILON action remains locked during the local PTB transaction");
+        check(navigationPanel->snapshot().navigationDataAvailable&&navigationPanel->snapshot().gnssFixCode==6,
+            "a pending PTB210 command preserves local EPSILON navigation");
+        check(waitUntil([&]{return pressureAction->isEnabled()&&pressureAction->property("state")== (enabled?"connected":"disconnected");},10000),
+            "PTB210 home stop and start complete through VLP1 readback");
+        navigation->refreshStatus();
+        check(navigationChanges==0,"PTB210 stop and start do not log false GNSS loss and recovery");
+    }
+    auto *epsilonAction=homeAction(window,"EPSILON");epsilonAction->click();
+    check(waitUntil([&]{return epsilonAction->isEnabled()&&epsilonAction->property("state")=="disconnected";}),
+        "actual EPSILON stop completes");
+    navigation->refreshStatus();
+    check(!navigationPanel->snapshot().navigationDataAvailable&&navigationChanges>0,
+        "actual EPSILON stop still clears navigation and logs the transition");
+    epsilonAction->click();
+    check(waitUntil([&]{return epsilonAction->isEnabled()&&epsilonAction->property("state")=="connected";}),
+        "EPSILON is re-enabled after the disconnect regression");
+    check(waitUntil([&]{navigation->refreshStatus();return navigationPanel->snapshot().navigationDataAvailable;}),
+        "fresh navigation returns after actual EPSILON reconnect");
     check(sourceSwitch->isEnabled()&&pathSwitch->isEnabled()&&!sourceSwitch->switchChecked()&&pathSwitch->switchChecked()&&!path->isEnabled(),
           "connected capsules stay clickable and display Local/FPGA while the mode is locked");
     check(sourceSwitch->grab().toImage()==sourceAppearance&&pathSwitch->grab().toImage()==pathAppearance,
