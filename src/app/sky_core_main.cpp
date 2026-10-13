@@ -5,6 +5,8 @@
 
 #include <QCommandLineParser>
 #include <QCoreApplication>
+#include <QDir>
+#include <QStandardPaths>
 #include <QTextStream>
 #include <QTimer>
 #include <algorithm>
@@ -118,10 +120,14 @@ int main(int argc, char *argv[])
     SetConsoleCtrlHandler(handleConsoleControl, TRUE);
 #endif
 
+#ifdef VAPORVIEW_FPGA_SIMULATOR
+    app.setApplicationName("VaporViewFpgaSimulator");
+#else
     app.setApplicationName("VaporViewSkyCore");
+#endif
     app.setApplicationVersion("1.0.23");
     app.setOrganizationName("VaporView");
-    VaporView::LogService logService(QStringLiteral("VaporViewSkyCore"));
+    VaporView::LogService logService(app.applicationName());
     logService.installQtMessageHandler();
     registerTelemetryMetaTypes();
 
@@ -137,6 +143,7 @@ int main(int argc, char *argv[])
     QCommandLineOption telemetryTcpPortOption(QStringLiteral("telemetry-tcp-port"), QStringLiteral("Telemetry TCP listen port"), QStringLiteral("port"), QStringLiteral("39100"));
     QCommandLineOption skyConfigOption(QStringLiteral("sky-config"), QStringLiteral("Sky config JSON path"), QStringLiteral("path"));
     QCommandLineOption skySimulateOption(QStringLiteral("sky-simulate-data"), QStringLiteral("Generate simulated sky data"));
+    QCommandLineOption fpgaSimulateOption(QStringLiteral("fpga-simulate-data"), QStringLiteral("Run the VLP1 FPGA simulator without physical USB"));
     QCommandLineOption skyWaveHostOption(QStringLiteral("sky-wave-host"), QStringLiteral("Sky TCP wave host"), QStringLiteral("host"), QStringLiteral("127.0.0.1"));
     QCommandLineOption skyWavePortOption(QStringLiteral("sky-wave-port"), QStringLiteral("Sky TCP wave port"), QStringLiteral("port"), QStringLiteral("8888"));
     QCommandLineOption ipcHostOption(QStringLiteral("ipc-host"), QStringLiteral("Local IPC host"), QStringLiteral("host"), QStringLiteral("127.0.0.1"));
@@ -145,7 +152,7 @@ int main(int argc, char *argv[])
     QCommandLineOption noIpcOption(QStringLiteral("no-ipc"), QStringLiteral("Disable local IPC server"));
     parser.addOptions({helpOption, versionOption, telemetryPortOption, telemetryBaudOption,
                        telemetryTransportOption, telemetryHostOption, telemetryTcpPortOption,
-                       skyConfigOption, skySimulateOption,
+                       skyConfigOption, skySimulateOption, fpgaSimulateOption,
                        skyWaveHostOption, skyWavePortOption, ipcHostOption, ipcPortOption,
                        profileOption, noIpcOption});
     parser.process(app);
@@ -187,6 +194,23 @@ int main(int argc, char *argv[])
     options.telemetry_baud = *telemetryBaud;
     options.config_path = parser.value(skyConfigOption);
     options.simulate_data = parser.isSet(skySimulateOption);
+    options.simulate_fpga = parser.isSet(fpgaSimulateOption);
+#ifdef VAPORVIEW_FPGA_SIMULATOR
+    options.simulate_fpga = true;
+#endif
+    if (options.simulate_fpga)
+    {
+        if (options.config_path.isEmpty())
+        {
+            const auto directory = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)
+                + QStringLiteral("/fpga_simulator");
+            QDir().mkpath(directory);
+            options.config_path = QDir(directory).filePath(QStringLiteral("sky_config.json"));
+        }
+        if (!parser.isSet(telemetryHostOption)) options.telemetry_host = QStringLiteral("127.0.0.1");
+        QTextStream(stdout) << "FPGA 协议模拟服务：不访问实体 USB；VaporView 使用远程 TCP 连接 127.0.0.1:"
+                            << options.telemetry_tcp_port << "。\n配置：" << options.config_path << "\n";
+    }
     options.wave_host = parser.value(skyWaveHostOption);
     options.wave_port = parser.value(skyWavePortOption).toInt();
 

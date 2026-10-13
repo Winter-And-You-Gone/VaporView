@@ -2,6 +2,8 @@
 
 所有本地构建和测试统一使用 `build/Release`。Windows 下先进入 VS/MSVC Developer 环境；仓库脚本会自动完成这一步。
 
+无板卡的 FPGA 功能验证可使用独立 [FPGA 协议模拟程序](fpga_simulator.md)：构建后双击 `build/Release/StartFpgaSimulator.cmd`，从 VaporView 的远程 TCP 模式连接。`fpga_simulator_test` 与 `fpga_simulator_e2e_test` 分别覆盖协议/控制和真实模拟进程的遥测、归档、回放与导出。
+
 ## 常用入口
 
 Windows：

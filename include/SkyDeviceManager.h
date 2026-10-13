@@ -51,6 +51,7 @@ public:
     ~SkyDeviceManager() override;
 
     void setSimulateData(bool simulate);
+    void setFpgaSimulationEnabled(bool enabled);
     void loadConfig(const SkyConfig& config);
     const SkyConfig& config() const;
     void submitFpgaControl(QJsonObject operation, SkyFpgaBackend::Completion completion);
@@ -178,6 +179,7 @@ private:
     void invalidateFpgaMeasurements();
     std::unique_ptr<SkyFpgaBackend> fpga_backend_;
     std::unique_ptr<Ground::Devices::FpgaUsbTransport> fpga_test_transport_;
+    bool simulate_fpga_ = false;
     DeviceStatusItem fpga_status_;
     bool fpga_position_valid_ = false, fpga_velocity_valid_ = false;
     quint64 fpga_position_time_us_ = 0, fpga_velocity_time_us_ = 0;

@@ -376,8 +376,18 @@ bool SkyRuntime::start()
         config.wave_tcp.port = options_.wave_port;
     }
 
+    if (options_.simulate_fpga)
+    {
+        config.sensor_transport_path = SensorTransportPath::FpgaRelay;
+        config.fpga.enabled = true;
+        config.fpga.locator = QStringLiteral("simulation://fpga");
+        config.epsilon_rtcm.enabled = false;
+        config.hmp.source = QStringLiteral("sht45");
+        config.ai8_temperature_controller.enabled = true;
+        device_manager_.setFpgaSimulationEnabled(true);
+    }
     device_manager_.loadConfig(config);
-    device_manager_.setSimulateData(options_.simulate_data);
+    device_manager_.setSimulateData(options_.simulate_data || options_.simulate_fpga);
 
     auto attachLinkSignals = [this](TelemetryLink *link) {
         connect(link, &TelemetryLink::streamReset, this, [this]() {
@@ -649,7 +659,10 @@ bool SkyRuntime::startRecording(QString *error)
         : options_.telemetry_baud;
     session_recorder_.setMainAntennaLeverArm(device_manager_.config().epsilon.imu_to_main_antenna_body_m);
     session_recorder_.setFpgaConfiguration(device_manager_.config().fpga.configuration);
-    if (!session_recorder_.start(defaultRecordingDirectory(), legacyPort, legacyBaud, error, transport, endpoint))
+    const QString recordingDirectory = options_.simulate_fpga
+        ? QDir(QFileInfo(options_.config_path).absolutePath()).filePath(QStringLiteral("simulated_sessions"))
+        : defaultRecordingDirectory();
+    if (!session_recorder_.start(recordingDirectory, legacyPort, legacyBaud, error, transport, endpoint))
     {
         return false;
     }

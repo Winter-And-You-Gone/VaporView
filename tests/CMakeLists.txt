@@ -352,6 +352,13 @@ target_link_libraries(fpga_telemetry_test PRIVATE vaporview_fpga_device_core)
 add_test(NAME fpga_telemetry_test COMMAND fpga_telemetry_test)
 set_tests_properties(fpga_telemetry_test PROPERTIES LABELS "fast;unit;fpga" TIMEOUT 60)
 
+add_executable(fpga_simulator_test fpga_simulator_test.cpp)
+target_link_libraries(fpga_simulator_test PRIVATE vaporview_ground_device_core)
+add_dependencies(fpga_simulator_test VaporViewFpgaSimulator)
+add_test(NAME fpga_simulator_test COMMAND fpga_simulator_test)
+add_test(NAME fpga_simulator_e2e_test COMMAND fpga_simulator_test --process)
+set_tests_properties(fpga_simulator_test fpga_simulator_e2e_test PROPERTIES LABELS "integration;fpga" TIMEOUT 90)
+
 add_executable(fpga_serial_budget_test ${CMAKE_CURRENT_SOURCE_DIR}/fpga_serial_budget_test.cpp)
 target_link_libraries(fpga_serial_budget_test PRIVATE vaporview_fpga_device_core)
 add_test(NAME fpga_serial_budget_test COMMAND fpga_serial_budget_test)

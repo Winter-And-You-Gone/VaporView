@@ -1,4 +1,5 @@
 #include "SkyDeviceManager.h"
+#include "FpgaUsbSimulator.h"
 #include "TelemetryCodec.h"
 #include "ppk/ObservationStore.h"
 
@@ -615,17 +616,31 @@ void SkyDeviceManager::setFpgaTransportForTesting(std::unique_ptr<Ground::Device
     fpga_test_transport_ = std::move(transport);
 }
 
+void SkyDeviceManager::setFpgaSimulationEnabled(bool enabled)
+{
+    if (fpga_backend_) { fpga_backend_->shutdown(); fpga_backend_.reset(); }
+    simulate_fpga_ = enabled;
+}
+
 QJsonObject SkyDeviceManager::fpgaStatus() const
 {
-    return fpga_backend_ ? fpga_backend_->statusDocument() : QJsonObject{{"version",1},{"connected",false},{"ready",false},
+    auto document = fpga_backend_ ? fpga_backend_->statusDocument() : QJsonObject{{"version",1},{"connected",false},{"ready",false},
         {"busy",false},{"detail",QStringLiteral("FPGA disconnected")},{"configuration",config_.fpga.configuration.toJson()},
         {"registers",QJsonObject{}},{"archived_records",QStringLiteral("0")}};
+    if (simulate_fpga_) {
+        document["simulation"] = true;
+        document["detail"] = QStringLiteral("FPGA 协议模拟 · ") + document.value("detail").toString();
+    }
+    return document;
 }
 
 void SkyDeviceManager::ensureFpgaBackend()
 {
     if (fpga_backend_) return;
-    fpga_backend_ = std::make_unique<SkyFpgaBackend>(std::move(fpga_test_transport_));
+    // Recreate the simulator on every reconnect; never fall back to USB after
+    // the first injected transport has been consumed.
+    auto transport = simulate_fpga_ ? Ground::Devices::makeFpgaUsbSimulator() : std::move(fpga_test_transport_);
+    fpga_backend_ = std::make_unique<SkyFpgaBackend>(std::move(transport));
     fpga_backend_->setConfiguration(config_.fpga.configuration);
     connect(fpga_backend_.get(), &SkyFpgaBackend::statusChanged, this, [this](QJsonObject document) {
         const bool ready = document.value("ready").toBool();

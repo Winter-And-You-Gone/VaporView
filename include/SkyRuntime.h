@@ -32,6 +32,7 @@ struct SkyRuntimeOptions
     int telemetry_baud = 921600;
     QString config_path;
     bool simulate_data = false;
+    bool simulate_fpga = false;
     QString wave_host = QStringLiteral("127.0.0.1");
     int wave_port = 8888;
 };

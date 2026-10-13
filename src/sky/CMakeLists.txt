@@ -31,6 +31,7 @@ add_library(vaporview_fpga_device_core STATIC
     ${CMAKE_SOURCE_DIR}/src/ground/devices/FpgaSensorDecoder.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/devices/FpgaSensorAdapter.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/devices/FpgaUsbTransport.cpp
+    ${CMAKE_SOURCE_DIR}/src/ground/devices/FpgaUsbSimulator.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/devices/FpgaCyApiTransport.cpp
     ${CMAKE_SOURCE_DIR}/src/shared/fpga/FpgaTelemetry.cpp
     ${CMAKE_SOURCE_DIR}/src/shared/fpga/FpgaSerialBudget.cpp
@@ -40,6 +41,7 @@ add_library(vaporview_fpga_device_core STATIC
     ${CMAKE_SOURCE_DIR}/include/FpgaSensorDecoder.h
     ${CMAKE_SOURCE_DIR}/include/FpgaSensorAdapter.h
     ${CMAKE_SOURCE_DIR}/include/FpgaUsbTransport.h
+    ${CMAKE_SOURCE_DIR}/include/FpgaUsbSimulator.h
     ${CMAKE_SOURCE_DIR}/include/FpgaCyApiTransport.h
     ${CMAKE_SOURCE_DIR}/include/FpgaTelemetry.h
     ${CMAKE_SOURCE_DIR}/include/FpgaSerialBudget.h

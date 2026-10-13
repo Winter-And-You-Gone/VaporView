@@ -163,6 +163,16 @@ target_link_libraries(VaporViewSkyCore PRIVATE
     vaporview_sky_core
 )
 
+add_executable(VaporViewFpgaSimulator ${CMAKE_SOURCE_DIR}/src/app/sky_core_main.cpp)
+target_include_directories(VaporViewFpgaSimulator PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(VaporViewFpgaSimulator PRIVATE vaporview_sky_core)
+target_compile_definitions(VaporViewFpgaSimulator PRIVATE VAPORVIEW_FPGA_SIMULATOR=1)
+add_custom_command(TARGET VaporViewFpgaSimulator POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/scripts/start-fpga-simulator.cmd
+        $<TARGET_FILE_DIR:VaporViewFpgaSimulator>/StartFpgaSimulator.cmd
+)
+
 add_executable(VaporViewSkyTui
     ${CMAKE_SOURCE_DIR}/src/app/sky_tui_main.cpp
 )
@@ -181,7 +191,7 @@ add_dependencies(VaporViewSky VaporViewSkyTui)
 add_dependencies(VaporView VaporViewSky)
 
 if(WIN32)
-    foreach(vaporview_app_target IN ITEMS VaporView VaporViewSky VaporViewSkyCore VaporViewSkyTui)
+    foreach(vaporview_app_target IN ITEMS VaporView VaporViewSky VaporViewSkyCore VaporViewSkyTui VaporViewFpgaSimulator)
         vaporview_set_windows_as_invoker_manifest(${vaporview_app_target})
     endforeach()
 endif()
