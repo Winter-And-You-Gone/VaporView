@@ -312,6 +312,7 @@ struct MainWindowState
     std::chrono::steady_clock::time_point fpga_position_time_{};
     std::chrono::steady_clock::time_point fpga_velocity_time_{};
     QSet<quint16> fpga_sources_;
+    QMap<quint16, double> fpga_sensor_rates_;
     QMap<quint32, quint32> fpga_registers_, fpga_sim_registers_;
     bool fpga_sim_ready_ = false;
     quint16 fpga_sim_pressure_source_ = 0x40;

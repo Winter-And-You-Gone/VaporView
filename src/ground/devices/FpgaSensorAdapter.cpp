@@ -57,9 +57,32 @@ FpgaSensorAdapter::FpgaSensorAdapter(quint64 maxAge, int channel)
 
 void FpgaSensorAdapter::reset()
 {
+    rates_.clear();
     bmpCalibration_.clear();
     epsilon_ = EpsilonData{};
     epsilonStatusTimestamp_.reset();
+}
+
+double FpgaSensorAdapter::updateRate(const Reading &reading)
+{
+    // Count before presentation coalesces readings. FPGA ticks describe the
+    // data cadence even when USB delivers a burst or a replay runs faster.
+    if (!(reading.flags & 1)) return 0.0;
+    auto it = rates_.find(reading.source);
+    if (it == rates_.end() || reading.timestamp < it->last
+        || reading.timestamp - it->last > 500000000) {
+        rates_[reading.source] = {reading.timestamp, reading.timestamp, 0, 0.0};
+        return 0.0;
+    }
+    it->last = reading.timestamp;
+    ++it->count;
+    const quint64 elapsed = reading.timestamp - it->start;
+    if (elapsed >= 100000000) {
+        it->hz = double(it->count) * 100000000.0 / double(elapsed);
+        it->start = reading.timestamp;
+        it->count = 0;
+    }
+    return it->hz;
 }
 
 AdaptedMeasurements FpgaSensorAdapter::accept(const Reading &input)
@@ -169,6 +192,11 @@ AdaptedMeasurements FpgaSensorAdapter::accept(const Reading &input)
         ++epsilon_.raw_frame_count;
         out.epsilon = epsilon_;
     }
+    // Calibration is metadata; AI8 failed polls are not new snapshots.
+    const bool sample = input.pressureMilliPa || input.bmpPressureRaw || input.bmpTemperatureRaw
+        || (input.temperatureC && input.humidityPct) || input.distanceMm || out.epsilon
+        || (out.ai8 && out.ai8->online && !(out.ai8->deviceStatus & 0x1ffe));
+    if (sample) out.sampleRateHz = updateRate(input);
     return out;
 }
 } // namespace VaporView::FpgaSensor

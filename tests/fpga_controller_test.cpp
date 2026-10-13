@@ -120,6 +120,25 @@ struct Fixture {
 };
 bool inPage(quint32 a,quint32 base){return a>=base&&a<base+0x200;}
 int indexOfWrite(const QVector<Command>& commands,quint32 address,quint32 value){for(int i=0;i<commands.size();++i)if(commands[i].message==3&&commands[i].address==address&&commands[i].value==value)return i;return -1;}
+void sensorRates(){
+    Fixture f;f.connect();
+    double rate=-1;int presentations=0;
+    QObject::connect(&f.controller,&FpgaDeviceController::measurementUpdated,[&](const FpgaSensor::AdaptedMeasurements& m) {
+        if(m.reading.source==0x45){rate=m.sampleRateHz;++presentations;}
+    });
+    QByteArray burst;
+    const auto payload=QByteArray::fromHex("0100010013000304c0d40100");
+    for(int i=0;i<=1000;++i){
+        const auto frame=FpgaVlp1::buildFrame(FpgaVlp1::FrameType::Data,i+1,0x45,0x1100,
+            std::vector<std::uint8_t>(payload.begin(),payload.end()),true,1,quint64(i)*100000);
+        burst.append(reinterpret_cast<const char*>(frame.data()),frame.size());
+    }
+    f.controller.findChild<FpgaDeviceSession*>()->ingestReplayBytes(burst);
+    waitUntil([&]{return presentations>0;},"coalesced sensor presentation arrives");
+    require(rate==1000.0&&presentations==1,"one presentation retains the rate of all 1001 raw sensor frames");
+    waitUntil([&]{return rate==0.0;},"stalled sensor data clears the frequency",6500);
+    f.controller.disconnectDevice();
+}
 void connectionAndVersions(){
     Fixture f;f.transport->regs[0x50]=3;f.transport->regs[0x403c]=f.transport->regs[0x413c]=1;f.connect();for(const auto &c:f.transport->writes())require(c.address<0x2000||c.address>=0x4000,"connection recovery never changes WMS/DAC outputs");
     require(f.controller.hardwareValues().value(0x50)==3&&f.controller.hardwareValues().value(0x701c)==9&&f.controller.hardwareValues().value(0x802c)==7&&f.controller.hardwareValues().value(0x8034)==3,"connection snapshots existing RAW mask, drop, USB queue and stall evidence");
@@ -409,5 +428,5 @@ int main(int argc,char **argv){
         }
         std::puts("hardware controller connect/idle/reconnect probe passed");return 0;
     }
-    connectionAndVersions();connectionRecovery();backgroundRefresh();independentAndAcquisition();restartClearsDliaState();configurationAndFailure();scopedConfiguration();rawAndBusy();temperature();sensorUploadAndFailure();ai8DisabledConfiguration();ptbHistoricalErrorRecovery();threadCleanup();std::puts("FPGA controller tests passed");return 0;
+    sensorRates();connectionAndVersions();connectionRecovery();backgroundRefresh();independentAndAcquisition();restartClearsDliaState();configurationAndFailure();scopedConfiguration();rawAndBusy();temperature();sensorUploadAndFailure();ai8DisabledConfiguration();ptbHistoricalErrorRecovery();threadCleanup();std::puts("FPGA controller tests passed");return 0;
 }

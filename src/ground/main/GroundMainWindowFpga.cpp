@@ -27,6 +27,16 @@ quint16 MainWindow::homeFpgaSensorSource(VaporView::SkyDeviceId device) const
     }
 }
 
+double MainWindow::homeFpgaSensorRate(VaporView::SkyDeviceId device) const
+{
+    if (homeFpgaDeviceState(device) != VaporView::DeviceState::Connected) return 0.0;
+    const auto source = homeFpgaSensorSource(device);
+    const double hz = isRemoteSkyMode()
+        ? state_->fpga_remote_status_.value("sensor_rates_hz").toObject().value(QString::number(source)).toDouble()
+        : state_->fpga_sensor_rates_.value(source);
+    return std::isfinite(hz) && hz > 0.0 ? hz : 0.0;
+}
+
 VaporView::DeviceState MainWindow::homeFpgaDeviceActionState(VaporView::SkyDeviceId device) const
 {
     using VaporView::DeviceState;
@@ -369,6 +379,7 @@ void MainWindow::setupFpgaControlPage()
     connect(controller, &Controller::measurementUpdated, this, [this](const VaporView::FpgaSensor::AdaptedMeasurements &m) {
         if (isRemoteSkyMode()) return;
         const auto &r = m.reading;
+        state_->fpga_sensor_rates_[r.source] = m.sampleRateHz;
         state_->fpga_page_->updateSensor(r);
         const bool valid = r.validity.structure && r.validity.crc && r.validity.deviceOnline && r.validity.measurement;
         if (valid) state_->fpga_sources_.insert(r.source); else state_->fpga_sources_.remove(r.source);
@@ -641,6 +652,7 @@ void MainWindow::shutdownFpgaWorker()
 
 void MainWindow::invalidateFpgaMeasurements()
 {
+    state_->fpga_sensor_rates_.clear();
     { const std::lock_guard<std::mutex> lock(state_->fpga_snapshot_mutex_); state_->fpga_recording_snapshot_ = VaporView::Ground::Session::GroundSensorSnapshot{}; }
     state_->fpga_epsilon_status_fresh_=false;
     state_->fpga_position_valid_=false;

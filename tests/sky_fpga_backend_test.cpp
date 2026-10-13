@@ -30,12 +30,20 @@ int main(int argc,char **argv)
     });
     waitUntil([&]{return completions==1;},"asynchronous handshake finished");
     require(wire->openCount.load()==1,"single USB owner opens once");
+    const auto payload=QByteArray::fromHex("0100010013000304c0d40100");
+    for(int i=0;i<=1000;++i){
+        const auto frame=FpgaVlp1::buildFrame(FpgaVlp1::FrameType::Data,i+1,0x45,0x1100,
+            std::vector<std::uint8_t>(payload.begin(),payload.end()),true,1,quint64(i)*100000);
+        wire->sensorWire.append(reinterpret_cast<const char*>(frame.data()),frame.size());
+    }
     backend.submit({{"op","temperature"},{"celsius",25.0}},[&](CommandErrorCode code,QString error,QJsonObject) {
         require(code==CommandErrorCode::ConfigApplyFailed && !error.isEmpty(),"hardware failure delivered after FPGA response"); ++completions;
     });
     require(completions==1,"temperature cannot complete at enqueue");
     waitUntil([&]{return completions==2;},"failed temperature final callback");
     require(wire->temperatureWrites.load()==1,"failed write never automatically retries");
+    waitUntil([&]{return backend.statusDocument().value("sensor_rates_hz").toObject().value("69").toDouble()==1000.0;},
+        "Sky status retains raw sensor frequency despite presentation coalescing");
     const auto confirmedConfiguration=backend.statusDocument().value("configuration").toObject();
     FpgaControlConfig requested;requested.wms[0].scanMilliHz+=1000;
     backend.submit({{"op","configure"},{"configuration",requested.toJson()}},[&](CommandErrorCode code,QString error,QJsonObject status) {
@@ -51,6 +59,7 @@ int main(int argc,char **argv)
     });
     backend.submit({{"op","disconnect"}},[&](CommandErrorCode code,QString,QJsonObject status) {
         require(code==CommandErrorCode::Ok && !status.value("connected").toBool(),"disconnect final result clears USB state"); ++completions;
+        require(status.value("sensor_rates_hz").toObject().isEmpty(),"Sky USB disconnect clears cached sensor rates");
     });
     waitUntil([&]{return completions==5;},"disconnect callback returned");
     backend.shutdown();

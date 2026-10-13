@@ -2045,9 +2045,16 @@ void MainWindow::refreshRemoteSkyDataUi()
             VaporView::SkyDeviceId::TemperatureController, 3000)
             ? state_->remote_status_.status_rate_hz
             : 0.0;
-        state_->device_panel_coordinator_->updateRates(panelRates);
+        if (currentSensorTransportPath() == VaporView::SensorTransportPath::FpgaRelay)
+        {
+            panelRates.epsilonHz = homeFpgaSensorRate(VaporView::SkyDeviceId::Epsilon);
+            panelRates.ptbHz = homeFpgaSensorRate(VaporView::SkyDeviceId::Ptb);
+            panelRates.hmpHz = homeFpgaSensorRate(VaporView::SkyDeviceId::Hmp);
+            panelRates.lidarHz = homeFpgaSensorRate(VaporView::SkyDeviceId::Lidar);
+        }
         state_->device_panel_coordinator_->updateEnvironmentData(epsilon, ptb, hmp, lidar);
         state_->device_panel_coordinator_->updateTemperatureData(state_->current_temperature_controller_);
+        state_->device_panel_coordinator_->updateRates(panelRates);
     }
     if (state_->epsilon_config_panel_)
     {

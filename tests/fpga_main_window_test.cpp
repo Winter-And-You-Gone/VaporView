@@ -1,6 +1,7 @@
 #include "test_settings_sandbox.h"
 #include "ground/main/MainWindow.h"
 #include "ground/widgets/FpgaControlPage.h"
+#include "ground/widgets/TelemetryPanels.h"
 #include "ground/navigation/CombinationNavigationPage.h"
 #include "LogService.h"
 #include "ground/widgets/SegmentedSwitchButton.h"
@@ -25,6 +26,7 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QLabel>
+#include <QRegularExpression>
 #include <QMessageBox>
 #include <QImage>
 #include <QPixmap>
@@ -344,6 +346,7 @@ static void remoteHomeActions()
         registers[QString::number(address)]=1;
     QJsonObject status{{"connected",true},{"ready",true},{"busy",false},{"detail","ready"},
         {"configuration",config.toJson()},{"registers",registers},{"archived_records","0"}};
+    status["sensor_rates_hz"]=QJsonObject{{"64",1.0},{"66",750.0},{"67",2.0},{"68",4.0},{"69",1000.0}};
     const auto send=[&](MsgType type,const QByteArray &payload) {
         const auto bytes=encoder.encodeFrame(type,payload,sequence++,1);
         require(server.writeBytes(bytes)==bytes.size(),"home control Sky frame sent");
@@ -367,6 +370,18 @@ static void remoteHomeActions()
     require(waitUntil([&]{return epsilon->isEnabled()&&epsilon->property("state")=="connected";}),
         "register readback enables home controls without any valid measurement packets");
     require(!homeAction(window,"RD105")->isEnabled(),"unsupported RD105 remains unavailable");
+    auto *pressureRate=window.findChild<PtbPanel*>()->findChild<QLabel*>("rateLabel");
+    auto *humidityRate=window.findChild<HmpPanel*>()->findChild<QLabel*>("rateLabel");
+    auto *distanceRate=window.findChild<LidarPanel*>()->findChild<QLabel*>("rateLabel");
+    auto *epsilonRate=window.findChild<QWidget*>("epsilonPanel")->parentWidget()->findChild<QLabel*>("rateLabel");
+    require(pressureRate&&humidityRate&&distanceRate&&epsilonRate,"home sensor frequency labels exist");
+    const bool ratesShown=waitUntil([&]{QMetaObject::invokeMethod(&window,"onRefreshTimer");
+        return pressureRate->text().contains("2.0")&&humidityRate->text().contains("4.0")
+            &&distanceRate->text().contains("1000.0")&&epsilonRate->text().contains("750.0");});
+    if(!ratesShown)std::cerr<<"FPGA rates: "<<qPrintable(pressureRate->text())<<", "<<qPrintable(humidityRate->text())
+        <<", "<<qPrintable(distanceRate->text())<<", "<<qPrintable(epsilonRate->text())<<'\n';
+    require(ratesShown,
+        "remote FPGA rates come from Sky raw sensors and selected BMP, not telemetry publication rate");
     const QStringList names{"EPSILON","PTB210","HMP","TFA1500","AI-8288",QStringLiteral("波形源")};
     const QList<quint16> sources{0x42,0x43,0x44,0x45,0x46,0};
     for (int index=0;index<names.size();++index) {
@@ -410,6 +425,9 @@ static void remoteHomeActions()
     }
     const int count=requests.size();remote->close();
     require(waitUntil([&]{return !epsilon->isEnabled();}),"telemetry loss disables FPGA home controls");
+    QMetaObject::invokeMethod(&window,"onRefreshTimer");
+    require(pressureRate->text().contains("--")&&distanceRate->text().contains("--")
+        &&!epsilonRate->text().contains("750.0"),"telemetry loss clears cached FPGA frequencies");
     navigation->refreshStatus();
     require(!navigationPanel->snapshot().navigationDataAvailable,"real telemetry loss still clears navigation availability");
     processFor(50);require(requests.size()==count&&stack->currentIndex()==0,"link closure sends no FPGA stop and never changes page");
@@ -525,6 +543,16 @@ static void localSimulatorRouting()
     auto *pressure=page->findChild<QLabel*>("fpgaSensor0040");
     check(waitUntil([&]{return first->property("sampleCount").toInt()>0&&second->property("sampleCount").toInt()>0&&pressure->text().contains("Pa");}),
           "normal local GUI receives both decoded DLIA channels and sensor readings");
+    auto *pressureRate=window.findChild<PtbPanel*>()->findChild<QLabel*>("rateLabel");
+    auto *humidityRate=window.findChild<HmpPanel*>()->findChild<QLabel*>("rateLabel");
+    auto *distanceRate=window.findChild<LidarPanel*>()->findChild<QLabel*>("rateLabel");
+    auto *epsilonRate=window.findChild<QWidget*>("epsilonPanel")->parentWidget()->findChild<QLabel*>("rateLabel");
+    check(pressureRate&&humidityRate&&distanceRate&&epsilonRate,"local home sensor frequency labels exist");
+    const auto rateHz=[](QLabel *label){return QRegularExpression("([0-9]+\\.[0-9]+)\\s*Hz")
+        .match(label->text().simplified()).captured(1).toDouble();};
+    check(waitUntil([&]{return rateHz(pressureRate)>0.0&&rateHz(humidityRate)>0.0
+        &&rateHz(distanceRate)>0.0&&rateHz(epsilonRate)>20.0;}),
+        "local FPGA simulator supplies visible rates without serial collectors");
     QDoubleSpinBox *target=nullptr;
     for(auto *spin:page->findChildren<QDoubleSpinBox*>())if(spin->suffix()==QStringLiteral(" °C"))target=spin;
     check(target,"AI8 target editor exists");target->setValue(31.5);
@@ -551,6 +579,9 @@ static void localSimulatorRouting()
     },&error),qPrintable(error));
     check(sources.size()==10,"local recording replays six sensor sources and four waveform sources");
     disconnect->click();check(waitUntil([&]{return connectButton->isEnabled();}),"local disconnect releases the simulator");
+    QMetaObject::invokeMethod(&window,"onRefreshTimer");
+    check(pressureRate->text().contains("--")&&humidityRate->text().contains("--")
+        &&distanceRate->text().contains("--"),"local USB disconnect clears all sensor frequencies");
     sourceSwitch->click();
     auto *model=qobject_cast<QStandardItemModel*>(backend->model());
     check(sourceSwitch->switchChecked()&&model&&!model->item(backend->findData("simulator"))->isEnabled(),"unlocked capsule switches to Remote and disables the local simulator option");
@@ -667,6 +698,9 @@ int main(int argc,char **argv)
     native.setValue("app_sidebar_width",62);
     if(app.arguments().contains("--relay-configuration")) {
         relayConfigurationPresentation();std::cout<<"FPGA relay configuration test passed\n";return 0;
+    }
+    if(app.arguments().contains("--remote-home-actions")) {
+        remoteHomeActions();std::cout<<"Remote FPGA home actions test passed\n";return 0;
     }
     if(app.arguments().contains("--local-simulator")) {
         try { localSimulatorRouting();std::cout<<"Local FPGA simulator GUI test passed\n";return 0; }

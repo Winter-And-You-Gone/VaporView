@@ -3,6 +3,7 @@
 #include "FpgaSensorDecoder.h"
 #include "data_types.h"
 #include "Ai8TemperatureControllerProtocol.h"
+#include <QMap>
 
 namespace VaporView::FpgaSensor
 {
@@ -30,6 +31,7 @@ struct Ai8Sample
 struct AdaptedMeasurements
 {
     Reading reading;
+    double sampleRateHz = 0.0;
     std::optional<EpsilonData> epsilon;
     std::optional<Ai8Sample> ai8;
     std::optional<Ai8TemperatureControllerProtocol::LiveData> ai8Live;
@@ -51,9 +53,16 @@ public:
                                int ai8Channel = 1);
     AdaptedMeasurements accept(const Reading &reading);
     void reset();
+    void resetRate(quint16 source) { rates_.remove(source); }
     void setAi8Channel(int channel) { ai8Channel_ = channel; }
 
 private:
+    struct RateWindow {
+        quint64 start = 0, last = 0, count = 0;
+        double hz = 0.0;
+    };
+    double updateRate(const Reading &reading);
+    QMap<quint16, RateWindow> rates_;
     QByteArray bmpCalibration_;
     EpsilonData epsilon_;
     std::optional<quint64> epsilonStatusTimestamp_;

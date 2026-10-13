@@ -2129,6 +2129,13 @@ void MainWindow::onRefreshTimer()
     {
         panelRates.temperatureHz = collectors.temperature_controller->getActualRate();
     }
+    if (currentSensorTransportPath() == VaporView::SensorTransportPath::FpgaRelay)
+    {
+        panelRates.epsilonHz = homeFpgaSensorRate(VaporView::SkyDeviceId::Epsilon);
+        panelRates.ptbHz = homeFpgaSensorRate(VaporView::SkyDeviceId::Ptb);
+        panelRates.hmpHz = homeFpgaSensorRate(VaporView::SkyDeviceId::Hmp);
+        panelRates.lidarHz = homeFpgaSensorRate(VaporView::SkyDeviceId::Lidar);
+    }
     if (state_->device_panel_coordinator_)
     {
         state_->device_panel_coordinator_->updateRates(panelRates);

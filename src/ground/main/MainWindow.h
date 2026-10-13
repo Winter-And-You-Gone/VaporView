@@ -355,6 +355,7 @@ private:
     VaporView::DeviceState homeDeviceActionState(VaporView::SkyDeviceId device) const;
     quint16 homeFpgaSensorSource(VaporView::SkyDeviceId device) const;
     VaporView::DeviceState homeFpgaDeviceState(VaporView::SkyDeviceId device) const;
+    double homeFpgaSensorRate(VaporView::SkyDeviceId device) const;
     VaporView::DeviceState homeFpgaDeviceActionState(VaporView::SkyDeviceId device) const;
     void setHomeFpgaDeviceEnabled(VaporView::SkyDeviceId device, bool enabled);
     void triggerHomeDeviceAction(VaporView::SkyDeviceId device);

@@ -84,5 +84,62 @@ int main()
     aiReading.ai8DeviceStatus=3; sample=adapter.accept(aiReading);
     require(!sample.ai8->measurementValid && sample.ai8->online,"AI8 transport failure isolates stale snapshot");
     aiReading.ai8SetResult=0; require(!adapter.accept(aiReading).ai8->setSucceeded,"zero result without valid bit is not success");
+
+    FpgaSensorAdapter rates;
+    Reading pressure; pressure.source=0x40;pressure.kind=SensorKind::Ptb210;
+    pressure.validity.structure=true;pressure.validity.measurement=true;
+    pressure.pressureMilliPa=101325000;pressure.flags=1;
+    const quint64 origin=9007199254740993ULL;
+    pressure.timestamp=origin;
+    require(rates.accept(pressure).sampleRateHz==0.0,"one sample cannot establish a frequency");
+    auto invalid=pressure;invalid.validity.crc=false;invalid.timestamp=origin+50000000;
+    require(rates.accept(invalid).sampleRateHz==0.0,"CRC errors never contribute to sample rate");
+    pressure.timestamp=origin+100000000;
+    require(rates.accept(pressure).sampleRateHz==1.0,"PTB frequency uses tick differences without u64 precision loss");
+    pressure.timestamp=origin+200000000;
+    require(rates.accept(pressure).sampleRateHz==1.0,"successive one-second windows do not overcount their boundary");
+
+    AdaptedMeasurements fast;
+    for(int i=0;i<=1000;++i) {
+        Reading lidar;lidar.kind=SensorKind::Tfa1500;lidar.source=0x45;
+        lidar.flags=1;lidar.validity.structure=true;lidar.distanceMm=120000;
+        lidar.timestamp=origin+quint64(i)*100000;
+        fast=rates.accept(lidar);
+    }
+    require(fast.sampleRateHz==1000.0,"batched high-rate data is not limited by USB or UI callback cadence");
+    pressure.timestamp=origin+300000000;
+    require(rates.accept(pressure).sampleRateHz==1.0,"different sensor sources retain independent rates");
+    pressure.timestamp=origin+900000001;
+    require(rates.accept(pressure).sampleRateHz==0.0,"data resuming after expiry establishes a new rate baseline");
+    pressure.timestamp=10;
+    require(rates.accept(pressure).sampleRateHz==0.0,"FPGA clock rollback clears the old frequency epoch");
+    pressure.timestamp=100000010;
+    require(rates.accept(pressure).sampleRateHz==1.0,"new clock epoch can establish its frequency");
+    rates.resetRate(0x40);pressure.timestamp+=100000000;
+    require(rates.accept(pressure).sampleRateHz==0.0,"per-device restart clears its rate baseline");
+    rates.reset();
+    require(rates.accept(pressure).sampleRateHz==0.0,"USB reconnect clears all rate windows");
+    pressure.flags=0;pressure.timestamp+=100000000;
+    require(rates.accept(pressure).sampleRateHz==0.0,"invalid FPGA timestamps do not fabricate a frequency");
+
+    rates.reset();
+    for(int i=0;i<=200;++i) {
+        auto packet=eps(0x41,ahrs,origin+quint64(i)*500000);packet.flags=1;
+        fast=rates.accept(packet);
+    }
+    require(fast.sampleRateHz==200.0,"EPSILON frequency counts raw packets before presentation coalescing");
+    // Several independent EPSILON packets may share a tick, as in a batched source.
+    auto packet=eps(0x41,ahrs,origin+100000000);packet.flags=1;
+    rates.accept(packet);
+    packet.timestamp+=100000000;
+    require(rates.accept(packet).sampleRateHz==2.0,"equal timestamps do not discard independent packets");
+
+    rates.reset();
+    auto calibration=FpgaSensorDecoder::decode(cal,0x43,0x1100,1,origin);
+    rates.accept(calibration);
+    auto bmp=FpgaSensorDecoder::decode(raw,0x43,0x1100,1,origin+100000000);
+    require(rates.accept(bmp).sampleRateHz==0.0,"BMP calibration is not counted as a pressure sample");
+    bmp.timestamp+=100000000;
+    require(rates.accept(bmp).sampleRateHz==1.0,"BMP sample rate starts at the first raw measurement");
     std::cout << "fpga sensor adapter tests passed\n";
 }

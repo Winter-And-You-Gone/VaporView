@@ -17,6 +17,7 @@ SkyFpgaBackend::SkyFpgaBackend(std::unique_ptr<Ground::Devices::FpgaUsbTransport
     controller_->moveToThread(&worker_);
     connect(&worker_, &QThread::finished, controller_, &QObject::deleteLater);
     connect(controller_, &Ground::Devices::FpgaDeviceController::transportConnectionChanged, this, [this](bool connected) {
+        if (!connected) status_["sensor_rates_hz"] = QJsonObject{};
         status_["connected"] = connected; emit statusChanged(status_);
     });
     connect(controller_, &Ground::Devices::FpgaDeviceController::connectionChanged, this, [this](bool ready, bool busy, const QString& detail) {
@@ -26,7 +27,12 @@ SkyFpgaBackend::SkyFpgaBackend(std::unique_ptr<Ground::Devices::FpgaUsbTransport
         QJsonObject registers; for (auto i = values.begin(); i != values.end(); ++i) registers[QString::number(i.key())] = double(i.value());
         status_["registers"] = registers; emit statusChanged(status_);
     });
-    connect(controller_, &Ground::Devices::FpgaDeviceController::measurementUpdated, this, &SkyFpgaBackend::measurementUpdated);
+    connect(controller_, &Ground::Devices::FpgaDeviceController::measurementUpdated, this, [this](const FpgaSensor::AdaptedMeasurements& m) {
+        auto rates = status_.value("sensor_rates_hz").toObject();
+        rates[QString::number(m.reading.source)] = m.sampleRateHz;
+        status_["sensor_rates_hz"] = rates;
+        emit measurementUpdated(m);
+    });
     auto previewClock = std::make_shared<QElapsedTimer>(); previewClock->start();
     auto lastPreview = std::make_shared<QHash<quint16,qint64>>();
     connect(controller_, &Ground::Devices::FpgaDeviceController::waveformUpdated, controller_,

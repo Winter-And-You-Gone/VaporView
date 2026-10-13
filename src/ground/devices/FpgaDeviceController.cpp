@@ -493,6 +493,8 @@ void FpgaDeviceController::setSensorEnabled(quint16 source, bool enable)
         if (registers_.value(0x6304)&1) { fail(QStringLiteral("修改 BMP 地址前请先禁用 BMP390。")); return; }
         write(0x6310,0x77); verify(0x6310,0x77);
     }
+    adapter_.resetRate(source);
+    if (latestReadings_.contains(source)) latestReadings_[source].sampleRateHz=0.0;
     Step s; s.kind=Kind::Sensor; s.address=1; s.source=source; s.expected=enable?1:0; steps_.push_back(s);
     readAll(); advance();
 }
@@ -543,6 +545,7 @@ void FpgaDeviceController::flushPresentation()
         if (!dirtyReadings_.contains(i.key()) && (!expired || expiredReadings_.contains(i.key()))) continue;
         auto value=i.value();
         if (expired) {
+            value.sampleRateHz=0.0;
             value.reading.validity.measurement=false; value.reading.validity.deviceOnline=false;
             if (value.epsilon) value.epsilon->valid=false;
             value.attitudeValid=value.navigationValid=value.utcValid=false;
