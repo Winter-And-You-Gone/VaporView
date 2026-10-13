@@ -14,6 +14,7 @@
 #include "ground/wave/TcpWavePanel.h"
 #include "SkyConfig.h"
 #include <QApplication>
+#include <QAction>
 #include <QStyleFactory>
 #include <QTabWidget>
 #include <QScrollArea>
@@ -344,6 +345,7 @@ static void remoteHomeActions()
     QJsonObject registers;
     for (quint32 address:{0x6004u,0x6204u,0x6304u,0x6404u,0x6504u,0x6604u,0x4004u,0x4104u,0x5004u,0x5104u})
         registers[QString::number(address)]=1;
+    for (quint32 address:{0x50u,0x403cu,0x413cu}) registers[QString::number(address)]=0;
     QJsonObject status{{"connected",true},{"ready",true},{"busy",false},{"detail","ready"},
         {"configuration",config.toJson()},{"registers",registers},{"archived_records","0"}};
     status["sensor_rates_hz"]=QJsonObject{{"64",1.0},{"66",750.0},{"67",2.0},{"68",4.0},{"69",1000.0}};
@@ -423,8 +425,60 @@ static void remoteHomeActions()
                 if(key!=QString::number(0x6004+(sources[index]-0x40)*0x100))require(registers.value(key)==before.value(key),"one sensor action preserves other modules");
         }
     }
+    auto *monitor=window.findChild<TcpWavePanel*>();
+    auto *raw=monitor->findChild<QAbstractButton*>("fpgaMonitorRawButton");
+    auto *harmonic=monitor->findChild<QAbstractButton*>("fpgaMonitorHarmonicButton");
+    require(raw&&harmonic&&raw->isEnabled()&&harmonic->isEnabled(),"relay monitor has two acquisition controls");
+    const auto complete=[&](CommandErrorCode error=CommandErrorCode::Ok) {
+        status["registers"]=registers;status["busy"]=false;
+        DeviceOperationResponse response;response.request_id=requests.last().request_id;response.device_id=SkyDeviceId::Fpga;
+        response.operation=DeviceOperation::FpgaControl;response.error_code=error;response.payload=FpgaRemote::encodeStatus(status);
+        send(MsgType::DeviceOperationResponse,TelemetryCodec::serializeDeviceOperationResponse(response));
+    };
+    const auto expectRequest=[&](QAbstractButton *button,const QString &op,bool enabled) {
+        const int count=requests.size();button->click();
+        require(waitUntil([&]{return requests.size()==count+1;}),"monitor sends one typed FPGA operation");
+        QJsonObject control;require(FpgaRemote::parseControl(requests.last().payload,control)
+            &&control.value("op")==op&&control.value("enabled").toBool()==enabled,"monitor chooses RAW versus shared acquisition");
+        require(!raw->isEnabled()&&!harmonic->isEnabled()&&stack->currentIndex()==0,"monitor actions lock during commands and keep the home page");
+    };
+    expectRequest(raw,"raw",true);
+    registers[QString::number(0x50)]=3;registers[QString::number(0x403c)]=registers[QString::number(0x413c)]=1;
+    complete();require(waitUntil([&]{return raw->isEnabled()&&raw->text().contains(QStringLiteral("停止"));}),"RAW readback updates monitor button");
+    expectRequest(raw,"raw",false);
+    registers[QString::number(0x50)]=registers[QString::number(0x403c)]=registers[QString::number(0x413c)]=0;
+    complete();require(waitUntil([&]{return raw->isEnabled();}),"RAW stop completes");
+    require(harmonic->text().contains(QStringLiteral("停止")),"stopping RAW preserves harmonic acquisition");
+    expectRequest(harmonic,"acquisition",false);
+    for(quint32 address:{0x4004u,0x4104u,0x5004u,0x5104u})registers[QString::number(address)]=0;
+    complete();require(waitUntil([&]{return raw->isEnabled()&&harmonic->text().contains(QStringLiteral("开始"));}),"shared acquisition stop updates both controls");
+    expectRequest(raw,"acquisition",true);
+    const int acquisitionCount=requests.size();
+    CommandAck ack;ack.command_id=CommandId::DeviceOperation;ack.command_seq=commandSequence;
+    send(MsgType::CommandAck,TelemetryCodec::serializeCommandAck(ack));processFor(40);
+    for(quint32 address:{0x4004u,0x4104u,0x5004u,0x5104u})registers[QString::number(address)]=1;
+    status["registers"]=registers;status["busy"]=true;
+    send(MsgType::FpgaStatus,FpgaRemote::encodeStatus(status));processFor(40);
+    require(requests.size()==acquisitionCount,"ACK and intermediate register status cannot start RAW early");
+    complete();require(waitUntil([&]{return requests.size()==acquisitionCount+1;}),"RAW follows confirmed acquisition completion");
+    QJsonObject rawControl;require(FpgaRemote::parseControl(requests.last().payload,rawControl)
+        &&rawControl.value("op")=="raw"&&rawControl.value("enabled").toBool(),"chained second operation enables RAW");
+    registers[QString::number(0x50)]=3;registers[QString::number(0x403c)]=registers[QString::number(0x413c)]=1;
+    complete();require(waitUntil([&]{return raw->isEnabled();}),"chained RAW completes");
+    expectRequest(harmonic,"acquisition",false);
+    for(quint32 address:{0x4004u,0x4104u,0x5004u,0x5104u,0x50u,0x403cu,0x413cu})registers[QString::number(address)]=0;
+    complete();require(waitUntil([&]{return raw->isEnabled()&&raw->text().contains(QStringLiteral("开始"));}),"shared stop also disables RAW");
+    expectRequest(raw,"acquisition",true);
+    const int failedCount=requests.size();complete(CommandErrorCode::InternalError);
+    require(waitUntil([&]{return raw->isEnabled();}),"failed acquisition unlocks monitor");
+    send(MsgType::FpgaStatus,FpgaRemote::encodeStatus(status));processFor(60);
+    require(requests.size()==failedCount,"failed acquisition never chains or retries RAW");
+    monitor->setEnglish(true);
+    require(raw->text().contains("Start")&&harmonic->text().contains("Start"),"both monitor controls translate");
+    monitor->setEnglish(false);
     const int count=requests.size();remote->close();
     require(waitUntil([&]{return !epsilon->isEnabled();}),"telemetry loss disables FPGA home controls");
+    require(!raw->isEnabled()&&!harmonic->isEnabled(),"telemetry loss disables both monitor controls");
     QMetaObject::invokeMethod(&window,"onRefreshTimer");
     require(pressureRate->text().contains("--")&&distanceRate->text().contains("--")
         &&!epsilonRate->text().contains("750.0"),"telemetry loss clears cached FPGA frequencies");
@@ -559,14 +613,27 @@ static void localSimulatorRouting()
     auto *temperature=page->findChild<QAbstractButton*>("fpgaSetTemperature");temperature->click();
     check(waitUntil([&]{return temperature->isEnabled();}),"local AI8 transaction finishes");
     check(page->findChild<QLabel*>("fpgaConnectionStatus")->text().contains("AI8"),"local setpoint completion is visible in connection status");
-    auto *raw=page->findChild<QAbstractButton*>("fpgaRawStart");raw->click();
+    auto *monitor=window.findChild<TcpWavePanel*>();
+    auto *raw=monitor->findChild<QAbstractButton*>("fpgaMonitorRawButton");
+    auto *harmonic=monitor->findChild<QAbstractButton*>("fpgaMonitorHarmonicButton");
+    check(raw&&harmonic&&raw->isEnabled()&&harmonic->isEnabled(),"local monitor acquisition controls available");
+    harmonic->click();
+    check(waitUntil([&]{return raw->isEnabled()&&harmonic->text().contains(QStringLiteral("开始"));}),"monitor stops shared local acquisition");
+    raw->click();
+    check(!raw->isEnabled()&&!harmonic->isEnabled(),"local monitor blocks duplicate commands immediately");
+    check(waitUntil([&]{return raw->isEnabled()&&raw->text().contains(QStringLiteral("停止"));},10000),
+        "local monitor starts acquisition then RAW after final readback");
+    check(stack->currentIndex()==0,"local monitor acquisition does not jump to FPGA page");
     check(waitUntil([&]{return page->findChild<QWidget*>("fpgaWavePlot32")->property("sampleCount").toInt()>0;}),
           "normal local RAW control receives fragmented ADC data");
-    auto *monitor=window.findChild<TcpWavePanel*>();
     check(monitor&&monitor->property("fpgaWaveformMode").toBool(),"home monitor selects FPGA data");
     check(waitUntil([&]{return monitor->findChild<QWidget*>("tcpWaveRawPlot")->property("sampleCount").toInt()>0
         &&monitor->findChild<QWidget*>("tcpWaveHarmonicPlot")->property("sampleCount").toInt()>0;}),
         "real VLP1 simulator supplies both ADC and DLIA to the home monitor");
+    raw->click();
+    check(waitUntil([&]{return raw->isEnabled()&&raw->text().contains(QStringLiteral("开始"));}),"local monitor stops RAW upload");
+    check(harmonic->text().contains(QStringLiteral("停止")),"local RAW stop preserves DLIA acquisition");
+    raw->click();check(waitUntil([&]{return raw->isEnabled()&&raw->text().contains(QStringLiteral("停止"));}),"local RAW restarts without resetting running acquisition");
     auto *record=page->findChild<QAbstractButton*>("fpgaRecord");record->click();
     check(waitUntil([&]{return record->text().contains("停止");}),"local record action starts recording");
     processFor(500);record->click();check(waitUntil([&]{return record->text().contains("开始");}),"local record action stops and drains");
@@ -596,6 +663,32 @@ static void localSimulatorRouting()
     check(pathSwitch->switchChecked()&&path->currentData().toString()=="fpga_relay","unlocked capsule switches back to FPGA");
     window.close();
 }
+static void simulatedMonitorActions()
+{
+    MainWindow window;
+    QMetaObject::invokeMethod(&window,"onDataSourceModeChanged",Q_ARG(int,0));
+    auto *mode=window.findChild<QAction*>("uiTestModeAction");
+    auto *page=window.findChild<FpgaControlPage*>();
+    auto *monitor=window.findChild<TcpWavePanel*>();
+    auto *raw=monitor->findChild<QAbstractButton*>("fpgaMonitorRawButton");
+    auto *harmonic=monitor->findChild<QAbstractButton*>("fpgaMonitorHarmonicButton");
+    require(mode&&page&&raw&&harmonic,"simulated monitor controls exist");
+    mode->trigger();
+    require(waitUntil([&]{return raw->isEnabled()&&harmonic->isEnabled();}),"UI test simulation enables relay monitor controls");
+    harmonic->click();
+    require(harmonic->text().contains(QStringLiteral("开始")),"simulated monitor stops acquisition");
+    raw->click();
+    require(!raw->isEnabled()&&!harmonic->isEnabled(),"simulated RAW start locks until acquisition completes");
+    require(waitUntil([&]{return raw->isEnabled()&&raw->text().contains(QStringLiteral("停止"));}),"simulated RAW chains after acquisition readback");
+    raw->click();
+    require(raw->text().contains(QStringLiteral("开始"))&&harmonic->text().contains(QStringLiteral("停止")),"simulated RAW stop preserves harmonics");
+    harmonic->click();raw->click();mode->trigger();processFor(400);
+    mode->trigger();
+    require(waitUntil([&]{return raw->isEnabled()&&harmonic->isEnabled();}),"leaving UI test cancels pending RAW and allows a fresh simulation");
+    mode->trigger();
+    require(!mode->isChecked(),"monitor simulation restores normal application mode");
+}
+
 static void relayConfigurationPresentation()
 {
     MainWindow window;
@@ -701,6 +794,9 @@ int main(int argc,char **argv)
     }
     if(app.arguments().contains("--remote-home-actions")) {
         remoteHomeActions();std::cout<<"Remote FPGA home actions test passed\n";return 0;
+    }
+    if(app.arguments().contains("--monitor-ui-actions")) {
+        simulatedMonitorActions();std::cout<<"Simulated FPGA monitor actions test passed\n";return 0;
     }
     if(app.arguments().contains("--local-simulator")) {
         try { localSimulatorRouting();std::cout<<"Local FPGA simulator GUI test passed\n";return 0; }

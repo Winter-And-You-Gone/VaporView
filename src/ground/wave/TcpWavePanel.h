@@ -50,6 +50,7 @@ public:
     bool usesExpandedPanelHeight() const;
     void setRemoteSkyMode(bool enabled);
     void setFpgaMode(bool enabled);
+    void setFpgaAcquisitionState(bool available, bool busy, bool acquiring, bool rawEnabled);
     void setFpgaWaveform(quint16 source, const QVector<QVector<double>> &samples,
                          const QStringList &components, const QString &detail, quint32 totalPoints, bool preview = false);
     void setFpgaSecondHarmonicPeak(quint16 source, quint32 cycleId, quint64 timestamp, double peak, bool preview);
@@ -111,6 +112,7 @@ signals:
     void connectionStateChanged(bool connected);
     void connectionEndpointChanged(const QString& host, int port);
     void remoteWaveTcpConnectionRequested(bool connectRequested);
+    void fpgaAcquisitionRequested(bool raw, bool enabled);
     void remotePeakSearchRangeRequested(quint32 startIndex, quint32 endIndex);
     void preferredPanelHeightChanged();
 
@@ -185,6 +187,10 @@ private:
     QLineEdit *host_edit_;
     QLineEdit *port_edit_;
     QPushButton *connect_button_;
+    QPushButton *fpga_raw_button_ = nullptr;
+    QPushButton *fpga_harmonic_button_ = nullptr;
+    bool fpga_acquisition_available_ = false, fpga_acquisition_busy_ = false;
+    bool fpga_acquiring_ = false, fpga_raw_enabled_ = false;
     QLabel *host_label_;
     QLabel *port_label_;
     QLabel *panel_title_label_;

@@ -318,6 +318,7 @@ struct MainWindowState
     quint16 fpga_sim_pressure_source_ = 0x40;
     VaporView::SkyDeviceId fpga_home_action_device_ = VaporView::SkyDeviceId::All;
     bool fpga_home_action_started_ = false;
+    bool fpga_home_raw_start_pending_ = false;
     std::mutex fpga_snapshot_mutex_;
     VaporView::Ground::Session::GroundSensorSnapshot fpga_recording_snapshot_;
     VaporView::Ai8TemperatureControllerProtocol::LiveData fpga_ai8_live_;

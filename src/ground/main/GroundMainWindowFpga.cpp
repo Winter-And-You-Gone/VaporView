@@ -53,26 +53,79 @@ VaporView::DeviceState MainWindow::homeFpgaDeviceActionState(VaporView::SkyDevic
     return homeFpgaDeviceState(device);
 }
 
+QMap<quint32, quint32> MainWindow::homeFpgaRegisters() const
+{
+    if (isUiTestMode()) return state_->fpga_sim_ready_ ? state_->fpga_sim_registers_ : QMap<quint32, quint32>{};
+    if (!isRemoteSkyMode()) return state_->fpga_ready_ && !state_->fpga_replaying_
+        ? state_->fpga_registers_ : QMap<quint32, quint32>{};
+    if (!state_->remote_sky_controller_->isOpen() || !state_->fpga_remote_status_.value("ready").toBool()
+        || std::chrono::steady_clock::now() - state_->fpga_remote_status_time_ >= std::chrono::seconds(4)) return {};
+    QMap<quint32, quint32> registers;
+    const auto values = state_->fpga_remote_status_.value("registers").toObject();
+    for (auto it = values.begin(); it != values.end(); ++it) registers.insert(it.key().toUInt(), quint32(it.value().toDouble()));
+    return registers;
+}
+
+void MainWindow::updateHomeFpgaWaveActions()
+{
+    if (!state_->tcp_wave_panel_) return;
+    const auto registers = homeFpgaRegisters();
+    bool acquiring = true;
+    for (quint32 control : {0x4004u, 0x4104u, 0x5004u, 0x5104u}) acquiring &= (registers.value(control) & 1) != 0;
+    bool raw = false;
+    for (int channel = 0; channel < 2; ++channel)
+        raw |= (registers.value(0x403c + channel * 0x100) & 1) && (registers.value(0x50) & (1u << channel));
+    const auto action = homeFpgaDeviceActionState(VaporView::SkyDeviceId::WaveTcp);
+    state_->tcp_wave_panel_->setFpgaAcquisitionState(isFpgaRelayPath() && registers.contains(0x4004),
+        action == VaporView::DeviceState::Disabled || action == VaporView::DeviceState::Connecting
+            || state_->fpga_home_raw_start_pending_, acquiring, raw);
+}
+
+void MainWindow::requestHomeFpgaWaveAction(bool raw, bool enabled)
+{
+    const auto action = homeFpgaDeviceActionState(VaporView::SkyDeviceId::WaveTcp);
+    if (!isFpgaRelayPath() || !state_->fpga_page_ || homeFpgaRegisters().isEmpty()
+        || action == VaporView::DeviceState::Disabled || action == VaporView::DeviceState::Connecting) return;
+    if (!raw) { setHomeFpgaDeviceEnabled(VaporView::SkyDeviceId::WaveTcp, enabled); return; }
+    const auto registers = homeFpgaRegisters();
+    bool acquiring = true;
+    for (quint32 control : {0x4004u, 0x4104u, 0x5004u, 0x5104u}) acquiring &= (registers.value(control) & 1) != 0;
+    if (enabled && !acquiring) {
+        state_->fpga_home_raw_start_pending_ = true;
+        setHomeFpgaDeviceEnabled(VaporView::SkyDeviceId::WaveTcp, true);
+        return;
+    }
+    state_->fpga_home_action_device_ = VaporView::SkyDeviceId::WaveTcp;
+    state_->fpga_home_action_started_ = false;
+    emit state_->fpga_page_->rawRequested(enabled);
+    if (isUiTestMode() || (isRemoteSkyMode() && !state_->fpga_remote_request_id_))
+        state_->fpga_home_action_device_ = VaporView::SkyDeviceId::All;
+    updateHomeDeviceStatusCapsules();
+}
+
+void MainWindow::finishHomeFpgaRawStart()
+{
+    if (!state_->fpga_home_raw_start_pending_) return;
+    state_->fpga_home_raw_start_pending_ = false;
+    const auto registers = homeFpgaRegisters();
+    for (quint32 control : {0x4004u, 0x4104u, 0x5004u, 0x5104u})
+        if (!(registers.value(control) & 1)) return;
+    requestHomeFpgaWaveAction(true, true);
+}
+
 VaporView::DeviceState MainWindow::homeFpgaDeviceState(VaporView::SkyDeviceId device) const
 {
     using VaporView::DeviceState;
     const auto source = homeFpgaSensorSource(device);
     if (!source && device != VaporView::SkyDeviceId::WaveTcp) return DeviceState::Disabled;
     // Command serialization locks actions, but does not disconnect other devices.
-    QMap<quint32, quint32> registers;
     if (isUiTestMode()) {
         if (!state_->fpga_sim_ready_) return DeviceState::Disconnected;
-        registers = state_->fpga_sim_registers_;
-    } else if (isRemoteSkyMode()) {
-        if (!state_->remote_sky_controller_->isOpen() || !state_->fpga_remote_status_.value("ready").toBool()
-            || std::chrono::steady_clock::now() - state_->fpga_remote_status_time_ >= std::chrono::seconds(4)) return DeviceState::Disabled;
-        const auto values = state_->fpga_remote_status_.value("registers").toObject();
-        for (auto it = values.begin(); it != values.end(); ++it) registers.insert(it.key().toUInt(), quint32(it.value().toDouble()));
-    } else {
+    } else if (!isRemoteSkyMode()) {
         if (state_->fpga_replaying_) return DeviceState::Disabled;
         if (!state_->fpga_ready_) return DeviceState::Disconnected;
-        registers = state_->fpga_registers_;
     }
+    const auto registers = homeFpgaRegisters();
     if (source) {
         const quint32 control = 0x6004 + (source - 0x40) * 0x100;
         if (!registers.contains(control)) return DeviceState::Disabled;
@@ -101,6 +154,7 @@ void MainWindow::setHomeFpgaDeviceEnabled(VaporView::SkyDeviceId device, bool en
                 : QJsonObject{{"op","sensor"},{"source",source},{"enabled",enabled}});
             state_->ui_test_model_->setDeviceState(device, enabled ? VaporView::DeviceState::Connected : VaporView::DeviceState::Disconnected);
             state_->fpga_home_action_device_ = SkyDeviceId::All;
+            finishHomeFpgaRawStart();
             updateConnectionStatus(false);
         };
         if (enabled) QTimer::singleShot(350,this,apply); else apply();
@@ -340,6 +394,7 @@ void MainWindow::setupFpgaControlPage()
             if (!busy && state_->fpga_home_action_started_) {
                 state_->fpga_home_action_device_=VaporView::SkyDeviceId::All;
                 state_->fpga_home_action_started_=false;
+                finishHomeFpgaRawStart();
             }
         }
         if (!isRemoteSkyMode()) state_->fpga_page_->setConnectionState(ready,busy,detail);
@@ -361,6 +416,7 @@ void MainWindow::setupFpgaControlPage()
     }, Qt::QueuedConnection);
     connect(controller, &Controller::logRecordGenerated, this, [this,page](const VaporView::LogRecord &record) {
         if (record.level>=VaporView::LogLevel::Error && !isRemoteSkyMode()) {
+            state_->fpga_home_raw_start_pending_=false;
             state_->fpga_home_action_device_=VaporView::SkyDeviceId::All;
             state_->fpga_home_action_started_=false;
         }
@@ -483,6 +539,7 @@ void MainWindow::setupFpgaControlPage()
             || response.operation != VaporView::DeviceOperation::FpgaControl
             || response.request_id != state_->fpga_remote_request_id_) return;
         state_->fpga_remote_request_id_ = 0;
+        if (response.error_code != VaporView::CommandErrorCode::Ok) state_->fpga_home_raw_start_pending_ = false;
         const bool discovery = state_->fpga_remote_operation_ == "discover";
         QJsonObject status;
         if (VaporView::FpgaRemote::parseStatus(response.payload, status)) {
@@ -498,10 +555,12 @@ void MainWindow::setupFpgaControlPage()
                 : (state_->is_english_ ? QStringLiteral("Sky FPGA operation confirmed by final readback.") : QStringLiteral("天空端 FPGA 操作已由最终读回确认。")))
             : (state_->is_english_ ? QStringLiteral("Sky FPGA operation failed: ") : QStringLiteral("天空端 FPGA 操作失败：")) + response.error_message);
         updateFpgaPageBackend();
+        finishHomeFpgaRawStart();
     });
     connect(remote, &Remote::deviceOperationRejected, this, [this, page](quint32 requestId, const VaporView::CommandAck& ack) {
         if (requestId != state_->fpga_remote_request_id_) return;
         state_->fpga_remote_request_id_ = 0;
+        state_->fpga_home_raw_start_pending_ = false;
         if (state_->fpga_remote_operation_ == "discover" && isRemoteSkyMode() && page->usbDiscoveryGeneration() == state_->fpga_remote_discovery_generation_)
             page->setUsbDiscoveryResult({{"devices",QJsonArray{}},{"error",VaporView::commandErrorCodeText(ack.error_code,state_->is_english_)}});
         page->appendDiagnostic((state_->is_english_ ? QStringLiteral("Sky rejected FPGA command: ") : QStringLiteral("天空端拒绝 FPGA 命令：")) + VaporView::commandErrorCodeText(ack.error_code, state_->is_english_));
@@ -510,6 +569,7 @@ void MainWindow::setupFpgaControlPage()
     connect(remote, &Remote::deviceOperationTimedOut, this, [this, page](quint32 requestId) {
         if (requestId != state_->fpga_remote_request_id_) return;
         state_->fpga_remote_request_id_ = 0;
+        state_->fpga_home_raw_start_pending_ = false;
         if (state_->fpga_remote_operation_ == "discover" && isRemoteSkyMode() && page->usbDiscoveryGeneration() == state_->fpga_remote_discovery_generation_)
             page->setUsbDiscoveryResult({{"devices",QJsonArray{}},{"error",QStringLiteral("Sky USB discovery timed out")}});
         page->appendDiagnostic(state_->fpga_remote_operation_ == "discover"
@@ -520,6 +580,7 @@ void MainWindow::setupFpgaControlPage()
     });
     connect(remote, &Remote::linkOpenChanged, this, [this](bool open) {
         if (!open) {
+            state_->fpga_home_raw_start_pending_ = false;
             state_->fpga_remote_status_ = {};
             state_->fpga_remote_status_time_ = {};
             state_->fpga_remote_request_id_ = 0;
@@ -652,6 +713,7 @@ void MainWindow::shutdownFpgaWorker()
 
 void MainWindow::invalidateFpgaMeasurements()
 {
+    state_->fpga_home_raw_start_pending_ = false;
     state_->fpga_sensor_rates_.clear();
     { const std::lock_guard<std::mutex> lock(state_->fpga_snapshot_mutex_); state_->fpga_recording_snapshot_ = VaporView::Ground::Session::GroundSensorSnapshot{}; }
     state_->fpga_epsilon_status_fresh_=false;

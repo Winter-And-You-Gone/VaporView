@@ -577,6 +577,25 @@ int main(int argc, char **argv)
         auto *peaks=panel.findChild<QWidget*>("tcpWavePeakTrendPlot");
         panel.resize(1500,900);panel.show();QApplication::processEvents();
         require(raw->isVisible()&&dlia->isVisible()&&peaks->isVisible(),"FPGA monitor retains all three graphs");
+        auto *rawButton=panel.findChild<QPushButton*>("fpgaMonitorRawButton");
+        auto *harmonicButton=panel.findChild<QPushButton*>("fpgaMonitorHarmonicButton");
+        require(rawButton&&harmonicButton&&rawButton->isVisible()&&harmonicButton->isVisible()
+            &&!rawButton->isEnabled()&&!harmonicButton->isEnabled(),"relay title buttons wait for hardware readiness");
+        panel.setFpgaAcquisitionState(true,false,false,false);QApplication::processEvents();
+        require(rawButton->isEnabled()&&harmonicButton->isEnabled()
+            &&!rawButton->geometry().intersects(harmonicButton->geometry()),"two ready controls fit the title bar without overlap");
+        bool requestedRaw=false,requestedEnabled=false;int requestedCount=0;
+        QObject::connect(&panel,&TcpWavePanel::fpgaAcquisitionRequested,&panel,[&](bool raw,bool enabled){
+            requestedRaw=raw;requestedEnabled=enabled;++requestedCount;
+        });
+        rawButton->click();require(requestedRaw&&requestedEnabled&&requestedCount==1,"raw control requests stream start");
+        require(rawButton->text().contains(QStringLiteral("开始")),"click does not invent confirmed acquisition state");
+        panel.setFpgaAcquisitionState(true,true,false,false);rawButton->click();harmonicButton->click();
+        require(requestedCount==1,"busy relay controls cannot duplicate requests");
+        panel.setFpgaAcquisitionState(true,false,true,true);
+        harmonicButton->click();require(!requestedRaw&&!requestedEnabled&&requestedCount==2,"harmonic control stops shared acquisition");
+        panel.setEnglish(true);require(rawButton->text().contains("Stop")&&harmonicButton->text().contains("Stop"),"acquisition buttons translate with readback state");
+        panel.setEnglish(false);
         QStringList titles;
         for(auto *label:panel.findChildren<QLabel*>("sectionTitleLabel"))titles.append(label->text());
         require(titles.contains("波形监控")&&titles.contains("原始信号")&&titles.contains("二次谐波")
@@ -625,6 +644,7 @@ int main(int argc, char **argv)
         require(raw->property("sampleCount").toInt()==0&&peaks->property("sampleCount").toInt()==0,
             "leaving UI test mode discards simulated FPGA waveforms and peaks");
         panel.setFpgaMode(false);
+        require(!rawButton->isVisible()&&!harmonicButton->isVisible(),"direct mode hides FPGA acquisition controls");
         require(panel.host()=="127.0.0.9"&&panel.port()==9901&&raw->property("xAxisTimeMode").toBool(),
             "Direct restores the TCP endpoint and clock axis");
     }

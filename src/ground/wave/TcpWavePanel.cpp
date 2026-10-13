@@ -1873,6 +1873,20 @@ void TcpWavePanel::setupUi()
     top_controls_layout_->addWidget(fpga_channel_combo_, 0, Qt::AlignVCenter);
     connect(fpga_channel_combo_, &QComboBox::currentIndexChanged, this, [this] { refreshFpgaWaveform(); });
 
+    for (bool raw : {true, false}) {
+        auto *button = new QPushButton(topControlsBar);
+        button->setObjectName(raw ? QStringLiteral("fpgaMonitorRawButton") : QStringLiteral("fpgaMonitorHarmonicButton"));
+        button->setProperty("fpgaWaveAction", true);
+        button->setFixedHeight(kTcpButtonHeight);
+        button->hide();
+        top_controls_layout_->addSpacing(4);
+        top_controls_layout_->addWidget(button, 0, Qt::AlignVCenter);
+        connect(button, &QPushButton::clicked, this, [this, raw] {
+            emit fpgaAcquisitionRequested(raw, !(raw ? fpga_raw_enabled_ : fpga_acquiring_));
+        });
+        (raw ? fpga_raw_button_ : fpga_harmonic_button_) = button;
+    }
+
     status_label_ = new VaporView::VisualTextLabel(this);
     status_label_->setObjectName("fieldLabel");
     status_label_->setFont(numericFontFrom(status_label_->font()));
@@ -2194,6 +2208,7 @@ void TcpWavePanel::setEnglish(bool english)
         setStatusText(english ? "Idle" : "空闲");
     }
     if (fpga_mode_) refreshFpgaWaveform();
+    setFpgaAcquisitionState(fpga_acquisition_available_, fpga_acquisition_busy_, fpga_acquiring_, fpga_raw_enabled_);
 }
 
 void TcpWavePanel::setFpgaMode(bool enabled)
@@ -2209,6 +2224,8 @@ void TcpWavePanel::setFpgaMode(bool enabled)
         widget->setVisible(!enabled);
     panel_title_label_->setAttribute(Qt::WA_TransparentForMouseEvents, enabled);
     fpga_channel_combo_->setVisible(enabled);
+    fpga_raw_button_->setVisible(enabled);
+    fpga_harmonic_button_->setVisible(enabled);
     fpga_peak_info_label_->setVisible(enabled);
     peak_filter_button_->setVisible(!enabled);
     clearRemoteWaveformDisplay();
@@ -2217,6 +2234,28 @@ void TcpWavePanel::setFpgaMode(bool enabled)
     wave4_plot_->setSampleAxis(enabled);
     updateEndpointEditorState();
     setEnglish(is_english_);
+}
+
+void TcpWavePanel::setFpgaAcquisitionState(bool available, bool busy, bool acquiring, bool rawEnabled)
+{
+    fpga_acquisition_available_ = available;
+    fpga_acquisition_busy_ = busy;
+    fpga_acquiring_ = acquiring;
+    fpga_raw_enabled_ = rawEnabled;
+    fpga_raw_button_->setText(is_english_
+        ? (rawEnabled ? "Raw: Stop" : "Raw: Start")
+        : (rawEnabled ? "原始信号：停止采集" : "原始信号：开始采集"));
+    fpga_harmonic_button_->setText(is_english_
+        ? (acquiring ? "2nd Harmonic: Stop" : "2nd Harmonic: Start")
+        : (acquiring ? "二次谐波：停止采集" : "二次谐波：开始采集"));
+    fpga_raw_button_->setToolTip(is_english_
+        ? "Start acquisition if needed, then enable RAW upload. Stop only disables RAW upload."
+        : "需要时先启动 FPGA 采集，再开启 RAW 上传；停止只关闭 RAW 上传，保留二次谐波采集。");
+    fpga_harmonic_button_->setToolTip(is_english_
+        ? "Uses FPGA Start/Stop acquisition. Stopping also stops raw signal acquisition."
+        : "对应 FPGA 页面的开始/停止采集；停止会同时停止原始信号采集。");
+    for (auto *button : {fpga_raw_button_, fpga_harmonic_button_})
+        button->setEnabled(fpga_mode_ && available && !busy);
 }
 
 void TcpWavePanel::setFpgaWaveform(quint16 source, const QVector<QVector<double>> &samples,

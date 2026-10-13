@@ -5901,6 +5901,8 @@ void MainWindow::setupDataPanels()
                                        state_->tcp_wave_panel_->host(),
                                        state_->tcp_wave_panel_->port());
     });
+    connect(state_->tcp_wave_panel_, &TcpWavePanel::fpgaAcquisitionRequested,
+            this, &MainWindow::requestHomeFpgaWaveAction);
     connect(state_->tcp_wave_panel_, &TcpWavePanel::remotePeakSearchRangeRequested,
             this, &MainWindow::sendRemotePeakSearchRange);
     connect(state_->tcp_wave_panel_, &TcpWavePanel::preferredPanelHeightChanged,

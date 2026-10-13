@@ -606,6 +606,7 @@ void MainWindow::updateHomeDeviceStatusCapsules()
     updateCapsule(state_->home_lidar_status_lbl_, state_->home_lidar_action_btn_, VaporView::SkyDeviceId::Lidar);
     updateCapsule(state_->home_temperature_status_lbl_, state_->home_temperature_action_btn_, VaporView::SkyDeviceId::TemperatureController);
     updateCapsule(state_->home_wave_status_lbl_, state_->home_wave_action_btn_, VaporView::SkyDeviceId::WaveTcp);
+    updateHomeFpgaWaveActions();
     updateCapsule(state_->home_ai8_temperature_status_lbl_, state_->home_ai8_temperature_action_btn_, VaporView::SkyDeviceId::Ai8TemperatureController);
     if (state_->home_device_action_spinner_timer_)
     {
@@ -1713,6 +1714,7 @@ void MainWindow::onConnectClicked()
 }
 void MainWindow::onDisconnectClicked()
 {
+    state_->fpga_home_raw_start_pending_=false;
     state_->fpga_home_action_device_=VaporView::SkyDeviceId::All;
     state_->fpga_home_action_started_=false;
     if (isFpgaRelayPath() &&

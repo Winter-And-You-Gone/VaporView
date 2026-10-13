@@ -251,7 +251,7 @@ void MainWindow::loadModernStyleSheet()
             "QPushButton:pressed { background-color: @vv-primary-pressed; }"
             "QPushButton:disabled { background-color: @vv-border-strong; color: @vv-white; }"
             "QPushButton#compactTcpButton { padding: 4px 14px; min-height: 28px; max-height: 28px; font-size: 14px; }"
-            "QPushButton#compactTcpStartButton { padding: 4px 14px; min-height: 28px; max-height: 28px; font-size: 14px; }"
+            "QPushButton#compactTcpStartButton, QPushButton[fpgaWaveAction=\"true\"] { padding: 4px 14px; min-height: 28px; max-height: 28px; font-size: 14px; }"
             "TemperatureControllerPanel QFrame#temperatureConfigCard { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 8px; }"
             "TemperatureControllerPanel QFrame#temperatureControllerControlsCard { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 8px; }"
             "TemperatureControllerPanel QFrame#temperatureChannelTopBar { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"

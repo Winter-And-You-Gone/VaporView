@@ -358,6 +358,10 @@ private:
     double homeFpgaSensorRate(VaporView::SkyDeviceId device) const;
     VaporView::DeviceState homeFpgaDeviceActionState(VaporView::SkyDeviceId device) const;
     void setHomeFpgaDeviceEnabled(VaporView::SkyDeviceId device, bool enabled);
+    QMap<quint32, quint32> homeFpgaRegisters() const;
+    void updateHomeFpgaWaveActions();
+    void requestHomeFpgaWaveAction(bool raw, bool enabled);
+    void finishHomeFpgaRawStart();
     void triggerHomeDeviceAction(VaporView::SkyDeviceId device);
     void startHomeDeviceActionSpinner(VaporView::SkyDeviceId device);
     bool homeDeviceActionSpinnerActive(VaporView::SkyDeviceId device, qint64 nowMs) const;
