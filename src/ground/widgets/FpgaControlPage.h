@@ -44,6 +44,8 @@ public:
                         bool partialFailure = false, qint64 elapsedMs = 0,
                         VaporView::SensorTransportPath path = VaporView::SensorTransportPath::DirectDevices);
 signals:
+    void waveformDisplayUpdated(quint16 source, const QVector<QVector<double>> &samples,
+                                const QStringList &components, const QString &detail, quint32 totalPoints);
     void discoverDevicesRequested();
     void connectRequested(const QString &locator, const QString &backend);
     void disconnectRequested();

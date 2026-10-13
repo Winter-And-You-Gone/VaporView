@@ -3,6 +3,7 @@
 #include "LogService.h"
 
 #include <QApplication>
+#include <QComboBox>
 #include <QByteArray>
 #include <QDateTime>
 #include <QElapsedTimer>
@@ -566,6 +567,38 @@ int main(int argc, char **argv)
                 "leaving UI test mode returns the panel to disconnected state");
     }
     testRemoteSkyModeKeepsLocalEndpointText();
+    {
+        TcpWavePanel panel;panel.setConnectionEndpoint("127.0.0.9",9901);panel.setFpgaMode(true);
+        panel.setFpgaWaveform(0x20,{{1,2,3}},{"ADC"},"ADC complete",3);
+        panel.setFpgaWaveform(0x30,{{10,20,30},{40,50,60}},{"H1","H2"},"DLIA complete",3);
+        auto *raw=panel.findChild<QWidget*>("tcpWaveRawPlot");
+        auto *dlia=panel.findChild<QWidget*>("tcpWaveHarmonicPlot");
+        require(raw->property("sampleCount").toInt()==3&&dlia->property("sampleCount").toInt()==3,
+            "FPGA mode renders ADC and DLIA");
+        require(!raw->property("xAxisTimeMode").toBool()&&panel.testRawXAxisLabel()=="2",
+            "FPGA x axis uses sample position rather than invented wall-clock time");
+        auto *channel=panel.findChild<QComboBox*>("fpgaMonitorChannelCombo");
+        auto *component=panel.findChild<QComboBox*>("fpgaMonitorComponentCombo");
+        component->setCurrentIndex(1);
+        require(dlia->property("sampleCount").toInt()==3,"second harmonic remains selectable");
+        channel->setCurrentIndex(1);
+        require(raw->property("sampleCount").toInt()==0&&dlia->property("sampleCount").toInt()==0,
+            "channel switch clears the other channel until its own waveform arrives");
+        panel.setFpgaWaveform(0x31,{{1,2},{3,4},{5,6},{7,8}},{"I1","Q1","I2","Q2"},"IQ complete",2);
+        require(component->count()==4&&dlia->property("sampleCount").toInt()==2,"all four IQ components are selectable");
+        panel.setFpgaWaveform(0x31,{{},{},{},{}},{"I1","Q1","I2","Q2"},"incomplete",2);
+        require(dlia->property("sampleCount").toInt()==0,"invalid FPGA cycle clears the home waveform");
+        panel.injectRemoteRawSignalFrame(1,{99,99});panel.testFlushLiveDisplay();
+        require(raw->property("sampleCount").toInt()==0,"TCP data cannot overwrite FPGA data");
+        panel.toggleConnection();require(!panel.isConnecting(),"FPGA monitor cannot open a TCP socket");
+        panel.setUiTestMode(true);
+        panel.setFpgaWaveform(0x21,{{1,2,3}},{"ADC"},"Simulated RAW",3);
+        panel.setUiTestMode(false);
+        require(raw->property("sampleCount").toInt()==0,"leaving UI test mode discards simulated FPGA waveforms");
+        panel.setFpgaMode(false);
+        require(panel.host()=="127.0.0.9"&&panel.port()==9901&&raw->property("xAxisTimeMode").toBool(),
+            "Direct restores the TCP endpoint and clock axis");
+    }
     std::cout << "tcp_wave_panel_test passed\n";
     return 0;
 }

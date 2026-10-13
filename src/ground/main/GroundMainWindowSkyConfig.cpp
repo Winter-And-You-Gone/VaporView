@@ -591,6 +591,7 @@ void MainWindow::setRemoteSkyConfigUi(const VaporView::SkyConfig& config)
     QString validationError;
     remoteSkyConfigFromDeviceConfigUi(&validationError);
     setRemoteSkyConfigJsonValidation(validationError.isEmpty(), validationError);
+    updateDeviceConfigState();
 }
 
 VaporView::SkyConfig MainWindow::remoteSkyConfigFromDeviceConfigUi(QString *errorMessage) const
@@ -961,6 +962,15 @@ void MainWindow::updateRemoteSkyConfigControlsState()
             }
         }
     }
+    if (isFpgaRelayPath()) {
+        for (QComboBox *port : {state_->device_config_.epsilon_port_combo,
+                               state_->device_config_.ptb_port_combo,
+                               state_->device_config_.hmp_port_combo,
+                               state_->device_config_.lidar_port_combo,
+                               state_->device_config_.temperature_port_combo,
+                               state_->device_config_.ai8_temperature_port_combo})
+            if (port) port->setEnabled(false);
+    }
     if (state_->device_config_.epsilon_rate_combo)
     {
         state_->device_config_.epsilon_rate_combo->setEnabled(false);
@@ -1008,9 +1018,9 @@ void MainWindow::updateRemoteSkyConfigControlsState()
     }
     const bool localTcpWaveEndpointEditable =
         !state_->tcp_wave_panel_ || state_->tcp_wave_panel_->endpointEditable();
-    const bool tcpWaveEndpointEnabled = remote
+    const bool tcpWaveEndpointEnabled = !isFpgaRelayPath() && (remote
         ? fieldsEnabled
-        : localInputsEnabled && localTcpWaveEndpointEditable;
+        : localInputsEnabled && localTcpWaveEndpointEditable);
     if (state_->device_config_.tcp_wave_host_edit)
     {
         state_->device_config_.tcp_wave_host_edit->setEnabled(tcpWaveEndpointEnabled);

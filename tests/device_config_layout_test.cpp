@@ -903,14 +903,14 @@ int main(int argc, char **argv)
                     QStringLiteral("fpga_relay"),
                     "local device config exposes the FPGA relay path");
     VaporViewTest::processEventsFor(60);
-    require(epsilonPortCombo->isEnabled() && epsilonBaudCombo->isEnabled() &&
-                pressurePortCombo->isEnabled() && pressureBaudCombo->isEnabled() &&
-                humidityPortCombo->isEnabled() && humidityBaudCombo->isEnabled() &&
-                lidarBaudCombo->isEnabled() && ai8PortCombo->isEnabled() &&
+    require(!epsilonPortCombo->isEnabled() && epsilonBaudCombo->isEnabled() &&
+                !pressurePortCombo->isEnabled() && pressureBaudCombo->isEnabled() &&
+                !humidityPortCombo->isEnabled() && humidityBaudCombo->isEnabled() &&
+                lidarBaudCombo->isEnabled() && !ai8PortCombo->isEnabled() &&
                 ai8BaudCombo->isEnabled() && ai8RateCombo->isEnabled() &&
-                temperaturePortCombo->isEnabled() &&
+                !temperaturePortCombo->isEnabled() &&
                 sensorTransportPathCombo->isEnabled(),
-            "local FPGA relay keeps each device serial and rate control editable");
+            "local FPGA relay locks serial selection and keeps baud/rate editing");
     selectComboData(sensorTransportPathCombo,
                     QStringLiteral("direct_devices"),
                     "local device config restores direct path after relay control check");
@@ -1645,14 +1645,14 @@ int main(int argc, char **argv)
                 return skyConfigFrameSent &&
                     getSkyConfigRequests == 1 &&
                     remoteStatus->property("status").toString() == QStringLiteral("success") &&
-                    epsilonPortCombo->isEnabled() &&
+                    !epsilonPortCombo->isEnabled() &&
                     epsilonBaudCombo->isEnabled() &&
-                    ai8PortCombo->isEnabled() &&
+                    !ai8PortCombo->isEnabled() &&
                     ai8BaudCombo->isEnabled() &&
                     ai8RateCombo->isEnabled() &&
                     sensorTransportPathCombo->isEnabled() &&
-                    deviceTcpWaveHostEdit->isEnabled() &&
-                    deviceTcpWavePortSpin->isEnabled() &&
+                    !deviceTcpWaveHostEdit->isEnabled() &&
+                    !deviceTcpWavePortSpin->isVisible() &&
                     epsilonPortCombo->currentText() == QStringLiteral("/dev/ttyEPSILON") &&
                     ai8PortCombo->currentText() == QStringLiteral("/dev/ttyAI8") &&
                     deviceTcpWaveHostEdit->text() == QStringLiteral("10.0.0.2") &&
@@ -1673,18 +1673,21 @@ int main(int argc, char **argv)
                   << "\n";
     }
     require(remoteConfigAutoLoaded,
-            "page-open-before-Sky lifecycle auto-reads SkyConfig and enables remote serial fields");
+            "page-open-before-Sky lifecycle auto-reads relay SkyConfig and locks remote serial fields");
     require(sensorTransportPathCombo->isEnabled(),
             "remote telemetry keeps the FPGA relay path selector enabled after SkyConfig loads");
-    require(epsilonPortCombo->isEnabled() && epsilonBaudCombo->isEnabled() &&
-                pressurePortCombo->isEnabled() && pressureBaudCombo->isEnabled() &&
-                pressureSourceCombo->isEnabled() && humidityPortCombo->isEnabled() &&
+    require(!epsilonPortCombo->isEnabled() && epsilonBaudCombo->isEnabled() &&
+                !pressurePortCombo->isEnabled() && pressureBaudCombo->isEnabled() &&
+                pressureSourceCombo->isEnabled() && !humidityPortCombo->isEnabled() &&
                 humidityBaudCombo->isEnabled() && humiditySourceCombo->isEnabled() &&
-                lidarBaudCombo->isEnabled() && temperaturePortCombo->isEnabled() &&
-                ai8PortCombo->isEnabled() && ai8BaudCombo->isEnabled() &&
+                lidarBaudCombo->isEnabled() && !temperaturePortCombo->isEnabled() &&
+                !ai8PortCombo->isEnabled() && ai8BaudCombo->isEnabled() &&
                 ai8RateCombo->isEnabled() && ai8EnabledCheck->isEnabled() &&
                 temperatureEnabledCheck->isEnabled(),
-            "remote FPGA relay keeps per-device serial, source, rate, and enable controls editable");
+            "remote FPGA relay locks serial selection and keeps baud/source/rate controls editable");
+    // The remaining serial/TCP endpoint regressions exercise Direct mode.
+    remoteConfig.sensor_transport_path = VaporView::SensorTransportPath::DirectDevices;
+    window.testInjectRemoteSkyConfig(remoteConfig.toJson());
     VaporViewTest::processEventsFor(160);
     require(getSkyConfigRequests == 1,
             "Remote link-open lifecycle sends one automatic GetSkyConfig request");

@@ -1105,6 +1105,14 @@ public:
         update();
     }
 
+    void setSampleAxis(bool enabled, quint32 totalPoints = 0)
+    {
+        sample_axis_ = enabled;
+        total_points_ = totalPoints;
+        updateXAxisLabelProperty();
+        update();
+    }
+
     void setEnglish(bool english)
     {
         Q_UNUSED(english);
@@ -1132,11 +1140,9 @@ protected:
         const int leftMargin = kWavePlotLeftMargin;
         const int bottomMargin = fm.height() + kPlotBottomMarginExtra;
         const QRectF plotRect = timeAxisPlotRect(rect(), leftMargin, bottomMargin, fm);
-        const TimeAxisState timeAxis = makeTimeAxisState(0,
-                                                         frame_wall_msecs_,
-                                                         plotRect.width(),
-                                                         fm);
+        const TimeAxisState timeAxis = axisState(plotRect.width(), fm);
         setTimeAxisProperties(this, timeAxis);
+        setProperty("xAxisTimeMode", !sample_axis_);
         updateTimeAxisGeometryProperties(this, plotRect, timeAxis);
         const auto drawGrid = [&]() {
             painter.setPen(QPen(theme.grid, 1));
@@ -1212,6 +1218,14 @@ protected:
     }
 
 private:
+    TimeAxisState axisState(qreal width, const QFontMetrics &metrics) const
+    {
+        if (!sample_axis_) return makeTimeAxisState(0, frame_wall_msecs_, width, metrics);
+        TimeAxisState state;
+        for (int i = 0; i < 5; ++i)
+            state.labels.append(QString::number(quint64(total_points_ ? total_points_ - 1 : 0) * i / 4));
+        return state;
+    }
     void updateXAxisLabelProperty()
     {
         const int widgetWidth = std::max(width(), sizeHint().width());
@@ -1221,16 +1235,15 @@ private:
             kWavePlotLeftMargin,
             metrics.height() + kPlotBottomMarginExtra,
             metrics);
-        setTimeAxisProperties(this,
-                              makeTimeAxisState(0,
-                                                frame_wall_msecs_,
-                                                plotRect.width(),
-                                                metrics));
+        setTimeAxisProperties(this, axisState(plotRect.width(), metrics));
+        setProperty("xAxisTimeMode", !sample_axis_);
     }
 
     QColor line_color_;
     QVector<float> samples_;
     qint64 frame_wall_msecs_ = 0;
+    bool sample_axis_ = false;
+    quint32 total_points_ = 0;
     QString empty_text_ = QStringLiteral("No data");
 };
 
@@ -1710,9 +1723,9 @@ int TcpWavePanel::preferredPanelHeight() const
     const int topControlsHeight = control_layout_ ? control_layout_->sizeHint().height() : kTcpTitleBarHeight;
     int height = topControlsHeight + 4;
 
-    const bool showRawWave = wave_display_all_ || wave_display_raw_;
-    const bool showHarmonicWave = wave_display_all_ || wave_display_harmonic_;
-    const bool showPeakTrend = wave_display_all_ || wave_display_peak_trend_;
+    const bool showRawWave = fpga_mode_ || wave_display_all_ || wave_display_raw_;
+    const bool showHarmonicWave = fpga_mode_ || wave_display_all_ || wave_display_harmonic_;
+    const bool showPeakTrend = !fpga_mode_ && (wave_display_all_ || wave_display_peak_trend_);
     const int visibleWaveRows = (showRawWave ? 1 : 0) + (showHarmonicWave ? 1 : 0);
 
     if (visibleWaveRows > 0)
@@ -1733,11 +1746,12 @@ int TcpWavePanel::preferredPanelHeight() const
 
 bool TcpWavePanel::hasVisibleWaveDisplay() const
 {
-    return wave_display_all_ || wave_display_raw_ || wave_display_harmonic_ || wave_display_peak_trend_;
+    return fpga_mode_ || wave_display_all_ || wave_display_raw_ || wave_display_harmonic_ || wave_display_peak_trend_;
 }
 
 bool TcpWavePanel::usesExpandedPanelHeight() const
 {
+    if (fpga_mode_) return true;
     const int visibleDisplayCount =
         ((wave_display_all_ || wave_display_raw_) ? 1 : 0) +
         ((wave_display_all_ || wave_display_harmonic_) ? 1 : 0) +
@@ -1850,6 +1864,19 @@ void TcpWavePanel::setupUi()
     connect_button_->setFixedHeight(kTcpButtonHeight);
     connect(connect_button_, &QPushButton::clicked, this, &TcpWavePanel::onToggleConnectionClicked);
     top_controls_layout_->addWidget(connect_button_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+
+    fpga_channel_combo_ = new QComboBox(topControlsBar);
+    fpga_channel_combo_->setObjectName(QStringLiteral("fpgaMonitorChannelCombo"));
+    fpga_channel_combo_->addItems({QStringLiteral("ADC 0 / DLIA 0"), QStringLiteral("ADC 1 / DLIA 1")});
+    fpga_component_combo_ = new QComboBox(topControlsBar);
+    fpga_component_combo_->setObjectName(QStringLiteral("fpgaMonitorComponentCombo"));
+    fpga_component_combo_->addItems({QStringLiteral("H1"), QStringLiteral("H2")});
+    for (auto *combo : {fpga_channel_combo_, fpga_component_combo_}) {
+        combo->setFixedHeight(kTcpControlHeight);
+        combo->hide();
+        top_controls_layout_->addWidget(combo, 0, Qt::AlignVCenter);
+        connect(combo, &QComboBox::currentIndexChanged, this, [this] { refreshFpgaWaveform(); });
+    }
 
     status_label_ = new VaporView::VisualTextLabel(this);
     status_label_->setObjectName("fieldLabel");
@@ -2091,6 +2118,8 @@ void TcpWavePanel::saveRememberedInputState() const
 void TcpWavePanel::setEnglish(bool english)
 {
     is_english_ = english;
+    fpga_channel_combo_->setAccessibleName(english ? QStringLiteral("FPGA channel") : QStringLiteral("FPGA 通道"));
+    fpga_component_combo_->setAccessibleName(english ? QStringLiteral("DLIA component") : QStringLiteral("DLIA 分量"));
     if (panel_title_label_)
     {
         panel_title_label_->setText(english ? "Wave Monitor" : "波形监控");
@@ -2164,6 +2193,81 @@ void TcpWavePanel::setEnglish(bool english)
     {
         setStatusText(english ? "Idle" : "空闲");
     }
+    if (fpga_mode_) refreshFpgaWaveform();
+}
+
+void TcpWavePanel::setFpgaMode(bool enabled)
+{
+    if (fpga_mode_ == enabled) return;
+    fpga_mode_ = enabled;
+    setProperty("fpgaWaveformMode", enabled);
+    if (enabled && socket_ && socket_->state() != QAbstractSocket::UnconnectedState)
+        requestGracefulDisconnect();
+    const QList<QWidget *> tcpControls = {host_label_, host_edit_, port_label_, port_edit_,
+                                         connect_button_, frame_rate_label_, wave_display_button_};
+    for (QWidget *widget : tcpControls)
+        widget->setVisible(!enabled);
+    panel_title_label_->setAttribute(Qt::WA_TransparentForMouseEvents, enabled);
+    fpga_channel_combo_->setVisible(enabled);
+    fpga_component_combo_->setVisible(enabled);
+    wave1_history_.clear(); wave4_history_.clear();
+    live_display_dirty_ = false;
+    if (!enabled) fpga_waves_.clear();
+    wave1_plot_->setSampleAxis(enabled);
+    wave4_plot_->setSampleAxis(enabled);
+    updateEndpointEditorState();
+    setEnglish(is_english_);
+}
+
+void TcpWavePanel::setFpgaWaveform(quint16 source, const QVector<QVector<double>> &samples,
+                                  const QStringList &components, const QString &detail, quint32 totalPoints)
+{
+    if (source != 0x20 && source != 0x21 && source != 0x30 && source != 0x31) return;
+    fpga_waves_[source] = {samples, components, detail, totalPoints};
+    if (fpga_mode_) refreshFpgaWaveform();
+}
+
+void TcpWavePanel::refreshFpgaWaveform()
+{
+    if (!fpga_mode_) return;
+    panel_title_label_->setText(is_english_ ? QStringLiteral("ADC / DLIA Waveforms") : QStringLiteral("ADC / DLIA 波形"));
+    if (auto *title = dynamic_cast<WaveDisplayTitleLabel *>(panel_title_label_)) title->refreshFixedWidth();
+    const int channel = fpga_channel_combo_->currentIndex();
+    const auto adc = fpga_waves_.value(0x20 + channel);
+    const auto dlia = fpga_waves_.value(0x30 + channel);
+    const QStringList components = dlia.components.isEmpty()
+        ? QStringList{QStringLiteral("H1"), QStringLiteral("H2")} : dlia.components;
+    if (fpga_component_combo_->itemText(0) != components.first() || fpga_component_combo_->count() != components.size()) {
+        const int index = fpga_component_combo_->currentIndex();
+        const QSignalBlocker blocker(fpga_component_combo_);
+        fpga_component_combo_->clear(); fpga_component_combo_->addItems(components);
+        fpga_component_combo_->setCurrentIndex(qBound(0, index, int(components.size()) - 1));
+    }
+    const auto convert = [](const QVector<double> &values) {
+        QVector<float> result; result.reserve(values.size());
+        for (double value : values) result.append(float(value));
+        return result;
+    };
+    wave1_history_ = convert(adc.samples.value(0));
+    wave4_history_ = convert(dlia.samples.value(fpga_component_combo_->currentIndex()));
+    wave1_title_label_->setText(QStringLiteral("ADC %1").arg(channel));
+    wave4_title_label_->setText(QStringLiteral("DLIA %1 · %2").arg(channel).arg(fpga_component_combo_->currentText()));
+    const QString waiting = is_english_ ? QStringLiteral("Waiting for FPGA waveform") : QStringLiteral("等待 FPGA 波形");
+    const auto present = [this, &waiting](QLabel *label, const FpgaWaveDisplay &wave, bool empty) {
+        const bool historical = wave.detail.contains(QStringLiteral("历史")) || wave.detail.contains(QStringLiteral("historical"), Qt::CaseInsensitive);
+        const QString quality = historical ? (is_english_ ? QStringLiteral("Historical") : QStringLiteral("历史值"))
+            : empty ? (is_english_ ? QStringLiteral("Unavailable") : QStringLiteral("无有效波形"))
+                    : (is_english_ ? QStringLiteral("Complete") : QStringLiteral("完整周期"));
+        label->setText(wave.detail.isEmpty() ? waiting
+            : QString(is_english_ ? "%1 points · %2" : "%1 点 · %2").arg(wave.totalPoints).arg(quality));
+        label->setToolTip(wave.detail);
+    };
+    present(wave1_info_label_, adc, wave1_history_.isEmpty());
+    present(wave4_info_label_, dlia, wave4_history_.isEmpty());
+    wave1_plot_->setSampleAxis(true, adc.totalPoints);
+    wave4_plot_->setSampleAxis(true, dlia.totalPoints);
+    wave1_plot_->setSamples(wave1_history_);
+    wave4_plot_->setSamples(wave4_history_);
 }
 
 void TcpWavePanel::changeEvent(QEvent *event)
@@ -2219,9 +2323,9 @@ void TcpWavePanel::updateWaveDisplayModeIcon()
 
 void TcpWavePanel::applyWaveDisplayMode()
 {
-    const bool showRawWave = wave_display_all_ || wave_display_raw_;
-    const bool showHarmonicWave = wave_display_all_ || wave_display_harmonic_;
-    const bool showPeakTrend = wave_display_all_ || wave_display_peak_trend_;
+    const bool showRawWave = fpga_mode_ || wave_display_all_ || wave_display_raw_;
+    const bool showHarmonicWave = fpga_mode_ || wave_display_all_ || wave_display_harmonic_;
+    const bool showPeakTrend = !fpga_mode_ && (wave_display_all_ || wave_display_peak_trend_);
 
     if (auto *titleLabel = dynamic_cast<WaveDisplayTitleLabel *>(panel_title_label_))
     {
@@ -2438,6 +2542,7 @@ void TcpWavePanel::updateFrameRateDisplay(qint64 arrivalTimeMs)
 
 void TcpWavePanel::updateLiveDisplay()
 {
+    if (fpga_mode_) return;
     if (!live_display_dirty_)
     {
         return;
@@ -2588,6 +2693,7 @@ void TcpWavePanel::toggleConnection()
 
 void TcpWavePanel::setRemoteSkyMode(bool enabled)
 {
+    if (remote_sky_mode_ != enabled) fpga_waves_.clear();
     remote_sky_mode_ = enabled;
     if (host_label_)
     {
@@ -2618,6 +2724,7 @@ void TcpWavePanel::setRemoteSkyMode(bool enabled)
         clearRemoteWaveformDisplay(is_english_ ? QStringLiteral("TCP wave is not connected")
                                                : QStringLiteral("TCP波形未连接"));
     }
+    if (fpga_mode_) refreshFpgaWaveform();
 }
 
 void TcpWavePanel::setRemoteWaveTcpState(VaporView::DeviceState state)
@@ -2669,6 +2776,7 @@ void TcpWavePanel::setRemoteFeatureRateHz(double rateHz)
 
 void TcpWavePanel::injectRemoteRawSignalFrame(quint64 timestampUs, const QVector<float>& samples)
 {
+    if (fpga_mode_) return;
     if (ui_test_mode_ ? !ui_test_connected_
                       : (remote_sky_mode_ && !remote_wave_tcp_connected_))
     {
@@ -2690,6 +2798,7 @@ void TcpWavePanel::injectRemoteRawSignalFrame(quint64 timestampUs, const QVector
 
 void TcpWavePanel::injectRemoteSecondHarmonicFrame(quint64 timestampUs, const QVector<float>& samples)
 {
+    if (fpga_mode_) return;
     if (ui_test_mode_ ? !ui_test_connected_
                       : (remote_sky_mode_ && !remote_wave_tcp_connected_))
     {
@@ -2718,6 +2827,7 @@ void TcpWavePanel::injectRemoteSecondHarmonicFrame(quint64 timestampUs, const QV
 
 void TcpWavePanel::injectRemoteWaveformFeature(const VaporView::WaveformFeature& feature)
 {
+    if (fpga_mode_) return;
     if (ui_test_mode_ ? !ui_test_connected_
                       : (remote_sky_mode_ && !remote_wave_tcp_connected_))
     {
@@ -2793,6 +2903,8 @@ void TcpWavePanel::setUiTestMode(bool enabled)
     {
         return;
     }
+    fpga_waves_.clear();
+    if (fpga_mode_) refreshFpgaWaveform();
     if (enabled)
     {
         ui_test_saved_host_ = host_edit_ ? host_edit_->text() : QString();
@@ -2944,6 +3056,7 @@ void TcpWavePanel::requestGracefulDisconnect()
 
 void TcpWavePanel::onToggleConnectionClicked()
 {
+    if (fpga_mode_) return;
     if (ui_test_mode_)
     {
         ui_test_connected_ = !ui_test_connected_;
@@ -3460,9 +3573,9 @@ void TcpWavePanel::updateEndpointEditorState()
         !remote_sky_mode_ &&
         socket_ &&
         socket_->state() != QAbstractSocket::UnconnectedState;
-    const bool endpointEditable = remote_sky_mode_
+    const bool endpointEditable = !fpga_mode_ && (remote_sky_mode_
         ? !remote_wave_tcp_connected_
-        : !localActive;
+        : !localActive);
     if (host_edit_)
     {
         host_edit_->setEnabled(endpointEditable);

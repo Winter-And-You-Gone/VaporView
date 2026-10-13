@@ -320,6 +320,14 @@ VaporView::DeviceState MainWindow::homeDeviceActionState(VaporView::SkyDeviceId 
 
 void MainWindow::triggerHomeDeviceAction(VaporView::SkyDeviceId device)
 {
+    if (isFpgaRelayPath() && device == VaporView::SkyDeviceId::TemperatureController) return;
+    if (isFpgaRelayPath() && device == VaporView::SkyDeviceId::WaveTcp) {
+        state_->main_page_stack_->setCurrentWidget(state_->fpga_page_);
+        state_->fpga_nav_btn_->setChecked(true);
+        state_->fpga_page_->findChild<QTabWidget *>(QStringLiteral("fpgaTabs"))->setCurrentIndex(2);
+        updateSidebarNavIcons(); updateCustomTitleBarTexts();
+        return;
+    }
     if (isFpgaRelayPath() &&
         (state_->fpga_connected_ || state_->fpga_busy_ || state_->fpga_replaying_))
     {

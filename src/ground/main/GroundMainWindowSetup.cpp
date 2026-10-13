@@ -4269,9 +4269,8 @@ void MainWindow::updateDeviceConfigState()
         !state_->connection_attempt_in_progress_ && !state_->port_detection_in_progress_ && !state_->epsilon_reconfigure_in_progress_;
     const bool remoteInputsEnabled = remote && (isUiTestMode() || !state_->is_connected_) && !state_->connection_attempt_in_progress_;
     const bool fpgaRelay = currentSensorTransportPath() == VaporView::SensorTransportPath::FpgaRelay;
-    // The transport path changes the command recipient/encoding only.  Keep
-    // the per-device serial, rate, source, and enable controls editable so
-    // they can be translated to direct-device or VLP1 commands later.
+    // Baud/rate/source settings still describe the device. PC serial ports
+    // are retained for Direct mode but are not selectable on the FPGA path.
     const bool sensorInputsEnabled = remote ? remoteInputsEnabled : localInputsEnabled;
     if (state_->device_config_.sensor_transport_path_combo)
     {
@@ -4298,7 +4297,7 @@ void MainWindow::updateDeviceConfigState()
     {
         state_->device_config_.auto_detect_ports_btn->setVisible(true);
         state_->device_config_.auto_detect_ports_btn->setEnabled(
-            remote ? remoteInputsEnabled : localInputsEnabled);
+            !fpgaRelay && (remote ? remoteInputsEnabled : localInputsEnabled));
         fitButtonFixedWidth(state_->device_config_.auto_detect_ports_btn,
                             kDeviceConfigAutoDetectButtonMinWidth,
                             kDeviceConfigTopButtonPadding);
@@ -4466,8 +4465,8 @@ void MainWindow::updateDeviceConfigState()
         state_->device_config_.temperature_lbl->setToolTip(
             fpgaRelay
                 ? (state_->is_english_
-                    ? QStringLiteral("RD105 remains a direct serial device; the current FPGA VLP1 relay does not expose an RD105 source.")
-                    : QStringLiteral("RD105 仍通过串口直连；当前 FPGA VLP1 中转协议未提供 RD105 通道。"))
+                    ? QStringLiteral("RD105 connection is unavailable: the current FPGA VLP1 relay does not expose an RD105 source.")
+                    : QStringLiteral("当前 FPGA VLP1 中转协议未提供 RD105 通道，暂不支持实际连接。"))
                 : QString());
     }
 
@@ -4495,6 +4494,63 @@ void MainWindow::updateDeviceConfigState()
         updateDeviceConfigRemoteActionButton(device);
     }
     updateRemoteSkyConfigControlsState();
+    // A separate read-only view avoids writing the display text "FPGA" into
+    // either LocalDeviceConfig or the remote SkyConfig serial-port fields.
+    auto showFpgaEndpoint = [fpgaRelay](QWidget *editor) {
+        if (!editor) return;
+        auto *parent = editor->parentWidget();
+        const QString name = editor->objectName() + QStringLiteral("FpgaEndpoint");
+        auto *label = parent->findChild<QLabel *>(name, Qt::FindDirectChildrenOnly);
+        if (!label) {
+            auto *grid = qobject_cast<QGridLayout *>(parent->layout());
+            if (!grid) return;
+            int row, column, rowSpan, columnSpan;
+            grid->getItemPosition(grid->indexOf(editor), &row, &column, &rowSpan, &columnSpan);
+            label = new QLabel(QStringLiteral("FPGA"), parent);
+            label->setObjectName(name);
+            label->setAlignment(Qt::AlignCenter);
+            grid->addWidget(label, row, column, rowSpan, columnSpan);
+        }
+        label->setFixedSize(editor->size());
+        label->setVisible(fpgaRelay);
+        editor->setVisible(!fpgaRelay);
+        if (fpgaRelay) editor->setEnabled(false);
+    };
+    for (QComboBox *port : {state_->device_config_.epsilon_port_combo,
+                           state_->device_config_.ptb_port_combo,
+                           state_->device_config_.hmp_port_combo,
+                           state_->device_config_.lidar_port_combo,
+                           state_->device_config_.temperature_port_combo,
+                           state_->device_config_.ai8_temperature_port_combo})
+        showFpgaEndpoint(port);
+    showFpgaEndpoint(state_->device_config_.tcp_wave_host_edit);
+    if (state_->device_config_.tcp_wave_lbl)
+        state_->device_config_.tcp_wave_lbl->setText(fpgaRelay ? QStringLiteral("ADC / DLIA")
+            : state_->is_english_ ? QStringLiteral("TCP Waveform") : QStringLiteral("TCP 波形"));
+    if (state_->device_config_.tcp_wave_transport_hint_lbl)
+        state_->device_config_.tcp_wave_transport_hint_lbl->setText(fpgaRelay
+            ? (state_->is_english_ ? QStringLiteral("FPGA waveform") : QStringLiteral("FPGA 波形"))
+            : (state_->is_english_ ? QStringLiteral("TCP service") : QStringLiteral("TCP 服务")));
+    if (state_->device_config_.tcp_wave_port_spin) state_->device_config_.tcp_wave_port_spin->setVisible(!fpgaRelay);
+    if (state_->device_config_.tcp_wave_enabled_check) state_->device_config_.tcp_wave_enabled_check->setVisible(!fpgaRelay);
+    if (state_->device_config_.temperature_remote_action_btn && fpgaRelay)
+        state_->device_config_.temperature_remote_action_btn->setEnabled(false);
+    if (fpgaRelay && !remote) {
+        for (QComboBox *baud : {state_->device_config_.epsilon_baud_combo,
+                               state_->device_config_.ptb_baud_combo,
+                               state_->device_config_.hmp_baud_combo,
+                               state_->device_config_.lidar_baud_combo,
+                               state_->device_config_.temperature_baud_combo,
+                               state_->device_config_.ai8_temperature_baud_combo})
+            if (baud) baud->setEnabled(!state_->fpga_busy_ && !state_->connection_attempt_in_progress_);
+    }
+    const QString waveHint = fpgaRelay
+        ? (state_->is_english_ ? QStringLiteral("View ADC/DLIA data from FPGA. Acquisition is controlled on the FPGA page.")
+                              : QStringLiteral("显示 FPGA 的 ADC/DLIA 波形；采集启停请在 FPGA 页面操作。"))
+        : (state_->is_english_ ? QStringLiteral("TCP waveform endpoint") : QStringLiteral("TCP 波形主机地址和端口"));
+    if (state_->device_config_.tcp_wave_lbl) state_->device_config_.tcp_wave_lbl->setToolTip(waveHint);
+    if (state_->device_config_.tcp_wave_transport_hint_lbl) state_->device_config_.tcp_wave_transport_hint_lbl->setToolTip(waveHint);
+    if (state_->tcp_wave_panel_) state_->tcp_wave_panel_->setFpgaMode(fpgaRelay);
 }
 
 QStringList MainWindow::getAvailablePorts()

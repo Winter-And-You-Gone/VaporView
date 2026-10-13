@@ -572,6 +572,14 @@ void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream 
     }
     QVector<SamplePlot*> activePlots{plot};if(second)activePlots.append(second);
     for(auto *iq:iqPlots_.value(s.source))activePlots.append(static_cast<SamplePlot*>(iq));
+    const auto publishDisplay = [&](quint32 totalPoints = 0) {
+        QVector<QVector<double>> samples;
+        for (auto *p : activePlots) samples.append(p->samples);
+        const QStringList components = adc ? QStringList{QStringLiteral("ADC")}
+            : s.format == 1 ? QStringList{QStringLiteral("I1"), QStringLiteral("Q1"), QStringLiteral("I2"), QStringLiteral("Q2")}
+                            : QStringList{QStringLiteral("H1"), QStringLiteral("H2")};
+        emit waveformDisplayUpdated(s.source, samples, components, l->text(), totalPoints ? totalPoints : s.totalPoints);
+    };
     auto retainRaw=[&](const QString &reason){
         if(!adc||!lastCompleteRaw_.contains(s.source))return false;
         const bool wasRerendering=rerendering_;rerendering_=true;
@@ -579,6 +587,7 @@ void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream 
         updateWaveform(lastCompleteRaw_.value(s.source));
         latestWaves_[s.source]=savedLatest;rerendering_=wasRerendering;
         l->setText(reason+text(" · 显示上一完整 RAW 周期（历史值，非当前测量） · "," · Showing previous complete RAW cycle (historical, not current) · ")+l->text());
+        publishDisplay(lastCompleteRaw_.value(s.source).totalPoints);
         return true;
     };
     auto clearPlots=[&]{for(auto *p:activePlots){p->samples.clear();p->setProperty("sampleCount",0);p->update();}};
@@ -586,7 +595,7 @@ void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream 
     if(!s.complete||s.partial||s.overflow||s.continuityError) {
         if(retainRaw(text("最近 RAW 周期不完整或质量异常","Latest RAW cycle incomplete or faulty")))return;
         clearPlots();
-        l->setText(historyPrefix+text("周期缺片或质量异常；不连接缺失区间。可用原始点保留在记录中。","Cycle has missing fragments or quality faults; gaps are not joined. Available raw points remain in the recording."));return;
+        l->setText(historyPrefix+text("周期缺片或质量异常；不连接缺失区间。可用原始点保留在记录中。","Cycle has missing fragments or quality faults; gaps are not joined. Available raw points remain in the recording."));publishDisplay();return;
     }
     const quint32 availablePoints = expectedBytes ? quint32(s.pointBytes.size() / expectedBytes) : 0;
     const quint32 displayPoints = s.preview ? availablePoints : s.totalPoints;
@@ -594,7 +603,7 @@ void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream 
         || s.pointBytes.size() % expectedBytes != 0 || displayPoints > availablePoints
         || (s.preview && (!s.previewStride || displayPoints > 64 || quint64(displayPoints-1)*s.previewStride >= s.totalPoints))) {
         if(retainRaw(text("最近 RAW 格式或长度无效","Latest RAW format or length invalid")))return;
-        clearPlots();l->setText(historyPrefix+text("波形格式或长度无效；保留原始记录供诊断","Invalid waveform format or length; raw recording retained for diagnostics"));return;
+        clearPlots();l->setText(historyPrefix+text("波形格式或长度无效；保留原始记录供诊断","Invalid waveform format or length; raw recording retained for diagnostics"));publishDisplay();return;
     }
     if(adc)lastCompleteRaw_[s.source]=s;
     for(auto *p:activePlots)p->samples.clear();double maxH2=0;const int stride=qMax(1,int(displayPoints)/1000);const int components=adc?1:int(s.bytesPerPoint/4);
@@ -621,6 +630,7 @@ void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream 
     if(adc&&rawEnabled_.contains(s.source)&&!rawEnabled_.value(s.source))
         l->setText(text("RAW 上传已停止 · 最后完整周期（历史值） · ","RAW upload stopped · Last complete cycle (historical) · ")+l->text());
     for(auto *p:activePlots){p->setProperty("sampleCount",p->samples.size());p->setProperty("previewStride",s.preview?s.previewStride:1);if(!p->samples.isEmpty()){const auto mm=std::minmax_element(p->samples.cbegin(),p->samples.cend());p->setProperty("sampleMinimum",*mm.first);p->setProperty("sampleMaximum",*mm.second);}p->update();}
+    publishDisplay();
 }
 void FpgaControlPage::appendDiagnostic(const QString &s){diagnostics_->appendPlainText(s);}
 void FpgaControlPage::setLanguage(bool en){english_=en;for(auto *w:findChildren<QWidget*>())if(w->property("fpgaZh").isValid())label(w,w->property("fpgaZh").toString(),w->property("fpgaEn").toString());

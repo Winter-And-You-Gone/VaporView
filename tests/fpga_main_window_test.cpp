@@ -8,6 +8,8 @@
 #include "TelemetryCodec.h"
 #include "FpgaTelemetry.h"
 #include "shared/session/FpgaSessionArchive.h"
+#include "ground/wave/TcpWavePanel.h"
+#include "SkyConfig.h"
 #include <QApplication>
 #include <QStyleFactory>
 #include <QTabWidget>
@@ -362,6 +364,11 @@ static void localSimulatorRouting()
     auto *raw=page->findChild<QAbstractButton*>("fpgaRawStart");raw->click();
     check(waitUntil([&]{return page->findChild<QWidget*>("fpgaWavePlot32")->property("sampleCount").toInt()>0;}),
           "normal local RAW control receives fragmented ADC data");
+    auto *monitor=window.findChild<TcpWavePanel*>();
+    check(monitor&&monitor->property("fpgaWaveformMode").toBool(),"home monitor selects FPGA data");
+    check(waitUntil([&]{return monitor->findChild<QWidget*>("tcpWaveRawPlot")->property("sampleCount").toInt()>0
+        &&monitor->findChild<QWidget*>("tcpWaveHarmonicPlot")->property("sampleCount").toInt()>0;}),
+        "real VLP1 simulator supplies both ADC and DLIA to the home monitor");
     auto *record=page->findChild<QAbstractButton*>("fpgaRecord");record->click();
     check(waitUntil([&]{return record->text().contains("停止");}),"local record action starts recording");
     processFor(500);record->click();check(waitUntil([&]{return record->text().contains("开始");}),"local record action stops and drains");
@@ -388,6 +395,77 @@ static void localSimulatorRouting()
     check(pathSwitch->switchChecked()&&path->currentData().toString()=="fpga_relay","unlocked capsule switches back to FPGA");
     window.close();
 }
+static void relayConfigurationPresentation()
+{
+    MainWindow window;
+    QMetaObject::invokeMethod(&window,"onDataSourceModeChanged",Q_ARG(int,0));
+    auto *stack=window.findChild<QStackedWidget*>("mainPageStack");
+    auto *path=window.findChild<QComboBox*>("deviceSensorTransportPathCombo");
+    QWidget *configPage=path;
+    while(stack->indexOf(configPage)<0)configPage=configPage->parentWidget();
+    stack->setCurrentWidget(configPage);window.resize(1600,1000);window.show();processFor(50);
+    path->setCurrentIndex(path->findData("direct_devices"));
+    const QStringList devices{"Epsilon","Pressure","Humidity","Lidar","Temperature","Ai8Temperature"};
+    QStringList ports;
+    for(const auto &device:devices) {
+        auto *port=window.findChild<QComboBox*>("device"+device+"PortCombo");
+        require(port,"device serial editor exists");ports.append(port->currentText());
+    }
+    const auto before=window.testLocalDeviceConfigSnapshot();
+    path->setCurrentIndex(path->findData("fpga_relay"));processFor(50);
+    for(int i=0;i<devices.size();++i) {
+        const auto name="device"+devices[i]+"PortCombo";
+        auto *port=window.findChild<QComboBox*>(name);
+        auto *endpoint=window.findChild<QLabel*>(name+"FpgaEndpoint");
+        auto *baud=window.findChild<QComboBox*>("device"+devices[i]+"BaudCombo");
+        require(endpoint&&endpoint->isVisible()&&endpoint->text()=="FPGA"&&!port->isVisible()&&!port->isEnabled(),
+            "all six relay serial ports are replaced by a read-only FPGA endpoint");
+        require(baud&&baud->isVisible()&&baud->isEnabled(),"FPGA baud remains editable");
+    }
+    auto *baud=window.findChild<QComboBox*>("deviceEpsilonBaudCombo");
+    window.findChild<FpgaControlPage*>()->setUiTestState(true,false,false,5000,VaporView::SensorTransportPath::FpgaRelay);
+    window.findChild<FpgaControlPage*>()->simulateOperation({{"op","raw"},{"enabled",true}});
+    stack->setCurrentIndex(0);processFor(80);
+    const auto adcBefore=window.findChild<QWidget*>("tcpWaveRawPlot")->property("sampleCount").toInt();
+    require(adcBefore>0,"bounded simulated RAW reaches the home ADC graph");
+    VaporView::FpgaWave::CompletedStream partial;partial.source=0x20;partial.totalPoints=2;partial.partial=true;
+    window.findChild<FpgaControlPage*>()->updateWaveform(partial);
+    require(window.findChild<QWidget*>("tcpWaveRawPlot")->property("sampleCount").toInt()==adcBefore,
+        "incomplete ADC retains the same historical cycle on both FPGA and home pages");
+    partial.source=0x30;window.findChild<FpgaControlPage*>()->updateWaveform(partial);
+    require(window.findChild<QWidget*>("tcpWaveHarmonicPlot")->property("sampleCount").toInt()==0,
+        "incomplete DLIA clears the home graph through the shared validated display");
+    window.findChild<FpgaControlPage*>()->setUiTestState(false);
+    stack->setCurrentWidget(configPage);
+    baud->setCurrentIndex(baud->findText("460800"));
+    // Changing path commits the edited baud without replacing the saved port.
+    path->setCurrentIndex(path->findData("direct_devices"));processFor(50);
+    require(window.testLocalDeviceConfigSnapshot().value("epsilon").toObject().value("baud")=="460800",
+        "relay baud edit persists in the local device model");
+    for(int i=0;i<devices.size();++i) {
+        auto *port=window.findChild<QComboBox*>("device"+devices[i]+"PortCombo");
+        require(port->isVisible()&&port->isEnabled()&&port->currentText()==ports[i],"Direct restores the original port");
+    }
+    for(const auto &key:before.keys())if(before.value(key).isObject())
+        require(window.testLocalDeviceConfigSnapshot().value(key).toObject().value("port")==before.value(key).toObject().value("port"),
+            "FPGA display never enters saved local serial fields");
+    QMetaObject::invokeMethod(&window,"onDataSourceModeChanged",Q_ARG(int,1));
+    auto remote=VaporView::SkyConfig::defaults();remote.sensor_transport_path=VaporView::SensorTransportPath::FpgaRelay;
+    remote.epsilon.port="REMOTE-COM7";remote.ptb.port="REMOTE-COM8";remote.hmp.port="REMOTE-COM9";
+    remote.lidar.port="REMOTE-COM10";remote.temperature_controller.port="REMOTE-COM11";
+    remote.ai8_temperature_controller.port="REMOTE-COM12";
+    window.testInjectRemoteSkyConfig(remote.toJson());processFor(50);
+    for(const auto &device:devices) {
+        auto *port=window.findChild<QComboBox*>("device"+device+"PortCombo");
+        require(!port->isEnabled()&&!port->isVisible(),"remote config refresh cannot enable relay serial ports");
+    }
+    QString error;
+    const auto saved=window.testRemoteSkyConfigFromDeviceConfigUi(&error);
+    require(error.isEmpty()&&saved.value("epsilon").toObject().value("port")=="REMOTE-COM7",
+        "FPGA presentation preserves the remote serial configuration too");
+    QMetaObject::invokeMethod(&window,"onDataSourceModeChanged",Q_ARG(int,0));
+    window.close();
+}
 int main(int argc,char **argv)
 {
     require(VaporViewTest::SettingsSandbox::initialized,"isolated native/INI application settings");
@@ -402,6 +480,9 @@ int main(int argc,char **argv)
     QSettings native("VaporView","MainWindow");
     native.setValue("font_scale_percent",100);
     native.setValue("app_sidebar_width",62);
+    if(app.arguments().contains("--relay-configuration")) {
+        relayConfigurationPresentation();std::cout<<"FPGA relay configuration test passed\n";return 0;
+    }
     if(app.arguments().contains("--local-simulator")) {
         try { localSimulatorRouting();std::cout<<"Local FPGA simulator GUI test passed\n";return 0; }
         catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}
@@ -455,6 +536,7 @@ int main(int argc,char **argv)
         verifyCardMargins(restored,page,scale);restored.close();
     }
     app.setFont(standardFont);
+    relayConfigurationPresentation();
     remotePageRouting();
     require(native.value("font_scale_percent").toInt()==100,"font scale stays at standard 100 percent");
     std::cout<<"fpga main window tests passed\n";

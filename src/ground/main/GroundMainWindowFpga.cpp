@@ -34,6 +34,12 @@ void MainWindow::setupFpgaControlPage()
     state_->fpga_controller_ = new Controller;
     auto *controller = state_->fpga_controller_;
     auto *page = state_->fpga_page_;
+    connect(page, &FpgaControlPage::waveformDisplayUpdated, this,
+        [this](quint16 source, const QVector<QVector<double>> &samples,
+               const QStringList &components, const QString &detail, quint32 totalPoints) {
+            if (state_->tcp_wave_panel_)
+                state_->tcp_wave_panel_->setFpgaWaveform(source, samples, components, detail, totalPoints);
+        });
     controller->moveToThread(state_->fpga_thread_);
     connect(state_->fpga_thread_, &QThread::finished, controller, &QObject::deleteLater);
     const auto dispatch = [this, controller](const QJsonObject& request, std::function<void()> local) {

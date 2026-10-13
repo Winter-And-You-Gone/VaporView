@@ -6,11 +6,14 @@
 #include "TelemetryTypes.h"
 
 #include <QByteArray>
+#include <QMap>
+#include <QStringList>
 #include <QVariantMap>
 #include <QWidget>
 #include <QVector>
 
 class QLabel;
+class QComboBox;
 class QLineEdit;
 class QEvent;
 class QPushButton;
@@ -46,6 +49,9 @@ public:
     bool hasVisibleWaveDisplay() const;
     bool usesExpandedPanelHeight() const;
     void setRemoteSkyMode(bool enabled);
+    void setFpgaMode(bool enabled);
+    void setFpgaWaveform(quint16 source, const QVector<QVector<double>> &samples,
+                         const QStringList &components, const QString &detail, quint32 totalPoints);
     void setUiTestMode(bool enabled);
     void setUiTestConnected(bool connected);
     void setRemoteWaveTcpState(VaporView::DeviceState state);
@@ -133,6 +139,7 @@ private:
     };
 
     void setupUi();
+    void refreshFpgaWaveform();
     void setupSocket();
     void recreateSocket();
     void requestGracefulDisconnect();
@@ -246,6 +253,16 @@ private:
     bool remote_sky_mode_;
     bool remote_wave_tcp_connected_;
     bool ui_test_mode_ = false;
+    struct FpgaWaveDisplay {
+        QVector<QVector<double>> samples;
+        QStringList components;
+        QString detail;
+        quint32 totalPoints = 0;
+    };
+    bool fpga_mode_ = false;
+    QComboBox *fpga_channel_combo_ = nullptr;
+    QComboBox *fpga_component_combo_ = nullptr;
+    QMap<quint16, FpgaWaveDisplay> fpga_waves_;
     bool ui_test_connected_ = false;
     QString ui_test_saved_host_;
     QString ui_test_saved_port_;
