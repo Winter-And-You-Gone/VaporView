@@ -13,6 +13,116 @@ VaporView::Ground::Devices::RemoteSkyController *MainWindow::testRemoteSkyContro
 }
 #endif
 
+quint16 MainWindow::homeFpgaSensorSource(VaporView::SkyDeviceId device) const
+{
+    using VaporView::SkyDeviceId;
+    switch (device) {
+    case SkyDeviceId::Epsilon: return 0x42;
+    case SkyDeviceId::Ptb: return isUiTestMode() ? state_->fpga_sim_pressure_source_
+        : isRemoteSkyMode() ? state_->fpga_remote_config_.pressureSource : state_->fpga_config_.pressureSource;
+    case SkyDeviceId::Hmp: return 0x44;
+    case SkyDeviceId::Lidar: return 0x45;
+    case SkyDeviceId::Ai8TemperatureController: return 0x46;
+    default: return 0;
+    }
+}
+
+VaporView::DeviceState MainWindow::homeFpgaDeviceActionState(VaporView::SkyDeviceId device) const
+{
+    using VaporView::DeviceState;
+    using VaporView::SkyDeviceId;
+    const auto source = homeFpgaSensorSource(device);
+    if (!source && device != SkyDeviceId::WaveTcp) return DeviceState::Disabled;
+    if (state_->fpga_home_action_device_ != SkyDeviceId::All)
+        return state_->fpga_home_action_device_ == device ? DeviceState::Connecting : DeviceState::Disabled;
+    QMap<quint32, quint32> registers;
+    if (isUiTestMode()) {
+        if (state_->ui_test_connection_in_progress_) return DeviceState::Connecting;
+        if (!state_->fpga_sim_ready_) return DeviceState::Disconnected;
+        registers = state_->fpga_sim_registers_;
+    } else if (isRemoteSkyMode()) {
+        if (!state_->remote_sky_controller_->isOpen() || !state_->fpga_remote_status_.value("ready").toBool()
+            || std::chrono::steady_clock::now() - state_->fpga_remote_status_time_ >= std::chrono::seconds(4)
+            || state_->fpga_remote_request_id_ || state_->fpga_remote_status_.value("busy").toBool()) return DeviceState::Disabled;
+        const auto values = state_->fpga_remote_status_.value("registers").toObject();
+        for (auto it = values.begin(); it != values.end(); ++it) registers.insert(it.key().toUInt(), quint32(it.value().toDouble()));
+    } else {
+        if (state_->fpga_busy_ || state_->fpga_replaying_ || anyCollectorRunning()
+            || state_->connection_attempt_in_progress_) return DeviceState::Disabled;
+        if (!state_->fpga_ready_) return DeviceState::Disconnected;
+        registers = state_->fpga_registers_;
+    }
+    if (source) {
+        const quint32 control = 0x6004 + (source - 0x40) * 0x100;
+        if (!registers.contains(control)) return DeviceState::Disabled;
+        return registers.value(control) & 1 ? DeviceState::Connected : DeviceState::Disconnected;
+    }
+    for (quint32 control : {0x4004u,0x4104u,0x5004u,0x5104u})
+        if (registers.value(control) & 1) return DeviceState::Connected;
+    return registers.contains(0x4004) ? DeviceState::Disconnected : DeviceState::Disabled;
+}
+
+void MainWindow::setHomeFpgaDeviceEnabled(VaporView::SkyDeviceId device, bool enabled)
+{
+    using VaporView::SkyDeviceId;
+    const auto source = homeFpgaSensorSource(device);
+    if (!source && device != SkyDeviceId::WaveTcp) return;
+    state_->fpga_home_action_device_ = device;
+    state_->fpga_home_action_started_ = false;
+    if (enabled) startHomeDeviceActionSpinner(device);
+    if (isUiTestMode()) {
+        const auto apply = [this, device, source, enabled] {
+            if (!isUiTestMode() || state_->fpga_home_action_device_!=device) return;
+            if (!isFpgaRelayPath()) {state_->fpga_home_action_device_=SkyDeviceId::All;return;}
+            if (enabled && !state_->fpga_sim_ready_) state_->fpga_page_->simulateOperation({{"op","connect"}});
+            state_->fpga_page_->simulateOperation(device == SkyDeviceId::WaveTcp
+                ? QJsonObject{{"op","acquisition"},{"enabled",enabled}}
+                : QJsonObject{{"op","sensor"},{"source",source},{"enabled",enabled}});
+            state_->ui_test_model_->setDeviceState(device, enabled ? VaporView::DeviceState::Connected : VaporView::DeviceState::Disconnected);
+            state_->fpga_home_action_device_ = SkyDeviceId::All;
+            updateConnectionStatus(false);
+        };
+        if (enabled) QTimer::singleShot(350,this,apply); else apply();
+    } else if (!isRemoteSkyMode() && !state_->fpga_ready_) {
+        // Open the configured USB backend, then enable only the requested device.
+        QPointer<MainWindow> window(this);
+        auto *controller = state_->fpga_controller_;
+        const auto backend = state_->fpga_config_.backend;
+        QMetaObject::invokeMethod(controller,[controller,window,device,backend] {
+            controller->connectDevice({},backend);
+            const auto enableDevice = [window,device] {
+                if (window) QMetaObject::invokeMethod(window,[window,device] {
+                    if (!window || window->state_->fpga_home_action_device_ != device) return;
+                    window->state_->fpga_home_action_device_ = SkyDeviceId::All;
+                    if (window->isFpgaRelayPath() && !window->isRemoteSkyMode()
+                        && window->homeFpgaDeviceActionState(device) != VaporView::DeviceState::Connected)
+                        window->setHomeFpgaDeviceEnabled(device,true);
+                    else {
+                        window->updateHomeDeviceStatusCapsules();
+                        window->updateTemperatureTitleButtonsState();
+                    }
+                },Qt::QueuedConnection);
+            };
+            if (controller->ready() && !controller->busy()) enableDevice();
+            else if (controller->busy()) {
+                auto completion = std::make_shared<QMetaObject::Connection>();
+                *completion = QObject::connect(controller,&VaporView::Ground::Devices::FpgaDeviceController::connectionChanged,
+                    controller,[completion,enableDevice](bool ready,bool busy,const QString&) {
+                        if (busy) return;
+                        QObject::disconnect(*completion);
+                        if (ready) enableDevice();
+                    });
+            }
+        },Qt::QueuedConnection);
+    } else {
+        if (device == SkyDeviceId::WaveTcp) emit state_->fpga_page_->acquisitionRequested(enabled);
+        else emit state_->fpga_page_->sensorEnableRequested(source,enabled);
+        if (isRemoteSkyMode() && !state_->fpga_remote_request_id_) state_->fpga_home_action_device_ = SkyDeviceId::All;
+    }
+    updateHomeDeviceStatusCapsules();
+    updateTemperatureTitleButtonsState();
+}
+
 void MainWindow::setupFpgaControlPage()
 {
     using Controller = VaporView::Ground::Devices::FpgaDeviceController;
@@ -34,6 +144,11 @@ void MainWindow::setupFpgaControlPage()
     state_->fpga_controller_ = new Controller;
     auto *controller = state_->fpga_controller_;
     auto *page = state_->fpga_page_;
+    connect(page,&FpgaControlPage::simulationStateChanged,this,[this](bool connected,const QMap<quint32,quint32>& values,quint16 pressure) {
+        if (!isUiTestMode()) return;
+        state_->fpga_sim_ready_=connected;state_->fpga_sim_registers_=values;state_->fpga_sim_pressure_source_=pressure;
+        updateHomeDeviceStatusCapsules();updateTemperatureTitleButtonsState();
+    });
     connect(page, &FpgaControlPage::waveformDisplayUpdated, this,
         [this](quint16 source, const QVector<QVector<double>> &samples,
                const QStringList &components, const QString &detail, quint32 totalPoints, bool preview) {
@@ -199,6 +314,13 @@ void MainWindow::setupFpgaControlPage()
     connect(controller, &Controller::connectionChanged, this, [this](bool ready, bool busy, const QString &detail) {
         const bool wasReady = state_->fpga_ready_;
         state_->fpga_ready_ = ready; state_->fpga_busy_ = busy;
+        if (!isRemoteSkyMode()) {
+            if (ready && busy && state_->fpga_home_action_device_!=VaporView::SkyDeviceId::All) state_->fpga_home_action_started_ = true;
+            if (!busy && state_->fpga_home_action_started_) {
+                state_->fpga_home_action_device_=VaporView::SkyDeviceId::All;
+                state_->fpga_home_action_started_=false;
+            }
+        }
         if (!isRemoteSkyMode()) state_->fpga_page_->setConnectionState(ready,busy,detail);
         if (wasReady && !ready)
         {
@@ -213,9 +335,14 @@ void MainWindow::setupFpgaControlPage()
         updateRecordingActionStates();
     }, Qt::QueuedConnection);
     connect(controller, &Controller::hardwareValuesChanged, this, [this, page](const QMap<quint32, quint32>& values) {
-        if (!isRemoteSkyMode()) page->setHardwareValues(values);
+        state_->fpga_registers_=values;
+        if (!isRemoteSkyMode()) {page->setHardwareValues(values);updateHomeDeviceStatusCapsules();}
     }, Qt::QueuedConnection);
-    connect(controller, &Controller::logRecordGenerated, this, [page](const VaporView::LogRecord &record) {
+    connect(controller, &Controller::logRecordGenerated, this, [this,page](const VaporView::LogRecord &record) {
+        if (record.level>=VaporView::LogLevel::Error && !isRemoteSkyMode()) {
+            state_->fpga_home_action_device_=VaporView::SkyDeviceId::All;
+            state_->fpga_home_action_started_=false;
+        }
         page->appendDiagnostic(record.message);
         VaporView::LogService::withCurrentInstance([&record](VaporView::LogService &service) { service.publish(record); });
     }, Qt::QueuedConnection);
@@ -484,6 +611,8 @@ void MainWindow::updateFpgaPageBackend()
     state_->fpga_page_->setRecordingState(fresh && status.value("recording_state").toInt() == 1,
         fresh ? status.value("session_directory").toString() + (state_->is_english_ ? QStringLiteral("\nSky FPGA archived: ") : QStringLiteral("\n天空端 FPGA 归档：")) + status.value("archived_records").toString()
               : (state_->is_english_ ? QStringLiteral("Sky recording status unavailable") : QStringLiteral("天空端记录状态未知")));
+    if (!state_->fpga_remote_request_id_) state_->fpga_home_action_device_=VaporView::SkyDeviceId::All;
+    updateHomeDeviceStatusCapsules();updateTemperatureTitleButtonsState();
 }
 
 void MainWindow::shutdownFpgaWorker()

@@ -44,6 +44,7 @@ public:
                         bool partialFailure = false, qint64 elapsedMs = 0,
                         VaporView::SensorTransportPath path = VaporView::SensorTransportPath::DirectDevices);
 signals:
+    void simulationStateChanged(bool connected, const QMap<quint32, quint32> &registers, quint16 pressureSource);
     void waveformDisplayUpdated(quint16 source, const QVector<QVector<double>> &samples,
                                 const QStringList &components, const QString &detail, quint32 totalPoints, bool preview);
     void secondHarmonicPeakReady(quint16 source, quint32 cycleId, quint64 timestamp, double peak, bool preview);

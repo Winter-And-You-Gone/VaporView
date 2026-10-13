@@ -823,7 +823,7 @@ void FpgaControlPage::setUiTestState(bool enabled, bool dataStalled, bool partia
     setTransportConnected(sim.connected);
     setConnectionState(sim.connected,false,text("界面测试 · 模拟 FPGA · 不访问硬件","UI test · Simulated FPGA · No hardware access"));
     setRecordingState(sim.recording,text("模拟记录状态，不写入现场记录文件","Simulated recording state; no recording files written"));
-    if(!sim.connected)return;
+    if(!sim.connected){emit simulationStateChanged(false,{},configuration().pressureSource);return;}
     if(sim.rawStopPending) {
         sim.rawStopPending=false;
         for(quint16 source:{0x20,0x21})if(lastCompleteRaw_.contains(source)) {
@@ -869,6 +869,7 @@ void FpgaControlPage::setUiTestState(bool enabled, bool dataStalled, bool partia
     }
     for(quint16 source:{0x40,0x42,0x43,0x44,0x45,0x46})registers[0x6004+(source-0x40)*0x100]=!sim.disabledSensors.contains(source);
     setHardwareValues(registers);
+    emit simulationStateChanged(true,registers,configuration().pressureSource);
 
     const auto makeReading = [this, timestamp, live, partialFailure](
                                   quint16 source, VaporView::FpgaSensor::SensorKind kind) {

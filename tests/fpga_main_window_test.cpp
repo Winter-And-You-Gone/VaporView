@@ -15,6 +15,7 @@
 #include <QTabWidget>
 #include <QScrollArea>
 #include <QAbstractButton>
+#include <QToolButton>
 #include <QComboBox>
 #include <QGridLayout>
 #include <QElapsedTimer>
@@ -74,6 +75,13 @@ static void processFor(int milliseconds)
 {
     QElapsedTimer elapsed; elapsed.start();
     waitUntil([&] { return elapsed.elapsed() >= milliseconds; }, milliseconds + 1000);
+}
+static QToolButton *homeAction(MainWindow &window,const QString &name)
+{
+    for (auto *button:window.findChildren<QToolButton*>("homeDeviceActionButton"))
+        if (!button->property("deviceConfigAction").toBool() && button->toolTip().contains(name)) return button;
+    std::cerr << "Missing home action: " << name.toStdString() << '\n';
+    require(false,"requested home device action exists");return nullptr;
 }
 static void verifyCardMargins(MainWindow &window,FpgaControlPage *page,int scale)
 {
@@ -298,6 +306,78 @@ static void remotePageRouting()
     require(worker.isNull(), "Remote regression teardown joins and deletes Local USB worker");
     server.close();
 }
+static void remoteHomeActions()
+{
+    using namespace VaporView;
+    TcpTelemetryLink server;require(server.listen("127.0.0.1",0),"home control fake Sky server");
+    MainWindow window;
+    QMetaObject::invokeMethod(&window,"onDataSourceModeChanged",Q_ARG(int,1));
+    auto sky=SkyConfig::defaults();sky.sensor_transport_path=SensorTransportPath::FpgaRelay;
+    window.testInjectRemoteSkyConfig(sky.toJson());
+    auto *stack=window.findChild<QStackedWidget*>("mainPageStack");stack->setCurrentIndex(0);
+    auto *remote=window.testRemoteSkyController();
+    TelemetryCodec decoder,encoder;quint16 sequence=1,commandSequence=0;
+    QList<DeviceOperationRequest> requests;
+    QObject::connect(&server,&TelemetryLink::bytesReceived,&window,[&](const QByteArray &bytes) {
+        for (const auto &frame:decoder.feedBytes(bytes)) {
+            CommandMessage command;DeviceOperationRequest request;
+            if (frame.type!=MsgType::Command || !TelemetryCodec::parseCommand(frame.payload,command)
+                || command.command_id!=CommandId::DeviceOperation
+                || !TelemetryCodec::parseDeviceOperationRequest(command.payload,request)) continue;
+            require(request.device_id==SkyDeviceId::Fpga && request.operation==DeviceOperation::FpgaControl,
+                "home actions use typed FPGA controls, never legacy serial connect commands");
+            requests.append(request);commandSequence=command.command_seq;
+        }
+    });
+    require(remote->openTcp("127.0.0.1",server.localPort())&&waitUntil([&]{return remote->isOpen();}),"home remote link opens");
+    FpgaControlConfig config;config.pressureSource=0x43;
+    QJsonObject registers;
+    for (quint32 address:{0x6004u,0x6204u,0x6304u,0x6404u,0x6504u,0x6604u,0x4004u,0x4104u,0x5004u,0x5104u})
+        registers[QString::number(address)]=1;
+    QJsonObject status{{"connected",true},{"ready",true},{"busy",false},{"detail","ready"},
+        {"configuration",config.toJson()},{"registers",registers},{"archived_records","0"}};
+    const auto send=[&](MsgType type,const QByteArray &payload) {
+        const auto bytes=encoder.encodeFrame(type,payload,sequence++,1);
+        require(server.writeBytes(bytes)==bytes.size(),"home control Sky frame sent");
+    };
+    send(MsgType::FpgaStatus,FpgaRemote::encodeStatus(status));
+    auto *epsilon=homeAction(window,"EPSILON");
+    require(waitUntil([&]{return epsilon->isEnabled()&&epsilon->property("state")=="connected";}),
+        "register readback enables home controls without any valid measurement packets");
+    require(!homeAction(window,"RD105")->isEnabled(),"unsupported RD105 remains unavailable");
+    const QStringList names{"EPSILON","PTB210","HMP","TFA1500","AI-8288",QStringLiteral("波形源")};
+    const QList<quint16> sources{0x42,0x43,0x44,0x45,0x46,0};
+    for (int index=0;index<names.size();++index) {
+        auto *button=homeAction(window,names[index]);
+        for (bool enabled:{false,true}) {
+            const auto before=registers;const int count=requests.size();button->click();
+            require(waitUntil([&]{return requests.size()==count+1;}),"home click sends one FPGA request");
+            require(stack->currentIndex()==0,"remote per-device action keeps the home page selected");
+            QJsonObject control;require(FpgaRemote::parseControl(requests.last().payload,control),"home payload validates");
+            require(control.value("enabled").toBool()==enabled && control.value("op")== (sources[index]?"sensor":"acquisition"),
+                "home connect/disconnect selects the expected FPGA operation");
+            if(sources[index])require(control.value("source").toInt()==sources[index],"home sensor mapping includes selected BMP pressure source");
+            CommandAck ack;ack.command_id=CommandId::DeviceOperation;ack.command_seq=commandSequence;
+            send(MsgType::CommandAck,TelemetryCodec::serializeCommandAck(ack));processFor(30);
+            require(!button->isEnabled()&&button->property("state")=="connecting","ACK does not change confirmed device state");
+            button->click();processFor(20);require(requests.size()==count+1,"in-flight home action cannot be duplicated");
+            if(sources[index])registers[QString::number(0x6004+(sources[index]-0x40)*0x100)]=enabled?1:0;
+            else for(quint32 address:{0x4004u,0x4104u,0x5004u,0x5104u})registers[QString::number(address)]=enabled?1:0;
+            status["registers"]=registers;
+            DeviceOperationResponse response;response.request_id=requests.last().request_id;response.device_id=SkyDeviceId::Fpga;
+            response.operation=DeviceOperation::FpgaControl;response.payload=FpgaRemote::encodeStatus(status);
+            send(MsgType::DeviceOperationResponse,TelemetryCodec::serializeDeviceOperationResponse(response));
+            require(waitUntil([&]{return button->isEnabled()&&button->property("state")== (enabled?"connected":"disconnected");}),
+                "final register readback confirms the home connection state");
+            if(sources[index])for(const auto &key:before.keys())
+                if(key!=QString::number(0x6004+(sources[index]-0x40)*0x100))require(registers.value(key)==before.value(key),"one sensor action preserves other modules");
+        }
+    }
+    const int count=requests.size();remote->close();
+    require(waitUntil([&]{return !epsilon->isEnabled();}),"telemetry loss disables FPGA home controls");
+    processFor(50);require(requests.size()==count&&stack->currentIndex()==0,"link closure sends no FPGA stop and never changes page");
+    QMetaObject::invokeMethod(&window,"onDataSourceModeChanged",Q_ARG(int,0));window.close();server.close();
+}
 static void localSimulatorRouting()
 {
     const auto check=[](bool ok,const char *message){if(!ok)throw std::runtime_error(message);};
@@ -320,6 +400,8 @@ static void localSimulatorRouting()
     auto *acquisition=page->findChild<QAbstractButton*>("fpgaAcquisitionStart");
     check(backend&&devices&&connectButton&&disconnect&&acquisition,"normal FPGA controls are present");
     backend->setCurrentIndex(backend->findData("simulator"));
+    auto *pressureSource=page->findChild<QComboBox*>("fpgaPressureSource");
+    check(pressureSource,"pressure source selector exists");pressureSource->setCurrentIndex(pressureSource->findData(0x43));
     check(waitUntil([&]{return devices->currentData().toString()=="simulation://fpga"&&connectButton->isEnabled();},10000),
           "local simulator is enumerated and connectable");
     check(!page->property("fpgaUiTestMode").toBool(),"local protocol test does not use UI test mode");
@@ -341,8 +423,25 @@ static void localSimulatorRouting()
         closePrompt.start(10);button->click();closePrompt.stop();
         check(message.contains(expectedText),"locked capsule click explains how to unlock switching");
     };
-    connectButton->click();
+    auto *stack=window.findChild<QStackedWidget*>("mainPageStack");stack->setCurrentIndex(0);processFor(50);
+    auto *pressureAction=homeAction(window,"PTB210");
+    check(pressureAction->isEnabled(),"FPGA home connect does not require a serial port or an existing USB connection");
+    pressureAction->click();
     check(waitUntil([&]{return acquisition->isEnabled()&&disconnect->isEnabled();},12000),"local factory handshake enables normal controls");
+    check(waitUntil([&]{return pressureAction->isEnabled()&&pressureAction->property("state")=="connected";}),"home connect opens USB and confirms the already-enabled BMP sensor");
+    check(!page->findChild<QLabel*>("fpgaConnectionStatus")->text().contains(QStringLiteral("修改 BMP 地址")),"already-enabled BMP does not receive a duplicate address-setting start");
+    check(stack->currentIndex()==0,"local auto-connect keeps the home page selected");
+    const QStringList homeNames{"EPSILON","PTB210","HMP","TFA1500","AI-8288",QStringLiteral("波形源")};
+    for(const auto &name:homeNames) {
+        auto *button=homeAction(window,name);
+        for(bool enabled:{false,true}) {
+            button->click();
+            check(waitUntil([&]{return button->isEnabled()&&button->property("state")== (enabled?"connected":"disconnected");},10000),
+                "local home action confirms sensor or acquisition enable through actual VLP1 readback");
+            check(disconnect->isEnabled()&&stack->currentIndex()==0,"individual stop keeps USB open and stays on home");
+        }
+    }
+    check(!homeAction(window,"RD105")->isEnabled(),"local relay does not invent RD105 support");
     check(sourceSwitch->isEnabled()&&pathSwitch->isEnabled()&&!sourceSwitch->switchChecked()&&pathSwitch->switchChecked()&&!path->isEnabled(),
           "connected capsules stay clickable and display Local/FPGA while the mode is locked");
     check(sourceSwitch->grab().toImage()==sourceAppearance&&pathSwitch->grab().toImage()==pathAppearance,
@@ -555,6 +654,7 @@ int main(int argc,char **argv)
     app.setFont(standardFont);
     relayConfigurationPresentation();
     remotePageRouting();
+    remoteHomeActions();
     require(native.value("font_scale_percent").toInt()==100,"font scale stays at standard 100 percent");
     std::cout<<"fpga main window tests passed\n";
 }

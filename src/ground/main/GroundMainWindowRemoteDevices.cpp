@@ -2385,7 +2385,7 @@ void MainWindow::updateTemperatureTitleButtonsState()
         bool enabled = false;
         if (deviceState != VaporView::DeviceState::Disabled && !spinnerActive)
         {
-            if (isUiTestMode())
+            if (isFpgaRelayPath() || isUiTestMode())
             {
                 enabled = true;
             }
@@ -3224,7 +3224,7 @@ void MainWindow::updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId dev
     const bool linkOpen = state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen();
     const bool enabled = state == VaporView::DeviceState::Disabled || busy
         ? false
-        : isUiTestMode()
+        : isFpgaRelayPath() || isUiTestMode()
             ? true
             : remoteMode
                 ? linkOpen
@@ -3232,14 +3232,14 @@ void MainWindow::updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId dev
                     ? state_->tcp_wave_panel_ != nullptr
                     : ((connected && state_->disconnect_btn_ && state_->disconnect_btn_->isEnabled()) ||
                        (!connected && state_->connect_btn_ && state_->connect_btn_->isEnabled()));
-    const bool fpgaWave = isFpgaRelayPath() && device == VaporView::SkyDeviceId::WaveTcp;
-    button->setEnabled((fpgaWave || enabled) && !(isFpgaRelayPath() && device == VaporView::SkyDeviceId::TemperatureController));
+    button->setEnabled(enabled);
 
-    const QString actionText = fpgaWave
-        ? (state_->is_english_ ? QStringLiteral("View") : QStringLiteral("查看")) : busy
+    const QString actionText = busy
         ? (state_->is_english_ ? QStringLiteral("Connecting") : QStringLiteral("连接中"))
         : connected
             ? (state_->is_english_ ? QStringLiteral("Disconnect") : QStringLiteral("断开"))
+            : state == VaporView::DeviceState::Disabled && isFpgaRelayPath()
+                ? (state_->is_english_ ? QStringLiteral("FPGA device unavailable") : QStringLiteral("FPGA 设备不可用"))
             : state == VaporView::DeviceState::Disabled
                 ? (remoteMode
                     ? (state_->is_english_ ? QStringLiteral("Connect telemetry first") : QStringLiteral("请先连接数传"))
@@ -3248,8 +3248,8 @@ void MainWindow::updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId dev
                         : (state_->is_english_ ? QStringLiteral("Select port first") : QStringLiteral("请先选择串口")))
                 : (state_->is_english_ ? QStringLiteral("Connect") : QStringLiteral("连接"));
     const QString deviceName = homeDeviceDisplayName(device, state_->is_english_);
-    const QString modeHint = isFpgaRelayPath() && device == VaporView::SkyDeviceId::WaveTcp
-        ? QStringLiteral("FPGA ADC / DLIA") : device == VaporView::SkyDeviceId::WaveTcp
+    const QString modeHint = isFpgaRelayPath()
+        ? (state_->is_english_ ? QStringLiteral("FPGA relay device") : QStringLiteral("FPGA 中转设备")) : device == VaporView::SkyDeviceId::WaveTcp
         ? (remoteMode
             ? (state_->is_english_ ? QStringLiteral("remote Sky waveform") : QStringLiteral("天空端波形"))
             : (state_->is_english_ ? QStringLiteral("local TCP waveform") : QStringLiteral("本地 TCP 波形")))

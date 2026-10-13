@@ -353,6 +353,9 @@ private:
     void saveLocalDeviceEnabledState() const;
     bool homeDevicePortSelected(VaporView::SkyDeviceId device) const;
     VaporView::DeviceState homeDeviceActionState(VaporView::SkyDeviceId device) const;
+    quint16 homeFpgaSensorSource(VaporView::SkyDeviceId device) const;
+    VaporView::DeviceState homeFpgaDeviceActionState(VaporView::SkyDeviceId device) const;
+    void setHomeFpgaDeviceEnabled(VaporView::SkyDeviceId device, bool enabled);
     void triggerHomeDeviceAction(VaporView::SkyDeviceId device);
     void startHomeDeviceActionSpinner(VaporView::SkyDeviceId device);
     bool homeDeviceActionSpinnerActive(VaporView::SkyDeviceId device, qint64 nowMs) const;

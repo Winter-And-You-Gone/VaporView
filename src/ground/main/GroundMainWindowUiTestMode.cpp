@@ -277,6 +277,10 @@ void MainWindow::onUiTestScenarioTriggered(QAction *action)
 
 void MainWindow::setUiTestModeEnabled(bool enabled)
 {
+    if (!enabled) {
+        state_->fpga_home_action_device_=VaporView::SkyDeviceId::All;
+        state_->fpga_home_action_started_=false;
+    }
     if (enabled == state_->ui_test_mode_enabled_)
     {
         updateUiTestModeUi();

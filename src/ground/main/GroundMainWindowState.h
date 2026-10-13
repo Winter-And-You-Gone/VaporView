@@ -312,6 +312,11 @@ struct MainWindowState
     std::chrono::steady_clock::time_point fpga_position_time_{};
     std::chrono::steady_clock::time_point fpga_velocity_time_{};
     QSet<quint16> fpga_sources_;
+    QMap<quint32, quint32> fpga_registers_, fpga_sim_registers_;
+    bool fpga_sim_ready_ = false;
+    quint16 fpga_sim_pressure_source_ = 0x40;
+    VaporView::SkyDeviceId fpga_home_action_device_ = VaporView::SkyDeviceId::All;
+    bool fpga_home_action_started_ = false;
     std::mutex fpga_snapshot_mutex_;
     VaporView::Ground::Session::GroundSensorSnapshot fpga_recording_snapshot_;
     VaporView::Ai8TemperatureControllerProtocol::LiveData fpga_ai8_live_;
