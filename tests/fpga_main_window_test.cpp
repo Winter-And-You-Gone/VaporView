@@ -147,6 +147,13 @@ static void verifyCardMargins(MainWindow &window,FpgaControlPage *page,int scale
             }
             auto *sensorGrid=page->findChild<QGridLayout*>("fpgaSensorGrid");
             require(sensorGrid&&sensorGrid->rowCount()==5&&sensorGrid->columnCount()==4,"sensor card has five device rows");
+            if(tab==1) {
+                auto *pressure=page->findChild<QComboBox*>("fpgaPressureSource"),*humidity=page->findChild<QComboBox*>("fpgaHumiditySource");
+                require(pressure&&humidity&&pressure->parentWidget()==humidity->parentWidget(),"main window shows both source selectors in the sensor header");
+                auto *header=pressure->parentWidget();
+                require(header->rect().contains(pressure->geometry())&&header->rect().contains(humidity->geometry())
+                    &&pressure->geometry().right()<humidity->geometry().left(),"sensor source selectors fit within the title bar at large fonts");
+            }
             for(auto *card : page->findChildren<QWidget*>("fpgaSectionCard")) {
                 if(!card->isVisibleTo(page)||channelCards.contains(card))continue;
                 const QRect cardRect(card->mapTo(stack,QPoint()),card->size());

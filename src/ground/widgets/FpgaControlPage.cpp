@@ -11,7 +11,6 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
-#include <QFormLayout>
 #include <QGridLayout>
 #include <QJsonArray>
 #include <QShowEvent>
@@ -308,11 +307,17 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     wmsLayout->addStretch();dliaLayout->addStretch();
     pl->addStretch();
     auto *sensors=tab(QStringLiteral("传感器"),QStringLiteral("Sensors")); auto *sensorLayout=new QVBoxLayout(sensors);
-    auto *form=new QFormLayout; sensorLayout->addLayout(form);
-    pressure_=new VaporView::SingleLevelPopupComboBox(sensors); pressure_->setObjectName("fpgaPressureSource"); pressure_->addItem("PTB210",0x40); pressure_->addItem("BMP390",0x43);
-    auto *pressureLabel=new QLabel(sensors); label(pressureLabel,QStringLiteral("气压来源"),QStringLiteral("Pressure source")); pressureLabel->setBuddy(pressure_); form->addRow(pressureLabel,pressure_);
-    connect(pressure_,&QComboBox::currentIndexChanged,this,[this]{emit pressureSourceChanged(quint16(pressure_->currentData().toUInt()));emit configurationChanged(configuration());});
     auto *sensorCard=card(sensors,sensorLayout,QStringLiteral("传感器状态"),QStringLiteral("Sensor status"),QStringLiteral("activity"));
+    auto *sensorHeader=sensorCard->parentWidget()->findChild<QWidget*>(QStringLiteral("sectionTitleBar"),Qt::FindDirectChildrenOnly);
+    auto *sensorHeaderLayout=qobject_cast<QHBoxLayout*>(sensorHeader->layout());
+    pressure_=new VaporView::SingleLevelPopupComboBox(sensorHeader); pressure_->setObjectName("fpgaPressureSource"); pressure_->addItem("PTB210",0x40); pressure_->addItem("BMP390",0x43);
+    auto *pressureLabel=new QLabel(sensorHeader);pressureLabel->setObjectName("fpgaPressureSourceLabel");label(pressureLabel,QStringLiteral("气压来源"),QStringLiteral("Pressure source")); pressureLabel->setBuddy(pressure_);
+    auto *humidity=new VaporView::SingleLevelPopupComboBox(sensorHeader);humidity->setObjectName("fpgaHumiditySource");humidity->addItem("SHT45",0x44);
+    auto *humidityLabel=new QLabel(sensorHeader);humidityLabel->setObjectName("fpgaHumiditySourceLabel");label(humidityLabel,QStringLiteral("温湿度来源"),QStringLiteral("Humidity source"));humidityLabel->setBuddy(humidity);
+    for(auto *source:{pressure_,static_cast<QComboBox*>(humidity)})source->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    sensorHeaderLayout->addWidget(pressureLabel);sensorHeaderLayout->addWidget(pressure_);sensorHeaderLayout->addSpacing(12);
+    sensorHeaderLayout->addWidget(humidityLabel);sensorHeaderLayout->addWidget(humidity);
+    connect(pressure_,&QComboBox::currentIndexChanged,this,[this]{emit pressureSourceChanged(quint16(pressure_->currentData().toUInt()));emit configurationChanged(configuration());});
     auto *sensorGrid=new QGridLayout(sensorCard);sensorGrid->setObjectName("fpgaSensorGrid");sensorGrid->setSpacing(12);sensorGrid->setColumnStretch(1,1);
     const char *names[]={"PTB210","EPSILON","BMP390","SHT45","TFA1500-L"}; const quint16 sources[]={0x40,0x42,0x43,0x44,0x45};
     for(int i=0;i<5;++i) {

@@ -255,6 +255,15 @@ int main(int argc,char **argv) {
                         &&h1->geometry().bottom()<h2->geometry().top(),"harmonic plots fill the same column in vertical order");
                 }
                 if(i==1) {
+                    auto *pressure=page.findChild<QComboBox*>("fpgaPressureSource"),*humidity=page.findChild<QComboBox*>("fpgaHumiditySource");
+                    require(pressure&&humidity&&pressure->parentWidget()==humidity->parentWidget()
+                        &&pressure->parentWidget()->objectName()=="sectionTitleBar","both sensor source selectors occupy the shared card title bar");
+                    require(humidity->count()==1&&humidity->currentData().toUInt()==0x44,"humidity selector reflects the supported FPGA SHT45 source");
+                    auto *header=pressure->parentWidget();
+                    int previousRight=-1;
+                    for(auto *item:QList<QWidget*>{header->findChild<QLabel*>("sectionTitleLabel"),header->findChild<QLabel*>("fpgaPressureSourceLabel"),pressure,header->findChild<QLabel*>("fpgaHumiditySourceLabel"),humidity}) {
+                        const QRect rect=item->geometry();require(header->rect().contains(rect)&&rect.left()>previousRight,"sensor header title and source selectors fit without overlap");previousRight=rect.right();
+                    }
                     auto *grid=page.findChild<QGridLayout*>("fpgaSensorGrid");
                     require(grid&&grid->count()==20&&grid->rowCount()==5&&grid->columnCount()==4,"five ordinary sensors share one card with one row each");
                     auto *sensorBody=grid->parentWidget();
