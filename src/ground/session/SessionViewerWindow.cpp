@@ -293,6 +293,19 @@ void SessionViewerWindow::setupUi()
     setObjectName(QStringLiteral("sessionViewerWindow"));
     setAttribute(Qt::WA_StyledBackground, true);
     setAutoFillBackground(true);
+    // Keep the native top-level frame and the viewer canvas on the same theme
+    // surface.  Otherwise Windows paints the outer frame with its default
+    // palette while the inner cards use VaporView's light surface color.
+    {
+        QPalette viewerPalette = palette();
+        const bool dark = qApp->property(VaporView::kAppDarkThemeProperty).toBool();
+        const QColor surface = VaporView::appThemeColor(VaporView::AppThemeColor::Surface, dark);
+        if (viewerPalette.color(QPalette::Window) != surface)
+        {
+            viewerPalette.setColor(QPalette::Window, surface);
+            setPalette(viewerPalette);
+        }
+    }
 
     auto *scrollArea = new QScrollArea(this);
     scrollArea->setObjectName(QStringLiteral("sessionViewerScrollArea"));
@@ -677,8 +690,12 @@ void SessionViewerWindow::changeEvent(QEvent *event)
                   event->type() == QEvent::ApplicationPaletteChange ||
                   event->type() == QEvent::StyleChange || event->type() == QEvent::FontChange))
     {
-        device_data_page_->applyTheme();
-        loading_dialog_->applyTheme();
+        if (device_data_page_)
+            device_data_page_->applyTheme();
+        if (loading_dialog_)
+            loading_dialog_->applyTheme();
+        if (!navigation_splitter_)
+            return;
         updateNavigation();
         // Wait for the new stylesheet to reach the navigation buttons before
         // measuring them, including when returning to the standard font size.

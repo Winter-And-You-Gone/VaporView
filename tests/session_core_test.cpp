@@ -192,6 +192,18 @@ void testSessionMetadataLoading()
     require(!resolvedFromDirectory.isEmpty() && resolvedFromDirectory == resolvedFromFile,
             "directory and session.json resolve to the same session root");
 
+    QTemporaryDir recordingRoot;
+    require(recordingRoot.isValid(), "recording root is available");
+    const QString child = QDir(recordingRoot.path()).filePath(QStringLiteral("session_1"));
+    require(QDir().mkpath(child), "child session directory is created");
+    QFile childManifest(QDir(child).filePath(QStringLiteral("session.json")));
+    require(childManifest.open(QIODevice::WriteOnly), "child session manifest opens");
+    childManifest.write("{}", 2);
+    childManifest.close();
+    require(VaporView::Ground::SessionLoader::resolveSessionDirectory(recordingRoot.path()) ==
+                QDir::fromNativeSeparators(QFileInfo(child).absoluteFilePath()),
+            "recording root resolves to its newest child session");
+
     const VaporView::Ground::SessionMetadataLoadResult result =
         VaporView::Ground::SessionLoader::loadMetadata(sessionDir.path());
     require(result.success, "valid session metadata loads without a widget");

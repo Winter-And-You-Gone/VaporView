@@ -10,6 +10,7 @@
 #include <QSet>
 #include <deque>
 #include <functional>
+#include <optional>
 
 namespace VaporView::Ground::Devices
 {
@@ -76,6 +77,7 @@ private:
     void completed(quint32 sequence, bool success, quint32 status);
     void fail(const QString& detail);
     void report(const QString& detail, LogLevel level = LogLevel::Warning);
+    void reportRawResult(bool enabled, bool succeeded, const QString& detail);
     void trackConnection(quint16 source);
     void confirmConnection(quint16 source);
     void checkConnectionResults();
@@ -119,6 +121,7 @@ private:
     bool injected_ = false, ready_ = false, busy_ = false, replaying_ = false;
     bool drainWaveforms_ = false, backgroundRefresh_ = false, recoveringConnection_ = false, connectionRecoveryFailed_ = false;
     QString operation_, detail_;
+    std::optional<bool> rawOperation_;
 };
 }
 

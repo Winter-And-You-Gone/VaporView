@@ -163,7 +163,8 @@ SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
         }
     });
     connect(&device_manager_, &SkyDeviceManager::logRecord, this, [this](LogRecord record) {
-        if(record.fields.value(QStringLiteral("event"))==QStringLiteral("fpga_device_connection_result"))
+        if(record.fields.value(QStringLiteral("event"))==QStringLiteral("fpga_device_connection_result") ||
+           record.fields.value(QStringLiteral("event"))==QStringLiteral("fpga_raw_acquisition_result"))
             sendLinkFrame(MsgType::LogEvent,TelemetryCodec::serializeLogRecord(record));
         const bool published = LogService::withCurrentInstance([&](LogService& logService) {
             logService.publish(record);

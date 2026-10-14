@@ -52,6 +52,21 @@ QString SessionLoader::resolveSessionDirectory(const QString& path)
     const QFileInfo info(path);
     if (info.isDir())
     {
+        // The recording directory is also a valid browse target.  Resolve it
+        // to its newest complete child session so opening the directory cannot
+        // silently show an empty, parent-level pseudo-session.
+        const QString manifest = QDir(info.absoluteFilePath()).filePath(QStringLiteral("session.json"));
+        if (!QFileInfo::exists(manifest))
+        {
+            QDir childDir(info.absoluteFilePath());
+            const QFileInfoList children = childDir.entryInfoList(
+                QDir::Dirs | QDir::NoDotAndDotDot, QDir::Time | QDir::Reversed);
+            for (const QFileInfo& child : children)
+            {
+                if (QFileInfo::exists(QDir(child.absoluteFilePath()).filePath(QStringLiteral("session.json"))))
+                    return QDir::fromNativeSeparators(child.absoluteFilePath());
+            }
+        }
         return QDir::fromNativeSeparators(info.absoluteFilePath());
     }
     if (info.isFile() && info.fileName().compare(QStringLiteral("session.json"), Qt::CaseInsensitive) == 0)

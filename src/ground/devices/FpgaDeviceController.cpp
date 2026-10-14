@@ -107,6 +107,7 @@ void FpgaDeviceController::disconnectDevice()
     ++operationGeneration_;
     presentationTimer_.stop(); statusTimer_.stop();
     pendingConnections_.clear(); operationConnections_.clear();
+    rawOperation_.reset();
     if (session_) session_->close();
     flushPresentation();
     emit transportConnectionChanged(false);
@@ -210,6 +211,10 @@ void FpgaDeviceController::advance()
             presentationTimer_.start();statusTimer_.start();
         }
         busy_=false; emit hardwareValuesChanged(registers_);
+        if (rawOperation_) {
+            reportRawResult(*rawOperation_,true,QStringLiteral("寄存器读回确认。"));
+            rawOperation_.reset();
+        }
         if (!backgroundRefresh_) emit connectionChanged(ready_,false,operation_+QStringLiteral("完成"));
         backgroundRefresh_=false;
         emit snapshot(nowUs(),{{"event","operation_completed"},{"operation",operation_},{"configuration",configuration_.toJson()}});
@@ -301,6 +306,10 @@ void FpgaDeviceController::completed(quint32 seq, bool success, quint32 status)
 
 void FpgaDeviceController::fail(const QString& detail)
 {
+    if (rawOperation_) {
+        reportRawResult(*rawOperation_,false,detail);
+        rawOperation_.reset();
+    }
     const auto affected=operationConnections_;
     for (quint16 source:affected) {
         if (pendingConnections_.contains(source)) reportConnection(source,QStringLiteral("failed"),QStringLiteral("TRANSACTION_FAILED"),detail);
@@ -324,6 +333,19 @@ void FpgaDeviceController::report(const QString& detail, LogLevel level)
     record.fields={{QStringLiteral("event"),QStringLiteral("fpga_operation_diagnostic")},
         {QStringLiteral("operation"),operation_},{QStringLiteral("ready"),ready_},{QStringLiteral("busy"),busy_}};
     if (level>=LogLevel::Error) record.fields.insert(QStringLiteral("error_code"),QStringLiteral("FPGA_OPERATION_FAILED"));
+    emit logRecordGenerated(record);
+}
+
+void FpgaDeviceController::reportRawResult(bool enabled, bool succeeded, const QString& detail)
+{
+    LogRecord record;
+    record.source=QStringLiteral("Ground"); record.category=QStringLiteral("device.fpga");
+    record.level=succeeded?LogLevel::Info:LogLevel::Warning;
+    record.message=QStringLiteral("原始信号：")+(enabled?QStringLiteral("开始采集"):QStringLiteral("停止采集"))+
+        (succeeded?QStringLiteral("成功，"):QStringLiteral("失败，"))+detail;
+    record.fields={{QStringLiteral("event"),QStringLiteral("fpga_raw_acquisition_result")},
+        {QStringLiteral("enabled"),enabled},{QStringLiteral("result"),succeeded?QStringLiteral("succeeded"):QStringLiteral("failed")},
+        {QStringLiteral("reason"),detail},{QStringLiteral("ui_visibility"),QStringLiteral("attention")}};
     emit logRecordGenerated(record);
 }
 
@@ -706,9 +728,20 @@ void FpgaDeviceController::prepareSensorConfiguration(quint16 source, quint32 ba
 
 void FpgaDeviceController::setRawEnabled(bool enable)
 {
-    if (!ready_) return;
-    if (busy_ && !backgroundRefresh_) { if (!enable) QTimer::singleShot(100,this,[this]{ setRawEnabled(false); }); return; }
-    if (!begin(enable?QStringLiteral("启动 RAW 上传"):QStringLiteral("停止 RAW 上传"))) return;
+    if (!ready_) {
+        reportRawResult(enable,false,QStringLiteral("FPGA 未就绪。"));
+        return;
+    }
+    if (busy_ && !backgroundRefresh_) {
+        if (!enable) QTimer::singleShot(100,this,[this]{ setRawEnabled(false); });
+        else reportRawResult(true,false,QStringLiteral("当前有其它 FPGA 操作正在执行。"));
+        return;
+    }
+    if (!begin(enable?QStringLiteral("启动 RAW 上传"):QStringLiteral("停止 RAW 上传"))) {
+        reportRawResult(enable,false,QStringLiteral("当前无法执行 FPGA 操作。"));
+        return;
+    }
+    rawOperation_=enable;
     if(enable) {write(0x0050,3);verify(0x0050,3);}
     for (quint32 b:{0x4000u,0x4100u}) { write(b+0x3c,enable?1:0); verify(b+0x3c,enable?1:0); }
     if(!enable) {
