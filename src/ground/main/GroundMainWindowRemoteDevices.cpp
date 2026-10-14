@@ -977,6 +977,7 @@ void MainWindow::markRemoteSkyLinkClosed()
 
 bool MainWindow::remoteDeviceDataValid(VaporView::SkyDeviceId device, qint64 timeout_ms) const
 {
+    if (isFpgaRelayPath() && device == VaporView::SkyDeviceId::Hmp) return false;
     if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
     {
         return false;

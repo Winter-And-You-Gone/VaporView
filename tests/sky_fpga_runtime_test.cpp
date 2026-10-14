@@ -28,13 +28,25 @@ int main(int argc,char **argv)
     pressure.push_back(7);pressure.push_back(4);append32(pressure,101459000);
     const auto sensor=FpgaVlp1::buildFrame(FpgaVlp1::FrameType::Data,99,0x40,0x1100,pressure,true,3,100000000,0);
     mock->sensorWire=QByteArray(reinterpret_cast<const char*>(sensor.data()),qsizetype(sensor.size()));
+    std::vector<std::uint8_t> humidity;append16(humidity,1);append16(humidity,3);
+    for(auto entry:{std::pair<quint16,quint32>{0x10,22000},{0x11,33000}}) {
+        append16(humidity,entry.first);humidity.push_back(entry.first==0x10?7:3);humidity.push_back(4);append32(humidity,entry.second);
+    }
+    append16(humidity,1);humidity.push_back(3);humidity.push_back(4);append32(humidity,0);
+    const auto sht=FpgaVlp1::buildFrame(FpgaVlp1::FrameType::Data,100,0x44,0x1100,humidity,true,3,100000000,0);
+    mock->sensorWire.append(reinterpret_cast<const char*>(sht.data()),qsizetype(sht.size()));
+    bool internalReceived=false;
     bool pressureReceived=false,fpgaSensorReceived=false;
     QObject::connect(&runtime,&SkyRuntime::telemetryFrameReady,[&](MsgType type,const QByteArray& bytes) {
         if(type==MsgType::TelemetryBasic) { TelemetryBasic data;
+            if(TelemetryCodec::parseBasicTelemetry(bytes,data)) require(!(data.validity_flags&(BasicHasTemperature|BasicHasHumidity)),"SHT45 never becomes environmental HMP telemetry");
             if(TelemetryCodec::parseBasicTelemetry(bytes,data) && (data.validity_flags&BasicHasPressure))
                 pressureReceived=std::abs(data.pressure_hpa-1014.59)<0.02;
         } else if(type==MsgType::FpgaSensor) { FpgaSensor::Reading reading;
-            fpgaSensorReceived=FpgaRemote::parseSensor(bytes,reading) && reading.source==0x40 && reading.pressurePa.has_value();
+            if(FpgaRemote::parseSensor(bytes,reading)) {
+                fpgaSensorReceived |= reading.source==0x40 && reading.pressurePa.has_value();
+                internalReceived |= reading.source==0x44 && reading.temperatureC && reading.humidityPct;
+            }
         }
     });
     runtime.setFpgaTransportForTesting(std::move(mock));
@@ -99,7 +111,7 @@ int main(int argc,char **argv)
     },"ipc-A");require(completions==3,"completed retry with new sequence reuses result cache");
     runtime.submitCommand(conflictCommand,conflict,"ipc-A");require(conflicts==2,"completed request ID cannot be reused with changed payload");
     require(wire->temperatureWrites.load()==1,"retransmitted requests do not repeat physical writes");
-    waitUntil([&]{return pressureReceived && fpgaSensorReceived;},"FPGA pressure reaches both standardized telemetry and diagnostic sensor message");
+    waitUntil([&]{return pressureReceived && fpgaSensorReceived && internalReceived;},"FPGA pressure reaches both standardized telemetry and diagnostic sensor message");
     CommandErrorCode error;
     SkyDeviceManager manager;manager.loadConfig(config);
     auto selectionTransport=std::make_unique<ScriptedTransport>();auto *selectionWire=selectionTransport.get();
@@ -119,8 +131,8 @@ int main(int argc,char **argv)
     auto selected=config;selected.fpga.configuration.pressureSource=0x43;
     require(manager.applyConfig(selected).json.value("success").toBool(),"pressure source selection applies");
     require(manager.fpgaStatus().value("ready").toBool()&&selectionWire->openCount.load()==1&&
-        manager.config().fpga.configuration.pressureSource==0x43,
-        "changing the normalized pressure source preserves the active FPGA USB session");
+        manager.config().fpga.configuration.pressureSource==0x40,
+        "legacy pressure selection is ignored and preserves the active FPGA USB session");
     require(!manager.receiveRtcmCorrectionData("rtcm",&error) && error==CommandErrorCode::UnknownCommand,"FPGA topology refuses unsupported independent RTCM serial path");
     require(!manager.connectDevice(SkyDeviceId::Epsilon,&error),"FPGA topology blocks direct sensor collector");
     require(telemetryPort!=0,"ephemeral telemetry port reported");

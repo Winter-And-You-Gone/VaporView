@@ -8,6 +8,7 @@
 #include <QDoubleValidator>
 #include <QIntValidator>
 #include "FpgaTelemetry.h"
+#include "ground/widgets/DeviceEnabledCheckBox.h"
 
 #ifdef VAPORVIEW_MAIN_WINDOW_TESTING
 VaporView::Ground::Devices::RemoteSkyController *MainWindow::testRemoteSkyController()
@@ -104,15 +105,66 @@ void MainWindow::syncFpgaDeviceConfigUi()
         editor->setToolTip(hint+(key=="poll_ms"?(state_->is_english_?QStringLiteral(" Frequency in Hz; polling cadence, not measured sample rate.")
             :QStringLiteral(" 频率单位 Hz，表示轮询节奏，不是实测数据频率。")):QString()));
     };
+    if (relay && state_->device_config_.ptb_baud_combo && state_->device_config_.internal_sensor_rows.isEmpty()) {
+        auto *parent=state_->device_config_.ptb_baud_combo->parentWidget();
+        auto *grid=qobject_cast<QGridLayout*>(parent->layout());
+        for (quint16 source : {0x43,0x44}) {
+            const int row=grid->rowCount();
+            const QString name=source==0x43?QStringLiteral("BMP390"):QStringLiteral("SHT45");
+            auto *device=new QLabel(name,parent);device->setObjectName("deviceInternalName"+name);device->setProperty("internalDeviceName",true);
+            auto *port=new QLabel(QStringLiteral("FPGA"),parent);port->setAlignment(Qt::AlignCenter);
+            auto *bus=new QLabel(QStringLiteral("I²C"),parent);bus->setAlignment(Qt::AlignCenter);
+            auto *rateLabel=new QLabel(parent);rateLabel->setObjectName("fieldLabel");rateLabel->setAlignment(Qt::AlignRight|Qt::AlignVCenter);
+            auto *preset=new QComboBox(parent);preset->setObjectName("deviceInternalRate"+name);
+            preset->setFixedSize(state_->device_config_.ptb_rate_combo->size());
+            auto *enabled=new DeviceEnabledCheckBox(parent);enabled->setObjectName("deviceInternalEnabled"+name);
+            enabled->setEnabled(false);
+            auto *action=new QToolButton(parent);action->setProperty("fpgaSensorSource",source);
+            action->setFocusPolicy(Qt::TabFocus);
+            applyDeviceConfigRemoteButtonPresentation(action,VaporView::CommandId::ConnectDevice,
+                VaporView::SkyDeviceId::Fpga,state_->is_english_,true);
+            connect(action,&QToolButton::clicked,this,[this,source] {
+                const auto registers=homeFpgaRegisters();
+                if (!isFpgaRelayPath() || registers.isEmpty()) return;
+                emit state_->fpga_page_->sensorEnableRequested(source,!(registers.value(0x6004+(source-0x40)*0x100)&1));
+            });
+            const QList<QWidget*> widgets{device,port,bus,rateLabel,preset,enabled,action};
+            const int columns[]{0,1,2,3,4,5,7};
+            for(int i=0;i<widgets.size();++i)grid->addWidget(widgets[i],row,columns[i],Qt::AlignVCenter);
+            state_->device_config_.internal_sensor_rows[source]=widgets;
+        }
+    }
+    for(auto it=state_->device_config_.internal_sensor_rows.begin();it!=state_->device_config_.internal_sensor_rows.end();++it) {
+        const auto &widgets=it.value();
+        if (relay) field(qobject_cast<QComboBox*>(widgets[4]),it.key(),"poll_ms",it.key()==0x43?0x6314:0x6414);
+        const bool connected=registers.value(0x6004+(it.key()-0x40)*0x100)&1;
+        auto *check=qobject_cast<QCheckBox*>(widgets[5]);check->setChecked(connected);
+        qobject_cast<QLabel*>(widgets[3])->setText(state_->is_english_?QStringLiteral("Rate:"):QStringLiteral("频率："));
+        auto *button=qobject_cast<QToolButton*>(widgets[6]);
+        applyDeviceConfigRemoteButtonPresentation(button,connected?VaporView::CommandId::DisconnectDevice:VaporView::CommandId::ConnectDevice,
+            VaporView::SkyDeviceId::Fpga,state_->is_english_,true);
+        button->setToolTip((connected?(state_->is_english_?"Disconnect ":"断开 "):(state_->is_english_?"Connect ":"连接 "))+qobject_cast<QLabel*>(widgets[0])->text());
+        button->setAccessibleName(button->toolTip());
+        button->setEnabled(relay&&!busy&&!registers.isEmpty());
+        for(auto *widget:widgets)widget->setVisible(relay);
+        // The preset is only a geometry anchor for the shared FPGA draft editor.
+        widgets[4]->hide();
+        if (!relay) {
+            const auto prefix=widgets[4]->objectName();
+            for(auto *child:widgets[4]->parentWidget()->findChildren<QWidget*>(QString(),Qt::FindDirectChildrenOnly))
+                if(child->objectName().startsWith(prefix))child->hide();
+        }
+    }
+    refreshInternalEnvironment();
     const quint16 pressure = homeFpgaSensorSource(VaporView::SkyDeviceId::Ptb);
     field(state_->device_config_.epsilon_baud_combo,0x42,"baud",0x6210);
     field(state_->device_config_.ptb_baud_combo,pressure,pressure==0x40?"baud":"",0x6010,QStringLiteral("I²C"));
-    field(state_->device_config_.hmp_baud_combo,0x44,{},0,QStringLiteral("I²C"));
+    field(state_->device_config_.hmp_baud_combo,0,{},0,state_->is_english_?QStringLiteral("Not implemented"):QStringLiteral("下位机未接入"));
     field(state_->device_config_.lidar_baud_combo,0x45,"baud",0x6510);
     field(state_->device_config_.ai8_temperature_baud_combo,0x46,{},0,registers.contains(0x6610)?QString::number(registers.value(0x6610)):QStringLiteral("19200"));
     field(state_->device_config_.temperature_baud_combo,0,{},0,state_->is_english_?QStringLiteral("Unsupported"):QStringLiteral("不支持"));
     field(state_->device_config_.ptb_rate_combo,pressure,"poll_ms",pressure==0x43?0x6314:0x6018);
-    field(state_->device_config_.hmp_rate_combo,0x44,"poll_ms",0x6414);
+    field(state_->device_config_.hmp_rate_combo,0,{},0,QStringLiteral("—"));
     field(state_->device_config_.ai8_temperature_rate_combo,0x46,"poll_ms",0x662c);
     field(state_->device_config_.lidar_rate_combo,0x45,{},0,state_->is_english_?QStringLiteral("Device output"):QStringLiteral("设备输出"));
     field(state_->device_config_.temperature_rate_combo,0,{},0,QStringLiteral("—"));
@@ -125,7 +177,7 @@ void MainWindow::syncFpgaDeviceConfigUi()
         return;
     }
     if (state_->device_config_.ptb_lbl) state_->device_config_.ptb_lbl->setText(pressure == 0x43 ? QStringLiteral("BMP390") : QStringLiteral("PTB210"));
-    if (state_->device_config_.hmp_lbl) state_->device_config_.hmp_lbl->setText(QStringLiteral("SHT45"));
+
     if (state_->device_config_.epsilon_packet_rates_btn) {
         state_->device_config_.epsilon_packet_rates_btn->setEnabled(false);
         state_->device_config_.epsilon_packet_rates_btn->setToolTip(epsilonUnsupported);
@@ -139,18 +191,7 @@ void MainWindow::syncFpgaDeviceConfigUi()
         check->setToolTip(state_->is_english_ ? QStringLiteral("Direct startup preset. Use the device action to enable or disable the FPGA channel.")
             : QStringLiteral("直连启动预设。FPGA 通道启停请使用设备操作按钮。"));
     }
-    for (const auto &entry : {qMakePair(state_->device_config_.ptb_source_combo, pressure == 0x43 ? QStringLiteral("bmp390") : QStringLiteral("ptb210")),
-                             qMakePair(state_->device_config_.hmp_source_combo, QStringLiteral("sht45"))}) {
-        if (!entry.first) continue;
-        const QSignalBlocker blocker(entry.first);
-        entry.first->setCurrentIndex(entry.first->findData(entry.second));
-        entry.first->setToolTip(state_->is_english_ ? QStringLiteral("FPGA sensor source; shared with the FPGA page.") : QStringLiteral("FPGA 传感器来源，与 FPGA 页面同步。"));
-    }
-    if (state_->device_config_.hmp_source_combo) state_->device_config_.hmp_source_combo->setEnabled(false);
-    if (state_->device_config_.ptb_source_combo) state_->device_config_.ptb_source_combo->setEnabled(
-        isUiTestMode() || (isRemoteSkyMode()
-            ? state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen() && !state_->remote_sky_config_applying_ && !state_->fpga_remote_request_id_
-            : !state_->fpga_busy_ && !state_->fpga_replaying_));
+
 }
 
 QMap<quint16, QJsonObject>& MainWindow::fpgaSensorDrafts()
@@ -190,9 +231,9 @@ quint16 MainWindow::homeFpgaSensorSource(VaporView::SkyDeviceId device) const
     using VaporView::SkyDeviceId;
     switch (device) {
     case SkyDeviceId::Epsilon: return 0x42;
-    case SkyDeviceId::Ptb: return isUiTestMode() ? state_->fpga_sim_pressure_source_
-        : isRemoteSkyMode() ? state_->fpga_remote_config_.pressureSource : state_->fpga_config_.pressureSource;
-    case SkyDeviceId::Hmp: return 0x44;
+    case SkyDeviceId::Ptb: return 0x40;
+    // HMP has no implemented measurement/control channel in the current firmware.
+    case SkyDeviceId::Hmp: return 0;
     case SkyDeviceId::Lidar: return 0x45;
     case SkyDeviceId::Ai8TemperatureController: return 0x46;
     default: return 0;
@@ -408,6 +449,9 @@ void MainWindow::setupFpgaControlPage()
         if (!isUiTestMode()) return;
         state_->fpga_sim_ready_=connected;state_->fpga_sim_registers_=values;state_->fpga_sim_pressure_source_=pressure;
         updateHomeDeviceStatusCapsules();updateTemperatureTitleButtonsState();syncFpgaDeviceConfigUi();
+    });
+    connect(page, &FpgaControlPage::simulationSensorUpdated, this, [this](const VaporView::FpgaSensor::Reading &reading) {
+        if (isUiTestMode()) updateInternalEnvironment(reading);
     });
     connect(page, &FpgaControlPage::waveformDisplayUpdated, this,
         [this](quint16 source, const QVector<QVector<double>> &samples,
@@ -654,16 +698,11 @@ void MainWindow::setupFpgaControlPage()
         const bool valid = r.validity.structure && r.validity.crc && r.validity.deviceOnline && r.validity.measurement;
         if (valid) state_->fpga_sources_.insert(r.source); else state_->fpga_sources_.remove(r.source);
         const auto now = std::chrono::steady_clock::now();
-        if ((r.kind == VaporView::FpgaSensor::SensorKind::Ptb210 || r.kind == VaporView::FpgaSensor::SensorKind::Bmp390)
-            && r.source == state_->fpga_config_.pressureSource)
+        updateInternalEnvironment(r);
+        if (r.kind == VaporView::FpgaSensor::SensorKind::Ptb210 && r.source == 0x40)
         {
             state_->current_ptb_ = VaporView::PtbData{};
             if (valid && r.pressurePa) { state_->current_ptb_.pressure_hpa = *r.pressurePa/100.; state_->current_ptb_.valid=true; state_->current_ptb_.timestamp=now; }
-        }
-        else if (r.kind == VaporView::FpgaSensor::SensorKind::Sht45)
-        {
-            state_->current_hmp_ = VaporView::HmpData{};
-            if (valid && r.temperatureC && r.humidityPct) { state_->current_hmp_.temperature=*r.temperatureC; state_->current_hmp_.humidity=*r.humidityPct; state_->current_hmp_.valid=true; state_->current_hmp_.timestamp=now; }
         }
         else if (r.kind == VaporView::FpgaSensor::SensorKind::Tfa1500)
         {
@@ -713,8 +752,8 @@ void MainWindow::setupFpgaControlPage()
                 snapshot.epsilon=state_->current_epsilon_; snapshot.ptb=state_->current_ptb_;
                 snapshot.hmp=state_->current_hmp_; snapshot.lidar=state_->current_lidar_;
                 snapshot.hasEpsilon=state_->fpga_sources_.contains(0x42) && snapshot.epsilon.valid;
-                snapshot.hasPtb=state_->fpga_sources_.contains(state_->fpga_config_.pressureSource) && snapshot.ptb.valid;
-                snapshot.hasHmp=state_->fpga_sources_.contains(0x44) && snapshot.hmp.valid;
+                snapshot.hasPtb=state_->fpga_sources_.contains(0x40) && snapshot.ptb.valid;
+                snapshot.hasHmp=false; // Reserved HMP source 0x41 is not implemented by the firmware.
                 snapshot.hasLidar=state_->fpga_sources_.contains(0x45) && snapshot.lidar.valid;
             }
         }
@@ -740,7 +779,10 @@ void MainWindow::setupFpgaControlPage()
         if (isRemoteSkyMode() && state_->remote_sky_controller_->isOpen()
             && state_->fpga_remote_status_.value("ready").toBool()
             && std::chrono::steady_clock::now() - state_->fpga_remote_status_time_ < std::chrono::seconds(4))
+        {
             page->updateSensor(reading);
+            updateInternalEnvironment(reading);
+        }
     });
     connect(remote, &Remote::fpgaWaveformUpdated, this, [this, page](const VaporView::FpgaWave::CompletedStream& stream) {
         if (isRemoteSkyMode() && state_->remote_sky_controller_->isOpen()
@@ -953,8 +995,9 @@ void MainWindow::invalidateFpgaMeasurements()
     state_->fpga_position_valid_=false;
     state_->fpga_velocity_valid_=false;
     if (state_->fpga_sources_.contains(0x42)) state_->current_epsilon_ = VaporView::EpsilonData{};
-    if (state_->fpga_sources_.contains(state_->fpga_config_.pressureSource)) state_->current_ptb_ = VaporView::PtbData{};
-    if (state_->fpga_sources_.contains(0x44)) state_->current_hmp_ = VaporView::HmpData{};
+    if (state_->fpga_sources_.contains(0x40)) state_->current_ptb_ = VaporView::PtbData{};
+    if (isFpgaRelayPath()) state_->current_hmp_ = VaporView::HmpData{};
+    state_->internal_environment_.clear();state_->internal_environment_times_.clear();
     if (state_->fpga_sources_.contains(0x45)) state_->current_lidar_ = VaporView::LidarData{};
     if (state_->fpga_sources_.contains(0x46))
     {
@@ -965,4 +1008,51 @@ void MainWindow::invalidateFpgaMeasurements()
     }
     state_->fpga_sources_.clear();
     onRefreshTimer();
+}
+
+void MainWindow::updateInternalEnvironment(const VaporView::FpgaSensor::Reading &reading)
+{
+    refreshInternalEnvironment();
+    if ((reading.source == 0x43 && reading.kind == VaporView::FpgaSensor::SensorKind::Bmp390)
+        || (reading.source == 0x44 && reading.kind == VaporView::FpgaSensor::SensorKind::Sht45)) {
+        state_->internal_environment_[reading.source] = reading;
+        state_->internal_environment_times_[reading.source] = std::chrono::steady_clock::now();
+        refreshInternalEnvironment();
+    }
+}
+
+void MainWindow::refreshInternalEnvironment()
+{
+    if (!state_->internal_environment_lbl_) return;
+    const int context=(isRemoteSkyMode()?1:0)+(isUiTestMode()?2:0);
+    if (context!=state_->internal_environment_context_) {
+        state_->internal_environment_.clear();state_->internal_environment_times_.clear();
+        state_->internal_environment_context_=context;
+    }
+    const auto registers = homeFpgaRegisters();
+    const bool live = isFpgaRelayPath() && !registers.isEmpty();
+    if (!live) {state_->internal_environment_.clear();state_->internal_environment_times_.clear();}
+    for(quint16 source:{0x43,0x44})if(!(registers.value(0x6004+(source-0x40)*0x100)&1)) {
+        state_->internal_environment_.remove(source);state_->internal_environment_times_.remove(source);
+    }
+    const auto value = [&](quint16 source, std::optional<double> VaporView::FpgaSensor::Reading::*field, double scale) {
+        const auto reading = state_->internal_environment_.value(source);
+        const quint32 base = 0x6000 + (source - 0x40) * 0x100;
+        const auto age = std::chrono::steady_clock::now() - state_->internal_environment_times_.value(source);
+        const auto expiry = std::chrono::milliseconds(qMax<quint64>(4000, quint64(registers.value(base+0x14,1000))*3));
+        const auto number = reading.*field;
+        if (!live || !(registers.value(base+4)&1) || age >= expiry || !reading.validity.structure
+            || !reading.validity.crc || !reading.validity.deviceOnline || !reading.validity.measurement
+            || !number || !std::isfinite(*number)) return QStringLiteral("—");
+        return QString::number(*number*scale, 'f', 2);
+    };
+    const auto pressure = value(0x43,&VaporView::FpgaSensor::Reading::pressurePa,0.01);
+    const auto temperature = value(0x44,&VaporView::FpgaSensor::Reading::temperatureC,1);
+    const auto humidity = value(0x44,&VaporView::FpgaSensor::Reading::humidityPct,1);
+    state_->internal_environment_lbl_->setText((state_->is_english_
+        ? QStringLiteral("Internal pressure: %1 hPa\nInternal temperature: %2 °C\nInternal humidity: %3 %RH")
+        : QStringLiteral("内部气压：%1 hPa\n内部温度：%2 °C\n内部湿度：%3 %RH")).arg(pressure,temperature,humidity));
+    state_->internal_environment_lbl_->setToolTip(state_->is_english_
+        ? QStringLiteral("BMP390 pressure; SHT45 temperature/humidity. Environmental PTB210/HMP data and session fields are separate.")
+        : QStringLiteral("BMP390 内部气压；SHT45 内部温湿度。环境数据及 session 字段继续使用 PTB210/HMP。"));
 }

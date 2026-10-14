@@ -262,12 +262,15 @@ int main(int argc, char **argv)
     seq = controller.requestSkyConfig();
     require(waitUntil([&]() {
                 return receivedConfig.value(QStringLiteral("ptb")).toObject().value(QStringLiteral("source")).toString() ==
-                       QStringLiteral("bmp390");
+                       QStringLiteral("ptb210");
             }, &process),
-            "GetSkyConfig reflects BMP390 after apply");
+            "GetSkyConfig migrates legacy BMP390 environment selection to PTB210");
     require(receivedConfig.value(QStringLiteral("hmp")).toObject().value(QStringLiteral("source")).toString() ==
-                QStringLiteral("sht45"),
-            "GetSkyConfig reflects SHT45 after apply");
+                QStringLiteral("hmp3"),
+            "GetSkyConfig migrates legacy SHT45 environment selection to HMP");
+    require(receivedConfig.value(QStringLiteral("ptb")).toObject().value(QStringLiteral("baud")).toInt() == 9600 &&
+                receivedConfig.value(QStringLiteral("hmp")).toObject().value(QStringLiteral("baud")).toInt() == 19200,
+            "legacy internal sensor serial settings do not reach environmental instruments");
     require(receivedConfig.value(QStringLiteral("ai8_temperature_controller")).toObject()
                 .value(QStringLiteral("slave_address")).toInt() == 7,
             "GetSkyConfig reflects AI-8 slave address after apply");
@@ -585,11 +588,11 @@ int main(int argc, char **argv)
     seq = controller.requestSkyConfig();
     require(waitUntil([&]() {
                 return receivedConfig.value(QStringLiteral("ptb")).toObject().value(QStringLiteral("source")).toString() ==
-                       QStringLiteral("bmp390");
+                       QStringLiteral("ptb210");
             }, &process),
             "Restarted SkyCore reloads saved pressure source");
     require(receivedConfig.value(QStringLiteral("hmp")).toObject().value(QStringLiteral("source")).toString() ==
-                QStringLiteral("sht45"),
+                QStringLiteral("hmp3"),
             "Restarted SkyCore reloads saved humidity source");
     require(receivedConfig.value(QStringLiteral("ai8_temperature_controller")).toObject()
                 .value(QStringLiteral("port")).toString() == QStringLiteral("/dev/test-ai8-updated"),

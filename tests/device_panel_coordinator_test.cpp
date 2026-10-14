@@ -229,7 +229,7 @@ int main(int argc, char **argv)
                          labelCenterYInPanel(lidarRateValue, lidar)) <= 2,
             "Lidar distance, strength, and rate are presented on the same row");
     auto *pressureField =
-        firstLabelExact(ptb, QStringLiteral("fieldLabel"), QStringLiteral("气压:"));
+        firstLabelExact(ptb, QStringLiteral("fieldLabel"), QStringLiteral("环境气压:"));
     auto *pressureValue =
         firstLabelContaining(ptb, QStringLiteral("highlightedValue"), QStringLiteral("1001.25"));
     auto *pressureRateValue =

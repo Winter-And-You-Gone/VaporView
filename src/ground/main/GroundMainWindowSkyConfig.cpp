@@ -399,12 +399,10 @@ void MainWindow::enterRemoteSkyDeviceConfigMode()
             return VaporView::parseSerialBaudRate(
                 VaporView::Ground::MainSupport::sensorDefaultBaud(source)).value_or(9600);
         };
-        config.ptb.source = settings.value(
-            QStringLiteral("sensor/pressure_source"), QStringLiteral("ptb210")).toString();
+        config.ptb.source = QStringLiteral("ptb210");
         config.ptb.baud_rate = rememberedBaud(
             config.ptb.source, QStringLiteral("serial/ptb_baud"));
-        config.hmp.source = settings.value(
-            QStringLiteral("sensor/humidity_source"), QStringLiteral("hmp3")).toString();
+        config.hmp.source = QStringLiteral("hmp3");
         config.hmp.baud_rate = rememberedBaud(
             config.hmp.source, QStringLiteral("serial/hmp_baud"));
     }
@@ -707,14 +705,8 @@ VaporView::SkyConfig MainWindow::remoteSkyConfigFromDeviceConfigUi(QString *erro
         {
             return config;
         }
-        if (state_->device_config_.ptb_source_combo)
-        {
-            config.ptb.source = state_->device_config_.ptb_source_combo->currentData().toString();
-        }
-        if (state_->device_config_.hmp_source_combo)
-        {
-            config.hmp.source = state_->device_config_.hmp_source_combo->currentData().toString();
-        }
+        config.ptb.source = QStringLiteral("ptb210");
+        config.hmp.source = QStringLiteral("hmp3");
         if (!readSerial(QStringLiteral("Lidar"),
                         state_->device_config_.lidar_enabled_check,
                         state_->device_config_.lidar_port_combo,

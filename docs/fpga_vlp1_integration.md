@@ -6,7 +6,7 @@
 
 首页传感器频率在 FPGA 模式下按各 source 的成功解析测量帧统计：使用有效的 100 MHz FPGA tick，在至少一秒的设备时间窗口内计算帧数增量/时间差；EPSILON 总频率包含各类已解码数据包，BMP 校准帧不计为测量。统计发生在 50 ms 界面合并刷新之前，USB 批量交付或快速回放不会改变设备数据频率。首个样本、无有效时间戳、断连、禁用或停更过期时频率不可用；新连接及时间回退重新建立窗口。该值是测量数据帧频率，不是串口波特率、界面刷新频率或传感器内部转换速率。
 
-本地 USB 直接显示此统计；SkyCore 将各 source 的结果作为可选 `sensor_rates_hz` 对象放入已有 `FpgaStatus`（键为 source 的十进制字符串，值为 Hz）。远程首页按压力源选择 PTB210/BMP390，读取各传感器频率，不再用统一 TelemetryBasic 发送频率代替。旧 SkyCore 未提供该对象时显示频率不可用，需要更新 SkyCore；FPGA 固件无需新增字段。
+本地 USB 直接显示此统计；SkyCore 将各 source 的结果作为可选 `sensor_rates_hz` 对象放入已有 `FpgaStatus`（键为 source 的十进制字符串，值为 Hz）。远程首页固定读取 PTB210 环境气压频率；BMP390/SHT45 为独立内部设备，读取各自帧频率，不再用统一 TelemetryBasic 发送频率代替。旧 SkyCore 未提供该对象时显示频率不可用，需要更新 SkyCore；FPGA 固件无需新增字段。
 
 中转模式首页波形监控标题栏提供原始信号与二次谐波两个采集入口，均复用 FPGA 页面的本地 USB、远程 SkyCore 和界面模拟控制。原始信号启动时，如 ADC/DLIA 尚未全部启用，先启动公共采集并等待最终读回确认，再开启 RAW 上传；采集已运行时只打开 RAW，不重启现有采集。停止原始信号只关闭 RAW 上传。二次谐波按钮对应 FPGA 页面的开始/停止采集，停止公共采集也会停止原始信号；两者不是独立的硬件采集引擎。按钮依据寄存器读回更新，忙状态、断连或远程状态过期时禁用；失败、拒绝及超时不会自动继续开启 RAW 或重试。
 
@@ -41,7 +41,7 @@
 | 独立 FPGA 控制页 | `FpgaControlPage`、`RemoteSkyController` | Remote 模式经本机 IPC 或数传发送 FPGA 控制，GUI 不直接持有 USB；等待最终异步事务及读回，不把受理 ACK 显示为完成 |
 | 唯一后台 IN 接收 | `FpgaDeviceSession`、`FpgaUsbTransport` | 增量拆包、CRC、命令串行匹配、掉线清理；吞吐与拔插仍待实板 |
 | 保守配置及启停 | `FpgaDeviceController`、`FpgaControlConfig` | 期望配置与硬件读回分离，shadow/commit/读回确认；命令计划与状态边界按下文逐项验证 |
-| 默认 PTB210 | 传感器适配和压力来源选择 | `0x0040` 为默认来源，BMP390 可显式选择；不能无提示回退或混用两者校准 |
+| 默认 PTB210 | 传感器适配和压力来源选择 | 环境气压固定 `0x0040` PTB210；BMP390 仅内部气压，不覆盖环境或 session PTB 字段 |
 | 六传感器物理量与质量 | `FpgaSensorDecoder`、`FpgaSensorAdapter` | TLV、FDILink、BMP 补偿、AI8 状态；通信成功不等于测量有效 |
 | 传感器和 DLIA 连续记录 | `SkySessionRecorder`、`FpgaSessionArchive` | 完整 USB/命令/帧/快照在天空端后台落盘；地面只保存收到的标准遥测，新增预览用于界面观察 |
 | RAW 按需上传 | 控制器和记录配置 | 默认关闭；显式启用后持续上传，无时长设置或自动关闭；手动停止确认必须检查命令及掩码读回 |

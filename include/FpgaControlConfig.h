@@ -33,6 +33,7 @@ struct FpgaControlConfig
     std::array<Frontend, 2> frontend;
     std::array<Dac, 2> dac;
     Ai8 ai8;
+    // Legacy settings compatibility. Environmental pressure is always PTB210.
     quint16 pressureSource = 0x0040;
     bool recordSensors = true, recordDlia = true, recordRaw = false;
 
@@ -50,7 +51,7 @@ struct FpgaControlConfig
                     {"minCode",double(a.minCode)},{"maxCode",double(a.maxCode)},{"spiClockHz",double(a.spiClockHz)},
                     {"gain",double(a.gain)},{"offset",a.offset}}}});
         }
-        return {{"backend", backend}, {"adcRateHz", double(adcRateHz)}, {"pressureSource", pressureSource},
+        return {{"backend", backend}, {"adcRateHz", double(adcRateHz)}, {"pressureSource", 0x0040},
             {"recordSensors", recordSensors}, {"recordDlia", recordDlia}, {"recordRaw", recordRaw}, {"channels", channels},
             {"ai8",QJsonObject{{"slaveAddress",double(ai8.slaveAddress)},{"channel",double(ai8.channel)},{"pollIntervalMs",double(ai8.pollIntervalMs)},
                 {"timeoutMs",double(ai8.timeoutMs)},{"retryLimit",double(ai8.retryLimit)}}}};
@@ -60,7 +61,6 @@ struct FpgaControlConfig
         c.backend = o.value("backend").toString(QStringLiteral("auto"));
         auto u = [](const QJsonObject &v, const char *key, quint32 fallback) { return quint32(v.value(QLatin1String(key)).toDouble(fallback)); };
         c.adcRateHz = u(o, "adcRateHz", c.adcRateHz);
-        c.pressureSource = quint16(u(o, "pressureSource", c.pressureSource));
         c.recordSensors = o.value("recordSensors").toBool(true); c.recordDlia = o.value("recordDlia").toBool(true);
         c.recordRaw = o.value("recordRaw").toBool(false);
         const auto ai = o.value("ai8").toObject();c.ai8.slaveAddress=u(ai,"slaveAddress",1);c.ai8.channel=u(ai,"channel",1);c.ai8.pollIntervalMs=u(ai,"pollIntervalMs",1000);

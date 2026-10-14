@@ -51,7 +51,7 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
     }
 
     state_->current_hmp_ = VaporView::HmpData();
-    if (hasFlag(VaporView::BasicHasTemperature) && hasFlag(VaporView::BasicHasHumidity))
+    if (!isFpgaRelayPath() && hasFlag(VaporView::BasicHasTemperature) && hasFlag(VaporView::BasicHasHumidity))
     {
         state_->current_hmp_.valid = true;
         state_->current_hmp_.timestamp = now;

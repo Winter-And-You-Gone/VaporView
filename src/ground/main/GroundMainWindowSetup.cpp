@@ -2,6 +2,7 @@
 #include "ground/devices/DeviceRatePolicy.h"
 #include "ground/widgets/SerialPortComboSupport.h"
 #include "BaudRateComboSupport.h"
+#include "ground/widgets/DeviceEnabledCheckBox.h"
 
 #include <QEvent>
 #include <QGraphicsOpacityEffect>
@@ -25,39 +26,6 @@ namespace
 constexpr int kMainContentBottomFadeHeight = 36;
 constexpr int kDeviceConfigEpsilonPacketRatesButtonMinWidth = 194;
 
-class DeviceEnabledCheckBox final : public QCheckBox
-{
-public:
-    explicit DeviceEnabledCheckBox(QWidget *parent) : QCheckBox(parent)
-    {
-        setStyleSheet(QStringLiteral("QCheckBox::indicator, QCheckBox::indicator:checked, "
-            "QCheckBox::indicator:hover, QCheckBox::indicator:disabled "
-            "{ background: transparent; border: none; image: none; }"));
-    }
-protected:
-    void paintEvent(QPaintEvent *event) override
-    {
-        QCheckBox::paintEvent(event);
-        QStyleOptionButton option;
-        initStyleOption(&option);
-        const QRect indicator = style()->subElementRect(QStyle::SE_CheckBoxIndicator, &option, this);
-        const bool dark = VaporView::isDarkThemePalette(palette());
-        QPainter painter(this);
-        painter.setRenderHint(QPainter::Antialiasing);
-        painter.translate(indicator.topLeft());
-        painter.scale(indicator.width() / 20.0, indicator.height() / 20.0);
-        painter.setPen(QPen(VaporView::appThemeColor(VaporView::AppThemeColor::Primary, dark),
-            1.6, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-        painter.setBrush(VaporView::appThemeColor(isChecked() ? VaporView::AppThemeColor::PrimarySubtle
-            : VaporView::AppThemeColor::Surface, dark));
-        painter.drawRoundedRect(QRectF(1, 1, 18, 18), 3, 3);
-        if (isChecked()) {
-            QPainterPath check;
-            check.moveTo(5, 10); check.lineTo(8, 13); check.lineTo(15, 6);
-            painter.drawPath(check);
-        }
-    }
-};
 
 QString epsilonSideTitleText(const QString& source)
 {
@@ -2866,7 +2834,6 @@ void MainWindow::setupDeviceConfigPage()
     createColumnHeader(state_->device_config_.baud_header_lbl, 2, 1, kDeviceConfigBaudComboWidth);
     createColumnHeader(state_->device_config_.rate_header_lbl, 3, 2);
     createColumnHeader(state_->device_config_.enabled_header_lbl, 5, 1);
-    createColumnHeader(state_->device_config_.source_header_lbl, 6, 1, kDeviceConfigSourceComboWidth);
     createColumnHeader(state_->device_config_.action_header_lbl, 7, 1);
 
     auto addPortRow = [this, formLayout, formWidget, &createCombo](
@@ -3148,120 +3115,6 @@ void MainWindow::setupDeviceConfigPage()
     {
         state_->device_config_.temperature_rate_combo->setObjectName(QStringLiteral("deviceTemperatureRateCombo"));
     }
-    state_->device_config_.ptb_source_combo =
-        createCombo(formWidget, kDeviceConfigSourceComboWidth);
-    state_->device_config_.ptb_source_combo->setObjectName(QStringLiteral("devicePressureSourceCombo"));
-    state_->device_config_.ptb_source_combo->addItem(QStringLiteral("PTB210"), QStringLiteral("ptb210"));
-    state_->device_config_.ptb_source_combo->addItem(QStringLiteral("BMP390"), QStringLiteral("bmp390"));
-    state_->device_config_.ptb_source_combo->setToolTip(state_->is_english_
-        ? QStringLiteral("Pressure source. BMP390 expects the Waveshare example serial output at 115200 8N1.")
-        : QStringLiteral("气压来源。BMP390 使用微雪示例程序通过 115200 8N1 串口输出。"));
-    formLayout->addWidget(state_->device_config_.ptb_source_combo, 2, 6, Qt::AlignVCenter);
-
-    state_->device_config_.hmp_source_combo =
-        createCombo(formWidget, kDeviceConfigSourceComboWidth);
-    state_->device_config_.hmp_source_combo->setObjectName(QStringLiteral("deviceHumiditySourceCombo"));
-    state_->device_config_.hmp_source_combo->addItem(QStringLiteral("HMP3"), QStringLiteral("hmp3"));
-    state_->device_config_.hmp_source_combo->addItem(QStringLiteral("SHT45"), QStringLiteral("sht45"));
-    state_->device_config_.hmp_source_combo->setToolTip(state_->is_english_
-        ? QStringLiteral("Temperature/humidity source. SHT45 expects Adafruit example serial output at 115200 8N1.")
-        : QStringLiteral("温湿度来源。SHT45 使用 Adafruit 示例程序通过 115200 8N1 串口输出。"));
-    formLayout->addWidget(state_->device_config_.hmp_source_combo, 3, 6, Qt::AlignVCenter);
-    auto bindSensorSourceBaud = [this](QComboBox *sourceCombo,
-                                       QComboBox *devicePortCombo,
-                                       QComboBox *deviceBaudCombo,
-                                       bool pressure) {
-        sourceCombo->setProperty(kSensorBaudSourceProperty, sourceCombo->currentData().toString());
-        connect(sourceCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-                [this, sourceCombo, devicePortCombo, deviceBaudCombo, pressure](int) {
-            if (state_->remote_sky_config_updating_ui_) return;
-            if (isFpgaRelayPath()) {
-                if (pressure && state_->fpga_page_) {
-                    auto *source = state_->fpga_page_->findChild<QComboBox *>(QStringLiteral("fpgaPressureSource"));
-                    source->setCurrentIndex(source->findData(sourceCombo->currentData().toString() == QStringLiteral("bmp390") ? 0x43 : 0x40));
-                }
-                return;
-            }
-            if (isRemoteSkyMode())
-            {
-                const QString currentSource = sourceCombo->currentData().toString();
-                sourceCombo->setProperty(kSensorBaudSourceProperty, currentSource);
-                const QSignalBlocker baudBlocker(deviceBaudCombo);
-                VaporView::configureSerialBaudRateCombo(
-                    deviceBaudCombo,
-                    pressure ? VaporView::pressureSensorBaudCapabilities(currentSource)
-                             : VaporView::humiditySensorBaudCapabilities(currentSource),
-                    VaporView::serialBaudRateComboText(deviceBaudCombo));
-                updateDeviceConfigTexts();
-                markRemoteSkyConfigDirty();
-                return;
-            }
-            const QString previousSource = sourceCombo->property(kSensorBaudSourceProperty).toString();
-            auto& profiles = pressure ? state_->local_device_config_.pressureBySource
-                                       : state_->local_device_config_.humidityBySource;
-            auto& active = pressure ? state_->local_device_config_.ptb
-                                     : state_->local_device_config_.hmp;
-            if (!previousSource.isEmpty()) profiles[previousSource] = active;
-
-            const QString currentSource = sourceCombo->currentData().toString();
-            const auto it = profiles.find(currentSource);
-            if (it != profiles.end())
-            {
-                active = it->second;
-            }
-            else
-            {
-                QSettings settings = VaporView::applicationConfigSettings();
-                settings.beginGroup(QStringLiteral("MainWindow"));
-                active.port = rememberedSensorPort(
-                    settings,
-                    currentSource,
-                    QString());
-                active.baudText = rememberedSensorBaud(
-                    settings,
-                    currentSource,
-                    QString());
-            }
-            sourceCombo->setProperty(kSensorBaudSourceProperty, currentSource);
-            {
-                const QSignalBlocker portBlocker(devicePortCombo);
-                const QSignalBlocker baudBlocker(deviceBaudCombo);
-                setLocalSerialPortComboText(devicePortCombo, active.port);
-                VaporView::configureSerialBaudRateCombo(
-                    deviceBaudCombo,
-                    pressure ? VaporView::pressureSensorBaudCapabilities(currentSource)
-                             : VaporView::humiditySensorBaudCapabilities(currentSource),
-                    active.baudText);
-                active.baudText = VaporView::serialBaudRateComboText(deviceBaudCombo);
-            }
-            if (pressure)
-            {
-                state_->local_device_config_.pressureSource = currentSource;
-                state_->local_device_config_.pressureProtocol = currentSource == QStringLiteral("bmp390")
-                    ? VaporView::PressureSensorProtocol::Bmp390Serial
-                    : VaporView::PressureSensorProtocol::Ptb210;
-            }
-            else
-            {
-                state_->local_device_config_.humiditySource = currentSource;
-                state_->local_device_config_.humidityProtocol = currentSource == QStringLiteral("sht45")
-                    ? VaporView::HumiditySensorProtocol::Sht45Serial
-                    : VaporView::HumiditySensorProtocol::Hmp3Modbus;
-            }
-            saveRememberedInputState();
-            updateDeviceConfigTexts();
-        });
-    };
-    bindSensorSourceBaud(
-        state_->device_config_.ptb_source_combo,
-        state_->device_config_.ptb_port_combo,
-        state_->device_config_.ptb_baud_combo,
-        true);
-    bindSensorSourceBaud(
-        state_->device_config_.hmp_source_combo,
-        state_->device_config_.hmp_port_combo,
-        state_->device_config_.hmp_baud_combo,
-        false);
     if (state_->device_config_.temperature_port_combo)
     {
         state_->device_config_.temperature_port_combo->setObjectName(QStringLiteral("deviceTemperaturePortCombo"));
@@ -3782,8 +3635,8 @@ void MainWindow::updateLocalDeviceConfigFromUi() const
             state_->local_device_config_.sensorTransportPath = path;
         }
     }
-    if (state_->device_config_.ptb_source_combo) state_->local_device_config_.pressureSource = state_->device_config_.ptb_source_combo->currentData().toString();
-    if (state_->device_config_.hmp_source_combo) state_->local_device_config_.humiditySource = state_->device_config_.hmp_source_combo->currentData().toString();
+    state_->local_device_config_.pressureSource = QStringLiteral("ptb210");
+    state_->local_device_config_.humiditySource = QStringLiteral("hmp3");
     state_->local_device_config_.pressureProtocol = state_->local_device_config_.pressureSource == QStringLiteral("bmp390") ? VaporView::PressureSensorProtocol::Bmp390Serial : VaporView::PressureSensorProtocol::Ptb210;
     state_->local_device_config_.humidityProtocol = state_->local_device_config_.humiditySource == QStringLiteral("sht45") ? VaporView::HumiditySensorProtocol::Sht45Serial : VaporView::HumiditySensorProtocol::Hmp3Modbus;
     state_->local_device_config_.pressureBySource[state_->local_device_config_.pressureSource] =
@@ -4142,50 +3995,6 @@ void MainWindow::updateDeviceConfigTexts()
     if (state_->device_config_.source_header_lbl) state_->device_config_.source_header_lbl->setText(state_->is_english_ ? QStringLiteral("Source") : QStringLiteral("来源"));
     if (state_->device_config_.action_header_lbl) state_->device_config_.action_header_lbl->setText(state_->is_english_ ? QStringLiteral("Action") : QStringLiteral("操作"));
     if (state_->device_config_.epsilon_lbl) state_->device_config_.epsilon_lbl->setText(QStringLiteral("EPSILON"));
-    if (state_->device_config_.ptb_source_combo)
-    {
-        const QVariant sourceData = state_->device_config_.ptb_source_combo->currentData();
-        const QSignalBlocker blocker(state_->device_config_.ptb_source_combo);
-        state_->device_config_.ptb_source_combo->setItemText(0, QStringLiteral("PTB210"));
-        state_->device_config_.ptb_source_combo->setItemText(1, QStringLiteral("BMP390"));
-        state_->device_config_.ptb_source_combo->setCurrentIndex(std::max(0, state_->device_config_.ptb_source_combo->findData(sourceData)));
-    }
-    if (state_->device_config_.hmp_source_combo)
-    {
-        const QVariant sourceData = state_->device_config_.hmp_source_combo->currentData();
-        const QSignalBlocker blocker(state_->device_config_.hmp_source_combo);
-        state_->device_config_.hmp_source_combo->setItemText(0, QStringLiteral("HMP3"));
-        state_->device_config_.hmp_source_combo->setItemText(1, QStringLiteral("SHT45"));
-        state_->device_config_.hmp_source_combo->setCurrentIndex(std::max(0, state_->device_config_.hmp_source_combo->findData(sourceData)));
-    }
-    const QString pressureSource = state_->device_config_.ptb_source_combo
-        ? state_->device_config_.ptb_source_combo->currentData().toString()
-        : QStringLiteral("ptb210");
-    const QString humiditySource = state_->device_config_.hmp_source_combo
-        ? state_->device_config_.hmp_source_combo->currentData().toString()
-        : QStringLiteral("hmp3");
-    if (state_->device_config_.ptb_source_combo)
-    {
-        state_->device_config_.ptb_source_combo->setToolTip(
-            pressureSource == QStringLiteral("bmp390")
-                ? (state_->is_english_
-                    ? QStringLiteral("Pressure source. BMP390 expects the Waveshare example serial output at 115200 8N1.")
-                    : QStringLiteral("气压来源。BMP390 使用微雪示例程序通过 115200 8N1 串口输出。"))
-                : (state_->is_english_
-                    ? QStringLiteral("Pressure source. PTB210 uses 9600 8N1 serial output.")
-                    : QStringLiteral("气压来源。PTB210 使用 9600 8N1 串口输出。")));
-    }
-    if (state_->device_config_.hmp_source_combo)
-    {
-        state_->device_config_.hmp_source_combo->setToolTip(
-            humiditySource == QStringLiteral("sht45")
-                ? (state_->is_english_
-                    ? QStringLiteral("Temperature/humidity source. SHT45 expects Adafruit example serial output at 115200 8N1.")
-                    : QStringLiteral("温湿度来源。SHT45 使用 Adafruit 示例程序通过 115200 8N1 串口输出。"))
-                : (state_->is_english_
-                    ? QStringLiteral("Temperature/humidity source. HMP3 uses 19200 8N1 serial output.")
-                    : QStringLiteral("温湿度来源。HMP3 使用 19200 8N1 串口输出。")));
-    }
     if (state_->device_config_.ptb_lbl)
     {
         state_->device_config_.ptb_lbl->setText(state_->is_english_
@@ -5498,6 +5307,7 @@ void MainWindow::setupDataPanels()
 
     auto *ai8TemperatureOverviewTitleBar = new QWidget(state_->ai8_temperature_overview_group_);
     ai8TemperatureOverviewTitleBar->setObjectName("sectionTitleBar");
+    ai8TemperatureOverviewTitleBar->setProperty("internalEnvironmentTitle",true);
     ai8TemperatureOverviewTitleBar->setFixedHeight(kMainPageTitleBarHeight);
     auto *ai8TemperatureOverviewTitleLayout = new QHBoxLayout(ai8TemperatureOverviewTitleBar);
     ai8TemperatureOverviewTitleLayout->setContentsMargins(8, 2, 8, 2);
@@ -5513,7 +5323,19 @@ void MainWindow::setupDataPanels()
                             : QStringLiteral("设备温控概览"));
     ai8TemperatureOverviewTitleLayout->addWidget(
         ai8TemperatureOverviewTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    state_->internal_environment_lbl_ = new QLabel(ai8TemperatureOverviewTitleBar);
+    state_->internal_environment_lbl_->setObjectName(QStringLiteral("homeInternalEnvironment"));
+    state_->internal_environment_lbl_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    auto internalFont = state_->internal_environment_lbl_->font();
+    internalFont.setPointSizeF(qMax(9.0, internalFont.pointSizeF() - 2));
+    state_->internal_environment_lbl_->setFont(internalFont);
     ai8TemperatureOverviewTitleLayout->addStretch(1);
+    ai8TemperatureOverviewTitleLayout->addWidget(state_->internal_environment_lbl_, 0, Qt::AlignVCenter);
+    refreshInternalEnvironment();
+    ai8TemperatureOverviewTitleBar->setMinimumHeight(
+        qMax(kMainPageTitleBarHeight, state_->internal_environment_lbl_->sizeHint().height() + 8));
+    ai8TemperatureOverviewTitleBar->setMaximumHeight(QWIDGETSIZE_MAX);
+
     ai8TemperatureOverviewLayout->addWidget(ai8TemperatureOverviewTitleBar);
 
     state_->ai8_temperature_overview_panel_ =

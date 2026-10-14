@@ -4997,16 +4997,11 @@ int main(int argc, char **argv)
             rememberedModeWindow.findChild<QComboBox *>(QStringLiteral("devicePressureBaudCombo"));
         auto *rememberedHumidityBaud =
             rememberedModeWindow.findChild<QComboBox *>(QStringLiteral("deviceHumidityBaudCombo"));
-        require(rememberedPressureSource != nullptr &&
-                    rememberedPressureSource->currentData().toString() == QStringLiteral("bmp390") &&
-                    rememberedPressureBaud != nullptr &&
-                    rememberedPressureBaud->currentText() == QStringLiteral("57600"),
-                "pressure source restores the remembered BMP390 baud rate on startup");
-        require(rememberedHumiditySource != nullptr &&
-                    rememberedHumiditySource->currentData().toString() == QStringLiteral("sht45") &&
-                    rememberedHumidityBaud != nullptr &&
-                    rememberedHumidityBaud->currentText() == QStringLiteral("38400"),
-                "humidity source restores the remembered SHT45 baud rate on startup");
+        require(!rememberedPressureSource && !rememberedHumiditySource,
+                "legacy internal choices do not create environmental selectors");
+        require(rememberedPressureBaud && rememberedPressureBaud->currentText()==QStringLiteral("9600")
+                && rememberedHumidityBaud && rememberedHumidityBaud->currentText()==QStringLiteral("19200"),
+                "fixed environmental instruments restore their own presets");
         auto *rememberedTemperaturePort =
             rememberedModeWindow.findChild<QComboBox *>(QStringLiteral("deviceTemperaturePortCombo"));
         const QString staleHistoryPortText = QStringLiteral("COM123");
@@ -11227,76 +11222,11 @@ int main(int argc, char **argv)
         findComboWithData(deviceConfigPage, QStringLiteral("bmp390"));
     QComboBox *humiditySourceCombo =
         findComboWithData(deviceConfigPage, QStringLiteral("sht45"));
-    require(pressureSourceCombo != nullptr && pressureSourceCombo->width() == 108,
-            "device pressure source combo fully shows the BMP390 option");
-    require(humiditySourceCombo != nullptr && humiditySourceCombo->width() == 108,
-            "device source combos keep a consistent widened column");
-    auto *pressureBaudCombo =
-        deviceConfigPage->findChild<QComboBox *>(QStringLiteral("devicePressureBaudCombo"));
-    auto *humidityBaudCombo =
-        deviceConfigPage->findChild<QComboBox *>(QStringLiteral("deviceHumidityBaudCombo"));
-    require(pressureBaudCombo != nullptr &&
-                pressureSourceCombo->currentData().toString() == QStringLiteral("ptb210") &&
-                pressureBaudCombo->currentText() == QStringLiteral("9600"),
-            "PTB210 uses its 9600 default baud when no device-specific value is remembered");
-    require(humidityBaudCombo != nullptr &&
-                humiditySourceCombo->currentData().toString() == QStringLiteral("hmp3") &&
-                humidityBaudCombo->currentText() == QStringLiteral("19200"),
-            "HMP3 uses its 19200 default baud when no device-specific value is remembered");
-
-    pressureSourceCombo->setCurrentIndex(
-        pressureSourceCombo->findData(QStringLiteral("bmp390")));
-    processEventsFor(50);
-    require(pressureBaudCombo->currentText() == QStringLiteral("115200"),
-            "BMP390 uses its 115200 default baud when no value is remembered");
-    pressureBaudCombo->setCurrentText(QStringLiteral("57600"));
-    processEventsFor(50);
-    pressureSourceCombo->setCurrentIndex(
-        pressureSourceCombo->findData(QStringLiteral("ptb210")));
-    processEventsFor(50);
-    require(pressureBaudCombo->currentText() == QStringLiteral("9600"),
-            "switching back to PTB210 restores its remembered baud");
-    pressureBaudCombo->setCurrentText(QStringLiteral("19200"));
-    processEventsFor(50);
-    pressureSourceCombo->setCurrentIndex(
-        pressureSourceCombo->findData(QStringLiteral("bmp390")));
-    processEventsFor(50);
-    require(pressureBaudCombo->currentText() == QStringLiteral("57600"),
-            "switching back to BMP390 restores its separate remembered baud");
-    pressureSourceCombo->setCurrentIndex(
-        pressureSourceCombo->findData(QStringLiteral("ptb210")));
-    pressureBaudCombo->setCurrentText(QStringLiteral("9600"));
-    processEventsFor(50);
-
-    humiditySourceCombo->setCurrentIndex(
-        humiditySourceCombo->findData(QStringLiteral("sht45")));
-    processEventsFor(50);
-    require(humidityBaudCombo->currentText() == QStringLiteral("115200"),
-            "SHT45 uses its 115200 default baud when no value is remembered");
-    humidityBaudCombo->setCurrentText(QStringLiteral("57600"));
-    processEventsFor(50);
-    humiditySourceCombo->setCurrentIndex(
-        humiditySourceCombo->findData(QStringLiteral("hmp3")));
-    processEventsFor(50);
-    require(humidityBaudCombo->currentText() == QStringLiteral("19200"),
-            "switching back to HMP3 restores its remembered baud");
-    humidityBaudCombo->setCurrentText(QStringLiteral("38400"));
-    processEventsFor(50);
-    humiditySourceCombo->setCurrentIndex(
-        humiditySourceCombo->findData(QStringLiteral("sht45")));
-    processEventsFor(50);
-    require(humidityBaudCombo->currentText() == QStringLiteral("57600"),
-            "switching back to SHT45 restores its separate remembered baud");
-    humiditySourceCombo->setCurrentIndex(
-        humiditySourceCombo->findData(QStringLiteral("hmp3")));
-    humidityBaudCombo->setCurrentText(QStringLiteral("19200"));
-    processEventsFor(50);
+    require(!pressureSourceCombo && !humiditySourceCombo,"environmental source selectors are removed");
     const SkyTelemetryRowWidgets deviceSkyTelemetry = findSkyTelemetryRowWidgets(deviceConfigPage);
-    require(deviceSkyTelemetry.transportCombo != nullptr,
-            "device configuration sky telemetry transport combo exists");
-    requireSkyTelemetryTransportLabels(deviceSkyTelemetry, false);
-    require(deviceSkyTelemetry.row && !deviceSkyTelemetry.row->isVisible(),
-            "local device configuration hides sky-ground telemetry edit controls");
+    require(deviceSkyTelemetry.transportCombo,"sky telemetry transport editor retained");
+    requireSkyTelemetryTransportLabels(deviceSkyTelemetry,false);
+    require(!deviceSkyTelemetry.row->isVisible(),"local configuration hides sky telemetry edit controls");
     // Earlier language round trips legitimately change the row structure.
     // Observe ownership immediately around the source-mode transition.
     const QList<QLabel *> recordingStatusLabelsBeforeSourceSwitch =

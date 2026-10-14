@@ -634,7 +634,8 @@ void MainWindow::applyUiTestSnapshot()
         return;
     }
     const qint64 elapsed = QDateTime::currentMSecsSinceEpoch() - state_->ui_test_started_ms_;
-    const auto snapshot = state_->ui_test_model_->snapshot(elapsed);
+    auto snapshot = state_->ui_test_model_->snapshot(elapsed);
+    if (isFpgaRelayPath()) {snapshot.hmp = {};snapshot.hmpRateHz = 0;}
     state_->current_epsilon_ = snapshot.epsilon;
     state_->current_gnss_ = snapshot.gnss;
     state_->current_imu_ = snapshot.imu;

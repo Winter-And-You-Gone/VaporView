@@ -382,10 +382,11 @@ bool SkyRuntime::start()
         config.fpga.enabled = true;
         config.fpga.locator = QStringLiteral("simulation://fpga");
         config.epsilon_rtcm.enabled = false;
-        config.hmp.source = QStringLiteral("sht45");
+        config.hmp.source = QStringLiteral("hmp3");
         config.ai8_temperature_controller.enabled = true;
         device_manager_.setFpgaSimulationEnabled(true);
     }
+    config.normalizeEnvironmentalDevices();
     device_manager_.loadConfig(config);
     device_manager_.setSimulateData(options_.simulate_data || options_.simulate_fpga);
 

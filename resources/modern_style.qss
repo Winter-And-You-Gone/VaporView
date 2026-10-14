@@ -365,6 +365,16 @@ QWidget#sectionTitleBar {
     max-height: 40px;
 }
 
+QWidget#sectionTitleBar[internalEnvironmentTitle="true"] {
+    min-height: 56px;
+    max-height: 56px;
+}
+QLabel[internalDeviceName="true"] { font-size: 14px; font-weight: 600; }
+QLabel#homeInternalEnvironment {
+    font-size: 11px;
+    font-weight: normal;
+}
+
 QWidget#sectionTitleBar QLabel {
     background-color: transparent;
     border: none;

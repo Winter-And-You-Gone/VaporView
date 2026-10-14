@@ -309,16 +309,6 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     pl->addStretch();
     auto *sensors=tab(QStringLiteral("传感器"),QStringLiteral("Sensors")); auto *sensorLayout=new QVBoxLayout(sensors);
     auto *sensorCard=card(sensors,sensorLayout,QStringLiteral("传感器状态"),QStringLiteral("Sensor status"),QStringLiteral("activity"));
-    auto *sensorHeader=sensorCard->parentWidget()->findChild<QWidget*>(QStringLiteral("sectionTitleBar"),Qt::FindDirectChildrenOnly);
-    auto *sensorHeaderLayout=qobject_cast<QHBoxLayout*>(sensorHeader->layout());
-    pressure_=new VaporView::SingleLevelPopupComboBox(sensorHeader); pressure_->setObjectName("fpgaPressureSource"); pressure_->addItem("PTB210",0x40); pressure_->addItem("BMP390",0x43);
-    auto *pressureLabel=new QLabel(sensorHeader);pressureLabel->setObjectName("fpgaPressureSourceLabel");label(pressureLabel,QStringLiteral("气压来源"),QStringLiteral("Pressure source")); pressureLabel->setBuddy(pressure_);
-    auto *humidity=new VaporView::SingleLevelPopupComboBox(sensorHeader);humidity->setObjectName("fpgaHumiditySource");humidity->addItem("SHT45",0x44);
-    auto *humidityLabel=new QLabel(sensorHeader);humidityLabel->setObjectName("fpgaHumiditySourceLabel");label(humidityLabel,QStringLiteral("温湿度来源"),QStringLiteral("Humidity source"));humidityLabel->setBuddy(humidity);
-    for(auto *source:{pressure_,static_cast<QComboBox*>(humidity)})source->setSizeAdjustPolicy(QComboBox::AdjustToContents);
-    sensorHeaderLayout->addWidget(pressureLabel);sensorHeaderLayout->addWidget(pressure_);sensorHeaderLayout->addSpacing(12);
-    sensorHeaderLayout->addWidget(humidityLabel);sensorHeaderLayout->addWidget(humidity);
-    connect(pressure_,&QComboBox::currentIndexChanged,this,[this]{emit pressureSourceChanged(quint16(pressure_->currentData().toUInt()));emit configurationChanged(configuration());});
     auto *sensorGrid=new QGridLayout(sensorCard);sensorGrid->setObjectName("fpgaSensorGrid");sensorGrid->setSpacing(12);sensorGrid->setColumnStretch(1,1);
     const char *names[]={"PTB210","EPSILON","BMP390","SHT45","TFA1500-L"}; const quint16 sources[]={0x40,0x42,0x43,0x44,0x45};
     for(int i=0;i<5;++i) {
@@ -434,12 +424,11 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
 
 FpgaControlConfig FpgaControlPage::configuration() const {
     auto c=config_; for(const auto &f:fields_)f.write(c,f.input->value());
-    c.backend=backend_->currentData().toString();c.pressureSource=quint16(pressure_->currentData().toUInt()); c.recordSensors=recordSensors_->isChecked();c.recordDlia=recordDlia_->isChecked();c.recordRaw=recordRaw_->isChecked();return c;
+    c.backend=backend_->currentData().toString();c.pressureSource=0x40; c.recordSensors=recordSensors_->isChecked();c.recordDlia=recordDlia_->isChecked();c.recordRaw=recordRaw_->isChecked();return c;
 }
 void FpgaControlPage::setConfiguration(const FpgaControlConfig &c) {
     config_=c; for(const auto &f:fields_){const QSignalBlocker block(f.input);f.input->setValue(f.read(c));}
     {const QSignalBlocker block(backend_);backend_->setCurrentIndex(backend_->findData(c.backend));}
-    {const QSignalBlocker block(pressure_);pressure_->setCurrentIndex(pressure_->findData(c.pressureSource));}
     const QSignalBlocker bs(recordSensors_),bd(recordDlia_),br(recordRaw_);
     recordSensors_->setChecked(c.recordSensors);recordDlia_->setChecked(c.recordDlia);recordRaw_->setChecked(c.recordRaw);
     for(int i=0;i<2;++i){auto *cal=findChild<QCheckBox*>(QString("fpga%1Calibrated").arg(i));const QSignalBlocker b(cal);cal->setChecked(c.frontend[i].calibrated);}
@@ -924,7 +913,7 @@ void FpgaControlPage::setUiTestState(bool enabled, bool dataStalled, bool partia
     updateSensor(ptb);
 
     auto bmp=makeReading(0x43,VaporView::FpgaSensor::SensorKind::Bmp390);
-    bmp.pressurePa=101694.0+std::sin(seconds*0.7)*28.0;bmp.temperatureC=24.0+std::sin(seconds*0.2)*0.3;updateSensor(bmp);
+    bmp.pressurePa=101694.0+std::sin(seconds*0.7)*28.0;bmp.temperatureC=24.0+std::sin(seconds*0.2)*0.3;updateSensor(bmp);emit simulationSensorUpdated(bmp);
 
     auto epsilon = makeReading(0x42, VaporView::FpgaSensor::SensorKind::Epsilon);
     epsilon.epsilonMessageId = quint8(0x50);
@@ -936,7 +925,7 @@ void FpgaControlPage::setUiTestState(bool enabled, bool dataStalled, bool partia
     sht.temperatureC = 23.5 + std::sin(seconds * 0.45) * 0.8;
     sht.humidityPct = 47.0 + std::cos(seconds * 0.35) * 2.0;
     sht.heaterMode = 0;
-    updateSensor(sht);
+    updateSensor(sht);emit simulationSensorUpdated(sht);
 
     auto tfa = makeReading(0x45, VaporView::FpgaSensor::SensorKind::Tfa1500);
     tfa.distanceMm = quint32(120000.0 + std::sin(seconds * 0.25) * 2400.0);

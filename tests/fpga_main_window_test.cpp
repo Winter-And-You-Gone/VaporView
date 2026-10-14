@@ -99,6 +99,10 @@ static void verifyCardMargins(MainWindow &window,FpgaControlPage *page,int scale
     auto *stack=window.findChild<QStackedWidget*>("mainPageStack");
     auto *homeCards=window.findChild<QWidget*>("homeOverviewSplitter");
     stack->setCurrentIndex(0); processFor(50);
+    auto *internal=window.findChild<QLabel*>("homeInternalEnvironment");
+    require(internal && internal->height()>=internal->sizeHint().height()
+        && internal->width()>=internal->sizeHint().width(),
+        "home internal environment title fits three metrics at the current font scale");
     const QRect homeRect(homeCards->mapTo(stack,QPoint()),homeCards->size());
     stack->setCurrentIndex(4); processFor(50);
     page->setUiTestState(true,false,false,5000);processFor(50);
@@ -152,11 +156,8 @@ static void verifyCardMargins(MainWindow &window,FpgaControlPage *page,int scale
             auto *sensorGrid=page->findChild<QGridLayout*>("fpgaSensorGrid");
             require(sensorGrid&&sensorGrid->rowCount()==5&&sensorGrid->columnCount()==4,"sensor card has five device rows");
             if(tab==1) {
-                auto *pressure=page->findChild<QComboBox*>("fpgaPressureSource"),*humidity=page->findChild<QComboBox*>("fpgaHumiditySource");
-                require(pressure&&humidity&&pressure->parentWidget()==humidity->parentWidget(),"main window shows both source selectors in the sensor header");
-                auto *header=pressure->parentWidget();
-                require(header->rect().contains(pressure->geometry())&&header->rect().contains(humidity->geometry())
-                    &&pressure->geometry().right()<humidity->geometry().left(),"sensor source selectors fit within the title bar at large fonts");
+                require(!page->findChild<QComboBox*>("fpgaPressureSource") && !page->findChild<QComboBox*>("fpgaHumiditySource"),
+                    "independent sensors have no interchangeable source selectors");
             }
             for(auto *card : page->findChildren<QWidget*>("fpgaSectionCard")) {
                 if(!card->isVisibleTo(page)||channelCards.contains(card))continue;
@@ -186,13 +187,11 @@ static void remotePageRouting()
         auto *page = window.findChild<FpgaControlPage*>("fpgaControlPage");
         auto *acquisition = page->findChild<QAbstractButton*>("fpgaAcquisitionStart");
         auto *disconnect = page->findChild<QAbstractButton*>("fpgaDisconnect");
-        auto *pressure = page->findChild<QComboBox*>("fpgaPressureSource");
         auto *summary = page->findChild<QLabel*>("fpgaWaveSummary32");
         auto *plot = page->findChild<QWidget*>("fpgaWavePlot32");
         auto *diagnostics = page->findChild<QPlainTextEdit*>("fpgaDiagnostics");
-        require(acquisition && disconnect && pressure && summary && plot && diagnostics, "remote page controls");
+        require(acquisition && disconnect && summary && plot && diagnostics, "remote page controls");
         require(QMetaObject::invokeMethod(&window, "onDataSourceModeChanged", Q_ARG(int, 0)), "Local slot callable");
-        pressure->setCurrentIndex(pressure->findData(0x43));
         const auto localConfiguration = page->configuration();
         require(QMetaObject::invokeMethod(&window, "onDataSourceModeChanged", Q_ARG(int, 1)), "Remote slot callable");
         auto *remote = window.testRemoteSkyController();
@@ -226,13 +225,6 @@ static void remotePageRouting()
         send(MsgType::FpgaStatus, FpgaRemote::encodeStatus(status));
         require(waitUntil([&] { return acquisition->isEnabled(); }), "remote status enables ready controls");
         require(page->configuration().pressureSource == 0x40, "Sky desired config appears in Remote editor");
-        pressure->setCurrentIndex(pressure->findData(0x43));
-        pressure->setCurrentIndex(pressure->findData(0x40));
-        const auto settings = applicationConfigSettings();
-        require(QJsonDocument::fromJson(settings.value("Fpga/desiredConfiguration").toByteArray()).object()
-            .value("pressureSource").toInt() == 0x43, "Remote edit preserves Local desired config");
-        require(QJsonDocument::fromJson(settings.value("Fpga/remoteDesiredConfiguration").toByteArray()).object()
-            .value("pressureSource").toInt() == 0x40, "Remote desired config has separate persistence");
         acquisition->click();
         require(waitUntil([&] { return commands == 1; }), "acquisition sent once through TCP");
         QJsonObject control;
@@ -417,14 +409,30 @@ static void remoteHomeActions()
     auto *epsilonRate=window.findChild<QWidget*>("epsilonPanel")->parentWidget()->findChild<QLabel*>("rateLabel");
     require(pressureRate&&humidityRate&&distanceRate&&epsilonRate,"home sensor frequency labels exist");
     const bool ratesShown=waitUntil([&]{QMetaObject::invokeMethod(&window,"onRefreshTimer");
-        return pressureRate->text().contains("2.0")&&humidityRate->text().contains("4.0")
+        return pressureRate->text().contains("1.0")&&humidityRate->text().contains("--")
             &&distanceRate->text().contains("1000.0")&&epsilonRate->text().contains("750.0");});
     if(!ratesShown)std::cerr<<"FPGA rates: "<<qPrintable(pressureRate->text())<<", "<<qPrintable(humidityRate->text())
         <<", "<<qPrintable(distanceRate->text())<<", "<<qPrintable(epsilonRate->text())<<'\n';
     require(ratesShown,
-        "remote FPGA rates come from Sky raw sensors and selected BMP, not telemetry publication rate");
-    const QStringList names{"EPSILON","PTB210","HMP","TFA1500","AI-8288",QStringLiteral("波形源")};
-    const QList<quint16> sources{0x42,0x43,0x44,0x45,0x46,0};
+        "remote FPGA rates come from Sky raw sensors and fixed PTB, with unsupported HMP unavailable");
+    auto *internal=window.findChild<QLabel*>("homeInternalEnvironment");
+    require(internal,"home internal metrics exist");
+    FpgaSensor::Reading bmp;bmp.source=0x43;bmp.kind=FpgaSensor::SensorKind::Bmp390;
+    bmp.validity={true,true,true,true};bmp.pressurePa=100000;
+    FpgaSensor::Reading sht;sht.source=0x44;sht.kind=FpgaSensor::SensorKind::Sht45;
+    sht.validity={true,true,true,true};sht.temperatureC=22;sht.humidityPct=33;
+    send(MsgType::FpgaSensor,FpgaRemote::encodeSensor(bmp,1));
+    send(MsgType::FpgaSensor,FpgaRemote::encodeSensor(sht,2));
+    require(waitUntil([&]{return internal->text().contains("1000.00") && internal->text().contains("22.00") && internal->text().contains("33.00");}),
+        "remote internal metrics use typed FPGA sensors independently of basic environmental telemetry");
+    sht.validity.measurement=false;send(MsgType::FpgaSensor,FpgaRemote::encodeSensor(sht,2));
+    require(waitUntil([&]{return internal->text().count(QStringLiteral("—"))==2 && internal->text().contains("1000.00");}),
+        "invalid SHT clears temperature and humidity without clearing independent BMP pressure");
+    registers[QString::number(0x6304)]=0;status["registers"]=registers;send(MsgType::FpgaStatus,FpgaRemote::encodeStatus(status));
+    require(waitUntil([&]{return internal->text().count(QStringLiteral("—"))==3;}),"disabled BMP cannot retain a live internal value");
+    registers[QString::number(0x6304)]=1;status["registers"]=registers;send(MsgType::FpgaStatus,FpgaRemote::encodeStatus(status));
+    const QStringList names{"EPSILON","PTB210","TFA1500","AI-8288",QStringLiteral("波形源")};
+    const QList<quint16> sources{0x42,0x40,0x45,0x46,0};
     for (int index=0;index<names.size();++index) {
         auto *button=homeAction(window,names[index]);
         for (bool enabled:{false,true}) {
@@ -436,7 +444,7 @@ static void remoteHomeActions()
             QJsonObject control;require(FpgaRemote::parseControl(requests.last().payload,control),"home payload validates");
             require(control.value("enabled").toBool()==enabled && control.value("op")== (sources[index]?"sensor":"acquisition"),
                 "home connect/disconnect selects the expected FPGA operation");
-            if(sources[index])require(control.value("source").toInt()==sources[index],"home sensor mapping includes selected BMP pressure source");
+            if(sources[index])require(control.value("source").toInt()==sources[index],"home pressure mapping stays PTB210");
             CommandAck ack;ack.command_id=CommandId::DeviceOperation;ack.command_seq=commandSequence;
             send(MsgType::CommandAck,TelemetryCodec::serializeCommandAck(ack));processFor(30);
             require(!button->isEnabled()&&button->property("state")=="connecting","ACK does not change confirmed device state");
@@ -577,8 +585,7 @@ static void localSimulatorRouting()
     auto *acquisition=page->findChild<QAbstractButton*>("fpgaAcquisitionStart");
     check(backend&&devices&&connectButton&&disconnect&&acquisition,"normal FPGA controls are present");
     backend->setCurrentIndex(backend->findData("simulator"));
-    auto *pressureSource=page->findChild<QComboBox*>("fpgaPressureSource");
-    check(pressureSource,"pressure source selector exists");pressureSource->setCurrentIndex(pressureSource->findData(0x43));
+    check(!page->findChild<QComboBox*>("fpgaPressureSource"),"pressure source selection is removed");
     check(waitUntil([&]{return devices->currentData().toString()=="simulation://fpga"&&connectButton->isEnabled();},10000),
           "local simulator is enumerated and connectable");
     check(!page->property("fpgaUiTestMode").toBool(),"local protocol test does not use UI test mode");
@@ -607,11 +614,11 @@ static void localSimulatorRouting()
     check(waitUntil([&]{return acquisition->isEnabled()&&disconnect->isEnabled();},12000),"local factory handshake enables normal controls");
     check(waitUntil([&]{return pressureAction->isEnabled()&&pressureAction->property("state")=="connected";}),"home connect opens USB and confirms the already-enabled BMP sensor");
     for(const auto &entry: {qMakePair("deviceEpsilonBaudComboFpgaEditor","921600"),
-            qMakePair("devicePressureBaudComboFpgaReadback","I²C"),
+            qMakePair("devicePressureBaudComboFpgaEditor","9600"),
             qMakePair("deviceLidarBaudComboFpgaEditor","500000"),
             qMakePair("deviceAi8TemperatureBaudComboFpgaReadback","19200"),
             qMakePair("devicePressureRateComboFpgaEditor","1"),
-            qMakePair("deviceHumidityRateComboFpgaEditor","1")}) {
+            qMakePair("deviceInternalRateSHT45FpgaEditor","1")}) {
         auto *label=window.findChild<QLabel*>(entry.first);auto *editor=window.findChild<QComboBox*>(entry.first);
         check((label?label->text():editor?editor->currentText():QString())==QString::fromUtf8(entry.second),
             "local VLP simulator readbacks reach device configuration fields");
@@ -631,7 +638,7 @@ static void localSimulatorRouting()
     check(window.testLocalDeviceConfigSnapshot()==presets,"FPGA parameter writes preserve all Direct presets");
     check(!page->findChild<QLabel*>("fpgaConnectionStatus")->text().contains(QStringLiteral("修改 BMP 地址")),"already-enabled BMP does not receive a duplicate address-setting start");
     check(stack->currentIndex()==0,"local auto-connect keeps the home page selected");
-    const QStringList homeNames{"EPSILON","PTB210","HMP","TFA1500","AI-8288",QStringLiteral("波形源")};
+    const QStringList homeNames{"EPSILON","PTB210","TFA1500","AI-8288",QStringLiteral("波形源")};
     for(const auto &name:homeNames) {
         auto *button=homeAction(window,name);
         for(bool enabled:{false,true}) {
@@ -645,7 +652,6 @@ static void localSimulatorRouting()
     auto *navigation=window.findChild<VaporView::Ground::Navigation::CombinationNavigationPage*>("combinationNavigationPage");
     auto *navigationPanel=static_cast<VaporView::Ground::Navigation::NavigationStatusPanel*>(window.findChild<QWidget*>("navigationStatusPanel"));
     check(navigation&&navigationPanel,"local navigation status widgets exist");
-    pressureSource->setCurrentIndex(pressureSource->findData(0x40));
     check(waitUntil([&]{navigation->refreshStatus();return navigationPanel->snapshot().navigationDataAvailable
         &&navigationPanel->snapshot().gnssFixCode==6;}),"local simulator supplies a fresh GNSS fix");
     int navigationChanges=0;
@@ -694,9 +700,16 @@ static void localSimulatorRouting()
     check(pressureRate&&humidityRate&&distanceRate&&epsilonRate,"local home sensor frequency labels exist");
     const auto rateHz=[](QLabel *label){return QRegularExpression("([0-9]+\\.[0-9]+)\\s*Hz")
         .match(label->text().simplified()).captured(1).toDouble();};
-    check(waitUntil([&]{return rateHz(pressureRate)>0.0&&rateHz(humidityRate)>0.0
+    check(waitUntil([&]{return rateHz(pressureRate)>0.0&&rateHz(humidityRate)==0.0
         &&rateHz(distanceRate)>0.0&&rateHz(epsilonRate)>20.0;}),
         "local FPGA simulator supplies visible rates without serial collectors");
+    auto *internal=window.findChild<QLabel*>("homeInternalEnvironment");
+    check(internal && waitUntil([&]{return !internal->text().contains(QStringLiteral("—"));}),
+        "both internal sensors reach the home title bar through real VLP frames");
+    auto *environmentPressure=window.findChild<PtbPanel*>()->findChild<QLabel*>("highlightedValue");
+    check(environmentPressure->text().contains("1013."),"BMP pressure never replaces environmental PTB pressure");
+    check(!homeAction(window,"HMP")->isEnabled(),"missing HMP firmware channel remains unavailable");
+
     QDoubleSpinBox *target=nullptr;
     for(auto *spin:page->findChildren<QDoubleSpinBox*>())if(spin->suffix()==QStringLiteral(" °C"))target=spin;
     check(target,"AI8 target editor exists");target->setValue(31.5);
@@ -768,19 +781,21 @@ static void simulatedMonitorActions()
     for(const auto &entry:{qMakePair("deviceEpsilonBaudComboFpgaEditor","921600"),
             qMakePair("devicePressureBaudComboFpgaEditor","9600"),
             qMakePair("deviceLidarBaudComboFpgaEditor","500000"),
-            qMakePair("deviceHumidityRateComboFpgaEditor","1")}) {
+            qMakePair("deviceInternalRateSHT45FpgaEditor","1")}) {
         auto *value=window.findChild<QComboBox*>(entry.first);
         require(value&&value->currentText()==QString::fromUtf8(entry.second),"UI test sensor register values update inline fields immediately");
     }
-    auto *rate=window.findChild<QComboBox*>("deviceHumidityRateComboFpgaEditor");
-    auto *humidity=homeAction(window,"HMP");
-    require(rate&&!rate->isEnabled(),"UI test connected sensor locks inline frequency");humidity->click();
+    auto *rate=window.findChild<QComboBox*>("deviceInternalRateSHT45FpgaEditor");
+    QToolButton *humidity=nullptr;
+    for(auto *button:window.findChildren<QToolButton*>("homeDeviceActionButton"))
+        if(button->property("fpgaSensorSource").toUInt()==0x44)humidity=button;
+    require(rate&&humidity&&!rate->isEnabled(),"UI test connected sensor locks inline frequency");humidity->click();
     require(rate->isEnabled(),"UI test individual disconnect enables frequency");rate->setCurrentText("2.");
     processFor(150);require(rate->currentText()=="2.","refresh preserves partially typed decimal frequency");
     rate->setCurrentText("2.5");
     processFor(150);require(rate->currentText()=="2.5","simulation refresh preserves staged frequency");
     humidity->click();
-    require(waitUntil([&]{return !rate->isEnabled()&&humidity->isEnabled()&&humidity->property("state")=="connected";}),
+    require(waitUntil([&]{return !rate->isEnabled()&&humidity->isEnabled();}),
         "UI test connect applies staged frequency");
     processFor(150);require(rate->currentText()=="2.5","periodic simulation retains applied frequency");
     harmonic->click();
@@ -887,18 +902,12 @@ static void relayConfigurationPresentation()
     require(monitor->testPeakValues().size()==2&&std::isnan(monitor->testPeakValues().last()),"missing DLIA fragments create a trend gap");
     window.findChild<FpgaControlPage*>()->setUiTestState(false);
     stack->setCurrentWidget(configPage);
-    auto *pressure=window.findChild<QComboBox*>("devicePressureSourceCombo");
-    auto *fpgaPressure=window.findChild<QComboBox*>("fpgaPressureSource");
-    pressure->setCurrentIndex(pressure->findData("bmp390"));
-    require(fpgaPressure->currentData().toUInt()==0x43,"Device Configuration changes the FPGA pressure source");
-    fpgaPressure->setCurrentIndex(fpgaPressure->findData(0x40));
-    require(pressure->currentData()=="ptb210","FPGA page source changes are mirrored back");
-    require(window.findChild<QComboBox*>("deviceHumiditySourceCombo")->currentData()=="sht45",
-        "FPGA humidity always shows SHT45 without modifying Direct source defaults");
+    require(!window.findChild<QComboBox*>("devicePressureSourceCombo") && !window.findChild<QComboBox*>("deviceHumiditySourceCombo"),
+        "environmental devices have no source selectors");
+    require(window.findChild<QWidget*>("deviceInternalNameBMP390")->isVisible() && window.findChild<QWidget*>("deviceInternalNameSHT45")->isVisible(),
+        "BMP390 and SHT45 have independent relay device rows");
     path->setCurrentIndex(path->findData("direct_devices"));processFor(50);
-    require(pressure->currentData()==before.value("pressure_source").toString()
-        &&window.findChild<QComboBox*>("deviceHumiditySourceCombo")->currentData()==before.value("humidity_source").toString(),
-        "Local Direct source selectors are restored from the model");
+    require(!window.findChild<QWidget*>("deviceInternalNameBMP390")->isVisible(),"I2C relay rows are hidden on the direct path");
     require(window.testLocalDeviceConfigSnapshot().value("epsilon").toObject().value("baud")==before.value("epsilon").toObject().value("baud"),
         "FPGA display never overwrites Direct baud presets");
     for(int i=0;i<devices.size();++i) {
@@ -960,11 +969,8 @@ static void remoteTransportAndCapabilities()
     require(waitUntil([&]{return applies==1&&path->isEnabled();}),"FPGA path is applied and acknowledged without disconnecting radio");
     require(remote->isOpen()&&remote->linkGeneration()==generation&&sky.sensor_transport_path==SensorTransportPath::FpgaRelay&&sky.fpga.enabled,
         "radio TCP session survives Direct to FPGA and Sky FPGA is enabled");
-    auto *pressure=window.findChild<QComboBox*>("devicePressureSourceCombo");
-    pressure->setCurrentIndex(pressure->findData("bmp390"));
-    require(waitUntil([&]{return applies==2&&pressure->isEnabled();}),"remote source selection is applied to Sky");
-    require(sky.fpga.configuration.pressureSource==0x43&&sky.ptb.source=="ptb210"&&sky.hmp.source=="hmp3",
-        "FPGA source selection leaves saved Direct sources intact");
+    require(sky.fpga.configuration.pressureSource==0x40 && sky.ptb.source=="ptb210" && sky.hmp.source=="hmp3",
+        "remote environmental device identity stays fixed");
     QMetaObject::invokeMethod(&window,"onRtkConfigClicked");
     auto *rtk=window.findChild<RtkConfigDialog*>();
     auto *start=rtk->findChild<QAbstractButton*>("rtkStartButton");
@@ -976,14 +982,12 @@ static void remoteTransportAndCapabilities()
     require(readAi8&&!readAi8->isEnabled()&&readAi8->toolTip().contains("VLP1"),"FPGA AI8 page commands explain unsupported capability");
     require(readEpsilon&&!readEpsilon->isEnabled(),"FPGA EPSILON parameter commands are disabled");
     reject=true;path->setCurrentIndex(path->findData("direct_devices"));
-    require(waitUntil([&]{return applies==3&&path->isEnabled();}),"path rejection completes");
+    require(waitUntil([&]{return applies==2&&path->isEnabled();}),"path rejection completes");
     require(path->currentData()=="fpga_relay"&&remote->isOpen(),"rejected path change restores the confirmed mode and keeps radio");
     reject=false;path->setCurrentIndex(path->findData("direct_devices"));
-    require(waitUntil([&]{return applies==4&&path->isEnabled();}),"return to Direct completes");
+    require(waitUntil([&]{return applies==3&&path->isEnabled();}),"return to Direct completes");
     require(start->isEnabled()&&sky.sensor_transport_path==SensorTransportPath::DirectDevices&&remote->linkGeneration()==generation,
         "Direct restores RTK availability using the same radio session");
-    require(pressure->currentData()=="ptb210"&&window.findChild<QComboBox*>("deviceHumiditySourceCombo")->currentData()=="hmp3",
-        "returning to Direct restores its source selectors instead of FPGA sources");
     remote->close();window.close();
 }
 
@@ -1032,12 +1036,9 @@ int main(int argc,char **argv)
         auto *acquisition=page->findChild<QAbstractButton*>(QStringLiteral("fpgaAcquisitionStart"));
         auto *connectButton=page->findChild<QAbstractButton*>(QStringLiteral("fpgaConnect"));
         require(acquisition && !acquisition->isEnabled() && connectButton && !connectButton->isEnabled(),"ADC stays stopped and connect waits for discovery until page is opened");
-        auto *pressure=page->findChild<QComboBox*>(QStringLiteral("fpgaPressureSource"));
-        require(pressure && pressure->currentData().toUInt()==0x40,"default pressure choice visible");
-        pressure->setCurrentIndex(pressure->findData(0x43));
-        require(page->configuration().pressureSource==0x43,"pressure source edits are model-backed");
+        require(!page->findChild<QComboBox*>(QStringLiteral("fpgaPressureSource")),"source selection removed from FPGA page");
         stack->setCurrentIndex(4); stack->setCurrentIndex(0); stack->setCurrentIndex(4);
-        require(stack->widget(4)==page && pressure->currentData().toUInt()==0x43,"switching pages preserves editor and choice");
+        require(stack->widget(4)==page,"switching pages preserves the FPGA editor");
         window.show();page->findChild<QTabWidget*>("fpgaTabs")->setCurrentIndex(2);processFor(100);
         verifyConnectionCard(page,100);
         verifyCardMargins(window,page,100);
@@ -1051,7 +1052,7 @@ int main(int argc,char **argv)
         window.close();
         const auto settings=VaporView::applicationConfigSettings();
         const auto saved=QJsonDocument::fromJson(settings.value(QStringLiteral("Fpga/desiredConfiguration")).toByteArray());
-        require(saved.object().value("pressureSource").toInt()==0x43,"desired configuration persisted through application settings");
+        require(page->configuration().pressureSource==0x40,"desired configuration persisted through application settings");
         require(!window.findChild<QThread*>(QStringLiteral("fpgaUsbWorkerThread"))->isInterruptionRequested(),"worker still alive before teardown");
     }
     require(worker.isNull(),"MainWindow teardown joins and deletes USB worker");
@@ -1060,7 +1061,7 @@ int main(int argc,char **argv)
         native.setValue("font_scale_percent",scale);
         MainWindow restored;
         auto *page=restored.findChild<FpgaControlPage*>(QStringLiteral("fpgaControlPage"));
-        require(page && page->configuration().pressureSource==0x43,"next window restores desired config without reconnect");
+        require(page && page->configuration().pressureSource==0x40,"next window restores desired config without reconnect");
         restored.findChild<QStackedWidget*>("mainPageStack")->setCurrentIndex(4);
         restored.show();processFor(100);verifyConnectionCard(page,scale);
         verifyCardMargins(restored,page,scale);restored.close();

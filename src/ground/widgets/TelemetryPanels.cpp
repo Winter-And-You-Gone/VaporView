@@ -1352,7 +1352,7 @@ void PtbPanel::updateRate(double hz)
 void PtbPanel::setEnglish(bool english)
 {
     is_english_ = english;
-    setLocalizedFixedTextLabel(pressure_lbl_, english, QStringLiteral("Pressure:"), QStringLiteral("气压:"));
+    setLocalizedFixedTextLabel(pressure_lbl_, english, QStringLiteral("Environmental pressure:"), QStringLiteral("环境气压:"));
     if (pressure_trend_plot_)
     {
         pressure_trend_plot_->setEnglish(english);
@@ -1489,8 +1489,8 @@ void HmpPanel::updateRate(double hz)
 void HmpPanel::setEnglish(bool english)
 {
     is_english_ = english;
-    setLocalizedFixedTextLabel(temp_lbl_, english, QStringLiteral("Temp:"), QStringLiteral("温度:"));
-    setLocalizedFixedTextLabel(humidity_lbl_, english, QStringLiteral("Humidity:"), QStringLiteral("湿度:"));
+    setLocalizedFixedTextLabel(temp_lbl_, english, QStringLiteral("Environmental temperature:"), QStringLiteral("环境温度:"));
+    setLocalizedFixedTextLabel(humidity_lbl_, english, QStringLiteral("Environmental humidity:"), QStringLiteral("环境湿度:"));
     if (temperature_trend_plot_)
     {
         temperature_trend_plot_->setEnglish(english);

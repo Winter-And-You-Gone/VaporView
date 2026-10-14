@@ -699,6 +699,17 @@ bool SkyConfig::saveToFile(const QString& filename, QString *errorMessage) const
     return writeJsonFileAtomically(filename, toJson(), errorMessage);
 }
 
+void SkyConfig::normalizeEnvironmentalDevices()
+{
+    // Migrate old interchangeable sensor presets without applying their serial
+    // settings to the environmental instruments.
+    if (ptb.source == QStringLiteral("bmp390")) ptb.baud_rate = 9600;
+    if (hmp.source == QStringLiteral("sht45")) hmp.baud_rate = 19200;
+    ptb.source = QStringLiteral("ptb210");
+    hmp.source = QStringLiteral("hmp3");
+    fpga.configuration.pressureSource = 0x40;
+}
+
 bool SkyConfig::fromJson(const QJsonObject& object, SkyConfig& config, QString *errorMessage)
 {
     SkyConfig next = SkyConfig::defaults();
@@ -771,6 +782,7 @@ bool SkyConfig::fromJson(const QJsonObject& object, SkyConfig& config, QString *
     {
         return false;
     }
+    next.normalizeEnvironmentalDevices();
     config = next;
     return true;
 }

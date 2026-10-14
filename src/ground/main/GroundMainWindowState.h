@@ -57,6 +57,7 @@ struct UiTestWidgetStateEntry
 
 struct DeviceConfigPageWidgets
 {
+    QMap<quint16, QList<QWidget *>> internal_sensor_rows;
     QWidget *page = nullptr;
     QLabel *serial_title_lbl = nullptr;
     QLabel *sensor_transport_path_lbl = nullptr;
@@ -387,6 +388,10 @@ struct MainWindowState
     QLabel *env_hmp_status_icon_;
     QLabel *temperature_overview_inline_title_lbl_;
     QLabel *ai8_temperature_overview_inline_title_lbl_;
+    QLabel *internal_environment_lbl_ = nullptr;
+    int internal_environment_context_ = -1;
+    QMap<quint16, VaporView::FpgaSensor::Reading> internal_environment_;
+    QMap<quint16, std::chrono::steady_clock::time_point> internal_environment_times_;
     QLabel *temperature_controller_inline_title_lbl_;
     QLabel *ai8_temperature_controller_inline_title_lbl_;
     QComboBox *temperature_title_port_combo_;

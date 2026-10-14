@@ -641,7 +641,6 @@ int main(int argc, char **argv)
         QStringLiteral("波特率/端口"),
         QStringLiteral("频率/轮询"),
         QStringLiteral("启用"),
-        QStringLiteral("来源"),
         QStringLiteral("操作"),
     };
     for (const QString& headerText : serialColumnHeaders)
@@ -667,10 +666,7 @@ int main(int argc, char **argv)
                              findExactLabel(serialCard, QStringLiteral("频率/轮询")),
                              epsilonPacketRatesButton,
                              "rate column header sits above the EPSILON packet-rate entry");
-    requireHeaderAboveWidget(serialCard,
-                             findExactLabel(serialCard, QStringLiteral("来源")),
-                             serialCard->findChild<QWidget *>(QStringLiteral("devicePressureSourceCombo")),
-                             "source column header sits above source selectors");
+    require(!findExactLabel(serialCard,QStringLiteral("来源")),"source column removed from independent devices");
     QLabel *actionHeader = findExactLabel(serialCard, QStringLiteral("操作"));
     require(actionHeader != nullptr, "link-action column header exists");
     int centeredActionCount = 0;
@@ -714,29 +710,7 @@ int main(int argc, char **argv)
         serialCard->findChild<QComboBox *>(QStringLiteral("devicePressureSourceCombo"));
     auto *humiditySourceCombo =
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceHumiditySourceCombo"));
-    selectComboData(pressureSourceCombo, QStringLiteral("ptb210"),
-                    "pressure source combo exposes PTB210");
-    selectComboData(humiditySourceCombo, QStringLiteral("hmp3"),
-                    "humidity source combo exposes HMP3");
-    VaporViewTest::processEventsFor(120);
-    require(pressureSourceCombo->toolTip().contains(QStringLiteral("PTB210")) &&
-                !pressureSourceCombo->toolTip().contains(QStringLiteral("BMP390")),
-            "pressure source tooltip follows PTB210 selection");
-    require(humiditySourceCombo->toolTip().contains(QStringLiteral("HMP3")) &&
-                !humiditySourceCombo->toolTip().contains(QStringLiteral("SHT45")),
-            "humidity source tooltip follows HMP3 selection");
-    selectComboData(pressureSourceCombo, QStringLiteral("bmp390"),
-                    "pressure source combo exposes BMP390");
-    selectComboData(humiditySourceCombo, QStringLiteral("sht45"),
-                    "humidity source combo exposes SHT45");
-    VaporViewTest::processEventsFor(120);
-    activateLayouts(&window);
-    require(pressureSourceCombo->toolTip().contains(QStringLiteral("BMP390")) &&
-                !pressureSourceCombo->toolTip().contains(QStringLiteral("PTB210")),
-            "pressure source tooltip follows BMP390 selection");
-    require(humiditySourceCombo->toolTip().contains(QStringLiteral("SHT45")) &&
-                !humiditySourceCombo->toolTip().contains(QStringLiteral("HMP3")),
-            "humidity source tooltip follows SHT45 selection");
+    require(!pressureSourceCombo && !humiditySourceCombo,"environmental source selectors are removed");
     requireLabelFits(findExactLabel(serialCard, QStringLiteral("PTB210 气压计")),
                      "pressure device row restores the model-plus-device label");
     requireLabelFits(findExactLabel(serialCard, QStringLiteral("HMP3 温湿度计")),
@@ -937,49 +911,10 @@ int main(int argc, char **argv)
             "AI-8288 auto-detect rejects unsupported baud without polluting model or UI");
 
     VaporView::setSettingsWritesSuspended(false);
-    selectComboData(pressureSourceCombo, QStringLiteral("ptb210"),
-                    "pressure source switches to PTB210 for profile test");
-    selectComboText(pressurePortCombo, QStringLiteral("COM11"),
-                    "PTB210 profile accepts its own port");
+    selectComboText(pressurePortCombo,QStringLiteral("COM11"),"environmental PTB port remains editable");
     pressureBaudCombo->setCurrentText(QStringLiteral("19200"));
-    selectComboData(pressureSourceCombo, QStringLiteral("bmp390"),
-                    "pressure source switches to BMP390 for profile test");
-    selectComboText(pressurePortCombo, QStringLiteral("COM12"),
-                    "BMP390 profile accepts its own port");
-    pressureBaudCombo->setCurrentText(QStringLiteral("256000"));
-    selectComboData(pressureSourceCombo, QStringLiteral("ptb210"),
-                    "pressure source returns to PTB210");
-    require(pressurePortCombo->currentText() == QStringLiteral("COM11") &&
-                pressureBaudCombo->currentText() == QStringLiteral("19200"),
-            "PTB source A-B-A restores its source-specific port and baud");
-
-    selectComboData(humiditySourceCombo, QStringLiteral("hmp3"),
-                    "humidity source switches to HMP3 for profile test");
-    selectComboText(humidityPortCombo, QStringLiteral("COM12"),
-                    "HMP3 profile accepts its own port");
+    selectComboText(humidityPortCombo,QStringLiteral("COM12"),"environmental HMP port remains editable");
     humidityBaudCombo->setCurrentText(QStringLiteral("128000"));
-    selectComboData(humiditySourceCombo, QStringLiteral("sht45"),
-                    "humidity source switches to SHT45 for profile test");
-    selectComboText(humidityPortCombo, QStringLiteral("COM7"),
-                    "SHT45 profile accepts its own port");
-    humidityBaudCombo->setCurrentText(QStringLiteral("1000000"));
-    selectComboData(humiditySourceCombo, QStringLiteral("hmp3"),
-                    "humidity source returns to HMP3");
-    require(humidityPortCombo->currentText() == QStringLiteral("COM12") &&
-                humidityBaudCombo->currentText() == QStringLiteral("128000"),
-            "HMP source A-B-A restores its source-specific port and baud");
-    QSettings profileSettings = VaporView::applicationConfigSettings();
-    profileSettings.beginGroup(QStringLiteral("MainWindow"));
-    require(profileSettings.value(QStringLiteral("serial/ptb210_port")).toString() == QStringLiteral("COM11") &&
-                profileSettings.value(QStringLiteral("serial/bmp390_port")).toString() == QStringLiteral("COM12") &&
-                profileSettings.value(QStringLiteral("serial/hmp3_port")).toString() == QStringLiteral("COM12") &&
-                profileSettings.value(QStringLiteral("serial/sht45_port")).toString() == QStringLiteral("COM7") &&
-                profileSettings.value(QStringLiteral("serial/ptb210_baud")).toString() == QStringLiteral("19200") &&
-                profileSettings.value(QStringLiteral("serial/bmp390_baud")).toString() == QStringLiteral("256000") &&
-                profileSettings.value(QStringLiteral("serial/hmp3_baud")).toString() == QStringLiteral("128000") &&
-                profileSettings.value(QStringLiteral("serial/sht45_baud")).toString() == QStringLiteral("1000000"),
-            "source-specific pressure and humidity ports and custom bauds persist beside legacy settings");
-    profileSettings.endGroup();
     VaporView::setSettingsWritesSuspended(true);
     require(dataSourceModeSwitch->property("segmentedSwitchControl").toBool() &&
                 dataSourceModeSwitch->text().contains(QStringLiteral("数据源")) &&
@@ -1495,7 +1430,7 @@ int main(int argc, char **argv)
             "SkyConfig JSON is displayed directly without a mode toggle");
     require(remoteStatus->property("status").toString() == QStringLiteral("disabled"),
             "disconnected remote mode explains the config state with a disabled status chip");
-    require(pressureSourceCombo->isVisible() && humiditySourceCombo->isVisible(),
+    require(!pressureSourceCombo && !humiditySourceCombo,
             "remote mode keeps PTB/BMP390 and HMP/SHT45 source selectors visible");
     require(ai8EnabledCheck && ai8EnabledCheck->isVisible() &&
                 ai8PortCombo && ai8PortCombo->isVisible() &&
@@ -1679,9 +1614,7 @@ int main(int argc, char **argv)
             "remote telemetry keeps the FPGA relay path selector enabled after SkyConfig loads");
     require(!epsilonPortCombo->isEnabled() && !epsilonBaudCombo->isEnabled() &&
                 !pressurePortCombo->isEnabled() && !pressureBaudCombo->isEnabled() &&
-                pressureSourceCombo->isEnabled() && !humidityPortCombo->isEnabled() &&
-                !humidityBaudCombo->isEnabled() && !humiditySourceCombo->isEnabled() &&
-                humiditySourceCombo->currentData().toString() == QStringLiteral("sht45") &&
+                !humidityPortCombo->isEnabled() && !humidityBaudCombo->isEnabled() &&
                 !lidarBaudCombo->isEnabled() && !temperaturePortCombo->isEnabled() &&
                 !ai8PortCombo->isEnabled() && !ai8BaudCombo->isEnabled() &&
                 !ai8RateCombo->isEnabled() && !ai8EnabledCheck->isEnabled() &&
@@ -1727,9 +1660,7 @@ int main(int argc, char **argv)
             "remote sky port combo keeps manual entry available");
     require(deviceConfigPage->findChild<QSpinBox *>(QStringLiteral("deviceRemoteSkyRd105SlaveSpin")) == nullptr,
             "remote-only RD105 slave address is not duplicated on the unified page");
-    require(pressureSourceCombo->currentData().toString() == QStringLiteral("ptb210") &&
-                humiditySourceCombo->currentData().toString() == QStringLiteral("hmp3"),
-            "remote SkyConfig restores pressure and humidity source selections");
+    require(!pressureSourceCombo && !humiditySourceCombo,"environmental identities remain fixed");
     require(ai8EnabledCheck->isChecked() &&
                 ai8PortCombo->currentText() == QStringLiteral("/dev/ttyAI8") &&
                 ai8BaudCombo->currentText() == QStringLiteral("19200") &&
@@ -1984,11 +1915,9 @@ int main(int argc, char **argv)
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceTemperatureBaudCombo"));
     require(lidarBaudCombo && temperatureBaudCombo,
             "remote configuration exposes every remaining host serial baud control");
-    selectComboData(pressureSourceCombo, QStringLiteral("bmp390"),
-                    "remote pressure source can be edited to BMP390");
-    selectComboData(humiditySourceCombo, QStringLiteral("sht45"),
-                    "remote humidity source can be edited to SHT45");
-    pressureBaudCombo->setCurrentText(QStringLiteral("256000"));
+
+
+    pressureBaudCombo->setCurrentText(QStringLiteral("19200"));
     humidityBaudCombo->setCurrentText(QStringLiteral("1000000"));
     lidarBaudCombo->setCurrentText(QStringLiteral("1500000"));
     temperatureBaudCombo->setCurrentText(QStringLiteral("460800"));
@@ -2008,7 +1937,7 @@ int main(int argc, char **argv)
             "remote edited port is serialized into SetSkyConfig JSON");
     require(uiJson.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("baud")).toInt() == 230400,
             "remote EPSILON documented baud is serialized into SetSkyConfig JSON");
-    require(uiJson.value(QStringLiteral("ptb")).toObject().value(QStringLiteral("baud")).toInt() == 256000 &&
+    require(uiJson.value(QStringLiteral("ptb")).toObject().value(QStringLiteral("baud")).toInt() == 19200 &&
                 uiJson.value(QStringLiteral("hmp")).toObject().value(QStringLiteral("baud")).toInt() == 1000000 &&
                 uiJson.value(QStringLiteral("lidar")).toObject().value(QStringLiteral("baud")).toInt() == 1500000 &&
                 uiJson.value(QStringLiteral("temperature_controller")).toObject().value(QStringLiteral("baud")).toInt() == 460800,
@@ -2018,10 +1947,10 @@ int main(int argc, char **argv)
     require(uiJson.value(QStringLiteral("temperature_controller")).toObject().value(QStringLiteral("slave_address")).toInt() == 9,
             "Device Config preserves the loaded RD105 slave address instead of editing it");
     require(uiJson.value(QStringLiteral("ptb")).toObject().value(QStringLiteral("source")).toString() ==
-                QStringLiteral("bmp390"),
+                QStringLiteral("ptb210"),
             "remote edited pressure source is serialized into SkyConfig JSON");
     require(uiJson.value(QStringLiteral("hmp")).toObject().value(QStringLiteral("source")).toString() ==
-                QStringLiteral("sht45"),
+                QStringLiteral("hmp3"),
             "remote edited humidity source is serialized into SkyConfig JSON");
     const QJsonObject ai8Json =
         uiJson.value(QStringLiteral("ai8_temperature_controller")).toObject();
@@ -2042,7 +1971,7 @@ int main(int argc, char **argv)
     require(VaporViewTest::processEventsUntil(1500, [&]() {
                 return setSkyConfigRequests == customBaudApplyRequestCount + 1 &&
                     remoteConfig.epsilon.baud_rate == 230400 &&
-                    remoteConfig.ptb.baud_rate == 256000 &&
+                    remoteConfig.ptb.baud_rate == 19200 &&
                     remoteConfig.hmp.baud_rate == 1000000 &&
                     remoteConfig.lidar.baud_rate == 1500000 &&
                     remoteConfig.temperature_controller.baud_rate == 460800 &&
@@ -2057,7 +1986,7 @@ int main(int argc, char **argv)
     const bool customBaudReadbackRestored = VaporViewTest::processEventsUntil(1500, [&]() {
                 return getSkyConfigRequests == customBaudReadRequestCount + 1 &&
                     epsilonBaudCombo->currentText() == QStringLiteral("230400") &&
-                    pressureBaudCombo->currentText() == QStringLiteral("256000") &&
+                    pressureBaudCombo->currentText() == QStringLiteral("19200") &&
                     humidityBaudCombo->currentText() == QStringLiteral("1000000") &&
                     lidarBaudCombo->currentText() == QStringLiteral("1500000") &&
                     temperatureBaudCombo->currentText() == QStringLiteral("460800") &&
@@ -2114,14 +2043,12 @@ int main(int argc, char **argv)
     VaporViewTest::processEventsFor(160);
     require(epsilonPortCombo->currentText() == QStringLiteral("COM7"),
             "switching back to Local restores the local EPSILON serial port");
-    require(pressureSourceCombo->isVisible() && humiditySourceCombo->isVisible(),
+    require(!pressureSourceCombo && !humiditySourceCombo,
             "local source selectors reappear after returning from remote mode");
-    require(pressureSourceCombo->currentData().toString() == localSourcesBeforeRemote.value(QStringLiteral("pressure_source")).toString() &&
-                humiditySourceCombo->currentData().toString() == localSourcesBeforeRemote.value(QStringLiteral("humidity_source")).toString(),
-            "switching back to Local restores local pressure and humidity sources");
+    require(!pressureSourceCombo && !humiditySourceCombo,"returning local keeps fixed instruments");
 
     VaporView::setSettingsWritesSuspended(false);
-    selectComboData(humiditySourceCombo, QStringLiteral("sht45"), "local SHT45 adapter selected for the settings round-trip");
+
     humidityBaudCombo->setCurrentText(QStringLiteral("256000"));
     VaporViewTest::processEventsFor(80);
     localConfig = window.testLocalDeviceConfigSnapshot();
@@ -2131,7 +2058,7 @@ int main(int argc, char **argv)
             "local SHT45 adapter custom baud remains in the model before settings round-trip");
     QSettings customBaudSettings = VaporView::applicationConfigSettings();
     customBaudSettings.beginGroup(QStringLiteral("MainWindow"));
-    require(customBaudSettings.value(QStringLiteral("serial/sht45_baud")).toString() ==
+    require(customBaudSettings.value(QStringLiteral("serial/hmp3_baud")).toString() ==
                 QStringLiteral("256000"),
             "local adapter custom baud is persisted before the next window is created");
     customBaudSettings.endGroup();

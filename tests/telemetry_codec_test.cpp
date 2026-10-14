@@ -534,8 +534,8 @@ void testSkyConfigDiff()
             "sky config sensor transport path round-trip");
     require(parsed.epsilon.packet_rates == b.epsilon.packet_rates,
             "sky config EPSILON packet-rate profile round-trip");
-    require(parsed.ptb.source == QStringLiteral("bmp390") &&
-                parsed.hmp.source == QStringLiteral("sht45") &&
+    require(parsed.ptb.source == QStringLiteral("ptb210") &&
+                parsed.hmp.source == QStringLiteral("hmp3") &&
                 parsed.ai8_temperature_controller.enabled &&
                 parsed.ai8_temperature_controller.port == QStringLiteral("/dev/ttyAI8") &&
                 parsed.ai8_temperature_controller.slave_address == 7 &&
@@ -629,8 +629,10 @@ void testSkyConfigRejectsInvalidJsonTypes()
     unsupportedPtbBaud.insert(QStringLiteral("ptb"), ptbFixed);
     error.clear();
     require(VaporView::SkyConfig::fromJson(unsupportedPtbBaud, parsed, &error),
-            "sky config preserves custom baud for the BMP390 serial adapter source");
+            "legacy BMP preset migrates to fixed environmental PTB");
 
+    require(parsed.ptb.source==QStringLiteral("ptb210") && parsed.ptb.baud_rate==9600,
+        "legacy internal adapter baud is not applied to PTB210");
     QJsonObject badEnabled = VaporView::SkyConfig::defaults().toJson();
     QJsonObject wave = badEnabled.value(QStringLiteral("wave_tcp")).toObject();
     wave.insert(QStringLiteral("enabled"), QStringLiteral("true"));

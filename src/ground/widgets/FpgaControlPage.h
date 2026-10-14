@@ -65,7 +65,7 @@ signals:
     void replayRequested(const QString &path);
     void exportRequested(const QString &path);
     void recordingRequested(bool enable);
-    void pressureSourceChanged(quint16 source);
+    void simulationSensorUpdated(const VaporView::FpgaSensor::Reading &reading);
 private:
     void showEvent(QShowEvent *event) override;
     void requestUsbDiscovery();
@@ -125,7 +125,6 @@ private:
     QAbstractButton *record_ = nullptr;
     QLabel *status_ = nullptr, *recordStatus_ = nullptr;
     QPlainTextEdit *diagnostics_ = nullptr;
-    QComboBox *pressure_ = nullptr;
     QComboBox *backend_ = nullptr;
     QCheckBox *recordSensors_ = nullptr, *recordDlia_ = nullptr, *recordRaw_ = nullptr;
     QTabWidget *tabs_ = nullptr;

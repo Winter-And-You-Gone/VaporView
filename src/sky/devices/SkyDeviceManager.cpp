@@ -600,6 +600,7 @@ void SkyDeviceManager::loadConfig(const SkyConfig& config)
         disconnectAll(false);
     }
     config_ = config;
+    config_.normalizeEnvironmentalDevices();
     if (fpga_backend_) fpga_backend_->setConfiguration(config_.fpga.configuration);
     simulated_epsilon_packet_rates_ = config_.epsilon.packet_rates;
     restartRtcmWriter();
@@ -694,12 +695,9 @@ void SkyDeviceManager::acceptFpgaMeasurement(const FpgaSensor::AdaptedMeasuremen
     const auto& r = m.reading;
     const bool valid = r.validity.structure && r.validity.crc && r.validity.deviceOnline && r.validity.measurement;
     const auto timestamp = std::chrono::steady_clock::now();
-    if ((r.kind == FpgaSensor::SensorKind::Ptb210 || r.kind == FpgaSensor::SensorKind::Bmp390) && r.source == config_.fpga.configuration.pressureSource) {
+    if (r.kind == FpgaSensor::SensorKind::Ptb210 && r.source == 0x40) {
         PtbData data; if (valid && r.pressurePa) { data.pressure_hpa = *r.pressurePa/100.; data.valid=true; data.timestamp=timestamp; }
         setState(SkyDeviceId::Ptb, valid ? DeviceState::Connected : DeviceState::Error); handlePtbData(data);
-    } else if (r.kind == FpgaSensor::SensorKind::Sht45) {
-        HmpData data; if (valid && r.temperatureC && r.humidityPct) { data.temperature=*r.temperatureC;data.humidity=*r.humidityPct;data.valid=true;data.timestamp=timestamp; }
-        setState(SkyDeviceId::Hmp, valid ? DeviceState::Connected : DeviceState::Error); handleHmpData(data);
     } else if (r.kind == FpgaSensor::SensorKind::Tfa1500) {
         LidarData data; if (valid && r.distanceMm) { data.distance_m=*r.distanceMm/1000.;data.valid=true;data.timestamp=timestamp; }
         setState(SkyDeviceId::Lidar, valid ? DeviceState::Connected : DeviceState::Error); handleLidarData(data);
@@ -944,8 +942,10 @@ QVector<DeviceStatusItem> SkyDeviceManager::allStatuses() const
     return {epsilon_status_, ptb_status_, hmp_status_, lidar_status_, temperature_controller_status_, ai8_temperature_controller_status_, wave_tcp_status_};
 }
 
-ApplyConfigResult SkyDeviceManager::applyConfig(const SkyConfig& newConfig)
+ApplyConfigResult SkyDeviceManager::applyConfig(const SkyConfig& requestedConfig)
 {
+    auto newConfig = requestedConfig;
+    newConfig.normalizeEnvironmentalDevices();
     ApplyConfigResult result;
     const SkyConfig oldConfig = config_;
     const SkyConfigDiff diff = oldConfig.diff(newConfig);
@@ -2302,6 +2302,7 @@ double SkyDeviceManager::waveTcpActualRateHz() const
 
 void SkyDeviceManager::generateSimulatedData()
 {
+    if (config_.sensor_transport_path == SensorTransportPath::FpgaRelay) return;
     simulate_phase_ += 0.04;
     const quint64 t = nowUs();
 

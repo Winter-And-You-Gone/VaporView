@@ -2089,6 +2089,7 @@ void MainWindow::onAi8SessionPageDataAvailable(
 
 void MainWindow::onRefreshTimer()
 {
+    refreshInternalEnvironment();
     if (isUiTestMode())
     {
         applyUiTestSnapshot();

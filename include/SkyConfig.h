@@ -146,6 +146,7 @@ struct SkyConfig
     static bool fromJson(const QJsonObject& object, SkyConfig& config, QString *errorMessage = nullptr);
     QJsonObject toJson() const;
     bool validate(QString *errorMessage = nullptr) const;
+    void normalizeEnvironmentalDevices();
     SkyConfigDiff diff(const SkyConfig& other) const;
 };
 
