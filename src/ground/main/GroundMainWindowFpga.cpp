@@ -129,7 +129,7 @@ void MainWindow::syncFpgaDeviceConfigUi()
                 emit state_->fpga_page_->sensorEnableRequested(source,!(registers.value(0x6004+(source-0x40)*0x100)&1));
             });
             const QList<QWidget*> widgets{device,port,bus,rateLabel,preset,enabled,action};
-            const int columns[]{0,1,2,3,4,5,7};
+            const int columns[]{0,1,2,3,4,5,6};
             for(int i=0;i<widgets.size();++i)grid->addWidget(widgets[i],row,columns[i],Qt::AlignVCenter);
             state_->device_config_.internal_sensor_rows[source]=widgets;
         }
@@ -168,6 +168,31 @@ void MainWindow::syncFpgaDeviceConfigUi()
     field(state_->device_config_.ai8_temperature_rate_combo,0x46,"poll_ms",0x662c);
     field(state_->device_config_.lidar_rate_combo,0x45,{},0,state_->is_english_?QStringLiteral("Device output"):QStringLiteral("设备输出"));
     field(state_->device_config_.temperature_rate_combo,0,{},0,QStringLiteral("—"));
+    if (auto *check=state_->device_config_.fpga_wave_enabled_check) {
+        bool known=true,enabled=false;
+        for(quint32 control:{0x4004u,0x4104u,0x5004u,0x5104u}) {
+            known &= registers.contains(control);
+            enabled |= (registers.value(control)&1)!=0;
+        }
+        const auto action=homeFpgaDeviceActionState(VaporView::SkyDeviceId::WaveTcp);
+        const QSignalBlocker blocker(check);
+        check->setVisible(relay);
+        check->setChecked(known&&enabled);
+        check->setEnabled(relay&&known&&!busy&&action!=VaporView::DeviceState::Disabled
+            &&action!=VaporView::DeviceState::Connecting);
+        const QString tooltip=state_->is_english_
+            ? QStringLiteral("ADC/DLIA acquisition readback. Toggle to start both acquisition channels or stop and drain them; RAW upload is controlled separately.")
+            : QStringLiteral("ADC/DLIA 实际采集状态。勾选启动两路采集，取消则停止并排空；RAW 上传单独控制。");
+        check->setToolTip(tooltip);check->setAccessibleName(tooltip);
+    }
+    if (relay && state_->device_config_.tcp_wave_transport_hint_lbl) {
+        const auto rate=[&](quint32 address) {return registers.value(address)?QString::number(registers.value(address)):QStringLiteral("—");};
+        auto *label=state_->device_config_.tcp_wave_transport_hint_lbl;
+        label->setText((state_->is_english_?QStringLiteral("Sampling: %1 Hz"):QStringLiteral("采样：%1 Hz")).arg(rate(0x4014)));
+        label->setToolTip((state_->is_english_
+            ? QStringLiteral("ADC0/1 share this sampling rate. DLIA0: %1 Hz; DLIA1: %2 Hz. Edit sampling and demodulation rates on the FPGA parameter page. RAW upload and received waveform frame rates are separate.")
+            : QStringLiteral("ADC0/1 共用此采样率。DLIA0：%1 Hz；DLIA1：%2 Hz。采样率与解调输出率在 FPGA 参数页修改；RAW 上传和收到的波形帧频另计。")).arg(rate(0x504c),rate(0x514c)));
+    }
     if (!relay) {
         for (auto *check : {state_->device_config_.epsilon_enabled_check, state_->device_config_.ptb_enabled_check,
                  state_->device_config_.hmp_enabled_check, state_->device_config_.lidar_enabled_check,

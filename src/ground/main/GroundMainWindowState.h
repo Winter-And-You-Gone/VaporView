@@ -76,8 +76,8 @@ struct DeviceConfigPageWidgets
     QLineEdit *tcp_wave_host_edit = nullptr;
     QSpinBox *tcp_wave_port_spin = nullptr;
     QCheckBox *tcp_wave_enabled_check = nullptr;
+    QCheckBox *fpga_wave_enabled_check = nullptr;
     QLabel *tcp_wave_transport_hint_lbl = nullptr;
-    QLabel *tcp_wave_source_hint_lbl = nullptr;
     QLabel *device_header_lbl = nullptr;
     QLabel *port_header_lbl = nullptr;
     QLabel *baud_header_lbl = nullptr;

@@ -2697,7 +2697,6 @@ void MainWindow::setupDeviceConfigPage()
     constexpr int kDeviceConfigPortComboWidth = 108;
     constexpr int kDeviceConfigBaudComboWidth = 100;
     constexpr int kDeviceConfigRateComboWidth = 88;
-    constexpr int kDeviceConfigSourceComboWidth = 108;
 
     auto createCombo = [this](QWidget *parent, int width, bool editable = false) {
         auto *combo = new QComboBox(parent);
@@ -2834,7 +2833,7 @@ void MainWindow::setupDeviceConfigPage()
     createColumnHeader(state_->device_config_.baud_header_lbl, 2, 1, kDeviceConfigBaudComboWidth);
     createColumnHeader(state_->device_config_.rate_header_lbl, 3, 2);
     createColumnHeader(state_->device_config_.enabled_header_lbl, 5, 1);
-    createColumnHeader(state_->device_config_.action_header_lbl, 7, 1);
+    createColumnHeader(state_->device_config_.action_header_lbl, 6, 1);
 
     auto addPortRow = [this, formLayout, formWidget, &createCombo](
             QLabel *&label,
@@ -2882,10 +2881,10 @@ void MainWindow::setupDeviceConfigPage()
         label->setFixedHeight(kMainPageInputHeight);
         label->setAlignment(Qt::AlignCenter);
         label->setTextFormat(Qt::PlainText);
-        label->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        label->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
         if (fixedWidth > 0)
         {
-            label->setFixedWidth(fixedWidth);
+            label->setMinimumWidth(fixedWidth);
         }
         return label;
     };
@@ -2994,13 +2993,6 @@ void MainWindow::setupDeviceConfigPage()
                           1,
                           2,
                           Qt::AlignVCenter | Qt::AlignLeft);
-    state_->device_config_.tcp_wave_source_hint_lbl =
-        createTcpWaveHintLabel(QStringLiteral("deviceTcpWaveSourceHint"),
-                               kDeviceConfigSourceComboWidth);
-    formLayout->addWidget(state_->device_config_.tcp_wave_source_hint_lbl,
-                          tcpWaveGridRow,
-                          6,
-                          Qt::AlignVCenter);
     connect(state_->device_config_.tcp_wave_host_edit,
             &QLineEdit::editingFinished,
             this,
@@ -3160,6 +3152,15 @@ void MainWindow::setupDeviceConfigPage()
                           QStringLiteral("deviceRemoteAi8TemperatureEnabledCheck"));
     addDeviceEnabledCheck(state_->device_config_.tcp_wave_enabled_check, kTcpWaveDeviceRow,
                           QStringLiteral("deviceTcpWaveEnabledCheck"));
+    state_->device_config_.fpga_wave_enabled_check = new DeviceEnabledCheckBox(formWidget);
+    state_->device_config_.fpga_wave_enabled_check->setObjectName(QStringLiteral("deviceFpgaAcquisitionEnabledCheck"));
+    state_->device_config_.fpga_wave_enabled_check->setFocusPolicy(Qt::TabFocus);
+    formLayout->addWidget(state_->device_config_.fpga_wave_enabled_check, tcpWaveGridRow, 5,
+                          Qt::AlignVCenter | Qt::AlignHCenter);
+    connect(state_->device_config_.fpga_wave_enabled_check, &QCheckBox::clicked, this, [this](bool enabled) {
+        requestHomeFpgaWaveAction(false, enabled);
+        syncFpgaDeviceConfigUi();
+    });
 
     auto addDeviceRemoteButton = [this, formLayout, formWidget](
             int row,
@@ -3182,7 +3183,7 @@ void MainWindow::setupDeviceConfigPage()
             triggerHomeDeviceAction(device);
         });
         layout->addWidget(actionButton);
-        formLayout->addWidget(buttonsWidget, row + 1, 7, Qt::AlignVCenter | Qt::AlignHCenter);
+        formLayout->addWidget(buttonsWidget, row + 1, 6, Qt::AlignVCenter | Qt::AlignHCenter);
     };
     addDeviceRemoteButton(0, state_->device_config_.epsilon_remote_buttons_widget,
                            state_->device_config_.epsilon_remote_action_btn,
@@ -4014,13 +4015,11 @@ void MainWindow::updateDeviceConfigTexts()
     if (state_->device_config_.tcp_wave_lbl) state_->device_config_.tcp_wave_lbl->setText(state_->is_english_ ? QStringLiteral("TCP Waveform") : QStringLiteral("TCP 波形"));
     if (state_->device_config_.tcp_wave_host_edit) state_->device_config_.tcp_wave_host_edit->setPlaceholderText(state_->is_english_ ? QStringLiteral("Host address") : QStringLiteral("主机地址"));
     if (state_->device_config_.tcp_wave_transport_hint_lbl) state_->device_config_.tcp_wave_transport_hint_lbl->setText(state_->is_english_ ? QStringLiteral("TCP service") : QStringLiteral("TCP 服务"));
-    if (state_->device_config_.tcp_wave_source_hint_lbl) state_->device_config_.tcp_wave_source_hint_lbl->setText(QStringLiteral("-"));
     const QString tcpWaveHint = state_->is_english_
         ? QStringLiteral("TCP waveform host address, port, and enabled state. Changes stay synchronized with the Wave Monitor card.")
         : QStringLiteral("TCP 波形主机地址、端口和启用状态，与波形监控卡片保持同步。");
     for (QLabel *label : {state_->device_config_.tcp_wave_lbl,
-                          state_->device_config_.tcp_wave_transport_hint_lbl,
-                          state_->device_config_.tcp_wave_source_hint_lbl})
+                          state_->device_config_.tcp_wave_transport_hint_lbl})
     {
         if (label)
         {
@@ -4311,8 +4310,7 @@ void MainWindow::updateDeviceConfigState()
                             static_cast<QWidget *>(state_->device_config_.tcp_wave_host_edit),
                             static_cast<QWidget *>(state_->device_config_.tcp_wave_port_spin),
                             static_cast<QWidget *>(state_->device_config_.tcp_wave_transport_hint_lbl),
-                            static_cast<QWidget *>(state_->device_config_.tcp_wave_enabled_check),
-                            static_cast<QWidget *>(state_->device_config_.tcp_wave_source_hint_lbl)})
+                            static_cast<QWidget *>(state_->device_config_.tcp_wave_enabled_check)})
     {
         if (widget)
         {
@@ -4320,8 +4318,7 @@ void MainWindow::updateDeviceConfigState()
         }
     }
     for (QLabel *label : {state_->device_config_.tcp_wave_lbl,
-                          state_->device_config_.tcp_wave_transport_hint_lbl,
-                          state_->device_config_.tcp_wave_source_hint_lbl})
+                          state_->device_config_.tcp_wave_transport_hint_lbl})
     {
         if (label)
         {

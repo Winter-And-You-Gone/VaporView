@@ -93,6 +93,12 @@ static QToolButton *homeAction(MainWindow &window,const QString &name)
     std::cerr << "Missing home action: " << name.toStdString() << '\n';
     require(false,"requested home device action exists");return nullptr;
 }
+static QLabel *deviceWaveRate(MainWindow &window)
+{
+    for(auto *label:window.findChildren<QLabel*>())
+        if(label->property("deviceTcpWaveHint")==QStringLiteral("deviceTcpWaveTransportHint"))return label;
+    return nullptr;
+}
 static void verifyCardMargins(MainWindow &window,FpgaControlPage *page,int scale)
 {
     const QSize originalSize=window.size();
@@ -356,6 +362,9 @@ static void remoteHomeActions()
     for (quint32 address:{0x6004u,0x6204u,0x6304u,0x6404u,0x6504u,0x6604u,0x4004u,0x4104u,0x5004u,0x5104u})
         registers[QString::number(address)]=1;
     for (quint32 address:{0x50u,0x403cu,0x413cu}) registers[QString::number(address)]=0;
+    registers[QString::number(0x4014)]=250000;
+    registers[QString::number(0x504c)]=1000;
+    registers[QString::number(0x514c)]=2000;
     QJsonObject status{{"connected",true},{"ready",true},{"busy",false},{"detail","ready"},
         {"configuration",config.toJson()},{"registers",registers},{"archived_records","0"}};
     status["sensor_rates_hz"]=QJsonObject{{"64",1.0},{"66",750.0},{"67",2.0},{"68",4.0},{"69",1000.0}};
@@ -440,12 +449,17 @@ static void remoteHomeActions()
     registers[QString::number(0x6304)]=1;status["registers"]=registers;send(MsgType::FpgaStatus,FpgaRemote::encodeStatus(status));
     const QStringList names{"EPSILON","PTB210","TFA1500","AI-8288",QStringLiteral("波形源")};
     const QList<quint16> sources{0x42,0x40,0x45,0x46,0};
+    auto *waveEnabled=window.findChild<QCheckBox*>("deviceFpgaAcquisitionEnabledCheck");
+    require(waveEnabled&&waveEnabled->isEnabled()&&waveEnabled->isChecked(),"remote acquisition enable reflects confirmed registers");
+    require(deviceWaveRate(window)&&deviceWaveRate(window)->text().contains("250000")
+        &&deviceWaveRate(window)->toolTip().contains("2000"),"remote ADC and DLIA rates use actual register readback");
     for (int index=0;index<names.size();++index) {
         auto *button=homeAction(window,names[index]);
         for (bool enabled:{false,true}) {
             if(sources[index]!=0x42)refreshNavigation();
             const int changesBefore=navigationChanges;
-            const auto before=registers;const int count=requests.size();button->click();
+            const auto before=registers;const int count=requests.size();
+            if(!sources[index])waveEnabled->click();else button->click();
             require(waitUntil([&]{return requests.size()==count+1;}),"home click sends one FPGA request");
             require(stack->currentIndex()==0,"remote per-device action keeps the home page selected");
             QJsonObject control;require(FpgaRemote::parseControl(requests.last().payload,control),"home payload validates");
@@ -455,6 +469,8 @@ static void remoteHomeActions()
             CommandAck ack;ack.command_id=CommandId::DeviceOperation;ack.command_seq=commandSequence;
             send(MsgType::CommandAck,TelemetryCodec::serializeCommandAck(ack));processFor(30);
             require(!button->isEnabled()&&button->property("state")=="connecting","ACK does not change confirmed device state");
+            if(!sources[index])require(!waveEnabled->isEnabled()&&waveEnabled->isChecked()!=enabled,
+                "remote acquisition checkbox keeps readback state until final confirmation");
             if(sources[index]!=0x42) {
                 status["busy"]=true;send(MsgType::FpgaStatus,FpgaRemote::encodeStatus(status));processFor(20);
                 navigation->refreshStatus();
@@ -471,6 +487,8 @@ static void remoteHomeActions()
             send(MsgType::DeviceOperationResponse,TelemetryCodec::serializeDeviceOperationResponse(response));
             require(waitUntil([&]{return button->isEnabled()&&button->property("state")== (enabled?"connected":"disconnected");}),
                 "final register readback confirms the home connection state");
+            if(!sources[index])require(waveEnabled->isEnabled()&&waveEnabled->isChecked()==enabled,
+                "remote checkbox changes only after final acquisition readback");
             if(sources[index]!=0x42) {
                 navigation->refreshStatus();
                 require(navigationChanges==changesBefore,"remote sensor actions do not log false GNSS loss and recovery");
@@ -656,13 +674,18 @@ static void localSimulatorRouting()
     check(!page->findChild<QLabel*>("fpgaConnectionStatus")->text().contains(QStringLiteral("修改 BMP 地址")),"already-enabled BMP does not receive a duplicate address-setting start");
     check(stack->currentIndex()==0,"local auto-connect keeps the home page selected");
     const QStringList homeNames{"EPSILON","PTB210","TFA1500","AI-8288",QStringLiteral("波形源")};
+    auto *waveEnabled=window.findChild<QCheckBox*>("deviceFpgaAcquisitionEnabledCheck");
+    check(waveEnabled&&deviceWaveRate(window)&&deviceWaveRate(window)->text().contains("1000000"),
+        "local ADC actual sampling rate is displayed");
     for(const auto &name:homeNames) {
         auto *button=homeAction(window,name);
         for(bool enabled:{false,true}) {
-            button->click();
+            if(name==QStringLiteral("波形源"))waveEnabled->click();else button->click();
             check(waitUntil([&]{return button->isEnabled()&&button->property("state")== (enabled?"connected":"disconnected");},10000),
                 "local home action confirms sensor or acquisition enable through actual VLP1 readback");
             check(disconnect->isEnabled()&&stack->currentIndex()==0,"individual stop keeps USB open and stays on home");
+            if(name==QStringLiteral("波形源"))check(waveEnabled->isEnabled()&&waveEnabled->isChecked()==enabled,
+                "local acquisition checkbox follows confirmed VLP1 start and stop");
         }
     }
     check(!homeAction(window,"RD105")->isEnabled(),"local relay does not invent RD105 support");
@@ -726,6 +749,12 @@ static void localSimulatorRouting()
     auto *environmentPressure=window.findChild<PtbPanel*>()->findChild<QLabel*>("highlightedValue");
     check(environmentPressure->text().contains("1013."),"BMP pressure never replaces environmental PTB pressure");
     check(!homeAction(window,"HMP")->isEnabled(),"missing HMP firmware channel remains unavailable");
+
+    QWidget *deviceConfig=path;
+    while(stack->indexOf(deviceConfig)<0)deviceConfig=deviceConfig->parentWidget();
+    stack->setCurrentWidget(deviceConfig);processFor(100);
+    check(deviceWaveRate(window)->width()>=deviceWaveRate(window)->sizeHint().width(),"actual ADC sampling rate fits its device configuration cell");
+    stack->setCurrentIndex(0);processFor(100);
 
     auto *ai8Action=homeAction(window,"AI-8288");
     auto *ai8Channel=page->findChild<QDoubleSpinBox*>("fpgaAi8Channel");
@@ -876,6 +905,11 @@ static void relayConfigurationPresentation()
     }
     const auto before=window.testLocalDeviceConfigSnapshot();
     path->setCurrentIndex(path->findData("fpga_relay"));processFor(50);
+    auto *waveEnabled=window.findChild<QCheckBox*>("deviceFpgaAcquisitionEnabledCheck");
+    auto *grid=qobject_cast<QGridLayout*>(waveEnabled->parentWidget()->layout());
+    require(grid&&grid->columnCount()==7,"device actions immediately follow enable without an empty source column");
+    require(waveEnabled->isVisible()&&!waveEnabled->isEnabled()&&deviceWaveRate(window)->text().contains(QStringLiteral("—")),
+        "unavailable FPGA acquisition cannot show a preset as actual sampling or enabled state");
     const bool originalDark=VaporView::isDarkThemeEnabled();
     for(bool dark:{true,false}) {
         if(VaporView::isDarkThemeEnabled()!=dark) {
@@ -953,6 +987,8 @@ static void relayConfigurationPresentation()
     require(window.findChild<QWidget*>("deviceInternalNameBMP390")->isVisible() && window.findChild<QWidget*>("deviceInternalNameSHT45")->isVisible(),
         "BMP390 and SHT45 have independent relay device rows");
     path->setCurrentIndex(path->findData("direct_devices"));processFor(50);
+    require(!waveEnabled->isVisible()&&window.findChild<QCheckBox*>("deviceTcpWaveEnabledCheck")->isVisible(),
+        "direct TCP startup preset is separate from the FPGA acquisition checkbox");
     require(!window.findChild<QWidget*>("deviceInternalNameBMP390")->isVisible(),"I2C relay rows are hidden on the direct path");
     require(window.testLocalDeviceConfigSnapshot().value("epsilon").toObject().value("baud")==before.value("epsilon").toObject().value("baud"),
         "FPGA display never overwrites Direct baud presets");
