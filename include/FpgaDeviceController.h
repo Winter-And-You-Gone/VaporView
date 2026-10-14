@@ -38,6 +38,7 @@ public slots:
     void setWaveform(int channel, bool enable);
     void setDac(int channel, bool enable);
     void setSensorEnabled(quint16 source, bool enable);
+    void connectSensor(const QJsonObject& request);
     void configureSensor(const QJsonObject& request);
     void setRawEnabled(bool enable);
     void setTemperature(double celsius);
@@ -81,7 +82,9 @@ private:
     void waitFor(quint32 address, quint32 mask, quint32 expected);
     void commit(quint16 source, quint32 base);
     void readAll();
-    void prepareSensorConfiguration(quint16 source, quint32 baud, quint32 pollMs);
+    void startSensorConfiguration(const QJsonObject& request, bool connectAfter);
+    void prepareSensorConfiguration(quint16 source, quint32 baud, quint32 pollMs, bool connectAfter);
+    bool appendSensorEnable(quint16 source, bool enable);
     bool enableUpload();
     void stopAndDrain();
     void resetAcquisition();

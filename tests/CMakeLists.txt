@@ -428,6 +428,8 @@ vaporview_add_test(NAME fpga_main_window_test COMMAND fpga_main_window_test)
 set_tests_properties(fpga_main_window_test PROPERTIES LABELS "gui;fpga" TIMEOUT 120 RUN_SERIAL TRUE)
 vaporview_add_test(NAME fpga_local_simulator_test COMMAND fpga_main_window_test --local-simulator)
 set_tests_properties(fpga_local_simulator_test PROPERTIES LABELS "gui;fpga;integration" TIMEOUT 90 RUN_SERIAL TRUE)
+vaporview_add_test(NAME fpga_sensor_draft_ui_test COMMAND fpga_main_window_test --monitor-ui-actions)
+set_tests_properties(fpga_sensor_draft_ui_test PROPERTIES LABELS "gui;fpga" TIMEOUT 90 RUN_SERIAL TRUE)
 
 add_executable(log_service_test
     ${CMAKE_CURRENT_SOURCE_DIR}/log_service_test.cpp

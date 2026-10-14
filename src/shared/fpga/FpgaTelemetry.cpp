@@ -130,6 +130,12 @@ bool validateControl(const QJsonObject& control, QString *error)
         if (op == "sensor") {
             keys << "source";
             if (!integer(control.value("source"), 0, 65535) || !sensorSource(control.value("source").toInt())) return fail();
+            if (control.contains("baud") || control.contains("poll_ms")) {
+                if (!control.value("enabled").toBool()) return fail();
+                auto settings=control;settings["op"]="sensor_config";settings.remove("enabled");
+                if (!validateControl(settings,error)) return false;
+                keys << "baud" << "poll_ms";
+            }
         }
     } else if (op == "sensor_config") {
         keys << "source" << "baud" << "poll_ms";

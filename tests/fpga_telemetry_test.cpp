@@ -40,6 +40,10 @@ int main(int argc, char **argv)
     require(!validateControl(bad),"fractional register value rejected before coercion");
     require(!validateControl({{"op","sensor"},{"source",0x41},{"enabled",true}}),"unknown source rejected");
     require(parseControl(encodeControl({{"op","sensor_config"},{"source",0x40},{"baud",4800},{"poll_ms",250}}),parsed),"typed PTB settings survive remote transport");
+    require(parseControl(encodeControl({{"op","sensor"},{"source",0x40},{"enabled",true},{"baud",4800},{"poll_ms",250}}),parsed),
+        "sensor connect carries staged parameters through the typed remote contract");
+    require(!validateControl({{"op","sensor"},{"source",0x40},{"enabled",false},{"baud",4800}}),"disconnect cannot apply parameters");
+    require(!validateControl({{"op","sensor"},{"source",0x44},{"enabled",true},{"baud",4800}}),"connect rejects unsupported parameters");
     for(const auto &request:QVector<QJsonObject>{
         {{"op","sensor_config"},{"source",0x43},{"baud",9600}},
         {{"op","sensor_config"},{"source",0x46},{"baud",19200}},

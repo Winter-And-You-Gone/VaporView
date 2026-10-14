@@ -747,6 +747,10 @@ void FpgaControlPage::simulateOperation(const QJsonObject &request)
         sim.rawEnabled=enabled;
     }
     else if(op=="sensor") {
+        if(!VaporView::FpgaRemote::validateControl(request))return;
+        if(request.contains("baud")||request.contains("poll_ms")) {
+            auto settings=request;settings["op"]="sensor_config";settings.remove("enabled");simulateOperation(settings);
+        }
         const auto source=quint16(request.value("source").toInt());
         if(enabled)sim.disabledSensors.remove(source);else sim.disabledSensors.insert(source);
     }

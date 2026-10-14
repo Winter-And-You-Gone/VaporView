@@ -217,7 +217,7 @@ void FpgaDeviceController::advance()
     const auto& s=*current_;
     if (s.kind==Kind::PrepareSensorConfig) {
         const auto source=s.source; const auto values=s.values;
-        current_.reset(); prepareSensorConfiguration(source,values[0],values[1]); advance(); return;
+        current_.reset(); prepareSensorConfiguration(source,values[0],values[1],values[2]!=0); advance(); return;
     }
     if (s.kind==Kind::Delay) {
         const auto generation=operationGeneration_;
@@ -505,7 +505,16 @@ void FpgaDeviceController::setDac(int channel, bool enable)
 void FpgaDeviceController::setSensorEnabled(quint16 source, bool enable)
 {
     if (!ready_ || source<0x40 || source>0x46 || source==0x41 || !begin(QStringLiteral("设置传感器状态"))) return;
-    if (enable && !enableUpload()) return;
+    if (source==0x43 && enable && (registers_.value(0x6304)&1)) {
+        fail(QStringLiteral("修改 BMP 地址前请先禁用 BMP390。"));return;
+    }
+    if (!appendSensorEnable(source,enable)) return;
+    readAll(); advance();
+}
+
+bool FpgaDeviceController::appendSensorEnable(quint16 source, bool enable)
+{
+    if (enable && !enableUpload()) return false;
     if (source==0x40 && enable && registers_.value(0x600c)) {
         // PTB firmware marks every new pressure sample invalid while any old
         // error is latched. Preserve evidence before acknowledging those bits;
@@ -516,16 +525,34 @@ void FpgaDeviceController::setSensorEnabled(quint16 source, bool enable)
         write(0x600c,errors);read(0x600c);
     }
     if (source==0x43 && enable) {
-        if (registers_.value(0x6304)&1) { fail(QStringLiteral("修改 BMP 地址前请先禁用 BMP390。")); return; }
         write(0x6310,0x77); verify(0x6310,0x77);
     }
     adapter_.resetRate(source);
     if (latestReadings_.contains(source)) latestReadings_[source].sampleRateHz=0.0;
     Step s; s.kind=Kind::Sensor; s.address=1; s.source=source; s.expected=enable?1:0; steps_.push_back(s);
-    readAll(); advance();
+    verify(0x6004+(source-0x40)*0x100,enable?1:0);
+    return true;
+}
+
+void FpgaDeviceController::connectSensor(const QJsonObject& request)
+{
+    if (busy_ && !backgroundRefresh_) {report(QStringLiteral("连接被拒绝：已有事务正在执行。"));return;}
+    if (request.value("op")!="sensor" || !request.value("enabled").toBool() || !FpgaRemote::validateControl(request)) {
+        fail(QStringLiteral("传感器连接参数或范围无效。"));return;
+    }
+    if (!request.contains("baud") && !request.contains("poll_ms")) {
+        setSensorEnabled(quint16(request.value("source").toInt()),true);return;
+    }
+    auto settings=request;settings["op"]="sensor_config";settings.remove("enabled");
+    startSensorConfiguration(settings,true);
 }
 
 void FpgaDeviceController::configureSensor(const QJsonObject& request)
+{
+    startSensorConfiguration(request,false);
+}
+
+void FpgaDeviceController::startSensorConfiguration(const QJsonObject& request, bool connectAfter)
 {
     if (busy_ && !backgroundRefresh_) {report(QStringLiteral("参数提交被拒绝：已有事务正在执行。"));return;}
     if (request.value("op").toString()!=QStringLiteral("sensor_config") || !FpgaRemote::validateControl(request)) {
@@ -535,16 +562,16 @@ void FpgaDeviceController::configureSensor(const QJsonObject& request)
     const auto source=quint16(request.value("source").toInt());
     const quint32 base=0x6000+(source-0x40)*0x100;
     // Decide from a fresh hardware read, including state-dependent constraints.
-    read(base+4,2);
+    read(base+4,3);
     if(source==0x40)read(0x6010,4);
     if(source==0x44)read(0x641c);
     if(source==0x45)read(0x6514);
     Step prepare;prepare.kind=Kind::PrepareSensorConfig;prepare.source=source;
-    prepare.values={quint32(request.value("baud").toInt()),quint32(request.value("poll_ms").toInt())};
+    prepare.values={quint32(request.value("baud").toInt()),quint32(request.value("poll_ms").toInt()),connectAfter?1u:0u};
     steps_.push_back(prepare);advance();
 }
 
-void FpgaDeviceController::prepareSensorConfiguration(quint16 source, quint32 baud, quint32 pollMs)
+void FpgaDeviceController::prepareSensorConfiguration(quint16 source, quint32 baud, quint32 pollMs, bool connectAfter)
 {
     const quint32 base=0x6000+(source-0x40)*0x100;
     const bool enabled=registers_.value(base+4)&1;
@@ -575,7 +602,9 @@ void FpgaDeviceController::prepareSensorConfiguration(quint16 source, quint32 ba
     if(baud)parameter(base+0x10,baud);
     if(pollMs)parameter(base+(source==0x40?0x18:source==0x46?0x2c:0x14),pollMs);
     if(source==0x45)waitFor(base+8,13,0);
-    if(enabled) {
+    if(connectAfter) {
+        if(!appendSensorEnable(source,true))return;
+    } else if(enabled) {
         sensor(true);
         if(source==0x45)waitFor(base+8,13,1);
     }

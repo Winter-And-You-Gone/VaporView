@@ -5,7 +5,8 @@
 #include <QJsonArray>
 #include <QGridLayout>
 #include <QPointer>
-#include <QSpinBox>
+#include <QDoubleValidator>
+#include <QIntValidator>
 #include "FpgaTelemetry.h"
 
 #ifdef VAPORVIEW_MAIN_WINDOW_TESTING
@@ -34,70 +35,87 @@ void MainWindow::syncFpgaDeviceConfigUi()
     }
     const auto registers = homeFpgaRegisters();
     const QString hint = state_->is_english_
-        ? QStringLiteral("Confirmed FPGA register readback. Use Set to apply supported UART / polling parameters. Direct presets are retained separately.")
-        : QStringLiteral("FPGA 实际寄存器读回。点击设置提交支持的串口/轮询参数；直连预设独立保留。");
-    const auto readback = [&](QComboBox *editor, const QString &value) {
-        if (!editor) return;
-        auto *parent = editor->parentWidget();
-        const QString name = editor->objectName() + QStringLiteral("FpgaReadback");
-        auto *label = parent->findChild<QLabel *>(name);
-        if (!label) {
-            auto *grid = qobject_cast<QGridLayout *>(parent->layout());
-            if (!grid) return;
-            int row, column, rowSpan, columnSpan;
-            grid->getItemPosition(grid->indexOf(editor), &row, &column, &rowSpan, &columnSpan);
-            label = new QLabel(parent); label->setObjectName(name);
-            label->setAlignment(Qt::AlignCenter);
-            grid->addWidget(label, row, column, rowSpan, columnSpan);
-        }
-        label->setText(value); label->setToolTip(hint);
-        label->setVisible(relay); editor->setVisible(!relay);
-        if (relay) editor->setEnabled(false);
-    };
-    const auto word = [&](quint32 address) { return registers.contains(address) ? QString::number(registers.value(address)) : QStringLiteral("—"); };
-    const auto rate = [&](quint32 address) { return registers.value(address) ? QString::number(1000.0/registers.value(address),'g',4) : QStringLiteral("—"); };
-    const quint16 pressure = homeFpgaSensorSource(VaporView::SkyDeviceId::Ptb);
-    readback(state_->device_config_.epsilon_baud_combo, word(0x6210));
-    readback(state_->device_config_.ptb_baud_combo, pressure == 0x43 ? QStringLiteral("I²C") : word(0x6010));
-    readback(state_->device_config_.hmp_baud_combo, QStringLiteral("I²C"));
-    readback(state_->device_config_.lidar_baud_combo, word(0x6510));
-    readback(state_->device_config_.ai8_temperature_baud_combo, word(0x6610));
-    readback(state_->device_config_.temperature_baud_combo, state_->is_english_ ? QStringLiteral("Unsupported") : QStringLiteral("不支持"));
-    readback(state_->device_config_.ptb_rate_combo, rate(pressure == 0x43 ? 0x6314 : 0x6018));
-    readback(state_->device_config_.hmp_rate_combo, rate(0x6414));
-    readback(state_->device_config_.ai8_temperature_rate_combo, rate(0x662c));
-    readback(state_->device_config_.lidar_rate_combo, state_->is_english_ ? QStringLiteral("Device output") : QStringLiteral("设备输出"));
-    readback(state_->device_config_.temperature_rate_combo, QStringLiteral("—"));
-    const bool writable = !registers.isEmpty() && (isUiTestMode() || (isRemoteSkyMode()
-        ? !state_->fpga_remote_request_id_ && !state_->fpga_remote_status_.value("busy").toBool() && !state_->remote_sky_config_applying_
-        : !state_->fpga_busy_));
-    const auto editable = [&](QComboBox *preset, quint16 source, bool supported) {
+        ? QStringLiteral("Disconnect this device to edit. Changes are staged and verified when connecting; Direct presets are separate.")
+        : QStringLiteral("断开此设备后可修改；参数暂存，连接时下发并核对读回。直连预设独立保留。");
+    const bool busy = state_->fpga_home_action_device_ != VaporView::SkyDeviceId::All || (isUiTestMode()
+        ? state_->ui_test_connection_in_progress_ : isRemoteSkyMode()
+        ? state_->fpga_remote_request_id_ || state_->fpga_remote_status_.value("busy").toBool() || state_->remote_sky_config_applying_
+        : state_->fpga_busy_ || state_->fpga_replaying_);
+    const bool usbConnected = isUiTestMode() ? state_->fpga_sim_ready_ : isRemoteSkyMode()
+        ? state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen() && state_->fpga_remote_status_.value("connected").toBool()
+        : state_->fpga_connected_;
+    const auto field = [&](QComboBox *preset, quint16 source, const QString &key, quint32 address, const QString &fixed = {}) {
         if (!preset) return;
         auto *parent=preset->parentWidget();
-        auto *button=parent->findChild<QPushButton*>(preset->objectName()+QStringLiteral("FpgaEdit"));
-        if(!button) {
-            auto *grid=qobject_cast<QGridLayout*>(parent->layout());if(!grid)return;
-            auto *value=parent->findChild<QLabel*>(preset->objectName()+QStringLiteral("FpgaReadback"));
-            int row,column,rowSpan,columnSpan;grid->getItemPosition(grid->indexOf(value),&row,&column,&rowSpan,&columnSpan);
-            grid->removeWidget(value);
-            auto *cell=new QWidget(parent);auto *layout=new QHBoxLayout(cell);layout->setContentsMargins(0,0,0,0);layout->setSpacing(6);
-            value->setParent(cell);layout->addWidget(value,1);
-            button=new QPushButton(cell);button->setObjectName(preset->objectName()+QStringLiteral("FpgaEdit"));
-            layout->addWidget(button);grid->addWidget(cell,row,column,rowSpan,columnSpan);
-            connect(button,&QPushButton::clicked,this,[this,button]{editFpgaSensorConfiguration(quint16(button->property("source").toUInt()));});
+        auto *grid=qobject_cast<QGridLayout*>(parent->layout());if(!grid)return;
+        int row,column,rowSpan,columnSpan;
+        grid->getItemPosition(grid->indexOf(preset),&row,&column,&rowSpan,&columnSpan);
+        auto *label=parent->findChild<QLabel*>(preset->objectName()+QStringLiteral("FpgaReadback"));
+        if(!label) {
+            label=new QLabel(parent);label->setObjectName(preset->objectName()+QStringLiteral("FpgaReadback"));
+            label->setAlignment(Qt::AlignCenter);grid->addWidget(label,row,column,rowSpan,columnSpan);
         }
-        button->setProperty("source",source);button->setText(state_->is_english_?QStringLiteral("Set"):QStringLiteral("设置"));
-        button->parentWidget()->setVisible(relay);button->setVisible(relay&&supported);
-        const auto *value=parent->findChild<QLabel*>(preset->objectName()+QStringLiteral("FpgaReadback"));
-        button->setEnabled(writable && value && value->text()!=QStringLiteral("—"));
-        button->setToolTip(state_->is_english_?QStringLiteral("Configure FPGA UART / polling with verified readback."):QStringLiteral("设置 FPGA 串口/轮询参数，提交后核对读回。"));
+        const bool supported = !key.isEmpty();
+        auto *editor=parent->findChild<QComboBox*>(preset->objectName()+QStringLiteral("FpgaEditor"));
+        if(supported && !editor) {
+            editor=new QComboBox(parent);editor->setObjectName(preset->objectName()+QStringLiteral("FpgaEditor"));
+            editor->setEditable(true);editor->setInsertPolicy(QComboBox::NoInsert);editor->setMaxVisibleItems(15);
+            configureComboPopup(editor);grid->addWidget(editor,row,column,rowSpan,columnSpan,Qt::AlignVCenter);
+            connect(editor,&QComboBox::currentTextChanged,this,[this,editor](const QString &text) {
+                if(!isFpgaRelayPath() || !editor->isEnabled())return;
+                const auto source=quint16(editor->property("source").toUInt());
+                const auto key=editor->property("parameter").toString();
+                fpgaSensorDrafts()[source][key]=text;
+                editor->setToolTip(state_->is_english_?QStringLiteral("Staged; applied and verified when connecting.")
+                    :QStringLiteral("已暂存，连接时下发并核对读回。"));
+            });
+        }
+        preset->setVisible(!relay);
+        if(relay)preset->setEnabled(false);
+        label->setText(fixed);label->setToolTip(hint);label->setVisible(relay&&!supported);
+        if(!editor)return;
+        editor->setVisible(relay&&supported);
+        if(!supported)return;
+        const QSignalBlocker blocker(editor);
+        if(editor->property("source").toUInt()!=source) {
+            editor->clear();editor->setProperty("source",source);editor->setProperty("parameter",key);
+            const auto *oldValidator=editor->validator();editor->setValidator(nullptr);delete oldValidator;
+            if(key=="baud") {
+                const int minimum=source==0x40?1200:source==0x42?9600:115200;
+                const int maximum=source==0x40?19200:6250000;
+                editor->setValidator(new QIntValidator(minimum,maximum,editor));
+                for(int baud:{1200,2400,4800,9600,19200,38400,57600,115200,230400,460800,500000,921600,1000000,2000000,6250000})
+                    if(baud>=minimum&&baud<=maximum)editor->addItem(QString::number(baud));
+            } else {
+                auto *validator=new QDoubleValidator(1000.0/3600000,1000,9,editor);validator->setLocale(QLocale::c());editor->setValidator(validator);
+                editor->addItems({"0.1","0.2","0.5","1","2","5","10","20","50","100","1000"});
+            }
+        }
+        editor->setFixedSize(preset->size());editor->setFont(preset->font());
+        const auto draft=fpgaSensorDrafts().value(source);
+        const auto value=draft.value(key);
+        const auto numberText=[&](double value) {return QString::number(key=="baud"?value:1000.0/value,'g',9);};
+        const QString text=draft.contains(key)?value.toString()
+            :registers.value(address)?numberText(registers.value(address)):QString();
+        if(editor->currentText()!=text)editor->setCurrentText(text);
+        editor->lineEdit()->setPlaceholderText(state_->is_english_?(key=="baud"?"Baud":"Hz"):(key=="baud"?"波特率":"Hz"));
+        const quint32 control=0x6004+(source-0x40)*0x100;
+        editor->setEnabled(relay&&!busy&&(!usbConnected||(registers.contains(control)&&!(registers.value(control)&1))));
+        editor->setToolTip(hint+(key=="poll_ms"?(state_->is_english_?QStringLiteral(" Frequency in Hz; polling cadence, not measured sample rate.")
+            :QStringLiteral(" 频率单位 Hz，表示轮询节奏，不是实测数据频率。")):QString()));
     };
-    editable(state_->device_config_.epsilon_baud_combo,0x42,true);
-    editable(state_->device_config_.ptb_baud_combo,pressure,pressure==0x40);
-    editable(state_->device_config_.lidar_baud_combo,0x45,true);
-    editable(state_->device_config_.ptb_rate_combo,pressure,true);
-    editable(state_->device_config_.hmp_rate_combo,0x44,true);
-    editable(state_->device_config_.ai8_temperature_rate_combo,0x46,true);
+    const quint16 pressure = homeFpgaSensorSource(VaporView::SkyDeviceId::Ptb);
+    field(state_->device_config_.epsilon_baud_combo,0x42,"baud",0x6210);
+    field(state_->device_config_.ptb_baud_combo,pressure,pressure==0x40?"baud":"",0x6010,QStringLiteral("I²C"));
+    field(state_->device_config_.hmp_baud_combo,0x44,{},0,QStringLiteral("I²C"));
+    field(state_->device_config_.lidar_baud_combo,0x45,"baud",0x6510);
+    field(state_->device_config_.ai8_temperature_baud_combo,0x46,{},0,registers.contains(0x6610)?QString::number(registers.value(0x6610)):QStringLiteral("19200"));
+    field(state_->device_config_.temperature_baud_combo,0,{},0,state_->is_english_?QStringLiteral("Unsupported"):QStringLiteral("不支持"));
+    field(state_->device_config_.ptb_rate_combo,pressure,"poll_ms",pressure==0x43?0x6314:0x6018);
+    field(state_->device_config_.hmp_rate_combo,0x44,"poll_ms",0x6414);
+    field(state_->device_config_.ai8_temperature_rate_combo,0x46,"poll_ms",0x662c);
+    field(state_->device_config_.lidar_rate_combo,0x45,{},0,state_->is_english_?QStringLiteral("Device output"):QStringLiteral("设备输出"));
+    field(state_->device_config_.temperature_rate_combo,0,{},0,QStringLiteral("—"));
     if (!relay) {
         for (auto *check : {state_->device_config_.epsilon_enabled_check, state_->device_config_.ptb_enabled_check,
                  state_->device_config_.hmp_enabled_check, state_->device_config_.lidar_enabled_check,
@@ -135,64 +153,36 @@ void MainWindow::syncFpgaDeviceConfigUi()
             : !state_->fpga_busy_ && !state_->fpga_replaying_));
 }
 
-void MainWindow::editFpgaSensorConfiguration(quint16 source)
+QMap<quint16, QJsonObject>& MainWindow::fpgaSensorDrafts()
 {
-    const auto registers=homeFpgaRegisters();
-    if(!isFpgaRelayPath() || registers.isEmpty())return;
-    const bool remote=isRemoteSkyMode(), simulation=isUiTestMode();
+    return state_->fpga_sensor_drafts_[(isRemoteSkyMode()?1:0)+(isUiTestMode()?2:0)];
+}
+
+QJsonObject MainWindow::fpgaSensorConnectRequest(quint16 source)
+{
+    auto request=fpgaSensorDrafts().value(source);
+    // Keep the typed text intact during refresh; convert only for the transaction.
+    for(auto it=request.begin();it!=request.end();++it) {
+        bool ok=false;const double number=it.value().toString().toDouble(&ok);
+        const double value=it.key()=="baud"?number:(number>0?std::round(1000.0/number):0);
+        if(ok&&std::isfinite(value))it.value()=value;
+    }
+    request["op"]="sensor";request["source"]=source;request["enabled"]=true;
+    return request;
+}
+
+void MainWindow::confirmFpgaSensorDraft(quint16 source, const QMap<quint32, quint32>& registers)
+{
+    auto &drafts=fpgaSensorDrafts();
+    const auto draft=drafts.value(source);
+    const auto request=fpgaSensorConnectRequest(source);
     const quint32 base=0x6000+(source-0x40)*0x100;
-    const bool hasBaud=source==0x40 || source==0x42 || source==0x45;
-    const bool hasPoll=source==0x40 || source==0x43 || source==0x44 || source==0x46;
-    const quint32 pollAddress=base+(source==0x40?0x18:source==0x46?0x2c:0x14);
-    if((hasBaud&&!registers.contains(base+0x10)) || (hasPoll&&!registers.contains(pollAddress)))return;
-    auto *dialog=new QDialog(this);dialog->setAttribute(Qt::WA_DeleteOnClose);dialog->setObjectName(QStringLiteral("fpgaSensorConfigDialog"));
-    dialog->setStyleSheet(VaporView::applyAppThemeTokens(QStringLiteral(
-        "QDialog#fpgaSensorConfigDialog { background: @vv-surface; color: @vv-text; }"
-        "QDialog#fpgaSensorConfigDialog QLabel { background: transparent; color: @vv-text; }"),state_->dark_theme_enabled_));
-    const QString name=source==0x40?QStringLiteral("PTB210"):source==0x42?QStringLiteral("EPSILON"):
-        source==0x43?QStringLiteral("BMP390"):source==0x44?QStringLiteral("SHT45"):source==0x45?QStringLiteral("TFA1500-L"):QStringLiteral("AI8");
-    dialog->setWindowTitle(name+(state_->is_english_?QStringLiteral(" · FPGA settings"):QStringLiteral(" · FPGA 参数")));
-    auto *layout=new QVBoxLayout(dialog);auto *form=new QFormLayout;layout->addLayout(form);
-    QSpinBox *baud=nullptr,*poll=nullptr;
-    if(hasBaud) {
-        baud=new QSpinBox(dialog);baud->setObjectName(QStringLiteral("fpgaSensorBaud"));
-        baud->setRange(source==0x40?1200:source==0x42?9600:115200,source==0x40?19200:6250000);
-        baud->setValue(int(registers.value(base+0x10)));baud->setSuffix(QStringLiteral(" bps"));
-        form->addRow(state_->is_english_?QStringLiteral("FPGA UART baud"):QStringLiteral("FPGA 串口波特率"),baud);
+    for(const auto &key:draft.keys()) {
+        const quint32 address=base+(key=="baud"?0x10:source==0x40?0x18:source==0x46?0x2c:0x14);
+        if(request.value(key).isDouble()&&registers.contains(address)&&registers.value(address)==request.value(key).toDouble())
+            drafts[source].remove(key);
     }
-    if(hasPoll) {
-        poll=new QSpinBox(dialog);poll->setObjectName(QStringLiteral("fpgaSensorPollMs"));poll->setRange(1,3600000);
-        poll->setValue(int(registers.value(pollAddress)));poll->setSuffix(QStringLiteral(" ms"));
-        form->addRow(state_->is_english_?QStringLiteral("Polling interval"):QStringLiteral("轮询间隔"),poll);
-    }
-    auto *hint=new QLabel(state_->is_english_
-        ? QStringLiteral("The target channel pauses for writing and verified readback, then resumes its previous state. FPGA UART baud must match the sensor. Polling interval is not measured sample rate.")
-        : QStringLiteral("提交时暂停目标通道，写入并核对读回后恢复原启用状态。FPGA 波特率需与传感器一致；轮询间隔不等于实际数据频率。"),dialog);
-    hint->setWordWrap(true);hint->setMinimumWidth(400);layout->addWidget(hint);
-    auto *buttons=new QDialogButtonBox(QDialogButtonBox::Apply|QDialogButtonBox::Cancel,dialog);layout->addWidget(buttons);
-    buttons->button(QDialogButtonBox::Apply)->setObjectName(QStringLiteral("fpgaSensorConfigApply"));
-    buttons->button(QDialogButtonBox::Apply)->setText(state_->is_english_?QStringLiteral("Apply and verify"):QStringLiteral("提交并读回"));
-    buttons->button(QDialogButtonBox::Cancel)->setText(state_->is_english_?QStringLiteral("Cancel"):QStringLiteral("取消"));
-    connect(buttons,&QDialogButtonBox::rejected,dialog,&QDialog::reject);
-    connect(buttons->button(QDialogButtonBox::Apply),&QPushButton::clicked,dialog,[this,dialog,hint,source,remote,simulation,registers,base,pollAddress,baud,poll] {
-        if(!isFpgaRelayPath() || remote!=isRemoteSkyMode() || simulation!=isUiTestMode() || homeFpgaRegisters().isEmpty()
-            || (!simulation && (remote?state_->fpga_remote_request_id_ || state_->remote_sky_config_applying_ || state_->fpga_remote_status_.value("busy").toBool():state_->fpga_busy_))
-            || ((source==0x40 || source==0x43) && homeFpgaSensorSource(VaporView::SkyDeviceId::Ptb)!=source)) {
-            hint->setText(state_->is_english_?QStringLiteral("Connection, source or operation state changed. Close and reopen settings after readback."):QStringLiteral("连接、来源或事务状态已改变，请在读回就绪后重新打开参数。"));return;
-        }
-        QJsonObject request{{"op","sensor_config"},{"source",source}};
-        if(baud && quint32(baud->value())!=registers.value(base+0x10))request["baud"]=baud->value();
-        if(poll && quint32(poll->value())!=registers.value(pollAddress))request["poll_ms"]=poll->value();
-        if(request.size()==2){dialog->accept();return;}
-        if(simulation)state_->fpga_page_->simulateOperation(request);
-        else if(remote)sendRemoteFpgaControl(request);
-        else {
-            state_->fpga_busy_=true;syncFpgaDeviceConfigUi();
-            auto *controller=state_->fpga_controller_;QMetaObject::invokeMethod(controller,[controller,request]{controller->configureSensor(request);},Qt::QueuedConnection);
-        }
-        dialog->accept();
-    });
-    dialog->open();
+    if(drafts.value(source).isEmpty())drafts.remove(source);
 }
 
 quint16 MainWindow::homeFpgaSensorSource(VaporView::SkyDeviceId device) const
@@ -336,10 +326,9 @@ void MainWindow::setHomeFpgaDeviceEnabled(VaporView::SkyDeviceId device, bool en
             if (!isUiTestMode() || state_->fpga_home_action_device_!=device) return;
             if (!isFpgaRelayPath()) {state_->fpga_home_action_device_=SkyDeviceId::All;return;}
             if (enabled && !state_->fpga_sim_ready_) state_->fpga_page_->simulateOperation({{"op","connect"}});
-            state_->fpga_page_->simulateOperation(device == SkyDeviceId::WaveTcp
-                ? QJsonObject{{"op","acquisition"},{"enabled",enabled}}
-                : QJsonObject{{"op","sensor"},{"source",source},{"enabled",enabled}});
-            state_->ui_test_model_->setDeviceState(device, enabled ? VaporView::DeviceState::Connected : VaporView::DeviceState::Disconnected);
+            if(device==SkyDeviceId::WaveTcp)state_->fpga_page_->simulateOperation({{"op","acquisition"},{"enabled",enabled}});
+            else emit state_->fpga_page_->sensorEnableRequested(source,enabled);
+            state_->ui_test_model_->setDeviceState(device, homeFpgaDeviceState(device));
             state_->fpga_home_action_device_ = SkyDeviceId::All;
             finishHomeFpgaRawStart();
             updateConnectionStatus(false);
@@ -365,7 +354,8 @@ void MainWindow::setHomeFpgaDeviceEnabled(VaporView::SkyDeviceId device, bool en
                     if (!window || window->state_->fpga_home_action_device_ != device) return;
                     window->state_->fpga_home_action_device_ = SkyDeviceId::All;
                     if (window->isFpgaRelayPath() && !window->isRemoteSkyMode()
-                        && window->homeFpgaDeviceActionState(device) != VaporView::DeviceState::Connected)
+                        && (window->homeFpgaDeviceActionState(device) != VaporView::DeviceState::Connected
+                            || !window->fpgaSensorDrafts().value(window->homeFpgaSensorSource(device)).isEmpty()))
                         window->setHomeFpgaDeviceEnabled(device,true);
                     else {
                         window->updateHomeDeviceStatusCapsules();
@@ -529,8 +519,20 @@ void MainWindow::setupFpgaControlPage()
     connect(page, &FpgaControlPage::dacRequested, this, [dispatch, controller](int channel, bool enabled) {
         dispatch({{"op", "dac"}, {"channel", channel}, {"enabled", enabled}}, [controller, channel, enabled] { controller->setDac(channel, enabled); });
     });
-    connect(page, &FpgaControlPage::sensorEnableRequested, this, [dispatch, controller](quint16 source, bool enabled) {
-        dispatch({{"op", "sensor"}, {"source", source}, {"enabled", enabled}}, [controller, source, enabled] { controller->setSensorEnabled(source, enabled); });
+    connect(page, &FpgaControlPage::sensorEnableRequested, this, [this, dispatch, controller](quint16 source, bool enabled) {
+        auto request=enabled?fpgaSensorConnectRequest(source):QJsonObject{};
+        request["op"]="sensor";request["source"]=source;request["enabled"]=enabled;
+        if(!VaporView::FpgaRemote::validateControl(request)) {
+            state_->fpga_home_action_device_=VaporView::SkyDeviceId::All;
+            state_->fpga_home_action_started_=false;
+            state_->fpga_page_->appendDiagnostic(state_->is_english_?QStringLiteral("Invalid staged sensor settings; connection was not started.")
+                :QStringLiteral("暂存的波特率或频率无效，未启动设备连接。"));
+            updateFpgaPageBackend();return;
+        }
+        dispatch(request, [controller, request, source, enabled] {
+            if(enabled)controller->connectSensor(request);else controller->setSensorEnabled(source,false);
+        });
+        if(isUiTestMode()&&enabled)confirmFpgaSensorDraft(source,homeFpgaRegisters());
     });
     connect(page, &FpgaControlPage::rawRequested, this, [dispatch, controller](bool enabled) {
         dispatch({{"op", "raw"}, {"enabled", enabled}}, [controller, enabled] { controller->setRawEnabled(enabled); });
@@ -618,9 +620,13 @@ void MainWindow::setupFpgaControlPage()
         if (!isRemoteSkyMode()) {page->setHardwareValues(values);updateHomeDeviceStatusCapsules();syncFpgaDeviceConfigUi();}
     }, Qt::QueuedConnection);
     connect(controller,&Controller::sensorConfigurationApplied,this,[this,page](quint16 source,const QMap<quint32,quint32>& values) {
-        if(source!=0x46 || isRemoteSkyMode() || isUiTestMode())return;
-        state_->fpga_config_.ai8.pollIntervalMs=values.value(0x662c);
-        auto desired=page->configuration();desired.ai8.pollIntervalMs=values.value(0x662c);page->setConfiguration(desired);
+        if(isRemoteSkyMode() || isUiTestMode())return;
+        confirmFpgaSensorDraft(source,values);
+        if(source==0x46) {
+            state_->fpga_config_.ai8.pollIntervalMs=values.value(0x662c);
+            auto desired=page->configuration();desired.ai8.pollIntervalMs=values.value(0x662c);page->setConfiguration(desired);
+        }
+        syncFpgaDeviceConfigUi();
     },Qt::QueuedConnection);
     connect(controller, &Controller::logRecordGenerated, this, [this,page](const VaporView::LogRecord &record) {
         if (record.level>=VaporView::LogLevel::Error && !isRemoteSkyMode()) {
@@ -747,6 +753,7 @@ void MainWindow::setupFpgaControlPage()
             || response.operation != VaporView::DeviceOperation::FpgaControl
             || response.request_id != state_->fpga_remote_request_id_) return;
         const auto connectDevice = state_->fpga_home_connect_device_;
+        const auto request=state_->fpga_remote_control_;
         state_->fpga_home_connect_device_ = VaporView::SkyDeviceId::All;
         state_->fpga_remote_request_id_ = 0;
         if (response.error_code != VaporView::CommandErrorCode::Ok) state_->fpga_home_raw_start_pending_ = false;
@@ -755,6 +762,9 @@ void MainWindow::setupFpgaControlPage()
         const bool statusParsed = VaporView::FpgaRemote::parseStatus(response.payload, status);
         if (statusParsed) {
             receiveRemoteFpgaStatus(status);
+            if(response.error_code==VaporView::CommandErrorCode::Ok && request.value("op")=="sensor"
+                && request.value("enabled").toBool() && isRemoteSkyMode())
+                confirmFpgaSensorDraft(quint16(request.value("source").toInt()),homeFpgaRegisters());
             if (discovery && isRemoteSkyMode() && page->usbDiscoveryGeneration() == state_->fpga_remote_discovery_generation_)
                 page->setUsbDiscoveryResult(status.contains("usb_discovery") ? status.value("usb_discovery").toObject()
                     : QJsonObject{{"devices",QJsonArray{}},{"error",response.error_message.isEmpty()?QStringLiteral("SkyCore did not return USB discovery; update SkyCore."):response.error_message}});
@@ -840,6 +850,7 @@ void MainWindow::sendRemoteFpgaControl(const QJsonObject& request)
         return;
     }
     state_->fpga_remote_operation_ = op;
+    state_->fpga_remote_control_ = request;
     state_->fpga_remote_discovery_generation_ = state_->fpga_page_->usbDiscoveryGeneration();
     state_->fpga_remote_request_id_ = remote->sendFpgaControl(request);
     updateFpgaPageBackend();

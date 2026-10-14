@@ -298,6 +298,8 @@ struct MainWindowState
     FpgaControlConfig fpga_config_;
     FpgaControlConfig fpga_remote_config_;
     QJsonObject fpga_remote_status_;
+    QJsonObject fpga_remote_control_;
+    QMap<int, QMap<quint16, QJsonObject>> fpga_sensor_drafts_;
     quint32 fpga_remote_request_id_ = 0;
     QString fpga_remote_operation_;
     quint64 fpga_remote_discovery_generation_ = 0;

@@ -251,7 +251,9 @@ private:
     void invalidateFpgaMeasurements();
     void updateFpgaPageBackend();
     void syncFpgaDeviceConfigUi();
-    void editFpgaSensorConfiguration(quint16 source);
+    QMap<quint16, QJsonObject>& fpgaSensorDrafts();
+    QJsonObject fpgaSensorConnectRequest(quint16 source);
+    void confirmFpgaSensorDraft(quint16 source, const QMap<quint32, quint32>& registers);
     void sendRemoteFpgaControl(const QJsonObject& request);
     void receiveRemoteFpgaStatus(const QJsonObject& status);
     void setupDataPanels();

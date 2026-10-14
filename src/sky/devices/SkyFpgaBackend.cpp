@@ -163,7 +163,10 @@ void SkyFpgaBackend::submit(const QJsonObject& operation, Completion completion)
         else if (op == "acquisition") controller->setAcquisition(operation.value("enabled").toBool());
         else if (op == "wms") controller->setWaveform(operation.value("channel").toInt(), operation.value("enabled").toBool());
         else if (op == "dac") controller->setDac(operation.value("channel").toInt(), operation.value("enabled").toBool());
-        else if (op == "sensor") controller->setSensorEnabled(quint16(operation.value("source").toInt()), operation.value("enabled").toBool());
+        else if (op == "sensor") {
+            if(operation.value("enabled").toBool())controller->connectSensor(operation);
+            else controller->setSensorEnabled(quint16(operation.value("source").toInt()),false);
+        }
         else if (op == "sensor_config") controller->configureSensor(operation);
         else if (op == "raw") controller->setRawEnabled(operation.value("enabled").toBool());
         else if (op == "temperature") controller->setTemperature(operation.value("celsius").toDouble());

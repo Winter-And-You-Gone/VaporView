@@ -110,7 +110,7 @@ int main(int argc,char **argv)
     });
     waitUntil([&]{return selectionConnected;},"source selection FPGA ready");
     bool settingsApplied=false;
-    manager.submitFpgaControl({{"op","sensor_config"},{"source",0x46},{"poll_ms",500}},[&](CommandErrorCode code,QString,QJsonObject) {
+    manager.submitFpgaControl({{"op","sensor"},{"source",0x46},{"enabled",true},{"poll_ms",500}},[&](CommandErrorCode code,QString,QJsonObject) {
         require(code==CommandErrorCode::Ok&&manager.config().fpga.configuration.ai8.pollIntervalMs==500,
             "Sky configuration model retains confirmed AI8 polling for later source changes");settingsApplied=true;
     });

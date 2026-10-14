@@ -1316,8 +1316,8 @@ int main(int argc, char **argv)
     modeAction->trigger();
     processEvents();
     require(modeAction->isChecked(), "UI test mode action becomes checked");
-    auto *uiTestPtbReadback = uiTestDeviceConfigPage->findChild<QLabel *>(
-        QStringLiteral("devicePressureRateComboFpgaReadback"));
+    auto *uiTestPtbReadback = uiTestDeviceConfigPage->findChild<QComboBox *>(
+        QStringLiteral("devicePressureRateComboFpgaEditor"));
     require(uiTestSensorPath->currentData().toString() == QStringLiteral("fpga_relay") &&
                 uiTestSensorPath->isEnabled() && !uiTestEpsilonPort->isEnabled() &&
                 !uiTestPtbRate->isEnabled() && uiTestPtbRate->isHidden() && uiTestPtbReadback && !uiTestPtbReadback->isHidden(),

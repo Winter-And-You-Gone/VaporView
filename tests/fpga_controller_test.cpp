@@ -425,6 +425,36 @@ void sensorConfiguration(){
     require(!f.diagnostics.isEmpty() && f.transport->regs.value(0x6004)==0,"ACK without matching readback fails without restoring channel");
     writes=0;for(const auto &c:f.transport->commands)if(c.message==3)++writes;
     require(writes==1,"readback mismatch rereads but never repeats write");
+
+    Fixture connected;connected.connect();
+    for(quint16 source:{0x40,0x42,0x43,0x44,0x45,0x46}) {
+        connected.controller.setSensorEnabled(source,false);connected.finish();
+        const auto before=connected.transport->regs;connected.transport->clear();connected.diagnostics.clear();
+        QJsonObject request{{"op","sensor"},{"source",source},{"enabled",true}};
+        const quint32 base=0x6000+(source-0x40)*0x100;
+        const bool baud=source==0x40||source==0x42||source==0x45;
+        const quint32 address=base+(baud?0x10:source==0x46?0x2c:0x14),value=baud?(source==0x40?9600:500000):500;
+        request[baud?"baud":"poll_ms"]=int(value);
+        connected.controller.connectSensor(request);connected.finish();
+        require(connected.diagnostics.isEmpty()&&connected.controller.hardwareValues().value(address)==value
+            &&connected.controller.hardwareValues().value(base+4)==1,"connect applies and verifies the staged parameter before enabling");
+        bool verified=false,enabled=false;
+        const int written=indexOfWrite(connected.transport->commands,address,value);
+        for(int i=0;i<connected.transport->commands.size();++i) {
+            const auto& command=connected.transport->commands[i];
+            if(i>written&&command.message==2&&command.address==address)verified=true;
+            if(command.message==0xb&&command.value==1){require(command.source==source&&verified,"only target sensor starts after parameter readback");enabled=true;}
+        }
+        require(written>=0&&enabled,"connect actually writes and enables over VLP1");
+        for(quint32 control:{0x6004u,0x6204u,0x6304u,0x6404u,0x6504u,0x6604u,0x4004u,0x4104u,0x5004u,0x5104u})
+            if(control!=base+4)require(connected.transport->regs.value(control)==before.value(control),"connect preserves other sensors and acquisition");
+    }
+    connected.controller.setSensorEnabled(0x42,false);connected.finish();connected.transport->clear();
+    connected.transport->failWriteAddress=0x6210;
+    connected.controller.connectSensor({{"op","sensor"},{"source",0x42},{"enabled",true},{"baud",921600}});connected.finish();
+    require(connected.transport->regs.value(0x6204)==0,"rejected staged write keeps the device disconnected");
+    for(const auto& command:connected.transport->commands)require(command.message!=0xb,"failed staged write never enables a sensor");
+    require(connected.transport->writes().size()==1,"failed connection never automatically resends parameters");
 }
 void threadCleanup(){
     QThread worker;auto *transport=new ScriptedTransport;QPointer<FpgaDeviceController> controller=new FpgaDeviceController(std::unique_ptr<FpgaUsbTransport>(transport));
