@@ -118,7 +118,7 @@ public:
         }
         const auto wire=FpgaVlp1::buildFrame(FpgaVlp1::FrameType::Response,f.header.sequence,f.header.source,f.header.message,response);
         incoming.append(reinterpret_cast<const char*>(wire.data()),wire.size());
-        if(command.message==0xb && command.address==17) incoming.append(sensorWire);
+        if(command.message==0xb && (command.address==17 || (command.address==1 && command.value==1))) incoming.append(sensorWire);
         return bytes.size();
     }
     void clear(){commands.clear();}

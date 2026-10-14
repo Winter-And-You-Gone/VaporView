@@ -635,9 +635,17 @@ static void localSimulatorRouting()
     auto *stack=window.findChild<QStackedWidget*>("mainPageStack");stack->setCurrentIndex(0);processFor(50);
     auto *pressureAction=homeAction(window,"PTB210");
     check(pressureAction->isEnabled(),"FPGA home connect does not require a serial port or an existing USB connection");
-    pressureAction->click();
+    QSet<quint16> connectionSuccesses;
+    QObject::connect(&logService,&VaporView::LogService::recordPublished,&window,[&](const VaporView::LogRecord& record) {
+        if(record.fields.value("event")=="fpga_device_connection_result"&&record.fields.value("result")=="succeeded") {
+            check(record.fields.value("ui_visibility")=="attention","per-device connection results appear in the default log card");
+            connectionSuccesses.insert(quint16(record.fields.value("fpga_source").toUInt()));
+        }
+    });
+    QMetaObject::invokeMethod(&window,"onConnectClicked");
     check(waitUntil([&]{return acquisition->isEnabled()&&disconnect->isEnabled();},12000),"local factory handshake enables normal controls");
     check(waitUntil([&]{return pressureAction->isEnabled()&&pressureAction->property("state")=="connected";}),"home connect opens USB and confirms the already-enabled BMP sensor");
+    check(waitUntil([&]{return connectionSuccesses.size()==7;}),"title-bar unified connect publishes six sensor and ADC/DLIA success logs");
     for(const auto &entry: {qMakePair("deviceEpsilonBaudComboFpgaEditor","921600"),
             qMakePair("devicePressureBaudComboFpgaEditor","9600"),
             qMakePair("deviceLidarBaudComboFpgaEditor","500000"),

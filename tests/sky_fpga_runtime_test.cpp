@@ -24,6 +24,7 @@ int main(int argc,char **argv)
         if(event=="telemetry_tcp_client_disconnected") ++disconnectedPeers;
     });
     auto mock=std::make_unique<ScriptedTransport>();auto *wire=mock.get();
+    mock->regs[0x6004]=mock->regs[0x6404]=1;
     std::vector<std::uint8_t> pressure;append16(pressure,1);append16(pressure,1);append16(pressure,0x12);
     pressure.push_back(7);pressure.push_back(4);append32(pressure,101459000);
     const auto sensor=FpgaVlp1::buildFrame(FpgaVlp1::FrameType::Data,99,0x40,0x1100,pressure,true,3,100000000,0);
@@ -137,8 +138,16 @@ int main(int argc,char **argv)
     require(!manager.connectDevice(SkyDeviceId::Epsilon,&error),"FPGA topology blocks direct sensor collector");
     require(telemetryPort!=0,"ephemeral telemetry port reported");
     QTcpSocket radio;TelemetryCodec radioCodec;int acknowledgements=0;
+    QSet<quint16> radioConnectionSuccesses,radioConnectionFailures;
     QObject::connect(&radio,&QTcpSocket::readyRead,[&] {
-        for(const auto& frame:radioCodec.feedBytes(radio.readAll())) if(frame.type==MsgType::CommandAck) {
+        for(const auto& frame:radioCodec.feedBytes(radio.readAll())) if(frame.type==MsgType::LogEvent) {
+            LogRecord record;require(TelemetryCodec::parseLogRecord(frame.payload,record),"parse actual radio connection log");
+            require(record.source=="SkyCore"&&record.fields.value("event")=="fpga_device_connection_result",
+                "only structured per-device FPGA results are forwarded through this log path");
+            const auto source=quint16(record.fields.value("fpga_source").toUInt());
+            if(record.fields.value("result")=="succeeded")radioConnectionSuccesses.insert(source);
+            if(record.fields.value("result")=="failed")radioConnectionFailures.insert(source);
+        } else if(frame.type==MsgType::CommandAck) {
             CommandAck ack;require(TelemetryCodec::parseCommandAck(frame.payload,ack),"parse actual radio ACK");
             require(ack.error_code==CommandErrorCode::Ok,"reconnected radio request executes instead of conflicting with old cache");
             require(ack.command_seq==21,"actual radio ACK sequence retained");++acknowledgements;
@@ -159,6 +168,16 @@ int main(int argc,char **argv)
     radio.write(encoder.encodeFrame(MsgType::Command,TelemetryCodec::serializeCommand(command),1,1));
     waitUntil([&]{return acknowledgements==2;},"new link generation may restart logical request ID at one");
     require(wire->temperatureWrites.load()==3,"new link generation executes fresh request instead of cached previous controller result");
+    operation.request_id=2;operation.payload=FpgaRemote::encodeControl({{"op","connect"},{"backend","auto"},{"locator","mock"}});
+    command.payload=TelemetryCodec::serializeDeviceOperationRequest(operation);
+    radio.write(encoder.encodeFrame(MsgType::Command,TelemetryCodec::serializeCommand(command),1,1));
+    waitUntil([&]{return acknowledgements==3&&radioConnectionSuccesses.contains(0x40)&&radioConnectionSuccesses.contains(0x44);},
+        "unified FPGA reconnect sends independent PTB and SHT success logs through actual TCP");
+    operation.request_id=3;operation.payload=FpgaRemote::encodeControl({{"op","sensor"},{"source",0x45},{"enabled",true}});
+    command.payload=TelemetryCodec::serializeDeviceOperationRequest(operation);
+    radio.write(encoder.encodeFrame(MsgType::Command,TelemetryCodec::serializeCommand(command),1,1));
+    waitUntil([&]{return acknowledgements==4&&radioConnectionFailures.contains(0x45);},
+        "missing sensor data sends a device-specific failure through actual TCP",11000);
     radio.disconnectFromHost();waitUntil([&]{return disconnectedPeers==2;},"test radio socket cleaned up");
     runtime.stop();
     auto producerClosed=std::make_shared<std::atomic_bool>(false);

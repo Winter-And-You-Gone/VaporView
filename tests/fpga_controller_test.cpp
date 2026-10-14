@@ -121,13 +121,57 @@ struct Fixture {
     ScriptedTransport *transport;
     FpgaDeviceController controller;
     QStringList diagnostics;
+    QVector<LogRecord> records;
     Fixture():transport(new ScriptedTransport),controller(std::unique_ptr<FpgaUsbTransport>(transport)){
-        QObject::connect(&controller,&FpgaDeviceController::logRecordGenerated,&controller,[this](const LogRecord &r){diagnostics.append(r.message);});
+        QObject::connect(&controller,&FpgaDeviceController::logRecordGenerated,&controller,[this](const LogRecord &r){
+            if(r.fields.value("event")=="fpga_operation_diagnostic")diagnostics.append(r.message);
+            records.append(r);
+        });
     }
     void connect(){controller.connectDevice({},"auto");waitUntil([this]{return !controller.busy();},"connection completed");require(controller.ready(),"strict register handshake succeeds");}
     void finish(){waitUntil([this]{return !controller.busy();},"operation completes");}
 };
 bool inPage(quint32 a,quint32 base){return a>=base&&a<base+0x200;}
+void connectionResultLogs(){
+    const auto count=[](const Fixture& f,quint16 source,const QString& result) {
+        int n=0;for(const auto& r:f.records)if(r.fields.value("event")=="fpga_device_connection_result"
+            &&r.fields.value("fpga_source").toUInt()==source&&r.fields.value("result")==result)++n;return n;
+    };
+    Fixture f;
+    for(quint16 source:{0x40,0x45,0x46})f.transport->regs[0x6004+(source-0x40)*0x100]=1;
+    f.connect();
+    for(quint16 source:{0x40,0x45,0x46})require(count(f,source,"waiting")==1,"each recovered sensor logs confirmed enable separately");
+    require(count(f,0x45,"succeeded")==0,"CONTROL readback alone never reports sensor connection success");
+    auto *session=f.controller.findChild<FpgaDeviceSession*>();
+    FpgaSensor::Reading ai8;ai8.source=0x46;ai8.kind=FpgaSensor::SensorKind::Ai8;ai8.schema=2;
+    ai8.validity.structure=ai8.validity.crc=ai8.validity.deviceOnline=ai8.validity.measurement=true;
+    ai8.ai8DeviceStatus=3;ai8.ai8DeviceError=0;ai8.ai8PvRaw=250;ai8.ai8SpRaw=250;ai8.ai8SvRaw=250;
+    ai8.ai8OpRaw=0;ai8.ai8Alarm=0;ai8.ai8Control=0;ai8.ai8Host=0;ai8.ai8SetResult=0;ai8.ai8SampleCounter=1;
+    emit session->sensorReadingReceived(ai8);
+    const auto feed=[&](quint32 flags) {
+        const auto payload=QByteArray::fromHex("0100010013000304c0d40100");
+        const auto frame=FpgaVlp1::buildFrame(FpgaVlp1::FrameType::Data,1,0x45,0x1100,
+            std::vector<std::uint8_t>(payload.begin(),payload.end()),true,flags,100000000);
+        session->ingestReplayBytes(QByteArray(reinterpret_cast<const char*>(frame.data()),frame.size()));
+    };
+    feed(1u<<4);QCoreApplication::processEvents();
+    require(count(f,0x45,"succeeded")==0,"invalid sensor data cannot produce success");
+    feed(0);waitUntil([&]{return count(f,0x45,"succeeded")==1;},"first valid sample reports connection success");
+    feed(0);waitUntil([&]{return count(f,0x40,"failed")==1&&count(f,0x46,"failed")==1;},"missing data reports per-device failure",11000);
+    require(count(f,0x45,"succeeded")==1&&count(f,0x45,"failed")==0,"continuous samples never spam connection logs");
+    f.controller.refresh();f.finish();
+    require(count(f,0x40,"failed")==1,"periodic or manual reads do not repeat failed results");
+    Fixture failed;
+    for(quint16 source:{0x40,0x42,0x43,0x44,0x45,0x46})failed.transport->regs[0x6004+(source-0x40)*0x100]=1;
+    failed.transport->failWriteAddress=0x4004;failed.transport->failWriteValue=0;
+    failed.controller.connectDevice({},"auto");failed.finish();
+    for(quint16 source:{0x40,0x42,0x43,0x44,0x45,0x46}) {
+        require(count(failed,source,"failed")==1&&count(failed,source,"succeeded")==0,"aborted recovery logs every affected device and no false success");
+    }
+    Fixture cancelled;cancelled.connect();cancelled.controller.connectSensor({{"op","sensor"},{"source",0x45},{"enabled",true}});cancelled.finish();
+    cancelled.controller.disconnectDevice();
+    require(count(cancelled,0x45,"succeeded")==0&&count(cancelled,0x45,"failed")==0,"manual cancellation clears pending connection evidence");
+}
 int indexOfWrite(const QVector<Command>& commands,quint32 address,quint32 value){for(int i=0;i<commands.size();++i)if(commands[i].message==3&&commands[i].address==address&&commands[i].value==value)return i;return -1;}
 void sensorRates(){
     Fixture f;f.connect();
@@ -523,5 +567,5 @@ int main(int argc,char **argv){
         }
         std::puts("hardware controller connect/idle/reconnect probe passed");return 0;
     }
-    sensorRates();connectionAndVersions();connectionRecovery();backgroundRefresh();independentAndAcquisition();restartClearsDliaState();configurationAndFailure();scopedConfiguration();rawAndBusy();temperature();sensorUploadAndFailure();ai8DisabledConfiguration();ptbHistoricalErrorRecovery();threadCleanup();std::puts("FPGA controller tests passed");return 0;
+    connectionResultLogs();sensorRates();connectionAndVersions();connectionRecovery();backgroundRefresh();independentAndAcquisition();restartClearsDliaState();configurationAndFailure();scopedConfiguration();rawAndBusy();temperature();sensorUploadAndFailure();ai8DisabledConfiguration();ptbHistoricalErrorRecovery();threadCleanup();std::puts("FPGA controller tests passed");return 0;
 }

@@ -61,7 +61,7 @@ signals:
     void replayFinished(bool success, const QString& detail);
 
 private:
-    enum class Kind { Read, Write, Commit, Ping, Capabilities, Sensor, Wait, Delay, PrepareSensorConfig, FinishSensorConfig, CheckVersions, RecoverConnection, FinishRawStop, CheckTemperature };
+    enum class Kind { Read, Write, Commit, Ping, Capabilities, Sensor, Wait, Delay, PrepareSensorConfig, FinishSensorConfig, CheckVersions, RecoverConnection, FinishRawStop, CheckTemperature, ConfirmConnection };
     struct Step {
         Kind kind = Kind::Read;
         quint32 address = 0;
@@ -76,6 +76,10 @@ private:
     void completed(quint32 sequence, bool success, quint32 status);
     void fail(const QString& detail);
     void report(const QString& detail, LogLevel level = LogLevel::Warning);
+    void trackConnection(quint16 source);
+    void confirmConnection(quint16 source);
+    void checkConnectionResults();
+    void reportConnection(quint16 source, const QString& result, const QString& reasonCode, const QString& detail);
     void read(quint32 address, quint16 count = 1);
     void write(quint32 address, quint32 value);
     void verify(quint32 address, quint32 value);
@@ -104,6 +108,8 @@ private:
     QMap<quint16, FpgaWave::CompletedStream> latestWaves_;
     QMap<quint16, qint64> lastReadingMs_;
     QSet<quint16> dirtyReadings_, expiredReadings_;
+    QMap<quint16, qint64> pendingConnections_;
+    QSet<quint16> operationConnections_;
     QTimer presentationTimer_, statusTimer_;
     QElapsedTimer waitTimer_;
     quint32 pendingSequence_ = 0;

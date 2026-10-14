@@ -106,6 +106,7 @@ void FpgaDeviceController::disconnectDevice()
 {
     ++operationGeneration_;
     presentationTimer_.stop(); statusTimer_.stop();
+    pendingConnections_.clear(); operationConnections_.clear();
     if (session_) session_->close();
     flushPresentation();
     emit transportConnectionChanged(false);
@@ -126,6 +127,7 @@ bool FpgaDeviceController::begin(const QString& label, bool background)
     busy_=true; backgroundRefresh_=background; operation_=label;
     ++operationGeneration_;
     steps_.clear(); current_.reset(); pendingSequence_=0;
+    operationConnections_.clear();
     if (!background) { detail_=label; emit connectionChanged(ready_,true,label); }
     return true;
 }
@@ -215,6 +217,9 @@ void FpgaDeviceController::advance()
     }
     current_=steps_.front(); steps_.pop_front();
     const auto& s=*current_;
+    if (s.kind==Kind::ConfirmConnection) {
+        confirmConnection(s.source); current_.reset(); advance(); return;
+    }
     if (s.kind==Kind::PrepareSensorConfig) {
         const auto source=s.source; const auto values=s.values;
         current_.reset(); prepareSensorConfiguration(source,values[0],values[1],values[2]!=0); advance(); return;
@@ -265,8 +270,13 @@ void FpgaDeviceController::advance()
     case Kind::Commit: pendingSequence_=session_->commitConfig(quint64(1)<<(s.source&63),s.source); break;
     case Kind::Ping: pendingSequence_=session_->ping(QByteArrayLiteral("VaporView")); break;
     case Kind::Capabilities: pendingSequence_=session_->requestCapabilities(); break;
-    case Kind::Sensor: pendingSequence_=session_->sensorAction(s.address,s.expected,s.source); break;
-    case Kind::Delay: case Kind::PrepareSensorConfig: case Kind::FinishSensorConfig: case Kind::CheckVersions: case Kind::RecoverConnection: case Kind::FinishRawStop: case Kind::CheckTemperature: break;
+    case Kind::Sensor:
+        if (s.address==1) {
+            latestReadings_.remove(s.source); lastReadingMs_.remove(s.source);
+            if (!s.expected && !operationConnections_.contains(s.source)) pendingConnections_.remove(s.source);
+        }
+        pendingSequence_=session_->sensorAction(s.address,s.expected,s.source); break;
+    case Kind::Delay: case Kind::PrepareSensorConfig: case Kind::FinishSensorConfig: case Kind::CheckVersions: case Kind::RecoverConnection: case Kind::FinishRawStop: case Kind::CheckTemperature: case Kind::ConfirmConnection: break;
     }
     if (!pendingSequence_) fail(QStringLiteral("命令未发送。"));
 }
@@ -291,6 +301,12 @@ void FpgaDeviceController::completed(quint32 seq, bool success, quint32 status)
 
 void FpgaDeviceController::fail(const QString& detail)
 {
+    const auto affected=operationConnections_;
+    for (quint16 source:affected) {
+        if (pendingConnections_.contains(source)) reportConnection(source,QStringLiteral("failed"),QStringLiteral("TRANSACTION_FAILED"),detail);
+        pendingConnections_.remove(source);
+    }
+    operationConnections_.clear();
     if(recoveringConnection_) {ready_=false;recoveringConnection_=false;connectionRecoveryFailed_=true;}
     steps_.clear(); current_.reset(); pendingSequence_=0; busy_=false; drainWaveforms_=false; backgroundRefresh_=false;
     if (session_) session_->cancelQueuedCommands();
@@ -309,6 +325,67 @@ void FpgaDeviceController::report(const QString& detail, LogLevel level)
         {QStringLiteral("operation"),operation_},{QStringLiteral("ready"),ready_},{QStringLiteral("busy"),busy_}};
     if (level>=LogLevel::Error) record.fields.insert(QStringLiteral("error_code"),QStringLiteral("FPGA_OPERATION_FAILED"));
     emit logRecordGenerated(record);
+}
+
+void FpgaDeviceController::trackConnection(quint16 source)
+{
+    pendingConnections_[source]=0; operationConnections_.insert(source);
+}
+
+void FpgaDeviceController::reportConnection(quint16 source, const QString& result, const QString& reasonCode, const QString& detail)
+{
+    const QMap<quint16,QString> names{{0,QStringLiteral("ADC / DLIA")},{0x40,QStringLiteral("PTB210")},
+        {0x42,QStringLiteral("EPSILON")},{0x43,QStringLiteral("BMP390")},{0x44,QStringLiteral("SHT45")},
+        {0x45,QStringLiteral("TFA1500-L")},{0x46,QStringLiteral("AI-8288D92J0")}};
+    LogRecord record; record.source=QStringLiteral("Ground"); record.category=QStringLiteral("device.fpga");
+    record.level=result==QStringLiteral("failed")?LogLevel::Warning:LogLevel::Info;
+    record.message=names.value(source)+QStringLiteral(" 经 FPGA ")+
+        (result==QStringLiteral("succeeded")?QStringLiteral("连接成功："):result==QStringLiteral("failed")?
+         QStringLiteral("连接失败："):QStringLiteral("通道已启用："))+detail;
+    record.fields={{QStringLiteral("event"),QStringLiteral("fpga_device_connection_result")},
+        {QStringLiteral("device"),names.value(source)},{QStringLiteral("fpga_source"),source},
+        {QStringLiteral("result"),result},{QStringLiteral("reason_code"),reasonCode},
+        {QStringLiteral("reason"),detail},{QStringLiteral("ui_visibility"),QStringLiteral("attention")}};
+    if(source) {
+        const quint32 base=0x6000+(source-0x40)*0x100;
+        record.fields.insert(QStringLiteral("module_status"),registers_.value(base+8));
+        record.fields.insert(QStringLiteral("module_error"),registers_.value(base+12));
+    }
+    emit logRecordGenerated(record);
+}
+
+void FpgaDeviceController::confirmConnection(quint16 source)
+{
+    if(!pendingConnections_.contains(source))return;
+    if(!source) {
+        reportConnection(source,QStringLiteral("succeeded"),QStringLiteral("CONTROL_READBACK"),
+            QStringLiteral("采集 CONTROL 读回确认；波形上传由 RAW 开关独立控制。"));
+        pendingConnections_.remove(source); operationConnections_.remove(source); return;
+    }
+    const quint32 pollAddress=source==0x40?0x6018:source==0x43?0x6314:source==0x44?0x6414:source==0x46?0x662c:0;
+    const qint64 timeout=qMax<qint64>(8000,3*qint64(registers_.value(pollAddress))+5000);
+    pendingConnections_[source]=QDateTime::currentMSecsSinceEpoch()+timeout;
+    reportConnection(source,QStringLiteral("waiting"),QStringLiteral("CHANNEL_ENABLED"),QStringLiteral("读回确认，等待设备有效数据。"));
+}
+
+void FpgaDeviceController::checkConnectionResults()
+{
+    const auto pending=pendingConnections_;
+    const auto now=QDateTime::currentMSecsSinceEpoch();
+    for(auto i=pending.cbegin();i!=pending.cend();++i) {
+        if(!i.value())continue;
+        const auto measurements=latestReadings_.value(i.key());
+        const auto& reading=measurements.reading;
+        const bool ai8Valid=reading.kind!=FpgaSensor::SensorKind::Ai8 || (measurements.ai8 && measurements.ai8->measurementValid);
+        if(reading.validity.structure && reading.validity.crc && reading.validity.deviceOnline && reading.validity.measurement
+            && ai8Valid && now-lastReadingMs_.value(i.key())<=5000) {
+            reportConnection(i.key(),QStringLiteral("succeeded"),QStringLiteral("VALID_SAMPLE"),QStringLiteral("已收到设备有效数据。"));
+        } else if(now>=i.value()) {
+            reportConnection(i.key(),QStringLiteral("failed"),QStringLiteral("NO_VALID_SAMPLE"),
+                QStringLiteral("等待有效数据超时；通道已启用，请检查设备供电、接线及通信参数。"));
+        } else continue;
+        pendingConnections_.remove(i.key()); operationConnections_.remove(i.key());
+    }
 }
 
 void FpgaDeviceController::setConfiguration(const FpgaControlConfig& config)
@@ -360,6 +437,10 @@ void FpgaDeviceController::recoverConnection()
     operation_=QStringLiteral("连接后恢复采集与传感器");
     emit connectionChanged(false,true,operation_);
     snapshotConfiguration();
+    for(quint16 source:{0x40,0x42,0x43,0x44,0x45,0x46})
+        if(saved.value(0x6004+(source-0x40)*0x100)&1)trackConnection(source);
+    for(quint32 control:{0x4004u,0x4104u,0x5004u,0x5104u})
+        if(saved.value(control)&1) {trackConnection(0);break;}
     if(!enableUpload())return;
     stopAndDrain();resetAcquisition();
     for(quint32 b:{0x6000u,0x6200u,0x6300u,0x6400u,0x6500u,0x6600u}) {
@@ -379,6 +460,7 @@ void FpgaDeviceController::recoverConnection()
             Step start;start.kind=Kind::Sensor;start.address=1;start.source=quint16(0x40+(b-0x6000)/0x100);start.expected=1;
             steps_.push_back(start);verify(b+4,1);
             if(b==0x6500)waitFor(b+8,13,1);
+            Step confirmed;confirmed.kind=Kind::ConfirmConnection;confirmed.source=start.source;steps_.push_back(confirmed);
         }
     }
     for(quint32 b:{0x4000u,0x4100u}) {write(b+0x3c,saved.value(b+0x3c));verify(b+0x3c,saved.value(b+0x3c));}
@@ -386,6 +468,7 @@ void FpgaDeviceController::recoverConnection()
         write(b+4,saved.value(b+4));verify(b+4,saved.value(b+4));
     }
     readAll();steps_.push_back({Kind::CheckVersions});
+    if(pendingConnections_.contains(0)) {Step confirmed;confirmed.kind=Kind::ConfirmConnection;confirmed.source=0;steps_.push_back(confirmed);}
 }
 
 void FpgaDeviceController::applyConfiguration(const FpgaControlConfig& config, const QString& section)
@@ -468,6 +551,7 @@ void FpgaDeviceController::setAcquisition(bool enable)
 {
     if (!ready_ || !begin(enable?QStringLiteral("启动采集"):QStringLiteral("停止并排空采集"))) return;
     if (enable) {
+        trackConnection(0);
         if (!enableUpload()) return;
         // DLIA stop latches cycle_partial; enable alone cannot clear it. Reset
         // only after both ADC producers and DLIA consumers have drained. ADC0
@@ -480,10 +564,13 @@ void FpgaDeviceController::setAcquisition(bool enable)
         for (quint32 b:{0x5000u,0x5100u}) { write(b+4,1); waitFor(b+8,7,3); }
         for (quint32 b:{0x4000u,0x4100u}) { write(b+4,1); waitFor(b+8,5,1); }
     } else {
+        pendingConnections_.remove(0);
         stopAndDrain();
         write(0x403c,0); write(0x413c,0); write(0x0050,0);
     }
-    readAll(); advance();
+    readAll();
+    if(enable) {Step confirmed;confirmed.kind=Kind::ConfirmConnection;confirmed.source=0;steps_.push_back(confirmed);}
+    advance();
 }
 
 void FpgaDeviceController::setWaveform(int channel, bool enable)
@@ -505,6 +592,7 @@ void FpgaDeviceController::setDac(int channel, bool enable)
 void FpgaDeviceController::setSensorEnabled(quint16 source, bool enable)
 {
     if (!ready_ || source<0x40 || source>0x46 || source==0x41 || !begin(QStringLiteral("设置传感器状态"))) return;
+    if(enable)trackConnection(source);
     if (source==0x43 && enable && (registers_.value(0x6304)&1)) {
         fail(QStringLiteral("修改 BMP 地址前请先禁用 BMP390。"));return;
     }
@@ -531,6 +619,7 @@ bool FpgaDeviceController::appendSensorEnable(quint16 source, bool enable)
     if (latestReadings_.contains(source)) latestReadings_[source].sampleRateHz=0.0;
     Step s; s.kind=Kind::Sensor; s.address=1; s.source=source; s.expected=enable?1:0; steps_.push_back(s);
     verify(0x6004+(source-0x40)*0x100,enable?1:0);
+    if(enable) {Step confirmed;confirmed.kind=Kind::ConfirmConnection;confirmed.source=source;steps_.push_back(confirmed);}
     return true;
 }
 
@@ -560,6 +649,7 @@ void FpgaDeviceController::startSensorConfiguration(const QJsonObject& request, 
     }
     if (!ready_ || !begin(QStringLiteral("配置传感器参数并读回"))) return;
     const auto source=quint16(request.value("source").toInt());
+    if(connectAfter)trackConnection(source);
     const quint32 base=0x6000+(source-0x40)*0x100;
     // Decide from a fresh hardware read, including state-dependent constraints.
     read(base+4,3);
@@ -654,6 +744,7 @@ void FpgaDeviceController::acceptReading(const FpgaSensor::Reading& reading)
 
 void FpgaDeviceController::flushPresentation()
 {
+    checkConnectionResults();
     const qint64 now=QDateTime::currentMSecsSinceEpoch();
     for (auto i=latestReadings_.begin(); i!=latestReadings_.end(); ++i) {
         const bool expired=!replaying_ && now-lastReadingMs_.value(i.key())>5000;
