@@ -32,7 +32,12 @@ bool readable(quint32 address){
     if(base==0x3000||base==0x3100)return offset<=0x44;
     if(base==0x4000||base==0x4100)return offset<=0x3c;
     if(base==0x5000||base==0x5100)return offset<=0x54;
-    if(base>=0x6000&&base<=0x6700){if(offset<=12)return true;if(base==0x6600)return offset<=0x64;return base==0x6300&&offset==0x10;}
+    if(base==0x6000)return offset<=0x38;
+    if(base==0x6200||base==0x6400)return offset<=0x3c;
+    if(base==0x6300)return offset<=0x40;
+    if(base==0x6500)return offset<=0x5c;
+    if(base==0x6600)return offset<=0x64;
+    if(base==0x6100||base==0x6700)return offset<=12;
     if(base==0x7000)return offset<=12||offset==0x14||(offset>=0x1c&&offset<=0x30)||(offset>=0x38&&offset<=0x44);
     if(base==0x8000)return offset<=0x3c;
     return false;
@@ -52,7 +57,8 @@ public:
         regs={{0x4000,0x00200101},{0x4100,0x00210101},{0x4018,0x00011800},{0x4118,0x00011800},
             {0x5000,0x00300101},{0x5100,0x00310101},{0x5024,0x00040101},{0x5124,0x00040101},{0x6600,0x00460200},
             {0x4010,1000000},{0x4014,1000000},{0x4114,1000000},{0x504c,10000},{0x514c,10000},
-            {0x5050,100},{0x5150,100},{0x6614,1},{0x661c,1},{0x662c,1000}};
+            {0x5050,100},{0x5150,100},{0x6614,1},{0x661c,1},{0x662c,1000},
+            {0x6010,4800},{0x6018,500},{0x6210,460800},{0x6510,115200},{0x6314,250},{0x6414,2000}};
         regs[0x8004]=1;regs[0x8014]=1;regs[0x7004]=1;regs[0x2c]=regs[0x30]=0xffffffff;
         regs[0x701c]=9;regs[0x802c]=7;regs[0x8034]=3;
         for(quint32 b:{0x2000u,0x2100u,0x3000u,0x3100u,0x4000u,0x4100u,0x5000u,0x5100u})regs[b+8]=2;
@@ -144,6 +150,9 @@ void connectionAndVersions(){
     require(f.controller.hardwareValues().value(0x50)==3&&f.controller.hardwareValues().value(0x701c)==9&&f.controller.hardwareValues().value(0x802c)==7&&f.controller.hardwareValues().value(0x8034)==3,"connection snapshots existing RAW mask, drop, USB queue and stall evidence");
     require(f.transport->regs.value(0x50)==3&&f.transport->regs.value(0x403c)==1,"connection never disables preexisting RAW streaming");
     for(quint32 address:{0x2cu,0x30u,0x34u,0x7004u,0x8004u,0x7020u,0x7024u,0x7028u,0x702cu,0x6104u,0x6704u,0x1004u})require(f.controller.hardwareValues().contains(address),"connection reads all documented upload controls and diagnostic state without starting modules");
+    for(quint32 address:{0x6010u,0x6018u,0x6210u,0x6510u,0x6314u,0x6414u})
+        require(f.controller.hardwareValues().contains(address)&&f.controller.hardwareValues().value(address)==f.transport->regs.value(address),
+            "connection reads actual sensor baud and polling values, including non-default settings");
     f.controller.disconnectDevice();require(f.transport->closed&&!f.controller.ready(),"disconnect closes unique transport");
     Fixture wrong;wrong.transport->regs[0x5024]=0x00020101;wrong.controller.connectDevice({},"auto");wrong.finish();require(!wrong.controller.ready(),"wrong filter version forbids readiness");
     wrong.controller.setDac(0,true);wrong.controller.applyConfiguration({});require(wrong.transport->writes().isEmpty(),"version mismatch forbids all writes");
@@ -199,10 +208,12 @@ void backgroundRefresh(){
         [&](const auto&){++readbacks;});
     for(int cycle=0;cycle<3;++cycle){
         f.transport->regs[0x701c]=20+cycle;
+        f.transport->regs[0x6010]=4800+cycle*1200;
         QMetaObject::invokeMethod(statusTimer,"timeout",Qt::DirectConnection);
         waitUntil([&]{return readbacks==cycle+1;},"background read completes");
         require(stateChanges==0&&!uiBusy,"automatic refresh never toggles page busy state or completion text");
         require(readbacks==cycle+1&&f.controller.hardwareValues().value(0x701c)==quint32(20+cycle),"silent refresh still publishes fresh hardware values");
+        require(f.controller.hardwareValues().value(0x6010)==quint32(4800+cycle*1200),"periodic refresh reads changed sensor baud rather than cached presets");
     }
     f.transport->clear();f.transport->holdResponses=true;
     QMetaObject::invokeMethod(statusTimer,"timeout",Qt::DirectConnection);

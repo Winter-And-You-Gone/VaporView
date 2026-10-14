@@ -326,7 +326,7 @@ void MainWindow::setupFpgaControlPage()
     connect(page,&FpgaControlPage::simulationStateChanged,this,[this](bool connected,const QMap<quint32,quint32>& values,quint16 pressure) {
         if (!isUiTestMode()) return;
         state_->fpga_sim_ready_=connected;state_->fpga_sim_registers_=values;state_->fpga_sim_pressure_source_=pressure;
-        updateHomeDeviceStatusCapsules();updateTemperatureTitleButtonsState();
+        updateHomeDeviceStatusCapsules();updateTemperatureTitleButtonsState();syncFpgaDeviceConfigUi();
     });
     connect(page, &FpgaControlPage::waveformDisplayUpdated, this,
         [this](quint16 source, const QVector<QVector<double>> &samples,

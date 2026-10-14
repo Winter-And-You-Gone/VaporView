@@ -153,6 +153,11 @@ void FpgaDeviceController::readAll()
     for (quint32 base : {0x3000u,0x3100u}) { read(base+0x10,14); }
     for (quint32 base : {0x4000u,0x4100u}) { read(base+0x10,12); }
     for (quint32 base : {0x5000u,0x5100u}) { read(base+0x10,18); }
+    read(0x6010,3); // PTB baud, serial format and polling interval.
+    read(0x6210);   // EPSILON baud.
+    read(0x6314);   // BMP polling interval.
+    read(0x6414);   // SHT polling interval.
+    read(0x6510);   // TFA baud.
     read(0x6610,22);
 }
 

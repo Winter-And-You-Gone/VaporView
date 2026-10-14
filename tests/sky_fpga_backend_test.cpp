@@ -30,6 +30,12 @@ int main(int argc,char **argv)
     });
     waitUntil([&]{return completions==1;},"asynchronous handshake finished");
     require(wire->openCount.load()==1,"single USB owner opens once");
+    const auto sensorRegisters=backend.statusDocument().value("registers").toObject();
+    require(sensorRegisters.value(QString::number(0x6010)).toInt()==4800
+        &&sensorRegisters.value(QString::number(0x6210)).toInt()==460800
+        &&sensorRegisters.value(QString::number(0x6510)).toInt()==115200
+        &&sensorRegisters.value(QString::number(0x6414)).toInt()==2000,
+        "Sky status forwards actual sensor baud and polling register readbacks to ground");
     const auto payload=QByteArray::fromHex("0100010013000304c0d40100");
     for(int i=0;i<=1000;++i){
         const auto frame=FpgaVlp1::buildFrame(FpgaVlp1::FrameType::Data,i+1,0x45,0x1100,

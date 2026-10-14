@@ -7,6 +7,7 @@
 #include "LogService.h"
 #include "ground/widgets/SegmentedSwitchButton.h"
 #include "shared/config/ApplicationConfig.h"
+#include "shared/theme/AppTheme.h"
 #include "ground/devices/RemoteSkyController.h"
 #include "TcpTelemetryLink.h"
 #include "TelemetryCodec.h"
@@ -22,6 +23,7 @@
 #include <QAbstractButton>
 #include <QToolButton>
 #include <QComboBox>
+#include <QCheckBox>
 #include <QGridLayout>
 #include <QElapsedTimer>
 #include <QEventLoop>
@@ -44,6 +46,7 @@
 #include <QDir>
 #include <QStandardItemModel>
 #include <QSet>
+#include <QSignalBlocker>
 #include <stdexcept>
 #include <cmath>
 #include <QtEndian>
@@ -575,6 +578,15 @@ static void localSimulatorRouting()
     pressureAction->click();
     check(waitUntil([&]{return acquisition->isEnabled()&&disconnect->isEnabled();},12000),"local factory handshake enables normal controls");
     check(waitUntil([&]{return pressureAction->isEnabled()&&pressureAction->property("state")=="connected";}),"home connect opens USB and confirms the already-enabled BMP sensor");
+    for(const auto &entry: {qMakePair("deviceEpsilonBaudComboFpgaReadback","921600"),
+            qMakePair("devicePressureBaudComboFpgaReadback","I²C"),
+            qMakePair("deviceLidarBaudComboFpgaReadback","500000"),
+            qMakePair("deviceAi8TemperatureBaudComboFpgaReadback","19200"),
+            qMakePair("devicePressureRateComboFpgaReadback","1"),
+            qMakePair("deviceHumidityRateComboFpgaReadback","1")}) {
+        auto *value=window.findChild<QLabel*>(entry.first);
+        check(value&&value->text()==QString::fromUtf8(entry.second),"local VLP simulator readbacks reach device configuration baud and polling labels");
+    }
     check(!page->findChild<QLabel*>("fpgaConnectionStatus")->text().contains(QStringLiteral("修改 BMP 地址")),"already-enabled BMP does not receive a duplicate address-setting start");
     check(stack->currentIndex()==0,"local auto-connect keeps the home page selected");
     const QStringList homeNames{"EPSILON","PTB210","HMP","TFA1500","AI-8288",QStringLiteral("波形源")};
@@ -711,6 +723,13 @@ static void simulatedMonitorActions()
     require(mode&&page&&raw&&harmonic,"simulated monitor controls exist");
     mode->trigger();
     require(waitUntil([&]{return raw->isEnabled()&&harmonic->isEnabled();}),"UI test simulation enables relay monitor controls");
+    for(const auto &entry:{qMakePair("deviceEpsilonBaudComboFpgaReadback","921600"),
+            qMakePair("devicePressureBaudComboFpgaReadback","9600"),
+            qMakePair("deviceLidarBaudComboFpgaReadback","500000"),
+            qMakePair("deviceHumidityRateComboFpgaReadback","1")}) {
+        auto *value=window.findChild<QLabel*>(entry.first);
+        require(value&&value->text()==QString::fromUtf8(entry.second),"UI test sensor register values update configuration labels immediately");
+    }
     harmonic->click();
     require(harmonic->text().contains(QStringLiteral("开始")),"simulated monitor stops acquisition");
     raw->click();
@@ -743,6 +762,36 @@ static void relayConfigurationPresentation()
     }
     const auto before=window.testLocalDeviceConfigSnapshot();
     path->setCurrentIndex(path->findData("fpga_relay"));processFor(50);
+    const bool originalDark=VaporView::isDarkThemeEnabled();
+    for(bool dark:{true,false}) {
+        if(VaporView::isDarkThemeEnabled()!=dark) {
+            QMetaObject::invokeMethod(&window,"onToggleTheme");processFor(80);
+        }
+        for(const auto *name:{"deviceRemoteEpsilonEnabledCheck","deviceRemotePressureEnabledCheck",
+                "deviceRemoteHumidityEnabledCheck","deviceRemoteLidarEnabledCheck",
+                "deviceRemoteTemperatureEnabledCheck","deviceRemoteAi8TemperatureEnabledCheck"}) {
+            auto *check=window.findChild<QCheckBox*>(name);
+            require(check&&!check->isEnabled(),"FPGA startup preset stays read-only");
+            const QSignalBlocker blocker(check);
+            const bool beforeChecked=check->isChecked();
+            for(bool checked:{false,true}) {
+                check->setChecked(checked);
+                const auto image=check->grab().toImage();
+                const auto primary=VaporView::appThemeColor(VaporView::AppThemeColor::Primary,dark);
+                int themePixels=0;
+                for(int y=0;y<image.height();++y)for(int x=0;x<image.width();++x) {
+                    const auto pixel=image.pixelColor(x,y);
+                    themePixels+=std::abs(pixel.red()-primary.red())<12
+                        &&std::abs(pixel.green()-primary.green())<12&&std::abs(pixel.blue()-primary.blue())<12;
+                }
+                require(themePixels>8,"read-only checked and unchecked device indicators render the active theme accent");
+            }
+            check->setChecked(beforeChecked);
+        }
+    }
+    if(VaporView::isDarkThemeEnabled()!=originalDark) {
+        QMetaObject::invokeMethod(&window,"onToggleTheme");processFor(80);
+    }
     for(int i=0;i<devices.size();++i) {
         const auto name="device"+devices[i]+"PortCombo";
         auto *port=window.findChild<QComboBox*>(name);

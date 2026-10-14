@@ -44,8 +44,12 @@ bool readable(quint32 a)
     if (base == 0x3000 || base == 0x3100) return offset <= 0x44;
     if (base == 0x4000 || base == 0x4100) return offset <= 0x3c;
     if (base == 0x5000 || base == 0x5100) return offset <= 0x54;
-    if (base >= 0x6000 && base <= 0x6700)
-        return offset <= 12 || (base == 0x6600 && offset <= 0x64) || (base == 0x6300 && offset == 0x10);
+    if (base == 0x6000) return offset <= 0x38;
+    if (base == 0x6200 || base == 0x6400) return offset <= 0x3c;
+    if (base == 0x6300) return offset <= 0x40;
+    if (base == 0x6500) return offset <= 0x5c;
+    if (base == 0x6600) return offset <= 0x64;
+    if (base == 0x6100 || base == 0x6700) return offset <= 12;
     if (base == 0x7000) return offset <= 12 || offset == 0x14 ||
         (offset >= 0x1c && offset <= 0x30) || (offset >= 0x38 && offset <= 0x44);
     return base == 0x8000 && offset <= 0x3c;
@@ -109,6 +113,9 @@ private:
             {0x5000,0x00300101},{0x5100,0x00310101},{0x5024,0x00040101},{0x5124,0x00040101},
             {0x6600,0x00460200},{0x0004,1},{0x7004,1},{0x8004,1},{0x002c,0xffffffff},{0x0030,0xffffffff},
             {0x6610,19200},{0x6614,1},{0x661c,1},{0x662c,1000},{0x6660,200},{0x6664,1},{0x6310,0x77}};
+        regs_[0x6010] = 9600; regs_[0x6018] = 1000;
+        regs_[0x6210] = 921600; regs_[0x6510] = 500000;
+        regs_[0x6314] = regs_[0x6414] = 1000;
         target_ = 250; measured_ = 235;
         const FpgaControlConfig defaults;
         for (quint32 b : {0x6000u,0x6200u,0x6300u,0x6400u,0x6500u,0x6600u}) {
