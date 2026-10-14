@@ -27,6 +27,11 @@ SkyFpgaBackend::SkyFpgaBackend(std::unique_ptr<Ground::Devices::FpgaUsbTransport
         QJsonObject registers; for (auto i = values.begin(); i != values.end(); ++i) registers[QString::number(i.key())] = double(i.value());
         status_["registers"] = registers; emit statusChanged(status_);
     });
+    connect(controller_, &Ground::Devices::FpgaDeviceController::sensorConfigurationApplied, this, [this](quint16 source,const QMap<quint32,quint32>& values) {
+        if(source!=0x46)return;
+        auto configuration=FpgaControlConfig::fromJson(status_.value("configuration").toObject());
+        configuration.ai8.pollIntervalMs=values.value(0x662c);status_["configuration"]=configuration.toJson();
+    });
     connect(controller_, &Ground::Devices::FpgaDeviceController::measurementUpdated, this, [this](const FpgaSensor::AdaptedMeasurements& m) {
         auto rates = status_.value("sensor_rates_hz").toObject();
         rates[QString::number(m.reading.source)] = m.sampleRateHz;
@@ -156,6 +161,7 @@ void SkyFpgaBackend::submit(const QJsonObject& operation, Completion completion)
         else if (op == "wms") controller->setWaveform(operation.value("channel").toInt(), operation.value("enabled").toBool());
         else if (op == "dac") controller->setDac(operation.value("channel").toInt(), operation.value("enabled").toBool());
         else if (op == "sensor") controller->setSensorEnabled(quint16(operation.value("source").toInt()), operation.value("enabled").toBool());
+        else if (op == "sensor_config") controller->configureSensor(operation);
         else if (op == "raw") controller->setRawEnabled(operation.value("enabled").toBool());
         else if (op == "temperature") controller->setTemperature(operation.value("celsius").toDouble());
         if (!controller->busy()) { QObject::disconnect(*observer); finish(CommandErrorCode::ConfigApplyFailed, QStringLiteral("Operation was not started; verify FPGA state.")); }

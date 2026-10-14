@@ -49,6 +49,7 @@ public:
     quint32 failWriteAddress=0xffffffff;
     quint32 failWriteValue=0xffffffff;
     bool failTemperature=false,confirmTemperature=true;
+    quint32 ignoreWriteAddress=0xffffffff;
     QMap<quint32,quint32> regs;
     QMap<quint32,int> pendingReads;
     QVector<Command> commands;
@@ -79,6 +80,8 @@ public:
         quint32 status=0;
         if(command.message==2&&strict){for(int i=0;i<command.count;++i)if(!readable(command.address+4*i))status=5;}
         if(command.message==3&&command.address==failWriteAddress&&(failWriteValue==0xffffffff||command.value==failWriteValue))status=7;
+        if(command.message==3 && (command.address==0x6010 || command.address==0x6210 || command.address==0x6414 || command.address==0x662c)
+            && (regs.value((command.address&~255u)+4)&1))status=7;
         if(command.message==0xb&&command.address==17&&failTemperature)status=14;
         std::vector<std::uint8_t> response;append32(response,status);
         if(!status){
@@ -88,7 +91,7 @@ public:
                 append32(response,command.address);append16(response,command.count);append16(response,0);
                 for(int i=0;i<command.count;++i){const auto a=command.address+4*i;quint32 v=regs.value(a);if(pendingReads.value(a)>0){--pendingReads[a];v|=4;}append32(response,v);}
             } else if(command.message==3){
-                for(int i=0;i<command.count;++i){const auto a=command.address+4*i;const auto value=word(f.payload,8+i*4);regs[a]=(a>=0x6000&&a<=0x660c&&(a&255)==12)?regs.value(a)&~value:value;
+                for(int i=0;i<command.count;++i){const auto a=command.address+4*i;if(a==ignoreWriteAddress)continue;const auto value=word(f.payload,8+i*4);regs[a]=(a>=0x6000&&a<=0x660c&&(a&255)==12)?regs.value(a)&~value:value;
                     if(a==0x50&&value==0)regs[0x7020]=regs[0x7024]=0;
                     if((a&255)==4&&a>=0x2000&&a<=0x5104){const auto b=a&~255u;regs[b+8]=(value&1)|2;if(b==0x4000||b==0x4100)regs[b+8]|=0x10;
                         if(value&2){regs[b+0xc]=0;regs[b+4]=value&1;}
@@ -373,6 +376,56 @@ void ptbHistoricalErrorRecovery(){
     f.controller.setSensorEnabled(0x40,true);f.finish();
     for(const auto &c:f.transport->commands)require(c.message!=0xb,"failed error acknowledgement aborts re-enable");
 }
+void sensorConfiguration(){
+    Fixture f;f.connect();
+    for(quint16 source:{0x40,0x42,0x43,0x44,0x45,0x46}) {
+        const quint32 base=0x6000+(source-0x40)*0x100;
+        for(bool enabled:{true,false}) {
+            f.controller.setSensorEnabled(source,enabled);f.finish();f.transport->clear();f.diagnostics.clear();
+            QJsonObject request{{"op","sensor_config"},{"source",source}};
+            const bool uart=source==0x40 || source==0x42 || source==0x45;
+            const quint32 address=uart?base+0x10:base+(source==0x46?0x2c:0x14);
+            const quint32 value=uart?(source==0x40?9600:source==0x42?921600:500000):500;
+            request[uart?"baud":"poll_ms"]=int(value);
+            if(source==0x40)request["poll_ms"]=750;
+            f.controller.configureSensor(request);f.finish();
+            require(f.diagnostics.isEmpty() && f.controller.hardwareValues().value(address)==value,"sensor parameters succeed only after actual readback");
+            require(bool(f.transport->regs.value(base+4)&1)==enabled,"parameter transaction restores prior enabled state");
+            const int writeIndex=indexOfWrite(f.transport->commands,address,value);
+            require(writeIndex>=0,"target parameter written over VLP1");
+            bool stopped=false,verified=false,restarted=false;
+            for(int i=0;i<f.transport->commands.size();++i) {
+                const auto &command=f.transport->commands[i];
+                if(command.message==0xb) {require(command.source==source,"parameter update never stops another sensor");stopped|=command.value==0&&i<writeIndex;restarted|=command.value==1&&i>writeIndex;}
+                if(command.message==3)require((command.address&~255u)==base,"no acquisition or unrelated configuration writes");
+                if(command.message==2 && command.address==address && i>writeIndex)verified=true;
+                if(command.message==0xb && command.value==1)require(verified,"restore only after parameter verification");
+            }
+            require(stopped==enabled && restarted==enabled,"disabled channels remain disabled");
+        }
+    }
+    f.transport->clear();f.controller.configureSensor({{"op","sensor_config"},{"source",0x40},{"baud",115200}});
+    require(f.transport->commands.isEmpty(),"invalid range causes no hardware side effects");
+    for(const auto &entry:{qMakePair(0x601c,1u),qMakePair(0x641c,1u),qMakePair(0x6514,2u)}) {
+        f.transport->regs[entry.first]=entry.second;f.transport->clear();f.diagnostics.clear();
+        const quint16 source=entry.first==0x601c?0x40:entry.first==0x641c?0x44:0x45;
+        f.controller.configureSensor(source==0x45?QJsonObject{{"op","sensor_config"},{"source",source},{"baud",115200}}:
+            QJsonObject{{"op","sensor_config"},{"source",source},{"poll_ms",500}});f.finish();
+        require(!f.diagnostics.isEmpty() && f.transport->writes().isEmpty(),"current mode constraints checked before disabling or writing");
+        for(const auto &command:f.transport->commands)require(command.message==2,"constraint rejection only reads hardware");
+        f.transport->regs[entry.first]=0;
+    }
+    f.controller.setSensorEnabled(0x40,true);f.finish();f.transport->clear();f.transport->failWriteAddress=0x6010;
+    f.controller.configureSensor({{"op","sensor_config"},{"source",0x40},{"baud",4800}});f.finish();
+    require(!f.controller.hardwareValues().contains(0x6010) && f.transport->regs.value(0x6004)==0,"failed write leaves channel stopped and parameter unconfirmed");
+    int writes=0;for(const auto &c:f.transport->commands)if(c.message==3)++writes;
+    require(writes==1,"failed parameter write is never retried");
+    f.transport->failWriteAddress=0xffffffff;f.transport->ignoreWriteAddress=0x6010;f.transport->clear();f.diagnostics.clear();
+    f.controller.configureSensor({{"op","sensor_config"},{"source",0x40},{"baud",4800}});f.finish();
+    require(!f.diagnostics.isEmpty() && f.transport->regs.value(0x6004)==0,"ACK without matching readback fails without restoring channel");
+    writes=0;for(const auto &c:f.transport->commands)if(c.message==3)++writes;
+    require(writes==1,"readback mismatch rereads but never repeats write");
+}
 void threadCleanup(){
     QThread worker;auto *transport=new ScriptedTransport;QPointer<FpgaDeviceController> controller=new FpgaDeviceController(std::unique_ptr<FpgaUsbTransport>(transport));
     controller->moveToThread(&worker);QObject::connect(&worker,&QThread::finished,controller,&QObject::deleteLater);worker.start();
@@ -383,6 +436,7 @@ void threadCleanup(){
 }
 int main(int argc,char **argv){
     QCoreApplication app(argc,argv);
+    if(app.arguments().contains("--sensor-config")) {sensorConfiguration();std::puts("FPGA sensor configuration tests passed");return 0;}
     if(app.arguments().contains("--hardware-probe")) {
         FpgaDeviceController controller;
         const int durationIndex=app.arguments().indexOf("--hardware-duration-ms");

@@ -131,6 +131,19 @@ bool validateControl(const QJsonObject& control, QString *error)
             keys << "source";
             if (!integer(control.value("source"), 0, 65535) || !sensorSource(control.value("source").toInt())) return fail();
         }
+    } else if (op == "sensor_config") {
+        keys << "source" << "baud" << "poll_ms";
+        if (!integer(control.value("source"), 0, 65535) || !sensorSource(control.value("source").toInt())) return fail();
+        const int source = control.value("source").toInt();
+        if (!control.contains("baud") && !control.contains("poll_ms")) return fail();
+        if (control.contains("baud")) {
+            if (source != 0x40 && source != 0x42 && source != 0x45) return fail();
+            if (!integer(control.value("baud"), source == 0x40 ? 1200 : source == 0x42 ? 9600 : 115200,
+                         source == 0x40 ? 19200 : 6250000)) return fail();
+        }
+        if (control.contains("poll_ms") &&
+            ((source != 0x40 && source != 0x43 && source != 0x44 && source != 0x46) ||
+             !integer(control.value("poll_ms"), 1, 3600000))) return fail();
     } else if (op == "temperature") {
         keys << "celsius";
         const auto v = control.value("celsius");

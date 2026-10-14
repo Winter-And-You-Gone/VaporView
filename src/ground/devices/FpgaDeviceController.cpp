@@ -1,5 +1,6 @@
 #include "FpgaDeviceController.h"
 #include "FpgaUsbSimulator.h"
+#include "FpgaTelemetry.h"
 #include "shared/session/FpgaSessionArchive.h"
 
 #include <QDateTime>
@@ -103,6 +104,7 @@ void FpgaDeviceController::connectDevice(const QString& locator, const QString& 
 
 void FpgaDeviceController::disconnectDevice()
 {
+    ++operationGeneration_;
     presentationTimer_.stop(); statusTimer_.stop();
     if (session_) session_->close();
     flushPresentation();
@@ -122,6 +124,7 @@ bool FpgaDeviceController::begin(const QString& label, bool background)
     // A foreground operation replaces the remaining background reads. The session
     // still serializes it behind any read already on the wire.
     busy_=true; backgroundRefresh_=background; operation_=label;
+    ++operationGeneration_;
     steps_.clear(); current_.reset(); pendingSequence_=0;
     if (!background) { detail_=label; emit connectionChanged(ready_,true,label); }
     return true;
@@ -212,6 +215,21 @@ void FpgaDeviceController::advance()
     }
     current_=steps_.front(); steps_.pop_front();
     const auto& s=*current_;
+    if (s.kind==Kind::PrepareSensorConfig) {
+        const auto source=s.source; const auto values=s.values;
+        current_.reset(); prepareSensorConfiguration(source,values[0],values[1]); advance(); return;
+    }
+    if (s.kind==Kind::Delay) {
+        const auto generation=operationGeneration_;
+        QTimer::singleShot(int(s.expected),this,[this,generation] {
+            if (generation==operationGeneration_ && current_ && current_->kind==Kind::Delay) {current_.reset();advance();}
+        }); return;
+    }
+    if(s.kind==Kind::FinishSensorConfig) {
+        if(s.source==0x46)configuration_.ai8.pollIntervalMs=registers_.value(0x662c);
+        emit sensorConfigurationApplied(s.source,registers_);
+        current_.reset();advance();return;
+    }
     if (s.kind==Kind::CheckVersions) {
         if(connectionRecoveryFailed_) {fail(QStringLiteral("连接恢复未完成，请排查后重新连接。"));return;}
         QString reason; ready_=versionsMatch(&reason);
@@ -241,12 +259,14 @@ void FpgaDeviceController::advance()
     case Kind::Read: case Kind::Wait:
         if (s.kind==Kind::Wait) waitTimer_.start();
         pendingSequence_=session_->readRegisters(s.address,s.count); break;
-    case Kind::Write: pendingSequence_=session_->writeRegisters(s.address,s.values); break;
+    case Kind::Write:
+        if (s.label==QStringLiteral("sensor_parameter")) registers_.remove(s.address);
+        pendingSequence_=session_->writeRegisters(s.address,s.values); break;
     case Kind::Commit: pendingSequence_=session_->commitConfig(quint64(1)<<(s.source&63),s.source); break;
     case Kind::Ping: pendingSequence_=session_->ping(QByteArrayLiteral("VaporView")); break;
     case Kind::Capabilities: pendingSequence_=session_->requestCapabilities(); break;
     case Kind::Sensor: pendingSequence_=session_->sensorAction(s.address,s.expected,s.source); break;
-    case Kind::CheckVersions: case Kind::RecoverConnection: case Kind::FinishRawStop: case Kind::CheckTemperature: break;
+    case Kind::Delay: case Kind::PrepareSensorConfig: case Kind::FinishSensorConfig: case Kind::CheckVersions: case Kind::RecoverConnection: case Kind::FinishRawStop: case Kind::CheckTemperature: break;
     }
     if (!pendingSequence_) fail(QStringLiteral("命令未发送。"));
 }
@@ -275,6 +295,7 @@ void FpgaDeviceController::fail(const QString& detail)
     steps_.clear(); current_.reset(); pendingSequence_=0; busy_=false; drainWaveforms_=false; backgroundRefresh_=false;
     if (session_) session_->cancelQueuedCommands();
     detail_=detail; report(detail, LogLevel::Error);
+    emit hardwareValuesChanged(registers_);
     emit connectionChanged(ready_,false,detail);
     emit snapshot(nowUs(),{{"event","operation_failed"},{"detail",detail}});
 }
@@ -502,6 +523,66 @@ void FpgaDeviceController::setSensorEnabled(quint16 source, bool enable)
     if (latestReadings_.contains(source)) latestReadings_[source].sampleRateHz=0.0;
     Step s; s.kind=Kind::Sensor; s.address=1; s.source=source; s.expected=enable?1:0; steps_.push_back(s);
     readAll(); advance();
+}
+
+void FpgaDeviceController::configureSensor(const QJsonObject& request)
+{
+    if (busy_ && !backgroundRefresh_) {report(QStringLiteral("参数提交被拒绝：已有事务正在执行。"));return;}
+    if (request.value("op").toString()!=QStringLiteral("sensor_config") || !FpgaRemote::validateControl(request)) {
+        fail(QStringLiteral("传感器参数或范围无效。"));return;
+    }
+    if (!ready_ || !begin(QStringLiteral("配置传感器参数并读回"))) return;
+    const auto source=quint16(request.value("source").toInt());
+    const quint32 base=0x6000+(source-0x40)*0x100;
+    // Decide from a fresh hardware read, including state-dependent constraints.
+    read(base+4,2);
+    if(source==0x40)read(0x6010,4);
+    if(source==0x44)read(0x641c);
+    if(source==0x45)read(0x6514);
+    Step prepare;prepare.kind=Kind::PrepareSensorConfig;prepare.source=source;
+    prepare.values={quint32(request.value("baud").toInt()),quint32(request.value("poll_ms").toInt())};
+    steps_.push_back(prepare);advance();
+}
+
+void FpgaDeviceController::prepareSensorConfiguration(quint16 source, quint32 baud, quint32 pollMs)
+{
+    const quint32 base=0x6000+(source-0x40)*0x100;
+    const bool enabled=registers_.value(base+4)&1;
+    if(source==0x40 && pollMs && registers_.value(0x601c)!=0) {
+        fail(QStringLiteral("PTB 连续输出模式不使用轮询间隔；未修改参数。"));return;
+    }
+    const auto heater=registers_.value(0x641c);
+    if(source==0x44 && heater && pollMs<(heater&1?12000u:1300u)) {
+        fail(QStringLiteral("SHT45 当前加热模式要求更长的轮询间隔；未修改参数。"));return;
+    }
+    if(source==0x45 && registers_.value(0x6514)==2 && baud<500000) {
+        fail(QStringLiteral("TFA 高频模式要求波特率不低于 500000；未修改参数。"));return;
+    }
+    snapshotConfiguration();
+    const auto sensor=[&](bool on) {
+        Step s;s.kind=Kind::Sensor;s.source=source;s.address=1;s.expected=on?1:0;steps_.push_back(s);
+        verify(base+4,on?1:0);
+    };
+    if(enabled)sensor(false);
+    // PTB BUSY remains set even in ST_DISABLED. Allow its current UART byte
+    // and optional continuous-output stop CR to finish at the old baud.
+    if(source==0x40) {Step delay;delay.kind=Kind::Delay;delay.expected=50;steps_.push_back(delay);}
+    else waitFor(base+8,source==0x45?13u:source==0x42?1u:9u,0);
+    const auto parameter=[&](quint32 address,quint32 value) {
+        Step s;s.kind=Kind::Write;s.address=address;s.values={value};s.label=QStringLiteral("sensor_parameter");steps_.push_back(s);
+        verify(address,value);
+    };
+    if(baud)parameter(base+0x10,baud);
+    if(pollMs)parameter(base+(source==0x40?0x18:source==0x46?0x2c:0x14),pollMs);
+    if(source==0x45)waitFor(base+8,13,0);
+    if(enabled) {
+        sensor(true);
+        if(source==0x45)waitFor(base+8,13,1);
+    }
+    adapter_.resetRate(source);
+    if(latestReadings_.contains(source))latestReadings_[source].sampleRateHz=0;
+    readAll();
+    Step finish;finish.kind=Kind::FinishSensorConfig;finish.source=source;steps_.push_back(finish);
 }
 
 void FpgaDeviceController::setRawEnabled(bool enable)

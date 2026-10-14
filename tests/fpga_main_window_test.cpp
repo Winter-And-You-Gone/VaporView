@@ -23,6 +23,8 @@
 #include <QAbstractButton>
 #include <QToolButton>
 #include <QComboBox>
+#include <QDialog>
+#include <QSpinBox>
 #include <QCheckBox>
 #include <QGridLayout>
 #include <QElapsedTimer>
@@ -515,6 +517,24 @@ static void remoteHomeActions()
     monitor->setEnglish(true);
     require(raw->text().contains("Start")&&harmonic->text().contains("Start"),"both monitor controls translate");
     monitor->setEnglish(false);
+    registers[QString::number(0x6210)]=921600;status["registers"]=registers;
+    send(MsgType::FpgaStatus,FpgaRemote::encodeStatus(status));processFor(50);
+    auto *baudEdit=window.findChild<QAbstractButton*>("deviceEpsilonBaudComboFpgaEdit");
+    require(baudEdit&&baudEdit->isEnabled(),"remote FPGA baud editor enabled from fresh Sky readback");
+    baudEdit->click();auto *sensorDialog=window.findChild<QDialog*>("fpgaSensorConfigDialog");
+    require(sensorDialog&&sensorDialog->isVisible(),"remote sensor editor opens");
+    sensorDialog->findChild<QSpinBox*>("fpgaSensorBaud")->setValue(460800);
+    const int settingsCount=requests.size();sensorDialog->findChild<QAbstractButton*>("fpgaSensorConfigApply")->click();
+    require(waitUntil([&]{return requests.size()==settingsCount+1;}),"settings use the existing radio TCP");
+    QJsonObject settingsRequest;require(FpgaRemote::parseControl(requests.last().payload,settingsRequest)
+        &&settingsRequest.value("op")=="sensor_config"&&settingsRequest.value("source").toInt()==0x42
+        &&settingsRequest.value("baud").toInt()==460800,"remote editor sends typed sensor settings");
+    ack.command_seq=commandSequence;send(MsgType::CommandAck,TelemetryCodec::serializeCommandAck(ack));processFor(30);
+    require(!baudEdit->isEnabled()&&window.findChild<QLabel*>("deviceEpsilonBaudComboFpgaReadback")->text()=="921600",
+        "remote ACK retains confirmed value and locks duplicate submission");
+    registers[QString::number(0x6210)]=460800;complete();
+    require(waitUntil([&]{return baudEdit->isEnabled()&&window.findChild<QLabel*>("deviceEpsilonBaudComboFpgaReadback")->text()=="460800";}),
+        "final Sky readback updates remote settings without closing radio TCP");
     const int count=requests.size();remote->close();
     require(waitUntil([&]{return !epsilon->isEnabled();}),"telemetry loss disables FPGA home controls");
     require(!raw->isEnabled()&&!harmonic->isEnabled(),"telemetry loss disables both monitor controls");
@@ -587,6 +607,16 @@ static void localSimulatorRouting()
         auto *value=window.findChild<QLabel*>(entry.first);
         check(value&&value->text()==QString::fromUtf8(entry.second),"local VLP simulator readbacks reach device configuration baud and polling labels");
     }
+    const auto presets=window.testLocalDeviceConfigSnapshot();
+    auto *baudEdit=window.findChild<QAbstractButton*>("deviceEpsilonBaudComboFpgaEdit");
+    check(baudEdit&&baudEdit->isEnabled(),"FPGA baud editing available after local handshake");
+    baudEdit->click();auto *sensorDialog=window.findChild<QDialog*>("fpgaSensorConfigDialog");
+    check(sensorDialog&&sensorDialog->isVisible(),"sensor parameters open from shared configuration row");
+    sensorDialog->findChild<QSpinBox*>("fpgaSensorBaud")->setValue(460800);
+    sensorDialog->findChild<QAbstractButton*>("fpgaSensorConfigApply")->click();
+    check(waitUntil([&]{return baudEdit->isEnabled()&&window.findChild<QLabel*>("deviceEpsilonBaudComboFpgaReadback")->text()=="460800";},12000),
+        "normal local USB path submits baud and renders its verified readback");
+    check(window.testLocalDeviceConfigSnapshot()==presets,"FPGA parameter writes preserve all Direct presets");
     check(!page->findChild<QLabel*>("fpgaConnectionStatus")->text().contains(QStringLiteral("修改 BMP 地址")),"already-enabled BMP does not receive a duplicate address-setting start");
     check(stack->currentIndex()==0,"local auto-connect keeps the home page selected");
     const QStringList homeNames{"EPSILON","PTB210","HMP","TFA1500","AI-8288",QStringLiteral("波形源")};
@@ -730,6 +760,15 @@ static void simulatedMonitorActions()
         auto *value=window.findChild<QLabel*>(entry.first);
         require(value&&value->text()==QString::fromUtf8(entry.second),"UI test sensor register values update configuration labels immediately");
     }
+    auto *sensorEdit=window.findChild<QAbstractButton*>("deviceHumidityRateComboFpgaEdit");
+    require(sensorEdit&&sensorEdit->isEnabled(),"UI test FPGA parameter edit available");sensorEdit->click();
+    auto *sensorDialog=window.findChild<QDialog*>("fpgaSensorConfigDialog");
+    require(sensorDialog&&sensorDialog->isVisible(),"simulated polling editor shown");
+    sensorDialog->findChild<QSpinBox*>("fpgaSensorPollMs")->setValue(500);
+    sensorDialog->findChild<QAbstractButton*>("fpgaSensorConfigApply")->click();
+    require(window.findChild<QLabel*>("deviceHumidityRateComboFpgaReadback")->text()=="2","simulation immediately reflects configured polling");
+    processFor(150);
+    require(window.findChild<QLabel*>("deviceHumidityRateComboFpgaReadback")->text()=="2","periodic simulation does not reset parameter edits");
     harmonic->click();
     require(harmonic->text().contains(QStringLiteral("开始")),"simulated monitor stops acquisition");
     raw->click();

@@ -36,6 +36,22 @@ int main(int argc,char **argv)
         &&sensorRegisters.value(QString::number(0x6510)).toInt()==115200
         &&sensorRegisters.value(QString::number(0x6414)).toInt()==2000,
         "Sky status forwards actual sensor baud and polling register readbacks to ground");
+    bool settingsDone=false;
+    backend.submit({{"op","sensor_config"},{"source",0x40},{"baud",9600},{"poll_ms",250}},
+        [&](CommandErrorCode code,QString,QJsonObject status) {
+            const auto values=status.value("registers").toObject();
+            require(code==CommandErrorCode::Ok && values.value(QString::number(0x6010)).toInt()==9600
+                && values.value(QString::number(0x6018)).toInt()==250,"Sky final parameter response contains verified values");settingsDone=true;
+        });
+    require(!settingsDone,"parameter submission is not success at enqueue");
+    waitUntil([&]{return settingsDone;},"remote parameter write and readback completed");
+    settingsDone=false;
+    backend.submit({{"op","sensor_config"},{"source",0x46},{"poll_ms",500}},
+        [&](CommandErrorCode code,QString,QJsonObject status) {
+            require(code==CommandErrorCode::Ok && FpgaControlConfig::fromJson(status.value("configuration").toObject()).ai8.pollIntervalMs==500,
+                "confirmed AI8 polling stays synchronized with the FPGA configuration page");settingsDone=true;
+        });
+    waitUntil([&]{return settingsDone;},"AI8 final parameter write completed");
     const auto payload=QByteArray::fromHex("0100010013000304c0d40100");
     for(int i=0;i<=1000;++i){
         const auto frame=FpgaVlp1::buildFrame(FpgaVlp1::FrameType::Data,i+1,0x45,0x1100,

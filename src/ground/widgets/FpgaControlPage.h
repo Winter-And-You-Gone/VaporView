@@ -88,6 +88,8 @@ private:
         quint32 cycle=0;
         double temperature=24.0;
         QSet<quint16> disabledSensors;
+        QMap<quint32,quint32> sensorParameters{{0x6010,9600},{0x6018,1000},{0x6210,921600},
+            {0x6510,500000},{0x6314,1000},{0x6414,1000}};
         std::array<bool,2> wms{{true,true}}, dac{{true,true}};
         std::array<quint32,2> dacWriteCount{{0,0}};
         FpgaControlConfig saved, applied;

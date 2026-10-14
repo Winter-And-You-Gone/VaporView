@@ -113,7 +113,7 @@ private:
             {0x5000,0x00300101},{0x5100,0x00310101},{0x5024,0x00040101},{0x5124,0x00040101},
             {0x6600,0x00460200},{0x0004,1},{0x7004,1},{0x8004,1},{0x002c,0xffffffff},{0x0030,0xffffffff},
             {0x6610,19200},{0x6614,1},{0x661c,1},{0x662c,1000},{0x6660,200},{0x6664,1},{0x6310,0x77}};
-        regs_[0x6010] = 9600; regs_[0x6018] = 1000;
+        regs_[0x6010] = 9600; regs_[0x6018] = 1000; regs_[0x6514] = 2;
         regs_[0x6210] = 921600; regs_[0x6510] = 500000;
         regs_[0x6314] = regs_[0x6414] = 1000;
         target_ = 250; measured_ = 235;
@@ -177,6 +177,24 @@ private:
             std::vector<std::uint8_t>(first, first + payload.size()), true, flags, ticks, cycle);
         incoming_.append(reinterpret_cast<const char *>(wire.data()), qsizetype(wire.size()));
     }
+    quint32 sensorWriteStatus(quint32 address, quint32 value) const
+    {
+        const auto base=address&~255u;
+        const bool enabled=regs_.value(base+4)&1;
+        if(address==0x6010 || address==0x6210 || address==0x6510) {
+            const quint32 minimum=address==0x6010?1200:address==0x6210?9600:115200;
+            const quint32 maximum=address==0x6010?19200:6250000;
+            if(value<minimum || value>maximum || (address==0x6510 && regs_.value(0x6514)==2 && value<500000))return 7;
+            if(enabled && address!=0x6510)return 7;
+        }
+        if(address==0x6018 || address==0x6314 || address==0x6414 || address==0x662c) {
+            if(value<1 || value>3600000)return 7;
+            if(enabled && (address==0x6414 || address==0x662c))return 7;
+            const auto heater=regs_.value(0x641c);
+            if(address==0x6414 && heater && value<(heater&1?12000u:1300u))return 7;
+        }
+        return 0;
+    }
     void respond(const FpgaVlp1::Frame &f)
     {
         if (f.header.frameType != FpgaVlp1::FrameType::Command) return;
@@ -199,6 +217,7 @@ private:
                     for (int i = 0; i < count; ++i) {
                         const auto a = address + i * 4;
                         if (a >= 0x2000 && ((a & 255) == 0 || (a & 255) == 8)) { status = 5; break; }
+                        status=sensorWriteStatus(a,word(p,8+i*4));if(status)break;
                     }
                     if (!status) for (int i = 0; i < count; ++i) setRegister(address + i * 4,word(p,8 + i * 4));
                 }

@@ -109,6 +109,13 @@ int main(int argc,char **argv)
         require(code==CommandErrorCode::Ok&&document.value("ready").toBool(),"source selection test opens FPGA");selectionConnected=true;
     });
     waitUntil([&]{return selectionConnected;},"source selection FPGA ready");
+    bool settingsApplied=false;
+    manager.submitFpgaControl({{"op","sensor_config"},{"source",0x46},{"poll_ms",500}},[&](CommandErrorCode code,QString,QJsonObject) {
+        require(code==CommandErrorCode::Ok&&manager.config().fpga.configuration.ai8.pollIntervalMs==500,
+            "Sky configuration model retains confirmed AI8 polling for later source changes");settingsApplied=true;
+    });
+    waitUntil([&]{return settingsApplied;},"manager sensor configuration synchronized");
+    config.fpga.configuration.ai8.pollIntervalMs=500;
     auto selected=config;selected.fpga.configuration.pressureSource=0x43;
     require(manager.applyConfig(selected).json.value("success").toBool(),"pressure source selection applies");
     require(manager.fpgaStatus().value("ready").toBool()&&selectionWire->openCount.load()==1&&

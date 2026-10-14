@@ -1,4 +1,5 @@
 #include "FpgaControlPage.h"
+#include "FpgaTelemetry.h"
 #include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/TopLevelCardStyle.h"
@@ -749,6 +750,19 @@ void FpgaControlPage::simulateOperation(const QJsonObject &request)
         const auto source=quint16(request.value("source").toInt());
         if(enabled)sim.disabledSensors.remove(source);else sim.disabledSensors.insert(source);
     }
+    else if(op=="sensor_config") {
+        if(!VaporView::FpgaRemote::validateControl(request))return;
+        const auto source=request.value("source").toInt();const quint32 base=0x6000+(source-0x40)*0x100;
+        if(request.contains("baud"))sim.sensorParameters[base+0x10]=quint32(request.value("baud").toInt());
+        if(request.contains("poll_ms")) {
+            const auto interval=quint32(request.value("poll_ms").toInt());
+            if(source==0x46) {
+                sim.applied.ai8.pollIntervalMs=interval;
+                auto desired=configuration();desired.ai8.pollIntervalMs=interval;setConfiguration(desired);
+            }
+            else sim.sensorParameters[base+(source==0x40?0x18:0x14)]=interval;
+        }
+    }
     else if(op=="wms"||op=="dac") {
         const int channel=request.value("channel").toInt();if(channel<0||channel>1)return;
         (op=="wms"?sim.wms:sim.dac)[channel]=enabled;
@@ -847,9 +861,8 @@ void FpgaControlPage::setUiTestState(bool enabled, bool dataStalled, bool partia
     const bool live=!dataStalled;
     const quint64 timestamp=quint64(std::max<qint64>(1,elapsedMs))*1000;
     const bool raw=sim.rawEnabled&&sim.acquiring;
-    QMap<quint32,quint32> registers{{0x50,raw?3u:0u},
-        {0x6010,9600},{0x6018,1000},{0x6210,921600},{0x6510,500000},
-        {0x6314,1000},{0x6414,1000},{0x6610,19200},{0x662c,sim.applied.ai8.pollIntervalMs}};
+    auto registers=sim.sensorParameters;
+    registers[0x50]=raw?3u:0u;registers[0x6610]=19200;registers[0x662c]=sim.applied.ai8.pollIntervalMs;
     for(int ch=0;ch<2;++ch) {
         const quint32 offset=ch*0x100;
         const auto &w=sim.applied.wms[ch];const auto &d=sim.applied.dlia[ch];const auto &dac=sim.applied.dac[ch];

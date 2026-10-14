@@ -670,6 +670,9 @@ void SkyDeviceManager::submitFpgaControl(QJsonObject operation, SkyFpgaBackend::
     fpga_backend_->submit(operation, [this, operation, completion = std::move(completion)](CommandErrorCode code, QString error, QJsonObject document) {
         if (code == CommandErrorCode::Ok && operation.value("op").toString() == "configure")
             config_.fpga.configuration = FpgaControlConfig::fromJson(operation.value("configuration").toObject());
+        if (code == CommandErrorCode::Ok && operation.value("op").toString() == "sensor_config"
+            && operation.value("source").toInt()==0x46)
+            config_.fpga.configuration.ai8.pollIntervalMs=FpgaControlConfig::fromJson(document.value("configuration").toObject()).ai8.pollIntervalMs;
         completion(code, error, document);
     });
 }

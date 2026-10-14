@@ -37,6 +37,7 @@ public slots:
     void setWaveform(int channel, bool enable);
     void setDac(int channel, bool enable);
     void setSensorEnabled(quint16 source, bool enable);
+    void configureSensor(const QJsonObject& request);
     void setRawEnabled(bool enable);
     void setTemperature(double celsius);
     void replaySession(const QString& directory);
@@ -47,6 +48,7 @@ signals:
     void transportConnectionChanged(bool connected);
     void connectionChanged(bool ready, bool busy, const QString& detail);
     void hardwareValuesChanged(const QMap<quint32, quint32>& values);
+    void sensorConfigurationApplied(quint16 source, const QMap<quint32, quint32>& values);
     void measurementUpdated(const VaporView::FpgaSensor::AdaptedMeasurements& measurements);
     void waveformUpdated(const VaporView::FpgaWave::CompletedStream& stream);
     void logRecordGenerated(const VaporView::LogRecord& record);
@@ -57,7 +59,7 @@ signals:
     void replayFinished(bool success, const QString& detail);
 
 private:
-    enum class Kind { Read, Write, Commit, Ping, Capabilities, Sensor, Wait, CheckVersions, RecoverConnection, FinishRawStop, CheckTemperature };
+    enum class Kind { Read, Write, Commit, Ping, Capabilities, Sensor, Wait, Delay, PrepareSensorConfig, FinishSensorConfig, CheckVersions, RecoverConnection, FinishRawStop, CheckTemperature };
     struct Step {
         Kind kind = Kind::Read;
         quint32 address = 0;
@@ -78,6 +80,7 @@ private:
     void waitFor(quint32 address, quint32 mask, quint32 expected);
     void commit(quint16 source, quint32 base);
     void readAll();
+    void prepareSensorConfiguration(quint16 source, quint32 baud, quint32 pollMs);
     bool enableUpload();
     void stopAndDrain();
     void resetAcquisition();
@@ -100,6 +103,7 @@ private:
     QTimer presentationTimer_, statusTimer_;
     QElapsedTimer waitTimer_;
     quint32 pendingSequence_ = 0;
+    quint64 operationGeneration_ = 0;
     quint32 temperatureBaseline_ = 0;
     qint16 temperatureTarget_ = 0;
     bool injected_ = false, ready_ = false, busy_ = false, replaying_ = false;

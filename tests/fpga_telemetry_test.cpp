@@ -39,6 +39,19 @@ int main(int argc, char **argv)
     auto bad=configure;auto config=bad.value("configuration").toObject(); config.insert("adcRateHz",1.5);bad.insert("configuration",config);
     require(!validateControl(bad),"fractional register value rejected before coercion");
     require(!validateControl({{"op","sensor"},{"source",0x41},{"enabled",true}}),"unknown source rejected");
+    require(parseControl(encodeControl({{"op","sensor_config"},{"source",0x40},{"baud",4800},{"poll_ms",250}}),parsed),"typed PTB settings survive remote transport");
+    for(const auto &request:QVector<QJsonObject>{
+        {{"op","sensor_config"},{"source",0x43},{"baud",9600}},
+        {{"op","sensor_config"},{"source",0x46},{"baud",19200}},
+        {{"op","sensor_config"},{"source",0x42},{"poll_ms",1000}},
+        {{"op","sensor_config"},{"source",0x40},{"baud",115200}},
+        {{"op","sensor_config"},{"source",0x45},{"baud",9600}},
+        {{"op","sensor_config"},{"source",0x44},{"poll_ms",0}},
+        {{"op","sensor_config"},{"source",0x46},{"poll_ms",3600001}},
+        {{"op","sensor_config"},{"source",0x44},{"poll_ms",1.5}},
+        {{"op","sensor_config"},{"source",0x40}},
+        {{"op","sensor_config"},{"source",0x42},{"baud",921600},{"address",0x6210}}})
+        require(!validateControl(request),"unsupported, invalid or arbitrary sensor settings rejected");
     require(!validateControl({{"op","dac"},{"channel",2},{"enabled",true}}),"channel out of range rejected");
     require(!validateControl({{"op","raw"},{"enabled",1}}),"boolean coercion rejected");
     require(!validateControl({{"op","temperature"},{"celsius",25.01}}),"temperature precision rejected");

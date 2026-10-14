@@ -5,6 +5,7 @@
 #include <QJsonArray>
 #include <QGridLayout>
 #include <QPointer>
+#include <QSpinBox>
 #include "FpgaTelemetry.h"
 
 #ifdef VAPORVIEW_MAIN_WINDOW_TESTING
@@ -33,13 +34,13 @@ void MainWindow::syncFpgaDeviceConfigUi()
     }
     const auto registers = homeFpgaRegisters();
     const QString hint = state_->is_english_
-        ? QStringLiteral("FPGA register readback. Serial presets are retained for Direct mode; this field does not write FPGA parameters.")
-        : QStringLiteral("FPGA 寄存器读回。串口预设仅用于直连模式，此项不写入 FPGA 参数。");
+        ? QStringLiteral("Confirmed FPGA register readback. Use Set to apply supported UART / polling parameters. Direct presets are retained separately.")
+        : QStringLiteral("FPGA 实际寄存器读回。点击设置提交支持的串口/轮询参数；直连预设独立保留。");
     const auto readback = [&](QComboBox *editor, const QString &value) {
         if (!editor) return;
         auto *parent = editor->parentWidget();
         const QString name = editor->objectName() + QStringLiteral("FpgaReadback");
-        auto *label = parent->findChild<QLabel *>(name, Qt::FindDirectChildrenOnly);
+        auto *label = parent->findChild<QLabel *>(name);
         if (!label) {
             auto *grid = qobject_cast<QGridLayout *>(parent->layout());
             if (!grid) return;
@@ -67,6 +68,36 @@ void MainWindow::syncFpgaDeviceConfigUi()
     readback(state_->device_config_.ai8_temperature_rate_combo, rate(0x662c));
     readback(state_->device_config_.lidar_rate_combo, state_->is_english_ ? QStringLiteral("Device output") : QStringLiteral("设备输出"));
     readback(state_->device_config_.temperature_rate_combo, QStringLiteral("—"));
+    const bool writable = !registers.isEmpty() && (isUiTestMode() || (isRemoteSkyMode()
+        ? !state_->fpga_remote_request_id_ && !state_->fpga_remote_status_.value("busy").toBool() && !state_->remote_sky_config_applying_
+        : !state_->fpga_busy_));
+    const auto editable = [&](QComboBox *preset, quint16 source, bool supported) {
+        if (!preset) return;
+        auto *parent=preset->parentWidget();
+        auto *button=parent->findChild<QPushButton*>(preset->objectName()+QStringLiteral("FpgaEdit"));
+        if(!button) {
+            auto *grid=qobject_cast<QGridLayout*>(parent->layout());if(!grid)return;
+            auto *value=parent->findChild<QLabel*>(preset->objectName()+QStringLiteral("FpgaReadback"));
+            int row,column,rowSpan,columnSpan;grid->getItemPosition(grid->indexOf(value),&row,&column,&rowSpan,&columnSpan);
+            grid->removeWidget(value);
+            auto *cell=new QWidget(parent);auto *layout=new QHBoxLayout(cell);layout->setContentsMargins(0,0,0,0);layout->setSpacing(6);
+            value->setParent(cell);layout->addWidget(value,1);
+            button=new QPushButton(cell);button->setObjectName(preset->objectName()+QStringLiteral("FpgaEdit"));
+            layout->addWidget(button);grid->addWidget(cell,row,column,rowSpan,columnSpan);
+            connect(button,&QPushButton::clicked,this,[this,button]{editFpgaSensorConfiguration(quint16(button->property("source").toUInt()));});
+        }
+        button->setProperty("source",source);button->setText(state_->is_english_?QStringLiteral("Set"):QStringLiteral("设置"));
+        button->parentWidget()->setVisible(relay);button->setVisible(relay&&supported);
+        const auto *value=parent->findChild<QLabel*>(preset->objectName()+QStringLiteral("FpgaReadback"));
+        button->setEnabled(writable && value && value->text()!=QStringLiteral("—"));
+        button->setToolTip(state_->is_english_?QStringLiteral("Configure FPGA UART / polling with verified readback."):QStringLiteral("设置 FPGA 串口/轮询参数，提交后核对读回。"));
+    };
+    editable(state_->device_config_.epsilon_baud_combo,0x42,true);
+    editable(state_->device_config_.ptb_baud_combo,pressure,pressure==0x40);
+    editable(state_->device_config_.lidar_baud_combo,0x45,true);
+    editable(state_->device_config_.ptb_rate_combo,pressure,true);
+    editable(state_->device_config_.hmp_rate_combo,0x44,true);
+    editable(state_->device_config_.ai8_temperature_rate_combo,0x46,true);
     if (!relay) {
         for (auto *check : {state_->device_config_.epsilon_enabled_check, state_->device_config_.ptb_enabled_check,
                  state_->device_config_.hmp_enabled_check, state_->device_config_.lidar_enabled_check,
@@ -102,6 +133,66 @@ void MainWindow::syncFpgaDeviceConfigUi()
         isUiTestMode() || (isRemoteSkyMode()
             ? state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen() && !state_->remote_sky_config_applying_ && !state_->fpga_remote_request_id_
             : !state_->fpga_busy_ && !state_->fpga_replaying_));
+}
+
+void MainWindow::editFpgaSensorConfiguration(quint16 source)
+{
+    const auto registers=homeFpgaRegisters();
+    if(!isFpgaRelayPath() || registers.isEmpty())return;
+    const bool remote=isRemoteSkyMode(), simulation=isUiTestMode();
+    const quint32 base=0x6000+(source-0x40)*0x100;
+    const bool hasBaud=source==0x40 || source==0x42 || source==0x45;
+    const bool hasPoll=source==0x40 || source==0x43 || source==0x44 || source==0x46;
+    const quint32 pollAddress=base+(source==0x40?0x18:source==0x46?0x2c:0x14);
+    if((hasBaud&&!registers.contains(base+0x10)) || (hasPoll&&!registers.contains(pollAddress)))return;
+    auto *dialog=new QDialog(this);dialog->setAttribute(Qt::WA_DeleteOnClose);dialog->setObjectName(QStringLiteral("fpgaSensorConfigDialog"));
+    dialog->setStyleSheet(VaporView::applyAppThemeTokens(QStringLiteral(
+        "QDialog#fpgaSensorConfigDialog { background: @vv-surface; color: @vv-text; }"
+        "QDialog#fpgaSensorConfigDialog QLabel { background: transparent; color: @vv-text; }"),state_->dark_theme_enabled_));
+    const QString name=source==0x40?QStringLiteral("PTB210"):source==0x42?QStringLiteral("EPSILON"):
+        source==0x43?QStringLiteral("BMP390"):source==0x44?QStringLiteral("SHT45"):source==0x45?QStringLiteral("TFA1500-L"):QStringLiteral("AI8");
+    dialog->setWindowTitle(name+(state_->is_english_?QStringLiteral(" · FPGA settings"):QStringLiteral(" · FPGA 参数")));
+    auto *layout=new QVBoxLayout(dialog);auto *form=new QFormLayout;layout->addLayout(form);
+    QSpinBox *baud=nullptr,*poll=nullptr;
+    if(hasBaud) {
+        baud=new QSpinBox(dialog);baud->setObjectName(QStringLiteral("fpgaSensorBaud"));
+        baud->setRange(source==0x40?1200:source==0x42?9600:115200,source==0x40?19200:6250000);
+        baud->setValue(int(registers.value(base+0x10)));baud->setSuffix(QStringLiteral(" bps"));
+        form->addRow(state_->is_english_?QStringLiteral("FPGA UART baud"):QStringLiteral("FPGA 串口波特率"),baud);
+    }
+    if(hasPoll) {
+        poll=new QSpinBox(dialog);poll->setObjectName(QStringLiteral("fpgaSensorPollMs"));poll->setRange(1,3600000);
+        poll->setValue(int(registers.value(pollAddress)));poll->setSuffix(QStringLiteral(" ms"));
+        form->addRow(state_->is_english_?QStringLiteral("Polling interval"):QStringLiteral("轮询间隔"),poll);
+    }
+    auto *hint=new QLabel(state_->is_english_
+        ? QStringLiteral("The target channel pauses for writing and verified readback, then resumes its previous state. FPGA UART baud must match the sensor. Polling interval is not measured sample rate.")
+        : QStringLiteral("提交时暂停目标通道，写入并核对读回后恢复原启用状态。FPGA 波特率需与传感器一致；轮询间隔不等于实际数据频率。"),dialog);
+    hint->setWordWrap(true);hint->setMinimumWidth(400);layout->addWidget(hint);
+    auto *buttons=new QDialogButtonBox(QDialogButtonBox::Apply|QDialogButtonBox::Cancel,dialog);layout->addWidget(buttons);
+    buttons->button(QDialogButtonBox::Apply)->setObjectName(QStringLiteral("fpgaSensorConfigApply"));
+    buttons->button(QDialogButtonBox::Apply)->setText(state_->is_english_?QStringLiteral("Apply and verify"):QStringLiteral("提交并读回"));
+    buttons->button(QDialogButtonBox::Cancel)->setText(state_->is_english_?QStringLiteral("Cancel"):QStringLiteral("取消"));
+    connect(buttons,&QDialogButtonBox::rejected,dialog,&QDialog::reject);
+    connect(buttons->button(QDialogButtonBox::Apply),&QPushButton::clicked,dialog,[this,dialog,hint,source,remote,simulation,registers,base,pollAddress,baud,poll] {
+        if(!isFpgaRelayPath() || remote!=isRemoteSkyMode() || simulation!=isUiTestMode() || homeFpgaRegisters().isEmpty()
+            || (!simulation && (remote?state_->fpga_remote_request_id_ || state_->remote_sky_config_applying_ || state_->fpga_remote_status_.value("busy").toBool():state_->fpga_busy_))
+            || ((source==0x40 || source==0x43) && homeFpgaSensorSource(VaporView::SkyDeviceId::Ptb)!=source)) {
+            hint->setText(state_->is_english_?QStringLiteral("Connection, source or operation state changed. Close and reopen settings after readback."):QStringLiteral("连接、来源或事务状态已改变，请在读回就绪后重新打开参数。"));return;
+        }
+        QJsonObject request{{"op","sensor_config"},{"source",source}};
+        if(baud && quint32(baud->value())!=registers.value(base+0x10))request["baud"]=baud->value();
+        if(poll && quint32(poll->value())!=registers.value(pollAddress))request["poll_ms"]=poll->value();
+        if(request.size()==2){dialog->accept();return;}
+        if(simulation)state_->fpga_page_->simulateOperation(request);
+        else if(remote)sendRemoteFpgaControl(request);
+        else {
+            state_->fpga_busy_=true;syncFpgaDeviceConfigUi();
+            auto *controller=state_->fpga_controller_;QMetaObject::invokeMethod(controller,[controller,request]{controller->configureSensor(request);},Qt::QueuedConnection);
+        }
+        dialog->accept();
+    });
+    dialog->open();
 }
 
 quint16 MainWindow::homeFpgaSensorSource(VaporView::SkyDeviceId device) const
@@ -526,6 +617,11 @@ void MainWindow::setupFpgaControlPage()
         state_->fpga_registers_=values;
         if (!isRemoteSkyMode()) {page->setHardwareValues(values);updateHomeDeviceStatusCapsules();syncFpgaDeviceConfigUi();}
     }, Qt::QueuedConnection);
+    connect(controller,&Controller::sensorConfigurationApplied,this,[this,page](quint16 source,const QMap<quint32,quint32>& values) {
+        if(source!=0x46 || isRemoteSkyMode() || isUiTestMode())return;
+        state_->fpga_config_.ai8.pollIntervalMs=values.value(0x662c);
+        auto desired=page->configuration();desired.ai8.pollIntervalMs=values.value(0x662c);page->setConfiguration(desired);
+    },Qt::QueuedConnection);
     connect(controller, &Controller::logRecordGenerated, this, [this,page](const VaporView::LogRecord &record) {
         if (record.level>=VaporView::LogLevel::Error && !isRemoteSkyMode()) {
             state_->fpga_home_raw_start_pending_=false;
@@ -757,6 +853,7 @@ void MainWindow::receiveRemoteFpgaStatus(const QJsonObject& status)
     state_->fpga_remote_status_time_ = std::chrono::steady_clock::now();
     if (configurationChanged && !state_->remote_sky_config_applying_) {
         state_->fpga_remote_config_ = FpgaControlConfig::fromJson(configuration);
+        state_->remote_sky_config_.fpga.configuration.ai8.pollIntervalMs=state_->fpga_remote_config_.ai8.pollIntervalMs;
         if (isRemoteSkyMode()) state_->fpga_page_->setConfiguration(state_->fpga_remote_config_);
     }
     if (isRemoteSkyMode()) {
@@ -772,6 +869,7 @@ void MainWindow::receiveRemoteFpgaStatus(const QJsonObject& status)
 void MainWindow::updateFpgaPageBackend()
 {
     if (!state_->fpga_page_) return;
+    syncFpgaDeviceConfigUi();
     if (isUiTestMode() && state_->ui_test_model_)
     {
         const qint64 elapsed = QDateTime::currentMSecsSinceEpoch() - state_->ui_test_started_ms_;
