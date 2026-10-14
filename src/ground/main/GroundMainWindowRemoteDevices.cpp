@@ -3184,6 +3184,11 @@ void MainWindow::updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId dev
     case VaporView::SkyDeviceId::WaveTcp:
         button = state_->device_config_.tcp_wave_remote_action_btn;
         break;
+    case VaporView::SkyDeviceId::Bmp390:
+    case VaporView::SkyDeviceId::Sht45:
+        if(state_->device_config_.internal_sensor_rows.contains(device==VaporView::SkyDeviceId::Bmp390?0x43:0x44))
+            button=qobject_cast<QToolButton*>(state_->device_config_.internal_sensor_rows.value(device==VaporView::SkyDeviceId::Bmp390?0x43:0x44)[6]);
+        break;
     case VaporView::SkyDeviceId::All:
         return;
     }

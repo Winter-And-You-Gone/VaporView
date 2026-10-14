@@ -8,6 +8,7 @@
 #include "shared/session/NavigationStatusCsv.h"
 #include "FpgaControlConfig.h"
 #include "FpgaSensorAdapter.h"
+#include "InternalEnvironmentSerialController.h"
 #include "ground/session/GroundRecordingService.h"
 #include <QSet>
 
@@ -418,6 +419,7 @@ struct MainWindowState
     QPushButton *imu_rate_1000_btn_;
 
     std::unique_ptr<VaporView::Ground::Devices::LocalDeviceConnectionController> local_connection_controller_;
+    std::unique_ptr<VaporView::InternalEnvironmentSerialController> internal_serial_controller_;
     std::unique_ptr<VaporView::Ground::Devices::LocalConnectionCoordinator> local_connection_coordinator_;
     VaporView::Ground::Devices::LocalDeviceConfig local_device_config_;
     VaporView::Ground::Devices::RemoteSkyLinkConfig remote_sky_link_config_;

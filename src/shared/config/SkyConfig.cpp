@@ -763,6 +763,15 @@ bool SkyConfig::fromJson(const QJsonObject& object, SkyConfig& config, QString *
         (!readSectionObject(object, QStringLiteral("hmp"), section, errorMessage) ||
          !serialFromJson(section, next.hmp, QStringLiteral("hmp"), errorMessage))) return false;
     if (next.hmp.source.isEmpty()) next.hmp.source = QStringLiteral("hmp3");
+    for (const auto &name : {QStringLiteral("bmp390"),QStringLiteral("sht45")}) {
+        auto &bridge=name==QStringLiteral("bmp390")?next.bmp390:next.sht45;
+        if(object.contains(name)&&(!readSectionObject(object,name,section,errorMessage)
+            ||!serialFromJson(section,bridge,name,errorMessage)))return false;
+        if(!std::isfinite(bridge.frequency_hz)||bridge.frequency_hz<1||bridge.frequency_hz>20
+            ||std::floor(bridge.frequency_hz)!=bridge.frequency_hz) {
+            if(errorMessage)*errorMessage=name+QStringLiteral(" receive frequency must be an integer in 1..20 Hz");return false;
+        }
+    }
     if (object.contains("lidar") &&
         (!readSectionObject(object, QStringLiteral("lidar"), section, errorMessage) ||
          !serialFromJson(section, next.lidar, QStringLiteral("lidar"), errorMessage))) return false;
@@ -797,6 +806,8 @@ QJsonObject SkyConfig::toJson() const
     root["epsilon"] = epsilonObject;
     root["ptb"] = serialToJson(ptb);
     root["hmp"] = serialToJson(hmp);
+    root["bmp390"] = serialToJson(bmp390);
+    root["sht45"] = serialToJson(sht45);
     root["lidar"] = serialToJson(lidar);
     root["temperature_controller"] = temperatureControllerToJson(temperature_controller);
     root["ai8_temperature_controller"] = temperatureControllerToJson(ai8_temperature_controller);
@@ -853,6 +864,10 @@ bool SkyConfig::validate(QString *errorMessage) const
            epsilonRtcmFromJson(epsilonRtcmToJson(epsilon_rtcm), copy.epsilon_rtcm, errorMessage) &&
            serialFromJson(serialToJson(ptb), copy.ptb, QStringLiteral("ptb"), errorMessage) &&
            serialFromJson(serialToJson(hmp), copy.hmp, QStringLiteral("hmp"), errorMessage) &&
+           serialFromJson(serialToJson(bmp390), copy.bmp390, QStringLiteral("bmp390"), errorMessage) &&
+           serialFromJson(serialToJson(sht45), copy.sht45, QStringLiteral("sht45"), errorMessage) &&
+           std::isfinite(bmp390.frequency_hz) && bmp390.frequency_hz>=1 && bmp390.frequency_hz<=20 && std::floor(bmp390.frequency_hz)==bmp390.frequency_hz &&
+           std::isfinite(sht45.frequency_hz) && sht45.frequency_hz>=1 && sht45.frequency_hz<=20 && std::floor(sht45.frequency_hz)==sht45.frequency_hz &&
            serialFromJson(serialToJson(lidar), copy.lidar, QStringLiteral("lidar"), errorMessage) &&
            temperatureControllerFromJson(temperatureControllerToJson(temperature_controller), copy.temperature_controller, errorMessage) &&
            ai8TemperatureControllerFromJson(temperatureControllerToJson(ai8_temperature_controller), copy.ai8_temperature_controller, errorMessage) &&
@@ -872,6 +887,8 @@ SkyConfigDiff SkyConfig::diff(const SkyConfig& other) const
     result.epsilon_rtcm_changed = epsilon_rtcm != other.epsilon_rtcm;
     result.ptb_changed = ptb != other.ptb;
     result.hmp_changed = hmp != other.hmp;
+    result.bmp390_changed = bmp390 != other.bmp390;
+    result.sht45_changed = sht45 != other.sht45;
     result.lidar_changed = lidar != other.lidar;
     result.temperature_controller_changed = temperature_controller != other.temperature_controller;
     result.ai8_temperature_controller_changed = ai8_temperature_controller != other.ai8_temperature_controller;

@@ -59,6 +59,7 @@ signals:
     void ai8TemperatureControllerStatusUpdated(const Ai8TemperatureControllerProtocol::LiveData& data);
     void fpgaStatusUpdated(const QJsonObject& status);
     void fpgaSensorUpdated(const VaporView::FpgaSensor::Reading& reading);
+    void internalEnvironmentUpdated(const VaporView::FpgaSensor::Reading& reading);
     void fpgaWaveformUpdated(const VaporView::FpgaWave::CompletedStream& stream);
     void deviceOperationResponseReceived(const DeviceOperationResponse& response);
     void commandAckReceived(const CommandAck& ack);

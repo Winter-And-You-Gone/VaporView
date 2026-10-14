@@ -48,6 +48,8 @@ struct LocalDeviceConfig
     LocalSerialDeviceSettings epsilon{true, true, {}, QStringLiteral("921600"), 100, false};
     LocalSerialDeviceSettings ptb{true, true, {}, QStringLiteral("9600"), 1, false};
     LocalSerialDeviceSettings hmp{true, true, {}, QStringLiteral("19200"), 1, false};
+    LocalSerialDeviceSettings bmp390{true, false, {}, QStringLiteral("115200"), 1, false};
+    LocalSerialDeviceSettings sht45{true, false, {}, QStringLiteral("115200"), 1, false};
     LocalSerialDeviceSettings lidar{true, true, {}, QStringLiteral("500000"), 1, false};
     LocalSerialDeviceSettings temperatureController{true, true, {}, QStringLiteral("38400"), 1, false};
     LocalSerialDeviceSettings ai8TemperatureController{true, true, {}, QStringLiteral("19200"), 5, false};

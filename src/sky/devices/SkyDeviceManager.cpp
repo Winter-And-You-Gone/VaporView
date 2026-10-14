@@ -147,6 +147,8 @@ bool deviceEnabled(const SkyConfig& config, SkyDeviceId id)
     case SkyDeviceId::Epsilon: return config.epsilon.enabled;
     case SkyDeviceId::Ptb: return config.ptb.enabled;
     case SkyDeviceId::Hmp: return config.hmp.enabled;
+    case SkyDeviceId::Bmp390: return config.bmp390.enabled;
+    case SkyDeviceId::Sht45: return config.sht45.enabled;
     case SkyDeviceId::Lidar: return config.lidar.enabled;
     case SkyDeviceId::TemperatureController: return config.temperature_controller.enabled;
     case SkyDeviceId::Ai8TemperatureController: return config.ai8_temperature_controller.enabled;
@@ -435,6 +437,18 @@ SkyDeviceManager::SkyDeviceManager(QObject *parent)
     : QObject(parent)
 {
     initializeStatuses();
+    internal_serial_=std::make_unique<InternalEnvironmentSerialController>();
+    connect(internal_serial_.get(),&InternalEnvironmentSerialController::stateChanged,this,
+        [this](SkyDeviceId id,DeviceState state){setState(id,state,state==DeviceState::Error?quint16(CommandErrorCode::DeviceConnectFailed):0);});
+    connect(internal_serial_.get(),&InternalEnvironmentSerialController::logRecordGenerated,this,
+        [this](const LogRecord& record){publishDeviceLog(record.level,record.category,record.fields.value("event").toString(),record.message,record.fields);});
+    connect(internal_serial_.get(),&InternalEnvironmentSerialController::readingUpdated,this,
+        [this](const FpgaSensor::Reading& reading){
+            if(config_.sensor_transport_path!=SensorTransportPath::DirectDevices)return;
+            auto &status=mutableStatus(reading.source==0x43?SkyDeviceId::Bmp390:SkyDeviceId::Sht45);
+            ++status.rx_count;status.last_data_time_us=nowUs();
+            emit internalEnvironmentUpdated(reading);
+        });
     pending_raw_events_.reset(true);
     connect(&simulate_timer_, &QTimer::timeout, this, &SkyDeviceManager::generateSimulatedData);
 }
@@ -785,6 +799,12 @@ bool SkyDeviceManager::connectDevice(SkyDeviceId id, CommandErrorCode *errorCode
         return connectSerialCollector(id, serialConfigFromTemperatureConfig(config_.ai8_temperature_controller), errorCode);
     }
 
+    if(id==SkyDeviceId::Bmp390||id==SkyDeviceId::Sht45) {
+        internal_serial_->configure(id,id==SkyDeviceId::Bmp390?config_.bmp390:config_.sht45);
+        const bool accepted=internal_serial_->connectDevice(id);
+        if(errorCode)*errorCode=accepted?CommandErrorCode::Ok:CommandErrorCode::DeviceConnectFailed;
+        return accepted;
+    }
     return connectSerialCollector(id, serialConfigFor(id), errorCode);
 }
 
@@ -813,6 +833,9 @@ bool SkyDeviceManager::disconnectDeviceInternal(SkyDeviceId id,
         if (fpga_backend_) { fpga_backend_->shutdown(); fpga_backend_.reset(); }
         invalidateFpgaMeasurements();
         break;
+    case SkyDeviceId::Bmp390:
+    case SkyDeviceId::Sht45:
+        internal_serial_->disconnectDevice(id);break;
     case SkyDeviceId::Epsilon:
         stopCollector(epsilon_);
         break;
@@ -871,7 +894,7 @@ void SkyDeviceManager::connectAll()
         connectDevice(SkyDeviceId::Fpga);
         return;
     }
-    for (SkyDeviceId id : {SkyDeviceId::Epsilon, SkyDeviceId::Ptb, SkyDeviceId::Hmp, SkyDeviceId::Lidar, SkyDeviceId::TemperatureController, SkyDeviceId::Ai8TemperatureController, SkyDeviceId::WaveTcp})
+    for (SkyDeviceId id : {SkyDeviceId::Epsilon, SkyDeviceId::Ptb, SkyDeviceId::Hmp, SkyDeviceId::Lidar, SkyDeviceId::TemperatureController, SkyDeviceId::Ai8TemperatureController, SkyDeviceId::WaveTcp, SkyDeviceId::Bmp390, SkyDeviceId::Sht45})
     {
         if (deviceEnabled(config_, id))
         {
@@ -888,6 +911,8 @@ void SkyDeviceManager::connectAll()
 void SkyDeviceManager::disconnectAll(bool publishLogs)
 {
     if (fpga_backend_) disconnectDeviceInternal(SkyDeviceId::Fpga, nullptr, publishLogs);
+    disconnectDeviceInternal(SkyDeviceId::Bmp390,nullptr,publishLogs);
+    disconnectDeviceInternal(SkyDeviceId::Sht45,nullptr,publishLogs);
     for (SkyDeviceId id : {SkyDeviceId::Epsilon, SkyDeviceId::Ptb, SkyDeviceId::Hmp, SkyDeviceId::Lidar, SkyDeviceId::TemperatureController, SkyDeviceId::Ai8TemperatureController, SkyDeviceId::WaveTcp})
     {
         disconnectDeviceInternal(id, nullptr, publishLogs);
@@ -912,6 +937,8 @@ DeviceStatusItem SkyDeviceManager::status(SkyDeviceId id) const
 {
     switch (id)
     {
+    case SkyDeviceId::Bmp390: return bmp390_status_;
+    case SkyDeviceId::Sht45: return sht45_status_;
     case SkyDeviceId::Fpga: return fpga_status_;
     case SkyDeviceId::Epsilon:
         return epsilon_status_;
@@ -939,7 +966,7 @@ QVector<DeviceStatusItem> SkyDeviceManager::allStatuses() const
     {
         return {fpga_status_,epsilon_status_,ptb_status_,hmp_status_,lidar_status_,ai8_temperature_controller_status_,wave_tcp_status_};
     }
-    return {epsilon_status_, ptb_status_, hmp_status_, lidar_status_, temperature_controller_status_, ai8_temperature_controller_status_, wave_tcp_status_};
+    return {epsilon_status_, ptb_status_, hmp_status_, lidar_status_, temperature_controller_status_, ai8_temperature_controller_status_, wave_tcp_status_,bmp390_status_,sht45_status_};
 }
 
 ApplyConfigResult SkyDeviceManager::applyConfig(const SkyConfig& requestedConfig)
@@ -1011,6 +1038,8 @@ ApplyConfigResult SkyDeviceManager::applyConfig(const SkyConfig& requestedConfig
     const bool epsilonReconfigured = reconfigureDevice(SkyDeviceId::Epsilon, diff.epsilon_changed, config_.epsilon.enabled);
     const bool ptbReconfigured = reconfigureDevice(SkyDeviceId::Ptb, diff.ptb_changed, config_.ptb.enabled);
     const bool hmpReconfigured = reconfigureDevice(SkyDeviceId::Hmp, diff.hmp_changed, config_.hmp.enabled);
+    reconfigureDevice(SkyDeviceId::Bmp390,diff.bmp390_changed,config_.bmp390.enabled);
+    reconfigureDevice(SkyDeviceId::Sht45,diff.sht45_changed,config_.sht45.enabled);
     const bool lidarReconfigured = reconfigureDevice(SkyDeviceId::Lidar, diff.lidar_changed, config_.lidar.enabled);
     const bool temperatureControllerReconfigured = reconfigureDevice(SkyDeviceId::TemperatureController, diff.temperature_controller_changed, config_.temperature_controller.enabled);
     const bool ai8TemperatureControllerReconfigured = reconfigureDevice(SkyDeviceId::Ai8TemperatureController, diff.ai8_temperature_controller_changed, config_.ai8_temperature_controller.enabled);
@@ -2305,6 +2334,16 @@ void SkyDeviceManager::generateSimulatedData()
     if (config_.sensor_transport_path == SensorTransportPath::FpgaRelay) return;
     simulate_phase_ += 0.04;
     const quint64 t = nowUs();
+    for(auto id:{SkyDeviceId::Bmp390,SkyDeviceId::Sht45}) {
+        auto &item=mutableStatus(id);const auto &bridge=id==SkyDeviceId::Bmp390?config_.bmp390:config_.sht45;
+        if(item.state!=DeviceState::Connected||t-item.last_data_time_us<quint64(1000000/bridge.frequency_hz))continue;
+        FpgaSensor::Reading reading;reading.source=id==SkyDeviceId::Bmp390?0x43:0x44;
+        reading.kind=id==SkyDeviceId::Bmp390?FpgaSensor::SensorKind::Bmp390:FpgaSensor::SensorKind::Sht45;
+        reading.validity={true,true,true,true};
+        if(id==SkyDeviceId::Bmp390)reading.pressurePa=101500+50*std::sin(simulate_phase_);
+        else{reading.temperatureC=24+std::sin(simulate_phase_);reading.humidityPct=45+std::sin(simulate_phase_);}
+        ++item.rx_count;item.last_data_time_us=t;emit internalEnvironmentUpdated(reading);
+    }
 
     if (epsilon_status_.state == DeviceState::Connected)
     {
@@ -2579,6 +2618,8 @@ void SkyDeviceManager::onWaveTcpError()
 
 void SkyDeviceManager::initializeStatuses()
 {
+    bmp390_status_.device_id=SkyDeviceId::Bmp390;
+    sht45_status_.device_id=SkyDeviceId::Sht45;
     fpga_status_.device_id = SkyDeviceId::Fpga;
     epsilon_status_.device_id = SkyDeviceId::Epsilon;
     ptb_status_.device_id = SkyDeviceId::Ptb;
@@ -2605,6 +2646,8 @@ DeviceStatusItem& SkyDeviceManager::mutableStatus(SkyDeviceId id)
 {
     switch (id)
     {
+    case SkyDeviceId::Bmp390: return bmp390_status_;
+    case SkyDeviceId::Sht45: return sht45_status_;
     case SkyDeviceId::Fpga: return fpga_status_;
     case SkyDeviceId::Epsilon:
         return epsilon_status_;

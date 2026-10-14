@@ -10325,9 +10325,9 @@ int main(int argc, char **argv)
             ++localDeviceActionCount;
         }
     }
-    require(localDeviceActionCount == 7,
+    require(localDeviceActionCount == 9,
             "device configuration keeps one local action per device row");
-    require(connectRemoteActionCount == 7 && disconnectRemoteActionCount == 0,
+    require(connectRemoteActionCount == 9 && disconnectRemoteActionCount == 0,
             "device configuration shows one connect action for every disconnected device");
     require(temperatureDeviceActionButton != nullptr,
             "device configuration exposes the RD105 connection action button");

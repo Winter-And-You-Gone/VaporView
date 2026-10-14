@@ -577,6 +577,11 @@ void MainWindow::setRemoteSkyConfigUi(const VaporView::SkyConfig& config)
         }
     }
     syncDeviceConfigNumericColumnFonts();
+    for(auto it=state_->device_config_.internal_sensor_rows.begin();it!=state_->device_config_.internal_sensor_rows.end();++it) {
+        const auto &row=it.value();const auto &bridge=it.key()==0x43?config.bmp390:config.sht45;
+        setSerial(qobject_cast<QCheckBox*>(row[5]),qobject_cast<QComboBox*>(row[1]),qobject_cast<QComboBox*>(row[2]),
+            qobject_cast<QComboBox*>(row[4]),bridge.enabled,bridge.port,bridge.baud_rate,bridge.frequency_hz);
+    }
     if (state_->remote_sky_config_raw_mode_)
     {
         if (state_->device_config_.remote_sky_raw_json_edit)
@@ -707,6 +712,11 @@ VaporView::SkyConfig MainWindow::remoteSkyConfigFromDeviceConfigUi(QString *erro
         }
         config.ptb.source = QStringLiteral("ptb210");
         config.hmp.source = QStringLiteral("hmp3");
+        for(auto it=state_->device_config_.internal_sensor_rows.begin();it!=state_->device_config_.internal_sensor_rows.end();++it) {
+            const auto &row=it.value();auto &bridge=it.key()==0x43?config.bmp390:config.sht45;
+            if(!readSerial(it.key()==0x43?QStringLiteral("BMP390"):QStringLiteral("SHT45"),
+                qobject_cast<QCheckBox*>(row[5]),qobject_cast<QComboBox*>(row[1]),qobject_cast<QComboBox*>(row[2]),qobject_cast<QComboBox*>(row[4]),bridge))return config;
+        }
         if (!readSerial(QStringLiteral("Lidar"),
                         state_->device_config_.lidar_enabled_check,
                         state_->device_config_.lidar_port_combo,

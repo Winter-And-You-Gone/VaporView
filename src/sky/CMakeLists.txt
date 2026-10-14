@@ -26,6 +26,8 @@ target_link_libraries(vaporview_device_collectors PUBLIC
 # Both deployment roles share the USB controller and sensor decoder; neither
 # needs to link the other's application or open the same USB endpoint twice.
 add_library(vaporview_fpga_device_core STATIC
+    ${CMAKE_SOURCE_DIR}/src/sky/devices/InternalEnvironmentSerialController.cpp
+    ${CMAKE_SOURCE_DIR}/include/InternalEnvironmentSerialController.h
     ${CMAKE_SOURCE_DIR}/src/ground/devices/FpgaDeviceSession.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/devices/FpgaDeviceController.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/devices/FpgaSensorDecoder.cpp
@@ -48,6 +50,7 @@ add_library(vaporview_fpga_device_core STATIC
 )
 target_include_directories(vaporview_fpga_device_core PUBLIC
     ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/src)
+set_target_properties(vaporview_fpga_device_core PROPERTIES AUTOMOC ON)
 target_link_libraries(vaporview_fpga_device_core PUBLIC
     vaporview_protocol vaporview_session_format vaporview_device_collectors Qt6::Core)
 if(WIN32)

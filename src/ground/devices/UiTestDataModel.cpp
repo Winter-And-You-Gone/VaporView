@@ -733,6 +733,8 @@ int UiTestDataModel::deviceIndex(SkyDeviceId device)
     case SkyDeviceId::WaveTcp: return 4;
     case SkyDeviceId::TemperatureController: return 5;
     case SkyDeviceId::Ai8TemperatureController: return 6;
+    case SkyDeviceId::Bmp390: return 7;
+    case SkyDeviceId::Sht45: return 8;
     case SkyDeviceId::All: return -1;
     }
     return -1;

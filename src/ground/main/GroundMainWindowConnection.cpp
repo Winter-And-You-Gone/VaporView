@@ -163,6 +163,9 @@ bool MainWindow::homeDeviceConnected(VaporView::SkyDeviceId device) const
     const CollectorSnapshot collectors = snapshotCollectors();
     switch (device)
     {
+    case VaporView::SkyDeviceId::Bmp390:
+    case VaporView::SkyDeviceId::Sht45:
+        return state_->internal_serial_controller_&&state_->internal_serial_controller_->state(device)==VaporView::DeviceState::Connected;
     case VaporView::SkyDeviceId::Epsilon:
         return collectors.epsilon && collectors.epsilon->isRunning();
     case VaporView::SkyDeviceId::Ptb:
@@ -192,6 +195,8 @@ bool MainWindow::localDeviceEnabled(VaporView::SkyDeviceId device) const
 
     switch (device)
     {
+    case VaporView::SkyDeviceId::Bmp390: return state_->local_device_config_.bmp390.enabled;
+    case VaporView::SkyDeviceId::Sht45: return state_->local_device_config_.sht45.enabled;
     case VaporView::SkyDeviceId::Epsilon:
         return state_->local_device_config_.epsilon.enabled;
     case VaporView::SkyDeviceId::Ptb:
@@ -225,6 +230,8 @@ bool MainWindow::homeDevicePortSelected(VaporView::SkyDeviceId device) const
 
     switch (device)
     {
+    case VaporView::SkyDeviceId::Bmp390: return portSelected(state_->local_device_config_.bmp390.port,false);
+    case VaporView::SkyDeviceId::Sht45: return portSelected(state_->local_device_config_.sht45.port,false);
     case VaporView::SkyDeviceId::Epsilon:
         return portSelected(state_->local_device_config_.epsilon.port, false);
     case VaporView::SkyDeviceId::Ptb:
@@ -285,6 +292,8 @@ VaporView::DeviceState MainWindow::homeDeviceActionState(VaporView::SkyDeviceId 
             : VaporView::DeviceState::Disabled;
     }
 
+    if((device==VaporView::SkyDeviceId::Bmp390||device==VaporView::SkyDeviceId::Sht45)&&state_->internal_serial_controller_
+        &&state_->internal_serial_controller_->state(device)==VaporView::DeviceState::Connecting)return VaporView::DeviceState::Connecting;
     if (homeDeviceConnected(device))
     {
         return VaporView::DeviceState::Connected;
@@ -323,6 +332,15 @@ void MainWindow::triggerHomeDeviceAction(VaporView::SkyDeviceId device)
     const bool connectRequested = !connected;
     if (isFpgaRelayPath()) {
         setHomeFpgaDeviceEnabled(device,connectRequested);
+        return;
+    }
+    if(!isUiTestMode()&&!isRemoteSkyMode()&&(device==VaporView::SkyDeviceId::Bmp390||device==VaporView::SkyDeviceId::Sht45)) {
+        if(connected)state_->internal_serial_controller_->disconnectDevice(device);
+        else {
+            const auto &config=device==VaporView::SkyDeviceId::Bmp390?state_->local_device_config_.bmp390:state_->local_device_config_.sht45;
+            state_->internal_serial_controller_->configure(device,{config.enabled,config.port,config.baudText.toInt(),double(config.sampleRateHz),{}});
+            state_->internal_serial_controller_->connectDevice(device);
+        }
         return;
     }
     if (isUiTestMode())
@@ -707,7 +725,8 @@ void MainWindow::updateHomeDeviceActionSpinnerIcons()
 
 bool MainWindow::anyCollectorRunning() const
 {
-    return state_->local_connection_controller_ && state_->local_connection_controller_->anyCollectorRunning();
+    return (state_->internal_serial_controller_&&state_->internal_serial_controller_->active())
+        ||(state_->local_connection_controller_ && state_->local_connection_controller_->anyCollectorRunning());
 }
 
 bool MainWindow::anyLocalDeviceConnected() const
@@ -820,6 +839,7 @@ void MainWindow::invalidateTemperatureControllerDataUi()
 
 void MainWindow::stopAllCollectors()
 {
+    if(state_->internal_serial_controller_)state_->internal_serial_controller_->disconnectAll();
     if (state_->local_connection_controller_)
     {
         state_->local_connection_controller_->disconnect();
@@ -1378,6 +1398,8 @@ QJsonObject MainWindow::testLocalDeviceConfigSnapshot() const
         {QStringLiteral("epsilon"), serial(config.epsilon)},
         {QStringLiteral("ptb"), serial(config.ptb)},
         {QStringLiteral("hmp"), serial(config.hmp)},
+        {QStringLiteral("bmp390"), serial(config.bmp390)},
+        {QStringLiteral("sht45"), serial(config.sht45)},
         {QStringLiteral("lidar"), serial(config.lidar)},
         {QStringLiteral("temperature"), serial(config.temperatureController)},
         {QStringLiteral("ai8"), serial(config.ai8TemperatureController)},
@@ -1709,6 +1731,13 @@ void MainWindow::onConnectClicked()
     request.epsilonPacketRatesMatchDefault =
         VaporView::Ground::DeviceRates::epsilonPacketRatesMatchDefault(epsilonDesiredPacketRates);
     request.epsilonConfigLikelyMatches = epsilonConfigLikelyMatches;
+    for(auto id:{VaporView::SkyDeviceId::Bmp390,VaporView::SkyDeviceId::Sht45}) {
+        const auto &internal=id==VaporView::SkyDeviceId::Bmp390?localConfig.bmp390:localConfig.sht45;
+        if(localRequestedFor(id)&&internal.enabled&&!internal.port.isEmpty()) {
+            state_->internal_serial_controller_->configure(id,{internal.enabled,internal.port,internal.baudText.toInt(),double(internal.sampleRateHz),{}});
+            state_->internal_serial_controller_->connectDevice(id);
+        }
+    }
     if (!state_->local_connection_coordinator_->begin(std::move(request)))
     {
         state_->connection_attempt_in_progress_ = false;

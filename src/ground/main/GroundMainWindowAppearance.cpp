@@ -1670,6 +1670,20 @@ void MainWindow::loadLocalDeviceEnabledState()
 {
     QSettings settings = VaporView::applicationConfigSettings();
     settings.beginGroup(QStringLiteral("MainWindow"));
+    for(auto it=state_->device_config_.internal_sensor_rows.begin();it!=state_->device_config_.internal_sensor_rows.end();++it) {
+        auto &config=it.key()==0x43?state_->local_device_config_.bmp390:state_->local_device_config_.sht45;
+        const auto prefix=QStringLiteral("internal/")+(it.key()==0x43?QStringLiteral("bmp390/"):QStringLiteral("sht45/"));
+        config.port=settings.value(prefix+"port",config.port).toString();
+        config.baudText=settings.value(prefix+"baud",config.baudText).toString();
+        config.sampleRateHz=qBound(1,settings.value(prefix+"rate",1).toInt(),20);
+        config.enabled=settings.value(prefix+"enabled",false).toBool();
+        const auto &row=it.value();
+        const QSignalBlocker p(row[1]),b(row[2]),r(row[4]),e(row[5]);
+        refreshLocalSerialPortComboOptions(qobject_cast<QComboBox*>(row[1]),getAvailablePorts(),config.port);
+        VaporView::setSerialBaudRateComboText(qobject_cast<QComboBox*>(row[2]),config.baudText);
+        qobject_cast<QComboBox*>(row[4])->setCurrentText(QString::number(config.sampleRateHz));
+        qobject_cast<QCheckBox*>(row[5])->setChecked(config.enabled);
+    }
 
     auto loadCheck = [&settings](QCheckBox *check, const QString& key) {
         if (!check)
@@ -1958,6 +1972,14 @@ void MainWindow::saveRememberedInputState() const
     updateLocalDeviceConfigFromUi();
     updateRemoteSkyLinkConfigFromUi();
     settings.beginGroup(QStringLiteral("MainWindow"));
+    for(const auto &entry:{qMakePair(QStringLiteral("bmp390"),state_->local_device_config_.bmp390),
+                          qMakePair(QStringLiteral("sht45"),state_->local_device_config_.sht45)}) {
+        const auto prefix=QStringLiteral("internal/")+entry.first+"/";
+        VaporView::setPersistentSetting(settings,prefix+"port",entry.second.port);
+        VaporView::setPersistentSetting(settings,prefix+"baud",entry.second.baudText);
+        VaporView::setPersistentSetting(settings,prefix+"rate",entry.second.sampleRateHz);
+        VaporView::setPersistentSetting(settings,prefix+"enabled",entry.second.enabled);
+    }
     VaporView::setPersistentSetting(
         settings,
         QStringLiteral("sensor/transport_path"),

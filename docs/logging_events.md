@@ -4,6 +4,7 @@
 
 | source | category | event | recommended level | 中文 message | required fields | optional fields | error_code / reason_code |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| Ground/SkyCore | device.internal | internal_serial_error | Warning | 内部环境串口桥连接失败。 | device_id, reason, reason_code |  | SERIAL_BRIDGE_CONNECT_FAILED |
 | Ground/SkyCore | device.fpga | fpga_operation_diagnostic | Info/Warning/Error | FPGA 操作诊断；具体原因保留在 message。 | operation, ready, busy | error_code | FPGA_OPERATION_FAILED |
 | SkyCore | session.write | fpga_recording_storage_failed | Error | FPGA 存储写入失败，会话已暂停并标记为不完整，正在停止采集。 | error_code, session_sink_failure |  | FPGA_RECORDING_STORAGE_FAILED |
 | SkyCore | device.fpga | fpga_storage_failure_usb_closed | Error | 采集停止未确认，USB 接收已关闭；请核对下位机物理状态。 | error_code, detail |  | FPGA_STOP_UNCONFIRMED |

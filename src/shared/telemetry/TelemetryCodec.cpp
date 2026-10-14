@@ -129,6 +129,8 @@ QString skyDeviceIdName(SkyDeviceId id)
         return QStringLiteral("ai8_temperature_controller");
     case SkyDeviceId::Fpga:
         return QStringLiteral("fpga");
+    case SkyDeviceId::Bmp390: return QStringLiteral("bmp390");
+    case SkyDeviceId::Sht45: return QStringLiteral("sht45");
     case SkyDeviceId::All:
         return QStringLiteral("all");
     }
@@ -278,6 +280,8 @@ bool skyDeviceIdFromValue(quint8 value, SkyDeviceId& id)
     case 8:
         id = SkyDeviceId::Fpga;
         return true;
+    case 9: id=SkyDeviceId::Bmp390;return true;
+    case 10: id=SkyDeviceId::Sht45;return true;
     case 255:
         id = SkyDeviceId::All;
         return true;

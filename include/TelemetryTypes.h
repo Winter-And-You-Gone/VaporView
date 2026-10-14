@@ -45,6 +45,7 @@ enum class MsgType : quint8
     FpgaStatus = 0x0C,
     FpgaSensor = 0x0D,
     FpgaWaveformPreview = 0x0E,
+    InternalEnvironment = 0x0F,
     Command = 0x10,
     CommandAck = 0x11,
     Heartbeat = 0x20,
@@ -131,6 +132,8 @@ enum class SkyDeviceId : quint8
     TemperatureController = 6,
     Ai8TemperatureController = 7,
     Fpga = 8,
+    Bmp390 = 9,
+    Sht45 = 10,
     All = 255,
 };
 

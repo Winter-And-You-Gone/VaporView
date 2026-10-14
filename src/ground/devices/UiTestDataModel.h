@@ -79,7 +79,7 @@ private:
 
     UiTestScenario scenario_ = UiTestScenario::Normal;
     qint64 scenario_started_ms_ = 0;
-    std::array<DeviceState, 7> device_states_{};
+    std::array<DeviceState, 9> device_states_{};
     TemperatureControllerData temperature_state_;
     std::map<std::string, double> epsilon_settings_;
     std::map<std::string, std::string> epsilon_dgnss_;

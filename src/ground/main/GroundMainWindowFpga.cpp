@@ -105,54 +105,29 @@ void MainWindow::syncFpgaDeviceConfigUi()
         editor->setToolTip(hint+(key=="poll_ms"?(state_->is_english_?QStringLiteral(" Frequency in Hz; polling cadence, not measured sample rate.")
             :QStringLiteral(" 频率单位 Hz，表示轮询节奏，不是实测数据频率。")):QString()));
     };
-    if (relay && state_->device_config_.ptb_baud_combo && state_->device_config_.internal_sensor_rows.isEmpty()) {
-        auto *parent=state_->device_config_.ptb_baud_combo->parentWidget();
-        auto *grid=qobject_cast<QGridLayout*>(parent->layout());
-        for (quint16 source : {0x43,0x44}) {
-            const int row=grid->rowCount();
-            const QString name=source==0x43?QStringLiteral("BMP390"):QStringLiteral("SHT45");
-            auto *device=new QLabel(name,parent);device->setObjectName("deviceInternalName"+name);device->setProperty("internalDeviceName",true);
-            auto *port=new QLabel(QStringLiteral("FPGA"),parent);port->setAlignment(Qt::AlignCenter);
-            auto *bus=new QLabel(QStringLiteral("I²C"),parent);bus->setAlignment(Qt::AlignCenter);
-            auto *rateLabel=new QLabel(parent);rateLabel->setObjectName("fieldLabel");rateLabel->setAlignment(Qt::AlignRight|Qt::AlignVCenter);
-            auto *preset=new QComboBox(parent);preset->setObjectName("deviceInternalRate"+name);
-            preset->setFixedSize(state_->device_config_.ptb_rate_combo->size());
-            auto *enabled=new DeviceEnabledCheckBox(parent);enabled->setObjectName("deviceInternalEnabled"+name);
-            enabled->setEnabled(false);
-            auto *action=new QToolButton(parent);action->setProperty("fpgaSensorSource",source);
-            action->setFocusPolicy(Qt::TabFocus);
-            applyDeviceConfigRemoteButtonPresentation(action,VaporView::CommandId::ConnectDevice,
-                VaporView::SkyDeviceId::Fpga,state_->is_english_,true);
-            connect(action,&QToolButton::clicked,this,[this,source] {
-                const auto registers=homeFpgaRegisters();
-                if (!isFpgaRelayPath() || registers.isEmpty()) return;
-                emit state_->fpga_page_->sensorEnableRequested(source,!(registers.value(0x6004+(source-0x40)*0x100)&1));
-            });
-            const QList<QWidget*> widgets{device,port,bus,rateLabel,preset,enabled,action};
-            const int columns[]{0,1,2,3,4,5,6};
-            for(int i=0;i<widgets.size();++i)grid->addWidget(widgets[i],row,columns[i],Qt::AlignVCenter);
-            state_->device_config_.internal_sensor_rows[source]=widgets;
-        }
-    }
     for(auto it=state_->device_config_.internal_sensor_rows.begin();it!=state_->device_config_.internal_sensor_rows.end();++it) {
         const auto &widgets=it.value();
-        if (relay) field(qobject_cast<QComboBox*>(widgets[4]),it.key(),"poll_ms",it.key()==0x43?0x6314:0x6414);
+        field(qobject_cast<QComboBox*>(widgets[4]),it.key(),"poll_ms",it.key()==0x43?0x6314:0x6414);
+        field(qobject_cast<QComboBox*>(widgets[2]),it.key(),{},0,QStringLiteral("I²C"));
         const bool connected=registers.value(0x6004+(it.key()-0x40)*0x100)&1;
-        auto *check=qobject_cast<QCheckBox*>(widgets[5]);check->setChecked(connected);
-        qobject_cast<QLabel*>(widgets[3])->setText(state_->is_english_?QStringLiteral("Rate:"):QStringLiteral("频率："));
+        auto *check=qobject_cast<QCheckBox*>(widgets[5]);
+        const auto id=it.key()==0x43?VaporView::SkyDeviceId::Bmp390:VaporView::SkyDeviceId::Sht45;
+        if(relay){const QSignalBlocker blocker(check);check->setChecked(connected);}
+        check->setEnabled(!relay&&homeDeviceActionState(id)!=VaporView::DeviceState::Connected
+            &&homeDeviceActionState(id)!=VaporView::DeviceState::Connecting
+            &&(!isRemoteSkyMode()||state_->remote_sky_controller_->isOpen()));
+        qobject_cast<QLabel*>(widgets[3])->setText(relay?(state_->is_english_?QStringLiteral("Rate:"):QStringLiteral("频率："))
+            :(state_->is_english_?QStringLiteral("Receive:"):QStringLiteral("接收：")));
         auto *button=qobject_cast<QToolButton*>(widgets[6]);
-        applyDeviceConfigRemoteButtonPresentation(button,connected?VaporView::CommandId::DisconnectDevice:VaporView::CommandId::ConnectDevice,
-            VaporView::SkyDeviceId::Fpga,state_->is_english_,true);
-        button->setToolTip((connected?(state_->is_english_?"Disconnect ":"断开 "):(state_->is_english_?"Connect ":"连接 "))+qobject_cast<QLabel*>(widgets[0])->text());
-        button->setAccessibleName(button->toolTip());
-        button->setEnabled(relay&&!busy&&!registers.isEmpty());
-        for(auto *widget:widgets)widget->setVisible(relay);
-        // The preset is only a geometry anchor for the shared FPGA draft editor.
-        widgets[4]->hide();
-        if (!relay) {
-            const auto prefix=widgets[4]->objectName();
-            for(auto *child:widgets[4]->parentWidget()->findChildren<QWidget*>(QString(),Qt::FindDirectChildrenOnly))
-                if(child->objectName().startsWith(prefix))child->hide();
+        updateDeviceConfigRemoteActionButton(id);
+        widgets[0]->show();widgets[3]->show();widgets[5]->show();button->parentWidget()->show();
+        if(!relay) {
+            const auto action=homeDeviceActionState(id);
+            const bool editable=action!=VaporView::DeviceState::Connected&&action!=VaporView::DeviceState::Connecting
+                &&(!isRemoteSkyMode()||(!state_->remote_sky_config_loading_&&!state_->remote_sky_config_applying_));
+            for(int index:{1,2,4}){widgets[index]->show();widgets[index]->setEnabled(editable);}
+            widgets[4]->setToolTip(state_->is_english_?QStringLiteral("Receive update limit in Hz. The USB serial bridge controls physical sampling; no polling command is sent.")
+                :QStringLiteral("接收更新频率上限，单位 Hz。物理采样由 USB 串口桥控制；不发送轮询命令。"));
         }
     }
     refreshInternalEnvironment();
@@ -257,6 +232,8 @@ quint16 MainWindow::homeFpgaSensorSource(VaporView::SkyDeviceId device) const
     switch (device) {
     case SkyDeviceId::Epsilon: return 0x42;
     case SkyDeviceId::Ptb: return 0x40;
+    case SkyDeviceId::Bmp390: return 0x43;
+    case SkyDeviceId::Sht45: return 0x44;
     // HMP has no implemented measurement/control channel in the current firmware.
     case SkyDeviceId::Hmp: return 0;
     case SkyDeviceId::Lidar: return 0x45;
@@ -800,6 +777,9 @@ void MainWindow::setupFpgaControlPage()
     using Remote = VaporView::Ground::Devices::RemoteSkyController;
     auto *remote = state_->remote_sky_controller_.get();
     connect(remote, &Remote::fpgaStatusUpdated, this, &MainWindow::receiveRemoteFpgaStatus);
+    connect(remote,&Remote::internalEnvironmentUpdated,this,[this](const VaporView::FpgaSensor::Reading& reading) {
+        if(isRemoteSkyMode()&&!isFpgaRelayPath()&&state_->remote_sky_controller_->isOpen())updateInternalEnvironment(reading);
+    });
     connect(remote, &Remote::fpgaSensorUpdated, this, [this, page](const VaporView::FpgaSensor::Reading& reading) {
         if (isRemoteSkyMode() && state_->remote_sky_controller_->isOpen()
             && state_->fpga_remote_status_.value("ready").toBool()
@@ -1049,24 +1029,39 @@ void MainWindow::updateInternalEnvironment(const VaporView::FpgaSensor::Reading 
 void MainWindow::refreshInternalEnvironment()
 {
     if (!state_->internal_environment_lbl_) return;
-    const int context=(isRemoteSkyMode()?1:0)+(isUiTestMode()?2:0);
+    const int context=(isRemoteSkyMode()?1:0)+(isUiTestMode()?2:0)+(isFpgaRelayPath()?0:4);
     if (context!=state_->internal_environment_context_) {
         state_->internal_environment_.clear();state_->internal_environment_times_.clear();
         state_->internal_environment_context_=context;
     }
     const auto registers = homeFpgaRegisters();
-    const bool live = isFpgaRelayPath() && !registers.isEmpty();
-    if (!live) {state_->internal_environment_.clear();state_->internal_environment_times_.clear();}
-    for(quint16 source:{0x43,0x44})if(!(registers.value(0x6004+(source-0x40)*0x100)&1)) {
+    const auto enabled=[&](quint16 source) {
+        if(isFpgaRelayPath())return !registers.isEmpty()&&(registers.value(0x6004+(source-0x40)*0x100)&1)!=0;
+        const auto id=source==0x43?VaporView::SkyDeviceId::Bmp390:VaporView::SkyDeviceId::Sht45;
+        return homeDeviceActionState(id)==VaporView::DeviceState::Connected;
+    };
+    if(isUiTestMode()&&!isFpgaRelayPath()&&state_->ui_test_model_->scenario()!=VaporView::Ground::Devices::UiTestScenario::DataStalled) {
+        const double phase=(QDateTime::currentMSecsSinceEpoch()-state_->ui_test_started_ms_)/1000.0;
+        for(quint16 source:{0x43,0x44})if(enabled(source)) {
+            VaporView::FpgaSensor::Reading sample;sample.source=source;
+            sample.kind=source==0x43?VaporView::FpgaSensor::SensorKind::Bmp390:VaporView::FpgaSensor::SensorKind::Sht45;
+            sample.validity={true,true,true,true};
+            if(source==0x43)sample.pressurePa=101500+20*std::sin(phase);
+            else{sample.temperatureC=24+std::sin(phase);sample.humidityPct=45+std::sin(phase);}
+            state_->internal_environment_[source]=sample;state_->internal_environment_times_[source]=std::chrono::steady_clock::now();
+        }
+    }
+    for(quint16 source:{0x43,0x44})if(!enabled(source)) {
         state_->internal_environment_.remove(source);state_->internal_environment_times_.remove(source);
     }
     const auto value = [&](quint16 source, std::optional<double> VaporView::FpgaSensor::Reading::*field, double scale) {
         const auto reading = state_->internal_environment_.value(source);
         const quint32 base = 0x6000 + (source - 0x40) * 0x100;
         const auto age = std::chrono::steady_clock::now() - state_->internal_environment_times_.value(source);
-        const auto expiry = std::chrono::milliseconds(qMax<quint64>(4000, quint64(registers.value(base+0x14,1000))*3));
+        const auto expiry = std::chrono::milliseconds(isFpgaRelayPath()
+            ?qMax<quint64>(4000,quint64(registers.value(base+0x14,1000))*3):4000);
         const auto number = reading.*field;
-        if (!live || !(registers.value(base+4)&1) || age >= expiry || !reading.validity.structure
+        if (!enabled(source) || age >= expiry || !reading.validity.structure
             || !reading.validity.crc || !reading.validity.deviceOnline || !reading.validity.measurement
             || !number || !std::isfinite(*number)) return QStringLiteral("—");
         return QString::number(*number*scale, 'f', 2);

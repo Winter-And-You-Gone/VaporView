@@ -114,6 +114,8 @@ struct SkyConfigDiff
     bool epsilon_rtcm_changed = false;
     bool ptb_changed = false;
     bool hmp_changed = false;
+    bool bmp390_changed = false;
+    bool sht45_changed = false;
     bool lidar_changed = false;
     bool temperature_controller_changed = false;
     bool ai8_temperature_controller_changed = false;
@@ -133,6 +135,8 @@ struct SkyConfig
     EpsilonSerialConfig epsilon;
     EpsilonRtcmConfig epsilon_rtcm;
     SerialDeviceConfig ptb;
+    SerialDeviceConfig bmp390{false,{},115200,1.0,{}};
+    SerialDeviceConfig sht45{false,{},115200,1.0,{}};
     SerialDeviceConfig hmp;
     SerialDeviceConfig lidar;
     TemperatureControllerConfig temperature_controller;

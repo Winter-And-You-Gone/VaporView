@@ -700,8 +700,8 @@ int main(int argc, char **argv)
         }
         ++centeredActionCount;
     }
-    require(centeredActionCount == 7,
-            "serial configuration exposes all seven centered link-action icons");
+    require(centeredActionCount == 9,
+            "serial configuration exposes nine centered link-action icons including internal sensors");
     require(temperatureActionButton != nullptr,
             "serial configuration exposes the RD105 link-action icon");
     require(tcpWaveActionButton != nullptr,

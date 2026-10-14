@@ -9,6 +9,7 @@
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QTemporaryDir>
+#include <QSet>
 #include <QTcpServer>
 
 #include <cmath>
@@ -120,6 +121,8 @@ VaporView::SkyConfig testConfig()
     config.ptb.source = QStringLiteral("ptb210");
     config.hmp = {true, QStringLiteral("/dev/test-hmp3"), 19200, 20.0};
     config.hmp.source = QStringLiteral("hmp3");
+    config.bmp390={true,QStringLiteral("/dev/test-internal-bmp"),115200,1.0,{}};
+    config.sht45={true,QStringLiteral("/dev/test-internal-sht"),115200,1.0,{}};
     config.lidar = {true, QStringLiteral("/dev/test-lidar"), 500000, 100.0};
     config.temperature_controller = {true, QStringLiteral("/dev/test-rd105"), 38400, 5.0, 1};
     config.ai8_temperature_controller = {true, QStringLiteral("/dev/test-ai8"), 19200, 5.0, 1};
@@ -177,6 +180,11 @@ int main(int argc, char **argv)
     int basicCount = 0;
     int rd105Count = 0;
     int ai8Count = 0;
+    QSet<quint16> internalSources;
+    QObject::connect(&controller,&VaporView::Ground::Devices::RemoteSkyController::internalEnvironmentUpdated,
+        [&](const VaporView::FpgaSensor::Reading& reading) {
+            require(reading.validity.measurement,"remote internal environment typed reading valid");internalSources.insert(reading.source);
+        });
     QHash<quint16, VaporView::CommandAck> acks;
     QHash<quint32, VaporView::DeviceOperationResponse> ai8Responses;
 
@@ -220,6 +228,8 @@ int main(int argc, char **argv)
             "Ground RemoteSkyController connects to SkyCore TCP");
 
     quint16 seq = controller.requestSkyConfig();
+    require(waitUntil([&]{return internalSources.contains(0x43)&&internalSources.contains(0x44);},&process),
+        "SkyCore sends both independent internal devices over the same telemetry TCP link");
     require(waitUntil([&]() { return receivedConfig.contains(QStringLiteral("ai8_temperature_controller")); },
                       &process),
             "GetSkyConfig returns AI-8 section");
@@ -300,6 +310,16 @@ int main(int argc, char **argv)
                        ai8Count > 0 && lastAi8.valid && lastAi8.controlStatesValid;
             }, &process, 10000),
             "Ground receives basic, RD105, and AI-8 telemetry");
+    seq=controller.sendCommand(VaporView::CommandId::DisconnectDevice,
+        VaporView::TelemetryCodec::serializeDeviceCommand(VaporView::SkyDeviceId::Bmp390));
+    require(waitUntil([&]{return acks.contains(seq)&&controller.deviceState(VaporView::SkyDeviceId::Bmp390)==VaporView::DeviceState::Disconnected;},&process),
+        "individual internal bridge disconnect travels through SkyCore device commands");
+    require(controller.deviceState(VaporView::SkyDeviceId::Sht45)==VaporView::DeviceState::Connected
+        &&(lastBasic.validity_flags&VaporView::BasicHasPressure),"BMP disconnect preserves independent SHT and environmental PTB data");
+    seq=controller.sendCommand(VaporView::CommandId::ConnectDevice,
+        VaporView::TelemetryCodec::serializeDeviceCommand(VaporView::SkyDeviceId::Bmp390));
+    require(waitUntil([&]{return acks.contains(seq)&&controller.deviceState(VaporView::SkyDeviceId::Bmp390)==VaporView::DeviceState::Connected;},&process),
+        "individual internal bridge reconnect uses its own retained Sky configuration");
 
     VaporView::TemperatureControllerCommand rd105Command;
     rd105Command.channel = 1;

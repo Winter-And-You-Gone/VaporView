@@ -3,6 +3,8 @@
 
 #include <QCoreApplication>
 #include <QMetaObject>
+#include <QElapsedTimer>
+#include <QThread>
 
 #include <cmath>
 #include <cstdlib>
@@ -62,15 +64,38 @@ int main(int argc, char **argv)
     config.temperature_controller = {true, QStringLiteral("/dev/test-rd105"), 38400, 5.0, 3};
     config.ai8_temperature_controller = {true, QStringLiteral("/dev/test-ai8"), 19200, 5.0, 5};
     config.wave_tcp.enabled = true;
+    config.bmp390={true,QStringLiteral("/dev/internal-bmp"),115200,1.0,{}};
+    config.sht45={true,QStringLiteral("/dev/internal-sht"),115200,1.0,{}};
+    {
+        VaporView::SkyDeviceManager real;
+        auto unavailable=config;unavailable.bmp390.port="COM_VAPORVIEW_TEST_DOES_NOT_EXIST";
+        real.loadConfig(unavailable);bool diagnosed=false;
+        QObject::connect(&real,&VaporView::SkyDeviceManager::logRecord,&real,[&](const VaporView::LogRecord& record) {
+            if(record.fields.value("event").toString()=="internal_serial_error")diagnosed=true;
+        });
+        require(real.connectDevice(VaporView::SkyDeviceId::Bmp390),"Sky schedules an independent real bridge open");
+        QElapsedTimer wait;wait.start();
+        while(!diagnosed&&wait.elapsed()<3000){QCoreApplication::processEvents();QThread::msleep(1);}
+        require(diagnosed&&real.status(VaporView::SkyDeviceId::Bmp390).state==VaporView::DeviceState::Error
+            &&real.status(VaporView::SkyDeviceId::Bmp390).error_code!=0,"Sky serial failure publishes both status and diagnostic reason");
+    }
 
     VaporView::SkyDeviceManager manager;
     manager.loadConfig(config);
     manager.setSimulateData(true);
+    int internalSamples=0;
+    QObject::connect(&manager,&VaporView::SkyDeviceManager::internalEnvironmentUpdated,&manager,
+        [&](const VaporView::FpgaSensor::Reading& reading){
+            require(reading.source==0x43||reading.source==0x44,"internal device source remains independent");
+            require(reading.validity.measurement,"simulated internal measurement valid");++internalSamples;
+        });
     manager.connectAll();
     generateSimulatedData(manager);
 
     const QVector<VaporView::DeviceStatusItem> statuses = manager.allStatuses();
-    require(statuses.size() == 7, "allStatuses covers all formal Sky devices");
+    require(statuses.size() == 9 && internalSamples==2, "allStatuses covers independent internal devices and both produce readings");
+    requireConnectedWithData(manager,VaporView::SkyDeviceId::Bmp390);
+    requireConnectedWithData(manager,VaporView::SkyDeviceId::Sht45);
     for (VaporView::SkyDeviceId id : {VaporView::SkyDeviceId::Epsilon,
                                       VaporView::SkyDeviceId::Ptb,
                                       VaporView::SkyDeviceId::Hmp,

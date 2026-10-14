@@ -117,6 +117,16 @@ RemoteSkyController::RemoteSkyController(QObject *parent)
             emit fpgaSensorUpdated(reading);
         }, Qt::QueuedConnection);
     }, Qt::DirectConnection);
+    connect(&service_,&GroundTelemetryService::internalEnvironmentUpdated,this,[this](const FpgaSensor::Reading& reading) {
+        const auto generation=service_.linkGeneration();
+        QMetaObject::invokeMethod(this,[this,generation,reading] {
+            if(!isCurrentOpenEvent(generation))return;
+            const auto now=QDateTime::currentMSecsSinceEpoch();
+            state_.notePacket(MsgType::InternalEnvironment,now);
+            if(reading.validity.measurement)state_.noteDeviceData(reading.source==0x43?SkyDeviceId::Bmp390:SkyDeviceId::Sht45,now);
+            emit internalEnvironmentUpdated(reading);
+        },Qt::QueuedConnection);
+    },Qt::DirectConnection);
     connect(&service_, &GroundTelemetryService::fpgaWaveformUpdated, this, [this](const FpgaWave::CompletedStream& stream) {
         const auto generation = service_.linkGeneration();
         QMetaObject::invokeMethod(this, [this, generation, stream] {

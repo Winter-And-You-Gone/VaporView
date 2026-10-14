@@ -989,7 +989,10 @@ static void relayConfigurationPresentation()
     path->setCurrentIndex(path->findData("direct_devices"));processFor(50);
     require(!waveEnabled->isVisible()&&window.findChild<QCheckBox*>("deviceTcpWaveEnabledCheck")->isVisible(),
         "direct TCP startup preset is separate from the FPGA acquisition checkbox");
-    require(!window.findChild<QWidget*>("deviceInternalNameBMP390")->isVisible(),"I2C relay rows are hidden on the direct path");
+    require(window.findChild<QWidget*>("deviceInternalNameBMP390")->isVisible()
+        &&window.findChild<QComboBox*>("deviceInternalPortBMP390")->isVisible()
+        &&window.findChild<QComboBox*>("deviceInternalBaudBMP390")->currentText()=="115200",
+        "internal devices have independent serial rows on the direct path");
     require(window.testLocalDeviceConfigSnapshot().value("epsilon").toObject().value("baud")==before.value("epsilon").toObject().value("baud"),
         "FPGA display never overwrites Direct baud presets");
     for(int i=0;i<devices.size();++i) {
@@ -1073,6 +1076,63 @@ static void remoteTransportAndCapabilities()
     remote->close();window.close();
 }
 
+static void directInternalEnvironmentRouting()
+{
+    using namespace VaporView;
+    MainWindow window;QMetaObject::invokeMethod(&window,"onDataSourceModeChanged",Q_ARG(int,0));
+    auto *path=window.findChild<QComboBox*>("deviceSensorTransportPathCombo");
+    path->setCurrentIndex(path->findData("direct_devices"));
+    auto *stack=window.findChild<QStackedWidget*>("mainPageStack");
+    QWidget *configPage=path;while(stack->indexOf(configPage)<0)configPage=configPage->parentWidget();
+    stack->setCurrentWidget(configPage);window.resize(1600,1000);window.show();processFor(100);
+    for(const auto &name:{QStringLiteral("BMP390"),QStringLiteral("SHT45")}) {
+        auto *port=window.findChild<QComboBox*>("deviceInternalPort"+name);
+        auto *baud=window.findChild<QComboBox*>("deviceInternalBaud"+name);
+        auto *rate=window.findChild<QComboBox*>("deviceInternalRate"+name);
+        require(port&&port->isVisible()&&baud->isVisible()&&baud->currentText()=="115200"&&rate->currentText()=="1",
+            "direct internal serial rows start with 115200 8N1 and 1 Hz receive rate");
+        port->addItem("COM-"+name,"COM-"+name);port->setCurrentText("COM-"+name);
+        rate->setCurrentText("2");window.findChild<QCheckBox*>("deviceInternalEnabled"+name)->setChecked(true);
+    }
+    const auto before=window.testLocalDeviceConfigSnapshot();
+    require(before.value("bmp390").toObject().value("port")=="COM-BMP390"
+        &&before.value("sht45").toObject().value("rate_hz")==2,"internal model contains independent direct settings");
+    path->setCurrentIndex(path->findData("fpga_relay"));processFor(50);
+    path->setCurrentIndex(path->findData("direct_devices"));processFor(50);
+    require(window.testLocalDeviceConfigSnapshot()==before,"FPGA path and readback preserve direct internal presets");
+    MainWindow restored;require(restored.testLocalDeviceConfigSnapshot().value("bmp390")==before.value("bmp390"),
+        "independent internal serial settings persist in isolated application settings");restored.close();
+    TcpTelemetryLink server;require(server.listen("127.0.0.1",0),"direct internal fake Sky listens");
+    QMetaObject::invokeMethod(&window,"onDataSourceModeChanged",Q_ARG(int,1));
+    auto sky=SkyConfig::defaults();sky.bmp390={true,"SKY-BMP",115200,1.0,{}};sky.sht45={true,"SKY-SHT",57600,2.0,{}};
+    auto *remote=window.testRemoteSkyController();
+    require(remote->openTcp("127.0.0.1",server.localPort())&&waitUntil([&]{return remote->isOpen();}),"same telemetry TCP opens for direct internal sensors");
+    window.testInjectRemoteSkyConfig(sky.toJson());
+    QString error;const auto submitted=window.testRemoteSkyConfigFromDeviceConfigUi(&error);
+    require(error.isEmpty()&&submitted.value("sht45").toObject().value("baud")==57600,"remote internal settings round trip independently");
+    TelemetryCodec encoder;quint16 sequence=1;
+    auto send=[&](MsgType type,const QByteArray &payload){server.writeBytes(encoder.encodeFrame(type,payload,sequence++,1));};
+    TelemetryStatus status;
+    for(auto id:{SkyDeviceId::Bmp390,SkyDeviceId::Sht45}){DeviceStatusItem item;item.device_id=id;item.state=DeviceState::Connected;status.devices.append(item);}
+    send(MsgType::TelemetryStatus,TelemetryCodec::serializeTelemetryStatus(status));
+    auto *label=window.findChild<QLabel*>("homeInternalEnvironment");
+    require(waitUntil([&]{return remote->deviceState(SkyDeviceId::Sht45)==DeviceState::Connected;}),"independent remote device IDs are accepted");
+    const auto environmentBefore=window.findChild<PtbPanel*>()->findChild<QLabel*>("highlightedValue")->text();
+    FpgaSensor::Reading reading;reading.source=0x43;reading.kind=FpgaSensor::SensorKind::Bmp390;reading.pressurePa=100000;reading.validity={true,true,true,true};
+    send(MsgType::InternalEnvironment,FpgaRemote::encodeSensor(reading,1));
+    reading.source=0x44;reading.kind=FpgaSensor::SensorKind::Sht45;reading.pressurePa.reset();reading.temperatureC=30;reading.humidityPct=70;
+    send(MsgType::InternalEnvironment,FpgaRemote::encodeSensor(reading,2));
+    require(waitUntil([&]{return label->text().contains("1000.00")&&label->text().contains("30.00")&&label->text().contains("70.00");}),
+        "direct Sky internal telemetry reaches the three home internal metrics");
+    require(window.findChild<PtbPanel*>()->findChild<QLabel*>("highlightedValue")->text()==environmentBefore,
+        "internal serial telemetry never overwrites the environmental PTB panel");
+    status.devices[0].state=DeviceState::Disconnected;send(MsgType::TelemetryStatus,TelemetryCodec::serializeTelemetryStatus(status));
+    require(waitUntil([&]{return label->text().contains(QStringLiteral("—"))&&label->text().contains("30.00");}),
+        "individual BMP disconnect invalidates pressure while preserving SHT values");
+    require(waitUntil([&]{return label->text().count(QStringLiteral("—"))==3;},6000),"stale direct internal data expires without a disconnect");
+    remote->close();window.close();
+}
+
 int main(int argc,char **argv)
 {
     require(VaporViewTest::SettingsSandbox::initialized,"isolated native/INI application settings");
@@ -1087,6 +1147,7 @@ int main(int argc,char **argv)
     QSettings native("VaporView","MainWindow");
     native.setValue("font_scale_percent",100);
     native.setValue("app_sidebar_width",62);
+    if(app.arguments().contains("--internal-direct")) {directInternalEnvironmentRouting();return 0;}
     if(app.arguments().contains("--relay-configuration")) {
         relayConfigurationPresentation();std::cout<<"FPGA relay configuration test passed\n";return 0;
     }

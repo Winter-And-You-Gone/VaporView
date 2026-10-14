@@ -8,6 +8,7 @@
 #include "TcpWaveEncoding.h"
 #include "data_collector.h"
 #include "SkyFpgaBackend.h"
+#include "InternalEnvironmentSerialController.h"
 
 #include <QObject>
 #include <QTcpSocket>
@@ -133,6 +134,7 @@ public:
     double waveTcpActualRateHz() const;
 
 signals:
+    void internalEnvironmentUpdated(const VaporView::FpgaSensor::Reading& reading);
     void fpgaStatusChanged(QJsonObject document);
     void fpgaSensorUpdated(const VaporView::FpgaSensor::Reading& reading);
     void fpgaWaveformUpdated(const VaporView::FpgaWave::CompletedStream& stream);
@@ -181,6 +183,8 @@ private:
     std::unique_ptr<Ground::Devices::FpgaUsbTransport> fpga_test_transport_;
     bool simulate_fpga_ = false;
     DeviceStatusItem fpga_status_;
+    DeviceStatusItem bmp390_status_,sht45_status_;
+    std::unique_ptr<InternalEnvironmentSerialController> internal_serial_;
     bool fpga_position_valid_ = false, fpga_velocity_valid_ = false;
     quint64 fpga_position_time_us_ = 0, fpga_velocity_time_us_ = 0;
     void initializeStatuses();

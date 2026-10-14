@@ -3207,6 +3207,40 @@ void MainWindow::setupDeviceConfigPage()
                            state_->device_config_.tcp_wave_remote_action_btn,
                            VaporView::SkyDeviceId::WaveTcp);
 
+    for(quint16 source:{0x43,0x44}) {
+        const QString name=source==0x43?QStringLiteral("BMP390"):QStringLiteral("SHT45");
+        const auto id=source==0x43?VaporView::SkyDeviceId::Bmp390:VaporView::SkyDeviceId::Sht45;
+        QLabel *device=nullptr,*rateLabel=nullptr;QComboBox *port=nullptr,*baud=nullptr,*rate=nullptr;
+        const int row=source==0x43?7:8;
+        addPortRow(device,port,baud,rateLabel,rate,row);
+        device->setText(name);device->setObjectName("deviceInternalName"+name);device->setProperty("internalDeviceName",true);
+        port->setObjectName("deviceInternalPort"+name);
+        baud->setObjectName("deviceInternalBaud"+name);
+        rate->setObjectName("deviceInternalRate"+name);
+        rate->clear();for(int hz:{1,2,5,10,20})rate->addItem(QString::number(hz));rate->setCurrentText("1");
+        rate->setValidator(new QIntValidator(1,20,rate));
+        refreshLocalSerialPortComboOptions(port,availablePorts);
+        VaporView::configureSerialBaudRateCombo(baud,VaporView::hostSerialLinkBaudCapabilities(),"115200");
+        QCheckBox *enabled=nullptr;addDeviceEnabledCheck(enabled,row,"deviceInternalEnabled"+name);
+        {const QSignalBlocker blocker(enabled);enabled->setChecked(false);}
+        QWidget *buttons=nullptr;QToolButton *action=nullptr;addDeviceRemoteButton(row,buttons,action,id);
+        action->setProperty("fpgaSensorSource",source);
+        state_->device_config_.internal_sensor_rows[source]={device,port,baud,rateLabel,rate,enabled,action};
+        for(auto *combo:{port,baud,rate})connect(combo,&QComboBox::currentTextChanged,this,[this](const QString&) {
+            if(isRemoteSkyMode())markRemoteSkyConfigDirty();else saveRememberedInputState();
+            syncFpgaDeviceConfigUi();
+        });
+    }
+    state_->internal_serial_controller_=std::make_unique<VaporView::InternalEnvironmentSerialController>();
+    connect(state_->internal_serial_controller_.get(),&VaporView::InternalEnvironmentSerialController::readingUpdated,this,
+        [this](const VaporView::FpgaSensor::Reading& reading) {
+            if(!isRemoteSkyMode()&&!isFpgaRelayPath()&&!isUiTestMode())updateInternalEnvironment(reading);
+        });
+    connect(state_->internal_serial_controller_.get(),&VaporView::InternalEnvironmentSerialController::stateChanged,this,
+        [this](VaporView::SkyDeviceId,VaporView::DeviceState) {syncFpgaDeviceConfigUi();updateConnectionStatus(anyLocalDeviceConnected());});
+    connect(state_->internal_serial_controller_.get(),&VaporView::InternalEnvironmentSerialController::logRecordGenerated,this,
+        [this](const VaporView::LogRecord& record){publishGroundLog(record.level,record.category,record.fields.value("event").toString(),record.message,record.fields);});
+
     formRowLayout->addWidget(formWidget, 0, Qt::AlignTop | Qt::AlignLeft);
     serialLayout->addWidget(formRowWidget, 0, Qt::AlignTop);
     serialLayout->addWidget(skyTelemetryRow);
@@ -3606,6 +3640,13 @@ void MainWindow::updateLocalDeviceConfigFromUi() const
     capture(state_->device_config_.lidar_port_combo, state_->device_config_.lidar_baud_combo, state_->local_device_config_.lidar);
     capture(state_->device_config_.temperature_port_combo, state_->device_config_.temperature_baud_combo, state_->local_device_config_.temperatureController);
     capture(state_->device_config_.ai8_temperature_port_combo, state_->device_config_.ai8_temperature_baud_combo, state_->local_device_config_.ai8TemperatureController);
+    for(auto it=state_->device_config_.internal_sensor_rows.begin();it!=state_->device_config_.internal_sensor_rows.end();++it) {
+        const auto &row=it.value();auto &config=it.key()==0x43?state_->local_device_config_.bmp390:state_->local_device_config_.sht45;
+        capture(qobject_cast<QComboBox*>(row[1]),qobject_cast<QComboBox*>(row[2]),config);
+        const int rate=qobject_cast<QComboBox*>(row[4])->currentText().toInt();
+        if(rate>=1&&rate<=20)config.sampleRateHz=rate;
+        config.enabled=qobject_cast<QCheckBox*>(row[5])->isChecked();
+    }
     auto captureRate = [](QComboBox *combo,
                           QString& text,
                           int& value,
@@ -3726,6 +3767,12 @@ void MainWindow::refreshDeviceConfigUiFromLocalModel()
     setChecked(state_->device_config_.temperature_enabled_check, c.temperatureController.enabled);
     setChecked(state_->device_config_.ai8_temperature_enabled_check, c.ai8TemperatureController.enabled);
     setChecked(state_->device_config_.tcp_wave_enabled_check, c.waveTcpEnabled);
+    for(auto it=state_->device_config_.internal_sensor_rows.begin();it!=state_->device_config_.internal_sensor_rows.end();++it) {
+        const auto &row=it.value();const auto &config=it.key()==0x43?c.bmp390:c.sht45;
+        apply(qobject_cast<QComboBox*>(row[1]),qobject_cast<QComboBox*>(row[2]),config);
+        setText(qobject_cast<QComboBox*>(row[4]),QString::number(config.sampleRateHz));
+        setChecked(qobject_cast<QCheckBox*>(row[5]),config.enabled);
+    }
 }
 
 void MainWindow::updateRemoteSkyLinkConfigFromUi() const
@@ -4394,6 +4441,7 @@ void MainWindow::updateDeviceConfigState()
                            state_->device_config_.ai8_temperature_port_combo})
         showFpgaEndpoint(port);
     showFpgaEndpoint(state_->device_config_.tcp_wave_host_edit);
+    for(const auto &row:state_->device_config_.internal_sensor_rows)showFpgaEndpoint(row[1]);
     if (state_->device_config_.tcp_wave_lbl)
         state_->device_config_.tcp_wave_lbl->setText(fpgaRelay ? QStringLiteral("ADC / DLIA")
             : state_->is_english_ ? QStringLiteral("TCP Waveform") : QStringLiteral("TCP 波形"));

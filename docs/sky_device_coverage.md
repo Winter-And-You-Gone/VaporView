@@ -10,9 +10,9 @@
 |---|---|---|---|---|---|---|---|
 | EPSILON | PASS | PASS | PASS | PASS | PASS | PASS | 同一个 `EpsilonConfigPanel` / RTK UI，经 `EpsilonDeviceSession` 路由 Local 或 Remote backend。 |
 | PTB210 | PASS | PASS | N/A | N/A | PASS | PASS | 压力槽串口/频率配置，设备内部参数页 N/A。 |
-| BMP390 | PASS | PASS | N/A | N/A | PASS | PASS | 复用压力槽，`source=bmp390`；设备内部参数读写 N/A。 |
+| BMP390 | PASS | PASS | N/A | N/A | PASS | PASS | 独立 `bmp390` 配置与设备 ID 9；USB 串口文本桥，内部气压不写 PTB 环境槽。 |
 | HMP3 | PASS | PASS | N/A | N/A | PASS | PASS | 温湿度槽串口/频率配置，设备内部参数页 N/A。 |
-| SHT45 | PASS | PASS | N/A | N/A | PASS | PASS | 复用温湿度槽，`source=sht45`；设备内部参数读写 N/A。 |
+| SHT45 | PASS | PASS | N/A | N/A | PASS | PASS | 独立 `sht45` 配置与设备 ID 10；USB 串口文本桥，内部温湿度不写 HMP 环境槽。 |
 | TFA1500-L | PASS | PASS | N/A | N/A | PASS | PASS | 当前 Local 没有真实用户可修改的内部参数。 |
 | RD105 | PASS | PASS | PASS | PASS | PASS | PASS | 同一个 `TemperatureControllerPanel`，经 `Rd105DeviceSession` 路由 Local 或 Remote backend。 |
 | AI-8288 / AI-8 | PASS | PASS | PASS | PASS | PASS | PASS | 同一个 `Ai8TemperatureControllerPanel`，写入后 Sky 端回读确认。 |
@@ -87,16 +87,16 @@ collector   |
 ## SkyConfig
 
 - `epsilon` stores `enabled`, `port`, `baud`, and `packet_rates`; legacy `frequency_hz` is accepted when reading older files but is no longer serialized. `packet_rates` is a stable array of `{packet_id, rate_hz}` entries for the EPSILON output profile. If the field is absent, the recommended profile is used; Ground falls back to the legacy `RemoteEpsilonPacketProfile` until the first SkyConfig read/apply migrates it.
-- Pressure and humidity keep the existing logical sections: `ptb` means the pressure slot and `hmp` means the temperature/humidity slot.
-- `ptb.source` accepts `ptb210` or `bmp390`; missing legacy values default to `ptb210`.
-- `hmp.source` accepts `hmp3` or `sht45`; missing legacy values default to `hmp3`.
+- Environmental pressure and temperature/humidity remain PTB210 (`ptb`) and HMP3 (`hmp`). Older alternate source fields are accepted for migration and normalized to these fixed environmental identities.
+- `bmp390` / `sht45` independently store `enabled`, `port`, `baud`, and `frequency_hz`; absent legacy sections default disabled, at 115200 baud and 1 Hz receive updates. These serial text bridges have no generic UART command for changing physical I2C sampling.
 - `ai8_temperature_controller` is a first-class SkyConfig section with `enabled`, `port`, `baud`, `frequency_hz`, and `slave_address`; missing legacy section defaults disabled.
 - `epsilon.rtcm` / legacy `epsilon_rtcm` stores Sky-side RTCM forwarding state: `enabled`, EPSILON `device_port_index`, Sky `forward_port`, and `baud`; missing legacy values default disabled and do not open a serial port.
-- Source changes participate in `SkyConfigDiff`, so PTB210 to BMP390 or HMP3 to SHT45 forces the affected collector to disconnect, rebuild with the selected protocol, and reconnect.
+- Internal bridge configuration changes participate in `SkyConfigDiff` and reconfigure only that independent collector, preserving PTB/HMP and the other internal device.
 
 ## Telemetry And Recording
 
 - `TelemetryBasic` remains for neutral physical quantities: pressure, temperature, humidity, lidar, navigation, and health/status fields.
+- Independent BMP/SHT internal measurements use `InternalEnvironment` (`0x0F`) on the same telemetry TCP link. Ground displays their typed readings in the temperature overview title, with independent connection and freshness handling. They do not feed environmental session/raw callbacks.
 - `TelemetryStatus` includes RTCM correction receive/drop counters so Ground can distinguish configured/streaming/error states without logging every RTCM chunk.
 - RD105 continues to use dedicated `TemperatureControllerStatus` telemetry and `sensors/laser_temperature_controller.csv`.
 - AI-8288 uses dedicated `Ai8TemperatureControllerStatus` telemetry and `sensors/system_temperature_controller.csv`, preserving eight measured channels, control states, main status, and alarm registers.
@@ -108,7 +108,7 @@ In `--sky-simulate-data`, enabled formal Sky devices must not open real serial p
 
 - EPSILON, pressure, humidity, lidar, and Wave TCP continue to generate deterministic simulated physical data.
 - EPSILON detailed-operation simulation supports packet rates, main antenna lever arm, RTCM input config, RTCM forwarding config, and RTCM correction receive counters.
-- BMP390/SHT45 use the same simulated physical quantities as PTB210/HMP3 while preserving their selected `source` through Get/Set/Save/Load.
+- BMP390/SHT45 generate separate internal quantities and preserve their independent sections through Get/Set/Save/Load; opening their simulated devices never opens real USB serial ports.
 - RD105 simulation maintains target, measured, output, PID, mode, address, baud, overtemperature, slope, startup delay, and sensor-config state for the current remote command set.
 - AI-8288 simulation produces valid eight-channel live data and status fields for telemetry, Ground decode, TUI snapshot, and session CSV recording.
 - AI-8 Device Operation simulation supports all four page reads, representative writes, read-back, invalid range rejection, selection isolation, and factory reset to deterministic defaults.

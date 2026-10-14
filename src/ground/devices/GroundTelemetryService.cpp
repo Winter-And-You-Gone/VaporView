@@ -657,6 +657,14 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         if (FpgaRemote::parseSensor(frame.payload, reading)) emit fpgaSensorUpdated(reading);
         break;
     }
+    case MsgType::InternalEnvironment:
+    {
+        FpgaSensor::Reading reading;
+        if(FpgaRemote::parseSensor(frame.payload,reading)
+            &&((reading.source==0x43&&reading.kind==FpgaSensor::SensorKind::Bmp390)
+                ||(reading.source==0x44&&reading.kind==FpgaSensor::SensorKind::Sht45)))emit internalEnvironmentUpdated(reading);
+        break;
+    }
     case MsgType::FpgaWaveformPreview:
     {
         FpgaWave::CompletedStream stream;
