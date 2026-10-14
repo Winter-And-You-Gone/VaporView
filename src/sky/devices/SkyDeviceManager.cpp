@@ -946,7 +946,12 @@ ApplyConfigResult SkyDeviceManager::applyConfig(const SkyConfig& newConfig)
     ApplyConfigResult result;
     const SkyConfig oldConfig = config_;
     const SkyConfigDiff diff = oldConfig.diff(newConfig);
-    if (diff.fpga_changed || diff.sensor_transport_path_changed)
+    auto previousFpga = oldConfig.fpga.configuration.toJson();
+    auto desiredFpga = newConfig.fpga.configuration.toJson();
+    previousFpga.remove("pressureSource"); desiredFpga.remove("pressureSource");
+    const bool selectionOnly = oldConfig.fpga.enabled == newConfig.fpga.enabled &&
+        oldConfig.fpga.locator == newConfig.fpga.locator && previousFpga == desiredFpga;
+    if ((diff.fpga_changed && !selectionOnly) || diff.sensor_transport_path_changed)
     {
         disconnectAll(false);
     }
@@ -954,6 +959,10 @@ ApplyConfigResult SkyDeviceManager::applyConfig(const SkyConfig& newConfig)
 
     if (newConfig.sensor_transport_path == SensorTransportPath::FpgaRelay)
     {
+        if (fpga_backend_) fpga_backend_->setConfiguration(config_.fpga.configuration);
+        if (oldConfig.fpga.configuration.pressureSource != newConfig.fpga.configuration.pressureSource) {
+            latest_ptb_ = {}; invalidateDeviceData(SkyDeviceId::Ptb);
+        }
         restartRtcmWriter();
         // Persist desired config only; hardware writes require the verified asynchronous FPGA operation.
         result.json = {{"success",true},

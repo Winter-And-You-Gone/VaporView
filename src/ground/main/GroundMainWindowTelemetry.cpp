@@ -374,13 +374,9 @@ void MainWindow::onRemoteCommandAckReceived(const VaporView::CommandAck& ack)
         }
         else
         {
-            state_->remote_sky_config_applying_ = false;
-            clearPendingRemoteWaveTcpConnection();
-            state_->remote_sky_config_dirty_ = true;
-            setRemoteSkyConfigStatus(state_->is_english_
+            handleRemoteSkyConfigApplyResultReceived({{QStringLiteral("success"), false}, {QStringLiteral("error"), state_->is_english_
                 ? QStringLiteral("Remote Sky config apply was rejected: %1").arg(errorText)
-                : QStringLiteral("天空端配置应用被拒绝：%1").arg(errorText),
-                true);
+                : QStringLiteral("天空端配置应用被拒绝：%1").arg(errorText)}}, false);
         }
         updateRemoteSkyConfigControlsState();
     }

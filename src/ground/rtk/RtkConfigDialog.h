@@ -61,6 +61,7 @@ public:
     std::array<double,3> mainAntennaLeverArm() const;
     using RtcmCorrectionSink = std::function<bool(const QByteArray&)>;
     void setRtcmCorrectionSink(RtcmCorrectionSink sink, const QString& label);
+    void setTransportSupported(bool supported, const QString& reason = QString());
 
 signals:
     void rtkRunningChanged(bool running);
@@ -257,6 +258,8 @@ private:
     bool gga_monitor_enabled_;
     bool metrics_refresh_pending_;
     bool ui_test_mode_ = false;
+    bool transport_supported_ = true;
+    QString transport_unavailable_reason_;
     std::atomic<bool> fetch_mountpoints_in_progress_{false};
     std::atomic<bool> port_detection_in_progress_{false};
     std::atomic<bool> test_in_progress_{false};

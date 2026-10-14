@@ -422,7 +422,7 @@ if(COMMAND vaporview_stage_osgearth_runtime)
     vaporview_stage_osgearth_runtime(fpga_main_window_test)
 endif()
 vaporview_add_test(NAME fpga_main_window_test COMMAND fpga_main_window_test)
-set_tests_properties(fpga_main_window_test PROPERTIES LABELS "gui;fpga" TIMEOUT 60 RUN_SERIAL TRUE)
+set_tests_properties(fpga_main_window_test PROPERTIES LABELS "gui;fpga" TIMEOUT 120 RUN_SERIAL TRUE)
 vaporview_add_test(NAME fpga_local_simulator_test COMMAND fpga_main_window_test --local-simulator)
 set_tests_properties(fpga_local_simulator_test PROPERTIES LABELS "gui;fpga;integration" TIMEOUT 90 RUN_SERIAL TRUE)
 

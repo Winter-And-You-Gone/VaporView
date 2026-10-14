@@ -209,8 +209,16 @@ void Ai8DeviceSession::setRemoteAvailable(bool available, const QString& detail)
     refreshAvailability();
 }
 
+void Ai8DeviceSession::setTransportSupported(bool supported, const QString& reason)
+{
+    if (transport_supported_ == supported && transport_unavailable_reason_ == reason) return;
+    transport_supported_ = supported; transport_unavailable_reason_ = reason;
+    refreshAvailability();
+}
+
 bool Ai8DeviceSession::operationsAvailable() const
 {
+    if (!transport_supported_) return false;
     if (!pending_operations_.isEmpty())
     {
         return false;
@@ -298,9 +306,9 @@ quint64 Ai8DeviceSession::beginOperation(
         Ai8SessionResult result;
         result.request_id = requestId;
         result.operation = operation;
-        result.outcome = backend_ == Ai8Backend::Remote && remote_controller_ &&
+        result.outcome = !transport_supported_ || (backend_ == Ai8Backend::Remote && remote_controller_ &&
                                  remote_controller_->deviceOperationSupport() ==
-                                     DeviceOperationSupport::Unsupported
+                                     DeviceOperationSupport::Unsupported)
             ? Ai8OperationOutcome::Unsupported
             : Ai8OperationOutcome::Disconnected;
         result.error_code = result.outcome == Ai8OperationOutcome::Unsupported
@@ -463,6 +471,7 @@ void Ai8DeviceSession::refreshAvailability()
 
 QString Ai8DeviceSession::unavailableReason() const
 {
+    if (!transport_supported_) return transport_unavailable_reason_;
     if (!pending_operations_.isEmpty())
     {
         return english_ ? QStringLiteral("Waiting for the AI-8 operation to complete.")

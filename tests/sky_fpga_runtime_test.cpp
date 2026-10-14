@@ -102,6 +102,18 @@ int main(int argc,char **argv)
     waitUntil([&]{return pressureReceived && fpgaSensorReceived;},"FPGA pressure reaches both standardized telemetry and diagnostic sensor message");
     CommandErrorCode error;
     SkyDeviceManager manager;manager.loadConfig(config);
+    auto selectionTransport=std::make_unique<ScriptedTransport>();auto *selectionWire=selectionTransport.get();
+    manager.setFpgaTransportForTesting(std::move(selectionTransport));
+    bool selectionConnected=false;
+    manager.submitFpgaControl({{"op","connect"}},[&](CommandErrorCode code,QString,QJsonObject document) {
+        require(code==CommandErrorCode::Ok&&document.value("ready").toBool(),"source selection test opens FPGA");selectionConnected=true;
+    });
+    waitUntil([&]{return selectionConnected;},"source selection FPGA ready");
+    auto selected=config;selected.fpga.configuration.pressureSource=0x43;
+    require(manager.applyConfig(selected).json.value("success").toBool(),"pressure source selection applies");
+    require(manager.fpgaStatus().value("ready").toBool()&&selectionWire->openCount.load()==1&&
+        manager.config().fpga.configuration.pressureSource==0x43,
+        "changing the normalized pressure source preserves the active FPGA USB session");
     require(!manager.receiveRtcmCorrectionData("rtcm",&error) && error==CommandErrorCode::UnknownCommand,"FPGA topology refuses unsupported independent RTCM serial path");
     require(!manager.connectDevice(SkyDeviceId::Epsilon,&error),"FPGA topology blocks direct sensor collector");
     require(telemetryPort!=0,"ephemeral telemetry port reported");

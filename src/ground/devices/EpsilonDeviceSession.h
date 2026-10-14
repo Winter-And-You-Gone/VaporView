@@ -100,6 +100,7 @@ public:
     void setLocalAvailable(bool available, const QString& detail = QString());
     void setRemoteAvailable(bool available, const QString& detail = QString());
     bool operationsAvailable() const;
+    void setTransportSupported(bool supported, const QString& reason = QString());
     bool operationPending() const;
 
     quint64 configurePacketRates(
@@ -170,6 +171,8 @@ private:
     bool english_ = false;
     bool local_worker_busy_ = false;
     bool local_available_ = false;
+    bool transport_supported_ = true;
+    QString transport_unavailable_reason_;
     bool remote_available_ = false;
     QString local_detail_;
     QString remote_detail_;

@@ -250,6 +250,7 @@ private:
     void shutdownFpgaWorker();
     void invalidateFpgaMeasurements();
     void updateFpgaPageBackend();
+    void syncFpgaDeviceConfigUi();
     void sendRemoteFpgaControl(const QJsonObject& request);
     void receiveRemoteFpgaStatus(const QJsonObject& status);
     void setupDataPanels();

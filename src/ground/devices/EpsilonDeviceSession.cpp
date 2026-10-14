@@ -326,8 +326,16 @@ void EpsilonDeviceSession::setRemoteAvailable(bool available, const QString& det
     refreshAvailability();
 }
 
+void EpsilonDeviceSession::setTransportSupported(bool supported, const QString& reason)
+{
+    if (transport_supported_ == supported && transport_unavailable_reason_ == reason) return;
+    transport_supported_ = supported; transport_unavailable_reason_ = reason;
+    refreshAvailability();
+}
+
 bool EpsilonDeviceSession::operationsAvailable() const
 {
+    if (!transport_supported_) return false;
     if (local_worker_busy_ || !pending_operations_.isEmpty())
     {
         return false;
@@ -475,7 +483,7 @@ quint64 EpsilonDeviceSession::beginOperation(PendingOperation pending)
         EpsilonSessionResult result;
         result.request_id = requestId;
         result.operation = pending.operation;
-        result.outcome = settingsUnsupported || localCallbackMissing || (backend_ == EpsilonBackend::Remote && remote_controller_ &&
+        result.outcome = !transport_supported_ || settingsUnsupported || localCallbackMissing || (backend_ == EpsilonBackend::Remote && remote_controller_ &&
                                  remote_controller_->deviceOperationSupport() ==
                                      DeviceOperationSupport::Unsupported)
             ? EpsilonOperationOutcome::Unsupported
@@ -745,6 +753,7 @@ void EpsilonDeviceSession::refreshAvailability()
 
 QString EpsilonDeviceSession::unavailableReason() const
 {
+    if (!transport_supported_) return transport_unavailable_reason_;
     if (!pending_operations_.isEmpty())
     {
         return english_ ? QStringLiteral("Waiting for the EPSILON operation to complete.")

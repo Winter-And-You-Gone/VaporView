@@ -574,6 +574,7 @@ MainWindow::MainWindow(QWidget *parent)
                 ? QStringLiteral("Remote Sky config apply timed out.")
                 : QStringLiteral("应用天空端配置超时。"),
                 true);
+            requestRemoteSkyConfigIfAvailable(true);
             updateRemoteSkyConfigControlsState();
         }
         else if (commandId == VaporView::CommandId::SaveSkyConfig &&

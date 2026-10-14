@@ -80,6 +80,13 @@ int main(int argc, char **argv)
 
     Ai8TemperatureControllerProtocol::Selection selection;
     selection.channel = 2;
+    session.setTransportSupported(false, QStringLiteral("VLP1 parameter pages unsupported"));
+    require(!session.operationsAvailable(), "FPGA transport disables AI8 parameter operations");
+    session.readPage(Page::Channel, selection);
+    require(waitForResult(app, results) && !results.back().success() && results.back().message.contains("VLP1"),
+            "unsupported AI8 transport never invokes the successful serial adapter");
+    results.clear(); session.setTransportSupported(true);
+    require(session.operationsAvailable(), "Direct restores AI8 parameter capability");
     const quint64 readId = session.readPage(Page::Channel, selection);
     require(readId != 0 && waitForResult(app, results),
             "local session read completes asynchronously");

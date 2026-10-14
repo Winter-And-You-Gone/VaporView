@@ -3,6 +3,7 @@
 #include "ground/widgets/FpgaControlPage.h"
 #include "ground/widgets/TelemetryPanels.h"
 #include "ground/navigation/CombinationNavigationPage.h"
+#include "ground/rtk/RtkConfigDialog.h"
 #include "LogService.h"
 #include "ground/widgets/SegmentedSwitchButton.h"
 #include "shared/config/ApplicationConfig.h"
@@ -332,8 +333,14 @@ static void remoteHomeActions()
     QObject::connect(&server,&TelemetryLink::bytesReceived,&window,[&](const QByteArray &bytes) {
         for (const auto &frame:decoder.feedBytes(bytes)) {
             CommandMessage command;DeviceOperationRequest request;
-            if (frame.type!=MsgType::Command || !TelemetryCodec::parseCommand(frame.payload,command)
-                || command.command_id!=CommandId::DeviceOperation
+            if (frame.type!=MsgType::Command || !TelemetryCodec::parseCommand(frame.payload,command)) continue;
+            if (command.command_id==CommandId::GetSkyConfig) {
+                CommandAck ack;ack.command_id=command.command_id;ack.command_seq=command.command_seq;
+                server.writeBytes(encoder.encodeFrame(MsgType::CommandAck,TelemetryCodec::serializeCommandAck(ack),sequence++,1));
+                server.writeBytes(encoder.encodeFrame(MsgType::SkyConfig,QJsonDocument(sky.toJson()).toJson(QJsonDocument::Compact),sequence++,1));
+                continue;
+            }
+            if (command.command_id!=CommandId::DeviceOperation
                 || !TelemetryCodec::parseDeviceOperationRequest(command.payload,request)) continue;
             require(request.device_id==SkyDeviceId::Fpga && request.operation==DeviceOperation::FpgaControl,
                 "home actions use typed FPGA controls, never legacy serial connect commands");
@@ -341,6 +348,7 @@ static void remoteHomeActions()
         }
     });
     require(remote->openTcp("127.0.0.1",server.localPort())&&waitUntil([&]{return remote->isOpen();}),"home remote link opens");
+    window.testInjectRemoteSkyConfig(sky.toJson());
     FpgaControlConfig config;config.pressureSource=0x43;
     QJsonObject registers;
     for (quint32 address:{0x6004u,0x6204u,0x6304u,0x6404u,0x6504u,0x6604u,0x4004u,0x4104u,0x5004u,0x5104u})
@@ -367,8 +375,36 @@ static void remoteHomeActions()
         require(waitUntil([&]{navigation->refreshStatus();return navigationPanel->snapshot().navigationDataAvailable
             &&navigationPanel->snapshot().gnssFixCode==6;}),"fresh remote navigation baseline is available");
     };
-    send(MsgType::FpgaStatus,FpgaRemote::encodeStatus(status));
+    auto disconnected=status;disconnected["connected"]=false;disconnected["ready"]=false;disconnected["registers"]=QJsonObject{};
+    send(MsgType::FpgaStatus,FpgaRemote::encodeStatus(disconnected));
     auto *epsilon=homeAction(window,"EPSILON");
+    require(waitUntil([&]{return epsilon->isEnabled()&&epsilon->property("state")=="disconnected";}),
+        "remote home can connect FPGA before a USB session exists");
+    epsilon->click();
+    require(waitUntil([&]{return requests.size()==1;}),"home begins a remote FPGA connection");
+    QJsonObject connectControl;require(FpgaRemote::parseControl(requests.last().payload,connectControl)
+        &&connectControl.value("op")=="connect"&&connectControl.value("locator")==sky.fpga.locator
+        &&connectControl.value("backend")==sky.fpga.configuration.backend,"home uses the Sky-configured USB endpoint");
+    CommandAck connectAck;connectAck.command_id=CommandId::DeviceOperation;connectAck.command_seq=commandSequence;
+    send(MsgType::CommandAck,TelemetryCodec::serializeCommandAck(connectAck));processFor(30);
+    require(requests.size()==1,"USB acceptance ACK does not enable the sensor early");
+    DeviceOperationResponse connected;connected.request_id=requests.last().request_id;connected.device_id=SkyDeviceId::Fpga;
+    connected.operation=DeviceOperation::FpgaControl;connected.error_code=CommandErrorCode::InternalError;
+    connected.payload=FpgaRemote::encodeStatus(disconnected);
+    send(MsgType::DeviceOperationResponse,TelemetryCodec::serializeDeviceOperationResponse(connected));
+    require(waitUntil([&]{return epsilon->isEnabled();}),"USB failure unlocks the home action");
+    processFor(60);require(requests.size()==1,"USB failure never enables a sensor or retries connection automatically");
+    epsilon->click();require(waitUntil([&]{return requests.size()==2;}),"a manual retry reconnects USB");
+    connectAck.command_seq=commandSequence;send(MsgType::CommandAck,TelemetryCodec::serializeCommandAck(connectAck));
+    connected.request_id=requests.last().request_id;connected.error_code=CommandErrorCode::Ok;
+    connected.payload=FpgaRemote::encodeStatus(status);
+    send(MsgType::DeviceOperationResponse,TelemetryCodec::serializeDeviceOperationResponse(connected));
+    require(waitUntil([&]{return requests.size()==3;}),"successful USB readback continues with the requested sensor only");
+    QJsonObject enableControl;require(FpgaRemote::parseControl(requests.last().payload,enableControl)
+        &&enableControl.value("op")=="sensor"&&enableControl.value("source").toInt()==0x42,"remote home enables the requested source");
+    connectAck.command_seq=commandSequence;send(MsgType::CommandAck,TelemetryCodec::serializeCommandAck(connectAck));
+    connected.request_id=requests.last().request_id;
+    send(MsgType::DeviceOperationResponse,TelemetryCodec::serializeDeviceOperationResponse(connected));
     require(waitUntil([&]{return epsilon->isEnabled()&&epsilon->property("state")=="connected";}),
         "register readback enables home controls without any valid measurement packets");
     require(!homeAction(window,"RD105")->isEnabled(),"unsupported RD105 remains unavailable");
@@ -714,9 +750,10 @@ static void relayConfigurationPresentation()
         auto *baud=window.findChild<QComboBox*>("device"+devices[i]+"BaudCombo");
         require(endpoint&&endpoint->isVisible()&&endpoint->text()=="FPGA"&&!port->isVisible()&&!port->isEnabled(),
             "all six relay serial ports are replaced by a read-only FPGA endpoint");
-        require(baud&&baud->isVisible()&&baud->isEnabled(),"FPGA baud remains editable");
+        auto *readback=window.findChild<QLabel*>(baud->objectName()+"FpgaReadback");
+        require(baud&&!baud->isVisible()&&!baud->isEnabled()&&readback&&readback->isVisible(),
+            "FPGA shows read-only hardware baud values instead of editable Direct presets");
     }
-    auto *baud=window.findChild<QComboBox*>("deviceEpsilonBaudCombo");
     window.findChild<FpgaControlPage*>()->setUiTestState(true,false,false,5000,VaporView::SensorTransportPath::FpgaRelay);
     window.findChild<FpgaControlPage*>()->simulateOperation({{"op","raw"},{"enabled",true}});
     stack->setCurrentIndex(0);processFor(80);
@@ -746,11 +783,20 @@ static void relayConfigurationPresentation()
     require(monitor->testPeakValues().size()==2&&std::isnan(monitor->testPeakValues().last()),"missing DLIA fragments create a trend gap");
     window.findChild<FpgaControlPage*>()->setUiTestState(false);
     stack->setCurrentWidget(configPage);
-    baud->setCurrentIndex(baud->findText("460800"));
-    // Changing path commits the edited baud without replacing the saved port.
+    auto *pressure=window.findChild<QComboBox*>("devicePressureSourceCombo");
+    auto *fpgaPressure=window.findChild<QComboBox*>("fpgaPressureSource");
+    pressure->setCurrentIndex(pressure->findData("bmp390"));
+    require(fpgaPressure->currentData().toUInt()==0x43,"Device Configuration changes the FPGA pressure source");
+    fpgaPressure->setCurrentIndex(fpgaPressure->findData(0x40));
+    require(pressure->currentData()=="ptb210","FPGA page source changes are mirrored back");
+    require(window.findChild<QComboBox*>("deviceHumiditySourceCombo")->currentData()=="sht45",
+        "FPGA humidity always shows SHT45 without modifying Direct source defaults");
     path->setCurrentIndex(path->findData("direct_devices"));processFor(50);
-    require(window.testLocalDeviceConfigSnapshot().value("epsilon").toObject().value("baud")=="460800",
-        "relay baud edit persists in the local device model");
+    require(pressure->currentData()==before.value("pressure_source").toString()
+        &&window.findChild<QComboBox*>("deviceHumiditySourceCombo")->currentData()==before.value("humidity_source").toString(),
+        "Local Direct source selectors are restored from the model");
+    require(window.testLocalDeviceConfigSnapshot().value("epsilon").toObject().value("baud")==before.value("epsilon").toObject().value("baud"),
+        "FPGA display never overwrites Direct baud presets");
     for(int i=0;i<devices.size();++i) {
         auto *port=window.findChild<QComboBox*>("device"+devices[i]+"PortCombo");
         require(port->isVisible()&&port->isEnabled()&&port->currentText()==ports[i],"Direct restores the original port");
@@ -775,6 +821,68 @@ static void relayConfigurationPresentation()
     QMetaObject::invokeMethod(&window,"onDataSourceModeChanged",Q_ARG(int,0));
     window.close();
 }
+static void remoteTransportAndCapabilities()
+{
+    using namespace VaporView;
+    TcpTelemetryLink server; require(server.listen("127.0.0.1",0),"transport fake Sky listens");
+    MainWindow window;
+    QMetaObject::invokeMethod(&window,"onDataSourceModeChanged",Q_ARG(int,1));
+    auto sky=SkyConfig::defaults();
+    sky.ptb.source="ptb210"; sky.hmp.source="hmp3";
+    window.testInjectRemoteSkyConfig(sky.toJson());
+    TelemetryCodec decoder, encoder; quint16 sequence=1; int applies=0; bool reject=false;
+    QObject::connect(&server,&TelemetryLink::bytesReceived,&window,[&](const QByteArray &bytes) {
+        for (const auto &frame:decoder.feedBytes(bytes)) {
+            CommandMessage command;
+            if(frame.type!=MsgType::Command||!TelemetryCodec::parseCommand(frame.payload,command))continue;
+            if(command.command_id!=CommandId::GetSkyConfig&&command.command_id!=CommandId::SetSkyConfig)continue;
+            CommandAck ack;ack.command_id=command.command_id;ack.command_seq=command.command_seq;
+            if(command.command_id==CommandId::SetSkyConfig) {
+                ++applies;
+                if(!reject) require(SkyConfig::fromJson(QJsonDocument::fromJson(command.payload).object(),sky),"parse submitted Sky configuration");
+            }
+            server.writeBytes(encoder.encodeFrame(MsgType::CommandAck,TelemetryCodec::serializeCommandAck(ack),sequence++,1));
+            const bool read=command.command_id==CommandId::GetSkyConfig;
+            server.writeBytes(encoder.encodeFrame(read?MsgType::SkyConfig:MsgType::SkyConfigApplyResult,
+                QJsonDocument(read?sky.toJson():QJsonObject{{"success",!reject},{"error",reject?"rejected test":""}}).toJson(QJsonDocument::Compact),sequence++,1));
+        }
+    });
+    auto *remote=window.testRemoteSkyController();
+    require(remote->openTcp("127.0.0.1",server.localPort())&&waitUntil([&]{return remote->isOpen();}),"transport radio TCP opens");
+    window.testInjectRemoteSkyConfig(sky.toJson());
+    const auto generation=remote->linkGeneration();
+    auto *path=window.findChild<QComboBox*>("deviceSensorTransportPathCombo");
+    path->setCurrentIndex(path->findData("fpga_relay"));
+    require(waitUntil([&]{return applies==1&&path->isEnabled();}),"FPGA path is applied and acknowledged without disconnecting radio");
+    require(remote->isOpen()&&remote->linkGeneration()==generation&&sky.sensor_transport_path==SensorTransportPath::FpgaRelay&&sky.fpga.enabled,
+        "radio TCP session survives Direct to FPGA and Sky FPGA is enabled");
+    auto *pressure=window.findChild<QComboBox*>("devicePressureSourceCombo");
+    pressure->setCurrentIndex(pressure->findData("bmp390"));
+    require(waitUntil([&]{return applies==2&&pressure->isEnabled();}),"remote source selection is applied to Sky");
+    require(sky.fpga.configuration.pressureSource==0x43&&sky.ptb.source=="ptb210"&&sky.hmp.source=="hmp3",
+        "FPGA source selection leaves saved Direct sources intact");
+    QMetaObject::invokeMethod(&window,"onRtkConfigClicked");
+    auto *rtk=window.findChild<RtkConfigDialog*>();
+    auto *start=rtk->findChild<QAbstractButton*>("rtkStartButton");
+    require(start&&!start->isEnabled()&&start->toolTip().contains("VLP1"),"FPGA RTK start is disabled with a protocol capability reason");
+    QMetaObject::invokeMethod(rtk,"onStartClicked");
+    require(!rtk->isRunning(),"direct slot invocation cannot start a bypass RTCM stream");
+    auto *readAi8=window.findChild<QAbstractButton*>("ai8ReadParametersButton");
+    auto *readEpsilon=window.findChild<QAbstractButton*>("epsilonSettingsReadButton");
+    require(readAi8&&!readAi8->isEnabled()&&readAi8->toolTip().contains("VLP1"),"FPGA AI8 page commands explain unsupported capability");
+    require(readEpsilon&&!readEpsilon->isEnabled(),"FPGA EPSILON parameter commands are disabled");
+    reject=true;path->setCurrentIndex(path->findData("direct_devices"));
+    require(waitUntil([&]{return applies==3&&path->isEnabled();}),"path rejection completes");
+    require(path->currentData()=="fpga_relay"&&remote->isOpen(),"rejected path change restores the confirmed mode and keeps radio");
+    reject=false;path->setCurrentIndex(path->findData("direct_devices"));
+    require(waitUntil([&]{return applies==4&&path->isEnabled();}),"return to Direct completes");
+    require(start->isEnabled()&&sky.sensor_transport_path==SensorTransportPath::DirectDevices&&remote->linkGeneration()==generation,
+        "Direct restores RTK availability using the same radio session");
+    require(pressure->currentData()=="ptb210"&&window.findChild<QComboBox*>("deviceHumiditySourceCombo")->currentData()=="hmp3",
+        "returning to Direct restores its source selectors instead of FPGA sources");
+    remote->close();window.close();
+}
+
 int main(int argc,char **argv)
 {
     require(VaporViewTest::SettingsSandbox::initialized,"isolated native/INI application settings");
@@ -794,6 +902,9 @@ int main(int argc,char **argv)
     }
     if(app.arguments().contains("--remote-home-actions")) {
         remoteHomeActions();std::cout<<"Remote FPGA home actions test passed\n";return 0;
+    }
+    if(app.arguments().contains("--transport-capabilities")) {
+        remoteTransportAndCapabilities();std::cout<<"Transport capabilities test passed\n";return 0;
     }
     if(app.arguments().contains("--monitor-ui-actions")) {
         simulatedMonitorActions();std::cout<<"Simulated FPGA monitor actions test passed\n";return 0;
@@ -854,6 +965,7 @@ int main(int argc,char **argv)
     relayConfigurationPresentation();
     remotePageRouting();
     remoteHomeActions();
+    remoteTransportAndCapabilities();
     require(native.value("font_scale_percent").toInt()==100,"font scale stays at standard 100 percent");
     std::cout<<"fpga main window tests passed\n";
 }

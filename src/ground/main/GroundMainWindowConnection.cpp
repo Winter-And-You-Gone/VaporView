@@ -246,6 +246,7 @@ bool MainWindow::homeDevicePortSelected(VaporView::SkyDeviceId device) const
 
 VaporView::DeviceState MainWindow::homeDeviceActionState(VaporView::SkyDeviceId device) const
 {
+    if (isRemoteSkyMode() && (state_->remote_sky_config_applying_ || state_->remote_sky_config_loading_)) return VaporView::DeviceState::Disabled;
     if (isFpgaRelayPath()) return homeFpgaDeviceActionState(device);
     if (isUiTestMode())
     {
@@ -310,6 +311,7 @@ VaporView::DeviceState MainWindow::homeDeviceActionState(VaporView::SkyDeviceId 
 
 void MainWindow::triggerHomeDeviceAction(VaporView::SkyDeviceId device)
 {
+    if (isRemoteSkyMode() && (state_->remote_sky_config_applying_ || state_->remote_sky_config_loading_)) return;
     const VaporView::DeviceState state = homeDeviceActionState(device);
     if (state == VaporView::DeviceState::Disabled ||
         state == VaporView::DeviceState::Connecting ||
@@ -478,13 +480,21 @@ void MainWindow::updateHomeDeviceStatusCapsules()
                 : state == VaporView::DeviceState::Disabled
                     ? QStringLiteral("disabled")
                     : QStringLiteral("disconnected");
-        const QString stateText = connected
+        QString stateText = connected
             ? (state_->is_english_ ? QStringLiteral("Connected") : QStringLiteral("已连接"))
             : connecting
                 ? (state_->is_english_ ? QStringLiteral("Connecting") : QStringLiteral("连接中"))
                 : state == VaporView::DeviceState::Disabled
                     ? (state_->is_english_ ? QStringLiteral("Not ready") : QStringLiteral("未就绪"))
                     : (state_->is_english_ ? QStringLiteral("Ready to connect") : QStringLiteral("可以连接"));
+        if (isFpgaRelayPath() && connected) {
+            const bool valid = isRemoteSkyMode() ? remoteDeviceDataValid(device, 3000)
+                : state_->fpga_sources_.contains(homeFpgaSensorSource(device));
+            stateText = device == VaporView::SkyDeviceId::WaveTcp
+                ? (state_->is_english_ ? QStringLiteral("Acquisition enabled") : QStringLiteral("采集已启用"))
+                : state_->is_english_ ? (valid ? QStringLiteral("Channel enabled; measurement valid") : QStringLiteral("Channel enabled; no valid measurement"))
+                                     : (valid ? QStringLiteral("通道已启用；测量有效") : QStringLiteral("通道已启用；尚无有效测量"));
+        }
         const QString deviceName = homeDeviceDisplayName(device, state_->is_english_);
         setLabelTextIfChanged(label, deviceName);
         bool labelStyleChanged = false;
@@ -1964,6 +1974,7 @@ void MainWindow::onAi8SessionAvailabilityChanged(bool available, const QString& 
     {
         return;
     }
+    if (isFpgaRelayPath()) { syncFpgaDeviceConfigUi(); return; }
     state_->ai8_temperature_controller_panel_->setPageCommandsEnabled(
         available, available ? QString() : reason);
 }

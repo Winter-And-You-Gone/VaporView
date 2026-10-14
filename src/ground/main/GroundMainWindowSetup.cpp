@@ -3140,6 +3140,14 @@ void MainWindow::setupDeviceConfigPage()
         sourceCombo->setProperty(kSensorBaudSourceProperty, sourceCombo->currentData().toString());
         connect(sourceCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
                 [this, sourceCombo, devicePortCombo, deviceBaudCombo, pressure](int) {
+            if (state_->remote_sky_config_updating_ui_) return;
+            if (isFpgaRelayPath()) {
+                if (pressure && state_->fpga_page_) {
+                    auto *source = state_->fpga_page_->findChild<QComboBox *>(QStringLiteral("fpgaPressureSource"));
+                    source->setCurrentIndex(source->findData(sourceCombo->currentData().toString() == QStringLiteral("bmp390") ? 0x43 : 0x40));
+                }
+                return;
+            }
             if (isRemoteSkyMode())
             {
                 const QString currentSource = sourceCombo->currentData().toString();
@@ -3687,7 +3695,7 @@ void MainWindow::updateSidebarNavIcons()
 
 void MainWindow::updateLocalDeviceConfigFromUi() const
 {
-    if (isRemoteSkyMode())
+    if (isRemoteSkyMode() || isFpgaRelayPath())
     {
         return;
     }
@@ -3758,6 +3766,13 @@ void MainWindow::updateLocalDeviceConfigFromUi() const
 void MainWindow::refreshDeviceConfigUiFromLocalModel()
 {
     const auto& c = state_->local_device_config_;
+    for (const auto& entry : {qMakePair(state_->device_config_.ptb_source_combo, c.pressureSource),
+                             qMakePair(state_->device_config_.hmp_source_combo, c.humiditySource)}) {
+        if (!entry.first) continue;
+        const QSignalBlocker blocker(entry.first);
+        entry.first->setCurrentIndex(entry.first->findData(entry.second));
+        entry.first->setProperty(kSensorBaudSourceProperty, entry.second);
+    }
     if (state_->device_config_.sensor_transport_path_combo)
     {
         const QSignalBlocker blocker(state_->device_config_.sensor_transport_path_combo);
@@ -3952,7 +3967,8 @@ void MainWindow::applyDeviceConfigTcpWaveEndpoint()
 VaporView::SensorTransportPath MainWindow::currentSensorTransportPath() const
 {
     return isRemoteSkyMode()
-        ? state_->remote_sky_config_.sensor_transport_path
+        ? (state_->remote_sky_config_applying_ ? state_->remote_sky_baseline_config_.sensor_transport_path
+                                             : state_->remote_sky_config_.sensor_transport_path)
         : state_->local_device_config_.sensorTransportPath;
 }
 
@@ -3985,36 +4001,48 @@ void MainWindow::onSensorTransportPathChanged(int index)
         anyCollectorRunning() || state_->fpga_connected_ || state_->fpga_busy_ ||
         state_->fpga_replaying_ || (isRemoteSkyMode() && state_->remote_sky_controller_ &&
                                     state_->remote_sky_controller_->isOpen());
-    if (active && !isUiTestMode())
+    if (!isRemoteSkyMode()) updateLocalDeviceConfigFromUi();
+    // The radio TCP connection carries the configuration change to SkyCore.
+    // Only local collectors/USB need to be disconnected here.
+    if (active && !isUiTestMode() && !isRemoteSkyMode())
     {
         onDisconnectClicked();
     }
 
     if (isRemoteSkyMode())
     {
+        if (currentSensorTransportPath() == VaporView::SensorTransportPath::DirectDevices)
+            state_->remote_sky_config_ = remoteSkyConfigFromDeviceConfigUi();
         state_->remote_sky_config_.sensor_transport_path = path;
+        if (path == VaporView::SensorTransportPath::FpgaRelay) state_->remote_sky_config_.fpga.enabled = true;
+        setRemoteSkyConfigUi(state_->remote_sky_config_);
         if (state_->remote_sky_config_loaded_)
         {
             markRemoteSkyConfigDirty();
+            onRemoteSkyConfigApplyClicked();
         }
     }
     else
     {
         state_->local_device_config_.sensorTransportPath = path;
+        refreshDeviceConfigUiFromLocalModel();
         saveRememberedInputState();
     }
     updateDeviceConfigTexts();
     updateDeviceConfigState();
+    syncRtkConfigPageState();
     if (state_->fpga_page_)
     {
-        state_->fpga_page_->setSensorTransportPath(path);
+        state_->fpga_page_->setSensorTransportPath(currentSensorTransportPath());
     }
     publishGroundLog(VaporView::LogLevel::Info,
                      QStringLiteral("device.configuration"),
                      QStringLiteral("sensor_transport_path_changed"),
-                     path == VaporView::SensorTransportPath::FpgaRelay
-                         ? QStringLiteral("传感器路径已切换为 FPGA 中转。")
-                         : QStringLiteral("传感器路径已切换为设备直连。"),
+                     isRemoteSkyMode()
+                         ? QStringLiteral("已请求切换传感器路径，等待天空端确认。")
+                         : path == VaporView::SensorTransportPath::FpgaRelay
+                             ? QStringLiteral("传感器路径已切换为 FPGA 中转。")
+                             : QStringLiteral("传感器路径已切换为设备直连。"),
                      {{QStringLiteral("sensor_transport_path"),
                        VaporView::sensorTransportPathToString(path)},
                       {QStringLiteral("host_mode"), isRemoteSkyMode()
@@ -4269,8 +4297,7 @@ void MainWindow::updateDeviceConfigState()
         !state_->connection_attempt_in_progress_ && !state_->port_detection_in_progress_ && !state_->epsilon_reconfigure_in_progress_;
     const bool remoteInputsEnabled = remote && (isUiTestMode() || !state_->is_connected_) && !state_->connection_attempt_in_progress_;
     const bool fpgaRelay = currentSensorTransportPath() == VaporView::SensorTransportPath::FpgaRelay;
-    // Baud/rate/source settings still describe the device. PC serial ports
-    // are retained for Direct mode but are not selectable on the FPGA path.
+    // Direct settings remain stored separately from FPGA configuration.
     const bool sensorInputsEnabled = remote ? remoteInputsEnabled : localInputsEnabled;
     if (state_->device_config_.sensor_transport_path_combo)
     {
@@ -4306,7 +4333,10 @@ void MainWindow::updateDeviceConfigState()
     {
         const bool operationPending = isUiTestMode() ? state_->ui_test_epsilon_operation_pending_
             : state_->epsilon_device_session_ && state_->epsilon_device_session_->operationPending();
-        state_->epsilon_config_panel_->setAvailable(epsilonConfigEnabled && !operationPending);
+        state_->epsilon_config_panel_->setAvailable(epsilonConfigEnabled && !operationPending && (!fpgaRelay || isUiTestMode()));
+        state_->epsilon_config_panel_->setToolTip(fpgaRelay && !isUiTestMode()
+            ? (state_->is_english_ ? QStringLiteral("VLP1 does not support EPSILON parameter commands. Live navigation remains available.")
+                                  : QStringLiteral("当前 VLP1 不支持 EPSILON 参数命令；导航数据显示不受影响。")) : QString());
         const QString settingsTarget = isUiTestMode() ? QStringLiteral("ui-test") : remote
             ? QStringLiteral("remote:%1:%2:%3")
                   .arg(state_->remote_sky_controller_
@@ -4333,12 +4363,12 @@ void MainWindow::updateDeviceConfigState()
             }
         }
         state_->epsilon_config_panel_->setSettingsOperationPending(operationPending);
-        state_->epsilon_config_panel_->setSettingsAvailable(isUiTestMode()
+        state_->epsilon_config_panel_->setSettingsAvailable((!fpgaRelay || isUiTestMode()) && (isUiTestMode()
             ? state_->ui_test_model_->deviceState(VaporView::SkyDeviceId::Epsilon) == VaporView::DeviceState::Connected &&
               state_->ui_test_model_->scenario() != VaporView::Ground::Devices::UiTestScenario::DataStalled
             : epsilonConfigEnabled && !scheduledRecordingSessionOpen() &&
             state_->epsilon_device_session_ &&
-            state_->epsilon_device_session_->operationsAvailable());
+            state_->epsilon_device_session_->operationsAvailable()));
     }
 
     const QList<QWidget *> directSensorWidgets = {
@@ -4535,22 +4565,14 @@ void MainWindow::updateDeviceConfigState()
     if (state_->device_config_.tcp_wave_enabled_check) state_->device_config_.tcp_wave_enabled_check->setVisible(!fpgaRelay);
     if (state_->device_config_.temperature_remote_action_btn && fpgaRelay)
         state_->device_config_.temperature_remote_action_btn->setEnabled(false);
-    if (fpgaRelay && !remote) {
-        for (QComboBox *baud : {state_->device_config_.epsilon_baud_combo,
-                               state_->device_config_.ptb_baud_combo,
-                               state_->device_config_.hmp_baud_combo,
-                               state_->device_config_.lidar_baud_combo,
-                               state_->device_config_.temperature_baud_combo,
-                               state_->device_config_.ai8_temperature_baud_combo})
-            if (baud) baud->setEnabled(!state_->fpga_busy_ && !state_->connection_attempt_in_progress_);
-    }
     const QString waveHint = fpgaRelay
-        ? (state_->is_english_ ? QStringLiteral("View ADC/DLIA data from FPGA. Acquisition is controlled on the FPGA page.")
-                              : QStringLiteral("显示 FPGA 的 ADC/DLIA 波形；采集启停请在 FPGA 页面操作。"))
+        ? (state_->is_english_ ? QStringLiteral("View ADC/DLIA data from FPGA. Use the home title-bar actions or FPGA page to control acquisition.")
+                               : QStringLiteral("显示 FPGA 的 ADC/DLIA 波形；可在首页标题栏或 FPGA 页面启停采集。"))
         : (state_->is_english_ ? QStringLiteral("TCP waveform endpoint") : QStringLiteral("TCP 波形主机地址和端口"));
     if (state_->device_config_.tcp_wave_lbl) state_->device_config_.tcp_wave_lbl->setToolTip(waveHint);
     if (state_->device_config_.tcp_wave_transport_hint_lbl) state_->device_config_.tcp_wave_transport_hint_lbl->setToolTip(waveHint);
     if (state_->tcp_wave_panel_) state_->tcp_wave_panel_->setFpgaMode(fpgaRelay);
+    syncFpgaDeviceConfigUi();
 }
 
 QStringList MainWindow::getAvailablePorts()

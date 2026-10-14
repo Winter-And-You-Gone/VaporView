@@ -670,99 +670,101 @@ VaporView::SkyConfig MainWindow::remoteSkyConfigFromDeviceConfigUi(QString *erro
         target.frequency_hz = rate ? rate->currentText().trimmed().toDouble() : target.frequency_hz;
         return true;
     };
-    config.epsilon.enabled = state_->device_config_.epsilon_enabled_check
-        ? state_->device_config_.epsilon_enabled_check->isChecked()
-        : config.epsilon.enabled;
-    config.epsilon.port = remoteSkySerialPortComboValue(state_->device_config_.epsilon_port_combo);
-    if (state_->device_config_.epsilon_baud_combo)
-    {
-        const auto baudRate = VaporView::serialBaudRateComboValue(
-            state_->device_config_.epsilon_baud_combo);
-        if (!baudRate)
+    if (!isFpgaRelayPath()) {
+        config.epsilon.enabled = state_->device_config_.epsilon_enabled_check
+            ? state_->device_config_.epsilon_enabled_check->isChecked()
+            : config.epsilon.enabled;
+        config.epsilon.port = remoteSkySerialPortComboValue(state_->device_config_.epsilon_port_combo);
+        if (state_->device_config_.epsilon_baud_combo)
         {
-            if (errorMessage)
+            const auto baudRate = VaporView::serialBaudRateComboValue(
+                state_->device_config_.epsilon_baud_combo);
+            if (!baudRate)
             {
-                *errorMessage = state_->is_english_
-                    ? QStringLiteral("EPSILON baud rate must be a positive integer.")
-                    : QStringLiteral("EPSILON 波特率必须为正整数。");
+                if (errorMessage)
+                {
+                    *errorMessage = state_->is_english_
+                        ? QStringLiteral("EPSILON baud rate must be a positive integer.")
+                        : QStringLiteral("EPSILON 波特率必须为正整数。");
+                }
+                return config;
             }
+            config.epsilon.baud_rate = *baudRate;
+        }
+        config.epsilon.packet_rates = deviceConfigEpsilonPacketRates();
+        if (!readSerial(QStringLiteral("PTB"),
+                        state_->device_config_.ptb_enabled_check,
+                        state_->device_config_.ptb_port_combo,
+                        state_->device_config_.ptb_baud_combo,
+                        state_->device_config_.ptb_rate_combo,
+                        config.ptb) ||
+            !readSerial(QStringLiteral("HMP"),
+                        state_->device_config_.hmp_enabled_check,
+                        state_->device_config_.hmp_port_combo,
+                        state_->device_config_.hmp_baud_combo,
+                        state_->device_config_.hmp_rate_combo,
+                        config.hmp))
+        {
             return config;
         }
-        config.epsilon.baud_rate = *baudRate;
-    }
-    config.epsilon.packet_rates = deviceConfigEpsilonPacketRates();
-    if (!readSerial(QStringLiteral("PTB"),
-                    state_->device_config_.ptb_enabled_check,
-                    state_->device_config_.ptb_port_combo,
-                    state_->device_config_.ptb_baud_combo,
-                    state_->device_config_.ptb_rate_combo,
-                    config.ptb) ||
-        !readSerial(QStringLiteral("HMP"),
-                    state_->device_config_.hmp_enabled_check,
-                    state_->device_config_.hmp_port_combo,
-                    state_->device_config_.hmp_baud_combo,
-                    state_->device_config_.hmp_rate_combo,
-                    config.hmp))
-    {
-        return config;
-    }
-    if (state_->device_config_.ptb_source_combo)
-    {
-        config.ptb.source = state_->device_config_.ptb_source_combo->currentData().toString();
-    }
-    if (state_->device_config_.hmp_source_combo)
-    {
-        config.hmp.source = state_->device_config_.hmp_source_combo->currentData().toString();
-    }
-    if (!readSerial(QStringLiteral("Lidar"),
-                    state_->device_config_.lidar_enabled_check,
-                    state_->device_config_.lidar_port_combo,
-                    state_->device_config_.lidar_baud_combo,
-                    state_->device_config_.lidar_rate_combo,
-                    config.lidar))
-    {
-        return config;
-    }
-    VaporView::SerialDeviceConfig temperatureSerial;
-    temperatureSerial.enabled = config.temperature_controller.enabled;
-    temperatureSerial.port = config.temperature_controller.port;
-    temperatureSerial.baud_rate = config.temperature_controller.baud_rate;
-    temperatureSerial.frequency_hz = config.temperature_controller.frequency_hz;
-    if (!readSerial(QStringLiteral("RD105"),
-                    state_->device_config_.temperature_enabled_check,
-                    state_->device_config_.temperature_port_combo,
-                    state_->device_config_.temperature_baud_combo,
-                    state_->device_config_.temperature_rate_combo,
-                    temperatureSerial))
-    {
-        return config;
-    }
-    config.temperature_controller.enabled = temperatureSerial.enabled;
-    config.temperature_controller.port = temperatureSerial.port;
-    config.temperature_controller.baud_rate = temperatureSerial.baud_rate;
-    config.temperature_controller.frequency_hz = temperatureSerial.frequency_hz;
-    VaporView::SerialDeviceConfig ai8TemperatureSerial;
-    ai8TemperatureSerial.enabled = config.ai8_temperature_controller.enabled;
-    ai8TemperatureSerial.port = config.ai8_temperature_controller.port;
-    ai8TemperatureSerial.baud_rate = config.ai8_temperature_controller.baud_rate;
-    ai8TemperatureSerial.frequency_hz = config.ai8_temperature_controller.frequency_hz;
-    if (!readSerial(QStringLiteral("AI-8288"),
-                    state_->device_config_.ai8_temperature_enabled_check,
-                    state_->device_config_.ai8_temperature_port_combo,
-                    state_->device_config_.ai8_temperature_baud_combo,
-                    state_->device_config_.ai8_temperature_rate_combo,
-                    ai8TemperatureSerial))
-    {
-        return config;
-    }
-    config.ai8_temperature_controller.enabled = ai8TemperatureSerial.enabled;
-    config.ai8_temperature_controller.port = ai8TemperatureSerial.port;
-    config.ai8_temperature_controller.baud_rate = ai8TemperatureSerial.baud_rate;
-    config.ai8_temperature_controller.frequency_hz = ai8TemperatureSerial.frequency_hz;
-    if (state_->ai8_temperature_controller_panel_)
-    {
-        config.ai8_temperature_controller.slave_address =
-            state_->ai8_temperature_controller_panel_->currentPageData().global.address;
+        if (state_->device_config_.ptb_source_combo)
+        {
+            config.ptb.source = state_->device_config_.ptb_source_combo->currentData().toString();
+        }
+        if (state_->device_config_.hmp_source_combo)
+        {
+            config.hmp.source = state_->device_config_.hmp_source_combo->currentData().toString();
+        }
+        if (!readSerial(QStringLiteral("Lidar"),
+                        state_->device_config_.lidar_enabled_check,
+                        state_->device_config_.lidar_port_combo,
+                        state_->device_config_.lidar_baud_combo,
+                        state_->device_config_.lidar_rate_combo,
+                        config.lidar))
+        {
+            return config;
+        }
+        VaporView::SerialDeviceConfig temperatureSerial;
+        temperatureSerial.enabled = config.temperature_controller.enabled;
+        temperatureSerial.port = config.temperature_controller.port;
+        temperatureSerial.baud_rate = config.temperature_controller.baud_rate;
+        temperatureSerial.frequency_hz = config.temperature_controller.frequency_hz;
+        if (!readSerial(QStringLiteral("RD105"),
+                        state_->device_config_.temperature_enabled_check,
+                        state_->device_config_.temperature_port_combo,
+                        state_->device_config_.temperature_baud_combo,
+                        state_->device_config_.temperature_rate_combo,
+                        temperatureSerial))
+        {
+            return config;
+        }
+        config.temperature_controller.enabled = temperatureSerial.enabled;
+        config.temperature_controller.port = temperatureSerial.port;
+        config.temperature_controller.baud_rate = temperatureSerial.baud_rate;
+        config.temperature_controller.frequency_hz = temperatureSerial.frequency_hz;
+        VaporView::SerialDeviceConfig ai8TemperatureSerial;
+        ai8TemperatureSerial.enabled = config.ai8_temperature_controller.enabled;
+        ai8TemperatureSerial.port = config.ai8_temperature_controller.port;
+        ai8TemperatureSerial.baud_rate = config.ai8_temperature_controller.baud_rate;
+        ai8TemperatureSerial.frequency_hz = config.ai8_temperature_controller.frequency_hz;
+        if (!readSerial(QStringLiteral("AI-8288"),
+                        state_->device_config_.ai8_temperature_enabled_check,
+                        state_->device_config_.ai8_temperature_port_combo,
+                        state_->device_config_.ai8_temperature_baud_combo,
+                        state_->device_config_.ai8_temperature_rate_combo,
+                        ai8TemperatureSerial))
+        {
+            return config;
+        }
+        config.ai8_temperature_controller.enabled = ai8TemperatureSerial.enabled;
+        config.ai8_temperature_controller.port = ai8TemperatureSerial.port;
+        config.ai8_temperature_controller.baud_rate = ai8TemperatureSerial.baud_rate;
+        config.ai8_temperature_controller.frequency_hz = ai8TemperatureSerial.frequency_hz;
+        if (state_->ai8_temperature_controller_panel_)
+        {
+            config.ai8_temperature_controller.slave_address =
+                state_->ai8_temperature_controller_panel_->currentPageData().global.address;
+        }
     }
     if (state_->device_config_.tcp_wave_enabled_check) config.wave_tcp.enabled = state_->device_config_.tcp_wave_enabled_check->isChecked();
     if (state_->device_config_.tcp_wave_host_edit) config.wave_tcp.host = state_->device_config_.tcp_wave_host_edit->text().trimmed();
@@ -1041,6 +1043,7 @@ void MainWindow::updateRemoteSkyConfigControlsState()
                 : QStringLiteral("请先连接天地数传链路，再读取天空端配置。")),
             false);
     }
+    syncFpgaDeviceConfigUi();
 }
 
 void MainWindow::requestRemoteSkyConfigIfAvailable(bool force)
@@ -1133,6 +1136,9 @@ void MainWindow::onRemoteSkyConfigReadClicked()
 
 void MainWindow::onRemoteSkyConfigApplyClicked()
 {
+    const auto reject = [this](const QString& error) {
+        handleRemoteSkyConfigApplyResultReceived({{"success", false}, {"error", error}}, true);
+    };
     if (state_->remote_sky_config_raw_mode_)
     {
         QString rawError;
@@ -1146,7 +1152,7 @@ void MainWindow::onRemoteSkyConfigApplyClicked()
     const VaporView::SkyConfig config = remoteSkyConfigFromDeviceConfigUi(&error);
     if (!error.isEmpty() || !config.validate(&error))
     {
-        setRemoteSkyConfigStatus(error, true);
+        reject(error);
         return;
     }
     state_->remote_sky_config_ = config;
@@ -1162,11 +1168,9 @@ void MainWindow::onRemoteSkyConfigApplyClicked()
     }
     if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
     {
-        setRemoteSkyConfigStatus(state_->is_english_
+        reject(state_->is_english_
             ? QStringLiteral("Telemetry link is disconnected; Apply was not sent.")
-            : QStringLiteral("天地数传已断开，未发送应用命令。"),
-            true);
-        updateRemoteSkyConfigControlsState();
+            : QStringLiteral("天地数传已断开，未发送应用命令。"));
         return;
     }
     state_->remote_sky_config_applying_ = true;
@@ -1177,10 +1181,9 @@ void MainWindow::onRemoteSkyConfigApplyClicked()
     {
         state_->remote_sky_config_applying_ = false;
         state_->remote_sky_config_apply_generation_ = 0;
-        setRemoteSkyConfigStatus(state_->is_english_
+        reject(state_->is_english_
             ? QStringLiteral("Remote Sky config apply was not sent.")
-            : QStringLiteral("未发送天空端配置应用命令。"),
-            true);
+            : QStringLiteral("未发送天空端配置应用命令。"));
     }
     else
     {
@@ -1189,6 +1192,7 @@ void MainWindow::onRemoteSkyConfigApplyClicked()
             : QStringLiteral("天空端配置已发送，等待应用结果..."));
     }
     updateRemoteSkyConfigControlsState();
+    updateFpgaPageBackend();
 }
 
 void MainWindow::onRemoteSkyConfigSaveClicked()
@@ -1268,6 +1272,8 @@ void MainWindow::handleRemoteSkyConfigReceived(const QJsonObject& object, bool b
         ? 0
         : state_->remote_sky_config_read_generation_;
     state_->remote_sky_config_dirty_ = migratedLegacyPacketRates;
+    state_->fpga_remote_config_ = config.fpga.configuration;
+    if (state_->fpga_page_) state_->fpga_page_->setConfiguration(state_->fpga_remote_config_);
     setRemoteSkyConfigUi(config);
     setRemoteSkyConfigStatus(migratedLegacyPacketRates
         ? (state_->is_english_
@@ -1318,12 +1324,31 @@ void MainWindow::handleRemoteSkyConfigApplyResultReceived(const QJsonObject& res
     state_->remote_wave_connect_after_config_apply_ = false;
     if (success)
     {
+        const bool pathChanged = state_->remote_sky_baseline_config_.sensor_transport_path != state_->remote_sky_config_.sensor_transport_path;
         state_->remote_sky_baseline_config_ = state_->remote_sky_config_;
         state_->remote_sky_config_loaded_ = true;
         state_->remote_sky_config_loaded_generation_ = bypassGenerationGuard || isUiTestMode()
             ? 0
             : state_->remote_sky_config_apply_generation_;
         state_->remote_sky_config_dirty_ = false;
+        if (pathChanged) {
+            state_->fpga_remote_status_ = {};
+            state_->fpga_remote_status_time_ = {};
+            for (const auto device : {VaporView::SkyDeviceId::Epsilon, VaporView::SkyDeviceId::Ptb, VaporView::SkyDeviceId::Hmp,
+                     VaporView::SkyDeviceId::Lidar, VaporView::SkyDeviceId::TemperatureController, VaporView::SkyDeviceId::Ai8TemperatureController,
+                     VaporView::SkyDeviceId::WaveTcp}) {
+                state_->remote_sky_controller_->clearDeviceData(device);
+                state_->remote_sky_controller_->setDeviceState(device, VaporView::DeviceState::Disconnected);
+            }
+            state_->ai8_device_session_->setRemoteAvailable(false);
+            state_->epsilon_device_session_->setRemoteAvailable(false);
+            state_->rd105_device_session_->setRemoteAvailable(false);
+            state_->ai8_temperature_controller_panel_->setBackendConnected(false);
+            refreshRemoteSkyDataUi();
+        }
+        state_->fpga_remote_config_.pressureSource = state_->remote_sky_config_.fpga.configuration.pressureSource;
+        if (state_->fpga_page_) state_->fpga_page_->setConfiguration(state_->fpga_remote_config_);
+        setRemoteSkyConfigUi(state_->remote_sky_config_);
         setRemoteSkyConfigStatus(state_->is_english_
             ? QStringLiteral("Sky accepted the Remote Sky config.")
             : QStringLiteral("天空端已应用配置。"));
@@ -1331,6 +1356,11 @@ void MainWindow::handleRemoteSkyConfigApplyResultReceived(const QJsonObject& res
     else
     {
         clearPendingRemoteWaveTcpConnection();
+        state_->remote_sky_config_.sensor_transport_path = state_->remote_sky_baseline_config_.sensor_transport_path;
+        state_->remote_sky_config_.fpga.configuration.pressureSource = state_->remote_sky_baseline_config_.fpga.configuration.pressureSource;
+        state_->fpga_remote_config_.pressureSource = state_->remote_sky_config_.fpga.configuration.pressureSource;
+        if (state_->fpga_page_) state_->fpga_page_->setConfiguration(state_->fpga_remote_config_);
+        setRemoteSkyConfigUi(state_->remote_sky_config_);
         state_->remote_sky_config_dirty_ = true;
         setRemoteSkyConfigStatus(error.isEmpty()
             ? (state_->is_english_ ? QStringLiteral("Sky failed to apply the config.") : QStringLiteral("天空端应用配置失败。"))
@@ -1344,6 +1374,10 @@ void MainWindow::handleRemoteSkyConfigApplyResultReceived(const QJsonObject& res
             QJsonDocument(result).toJson(QJsonDocument::Indented));
     }
     updateRemoteSkyConfigControlsState();
+    updateDeviceConfigTexts();
+    updateDeviceConfigState();
+    updateFpgaPageBackend();
+    syncRtkConfigPageState();
     if (success && connectWaveAfterApply)
     {
         requestRemoteWaveTcpConnection(true);

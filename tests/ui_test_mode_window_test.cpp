@@ -1316,10 +1316,12 @@ int main(int argc, char **argv)
     modeAction->trigger();
     processEvents();
     require(modeAction->isChecked(), "UI test mode action becomes checked");
+    auto *uiTestPtbReadback = uiTestDeviceConfigPage->findChild<QLabel *>(
+        QStringLiteral("devicePressureRateComboFpgaReadback"));
     require(uiTestSensorPath->currentData().toString() == QStringLiteral("fpga_relay") &&
                 uiTestSensorPath->isEnabled() && !uiTestEpsilonPort->isEnabled() &&
-                uiTestPtbRate->isEnabled(),
-            "remote FPGA configuration enables editable settings while keeping serial selection disabled");
+                !uiTestPtbRate->isEnabled() && uiTestPtbRate->isHidden() && uiTestPtbReadback && !uiTestPtbReadback->isHidden(),
+            "remote FPGA configuration exposes register readback while preserving disabled Direct presets");
     // The long-running assertions below intentionally continue in the normal
     // local fixture. Re-enter test mode after restoring the pre-regression
     // local combo snapshot so this focused remote check does not change the

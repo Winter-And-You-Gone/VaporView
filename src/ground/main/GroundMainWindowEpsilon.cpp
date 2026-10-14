@@ -641,6 +641,11 @@ void MainWindow::syncRtkConfigPageState()
         const CollectorSnapshot collectors = snapshotCollectors();
         return collectors.epsilon ? collectors.epsilon->getLatestData() : state_->current_epsilon_;
     });
+    const bool fpga = !isUiTestMode() && (isFpgaRelayPath() || (isRemoteSkyMode() && state_->remote_sky_config_applying_ &&
+        state_->remote_sky_config_.sensor_transport_path == VaporView::SensorTransportPath::FpgaRelay));
+    state_->rtk_config_dialog_->setTransportSupported(!fpga, fpga
+        ? (state_->is_english_ ? QStringLiteral("VLP1 does not support RTCM forwarding or EPSILON configuration. No serial fallback is used.")
+                              : QStringLiteral("当前 VLP1 不支持 RTCM 转发或 EPSILON 配置；FPGA 模式不使用旁路串口。")) : QString());
     state_->rtk_config_dialog_->setEpsilonMainAntennaLeverArmApplier([this](
         double x,
         double y,

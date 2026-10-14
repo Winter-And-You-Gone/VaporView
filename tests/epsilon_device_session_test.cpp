@@ -155,6 +155,13 @@ int main(int argc, char **argv)
 
     VaporView::Ground::EpsilonDeviceOperation localDevice;
     localDevice.port = QStringLiteral("COM42");
+    session.setTransportSupported(false, QStringLiteral("VLP1 EPSILON commands unsupported"));
+    require(!session.operationsAvailable(), "FPGA transport disables EPSILON parameter operations");
+    session.configurePacketRates(packetRateOperation(), localDevice);
+    require(waitForResult(app, results) && !results.back().success() && results.back().message.contains("VLP1"),
+            "unsupported EPSILON transport never invokes the successful serial adapter");
+    results.clear(); session.setTransportSupported(true);
+    require(session.operationsAvailable(), "Direct restores EPSILON parameter capability");
     const quint64 packetId = session.configurePacketRates(packetRateOperation(), localDevice);
     require(packetId != 0 && waitForResult(app, results) &&
                 results.back().request_id == packetId &&

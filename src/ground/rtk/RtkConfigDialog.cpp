@@ -3138,18 +3138,32 @@ bool RtkConfigDialog::buildRtkStreamConfig(RtkStreamConfig *config,
     return true;
 }
 
+void RtkConfigDialog::setTransportSupported(bool supported, const QString& reason)
+{
+    transport_supported_ = supported; transport_unavailable_reason_ = reason;
+    if (!supported) {
+        if (is_running_) onStopClicked();
+        stopGgaMonitor();
+    }
+    updateButtonStates();
+    refreshPortCombos();
+}
+
 void RtkConfigDialog::updateButtonStates()
 {
     const bool busy = isBackgroundTaskRunning();
     const bool usingCorrectionSink = static_cast<bool>(rtcm_correction_sink_);
-    start_btn_->setEnabled(!is_running_ && !busy);
+    start_btn_->setEnabled(transport_supported_ && !is_running_ && !busy);
+    start_btn_->setToolTip(transport_unavailable_reason_);
     stop_btn_->setEnabled(is_running_ && !busy);
-    test_btn_->setEnabled(!is_running_ && !busy);
-    apply_main_antenna_lever_btn_->setEnabled(!is_running_ && !busy);
+    test_btn_->setEnabled(transport_supported_ && !is_running_ && !busy);
+    apply_main_antenna_lever_btn_->setEnabled(transport_supported_ && !is_running_ && !busy);
+    test_btn_->setToolTip(transport_unavailable_reason_);
+    apply_main_antenna_lever_btn_->setToolTip(transport_unavailable_reason_);
     fetch_mountpoints_btn_->setEnabled(!busy);
     refresh_ports_btn_->setEnabled(!busy && !usingCorrectionSink);
-    auto_detect_ports_btn_->setEnabled(!busy && !usingCorrectionSink);
-    gga_toggle_btn_->setEnabled(!busy && !usingCorrectionSink);
+    auto_detect_ports_btn_->setEnabled(transport_supported_ && !busy && !usingCorrectionSink);
+    gga_toggle_btn_->setEnabled(transport_supported_ && !busy && !usingCorrectionSink);
     if (!is_running_)
     {
         updateStreamStatusFields();
@@ -3492,6 +3506,7 @@ void RtkConfigDialog::updateGgaMonitorText()
 
 void RtkConfigDialog::startGgaMonitor()
 {
+    if (!transport_supported_) return;
     if (!gga_poll_timer_)
     {
         return;
@@ -3657,6 +3672,7 @@ void RtkConfigDialog::pollMainGgaSource()
 
 void RtkConfigDialog::onGgaToggleClicked()
 {
+    if (!transport_supported_) return;
     if (ui_test_mode_)
     {
         if (!gga_monitor_enabled_)
@@ -3882,6 +3898,7 @@ bool RtkConfigDialog::parseMainAntennaLeverArm(double *x, double *y, double *z, 
 
 void RtkConfigDialog::onApplyMainAntennaLeverArmClicked()
 {
+    if (!transport_supported_) return;
     if (is_running_)
     {
         QMessageBox::warning(
@@ -4237,8 +4254,8 @@ void RtkConfigDialog::refreshPortCombos()
         }
         else
         {
-            output_port_combo_->setEnabled(true);
-            output_port_combo_->setToolTip(QString());
+            output_port_combo_->setEnabled(transport_supported_);
+            output_port_combo_->setToolTip(transport_unavailable_reason_);
             output_port_combo_->setAccessibleDescription(QString());
             output_port_combo_->addItem(textFor("-- Select --", "未选择"));
             for (const QString& port : ports)
@@ -4313,6 +4330,7 @@ void RtkConfigDialog::onRefreshPortsClicked()
 
 void RtkConfigDialog::onAutoDetectPortsClicked()
 {
+    if (!transport_supported_) return;
     if (ui_test_mode_)
     {
         refreshPortCombos();
@@ -4582,6 +4600,7 @@ void RtkConfigDialog::onFetchMountpointsClicked()
 
 void RtkConfigDialog::onStartClicked()
 {
+    if (!transport_supported_) return;
     if (ui_test_mode_)
     {
         is_running_ = true;
@@ -4687,6 +4706,7 @@ void RtkConfigDialog::onStopClicked()
 
 void RtkConfigDialog::onTestClicked()
 {
+    if (!transport_supported_) return;
     if (isBackgroundTaskRunning())
     {
         return;
