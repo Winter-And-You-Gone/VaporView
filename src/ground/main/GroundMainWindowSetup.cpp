@@ -5307,7 +5307,6 @@ void MainWindow::setupDataPanels()
 
     auto *ai8TemperatureOverviewTitleBar = new QWidget(state_->ai8_temperature_overview_group_);
     ai8TemperatureOverviewTitleBar->setObjectName("sectionTitleBar");
-    ai8TemperatureOverviewTitleBar->setProperty("internalEnvironmentTitle",true);
     ai8TemperatureOverviewTitleBar->setFixedHeight(kMainPageTitleBarHeight);
     auto *ai8TemperatureOverviewTitleLayout = new QHBoxLayout(ai8TemperatureOverviewTitleBar);
     ai8TemperatureOverviewTitleLayout->setContentsMargins(8, 2, 8, 2);
@@ -5332,9 +5331,6 @@ void MainWindow::setupDataPanels()
     ai8TemperatureOverviewTitleLayout->addStretch(1);
     ai8TemperatureOverviewTitleLayout->addWidget(state_->internal_environment_lbl_, 0, Qt::AlignVCenter);
     refreshInternalEnvironment();
-    ai8TemperatureOverviewTitleBar->setMinimumHeight(
-        qMax(kMainPageTitleBarHeight, state_->internal_environment_lbl_->sizeHint().height() + 8));
-    ai8TemperatureOverviewTitleBar->setMaximumHeight(QWIDGETSIZE_MAX);
 
     ai8TemperatureOverviewLayout->addWidget(ai8TemperatureOverviewTitleBar);
 

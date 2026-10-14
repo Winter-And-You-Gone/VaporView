@@ -1050,8 +1050,8 @@ void MainWindow::refreshInternalEnvironment()
     const auto temperature = value(0x44,&VaporView::FpgaSensor::Reading::temperatureC,1);
     const auto humidity = value(0x44,&VaporView::FpgaSensor::Reading::humidityPct,1);
     state_->internal_environment_lbl_->setText((state_->is_english_
-        ? QStringLiteral("Internal pressure: %1 hPa\nInternal temperature: %2 °C\nInternal humidity: %3 %RH")
-        : QStringLiteral("内部气压：%1 hPa\n内部温度：%2 °C\n内部湿度：%3 %RH")).arg(pressure,temperature,humidity));
+        ? QStringLiteral("Internal pressure: %1 hPa    Internal temperature: %2 °C    Internal humidity: %3 %RH")
+        : QStringLiteral("内部气压：%1 hPa    内部温度：%2 °C    内部湿度：%3 %RH")).arg(pressure,temperature,humidity));
     state_->internal_environment_lbl_->setToolTip(state_->is_english_
         ? QStringLiteral("BMP390 pressure; SHT45 temperature/humidity. Environmental PTB210/HMP data and session fields are separate.")
         : QStringLiteral("BMP390 内部气压；SHT45 内部温湿度。环境数据及 session 字段继续使用 PTB210/HMP。"));

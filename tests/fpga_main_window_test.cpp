@@ -27,6 +27,7 @@
 #include <QGridLayout>
 #include <QElapsedTimer>
 #include <QEventLoop>
+#include <QEvent>
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QLabel>
@@ -103,6 +104,12 @@ static void verifyCardMargins(MainWindow &window,FpgaControlPage *page,int scale
     require(internal && internal->height()>=internal->sizeHint().height()
         && internal->width()>=internal->sizeHint().width(),
         "home internal environment title fits three metrics at the current font scale");
+    QWidget *standardTitle=nullptr;
+    for(auto *title:window.findChildren<QWidget*>("sectionTitleBar"))
+        if(title->parentWidget()->property("homeLaserTemperatureOverviewCard").toBool())standardTitle=title;
+    require(!internal->text().contains('\n') && standardTitle
+        && internal->parentWidget()->height()==standardTitle->height(),
+        "internal environment stays on one line without increasing the standard title bar height");
     const QRect homeRect(homeCards->mapTo(stack,QPoint()),homeCards->size());
     stack->setCurrentIndex(4); processFor(50);
     page->setUiTestState(true,false,false,5000);processFor(50);
@@ -629,8 +636,18 @@ static void localSimulatorRouting()
     auto *baudAction=homeAction(window,"EPSILON");baudAction->click();
     check(waitUntil([&]{return baud->isEnabled()&&baudAction->isEnabled();}),"local per-device disconnect enables parameter editing");
     baud->setCurrentText("460800");
+    struct RefreshLockObserver : QObject {
+        bool observed=false;
+        bool eventFilter(QObject *object,QEvent *event) override {
+            if(event->type()==QEvent::EnabledChange)
+                observed|=!static_cast<QWidget*>(object)->isEnabled();
+            return false;
+        }
+    } refreshLock;
+    baud->installEventFilter(&refreshLock);
     emit page->refreshRequested();
-    check(waitUntil([&]{return !baud->isEnabled();}),"manual refresh locks editing while reading registers");
+    check(waitUntil([&]{return refreshLock.observed;}),"manual refresh locks editing while reading registers");
+    baud->removeEventFilter(&refreshLock);
     check(waitUntil([&]{return baud->isEnabled()&&baudAction->isEnabled();})&&baud->currentText()=="460800","local readback preserves the staged value");
     baudAction->click();
     check(waitUntil([&]{return !baud->isEnabled()&&baudAction->isEnabled()&&baudAction->property("state")=="connected"
@@ -709,6 +726,35 @@ static void localSimulatorRouting()
     auto *environmentPressure=window.findChild<PtbPanel*>()->findChild<QLabel*>("highlightedValue");
     check(environmentPressure->text().contains("1013."),"BMP pressure never replaces environmental PTB pressure");
     check(!homeAction(window,"HMP")->isEnabled(),"missing HMP firmware channel remains unavailable");
+
+    auto *ai8Action=homeAction(window,"AI-8288");
+    auto *ai8Channel=page->findChild<QDoubleSpinBox*>("fpgaAi8Channel");
+    auto *apply=page->findChild<QAbstractButton*>("fpgaApply");
+    QLabel *channel8=nullptr;
+    for(auto *label:window.findChildren<QLabel*>("ai8TemperatureOverviewValueLabel"))
+        if(label->property("channelIndex").toInt()==7)channel8=label;
+    check(ai8Channel&&apply&&channel8&&channel8->text()=="---","unpolled AI8 channel eight is unavailable");
+    ai8Action->click();
+    check(waitUntil([&]{return ai8Action->isEnabled()&&ai8Channel->isEnabled();}),
+        "AI8 disconnect unlocks channel selection");
+    ai8Channel->setValue(8);apply->click();
+    check(waitUntil([&]{
+        for(auto *label:page->findChildren<QLabel*>())
+            if(label->text().contains("0x661c = 8"))return apply->isEnabled();
+        return false;
+    }),"AI8 channel eight configuration is read back");
+    ai8Action->click();
+    check(waitUntil([&]{return ai8Action->isEnabled()&&channel8->text()!="---";}),
+        "AI8 channel eight traverses simulator, register readback, adapter and home overview");
+    for(auto *label:window.findChildren<QLabel*>("ai8TemperatureOverviewValueLabel"))
+        if(label->property("channelIndex").toInt()>0&&label->property("channelIndex").toInt()<7)
+            check(label->text()=="---","a selected-channel snapshot never fabricates other AI8 channels");
+
+    acquisition->click();
+    auto *resumedHarmonic=window.findChild<TcpWavePanel*>()->findChild<QAbstractButton*>("fpgaMonitorHarmonicButton");
+    check(waitUntil([&]{return acquisition->isEnabled()&&resumedHarmonic->isEnabled()
+        &&resumedHarmonic->text().contains(QStringLiteral("停止"));}),
+        "sampling resumes after the isolated AI8 channel configuration");
 
     QDoubleSpinBox *target=nullptr;
     for(auto *spin:page->findChildren<QDoubleSpinBox*>())if(spin->suffix()==QStringLiteral(" °C"))target=spin;
