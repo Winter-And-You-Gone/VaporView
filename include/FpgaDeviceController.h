@@ -22,6 +22,7 @@ class FpgaDeviceController final : public QObject
 public:
     explicit FpgaDeviceController(std::unique_ptr<FpgaUsbTransport> transport = {}, QObject *parent = nullptr);
     ~FpgaDeviceController() override;
+    bool connected() const { return session_ && session_->isOpen(); }
     bool ready() const { return ready_; }
     bool busy() const { return busy_ && !backgroundRefresh_; }
     const QMap<quint32, quint32>& hardwareValues() const { return registers_; }

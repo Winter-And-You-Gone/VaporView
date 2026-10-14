@@ -137,8 +137,11 @@ void SkyFpgaBackend::submit(const QJsonObject& operation, Completion completion)
         };
         const QString op = operation.value("op").toString();
         if (controller->busy()) { finish(CommandErrorCode::DeviceOperationBusy, QStringLiteral("FPGA is busy.")); return; }
-        if (op != "connect" && op != "disconnect" && !controller->ready()) {
-            finish(CommandErrorCode::DeviceNotConnected, QStringLiteral("FPGA handshake/readback not ready.")); return;
+        // Match local read-only diagnostics while preserving the ready gate for every write.
+        const bool available = op == "refresh" ? controller->connected() : controller->ready();
+        if (op != "connect" && op != "disconnect" && !available) {
+            finish(CommandErrorCode::DeviceNotConnected, op == "refresh" ? QStringLiteral("FPGA USB is not connected.")
+                : QStringLiteral("FPGA handshake/readback not ready.")); return;
         }
         // This observer exists only for this worker invocation; periodic refreshes cannot complete another request.
         auto observer = std::make_shared<QMetaObject::Connection>();

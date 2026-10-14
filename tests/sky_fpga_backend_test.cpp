@@ -1,9 +1,43 @@
 #include "SkyFpgaBackend.h"
 #include "sky_fpga_test_transport.h"
 
+void diagnosticReadback()
+{
+    auto mock=std::make_unique<ScriptedTransport>();auto *wire=mock.get();
+    mock->regs[0x5024]=0;
+    SkyFpgaBackend backend(std::move(mock));
+    const auto operation=[&](const QJsonObject& request,CommandErrorCode expected) {
+        bool done=false;QJsonObject result;
+        backend.submit(request,[&](CommandErrorCode code,QString,QJsonObject status) {
+            require(code==expected,"diagnostic operation returns the expected final result");result=status;done=true;
+        });
+        waitUntil([&]{return done;},"diagnostic operation completes");return result;
+    };
+    operation({{"op","refresh"}},CommandErrorCode::DeviceNotConnected);
+    auto status=operation({{"op","connect"},{"backend","auto"},{"locator","mock"}},CommandErrorCode::ConfigApplyFailed);
+    require(status.value("connected").toBool()&&!status.value("ready").toBool(),"failed handshake retains the USB connection for read-only diagnostics");
+    wire->clear();wire->regs[0x6010]=9600;
+    status=operation({{"op","refresh"}},CommandErrorCode::ConfigApplyFailed);
+    require(status.value("registers").toObject().value(QString::number(0x6010)).toInt()==9600,
+        "Sky refresh reads fresh registers after a failed handshake, just like local refresh");
+    require(!status.value("ready").toBool()&&!wire->commands.isEmpty(),"diagnostic readback cannot bypass failed connection recovery");
+    for(const auto& command:wire->commands)require(command.message==2,"diagnostic refresh sends only register reads");
+    const auto commandCount=wire->commands.size();
+    operation({{"op","sensor_config"},{"source",0x40},{"baud",4800}},CommandErrorCode::DeviceNotConnected);
+    require(wire->commands.size()==commandCount,"unready Sky controller still blocks parameter writes");
+    wire->regs[0x5024]=0x00040101;
+    status=operation({{"op","refresh"}},CommandErrorCode::ConfigApplyFailed);
+    require(!status.value("ready").toBool()&&wire->openCount.load()==1,"refresh never reconnects or silently resumes failed recovery");
+    operation({{"op","disconnect"}},CommandErrorCode::Ok);
+    status=operation({{"op","connect"},{"backend","auto"},{"locator","mock"}},CommandErrorCode::Ok);
+    require(status.value("ready").toBool(),"explicit reconnect performs complete recovery before enabling writes");
+    backend.shutdown();
+}
+
 int main(int argc,char **argv)
 {
     QCoreApplication app(argc,argv);
+    diagnosticReadback();
     auto mock=std::make_unique<ScriptedTransport>(); auto *wire=mock.get(); mock->failTemperature=true;mock->failWriteAddress=0x2010;
     SkyFpgaBackend backend(std::move(mock));
     QObject::connect(&backend,&SkyFpgaBackend::logRecord,[](const LogRecord& record) {
