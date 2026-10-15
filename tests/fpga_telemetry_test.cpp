@@ -68,6 +68,10 @@ int main(int argc, char **argv)
     QJsonObject status{{"connected",true},{"ready",true},{"busy",false},{"detail","ready"},{"configuration",FpgaControlConfig{}.toJson()},
         {"registers",QJsonObject{{"4096",4294967295.0}}},{"archived_records","18446744073709551615"}};
     require(parseStatus(encodeStatus(status),parsed),"uint64 archive precision survives status");
+    status["recording_statistics"]=QJsonObject{{"data_records",QJsonObject{{"waveform","123"},{"64","42"}}},
+        {"waveform_frames","12"},{"waveform_points",100},{"waveform_source",48}};
+    require(parseStatus(encodeStatus(status),parsed) && parsed.value("recording_statistics")==status.value("recording_statistics"),
+        "FPGA waveform and device recording counters survive remote status codec");
     auto legacyStatus=status;legacyConfig.insert("rawWindowSeconds",10);legacyStatus.insert("configuration",legacyConfig);
     require(parseStatus(encodeStatus(legacyStatus),parsed),"status from older peers accepts the obsolete RAW field");
     status["usb_discovery"]=QJsonObject{{"devices",QJsonArray{QJsonObject{{"locator","opaque-path"},{"label","GP01"},

@@ -5479,7 +5479,7 @@ int main(int argc, char **argv)
                 recordingStatusDetail.contains(QStringLiteral("RAW PTB210")) &&
                 recordingStatusDetail.contains(QStringLiteral("RAW HMP3")) &&
                 recordingStatusDetail.contains(QStringLiteral("RAW TFA1500")) &&
-                recordingStatusDetail.contains(QStringLiteral("RAW TCP")) &&
+                recordingStatusDetail.contains(QStringLiteral("RAW WAVE")) &&
                 recordingStatusDetail.contains(QStringLiteral("RAW RD105")) &&
                 recordingStatusDetail.contains(QStringLiteral("RAW AI-8288")),
             "recording status uses hardware model names");

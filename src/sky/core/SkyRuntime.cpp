@@ -310,6 +310,7 @@ QJsonObject SkyRuntime::currentFpgaStatus() const
     document["recording_state"] = int(session_recorder_.recordingState());
     document["session_directory"] = session_recorder_.sessionDirectory();
     document["archived_records"] = QString::number(session_recorder_.rawFpgaRecordCount());
+    document["recording_statistics"] = session_recorder_.fpgaRecordingStatistics();
     document["storage_failed"] = session_recorder_.storageFailed();
     document["recording_incomplete"] = session_recorder_.storageFailed();
     return document;

@@ -187,6 +187,7 @@ struct SkySessionRecorder::FpgaWriter
     QString directory;
     std::atomic_bool failed{false};
     std::atomic<quint64> count{0};
+    Session::FpgaRecordingStatistics statistics;
     std::mutex mutex;
     std::condition_variable changed;
     std::deque<Record> queue;
@@ -250,7 +251,7 @@ struct SkySessionRecorder::FpgaWriter
                     header.recordType = record.kind; header.sequence = count.load();
                     RecordingOutputDevice output(*storage, raw);
                     if (!SessionRawDat::writeRecord(output, header, record.bytes)) failed = true;
-                    else ++count;
+                    else {++count;statistics.record(Session::FpgaArchiveKind(record.kind),record.bytes);}
                     if (!failed && record.kind != quint16(Session::FpgaArchiveKind::UsbBytes)) {
                         auto object = Session::FpgaSessionArchive::describe(record.timestamp,
                             Session::FpgaArchiveKind(record.kind), record.bytes);
@@ -304,6 +305,12 @@ void SkySessionRecorder::setFpgaConfiguration(const FpgaControlConfig& configura
     std::lock_guard<std::recursive_mutex> recordingLock(recording_mutex_);
     fpga_configuration_ = configuration;
     if (isRecording()) recordFpgaBoundary(QStringLiteral("configuration"));
+}
+
+QJsonObject SkySessionRecorder::fpgaRecordingStatistics() const
+{
+    std::lock_guard<std::recursive_mutex> recordingLock(recording_mutex_);
+    return fpga_writer_?fpga_writer_->statistics.status():QJsonObject{};
 }
 
 bool SkySessionRecorder::enqueueFpga(quint64 timestamp, quint16 kind, const QByteArray& bytes)
@@ -1337,6 +1344,12 @@ bool SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc, QString
     manifest.rawRecords.laserTemperatureController = raw_laser_temperature_controller_record_count_;
     manifest.rawRecords.systemTemperatureController = raw_system_temperature_controller_record_count_;
     manifest.fpgaRecords = rawFpgaRecordCount();
+    const auto fpgaStatus=fpgaRecordingStatistics();
+    manifest.counts.waveformFrames += fpgaStatus.value("waveform_frames").toString().toULongLong();
+    if (fpgaStatus.value("waveform_points").toInt()>0) {
+        ++manifest.waveformFileCount;
+        manifest.waveformPointsPerFrame=fpgaStatus.value("waveform_points").toInt();
+    }
     return VaporView::Session::writeSessionManifestAtomically(session_metadata_filename_,
                                                               manifest,
                                                               errorMessage);

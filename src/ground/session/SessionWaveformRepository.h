@@ -58,6 +58,8 @@ struct SessionWaveformCatalog
     QVector<SessionWaveformSegment> legacySegments;
     QVector<SessionRawTcpWaveFrame> rawTcpFrames;
     QVector<SessionIndexedWaveformFrame> indexedFrames;
+    QVector<quint64> fpgaTimestampsUs;
+    quint16 fpgaSource = 0;
     int pointsPerFrame = 0;
     quint64 frameCount = 0;
 

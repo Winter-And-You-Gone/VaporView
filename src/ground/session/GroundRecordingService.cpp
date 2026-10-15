@@ -452,6 +452,7 @@ public:
         if (!SessionRawDat::writeRecord(output, header, record.payload))
         { markWriteFailure(); return; }
         ++fpgaRecordCount;
+        fpgaStatistics.record(VaporView::Session::FpgaArchiveKind(record.recordType),record.payload);
         // USB chunks remain binary only; semantic rows concern complete frames, commands and snapshots.
         if (record.recordType != quint16(VaporView::Session::FpgaArchiveKind::UsbBytes))
         {
@@ -556,6 +557,8 @@ public:
         result.rawLaserTemperatureControllerRecords = rawLaserTemperatureControllerRecordCount.load();
         result.rawSystemTemperatureControllerRecords = rawSystemTemperatureControllerRecordCount.load();
         result.rawFpgaRecords = fpgaRecordCount.load();
+        result.fpgaStatistics = fpgaStatistics.status();
+        result.waveformFrames += result.fpgaStatistics.value("waveform_frames").toString().toLongLong();
         return result;
     }
 
@@ -1132,6 +1135,17 @@ private:
         manifest.counts.eventRows = eventRows.load();
         manifest.counts.errorRows = errorRows.load();
         manifest.fpgaRecords = fpgaRecordCount.load();
+        const auto fpgaStatus=fpgaStatistics.status();
+        const quint64 fpgaFrames=fpgaStatus.value("waveform_frames").toString().toULongLong();
+        manifest.counts.waveformFrames += fpgaFrames;
+        if (fpgaFrames>0) {
+            ++manifest.waveformFileCount;
+            manifest.waveformPointsPerFrame=fpgaStatus.value("waveform_points").toInt();
+        }
+        if (rawWaveformRecordCount.load()==0 && (fpgaFrames>0 || fpgaStatus.value("data_records").toObject().size()>1)) {
+            manifest.capture.telemetryTransport=QStringLiteral("fpga_vlp1");
+            manifest.capture.telemetryEndpoint.clear();manifest.capture.telemetryPort.clear();
+        }
         manifest.rawRecords.navigation = rawNavigationRecordCount.load();
         manifest.rawRecords.pressure = rawPressureRecordCount.load();
         manifest.rawRecords.temperatureHumidity = rawTemperatureHumidityRecordCount.load();
@@ -1197,6 +1211,7 @@ private:
     {
         recordingElapsedMs = 0;
         fpgaRecordCount.store(0);
+        fpgaStatistics.clear();
         fpgaSeen.store(false);
         sensorRows.store(0);
         navigationStatusRows.store(0);
@@ -1242,6 +1257,7 @@ public:
     std::unique_ptr<QFile> fpgaRawFile;
     std::unique_ptr<QFile> fpgaSemanticFile;
     std::atomic<quint64> fpgaRecordCount{0};
+    VaporView::Session::FpgaRecordingStatistics fpgaStatistics;
     std::atomic_bool fpgaSeen{false};
     std::unique_ptr<QFile> sensorSummaryFile;
     std::unique_ptr<QFile> navigationStatusFile;

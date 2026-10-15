@@ -44,6 +44,7 @@ public:
     bool recordFpgaUsbBytes(quint64 hostTimeUs, const QByteArray& bytes);
     bool recordFpgaSnapshot(quint64 hostTimeUs, const QJsonObject& snapshot);
     quint64 rawFpgaRecordCount() const;
+    QJsonObject fpgaRecordingStatistics() const;
     bool start(const QString& baseDirectory,
                const QString& telemetryPort,
                int telemetryBaud,

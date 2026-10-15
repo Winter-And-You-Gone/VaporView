@@ -2425,7 +2425,7 @@ int main(int argc, char **argv)
                     text.contains(QStringLiteral(" 条\nRAW PTB210：")) &&
                     text.contains(QStringLiteral(" 条\nRAW HMP3：")) &&
                     text.contains(QStringLiteral(" 条\nRAW TFA1500：")) &&
-                    text.contains(QStringLiteral(" 条\nRAW TCP：")) &&
+                    text.contains(QStringLiteral(" 条\nRAW WAVE：")) &&
                     text.contains(QStringLiteral(" 条\nRAW RD105：")) &&
                     text.contains(QStringLiteral(" 条\nRAW AI-8288：")) &&
                     text.contains(QStringLiteral("RAW 记录总数：")) &&

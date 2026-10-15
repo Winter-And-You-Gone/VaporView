@@ -921,6 +921,7 @@ void MainWindow::receiveRemoteFpgaStatus(const QJsonObject& status)
         state_->fpga_page_->setHardwareValues(values);
         updateFpgaPageBackend();
         syncFpgaDeviceConfigUi();
+        updateRecordingStatusLabel();
     }
 }
 

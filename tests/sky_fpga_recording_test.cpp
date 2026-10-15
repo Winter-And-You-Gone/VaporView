@@ -108,6 +108,28 @@ void failures() {
         require(QJsonDocument::fromJson(manifest.readAll()).object().value("state").toString() == "incomplete", "incomplete manifest");
     }
 }
+void waveformStatistics() {
+    QTemporaryDir temporary;
+    SkySessionRecorder recorder;
+    FpgaControlConfig configuration;configuration.recordRaw=true;
+    recorder.setFpgaConfiguration(configuration);
+    QString error;
+    require(recorder.start(temporary.path(),"",0,&error),"Sky wave start");
+    // RAW schema 1, 24 bits, 1 MHz, two signed samples.
+    const std::vector<std::uint8_t> payload{1,0,24,0,64,66,15,0,2,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,2,0,0,0};
+    const auto wire=FpgaVlp1::buildFrame(FpgaVlp1::FrameType::Data,1,0x20,0x1000,payload,true,3,100,1);
+    const QByteArray bytes(reinterpret_cast<const char*>(wire.data()),wire.size());
+    require(recorder.recordFpgaFrame(nowUs(),bytes),"Sky decoded wave");
+    require(recorder.recordFpgaUsbBytes(nowUs(),bytes.left(13)),"Sky partial USB");
+    require(recorder.recordFpgaUsbBytes(nowUs(),bytes.mid(13)),"Sky USB rest");
+    recorder.pause();
+    require(recorder.fpgaRecordingStatistics().value("waveform_frames").toString()=="1","Sky wave count without duplicate USB/IN");
+    require(recorder.stop(&error),"Sky wave stop");
+    QFile manifest(recorder.sessionDirectory()+"/session.json");
+    require(manifest.open(QIODevice::ReadOnly),"Sky wave manifest");
+    require(QJsonDocument::fromJson(manifest.readAll()).object().value("counts").toObject()
+        .value("waveform_frames").toString()=="1","Sky waveform count persisted");
+}
 void concurrentLifecycle() {
     QTemporaryDir temporary;
     SkySessionRecorder recorder;
@@ -157,7 +179,7 @@ void concurrentLifecycle() {
 }
 int main(int argc, char **argv) {
     QCoreApplication application(argc, argv);
-    archiveRoundTrip(); failures(); concurrentLifecycle();
+    archiveRoundTrip(); waveformStatistics(); failures(); concurrentLifecycle();
     std::cout << "Sky FPGA archive passed\n";
     return 0;
 }

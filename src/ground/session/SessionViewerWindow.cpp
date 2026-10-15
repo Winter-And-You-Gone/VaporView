@@ -1691,6 +1691,15 @@ void SessionViewerWindow::cancelBackgroundWaveformPeakSeries(bool waitForFinishe
 }
 void SessionViewerWindow::updateSummaryLabels()
 {
+    if (waveform_catalog_.fpgaSource != 0) {
+        const bool raw=waveform_catalog_.fpgaSource<0x30;
+        waveform_page_->setTitle(QString(raw
+            ? (is_english_?"Raw signal (ADC %1, counts)":"原始信号（ADC %1，计数）")
+            : (is_english_?"Second harmonic (DLIA %1)":"二次谐波（DLIA %1）"))
+            .arg(waveform_catalog_.fpgaSource-(raw?0x20:0x30)));
+    } else {
+        waveform_page_->setTitle(is_english_?QStringLiteral("Normalized Second Harmonic"):QStringLiteral("归一化二次谐波"));
+    }
     const bool hasSession = !session_name_.isEmpty() || !metadata_filename_.isEmpty();
     SessionOverviewSummary summary;
     summary.sessionName = session_name_.isEmpty() ? QStringLiteral("---") : session_name_;

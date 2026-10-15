@@ -7,6 +7,7 @@
 #include <QFileInfo>
 #include <QtEndian>
 #include <exception>
+#include <QMutexLocker>
 
 namespace VaporView::Session {
 namespace {
@@ -74,6 +75,61 @@ QJsonObject payloadDescription(const FpgaVlp1::Frame& frame)
 }
 QString FpgaSessionArchive::rawPath(const QString& directory)
 { return QDir(directory).filePath(QStringLiteral("raw/fpga_vlp1.dat")); }
+
+void FpgaRecordingStatistics::clear()
+{
+    QMutexLocker lock(&mutex_);
+    usb_=false; parser_=FpgaVlp1::StreamParser(); assembler_.clear();
+    records_.clear(); cycles_.clear(); points_.clear();
+}
+
+void FpgaRecordingStatistics::record(FpgaArchiveKind kind, QByteArrayView bytes)
+{
+    QMutexLocker lock(&mutex_);
+    if (kind==FpgaArchiveKind::Snapshot) {
+        const QString event=QJsonDocument::fromJson(QByteArray(bytes.data(),bytes.size())).object().value("event").toString();
+        if (event=="connected" || event=="disconnected" || event=="reconnect" || event=="pause" || event=="resume") {
+            parser_=FpgaVlp1::StreamParser(); assembler_.clear();
+        }
+        return;
+    }
+    if (kind==FpgaArchiveKind::UsbBytes && !usb_) {
+        usb_=true; parser_=FpgaVlp1::StreamParser(); assembler_.clear();
+        records_.clear(); cycles_.clear(); points_.clear();
+    }
+    if (kind!=(usb_?FpgaArchiveKind::UsbBytes:FpgaArchiveKind::Frame)) return;
+    const QByteArray wire=usb_?QByteArray(bytes.data(),bytes.size()):parserFrameBytes(bytes);
+    const auto frames=parser_.feed(reinterpret_cast<const std::uint8_t*>(wire.constData()),wire.size());
+    for (const auto& frame:frames) {
+        const auto& h=frame.header;
+        if (h.frameType!=FpgaVlp1::FrameType::Data) continue;
+        if (h.message==0x1100 && h.source>=0x40 && h.source<=0x46) ++records_[h.source];
+        if (!((h.message==0x1000 && (h.source==0x20 || h.source==0x21)) ||
+              (h.message==0x1001 && (h.source==0x30 || h.source==0x31)))) continue;
+        ++records_[h.source];
+        const auto wave=assembler_.accept({h.source,h.message,h.flags,h.cycleId,h.timestamp,
+            QByteArray(reinterpret_cast<const char*>(frame.payload.data()),frame.payload.size())});
+        if (wave && wave->complete) {++cycles_[h.source];points_[h.source]=wave->totalPoints;}
+        assembler_.takeExpired();
+    }
+}
+
+QJsonObject FpgaRecordingStatistics::status() const
+{
+    QMutexLocker lock(&mutex_);
+    QJsonObject data;
+    quint64 waveRecords=0;
+    for (auto i=records_.cbegin();i!=records_.cend();++i) {
+        if (i.key()>=0x40) data[QString::number(i.key())]=QString::number(i.value());
+        else waveRecords+=i.value();
+    }
+    data["waveform"]=QString::number(waveRecords);
+    quint16 source=0;
+    for (quint16 candidate:{0x30,0x31,0x20,0x21})
+        if (cycles_.value(candidate)) {source=candidate;break;}
+    return {{"data_records",data},{"waveform_frames",QString::number(cycles_.value(source))},
+        {"waveform_points",int(points_.value(source))},{"waveform_source",source}};
+}
 
 QJsonObject FpgaSessionArchive::describe(quint64 timestamp, FpgaArchiveKind kind, QByteArrayView bytes)
 {
@@ -177,6 +233,24 @@ bool FpgaSessionArchive::replay(const QString& directory,const FrameVisitor& vis
             return true;
         },error);
     } catch(const std::exception& e) { if(error)*error=QString::fromUtf8(e.what());return false; }
+}
+
+bool FpgaSessionArchive::waveforms(const QString& directory,const WaveformVisitor& visitor,QString *error,
+                                 const std::function<bool()>& isCancelled)
+{
+    FpgaWave::Assembler assembler;
+    bool stopped=false;
+    const bool ok=replay(directory,[&](quint64 host,const FpgaVlp1::Frame& frame) {
+        const auto& h=frame.header;
+        if (h.frameType!=FpgaVlp1::FrameType::Data || (h.message!=0x1000 && h.message!=0x1001)) return true;
+        const auto wave=assembler.accept({h.source,h.message,h.flags,h.cycleId,h.timestamp,
+            QByteArray(reinterpret_cast<const char*>(frame.payload.data()),frame.payload.size())});
+        assembler.takeExpired();
+        if (wave && wave->complete && !visitor(host,*wave)) {stopped=true;return false;}
+        return true;
+    },error,[&](quint64,const QJsonObject&) {assembler.clear();},isCancelled);
+    if (stopped && error) error->clear();
+    return ok || stopped;
 }
 
 bool FpgaSessionArchive::exportTo(const QString& directory,const QString& filename,ExportFormat format,QString *error,

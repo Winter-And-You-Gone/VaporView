@@ -648,7 +648,7 @@ void MainWindow::updateRecordingStatusLabel()
             ? QStringLiteral("--")
             : QStringLiteral("UI-TEST-SESSION");
         const QString detail = state_->is_english_
-            ? QStringLiteral("Session: %1\nElapsed: %2\nExternal device records: %3 rows\nWave features: remote only\nWaveform frames: %4 frames\nRecorded RAW EPSILON: %5 records\nRecorded RAW PTB210: %6 records\nRecorded RAW HMP3: %7 records\nRecorded RAW TFA1500: %8 records\nRecorded RAW TCP: %9 records\nRecorded RAW RD105: %10 records\nRecorded RAW AI-8288: %11 records\nRecorded RAW total: %12 records\nFile output: none (memory only)")
+            ? QStringLiteral("Session: %1\nElapsed: %2\nExternal device records: %3 rows\nWave features: remote only\nWaveform frames: %4 frames\nRecorded RAW EPSILON: %5 records\nRecorded RAW PTB210: %6 records\nRecorded RAW HMP3: %7 records\nRecorded RAW TFA1500: %8 records\nRecorded RAW WAVE: %9 records\nRecorded RAW RD105: %10 records\nRecorded RAW AI-8288: %11 records\nRecorded RAW total: %12 records\nFile output: none (memory only)")
                   .arg(session)
                   .arg(formatElapsedCompact(static_cast<quint64>(std::max<qint64>(0, elapsedMs))))
                   .arg(countAtRate(20))
@@ -661,7 +661,7 @@ void MainWindow::updateRecordingStatusLabel()
                   .arg(rawLaserTemperatureController)
                   .arg(rawSystemTemperatureController)
                   .arg(rawTotal)
-            : QStringLiteral("会话：%1\n时长：%2\n外部设备记录：%3 行\n波形特征：仅远程有效\n波形帧数：%4 帧\n已记录条数\nRAW EPSILON：%5 条\nRAW PTB210：%6 条\nRAW HMP3：%7 条\nRAW TFA1500：%8 条\nRAW TCP：%9 条\nRAW RD105：%10 条\nRAW AI-8288：%11 条\nRAW 记录总数：%12 条\n文件写入：无（仅内存模拟）")
+            : QStringLiteral("会话：%1\n时长：%2\n外部设备记录：%3 行\n波形特征：仅远程有效\n波形帧数：%4 帧\n已记录条数\nRAW EPSILON：%5 条\nRAW PTB210：%6 条\nRAW HMP3：%7 条\nRAW TFA1500：%8 条\nRAW WAVE：%9 条\nRAW RD105：%10 条\nRAW AI-8288：%11 条\nRAW 记录总数：%12 条\n文件写入：无（仅内存模拟）")
                   .arg(session)
                   .arg(formatElapsedCompact(static_cast<quint64>(std::max<qint64>(0, elapsedMs))))
                   .arg(countAtRate(20))
@@ -732,7 +732,7 @@ void MainWindow::updateRecordingStatusLabel()
                                   qulonglong rawSystemTemperature,
                                   qulonglong rawTotal) {
         return state_->is_english_
-            ? QStringLiteral("Session: %1\nElapsed: %2\nExternal device records: %3 rows\nWave features: remote only\nWaveform frames: %4 frames\nRecorded RAW EPSILON: %5 records\nRecorded RAW PTB210: %6 records\nRecorded RAW HMP3: %7 records\nRecorded RAW TFA1500: %8 records\nRecorded RAW TCP: %9 records\nRecorded RAW RD105: %10 records\nRecorded RAW AI-8288: %11 records\nRecorded RAW total: %12 records")
+            ? QStringLiteral("Session: %1\nElapsed: %2\nExternal device records: %3 rows\nWave features: remote only\nWaveform frames: %4 frames\nRecorded RAW EPSILON: %5 records\nRecorded RAW PTB210: %6 records\nRecorded RAW HMP3: %7 records\nRecorded RAW TFA1500: %8 records\nRecorded RAW WAVE: %9 records\nRecorded RAW RD105: %10 records\nRecorded RAW AI-8288: %11 records\nRecorded RAW total: %12 records")
                   .arg(session)
                   .arg(elapsed)
                   .arg(sensorRows)
@@ -745,7 +745,7 @@ void MainWindow::updateRecordingStatusLabel()
                   .arg(rawLaserTemperature)
                   .arg(rawSystemTemperature)
                   .arg(rawTotal)
-            : QStringLiteral("会话：%1\n时长：%2\n外部设备记录：%3 行\n波形特征：仅远程有效\n波形帧数：%4 帧\n已记录条数\nRAW EPSILON：%5 条\nRAW PTB210：%6 条\nRAW HMP3：%7 条\nRAW TFA1500：%8 条\nRAW TCP：%9 条\nRAW RD105：%10 条\nRAW AI-8288：%11 条\nRAW 记录总数：%12 条")
+            : QStringLiteral("会话：%1\n时长：%2\n外部设备记录：%3 行\n波形特征：仅远程有效\n波形帧数：%4 帧\n已记录条数\nRAW EPSILON：%5 条\nRAW PTB210：%6 条\nRAW HMP3：%7 条\nRAW TFA1500：%8 条\nRAW WAVE：%9 条\nRAW RD105：%10 条\nRAW AI-8288：%11 条\nRAW 记录总数：%12 条")
                   .arg(session)
                   .arg(elapsed)
                   .arg(sensorRows)
@@ -758,6 +758,18 @@ void MainWindow::updateRecordingStatusLabel()
                   .arg(rawLaserTemperature)
                   .arg(rawSystemTemperature)
                   .arg(rawTotal);
+    };
+    auto fpgaCount = [](const QJsonObject& statistics, const QString& source) {
+        return statistics.value("data_records").toObject().value(source).toString().toULongLong();
+    };
+    auto appendFpgaCounts = [this, &fpgaCount](QString text, const QJsonObject& statistics, quint64 total) {
+        if (total==0) return text;
+        text += QString(state_->is_english_
+            ? "\nRAW BMP390: %1 records\nRAW SHT45: %2 records\nRecorded RAW FPGA: %3 records"
+            : "\nRAW BMP390：%1 条\nRAW SHT45：%2 条\nRAW FPGA 归档记录：%3 条")
+            .arg(fpgaCount(statistics,QStringLiteral("67")))
+            .arg(fpgaCount(statistics,QStringLiteral("68"))).arg(total);
+        return text;
     };
     auto appendScheduledLine = [this](const QString& text) {
         const QString scheduledLine = state_->recording_schedule_controller_
@@ -781,7 +793,9 @@ void MainWindow::updateRecordingStatusLabel()
         const VaporView::TelemetryStatus& displayStatus = useLastRemoteStatus
             ? state_->last_remote_recording_status_
             : state_->remote_status_;
-        const quint64 rawTotal =
+        const auto fpgaStatistics=state_->fpga_remote_status_.value("recording_statistics").toObject();
+        const quint64 fpgaTotal=state_->fpga_remote_status_.value("archived_records").toString().toULongLong();
+        const quint64 rawTotal = fpgaTotal +
             displayStatus.raw_navigation_record_count +
             displayStatus.raw_pressure_record_count +
             displayStatus.raw_temperature_humidity_record_count +
@@ -794,35 +808,35 @@ void MainWindow::updateRecordingStatusLabel()
             ? QStringLiteral("--")
             : displayStatus.session_name;
         const QString detail = state_->is_english_
-            ? QStringLiteral("Session: %1\nElapsed: %2\nExternal device records: %3 rows\nWave features: %4 features\nWaveform frames: %5 frames\nRecorded RAW EPSILON: %6 records\nRecorded RAW PTB210: %7 records\nRecorded RAW HMP3: %8 records\nRecorded RAW TFA1500: %9 records\nRecorded RAW TCP: %10 records\nRecorded RAW RD105: %11 records\nRecorded RAW AI-8288: %12 records\nRecorded RAW total: %13 records")
+            ? QStringLiteral("Session: %1\nElapsed: %2\nExternal device records: %3 rows\nWave features: %4 features\nWaveform frames: %5 frames\nRecorded RAW EPSILON: %6 records\nRecorded RAW PTB210: %7 records\nRecorded RAW HMP3: %8 records\nRecorded RAW TFA1500: %9 records\nRecorded RAW WAVE: %10 records\nRecorded RAW RD105: %11 records\nRecorded RAW AI-8288: %12 records\nRecorded RAW total: %13 records")
                   .arg(session)
                   .arg(elapsed)
                   .arg(displayStatus.telemetry_record_count)
                   .arg(displayStatus.waveform_feature_record_count)
-                  .arg(displayStatus.waveform_snapshot_record_count)
-                  .arg(displayStatus.raw_navigation_record_count)
-                  .arg(displayStatus.raw_pressure_record_count)
-                  .arg(displayStatus.raw_temperature_humidity_record_count)
-                  .arg(displayStatus.raw_distance_record_count)
-                  .arg(displayStatus.raw_waveform_record_count)
+                  .arg(displayStatus.waveform_snapshot_record_count + fpgaStatistics.value("waveform_frames").toString().toULongLong())
+                  .arg(displayStatus.raw_navigation_record_count + fpgaCount(fpgaStatistics,QStringLiteral("66")))
+                  .arg(displayStatus.raw_pressure_record_count + fpgaCount(fpgaStatistics,QStringLiteral("64")))
+                  .arg(displayStatus.raw_temperature_humidity_record_count + fpgaCount(fpgaStatistics,QStringLiteral("65")))
+                  .arg(displayStatus.raw_distance_record_count + fpgaCount(fpgaStatistics,QStringLiteral("69")))
+                  .arg(displayStatus.raw_waveform_record_count + fpgaCount(fpgaStatistics,QStringLiteral("waveform")))
                   .arg(displayStatus.raw_laser_temperature_controller_record_count)
-                  .arg(displayStatus.raw_system_temperature_controller_record_count)
+                  .arg(displayStatus.raw_system_temperature_controller_record_count + fpgaCount(fpgaStatistics,QStringLiteral("70")))
                   .arg(rawTotal)
-            : QStringLiteral("会话：%1\n时长：%2\n外部设备记录：%3 行\n波形特征：%4 条\n波形帧数：%5 帧\n已记录条数\nRAW EPSILON：%6 条\nRAW PTB210：%7 条\nRAW HMP3：%8 条\nRAW TFA1500：%9 条\nRAW TCP：%10 条\nRAW RD105：%11 条\nRAW AI-8288：%12 条\nRAW 记录总数：%13 条")
+            : QStringLiteral("会话：%1\n时长：%2\n外部设备记录：%3 行\n波形特征：%4 条\n波形帧数：%5 帧\n已记录条数\nRAW EPSILON：%6 条\nRAW PTB210：%7 条\nRAW HMP3：%8 条\nRAW TFA1500：%9 条\nRAW WAVE：%10 条\nRAW RD105：%11 条\nRAW AI-8288：%12 条\nRAW 记录总数：%13 条")
                   .arg(session)
                   .arg(elapsed)
                   .arg(displayStatus.telemetry_record_count)
                   .arg(displayStatus.waveform_feature_record_count)
-                  .arg(displayStatus.waveform_snapshot_record_count)
-                  .arg(displayStatus.raw_navigation_record_count)
-                  .arg(displayStatus.raw_pressure_record_count)
-                  .arg(displayStatus.raw_temperature_humidity_record_count)
-                  .arg(displayStatus.raw_distance_record_count)
-                  .arg(displayStatus.raw_waveform_record_count)
+                  .arg(displayStatus.waveform_snapshot_record_count + fpgaStatistics.value("waveform_frames").toString().toULongLong())
+                  .arg(displayStatus.raw_navigation_record_count + fpgaCount(fpgaStatistics,QStringLiteral("66")))
+                  .arg(displayStatus.raw_pressure_record_count + fpgaCount(fpgaStatistics,QStringLiteral("64")))
+                  .arg(displayStatus.raw_temperature_humidity_record_count + fpgaCount(fpgaStatistics,QStringLiteral("65")))
+                  .arg(displayStatus.raw_distance_record_count + fpgaCount(fpgaStatistics,QStringLiteral("69")))
+                  .arg(displayStatus.raw_waveform_record_count + fpgaCount(fpgaStatistics,QStringLiteral("waveform")))
                   .arg(displayStatus.raw_laser_temperature_controller_record_count)
-                  .arg(displayStatus.raw_system_temperature_controller_record_count)
+                  .arg(displayStatus.raw_system_temperature_controller_record_count + fpgaCount(fpgaStatistics,QStringLiteral("70")))
                   .arg(rawTotal);
-        const QString detailWithSchedule = appendScheduledLine(detail);
+        const QString detailWithSchedule = appendScheduledLine(appendFpgaCounts(detail,fpgaStatistics,fpgaTotal));
         if (state_->remote_recording_state_ == 1)
         {
             setRecordingTitleIcon(true);
@@ -870,17 +884,15 @@ void MainWindow::updateRecordingStatusLabel()
         formatElapsedCompact(recordingStatus.recordingElapsedMs),
         static_cast<qlonglong>(recordingStatus.sensorRows),
         static_cast<qlonglong>(recordingStatus.waveformFrames),
-        static_cast<qulonglong>(recordingStatus.rawNavigationRecords),
-        static_cast<qulonglong>(recordingStatus.rawPressureRecords),
-        static_cast<qulonglong>(recordingStatus.rawTemperatureHumidityRecords),
-        static_cast<qulonglong>(recordingStatus.rawDistanceRecords),
-        static_cast<qulonglong>(recordingStatus.rawWaveformRecords),
+        static_cast<qulonglong>(recordingStatus.rawNavigationRecords + fpgaCount(recordingStatus.fpgaStatistics,QStringLiteral("66"))),
+        static_cast<qulonglong>(recordingStatus.rawPressureRecords + fpgaCount(recordingStatus.fpgaStatistics,QStringLiteral("64"))),
+        static_cast<qulonglong>(recordingStatus.rawTemperatureHumidityRecords + fpgaCount(recordingStatus.fpgaStatistics,QStringLiteral("65"))),
+        static_cast<qulonglong>(recordingStatus.rawDistanceRecords + fpgaCount(recordingStatus.fpgaStatistics,QStringLiteral("69"))),
+        static_cast<qulonglong>(recordingStatus.rawWaveformRecords + fpgaCount(recordingStatus.fpgaStatistics,QStringLiteral("waveform"))),
         static_cast<qulonglong>(recordingStatus.rawLaserTemperatureControllerRecords),
-        static_cast<qulonglong>(recordingStatus.rawSystemTemperatureControllerRecords),
+        static_cast<qulonglong>(recordingStatus.rawSystemTemperatureControllerRecords + fpgaCount(recordingStatus.fpgaStatistics,QStringLiteral("70"))),
         rawTotal);
-    if (state_->fpga_connected_ || recordingStatus.rawFpgaRecords != 0)
-        detail += QString(state_->is_english_ ? "\nRecorded RAW FPGA: %1 records" : "\nRAW FPGA 归档记录：%1 条")
-                      .arg(static_cast<qulonglong>(recordingStatus.rawFpgaRecords));
+    detail=appendFpgaCounts(detail,recordingStatus.fpgaStatistics,recordingStatus.rawFpgaRecords);
     if (recordingStatus.sessionOpen)
     {
         if (recordingStatus.writeFailed)

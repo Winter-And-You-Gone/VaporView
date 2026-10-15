@@ -79,6 +79,7 @@ struct GroundRecordingStatus
     quint64 rawLaserTemperatureControllerRecords = 0;
     quint64 rawSystemTemperatureControllerRecords = 0;
     quint64 rawFpgaRecords = 0;
+    QJsonObject fpgaStatistics;
 };
 
 struct GroundRecordingStopSummary

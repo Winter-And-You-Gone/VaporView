@@ -1,6 +1,7 @@
 #include "ground/session/GroundRecordingService.h"
 #include "shared/session/FpgaSessionArchive.h"
 #include "shared/session/SessionManifest.h"
+#include "ground/session/SessionWaveformRepository.h"
 #include "FailingRecordingStorage.h"
 #include <QCoreApplication>
 #include <QTemporaryDir>
@@ -19,10 +20,79 @@ QByteArray frame(quint32 sequence){
         sequence,0x40,0x1100,{1,0,0,0},true,0x83,0xfedcba9876543210ULL,9);
     return QByteArray(reinterpret_cast<const char*>(bytes.data()),bytes.size());
 }
+QByteArray wave(quint16 source,quint32 cycle,quint16 fragment=0,quint32 flags=3)
+{
+    QByteArray payload;
+    auto put16=[&](quint16 v){payload.append(char(v));payload.append(char(v>>8));};
+    auto put32=[&](quint32 v){for(int i=0;i<4;++i)payload.append(char(v>>(i*8)));};
+    if(source==0x30) {
+        put16(2);put16(0);put32(10000);put32(4);put16(fragment);put16(2);
+        put32(fragment*2);put32(2);put32(8);put32(0);
+        put32(1);put32(10+fragment*20);put32(2);put32(20+fragment*20);
+    } else {
+        put16(1);put16(24);put32(1000000);put32(2);put32(0);put32(0);
+        put32(quint32(-5));put32(12);
+    }
+    const auto bytes=VaporView::FpgaVlp1::buildFrame(VaporView::FpgaVlp1::FrameType::Data,
+        cycle*2+fragment,source,source==0x30?0x1001:0x1000,
+        std::vector<std::uint8_t>(payload.begin(),payload.end()),true,flags,cycle*100,cycle);
+    return QByteArray(reinterpret_cast<const char*>(bytes.data()),bytes.size());
+}
+void waveformRecording()
+{
+    using namespace VaporView::Ground;
+    QTemporaryDir temp;
+    GroundRecordingService recorder;GroundRecordingOptions options;options.baseDirectory=temp.path();
+    check(recorder.start(options),"wave session start");
+    const QString directory=recorder.status().sessionDirectory;
+    quint64 host=1000;
+    auto record=[&](const QByteArray& bytes) {
+        check(recorder.recordFpgaFrame(++host,bytes),"decoded wave queued");
+        check(recorder.recordFpgaUsbBytes(++host,bytes.left(17)),"USB split queued");
+        check(recorder.recordFpgaUsbBytes(++host,bytes.mid(17)),"USB tail queued");
+    };
+    record(frame(1));record(wave(0x20,1));record(wave(0x30,1,1));record(wave(0x30,1,0));
+    record(wave(0x30,2,0));
+    check(recorder.pause(),"wave pause drains");
+    check(recorder.start(options),"wave resume");
+    record(wave(0x30,2,1)); // Cannot stitch a scan across the pause boundary.
+    record(wave(0x30,3,0,0x28));record(wave(0x30,3,1,0x28)); // Partial/overflow.
+    record(wave(0x30,4,0));record(wave(0x30,4,1));
+    check(!recorder.stop().writeFailed,"wave stop");
+    const auto status=recorder.status();
+    check(status.waveformFrames==2,"counts only two complete DLIA cycles, not fragments or duplicate USB/IN");
+    const auto counts=status.fpgaStatistics.value("data_records").toObject();
+    check(counts.value("64").toString()=="1" && counts.value("waveform").toString()=="9","per-device validated data counts");
+    auto metadata=SessionLoader::loadMetadata(directory);
+    check(metadata.success && metadata.metadata.waveformFrames==2,"new manifest waveform count");
+    metadata.metadata.waveformFrames=0; // Older recordings had the same data but a zero manifest count.
+    const auto catalog=SessionWaveformRepository::loadCatalog(metadata.metadata);
+    check(catalog.success && catalog.catalog.frameCount==2 && catalog.catalog.sourceFileCount()==1,"old FPGA archive is a waveform source");
+    check(catalog.catalog.fpgaSource==0x30 && catalog.catalog.pointsPerFrame==4,"DLIA channel selected without mixing RAW");
+    for(quint64 i=0;i<2;++i) {
+        const auto loaded=SessionWaveformRepository::readFrame(catalog.catalog,i);
+        check(loaded.success && loaded.error.isEmpty() && loaded.samples==QVector<float>({10,20,30,40}),"fragmented H2 replay in point order");
+        check(loaded.timestampUs==catalog.catalog.fpgaTimestampsUs.at(i),"wave host timestamp retained");
+    }
+    const auto peaks=SessionWaveformRepository::calculatePeakSeries(catalog.catalog,0,-1);
+    check(peaks.success && peaks.peakValues==QVector<float>({40,40}),"FPGA peak series");
+    const auto cancel=std::make_shared<std::atomic_bool>(true);
+    check(SessionWaveformRepository::calculatePeakSeries(catalog.catalog,0,-1,cancel).cancelled,"FPGA peak calculation cancellation");
+
+    // Frame-only archives and RAW-only capture remain valid fallback sources.
+    check(recorder.start(options),"RAW-only start");
+    check(recorder.recordFpgaFrame(++host,wave(0x20,9)),"RAW-only record");
+    check(!recorder.stop().writeFailed,"RAW-only stop");
+    metadata=SessionLoader::loadMetadata(recorder.status().sessionDirectory);
+    const auto rawCatalog=SessionWaveformRepository::loadCatalog(metadata.metadata);
+    check(rawCatalog.success && rawCatalog.catalog.fpgaSource==0x20 && rawCatalog.catalog.frameCount==1,"RAW fallback");
+    check(SessionWaveformRepository::readFrame(rawCatalog.catalog,0).samples==QVector<float>({-5,12}),"signed RAW samples");
+}
 }
 int main(int argc,char **argv)
 {
     QCoreApplication app(argc,argv);
+    waveformRecording();
     QTemporaryDir temp; check(temp.isValid(),"temp directory");
     GroundRecordingOptions options; options.baseDirectory=temp.path();
     GroundRecordingService recorder;

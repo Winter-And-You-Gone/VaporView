@@ -4,6 +4,7 @@
 
 #include "ground/session/SessionCsv.h"
 #include "shared/session/UnifiedRawDat.h"
+#include "shared/session/FpgaSessionArchive.h"
 
 #include <QByteArray>
 #include <QCryptographicHash>
@@ -28,6 +29,17 @@
 
 namespace
 {
+
+QVector<float> fpgaSamples(const VaporView::FpgaWave::CompletedStream& wave)
+{
+    QVector<float> samples;
+    samples.reserve(wave.totalPoints);
+    for (qint32 value:wave.signed32Samples) samples.push_back(float(value));
+    for (quint32 value:wave.unsigned32Samples) samples.push_back(float(value));
+    for (const auto& point:wave.dliaPoints)
+        samples.push_back(float(point.hasHarmonics?double(point.h2):std::hypot(double(point.i2),double(point.q2))));
+    return samples;
+}
 
 using VaporView::Ground::SessionCsv::csvValueAt;
 using VaporView::Ground::SessionCsv::findHeaderIndex;
@@ -494,11 +506,12 @@ namespace VaporView::Ground
 
 bool SessionWaveformCatalog::isEmpty() const
 {
-    return rawTcpFrames.isEmpty() && indexedFrames.isEmpty() && legacySegments.isEmpty();
+    return fpgaTimestampsUs.isEmpty() && rawTcpFrames.isEmpty() && indexedFrames.isEmpty() && legacySegments.isEmpty();
 }
 
 int SessionWaveformCatalog::sourceFileCount() const
 {
+    if (!fpgaTimestampsUs.isEmpty()) return 1;
     if (!rawTcpFrames.isEmpty())
     {
         return 1;
@@ -508,6 +521,8 @@ int SessionWaveformCatalog::sourceFileCount() const
 
 QString SessionWaveformCatalog::sourceFilename(quint64 frameIndex) const
 {
+    if (!fpgaTimestampsUs.isEmpty())
+        return frameIndex<quint64(fpgaTimestampsUs.size())?waveformRawFilename:QString();
     if (!rawTcpFrames.isEmpty())
     {
         return frameIndex < static_cast<quint64>(rawTcpFrames.size())
@@ -539,6 +554,30 @@ SessionWaveformCatalogResult SessionWaveformRepository::loadCatalog(
     result.catalog.waveformPeaksCsvFilename = metadata.waveformPeaksCsvFilename;
     result.catalog.waveformRawFilename = metadata.waveformRawFilename;
     result.catalog.pointsPerFrame = metadata.waveformPointsPerFrame;
+
+    const QString fpgaPath=VaporView::Session::FpgaSessionArchive::rawPath(metadata.sessionDirectory);
+    if (QFileInfo::exists(fpgaPath)) {
+        QMap<quint16,QVector<quint64>> timestamps;
+        QMap<quint16,int> points;
+        if (!VaporView::Session::FpgaSessionArchive::waveforms(metadata.sessionDirectory,
+            [&](quint64 host,const auto& wave) {
+                timestamps[wave.source].push_back(host);points[wave.source]=int(wave.totalPoints);
+                return true;
+            },&result.error)) return result;
+        // Match the home monitor's H2 stream; fall back to ADC when no DLIA
+        // cycles were captured. Never mix channels or incomplete cycles.
+        for (quint16 source:{0x30,0x31,0x20,0x21}) {
+            if (timestamps.value(source).isEmpty()) continue;
+            result.catalog.fpgaSource=source;
+            result.catalog.fpgaTimestampsUs=timestamps.take(source);
+            result.catalog.pointsPerFrame=points.value(source);
+            result.catalog.waveformRawFilename=fpgaPath;
+            result.catalog.frameCount=quint64(result.catalog.fpgaTimestampsUs.size());
+            result.success=true;
+            if (progress) progress(result.catalog.frameCount,result.catalog.frameCount);
+            return result;
+        }
+    }
 
     const UnifiedRawCatalogResult rawResult = loadUnifiedRawCatalog(
         metadata.waveformRawFilename,
@@ -598,6 +637,19 @@ SessionWaveformFrameResult SessionWaveformRepository::readFrame(
     if (frameIndex >= catalog.frameCount)
     {
         result.error = QStringLiteral("Waveform frame index is out of range");
+        return result;
+    }
+
+    if (!catalog.fpgaTimestampsUs.isEmpty()) {
+        quint64 index=0;
+        const bool ok=VaporView::Session::FpgaSessionArchive::waveforms(catalog.sessionDirectory,
+            [&](quint64 host,const auto& wave) {
+                if (wave.source!=catalog.fpgaSource || index++!=frameIndex) return true;
+                result.samples=fpgaSamples(wave);result.timestampUs=host;
+                result.sourceFilename=catalog.waveformRawFilename;result.success=true;
+                return false;
+            },&result.error);
+        if (ok && !result.success) result.error=QStringLiteral("FPGA waveform cycle is missing");
         return result;
     }
 
@@ -845,6 +897,19 @@ SessionWaveformPeakSeriesResult SessionWaveformRepository::calculatePeakSeries(
     result.success = true;
     if (catalog.isEmpty())
     {
+        return result;
+    }
+
+    if (!catalog.fpgaTimestampsUs.isEmpty()) {
+        result.success=VaporView::Session::FpgaSessionArchive::waveforms(catalog.sessionDirectory,
+            [&](quint64 host,const auto& wave) {
+                if (wave.source!=catalog.fpgaSource) return true;
+                result.timestampsUs.push_back(host);
+                result.peakValues.push_back(peakValue(fpgaSamples(wave),searchStartIndex,searchEndIndex));
+                if (progress) progress(quint64(result.timestampsUs.size()),catalog.frameCount);
+                return true;
+            },&result.error,[&] {return isCancelled(cancelFlag);});
+        result.cancelled=isCancelled(cancelFlag);
         return result;
     }
 
