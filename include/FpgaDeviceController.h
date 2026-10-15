@@ -4,6 +4,7 @@
 #include "FpgaDeviceSession.h"
 #include "FpgaSensorAdapter.h"
 #include "LogRecord.h"
+#include "EpsilonRawSatellite.h"
 
 #include <QMap>
 #include <QJsonObject>
@@ -35,6 +36,7 @@ public slots:
     void applyConfiguration(const FpgaControlConfig& config, const QString& section = QStringLiteral("all"));
     void setConfiguration(const FpgaControlConfig& config);
     void refresh();
+    void executeOperation(const QJsonObject& request);
     void setAcquisition(bool enable);
     void setWaveform(int channel, bool enable);
     void setDac(int channel, bool enable);
@@ -51,7 +53,9 @@ signals:
     void transportConnectionChanged(bool connected);
     void connectionChanged(bool ready, bool busy, const QString& detail);
     void hardwareValuesChanged(const QMap<quint32, quint32>& values);
-    void sensorConfigurationApplied(quint16 source, const QMap<quint32, quint32>& values);
+    void sensorConfigurationApplied(quint16 source, const QMap<quint32, quint32>& values, const QJsonObject& parameters);
+    void managementUpdated(const QJsonObject& state);
+    void observationEpochReceived(const QByteArray& encodedEpoch);
     void measurementUpdated(const VaporView::FpgaSensor::AdaptedMeasurements& measurements);
     void waveformUpdated(const VaporView::FpgaWave::CompletedStream& stream);
     void logRecordGenerated(const VaporView::LogRecord& record);
@@ -62,7 +66,7 @@ signals:
     void replayFinished(bool success, const QString& detail);
 
 private:
-    enum class Kind { Read, Write, Commit, Ping, Capabilities, Sensor, Wait, Delay, PrepareSensorConfig, FinishSensorConfig, CheckVersions, RecoverConnection, FinishRawStop, CheckTemperature, ConfirmConnection };
+    enum class Kind { Management, Read, Write, Commit, Ping, Capabilities, Sensor, Wait, Delay, PrepareSensorConfig, FinishSensorConfig, CheckVersions, RecoverConnection, FinishRawStop, CheckTemperature, ConfirmConnection, FinishWatchdog };
     struct Step {
         Kind kind = Kind::Read;
         quint32 address = 0;
@@ -103,6 +107,8 @@ private:
     FpgaDeviceSession *session_ = nullptr;
     FpgaControlConfig configuration_;
     FpgaSensor::FpgaSensorAdapter adapter_;
+    Ppk::RawSatelliteAssembler observations_;
+    QJsonObject management_, pendingSensorParameters_;
     std::deque<Step> steps_;
     std::optional<Step> current_;
     QMap<quint32, quint32> registers_;
@@ -112,11 +118,12 @@ private:
     QSet<quint16> dirtyReadings_, expiredReadings_;
     QMap<quint16, qint64> pendingConnections_;
     QSet<quint16> operationConnections_;
-    QTimer presentationTimer_, statusTimer_;
+    QTimer presentationTimer_, statusTimer_, watchdogTimer_;
     QElapsedTimer waitTimer_;
     quint32 pendingSequence_ = 0;
     quint64 operationGeneration_ = 0;
     quint32 temperatureBaseline_ = 0;
+    quint32 hmpCompensationBaseline_ = 0;
     qint16 temperatureTarget_ = 0;
     bool injected_ = false, ready_ = false, busy_ = false, replaying_ = false;
     bool drainWaveforms_ = false, backgroundRefresh_ = false, recoveringConnection_ = false, connectionRecoveryFailed_ = false;

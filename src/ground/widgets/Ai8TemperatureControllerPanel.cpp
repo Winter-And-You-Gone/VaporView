@@ -444,6 +444,9 @@ QWidget *Ai8TemperatureControllerPanel::createChannelPage()
             [this]() {
                 updateMeasuredValue();
                 updateAlarmStatusDisplay();
+                if(auto *sv=findChild<QLineEdit*>(QStringLiteral("ai8DisplayedSetpointEdit"));sv && latest_live_data_.detailedChannel)
+                    sv->setText(latest_live_data_.detailedChannel==findChild<QSpinBox*>(QStringLiteral("ai8ChannelSpin"))->value()
+                        ?QString::number(latest_live_data_.displayedSetpointC,'f',1)+QStringLiteral(" °C"):QStringLiteral("---"));
                 updateTemperaturePlot();
                 emit outputStatusChanged();
             });
@@ -1134,6 +1137,7 @@ void Ai8TemperatureControllerPanel::setBackendConnected(bool connected, const QS
         operation_status_.clear();
     }
     refreshPageCommandControls();
+    if(!connected)if(auto *sv=findChild<QLineEdit*>(QStringLiteral("ai8DisplayedSetpointEdit")))sv->clear();
     updateStatusText();
     emit outputStatusChanged();
 }
@@ -1201,7 +1205,7 @@ QString Ai8TemperatureControllerPanel::currentOutputStatusText() const
         ? QStringLiteral("Output: --")
         : QStringLiteral("输出：--");
     auto *channelSpin = findChild<QSpinBox *>(QStringLiteral("ai8ChannelSpin"));
-    if (!channelSpin || !backend_connected_ || !latest_live_data_.controlStatesValid)
+    if (!channelSpin || !backend_connected_ || (!latest_live_data_.controlStatesValid && latest_live_data_.detailedChannel!=channelSpin->value()))
     {
         return unknownText;
     }
@@ -1209,7 +1213,9 @@ QString Ai8TemperatureControllerPanel::currentOutputStatusText() const
     const int channel = std::clamp(channelSpin->value(),
                                    1,
                                    Ai8TemperatureControllerProtocol::kChannelCount);
-    const auto state = latest_live_data_.controlStates[static_cast<size_t>(channel - 1)];
+    const auto state = latest_live_data_.detailedChannel==channel
+        ? Ai8TemperatureControllerProtocol::decodeChannelControlState(quint16(latest_live_data_.controlRaw)<<8,1)
+        : latest_live_data_.controlStates[static_cast<size_t>(channel - 1)];
     const QString stateText = Ai8TemperatureControllerProtocol::channelControlStateName(state, english_);
     return english_
         ? QStringLiteral("CH%1: %2").arg(channel).arg(stateText)
@@ -1464,6 +1470,7 @@ void Ai8TemperatureControllerPanel::applyPageData(
 void Ai8TemperatureControllerPanel::applyLiveData(
     const Ai8TemperatureControllerProtocol::LiveData& liveData)
 {
+    const bool hadDetails=latest_live_data_.detailedChannel!=0;
     latest_live_data_ = liveData;
     if (liveData.valid)
     {
@@ -1489,6 +1496,16 @@ void Ai8TemperatureControllerPanel::applyLiveData(
         }
     }
     updateMeasuredValue();
+    if(hadDetails && !liveData.detailedChannel) {
+        if(auto *sv=findChild<QLineEdit*>(QStringLiteral("ai8DisplayedSetpointEdit")))sv->clear();
+        if(!liveData.alarmStatusValid)
+            if(auto *alarm=findChild<QLineEdit*>(QStringLiteral("ai8ChannelAlarmStatusEdit")))alarm->setText(QStringLiteral("---"));
+    }
+    if(auto *ch=findChild<QSpinBox*>(QStringLiteral("ai8ChannelSpin"));ch && liveData.detailedChannel==ch->value()) {
+        if(auto *sp=findChild<QDoubleSpinBox*>(QStringLiteral("ai8SetpointSpin"));sp && !sp->hasFocus() && !sp->findChild<QLineEdit*>()->hasFocus()) {const QSignalBlocker block(sp);sp->setValue(liveData.setpointC);}
+        if(auto *sv=findChild<QLineEdit*>(QStringLiteral("ai8DisplayedSetpointEdit")))sv->setText(QString::number(liveData.displayedSetpointC,'f',1)+QStringLiteral(" °C"));
+        if(auto *op=findChild<QDoubleSpinBox*>(QStringLiteral("ai8ManualOutputSpin"));op && !op->hasFocus() && !op->findChild<QLineEdit*>()->hasFocus()) {const QSignalBlocker block(op);op->setValue(Ai8TemperatureControllerProtocol::decodeManualOutput(liveData.outputRaw));}
+    }
     updateAlarmStatusDisplay();
     updateTemperaturePlot();
     emit outputStatusChanged();
@@ -1504,7 +1521,7 @@ void Ai8TemperatureControllerPanel::updateMeasuredValue()
     }
     const int index = std::clamp(channelSpin->value(), 1,
                                  Ai8TemperatureControllerProtocol::kChannelCount) - 1;
-    edit->setText(latest_live_data_.valid
+    edit->setText(latest_live_data_.valid && std::isfinite(latest_live_data_.measuredC[static_cast<size_t>(index)])
         ? QString::number(latest_live_data_.measuredC[static_cast<size_t>(index)], 'f', 1) +
               QStringLiteral(" °C")
         : QStringLiteral("---"));
@@ -1518,8 +1535,12 @@ void Ai8TemperatureControllerPanel::updateAlarmStatusDisplay()
     {
         return;
     }
+    if(latest_live_data_.detailedChannel==channelSpin->value()) {
+        edit->setText(decimalHexText(latest_live_data_.alarmRaw,2));return;
+    }
     if (!latest_live_data_.alarmStatusValid)
     {
+        if(latest_live_data_.detailedChannel)edit->setText(QStringLiteral("---"));
         return;
     }
     const int channel = std::clamp(channelSpin->value(),

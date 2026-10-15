@@ -20,6 +20,7 @@ public:
     static bool validateOperation(const QJsonObject& operation, QString *error = nullptr);
 signals:
     void statusChanged(QJsonObject status);
+    void observationEpochReceived(const QByteArray& encodedEpoch);
     void measurementUpdated(const VaporView::FpgaSensor::AdaptedMeasurements& measurement);
     void waveformUpdated(const VaporView::FpgaWave::CompletedStream& waveform);
     void rawFrame(quint64 time, QByteArray bytes);

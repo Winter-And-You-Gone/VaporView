@@ -346,6 +346,14 @@ quint32 FpgaDeviceSession::setStreamMask(quint64 enableMask, quint64 rawEnableMa
                                          kSetStreamMask, toBytes(payload)));
 }
 
+quint32 FpgaDeviceSession::managementAction(quint16 message, quint16 source, const QVector<quint32>& words)
+{
+    if(message<6 || message>13 || message==10 || message==11)return 0;
+    QByteArray payload;for(const auto word:words)appendU32(payload,word);
+    const quint32 sequence=nextSequence_++;
+    return enqueue(source,message,FpgaVlp1::buildFrame(FpgaVlp1::FrameType::Command,sequence,source,message,toBytes(payload)));
+}
+
 quint32 FpgaDeviceSession::sensorAction(quint32 action, quint32 value, quint16 source)
 {
     QByteArray payload;
@@ -447,7 +455,7 @@ void FpgaDeviceSession::processFrame(const FpgaVlp1::Frame& frame)
             data.valid = reading.validity.measurement;
             emit ptbDataUpdated(data);
         }
-        else if (reading.kind == FpgaSensor::SensorKind::Sht45 &&
+        else if (reading.kind == FpgaSensor::SensorKind::Hmp &&
                  reading.temperatureC && reading.humidityPct)
         {
             HmpData data;

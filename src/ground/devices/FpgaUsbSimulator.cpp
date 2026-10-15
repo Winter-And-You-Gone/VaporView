@@ -1,4 +1,5 @@
 #include "FpgaUsbSimulator.h"
+#include "FpgaAdvancedParameters.h"
 #include "FpgaControlConfig.h"
 #include "FpgaVlp1.h"
 
@@ -49,8 +50,9 @@ bool readable(quint32 a)
     if (base == 0x6300) return offset <= 0x40;
     if (base == 0x6500) return offset <= 0x5c;
     if (base == 0x6600) return offset <= 0x64;
-    if (base == 0x6100 || base == 0x6700) return offset <= 12;
-    if (base == 0x7000) return offset <= 12 || offset == 0x14 ||
+    if (base == 0x6100) return offset <= 0x48;
+    if (base == 0x6700) return offset <= 0x34;
+    if (base == 0x7000) return offset <= 12 || offset == 0x10 || offset == 0x14 || offset == 0x18 || offset == 0x34 ||
         (offset >= 0x1c && offset <= 0x30) || (offset >= 0x38 && offset <= 0x44);
     return base == 0x8000 && offset <= 0x3c;
 }
@@ -113,12 +115,15 @@ private:
             {0x5000,0x00300101},{0x5100,0x00310101},{0x5024,0x00040101},{0x5124,0x00040101},
             {0x6600,0x00460200},{0x0004,1},{0x7004,1},{0x8004,1},{0x002c,0xffffffff},{0x0030,0xffffffff},
             {0x6610,19200},{0x6614,1},{0x661c,1},{0x662c,1000},{0x6660,200},{0x6664,1},{0x6310,0x77}};
+        for(const auto& spec:FpgaRemote::sensorParameters())regs_[spec.address]=spec.fallback;
+        regs_[0x6714]=1000;regs_[0x6718]=255;regs_[0x671c]=505;regs_[0x6708]=2;
+        regs_[0x6100]=0x00410101;regs_[0x6110]=19200;regs_[0x6114]=240;regs_[0x611c]=1000;regs_[0x6120]=3;
         regs_[0x6010] = 9600; regs_[0x6018] = 1000; regs_[0x6514] = 2;
         regs_[0x6210] = 921600; regs_[0x6510] = 500000;
         regs_[0x6314] = regs_[0x6414] = 1000;
         target_ = 250; measured_ = 235;
         const FpgaControlConfig defaults;
-        for (quint32 b : {0x6000u,0x6200u,0x6300u,0x6400u,0x6500u,0x6600u}) {
+        for (quint32 b : {0x6000u,0x6100u,0x6200u,0x6300u,0x6400u,0x6500u,0x6600u}) {
             regs_[b + 4] = 1; regs_[b + 8] = 1;
         }
         for (int ch = 0; ch < 2; ++ch) {
@@ -151,6 +156,7 @@ private:
         if (address >= 0x2000 && address <= 0x5104 && (address & 255) == 4) setControl(base, value);
         else if (address >= 0x6000 && address <= 0x660c && (address & 255) == 12) regs_[address] &= ~value;
         else regs_[address] = value;
+        if(address==0x103c)regs_[0x1040]=1;
     }
     void commit(quint16 source)
     {
@@ -209,7 +215,7 @@ private:
                 const quint32 address = word(p,0); const auto count = qFromLittleEndian<quint16>(p.constData()+4);
                 if (!count || count > 1000 || p.size() != (message == 2 ? 8 : 8 + count * 4)) status = 2;
                 for (int i = 0; !status && i < count; ++i)
-                    if (!readable(address + i * 4) || address + quint64(i) * 4 > 0xffff) status = 5;
+                    if ((!readable(address + i * 4) && !(message==3 && address+i*4==0x44)) || address + quint64(i) * 4 > 0xffff) status = 5;
                 if (!status && message == 2) {
                     put32(result,address); put16(result,count); put16(result,0);
                     for (int i = 0; i < count; ++i) put32(result,regs_.value(address + i * 4));
@@ -244,12 +250,25 @@ private:
                     (quint64(1)<<(0x20+ch)) | (quint64(1)<<(0x30+ch))))
                     for(quint32 base:{0x2000u,0x4000u,0x5000u})setControl(base+ch*0x100,message==6);
             }
+        } else if(message==8 || message==9) {
+            if(p.size()!=8)status=2;
+            else {const auto source=f.header.source;const quint32 base=source==2?0x1000:source<0x20?0x2000+(source-0x10)*0x100:source<0x30?0x4000+(source-0x20)*0x100:source<0x40?0x5000+(source-0x30)*0x100:0x6000+(source-0x40)*0x100;regs_[base+12]=0;if(message==8)regs_[base+4]=0;}
+        } else if(message==12 || message==13) {
+            if(p.size()!=8)status=2;
+            else {const auto action=word(p,0),value=word(p,4);
+                if(message==13) {if(action==1)regs_[0x1004]=value;else if(action==2){regs_[0x1004]=1;regs_[0x100c]=0;}else if(action==3)regs_[0x1024]=value;else if(action==4)regs_[0x1028]=value;else if(action==5)regs_[0x100c]&=~value;else status=7;}
+                else {if(action==4)regs_[0x6704]=value;else if(action==3)regs_[0x6724]=0;else if(action==2)regs_[0x6728]=0;else if(action==1){regs_[0x6724]+=value;++regs_[0x6734];QByteArray event;for(quint32 w:{1u,regs_[0x6734],regs_[0x6724],0u,0u,0u,0u,0u})put32(event,w);enqueue(FpgaVlp1::FrameType::Event,++sequence_,0x47,0x1300,event,quint64(clock_.elapsed())*100000,3);}else status=7;}
+            }
         } else if (message == 0xb) {
             if (p.size() != 8 || f.header.source < 0x40 || f.header.source > 0x46) status = 2;
             else if (word(p,0) == 1 && word(p,4) <= 1) {
                 const auto base = 0x6000 + (f.header.source - 0x40) * 0x100;
                 regs_[base + 4] = regs_[base + 8] = word(p,4);
-            } else if (word(p,0) == 17 && f.header.source == 0x46 && (regs_[0x6604] & 1)) {
+            } else if(word(p,0)==16 && f.header.source==0x41) {regs_[0x6134]=regs_[0x6140]=word(p,4);++regs_[0x6148];}
+            else if(word(p,0)==3 || word(p,0)==4 || word(p,0)==5) {const auto base=0x6000+(f.header.source-0x40)*0x100;if(word(p,0)==5)regs_[base+12]&=~word(p,4);else if(word(p,0)==4){regs_[base+4]=0;regs_[base+12]=0;}}
+            else if(word(p,0)==32 && f.header.source==0x45)regs_[0x6514]=word(p,4);
+            else if(word(p,0)==33 && f.header.source==0x45)regs_[0x6518]=word(p,4);
+            else if (word(p,0) == 17 && f.header.source == 0x46 && (regs_[0x6604] & 1)) {
                 const qint32 microC = qint32(word(p,4));
                 if (microC % 100000 || microC < -999000000 || microC > 2147400000) status = 14;
                 else {
@@ -312,7 +331,7 @@ private:
         const quint32 offset = ch*0x100;
         const auto rate = regs_.value((raw ? 0x4014 : 0x504c)+offset);
         const auto total = quint32(qBound<quint64>(32,quint64(rate)*1000/qMax(1u,regs_[0x2010+offset]),16384));
-        const quint16 format = raw ? 0 : regs_[0x5020+offset] == 1 ? 1 : regs_[0x5020+offset] == 2 ? 0 : 2;
+        const quint16 format = raw ? 0 : 0;
         const auto width = raw ? 4u : format == 0 ? 8u : format == 1 ? 16u : 24u;
         const auto perFragment = 8160/width;
         const auto fragments = (total+perFragment-1)/perFragment;
@@ -355,6 +374,12 @@ private:
         if(enabled(0x44)) {QByteArray p;put16(p,1);put16(p,3);tlv(p,0x10,7,scalar(quint32(23500+std::sin(t)*800)));
             tlv(p,0x11,3,scalar(quint32(47000+std::cos(t)*2000)));tlv(p,1,3,scalar(0));data(0x44,0x1100,p,ticks);}
         if(enabled(0x45)) {QByteArray p;put16(p,1);put16(p,1);tlv(p,0x13,3,scalar(quint32(120000+std::sin(t)*2400)));data(0x45,0x1100,p,ticks);}
+        if(enabled(0x41)) {
+            QByteArray p;put16(p,1);put16(p,3);
+            QByteArray value(4,0);at<float>(value,0,float(45+std::sin(t)));tlv(p,0x100,9,value);
+            at<float>(value,0,float(23+std::cos(t)));tlv(p,0x101,9,value);tlv(p,2,3,scalar(0));
+            data(0x41,0x1100,p,ticks);
+        }
         if(enabled(0x46)) {
             measured_ += (target_-measured_)*0.02;
             QByteArray p;put16(p,2);put16(p,13);

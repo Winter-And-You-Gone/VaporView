@@ -23,14 +23,17 @@ SkyFpgaBackend::SkyFpgaBackend(std::unique_ptr<Ground::Devices::FpgaUsbTransport
     connect(controller_, &Ground::Devices::FpgaDeviceController::connectionChanged, this, [this](bool ready, bool busy, const QString& detail) {
         status_["ready"] = ready; status_["busy"] = busy; status_["detail"] = detail; emit statusChanged(status_);
     });
+    connect(controller_,&Ground::Devices::FpgaDeviceController::managementUpdated,this,[this](const QJsonObject& state) {
+        status_["management"]=state;emit statusChanged(status_);
+    });
     connect(controller_, &Ground::Devices::FpgaDeviceController::hardwareValuesChanged, this, [this](const QMap<quint32, quint32>& values) {
         QJsonObject registers; for (auto i = values.begin(); i != values.end(); ++i) registers[QString::number(i.key())] = double(i.value());
         status_["registers"] = registers; emit statusChanged(status_);
     });
-    connect(controller_, &Ground::Devices::FpgaDeviceController::sensorConfigurationApplied, this, [this](quint16 source,const QMap<quint32,quint32>& values) {
-        if(source!=0x46)return;
+    connect(controller_, &Ground::Devices::FpgaDeviceController::sensorConfigurationApplied, this, [this](quint16 source,const QMap<quint32,quint32>& values,const QJsonObject& parameters) {
         auto configuration=FpgaControlConfig::fromJson(status_.value("configuration").toObject());
-        configuration.ai8.pollIntervalMs=values.value(0x662c);status_["configuration"]=configuration.toJson();
+        if(source==0x46)configuration.ai8.pollIntervalMs=values.value(0x662c);
+        for(auto it=parameters.begin();it!=parameters.end();++it)configuration.sensorParameters[source][it.key()]=it.value();status_["configuration"]=configuration.toJson();
     });
     connect(controller_, &Ground::Devices::FpgaDeviceController::measurementUpdated, this, [this](const FpgaSensor::AdaptedMeasurements& m) {
         auto rates = status_.value("sensor_rates_hz").toObject();
@@ -61,6 +64,7 @@ SkyFpgaBackend::SkyFpgaBackend(std::unique_ptr<Ground::Devices::FpgaUsbTransport
             QMetaObject::invokeMethod(this,[this,preview=std::move(preview)] { emit waveformUpdated(preview); },Qt::QueuedConnection);
         });
     // Raw capture remains on the USB worker; no unbounded queued copies of full USB traffic.
+    connect(controller_, &Ground::Devices::FpgaDeviceController::observationEpochReceived, this, &SkyFpgaBackend::observationEpochReceived);
     connect(controller_, &Ground::Devices::FpgaDeviceController::rawFrame, this, &SkyFpgaBackend::rawFrame, Qt::DirectConnection);
     connect(controller_, &Ground::Devices::FpgaDeviceController::rawCommand, this, &SkyFpgaBackend::rawCommand, Qt::DirectConnection);
     connect(controller_, &Ground::Devices::FpgaDeviceController::rawUsbBytes, this, &SkyFpgaBackend::rawUsbBytes, Qt::DirectConnection);
@@ -170,6 +174,7 @@ void SkyFpgaBackend::submit(const QJsonObject& operation, Completion completion)
         else if (op == "sensor_config") controller->configureSensor(operation);
         else if (op == "raw") controller->setRawEnabled(operation.value("enabled").toBool());
         else if (op == "temperature") controller->setTemperature(operation.value("celsius").toDouble());
+        else controller->executeOperation(operation);
         if (!controller->busy()) { QObject::disconnect(*observer); finish(CommandErrorCode::ConfigApplyFailed, QStringLiteral("Operation was not started; verify FPGA state.")); }
     }, Qt::QueuedConnection);
 }

@@ -57,8 +57,8 @@ void protocol()
             }
         }
     };
-    wait([&]{collect();return sensors.size()==6&&waves.contains(0x30)&&waves.contains(0x31)&&bmp&&navigation;},
-         "six sensors, calibrated BMP and valid EPSILON navigation traverse the actual decoder");
+    wait([&]{collect();return sensors.size()==7&&waves.contains(0x30)&&waves.contains(0x31)&&bmp&&navigation;},
+         "seven sensors, calibrated BMP and valid EPSILON navigation traverse the actual decoder");
     // Invalid register access returns an error instead of silently accepting it.
     const auto request=bytes(FpgaVlp1::buildReadReg(777,0xdeac,1));
     transport->write(request.left(7));transport->write(request.mid(7));bool rejected=false;
@@ -84,7 +84,7 @@ void controls()
     controller.connectDevice("simulation://fpga","simulator");
     const auto idle=[&]{check(failure.isEmpty(),qPrintable(failure));return controller.ready()&&!controller.busy();};
     wait(idle,"real controller handshake and connection recovery complete");
-    wait([&]{return sensors.size()==6&&waves.size()==2;},"controller receives six sensors and both DLIA channels");
+    wait([&]{return sensors.size()==7&&waves.size()==2;},"controller receives six sensors and both DLIA channels");
     controller.setTemperature(-2.5);wait(idle,"signed AI8 setpoint transaction completes");
     check(qint16(controller.hardwareValues().value(0x6654))==-25&&controller.hardwareValues().value(0x6648)==1,
           "AI8 setpoint confirmation and readback are observable");
@@ -137,7 +137,7 @@ void processTest()
     QObject::connect(&remote,&RemoteSkyController::basicTelemetryUpdated,[&](const auto& b){basic|=(b.validity_flags&BasicHasPressure)&&std::isfinite(b.pressure_hpa);});
     QObject::connect(&remote,&RemoteSkyController::deviceOperationResponseReceived,[&](const auto& response){replies.insert(response.request_id,response);});
     events(300);check(remote.openTcp("127.0.0.1",port),"Ground controller connects to the real simulator process");
-    wait([&]{check(child.process.state()!=QProcess::NotRunning,"simulator stays running");return status.value("ready").toBool()&&!status.value("busy").toBool()&&sensors.size()==6&&waves.size()==2&&basic;},
+    wait([&]{check(child.process.state()!=QProcess::NotRunning,"simulator stays running");return status.value("ready").toBool()&&!status.value("busy").toBool()&&sensors.size()==7&&waves.size()==2&&basic;},
          "normal Ground remote stream receives FPGA status, all sensors, waveform previews and physical telemetry");
     check(status.value("simulation").toBool(),"normal status explicitly identifies simulated measurements");
     auto operation=[&](const QJsonObject& request) {
@@ -162,7 +162,7 @@ void processTest()
         if(frame.header.frameType==FpgaVlp1::FrameType::Data)archivedSources.insert(frame.header.source);
         return true;
     },&archiveError),qPrintable(archiveError));
-    check(archivedSources.size()==10,"saved session replays all six sensor sources and four wave sources");
+    check(archivedSources.size()==11&&archivedSources.contains(0x41),"saved session replays seven sensor sources including HMP and four wave sources");
     check(Session::FpgaSessionArchive::exportTo(session,directory.filePath("simulated.bin"),
         Session::FpgaSessionArchive::ExportFormat::Bin,&archiveError),qPrintable(archiveError));
     check(QFileInfo(directory.filePath("simulated.bin")).size()>0,"existing BIN export consumes the generated USB archive");

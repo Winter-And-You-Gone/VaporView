@@ -1,4 +1,5 @@
 #include "FpgaDeviceController.h"
+#include "ppk/ObservationStore.h"
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QPointer>
@@ -37,8 +38,9 @@ bool readable(quint32 address){
     if(base==0x6300)return offset<=0x40;
     if(base==0x6500)return offset<=0x5c;
     if(base==0x6600)return offset<=0x64;
-    if(base==0x6100||base==0x6700)return offset<=12;
-    if(base==0x7000)return offset<=12||offset==0x14||(offset>=0x1c&&offset<=0x30)||(offset>=0x38&&offset<=0x44);
+    if(base==0x6100)return offset<=0x48;
+    if(base==0x6700)return offset<=0x34;
+    if(base==0x7000)return offset<=12||offset==0x10||offset==0x14||offset==0x18||offset==0x34||(offset>=0x1c&&offset<=0x30)||(offset>=0x38&&offset<=0x44);
     if(base==0x8000)return offset<=0x3c;
     return false;
 }
@@ -108,6 +110,7 @@ public:
                 if(base==0x3000||base==0x3100)regs[base+0x3c]=16666666;
             } else if(command.message==0xb){
                 if(command.address==17&&confirmTemperature){++regs[0x6648];regs[0x664c]=0x10000;const auto raw=quint16(qint32(command.value)/100000);regs[0x6654]=(quint32(raw)<<16)|raw;regs[0x6658]=quint32(raw)<<16;}
+                else if(command.address==16&&command.source==0x41){regs[0x6140]=command.value;++regs[0x6148];}
                 else if(command.address==1){const auto base=0x6000+(command.source-0x40)*0x100;regs[base+4]=command.value;regs[base+8]=(regs.value(base+8)&~9u)|(command.value&1);if(base==0x6000&&!command.value)regs[base+8]|=8;if(base==0x6500)pendingReads[base+8]=2;}
             }
         }
@@ -132,6 +135,42 @@ struct Fixture {
     void finish(){waitUntil([this]{return !controller.busy();},"operation completes");}
 };
 bool inPage(quint32 a,quint32 base){return a>=base&&a<base+0x200;}
+void advancedDataPaths(){
+    Fixture f;f.connect();f.transport->clear();
+    f.controller.connectSensor({{"op","sensor"},{"source",0x41},{"enabled",true},{"poll_ms",500},{"parameters",QJsonObject{{"address",241}}}});f.finish();
+    require(f.transport->regs.value(0x6114)==241 && f.transport->regs.value(0x611c)==500 && (f.transport->regs.value(0x6104)&1),"HMP advanced parameters applied before enable");
+    f.transport->regs[0x6140]=0x447d5000;
+    f.controller.executeOperation({{"op","sensor_action"},{"source",0x41},{"action",16},{"value",double(0x447d5000)}});f.finish();
+    require(f.transport->regs.value(0x6148)==1,"HMP compensation confirms a new write even when its value is unchanged");
+    FpgaControlConfig config;config.dlia[0].mode=6;config.dlia[1].mode=7;config.adcCnvTicks=3;config.adcBusyTimeoutTicks=200;config.adcExpectedPoints[1]=10000;config.dlia[1].fragmentPoints=128;
+    f.controller.applyConfiguration(config,"acquisition");f.finish();require(f.transport->regs.value(0x4030)==3 && f.transport->regs.value(0x4034)==200 && f.transport->regs.value(0x411c)==10000,"ADC timing and cycle checks written");
+    f.controller.applyConfiguration(config,"dlia");f.finish();require(f.transport->regs.value(0x5020)==6 && f.transport->regs.value(0x5120)==7 && f.transport->regs.value(0x5140)==128,"LPF bypass and fragment size applied");
+    int epochs=0;Ppk::RawSatelliteEpoch decoded;
+    QObject::connect(&f.controller,&FpgaDeviceController::observationEpochReceived,&f.controller,[&](const QByteArray& bytes){require(Ppk::decodeEpoch(bytes,decoded),"observation epoch encoding valid");++epochs;});
+    auto inject=[&](quint8 type,quint16 source,quint16 message,const std::vector<std::uint8_t>& payload) {const auto wire=FpgaVlp1::buildFrame(FpgaVlp1::FrameType(type),100+epochs,source,message,payload,true,3,123);f.transport->incoming.append(reinterpret_cast<const char*>(wire.data()),wire.size());};
+    Ppk::RawSatellitePacket packet;packet.epoch.unixSeconds=1700000000;packet.epoch.nanoseconds=100;packet.epoch.receiver=1;packet.totalPackets=2;packet.packetNumber=0;
+    Ppk::RawSatelliteObservation observation;observation.system=1;observation.prn=7;observation.frequency=0;observation.pseudoRangeM=23456789;packet.epoch.observations.push_back(observation);
+    inject(0x10,0x42,0x1200,Ppk::encodeRawSatelliteFrame(packet,1));packet.packetNumber=1;packet.epoch.observations[0].prn=8;inject(0x10,0x42,0x1200,Ppk::encodeRawSatelliteFrame(packet,2));
+    waitUntil([&]{return epochs==1;},"FPGA raw observations assembled independently of presentation");require(decoded.observations.size()==2,"both raw satellite packets preserved");
+    inject(0x10,0x42,0x1200,Ppk::encodeRawSatelliteFrame(packet,3));
+    waitUntil([&]{for(const auto& record:f.records)if(record.fields.value("observation_event")=="epsilon_raw_satellite_packet_duplicate")return true;return false;},"reconnect retains observation diagnostics and rejects duplicate epochs");
+    std::vector<std::uint8_t> event;for(quint32 word:{1u,0x60u,2u,2u,0u,0u,0u,0u})append32(event,word);inject(0x11,0x40,0x1402,event);
+    waitUntil([&]{for(const auto& record:f.records)if(record.fields.value("event")=="fpga_firmware_event")return true;return false;},"firmware error event produces a visible log");
+    f.controller.executeOperation({{"op","time_tag"},{"low",4294967295.0},{"high",123}});f.finish();
+    require(f.transport->regs.value(0x1038)==0xffffffff && f.transport->regs.value(0x103c)==123,"GNSS tag writes both halves without writing read-only tag-valid");
+    f.controller.executeOperation({{"op","motor_config"},{"frequency",1000},{"high_ticks",255},{"dir_ticks",505},{"polarity",3}});f.finish();
+    require(f.transport->regs.value(0x6704)==0 && f.transport->regs.value(0x6714)==1000 && f.transport->regs.value(0x6730)==3,"motor configuration confirms parameters while leaving motor disabled");
+    f.controller.executeOperation({{"op","stream_config"},{"mode",1},{"high_water",2048},{"burst",16}});f.finish();
+    require(f.transport->regs.value(0x7010)==1 && f.transport->regs.value(0x7018)==2048 && f.transport->regs.value(0x7034)==16,"upload tuning has verified hardware readbacks");
+    f.controller.executeOperation({{"op","watchdog"},{"value",30000}});f.finish();f.transport->clear();
+    waitUntil([&]{return !f.transport->writes().isEmpty();},"confirmed watchdog feeds periodically",2000);
+    require(f.transport->writes().first().address==0x44,"watchdog heartbeat targets the write-only feed register");
+    f.controller.executeOperation({{"op","watchdog"},{"value",0}});f.finish();
+    Fixture rejected;rejected.connect();rejected.transport->failWriteAddress=0x40;
+    rejected.controller.executeOperation({{"op","watchdog"},{"value",30000}});rejected.finish();
+    QElapsedTimer elapsed;elapsed.start();while(elapsed.elapsed()<1150){QCoreApplication::processEvents(QEventLoop::AllEvents,10);QThread::msleep(1);}
+    for(const auto& command:rejected.transport->writes())require(command.address!=0x44,"failed watchdog setup never starts feeding");
+}
 void connectionResultLogs(){
     const auto count=[](const Fixture& f,quint16 source,const QString& result) {
         int n=0;for(const auto& r:f.records)if(r.fields.value("event")=="fpga_device_connection_result"
@@ -567,5 +606,5 @@ int main(int argc,char **argv){
         }
         std::puts("hardware controller connect/idle/reconnect probe passed");return 0;
     }
-    connectionResultLogs();sensorRates();connectionAndVersions();connectionRecovery();backgroundRefresh();independentAndAcquisition();restartClearsDliaState();configurationAndFailure();scopedConfiguration();rawAndBusy();temperature();sensorUploadAndFailure();ai8DisabledConfiguration();ptbHistoricalErrorRecovery();threadCleanup();std::puts("FPGA controller tests passed");return 0;
+    advancedDataPaths();connectionResultLogs();sensorRates();connectionAndVersions();connectionRecovery();backgroundRefresh();independentAndAcquisition();restartClearsDliaState();configurationAndFailure();scopedConfiguration();rawAndBusy();temperature();sensorUploadAndFailure();ai8DisabledConfiguration();ptbHistoricalErrorRecovery();threadCleanup();std::puts("FPGA controller tests passed");return 0;
 }

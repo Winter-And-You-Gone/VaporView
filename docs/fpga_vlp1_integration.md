@@ -95,7 +95,7 @@ USB 会话对非空读取连续收包，每批最多 64 次读取，每次完成
 
 传感器“启用”只开启 FPGA 轮询，不为外部传感器供电。未上电或未接线的 PTB210 不会提供有效气压值；传感器超时与整条 USB 链路异常需分别诊断。
 
-六传感器启动按 HOST_HANDOFF：SHT45、BMP390、PTB210、AI8、EPSILON、TFA1500-L，逐步检查 source、CRC、freshness、ERROR/drop。AI8 启用只开始轮询，不自动改设温或加热。HMP41 未验证，保持禁用。PTB210 超时或 AI8 报警不得以虚构值掩盖。
+七传感器启动按 HOST_HANDOFF：SHT45、BMP390、PTB210、HMP3、AI8、EPSILON、TFA1500-L，逐步检查 source、CRC、freshness、ERROR/drop。AI8 启用只开始轮询，不自动改设温或加热。HMP41 已接入软件，RH/T、地址/轮询和压力补偿仍需现场验收。PTB210 超时或 AI8 报警不得以虚构值掩盖。
 
 AI8 地址、通道、轮询间隔、`0x6660 timeout_ms`、`0x6664 retry_limit` 只能在 AI8 禁用时修改并核对；软件默认 timeout=200 ms、retry=1，协议允许 timeout=1..65535、retry=0..3。状态码、设备报警和传输异常是不同空间。
 

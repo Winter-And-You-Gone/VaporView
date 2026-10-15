@@ -81,6 +81,7 @@ int main()
     require(aiReading.ai8SpMicroC==40000000 && aiReading.ai8PvMicroC==-2500000,"AI8 optional tag14 is SP, tag15 is PV");
     require(sample.ai8->alarmActive && sample.ai8->online && sample.ai8->setSucceeded,"alarm independent of connection and verified set result");
     require(sample.ai8Live && sample.ai8Live->measuredC[0]==-2.5 && std::isnan(sample.ai8Live->measuredC[1]),"AI8 maps only selected channel");
+    require(sample.ai8Live->detailedChannel==1 && sample.ai8Live->setpointC==40 && sample.ai8Live->outputRaw==500 && sample.ai8Live->alarmRaw==0x20 && !sample.ai8Live->alarmStatusValid && !sample.ai8Live->controlStatesValid,"selected channel details never claim all-channel validity");
     aiReading.ai8DeviceStatus=3; sample=adapter.accept(aiReading);
     require(!sample.ai8->measurementValid && sample.ai8->online,"AI8 transport failure isolates stale snapshot");
     aiReading.ai8SetResult=0; require(!adapter.accept(aiReading).ai8->setSucceeded,"zero result without valid bit is not success");

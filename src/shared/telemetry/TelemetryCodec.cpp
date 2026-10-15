@@ -1466,6 +1466,7 @@ QByteArray TelemetryCodec::serializeAi8TemperatureControllerStatus(
     if (data.controlStatesValid) flags |= 0x02;
     if (data.alarmStatusValid) flags |= 0x04;
     if (data.mainStatusValid) flags |= 0x08;
+    if (data.detailedChannel) flags |= 0x10;
     payload.append(static_cast<char>(flags));
     appendLe<quint16>(payload, 0);
     for (double value : data.measuredC)
@@ -1481,6 +1482,10 @@ QByteArray TelemetryCodec::serializeAi8TemperatureControllerStatus(
         appendLe<quint16>(payload, value);
     }
     appendLe<quint16>(payload, data.mainStatusRaw);
+    if(data.detailedChannel) {
+        payload.append(char(data.detailedChannel));appendDoubleLe(payload,data.setpointC);appendDoubleLe(payload,data.displayedSetpointC);
+        appendLe<quint16>(payload,data.outputRaw);payload.append(char(data.alarmRaw));payload.append(char(data.controlRaw));
+    }
     return payload;
 }
 
@@ -1496,7 +1501,7 @@ bool TelemetryCodec::parseAi8TemperatureControllerStatus(
         Ai8TemperatureControllerProtocol::kChannelCount +
         Ai8TemperatureControllerProtocol::kAlarmStatusRegisterCount * static_cast<int>(sizeof(quint16)) +
         static_cast<int>(sizeof(quint16));
-    if (payload.size() != kExpectedPayloadSize)
+    if (payload.size() != kExpectedPayloadSize && payload.size() != kExpectedPayloadSize+21)
     {
         return false;
     }
@@ -1538,7 +1543,16 @@ bool TelemetryCodec::parseAi8TemperatureControllerStatus(
             return false;
         }
     }
-    return readLe(payload, offset, data.mainStatusRaw) && offset == payload.size();
+    if(!readLe(payload,offset,data.mainStatusRaw))return false;
+    if(flags&0x10) {
+        if(payload.size()!=kExpectedPayloadSize+21)return false;
+        data.detailedChannel=quint8(payload[offset++]);
+        if(data.detailedChannel<1 || data.detailedChannel>8 || !readDoubleLe(payload,offset,data.setpointC) ||
+           !readDoubleLe(payload,offset,data.displayedSetpointC) || !std::isfinite(data.setpointC) ||
+           !std::isfinite(data.displayedSetpointC) || !readLe(payload,offset,data.outputRaw))return false;
+        data.alarmRaw=quint8(payload[offset++]);data.controlRaw=quint8(payload[offset++]);
+    }
+    return offset==payload.size();
 }
 
 QByteArray TelemetryCodec::serializeTemperatureControllerCommand(const TemperatureControllerCommand& command)

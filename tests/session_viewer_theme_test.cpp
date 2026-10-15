@@ -5,6 +5,8 @@
 #include "ground/session/SessionViewerWindow.h"
 #include "ground/session/SessionViewerWidgets.h"
 #include "shared/session/UnifiedRawDat.h"
+#include "ground/session/GroundRecordingService.h"
+#include "FpgaVlp1.h"
 #include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
 #include "ground/trajectory/TrajectoryViewerDialog.h"
@@ -1070,6 +1072,32 @@ void testRawDataParserUsesHardwareTemperatureSourceNames()
 
     parser.close();
     processEventsFor(100);
+}
+
+void testFpgaWaveformSelector()
+{
+    using namespace VaporView;
+    QTemporaryDir temp;
+    Ground::Session::GroundRecordingService recorder;Ground::Session::GroundRecordingOptions options;options.baseDirectory=temp.path();
+    require(recorder.start(options),"FPGA waveform viewer fixture starts");
+    const auto directory=recorder.status().sessionDirectory;
+    for(quint16 source:{0x20,0x21,0x30,0x31}) {
+        QByteArray payload;
+        const auto half=[&](quint16 v){payload.append(char(v));payload.append(char(v>>8));};
+        const auto word=[&](quint32 v){for(int i=0;i<4;++i)payload.append(char(v>>(i*8)));};
+        if(source<0x30){half(1);half(24);word(1000000);word(2);word(0);word(0);word(10);word(20);}
+        else {half(2);half(0);word(10000);word(2);half(0);half(1);word(0);word(2);word(8);word(0);word(1);word(10);word(2);word(20);}
+        const auto wire=FpgaVlp1::buildFrame(FpgaVlp1::FrameType::Data,source,source,source<0x30?0x1000:0x1001,
+            std::vector<std::uint8_t>(payload.begin(),payload.end()),true,3,100,1);
+        require(recorder.recordFpgaFrame(1000+source,QByteArray(reinterpret_cast<const char*>(wire.data()),wire.size())),"FPGA waveform fixture records");
+    }
+    require(!recorder.stop().writeFailed,"FPGA waveform fixture drains");
+    SessionViewerWindow viewer;viewer.resize(1280,800);viewer.show();
+    require(viewer.openSessionPath(directory),"viewer opens FPGA waveform archive");
+    auto *choice=viewer.findChild<QComboBox*>("sessionFpgaWaveformChoice");
+    require(choice && processEventsUntil(10000,[&]{return choice->count()==6 && choice->isVisible();}),"both ADC lanes and both harmonics of each DLIA lane are visible choices");
+    for(int i=0;i<choice->count();++i){choice->setCurrentIndex(i);processEventsFor(30);require(choice->currentIndex()==i,"FPGA waveform selection completes without losing its catalog");}
+    viewer.close();processEventsFor(100);
 }
 
 void testSessionViewerShowsRecoveredWaveformCatalogWarning()
@@ -2642,6 +2670,7 @@ int main(int argc, char **argv)
         testRawDataParserOpenIsNonBlocking();
         testRawDataParserRejectsTruncatedFdilinkFrame();
         testRawDataParserUsesHardwareTemperatureSourceNames();
+        testFpgaWaveformSelector();
         testSessionViewerShowsRecoveredWaveformCatalogWarning();
         testWaveformIndexContinuesWhileGuiIsBusy();
         testCsvHighlightsStartAtTopWhenLoadingAndChangingFrames();

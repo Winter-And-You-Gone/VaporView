@@ -15,9 +15,9 @@ using namespace VaporView::Session;
 using namespace VaporView::Ground::Session;
 namespace {
 void check(bool ok,const char *message){if(!ok){std::cerr<<message<<'\n';std::exit(1);}}
-QByteArray frame(quint32 sequence){
+QByteArray frame(quint32 sequence,quint16 source=0x40,quint16 message=0x1100){
     const auto bytes=VaporView::FpgaVlp1::buildFrame(VaporView::FpgaVlp1::FrameType::Data,
-        sequence,0x40,0x1100,{1,0,0,0},true,0x83,0xfedcba9876543210ULL,9);
+        sequence,source,message,{1,0,0,0},true,0x83,0xfedcba9876543210ULL,9);
     return QByteArray(reinterpret_cast<const char*>(bytes.data()),bytes.size());
 }
 QByteArray wave(quint16 source,quint32 cycle,quint16 fragment=0,quint32 flags=3)
@@ -38,6 +38,31 @@ QByteArray wave(quint16 source,quint32 cycle,quint16 fragment=0,quint32 flags=3)
         std::vector<std::uint8_t>(payload.begin(),payload.end()),true,flags,cycle*100,cycle);
     return QByteArray(reinterpret_cast<const char*>(bytes.data()),bytes.size());
 }
+void iqWaveformChoices()
+{
+    using namespace VaporView;
+    using namespace VaporView::Ground;
+    QTemporaryDir temp;GroundRecordingService recorder;GroundRecordingOptions options;options.baseDirectory=temp.path();
+    check(recorder.start(options),"IQ choices recording starts");const auto directory=recorder.status().sessionDirectory;
+    for(quint16 source:{0x30,0x31}) {
+        QByteArray payload;
+        const auto half=[&](quint16 v){payload.append(char(v));payload.append(char(v>>8));};
+        const auto word=[&](quint32 v){for(int i=0;i<4;++i)payload.append(char(v>>(i*8)));};
+        half(2);half(2);word(10000);word(1);half(0);half(1);word(0);word(1);word(24);word(0);
+        for(quint32 value:{3,4,5,12,5,13})word(value+(source==0x31?100:0));
+        const auto bytes=FpgaVlp1::buildFrame(FpgaVlp1::FrameType::Data,source,source,0x1001,std::vector<std::uint8_t>(payload.begin(),payload.end()),true,3,100,1);
+        check(recorder.recordFpgaFrame(1000+source,QByteArray(reinterpret_cast<const char*>(bytes.data()),bytes.size())),"IQ waveform records");
+    }
+    check(!recorder.stop().writeFailed,"IQ choices recording drains");
+    const auto metadata=SessionLoader::loadMetadata(directory);auto result=SessionWaveformRepository::loadCatalog(metadata.metadata);
+    check(result.success && result.catalog.fpgaChoices.size()==12,"each DLIA lane exposes H1/H2 and all four IQ components");
+    const float expected[]{13,5,3,4,5,12};
+    for(int i=0;i<12;++i) {
+        check(SessionWaveformRepository::selectFpgaWaveform(result.catalog,i),"IQ choice selects");
+        const auto frame=SessionWaveformRepository::readFrame(result.catalog,0);
+        check(frame.success && frame.samples==QVector<float>{expected[result.catalog.fpgaComponent]+(result.catalog.fpgaSource==0x31?100:0)},"selected lane and IQ component preserve independent values");
+    }
+}
 void waveformRecording()
 {
     using namespace VaporView::Ground;
@@ -51,7 +76,7 @@ void waveformRecording()
         check(recorder.recordFpgaUsbBytes(++host,bytes.left(17)),"USB split queued");
         check(recorder.recordFpgaUsbBytes(++host,bytes.mid(17)),"USB tail queued");
     };
-    record(frame(1));record(wave(0x20,1));record(wave(0x30,1,1));record(wave(0x30,1,0));
+    record(frame(1));record(frame(2,0x42,0x1200));record(wave(0x20,1));record(wave(0x30,1,1));record(wave(0x30,1,0));
     record(wave(0x30,2,0));
     check(recorder.pause(),"wave pause drains");
     check(recorder.start(options),"wave resume");
@@ -62,7 +87,7 @@ void waveformRecording()
     const auto status=recorder.status();
     check(status.waveformFrames==2,"counts only two complete DLIA cycles, not fragments or duplicate USB/IN");
     const auto counts=status.fpgaStatistics.value("data_records").toObject();
-    check(counts.value("64").toString()=="1" && counts.value("waveform").toString()=="9","per-device validated data counts");
+    check(counts.value("64").toString()=="1" && counts.value("66").toString()=="1" && counts.value("waveform").toString()=="9","per-device validated data counts");
     auto metadata=SessionLoader::loadMetadata(directory);
     check(metadata.success && metadata.metadata.waveformFrames==2,"new manifest waveform count");
     metadata.metadata.waveformFrames=0; // Older recordings had the same data but a zero manifest count.
@@ -73,6 +98,13 @@ void waveformRecording()
         const auto loaded=SessionWaveformRepository::readFrame(catalog.catalog,i);
         check(loaded.success && loaded.error.isEmpty() && loaded.samples==QVector<float>({10,20,30,40}),"fragmented H2 replay in point order");
         check(loaded.timestampUs==catalog.catalog.fpgaTimestampsUs.at(i),"wave host timestamp retained");
+    }
+    auto selection=catalog.catalog;check(selection.fpgaChoices.size()==3,"RAW and both harmonic components are selectable");
+    for(int choice=0;choice<selection.fpgaChoices.size();++choice) {
+        check(SessionWaveformRepository::selectFpgaWaveform(selection,choice),"select FPGA component");const auto loaded=SessionWaveformRepository::readFrame(selection,0);
+        check(loaded.success,"selected component frame readable");
+        if(selection.fpgaSource==0x20)check(loaded.samples==QVector<float>({-5,12}),"RAW choice keeps signed values");
+        else if(selection.fpgaComponent==1)check(loaded.samples==QVector<float>({1,2,1,2}),"H1 selection reads H1 words independently");
     }
     const auto peaks=SessionWaveformRepository::calculatePeakSeries(catalog.catalog,0,-1);
     check(peaks.success && peaks.peakValues==QVector<float>({40,40}),"FPGA peak series");
@@ -92,7 +124,7 @@ void waveformRecording()
 int main(int argc,char **argv)
 {
     QCoreApplication app(argc,argv);
-    waveformRecording();
+    waveformRecording();iqWaveformChoices();
     QTemporaryDir temp; check(temp.isValid(),"temp directory");
     GroundRecordingOptions options; options.baseDirectory=temp.path();
     GroundRecordingService recorder;

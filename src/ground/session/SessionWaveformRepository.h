@@ -50,6 +50,15 @@ struct SessionIndexedWaveformFrame
     quint32 pointCount = 0;
 };
 
+struct SessionFpgaWaveformChoice
+{
+    quint16 source = 0;
+    int component = 0; // 0=H2/RAW, 1=H1, 2=I1, 3=Q1, 4=I2, 5=Q2
+    QString label;
+    QVector<quint64> timestampsUs;
+    int pointsPerFrame = 0;
+};
+
 struct SessionWaveformCatalog
 {
     QString sessionDirectory;
@@ -60,6 +69,8 @@ struct SessionWaveformCatalog
     QVector<SessionIndexedWaveformFrame> indexedFrames;
     QVector<quint64> fpgaTimestampsUs;
     quint16 fpgaSource = 0;
+    int fpgaComponent = 0;
+    QVector<SessionFpgaWaveformChoice> fpgaChoices;
     int pointsPerFrame = 0;
     quint64 frameCount = 0;
 
@@ -105,6 +116,7 @@ public:
     static SessionWaveformFrameResult readFrame(
         const SessionWaveformCatalog& catalog,
         quint64 frameIndex);
+    static bool selectFpgaWaveform(SessionWaveformCatalog& catalog, int choice);
 
     static SessionWaveformPeakSeriesResult loadCachedPeakSeries(
         const SessionWaveformCatalog& catalog);
