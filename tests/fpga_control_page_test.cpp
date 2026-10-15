@@ -13,6 +13,8 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QScrollBar>
+#include <QPlainTextEdit>
 #include <QTabWidget>
 #include <cstdio>
 #include <cstdlib>
@@ -257,6 +259,28 @@ int main(int argc,char **argv) {
                     const QRect firstRect(first->mapTo(&page,QPoint()),first->size()),secondRect(second->mapTo(&page,QPoint()),second->size());
                     require(firstRect.top()==secondRect.top()&&firstRect.bottom()==secondRect.bottom()&&firstRect.right()<secondRect.left(),"paired cards remain side by side with equal heights across themes, languages and font scales");
                     require(qAbs(firstRect.width()-secondRect.width())<=1,"channel cards retain equal widths across themes, languages and font scales");
+                    if(QString::fromLatin1(name)=="fpgaRecordingCards") {
+                        auto *management=page.findChild<QScrollArea*>("fpgaManagementScroll");
+                        auto *diagnostics=page.findChild<QPlainTextEdit*>("fpgaDiagnostics");
+                        require(management&&diagnostics,"diagnostic status and history use scrollable text views");
+                        page.setManagementState({});diagnostics->clear();app.processEvents();
+                        const int initialHeight=second->height();
+                        QJsonObject state;
+                        for(int n=0;n<40;++n)state[QString::number(n)]=QJsonObject{
+                            {"message",0x1401},{"words",QJsonArray{0x40+n,0x93,0x44,1,0,0,0}}};
+                        page.setManagementState(state);
+                        for(int n=0;n<300;++n)page.appendDiagnostic(QString("Diagnostic %1: sensor status and acquisition history").arg(n));
+                        app.processEvents();
+                        require(first->height()==initialHeight&&second->height()==initialHeight,
+                            "module status and log growth cannot stretch either recording card");
+                        require(management->verticalScrollBar()->maximum()>0&&diagnostics->verticalScrollBar()->maximum()>0,
+                            "overflowing diagnostic contents scroll inside the fixed-height card");
+                        management->verticalScrollBar()->setValue(5);
+                        state["extra"]=QJsonObject{{"message",0x1401},{"words",QJsonArray{0x80,0x93,0,1,0,0,0}}};
+                        page.setManagementState(state);app.processEvents();
+                        require(management->verticalScrollBar()->value()==5,"status refresh preserves the reader's scroll position");
+                        page.setManagementState({});diagnostics->clear();app.processEvents();
+                    }
                 }
                 if(i==2)for(int channel=0;channel<2;++channel) {
                     auto *adc=page.findChild<QWidget*>(QString("fpgaWavePlot%1").arg(32+channel));

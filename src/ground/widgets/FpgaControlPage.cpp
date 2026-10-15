@@ -461,7 +461,8 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     connect(exportButton,&QPushButton::clicked,this,[this]{emit exportRequested({});});
     auto *diagnosticCard=card(recordingTab,recordingCards,QStringLiteral("诊断日志"),QStringLiteral("Diagnostics"),QStringLiteral("list-filter"));
     auto *diagnosticLayout=new QVBoxLayout(diagnosticCard);
-    managementStatus_=new QLabel(diagnosticCard);managementStatus_->setObjectName("fpgaManagementState");managementStatus_->setWordWrap(true);diagnosticLayout->addWidget(managementStatus_);
+    auto *managementScroll=new QScrollArea(diagnosticCard);managementScroll->setObjectName("fpgaManagementScroll");managementScroll->setWidgetResizable(true);managementScroll->setFrameShape(QFrame::NoFrame);
+    managementStatus_=new QLabel(managementScroll);managementStatus_->setObjectName("fpgaManagementState");managementStatus_->setWordWrap(true);managementStatus_->setAlignment(Qt::AlignLeft|Qt::AlignTop);managementScroll->setWidget(managementStatus_);diagnosticLayout->addWidget(managementScroll);
     diagnostics_=new QPlainTextEdit(diagnosticCard); diagnostics_->setObjectName("fpgaDiagnostics"); diagnostics_->setReadOnly(true); diagnostics_->setMaximumBlockCount(2000); diagnostics_->setMinimumHeight(180); diagnosticLayout->addWidget(diagnostics_,1);
     recordingCards->setStretch(0,1);recordingCards->setStretch(1,1);recordingLayout->addStretch();
     hint->setProperty("fpgaSecondaryText",true); waveHint->setProperty("fpgaSecondaryText",true); ai8hint->setProperty("fpgaSecondaryText",true);
@@ -750,6 +751,7 @@ void FpgaControlPage::setTheme(bool dark,int fontScalePercent){
     using namespace VaporView;setProperty(kAppDarkThemeProperty,dark);setPalette(appThemePalette(dark,palette()));
     const qreal scale=qBound(60,fontScalePercent,180)/100.0;
     const auto pixels=[scale](int value){return qRound(value*scale);};
+    findChild<QScrollArea*>("fpgaManagementScroll")->setFixedHeight(pixels(120));
     for(auto *widget:findChildren<QWidget*>())if(widget->property("fpgaFixedPlot").toBool())widget->setFixedHeight(pixels(100));
     // Match the home card inset and reserve the same scrollbar rail above the tabs.
     const int shadowInset=int(std::ceil(kTopLevelCardShadowBlurRadius*scale*0.6))+1;
