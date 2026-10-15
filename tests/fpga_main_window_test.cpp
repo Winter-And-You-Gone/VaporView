@@ -12,6 +12,7 @@
 #include "TcpTelemetryLink.h"
 #include "TelemetryCodec.h"
 #include "FpgaTelemetry.h"
+#include "FpgaDeviceController.h"
 #include "shared/session/FpgaSessionArchive.h"
 #include "ground/wave/TcpWavePanel.h"
 #include "SkyConfig.h"
@@ -1141,6 +1142,55 @@ static void directInternalEnvironmentRouting()
     remote->close();window.close();
 }
 
+static void epsilonMixedPacketPresentation()
+{
+    QTemporaryDir output;
+    require(output.isValid(),"isolated EPSILON regression logs");
+    VaporView::LogService logs("FpgaEpsilonTest",nullptr,output.path(),output.path());
+    MainWindow window;
+    QMetaObject::invokeMethod(&window,"onDataSourceModeChanged",Q_ARG(int,0));
+    auto *path=window.findChild<QComboBox*>("deviceSensorTransportPathCombo");
+    path->setCurrentIndex(path->findData("fpga_relay"));
+    auto *controller=window.testFpgaController();
+    auto *panel=window.findChild<QWidget*>("epsilonPanel");
+    require(controller&&panel,"local FPGA controller and EPSILON panel exist");
+    VaporView::FpgaSensor::FpgaSensorAdapter adapter;
+    VaporView::FpgaSensor::Reading reading;
+    reading.kind=VaporView::FpgaSensor::SensorKind::Epsilon;reading.source=0x42;
+    reading.validity.structure=true;reading.validity.measurement=true;
+    auto deliver=[&](quint8 id,const QByteArray &payload,bool online=true) {
+        reading.epsilonMessageId=id;reading.epsilonData=payload;
+        reading.validity.deviceOnline=online;++reading.timestamp;
+        const auto measurement=adapter.accept(reading);
+        QMetaObject::invokeMethod(controller,[controller,measurement] {
+            emit controller->measurementUpdated(measurement);
+        },Qt::BlockingQueuedConnection);
+        QCoreApplication::sendPostedEvents(nullptr,QEvent::MetaCall);
+        QMetaObject::invokeMethod(&window,"onRefreshTimer");
+    };
+    auto hasData=[&] {
+        for(auto *label:panel->findChildren<QLabel*>("valueLabel"))
+            if(label->text()!="--")return true;
+        return false;
+    };
+    // Indoor/no-fix AHRS followed by valid packets with neither attitude nor position.
+    QByteArray ahrs(48,0);ahrs[26]=char(0x80);ahrs[27]=char(0x3f); // quaternion w = 1
+    deliver(0x41,ahrs);require(hasData(),"AHRS displays without a GNSS fix");
+    for(int round=0;round<3;++round) {
+        deliver(0x53,QByteArray(4,0));require(hasData(),"status packet must not blank EPSILON");
+        deliver(0x51,QByteArray(8,0));require(hasData(),"time packet must not blank EPSILON");
+        deliver(0x40,QByteArray(56,0));require(hasData(),"IMU packet must not blank EPSILON");
+        deliver(0x41,ahrs);require(hasData(),"interleaved AHRS remains visible");
+    }
+    deliver(0x41,ahrs,false);require(!hasData(),"offline reading still clears EPSILON");
+    deliver(0x41,ahrs);require(hasData(),"online reading restores EPSILON");
+    QMetaObject::invokeMethod(controller,[controller] {
+        emit controller->transportConnectionChanged(false);
+    },Qt::BlockingQueuedConnection);
+    QCoreApplication::sendPostedEvents(nullptr,QEvent::MetaCall);
+    require(!hasData(),"disconnect clears cached EPSILON data");
+}
+
 int main(int argc,char **argv)
 {
     require(VaporViewTest::SettingsSandbox::initialized,"isolated native/INI application settings");
@@ -1155,6 +1205,7 @@ int main(int argc,char **argv)
     QSettings native("VaporView","MainWindow");
     native.setValue("font_scale_percent",100);
     native.setValue("app_sidebar_width",62);
+    if(app.arguments().contains("--epsilon-packets")) {epsilonMixedPacketPresentation();return 0;}
     if(app.arguments().contains("--internal-direct")) {directInternalEnvironmentRouting();return 0;}
     if(app.arguments().contains("--relay-configuration")) {
         relayConfigurationPresentation();std::cout<<"FPGA relay configuration test passed\n";return 0;
@@ -1172,6 +1223,7 @@ int main(int argc,char **argv)
         try { localSimulatorRouting();std::cout<<"Local FPGA simulator GUI test passed\n";return 0; }
         catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}
     }
+    epsilonMixedPacketPresentation();
     const auto standardFont=app.font();
     QPointer<QThread> worker;
     {

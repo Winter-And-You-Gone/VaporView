@@ -87,6 +87,7 @@ namespace VaporView::Ground::Devices { struct CollectorSet; }
 namespace VaporView::Ground::Devices { class LocalDeviceConnectionController; }
 namespace VaporView::Ground::Devices { class LocalConnectionCoordinator; }
 namespace VaporView::Ground::Devices { class RemoteSkyController; }
+namespace VaporView::Ground::Devices { class FpgaDeviceController; }
 namespace VaporView::Ground::Devices { struct SerialPortDetectionResult; }
 namespace VaporView::Ground::Devices { class Ai8DeviceSession; }
 namespace VaporView::Ground::Devices { enum class Ai8Operation; struct Ai8SessionResult; }
@@ -116,6 +117,7 @@ public:
 
 #ifdef VAPORVIEW_MAIN_WINDOW_TESTING
     VaporView::Ground::Devices::RemoteSkyController *testRemoteSkyController();
+    VaporView::Ground::Devices::FpgaDeviceController *testFpgaController();
     void testSetLocalTemperatureCommandObserver(std::function<void(VaporView::CommandId)> observer);
     void testInjectRemoteSkyConfig(const QJsonObject& object);
     void testInjectRemoteSkyApplyResult(const QJsonObject& result);

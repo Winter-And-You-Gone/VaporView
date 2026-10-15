@@ -11,6 +11,11 @@
 #include "ground/widgets/DeviceEnabledCheckBox.h"
 
 #ifdef VAPORVIEW_MAIN_WINDOW_TESTING
+VaporView::Ground::Devices::FpgaDeviceController *MainWindow::testFpgaController()
+{
+    return state_->fpga_controller_;
+}
+
 VaporView::Ground::Devices::RemoteSkyController *MainWindow::testRemoteSkyController()
 {
     return state_->remote_sky_controller_.get();
@@ -724,7 +729,9 @@ void MainWindow::setupFpgaControlPage()
                 if (positionPacket) { state_->fpga_position_valid_ = m.navigationValid; state_->fpga_position_time_ = now; }
                 if (velocityPacket) { state_->fpga_velocity_valid_ = m.navigationValid && (id != 0x59 || m.epsilon->gnss_velocity_valid); state_->fpga_velocity_time_=now; }
                 if (!m.epsilonStatusFresh && id != 0x59) { state_->fpga_position_valid_=false; state_->fpga_velocity_valid_=false; }
-                state_->current_epsilon_.valid = valid && m.epsilon->valid && (m.attitudeValid || m.navigationValid);
+                // Packet-specific attitude/position flags must not invalidate the
+                // accumulated device snapshot when status, time or IMU packets arrive.
+                state_->current_epsilon_.valid = valid && m.epsilon->valid;
                 if (!m.epsilonStatusFresh) state_->current_epsilon_.filter_status_bits &= ~quint16(0xf);
                 if (!state_->fpga_position_valid_) { state_->current_epsilon_.latitude_deg=std::numeric_limits<double>::quiet_NaN(); state_->current_epsilon_.longitude_deg=std::numeric_limits<double>::quiet_NaN(); state_->current_epsilon_.height_m=std::numeric_limits<double>::quiet_NaN(); }
 #ifdef VAPORVIEW_HAS_OSGEARTH
