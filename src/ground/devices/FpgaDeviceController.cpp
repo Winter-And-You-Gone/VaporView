@@ -8,7 +8,9 @@
 #include <QDateTime>
 #include <QFileInfo>
 #include <QThread>
+#include <QtEndian>
 #include <cmath>
+#include <utility>
 
 namespace VaporView::Ground::Devices
 {
@@ -75,27 +77,22 @@ void FpgaDeviceController::installSession(std::unique_ptr<FpgaUsbTransport> tran
         fail(message);
     });
     connect(session_, &FpgaDeviceSession::frameReceived, this,
-        [this](quint8 type,quint32,quint16 source,quint16 msg,quint64 tick,quint32,const QByteArray& payload) {
+        [this](quint8 type,quint32 sequence,quint16 source,quint16 msg,quint64 tick,quint32,const QByteArray& payload) {
+            if(!replaying_ && !connectionStartTick_ && type==2 && source==1 && msg==0xfe
+                && current_ && current_->kind==Kind::Ping && sequence==pendingSequence_
+                && payload.size()>=4 && qFromLittleEndian<quint32>(payload.constData())==0) {
+                // The reply was generated during this handshake, unlike queued
+                // events. Subtract the entire host elapsed time conservatively so
+                // a new fault during connection is not mistaken for old backlog.
+                const quint64 elapsedTicks=quint64(connectionClock_.nsecsElapsed()/10);
+                connectionStartTick_=tick>elapsedTicks?tick-elapsedTicks:0;
+                const auto pending=std::exchange(pendingManagement_,{});
+                for(const auto& queued:pending)publishManagementEvent(queued);
+            }
             const auto event=FpgaRemote::decodeManagementEvent(type,source,msg,tick,payload);
             if(event.isEmpty())return;
-            const auto key=QString::number(msg,16)+(msg==0x1401||msg==0x1402?QStringLiteral(":")+QString::number(source,16)+QStringLiteral(":")+QString::number(event.value("words").toArray()[0].toInt(),16):QString());
-            const auto old=management_.value(key).toObject().value("words").toArray();
-            const auto words=event.value("words").toArray();
-            management_[key]=event;emit managementUpdated(management_);
-            const bool dropped=msg==0x1400 && (words[4].toDouble()>(old.size()==7?old[4].toDouble():0) || words[5].toDouble()>(old.size()==7?old[5].toDouble():0));
-            if(msg==0x1402 || msg==0x1300 || dropped) {
-                LogRecord record;record.source=QStringLiteral("Ground");record.category=QStringLiteral("device.fpga");
-                record.level=msg==0x1300?LogLevel::Info:LogLevel::Warning;
-                record.message=msg==0x1402?QStringLiteral("FPGA 模块 %1 新错误 %2，累计 %3。")
-                    .arg(hex(quint32(words[0].toDouble())),hex(quint32(words[2].toDouble())),hex(quint32(words[1].toDouble())))
-                    :msg==0x1300?QStringLiteral("FPGA 电机运动 %1 结束：位置 %2，剩余 %3，错误 %4。")
-                    .arg(words[0].toDouble()).arg(qint32(quint32(words[1].toDouble()))).arg(words[2].toDouble()).arg(hex(quint32(words[3].toDouble())))
-                    :QStringLiteral("FPGA 上传发生丢包：事件 %1，生产端合计 %2。注意两个计数分别统计。")
-                    .arg(words[4].toDouble()).arg(words[5].toDouble());
-                record.fields={{"event","fpga_firmware_event"},{"message_id",msg},{"source_id",source},{"tick",QString::number(tick)},{"payload",event.toVariantMap()},{"ui_visibility","attention"}};
-                emit logRecordGenerated(record);
-            }
-            if(!replaying_)emit snapshot(nowUs(),{{"event","firmware_event"},{"data",event}});
+            if(!replaying_ && !connectionStartTick_) {pendingManagement_.append(event);return;}
+            publishManagementEvent(event);
         });
     connect(session_, &FpgaDeviceSession::sensorReadingReceived, this, &FpgaDeviceController::acceptReading);
     connect(session_, &FpgaDeviceSession::waveformCompleted, this,
@@ -120,11 +117,38 @@ void FpgaDeviceController::installSession(std::unique_ptr<FpgaUsbTransport> tran
         [this](const QByteArray& bytes) { if (!replaying_) emit rawCommand(nowUs(), bytes); });
 }
 
+void FpgaDeviceController::publishManagementEvent(const QJsonObject& event)
+{
+    const auto tick=event.value("tick").toString().toULongLong();
+    if(!replaying_ && (!connectionStartTick_ || tick<*connectionStartTick_))return;
+    const auto msg=quint16(event.value("message").toInt());
+    const auto source=quint16(event.value("source").toInt());
+    const auto key=QString::number(msg,16)+(msg==0x1401||msg==0x1402?QStringLiteral(":")+QString::number(source,16)+QStringLiteral(":")+QString::number(event.value("words").toArray()[0].toInt(),16):QString());
+    const auto old=management_.value(key).toObject().value("words").toArray();
+    const auto words=event.value("words").toArray();
+    management_[key]=event;emit managementUpdated(management_);
+    const bool dropped=msg==0x1400 && old.size()==7 && (words[4].toDouble()>old[4].toDouble() || words[5].toDouble()>old[5].toDouble());
+    if(msg==0x1402 || msg==0x1300 || dropped) {
+        LogRecord record;record.source=QStringLiteral("Ground");record.category=QStringLiteral("device.fpga");
+        record.level=msg==0x1300?LogLevel::Info:LogLevel::Warning;
+        record.message=msg==0x1402?QStringLiteral("FPGA 模块 %1 新错误 %2，累计 %3。")
+            .arg(hex(quint32(words[0].toDouble())),hex(quint32(words[2].toDouble())),hex(quint32(words[1].toDouble())))
+            :msg==0x1300?QStringLiteral("FPGA 电机运动 %1 结束：位置 %2，剩余 %3，错误 %4。")
+            .arg(words[0].toDouble()).arg(qint32(quint32(words[1].toDouble()))).arg(words[2].toDouble()).arg(hex(quint32(words[3].toDouble())))
+            :QStringLiteral("FPGA 上传发生丢包：事件 %1，生产端合计 %2。注意两个计数分别统计。")
+            .arg(words[4].toDouble()).arg(words[5].toDouble());
+        record.fields={{"event","fpga_firmware_event"},{"message_id",msg},{"source_id",source},{"tick",QString::number(tick)},{"payload",event.toVariantMap()},{"ui_visibility","attention"}};
+        emit logRecordGenerated(record);
+    }
+    if(!replaying_)emit snapshot(nowUs(),{{"event","firmware_event"},{"data",event}});
+}
+
 void FpgaDeviceController::connectDevice(const QString& locator, const QString& backend)
 {
     disconnectDevice();
     if (!injected_) installSession(makeFpgaUsbHardwareTransport(backend));
     QString error;
+    connectionClock_.start();
     if (!session_->open(locator, &error)) { fail(error); return; }
     emit transportConnectionChanged(true);
     adapter_.reset();observations_.flush();
@@ -139,6 +163,7 @@ void FpgaDeviceController::connectDevice(const QString& locator, const QString& 
 void FpgaDeviceController::disconnectDevice()
 {
     ++operationGeneration_;
+    connectionStartTick_.reset();pendingManagement_.clear();connectionClock_.invalidate();
     observations_.flush();
     presentationTimer_.stop(); statusTimer_.stop();watchdogTimer_.stop();
     pendingConnections_.clear(); operationConnections_.clear();

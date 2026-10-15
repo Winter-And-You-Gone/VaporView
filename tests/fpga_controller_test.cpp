@@ -48,6 +48,7 @@ class ScriptedTransport final : public FpgaUsbTransport {
 public:
     bool opened=false,closed=false,strict=true;
     bool holdResponses=false;
+    quint64 responseTick=0;
     quint32 failWriteAddress=0xffffffff;
     quint32 failWriteValue=0xffffffff;
     bool failTemperature=false,confirmTemperature=true;
@@ -114,7 +115,7 @@ public:
                 else if(command.address==1){const auto base=0x6000+(command.source-0x40)*0x100;regs[base+4]=command.value;regs[base+8]=(regs.value(base+8)&~9u)|(command.value&1);if(base==0x6000&&!command.value)regs[base+8]|=8;if(base==0x6500)pendingReads[base+8]=2;}
             }
         }
-        const auto wire=FpgaVlp1::buildFrame(FpgaVlp1::FrameType::Response,f.header.sequence,f.header.source,f.header.message,response);
+        const auto wire=FpgaVlp1::buildFrame(FpgaVlp1::FrameType::Response,f.header.sequence,f.header.source,f.header.message,response,true,3,responseTick);
         incoming.append(reinterpret_cast<const char*>(wire.data()),wire.size());return bytes.size();
     }
     void clear(){commands.clear();}
@@ -135,6 +136,36 @@ struct Fixture {
     void finish(){waitUntil([this]{return !controller.busy();},"operation completes");}
 };
 bool inPage(quint32 a,quint32 base){return a>=base&&a<base+0x200;}
+void connectionEventTimeFilter(){
+    Fixture f;
+    const auto event=[](quint16 message,quint64 tick,quint32 count=4) {
+        std::vector<std::uint8_t> payload;
+        const bool status=message==0x1400;
+        for(quint32 value:std::vector<quint32>{1,status?0u:0x66u,status?0u:0x44u,status?0u:4u,0,status?count:0u,0,0})append32(payload,value);
+        const auto wire=FpgaVlp1::buildFrame(FpgaVlp1::FrameType(status?0x12:0x11),900,status?1:0x46,message,payload,true,3,tick);
+        return QByteArray(reinterpret_cast<const char*>(wire.data()),wire.size());
+    };
+    const auto count=[&] {int n=0;for(const auto& r:f.records)if(r.fields.value("event")=="fpga_firmware_event")++n;return n;};
+    constexpr quint64 currentTick=1000000000000ULL;
+    f.transport->responseTick=currentTick;
+    f.transport->holdResponses=true;
+    f.controller.connectDevice({},"auto");
+    // Backlog and a new handshake-time fault both arrive before the PING reply.
+    f.transport->incoming.prepend(event(0x1402,1)+event(0x1402,currentTick));
+    f.transport->holdResponses=false;f.finish();
+    require(f.controller.ready() && count()==1,"old backlog filtered while new handshake error survives");
+    f.transport->incoming.append(event(0x1402,2)+event(0x1400,currentTick,100)+event(0x1402,currentTick+1));
+    waitUntil([&]{return count()>=2;},"current error after handshake remains visible");
+    require(count()==2,"late old event and first historical drop total produce no warnings");
+    f.transport->incoming.append(event(0x1400,currentTick+2,101));
+    waitUntil([&]{return count()>=3;},"new drop increment produces warning");
+    require(count()==3,"one warning for one new drop increment");
+    f.controller.disconnectDevice();
+    f.transport->responseTick=0;f.connect();
+    f.transport->incoming.append(event(0x1400,5,200)+event(0x1402,6));
+    waitUntil([&]{return count()>=4;},"reconnect accepts new device clock epoch");
+    require(count()==4,"reconnect resets cumulative drop baseline");
+}
 void advancedDataPaths(){
     Fixture f;f.connect();f.transport->clear();
     f.controller.connectSensor({{"op","sensor"},{"source",0x41},{"enabled",true},{"poll_ms",500},{"parameters",QJsonObject{{"address",241}}}});f.finish();
@@ -606,5 +637,5 @@ int main(int argc,char **argv){
         }
         std::puts("hardware controller connect/idle/reconnect probe passed");return 0;
     }
-    advancedDataPaths();connectionResultLogs();sensorRates();connectionAndVersions();connectionRecovery();backgroundRefresh();independentAndAcquisition();restartClearsDliaState();configurationAndFailure();scopedConfiguration();rawAndBusy();temperature();sensorUploadAndFailure();ai8DisabledConfiguration();ptbHistoricalErrorRecovery();threadCleanup();std::puts("FPGA controller tests passed");return 0;
+    connectionEventTimeFilter();advancedDataPaths();connectionResultLogs();sensorRates();connectionAndVersions();connectionRecovery();backgroundRefresh();independentAndAcquisition();restartClearsDliaState();configurationAndFailure();scopedConfiguration();rawAndBusy();temperature();sensorUploadAndFailure();ai8DisabledConfiguration();ptbHistoricalErrorRecovery();threadCleanup();std::puts("FPGA controller tests passed");return 0;
 }

@@ -99,6 +99,7 @@ private:
     void stopAndDrain();
     void resetAcquisition();
     void recoverConnection();
+    void publishManagementEvent(const QJsonObject& event);
     void acceptReading(const VaporView::FpgaSensor::Reading& reading);
     void flushPresentation();
     bool versionsMatch(QString *detail) const;
@@ -109,6 +110,9 @@ private:
     FpgaSensor::FpgaSensorAdapter adapter_;
     Ppk::RawSatelliteAssembler observations_;
     QJsonObject management_, pendingSensorParameters_;
+    QVector<QJsonObject> pendingManagement_;
+    std::optional<quint64> connectionStartTick_;
+    QElapsedTimer connectionClock_;
     std::deque<Step> steps_;
     std::optional<Step> current_;
     QMap<quint32, quint32> registers_;
