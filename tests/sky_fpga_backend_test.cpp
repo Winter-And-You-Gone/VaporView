@@ -81,6 +81,17 @@ int main(int argc,char **argv)
     require(!settingsDone,"parameter submission is not success at enqueue");
     waitUntil([&]{return settingsDone;},"remote parameter write and readback completed");
     settingsDone=false;
+    backend.submit({{"op","sensor"},{"source",0x41},{"enabled",true},{"poll_ms",500},{"parameters",QJsonObject{{"address",241}}}},
+        [&](CommandErrorCode code,QString,QJsonObject status) {
+            const auto values=status.value("registers").toObject();
+            const auto config=FpgaControlConfig::fromJson(status.value("configuration").toObject());
+            require(code==CommandErrorCode::Ok && values.value(QString::number(0x6114)).toInt()==241
+                && values.value(QString::number(0x611c)).toInt()==500 && values.value(QString::number(0x6104)).toInt()==1
+                && config.sensorParameters.value(0x41).value("address").toInt()==241,
+                "Sky HMP connects after advanced parameter verification and synchronizes confirmed configuration");settingsDone=true;
+        });
+    waitUntil([&]{return settingsDone;},"remote HMP advanced configuration completed");
+    settingsDone=false;
     backend.submit({{"op","sensor"},{"source",0x46},{"enabled",true},{"poll_ms",500}},
         [&](CommandErrorCode code,QString,QJsonObject status) {
             require(code==CommandErrorCode::Ok && FpgaControlConfig::fromJson(status.value("configuration").toObject()).ai8.pollIntervalMs==500,

@@ -469,6 +469,10 @@ void testAi8TemperatureControllerStatus()
             "AI-8 channel control states round-trip");
     require(parsed.alarmStatusRegisters[3] == 0x0103, "AI-8 alarm registers round-trip");
 
+    status.detailedChannel=3;status.setpointC=26.5;status.displayedSetpointC=26.0;status.outputRaw=501;status.alarmRaw=2;status.controlRaw=1;
+    const auto details=VaporView::TelemetryCodec::serializeAi8TemperatureControllerStatus(status);
+    require(VaporView::TelemetryCodec::parseAi8TemperatureControllerStatus(details,parsed) && parsed.detailedChannel==3 && parsed.setpointC==26.5 && parsed.displayedSetpointC==26.0 && parsed.outputRaw==501 && parsed.alarmRaw==2,"selected FPGA AI8 channel details survive remote transport");
+    status.detailedChannel=9;require(!VaporView::TelemetryCodec::parseAi8TemperatureControllerStatus(VaporView::TelemetryCodec::serializeAi8TemperatureControllerStatus(status),parsed),"invalid selected channel rejected");
     Ai8::LiveData ignored;
     require(!VaporView::TelemetryCodec::parseAi8TemperatureControllerStatus(payload.left(payload.size() - 1), ignored),
             "AI-8 status rejects truncated payload");

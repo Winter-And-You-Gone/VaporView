@@ -21,6 +21,7 @@ class QStackedWidget;
 class QButtonGroup;
 class QSplitter;
 class QLabel;
+class QComboBox;
 class QPushButton;
 class QShowEvent;
 class QScrollArea;
@@ -164,6 +165,7 @@ private:
     bool ppk_session_available_ = false;
     bool navigation_refresh_pending_ = false;
     VaporView::Ground::SessionUi::SessionWaveformWidget *waveform_page_;
+    QComboBox *fpga_wave_choice_ = nullptr;
     VaporView::Ground::SessionUi::SessionDeviceDataWidget *device_data_page_;
     std::unique_ptr<VaporView::Ground::SessionUi::SessionLoadingDialog> loading_dialog_;
     VaporView::Ground::SessionMapCoordinator *map_coordinator_;

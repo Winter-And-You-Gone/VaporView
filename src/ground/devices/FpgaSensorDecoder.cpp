@@ -3,6 +3,7 @@
 #include <QtGlobal>
 
 #include <cmath>
+#include <cstring>
 
 namespace VaporView::FpgaSensor
 {
@@ -64,10 +65,20 @@ Reading FpgaSensorDecoder::decode(const QByteArray &payload, quint16 source, qui
         if (out.validity.measurement && id==0x41) out.epsilonDeviceTimestampUs=qint64(u64le(payload.constData()+47));
         return out;
     }
-    out.kind = source==0x0040?SensorKind::Ptb210:source==0x0043?SensorKind::Bmp390:source==0x0044?SensorKind::Sht45:source==0x0045?SensorKind::Tfa1500:source==0x0046?SensorKind::Ai8:SensorKind::Unknown;
+    out.kind = source==0x0040?SensorKind::Ptb210:source==0x0041?SensorKind::Hmp:source==0x0043?SensorKind::Bmp390:source==0x0044?SensorKind::Sht45:source==0x0045?SensorKind::Tfa1500:source==0x0046?SensorKind::Ai8:SensorKind::Unknown;
     out.validity.structure=parseTlv(payload,out.schema,out.records); if(!out.validity.structure) return out;
     auto scalarI=[&](quint16 tag, std::optional<qint32> &dst){ if(auto r=find(out.records,tag)){qint32 v; if(readI32(*r,v)) dst=v;} };
     auto scalarU=[&](quint16 tag, std::optional<quint32> &dst){ if(auto r=find(out.records,tag)){quint32 v; if(readU32(*r,v)) dst=v;} };
+    if (out.kind==SensorKind::Hmp && out.schema==1) {
+        const auto f32=[&](quint16 tag, std::optional<double>& dst) {
+            if (auto r=find(out.records,tag);r && r->type==9 && r->value.size()==4) {
+                const quint32 bits=u32(r->value.constData()); float value;std::memcpy(&value,&bits,4);
+                if(std::isfinite(value))dst=value;
+            }
+        };
+        f32(0x100,out.humidityPct);f32(0x101,out.temperatureC);
+        scalarU(2,out.hmpDeviceError);
+    }
     if (out.kind==SensorKind::Ptb210 && out.schema==1) { scalarI(0x0012,out.pressureMilliPa); if(out.pressureMilliPa) out.pressurePa=*out.pressureMilliPa/1000.0; }
     else if(out.kind==SensorKind::Sht45 && out.schema==1){ std::optional<qint32> t; scalarI(0x10,t); if(t) out.temperatureC=*t/1000.; if(auto r=find(out.records,0x11)){quint32 v; if(readU32(*r,v)) out.humidityPct=v/1000.;} scalarU(1,out.heaterMode); }
     else if(out.kind==SensorKind::Tfa1500 && out.schema==1) scalarU(0x13,out.distanceMm);
@@ -76,6 +87,8 @@ Reading FpgaSensorDecoder::decode(const QByteArray &payload, quint16 source, qui
     out.validity.measurement = false;
     if (out.kind==SensorKind::Bmp390) out.validity.measurement=out.schema==1 && out.bmpPressureRaw && out.bmpTemperatureRaw && *out.bmpPressureRaw<0x1000000 && *out.bmpTemperatureRaw<0x1000000;
     if (out.kind==SensorKind::Ptb210) out.validity.measurement=out.pressureMilliPa.has_value();
+    if (out.kind==SensorKind::Hmp) out.validity.measurement=out.temperatureC && out.humidityPct
+        && *out.humidityPct>=0 && *out.humidityPct<=100 && (!out.hmpDeviceError || !*out.hmpDeviceError);
     if (out.kind==SensorKind::Sht45) out.validity.measurement=out.temperatureC.has_value()&&out.humidityPct.has_value()&&out.heaterMode.has_value();
     if (out.kind==SensorKind::Tfa1500) out.validity.measurement=out.distanceMm.has_value();
     if (out.kind==SensorKind::Ai8) out.validity.measurement=out.ai8DeviceStatus.has_value() && out.ai8DeviceError.has_value();

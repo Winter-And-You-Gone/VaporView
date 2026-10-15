@@ -143,7 +143,7 @@ static void verifyCardMargins(MainWindow &window,FpgaControlPage *page,int scale
                 require(secondRect.left()-firstRect.right()-1==qRound(12*scale/100.0),"paired cards retain the shared scaled card gap");
                 require(firstRect.left()==homeRect.left()&&secondRect.right()==homeRect.right(),"paired channel cards fill the row within the home outer margins");
             }
-            if(tab==3) {
+            if(tab==tabs->count()-1) {
                 auto *row=page->findChild<QHBoxLayout*>("fpgaRecordingCards");auto *recording=row->itemAt(0)->widget();
                 for(const auto *name:{"fpgaRawStart","fpgaRawStop","fpgaRecord","fpgaReplay","fpgaExport"}) {
                     auto *button=page->findChild<QAbstractButton*>(name);const QRect rect(button->mapTo(recording,QPoint()),button->size());
@@ -167,7 +167,7 @@ static void verifyCardMargins(MainWindow &window,FpgaControlPage *page,int scale
                     &&h1->geometry().bottom()<h2->geometry().top(),"main window stacks H1 and H2 at full channel width");
             }
             auto *sensorGrid=page->findChild<QGridLayout*>("fpgaSensorGrid");
-            require(sensorGrid&&sensorGrid->rowCount()==5&&sensorGrid->columnCount()==4,"sensor card has five device rows");
+            require(sensorGrid&&sensorGrid->rowCount()==6&&sensorGrid->columnCount()==4,"sensor card has six independent device rows including HMP");
             if(tab==1) {
                 require(!page->findChild<QComboBox*>("fpgaPressureSource") && !page->findChild<QComboBox*>("fpgaHumiditySource"),
                     "independent sensors have no interchangeable source selectors");
@@ -430,7 +430,7 @@ static void remoteHomeActions()
     if(!ratesShown)std::cerr<<"FPGA rates: "<<qPrintable(pressureRate->text())<<", "<<qPrintable(humidityRate->text())
         <<", "<<qPrintable(distanceRate->text())<<", "<<qPrintable(epsilonRate->text())<<'\n';
     require(ratesShown,
-        "remote FPGA rates come from Sky raw sensors and fixed PTB, with unsupported HMP unavailable");
+        "remote FPGA rates come from Sky raw sensors and fixed PTB, with HMP unavailable until HMP data arrives");
     auto *internal=window.findChild<QLabel*>("homeInternalEnvironment");
     require(internal,"home internal metrics exist");
     FpgaSensor::Reading bmp;bmp.source=0x43;bmp.kind=FpgaSensor::SensorKind::Bmp390;
@@ -645,7 +645,8 @@ static void localSimulatorRouting()
     QMetaObject::invokeMethod(&window,"onConnectClicked");
     check(waitUntil([&]{return acquisition->isEnabled()&&disconnect->isEnabled();},12000),"local factory handshake enables normal controls");
     check(waitUntil([&]{return pressureAction->isEnabled()&&pressureAction->property("state")=="connected";}),"home connect opens USB and confirms the already-enabled BMP sensor");
-    check(waitUntil([&]{return connectionSuccesses.size()==7;}),"title-bar unified connect publishes six sensor and ADC/DLIA success logs");
+    check(waitUntil([&]{return connectionSuccesses.size()==8;}),"title-bar unified connect publishes seven sensor and ADC/DLIA success logs");
+    check(connectionSuccesses.contains(0x41),"HMP has its own confirmed connection log");
     for(const auto &entry: {qMakePair("deviceEpsilonBaudComboFpgaEditor","921600"),
             qMakePair("devicePressureBaudComboFpgaEditor","9600"),
             qMakePair("deviceLidarBaudComboFpgaEditor","500000"),
@@ -748,7 +749,7 @@ static void localSimulatorRouting()
     check(pressureRate&&humidityRate&&distanceRate&&epsilonRate,"local home sensor frequency labels exist");
     const auto rateHz=[](QLabel *label){return QRegularExpression("([0-9]+\\.[0-9]+)\\s*Hz")
         .match(label->text().simplified()).captured(1).toDouble();};
-    check(waitUntil([&]{return rateHz(pressureRate)>0.0&&rateHz(humidityRate)==0.0
+    check(waitUntil([&]{return rateHz(pressureRate)>0.0&&rateHz(humidityRate)>0.0
         &&rateHz(distanceRate)>0.0&&rateHz(epsilonRate)>20.0;}),
         "local FPGA simulator supplies visible rates without serial collectors");
     auto *internal=window.findChild<QLabel*>("homeInternalEnvironment");
@@ -756,7 +757,7 @@ static void localSimulatorRouting()
         "both internal sensors reach the home title bar through real VLP frames");
     auto *environmentPressure=window.findChild<PtbPanel*>()->findChild<QLabel*>("highlightedValue");
     check(environmentPressure->text().contains("1013."),"BMP pressure never replaces environmental PTB pressure");
-    check(!homeAction(window,"HMP")->isEnabled(),"missing HMP firmware channel remains unavailable");
+    check(homeAction(window,"HMP")->isEnabled(),"HMP firmware channel is available through the common home connection action");
 
     QWidget *deviceConfig=path;
     while(stack->indexOf(deviceConfig)<0)deviceConfig=deviceConfig->parentWidget();
@@ -830,7 +831,7 @@ static void localSimulatorRouting()
     check(VaporView::Session::FpgaSessionArchive::replay(recordings.filePath(sessions.first()),[&](quint64,const auto& frame){
         if(frame.header.frameType==VaporView::FpgaVlp1::FrameType::Data)sources.insert(frame.header.source);return true;
     },&error),qPrintable(error));
-    check(sources.size()==10,"local recording replays six sensor sources and four waveform sources");
+    check(sources.size()==11&&sources.contains(0x41),"local recording replays seven sensor sources including HMP and four waveform sources");
     disconnect->click();check(waitUntil([&]{return connectButton->isEnabled();}),"local disconnect releases the simulator");
     QMetaObject::invokeMethod(&window,"onRefreshTimer");
     check(pressureRate->text().contains("--")&&humidityRate->text().contains("--")

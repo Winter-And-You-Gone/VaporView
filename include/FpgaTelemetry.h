@@ -7,6 +7,9 @@
 
 namespace VaporView::FpgaRemote
 {
+// Eight little-endian u32 words, schema 1; these are not sensor TLVs.
+QJsonObject decodeManagementEvent(quint8 type, quint16 source, quint16 message,
+                                 quint64 tick, const QByteArray& payload);
 bool validateControl(const QJsonObject& control, QString *error = nullptr);
 QByteArray encodeControl(const QJsonObject& control);
 bool parseControl(const QByteArray& payload, QJsonObject& control, QString *error = nullptr);

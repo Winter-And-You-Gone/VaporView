@@ -8,6 +8,7 @@
 | Ground/SkyCore | device.fpga | fpga_operation_diagnostic | Info/Warning/Error | FPGA 操作诊断；具体原因保留在 message。 | operation, ready, busy | error_code | FPGA_OPERATION_FAILED |
 | Ground/SkyCore | device.fpga | fpga_device_connection_result | Info/Warning | {device} 经 FPGA 连接成功 / 连接失败 / 通道已启用。 | device, fpga_source, result, reason_code, reason, ui_visibility | module_status, module_error | CHANNEL_ENABLED / VALID_SAMPLE / CONTROL_READBACK / TRANSACTION_FAILED / NO_VALID_SAMPLE |
 | Ground/SkyCore | device.fpga | fpga_raw_acquisition_result | Info/Warning | 原始信号：开始采集 / 停止采集成功或失败，{reason}。 | enabled, result, reason, ui_visibility |  |  |
+| Ground/SkyCore | device.fpga | fpga_firmware_event | Info/Warning | FPGA 模块新增错误、上传丢包、电机运动完成或 EPSILON 原始观测组包诊断。 |  | message_id, source_id, tick, payload, observation_event, receiver, utc_ns, ui_visibility |  |
 | SkyCore | session.write | fpga_recording_storage_failed | Error | FPGA 存储写入失败，会话已暂停并标记为不完整，正在停止采集。 | error_code, session_sink_failure |  | FPGA_RECORDING_STORAGE_FAILED |
 | SkyCore | device.fpga | fpga_storage_failure_usb_closed | Error | 采集停止未确认，USB 接收已关闭；请核对下位机物理状态。 | error_code, detail |  | FPGA_STOP_UNCONFIRMED |
 | Ground/SkyCore | navigation.corrections | navigation_correction_status_changed | Info/Warning | 导航与差分状态变化。 | record_timestamp_us, source_mode, rtcm_health, rtcm_age_ms, navigation_available, gnss_fix_code, rtk_fix_transition, baseline_reset | epsilon_device_timestamp_us, sky_report_timestamp_us, sky_boot_id, rtcm_stream_id, hacc_m, latitude_deg, longitude_deg |  |

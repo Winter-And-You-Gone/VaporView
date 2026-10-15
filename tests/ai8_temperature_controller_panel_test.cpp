@@ -752,6 +752,20 @@ int main(int argc, char **argv)
             "AI-8 title status follows the selected channel");
     require(alarmStatusEdit->text().contains(QStringLiteral("0x03")),
             "AI-8 selected-channel alarm status follows the selected channel");
+    VaporView::Ai8TemperatureControllerProtocol::LiveData selected;
+    selected.valid=true;selected.measuredC.fill(std::numeric_limits<double>::quiet_NaN());selected.measuredC[0]=24.0;
+    selected.detailedChannel=1;selected.setpointC=25.0;selected.displayedSetpointC=24.8;selected.outputRaw=500;selected.alarmRaw=2;
+    channelSpin->setValue(1);panel.applyLiveData(selected);
+    require(panel.findChild<QLineEdit*>("ai8DisplayedSetpointEdit")->text().contains("24.8") && alarmStatusEdit->text().contains("0x02"),
+            "FPGA selected-channel SV and alarm details reach the common panel");
+    channelSpin->setValue(2);
+    require(panel.findChild<QLineEdit*>("ai8DisplayedSetpointEdit")->text()==QStringLiteral("---") && alarmStatusEdit->text()==QStringLiteral("---")
+        &&panel.findChild<QLineEdit*>("ai8MeasuredTemperatureEdit")->text()==QStringLiteral("---"),
+            "uncollected FPGA channels do not retain another channel's details or display NaN");
+    channelSpin->setValue(1);
+    panel.applyLiveData(VaporView::Ai8TemperatureControllerProtocol::LiveData{});
+    require(alarmStatusEdit->text()==QStringLiteral("---") && panel.findChild<QLineEdit*>("ai8DisplayedSetpointEdit")->text().isEmpty(),
+            "losing FPGA details clears the previous selected-channel readback");
     panel.setEnglish(true);
     QApplication::processEvents();
     require(channelButton->text() == QStringLiteral("Channel") &&

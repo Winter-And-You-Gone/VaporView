@@ -1,11 +1,13 @@
 #include "FpgaTelemetry.h"
 #include "FpgaControlConfig.h"
+#include "FpgaAdvancedParameters.h"
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QRegularExpression>
 #include <QStringList>
 #include <QtEndian>
 #include <cmath>
+#include <cstring>
 #include <limits>
 
 namespace VaporView::FpgaRemote
@@ -39,13 +41,14 @@ QByteArray bytes(QJsonObject object)
 }
 bool sensorSource(int source)
 {
-    return source == 0x40 || source == 0x42 || source == 0x43 ||
+    return source == 0x40 || source == 0x41 || source == 0x42 || source == 0x43 ||
         source == 0x44 || source == 0x45 || source == 0x46;
 }
 FpgaSensor::SensorKind kind(int source)
 {
     switch (source) {
     case 0x40: return FpgaSensor::SensorKind::Ptb210;
+    case 0x41: return FpgaSensor::SensorKind::Hmp;
     case 0x42: return FpgaSensor::SensorKind::Epsilon;
     case 0x43: return FpgaSensor::SensorKind::Bmp390;
     case 0x44: return FpgaSensor::SensorKind::Sht45;
@@ -58,6 +61,10 @@ FpgaSensor::SensorKind kind(int source)
 // whose convenience defaults/coercions are inappropriate for remote writes.
 bool configurationShape(const QJsonValue& value, const QJsonValue& model, const QString& key = {})
 {
+    if(key=="sensorParameters") {
+        if(!value.isObject())return false;const auto sensors=value.toObject();
+        for(auto it=sensors.begin();it!=sensors.end();++it) {bool ok=false;const auto source=it.key().toUInt(&ok);if(!ok || source<0x40 || source>0x46 || !it.value().isObject() || !validSensorParameters(quint16(source),it.value().toObject()))return false;}return true;
+    }
     if (model.isObject()) {
         if (!value.isObject()) return false;
         const auto o = value.toObject(), m = model.toObject();
@@ -80,7 +87,10 @@ bool configurationShape(const QJsonValue& value, const QJsonValue& model, const 
     if (!integer(value)) return false;
     if (key == "pressureSource") return value.toInt() == 0x40 || value.toInt() == 0x43;
     if (key == "phaseMode") return integer(value, 0, 2);
-    if (key == "mode") return integer(value, 0, 3);
+    if (key == "mode") return integer(value, 0, 7) && (value.toInt()&2);
+    if(key=="fragmentPoints")return integer(value,1,256);
+    if(key=="adcCnvTicks")return integer(value,2,20);
+    if(key=="adcBusyTimeoutTicks")return integer(value,40,1000000);
     if (key == "slaveAddress") return integer(value, 1, 247);
     if (key == "channel") return integer(value, 1, 8);
     if (key == "minCode" || key == "maxCode" || key == "clearCode") return integer(value, 0, 0xfffff);
@@ -91,6 +101,10 @@ bool configurationShapeValid(QJsonObject object)
 {
     // Accept the obsolete field from older peers, without retaining its timer policy.
     if (object.contains("rawWindowSeconds") && !integer(object.take("rawWindowSeconds"), 1, 60)) return false;
+    if(!object.contains("sensorParameters"))object["sensorParameters"]=QJsonObject{};
+    if(!object.contains("adcCnvTicks"))object["adcCnvTicks"]=2;
+    if(!object.contains("adcBusyTimeoutTicks"))object["adcBusyTimeoutTicks"]=100;
+    if(object.value("channels").isArray()) {auto channels=object.value("channels").toArray();for(int i=0;i<channels.size();++i)if(channels[i].isObject()){auto c=channels[i].toObject();if(!c.contains("expectedPoints"))c["expectedPoints"]=0;if(!c.contains("fragmentPoints"))c["fragmentPoints"]=256;channels[i]=c;}object["channels"]=channels;}
     return configurationShape(object, FpgaControlConfig{}.toJson());
 }
 bool configurationValid(const QJsonObject& object)
@@ -100,6 +114,28 @@ bool configurationValid(const QJsonObject& object)
     for (int i = 0; i < 2; ++i) if (c.dac[i].minCode > c.dac[i].maxCode || c.dlia[i].outputRateHz > c.adcRateHz) return false;
     return true;
 }
+}
+
+QJsonObject decodeManagementEvent(quint8 type, quint16 source, quint16 message,
+                                 quint64 tick, const QByteArray& payload)
+{
+    const bool status=message==0x1400 || message==0x1401;
+    if(payload.size()!=32 || type!=(status?0x12:0x11) ||
+       (!status && message!=0x1402 && message!=0x1201 && message!=0x1300) ||
+       (message==0x1400 && source!=1) || (message==0x1201 && source!=2) ||
+       (message==0x1300 && source!=0x47))return {};
+    const auto word=[&](int i){return qFromLittleEndian<quint32>(payload.constData()+4*i);};
+    if(word(0)!=1)return {};
+    if(message==0x1401 || message==0x1402) {
+        const auto page=word(1);quint16 expected=0xffff;
+        if(page==0)expected=1;else if(page==0x10)expected=2;
+        else if(page==0x20 || page==0x30)expected=0x10;else if(page==0x21 || page==0x31)expected=0x11;
+        else if(page==0x40 || page==0x41)expected=quint16(page-0x20);else if(page==0x50 || page==0x51)expected=quint16(page-0x20);
+        else if(page>=0x60 && page<=0x67)expected=quint16(page-0x20);else if(page==0x70 || page==0x80)expected=0x50;
+        if(source!=expected)return {};
+    }
+    QJsonArray words;for(int i=1;i<8;++i)words.append(double(word(i)));
+    return {{"message",message},{"source",source},{"tick",QString::number(tick)},{"words",words}};
 }
 
 bool validateControl(const QJsonObject& control, QString *error)
@@ -130,26 +166,50 @@ bool validateControl(const QJsonObject& control, QString *error)
         if (op == "sensor") {
             keys << "source";
             if (!integer(control.value("source"), 0, 65535) || !sensorSource(control.value("source").toInt())) return fail();
-            if (control.contains("baud") || control.contains("poll_ms")) {
+            if (control.contains("baud") || control.contains("poll_ms") || control.contains("parameters")) {
                 if (!control.value("enabled").toBool()) return fail();
                 auto settings=control;settings["op"]="sensor_config";settings.remove("enabled");
                 if (!validateControl(settings,error)) return false;
-                keys << "baud" << "poll_ms";
+                keys << "baud" << "poll_ms" << "parameters";
             }
         }
     } else if (op == "sensor_config") {
-        keys << "source" << "baud" << "poll_ms";
+        keys << "source" << "baud" << "poll_ms" << "parameters";
         if (!integer(control.value("source"), 0, 65535) || !sensorSource(control.value("source").toInt())) return fail();
         const int source = control.value("source").toInt();
-        if (!control.contains("baud") && !control.contains("poll_ms")) return fail();
+        if (!control.contains("baud") && !control.contains("poll_ms") && !control.contains("parameters")) return fail();
+        if(control.contains("parameters") && (!control.value("parameters").isObject() || !validSensorParameters(quint16(source),control.value("parameters").toObject())))return fail();
         if (control.contains("baud")) {
             if (source != 0x40 && source != 0x42 && source != 0x45) return fail();
             if (!integer(control.value("baud"), source == 0x40 ? 1200 : source == 0x42 ? 9600 : 115200,
                          source == 0x40 ? 19200 : 6250000)) return fail();
         }
         if (control.contains("poll_ms") &&
-            ((source != 0x40 && source != 0x43 && source != 0x44 && source != 0x46) ||
+            ((source != 0x40 && source != 0x41 && source != 0x43 && source != 0x44 && source != 0x46) ||
              !integer(control.value("poll_ms"), 1, 3600000))) return fail();
+    } else if(op=="time" || op=="motor" || op=="sensor_action" || op=="maintenance") {
+        keys << "action" << "value";
+        if(!integer(control.value("action"),1,33) || !integer(control.value("value"),op=="motor"?-2147483648.0:0,op=="motor"?2147483647.0:4294967295.0))return fail();
+        const int a=control.value("action").toInt();const double v=control.value("value").toDouble();
+        if(op=="time" && !((a==1 || a==3)?v<=1:a==2?v==0:a==4?(v>=1 && v<=3600000):a==5))return fail();
+        if(op=="motor" && !(a==1 || ((a==2 || a==3) && v==0) || (a==4 && v>=0 && v<=1)))return fail();
+        if(op=="sensor_action" || op=="maintenance") {
+            keys << "source";if(!integer(control.value("source"),0,65535))return fail();const int src=control.value("source").toInt();
+            if(op=="sensor_action" && !(sensorSource(src) && (((a==3 || a==4) && v==0) || a==5 || (a==16 && src==0x41) || (a==32 && src==0x45 && v<=2) || (a==33 && src==0x45 && v>=1 && v<=4))))return fail();
+            if(a==16 && src==0x41) {const quint32 bits=quint32(v);float pressure;std::memcpy(&pressure,&bits,4);if(!std::isfinite(pressure) || pressure<=0)return fail();}
+            if(op=="maintenance" && (!(a==8 || a==9) || v!=0 || !(src==2 || sensorSource(src) || src==0x10 || src==0x11 || src==0x20 || src==0x21 || src==0x30 || src==0x31 || src==0x47)))return fail();
+        }
+    } else if(op=="time_tag") {
+        keys << "low" << "high";if(!integer(control.value("low")) || !integer(control.value("high")))return fail();
+    } else if(op=="motor_config") {
+        keys << "frequency" << "high_ticks" << "dir_ticks" << "polarity";
+        if(!integer(control.value("frequency"),1,196078) || !integer(control.value("high_ticks"),255) || !integer(control.value("dir_ticks"),505) || !integer(control.value("polarity"),0,7) || control.value("high_ticks").toDouble()+255>std::floor(100000000/control.value("frequency").toDouble()))return fail();
+    } else if(op=="channel_acquisition") {
+        keys << "channel" << "enabled";if(!integer(control.value("channel"),0,1) || !control.value("enabled").isBool())return fail();
+    } else if(op=="stream_config") {
+        keys << "mode" << "high_water" << "burst";if(!integer(control.value("mode"),0,1) || !integer(control.value("high_water"),1) || !integer(control.value("burst"),1,65535))return fail();
+    } else if(op=="watchdog") {
+        keys << "value";if(!integer(control.value("value"),0,3600000) || (control.value("value").toInt()!=0 && control.value("value").toInt()<30000))return fail();
     } else if (op == "temperature") {
         keys << "celsius";
         const auto v = control.value("celsius");
@@ -185,6 +245,17 @@ bool parseStatus(const QByteArray& payload, QJsonObject& status)
             const auto device = value.toObject();
             for (const auto *key : {"locator","label","driver","backend"}) if (!device.value(QLatin1String(key)).isString()) return false;
             if (!device.value("available").isBool() || !QStringList{"auto","cypress","winusb"}.contains(device.value("backend").toString())) return false;
+        }
+    }
+    if(result.contains("management")) {
+        if(!result.value("management").isObject() || result.value("management").toObject().size()>64)return false;
+        const auto events=result.value("management").toObject();
+        for(auto it=events.begin();it!=events.end();++it) {
+            if(!it.value().isObject())return false;const auto event=it.value().toObject();quint64 tick;
+            if(!integer(event.value("source"),0,65535) || !integer(event.value("message"),0,65535) || !decimal(event.value("tick"),tick) || !event.value("words").isArray() || event.value("words").toArray().size()!=7)return false;
+            QByteArray payload(32,0);qToLittleEndian<quint32>(1,payload.data());const auto words=event.value("words").toArray();
+            for(int i=0;i<7;++i){if(!integer(words[i]))return false;qToLittleEndian<quint32>(quint32(words[i].toDouble()),payload.data()+4*(i+1));}
+            const int msg=event.value("message").toInt();if(decodeManagementEvent(msg==0x1400||msg==0x1401?0x12:0x11,quint16(event.value("source").toInt()),quint16(msg),tick,payload).isEmpty())return false;
         }
     }
     const auto registers = result.value("registers").toObject();

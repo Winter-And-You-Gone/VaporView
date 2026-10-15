@@ -139,6 +139,10 @@ AdaptedMeasurements FpgaSensorAdapter::accept(const Reading &input)
             const int shift = ai8Channel_ % 2 ? 8 : 0;
             live.alarmStatusRegisters[index / 2] = quint16(s.alarm) << shift;
             live.valid = s.measurementValid;
+            if(s.measurementValid) {
+                live.detailedChannel=quint8(ai8Channel_);live.setpointC=s.setpointC;live.displayedSetpointC=s.displayedSetpointC;
+                live.outputRaw=quint16(s.outputRaw);live.alarmRaw=s.alarm;live.controlRaw=s.control;
+            }
             // The FPGA snapshot supplies exactly one channel, not all eight.
             // Global all-channel validity flags must remain false.
             live.mainStatusRaw = s.host;

@@ -86,6 +86,12 @@ int main(int argc,char **argv) {
     page.setTransportConnected(true);page.setConnectionState(false,false,"Version mismatch");
     require(page.findChild<QPushButton*>("fpgaRefresh")->isEnabled()&&page.findChild<QPushButton*>("fpgaDisconnect")->isEnabled()&&!apply->isEnabled(),"incompatible connected hardware retains readback and disconnect while writes stay forbidden");
     page.setTransportConnected(false);require(page.findChild<QPushButton*>("fpgaConnect")->isEnabled(),"closed transport can reconnect");
+    auto *bmpAddress=page.findChild<QDoubleSpinBox*>("fpgaSensorParameter6310");require(bmpAddress,"advanced sensor address editor exists");
+    page.setConnectionState(true,false);page.setHardwareValues({{0x6304,1},{0x6310,119}});require(!bmpAddress->isEnabled(),"connected sensor parameters locked");
+    page.setHardwareValues({{0x6304,0},{0x6310,119}});require(bmpAddress->isEnabled(),"disconnected sensor parameters editable");bmpAddress->setValue(118);require(page.configuration().sensorParameters.value(0x43).value("address")==118,"advanced edit stages desired settings");
+    page.setHardwareValues({{0x6304,0},{0x6310,119}});require(bmpAddress->value()==118,"readback preserves staged settings");
+    QJsonObject advancedRequest;QObject::connect(&page,&FpgaControlPage::operationRequested,&page,[&](const QJsonObject& request){advancedRequest=request;});
+    page.findChild<QPushButton*>("fpgaTimeRearm")->click();require(advancedRequest.value("op")=="time" && advancedRequest.value("action")==2,"time control emits typed operation");page.setConnectionState(true,false);
     int submitted=0;FpgaControlConfig requested;
     QObject::connect(&page,&FpgaControlPage::applyRequested,&page,[&](const FpgaControlConfig &v){++submitted;requested=v;});
     page.setConnectionState(true,false,"GP01");
@@ -226,6 +232,12 @@ int main(int argc,char **argv) {
     }
     page.setConnectionState(true,false);
     page.resize(720,540);page.show();app.processEvents();
+    auto *sensorChoice=page.findChild<QComboBox*>("fpgaAdvancedSensor");auto *sensorForms=page.findChild<QWidget*>("fpgaAdvancedSensorStack");
+    auto *advancedTabs=page.findChild<QTabWidget*>("fpgaTabs");const int previousTab=advancedTabs->currentIndex();advancedTabs->setCurrentIndex(3);
+    sensorChoice->setCurrentIndex(0);app.processEvents();app.processEvents();const int shortForm=sensorForms->parentWidget()->height();
+    sensorChoice->setCurrentIndex(5);app.processEvents();app.processEvents();
+    require(sensorForms->parentWidget()->height()>shortForm,"advanced sensor card height follows the visible form rather than the longest hidden form");
+    sensorChoice->setCurrentIndex(0);advancedTabs->setCurrentIndex(previousTab);app.processEvents();
     for(bool dark : {false,true}) for(bool english : {false,true}) for(int scale : {100,150}) {
         page.setLanguage(english); page.setTheme(dark,scale);
         QFont font=app.font();font.setPointSizeF(app.font().pointSizeF()*scale/100.0);page.setFont(font);
@@ -258,10 +270,10 @@ int main(int argc,char **argv) {
                     require(!page.findChild<QComboBox*>("fpgaPressureSource") && !page.findChild<QComboBox*>("fpgaHumiditySource"),
                         "independent sensor card has no source selectors");
                     auto *grid=page.findChild<QGridLayout*>("fpgaSensorGrid");
-                    require(grid&&grid->count()==20&&grid->rowCount()==5&&grid->columnCount()==4,"five ordinary sensors share one card with one row each");
+                    require(grid&&grid->count()==24&&grid->rowCount()==6&&grid->columnCount()==4,"six ordinary sensors share one card with one row each");
                     auto *sensorBody=grid->parentWidget();
                     int previousBottom=-1;
-                    for(int row=0;row<5;++row) {
+                    for(int row=0;row<6;++row) {
                         int previousRight=-1;
                         const auto *reading=qobject_cast<QLabel*>(grid->itemAtPosition(row,1)->widget());
                         require(reading&&reading->parentWidget()==sensorBody&&!reading->wordWrap(),"sensor readings stay on one line in the shared card");

@@ -32,6 +32,7 @@ public:
     void setUsbDiscoveryResult(const QJsonObject &result);
     quint64 usbDiscoveryGeneration() const { return usbDiscoveryGeneration_; }
     void setHardwareValues(const QMap<quint32, quint32> &values);
+    void setManagementState(const QJsonObject& state);
     void updateSensor(const VaporView::FpgaSensor::Reading &reading);
     void updateWaveform(const VaporView::FpgaWave::CompletedStream &stream);
     void appendDiagnostic(const QString &text);
@@ -56,6 +57,7 @@ signals:
     void applyDliaRequested(const FpgaControlConfig &config);
     void configurationChanged(const FpgaControlConfig &config);
     void refreshRequested();
+    void operationRequested(const QJsonObject& request);
     void acquisitionRequested(bool enable);
     void waveformRequested(int channel, bool enable);
     void dacRequested(int channel, bool enable);
@@ -89,7 +91,7 @@ private:
         double temperature=24.0;
         QSet<quint16> disabledSensors;
         QMap<quint32,quint32> sensorParameters{{0x6010,9600},{0x6018,1000},{0x6210,921600},
-            {0x6510,500000},{0x6314,1000},{0x6414,1000}};
+            {0x611c,1000},{0x6510,500000},{0x6314,1000},{0x6414,1000}};
         std::array<bool,2> wms{{true,true}}, dac{{true,true}};
         std::array<quint32,2> dacWriteCount{{0,0}};
         FpgaControlConfig saved, applied;
@@ -101,6 +103,8 @@ private:
     QVector<Field> fields_;
     QVector<QWidget*> onlineControls_;
     QMap<quint32, QLabel*> hardwareLabels_;
+    QMap<quint32,QDoubleSpinBox*> sensorParameterInputs_;
+    QMap<quint32,quint32> hardwareValues_;
     QMap<quint16, QLabel*> sensorLabels_;
     QMap<quint16, QWidget*> plots_, secondPlots_;
     QMap<quint16, QLabel*> firstPlotTitles_, secondPlotTitles_;
@@ -123,7 +127,7 @@ private:
     QAbstractButton *connect_ = nullptr, *disconnect_ = nullptr;
     QAbstractButton *refresh_ = nullptr;
     QAbstractButton *record_ = nullptr;
-    QLabel *status_ = nullptr, *recordStatus_ = nullptr;
+    QLabel *status_ = nullptr, *recordStatus_ = nullptr, *managementStatus_ = nullptr;
     QPlainTextEdit *diagnostics_ = nullptr;
     QComboBox *backend_ = nullptr;
     QCheckBox *recordSensors_ = nullptr, *recordDlia_ = nullptr, *recordRaw_ = nullptr;

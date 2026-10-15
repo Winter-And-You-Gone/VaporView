@@ -103,7 +103,7 @@ void FpgaRecordingStatistics::record(FpgaArchiveKind kind, QByteArrayView bytes)
     for (const auto& frame:frames) {
         const auto& h=frame.header;
         if (h.frameType!=FpgaVlp1::FrameType::Data) continue;
-        if (h.message==0x1100 && h.source>=0x40 && h.source<=0x46) ++records_[h.source];
+        if ((h.message==0x1100 || (h.message==0x1200 && h.source==0x42)) && h.source>=0x40 && h.source<=0x46) ++records_[h.source];
         if (!((h.message==0x1000 && (h.source==0x20 || h.source==0x21)) ||
               (h.message==0x1001 && (h.source==0x30 || h.source==0x31)))) continue;
         ++records_[h.source];

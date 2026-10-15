@@ -8,6 +8,7 @@
 #include <QDoubleValidator>
 #include <QIntValidator>
 #include "FpgaTelemetry.h"
+#include "ppk/ObservationStore.h"
 #include "ground/widgets/DeviceEnabledCheckBox.h"
 
 #ifdef VAPORVIEW_MAIN_WINDOW_TESTING
@@ -134,12 +135,12 @@ void MainWindow::syncFpgaDeviceConfigUi()
     const quint16 pressure = homeFpgaSensorSource(VaporView::SkyDeviceId::Ptb);
     field(state_->device_config_.epsilon_baud_combo,0x42,"baud",0x6210);
     field(state_->device_config_.ptb_baud_combo,pressure,pressure==0x40?"baud":"",0x6010,QStringLiteral("I²C"));
-    field(state_->device_config_.hmp_baud_combo,0,{},0,state_->is_english_?QStringLiteral("Not implemented"):QStringLiteral("下位机未接入"));
+    field(state_->device_config_.hmp_baud_combo,0x41,{},0,QStringLiteral("19200"));
     field(state_->device_config_.lidar_baud_combo,0x45,"baud",0x6510);
     field(state_->device_config_.ai8_temperature_baud_combo,0x46,{},0,registers.contains(0x6610)?QString::number(registers.value(0x6610)):QStringLiteral("19200"));
     field(state_->device_config_.temperature_baud_combo,0,{},0,state_->is_english_?QStringLiteral("Unsupported"):QStringLiteral("不支持"));
     field(state_->device_config_.ptb_rate_combo,pressure,"poll_ms",pressure==0x43?0x6314:0x6018);
-    field(state_->device_config_.hmp_rate_combo,0,{},0,QStringLiteral("—"));
+    field(state_->device_config_.hmp_rate_combo,0x41,"poll_ms",0x611c);
     field(state_->device_config_.ai8_temperature_rate_combo,0x46,"poll_ms",0x662c);
     field(state_->device_config_.lidar_rate_combo,0x45,{},0,state_->is_english_?QStringLiteral("Device output"):QStringLiteral("设备输出"));
     field(state_->device_config_.temperature_rate_combo,0,{},0,QStringLiteral("—"));
@@ -208,6 +209,8 @@ QJsonObject MainWindow::fpgaSensorConnectRequest(quint16 source)
         const double value=it.key()=="baud"?number:(number>0?std::round(1000.0/number):0);
         if(ok&&std::isfinite(value))it.value()=value;
     }
+    const auto& config=isRemoteSkyMode()?state_->fpga_remote_config_:state_->fpga_config_;
+    if(!config.sensorParameters.value(source).isEmpty())request["parameters"]=config.sensorParameters.value(source);
     request["op"]="sensor";request["source"]=source;request["enabled"]=true;
     return request;
 }
@@ -219,7 +222,7 @@ void MainWindow::confirmFpgaSensorDraft(quint16 source, const QMap<quint32, quin
     const auto request=fpgaSensorConnectRequest(source);
     const quint32 base=0x6000+(source-0x40)*0x100;
     for(const auto &key:draft.keys()) {
-        const quint32 address=base+(key=="baud"?0x10:source==0x40?0x18:source==0x46?0x2c:0x14);
+        const quint32 address=base+(key=="baud"?0x10:source==0x40?0x18:source==0x41?0x1c:source==0x46?0x2c:0x14);
         if(request.value(key).isDouble()&&registers.contains(address)&&registers.value(address)==request.value(key).toDouble())
             drafts[source].remove(key);
     }
@@ -234,8 +237,7 @@ quint16 MainWindow::homeFpgaSensorSource(VaporView::SkyDeviceId device) const
     case SkyDeviceId::Ptb: return 0x40;
     case SkyDeviceId::Bmp390: return 0x43;
     case SkyDeviceId::Sht45: return 0x44;
-    // HMP has no implemented measurement/control channel in the current firmware.
-    case SkyDeviceId::Hmp: return 0;
+    case SkyDeviceId::Hmp: return 0x41;
     case SkyDeviceId::Lidar: return 0x45;
     case SkyDeviceId::Ai8TemperatureController: return 0x46;
     default: return 0;
@@ -523,6 +525,7 @@ void MainWindow::setupFpgaControlPage()
     connect(page, &FpgaControlPage::applyDliaRequested, this, [dispatch, controller](const FpgaControlConfig& config) {
         dispatch({{"op", "configure"}, {"section", "dlia"}, {"configuration", config.toJson()}}, [controller, config] { controller->applyConfiguration(config,"dlia"); });
     });
+    connect(page,&FpgaControlPage::operationRequested,this,[dispatch,controller](const QJsonObject& request){dispatch(request,[controller,request]{controller->executeOperation(request);});});
     connect(page, &FpgaControlPage::configurationChanged, this, [this, controller](const FpgaControlConfig &config) {
         if (isUiTestMode()) { state_->fpga_sim_pressure_source_ = config.pressureSource; syncFpgaDeviceConfigUi(); return; }
         if (isRemoteSkyMode())
@@ -625,6 +628,10 @@ void MainWindow::setupFpgaControlPage()
         const QString output = QFileDialog::getSaveFileName(this, state_->is_english_ ? QStringLiteral("Export FPGA session") : QStringLiteral("导出 FPGA 会话"), QDir(directory).filePath(QStringLiteral("fpga_decoded.csv")), QStringLiteral("CSV (*.csv);;JSON (*.json);;BIN (*.bin)"));
         if (!output.isEmpty()) QMetaObject::invokeMethod(controller, [controller, directory, output] { controller->exportSession(directory,output); }, Qt::QueuedConnection);
     });
+    connect(controller,&Controller::observationEpochReceived,this,[this](const QByteArray& bytes) {
+        VaporView::Ppk::RawSatelliteEpoch epoch;
+        if(VaporView::Ppk::decodeEpoch(bytes,epoch))state_->recording_service_->recordEpsilonObservationEpoch(epoch);
+    },Qt::DirectConnection);
     connect(controller, &Controller::transportConnectionChanged, this, [this](bool connected) {
         const bool wasConnected = state_->fpga_connected_;
         state_->fpga_connected_ = connected;
@@ -661,6 +668,7 @@ void MainWindow::setupFpgaControlPage()
                 : QStringLiteral("FPGA AI8 设温请使用 FPGA 页面；此处串口参数命令不可用。"));
         updateRecordingActionStates();
     }, Qt::QueuedConnection);
+    connect(controller,&Controller::managementUpdated,this,[this,page](const QJsonObject& state){if(!isRemoteSkyMode())page->setManagementState(state);});
     connect(controller, &Controller::hardwareValuesChanged, this, [this, page](const QMap<quint32, quint32>& values) {
         state_->fpga_registers_=values;
         if (!isRemoteSkyMode()) {page->setHardwareValues(values);updateHomeDeviceStatusCapsules();syncFpgaDeviceConfigUi();}
@@ -706,6 +714,14 @@ void MainWindow::setupFpgaControlPage()
             state_->current_ptb_ = VaporView::PtbData{};
             if (valid && r.pressurePa) { state_->current_ptb_.pressure_hpa = *r.pressurePa/100.; state_->current_ptb_.valid=true; state_->current_ptb_.timestamp=now; }
         }
+        else if (r.kind == VaporView::FpgaSensor::SensorKind::Hmp)
+        {
+            state_->current_hmp_ = VaporView::HmpData{};
+            if (valid && r.temperatureC && r.humidityPct) {
+                state_->current_hmp_.temperature=*r.temperatureC;state_->current_hmp_.humidity=*r.humidityPct;
+                state_->current_hmp_.valid=true;state_->current_hmp_.timestamp=now;
+            }
+        }
         else if (r.kind == VaporView::FpgaSensor::SensorKind::Tfa1500)
         {
             state_->current_lidar_ = VaporView::LidarData{};
@@ -738,9 +754,7 @@ void MainWindow::setupFpgaControlPage()
             const int channel = m.ai8 ? m.ai8->channel-1 : -1;
             if (channel >= 0 && channel < VaporView::Ai8TemperatureControllerProtocol::kChannelCount)
             {
-                state_->fpga_ai8_live_.measuredC[channel] = m.ai8 && m.ai8->measurementValid ? m.ai8->measuredC : std::numeric_limits<double>::quiet_NaN();
-                state_->fpga_ai8_live_.valid = std::any_of(state_->fpga_ai8_live_.measuredC.begin(),state_->fpga_ai8_live_.measuredC.end(),[](double v){return std::isfinite(v);});
-                if (m.ai8) { state_->fpga_ai8_live_.mainStatusRaw=m.ai8->host; state_->fpga_ai8_live_.mainStatusValid=m.ai8->measurementValid; }
+                if(m.ai8Live)state_->fpga_ai8_live_=*m.ai8Live;
                 if (state_->ai8_temperature_controller_panel_) state_->ai8_temperature_controller_panel_->applyLiveData(state_->fpga_ai8_live_);
                 if (state_->ai8_temperature_overview_panel_) state_->ai8_temperature_overview_panel_->applyLiveData(state_->fpga_ai8_live_);
             }
@@ -755,7 +769,7 @@ void MainWindow::setupFpgaControlPage()
                 snapshot.hmp=state_->current_hmp_; snapshot.lidar=state_->current_lidar_;
                 snapshot.hasEpsilon=state_->fpga_sources_.contains(0x42) && snapshot.epsilon.valid;
                 snapshot.hasPtb=state_->fpga_sources_.contains(0x40) && snapshot.ptb.valid;
-                snapshot.hasHmp=false; // Reserved HMP source 0x41 is not implemented by the firmware.
+                snapshot.hasHmp=state_->fpga_sources_.contains(0x41) && snapshot.hmp.valid;
                 snapshot.hasLidar=state_->fpga_sources_.contains(0x45) && snapshot.lidar.valid;
             }
         }
@@ -919,6 +933,7 @@ void MainWindow::receiveRemoteFpgaStatus(const QJsonObject& status)
         const auto registers = status.value("registers").toObject();
         for (auto it = registers.begin(); it != registers.end(); ++it) values.insert(it.key().toUInt(), quint32(it.value().toDouble()));
         state_->fpga_page_->setHardwareValues(values);
+        state_->fpga_page_->setManagementState(status.value("management").toObject());
         updateFpgaPageBackend();
         syncFpgaDeviceConfigUi();
         updateRecordingStatusLabel();

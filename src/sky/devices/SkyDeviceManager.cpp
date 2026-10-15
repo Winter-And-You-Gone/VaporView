@@ -664,6 +664,7 @@ void SkyDeviceManager::ensureFpgaBackend()
         if (!ready) invalidateFpgaMeasurements();
         emit fpgaStatusChanged(document);
     });
+    connect(fpga_backend_.get(), &SkyFpgaBackend::observationEpochReceived, this, &SkyDeviceManager::epsilonObservationEpochReceived);
     connect(fpga_backend_.get(), &SkyFpgaBackend::measurementUpdated, this, &SkyDeviceManager::acceptFpgaMeasurement);
     connect(fpga_backend_.get(), &SkyFpgaBackend::waveformUpdated, this, &SkyDeviceManager::fpgaWaveformUpdated);
     connect(fpga_backend_.get(), &SkyFpgaBackend::rawFrame, this, &SkyDeviceManager::fpgaRawFrameReceived, Qt::DirectConnection);
@@ -688,6 +689,10 @@ void SkyDeviceManager::submitFpgaControl(QJsonObject operation, SkyFpgaBackend::
         if (code == CommandErrorCode::Ok && (operation.value("op").toString() == "sensor_config" || operation.value("op").toString() == "sensor")
             && operation.value("source").toInt()==0x46)
             config_.fpga.configuration.ai8.pollIntervalMs=FpgaControlConfig::fromJson(document.value("configuration").toObject()).ai8.pollIntervalMs;
+        if(code==CommandErrorCode::Ok && (operation.value("op")=="sensor" || operation.value("op")=="sensor_config")) {
+            const auto source=quint16(operation.value("source").toInt());const auto parameters=operation.value("parameters").toObject();
+            for(auto it=parameters.begin();it!=parameters.end();++it)config_.fpga.configuration.sensorParameters[source][it.key()]=it.value();
+        }
         completion(code, error, document);
     });
 }
@@ -712,6 +717,11 @@ void SkyDeviceManager::acceptFpgaMeasurement(const FpgaSensor::AdaptedMeasuremen
     if (r.kind == FpgaSensor::SensorKind::Ptb210 && r.source == 0x40) {
         PtbData data; if (valid && r.pressurePa) { data.pressure_hpa = *r.pressurePa/100.; data.valid=true; data.timestamp=timestamp; }
         setState(SkyDeviceId::Ptb, valid ? DeviceState::Connected : DeviceState::Error); handlePtbData(data);
+    } else if (r.kind == FpgaSensor::SensorKind::Hmp) {
+        HmpData data;if(valid && r.temperatureC && r.humidityPct) {
+            data.temperature=*r.temperatureC;data.humidity=*r.humidityPct;data.valid=true;data.timestamp=timestamp;
+        }
+        setState(SkyDeviceId::Hmp,valid?DeviceState::Connected:DeviceState::Error);handleHmpData(data);
     } else if (r.kind == FpgaSensor::SensorKind::Tfa1500) {
         LidarData data; if (valid && r.distanceMm) { data.distance_m=*r.distanceMm/1000.;data.valid=true;data.timestamp=timestamp; }
         setState(SkyDeviceId::Lidar, valid ? DeviceState::Connected : DeviceState::Error); handleLidarData(data);
@@ -730,9 +740,7 @@ void SkyDeviceManager::acceptFpgaMeasurement(const FpgaSensor::AdaptedMeasuremen
         auto data = latest_ai8_temperature_controller_;
         const int channel = m.ai8 ? m.ai8->channel-1 : config_.fpga.configuration.ai8.channel-1;
         if (channel>=0 && channel<Ai8TemperatureControllerProtocol::kChannelCount) {
-            data.measuredC[channel] = valid && m.ai8 && m.ai8->measurementValid ? m.ai8->measuredC : std::numeric_limits<double>::quiet_NaN();
-            data.valid=std::any_of(data.measuredC.begin(),data.measuredC.end(),[](double v){return std::isfinite(v);});
-            if (m.ai8) { data.mainStatusRaw=m.ai8->host; data.mainStatusValid=m.ai8->measurementValid; }
+            if(m.ai8Live)data=*m.ai8Live;
         }
         setState(SkyDeviceId::Ai8TemperatureController, data.valid ? DeviceState::Connected : DeviceState::Error);handleAi8TemperatureControllerData(data);
     }

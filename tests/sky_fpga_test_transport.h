@@ -40,8 +40,9 @@ bool readable(quint32 address){
     if(base==0x6300)return offset<=0x40;
     if(base==0x6500)return offset<=0x5c;
     if(base==0x6600)return offset<=0x64;
-    if(base==0x6100||base==0x6700)return offset<=12;
-    if(base==0x7000)return offset<=12||offset==0x14||(offset>=0x1c&&offset<=0x30)||(offset>=0x38&&offset<=0x44);
+    if(base==0x6100)return offset<=0x48;
+    if(base==0x6700)return offset<=0x34;
+    if(base==0x7000)return offset<=12||offset==0x10||offset==0x14||offset==0x18||offset==0x34||(offset>=0x1c&&offset<=0x30)||(offset>=0x38&&offset<=0x44);
     if(base==0x8000)return offset<=0x3c;
     return false;
 }

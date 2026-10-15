@@ -5,6 +5,9 @@
 #include "shared/theme/TopLevelCardStyle.h"
 #include "shared/theme/AppTheme.h"
 #include <QButtonGroup>
+#include <QComboBox>
+#include <QSignalBlocker>
+#include "shared/theme/SingleLevelPopupComboBox.h"
 #include <QCoreApplication>
 #include <QFrame>
 #include <QLabel>
@@ -358,6 +361,20 @@ void SessionViewerWindow::setupUi()
                     navigation_refresh_pending_ = true;
             }
         }, Qt::QueuedConnection);
+    fpga_wave_choice_=new VaporView::SingleLevelPopupComboBox(upperWidget);
+    fpga_wave_choice_->setObjectName(QStringLiteral("sessionFpgaWaveformChoice"));fpga_wave_choice_->hide();
+    upperLayout->addWidget(fpga_wave_choice_);
+    connect(fpga_wave_choice_,&QComboBox::currentIndexChanged,this,[this](int index) {
+        if(session_loading_ || !VaporView::Ground::SessionWaveformRepository::selectFpgaWaveform(waveform_catalog_,index))return;
+        if(playback_controller_)playback_controller_->pause();
+        cancelBackgroundWaveformPeakSeries(false);
+        total_waveform_frames_=waveform_catalog_.frameCount;points_per_frame_=waveform_catalog_.pointsPerFrame;
+        waveform_timestamps_us_=waveform_catalog_.fpgaTimestampsUs;
+        waveform_peak_values_.clear();waveform_peak_raw_values_.clear();
+        updateSummaryLabels();updateWaveformControls();
+        if(total_waveform_frames_)loadWaveformFrame(0);
+        startBackgroundWaveformPeakSeries();
+    });
     upperLayout->addWidget(waveform_page_, 1);
     splitter->addWidget(upperWidget);
     splitter->addWidget(device_data_page_);
@@ -1008,6 +1025,7 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     trajectory_controller_.clear();
     waveform_timestamps_us_.clear();
     waveform_catalog_ = {};
+    if(fpga_wave_choice_) {const QSignalBlocker block(fpga_wave_choice_);fpga_wave_choice_->clear();fpga_wave_choice_->hide();}
     playback_controller_->clear();
     current_waveform_frame_samples_.clear();
     waveform_peak_raw_values_.clear();
@@ -1510,6 +1528,9 @@ bool SessionViewerWindow::loadWaveformSegments()
 
     session_load_warning_ = result.warning;
     waveform_catalog_ = std::move(result.catalog);
+    {const QSignalBlocker block(fpga_wave_choice_);fpga_wave_choice_->clear();
+        for(const auto& choice:waveform_catalog_.fpgaChoices)fpga_wave_choice_->addItem(choice.label);
+        fpga_wave_choice_->setVisible(!waveform_catalog_.fpgaChoices.isEmpty());}
     total_waveform_frames_ = waveform_catalog_.frameCount;
     points_per_frame_ = waveform_catalog_.pointsPerFrame;
     if (waveform_catalog_.isEmpty() &&
@@ -1691,12 +1712,9 @@ void SessionViewerWindow::cancelBackgroundWaveformPeakSeries(bool waitForFinishe
 }
 void SessionViewerWindow::updateSummaryLabels()
 {
-    if (waveform_catalog_.fpgaSource != 0) {
-        const bool raw=waveform_catalog_.fpgaSource<0x30;
-        waveform_page_->setTitle(QString(raw
-            ? (is_english_?"Raw signal (ADC %1, counts)":"原始信号（ADC %1，计数）")
-            : (is_english_?"Second harmonic (DLIA %1)":"二次谐波（DLIA %1）"))
-            .arg(waveform_catalog_.fpgaSource-(raw?0x20:0x30)));
+    if(waveform_catalog_.fpgaSource) {
+        const auto index=fpga_wave_choice_->currentIndex();
+        if(index>=0 && index<waveform_catalog_.fpgaChoices.size())waveform_page_->setTitle(waveform_catalog_.fpgaChoices[index].label);
     } else {
         waveform_page_->setTitle(is_english_?QStringLiteral("Normalized Second Harmonic"):QStringLiteral("归一化二次谐波"));
     }

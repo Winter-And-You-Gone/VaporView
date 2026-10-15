@@ -216,6 +216,11 @@ struct LiveData
     bool alarmStatusValid = false;
     quint16 mainStatusRaw = 0;
     bool mainStatusValid = false;
+    // FPGA snapshots describe one selected channel. Zero means no details.
+    quint8 detailedChannel = 0;
+    double setpointC = 0.0, displayedSetpointC = 0.0;
+    quint16 outputRaw = 0;
+    quint8 alarmRaw = 0, controlRaw = 0;
     QString errorMessage;
 };
 

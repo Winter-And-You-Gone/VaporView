@@ -9,7 +9,7 @@
 namespace VaporView::FpgaSensor
 {
 
-enum class SensorKind { Unknown, Ptb210, Epsilon, Bmp390, Sht45, Tfa1500, Ai8 };
+enum class SensorKind { Unknown, Ptb210, Epsilon, Bmp390, Sht45, Tfa1500, Ai8, Hmp };
 
 struct TlvRecord
 {
@@ -44,6 +44,7 @@ struct Reading
     std::optional<double> temperatureC;
     std::optional<double> humidityPct;
     std::optional<quint32> heaterMode;
+    std::optional<quint32> hmpDeviceError;
     std::optional<quint32> distanceMm;
     std::optional<qint32> pressureMilliPa;
     std::optional<qint32> ai8PvRaw;

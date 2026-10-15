@@ -1,5 +1,6 @@
 #include "FpgaControlPage.h"
 #include "FpgaTelemetry.h"
+#include "FpgaAdvancedParameters.h"
 #include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/TopLevelCardStyle.h"
@@ -27,6 +28,7 @@
 #include <QStyleOptionButton>
 #include <QSvgRenderer>
 #include <QTabWidget>
+#include <cstring>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QtEndian>
@@ -211,6 +213,9 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
         connect(input,&QDoubleSpinBox::valueChanged,this,[this]{emit configurationChanged(configuration());});
     };
     field(sl,0,"请求采样率 / Hz","Requested sampling / Hz","fpgaAdcRate",0x4014,1,1000000,0,[](const auto &c){return c.adcRateHz;},[](auto &c,double v){c.adcRateHz=quint32(v);});
+    field(sl,1,"CNV 脉宽 / 10 ns","CNV width / 10 ns","fpgaAdcCnvTicks",0x4030,2,20,0,[](const auto& c){return c.adcCnvTicks;},[](auto& c,double v){c.adcCnvTicks=quint32(v);});
+    field(sl,2,"BUSY 超时 / 10 ns","BUSY timeout / 10 ns","fpgaAdcBusyTimeout",0x4034,40,1000000,0,[](const auto& c){return c.adcBusyTimeoutTicks;},[](auto& c,double v){c.adcBusyTimeoutTicks=quint32(v);});
+    for(int ch=0;ch<2;++ch)field(sl,3+ch,ch?"ADC1 周期点数 (0 关闭校验)":"ADC0 周期点数 (0 关闭校验)",ch?"ADC1 points (0 disables check)":"ADC0 points (0 disables check)",QString("fpgaAdcExpected%1").arg(ch),0x401c+ch*0x100,0,4294967295.0,0,[ch](const auto& c){return c.adcExpectedPoints[ch];},[ch](auto& c,double v){c.adcExpectedPoints[ch]=quint32(v);});
     auto *parameterTabs=new QTabWidget(parameters);parameterTabs->setObjectName("fpgaParameterTabs");pl->addWidget(parameterTabs);
     auto *wmsPage=new QWidget(parameterTabs),*dliaPage=new QWidget(parameterTabs);
     parameterTabs->addTab(wmsPage,"WMS / DAC");parameterTabs->addTab(dliaPage,"DLIA");
@@ -272,7 +277,8 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
         df("1f 相位 / 整圈码","1f phase / turn code","Phase1",0x14,0,4294967295.0,&FpgaControlConfig::Dlia::phase1);
         df("2f 相位校正 / 整圈码","2f phase correction / turn code","Phase2",0x18,0,4294967295.0,&FpgaControlConfig::Dlia::phase2);
         df("解调输出率 / Hz","Demodulation output / Hz","Output",0x4c,1,1000000,&FpgaControlConfig::Dlia::outputRateHz);
-        df("解调模式 (3: 板上参考)","Demodulation mode (3: onboard reference)","Mode",0x20,0,7,&FpgaControlConfig::Dlia::mode);
+        df("解调模式 (2/3；6/7 旁路低通)","Mode (2/3; 6/7 bypass LPF)","Mode",0x20,0,7,&FpgaControlConfig::Dlia::mode);
+        df("上传分片点数","Fragment points","FragmentPoints",0x40,1,256,&FpgaControlConfig::Dlia::fragmentPoints);
         auto dacf=[&,channel](const char *zh,const char *en,const char *name,quint32 offset,double minimum,double maximum,auto member) {
             field(grid,row++,zh,en,QString("fpga%1Dac%2").arg(channel).arg(name),quint32(0x3000+channel*0x100)+offset,minimum,maximum,0,
                 [channel,member](const auto &c){return double(c.dac[channel].*member);},
@@ -310,8 +316,8 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     auto *sensors=tab(QStringLiteral("传感器"),QStringLiteral("Sensors")); auto *sensorLayout=new QVBoxLayout(sensors);
     auto *sensorCard=card(sensors,sensorLayout,QStringLiteral("传感器状态"),QStringLiteral("Sensor status"),QStringLiteral("activity"));
     auto *sensorGrid=new QGridLayout(sensorCard);sensorGrid->setObjectName("fpgaSensorGrid");sensorGrid->setSpacing(12);sensorGrid->setColumnStretch(1,1);
-    const char *names[]={"PTB210","EPSILON","BMP390","SHT45","TFA1500-L"}; const quint16 sources[]={0x40,0x42,0x43,0x44,0x45};
-    for(int i=0;i<5;++i) {
+    const char *names[]={"PTB210","HMP3","EPSILON","BMP390","SHT45","TFA1500-L"}; const quint16 sources[]={0x40,0x41,0x42,0x43,0x44,0x45};
+    for(int i=0;i<6;++i) {
         const auto source=sources[i]; const auto suffix=QString::number(source,16).rightJustified(4,QChar('0'));
         auto *name=new QLabel(QString::fromLatin1(names[i]),sensorCard); name->setObjectName("fpgaSensorName"+suffix);
         auto nameFont=name->font(); nameFont.setBold(true); name->setFont(nameFont); name->setAlignment(Qt::AlignLeft|Qt::AlignVCenter);
@@ -375,6 +381,70 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
         }
     }
     waveChannels->setStretch(0,1);waveChannels->setStretch(1,1);
+    auto *advanced=tab(QStringLiteral("高级控制"),QStringLiteral("Advanced controls"));auto *advancedLayout=new QVBoxLayout(advanced);
+    auto *advancedSensors=card(advanced,advancedLayout,QStringLiteral("传感器参数（断开后编辑，连接时应用）"),QStringLiteral("Sensor parameters (edit offline; apply on connect)"),QStringLiteral("sliders-horizontal"));
+    auto *asl=new QVBoxLayout(advancedSensors);auto *sensorChoice=new VaporView::SingleLevelPopupComboBox(advancedSensors);sensorChoice->setObjectName("fpgaAdvancedSensor");asl->addWidget(sensorChoice);
+    auto *sensorStack=new QWidget(advancedSensors);sensorStack->setObjectName("fpgaAdvancedSensorStack");asl->addWidget(sensorStack);
+    auto *formsLayout=new QVBoxLayout(sensorStack);formsLayout->setContentsMargins(0,0,0,0);QList<QWidget*> sensorForms;
+    for(int index=0;index<6;++index) {
+        const auto source=sources[index];sensorChoice->addItem(QString::fromLatin1(names[index]),source);
+        auto *body=new QWidget(sensorStack);formsLayout->addWidget(body);sensorForms.push_back(body);body->setVisible(index==0);
+        auto *grid=new QGridLayout(body);int row=0;
+        for(const auto& spec:VaporView::FpgaRemote::sensorParameters())if(spec.source==source) {
+            auto *title=new QLabel(QString::fromUtf8(spec.label),body);title->setWordWrap(true);grid->addWidget(title,row,0);
+            auto *input=new QDoubleSpinBox(body);input->setObjectName(QString("fpgaSensorParameter%1").arg(spec.address,4,16,QChar('0')));input->setDecimals(0);input->setRange(spec.minimum,spec.maximum);input->setValue(spec.fallback);input->setKeyboardTracking(false);grid->addWidget(input,row,1);sensorParameterInputs_[spec.address]=input;
+            auto *actual=new QLabel(body);actual->setWordWrap(true);grid->addWidget(actual,row++,2);hardwareLabels_[spec.address]=actual;
+            connect(input,&QDoubleSpinBox::valueChanged,this,[this,spec](double value){config_.sensorParameters[spec.source][spec.key]=value;emit configurationChanged(configuration());});
+        }
+        grid->setColumnStretch(2,1);grid->setRowStretch(row,1);
+    }
+    connect(sensorChoice,&QComboBox::currentIndexChanged,sensorStack,[sensorStack,sensorForms](int current) {
+        for(int i=0;i<sensorForms.size();++i)sensorForms[i]->setVisible(i==current);
+        sensorStack->updateGeometry();
+    });
+    auto number=[this](QGridLayout *grid,int row,const char *title,const char *name,double low,double high,double value,int decimals=0) {
+        auto *label=new QLabel(QString::fromUtf8(title),this);label->setWordWrap(true);grid->addWidget(label,row,0);
+        auto *spin=new QDoubleSpinBox(this);spin->setObjectName(QString::fromLatin1(name));spin->setRange(low,high);spin->setDecimals(decimals);spin->setValue(value);spin->setKeyboardTracking(false);grid->addWidget(spin,row,1);return spin;
+    };
+    auto operation=[this,&action](QGridLayout *grid,int row,int col,const char *zh,const char *en,const char *name,std::function<QJsonObject()> request) {
+        return action(grid,row,col,zh,en,QString::fromLatin1(name),[this,request]{emit operationRequested(request());});
+    };
+    struct ActualField { quint32 address; const char *zh; const char *en; };
+    auto readbacks=[&readback](QGridLayout *grid,int row,std::initializer_list<ActualField> fields) {
+        for(const auto& field:fields)readback(grid,row++,1,2,field.address,QString::fromUtf8(field.zh),QString::fromUtf8(field.en));
+    };
+    auto *lanes=card(advanced,advancedLayout,QStringLiteral("分通道采集"),QStringLiteral("Acquisition per channel"),QStringLiteral("activity"));auto *laneGrid=new QGridLayout(lanes);
+    for(int ch=0;ch<2;++ch)for(int enable=0;enable<2;++enable)operation(laneGrid,ch,enable,ch?(enable?"通道 1 开始":"通道 1 停止"):(enable?"通道 0 开始":"通道 0 停止"),enable?"Start channel":"Stop channel",qPrintable(QString("fpgaChannel%1%2").arg(ch).arg(enable)),[ch,enable]{return QJsonObject{{"op","channel_acquisition"},{"channel",ch},{"enabled",bool(enable)}};});
+    auto *time=card(advanced,advancedLayout,QStringLiteral("时间同步"),QStringLiteral("Time synchronization"),QStringLiteral("timer"));auto *tg=new QGridLayout(time);
+    auto *edge=number(tg,0,"同步沿 (0 上升 / 1 下降)","fpgaTimeEdge",0,1,0);auto *timeout=number(tg,1,"同步超时 / ms","fpgaTimeTimeout",1,3600000,2000);
+    operation(tg,0,2,"设置同步沿","Set edge","fpgaTimeSetEdge",[edge]{return QJsonObject{{"op","time"},{"action",3},{"value",edge->value()}};});
+    operation(tg,1,2,"设置同步超时","Set timeout","fpgaTimeSetTimeout",[timeout]{return QJsonObject{{"op","time"},{"action",4},{"value",timeout->value()}};});
+    operation(tg,2,0,"启用同步","Enable sync","fpgaTimeEnable",[]{return QJsonObject{{"op","time"},{"action",1},{"value",1}};});operation(tg,2,1,"停用同步","Disable sync","fpgaTimeDisable",[]{return QJsonObject{{"op","time"},{"action",1},{"value",0}};});operation(tg,2,2,"重新捕获同步沿","Rearm sync","fpgaTimeRearm",[]{return QJsonObject{{"op","time"},{"action",2},{"value",0}};});
+    auto *tagLow=number(tg,3,"GNSS 标签低 32 位","fpgaTimeTagLow",0,4294967295.0,0);auto *tagHigh=number(tg,4,"GNSS 标签高 32 位","fpgaTimeTagHigh",0,4294967295.0,0);operation(tg,4,2,"写入 GNSS 标签","Write GNSS tag","fpgaTimeTag",[tagLow,tagHigh]{return QJsonObject{{"op","time_tag"},{"low",tagLow->value()},{"high",tagHigh->value()}};});
+    readbacks(tg,5,{{0x1004,"同步控制","Sync control"},{0x1008,"同步状态","Sync status"},{0x100c,"同步错误","Sync errors"},
+        {0x1010,"当前同步沿","Actual sync edge"},{0x1014,"当前同步超时","Actual sync timeout"},{0x1038,"当前 GNSS 标签低位","Actual GNSS tag low"},
+        {0x103c,"当前 GNSS 标签高位","Actual GNSS tag high"},{0x1040,"GNSS 标签有效","GNSS tag valid"}});
+    auto *motor=card(advanced,advancedLayout,QStringLiteral("步进电机（仅显式运行）"),QStringLiteral("Stepper motor (explicit run only)"),QStringLiteral("settings"));auto *mg=new QGridLayout(motor);
+    auto *frequency=number(mg,0,"步进频率 / Hz","fpgaMotorFrequency",1,196078,1000);auto *high=number(mg,1,"高电平时间 / 10 ns","fpgaMotorHigh",255,4294967295.0,255);auto *dir=number(mg,2,"方向建立时间 / 10 ns","fpgaMotorDir",505,4294967295.0,505);auto *polarity=number(mg,3,"极性掩码 (STEP / DIR / EN)","fpgaMotorPolarity",0,7,0);
+    operation(mg,3,2,"应用电机参数并停用","Configure and disable","fpgaMotorConfigure",[=]{return QJsonObject{{"op","motor_config"},{"frequency",frequency->value()},{"high_ticks",high->value()},{"dir_ticks",dir->value()},{"polarity",polarity->value()}};});
+    auto *steps=number(mg,4,"相对运动脉冲数 (负数反向)","fpgaMotorSteps",-2147483648.0,2147483647.0,0);
+    operation(mg,5,0,"启用电机","Enable motor","fpgaMotorEnable",[]{return QJsonObject{{"op","motor"},{"action",4},{"value",1}};});operation(mg,5,1,"运行相对运动","Run relative move","fpgaMotorRun",[steps]{return QJsonObject{{"op","motor"},{"action",1},{"value",steps->value()}};});operation(mg,5,2,"停止电机","Stop motor","fpgaMotorStop",[]{return QJsonObject{{"op","motor"},{"action",2},{"value",0}};});operation(mg,6,0,"停用电机","Disable motor","fpgaMotorDisable",[]{return QJsonObject{{"op","motor"},{"action",4},{"value",0}};});operation(mg,6,1,"位置归零","Zero position","fpgaMotorZero",[]{return QJsonObject{{"op","motor"},{"action",3},{"value",0}};});
+    readbacks(mg,7,{{0x6704,"电机控制","Motor control"},{0x6708,"电机状态","Motor status"},{0x670c,"电机错误","Motor errors"},
+        {0x6714,"当前步进频率","Actual step frequency"},{0x6718,"当前高电平时间","Actual high time"},{0x671c,"当前方向建立时间","Actual direction setup"},
+        {0x6724,"电机位置原码","Motor position raw"},{0x6728,"剩余脉冲","Remaining pulses"},{0x6730,"当前极性","Actual polarity"}});
+    auto *maintenance=card(advanced,advancedLayout,QStringLiteral("设备维护与上传"),QStringLiteral("Maintenance and upload"),QStringLiteral("settings"));auto *maintenanceGrid=new QGridLayout(maintenance);
+    auto *module=new VaporView::SingleLevelPopupComboBox(maintenance);module->setObjectName("fpgaMaintenanceModule");maintenanceGrid->addWidget(module,0,0,1,2);
+    for(auto pair:{qMakePair("时间同步",2),qMakePair("WMS0 / DAC0",0x10),qMakePair("WMS1 / DAC1",0x11),qMakePair("ADC0",0x20),qMakePair("ADC1",0x21),qMakePair("DLIA0",0x30),qMakePair("DLIA1",0x31),qMakePair("PTB210",0x40),qMakePair("HMP3",0x41),qMakePair("EPSILON",0x42),qMakePair("BMP390",0x43),qMakePair("SHT45",0x44),qMakePair("TFA1500-L",0x45),qMakePair("AI8",0x46),qMakePair("步进电机",0x47)})module->addItem(QString::fromUtf8(pair.first),pair.second);
+    operation(maintenanceGrid,1,0,"复位所选模块","Reset selected module","fpgaModuleReset",[module]{return QJsonObject{{"op","maintenance"},{"source",module->currentData().toInt()},{"action",8},{"value",0}};});operation(maintenanceGrid,1,1,"清除所选模块错误","Clear selected errors","fpgaModuleClearErrors",[module]{return QJsonObject{{"op","maintenance"},{"source",module->currentData().toInt()},{"action",9},{"value",0}};});
+    operation(maintenanceGrid,2,0,"清空所选传感器 FIFO","Clear sensor FIFO","fpgaSensorClearFifo",[module]{return QJsonObject{{"op","sensor_action"},{"source",module->currentData().toInt()},{"action",3},{"value",0}};});
+    auto *pressure=number(maintenanceGrid,3,"HMP 压力补偿 / hPa","fpgaHmpPressure",0.01,2000,1013.25,2);operation(maintenanceGrid,3,2,"写入并确认 HMP 补偿","Write HMP compensation","fpgaHmpSetPressure",[pressure]{float value=float(pressure->value());quint32 bits;std::memcpy(&bits,&value,4);return QJsonObject{{"op","sensor_action"},{"source",0x41},{"action",16},{"value",double(bits)}};});
+    auto *tfaCommand=number(maintenanceGrid,4,"TFA LF 命令 (1 连续 / 2 单次 / 3 停止 / 4 版本)","fpgaTfaCommand",1,4,2);operation(maintenanceGrid,4,2,"发送 LF 命令","Send LF command","fpgaTfaSendCommand",[tfaCommand]{return QJsonObject{{"op","sensor_action"},{"source",0x45},{"action",33},{"value",tfaCommand->value()}};});
+    auto *watchdog=number(maintenanceGrid,5,"看门狗超时 / ms (0 关闭，启用至少 30000)","fpgaWatchdogTimeout",0,3600000,0);operation(maintenanceGrid,5,2,"设置看门狗","Set watchdog","fpgaWatchdogSet",[watchdog]{return QJsonObject{{"op","watchdog"},{"value",watchdog->value()}};});
+    auto *arbiter=number(maintenanceGrid,6,"仲裁模式 (0 优先级 / 1 轮转)","fpgaArbiter",0,1,0);auto *highWater=number(maintenanceGrid,7,"上传高水位 / 字节","fpgaHighWater",1,4294967295.0,4096);auto *burst=number(maintenanceGrid,8,"高优先级突发上限","fpgaHighBurst",1,65535,8);operation(maintenanceGrid,8,2,"应用上传参数","Apply stream settings","fpgaStreamConfigure",[=]{return QJsonObject{{"op","stream_config"},{"mode",arbiter->value()},{"high_water",highWater->value()},{"burst",burst->value()}};});
+    readbacks(maintenanceGrid,9,{{0x0040,"当前看门狗超时","Actual watchdog timeout"},{0x6140,"HMP 补偿读回原码","HMP compensation raw"},
+        {0x6148,"HMP 补偿确认次数","HMP compensation confirmations"},{0x7010,"当前仲裁模式","Actual arbitration mode"},
+        {0x7018,"当前高水位","Actual high-water mark"},{0x7034,"当前突发上限","Actual burst limit"}});
+    advancedLayout->addStretch();
     auto *recordingTab=tab(QStringLiteral("记录与诊断"),QStringLiteral("Recording & diagnostics")); auto *recordingLayout=new QVBoxLayout(recordingTab);
     auto *recordingCards=new QHBoxLayout;recordingCards->setObjectName("fpgaRecordingCards");recordingCards->setSpacing(12);recordingLayout->addLayout(recordingCards);
     auto *recording=card(recordingTab,recordingCards,QStringLiteral("采集记录"),QStringLiteral("Acquisition recording"),QStringLiteral("scroll-text")); auto *rl=new QVBoxLayout(recording);
@@ -391,6 +461,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     connect(exportButton,&QPushButton::clicked,this,[this]{emit exportRequested({});});
     auto *diagnosticCard=card(recordingTab,recordingCards,QStringLiteral("诊断日志"),QStringLiteral("Diagnostics"),QStringLiteral("list-filter"));
     auto *diagnosticLayout=new QVBoxLayout(diagnosticCard);
+    managementStatus_=new QLabel(diagnosticCard);managementStatus_->setObjectName("fpgaManagementState");managementStatus_->setWordWrap(true);diagnosticLayout->addWidget(managementStatus_);
     diagnostics_=new QPlainTextEdit(diagnosticCard); diagnostics_->setObjectName("fpgaDiagnostics"); diagnostics_->setReadOnly(true); diagnostics_->setMaximumBlockCount(2000); diagnostics_->setMinimumHeight(180); diagnosticLayout->addWidget(diagnostics_,1);
     recordingCards->setStretch(0,1);recordingCards->setStretch(1,1);recordingLayout->addStretch();
     hint->setProperty("fpgaSecondaryText",true); waveHint->setProperty("fpgaSecondaryText",true); ai8hint->setProperty("fpgaSecondaryText",true);
@@ -398,7 +469,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     for (auto *body : findChildren<QWidget*>(QStringLiteral("fpgaCardBody"))) {
         body->layout()->setContentsMargins(12,10,12,12); body->layout()->setSpacing(8);
     }
-    for (auto *body : {parameters,sensors,waves,recordingTab}) {
+    for (auto *body : {parameters,sensors,waves,advanced,recordingTab}) {
         body->layout()->setProperty("fpgaCardOuterMargins",true);
         body->layout()->setContentsMargins(18,12,5,8); body->layout()->setSpacing(12);
     }
@@ -427,7 +498,9 @@ FpgaControlConfig FpgaControlPage::configuration() const {
     c.backend=backend_->currentData().toString();c.pressureSource=0x40; c.recordSensors=recordSensors_->isChecked();c.recordDlia=recordDlia_->isChecked();c.recordRaw=recordRaw_->isChecked();return c;
 }
 void FpgaControlPage::setConfiguration(const FpgaControlConfig &c) {
-    config_=c; for(const auto &f:fields_){const QSignalBlocker block(f.input);f.input->setValue(f.read(c));}
+    config_=c;
+    for(const auto& spec:VaporView::FpgaRemote::sensorParameters())if(auto *input=sensorParameterInputs_.value(spec.address)){const QSignalBlocker block(input);input->setValue(c.sensorParameters.value(spec.source).value(spec.key).toDouble(hardwareValues_.value(spec.address,spec.fallback)));}
+    for(const auto &f:fields_){const QSignalBlocker block(f.input);f.input->setValue(f.read(c));}
     {const QSignalBlocker block(backend_);backend_->setCurrentIndex(backend_->findData(c.backend));}
     const QSignalBlocker bs(recordSensors_),bd(recordDlia_),br(recordRaw_);
     recordSensors_->setChecked(c.recordSensors);recordDlia_->setChecked(c.recordDlia);recordRaw_->setChecked(c.recordRaw);
@@ -436,6 +509,7 @@ void FpgaControlPage::setConfiguration(const FpgaControlConfig &c) {
 }
 void FpgaControlPage::lockOperation(){busy_=true;updateActions();}
 void FpgaControlPage::updateActions(){
+    for(const auto& spec:VaporView::FpgaRemote::sensorParameters())if(auto *input=sensorParameterInputs_.value(spec.address))input->setEnabled(!busy_ && (!connected_ || (hardwareValues_.contains(0x6004+(spec.source-0x40)*0x100) && !(hardwareValues_.value(0x6004+(spec.source-0x40)*0x100)&1))));
     locator_->setToolTip(locator_->currentText()+"\n"+(backend_->currentData().toString()==QStringLiteral("simulator")
         ?text("本地 VLP1 协议模拟器，不打开实体 USB。","Local VLP1 protocol simulator; no physical USB access.")
         :text("选择 GP01 FX3（04B4:00F1），插拔后点击刷新设备。连接时核验固件身份。","Select GP01 FX3 (04B4:00F1); refresh after plugging/unplugging. Firmware identity is verified on connect.")));
@@ -519,6 +593,9 @@ void FpgaControlPage::setConnectionState(bool ready,bool busy,const QString &det
     updateActions();
 }
 void FpgaControlPage::setHardwareValues(const QMap<quint32,quint32> &v){
+    hardwareValues_=v;
+    for(const auto& spec:VaporView::FpgaRemote::sensorParameters())if(!config_.sensorParameters.value(spec.source).contains(spec.key) && v.contains(spec.address))if(auto *input=sensorParameterInputs_.value(spec.address)){const QSignalBlocker block(input);input->setValue(v.value(spec.address));}
+    updateActions();
     bool rawChanged=false;
     for(int ch=0;ch<2;++ch)if(v.contains(0x403c+ch*0x100)&&v.contains(0x50)) {
         const quint16 source=0x20+ch;
@@ -639,6 +716,26 @@ void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream 
     for(auto *p:activePlots){p->setProperty("sampleCount",p->samples.size());p->setProperty("previewStride",s.preview?s.previewStride:1);if(!p->samples.isEmpty()){const auto mm=std::minmax_element(p->samples.cbegin(),p->samples.cend());p->setProperty("sampleMinimum",*mm.first);p->setProperty("sampleMaximum",*mm.second);}p->update();}
     publishDisplay();
 }
+void FpgaControlPage::setManagementState(const QJsonObject& state)
+{
+    QStringList lines;
+    for(auto it=state.begin();it!=state.end();++it) {
+        const auto o=it.value().toObject();const auto w=o.value("words").toArray();if(w.size()!=7)continue;
+        const int msg=o.value("message").toInt();
+        if(msg==0x1400)lines<<text("系统状态 %1；错误汇总 %2；事件丢失 %3；生产端丢失 %4","Status %1; errors %2; event drops %3; producer drops %4")
+            .arg(w[0].toDouble()).arg(w[1].toDouble()).arg(w[4].toDouble()).arg(w[5].toDouble());
+        if(msg==0x1201)lines<<text("同步序号 %1；GNSS 标签有效 %2","Sync sequence %1; GNSS tag valid %2").arg(w[0].toDouble()).arg(w[5].toDouble());
+        if(msg==0x1300)lines<<text("电机位置 %1；剩余 %2；错误 %3","Motor position %1; remaining %2; error %3")
+            .arg(qint32(quint32(w[1].toDouble()))).arg(w[2].toDouble()).arg(w[3].toDouble());
+        if(msg==0x1401)lines<<text("模块页 0x%1：状态 0x%2；错误 0x%3；存在 %4","Module page 0x%1: status 0x%2; errors 0x%3; present %4")
+            .arg(quint32(w[0].toDouble()),2,16,QChar('0')).arg(quint32(w[1].toDouble()),8,16,QChar('0'))
+            .arg(quint32(w[2].toDouble()),8,16,QChar('0')).arg(w[3].toDouble());
+        if(msg==0x1402)lines<<text("模块页 0x%1：新增错误 0x%2；累计 0x%3","Module page 0x%1: new errors 0x%2; accumulated 0x%3")
+            .arg(quint32(w[0].toDouble()),2,16,QChar('0')).arg(quint32(w[2].toDouble()),8,16,QChar('0'))
+            .arg(quint32(w[1].toDouble()),8,16,QChar('0'));
+    }
+    managementStatus_->setText(lines.join(QChar('\n')));
+}
 void FpgaControlPage::appendDiagnostic(const QString &s){diagnostics_->appendPlainText(s);}
 void FpgaControlPage::setLanguage(bool en){english_=en;for(auto *w:findChildren<QWidget*>())if(w->property("fpgaZh").isValid())label(w,w->property("fpgaZh").toString(),w->property("fpgaEn").toString());
     backend_->setItemText(backend_->findData(QStringLiteral("simulator")),text("模拟器","Simulator"));
@@ -737,7 +834,7 @@ void FpgaControlPage::simulateOperation(const QJsonObject &request)
     }
     else if(op=="sensor") {
         if(!VaporView::FpgaRemote::validateControl(request))return;
-        if(request.contains("baud")||request.contains("poll_ms")) {
+        if(request.contains("baud")||request.contains("poll_ms")||request.contains("parameters")) {
             auto settings=request;settings["op"]="sensor_config";settings.remove("enabled");simulateOperation(settings);
         }
         const auto source=quint16(request.value("source").toInt());
@@ -753,8 +850,9 @@ void FpgaControlPage::simulateOperation(const QJsonObject &request)
                 sim.applied.ai8.pollIntervalMs=interval;
                 auto desired=configuration();desired.ai8.pollIntervalMs=interval;setConfiguration(desired);
             }
-            else sim.sensorParameters[base+(source==0x40?0x18:0x14)]=interval;
+            else sim.sensorParameters[base+(source==0x40?0x18:source==0x41?0x1c:0x14)]=interval;
         }
+        const auto parameters=request.value("parameters").toObject();for(const auto& spec:VaporView::FpgaRemote::sensorParameters())if(spec.source==source && parameters.contains(spec.key))sim.sensorParameters[spec.address]=quint32(parameters.value(spec.key).toDouble());
     }
     else if(op=="wms"||op=="dac") {
         const int channel=request.value("channel").toInt();if(channel<0||channel>1)return;
@@ -770,7 +868,7 @@ void FpgaControlPage::simulateOperation(const QJsonObject &request)
         auto next=sim.applied;
         if(section=="wms"){next.wms=desired.wms;next.dac=desired.dac;}
         else if(section=="dlia")next.dlia=desired.dlia;
-        else if(section=="acquisition"){next.adcRateHz=desired.adcRateHz;next.ai8=desired.ai8;}
+        else if(section=="acquisition"){next.adcRateHz=desired.adcRateHz;next.adcCnvTicks=desired.adcCnvTicks;next.adcBusyTimeoutTicks=desired.adcBusyTimeoutTicks;next.adcExpectedPoints=desired.adcExpectedPoints;next.ai8=desired.ai8;}
         else return;
         if(next.adcRateHz<1000||next.adcRateHz>1000000||!next.dlia[0].outputRateHz||!next.dlia[1].outputRateHz||
             next.dlia[0].outputRateHz>next.adcRateHz/8||next.dlia[1].outputRateHz>next.adcRateHz/8) {
@@ -780,7 +878,10 @@ void FpgaControlPage::simulateOperation(const QJsonObject &request)
         sim.applied=next;sim.acquiring=false;
         if(sim.rawEnabled){sim.rawStopPending=true;sim.rawEnabled=false;}
     }
-    else if(op!="refresh")return;
+    else if(op!="refresh") {
+        if(!VaporView::FpgaRemote::validateControl(request)) {appendDiagnostic(text("[界面测试] 参数无效。","[UI test] Invalid parameters."));setConnectionState(true,false);return;}
+        appendDiagnostic(text("[界面测试] 高级操作仅生成界面反馈；实际命令请用协议模拟器或实板验证。","[UI test] Advanced action feedback only; validate commands with the protocol simulator or hardware."));setConnectionState(true,false);return;
+    }
     appendDiagnostic(text("[界面测试] 模拟操作：","[UI test] Simulated operation: ")+op+
         text("；仅改变模拟状态，不访问 USB。","; simulation only, no USB access."));
     setUiTestState(true,sim.stalled,sim.partialFailure,sim.elapsedMs+1,sensorTransportPath_);
@@ -882,11 +983,12 @@ void FpgaControlPage::setUiTestState(bool enabled, bool dataStalled, bool partia
         registers[0x5004+offset]=sim.acquiring;registers[0x5008+offset]=sim.acquiring?3:2;
         const quint32 dwords[]={d.referenceMilliHz,d.phase1,d.phase2,d.outputRateHz,d.mode};
         for(int i=0;i<5;++i)registers[0x5010+offset+i*4]=dwords[i];
+        registers[0x5024+offset]=0x00040101;registers[0x5040+offset]=d.fragmentPoints;registers[0x401c+offset]=sim.applied.adcExpectedPoints[ch];registers[0x4030+offset]=sim.applied.adcCnvTicks;registers[0x4034+offset]=sim.applied.adcBusyTimeoutTicks;
         registers[0x504c+offset]=d.outputRateHz;registers[0x500c+offset]=sim.dliaLatched?0x84:0;
         registers[0x5034+offset]=0;registers[0x5048+offset]=0;
         registers[0x5050+offset]=qMax(1u,sim.applied.adcRateHz/qMax(1u,d.outputRateHz));
     }
-    for(quint16 source:{0x40,0x42,0x43,0x44,0x45,0x46})registers[0x6004+(source-0x40)*0x100]=!sim.disabledSensors.contains(source);
+    for(quint16 source:{0x40,0x41,0x42,0x43,0x44,0x45,0x46})registers[0x6004+(source-0x40)*0x100]=!sim.disabledSensors.contains(source);
     setHardwareValues(registers);
     emit simulationStateChanged(true,registers,configuration().pressureSource);
 
@@ -926,6 +1028,8 @@ void FpgaControlPage::setUiTestState(bool enabled, bool dataStalled, bool partia
     sht.humidityPct = 47.0 + std::cos(seconds * 0.35) * 2.0;
     sht.heaterMode = 0;
     updateSensor(sht);emit simulationSensorUpdated(sht);
+
+    auto hmp=makeReading(0x41,VaporView::FpgaSensor::SensorKind::Hmp);hmp.temperatureC=22.0+std::sin(seconds*0.2);hmp.humidityPct=46.0+std::cos(seconds*0.3);updateSensor(hmp);emit simulationSensorUpdated(hmp);
 
     auto tfa = makeReading(0x45, VaporView::FpgaSensor::SensorKind::Tfa1500);
     tfa.distanceMm = quint32(120000.0 + std::sin(seconds * 0.25) * 2400.0);

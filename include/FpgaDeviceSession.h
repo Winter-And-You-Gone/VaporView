@@ -85,6 +85,7 @@ public:
     quint32 stopAcquisition(quint64 sourceMask = 0x7D, quint16 source = 0x0001);
     quint32 setStreamMask(quint64 enableMask, quint64 rawEnableMask,
                           quint16 source = 0x0001);
+    quint32 managementAction(quint16 message, quint16 source, const QVector<quint32>& words);
     quint32 sensorAction(quint32 action, quint32 value, quint16 source = 0x0001);
 
 signals:
