@@ -92,7 +92,12 @@ Reading FpgaSensorDecoder::decode(const QByteArray &payload, quint16 source, qui
     if (out.kind==SensorKind::Sht45) out.validity.measurement=out.temperatureC.has_value()&&out.humidityPct.has_value()&&out.heaterMode.has_value();
     if (out.kind==SensorKind::Tfa1500) out.validity.measurement=out.distanceMm.has_value();
     if (out.kind==SensorKind::Ai8) out.validity.measurement=out.ai8DeviceStatus.has_value() && out.ai8DeviceError.has_value();
-    out.validity.measurement = out.validity.measurement && !(flags&(1u<<4));
+    // AI8 sets the packet error flag for instrument alarms as well as I/O
+    // failures. A successful poll still carries usable PV/SP with its alarm.
+    const bool ai8AlarmOnly = out.kind==SensorKind::Ai8 && out.schema==2
+        && out.ai8DeviceStatus && (*out.ai8DeviceStatus&0x1fff)==1
+        && (out.ai8Alarm.value_or(0)!=0 || (out.ai8Host.value_or(0)&0x300)!=0);
+    out.validity.measurement = out.validity.measurement && (!(flags&(1u<<4)) || ai8AlarmOnly);
     return out;
 }
 }

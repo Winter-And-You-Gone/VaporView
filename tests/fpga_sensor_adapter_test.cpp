@@ -80,6 +80,29 @@ int main()
     require(sample.ai8 && sample.ai8->measurementValid && sample.ai8->measuredC==-2.5 && sample.ai8->setpointC==40,"AI8 signed tenths");
     require(aiReading.ai8SpMicroC==40000000 && aiReading.ai8PvMicroC==-2500000,"AI8 optional tag14 is SP, tag15 is PV");
     require(sample.ai8->alarmActive && sample.ai8->online && sample.ai8->setSucceeded,"alarm independent of connection and verified set result");
+    auto alarmReading=FpgaSensorDecoder::decode(ai,0x46,0x1100,0x11);
+    auto alarmSample=adapter.accept(alarmReading);
+    require(alarmSample.ai8 && alarmSample.ai8->measurementValid && alarmSample.ai8->alarmActive
+        && alarmSample.ai8Live && alarmSample.ai8Live->measuredC[0]==-2.5,
+        "FPGA alarm flag preserves a complete online AI8 temperature snapshot");
+    const auto alarmPacket=[&](quint32 status,quint32 alarm,quint32 host) {
+        QByteArray payload;put16(payload,2);put16(payload,13);
+        for(int i=0;i<13;++i) {
+            const quint32 value=tags[i]==1?status:tags[i]==0x464?alarm:tags[i]==0x466?host:quint32(vals[i]);
+            record(payload,tags[i],i<3||i>=11?7:3,value32(value));
+        }
+        return FpgaSensorDecoder::decode(payload,0x46,0x1100,0x11);
+    };
+    require(adapter.accept(alarmPacket(1,0x20,0)).ai8->measurementValid,"channel alarm alone keeps PV visible");
+    require(adapter.accept(alarmPacket(1,0,0x200)).ai8->measurementValid,"host alarm alone keeps PV visible");
+    require(!alarmPacket(1,0,0).validity.measurement,"unexplained packet error remains invalid");
+    for(quint32 status:{0u,3u,5u,7u,0x89u}) {
+        const auto failed=alarmPacket(status,0x20,0x200);
+        require(!failed.validity.measurement && !adapter.accept(failed).ai8->measurementValid,
+            "alarm cannot mask offline, timeout, CRC, response or Modbus exception failures");
+    }
+    alarmReading.ai8PvRaw.reset();
+    require(!adapter.accept(alarmReading).ai8->measurementValid,"alarm cannot authorize an incomplete snapshot");
     require(sample.ai8Live && sample.ai8Live->measuredC[0]==-2.5 && std::isnan(sample.ai8Live->measuredC[1]),"AI8 maps only selected channel");
     require(sample.ai8Live->detailedChannel==1 && sample.ai8Live->setpointC==40 && sample.ai8Live->outputRaw==500 && sample.ai8Live->alarmRaw==0x20 && !sample.ai8Live->alarmStatusValid && !sample.ai8Live->controlStatesValid,"selected channel details never claim all-channel validity");
     aiReading.ai8DeviceStatus=3; sample=adapter.accept(aiReading);
