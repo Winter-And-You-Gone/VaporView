@@ -373,6 +373,8 @@ endforeach()
 
 vaporview_add_test(NAME fpga_sensor_configuration_test COMMAND fpga_controller_test --sensor-config)
 set_tests_properties(fpga_sensor_configuration_test PROPERTIES LABELS "integration;fpga" TIMEOUT 60)
+vaporview_add_test(NAME fpga_startup_warning_grace_test COMMAND fpga_controller_test --startup-grace)
+set_tests_properties(fpga_startup_warning_grace_test PROPERTIES LABELS "integration;fpga" TIMEOUT 60)
 
 add_executable(fpga_telemetry_test ${CMAKE_CURRENT_SOURCE_DIR}/fpga_telemetry_test.cpp)
 target_link_libraries(fpga_telemetry_test PRIVATE vaporview_fpga_device_core)

@@ -129,18 +129,32 @@ void FpgaDeviceController::publishManagementEvent(const QJsonObject& event)
     management_[key]=event;emit managementUpdated(management_);
     const bool dropped=msg==0x1400 && old.size()==7 && (words[4].toDouble()>old[4].toDouble() || words[5].toDouble()>old[5].toDouble());
     if(msg==0x1402 || msg==0x1300 || dropped) {
-        LogRecord record;record.source=QStringLiteral("Ground");record.category=QStringLiteral("device.fpga");
-        record.level=msg==0x1300?LogLevel::Info:LogLevel::Warning;
-        record.message=msg==0x1402?QStringLiteral("FPGA 模块 %1 新错误 %2，累计 %3。")
-            .arg(hex(quint32(words[0].toDouble())),hex(quint32(words[2].toDouble())),hex(quint32(words[1].toDouble())))
-            :msg==0x1300?QStringLiteral("FPGA 电机运动 %1 结束：位置 %2，剩余 %3，错误 %4。")
-            .arg(words[0].toDouble()).arg(qint32(quint32(words[1].toDouble()))).arg(words[2].toDouble()).arg(hex(quint32(words[3].toDouble())))
-            :QStringLiteral("FPGA 上传发生丢包：事件 %1，生产端合计 %2。注意两个计数分别统计。")
-            .arg(words[4].toDouble()).arg(words[5].toDouble());
-        record.fields={{"event","fpga_firmware_event"},{"message_id",msg},{"source_id",source},{"tick",QString::number(tick)},{"payload",event.toVariantMap()},{"ui_visibility","attention"}};
-        emit logRecordGenerated(record);
+        if(!replaying_ && msg==0x1402 && startupWarningDeadlines_.contains(source))
+            startupWarnings_[source]=event;
+        else logManagementEvent(event);
     }
     if(!replaying_)emit snapshot(nowUs(),{{"event","firmware_event"},{"data",event}});
+}
+
+void FpgaDeviceController::logManagementEvent(const QJsonObject& event, bool afterStartup)
+{
+    const auto msg=quint16(event.value("message").toInt());
+    const auto source=quint16(event.value("source").toInt());
+    const auto words=event.value("words").toArray();
+    LogRecord record;record.source=QStringLiteral("Ground");record.category=QStringLiteral("device.fpga");
+    record.level=msg==0x1300?LogLevel::Info:LogLevel::Warning;
+    record.message=msg==0x1402?QStringLiteral("FPGA 模块 %1 新错误 %2，累计 %3。")
+        .arg(hex(quint32(words[0].toDouble())),hex(quint32(words[2].toDouble())),hex(quint32(words[1].toDouble())))
+        :msg==0x1300?QStringLiteral("FPGA 电机运动 %1 结束：位置 %2，剩余 %3，错误 %4。")
+        .arg(words[0].toDouble()).arg(qint32(quint32(words[1].toDouble()))).arg(words[2].toDouble()).arg(hex(quint32(words[3].toDouble())))
+        :QStringLiteral("FPGA 上传发生丢包：事件 %1，生产端合计 %2。注意两个计数分别统计。")
+        .arg(words[4].toDouble()).arg(words[5].toDouble());
+    record.fields={{"event","fpga_firmware_event"},{"message_id",msg},{"source_id",source},{"tick",event.value("tick").toString()},{"payload",event.toVariantMap()},{"ui_visibility","attention"}};
+    if(afterStartup) {
+        record.message=QStringLiteral("启动等待 3 秒后仍异常；启动期间记录：")+record.message;
+        record.fields.insert(QStringLiteral("startup_grace_ms"),3000);
+    }
+    emit logRecordGenerated(record);
 }
 
 void FpgaDeviceController::connectDevice(const QString& locator, const QString& backend)
@@ -164,6 +178,7 @@ void FpgaDeviceController::disconnectDevice()
 {
     ++operationGeneration_;
     connectionStartTick_.reset();pendingManagement_.clear();connectionClock_.invalidate();
+    startupWarningDeadlines_.clear();startupWarnings_.clear();
     observations_.flush();
     presentationTimer_.stop(); statusTimer_.stop();watchdogTimer_.stop();
     pendingConnections_.clear(); operationConnections_.clear();
@@ -347,7 +362,10 @@ void FpgaDeviceController::advance()
     case Kind::Sensor:
         if (s.address==1) {
             latestReadings_.remove(s.source); lastReadingMs_.remove(s.source);
-            if (!s.expected && !operationConnections_.contains(s.source)) pendingConnections_.remove(s.source);
+            if (!s.expected && !operationConnections_.contains(s.source)) {
+                pendingConnections_.remove(s.source);
+                startupWarningDeadlines_.remove(s.source);startupWarnings_.remove(s.source);
+            }
         }
         pendingSequence_=session_->sensorAction(s.address,s.expected,s.source); break;
     case Kind::Delay: case Kind::PrepareSensorConfig: case Kind::FinishSensorConfig: case Kind::CheckVersions: case Kind::RecoverConnection: case Kind::FinishRawStop: case Kind::CheckTemperature: case Kind::ConfirmConnection: case Kind::FinishWatchdog: break;
@@ -384,6 +402,7 @@ void FpgaDeviceController::fail(const QString& detail)
     for (quint16 source:affected) {
         if (pendingConnections_.contains(source)) reportConnection(source,QStringLiteral("failed"),QStringLiteral("TRANSACTION_FAILED"),detail);
         pendingConnections_.remove(source);
+        startupWarningDeadlines_.remove(source);startupWarnings_.remove(source);
     }
     operationConnections_.clear();
     if(recoveringConnection_) {ready_=false;recoveringConnection_=false;connectionRecoveryFailed_=true;}
@@ -422,6 +441,10 @@ void FpgaDeviceController::reportRawResult(bool enabled, bool succeeded, const Q
 void FpgaDeviceController::trackConnection(quint16 source)
 {
     pendingConnections_[source]=0; operationConnections_.insert(source);
+    if(source>=0x40 && source<=0x46) {
+        startupWarningDeadlines_[source]=-1;
+        startupWarnings_.remove(source);
+    }
 }
 
 void FpgaDeviceController::reportConnection(quint16 source, const QString& result, const QString& reasonCode, const QString& detail)
@@ -430,7 +453,7 @@ void FpgaDeviceController::reportConnection(quint16 source, const QString& resul
         {0x41,QStringLiteral("HMP3")},{0x42,QStringLiteral("EPSILON")},{0x43,QStringLiteral("BMP390")},{0x44,QStringLiteral("SHT45")},
         {0x45,QStringLiteral("TFA1500-L")},{0x46,QStringLiteral("AI-8288D92J0")}};
     LogRecord record; record.source=QStringLiteral("Ground"); record.category=QStringLiteral("device.fpga");
-    record.level=result==QStringLiteral("failed")?LogLevel::Warning:LogLevel::Info;
+    record.level=(result==QStringLiteral("failed") || result==QStringLiteral("warning"))?LogLevel::Warning:LogLevel::Info;
     record.message=names.value(source)+QStringLiteral(" 经 FPGA ")+
         (result==QStringLiteral("succeeded")?QStringLiteral("连接成功："):result==QStringLiteral("failed")?
          QStringLiteral("连接失败："):QStringLiteral("通道已启用："))+detail;
@@ -457,6 +480,7 @@ void FpgaDeviceController::confirmConnection(quint16 source)
     const quint32 pollAddress=source==0x40?0x6018:source==0x41?0x611c:source==0x43?0x6314:source==0x44?0x6414:source==0x46?0x662c:0;
     const qint64 timeout=qMax<qint64>(8000,3*qint64(registers_.value(pollAddress))+5000);
     pendingConnections_[source]=QDateTime::currentMSecsSinceEpoch()+timeout;
+    startupWarningDeadlines_[source]=connectionClock_.elapsed()+3000;
     reportConnection(source,QStringLiteral("waiting"),QStringLiteral("CHANNEL_ENABLED"),QStringLiteral("读回确认，等待设备有效数据。"));
 }
 
@@ -477,6 +501,36 @@ void FpgaDeviceController::checkConnectionResults()
                 QStringLiteral("等待有效数据超时；通道已启用，请检查设备供电、接线及通信参数。"));
         } else continue;
         pendingConnections_.remove(i.key()); operationConnections_.remove(i.key());
+    }
+}
+
+void FpgaDeviceController::checkStartupWarnings()
+{
+    if(replaying_ || recoveringConnection_ || !connectionClock_.isValid())return;
+    const auto deadlines=startupWarningDeadlines_;
+    for(auto i=deadlines.cbegin();i!=deadlines.cend();++i) {
+        if(i.value()<0 || connectionClock_.elapsed()<i.value())continue;
+        const auto source=i.key();
+        startupWarningDeadlines_.remove(source);
+        const auto event=startupWarnings_.take(source);
+        const auto sample=latestReadings_.value(source);
+        const auto& validity=sample.reading.validity;
+        // A latched error does not prove the current measurement is bad. TFA
+        // emits no distance frame for invalid returns, so require a recent one.
+        const bool fresh=lastReadingMs_.contains(source)
+            && QDateTime::currentMSecsSinceEpoch()-lastReadingMs_.value(source)<=(source==0x45?1000:5000);
+        const bool healthy=fresh && validity.structure && validity.crc && validity.deviceOnline && validity.measurement
+            && (!sample.ai8 || (sample.ai8->measurementValid && !sample.ai8->alarmActive))
+            && sample.reading.hmpDeviceError.value_or(0)==0;
+        const auto words=event.value("words").toArray();
+        const quint32 errors=words.size()==7?quint32(words[1].toDouble()):0;
+        const quint32 base=0x6000+(source-0x40)*0x100;
+        const bool hardwareFault=(errors & registers_.value(base+12) & 0x30)!=0;
+        const bool newerSample=event.isEmpty() || sample.reading.timestamp>=event.value("tick").toString().toULongLong();
+        if(healthy && newerSample && !hardwareFault)continue;
+        if(!event.isEmpty())logManagementEvent(event,true);
+        else reportConnection(source,QStringLiteral("warning"),QStringLiteral("STARTUP_UNHEALTHY"),
+            QStringLiteral("启动等待 3 秒后仍未获得有效测量或设备仍在报警，请检查设备状态。"));
     }
 }
 
@@ -915,6 +969,7 @@ void FpgaDeviceController::acceptReading(const FpgaSensor::Reading& reading)
 
 void FpgaDeviceController::flushPresentation()
 {
+    checkStartupWarnings();
     checkConnectionResults();
     const qint64 now=QDateTime::currentMSecsSinceEpoch();
     for (auto i=latestReadings_.begin(); i!=latestReadings_.end(); ++i) {

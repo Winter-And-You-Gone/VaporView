@@ -138,6 +138,7 @@ struct Fixture {
 bool inPage(quint32 a,quint32 base){return a>=base&&a<base+0x200;}
 void connectionEventTimeFilter(){
     Fixture f;
+    f.transport->regs[0x6604]=0; // Time filtering is independent of enabled-sensor startup grace.
     const auto event=[](quint16 message,quint64 tick,quint32 count=4) {
         std::vector<std::uint8_t> payload;
         const bool status=message==0x1400;
@@ -165,6 +166,50 @@ void connectionEventTimeFilter(){
     f.transport->incoming.append(event(0x1400,5,200)+event(0x1402,6));
     waitUntil([&]{return count()>=4;},"reconnect accepts new device clock epoch");
     require(count()==4,"reconnect resets cumulative drop baseline");
+}
+void startupWarningGrace(){
+    for(int scenario=0;scenario<4;++scenario) {
+        const quint16 source=scenario==3?0x46:0x45;
+        Fixture f;f.transport->regs[0x6504]=source==0x45;f.transport->regs[0x6604]=source==0x46;f.connect();
+        auto* session=f.controller.findChild<FpgaDeviceSession*>();
+        const auto errors=[&] {int n=0;for(const auto& r:f.records)
+            if((r.fields.value("event")=="fpga_firmware_event" && r.fields.value("source_id").toUInt()==source)
+                || (r.fields.value("fpga_source").toUInt()==source && r.fields.value("reason_code")=="STARTUP_UNHEALTHY")) {
+                require(r.level==LogLevel::Warning,"persistent startup problems use warning severity");++n;
+            }return n;};
+        const auto injectError=[&] {
+            std::vector<std::uint8_t> payload;for(quint32 v:{1u,quint32(source+0x20),0x40u,0x40u,0u,0u,0u,0u})append32(payload,v);
+            const auto bytes=FpgaVlp1::buildFrame(FpgaVlp1::FrameType::Event,900,source,0x1402,payload,true,3,1);
+            session->ingestReplayBytes(QByteArray(reinterpret_cast<const char*>(bytes.data()),bytes.size()));
+        };
+        if(scenario!=2)injectError();
+        QTimer samples;samples.setInterval(25);
+        QObject::connect(&samples,&QTimer::timeout,&f.controller,[&] {
+            FpgaSensor::Reading r;r.source=0x45;r.kind=FpgaSensor::SensorKind::Tfa1500;r.timestamp=2;
+            r.validity.structure=true;r.validity.measurement=scenario==0;r.distanceMm=1000;
+            if(scenario==3) {
+                r.source=source;r.kind=FpgaSensor::SensorKind::Ai8;r.schema=2;r.validity.measurement=true;
+                r.ai8DeviceStatus=1;r.ai8DeviceError=0x40;r.ai8PvRaw=250;r.ai8SpRaw=250;r.ai8SvRaw=250;
+                r.ai8OpRaw=0;r.ai8Alarm=1;r.ai8Control=0;r.ai8Host=0;r.ai8SetResult=0;r.ai8SampleCounter=1;
+            }
+            emit session->sensorReadingReceived(r);
+        });
+        samples.start();
+        QElapsedTimer elapsed;elapsed.start();
+        while(elapsed.elapsed()<2000){QCoreApplication::processEvents();QThread::msleep(1);}
+        require(errors()==0,"startup errors are quiet during the grace period");
+        while(elapsed.elapsed()<3300){QCoreApplication::processEvents();QThread::msleep(1);}
+        require(errors()==(scenario==0?0:1),"recovered startup is quiet; persistent error or invalid data warns once");
+        if(scenario==0){injectError();require(errors()==1,"new faults after grace are reported immediately");}
+        samples.stop();f.controller.disconnectDevice();
+        QCoreApplication::processEvents();require(errors()==1,"disconnect does not publish deferred startup errors");
+    }
+    Fixture disconnected;disconnected.transport->regs[0x6504]=1;disconnected.connect();
+    disconnected.controller.disconnectDevice();
+    const auto count=disconnected.records.size();
+    QElapsedTimer elapsed;elapsed.start();
+    while(elapsed.elapsed()<3300){QCoreApplication::processEvents();QThread::msleep(1);}
+    require(disconnected.records.size()==count,"disconnect cancels startup grace without delayed warnings");
 }
 void advancedDataPaths(){
     Fixture f;f.connect();f.transport->clear();
@@ -581,6 +626,7 @@ void threadCleanup(){
 int main(int argc,char **argv){
     QCoreApplication app(argc,argv);
     if(app.arguments().contains("--sensor-config")) {sensorConfiguration();std::puts("FPGA sensor configuration tests passed");return 0;}
+    if(app.arguments().contains("--startup-grace")) {startupWarningGrace();std::puts("FPGA startup warning grace tests passed");return 0;}
     if(app.arguments().contains("--hardware-probe")) {
         FpgaDeviceController controller;
         const int durationIndex=app.arguments().indexOf("--hardware-duration-ms");

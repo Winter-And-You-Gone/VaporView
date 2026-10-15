@@ -100,6 +100,8 @@ private:
     void resetAcquisition();
     void recoverConnection();
     void publishManagementEvent(const QJsonObject& event);
+    void logManagementEvent(const QJsonObject& event, bool afterStartup = false);
+    void checkStartupWarnings();
     void acceptReading(const VaporView::FpgaSensor::Reading& reading);
     void flushPresentation();
     bool versionsMatch(QString *detail) const;
@@ -113,6 +115,8 @@ private:
     QVector<QJsonObject> pendingManagement_;
     std::optional<quint64> connectionStartTick_;
     QElapsedTimer connectionClock_;
+    QMap<quint16,qint64> startupWarningDeadlines_;
+    QMap<quint16,QJsonObject> startupWarnings_;
     std::deque<Step> steps_;
     std::optional<Step> current_;
     QMap<quint32, quint32> registers_;
