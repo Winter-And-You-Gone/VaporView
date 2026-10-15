@@ -153,6 +153,10 @@ add_executable(button_focus_style_test button_focus_style_test.cpp)
 target_link_libraries(button_focus_style_test PRIVATE vaporview_app_theme)
 vaporview_add_test(NAME button_focus_style_test COMMAND button_focus_style_test)
 set_tests_properties(button_focus_style_test PROPERTIES TIMEOUT 30 LABELS "fast;ui;accessibility" RUN_SERIAL TRUE)
+add_executable(windows_menu_font_test windows_menu_font_test.cpp)
+target_link_libraries(windows_menu_font_test PRIVATE vaporview_app_theme)
+vaporview_add_test(NAME windows_menu_font_test COMMAND windows_menu_font_test)
+set_tests_properties(windows_menu_font_test PROPERTIES TIMEOUT 45 LABELS "ui;theme" RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
 set_tests_properties(ui_log_model_test PROPERTIES
     TIMEOUT 30
     LABELS "fast;unit;logging;ui"

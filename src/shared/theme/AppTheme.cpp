@@ -124,13 +124,48 @@ public:
                     const QWidget *widget = nullptr) const override
     {
         // Qt 6.10's Windows 11 style passes pixel-font pointSize() (-1) to
-        // QFont::setPointSize when measuring a combo arrow. Use its supported
+        // QFont::setPointSize when measuring a combo or menu-button arrow. Use its supported
         // widget-less metric fallback; keep the widget font and inheritance.
-        if (metric == PM_MenuButtonIndicator && qobject_cast<const QComboBox *>(widget)
+        if (metric == PM_MenuButtonIndicator && widget
             && widget->font().pointSize() <= 0
             && baseStyle()->objectName() == QStringLiteral("windows11"))
             return QProxyStyle::pixelMetric(metric, option, nullptr);
         return QProxyStyle::pixelMetric(metric, option, widget);
+    }
+
+    void drawControl(ControlElement element, const QStyleOption *option,
+                     QPainter *painter, const QWidget *widget = nullptr) const override
+    {
+        if (baseStyle()->objectName() == QStringLiteral("windows11"))
+        {
+            // The native style also reads pointSize() when painting menu-button
+            // and submenu chevrons. Convert only its local drawing inputs, using
+            // the paint device DPI; never change widget fonts or their inheritance.
+            const auto pointFont = [painter](QFont font) {
+                font.setPointSizeF(qMax(1.0, font.pixelSize() * 72.0 / painter->device()->logicalDpiY()));
+                return font;
+            };
+            if (element == CE_PushButtonBevel && painter->font().pointSize() <= 0)
+            {
+                painter->save();
+                painter->setFont(pointFont(painter->font()));
+                QProxyStyle::drawControl(element, option, painter, widget);
+                painter->restore();
+                return;
+            }
+            if (element == CE_MenuItem)
+            {
+                const auto *menu = qstyleoption_cast<const QStyleOptionMenuItem *>(option);
+                if (menu && menu->menuItemType == QStyleOptionMenuItem::SubMenu && menu->font.pointSize() <= 0)
+                {
+                    QStyleOptionMenuItem adjusted = *menu;
+                    adjusted.font = pointFont(menu->font);
+                    QProxyStyle::drawControl(element, &adjusted, painter, widget);
+                    return;
+                }
+            }
+        }
+        QProxyStyle::drawControl(element, option, painter, widget);
     }
 
     void drawPrimitive(PrimitiveElement element, const QStyleOption *option,
