@@ -34,7 +34,7 @@ void events(int ms) { QElapsedTimer t;t.start();wait([&]{return t.elapsed()>=ms;
 QByteArray bytes(const std::vector<std::uint8_t>& b) { return {reinterpret_cast<const char*>(b.data()),qsizetype(b.size())}; }
 void protocol()
 {
-    auto transport=makeFpgaUsbSimulator();check(transport->open(),"simulator opens without hardware");
+    auto transport=makeFpgaUsbSimulator(nullptr,FpgaSimulatorStartup::RunningDemo);check(transport->open(),"simulator opens without hardware");
     check(!transport->diagnostic().hardwareBackendAvailable && transport->diagnostic().fields.value("mode")=="simulation",
           "transport truthfully identifies simulation");
     FpgaVlp1::StreamParser parser;FpgaSensor::FpgaSensorAdapter adapter;FpgaWave::Assembler assembler;
@@ -75,15 +75,20 @@ void controls()
     FpgaControlConfig desired;desired.backend="simulator";controller.setConfiguration(desired);
     check(controller.discoverDevices().value("devices").toArray().size()==1,
           "local factory discovers a simulator independently of physical USB");
-    QSet<quint16> sensors,waves;QMap<quint16,int> waveCount;QString failure;bool configuredRaw=false;
-    QObject::connect(&controller,&FpgaDeviceController::logRecordGenerated,[&](const LogRecord& r){if(r.level>=LogLevel::Error)failure=r.message;});
-    QObject::connect(&controller,&FpgaDeviceController::measurementUpdated,[&](const auto& r){if(r.reading.validity.measurement)sensors.insert(r.reading.source);});
-    QObject::connect(&controller,&FpgaDeviceController::waveformUpdated,[&](const auto& w){if(w.complete){waves.insert(w.source);++waveCount[w.source];
+    QSet<quint16> sensors,waves;QMap<quint16,int> waveCount;QString failure;bool configuredRaw=false;QObject observer;
+    QObject::connect(&controller,&FpgaDeviceController::logRecordGenerated,&observer,[&](const LogRecord& r){if(r.level>=LogLevel::Error)failure=r.message;});
+    QObject::connect(&controller,&FpgaDeviceController::measurementUpdated,&observer,[&](const auto& r){if(r.reading.validity.measurement)sensors.insert(r.reading.source);});
+    QObject::connect(&controller,&FpgaDeviceController::waveformUpdated,&observer,[&](const auto& w){if(w.complete){waves.insert(w.source);++waveCount[w.source];
         if(w.source==0x20)configuredRaw=w.totalPoints==8000&&w.signed32Samples.size()==8000&&
             std::all_of(w.signed32Samples.cbegin(),w.signed32Samples.cend(),[](qint32 v){return v==83886;});}});
     controller.connectDevice("simulation://fpga","simulator");
     const auto idle=[&]{check(failure.isEmpty(),qPrintable(failure));return controller.ready()&&!controller.busy();};
     wait(idle,"real controller handshake and connection recovery complete");
+    for(quint16 source:{0x40,0x41,0x42,0x43,0x44,0x45,0x46}) {
+        controller.connectSensor({{"op","sensor"},{"source",source},{"enabled",true}});wait(idle,"explicit sensor startup");
+    }
+    for(int ch=0;ch<2;++ch){controller.setDac(ch,true);wait(idle,"explicit DAC startup");}
+    controller.setAcquisition(true);wait(idle,"explicit acquisition startup");
     wait([&]{return sensors.size()==7&&waves.size()==2;},"controller receives six sensors and both DLIA channels");
     controller.setTemperature(-2.5);wait(idle,"signed AI8 setpoint transaction completes");
     check(qint16(controller.hardwareValues().value(0x6654))==-25&&controller.hardwareValues().value(0x6648)==1,
@@ -109,15 +114,20 @@ void controls()
     events(300);check(waveCount==stopped,"stopped ADC and DLIA no longer emit new waves");
     controller.disconnectDevice();check(!controller.ready(),"disconnect clears readiness");
     controller.connectDevice("simulation://fpga","simulator");wait(idle,"simulator reconnect performs a fresh handshake");
+    controller.disconnectDevice();
 }
 void selectiveControls()
 {
     FpgaDeviceController controller;
     FpgaControlConfig desired;desired.backend="simulator";controller.setConfiguration(desired);
-    QSet<quint16> sensors;bool waveform=false;
-    QObject::connect(&controller,&FpgaDeviceController::measurementUpdated,[&](const auto& r){if(r.reading.validity.measurement)sensors.insert(r.reading.source);});
-    QObject::connect(&controller,&FpgaDeviceController::waveformUpdated,[&](const auto&){waveform=true;});
-    controller.connectDevice("simulation://fpga","simulator",FpgaDeviceController::ConnectMode::PreserveRunningModules);
+    QSet<quint16> sensors;QMap<quint16,int> sampleCounts;QVector<quint64> pingTicks;bool waveform=false;QObject observer;
+    QObject::connect(&controller,&FpgaDeviceController::measurementUpdated,&observer,[&](const auto& r){if(r.reading.validity.measurement){sensors.insert(r.reading.source);++sampleCounts[r.reading.source];}});
+    QObject::connect(&controller,&FpgaDeviceController::waveformUpdated,&observer,[&](const auto&){waveform=true;});
+    QObject::connect(&controller,&FpgaDeviceController::rawUsbBytes,&observer,[&,parser=FpgaVlp1::StreamParser{}](quint64,const QByteArray& bytes) mutable {
+        for(const auto& frame:parser.feed(reinterpret_cast<const std::uint8_t*>(bytes.constData()),bytes.size()))
+            if(frame.header.frameType==FpgaVlp1::FrameType::Response&&frame.header.message==0xfe)pingTicks.append(frame.header.timestamp);
+    });
+    controller.connectDevice("simulation://fpga","simulator");
     const auto idle=[&]{return controller.ready()&&!controller.busy();};
     wait(idle,"selective simulator completes its idle-board handshake");
     for(quint32 base:{0x2000u,0x2100u,0x3000u,0x3100u,0x4000u,0x4100u,0x5000u,0x5100u,
@@ -126,13 +136,22 @@ void selectiveControls()
     events(250);check(sensors.isEmpty()&&!waveform,"idle simulated board emits no device measurements or waveforms");
     controller.connectSensor({{"op","sensor"},{"source",0x40},{"enabled",true}});wait(idle,"requested PTB connects");
     wait([&]{return sensors.contains(0x40);},"requested PTB produces real decoded simulator data");
-    events(250);check(sensors==QSet<quint16>{0x40}&&!waveform,"single-device connection produces only the selected source");
+    const int firstCount=sampleCounts.value(0x40);events(250);
+    check(sampleCounts.value(0x40)==firstCount,"PTB polling respects its one-second register interval");
+    check(sensors==QSet<quint16>{0x40}&&!waveform,"single-device connection produces only the selected source");
     controller.connectSensor({{"op","sensor"},{"source",0x44},{"enabled",true}});wait(idle,"second independent device connects");
     wait([&]{return sensors.contains(0x44);},"second source produces measurements");
     check(controller.hardwareValues().value(0x6004)==1&&controller.hardwareValues().value(0x6404)==1,
         "connecting a second simulated device preserves the first");
     controller.setSensorEnabled(0x40,false);wait(idle,"first simulated sensor disconnects independently");
     check(controller.connected()&&controller.hardwareValues().value(0x6404)==1,"individual stop keeps USB and the other sensor running");
+    controller.disconnectDevice();
+    controller.connectDevice("simulation://fpga","simulator",FpgaDeviceController::ConnectMode::PreserveRunningModules);
+    wait(idle,"host reconnect reads the same simulated board");
+    check(controller.hardwareValues().value(0x6004)==0&&controller.hardwareValues().value(0x6404)==1,
+        "opening USB preserves stopped and running sensors instead of power-cycling the board");
+    check(pingTicks.size()==2&&pingTicks.last()>pingTicks.first(),"protocol responses preserve the board timebase across host reconnects");
+    controller.disconnectDevice();
 }
 
 struct Child
@@ -162,14 +181,18 @@ void processTest()
     QObject::connect(&remote,&RemoteSkyController::basicTelemetryUpdated,[&](const auto& b){basic|=(b.validity_flags&BasicHasPressure)&&std::isfinite(b.pressure_hpa);});
     QObject::connect(&remote,&RemoteSkyController::deviceOperationResponseReceived,[&](const auto& response){replies.insert(response.request_id,response);});
     events(300);check(remote.openTcp("127.0.0.1",port),"Ground controller connects to the real simulator process");
-    wait([&]{check(child.process.state()!=QProcess::NotRunning,"simulator stays running");return status.value("ready").toBool()&&!status.value("busy").toBool()&&sensors.size()==7&&waves.size()==2&&basic;},
-         "normal Ground remote stream receives FPGA status, all sensors, waveform previews and physical telemetry");
+    wait([&]{check(child.process.state()!=QProcess::NotRunning,"simulator stays running");return status.value("ready").toBool()&&!status.value("busy").toBool();},
+         "standalone simulated board completes its cold handshake");
+    check(sensors.isEmpty()&&waves.isEmpty(),"standalone service does not pre-enable devices for display");
     check(status.value("simulation").toBool(),"normal status explicitly identifies simulated measurements");
     auto operation=[&](const QJsonObject& request) {
         const auto id=remote.sendFpgaControl(request);check(id!=0,"remote FPGA operation submitted");
         wait([&]{return replies.contains(id);},"final FPGA response received");
         check(replies[id].error_code==CommandErrorCode::Ok,qPrintable(replies[id].error_message));
     };
+    for(quint16 source:{0x40,0x41,0x42,0x43,0x44,0x45,0x46})operation({{"op","sensor"},{"source",source},{"enabled",true}});
+    operation({{"op","acquisition"},{"enabled",true}});
+    wait([&]{return sensors.size()==7&&waves.size()==2&&basic;},"explicit startup yields all sensors, waveforms and physical telemetry");
     operation({{"op","temperature"},{"celsius",32.5}});
     operation({{"op","raw"},{"enabled",true}});
     wait([&]{return waves.contains(0x20)&&waves.contains(0x21);},"RAW previews cross process and telemetry boundaries");

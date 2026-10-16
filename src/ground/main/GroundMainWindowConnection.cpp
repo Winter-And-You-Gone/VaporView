@@ -506,7 +506,7 @@ void MainWindow::updateHomeDeviceStatusCapsules()
                     ? (state_->is_english_ ? QStringLiteral("Not ready") : QStringLiteral("未就绪"))
                     : (state_->is_english_ ? QStringLiteral("Ready to connect") : QStringLiteral("可以连接"));
         if (isFpgaRelayPath() && connected) {
-            const bool valid = isRemoteSkyMode() ? remoteDeviceDataValid(device, 3000)
+            const bool valid = isRemoteSkyMode()&&!isUiTestMode() ? remoteDeviceDataValid(device, 3000)
                 : state_->fpga_sources_.contains(homeFpgaSensorSource(device));
             stateText = device == VaporView::SkyDeviceId::WaveTcp
                 ? (state_->is_english_ ? QStringLiteral("Acquisition enabled") : QStringLiteral("采集已启用"))
@@ -1442,6 +1442,10 @@ void MainWindow::onConnectClicked()
         state_->fpga_page_->appendDiagnostic(state_->is_english_ ? QStringLiteral("Disconnect FPGA before connecting serial sources.") : QStringLiteral("连接串口前请先断开 FPGA。"));
         return;
     }
+    if (isUiTestMode() && isFpgaRelayPath()) {
+        state_->fpga_page_->simulateOperation({{"op","connect"}});
+        return;
+    }
     if (isUiTestMode())
     {
         if (state_->ui_test_connection_in_progress_)
@@ -1471,12 +1475,6 @@ void MainWindow::onConnectClicked()
             }
             state_->ui_test_connection_in_progress_ = false;
             state_->ui_test_model_->setAllDevicesConnected(true);
-            if (isFpgaRelayPath()) {
-                state_->fpga_page_->simulateOperation({{"op","connect"}});
-                for (quint16 source : {0x40,0x42,0x43,0x44,0x45,0x46})
-                    state_->fpga_page_->simulateOperation({{"op","sensor"},{"source",source},{"enabled",true}});
-                state_->fpga_page_->simulateOperation({{"op","acquisition"},{"enabled",true}});
-            }
             if (state_->tcp_wave_panel_) state_->tcp_wave_panel_->setUiTestConnected(true);
             updateConnectionStatus(false);
             publishUiTestEvent(QStringLiteral("ui_test_all_devices_connected"),
@@ -2204,5 +2202,6 @@ void MainWindow::onRefreshTimer()
         state_->device_panel_coordinator_->updateRates(panelRates);
         state_->device_panel_coordinator_->updateTemperatureData(state_->current_temperature_controller_);
     }
+    if(isFpgaRelayPath())updateRemoteTelemetrySummaryLabel();
     updateHomeDeviceStatusCapsules();
 }

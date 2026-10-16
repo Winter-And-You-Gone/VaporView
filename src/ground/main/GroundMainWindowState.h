@@ -314,7 +314,8 @@ struct MainWindowState
     QSet<quint16> fpga_sources_;
     QMap<quint16, double> fpga_sensor_rates_;
     QMap<quint32, quint32> fpga_registers_, fpga_sim_registers_;
-    bool fpga_sim_ready_ = false;
+    bool fpga_sim_ready_ = false, fpga_sim_busy_ = false;
+    QMap<quint16,std::chrono::steady_clock::time_point> fpga_wave_times_;
     quint16 fpga_sim_pressure_source_ = 0x40;
     VaporView::SkyDeviceId fpga_home_action_device_ = VaporView::SkyDeviceId::All;
     bool fpga_home_action_started_ = false;

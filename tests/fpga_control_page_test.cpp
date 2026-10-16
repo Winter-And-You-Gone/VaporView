@@ -1,4 +1,9 @@
 #include "test_settings_sandbox.h"
+#include "FpgaDeviceController.h"
+#include "FpgaVlp1.h"
+#include <QtEndian>
+#include <QElapsedTimer>
+#include <QThread>
 #include "ground/widgets/FpgaControlPage.h"
 #include "shared/theme/AppTheme.h"
 #include <QApplication>
@@ -387,56 +392,83 @@ int main(int argc,char **argv) {
         &&plot->height()==100&&secondPlot->height()==100,"harmonics are stacked with compact equal-height plots");
     const auto beforeSimulation=page.configuration().toJson();
     page.setUiTestState(true,false,false,1000);
+    auto *simulation=page.uiTestController();
+    require(simulation&&simulation->thread()!=QThread::currentThread()&&!page.uiTestConnected()&&page.findChild<QPushButton*>("fpgaConnect")->isEnabled(),"UI test starts disconnected with an idle board");
+    require(plot->property("sampleCount").toInt()==0,"entering UI test does not manufacture a waveform");
+    const auto wait=[&](auto done,const char *message,int timeout=12000) {
+        QElapsedTimer timer;timer.start();
+        while(!done()&&timer.elapsed()<timeout){app.processEvents(QEventLoop::AllEvents,10);QThread::msleep(1);}
+        require(done(),message);
+    };
+    int wireCommands=0;
+    QObject::connect(simulation,&VaporView::Ground::Devices::FpgaDeviceController::rawCommand,&page,[&]{++wireCommands;});
+    const auto operation=[&](const QJsonObject& request) {
+        const int before=wireCommands;page.simulateOperation(request);
+        wait([&]{return !page.uiTestBusy()&&(request.value("op")!="connect"||page.uiTestReady());},"UI operation waits for actual command responses and readback");
+        if(request.value("op")!="disconnect")require(wireCommands>before,"UI operation traverses real VLP1 wire commands");
+    };
+    operation({{"op","connect"}});
+    require(page.uiTestReady(),"UI test completes the real controller handshake");
+    FpgaControlConfig wireConfig;wireConfig.backend="simulator";page.setConfiguration(wireConfig);
+    operation({{"op","configure"},{"section","all"},{"configuration",wireConfig.toJson()}});
+    for(quint32 base:{0x2000u,0x3000u,0x4000u,0x5000u,0x6000u,0x6100u,0x6200u,0x6300u,0x6400u,0x6500u,0x6600u})
+        require(page.uiTestHardwareValues().value(base+4)==0,"opening FPGA does not enable any device");
+    operation({{"op","sensor"},{"source",0x40},{"enabled",true}});
     page.setLanguage(true);
-    for(int channel=0;channel<2;++channel) {
-        for(const auto *field : {"Update","PhaseMode","DacClear","DacMin","DacMax","DacSpi"})
-            require(page.findChild<QLabel*>(QString("fpga%1%2Actual").arg(channel).arg(field))->text()!=QStringLiteral("—"),"simulation covers all previously missing editable WMS / DAC readbacks");
-        for(quint32 address : {0x2008u,0x200cu,0x3008u,0x300cu,0x203cu,0x2044u,0x3028u,0x302cu,0x400cu,0x4024u,0x5034u,0x5048u,0x5050u})
-            require(page.findChild<QLabel*>(QString("fpgaRegister%1").arg(address+channel*0x100,4,16,QChar('0')))->text()!=QStringLiteral("—"),"simulation covers named status, error and counter readbacks on both channels");
-        require(page.findChild<QLabel*>(QString("fpga%1DacSpiActual").arg(channel))->text().contains("= 16666666 "),"simulated actual SPI rate accounts for the integer divider");
-    }
-    auto *writes0=page.findChild<QLabel*>("fpgaRegister3028"),*writes1=page.findChild<QLabel*>("fpgaRegister3128");
-    page.simulateOperation({{"op","dac"},{"channel",0},{"enabled",false}});
-    const auto stoppedWrites=writes0->text(),runningWrites=writes1->text();
-    page.setUiTestState(true,false,false,1100);
-    require(writes0->text()==stoppedWrites&&writes1->text()!=runningWrites,"DAC write counters stop independently for a disabled channel");
-    page.simulateOperation({{"op","dac"},{"channel",0},{"enabled",true}});
-    page.simulateOperation({{"op","raw"},{"enabled",true}});
-    require(page.findChild<QWidget*>("fpgaWavePlot33")->property("sampleCount").toInt()>0,"simulator drives second ADC lane");
-    require(page.findChild<QWidget*>("fpgaWaveSecondPlot49")->property("sampleCount").toInt()>0,"simulator drives second DLIA harmonic pair");
-    require(page.findChild<QLabel*>("fpgaSensor0043")->text().contains("Pa"),"simulator includes BMP390");
+    wait([&]{return sensor->text().contains("Valid measurement");},"sensor display comes from decoded protocol data");
+    require(page.uiTestHardwareValues().value(0x6404)==0,"single device startup preserves other channels");
+    operation({{"op","sensor"},{"source",0x40},{"enabled",false}});
+    operation({{"op","sensor_config"},{"source",0x40},{"baud",4800}});
+    require(page.uiTestHardwareValues().value(0x6010)==4800,"UI settings are committed and read back through the protocol");
+    operation({{"op","disconnect"}});
+    operation({{"op","connect"},{"recover",false}});
+    require(page.uiTestHardwareValues().value(0x6010)==4800&&page.uiTestHardwareValues().value(0x6004)==0,"USB reconnect preserves configuration and stopped device state");
+    operation({{"op","sensor"},{"source",0x40},{"enabled",true}});
+    operation({{"op","dac"},{"channel",0},{"enabled",true}});
+    operation({{"op","acquisition"},{"enabled",true}});
+    QSet<quint32> rawCycles;bool wireGap=false;
+    QObject::connect(simulation,&VaporView::Ground::Devices::FpgaDeviceController::rawUsbBytes,&page,[&,parser=VaporView::FpgaVlp1::StreamParser{}](quint64,const QByteArray& bytes) mutable {
+        for(const auto& f:parser.feed(reinterpret_cast<const std::uint8_t*>(bytes.constData()),bytes.size()))
+            if(f.header.source==0x20&&f.header.message==0x1000&&f.payload.size()>=28&&!rawCycles.contains(f.header.cycleId)) {
+                rawCycles.insert(f.header.cycleId);wireGap|=qFromLittleEndian<quint16>(f.payload.data()+16)>0;
+            }
+    });
+    operation({{"op","raw"},{"enabled",true}});
+    wait([&]{return adcPlot->property("sampleCount").toInt()>0&&plot->property("sampleCount").toInt()>0;},"ADC and DLIA use the production parser and assembler");
+    bool incompleteRaw=false;
+    QObject::connect(simulation,&VaporView::Ground::Devices::FpgaDeviceController::waveformUpdated,&page,[&](const auto& wave) {
+        if(wave.source==0x20&&!wave.complete)incompleteRaw=true;
+    });
     page.simulateOperation({{"op","missing_cycle"}});
-    require(plot->property("sampleCount").toInt()==0&&adcPlot->property("sampleCount").toInt()>0,"missing fragment clears DLIA and retains last good RAW");
-    page.setUiTestState(true,false,false,1200);
-    require(plot->property("sampleCount").toInt()>0,"next simulated cycle recovers independently");
+    wait([&]{return wireGap;},"fault injection drops an actual first fragment from a multi-fragment RAW cycle");
+    operation({{"op","raw"},{"enabled",false}});
+    wait([&]{return incompleteRaw;},"normal stop/drain flushes the incomplete cycle through the production assembler");
+    operation({{"op","raw"},{"enabled",true}});
     page.simulateOperation({{"op","latch_dlia"}});
-    page.setUiTestState(true,false,false,1300);
-    require(plot->property("sampleCount").toInt()==0,"latched DLIA fault persists across cycles");
-    page.simulateOperation({{"op","acquisition"},{"enabled",false}});
-    page.simulateOperation({{"op","acquisition"},{"enabled",true}});
-    require(plot->property("sampleCount").toInt()>0,"simulated restart clears DLIA latch");
-    page.simulateOperation({{"op","sensor"},{"source",0x40},{"enabled",false}});
-    require(sensor->text().contains("Invalid measurement"),"simulated sensor disable remains disabled on refresh");
-    page.setUiTestState(true,false,false,1400);
-    require(sensor->text().contains("Invalid measurement"),"simulation tick does not overwrite sensor control");
-    page.simulateOperation({{"op","sensor"},{"source",0x40},{"enabled",true}});
-    require(sensor->text().contains("Valid measurement"),"simulated sensor enable recovers readings");
-    auto simulationConfig=page.configuration();
-    simulationConfig.wms[0].bias=10000000;page.setConfiguration(simulationConfig);
-    page.simulateOperation({{"op","configure"},{"section","wms"},{"configuration",simulationConfig.toJson()}});
-    page.simulateOperation({{"op","acquisition"},{"enabled",true}});
-    page.simulateOperation({{"op","raw"},{"enabled",true}});
-    page.setUiTestState(true,false,false,75000);
-    require(adcPlot->property("sampleCount").toInt()>0&&!page.findChild<QLabel*>("fpgaWaveSummary32")->text().contains("RAW upload stopped"),"simulated RAW keeps updating beyond the former maximum window");
-    page.simulateOperation({{"op","raw"},{"enabled",false}});
-    require(adcPlot->property("sampleCount").toInt()>0&&page.findChild<QLabel*>("fpgaWaveSummary32")->text().contains("RAW upload stopped"),"manual RAW stop retains the historical plot without stopping DLIA");
-    require(plot->property("sampleCount").toInt()>0,"manual RAW stop preserves DLIA acquisition");
-    page.simulateOperation({{"op","disconnect"}});
-    page.setUiTestState(true,false,false,75200);
-    require(page.findChild<QPushButton*>("fpgaConnect")->isEnabled(),"simulated disconnect survives ticks and permits reconnect");
-    page.simulateOperation({{"op","connect"}});
-    require(plot->property("sampleCount").toInt()>0,"simulated reconnect resumes acquisition");
+    wait([&]{return plot->property("sampleCount").toInt()==0;},"protocol fault clears invalid DLIA display");
+    operation({{"op","acquisition"},{"enabled",false}});
+    operation({{"op","acquisition"},{"enabled",true}});
+    wait([&]{return plot->property("sampleCount").toInt()>0;},"normal stop/reset/start sequence clears DLIA latch");
+    operation({{"op","raw"},{"enabled",true}});
+    wait([&]{return adcPlot->property("sampleCount").toInt()>0;},"RAW restarts through normal control");
+    operation({{"op","raw"},{"enabled",false}});
+    require(adcPlot->property("sampleCount").toInt()>0&&page.findChild<QLabel*>("fpgaWaveSummary32")->text().contains("RAW upload stopped"),"RAW stop keeps previous cycle as history");
+    page.setUiTestState(true,false,true,75000);
+    wait([&]{return sensor->text().contains("Invalid measurement");},"partial fault enters through wire validity flags");
+    page.setUiTestState(true,false,false,75100);
+    wait([&]{return sensor->text().contains("Valid measurement");},"removing a fault restores actual decoded measurements");
+    page.setUiTestState(true,true,false,75200);
+    wait([&]{return sensor->text().contains("historical",Qt::CaseInsensitive);},"stalled wire data expires through the normal sample freshness timer",7000);
+    operation({{"op","refresh"}});
+    require(page.uiTestReady(),"stalled measurements do not fake a USB disconnection");
+    page.setUiTestState(true,false,false,75300);
+    wait([&]{return sensor->text().contains("Valid measurement")&&!sensor->text().contains("historical",Qt::CaseInsensitive);},"new wire samples recover from a data stall");
+    operation({{"op","disconnect"}});
+    operation({{"op","connect"},{"recover",false}});
+    require(page.uiTestHardwareValues().value(0x6004)==1,"reconnect preserves a running sensor");
     page.setUiTestState(false);
-    require(page.configuration().toJson()==beforeSimulation&&adcPlot->property("sampleCount").toInt()==0,"leaving simulator restores configuration and clears synthetic data");
+    require(!page.uiTestController()&&page.configuration().toJson()==beforeSimulation&&adcPlot->property("sampleCount").toInt()==0,"leaving UI test destroys its isolated controller, restores configuration and clears data");
+    { FpgaControlPage pending;pending.setUiTestState(true);pending.simulateOperation({{"op","connect"}}); }
+    app.processEvents(); // Pending worker results must not outlive their page.
     page.close();std::puts("FPGA control page tests passed");return 0;
 }

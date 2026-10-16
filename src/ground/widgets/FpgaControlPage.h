@@ -2,6 +2,7 @@
 
 #include "FpgaControlConfig.h"
 #include "FpgaSensorDecoder.h"
+#include "FpgaSensorAdapter.h"
 #include "FpgaWaveformAssembler.h"
 #include "SensorTransportPath.h"
 #include <QMap>
@@ -10,6 +11,9 @@
 #include <QWidget>
 #include <QJsonObject>
 #include <functional>
+#include <memory>
+
+namespace VaporView::Ground::Devices { class FpgaDeviceController; class FpgaUsbSimulator; }
 
 class QAbstractButton;
 class QCheckBox;
@@ -18,12 +22,19 @@ class QDoubleSpinBox;
 class QLabel;
 class QPlainTextEdit;
 class QTabWidget;
+class QThread;
 
 class FpgaControlPage final : public QWidget
 {
     Q_OBJECT
 public:
     explicit FpgaControlPage(QWidget *parent = nullptr);
+    ~FpgaControlPage() override;
+    VaporView::Ground::Devices::FpgaDeviceController* uiTestController() const;
+    bool uiTestReady() const { return ready_; }
+    bool uiTestBusy() const { return busy_; }
+    bool uiTestConnected() const { return connected_; }
+    const QMap<quint32,quint32>& uiTestHardwareValues() const { return hardwareValues_; }
     FpgaControlConfig configuration() const;
     void setConfiguration(const FpgaControlConfig &config);
     void setConnectionState(bool ready, bool busy, const QString &detail = {});
@@ -45,7 +56,8 @@ public:
                         bool partialFailure = false, qint64 elapsedMs = 0,
                         VaporView::SensorTransportPath path = VaporView::SensorTransportPath::DirectDevices);
 signals:
-    void simulationStateChanged(bool connected, const QMap<quint32, quint32> &registers, quint16 pressureSource);
+    void simulationStateChanged(bool ready, bool busy, const QMap<quint32, quint32> &registers, quint16 pressureSource);
+    void simulationSensorConfigurationApplied(quint16 source, const QMap<quint32, quint32> &registers);
     void waveformDisplayUpdated(quint16 source, const QVector<QVector<double>> &samples,
                                 const QStringList &components, const QString &detail, quint32 totalPoints, bool preview);
     void secondHarmonicPeakReady(quint16 source, quint32 cycleId, quint64 timestamp, double peak, bool preview);
@@ -67,7 +79,9 @@ signals:
     void replayRequested(const QString &path);
     void exportRequested(const QString &path);
     void recordingRequested(bool enable);
-    void simulationSensorUpdated(const VaporView::FpgaSensor::Reading &reading);
+    void simulationMeasurementsUpdated(const VaporView::FpgaSensor::AdaptedMeasurements &measurements);
+    void simulationOperationFailed();
+    void simulationWaveformUpdated(const VaporView::FpgaWave::CompletedStream &stream);
 private:
     void showEvent(QShowEvent *event) override;
     void requestUsbDiscovery();
@@ -81,23 +95,19 @@ private:
     void updateActions();
     void lockOperation();
     void refreshMeasurements();
+    void clearMeasurements();
+    void stopUiTestController();
     void label(QWidget *widget, const QString &zh, const QString &en);
     struct Simulation {
-        bool connected=true, acquiring=true, recording=true, stalled=false, partialFailure=false;
-        bool missingCycle=false, dliaLatched=false;
-        bool rawEnabled=false, rawStopPending=false;
-        qint64 elapsedMs=0;
-        quint32 cycle=0;
-        double temperature=24.0;
-        QSet<quint16> disabledSensors;
-        QMap<quint32,quint32> sensorParameters{{0x6010,9600},{0x6018,1000},{0x6210,921600},
-            {0x611c,1000},{0x6510,500000},{0x6314,1000},{0x6414,1000}};
-        std::array<bool,2> wms{{true,true}}, dac{{true,true}};
-        std::array<quint32,2> dacWriteCount{{0,0}};
-        FpgaControlConfig saved, applied;
+        std::unique_ptr<QThread> worker;
+        std::unique_ptr<QObject> receiver;
+        VaporView::Ground::Devices::FpgaDeviceController *controller = nullptr;
+        FpgaControlConfig desired;
+        bool stalled=false, partialFailure=false;
+        VaporView::Ground::Devices::FpgaUsbSimulator *transport = nullptr;
+        FpgaControlConfig saved;
         QJsonObject savedUsb;
         bool savedUsbRemote=false, savedUsbAvailable=true;
-        VaporView::FpgaWave::Assembler assembler{4};
     } simulation_;
     FpgaControlConfig config_;
     QVector<Field> fields_;

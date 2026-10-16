@@ -34,7 +34,7 @@ void MainWindow::syncFpgaDeviceConfigUi()
         : QStringLiteral("当前 VLP1 不支持 EPSILON 参数命令或 RTCM 转发。");
     if (state_->ai8_device_session_) state_->ai8_device_session_->setTransportSupported(!relay, relay ? ai8Unsupported : QString());
     if (state_->epsilon_device_session_) state_->epsilon_device_session_->setTransportSupported(!relay, relay ? epsilonUnsupported : QString());
-    if (relay && !isUiTestMode() && state_->ai8_temperature_controller_panel_) {
+    if (relay && state_->ai8_temperature_controller_panel_) {
         state_->ai8_temperature_controller_panel_->setBackendConnected(
             homeFpgaDeviceState(VaporView::SkyDeviceId::Ai8TemperatureController) == VaporView::DeviceState::Connected,
             state_->is_english_ ? QStringLiteral("FPGA relay") : QStringLiteral("FPGA 中转"));
@@ -45,7 +45,7 @@ void MainWindow::syncFpgaDeviceConfigUi()
         ? QStringLiteral("Disconnect this device to edit. Changes are staged and verified when connecting; Direct presets are separate.")
         : QStringLiteral("断开此设备后可修改；参数暂存，连接时下发并核对读回。直连预设独立保留。");
     const bool busy = state_->fpga_home_action_device_ != VaporView::SkyDeviceId::All || (isUiTestMode()
-        ? state_->ui_test_connection_in_progress_ : isRemoteSkyMode()
+        ? state_->ui_test_connection_in_progress_ || state_->fpga_sim_busy_ : isRemoteSkyMode()
         ? state_->fpga_session_.requestId || state_->fpga_session_.remoteStatus.value("busy").toBool() || state_->remote_config_session_.applying
         : state_->fpga_busy_ || state_->fpga_replaying_);
     const bool usbConnected = isUiTestMode() ? state_->fpga_sim_ready_ : isRemoteSkyMode()
@@ -253,7 +253,7 @@ double MainWindow::homeFpgaSensorRate(VaporView::SkyDeviceId device) const
 {
     if (homeFpgaDeviceState(device) != VaporView::DeviceState::Connected) return 0.0;
     const auto source = homeFpgaSensorSource(device);
-    const double hz = isRemoteSkyMode()
+    const double hz = isRemoteSkyMode()&&!isUiTestMode()
         ? state_->fpga_session_.remoteStatus.value("sensor_rates_hz").toObject().value(QString::number(source)).toDouble()
         : state_->fpga_sensor_rates_.value(source);
     return std::isfinite(hz) && hz > 0.0 ? hz : 0.0;
@@ -268,6 +268,7 @@ VaporView::DeviceState MainWindow::homeFpgaDeviceActionState(VaporView::SkyDevic
         return state_->fpga_home_action_device_ == device ? DeviceState::Connecting : DeviceState::Disabled;
     if (isUiTestMode()) {
         if (state_->ui_test_connection_in_progress_) return DeviceState::Connecting;
+        if (state_->fpga_sim_busy_) return DeviceState::Disabled;
     } else if (isRemoteSkyMode()) {
         if (state_->fpga_session_.requestId || state_->fpga_session_.remoteStatus.value("busy").toBool()) return DeviceState::Disabled;
     } else if (state_->fpga_busy_ || state_->fpga_replaying_ || anyCollectorRunning()
@@ -320,7 +321,7 @@ void MainWindow::requestHomeFpgaWaveAction(bool raw, bool enabled)
     state_->fpga_home_action_device_ = VaporView::SkyDeviceId::WaveTcp;
     state_->fpga_home_action_started_ = false;
     emit state_->fpga_page_->rawRequested(enabled);
-    if (isUiTestMode() || (isRemoteSkyMode() && !state_->fpga_session_.requestId))
+    if (!isUiTestMode() && isRemoteSkyMode() && !state_->fpga_session_.requestId)
         state_->fpga_home_action_device_ = VaporView::SkyDeviceId::All;
     updateHomeDeviceStatusCapsules();
 }
@@ -371,20 +372,8 @@ void MainWindow::setHomeFpgaDeviceEnabled(VaporView::SkyDeviceId device, bool en
     state_->fpga_home_action_device_ = device;
     state_->fpga_home_action_started_ = false;
     if (enabled) startHomeDeviceActionSpinner(device);
-    if (isUiTestMode()) {
-        const auto apply = [this, device, source, enabled] {
-            if (!isUiTestMode() || state_->fpga_home_action_device_!=device) return;
-            if (!isFpgaRelayPath()) {state_->fpga_home_action_device_=SkyDeviceId::All;return;}
-            if (enabled && !state_->fpga_sim_ready_) state_->fpga_page_->simulateOperation({{"op","connect"},{"recover",false}});
-            if(device==SkyDeviceId::WaveTcp)state_->fpga_page_->simulateOperation({{"op","acquisition"},{"enabled",enabled}});
-            else emit state_->fpga_page_->sensorEnableRequested(source,enabled);
-            state_->ui_test_model_->setDeviceState(device, homeFpgaDeviceState(device));
-            state_->fpga_home_action_device_ = SkyDeviceId::All;
-            finishHomeFpgaRawStart();
-            updateConnectionStatus(false);
-        };
-        if (enabled) QTimer::singleShot(350,this,apply); else apply();
-    } else if (isRemoteSkyMode() && enabled && !state_->fpga_session_.remoteStatus.value("ready").toBool()) {
+    const bool remote=isRemoteSkyMode()&&!isUiTestMode();
+    if (remote && enabled && !state_->fpga_session_.remoteStatus.value("ready").toBool()) {
         state_->fpga_home_connect_device_ = device;
         sendRemoteFpgaControl({{"op", "connect"}, {"locator", state_->remote_config_session_.desired.fpga.locator},
             {"backend", state_->remote_config_session_.desired.fpga.configuration.backend}, {"recover", false}});
@@ -392,11 +381,11 @@ void MainWindow::setHomeFpgaDeviceEnabled(VaporView::SkyDeviceId device, bool en
             state_->fpga_home_connect_device_ = SkyDeviceId::All;
             state_->fpga_home_action_device_ = SkyDeviceId::All;
         }
-    } else if (!isRemoteSkyMode() && !state_->fpga_ready_) {
+    } else if (!remote && !(isUiTestMode()?state_->fpga_sim_ready_:state_->fpga_ready_)) {
         // Open the configured USB backend, then enable only the requested device.
         QPointer<MainWindow> window(this);
-        auto *controller = state_->fpga_session_.controller();
-        const auto backend = state_->fpga_config_.backend;
+        auto *controller = isUiTestMode()?state_->fpga_page_->uiTestController():state_->fpga_session_.controller();
+        const auto backend = isUiTestMode()?QStringLiteral("simulator"):state_->fpga_config_.backend;
         QMetaObject::invokeMethod(controller,[controller,window,device,backend] {
             controller->connectDevice({},backend,
                 VaporView::Ground::Devices::FpgaDeviceController::ConnectMode::PreserveRunningModules);
@@ -404,7 +393,7 @@ void MainWindow::setHomeFpgaDeviceEnabled(VaporView::SkyDeviceId device, bool en
                 if (window) QMetaObject::invokeMethod(window,[window,device] {
                     if (!window || window->state_->fpga_home_action_device_ != device) return;
                     window->state_->fpga_home_action_device_ = SkyDeviceId::All;
-                    if (window->isFpgaRelayPath() && !window->isRemoteSkyMode()
+                    if (window->isFpgaRelayPath() && (!window->isRemoteSkyMode() || window->isUiTestMode())
                         && (window->homeFpgaDeviceActionState(device) != VaporView::DeviceState::Connected
                             || !window->fpgaSensorDrafts().value(window->homeFpgaSensorSource(device)).isEmpty()))
                         window->setHomeFpgaDeviceEnabled(device,true);
@@ -428,7 +417,7 @@ void MainWindow::setHomeFpgaDeviceEnabled(VaporView::SkyDeviceId device, bool en
     } else {
         if (device == SkyDeviceId::WaveTcp) emit state_->fpga_page_->acquisitionRequested(enabled);
         else emit state_->fpga_page_->sensorEnableRequested(source,enabled);
-        if (isRemoteSkyMode() && !state_->fpga_session_.requestId) state_->fpga_home_action_device_ = SkyDeviceId::All;
+        if (remote && !state_->fpga_session_.requestId) state_->fpga_home_action_device_ = SkyDeviceId::All;
     }
     updateHomeDeviceStatusCapsules();
     updateTemperatureTitleButtonsState();
@@ -453,14 +442,28 @@ void MainWindow::setupFpgaControlPage()
     state_->fpga_session_.startWorker();
     auto *controller = state_->fpga_session_.controller();
     auto *page = state_->fpga_page_;
-    connect(page,&FpgaControlPage::simulationStateChanged,this,[this](bool connected,const QMap<quint32,quint32>& values,quint16 pressure) {
+    connect(page,&FpgaControlPage::simulationStateChanged,this,[this](bool ready,bool busy,const QMap<quint32,quint32>& values,quint16 pressure) {
         if (!isUiTestMode()) return;
-        state_->fpga_sim_ready_=connected;state_->fpga_sim_registers_=values;state_->fpga_sim_pressure_source_=pressure;
+        const bool wasReady=state_->fpga_sim_ready_;
+        state_->fpga_sim_ready_=ready;state_->fpga_sim_busy_=busy;
+        state_->fpga_sim_registers_=values;state_->fpga_sim_pressure_source_=pressure;
+        if(wasReady&&!ready)invalidateFpgaMeasurements();
+        if(ready&&busy&&state_->fpga_home_action_device_!=VaporView::SkyDeviceId::All)state_->fpga_home_action_started_=true;
+        if(!busy&&state_->fpga_home_action_started_) {
+            state_->fpga_home_action_device_=VaporView::SkyDeviceId::All;state_->fpga_home_action_started_=false;
+            if(state_->fpga_home_raw_start_pending_)finishHomeFpgaRawStart();
+        }
         updateHomeDeviceStatusCapsules();updateTemperatureTitleButtonsState();syncFpgaDeviceConfigUi();
     });
-    connect(page, &FpgaControlPage::simulationSensorUpdated, this, [this](const VaporView::FpgaSensor::Reading &reading) {
-        if (isUiTestMode()) updateInternalEnvironment(reading);
+    connect(page,&FpgaControlPage::simulationSensorConfigurationApplied,this,[this](quint16 source,const QMap<quint32,quint32>& values) {
+        if(isUiTestMode())confirmFpgaSensorDraft(source,values);
     });
+    connect(page,&FpgaControlPage::simulationOperationFailed,this,[this] {
+        state_->fpga_home_action_device_=VaporView::SkyDeviceId::All;state_->fpga_home_action_started_=false;
+        state_->fpga_home_raw_start_pending_=false;updateHomeDeviceStatusCapsules();
+    });
+    connect(page,&FpgaControlPage::simulationMeasurementsUpdated,this,&MainWindow::receiveFpgaMeasurements);
+    connect(page,&FpgaControlPage::simulationWaveformUpdated,this,&MainWindow::receiveFpgaWaveform);
     connect(page, &FpgaControlPage::waveformDisplayUpdated, this,
         [this](quint16 source, const QVector<QVector<double>> &samples,
                const QStringList &components, const QString &detail, quint32 totalPoints, bool preview) {
@@ -583,7 +586,6 @@ void MainWindow::setupFpgaControlPage()
         dispatch(request, [controller, request, source, enabled] {
             if(enabled)controller->connectSensor(request);else controller->setSensorEnabled(source,false);
         });
-        if(isUiTestMode()&&enabled)confirmFpgaSensorDraft(source,homeFpgaRegisters());
     });
     connect(page, &FpgaControlPage::rawRequested, this, [dispatch, controller](bool enabled) {
         dispatch({{"op", "raw"}, {"enabled", enabled}}, [controller, enabled] { controller->setRawEnabled(enabled); });
@@ -594,7 +596,8 @@ void MainWindow::setupFpgaControlPage()
     connect(page, &FpgaControlPage::recordingRequested, this, [this](bool enable) {
         if (isUiTestMode())
         {
-            state_->fpga_page_->simulateOperation({{"op","record"},{"enabled",enable}});
+            state_->fpga_page_->appendDiagnostic(state_->is_english_?QStringLiteral("UI test recording is disabled; use the local protocol simulator to validate recording.")
+                :QStringLiteral("界面测试不写入记录；请使用本地协议模拟器验证实际记录。"));
             return;
         }
         if (enable) onStartRecordingClicked(); else onStopRecordingClicked();
@@ -693,94 +696,14 @@ void MainWindow::setupFpgaControlPage()
         page->appendDiagnostic(record.message);
         VaporView::LogService::withCurrentInstance([&record](VaporView::LogService &service) { service.publish(record); });
     }, Qt::QueuedConnection);
-    connect(controller, &Controller::waveformUpdated, this, [this, page](const VaporView::FpgaWave::CompletedStream& stream) {
-        if (!isRemoteSkyMode()) page->updateWaveform(stream);
-    }, Qt::QueuedConnection);
+    connect(controller,&Controller::waveformUpdated,this,&MainWindow::receiveFpgaWaveform,Qt::QueuedConnection);
     connect(controller, &Controller::replayFinished, this, [this](bool, const QString &detail) {
         state_->fpga_replaying_ = false;
         state_->fpga_page_->appendDiagnostic(detail);
         state_->fpga_page_->setConnectionState(false,false,state_->is_english_ ? QStringLiteral("Offline replay finished") : QStringLiteral("离线回放完成"));
         updateConnectionStatus(anyLocalDeviceConnected());
     }, Qt::QueuedConnection);
-    connect(controller, &Controller::measurementUpdated, this, [this](const VaporView::FpgaSensor::AdaptedMeasurements &m) {
-        if (isRemoteSkyMode()) return;
-        const auto &r = m.reading;
-        state_->fpga_sensor_rates_[r.source] = m.sampleRateHz;
-        state_->fpga_page_->updateSensor(r);
-        const bool valid = r.validity.structure && r.validity.crc && r.validity.deviceOnline && r.validity.measurement;
-        if (valid) state_->fpga_sources_.insert(r.source); else state_->fpga_sources_.remove(r.source);
-        const auto now = std::chrono::steady_clock::now();
-        updateInternalEnvironment(r);
-        if (r.kind == VaporView::FpgaSensor::SensorKind::Ptb210 && r.source == 0x40)
-        {
-            state_->current_ptb_ = VaporView::PtbData{};
-            if (valid && r.pressurePa) { state_->current_ptb_.pressure_hpa = *r.pressurePa/100.; state_->current_ptb_.valid=true; state_->current_ptb_.timestamp=now; }
-        }
-        else if (r.kind == VaporView::FpgaSensor::SensorKind::Hmp)
-        {
-            state_->current_hmp_ = VaporView::HmpData{};
-            if (valid && r.temperatureC && r.humidityPct) {
-                state_->current_hmp_.temperature=*r.temperatureC;state_->current_hmp_.humidity=*r.humidityPct;
-                state_->current_hmp_.valid=true;state_->current_hmp_.timestamp=now;
-            }
-        }
-        else if (r.kind == VaporView::FpgaSensor::SensorKind::Tfa1500)
-        {
-            state_->current_lidar_ = VaporView::LidarData{};
-            if (valid && r.distanceMm) { state_->current_lidar_.distance_m=*r.distanceMm/1000.; state_->current_lidar_.valid=true; state_->current_lidar_.timestamp=now; }
-        }
-        else if (r.kind == VaporView::FpgaSensor::SensorKind::Epsilon)
-        {
-            if (m.epsilon)
-            {
-                state_->current_epsilon_ = *m.epsilon;
-                state_->current_epsilon_.timestamp = now;
-                state_->fpga_epsilon_status_fresh_ = m.epsilonStatusFresh;
-                const int id = r.epsilonMessageId.value_or(0);
-                const bool positionPacket = id == 0x50 || id == 0x5c || id == 0x59;
-                const bool velocityPacket = id == 0x42 || id == 0x50 || id == 0x5f || id == 0x59;
-                if (positionPacket) { state_->fpga_position_valid_ = m.navigationValid; state_->fpga_position_time_ = now; }
-                if (velocityPacket) { state_->fpga_velocity_valid_ = m.navigationValid && (id != 0x59 || m.epsilon->gnss_velocity_valid); state_->fpga_velocity_time_=now; }
-                if (!m.epsilonStatusFresh && id != 0x59) { state_->fpga_position_valid_=false; state_->fpga_velocity_valid_=false; }
-                // Packet-specific attitude/position flags must not invalidate the
-                // accumulated device snapshot when status, time or IMU packets arrive.
-                state_->current_epsilon_.valid = valid && m.epsilon->valid;
-                if (!m.epsilonStatusFresh) state_->current_epsilon_.filter_status_bits &= ~quint16(0xf);
-                if (!state_->fpga_position_valid_) { state_->current_epsilon_.latitude_deg=std::numeric_limits<double>::quiet_NaN(); state_->current_epsilon_.longitude_deg=std::numeric_limits<double>::quiet_NaN(); state_->current_epsilon_.height_m=std::numeric_limits<double>::quiet_NaN(); }
-#ifdef VAPORVIEW_HAS_OSGEARTH
-                if (positionPacket && m.navigationValid) maybeForwardMap3DSample(state_->current_epsilon_, VaporView::Ground::Session::GroundRecordingService::currentTimestampUs());
-#endif
-            }
-            else if (!valid) state_->current_epsilon_ = VaporView::EpsilonData{};
-        }
-        else if (r.kind == VaporView::FpgaSensor::SensorKind::Ai8)
-        {
-            const int channel = m.ai8 ? m.ai8->channel-1 : -1;
-            if (channel >= 0 && channel < VaporView::Ai8TemperatureControllerProtocol::kChannelCount)
-            {
-                if(m.ai8Live)state_->fpga_ai8_live_=*m.ai8Live;
-                if (state_->ai8_temperature_controller_panel_) state_->ai8_temperature_controller_panel_->applyLiveData(state_->fpga_ai8_live_);
-                if (state_->ai8_temperature_overview_panel_) state_->ai8_temperature_overview_panel_->applyLiveData(state_->fpga_ai8_live_);
-            }
-        }
-        {
-            const std::lock_guard<std::mutex> lock(state_->fpga_snapshot_mutex_);
-            auto &snapshot = state_->fpga_recording_snapshot_;
-            snapshot = VaporView::Ground::Session::GroundSensorSnapshot{};
-            if (state_->fpga_ready_ && state_->fpga_config_.recordSensors)
-            {
-                snapshot.epsilon=state_->current_epsilon_; snapshot.ptb=state_->current_ptb_;
-                snapshot.hmp=state_->current_hmp_; snapshot.lidar=state_->current_lidar_;
-                snapshot.hasEpsilon=state_->fpga_sources_.contains(0x42) && snapshot.epsilon.valid;
-                snapshot.hasPtb=state_->fpga_sources_.contains(0x40) && snapshot.ptb.valid;
-                snapshot.hasHmp=state_->fpga_sources_.contains(0x41) && snapshot.hmp.valid;
-                snapshot.hasLidar=state_->fpga_sources_.contains(0x45) && snapshot.lidar.valid;
-            }
-        }
-        updateHomeDeviceStatusCapsules();
-        if (state_->combination_navigation_page_) state_->combination_navigation_page_->refreshStatus();
-        onRefreshTimer();
-    }, Qt::QueuedConnection);
+    connect(controller,&Controller::measurementUpdated,this,&MainWindow::receiveFpgaMeasurements,Qt::QueuedConnection);
 
     // These APIs enqueue under the recording service's lock, independent of GUI delivery.
     auto *recorder = state_->recording_service_.get();
@@ -928,6 +851,95 @@ void MainWindow::receiveRemoteFpgaStatus(const QJsonObject& status)
     }
 }
 
+void MainWindow::receiveFpgaWaveform(const VaporView::FpgaWave::CompletedStream &stream)
+{
+    if((isRemoteSkyMode()&&!isUiTestMode())||(isUiTestMode()&&!isFpgaRelayPath()))return;
+    if(stream.complete)state_->fpga_wave_times_[stream.source]=std::chrono::steady_clock::now();
+    else state_->fpga_wave_times_.remove(stream.source);
+    if(!isUiTestMode())state_->fpga_page_->updateWaveform(stream);
+}
+
+void MainWindow::receiveFpgaMeasurements(const VaporView::FpgaSensor::AdaptedMeasurements &m)
+{
+    if ((isRemoteSkyMode()&&!isUiTestMode()) || (isUiTestMode()&&!isFpgaRelayPath())) return;
+    const auto &r = m.reading;
+    state_->fpga_sensor_rates_[r.source] = m.sampleRateHz;
+    if(!isUiTestMode())state_->fpga_page_->updateSensor(r);
+    const bool valid = r.validity.structure && r.validity.crc && r.validity.deviceOnline && r.validity.measurement;
+    if (valid) state_->fpga_sources_.insert(r.source); else state_->fpga_sources_.remove(r.source);
+    const auto now = std::chrono::steady_clock::now();
+    updateInternalEnvironment(r);
+    if (r.kind == VaporView::FpgaSensor::SensorKind::Ptb210 && r.source == 0x40)
+    {
+        state_->current_ptb_ = VaporView::PtbData{};
+        if (valid && r.pressurePa) { state_->current_ptb_.pressure_hpa = *r.pressurePa/100.; state_->current_ptb_.valid=true; state_->current_ptb_.timestamp=now; }
+    }
+    else if (r.kind == VaporView::FpgaSensor::SensorKind::Hmp)
+    {
+        state_->current_hmp_ = VaporView::HmpData{};
+        if (valid && r.temperatureC && r.humidityPct) {
+            state_->current_hmp_.temperature=*r.temperatureC;state_->current_hmp_.humidity=*r.humidityPct;
+            state_->current_hmp_.valid=true;state_->current_hmp_.timestamp=now;
+        }
+    }
+    else if (r.kind == VaporView::FpgaSensor::SensorKind::Tfa1500)
+    {
+        state_->current_lidar_ = VaporView::LidarData{};
+        if (valid && r.distanceMm) { state_->current_lidar_.distance_m=*r.distanceMm/1000.; state_->current_lidar_.valid=true; state_->current_lidar_.timestamp=now; }
+    }
+    else if (r.kind == VaporView::FpgaSensor::SensorKind::Epsilon)
+    {
+        if (m.epsilon)
+        {
+            state_->current_epsilon_ = *m.epsilon;
+            state_->current_epsilon_.timestamp = now;
+            state_->fpga_epsilon_status_fresh_ = m.epsilonStatusFresh;
+            const int id = r.epsilonMessageId.value_or(0);
+            const bool positionPacket = id == 0x50 || id == 0x5c || id == 0x59;
+            const bool velocityPacket = id == 0x42 || id == 0x50 || id == 0x5f || id == 0x59;
+            if (positionPacket) { state_->fpga_position_valid_ = m.navigationValid; state_->fpga_position_time_ = now; }
+            if (velocityPacket) { state_->fpga_velocity_valid_ = m.navigationValid && (id != 0x59 || m.epsilon->gnss_velocity_valid); state_->fpga_velocity_time_=now; }
+            if (!m.epsilonStatusFresh && id != 0x59) { state_->fpga_position_valid_=false; state_->fpga_velocity_valid_=false; }
+            // Packet-specific attitude/position flags must not invalidate the
+            // accumulated device snapshot when status, time or IMU packets arrive.
+            state_->current_epsilon_.valid = valid && m.epsilon->valid;
+            if (!m.epsilonStatusFresh) state_->current_epsilon_.filter_status_bits &= ~quint16(0xf);
+            if (!state_->fpga_position_valid_) { state_->current_epsilon_.latitude_deg=std::numeric_limits<double>::quiet_NaN(); state_->current_epsilon_.longitude_deg=std::numeric_limits<double>::quiet_NaN(); state_->current_epsilon_.height_m=std::numeric_limits<double>::quiet_NaN(); }
+#ifdef VAPORVIEW_HAS_OSGEARTH
+            if (positionPacket && m.navigationValid) maybeForwardMap3DSample(state_->current_epsilon_, VaporView::Ground::Session::GroundRecordingService::currentTimestampUs());
+#endif
+        }
+        else if (!valid) state_->current_epsilon_ = VaporView::EpsilonData{};
+    }
+    else if (r.kind == VaporView::FpgaSensor::SensorKind::Ai8)
+    {
+        const int channel = m.ai8 ? m.ai8->channel-1 : -1;
+        if (channel >= 0 && channel < VaporView::Ai8TemperatureControllerProtocol::kChannelCount)
+        {
+            if(m.ai8Live)state_->fpga_ai8_live_=*m.ai8Live;
+            if (state_->ai8_temperature_controller_panel_) state_->ai8_temperature_controller_panel_->applyLiveData(state_->fpga_ai8_live_);
+            if (state_->ai8_temperature_overview_panel_) state_->ai8_temperature_overview_panel_->applyLiveData(state_->fpga_ai8_live_);
+        }
+    }
+    {
+        const std::lock_guard<std::mutex> lock(state_->fpga_snapshot_mutex_);
+        auto &snapshot = state_->fpga_recording_snapshot_;
+        snapshot = VaporView::Ground::Session::GroundSensorSnapshot{};
+        if (state_->fpga_ready_ && state_->fpga_config_.recordSensors)
+        {
+            snapshot.epsilon=state_->current_epsilon_; snapshot.ptb=state_->current_ptb_;
+            snapshot.hmp=state_->current_hmp_; snapshot.lidar=state_->current_lidar_;
+            snapshot.hasEpsilon=state_->fpga_sources_.contains(0x42) && snapshot.epsilon.valid;
+            snapshot.hasPtb=state_->fpga_sources_.contains(0x40) && snapshot.ptb.valid;
+            snapshot.hasHmp=state_->fpga_sources_.contains(0x41) && snapshot.hmp.valid;
+            snapshot.hasLidar=state_->fpga_sources_.contains(0x45) && snapshot.lidar.valid;
+        }
+    }
+    updateHomeDeviceStatusCapsules();
+    if (state_->combination_navigation_page_) state_->combination_navigation_page_->refreshStatus();
+    onRefreshTimer();
+}
+
 void MainWindow::updateFpgaPageBackend()
 {
     if (!state_->fpga_page_) return;
@@ -990,7 +1002,7 @@ void MainWindow::shutdownFpgaWorker()
 void MainWindow::invalidateFpgaMeasurements()
 {
     state_->fpga_home_raw_start_pending_ = false;
-    state_->fpga_sensor_rates_.clear();
+    state_->fpga_sensor_rates_.clear();state_->fpga_wave_times_.clear();
     { const std::lock_guard<std::mutex> lock(state_->fpga_snapshot_mutex_); state_->fpga_recording_snapshot_ = VaporView::Ground::Session::GroundSensorSnapshot{}; }
     state_->fpga_epsilon_status_fresh_=false;
     state_->fpga_position_valid_=false;

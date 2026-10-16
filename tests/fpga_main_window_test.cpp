@@ -101,6 +101,20 @@ static QLabel *deviceWaveRate(MainWindow &window)
         if(label->property("deviceTcpWaveHint")==QStringLiteral("deviceTcpWaveTransportHint"))return label;
     return nullptr;
 }
+static bool onlyPressureDataAvailable(MainWindow& window)
+{
+    int found=0;
+    for(auto *pill:window.findChildren<QFrame*>("homeTelemetrySummaryPill")) {
+        auto *name=pill->findChild<QLabel*>("homeTelemetrySummaryNameLabel");
+        auto *value=pill->findChild<QLabel*>("homeTelemetrySummaryValueLabel");
+        if(!name||!value)continue;
+        if(QStringList{QStringLiteral("基础"),QStringLiteral("特征值"),QStringLiteral("状态"),QStringLiteral("原始波形"),QStringLiteral("谐波波形"),QStringLiteral("波形采集"),QStringLiteral("天→地"),QStringLiteral("地→天"),QStringLiteral("合")}.contains(name->text())&&value->property("telemetryAvailable").toBool())return false;
+        if(!QStringList{"EPSILON","PTB","HMP","Lidar",QStringLiteral("波形")}.contains(name->text()))continue;
+        if(value->property("telemetryAvailable").toBool()!=(name->text()=="PTB"))return false;
+        ++found;
+    }
+    return found>=5;
+}
 static bool onlyPressureConnected(MainWindow &window)
 {
     if(homeAction(window,"PTB210")->property("state")!="connected")return false;
@@ -135,7 +149,8 @@ static void verifyCardMargins(MainWindow &window,FpgaControlPage *page,int scale
         "internal environment stays on one line without increasing the standard title bar height");
     const QRect homeRect(homeCards->mapTo(stack,QPoint()),homeCards->size());
     stack->setCurrentIndex(4); processFor(50);
-    page->setUiTestState(true,false,false,5000);processFor(50);
+    page->setUiTestState(true,false,false,5000);page->simulateOperation({{"op","connect"}});
+    require(waitUntil([&]{return page->uiTestReady()&&!page->uiTestBusy();}),"layout fixture reads actual simulated board registers");
     auto *connection=page->findChild<QAbstractButton*>("fpgaDisconnect")->parentWidget()->parentWidget();
     const QRect connectionRect(connection->mapTo(stack,QPoint()),connection->size());
     require(connectionRect.left()==homeRect.left()&&connectionRect.right()==homeRect.right(),"FPGA connection card matches the actual home card outer margins");
@@ -673,6 +688,7 @@ static void localSimulatorRouting()
         "individual home action starts only the requested device on an idle simulated FPGA");
     QObject::disconnect(commandObserver);
     check(onlyPressureConnected(window),"connecting one simulated device leaves all six other sensors and waveform acquisition disconnected");
+    check(waitUntil([&]{return onlyPressureDataAvailable(window);}),"local summary reports only actual PTB data and no fabricated telemetry");
     check(!selectiveCommands.isEmpty(),"individual home action performs a real protocol handshake");
     bool targetStarted=false;
     for(const auto& frame:selectiveCommands) {
@@ -697,7 +713,15 @@ static void localSimulatorRouting()
     QMetaObject::invokeMethod(&window,"onConnectClicked");
     check(waitUntil([&]{return acquisition->isEnabled()&&disconnect->isEnabled();},12000),"local factory handshake enables normal controls");
     check(waitUntil([&]{return pressureAction->isEnabled()&&pressureAction->property("state")=="connected";}),"home connect opens USB and confirms the already-enabled BMP sensor");
-    check(waitUntil([&]{return connectionSuccesses.size()==8;}),"title-bar unified connect publishes seven sensor and ADC/DLIA success logs");
+    check(waitUntil([&]{return connectionSuccesses.size()==2;}),"unified reconnect recovers only the two enabled sensors");
+    for(const auto& name:QStringList{"EPSILON","TFA1500","AI-8288"}) {
+        auto *action=homeAction(window,name);action->click();
+        check(waitUntil([&]{return action->isEnabled()&&action->property("state")=="connected";}),"explicitly start another simulated sensor");
+    }
+    for(auto *button:window.findChildren<QToolButton*>("homeDeviceActionButton"))if(button->property("fpgaSensorSource").toUInt()==0x43||button->property("fpgaSensorSource").toUInt()==0x44) {
+        button->click();check(waitUntil([&]{return button->isEnabled()&&button->property("state")=="connected";}),"explicitly start internal sensor");
+    }
+    acquisition->click();check(waitUntil([&]{return acquisition->isEnabled();}),"explicitly start simulated acquisition");
     check(connectionSuccesses.contains(0x41),"HMP has its own confirmed connection log");
     for(const auto &entry: {qMakePair("deviceEpsilonBaudComboFpgaEditor","921600"),
             qMakePair("devicePressureBaudComboFpgaEditor","9600"),
@@ -913,17 +937,27 @@ static void simulatedMonitorActions()
     auto *harmonic=monitor->findChild<QAbstractButton*>("fpgaMonitorHarmonicButton");
     require(mode&&page&&raw&&harmonic,"simulated monitor controls exist");
     mode->trigger();
-    require(waitUntil([&]{return raw->isEnabled()&&harmonic->isEnabled();}),"UI test simulation enables relay monitor controls");
+    require(waitUntil([&]{return page->uiTestController()!=nullptr;}),"UI test installs an isolated protocol controller");
+    require(!page->uiTestConnected()&&!raw->isEnabled(),"UI test mode does not fabricate an FPGA connection");
     require(QMetaObject::invokeMethod(&window,"onDisconnectClicked",Qt::DirectConnection),"disconnect layout simulation before individual connection");
     auto *pressure=homeAction(window,"PTB210");
     require(waitUntil([&]{return pressure->isEnabled()&&pressure->property("state")=="disconnected";}),"layout simulation is disconnected");
     pressure->click();
     require(waitUntil([&]{return pressure->isEnabled()&&pressure->property("state")=="connected";}),"layout simulation connects the requested device");
     require(onlyPressureConnected(window),"layout simulation leaves all other sensors and waveform acquisition disconnected");
+    require(waitUntil([&]{return onlyPressureDataAvailable(window);}),"UI summary reports only actual PTB data and no fabricated telemetry");
     require(raw->text().contains(QStringLiteral("开始"))&&harmonic->text().contains(QStringLiteral("开始")),"individual simulation connection leaves waveform acquisition stopped");
     require(QMetaObject::invokeMethod(&window,"onConnectClicked",Qt::DirectConnection),"batch simulation connection is available");
-    require(waitUntil([&]{return homeAction(window,"HMP")->property("state")=="connected"&&harmonic->text().contains(QStringLiteral("停止"));}),
-        "batch simulation connection still starts the full demonstration");
+    require(waitUntil([&]{return !page->uiTestBusy()&&pressure->isEnabled();}),"unified reconnect waits for protocol completion");
+    require(onlyPressureConnected(window),"unified reconnect preserves the board's selected devices");
+    for(const auto& name:QStringList{"EPSILON","HMP","TFA1500","AI-8288"}) {
+        auto *action=homeAction(window,name);action->click();
+        require(waitUntil([&]{return action->isEnabled()&&action->property("state")=="connected";}),"UI test starts each requested device through VLP1");
+    }
+    for(auto *button:window.findChildren<QToolButton*>("homeDeviceActionButton"))if(button->property("fpgaSensorSource").toUInt()==0x44) {
+        button->click();require(waitUntil([&]{return button->isEnabled()&&button->property("state")=="connected";}),"UI test explicitly starts SHT45");
+    }
+    harmonic->click();require(waitUntil([&]{return harmonic->isEnabled()&&harmonic->text().contains(QStringLiteral("停止"));}),"UI test explicitly starts acquisition");
     for(const auto &entry:{qMakePair("deviceEpsilonBaudComboFpgaEditor","921600"),
             qMakePair("devicePressureBaudComboFpgaEditor","9600"),
             qMakePair("deviceLidarBaudComboFpgaEditor","500000"),
@@ -936,7 +970,7 @@ static void simulatedMonitorActions()
     for(auto *button:window.findChildren<QToolButton*>("homeDeviceActionButton"))
         if(button->property("fpgaSensorSource").toUInt()==0x44)humidity=button;
     require(rate&&humidity&&!rate->isEnabled(),"UI test connected sensor locks inline frequency");humidity->click();
-    require(rate->isEnabled(),"UI test individual disconnect enables frequency");rate->setCurrentText("2.");
+    require(waitUntil([&]{return rate->isEnabled();}),"UI test individual disconnect enables frequency");rate->setCurrentText("2.");
     processFor(150);require(rate->currentText()=="2.","refresh preserves partially typed decimal frequency");
     rate->setCurrentText("2.5");
     processFor(150);require(rate->currentText()=="2.5","simulation refresh preserves staged frequency");
@@ -945,15 +979,15 @@ static void simulatedMonitorActions()
         "UI test connect applies staged frequency");
     processFor(150);require(rate->currentText()=="2.5","periodic simulation retains applied frequency");
     harmonic->click();
-    require(harmonic->text().contains(QStringLiteral("开始")),"simulated monitor stops acquisition");
+    require(waitUntil([&]{return harmonic->isEnabled()&&harmonic->text().contains(QStringLiteral("开始"));}),"simulated monitor stops acquisition");
     raw->click();
     require(!raw->isEnabled()&&!harmonic->isEnabled(),"simulated RAW start locks until acquisition completes");
     require(waitUntil([&]{return raw->isEnabled()&&raw->text().contains(QStringLiteral("停止"));}),"simulated RAW chains after acquisition readback");
     raw->click();
-    require(raw->text().contains(QStringLiteral("开始"))&&harmonic->text().contains(QStringLiteral("停止")),"simulated RAW stop preserves harmonics");
+    require(waitUntil([&]{return raw->isEnabled()&&raw->text().contains(QStringLiteral("开始"))&&harmonic->text().contains(QStringLiteral("停止"));}),"simulated RAW stop preserves harmonics");
     harmonic->click();raw->click();mode->trigger();processFor(400);
     mode->trigger();
-    require(waitUntil([&]{return raw->isEnabled()&&harmonic->isEnabled();}),"leaving UI test cancels pending RAW and allows a fresh simulation");
+    require(waitUntil([&]{return page->uiTestController()!=nullptr&&!page->uiTestConnected();}),"leaving UI test cancels pending RAW and the next simulation starts at cold boot");
     mode->trigger();
     require(!mode->isChecked(),"monitor simulation restores normal application mode");
 }
@@ -1025,7 +1059,14 @@ static void relayConfigurationPresentation()
         require(!window.findChild<QAbstractButton*>(baud->objectName()+"FpgaEdit"),"no redundant parameter settings buttons remain");
     }
     window.findChild<FpgaControlPage*>()->setUiTestState(true,false,false,5000,VaporView::SensorTransportPath::FpgaRelay);
-    window.findChild<FpgaControlPage*>()->simulateOperation({{"op","raw"},{"enabled",true}});
+    auto *simulationPage=window.findChild<FpgaControlPage*>();
+    const auto simulate=[&](const QJsonObject& request) {
+        simulationPage->simulateOperation(request);
+        require(waitUntil([&]{return !simulationPage->uiTestBusy()&&(request.value("op")!="connect"||simulationPage->uiTestReady());}),"layout fixture waits for simulated protocol response");
+    };
+    simulate({{"op","connect"}});simulate({{"op","dac"},{"channel",0},{"enabled",true}});
+    simulate({{"op","acquisition"},{"enabled",true}});simulate({{"op","raw"},{"enabled",true}});
+    require(waitUntil([&]{return window.findChild<QWidget*>("tcpWaveRawPlot")->property("sampleCount").toInt()>0;}),"protocol simulation reaches the home graph");
     stack->setCurrentIndex(0);processFor(80);
     const auto adcBefore=window.findChild<QWidget*>("tcpWaveRawPlot")->property("sampleCount").toInt();
     require(adcBefore>0,"bounded simulated RAW reaches the home ADC graph");

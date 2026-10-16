@@ -137,7 +137,7 @@ private:
     qint16 temperatureTarget_ = 0;
     bool injected_ = false, ready_ = false, busy_ = false, replaying_ = false;
     bool drainWaveforms_ = false, backgroundRefresh_ = false, recoveringConnection_ = false, connectionRecoveryFailed_ = false;
-    QString operation_, detail_;
+    QString operation_, detail_, installedBackend_;
     std::optional<bool> rawOperation_;
 };
 }

@@ -1,4 +1,5 @@
 #include "test_settings_sandbox.h"
+#include "FpgaDeviceController.h"
 #include "ground/main/MainWindow.h"
 #include "ground/main/RecordingStatusView.h"
 #include "ground/devices/RemoteSkyController.h"
@@ -993,6 +994,7 @@ int main(int argc, char **argv)
                 "title sensor path capsule sits immediately after source mode with matching sizing and motion");
         if (!sourceSwitch->isChecked()) sourceSwitch->click();
         processEvents();
+        transportCombo->setCurrentIndex(transportCombo->findData("direct_devices"));processEvents();
         mainStack->setCurrentWidget(navigation);
         auto *panel = navigation->epsilonConfigPanel();
         auto *read = panel->findChild<QPushButton *>(QStringLiteral("epsilonSettingsReadButton"));
@@ -1022,6 +1024,7 @@ int main(int argc, char **argv)
         {
             if (sourceSwitch->isChecked() != remote) sourceSwitch->click();
             processEvents();
+            transportCombo->setCurrentIndex(transportCombo->findData("fpga_relay"));processEvents();
             require(transportSwitch->isEnabled() == transportCombo->isEnabled() && transportSwitch->switchChecked(),
                     "local and remote sensor path capsules reflect the current FPGA fixture");
             transportSwitch->click();processEvents();
@@ -1032,6 +1035,7 @@ int main(int argc, char **argv)
             transportSwitch->click();transportSwitch->click();processEvents();
             require(transportSwitch->switchChecked() && transportCombo->currentData().toString() == QStringLiteral("fpga_relay"),
                     "rapid title path changes settle on the selected host's FPGA path");
+            transportCombo->setCurrentIndex(transportCombo->findData("direct_devices"));processEvents();
             for (auto group : VaporView::epsilonSettingsGroups())
                 for (const auto& descriptor : VaporView::epsilonParameterDescriptors(group))
             {
@@ -1162,6 +1166,8 @@ int main(int argc, char **argv)
         require(modeAction != nullptr, "dark EPSILON layout test exposes the UI-test action");
         modeAction->trigger();
         require(modeAction->isChecked(), "dark EPSILON layout test enters UI-test mode");
+        auto *darkLayoutPath=window->findChild<QComboBox*>("deviceSensorTransportPathCombo");
+        darkLayoutPath->setCurrentIndex(darkLayoutPath->findData("direct_devices"));processEvents();
         QWidget *epsilonPanel = window->findChild<QWidget *>(QStringLiteral("epsilonPanel"));
         require(epsilonPanel != nullptr && epsilonPanel->isVisible(),
                 "dark EPSILON layout test exposes the home panel");
@@ -1354,6 +1360,22 @@ int main(int argc, char **argv)
     auto *fpgaDiagnostics = fpgaPage ? fpgaPage->findChild<QPlainTextEdit *>(QStringLiteral("fpgaDiagnostics")) : nullptr;
     require(fpgaPage && fpgaStatus && fpgaPtb && fpgaWaveSummary && fpgaPlot && fpgaDiagnostics,
             "UI test mode exposes the FPGA page status, sensor, waveform, plot and diagnostics widgets");
+    require(fpgaPage->uiTestController()&&!fpgaPage->uiTestConnected(),"UI test entry leaves FPGA disconnected");
+    const auto fpgaOperation=[&](const QJsonObject& request) {
+        fpgaPage->simulateOperation(request);
+        const bool completed=VaporViewTest::processEventsUntil(12000,[&]{return !fpgaPage->uiTestBusy()&&(request.value("op")!="connect"||fpgaPage->uiTestReady());});
+        if(!completed)std::cerr<<"FPGA fixture op="<<request.value("op").toString().toStdString()<<" source="<<request.value("source").toInt()<<"\n"<<fpgaDiagnostics->toPlainText().toStdString()<<"\n";
+        require(completed,"FPGA UI fixture awaits protocol completion");
+    };
+    auto *unsupportedEpsilon=window->findChild<VaporView::Ground::Navigation::EpsilonConfigPanel*>();
+    const auto settingsBeforeUnsupported=unsupportedEpsilon->exportSettingsJson();
+    unsupportedEpsilon->settingsReadRequested(VaporView::EpsilonSettingsGroup::Installation);processEvents();
+    require(unsupportedEpsilon->exportSettingsJson()==settingsBeforeUnsupported&&unsupportedEpsilon->findChild<QLabel*>("epsilonSettingsStatus")->text().contains("VLP1"),
+        "FPGA UI mode rejects unsupported EPSILON settings instead of fabricating success");
+    fpgaOperation({{"op","connect"}});
+    for(quint16 source:{0x40,0x41,0x42,0x43,0x44,0x45,0x46})fpgaOperation({{"op","sensor"},{"source",source},{"enabled",true}});
+    fpgaOperation({{"op","acquisition"},{"enabled",true}});
+    require(VaporViewTest::processEventsUntil(3000,[&]{return fpgaPtb->text().contains("Pa");}),"FPGA fixture waits for valid wire measurements");
     const int pageIndexBeforeFpgaLayout = mainPageStack->currentIndex();
     mainPageStack->setCurrentWidget(fpgaPage);
     processEvents();
@@ -1373,18 +1395,14 @@ int main(int argc, char **argv)
                         fpgaWaveSummary->text().contains(QStringLiteral("Complete cycle")));
             }),
             "UI test mode exposes a complete FPGA ADC waveform and plot samples");
-    require(fpgaDiagnostics->toPlainText().contains(QStringLiteral("界面测试")) ||
-                fpgaDiagnostics->toPlainText().contains(QStringLiteral("UI test")),
-            "UI test mode exposes FPGA simulation diagnostics");
+    require(!fpgaDiagnostics->toPlainText().isEmpty(),"UI test shows diagnostics from the normal FPGA controller");
     window->findChild<QPushButton *>(QStringLiteral("fpgaAcquisitionStart"))->click();
-    require(fpgaDiagnostics->toPlainText().contains(QStringLiteral("模拟操作")) ||
-                fpgaDiagnostics->toPlainText().contains(QStringLiteral("Simulated operation")),
-            "FPGA UI test actions are logged without touching hardware");
+    require(VaporViewTest::processEventsUntil(12000,[&]{return !fpgaPage->uiTestBusy();}),"FPGA UI acquisition waits for actual readback");
     window->findChild<QPushButton *>(QStringLiteral("fpgaDisconnect"))->click();
     VaporViewTest::processEventsFor(100);
     require(window->findChild<QPushButton *>(QStringLiteral("fpgaConnect"))->isEnabled(),"UI simulator disconnect routes to simulation");
     window->findChild<QPushButton *>(QStringLiteral("fpgaConnect"))->click();
-    require(window->findChild<QPushButton *>(QStringLiteral("fpgaAcquisitionStop"))->isEnabled(),"UI simulator reconnect resumes ready state");
+    require(VaporViewTest::processEventsUntil(12000,[&]{return window->findChild<QPushButton *>(QStringLiteral("fpgaAcquisitionStop"))->isEnabled();}),"UI simulator reconnect resumes ready state after handshake");
     const auto scenarioAction = [scenarioMenu](int value) {
         for (QAction *action : scenarioMenu->actions())
             if (action->data().toInt() == value) return action;
@@ -1397,17 +1415,15 @@ int main(int argc, char **argv)
             "UI test FPGA coverage can select all simulation scenarios");
     fpgaPartialFailureAction->trigger();
     processEvents();
-    require(fpgaPtb->text().contains(QStringLiteral("设备离线")) ||
-                fpgaPtb->text().contains(QStringLiteral("Device offline")),
-            "FPGA partial-failure scenario marks PTB210 offline");
+    require(VaporViewTest::processEventsUntil(3000,[&]{return fpgaPtb->text().contains(QStringLiteral("测量无效")) || fpgaPtb->text().contains(QStringLiteral("Invalid measurement"));}),"FPGA partial fault is reported through wire measurement flags");
     fpgaStalledAction->trigger();
     processEvents();
-    require(fpgaPtb->text().contains(QStringLiteral("测量无效")) ||
-                fpgaPtb->text().contains(QStringLiteral("Invalid measurement")),
-            "FPGA stalled scenario marks the last pressure sample invalid");
+    require(VaporViewTest::processEventsUntil(6000,[&]{return fpgaPtb->text().contains(QStringLiteral("历史值")) || fpgaPtb->text().contains(QStringLiteral("historical")) || fpgaPtb->text().contains(QStringLiteral("Invalid measurement"));}),"FPGA stalled scenario expires the last sample through normal freshness handling");
     fpgaNormalAction->trigger();
     processEvents();
     mainPageStack->setCurrentIndex(pageIndexBeforeFpgaLayout);
+    auto *directFixture=window->findChild<QComboBox*>("deviceSensorTransportPathCombo");
+    directFixture->setCurrentIndex(directFixture->findData("direct_devices"));processEvents();
     processEvents();
     const auto overviewCells = window->findChildren<QFrame *>(
         QStringLiteral("ai8TemperatureOverviewCell"));
@@ -1430,8 +1446,8 @@ int main(int argc, char **argv)
                 "UI test normal temperature values use the light-theme primary color");
     }
     require(scenarioMenu->isEnabled(), "scenario menu is enabled in UI test mode");
-    require(uiTestLidarDistanceUsesIntegerDigits(window, 3),
-            "UI test mode starts with a three-digit lidar distance and two decimals");
+    require(VaporViewTest::processEventsUntil(3500,[window]{return uiTestLidarDistanceUsesIntegerDigits(window,3);}),
+            "Direct layout fixture reaches the three-digit phase after FPGA protocol checks");
     require(VaporViewTest::processEventsUntil(1500, [homeConfigCard]() {
                 return homeTelemetrySummaryShowsUiTestRates(homeConfigCard);
             }),

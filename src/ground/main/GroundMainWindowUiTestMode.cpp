@@ -592,6 +592,11 @@ bool MainWindow::runUiTestEpsilonOperation(const QString& operation, std::functi
     if (!isUiTestMode()) return false;
     auto *panel = state_->epsilon_config_panel_;
     if (!panel) return true;
+    if(isFpgaRelayPath()) {
+        panel->setSettingsError(state_->is_english_?QStringLiteral("VLP1 does not support EPSILON configuration; no simulated success is generated.")
+            :QStringLiteral("当前 VLP1 不支持 EPSILON 参数配置，不生成模拟成功结果。"));
+        return true;
+    }
     if (state_->ui_test_epsilon_operation_pending_ ||
         state_->ui_test_model_->deviceState(VaporView::SkyDeviceId::Epsilon) != VaporView::DeviceState::Connected ||
         state_->ui_test_model_->scenario() == UiTestScenario::DataStalled)
@@ -634,8 +639,22 @@ void MainWindow::applyUiTestSnapshot()
         return;
     }
     const qint64 elapsed = QDateTime::currentMSecsSinceEpoch() - state_->ui_test_started_ms_;
+    if(isFpgaRelayPath()) {
+        const auto scenario=state_->ui_test_model_->scenario();
+        state_->fpga_page_->setUiTestState(true,scenario==UiTestScenario::DataStalled,
+            scenario==UiTestScenario::PartialFailure,elapsed,VaporView::SensorTransportPath::FpgaRelay);
+        if(state_->device_panel_coordinator_) {
+            state_->device_panel_coordinator_->updateEnvironmentData(state_->current_epsilon_,state_->current_ptb_,state_->current_hmp_,state_->current_lidar_);
+            DevicePanelRates rates;rates.epsilonHz=state_->fpga_sensor_rates_.value(0x42);rates.ptbHz=state_->fpga_sensor_rates_.value(0x40);
+            rates.hmpHz=state_->fpga_sensor_rates_.value(0x41);rates.lidarHz=state_->fpga_sensor_rates_.value(0x45);
+            state_->device_panel_coordinator_->updateRates(rates);
+        }
+        if(state_->epsilon_config_panel_)state_->epsilon_config_panel_->setLivePacketRates(state_->current_epsilon_);
+        updateEnvironmentStatusIcons(state_->current_lidar_.valid,state_->current_ptb_.valid,state_->current_hmp_.valid);
+        updateRemoteTelemetrySummaryLabel();updateHomeDeviceStatusCapsules();updateDeviceConfigState();updateRecordingStatusLabel();
+        return;
+    }
     auto snapshot = state_->ui_test_model_->snapshot(elapsed);
-    if (isFpgaRelayPath()) {snapshot.hmp = {};snapshot.hmpRateHz = 0;}
     state_->current_epsilon_ = snapshot.epsilon;
     state_->current_gnss_ = snapshot.gnss;
     state_->current_imu_ = snapshot.imu;

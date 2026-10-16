@@ -70,7 +70,8 @@ class HmpPanel;
 class LidarPanel;
 class TemperatureControllerPanel;
 class TemperatureTrendPlotWidget;
-namespace VaporView::FpgaSensor { struct Reading; }
+namespace VaporView::FpgaSensor { struct Reading; struct AdaptedMeasurements; }
+namespace VaporView::FpgaWave { struct CompletedStream; }
 namespace VaporView { class SingleLevelPopupMenu; }
 namespace VaporView::Ground::Widgets { class EpsilonPanel; }
 namespace VaporView::Ground::Widgets { class Ai8TemperatureControllerPanel; }
@@ -252,6 +253,8 @@ private:
     void setupFpgaControlPage();
     void shutdownFpgaWorker();
     void invalidateFpgaMeasurements();
+    void receiveFpgaMeasurements(const VaporView::FpgaSensor::AdaptedMeasurements &measurements);
+    void receiveFpgaWaveform(const VaporView::FpgaWave::CompletedStream &stream);
     void updateInternalEnvironment(const VaporView::FpgaSensor::Reading &reading);
     void refreshInternalEnvironment();
     void updateFpgaPageBackend();

@@ -1037,18 +1037,28 @@ double MainWindow::remoteWaveformPacketRate(quint16 channelId) const
 
 MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySections() const
 {
-    const bool uiTestMode = isUiTestMode() && state_->ui_test_model_;
+    const bool localFpga=isFpgaRelayPath()&&(isUiTestMode()||!isRemoteSkyMode());
+    const bool uiTestMode = isUiTestMode() && !localFpga && state_->ui_test_model_;
     VaporView::Ground::Devices::UiTestSnapshot uiTestSnapshot;
     if (uiTestMode)
     {
         const qint64 elapsed = QDateTime::currentMSecsSinceEpoch() - state_->ui_test_started_ms_;
         uiTestSnapshot = state_->ui_test_model_->snapshot(elapsed);
     }
-    const bool connected = uiTestMode
+    const bool connected = !localFpga && (uiTestMode
         ? !uiTestSnapshot.dataStalled
-        : (state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen());
+        : (state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen()));
 
-    auto hasDeviceData = [this, connected](VaporView::SkyDeviceId device, qint64 timeoutMs) {
+    auto hasDeviceData = [this, connected, localFpga](VaporView::SkyDeviceId device, qint64 timeoutMs) {
+        if(localFpga) {
+            if(homeFpgaDeviceState(device)!=VaporView::DeviceState::Connected)return false;
+            if(device==VaporView::SkyDeviceId::WaveTcp) {
+                const auto now=std::chrono::steady_clock::now();
+                for(const auto& time:state_->fpga_wave_times_)if(now-time<std::chrono::milliseconds(timeoutMs))return true;
+                return false;
+            }
+            return state_->fpga_sources_.contains(homeFpgaSensorSource(device));
+        }
         return connected && remoteDeviceDataValid(device, timeoutMs);
     };
     auto hasUiTestDeviceData = [this, &uiTestSnapshot](VaporView::SkyDeviceId device) {
@@ -1082,7 +1092,8 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
             : (state_->is_english_ ? QStringLiteral("none") : QStringLiteral("无数据"));
     };
 
-    auto packetRate = [this, uiTestMode, &uiTestSnapshot](VaporView::MsgType type) {
+    auto packetRate = [this, uiTestMode, localFpga, &uiTestSnapshot](VaporView::MsgType type) {
+        if(localFpga)return 0.0;
         if (!uiTestMode)
         {
             return remotePacketRate(type);
@@ -1099,7 +1110,8 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
             return 0.0;
         }
     };
-    auto waveformRate = [this, uiTestMode, &uiTestSnapshot](quint16 channelId) {
+    auto waveformRate = [this, uiTestMode, localFpga, &uiTestSnapshot](quint16 channelId) {
+        if(localFpga)return 0.0;
         if (!uiTestMode)
         {
             return remoteWaveformPacketRate(channelId);

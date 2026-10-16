@@ -57,13 +57,14 @@ bool readable(quint32 a)
     return base == 0x8000 && offset <= 0x3c;
 }
 
-class Simulator final : public FpgaUsbTransport
+class Simulator final : public FpgaUsbSimulator
 {
 public:
-    Simulator(QObject *parent, FpgaSimulatorStartup startup) : FpgaUsbTransport(parent), startup_(startup) {}
+    Simulator(QObject *parent, FpgaSimulatorStartup startup) : FpgaUsbSimulator(parent), startup_(startup)
+    { initialize(); clock_.start(); }
     bool open(const QString &) override
     {
-        close(); initialize(); opened_ = true; clock_.start();
+        close(); opened_ = true;
         diagnostic_.state = FpgaUsbTransportState::Open;
         diagnostic_.detail = QStringLiteral("FPGA protocol simulator (no physical USB)");
         diagnostic_.fields = {{"mode", "simulation"}, {"serial", "SIMULATED-GP01"}};
@@ -71,10 +72,19 @@ public:
     }
     void close() override
     {
-        opened_ = false; incoming_.clear(); parser_ = FpgaVlp1::StreamParser{}; lastCycleMs_ = 0; cycle_ = sequence_ = 0;
+        opened_ = false; incoming_.clear(); parser_ = FpgaVlp1::StreamParser{};
         diagnostic_ = {}; publishState(FpgaUsbTransportState::Offline);
     }
     bool isOpen() const override { return opened_; }
+    void setScenario(bool stalled, bool partialFailure) override
+    { stalled_ = stalled; partialFailure_ = partialFailure; }
+    void injectFault(const QString& fault) override
+    {
+        if (fault == "missing_cycle") missingCycle_ = true;
+        else if (fault == "latch_dlia") {
+            for (quint32 base : {0x5000u,0x5100u}) regs_[base+12] |= 0x84;
+        }
+    }
     FpgaUsbDiagnostic diagnostic() const override { return diagnostic_; }
     QJsonObject discoverDevices() const override
     {
@@ -113,7 +123,7 @@ private:
         regs_.clear();
         regs_ = {{0x4000,0x00200101},{0x4100,0x00210101},{0x4018,0x00011800},{0x4118,0x00011800},
             {0x5000,0x00300101},{0x5100,0x00310101},{0x5024,0x00040101},{0x5124,0x00040101},
-            {0x6600,0x00460200},{0x0004,1},{0x7004,1},{0x8004,1},{0x002c,0xffffffff},{0x0030,0xffffffff},
+            {0x6600,0x00460200},{0x0004,0},{0x7004,1},{0x8004,1},{0x002c,0xffffffff},{0x0030,0xffffffff},
             {0x6610,19200},{0x6614,1},{0x661c,1},{0x662c,1000},{0x6660,200},{0x6664,1},{0x6310,0x77}};
         for(const auto& spec:FpgaRemote::sensorParameters())regs_[spec.address]=spec.fallback;
         regs_[0x6714]=1000;regs_[0x6718]=255;regs_[0x671c]=505;regs_[0x6708]=2;
@@ -123,6 +133,7 @@ private:
         regs_[0x6314] = regs_[0x6414] = 1000;
         target_ = 250; measured_ = 235;
         const quint32 enabled = startup_ == FpgaSimulatorStartup::RunningDemo ? 1 : 0;
+        regs_[4] = enabled;
         const FpgaControlConfig defaults;
         for (quint32 b : {0x6000u,0x6100u,0x6200u,0x6300u,0x6400u,0x6500u,0x6600u}) {
             regs_[b + 4] = enabled; regs_[b + 8] = enabled;
@@ -265,6 +276,7 @@ private:
             else if (word(p,0) == 1 && word(p,4) <= 1) {
                 const auto base = 0x6000 + (f.header.source - 0x40) * 0x100;
                 regs_[base + 4] = regs_[base + 8] = word(p,4);
+                if(word(p,4))lastSensorMs_.remove(f.header.source);
             } else if(word(p,0)==16 && f.header.source==0x41) {regs_[0x6134]=regs_[0x6140]=word(p,4);++regs_[0x6148];}
             else if(word(p,0)==3 || word(p,0)==4 || word(p,0)==5) {const auto base=0x6000+(f.header.source-0x40)*0x100;if(word(p,0)==5)regs_[base+12]&=~word(p,4);else if(word(p,0)==4){regs_[base+4]=0;regs_[base+12]=0;}}
             else if(word(p,0)==32 && f.header.source==0x45)regs_[0x6514]=word(p,4);
@@ -279,10 +291,15 @@ private:
             } else status = 14;
         } else status = 1;
         QByteArray response; put32(response,status); if (!status) response.append(result);
-        enqueue(FpgaVlp1::FrameType::Response,f.header.sequence,f.header.source,message,response);
+        enqueue(FpgaVlp1::FrameType::Response,f.header.sequence,f.header.source,message,response,quint64(clock_.elapsed())*100000);
     }
     void data(quint16 source, quint16 message, const QByteArray &payload, quint64 ticks)
-    { enqueue(FpgaVlp1::FrameType::Data,++sequence_,source,message,payload,ticks,3,cycle_); }
+    {
+        quint32 flags = 3;
+        if (partialFailure_ && (source == 0x40 || source == 0x44 || source == 0x45)) flags |= 1u<<4;
+        if (source >= 0x30 && source <= 0x31 && regs_.value(0x500c+(source-0x30)*0x100)) flags |= 1u<<5;
+        enqueue(FpgaVlp1::FrameType::Data,++sequence_,source,message,payload,ticks,flags,cycle_);
+    }
     void epsilon(quint8 id, const QByteArray &payload, quint64 ticks)
     {
         QByteArray f; f.append('\xfc'); f.append(char(id)); f.append(char(payload.size())); f.append(char(sequence_));
@@ -337,6 +354,7 @@ private:
         const auto perFragment = 8160/width;
         const auto fragments = (total+perFragment-1)/perFragment;
         for (quint32 index=0; index<fragments; ++index) {
+            if (missingCycle_ && index == 0) continue;
             const quint32 first=index*perFragment, count=qMin(perFragment,total-first);
             QByteArray p; put16(p,2); put16(p,raw?24:format); put32(p,rate); put32(p,total);
             if (raw) put32(p,0);
@@ -362,12 +380,16 @@ private:
     }
     void generate(qint64 elapsedMs)
     {
-        if (!(regs_[4]&1) || !(regs_[0x7004]&1) || !(regs_[0x8004]&1)) return;
+        if (stalled_ || !(regs_[0x7004]&1) || !(regs_[0x8004]&1)) return;
         ++cycle_; const double t=elapsedMs/1000.; const quint64 ticks=quint64(elapsedMs)*100000;
         const auto streamed = [&](quint16 source) { const auto bit=source%64;
             return (regs_[bit<32?0x2c:0x30] & (1u<<(bit%32))) != 0; };
         const auto enabled = [&](quint16 source) {
-            return (regs_[0x6004+(source-0x40)*0x100]&1) && streamed(source); };
+            if(!(regs_[0x6004+(source-0x40)*0x100]&1)||!streamed(source))return false;
+            const quint32 poll=source==0x40?0x6018:source==0x41?0x611c:source==0x43?0x6314:source==0x44?0x6414:source==0x46?0x662c:0;
+            const qint64 interval=poll?qMax(1u,regs_.value(poll,1000)):100;
+            if(lastSensorMs_.contains(source)&&elapsedMs-lastSensorMs_.value(source)<interval)return false;
+            lastSensorMs_[source]=elapsedMs;return true; };
         if(enabled(0x40)) {QByteArray p;put16(p,1);put16(p,1);tlv(p,0x12,7,scalar(quint32(101325000+std::sin(t)*28000)));data(0x40,0x1100,p,ticks);}
         if(enabled(0x43)) {QByteArray p;put16(p,1);put16(p,3);tlv(p,0x100,11,QByteArray::fromHex("986d4c4bf9fd1c4d1706019349005a03fa800f08f5"));
             tlv(p,0x101,3,scalar(quint32(6461000+std::sin(t)*1000)));tlv(p,0x102,3,scalar(8499712));data(0x43,0x1100,p,ticks);}
@@ -391,17 +413,21 @@ private:
         }
         for(int ch=0;ch<2;++ch) {
             const quint32 offset=ch*0x100;
+            if (!(regs_[4]&1)) continue;
             if((regs_[0x2004+offset]&1)&&(regs_[0x3004+offset]&1))regs_[0x3028+offset]+=regs_[0x202c+offset]/10;
             if(!(regs_[0x4004+offset]&1)||!(regs_[0x2004+offset]&1))continue;
             if((regs_[0x5004+offset]&1)&&regs_[0x5020+offset]&&streamed(quint16(0x30+ch)))waveform(ch,false,t,ticks);
             if((regs_[0x403c+offset]&1)&&(regs_[0x50]&(1u<<ch))&&streamed(quint16(0x20+ch)))waveform(ch,true,t,ticks);
         }
+        missingCycle_ = false;
     }
     const FpgaSimulatorStartup startup_;
     bool opened_ = false;
+    bool stalled_ = false, partialFailure_ = false, missingCycle_ = false;
     FpgaUsbDiagnostic diagnostic_;
     FpgaVlp1::StreamParser parser_;
     QMap<quint32,quint32> regs_;
+    QMap<quint16,qint64> lastSensorMs_;
     QByteArray incoming_;
     QElapsedTimer clock_;
     qint64 lastCycleMs_ = 0;
@@ -410,6 +436,6 @@ private:
     double measured_ = 235;
 };
 }
-std::unique_ptr<FpgaUsbTransport> makeFpgaUsbSimulator(QObject *parent, FpgaSimulatorStartup startup)
+std::unique_ptr<FpgaUsbSimulator> makeFpgaUsbSimulator(QObject *parent, FpgaSimulatorStartup startup)
 { return std::make_unique<Simulator>(parent, startup); }
 }
