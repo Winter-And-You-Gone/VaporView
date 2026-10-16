@@ -825,7 +825,16 @@ void FpgaControlPage::simulateOperation(const QJsonObject &request)
         setUsbDiscoveryResult({{"devices",QJsonArray{QJsonObject{{"locator","simulation://fpga"},{"label","FPGA Simulator"},{"backend","cypress"},{"driver","SIMULATED"},{"available",true}}}},{"error",""}});
         return;
     }
-    if(op=="connect") {sim.connected=true;sim.dliaLatched=false;sim.missingCycle=false;}
+    if(op=="connect") {
+        const bool runningDemo=request.value("recover").toBool(true);
+        if(runningDemo || !sim.connected) {
+            sim.disabledSensors.clear();
+            if(!runningDemo)for(quint16 source:{0x40,0x41,0x42,0x43,0x44,0x45,0x46})sim.disabledSensors.insert(source);
+            sim.acquiring=runningDemo;sim.wms.fill(runningDemo);sim.dac.fill(runningDemo);
+            if(!runningDemo)sim.rawEnabled=sim.rawStopPending=sim.recording=false;
+        }
+        sim.connected=true;sim.dliaLatched=false;sim.missingCycle=false;
+    }
     else if(op=="disconnect") {sim.connected=false;sim.rawEnabled=sim.rawStopPending=false;sim.recording=false;}
     else if(!sim.connected) {appendDiagnostic(text("[界面测试] 请先连接模拟 FPGA。","[UI test] Connect the simulated FPGA first."));return;}
     else if(op=="acquisition") {sim.acquiring=enabled;if(enabled){sim.dliaLatched=false;sim.missingCycle=false;sim.wms.fill(true);}else if(sim.rawEnabled){sim.rawStopPending=true;sim.rawEnabled=false;}}

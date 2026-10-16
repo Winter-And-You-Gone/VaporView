@@ -375,7 +375,7 @@ void MainWindow::setHomeFpgaDeviceEnabled(VaporView::SkyDeviceId device, bool en
         const auto apply = [this, device, source, enabled] {
             if (!isUiTestMode() || state_->fpga_home_action_device_!=device) return;
             if (!isFpgaRelayPath()) {state_->fpga_home_action_device_=SkyDeviceId::All;return;}
-            if (enabled && !state_->fpga_sim_ready_) state_->fpga_page_->simulateOperation({{"op","connect"}});
+            if (enabled && !state_->fpga_sim_ready_) state_->fpga_page_->simulateOperation({{"op","connect"},{"recover",false}});
             if(device==SkyDeviceId::WaveTcp)state_->fpga_page_->simulateOperation({{"op","acquisition"},{"enabled",enabled}});
             else emit state_->fpga_page_->sensorEnableRequested(source,enabled);
             state_->ui_test_model_->setDeviceState(device, homeFpgaDeviceState(device));

@@ -110,6 +110,31 @@ void controls()
     controller.disconnectDevice();check(!controller.ready(),"disconnect clears readiness");
     controller.connectDevice("simulation://fpga","simulator");wait(idle,"simulator reconnect performs a fresh handshake");
 }
+void selectiveControls()
+{
+    FpgaDeviceController controller;
+    FpgaControlConfig desired;desired.backend="simulator";controller.setConfiguration(desired);
+    QSet<quint16> sensors;bool waveform=false;
+    QObject::connect(&controller,&FpgaDeviceController::measurementUpdated,[&](const auto& r){if(r.reading.validity.measurement)sensors.insert(r.reading.source);});
+    QObject::connect(&controller,&FpgaDeviceController::waveformUpdated,[&](const auto&){waveform=true;});
+    controller.connectDevice("simulation://fpga","simulator",FpgaDeviceController::ConnectMode::PreserveRunningModules);
+    const auto idle=[&]{return controller.ready()&&!controller.busy();};
+    wait(idle,"selective simulator completes its idle-board handshake");
+    for(quint32 base:{0x2000u,0x2100u,0x3000u,0x3100u,0x4000u,0x4100u,0x5000u,0x5100u,
+                      0x6000u,0x6100u,0x6200u,0x6300u,0x6400u,0x6500u,0x6600u})
+        check(controller.hardwareValues().value(base+4)==0,"idle simulated board starts with every sensor and acquisition/output channel stopped");
+    events(250);check(sensors.isEmpty()&&!waveform,"idle simulated board emits no device measurements or waveforms");
+    controller.connectSensor({{"op","sensor"},{"source",0x40},{"enabled",true}});wait(idle,"requested PTB connects");
+    wait([&]{return sensors.contains(0x40);},"requested PTB produces real decoded simulator data");
+    events(250);check(sensors==QSet<quint16>{0x40}&&!waveform,"single-device connection produces only the selected source");
+    controller.connectSensor({{"op","sensor"},{"source",0x44},{"enabled",true}});wait(idle,"second independent device connects");
+    wait([&]{return sensors.contains(0x44);},"second source produces measurements");
+    check(controller.hardwareValues().value(0x6004)==1&&controller.hardwareValues().value(0x6404)==1,
+        "connecting a second simulated device preserves the first");
+    controller.setSensorEnabled(0x40,false);wait(idle,"first simulated sensor disconnects independently");
+    check(controller.connected()&&controller.hardwareValues().value(0x6404)==1,"individual stop keeps USB and the other sensor running");
+}
+
 struct Child
 {
     QProcess process;
@@ -176,7 +201,7 @@ void processTest()
 int main(int argc,char** argv)
 {
     QCoreApplication app(argc,argv);
-    try { if(app.arguments().contains("--process"))processTest();else {protocol();controls();}
+    try { if(app.arguments().contains("--process"))processTest();else {protocol();controls();selectiveControls();}
         std::cout<<"FPGA simulator test passed\n";return 0; }
     catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}
 }

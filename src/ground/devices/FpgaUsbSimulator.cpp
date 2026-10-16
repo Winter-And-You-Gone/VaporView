@@ -60,7 +60,7 @@ bool readable(quint32 a)
 class Simulator final : public FpgaUsbTransport
 {
 public:
-    explicit Simulator(QObject *parent) : FpgaUsbTransport(parent) {}
+    Simulator(QObject *parent, FpgaSimulatorStartup startup) : FpgaUsbTransport(parent), startup_(startup) {}
     bool open(const QString &) override
     {
         close(); initialize(); opened_ = true; clock_.start();
@@ -122,13 +122,14 @@ private:
         regs_[0x6210] = 921600; regs_[0x6510] = 500000;
         regs_[0x6314] = regs_[0x6414] = 1000;
         target_ = 250; measured_ = 235;
+        const quint32 enabled = startup_ == FpgaSimulatorStartup::RunningDemo ? 1 : 0;
         const FpgaControlConfig defaults;
         for (quint32 b : {0x6000u,0x6100u,0x6200u,0x6300u,0x6400u,0x6500u,0x6600u}) {
-            regs_[b + 4] = 1; regs_[b + 8] = 1;
+            regs_[b + 4] = enabled; regs_[b + 8] = enabled;
         }
         for (int ch = 0; ch < 2; ++ch) {
             const quint32 offset = ch * 0x100;
-            for (quint32 b : {0x2000u,0x3000u,0x4000u,0x5000u}) setControl(b + offset, 1);
+            for (quint32 b : {0x2000u,0x3000u,0x4000u,0x5000u}) setControl(b + offset, enabled);
             const auto &w = defaults.wms[ch];
             const quint32 values[] = {w.scanMilliHz,quint32(w.scanAmplitude),quint32(w.bias),w.sineMilliHz,
                 quint32(w.sineAmplitude),w.phase,w.updateRateHz};
@@ -396,6 +397,7 @@ private:
             if((regs_[0x403c+offset]&1)&&(regs_[0x50]&(1u<<ch))&&streamed(quint16(0x20+ch)))waveform(ch,true,t,ticks);
         }
     }
+    const FpgaSimulatorStartup startup_;
     bool opened_ = false;
     FpgaUsbDiagnostic diagnostic_;
     FpgaVlp1::StreamParser parser_;
@@ -408,6 +410,6 @@ private:
     double measured_ = 235;
 };
 }
-std::unique_ptr<FpgaUsbTransport> makeFpgaUsbSimulator(QObject *parent)
-{ return std::make_unique<Simulator>(parent); }
+std::unique_ptr<FpgaUsbTransport> makeFpgaUsbSimulator(QObject *parent, FpgaSimulatorStartup startup)
+{ return std::make_unique<Simulator>(parent, startup); }
 }

@@ -101,6 +101,21 @@ static QLabel *deviceWaveRate(MainWindow &window)
         if(label->property("deviceTcpWaveHint")==QStringLiteral("deviceTcpWaveTransportHint"))return label;
     return nullptr;
 }
+static bool onlyPressureConnected(MainWindow &window)
+{
+    if(homeAction(window,"PTB210")->property("state")!="connected")return false;
+    for(const auto& name:QStringList{"EPSILON","HMP","TFA1500","AI-8288",QStringLiteral("波形源")})
+        if(homeAction(window,name)->property("state")!="disconnected")return false;
+    int internalSensors=0;
+    for(auto *button:window.findChildren<QToolButton*>("homeDeviceActionButton")) {
+        const auto source=button->property("fpgaSensorSource").toUInt();
+        if(source==0x43||source==0x44) {
+            if(button->property("state")!="disconnected")return false;
+            ++internalSensors;
+        }
+    }
+    return internalSensors==2;
+}
 static void verifyCardMargins(MainWindow &window,FpgaControlPage *page,int scale)
 {
     const QSize originalSize=window.size();
@@ -646,20 +661,38 @@ static void localSimulatorRouting()
             connectionSuccesses.insert(quint16(record.fields.value("fpga_source").toUInt()));
         }
     });
-    QVector<quint16> selectiveCommands;
+    QVector<VaporView::FpgaVlp1::Frame> selectiveCommands;
     const auto commandObserver=QObject::connect(window.testFpgaController(),&VaporView::Ground::Devices::FpgaDeviceController::rawCommand,
         &window,[&](quint64,const QByteArray& bytes) {
             VaporView::FpgaVlp1::StreamParser parser;
             for(const auto& frame:parser.feed(reinterpret_cast<const std::uint8_t*>(bytes.constData()),bytes.size()))
-                selectiveCommands.append(frame.header.message);
+                selectiveCommands.append(frame);
         },Qt::QueuedConnection);
     pressureAction->click();
     check(waitUntil([&]{return pressureAction->isEnabled()&&pressureAction->property("state")=="connected"&&disconnect->isEnabled();},12000),
-        "individual home action connects the FPGA without restarting already-running devices");
+        "individual home action starts only the requested device on an idle simulated FPGA");
     QObject::disconnect(commandObserver);
+    check(onlyPressureConnected(window),"connecting one simulated device leaves all six other sensors and waveform acquisition disconnected");
     check(!selectiveCommands.isEmpty(),"individual home action performs a real protocol handshake");
-    for(auto message:selectiveCommands)check(message==0xfe||message==1||message==2,"home handshake never resets or restarts other modules");
-    check(connectionSuccesses.isEmpty(),"read-only connection does not claim that it restarted every running device");
+    bool targetStarted=false;
+    for(const auto& frame:selectiveCommands) {
+        const auto message=frame.header.message;
+        if(message==0xb) {
+            check(frame.header.source==0x40,"home connection never starts or stops another sensor");targetStarted=true;
+        } else if(message==3) {
+            check(frame.payload.size()>=4,"complete register write payload");
+            const auto address=qFromLittleEndian<quint32>(frame.payload.data());
+            check((address>=0x6000&&address<0x6100)||address==0x2c||address==0x30||address==0x7004||address==0x8004,
+                "home connection writes only the requested sensor and shared upload controls");
+        } else check(message==0xfe||message==1||message==2,"other handshake operations are read-only");
+    }
+    check(targetStarted,"idle simulator actually receives the target start command");
+    check(waitUntil([&]{return connectionSuccesses.contains(0x40);})&&connectionSuccesses.size()==1,
+        "only the requested simulated sensor reports a connection result");
+    homeAction(window,"HMP")->click();
+    check(waitUntil([&]{return homeAction(window,"HMP")->isEnabled()&&homeAction(window,"HMP")->property("state")=="connected";})
+        &&pressureAction->property("state")=="connected","connecting a second home device preserves the first");
+    connectionSuccesses.clear();
     disconnect->click();check(waitUntil([&]{return connectButton->isEnabled();}),"individual connection releases USB before full-connect regression");
     QMetaObject::invokeMethod(&window,"onConnectClicked");
     check(waitUntil([&]{return acquisition->isEnabled()&&disconnect->isEnabled();},12000),"local factory handshake enables normal controls");
@@ -881,6 +914,16 @@ static void simulatedMonitorActions()
     require(mode&&page&&raw&&harmonic,"simulated monitor controls exist");
     mode->trigger();
     require(waitUntil([&]{return raw->isEnabled()&&harmonic->isEnabled();}),"UI test simulation enables relay monitor controls");
+    require(QMetaObject::invokeMethod(&window,"onDisconnectClicked",Qt::DirectConnection),"disconnect layout simulation before individual connection");
+    auto *pressure=homeAction(window,"PTB210");
+    require(waitUntil([&]{return pressure->isEnabled()&&pressure->property("state")=="disconnected";}),"layout simulation is disconnected");
+    pressure->click();
+    require(waitUntil([&]{return pressure->isEnabled()&&pressure->property("state")=="connected";}),"layout simulation connects the requested device");
+    require(onlyPressureConnected(window),"layout simulation leaves all other sensors and waveform acquisition disconnected");
+    require(raw->text().contains(QStringLiteral("开始"))&&harmonic->text().contains(QStringLiteral("开始")),"individual simulation connection leaves waveform acquisition stopped");
+    require(QMetaObject::invokeMethod(&window,"onConnectClicked",Qt::DirectConnection),"batch simulation connection is available");
+    require(waitUntil([&]{return homeAction(window,"HMP")->property("state")=="connected"&&harmonic->text().contains(QStringLiteral("停止"));}),
+        "batch simulation connection still starts the full demonstration");
     for(const auto &entry:{qMakePair("deviceEpsilonBaudComboFpgaEditor","921600"),
             qMakePair("devicePressureBaudComboFpgaEditor","9600"),
             qMakePair("deviceLidarBaudComboFpgaEditor","500000"),

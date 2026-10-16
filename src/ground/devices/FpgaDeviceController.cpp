@@ -160,7 +160,13 @@ void FpgaDeviceController::logManagementEvent(const QJsonObject& event, bool aft
 void FpgaDeviceController::connectDevice(const QString& locator, const QString& backend, ConnectMode mode)
 {
     disconnectDevice();
-    if (!injected_) installSession(makeFpgaUsbHardwareTransport(backend));
+    if (!injected_) {
+        // A fresh simulator opened from a device row represents an idle board.
+        // Full demo connections retain their already-running initial scene.
+        if (backend == QStringLiteral("simulator") && mode == ConnectMode::PreserveRunningModules)
+            installSession(makeFpgaUsbSimulator(nullptr, FpgaSimulatorStartup::Idle));
+        else installSession(makeFpgaUsbHardwareTransport(backend));
+    }
     QString error;
     connectionClock_.start();
     if (!session_->open(locator, &error)) { fail(error); return; }
