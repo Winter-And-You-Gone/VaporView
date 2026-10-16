@@ -1485,6 +1485,18 @@ int main(int argc, char **argv)
                 skyLinkConfig.value(QStringLiteral("tcp_port")).toInt() ==
                     static_cast<int>(fakeSkyServer.serverPort()),
             "Sky Link model supplies the fake TCP endpoint before remote connection");
+    VaporView::setSettingsWritesSuspended(false);
+    require(QMetaObject::invokeMethod(&window, "onConnectClicked", Qt::DirectConnection) &&
+                remoteController->telemetryService()->isConnecting() && !remoteController->isOpen(),
+            "Remote connection returns while its TCP handshake is pending");
+    require(QMetaObject::invokeMethod(&window, "onCancelConnectClicked", Qt::DirectConnection),
+            "Remote connection cancel action is reachable");
+    VaporViewTest::processEventsFor(60);
+    require(!remoteController->isOpen() && !remoteController->telemetryService()->isConnecting(),
+            "Remote cancel aborts TCP before a late open event and permits another attempt");
+    while (fakeSkyServer.hasPendingConnections()) delete fakeSkyServer.nextPendingConnection();
+    VaporView::setSettingsWritesSuspended(true);
+
     QTcpSocket *fakeSkySocket = nullptr;
     VaporView::TelemetryCodec inboundCodec;
     VaporView::TelemetryCodec outboundCodec;
@@ -1570,7 +1582,9 @@ int main(int argc, char **argv)
     VaporView::setSettingsWritesSuspended(false);
     const bool remoteConnectInvoked = QMetaObject::invokeMethod(
         &window, "onConnectClicked", Qt::DirectConnection);
-    const bool remoteOpened = remoteConnectInvoked && remoteController->isOpen();
+    const bool remoteOpened = remoteConnectInvoked && VaporViewTest::processEventsUntil(3000, [&] {
+        return remoteController->isOpen();
+    });
     if (!remoteOpened)
     {
         VaporView::setSettingsWritesSuspended(true);

@@ -314,7 +314,7 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
         state_->ui_test_saved_local_sensor_transport_path_ =
             state_->local_device_config_.sensorTransportPath;
         state_->ui_test_saved_remote_sensor_transport_path_ =
-            state_->remote_sky_config_.sensor_transport_path;
+            state_->remote_config_session_.desired.sensor_transport_path;
         state_->ui_test_saved_recording_directory_ = state_->recording_directory_;
         state_->ui_test_session_viewer_existed_ = state_->session_viewer_window_ != nullptr;
 #ifdef VAPORVIEW_HAS_OSGEARTH
@@ -329,7 +329,7 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
         state_->ui_test_model_->reset(0);
         state_->local_device_config_.sensorTransportPath =
             VaporView::SensorTransportPath::FpgaRelay;
-        state_->remote_sky_config_.sensor_transport_path =
+        state_->remote_config_session_.desired.sensor_transport_path =
             VaporView::SensorTransportPath::FpgaRelay;
         if (state_->device_config_.sensor_transport_path_combo)
         {
@@ -464,12 +464,12 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
     loadRememberedInputState();
     state_->local_device_config_.sensorTransportPath =
         state_->ui_test_saved_local_sensor_transport_path_;
-    state_->remote_sky_config_.sensor_transport_path =
+    state_->remote_config_session_.desired.sensor_transport_path =
         state_->ui_test_saved_remote_sensor_transport_path_;
     refreshDeviceConfigUiFromLocalModel();
     if (isRemoteSkyMode())
     {
-        setRemoteSkyConfigUi(state_->remote_sky_config_);
+        setRemoteSkyConfigUi(state_->remote_config_session_.desired);
     }
     state_->recording_directory_ = state_->ui_test_saved_recording_directory_;
     if (state_->font_scale_percent_ != state_->ui_test_saved_font_scale_percent_)

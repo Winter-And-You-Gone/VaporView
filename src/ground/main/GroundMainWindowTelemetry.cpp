@@ -352,10 +352,10 @@ void MainWindow::onRemoteCommandAckReceived(const VaporView::CommandAck& ack)
     }
 
     if (ack.command_id == VaporView::CommandId::GetSkyConfig &&
-        ack.command_seq == state_->remote_sky_config_read_seq_ &&
+        ack.command_seq == state_->remote_config_session_.readSequence &&
         !(ok && noError))
     {
-        state_->remote_sky_config_loading_ = false;
+        state_->remote_config_session_.reading = false;
         clearPendingRemoteWaveTcpConnection();
         setRemoteSkyConfigStatus(state_->is_english_
             ? QStringLiteral("Remote Sky config read was rejected: %1").arg(errorText)
@@ -364,7 +364,7 @@ void MainWindow::onRemoteCommandAckReceived(const VaporView::CommandAck& ack)
         updateRemoteSkyConfigControlsState();
     }
     else if (ack.command_id == VaporView::CommandId::SetSkyConfig &&
-             ack.command_seq == state_->remote_sky_config_apply_seq_)
+             ack.command_seq == state_->remote_config_session_.applySequence)
     {
         if (ok && noError)
         {
@@ -381,9 +381,9 @@ void MainWindow::onRemoteCommandAckReceived(const VaporView::CommandAck& ack)
         updateRemoteSkyConfigControlsState();
     }
     else if (ack.command_id == VaporView::CommandId::SaveSkyConfig &&
-             ack.command_seq == state_->remote_sky_config_save_seq_)
+             ack.command_seq == state_->remote_config_session_.saveSequence)
     {
-        state_->remote_sky_config_saving_ = false;
+        state_->remote_config_session_.saving = false;
         setRemoteSkyConfigStatus(ok && noError
             ? (state_->is_english_ ? QStringLiteral("Remote Sky config saved on sky.") : QStringLiteral("天空端配置已保存。"))
             : (state_->is_english_ ? QStringLiteral("Remote Sky config save failed: %1").arg(errorText)
@@ -467,12 +467,34 @@ void MainWindow::onRemoteLinkOpenChanged(bool open)
 {
     if (isRemoteSkyMode())
     {
+        const bool wasConnecting = state_->connection_attempt_in_progress_;
+        state_->connection_attempt_in_progress_ = false;
         if (!open)
         {
             markRemoteSkyLinkClosed();
+            if (wasConnecting) {
+                publishGroundLog(VaporView::LogLevel::Error,
+                    QStringLiteral("telemetry.connection"), QStringLiteral("remote_sky_connection_open_failed"),
+                    QStringLiteral("打开天空端数传链路失败。"),
+                    {{QStringLiteral("error_code"), QStringLiteral("TELEMETRY_LINK_OPEN_FAILED")},
+                     {QStringLiteral("endpoint"), state_->remote_sky_controller_->telemetryService()->endpointDescription()},
+                     {QStringLiteral("transport"), QStringLiteral("tcp")},
+                     {QStringLiteral("ui_message"), QStringLiteral("无法打开天空端 TCP 数传链路。请确认 SkyCore 已启动并监听该地址。")},
+                     {QStringLiteral("ui_dedupe_key"), QStringLiteral("remote_sky:connection_open_failed")}});
+            }
         }
         else
         {
+            if (wasConnecting) {
+                state_->remote_sky_controller_->sendCommand(VaporView::CommandId::DisableWaveformStreaming);
+                state_->remote_sky_controller_->sendCommand(VaporView::CommandId::RequestStatus);
+                publishGroundLog(VaporView::LogLevel::Info,
+                    QStringLiteral("telemetry.connection"), QStringLiteral("remote_sky_connection_opened"),
+                    QStringLiteral("数传链路已打开，正在等待天空端握手。"),
+                    {{QStringLiteral("endpoint"), state_->remote_sky_controller_->telemetryService()->endpointDescription()},
+                     {QStringLiteral("transport"), QStringLiteral("tcp")},
+                     {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
+            }
             requestRemoteSkyConfigIfAvailable(false);
         }
         updateConnectionStatus(open);

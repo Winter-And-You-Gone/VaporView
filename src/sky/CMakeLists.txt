@@ -1,4 +1,6 @@
 add_library(vaporview_device_collectors STATIC
+    ${CMAKE_SOURCE_DIR}/src/ground/devices/SerialPortDetectionService.cpp
+    ${CMAKE_SOURCE_DIR}/src/ground/devices/SerialPortDetectionService.h
     ${CMAKE_SOURCE_DIR}/src/sky/devices/Ai8TemperatureControllerCollector.cpp
     ${CMAKE_SOURCE_DIR}/src/sky/devices/Ai8TemperatureControllerProtocol.cpp
     ${CMAKE_SOURCE_DIR}/src/sky/devices/TemperatureControllerProtocol.cpp
@@ -68,15 +70,14 @@ if(WIN32)
     endif()
 endif()
 
+if(VAPORVIEW_BUILD_SKY_CORE)
 set(SKY_CORE_SOURCES
     ${CMAKE_SOURCE_DIR}/src/sky/core/SkyRuntime.cpp
     ${CMAKE_SOURCE_DIR}/src/sky/devices/SkyDeviceManager.cpp
+    ${CMAKE_SOURCE_DIR}/src/sky/devices/SkyTemperatureOperation.cpp
     ${CMAKE_SOURCE_DIR}/src/sky/recording/SkySessionRecorder.cpp
-    ${CMAKE_SOURCE_DIR}/src/sky/devices/SerialTelemetryLink.cpp
-    ${CMAKE_SOURCE_DIR}/src/sky/devices/TcpTelemetryLink.cpp
     ${CMAKE_SOURCE_DIR}/src/sky/ipc/SkyLocalIpcServer.cpp
     ${CMAKE_SOURCE_DIR}/src/sky/devices/SkyFpgaBackend.cpp
-    ${CMAKE_SOURCE_DIR}/src/ground/devices/SerialPortDetectionService.cpp
 )
 
 set(SKY_CORE_HEADERS
@@ -85,12 +86,9 @@ set(SKY_CORE_HEADERS
     ${CMAKE_SOURCE_DIR}/include/SkyDeviceManager.h
     ${CMAKE_SOURCE_DIR}/include/SkyFpgaBackend.h
     ${CMAKE_SOURCE_DIR}/include/SkySessionRecorder.h
-    ${CMAKE_SOURCE_DIR}/include/SerialTelemetryLink.h
-    ${CMAKE_SOURCE_DIR}/include/TcpTelemetryLink.h
     ${CMAKE_SOURCE_DIR}/include/SkyLocalIpcServer.h
     ${CMAKE_SOURCE_DIR}/include/TcpWaveEncoding.h
     ${CMAKE_SOURCE_DIR}/include/data_types.h
-    ${CMAKE_SOURCE_DIR}/src/ground/devices/SerialPortDetectionService.h
 )
 
 add_library(vaporview_sky_core STATIC
@@ -107,6 +105,7 @@ target_include_directories(vaporview_sky_core PUBLIC
 
 target_link_libraries(vaporview_sky_core PUBLIC
     vaporview_device_collectors
+    vaporview_telemetry_transport
     vaporview_fpga_device_core
     vaporview_geo_core
     vaporview_ppk
@@ -119,6 +118,9 @@ target_link_libraries(vaporview_sky_core PUBLIC
     Threads::Threads
 )
 
+endif()
+
+if(VAPORVIEW_BUILD_SKY_TUI)
 set(SKY_TUI_COMMON_SOURCES
     ${CMAKE_SOURCE_DIR}/src/sky/tui/SkyTuiApp.cpp
     ${CMAKE_SOURCE_DIR}/src/sky/tui/SkyTuiController.cpp
@@ -160,3 +162,5 @@ target_link_libraries(vaporview_sky_tui PUBLIC
     Qt6::Network
     Qt6::Widgets
 )
+
+endif()

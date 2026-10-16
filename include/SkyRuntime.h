@@ -162,7 +162,7 @@ private:
     std::thread serial_port_detection_thread_;
     QElapsedTimer command_clock_;
     QHash<QByteArray, QPair<qint64, SkyCommandResult>> command_results_;
-    QHash<QByteArray, QByteArray> fpga_request_payloads_;
+    QHash<QByteArray, QByteArray> command_request_payloads_;
     QByteArray active_command_key_;
     bool epsilon_settings_operation_pending_ = false;
     std::shared_ptr<std::atomic_bool> maintenance_cancel_;

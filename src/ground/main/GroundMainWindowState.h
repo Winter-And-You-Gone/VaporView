@@ -1,6 +1,8 @@
 #pragma once
 
 #include "LogRecord.h"
+#include "ground/devices/RemoteConfigSession.h"
+#include "ground/devices/FpgaControlSession.h"
 #include "ground/devices/LocalDeviceConnectionController.h"
 #include "ground/devices/RemoteSkyLinkConfig.h"
 #include "ground/main/MainWindow.h"
@@ -173,6 +175,9 @@ struct DeviceConfigPageWidgets
 
 struct MainWindowState
 {
+    Devices::RemoteConfigSession remote_config_session_;
+    Devices::FpgaControlSession fpga_session_;
+
     MainWindowState();
     ~MainWindowState();
 
@@ -295,17 +300,8 @@ struct MainWindowState
     QPushButton *device_config_nav_btn_;
     QPushButton *fpga_nav_btn_ = nullptr;
     FpgaControlPage *fpga_page_ = nullptr;
-    QThread *fpga_thread_ = nullptr;
-    VaporView::Ground::Devices::FpgaDeviceController *fpga_controller_ = nullptr;
     FpgaControlConfig fpga_config_;
-    FpgaControlConfig fpga_remote_config_;
-    QJsonObject fpga_remote_status_;
-    QJsonObject fpga_remote_control_;
     QMap<int, QMap<quint16, QJsonObject>> fpga_sensor_drafts_;
-    quint32 fpga_remote_request_id_ = 0;
-    QString fpga_remote_operation_;
-    quint64 fpga_remote_discovery_generation_ = 0;
-    std::chrono::steady_clock::time_point fpga_remote_status_time_{};
     bool fpga_connected_ = false;
     bool fpga_ready_ = false;
     bool fpga_busy_ = false;
@@ -493,13 +489,6 @@ struct MainWindowState
     int last_log_side_panel_width_;
     bool remote_sky_mode_;
     bool remote_sky_online_;
-    VaporView::SkyConfig remote_sky_config_;
-    VaporView::SkyConfig remote_sky_baseline_config_;
-    bool remote_sky_config_loaded_;
-    bool remote_sky_config_dirty_;
-    bool remote_sky_config_loading_;
-    bool remote_sky_config_applying_;
-    bool remote_sky_config_saving_;
     bool remote_sky_config_raw_mode_;
     bool remote_sky_config_updating_ui_;
     bool remote_serial_detection_pending_ = false;
@@ -507,12 +496,6 @@ struct MainWindowState
     quint16 remote_serial_detection_cancel_seq_ = 0;
     QString remote_sky_config_status_text_;
     bool remote_sky_config_status_error_;
-    quint16 remote_sky_config_read_seq_;
-    quint16 remote_sky_config_apply_seq_;
-    quint16 remote_sky_config_save_seq_;
-    quint64 remote_sky_config_read_generation_;
-    quint64 remote_sky_config_apply_generation_;
-    quint64 remote_sky_config_loaded_generation_;
     bool remote_wave_stream_requested_;
     bool remote_wave_stream_enable_pending_;
     bool remote_wave_stream_auto_start_;

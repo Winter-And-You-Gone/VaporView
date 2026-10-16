@@ -538,7 +538,7 @@ void MainWindow::onDataSourceModeChanged(int index)
     requestRemoteSkyConfigIfAvailable(false);
     if (state_->fpga_page_) {
         state_->fpga_page_->setTransportConnected(false);
-        state_->fpga_page_->setConfiguration(isRemoteSkyMode() ? state_->fpga_remote_config_ : state_->fpga_config_);
+        state_->fpga_page_->setConfiguration(isRemoteSkyMode() ? state_->fpga_session_.remoteConfig : state_->fpga_config_);
         updateFpgaPageBackend();
     }
     updateRecordingStatusLabel();
@@ -925,12 +925,12 @@ void MainWindow::markRemoteSkyLinkClosed()
     state_->remote_wave_stream_requested_ = false;
     state_->remote_wave_stream_enable_pending_ = false;
     clearPendingRemoteWaveTcpConnection();
-    state_->remote_sky_config_loading_ = false;
-    state_->remote_sky_config_applying_ = false;
-    state_->remote_sky_config_saving_ = false;
-    state_->remote_sky_config_read_generation_ = 0;
-    state_->remote_sky_config_apply_generation_ = 0;
-    if (state_->remote_sky_config_loaded_)
+    state_->remote_config_session_.reading = false;
+    state_->remote_config_session_.applying = false;
+    state_->remote_config_session_.saving = false;
+    state_->remote_config_session_.readGeneration = 0;
+    state_->remote_config_session_.applyGeneration = 0;
+    if (state_->remote_config_session_.loaded)
     {
         setRemoteSkyConfigStatus(state_->is_english_
             ? QStringLiteral("Telemetry link closed. Showing last loaded Remote Sky config.")
@@ -1816,8 +1816,8 @@ void MainWindow::syncDeviceConfigEpsilonPanelFromSettings()
     if (isRemoteSkyMode())
     {
         setDeviceConfigEpsilonPacketRates(
-            state_->remote_sky_config_loaded_
-                ? state_->remote_sky_config_.epsilon.packet_rates
+            state_->remote_config_session_.loaded
+                ? state_->remote_config_session_.desired.epsilon.packet_rates
                 : legacyRemoteEpsilonPacketRates());
     }
     else
@@ -1830,7 +1830,7 @@ void MainWindow::syncDeviceConfigEpsilonPanelFromSettings()
     settings.beginGroup(QStringLiteral("MainWindow"));
     state_->epsilon_config_panel_->setRtcmDevicePortIndex(
         isRemoteSkyMode()
-            ? state_->remote_sky_config_.epsilon_rtcm.device_port_index
+            ? state_->remote_config_session_.desired.epsilon_rtcm.device_port_index
             : settings.value(QStringLiteral("epsilon_rtcm_device_port_index"), 2).toInt());
 }
 
@@ -1847,8 +1847,8 @@ void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
     const std::map<uint8_t, int> defaultRates = defaultEpsilonPacketRates();
     const std::map<uint8_t, int> savedPacketRates = deviceConfigEpsilonPacketRates();
     const QString epsilonBaudText = isRemoteSkyMode()
-        ? QString::number(state_->remote_sky_config_.epsilon.baud_rate > 0
-              ? state_->remote_sky_config_.epsilon.baud_rate
+        ? QString::number(state_->remote_config_session_.desired.epsilon.baud_rate > 0
+              ? state_->remote_config_session_.desired.epsilon.baud_rate
               : 921600)
         : state_->local_device_config_.epsilon.baudText;
     if (!validateEpsilonPacketBandwidth(savedPacketRates, epsilonBaudText, true))
@@ -1859,10 +1859,10 @@ void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
     const QString packetRateSummary = epsilonPacketRatesSummary(savedPacketRates);
     if (isRemoteSkyMode())
     {
-        state_->remote_sky_config_.epsilon.packet_rates = savedPacketRates;
+        state_->remote_config_session_.desired.epsilon.packet_rates = savedPacketRates;
         setDeviceConfigEpsilonPacketRates(savedPacketRates);
         refreshRemoteSkyConfigRawFromVisual();
-        if (!state_->remote_sky_config_loaded_)
+        if (!state_->remote_config_session_.loaded)
         {
             QSettings legacySettings = VaporView::applicationConfigSettings();
             legacySettings.beginGroup(QStringLiteral("MainWindow"));
@@ -1882,7 +1882,7 @@ void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
             return;
         }
 
-        state_->remote_sky_config_dirty_ = true;
+        state_->remote_config_session_.dirty = true;
         publishGroundLog(VaporView::LogLevel::Info,
                          QStringLiteral("configuration.apply"),
                          QStringLiteral("epsilon_packet_profile_saved"),
@@ -1906,7 +1906,7 @@ void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
                              QStringLiteral("epsilon_packet_profile_apply_requested"),
                              QStringLiteral("正在通过 SkyConfig 应用天空端 EPSILON 包频率配置。"),
                              {{QStringLiteral("device"), QStringLiteral("EPSILON")},
-                              {QStringLiteral("port"), state_->remote_sky_config_.epsilon.port},
+                              {QStringLiteral("port"), state_->remote_config_session_.desired.epsilon.port},
                               {QStringLiteral("packet_rate_summary"), packetRateSummary},
                               {QStringLiteral("execution_path"), QStringLiteral("remote_sky_config")},
                               {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
@@ -1959,7 +1959,7 @@ void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
                          QStringLiteral("epsilon_packet_profile_apply_requested"),
                          QStringLiteral("正在应用刚保存的 EPSILON 包频率配置。"),
                          {{QStringLiteral("device"), QStringLiteral("EPSILON")},
-                          {QStringLiteral("port"), isRemoteSkyMode() ? state_->remote_sky_config_.epsilon.port : epsilonPort},
+                          {QStringLiteral("port"), isRemoteSkyMode() ? state_->remote_config_session_.desired.epsilon.port : epsilonPort},
                           {QStringLiteral("packet_rate_summary"), packetRateSummary},
                           {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
         onReconfigureEpsilonClicked();
@@ -2086,7 +2086,7 @@ void MainWindow::requestRemoteWaveTcpConnection(bool connectRequested, const QSt
 
     if (connectRequested && endpointValid)
     {
-        if (!state_->remote_sky_config_loaded_ && !isUiTestMode())
+        if (!state_->remote_config_session_.loaded && !isUiTestMode())
         {
             if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
             {
@@ -2100,7 +2100,7 @@ void MainWindow::requestRemoteWaveTcpConnection(bool connectRequested, const QSt
             state_->remote_wave_pending_host_ = endpointHost;
             state_->remote_wave_pending_port_ = port;
             requestRemoteSkyConfigIfAvailable(true);
-            if (!state_->remote_sky_config_loading_)
+            if (!state_->remote_config_session_.reading)
             {
                 clearPendingRemoteWaveTcpConnection();
                 return;
@@ -2111,8 +2111,8 @@ void MainWindow::requestRemoteWaveTcpConnection(bool connectRequested, const QSt
             return;
         }
 
-        VaporView::SkyConfig config = state_->remote_sky_config_loaded_
-            ? state_->remote_sky_config_
+        VaporView::SkyConfig config = state_->remote_config_session_.loaded
+            ? state_->remote_config_session_.desired
             : VaporView::SkyConfig::defaults();
         const bool endpointChanged =
             config.wave_tcp.host.trimmed() != endpointHost ||
@@ -2120,7 +2120,7 @@ void MainWindow::requestRemoteWaveTcpConnection(bool connectRequested, const QSt
             !config.wave_tcp.enabled;
         if (endpointChanged)
         {
-            if (state_->remote_sky_config_applying_)
+            if (state_->remote_config_session_.applying)
             {
                 setRemoteSkyConfigStatus(state_->is_english_
                     ? QStringLiteral("Remote Sky config is already applying; TCP wave connection was not started.")
@@ -2137,16 +2137,16 @@ void MainWindow::requestRemoteWaveTcpConnection(bool connectRequested, const QSt
                 setRemoteSkyConfigStatus(error, true);
                 return;
             }
-            state_->remote_sky_config_ = config;
-            state_->remote_sky_config_loaded_ = true;
-            state_->remote_sky_config_loaded_generation_ =
+            state_->remote_config_session_.desired = config;
+            state_->remote_config_session_.loaded = true;
+            state_->remote_config_session_.loadedGeneration =
                 state_->remote_sky_controller_ ? state_->remote_sky_controller_->linkGeneration() : 0;
-            state_->remote_sky_config_dirty_ = true;
+            state_->remote_config_session_.dirty = true;
             setRemoteSkyConfigUi(config);
             if (isUiTestMode())
             {
-                state_->remote_sky_baseline_config_ = config;
-                state_->remote_sky_config_dirty_ = false;
+                state_->remote_config_session_.baseline = config;
+                state_->remote_config_session_.dirty = false;
             }
             else
             {
@@ -2159,14 +2159,14 @@ void MainWindow::requestRemoteWaveTcpConnection(bool connectRequested, const QSt
                     return;
                 }
                 state_->remote_wave_connect_after_config_apply_ = true;
-                state_->remote_sky_config_applying_ = true;
-                state_->remote_sky_config_apply_generation_ = state_->remote_sky_controller_->linkGeneration();
-                state_->remote_sky_config_apply_seq_ =
+                state_->remote_config_session_.applying = true;
+                state_->remote_config_session_.applyGeneration = state_->remote_sky_controller_->linkGeneration();
+                state_->remote_config_session_.applySequence =
                     state_->remote_sky_controller_->telemetryService()->setSkyConfig(config.toJson());
-                if (state_->remote_sky_config_apply_seq_ == 0)
+                if (state_->remote_config_session_.applySequence == 0)
                 {
-                    state_->remote_sky_config_applying_ = false;
-                    state_->remote_sky_config_apply_generation_ = 0;
+                    state_->remote_config_session_.applying = false;
+                    state_->remote_config_session_.applyGeneration = 0;
                     clearPendingRemoteWaveTcpConnection();
                     setRemoteSkyConfigStatus(state_->is_english_
                         ? QStringLiteral("TCP wave endpoint was not sent.")
@@ -2868,14 +2868,14 @@ void MainWindow::onRd105SessionOperationFinished(
     }
     else if (result.success() &&
              result.command == VaporView::CommandId::SetTemperatureDeviceAddress &&
-             state_->remote_sky_config_loaded_)
+             state_->remote_config_session_.loaded)
     {
-        state_->remote_sky_config_.temperature_controller.slave_address =
+        state_->remote_config_session_.desired.temperature_controller.slave_address =
             static_cast<int>(result.payload.device_address);
-        if (!state_->remote_sky_config_dirty_)
+        if (!state_->remote_config_session_.dirty)
         {
-            state_->remote_sky_baseline_config_.temperature_controller.slave_address =
-                state_->remote_sky_config_.temperature_controller.slave_address;
+            state_->remote_config_session_.baseline.temperature_controller.slave_address =
+                state_->remote_config_session_.desired.temperature_controller.slave_address;
         }
     }
 

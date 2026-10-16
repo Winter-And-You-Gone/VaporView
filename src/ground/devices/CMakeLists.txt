@@ -28,6 +28,10 @@ target_link_libraries(vaporview_ground_temperature_command_state PUBLIC
 )
 
 add_library(vaporview_ground_device_core STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/RemoteConfigSession.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/RemoteConfigSession.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/FpgaControlSession.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/FpgaControlSession.h
     ${CMAKE_CURRENT_SOURCE_DIR}/Ai8DeviceSession.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Ai8DeviceSession.h
     ${CMAKE_CURRENT_SOURCE_DIR}/EpsilonDeviceSession.cpp
@@ -72,6 +76,7 @@ target_link_libraries(vaporview_ground_device_core PUBLIC
 )
 
 target_link_libraries(vaporview_ground_device_core PRIVATE
-    vaporview_sky_core
+    vaporview_device_collectors
+    vaporview_telemetry_transport
     vaporview_session_format
 )

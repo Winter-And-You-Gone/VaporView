@@ -1,6 +1,8 @@
-install(TARGETS VaporView VaporViewSky VaporViewSkyCore VaporViewSkyTui
-    RUNTIME DESTINATION bin
-)
+foreach(vaporview_product IN ITEMS VaporView VaporViewSky VaporViewSkyCore VaporViewSkyTui)
+    if(TARGET ${vaporview_product})
+        install(TARGETS ${vaporview_product} RUNTIME DESTINATION bin)
+    endif()
+endforeach()
 
 install(DIRECTORY "${CMAKE_SOURCE_DIR}/include/"
     DESTINATION include

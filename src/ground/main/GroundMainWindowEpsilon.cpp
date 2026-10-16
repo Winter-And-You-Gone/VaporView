@@ -641,8 +641,8 @@ void MainWindow::syncRtkConfigPageState()
         const CollectorSnapshot collectors = snapshotCollectors();
         return collectors.epsilon ? collectors.epsilon->getLatestData() : state_->current_epsilon_;
     });
-    const bool fpga = !isUiTestMode() && (isFpgaRelayPath() || (isRemoteSkyMode() && state_->remote_sky_config_applying_ &&
-        state_->remote_sky_config_.sensor_transport_path == VaporView::SensorTransportPath::FpgaRelay));
+    const bool fpga = !isUiTestMode() && (isFpgaRelayPath() || (isRemoteSkyMode() && state_->remote_config_session_.applying &&
+        state_->remote_config_session_.desired.sensor_transport_path == VaporView::SensorTransportPath::FpgaRelay));
     state_->rtk_config_dialog_->setTransportSupported(!fpga, fpga
         ? (state_->is_english_ ? QStringLiteral("VLP1 does not support RTCM forwarding or EPSILON configuration. No serial fallback is used.")
                               : QStringLiteral("当前 VLP1 不支持 RTCM 转发或 EPSILON 配置；FPGA 模式不使用旁路串口。")) : QString());
@@ -655,13 +655,13 @@ void MainWindow::syncRtkConfigPageState()
     });
     if (isRemoteSkyMode())
     {
-        const QString epsilonPort = state_->remote_sky_config_.epsilon.port;
-        const QString epsilonBaud = QString::number(state_->remote_sky_config_.epsilon.baud_rate);
+        const QString epsilonPort = state_->remote_config_session_.desired.epsilon.port;
+        const QString epsilonBaud = QString::number(state_->remote_config_session_.desired.epsilon.baud_rate);
         state_->rtk_config_dialog_->setEpsilonMainPortAndBaud(epsilonPort, epsilonBaud);
-        const QString preferredOutputPort = state_->remote_sky_config_.epsilon_rtcm.forward_port.trimmed();
+        const QString preferredOutputPort = state_->remote_config_session_.desired.epsilon_rtcm.forward_port.trimmed();
         const QString preferredBaud = QString::number(
-            state_->remote_sky_config_.epsilon_rtcm.baud_rate > 0
-                ? state_->remote_sky_config_.epsilon_rtcm.baud_rate
+            state_->remote_config_session_.desired.epsilon_rtcm.baud_rate > 0
+                ? state_->remote_config_session_.desired.epsilon_rtcm.baud_rate
                 : 115200);
         if (!preferredOutputPort.isEmpty())
         {
@@ -761,7 +761,7 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
 
         int deviceRtcmPortIndex = state_->epsilon_config_panel_
             ? state_->epsilon_config_panel_->rtcmDevicePortIndex()
-            : state_->remote_sky_config_.epsilon_rtcm.device_port_index;
+            : state_->remote_config_session_.desired.epsilon_rtcm.device_port_index;
         if (deviceRtcmPortIndex < 2 || deviceRtcmPortIndex > 5)
         {
             deviceRtcmPortIndex = 2;
@@ -786,8 +786,8 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
         layout->addLayout(formLayout);
 
         auto *mainPortValue = new QLabel(
-            QStringLiteral("%1 @ %2").arg(state_->remote_sky_config_.epsilon.port,
-                                           QString::number(state_->remote_sky_config_.epsilon.baud_rate)),
+            QStringLiteral("%1 @ %2").arg(state_->remote_config_session_.desired.epsilon.port,
+                                           QString::number(state_->remote_config_session_.desired.epsilon.baud_rate)),
             &dialog);
         formLayout->addRow(state_->is_english_ ? "Sky EPSILON Main Port:" : "天空端 EPSILON 主串口：",
                            mainPortValue);
@@ -803,7 +803,7 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
         auto *forwardPortCombo = new QComboBox(&dialog);
         forwardPortCombo->setEditable(true);
         forwardPortCombo->setInsertPolicy(QComboBox::NoInsert);
-        const QString savedForwardPort = state_->remote_sky_config_.epsilon_rtcm.forward_port.trimmed();
+        const QString savedForwardPort = state_->remote_config_session_.desired.epsilon_rtcm.forward_port.trimmed();
         if (!savedForwardPort.isEmpty())
         {
             forwardPortCombo->addItem(savedForwardPort);
@@ -823,8 +823,8 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
         VaporView::configureSerialBaudRateCombo(
             forwardBaudCombo,
             VaporView::epsilonRtcmForwardBaudCapabilities(),
-            QString::number(state_->remote_sky_config_.epsilon_rtcm.baud_rate > 0
-                                ? state_->remote_sky_config_.epsilon_rtcm.baud_rate
+            QString::number(state_->remote_config_session_.desired.epsilon_rtcm.baud_rate > 0
+                                ? state_->remote_config_session_.desired.epsilon_rtcm.baud_rate
                                 : 115200));
         configureComboPopup(forwardBaudCombo);
         formLayout->addRow(state_->is_english_ ? "RTCM Port Baud:" : "RTCM 串口波特率：",
@@ -1130,8 +1130,8 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
     settings.beginGroup(QStringLiteral("MainWindow"));
     const std::map<uint8_t, int> defaultRates = defaultEpsilonPacketRates();
     const std::map<uint8_t, int> initialRates = remoteTarget
-        ? (state_->remote_sky_config_loaded_
-            ? state_->remote_sky_config_.epsilon.packet_rates
+        ? (state_->remote_config_session_.loaded
+            ? state_->remote_config_session_.desired.epsilon.packet_rates
             : legacyRemoteEpsilonPacketRates())
         : loadCustomEpsilonPacketRates(settings);
 
@@ -1286,8 +1286,8 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
         savedPacketRates[option.packet_id] = rateHz;
     }
     const QString epsilonBaudText = isRemoteSkyMode()
-        ? QString::number(state_->remote_sky_config_.epsilon.baud_rate > 0
-              ? state_->remote_sky_config_.epsilon.baud_rate
+        ? QString::number(state_->remote_config_session_.desired.epsilon.baud_rate > 0
+              ? state_->remote_config_session_.desired.epsilon.baud_rate
               : 921600)
         : state_->local_device_config_.epsilon.baudText;
     if (!validateEpsilonPacketBandwidth(savedPacketRates, epsilonBaudText, true))
@@ -1363,8 +1363,8 @@ void MainWindow::onReconfigureEpsilonClicked()
         QSettings settings = VaporView::applicationConfigSettings();
         settings.beginGroup(QStringLiteral("MainWindow"));
         const std::map<uint8_t, int> packetRates = isRemoteSkyMode()
-            ? (state_->remote_sky_config_loaded_
-                ? state_->remote_sky_config_.epsilon.packet_rates
+            ? (state_->remote_config_session_.loaded
+                ? state_->remote_config_session_.desired.epsilon.packet_rates
                 : legacyRemoteEpsilonPacketRates())
             : effectiveEpsilonPacketRates(settings);
         const int outputRateHz = std::clamp(state_->epsilon_sample_rate_, 20, 200);
@@ -1584,12 +1584,12 @@ void MainWindow::onReconfigureEpsilonClicked()
     if (isRemoteSkyMode())
     {
         const int epsilonRate = std::clamp(state_->epsilon_sample_rate_, 20, 200);
-        const std::map<uint8_t, int> desiredPacketRates = state_->remote_sky_config_loaded_
-            ? state_->remote_sky_config_.epsilon.packet_rates
+        const std::map<uint8_t, int> desiredPacketRates = state_->remote_config_session_.loaded
+            ? state_->remote_config_session_.desired.epsilon.packet_rates
             : legacyRemoteEpsilonPacketRates();
         const QString epsilonBaudText = QString::number(
-            state_->remote_sky_config_.epsilon.baud_rate > 0
-                ? state_->remote_sky_config_.epsilon.baud_rate
+            state_->remote_config_session_.desired.epsilon.baud_rate > 0
+                ? state_->remote_config_session_.desired.epsilon.baud_rate
                 : 921600);
         if (!validateEpsilonPacketBandwidth(desiredPacketRates, epsilonBaudText, true))
         {
@@ -1608,8 +1608,8 @@ void MainWindow::onReconfigureEpsilonClicked()
                          QStringLiteral("开始通过天空端重配 EPSILON 输出。"),
                          {{QStringLiteral("device"), QStringLiteral("EPSILON")},
                           {QStringLiteral("execution_path"), QStringLiteral("remote_sky")},
-                          {QStringLiteral("port"), state_->remote_sky_config_.epsilon.port},
-                          {QStringLiteral("baud"), state_->remote_sky_config_.epsilon.baud_rate},
+                          {QStringLiteral("port"), state_->remote_config_session_.desired.epsilon.port},
+                          {QStringLiteral("baud"), state_->remote_config_session_.desired.epsilon.baud_rate},
                           {QStringLiteral("packet_rate_summary"),
                            epsilonPacketRatesSummary(desiredPacketRates)},
                           {QStringLiteral("ui_visibility"), QStringLiteral("details")}});

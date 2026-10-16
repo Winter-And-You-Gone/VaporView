@@ -2056,6 +2056,21 @@ bool SkyDeviceManager::setTemperatureSensorConfig(const TemperatureControllerCom
     return ok;
 }
 
+void SkyDeviceManager::completeTemperatureOperation(const CommandMessage& command, CommandErrorCode result)
+{
+    if (result != CommandErrorCode::Ok) return;
+    TemperatureControllerCommand request;
+    if (!TelemetryCodec::parseTemperatureControllerCommand(command.payload, request)) return;
+    if (command.command_id == CommandId::SetTemperatureDeviceAddress)
+        config_.temperature_controller.slave_address = request.device_address;
+    else if (command.command_id == CommandId::SetTemperatureRs485Baud)
+        config_.temperature_controller.baud_rate = temperatureRs485BaudRateForIndex(request.rs485_baud_index);
+    else if (command.command_id == CommandId::RestoreTemperatureFactoryDefaults) {
+        config_.temperature_controller.slave_address = 1;
+        config_.temperature_controller.baud_rate = 9600;
+    }
+}
+
 bool SkyDeviceManager::restoreTemperatureFactoryDefaults(CommandErrorCode *errorCode)
 {
     if (simulate_data_ && temperature_controller_status_.state == DeviceState::Connected)

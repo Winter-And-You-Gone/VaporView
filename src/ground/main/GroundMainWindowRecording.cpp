@@ -793,8 +793,8 @@ void MainWindow::updateRecordingStatusLabel()
         const VaporView::TelemetryStatus& displayStatus = useLastRemoteStatus
             ? state_->last_remote_recording_status_
             : state_->remote_status_;
-        const auto fpgaStatistics=state_->fpga_remote_status_.value("recording_statistics").toObject();
-        const quint64 fpgaTotal=state_->fpga_remote_status_.value("archived_records").toString().toULongLong();
+        const auto fpgaStatistics=state_->fpga_session_.remoteStatus.value("recording_statistics").toObject();
+        const quint64 fpgaTotal=state_->fpga_session_.remoteStatus.value("archived_records").toString().toULongLong();
         const quint64 rawTotal = fpgaTotal +
             displayStatus.raw_navigation_record_count +
             displayStatus.raw_pressure_record_count +
@@ -1095,8 +1095,8 @@ bool MainWindow::startRecordingSession()
     }
 
     const auto status = state_->recording_service_->status();
-    if (state_->fpga_ready_ && state_->fpga_controller_)
-        QMetaObject::invokeMethod(state_->fpga_controller_, &VaporView::Ground::Devices::FpgaDeviceController::snapshotConfiguration, Qt::QueuedConnection);
+    if (state_->fpga_ready_ && state_->fpga_session_.controller())
+        QMetaObject::invokeMethod(state_->fpga_session_.controller(), &VaporView::Ground::Devices::FpgaDeviceController::snapshotConfiguration, Qt::QueuedConnection);
     if (state_->combination_navigation_page_)
         state_->combination_navigation_page_->refreshStatus();
     updateRecordingStatusLabel();

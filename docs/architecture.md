@@ -80,6 +80,7 @@ lists and target-specific dependencies are owned by module CMake files under
 | Target | Purpose | Important dependencies |
 | --- | --- | --- |
 | `vaporview_protocol` | Telemetry codec, link contract, and sky configuration | Qt Core |
+| `vaporview_telemetry_transport` | Serial/TCP telemetry implementations shared by Ground and Sky | protocol, Qt Core/Network/SerialPort |
 | `vaporview_wave_encoding` | TCP waveform byte encoding | Qt Core |
 | `vaporview_session_format` | Shared session layout, manifest, path compatibility, RAW DAT, and CSV format | Qt Core |
 | `vaporview_geo_core` | Coordinates, track quality, buffers, replay, and session track loading | Qt Core; session format |
@@ -100,7 +101,7 @@ lists and target-specific dependencies are owned by module CMake files under
 | --- | --- | --- |
 | `vaporview_ground_device_policy` | Pure sample-rate parsing/clamping and EPSILON packet-rate policy | Qt Core |
 | `vaporview_ground_temperature_command_state` | Confirmed RD105 state mapping and serial-setting persistence | Qt Core |
-| `vaporview_ground_device_core` | Collector registry, local connection lifecycle, serial detection, EPSILON/IMU configuration, remote link/state/decode | device policy, protocol, geo; sky core is private implementation |
+| `vaporview_ground_device_core` | Collector registry, local connection lifecycle, EPSILON/IMU configuration, remote link/state/decode, remote configuration and FPGA control sessions | device policy, protocol, geo, shared collectors and telemetry transport |
 | `vaporview_ground_session_core` | Recording service/layout, CSV load/export, indexing, playback, timeline, and waveform repository | session format, wave encoding, Qt Core |
 | `vaporview_ground_session_ui` | Session viewer composition and plot/table widgets | session core plus ground view targets, Qt Widgets |
 | `vaporview_ground_widgets` | Telemetry panels, temperature UI, EPSILON view, and `DevicePanelCoordinator` | app theme, Qt Widgets/Svg |
@@ -142,11 +143,16 @@ flowchart TD
   DU --> DP["device policy"]
   DU --> PR["protocol"]
   DU --> GEO["geo core"]
+  DU --> TT["telemetry transport"]
+  DU --> DC["shared collectors"]
+  TT --> PR
   SS --> SF["session format"]
   SS --> WE["wave encoding"]
   SC --> PR
   SC --> WE
   SC --> GEO
+  SC --> TT
+  SC --> DC
   ST --> PR
   GM --> M3["map3d osgEarth"]
   M3 --> GEO
@@ -156,6 +162,26 @@ Core targets (`device_policy`, `temperature_command_state`, `session_core`,
 `session_format`, `protocol`, `wave_encoding`, and `geo_core`) do not link Qt
 Widgets. UI targets expose Qt Widgets only where their public types require it;
 other dependencies are `PRIVATE`.
+
+### Selecting products
+
+`VAPORVIEW_BUILD_GROUND`, `VAPORVIEW_BUILD_SKY_CORE`, and
+`VAPORVIEW_BUILD_SKY_TUI` default to ON and can be selected independently. The
+compatibility `VaporViewSky` launcher is built when both Core and TUI are enabled.
+The desktop's legacy `--mode sky` entry point is available when Core is included;
+Ground services themselves do not depend on SkyRuntime.
+
+For a Core-only build, configure in the normal build directory:
+
+```text
+cmake -S . -B build/Release -DVAPORVIEW_BUILD_GROUND=OFF -DVAPORVIEW_BUILD_SKY_CORE=ON -DVAPORVIEW_BUILD_SKY_TUI=OFF -DBUILD_TESTING=OFF -DVAPORVIEW_ENABLE_OSGEARTH=OFF
+cmake --build build/Release --config Release --target VaporViewSkyCore
+```
+
+On Windows, run configuration, build and tests in the MSVC Developer environment
+with UTF-8 code page 65001. Core-only discovery requires Qt Core, Network and
+SerialPort, without Widgets/Svg/Concurrent. The existing integration test suite
+requires all three products; selective product builds use `BUILD_TESTING=OFF`.
 
 ## Ground runtime flow
 
@@ -200,6 +226,16 @@ advanced operations cannot bypass FPGA by opening another device serial port.
 `RemoteSkyController` owns the remote telemetry link and command sequence.
 `RemoteTelemetryDecoder` and
 `RemoteTelemetryState` turn wire messages into stable ground state.
+
+The desktop uses asynchronous TCP connection establishment; success is reported
+through the link-open signal, and cancellation invalidates queued connection
+events. The synchronous link API remains available for existing non-UI callers.
+
+`RemoteConfigSession` owns desired/confirmed Sky configuration and read/apply/save
+transaction identities, connection generations, timeouts and rollback of the
+confirmed transport choice. `FpgaControlSession` owns the local USB worker and
+remote request identity, freshness checks and submission policy. Neither service
+depends on QWidget. MainWindow maps fields to drafts and presents results.
 
 The host selection above is independent from the sensor transport path. The
 shared `SensorTransportPath` model has two values: `DirectDevices` means the
@@ -277,6 +313,23 @@ commands the core through local IPC; it does not directly open device ports.
 The shared telemetry codec is used on both sides so command IDs and payload
 formats remain compatible.
 
+Mutating requests submitted through IPC/telemetry reuse bounded results for
+120 seconds, except best-effort EPSILON calibration cancellation. Identity is
+scoped to client, runtime and telemetry connection;
+ordinary requests use command sequence, and FPGA operations retain their logical
+request ID. Reusing an identity with different contents is rejected. Read-only
+status/configuration queries remain fresh. The cache admits at most 128 completed
+requests and returns Busy instead of executing an untracked write at capacity.
+Retries within that identity/lifetime therefore cannot repeat an earlier
+successful recording/control action.
+
+RD105 requests submitted through the runtime use the same serialized transaction
+ownership as existing FPGA/EPSILON operations. Hardware work captures the collector
+and runs on a worker; configuration completion remains on the Core event loop.
+Status queries and heartbeat timers can continue while the device responds.
+The direct `executeCommand` API remains synchronous for compatibility/internal
+use; remote ingress uses `submitCommand`.
+
 The shared collectors target does not depend on SkyCore. The shared FPGA device
 core depends on those collectors, and SkyCore depends on the FPGA device core;
 Ground can reuse the shared core without a Ground/Sky application dependency cycle.
@@ -300,6 +353,8 @@ Behavior moved out of the window includes:
 - serial discovery: `SerialPortDetectionService`;
 - remote link/commands and normalized status: `RemoteSkyController` and
   `RemoteTelemetryState`;
+- remote configuration transaction state: `RemoteConfigSession`;
+- local FPGA worker lifecycle and remote control identity/policy: `FpgaControlSession`;
 - telemetry field decoding: `RemoteTelemetryDecoder`;
 - EPSILON packet-rate configuration: `EpsilonConfigurationService` and
   `DeviceRatePolicy`;

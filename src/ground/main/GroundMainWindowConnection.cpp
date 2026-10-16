@@ -253,7 +253,7 @@ bool MainWindow::homeDevicePortSelected(VaporView::SkyDeviceId device) const
 
 VaporView::DeviceState MainWindow::homeDeviceActionState(VaporView::SkyDeviceId device) const
 {
-    if (isRemoteSkyMode() && (state_->remote_sky_config_applying_ || state_->remote_sky_config_loading_)) return VaporView::DeviceState::Disabled;
+    if (isRemoteSkyMode() && (state_->remote_config_session_.applying || state_->remote_config_session_.reading)) return VaporView::DeviceState::Disabled;
     if (isFpgaRelayPath()) return homeFpgaDeviceActionState(device);
     if (isUiTestMode())
     {
@@ -320,7 +320,7 @@ VaporView::DeviceState MainWindow::homeDeviceActionState(VaporView::SkyDeviceId 
 
 void MainWindow::triggerHomeDeviceAction(VaporView::SkyDeviceId device)
 {
-    if (isRemoteSkyMode() && (state_->remote_sky_config_applying_ || state_->remote_sky_config_loading_)) return;
+    if (isRemoteSkyMode() && (state_->remote_config_session_.applying || state_->remote_config_session_.reading)) return;
     const VaporView::DeviceState state = homeDeviceActionState(device);
     if (state == VaporView::DeviceState::Disabled ||
         state == VaporView::DeviceState::Connecting ||
@@ -1027,7 +1027,7 @@ void MainWindow::onRemoteSerialPortDetectionResult(const QJsonObject& result)
     const bool success = result.value(QStringLiteral("success")).toBool();
     if (success && !canceled)
     {
-        VaporView::SkyConfig config = state_->remote_sky_config_;
+        VaporView::SkyConfig config = state_->remote_config_session_.desired;
         const auto baudCapabilities = [&config](const QString& key)
             -> const VaporView::BaudRateCapabilities& {
             if (key == QStringLiteral("epsilon"))
@@ -1096,11 +1096,11 @@ void MainWindow::onRemoteSerialPortDetectionResult(const QJsonObject& result)
         }
         if (acceptedDetection)
         {
-            state_->remote_sky_config_ = config;
-            state_->remote_sky_config_loaded_ = true;
-            state_->remote_sky_config_loaded_generation_ =
+            state_->remote_config_session_.desired = config;
+            state_->remote_config_session_.loaded = true;
+            state_->remote_config_session_.loadedGeneration =
                 state_->remote_sky_controller_ ? state_->remote_sky_controller_->linkGeneration() : 0;
-            state_->remote_sky_config_dirty_ = true;
+            state_->remote_config_session_.dirty = true;
             setRemoteSkyConfigUi(config);
         }
         setRemoteSkyConfigStatus(state_->is_english_
@@ -1164,7 +1164,7 @@ void MainWindow::onAutoDetectPortsClicked()
         {
             return;
         }
-        if (!state_->remote_sky_config_loaded_)
+        if (!state_->remote_config_session_.loaded)
         {
             state_->remote_serial_detection_pending_ = true;
             requestRemoteSkyConfigIfAvailable(false);
@@ -1521,7 +1521,12 @@ void MainWindow::onConnectClicked()
                              {{QStringLiteral("transport"), QStringLiteral("tcp")},
                               {QStringLiteral("endpoint"), openedText},
                               {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
-            opened = state_->remote_sky_controller_ && state_->remote_sky_controller_->openTcp(host, static_cast<quint16>(tcpPort));
+            opened = state_->remote_sky_controller_ && state_->remote_sky_controller_->openTcpAsync(host, static_cast<quint16>(tcpPort));
+            if (opened) {
+                state_->connection_attempt_in_progress_ = true;
+                updateConnectionStatus(false);
+                return;
+            }
         }
         else
         {
@@ -1759,7 +1764,7 @@ void MainWindow::onDisconnectClicked()
     if (isFpgaRelayPath() &&
         (state_->fpga_connected_ || state_->fpga_busy_ || state_->fpga_replaying_))
     {
-        QMetaObject::invokeMethod(state_->fpga_controller_, &VaporView::Ground::Devices::FpgaDeviceController::disconnectDevice, Qt::QueuedConnection);
+        QMetaObject::invokeMethod(state_->fpga_session_.controller(), &VaporView::Ground::Devices::FpgaDeviceController::disconnectDevice, Qt::QueuedConnection);
         return;
     }
     if (isUiTestMode())
@@ -1778,6 +1783,7 @@ void MainWindow::onDisconnectClicked()
     }
     if (isRemoteSkyMode())
     {
+        state_->connection_attempt_in_progress_ = false;
         publishGroundLog(VaporView::LogLevel::Info,
                          QStringLiteral("telemetry.connection"),
                          QStringLiteral("remote_sky_disconnection_started"),
@@ -1835,6 +1841,20 @@ void MainWindow::onCancelConnectClicked()
                            state_->is_english_ ? QStringLiteral("Simulated connection canceled")
                                                : QStringLiteral("模拟连接已取消"),
                            {{QStringLiteral("reason_code"), QStringLiteral("USER_CANCELLED")}});
+        return;
+    }
+    if (isRemoteSkyMode() && state_->connection_attempt_in_progress_)
+    {
+        state_->connection_attempt_in_progress_ = false;
+        state_->remote_sky_controller_->close();
+        markRemoteSkyLinkClosed();
+        updateConnectionStatus(false);
+        publishGroundLog(VaporView::LogLevel::Info,
+                         QStringLiteral("device.connection"),
+                         QStringLiteral("device_connection_cancel_requested"),
+                         QStringLiteral("已取消天空端 TCP 数传连接。"),
+                         {{QStringLiteral("reason_code"), QStringLiteral("USER_CANCELLED")},
+                          {QStringLiteral("ui_visibility"), QStringLiteral("attention")}});
         return;
     }
     if (!state_->connection_attempt_in_progress_ || !state_->local_connection_coordinator_)

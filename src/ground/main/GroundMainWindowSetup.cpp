@@ -799,8 +799,8 @@ void MainWindow::setupCustomTitleBar()
                 if (!combo->isEnabled())
                 {
                     QString message;
-                    if (isRemoteSkyMode() && !state_->remote_sky_config_loading_ &&
-                        !state_->remote_sky_config_applying_ && !state_->remote_sky_config_saving_)
+                    if (isRemoteSkyMode() && !state_->remote_config_session_.reading &&
+                        !state_->remote_config_session_.applying && !state_->remote_config_session_.saving)
                     {
                         message = state_->is_english_
                             ? QStringLiteral("Connect to Sky and read its device configuration before switching Direct/FPGA mode.")
@@ -3876,7 +3876,7 @@ void MainWindow::applyDeviceConfigTcpWaveEndpoint()
         return;
     }
 
-    if (!state_->remote_sky_config_loaded_)
+    if (!state_->remote_config_session_.loaded)
     {
         syncDeviceConfigTcpWaveEndpointFromPanel();
         return;
@@ -3902,8 +3902,8 @@ void MainWindow::applyDeviceConfigTcpWaveEndpoint()
 VaporView::SensorTransportPath MainWindow::currentSensorTransportPath() const
 {
     return isRemoteSkyMode()
-        ? (state_->remote_sky_config_applying_ ? state_->remote_sky_baseline_config_.sensor_transport_path
-                                             : state_->remote_sky_config_.sensor_transport_path)
+        ? (state_->remote_config_session_.applying ? state_->remote_config_session_.baseline.sensor_transport_path
+                                             : state_->remote_config_session_.desired.sensor_transport_path)
         : state_->local_device_config_.sensorTransportPath;
 }
 
@@ -3947,11 +3947,11 @@ void MainWindow::onSensorTransportPathChanged(int index)
     if (isRemoteSkyMode())
     {
         if (currentSensorTransportPath() == VaporView::SensorTransportPath::DirectDevices)
-            state_->remote_sky_config_ = remoteSkyConfigFromDeviceConfigUi();
-        state_->remote_sky_config_.sensor_transport_path = path;
-        if (path == VaporView::SensorTransportPath::FpgaRelay) state_->remote_sky_config_.fpga.enabled = true;
-        setRemoteSkyConfigUi(state_->remote_sky_config_);
-        if (state_->remote_sky_config_loaded_)
+            state_->remote_config_session_.desired = remoteSkyConfigFromDeviceConfigUi();
+        state_->remote_config_session_.desired.sensor_transport_path = path;
+        if (path == VaporView::SensorTransportPath::FpgaRelay) state_->remote_config_session_.desired.fpga.enabled = true;
+        setRemoteSkyConfigUi(state_->remote_config_session_.desired);
+        if (state_->remote_config_session_.loaded)
         {
             markRemoteSkyConfigDirty();
             onRemoteSkyConfigApplyClicked();
@@ -4193,10 +4193,10 @@ void MainWindow::updateDeviceConfigState()
         const bool remoteLinkOpen = isUiTestMode() ||
             (state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen());
         const bool remoteConfigEditable = remote && remoteLinkOpen &&
-            (isUiTestMode() || state_->remote_sky_config_loaded_) &&
-            !state_->remote_sky_config_loading_ &&
-            !state_->remote_sky_config_applying_ &&
-            !state_->remote_sky_config_saving_;
+            (isUiTestMode() || state_->remote_config_session_.loaded) &&
+            !state_->remote_config_session_.reading &&
+            !state_->remote_config_session_.applying &&
+            !state_->remote_config_session_.saving;
         state_->device_config_.sensor_transport_path_combo->setEnabled(
             remote ? remoteConfigEditable
                    : localInputsEnabled);
@@ -4230,8 +4230,8 @@ void MainWindow::updateDeviceConfigState()
             ? QStringLiteral("remote:%1:%2:%3")
                   .arg(state_->remote_sky_controller_
                            ? state_->remote_sky_controller_->linkGeneration() : 0)
-                  .arg(state_->remote_sky_config_.epsilon.port)
-                  .arg(state_->remote_sky_config_.epsilon.baud_rate)
+                  .arg(state_->remote_config_session_.desired.epsilon.port)
+                  .arg(state_->remote_config_session_.desired.epsilon.baud_rate)
             : QStringLiteral("local:%1:%2")
                   .arg(state_->local_device_config_.epsilon.port,
                        state_->local_device_config_.epsilon.baudText);

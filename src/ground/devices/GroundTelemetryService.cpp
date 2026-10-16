@@ -134,6 +134,21 @@ bool GroundTelemetryService::openTcp(const QString& host, quint16 port)
     return openLink(std::move(link));
 }
 
+bool GroundTelemetryService::openTcpAsync(const QString& host, quint16 port)
+{
+    auto link = std::make_unique<TcpTelemetryLink>();
+    auto *tcp = link.get();
+    transport_type_ = TelemetryTransportType::Tcp;
+    openLink(std::move(link));
+    return tcp->connectToHostAsync(host, port);
+}
+
+bool GroundTelemetryService::isConnecting() const
+{
+    const auto *tcp = qobject_cast<const TcpTelemetryLink *>(link_.get());
+    return tcp && tcp->isConnecting();
+}
+
 void GroundTelemetryService::close()
 {
     const bool wasOpen = link_ && link_->isOpen();
@@ -761,6 +776,7 @@ void GroundTelemetryService::attachLinkSignals()
             pending_commands_.clear();
             ++link_generation_;
         }
+        else retry_timer_.start();
         emit linkOpenChanged(open);
     });
     connect(activeLink, &TelemetryLink::errorOccurred, this, [this, activeLink](const QString& systemError) {

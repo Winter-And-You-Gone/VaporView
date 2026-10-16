@@ -36,7 +36,9 @@
 #include "app/StartupSplash.h"
 #include "ground/devices/RemoteSkyController.h"
 #include "ground/main/MainWindow.h"
+#ifdef VAPORVIEW_HAS_SKY_CORE
 #include "SkyRuntime.h"
+#endif
 #include "SerialBaudRate.h"
 
 #include <algorithm>
@@ -750,6 +752,7 @@ int runApplication(int argc, char *argv[])
 
     if (parser.value(modeOption).compare(QStringLiteral("sky"), Qt::CaseInsensitive) == 0)
     {
+#ifdef VAPORVIEW_HAS_SKY_CORE
         VaporView::SkyRuntimeOptions options;
         VaporView::TelemetryTransportType transport = VaporView::TelemetryTransportType::Tcp;
         if (!VaporView::parseTelemetryTransport(parser.value(telemetryTransportOption), transport))
@@ -838,6 +841,16 @@ int runApplication(int argc, char *argv[])
             return requestProcessExit(1, "sky_runtime_start_failed");
         }
         return runEventLoop();
+#else
+        logService.publish(VaporView::LogLevel::Error,
+                           QStringLiteral("App"), QStringLiteral("startup.arguments"),
+                           QStringLiteral("此构建未包含 SkyCore，请使用单独的 VaporViewSkyCore 程序。"),
+                           {{QStringLiteral("event"), QStringLiteral("startup_argument_invalid")},
+                            {QStringLiteral("error_code"), QStringLiteral("SKY_CORE_NOT_BUILT")},
+                            {QStringLiteral("argument"), QStringLiteral("--mode")},
+                            {QStringLiteral("value"), QStringLiteral("sky")}});
+        return requestProcessExit(2, "sky_core_not_built");
+#endif
     }
 
     auto *startupSplash = new VaporView::StartupSplash;

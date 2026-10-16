@@ -93,6 +93,7 @@ if(WIN32)
     list(APPEND NAV_WIN_RESOURCES ${CMAKE_SOURCE_DIR}/resources/app.rc)
 endif()
 
+if(VAPORVIEW_BUILD_GROUND)
 if(WIN32)
     add_executable(VaporView WIN32
         ${NAV_SOURCES}
@@ -123,8 +124,12 @@ target_link_libraries(VaporView PRIVATE
     Qt6::Svg
     vaporview_main_window
     vaporview_app_theme
-    vaporview_sky_core
 )
+if(VAPORVIEW_BUILD_SKY_CORE)
+    # Retain the legacy --mode sky entry point only in builds containing Core.
+    target_link_libraries(VaporView PRIVATE vaporview_sky_core)
+    target_compile_definitions(VaporView PRIVATE VAPORVIEW_HAS_SKY_CORE=1)
+endif()
 
 if(VAPORVIEW_ENABLE_OSGEARTH)
     if(WIN32)
@@ -132,6 +137,9 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
     endif()
 endif()
 
+endif()
+
+if(VAPORVIEW_BUILD_SKY_TUI AND VAPORVIEW_BUILD_SKY_CORE)
 add_executable(VaporViewSky
     ${SKY_TUI_SOURCES}
     ${SKY_TUI_HEADERS}
@@ -150,6 +158,9 @@ target_link_libraries(VaporViewSky PRIVATE
     vaporview_sky_tui
 )
 
+endif()
+
+if(VAPORVIEW_BUILD_SKY_CORE)
 add_executable(VaporViewSkyCore
     ${CMAKE_SOURCE_DIR}/src/app/sky_core_main.cpp
 )
@@ -173,6 +184,9 @@ add_custom_command(TARGET VaporViewFpgaSimulator POST_BUILD
         $<TARGET_FILE_DIR:VaporViewFpgaSimulator>/StartFpgaSimulator.cmd
 )
 
+endif()
+
+if(VAPORVIEW_BUILD_SKY_TUI)
 add_executable(VaporViewSkyTui
     ${CMAKE_SOURCE_DIR}/src/app/sky_tui_main.cpp
 )
@@ -186,16 +200,25 @@ target_link_libraries(VaporViewSkyTui PRIVATE
     vaporview_sky_tui
 )
 
-add_dependencies(VaporViewSkyTui VaporViewSkyCore)
-add_dependencies(VaporViewSky VaporViewSkyTui)
-add_dependencies(VaporView VaporViewSky)
+endif()
+
+if(TARGET VaporViewSky AND TARGET VaporViewSkyTui)
+    add_dependencies(VaporViewSkyTui VaporViewSkyCore)
+    add_dependencies(VaporViewSky VaporViewSkyTui)
+endif()
+if(TARGET VaporView AND TARGET VaporViewSky)
+    add_dependencies(VaporView VaporViewSky)
+endif()
 
 if(WIN32)
     foreach(vaporview_app_target IN ITEMS VaporView VaporViewSky VaporViewSkyCore VaporViewSkyTui VaporViewFpgaSimulator)
-        vaporview_set_windows_as_invoker_manifest(${vaporview_app_target})
+        if(TARGET ${vaporview_app_target})
+            vaporview_set_windows_as_invoker_manifest(${vaporview_app_target})
+        endif()
     endforeach()
 endif()
 
+if(VAPORVIEW_BUILD_GROUND)
 add_custom_target(VaporViewRuntimeResources ALL
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/resources
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -238,6 +261,9 @@ add_custom_command(TARGET VaporView POST_BUILD
     COMMENT "Copying resources to build directory"
 )
 
+endif()
+
+if(TARGET VaporViewSky)
 add_custom_command(TARGET VaporViewSky POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:VaporViewSky>/resources
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -245,7 +271,9 @@ add_custom_command(TARGET VaporViewSky POST_BUILD
         $<TARGET_FILE_DIR:VaporViewSky>/resources/sky_startup_logo_ansi.txt
     COMMENT "Copying VaporViewSky resources to build directory"
 )
+endif()
 
+if(TARGET VaporViewSkyTui)
 add_custom_command(TARGET VaporViewSkyTui POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:VaporViewSkyTui>/resources
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -253,5 +281,6 @@ add_custom_command(TARGET VaporViewSkyTui POST_BUILD
         $<TARGET_FILE_DIR:VaporViewSkyTui>/resources/sky_startup_logo_ansi.txt
     COMMENT "Copying VaporViewSkyTui resources to build directory"
 )
+endif()
 
 vaporview_configure_platform_runtime()

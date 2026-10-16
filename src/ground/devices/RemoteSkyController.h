@@ -29,6 +29,7 @@ public:
     bool openSerial(const QString& port, int baud);
     bool open(const QString& port, int baud) { return openSerial(port, baud); }
     bool openTcp(const QString& host, quint16 port);
+    bool openTcpAsync(const QString& host, quint16 port);
     void close();
     bool isOpen() const;
     quint64 linkGeneration() const;

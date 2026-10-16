@@ -290,6 +290,12 @@ void RemoteSkyController::close()
     service_.close();
 }
 
+bool RemoteSkyController::openTcpAsync(const QString& host, quint16 port)
+{
+    if (VaporView::settingsWritesSuspended()) return false;
+    return service_.openTcpAsync(host, port);
+}
+
 bool RemoteSkyController::isOpen() const
 {
     return service_.isOpen();

@@ -57,6 +57,7 @@ target_link_libraries(vaporview_protocol PUBLIC
     vaporview_logging
 )
 
+if(VAPORVIEW_BUILD_GROUND OR VAPORVIEW_BUILD_SKY_TUI)
 add_library(vaporview_app_theme STATIC
     ${CMAKE_SOURCE_DIR}/src/shared/theme/AppTheme.cpp
     ${CMAKE_SOURCE_DIR}/src/shared/theme/SingleLevelPopupComboBox.cpp
@@ -67,6 +68,8 @@ add_library(vaporview_app_theme STATIC
     ${CMAKE_SOURCE_DIR}/src/shared/theme/SingleLevelPopupMenu.h
     ${CMAKE_SOURCE_DIR}/src/shared/theme/TopLevelCardStyle.h
 )
+
+endif()
 
 add_library(vaporview_app_config STATIC
     ${CMAKE_SOURCE_DIR}/src/shared/config/ApplicationConfig.cpp
@@ -82,6 +85,7 @@ target_link_libraries(vaporview_app_config PUBLIC
     Qt6::Core
 )
 
+if(TARGET vaporview_app_theme)
 target_include_directories(vaporview_app_theme PUBLIC
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/src
@@ -90,6 +94,8 @@ target_include_directories(vaporview_app_theme PUBLIC
 target_link_libraries(vaporview_app_theme PUBLIC
     Qt6::Widgets
 )
+
+endif()
 
 add_library(vaporview_wave_encoding STATIC
     ${CMAKE_SOURCE_DIR}/src/shared/wave/TcpWaveEncoding.cpp
@@ -105,3 +111,13 @@ target_link_libraries(vaporview_wave_encoding PUBLIC
 )
 
 add_subdirectory(session)
+
+add_library(vaporview_telemetry_transport STATIC
+    ${CMAKE_SOURCE_DIR}/src/shared/telemetry/SerialTelemetryLink.cpp
+    ${CMAKE_SOURCE_DIR}/src/shared/telemetry/TcpTelemetryLink.cpp
+    ${CMAKE_SOURCE_DIR}/include/SerialTelemetryLink.h
+    ${CMAKE_SOURCE_DIR}/include/TcpTelemetryLink.h
+)
+target_include_directories(vaporview_telemetry_transport PUBLIC ${CMAKE_SOURCE_DIR}/include)
+target_link_libraries(vaporview_telemetry_transport PUBLIC
+    vaporview_protocol Qt6::Core Qt6::SerialPort Qt6::Network)

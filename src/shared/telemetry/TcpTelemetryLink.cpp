@@ -9,6 +9,13 @@ TcpTelemetryLink::TcpTelemetryLink(QObject *parent)
     : TelemetryLink(parent)
 {
     connect(&server_, &QTcpServer::newConnection, this, &TcpTelemetryLink::onNewConnection);
+    connect_timer_.setSingleShot(true);
+    connect(&connect_timer_, &QTimer::timeout, this, [this] {
+        if (!isConnecting()) return;
+        closeSocket();
+        emit errorOccurred(QStringLiteral("TCP connection timed out."));
+        emit openChanged(false);
+    });
 }
 
 bool TcpTelemetryLink::listen(const QString& host, quint16 port)
@@ -68,8 +75,29 @@ bool TcpTelemetryLink::connectToHost(const QString& host, quint16 port)
     return true;
 }
 
+bool TcpTelemetryLink::connectToHostAsync(const QString& host, quint16 port)
+{
+    close();
+    role_ = Role::Client;
+    host_ = host.trimmed();
+    port_ = port;
+    if (host_.isEmpty() || !port_) return false;
+    auto *socket = new QTcpSocket(this);
+    attachSocket(socket);
+    connect_timer_.start(3000);
+    socket->connectToHost(host_, port_);
+    return true;
+}
+
+bool TcpTelemetryLink::isConnecting() const
+{
+    return socket_ && (socket_->state() == QAbstractSocket::ConnectingState ||
+                       socket_->state() == QAbstractSocket::HostLookupState);
+}
+
 void TcpTelemetryLink::close()
 {
+    connect_timer_.stop();
     const bool wasOpen = isOpen();
     server_.close();
     closeSocket();
@@ -224,7 +252,10 @@ void TcpTelemetryLink::onSocketError(QAbstractSocket::SocketError error)
     {
         return;
     }
+    const bool pending = connect_timer_.isActive();
+    connect_timer_.stop();
     emit errorOccurred(socket->errorString());
+    if (pending) emit openChanged(false);
 }
 
 void TcpTelemetryLink::attachSocket(QTcpSocket *socket)
@@ -236,10 +267,20 @@ void TcpTelemetryLink::attachSocket(QTcpSocket *socket)
     connect(socket_, &QTcpSocket::readyRead, this, &TcpTelemetryLink::onReadyRead);
     connect(socket_, &QTcpSocket::disconnected, this, &TcpTelemetryLink::onSocketDisconnected);
     connect(socket_, &QTcpSocket::connected, this, [this]() {
+        const bool asynchronous = connect_timer_.isActive();
+        connect_timer_.stop();
         if (!open_emitted_)
         {
             open_emitted_ = true;
             emit openChanged(true);
+        }
+        if (asynchronous) {
+            emitTcpLog(LogLevel::Info,
+                       QStringLiteral("telemetry_tcp_connected"),
+                       QStringLiteral("TCP 遥测客户端已连接。"),
+                       {{QStringLiteral("role"), QStringLiteral("client")},
+                        {QStringLiteral("host"), host_}, {QStringLiteral("port"), port_},
+                        {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
         }
     });
     connect(socket_, &QTcpSocket::errorOccurred, this, &TcpTelemetryLink::onSocketError);

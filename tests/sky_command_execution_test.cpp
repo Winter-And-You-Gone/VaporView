@@ -21,6 +21,9 @@ int main(int argc, char **argv)
     options.simulate_data = true;
     options.telemetry_tcp_port = 0;
     options.config_path = directory.filePath(QStringLiteral("sky.json"));
+    auto config = VaporView::SkyConfig::defaults();
+    config.temperature_controller.enabled = true;
+    require(config.saveToFile(options.config_path), "save isolated enabled temperature fixture");
     VaporView::SkyRuntime runtime(options);
     require(runtime.start(), "start isolated simulated Core");
     runtime.connectDevice(VaporView::SkyDeviceId::Epsilon);
@@ -139,6 +142,54 @@ int main(int argc, char **argv)
     while (!magneticCompleted && deadline.elapsed() < 3000) QCoreApplication::processEvents();
     require(magneticCompleted, "magnetic worker final result releases ownership after cancel");
 
+    VaporView::CommandMessage enable;
+    enable.command_id = VaporView::CommandId::EnableWaveformStreaming;
+    enable.command_seq = 100;
+    auto apply = [&](const VaporView::CommandMessage& request, const QByteArray& client = "retry-client") {
+        VaporView::CommandErrorCode error = VaporView::CommandErrorCode::InternalError;
+        runtime.submitCommand(request, [&](const VaporView::SkyCommandResult& result) {
+            error = result.ack.error_code;
+        }, client);
+        return error;
+    };
+    require(apply(enable) == VaporView::CommandErrorCode::Ok && runtime.waveformStreamingEnabled(),
+            "ordinary mutating command executes once");
+    auto disable = enable;
+    disable.command_id = VaporView::CommandId::DisableWaveformStreaming;
+    disable.command_seq = 101;
+    require(apply(disable) == VaporView::CommandErrorCode::Ok && !runtime.waveformStreamingEnabled(),
+            "new identity executes a later command");
+    require(apply(enable) == VaporView::CommandErrorCode::Ok && !runtime.waveformStreamingEnabled(),
+            "lost ACK retry reuses result without repeating the earlier side effect");
+    disable.command_seq = enable.command_seq;
+    require(apply(disable) == VaporView::CommandErrorCode::InvalidPayload,
+            "one command identity cannot be reused for a different payload");
+    require(apply(enable, "other-client") == VaporView::CommandErrorCode::Ok && runtime.waveformStreamingEnabled(),
+            "independent clients do not share command identities");
+
+    runtime.connectDevice(VaporView::SkyDeviceId::TemperatureController);
+    VaporView::TemperatureControllerCommand temperature;
+    temperature.channel = 1;
+    temperature.target_temperature_c = 20;
+    VaporView::CommandMessage temperatureCommand;
+    temperatureCommand.command_id = VaporView::CommandId::SetTemperatureTarget;
+    temperatureCommand.command_seq = 110;
+    temperatureCommand.payload = VaporView::TelemetryCodec::serializeTemperatureControllerCommand(temperature);
+    bool temperatureCompleted = false;
+    runtime.submitCommand(temperatureCommand, [&](const VaporView::SkyCommandResult& result) {
+        require(result.ack.error_code == VaporView::CommandErrorCode::Ok, "temperature transaction completes");
+        temperatureCompleted = true;
+    });
+    require(!temperatureCompleted, "temperature control yields the Core event loop");
+    statusCompleted = false;
+    runtime.submitCommand(status, [&](const VaporView::SkyCommandResult& result) {
+        statusCompleted = result.ack.error_code == VaporView::CommandErrorCode::Ok;
+    });
+    require(statusCompleted, "status remains available during temperature control");
+    deadline.restart();
+    while (!temperatureCompleted && deadline.elapsed() < 3000) QCoreApplication::processEvents();
+    require(temperatureCompleted, "temperature completion returns on the Core event loop");
+
     VaporView::SkyLocalIpcServer ipc(&runtime);
     require(ipc.listen(QStringLiteral("127.0.0.1"), 0), "listen isolated IPC server");
     QTcpSocket slowClient;
@@ -174,4 +225,9 @@ int main(int argc, char **argv)
     ipc.close();
     runtime.stop();
     QCoreApplication::processEvents();
+    require(runtime.start(), "restart Core with a new command lifetime");
+    runtime.setWaveformStreamingEnabled(false);
+    require(apply(enable) == VaporView::CommandErrorCode::Ok && runtime.waveformStreamingEnabled(),
+            "same identity after Core restart cannot reuse an old cached result");
+    runtime.stop();
 }

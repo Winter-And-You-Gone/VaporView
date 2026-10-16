@@ -1,5 +1,10 @@
-find_package(Qt6 COMPONENTS Core Widgets SerialPort Network Svg Concurrent REQUIRED)
-set(QT_LIBRARIES Qt6::Core Qt6::Widgets Qt6::SerialPort Qt6::Network Qt6::Svg Qt6::Concurrent)
+find_package(Qt6 COMPONENTS Core SerialPort Network REQUIRED)
+if(VAPORVIEW_BUILD_GROUND OR VAPORVIEW_BUILD_SKY_TUI)
+    find_package(Qt6 COMPONENTS Widgets Svg REQUIRED)
+endif()
+if(VAPORVIEW_BUILD_GROUND)
+    find_package(Qt6 COMPONENTS Concurrent REQUIRED)
+endif()
 
 if(WIN32)
     find_program(QT_WINDEPLOYQT_EXECUTABLE

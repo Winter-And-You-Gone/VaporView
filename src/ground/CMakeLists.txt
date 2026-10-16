@@ -25,7 +25,7 @@ target_link_libraries(vaporview_ground_ui_support PUBLIC
 target_link_libraries(vaporview_ground_ui_support PRIVATE
     vaporview_app_theme
     vaporview_ground_device_core
-    vaporview_sky_core
+    vaporview_device_collectors
     Qt6::Svg
 )
 
@@ -108,7 +108,7 @@ target_link_libraries(vaporview_main_window PRIVATE
     vaporview_app_config
     vaporview_app_theme
     vaporview_geo_core
-    vaporview_sky_core
+    vaporview_device_collectors
     vaporview_ground_ui_support
     rtklib_strsvr
     vaporview_ground_device_core

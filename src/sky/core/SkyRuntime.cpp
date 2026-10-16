@@ -541,6 +541,8 @@ void SkyRuntime::stop()
     maintenance_request_id_ = 0;
     epsilon_settings_operation_pending_ = false;
     active_command_callbacks_.clear();
+    command_results_.clear();
+    command_request_payloads_.clear();
     serial_port_detection_cancel_requested_.store(true);
     if (serial_port_detection_thread_.joinable())
     {
@@ -1234,7 +1236,13 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
     DeviceOperationRequest fpgaIdentity;
     const bool hasFpgaIdentity=command.command_id==CommandId::DeviceOperation &&
         TelemetryCodec::parseDeviceOperationRequest(command.payload,fpgaIdentity) && fpgaIdentity.device_id==SkyDeviceId::Fpga;
-    QByteArray key = clientScope + '\0' + TelemetryCodec::serializeCommand(command);
+    const bool cacheable = command.command_id != CommandId::RequestStatus &&
+        command.command_id != CommandId::QueryDeviceStatus && command.command_id != CommandId::GetSkyConfig &&
+        command.command_id != CommandId::RequestOneWaveform;
+    QByteArray key = clientScope + '\0' + QByteArray::number(device_command_generation_) + ':';
+    if (clientScope == QByteArrayLiteral("telemetry"))
+        key += QByteArray::number(telemetry_stream_generation_) + ':';
+    key += QByteArray::number(command.command_seq);
     if(hasFpgaIdentity) {
         key=clientScope+'\1'+QByteArrayLiteral("fpga:")+QByteArray::number(device_command_generation_)+':';
         if(clientScope==QByteArrayLiteral("telemetry")) key+=QByteArray::number(telemetry_stream_generation_)+':';
@@ -1247,18 +1255,20 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
     const qint64 now = command_clock_.elapsed();
     for (auto it = command_results_.begin(); it != command_results_.end();)
         if (now - it.value().first >= 120000) {
-            fpga_request_payloads_.remove(it.key());it = command_results_.erase(it);
+            command_request_payloads_.remove(it.key());it = command_results_.erase(it);
         } else ++it;
-    if(hasFpgaIdentity && fpga_request_payloads_.contains(key) && fpga_request_payloads_.value(key)!=command.payload) {
+    const auto identityPayload = TelemetryCodec::serializeCommand(command);
+    const auto requestPayload = hasFpgaIdentity ? command.payload : identityPayload;
+    if(cacheable && command_request_payloads_.contains(key) && command_request_payloads_.value(key)!=requestPayload) {
         SkyCommandResult result;result.ack=makeAck(command,CommandErrorCode::InvalidPayload);
-        result.send_device_operation_response=true;
+        result.send_device_operation_response=hasFpgaIdentity;
         result.device_operation_response={fpgaIdentity.request_id,fpgaIdentity.device_id,fpgaIdentity.operation,
             CommandErrorCode::InvalidPayload,QStringLiteral("Request ID already belongs to a different FPGA operation payload."),{}};
         completion(result);return;
     }
     const auto cached = command_results_.constFind(key);
-    if (cached != command_results_.cend()) { completion(cached.value().second); return; }
-    if (key == active_command_key_ && active_command_callbacks_.size() < 16)
+    if (cacheable && cached != command_results_.cend()) { completion(cached.value().second); return; }
+    if (cacheable && key == active_command_key_ && active_command_callbacks_.size() < 16)
     {
         active_command_callbacks_.push_back(std::move(completion));
         return;
@@ -1293,7 +1303,7 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
         command.command_id != CommandId::StartRecording && command.command_id != CommandId::PauseRecording &&
         command.command_id != CommandId::StopRecording && command.command_id != CommandId::RequestOneWaveform;
     if ((!active_command_key_.isEmpty() && mutatesDevice) ||
-        (command.command_id == CommandId::DeviceOperation && command_results_.size() >= 128))
+        (cacheable && command_results_.size() + (active_command_key_.isEmpty() ? 0 : 1) >= 128))
     {
         busy();
         return;
@@ -1323,7 +1333,7 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
             completion(result); return;
         }
         active_command_key_=key; active_command_callbacks_.push_back(std::move(completion));
-        if(fpgaDeviceOperation) fpga_request_payloads_.insert(key,command.payload);
+        command_request_payloads_.insert(key,requestPayload);
         const quint64 generation=device_command_generation_;
         device_manager_.submitFpgaControl(operation, [this,command,request,key,generation,fpgaDeviceOperation](CommandErrorCode code,QString error,QJsonObject document) {
             if (generation!=device_command_generation_ || active_command_key_!=key) return;
@@ -1339,12 +1349,52 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
         });
         return;
     }
+    if (quint16(command.command_id) >= quint16(CommandId::SetTemperatureTarget) &&
+        quint16(command.command_id) <= quint16(CommandId::SetTemperatureStartupDelay))
+    {
+        auto work = device_manager_.prepareTemperatureOperation(command);
+        if (device_command_thread_.joinable()) device_command_thread_.join();
+        active_command_key_ = key;
+        command_request_payloads_.insert(key, requestPayload);
+        active_command_callbacks_.push_back(std::move(completion));
+        const auto generation = device_command_generation_;
+        const bool simulated = !work;
+        auto finish = [this, command, key, generation, simulated](CommandErrorCode error) {
+            if (generation != device_command_generation_ || active_command_key_ != key) return;
+            SkyCommandResult result;
+            if (simulated) result = executeCommand(command);
+            else {
+                device_manager_.completeTemperatureOperation(command, error);
+                result.ack = makeAck(command, error);
+                result.send_status = true;
+            }
+            command_results_.insert(key, qMakePair(command_clock_.elapsed(), result));
+            active_command_key_.clear();
+            const auto callbacks = std::move(active_command_callbacks_);
+            active_command_callbacks_.clear();
+            for (const auto& callback : callbacks) callback(result);
+        };
+        if (!work) QTimer::singleShot(0, this, [finish] { finish(CommandErrorCode::Ok); });
+        else {
+            try {
+                device_command_thread_ = std::thread([this, work = std::move(work), finish] {
+                    CommandErrorCode error = CommandErrorCode::InternalError;
+                    try { error = work(); } catch (...) { }
+                    QMetaObject::invokeMethod(this, [finish, error] { finish(error); }, Qt::QueuedConnection);
+                });
+            } catch (const std::system_error&) { finish(CommandErrorCode::InternalError); }
+        }
+        return;
+    }
     if (command.command_id != CommandId::DeviceOperation ||
         !TelemetryCodec::parseDeviceOperationRequest(command.payload, request) ||
         request.device_id != SkyDeviceId::Epsilon)
     {
         const auto result = executeCommand(command);
-        if (command.command_id == CommandId::DeviceOperation) command_results_.insert(key, qMakePair(now, result));
+        if (cacheable && result.ack.error_code != CommandErrorCode::DeviceOperationBusy) {
+            command_request_payloads_.insert(key,requestPayload);
+            command_results_.insert(key, qMakePair(command_clock_.elapsed(), result));
+        }
         completion(result);
         return;
     }
@@ -1388,6 +1438,7 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
     auto work = device_manager_.prepareEpsilonOperation(request, snapshot, message, maintenance, dgnss, maintenance_cancel_, progress);
     if (device_command_thread_.joinable()) device_command_thread_.join();
     active_command_key_ = key;
+    command_request_payloads_.insert(key,requestPayload);
     epsilon_settings_operation_pending_ = settingsOperation;
     active_command_callbacks_.push_back(std::move(completion));
     const quint64 generation = device_command_generation_;
@@ -1434,6 +1485,7 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
         maintenance_cancel_.reset();
         maintenance_request_id_ = 0;
         active_command_key_.clear();
+        command_request_payloads_.remove(key);
         epsilon_settings_operation_pending_ = false;
         const auto callbacks = std::move(active_command_callbacks_);
         active_command_callbacks_.clear();

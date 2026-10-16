@@ -197,7 +197,7 @@ static void remotePageRouting()
     quint16 commandSequence = 0;
     {
         MainWindow window;
-        worker = window.findChild<QThread*>("fpgaUsbWorkerThread");
+        worker = window.testFpgaController()->thread();
         auto *page = window.findChild<FpgaControlPage*>("fpgaControlPage");
         auto *acquisition = page->findChild<QAbstractButton*>("fpgaAcquisitionStart");
         auto *disconnect = page->findChild<QAbstractButton*>("fpgaDisconnect");
@@ -1232,7 +1232,7 @@ int main(int argc,char **argv)
         auto *stack=window.findChild<QStackedWidget*>(QStringLiteral("mainPageStack"));
         auto *page=window.findChild<FpgaControlPage*>(QStringLiteral("fpgaControlPage"));
         require(stack && stack->count()==5 && page && stack->widget(4)==page,"fifth standalone persistent FPGA page");
-        worker=window.findChild<QThread*>(QStringLiteral("fpgaUsbWorkerThread"));
+        worker=window.testFpgaController()->thread();
         require(worker && worker->isRunning(),"USB worker has its own running event loop");
         require(page->configuration().pressureSource==0x40 && page->configuration().backend=="auto","PTB210 and auto backend defaults");
         auto *status=page->findChild<QLabel*>(QStringLiteral("fpgaConnectionStatus"));
@@ -1257,7 +1257,7 @@ int main(int argc,char **argv)
         const auto settings=VaporView::applicationConfigSettings();
         const auto saved=QJsonDocument::fromJson(settings.value(QStringLiteral("Fpga/desiredConfiguration")).toByteArray());
         require(page->configuration().pressureSource==0x40,"desired configuration persisted through application settings");
-        require(!window.findChild<QThread*>(QStringLiteral("fpgaUsbWorkerThread"))->isInterruptionRequested(),"worker still alive before teardown");
+        require(!worker->isInterruptionRequested(),"worker still alive before teardown");
     }
     require(worker.isNull(),"MainWindow teardown joins and deletes USB worker");
     for(int scale : {150,100}) {

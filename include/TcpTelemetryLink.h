@@ -7,6 +7,7 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QVariantMap>
+#include <QTimer>
 
 namespace VaporView
 {
@@ -26,6 +27,8 @@ public:
 
     bool listen(const QString& host, quint16 port);
     bool connectToHost(const QString& host, quint16 port);
+    bool connectToHostAsync(const QString& host, quint16 port);
+    bool isConnecting() const;
     void close() override;
     bool isOpen() const override;
     QString endpointDescription() const override;
@@ -53,6 +56,7 @@ private:
     QString host_;
     quint16 port_ = 0;
     bool open_emitted_ = false;
+    QTimer connect_timer_;
 };
 
 }  // namespace VaporView

@@ -29,6 +29,8 @@ public:
 
     bool open(const QString& portName, int baudRate);
     bool openTcp(const QString& host, quint16 port);
+    bool openTcpAsync(const QString& host, quint16 port);
+    bool isConnecting() const;
     void close();
     bool isOpen() const;
     TelemetryTransportType transportType() const;

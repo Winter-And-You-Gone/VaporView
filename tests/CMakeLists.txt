@@ -616,6 +616,11 @@ target_link_libraries(sky_command_execution_test PRIVATE vaporview_sky_core)
 vaporview_add_test(NAME sky_command_execution_test COMMAND sky_command_execution_test)
 set_tests_properties(sky_command_execution_test PROPERTIES LABELS "fast;unit;protocol" TIMEOUT 15)
 
+add_executable(device_control_sessions_test ${CMAKE_CURRENT_SOURCE_DIR}/device_control_sessions_test.cpp)
+target_link_libraries(device_control_sessions_test PRIVATE vaporview_ground_device_core)
+vaporview_add_test(NAME device_control_sessions_test COMMAND device_control_sessions_test)
+set_tests_properties(device_control_sessions_test PROPERTIES LABELS "fast;unit;devices" TIMEOUT 30)
+
 add_executable(rtk_config_dialog_test
     ${CMAKE_CURRENT_SOURCE_DIR}/rtk_config_dialog_test.cpp
 )

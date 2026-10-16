@@ -107,6 +107,8 @@ public:
     bool setTemperatureOvertempOutputMode(quint16 mode, CommandErrorCode *errorCode = nullptr);
     bool setTemperatureSensorConfig(const TemperatureControllerCommand& command, CommandErrorCode *errorCode = nullptr);
     bool restoreTemperatureFactoryDefaults(CommandErrorCode *errorCode = nullptr);
+    std::function<CommandErrorCode()> prepareTemperatureOperation(const CommandMessage& command);
+    void completeTemperatureOperation(const CommandMessage& command, CommandErrorCode result);
     bool readAi8Page(Ai8TemperatureControllerProtocol::Page page,
                      const Ai8TemperatureControllerProtocol::Selection& selection,
                      Ai8TemperatureControllerProtocol::PageData& data,

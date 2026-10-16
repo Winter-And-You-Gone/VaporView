@@ -553,10 +553,11 @@ MainWindow::MainWindow(QWidget *parent)
     }
     connect(state_->remote_sky_controller_.get(), &RemoteSkyController::commandTimedOut,
             this, [this](VaporView::CommandId commandId, quint16 commandSeq) {
+        state_->remote_config_session_.timeout(commandId, commandSeq);
         if (commandId == VaporView::CommandId::GetSkyConfig &&
-            commandSeq == state_->remote_sky_config_read_seq_)
+            commandSeq == state_->remote_config_session_.readSequence)
         {
-            state_->remote_sky_config_loading_ = false;
+            state_->remote_config_session_.reading = false;
             clearPendingRemoteWaveTcpConnection();
             setRemoteSkyConfigStatus(state_->is_english_
                 ? QStringLiteral("Remote Sky config read timed out.")
@@ -565,11 +566,11 @@ MainWindow::MainWindow(QWidget *parent)
             updateRemoteSkyConfigControlsState();
         }
         else if (commandId == VaporView::CommandId::SetSkyConfig &&
-                 commandSeq == state_->remote_sky_config_apply_seq_)
+                 commandSeq == state_->remote_config_session_.applySequence)
         {
-            state_->remote_sky_config_applying_ = false;
+            state_->remote_config_session_.applying = false;
             clearPendingRemoteWaveTcpConnection();
-            state_->remote_sky_config_dirty_ = true;
+            state_->remote_config_session_.dirty = true;
             setRemoteSkyConfigStatus(state_->is_english_
                 ? QStringLiteral("Remote Sky config apply timed out.")
                 : QStringLiteral("应用天空端配置超时。"),
@@ -578,9 +579,9 @@ MainWindow::MainWindow(QWidget *parent)
             updateRemoteSkyConfigControlsState();
         }
         else if (commandId == VaporView::CommandId::SaveSkyConfig &&
-                 commandSeq == state_->remote_sky_config_save_seq_)
+                 commandSeq == state_->remote_config_session_.saveSequence)
         {
-            state_->remote_sky_config_saving_ = false;
+            state_->remote_config_session_.saving = false;
             setRemoteSkyConfigStatus(state_->is_english_
                 ? QStringLiteral("Remote Sky config save timed out.")
                 : QStringLiteral("保存天空端配置超时。"),

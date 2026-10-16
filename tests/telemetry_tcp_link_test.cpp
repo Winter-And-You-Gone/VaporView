@@ -154,7 +154,8 @@ int main(int argc, char **argv)
     QObject::connect(&replacement, &VaporView::TelemetryLink::bytesReceived, [&](const QByteArray& bytes) {
         replacementBytes += bytes;
     });
-    require(replacement.connectToHost(QStringLiteral("127.0.0.1"), port), "replacement connect");
+    require(replacement.connectToHostAsync(QStringLiteral("127.0.0.1"), port), "replacement connection starts asynchronously");
+    require(!replacementOpen, "async connect returns before connection completion");
     require(waitUntil([&]() { return replacementOpen; }), "replacement open signal");
     require(waitUntil([&]() { return !clientOpen; }), "old client closed on replacement");
     require(replacement.writeBytes(resetProbe) == resetProbe.size(), "send complete new peer frame");
