@@ -1,6 +1,25 @@
 #include "SkyFpgaBackend.h"
 #include "sky_fpga_test_transport.h"
 
+void selectiveConnection()
+{
+    auto mock=std::make_unique<ScriptedTransport>();auto *wire=mock.get();
+    mock->regs[0x6004]=1;mock->regs[0x6304]=0;mock->regs[0x4004]=1;mock->regs[0x600c]=5;
+    SkyFpgaBackend backend(std::move(mock));
+    bool done=false;
+    backend.submit({{"op","connect"},{"backend","auto"},{"locator","mock"},{"recover",false}},
+        [&](CommandErrorCode code,QString,QJsonObject status) {
+            require(code==CommandErrorCode::Ok&&status.value("ready").toBool(),"Sky selective connection verifies readiness");done=true;
+        });
+    waitUntil([&]{return done;},"Sky selective connection completes");
+    require(!wire->commands.isEmpty(),"Sky selective handshake reaches the USB worker");
+    for(const auto &command:wire->commands)
+        require(command.message==0xfe||command.message==1||command.message==2,"Sky forwards selective policy without any recovery writes");
+    require(wire->regs.value(0x6004)==1&&wire->regs.value(0x6304)==0&&wire->regs.value(0x4004)==1&&wire->regs.value(0x600c)==5,
+        "Sky selective connection preserves running modules, stopped modules and errors");
+    backend.shutdown();
+}
+
 void diagnosticReadback()
 {
     auto mock=std::make_unique<ScriptedTransport>();auto *wire=mock.get();
@@ -37,6 +56,7 @@ void diagnosticReadback()
 int main(int argc,char **argv)
 {
     QCoreApplication app(argc,argv);
+    selectiveConnection();
     diagnosticReadback();
     auto mock=std::make_unique<ScriptedTransport>(); auto *wire=mock.get(); mock->failTemperature=true;mock->failWriteAddress=0x2010;
     SkyFpgaBackend backend(std::move(mock));

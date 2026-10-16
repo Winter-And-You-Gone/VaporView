@@ -375,6 +375,9 @@ foreach(fpga_test sensor_adapter usb_transport controller)
     set_tests_properties(fpga_${fpga_test}_test PROPERTIES LABELS "fast;unit;fpga" TIMEOUT 60)
 endforeach()
 
+vaporview_add_test(NAME fpga_selective_connection_test COMMAND fpga_controller_test --selective-connection)
+set_tests_properties(fpga_selective_connection_test PROPERTIES LABELS "fast;unit;fpga" TIMEOUT 30)
+
 vaporview_add_test(NAME fpga_sensor_configuration_test COMMAND fpga_controller_test --sensor-config)
 set_tests_properties(fpga_sensor_configuration_test PROPERTIES LABELS "integration;fpga" TIMEOUT 60)
 vaporview_add_test(NAME fpga_startup_warning_grace_test COMMAND fpga_controller_test --startup-grace)

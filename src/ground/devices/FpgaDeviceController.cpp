@@ -157,7 +157,7 @@ void FpgaDeviceController::logManagementEvent(const QJsonObject& event, bool aft
     emit logRecordGenerated(record);
 }
 
-void FpgaDeviceController::connectDevice(const QString& locator, const QString& backend)
+void FpgaDeviceController::connectDevice(const QString& locator, const QString& backend, ConnectMode mode)
 {
     disconnectDevice();
     if (!injected_) installSession(makeFpgaUsbHardwareTransport(backend));
@@ -171,7 +171,11 @@ void FpgaDeviceController::connectDevice(const QString& locator, const QString& 
         {"usb", QJsonObject::fromVariantMap(session_->transport()->diagnostic().fields)}});
     begin(QStringLiteral("核验协议和模块版本"));
     steps_.push_back({Kind::Ping}); steps_.push_back({Kind::Capabilities});
-    readAll(); steps_.push_back({Kind::CheckVersions}); steps_.push_back({Kind::RecoverConnection}); advance();
+    readAll(); steps_.push_back({Kind::CheckVersions});
+    // A device-row action opens the shared transport without restarting other
+    // sensors or acquisition. Explicit full connections retain recovery.
+    if (mode == ConnectMode::RecoverEnabledModules) steps_.push_back({Kind::RecoverConnection});
+    advance();
 }
 
 void FpgaDeviceController::disconnectDevice()

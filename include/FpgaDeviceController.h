@@ -22,6 +22,7 @@ class FpgaDeviceController final : public QObject
 {
     Q_OBJECT
 public:
+    enum class ConnectMode { RecoverEnabledModules, PreserveRunningModules };
     explicit FpgaDeviceController(std::unique_ptr<FpgaUsbTransport> transport = {}, QObject *parent = nullptr);
     ~FpgaDeviceController() override;
     bool connected() const { return session_ && session_->isOpen(); }
@@ -31,7 +32,8 @@ public:
     QJsonObject discoverDevices(const QString& backend = {}) const;
 
 public slots:
-    void connectDevice(const QString& locator, const QString& backend);
+    void connectDevice(const QString& locator, const QString& backend,
+                       ConnectMode mode = ConnectMode::RecoverEnabledModules);
     void disconnectDevice();
     void applyConfiguration(const FpgaControlConfig& config, const QString& section = QStringLiteral("all"));
     void setConfiguration(const FpgaControlConfig& config);

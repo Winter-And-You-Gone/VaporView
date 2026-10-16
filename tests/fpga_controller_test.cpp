@@ -356,6 +356,34 @@ void connectionRecovery(){
     failed.controller.refresh();failed.finish();require(!failed.controller.ready(),"readback cannot bypass failed connection recovery");
     for(const auto &c:failed.transport->commands)require(c.message!=0xb,"recovery failure aborts before restarting sensors");
 }
+void selectiveConnection(){
+    Fixture f;
+    const QMap<quint32,quint32> untouched{{0x2004,1},{0x3004,1},{0x4004,1},{0x5004,1},
+        {0x6004,1},{0x6104,0},{0x6304,1},{0x6404,0},{0x6504,0},{0x6604,1},
+        {0x600c,5},{0x630c,7},{0x500c,0x84},{0x50,1}};
+    for(auto it=untouched.cbegin();it!=untouched.cend();++it)f.transport->regs[it.key()]=it.value();
+    f.controller.connectDevice({},"auto",FpgaDeviceController::ConnectMode::PreserveRunningModules);f.finish();
+    require(f.controller.ready(),"selective connection still verifies capabilities and module versions");
+    require(!f.transport->commands.isEmpty(),"selective handshake reaches the USB transport");
+    for(const auto &c:f.transport->commands)
+        require(c.message==0xfe||c.message==1||c.message==2,"selective handshake sends only ping, capability and register reads");
+    for(auto it=untouched.cbegin();it!=untouched.cend();++it)
+        require(f.transport->regs.value(it.key())==it.value(),"selective handshake preserves existing enable states and diagnostic evidence");
+    f.transport->clear();
+    f.controller.connectSensor({{"op","sensor"},{"source",0x42},{"enabled",true},{"baud",921600}});f.finish();
+    require(f.transport->regs.value(0x6204)&1,"requested sensor is enabled after its configuration readback");
+    require(f.transport->regs.value(0x6210)==921600,"requested sensor receives its staged parameters");
+    for(const auto &c:f.transport->commands) {
+        if(c.message==0xb)require(c.source==0x42,"selective connection never starts or stops another sensor");
+        if(c.message==3)require((c.address>=0x6200&&c.address<0x6300)||c.address==0x2c||c.address==0x30||c.address==0x7004||c.address==0x8004,
+            "only the target and shared upload controls may be written");
+    }
+    for(auto it=untouched.cbegin();it!=untouched.cend();++it)
+        require(f.transport->regs.value(it.key())==it.value(),"connecting one sensor preserves other running and stopped modules");
+    Fixture wrong;wrong.transport->regs[0x5024]=0;
+    wrong.controller.connectDevice({},"auto",FpgaDeviceController::ConnectMode::PreserveRunningModules);wrong.finish();
+    require(!wrong.controller.ready()&&wrong.transport->writes().isEmpty(),"selective handshake cannot bypass version checks");
+}
 void backgroundRefresh(){
     Fixture f;f.connect();
     QTimer *statusTimer=nullptr;
@@ -625,6 +653,7 @@ void threadCleanup(){
 }
 int main(int argc,char **argv){
     QCoreApplication app(argc,argv);
+    if(app.arguments().contains("--selective-connection")) {selectiveConnection();std::puts("FPGA selective connection tests passed");return 0;}
     if(app.arguments().contains("--sensor-config")) {sensorConfiguration();std::puts("FPGA sensor configuration tests passed");return 0;}
     if(app.arguments().contains("--startup-grace")) {startupWarningGrace();std::puts("FPGA startup warning grace tests passed");return 0;}
     if(app.arguments().contains("--hardware-probe")) {

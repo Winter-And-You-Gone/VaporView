@@ -20,6 +20,15 @@ int main(int argc, char **argv)
     QJsonObject parsed;
     require(parseControl(encodeControl({{"op","discover"}}),parsed),"read-only discovery operation round trip");
     require(!validateControl({{"op","discover"},{"address",42}}),"discovery cannot carry a register operation");
+    const QJsonObject connect{{"op","connect"},{"locator","mock"},{"backend","auto"}};
+    require(parseControl(encodeControl(connect),parsed)&&!parsed.contains("recover"),"legacy connection requests keep their recovery default");
+    for(bool recover:{false,true}) {
+        auto scoped=connect;scoped["recover"]=recover;
+        require(parseControl(encodeControl(scoped),parsed)&&parsed.value("recover").toBool()==recover,"connection recovery policy survives remote encoding");
+    }
+    auto invalidConnect=connect;invalidConnect["recover"]="false";
+    require(!validateControl(invalidConnect),"connection recovery policy requires a boolean");
+    require(!validateControl({{"op","refresh"},{"recover",false}}),"recovery policy is limited to connection requests");
     const QJsonObject configure{{"op","configure"},{"configuration",FpgaControlConfig{}.toJson()}};
     require(parseControl(encodeControl(configure),parsed),"full configuration round trip");
     require(!configure.value("configuration").toObject().contains("rawWindowSeconds"),"remote configuration does not publish a RAW duration");

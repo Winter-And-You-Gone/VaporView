@@ -157,7 +157,9 @@ void SkyFpgaBackend::submit(const QJsonObject& operation, Completion completion)
                 finish(event == "operation_completed" ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed,
                        document.value("detail").toString());
             });
-        if (op == "connect") controller->connectDevice(operation.value("locator").toString(), operation.value("backend").toString("auto"));
+        if (op == "connect") controller->connectDevice(operation.value("locator").toString(), operation.value("backend").toString("auto"),
+            operation.value("recover").toBool(true) ? Ground::Devices::FpgaDeviceController::ConnectMode::RecoverEnabledModules
+                                                    : Ground::Devices::FpgaDeviceController::ConnectMode::PreserveRunningModules);
         else if (op == "disconnect") { controller->disconnectDevice(); QObject::disconnect(*observer); finish(CommandErrorCode::Ok, {}); }
         else if (op == "refresh") controller->refresh();
         else if (op == "configure") {

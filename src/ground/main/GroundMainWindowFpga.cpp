@@ -387,7 +387,7 @@ void MainWindow::setHomeFpgaDeviceEnabled(VaporView::SkyDeviceId device, bool en
     } else if (isRemoteSkyMode() && enabled && !state_->fpga_session_.remoteStatus.value("ready").toBool()) {
         state_->fpga_home_connect_device_ = device;
         sendRemoteFpgaControl({{"op", "connect"}, {"locator", state_->remote_config_session_.desired.fpga.locator},
-            {"backend", state_->remote_config_session_.desired.fpga.configuration.backend}});
+            {"backend", state_->remote_config_session_.desired.fpga.configuration.backend}, {"recover", false}});
         if (!state_->fpga_session_.requestId) {
             state_->fpga_home_connect_device_ = SkyDeviceId::All;
             state_->fpga_home_action_device_ = SkyDeviceId::All;
@@ -398,7 +398,8 @@ void MainWindow::setHomeFpgaDeviceEnabled(VaporView::SkyDeviceId device, bool en
         auto *controller = state_->fpga_session_.controller();
         const auto backend = state_->fpga_config_.backend;
         QMetaObject::invokeMethod(controller,[controller,window,device,backend] {
-            controller->connectDevice({},backend);
+            controller->connectDevice({},backend,
+                VaporView::Ground::Devices::FpgaDeviceController::ConnectMode::PreserveRunningModules);
             const auto enableDevice = [window,device] {
                 if (window) QMetaObject::invokeMethod(window,[window,device] {
                     if (!window || window->state_->fpga_home_action_device_ != device) return;

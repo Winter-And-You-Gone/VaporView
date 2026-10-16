@@ -147,6 +147,10 @@ bool validateControl(const QJsonObject& control, QString *error)
     if (control.contains("version")) { keys.append("version"); if (!integer(control.value("version"), 1, 1)) return fail(); }
     if (op == "connect") {
         keys << "locator" << "backend";
+        if (control.contains("recover")) {
+            keys << "recover";
+            if (!control.value("recover").isBool()) return fail();
+        }
         if (!control.value("locator").isString() || !control.value("backend").isString() ||
             !QStringList{"auto", "cypress", "winusb"}.contains(control.value("backend").toString())) return fail();
     } else if (op == "configure") {

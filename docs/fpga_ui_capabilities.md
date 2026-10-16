@@ -13,6 +13,10 @@
 
 ## 共用入口的行为
 
+单设备连接在 FPGA 未连接时只执行 USB 打开、PING、能力和版本核验、寄存器读回，再对目标设备完成参数下发与启用；不执行全局采集复位或其他传感器的停启恢复。已运行的其他设备保持运行，原先停用的设备保持停用；状态按板上实际 CONTROL 显示，不把建立 USB 会话当成所有设备刚完成连接。标题栏统一连接及 FPGA 页显式连接保留恢复原先已启用模块的行为。
+
+远程单设备连接使用现有 `connect` 操作携带布尔字段 `recover=false`；省略该字段时保留原恢复策略。新版 Ground 与 SkyCore 应同步更新；旧版 SkyCore 会拒绝该新字段，不自动退回可能重启其他设备的连接操作。这个策略不增加 FPGA 命令或修改 VLP1 固件协议。
+
 首页与设备配置页的逐设备按钮复用同一个路由入口。本地直连打开本机设备；远程直连由 SkyCore 打开天空端设备。本地 FPGA 打开 USB 并启用指定 VLP1 source；远程 FPGA 通过数传 TCP 请求 SkyCore 建立 USB 会话，再启用指定 source。SkyCore 是远程 USB 的唯一所有者。单设备停用不关闭 USB 或数传。
 
 “通道已启用”来自 FPGA CONTROL 寄存器，不能证明传感器在线或测量有效。测量有效性、数据新鲜度和数据帧频率分别由实际测量及质量信息决定。
@@ -163,7 +167,14 @@ AI-8288 仪表有八个通道，但当前 FPGA 只按 `0x661C`（1..8，默认 1
 仍需要下位机扩展：AI8 自动八通道扫描及明确通道标识、完整 PID/组/全局参数与恢复出厂；EPSILON 设备参数命令/RTCM 注入；独立 RD105；可变 DLIA 低通截止频率。当前共享 ADC 时序属于硬件约束，不标成上位机漏接。
 
 
-### 本轮软件验证
+### 单设备按需连接验证（2026-10-16）
+
+- `build/Release` 完整构建成功：`cmake --build build/Release --config Release --parallel 2`，osgEarth 保持 ON。
+- `fpga_selective_connection_test` 检查只读握手、目标设备参数/启用范围、其他模块启用状态和错误证据保留、版本门控；原控制器综合测试、协议编码、SkyCore 后端、首页集成和本地协议模拟器测试均通过。原控制器套件保持 60 秒时限，新增场景独立执行。
+- 141 项完整 CTest：137 通过、1 跳过、3 失败。未通过项为既有 `combination_navigation_page_test` 中英文标题可见性、`map3d_real_window_close_test` 初始地图加载等待、`main_window_map3d_open_test` 打开耗时阈值（1041 ms）；本次未改这些页面及地图实现。
+- 本轮为本机软件与协议模拟验证，未使用实板。单设备连接的现场检查已加入 [实机验收清单](fpga_hardware_validation.md)。
+
+### 既有功能的软件验证（历史记录）
 
 - 在 VS/MSVC Developer 环境执行 `cmake --build build/Release --config Release -- -j2`，最终构建成功，osgEarth 保持 ON，VaporView 与 SkyCore 均已生成。
 - 执行 137 项全量 CTest，并对修正项及相关模块复测；综合确认 135 项通过、1 项失败、1 项跳过。失败仍为既有 `main_window_map3d_open_test` 的地图标题即时切换断言；管理员更新分支因未提升权限跳过。组合导航布局复测通过。

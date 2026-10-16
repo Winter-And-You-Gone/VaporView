@@ -13,6 +13,7 @@
 #include "TelemetryCodec.h"
 #include "FpgaTelemetry.h"
 #include "FpgaDeviceController.h"
+#include "FpgaVlp1.h"
 #include "shared/session/FpgaSessionArchive.h"
 #include "ground/wave/TcpWavePanel.h"
 #include "SkyConfig.h"
@@ -396,7 +397,9 @@ static void remoteHomeActions()
     require(waitUntil([&]{return requests.size()==1;}),"home begins a remote FPGA connection");
     QJsonObject connectControl;require(FpgaRemote::parseControl(requests.last().payload,connectControl)
         &&connectControl.value("op")=="connect"&&connectControl.value("locator")==sky.fpga.locator
-        &&connectControl.value("backend")==sky.fpga.configuration.backend,"home uses the Sky-configured USB endpoint");
+        &&connectControl.value("backend")==sky.fpga.configuration.backend
+        &&connectControl.value("recover").isBool()&&!connectControl.value("recover").toBool(),
+        "home uses the Sky USB endpoint with selective read-only handshake");
     CommandAck connectAck;connectAck.command_id=CommandId::DeviceOperation;connectAck.command_seq=commandSequence;
     send(MsgType::CommandAck,TelemetryCodec::serializeCommandAck(connectAck));processFor(30);
     require(requests.size()==1,"USB acceptance ACK does not enable the sensor early");
@@ -643,6 +646,21 @@ static void localSimulatorRouting()
             connectionSuccesses.insert(quint16(record.fields.value("fpga_source").toUInt()));
         }
     });
+    QVector<quint16> selectiveCommands;
+    const auto commandObserver=QObject::connect(window.testFpgaController(),&VaporView::Ground::Devices::FpgaDeviceController::rawCommand,
+        &window,[&](quint64,const QByteArray& bytes) {
+            VaporView::FpgaVlp1::StreamParser parser;
+            for(const auto& frame:parser.feed(reinterpret_cast<const std::uint8_t*>(bytes.constData()),bytes.size()))
+                selectiveCommands.append(frame.header.message);
+        },Qt::QueuedConnection);
+    pressureAction->click();
+    check(waitUntil([&]{return pressureAction->isEnabled()&&pressureAction->property("state")=="connected"&&disconnect->isEnabled();},12000),
+        "individual home action connects the FPGA without restarting already-running devices");
+    QObject::disconnect(commandObserver);
+    check(!selectiveCommands.isEmpty(),"individual home action performs a real protocol handshake");
+    for(auto message:selectiveCommands)check(message==0xfe||message==1||message==2,"home handshake never resets or restarts other modules");
+    check(connectionSuccesses.isEmpty(),"read-only connection does not claim that it restarted every running device");
+    disconnect->click();check(waitUntil([&]{return connectButton->isEnabled();}),"individual connection releases USB before full-connect regression");
     QMetaObject::invokeMethod(&window,"onConnectClicked");
     check(waitUntil([&]{return acquisition->isEnabled()&&disconnect->isEnabled();},12000),"local factory handshake enables normal controls");
     check(waitUntil([&]{return pressureAction->isEnabled()&&pressureAction->property("state")=="connected";}),"home connect opens USB and confirms the already-enabled BMP sensor");
