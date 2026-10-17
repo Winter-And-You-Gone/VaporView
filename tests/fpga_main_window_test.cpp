@@ -130,6 +130,26 @@ static bool onlyPressureConnected(MainWindow &window)
     }
     return internalSensors==2;
 }
+static void verifyRelayIndicators(MainWindow &window,const QStringList &enabled)
+{
+    for(const auto &item:{qMakePair("Epsilon","deviceRemoteEpsilonEnabledCheck"),
+            qMakePair("Pressure","deviceRemotePressureEnabledCheck"),
+            qMakePair("Humidity","deviceRemoteHumidityEnabledCheck"),
+            qMakePair("Lidar","deviceRemoteLidarEnabledCheck"),
+            qMakePair("Temperature","deviceRemoteTemperatureEnabledCheck"),
+            qMakePair("Ai8","deviceRemoteAi8TemperatureEnabledCheck"),
+            qMakePair("Wave","deviceFpgaAcquisitionEnabledCheck"),
+            qMakePair("Bmp390","deviceInternalEnabledBMP390"),
+            qMakePair("Sht45","deviceInternalEnabledSHT45")}) {
+        auto *check=window.findChild<QCheckBox*>(item.second);
+        require(check&&!check->isEnabled(),"all relay enable indicators are read-only");
+        require(check->isChecked()==enabled.contains(item.first),"relay indicators reflect only confirmed FPGA channel states");
+        require(!check->toolTip().isEmpty()&&check->accessibleDescription()==check->toolTip(),
+            "relay readback availability and operation guidance are accessible");
+        check->click();
+        require(check->isChecked()==enabled.contains(item.first),"clicking a read-only indicator cannot toggle its state");
+    }
+}
 static void verifyCardMargins(MainWindow &window,FpgaControlPage *page,int scale)
 {
     const QSize originalSize=window.size();
@@ -484,7 +504,10 @@ static void remoteHomeActions()
     const QStringList names{"EPSILON","PTB210","TFA1500","AI-8288",QStringLiteral("波形源")};
     const QList<quint16> sources{0x42,0x40,0x45,0x46,0};
     auto *waveEnabled=window.findChild<QCheckBox*>("deviceFpgaAcquisitionEnabledCheck");
-    require(waveEnabled&&waveEnabled->isEnabled()&&waveEnabled->isChecked(),"remote acquisition enable reflects confirmed registers");
+    require(waitUntil([&]{return window.findChild<QCheckBox*>("deviceInternalEnabledBMP390")->isChecked();}),
+        "remote BMP enable readback arrives before indicator verification");
+    require(waveEnabled&&!waveEnabled->isEnabled()&&waveEnabled->isChecked(),"remote acquisition read-only state reflects confirmed registers");
+    verifyRelayIndicators(window,{"Epsilon","Pressure","Lidar","Ai8","Wave","Bmp390","Sht45"});
     require(deviceWaveRate(window)&&deviceWaveRate(window)->text().contains("250000")
         &&deviceWaveRate(window)->toolTip().contains("2000"),"remote ADC and DLIA rates use actual register readback");
     for (int index=0;index<names.size();++index) {
@@ -493,7 +516,7 @@ static void remoteHomeActions()
             if(sources[index]!=0x42)refreshNavigation();
             const int changesBefore=navigationChanges;
             const auto before=registers;const int count=requests.size();
-            if(!sources[index])waveEnabled->click();else button->click();
+            button->click();
             require(waitUntil([&]{return requests.size()==count+1;}),"home click sends one FPGA request");
             require(stack->currentIndex()==0,"remote per-device action keeps the home page selected");
             QJsonObject control;require(FpgaRemote::parseControl(requests.last().payload,control),"home payload validates");
@@ -521,7 +544,7 @@ static void remoteHomeActions()
             send(MsgType::DeviceOperationResponse,TelemetryCodec::serializeDeviceOperationResponse(response));
             require(waitUntil([&]{return button->isEnabled()&&button->property("state")== (enabled?"connected":"disconnected");}),
                 "final register readback confirms the home connection state");
-            if(!sources[index])require(waveEnabled->isEnabled()&&waveEnabled->isChecked()==enabled,
+            if(!sources[index])require(!waveEnabled->isEnabled()&&waveEnabled->isChecked()==enabled,
                 "remote checkbox changes only after final acquisition readback");
             if(sources[index]!=0x42) {
                 navigation->refreshStatus();
@@ -613,6 +636,7 @@ static void remoteHomeActions()
     const int count=requests.size();remote->close();
     require(waitUntil([&]{return !epsilon->isEnabled();}),"telemetry loss disables FPGA home controls");
     require(!raw->isEnabled()&&!harmonic->isEnabled(),"telemetry loss disables both monitor controls");
+    verifyRelayIndicators(window,{});
     QMetaObject::invokeMethod(&window,"onRefreshTimer");
     require(pressureRate->text().contains("--")&&distanceRate->text().contains("--")
         &&!epsilonRate->text().contains("750.0"),"telemetry loss clears cached FPGA frequencies");
@@ -635,6 +659,7 @@ static void localSimulatorRouting()
     QMetaObject::invokeMethod(&window,"onDataSourceModeChanged",Q_ARG(int,0));
     auto *path=window.findChild<QComboBox*>("deviceSensorTransportPathCombo");
     check(path,"local sensor path selector exists");path->setCurrentIndex(path->findData("fpga_relay"));
+    verifyRelayIndicators(window,{});
     auto *page=window.findChild<FpgaControlPage*>("fpgaControlPage");
     window.findChild<QStackedWidget*>("mainPageStack")->setCurrentWidget(page);window.show();
     auto *backend=page->findChild<QComboBox*>("fpgaBackend");
@@ -688,6 +713,7 @@ static void localSimulatorRouting()
         "individual home action starts only the requested device on an idle simulated FPGA");
     QObject::disconnect(commandObserver);
     check(onlyPressureConnected(window),"connecting one simulated device leaves all six other sensors and waveform acquisition disconnected");
+    verifyRelayIndicators(window,{"Pressure"});
     check(waitUntil([&]{return onlyPressureDataAvailable(window);}),"local summary reports only actual PTB data and no fabricated telemetry");
     check(!selectiveCommands.isEmpty(),"individual home action performs a real protocol handshake");
     bool targetStarted=false;
@@ -722,6 +748,7 @@ static void localSimulatorRouting()
         button->click();check(waitUntil([&]{return button->isEnabled()&&button->property("state")=="connected";}),"explicitly start internal sensor");
     }
     acquisition->click();check(waitUntil([&]{return acquisition->isEnabled();}),"explicitly start simulated acquisition");
+    verifyRelayIndicators(window,{"Epsilon","Pressure","Humidity","Lidar","Ai8","Wave","Bmp390","Sht45"});
     check(connectionSuccesses.contains(0x41),"HMP has its own confirmed connection log");
     for(const auto &entry: {qMakePair("deviceEpsilonBaudComboFpgaEditor","921600"),
             qMakePair("devicePressureBaudComboFpgaEditor","9600"),
@@ -765,11 +792,11 @@ static void localSimulatorRouting()
     for(const auto &name:homeNames) {
         auto *button=homeAction(window,name);
         for(bool enabled:{false,true}) {
-            if(name==QStringLiteral("波形源"))waveEnabled->click();else button->click();
+            button->click();
             check(waitUntil([&]{return button->isEnabled()&&button->property("state")== (enabled?"connected":"disconnected");},10000),
                 "local home action confirms sensor or acquisition enable through actual VLP1 readback");
             check(disconnect->isEnabled()&&stack->currentIndex()==0,"individual stop keeps USB open and stays on home");
-            if(name==QStringLiteral("波形源"))check(waveEnabled->isEnabled()&&waveEnabled->isChecked()==enabled,
+            if(name==QStringLiteral("波形源"))check(!waveEnabled->isEnabled()&&waveEnabled->isChecked()==enabled,
                 "local acquisition checkbox follows confirmed VLP1 start and stop");
         }
     }
@@ -832,12 +859,14 @@ static void localSimulatorRouting()
     check(internal && waitUntil([&]{return !internal->text().contains(QStringLiteral("—"));}),
         "both internal sensors reach the home title bar through real VLP frames");
     auto *environmentPressure=window.findChild<PtbPanel*>()->findChild<QLabel*>("highlightedValue");
-    check(environmentPressure->text().contains("1013."),"BMP pressure never replaces environmental PTB pressure");
+    const double pressureHpa=QRegularExpression("([0-9]+\\.[0-9]+)").match(environmentPressure->text()).captured(1).toDouble();
+    check(pressureHpa>=1012.97&&pressureHpa<=1013.53,"BMP pressure never replaces environmental PTB pressure across the PTB simulation cycle");
     check(homeAction(window,"HMP")->isEnabled(),"HMP firmware channel is available through the common home connection action");
 
     QWidget *deviceConfig=path;
     while(stack->indexOf(deviceConfig)<0)deviceConfig=deviceConfig->parentWidget();
     stack->setCurrentWidget(deviceConfig);processFor(100);
+    verifyRelayIndicators(window,{"Epsilon","Pressure","Humidity","Lidar","Ai8","Wave","Bmp390","Sht45"});
     check(deviceWaveRate(window)->width()>=deviceWaveRate(window)->sizeHint().width(),"actual ADC sampling rate fits its device configuration cell");
     stack->setCurrentIndex(0);processFor(100);
 
@@ -909,6 +938,7 @@ static void localSimulatorRouting()
     },&error),qPrintable(error));
     check(sources.size()==11&&sources.contains(0x41),"local recording replays seven sensor sources including HMP and four waveform sources");
     disconnect->click();check(waitUntil([&]{return connectButton->isEnabled();}),"local disconnect releases the simulator");
+    verifyRelayIndicators(window,{});
     QMetaObject::invokeMethod(&window,"onRefreshTimer");
     check(pressureRate->text().contains("--")&&humidityRate->text().contains("--")
         &&distanceRate->text().contains("--"),"local USB disconnect clears all sensor frequencies");
@@ -945,6 +975,7 @@ static void simulatedMonitorActions()
     pressure->click();
     require(waitUntil([&]{return pressure->isEnabled()&&pressure->property("state")=="connected";}),"layout simulation connects the requested device");
     require(onlyPressureConnected(window),"layout simulation leaves all other sensors and waveform acquisition disconnected");
+    verifyRelayIndicators(window,{"Pressure"});
     require(waitUntil([&]{return onlyPressureDataAvailable(window);}),"UI summary reports only actual PTB data and no fabricated telemetry");
     require(raw->text().contains(QStringLiteral("开始"))&&harmonic->text().contains(QStringLiteral("开始")),"individual simulation connection leaves waveform acquisition stopped");
     require(QMetaObject::invokeMethod(&window,"onConnectClicked",Qt::DirectConnection),"batch simulation connection is available");
@@ -994,6 +1025,11 @@ static void simulatedMonitorActions()
 
 static void relayConfigurationPresentation()
 {
+    const QStringList presetNames{"deviceRemoteEpsilonEnabledCheck","deviceRemotePressureEnabledCheck",
+        "deviceRemoteHumidityEnabledCheck","deviceRemoteLidarEnabledCheck","deviceRemoteTemperatureEnabledCheck",
+        "deviceRemoteAi8TemperatureEnabledCheck","deviceTcpWaveEnabledCheck","deviceInternalEnabledBMP390","deviceInternalEnabledSHT45"};
+    QList<bool> enabledPresets;
+    {
     MainWindow window;
     QMetaObject::invokeMethod(&window,"onDataSourceModeChanged",Q_ARG(int,0));
     auto *stack=window.findChild<QStackedWidget*>("mainPageStack");
@@ -1002,6 +1038,10 @@ static void relayConfigurationPresentation()
     while(stack->indexOf(configPage)<0)configPage=configPage->parentWidget();
     stack->setCurrentWidget(configPage);window.resize(1600,1000);window.show();processFor(50);
     path->setCurrentIndex(path->findData("direct_devices"));
+    for(int i=0;i<presetNames.size();++i) {
+        auto *check=window.findChild<QCheckBox*>(presetNames[i]);
+        require(check,"Direct startup preset exists");check->setChecked(i%2==0);enabledPresets.append(check->isChecked());
+    }
     const QStringList devices{"Epsilon","Pressure","Humidity","Lidar","Temperature","Ai8Temperature"};
     QStringList ports;
     for(const auto &device:devices) {
@@ -1010,6 +1050,7 @@ static void relayConfigurationPresentation()
     }
     const auto before=window.testLocalDeviceConfigSnapshot();
     path->setCurrentIndex(path->findData("fpga_relay"));processFor(50);
+    verifyRelayIndicators(window,{});
     auto *waveEnabled=window.findChild<QCheckBox*>("deviceFpgaAcquisitionEnabledCheck");
     auto *grid=qobject_cast<QGridLayout*>(waveEnabled->parentWidget()->layout());
     require(grid&&grid->columnCount()==7,"device actions immediately follow enable without an empty source column");
@@ -1024,7 +1065,7 @@ static void relayConfigurationPresentation()
                 "deviceRemoteHumidityEnabledCheck","deviceRemoteLidarEnabledCheck",
                 "deviceRemoteTemperatureEnabledCheck","deviceRemoteAi8TemperatureEnabledCheck"}) {
             auto *check=window.findChild<QCheckBox*>(name);
-            require(check&&!check->isEnabled(),"FPGA startup preset stays read-only");
+            require(check&&!check->isEnabled(),"FPGA channel readback stays read-only");
             const QSignalBlocker blocker(check);
             const bool beforeChecked=check->isChecked();
             for(bool checked:{false,true}) {
@@ -1099,6 +1140,12 @@ static void relayConfigurationPresentation()
     require(window.findChild<QWidget*>("deviceInternalNameBMP390")->isVisible() && window.findChild<QWidget*>("deviceInternalNameSHT45")->isVisible(),
         "BMP390 and SHT45 have independent relay device rows");
     path->setCurrentIndex(path->findData("direct_devices"));processFor(50);
+    for(int i=0;i<presetNames.size();++i) {
+        auto *check=window.findChild<QCheckBox*>(presetNames[i]);
+        require(check->isChecked()==enabledPresets[i],"switching back to Direct restores every original startup preset");
+        require(!check->toolTip().contains(QStringLiteral("FPGA"))&&check->accessibleDescription().isEmpty(),
+            "Direct presets do not retain FPGA readback guidance");
+    }
     require(!waveEnabled->isVisible()&&window.findChild<QCheckBox*>("deviceTcpWaveEnabledCheck")->isVisible(),
         "direct TCP startup preset is separate from the FPGA acquisition checkbox");
     require(window.findChild<QWidget*>("deviceInternalNameBMP390")->isVisible()
@@ -1128,8 +1175,27 @@ static void relayConfigurationPresentation()
     const auto saved=window.testRemoteSkyConfigFromDeviceConfigUi(&error);
     require(error.isEmpty()&&saved.value("epsilon").toObject().value("port")=="REMOTE-COM7",
         "FPGA presentation preserves the remote serial configuration too");
+    for(const auto *key:{"epsilon","ptb","hmp","lidar","temperature_controller","ai8_temperature_controller","bmp390","sht45"})
+        require(saved.value(key).toObject().value("enabled")==remote.toJson().value(key).toObject().value("enabled"),
+            "FPGA readback never overwrites remote Direct startup presets");
     QMetaObject::invokeMethod(&window,"onDataSourceModeChanged",Q_ARG(int,0));
+    path->setCurrentIndex(path->findData("fpga_relay"));
     window.close();
+    }
+    const auto stored=VaporView::applicationConfigSettings();
+    const QStringList presetKeys{"local_enabled/epsilon","local_enabled/ptb","local_enabled/hmp","local_enabled/lidar",
+        "local_enabled/temperature","local_enabled/ai8_temperature","local_enabled/wave_tcp","internal/bmp390/enabled","internal/sht45/enabled"};
+    for(int i=0;i<presetKeys.size();++i)
+        require(stored.value("MainWindow/"+presetKeys[i]).toBool()==enabledPresets[i],
+            "saving settings on the relay path preserves every Direct startup preset");
+    MainWindow restored;
+    auto *path=restored.findChild<QComboBox*>("deviceSensorTransportPathCombo");
+    require(path->currentData()=="fpga_relay","restarted window retains the FPGA path");
+    path->setCurrentIndex(path->findData("direct_devices"));
+    for(int i=0;i<presetNames.size();++i)
+        require(restored.findChild<QCheckBox*>(presetNames[i])->isChecked()==enabledPresets[i],
+            "restarting on the FPGA path preserves all Direct startup presets");
+    restored.close();
 }
 static void remoteTransportAndCapabilities()
 {

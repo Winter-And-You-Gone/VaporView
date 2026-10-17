@@ -3157,10 +3157,7 @@ void MainWindow::setupDeviceConfigPage()
     state_->device_config_.fpga_wave_enabled_check->setFocusPolicy(Qt::TabFocus);
     formLayout->addWidget(state_->device_config_.fpga_wave_enabled_check, tcpWaveGridRow, 5,
                           Qt::AlignVCenter | Qt::AlignHCenter);
-    connect(state_->device_config_.fpga_wave_enabled_check, &QCheckBox::clicked, this, [this](bool enabled) {
-        requestHomeFpgaWaveAction(false, enabled);
-        syncFpgaDeviceConfigUi();
-    });
+    state_->device_config_.fpga_wave_enabled_check->setAccessibleName(QStringLiteral("ADC / DLIA"));
 
     auto addDeviceRemoteButton = [this, formLayout, formWidget](
             int row,
@@ -4039,7 +4036,9 @@ void MainWindow::updateDeviceConfigTexts()
     if (state_->device_config_.port_header_lbl) state_->device_config_.port_header_lbl->setText(state_->is_english_ ? QStringLiteral("Serial / Host") : QStringLiteral("串口/主机"));
     if (state_->device_config_.baud_header_lbl) state_->device_config_.baud_header_lbl->setText(state_->is_english_ ? QStringLiteral("Baud / Port") : QStringLiteral("波特率/端口"));
     if (state_->device_config_.rate_header_lbl) state_->device_config_.rate_header_lbl->setText(state_->is_english_ ? QStringLiteral("Rate / Poll") : QStringLiteral("频率/轮询"));
-    if (state_->device_config_.enabled_header_lbl) state_->device_config_.enabled_header_lbl->setText(state_->is_english_ ? QStringLiteral("Enabled") : QStringLiteral("启用"));
+    if (state_->device_config_.enabled_header_lbl) state_->device_config_.enabled_header_lbl->setText(isFpgaRelayPath()
+        ? (state_->is_english_ ? QStringLiteral("State") : QStringLiteral("状态"))
+        : (state_->is_english_ ? QStringLiteral("Enabled") : QStringLiteral("启用")));
     if (state_->device_config_.source_header_lbl) state_->device_config_.source_header_lbl->setText(state_->is_english_ ? QStringLiteral("Source") : QStringLiteral("来源"));
     if (state_->device_config_.action_header_lbl) state_->device_config_.action_header_lbl->setText(state_->is_english_ ? QStringLiteral("Action") : QStringLiteral("操作"));
     if (state_->device_config_.epsilon_lbl) state_->device_config_.epsilon_lbl->setText(QStringLiteral("EPSILON"));

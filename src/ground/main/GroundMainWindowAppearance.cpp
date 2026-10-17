@@ -1685,21 +1685,24 @@ void MainWindow::loadLocalDeviceEnabledState()
         qobject_cast<QCheckBox*>(row[5])->setChecked(config.enabled);
     }
 
-    auto loadCheck = [&settings](QCheckBox *check, const QString& key) {
+    auto loadCheck = [&settings](QCheckBox *check, const QString& key, bool &enabled) {
+        enabled = settings.value(key, true).toBool();
         if (!check)
         {
             return;
         }
         const QSignalBlocker blocker(check);
-        check->setChecked(settings.value(key, true).toBool());
+        check->setChecked(enabled);
     };
-    loadCheck(state_->device_config_.epsilon_enabled_check, QStringLiteral("local_enabled/epsilon"));
-    loadCheck(state_->device_config_.ptb_enabled_check, QStringLiteral("local_enabled/ptb"));
-    loadCheck(state_->device_config_.hmp_enabled_check, QStringLiteral("local_enabled/hmp"));
-    loadCheck(state_->device_config_.lidar_enabled_check, QStringLiteral("local_enabled/lidar"));
-    loadCheck(state_->device_config_.temperature_enabled_check, QStringLiteral("local_enabled/temperature"));
-    loadCheck(state_->device_config_.ai8_temperature_enabled_check, QStringLiteral("local_enabled/ai8_temperature"));
-    loadCheck(state_->device_config_.tcp_wave_enabled_check, QStringLiteral("local_enabled/wave_tcp"));
+    auto &config = state_->local_device_config_;
+    loadCheck(state_->device_config_.epsilon_enabled_check, QStringLiteral("local_enabled/epsilon"), config.epsilon.enabled);
+    loadCheck(state_->device_config_.ptb_enabled_check, QStringLiteral("local_enabled/ptb"), config.ptb.enabled);
+    loadCheck(state_->device_config_.hmp_enabled_check, QStringLiteral("local_enabled/hmp"), config.hmp.enabled);
+    loadCheck(state_->device_config_.lidar_enabled_check, QStringLiteral("local_enabled/lidar"), config.lidar.enabled);
+    loadCheck(state_->device_config_.temperature_enabled_check, QStringLiteral("local_enabled/temperature"), config.temperatureController.enabled);
+    loadCheck(state_->device_config_.ai8_temperature_enabled_check, QStringLiteral("local_enabled/ai8_temperature"), config.ai8TemperatureController.enabled);
+    loadCheck(state_->device_config_.tcp_wave_enabled_check, QStringLiteral("local_enabled/wave_tcp"), config.waveTcpEnabled);
+    if (isFpgaRelayPath()) syncFpgaDeviceConfigUi();
 }
 
 void MainWindow::saveLocalDeviceEnabledState() const
@@ -1711,19 +1714,17 @@ void MainWindow::saveLocalDeviceEnabledState() const
     QSettings settings = VaporView::applicationConfigSettings();
     settings.beginGroup(QStringLiteral("MainWindow"));
 
-    auto saveCheck = [&settings](const QString& key, QCheckBox *check) {
-        if (check)
-        {
-            VaporView::setPersistentSetting(settings, key, check->isChecked());
-        }
+    auto saveCheck = [&settings](const QString& key, bool enabled) {
+        VaporView::setPersistentSetting(settings, key, enabled);
     };
-    saveCheck(QStringLiteral("local_enabled/epsilon"), state_->device_config_.epsilon_enabled_check);
-    saveCheck(QStringLiteral("local_enabled/ptb"), state_->device_config_.ptb_enabled_check);
-    saveCheck(QStringLiteral("local_enabled/hmp"), state_->device_config_.hmp_enabled_check);
-    saveCheck(QStringLiteral("local_enabled/lidar"), state_->device_config_.lidar_enabled_check);
-    saveCheck(QStringLiteral("local_enabled/temperature"), state_->device_config_.temperature_enabled_check);
-    saveCheck(QStringLiteral("local_enabled/ai8_temperature"), state_->device_config_.ai8_temperature_enabled_check);
-    saveCheck(QStringLiteral("local_enabled/wave_tcp"), state_->device_config_.tcp_wave_enabled_check);
+    const auto &config = state_->local_device_config_;
+    saveCheck(QStringLiteral("local_enabled/epsilon"), config.epsilon.enabled);
+    saveCheck(QStringLiteral("local_enabled/ptb"), config.ptb.enabled);
+    saveCheck(QStringLiteral("local_enabled/hmp"), config.hmp.enabled);
+    saveCheck(QStringLiteral("local_enabled/lidar"), config.lidar.enabled);
+    saveCheck(QStringLiteral("local_enabled/temperature"), config.temperatureController.enabled);
+    saveCheck(QStringLiteral("local_enabled/ai8_temperature"), config.ai8TemperatureController.enabled);
+    saveCheck(QStringLiteral("local_enabled/wave_tcp"), config.waveTcpEnabled);
 }
 
 void MainWindow::loadRememberedInputState()

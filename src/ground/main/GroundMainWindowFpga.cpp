@@ -41,6 +41,23 @@ void MainWindow::syncFpgaDeviceConfigUi()
         state_->ai8_temperature_controller_panel_->setPageCommandsEnabled(false, ai8Unsupported);
     }
     const auto registers = homeFpgaRegisters();
+    const auto enabledState = [&](QCheckBox *check, bool known, bool enabled, bool supported = true) {
+        if (!check || !relay) return;
+        const QSignalBlocker blocker(check);
+        check->setChecked(supported && known && enabled);
+        check->setEnabled(false);
+        const QString tooltip = !supported
+            ? (state_->is_english_ ? QStringLiteral("This device is not supported by the FPGA protocol.")
+                : QStringLiteral("当前 FPGA 协议不支持此设备。"))
+            : !known
+            ? (state_->is_english_ ? QStringLiteral("No valid FPGA readback. Use the action button on the right to connect.")
+                : QStringLiteral("尚无有效的 FPGA 状态读回；请使用右侧操作按钮连接。"))
+            : (state_->is_english_
+                ? QStringLiteral("FPGA channel %1 (read-only). Use the action button on the right to start or stop.").arg(enabled ? "enabled" : "disabled")
+                : QStringLiteral("FPGA 通道%1（只读）；请使用右侧操作按钮启停。").arg(enabled ? QStringLiteral("已启用") : QStringLiteral("未启用")));
+        check->setToolTip(tooltip);
+        check->setAccessibleDescription(tooltip);
+    };
     const QString hint = state_->is_english_
         ? QStringLiteral("Disconnect this device to edit. Changes are staged and verified when connecting; Direct presets are separate.")
         : QStringLiteral("断开此设备后可修改；参数暂存，连接时下发并核对读回。直连预设独立保留。");
@@ -115,10 +132,11 @@ void MainWindow::syncFpgaDeviceConfigUi()
         const auto &widgets=it.value();
         field(qobject_cast<QComboBox*>(widgets[4]),it.key(),"poll_ms",it.key()==0x43?0x6314:0x6414);
         field(qobject_cast<QComboBox*>(widgets[2]),it.key(),{},0,QStringLiteral("I²C"));
-        const bool connected=registers.value(0x6004+(it.key()-0x40)*0x100)&1;
+        const quint32 control=0x6004+(it.key()-0x40)*0x100;
         auto *check=qobject_cast<QCheckBox*>(widgets[5]);
         const auto id=it.key()==0x43?VaporView::SkyDeviceId::Bmp390:VaporView::SkyDeviceId::Sht45;
-        if(relay){const QSignalBlocker blocker(check);check->setChecked(connected);}
+        enabledState(check,registers.contains(control),(registers.value(control)&1)!=0);
+        if(!relay) {check->setToolTip(QString());check->setAccessibleDescription(QString());}
         check->setEnabled(!relay&&homeDeviceActionState(id)!=VaporView::DeviceState::Connected
             &&homeDeviceActionState(id)!=VaporView::DeviceState::Connecting
             &&(!isRemoteSkyMode()||state_->remote_sky_controller_->isOpen()));
@@ -155,16 +173,8 @@ void MainWindow::syncFpgaDeviceConfigUi()
             known &= registers.contains(control);
             enabled |= (registers.value(control)&1)!=0;
         }
-        const auto action=homeFpgaDeviceActionState(VaporView::SkyDeviceId::WaveTcp);
-        const QSignalBlocker blocker(check);
         check->setVisible(relay);
-        check->setChecked(known&&enabled);
-        check->setEnabled(relay&&known&&!busy&&action!=VaporView::DeviceState::Disabled
-            &&action!=VaporView::DeviceState::Connecting);
-        const QString tooltip=state_->is_english_
-            ? QStringLiteral("ADC/DLIA acquisition readback. Toggle to start both acquisition channels or stop and drain them; RAW upload is controlled separately.")
-            : QStringLiteral("ADC/DLIA 实际采集状态。勾选启动两路采集，取消则停止并排空；RAW 上传单独控制。");
-        check->setToolTip(tooltip);check->setAccessibleName(tooltip);
+        enabledState(check,known,enabled);
     }
     if (relay && state_->device_config_.tcp_wave_transport_hint_lbl) {
         const auto rate=[&](quint32 address) {return registers.value(address)?QString::number(registers.value(address)):QStringLiteral("—");};
@@ -179,7 +189,7 @@ void MainWindow::syncFpgaDeviceConfigUi()
                  state_->device_config_.hmp_enabled_check, state_->device_config_.lidar_enabled_check,
                  state_->device_config_.temperature_enabled_check, state_->device_config_.ai8_temperature_enabled_check,
                  state_->device_config_.tcp_wave_enabled_check})
-            if (check) check->setToolTip(QString());
+            if (check) {check->setToolTip(QString());check->setAccessibleDescription(QString());}
         return;
     }
     if (state_->device_config_.ptb_lbl) state_->device_config_.ptb_lbl->setText(pressure == 0x43 ? QStringLiteral("BMP390") : QStringLiteral("PTB210"));
@@ -188,14 +198,14 @@ void MainWindow::syncFpgaDeviceConfigUi()
         state_->device_config_.epsilon_packet_rates_btn->setEnabled(false);
         state_->device_config_.epsilon_packet_rates_btn->setToolTip(epsilonUnsupported);
     }
-    for (auto *check : {state_->device_config_.epsilon_enabled_check, state_->device_config_.ptb_enabled_check,
-             state_->device_config_.hmp_enabled_check, state_->device_config_.lidar_enabled_check,
-             state_->device_config_.temperature_enabled_check, state_->device_config_.ai8_temperature_enabled_check,
-             state_->device_config_.tcp_wave_enabled_check}) {
-        if (!check) continue;
-        check->setEnabled(false);
-        check->setToolTip(state_->is_english_ ? QStringLiteral("Direct startup preset. Use the device action to enable or disable the FPGA channel.")
-            : QStringLiteral("直连启动预设。FPGA 通道启停请使用设备操作按钮。"));
+    for (const auto &item : {qMakePair(state_->device_config_.epsilon_enabled_check,quint16(0x42)),
+             qMakePair(state_->device_config_.ptb_enabled_check,pressure),
+             qMakePair(state_->device_config_.hmp_enabled_check,quint16(0x41)),
+             qMakePair(state_->device_config_.lidar_enabled_check,quint16(0x45)),
+             qMakePair(state_->device_config_.temperature_enabled_check,quint16(0)),
+             qMakePair(state_->device_config_.ai8_temperature_enabled_check,quint16(0x46))}) {
+        const quint32 control=0x6004+(item.second-0x40)*0x100;
+        enabledState(item.first,registers.contains(control),(registers.value(control)&1)!=0,item.second!=0);
     }
 
 }
