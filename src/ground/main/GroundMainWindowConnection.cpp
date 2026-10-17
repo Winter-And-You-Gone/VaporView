@@ -1450,7 +1450,7 @@ void MainWindow::onConnectClicked()
             || state_->fpga_home_action_device_ != SkyDeviceId::All) return;
         state_->fpga_home_connect_queue_ = {SkyDeviceId::Epsilon, SkyDeviceId::Ptb, SkyDeviceId::Hmp,
             SkyDeviceId::Lidar, SkyDeviceId::Ai8TemperatureController, SkyDeviceId::Bmp390,
-            SkyDeviceId::Sht45, SkyDeviceId::WaveTcp};
+            SkyDeviceId::Sht45, SkyDeviceId::TemperatureController, SkyDeviceId::WaveTcp};
         connectNextHomeFpgaDevice();
         updateConnectionStatus(false);
         return;

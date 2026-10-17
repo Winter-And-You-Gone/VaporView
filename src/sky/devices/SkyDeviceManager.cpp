@@ -701,7 +701,7 @@ void SkyDeviceManager::invalidateFpgaMeasurements()
 {
     fpga_position_valid_ = fpga_velocity_valid_ = false;
     fpga_position_time_us_ = fpga_velocity_time_us_ = 0;
-    for (auto id : {SkyDeviceId::Epsilon,SkyDeviceId::Ptb,SkyDeviceId::Hmp,SkyDeviceId::Lidar,SkyDeviceId::Ai8TemperatureController,SkyDeviceId::WaveTcp}) {
+    for (auto id : {SkyDeviceId::Epsilon,SkyDeviceId::Ptb,SkyDeviceId::Hmp,SkyDeviceId::Lidar,SkyDeviceId::TemperatureController,SkyDeviceId::Ai8TemperatureController,SkyDeviceId::WaveTcp}) {
         invalidateDeviceData(id); setState(id, DeviceState::Disconnected);
     }
     latest_ai8_temperature_controller_.measuredC.fill(std::numeric_limits<double>::quiet_NaN());
@@ -743,6 +743,14 @@ void SkyDeviceManager::acceptFpgaMeasurement(const FpgaSensor::AdaptedMeasuremen
             if(m.ai8Live)data=*m.ai8Live;
         }
         setState(SkyDeviceId::Ai8TemperatureController, data.valid ? DeviceState::Connected : DeviceState::Error);handleAi8TemperatureControllerData(data);
+    } else if(r.kind==FpgaSensor::SensorKind::Rd105) {
+        auto data=latest_temperature_controller_;
+        const auto registers=fpgaStatus().value("registers").toObject();
+        const int channel=qBound(1,int(r.rd105Channel.value_or(quint32(registers.value(QString::number(0x681c)).toDouble(1)))),2)-1;
+        data.valid=valid;data.timestamp=timestamp;data.error_code=quint16(r.rd105Error.value_or(0));
+        data.channels[channel].target_temperature_c=r.rd105TargetMicroC?*r.rd105TargetMicroC/1000000.0:std::numeric_limits<double>::quiet_NaN();
+        data.channels[channel].measured_temperature_c=r.rd105ActualMicroC?*r.rd105ActualMicroC/1000000.0:std::numeric_limits<double>::quiet_NaN();
+        setState(SkyDeviceId::TemperatureController,valid?DeviceState::Connected:DeviceState::Error);handleTemperatureControllerData(data);
     }
     fpga_status_.rx_count++; fpga_status_.last_data_time_us=nowUs();
     emit fpgaSensorUpdated(r);

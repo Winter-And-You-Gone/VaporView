@@ -8,6 +8,7 @@
 
 #include <utility>
 #include <cmath>
+#include <stdexcept>
 
 namespace VaporView::Ground::Devices
 {
@@ -256,6 +257,7 @@ EpsilonDeviceSession::EpsilonDeviceSession(LocalAdapter localAdapter,
 
 EpsilonDeviceSession::~EpsilonDeviceSession()
 {
+    local_worker_thread_.requestInterruption();
     cancelMaintenance();
     ++session_generation_;
     pending_operations_.clear();
@@ -333,6 +335,13 @@ void EpsilonDeviceSession::setTransportSupported(bool supported, const QString& 
     refreshAvailability();
 }
 
+void EpsilonDeviceSession::setFpgaTransport(FpgaInstrumentCall call,bool available)
+{
+    if(bool(call)==bool(fpga_call_) && available==fpga_available_)return;
+    if(bool(call)!=bool(fpga_call_)) {++session_generation_;cancelMaintenance();failActive(EpsilonOperationOutcome::Disconnected,QStringLiteral("设备传输路径已切换。"));}
+    fpga_call_=std::move(call);fpga_available_=available;refreshAvailability();
+}
+
 bool EpsilonDeviceSession::operationsAvailable() const
 {
     if (!transport_supported_) return false;
@@ -340,6 +349,7 @@ bool EpsilonDeviceSession::operationsAvailable() const
     {
         return false;
     }
+    if(fpga_call_)return fpga_available_;
     if (backend_ == EpsilonBackend::Local)
     {
         return local_available_ &&
@@ -468,7 +478,13 @@ quint64 EpsilonDeviceSession::beginOperation(PendingOperation pending)
     const bool maintenanceOperation = pending.operation == EpsilonOperation::CalibrateLevel ||
         pending.operation == EpsilonOperation::CalibrateAccelerometer || pending.operation == EpsilonOperation::CalibrateGyroscope ||
         pending.operation == EpsilonOperation::CalibrateMagnetic2D || pending.operation == EpsilonOperation::CalibrateMagnetic3D;
-    const bool settingsUnsupported = settingsOperation && backend_ == EpsilonBackend::Remote && remote_controller_ &&
+    if(fpga_call_ && (pending.operation==EpsilonOperation::CalibrateMagnetic2D || pending.operation==EpsilonOperation::CalibrateMagnetic3D)) {
+        EpsilonSessionResult result;result.request_id=requestId;result.operation=pending.operation;
+        result.outcome=EpsilonOperationOutcome::Unsupported;result.error_code=CommandErrorCode::UnknownCommand;
+        result.message=QStringLiteral("当前 FPGA 邮箱不支持磁标定所需的持续被动接收，请通过设备原生接口执行。");
+        emit operationFinished(result);return requestId;
+    }
+    const bool settingsUnsupported = !fpga_call_ && settingsOperation && backend_ == EpsilonBackend::Remote && remote_controller_ &&
         (remote_controller_->epsilonSettingsSupport() == DeviceOperationSupport::Unsupported ||
          (pending.operation != EpsilonOperation::ReadSettings && remote_controller_->epsilonSettingsSupport() != DeviceOperationSupport::Supported));
     const bool localCallbackMissing = backend_ == EpsilonBackend::Local &&
@@ -500,7 +516,7 @@ quint64 EpsilonDeviceSession::beginOperation(PendingOperation pending)
 
     pending_operations_.insert(requestId, pending);
     emit operationStarted(requestId, pending.operation);
-    if (backend_ == EpsilonBackend::Local)
+    if (backend_ == EpsilonBackend::Local || fpga_call_)
     {
         dispatchLocal(pending);
     }
@@ -514,6 +530,17 @@ quint64 EpsilonDeviceSession::beginOperation(PendingOperation pending)
 
 void EpsilonDeviceSession::dispatchLocal(PendingOperation pending)
 {
+    if(fpga_call_) {
+        pending.local_device_operation.restart_live_stream=false;
+        pending.local_device_operation.live_collector.reset();
+        pending.local_device_operation.exchange=[call=fpga_call_](const std::string& command,int interval) {
+            const auto data=QByteArray::fromStdString(command);
+            const auto result=call({{"op","epsilon_mailbox"},{"kind",0},{"target",0},
+                {"timeout_ms",qBound(100,interval+500,10000)},{"data",QString::fromLatin1(data.toBase64())}});
+            if(!result.value("ok").toBool())throw std::runtime_error(result.value("detail").toString().toStdString());
+            return QByteArray::fromBase64(result.value("data").toString().toLatin1()).toStdString();
+        };
+    }
     if (pending.operation == EpsilonOperation::CalibrateMagnetic2D || pending.operation == EpsilonOperation::CalibrateMagnetic3D)
     {
         local_maintenance_cancel_ = std::make_shared<std::atomic_bool>(false);
@@ -620,7 +647,7 @@ void EpsilonDeviceSession::dispatchLocal(PendingOperation pending)
             }
             guard->pending_operations_.erase(pendingIt);
             if (pending.session_generation != guard->session_generation_ ||
-                guard->backend_ != EpsilonBackend::Local)
+                guard->backend_ != pending.backend)
             {
                 return;
             }

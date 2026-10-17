@@ -61,6 +61,8 @@ public:
     std::array<double,3> mainAntennaLeverArm() const;
     using RtcmCorrectionSink = std::function<bool(const QByteArray&)>;
     void setRtcmCorrectionSink(RtcmCorrectionSink sink, const QString& label);
+    int fpgaRtcmTarget() const;
+    int fpgaRtcmBaud() const;
     void setTransportSupported(bool supported, const QString& reason = QString());
 
 signals:

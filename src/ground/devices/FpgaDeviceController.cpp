@@ -2,6 +2,7 @@
 #include "FpgaUsbSimulator.h"
 #include "FpgaTelemetry.h"
 #include "FpgaAdvancedParameters.h"
+#include "FpgaExtensions.h"
 #include "ppk/ObservationStore.h"
 #include "shared/session/FpgaSessionArchive.h"
 
@@ -108,7 +109,7 @@ void FpgaDeviceController::installSession(std::unique_ptr<FpgaUsbTransport> tran
             const bool wave = msg==0x1000 || msg==0x1001;
             if (!wave || (msg==0x1000 && configuration_.recordRaw) ||
                 (msg==0x1001 && configuration_.recordDlia))
-                if (wave || source < 0x40 || source > 0x46 || configuration_.recordSensors)
+                if (wave || !FpgaExtensions::sensor(source) || configuration_.recordSensors)
                     emit rawFrame(nowUs(), bytes);
         });
     connect(session_, &FpgaDeviceSession::usbBytesReceived, this,
@@ -183,6 +184,9 @@ void FpgaDeviceController::connectDevice(const QString& locator, const QString& 
 
 void FpgaDeviceController::disconnectDevice()
 {
+    if(!extensionRequest_.isEmpty()) {
+        const auto ticket=extensionRequest_.value("ticket");extensionRequest_={};emit extensionCompleted({{"ticket",ticket},{"ok",false},{"detail",QStringLiteral("FPGA 已断开，未完成事务的执行结果未知。")}});
+    }
     ++operationGeneration_;
     connectionStartTick_.reset();pendingManagement_.clear();connectionClock_.invalidate();
     startupWarningDeadlines_.clear();startupWarnings_.clear();
@@ -196,6 +200,7 @@ void FpgaDeviceController::disconnectDevice()
     steps_.clear(); current_.reset(); pendingSequence_ = 0;
     ready_ = busy_ = replaying_ = drainWaveforms_ = backgroundRefresh_ = recoveringConnection_ = connectionRecoveryFailed_ = false;
     registers_.clear();management_={};emit managementUpdated(management_); adapter_.reset(); latestReadings_.clear(); latestWaves_.clear(); lastReadingMs_.clear();
+    extensionRequest_={};extensionResult_={};emit capabilitiesUpdated(0);
     dirtyReadings_.clear(); expiredReadings_.clear();
     emit snapshot(nowUs(), {{"event","disconnected"}});
     emit hardwareValuesChanged(registers_);
@@ -210,6 +215,7 @@ bool FpgaDeviceController::begin(const QString& label, bool background)
     busy_=true; backgroundRefresh_=background; operation_=label;
     ++operationGeneration_;
     steps_.clear(); current_.reset(); pendingSequence_=0;pendingSensorParameters_={};
+    extensionRequest_={};extensionResult_={};
     operationConnections_.clear();
     if (!background) { detail_=label; emit connectionChanged(ready_,true,label); }
     return true;
@@ -241,7 +247,7 @@ void FpgaDeviceController::readAll()
     for (quint32 base : {0x3000u,0x3100u}) { read(base+0x10,14); }
     for (quint32 base : {0x4000u,0x4100u}) { read(base+0x10,12); }
     for (quint32 base : {0x5000u,0x5100u}) { read(base+0x10,18); }
-    for(const auto& spec:FpgaRemote::sensorParameters())read(spec.address);
+    for(const auto& spec:FpgaRemote::sensorParameters())if(spec.source!=0x48 || (extensions()&FpgaExtensions::Rd105))read(spec.address);
     read(0x0040);read(0x7010);read(0x7018);read(0x7034);
     read(0x6010,3); // PTB baud, serial format and polling interval.
     read(0x6210);   // EPSILON baud.
@@ -249,6 +255,7 @@ void FpgaDeviceController::readAll()
     read(0x6414);   // SHT polling interval.
     read(0x6510);   // TFA baud.
     read(0x6610,22);
+    callback([this]{readExtensions();});
 }
 
 bool FpgaDeviceController::enableUpload()
@@ -282,6 +289,9 @@ bool FpgaDeviceController::versionsMatch(QString *detail) const
         if (detail) *detail=QStringLiteral("模块版本不匹配：%1 实际 %2，期望 %3；已禁用写操作。")
             .arg(hex(i.key()),hex(registers_.value(i.key())),hex(i.value())); return false;
     }
+    if((cap.extensions&FpgaExtensions::Rd105) && registers_.value(0x6800)!=0x00480103) {
+        if(detail)*detail=QStringLiteral("RD105 模块版本与扩展能力不一致。");return false;
+    }
     return true;
 }
 
@@ -292,6 +302,7 @@ void FpgaDeviceController::advance()
         if (drainWaveforms_) { session_->flushWaveforms(); flushPresentation(); drainWaveforms_ = false; }
         if(recoveringConnection_) {
             recoveringConnection_=false;
+            snapshotConfiguration();
             presentationTimer_.start();statusTimer_.start();
         }
         busy_=false; emit hardwareValuesChanged(registers_);
@@ -301,10 +312,17 @@ void FpgaDeviceController::advance()
         }
         if (!backgroundRefresh_) emit connectionChanged(ready_,false,operation_+QStringLiteral("完成"));
         backgroundRefresh_=false;
-        emit snapshot(nowUs(),{{"event","operation_completed"},{"operation",operation_},{"configuration",configuration_.toJson()}});
+        if(!extensionRequest_.isEmpty()) {
+            extensionResult_["ok"]=true;
+            extensionRequest_={};emit extensionCompleted(extensionResult_);
+        }
+        emit snapshot(nowUs(),{{"event","operation_completed"},{"operation",operation_},{"configuration",configuration_.toJson()},{"result",extensionResult_}});
         return;
     }
     current_=steps_.front(); steps_.pop_front();
+    if(current_->kind==Kind::Callback) {
+        auto action=std::move(current_->callback);current_.reset();action();advance();return;
+    }
     if(current_->label==QStringLiteral("hmp_confirmation"))current_->expected=hmpCompensationBaseline_+1u;
     const auto& s=*current_;
     if (s.kind==Kind::ConfirmConnection) {
@@ -324,6 +342,7 @@ void FpgaDeviceController::advance()
         if(s.source==0x46)configuration_.ai8.pollIntervalMs=registers_.value(0x662c);
         for(auto it=pendingSensorParameters_.begin();it!=pendingSensorParameters_.end();++it)configuration_.sensorParameters[s.source][it.key()]=it.value();
         emit sensorConfigurationApplied(s.source,registers_,pendingSensorParameters_);
+        snapshotConfiguration();
         current_.reset();advance();return;
     }
     if (s.kind==Kind::CheckVersions) {
@@ -375,7 +394,7 @@ void FpgaDeviceController::advance()
             }
         }
         pendingSequence_=session_->sensorAction(s.address,s.expected,s.source); break;
-    case Kind::Delay: case Kind::PrepareSensorConfig: case Kind::FinishSensorConfig: case Kind::CheckVersions: case Kind::RecoverConnection: case Kind::FinishRawStop: case Kind::CheckTemperature: case Kind::ConfirmConnection: case Kind::FinishWatchdog: break;
+    case Kind::Delay: case Kind::PrepareSensorConfig: case Kind::FinishSensorConfig: case Kind::CheckVersions: case Kind::RecoverConnection: case Kind::FinishRawStop: case Kind::CheckTemperature: case Kind::ConfirmConnection: case Kind::FinishWatchdog: case Kind::Callback: break;
     }
     if (!pendingSequence_) fail(QStringLiteral("命令未发送。"));
 }
@@ -386,7 +405,8 @@ void FpgaDeviceController::completed(quint32 seq, bool success, quint32 status)
     if (!success) { fail(QStringLiteral("%1失败：VLP status=%2；请查看模块状态和错误。") .arg(operation_).arg(status)); return; }
     if (current_->kind==Kind::Wait &&
         (!registers_.contains(current_->address) || (registers_.value(current_->address)&current_->mask)!=current_->expected)) {
-        if (waitTimer_.elapsed()>=10000) { fail(QStringLiteral("读回等待超时：")+hex(current_->address)); return; }
+        const int timeout=extensionRequest_.value("op")=="epsilon_mailbox"?15000:10000;
+        if (waitTimer_.elapsed()>=timeout) { fail(QStringLiteral("读回等待超时，执行结果未知；未重发写命令：")+hex(current_->address)); return; }
         QTimer::singleShot(50,this,[this] {
             if (current_ && current_->kind==Kind::Wait && busy_)
                 pendingSequence_=session_->readRegisters(current_->address,1);
@@ -416,6 +436,10 @@ void FpgaDeviceController::fail(const QString& detail)
     steps_.clear(); current_.reset(); pendingSequence_=0; busy_=false; drainWaveforms_=false; backgroundRefresh_=false;
     if (session_) session_->cancelQueuedCommands();
     detail_=detail; report(detail, LogLevel::Error);
+    if(!extensionRequest_.isEmpty()) {
+        extensionRequest_={};extensionResult_["ok"]=false;extensionResult_["detail"]=detail;
+        emit extensionCompleted(extensionResult_);
+    }
     emit hardwareValuesChanged(registers_);
     emit connectionChanged(ready_,false,detail);
     emit snapshot(nowUs(),{{"event","operation_failed"},{"detail",detail}});
@@ -448,7 +472,7 @@ void FpgaDeviceController::reportRawResult(bool enabled, bool succeeded, const Q
 void FpgaDeviceController::trackConnection(quint16 source)
 {
     pendingConnections_[source]=0; operationConnections_.insert(source);
-    if(source>=0x40 && source<=0x46) {
+    if(FpgaExtensions::sensor(source)) {
         startupWarningDeadlines_[source]=-1;
         startupWarnings_.remove(source);
     }
@@ -458,7 +482,7 @@ void FpgaDeviceController::reportConnection(quint16 source, const QString& resul
 {
     const QMap<quint16,QString> names{{0,QStringLiteral("ADC / DLIA")},{0x40,QStringLiteral("PTB210")},
         {0x41,QStringLiteral("HMP3")},{0x42,QStringLiteral("EPSILON")},{0x43,QStringLiteral("BMP390")},{0x44,QStringLiteral("SHT45")},
-        {0x45,QStringLiteral("TFA1500-L")},{0x46,QStringLiteral("AI-8288D92J0")}};
+        {0x45,QStringLiteral("TFA1500-L")},{0x46,QStringLiteral("AI-8288D92J0")},{0x48,QStringLiteral("RD105")}};
     LogRecord record; record.source=QStringLiteral("Ground"); record.category=QStringLiteral("device.fpga");
     record.level=(result==QStringLiteral("failed") || result==QStringLiteral("warning"))?LogLevel::Warning:LogLevel::Info;
     record.message=names.value(source)+QStringLiteral(" 经 FPGA ")+
@@ -484,7 +508,7 @@ void FpgaDeviceController::confirmConnection(quint16 source)
             QStringLiteral("采集 CONTROL 读回确认；波形上传由 RAW 开关独立控制。"));
         pendingConnections_.remove(source); operationConnections_.remove(source); return;
     }
-    const quint32 pollAddress=source==0x40?0x6018:source==0x41?0x611c:source==0x43?0x6314:source==0x44?0x6414:source==0x46?0x662c:0;
+    const quint32 pollAddress=source==0x40?0x6018:source==0x41?0x611c:source==0x43?0x6314:source==0x44?0x6414:source==0x46?0x662c:source==0x48?0x682c:0;
     const qint64 timeout=qMax<qint64>(8000,3*qint64(registers_.value(pollAddress))+5000);
     pendingConnections_[source]=QDateTime::currentMSecsSinceEpoch()+timeout;
     startupWarningDeadlines_[source]=connectionClock_.elapsed()+3000;
@@ -590,13 +614,14 @@ void FpgaDeviceController::recoverConnection()
     operation_=QStringLiteral("连接后恢复采集与传感器");
     emit connectionChanged(false,true,operation_);
     snapshotConfiguration();
-    for(quint16 source:{0x40,0x41,0x42,0x43,0x44,0x45,0x46})
+    for(quint16 source:{0x40,0x41,0x42,0x43,0x44,0x45,0x46,0x48})
         if(saved.value(0x6004+(source-0x40)*0x100)&1)trackConnection(source);
     for(quint32 control:{0x4004u,0x4104u,0x5004u,0x5104u})
         if(saved.value(control)&1) {trackConnection(0);break;}
     if(!enableUpload())return;
     stopAndDrain();resetAcquisition();
-    for(quint32 b:{0x6000u,0x6100u,0x6200u,0x6300u,0x6400u,0x6500u,0x6600u}) {
+    for(quint32 b:{0x6000u,0x6100u,0x6200u,0x6300u,0x6400u,0x6500u,0x6600u,0x6800u}) {
+        if(b==0x6800 && !(extensions()&FpgaExtensions::Rd105))continue;
         if(saved.value(b+4)&1) {
             Step stop;stop.kind=Kind::Sensor;stop.address=1;stop.source=quint16(0x40+(b-0x6000)/0x100);stop.expected=0;
             steps_.push_back(stop);verify(b+4,0);
@@ -633,6 +658,12 @@ void FpgaDeviceController::applyConfiguration(const FpgaControlConfig& config, c
     const bool acquisition=section=="all" || section=="acquisition";
     if (!wms && !dlia && !acquisition) { fail(QStringLiteral("未知参数分区。")); return; }
     const quint32 adcRate=acquisition?config.adcRateHz:registers_.value(0x4014);
+    if(acquisition && config.ai8.scan && !(extensions()&FpgaExtensions::Ai8Scan)) {fail(QStringLiteral("当前固件不支持 AI8 八通道扫描。"));return;}
+    if(dlia)for(const auto& d:config.dlia) {
+        if(!FpgaExtensions::cutoff(d.cutoffHz) || (d.cutoffHz!=1000 && (!(extensions()&FpgaExtensions::DliaCutoff) || adcRate!=1000000))) {
+            fail(QStringLiteral("截止频率档位不合法，或非默认档位不满足固件能力及标称 1 MHz 采样率要求。"));return;
+        }
+    }
     if ((acquisition && (adcRate<1000 || adcRate>1000000)) ||
         (dlia && (config.dlia[0].outputRateHz==0 || config.dlia[1].outputRateHz==0 ||
         config.dlia[0].outputRateHz>adcRate/8 || config.dlia[1].outputRateHz>adcRate/8))) {
@@ -664,7 +695,8 @@ void FpgaDeviceController::applyConfiguration(const FpgaControlConfig& config, c
     configuration_=config; stopAndDrain();
     const bool ai8Changed=acquisition && (registers_.value(0x6614)!=config.ai8.slaveAddress ||
         registers_.value(0x661c)!=config.ai8.channel || registers_.value(0x662c)!=config.ai8.pollIntervalMs
-        || registers_.value(0x6660)!=config.ai8.timeoutMs || registers_.value(0x6664)!=config.ai8.retryLimit);
+        || registers_.value(0x6660)!=config.ai8.timeoutMs || registers_.value(0x6664)!=config.ai8.retryLimit
+        || ((extensions()&FpgaExtensions::Ai8Scan) && bool(registers_.value(0x6668))!=config.ai8.scan));
     if (ai8Changed && (registers_.value(0x6604)&1)) {
         fail(QStringLiteral("AI8 地址、通道或轮询配置只能在禁用时修改；请先禁用 AI8。")); return;
     }
@@ -688,6 +720,7 @@ void FpgaDeviceController::applyConfiguration(const FpgaControlConfig& config, c
         write(0x662c,config.ai8.pollIntervalMs); verify(0x662c,config.ai8.pollIntervalMs);
         write(0x6660,config.ai8.timeoutMs); verify(0x6660,config.ai8.timeoutMs);
         write(0x6664,config.ai8.retryLimit); verify(0x6664,config.ai8.retryLimit);
+        if(extensions()&FpgaExtensions::Ai8Scan) {write(0x6668,config.ai8.scan?1:0);verify(0x6668,config.ai8.scan?1:0);}
     }
     if (acquisition) {
         write(0x4010,config.adcRateHz); verify(0x4010,config.adcRateHz);
@@ -701,7 +734,9 @@ void FpgaDeviceController::applyConfiguration(const FpgaControlConfig& config, c
         const quint32 vals[]={d.referenceMilliHz,d.phase1,d.phase2,d.outputRateHz,d.mode};
         for (quint32 i=0;i<5;++i) { write(b+0x10+i*4,vals[i]); verify(b+0x10+i*4,vals[i]); }
         write(b+0x40,d.fragmentPoints);verify(b+0x40,d.fragmentPoints);
+        if(extensions()&FpgaExtensions::DliaCutoff) {write(b+0x58,d.cutoffHz);verify(b+0x58,d.cutoffHz);}
         commit(quint16(0x30+ch),b); read(b+0x4c,2);
+        if(extensions()&FpgaExtensions::DliaCutoff)verify(b+0x5c,d.cutoffHz);
     }
     readAll(); advance();
 }
@@ -750,7 +785,7 @@ void FpgaDeviceController::setDac(int channel, bool enable)
 
 void FpgaDeviceController::setSensorEnabled(quint16 source, bool enable)
 {
-    if (!ready_ || source<0x40 || source>0x46 || !begin(QStringLiteral("设置传感器状态"))) return;
+    if (!ready_ || !FpgaExtensions::sensor(source) || (source==0x48 && !(extensions()&FpgaExtensions::Rd105)) || !begin(QStringLiteral("设置传感器状态"))) return;
     if(enable)trackConnection(source);
     if (source==0x43 && enable && (registers_.value(0x6304)&1)) {
         fail(QStringLiteral("修改 BMP 地址前请先禁用 BMP390。"));return;
@@ -790,6 +825,7 @@ void FpgaDeviceController::connectSensor(const QJsonObject& request)
         fail(QStringLiteral("传感器连接参数或范围无效。"));return;
     }
     const auto source=quint16(request.value("source").toInt());
+    if(source==0x48 && !(extensions()&FpgaExtensions::Rd105)) {fail(QStringLiteral("当前固件未报告 RD105 扩展能力。"));return;}
     if (!request.contains("baud") && !request.contains("poll_ms") && !request.contains("parameters") && configuration_.sensorParameters.value(source).isEmpty()) {
         setSensorEnabled(quint16(request.value("source").toInt()),true);return;
     }
@@ -809,6 +845,7 @@ void FpgaDeviceController::startSensorConfiguration(const QJsonObject& request, 
     if (request.value("op").toString()!=QStringLiteral("sensor_config") || !FpgaRemote::validateControl(request)) {
         fail(QStringLiteral("传感器参数或范围无效。"));return;
     }
+    if(request.value("source").toInt()==0x48 && !(extensions()&FpgaExtensions::Rd105)) {fail(QStringLiteral("当前固件未报告 RD105 扩展能力。"));return;}
     if (!ready_ || !begin(QStringLiteral("配置传感器参数并读回"))) return;
     const auto source=quint16(request.value("source").toInt());
     pendingSensorParameters_=request.value("parameters").toObject();
@@ -855,7 +892,7 @@ void FpgaDeviceController::prepareSensorConfiguration(quint16 source, quint32 ba
     const bool modeBeforeBaud=source==0x45 && pendingSensorParameters_.contains("mode") && pendingSensorParameters_.value("mode").toInt()!=2;
     if(modeBeforeBaud)parameter(0x6514,quint32(pendingSensorParameters_.value("mode").toInt()));
     if(baud)parameter(base+0x10,baud);
-    if(pollMs)parameter(base+(source==0x40?0x18:source==0x41?0x1c:source==0x46?0x2c:0x14),pollMs);
+    if(pollMs)parameter(base+(source==0x40?0x18:source==0x41?0x1c:(source==0x46 || source==0x48)?0x2c:0x14),pollMs);
     for(const auto& spec:FpgaRemote::sensorParameters())if(spec.source==source && pendingSensorParameters_.contains(spec.key) && !(modeBeforeBaud && QString::fromLatin1(spec.key)=="mode"))parameter(spec.address,quint32(pendingSensorParameters_.value(spec.key).toDouble()));
     if(source==0x43 && !pendingSensorParameters_.isEmpty())commit(source,base);
     if(source==0x45)waitFor(base+8,13,0);
@@ -873,8 +910,13 @@ void FpgaDeviceController::prepareSensorConfiguration(quint16 source, quint32 ba
 
 void FpgaDeviceController::executeOperation(const QJsonObject& request)
 {
+    const auto requestedOp=request.value("op").toString();
+    if(requestedOp=="instrument" || requestedOp=="epsilon_mailbox" || requestedOp=="ai8_scan" || requestedOp=="ai8_cache" || requestedOp=="dlia_cutoff" || requestedOp=="device_temperature") {
+        executeExtension(request);return;
+    }
     if(busy_ && !backgroundRefresh_) {report(QStringLiteral("FPGA 操作被拒绝：已有事务正在执行。"));return;}
     if(!FpgaRemote::validateControl(request)) {fail(QStringLiteral("FPGA 操作参数无效。"));return;}
+    if(request.value("source").toInt()==0x48 && !(extensions()&FpgaExtensions::Rd105)) {fail(QStringLiteral("当前固件未报告 RD105 扩展能力。"));return;}
     if(!ready_ || !begin(QStringLiteral("FPGA 高级控制与读回")))return;
     snapshotConfiguration();
     const auto op=request.value("op").toString();
@@ -969,9 +1011,18 @@ void FpgaDeviceController::acceptReading(const FpgaSensor::Reading& reading)
             if(!replaying_)emit observationEpochReceived(Ppk::encodeEpoch(*epoch));
         return; // Observations must not replace coalesced navigation state.
     }
-    latestReadings_[reading.source]=adapter_.accept(reading);
-    lastReadingMs_[reading.source]=QDateTime::currentMSecsSinceEpoch();
-    dirtyReadings_.insert(reading.source); expiredReadings_.remove(reading.source);
+    const quint16 key=reading.ai8Channel?quint16(0x4600+*reading.ai8Channel):reading.source;
+    auto contextual=reading;
+    if(contextual.source==0x48 && registers_.contains(0x681c))contextual.rd105Channel=registers_.value(0x681c);
+    auto adapted=adapter_.accept(contextual);
+    const bool keepHealthyScan=reading.source==0x46 && reading.schema==3 && !adapted.reading.validity.measurement
+        && latestReadings_.contains(reading.source) && latestReadings_.value(reading.source).reading.validity.measurement;
+    if(!keepHealthyScan)latestReadings_[reading.source]=adapted;
+    if(key!=reading.source)latestReadings_[key]=adapted;
+    const auto received=QDateTime::currentMSecsSinceEpoch();
+    if(!keepHealthyScan)lastReadingMs_[reading.source]=received;
+    if(key!=reading.source)lastReadingMs_[key]=received;
+    dirtyReadings_.insert(key); expiredReadings_.remove(key);
 }
 
 void FpgaDeviceController::flushPresentation()
@@ -1017,10 +1068,16 @@ void FpgaDeviceController::replaySession(const QString& directory)
             return true;
         }, &error, [this](quint64, const QJsonObject&) {
             session_->flushWaveforms(); flushPresentation();
+            registers_.clear();
             adapter_.reset(); latestReadings_.clear(); latestWaves_.clear();
             dirtyReadings_.clear(); expiredReadings_.clear();
             session_->close();
-        }, [] { return QThread::currentThread()->isInterruptionRequested(); });
+        }, [] { return QThread::currentThread()->isInterruptionRequested(); }, [this](quint64,const QJsonObject& document) {
+            if(document.value("event")!="config")return;
+            const auto actual=document.value("hardware_registers").toObject();
+            for(auto it=actual.begin();it!=actual.end();++it) {bool ok=false;const auto address=it.key().toUInt(&ok,0);if(ok)registers_[address]=quint32(it.value().toDouble());}
+            if(registers_.contains(0x661c))adapter_.setAi8Channel(int(registers_.value(0x661c)));
+        });
     session_->flushWaveforms(); flushPresentation(); replaying_=false;
     emit connectionChanged(false,false,ok?QStringLiteral("离线会话已载入；USB 未连接"):error);
     emit replayFinished(ok,ok?directory:error);

@@ -1,4 +1,5 @@
 #include "ground/devices/Rd105DeviceSession.h"
+#include <QPointer>
 
 #include "TelemetryCodec.h"
 #include "ground/devices/RemoteSkyController.h"
@@ -7,6 +8,16 @@
 
 namespace VaporView::Ground::Devices
 {
+Rd105DeviceSession::~Rd105DeviceSession()
+{
+    fpga_worker_thread_.requestInterruption();fpga_worker_thread_.quit();fpga_worker_thread_.wait();delete fpga_worker_;
+}
+void Rd105DeviceSession::setFpgaTransport(FpgaInstrumentCall call,bool available)
+{
+    if(bool(call)==bool(fpga_call_) && available==fpga_available_)return;
+    if(bool(call)!=bool(fpga_call_)) {++session_generation_;failActive(Rd105OperationOutcome::Disconnected,QStringLiteral("设备传输路径已切换。"));}
+    fpga_call_=std::move(call);fpga_available_=available;refreshAvailability();
+}
 
 namespace
 {
@@ -187,6 +198,7 @@ bool Rd105DeviceSession::operationsAvailable() const
     {
         return false;
     }
+    if(fpga_call_)return fpga_available_;
     if (backend_ == Rd105Backend::Local)
     {
         return local_available_ && local_adapter_.sendCommand;
@@ -221,6 +233,24 @@ quint64 Rd105DeviceSession::sendCommand(
 
     pending_commands_.insert(pending.request_id, pending);
     emit operationStarted(pending.request_id, command, payload);
+
+    if(fpga_call_) {
+        if(!fpga_worker_) {
+            fpga_worker_=new QObject;fpga_worker_->moveToThread(&fpga_worker_thread_);fpga_worker_thread_.start();
+        }
+        const auto call=fpga_call_;QPointer<Rd105DeviceSession> guard(this);
+        QMetaObject::invokeMethod(fpga_worker_,[guard,call,pending] {
+            const auto result=sendFpgaTemperatureCommand(call,pending.command,pending.payload);
+            if(guard)QMetaObject::invokeMethod(guard,[guard,pending,result] {
+                if(!guard || pending.session_generation!=guard->session_generation_ || !guard->pending_commands_.remove(pending.request_id))return;
+                guard->finishPending(pending,result.status==LocalTemperatureCommandStatus::Confirmed?Rd105OperationOutcome::Success:result.unverified?Rd105OperationOutcome::Timeout:Rd105OperationOutcome::Failed,
+                    result.status==LocalTemperatureCommandStatus::Confirmed?CommandErrorCode::Ok:CommandErrorCode::ConfigApplyFailed,
+                    result.message,result.latestData,result.latestData.valid);
+                guard->refreshAvailability();
+            },Qt::QueuedConnection);
+        },Qt::QueuedConnection);
+        return pending.request_id;
+    }
 
     if (backend_ == Rd105Backend::Local)
     {

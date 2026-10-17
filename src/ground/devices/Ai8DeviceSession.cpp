@@ -136,6 +136,7 @@ Ai8DeviceSession::Ai8DeviceSession(LocalAdapter localAdapter,
 
 Ai8DeviceSession::~Ai8DeviceSession()
 {
+    local_worker_thread_.requestInterruption();
     ++session_generation_;
     pending_operations_.clear();
     remote_request_to_session_.clear();
@@ -216,6 +217,13 @@ void Ai8DeviceSession::setTransportSupported(bool supported, const QString& reas
     refreshAvailability();
 }
 
+void Ai8DeviceSession::setFpgaTransport(FpgaInstrumentCall call,bool available)
+{
+    if(bool(call)==bool(fpga_call_) && available==fpga_available_)return;
+    if(bool(call)!=bool(fpga_call_)) {++session_generation_;local_cache_.clear();remote_cache_.clear();failActive(Ai8OperationOutcome::Disconnected,QStringLiteral("设备传输路径已切换。"));}
+    fpga_call_=std::move(call);fpga_available_=available;refreshAvailability();
+}
+
 bool Ai8DeviceSession::operationsAvailable() const
 {
     if (!transport_supported_) return false;
@@ -223,6 +231,7 @@ bool Ai8DeviceSession::operationsAvailable() const
     {
         return false;
     }
+    if(fpga_call_)return fpga_available_;
     if (backend_ == Ai8Backend::Local)
     {
         return local_available_ && local_adapter_.readPage && local_adapter_.writePage;
@@ -287,7 +296,7 @@ quint64 Ai8DeviceSession::beginOperation(
     pending.requested = requested;
     active_page_key_ = pageKey(requested.page, requested.selection);
 
-    if (operation == Ai8Operation::FactoryReset && backend_ == Ai8Backend::Local)
+    if (operation == Ai8Operation::FactoryReset && (backend_ == Ai8Backend::Local || fpga_call_))
     {
         Ai8SessionResult result;
         result.request_id = requestId;
@@ -322,7 +331,7 @@ quint64 Ai8DeviceSession::beginOperation(
 
     pending_operations_.insert(requestId, pending);
     emit operationStarted(requestId, operation);
-    if (backend_ == Ai8Backend::Local)
+    if (backend_ == Ai8Backend::Local || fpga_call_)
     {
         dispatchLocal(pending);
     }
@@ -337,10 +346,14 @@ quint64 Ai8DeviceSession::beginOperation(
 void Ai8DeviceSession::dispatchLocal(PendingOperation pending)
 {
     const LocalAdapter adapter = local_adapter_;
+    const auto fpgaCall=fpga_call_;
     QPointer<Ai8DeviceSession> guard(this);
-    QMetaObject::invokeMethod(local_worker_, [guard, adapter, pending]() {
+    QMetaObject::invokeMethod(local_worker_, [guard, adapter, pending, fpgaCall]() {
         LocalAi8OperationResult localResult;
-        if (pending.operation == Ai8Operation::Read && adapter.readPage)
+        if(fpgaCall) {
+            localResult=pending.operation==Ai8Operation::Read?readFpgaAi8Page(fpgaCall,pending.requested.page,pending.requested.selection):writeFpgaAi8Page(fpgaCall,pending.requested);
+        }
+        else if (pending.operation == Ai8Operation::Read && adapter.readPage)
         {
             localResult = adapter.readPage(pending.requested.page,
                                            pending.requested.selection);
@@ -369,7 +382,7 @@ void Ai8DeviceSession::dispatchLocal(PendingOperation pending)
             }
             guard->pending_operations_.erase(pendingIt);
             if (pending.session_generation != guard->session_generation_ ||
-                guard->backend_ != Ai8Backend::Local)
+                guard->backend_ != pending.backend)
             {
                 return;
             }

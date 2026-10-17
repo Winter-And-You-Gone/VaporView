@@ -8,6 +8,8 @@
 #include <QDoubleValidator>
 #include <QIntValidator>
 #include "FpgaTelemetry.h"
+#include "FpgaExtensions.h"
+#include "ground/devices/FpgaInstrumentService.h"
 #include "ppk/ObservationStore.h"
 #include "ground/widgets/DeviceEnabledCheckBox.h"
 
@@ -26,21 +28,38 @@ VaporView::Ground::Devices::RemoteSkyController *MainWindow::testRemoteSkyContro
 void MainWindow::syncFpgaDeviceConfigUi()
 {
     const bool relay = isFpgaRelayPath();
+    const auto extensions=homeFpgaExtensions();
+    const auto values=homeFpgaRegisters();
+    using namespace VaporView::Ground::Devices;
+    auto call=relay?makeFpgaInstrumentCall(this,[this](const QJsonObject& request,FpgaInstrumentReply reply){submitFpgaInstrument(request,std::move(reply));}):FpgaInstrumentCall{};
     const QString ai8Unsupported = state_->is_english_
         ? QStringLiteral("VLP1 does not expose AI8 parameter pages. Use the FPGA page for polling and confirmed temperature setpoint control.")
         : QStringLiteral("当前 VLP1 不支持 AI8 完整参数页；轮询配置与设温回读请使用 FPGA 页面。");
     const QString epsilonUnsupported = state_->is_english_
         ? QStringLiteral("VLP1 does not expose EPSILON parameter commands or RTCM forwarding.")
         : QStringLiteral("当前 VLP1 不支持 EPSILON 参数命令或 RTCM 转发。");
-    if (state_->ai8_device_session_) state_->ai8_device_session_->setTransportSupported(!relay, relay ? ai8Unsupported : QString());
-    if (state_->epsilon_device_session_) state_->epsilon_device_session_->setTransportSupported(!relay, relay ? epsilonUnsupported : QString());
+    if (state_->ai8_device_session_) {
+        state_->ai8_device_session_->setFpgaTransport(call,(extensions&VaporView::FpgaExtensions::Ai8Parameters) && (values.value(0x6604)&1));
+        state_->ai8_device_session_->setTransportSupported(!relay || (extensions&VaporView::FpgaExtensions::Ai8Parameters),relay?ai8Unsupported:QString());
+    }
+    if (state_->epsilon_device_session_) {
+        state_->epsilon_device_session_->setFpgaTransport(call,(extensions&VaporView::FpgaExtensions::EpsilonMailbox) && (values.value(0x6204)&1));
+        state_->epsilon_device_session_->setTransportSupported(!relay || (extensions&VaporView::FpgaExtensions::EpsilonMailbox),relay?epsilonUnsupported:QString());
+    }
+    if(state_->rd105_device_session_)state_->rd105_device_session_->setFpgaTransport(call,(extensions&VaporView::FpgaExtensions::Rd105) && (values.value(0x6804)&1));
     if (relay && state_->ai8_temperature_controller_panel_) {
         state_->ai8_temperature_controller_panel_->setBackendConnected(
             homeFpgaDeviceState(VaporView::SkyDeviceId::Ai8TemperatureController) == VaporView::DeviceState::Connected,
             state_->is_english_ ? QStringLiteral("FPGA relay") : QStringLiteral("FPGA 中转"));
-        state_->ai8_temperature_controller_panel_->setPageCommandsEnabled(false, ai8Unsupported);
+        state_->ai8_temperature_controller_panel_->setPageCommandsEnabled(state_->ai8_device_session_ && state_->ai8_device_session_->operationsAvailable(), ai8Unsupported);
     }
     const auto registers = homeFpgaRegisters();
+    if(auto* read=findChild<QToolButton*>(QStringLiteral("temperatureFpgaReadParameters"))) {
+        read->setVisible(relay);read->setEnabled(relay && state_->rd105_device_session_ && state_->rd105_device_session_->operationsAvailable());
+    }
+    if(state_->rtk_config_dialog_ && (state_->rtk_config_dialog_->property("fpgaExtensions").toUInt()!=extensions || state_->rtk_config_dialog_->property("fpgaRelay").toBool()!=relay)) {
+        state_->rtk_config_dialog_->setProperty("fpgaExtensions",extensions);state_->rtk_config_dialog_->setProperty("fpgaRelay",relay);syncRtkConfigPageState();
+    }
     const auto enabledState = [&](QCheckBox *check, bool known, bool enabled, bool supported = true) {
         if (!check || !relay) return;
         const QSignalBlocker blocker(check);
@@ -161,12 +180,12 @@ void MainWindow::syncFpgaDeviceConfigUi()
     field(state_->device_config_.hmp_baud_combo,0x41,{},0,QStringLiteral("19200"));
     field(state_->device_config_.lidar_baud_combo,0x45,"baud",0x6510);
     field(state_->device_config_.ai8_temperature_baud_combo,0x46,{},0,registers.contains(0x6610)?QString::number(registers.value(0x6610)):QStringLiteral("19200"));
-    field(state_->device_config_.temperature_baud_combo,0,{},0,state_->is_english_?QStringLiteral("Unsupported"):QStringLiteral("不支持"));
+    field(state_->device_config_.temperature_baud_combo,0x48,{},0,(extensions&VaporView::FpgaExtensions::Rd105)?QStringLiteral("19200"):state_->is_english_?QStringLiteral("Unsupported"):QStringLiteral("不支持"));
     field(state_->device_config_.ptb_rate_combo,pressure,"poll_ms",pressure==0x43?0x6314:0x6018);
     field(state_->device_config_.hmp_rate_combo,0x41,"poll_ms",0x611c);
     field(state_->device_config_.ai8_temperature_rate_combo,0x46,"poll_ms",0x662c);
     field(state_->device_config_.lidar_rate_combo,0x45,{},0,state_->is_english_?QStringLiteral("Device output"):QStringLiteral("设备输出"));
-    field(state_->device_config_.temperature_rate_combo,0,{},0,QStringLiteral("—"));
+    field(state_->device_config_.temperature_rate_combo,0x48,(extensions&VaporView::FpgaExtensions::Rd105)?"poll_ms":"",0x682c,QStringLiteral("—"));
     if (auto *check=state_->device_config_.fpga_wave_enabled_check) {
         bool known=true,enabled=false;
         for(quint32 control:{0x4004u,0x4104u,0x5004u,0x5104u}) {
@@ -195,14 +214,17 @@ void MainWindow::syncFpgaDeviceConfigUi()
     if (state_->device_config_.ptb_lbl) state_->device_config_.ptb_lbl->setText(pressure == 0x43 ? QStringLiteral("BMP390") : QStringLiteral("PTB210"));
 
     if (state_->device_config_.epsilon_packet_rates_btn) {
-        state_->device_config_.epsilon_packet_rates_btn->setEnabled(false);
-        state_->device_config_.epsilon_packet_rates_btn->setToolTip(epsilonUnsupported);
+        const bool supported=extensions&VaporView::FpgaExtensions::EpsilonMailbox;
+        state_->device_config_.epsilon_packet_rates_btn->setEnabled(supported && state_->epsilon_device_session_ && state_->epsilon_device_session_->operationsAvailable());
+        state_->device_config_.epsilon_packet_rates_btn->setToolTip(supported
+            ? (state_->is_english_?QStringLiteral("Configure EPSILON packet rates through the FPGA mailbox, then verify readback."):QStringLiteral("通过 FPGA 邮箱设置 EPSILON 包频率并读回确认。"))
+            : epsilonUnsupported);
     }
     for (const auto &item : {qMakePair(state_->device_config_.epsilon_enabled_check,quint16(0x42)),
              qMakePair(state_->device_config_.ptb_enabled_check,pressure),
              qMakePair(state_->device_config_.hmp_enabled_check,quint16(0x41)),
              qMakePair(state_->device_config_.lidar_enabled_check,quint16(0x45)),
-             qMakePair(state_->device_config_.temperature_enabled_check,quint16(0)),
+             qMakePair(state_->device_config_.temperature_enabled_check,quint16((extensions&VaporView::FpgaExtensions::Rd105)?0x48:0)),
              qMakePair(state_->device_config_.ai8_temperature_enabled_check,quint16(0x46))}) {
         const quint32 control=0x6004+(item.second-0x40)*0x100;
         enabledState(item.first,registers.contains(control),(registers.value(control)&1)!=0,item.second!=0);
@@ -255,6 +277,7 @@ quint16 MainWindow::homeFpgaSensorSource(VaporView::SkyDeviceId device) const
     case SkyDeviceId::Hmp: return 0x41;
     case SkyDeviceId::Lidar: return 0x45;
     case SkyDeviceId::Ai8TemperatureController: return 0x46;
+    case SkyDeviceId::TemperatureController: return 0x48;
     default: return 0;
     }
 }
@@ -274,6 +297,7 @@ VaporView::DeviceState MainWindow::homeFpgaDeviceActionState(VaporView::SkyDevic
     using VaporView::DeviceState;
     using VaporView::SkyDeviceId;
     if (!homeFpgaSensorSource(device) && device != SkyDeviceId::WaveTcp) return DeviceState::Disabled;
+    if(device==SkyDeviceId::TemperatureController && !homeFpgaRegisters().isEmpty() && !(homeFpgaExtensions()&VaporView::FpgaExtensions::Rd105))return DeviceState::Disabled;
     if (state_->fpga_home_action_device_ != SkyDeviceId::All)
         return state_->fpga_home_action_device_ == device ? DeviceState::Connecting : DeviceState::Disabled;
     if (isUiTestMode()) {
@@ -297,6 +321,42 @@ QMap<quint32, quint32> MainWindow::homeFpgaRegisters() const
     const auto values = state_->fpga_session_.remoteStatus.value("registers").toObject();
     for (auto it = values.begin(); it != values.end(); ++it) registers.insert(it.key().toUInt(), quint32(it.value().toDouble()));
     return registers;
+}
+
+quint32 MainWindow::homeFpgaExtensions() const
+{
+    return isUiTestMode()?state_->fpga_page_->extensions():isRemoteSkyMode()
+        ?quint32(state_->fpga_session_.remoteStatus.value("extensions").toDouble()):state_->fpga_extensions_;
+}
+
+void MainWindow::submitFpgaInstrument(const QJsonObject& request,std::function<void(const QJsonObject&)> reply)
+{
+    if(!isFpgaRelayPath()) {reply({{"ok",false},{"detail",QStringLiteral("设备传输路径已切换。")}});return;}
+    if(isRemoteSkyMode() && !isUiTestMode()) {
+        if(state_->fpga_instrument_reply_ || state_->fpga_session_.requestId || !state_->fpga_session_.remoteReady()) {
+            reply({{"ok",false},{"detail",QStringLiteral("天空端 FPGA 未就绪或正在执行其它事务。")}});return;
+        }
+        state_->fpga_instrument_reply_=std::move(reply);sendRemoteFpgaControl(request);
+        if(!state_->fpga_session_.requestId) {auto done=std::move(state_->fpga_instrument_reply_);done({{"ok",false},{"detail",QStringLiteral("天空端 FPGA 命令未发送。")}});}
+        return;
+    }
+    auto* controller=isUiTestMode()?state_->fpga_page_->uiTestController():state_->fpga_session_.controller();
+    if(!controller) {reply({{"ok",false},{"detail",QStringLiteral("FPGA 设备未连接。")}});return;}
+    if(state_->fpga_instrument_reply_) {reply({{"ok",false},{"detail",QStringLiteral("FPGA 已有设备事务正在执行。")}});return;}
+    const auto ticket=QString::number(++state_->fpga_instrument_sequence_);
+    auto submitted=request;submitted["ticket"]=ticket;
+    state_->fpga_instrument_reply_=std::move(reply);
+    auto observer=std::make_shared<QMetaObject::Connection>();auto finished=std::make_shared<bool>(false);
+    *observer=connect(controller,&VaporView::Ground::Devices::FpgaDeviceController::extensionCompleted,this,
+        [this,ticket,observer,finished](const QJsonObject& result) {
+            if(*finished || result.value("ticket").toString()!=ticket)return;*finished=true;QObject::disconnect(*observer);
+            if(auto done=std::move(state_->fpga_instrument_reply_))done(result);
+        });
+    QTimer::singleShot(30000,this,[this,observer,finished] {
+        if(*finished)return;*finished=true;QObject::disconnect(*observer);
+        if(auto done=std::move(state_->fpga_instrument_reply_))done({{"ok",false},{"detail",QStringLiteral("FPGA 设备事务超时；执行结果未知。")}});
+    });
+    QMetaObject::invokeMethod(controller,[controller,submitted]{controller->executeOperation(submitted);},Qt::QueuedConnection);
 }
 
 void MainWindow::updateHomeFpgaWaveActions()
@@ -381,6 +441,7 @@ void MainWindow::connectNextHomeFpgaDevice()
         || (isUiTestMode() ? state_->fpga_sim_busy_ : state_->fpga_busy_)) return;
     while (!state_->fpga_home_connect_queue_.isEmpty()) {
         const auto device = state_->fpga_home_connect_queue_.takeFirst();
+        if(device==VaporView::SkyDeviceId::TemperatureController && !(homeFpgaExtensions()&VaporView::FpgaExtensions::Rd105))continue;
         if (homeFpgaDeviceState(device) == VaporView::DeviceState::Connected
             && fpgaSensorDrafts().value(homeFpgaSensorSource(device)).isEmpty()) continue;
         setHomeFpgaDeviceEnabled(device,true);
@@ -701,13 +762,11 @@ void MainWindow::setupFpgaControlPage()
         }
         connectNextHomeFpgaDevice();
         updateConnectionStatus(anyLocalDeviceConnected());
-        if (state_->ai8_temperature_controller_panel_ && ready)
-            state_->ai8_temperature_controller_panel_->setPageCommandsEnabled(false, state_->is_english_
-                ? QStringLiteral("FPGA AI8 setpoint commands are available on the FPGA page.")
-                : QStringLiteral("FPGA AI8 设温请使用 FPGA 页面；此处串口参数命令不可用。"));
+        syncFpgaDeviceConfigUi();
         updateRecordingActionStates();
     }, Qt::QueuedConnection);
     connect(controller,&Controller::managementUpdated,this,[this,page](const QJsonObject& state){if(!isRemoteSkyMode())page->setManagementState(state);});
+    connect(controller,&Controller::capabilitiesUpdated,this,[this,page](quint32 bits){state_->fpga_extensions_=bits;if(!isRemoteSkyMode()&&!isUiTestMode())page->setExtensions(bits);});
     connect(controller, &Controller::hardwareValuesChanged, this, [this, page](const QMap<quint32, quint32>& values) {
         state_->fpga_registers_=values;
         if (!isRemoteSkyMode()) {page->setHardwareValues(values);updateHomeDeviceStatusCapsules();syncFpgaDeviceConfigUi();}
@@ -793,6 +852,12 @@ void MainWindow::setupFpgaControlPage()
         } else if (discovery && isRemoteSkyMode() && page->usbDiscoveryGeneration() == state_->fpga_session_.discoveryGeneration) {
             page->setUsbDiscoveryResult({{"devices",QJsonArray{}},{"error",QStringLiteral("Invalid Sky USB discovery response")}});
         }
+        if(state_->fpga_instrument_reply_) {
+            auto reply=std::move(state_->fpga_instrument_reply_);
+            auto result=status.value("operation_result").toObject();
+            if(!statusParsed || response.error_code!=VaporView::CommandErrorCode::Ok) {result["ok"]=false;result["detail"]=response.error_message;}
+            reply(result);
+        }
         page->appendDiagnostic(response.error_code == VaporView::CommandErrorCode::Ok
             ? (discovery ? (state_->is_english_ ? QStringLiteral("Sky USB discovery completed.") : QStringLiteral("天空端 USB 枚举完成。"))
                 : (state_->is_english_ ? QStringLiteral("Sky FPGA operation confirmed by final readback.") : QStringLiteral("天空端 FPGA 操作已由最终读回确认。")))
@@ -806,6 +871,7 @@ void MainWindow::setupFpgaControlPage()
     connect(remote, &Remote::deviceOperationRejected, this, [this, page](quint32 requestId, const VaporView::CommandAck& ack) {
         if (!state_->fpga_session_.matches(requestId, *state_->remote_sky_controller_)) return;
         state_->fpga_session_.finishRemote();
+        if(state_->fpga_instrument_reply_) {auto reply=std::move(state_->fpga_instrument_reply_);reply({{"ok",false},{"detail",VaporView::commandErrorCodeText(ack.error_code,state_->is_english_)}});}
         state_->fpga_home_raw_start_pending_ = false;
         state_->fpga_home_connect_device_ = VaporView::SkyDeviceId::All;
         if (state_->fpga_session_.operation == "discover" && isRemoteSkyMode() && page->usbDiscoveryGeneration() == state_->fpga_session_.discoveryGeneration)
@@ -816,6 +882,7 @@ void MainWindow::setupFpgaControlPage()
     connect(remote, &Remote::deviceOperationTimedOut, this, [this, page](quint32 requestId) {
         if (!state_->fpga_session_.matches(requestId, *state_->remote_sky_controller_)) return;
         state_->fpga_session_.finishRemote();
+        if(state_->fpga_instrument_reply_) {auto reply=std::move(state_->fpga_instrument_reply_);reply({{"ok",false},{"detail",QStringLiteral("天空端 FPGA 事务超时，结果未知。")}});}
         state_->fpga_home_raw_start_pending_ = false;
         state_->fpga_home_connect_device_ = VaporView::SkyDeviceId::All;
         if (state_->fpga_session_.operation == "discover" && isRemoteSkyMode() && page->usbDiscoveryGeneration() == state_->fpga_session_.discoveryGeneration)
@@ -828,6 +895,7 @@ void MainWindow::setupFpgaControlPage()
     });
     connect(remote, &Remote::linkOpenChanged, this, [this](bool open) {
         if (!open) {
+            if(state_->fpga_instrument_reply_) {auto reply=std::move(state_->fpga_instrument_reply_);reply({{"ok",false},{"detail",QStringLiteral("天空端链路已断开，结果未知。")}});}
             state_->fpga_home_connect_device_ = VaporView::SkyDeviceId::All;
             state_->fpga_home_raw_start_pending_ = false;
             state_->fpga_session_.resetRemote();
@@ -879,6 +947,7 @@ void MainWindow::receiveRemoteFpgaStatus(const QJsonObject& status)
         const auto registers = status.value("registers").toObject();
         for (auto it = registers.begin(); it != registers.end(); ++it) values.insert(it.key().toUInt(), quint32(it.value().toDouble()));
         state_->fpga_page_->setHardwareValues(values);
+        state_->fpga_page_->setExtensions(quint32(status.value("extensions").toDouble()));
         state_->fpga_page_->setManagementState(status.value("management").toObject());
         updateFpgaPageBackend();
         syncFpgaDeviceConfigUi();
@@ -955,6 +1024,16 @@ void MainWindow::receiveFpgaMeasurements(const VaporView::FpgaSensor::AdaptedMea
             if (state_->ai8_temperature_controller_panel_) state_->ai8_temperature_controller_panel_->applyLiveData(state_->fpga_ai8_live_);
             if (state_->ai8_temperature_overview_panel_) state_->ai8_temperature_overview_panel_->applyLiveData(state_->fpga_ai8_live_);
         }
+    }
+    else if(r.kind==VaporView::FpgaSensor::SensorKind::Rd105) {
+        const int channel=qBound(1,int(r.rd105Channel.value_or(homeFpgaRegisters().value(0x681c,1))),2)-1;
+        auto& data=state_->current_temperature_controller_;
+        data.valid=valid;data.timestamp=std::chrono::steady_clock::now();
+        data.error_code=quint16(r.rd105Error.value_or(0));
+        data.channels[channel].target_temperature_c=r.rd105TargetMicroC?*r.rd105TargetMicroC/1000000.0:std::numeric_limits<double>::quiet_NaN();
+        data.channels[channel].measured_temperature_c=r.rd105ActualMicroC?*r.rd105ActualMicroC/1000000.0:std::numeric_limits<double>::quiet_NaN();
+        if(state_->temperature_controller_panel_)state_->temperature_controller_panel_->updateData(data);
+        if(state_->temperature_overview_panel_)state_->temperature_overview_panel_->updateData(data);
     }
     {
         const std::lock_guard<std::mutex> lock(state_->fpga_snapshot_mutex_);
@@ -1047,6 +1126,7 @@ void MainWindow::invalidateFpgaMeasurements()
     if (isFpgaRelayPath()) state_->current_hmp_ = VaporView::HmpData{};
     state_->internal_environment_.clear();state_->internal_environment_times_.clear();
     if (state_->fpga_sources_.contains(0x45)) state_->current_lidar_ = VaporView::LidarData{};
+    if (state_->fpga_sources_.contains(0x48))state_->current_temperature_controller_=VaporView::TemperatureControllerData{};
     if (state_->fpga_sources_.contains(0x46))
     {
         state_->fpga_ai8_live_ = VaporView::Ai8TemperatureControllerProtocol::LiveData{};

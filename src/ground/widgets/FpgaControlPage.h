@@ -34,6 +34,8 @@ public:
     bool uiTestReady() const { return ready_; }
     bool uiTestBusy() const { return busy_; }
     bool uiTestConnected() const { return connected_; }
+    quint32 extensions() const {return extensions_;}
+    void setExtensions(quint32 bits);
     const QMap<quint32,quint32>& uiTestHardwareValues() const { return hardwareValues_; }
     FpgaControlConfig configuration() const;
     void setConfiguration(const FpgaControlConfig &config);
@@ -140,9 +142,12 @@ private:
     QLabel *status_ = nullptr, *recordStatus_ = nullptr, *managementStatus_ = nullptr;
     QPlainTextEdit *diagnostics_ = nullptr;
     QComboBox *backend_ = nullptr;
+    std::array<QComboBox*,2> cutoff_{{nullptr,nullptr}};
+    QCheckBox* ai8Scan_=nullptr;
     QCheckBox *recordSensors_ = nullptr, *recordDlia_ = nullptr, *recordRaw_ = nullptr;
     QTabWidget *tabs_ = nullptr;
     QString connectionDetail_, recordingDetail_;
     VaporView::SensorTransportPath sensorTransportPath_ = VaporView::SensorTransportPath::DirectDevices;
     bool connected_ = false, ready_ = false, busy_ = false, english_ = false, recording_ = false;
+    quint32 extensions_=0;
 };

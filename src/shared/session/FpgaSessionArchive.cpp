@@ -1,4 +1,5 @@
 #include "shared/session/FpgaSessionArchive.h"
+#include "FpgaExtensions.h"
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
@@ -32,7 +33,7 @@ QJsonObject payloadDescription(const FpgaVlp1::Frame& frame)
     const auto *p=reinterpret_cast<const uchar*>(payload.data());
     const quint16 schema=qFromLittleEndian<quint16>(p);
     decoded.insert(QStringLiteral("schema"),int(schema));
-    if(frame.header.message==0x1100 && frame.header.source>=0x40 && frame.header.source<=0x46) {
+    if(frame.header.message==0x1100 && FpgaExtensions::sensor(frame.header.source)) {
         const quint16 count=qFromLittleEndian<quint16>(p+2);
         QJsonArray fields;
         size_t offset=4;
@@ -52,6 +53,9 @@ QJsonObject payloadDescription(const FpgaVlp1::Frame& frame)
                 if(tag==0x11){field.insert(QStringLiteral("humidity_percent"),double(value)/1000.0);}
                 if(tag==0x12){field.insert(QStringLiteral("pressure_pa"),double(value)/1000.0);}
                 if(tag==0x13){field.insert(QStringLiteral("distance_mm"),double(value));}
+                if(tag==0x14){field.insert(QStringLiteral("target_temperature_c"),double(value)/1000000.0);}
+                if(tag==0x15){field.insert(QStringLiteral("actual_temperature_c"),double(value)/1000000.0);}
+                if(tag==0x468){field.insert(QStringLiteral("channel"),double(value));}
             }
             fields.append(field);offset+=4+padded;
         }
@@ -103,7 +107,7 @@ void FpgaRecordingStatistics::record(FpgaArchiveKind kind, QByteArrayView bytes)
     for (const auto& frame:frames) {
         const auto& h=frame.header;
         if (h.frameType!=FpgaVlp1::FrameType::Data) continue;
-        if ((h.message==0x1100 || (h.message==0x1200 && h.source==0x42)) && h.source>=0x40 && h.source<=0x46) ++records_[h.source];
+        if ((h.message==0x1100 || (h.message==0x1200 && h.source==0x42)) && FpgaExtensions::sensor(h.source)) ++records_[h.source];
         if (!((h.message==0x1000 && (h.source==0x20 || h.source==0x21)) ||
               (h.message==0x1001 && (h.source==0x30 || h.source==0x31)))) continue;
         ++records_[h.source];
@@ -204,7 +208,7 @@ bool FpgaSessionArchive::visit(const QString& directory,const Visitor& visitor,Q
 }
 
 bool FpgaSessionArchive::replay(const QString& directory,const FrameVisitor& visitor,QString *error,
-                              const ResetVisitor& resetVisitor,const std::function<bool()>& isCancelled)
+                              const ResetVisitor& resetVisitor,const std::function<bool()>& isCancelled,const ResetVisitor& snapshotVisitor)
 {
     SessionRawDat::RawScanOptions scanOptions;
     scanOptions.isCancelled=isCancelled;
@@ -218,6 +222,7 @@ bool FpgaSessionArchive::replay(const QString& directory,const FrameVisitor& vis
             if(isCancelled && isCancelled())return false;
             if(h.recordType==quint16(FpgaArchiveKind::Snapshot)) {
                 const auto snapshot=QJsonDocument::fromJson(bytes).object();
+                if(snapshotVisitor)snapshotVisitor(h.hostTimestampUs,snapshot);
                 const QString event=snapshot.value(QStringLiteral("event")).toString();
                 if(event==QStringLiteral("connected") || event==QStringLiteral("disconnected") ||
                    event==QStringLiteral("reconnect") || event==QStringLiteral("pause") || event==QStringLiteral("resume")) {

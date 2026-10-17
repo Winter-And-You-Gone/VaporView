@@ -166,6 +166,8 @@ struct LocalTemperatureCommandResult
 {
     LocalTemperatureCommandStatus status = LocalTemperatureCommandStatus::NotConnected;
     TemperatureControllerData latestData;
+    QString message;
+    bool unverified=false;
 };
 
 struct LocalAi8OperationResult

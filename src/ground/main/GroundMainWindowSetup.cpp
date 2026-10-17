@@ -3,6 +3,7 @@
 #include "ground/widgets/SerialPortComboSupport.h"
 #include "BaudRateComboSupport.h"
 #include "ground/widgets/DeviceEnabledCheckBox.h"
+#include "FpgaExtensions.h"
 
 #include <QEvent>
 #include <QGraphicsOpacityEffect>
@@ -2375,6 +2376,7 @@ void MainWindow::setupCentralWidget()
         [this]() { return topLevelCardShadowSafeRightInset(state_->font_scale_percent_); });
     connect(state_->rtk_config_dialog_, &RtkConfigDialog::rtkRunningChanged, this, [this](bool running) {
         state_->rtk_service_running_ = running;
+        if(!running) {state_->fpga_rtcm_queue_.clear();state_->fpga_rtcm_buffer_.clear();}
         updateRtkConfigIcon();
         updateSidebarNavIcons();
     });
@@ -4219,13 +4221,14 @@ void MainWindow::updateDeviceConfigState()
     }
     if (state_->epsilon_config_panel_)
     {
-        const bool operationPending = isUiTestMode() ? state_->ui_test_epsilon_operation_pending_
+        const bool operationPending = isUiTestMode()&&!fpgaRelay ? state_->ui_test_epsilon_operation_pending_
             : state_->epsilon_device_session_ && state_->epsilon_device_session_->operationPending();
-        state_->epsilon_config_panel_->setAvailable(epsilonConfigEnabled && !operationPending && (!fpgaRelay || isUiTestMode()));
-        state_->epsilon_config_panel_->setToolTip(fpgaRelay && !isUiTestMode()
+        const bool supported=!fpgaRelay || (homeFpgaExtensions()&VaporView::FpgaExtensions::EpsilonMailbox);
+        state_->epsilon_config_panel_->setAvailable(epsilonConfigEnabled && !operationPending && supported);
+        state_->epsilon_config_panel_->setToolTip(!supported
             ? (state_->is_english_ ? QStringLiteral("VLP1 does not support EPSILON parameter commands. Live navigation remains available.")
                                   : QStringLiteral("当前 VLP1 不支持 EPSILON 参数命令；导航数据显示不受影响。")) : QString());
-        const QString settingsTarget = isUiTestMode() ? QStringLiteral("ui-test") : remote
+        const QString settingsTarget = fpgaRelay?QStringLiteral("fpga:%1:%2").arg(isUiTestMode()?2:remote?1:0).arg(remote&&state_->remote_sky_controller_?state_->remote_sky_controller_->linkGeneration():0):isUiTestMode() ? QStringLiteral("ui-test") : remote
             ? QStringLiteral("remote:%1:%2:%3")
                   .arg(state_->remote_sky_controller_
                            ? state_->remote_sky_controller_->linkGeneration() : 0)
@@ -4239,7 +4242,7 @@ void MainWindow::updateDeviceConfigState()
             state_->epsilon_settings_target_ = settingsTarget;
             state_->epsilon_settings_device_values_.clear();
             state_->epsilon_config_panel_->invalidateSettings();
-            if (isUiTestMode())
+            if (isUiTestMode() && !fpgaRelay)
             {
                 for (auto group : VaporView::epsilonSettingsGroups())
                     state_->epsilon_config_panel_->setSettingsSnapshot(state_->ui_test_model_->epsilonSettings(group));
@@ -4251,7 +4254,7 @@ void MainWindow::updateDeviceConfigState()
             }
         }
         state_->epsilon_config_panel_->setSettingsOperationPending(operationPending);
-        state_->epsilon_config_panel_->setSettingsAvailable((!fpgaRelay || isUiTestMode()) && (isUiTestMode()
+        state_->epsilon_config_panel_->setSettingsAvailable(supported && (isUiTestMode()&&!fpgaRelay
             ? state_->ui_test_model_->deviceState(VaporView::SkyDeviceId::Epsilon) == VaporView::DeviceState::Connected &&
               state_->ui_test_model_->scenario() != VaporView::Ground::Devices::UiTestScenario::DataStalled
             : epsilonConfigEnabled && !scheduledRecordingSessionOpen() &&
@@ -4379,11 +4382,11 @@ void MainWindow::updateDeviceConfigState()
     if (state_->device_config_.temperature_lbl)
     {
         state_->device_config_.temperature_lbl->setToolTip(
-            fpgaRelay
+            fpgaRelay && !(homeFpgaExtensions()&VaporView::FpgaExtensions::Rd105)
                 ? (state_->is_english_
                     ? QStringLiteral("RD105 connection is unavailable: the current FPGA VLP1 relay does not expose an RD105 source.")
                     : QStringLiteral("当前 FPGA VLP1 中转协议未提供 RD105 通道，暂不支持实际连接。"))
-                : QString());
+                : fpgaRelay?QStringLiteral("RD105 与 HMP、AI8 共用 RS485；请预先设置 19200 / 8N1、地址 2，并在 FPGA 参数页选择测量通道。"):QString());
     }
 
     for (QWidget *widget : {state_->device_config_.epsilon_remote_buttons_widget,
@@ -4451,7 +4454,7 @@ void MainWindow::updateDeviceConfigState()
     if (state_->device_config_.tcp_wave_port_spin) state_->device_config_.tcp_wave_port_spin->setVisible(!fpgaRelay);
     if (state_->device_config_.tcp_wave_enabled_check) state_->device_config_.tcp_wave_enabled_check->setVisible(!fpgaRelay);
     if (state_->device_config_.temperature_remote_action_btn && fpgaRelay)
-        state_->device_config_.temperature_remote_action_btn->setEnabled(false);
+        updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId::TemperatureController);
     const QString waveHint = fpgaRelay
         ? (state_->is_english_ ? QStringLiteral("View ADC/DLIA data from FPGA. Use the home title-bar actions or FPGA page to control acquisition.")
                                : QStringLiteral("显示 FPGA 的 ADC/DLIA 波形；可在首页标题栏或 FPGA 页面启停采集。"))
@@ -5531,11 +5534,19 @@ void MainWindow::setupDataPanels()
     });
     state_->temperature_controller_panel_ = new TemperatureControllerPanel(this);
     temperatureTitleLayout->addWidget(state_->temperature_title_action_btn_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    auto* readFpgaTemperature=createTemperatureTitleActionButton(temperatureTitleBar,QStringLiteral("temperatureFpgaReadParameters"),VaporView::SkyDeviceId::TemperatureController);
+    readFpgaTemperature->setIcon(createLucideIcon(QStringLiteral("refresh-cw"),toolbarColor(AppThemeColor::ToolbarBlue)));
+    readFpgaTemperature->setToolTip(QStringLiteral("读取 RD105 当前测量通道及通用参数"));readFpgaTemperature->hide();
+    connect(readFpgaTemperature,&QToolButton::clicked,this,[this]{if(isFpgaRelayPath()) {
+        VaporView::TemperatureControllerCommand request;request.channel=quint8(homeFpgaRegisters().value(0x681c,1));
+        sendTemperatureCommand(VaporView::CommandId::QueryDeviceStatus,request);
+    }});
     if (QWidget *temperatureTitleStatus = state_->temperature_controller_panel_->titleStatusWidget())
     {
         temperatureTitleStatus->setVisible(true);
         temperatureTitleLayout->addWidget(temperatureTitleStatus, 0, Qt::AlignVCenter | Qt::AlignLeft);
     }
+    temperatureTitleLayout->addWidget(readFpgaTemperature,0,Qt::AlignVCenter|Qt::AlignLeft);
     temperatureTitleLayout->addStretch(1);
     updateTemperatureControllerTitleText();
     temperatureLayout->addWidget(temperatureTitleBar);

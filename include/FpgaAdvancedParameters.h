@@ -29,7 +29,9 @@ inline const QVector<SensorParameter>& sensorParameters() {
         {0x45,"gap",0x6548,1,0xffffffff,1000000,"帧间隔 / 10 ns"},
         {0x45,"scale",0x654c,1,1000,1,"LF 毫米 / 计数"},
         {0x45,"invalidMask",0x6550,0,255,0,"LF 无效状态掩码"},
-        {0x45,"versionCommand",0x6558,0,255,0,"版本查询命令码"}
+        {0x45,"versionCommand",0x6558,0,255,0,"版本查询命令码"},
+        {0x48,"address",0x6814,1,247,2,"RD105 Modbus 地址 (共用 RS485 默认 2)"},
+        {0x48,"channel",0x681c,1,2,1,"RD105 测量通道"}
     };return specs;
 }
 inline bool validSensorParameters(quint16 source,const QJsonObject& values) {

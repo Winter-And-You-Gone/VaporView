@@ -2,6 +2,7 @@
 
 #include "TelemetryTypes.h"
 #include "ground/devices/EpsilonConfigurationService.h"
+#include "ground/devices/FpgaInstrumentService.h"
 
 #include <QObject>
 #include <QHash>
@@ -102,6 +103,7 @@ public:
     bool operationsAvailable() const;
     void setTransportSupported(bool supported, const QString& reason = QString());
     bool operationPending() const;
+    void setFpgaTransport(FpgaInstrumentCall call,bool available);
 
     quint64 configurePacketRates(
         const EpsilonPacketRatesOperation& operation,
@@ -164,6 +166,8 @@ private:
     QString unavailableReason() const;
 
     LocalAdapter local_adapter_;
+    FpgaInstrumentCall fpga_call_;
+    bool fpga_available_=false;
     RemoteSkyController *remote_controller_ = nullptr;
     QThread local_worker_thread_;
     QObject *local_worker_ = nullptr;

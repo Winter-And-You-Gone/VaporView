@@ -3,6 +3,7 @@
 #include "FpgaUsbSimulator.h"
 #include "FpgaTelemetry.h"
 #include "FpgaAdvancedParameters.h"
+#include "FpgaExtensions.h"
 #include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/TopLevelCardStyle.h"
@@ -283,6 +284,13 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
         df("解调输出率 / Hz","Demodulation output / Hz","Output",0x4c,1,1000000,&FpgaControlConfig::Dlia::outputRateHz);
         df("解调模式 (2/3；6/7 旁路低通)","Mode (2/3; 6/7 bypass LPF)","Mode",0x20,0,7,&FpgaControlConfig::Dlia::mode);
         df("上传分片点数","Fragment points","FragmentPoints",0x40,1,256,&FpgaControlConfig::Dlia::fragmentPoints);
+        auto* cutoffTitle=new QLabel(dliaGroup);label(cutoffTitle,QStringLiteral("低通截止频率 / Hz"),QStringLiteral("LPF cutoff / Hz"));dliaGrid->addWidget(cutoffTitle,dliaRow,0);
+        auto* cutoff=new VaporView::SingleLevelPopupComboBox(dliaGroup);cutoff_[channel]=cutoff;cutoff->setObjectName(QStringLiteral("fpga%1Cutoff").arg(channel));
+        for(int hz:{100,250,500,1000,2000,5000,10000})cutoff->addItem(QString::number(hz),hz);
+        cutoff->setCurrentIndex(cutoff->findData(1000));cutoff->setProperty("fpgaExtension",VaporView::FpgaExtensions::DliaCutoff);onlineControls_.append(cutoff);
+        dliaGrid->addWidget(cutoff,dliaRow++,1);
+        connect(cutoff,&QComboBox::currentIndexChanged,this,[this,channel,cutoff]{config_.dlia[channel].cutoffHz=cutoff->currentData().toUInt();emit configurationChanged(configuration());});
+        readback(dliaGrid,dliaRow++,1,2,d+0x5c,QStringLiteral("生效截止频率 / Hz"),QStringLiteral("Active cutoff / Hz"));
         auto dacf=[&,channel](const char *zh,const char *en,const char *name,quint32 offset,double minimum,double maximum,auto member) {
             field(grid,row++,zh,en,QString("fpga%1Dac%2").arg(channel).arg(name),quint32(0x3000+channel*0x100)+offset,minimum,maximum,0,
                 [channel,member](const auto &c){return double(c.dac[channel].*member);},
@@ -320,16 +328,17 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     auto *sensors=tab(QStringLiteral("传感器"),QStringLiteral("Sensors")); auto *sensorLayout=new QVBoxLayout(sensors);
     auto *sensorCard=card(sensors,sensorLayout,QStringLiteral("传感器状态"),QStringLiteral("Sensor status"),QStringLiteral("activity"));
     auto *sensorGrid=new QGridLayout(sensorCard);sensorGrid->setObjectName("fpgaSensorGrid");sensorGrid->setSpacing(12);sensorGrid->setColumnStretch(1,1);
-    const char *names[]={"PTB210","HMP3","EPSILON","BMP390","SHT45","TFA1500-L"}; const quint16 sources[]={0x40,0x41,0x42,0x43,0x44,0x45};
-    for(int i=0;i<6;++i) {
+    const char *names[]={"PTB210","HMP3","EPSILON","BMP390","SHT45","TFA1500-L","RD105"}; const quint16 sources[]={0x40,0x41,0x42,0x43,0x44,0x45,0x48};
+    for(int i=0;i<7;++i) {
         const auto source=sources[i]; const auto suffix=QString::number(source,16).rightJustified(4,QChar('0'));
         auto *name=new QLabel(QString::fromLatin1(names[i]),sensorCard); name->setObjectName("fpgaSensorName"+suffix);
         auto nameFont=name->font(); nameFont.setBold(true); name->setFont(nameFont); name->setAlignment(Qt::AlignLeft|Qt::AlignVCenter);
         sensorGrid->addWidget(name,i,0);
         auto *l=new ConnectionStatusLabel(sensorCard); l->setObjectName("fpgaSensor"+suffix); sensorLabels_[source]=l;
         sensorGrid->addWidget(l,i,1);
-        action(sensorGrid,i,2,"启用","Enable","fpgaSensorEnable"+suffix,[this,source]{emit sensorEnableRequested(source,true);});
-        action(sensorGrid,i,3,"停用","Disable","fpgaSensorDisable"+suffix,[this,source]{emit sensorEnableRequested(source,false);});
+        auto* enable=action(sensorGrid,i,2,"启用","Enable","fpgaSensorEnable"+suffix,[this,source]{emit sensorEnableRequested(source,true);});
+        auto* disable=action(sensorGrid,i,3,"停用","Disable","fpgaSensorDisable"+suffix,[this,source]{emit sensorEnableRequested(source,false);});
+        if(source==0x48) {enable->setProperty("fpgaExtension",VaporView::FpgaExtensions::Rd105);disable->setProperty("fpgaExtension",VaporView::FpgaExtensions::Rd105);}
     }
     auto *ai8config=card(sensors,sensorLayout,QStringLiteral("AI8 轮询配置（停用时提交）"),QStringLiteral("AI8 polling configuration (apply while disabled)"),QStringLiteral("sliders-vertical"));
     auto *ai8layout=new QHBoxLayout(ai8config);auto *ai8controls=new QVBoxLayout;auto *ai8grid=new QGridLayout;
@@ -344,8 +353,22 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     field(ai8grid,2,"轮询间隔 / ms","Polling interval / ms","fpgaAi8Interval",0x662c,1,3600000,0,[](const auto &c){return c.ai8.pollIntervalMs;},[](auto &c,double v){c.ai8.pollIntervalMs=quint32(v);});
     field(ai8grid,3,"通信超时 / ms","Communication timeout / ms","fpgaAi8Timeout",0x6660,1,65535,0,[](const auto &c){return c.ai8.timeoutMs;},[](auto &c,double v){c.ai8.timeoutMs=quint32(v);});
     field(ai8grid,4,"重试上限","Retry limit","fpgaAi8Retry",0x6664,0,3,0,[](const auto &c){return c.ai8.retryLimit;},[](auto &c,double v){c.ai8.retryLimit=quint32(v);});
+    ai8Scan_=new QCheckBox(ai8config);label(ai8Scan_,QStringLiteral("扫描全部 8 通道（间隔表示整轮扫描周期）"),QStringLiteral("Scan all 8 channels (interval is a complete scan cycle)"));ai8Scan_->setObjectName("fpgaAi8Scan");ai8Scan_->setProperty("fpgaExtension",VaporView::FpgaExtensions::Ai8Scan);onlineControls_.append(ai8Scan_);ai8grid->addWidget(ai8Scan_,6,0,1,3);
+    connect(ai8Scan_,&QCheckBox::toggled,this,[this](bool checked){config_.ai8.scan=checked;emit configurationChanged(configuration());});
     auto *ai8hint=new QLabel(ai8config);label(ai8hint,QStringLiteral("共享总线固定 19200 / 8N1。保留仪表报警与超时；不会自动修改仪表参数。"),QStringLiteral("Shared bus: 19200 / 8N1. Instrument alarms and timeouts are retained; instrument parameters are not automatically changed."));ai8hint->setWordWrap(true);ai8grid->addWidget(ai8hint,5,0,1,3);
-    action(tempGrid,1,0,"设置 AI8 温度并读回","Set AI8 temperature & verify","fpgaSetTemperature",[this,temperature]{emit setTemperatureRequested(temperature->value());});ai8controls->addStretch();sensorLayout->addStretch();
+    auto* runtimeChannel=new VaporView::SingleLevelPopupComboBox(ai8config);runtimeChannel->setObjectName("fpgaAi8RuntimeChannel");
+    for(int i=1;i<=8;++i)runtimeChannel->addItem(QStringLiteral("CH%1").arg(i),i);
+    runtimeChannel->setProperty("fpgaExtension",VaporView::FpgaExtensions::Ai8Scan);onlineControls_.append(runtimeChannel);tempGrid->addWidget(runtimeChannel,1,1);
+    action(tempGrid,1,0,"设置 AI8 温度并读回","Set AI8 temperature & verify","fpgaSetTemperature",[this,temperature,runtimeChannel]{
+        if(extensions_&VaporView::FpgaExtensions::Ai8Scan)emit operationRequested({{"op","device_temperature"},{"source",0x46},{"channel",runtimeChannel->currentData().toInt()},{"celsius",temperature->value()}});
+        else emit setTemperatureRequested(temperature->value());
+    });
+    auto* cache=action(tempGrid,2,0,"读取通道缓存","Read channel cache","fpgaAi8ReadCache",[this,runtimeChannel]{emit operationRequested({{"op","ai8_cache"},{"channel",runtimeChannel->currentData().toInt()}});});cache->setProperty("fpgaExtension",VaporView::FpgaExtensions::Ai8Scan);
+    readback(ai8grid,7,1,2,0x66a0,QStringLiteral("缓存在线 / 错误状态"),QStringLiteral("Cached online / error status"));
+    readback(ai8grid,8,1,2,0x66a4,QStringLiteral("缓存 PV / SP 原码"),QStringLiteral("Cached PV / SP raw"));
+    readback(ai8grid,9,1,2,0x66a8,QStringLiteral("缓存 OP / SV 原码"),QStringLiteral("Cached OP / SV raw"));
+    readback(ai8grid,10,1,2,0x66ac,QStringLiteral("缓存设备状态"),QStringLiteral("Cached device status"));
+    ai8controls->addStretch();sensorLayout->addStretch();
     auto *waves=tab(QStringLiteral("波形"),QStringLiteral("Waveforms")); auto *waveLayout=new QVBoxLayout(waves);
     auto *waveHint=new QLabel(waves); label(waveHint,QStringLiteral("ADC 未确认前端校准时显示原码；解调显示数字幅值，不代表气体浓度。"),QStringLiteral("ADC displays raw codes until frontend calibration is confirmed. Demodulation displays digital amplitude, not concentration.")); waveHint->setWordWrap(true); waveLayout->addWidget(waveHint);
     auto *faults=new QHBoxLayout;waveLayout->addLayout(faults);
@@ -390,7 +413,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     auto *asl=new QVBoxLayout(advancedSensors);auto *sensorChoice=new VaporView::SingleLevelPopupComboBox(advancedSensors);sensorChoice->setObjectName("fpgaAdvancedSensor");asl->addWidget(sensorChoice);
     auto *sensorStack=new QWidget(advancedSensors);sensorStack->setObjectName("fpgaAdvancedSensorStack");asl->addWidget(sensorStack);
     auto *formsLayout=new QVBoxLayout(sensorStack);formsLayout->setContentsMargins(0,0,0,0);QList<QWidget*> sensorForms;
-    for(int index=0;index<6;++index) {
+    for(int index=0;index<7;++index) {
         const auto source=sources[index];sensorChoice->addItem(QString::fromLatin1(names[index]),source);
         auto *body=new QWidget(sensorStack);formsLayout->addWidget(body);sensorForms.push_back(body);body->setVisible(index==0);
         auto *grid=new QGridLayout(body);int row=0;
@@ -438,7 +461,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
         {0x6724,"电机位置原码","Motor position raw"},{0x6728,"剩余脉冲","Remaining pulses"},{0x6730,"当前极性","Actual polarity"}});
     auto *maintenance=card(advanced,advancedLayout,QStringLiteral("设备维护与上传"),QStringLiteral("Maintenance and upload"),QStringLiteral("settings"));auto *maintenanceGrid=new QGridLayout(maintenance);
     auto *module=new VaporView::SingleLevelPopupComboBox(maintenance);module->setObjectName("fpgaMaintenanceModule");maintenanceGrid->addWidget(module,0,0,1,2);
-    for(auto pair:{qMakePair("时间同步",2),qMakePair("WMS0 / DAC0",0x10),qMakePair("WMS1 / DAC1",0x11),qMakePair("ADC0",0x20),qMakePair("ADC1",0x21),qMakePair("DLIA0",0x30),qMakePair("DLIA1",0x31),qMakePair("PTB210",0x40),qMakePair("HMP3",0x41),qMakePair("EPSILON",0x42),qMakePair("BMP390",0x43),qMakePair("SHT45",0x44),qMakePair("TFA1500-L",0x45),qMakePair("AI8",0x46),qMakePair("步进电机",0x47)})module->addItem(QString::fromUtf8(pair.first),pair.second);
+    for(auto pair:{qMakePair("时间同步",2),qMakePair("WMS0 / DAC0",0x10),qMakePair("WMS1 / DAC1",0x11),qMakePair("ADC0",0x20),qMakePair("ADC1",0x21),qMakePair("DLIA0",0x30),qMakePair("DLIA1",0x31),qMakePair("PTB210",0x40),qMakePair("HMP3",0x41),qMakePair("EPSILON",0x42),qMakePair("BMP390",0x43),qMakePair("SHT45",0x44),qMakePair("TFA1500-L",0x45),qMakePair("AI8",0x46),qMakePair("步进电机",0x47),qMakePair("RD105",0x48)})module->addItem(QString::fromUtf8(pair.first),pair.second);
     operation(maintenanceGrid,1,0,"复位所选模块","Reset selected module","fpgaModuleReset",[module]{return QJsonObject{{"op","maintenance"},{"source",module->currentData().toInt()},{"action",8},{"value",0}};});operation(maintenanceGrid,1,1,"清除所选模块错误","Clear selected errors","fpgaModuleClearErrors",[module]{return QJsonObject{{"op","maintenance"},{"source",module->currentData().toInt()},{"action",9},{"value",0}};});
     operation(maintenanceGrid,2,0,"清空所选传感器 FIFO","Clear sensor FIFO","fpgaSensorClearFifo",[module]{return QJsonObject{{"op","sensor_action"},{"source",module->currentData().toInt()},{"action",3},{"value",0}};});
     auto *pressure=number(maintenanceGrid,3,"HMP 压力补偿 / hPa","fpgaHmpPressure",0.01,2000,1013.25,2);operation(maintenanceGrid,3,2,"写入并确认 HMP 补偿","Write HMP compensation","fpgaHmpSetPressure",[pressure]{float value=float(pressure->value());quint32 bits;std::memcpy(&bits,&value,4);return QJsonObject{{"op","sensor_action"},{"source",0x41},{"action",16},{"value",double(bits)}};});
@@ -504,6 +527,9 @@ FpgaControlConfig FpgaControlPage::configuration() const {
 }
 void FpgaControlPage::setConfiguration(const FpgaControlConfig &c) {
     config_=c;
+    for(int i=0;i<2;++i)if(cutoff_[i]) {const QSignalBlocker block(cutoff_[i]);cutoff_[i]->setCurrentIndex(cutoff_[i]->findData(c.dlia[i].cutoffHz));}
+    if(ai8Scan_) {const QSignalBlocker block(ai8Scan_);ai8Scan_->setChecked(c.ai8.scan);}
+    if(auto* channel=findChild<QComboBox*>("fpgaAi8RuntimeChannel")) {const QSignalBlocker block(channel);channel->setCurrentIndex(channel->findData(c.ai8.channel));}
     for(const auto& spec:VaporView::FpgaRemote::sensorParameters())if(auto *input=sensorParameterInputs_.value(spec.address)){const QSignalBlocker block(input);input->setValue(c.sensorParameters.value(spec.source).value(spec.key).toDouble(hardwareValues_.value(spec.address,spec.fallback)));}
     for(const auto &f:fields_){const QSignalBlocker block(f.input);f.input->setValue(f.read(c));}
     {const QSignalBlocker block(backend_);backend_->setCurrentIndex(backend_->findData(c.backend));}
@@ -528,8 +554,10 @@ void FpgaControlPage::updateActions(){
     locator_->setEnabled(!connected_&&!busy_&&!usbDiscovering_&&usbHostAvailable_);
     backend_->setEnabled(!connected_&&!busy_&&!usbDiscovering_);
     discover_->setEnabled(!busy_&&!usbDiscovering_&&usbHostAvailable_);
-    disconnect_->setEnabled(connected_&&!busy_);for(auto *w:onlineControls_)w->setEnabled(ready_&&!busy_);refresh_->setEnabled(connected_&&!busy_);record_->setEnabled(!property("fpgaUiTestMode").toBool()&&(ready_||recording_));
+    disconnect_->setEnabled(connected_&&!busy_);for(auto *w:onlineControls_) {const quint32 bit=w->property("fpgaExtension").toUInt();w->setEnabled(ready_&&!busy_&&(!bit || (extensions_&bit)));}refresh_->setEnabled(connected_&&!busy_);record_->setEnabled(!property("fpgaUiTestMode").toBool()&&(ready_||recording_));
+    if(ai8Scan_)ai8Scan_->setEnabled(ready_&&!busy_&&(extensions_&VaporView::FpgaExtensions::Ai8Scan)&&!(hardwareValues_.value(0x6604)&1));
 }
+void FpgaControlPage::setExtensions(quint32 bits) {extensions_=bits;updateActions();}
 void FpgaControlPage::showEvent(QShowEvent *event){
     QWidget::showEvent(event);
     if(usbHostAvailable_&&!usbDiscovering_&&!busy_&&!connected_)requestUsbDiscovery();
@@ -626,6 +654,9 @@ void FpgaControlPage::updateSensor(const VaporView::FpgaSensor::Reading &r){
     if (!rerendering_) readingTimes_[r.source] = measurementClock_.elapsed();
     if(r.pressurePa)parts<<QString::number(*r.pressurePa,'f',3)+" Pa";if(r.temperatureC)parts<<QString::number(*r.temperatureC,'f',2)+" °C";
     if(r.humidityPct)parts<<QString::number(*r.humidityPct,'f',2)+" %RH";if(r.distanceMm)parts<<QString::number(*r.distanceMm)+" mm";
+    if(r.ai8Channel)parts<<QStringLiteral("CH%1").arg(*r.ai8Channel);
+    if(r.rd105TargetMicroC)parts<<QStringLiteral("SP %1 °C").arg(*r.rd105TargetMicroC/1000000.0,0,'f',5);
+    if(r.rd105ActualMicroC)parts<<QStringLiteral("PV %1 °C").arg(*r.rd105ActualMicroC/1000000.0,0,'f',5);
     if(r.ai8PvRaw)parts<<"PV "+QString::number(*r.ai8PvRaw*0.1,'f',1)+" °C";if(r.ai8SpRaw)parts<<"SP "+QString::number(*r.ai8SpRaw*0.1,'f',1)+" °C";
     if(r.ai8Alarm)parts<<text("报警 ","Alarm ")+QString::number(*r.ai8Alarm);if(r.ai8Host)parts<<"host "+QString::number(*r.ai8Host);
     if(r.epsilonMessageId)parts<<"FDILink "+QString::number(*r.epsilonMessageId,16);
@@ -901,6 +932,7 @@ void FpgaControlPage::setUiTestState(bool enabled, bool dataStalled, bool partia
             setConnectionState(ready,busy,text("界面测试 · VLP1 协议模拟器 · ","UI test · VLP1 protocol simulator · ")+detail);publish();
         });
         connect(controller,&VaporView::Ground::Devices::FpgaDeviceController::hardwareValuesChanged,receiver,[this,publish](const auto& values) {setHardwareValues(values);publish();});
+        connect(controller,&VaporView::Ground::Devices::FpgaDeviceController::capabilitiesUpdated,receiver,[this](quint32 bits){setExtensions(bits);});
         connect(controller,&VaporView::Ground::Devices::FpgaDeviceController::managementUpdated,receiver,[this](const auto& state){setManagementState(state);});
         connect(controller,&VaporView::Ground::Devices::FpgaDeviceController::measurementUpdated,receiver,[this](const auto& m) {
             updateSensor(m.reading);emit simulationMeasurementsUpdated(m);

@@ -2,6 +2,7 @@
 #include "ground/devices/DeviceRatePolicy.h"
 #include "BaudRateComboSupport.h"
 #include "SerialBaudRate.h"
+#include "FpgaExtensions.h"
 
 #include <QSettings>
 
@@ -96,7 +97,7 @@ bool MainWindow::validateEpsilonPacketBandwidth(
 
 void MainWindow::onEpsilonSessionAvailabilityChanged(bool available, const QString& reason)
 {
-    if (isUiTestMode())
+    if (isUiTestMode() && !isFpgaRelayPath())
     {
         updateDeviceConfigState();
         return;
@@ -317,7 +318,7 @@ bool MainWindow::prepareEpsilonSettingsOperation(
         }
         return false;
     };
-    if (isUiTestMode())
+    if (isUiTestMode() && !isFpgaRelayPath())
     {
         return reject(state_->is_english_
             ? QStringLiteral("Device settings require a real EPSILON connection; this is UI test mode.")
@@ -337,7 +338,7 @@ bool MainWindow::prepareEpsilonSettingsOperation(
             ? QStringLiteral("EPSILON is unavailable or busy. Connect it and wait for the current task to finish.")
             : QStringLiteral("EPSILON 未连接或正忙，请连接设备并等待当前任务结束。"));
     }
-    if (isRemoteSkyMode())
+    if (isRemoteSkyMode() || isFpgaRelayPath())
     {
         return true;
     }
@@ -403,7 +404,7 @@ void MainWindow::onEpsilonDeviceRestartRequested()
 
 void MainWindow::onEpsilonMaintenanceRequested(VaporView::EpsilonMaintenanceAction action)
 {
-    if (isUiTestMode())
+    if (isUiTestMode() && !isFpgaRelayPath())
     {
         const bool magnetic = action == VaporView::EpsilonMaintenanceAction::Magnetic2D ||
                               action == VaporView::EpsilonMaintenanceAction::Magnetic3D;
@@ -466,7 +467,7 @@ void MainWindow::onEpsilonDgnssApplyRequested(const VaporView::EpsilonDgnssOpera
 
 void MainWindow::onEpsilonMaintenanceCancelRequested()
 {
-    if (isUiTestMode())
+    if (isUiTestMode() && !isFpgaRelayPath())
     {
         state_->ui_test_epsilon_operation_pending_ = false;
         ++state_->ui_test_epsilon_operation_generation_;
@@ -497,7 +498,7 @@ void MainWindow::applyEpsilonMainAntennaLeverArm(
         }
     };
 
-    if (isUiTestMode())
+    if (isUiTestMode() && !isFpgaRelayPath())
     {
         publishUiTestEvent(QStringLiteral("ui_test_epsilon_main_antenna_lever_arm_applied"),
                            QString(state_->is_english_
@@ -537,7 +538,7 @@ void MainWindow::applyEpsilonMainAntennaLeverArm(
     operation.z_m = zM;
     VaporView::Ground::EpsilonDeviceOperation localDeviceOperation;
 
-    if (isRemoteSkyMode())
+    if (isRemoteSkyMode() || isFpgaRelayPath())
     {
         if (!state_->epsilon_device_session_ ||
             !state_->epsilon_device_session_->operationsAvailable())
@@ -641,9 +642,9 @@ void MainWindow::syncRtkConfigPageState()
         const CollectorSnapshot collectors = snapshotCollectors();
         return collectors.epsilon ? collectors.epsilon->getLatestData() : state_->current_epsilon_;
     });
-    const bool fpga = !isUiTestMode() && (isFpgaRelayPath() || (isRemoteSkyMode() && state_->remote_config_session_.applying &&
-        state_->remote_config_session_.desired.sensor_transport_path == VaporView::SensorTransportPath::FpgaRelay));
-    state_->rtk_config_dialog_->setTransportSupported(!fpga, fpga
+    const bool fpga = isFpgaRelayPath() || (isRemoteSkyMode() && state_->remote_config_session_.applying &&
+        state_->remote_config_session_.desired.sensor_transport_path == VaporView::SensorTransportPath::FpgaRelay);
+    state_->rtk_config_dialog_->setTransportSupported(!fpga || (homeFpgaExtensions()&VaporView::FpgaExtensions::EpsilonMailbox), fpga
         ? (state_->is_english_ ? QStringLiteral("VLP1 does not support RTCM forwarding or EPSILON configuration. No serial fallback is used.")
                               : QStringLiteral("当前 VLP1 不支持 RTCM 转发或 EPSILON 配置；FPGA 模式不使用旁路串口。")) : QString());
     state_->rtk_config_dialog_->setEpsilonMainAntennaLeverArmApplier([this](
@@ -653,7 +654,11 @@ void MainWindow::syncRtkConfigPageState()
         RtkConfigDialog::EpsilonLeverArmCompletion completion) {
         applyEpsilonMainAntennaLeverArm(x, y, z, std::move(completion));
     });
-    if (isRemoteSkyMode())
+    if(fpga) {
+        state_->rtk_config_dialog_->setEpsilonMainPortAndBaud(QStringLiteral("FPGA MAIN"),QString::number(homeFpgaRegisters().value(0x6210)));
+        state_->rtk_config_dialog_->setRtcmCorrectionSink([this](const QByteArray& bytes){return enqueueFpgaRtcm(bytes);},QStringLiteral("FPGA"));
+    }
+    else if (isRemoteSkyMode())
     {
         const QString epsilonPort = state_->remote_config_session_.desired.epsilon.port;
         const QString epsilonBaud = QString::number(state_->remote_config_session_.desired.epsilon.baud_rate);
@@ -695,6 +700,48 @@ void MainWindow::syncRtkConfigPageState()
     state_->rtk_config_dialog_->setUiTestMode(isUiTestMode());
 }
 
+bool MainWindow::enqueueFpgaRtcm(const QByteArray& bytes)
+{
+    if(!isFpgaRelayPath() || !(homeFpgaExtensions()&VaporView::FpgaExtensions::EpsilonMailbox) || !(homeFpgaRegisters().value(0x6204)&1))return false;
+    if(bytes.size()+state_->fpga_rtcm_buffer_.size()>65536) {state_->fpga_rtcm_buffer_.clear();return false;}
+    auto& buffer=state_->fpga_rtcm_buffer_;buffer.append(bytes);bool accepted=true;
+    while(!buffer.isEmpty()) {
+        if(quint8(buffer[0])!=0xd3) {buffer.remove(0,1);accepted=false;continue;}
+        if(buffer.size()<3)break;
+        if(quint8(buffer[1])&0xfc) {buffer.remove(0,1);accepted=false;continue;}
+        const int size=(((quint8(buffer[1])&3)<<8)|quint8(buffer[2]))+6;
+        if(buffer.size()<size)break;
+        const auto frame=buffer.left(size);buffer.remove(0,size);
+        if(!VaporView::FpgaExtensions::rtcmFrame(frame) || state_->fpga_rtcm_queue_.size()>=64) {accepted=false;continue;}
+        state_->fpga_rtcm_queue_.append(qMakePair(QDateTime::currentMSecsSinceEpoch(),QJsonObject{{"op","epsilon_mailbox"},{"kind",1},
+            {"target",state_->rtk_config_dialog_->fpgaRtcmTarget()},{"baud",state_->rtk_config_dialog_->fpgaRtcmBaud()},
+            {"data",QString::fromLatin1(frame.toBase64())}}));
+    }
+    drainFpgaRtcm();return accepted;
+}
+
+void MainWindow::drainFpgaRtcm()
+{
+    if(state_->fpga_rtcm_busy_ || state_->fpga_rtcm_queue_.isEmpty())return;
+    if(!isFpgaRelayPath() || !(homeFpgaRegisters().value(0x6204)&1)) {state_->fpga_rtcm_queue_.clear();state_->fpga_rtcm_buffer_.clear();return;}
+    const qint64 now=QDateTime::currentMSecsSinceEpoch();
+    while(!state_->fpga_rtcm_queue_.isEmpty() && now-state_->fpga_rtcm_queue_.front().first>3000)state_->fpga_rtcm_queue_.removeFirst();
+    if(state_->fpga_rtcm_queue_.isEmpty())return;
+    const bool pendingDevice=(state_->epsilon_device_session_&&state_->epsilon_device_session_->operationPending())
+        || (state_->ai8_device_session_&&state_->ai8_device_session_->operationPending()) || (state_->rd105_device_session_&&state_->rd105_device_session_->operationPending());
+    const bool busy=pendingDevice || (isUiTestMode()?state_->fpga_sim_busy_:isRemoteSkyMode()?bool(state_->fpga_session_.requestId)||state_->fpga_session_.remoteStatus.value("busy").toBool():state_->fpga_busy_);
+    if(busy) {QTimer::singleShot(50,this,&MainWindow::drainFpgaRtcm);return;}
+    const auto request=state_->fpga_rtcm_queue_.takeFirst().second;state_->fpga_rtcm_busy_=true;
+    submitFpgaInstrument(request,[this](const QJsonObject& result) {
+        state_->fpga_rtcm_busy_=false;
+        if(!result.value("ok").toBool()) {
+            state_->fpga_rtcm_queue_.clear();state_->fpga_rtcm_buffer_.clear();
+            if(state_->rtk_config_dialog_)state_->rtk_config_dialog_->appendLog(QStringLiteral("FPGA RTCM 转发失败，未重发：")+result.value("detail").toString());
+        }
+        QTimer::singleShot(0,this,&MainWindow::drainFpgaRtcm);
+    });
+}
+
 void MainWindow::onRtkConfigClicked()
 {
     syncRtkConfigPageState();
@@ -718,6 +765,14 @@ void MainWindow::onRtkConfigClicked()
 
 void MainWindow::onConfigureEpsilonRtcmPortClicked()
 {
+    if(isFpgaRelayPath()) {
+        VaporView::Ground::EpsilonDeviceOperation device;
+        if(!prepareEpsilonSettingsOperation(device))return;
+        VaporView::EpsilonRtcmInputOperation operation;
+        operation.device_port_index=state_->epsilon_config_panel_?state_->epsilon_config_panel_->rtcmDevicePortIndex():2;
+        operation.forward_baud=state_->rtk_config_dialog_->fpgaRtcmBaud();operation.forward_port=QStringLiteral("FPGA RS422");
+        state_->epsilon_device_session_->configureRtcmInput(operation,device);return;
+    }
     if (isUiTestMode())
     {
         publishUiTestEvent(QStringLiteral("ui_test_epsilon_rtcm_port_config_accepted"),
@@ -1353,6 +1408,17 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
 
 void MainWindow::onReconfigureEpsilonClicked()
 {
+    if(isFpgaRelayPath()) {
+        VaporView::Ground::EpsilonDeviceOperation device;
+        if(!prepareEpsilonSettingsOperation(device))return;
+        QSettings settings=VaporView::applicationConfigSettings();settings.beginGroup(QStringLiteral("MainWindow"));
+        const auto rates=isRemoteSkyMode()&&!isUiTestMode()?state_->remote_config_session_.desired.epsilon.packet_rates:effectiveEpsilonPacketRates(settings);
+        if(!validateEpsilonPacketBandwidth(rates,QString::number(homeFpgaRegisters().value(0x6210)),true))return;
+        VaporView::EpsilonPacketRatesOperation operation;operation.packet_rates=rates;
+        operation.output_rate_hz=state_->epsilon_sample_rate_;operation.callback_rate_hz=epsilonPacketCallbackRate(rates,state_->epsilon_sample_rate_);
+        operation.packet_rate_signature=epsilonPacketRatesSignature(rates);
+        state_->epsilon_device_session_->configurePacketRates(operation,device);return;
+    }
     if (isUiTestMode())
     {
         if (state_->epsilon_reconfigure_in_progress_)

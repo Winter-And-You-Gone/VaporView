@@ -299,6 +299,9 @@ private:
 class TemperatureControllerCollector : public DataCollector
 {
 public:
+  using RegisterReadBackend=std::function<bool(uint16_t,uint16_t,std::vector<uint16_t>&)>;
+  using RegisterWriteBackend=std::function<bool(uint16_t,const std::vector<uint16_t>&)>;
+  void setRegisterBackend(RegisterReadBackend read,RegisterWriteBackend write) {read_backend_=std::move(read);write_backend_=std::move(write);}
   using RawFrameCallback = std::function<void(uint64_t host_timestamp_us,
                                               uint16_t record_type,
                                               const uint8_t* frame,
@@ -334,6 +337,7 @@ public:
                        const std::array<int64_t, 8>& polynomial_mantissas,
                        const std::array<int16_t, 8>& polynomial_exponents);
   bool restoreFactoryDefaults();
+  bool readConfiguration(TemperatureControllerData& data, int channels = 1) {channel_count_=channels==2?2:1;return readSnapshot(data);}
 
 protected:
   void run() override;
@@ -346,6 +350,8 @@ private:
   int channel_count_ = 1;
   bool polynomial_exponents_supported_ = true;
   std::mutex modbus_mutex_;
+  RegisterReadBackend read_backend_;
+  RegisterWriteBackend write_backend_;
 
   bool readSnapshot(TemperatureControllerData& sample);
   bool readChannel(uint8_t channel, TemperatureControllerChannelData& channel_data);

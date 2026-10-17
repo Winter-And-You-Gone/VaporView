@@ -46,7 +46,7 @@ public:
     // Snapshots with event=connected/disconnected/reconnect reset the partial-frame buffer.
     static bool replay(const QString& sessionDirectory, const FrameVisitor& visitor,
                        QString *error = nullptr, const ResetVisitor& resetVisitor = {},
-                       const std::function<bool()>& isCancelled = {});
+                       const std::function<bool()>& isCancelled = {}, const ResetVisitor& snapshotVisitor = {});
     static bool waveforms(const QString& sessionDirectory, const WaveformVisitor& visitor,
                           QString *error = nullptr, const std::function<bool()>& isCancelled = {});
     // BIN exports exact IN USB bytes (or IN frames in older FPGA sessions); JSON/CSV include all kinds.

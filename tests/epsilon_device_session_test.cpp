@@ -161,6 +161,12 @@ int main(int argc, char **argv)
     require(waitForResult(app, results) && !results.back().success() && results.back().message.contains("VLP1"),
             "unsupported EPSILON transport never invokes the successful serial adapter");
     results.clear(); session.setTransportSupported(true);
+    int mailboxCalls=0;
+    session.setFpgaTransport([&](const QJsonObject&){++mailboxCalls;return QJsonObject{{"ok",true}};},true);
+    session.calibrate(EpsilonMaintenanceAction::Magnetic2D);
+    require(waitForResult(app,results) && results.back().outcome==EpsilonOperationOutcome::Unsupported && mailboxCalls==0,
+            "FPGA rejects long magnetic calibration before starting an operation it cannot passively receive");
+    results.clear();session.setFpgaTransport({},false);
     require(session.operationsAvailable(), "Direct restores EPSILON parameter capability");
     const quint64 packetId = session.configurePacketRates(packetRateOperation(), localDevice);
     require(packetId != 0 && waitForResult(app, results) &&

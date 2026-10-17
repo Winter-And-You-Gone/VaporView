@@ -590,14 +590,9 @@ void MainWindow::updateUiTestModeUi()
 
 bool MainWindow::runUiTestEpsilonOperation(const QString& operation, std::function<QString()> completion, int delayMs)
 {
-    if (!isUiTestMode()) return false;
+    if (!isUiTestMode() || isFpgaRelayPath()) return false;
     auto *panel = state_->epsilon_config_panel_;
     if (!panel) return true;
-    if(isFpgaRelayPath()) {
-        panel->setSettingsError(state_->is_english_?QStringLiteral("VLP1 does not support EPSILON configuration; no simulated success is generated.")
-            :QStringLiteral("当前 VLP1 不支持 EPSILON 参数配置，不生成模拟成功结果。"));
-        return true;
-    }
     if (state_->ui_test_epsilon_operation_pending_ ||
         state_->ui_test_model_->deviceState(VaporView::SkyDeviceId::Epsilon) != VaporView::DeviceState::Connected ||
         state_->ui_test_model_->scenario() == UiTestScenario::DataStalled)

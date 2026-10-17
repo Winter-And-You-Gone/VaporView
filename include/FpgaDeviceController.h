@@ -29,6 +29,8 @@ public:
     bool ready() const { return ready_; }
     bool busy() const { return busy_ && !backgroundRefresh_; }
     const QMap<quint32, quint32>& hardwareValues() const { return registers_; }
+    quint32 extensions() const { return session_?session_->capabilities().extensions:0; }
+    QJsonObject extensionResult() const { return extensionResult_; }
     QJsonObject discoverDevices(const QString& backend = {}) const;
 
 public slots:
@@ -52,6 +54,8 @@ public slots:
     void snapshotConfiguration();
 
 signals:
+    void capabilitiesUpdated(quint32 extensions);
+    void extensionCompleted(const QJsonObject& result);
     void transportConnectionChanged(bool connected);
     void connectionChanged(bool ready, bool busy, const QString& detail);
     void hardwareValuesChanged(const QMap<quint32, quint32>& values);
@@ -68,7 +72,7 @@ signals:
     void replayFinished(bool success, const QString& detail);
 
 private:
-    enum class Kind { Management, Read, Write, Commit, Ping, Capabilities, Sensor, Wait, Delay, PrepareSensorConfig, FinishSensorConfig, CheckVersions, RecoverConnection, FinishRawStop, CheckTemperature, ConfirmConnection, FinishWatchdog };
+    enum class Kind { Management, Read, Write, Commit, Ping, Capabilities, Sensor, Wait, Delay, PrepareSensorConfig, FinishSensorConfig, CheckVersions, RecoverConnection, FinishRawStop, CheckTemperature, ConfirmConnection, FinishWatchdog, Callback };
     struct Step {
         Kind kind = Kind::Read;
         quint32 address = 0;
@@ -76,6 +80,7 @@ private:
         quint16 count = 1, source = 1;
         quint32 mask = 0, expected = 0;
         QString label;
+        std::function<void()> callback;
     };
     void installSession(std::unique_ptr<FpgaUsbTransport> transport);
     bool begin(const QString& label, bool background = false);
@@ -94,6 +99,9 @@ private:
     void waitFor(quint32 address, quint32 mask, quint32 expected);
     void commit(quint16 source, quint32 base);
     void readAll();
+    void readExtensions();
+    void callback(std::function<void()> action);
+    void executeExtension(const QJsonObject& request);
     void startSensorConfiguration(const QJsonObject& request, bool connectAfter);
     void prepareSensorConfiguration(quint16 source, quint32 baud, quint32 pollMs, bool connectAfter);
     bool appendSensorEnable(quint16 source, bool enable);
@@ -114,6 +122,7 @@ private:
     FpgaSensor::FpgaSensorAdapter adapter_;
     Ppk::RawSatelliteAssembler observations_;
     QJsonObject management_, pendingSensorParameters_;
+    QJsonObject extensionRequest_, extensionResult_;
     QVector<QJsonObject> pendingManagement_;
     std::optional<quint64> connectionStartTick_;
     QElapsedTimer connectionClock_;

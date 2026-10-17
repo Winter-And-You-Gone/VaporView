@@ -1,12 +1,14 @@
 #include "ground/devices/EpsilonConfigurationService.h"
 
 #include "data_collector.h"
+#include "EpsilonProtocol.h"
 
 #include <QSettings>
 #include "shared/config/ApplicationConfig.h"
 #include "shared/config/SettingsWriteBarrier.h"
 
 #include <algorithm>
+#include <array>
 #include <exception>
 #include <utility>
 
@@ -201,6 +203,11 @@ EpsilonConfigurationResult performSettingsOperation(
 EpsilonConfigurationResult EpsilonConfigurationService::readSettings(
     const EpsilonDeviceOperation& operation, EpsilonSettingsGroup group, const LogCallback& log)
 {
+    if(operation.exchange) {
+        EpsilonConfigurationResult result;std::string error;
+        result.command_succeeded=readEpsilonSettings(group,operation.exchange,result.settings_snapshot,error);
+        result.live_stream_restarted=true;result.error_message=QString::fromStdString(error);return result;
+    }
     auto result = performSettingsOperation(operation, QStringLiteral("read_settings"),
         [group](VaporView::EpsilonCollector& collector, EpsilonSettingsSnapshot& snapshot, std::string& error) {
             return collector.readSettings(group, snapshot, error);
@@ -212,6 +219,11 @@ EpsilonConfigurationResult EpsilonConfigurationService::readSettings(
 EpsilonConfigurationResult EpsilonConfigurationService::applySettings(
     const EpsilonDeviceOperation& operation, const EpsilonSettingsOperation& settings, const LogCallback& log)
 {
+    if(operation.exchange) {
+        EpsilonConfigurationResult result;std::string error;
+        result.command_succeeded=applyEpsilonSettings(settings,operation.exchange,result.settings_snapshot,error);
+        result.live_stream_restarted=true;result.error_message=QString::fromStdString(error);return result;
+    }
     std::string error;
     if (!validateEpsilonSettings(settings, error))
     {
@@ -234,6 +246,10 @@ EpsilonConfigurationResult EpsilonConfigurationService::applySettings(
 EpsilonConfigurationResult EpsilonConfigurationService::rebootDevice(
     const EpsilonDeviceOperation& operation, const LogCallback& log)
 {
+    if(operation.exchange) {
+        EpsilonConfigurationResult result;result.live_stream_restarted=true;
+        result.error_message=QStringLiteral("当前 FPGA ASCII 邮箱只接受 # 命令，无法发送厂商重启流程要求的 y 确认；请使用设备原生接口重启后重新连接。");return result;
+    }
     return performSettingsOperation(operation, QStringLiteral("reboot_device"),
         [](VaporView::EpsilonCollector& collector, EpsilonSettingsSnapshot&, std::string& error) {
             return collector.rebootDevice(error);
@@ -245,6 +261,14 @@ EpsilonConfigurationResult EpsilonConfigurationService::calibrateMaintenance(
     VaporView::EpsilonMaintenanceAction action,
     const LogCallback& log)
 {
+    if(operation.exchange) {
+        EpsilonConfigurationResult result;std::string error;
+        result.command_succeeded=runEpsilonMaintenance(action,[&operation](const std::string& command,int interval,const EpsilonMaintenanceWriteTrace& trace) {
+            // An exception while waiting cannot prove the device did not act.
+            if(trace)trace();return operation.exchange(command,interval);
+        },result.maintenance_result,error,operation.maintenance_progress,[cancel=operation.maintenance_cancel]{return cancel && cancel->load();});
+        result.live_stream_restarted=true;result.error_message=QString::fromStdString(error);return result;
+    }
     EpsilonMaintenanceResult maintenance;
     maintenance.action = action;
     if (!validEpsilonMaintenanceAction(action))
@@ -278,6 +302,10 @@ EpsilonConfigurationResult EpsilonConfigurationService::calibrateMaintenance(
 EpsilonConfigurationResult EpsilonConfigurationService::readDgnss(
     const EpsilonDeviceOperation& operation, const LogCallback& log)
 {
+    if(operation.exchange) {
+        EpsilonConfigurationResult result;std::string error;result.command_succeeded=readEpsilonDgnss(operation.exchange,result.dgnss_snapshot,error);
+        result.live_stream_restarted=true;result.error_message=QString::fromStdString(error);return result;
+    }
     EpsilonDgnssSnapshot snapshot;
     auto result = performSettingsOperation(operation, QStringLiteral("read_dgnss"),
         [&snapshot](VaporView::EpsilonCollector& collector, EpsilonSettingsSnapshot&, std::string& error) {
@@ -290,6 +318,10 @@ EpsilonConfigurationResult EpsilonConfigurationService::readDgnss(
 EpsilonConfigurationResult EpsilonConfigurationService::applyDgnss(
     const EpsilonDeviceOperation& operation, const EpsilonDgnssOperation& settings, const LogCallback& log)
 {
+    if(operation.exchange) {
+        EpsilonConfigurationResult result;std::string error;result.command_succeeded=applyEpsilonDgnss(settings,operation.exchange,result.dgnss_snapshot,error);
+        result.live_stream_restarted=true;result.error_message=QString::fromStdString(error);return result;
+    }
     std::string error;
     if (!validateEpsilonDgnss(settings, error))
     {
@@ -315,6 +347,11 @@ EpsilonConfigurationResult EpsilonConfigurationService::applyMainAntennaLeverArm
     double z_m,
     const LogCallback& log)
 {
+    if(operation.exchange) {
+        EpsilonSettingsOperation settings;settings.group=EpsilonSettingsGroup::Installation;
+        settings.values={{"GNSS_L_IMU_ANT1_X",x_m},{"GNSS_L_IMU_ANT1_Y",y_m},{"GNSS_L_IMU_ANT1_Z",z_m}};
+        return applySettings(operation,settings,log);
+    }
     EpsilonConfigurationResult result;
     result.live_stream_restarted = !operation.restart_live_stream;
     const bool english = operation.english;
@@ -396,6 +433,17 @@ EpsilonConfigurationResult EpsilonConfigurationService::configureRtcmPort(
     const QString& forward_baud_text,
     const LogCallback& log)
 {
+    if(operation.exchange) {
+        EpsilonSettingsOperation settings;settings.group=EpsilonSettingsGroup::Communication;
+        const std::array<int,8> rates{{9600,19200,38400,76800,115200,230400,460800,921600}};
+        const auto it=std::find(rates.begin(),rates.end(),forward_baud);
+        if(device_port_index<2 || device_port_index>4 || it==rates.end()) {
+            EpsilonConfigurationResult result;result.live_stream_restarted=true;result.error_message=QStringLiteral("仅允许配置外接空闲端口 COMM2..4；请先确认接线和内部 GNSS 预留端口。");return result;
+        }
+        settings.values={{"COMM_BAUD"+std::to_string(device_port_index),double(it-rates.begin()+1)},
+            {"COMM_STREAM_TYP"+std::to_string(device_port_index),3}};
+        return applySettings(operation,settings,log);
+    }
     EpsilonConfigurationResult result;
     result.live_stream_restarted = !operation.restart_live_stream;
     const bool english = operation.english;
@@ -492,6 +540,29 @@ EpsilonConfigurationResult EpsilonConfigurationService::configurePacketRates(
     const QString& packet_rate_signature,
     const LogCallback& log)
 {
+    if(operation.exchange) {
+        EpsilonConfigurationResult result;result.live_stream_restarted=true;
+        const auto ok=[](const std::string& response) {return response.find("OK")!=std::string::npos && response.find("ERROR")==std::string::npos;};
+        bool entered=false;
+        try {
+            entered=ok(operation.exchange("#fconfig\r\n",1500));bool verified=entered && !packet_rates.empty();
+            for(const auto& entry:packet_rates) {
+                if(!verified)break;
+                const auto command=QStringLiteral("#fmsg %1 %2\r\n").arg(QString::number(entry.first,16).rightJustified(2,QLatin1Char('0')).toUpper()).arg(entry.second);
+                verified=EpsilonProtocol::packetRateCommandAccepted(operation.exchange(command.toStdString(),1500),entry.first,entry.second);
+            }
+            if(verified)verified=ok(operation.exchange("#fsave\r\n",1500));
+            if(verified) {
+                const auto actual=EpsilonProtocol::parseFmsgRates(operation.exchange("#fmsg\r\n",1500));
+                for(const auto& entry:packet_rates) {const auto it=actual.find(entry.first);if(it==actual.end() || it->second!=entry.second)verified=false;}
+            }
+            const bool exited=ok(operation.exchange("#fdeconfig\r\n",1500));entered=false;
+            result.command_succeeded=verified && exited;result.settings_snapshot.saved=verified;
+            result.settings_snapshot.readback_verified=verified;result.settings_snapshot.restart_required=verified;
+        } catch(...) {if(entered)try{operation.exchange("#fdeconfig\r\n",1500);}catch(...) {}}
+        if(!result.command_succeeded)result.error_message=QStringLiteral("EPSILON 包频率的应答或读回未通过；部分参数可能已写入，请重新读取。");
+        return result;
+    }
     EpsilonConfigurationResult result;
     result.live_stream_restarted = !operation.restart_live_stream;
     const bool english = operation.english;

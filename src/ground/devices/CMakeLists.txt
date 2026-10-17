@@ -31,6 +31,8 @@ add_library(vaporview_ground_device_core STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/RemoteConfigSession.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/RemoteConfigSession.h
     ${CMAKE_CURRENT_SOURCE_DIR}/FpgaControlSession.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/FpgaInstrumentService.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/FpgaInstrumentService.h
     ${CMAKE_CURRENT_SOURCE_DIR}/FpgaControlSession.h
     ${CMAKE_CURRENT_SOURCE_DIR}/Ai8DeviceSession.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Ai8DeviceSession.h

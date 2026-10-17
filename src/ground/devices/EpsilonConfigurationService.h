@@ -31,6 +31,7 @@ struct EpsilonDeviceOperation
     bool restart_live_stream = false;
     std::shared_ptr<std::atomic_bool> maintenance_cancel;
     VaporView::EpsilonMaintenanceProgress maintenance_progress;
+    VaporView::EpsilonSettingsExchange exchange;
 };
 
 struct EpsilonConfigurationResult

@@ -14,6 +14,7 @@ SkyFpgaBackend::SkyFpgaBackend(std::unique_ptr<Ground::Devices::FpgaUsbTransport
     : QObject(parent), controller_(new Ground::Devices::FpgaDeviceController(std::move(transport)))
 {
     qRegisterMetaType<FpgaWave::CompletedStream>();
+    connect(controller_,&Ground::Devices::FpgaDeviceController::capabilitiesUpdated,this,[this](quint32 bits){status_["extensions"]=double(bits);});
     controller_->moveToThread(&worker_);
     connect(&worker_, &QThread::finished, controller_, &QObject::deleteLater);
     connect(controller_, &Ground::Devices::FpgaDeviceController::transportConnectionChanged, this, [this](bool connected) {
@@ -69,6 +70,9 @@ SkyFpgaBackend::SkyFpgaBackend(std::unique_ptr<Ground::Devices::FpgaUsbTransport
     connect(controller_, &Ground::Devices::FpgaDeviceController::rawCommand, this, &SkyFpgaBackend::rawCommand, Qt::DirectConnection);
     connect(controller_, &Ground::Devices::FpgaDeviceController::rawUsbBytes, this, &SkyFpgaBackend::rawUsbBytes, Qt::DirectConnection);
     connect(controller_, &Ground::Devices::FpgaDeviceController::snapshot, this, &SkyFpgaBackend::snapshot, Qt::DirectConnection);
+    connect(controller_,&Ground::Devices::FpgaDeviceController::snapshot,this,[this](quint64,const QJsonObject& document) {
+        if(document.value("event")=="operation_completed" && document.value("configuration").isObject())status_["configuration"]=document.value("configuration");
+    });
     connect(controller_, &Ground::Devices::FpgaDeviceController::logRecordGenerated, this, [this](LogRecord record) {
         record.source=QStringLiteral("SkyCore");emit logRecord(record);
     });
@@ -127,9 +131,11 @@ void SkyFpgaBackend::submit(const QJsonObject& operation, Completion completion)
             QJsonObject registers;
             const auto& values=controller->hardwareValues();
             for(auto i=values.begin();i!=values.end();++i) registers[QString::number(i.key())]=double(i.value());
-            QMetaObject::invokeMethod(self, [self, identity, code, detail, operation, registers] {
+            const auto result=controller->extensionResult();
+            QMetaObject::invokeMethod(self, [self, identity, code, detail, operation, registers, result] {
                 if (!self || self->activeRequest_ != identity) return;
                 self->status_["registers"]=registers;
+                self->status_["operation_result"]=result;
                 if(code!=CommandErrorCode::Ok) self->status_["detail"]=detail;
                 if(code==CommandErrorCode::Ok && operation.value("op").toString()=="configure") {
                     self->status_["configuration"]=operation.value("configuration").toObject();

@@ -3,6 +3,8 @@
 #include "TelemetryTypes.h"
 #include "data_types.h"
 #include "ground/devices/LocalDeviceConnectionController.h"
+#include "ground/devices/FpgaInstrumentService.h"
+#include <QThread>
 
 #include <QObject>
 #include <QHash>
@@ -59,6 +61,8 @@ public:
     Rd105DeviceSession(LocalAdapter localAdapter,
                        RemoteSkyController *remoteController,
                        QObject *parent = nullptr);
+    ~Rd105DeviceSession() override;
+    void setFpgaTransport(FpgaInstrumentCall call,bool available);
 
     void setEnglish(bool english);
     void setBackend(Rd105Backend backend);
@@ -100,6 +104,10 @@ private:
     QString unavailableReason() const;
 
     LocalAdapter local_adapter_;
+    FpgaInstrumentCall fpga_call_;
+    bool fpga_available_=false;
+    QThread fpga_worker_thread_;
+    QObject *fpga_worker_=nullptr;
     RemoteSkyController *remote_controller_ = nullptr;
     Rd105Backend backend_ = Rd105Backend::Local;
     bool english_ = false;

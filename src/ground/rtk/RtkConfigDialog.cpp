@@ -2921,6 +2921,7 @@ void RtkConfigDialog::setEpsilonMainAntennaLeverArmApplier(EpsilonLeverArmApplie
 
 void RtkConfigDialog::setRtcmCorrectionSink(RtcmCorrectionSink sink, const QString& label)
 {
+    if(bool(sink)==bool(rtcm_correction_sink_) && label.trimmed()==rtcm_correction_sink_label_)return;
     if (is_running_)
     {
         onStopClicked();
@@ -2930,6 +2931,8 @@ void RtkConfigDialog::setRtcmCorrectionSink(RtcmCorrectionSink sink, const QStri
     refreshPortCombos();
     updateButtonStates();
 }
+int RtkConfigDialog::fpgaRtcmTarget() const {return rtcm_correction_sink_label_=="FPGA"?output_port_combo_->currentData().toInt():0;}
+int RtkConfigDialog::fpgaRtcmBaud() const {return currentOutputBaudrate();}
 
 bool RtkConfigDialog::startRtcmCorrectionSinkServer(RtkStreamConfig *config, QString *errorMessage)
 {
@@ -4231,6 +4234,7 @@ void RtkConfigDialog::refreshPortCombos()
     const bool usingCorrectionSink = static_cast<bool>(rtcm_correction_sink_);
     const QStringList ports = usingCorrectionSink ? QStringList{} : getAvailablePorts();
     const QString currentOutput = selectedSerialPortText(output_port_combo_);
+    const int previousFpgaTarget=output_port_combo_?output_port_combo_->currentData().toInt():0;
     const QString currentGga = isMainGgaSourceSelected() ? QString() : ggaPortName();
 
     if (output_port_combo_)
@@ -4251,6 +4255,13 @@ void RtkConfigDialog::refreshPortCombos()
                 "Remote mode sends RTCM through the Sky link. Switch the source mode to Local to choose a PC serial port.",
                 "当前为远程模式，RTCM 通过天地链路发送到天空端；切换到“本地”后才能选择本机串口。"));
             output_port_combo_->setAccessibleDescription(output_port_combo_->toolTip());
+            if(sinkLabel=="FPGA") {
+                output_port_combo_->clear();output_port_combo_->addItem(textFor("FPGA MAIN (FDILink)","FPGA MAIN（FDILink 封装）"),0);
+                output_port_combo_->addItem(textFor("FPGA external RS422 (raw RTCM)","FPGA 外接 RS422（原始 RTCM）"),1);
+                output_port_combo_->setCurrentIndex(qBound(0,previousFpgaTarget,1));output_port_combo_->setEnabled(transport_supported_&&!is_running_);
+                output_port_combo_->setToolTip(textFor("External RS422 requires wiring to a free EPSILON RTCM port at the selected baud. Preserve internal GNSS ports.",
+                    "外接 RS422 需要接到 EPSILON 空闲 RTCM 端口并匹配所选波特率；请保留内部 GNSS 端口配置。"));
+            }
         }
         else
         {

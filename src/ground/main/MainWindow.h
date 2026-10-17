@@ -372,6 +372,10 @@ private:
     void setHomeFpgaDeviceEnabled(VaporView::SkyDeviceId device, bool enabled);
     void connectNextHomeFpgaDevice();
     QMap<quint32, quint32> homeFpgaRegisters() const;
+    quint32 homeFpgaExtensions() const;
+    void submitFpgaInstrument(const QJsonObject& request,std::function<void(const QJsonObject&)> reply);
+    bool enqueueFpgaRtcm(const QByteArray& bytes);
+    void drainFpgaRtcm();
     void updateHomeFpgaWaveActions();
     void requestHomeFpgaWaveAction(bool raw, bool enabled);
     void finishHomeFpgaRawStart();

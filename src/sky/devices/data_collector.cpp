@@ -1511,6 +1511,7 @@ bool parseEnvironmentSerialLine(const std::string& line, EnvironmentSerialValues
 
 namespace EpsilonProtocol
 {
+std::map<std::uint8_t,int> parseFmsgRates(const std::string& response) {return parseFmsgResponse(response);}
 
 bool packetRateCommandAccepted(const std::string& response,
                                std::uint8_t packetId,
@@ -4742,6 +4743,7 @@ bool TemperatureControllerCollector::readRegistersUnlocked(uint16_t address,
                                                            int wait_ms,
                                                            bool record_raw)
 {
+  if(read_backend_)return read_backend_(address,count,registers);
   using namespace TemperatureControllerProtocol;
   const QByteArray request = buildReadRegistersRequest(slave_address_, address, count);
   sleepMs(kTemperatureControllerModbusCommandGapMs);
@@ -4815,6 +4817,7 @@ bool TemperatureControllerCollector::writeRegisters(uint16_t address, const std:
 
 bool TemperatureControllerCollector::writeRegistersUnlocked(uint16_t address, const std::vector<uint16_t>& registers, int wait_ms)
 {
+  if(write_backend_)return write_backend_(address,registers);
   using namespace TemperatureControllerProtocol;
   const QVector<uint16_t> values(registers.cbegin(), registers.cend());
   const QByteArray request = buildWriteRegistersRequest(slave_address_, address, values);

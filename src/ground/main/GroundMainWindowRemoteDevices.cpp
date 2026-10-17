@@ -1960,7 +1960,7 @@ void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
 
     const QString selectText = state_->is_english_ ? "-- Select --" : "未选择";
     const QString epsilonPort = state_->local_device_config_.epsilon.port;
-    const bool targetReadyForApply = isRemoteSkyMode() ||
+    const bool targetReadyForApply = isRemoteSkyMode() || isFpgaRelayPath() ||
         (!epsilonPort.isEmpty() && epsilonPort != selectText);
     if (applyAfterSave &&
         !state_->recording_service_->isActive() &&
@@ -2848,7 +2848,7 @@ void MainWindow::onRd105SessionOperationFinished(
         }
     }
 
-    if (result.backend == VaporView::Ground::Devices::Rd105Backend::Local)
+    if (result.backend == VaporView::Ground::Devices::Rd105Backend::Local || isFpgaRelayPath())
     {
         if (result.has_latest_data &&
             result.latest_data.timestamp >= state_->current_temperature_controller_.timestamp)
@@ -2862,8 +2862,8 @@ void MainWindow::onRd105SessionOperationFinished(
                     state_->current_temperature_controller_,
                     result.command,
                     result.payload);
-            VaporView::Ground::Devices::persistTemperatureSerialSettings(settingsUpdate);
-            if (settingsUpdate.baudRate)
+            if(!isFpgaRelayPath())VaporView::Ground::Devices::persistTemperatureSerialSettings(settingsUpdate);
+            if (!isFpgaRelayPath() && settingsUpdate.baudRate)
             {
                 const QString baudText = QString::number(*settingsUpdate.baudRate);
                 state_->local_device_config_.temperatureController.baudText = baudText;
@@ -2968,7 +2968,7 @@ void MainWindow::sendTemperatureCommand(
     VaporView::CommandId command,
     const VaporView::TemperatureControllerCommand& payload)
 {
-    if (isUiTestMode())
+    if (isUiTestMode() && !isFpgaRelayPath())
     {
         state_->ui_test_model_->applyTemperatureCommand(command, payload);
         applyUiTestSnapshot();

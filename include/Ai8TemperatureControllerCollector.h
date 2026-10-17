@@ -31,6 +31,9 @@ public:
     void setRawFrameCallback(RawFrameCallback callback);
     void setRegisterBackendForTest(RegisterReadBackendForTest readBackend,
                                    RegisterWriteBackendForTest writeBackend);
+    void setRegisterBackend(RegisterReadBackendForTest readBackend,RegisterWriteBackendForTest writeBackend) {
+        setRegisterBackendForTest(std::move(readBackend),std::move(writeBackend));
+    }
 
     bool readPage(Ai8TemperatureControllerProtocol::Page page,
                   const Ai8TemperatureControllerProtocol::Selection& selection,

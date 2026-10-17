@@ -61,6 +61,7 @@ void FpgaSensorAdapter::reset()
     bmpCalibration_.clear();
     epsilon_ = EpsilonData{};
     epsilonStatusTimestamp_.reset();
+    ai8ScanValues_={};ai8ScanTicks_={};
 }
 
 double FpgaSensorAdapter::updateRate(const Reading &reading)
@@ -68,10 +69,11 @@ double FpgaSensorAdapter::updateRate(const Reading &reading)
     // Count before presentation coalesces readings. FPGA ticks describe the
     // data cadence even when USB delivers a burst or a replay runs faster.
     if (!(reading.flags & 1)) return 0.0;
-    auto it = rates_.find(reading.source);
+    const quint16 key=reading.ai8Channel?quint16(0x4600+*reading.ai8Channel):reading.source;
+    auto it = rates_.find(key);
     if (it == rates_.end() || reading.timestamp < it->last
         || reading.timestamp - it->last > 500000000) {
-        rates_[reading.source] = {reading.timestamp, reading.timestamp, 0, 0.0};
+        rates_[key] = {reading.timestamp, reading.timestamp, 0, 0.0};
         return 0.0;
     }
     it->last = reading.timestamp;
@@ -106,10 +108,10 @@ AdaptedMeasurements FpgaSensorAdapter::accept(const Reading &input)
             out.reading.validity.measurement = true;
         }
     }
-    else if (input.kind == SensorKind::Ai8 && input.schema == 2)
+    else if (input.kind == SensorKind::Ai8 && (input.schema == 2 || input.schema == 3))
     {
         Ai8Sample s;
-        s.channel = ai8Channel_;
+        s.channel = input.schema==3?int(input.ai8Channel.value_or(0)):ai8Channel_;
         s.deviceStatus = input.ai8DeviceStatus.value_or(0);
         s.deviceError = input.ai8DeviceError.value_or(0);
         s.sampleCounter = input.ai8SampleCounter.value_or(0);
@@ -132,21 +134,30 @@ AdaptedMeasurements FpgaSensorAdapter::accept(const Reading &input)
         out.ai8 = s;
         Ai8TemperatureControllerProtocol::LiveData live;
         live.measuredC.fill(std::numeric_limits<double>::quiet_NaN());
-        if (ai8Channel_ >= 1 && ai8Channel_ <= Ai8TemperatureControllerProtocol::kChannelCount)
+        if (s.channel >= 1 && s.channel <= Ai8TemperatureControllerProtocol::kChannelCount)
         {
-            const int index = ai8Channel_ - 1;
+            const int index = s.channel - 1;
             if (s.measurementValid) live.measuredC[index] = s.measuredC;
-            const int shift = ai8Channel_ % 2 ? 8 : 0;
+            const int shift = s.channel % 2 ? 8 : 0;
             live.alarmStatusRegisters[index / 2] = quint16(s.alarm) << shift;
             live.valid = s.measurementValid;
             if(s.measurementValid) {
-                live.detailedChannel=quint8(ai8Channel_);live.setpointC=s.setpointC;live.displayedSetpointC=s.displayedSetpointC;
+                live.detailedChannel=quint8(s.channel);live.setpointC=s.setpointC;live.displayedSetpointC=s.displayedSetpointC;
                 live.outputRaw=quint16(s.outputRaw);live.alarmRaw=s.alarm;live.controlRaw=s.control;
             }
             // The FPGA snapshot supplies exactly one channel, not all eight.
             // Global all-channel validity flags must remain false.
             live.mainStatusRaw = s.host;
             live.mainStatusValid = s.measurementValid;
+        }
+        if(input.schema==3 && s.channel>=1 && s.channel<=8) {
+            for(int i=0;i<8;++i) {
+                if(input.timestamp<ai8ScanTicks_[i] || input.timestamp-ai8ScanTicks_[i]>500000000)ai8ScanValues_[i].reset();
+            }
+            ai8ScanTicks_[s.channel-1]=input.timestamp;
+            ai8ScanValues_[s.channel-1]=s.measurementValid?std::optional<double>(s.measuredC):std::nullopt;
+            live.valid=false;
+            for(int i=0;i<8;++i) {live.measuredC[i]=ai8ScanValues_[i].value_or(std::numeric_limits<double>::quiet_NaN());live.valid|=ai8ScanValues_[i].has_value();}
         }
         out.ai8Live = live;
         out.reading.validity.measurement = s.measurementValid;
@@ -199,7 +210,7 @@ AdaptedMeasurements FpgaSensorAdapter::accept(const Reading &input)
     // Calibration is metadata; AI8 failed polls are not new snapshots.
     const bool sample = input.pressureMilliPa || input.bmpPressureRaw || input.bmpTemperatureRaw
         || (input.temperatureC && input.humidityPct) || input.distanceMm || out.epsilon
-        || (out.ai8 && out.ai8->online && !(out.ai8->deviceStatus & 0x1ffe));
+        || (out.ai8 && out.ai8->online && !(out.ai8->deviceStatus & 0x1ffe)) || input.rd105ActualMicroC;
     if (sample) out.sampleRateHz = updateRate(input);
     return out;
 }

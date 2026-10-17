@@ -299,10 +299,10 @@ int main(int argc,char **argv) {
                     require(!page.findChild<QComboBox*>("fpgaPressureSource") && !page.findChild<QComboBox*>("fpgaHumiditySource"),
                         "independent sensor card has no source selectors");
                     auto *grid=page.findChild<QGridLayout*>("fpgaSensorGrid");
-                    require(grid&&grid->count()==24&&grid->rowCount()==6&&grid->columnCount()==4,"six ordinary sensors share one card with one row each");
+                    require(grid&&grid->count()==28&&grid->rowCount()==7&&grid->columnCount()==4,"seven ordinary sensors include independent RD105");
                     auto *sensorBody=grid->parentWidget();
                     int previousBottom=-1;
-                    for(int row=0;row<6;++row) {
+                    for(int row=0;row<7;++row) {
                         int previousRight=-1;
                         const auto *reading=qobject_cast<QLabel*>(grid->itemAtPosition(row,1)->widget());
                         require(reading&&reading->parentWidget()==sensorBody&&!reading->wordWrap(),"sensor readings stay on one line in the shared card");

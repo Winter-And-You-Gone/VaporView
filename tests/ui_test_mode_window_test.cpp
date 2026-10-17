@@ -1367,11 +1367,11 @@ int main(int argc, char **argv)
         if(!completed)std::cerr<<"FPGA fixture op="<<request.value("op").toString().toStdString()<<" source="<<request.value("source").toInt()<<"\n"<<fpgaDiagnostics->toPlainText().toStdString()<<"\n";
         require(completed,"FPGA UI fixture awaits protocol completion");
     };
-    auto *unsupportedEpsilon=window->findChild<VaporView::Ground::Navigation::EpsilonConfigPanel*>();
-    const auto settingsBeforeUnsupported=unsupportedEpsilon->exportSettingsJson();
-    unsupportedEpsilon->settingsReadRequested(VaporView::EpsilonSettingsGroup::Installation);processEvents();
-    require(unsupportedEpsilon->exportSettingsJson()==settingsBeforeUnsupported&&unsupportedEpsilon->findChild<QLabel*>("epsilonSettingsStatus")->text().contains("VLP1"),
-        "FPGA UI mode rejects unsupported EPSILON settings instead of fabricating success");
+    auto *epsilonSettings=window->findChild<VaporView::Ground::Navigation::EpsilonConfigPanel*>();
+    const auto settingsBeforeConnection=epsilonSettings->exportSettingsJson();
+    epsilonSettings->settingsReadRequested(VaporView::EpsilonSettingsGroup::Installation);processEvents();
+    require(epsilonSettings->exportSettingsJson()==settingsBeforeConnection&&!epsilonSettings->findChild<QAbstractButton*>("epsilonSettingsReadButton")->isEnabled(),
+        "disconnected FPGA UI mode cannot fabricate an EPSILON parameter read");
     fpgaOperation({{"op","connect"}});
     for(quint16 source:{0x40,0x41,0x42,0x43,0x44,0x45,0x46})fpgaOperation({{"op","sensor"},{"source",source},{"enabled",true}});
     fpgaOperation({{"op","acquisition"},{"enabled",true}});

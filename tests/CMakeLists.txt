@@ -384,6 +384,10 @@ vaporview_add_test(NAME fpga_startup_warning_grace_test COMMAND fpga_controller_
 set_tests_properties(fpga_startup_warning_grace_test PROPERTIES LABELS "integration;fpga" TIMEOUT 60)
 
 add_executable(fpga_telemetry_test ${CMAKE_CURRENT_SOURCE_DIR}/fpga_telemetry_test.cpp)
+add_executable(fpga_extensions_test ${CMAKE_CURRENT_SOURCE_DIR}/fpga_extensions_test.cpp)
+target_link_libraries(fpga_extensions_test PRIVATE vaporview_ground_device_core)
+vaporview_add_test(NAME fpga_extensions_test COMMAND fpga_extensions_test)
+set_tests_properties(fpga_extensions_test PROPERTIES LABELS "integration;fpga" TIMEOUT 120)
 target_link_libraries(fpga_telemetry_test PRIVATE vaporview_fpga_device_core)
 vaporview_add_test(NAME fpga_telemetry_test COMMAND fpga_telemetry_test)
 set_tests_properties(fpga_telemetry_test PROPERTIES LABELS "fast;unit;fpga" TIMEOUT 60)
@@ -1487,6 +1491,8 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
 endif()
 
 set_tests_properties(fpga_device_session_test fpga_controller_test PROPERTIES LABELS "integration;fpga;slow" TIMEOUT 60)
+# The controller suite includes real-time RAW, freshness and failed-readback waits.
+set_property(TEST fpga_controller_test PROPERTY TIMEOUT 120)
 set_tests_properties(vaporview_startup_test PROPERTIES LABELS "integration;ui;smoke" TIMEOUT 60)
 add_dependencies(vaporview_startup_test VaporView)
 

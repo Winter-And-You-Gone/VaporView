@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <map>
 
 namespace VaporView::EpsilonProtocol
 {
@@ -24,6 +25,7 @@ void resolveAttitudeState(EpsilonData& data,
 bool packetRateCommandAccepted(const std::string& response,
                                std::uint8_t packetId,
                                int expectedRateHz);
+std::map<std::uint8_t,int> parseFmsgRates(const std::string& response);
 
 }  // namespace VaporView::EpsilonProtocol
 

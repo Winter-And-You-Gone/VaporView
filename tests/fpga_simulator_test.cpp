@@ -57,8 +57,8 @@ void protocol()
             }
         }
     };
-    wait([&]{collect();return sensors.size()==7&&waves.contains(0x30)&&waves.contains(0x31)&&bmp&&navigation;},
-         "seven sensors, calibrated BMP and valid EPSILON navigation traverse the actual decoder");
+    wait([&]{collect();return sensors.size()==8&&sensors.contains(0x48)&&waves.contains(0x30)&&waves.contains(0x31)&&bmp&&navigation;},
+         "eight sensors including RD105, calibrated BMP and valid EPSILON navigation traverse the actual decoder");
     // Invalid register access returns an error instead of silently accepting it.
     const auto request=bytes(FpgaVlp1::buildReadReg(777,0xdeac,1));
     transport->write(request.left(7));transport->write(request.mid(7));bool rejected=false;
@@ -190,14 +190,16 @@ void processTest()
         wait([&]{return replies.contains(id);},"final FPGA response received");
         check(replies[id].error_code==CommandErrorCode::Ok,qPrintable(replies[id].error_message));
     };
-    for(quint16 source:{0x40,0x41,0x42,0x43,0x44,0x45,0x46})operation({{"op","sensor"},{"source",source},{"enabled",true}});
+    for(quint16 source:{0x40,0x41,0x42,0x43,0x44,0x45,0x46,0x48})operation({{"op","sensor"},{"source",source},{"enabled",true}});
     operation({{"op","acquisition"},{"enabled",true}});
-    wait([&]{return sensors.size()==7&&waves.size()==2&&basic;},"explicit startup yields all sensors, waveforms and physical telemetry");
+    wait([&]{return sensors.size()==8&&waves.size()==2&&basic;},"explicit startup yields all sensors, waveforms and physical telemetry");
     operation({{"op","temperature"},{"celsius",32.5}});
     operation({{"op","raw"},{"enabled",true}});
     wait([&]{return waves.contains(0x20)&&waves.contains(0x21);},"RAW previews cross process and telemetry boundaries");
     remote.sendCommand(CommandId::StartRecording);
-    wait([&]{return status.value("recording_state").toInt()==1&&status.value("archived_records").toString().toULongLong()>400;},
+    wait([&]{return status.value("recording_state").toInt()==1;},"recording becomes active");
+    sensors.clear();waves.clear();
+    wait([&]{return sensors.size()==8&&waves.size()==4&&status.value("archived_records").toString().toULongLong()>400;},
          "recording archives real generated VLP frames, OUT commands and USB chunks");
     const auto session=status.value("session_directory").toString();
     check(session.startsWith(directory.path()+"/simulated_sessions"),"simulated recordings are isolated from real sessions");
@@ -210,7 +212,7 @@ void processTest()
         if(frame.header.frameType==FpgaVlp1::FrameType::Data)archivedSources.insert(frame.header.source);
         return true;
     },&archiveError),qPrintable(archiveError));
-    check(archivedSources.size()==11&&archivedSources.contains(0x41),"saved session replays seven sensor sources including HMP and four wave sources");
+    check(archivedSources.size()==12&&archivedSources.contains(0x41)&&archivedSources.contains(0x48),"saved session replays eight sensor sources including HMP and RD105 and four wave sources");
     check(Session::FpgaSessionArchive::exportTo(session,directory.filePath("simulated.bin"),
         Session::FpgaSessionArchive::ExportFormat::Bin,&archiveError),qPrintable(archiveError));
     check(QFileInfo(directory.filePath("simulated.bin")).size()>0,"existing BIN export consumes the generated USB archive");

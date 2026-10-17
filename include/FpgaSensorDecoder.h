@@ -9,7 +9,7 @@
 namespace VaporView::FpgaSensor
 {
 
-enum class SensorKind { Unknown, Ptb210, Epsilon, Bmp390, Sht45, Tfa1500, Ai8, Hmp };
+enum class SensorKind { Unknown, Ptb210, Epsilon, Bmp390, Sht45, Tfa1500, Ai8, Hmp, Rd105 };
 
 struct TlvRecord
 {
@@ -60,6 +60,10 @@ struct Reading
     std::optional<quint32> ai8DeviceStatus;
     std::optional<quint32> ai8DeviceError;
     std::optional<quint32> ai8SampleCounter;
+    std::optional<quint32> ai8Channel;
+    std::optional<qint32> rd105TargetMicroC, rd105ActualMicroC;
+    std::optional<quint32> rd105Error;
+    std::optional<quint32> rd105Channel;
     QByteArray bmpCalibration;
     std::optional<quint32> bmpPressureRaw;
     std::optional<quint32> bmpTemperatureRaw;

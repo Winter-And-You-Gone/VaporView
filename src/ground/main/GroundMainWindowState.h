@@ -177,6 +177,12 @@ struct MainWindowState
 {
     Devices::RemoteConfigSession remote_config_session_;
     Devices::FpgaControlSession fpga_session_;
+    quint32 fpga_extensions_=0;
+    std::function<void(const QJsonObject&)> fpga_instrument_reply_;
+    QByteArray fpga_rtcm_buffer_;
+    QList<QPair<qint64,QJsonObject>> fpga_rtcm_queue_;
+    bool fpga_rtcm_busy_=false;
+    quint64 fpga_instrument_sequence_=0;
 
     MainWindowState();
     ~MainWindowState();

@@ -53,7 +53,10 @@ public:
                                int ai8Channel = 1);
     AdaptedMeasurements accept(const Reading &reading);
     void reset();
-    void resetRate(quint16 source) { rates_.remove(source); }
+    void resetRate(quint16 source) {
+        rates_.remove(source);
+        if(source==0x46) {for(int i=1;i<=8;++i)rates_.remove(quint16(0x4600+i));ai8ScanValues_={};ai8ScanTicks_={};}
+    }
     void setAi8Channel(int channel) { ai8Channel_ = channel; }
 
 private:
@@ -68,5 +71,7 @@ private:
     std::optional<quint64> epsilonStatusTimestamp_;
     quint64 epsilonStatusMaxAgeTicks_;
     int ai8Channel_;
+    std::array<std::optional<double>,8> ai8ScanValues_;
+    std::array<quint64,8> ai8ScanTicks_{};
 };
 } // namespace VaporView::FpgaSensor

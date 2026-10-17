@@ -219,7 +219,7 @@ static void verifyCardMargins(MainWindow &window,FpgaControlPage *page,int scale
                     &&h1->geometry().bottom()<h2->geometry().top(),"main window stacks H1 and H2 at full channel width");
             }
             auto *sensorGrid=page->findChild<QGridLayout*>("fpgaSensorGrid");
-            require(sensorGrid&&sensorGrid->rowCount()==6&&sensorGrid->columnCount()==4,"sensor card has six independent device rows including HMP");
+            require(sensorGrid&&sensorGrid->rowCount()==7&&sensorGrid->columnCount()==4,"sensor card includes independent RD105 and HMP rows");
             if(tab==1) {
                 require(!page->findChild<QComboBox*>("fpgaPressureSource") && !page->findChild<QComboBox*>("fpgaHumiditySource"),
                     "independent sensors have no interchangeable source selectors");
@@ -740,10 +740,32 @@ static void localSimulatorRouting()
     check(waitUntil([&]{auto *wave=homeAction(window,QStringLiteral("波形源"));
         return wave->isEnabled()&&wave->property("state")=="connected";},20000),
         "title connection opens FPGA then starts every supported sensor and shared acquisition");
-    check(waitUntil([&]{return connectionSuccesses==QSet<quint16>{0,0x40,0x41,0x42,0x43,0x44,0x45,0x46};}),
-        "all seven sensors and shared acquisition report confirmed connections");
-    verifyRelayIndicators(window,{"Epsilon","Pressure","Humidity","Lidar","Ai8","Wave","Bmp390","Sht45"});
+    check(waitUntil([&]{return connectionSuccesses==QSet<quint16>{0,0x40,0x41,0x42,0x43,0x44,0x45,0x46,0x48};}),
+        "all eight sensors and shared acquisition report confirmed connections");
+    verifyRelayIndicators(window,{"Epsilon","Pressure","Humidity","Lidar","Temperature","Ai8","Wave","Bmp390","Sht45"});
     check(connectionSuccesses.contains(0x41),"HMP has its own confirmed connection log");
+    {
+        int rdReads=0,aiReads=0,asciiStarts=0;
+        const auto observer=QObject::connect(window.testFpgaController(),&VaporView::Ground::Devices::FpgaDeviceController::rawCommand,
+            &window,[&](quint64,const QByteArray& bytes) {
+                VaporView::FpgaVlp1::StreamParser parser;
+                for(const auto& frame:parser.feed(reinterpret_cast<const std::uint8_t*>(bytes.constData()),bytes.size()))if(frame.header.message==3 && frame.payload.size()>=12) {
+                    const auto address=qFromLittleEndian<quint32>(frame.payload.data());rdReads+=address==0x6880;aiReads+=address==0x6680;asciiStarts+=address==0x6240;
+                }
+            },Qt::QueuedConnection);
+        auto* readRd=window.findChild<QToolButton*>("temperatureFpgaReadParameters");
+        check(readRd&&readRd->isEnabled(),"RD105 existing page exposes its FPGA full-parameter read action");readRd->click();
+        check(waitUntil([&]{return rdReads>10&&readRd->isEnabled();},15000),"RD105 parameter page completes asynchronous verified FPGA reads");
+        auto* readAi=window.findChild<QAbstractButton*>("ai8ReadParametersButton");
+        check(readAi&&readAi->isEnabled(),"AI8 existing parameter page is enabled by extension capabilities");readAi->click();
+        check(waitUntil([&]{return aiReads>5&&readAi->isEnabled();},12000),"AI8 existing parameter page reaches real FPGA register transactions");
+        auto* readEpsilon=window.findChild<QAbstractButton*>("epsilonSettingsReadButton");
+        check(readEpsilon&&readEpsilon->isEnabled(),"EPSILON existing settings page is enabled by extension capabilities");readEpsilon->click();
+        check(waitUntil([&]{return asciiStarts>5&&readEpsilon->isEnabled();},12000),"EPSILON existing parameter page uses the mailbox through its production worker");
+        auto* packetRates=window.findChild<QAbstractButton*>("deviceEpsilonPacketRatesButton");
+        check(packetRates&&packetRates->isEnabled(),"new firmware enables the shared EPSILON packet-rate entry");
+        QObject::disconnect(observer);
+    }
     for(const auto &entry: {qMakePair("deviceEpsilonBaudComboFpgaEditor","921600"),
             qMakePair("devicePressureBaudComboFpgaEditor","9600"),
             qMakePair("deviceLidarBaudComboFpgaEditor","500000"),
@@ -794,7 +816,7 @@ static void localSimulatorRouting()
                 "local acquisition checkbox follows confirmed VLP1 start and stop");
         }
     }
-    check(!homeAction(window,"RD105")->isEnabled(),"local relay does not invent RD105 support");
+    check(homeAction(window,"RD105")->isEnabled(),"local relay exposes RD105 capability from GET_CAPABILITIES");
     auto *navigation=window.findChild<VaporView::Ground::Navigation::CombinationNavigationPage*>("combinationNavigationPage");
     auto *navigationPanel=static_cast<VaporView::Ground::Navigation::NavigationStatusPanel*>(window.findChild<QWidget*>("navigationStatusPanel"));
     check(navigation&&navigationPanel,"local navigation status widgets exist");
@@ -860,7 +882,7 @@ static void localSimulatorRouting()
     QWidget *deviceConfig=path;
     while(stack->indexOf(deviceConfig)<0)deviceConfig=deviceConfig->parentWidget();
     stack->setCurrentWidget(deviceConfig);processFor(100);
-    verifyRelayIndicators(window,{"Epsilon","Pressure","Humidity","Lidar","Ai8","Wave","Bmp390","Sht45"});
+    verifyRelayIndicators(window,{"Epsilon","Pressure","Humidity","Lidar","Temperature","Ai8","Wave","Bmp390","Sht45"});
     check(deviceWaveRate(window)->width()>=deviceWaveRate(window)->sizeHint().width(),"actual ADC sampling rate fits its device configuration cell");
     stack->setCurrentIndex(0);processFor(100);
 
@@ -930,7 +952,7 @@ static void localSimulatorRouting()
     check(VaporView::Session::FpgaSessionArchive::replay(recordings.filePath(sessions.first()),[&](quint64,const auto& frame){
         if(frame.header.frameType==VaporView::FpgaVlp1::FrameType::Data)sources.insert(frame.header.source);return true;
     },&error),qPrintable(error));
-    check(sources.size()==11&&sources.contains(0x41),"local recording replays seven sensor sources including HMP and four waveform sources");
+    check(sources.size()==12&&sources.contains(0x41)&&sources.contains(0x48),"local recording replays eight sensor sources including RD105 and four waveform sources");
     disconnect->click();check(waitUntil([&]{return connectButton->isEnabled();}),"local disconnect releases the simulator");
     verifyRelayIndicators(window,{});
     QMetaObject::invokeMethod(&window,"onRefreshTimer");
@@ -978,7 +1000,7 @@ static void simulatedMonitorActions()
     QMetaObject::invokeMethod(&window,"onConnectClicked",Qt::DirectConnection);
     require(waitUntil([&]{return harmonic->isEnabled()&&harmonic->text().contains(QStringLiteral("停止"));},20000),
         "title connection starts every supported device on a cold simulated board");
-    verifyRelayIndicators(window,{"Epsilon","Pressure","Humidity","Lidar","Ai8","Wave","Bmp390","Sht45"});
+    verifyRelayIndicators(window,{"Epsilon","Pressure","Humidity","Lidar","Temperature","Ai8","Wave","Bmp390","Sht45"});
     require(raw->text().contains(QStringLiteral("开始")),"connecting all devices does not start RAW upload");
     mode->trigger();mode->trigger();
     require(waitUntil([&]{return page->uiTestController()!=nullptr&&!page->uiTestConnected();}),"reset protocol board for selective connection regression");
@@ -994,7 +1016,7 @@ static void simulatedMonitorActions()
     require(QMetaObject::invokeMethod(&window,"onConnectClicked",Qt::DirectConnection),"batch simulation connection is available");
     require(waitUntil([&]{return harmonic->isEnabled()&&harmonic->text().contains(QStringLiteral("停止"));},20000),
         "UI test title connection starts all devices through the production VLP1 controller");
-    verifyRelayIndicators(window,{"Epsilon","Pressure","Humidity","Lidar","Ai8","Wave","Bmp390","Sht45"});
+    verifyRelayIndicators(window,{"Epsilon","Pressure","Humidity","Lidar","Temperature","Ai8","Wave","Bmp390","Sht45"});
     for(const auto &entry:{qMakePair("deviceEpsilonBaudComboFpgaEditor","921600"),
             qMakePair("devicePressureBaudComboFpgaEditor","9600"),
             qMakePair("deviceLidarBaudComboFpgaEditor","500000"),

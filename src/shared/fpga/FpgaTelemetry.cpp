@@ -1,6 +1,7 @@
 #include "FpgaTelemetry.h"
 #include "FpgaControlConfig.h"
 #include "FpgaAdvancedParameters.h"
+#include "FpgaExtensions.h"
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QRegularExpression>
@@ -42,7 +43,7 @@ QByteArray bytes(QJsonObject object)
 bool sensorSource(int source)
 {
     return source == 0x40 || source == 0x41 || source == 0x42 || source == 0x43 ||
-        source == 0x44 || source == 0x45 || source == 0x46;
+        source == 0x44 || source == 0x45 || source == 0x46 || source == 0x48;
 }
 FpgaSensor::SensorKind kind(int source)
 {
@@ -54,6 +55,7 @@ FpgaSensor::SensorKind kind(int source)
     case 0x44: return FpgaSensor::SensorKind::Sht45;
     case 0x45: return FpgaSensor::SensorKind::Tfa1500;
     case 0x46: return FpgaSensor::SensorKind::Ai8;
+    case 0x48: return FpgaSensor::SensorKind::Rd105;
     default: return FpgaSensor::SensorKind::Unknown;
     }
 }
@@ -63,7 +65,7 @@ bool configurationShape(const QJsonValue& value, const QJsonValue& model, const 
 {
     if(key=="sensorParameters") {
         if(!value.isObject())return false;const auto sensors=value.toObject();
-        for(auto it=sensors.begin();it!=sensors.end();++it) {bool ok=false;const auto source=it.key().toUInt(&ok);if(!ok || source<0x40 || source>0x46 || !it.value().isObject() || !validSensorParameters(quint16(source),it.value().toObject()))return false;}return true;
+        for(auto it=sensors.begin();it!=sensors.end();++it) {bool ok=false;const auto source=it.key().toUInt(&ok);if(!ok || !sensorSource(int(source)) || !it.value().isObject() || !validSensorParameters(quint16(source),it.value().toObject()))return false;}return true;
     }
     if (model.isObject()) {
         if (!value.isObject()) return false;
@@ -89,6 +91,7 @@ bool configurationShape(const QJsonValue& value, const QJsonValue& model, const 
     if (key == "phaseMode") return integer(value, 0, 2);
     if (key == "mode") return integer(value, 0, 7) && (value.toInt()&2);
     if(key=="fragmentPoints")return integer(value,1,256);
+    if(key=="cutoffHz")return FpgaExtensions::cutoff(quint32(value.toDouble()));
     if(key=="adcCnvTicks")return integer(value,2,20);
     if(key=="adcBusyTimeoutTicks")return integer(value,40,1000000);
     if (key == "slaveAddress") return integer(value, 1, 247);
@@ -104,7 +107,8 @@ bool configurationShapeValid(QJsonObject object)
     if(!object.contains("sensorParameters"))object["sensorParameters"]=QJsonObject{};
     if(!object.contains("adcCnvTicks"))object["adcCnvTicks"]=2;
     if(!object.contains("adcBusyTimeoutTicks"))object["adcBusyTimeoutTicks"]=100;
-    if(object.value("channels").isArray()) {auto channels=object.value("channels").toArray();for(int i=0;i<channels.size();++i)if(channels[i].isObject()){auto c=channels[i].toObject();if(!c.contains("expectedPoints"))c["expectedPoints"]=0;if(!c.contains("fragmentPoints"))c["fragmentPoints"]=256;channels[i]=c;}object["channels"]=channels;}
+    if(object.value("ai8").isObject()) {auto ai=object.value("ai8").toObject();if(!ai.contains("scan"))ai["scan"]=false;object["ai8"]=ai;}
+    if(object.value("channels").isArray()) {auto channels=object.value("channels").toArray();for(int i=0;i<channels.size();++i)if(channels[i].isObject()){auto c=channels[i].toObject();if(!c.contains("expectedPoints"))c["expectedPoints"]=0;if(!c.contains("fragmentPoints"))c["fragmentPoints"]=256;if(!c.contains("cutoffHz"))c["cutoffHz"]=1000;channels[i]=c;}object["channels"]=channels;}
     return configurationShape(object, FpgaControlConfig{}.toJson());
 }
 bool configurationValid(const QJsonObject& object)
@@ -131,7 +135,7 @@ QJsonObject decodeManagementEvent(quint8 type, quint16 source, quint16 message,
         if(page==0)expected=1;else if(page==0x10)expected=2;
         else if(page==0x20 || page==0x30)expected=0x10;else if(page==0x21 || page==0x31)expected=0x11;
         else if(page==0x40 || page==0x41)expected=quint16(page-0x20);else if(page==0x50 || page==0x51)expected=quint16(page-0x20);
-        else if(page>=0x60 && page<=0x67)expected=quint16(page-0x20);else if(page==0x70 || page==0x80)expected=0x50;
+        else if(page>=0x60 && page<=0x68)expected=quint16(page-0x20);else if(page==0x70 || page==0x80)expected=0x50;
         if(source!=expected)return {};
     }
     QJsonArray words;for(int i=1;i<8;++i)words.append(double(word(i)));
@@ -144,6 +148,12 @@ bool validateControl(const QJsonObject& control, QString *error)
     if (!control.value("op").isString()) return fail();
     const auto op = control.value("op").toString();
     QStringList keys{"op"};
+    if(control.contains("ticket")) {
+        quint64 ticket=0;
+        if(!QStringList{"instrument","epsilon_mailbox","ai8_scan","ai8_cache","dlia_cutoff","device_temperature"}.contains(op)
+            || !decimal(control.value("ticket"),ticket) || !ticket)return fail();
+        keys << "ticket";
+    }
     if (control.contains("version")) { keys.append("version"); if (!integer(control.value("version"), 1, 1)) return fail(); }
     if (op == "connect") {
         keys << "locator" << "backend";
@@ -189,7 +199,7 @@ bool validateControl(const QJsonObject& control, QString *error)
                          source == 0x40 ? 19200 : 6250000)) return fail();
         }
         if (control.contains("poll_ms") &&
-            ((source != 0x40 && source != 0x41 && source != 0x43 && source != 0x44 && source != 0x46) ||
+            ((source != 0x40 && source != 0x41 && source != 0x43 && source != 0x44 && source != 0x46 && source != 0x48) ||
              !integer(control.value("poll_ms"), 1, 3600000))) return fail();
     } else if(op=="time" || op=="motor" || op=="sensor_action" || op=="maintenance") {
         keys << "action" << "value";
@@ -214,11 +224,46 @@ bool validateControl(const QJsonObject& control, QString *error)
         keys << "mode" << "high_water" << "burst";if(!integer(control.value("mode"),0,1) || !integer(control.value("high_water"),1) || !integer(control.value("burst"),1,65535))return fail();
     } else if(op=="watchdog") {
         keys << "value";if(!integer(control.value("value"),0,3600000) || (control.value("value").toInt()!=0 && control.value("value").toInt()<30000))return fail();
-    } else if (op == "temperature") {
+    } else if(op=="instrument") {
+        keys << "source" << "action" << "address" << "count" << "data";
+        if(!integer(control.value("source"),0,65535) || (control.value("source").toInt()!=0x46 && control.value("source").toInt()!=0x48)
+            || !integer(control.value("action"),1,3) || !integer(control.value("address"),0,65535)
+            || !integer(control.value("count"),1,16) || !control.value("data").isString())return fail();
+        const int src=control.value("source").toInt(),action=control.value("action").toInt(),address=control.value("address").toInt(),count=control.value("count").toInt();
+        if(address+count>65536)return fail();
+        const auto encoded=control.value("data").toString().toLatin1(),data=QByteArray::fromBase64(encoded);
+        if(data.toBase64()!=encoded || (action==1?!data.isEmpty():data.size()!=count*2))return fail();
+        if(src==0x46 && (count!=1 || action==3 || !((address<=0x4df) || (address>=0x600 && address<=0x6ef) || (address>=0x800 && address<=0x85f))))return fail();
+        if(src==0x46 && action==2 && ((address>=0x480 && address<0x800) || (address>=0x842 && address<=0x844) || address==0x851 || (address>=0x853 && address<=0x855)))return fail();
+        if(src==0x48 && ((action==2 && address==0) || (action==3 && (address!=0 || count!=1 || data!=QByteArray::fromHex("0001")))))return fail();
+    } else if(op=="epsilon_mailbox") {
+        keys << "kind" << "data" << "target" << "baud" << "timeout_ms";
+        if(!integer(control.value("kind"),0,1) || !control.value("data").isString()
+            || (control.contains("target") && !integer(control.value("target"),0,1))
+            || (control.contains("baud") && !integer(control.value("baud"),9600,6250000))
+            || (control.contains("timeout_ms") && !integer(control.value("timeout_ms"),100,10000)))return fail();
+        const auto encoded=control.value("data").toString().toLatin1(),data=QByteArray::fromBase64(encoded);
+        if(data.toBase64()!=encoded || data.isEmpty() || data.size()>1029)return fail();
+        if(control.value("kind").toInt()==1) {if(!FpgaExtensions::rtcmFrame(data))return fail();}
+        else if(control.value("target").toInt()!=0 || data[0]!='#' || !data.endsWith('\n') || data.contains('\0'))return fail();
+    } else if(op=="ai8_cache") {
+        keys << "channel";if(!integer(control.value("channel"),1,8))return fail();
+    } else if(op=="ai8_scan") {
+        keys << "enabled";if(!control.value("enabled").isBool())return fail();
+    } else if(op=="dlia_cutoff") {
+        keys << "channel" << "hz";if(!integer(control.value("channel"),0,1) || !integer(control.value("hz")) || !FpgaExtensions::cutoff(quint32(control.value("hz").toDouble())))return fail();
+    } else if (op == "temperature" || op=="device_temperature") {
         keys << "celsius";
+        if(op=="device_temperature") {
+            keys << "source" << "channel";
+            if(!integer(control.value("source"),0,65535) || (control.value("source").toInt()!=0x46 && control.value("source").toInt()!=0x48)
+                || (control.contains("channel") && (!integer(control.value("channel"),1,8) || control.value("source").toInt()!=0x46)))return fail();
+        }
         const auto v = control.value("celsius");
-        if (!v.isDouble() || !std::isfinite(v.toDouble()) || v.toDouble() < -999 || v.toDouble() > 2147.4 ||
-            std::abs(v.toDouble() * 10 - std::round(v.toDouble() * 10)) > 1e-6) return fail();
+        const bool rd105=op=="device_temperature" && control.value("source").toInt()==0x48;
+        const double scale=rd105?100000.0:10.0;
+        if (!v.isDouble() || !std::isfinite(v.toDouble()) || v.toDouble() < (rd105?-400:-999) || v.toDouble() > (rd105?1000:2147.4) ||
+            std::abs(v.toDouble() * scale - std::round(v.toDouble() * scale)) > 1e-6) return fail();
     } else if (op != "disconnect" && op != "refresh" && op != "discover") return fail();
     for (auto it = control.begin(); it != control.end(); ++it) if (!keys.contains(it.key())) return fail();
     return true;
@@ -239,6 +284,8 @@ bool parseStatus(const QByteArray& payload, QJsonObject& status)
         !configurationValid(result.value("configuration").toObject()) || !result.value("registers").isObject() ||
         !decimal(result.value("archived_records"), archived)) return false;
     if (result.contains("recording_state") && !integer(result.value("recording_state"),0,2)) return false;
+    if(result.contains("extensions") && !integer(result.value("extensions")))return false;
+    if(result.contains("operation_result") && (!result.value("operation_result").isObject() || QJsonDocument(result.value("operation_result").toObject()).toJson().size()>8192))return false;
     if (result.contains("session_directory") && !result.value("session_directory").isString()) return false;
     if (result.contains("usb_discovery")) {
         if (!result.value("usb_discovery").isObject()) return false;
@@ -277,6 +324,7 @@ QByteArray encodeSensor(const FpgaSensor::Reading& r, quint64 hostTimestampUs)
     PUT(pressurePa) PUT(temperatureC) PUT(humidityPct) PUT(heaterMode) PUT(distanceMm) PUT(pressureMilliPa)
     PUT(ai8PvRaw) PUT(ai8SpRaw) PUT(ai8SvRaw) PUT(ai8PvMicroC) PUT(ai8SpMicroC) PUT(ai8OpRaw) PUT(ai8Alarm)
     PUT(ai8Control) PUT(ai8Host) PUT(ai8SetResult) PUT(ai8DeviceStatus) PUT(ai8DeviceError) PUT(ai8SampleCounter)
+    PUT(ai8Channel) PUT(rd105TargetMicroC) PUT(rd105ActualMicroC) PUT(rd105Error) PUT(rd105Channel)
     PUT(bmpPressureRaw) PUT(bmpTemperatureRaw) PUT(epsilonMessageId) PUT(epsilonSequence)
 #undef PUT
     if (r.epsilonDeviceTimestampUs) values.insert("epsilonDeviceTimestampUs", QString::number(*r.epsilonDeviceTimestampUs));
@@ -320,6 +368,7 @@ bool parseSensor(const QByteArray& payload, FpgaSensor::Reading& reading, quint6
     GET(ai8SetResult,0,4294967295.0) GET(ai8DeviceStatus,0,4294967295.0) GET(ai8DeviceError,0,4294967295.0)
     GET(ai8SampleCounter,0,4294967295.0) GET(bmpPressureRaw,0,16777215) GET(bmpTemperatureRaw,0,16777215)
     GET(epsilonMessageId,0,255) GET(epsilonSequence,0,255)
+    GET(ai8Channel,1,8) GET(rd105TargetMicroC,-2147483648.0,2147483647.0) GET(rd105ActualMicroC,-2147483648.0,2147483647.0) GET(rd105Error,0,4294967295.0) GET(rd105Channel,1,2)
 #undef GET
     if(values.contains("epsilonDeviceTimestampUs")) {
         bool ok=false; const auto x=values.value("epsilonDeviceTimestampUs");
