@@ -370,6 +370,7 @@ private:
     double homeFpgaSensorRate(VaporView::SkyDeviceId device) const;
     VaporView::DeviceState homeFpgaDeviceActionState(VaporView::SkyDeviceId device) const;
     void setHomeFpgaDeviceEnabled(VaporView::SkyDeviceId device, bool enabled);
+    void connectNextHomeFpgaDevice();
     QMap<quint32, quint32> homeFpgaRegisters() const;
     void updateHomeFpgaWaveActions();
     void requestHomeFpgaWaveAction(bool raw, bool enabled);

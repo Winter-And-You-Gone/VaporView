@@ -49,11 +49,13 @@ void MainWindow::updateConnectionStatus(bool connected)
                                  VaporView::SkyDeviceId::TemperatureController,
                                  VaporView::SkyDeviceId::Ai8TemperatureController,
                                  VaporView::SkyDeviceId::WaveTcp};
-        const bool anyConnected = std::any_of(devices.cbegin(), devices.cend(),
+        const bool anyConnected = isFpgaRelayPath() ? state_->fpga_page_->uiTestConnected() : std::any_of(devices.cbegin(), devices.cend(),
             [this](VaporView::SkyDeviceId device) {
                 return state_->ui_test_model_->deviceState(device) == VaporView::DeviceState::Connected;
             });
-        state_->connect_btn_->setEnabled(!anyConnected && !state_->ui_test_connection_in_progress_);
+        const bool fpgaBusy = isFpgaRelayPath() && (state_->fpga_sim_busy_
+            || state_->fpga_home_action_device_ != VaporView::SkyDeviceId::All || !state_->fpga_home_connect_queue_.isEmpty());
+        state_->connect_btn_->setEnabled(!anyConnected && !state_->ui_test_connection_in_progress_ && !fpgaBusy);
         state_->cancel_connect_btn_->setEnabled(state_->ui_test_connection_in_progress_);
         state_->disconnect_btn_->setEnabled(anyConnected && !state_->ui_test_connection_in_progress_);
         state_->refresh_ports_btn_->setEnabled(!state_->ui_test_connection_in_progress_);
@@ -1442,8 +1444,15 @@ void MainWindow::onConnectClicked()
         state_->fpga_page_->appendDiagnostic(state_->is_english_ ? QStringLiteral("Disconnect FPGA before connecting serial sources.") : QStringLiteral("连接串口前请先断开 FPGA。"));
         return;
     }
-    if (isUiTestMode() && isFpgaRelayPath()) {
-        state_->fpga_page_->simulateOperation({{"op","connect"}});
+    if (isFpgaRelayPath() && (!isRemoteSkyMode() || isUiTestMode())) {
+        using VaporView::SkyDeviceId;
+        if ((isUiTestMode() && state_->fpga_sim_busy_) || !state_->fpga_home_connect_queue_.isEmpty()
+            || state_->fpga_home_action_device_ != SkyDeviceId::All) return;
+        state_->fpga_home_connect_queue_ = {SkyDeviceId::Epsilon, SkyDeviceId::Ptb, SkyDeviceId::Hmp,
+            SkyDeviceId::Lidar, SkyDeviceId::Ai8TemperatureController, SkyDeviceId::Bmp390,
+            SkyDeviceId::Sht45, SkyDeviceId::WaveTcp};
+        connectNextHomeFpgaDevice();
+        updateConnectionStatus(false);
         return;
     }
     if (isUiTestMode())
@@ -1481,12 +1490,6 @@ void MainWindow::onConnectClicked()
                                state_->is_english_ ? QStringLiteral("All simulated devices connected")
                                                    : QStringLiteral("所有模拟设备已连接"));
         });
-        return;
-    }
-    if (!isRemoteSkyMode() && isFpgaRelayPath())
-    {
-        emit state_->fpga_page_->connectRequested({},state_->fpga_config_.backend);
-        updateConnectionStatus(false);
         return;
     }
     if (isRemoteSkyMode())
@@ -1756,6 +1759,7 @@ void MainWindow::onConnectClicked()
 }
 void MainWindow::onDisconnectClicked()
 {
+    state_->fpga_home_connect_queue_.clear();
     state_->fpga_home_raw_start_pending_=false;
     state_->fpga_home_action_device_=VaporView::SkyDeviceId::All;
     state_->fpga_home_action_started_=false;

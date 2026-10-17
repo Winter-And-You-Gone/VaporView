@@ -734,20 +734,14 @@ static void localSimulatorRouting()
     homeAction(window,"HMP")->click();
     check(waitUntil([&]{return homeAction(window,"HMP")->isEnabled()&&homeAction(window,"HMP")->property("state")=="connected";})
         &&pressureAction->property("state")=="connected","connecting a second home device preserves the first");
-    connectionSuccesses.clear();
+    check(waitUntil([&]{return connectionSuccesses.contains(0x41);}),"individual HMP connection confirms valid data before reconnect");
     disconnect->click();check(waitUntil([&]{return connectButton->isEnabled();}),"individual connection releases USB before full-connect regression");
     QMetaObject::invokeMethod(&window,"onConnectClicked");
-    check(waitUntil([&]{return acquisition->isEnabled()&&disconnect->isEnabled();},12000),"local factory handshake enables normal controls");
-    check(waitUntil([&]{return pressureAction->isEnabled()&&pressureAction->property("state")=="connected";}),"home connect opens USB and confirms the already-enabled BMP sensor");
-    check(waitUntil([&]{return connectionSuccesses.size()==2;}),"unified reconnect recovers only the two enabled sensors");
-    for(const auto& name:QStringList{"EPSILON","TFA1500","AI-8288"}) {
-        auto *action=homeAction(window,name);action->click();
-        check(waitUntil([&]{return action->isEnabled()&&action->property("state")=="connected";}),"explicitly start another simulated sensor");
-    }
-    for(auto *button:window.findChildren<QToolButton*>("homeDeviceActionButton"))if(button->property("fpgaSensorSource").toUInt()==0x43||button->property("fpgaSensorSource").toUInt()==0x44) {
-        button->click();check(waitUntil([&]{return button->isEnabled()&&button->property("state")=="connected";}),"explicitly start internal sensor");
-    }
-    acquisition->click();check(waitUntil([&]{return acquisition->isEnabled();}),"explicitly start simulated acquisition");
+    check(waitUntil([&]{auto *wave=homeAction(window,QStringLiteral("波形源"));
+        return wave->isEnabled()&&wave->property("state")=="connected";},20000),
+        "title connection opens FPGA then starts every supported sensor and shared acquisition");
+    check(waitUntil([&]{return connectionSuccesses==QSet<quint16>{0,0x40,0x41,0x42,0x43,0x44,0x45,0x46};}),
+        "all seven sensors and shared acquisition report confirmed connections");
     verifyRelayIndicators(window,{"Epsilon","Pressure","Humidity","Lidar","Ai8","Wave","Bmp390","Sht45"});
     check(connectionSuccesses.contains(0x41),"HMP has its own confirmed connection log");
     for(const auto &entry: {qMakePair("deviceEpsilonBaudComboFpgaEditor","921600"),
@@ -969,6 +963,25 @@ static void simulatedMonitorActions()
     mode->trigger();
     require(waitUntil([&]{return page->uiTestController()!=nullptr;}),"UI test installs an isolated protocol controller");
     require(!page->uiTestConnected()&&!raw->isEnabled(),"UI test mode does not fabricate an FPGA connection");
+    QMetaObject::invokeMethod(&window,"onConnectClicked",Qt::DirectConnection);
+    QMetaObject::invokeMethod(&window,"onDisconnectClicked",Qt::DirectConnection);
+    require(waitUntil([&]{return !page->uiTestConnected()&&!page->uiTestBusy()
+        &&homeAction(window,"EPSILON")->isEnabled();}),"disconnect cancels a pending title connection");
+    processFor(150);
+    require(!page->uiTestConnected(),"cancelled title connection cannot reconnect or continue starting sensors");
+    QMetaObject::invokeMethod(&window,"onConnectClicked",Qt::DirectConnection);
+    emit page->disconnectRequested();
+    require(waitUntil([&]{return !page->uiTestConnected()&&!page->uiTestBusy()
+        &&homeAction(window,"EPSILON")->isEnabled();}),"FPGA page disconnect also cancels a pending title connection");
+    processFor(150);
+    require(!page->uiTestConnected(),"FPGA page disconnect cannot leave a queued reconnect");
+    QMetaObject::invokeMethod(&window,"onConnectClicked",Qt::DirectConnection);
+    require(waitUntil([&]{return harmonic->isEnabled()&&harmonic->text().contains(QStringLiteral("停止"));},20000),
+        "title connection starts every supported device on a cold simulated board");
+    verifyRelayIndicators(window,{"Epsilon","Pressure","Humidity","Lidar","Ai8","Wave","Bmp390","Sht45"});
+    require(raw->text().contains(QStringLiteral("开始")),"connecting all devices does not start RAW upload");
+    mode->trigger();mode->trigger();
+    require(waitUntil([&]{return page->uiTestController()!=nullptr&&!page->uiTestConnected();}),"reset protocol board for selective connection regression");
     require(QMetaObject::invokeMethod(&window,"onDisconnectClicked",Qt::DirectConnection),"disconnect layout simulation before individual connection");
     auto *pressure=homeAction(window,"PTB210");
     require(waitUntil([&]{return pressure->isEnabled()&&pressure->property("state")=="disconnected";}),"layout simulation is disconnected");
@@ -979,16 +992,9 @@ static void simulatedMonitorActions()
     require(waitUntil([&]{return onlyPressureDataAvailable(window);}),"UI summary reports only actual PTB data and no fabricated telemetry");
     require(raw->text().contains(QStringLiteral("开始"))&&harmonic->text().contains(QStringLiteral("开始")),"individual simulation connection leaves waveform acquisition stopped");
     require(QMetaObject::invokeMethod(&window,"onConnectClicked",Qt::DirectConnection),"batch simulation connection is available");
-    require(waitUntil([&]{return !page->uiTestBusy()&&pressure->isEnabled();}),"unified reconnect waits for protocol completion");
-    require(onlyPressureConnected(window),"unified reconnect preserves the board's selected devices");
-    for(const auto& name:QStringList{"EPSILON","HMP","TFA1500","AI-8288"}) {
-        auto *action=homeAction(window,name);action->click();
-        require(waitUntil([&]{return action->isEnabled()&&action->property("state")=="connected";}),"UI test starts each requested device through VLP1");
-    }
-    for(auto *button:window.findChildren<QToolButton*>("homeDeviceActionButton"))if(button->property("fpgaSensorSource").toUInt()==0x44) {
-        button->click();require(waitUntil([&]{return button->isEnabled()&&button->property("state")=="connected";}),"UI test explicitly starts SHT45");
-    }
-    harmonic->click();require(waitUntil([&]{return harmonic->isEnabled()&&harmonic->text().contains(QStringLiteral("停止"));}),"UI test explicitly starts acquisition");
+    require(waitUntil([&]{return harmonic->isEnabled()&&harmonic->text().contains(QStringLiteral("停止"));},20000),
+        "UI test title connection starts all devices through the production VLP1 controller");
+    verifyRelayIndicators(window,{"Epsilon","Pressure","Humidity","Lidar","Ai8","Wave","Bmp390","Sht45"});
     for(const auto &entry:{qMakePair("deviceEpsilonBaudComboFpgaEditor","921600"),
             qMakePair("devicePressureBaudComboFpgaEditor","9600"),
             qMakePair("deviceLidarBaudComboFpgaEditor","500000"),
@@ -1000,7 +1006,8 @@ static void simulatedMonitorActions()
     QToolButton *humidity=nullptr;
     for(auto *button:window.findChildren<QToolButton*>("homeDeviceActionButton"))
         if(button->property("fpgaSensorSource").toUInt()==0x44)humidity=button;
-    require(rate&&humidity&&!rate->isEnabled(),"UI test connected sensor locks inline frequency");humidity->click();
+    require(rate&&humidity&&!rate->isEnabled(),"UI test connected sensor locks inline frequency");
+    require(waitUntil([&]{return humidity->isEnabled();}),"title connection releases individual controls after their action spinner settles");humidity->click();
     require(waitUntil([&]{return rate->isEnabled();}),"UI test individual disconnect enables frequency");rate->setCurrentText("2.");
     processFor(150);require(rate->currentText()=="2.","refresh preserves partially typed decimal frequency");
     rate->setCurrentText("2.5");
