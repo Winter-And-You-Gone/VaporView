@@ -1103,6 +1103,10 @@ vaporview_add_test(NAME session_viewer_trajectory_test
     COMMAND session_viewer_theme_test --group trajectory)
 vaporview_add_test(NAME session_viewer_theme_test
     COMMAND session_viewer_theme_test --group theme)
+vaporview_add_test(NAME session_viewer_plot_mode_test
+    COMMAND session_viewer_theme_test --group plot-mode)
+set_tests_properties(session_viewer_plot_mode_test PROPERTIES
+    LABELS "integration;session-viewer;ui" TIMEOUT 120)
 
 if(VAPORVIEW_ENABLE_OSGEARTH)
     add_executable(map_data_manager_test

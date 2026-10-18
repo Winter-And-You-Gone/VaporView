@@ -77,7 +77,7 @@ private slots:
     void onFrameSliderChanged(int value);
     void onFrameSpinChanged(int value);
     void onToggleWaveformFrameFilterClicked();
-    void onTogglePeakPlotModeClicked();
+    void onPeakPlotModeSelected(bool scatter);
     void onConfigurePeakFilterClicked();
 
 private:

@@ -5,6 +5,7 @@
 #include "TcpWavePanel.h"
 #include "ground/widgets/VisualTextLabel.h"
 #include "ground/widgets/LabelTextSelection.h"
+#include "ground/widgets/SegmentedSwitchButton.h"
 #include "shared/config/SettingsWriteBarrier.h"
 #include "shared/config/ApplicationConfig.h"
 #include <QAbstractSocket>
@@ -2020,11 +2021,11 @@ void TcpWavePanel::setupUi()
     }
     connect(peak_filter_button_, &QPushButton::clicked, this, &TcpWavePanel::onConfigurePeakFilterClicked);
     peakHeaderLayout->addWidget(peak_filter_button_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    peak_mode_button_ = new QPushButton(this);
-    peak_mode_button_->setObjectName("compactTcpButton");
-    peak_mode_button_->setFixedHeight(kTcpButtonHeight);
-    peak_mode_button_->setMinimumWidth(98);
-    connect(peak_mode_button_, &QPushButton::clicked, this, &TcpWavePanel::onTogglePeakPlotModeClicked);
+    peak_mode_button_ = new VaporView::Ground::Widgets::SegmentedSwitchButton(this);
+    peak_mode_button_->setObjectName("tcpWavePeakPlotModeSwitch");
+    peak_mode_button_->setFixedSize(128, kTcpButtonHeight);
+    connect(peak_mode_button_, &VaporView::Ground::Widgets::SegmentedSwitchButton::selectionRequested,
+            this, &TcpWavePanel::onPeakPlotModeSelected);
     peakHeaderLayout->addWidget(peak_mode_button_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     peak_clear_button_ = new QPushButton(this);
     peak_clear_button_->setObjectName("compactTcpButton");
@@ -2451,9 +2452,12 @@ void TcpWavePanel::updatePeakPlotModeButtonText()
         return;
     }
 
-    peak_mode_button_->setText(peak_plot_scatter_mode_
-        ? (is_english_ ? "Trend: Line" : "趋势显示：折线")
-        : (is_english_ ? "Trend: Scatter" : "趋势显示：散点"));
+    peak_mode_button_->setSegmentTexts(is_english_ ? QStringLiteral("Line") : QStringLiteral("折线"),
+                                       is_english_ ? QStringLiteral("Scatter") : QStringLiteral("散点"));
+    peak_mode_button_->setStateDescription(is_english_ ? QStringLiteral("Trend") : QStringLiteral("趋势显示"),
+                                          is_english_ ? QStringLiteral(": ") : QStringLiteral("："));
+    if (peak_mode_button_->switchChecked() != peak_plot_scatter_mode_)
+        peak_mode_button_->setSwitchChecked(peak_plot_scatter_mode_, false);
 }
 
 QString TcpWavePanel::peakFilterModeText(PeakFilterMode mode) const
@@ -3240,10 +3244,10 @@ void TcpWavePanel::onToggleConnectionClicked()
     onSocketStateChanged();
 }
 
-void TcpWavePanel::onTogglePeakPlotModeClicked()
+void TcpWavePanel::onPeakPlotModeSelected(bool scatter)
 {
-    peak_plot_scatter_mode_ = !peak_plot_scatter_mode_;
-    updatePeakPlotModeButtonText();
+    if (peak_plot_scatter_mode_ == scatter) return;
+    peak_plot_scatter_mode_ = scatter;
     if (peak_plot_)
     {
         peak_plot_->setPlotMode(peak_plot_scatter_mode_ ? PeakTrendPlotWidget::PlotMode::Scatter : PeakTrendPlotWidget::PlotMode::Polyline);

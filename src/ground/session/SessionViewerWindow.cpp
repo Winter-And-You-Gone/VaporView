@@ -399,7 +399,7 @@ void SessionViewerWindow::setupUi()
     connect(waveform_page_, &SessionWaveformWidget::peakFilterRequested,
             this, &SessionViewerWindow::onConfigurePeakFilterClicked);
     connect(waveform_page_, &SessionWaveformWidget::plotModeRequested,
-            this, &SessionViewerWindow::onTogglePeakPlotModeClicked);
+            this, &SessionViewerWindow::onPeakPlotModeSelected);
     connect(waveform_page_, &SessionWaveformWidget::visibleRangeChanged,
             this, &SessionViewerWindow::syncEnvironmentRangeToWaveformRange);
 }
@@ -817,14 +817,11 @@ void SessionViewerWindow::updateWaveformActionTexts()
     const QString frameFilterText = waveform_show_filtered_frame_
         ? (is_english_ ? QStringLiteral("Show Full Frame") : QStringLiteral("显示完整波形"))
         : (is_english_ ? QStringLiteral("Show Filtered Frame") : QStringLiteral("显示过滤波形"));
-    const QString plotModeText = waveform_peak_scatter_mode_
-        ? (is_english_ ? QStringLiteral("Show Polyline") : QStringLiteral("切换到折线图"))
-        : (is_english_ ? QStringLiteral("Show Scatter") : QStringLiteral("切换到散点图"));
     const QString peakFilterText = QStringLiteral("%1:%2 / %3")
         .arg(is_english_ ? QStringLiteral("Peak") : QStringLiteral("峰值"))
         .arg(peakSearchRangeText())
         .arg(peakFilterModeText(peak_filter_settings_.mode));
-    waveform_page_->setActionTexts(frameFilterText, peakFilterText, plotModeText);
+    waveform_page_->setActionTexts(frameFilterText, peakFilterText);
 }
 
 QString SessionViewerWindow::peakFilterModeText(PeakFilterMode mode) const
@@ -1850,13 +1847,13 @@ void SessionViewerWindow::onToggleWaveformFrameFilterClicked()
         firstSampleIndex);
 }
 
-void SessionViewerWindow::onTogglePeakPlotModeClicked()
+void SessionViewerWindow::onPeakPlotModeSelected(bool scatter)
 {
-    beginSessionLoading(waveform_peak_scatter_mode_
-        ? (is_english_ ? "Switching to polyline plots..." : "正在切换到折线图...")
-        : (is_english_ ? "Switching to scatter plots..." : "正在切换到散点图..."));
-    waveform_peak_scatter_mode_ = !waveform_peak_scatter_mode_;
-    updateWaveformActionTexts();
+    if (waveform_peak_scatter_mode_ == scatter) return;
+    beginSessionLoading(scatter
+        ? (is_english_ ? "Switching to scatter plots..." : "正在切换到散点图...")
+        : (is_english_ ? "Switching to polyline plots..." : "正在切换到折线图..."));
+    waveform_peak_scatter_mode_ = scatter;
     waveform_page_->setPlotMode(waveform_peak_scatter_mode_);
     updateSessionLoadingProgress(is_english_ ? "Refreshing plots..." : "正在刷新图表...", 80);
     waveform_page_->repaintPlots();

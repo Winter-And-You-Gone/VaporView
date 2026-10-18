@@ -1,5 +1,6 @@
 #include "test_settings_sandbox.h"
 #include "ground/wave/TcpWavePanel.h"
+#include "ground/widgets/SegmentedSwitchButton.h"
 #include "LogService.h"
 
 #include <QApplication>
@@ -8,9 +9,11 @@
 #include <QDateTime>
 #include <QElapsedTimer>
 #include <QHostAddress>
+#include <QImage>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QPixmap>
 #include <QSettings>
 #include <QStringList>
 #include <QTcpServer>
@@ -519,6 +522,33 @@ void testRemoteSkyModeKeepsLocalEndpointText()
             "local TCP wave labels are restored when leaving remote mode");
 }
 
+void testPeakPlotModeSwitch()
+{
+    TcpWavePanel panel;
+    panel.setFpgaMode(true);
+    for (quint32 cycle=1;cycle<=4;++cycle)
+        panel.setFpgaSecondHarmonicPeak(0x30,cycle,quint64(cycle)*100000000,cycle%2?10:30,false);
+    panel.resize(1500,900);panel.show();QApplication::processEvents();
+    auto* mode=panel.findChild<VaporView::Ground::Widgets::SegmentedSwitchButton*>("tcpWavePeakPlotModeSwitch");
+    auto* plot=panel.findChild<QWidget*>("tcpWavePeakTrendPlot");
+    require(mode&&mode->switchChecked()&&mode->leftSegmentText()==QStringLiteral("折线")&&mode->rightSegmentText()==QStringLiteral("散点"),
+            "home trend capsule shows the current scatter mode");
+    const auto values=panel.testPeakValues();
+    const auto scatter=plot->grab().toImage();
+    mode->click();QApplication::processEvents();
+    require(!mode->switchChecked()&&mode->accessibleName().endsWith(QStringLiteral("折线"))&&plot->grab().toImage()!=scatter,
+            "home capsule selects a visibly different polyline rendering");
+    require(waitUntil([&]{return !mode->switchAnimationRunning();}),"home capsule settles on the selected segment");
+    panel.setEnglish(true);
+    require(!mode->switchChecked()&&mode->leftSegmentText()=="Line"&&mode->rightSegmentText()=="Scatter",
+            "translation preserves the selected plot mode");
+    panel.setEnglish(false);
+    mode->click();QApplication::processEvents();
+    require(mode->switchChecked()&&plot->grab().toImage()==scatter&&panel.testPeakValues()==values,
+            "switching back restores scatter rendering without changing peak history");
+    require(waitUntil([&]{return !mode->switchAnimationRunning();}),"home capsule restores its selected segment");
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -568,6 +598,7 @@ int main(int argc, char **argv)
                 "leaving UI test mode returns the panel to disconnected state");
     }
     testRemoteSkyModeKeepsLocalEndpointText();
+    testPeakPlotModeSwitch();
     {
         TcpWavePanel panel;panel.setConnectionEndpoint("127.0.0.9",9901);panel.setFpgaMode(true);
         panel.setFpgaWaveform(0x20,{{1,2,3}},{"ADC"},"ADC complete",3);

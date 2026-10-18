@@ -4,6 +4,7 @@
 #include "ground/wave/RawDataParserWindow.h"
 #include "ground/session/SessionViewerWindow.h"
 #include "ground/session/SessionViewerWidgets.h"
+#include "ground/session/SessionViewerPages.h"
 #include "shared/session/UnifiedRawDat.h"
 #include "ground/session/GroundRecordingService.h"
 #include "FpgaVlp1.h"
@@ -11,6 +12,7 @@
 #include "shared/theme/SingleLevelPopupMenu.h"
 #include "ground/trajectory/TrajectoryViewerDialog.h"
 #include "ground/widgets/VisualTextLabel.h"
+#include "ground/widgets/SegmentedSwitchButton.h"
 #include "test_ui_helpers.h"
 
 #include <QAbstractItemView>
@@ -1397,6 +1399,36 @@ void testCsvSelectionUsesThemeAccent(SessionViewerWindow& viewer, bool dark)
     }
 }
 
+void testPlotModeSwitch(SessionViewerWindow& viewer)
+{
+    QTemporaryDir session;
+    require(session.isValid(),"temporary plot mode session");
+    writeTrajectorySessionWithRawTcpPeaks(session.path());
+    viewer.setUiTestMode(true);
+    require(viewer.openSessionPath(session.path()),"plot mode fixture loads actual recorded peaks");
+    auto* page=viewer.findChild<VaporView::Ground::SessionUi::SessionWaveformWidget*>();
+    page->setEnvironmentSeries({20,25,22,28},{40,55,45,60},{1000,1010,1005,1020},
+                              {1782446035573000ULL,1782446036573000ULL,1782446037573000ULL,1782446038573000ULL});
+    processEventsFor(50);
+    auto* mode=viewer.findChild<VaporView::Ground::Widgets::SegmentedSwitchButton*>("sessionViewerPlotModeSwitch");
+    require(mode&&mode->switchChecked(),"viewer trend capsule defaults to scatter");
+    const QStringList plots{"sessionViewerPeakPlot","sessionViewerTemperaturePlot","sessionViewerHumidityPlot","sessionViewerPressurePlot"};
+    QVector<QImage> scatter;
+    for(const auto& name:plots)scatter.append(viewer.findChild<QWidget*>(name)->grab().toImage());
+    mode->click();processEventsFor(50);
+    require(!mode->switchChecked(),"viewer capsule selects polyline mode");
+    for(int i=0;i<plots.size();++i)
+        require(viewer.findChild<QWidget*>(plots[i])->grab().toImage()!=scatter[i],"viewer capsule updates peak and environmental trend rendering together");
+    viewer.setEnglish(true);
+    require(!mode->switchChecked()&&mode->leftSegmentText()=="Line"&&mode->rightSegmentText()=="Scatter",
+            "viewer translation preserves the active plot mode");
+    viewer.setEnglish(false);mode->click();processEventsFor(50);
+    require(mode->switchChecked(),"viewer capsule restores scatter mode");
+    require(processEventsUntil(1500,[&]{return !mode->switchAnimationRunning();}),"viewer capsule settles after the loading controls are restored");
+    QMetaObject::invokeMethod(&viewer,"onClearViewClicked");
+    viewer.setUiTestMode(false);
+}
+
 void testWaveformEmptyPlotIsNotRed(SessionViewerWindow& viewer)
 {
     auto *plot = viewer.findChild<QWidget *>(QStringLiteral("sessionViewerWaveformPlot"));
@@ -2654,7 +2686,8 @@ int main(int argc, char **argv)
         QStringLiteral("issues"),
         QStringLiteral("window-state"),
         QStringLiteral("trajectory"),
-        QStringLiteral("theme")
+        QStringLiteral("theme"),
+        QStringLiteral("plot-mode")
     };
     require(validGroups.contains(selectedGroup), "session viewer test group is recognized");
     const auto runsGroup = [&selectedGroup](const QString& group) {
@@ -2697,9 +2730,10 @@ int main(int argc, char **argv)
         testTrajectoryViewerRouteLodLimitsDenseTracks();
     }
 
-    if (runsGroup(QStringLiteral("theme")))
+    if (runsGroup(QStringLiteral("theme")) || selectedGroup == QStringLiteral("plot-mode"))
     {
-        testRawDataExportMenu();
+        if (selectedGroup != QStringLiteral("plot-mode"))
+            testRawDataExportMenu();
         app.setProperty(VaporView::kAppDarkThemeProperty, false);
         app.setPalette(VaporView::appThemePalette(false));
         {
@@ -2711,6 +2745,7 @@ int main(int argc, char **argv)
             testCsvViewportUsesNeutralBackground(viewer);
             testCsvSelectionUsesThemeAccent(viewer, false);
             testWaveformEmptyPlotIsNotRed(viewer);
+            testPlotModeSwitch(viewer);
 
             viewer.close();
             processEventsFor(100);
@@ -2725,6 +2760,7 @@ int main(int argc, char **argv)
             require(waitForWindowExposed(&viewer), "dark data viewer becomes exposed for theme test");
 
             testCsvSelectionUsesThemeAccent(viewer, true);
+            testPlotModeSwitch(viewer);
 
             viewer.close();
             processEventsFor(100);

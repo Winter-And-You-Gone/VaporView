@@ -80,6 +80,7 @@ target_link_libraries(vaporview_ground_session_ui PRIVATE
     vaporview_ground_session_core
     vaporview_ground_trajectory
     vaporview_ground_ui_support
+    vaporview_ground_widgets
     vaporview_ground_wave
     Qt6::Concurrent
 )

@@ -24,6 +24,7 @@ class QTimer;
 class QToolButton;
 class QGridLayout;
 class QHBoxLayout;
+namespace VaporView::Ground::Widgets { class SegmentedSwitchButton; }
 class WavePlotWidget;
 class PeakTrendPlotWidget;
 
@@ -123,7 +124,7 @@ private slots:
     void onSocketReadyRead();
     void onSocketStateChanged();
     void onSocketError();
-    void onTogglePeakPlotModeClicked();
+    void onPeakPlotModeSelected(bool scatter);
     void onClearPeakPlotClicked();
     void onConfigurePeakFilterClicked();
 
@@ -210,7 +211,7 @@ private:
     WavePlotWidget *wave4_plot_;
     PeakTrendPlotWidget *peak_plot_;
     QPushButton *peak_filter_button_;
-    QPushButton *peak_mode_button_;
+    VaporView::Ground::Widgets::SegmentedSwitchButton *peak_mode_button_;
     QPushButton *peak_clear_button_;
     QGridLayout *control_layout_;
     QHBoxLayout *top_controls_layout_;

@@ -4,6 +4,7 @@
 #include "ground/session/SessionViewerWidgets.h"
 #include "ground/widgets/CustomTitleBar.h"
 #include "ground/widgets/RangeSelectionAxisWidget.h"
+#include "ground/widgets/SegmentedSwitchButton.h"
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
@@ -661,7 +662,9 @@ SessionWaveformWidget::SessionWaveformWidget(QWidget *parent)
     peakHeaderLayout->addWidget(waveform_frame_filter_btn_, 0, Qt::AlignVCenter | Qt::AlignRight);
     waveform_peak_filter_btn_ = new QPushButton(this);
     peakHeaderLayout->addWidget(waveform_peak_filter_btn_, 0, Qt::AlignVCenter | Qt::AlignRight);
-    waveform_peak_mode_btn_ = new QPushButton(this);
+    waveform_peak_mode_btn_ = new VaporView::Ground::Widgets::SegmentedSwitchButton(this);
+    waveform_peak_mode_btn_->setObjectName(QStringLiteral("sessionViewerPlotModeSwitch"));
+    waveform_peak_mode_btn_->setFixedSize(128, 36);
     peakHeaderLayout->addWidget(waveform_peak_mode_btn_, 0, Qt::AlignVCenter | Qt::AlignRight);
     layout->addLayout(peakHeaderLayout);
     waveform_peak_plot_ = createSessionPeakPlotWidget(this);
@@ -723,7 +726,8 @@ SessionWaveformWidget::SessionWaveformWidget(QWidget *parent)
     connect(frame_spin_, &QSpinBox::valueChanged, this, &SessionWaveformWidget::frameSpinChanged);
     connect(waveform_frame_filter_btn_, &QPushButton::clicked, this, &SessionWaveformWidget::frameFilterRequested);
     connect(waveform_peak_filter_btn_, &QPushButton::clicked, this, &SessionWaveformWidget::peakFilterRequested);
-    connect(waveform_peak_mode_btn_, &QPushButton::clicked, this, &SessionWaveformWidget::plotModeRequested);
+    connect(waveform_peak_mode_btn_, &VaporView::Ground::Widgets::SegmentedSwitchButton::selectionRequested,
+            this, &SessionWaveformWidget::plotModeRequested);
     waveform_peak_plot_->setViewChangedCallback([this, rangeAxis](int totalCount, int startIndex, int visibleCount) {
         rangeAxis->setRange(totalCount, startIndex, visibleCount);
         emit visibleRangeChanged(startIndex, visibleCount);
@@ -745,6 +749,10 @@ void SessionWaveformWidget::setEnglish(bool english)
     waveform_plot_title_->setText(english ? QStringLiteral("Current Frame Waveform") : QStringLiteral("当前帧波形"));
     waveform_peak_plot_title_->setText(english ? QStringLiteral("Peak Trend") : QStringLiteral("峰值趋势"));
     waveform_peak_plot_->setEnglish(english);
+    waveform_peak_mode_btn_->setSegmentTexts(english ? QStringLiteral("Line") : QStringLiteral("折线"),
+                                            english ? QStringLiteral("Scatter") : QStringLiteral("散点"));
+    waveform_peak_mode_btn_->setStateDescription(english ? QStringLiteral("Trend") : QStringLiteral("趋势显示"),
+                                               english ? QStringLiteral(": ") : QStringLiteral("："));
     temperature_plot_title_->setText(english ? QStringLiteral("Temperature  °C") : QStringLiteral("温度  ℃"));
     humidity_plot_title_->setText(english ? QStringLiteral("Humidity  %RH") : QStringLiteral("湿度  %RH"));
     pressure_plot_title_->setText(english ? QStringLiteral("Pressure  hPa") : QStringLiteral("气压  hPa"));
@@ -752,12 +760,10 @@ void SessionWaveformWidget::setEnglish(bool english)
 
 void SessionWaveformWidget::setActionTexts(
     const QString& frameFilterText,
-    const QString& peakFilterText,
-    const QString& plotModeText)
+    const QString& peakFilterText)
 {
     waveform_frame_filter_btn_->setText(frameFilterText);
     waveform_peak_filter_btn_->setText(peakFilterText);
-    waveform_peak_mode_btn_->setText(plotModeText);
 }
 
 void SessionWaveformWidget::setControlsEnabled(bool enabled)
@@ -898,6 +904,8 @@ void SessionWaveformWidget::setCurrentPeakFrame(int frameIndex)
 
 void SessionWaveformWidget::setPlotMode(bool scatter)
 {
+    if (waveform_peak_mode_btn_->switchChecked() != scatter)
+        waveform_peak_mode_btn_->setSwitchChecked(scatter, false);
     waveform_peak_plot_->setPlotMode(scatter ? SessionPeakPlotWidget::PlotMode::Scatter : SessionPeakPlotWidget::PlotMode::Polyline);
     temperature_plot_->setPlotMode(scatter ? SingleSeriesTrendPlotWidget::PlotMode::Scatter : SingleSeriesTrendPlotWidget::PlotMode::Polyline);
     humidity_plot_->setPlotMode(scatter ? SingleSeriesTrendPlotWidget::PlotMode::Scatter : SingleSeriesTrendPlotWidget::PlotMode::Polyline);

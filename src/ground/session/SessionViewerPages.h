@@ -18,6 +18,7 @@ class QResizeEvent;
 class QSlider;
 class QSpinBox;
 class QTableView;
+namespace VaporView::Ground::Widgets { class SegmentedSwitchButton; }
 
 namespace VaporView::Ground::SessionUi
 {
@@ -123,8 +124,7 @@ public:
 
     void setEnglish(bool english);
     void setActionTexts(const QString& frameFilterText,
-                        const QString& peakFilterText,
-                        const QString& plotModeText);
+                        const QString& peakFilterText);
     void setControlsEnabled(bool enabled);
     void configureFrames(quint64 totalFrames);
     void setFrameValueSilently(int value);
@@ -163,7 +163,7 @@ signals:
     void frameSpinChanged(int value);
     void frameFilterRequested();
     void peakFilterRequested();
-    void plotModeRequested();
+    void plotModeRequested(bool scatter);
     void visibleRangeChanged(int startIndex, int visibleCount);
 
 private:
@@ -180,7 +180,7 @@ private:
     QLabel *waveform_peak_plot_title_;
     QPushButton *waveform_frame_filter_btn_;
     QPushButton *waveform_peak_filter_btn_;
-    QPushButton *waveform_peak_mode_btn_;
+    VaporView::Ground::Widgets::SegmentedSwitchButton *waveform_peak_mode_btn_;
     SessionPeakPlotWidget *waveform_peak_plot_;
     QLabel *temperature_plot_title_;
     SingleSeriesTrendPlotWidget *temperature_plot_;
