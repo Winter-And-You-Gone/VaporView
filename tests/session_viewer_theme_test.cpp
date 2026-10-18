@@ -1316,6 +1316,35 @@ void testFrameSliderReleaseRestoresDetails()
     slider->setSliderDown(false);
     requireCommittedFrame(3);
 
+    int csvChanges = 0;
+    const auto csvConnection = QObject::connect(table->model(), &QAbstractItemModel::dataChanged,
+        &viewer, [&] { ++csvChanges; });
+    slider->setSliderDown(true);
+    for (int move = 0; move < 1000; ++move)
+        slider->setSliderPosition(move % 4 + 1);
+    requireAnnotations(4);
+    require(spin->value() == 4 && csvChanges == 0,
+            "fast drag updates its annotations without synchronously repeating CSV work");
+    processEventsFor(40);
+    require(csvChanges > 0 && frameInfo->text().contains(QStringLiteral("Previewing")),
+            "coalesced drag still previews the waveform and CSV while held");
+    auto *waveformPlot = viewer.findChild<QWidget *>(QStringLiteral("sessionViewerWaveformPlot"));
+    const QImage preview = waveformPlot->grab().toImage();
+    slider->setSliderDown(false);
+    requireCommittedFrame(4);
+    require(waveformPlot->grab().toImage() == preview,
+            "drag preview and committed waveform retain identical complete samples");
+    QObject::disconnect(csvConnection);
+    spin->setValue(3);
+    requireCommittedFrame(3);
+
+    slider->setSliderDown(true);
+    slider->setSliderPosition(4);
+    spin->setValue(3);
+    requireCommittedFrame(3);
+    slider->setSliderDown(false);
+    requireCommittedFrame(3);
+
     slider->setSliderDown(true);
     slider->setSliderPosition(4);
     slider->setSliderPosition(3);
@@ -1353,8 +1382,13 @@ void testFrameSliderReleaseRestoresDetails()
     requireCommittedFrame(3);
     spin->setValue(1);
     requireCommittedFrame(1);
+    slider->setSliderDown(true);
+    slider->setSliderPosition(4);
     require(viewer.openSessionPath(sessionDir.path()), "viewer reopens the session with its cached waveform index");
+    processEventsFor(40);
     requireAnnotations(1);
+    require(!frameInfo->text().contains(QStringLiteral("Previewing")),
+            "reloading cancels a pending drag preview from the previous session");
     viewer.close();
     processEventsFor(100);
 }

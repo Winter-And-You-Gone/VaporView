@@ -15,6 +15,7 @@
 #include <QFileInfo>
 #include <QSaveFile>
 #include <QStringConverter>
+#include <QTemporaryDir>
 #include <QTextStream>
 #include <QThread>
 #include <QtEndian>
@@ -563,17 +564,44 @@ SessionWaveformCatalogResult SessionWaveformRepository::loadCatalog(
 
     const QString fpgaPath=VaporView::Session::FpgaSessionArchive::rawPath(metadata.sessionDirectory);
     if (QFileInfo::exists(fpgaPath)) {
+        auto cacheDirectory = std::make_shared<QTemporaryDir>();
+        QFile cacheFile(cacheDirectory->filePath(QStringLiteral("fpga_samples.dat")));
+        if (!cacheDirectory->isValid() || !cacheFile.open(QIODevice::WriteOnly)) {
+            result.error = QStringLiteral("Failed to create FPGA waveform sample cache");
+            return result;
+        }
         QMap<int,QVector<quint64>> timestamps;
         QMap<int,int> points;
+        QMap<int,QVector<SessionRawTcpWaveFrame>> sampleFrames;
+        bool cacheWriteFailed = false;
         if (!VaporView::Session::FpgaSessionArchive::waveforms(metadata.sessionDirectory,
             [&](quint64 host,const auto& wave) {
                 const int count=wave.source<0x30?1:wave.format==0?2:6;
                 for(int component=0;component<count;++component) {
                     const int key=wave.source*16+component;
+                    const auto samples = fpgaSamples(wave, component);
+                    QByteArray payload(samples.size() * sizeof(float), Qt::Uninitialized);
+                    for (qsizetype i = 0; i < samples.size(); ++i) {
+                        quint32 bits;
+                        std::memcpy(&bits, &samples.at(i), sizeof(bits));
+                        qToLittleEndian(bits, payload.data() + i * sizeof(float));
+                    }
+                    const quint64 offset = static_cast<quint64>(cacheFile.pos());
+                    if (cacheFile.write(payload) != payload.size()) {
+                        cacheWriteFailed = true;
+                        return false;
+                    }
+                    sampleFrames[key].push_back({cacheFile.fileName(), offset,
+                        static_cast<quint32>(payload.size()), host, TcpFloatEncoding::LittleEndian});
                     timestamps[key].push_back(host);points[key]=int(wave.totalPoints);
                 }
                 return true;
             },&result.error)) return result;
+        if (cacheWriteFailed || !cacheFile.flush()) {
+            result.error = QStringLiteral("Failed to write FPGA waveform sample cache");
+            return result;
+        }
+        cacheFile.close();
         // Preserve a separate timeline for every available source/component.
         for (quint16 source:{0x30,0x31,0x20,0x21}) {
             const QStringList components{"H2","H1","I1","Q1","I2","Q2"};
@@ -581,10 +609,11 @@ SessionWaveformCatalogResult SessionWaveformRepository::loadCatalog(
                 const int key=source*16+c;if(timestamps.value(key).isEmpty())continue;
                 result.catalog.fpgaChoices.push_back({source,c,
                     source<0x30?QString("ADC %1 / RAW").arg(source-0x20):QString("DLIA %1 / %2").arg(source-0x30).arg(components[c]),
-                    timestamps.take(key),points.value(key)});
+                    timestamps.take(key),points.value(key),sampleFrames.take(key)});
             }
         }
         if(!result.catalog.fpgaChoices.isEmpty()) {
+            result.catalog.fpgaSampleCache = std::move(cacheDirectory);
             selectFpgaWaveform(result.catalog,0);
             result.catalog.waveformRawFilename=fpgaPath;
             result.catalog.frameCount=quint64(result.catalog.fpgaTimestampsUs.size());
@@ -649,6 +678,7 @@ bool SessionWaveformRepository::selectFpgaWaveform(SessionWaveformCatalog& catal
     if(choice<0 || choice>=catalog.fpgaChoices.size())return false;
     const auto& c=catalog.fpgaChoices[choice];catalog.fpgaSource=c.source;catalog.fpgaComponent=c.component;
     catalog.fpgaTimestampsUs=c.timestampsUs;catalog.pointsPerFrame=c.pointsPerFrame;catalog.frameCount=c.timestampsUs.size();
+    catalog.rawTcpFrames = c.sampleFrames;
     return true;
 }
 
@@ -660,20 +690,6 @@ SessionWaveformFrameResult SessionWaveformRepository::readFrame(
     if (frameIndex >= catalog.frameCount)
     {
         result.error = QStringLiteral("Waveform frame index is out of range");
-        return result;
-    }
-
-    if (!catalog.fpgaTimestampsUs.isEmpty()) {
-        quint64 index=0;
-        const bool ok=VaporView::Session::FpgaSessionArchive::waveforms(catalog.sessionDirectory,
-            [&](quint64 host,const auto& wave) {
-                if(wave.source!=catalog.fpgaSource || (catalog.fpgaComponent>=2 && wave.format==0))return true;
-                if(index++!=frameIndex)return true;
-                result.samples=fpgaSamples(wave,catalog.fpgaComponent);result.timestampUs=host;
-                result.sourceFilename=catalog.waveformRawFilename;result.success=true;
-                return false;
-            },&result.error);
-        if (ok && !result.success) result.error=QStringLiteral("FPGA waveform cycle is missing");
         return result;
     }
 
@@ -699,7 +715,7 @@ SessionWaveformFrameResult SessionWaveformRepository::readFrame(
             : frame.floatEncoding;
         result.samples = decodeTcpFloatPayload(payload, encoding);
         result.timestampUs = frame.timestampUs;
-        result.sourceFilename = frame.filename;
+        result.sourceFilename = catalog.fpgaSource ? catalog.waveformRawFilename : frame.filename;
         result.success = true;
         return result;
     }
@@ -923,20 +939,6 @@ SessionWaveformPeakSeriesResult SessionWaveformRepository::calculatePeakSeries(
     result.success = true;
     if (catalog.isEmpty())
     {
-        return result;
-    }
-
-    if (!catalog.fpgaTimestampsUs.isEmpty()) {
-        result.success=VaporView::Session::FpgaSessionArchive::waveforms(catalog.sessionDirectory,
-            [&](quint64 host,const auto& wave) {
-                if (wave.source!=catalog.fpgaSource) return true;
-                if(catalog.fpgaComponent>=2 && wave.format==0)return true;
-                result.timestampsUs.push_back(host);
-                result.peakValues.push_back(peakValue(fpgaSamples(wave,catalog.fpgaComponent),searchStartIndex,searchEndIndex));
-                if (progress) progress(quint64(result.timestampsUs.size()),catalog.frameCount);
-                return true;
-            },&result.error,[&] {return isCancelled(cancelFlag);});
-        result.cancelled=isCancelled(cancelFlag);
         return result;
     }
 

@@ -62,6 +62,13 @@ void iqWaveformChoices()
         const auto frame=SessionWaveformRepository::readFrame(result.catalog,0);
         check(frame.success && frame.samples==QVector<float>{expected[result.catalog.fpgaComponent]+(result.catalog.fpgaSource==0x31?100:0)},"selected lane and IQ component preserve independent values");
     }
+    auto retained = result.catalog;
+    const QString cachePath = retained.fpgaSampleCache->path();
+    result = {};
+    check(QFileInfo::exists(cachePath) && SessionWaveformRepository::readFrame(retained, 0).success,
+          "catalog copies retain their indexed samples for background readers");
+    retained = {};
+    check(!QFileInfo::exists(cachePath), "last catalog release removes the temporary sample cache");
 }
 void waveformRecording()
 {
@@ -110,6 +117,23 @@ void waveformRecording()
     check(peaks.success && peaks.peakValues==QVector<float>({40,40}),"FPGA peak series");
     const auto cancel=std::make_shared<std::atomic_bool>(true);
     check(SessionWaveformRepository::calculatePeakSeries(catalog.catalog,0,-1,cancel).cancelled,"FPGA peak calculation cancellation");
+
+    const QString archivePath = FpgaSessionArchive::rawPath(directory);
+    check(QFile::rename(archivePath, archivePath + QStringLiteral(".held")), "temporarily move indexed source");
+    for (int choice = selection.fpgaChoices.size() - 1; choice >= 0; --choice) {
+        check(SessionWaveformRepository::selectFpgaWaveform(selection, choice), "indexed component selects");
+        for (quint64 index = selection.frameCount; index-- > 0;) {
+            const auto loaded = SessionWaveformRepository::readFrame(selection, index);
+            const QVector<float> expected = selection.fpgaSource == 0x20 ? QVector<float>{-5, 12}
+                : selection.fpgaComponent == 1 ? QVector<float>{1, 2, 1, 2} : QVector<float>{10, 20, 30, 40};
+            check(loaded.success && loaded.samples == expected && loaded.sourceFilename == archivePath &&
+                      loaded.timestampUs == selection.fpgaTimestampsUs.at(index),
+                  "random indexed reads preserve full samples, timestamps and source without replaying the archive");
+        }
+    }
+    check(SessionWaveformRepository::calculatePeakSeries(catalog.catalog, 0, -1).peakValues == peaks.peakValues,
+          "peak calculation also uses indexed samples without replaying the archive");
+    check(QFile::rename(archivePath + QStringLiteral(".held"), archivePath), "restore indexed source");
 
     // Frame-only archives and RAW-only capture remain valid fallback sources.
     check(recorder.start(options),"RAW-only start");

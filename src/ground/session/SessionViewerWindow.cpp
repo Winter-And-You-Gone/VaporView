@@ -293,6 +293,14 @@ void SessionViewerWindow::showEvent(QShowEvent *event)
 
 void SessionViewerWindow::setupUi()
 {
+    frame_preview_timer_ = new QTimer(this);
+    frame_preview_timer_->setSingleShot(true);
+    frame_preview_timer_->setInterval(16);
+    connect(frame_preview_timer_, &QTimer::timeout, this, [this] {
+        const int frame = std::exchange(pending_frame_preview_, 0);
+        if (frame > 0)
+            previewWaveformFrame(static_cast<quint64>(frame - 1));
+    });
     setObjectName(QStringLiteral("sessionViewerWindow"));
     setAttribute(Qt::WA_StyledBackground, true);
     setAutoFillBackground(true);
@@ -1000,6 +1008,8 @@ void SessionViewerWindow::finishSessionLoading()
 
 void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
 {
+    frame_preview_timer_->stop();
+    pending_frame_preview_ = 0;
     cancelBackgroundWaveformPeakSeries(false);
     session_directory_.clear();
     syncPpkSession(false);
@@ -1775,7 +1785,12 @@ void SessionViewerWindow::onFrameSliderMoved(int value)
 
     if (value > 0)
     {
-        previewWaveformFrame(static_cast<quint64>(value - 1));
+        waveform_page_->setFramePreviewInfo(value - 1, total_waveform_frames_, is_english_,
+            waveform_timestamps_us_.value(value - 1));
+        pending_frame_preview_ = value;
+        // Keep the handle responsive; only the newest frame needs to be drawn.
+        if (!frame_preview_timer_->isActive())
+            frame_preview_timer_->start();
     }
 }
 
@@ -1805,18 +1820,7 @@ void SessionViewerWindow::onFrameSliderChanged(int value)
 
 void SessionViewerWindow::onFrameSpinChanged(int value)
 {
-    if (updating_frame_controls_)
-    {
-        return;
-    }
-
-    updating_frame_controls_ = true;
-    waveform_page_->setFrameValueSilently(value);
-    updating_frame_controls_ = false;
-    if (value > 0)
-    {
-        playback_controller_->seek(value - 1);
-    }
+    onFrameSliderChanged(value);
 }
 
 QVector<float> SessionViewerWindow::visibleWaveformSamples(const QVector<float>& samples, int& firstSampleIndex) const
@@ -1922,8 +1926,6 @@ bool SessionViewerWindow::previewWaveformFrame(quint64 frameIndex)
     int firstSampleIndex = 0;
     waveform_page_->setWaveformSamples(visibleWaveformSamples(samples, firstSampleIndex), firstSampleIndex);
     waveform_page_->setCurrentPeakFrame(static_cast<int>(frameIndex));
-    const int previewCsvRow = timestampUs == 0 ? -1 : findClosestCsvRow(timestampUs);
-    waveform_page_->setEnvironmentCurrentIndex(previewCsvRow, is_english_);
     previewClosestSensorRow(timestampUs);
     waveform_page_->setFramePreviewInfo(frameIndex, total_waveform_frames_, is_english_, timestampUs);
     return true;
@@ -1931,6 +1933,8 @@ bool SessionViewerWindow::previewWaveformFrame(quint64 frameIndex)
 
 bool SessionViewerWindow::loadWaveformFrame(quint64 frameIndex, bool scrollToCsvRow)
 {
+    frame_preview_timer_->stop();
+    pending_frame_preview_ = 0;
     quint64 timestampUs = 0;
     QVector<float> samples;
     if (!readWaveformFrameSamples(frameIndex, timestampUs, samples))
@@ -1965,11 +1969,6 @@ bool SessionViewerWindow::loadWaveformFrame(quint64 frameIndex, bool scrollToCsv
         csvMatchText,
         is_english_);
     return true;
-}
-
-int SessionViewerWindow::findClosestCsvRow(quint64 timestampUs) const
-{
-    return VaporView::Ground::Session::closestTimestampIndex(csv_timestamps_us_, timestampUs);
 }
 
 void SessionViewerWindow::updateRtkTrackPeakValues()

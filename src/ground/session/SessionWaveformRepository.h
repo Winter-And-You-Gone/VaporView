@@ -9,6 +9,8 @@
 #include <functional>
 #include <memory>
 
+class QTemporaryDir;
+
 namespace VaporView::Ground
 {
 
@@ -57,6 +59,7 @@ struct SessionFpgaWaveformChoice
     QString label;
     QVector<quint64> timestampsUs;
     int pointsPerFrame = 0;
+    QVector<SessionRawTcpWaveFrame> sampleFrames;
 };
 
 struct SessionWaveformCatalog
@@ -71,6 +74,8 @@ struct SessionWaveformCatalog
     quint16 fpgaSource = 0;
     int fpgaComponent = 0;
     QVector<SessionFpgaWaveformChoice> fpgaChoices;
+    // Shared with catalog copies used by background peak calculations.
+    std::shared_ptr<QTemporaryDir> fpgaSampleCache;
     int pointsPerFrame = 0;
     quint64 frameCount = 0;
 

@@ -25,6 +25,7 @@ class QComboBox;
 class QPushButton;
 class QShowEvent;
 class QScrollArea;
+class QTimer;
 
 namespace VaporView::Ground
 {
@@ -117,7 +118,6 @@ private:
     bool previewWaveformFrame(quint64 frameIndex);
     bool loadWaveformFrame(quint64 frameIndex, bool scrollToCsvRow = true);
     bool readWaveformFrameSamples(quint64 frameIndex, quint64& timestampUs, QVector<float>& samples);
-    int findClosestCsvRow(quint64 timestampUs) const;
     void applyPeakFilter(int startPercent = 0, int endPercent = 96);
     void updateRtkTrackPeakValues();
     void focusTrajectoryPoint(int trackPointIndex);
@@ -205,6 +205,8 @@ private:
     int ui_test_saved_peak_search_end_index_ = 0;
     bool is_english_;
     bool updating_frame_controls_;
+    QTimer *frame_preview_timer_ = nullptr;
+    int pending_frame_preview_ = 0;
     bool waveform_peak_scatter_mode_;
     bool waveform_show_filtered_frame_;
     bool session_loading_;
