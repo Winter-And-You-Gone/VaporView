@@ -1,3 +1,4 @@
+#include "test_settings_sandbox.h"
 #include "ground/main/MainWindow.h"
 #include "ground/session/GroundRecordingService.h"
 #include "ground/session/SessionViewerWindow.h"
@@ -228,6 +229,16 @@ void testFrameSliderThemeAndHover(MainWindow& window, SessionViewerWindow& viewe
                     require(mainImage.pixelColor(mainImage.width() / 2, mainImage.height() - 20) ==
                                 viewerImage.pixelColor(viewerImage.width() / 2, viewerImage.height() - 20),
                             "viewer sidebar background matches main window in each theme and scale");
+                    auto *workspaceWidget = viewer.findChild<QWidget *>(QStringLiteral("sessionViewerWorkspace"));
+                    require(workspaceWidget, "viewer exposes its outer workspace canvas");
+                    const QImage workspace = workspaceWidget->grab().toImage();
+                    const QColor canvas = VaporView::appThemeColor(
+                        dark ? VaporView::AppThemeColor::Window : VaporView::AppThemeColor::Surface, dark);
+                    for (const QPoint& corner : {QPoint(2, 2), QPoint(workspace.width() - 3, 2),
+                                                QPoint(2, workspace.height() - 3),
+                                                QPoint(workspace.width() - 3, workspace.height() - 3)})
+                        require(workspace.pixelColor(corner) == canvas,
+                                "viewer outer margins match the canvas in each theme and scale");
                 }
                 scrollArea->ensureWidgetVisible(slider, 0, 0);
                 VaporViewTest::processEventsFor(100);

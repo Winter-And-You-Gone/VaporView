@@ -406,6 +406,8 @@ void SessionViewerWindow::setupUi()
 void SessionViewerWindow::setupNavigation(QWidget *dataPage)
 {
     auto *central = new QWidget(this);
+    central->setObjectName(QStringLiteral("sessionViewerWorkspace"));
+    central->setAttribute(Qt::WA_StyledBackground, true);
     auto *layout = new QVBoxLayout(central);
     layout->setContentsMargins(8, 8, 8, 8);
     navigation_splitter_ = new QSplitter(Qt::Horizontal, central);
