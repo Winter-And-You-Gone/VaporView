@@ -1019,10 +1019,11 @@ if(WIN32)
         LABELS "integration;windows;acl"
     )
 
-    add_executable(relauncher_probe_child
+    add_executable(relauncher_probe_child WIN32
         ${CMAKE_CURRENT_SOURCE_DIR}/relauncher_probe_child.cpp
     )
     target_compile_definitions(relauncher_probe_child PRIVATE UNICODE _UNICODE)
+    target_link_libraries(relauncher_probe_child PRIVATE shell32)
 
     add_executable(update_relauncher_elevation_test
         ${CMAKE_CURRENT_SOURCE_DIR}/update_relauncher_elevation_test.cpp

@@ -2,6 +2,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include <shellapi.h>
 
 #include <filesystem>
 #include <fstream>
@@ -82,8 +83,14 @@ bool inheritedHandleAccessible(const std::wstring& value)
 
 } // namespace
 
-int wmain(int argc, wchar_t** argv)
+int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 {
+    int argc = 0;
+    wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    if (!argv)
+    {
+        return 1;
+    }
     wchar_t cwd[MAX_PATH] = {};
     GetCurrentDirectoryW(MAX_PATH, cwd);
 
@@ -101,6 +108,8 @@ int wmain(int argc, wchar_t** argv)
     }
 
     std::ofstream out(std::filesystem::path(resultPath), std::ios::binary);
+    out << "process_id=" << GetCurrentProcessId() << "\n";
+    out << "console_attached=" << (GetConsoleWindow() ? 1 : 0) << "\n";
     out << "token_ok=" << (tokenOk ? 1 : 0) << "\n";
     out << "elevated=" << (elevated ? 1 : 0) << "\n";
     out << "type=" << static_cast<int>(elevationType) << "\n";
@@ -112,5 +121,8 @@ int wmain(int argc, wchar_t** argv)
     out << "inherited_handle_accessible="
         << (inheritedHandleAccessible(valueAfter(argc, argv, L"--inherited-handle")) ? 1 : 0)
         << "\n";
+    out << "probe_complete=1\n";
+    out.close();
+    LocalFree(argv);
     return out ? 0 : 1;
 }

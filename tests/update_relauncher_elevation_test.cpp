@@ -4,10 +4,10 @@
 #include <windows.h>
 #include <tlhelp32.h>
 
-#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 
 namespace
@@ -27,6 +27,20 @@ struct Handle
 
     Handle(const Handle&) = delete;
     Handle& operator=(const Handle&) = delete;
+};
+
+struct TemporaryDirectory
+{
+    std::filesystem::path path;
+    ~TemporaryDirectory()
+    {
+        std::error_code error;
+        std::filesystem::remove_all(path, error);
+        if (error)
+        {
+            std::cerr << "Failed to clean relaunch test directory: " << error.message() << "\n";
+        }
+    }
 };
 
 class ScopedEnvironment final
@@ -132,8 +146,7 @@ void require(bool condition, const std::string& message)
 {
     if (!condition)
     {
-        std::cerr << "FAIL: " << message << "\n";
-        std::exit(1);
+        throw std::runtime_error(message);
     }
 }
 
@@ -222,7 +235,7 @@ int runRelauncher(const std::wstring& relauncher,
                         &process))
     {
         std::wcerr << L"CreateProcessW failed for relauncher: " << GetLastError() << L"\n";
-        std::exit(1);
+        throw std::runtime_error("could not start relauncher");
     }
     CloseHandle(process.hThread);
     Handle processHandle(process.hProcess);
@@ -252,6 +265,36 @@ bool waitForFile(const std::wstring& path)
     return false;
 }
 
+std::string waitForProbe(const std::wstring& path)
+{
+    for (int i = 0; i < 100; ++i)
+    {
+        const std::string result = readFile(path);
+        if (result.find("probe_complete=1\n") != std::string::npos)
+        {
+            const auto start = result.find("process_id=");
+            require(start != std::string::npos, "probe did not report its process ID");
+            const DWORD processId = static_cast<DWORD>(std::stoul(result.substr(start + 11)));
+            Handle process(OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, processId));
+            if (process.value)
+            {
+                require(WaitForSingleObject(process.value, 5000) == WAIT_OBJECT_0,
+                        "probe child did not exit");
+                DWORD exitCode = 1;
+                require(GetExitCodeProcess(process.value, &exitCode) && exitCode == 0,
+                        "probe child failed");
+            }
+            else
+            {
+                require(GetLastError() == ERROR_INVALID_PARAMETER, "could not inspect probe child");
+            }
+            return result;
+        }
+        Sleep(100);
+    }
+    throw std::runtime_error("probe child result was not completed");
+}
+
 void requireContains(const std::string& result,
                      const std::string& needle,
                      const std::string& message)
@@ -261,7 +304,7 @@ void requireContains(const std::string& result,
 
 } // namespace
 
-int main(int argc, char** argv)
+int runTest(int argc, char** argv)
 {
     const std::string mode = argc >= 2 ? argv[1] : "standard";
     const bool elevatedMode = mode == "elevated";
@@ -303,9 +346,13 @@ int main(int argc, char** argv)
     const std::wstring targetDir =
         joinPath(tempPathBuffer,
                  L"VaporView Relaunch Test " + utf8ToWide(mode.c_str()) +
-                     L" " + std::to_wstring(GetCurrentProcessId()));
-    std::filesystem::remove_all(targetDir);
-    std::filesystem::create_directories(targetDir);
+                     L" " + std::to_wstring(GetCurrentProcessId()) +
+                     L" " + std::to_wstring(GetTickCount64()));
+    require(std::filesystem::weakly_canonical(std::filesystem::path(targetDir).parent_path()) ==
+                std::filesystem::weakly_canonical(tempPathBuffer),
+            "relaunch test directory must remain within the temporary directory");
+    require(std::filesystem::create_directory(targetDir), "could not create isolated relaunch test directory");
+    TemporaryDirectory cleanup{targetDir};
 
     const std::wstring fakeMaintenanceTool = joinPath(targetDir, L"VaporViewMaintenanceTool.exe");
     const std::wstring badMaintenanceTool = joinPath(targetDir, L"OtherMaintenanceTool.exe");
@@ -343,8 +390,8 @@ int main(int argc, char** argv)
 
     require(runRelauncher(relauncher, fakeMaintenanceTool, fakeVaporView) == 0,
             "relauncher failed to start probe child");
-    require(waitForFile(probeResult), "probe child result was not written");
-    const std::string result = readFile(probeResult);
+    const std::string result = waitForProbe(probeResult);
+    requireContains(result, "console_attached=0", "GUI probe unexpectedly acquired a console");
     requireContains(result, "token_ok=1", "probe could not read token elevation");
     requireContains(result, "elevated=0", "relauncher started an elevated child process");
     require(result.find("type=2") == std::string::npos,
@@ -374,4 +421,17 @@ int main(int argc, char** argv)
     std::filesystem::remove_all(targetDir);
     std::cout << "update_relauncher_" << mode << "_parent_test passed\n";
     return 0;
+}
+
+int main(int argc, char** argv)
+{
+    try
+    {
+        return runTest(argc, argv);
+    }
+    catch (const std::exception& error)
+    {
+        std::cerr << "FAIL: " << error.what() << "\n";
+        return 1;
+    }
 }
