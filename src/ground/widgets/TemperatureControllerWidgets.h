@@ -32,6 +32,7 @@ public:
     }
 
     virtual void setEnglish(bool english) = 0;
+    virtual QWidget *titleStatusWidget() const = 0;
     virtual void updateData(const VaporView::TemperatureControllerData& sample) = 0;
     virtual void setOutputEnabledCallback(std::function<void(quint8, bool)> callback) = 0;
     virtual void updateThemedIcons() = 0;

@@ -3883,7 +3883,7 @@ void requireHomeOverviewLanguageWidthRoundTrip()
 {
     MainWindow languageOverviewWindow;
     languageOverviewWindow.setWindowTitle(QStringLiteral("VaporView"));
-    languageOverviewWindow.resize(1280, 800);
+    languageOverviewWindow.resize(1600, 800);
     languageOverviewWindow.show();
     require(waitForWindowExposed(&languageOverviewWindow),
             "dedicated language overview window becomes exposed");
@@ -7137,8 +7137,8 @@ int main(int argc, char **argv)
         window.findChildren<QLabel *>(QStringLiteral("temperatureOverviewValuePill"));
     require(temperatureValuePills.size() == 2,
             "temperature overview target and current value pills exist");
-    auto *temperatureOverviewValueOverlay =
-        window.findChild<QWidget *>(QStringLiteral("temperatureOverviewValueOverlay"));
+    auto *temperatureOverviewTitleStatus =
+        window.findChild<QWidget *>(QStringLiteral("temperatureOverviewTitleStatusStrip"));
     QWidget *temperatureOverviewPlot = nullptr;
     for (QWidget *plot : window.findChildren<QWidget *>(QStringLiteral("temperatureTrendPlot")))
     {
@@ -7148,12 +7148,11 @@ int main(int argc, char **argv)
             break;
         }
     }
-    require(temperatureOverviewValueOverlay != nullptr &&
+    require(temperatureOverviewTitleStatus != nullptr &&
                 temperatureOverviewPlot != nullptr &&
-                temperatureOverviewValueOverlay->parentWidget() == temperatureOverviewPlot,
-            "temperature overview value pills use an overlay attached to the trend plot");
-    require(temperatureOverviewValueOverlay->testAttribute(Qt::WA_TransparentForMouseEvents),
-            "temperature overview value overlay passes pointer input through to the plot");
+                temperatureOverviewTitleStatus->parentWidget()->objectName() == QStringLiteral("sectionTitleBar") &&
+                !window.findChild<QWidget *>(QStringLiteral("temperatureOverviewValueOverlay")),
+            "temperature overview values move to the card title bar and leave the trend plot clear");
     require(!VaporView::appStyleSheet().contains(QStringLiteral("QLabel#temperatureOverviewValuePill[hasData")),
             "temperature overview value pills use the default background without data-state colors");
     const QString targetLegendNumberColor = VaporView::appThemeColor(
@@ -7182,8 +7181,8 @@ int main(int argc, char **argv)
                     pill->text().contains(
                         QStringLiteral("<span style=\"color: %1;\">---</span>").arg(expectedNumberColor)),
                 "temperature overview value pill starts with concise text and a semantic legend color");
-        require(pill->parentWidget() == temperatureOverviewValueOverlay,
-                "temperature overview value pill is moved into the plot overlay");
+        require(pill->parentWidget() == temperatureOverviewTitleStatus,
+                "temperature overview value belongs to the title status strip");
         hasTargetUnavailableText = hasTargetUnavailableText ||
             displayText == QStringLiteral("目标 --- ℃");
         hasCurrentUnavailableText = hasCurrentUnavailableText ||
@@ -7244,7 +7243,7 @@ int main(int argc, char **argv)
                              [temperatureOverviewSummary](QLabel *pill) {
                                  return temperatureOverviewSummary->layout()->indexOf(pill) >= 0;
                              }),
-            "temperature overview summary keeps channel and output controls while value pills move to the plot");
+            "temperature overview summary keeps channel and output controls while readings move to the title bar");
     processEventsFor(50);
     activateLayouts(&window);
     const int summarySpacing = temperatureOverviewSummary->layout()->spacing();
@@ -7254,20 +7253,27 @@ int main(int argc, char **argv)
     require(temperatureOverviewPlot->height() == 144,
             "temperature overview keeps the home trend plot compact instead of filling the card height");
     temperatureOverviewPlot->repaint();
-    const QRect valueOverlayRect = temperatureOverviewValueOverlay->geometry();
-    const double plotAreaLeft = temperatureOverviewPlot->property("plotAreaLeft").toDouble();
-    const double plotAreaTop = temperatureOverviewPlot->property("plotAreaTop").toDouble();
-    const double plotAreaRight = temperatureOverviewPlot->property("plotAreaRight").toDouble();
-    const double plotAreaBottom = temperatureOverviewPlot->property("plotAreaBottom").toDouble();
-    require(valueOverlayRect.left() > plotAreaLeft &&
-                valueOverlayRect.top() > plotAreaTop &&
-                valueOverlayRect.right() <= std::floor(plotAreaRight) &&
-                valueOverlayRect.bottom() <= std::floor(plotAreaBottom),
-            "temperature overview value overlay stays inside the plot area with an axis-safe inset");
+    auto *temperatureOverviewTitleBar = temperatureOverviewTitleStatus->parentWidget();
+    auto *temperatureOverviewTitleLayout = temperatureOverviewTitleBar->layout();
+    const auto *temperatureOverviewTitleCluster = temperatureOverviewTitleBar->findChild<QWidget *>(
+        QStringLiteral("sectionTitleCluster"), Qt::FindDirectChildrenOnly);
+    require(temperatureOverviewTitleBar->contentsRect().contains(temperatureOverviewTitleStatus->geometry()),
+            "temperature overview values fit inside the title bar");
+    require(temperatureOverviewTitleStatus->geometry().right() ==
+                temperatureOverviewTitleBar->contentsRect().right() - temperatureOverviewTitleLayout->contentsMargins().right(),
+            "temperature overview values align to the title bar right edge");
+    require(temperatureOverviewTitleCluster &&
+                temperatureOverviewTitleCluster->geometry().right() < temperatureOverviewTitleStatus->geometry().left(),
+            "temperature overview values leave the title clear");
+    const auto *temperatureOverviewTitle = temperatureOverviewTitleCluster->findChild<QLabel *>(
+        QStringLiteral("sectionTitleLabel"));
+    require(temperatureOverviewTitle && temperatureOverviewTitle->contentsRect().width() >=
+                temperatureOverviewTitle->fontMetrics().tightBoundingRect(temperatureOverviewTitle->text()).width(),
+            "temperature overview title stays fully visible beside the readings");
     requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("QLabel#temperatureOverviewValuePill {"),
-                                 QStringLiteral("font-size: 17px"),
-                                 "temperature overview value pill uses the enlarged value typography");
+                                 QStringLiteral("font-size: 13px"),
+                                 "temperature overview title values use compact title-bar typography");
     requireLastStyleRuleContains(VaporView::appStyleSheet(),
                                  QStringLiteral("QLabel#temperatureOverviewOutputPercentPill {"),
                                  QStringLiteral("font-size: 13px"),
@@ -7292,9 +7298,16 @@ int main(int argc, char **argv)
     require(temperatureOutputCapsule->height() == 60 &&
                 temperatureOutputCapsule->width() == temperatureChannelButton->width(),
             "temperature overview output capsule keeps the compact summary-column width and height");
-    require(temperatureOverviewValueOverlay->height() >=
-                temperatureValuePills.first()->height() + temperatureValuePills.last()->height(),
-            "temperature overview plot overlay reserves two stacked value rows");
+    require(temperatureValuePills.first()->geometry().right() < temperatureValuePills.last()->geometry().left() &&
+                temperatureValuePills.first()->geometry().center().y() == temperatureValuePills.last()->geometry().center().y(),
+            "temperature overview title values share one horizontal row");
+    for (QLabel *value : temperatureValuePills)
+    {
+        require(temperatureOverviewTitleStatus->rect().contains(value->geometry()) &&
+                    value->width() >= value->fontMetrics().horizontalAdvance(
+                        value->property("reservedDisplayText").toString()),
+                "temperature overview title values reserve five-decimal width inside the status strip");
+    }
 
     const QList<QFrame*> homeTelemetryPills =
         deviceOverviewCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
@@ -11577,8 +11590,8 @@ int main(int argc, char **argv)
         activateLayouts(&scaledWindow);
         requireHomeDeviceColumnsAligned(&scaledWindow);
         requireHomeDeviceMinimumWidthMatchesControls(&scaledWindow);
-        auto *scaledTemperatureOverviewValueOverlay =
-            scaledWindow.findChild<QWidget *>(QStringLiteral("temperatureOverviewValueOverlay"));
+        auto *scaledTemperatureOverviewTitleStatus =
+            scaledWindow.findChild<QWidget *>(QStringLiteral("temperatureOverviewTitleStatusStrip"));
         QWidget *scaledTemperatureOverviewPlot = nullptr;
         for (QWidget *plot : scaledWindow.findChildren<QWidget *>(QStringLiteral("temperatureTrendPlot")))
         {
@@ -11588,20 +11601,31 @@ int main(int argc, char **argv)
                 break;
             }
         }
-        require(scaledTemperatureOverviewValueOverlay != nullptr &&
+        require(scaledTemperatureOverviewTitleStatus != nullptr &&
                     scaledTemperatureOverviewPlot != nullptr,
-                "scaled temperature overview plot and value overlay exist");
+                "scaled temperature overview plot and title status exist");
         scaledTemperatureOverviewPlot->repaint();
-        const QRect scaledValueOverlayRect = scaledTemperatureOverviewValueOverlay->geometry();
-        require(scaledValueOverlayRect.left() >
-                    scaledTemperatureOverviewPlot->property("plotAreaLeft").toDouble() &&
-                    scaledValueOverlayRect.top() >
-                        scaledTemperatureOverviewPlot->property("plotAreaTop").toDouble() &&
-                    scaledValueOverlayRect.right() <= std::floor(
-                        scaledTemperatureOverviewPlot->property("plotAreaRight").toDouble()) &&
-                    scaledValueOverlayRect.bottom() <= std::floor(
-                        scaledTemperatureOverviewPlot->property("plotAreaBottom").toDouble()),
-                "scaled temperature overview value overlay stays clear of the plot axes");
+        auto *scaledTemperatureTitleBar = scaledTemperatureOverviewTitleStatus->parentWidget();
+        auto *scaledTemperatureTitleCluster = scaledTemperatureTitleBar->findChild<QWidget *>(
+            QStringLiteral("sectionTitleCluster"), Qt::FindDirectChildrenOnly);
+        require(scaledTemperatureTitleBar->objectName() == QStringLiteral("sectionTitleBar") &&
+                    scaledTemperatureTitleBar->contentsRect().contains(scaledTemperatureOverviewTitleStatus->geometry()) &&
+                    scaledTemperatureOverviewTitleStatus->geometry().right() ==
+                        scaledTemperatureTitleBar->contentsRect().right() - scaledTemperatureTitleBar->layout()->contentsMargins().right(),
+                "scaled temperature overview values stay inside the right edge of the title bar");
+        const auto *scaledTemperatureTitle = scaledTemperatureTitleCluster
+            ? scaledTemperatureTitleCluster->findChild<QLabel *>(QStringLiteral("sectionTitleLabel")) : nullptr;
+        require(scaledTemperatureTitle && scaledTemperatureTitle->contentsRect().width() >=
+                    scaledTemperatureTitle->fontMetrics().tightBoundingRect(scaledTemperatureTitle->text()).width(),
+                "scaled temperature overview title stays fully visible");
+        for (QLabel *value : scaledTemperatureOverviewTitleStatus->findChildren<QLabel *>(
+                 QStringLiteral("temperatureOverviewValuePill")))
+        {
+            require(scaledTemperatureOverviewTitleStatus->rect().contains(value->geometry()) &&
+                        value->width() >= value->fontMetrics().horizontalAdvance(
+                            value->property("reservedDisplayText").toString()),
+                    "scaled temperature overview title values fit without clipping");
+        }
         QPushButton *scaledTemperatureNavButton = nullptr;
         for (QPushButton *button : scaledWindow.findChildren<QPushButton *>())
         {

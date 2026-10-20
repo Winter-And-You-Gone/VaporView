@@ -5307,11 +5307,15 @@ void MainWindow::setupDataPanels()
     state_->temperature_overview_inline_title_lbl_->setText(state_->is_english_
         ? QStringLiteral("Laser Driver Temperature Overview")
         : QStringLiteral("激光驱动温控概览"));
+    temperatureOverviewTitleCluster->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     temperatureOverviewTitleLayout->addWidget(temperatureOverviewTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
     temperatureOverviewTitleLayout->addStretch(1);
     temperatureOverviewLayout->addWidget(temperatureOverviewTitleBar);
 
     state_->temperature_overview_panel_ = createTemperatureControllerOverviewPanel(state_->temperature_overview_group_);
+    auto *temperatureOverviewStatus = state_->temperature_overview_panel_->titleStatusWidget();
+    temperatureOverviewTitleLayout->addWidget(temperatureOverviewStatus, 0, Qt::AlignVCenter | Qt::AlignRight);
+    temperatureOverviewStatus->show();
     state_->temperature_overview_panel_->setOutputEnabledCallback([this](quint8 channel, bool enabled) {
         if (enabled)
         {

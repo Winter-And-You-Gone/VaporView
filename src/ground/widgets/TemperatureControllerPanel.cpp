@@ -1006,7 +1006,6 @@ void setTemperatureOverviewPillText(QLabel *label,
                            .arg(title, temperatureOverviewReservedNumberText(), unit));
     label->setProperty("displayText", displayText);
     label->setProperty("legendNumberColor", numberColor.name(QColor::HexRgb));
-    label->setProperty("reservedValueFits", false);
     label->setTextFormat(Qt::RichText);
     label->setText(QStringLiteral("%1&nbsp;<span style=\"color: %2;\">%3</span>&nbsp;%4")
                        .arg(title.toHtmlEscaped(),
@@ -1279,36 +1278,42 @@ public:
         plot_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
         plotSectionLayout->addWidget(plot_, 1);
 
-        value_overlay_ = new QWidget(plot_);
-        value_overlay_->setObjectName(QStringLiteral("temperatureOverviewValueOverlay"));
-        value_overlay_->setAttribute(Qt::WA_TransparentForMouseEvents, true);
-        value_overlay_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-        auto *valueOverlayLayout = new QVBoxLayout(value_overlay_);
-        valueOverlayLayout->setContentsMargins(0, 0, 0, 0);
-        valueOverlayLayout->setSpacing(kOverviewValuePillSpacing);
+        title_status_strip_ = new QWidget(this);
+        title_status_strip_->setObjectName(QStringLiteral("temperatureOverviewTitleStatusStrip"));
+        title_status_strip_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+        title_status_strip_->hide();
+        auto *statusLayout = new QHBoxLayout(title_status_strip_);
+        statusLayout->setContentsMargins(0, 0, 0, 0);
+        statusLayout->setSpacing(12);
+        statusLayout->setSizeConstraint(QLayout::SetFixedSize);
 
-        target_temp_value_ = new QLabel(value_overlay_);
+        target_temp_value_ = new QLabel(title_status_strip_);
         target_temp_value_->setObjectName(QStringLiteral("temperatureOverviewValuePill"));
         target_temp_value_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
         target_temp_value_->setWordWrap(false);
-        target_temp_value_->setMinimumHeight(kOverviewValuePillHeight);
-        target_temp_value_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        valueOverlayLayout->addWidget(target_temp_value_, 0);
+        target_temp_value_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+        statusLayout->addWidget(target_temp_value_);
 
-        current_temp_value_ = new QLabel(value_overlay_);
+        current_temp_value_ = new QLabel(title_status_strip_);
         current_temp_value_->setObjectName(QStringLiteral("temperatureOverviewValuePill"));
         current_temp_value_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
         current_temp_value_->setWordWrap(false);
-        current_temp_value_->setMinimumHeight(kOverviewValuePillHeight);
-        current_temp_value_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        valueOverlayLayout->addWidget(current_temp_value_, 0);
-        plot_->installEventFilter(this);
+        current_temp_value_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+        statusLayout->addWidget(current_temp_value_);
+        title_status_strip_->installEventFilter(this);
+        target_temp_value_->installEventFilter(this);
+        current_temp_value_->installEventFilter(this);
         layout->addWidget(plotSection, 1, Qt::AlignTop);
 
         setEnglish(false);
         updateData(VaporView::TemperatureControllerData());
         updateSummaryControlHeights();
         scheduleSummaryControlHeightUpdate();
+    }
+
+    QWidget *titleStatusWidget() const override
+    {
+        return title_status_strip_;
     }
 
     void setEnglish(bool english)
@@ -1389,7 +1394,6 @@ protected:
     {
         QWidget::resizeEvent(event);
         updateSummaryControlHeights();
-        updateOverviewValuePillGeometry();
         scheduleSummaryControlHeightUpdate();
     }
 
@@ -1399,12 +1403,13 @@ protected:
         {
             scheduleSummaryControlHeightUpdate();
         }
-        if (watched == plot_ &&
-            (event->type() == QEvent::Resize || event->type() == QEvent::Show ||
-             event->type() == QEvent::FontChange))
+        if ((watched == title_status_strip_ || watched == target_temp_value_ ||
+             watched == current_temp_value_) &&
+            (event->type() == QEvent::Show || event->type() == QEvent::FontChange ||
+             event->type() == QEvent::StyleChange))
         {
             QTimer::singleShot(0, this, [this]() {
-                updateOverviewValuePillGeometry();
+                updateOverviewValueWidths();
             });
         }
         return QWidget::eventFilter(watched, event);
@@ -1434,10 +1439,6 @@ private:
     static constexpr int kOverviewChannelHeight = 28;
     static constexpr int kOverviewOutputPercentHeight = 42;
     static constexpr int kOverviewTrendPlotHeight = 144;
-    static constexpr int kOverviewValuePillHeight = 30;
-    static constexpr int kOverviewValuePillSpacing = 4;
-    static constexpr int kOverviewValuePillAxisGap = 8;
-    static constexpr int kOverviewValuePillHorizontalPadding = 16;
     static constexpr int kOverviewOutputCapsuleHeight = 60;
     static constexpr int kOverviewOutputSwitchHeight = 34;
     static constexpr int kOverviewOutputFrameWidth = 1;
@@ -1467,68 +1468,20 @@ private:
         });
     }
 
-    void updateOverviewValuePillGeometry()
+    void updateOverviewValueWidths()
     {
-        if (!plot_ || !value_overlay_ || !target_temp_value_ || !current_temp_value_)
+        for (QLabel *label : {target_temp_value_, current_temp_value_})
         {
-            return;
-        }
-
-        const QRectF plotRect = plot_->plotAreaRect();
-        const int left = std::max(0,
-                                  static_cast<int>(std::ceil(plotRect.left())) +
-                                      kOverviewValuePillAxisGap);
-        const int top = std::max(0,
-                                 static_cast<int>(std::ceil(plotRect.top())) +
-                                     kOverviewValuePillAxisGap);
-        const int right = std::max(left,
-                                   static_cast<int>(std::floor(plotRect.right())) -
-                                       kOverviewValuePillAxisGap);
-        const int availableWidth = std::max(0, right - left);
-        if (availableWidth <= 0 || plotRect.height() <= 1.0)
-        {
-            value_overlay_->hide();
-            return;
-        }
-
-        const auto requiredWidth = [this](QLabel *label) {
-            if (!label)
-            {
-                return 0;
-            }
-            QFont pillFont = label->font();
-            pillFont.setWeight(QFont::Bold);
-            const QFontMetrics metrics(pillFont);
+            label->ensurePolished();
+            const QFontMetrics metrics(label->font());
             const int currentWidth = metrics.horizontalAdvance(
                 label->property("displayText").toString());
             const int reservedWidth = metrics.horizontalAdvance(
                 label->property("reservedDisplayText").toString());
-            return std::max(currentWidth, reservedWidth) + kOverviewValuePillHorizontalPadding;
-        };
-        const int desiredWidth = std::max(requiredWidth(target_temp_value_),
-                                          requiredWidth(current_temp_value_));
-        const int width = std::min(availableWidth, std::max(1, desiredWidth));
-        const int pillHeight = std::max(
-            kOverviewValuePillHeight,
-            QFontMetrics(target_temp_value_->font()).height() + 8);
-        const int totalHeight = pillHeight * 2 + kOverviewValuePillSpacing;
-        if (top + totalHeight > plot_->height())
-        {
-            value_overlay_->hide();
-            return;
+            label->setFixedWidth(std::max(currentWidth, reservedWidth) + 2);
         }
-
-        value_overlay_->setGeometry(left, top, width, totalHeight);
-        target_temp_value_->setFixedHeight(pillHeight);
-        current_temp_value_->setFixedHeight(pillHeight);
-        target_temp_value_->setProperty("reservedValueFits", desiredWidth <= availableWidth);
-        current_temp_value_->setProperty("reservedValueFits", desiredWidth <= availableWidth);
-        value_overlay_->setProperty("axisSafeLeft", plotRect.left());
-        value_overlay_->setProperty("axisSafeTop", plotRect.top());
-        value_overlay_->setProperty("axisSafeGap", kOverviewValuePillAxisGap);
-        value_overlay_->setProperty("contentFits", desiredWidth <= availableWidth);
-        value_overlay_->show();
-        value_overlay_->raise();
+        title_status_strip_->layout()->invalidate();
+        title_status_strip_->layout()->activate();
     }
 
     void updateSummaryControlHeights()
@@ -1681,7 +1634,7 @@ private:
             plot_->setSamples(measured_temperature_history_[index]);
             plot_->setSampleTimes(measured_temperature_time_history_[index]);
         }
-        updateOverviewValuePillGeometry();
+        updateOverviewValueWidths();
     }
 
     QToolButton *channel_button_ = nullptr;
@@ -1694,7 +1647,7 @@ private:
     QLabel *output_percent_value_ = nullptr;
     QLabel *target_temp_value_ = nullptr;
     QLabel *current_temp_value_ = nullptr;
-    QWidget *value_overlay_ = nullptr;
+    QWidget *title_status_strip_ = nullptr;
     QFrame *output_capsule_ = nullptr;
     QLabel *output_label_ = nullptr;
     TemperatureOverviewSwitchButton *output_switch_button_ = nullptr;

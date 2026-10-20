@@ -684,6 +684,16 @@ void MainWindow::updateHomeDeviceOverviewMinimumWidth()
         return;
     }
 
+    if (state_->temperature_overview_group_)
+    {
+        QLayout *layout = state_->temperature_overview_group_->layout();
+        layout->invalidate();
+        const int minimumWidth = std::max(kHomeOverviewTemperatureMinWidth,
+                                          layout->totalMinimumSize().width());
+        state_->temperature_overview_group_->setMinimumWidth(minimumWidth);
+        state_->home_temperature_overview_column_->setMinimumWidth(minimumWidth);
+    }
+
     QSplitter *overviewSplitter = state_->home_overview_splitter_;
     const bool darkTheme = qApp && qApp->property(kAppDarkThemeProperty).toBool();
     const QVariant previousTheme = overviewSplitter->property(kHomeOverviewDeviceThemeProperty);

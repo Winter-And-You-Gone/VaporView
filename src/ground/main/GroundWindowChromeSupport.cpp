@@ -639,7 +639,8 @@ protected:
         const int deltaY = dragCursorY() - drag_start_y_;
         bool ok = false;
         const int propertyMinimum = target_card_->property(kMainCardMinimumHeightProperty).toInt(&ok);
-        const int effectiveMinimum = ok ? std::max(minimum_target_height_, propertyMinimum) : minimum_target_height_;
+        // Responsive layout can reduce the content minimum after construction.
+        const int effectiveMinimum = ok ? std::max(0, propertyMinimum) : minimum_target_height_;
         const int nextHeight = std::max(effectiveMinimum, target_start_height_ + deltaY);
         if (target_height_ != nextHeight)
         {

@@ -266,8 +266,7 @@ int main(int argc, char **argv)
     require(std::abs(overviewSwitchLeftGap - overviewSwitchRightGap) <= 1,
             "temperature overview segmented switch is horizontally centered in its capsule");
 
-    auto *overviewValueOverlay =
-        temperatureOverview->findChild<QWidget *>(QStringLiteral("temperatureOverviewValueOverlay"));
+    auto *overviewTitleStatus = temperatureOverview->titleStatusWidget();
     const QList<QLabel *> overviewValuePills =
         temperatureOverview->findChildren<QLabel *>(QStringLiteral("temperatureOverviewValuePill"));
     QWidget *overviewPlot = nullptr;
@@ -279,11 +278,11 @@ int main(int argc, char **argv)
             break;
         }
     }
-    require(overviewValueOverlay != nullptr && overviewValuePills.size() == 2 &&
+    require(overviewTitleStatus != nullptr && overviewValuePills.size() == 2 &&
                 overviewPlot != nullptr &&
-                overviewValueOverlay->parentWidget() == overviewPlot &&
-                overviewValueOverlay->testAttribute(Qt::WA_TransparentForMouseEvents),
-            "temperature overview moves the target and current value pills into a pointer-transparent plot overlay");
+                !overviewPlot->isAncestorOf(overviewTitleStatus) &&
+                !temperatureOverview->findChild<QWidget *>(QStringLiteral("temperatureOverviewValueOverlay")),
+            "temperature overview exposes title status values without an overlay on the plot");
     require(overviewPlot->height() == 144,
             "temperature overview keeps its trend plot at the compact fixed height");
     const QString targetLegendNumberColor = VaporView::appThemeColor(
@@ -294,9 +293,9 @@ int main(int argc, char **argv)
         VaporView::isDarkThemeEnabled()).name(QColor::HexRgb);
     require(overviewValuePills.at(0)->textFormat() == Qt::RichText &&
                 overviewValuePills.at(1)->textFormat() == Qt::RichText &&
-                overviewValuePills.at(0)->parentWidget() == overviewValueOverlay &&
-                overviewValuePills.at(1)->parentWidget() == overviewValueOverlay,
-            "temperature overview value pills use one-line rich text inside the plot overlay");
+                overviewValuePills.at(0)->parentWidget() == overviewTitleStatus &&
+                overviewValuePills.at(1)->parentWidget() == overviewTitleStatus,
+            "temperature overview title status uses one-line rich text");
     require(overviewValuePills.at(0)->property("displayText").toString() == QStringLiteral("目标 --- ℃") &&
                 overviewValuePills.at(1)->property("displayText").toString() == QStringLiteral("当前 --- ℃") &&
                 overviewValuePills.at(0)->property("legendNumberColor").toString() == targetLegendNumberColor &&
@@ -321,13 +320,11 @@ int main(int argc, char **argv)
                 overviewValuePills.at(1)->text().contains(
                     QStringLiteral("<span style=\"color: %1;\">24.75000</span>").arg(currentLegendNumberColor)),
             "temperature overview value pills format five-decimal values with matching legend colors");
-    overviewPlot->repaint();
-    const QRect overlayRect = overviewValueOverlay->geometry();
-    require(overlayRect.left() > overviewPlot->property("plotAreaLeft").toDouble() &&
-                overlayRect.top() > overviewPlot->property("plotAreaTop").toDouble() &&
-                overlayRect.right() <= std::floor(overviewPlot->property("plotAreaRight").toDouble()) &&
-                overlayRect.bottom() <= std::floor(overviewPlot->property("plotAreaBottom").toDouble()),
-            "temperature overview value overlay stays clear of the plot axes");
+    overviewTitleStatus->adjustSize();
+    overviewTitleStatus->layout()->activate();
+    require(overviewValuePills.at(0)->geometry().right() < overviewValuePills.at(1)->geometry().left() &&
+                overviewValuePills.at(0)->geometry().center().y() == overviewValuePills.at(1)->geometry().center().y(),
+            "temperature overview title values occupy one horizontal row");
     delete temperatureOverview;
 
     std::cout << "segmented_switch_button_test passed\n";
