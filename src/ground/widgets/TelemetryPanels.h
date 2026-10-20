@@ -418,6 +418,7 @@ private:
     std::array<ChannelWidgets, 2> channels_{};
     std::array<QVector<double>, 2> measured_temperature_history_{};
     std::array<QVector<double>, 2> measured_temperature_time_history_{};
+    std::chrono::steady_clock::time_point last_temperature_timestamp_{};
     std::array<double, 2> target_temperature_by_channel_{
         std::numeric_limits<double>::quiet_NaN(),
         std::numeric_limits<double>::quiet_NaN()};

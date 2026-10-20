@@ -1333,6 +1333,9 @@ public:
         latest_data_ = sample;
         if (sample.valid)
         {
+            // UI refreshes can redisplay the same cached device sample many times.
+            const bool appendSample = sample.timestamp == std::chrono::steady_clock::time_point{} ||
+                sample.timestamp != last_temperature_timestamp_;
             const auto sampleTimestamp = sample.timestamp == std::chrono::steady_clock::time_point{}
                 ? std::chrono::steady_clock::now()
                 : sample.timestamp;
@@ -1358,7 +1361,7 @@ public:
                     target_temperature_by_channel_[i] = target;
                 }
                 const double measured = sample.channels[i].measured_temperature_c;
-                if (std::isfinite(measured))
+                if (std::isfinite(measured) && appendSample)
                 {
                     auto& history = measured_temperature_history_[i];
                     auto& timeHistory = measured_temperature_time_history_[i];
@@ -1371,6 +1374,7 @@ public:
                     }
                 }
             }
+            last_temperature_timestamp_ = sample.timestamp;
         }
         refreshChannelUi();
     }
@@ -1702,6 +1706,7 @@ private:
         std::numeric_limits<double>::quiet_NaN(),
         std::numeric_limits<double>::quiet_NaN()};
     std::chrono::steady_clock::time_point temperature_history_origin_{};
+    std::chrono::steady_clock::time_point last_temperature_timestamp_{};
     double temperature_history_origin_local_seconds_ = 0.0;
     std::function<void(quint8, bool)> output_enabled_callback_;
     int selected_channel_index_ = 0;
@@ -4251,6 +4256,9 @@ void TemperatureControllerPanel::updateData(const VaporView::TemperatureControll
     if (controllerData.valid)
     {
         const double sampleTimeSeconds = localClockSeconds();
+        // Keep acquisition history independent of the main window refresh rate.
+        const bool appendSample = controllerData.timestamp == std::chrono::steady_clock::time_point{} ||
+            controllerData.timestamp != last_temperature_timestamp_;
         for (int i = 0; i < static_cast<int>(measured_temperature_history_.size()); ++i)
         {
             const double target = controllerData.channels[i].target_temperature_c;
@@ -4259,7 +4267,7 @@ void TemperatureControllerPanel::updateData(const VaporView::TemperatureControll
                 target_temperature_by_channel_[i] = target;
             }
             const double measured = controllerData.channels[i].measured_temperature_c;
-            if (std::isfinite(measured))
+            if (std::isfinite(measured) && appendSample)
             {
                 auto& history = measured_temperature_history_[i];
                 auto& timeHistory = measured_temperature_time_history_[i];
@@ -4272,6 +4280,7 @@ void TemperatureControllerPanel::updateData(const VaporView::TemperatureControll
                 }
             }
         }
+        last_temperature_timestamp_ = controllerData.timestamp;
     }
     updateChannelData(0, controllerData.channels[0], controllerData.valid);
     updateChannelData(1, controllerData.channels[1], controllerData.valid);
