@@ -1005,19 +1005,22 @@ void MainWindow::receiveFpgaMeasurements(const VaporView::FpgaSensor::AdaptedMea
             state_->current_epsilon_ = *m.epsilon;
             state_->current_epsilon_.timestamp = now;
             state_->fpga_epsilon_status_fresh_ = m.epsilonStatusFresh;
-            const int id = r.epsilonMessageId.value_or(0);
-            const bool positionPacket = id == 0x50 || id == 0x5c || id == 0x59;
-            const bool velocityPacket = id == 0x42 || id == 0x50 || id == 0x5f || id == 0x59;
-            if (positionPacket) { state_->fpga_position_valid_ = m.navigationValid; state_->fpga_position_time_ = now; }
-            if (velocityPacket) { state_->fpga_velocity_valid_ = m.navigationValid && (id != 0x59 || m.epsilon->gnss_velocity_valid); state_->fpga_velocity_time_=now; }
-            if (!m.epsilonStatusFresh && id != 0x59) { state_->fpga_position_valid_=false; state_->fpga_velocity_valid_=false; }
+#ifdef VAPORVIEW_HAS_OSGEARTH
+            const auto previousPositionTime=state_->fpga_position_time_;
+#endif
+            state_->fpga_position_valid_=m.epsilonPositionTime.has_value();
+            state_->fpga_velocity_valid_=m.epsilonVelocityTime.has_value();
+            state_->fpga_position_time_=m.epsilonPositionTime.value_or(std::chrono::steady_clock::time_point{});
+            state_->fpga_velocity_time_=m.epsilonVelocityTime.value_or(std::chrono::steady_clock::time_point{});
             // Packet-specific attitude/position flags must not invalidate the
             // accumulated device snapshot when status, time or IMU packets arrive.
             state_->current_epsilon_.valid = valid && m.epsilon->valid;
             if (!m.epsilonStatusFresh) state_->current_epsilon_.filter_status_bits &= ~quint16(0xf);
             if (!state_->fpga_position_valid_) { state_->current_epsilon_.latitude_deg=std::numeric_limits<double>::quiet_NaN(); state_->current_epsilon_.longitude_deg=std::numeric_limits<double>::quiet_NaN(); state_->current_epsilon_.height_m=std::numeric_limits<double>::quiet_NaN(); }
+            if (!state_->fpga_velocity_valid_) state_->current_epsilon_.vel_n_mps=state_->current_epsilon_.vel_e_mps=state_->current_epsilon_.vel_d_mps=std::numeric_limits<double>::quiet_NaN();
 #ifdef VAPORVIEW_HAS_OSGEARTH
-            if (positionPacket && m.navigationValid) maybeForwardMap3DSample(state_->current_epsilon_, VaporView::Ground::Session::GroundRecordingService::currentTimestampUs());
+            if (state_->fpga_position_valid_ && state_->fpga_position_time_!=previousPositionTime)
+                maybeForwardMap3DSample(state_->current_epsilon_, VaporView::Ground::Session::GroundRecordingService::currentTimestampUs());
 #endif
         }
         else if (!valid) state_->current_epsilon_ = VaporView::EpsilonData{};

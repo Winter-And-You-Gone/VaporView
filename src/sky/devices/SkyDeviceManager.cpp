@@ -728,11 +728,17 @@ void SkyDeviceManager::acceptFpgaMeasurement(const FpgaSensor::AdaptedMeasuremen
         setState(SkyDeviceId::Lidar, valid ? DeviceState::Connected : DeviceState::Error); handleLidarData(data);
     } else if (r.kind == FpgaSensor::SensorKind::Epsilon) {
         EpsilonData data = m.epsilon.value_or(EpsilonData{});
-        const int id = r.epsilonMessageId.value_or(0);
-        if (id==0x50 || id==0x5c || id==0x59) { fpga_position_valid_=m.navigationValid; fpga_position_time_us_=nowUs(); }
-        if (id==0x42 || id==0x50 || id==0x5f || id==0x59) { fpga_velocity_valid_=m.navigationValid && (id!=0x59 || data.gnss_velocity_valid); fpga_velocity_time_us_=nowUs(); }
-        if (!m.epsilonStatusFresh && id!=0x59) fpga_position_valid_=fpga_velocity_valid_=false;
-        data.timestamp=timestamp; data.valid=valid && data.valid && (m.attitudeValid || m.navigationValid);
+        fpga_position_valid_=m.epsilonPositionTime.has_value();
+        fpga_velocity_valid_=m.epsilonVelocityTime.has_value();
+        const auto measurementTimeUs=[&](const auto& time) -> quint64 {
+            if(!time)return 0;
+            const auto age=std::chrono::duration_cast<std::chrono::microseconds>(timestamp-*time).count();
+            const auto now=nowUs();
+            return age>=0 && quint64(age)<now?now-quint64(age):0;
+        };
+        fpga_position_time_us_=measurementTimeUs(m.epsilonPositionTime);
+        fpga_velocity_time_us_=measurementTimeUs(m.epsilonVelocityTime);
+        data.timestamp=timestamp; data.valid=valid && data.valid;
         if (!m.epsilonStatusFresh) data.filter_status_bits &= ~quint16(0xf);
         if (!fpga_position_valid_) data.latitude_deg=data.longitude_deg=data.height_m=std::numeric_limits<double>::quiet_NaN();
         if (!fpga_velocity_valid_) data.vel_n_mps=data.vel_e_mps=data.vel_d_mps=std::numeric_limits<float>::quiet_NaN();

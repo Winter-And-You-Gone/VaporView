@@ -40,7 +40,8 @@ void protocol()
     check(!transport->diagnostic().hardwareBackendAvailable && transport->diagnostic().fields.value("mode")=="simulation",
           "transport truthfully identifies simulation");
     FpgaVlp1::StreamParser parser;FpgaSensor::FpgaSensorAdapter adapter;FpgaWave::Assembler assembler;
-    QSet<quint16> sensors,waves;bool bmp=false,navigation=false;
+    QSet<quint16> sensors,waves;QSet<quint8> epsilonIds;EpsilonData epsilonData;
+    bool bmp=false,navigation=false;
     const auto collect=[&] {
         QByteArray b;const auto count=transport->read(b,16384);check(count>=0&&count<=503,"bounded fragmented reads");
         for(const auto& f:parser.feed(reinterpret_cast<const std::uint8_t*>(b.constData()),b.size())) {
@@ -51,7 +52,10 @@ void protocol()
                 check(sample.reading.validity.structure && sample.reading.validity.crc,"valid TLV or FDILink wire payload");
                 if(sample.reading.validity.measurement)sensors.insert(f.header.source);
                 if(f.header.source==0x43)bmp=sample.reading.pressurePa.has_value();
-                if(sample.epsilon)navigation|=sample.navigationValid&&sample.utcValid;
+                if(sample.epsilon) {
+                    epsilonIds.insert(*sample.reading.epsilonMessageId);epsilonData=*sample.epsilon;
+                    navigation|=sample.navigationValid&&sample.utcValid;
+                }
             } else {
                 const auto wave=assembler.accept({f.header.source,f.header.message,f.header.flags,
                     f.header.cycleId,f.header.timestamp,bytes(f.payload)});
@@ -59,8 +63,27 @@ void protocol()
             }
         }
     };
-    wait([&]{collect();return sensors.size()==8&&sensors.contains(0x48)&&waves.contains(0x30)&&waves.contains(0x31)&&bmp&&navigation;},
+    wait([&]{collect();return sensors.size()==8&&sensors.contains(0x48)&&waves.contains(0x30)&&waves.contains(0x31)&&bmp&&navigation
+        &&epsilonIds.size()==14&&epsilonData.ecef_packet_rate_hz>0;},
          "eight sensors including RD105, calibrated BMP and valid EPSILON navigation traverse the actual decoder");
+    check(epsilonIds==QSet<quint8>({0x39,0x40,0x41,0x42,0x50,0x51,0x53,0x59,0x5a,0x5c,0x5d,0x5f,0x63,0x64}),
+        "all supported core EPSILON navigation messages traverse real FDILink frames");
+    check(epsilonData.device_info_valid&&epsilonData.hardware_name=="EPSILON2"&&epsilonData.firmware_name=="SIM",
+        "fixed-width device identity does not overlap the firmware version");
+    check(epsilonData.latitude_deg>22.29&&epsilonData.latitude_deg<22.31&&epsilonData.longitude_deg>114.16
+        &&epsilonData.longitude_deg<114.18&&std::abs(epsilonData.height_m+epsilonData.ned_d_m-35)<1e-5,
+        "LLH and local NED share one simulated trajectory");
+    check(epsilonData.gnss_velocity_valid&&epsilonData.gnss_time_valid&&epsilonData.gnss_tilt_valid
+        &&epsilonData.heading_valid&&!epsilonData.floating_ambiguity_heading&&epsilonData.diff_age_s>0,
+        "RTK fixed simulator supplies truthful velocity, time, heading and correction-age fields");
+    check(epsilonData.pressure_altitude_m>34&&epsilonData.pressure_pa>100000&&epsilonData.imu_temp_c>23
+        &&std::hypot(epsilonData.mag_x_mg,epsilonData.mag_y_mg,epsilonData.mag_z_mg)>400
+        &&std::abs(epsilonData.body_vel_x_mps)>0.4&&std::abs(epsilonData.ned_acc_e_mps2)>0.01,
+        "IMU environment, magnetic field, body motion and navigation acceleration are populated");
+    check(epsilonData.attitude_source_count==3&&epsilonData.attitude_delta_max_deg<0.0001
+        &&std::abs(epsilonData.quat_w*epsilonData.quat_w+epsilonData.quat_x*epsilonData.quat_x
+            +epsilonData.quat_y*epsilonData.quat_y+epsilonData.quat_z*epsilonData.quat_z-1)<1e-6,
+        "all attitude sources agree and the quaternion is normalized");
     // Invalid register access returns an error instead of silently accepting it.
     const auto request=bytes(FpgaVlp1::buildReadReg(777,0xdeac,1));
     transport->write(request.left(7));transport->write(request.mid(7));bool rejected=false;
@@ -176,12 +199,17 @@ void processTest()
     child.process.setProcessChannelMode(QProcess::MergedChannels);
     child.process.start(executable,{"--sky-config",directory.filePath("sky.json"),"--telemetry-tcp-port",QString::number(port),"--ipc-port","0"});
     check(child.process.waitForStarted(5000),"standalone simulator starts");
-    RemoteSkyController remote;QJsonObject status;QSet<quint16> sensors,waves;bool basic=false,fullCyclePeakReceived=false;QMap<quint32,DeviceOperationResponse> replies;
+    RemoteSkyController remote;QJsonObject status;QSet<quint16> sensors,waves;
+    bool basic=false,position=false,fullCyclePeakReceived=false;QMap<quint32,DeviceOperationResponse> replies;
     QObject::connect(&remote,&RemoteSkyController::fpgaStatusUpdated,[&](const auto& s){status=s;});
     QObject::connect(&remote,&RemoteSkyController::fpgaSensorUpdated,[&](const auto& s){sensors.insert(s.source);});
     QObject::connect(&remote,&RemoteSkyController::fpgaWaveformUpdated,[&](const auto& s){waves.insert(s.source);
         fullCyclePeakReceived |= s.source>=0x30 && s.hasFullCyclePeak && std::isfinite(s.fullCyclePeak);});
-    QObject::connect(&remote,&RemoteSkyController::basicTelemetryUpdated,[&](const auto& b){basic|=(b.validity_flags&BasicHasPressure)&&std::isfinite(b.pressure_hpa);});
+    QObject::connect(&remote,&RemoteSkyController::basicTelemetryUpdated,[&](const auto& b){
+        basic|=(b.validity_flags&BasicHasPressure)&&std::isfinite(b.pressure_hpa);
+        position|=(b.validity_flags&BasicHasPosition)&&(b.validity_flags&BasicHasNedVelocity)
+            &&b.latitude_deg>22.29&&b.latitude_deg<22.31&&b.longitude_deg>114.16&&b.longitude_deg<114.18&&b.height_m>34;
+    });
     QObject::connect(&remote,&RemoteSkyController::deviceOperationResponseReceived,[&](const auto& response){replies.insert(response.request_id,response);});
     events(300);check(remote.openTcp("127.0.0.1",port),"Ground controller connects to the real simulator process");
     wait([&]{check(child.process.state()!=QProcess::NotRunning,"simulator stays running");return status.value("ready").toBool()&&!status.value("busy").toBool();},
@@ -195,7 +223,8 @@ void processTest()
     };
     for(quint16 source:{0x40,0x41,0x42,0x43,0x44,0x45,0x46,0x48})operation({{"op","sensor"},{"source",source},{"enabled",true}});
     operation({{"op","acquisition"},{"enabled",true}});
-    wait([&]{return sensors.size()==8&&waves.size()==2&&basic;},"explicit startup yields all sensors, waveforms and physical telemetry");
+    wait([&]{return sensors.size()==8&&waves.size()==2&&basic&&position;},
+        "explicit startup yields sensors, waveforms and valid EPSILON position/velocity through SkyCore telemetry");
     operation({{"op","temperature"},{"celsius",32.5}});
     operation({{"op","raw"},{"enabled",true}});
     wait([&]{return waves.contains(0x20)&&waves.contains(0x21);},"RAW previews cross process and telemetry boundaries");

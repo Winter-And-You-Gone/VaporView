@@ -823,6 +823,18 @@ static void localSimulatorRouting()
     check(navigation&&navigationPanel,"local navigation status widgets exist");
     check(waitUntil([&]{navigation->refreshStatus();return navigationPanel->snapshot().navigationDataAvailable
         &&navigationPanel->snapshot().gnssFixCode==6;}),"local simulator supplies a fresh GNSS fix");
+    auto *epsilonPanel=window.findChild<QWidget*>("epsilonPanel");
+    check(waitUntil([&]{
+        navigation->refreshStatus();const auto& sample=navigationPanel->snapshot();
+        bool latitude=false,longitude=false;
+        for(auto *label:epsilonPanel->findChildren<QLabel*>("valueLabel")) {
+            bool numeric=false;const double value=label->text().toDouble(&numeric);
+            latitude|=numeric&&value>22.29&&value<22.31;longitude|=numeric&&value>114.16&&value<114.18;
+        }
+        return sample.positionAvailable&&sample.speedAvailable&&sample.attitudeAvailable
+            &&sample.latitudeDeg>22.29&&sample.latitudeDeg<22.31&&sample.heightM>34
+            &&latitude&&longitude;
+    }),"coalesced simulator packets populate home LLH plus navigation position, speed and attitude");
     int navigationChanges=0;
     QObject::connect(&logService,&VaporView::LogService::recordPublished,&window,[&](const VaporView::LogRecord& record) {
         if(record.fields.value("event")=="navigation_correction_status_changed")++navigationChanges;

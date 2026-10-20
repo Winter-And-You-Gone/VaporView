@@ -451,38 +451,66 @@ private:
     void navigation(double seconds, quint64 ticks)
     {
         const auto now = QDateTime::currentMSecsSinceEpoch();
-        const double latitude = (22.3 + 0.0001*std::sin(seconds*0.05))*pi/180;
-        const double longitude = (114.17 + 0.0001*std::cos(seconds*0.05))*pi/180;
-        const float yaw = float(std::fmod(seconds*0.02,2*pi));
-        QByteArray identity(40,0); at<quint32>(identity,0,0x53494d31); at<quint32>(identity,16,1);
-        identity.replace(20,11,QByteArrayLiteral("EPSILON_SIM")); at<quint32>(identity,28,1);
+        const double phase=seconds*0.05, originLat=22.3*pi/180;
+        const double north=10*std::sin(phase), east=10*(1-std::cos(phase)), down=-0.5*std::sin(phase);
+        const double latitude=originLat+north/6378137.0;
+        const double longitude=114.17*pi/180+east/(6378137.0*std::cos(originLat)), height=35-down;
+        const std::array<double,3> velocity{0.5*std::cos(phase),0.5*std::sin(phase),-0.025*std::cos(phase)};
+        const std::array<double,3> acceleration{-0.025*std::sin(phase),0.025*std::cos(phase),0.00125*std::sin(phase)};
+        const double roll=0.02, pitch=-0.01, yaw=std::fmod(phase,2*pi);
+        const double cr=std::cos(roll),sr=std::sin(roll),cp=std::cos(pitch),sp=std::sin(pitch),cy=std::cos(yaw),sy=std::sin(yaw);
+        const auto body=[&](const std::array<double,3>& v) -> std::array<double,3> {
+            return {cp*cy*v[0]+cp*sy*v[1]-sp*v[2],
+                (sr*sp*cy-cr*sy)*v[0]+(sr*sp*sy+cr*cy)*v[1]+sr*cp*v[2],
+                (cr*sp*cy+sr*sy)*v[0]+(cr*sp*sy-sr*cy)*v[1]+cr*cp*v[2]};
+        };
+        const auto bodyVelocity=body(velocity), bodyAcceleration=body(acceleration);
+        const auto imuAcceleration=body({acceleration[0],acceleration[1],acceleration[2]-9.81});
+        const auto magnetic=body({200,30,400});
+        const std::array<double,3> angularVelocity{-sp*0.05,sr*cp*0.05,cr*cp*0.05};
+        const double chr=std::cos(roll/2),shr=std::sin(roll/2),chp=std::cos(pitch/2),shp=std::sin(pitch/2),chy=std::cos(yaw/2),shy=std::sin(yaw/2);
+        const std::array<double,4> quaternion{chr*chp*chy+shr*shp*shy,shr*chp*chy-chr*shp*shy,
+            chr*shp*chy+shr*chp*shy,chr*chp*shy-shr*shp*chy};
+        const auto vector=[&](QByteArray& packet,int offset,const auto& values) {
+            for(int i=0;i<int(values.size());++i)at<float>(packet,offset+i*4,float(values[i]));
+        };
+        const double pressure=101325*std::pow(1-height/44330.0,5.255), temperature=24+0.5*std::sin(seconds*0.1);
+        QByteArray identity(40,0);
+        for(int i=0;i<4;++i)at<quint32>(identity,i*4,0x53494d31u+quint32(i));
+        at<quint32>(identity,16,1);
+        identity.replace(20,8,QByteArrayLiteral("EPSILON2")); at<quint32>(identity,28,1);
         identity.replace(32,3,QByteArrayLiteral("SIM")); epsilon(0x39,identity,ticks);
         QByteArray state(102,0); at<quint16>(state,2,0x6f); at<quint32>(state,6,quint32(now/1000));
         at<quint32>(state,10,quint32(now%1000)*1000); at<double>(state,14,latitude); at<double>(state,22,longitude);
-        at<double>(state,30,35); at<float>(state,38,0.5f); at<float>(state,58,-9.81f); at<float>(state,74,yaw);
+        at<double>(state,30,height); vector(state,38,velocity); vector(state,50,bodyAcceleration);
+        at<float>(state,62,9.81f); vector(state,66,std::array<double,3>{roll,pitch,yaw}); vector(state,78,angularVelocity);
         at<float>(state,90,0.03f); at<float>(state,94,0.03f); at<float>(state,98,0.05f); epsilon(0x50,state,ticks);
-        QByteArray imu(56,0); at<float>(imu,8,0.02f); at<float>(imu,20,-9.81f); at<float>(imu,36,24);
-        at<float>(imu,40,101325); at<float>(imu,44,24); at<quint64>(imu,48,ticks/100); epsilon(0x40,imu,ticks);
-        QByteArray ahrs(48,0); at<float>(ahrs,8,0.02f); at<float>(ahrs,20,yaw);
-        at<float>(ahrs,24,float(std::cos(yaw/2))); at<float>(ahrs,36,float(std::sin(yaw/2)));
+        QByteArray imu(56,0); vector(imu,0,angularVelocity); vector(imu,12,imuAcceleration); vector(imu,24,magnetic);
+        at<float>(imu,36,float(temperature)); at<float>(imu,40,float(pressure)); at<float>(imu,44,float(temperature+0.2));
+        at<quint64>(imu,48,ticks/100); epsilon(0x40,imu,ticks);
+        QByteArray ahrs(48,0); vector(ahrs,0,angularVelocity); vector(ahrs,12,std::array<double,3>{roll,pitch,yaw});
+        vector(ahrs,24,quaternion);
         at<quint64>(ahrs,40,ticks/100); epsilon(0x41,ahrs,ticks);
-        QByteArray ins(72,0); at<float>(ins,0,0.5f); at<float>(ins,24,float(seconds*0.5));
-        at<float>(ins,36,0.5f); at<quint64>(ins,64,ticks/100); epsilon(0x42,ins,ticks);
+        QByteArray ins(72,0); vector(ins,0,bodyVelocity); vector(ins,12,bodyAcceleration);
+        vector(ins,24,std::array<double,3>{north,east,down}); vector(ins,36,velocity); vector(ins,48,acceleration);
+        at<float>(ins,60,float(height)); at<quint64>(ins,64,ticks/100); epsilon(0x42,ins,ticks);
         QByteArray filter(4,0); at<quint16>(filter,2,0x6f); epsilon(0x53,filter,ticks);
         QByteArray gnss(74,0); at<quint32>(gnss,0,quint32(now/1000)); at<quint32>(gnss,4,quint32(now%1000)*1000);
-        at<double>(gnss,8,latitude); at<double>(gnss,16,longitude); at<double>(gnss,24,35);
-        at<float>(gnss,32,0.5f); at<float>(gnss,44,0.03f); at<float>(gnss,48,0.03f); at<float>(gnss,52,0.05f);
-        at<quint16>(gnss,72,0x136); epsilon(0x59,gnss,ticks);
+        at<double>(gnss,8,latitude); at<double>(gnss,16,longitude); at<double>(gnss,24,height);
+        vector(gnss,32,velocity); at<float>(gnss,44,0.03f); at<float>(gnss,48,0.03f); at<float>(gnss,52,0.05f);
+        at<float>(gnss,56,float(yaw*180/pi)); at<float>(gnss,60,8.25f); at<float>(gnss,64,0.5f);
+        at<quint16>(gnss,72,0x1b6); epsilon(0x59,gnss,ticks);
         QByteArray sats(9,0); at<float>(sats,0,0.7f); at<float>(sats,4,1.1f); sats[8]=char(24); epsilon(0x5a,sats,ticks);
-        QByteArray llh(32,0); at<double>(llh,0,latitude); at<double>(llh,8,longitude); at<double>(llh,16,35);
+        QByteArray llh(32,0); at<double>(llh,0,latitude); at<double>(llh,8,longitude); at<double>(llh,16,height);
         at<float>(llh,24,0.03f); at<float>(llh,28,0.05f); epsilon(0x5c,llh,ticks);
-        QByteArray euler(12,0); at<float>(euler,8,yaw); epsilon(0x63,euler,ticks);
+        QByteArray nedVelocity(12,0); vector(nedVelocity,0,velocity); epsilon(0x5f,nedVelocity,ticks);
+        QByteArray euler(12,0); vector(euler,0,std::array<double,3>{roll,pitch,yaw}); epsilon(0x63,euler,ticks);
         epsilon(0x64,ahrs.mid(24,16),ticks); epsilon(0x51,gnss.left(8),ticks);
         // WGS84 ECEF, kept on the same simulated trajectory as LLH.
         const double n = 6378137.0/std::sqrt(1-0.00669437999014*std::pow(std::sin(latitude),2));
-        QByteArray ecef(24,0); at<double>(ecef,0,(n+35)*std::cos(latitude)*std::cos(longitude));
-        at<double>(ecef,8,(n+35)*std::cos(latitude)*std::sin(longitude));
-        at<double>(ecef,16,(n*(1-0.00669437999014)+35)*std::sin(latitude)); epsilon(0x5d,ecef,ticks);
+        QByteArray ecef(24,0); at<double>(ecef,0,(n+height)*std::cos(latitude)*std::cos(longitude));
+        at<double>(ecef,8,(n+height)*std::cos(latitude)*std::sin(longitude));
+        at<double>(ecef,16,(n*(1-0.00669437999014)+height)*std::sin(latitude)); epsilon(0x5d,ecef,ticks);
     }
     void waveform(int ch, bool raw, double seconds, quint64 ticks)
     {

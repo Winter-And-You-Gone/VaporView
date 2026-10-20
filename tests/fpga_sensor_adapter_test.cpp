@@ -71,6 +71,28 @@ int main()
     require(!adapter.accept(eps(0x50,QByteArray(101,char(0)),1002)).epsilon,"SYS_STATE exact length");
     require(!adapter.accept(eps(0x7f,QByteArray(4,char(0)),1003)).epsilon,"unknown ID is retained raw only");
 
+    FpgaSensorAdapter coalesced;
+    const auto position=coalesced.accept(eps(0x50,state,1000));
+    auto imuOnly=coalesced.accept(eps(0x40,QByteArray(56,0),1001));
+    require(!imuOnly.navigationValid && imuOnly.epsilonPositionTime==position.epsilonPositionTime
+        && imuOnly.epsilonVelocityTime==position.epsilonVelocityTime && imuOnly.epsilonPositionTime,
+        "coalescing an IMU packet retains independently valid position and velocity times");
+    QByteArray status(4,0);at<quint16>(status,2,0x6f);
+    coalesced.accept(eps(0x53,status,200001000));
+    imuOnly=coalesced.accept(eps(0x40,QByteArray(56,0),200001001));
+    require(imuOnly.epsilonStatusFresh && !imuOnly.epsilonPositionTime && !imuOnly.epsilonVelocityTime,
+        "fresh status or IMU cannot revive expired position and velocity");
+    coalesced.accept(eps(0x50,state,200001002));
+    require(!coalesced.accept(eps(0x53,QByteArray(4,0),200001003)).epsilonPositionTime,
+        "filter initialization loss invalidates accumulated navigation");
+    QByteArray gnss(74,0);at<double>(gnss,8,0.5);at<double>(gnss,16,-1.0);at<quint16>(gnss,72,0x126);
+    auto rawPosition=coalesced.accept(eps(0x59,gnss,200001004));
+    require(rawPosition.epsilonPositionTime && !rawPosition.epsilonVelocityTime,
+        "raw GNSS position without a velocity-valid bit cannot authorize speed");
+    coalesced.resetRate(0x42);
+    require(!coalesced.accept(eps(0x40,QByteArray(56,0),200001005)).epsilonPositionTime,
+        "individual EPSILON restart clears old accumulated navigation");
+
     QByteArray ai; put16(ai,2); put16(ai,13);
     const quint16 tags[]={0x460,0x461,0x462,0x463,0x464,0x465,0x466,0x467,1,2,4,0x14,0x15};
     const qint32 vals[]={-25,400,400,500,0x20,1,0x200,0x10000,1,0x2000120,12,40000000,-2500000};
@@ -152,6 +174,8 @@ int main()
         fast=rates.accept(packet);
     }
     require(fast.sampleRateHz==200.0,"EPSILON frequency counts raw packets before presentation coalescing");
+    require(fast.epsilon->ahrs_packet_rate_hz==200.0 && fast.epsilon->imu_packet_rate_hz==0.0,
+        "EPSILON packet-specific rates count their own IDs before presentation coalescing");
     // Several independent EPSILON packets may share a tick, as in a batched source.
     auto packet=eps(0x41,ahrs,origin+100000000);packet.flags=1;
     rates.accept(packet);

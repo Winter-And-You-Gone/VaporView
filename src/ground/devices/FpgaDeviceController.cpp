@@ -1045,6 +1045,7 @@ void FpgaDeviceController::flushPresentation()
             value.sampleRateHz=0.0;
             value.reading.validity.measurement=false; value.reading.validity.deviceOnline=false;
             if (value.epsilon) value.epsilon->valid=false;
+            value.epsilonPositionTime.reset();value.epsilonVelocityTime.reset();
             value.attitudeValid=value.navigationValid=value.utcValid=false;
             if (value.ai8Live) value.ai8Live->valid=false;
             expiredReadings_.insert(i.key());

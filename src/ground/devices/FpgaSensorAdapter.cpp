@@ -61,15 +61,15 @@ void FpgaSensorAdapter::reset()
     bmpCalibration_.clear();
     epsilon_ = EpsilonData{};
     epsilonStatusTimestamp_.reset();
+    epsilonPosition_={};epsilonVelocity_={};
     ai8ScanValues_={};ai8ScanTicks_={};
 }
 
-double FpgaSensorAdapter::updateRate(const Reading &reading)
+double FpgaSensorAdapter::updateRate(const Reading &reading, quint16 key)
 {
     // Count before presentation coalesces readings. FPGA ticks describe the
     // data cadence even when USB delivers a burst or a replay runs faster.
     if (!(reading.flags & 1)) return 0.0;
-    const quint16 key=reading.ai8Channel?quint16(0x4600+*reading.ai8Channel):reading.source;
     auto it = rates_.find(key);
     if (it == rates_.end() || reading.timestamp < it->last
         || reading.timestamp - it->last > 500000000) {
@@ -169,6 +169,7 @@ AdaptedMeasurements FpgaSensorAdapter::accept(const Reading &input)
         {
             epsilon_ = EpsilonData{};
             epsilonStatusTimestamp_.reset();
+            epsilonPosition_={};epsilonVelocity_={};
         }
         // Raw FPGA ticks are a different epoch and remain in Reading.timestamp.
         // Business-model freshness uses the host's monotonic clock.
@@ -201,6 +202,36 @@ AdaptedMeasurements FpgaSensorAdapter::accept(const Reading &input)
         out.utcValid = (id == 0x50 || id == 0x51 || id == 0x59)
             && (id == 0x59 ? epsilon_.gnss_time_valid : out.utcInitialized)
             && epsilon_.utc_unix_s >= 946684800 && epsilon_.utc_microseconds < 1000000;
+        const auto remember = [&](NavigationSample& sample, bool valid) {
+            sample={input.timestamp,epsilon_.timestamp,valid,id!=0x59};
+        };
+        if(id==0x50 || id==0x5c || id==0x59) remember(epsilonPosition_,out.navigationValid);
+        if(id==0x42 || id==0x50 || id==0x5f || id==0x59)
+            remember(epsilonVelocity_,out.navigationValid && (id!=0x59 || epsilon_.gnss_velocity_valid));
+        const auto validTime = [&](const NavigationSample& sample)
+            -> std::optional<std::chrono::steady_clock::time_point> {
+            if(!sample.valid || !sample.tick || input.timestamp<*sample.tick
+                || input.timestamp-*sample.tick>epsilonStatusMaxAgeTicks_) return std::nullopt;
+            if(sample.requiresStatus ? !out.navigationInitialized || (epsilon_.system_status_bits&1)
+                : epsilon_.gnss_fix_code<2 || epsilon_.gnss_fix_code>9) return std::nullopt;
+            return sample.received;
+        };
+        out.epsilonPositionTime=validTime(epsilonPosition_);
+        out.epsilonVelocityTime=validTime(epsilonVelocity_);
+        const double rate=updateRate(input,quint16(0x4200+id));
+        switch(id) {
+        case 0x40: epsilon_.imu_packet_rate_hz=rate;break;
+        case 0x41: epsilon_.ahrs_packet_rate_hz=rate;break;
+        case 0x42: epsilon_.insgps_packet_rate_hz=rate;break;
+        case 0x50: epsilon_.sys_state_packet_rate_hz=rate;break;
+        case 0x53: epsilon_.status_packet_rate_hz=rate;break;
+        case 0x59: epsilon_.raw_gnss_packet_rate_hz=rate;break;
+        case 0x5a: epsilon_.satellite_packet_rate_hz=rate;break;
+        case 0x5c: epsilon_.geodetic_packet_rate_hz=rate;break;
+        case 0x5d: epsilon_.ecef_packet_rate_hz=rate;break;
+        case 0x63: epsilon_.euler_orien_packet_rate_hz=rate;break;
+        case 0x64: epsilon_.quat_orien_packet_rate_hz=rate;break;
+        }
         epsilon_.valid = true; // A decoded packet; the separate flags describe each measurement.
         epsilon_.last_packet_id = id;
         epsilon_.last_serial_number = input.epsilonSequence.value_or(0);
@@ -211,7 +242,7 @@ AdaptedMeasurements FpgaSensorAdapter::accept(const Reading &input)
     const bool sample = input.pressureMilliPa || input.bmpPressureRaw || input.bmpTemperatureRaw
         || (input.temperatureC && input.humidityPct) || input.distanceMm || out.epsilon
         || (out.ai8 && out.ai8->online && !(out.ai8->deviceStatus & 0x1ffe)) || input.rd105ActualMicroC;
-    if (sample) out.sampleRateHz = updateRate(input);
+    if (sample) out.sampleRateHz = updateRate(input,input.ai8Channel?quint16(0x4600+*input.ai8Channel):input.source);
     return out;
 }
 } // namespace VaporView::FpgaSensor

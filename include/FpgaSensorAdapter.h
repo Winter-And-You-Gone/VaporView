@@ -43,6 +43,9 @@ struct AdaptedMeasurements
     bool attitudeValid = false;
     bool navigationValid = false;
     bool utcValid = false;
+    // Valid measurement times survive coalescing with unrelated EPSILON packets.
+    std::optional<std::chrono::steady_clock::time_point> epsilonPositionTime;
+    std::optional<std::chrono::steady_clock::time_point> epsilonVelocityTime;
 };
 
 class FpgaSensorAdapter
@@ -55,6 +58,10 @@ public:
     void reset();
     void resetRate(quint16 source) {
         rates_.remove(source);
+        if(source==0x42) {
+            epsilon_={};epsilonStatusTimestamp_.reset();epsilonPosition_={};epsilonVelocity_={};
+            for(int id=0;id<256;++id)rates_.remove(quint16(0x4200+id));
+        }
         if(source==0x46) {for(int i=1;i<=8;++i)rates_.remove(quint16(0x4600+i));ai8ScanValues_={};ai8ScanTicks_={};}
     }
     void setAi8Channel(int channel) { ai8Channel_ = channel; }
@@ -64,11 +71,18 @@ private:
         quint64 start = 0, last = 0, count = 0;
         double hz = 0.0;
     };
-    double updateRate(const Reading &reading);
+    double updateRate(const Reading &reading, quint16 key);
+    struct NavigationSample {
+        std::optional<quint64> tick;
+        std::chrono::steady_clock::time_point received{};
+        bool valid = false;
+        bool requiresStatus = true;
+    };
     QMap<quint16, RateWindow> rates_;
     QByteArray bmpCalibration_;
     EpsilonData epsilon_;
     std::optional<quint64> epsilonStatusTimestamp_;
+    NavigationSample epsilonPosition_, epsilonVelocity_;
     quint64 epsilonStatusMaxAgeTicks_;
     int ai8Channel_;
     std::array<std::optional<double>,8> ai8ScanValues_;
