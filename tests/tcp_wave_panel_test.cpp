@@ -549,6 +549,25 @@ void testPeakPlotModeSwitch()
     require(waitUntil([&]{return !mode->switchAnimationRunning();}),"home capsule restores its selected segment");
 }
 
+void testNormalizedWaveformGapsRender()
+{
+    TcpWavePanel panel;panel.setFpgaMode(true);panel.resize(1500,900);panel.show();
+    panel.setFpgaWaveform(0x30,{{1,1,1,1,1}},{"H2/H1"},"normalized",5);
+    QApplication::processEvents();
+    auto *plot=panel.findChild<QWidget*>("tcpWaveHarmonicPlot");
+    const auto connected=plot->grab().toImage();
+    const double invalid=std::numeric_limits<double>::quiet_NaN();
+    panel.setFpgaWaveform(0x30,{{1,1,invalid,1,1}},{"H2/H1"},"normalized",5);
+    const auto gap=plot->grab().toImage();
+    const QRect center(connected.width()/2-3,0,6,connected.height());
+    require(connected.copy(center)!=gap.copy(center),"invalid normalized samples visibly break the waveform instead of joining across the gap");
+    panel.setFpgaWaveform(0x30,{{invalid,invalid,invalid,invalid,invalid}},{"H2/H1"},"normalized",5);
+    require(plot->grab().toImage()!=gap,"all-invalid normalized waveforms render the empty state rather than a numeric trace");
+    panel.setFpgaWaveform(0x30,{{invalid,1,1,1,1}},{"H2/H1"},"normalized",5);
+    const QRect right(connected.width()*3/4,0,6,connected.height());
+    require(plot->grab().toImage().copy(right)==connected.copy(right),"an invalid first reference does not suppress the remaining finite waveform");
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -599,10 +618,11 @@ int main(int argc, char **argv)
     }
     testRemoteSkyModeKeepsLocalEndpointText();
     testPeakPlotModeSwitch();
+    testNormalizedWaveformGapsRender();
     {
         TcpWavePanel panel;panel.setConnectionEndpoint("127.0.0.9",9901);panel.setFpgaMode(true);
         panel.setFpgaWaveform(0x20,{{1,2,3}},{"ADC"},"ADC complete",3);
-        panel.setFpgaWaveform(0x30,{{10,20,30},{40,50,60}},{"H1","H2"},"DLIA complete",3);
+        panel.setFpgaWaveform(0x30,{{10,20,30},{40,50,60},{4,2.5,2}},{"H1","H2","H2/H1"},"DLIA complete",3);
         auto *raw=panel.findChild<QWidget*>("tcpWaveRawPlot");
         auto *dlia=panel.findChild<QWidget*>("tcpWaveHarmonicPlot");
         auto *peaks=panel.findChild<QWidget*>("tcpWavePeakTrendPlot");
@@ -629,36 +649,37 @@ int main(int argc, char **argv)
         panel.setEnglish(false);
         QStringList titles;
         for(auto *label:panel.findChildren<QLabel*>("sectionTitleLabel"))titles.append(label->text());
-        require(titles.contains("波形监控")&&titles.contains("原始信号")&&titles.contains("二次谐波")
-            &&titles.contains("二次谐波峰值趋势"),"FPGA monitor uses the original title and unnormalized graph names");
+        require(titles.contains("波形监控")&&titles.contains("原始信号")&&titles.contains("归一化二次谐波")
+            &&titles.contains("归一化二次谐波峰值趋势"),"FPGA monitor names both normalized graphs explicitly");
         require(raw->property("sampleCount").toInt()==3&&dlia->property("sampleCount").toInt()==3,
             "FPGA mode renders ADC and DLIA");
         require(!raw->property("xAxisTimeMode").toBool()&&panel.testRawXAxisLabel()=="2",
             "FPGA x axis uses sample position rather than invented wall-clock time");
         auto *channel=panel.findChild<QComboBox*>("fpgaMonitorChannelCombo");
-        require(!panel.findChild<QComboBox*>("fpgaMonitorComponentCombo")&&panel.testHarmonicSamples()==QVector<float>({40,50,60}),
-            "FPGA displays H2 amplitudes directly without H1 selection or normalization");
-        panel.setFpgaSecondHarmonicPeak(0x30,1,100,60,false);
-        panel.setFpgaSecondHarmonicPeak(0x30,1,100,60,false);
+        require(!panel.findChild<QComboBox*>("fpgaMonitorComponentCombo")&&panel.testHarmonicSamples()==QVector<float>({4,2.5,2}),
+            "FPGA displays the validated normalized samples rather than raw H2 amplitudes");
+        panel.setFpgaSecondHarmonicPeak(0x30,1,100,4,false);
+        panel.setFpgaSecondHarmonicPeak(0x30,1,100,4,false);
         panel.setEnglish(true);panel.setEnglish(false);
-        require(panel.testPeakValues()==QVector<float>({60}),"duplicate cycles and language refresh do not add peaks");
+        require(panel.testPeakValues()==QVector<float>({4}),"duplicate cycles and language refresh do not add peaks");
         channel->setCurrentIndex(1);
         require(raw->property("sampleCount").toInt()==0&&dlia->property("sampleCount").toInt()==0&&peaks->property("sampleCount").toInt()==0,
             "channel switch shows only that channel's waveforms and peak history");
-        panel.setFpgaWaveform(0x31,{{1,2},{3,4},{5,6},{7,8}},{"I1","Q1","I2","Q2"},"IQ complete",2);
-        require(panel.testHarmonicSamples().size()==2&&std::abs(panel.testHarmonicSamples().first()-std::hypot(5,7))<0.0001,
-            "IQ-only format displays the second harmonic magnitude without H1 or normalization");
+        panel.setFpgaWaveform(0x31,{{1,2},{3,4},{5,6},{7,8},{std::hypot(5,7)/std::hypot(1,3),std::hypot(6,8)/std::hypot(2,4)}},
+            {"I1","Q1","I2","Q2","H2/H1"},"IQ complete",2);
+        require(panel.testHarmonicSamples().size()==2&&std::abs(panel.testHarmonicSamples().first()-std::hypot(5,7)/std::hypot(1,3))<0.0001,
+            "IQ-only format displays the normalized harmonic magnitudes");
         panel.setFpgaSecondHarmonicPeak(0x31,2,200,10,true);
         require(panel.findChild<QLabel*>("fpgaMonitorPeakInfo")->text()=="预览峰值","bounded previews are explicitly marked in the peak trend");
-        panel.setFpgaWaveform(0x31,{{},{},{},{}},{"I1","Q1","I2","Q2"},"incomplete",2);
+        panel.setFpgaWaveform(0x31,{{},{},{},{},{}},{"I1","Q1","I2","Q2","H2/H1"},"incomplete",2);
         require(dlia->property("sampleCount").toInt()==0,"invalid FPGA cycle clears the home waveform");
         panel.setFpgaSecondHarmonicPeak(0x31,3,300,std::numeric_limits<double>::quiet_NaN(),false);
         require(panel.testPeakValues().size()==2&&std::isnan(panel.testPeakValues().last()),"invalid cycles leave a gap in the trend");
         channel->setCurrentIndex(0);
-        require(panel.testPeakValues()==QVector<float>({60}),"switching back restores the independent channel trend");
+        require(panel.testPeakValues()==QVector<float>({4}),"switching back restores the independent channel trend");
         QMetaObject::invokeMethod(&panel,"onClearPeakPlotClicked");
         panel.setEnglish(true);panel.setEnglish(false);
-        panel.setFpgaSecondHarmonicPeak(0x30,1,100,60,false);
+        panel.setFpgaSecondHarmonicPeak(0x30,1,100,4,false);
         require(panel.testPeakValues().isEmpty(),"cleared peaks are not replayed by display refresh or a duplicate cycle");
         channel->setCurrentIndex(1);
         require(panel.testPeakValues().size()==2,"clearing one channel preserves the other channel's history");
@@ -678,6 +699,8 @@ int main(int argc, char **argv)
         require(!rawButton->isVisible()&&!harmonicButton->isVisible(),"direct mode hides FPGA acquisition controls");
         require(panel.host()=="127.0.0.9"&&panel.port()==9901&&raw->property("xAxisTimeMode").toBool(),
             "Direct restores the TCP endpoint and clock axis");
+        panel.injectRemoteSecondHarmonicFrame(1000,{40,50,60});panel.testFlushLiveDisplay();
+        require(panel.testHarmonicSamples()==QVector<float>({40,50,60}),"Direct TCP harmonic data is not normalized again");
     }
     std::cout << "tcp_wave_panel_test passed\n";
     return 0;

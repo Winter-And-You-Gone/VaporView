@@ -1076,6 +1076,24 @@ void testRawDataParserUsesHardwareTemperatureSourceNames()
     processEventsFor(100);
 }
 
+void testNormalizedWaveformGapsRender()
+{
+    auto *plot=VaporView::Ground::SessionUi::createSessionWavePlotWidget();plot->resize(900,180);plot->show();
+    plot->setSamples({1,1,1,1,1});
+    const auto connected=plot->grab().toImage();
+    const float invalid=std::numeric_limits<float>::quiet_NaN();
+    plot->setSamples({1,1,invalid,1,1});
+    const auto gap=plot->grab().toImage();
+    const QRect center(connected.width()/2-3,0,6,connected.height());
+    require(connected.copy(center)!=gap.copy(center),"viewer leaves a visible gap for an invalid normalization reference");
+    plot->setSamples({invalid,invalid,invalid,invalid,invalid});
+    require(plot->grab().toImage()!=gap,"viewer renders an empty state for all-invalid normalization references");
+    plot->setSamples({invalid,1,1,1,1});
+    const QRect right(connected.width()*3/4,0,6,connected.height());
+    require(plot->grab().toImage().copy(right)==connected.copy(right),"viewer bounds ignore an invalid first reference and keep finite samples visible");
+    delete plot;
+}
+
 void testFpgaWaveformSelector()
 {
     using namespace VaporView;
@@ -1097,7 +1115,8 @@ void testFpgaWaveformSelector()
     SessionViewerWindow viewer;viewer.resize(1280,800);viewer.show();
     require(viewer.openSessionPath(directory),"viewer opens FPGA waveform archive");
     auto *choice=viewer.findChild<QComboBox*>("sessionFpgaWaveformChoice");
-    require(choice && processEventsUntil(10000,[&]{return choice->count()==6 && choice->isVisible();}),"both ADC lanes and both harmonics of each DLIA lane are visible choices");
+    require(choice && processEventsUntil(10000,[&]{return choice->count()==8 && choice->isVisible();}),"both ADC lanes, raw harmonics and normalized H2 of each DLIA lane are visible choices");
+    require(choice->currentText().contains("H2/H1"),"FPGA viewer opens the normalized waveform by default");
     for(int i=0;i<choice->count();++i){choice->setCurrentIndex(i);processEventsFor(30);require(choice->currentIndex()==i,"FPGA waveform selection completes without losing its catalog");}
     viewer.close();processEventsFor(100);
 }
@@ -2737,6 +2756,7 @@ int main(int argc, char **argv)
         testRawDataParserOpenIsNonBlocking();
         testRawDataParserRejectsTruncatedFdilinkFrame();
         testRawDataParserUsesHardwareTemperatureSourceNames();
+        testNormalizedWaveformGapsRender();
         testFpgaWaveformSelector();
         testSessionViewerShowsRecoveredWaveformCatalogWarning();
         testWaveformIndexContinuesWhileGuiIsBusy();

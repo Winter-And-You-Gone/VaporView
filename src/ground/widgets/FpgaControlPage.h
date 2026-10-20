@@ -62,6 +62,7 @@ signals:
     void simulationSensorConfigurationApplied(quint16 source, const QMap<quint32, quint32> &registers);
     void waveformDisplayUpdated(quint16 source, const QVector<QVector<double>> &samples,
                                 const QStringList &components, const QString &detail, quint32 totalPoints, bool preview);
+    // Maximum of valid pointwise H2/H1 values, before display decimation.
     void secondHarmonicPeakReady(quint16 source, quint32 cycleId, quint64 timestamp, double peak, bool preview);
     void discoverDevicesRequested();
     void connectRequested(const QString &locator, const QString &backend);

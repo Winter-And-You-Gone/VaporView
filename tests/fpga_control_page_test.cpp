@@ -1,6 +1,7 @@
 #include "test_settings_sandbox.h"
 #include "FpgaDeviceController.h"
 #include "FpgaVlp1.h"
+#include "FpgaHarmonics.h"
 #include <QtEndian>
 #include <QElapsedTimer>
 #include <QThread>
@@ -24,6 +25,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
+#include <limits>
 
 namespace {
 void require(bool value, const char *message) {
@@ -176,13 +178,13 @@ int main(int argc,char **argv) {
     auto *secondPlot=page.findChild<QWidget*>("fpgaWaveSecondPlot48");
     require(!page.findChild<QComboBox*>("fpgaWaveComponent48")&&!page.findChild<QComboBox*>("fpgaWaveComponent49")&&secondPlot,"both DLIA channels display their data without component selectors");
     require(plot->property("sampleMaximum").toDouble()==110&&secondPlot->property("sampleMaximum").toDouble()==210,"H1 and H2 are displayed together by default");
-    require(cyclePeak==210&&!peakPreview,"format2 publishes the raw H2 cycle maximum");
+    require(cyclePeak==2&&!peakPreview,"format2 publishes max(H2/H1), not max(H2) divided by max(H1)");
     const int beforeRerender=peakEvents;page.setLanguage(false);page.setLanguage(true);
     require(peakEvents==beforeRerender,"language rerender does not publish a new peak event");
     auto iq=wave;iq.format=1;iq.bytesPerPoint=16;iq.pointBytes.clear();
     for(qint32 value:{1,2,3,4,11,12,13,14})appendWord(iq.pointBytes,value);
     page.updateWaveform(iq);
-    require(std::abs(cyclePeak-std::hypot(13.0,14.0))<0.0001,"IQ format publishes the unnormalized second harmonic magnitude peak");
+    require(std::abs(cyclePeak-std::hypot(3.0,4.0)/std::hypot(1.0,2.0))<0.0001,"IQ format normalizes magnitudes at the same point before finding the peak");
     auto *i2=page.findChild<QWidget*>("fpgaWaveIqPlot48_0"),*q2=page.findChild<QWidget*>("fpgaWaveIqPlot48_1");
     require(plot->property("sampleMaximum").toDouble()==11&&secondPlot->property("sampleMaximum").toDouble()==12&&i2&&q2
         &&i2->property("sampleMaximum").toDouble()==13&&q2->property("sampleMaximum").toDouble()==14&&!i2->parentWidget()->isHidden(),"IQ-only format displays all four components without a selector");
@@ -196,12 +198,31 @@ int main(int argc,char **argv) {
     page.updateWaveform(wave);
     auto preview=wave;preview.preview=true;preview.previewStride=1024;preview.totalPoints=2048;
     page.updateWaveform(preview);
-    require(cyclePeak==210&&peakPreview,"preview maximum is marked as a preview peak");
+    require(cyclePeak==2&&peakPreview,"normalized preview maximum is marked as a preview peak");
     require(plot->property("sampleCount").toInt()==2 && plot->property("previewStride").toInt()==1024,
         "bounded preview displays actual received points while preserving original stride");
     const auto previewLabel=page.findChild<QLabel*>("fpgaWaveSummary48")->text();
     require(previewLabel.contains("Sky waveform preview") && previewLabel.contains("2/2048") && !previewLabel.contains("Complete cycle"),
         "preview cannot claim a full cycle or original-length sample buffer");
+    page.updateWaveform(wave);
+    auto invalidReference=wave;invalidReference.format=0;invalidReference.bytesPerPoint=8;invalidReference.totalPoints=3;invalidReference.pointBytes.clear();
+    for(qint32 value:{0,9999,-1,9999,4,2})appendWord(invalidReference.pointBytes,value);
+    QVector<double> normalizedSamples;
+    QObject::connect(&page,&FpgaControlPage::waveformDisplayUpdated,&page,
+        [&](quint16 source,const QVector<QVector<double>>& samples,const QStringList& components,const QString&,quint32,bool) {
+            if(source==0x30)normalizedSamples=samples.value(components.indexOf("H2/H1"));
+        });
+    page.updateWaveform(invalidReference);
+    require(cyclePeak==0.5&&normalizedSamples.size()==3&&std::isnan(normalizedSamples[0])&&std::isnan(normalizedSamples[1])&&normalizedSamples[2]==0.5,
+        "zero and negative H1 retain sample positions as gaps and cannot become peaks");
+    invalidReference.totalPoints=2;invalidReference.pointBytes.truncate(16);page.updateWaveform(invalidReference);
+    require(std::isnan(cyclePeak),"a cycle with no valid H1 has no normalized peak");
+    using VaporView::FpgaWave::normalizedSecondHarmonic;
+    require(std::isnan(normalizedSecondHarmonic(std::numeric_limits<double>::infinity(),1))
+        &&std::isnan(normalizedSecondHarmonic(1,std::numeric_limits<double>::quiet_NaN())),"non-finite normalization inputs are invalid");
+    auto zeroIq=iq;zeroIq.totalPoints=1;zeroIq.pointBytes.clear();
+    for(qint32 value:{0,0,100,200})appendWord(zeroIq.pointBytes,value);
+    page.updateWaveform(zeroIq);require(std::isnan(cyclePeak),"zero IQ reference cannot produce a normalized peak");
     page.updateWaveform(wave);
     auto volts=page.configuration();volts.frontend[0].calibrated=true;volts.frontend[0].voltsPerCode=0.001;page.setConfiguration(volts);
     VaporView::FpgaWave::CompletedStream adc;adc.source=0x20;adc.message=0x1000;adc.bytesPerPoint=4;adc.totalPoints=3;adc.rate=1000000;adc.complete=true;

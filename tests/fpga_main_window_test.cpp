@@ -1146,14 +1146,15 @@ static void relayConfigurationPresentation()
     VaporView::FpgaWave::CompletedStream full;full.source=0x30;full.format=0;full.bytesPerPoint=8;
     full.totalPoints=2002;full.complete=true;full.cycleId=9001;full.timestamp=900100;
     for(quint32 i=0;i<full.totalPoints;++i) {
-        char word[4];qToLittleEndian<qint32>(900000,reinterpret_cast<uchar*>(word));full.pointBytes.append(word,4);
-        qToLittleEndian<qint32>(i==1?1234:-5,reinterpret_cast<uchar*>(word));full.pointBytes.append(word,4);
+        char word[4];qToLittleEndian<qint32>(i==1?1000:i==3?2:i==5?0:10,reinterpret_cast<uchar*>(word));full.pointBytes.append(word,4);
+        qToLittleEndian<qint32>(i==1?1234:i==3?20:i==5?99999:-5,reinterpret_cast<uchar*>(word));full.pointBytes.append(word,4);
     }
     page->updateWaveform(full);
-    require(monitor->testPeakValues()==QVector<float>({1234}),"H2 peak is computed before display decimation and never divided by H1");
-    require(monitor->testHarmonicSamples().first()==-5,"home waveform selects H2 rather than H1");
+    require(monitor->testPeakValues()==QVector<float>({10}),"normalized peak uses same-point H1 before display decimation and skips invalid references");
+    require(monitor->testHarmonicSamples().size()>3&&monitor->testHarmonicSamples().first()==-0.5&&std::isnan(monitor->testHarmonicSamples()[3]),
+        "home waveform displays H2/H1 and preserves invalid-reference gaps across display decimation");
     page->setLanguage(true);page->setLanguage(false);page->updateWaveform(full);
-    require(monitor->testPeakValues()==QVector<float>({1234}),"FPGA rerender and repeated cycle do not duplicate trend entries");
+    require(monitor->testPeakValues()==QVector<float>({10}),"FPGA rerender and repeated cycle do not duplicate trend entries");
     VaporView::FpgaWave::CompletedStream partial;partial.source=0x20;partial.totalPoints=2;partial.partial=true;
     window.findChild<FpgaControlPage*>()->updateWaveform(partial);
     require(window.findChild<QWidget*>("tcpWaveRawPlot")->property("sampleCount").toInt()==adcBefore,

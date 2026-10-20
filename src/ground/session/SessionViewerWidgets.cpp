@@ -524,16 +524,20 @@ protected:
         painter.setPen(QPen(theme.border, 1));
         painter.drawRect(plotRect);
 
-        if (samples_.isEmpty())
+        float minValue = std::numeric_limits<float>::infinity();
+        float maxValue = -std::numeric_limits<float>::infinity();
+        for (float value : samples_) {
+            if (!std::isfinite(value)) continue;
+            minValue = std::min(minValue, value);
+            maxValue = std::max(maxValue, value);
+        }
+        if (!std::isfinite(minValue))
         {
             painter.setPen(dark ? theme.mutedText : appThemeColor(AppThemeColor::TextDisabled, false));
             painter.drawText(plotRect, Qt::AlignCenter, tr("No waveform frame"));
             return;
         }
 
-        const auto minMax = std::minmax_element(samples_.cbegin(), samples_.cend());
-        float minValue = *minMax.first;
-        float maxValue = *minMax.second;
         if (std::fabs(maxValue - minValue) < 1e-6f)
         {
             const float pad = std::max(1e-6f, std::fabs(maxValue) * 0.05f + 1e-6f);
@@ -544,18 +548,27 @@ protected:
         const int columns = std::max(2, static_cast<int>(std::floor(plotRect.width())));
         QPolygonF polyline;
         polyline.reserve(columns);
+        int previousIndex = -1;
+        painter.setPen(QPen(appThemeColor(AppThemeColor::PlotSeriesWaveBlue, dark), 1.4));
         for (int x = 0; x < columns; ++x)
         {
             const double ratio = columns == 1 ? 0.0 : static_cast<double>(x) / static_cast<double>(columns - 1);
             const int sampleCount = static_cast<int>(samples_.size());
             const int sampleIndex = std::clamp(static_cast<int>(std::llround(ratio * (sampleCount - 1))), 0, sampleCount - 1);
             const float value = samples_.at(sampleIndex);
+            const bool gap = std::any_of(samples_.cbegin() + previousIndex + 1, samples_.cbegin() + sampleIndex + 1,
+                [](float sample) { return !std::isfinite(sample); });
+            previousIndex = sampleIndex;
+            if (gap) {
+                painter.drawPolyline(polyline);
+                polyline.clear();
+            }
+            if (!std::isfinite(value)) continue;
             const double normalized = (value - minValue) / std::max(1e-6f, maxValue - minValue);
             polyline.append(QPointF(plotRect.left() + ratio * plotRect.width(),
                                     plotRect.bottom() - normalized * plotRect.height()));
         }
 
-        painter.setPen(QPen(appThemeColor(AppThemeColor::PlotSeriesWaveBlue, dark), 1.4));
         painter.drawPolyline(polyline);
 
         painter.setPen(dark ? theme.text : appThemeColor(AppThemeColor::PlotAxisStrong, false));

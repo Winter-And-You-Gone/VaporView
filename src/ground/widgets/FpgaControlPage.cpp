@@ -4,6 +4,7 @@
 #include "FpgaTelemetry.h"
 #include "FpgaAdvancedParameters.h"
 #include "FpgaExtensions.h"
+#include "FpgaHarmonics.h"
 #include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/TopLevelCardStyle.h"
@@ -686,15 +687,21 @@ void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream 
     QVector<SamplePlot*> activePlots{plot};if(second)activePlots.append(second);
     for(auto *iq:iqPlots_.value(s.source))activePlots.append(static_cast<SamplePlot*>(iq));
     double maxH2 = std::numeric_limits<double>::quiet_NaN();
+    double maxNormalizedH2 = std::numeric_limits<double>::quiet_NaN();
+    QVector<double> normalizedH2;
     const auto publishDisplay = [&](quint32 totalPoints = 0) {
         QVector<QVector<double>> samples;
-        for (auto *p : activePlots) samples.append(p->samples);
-        const QStringList components = adc ? QStringList{QStringLiteral("ADC")}
+        QStringList components = adc ? QStringList{QStringLiteral("ADC")}
             : s.format == 1 ? QStringList{QStringLiteral("I1"), QStringLiteral("Q1"), QStringLiteral("I2"), QStringLiteral("Q2")}
                             : QStringList{QStringLiteral("H1"), QStringLiteral("H2")};
+        for (int i = 0; i < components.size(); ++i) samples.append(activePlots[i]->samples);
+        if (!adc) {
+            samples.append(normalizedH2);
+            components.append(QStringLiteral("H2/H1"));
+        }
         emit waveformDisplayUpdated(s.source, samples, components, l->text(), totalPoints ? totalPoints : s.totalPoints, s.preview);
         if (!adc && !rerendering_)
-            emit secondHarmonicPeakReady(s.source, s.cycleId, s.timestamp, maxH2, s.preview);
+            emit secondHarmonicPeakReady(s.source, s.cycleId, s.timestamp, maxNormalizedH2, s.preview);
     };
     auto retainRaw=[&](const QString &reason){
         if(!adc||!lastCompleteRaw_.contains(s.source))return false;
@@ -723,12 +730,22 @@ void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream 
     }
     if(adc)lastCompleteRaw_[s.source]=s;
     for(auto *p:activePlots)p->samples.clear();const int stride=qMax(1,int(displayPoints)/1000);const int components=adc?1:int(s.bytesPerPoint/4);
+    bool normalizationGap = false;
     for(int point=0;point<int(displayPoints);++point){const int offset=point*components*4;if(offset+components*4>s.pointBytes.size())break;
         const double value=adc&&s.format==1?double(qFromLittleEndian<quint32>(reinterpret_cast<const uchar*>(s.pointBytes.constData()+offset))):double(qFromLittleEndian<qint32>(reinterpret_cast<const uchar*>(s.pointBytes.constData()+offset+component*4)));
         if (!adc) {
             const auto read = [&](int index) { return double(qFromLittleEndian<qint32>(reinterpret_cast<const uchar*>(s.pointBytes.constData()+offset+index*4))); };
+            const double h1 = s.format == 1 ? std::hypot(read(0), read(1)) : read(component);
             const double h2 = s.format == 1 ? std::hypot(read(2), read(3)) : read(component+1);
             maxH2 = std::isfinite(maxH2) ? qMax(maxH2, h2) : h2;
+            const double normalized = VaporView::FpgaWave::normalizedSecondHarmonic(h1, h2);
+            if (std::isfinite(normalized))
+                maxNormalizedH2 = std::isfinite(maxNormalizedH2) ? qMax(maxNormalizedH2, normalized) : normalized;
+            else normalizationGap = true;
+            if (point % stride == 0) {
+                normalizedH2.append(normalizationGap ? std::numeric_limits<double>::quiet_NaN() : normalized);
+                normalizationGap = false;
+            }
         }
         if(point%stride==0) {
             plot->samples.append(volts?value*c.frontend[channel].voltsPerCode*c.frontend[channel].polarity:double(value));

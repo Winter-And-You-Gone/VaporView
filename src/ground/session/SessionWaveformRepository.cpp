@@ -5,6 +5,7 @@
 #include "ground/session/SessionCsv.h"
 #include "shared/session/UnifiedRawDat.h"
 #include "shared/session/FpgaSessionArchive.h"
+#include "FpgaHarmonics.h"
 
 #include <QByteArray>
 #include <QCryptographicHash>
@@ -43,6 +44,9 @@ QVector<float> fpgaSamples(const VaporView::FpgaWave::CompletedStream& wave, int
         case 1:samples.push_back(float(p.hasHarmonics?double(p.h1):std::hypot(double(p.i1),double(p.q1))));break;
         case 2:samples.push_back(float(p.i1));break;case 3:samples.push_back(float(p.q1));break;
         case 4:samples.push_back(float(p.i2));break;case 5:samples.push_back(float(p.q2));break;
+        case 6:samples.push_back(float(VaporView::FpgaWave::normalizedSecondHarmonic(
+            p.hasHarmonics ? double(p.h1) : std::hypot(double(p.i1),double(p.q1)),
+            p.hasHarmonics ? double(p.h2) : std::hypot(double(p.i2),double(p.q2)))));break;
         }
     }
     return samples;
@@ -576,8 +580,9 @@ SessionWaveformCatalogResult SessionWaveformRepository::loadCatalog(
         bool cacheWriteFailed = false;
         if (!VaporView::Session::FpgaSessionArchive::waveforms(metadata.sessionDirectory,
             [&](quint64 host,const auto& wave) {
-                const int count=wave.source<0x30?1:wave.format==0?2:6;
-                for(int component=0;component<count;++component) {
+                const QVector<int> components = wave.source < 0x30 ? QVector<int>{0}
+                    : wave.format == 0 ? QVector<int>{6,0,1} : QVector<int>{6,0,1,2,3,4,5};
+                for(int component : components) {
                     const int key=wave.source*16+component;
                     const auto samples = fpgaSamples(wave, component);
                     QByteArray payload(samples.size() * sizeof(float), Qt::Uninitialized);
@@ -604,8 +609,9 @@ SessionWaveformCatalogResult SessionWaveformRepository::loadCatalog(
         cacheFile.close();
         // Preserve a separate timeline for every available source/component.
         for (quint16 source:{0x30,0x31,0x20,0x21}) {
-            const QStringList components{"H2","H1","I1","Q1","I2","Q2"};
-            for(int c=0;c<(source<0x30?1:6);++c) {
+            const QStringList components{"H2","H1","I1","Q1","I2","Q2","H2/H1"};
+            const QVector<int> order = source < 0x30 ? QVector<int>{0} : QVector<int>{6,0,1,2,3,4,5};
+            for(int c : order) {
                 const int key=source*16+c;if(timestamps.value(key).isEmpty())continue;
                 result.catalog.fpgaChoices.push_back({source,c,
                     source<0x30?QString("ADC %1 / RAW").arg(source-0x20):QString("DLIA %1 / %2").arg(source-0x30).arg(components[c]),

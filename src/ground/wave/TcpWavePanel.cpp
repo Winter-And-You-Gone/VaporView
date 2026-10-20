@@ -1163,7 +1163,14 @@ protected:
             painter.drawRect(plotRect);
         };
 
-        if (samples_.isEmpty())
+        float minValue = std::numeric_limits<float>::infinity();
+        float maxValue = -std::numeric_limits<float>::infinity();
+        for (float value : samples_) {
+            if (!std::isfinite(value)) continue;
+            minValue = std::min(minValue, value);
+            maxValue = std::max(maxValue, value);
+        }
+        if (!std::isfinite(minValue))
         {
             drawGrid();
             drawTimeAxis(painter, plotRect, timeAxis, fm, theme.text);
@@ -1172,9 +1179,6 @@ protected:
             return;
         }
 
-        auto [minIt, maxIt] = std::minmax_element(samples_.cbegin(), samples_.cend());
-        float minValue = *minIt;
-        float maxValue = *maxIt;
         if (std::fabs(maxValue - minValue) < 1e-6f)
         {
             const float pad = std::max(1e-6f, std::fabs(maxValue) * 0.05f + 1e-6f);
@@ -1188,18 +1192,27 @@ protected:
         QPolygonF polyline;
         polyline.reserve(columns);
         const int sampleCount = samples_.size();
+        int previousIndex = -1;
+        painter.setPen(QPen(line_color_, 1.4));
         for (int x = 0; x < columns; ++x)
         {
             const double ratio = columns == 1 ? 0.0 : static_cast<double>(x) / static_cast<double>(columns - 1);
             const int index = std::clamp(static_cast<int>(std::llround(ratio * (sampleCount - 1))), 0, sampleCount - 1);
             const float value = samples_.at(index);
+            const bool gap = std::any_of(samples_.cbegin() + previousIndex + 1, samples_.cbegin() + index + 1,
+                [](float sample) { return !std::isfinite(sample); });
+            previousIndex = index;
+            if (gap) {
+                painter.drawPolyline(polyline);
+                polyline.clear();
+            }
+            if (!std::isfinite(value)) continue;
             const double normalized = (value - minValue) / std::max(1e-6f, maxValue - minValue);
             const qreal px = plotRect.left() + ratio * plotRect.width();
             const qreal py = plotRect.bottom() - normalized * plotRect.height();
             polyline.append(QPointF(px, py));
         }
 
-        painter.setPen(QPen(line_color_, 1.4));
         painter.drawPolyline(polyline);
 
         painter.setPen(theme.text);
@@ -2164,15 +2177,11 @@ void TcpWavePanel::setEnglish(bool english)
     }
     if (wave4_title_label_)
     {
-        wave4_title_label_->setText(fpga_mode_
-            ? (english ? "Second Harmonic" : "二次谐波")
-            : (english ? "Normalized Second Harmonic" : "归一化二次谐波"));
+        wave4_title_label_->setText(english ? "Normalized Second Harmonic" : "归一化二次谐波");
     }
     if (peak_title_label_)
     {
-        const QString titleText = fpga_mode_
-            ? (english ? QStringLiteral("Second Harmonic Peak Trend") : QStringLiteral("二次谐波峰值趋势"))
-            : (english ? QStringLiteral("Normalized Second Harmonic Peak Trend") : QStringLiteral("归一化二次谐波峰值趋势"));
+        const QString titleText = english ? QStringLiteral("Normalized Second Harmonic Peak Trend") : QStringLiteral("归一化二次谐波峰值趋势");
         peak_title_label_->setText(titleText);
         peak_title_label_->setToolTip(titleText);
     }
@@ -2300,14 +2309,8 @@ void TcpWavePanel::refreshFpgaWaveform()
     };
     wave1_history_ = convert(adc.samples.value(0));
     wave4_history_.clear();
-    const int h2 = dlia.components.indexOf(QStringLiteral("H2"));
-    if (h2 >= 0) wave4_history_ = convert(dlia.samples.value(h2));
-    else {
-        const auto i2 = dlia.samples.value(dlia.components.indexOf(QStringLiteral("I2")));
-        const auto q2 = dlia.samples.value(dlia.components.indexOf(QStringLiteral("Q2")));
-        for (int i = 0; i < qMin(i2.size(), q2.size()); ++i)
-            wave4_history_.append(float(std::hypot(i2[i], q2[i])));
-    }
+    const int normalizedH2 = dlia.components.indexOf(QStringLiteral("H2/H1"));
+    if (normalizedH2 >= 0) wave4_history_ = convert(dlia.samples.value(normalizedH2));
     const QString waiting = is_english_ ? QStringLiteral("Waiting for FPGA waveform") : QStringLiteral("等待 FPGA 波形");
     const auto present = [this, &waiting](QLabel *label, const FpgaWaveDisplay &wave, bool empty) {
         const bool historical = wave.detail.contains(QStringLiteral("历史")) || wave.detail.contains(QStringLiteral("historical"), Qt::CaseInsensitive);
@@ -2322,7 +2325,11 @@ void TcpWavePanel::refreshFpgaWaveform()
         label->setToolTip(wave.detail);
     };
     present(wave1_info_label_, adc, wave1_history_.isEmpty());
-    present(wave4_info_label_, dlia, wave4_history_.isEmpty());
+    present(wave4_info_label_, dlia, std::none_of(wave4_history_.cbegin(), wave4_history_.cend(),
+        [](float value) { return std::isfinite(value); }));
+    if (!dlia.detail.isEmpty()) wave4_info_label_->setToolTip(dlia.detail + (is_english_
+        ? QStringLiteral("\nPointwise H2/H1 (dimensionless); IQ-only format uses hypot(I2,Q2)/hypot(I1,Q1). Non-positive or invalid H1 leaves gaps.")
+        : QStringLiteral("\n逐点 H2/H1（无量纲）；仅 IQ 格式使用 hypot(I2,Q2)/hypot(I1,Q1)。H1 非正或无效时留断点。")));
     wave1_plot_->setSampleAxis(true, adc.totalPoints);
     wave4_plot_->setSampleAxis(true, dlia.totalPoints);
     wave1_plot_->setSamples(wave1_history_);
@@ -2335,8 +2342,8 @@ void TcpWavePanel::refreshFpgaWaveform()
         : trend.preview ? (is_english_ ? QStringLiteral("Preview peaks") : QStringLiteral("预览峰值"))
                         : (is_english_ ? QStringLiteral("Cycle peaks") : QStringLiteral("周期峰值")));
     fpga_peak_info_label_->setToolTip(is_english_
-        ? QStringLiteral("H2 digital amplitude maximum per cycle; IQ-only format uses second harmonic magnitude. Preview peaks cover received points only. Time is host receipt time.")
-        : QStringLiteral("每周期 H2 数字幅值最大值；仅 IQ 格式使用二次谐波 I/Q 合成幅值。预览峰值仅覆盖收到的点，时间为本机接收时间。"));
+        ? QStringLiteral("Maximum of valid pointwise H2/H1 per cycle (dimensionless), before display decimation. Invalid references are excluded. Preview peaks cover received points only. Time is host receipt time.")
+        : QStringLiteral("每周期有效 H2/H1 的最大值（无量纲），在绘图抽稀前计算；无效参考不参与峰值。预览峰值仅覆盖收到的点，时间为本机接收时间。"));
 }
 
 void TcpWavePanel::changeEvent(QEvent *event)

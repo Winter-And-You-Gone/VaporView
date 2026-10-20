@@ -1947,7 +1947,13 @@ bool SessionViewerWindow::loadWaveformFrame(quint64 frameIndex, bool scrollToCsv
     waveform_page_->setWaveformSamples(visibleWaveformSamples(samples, firstSampleIndex), firstSampleIndex);
     waveform_page_->setCurrentPeakFrame(static_cast<int>(frameIndex));
 
-    const auto minMax = std::minmax_element(samples.cbegin(), samples.cend());
+    float minValue = std::numeric_limits<float>::quiet_NaN();
+    float maxValue = std::numeric_limits<float>::quiet_NaN();
+    for (float value : samples) {
+        if (!std::isfinite(value)) continue;
+        minValue = std::isfinite(minValue) ? std::min(minValue, value) : value;
+        maxValue = std::isfinite(maxValue) ? std::max(maxValue, value) : value;
+    }
     const float rawPeakValue = frameIndex < static_cast<quint64>(waveform_peak_raw_values_.size())
         ? waveform_peak_raw_values_.at(static_cast<int>(frameIndex))
         : waveformPeakValue(samples, peak_search_start_index_, peak_search_end_index_);
@@ -1962,8 +1968,8 @@ bool SessionViewerWindow::loadWaveformFrame(quint64 frameIndex, bool scrollToCsv
         timestampUs,
         waveform_export_mode_,
         waveform_export_rate_hz_,
-        *minMax.first,
-        *minMax.second,
+        minValue,
+        maxValue,
         filteredPeakValue,
         sourceFilename,
         csvMatchText,

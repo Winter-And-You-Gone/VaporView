@@ -10,6 +10,7 @@
 #include <QJsonDocument>
 #include <cstdlib>
 #include <iostream>
+#include <cmath>
 
 using namespace VaporView::Session;
 using namespace VaporView::Ground::Session;
@@ -55,12 +56,15 @@ void iqWaveformChoices()
     }
     check(!recorder.stop().writeFailed,"IQ choices recording drains");
     const auto metadata=SessionLoader::loadMetadata(directory);auto result=SessionWaveformRepository::loadCatalog(metadata.metadata);
-    check(result.success && result.catalog.fpgaChoices.size()==12,"each DLIA lane exposes H1/H2 and all four IQ components");
+    check(result.success && result.catalog.fpgaChoices.size()==14,"each DLIA lane exposes normalized H2 plus raw H1/H2 and all four IQ components");
+    check(result.catalog.fpgaComponent==6,"FPGA replay selects normalized H2 by default");
     const float expected[]{13,5,3,4,5,12};
-    for(int i=0;i<12;++i) {
+    for(int i=0;i<result.catalog.fpgaChoices.size();++i) {
         check(SessionWaveformRepository::selectFpgaWaveform(result.catalog,i),"IQ choice selects");
         const auto frame=SessionWaveformRepository::readFrame(result.catalog,0);
-        check(frame.success && frame.samples==QVector<float>{expected[result.catalog.fpgaComponent]+(result.catalog.fpgaSource==0x31?100:0)},"selected lane and IQ component preserve independent values");
+        const float offset=result.catalog.fpgaSource==0x31?100:0;
+        const float value=result.catalog.fpgaComponent==6 ? (13+offset)/(5+offset) : expected[result.catalog.fpgaComponent]+offset;
+        check(frame.success && frame.samples==QVector<float>{value},"normalized replay and raw diagnostic components preserve independent lane values");
     }
     auto retained = result.catalog;
     const QString cachePath = retained.fpgaSampleCache->path();
@@ -69,6 +73,40 @@ void iqWaveformChoices()
           "catalog copies retain their indexed samples for background readers");
     retained = {};
     check(!QFileInfo::exists(cachePath), "last catalog release removes the temporary sample cache");
+}
+void normalizedReferenceGaps()
+{
+    using namespace VaporView;
+    using namespace VaporView::Ground;
+    for(quint16 format:{0,1}) {
+        QTemporaryDir temp;GroundRecordingService recorder;GroundRecordingOptions options;options.baseDirectory=temp.path();
+        check(recorder.start(options),"normalization reference recording starts");const auto directory=recorder.status().sessionDirectory;
+        for(quint32 cycle=0;cycle<2;++cycle) {
+            QByteArray payload;
+            const auto half=[&](quint16 v){payload.append(char(v));payload.append(char(v>>8));};
+            const auto word=[&](quint32 v){for(int i=0;i<4;++i)payload.append(char(v>>(i*8)));};
+            half(2);half(format);word(10000);word(3);half(0);half(1);word(0);word(3);word(format?16:8);word(0);
+            for(int point=0;point<3;++point) {
+                word(cycle==0&&point==1?4:0);
+                if(format)word(0);
+                word(point==1?2:99999);
+                if(format)word(0);
+            }
+            const auto bytes=FpgaVlp1::buildFrame(FpgaVlp1::FrameType::Data,cycle,0x30,0x1001,
+                std::vector<std::uint8_t>(payload.begin(),payload.end()),true,3,100+cycle,cycle);
+            check(recorder.recordFpgaFrame(1000+cycle,QByteArray(reinterpret_cast<const char*>(bytes.data()),bytes.size())),"normalization reference frame records");
+        }
+        check(!recorder.stop().writeFailed,"normalization reference recording drains");
+        const auto metadata=SessionLoader::loadMetadata(directory);
+        const auto catalog=SessionWaveformRepository::loadCatalog(metadata.metadata);
+        check(catalog.success&&catalog.catalog.fpgaComponent==6,"replay defaults to normalized H2 for harmonic and IQ formats");
+        const auto frame=SessionWaveformRepository::readFrame(catalog.catalog,0);
+        check(frame.success&&frame.samples.size()==3&&std::isnan(frame.samples[0])&&frame.samples[1]==0.5&&std::isnan(frame.samples[2]),
+            "replay normalization preserves invalid references as gaps at the original sample indices");
+        const auto peaks=SessionWaveformRepository::calculatePeakSeries(catalog.catalog,0,-1);
+        check(peaks.success&&peaks.peakValues.size()==2&&peaks.peakValues[0]==0.5&&std::isnan(peaks.peakValues[1]),
+            "replay peaks ignore invalid references and leave all-invalid cycles empty");
+    }
 }
 void waveformRecording()
 {
@@ -103,18 +141,19 @@ void waveformRecording()
     check(catalog.catalog.fpgaSource==0x30 && catalog.catalog.pointsPerFrame==4,"DLIA channel selected without mixing RAW");
     for(quint64 i=0;i<2;++i) {
         const auto loaded=SessionWaveformRepository::readFrame(catalog.catalog,i);
-        check(loaded.success && loaded.error.isEmpty() && loaded.samples==QVector<float>({10,20,30,40}),"fragmented H2 replay in point order");
+        check(loaded.success && loaded.error.isEmpty() && loaded.samples==QVector<float>({10,10,30,20}),"fragmented H2/H1 replay normalizes matching points");
         check(loaded.timestampUs==catalog.catalog.fpgaTimestampsUs.at(i),"wave host timestamp retained");
     }
-    auto selection=catalog.catalog;check(selection.fpgaChoices.size()==3,"RAW and both harmonic components are selectable");
+    auto selection=catalog.catalog;check(selection.fpgaChoices.size()==4,"normalized H2, RAW and both raw harmonic components are selectable");
     for(int choice=0;choice<selection.fpgaChoices.size();++choice) {
         check(SessionWaveformRepository::selectFpgaWaveform(selection,choice),"select FPGA component");const auto loaded=SessionWaveformRepository::readFrame(selection,0);
         check(loaded.success,"selected component frame readable");
         if(selection.fpgaSource==0x20)check(loaded.samples==QVector<float>({-5,12}),"RAW choice keeps signed values");
         else if(selection.fpgaComponent==1)check(loaded.samples==QVector<float>({1,2,1,2}),"H1 selection reads H1 words independently");
+        else if(selection.fpgaComponent==0)check(loaded.samples==QVector<float>({10,20,30,40}),"raw H2 remains available without normalization");
     }
     const auto peaks=SessionWaveformRepository::calculatePeakSeries(catalog.catalog,0,-1);
-    check(peaks.success && peaks.peakValues==QVector<float>({40,40}),"FPGA peak series");
+    check(peaks.success && peaks.peakValues==QVector<float>({30,30}),"FPGA peak series uses normalized H2 rather than raw H2");
     const auto cancel=std::make_shared<std::atomic_bool>(true);
     check(SessionWaveformRepository::calculatePeakSeries(catalog.catalog,0,-1,cancel).cancelled,"FPGA peak calculation cancellation");
 
@@ -125,7 +164,8 @@ void waveformRecording()
         for (quint64 index = selection.frameCount; index-- > 0;) {
             const auto loaded = SessionWaveformRepository::readFrame(selection, index);
             const QVector<float> expected = selection.fpgaSource == 0x20 ? QVector<float>{-5, 12}
-                : selection.fpgaComponent == 1 ? QVector<float>{1, 2, 1, 2} : QVector<float>{10, 20, 30, 40};
+                : selection.fpgaComponent == 1 ? QVector<float>{1, 2, 1, 2}
+                : selection.fpgaComponent == 6 ? QVector<float>{10, 10, 30, 20} : QVector<float>{10, 20, 30, 40};
             check(loaded.success && loaded.samples == expected && loaded.sourceFilename == archivePath &&
                       loaded.timestampUs == selection.fpgaTimestampsUs.at(index),
                   "random indexed reads preserve full samples, timestamps and source without replaying the archive");
@@ -148,7 +188,7 @@ void waveformRecording()
 int main(int argc,char **argv)
 {
     QCoreApplication app(argc,argv);
-    waveformRecording();iqWaveformChoices();
+    waveformRecording();iqWaveformChoices();normalizedReferenceGaps();
     QTemporaryDir temp; check(temp.isValid(),"temp directory");
     GroundRecordingOptions options; options.baseDirectory=temp.path();
     GroundRecordingService recorder;
