@@ -71,6 +71,8 @@ public:
     qsizetype testBufferedByteCount() const;
     void testFlushLiveDisplay();
     QVector<float> testHarmonicSamples() const;
+    QVector<float> testFirstHarmonicSamples() const;
+    QVector<float> testSecondHarmonicSamples() const;
     QVector<float> testPeakValues() const;
     QString testRawXAxisLabel() const;
     QString testHarmonicXAxisLabel() const;
@@ -209,6 +211,11 @@ private:
     QGroupBox *peak_group_;
     WavePlotWidget *wave1_plot_;
     WavePlotWidget *wave4_plot_;
+    QGroupBox *fpga_h2_group_ = nullptr;
+    QLabel *fpga_h2_title_label_ = nullptr;
+    QLabel *fpga_h2_info_label_ = nullptr;
+    WavePlotWidget *fpga_h2_plot_ = nullptr;
+    QVector<float> fpga_h2_history_;
     PeakTrendPlotWidget *peak_plot_;
     QPushButton *peak_filter_button_;
     VaporView::Ground::Widgets::SegmentedSwitchButton *peak_mode_button_;

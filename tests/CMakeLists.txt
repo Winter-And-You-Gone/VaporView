@@ -445,6 +445,8 @@ vaporview_add_test(NAME fpga_local_simulator_test COMMAND fpga_main_window_test 
 set_tests_properties(fpga_local_simulator_test PROPERTIES LABELS "gui;fpga;integration" TIMEOUT 90 RUN_SERIAL TRUE)
 vaporview_add_test(NAME fpga_harmonic_recording_ui_test COMMAND fpga_main_window_test --harmonic-recording)
 set_tests_properties(fpga_harmonic_recording_ui_test PROPERTIES LABELS "gui;fpga;integration" TIMEOUT 60 RUN_SERIAL TRUE)
+vaporview_add_test(NAME fpga_harmonic_home_test COMMAND fpga_main_window_test --harmonic-home)
+set_tests_properties(fpga_harmonic_home_test PROPERTIES LABELS "gui;fpga;layout" TIMEOUT 60 RUN_SERIAL TRUE)
 vaporview_add_test(NAME fpga_sensor_draft_ui_test COMMAND fpga_main_window_test --monitor-ui-actions)
 set_tests_properties(fpga_sensor_draft_ui_test PROPERTIES LABELS "gui;fpga" TIMEOUT 90 RUN_SERIAL TRUE)
 vaporview_add_test(NAME internal_environment_direct_ui_test COMMAND fpga_main_window_test --internal-direct)

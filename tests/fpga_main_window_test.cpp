@@ -938,7 +938,7 @@ static void localSimulatorRouting()
     check(monitor&&monitor->property("fpgaWaveformMode").toBool(),"home monitor selects FPGA data");
     check(waitUntil([&]{return monitor->findChild<QWidget*>("tcpWaveRawPlot")->property("sampleCount").toInt()>0
         &&monitor->findChild<QWidget*>("tcpWaveHarmonicPlot")->property("sampleCount").toInt()>0;}),
-        "real VLP1 simulator supplies both ADC and DLIA to the home monitor");
+        "real VLP1 simulator supplies DLIA H1 and normalized H2 to the home monitor");
     raw->click();
     check(waitUntil([&]{return raw->isEnabled()&&raw->text().contains(QStringLiteral("开始"));}),"local monitor stops RAW upload");
     check(harmonic->text().contains(QStringLiteral("停止")),"local RAW stop preserves DLIA acquisition");
@@ -1060,6 +1060,64 @@ static void simulatedMonitorActions()
     require(!mode->isChecked(),"monitor simulation restores normal application mode");
 }
 
+static void harmonicHomeGraphs()
+{
+    const QFont standardFont = qApp->font();
+    QSettings settings("VaporView", "MainWindow");
+    for (int scale : {100, 130}) {
+        qApp->setFont(standardFont);
+        settings.setValue("font_scale_percent", scale);
+        MainWindow window;
+        QMetaObject::invokeMethod(&window, "onDataSourceModeChanged", Q_ARG(int, 0));
+        auto *path = window.findChild<QComboBox*>("deviceSensorTransportPathCombo");
+        path->setCurrentIndex(path->findData("fpga_relay"));
+        auto *monitor = window.findChild<TcpWavePanel*>();
+        auto *page = window.findChild<FpgaControlPage*>();
+        window.findChild<QStackedWidget*>("mainPageStack")->setCurrentIndex(0);
+        window.show();
+        VaporView::FpgaWave::CompletedStream wave;
+        wave.source=0x30; wave.format=0; wave.bytesPerPoint=8; wave.totalPoints=128;
+        wave.complete=true; wave.cycleId=1;
+        for (int point=0; point<128; ++point) {
+            char word[4];
+            qToLittleEndian<qint32>(100+point, reinterpret_cast<uchar*>(word)); wave.pointBytes.append(word,4);
+            qToLittleEndian<qint32>(20+qRound(10*std::sin(point*0.1)), reinterpret_cast<uchar*>(word)); wave.pointBytes.append(word,4);
+        }
+        page->updateWaveform(wave);
+        for (const QSize size : {QSize(1600,1000), QSize(1150,850)}) {
+            window.resize(size);
+            for (bool english : {false,true}) {
+                monitor->setEnglish(english); processFor(100);
+                const QStringList names{"tcpWaveRawPlot","fpgaWaveH2Plot","tcpWaveHarmonicPlot","tcpWavePeakTrendPlot"};
+                QList<QRect> cards;
+                for (const auto &name : names) {
+                    auto *plot = monitor->findChild<QWidget*>(name);
+                    require(plot && plot->isVisibleTo(monitor) && plot->property("sampleCount").toInt()>0,
+                        "all four home graphs render the validated DLIA cycle");
+                    auto *card = plot->parentWidget();
+                    require(card->rect().contains(plot->geometry()),
+                        "harmonic plot and its sample axis stay inside the card at larger font scales");
+                    const QRect rect(card->mapTo(monitor,QPoint()),card->size());
+                    require(monitor->rect().contains(rect),"all four graph cards fit inside the home waveform panel");
+                    for (const auto &other : cards)
+                        require(!rect.intersects(other),"home graph cards do not overlap after resize or translation");
+                    cards.append(rect);
+                    for (auto *title : card->findChildren<QLabel*>("sectionTitleLabel"))
+                        require(title->width()>=title->fontMetrics().horizontalAdvance(title->text()),
+                            "home harmonic chart titles remain fully visible");
+                }
+            }
+        }
+        monitor->setEnglish(false);
+        path->setCurrentIndex(path->findData("direct_devices")); processFor(50);
+        require(!monitor->findChild<QWidget*>("fpgaWaveH2Plot")->isVisibleTo(monitor),
+            "returning to Direct restores the original three graph layout");
+        window.close();
+    }
+    qApp->setFont(standardFont);
+    settings.setValue("font_scale_percent",100);
+}
+
 static void relayConfigurationPresentation()
 {
     const QStringList presetNames{"deviceRemoteEpsilonEnabledCheck","deviceRemotePressureEnabledCheck",
@@ -1146,8 +1204,8 @@ static void relayConfigurationPresentation()
     simulate({{"op","acquisition"},{"enabled",true}});simulate({{"op","raw"},{"enabled",true}});
     require(waitUntil([&]{return window.findChild<QWidget*>("tcpWaveRawPlot")->property("sampleCount").toInt()>0;}),"protocol simulation reaches the home graph");
     stack->setCurrentIndex(0);processFor(80);
-    const auto adcBefore=window.findChild<QWidget*>("tcpWaveRawPlot")->property("sampleCount").toInt();
-    require(adcBefore>0,"bounded simulated RAW reaches the home ADC graph");
+    require(window.findChild<QWidget*>("fpgaWaveH2Plot")->property("sampleCount").toInt()>0,
+        "simulated DLIA supplies the additional H2 home graph");
     auto *monitor=window.findChild<TcpWavePanel*>();
     auto *page=window.findChild<FpgaControlPage*>();
     QMetaObject::invokeMethod(monitor,"onClearPeakPlotClicked");
@@ -1163,13 +1221,16 @@ static void relayConfigurationPresentation()
         "home waveform displays H2/H1 and preserves invalid-reference gaps across display decimation");
     page->setLanguage(true);page->setLanguage(false);page->updateWaveform(full);
     require(monitor->testPeakValues()==QVector<float>({10}),"FPGA rerender and repeated cycle do not duplicate trend entries");
+    const auto h1Before=monitor->testFirstHarmonicSamples();
+    const auto h2Before=monitor->testSecondHarmonicSamples();
     VaporView::FpgaWave::CompletedStream partial;partial.source=0x20;partial.totalPoints=2;partial.partial=true;
     window.findChild<FpgaControlPage*>()->updateWaveform(partial);
-    require(window.findChild<QWidget*>("tcpWaveRawPlot")->property("sampleCount").toInt()==adcBefore,
-        "incomplete ADC retains the same historical cycle on both FPGA and home pages");
+    require(monitor->testFirstHarmonicSamples()==h1Before&&monitor->testSecondHarmonicSamples()==h2Before,
+        "incomplete ADC cannot change the home H1 and H2 graphs");
     partial.source=0x30;partial.cycleId=9002;window.findChild<FpgaControlPage*>()->updateWaveform(partial);
-    require(window.findChild<QWidget*>("tcpWaveHarmonicPlot")->property("sampleCount").toInt()==0,
-        "incomplete DLIA clears the home graph through the shared validated display");
+    require(monitor->testFirstHarmonicSamples().isEmpty()&&monitor->testSecondHarmonicSamples().isEmpty()
+        &&window.findChild<QWidget*>("tcpWaveHarmonicPlot")->property("sampleCount").toInt()==0,
+        "incomplete DLIA clears all three home harmonic graphs through the shared validated display");
     require(monitor->testPeakValues().size()==2&&std::isnan(monitor->testPeakValues().last()),"missing DLIA fragments create a trend gap");
     window.findChild<FpgaControlPage*>()->setUiTestState(false);
     stack->setCurrentWidget(configPage);
@@ -1471,6 +1532,9 @@ int main(int argc,char **argv)
     if(app.arguments().contains("--harmonic-recording")) {
         try { harmonicRecordingUi();std::cout<<"Harmonic recording UI test passed\n";return 0; }
         catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}
+    }
+    if(app.arguments().contains("--harmonic-home")) {
+        harmonicHomeGraphs();std::cout<<"FPGA harmonic home graphs test passed\n";return 0;
     }
     if(app.arguments().contains("--local-simulator")) {
         try { localSimulatorRouting();std::cout<<"Local FPGA simulator GUI test passed\n";return 0; }

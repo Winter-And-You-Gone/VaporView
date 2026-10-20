@@ -625,9 +625,10 @@ int main(int argc, char **argv)
         panel.setFpgaWaveform(0x30,{{10,20,30},{40,50,60},{4,2.5,2}},{"H1","H2","H2/H1"},"DLIA complete",3);
         auto *raw=panel.findChild<QWidget*>("tcpWaveRawPlot");
         auto *dlia=panel.findChild<QWidget*>("tcpWaveHarmonicPlot");
+        auto *h2=panel.findChild<QWidget*>("fpgaWaveH2Plot");
         auto *peaks=panel.findChild<QWidget*>("tcpWavePeakTrendPlot");
         panel.resize(1500,900);panel.show();QApplication::processEvents();
-        require(raw->isVisible()&&dlia->isVisible()&&peaks->isVisible(),"FPGA monitor retains all three graphs");
+        require(raw->isVisible()&&h2->isVisible()&&dlia->isVisible()&&peaks->isVisible(),"FPGA monitor displays all four graphs");
         auto *rawButton=panel.findChild<QPushButton*>("fpgaMonitorRawButton");
         auto *harmonicButton=panel.findChild<QPushButton*>("fpgaMonitorHarmonicButton");
         require(rawButton&&harmonicButton&&rawButton->isVisible()&&harmonicButton->isVisible()
@@ -649,10 +650,15 @@ int main(int argc, char **argv)
         panel.setEnglish(false);
         QStringList titles;
         for(auto *label:panel.findChildren<QLabel*>("sectionTitleLabel"))titles.append(label->text());
-        require(titles.contains("波形监控")&&titles.contains("原始信号")&&titles.contains("归一化二次谐波")
+        require(titles.contains("波形监控")&&titles.contains("一次谐波H1")&&titles.contains("二次谐波H2")
+            &&!titles.contains("原始信号")&&titles.contains("归一化二次谐波")
             &&titles.contains("归一化二次谐波峰值趋势"),"FPGA monitor names both normalized graphs explicitly");
-        require(raw->property("sampleCount").toInt()==3&&dlia->property("sampleCount").toInt()==3,
-            "FPGA mode renders ADC and DLIA");
+        require(panel.testFirstHarmonicSamples()==QVector<float>({10,20,30})
+            &&panel.testSecondHarmonicSamples()==QVector<float>({40,50,60})
+            &&h2->property("sampleCount").toInt()==3&&dlia->property("sampleCount").toInt()==3,
+            "FPGA mode renders H1 and H2 from the same DLIA cycle instead of ADC RAW");
+        panel.setFpgaWaveform(0x20,{{99,98}},{"ADC"},"ADC only",2);
+        require(panel.testFirstHarmonicSamples()==QVector<float>({10,20,30}),"ADC updates cannot replace the H1 graph");
         require(!raw->property("xAxisTimeMode").toBool()&&panel.testRawXAxisLabel()=="2",
             "FPGA x axis uses sample position rather than invented wall-clock time");
         auto *channel=panel.findChild<QComboBox*>("fpgaMonitorChannelCombo");
@@ -663,16 +669,21 @@ int main(int argc, char **argv)
         panel.setEnglish(true);panel.setEnglish(false);
         require(panel.testPeakValues()==QVector<float>({4}),"duplicate cycles and language refresh do not add peaks");
         channel->setCurrentIndex(1);
-        require(raw->property("sampleCount").toInt()==0&&dlia->property("sampleCount").toInt()==0&&peaks->property("sampleCount").toInt()==0,
+        require(raw->property("sampleCount").toInt()==0&&h2->property("sampleCount").toInt()==0&&dlia->property("sampleCount").toInt()==0&&peaks->property("sampleCount").toInt()==0,
             "channel switch shows only that channel's waveforms and peak history");
         panel.setFpgaWaveform(0x31,{{1,2},{3,4},{5,6},{7,8},{std::hypot(5,7)/std::hypot(1,3),std::hypot(6,8)/std::hypot(2,4)}},
             {"I1","Q1","I2","Q2","H2/H1"},"IQ complete",2);
         require(panel.testHarmonicSamples().size()==2&&std::abs(panel.testHarmonicSamples().first()-std::hypot(5,7)/std::hypot(1,3))<0.0001,
             "IQ-only format displays the normalized harmonic magnitudes");
+        require(panel.testFirstHarmonicSamples().size()==2&&panel.testSecondHarmonicSamples().size()==2
+            &&std::abs(panel.testFirstHarmonicSamples().first()-std::hypot(1,3))<0.0001
+            &&std::abs(panel.testSecondHarmonicSamples().first()-std::hypot(5,7))<0.0001,
+            "IQ-only H1 and H2 graphs display magnitudes of their respective quadrature pairs");
         panel.setFpgaSecondHarmonicPeak(0x31,2,200,10,true);
         require(panel.findChild<QLabel*>("fpgaMonitorPeakInfo")->text()=="预览峰值","bounded previews are explicitly marked in the peak trend");
         panel.setFpgaWaveform(0x31,{{},{},{},{},{}},{"I1","Q1","I2","Q2","H2/H1"},"incomplete",2);
-        require(dlia->property("sampleCount").toInt()==0,"invalid FPGA cycle clears the home waveform");
+        require(raw->property("sampleCount").toInt()==0&&h2->property("sampleCount").toInt()==0
+            &&dlia->property("sampleCount").toInt()==0,"invalid FPGA cycle clears all three harmonic waveforms");
         panel.setFpgaSecondHarmonicPeak(0x31,3,300,std::numeric_limits<double>::quiet_NaN(),false);
         require(panel.testPeakValues().size()==2&&std::isnan(panel.testPeakValues().last()),"invalid cycles leave a gap in the trend");
         channel->setCurrentIndex(0);
@@ -696,6 +707,7 @@ int main(int argc, char **argv)
         require(raw->property("sampleCount").toInt()==0&&peaks->property("sampleCount").toInt()==0,
             "leaving UI test mode discards simulated FPGA waveforms and peaks");
         panel.setFpgaMode(false);
+        require(!h2->isVisible()&&panel.testSecondHarmonicSamples().isEmpty(),"direct mode hides and clears the FPGA H2 graph");
         require(!rawButton->isVisible()&&!harmonicButton->isVisible(),"direct mode hides FPGA acquisition controls");
         require(panel.host()=="127.0.0.9"&&panel.port()==9901&&raw->property("xAxisTimeMode").toBool(),
             "Direct restores the TCP endpoint and clock axis");

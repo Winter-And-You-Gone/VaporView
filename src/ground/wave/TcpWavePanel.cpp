@@ -1735,6 +1735,18 @@ void TcpWavePanel::setCompactLayout(bool compact)
 int TcpWavePanel::preferredPanelHeight() const
 {
     const int topControlsHeight = control_layout_ ? control_layout_->sizeHint().height() : kTcpTitleBarHeight;
+    if (fpga_mode_) {
+        const int h1Height = wave1_group_->minimumSizeHint().height();
+        const int h2Height = fpga_h2_group_->minimumSizeHint().height();
+        const int normalizedHeight = wave4_group_->minimumSizeHint().height();
+        const int wavesHeight = compact_layout_
+            ? h1Height + h2Height + normalizedHeight + 2 * plots_layout_->spacing()
+            : std::max({h1Height, h2Height, normalizedHeight});
+        const QMargins margins = layout()->contentsMargins();
+        return topControlsHeight + wavesHeight
+            + std::max(peak_group_->minimumHeight(), peak_group_->minimumSizeHint().height())
+            + 2 * layout()->spacing() + margins.top() + margins.bottom();
+    }
     int height = topControlsHeight + 4;
 
     const bool showRawWave = fpga_mode_ || wave_display_all_ || wave_display_raw_;
@@ -1961,6 +1973,34 @@ void TcpWavePanel::setupUi()
     installTcpWaveCardOutline(wave1_group_);
     plots_layout_->addWidget(wave1_group_, 1);
 
+    fpga_h2_group_ = new QGroupBox(this);
+    fpga_h2_group_->setObjectName("sensorGroupBox");
+    auto *h2Layout = new QVBoxLayout(fpga_h2_group_);
+    h2Layout->setContentsMargins(2, 2, 2, 2);
+    auto *h2HeaderBar = new QWidget(fpga_h2_group_);
+    h2HeaderBar->setObjectName("sectionTitleBar");
+    h2HeaderBar->setFixedHeight(kTcpTitleBarHeight);
+    auto *h2HeaderLayout = new QHBoxLayout(h2HeaderBar);
+    h2HeaderLayout->setContentsMargins(8, 2, 8, 2);
+    h2HeaderLayout->setSpacing(8);
+    fpga_h2_title_label_ = new VaporView::VisualTextLabel(h2HeaderBar);
+    fpga_h2_title_label_->setObjectName("sectionTitleLabel");
+    VaporView::configureSelectableCardTitle(fpga_h2_title_label_);
+    fpga_h2_title_label_->setFixedHeight(kTcpButtonHeight);
+    h2HeaderLayout->addWidget(fpga_h2_title_label_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    fpga_h2_info_label_ = new QLabel(h2HeaderBar);
+    fpga_h2_info_label_->setObjectName("fieldLabel");
+    fpga_h2_info_label_->setFont(numericFontFrom(fpga_h2_info_label_->font()));
+    fpga_h2_info_label_->setTextFormat(Qt::PlainText);
+    fpga_h2_info_label_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    h2HeaderLayout->addWidget(fpga_h2_info_label_, 1);
+    h2Layout->addWidget(h2HeaderBar);
+    fpga_h2_plot_ = new WavePlotWidget(appThemeColor(AppThemeColor::PlotSeriesWaveOrange, false), this);
+    fpga_h2_plot_->setObjectName(QStringLiteral("fpgaWaveH2Plot"));
+    h2Layout->addWidget(fpga_h2_plot_, 1);
+    installTcpWaveCardOutline(fpga_h2_group_);
+    plots_layout_->addWidget(fpga_h2_group_, 1);
+
     wave4_group_ = new QGroupBox(this);
     wave4_group_->setObjectName("sensorGroupBox");
     auto *wave4Layout = new QVBoxLayout(wave4_group_);
@@ -2173,8 +2213,13 @@ void TcpWavePanel::setEnglish(bool english)
     peak_group_->setTitle(QString());
     if (wave1_title_label_)
     {
-        wave1_title_label_->setText(english ? "Raw Signal" : "原始信号");
+        wave1_title_label_->setText(fpga_mode_
+            ? (english ? "First Harmonic H1" : "一次谐波H1")
+            : (english ? "Raw Signal" : "原始信号"));
     }
+    fpga_h2_title_label_->setText(english ? "Second Harmonic H2" : "二次谐波H2");
+    fpga_h2_plot_->setEnglish(english);
+    fpga_h2_plot_->setEmptyText(english ? QStringLiteral("No data") : QStringLiteral("暂无数据"));
     if (wave4_title_label_)
     {
         wave4_title_label_->setText(english ? "Normalized Second Harmonic" : "归一化二次谐波");
@@ -2300,14 +2345,26 @@ void TcpWavePanel::refreshFpgaWaveform()
 {
     if (!fpga_mode_) return;
     const int channel = fpga_channel_combo_->currentIndex();
-    const auto adc = fpga_waves_.value(0x20 + channel);
     const auto dlia = fpga_waves_.value(0x30 + channel);
     const auto convert = [](const QVector<double> &values) {
         QVector<float> result; result.reserve(values.size());
         for (double value : values) result.append(float(value));
         return result;
     };
-    wave1_history_ = convert(adc.samples.value(0));
+    wave1_history_ = convert(dlia.samples.value(dlia.components.indexOf(QStringLiteral("H1"))));
+    fpga_h2_history_ = convert(dlia.samples.value(dlia.components.indexOf(QStringLiteral("H2"))));
+    if (dlia.components.contains(QStringLiteral("I1"))) {
+        const auto magnitude = [&dlia](const QString &inPhase, const QString &quadrature) {
+            const auto &i = dlia.samples.value(dlia.components.indexOf(inPhase));
+            const auto &q = dlia.samples.value(dlia.components.indexOf(quadrature));
+            QVector<float> values; values.reserve(std::min(i.size(), q.size()));
+            for (qsizetype point = 0; point < std::min(i.size(), q.size()); ++point)
+                values.append(float(std::hypot(i[point], q[point])));
+            return values;
+        };
+        wave1_history_ = magnitude(QStringLiteral("I1"), QStringLiteral("Q1"));
+        fpga_h2_history_ = magnitude(QStringLiteral("I2"), QStringLiteral("Q2"));
+    }
     wave4_history_.clear();
     const int normalizedH2 = dlia.components.indexOf(QStringLiteral("H2/H1"));
     if (normalizedH2 >= 0) wave4_history_ = convert(dlia.samples.value(normalizedH2));
@@ -2324,15 +2381,18 @@ void TcpWavePanel::refreshFpgaWaveform()
                                   : QString::number(wave.totalPoints)).arg(quality));
         label->setToolTip(wave.detail);
     };
-    present(wave1_info_label_, adc, wave1_history_.isEmpty());
+    present(wave1_info_label_, dlia, wave1_history_.isEmpty());
+    present(fpga_h2_info_label_, dlia, fpga_h2_history_.isEmpty());
     present(wave4_info_label_, dlia, std::none_of(wave4_history_.cbegin(), wave4_history_.cend(),
         [](float value) { return std::isfinite(value); }));
     if (!dlia.detail.isEmpty()) wave4_info_label_->setToolTip(dlia.detail + (is_english_
         ? QStringLiteral("\nPointwise H2/H1 (dimensionless); IQ-only format uses hypot(I2,Q2)/hypot(I1,Q1). Non-positive or invalid H1 leaves gaps.")
         : QStringLiteral("\n逐点 H2/H1（无量纲）；仅 IQ 格式使用 hypot(I2,Q2)/hypot(I1,Q1)。H1 非正或无效时留断点。")));
-    wave1_plot_->setSampleAxis(true, adc.totalPoints);
+    wave1_plot_->setSampleAxis(true, dlia.totalPoints);
+    fpga_h2_plot_->setSampleAxis(true, dlia.totalPoints);
     wave4_plot_->setSampleAxis(true, dlia.totalPoints);
     wave1_plot_->setSamples(wave1_history_);
+    fpga_h2_plot_->setSamples(fpga_h2_history_);
     wave4_plot_->setSamples(wave4_history_);
     const auto trend = fpga_peaks_.value(0x30 + channel);
     peak_history_ = trend.values;
@@ -2399,6 +2459,7 @@ void TcpWavePanel::updateWaveDisplayModeIcon()
 
 void TcpWavePanel::applyWaveDisplayMode()
 {
+    fpga_h2_group_->setVisible(fpga_mode_);
     const bool showRawWave = fpga_mode_ || wave_display_all_ || wave_display_raw_;
     const bool showHarmonicWave = fpga_mode_ || wave_display_all_ || wave_display_harmonic_;
     const bool showPeakTrend = fpga_mode_ || wave_display_all_ || wave_display_peak_trend_;
@@ -3025,6 +3086,8 @@ void TcpWavePanel::testFlushLiveDisplay()
 }
 
 QVector<float> TcpWavePanel::testHarmonicSamples() const { return wave4_history_; }
+QVector<float> TcpWavePanel::testFirstHarmonicSamples() const { return wave1_history_; }
+QVector<float> TcpWavePanel::testSecondHarmonicSamples() const { return fpga_h2_history_; }
 QVector<float> TcpWavePanel::testPeakValues() const { return peak_history_; }
 
 QString TcpWavePanel::testRawXAxisLabel() const
@@ -3709,9 +3772,12 @@ void TcpWavePanel::clearRemoteWaveformDisplay(const QString& statusText)
     last_live_decode_time_ms_ = 0;
     last_frame_rate_label_update_ms_ = 0;
     if (wave1_plot_) wave1_plot_->setSamples({});
+    fpga_h2_history_.clear();
+    if (fpga_h2_plot_) fpga_h2_plot_->setSamples({});
     if (wave4_plot_) wave4_plot_->setSamples({});
     if (peak_plot_) peak_plot_->setPeakValues({});
     if (wave1_info_label_) wave1_info_label_->setText(QStringLiteral("--"));
+    if (fpga_h2_info_label_) fpga_h2_info_label_->setText(QStringLiteral("--"));
     if (wave4_info_label_) wave4_info_label_->setText(QStringLiteral("--"));
     resetFrameRateDisplay();
     if (!statusText.isEmpty())
