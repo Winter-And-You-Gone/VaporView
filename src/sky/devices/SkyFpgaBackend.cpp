@@ -55,6 +55,7 @@ SkyFpgaBackend::SkyFpgaBackend(std::unique_ptr<Ground::Devices::FpgaUsbTransport
             preview.totalPoints=source.totalPoints;preview.bytesPerPoint=source.bytesPerPoint;preview.adcBits=source.adcBits;
             preview.complete=source.complete;preview.partial=source.partial;preview.overflow=source.overflow;preview.continuityError=source.continuityError;
             preview.preview=true;
+            preview.hasFullCyclePeak=source.hasFullCyclePeak; preview.fullCyclePeak=source.fullCyclePeak;
             const qsizetype count=qMax(source.signed32Samples.size(),qMax(source.unsigned32Samples.size(),source.dliaPoints.size()));
             preview.previewStride=quint32(qMax<qsizetype>(1,(count+63)/64));
             for (qsizetype i=0;i<count;i+=preview.previewStride) {
@@ -64,7 +65,8 @@ SkyFpgaBackend::SkyFpgaBackend(std::unique_ptr<Ground::Devices::FpgaUsbTransport
             }
             QMetaObject::invokeMethod(this,[this,preview=std::move(preview)] { emit waveformUpdated(preview); },Qt::QueuedConnection);
         });
-    // Raw capture remains on the USB worker; no unbounded queued copies of full USB traffic.
+    // Recording admission stays on the USB worker, before UI coalescing and preview thinning.
+    connect(controller_, &Ground::Devices::FpgaDeviceController::harmonicCycleReady, this, &SkyFpgaBackend::harmonicCycleReady, Qt::DirectConnection);
     connect(controller_, &Ground::Devices::FpgaDeviceController::observationEpochReceived, this, &SkyFpgaBackend::observationEpochReceived);
     connect(controller_, &Ground::Devices::FpgaDeviceController::rawFrame, this, &SkyFpgaBackend::rawFrame, Qt::DirectConnection);
     connect(controller_, &Ground::Devices::FpgaDeviceController::rawCommand, this, &SkyFpgaBackend::rawCommand, Qt::DirectConnection);

@@ -1,4 +1,5 @@
 #include "FpgaDeviceSession.h"
+#include "shared/session/HarmonicWaveform.h"
 
 #include <QDateTime>
 
@@ -435,7 +436,7 @@ void FpgaDeviceSession::processFrame(const FpgaVlp1::Frame& frame)
                 frame.header.flags,
                 frame.header.cycleId,
                 frame.header.timestamp,
-                payload});
+                payload, Session::harmonicReceptionTimeUs()});
             if (stream)
                 emit waveformCompleted(*stream);
             for (const auto& expired : waveformAssembler_.takeExpired())

@@ -19,6 +19,7 @@ public:
     QJsonObject statusDocument() const { return status_; }
     static bool validateOperation(const QJsonObject& operation, QString *error = nullptr);
 signals:
+    void harmonicCycleReady(quint64 hostTimestampUs, const VaporView::FpgaWave::CompletedStream& stream);
     void statusChanged(QJsonObject status);
     void observationEpochReceived(const QByteArray& encodedEpoch);
     void measurementUpdated(const VaporView::FpgaSensor::AdaptedMeasurements& measurement);

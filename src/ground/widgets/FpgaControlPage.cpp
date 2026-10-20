@@ -476,12 +476,17 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     auto *recordingTab=tab(QStringLiteral("记录与诊断"),QStringLiteral("Recording & diagnostics")); auto *recordingLayout=new QVBoxLayout(recordingTab);
     auto *recordingCards=new QHBoxLayout;recordingCards->setObjectName("fpgaRecordingCards");recordingCards->setSpacing(12);recordingLayout->addLayout(recordingCards);
     auto *recording=card(recordingTab,recordingCards,QStringLiteral("采集记录"),QStringLiteral("Acquisition recording"),QStringLiteral("scroll-text")); auto *rl=new QVBoxLayout(recording);
-    recordSensors_=new FpgaCheckBox(recording); label(recordSensors_,QStringLiteral("记录传感器"),QStringLiteral("Record sensors")); recordDlia_=new FpgaCheckBox(recording); label(recordDlia_,QStringLiteral("记录解调数据"),QStringLiteral("Record demodulation")); recordRaw_=new FpgaCheckBox(recording); label(recordRaw_,QStringLiteral("记录 RAW（高吞吐）"),QStringLiteral("Record RAW (high throughput)")); rl->addWidget(recordSensors_); rl->addWidget(recordDlia_); rl->addWidget(recordRaw_);
-    for(auto *c : {recordSensors_,recordDlia_,recordRaw_}) connect(c,&QCheckBox::toggled,this,[this]{emit configurationChanged(configuration());});
+    recordSensors_=new FpgaCheckBox(recording); label(recordSensors_,QStringLiteral("记录传感器"),QStringLiteral("Record sensors"));
+    recordDlia_=new FpgaCheckBox(recording); recordDlia_->setObjectName("fpgaRecordHarmonics");
+    label(recordDlia_,QStringLiteral("保存 H1/H2（必选）"),QStringLiteral("Save H1/H2 (required)"));
+    recordDlia_->setChecked(true); recordDlia_->setEnabled(false);
+    recordDlia_->setToolTip(text("完整 H1/H2 和归一化峰值写入 Session；归一化波形在查看时计算。", "Full H1/H2 and normalized peaks are recorded in the session; normalized waveforms are calculated when viewed."));
+    rl->addWidget(recordSensors_); rl->addWidget(recordDlia_);
+    for(auto *c : {recordSensors_}) connect(c,&QCheckBox::toggled,this,[this]{emit configurationChanged(configuration());});
     auto *rawGrid=new QGridLayout; rl->addLayout(rawGrid);
     action(rawGrid,0,0,"开始 RAW","Start RAW","fpgaRawStart",[this]{emit rawRequested(true);}); action(rawGrid,0,1,"停止 RAW","Stop RAW","fpgaRawStop",[this]{emit rawRequested(false);});
     record_=new QPushButton(recording); record_->setObjectName("fpgaRecord"); rl->addWidget(record_); connect(record_,&QAbstractButton::clicked,this,[this]{emit recordingRequested(!recording_);});
-    recordStatus_=new QLabel(recording); recordStatus_->setWordWrap(true); rl->addWidget(recordStatus_);
+    recordStatus_=new QLabel(recording); recordStatus_->setObjectName("fpgaRecordingStatus"); recordStatus_->setWordWrap(true); rl->addWidget(recordStatus_);
     auto *files=new QHBoxLayout; rl->addLayout(files);
     auto *replay=new QPushButton(recording);replay->setObjectName("fpgaReplay"); label(replay,QStringLiteral("打开离线记录"),QStringLiteral("Open offline recording")); files->addWidget(replay);
     auto *exportButton=new QPushButton(recording);exportButton->setObjectName("fpgaExport"); label(exportButton,QStringLiteral("导出记录"),QStringLiteral("Export recording")); files->addWidget(exportButton);
@@ -524,7 +529,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
 
 FpgaControlConfig FpgaControlPage::configuration() const {
     auto c=config_; for(const auto &f:fields_)f.write(c,f.input->value());
-    c.backend=backend_->currentData().toString();c.pressureSource=0x40; c.recordSensors=recordSensors_->isChecked();c.recordDlia=recordDlia_->isChecked();c.recordRaw=recordRaw_->isChecked();return c;
+    c.backend=backend_->currentData().toString();c.pressureSource=0x40; c.recordSensors=recordSensors_->isChecked();c.recordDlia=true;c.recordRaw=false;return c;
 }
 void FpgaControlPage::setConfiguration(const FpgaControlConfig &c) {
     config_=c;
@@ -534,8 +539,8 @@ void FpgaControlPage::setConfiguration(const FpgaControlConfig &c) {
     for(const auto& spec:VaporView::FpgaRemote::sensorParameters())if(auto *input=sensorParameterInputs_.value(spec.address)){const QSignalBlocker block(input);input->setValue(c.sensorParameters.value(spec.source).value(spec.key).toDouble(hardwareValues_.value(spec.address,spec.fallback)));}
     for(const auto &f:fields_){const QSignalBlocker block(f.input);f.input->setValue(f.read(c));}
     {const QSignalBlocker block(backend_);backend_->setCurrentIndex(backend_->findData(c.backend));}
-    const QSignalBlocker bs(recordSensors_),bd(recordDlia_),br(recordRaw_);
-    recordSensors_->setChecked(c.recordSensors);recordDlia_->setChecked(c.recordDlia);recordRaw_->setChecked(c.recordRaw);
+    const QSignalBlocker bs(recordSensors_),bd(recordDlia_);
+    recordSensors_->setChecked(c.recordSensors);recordDlia_->setChecked(true);
     for(int i=0;i<2;++i){auto *cal=findChild<QCheckBox*>(QString("fpga%1Calibrated").arg(i));const QSignalBlocker b(cal);cal->setChecked(c.frontend[i].calibrated);}
     updateActions();
 }
@@ -701,7 +706,8 @@ void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream 
         }
         emit waveformDisplayUpdated(s.source, samples, components, l->text(), totalPoints ? totalPoints : s.totalPoints, s.preview);
         if (!adc && !rerendering_)
-            emit secondHarmonicPeakReady(s.source, s.cycleId, s.timestamp, maxNormalizedH2, s.preview);
+            emit secondHarmonicPeakReady(s.source, s.cycleId, s.timestamp,
+                s.hasFullCyclePeak ? s.fullCyclePeak : maxNormalizedH2, s.preview && !s.hasFullCyclePeak);
     };
     auto retainRaw=[&](const QString &reason){
         if(!adc||!lastCompleteRaw_.contains(s.source))return false;
@@ -726,7 +732,7 @@ void FpgaControlPage::updateWaveform(const VaporView::FpgaWave::CompletedStream 
         || s.pointBytes.size() % expectedBytes != 0 || displayPoints > availablePoints
         || (s.preview && (!s.previewStride || displayPoints > 64 || quint64(displayPoints-1)*s.previewStride >= s.totalPoints))) {
         if(retainRaw(text("最近 RAW 格式或长度无效","Latest RAW format or length invalid")))return;
-        clearPlots();l->setText(historyPrefix+text("波形格式或长度无效；保留原始记录供诊断","Invalid waveform format or length; raw recording retained for diagnostics"));publishDisplay();return;
+        clearPlots();l->setText(historyPrefix+text("波形格式或长度无效；本周期特征标记为无效","Invalid waveform format or length; cycle feature is marked invalid"));publishDisplay();return;
     }
     if(adc)lastCompleteRaw_[s.source]=s;
     for(auto *p:activePlots)p->samples.clear();const int stride=qMax(1,int(displayPoints)/1000);const int components=adc?1:int(s.bytesPerPoint/4);

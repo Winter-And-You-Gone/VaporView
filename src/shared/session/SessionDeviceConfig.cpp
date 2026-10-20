@@ -87,6 +87,8 @@ QJsonObject sessionDeviceConfigToJson(const SessionDeviceConfig& config)
     root.insert(QStringLiteral("waveform"), waveform);
     root.insert(QStringLiteral("raw_dat"), rawDat);
     root.insert(QStringLiteral("sensors"), sensors);
+    if (!config.fpgaConfiguration.isEmpty()) root.insert(QStringLiteral("fpga"), config.fpgaConfiguration);
+    if (!config.waveformProcessing.isEmpty()) root.insert(QStringLiteral("waveform_processing"), config.waveformProcessing);
     return root;
 }
 

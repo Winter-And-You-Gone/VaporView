@@ -273,12 +273,8 @@ SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
     waveform_timer_.setTimerType(Qt::PreciseTimer);
     heartbeat_timer_.setTimerType(Qt::PreciseTimer);
     status_timer_.setTimerType(Qt::PreciseTimer);
-    connect(&device_manager_, &SkyDeviceManager::fpgaRawFrameReceived, this,
-        [this](quint64 t,const QByteArray& b){session_recorder_.recordFpgaFrame(t,b);}, Qt::DirectConnection);
-    connect(&device_manager_, &SkyDeviceManager::fpgaRawCommandReceived, this,
-        [this](quint64 t,const QByteArray& b){session_recorder_.recordFpgaCommand(t,b);}, Qt::DirectConnection);
-    connect(&device_manager_, &SkyDeviceManager::fpgaRawUsbBytesReceived, this,
-        [this](quint64 t,const QByteArray& b){session_recorder_.recordFpgaUsbBytes(t,b);}, Qt::DirectConnection);
+    connect(&device_manager_, &SkyDeviceManager::fpgaHarmonicCycleReady, this,
+        [this](quint64 t, const auto& stream){session_recorder_.recordFpgaHarmonics(t,stream);}, Qt::DirectConnection);
     connect(&device_manager_, &SkyDeviceManager::fpgaSnapshotReceived, this,
         [this](quint64 t,const QJsonObject& o){session_recorder_.recordFpgaSnapshot(t,o);}, Qt::DirectConnection);
     connect(&device_manager_, &SkyDeviceManager::fpgaStatusChanged, this, [this](const QJsonObject&) {
@@ -669,7 +665,8 @@ bool SkyRuntime::startRecording(QString *error)
         ? 0
         : options_.telemetry_baud;
     session_recorder_.setMainAntennaLeverArm(device_manager_.config().epsilon.imu_to_main_antenna_body_m);
-    session_recorder_.setFpgaConfiguration(device_manager_.config().fpga.configuration);
+    session_recorder_.setFpgaConfiguration(device_manager_.config().fpga.configuration,
+        device_manager_.config().sensor_transport_path == SensorTransportPath::FpgaRelay);
     const QString recordingDirectory = options_.simulate_fpga
         ? QDir(QFileInfo(options_.config_path).absolutePath()).filePath(QStringLiteral("simulated_sessions"))
         : defaultRecordingDirectory();
@@ -1337,7 +1334,8 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
         const quint64 generation=device_command_generation_;
         device_manager_.submitFpgaControl(operation, [this,command,request,key,generation,fpgaDeviceOperation](CommandErrorCode code,QString error,QJsonObject document) {
             if (generation!=device_command_generation_ || active_command_key_!=key) return;
-            session_recorder_.setFpgaConfiguration(device_manager_.config().fpga.configuration);
+            session_recorder_.setFpgaConfiguration(device_manager_.config().fpga.configuration,
+        device_manager_.config().sensor_transport_path == SensorTransportPath::FpgaRelay);
             SkyCommandResult result; result.ack=makeAck(command,code); result.send_status=true;
             result.send_device_operation_response=fpgaDeviceOperation;
             auto status = currentFpgaStatus();

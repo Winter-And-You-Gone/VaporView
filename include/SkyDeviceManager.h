@@ -140,6 +140,7 @@ signals:
     void fpgaStatusChanged(QJsonObject document);
     void fpgaSensorUpdated(const VaporView::FpgaSensor::Reading& reading);
     void fpgaWaveformUpdated(const VaporView::FpgaWave::CompletedStream& stream);
+    void fpgaHarmonicCycleReady(quint64 time, const VaporView::FpgaWave::CompletedStream& stream);
     void fpgaRawFrameReceived(quint64 time, QByteArray bytes);
     void fpgaRawCommandReceived(quint64 time, QByteArray bytes);
     void fpgaRawUsbBytesReceived(quint64 time, QByteArray bytes);

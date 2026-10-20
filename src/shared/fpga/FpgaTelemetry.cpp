@@ -400,6 +400,7 @@ QByteArray encodeWaveformPreview(const FpgaWave::CompletedStream& s)
         {"tick",QString::number(s.timestamp)},{"schema",s.schema},{"format",s.format},{"rate",double(s.rate)},
         {"original_points",double(s.totalPoints)},{"stride",double(previewStride)},{"bytes_per_point",double(s.bytesPerPoint)},
         {"adc_bits",s.adcBits},{"sample_type",!s.dliaPoints.isEmpty()?"dlia":!s.unsigned32Samples.isEmpty()?"uint32":"int32"},
+        {"full_cycle_peak",s.hasFullCyclePeak}, {"normalized_peak",std::isfinite(s.fullCyclePeak)?QJsonValue(s.fullCyclePeak):QJsonValue(QJsonValue::Null)},
         {"quality",QJsonObject{{"complete",s.complete},{"partial",s.partial},{"overflow",s.overflow},{"continuity_error",s.continuityError}}},{"points",points}});
 }
 bool parseWaveformPreview(const QByteArray& payload, FpgaWave::CompletedStream& stream)
@@ -419,6 +420,13 @@ bool parseWaveformPreview(const QByteArray& payload, FpgaWave::CompletedStream& 
     s.flags=quint32(o.value("flags").toDouble()); s.cycleId=quint32(o.value("cycle").toDouble()); s.rate=quint32(o.value("rate").toDouble());
     s.totalPoints=quint32(o.value("original_points").toDouble()); s.bytesPerPoint=quint32(o.value("bytes_per_point").toDouble());
     s.preview=true; s.previewStride=quint32(o.value("stride").toDouble());
+    if (o.contains("full_cycle_peak")) {
+        if (!o.value("full_cycle_peak").isBool()) return false;
+        s.hasFullCyclePeak=o.value("full_cycle_peak").toBool();
+        const auto peak=o.value("normalized_peak");
+        if (s.hasFullCyclePeak && !peak.isNull() && (!peak.isDouble() || !std::isfinite(peak.toDouble()))) return false;
+        s.fullCyclePeak=peak.isNull()?std::numeric_limits<double>::quiet_NaN():peak.toDouble();
+    }
     s.complete=q.value("complete").toBool();s.partial=q.value("partial").toBool();s.overflow=q.value("overflow").toBool();s.continuityError=q.value("continuity_error").toBool();
     const auto type=o.value("sample_type").toString();
     if(type!="int32" && type!="uint32" && type!="dlia") return false;

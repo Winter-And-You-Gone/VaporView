@@ -1,4 +1,5 @@
 #include "shared/session/UnifiedRawDat.h"
+#include "shared/session/HarmonicWaveform.h"
 
 #include <QByteArray>
 #include <QIODevice>
@@ -134,7 +135,7 @@ bool isValidRecordType(quint16 sourceId, quint16 recordType)
     case RawSourceId::Distance:
         return recordType >= 1u && recordType <= 5u;
     case RawSourceId::Waveform:
-        return recordType == kRecordTypeWaveformPayload;
+        return recordType == kRecordTypeWaveformPayload || recordType == kRecordTypeHarmonicPair;
     case RawSourceId::LaserTemperatureController:
         return recordType > 0u;
     case RawSourceId::SystemTemperatureController:
@@ -270,7 +271,16 @@ bool writeRecord(QIODevice& device,
                      .arg(kMaxPayloadSize));
         return false;
     }
-    if (header.sourceId == kSourceWaveform &&
+    if (header.sourceId == kSourceWaveform && header.recordType == kRecordTypeHarmonicPair)
+    {
+        Session::HarmonicLayout layout;
+        if (header.flags != 0 || !Session::parseHarmonicLayout(payload, quint32(payload.size()), layout))
+        {
+            setError(error, QStringLiteral("Invalid harmonic pair payload"));
+            return false;
+        }
+    }
+    if (header.sourceId == kSourceWaveform && header.recordType == kRecordTypeWaveformPayload &&
         (header.flags & kWaveformCombinedPayloadFlag) != 0)
     {
         WaveformPayloadLayout layout;
@@ -552,7 +562,19 @@ RawScanResult scanReader(Reader& device, const RawScanOptions& options)
         }
         const quint64 nextRecord = payloadOffset + header.payloadSize;
         WaveformPayloadLayout layout;
-        if (header.sourceId == kSourceWaveform &&
+        if (header.sourceId == kSourceWaveform && header.recordType == kRecordTypeHarmonicPair)
+        {
+            Session::HarmonicLayout harmonicLayout;
+            if (!device.seek(static_cast<qint64>(payloadOffset)) || header.flags != 0 ||
+                !Session::parseHarmonicLayout(device.read(std::min(header.payloadSize, Session::kHarmonicHeaderSize)),
+                                             header.payloadSize, harmonicLayout))
+            {
+                result.status = RawReadStatus::CorruptRecord;
+                result.error = QStringLiteral("Invalid harmonic pair payload at offset %1").arg(recordOffset);
+                return result;
+            }
+        }
+        if (header.sourceId == kSourceWaveform && header.recordType == kRecordTypeWaveformPayload &&
             (header.flags & kWaveformCombinedPayloadFlag) != 0)
         {
             if (!device.seek(static_cast<qint64>(payloadOffset)))

@@ -145,7 +145,7 @@ private:
     QComboBox *backend_ = nullptr;
     std::array<QComboBox*,2> cutoff_{{nullptr,nullptr}};
     QCheckBox* ai8Scan_=nullptr;
-    QCheckBox *recordSensors_ = nullptr, *recordDlia_ = nullptr, *recordRaw_ = nullptr;
+    QCheckBox *recordSensors_ = nullptr, *recordDlia_ = nullptr;
     QTabWidget *tabs_ = nullptr;
     QString connectionDetail_, recordingDetail_;
     VaporView::SensorTransportPath sensorTransportPath_ = VaporView::SensorTransportPath::DirectDevices;

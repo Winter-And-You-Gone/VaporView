@@ -448,7 +448,9 @@ int main(int argc, char *argv[])
     const QStringList featureLines = QString::fromUtf8(featuresFile.readAll()).trimmed().split('\n');
     require(featureLines.size() == 2, "waveform features csv row count");
     const QStringList featureCells = featureLines.at(1).split(',');
-    require(featureCells.size() == 14, "waveform features csv column count");
+    require(featureCells.size() == 21, "waveform features retain 14 original columns and append 7 source fields");
+    require(featureCells.at(14) == QStringLiteral("tcp") && featureCells.at(15) == QStringLiteral("harmonic"),
+            "direct features remain identifiable beside FPGA normalized features");
     require(featureCells.at(6) == QStringLiteral("0.125000"), "feature peak csv precision");
     require(featureCells.at(7) == QStringLiteral("0.250000"), "feature mean csv precision");
     require(featureCells.at(8) == QStringLiteral("0.500000"), "feature rms csv precision");

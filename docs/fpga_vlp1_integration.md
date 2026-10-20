@@ -138,31 +138,33 @@ DLIA `0030/0031, msg1001` 的当前协议仅 schema2，头32B。format0为I32 H1
 
 传感器启用读回确认后另有 3 秒启动告警宽限期（重连恢复及单独启用均适用）。期间新错误保留在管理状态和记录中，暂不生成可见警告；到期检查最新测量有效性与 AI8 当前报警状态，仍异常才告警。TFA 无效返回不会生成距离数据，因此要求最近 1 秒内有有效样本；其它传感器使用 5 秒新鲜度。比暂存错误更新的健康样本可消除短暂启动告警，但仍锁存的配置/内部错误不因此忽略。没有错误事件却持续无效或无数据也会提示。禁用、断开或操作失败清理相关等待状态；宽限期后的新错误、连接/命令失败及非传感器故障照常提示。此策略不清除硬件错误位，不修改设备采样与控制参数。
 
-不完整输出保留实际存在的片段位置，不能自行补0后画成无缺口真实采样。页面清除异常/缺片周期的连线并显示质量提示，原始片段仍保留供诊断。RAW signed/unsigned、DLIA IQ/H1/H2分开保存；H1/H2是数字幅值，滤波不补额外×2。
+不完整输出保留实际存在的片段位置，不能自行补0后画成无缺口真实采样。页面清除异常/缺片周期的连线并显示质量提示，当前周期记质量标记；原始片段仅在内存中处理。RAW signed/unsigned 与 DLIA IQ/H1/H2 分开解码显示；H1/H2是数字幅值，滤波不补额外×2。
 
-每路DLIA上下显示H1/H2，不再提供分量下拉框：format0和format2显示两个谐波，只有I/Q数据的format1显示I1/Q1和I2/Q2。每路ADC、H1、H2图高均为100逻辑像素，随字体缩放。绘图根据实际payload格式自动适配，不写MODE或更改硬件输出schema；format2的I/Q仍保留在原始记录中。完整format0周期可以展示“本周期2f最大值（数字幅值）”，不是ppm。GUI展示的抽稀只影响绘图，归档原始字节不抽稀。
+每路DLIA上下显示H1/H2，不再提供分量下拉框：format0和format2显示两个谐波，只有I/Q数据的format1显示I1/Q1和I2/Q2。每路ADC、H1、H2图高均为100逻辑像素，随字体缩放。绘图根据实际payload格式自动适配，不写MODE或更改硬件输出schema；format2 的 I/Q 用于实时诊断显示，Session 只保存 H1/H2。完整format0周期可以展示“本周期2f最大值（数字幅值）”，不是ppm。GUI展示的抽稀只影响绘图，记录的 H1/H2 不抽稀。
 
-FPGA 中转首页和 FPGA Session 回放的二次谐波使用逐点 `H2/H1`（仅 IQ 时为两组 `hypot` 幅值之比），峰值取归一化后有效点的最大值，实时计算先于绘图抽稀。H1 非正或输入无效时留断点，不补零、不参与峰值；全部无效时没有峰值。预览只计算收到点的归一化值及预览峰值。FPGA 诊断图和归档仍保留原始分量，回放可明确选择原始分量查看；直连 TCP 不执行这次新增归一化。
+FPGA 中转首页和 FPGA Session 回放的二次谐波使用逐点 `H2/H1`（仅 IQ 时为两组 `hypot` 幅值之比），峰值取归一化后有效点的最大值，实时计算先于绘图抽稀。H1 非正或输入无效时留断点，不补零、不参与峰值；全部无效时没有峰值。预览曲线只计算收到点的归一化值；新版 SkyCore 携带完整周期峰值，旧版缺少完整峰值时标为预览峰值。FPGA 诊断图保留原始分量，Session 保存 H1/H2，回放可明确选择原始分量查看；直连 TCP 不执行这次新增归一化。
 
 ## 7. Session、离线回放与导出
 
-本轮在既有天空端 Session 中保存完整 FPGA 归档；历史 Ground 本机 FPGA Session 仍可读取，文件格式保持一致：
+FPGA 中转采用与直连相同的 Session 包、记录生命周期和 `raw/waveform.dat`。2026-10-20 起不保存 USB/VLP1 转发包、命令字节、ADC RAW 或独立 FPGA JSONL 档案；两路 DLIA 的完整 H1/H2 必须保存。原始采集开关仍控制实时 RAW 显示，不控制文件输出。旧配置中的 recordRaw/recordDlia 读取兼容，但不再改变新 Session 的 H1/H2 保存策略。
 
-| 路径 | 内容 |
+| 路径 | 当前内容 |
 |---|---|
-| `raw/fpga_vlp1.dat` | 既有VVRAWDAT外层格式，独立source=8；host time与归档sequence；payload保留精确字节 |
-| `sensors/fpga_frames.jsonl` | 完整帧/OUT命令元数据、typed payload摘要及配置/校准/连接段快照 |
-| `session.json` 的可选FPGA字段 | raw_files.fpga_vlp1和FPGA路径、记录计数；旧session无此项 |
+| `raw/waveform.dat` | VVRAWDAT v2、source=5；直连 type=1 保持原格式，FPGA type=2 为带版本和通道的 H1/H2 数组 |
+| `sensors/waveform_features.csv` | 每个 FPGA 周期的归一化峰值、索引、均值/RMS、质量，以及来源/分量/算法版本/周期/分段/tick/波形记录序号 |
+| `config/device_config.json` | 初始 FPGA 配置、归一化规则；后续配置和连接/分段快照进入现有事件日志 |
+| `session.json` | 统一波形和特征行数、归一化处理元数据；实际采样率和变长点数以各记录为准 |
+| `logs/event_log.csv` | 连接、配置、暂停/恢复分段快照；不保存通信 payload |
 
-record_type=1为IN完整帧，2为OUT命令，3为JSON快照，4为原始USB IN块。“记录传感器/记录解调数据/记录RAW”选项只筛选type1完整帧与对应解析摘要，不筛选精确type4 USB流、type2 OUT或type3快照；活动天空 Session保留接收到的完整USB流，包含未勾选的source。要降低高吞吐USB数据量必须关闭硬件RAW上传，不能靠解析记录筛选。原始USB包括半帧、多帧、填充、CRC损坏和不能解析的字节；完整帧与USB重复记录用于诊断，但回放/流BIN选择USB优先，不能重复计数。外层host时间、内层tick/source/msg/sequence/cycle/flags以及raw payload都可追溯；tick/host time等uint64字段的JSON使用十进制字符串避免精度损失。
+H1/H2 已提供时保留 int32；IQ-only 格式先合成幅值，以 float64 保存 H1/H2，format2 不额外保存 I/Q。归一化整条波形不落盘，查看器索引原始 H1/H2，按需读取当前帧并计算 H2/H1，界面保留当前帧样本供重绘使用。默认峰值趋势读取已经保存的完整周期特征；改搜索范围或选择 H1/H2 时再后台计算。所有通道独立，CSV 特征按通道、分量、算法、波形序号和 host time 匹配，不混用直连峰值缓存。
 
-天空端 `SkySessionRecorder::rawFpgaRecordCount()` 与 manifest `raw_files.fpga_vlp1.records` 对应；历史 Ground 本机记录仍保留 `GroundRecordingStatus::rawFpgaRecords`。这些值统计后台成功写入的四类记录总数，不是测量点数、USB 字节数或有效 VLP 帧数。刚入队尚未计入，pause/stop 排空后得到最终值；不用 PTB/raw waveform 旧计数冒充 FPGA 数量。地面数传 Session 保存既有标准遥测测量；新 FPGA 状态和有限波形预览仅用于界面，不作为完整原始归档保存。
+周期入口位于控制器的 UI 合并之前；SkyCore 的正式峰值在预览抽稀之前得到，随有限预览携带完整周期峰值。旧版本预览没有该字段时继续标为预览峰值。坏周期仅写质量标记，不把残缺数据补零冒充完整波形；查看器呈现断点，无有效参考时没有峰值。
 
-记录经有界后台队列写入，GUI不做高频同步落盘。pause先排空、resume沿用session并写段标记；关闭排空后flush，写入/队列/flush失败标记incomplete，不宣称完整记录。配置、校准、连接和重连事件保存快照。FPGA记录不写入PTB/HMP旧raw文件，也不修改已有session。
+地面本机和天空端都使用有界后台队列。pause/stop 排空并 flush，resume 沿用 Session 并增加分段；写入、队列或 flush 失败标记 incomplete。地面远程模式仍只收到有界预览，完整记录保存在 SkyCore Session，取回后使用同一个数据查看器读取。
 
-`FpgaSessionArchive::scan/visit/replay/exportTo` 提供离线API：索引恢复中断尾部；每次读一个payload；replay复用VLP codec、USB优先、CRC失败不生成测量；connected/disconnected/reconnect/pause/resume快照重置半帧并通知适配器清状态。frame visitor可取消，额外cancel callback可中断扫描及逐块读取。离线回放不会向硬件发送归档OUT，也不会把页面标成在线采集。
+`raw/fpga_vlp1.dat` / `sensors/fpga_frames.jsonl` 只属于历史 Session。历史读取/CRC 检查/分片重组和 USB 优先去重逻辑保留，已有文件不迁移、不修改。FPGA 页“打开离线记录”复用数据查看器；新记录的导出进入统一原始数据解析页，旧协议档案仍支持原有 CSV/JSON/BIN 导出。
 
-CSV/JSON导出包括各record kind、元数据、原始payload和配置快照；BIN导出精确USB IN流，老FPGA记录仅有完整帧时回退IN帧流。BIN不会混入OUT命令/JSON，也不会自动剔除坏CRC。单条/批量原始记录导出仍可在已有原始解析页使用。导出不得覆盖源归档；文件使用原子提交。软件可以保存、扫描与回放，但不能借此证明板上无丢点或校准准确。
+完整架构对比、二进制定义及验收项见 [FPGA Session 接入](fpga_session_recording.md)。
 
 ## 8. 结构化诊断与可追溯状态
 

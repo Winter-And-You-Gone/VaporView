@@ -12,6 +12,8 @@
 #include "ground/devices/FpgaInstrumentService.h"
 #include "ppk/ObservationStore.h"
 #include "ground/widgets/DeviceEnabledCheckBox.h"
+#include "ground/session/SessionViewerWindow.h"
+#include "shared/session/FpgaSessionArchive.h"
 
 #ifdef VAPORVIEW_MAIN_WINDOW_TESTING
 VaporView::Ground::Devices::FpgaDeviceController *MainWindow::testFpgaController()
@@ -697,7 +699,7 @@ void MainWindow::setupFpgaControlPage()
         if (enable) onStartRecordingClicked(); else onStopRecordingClicked();
         updateRecordingStatusLabel();
     });
-    connect(page, &FpgaControlPage::replayRequested, this, [this, controller](const QString &requested) {
+    connect(page, &FpgaControlPage::replayRequested, this, [this](const QString &requested) {
         if (isUiTestMode())
         {
             state_->fpga_page_->appendDiagnostic(state_->is_english_
@@ -710,8 +712,9 @@ void MainWindow::setupFpgaControlPage()
         QString directory = requested;
         if (directory.isEmpty()) directory = QFileDialog::getExistingDirectory(this, state_->is_english_ ? QStringLiteral("Select complete session directory") : QStringLiteral("选择完整会话目录"), state_->recording_directory_);
         if (directory.isEmpty()) return;
-        state_->fpga_replaying_ = true;
-        QMetaObject::invokeMethod(controller, [controller, directory] { controller->replaySession(directory); }, Qt::QueuedConnection);
+        onOpenSessionViewerClicked();
+        state_->session_viewer_window_->setCurrentPage(SessionViewerWindow::Page::Data);
+        state_->session_viewer_window_->openSessionPath(directory);
     });
     connect(page, &FpgaControlPage::exportRequested, this, [this, controller](const QString &requested) {
         if (isUiTestMode())
@@ -724,6 +727,12 @@ void MainWindow::setupFpgaControlPage()
         QString directory = requested;
         if (directory.isEmpty()) directory = QFileDialog::getExistingDirectory(this, state_->is_english_ ? QStringLiteral("Select complete session directory") : QStringLiteral("选择完整会话目录"), state_->recording_directory_);
         if (directory.isEmpty()) return;
+        if (!QFileInfo::exists(VaporView::Session::FpgaSessionArchive::rawPath(directory))) {
+            onOpenSessionViewerClicked();
+            state_->session_viewer_window_->openSessionPath(directory);
+            state_->session_viewer_window_->setCurrentPage(SessionViewerWindow::Page::RawData);
+            return;
+        }
         const QString output = QFileDialog::getSaveFileName(this, state_->is_english_ ? QStringLiteral("Export FPGA session") : QStringLiteral("导出 FPGA 会话"), QDir(directory).filePath(QStringLiteral("fpga_decoded.csv")), QStringLiteral("CSV (*.csv);;JSON (*.json);;BIN (*.bin)"));
         if (!output.isEmpty()) QMetaObject::invokeMethod(controller, [controller, directory, output] { controller->exportSession(directory,output); }, Qt::QueuedConnection);
     });
@@ -801,9 +810,7 @@ void MainWindow::setupFpgaControlPage()
 
     // These APIs enqueue under the recording service's lock, independent of GUI delivery.
     auto *recorder = state_->recording_service_.get();
-    connect(controller,&Controller::rawFrame,this,[recorder](quint64 t,const QByteArray &b){recorder->recordFpgaFrame(t,b);},Qt::DirectConnection);
-    connect(controller,&Controller::rawCommand,this,[recorder](quint64 t,const QByteArray &b){recorder->recordFpgaCommand(t,b);},Qt::DirectConnection);
-    connect(controller,&Controller::rawUsbBytes,this,[recorder](quint64 t,const QByteArray &b){recorder->recordFpgaUsbBytes(t,b);},Qt::DirectConnection);
+    connect(controller,&Controller::harmonicCycleReady,this,[recorder](quint64 t,const auto& s){recorder->recordFpgaHarmonics(t,s);},Qt::DirectConnection);
     connect(controller,&Controller::snapshot,this,[recorder](quint64 t,const QJsonObject &o){recorder->recordFpgaSnapshot(t,o);},Qt::DirectConnection);
     const auto config = state_->fpga_config_;
     QMetaObject::invokeMethod(controller,[controller,config]{controller->setConfiguration(config);},Qt::QueuedConnection);
@@ -1101,8 +1108,13 @@ void MainWindow::updateFpgaPageBackend()
         state_->remote_config_session_.applying || state_->fpga_session_.requestId != 0 || (fresh && status.value("busy").toBool()), detail);
     if (auto *pressure = state_->fpga_page_->findChild<QComboBox *>(QStringLiteral("fpgaPressureSource")))
         pressure->setEnabled(link && !state_->remote_config_session_.applying && !state_->fpga_session_.requestId);
+    const auto recordingStatistics = status.value("recording_statistics").toObject();
+    const QString recordingCounts = recordingStatistics.value("format") == "harmonics_v1"
+        ? QString(state_->is_english_ ? "\nH1/H2 cycles: %1\nNormalized peak records: %2" : "\nH1/H2 周期：%1\n归一化峰值记录：%2")
+            .arg(recordingStatistics.value("waveform_frames").toString(), recordingStatistics.value("normalized_features").toString())
+        : (state_->is_english_ ? QStringLiteral("\nSky FPGA archived: ") : QStringLiteral("\n天空端 FPGA 归档：")) + status.value("archived_records").toString();
     state_->fpga_page_->setRecordingState(fresh && status.value("recording_state").toInt() == 1,
-        fresh ? status.value("session_directory").toString() + (state_->is_english_ ? QStringLiteral("\nSky FPGA archived: ") : QStringLiteral("\n天空端 FPGA 归档：")) + status.value("archived_records").toString()
+        fresh ? status.value("session_directory").toString() + recordingCounts
               : (state_->is_english_ ? QStringLiteral("Sky recording status unavailable") : QStringLiteral("天空端记录状态未知")));
     if (!state_->fpga_session_.requestId) state_->fpga_home_action_device_=VaporView::SkyDeviceId::All;
     updateHomeDeviceStatusCapsules();updateTemperatureTitleButtonsState();

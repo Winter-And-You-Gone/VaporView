@@ -42,6 +42,11 @@ int main(int argc,char **argv) {
     VaporView::installButtonFocusStyle();
     VaporView::setAppStyleSheet(VaporView::startupAppThemeStyleSheet(false));
     FpgaControlPage page;
+    auto *requiredHarmonics=page.findChild<QCheckBox*>("fpgaRecordHarmonics");
+    require(requiredHarmonics && requiredHarmonics->isChecked() && !requiredHarmonics->isEnabled(),"H1/H2 recording is required");
+    auto legacyRecordingOptions=page.configuration();legacyRecordingOptions.recordRaw=true;legacyRecordingOptions.recordDlia=false;
+    page.setConfiguration(legacyRecordingOptions);
+    require(page.configuration().recordDlia && !page.configuration().recordRaw,"legacy options cannot disable H1/H2 or enable raw archive writes");
     auto *devices=page.findChild<QComboBox*>("fpgaLocator");
     auto *scan=page.findChild<QPushButton*>("fpgaDiscover");
     auto *connect=page.findChild<QPushButton*>("fpgaConnect");
@@ -491,5 +496,6 @@ int main(int argc,char **argv) {
     require(!page.uiTestController()&&page.configuration().toJson()==beforeSimulation&&adcPlot->property("sampleCount").toInt()==0,"leaving UI test destroys its isolated controller, restores configuration and clears data");
     { FpgaControlPage pending;pending.setUiTestState(true);pending.simulateOperation({{"op","connect"}}); }
     app.processEvents(); // Pending worker results must not outlive their page.
+
     page.close();std::puts("FPGA control page tests passed");return 0;
 }

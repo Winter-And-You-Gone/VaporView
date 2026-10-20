@@ -2,7 +2,7 @@
 #include "shared/session/FpgaSessionArchive.h"
 #include "shared/session/SessionManifest.h"
 #include "ground/session/SessionWaveformRepository.h"
-#include "FailingRecordingStorage.h"
+#include "LegacyFpgaArchiveFixture.h"
 #include <QCoreApplication>
 #include <QTemporaryDir>
 #include <QDir>
@@ -43,7 +43,7 @@ void iqWaveformChoices()
 {
     using namespace VaporView;
     using namespace VaporView::Ground;
-    QTemporaryDir temp;GroundRecordingService recorder;GroundRecordingOptions options;options.baseDirectory=temp.path();
+    QTemporaryDir temp;LegacyFpgaArchiveFixture recorder;GroundRecordingOptions options;options.baseDirectory=temp.path();
     check(recorder.start(options),"IQ choices recording starts");const auto directory=recorder.status().sessionDirectory;
     for(quint16 source:{0x30,0x31}) {
         QByteArray payload;
@@ -79,7 +79,7 @@ void normalizedReferenceGaps()
     using namespace VaporView;
     using namespace VaporView::Ground;
     for(quint16 format:{0,1}) {
-        QTemporaryDir temp;GroundRecordingService recorder;GroundRecordingOptions options;options.baseDirectory=temp.path();
+        QTemporaryDir temp;LegacyFpgaArchiveFixture recorder;GroundRecordingOptions options;options.baseDirectory=temp.path();
         check(recorder.start(options),"normalization reference recording starts");const auto directory=recorder.status().sessionDirectory;
         for(quint32 cycle=0;cycle<2;++cycle) {
             QByteArray payload;
@@ -112,7 +112,7 @@ void waveformRecording()
 {
     using namespace VaporView::Ground;
     QTemporaryDir temp;
-    GroundRecordingService recorder;GroundRecordingOptions options;options.baseDirectory=temp.path();
+    LegacyFpgaArchiveFixture recorder;GroundRecordingOptions options;options.baseDirectory=temp.path();
     check(recorder.start(options),"wave session start");
     const QString directory=recorder.status().sessionDirectory;
     quint64 host=1000;
@@ -191,7 +191,7 @@ int main(int argc,char **argv)
     waveformRecording();iqWaveformChoices();normalizedReferenceGaps();
     QTemporaryDir temp; check(temp.isValid(),"temp directory");
     GroundRecordingOptions options; options.baseDirectory=temp.path();
-    GroundRecordingService recorder;
+    LegacyFpgaArchiveFixture recorder;
     check(recorder.start(options),"start");
     const QString directory=recorder.status().sessionDirectory;
     const QByteArray wire=frame(7);
@@ -270,14 +270,6 @@ int main(int argc,char **argv)
     const auto parsed=sessionManifestFromJson(QJsonDocument::fromJson(manifest.readAll()).object());
     check(parsed.success && parsed.manifest.fpgaRecords==10,"FPGA manifest count roundtrip");
     check(recorder.status().rawFpgaRecords==10,"recording status includes archived FPGA records after close");
-    for(bool flushFailure:{false,true}){
-        QTemporaryDir faultTemp;GroundRecordingOptions faultOptions;faultOptions.baseDirectory=faultTemp.path();
-        auto storage=std::make_shared<FailingRecordingStorage>();GroundRecordingService failed(storage);
-        check(failed.start(faultOptions),"fault session start");
-        storage->failWrites.store(!flushFailure);storage->failFlush.store(flushFailure);
-        check(failed.recordFpgaFrame(200,wire),"fault frame accepted before write");
-        check(failed.stop().writeFailed,"write/flush failure marks incomplete session");
-    }
     std::cout<<"FPGA archive software tests passed; USB hardware not exercised\n";
     return 0;
 }

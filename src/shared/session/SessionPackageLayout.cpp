@@ -169,7 +169,8 @@ QString waveformFeaturesCsvHeader()
 {
     return QStringLiteral(
         "host_time_us,epsilon_time_us,original_point_count,search_start_index,search_end_index,"
-        "channel_id,peak,mean,rms,peak_index,peak_x,min_value,max_value,quality_flags\n");
+        "channel_id,peak,mean,rms,peak_index,peak_x,min_value,max_value,quality_flags,"
+        "source,component,algorithm_version,cycle_id,segment_id,fpga_tick,waveform_sequence\n");
 }
 
 QString laserTemperatureControllerCsvHeader()
@@ -218,10 +219,16 @@ QString rawDatFormatDocumentText()
         "- Timestamp unit: microseconds\n"
         "- Standard sources: navigation=1, pressure=2, temperature_humidity=3, distance=4, waveform=5, laser_temperature_controller=6, system_temperature_controller=7\n"
         "  (the historical source ID values are unchanged)\n\n"
-        "- Optional FPGA source=8: raw/fpga_vlp1.dat; record types IN frame=1, OUT command=2, JSON snapshot=3, exact USB IN chunk=4.\n"
-        "  Payloads retain VLP1 header, CRC and padding as received. FPGA tick is a uint64 100 MHz local counter, not UTC.\n"
-        "  sensors/fpga_frames.jsonl contains frame metadata, typed payload descriptions and configuration/segment snapshots.\n"
-        "  Replay prioritizes USB chunks over duplicate IN records, rejects VLP CRC errors, and resets at reconnect/pause/resume snapshots.\n\n"
+        "- raw/waveform.dat source=5: type=1 retains the direct TCP raw/harmonic payload layout; type=2 stores FPGA H1/H2 only.\n"
+        "  Type-2 little-endian prefix (48 bytes): uint16 payload_version=1, header_size=48, channel_id, sample_type;\n"
+        "  uint32 cycle_id, sample_rate_hz, original_points, stored_points; uint64 fpga_tick, segment_id;\n"
+        "  uint32 quality_flags; uint16 input_format, reserved=0. Then stored_points interleaved H1,H2 pairs.\n"
+        "  sample_type=1 int32 preserves FPGA H1/H2; sample_type=2 float64 stores hypot magnitudes for IQ-only input.\n"
+        "  Invalid cycles store zero pairs plus quality flags; missing samples are not filled with zeros.\n"
+        "  FPGA tick is a uint64 100 MHz local counter, not UTC; the outer host timestamp remains epoch microseconds.\n"
+        "  waveform_features.csv records full-cycle pointwise H2/H1 statistics, quality, channel, cycle, segment and waveform sequence.\n"
+        "  Normalized waveforms are calculated on demand, never stored separately. Configuration/segment snapshots use event_log.csv.\n"
+        "- Legacy source=8 raw/fpga_vlp1.dat remains readable, but new sessions do not write USB/VLP1 archives.\n\n"
         "- laser_temperature_controller payloads are complete verified Modbus RTU response frames; record_type is the starting register address.\n"
         "- system_temperature_controller payloads are complete verified Modbus RTU response frames; record_type 1=MeasuredValues, 2=AlarmStatus, 3=MainStatus, 4=ControlStatus.\n\n"
         "Zero-record files still contain a valid file header for their source. "

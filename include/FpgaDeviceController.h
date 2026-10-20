@@ -64,6 +64,7 @@ signals:
     void observationEpochReceived(const QByteArray& encodedEpoch);
     void measurementUpdated(const VaporView::FpgaSensor::AdaptedMeasurements& measurements);
     void waveformUpdated(const VaporView::FpgaWave::CompletedStream& stream);
+    void harmonicCycleReady(quint64 hostTimestampUs, const VaporView::FpgaWave::CompletedStream& stream);
     void logRecordGenerated(const VaporView::LogRecord& record);
     void rawFrame(quint64 hostTimestampUs, const QByteArray& wireBytes);
     void rawCommand(quint64 hostTimestampUs, const QByteArray& wireBytes);

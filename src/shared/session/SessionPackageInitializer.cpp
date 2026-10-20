@@ -62,6 +62,7 @@ SessionManifest makeInitialManifest(const SessionPackageInitOptions& options,
     manifest.otherDevicesExportRateHz = options.otherDevicesExportRateHz;
     manifest.waveformExportRateHz = options.waveformExportRateHz;
     manifest.waveformPointsPerFrame = options.waveformPointsPerFrame;
+    manifest.waveformProcessing = options.deviceConfig.waveformProcessing;
     manifest.capture = options.capture;
     return manifest;
 }

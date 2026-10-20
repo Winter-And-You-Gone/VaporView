@@ -256,6 +256,8 @@ QJsonObject sessionManifestToJson(const SessionManifest& manifest)
     root.insert(QStringLiteral("waveform_timestamp_type"), manifest.waveformTimestampType);
     root.insert(QStringLiteral("waveform_points_per_frame"), manifest.waveformPointsPerFrame);
     root.insert(QStringLiteral("waveform_file_count"), numberText(manifest.waveformFileCount));
+    if (!manifest.waveformProcessing.isEmpty())
+        root.insert(QStringLiteral("waveform_processing"), manifest.waveformProcessing);
     root.insert(QStringLiteral("capture"), captureToJson(manifest.capture));
     root.insert(QStringLiteral("counts"), countsToJson(manifest.counts));
     root.insert(QStringLiteral("paths"), pathsToJson());
@@ -326,6 +328,7 @@ SessionManifestParseResult sessionManifestFromJson(const QJsonObject& json)
     manifest.waveformTimestampType = json.value(QStringLiteral("waveform_timestamp_type")).toString(QStringLiteral("uint64"));
     manifest.waveformPointsPerFrame = intFromJson(json.value(QStringLiteral("waveform_points_per_frame")), 50000);
     manifest.waveformFileCount = unsignedFromJson(json.value(QStringLiteral("waveform_file_count")));
+    manifest.waveformProcessing = json.value(QStringLiteral("waveform_processing")).toObject();
 
     const QJsonObject capture = json.value(QStringLiteral("capture")).toObject();
     manifest.capture.telemetryTransport = capture.value(QStringLiteral("telemetry_transport")).toString(

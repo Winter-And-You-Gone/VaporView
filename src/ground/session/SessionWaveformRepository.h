@@ -43,6 +43,8 @@ struct SessionRawTcpWaveFrame
     quint32 harmonicPayloadSize = 0;
     quint64 timestampUs = 0;
     TcpFloatEncoding floatEncoding = TcpFloatEncoding::Unknown;
+    bool harmonicPair = false;
+    quint64 waveformSequence = 0;
 };
 
 struct SessionIndexedWaveformFrame
@@ -55,7 +57,7 @@ struct SessionIndexedWaveformFrame
 struct SessionFpgaWaveformChoice
 {
     quint16 source = 0;
-    int component = 0; // 0=H2/RAW, 1=H1, 2=I1, 3=Q1, 4=I2, 5=Q2
+    int component = 0; // 0=H2/RAW, 1=H1, 2=I1, 3=Q1, 4=I2, 5=Q2, 6=H2/H1
     QString label;
     QVector<quint64> timestampsUs;
     int pointsPerFrame = 0;

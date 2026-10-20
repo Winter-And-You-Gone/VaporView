@@ -34,6 +34,8 @@ struct SessionDeviceConfig
     int waveformPointsPerFrame = 0;
     CaptureMetadata telemetry;
     QString waveformHost;
+    QJsonObject fpgaConfiguration;
+    QJsonObject waveformProcessing;
     int waveformPort = 0;
     DeviceConnectionConfig epsilon;
     DeviceConnectionConfig ptb;

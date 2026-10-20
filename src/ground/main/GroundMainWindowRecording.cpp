@@ -590,8 +590,9 @@ void MainWindow::updateRecordingStatusLabel()
     {
         const auto status = state_->recording_service_->status();
         const QString detail = (status.sessionDirectory.isEmpty() ? QStringLiteral("--") : status.sessionDirectory)
-            + QString(state_->is_english_ ? "\nFPGA archived: %1 records" : "\nFPGA 归档记录：%1 条")
-                  .arg(static_cast<qulonglong>(status.rawFpgaRecords));
+            + QString(state_->is_english_ ? "\nH1/H2 cycles: %1\nNormalized peak records: %2" : "\nH1/H2 周期：%1\n归一化峰值记录：%2")
+                  .arg(status.fpgaStatistics.value("waveform_frames").toString(),
+                       status.fpgaStatistics.value("normalized_features").toString());
         if (!isUiTestMode()) state_->fpga_page_->setRecordingState(status.active, detail);
     }
     if (state_->recording_status_title_lbl_)
@@ -813,7 +814,7 @@ void MainWindow::updateRecordingStatusLabel()
                   .arg(elapsed)
                   .arg(displayStatus.telemetry_record_count)
                   .arg(displayStatus.waveform_feature_record_count)
-                  .arg(displayStatus.waveform_snapshot_record_count + fpgaStatistics.value("waveform_frames").toString().toULongLong())
+                  .arg(displayStatus.waveform_snapshot_record_count + (fpgaStatistics.value("format")=="harmonics_v1" ? 0 : fpgaStatistics.value("waveform_frames").toString().toULongLong()))
                   .arg(displayStatus.raw_navigation_record_count + fpgaCount(fpgaStatistics,QStringLiteral("66")))
                   .arg(displayStatus.raw_pressure_record_count + fpgaCount(fpgaStatistics,QStringLiteral("64")))
                   .arg(displayStatus.raw_temperature_humidity_record_count + fpgaCount(fpgaStatistics,QStringLiteral("65")))
@@ -827,7 +828,7 @@ void MainWindow::updateRecordingStatusLabel()
                   .arg(elapsed)
                   .arg(displayStatus.telemetry_record_count)
                   .arg(displayStatus.waveform_feature_record_count)
-                  .arg(displayStatus.waveform_snapshot_record_count + fpgaStatistics.value("waveform_frames").toString().toULongLong())
+                  .arg(displayStatus.waveform_snapshot_record_count + (fpgaStatistics.value("format")=="harmonics_v1" ? 0 : fpgaStatistics.value("waveform_frames").toString().toULongLong()))
                   .arg(displayStatus.raw_navigation_record_count + fpgaCount(fpgaStatistics,QStringLiteral("66")))
                   .arg(displayStatus.raw_pressure_record_count + fpgaCount(fpgaStatistics,QStringLiteral("64")))
                   .arg(displayStatus.raw_temperature_humidity_record_count + fpgaCount(fpgaStatistics,QStringLiteral("65")))
@@ -1019,6 +1020,7 @@ bool MainWindow::startRecordingSession()
     if (!isRemoteSkyMode() && isFpgaRelayPath() && state_->fpga_config_.backend == QStringLiteral("simulator"))
         options.baseDirectory = QDir(options.baseDirectory).filePath(QStringLiteral("simulated_sessions"));
     options.exportRateHz = state_->recording_export_rate_hz_;
+    if (isFpgaRelayPath()) options.fpgaConfiguration = state_->fpga_config_.toJson();
     options.deviceConfig.waveformHost = state_->tcp_wave_panel_
         ? state_->tcp_wave_panel_->host()
         : QStringLiteral("127.0.0.1");

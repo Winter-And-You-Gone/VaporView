@@ -1,4 +1,5 @@
 #include "FpgaDeviceController.h"
+#include "FpgaHarmonics.h"
 #include "FpgaUsbSimulator.h"
 #include "FpgaTelemetry.h"
 #include "FpgaAdvancedParameters.h"
@@ -99,8 +100,14 @@ void FpgaDeviceController::installSession(std::unique_ptr<FpgaUsbTransport> tran
     connect(session_, &FpgaDeviceSession::waveformCompleted, this,
         [this](const FpgaWave::CompletedStream& stream) {
             if (recoveringConnection_) return;
-            latestWaves_[stream.source] = stream;
-            if (!stream.complete) report(QStringLiteral("source %1 cycle %2：周期不完整，保留原始分片证据。")
+            auto completed = stream;
+            if (stream.source == 0x30 || stream.source == 0x31) {
+                completed.hasFullCyclePeak = true;
+                completed.fullCyclePeak = FpgaWave::normalizedCyclePeak(stream);
+                if (!replaying_) emit harmonicCycleReady(nowUs(), completed);
+            }
+            latestWaves_[stream.source] = std::move(completed);
+            if (!stream.complete) report(QStringLiteral("source %1 cycle %2：周期不完整，本周期特征标记为无效。")
                 .arg(hex(stream.source)).arg(stream.cycleId));
         });
     connect(session_, &FpgaDeviceSession::rawFrameReceived, this,

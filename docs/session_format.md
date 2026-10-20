@@ -58,29 +58,41 @@ transport. Device models, ports, and serial details remain in
 and are defined by `SessionPackageLayout`. Ground and Sky both create every
 standard file even when the recorder has no data for that stream.
 
-## Optional FPGA extension (Ground)
+## FPGA harmonic recording (Ground and Sky)
 
-FPGA recording adds `raw/fpga_vlp1.dat` (UnifiedRawDat source=8) and
-`sensors/fpga_frames.jsonl` only when FPGA records are captured. The seven
-standard RAW sources and legacy path aliases remain unchanged; old Sessions
-need no FPGA files. Source=8 retains four kinds: complete IN frame=1, OUT
-command=2, JSON snapshot=3, and exact USB IN chunk=4. The exact USB stream
-includes split frames, padding, malformed bytes and CRC failures. Sensor,
-DLIA and RAW selection filters only affect complete-frame/decoded records;
-they do not filter the exact USB evidence while a Ground recording is active.
+New FPGA relay recordings reuse `raw/waveform.dat` (UnifiedRawDat source=5).
+Direct TCP records retain type=1; FPGA records use type=2 with a versioned
+H1/H2 pair payload, channel, sample rate, point count, cycle, FPGA tick,
+segment and quality. Supplied magnitudes retain int32 precision; IQ-only
+magnitudes are calculated with hypot and stored as float64. USB/VLP1 packets,
+commands, ADC RAW and I/Q are no longer archived by new recorders.
 
-When FPGA records exist, `session.json` additionally includes
-`raw_files.fpga_vlp1` with `path`, `source_id`, `format_version`, and string
-`records`, plus `paths.fpga_raw` and `paths.fpga_semantic_jsonl`.
-`GroundRecordingStatus::rawFpgaRecords` counts all four persisted kinds, not
-measurement points or valid VLP frames. These additions do not change the
-base package version or rewrite older Session files.
+Normalized waveforms are calculated per frame when viewed. Every admitted
+cycle writes normalized peak/index/statistics/quality to the existing
+`sensors/waveform_features.csv`. Its original 14 columns remain first; source,
+component, algorithm_version, cycle_id, segment_id, fpga_tick and
+waveform_sequence are appended. Incomplete cycles carry quality markers
+and no fabricated samples or valid peaks. Default FPGA peak trends use these
+recorded features; alternate components/ranges can be calculated in the
+background from saved H1/H2.
 
-Offline replay and stream BIN prefer USB chunks over duplicate IN-frame
-records, reset at connection/pause/resume boundaries, and never transmit
-archived OUT commands. See [`raw_dat_format.md`](raw_dat_format.md) and
-[`fpga_vlp1_integration.md`](fpga_vlp1_integration.md) for payload and control
-semantics.
+Initial settings and algorithm rules use `config/device_config.json` and
+`session.json.waveform_processing`; configuration and connection/recording
+segment snapshots use `logs/event_log.csv`. Each record owns its actual point
+count; a global points_per_frame=0 indicates variable/multiple streams.
+Both recorders admit complete-cycle data before UI coalescing or remote
+preview thinning and drain bounded queues on pause/stop.
+
+Historical source=8 `raw/fpga_vlp1.dat` and `sensors/fpga_frames.jsonl` remain
+readable. Their optional manifest fields and path aliases are retained for
+compatibility; new sessions do not advertise or create them. Legacy replay
+still prefers USB over duplicate IN frames, resets at boundaries and never
+transmits archived OUT commands. Existing files are not rewritten.
+
+See [FPGA Session architecture comparison](fpga_session_recording.md) and
+[RAW DAT specification](raw_dat_format.md) for the detailed format. Updated
+readers support old sessions; old application versions are not guaranteed to
+understand the new record type.
 
 ## Empty file rules
 

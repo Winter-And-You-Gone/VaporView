@@ -7,6 +7,7 @@
 #include "data_types.h"
 #include "TcpWaveEncoding.h"
 #include "FpgaControlConfig.h"
+#include "FpgaWaveformAssembler.h"
 #include "ppk/ObservationStore.h"
 #include "ppk/AttitudeStore.h"
 #include "shared/session/NavigationStatusCsv.h"
@@ -38,10 +39,8 @@ public:
         storage_failure_callback_ = std::move(callback);
     }
     bool storageFailed() const;
-    void setFpgaConfiguration(const FpgaControlConfig& configuration);
-    bool recordFpgaFrame(quint64 hostTimeUs, const QByteArray& frame);
-    bool recordFpgaCommand(quint64 hostTimeUs, const QByteArray& command);
-    bool recordFpgaUsbBytes(quint64 hostTimeUs, const QByteArray& bytes);
+    void setFpgaConfiguration(const FpgaControlConfig& configuration, bool enabled = true);
+    bool recordFpgaHarmonics(quint64 hostTimeUs, const FpgaWave::CompletedStream& stream);
     bool recordFpgaSnapshot(quint64 hostTimeUs, const QJsonObject& snapshot);
     quint64 rawFpgaRecordCount() const;
     QJsonObject fpgaRecordingStatistics() const;
@@ -128,8 +127,11 @@ private:
     // Direct USB callbacks and main-thread lifecycle share one admission gate.
     // Recursive entry permits synchronous LogService/storage callbacks on the same thread.
     mutable std::recursive_mutex recording_mutex_;
-    struct FpgaWriter;
-    std::unique_ptr<FpgaWriter> fpga_writer_;
+    struct HarmonicWriter;
+    std::unique_ptr<HarmonicWriter> harmonic_writer_;
+    bool fpga_recording_enabled_ = false;
+    quint64 fpga_segment_ = 1;
+    quint64 fpga_segment_start_us_ = 0;
     FpgaControlConfig fpga_configuration_;
     QJsonObject fpga_snapshot_;
     bool enqueueFpga(quint64 hostTimeUs, quint16 kind, const QByteArray& bytes);

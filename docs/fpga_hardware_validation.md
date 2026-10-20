@@ -99,17 +99,18 @@
 ## 7. 记录、回放、导出与重连
 
 - [ ] 开始记录时保存后端/版本/配置/前端校准/压力来源及诊断基线。
-- [ ] raw/fpga_vlp1.dat同时包含精确USB IN、OUT命令、完整IN帧及snapshot；host time、tick、flags/source/msg/seq/cycle保留。
-- [ ] 关闭传感器/DLIA/RAW解析记录筛选后，type1记录/摘要按选项改变，但活动Session的精确type4 USB流仍完整保留；硬件RAW关闭另外检查。
-- [ ] rawFpgaRecords及manifest计数包含全部四类成功写入记录；pause/stop排空后与扫描索引匹配，不误称为采样点数。
-- [ ] device.fpga结构化日志具有event/operation/ready/busy，错误附error_code；页面message、操作失败snapshot及原始OUT/RESP可以交叉追溯。
-- [ ] CRC损坏、半帧及不可解析USB字节仍能从BIN重现；未把FPGA数据写到PTB/HMP旧raw文件。
+- [ ] 新记录只生成标准 Session 文件：H1/H2 位于 raw/waveform.dat，source=5/type=2；不创建 raw/fpga_vlp1.dat 或 sensors/fpga_frames.jsonl。
+- [ ] 双路完整 H1/H2 不随显示通道或抽稀丢失；给定幅值保留 int32，IQ-only 幅值为 float64，不额外保存 ADC RAW/IQ/通信字节。
+- [ ] 每周期归一化峰值/位置/质量在 waveform_features.csv 中与通道、周期、segment、FPGA tick、外层sequence对应；host time 与 tick 分开。
+- [ ] 拿完整周期逐点计算 H2/H1 复核峰值；峰值点被预览抽稀丢掉时，保存值和新版远程显示仍为完整周期峰值。
+- [ ] device.fpga 结构化日志具有 event/operation/ready/busy，错误附 error_code；配置、连接及分段快照可从现有事件日志追溯。
+- [ ] 参考非正/无效点留断点；不完整/溢出周期仅标质量，不补零，不生成有效峰值。
 - [ ] 高频记录在后台队列执行，界面交互、缩放和关闭不引发GUI同步落盘卡顿。
 - [ ] pause排空/resume同session、stop关闭flush正常；写/队列/flush错误显示incomplete而非完整成功。
 - [ ] 重连时取消pending、重置半帧/组包/状态与BMP校准，不把前后tick当同一连续采样。
-- [ ] 断开/重连/配置/校准snapshot可在离线回放观察；不会重放OUT到实板。
-- [ ] USB优先回放不重复计入同一IN frame；未知schema仅呈原始证据；坏CRC不产生测量。
-- [ ] CSV/JSON字段与原始帧交叉比对，uint64 tick无JSON精度丢失；BIN保持精确USB序列且不混入OUT/JSON。
+- [ ] 断开/重连/配置/校准及记录边界快照包含段号；暂停前已开始组装的周期不得混入恢复后的记录。
+- [ ] 新 Session 在统一查看器按帧计算归一化并读取已保存峰值；历史 FPGA 档案继续按 USB 优先去重，坏 CRC 不产生测量，不重放 OUT。
+- [ ] 新记录通过统一原始解析页导出 H1/H2 记录和元数据，uint64 tick 无 JSON 精度丢失；仅历史档案仍提供精确 USB BIN 导出。
 - [ ] 导出取消/错误不会覆盖原归档；不能选源归档作为输出。
 - [ ] 原始解析页识别FPGA、筛选、详情、异常及批量导出正常；旧session解析与文件别名仍有效。
 - [ ] 拔插、接收超时、命令中断、应用退出等场景仅恢复现场确认属于本任务的状态，不误停其他程序。

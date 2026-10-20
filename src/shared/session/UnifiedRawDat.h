@@ -48,6 +48,7 @@ inline constexpr quint16 kSourceFpga = static_cast<quint16>(RawSourceId::Fpga);
 inline constexpr quint16 kRecordTypePressureResponse = 1u;
 inline constexpr quint16 kRecordTypeTemperatureHumidityModbusResponse = 0x03u;
 inline constexpr quint16 kRecordTypeWaveformPayload = 1u;
+inline constexpr quint16 kRecordTypeHarmonicPair = 2u;
 inline constexpr quint16 kRecordTypeSystemTemperatureMeasuredValues = 1u;
 inline constexpr quint16 kRecordTypeSystemTemperatureAlarmStatus = 2u;
 inline constexpr quint16 kRecordTypeSystemTemperatureMainStatus = 3u;

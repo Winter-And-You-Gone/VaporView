@@ -14,7 +14,8 @@
 #include "FpgaTelemetry.h"
 #include "FpgaDeviceController.h"
 #include "FpgaVlp1.h"
-#include "shared/session/FpgaSessionArchive.h"
+#include "ground/session/SessionWaveformRepository.h"
+#include <QFile>
 #include "ground/wave/TcpWavePanel.h"
 #include "SkyConfig.h"
 #include <QApplication>
@@ -948,11 +949,18 @@ static void localSimulatorRouting()
     const QDir recordings(output.filePath("simulated_sessions"));
     const auto sessions=recordings.entryList(QDir::Dirs|QDir::NoDotAndDotDot);
     check(sessions.size()==1,"local simulator records one isolated session");
-    QSet<quint16> sources;QString error;
-    check(VaporView::Session::FpgaSessionArchive::replay(recordings.filePath(sessions.first()),[&](quint64,const auto& frame){
-        if(frame.header.frameType==VaporView::FpgaVlp1::FrameType::Data)sources.insert(frame.header.source);return true;
-    },&error),qPrintable(error));
-    check(sources.size()==12&&sources.contains(0x41)&&sources.contains(0x48),"local recording replays eight sensor sources including RD105 and four waveform sources");
+    const auto sessionDirectory=recordings.filePath(sessions.first());
+    check(!QFile::exists(sessionDirectory+"/raw/fpga_vlp1.dat")&&!QFile::exists(sessionDirectory+"/sensors/fpga_frames.jsonl"),
+        "local recording does not archive forwarded protocol bytes");
+    const auto metadata=VaporView::Ground::SessionLoader::loadMetadata(sessionDirectory);
+    check(metadata.success,"local recording uses the common session metadata");
+    const auto catalog=VaporView::Ground::SessionWaveformRepository::loadCatalog(metadata.metadata);
+    check(catalog.success&&catalog.catalog.fpgaChoices.size()==6&&!catalog.catalog.fpgaSampleCache,
+        "local recording exposes both H1/H2 lanes and on-demand normalized components");
+    check(VaporView::Ground::SessionWaveformRepository::readFrame(catalog.catalog,0).success,
+        "local full-resolution harmonic data remains readable after recording stops");
+    check(VaporView::Ground::SessionWaveformRepository::loadCachedPeakSeries(catalog.catalog).success,
+        "local recording preserves full-cycle normalized peak features");
     disconnect->click();check(waitUntil([&]{return connectButton->isEnabled();}),"local disconnect releases the simulator");
     verifyRelayIndicators(window,{});
     QMetaObject::invokeMethod(&window,"onRefreshTimer");
@@ -1390,6 +1398,48 @@ static void epsilonMixedPacketPresentation()
     require(!hasData(),"disconnect clears cached EPSILON data");
 }
 
+static void harmonicRecordingUi()
+{
+    const auto check=[](bool ok,const char *message){if(!ok)throw std::runtime_error(message);};
+    QTemporaryDir output;check(output.isValid(),"isolated harmonic recording directory");
+    QSettings native("VaporView","MainWindow");native.setValue("recording_directory",output.path());
+    VaporView::applicationConfigSettings().remove("Fpga/desiredConfiguration");
+    MainWindow window;window.resize(1600,1000);
+    QMetaObject::invokeMethod(&window,"onDataSourceModeChanged",Q_ARG(int,0));
+    auto *path=window.findChild<QComboBox*>("deviceSensorTransportPathCombo");
+    check(path,"sensor transport selector exists");path->setCurrentIndex(path->findData("fpga_relay"));
+    auto *page=window.findChild<FpgaControlPage*>("fpgaControlPage");
+    window.findChild<QStackedWidget*>("mainPageStack")->setCurrentWidget(page);window.show();
+    auto *backend=page->findChild<QComboBox*>("fpgaBackend");backend->setCurrentIndex(backend->findData("simulator"));
+    auto *devices=page->findChild<QComboBox*>("fpgaLocator");auto *connect=page->findChild<QAbstractButton*>("fpgaConnect");
+    check(waitUntil([&]{return devices->currentData().toString()=="simulation://fpga"&&connect->isEnabled();},10000),"simulator enumerates for recording");
+    connect->click();auto *acquisition=page->findChild<QAbstractButton*>("fpgaAcquisitionStart");
+    check(waitUntil([&]{return acquisition->isEnabled();},20000),"recording simulator handshake completes");
+    acquisition->click();
+    check(waitUntil([&]{return acquisition->isEnabled()&&page->findChild<QWidget*>("fpgaWavePlot48")->property("sampleCount").toInt()>0;}),"DLIA acquisition reaches the page");
+    page->findChild<QAbstractButton*>("fpgaRawStart")->click();
+    check(waitUntil([&]{return page->findChild<QWidget*>("fpgaWavePlot32")->property("sampleCount").toInt()>0;}),"RAW upload is active during recording verification");
+    auto *record=page->findChild<QAbstractButton*>("fpgaRecord");record->click();
+    check(waitUntil([&]{return record->text().contains(QStringLiteral("停止"));}),"UI starts common session recording");
+    processFor(600);record->click();
+    check(waitUntil([&]{return record->text().contains(QStringLiteral("开始"));}),"UI stops and drains recording");
+    QDir recordings(output.filePath("simulated_sessions"));const auto sessions=recordings.entryList(QDir::Dirs|QDir::NoDotAndDotDot);
+    check(sessions.size()==1,"UI writes one isolated session");const auto directory=recordings.filePath(sessions.first());
+    check(!QFile::exists(directory+"/raw/fpga_vlp1.dat"),"active RAW previews do not create protocol archives");
+    const auto metadata=VaporView::Ground::SessionLoader::loadMetadata(directory);
+    check(metadata.success&&metadata.metadata.waveformFrames>0,"UI records full harmonic cycles");
+    const auto catalog=VaporView::Ground::SessionWaveformRepository::loadCatalog(metadata.metadata);
+    check(catalog.success&&catalog.catalog.fpgaChoices.size()==6&&!catalog.catalog.fpgaSampleCache,"both H1/H2 lanes are indexed without normalized history storage");
+    check(VaporView::Ground::SessionWaveformRepository::readFrame(catalog.catalog,0).success,
+          "UI-recorded waveform normalizes on demand");
+    check(VaporView::Ground::SessionWaveformRepository::loadCachedPeakSeries(catalog.catalog).success,
+          "UI-recorded full-cycle normalized peaks persist");
+    auto *recordingStatus=page->findChild<QLabel*>("fpgaRecordingStatus");
+    check(recordingStatus&&recordingStatus->text().contains(
+        QStringLiteral("H1/H2 周期：%1").arg(metadata.metadata.waveformFrames)),"recording UI reports actual harmonic cycle counts");
+    window.close();
+}
+
 int main(int argc,char **argv)
 {
     require(VaporViewTest::SettingsSandbox::initialized,"isolated native/INI application settings");
@@ -1417,6 +1467,10 @@ int main(int argc,char **argv)
     }
     if(app.arguments().contains("--monitor-ui-actions")) {
         simulatedMonitorActions();std::cout<<"Simulated FPGA monitor actions test passed\n";return 0;
+    }
+    if(app.arguments().contains("--harmonic-recording")) {
+        try { harmonicRecordingUi();std::cout<<"Harmonic recording UI test passed\n";return 0; }
+        catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}
     }
     if(app.arguments().contains("--local-simulator")) {
         try { localSimulatorRouting();std::cout<<"Local FPGA simulator GUI test passed\n";return 0; }

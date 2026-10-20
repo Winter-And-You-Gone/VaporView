@@ -11,7 +11,7 @@
 #include "shared/session/SessionSensorCsv.h"
 #include "shared/session/UnifiedRawDat.h"
 #include "shared/session/RecordingStorage.h"
-#include "shared/session/FpgaSessionArchive.h"
+#include "shared/session/HarmonicWaveform.h"
 #include <QJsonDocument>
 #include "shared/concurrency/BoundedByteQueue.h"
 #include "shared/config/SettingsWriteBarrier.h"
@@ -50,6 +50,7 @@ struct TcpRawRecord
 {
     quint64 timestampUs = 0;
     quint32 flags = 0;
+    quint16 recordType = SessionRawDat::kRecordTypeWaveformPayload;
     QByteArray payload;
 };
 
@@ -242,7 +243,7 @@ public:
             activeSegmentTimer.start();
             navigationStatusGate.reset();
             startWorkers();
-            if (fpgaSeen.load()) enqueueFpga(GroundRecordingService::currentTimestampUs(), VaporView::Session::FpgaArchiveKind::Snapshot, QByteArrayLiteral("{\"event\":\"resume\"}"));
+            if (fpgaSeen.load()) enqueueFpgaSnapshot(GroundRecordingService::currentTimestampUs(), {{"event", "resume"}});
             notifyStatus();
             return true;
         }
@@ -271,6 +272,9 @@ public:
         initOptions.capture.telemetryTransport = QStringLiteral("tcp_wave");
         initOptions.capture.telemetryEndpoint = options.deviceConfig.waveformHost;
         initOptions.capture.telemetryPort = QString::number(options.deviceConfig.waveformPort);
+        initOptions.deviceConfig.fpgaConfiguration = options.fpgaConfiguration;
+        if (!options.fpgaConfiguration.isEmpty())
+            initOptions.deviceConfig.waveformProcessing = VaporView::Session::harmonicProcessingMetadata();
         initOptions.deviceConfig.waveformHost = options.deviceConfig.waveformHost;
         initOptions.deviceConfig.waveformPort = options.deviceConfig.waveformPort;
         initOptions.deviceConfig.epsilon = sessionDeviceConnectionConfig(options.deviceConfig.epsilon);
@@ -410,19 +414,23 @@ public:
         return true;
     }
 
-    bool enqueueFpga(quint64 timestamp, VaporView::Session::FpgaArchiveKind kind, const QByteArray& bytes)
+    bool enqueueFpgaSnapshot(quint64 timestamp, QJsonObject snapshot)
     {
-        if (!workerRunning.load() || paused.load() || writeFailed.load() || bytes.isEmpty()) return false;
+        std::lock_guard<std::mutex> admission(harmonicAdmissionMutex);
+        if (!workerRunning.load() || paused.load() || writeFailed.load()) return false;
+        if (snapshot.value("event") != "firmware_event") {
+            ++fpgaSegment; fpgaSegmentStartUs.store(VaporView::Session::harmonicReceptionTimeUs());
+        }
+        snapshot.insert("segment_id", QString::number(fpgaSegment.load()));
+        snapshot.insert("waveform_processing", VaporView::Session::harmonicProcessingMetadata());
         DeviceRawRecord record;
         record.timestampUs = timestamp;
-        record.sourceId = VaporView::Session::kFpgaRawSource;
-        record.recordType = quint16(kind);
-        record.payload = bytes;
-        const auto result = deviceRawQueue.push(std::move(record), quint64(bytes.size()));
-        if (result.status != VaporView::BoundedByteQueue<DeviceRawRecord>::PushStatus::Enqueued)
-        {
-            markWriteFailure();
-            return false;
+        record.sourceId = SessionRawDat::kSourceFpga;
+        record.payload = QJsonDocument(snapshot).toJson(QJsonDocument::Compact);
+        const auto size = quint64(record.payload.size());
+        const auto result = deviceRawQueue.push(std::move(record), size);
+        if (result.status != VaporView::BoundedByteQueue<DeviceRawRecord>::PushStatus::Enqueued) {
+            markWriteFailure(); return false;
         }
         fpgaSeen.store(true);
         return true;
@@ -431,37 +439,12 @@ public:
     void writeFpgaRecord(const DeviceRawRecord& record)
     {
         std::lock_guard<std::mutex> lock(filesMutex);
-        if (writeFailed.load()) return;
-        if (!fpgaRawFile)
-        {
-            fpgaRawFile = std::make_unique<QFile>(VaporView::Session::FpgaSessionArchive::rawPath(layout.sessionDirectory));
-            fpgaSemanticFile = std::make_unique<QFile>(QDir(layout.sessionDirectory).filePath(QStringLiteral("sensors/fpga_frames.jsonl")));
-            if (!fpgaRawFile->open(QIODevice::WriteOnly) || !fpgaSemanticFile->open(QIODevice::WriteOnly))
-            { markWriteFailure(); return; }
-            VaporView::RecordingOutputDevice output(*storage, *fpgaRawFile);
-            if (!SessionRawDat::writeFileHeader(output, VaporView::Session::kFpgaRawSource))
-            { markWriteFailure(); return; }
-        }
-        SessionRawDat::RawRecordHeader header;
-        header.hostTimestampUs = record.timestampUs;
-        header.sourceId = record.sourceId;
-        header.recordType = record.recordType;
-        header.payloadSize = quint32(record.payload.size());
-        header.sequence = fpgaRecordCount.load();
-        VaporView::RecordingOutputDevice output(*storage, *fpgaRawFile);
-        if (!SessionRawDat::writeRecord(output, header, record.payload))
-        { markWriteFailure(); return; }
-        ++fpgaRecordCount;
-        fpgaStatistics.record(VaporView::Session::FpgaArchiveKind(record.recordType),record.payload);
-        // USB chunks remain binary only; semantic rows concern complete frames, commands and snapshots.
-        if (record.recordType != quint16(VaporView::Session::FpgaArchiveKind::UsbBytes))
-        {
-            auto object = VaporView::Session::FpgaSessionArchive::describe(record.timestampUs,
-                VaporView::Session::FpgaArchiveKind(record.recordType), record.payload);
-            object.remove(QStringLiteral("wire_hex"));
-            const QByteArray row = QJsonDocument(object).toJson(QJsonDocument::Compact) + '\n';
-            if (storage->write(*fpgaSemanticFile, row.constData(), row.size()) != row.size()) markWriteFailure();
-        }
+        if (writeFailed.load() || !eventLogFile || !eventLogFile->isOpen()) return;
+        const QString message = QStringLiteral("fpga.snapshot ") + QString::fromUtf8(record.payload);
+        const QByteArray row = (SessionSensorCsv::escape(timestampUtc()) + ',' +
+            QString::number(record.timestampUs) + ",INFO," + SessionSensorCsv::escape(message) + '\n').toUtf8();
+        if (storage->write(*eventLogFile, row.constData(), row.size()) != row.size()) markWriteFailure();
+        else ++eventRows;
     }
 
     bool pause()
@@ -475,7 +458,7 @@ public:
             recordingElapsedMs += static_cast<quint64>(activeSegmentTimer.elapsed());
             activeSegmentTimer.invalidate();
         }
-        if (fpgaSeen.load()) enqueueFpga(GroundRecordingService::currentTimestampUs(), VaporView::Session::FpgaArchiveKind::Snapshot, QByteArrayLiteral("{\"event\":\"pause\"}"));
+        if (fpgaSeen.load()) enqueueFpgaSnapshot(GroundRecordingService::currentTimestampUs(), {{"event", "pause"}});
         stopWorkers();
         paused.store(true);
         if (!writeSessionMetadata())
@@ -556,9 +539,9 @@ public:
         result.rawWaveformRecords = rawWaveformRecordCount.load();
         result.rawLaserTemperatureControllerRecords = rawLaserTemperatureControllerRecordCount.load();
         result.rawSystemTemperatureControllerRecords = rawSystemTemperatureControllerRecordCount.load();
-        result.rawFpgaRecords = fpgaRecordCount.load();
-        result.fpgaStatistics = fpgaStatistics.status();
-        result.waveformFrames += result.fpgaStatistics.value("waveform_frames").toString().toLongLong();
+        result.fpgaStatistics = {{"format", "harmonics_v1"}, {"waveform_frames", QString::number(harmonicFrameCount.load())},
+            {"waveform_points", int(waveformPointsPerFrame.load())},
+            {"normalized_features", QString::number(harmonicFrameCount.load())}};
         return result;
     }
 
@@ -889,6 +872,7 @@ private:
 
     void stopWorkers()
     {
+        std::lock_guard<std::mutex> admission(harmonicAdmissionMutex);
         workerRunning.store(false);
         if (sensorThread.joinable())
         {
@@ -907,7 +891,7 @@ private:
             DeviceRawRecord record;
             while (deviceRawQueue.waitPop(&record))
             {
-                if (record.sourceId == VaporView::Session::kFpgaRawSource)
+                if (record.sourceId == SessionRawDat::kSourceFpga)
                 {
                     writeFpgaRecord(record);
                     continue;
@@ -1019,18 +1003,27 @@ private:
                 if (writeRawRecord(waveformRawFile,
                                    rawWaveformRecordCount,
                                    SessionRawDat::kSourceWaveform,
-                                   SessionRawDat::kRecordTypeWaveformPayload,
+                                   record.recordType,
                                    record.flags,
                                    record.timestampUs,
                                    record.payload.constData(),
                                    static_cast<size_t>(record.payload.size())))
                 {
-                    const TcpWavePeakSummary summary = summarizeTcpWavePeakRecordPayload(record.payload, record.flags);
-                    if (summary.pointCount > 0)
-                    {
-                        waveformPointsPerFrame.store(summary.pointCount);
+                    if (record.recordType == SessionRawDat::kRecordTypeHarmonicPair) {
+                        VaporView::Session::HarmonicLayout harmonic;
+                        VaporView::Session::parseHarmonicLayout(record.payload, quint32(record.payload.size()), harmonic);
+                        waveformPointsPerFrame.store(harmonic.originalPoints);
+                        const QByteArray row = VaporView::Session::harmonicFeatureCsv(
+                            record.timestampUs, rawWaveformRecordCount.load() - 1, record.payload);
+                        std::lock_guard<std::mutex> lock(filesMutex);
+                        if (row.isEmpty() || storage->write(*waveformFeaturesFile, row.constData(), row.size()) != row.size())
+                            markWriteFailure();
+                        else ++harmonicFrameCount;
+                    } else {
+                        const auto summary = summarizeTcpWavePeakRecordPayload(record.payload, record.flags);
+                        if (summary.pointCount > 0) waveformPointsPerFrame.store(summary.pointCount);
+                        appendTcpPeakIndex(record);
                     }
-                    appendTcpPeakIndex(record);
                     waveformFrames.fetch_add(1);
                     waveformFileCount.store(1);
                     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
@@ -1131,20 +1124,15 @@ private:
         manifest.counts.laserTemperatureControllerRows = 0;
         manifest.counts.systemTemperatureControllerRows = 0;
         manifest.counts.waveformFrames = static_cast<quint64>(std::max<qint64>(0, waveformFrames.load()));
-        manifest.counts.waveformFeatureRows = 0;
+        manifest.counts.waveformFeatureRows = harmonicFrameCount.load();
         manifest.counts.eventRows = eventRows.load();
         manifest.counts.errorRows = errorRows.load();
-        manifest.fpgaRecords = fpgaRecordCount.load();
-        const auto fpgaStatus=fpgaStatistics.status();
-        const quint64 fpgaFrames=fpgaStatus.value("waveform_frames").toString().toULongLong();
-        manifest.counts.waveformFrames += fpgaFrames;
-        if (fpgaFrames>0) {
-            ++manifest.waveformFileCount;
-            manifest.waveformPointsPerFrame=fpgaStatus.value("waveform_points").toInt();
-        }
-        if (rawWaveformRecordCount.load()==0 && (fpgaFrames>0 || fpgaStatus.value("data_records").toObject().size()>1)) {
-            manifest.capture.telemetryTransport=QStringLiteral("fpga_vlp1");
-            manifest.capture.telemetryEndpoint.clear();manifest.capture.telemetryPort.clear();
+        if (fpgaSeen.load() || !options.fpgaConfiguration.isEmpty()) {
+            manifest.waveformProcessing = VaporView::Session::harmonicProcessingMetadata();
+            manifest.waveformValueType = QStringLiteral("per_record_int32_or_float64");
+            manifest.waveformPointsPerFrame = 0; // The record carries each channel's actual length.
+            manifest.capture.telemetryTransport = QStringLiteral("fpga_harmonics");
+            manifest.capture.telemetryEndpoint.clear(); manifest.capture.telemetryPort.clear();
         }
         manifest.rawRecords.navigation = rawNavigationRecordCount.load();
         manifest.rawRecords.pressure = rawPressureRecordCount.load();
@@ -1161,7 +1149,7 @@ private:
     void closeFiles()
     {
         std::lock_guard<std::mutex> lock(filesMutex);
-        for (QFile *file : {fpgaRawFile.get(), fpgaSemanticFile.get(), navigationRawFile.get(),
+        for (QFile *file : {navigationRawFile.get(),
                             pressureRawFile.get(),
                             temperatureHumidityRawFile.get(),
                             distanceRawFile.get(),
@@ -1188,8 +1176,6 @@ private:
     void resetFiles()
     {
         std::lock_guard<std::mutex> lock(filesMutex);
-        fpgaRawFile.reset();
-        fpgaSemanticFile.reset();
         sensorSummaryFile.reset();
         navigationStatusFile.reset();
         temperatureControllerFile.reset();
@@ -1210,8 +1196,9 @@ private:
     void resetCurrentCounts()
     {
         recordingElapsedMs = 0;
-        fpgaRecordCount.store(0);
-        fpgaStatistics.clear();
+        harmonicFrameCount.store(0);
+        fpgaSegment.store(1);
+        fpgaSegmentStartUs.store(VaporView::Session::harmonicReceptionTimeUs());
         fpgaSeen.store(false);
         sensorRows.store(0);
         navigationStatusRows.store(0);
@@ -1254,10 +1241,10 @@ public:
     QElapsedTimer activeSegmentTimer;
     quint64 recordingElapsedMs = 0;
 
-    std::unique_ptr<QFile> fpgaRawFile;
-    std::unique_ptr<QFile> fpgaSemanticFile;
-    std::atomic<quint64> fpgaRecordCount{0};
-    VaporView::Session::FpgaRecordingStatistics fpgaStatistics;
+    std::atomic<quint64> harmonicFrameCount{0};
+    std::atomic<quint64> fpgaSegment{1};
+    std::atomic<quint64> fpgaSegmentStartUs{0};
+    std::mutex harmonicAdmissionMutex;
     std::atomic_bool fpgaSeen{false};
     std::unique_ptr<QFile> sensorSummaryFile;
     std::unique_ptr<QFile> navigationStatusFile;
@@ -1503,14 +1490,22 @@ bool GroundRecordingService::recordTcpWaveFrame(quint64 hostTimestampUs,
     return impl_->enqueueTcpRawRecord(std::move(record));
 }
 
-bool GroundRecordingService::recordFpgaFrame(quint64 timestamp, const QByteArray& bytes)
-{ return impl_->enqueueFpga(timestamp, VaporView::Session::FpgaArchiveKind::Frame, bytes); }
-bool GroundRecordingService::recordFpgaCommand(quint64 timestamp, const QByteArray& bytes)
-{ return impl_->enqueueFpga(timestamp, VaporView::Session::FpgaArchiveKind::Command, bytes); }
-bool GroundRecordingService::recordFpgaUsbBytes(quint64 timestamp, const QByteArray& bytes)
-{ return impl_->enqueueFpga(timestamp, VaporView::Session::FpgaArchiveKind::UsbBytes, bytes); }
+bool GroundRecordingService::recordFpgaHarmonics(quint64 timestamp, const FpgaWave::CompletedStream& stream)
+{
+    std::lock_guard<std::mutex> admission(impl_->harmonicAdmissionMutex);
+    if (!impl_->workerRunning.load() || impl_->paused.load() || impl_->writeFailed.load()) return false;
+    if (stream.firstHostTimeUs && stream.firstHostTimeUs < impl_->fpgaSegmentStartUs.load()) return false;
+    TcpRawRecord record;
+    record.timestampUs = timestamp;
+    record.recordType = SessionRawDat::kRecordTypeHarmonicPair;
+    record.payload = VaporView::Session::encodeHarmonics(stream, impl_->fpgaSegment.load());
+    if (record.payload.isEmpty()) return false;
+    impl_->fpgaSeen.store(true);
+    if (!impl_->enqueueTcpRawRecord(std::move(record))) { impl_->markWriteFailure(); return false; }
+    return true;
+}
 bool GroundRecordingService::recordFpgaSnapshot(quint64 timestamp, const QJsonObject& snapshot)
-{ return impl_->enqueueFpga(timestamp, VaporView::Session::FpgaArchiveKind::Snapshot, QJsonDocument(snapshot).toJson(QJsonDocument::Compact)); }
+{ return impl_->enqueueFpgaSnapshot(timestamp, snapshot); }
 
 bool GroundRecordingService::appendEvent(const QString& level, const QString& message)
 {

@@ -1,6 +1,6 @@
 # VaporView Unified Raw DAT Format
 
-本文档说明 `session_*/raw/*.dat` 的统一原始数据记录格式。常规设备source保存原始帧或响应字节，解析摘要在 `sensors/sensor_summary.csv` 中。可选FPGA source=8还保存原始USB IN块、OUT命令和JSON配置/连接快照；其帧摘要位于 `sensors/fpga_frames.jsonl`，不能把快照误作传感器测量。
+本文档说明 `session_*/raw/*.dat` 的统一原始数据记录格式。常规设备source保存原始帧或响应字节，解析摘要在 `sensors/sensor_summary.csv` 中。新 FPGA 中转记录复用 source=5，保存完整 H1/H2 和周期元数据；不保存转发通信字节。source=8 的 USB/VLP1 档案仅保留历史读取兼容。
 
 地面端和天空端共用 `src/shared/session/UnifiedRawDat.*` 中的 raw DAT 常量、header 编解码和记录读写逻辑；`sensors/sensor_summary.csv` 的表头、字段顺序、转义和行格式化共用 `src/shared/session/SessionSensorCsv.*`。文件名描述数据类型，设备型号保存在 session metadata 中。生产代码不再分别维护 raw magic、record marker、format version、source ID 或 CSV schema。
 
@@ -14,16 +14,16 @@
 | `raw/pressure.dat` | 2 | 气压传感器有效压力响应原始行字节，包含行结束符 |
 | `raw/temperature_humidity.dat` | 3 | 温湿度传感器完整 Modbus 数据响应帧 |
 | `raw/distance.dat` | 4 | 已识别协议且校验通过的完整测距帧 |
-| `raw/waveform.dat` | 5 | TCP 原始信号 payload 和二次谐波 payload |
+| `raw/waveform.dat` | 5 | type=1：直连信号/谐波 payload；type=2：FPGA H1/H2 及周期元数据 |
 | `raw/laser_temperature_controller.dat` | 6 | 激光温控完整、已校验 Modbus RTU response frame |
 | `raw/system_temperature_controller.dat` | 7 | 系统温控完整、已校验 Modbus RTU response frame |
-| `raw/fpga_vlp1.dat`（按需创建） | 8 | FPGA完整IN帧、OUT命令、JSON快照、精确USB IN块 |
+| `raw/fpga_vlp1.dat`（历史兼容，新记录不创建） | 8 | FPGA完整IN帧、OUT命令、JSON快照、精确USB IN块 |
 
-常规新记录会话写上述source=1..7统一raw文件；地面FPGA会话在收到FPGA记录时按需创建source=8文件。不再额外生成旧型号文件名或 `waveform/*.dat`。数据查看器仍保留对旧会话 `raw/epsilon.dat`、`raw/tcp_wave.dat`、`raw/rd105.dat`、`raw/ai8.dat`、`raw/ai8288.dat` 和 `waveform/*.dat` 的读取兼容。缺少统一 raw magic 的历史波形文件仍按旧格式回退读取；带有合法统一 raw magic 但版本不受支持的文件会被明确拒绝，不会回退为旧格式。
+常规新记录会话写上述source=1..7统一raw文件；FPGA 的完整 H1/H2 写入 source=5 文件，source=8 仅用于已有档案的读取。不再额外生成旧型号文件名或 `waveform/*.dat`。数据查看器仍保留对旧会话 `raw/epsilon.dat`、`raw/tcp_wave.dat`、`raw/rd105.dat`、`raw/ai8.dat`、`raw/ai8288.dat` 和 `waveform/*.dat` 的读取兼容。缺少统一 raw magic 的历史波形文件仍按旧格式回退读取；带有合法统一 raw magic 但版本不受支持的文件会被明确拒绝，不会回退为旧格式。
 
 ## 字节序
 
-除 `magic` 和 payload 外，所有多字节整数字段均为 little-endian。payload 保持设备或 TCP 流的原始字节顺序。
+除 `magic` 和 payload 外，所有多字节整数字段均为 little-endian。直连 payload 保持设备或 TCP 流的原始字节顺序；FPGA H1/H2 的类型化 payload 使用小端整数或 IEEE 754 float64。
 
 共享写入器逐字段生成 little-endian 字节，不依赖 C++ 结构体的内存布局或 padding。
 
@@ -67,9 +67,19 @@
 - TCP 波形：`record_type = 1`，`flags` bit0 表示 payload 内含两个 length-prefixed 子 payload；`flags` bits8-9 记录 payload 浮点编码，`0=legacy/unknown`、`1=little-endian float32`、`2=big-endian float32`、`3=word-swapped float32`。
 - 激光温控：`record_type` 使用已校验 Modbus RTU response 的起始寄存器地址，`flags = 0`。
 - 系统温控：`record_type = 1` 表示 8 路测量值响应，`2` 表示报警状态响应，`3` 表示主状态响应，`4` 表示 8 路控制状态响应；`flags = 0`。
-- FPGA source=8：`record_type=1`完整IN帧，`2`主机OUT命令，`3`JSON快照，`4`精确USB IN块；外层`flags=0`，VLP flags保留在内层原始帧。
+- FPGA 谐波 source=5：`record_type=2`、外层 `flags=0`，48 字节版本化 payload 头后跟 H1/H2 成对数组，详见下节。
+- 历史 FPGA source=8（新记录不写）：`record_type=1`完整IN帧，`2`主机OUT命令，`3`JSON快照，`4`精确USB IN块；外层`flags=0`，VLP flags保留在内层原始帧。
 
-## FPGA source=8 payload与计数
+## FPGA source=5/type=2 H1/H2
+
+外层仍为 VVRAWDAT v2。payload schema=1，头长48字节，依次为：uint16 version/header_size/channel/sample_type；uint32 cycle/rate/original_points/stored_points；uint64 fpga_tick/segment；uint32 quality；uint16 input_format/reserved。头后为 stored_points 对小端 H1/H2，sample_type=1 为 int32，2 为 IQ-only 输入合成的 float64 幅值。坏周期 stored_points=0，original_points 保留缺测范围。详细偏移和位定义见 [FPGA Session 接入](fpga_session_recording.md)。
+
+归一化数组不持久化。完整周期归一化峰值和质量写入 `sensors/waveform_features.csv`，配套算法/初始配置进入标准 manifest/config，分段快照进入 `logs/event_log.csv`。host time、FPGA tick、cycle、segment 和文件内 sequence 不互相替代。
+
+## 历史 FPGA source=8 payload与计数
+
+以下说明只用于兼容历史档案；新记录不会创建这些文件或原始字节记录。
+
 
 | record_type | payload | 解释边界 |
 | ---: | --- | --- |
@@ -80,15 +90,15 @@
 
 FPGA的VLP1头、tick/source/msg/flags/sequence/cycle位于内层payload，其定义见 [`fpga_vlp1_integration.md`](fpga_vlp1_integration.md)。外层`host_timestamp_us`是主机UTC微秒，外层`sequence`是归档文件内序号，两者不能替代FPGA tick和VLP sequence。FPGA tick为100MHz本地uint64计数，不是UTC。
 
-完整原始USB归档不受“记录传感器/记录DLIA/记录RAW”筛选影响：这些选项只决定type1完整帧及对应解析摘要是否记录。只要Ground Session处于活动记录，接收到的USB块type4、发送OUT type2、快照type3都保留；关闭RAW上传才会降低真实USB流量。不得把筛选关闭误解释为精确USB流中已不存在该source。
+历史完整原始USB归档不受“记录传感器/记录DLIA/记录RAW”筛选影响：这些选项只决定type1完整帧及对应解析摘要是否记录。旧版本在Ground Session处于活动记录时，接收到的USB块type4、发送OUT type2、快照type3都保留；关闭RAW上传才会降低真实USB流量。不得把筛选关闭误解释为精确USB流中已不存在该source。
 
-`GroundRecordingStatus::rawFpgaRecords`及manifest `raw_files.fpga_vlp1.records`统计后台成功写入的所有四类归档记录，包含USB块、帧、OUT和快照，**不是采样点数或仅有效VLP帧数**。暂停或停止会排空队列；UI计数可能落后于刚入队的记录。source=1..7旧计数、旧文件名和旧CSV不变。
+历史 `GroundRecordingStatus::rawFpgaRecords`及manifest `raw_files.fpga_vlp1.records`统计后台成功写入的所有四类归档记录，包含USB块、帧、OUT和快照，**不是采样点数或仅有效VLP帧数**。暂停或停止会排空队列；UI计数可能落后于刚入队的记录。source=1..7旧计数、旧文件名和旧CSV不变。
 
 离线codec回放和流BIN优先选择type4；没有USB块的历史FPGA记录才回退type1，避免USB与完整帧重复。坏VLP CRC不会生成测量，但其type4字节可从BIN恢复。外层VVRAWDAT合法与内层VLP CRC通过是两种不同完整性结论。CSV/JSON保留record kind、内层元数据、payload及snapshot；uint64时间/tick以十进制字符串保存，避免JSON精度损失。
 
 ## TCP 波形 payload
 
-`raw/waveform.dat` 的每条 payload 由下面几段顺序拼接：
+`raw/waveform.dat` 的直连 type=1 payload 由下面几段顺序拼接；type=2 采用上述 H1/H2 格式：
 
 | 偏移 | 类型 | 字段 |
 | ---: | --- | --- |

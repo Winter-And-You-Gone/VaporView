@@ -1,3 +1,4 @@
+#include "LegacyFpgaArchiveFixture.h"
 #include "test_settings_sandbox.h"
 #include "shared/theme/AppTheme.h"
 #include "shared/config/SettingsWriteBarrier.h"
@@ -1098,7 +1099,7 @@ void testFpgaWaveformSelector()
 {
     using namespace VaporView;
     QTemporaryDir temp;
-    Ground::Session::GroundRecordingService recorder;Ground::Session::GroundRecordingOptions options;options.baseDirectory=temp.path();
+    LegacyFpgaArchiveFixture recorder;Ground::Session::GroundRecordingOptions options;options.baseDirectory=temp.path();
     require(recorder.start(options),"FPGA waveform viewer fixture starts");
     const auto directory=recorder.status().sessionDirectory;
     for(quint16 source:{0x20,0x21,0x30,0x31}) {
@@ -1118,6 +1119,18 @@ void testFpgaWaveformSelector()
     require(choice && processEventsUntil(10000,[&]{return choice->count()==8 && choice->isVisible();}),"both ADC lanes, raw harmonics and normalized H2 of each DLIA lane are visible choices");
     require(choice->currentText().contains("H2/H1"),"FPGA viewer opens the normalized waveform by default");
     for(int i=0;i<choice->count();++i){choice->setCurrentIndex(i);processEventsFor(30);require(choice->currentIndex()==i,"FPGA waveform selection completes without losing its catalog");}
+    Ground::Session::GroundRecordingService native;
+    require(native.start(options),"unified harmonic viewer fixture starts");
+    const auto nativeDirectory=native.status().sessionDirectory;
+    for(quint16 source:{0x30,0x31}) {
+        FpgaWave::CompletedStream wave;wave.source=source;wave.message=0x1001;wave.schema=2;
+        wave.rate=10000;wave.totalPoints=2;wave.bytesPerPoint=8;wave.complete=true;
+        for(int i=0;i<2;++i) {FpgaWave::CompletedStream::DliaPoint p;p.h1=i+1;p.h2=(i+1)*10;p.hasHarmonics=true;wave.dliaPoints.append(p);}
+        require(native.recordFpgaHarmonics(Ground::Session::GroundRecordingService::currentTimestampUs(),wave),"native H1/H2 fixture records");
+    }
+    require(!native.stop().writeFailed && viewer.openSessionPath(nativeDirectory),"viewer opens unified harmonic session");
+    require(processEventsUntil(10000,[&]{return choice->count()==6 && choice->currentText().contains("H2/H1");}),"new records expose two lanes with H1 H2 and on-demand normalized choices");
+
     viewer.close();processEventsFor(100);
 }
 

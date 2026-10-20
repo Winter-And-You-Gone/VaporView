@@ -71,7 +71,7 @@ FPGA 页在界面测试模式中禁用记录按钮，不再伪造记录成功；
 & .\build\Release\VaporViewFpgaSimulator.exe --sky-config 'D:/VaporViewSimulation/sky_config.json'
 ```
 
-在 VaporView 中启动天空端记录后，会话保存到该配置文件同目录的 `simulated_sessions`，包含原始 `raw/fpga_vlp1.dat`、传感器数据与配置快照。可使用现有 Session 查看、FPGA 回放和导出功能。模拟服务诊断标明 `mode=simulation`、`SIMULATED-GP01`；这些数据不是实测数据。
+在 VaporView 中启动天空端记录后，会话保存到该配置文件同目录的 `simulated_sessions`，包含共用 `raw/waveform.dat` 中的完整 H1/H2、`sensors/waveform_features.csv` 中的归一化峰值、传感器数据与标准配置/事件快照；不保存 USB/VLP1 转发包。可使用现有 Session 查看、FPGA 回放和导出功能。模拟服务诊断标明 `mode=simulation`、`SIMULATED-GP01`；这些数据不是实测数据。
 
 ## 验证范围
 

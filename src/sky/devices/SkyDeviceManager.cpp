@@ -667,6 +667,7 @@ void SkyDeviceManager::ensureFpgaBackend()
     connect(fpga_backend_.get(), &SkyFpgaBackend::observationEpochReceived, this, &SkyDeviceManager::epsilonObservationEpochReceived);
     connect(fpga_backend_.get(), &SkyFpgaBackend::measurementUpdated, this, &SkyDeviceManager::acceptFpgaMeasurement);
     connect(fpga_backend_.get(), &SkyFpgaBackend::waveformUpdated, this, &SkyDeviceManager::fpgaWaveformUpdated);
+    connect(fpga_backend_.get(), &SkyFpgaBackend::harmonicCycleReady, this, &SkyDeviceManager::fpgaHarmonicCycleReady, Qt::DirectConnection);
     connect(fpga_backend_.get(), &SkyFpgaBackend::rawFrame, this, &SkyDeviceManager::fpgaRawFrameReceived, Qt::DirectConnection);
     connect(fpga_backend_.get(), &SkyFpgaBackend::rawCommand, this, &SkyDeviceManager::fpgaRawCommandReceived, Qt::DirectConnection);
     connect(fpga_backend_.get(), &SkyFpgaBackend::rawUsbBytes, this, &SkyDeviceManager::fpgaRawUsbBytesReceived, Qt::DirectConnection);

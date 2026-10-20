@@ -424,6 +424,8 @@ target_link_libraries(fpga_session_archive_test PRIVATE vaporview_ground_session
 vaporview_add_test(NAME fpga_session_archive_test COMMAND fpga_session_archive_test)
 set_tests_properties(fpga_session_archive_test PROPERTIES LABELS "fast;unit;fpga" TIMEOUT 60)
 
+target_link_libraries(sky_fpga_recording_test PRIVATE vaporview_ground_session_core)
+
 add_executable(fpga_control_page_test ${CMAKE_CURRENT_SOURCE_DIR}/fpga_control_page_test.cpp)
 target_link_libraries(fpga_control_page_test PRIVATE vaporview_ground_widgets vaporview_app_config)
 add_dependencies(fpga_control_page_test VaporViewRuntimeResources)
@@ -441,6 +443,8 @@ vaporview_add_test(NAME fpga_main_window_test COMMAND fpga_main_window_test)
 set_tests_properties(fpga_main_window_test PROPERTIES LABELS "gui;fpga" TIMEOUT 120 RUN_SERIAL TRUE)
 vaporview_add_test(NAME fpga_local_simulator_test COMMAND fpga_main_window_test --local-simulator)
 set_tests_properties(fpga_local_simulator_test PROPERTIES LABELS "gui;fpga;integration" TIMEOUT 90 RUN_SERIAL TRUE)
+vaporview_add_test(NAME fpga_harmonic_recording_ui_test COMMAND fpga_main_window_test --harmonic-recording)
+set_tests_properties(fpga_harmonic_recording_ui_test PROPERTIES LABELS "gui;fpga;integration" TIMEOUT 60 RUN_SERIAL TRUE)
 vaporview_add_test(NAME fpga_sensor_draft_ui_test COMMAND fpga_main_window_test --monitor-ui-actions)
 set_tests_properties(fpga_sensor_draft_ui_test PROPERTIES LABELS "gui;fpga" TIMEOUT 90 RUN_SERIAL TRUE)
 vaporview_add_test(NAME internal_environment_direct_ui_test COMMAND fpga_main_window_test --internal-direct)

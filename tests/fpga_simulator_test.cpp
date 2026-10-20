@@ -3,7 +3,9 @@
 #include "FpgaSensorAdapter.h"
 #include "FpgaTelemetry.h"
 #include "ground/devices/RemoteSkyController.h"
-#include "shared/session/FpgaSessionArchive.h"
+#include "shared/session/HarmonicWaveform.h"
+#include "shared/session/UnifiedRawDat.h"
+#include <QFile>
 #include "test_settings_sandbox.h"
 
 #include <QCoreApplication>
@@ -174,10 +176,11 @@ void processTest()
     child.process.setProcessChannelMode(QProcess::MergedChannels);
     child.process.start(executable,{"--sky-config",directory.filePath("sky.json"),"--telemetry-tcp-port",QString::number(port),"--ipc-port","0"});
     check(child.process.waitForStarted(5000),"standalone simulator starts");
-    RemoteSkyController remote;QJsonObject status;QSet<quint16> sensors,waves;bool basic=false;QMap<quint32,DeviceOperationResponse> replies;
+    RemoteSkyController remote;QJsonObject status;QSet<quint16> sensors,waves;bool basic=false,fullCyclePeakReceived=false;QMap<quint32,DeviceOperationResponse> replies;
     QObject::connect(&remote,&RemoteSkyController::fpgaStatusUpdated,[&](const auto& s){status=s;});
     QObject::connect(&remote,&RemoteSkyController::fpgaSensorUpdated,[&](const auto& s){sensors.insert(s.source);});
-    QObject::connect(&remote,&RemoteSkyController::fpgaWaveformUpdated,[&](const auto& s){waves.insert(s.source);});
+    QObject::connect(&remote,&RemoteSkyController::fpgaWaveformUpdated,[&](const auto& s){waves.insert(s.source);
+        fullCyclePeakReceived |= s.source>=0x30 && s.hasFullCyclePeak && std::isfinite(s.fullCyclePeak);});
     QObject::connect(&remote,&RemoteSkyController::basicTelemetryUpdated,[&](const auto& b){basic|=(b.validity_flags&BasicHasPressure)&&std::isfinite(b.pressure_hpa);});
     QObject::connect(&remote,&RemoteSkyController::deviceOperationResponseReceived,[&](const auto& response){replies.insert(response.request_id,response);});
     events(300);check(remote.openTcp("127.0.0.1",port),"Ground controller connects to the real simulator process");
@@ -199,23 +202,29 @@ void processTest()
     remote.sendCommand(CommandId::StartRecording);
     wait([&]{return status.value("recording_state").toInt()==1;},"recording becomes active");
     sensors.clear();waves.clear();
-    wait([&]{return sensors.size()==8&&waves.size()==4&&status.value("archived_records").toString().toULongLong()>400;},
-         "recording archives real generated VLP frames, OUT commands and USB chunks");
+    wait([&]{return sensors.size()==8&&waves.size()==4&&fullCyclePeakReceived&&
+        status.value("recording_statistics").toObject().value("waveform_frames").toString().toULongLong()>5;},
+         "recording saves complete harmonic cycles while bounded previews carry full-cycle peaks");
     const auto session=status.value("session_directory").toString();
     check(session.startsWith(directory.path()+"/simulated_sessions"),"simulated recordings are isolated from real sessions");
     remote.sendCommand(CommandId::StopRecording);
     wait([&]{return status.value("recording_state").toInt()==0;},"recording stops and flushes the writer");
-    const auto rawFile=session+"/raw/fpga_vlp1.dat";
-    check(QFileInfo(rawFile).size()>0,"VLP archive exists on disk");
-    QSet<quint16> archivedSources;QString archiveError;
-    check(Session::FpgaSessionArchive::replay(session,[&](quint64,const FpgaVlp1::Frame& frame) {
-        if(frame.header.frameType==FpgaVlp1::FrameType::Data)archivedSources.insert(frame.header.source);
-        return true;
-    },&archiveError),qPrintable(archiveError));
-    check(archivedSources.size()==12&&archivedSources.contains(0x41)&&archivedSources.contains(0x48),"saved session replays eight sensor sources including HMP and RD105 and four wave sources");
-    check(Session::FpgaSessionArchive::exportTo(session,directory.filePath("simulated.bin"),
-        Session::FpgaSessionArchive::ExportFormat::Bin,&archiveError),qPrintable(archiveError));
-    check(QFileInfo(directory.filePath("simulated.bin")).size()>0,"existing BIN export consumes the generated USB archive");
+    check(!QFile::exists(session+"/raw/fpga_vlp1.dat") && !QFile::exists(session+"/sensors/fpga_frames.jsonl"),
+          "new process recordings do not retain communication archives");
+    QFile rawFile(session+"/raw/waveform.dat");check(rawFile.open(QIODevice::ReadOnly),"common waveform file exists");
+    const auto index=SessionRawDat::scan(rawFile);check(index.success()&&index.records.size()>5,"generated harmonic records scan");
+    QSet<quint16> savedChannels;
+    for(const auto& record:index.records) {
+        check(record.header.sourceId==5&&record.header.recordType==2,"generated record uses common harmonic type");
+        check(rawFile.seek(qint64(record.payloadOffset)),"seek generated cycle");
+        const auto bytes=rawFile.read(record.header.payloadSize);Session::HarmonicLayout layout;
+        check(Session::parseHarmonicLayout(bytes,record.header.payloadSize,layout),"generated cycle metadata decodes");
+        savedChannels.insert(layout.channel);
+        check(layout.storedPoints==layout.originalPoints&&!Session::harmonicSamples(bytes,6).isEmpty(),"generated full-resolution H1/H2 can normalize on demand");
+    }
+    check(savedChannels==QSet<quint16>({0x30,0x31}),"both DLIA channels saved without ADC RAW");
+    QFile features(session+"/sensors/waveform_features.csv");check(features.open(QIODevice::ReadOnly),"generated feature file exists");
+    check(features.readAll().trimmed().split('\n').size()==index.records.size()+1,"one persisted normalized feature per generated cycle");
     operation({{"op","disconnect"}});operation({{"op","connect"},{"backend","auto"},{"locator","simulation://fpga"}});
     wait([&]{return status.value("ready").toBool();},"process reconnect keeps using the simulator backend");
     remote.close();child.process.write("quit\n");child.process.closeWriteChannel();

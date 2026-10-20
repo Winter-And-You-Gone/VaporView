@@ -4,6 +4,7 @@
 #include "data_types.h"
 #include "EpsilonRawSatellite.h"
 #include "shared/session/NavigationStatusCsv.h"
+#include "FpgaWaveformAssembler.h"
 
 #include <QByteArray>
 #include <QString>
@@ -57,6 +58,7 @@ struct GroundRecordingOptions
     QString baseDirectory;
     int exportRateHz = 20;
     GroundRecordingDeviceConfig deviceConfig;
+    QJsonObject fpgaConfiguration;
     std::array<double,3> imuToMainAntennaBodyM{};
 };
 
@@ -166,9 +168,7 @@ public:
                             const QByteArray& harmonicPayload,
                             TcpFloatEncoding floatEncoding);
 
-    bool recordFpgaFrame(quint64 hostTimestampUs, const QByteArray& wireBytes);
-    bool recordFpgaCommand(quint64 hostTimestampUs, const QByteArray& wireBytes);
-    bool recordFpgaUsbBytes(quint64 hostTimestampUs, const QByteArray& usbBytes);
+    bool recordFpgaHarmonics(quint64 hostTimestampUs, const FpgaWave::CompletedStream& stream);
     bool recordFpgaSnapshot(quint64 hostTimestampUs, const QJsonObject& snapshot);
 
     bool appendEvent(const QString& level, const QString& message);

@@ -133,6 +133,7 @@ std::optional<CompletedStream> Assembler::accept(const Fragment& fragment)
     Pending parsed;
     parsed.stream.source=fragment.source;parsed.stream.message=fragment.message;parsed.stream.flags=fragment.flags;
     parsed.stream.cycleId=fragment.cycleId;parsed.stream.timestamp=fragment.timestamp;
+    parsed.stream.firstHostTimeUs=fragment.hostTimeUs;
     quint16 index=0;quint32 first=0,points=0,bpp=0,headerBytes=0;
     const Key key{fragment.source,fragment.message,fragment.cycleId,fragment.timestamp};
     auto existing=pending_.find(key);

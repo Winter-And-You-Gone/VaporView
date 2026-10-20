@@ -4,6 +4,7 @@
 
 #include "ground/session/SessionCsv.h"
 #include "shared/session/UnifiedRawDat.h"
+#include "shared/session/HarmonicWaveform.h"
 #include "shared/session/FpgaSessionArchive.h"
 #include "FpgaHarmonics.h"
 
@@ -300,7 +301,7 @@ void writeWaveformIndexCache(QFile& source,
 {
     const QString path = source.fileName() + QStringLiteral(".vvidx");
     // Recovery and sequence warnings must be checked again on each open.
-    if (signature.isEmpty() || !warning.isEmpty() || VaporView::settingsWritesSuspended() ||
+    if (signature.isEmpty() || !warning.isEmpty() || !catalog.fpgaChoices.isEmpty() || VaporView::settingsWritesSuspended() ||
         !VaporView::isContainedWritePath(catalog.sessionDirectory, path) ||
         catalog.rawTcpFrames.size() * 24 + 76 > kMaxWaveformIndexCacheBytes ||
         waveformSourceSignature(source) != signature) return;
@@ -367,6 +368,29 @@ UnifiedRawCatalogResult loadUnifiedRawCatalog(
     for (const VaporView::SessionRawDat::RawRecordIndex& record : scanResult.records)
     {
         const auto& header = record.header;
+        if (header.recordType == VaporView::SessionRawDat::kRecordTypeHarmonicPair) {
+            VaporView::Session::HarmonicLayout layout;
+            if (!file.seek(qint64(record.payloadOffset)) ||
+                !VaporView::Session::parseHarmonicLayout(file.read(VaporView::Session::kHarmonicHeaderSize), header.payloadSize, layout)) {
+                result.status = UnifiedRawCatalogStatus::Error;
+                result.error = QStringLiteral("Failed to read harmonic metadata: %1").arg(filename);
+                return result;
+            }
+            for (const int component : {6, 0, 1}) {
+                auto choice = std::find_if(catalog.fpgaChoices.begin(), catalog.fpgaChoices.end(),
+                    [&](const auto& c) { return c.source == layout.channel && c.component == component; });
+                if (choice == catalog.fpgaChoices.end()) {
+                    catalog.fpgaChoices.push_back({layout.channel, component,
+                        QStringLiteral("DLIA %1 / %2").arg(layout.channel - 0x30).arg(component == 6 ? "H2/H1" : component == 0 ? "H2" : "H1"),
+                        {}, int(layout.originalPoints), {}});
+                    choice = catalog.fpgaChoices.end() - 1;
+                }
+                choice->timestampsUs.append(header.hostTimestampUs);
+                choice->sampleFrames.push_back({filename, record.payloadOffset, header.payloadSize,
+                    header.hostTimestampUs, VaporView::TcpFloatEncoding::Unknown, true, header.sequence});
+            }
+            continue;
+        }
         if ((header.flags & VaporView::SessionRawDat::kWaveformCombinedPayloadFlag) != 0 &&
             header.payloadSize >= sizeof(quint32) * 2)
         {
@@ -397,6 +421,17 @@ UnifiedRawCatalogResult loadUnifiedRawCatalog(
             }
         }
     }
+    if (!catalog.fpgaChoices.isEmpty() && !catalog.rawTcpFrames.isEmpty()) {
+        VaporView::Ground::SessionFpgaWaveformChoice direct;
+        direct.label = QStringLiteral("TCP / harmonic"); direct.sampleFrames = catalog.rawTcpFrames;
+        direct.pointsPerFrame = catalog.pointsPerFrame;
+        for (const auto& frame : direct.sampleFrames) direct.timestampsUs.append(frame.timestampUs);
+        catalog.fpgaChoices.push_back(std::move(direct));
+    }
+    std::stable_sort(catalog.fpgaChoices.begin(), catalog.fpgaChoices.end(), [](const auto& a, const auto& b) {
+        return a.source == b.source ? (a.component == 6 ? 0 : a.component + 1) < (b.component == 6 ? 0 : b.component + 1)
+                                    : a.source < b.source;
+    });
     writeWaveformIndexCache(file, signature, catalog, result.warning);
     return result;
 }
@@ -566,6 +601,15 @@ SessionWaveformCatalogResult SessionWaveformRepository::loadCatalog(
     result.catalog.waveformRawFilename = metadata.waveformRawFilename;
     result.catalog.pointsPerFrame = metadata.waveformPointsPerFrame;
 
+    const auto rawResult = loadUnifiedRawCatalog(metadata.waveformRawFilename, result.catalog, progress);
+    if (rawResult.status == UnifiedRawCatalogStatus::Error) { result.error = rawResult.error; return result; }
+    if (rawResult.status == UnifiedRawCatalogStatus::Loaded &&
+        (!result.catalog.rawTcpFrames.isEmpty() || !result.catalog.fpgaChoices.isEmpty())) {
+        if (!result.catalog.fpgaChoices.isEmpty()) selectFpgaWaveform(result.catalog, 0);
+        else result.catalog.frameCount = result.catalog.rawTcpFrames.size();
+        result.success = true; result.warning = rawResult.warning; return result;
+    }
+
     const QString fpgaPath=VaporView::Session::FpgaSessionArchive::rawPath(metadata.sessionDirectory);
     if (QFileInfo::exists(fpgaPath)) {
         auto cacheDirectory = std::make_shared<QTemporaryDir>();
@@ -629,10 +673,6 @@ SessionWaveformCatalogResult SessionWaveformRepository::loadCatalog(
         }
     }
 
-    const UnifiedRawCatalogResult rawResult = loadUnifiedRawCatalog(
-        metadata.waveformRawFilename,
-        result.catalog,
-        progress);
     if (rawResult.status == UnifiedRawCatalogStatus::Loaded)
     {
         result.catalog.frameCount = static_cast<quint64>(result.catalog.rawTcpFrames.size());
@@ -710,6 +750,13 @@ SessionWaveformFrameResult SessionWaveformRepository::readFrame(
             return result;
         }
         const QByteArray payload = file.read(static_cast<qint64>(frame.harmonicPayloadSize));
+        if (frame.harmonicPair) {
+            result.samples = VaporView::Session::harmonicSamples(payload, catalog.fpgaComponent);
+            result.timestampUs = frame.timestampUs; result.sourceFilename = frame.filename;
+            result.success = payload.size() == frame.harmonicPayloadSize && !result.samples.isEmpty();
+            if (!result.success) result.error = QStringLiteral("Incomplete harmonic frame: %1").arg(frame.filename);
+            return result;
+        }
         if (payload.size() != static_cast<qsizetype>(frame.harmonicPayloadSize) ||
             payload.size() % static_cast<qsizetype>(kFloatBytes) != 0)
         {
@@ -794,7 +841,36 @@ SessionWaveformPeakSeriesResult SessionWaveformRepository::loadCachedPeakSeries(
     const SessionWaveformCatalog& catalog)
 {
     SessionWaveformPeakSeriesResult result;
-    if(catalog.fpgaSource)return result; // TCP peak caches do not identify FPGA source/components.
+    if (catalog.fpgaSource) {
+        if (catalog.fpgaComponent != 6 || catalog.rawTcpFrames.isEmpty() || !catalog.rawTcpFrames.first().harmonicPair) return result;
+        QFile features(QDir(catalog.sessionDirectory).filePath(QStringLiteral("sensors/waveform_features.csv")));
+        if (!features.open(QIODevice::ReadOnly | QIODevice::Text)) return result;
+        QTextStream input(&features); input.setEncoding(QStringConverter::Utf8);
+        const auto headers = parseCsvLine(input.readLine());
+        const auto column = [&](const char *key) { return headers.indexOf(QLatin1String(key)); };
+        for (const auto *key : {"host_time_us", "channel_id", "peak", "source", "component", "algorithm_version",
+                                "waveform_sequence", "search_start_index", "search_end_index"})
+            if (column(key) < 0) return result;
+        qsizetype index = 0;
+        while (!input.atEnd()) {
+            const auto fields = parseCsvLine(input.readLine());
+            const auto field = [&](const char *key) { return csvValueAt(fields, column(key)); };
+            if (field("source") != "fpga" || field("component") != "H2/H1" || field("channel_id").toUInt() != catalog.fpgaSource) continue;
+            if (index >= catalog.rawTcpFrames.size() || field("algorithm_version") != "1" ||
+                field("search_start_index") != "0" || field("search_end_index") != "0") return {};
+            const auto& frame = catalog.rawTcpFrames[index++];
+            bool sequenceOk = false, timeOk = false;
+            const auto sequence = field("waveform_sequence").toULongLong(&sequenceOk);
+            const auto time = field("host_time_us").toULongLong(&timeOk);
+            if (!sequenceOk || !timeOk || sequence != frame.waveformSequence || time != frame.timestampUs) return {};
+            bool valueOk = false; const double value = field("peak").toDouble(&valueOk);
+            if (!field("peak").isEmpty() && (!valueOk || !std::isfinite(value))) return {};
+            result.timestampsUs.append(time);
+            result.peakValues.append(valueOk ? float(value) : std::numeric_limits<float>::quiet_NaN());
+        }
+        result.success = index == catalog.rawTcpFrames.size();
+        return result;
+    }
     if (catalog.waveformPeaksCsvFilename.isEmpty() ||
         !QFileInfo::exists(catalog.waveformPeaksCsvFilename))
     {
@@ -994,6 +1070,16 @@ SessionWaveformPeakSeriesResult SessionWaveformRepository::calculatePeakSeries(
                     break;
                 }
                 openFilename = frame.filename;
+            }
+            if (frame.harmonicPair) {
+                if (!file.seek(qint64(frame.harmonicPayloadOffset))) { fail(frame.filename); break; }
+                const auto payload = file.read(frame.harmonicPayloadSize);
+                const auto samples = VaporView::Session::harmonicSamples(payload, catalog.fpgaComponent);
+                if (payload.size() != frame.harmonicPayloadSize || samples.isEmpty()) { fail(frame.filename); break; }
+                result.timestampsUs.append(frame.timestampUs);
+                result.peakValues.append(peakValue(samples, searchStartIndex, searchEndIndex));
+                if (progress) progress(++completed, catalog.frameCount);
+                continue;
             }
             const int sampleCount = static_cast<int>(std::min<quint64>(
                 frame.harmonicPayloadSize / kFloatBytes,

@@ -1,4 +1,6 @@
 add_library(vaporview_session_format STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/HarmonicWaveform.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/HarmonicWaveform.h
     ${CMAKE_CURRENT_SOURCE_DIR}/FpgaSessionArchive.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/FpgaSessionArchive.h
     ${CMAKE_CURRENT_SOURCE_DIR}/NavigationStatusCsv.cpp

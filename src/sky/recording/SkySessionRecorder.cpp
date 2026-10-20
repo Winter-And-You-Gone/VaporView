@@ -6,7 +6,7 @@
 #include "shared/session/SessionPackageLayout.h"
 #include "shared/session/SessionSensorCsv.h"
 #include "shared/session/UnifiedRawDat.h"
-#include "shared/session/FpgaSessionArchive.h"
+#include "shared/session/HarmonicWaveform.h"
 #include <QJsonDocument>
 #include <atomic>
 #include <condition_variable>
@@ -178,16 +178,16 @@ QString applicationSoftwareVersion()
 }  // namespace
 
 // QFile creation, writes, flush and destruction all stay on this worker.
-// Queue overflow fails the archive explicitly; exact USB bytes are never silently dropped.
-struct SkySessionRecorder::FpgaWriter
+// Queue overflow fails the session explicitly; complete harmonic cycles are never silently dropped.
+struct SkySessionRecorder::HarmonicWriter
 {
     struct Record { quint64 timestamp; quint16 kind; QByteArray bytes; };
     static constexpr qsizetype kQueueBudget = 16 * 1024 * 1024;
-    std::shared_ptr<RecordingStorage> storage;
-    QString directory;
+    std::function<bool(const Record&)> write;
     std::atomic_bool failed{false};
     std::atomic<quint64> count{0};
-    Session::FpgaRecordingStatistics statistics;
+    std::atomic<quint64> featureCount{0};
+    std::atomic<quint32> points{0};
     std::mutex mutex;
     std::condition_variable changed;
     std::deque<Record> queue;
@@ -195,9 +195,9 @@ struct SkySessionRecorder::FpgaWriter
     bool stopping = false, flushRequested = false, busy = false;
     std::thread worker;
 
-    FpgaWriter(std::shared_ptr<RecordingStorage> s, const QString& d)
-        : storage(std::move(s)), directory(d), worker([this] { run(); }) {}
-    ~FpgaWriter() { finish(); }
+    explicit HarmonicWriter(std::function<bool(const Record&)> w)
+        : write(std::move(w)), worker([this] { run(); }) {}
+    ~HarmonicWriter() { finish(); }
     bool finish() {
         if (!worker.joinable()) return !failed;
         { std::lock_guard<std::mutex> lock(mutex); stopping = true; }
@@ -223,8 +223,6 @@ struct SkySessionRecorder::FpgaWriter
         return !failed;
     }
     void run() {
-        QFile raw(Session::FpgaSessionArchive::rawPath(directory));
-        QFile semantic(QDir(directory).filePath(QStringLiteral("sensors/fpga_frames.jsonl")));
         for (;;) {
             Record record{};
             bool hasRecord = false, flush = false, finish = false;
@@ -238,33 +236,14 @@ struct SkySessionRecorder::FpgaWriter
                 } else { flush = flushRequested || stopping; finish = stopping; }
             }
             if (hasRecord && !failed) {
-                if (!raw.isOpen()) {
-                    if (!raw.open(QIODevice::WriteOnly) || !semantic.open(QIODevice::WriteOnly)) failed = true;
-                    else {
-                        RecordingOutputDevice output(*storage, raw);
-                        if (!SessionRawDat::writeFileHeader(output, Session::kFpgaRawSource)) failed = true;
-                    }
-                }
-                if (!failed) {
-                    SessionRawDat::RawRecordHeader header;
-                    header.hostTimestampUs = record.timestamp; header.sourceId = Session::kFpgaRawSource;
-                    header.recordType = record.kind; header.sequence = count.load();
-                    RecordingOutputDevice output(*storage, raw);
-                    if (!SessionRawDat::writeRecord(output, header, record.bytes)) failed = true;
-                    else {++count;statistics.record(Session::FpgaArchiveKind(record.kind),record.bytes);}
-                    if (!failed && record.kind != quint16(Session::FpgaArchiveKind::UsbBytes)) {
-                        auto object = Session::FpgaSessionArchive::describe(record.timestamp,
-                            Session::FpgaArchiveKind(record.kind), record.bytes);
-                        object.remove(QStringLiteral("wire_hex"));
-                        const auto row = QJsonDocument(object).toJson(QJsonDocument::Compact) + '\n';
-                        if (storage->write(semantic, row.constData(), row.size()) != row.size()) failed = true;
-                    }
+                if (!write(record)) failed = true;
+                else if (record.kind == SessionRawDat::kRecordTypeHarmonicPair) {
+                    Session::HarmonicLayout layout;
+                    Session::parseHarmonicLayout(record.bytes, quint32(record.bytes.size()), layout);
+                    points.store(layout.originalPoints);
                 }
             }
-            if (flush) {
-                for (QFile *file : {&raw, &semantic})
-                    if (file->isOpen() && !storage->flush(*file)) failed = true;
-            }
+            if (flush && !write({0, 0, {}})) failed = true;
             {
                 std::lock_guard<std::mutex> lock(mutex);
                 busy = false;
@@ -291,78 +270,72 @@ SkySessionRecorder::~SkySessionRecorder()
 bool SkySessionRecorder::storageFailed() const
 {
     std::lock_guard<std::recursive_mutex> recordingLock(recording_mutex_);
-    return storage_failed_ || (fpga_writer_ && fpga_writer_->failed.load());
+    return storage_failed_ || (harmonic_writer_ && harmonic_writer_->failed.load());
 }
 
 quint64 SkySessionRecorder::rawFpgaRecordCount() const
 {
     std::lock_guard<std::recursive_mutex> recordingLock(recording_mutex_);
-    return fpga_writer_ ? fpga_writer_->count.load() : 0;
+    return 0; // Legacy protocol archives are read-only; new sessions store source-5 harmonics.
 }
 
-void SkySessionRecorder::setFpgaConfiguration(const FpgaControlConfig& configuration)
+void SkySessionRecorder::setFpgaConfiguration(const FpgaControlConfig& configuration, bool enabled)
 {
     std::lock_guard<std::recursive_mutex> recordingLock(recording_mutex_);
     fpga_configuration_ = configuration;
+    fpga_recording_enabled_ = enabled;
     if (isRecording()) recordFpgaBoundary(QStringLiteral("configuration"));
 }
 
 QJsonObject SkySessionRecorder::fpgaRecordingStatistics() const
 {
     std::lock_guard<std::recursive_mutex> recordingLock(recording_mutex_);
-    return fpga_writer_?fpga_writer_->statistics.status():QJsonObject{};
+    return harmonic_writer_ ? QJsonObject{{"format", "harmonics_v1"}, {"waveform_frames", QString::number(harmonic_writer_->count.load())},
+        {"waveform_points", int(harmonic_writer_->points.load())},
+        {"normalized_features", QString::number(harmonic_writer_->featureCount.load())}} : QJsonObject{};
 }
 
 bool SkySessionRecorder::enqueueFpga(quint64 timestamp, quint16 kind, const QByteArray& bytes)
 {
     std::lock_guard<std::recursive_mutex> recordingLock(recording_mutex_);
     if (!isRecording()) return false;
-    if (!fpga_writer_->enqueue(timestamp, kind, bytes)) { markStorageFailure(); return false; }
+    if (!harmonic_writer_->enqueue(timestamp, kind, bytes)) { markStorageFailure(); return false; }
     return true;
 }
 
-bool SkySessionRecorder::recordFpgaFrame(quint64 timestamp, const QByteArray& frame)
+bool SkySessionRecorder::recordFpgaHarmonics(quint64 timestamp, const FpgaWave::CompletedStream& stream)
 {
     std::lock_guard<std::recursive_mutex> recordingLock(recording_mutex_);
-    if (frame.size() >= qsizetype(FpgaVlp1::kHeaderSize) &&
-        quint8(frame[6]) == quint8(FpgaVlp1::FrameType::Data)) {
-        const auto *p = reinterpret_cast<const uchar *>(frame.constData());
-        const auto source = qFromLittleEndian<quint16>(p + 16);
-        const auto message = qFromLittleEndian<quint16>(p + 18);
-        if ((message == 0x1000 && !fpga_configuration_.recordRaw) ||
-            (message == 0x1001 && !fpga_configuration_.recordDlia) ||
-            (source >= 0x40 && source <= 0x46 && !fpga_configuration_.recordSensors)) return true;
-    }
-    return enqueueFpga(timestamp, quint16(Session::FpgaArchiveKind::Frame), frame);
-}
-
-bool SkySessionRecorder::recordFpgaCommand(quint64 timestamp, const QByteArray& bytes)
-{
-    std::lock_guard<std::recursive_mutex> recordingLock(recording_mutex_);
-    return enqueueFpga(timestamp, quint16(Session::FpgaArchiveKind::Command), bytes);
-}
-bool SkySessionRecorder::recordFpgaUsbBytes(quint64 timestamp, const QByteArray& bytes)
-{
-    std::lock_guard<std::recursive_mutex> recordingLock(recording_mutex_);
-    return enqueueFpga(timestamp, quint16(Session::FpgaArchiveKind::UsbBytes), bytes);
+    if (!isRecording() || !isTimestampInsideRecordingWindow(timestamp, recording_start_time_us_, recording_end_time_us_)) return false;
+    if (stream.firstHostTimeUs && stream.firstHostTimeUs < fpga_segment_start_us_) return false;
+    const auto payload = Session::encodeHarmonics(stream, fpga_segment_);
+    if (payload.isEmpty()) return false;
+    fpga_recording_enabled_ = true;
+    return enqueueFpga(timestamp, SessionRawDat::kRecordTypeHarmonicPair, payload);
 }
 bool SkySessionRecorder::recordFpgaSnapshot(quint64 timestamp, const QJsonObject& snapshot)
 {
     std::lock_guard<std::recursive_mutex> recordingLock(recording_mutex_);
     fpga_snapshot_ = snapshot;
-    return enqueueFpga(timestamp, quint16(Session::FpgaArchiveKind::Snapshot),
-        QJsonDocument(snapshot).toJson(QJsonDocument::Compact));
+    if (!isRecording()) return false;
+    auto document = snapshot;
+    if (snapshot.value("event") != "firmware_event") {
+        ++fpga_segment_; fpga_segment_start_us_ = Session::harmonicReceptionTimeUs();
+    }
+    document.insert("segment_id", QString::number(fpga_segment_));
+    document.insert("waveform_processing", Session::harmonicProcessingMetadata());
+    return enqueueFpga(timestamp, 3, QJsonDocument(document).toJson(QJsonDocument::Compact));
 }
 
 void SkySessionRecorder::recordFpgaBoundary(const QString& event)
 {
     std::lock_guard<std::recursive_mutex> recordingLock(recording_mutex_);
+    if (!fpga_recording_enabled_) return;
     auto snapshot = fpga_snapshot_;
     snapshot.insert(QStringLiteral("event"), event);
     snapshot.insert(QStringLiteral("configuration"), fpga_configuration_.toJson());
     snapshot.insert(QStringLiteral("host_timestamp_us"), QString::number(nowUs()));
-    enqueueFpga(nowUs(), quint16(Session::FpgaArchiveKind::Snapshot),
-        QJsonDocument(snapshot).toJson(QJsonDocument::Compact));
+    recordFpgaSnapshot(nowUs(), snapshot);
 }
 
 void SkySessionRecorder::markStorageFailure()
@@ -414,7 +387,7 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     }
 
     closeFiles();
-    fpga_writer_.reset();
+    harmonic_writer_.reset();
 
     const QString baseSessionName = QStringLiteral("session_%1").arg(timestampForSessionName());
     storage_failed_ = false;
@@ -438,6 +411,12 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     initOptions.otherDevicesExportRateHz = 0;
     initOptions.waveformExportRateHz = 0;
     initOptions.waveformPointsPerFrame = 0;
+    fpga_segment_ = 1;
+    fpga_segment_start_us_ = Session::harmonicReceptionTimeUs();
+    if (fpga_recording_enabled_) {
+        initOptions.deviceConfig.fpgaConfiguration = fpga_configuration_.toJson();
+        initOptions.deviceConfig.waveformProcessing = Session::harmonicProcessingMetadata();
+    }
     initOptions.capture.telemetryTransport = telemetry_transport_;
     initOptions.capture.telemetryEndpoint = telemetry_endpoint_;
     initOptions.capture.telemetryPort = telemetry_port_;
@@ -571,9 +550,35 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     event_row_count_ = 0;
     error_row_count_ = 0;
     recording_state_ = 1;
-    fpga_writer_ = std::make_unique<FpgaWriter>(storage_, session_directory_);
+    harmonic_writer_ = std::make_unique<HarmonicWriter>([this](const HarmonicWriter::Record& record) {
+        // Never acquire recording_mutex_ here: pause/stop hold it while draining this worker.
+        std::lock_guard<std::mutex> lock(files_mutex_);
+        if (record.kind == 0) {
+            for (QFile *file : {&waveform_raw_file_, &feature_record_file_, &event_log_file_})
+                if (file->isOpen() && !storage_->flush(*file)) return false;
+            return true;
+        }
+        if (record.kind == 3) {
+            const QByteArray row = (csvEscape(QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)) + ',' +
+                QString::number(record.timestamp) + ",INFO," +
+                csvEscape(QStringLiteral("fpga.snapshot ") + QString::fromUtf8(record.bytes)) + '\n').toUtf8();
+            if (storage_->write(event_log_file_, row.constData(), row.size()) != row.size()) return false;
+            ++event_row_count_; return true;
+        }
+        SessionRawDat::RawRecordHeader header;
+        header.hostTimestampUs = record.timestamp; header.sourceId = SessionRawDat::kSourceWaveform;
+        header.recordType = SessionRawDat::kRecordTypeHarmonicPair;
+        header.sequence = raw_waveform_record_count_ + harmonic_writer_->count.load();
+        RecordingOutputDevice output(*storage_, waveform_raw_file_);
+        if (!SessionRawDat::writeRecord(output, header, record.bytes)) return false;
+        ++harmonic_writer_->count;
+        const auto row = Session::harmonicFeatureCsv(record.timestamp, header.sequence, record.bytes);
+        if (row.isEmpty() || storage_->write(feature_record_file_, row.constData(), row.size()) != row.size()) return false;
+        ++harmonic_writer_->featureCount;
+        return true;
+    });
     recordFpgaBoundary(QStringLiteral("connected"));
-    if (!fpga_writer_->drain()) markStorageFailure();
+    if (!harmonic_writer_->drain()) markStorageFailure();
     if (!writeSessionMetadata(QString(), errorMessage))
     {
         recording_state_ = 0;
@@ -597,7 +602,7 @@ void SkySessionRecorder::pause()
     {
         recording_state_ = 2;
     }
-    if (fpga_writer_ && !fpga_writer_->drain()) markStorageFailure();
+    if (harmonic_writer_ && !harmonic_writer_->drain()) markStorageFailure();
     if (!session_directory_.isEmpty()) writeSessionMetadata();
 }
 
@@ -677,7 +682,7 @@ quint64 SkySessionRecorder::telemetryRecordCount() const
 quint64 SkySessionRecorder::waveformFeatureRecordCount() const
 {
     std::lock_guard<std::recursive_mutex> recordingLock(recording_mutex_);
-    return waveform_feature_count_;
+    return waveform_feature_count_ + (harmonic_writer_ ? harmonic_writer_->featureCount.load() : 0);
 }
 
 quint64 SkySessionRecorder::temperatureControllerRecordCount() const
@@ -695,7 +700,7 @@ quint64 SkySessionRecorder::ai8TemperatureControllerRecordCount() const
 quint64 SkySessionRecorder::waveformSnapshotRecordCount() const
 {
     std::lock_guard<std::recursive_mutex> recordingLock(recording_mutex_);
-    return raw_waveform_record_count_;
+    return raw_waveform_record_count_ + (harmonic_writer_ ? harmonic_writer_->count.load() : 0);
 }
 
 quint64 SkySessionRecorder::rawNavigationRecordCount() const
@@ -725,7 +730,7 @@ quint64 SkySessionRecorder::rawDistanceRecordCount() const
 quint64 SkySessionRecorder::rawWaveformRecordCount() const
 {
     std::lock_guard<std::recursive_mutex> recordingLock(recording_mutex_);
-    return raw_waveform_record_count_;
+    return raw_waveform_record_count_ + (harmonic_writer_ ? harmonic_writer_->count.load() : 0);
 }
 
 quint64 SkySessionRecorder::rawLaserTemperatureControllerRecordCount() const
@@ -918,6 +923,7 @@ void SkySessionRecorder::recordWaveformFeature(const WaveformFeature& feature)
     {
         return;
     }
+    std::unique_lock<std::mutex> filesLock(files_mutex_);
     RecordingOutputDevice output(*storage_, feature_record_file_);
     QTextStream out(&output);
     out << feature.host_time_us << ','
@@ -933,9 +939,11 @@ void SkySessionRecorder::recordWaveformFeature(const WaveformFeature& feature)
         << QString::number(feature.peak_x, 'f', 6) << ','
         << QString::number(feature.min_value, 'f', 6) << ','
         << QString::number(feature.max_value, 'f', 6) << ','
-        << feature.quality_flags << '\n';
+        << feature.quality_flags << ",tcp,harmonic,,,,,\n";
     out.flush();
-    if (out.status() != QTextStream::Ok) { markStorageFailure(); return; }
+    const bool failed = out.status() != QTextStream::Ok;
+    filesLock.unlock();
+    if (failed) { markStorageFailure(); return; }
     ++waveform_feature_count_;
 }
 
@@ -1206,7 +1214,7 @@ bool SkySessionRecorder::writeRawRecord(QFile& file,
         return false;
     }
 
-    const quint64 sequence = recordCount;
+    const quint64 sequence = recordCount + (sourceId == SessionRawDat::kSourceWaveform && harmonic_writer_ ? harmonic_writer_->count.load() : 0);
     SessionRawDat::RawRecordHeader header;
     header.hostTimestampUs = hostTimeUs;
     header.sourceId = sourceId;
@@ -1323,7 +1331,13 @@ bool SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc, QString
     manifest.waveformPointsPerFrame = static_cast<int>(std::min<quint64>(
         waveform_points_per_frame_,
         static_cast<quint64>(std::numeric_limits<int>::max())));
-    manifest.waveformFileCount = waveform_file_count_;
+    const quint64 harmonicCount = harmonic_writer_ ? harmonic_writer_->count.load() : 0;
+    manifest.waveformFileCount = harmonicCount ? 1 : waveform_file_count_;
+    if (fpga_recording_enabled_) {
+        manifest.waveformProcessing = Session::harmonicProcessingMetadata();
+        manifest.waveformValueType = QStringLiteral("per_record_int32_or_float64");
+        manifest.waveformPointsPerFrame = 0;
+    }
     manifest.capture.telemetryTransport = telemetry_transport_;
     manifest.capture.telemetryEndpoint = telemetry_endpoint_;
     manifest.capture.telemetryPort = telemetry_port_;
@@ -1332,24 +1346,17 @@ bool SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc, QString
     manifest.counts.navigationStatusRows = navigation_status_rows_;
     manifest.counts.laserTemperatureControllerRows = temperature_controller_count_;
     manifest.counts.systemTemperatureControllerRows = ai8_temperature_controller_count_;
-    manifest.counts.waveformFrames = raw_waveform_record_count_;
-    manifest.counts.waveformFeatureRows = waveform_feature_count_;
+    manifest.counts.waveformFrames = raw_waveform_record_count_ + harmonicCount;
+    manifest.counts.waveformFeatureRows = waveform_feature_count_ + (harmonic_writer_ ? harmonic_writer_->featureCount.load() : 0);
     manifest.counts.eventRows = event_row_count_;
     manifest.counts.errorRows = error_row_count_;
     manifest.rawRecords.navigation = raw_navigation_record_count_;
     manifest.rawRecords.pressure = raw_pressure_record_count_;
     manifest.rawRecords.temperatureHumidity = raw_temperature_humidity_record_count_;
     manifest.rawRecords.distance = raw_distance_record_count_;
-    manifest.rawRecords.waveform = raw_waveform_record_count_;
+    manifest.rawRecords.waveform = raw_waveform_record_count_ + harmonicCount;
     manifest.rawRecords.laserTemperatureController = raw_laser_temperature_controller_record_count_;
     manifest.rawRecords.systemTemperatureController = raw_system_temperature_controller_record_count_;
-    manifest.fpgaRecords = rawFpgaRecordCount();
-    const auto fpgaStatus=fpgaRecordingStatistics();
-    manifest.counts.waveformFrames += fpgaStatus.value("waveform_frames").toString().toULongLong();
-    if (fpgaStatus.value("waveform_points").toInt()>0) {
-        ++manifest.waveformFileCount;
-        manifest.waveformPointsPerFrame=fpgaStatus.value("waveform_points").toInt();
-    }
     return VaporView::Session::writeSessionManifestAtomically(session_metadata_filename_,
                                                               manifest,
                                                               errorMessage);
@@ -1358,7 +1365,7 @@ bool SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc, QString
 void SkySessionRecorder::closeFiles()
 {
     std::lock_guard<std::recursive_mutex> recordingLock(recording_mutex_);
-    if (fpga_writer_ && !fpga_writer_->finish()) markStorageFailure();
+    if (harmonic_writer_ && !harmonic_writer_->finish()) markStorageFailure();
     // Observation close publishes a log that can synchronously appendEvent().
     ppk_observations_.close();
     ppk_attitudes_.close();

@@ -5,6 +5,7 @@
 #include "BoundedLruCache.h"
 #include "ground/widgets/CustomTitleBar.h"
 #include "shared/session/UnifiedRawDat.h"
+#include "shared/session/HarmonicWaveform.h"
 #include "shared/session/SessionPathResolver.h"
 #include "shared/config/SettingsWriteBarrier.h"
 #include "TcpWaveEncoding.h"
@@ -312,7 +313,7 @@ QString sourceName(quint16 sourceId, bool english)
     case VaporView::SessionRawDat::kSourceDistance:
         return english ? QStringLiteral("Lidar") : QStringLiteral("激光测距");
     case VaporView::SessionRawDat::kSourceWaveform:
-        return english ? QStringLiteral("TCP Wave") : QStringLiteral("TCP波形");
+        return english ? QStringLiteral("Waveform") : QStringLiteral("波形");
     case VaporView::SessionRawDat::kSourceLaserTemperatureController:
         return QStringLiteral("RD105");
     case VaporView::SessionRawDat::kSourceSystemTemperatureController:
@@ -371,7 +372,8 @@ QString recordTypeName(quint16 sourceId, quint16 recordType, bool english)
     case VaporView::SessionRawDat::kSourceDistance:
         return lidarProtocolName(recordType, english);
     case VaporView::SessionRawDat::kSourceWaveform:
-        return QStringLiteral("TCP wave payload");
+        return recordType == VaporView::SessionRawDat::kRecordTypeHarmonicPair
+            ? QStringLiteral("FPGA H1/H2") : QStringLiteral("TCP wave payload");
     case VaporView::SessionRawDat::kSourceLaserTemperatureController:
         return english
             ? QStringLiteral("RD105 Modbus response @ %1").arg(formatHex(recordType))
@@ -1813,10 +1815,16 @@ bool RawDataParserWindow::Impl::recordMatches(const RawRecordIndex& record, cons
         {
             if (record.source_id == VaporView::SessionRawDat::kSourceWaveform)
             {
-                const auto prefix = readPayload(record, VaporView::SessionRawDat::kWaveformPayloadPrefixSize);
-                VaporView::SessionRawDat::WaveformPayloadLayout layout;
-                record.decode_ok = VaporView::SessionRawDat::parseWaveformPayloadLayout(
-                    prefix, record.payload_size, &layout) ? 1 : 0;
+                if (record.record_type == VaporView::SessionRawDat::kRecordTypeHarmonicPair) {
+                    VaporView::Session::HarmonicLayout layout;
+                    record.decode_ok = VaporView::Session::parseHarmonicLayout(
+                        readPayload(record, VaporView::Session::kHarmonicHeaderSize), record.payload_size, layout) ? 1 : 0;
+                } else {
+                    const auto prefix = readPayload(record, VaporView::SessionRawDat::kWaveformPayloadPrefixSize);
+                    VaporView::SessionRawDat::WaveformPayloadLayout layout;
+                    record.decode_ok = VaporView::SessionRawDat::parseWaveformPayloadLayout(
+                        prefix, record.payload_size, &layout) ? 1 : 0;
+                }
             }
             else
                 record.decode_ok = decodeRawRecord(record, readPayload(record), english, false).ok ? 1 : 0;
@@ -2981,7 +2989,23 @@ RawDecodedRecord decodeRawRecord(const RawRecordIndex& record, const QByteArray&
         decodeLidarPayload(decoded, payload, record.record_type, english);
         break;
     case VaporView::SessionRawDat::kSourceWaveform:
-        decodeTcpWavePayload(decoded, payload, record.flags, english, details);
+        if (record.record_type == VaporView::SessionRawDat::kRecordTypeHarmonicPair) {
+            VaporView::Session::HarmonicLayout l;
+            decoded.title = QStringLiteral("FPGA H1/H2");
+            decoded.ok = VaporView::Session::parseHarmonicLayout(payload, record.payload_size, l);
+            decoded.status = decoded.ok ? (english ? QStringLiteral("Valid") : QStringLiteral("有效"))
+                                       : (english ? QStringLiteral("Invalid") : QStringLiteral("无效"));
+            if (decoded.ok && details) {
+                const auto field = [&](const char *key, quint64 value) {
+                    addField(decoded, QStringLiteral("FPGA H1/H2"), QLatin1String(key), QString::number(value),
+                        QString::number(value), QString(), 0, VaporView::Session::kHarmonicHeaderSize);
+                };
+                field("channel_id", l.channel); field("cycle_id", l.cycle); field("sample_rate_hz", l.rate);
+                field("original_point_count", l.originalPoints); field("stored_point_count", l.storedPoints);
+                field("fpga_tick", l.fpgaTick); field("segment_id", l.segment); field("quality_flags", l.quality);
+                field("sample_type", quint16(l.sampleType)); field("input_format", l.inputFormat);
+            }
+        } else decodeTcpWavePayload(decoded, payload, record.flags, english, details);
         break;
     default:
         if (!details) break;

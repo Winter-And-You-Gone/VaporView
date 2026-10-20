@@ -40,11 +40,11 @@ format0/2 按同周期、同采样点计算 `H2/H1`；仅 IQ 的 format1 计算
 `hypot(I2, Q2)/hypot(I1, Q1)`，结果为无量纲比值，不是气体浓度。
 H1 非正或输入无效时保留采样位置并留断点；该点不参与峰值，整周期无有效参考时峰值留断点。
 峰值在绘图抽稀前从有效归一化值取最大值，缺片或异常周期留断点，切换通道保留各自趋势。
-天空端仅传抽稀预览时明确显示“预览峰值”，不冒充完整周期最大值；趋势时间为本机
+新版天空端预览携带完整周期峰值；旧发送端仅有抽稀样本时显示“预览峰值”。趋势时间为本机
 接收时间，不把 FPGA tick 当 UTC。复用 FPGA 页的校准、完整性与历史值标记。采集
 启停仍使用 FPGA 页，直连路径恢复 TCP 主机/端口和原有波形显示设置。
-FPGA 诊断页仍显示原始 H1/H2/IQ，原始归档字节不变；FPGA Session 回放默认选择
-`H2/H1` 并从归一化波形提取峰值，同时保留原始分量供诊断。直连 TCP 数据不重复归一化。
+FPGA 诊断页仍显示 H1/H2/IQ；新 Session 保存完整 H1/H2，回放默认按帧计算
+`H2/H1`，峰值趋势优先读取已记录的完整周期特征，仍可选择 H1/H2 分量。直连 TCP 数据不重复归一化。
 其中 PC 的 `COMx` 名称不能透传到 FPGA，FPGA 端需要使用板上固定通道/协议支持的
 地址、波特率和轮询寄存器。VLP1 尚未提供的字段必须返回明确的 `Unsupported`，不能
 静默改走直连串口。
@@ -126,7 +126,7 @@ Local 枚举 VaporView 所在电脑；Remote 通过 `FpgaControl` 的只读 `dis
 
 VLP1 尚未提供的 RTCM 下行、EPSILON 高级参数操作应返回 `Unsupported`，不能绕到设备串口或构造未知 VLP1 命令。超时不盲目重发，先读取最终设备状态；本机 IPC 与数传请求均须仅执行一次。
 
-SkyCore 在天空端保存完整 Session：`raw/fpga_vlp1.dat` 的 source=8、type1 完整 IN、type2 OUT、type3 配置/校准/连接快照、type4 精确 USB IN；语义摘要在 `sensors/fpga_frames.jsonl`。记录选项只影响完整帧/解析摘要，不能删除已收到的精确 USB 块。队列有界，写入/溢出/flush 失败标记 incomplete；pause/stop 排空，stop 结束写线程。
+SkyCore 在天空端保存完整 Session，与直连共用 `raw/waveform.dat`（source=5，FPGA harmonic-pair record type=2）。完整 H1/H2 和每周期归一化峰值/位置/质量分别写入波形文件和 `sensors/waveform_features.csv`；归一化波形在查看时计算。取消 USB/VLP1 包、命令、ADC RAW 和独立 FPGA JSONL 档案写入，配置/连接/分段信息复用配置文件与事件日志。队列有界，写入/溢出/flush 失败标记 incomplete；pause/stop 排空，stop 结束写线程。旧 FPGA 档案保留读取兼容，详细对比见 [Session 接入说明](fpga_session_recording.md)。
 
 数传默认发送标准化设备数据、状态、命令结果和有界波形预览；RAW 默认关闭，不默认搬运全量 USB/RAW。地面 Session 保存既有标准遥测测量，新 FPGA 状态与波形预览用于界面显示，当前不存入地面 FPGA 原始归档。需要完整离线回放时，取得天空 Session 副本。GUI/数传掉线不应误停 SkyCore 采集或记录，重连后重新建立观察状态，不能把历史预览当新鲜测量。
 

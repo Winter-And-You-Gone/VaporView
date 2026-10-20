@@ -19,6 +19,7 @@ struct Fragment
     quint32 cycleId = 0;
     quint64 timestamp = 0;
     QByteArray payload;
+    quint64 hostTimeUs = 0;
 };
 
 struct CompletedStream
@@ -40,6 +41,9 @@ struct CompletedStream
     bool continuityError = false;
     bool preview = false;
     quint32 previewStride = 1;
+    bool hasFullCyclePeak = false;
+    double fullCyclePeak = 0;
+    quint64 firstHostTimeUs = 0;
     QVector<qint32> signed32Samples;
     QVector<quint32> unsigned32Samples;
     struct DliaPoint {

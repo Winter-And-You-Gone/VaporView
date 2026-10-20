@@ -30,10 +30,12 @@ int main()
 {
     Assembler assembler;
     const auto first=raw(2,0,2,0,4,{10,11});const auto second=raw(2,1,2,2,4,{12,13});
-    check(!assembler.accept(adc(second)),"out of order begins with last fragment");
+    auto earlyFragment = adc(second); earlyFragment.hostTimeUs = 123456;
+    check(!assembler.accept(earlyFragment),"out of order begins with last fragment");
     auto result=assembler.accept(adc(first));check(result.has_value() && result->complete,"out of order complete");
     check(result->signed32Samples==QVector<qint32>({10,11,12,13}),"ordered by point position");
     check(result->adcBits==24 && result->rate==1000000,"ADC units metadata");
+    check(result->firstHostTimeUs == 123456,"first receipt time survives out-of-order fragment assembly");
     result=assembler.accept(adc(second));
     check(result.has_value() && !result->complete && result->continuityError,"duplicate after completed cycle not shown as a new complete scan");
     result=assembler.accept(adc(raw(1,0,1,0,3,{0x80000000,0xffffffff,0x7fffffff}),6));
