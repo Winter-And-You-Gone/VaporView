@@ -1361,7 +1361,7 @@ QLabel#deviceRemoteSkyConfigStatus[status="disabled"] {
     color: @vv-text-muted;
 }
 QLabel#temperatureOverviewValuePill {
-    background-color: @vv-surface-alt;
+    background-color: transparent;
     border: 1px solid @vv-border;
     border-radius: 10px;
     color: @vv-text-strong;

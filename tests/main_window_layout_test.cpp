@@ -7639,8 +7639,8 @@ int main(int argc, char **argv)
                                  "dark theme overrides device telemetry section title pane background");
     requireLastStyleRuleContains(darkOverviewStyleSheet,
                                  QStringLiteral("QLabel#temperatureOverviewValuePill {"),
-                                 VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt, true),
-                                 "dark theme overrides temperature overview value pill background");
+                                 QStringLiteral("background-color: transparent"),
+                                 "dark temperature overview value pills keep the trend plot visible");
     requireLastStyleRuleContains(darkOverviewStyleSheet,
                                  QStringLiteral("QLabel#temperatureOverviewOutputPercentPill {"),
                                  VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt, true),
