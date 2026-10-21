@@ -4325,10 +4325,11 @@ void requireHomeEnvironmentCardLayout(MainWindow& window, bool requireSideBySide
         expandedEnvironmentGeometry.width() - originalEnvironmentGeometry.width();
     const int epsilonWidthGrowth =
         expandedEpsilonGeometry.width() - originalEpsilonGeometry.width();
-    require((environmentInOverview ? environmentWidthGrowth > 0 : rowWidthGrowth >= 100) &&
-                std::abs(epsilonWidthGrowth) <= 1 &&
-                (environmentInOverview || std::abs(environmentWidthGrowth - rowWidthGrowth) <= 1),
-            "wide home sensor cards keep EPSILON fixed while environment absorbs new width");
+    require(environmentInOverview
+                ? environmentWidthGrowth > 0 && epsilonWidthGrowth >= 100
+                : rowWidthGrowth >= 100 && std::abs(epsilonWidthGrowth) <= 1 &&
+                    std::abs(environmentWidthGrowth - rowWidthGrowth) <= 1,
+            "wide home sensor cards fill their own rows and preserve the side-by-side width allocation");
 
     window.resize(originalSize);
     require(processEventsUntil(1000, [&window,
@@ -4343,6 +4344,14 @@ void requireHomeEnvironmentCardLayout(MainWindow& window, bool requireSideBySide
                      environmentGroup->geometry() != expandedEnvironmentGeometry);
             }),
             "home sensor cards return to their original wide-window layout");
+}
+
+void requireHomeCardFillsSensorRow(QWidget *card, QWidget *row)
+{
+    const QRect bounds(card->mapTo(row, QPoint()), card->size());
+    require(std::abs(bounds.left() - row->contentsRect().left()) <= 1 &&
+                std::abs(bounds.right() - row->contentsRect().right()) <= 1,
+            "a sensor card occupying its own row fills the available row width");
 }
 
 void requireHomeThreeColumnLayout()
@@ -4396,7 +4405,7 @@ void requireHomeThreeColumnLayout()
             const int breakpoint = minimumSum + 2 * overview->handleWidth();
             const QMargins margins = scroll->widget()->layout()->contentsMargins();
             int chrome = window.width() - scroll->viewport()->width() + margins.left() + margins.right();
-            for (int extra : {-1, 0, 1, 180, 500, -1, 0, -1})
+            for (int extra : {-300, -1, 0, 1, 180, 500, -1, 0, -1})
             {
                 window.resize(chrome + breakpoint + extra, 700);
                 for (int attempt = 0; attempt < 4; ++attempt)
@@ -4427,6 +4436,7 @@ void requireHomeThreeColumnLayout()
                 {
                     require(overview->widget(2) == environment && sensors->count() == 1,
                             "environment is the rightmost overview column and EPSILON remains below");
+                    requireHomeCardFillsSensorRow(sensors->widget(0), sensors->parentWidget()->parentWidget());
                     const QList<int> widths = overview->sizes();
                     const int available = overview->width() - 2 * overview->handleWidth();
                     for (int i = 0; i < 3; ++i)
@@ -4443,6 +4453,11 @@ void requireHomeThreeColumnLayout()
                 {
                     require(sensors->count() == 2 && sensors->widget(0) == environment,
                             "narrow windows restore environment before EPSILON");
+                    if (sensors->orientation() == Qt::Vertical)
+                    {
+                        for (int i = 0; i < sensors->count(); ++i)
+                            requireHomeCardFillsSensorRow(sensors->widget(i), sensors->parentWidget()->parentWidget());
+                    }
                 }
                 require(environment->findChild<PtbPanel *>() == pressure &&
                             pressure->findChild<QWidget *>(QStringLiteral("environmentPressureTrendPlot")) == plot &&
@@ -4726,6 +4741,8 @@ void requireHomeSensorLayoutAfterSidebarRestore()
                     "wide sidebar and restored window stack the sensor cards when narrow");
             require(cards->widget(1)->y() > cards->widget(0)->geometry().bottom(),
                     "stacked sensor cards place environment above EPSILON");
+            for (int i = 0; i < cards->count(); ++i)
+                requireHomeCardFillsSensorRow(cards->widget(i), cards->parentWidget()->parentWidget());
             if (extraWidth == 50)
                 clickWidget(logo);
             else
@@ -11949,14 +11966,8 @@ int main(int argc, char **argv)
         epsilonGroup->y() > environmentGroup->y();
     if (compactSensorCardsStacked)
     {
-        const int epsilonMinimumWidth = epsilonGroup->minimumSizeHint().width();
-        require(epsilonGroup->width() <= epsilonMinimumWidth + 24,
-                "compact EPSILON outer card follows the narrowed content width with a small reserve");
-        if (dataGroup->width() > epsilonMinimumWidth + 48)
-        {
-            require(epsilonGroup->width() < dataGroup->width() - 8,
-                    "compact EPSILON outer card no longer expands to the full row width");
-        }
+        requireHomeCardFillsSensorRow(epsilonGroup, dataGroup);
+        requireHomeCardFillsSensorRow(environmentGroup, dataGroup);
     }
 
     QList<QFrame*> cards = sortedEpsilonSectionCards(epsilonPanel);

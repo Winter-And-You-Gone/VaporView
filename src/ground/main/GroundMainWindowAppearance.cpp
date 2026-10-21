@@ -1191,10 +1191,11 @@ void MainWindow::updateResponsiveHomeLayout()
 
     if (state_->epsilon_group_)
     {
-        if (stackSensorCards)
+        if (stackSensorCards || environmentInOverview)
         {
-            state_->epsilon_group_->setMaximumWidth(compactEpsilonTargetWidth);
-            state_->epsilon_group_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
+            // A card on its own row must also release the vertical splitter's width cap.
+            state_->epsilon_group_->setMaximumWidth(QWIDGETSIZE_MAX);
+            state_->epsilon_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
         }
         else if (!sensorCardSplitter->property(kHomeSensorSplitterUserResizedProperty).toBool())
         {
