@@ -5346,7 +5346,6 @@ void MainWindow::setupDataPanels()
     });
     state_->temperature_overview_panel_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     temperatureOverviewLayout->addWidget(state_->temperature_overview_panel_, 0);
-    temperatureOverviewLayout->addStretch(1);
 
     state_->ai8_temperature_overview_group_ =
         new QGroupBox(state_->home_temperature_overview_column_);
@@ -5354,7 +5353,7 @@ void MainWindow::setupDataPanels()
     state_->ai8_temperature_overview_group_->setProperty("homeAi8TemperatureOverviewCard", true);
     configureTopLevelCard(state_->ai8_temperature_overview_group_);
     state_->ai8_temperature_overview_group_->setMinimumWidth(kHomeOverviewTemperatureMinWidth);
-    state_->ai8_temperature_overview_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    state_->ai8_temperature_overview_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     auto *ai8TemperatureOverviewLayout = new QVBoxLayout(state_->ai8_temperature_overview_group_);
     ai8TemperatureOverviewLayout->setContentsMargins(kHomeOverviewCardOuterPadding,
                                                       0,
@@ -5394,11 +5393,10 @@ void MainWindow::setupDataPanels()
     state_->ai8_temperature_overview_panel_ =
         new Ai8TemperatureOverviewPanel(state_->ai8_temperature_overview_group_);
     state_->ai8_temperature_overview_panel_->setEnglish(state_->is_english_);
-    ai8TemperatureOverviewLayout->addWidget(state_->ai8_temperature_overview_panel_, 0);
+    ai8TemperatureOverviewLayout->addWidget(state_->ai8_temperature_overview_panel_, 1);
 
     temperatureOverviewColumnLayout->addWidget(state_->temperature_overview_group_, 0, Qt::AlignTop);
-    temperatureOverviewColumnLayout->addWidget(state_->ai8_temperature_overview_group_, 0, Qt::AlignTop);
-    temperatureOverviewColumnLayout->addStretch(1);
+    temperatureOverviewColumnLayout->addWidget(state_->ai8_temperature_overview_group_, 1);
 
     state_->home_overview_splitter_ = new QSplitter(Qt::Horizontal, this);
     state_->home_overview_splitter_->setObjectName(QStringLiteral("homeOverviewSplitter"));

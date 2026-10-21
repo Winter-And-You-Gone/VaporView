@@ -814,14 +814,15 @@ void MainWindow::updateConfigCardHeightForSourceMode()
         return card ? std::max(card->minimumSizeHint().height(), card->sizeHint().height()) : 0;
     };
     const int naturalLaserHeight = naturalCardHeight(state_->temperature_overview_group_);
-    const int ai8OverviewHeight = naturalCardHeight(state_->ai8_temperature_overview_group_);
-    const int overviewGap = naturalLaserHeight > 0 && ai8OverviewHeight > 0
+    const int naturalAi8Height = naturalCardHeight(state_->ai8_temperature_overview_group_);
+    const int overviewGap = naturalLaserHeight > 0 && naturalAi8Height > 0
         ? std::max(0, state_->home_temperature_overview_column_->layout()->spacing()) : 0;
     // Match the complete temperature stack (including its gap) to the environment card.
-    const int overviewColumnMinimumHeight = std::max(
-        naturalLaserHeight + overviewGap + ai8OverviewHeight, naturalCardHeight(state_->env_group_));
-    const int laserOverviewHeight = overviewColumnMinimumHeight - overviewGap - ai8OverviewHeight;
-    minimumHeight = std::max(minimumHeight, overviewColumnMinimumHeight);
+    const int overviewColumnMinimumHeight = std::max({minimumHeight,
+        naturalLaserHeight + overviewGap + naturalAi8Height, naturalCardHeight(state_->env_group_)});
+    const int laserOverviewHeight = naturalLaserHeight;
+    const int ai8OverviewHeight = overviewColumnMinimumHeight - overviewGap - laserOverviewHeight;
+    minimumHeight = overviewColumnMinimumHeight;
     const bool environmentInOverview = state_->home_overview_splitter_ &&
         state_->home_overview_splitter_->indexOf(state_->env_group_) >= 0;
     state_->config_group_->setProperty(kMainCardMinimumHeightProperty, minimumHeight);
@@ -859,9 +860,10 @@ void MainWindow::updateConfigCardHeightForSourceMode()
         }
         if (state_->ai8_temperature_overview_group_ &&
             (state_->ai8_temperature_overview_group_->minimumHeight() != ai8OverviewHeight ||
-             state_->ai8_temperature_overview_group_->maximumHeight() != ai8OverviewHeight))
+             state_->ai8_temperature_overview_group_->maximumHeight() != targetHeight - overviewGap - laserOverviewHeight))
         {
-            state_->ai8_temperature_overview_group_->setFixedHeight(ai8OverviewHeight);
+            state_->ai8_temperature_overview_group_->setMinimumHeight(ai8OverviewHeight);
+            state_->ai8_temperature_overview_group_->setMaximumHeight(targetHeight - overviewGap - laserOverviewHeight);
         }
         if (state_->home_overview_splitter_->minimumHeight() != targetHeight ||
             state_->home_overview_splitter_->maximumHeight() != targetHeight)
@@ -1278,6 +1280,35 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         return;
     }
     const RemoteTelemetrySummarySections sections = remoteTelemetrySummarySections();
+    RemoteTelemetrySummarySections homeSections = sections;
+    const QStringList rateLabels = state_->is_english_
+        ? QStringList{QStringLiteral("Basic telemetry"), QStringLiteral("Waveform features"),
+            QStringLiteral("Telemetry status"), QStringLiteral("Raw waveform"),
+            QStringLiteral("Harmonic waveform"), QStringLiteral("Waveform capture")}
+        : QStringList{QStringLiteral("基础遥测"), QStringLiteral("波形特征值"),
+            QStringLiteral("遥测状态"), QStringLiteral("原始波形"),
+            QStringLiteral("谐波波形"), QStringLiteral("波形采集")};
+    const QStringList linkLabels = state_->is_english_
+        ? QStringList{QStringLiteral("Sky->Ground"), QStringLiteral("Ground->Sky"), QStringLiteral("Total")}
+        : QStringList{QStringLiteral("天空端→地面端"), QStringLiteral("地面端→天空端"), QStringLiteral("合计")};
+    const QStringList deviceLabels = state_->is_english_
+        ? QStringList{QStringLiteral("EPSILON navigation"), QStringLiteral("PTB210 pressure"),
+            QStringLiteral("HMP humidity"), QStringLiteral("Laser ranging"), QStringLiteral("Waveform")}
+        : QStringList{QStringLiteral("EPSILON组合导航"), QStringLiteral("PTB210气压"),
+            QStringLiteral("HMP温湿度"), QStringLiteral("激光测距"), QStringLiteral("波形数据")};
+    for (int i = 0; i < homeSections.rateItems.size(); ++i)
+        homeSections.rateItems[i].label = rateLabels.at(i);
+    for (int i = 0; i < homeSections.linkItems.size(); ++i)
+        homeSections.linkItems[i].label = linkLabels.at(i);
+    for (int i = 0; i < homeSections.deviceItems.size(); ++i)
+    {
+        auto &item = homeSections.deviceItems[i];
+        item.label = deviceLabels.at(i);
+        item.value = state_->is_english_
+            ? (item.hasData ? QStringLiteral("Data available") : QStringLiteral("No data"))
+            : (item.hasData ? QStringLiteral("有数据") : QStringLiteral("无数据"));
+        item.valueWidthText = state_->is_english_ ? QStringLiteral("Data available") : QStringLiteral("有数据");
+    }
     const auto updateSourcePill = [this](QFrame *pill) {
         if (!pill)
         {
@@ -1374,16 +1405,16 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
     {
         homeSummaryNeedsRender = !(
             updateSummarySectionValues(state_->data_telemetry_summary_layout_,
-                                       sections.rateItems,
+                                       homeSections.rateItems,
                                        false,
                                        state_->is_english_) &&
             updateSummarySectionValues(state_->data_telemetry_link_summary_layout_,
-                                       sections.linkItems,
+                                       homeSections.linkItems,
                                        false,
                                        state_->is_english_) &&
             updateSummarySectionValues(state_->data_telemetry_device_summary_layout_,
-                                       sections.deviceItems,
-                                       true,
+                                       homeSections.deviceItems,
+                                       false,
                                        state_->is_english_));
         if (!homeSummaryNeedsRender)
         {
@@ -1750,22 +1781,23 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         renderSummarySection(state_->data_telemetry_summary_card_,
                              state_->data_telemetry_summary_layout_,
                              state_->is_english_ ? QStringLiteral("Sky-ground data stream rates") : QStringLiteral("天地数据流频率"),
-                             sections.rateItems,
-                             3,
-                             3);
+                             homeSections.rateItems,
+                             2,
+                             2);
         renderSummarySection(state_->data_telemetry_summary_card_,
                              state_->data_telemetry_link_summary_layout_,
                              state_->is_english_ ? QStringLiteral("Link rate") : QStringLiteral("链路速率"),
-                             sections.linkItems,
-                             -1);
+                             homeSections.linkItems,
+                             1,
+                             2);
         renderSummarySection(state_->data_telemetry_summary_card_,
                              state_->data_telemetry_device_summary_layout_,
                              state_->is_english_ ? QStringLiteral("Data") : QStringLiteral("数据"),
-                             sections.deviceItems,
-                             -1,
-                             -1,
+                             homeSections.deviceItems,
+                             2,
+                             3,
                              false,
-                             true);
+                             false);
         if (QLayout *summaryLayout = state_->data_telemetry_summary_card_->layout())
         {
             summaryLayout->invalidate();

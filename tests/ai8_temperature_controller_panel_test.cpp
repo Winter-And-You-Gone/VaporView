@@ -120,15 +120,25 @@ int main(int argc, char **argv)
     {
         require(cell->frameShape() == QFrame::NoFrame &&
                     cell->testAttribute(Qt::WA_StyledBackground) &&
-                    cell->height() == 36 &&
+                    cell->height() >= 36 && cell->width() >= 100 &&
                     qobject_cast<QVBoxLayout *>(cell->layout()) != nullptr,
                 "AI-8288 overview channel capsules use a stable styled frame");
     }
-    require(overviewLayout != nullptr && overviewLayout->rowCount() == 1 &&
-                overviewLayout->columnCount() == 8 &&
+    require(overviewLayout != nullptr && overviewLayout->rowCount() == 2 &&
+                overviewLayout->columnCount() == 4 &&
                 overviewLayout->contentsMargins().top() == 1 &&
                 overviewLayout->contentsMargins().bottom() == 1,
-            "AI-8288 overview keeps all eight channels on one row");
+            "AI-8288 overview widens all eight channels across two rows of four");
+    overview.resize(480, 180);
+    QApplication::processEvents();
+    for (QFrame *cell : overviewCells)
+    {
+        const int index = cell->property("channelIndex").toInt();
+        require(overviewLayout->itemAtPosition(index / 4, index % 4)->widget() == cell &&
+                    cell->height() > 36 &&
+                    cell->geometry().bottom() >= (index < 4 ? 80 : 175),
+                "both rows expand into the available height and keep channels in order");
+    }
     for (QLabel *channelLabel : overviewChannelLabels)
     {
         const int index = channelLabel->property("channelIndex").toInt();
@@ -188,8 +198,8 @@ int main(int argc, char **argv)
     for (QLabel *channelLabel : overviewChannelLabels)
     {
         const int index = channelLabel->property("channelIndex").toInt();
-        require(channelLabel->text() == QString::number(index + 1),
-                "AI-8288 overview keeps compact channel-number labels in English");
+        require(channelLabel->text() == QStringLiteral("Channel %1").arg(index + 1),
+                "AI-8288 overview uses full channel labels in English");
     }
     overview.applyLiveData({});
     for (QLabel *valueLabel : overviewValueLabels)

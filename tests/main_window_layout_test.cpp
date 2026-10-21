@@ -3977,6 +3977,14 @@ void requireHomeOverviewLanguageWidthRoundTrip()
                        std::abs(sizes.at(0) - languageDeviceOverviewCard->minimumWidth()) <= 1;
             }),
             "language overview device card settles at its English minimum width");
+    const QList<int> settledEnglishSizes = languageHomeOverviewSplitter->sizes();
+    const int extraTestWidth = 72 - (settledEnglishSizes.at(1) -
+        languageHomeOverviewSplitter->widget(1)->minimumWidth());
+    if (extraTestWidth > 0)
+    {
+        languageOverviewWindow.resize(languageOverviewWindow.width() + extraTestWidth, 800);
+        processEventsFor(200);
+    }
     const QList<int> englishHomeOverviewSizes = languageHomeOverviewSplitter->sizes();
     require(englishHomeOverviewSizes.size() == 2,
             "language overview splitter exposes English device and temperature widths");
@@ -4375,6 +4383,17 @@ void requireHomeTemperatureColumnMinimumHeight(MainWindow &window)
         require(card->minimumHeight() >= card->minimumSizeHint().height() &&
                     card->minimumHeight() >= card->sizeHint().height(),
                 "each card's minimum height fits its full content");
+    require(laser->height() == std::max(laser->minimumSizeHint().height(), laser->sizeHint().height()),
+            "the laser overview retains its natural height without blank padding");
+    require(ai8->geometry().bottom() == column->contentsRect().bottom(),
+            "the device temperature card fills the remaining column height");
+    auto *panel = ai8->findChild<QWidget *>(QStringLiteral("ai8TemperatureOverviewPanel"));
+    auto *grid = panel ? qobject_cast<QGridLayout *>(panel->layout()) : nullptr;
+    require(grid && grid->rowCount() == 2 && grid->columnCount() == 4,
+            "device temperatures use two equal rows of four wide channels");
+    for (QLabel *label : panel->findChildren<QLabel *>())
+        require(label->contentsRect().width() >= label->fontMetrics().horizontalAdvance(label->text()),
+                "wide channel capsules keep the full channel and temperature text visible");
 }
 
 void requireHomeThreeColumnLayout()
@@ -4465,6 +4484,7 @@ void requireHomeThreeColumnLayout()
                 require(moved, "environment moves at the sum of three safe minima and two gaps");
                 processEventsFor(80);
                 requireHomeTemperatureColumnMinimumHeight(window);
+                requireTelemetryLabelsFit(overview->widget(0), "full overview descriptions fit every pill");
                 if (extra >= 0)
                 {
                     require(overview->widget(2) == environment && sensors->count() == 1,
@@ -6875,8 +6895,8 @@ int main(int argc, char **argv)
     require(temperatureOverviewCard->height() < temperatureOverviewColumn->height() &&
                 ai8TemperatureOverviewCard->y() > temperatureOverviewCard->geometry().bottom() &&
                 temperatureOverviewCard->minimumHeight() == temperatureOverviewCard->maximumHeight() &&
-                ai8TemperatureOverviewCard->minimumHeight() == ai8TemperatureOverviewCard->maximumHeight(),
-            "right-side temperature overview cards remain compact instead of filling the overview row");
+                ai8TemperatureOverviewCard->geometry().bottom() == temperatureOverviewColumn->contentsRect().bottom(),
+            "the laser card stays compact while device temperatures fill the remaining overview column");
     requireHomeTemperatureColumnMinimumHeight(window);
     requireHomeDeviceMinimumWidthMatchesControls(&window);
 
@@ -7846,10 +7866,10 @@ int main(int argc, char **argv)
             linkRateNames << nameLabel->text();
         }
     }
-    require(linkRateNames == QStringList{QStringLiteral("天→地"),
-                                         QStringLiteral("地→天"),
-                                         QStringLiteral("合")},
-            "home link-rate pills expose compact Chinese field names without a target capsule");
+    require(linkRateNames == QStringList{QStringLiteral("天空端→地面端"),
+                                         QStringLiteral("地面端→天空端"),
+                                         QStringLiteral("合计")},
+            "home link-rate pills expose full direction and total descriptions");
     const QList<QFrame*> ratePills =
         homeRateSection->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
     require(!ratePills.isEmpty(),
@@ -7890,16 +7910,13 @@ int main(int argc, char **argv)
     const int featureRateY = featureRatePill->mapTo(homeRateSection, QPoint(0, 0)).y();
     const int statusRateY = statusRatePill->mapTo(homeRateSection, QPoint(0, 0)).y();
     const int rawWaveRateY = rawWaveRatePill->mapTo(homeRateSection, QPoint(0, 0)).y();
-    const QRect featureRateRect(featureRatePill->mapTo(homeRateSection, QPoint(0, 0)), featureRatePill->size());
     const QRect statusRateRect(statusRatePill->mapTo(homeRateSection, QPoint(0, 0)), statusRatePill->size());
-    require(std::abs(statusRateY - featureRateY) <= 2,
-            "home status rate pill sits on the same line as the feature rate pill");
-    require(statusRateRect.left() > featureRateRect.right(),
-            "home status rate pill sits immediately after the feature rate pill");
-    require(statusRateRect.left() - featureRateRect.right() <= 16,
-            "home status rate pill is not pushed to the far right of the first telemetry line");
-    require(rawWaveRateY > featureRateY,
-            "home waveform rates move to the second data-stream line");
+    const QRect rawWaveRateRect(rawWaveRatePill->mapTo(homeRateSection, QPoint(0, 0)), rawWaveRatePill->size());
+    require(statusRateY > featureRateY && std::abs(rawWaveRateY - statusRateY) <= 2,
+            "full status and raw-wave descriptions share the second data-stream line");
+    require(rawWaveRateRect.left() > statusRateRect.right() &&
+                rawWaveRateRect.left() - statusRateRect.right() <= 16,
+            "the second telemetry line keeps adjacent capsules together");
     requireTelemetryRightPadding(deviceOverviewCard,
                                  homeRateSection,
                                  "home data-stream telemetry row keeps right-side breathing room");
@@ -7910,16 +7927,11 @@ int main(int argc, char **argv)
             "home link-rate telemetry section includes only the three link-rate pills");
     require(findTelemetryPillByName(homeLinkSection, QStringLiteral("目标")) == nullptr,
             "home link-rate telemetry section omits the target capsule");
-    int linkRatePillY = -1;
+    QSet<int> linkRateRows;
     for (QFrame *pill : linkRatePills)
     {
         const int pillY = pill->mapTo(homeLinkSection, QPoint(0, 0)).y();
-        if (linkRatePillY < 0)
-        {
-            linkRatePillY = pillY;
-        }
-        require(std::abs(pillY - linkRatePillY) <= 2,
-                "home link-rate direction and total pills share one telemetry line");
+        linkRateRows.insert(pillY);
         QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
         require(valueLabel != nullptr,
                 "home link-rate pill has a value label");
@@ -7935,6 +7947,8 @@ int main(int argc, char **argv)
             pill,
             "home link-rate telemetry field/value gap remains compact");
     }
+    require(linkRateRows.size() == 2,
+            "full link direction and total descriptions use two telemetry lines");
     QFrame *homeDataSection = homeTelemetrySections.at(2);
     QLabel *homeDataTitle =
         homeDataSection->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryTitleLabel"));
@@ -7952,20 +7966,17 @@ int main(int argc, char **argv)
         QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
         QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
         require(nameLabel != nullptr && valueLabel != nullptr,
-                "home data availability pill has a name and compact value");
+                "home data availability pill has a descriptive name and value");
         if (nameLabel->text().contains(QStringLiteral("EPSILON")))
         {
             homeDataHasEpsilon = true;
         }
         const QString valueText = valueLabel->text();
-        require(valueText == QStringLiteral("有") ||
-                    valueText == QStringLiteral("无") ||
-                    valueText == QStringLiteral("Yes") ||
-                    valueText == QStringLiteral("No"),
-                "home data availability values use compact yes/no text");
-        require(valueText != QStringLiteral("有数据") &&
-                    valueText != QStringLiteral("无数据"),
-                "home data availability values omit the longer data suffix");
+        require(valueText == QStringLiteral("有数据") ||
+                    valueText == QStringLiteral("无数据") ||
+                    valueText == QStringLiteral("Data available") ||
+                    valueText == QStringLiteral("No data"),
+                "home data availability values use complete descriptions");
         requireCompactTelemetryPillTextGap(
             pill,
             "home data availability field/value gap remains compact");

@@ -52,7 +52,7 @@ constexpr int kAi8TemperaturePlotMinimumHeight = 180;
 constexpr int kCommonEditorMinimumWidth = (kEditorMinimumWidth * 4) / 3;
 constexpr int kCommonParameterStackWidth =
     kCommonEditorMinimumWidth * kPageColumnCount + kAi8CommonControlGap;
-constexpr int kAi8OverviewColumnCount = Ai8TemperatureControllerProtocol::kChannelCount;
+constexpr int kAi8OverviewColumnCount = 4;
 constexpr int kAi8OverviewCellHeight = 36;
 constexpr int kAi8OverviewCellGap = 2;
 constexpr int kAi8OverviewHorizontalPadding = 8;
@@ -1579,7 +1579,7 @@ Ai8TemperatureOverviewPanel::Ai8TemperatureOverviewPanel(QWidget *parent)
     : QWidget(parent)
 {
     setObjectName(QStringLiteral("ai8TemperatureOverviewPanel"));
-    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
     auto *layout = new QGridLayout(this);
     layout->setContentsMargins(kAi8OverviewHorizontalPadding,
@@ -1596,8 +1596,8 @@ Ai8TemperatureOverviewPanel::Ai8TemperatureOverviewPanel(QWidget *parent)
         cell->setProperty("channelIndex", index);
         cell->setFrameShape(QFrame::NoFrame);
         cell->setAttribute(Qt::WA_StyledBackground, true);
-        cell->setFixedHeight(kAi8OverviewCellHeight);
-        cell->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        cell->setMinimumHeight(kAi8OverviewCellHeight);
+        cell->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
         auto *cellLayout = new QVBoxLayout(cell);
         cellLayout->setContentsMargins(4, 1, 4, 1);
         cellLayout->setSpacing(1);
@@ -1624,6 +1624,8 @@ Ai8TemperatureOverviewPanel::Ai8TemperatureOverviewPanel(QWidget *parent)
     {
         layout->setColumnStretch(column, 1);
     }
+    layout->setRowStretch(0, 1);
+    layout->setRowStretch(1, 1);
 
     refreshLabels();
 }
@@ -1652,7 +1654,7 @@ void Ai8TemperatureOverviewPanel::refreshLabels()
             continue;
         }
 
-        const QString channelText = english_ ? QString::number(index + 1)
+        const QString channelText = english_ ? QStringLiteral("Channel %1").arg(index + 1)
                                              : QStringLiteral("通道 %1").arg(index + 1);
         const double measured = latest_live_data_.measuredC[static_cast<size_t>(index)];
         const bool available = latest_live_data_.valid && std::isfinite(measured);
