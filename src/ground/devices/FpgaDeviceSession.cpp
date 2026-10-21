@@ -410,6 +410,15 @@ void FpgaDeviceSession::dispatchNext()
     pending.command = std::move(command);
     pending.timer.start();
     pendingCommand_ = std::move(pending);
+    // A response may already be available after write(). Do not make every
+    // register transaction wait for the idle timer (coarse on hidden Windows
+    // desktops). Yield first to avoid reentering callers; later empty reads
+    // still use the normal timer backoff. Obsolete kicks do no extra USB I/O.
+    const auto sequence = pendingCommand_->command.sequence;
+    QMetaObject::invokeMethod(this, [this, sequence] {
+        if (pendingCommand_ && pendingCommand_->command.sequence == sequence)
+            poll();
+    }, Qt::QueuedConnection);
     emit commandSent(pendingCommand_->command.bytes);
 }
 

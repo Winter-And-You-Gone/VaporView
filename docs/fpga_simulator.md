@@ -102,3 +102,21 @@ ctest --test-dir build/Release -C Release -R '^fpga_(local_simulator|simulator(_
 `fpga_control_page_test` 验证界面测试模式的真实命令与读回、工作线程隔离、冷启动、参数与启停状态保留、缺片排空、故障恢复、数据过期和操作中退出。上述验证限于软件行为，合成信号不能替代真实板卡、模拟前端及 USB 吞吐的实机验证。
 
 带轮询间隔的传感器按相应寄存器调度，不再一律按 10 Hz 产出；命令应答使用板卡单调时间，USB 重连不清零。生成循环最小间隔为 100 ms，波形也采用有界合成数据，因此模拟器不用于实际采样吞吐或线路时延测量。
+
+### Windows 隔离桌面的测试样式
+
+`fpga_local_simulator_test` 使用正常的 Windows 平台插件与隔离桌面，但为这一个协议集成场景固定 Fusion 基础样式。其余 `fpga_main_window_test` 模式保留 Windows 11 样式，继续覆盖原生样式与字体回归；应用本身的样式不变。
+
+排查间歇性失败时，在 `4cf2a68` 基线上复现过全设备连接、RD105/AI8/EPSILON 参数读取以及导航新鲜度断言失败。临时事件计时捕获到约 0.3–0.9 秒的主线程等待，CPU 时间接近零；调用栈落在 `SystemParametersInfoW`、`IsThemeActive` 和 `QWindowsStyle::styleHint` 等原生主题查询。排队的 EPSILON 定位快照到达界面时曾延迟约 7.9 秒，因此现有 2 秒新鲜度规则正确地将其判为过期。这些现象需要与 VLP1 解码错误区分。
+
+样式覆盖必须在构造 `QApplication` 前设置 `QT_STYLE_OVERRIDE=Fusion`：仅调用 `QApplication::setStyle` 不足以固定后续默认构造的 `QProxyStyle` 基础样式，参见 [Qt 6.10.1 的基础样式选择实现](https://github.com/qt/qtbase/blob/v6.10.1/src/widgets/styles/qproxystyle.cpp#L53)。测试在 MainWindow 安装焦点代理样式后再次检查基础样式，防止回退到原生主题查询。原有事务超时、导航新鲜度和协议/记录断言均保持不变。
+
+仅固定样式仍曾在连续运行第十轮触发 RD105 全参数读取超时。另一个可独立复现的问题是：`FpgaDeviceSession` 写出命令后，即使应答已经可读，仍依赖空闲轮询定时器推进。RD105 全参数读取包含数十次串行参数事务，每次事务又包含多次 VLP1 寄存器读写，定时器延迟会累计。现改为每次实际写出命令后排队执行一次有界接收；异步应答继续沿用原有轮询退避，已完成或关闭的命令不会触发额外读取。`fpga_device_session_test` 停止定时器后直接投递排队事件，验证应答匹配、非重入和关闭后的任务失效；原实现会在该测试失败。
+
+可重复运行完整场景检查间歇性失败：
+
+```powershell
+ctest --test-dir build/Release -C Release -R '^fpga_local_simulator_test$' --repeat until-fail:10 --output-on-failure
+```
+
+2026-10-22 的 Release 回归中，该场景连续 10 轮通过，其他 FPGA、定标和 PPK 测试通过。同轮其余 137 项测试有 134 项通过、2 项因环境跳过，另有 `epsilon_config_panel_test` 的维护区间距断言偶发失败。临时恢复未修改的 `0fe71a8` 源码后，该布局测试也在第 7 轮出现相同断言；本次没有修改其布局或放宽断言。

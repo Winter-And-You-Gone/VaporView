@@ -87,6 +87,29 @@ void continuousReceiveScheduling(){
     const int beforeClose=stream->reads;session.poll();
     require(stream->reads==beforeClose+1&&!timer->isActive(),"close from a receive callback stops draining and never restarts timer");
 }
+void commandResponseDoesNotWaitForIdleTimer(){
+    FpgaDeviceSession session(std::make_unique<FpgaUsbReplayTransport>(
+        frame(FpgaVlp1::FrameType::Response,1,1,0xfe,success()+"hello")));
+    require(session.open(),"open immediate-response fixture");
+    auto *timer=session.findChild<QTimer*>();
+    require(timer,"session has a receive timer");
+    timer->stop(); // Deliberately exclude OS timer delivery from this regression.
+    int completed=0;
+    QObject::connect(&session,&FpgaDeviceSession::commandCompleted,
+        [&](quint32 seq,quint16 message,bool ok,quint32 status,const QByteArray&){
+            require(seq==1&&message==0xfe&&ok&&status==0,"posted receive preserves command matching");
+            ++completed;
+        });
+    require(session.ping("hello")==1&&completed==0,"command submission does not reenter receive callbacks");
+    QCoreApplication::sendPostedEvents(&session,QEvent::MetaCall);
+    require(completed==1,"available command response completes without waiting for the idle polling timer");
+    require(timer->interval()==1,"completed response restores idle receive backoff");
+    session.close();
+    require(session.open(),"reopen for cancelled receive kick");
+    session.ping("cancelled");session.close();
+    QCoreApplication::sendPostedEvents(&session,QEvent::MetaCall);
+    require(completed==1&&!session.isOpen()&&!timer->isActive(),"queued receive kick cannot reopen or publish after close");
+}
 void malformedResponse(quint16 message,const QByteArray& payload,const char *description){
     FpgaDeviceSession session(std::make_unique<FpgaUsbReplayTransport>(frame(FpgaVlp1::FrameType::Response,1,1,message,payload)));
     require(session.open("replay"),"open malformed-response fixture");int completed=0,readEvents=0,capEvents=0;
@@ -235,5 +258,5 @@ int main(int argc,char **argv){
         require(completed==3 && session.capabilities().valid,"PING, capabilities and register read complete");
         session.close();std::puts("hardware session probe passed");return 0;
     }
-    validContinuousResponses();continuousReceiveScheduling();semanticRejections();partialWaveformsSurviveClose();expiredWaveformsVisible();transportErrorRetainsDetail();boundedReadRetry();std::puts("fpga_device_session_test passed; software fixtures only");return 0;
+    validContinuousResponses();continuousReceiveScheduling();commandResponseDoesNotWaitForIdleTimer();semanticRejections();partialWaveformsSurviveClose();expiredWaveformsVisible();transportErrorRetainsDetail();boundedReadRetry();std::puts("fpga_device_session_test passed; software fixtures only");return 0;
 }

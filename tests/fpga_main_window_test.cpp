@@ -21,6 +21,7 @@
 #include <QApplication>
 #include <QAction>
 #include <QStyleFactory>
+#include <QProxyStyle>
 #include <QTabWidget>
 #include <QScrollArea>
 #include <QAbstractButton>
@@ -656,6 +657,11 @@ static void localSimulatorRouting()
     native.setValue("recording_directory",output.path());
     settings.remove("Fpga/desiredConfiguration");
     MainWindow window;
+#ifdef Q_OS_WIN
+    auto *focusStyle=qobject_cast<QProxyStyle*>(qApp->style());
+    check(focusStyle&&focusStyle->baseStyle()->objectName()=="fusion",
+          "simulator integration retains Fusion after installing the application focus style");
+#endif
     window.resize(1600,1000);
     QMetaObject::invokeMethod(&window,"onDataSourceModeChanged",Q_ARG(int,0));
     auto *path=window.findChild<QComboBox*>("deviceSensorTransportPathCombo");
@@ -1516,10 +1522,19 @@ static void harmonicRecordingUi()
 int main(int argc,char **argv)
 {
     require(VaporViewTest::SettingsSandbox::initialized,"isolated native/INI application settings");
+#ifdef Q_OS_WIN
+    bool localSimulator=false;
+    for(int i=1;i<argc;++i) localSimulator|=QByteArray(argv[i])=="--local-simulator";
+    // Native theme queries can block on a non-input Windows test desktop. Set
+    // the override before QApplication so the app's QProxyStyle also uses Fusion.
+    // Other modes retain Windows 11 style coverage, including the font regression.
+    if(localSimulator) qputenv("QT_STYLE_OVERRIDE","Fusion");
+#endif
     QApplication app(argc,argv);
 #ifdef Q_OS_WIN
-    auto *windowsStyle=QStyleFactory::create("windows11");
-    require(windowsStyle,"Windows 11 style is available for font regression");
+    auto *windowsStyle=QStyleFactory::create(localSimulator ? "Fusion" : "windows11");
+    require(windowsStyle,localSimulator ? "Fusion style is available for the simulator integration test"
+                                      : "Windows 11 style is available for font regression");
     QApplication::setStyle(windowsStyle);
 #endif
     app.setOrganizationName(QStringLiteral("VaporViewFpgaTest"));
