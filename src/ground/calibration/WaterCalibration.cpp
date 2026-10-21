@@ -352,7 +352,8 @@ QJsonObject ConcentrationResult::toJson() const
             {"host_time_us",QString::number(input.feature.hostTimeUs)}, {"peak",optional(input.feature.peak)},
             {"record_id",input.feature.id}, {"source_session",input.feature.sessionDirectory},
             {"fpga_channel",int(input.feature.channel)}, {"quality_flags",double(input.feature.qualityFlags)},
-            {"unit", unit}, {"compensated", compensated}, {"compensation_model", "unconfigured"}, {"wavelength_nm", wavelengthNm},
+            {"unit", unit}, {"compensated", compensated}, {"compensation_model", "unconfigured"},
+            {"compensation_status", QStringLiteral("未进行温压补偿")}, {"wavelength_nm", wavelengthNm},
             {"calibration_id", calibrationId}, {"dataset_id", datasetId}, {"dataset_revision", datasetRevision},
             {"algorithm", algorithm}, {"calculated_utc", calculatedUtc}, {"origin", origin}, {"input", rawInput}};
 }
@@ -414,15 +415,5 @@ bool Store::save(Library& library, QString *error) const
     QSaveFile file(filename_);
     if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit()) { *error = file.errorString(); return false; }
     library.diskDigest = digest(bytes); return true;
-}
-bool exportResults(const QString& filename, const QVector<ConcentrationResult>& rows, QString *error)
-{
-    // JSON preserves exact uint64 identifiers as strings, nulls, nested provenance,
-    // and the original CSV fields without changing any Session format.
-    QJsonArray results; for (const auto& row : rows) results.append(row.toJson());
-    const auto bytes = QJsonDocument(QJsonObject{{"schema_version", 1}, {"kind", "water_initial_concentrations"}, {"results", results}}).toJson();
-    QSaveFile file(filename);
-    if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit()) { *error = file.errorString(); return false; }
-    return true;
 }
 }

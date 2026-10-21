@@ -113,5 +113,16 @@ public:
 private:
     QString filename_;
 };
-bool exportResults(const QString& filename, const QVector<ConcentrationResult>&, QString *error);
+struct ConcentrationSnapshot
+{
+    bool success = false;
+    QString error, warning;
+    QVector<ConcentrationResult> results;
+    QVector<Fit> calibrations;
+};
+// Export one immutable, self-contained result snapshot. Each referenced fit is
+// stored once, including its original dataset, independently of active versions.
+bool exportResults(const QString& filename, const QVector<ConcentrationResult>&, QString *error,
+                   const QVector<Fit>& calibrations = {});
+ConcentrationSnapshot readResults(const QString& filename, const QVector<Fit>& legacyCalibrations = {});
 }
