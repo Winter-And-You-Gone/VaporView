@@ -801,6 +801,16 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
     }
 
     const QEvent::Type eventType = event->type();
+    if (state_->main_cards_scroll_area_ &&
+        watched == state_->main_cards_scroll_area_->viewport() &&
+        eventType == QEvent::Resize &&
+        static_cast<QResizeEvent *>(event)->size().width() !=
+            static_cast<QResizeEvent *>(event)->oldSize().width())
+    {
+        // Sidebar and log-panel drags resize the viewport without resizing
+        // the main window. Reflow after the scroll area settles its content.
+        queueResponsiveHomeLayoutRefresh();
+    }
     if (handleLocalSerialPortManualEntryEvent(watched, event))
     {
         return true;

@@ -4322,8 +4322,125 @@ void requireHomeEnvironmentCardLayout(MainWindow& window, bool requireSideBySide
             "home sensor cards return to their original wide-window layout");
 }
 
+void requireHomeSensorLayoutAfterSidebarRestore()
+{
+    MainWindow window;
+    window.resize(1600, 900);
+    window.show();
+    require(waitForWindowExposed(&window), "sidebar restore test window becomes exposed");
+    processEventsFor(300);
+    auto *sidebar = window.findChild<QSplitter *>(QStringLiteral("appLayoutSplitter"));
+    auto *cards = window.findChild<QSplitter *>(QStringLiteral("homeSensorCardSplitter"));
+    auto *scroll = window.findChild<QScrollArea *>(QStringLiteral("mainCardsScrollArea"));
+    auto *maximize = window.findChild<QToolButton *>(QStringLiteral("windowMaximizeButton"));
+    auto *logo = window.findChild<QLabel *>(QStringLiteral("customTitleLogo"));
+    require(sidebar && cards && scroll && maximize && logo,
+            "sidebar restore test exposes the window and layout controls");
+    const auto setScale = [&window](int percent) {
+        for (QAction *action : window.findChildren<QAction *>())
+        {
+            if (action->data().toInt() == percent)
+            {
+                action->trigger();
+                processEventsFor(200);
+                return;
+            }
+        }
+        require(false, "sidebar restore test exposes the font-scale action");
+    };
+    const auto dragSidebarTo = [sidebar](int width) {
+        auto *handle = sidebar->handle(1);
+        const QPoint start = handle->rect().center();
+        const QPoint globalStart = handle->mapToGlobal(start);
+        const QPoint offset(width - sidebar->sizes().at(0), 0);
+        QMouseEvent press(QEvent::MouseButtonPress, start, globalStart,
+                          Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(handle, &press);
+        QMouseEvent move(QEvent::MouseMove, start + offset, globalStart + offset,
+                         Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(handle, &move);
+        QMouseEvent release(QEvent::MouseButtonRelease, start + offset, globalStart + offset,
+                            Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(handle, &release);
+        processEventsFor(200);
+    };
+    // Keep the populated fixture from being replaced by disconnected-device data.
+    for (QTimer *timer : window.findChildren<QTimer *>(QString(), Qt::FindDirectChildrenOnly))
+    {
+        if (timer->interval() == 100)
+            timer->stop();
+    }
+    auto *panel = static_cast<VaporView::Ground::Widgets::EpsilonPanel *>(
+        cards->widget(0)->findChild<QWidget *>(QStringLiteral("epsilonPanel")));
+    require(panel != nullptr, "sidebar restore test exposes the EPSILON panel");
+    VaporView::EpsilonData sample;
+    sample.valid = true;
+    sample.gnss_fix_code = 6;
+    sample.gnss_satellites = 24;
+    sample.filter_status_bits = 0x006f;
+    sample.utc_unix_s = 1792567686;
+    sample.utc_microseconds = 33884;
+    sample.device_timestamp_us = 159784000;
+    sample.raw_frame_count = 22260;
+    sample.latitude_deg = 22.30008901;
+    sample.longitude_deg = 114.1700118;
+    sample.height_m = 35.495;
+    sample.hacc_m = 0.03;
+    sample.vacc_m = 0.05;
+    sample.attitude_source_count = 3;
+    sample.attitude_delta_max_deg = 0;
+    sample.attitude_delta_ahrs_euler_deg = 0;
+    sample.attitude_delta_ahrs_quat_deg = 0;
+    sample.attitude_delta_euler_quat_deg = 0;
+    panel->updateData(sample);
+    processEventsFor(200);
+
+    for (int scale : {100, 130})
+    {
+        setScale(scale);
+        for (int extraWidth : {0, 50, 100})
+        {
+            window.resize((scale == 100 ? 1400 : 1600) + extraWidth, 900);
+            processEventsFor(100);
+            dragSidebarTo(400);
+            maximize->click();
+            require(processEventsUntil(1000, [&window] { return window.isMaximized(); }),
+                    "sidebar restore test maximizes the window through its title button");
+            maximize->click();
+            require(processEventsUntil(1000, [&window] { return !window.isMaximized(); }),
+                    "sidebar restore test restores the window through its title button");
+            processEventsFor(150);
+            require(cards->orientation() == Qt::Vertical,
+                    "wide sidebar and restored window stack the sensor cards when narrow");
+            if (extraWidth == 50)
+                clickWidget(logo);
+            else
+                dragSidebarTo(0);
+            processEventsFor(300);
+            require(sidebar->sizes().at(0) == 0, "sidebar restore test collapses the wide sidebar");
+            auto *epsilon = cards->widget(0);
+            auto *environment = cards->widget(1);
+            const QMargins margins = epsilon->layout()->contentsMargins();
+            const int requiredWidth = std::max(epsilon->minimumSizeHint().width(),
+                panel->preferredWrappedWidth() + margins.left() + margins.right()) +
+                cards->handleWidth() + std::max(environment->minimumWidth(), environment->minimumSizeHint().width());
+            require(cards->parentWidget()->width() >= requiredWidth,
+                    "collapsed sidebar leaves enough space for both sensor cards");
+            require(cards->orientation() == Qt::Horizontal &&
+                        std::abs(epsilon->y() - environment->y()) <= 1 &&
+                        environment->x() > epsilon->geometry().right(),
+                    "sensor cards return side by side after maximize, restore and sidebar collapse");
+        }
+    }
+    setScale(100);
+    dragSidebarTo(VaporView::Ground::MainSupport::kAppSidebarIconOnlyBaseWidth);
+    require(sidebar->sizes().at(0) == 62, "sidebar restore test restores the compact sidebar");
+    window.close();
+}
+
 void requireHomeThemeLayoutStability()
 {
+    requireHomeSensorLayoutAfterSidebarRestore();
     MainWindow window;
     window.setWindowTitle(QStringLiteral("VaporView"));
     window.resize(1280, 800);

@@ -988,50 +988,6 @@ void MainWindow::updateResponsiveHomeLayout()
         state_->data_group_->setProperty(kMainCardUserResizedHeightProperty, false);
     }
 
-    const QMargins epsilonGroupMargins = state_->epsilon_group_ && state_->epsilon_group_->layout()
-        ? state_->epsilon_group_->layout()->contentsMargins()
-        : QMargins();
-    const int compactEpsilonContentWidth = state_->epsilon_panel_
-        ? state_->epsilon_panel_->preferredWrappedWidth() + epsilonGroupMargins.left() + epsilonGroupMargins.right()
-        : (state_->epsilon_group_ ? state_->epsilon_group_->minimumSizeHint().width() : 0);
-    const int compactEpsilonTargetWidth = state_->epsilon_group_
-        ? std::max(state_->epsilon_group_->minimumSizeHint().width(),
-                   compactEpsilonContentWidth + scalePixels(16))
-        : compactEpsilonContentWidth;
-    const int compactEpsilonMinimumWidth = state_->epsilon_group_
-        ? std::max(state_->epsilon_group_->minimumSizeHint().width(),
-                   compactEpsilonContentWidth)
-        : compactEpsilonContentWidth;
-    const int environmentMinimumWidth = state_->env_group_
-        ? std::max(state_->env_group_->minimumWidth(), state_->env_group_->minimumSizeHint().width())
-        : 0;
-    int sensorAvailableWidth = std::max(0, state_->sensor_row_widget_->contentsRect().width());
-    if (sensorAvailableWidth <= 1 && state_->data_group_)
-    {
-        sensorAvailableWidth = std::max(0, state_->data_group_->contentsRect().width());
-    }
-    const int sensorCardGap = std::max(0, sensorCardSplitter->handleWidth());
-    const bool compactCardsFitSideBySide =
-        sensorAvailableWidth > 0 &&
-        sensorAvailableWidth >= compactEpsilonMinimumWidth + sensorCardGap + environmentMinimumWidth;
-    const bool stackSensorCards = compact && !compactCardsFitSideBySide;
-
-    const Qt::Orientation sensorOrientation =
-        stackSensorCards ? Qt::Vertical : Qt::Horizontal;
-    if (sensorCardSplitter->orientation() != sensorOrientation)
-    {
-        sensorCardSplitter->setProperty(kHomeSensorSplitterProgrammaticResizeProperty, true);
-        sensorCardSplitter->setOrientation(sensorOrientation);
-        sensorCardSplitter->setProperty(kHomeSensorSplitterProgrammaticResizeProperty, false);
-        sensorCardSplitter->setProperty(kHomeSensorSplitterUserResizedProperty, false);
-    }
-    if (QWidget *handle = sensorCardSplitter->handle(1))
-    {
-        handle->setEnabled(!stackSensorCards);
-        handle->setCursor(stackSensorCards ? Qt::SplitVCursor : Qt::SplitHCursor);
-    }
-    state_->sensor_layout_->setSpacing(0);
-
     if (state_->epsilon_panel_)
     {
         state_->epsilon_panel_->setCompactLayout(compact);
@@ -1122,6 +1078,52 @@ void MainWindow::updateResponsiveHomeLayout()
             }
         }
     }
+
+    // Decide wrapping after the viewport width and panel metrics have settled.
+    // The previous row geometry can still describe the narrow, stacked layout.
+    const QMargins epsilonGroupMargins = state_->epsilon_group_ && state_->epsilon_group_->layout()
+        ? state_->epsilon_group_->layout()->contentsMargins()
+        : QMargins();
+    const int compactEpsilonContentWidth = state_->epsilon_panel_
+        ? state_->epsilon_panel_->preferredWrappedWidth() + epsilonGroupMargins.left() + epsilonGroupMargins.right()
+        : (state_->epsilon_group_ ? state_->epsilon_group_->minimumSizeHint().width() : 0);
+    const int compactEpsilonTargetWidth = state_->epsilon_group_
+        ? std::max(state_->epsilon_group_->minimumSizeHint().width(),
+                   compactEpsilonContentWidth + scalePixels(16))
+        : compactEpsilonContentWidth;
+    const int compactEpsilonMinimumWidth = state_->epsilon_group_
+        ? std::max(state_->epsilon_group_->minimumSizeHint().width(),
+                   compactEpsilonContentWidth)
+        : compactEpsilonContentWidth;
+    const int environmentMinimumWidth = state_->env_group_
+        ? std::max(state_->env_group_->minimumWidth(), state_->env_group_->minimumSizeHint().width())
+        : 0;
+    int sensorAvailableWidth = std::max(0, state_->sensor_row_widget_->contentsRect().width());
+    if (sensorAvailableWidth <= 1 && state_->data_group_)
+    {
+        sensorAvailableWidth = std::max(0, state_->data_group_->contentsRect().width());
+    }
+    const int sensorCardGap = std::max(0, sensorCardSplitter->handleWidth());
+    const bool compactCardsFitSideBySide =
+        sensorAvailableWidth > 0 &&
+        sensorAvailableWidth >= compactEpsilonMinimumWidth + sensorCardGap + environmentMinimumWidth;
+    const bool stackSensorCards = compact && !compactCardsFitSideBySide;
+
+    const Qt::Orientation sensorOrientation =
+        stackSensorCards ? Qt::Vertical : Qt::Horizontal;
+    if (sensorCardSplitter->orientation() != sensorOrientation)
+    {
+        sensorCardSplitter->setProperty(kHomeSensorSplitterProgrammaticResizeProperty, true);
+        sensorCardSplitter->setOrientation(sensorOrientation);
+        sensorCardSplitter->setProperty(kHomeSensorSplitterProgrammaticResizeProperty, false);
+        sensorCardSplitter->setProperty(kHomeSensorSplitterUserResizedProperty, false);
+    }
+    if (QWidget *handle = sensorCardSplitter->handle(1))
+    {
+        handle->setEnabled(!stackSensorCards);
+        handle->setCursor(stackSensorCards ? Qt::SplitVCursor : Qt::SplitHCursor);
+    }
+    state_->sensor_layout_->setSpacing(0);
 
     if (state_->epsilon_group_)
     {
