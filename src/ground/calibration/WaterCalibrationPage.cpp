@@ -114,6 +114,7 @@ struct WaterCalibrationPage::State
     QSpinBox *recordPage;
     int sampleOffset = 0;
     QString followFingerprint;
+    quint64 resultGeneration = 0;
     QCheckBox *softwareTest, *follow;
     QTableWidget *samples, *groups, *output;
     QPlainTextEdit *details;
@@ -209,7 +210,7 @@ WaterCalibrationPage::WaterCalibrationPage(QWidget *parent, const QString& filen
     s.activeSummary=new QLabel(fitPage); s.activeSummary->setWordWrap(true); fl->addWidget(s.activeSummary); tabs->addTab(fitPage,"拟合与版本");
     auto *calculation=new QWidget(tabs); auto *cl=new QVBoxLayout(calculation); auto *calcActions=new QHBoxLayout;
     button("计算来源 Session（两波长）","calibrationCalculate",calcActions,[this]{ calculateSession(); });
-    s.follow=new QCheckBox("跟随已落盘的新周期（2 s）",calculation); calcActions->addWidget(s.follow);
+    s.follow=new QCheckBox("跟随已落盘的新周期（2 s）",calculation); s.follow->setObjectName("calibrationFollow"); calcActions->addWidget(s.follow);
     button("导出可追溯结果","calibrationExport",calcActions,[this]{
         auto& s=*state_; if(s.results.isEmpty()){setStatus("没有可导出的计算结果",true);return;}
         const auto filename=QFileDialog::getSaveFileName(this,"导出初始浓度及来源",{},"JSON (*.json)"); if(filename.isEmpty()) return;
@@ -234,13 +235,15 @@ WaterCalibrationPage::WaterCalibrationPage(QWidget *parent, const QString& filen
     });
     connect(s.versions,&QComboBox::activated,this,[this](int index){ const int i=state_->versions->itemData(index).toInt();if(i<0||i>=state_->library.fits.size())return;const auto f=state_->library.fits[i];if(!discardChanges()){refreshVersions();return;}state_->fit=f;state_->dataset=f.dataset;state_->dirty=false;refresh();setStatus("已加载不可变的拟合输入快照和历史参数"); });
     connect(s.follow,&QCheckBox::toggled,this,[this]{state_->followFingerprint.clear();});
+    connect(s.session,&QLineEdit::textChanged,this,[this]{clearResults();});
+    connect(s.softwareTest,&QCheckBox::toggled,this,[this]{clearResults();});
     s.timer=new QTimer(this); s.timer->setInterval(2000); connect(s.timer,&QTimer::timeout,this,[this]{
         if(!state_->follow->isChecked()||state_->busy)return;
         const auto directory=SessionLoader::resolveSessionDirectory(state_->session->text());
         const auto context=VaporView::Session::loadSessionPathContext(directory);
         const QFileInfo features(VaporView::Session::resolveSessionPath(context,VaporView::Session::SessionFileKind::WaveformFeaturesCsv).absolutePath);
         const QString fingerprint=features.absoluteFilePath()+':'+QString::number(features.size())+':'+QString::number(features.lastModified().toMSecsSinceEpoch())+':'+state_->library.active.value(816)+':'+state_->library.active.value(1368)+':'+QString::number(state_->softwareTest->isChecked());
-        if(fingerprint!=state_->followFingerprint){state_->followFingerprint=fingerprint;calculateSession();}
+        if(fingerprint!=state_->followFingerprint){state_->followFingerprint=fingerprint;calculateSession(false);}
     }); s.timer->start();
     setTheme(VaporView::isDarkThemeEnabled());refresh(); QTimer::singleShot(0,this,[this]{loadLibrary(false);});
 }
@@ -293,13 +296,13 @@ void WaterCalibrationPage::newDataset(bool announce)
 void WaterCalibrationPage::loadLibrary(bool announce)
 {
     auto& s=*state_;const auto store=s.store;
-    s.run(this,[store]{Work w;store.load(w.library,&w.error);return w;},[this,announce](Work w){auto& s=*state_;s.library=std::move(w.library);newDataset(false);setStatus("定标库已加载；历史任务修订和参数版本可重新选择",false,announce);});
+    s.run(this,[store]{Work w;store.load(w.library,&w.error);return w;},[this,announce](Work w){auto& s=*state_;s.library=std::move(w.library);clearResults();newDataset(false);setStatus("定标库已加载；历史任务修订和参数版本可重新选择",false,announce);});
 }
 void WaterCalibrationPage::importData()
 {
     auto& s=*state_;const auto data=s.dataset;const auto source=s.session->text();const auto concentration=s.concentration->value();const bool test=s.softwareTest->isChecked();
     s.run(this,[data,source,concentration,test]{Work w;w.imported=importSession(source,data,concentration,test);if(!w.imported.success)w.error=w.imported.error;return w;},[this](Work w){
-        auto& s=*state_;s.dataset.samples+=w.imported.samples;s.dirty=s.dirty||!w.imported.samples.isEmpty();s.fit.reset();refresh();
+        auto& s=*state_;if(!w.imported.samples.isEmpty()){s.dataset.samples+=w.imported.samples;s.dirty=true;s.fit.reset();}refresh();
         setStatus(QStringLiteral("导入 %1 条，其中质量不合格 %2 条（仅保留追溯，不参与拟合）；跳过已导入记录 %3 条。%4").arg(w.imported.samples.size()).arg(w.imported.invalid).arg(w.imported.duplicates).arg(w.imported.warning));
     });
 }
@@ -320,11 +323,18 @@ void WaterCalibrationPage::setActive(bool enabled)
     const int i=s.versions->currentData().toInt();
     if(enabled&&(s.versions->currentIndex()<0||i<0||i>=library.fits.size())){setStatus("请先拟合或选择已保存版本",true);return;}
     library.active[wavelength]=enabled?library.fits[i].id:QString();
-    s.run(this,[library,store]()mutable{Work w;w.library=library;store.save(w.library,&w.error);return w;},[this,enabled](Work w){state_->library=std::move(w.library);refreshVersions();setStatus(enabled?"已启用所选波长定标版本":"已停用当前波长定标版本");});
+    s.run(this,[library,store]()mutable{Work w;w.library=library;store.save(w.library,&w.error);return w;},[this,enabled](Work w){state_->library=std::move(w.library);clearResults();refreshVersions();setStatus(enabled?"已启用所选波长定标版本；请重新计算来源 Session":"已停用当前波长定标版本；旧计算显示已清除");});
 }
-void WaterCalibrationPage::calculateSession()
+void WaterCalibrationPage::clearResults()
 {
-    auto& s=*state_;const auto library=s.library;const auto path=s.session->text();const bool test=s.softwareTest->isChecked();
+    ++state_->resultGeneration;
+    state_->results.clear(); state_->output->setRowCount(0); state_->output->setProperty("resultOffset",0);
+    state_->followFingerprint.clear();
+}
+void WaterCalibrationPage::calculateSession(bool announce)
+{
+    auto& s=*state_;if(s.busy)return;const auto library=s.library;const auto path=s.session->text();const bool test=s.softwareTest->isChecked();
+    const auto generation=s.resultGeneration;
     s.results.clear();s.output->setRowCount(0);
     s.run(this,[library,path,test]{Work w;for(const int wavelength:{816,1368}){
         const auto *fit=library.activeFit(wavelength);
@@ -334,7 +344,9 @@ void WaterCalibrationPage::calculateSession()
         if(!imported.warning.isEmpty())w.message+=imported.warning+'\n';
     }
     std::stable_sort(w.results.begin(),w.results.end(),[](const auto& a,const auto& b){return a.input.feature.hostTimeUs<b.input.feature.hostTimeUs;});
-    return w;},[this](Work w){auto& s=*state_;s.results=std::move(w.results);s.output->setRowCount(0);
+    return w;},[this,announce,generation](Work w){auto& s=*state_;
+        if(generation!=s.resultGeneration){setStatus("计算输入已更改，已丢弃旧 Session 的计算结果",false,false);return;}
+        s.results=std::move(w.results);s.output->setRowCount(0);
         // Keep the view bounded; exports retain every computed record.
         const int start=std::max(0,int(s.results.size())-2000);
         for(int i=start;i<s.results.size();++i){const auto& r=s.results[i];const int row=s.output->rowCount();s.output->insertRow(row);
@@ -343,7 +355,7 @@ void WaterCalibrationPage::calculateSession()
         }
         // Store the offset for full provenance lookup after bounded rendering.
         s.output->setProperty("resultOffset",start);
-        setStatus(QStringLiteral("已计算 %1 条初始浓度记录；表格显示最近 %2 条，双击可查看来源。%3").arg(s.results.size()).arg(s.output->rowCount()).arg(w.message));
+        setStatus(QStringLiteral("已计算 %1 条初始浓度记录；表格显示最近 %2 条，双击可查看来源。%3").arg(s.results.size()).arg(s.output->rowCount()).arg(w.message),false,announce);
     });
 }
 void WaterCalibrationPage::refreshVersions()

@@ -17,6 +17,7 @@ struct WaveformFeature
     qint64 peakIndex = -1;
     double peak = std::numeric_limits<double>::quiet_NaN();
     QStringList headers, fields;
+    QString sourceError() const;
     QString invalidReason() const;
     QJsonObject toJson() const;
     static WaveformFeature fromJson(const QJsonObject& json, QString *error);

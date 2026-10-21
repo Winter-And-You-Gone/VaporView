@@ -3,15 +3,19 @@
 #include "ground/calibration/WaterCalibrationPage.h"
 #include "shared/theme/AppTheme.h"
 #include <QApplication>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QElapsedTimer>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QThread>
+#include <QThreadPool>
+#include <QTimer>
 #include <QTemporaryDir>
 
 using namespace WaterCalibrationTest;
@@ -48,14 +52,69 @@ int main(int argc,char **argv)
         complete(page,[&]{return find<QTableWidget>(page,"calibrationSamples")->rowCount()==2;});
         auto *tabs=page.findChild<QTabWidget*>();check(tabs&&tabs->count()==3,"three focused pages");tabs->setCurrentIndex(1);
         click(page,"calibrationFit");complete(page,[&]{return find<QComboBox>(page,"calibrationVersions")->count()==1;});
+        click(page,"calibrationImport");complete(page,[&]{return find<QPushButton>(page,"calibrationImport")->isEnabled();});
+        check(find<QTableWidget>(page,"calibrationSamples")->rowCount()==2&&
+            find<QTableWidget>(page,"calibrationSamples")->item(0,7)->text()!=QStringLiteral("—"),"duplicate-only import preserves sample count and existing fit state");
         click(page,"calibrationEnable");complete(page,[&]{return find<QLabel>(page,"calibrationStatus")->text().contains(QStringLiteral("已启用"));});
         tabs->setCurrentIndex(2);click(page,"calibrationCalculate");complete(page,[&]{return find<QTableWidget>(page,"calibrationResults")->rowCount()==2;});
         auto *results=find<QTableWidget>(page,"calibrationResults");check(results->item(0,3)->text()=="9"&&results->item(0,5)->text().contains(QStringLiteral("未进行温压补偿")),"visible known initial concentration and compensation status");
         check(results->item(1,3)->text()==QStringLiteral("—")&&results->item(1,5)->text().contains(QStringLiteral("未启用")),"other wavelength cannot silently use current fit");
+        click(page,"calibrationDisable");complete(page,[&]{return find<QLabel>(page,"calibrationStatus")->text().contains(QStringLiteral("已停用"));});
+        check(results->rowCount()==0,"disabling calibration clears obsolete current concentration display");
+        click(page,"calibrationEnable");complete(page,[&]{return find<QLabel>(page,"calibrationStatus")->text().contains(QStringLiteral("已启用"));});
+        click(page,"calibrationCalculate");complete(page,[&]{return results->rowCount()==2;});
+        find<QLineEdit>(page,"calibrationSession")->setText(low);
+        check(results->rowCount()==0,"switching source clears results from the previous Session");
+        click(page,"calibrationCalculate");
+        // Change while the completion callback is still queued, as can happen
+        // when a source-selection dialog returns during a follow calculation.
+        find<QLineEdit>(page,"calibrationSession")->setText(high);
+        complete(page,[&]{return find<QPushButton>(page,"calibrationCalculate")->isEnabled();});
+        check(results->rowCount()==0,"asynchronous old-Session result cannot repopulate the current source");
+        click(page,"calibrationCalculate");complete(page,[&]{return results->rowCount()==2;});
+        auto *samples=find<QTableWidget>(page,"calibrationSamples");samples->setCurrentCell(0,0);
+        click(page,"calibrationExclude");
+        check(samples->item(0,3)->text()==QStringLiteral("已排除")&&samples->item(0,7)->text()==QStringLiteral("—"),"exclusion clears residuals and updates validity");
+        check(samples->item(1,7)->text()==QStringLiteral("—"),"old fit residuals are not presented for edited data");
+        QTimer::singleShot(0,[]{auto *dialog=qobject_cast<QMessageBox*>(QApplication::activeModalWidget());check(dialog,"discard confirmation shown");dialog->button(QMessageBox::Discard)->click();});
+        auto *versions=find<QComboBox>(page,"calibrationVersions");
+        QMetaObject::invokeMethod(versions,"activated",Qt::DirectConnection,Q_ARG(int,0));
+        check(samples->item(0,3)->text().startsWith(QStringLiteral("有效")),"historical fit restores immutable original input after edits");
+        VaporView::Ground::Session::GroundRecordingService recorder;
+        VaporView::Ground::Session::GroundRecordingOptions options;options.baseDirectory=temp.filePath("following");options.fpgaConfiguration={{"backend","simulator"}};
+        check(recorder.start(options),"start followed software-test Session");
+        find<QLineEdit>(page,"calibrationSession")->setText(recorder.status().sessionDirectory);
+        auto *follow=find<QCheckBox>(page,"calibrationFollow");auto *timer=page.findChild<QTimer*>();check(timer,"single follow timer exists");timer->setInterval(20);follow->setChecked(true);
+        VaporView::FpgaWave::CompletedStream wave;wave.source=0x30;wave.totalPoints=1;wave.complete=true;
+        VaporView::FpgaWave::CompletedStream::DliaPoint point;point.hasHarmonics=true;point.h1=1;point.h2=3;wave.dliaPoints.append(point);
+        const auto timestamp=VaporView::Ground::Session::GroundRecordingService::currentTimestampUs();
+        check(recorder.recordFpgaHarmonics(timestamp,wave),"admit followed cycle");
+        complete(page,[&]{return results->rowCount()==1&&!find<QLabel>(page,"calibrationStatus")->text().contains(QStringLiteral("正在处理"));});
+        check(results->item(0,3)->text()=="7","follow uses saved active coefficients on existing recorded feature");
+        check(recorder.pause()&&!recorder.recordFpgaHarmonics(timestamp,wave),"pause prevents new concentration input");
+        check(recorder.start(options)&&recorder.recordFpgaHarmonics(timestamp,wave),"resume admits a separately identified cycle");
+        complete(page,[&]{return results->rowCount()==2;});
+        check(results->item(0,6)->text()==results->item(1,6)->text(),"resumed records retain exact active version identity");
+        page.hide();page.show();check(page.findChildren<QTimer*>().size()==1,"page visibility changes do not duplicate follow subscriptions");
+        check(!recorder.stop().writeFailed&&!recorder.recordFpgaHarmonics(timestamp,wave),"stop seals followed Session");
+        follow->setChecked(false);timer->setInterval(2000);
+        find<QLineEdit>(page,"calibrationSession")->clear();click(page,"calibrationCalculate");
+        QElapsedTimer invalidWait;invalidWait.start();
+        while(!find<QPushButton>(page,"calibrationCalculate")->isEnabled()&&invalidWait.elapsed()<15000){QApplication::processEvents();QThread::msleep(10);}
+        check(results->rowCount()==0&&find<QLabel>(page,"calibrationStatus")->property("calibrationError").toBool(),"no source Session cannot leave valid or untraceable concentrations");
         page.setTheme(true,130);QApplication::processEvents();
         check(page.property(VaporView::kAppDarkThemeProperty).toBool()&&page.styleSheet().contains("QTabBar::tab:selected"),"scoped dark-theme tabs and font scaling");
         page.setTheme(false,100);
         page.close();
+    }
+    {
+        auto *closing=new WaterCalibrationPage(nullptr,libraryFilename);
+        complete(*closing,[&]{return find<QLabel>(*closing,"calibrationStatus")->text().contains(QStringLiteral("定标库已加载"));});
+        find<QLineEdit>(*closing,"calibrationSession")->setText(low);click(*closing,"calibrationCalculate");
+        delete closing;
+        check(QThreadPool::globalInstance()->waitForDone(15000),"page destruction leaves only bounded independent worker data");
+        QApplication::processEvents();
+        Library library;QString error;check(Store(libraryFilename).load(library,&error)&&library.fits.size()==1,"destroyed calculation cannot alter the saved library");
     }
     {
         WaterCalibrationPage reopened(nullptr,libraryFilename);reopened.resize(1150,900);reopened.show();

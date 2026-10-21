@@ -10,11 +10,13 @@ QString csvValueAt(const QStringList& fields, int index)
     return index >= 0 && index < fields.size() ? fields.at(index) : QString();
 }
 
-QStringList parseCsvLine(const QString& line)
+QStringList parseCsvLine(const QString& line, QString *error)
 {
     QStringList fields;
     QString current;
     bool inQuotes = false;
+    bool fieldStarted = false, quoteClosed = false;
+    if (error) error->clear();
 
     for (int index = 0; index < line.size(); ++index)
     {
@@ -28,7 +30,14 @@ QStringList parseCsvLine(const QString& line)
             }
             else
             {
+                if (error && !inQuotes && fieldStarted)
+                {
+                    *error = QStringLiteral("CSV 引号位置无效");
+                    return {};
+                }
                 inQuotes = !inQuotes;
+                fieldStarted = true;
+                quoteClosed = !inQuotes;
             }
             continue;
         }
@@ -37,13 +46,25 @@ QStringList parseCsvLine(const QString& line)
         {
             fields.push_back(current);
             current.clear();
+            fieldStarted = quoteClosed = false;
         }
         else
         {
+            if (error && quoteClosed && !character.isSpace())
+            {
+                *error = QStringLiteral("CSV 引号后存在多余字符");
+                return {};
+            }
             current += character;
+            fieldStarted = true;
         }
     }
 
+    if (error && inQuotes)
+    {
+        *error = QStringLiteral("CSV 引号未闭合");
+        return {};
+    }
     fields.push_back(current);
     return fields;
 }

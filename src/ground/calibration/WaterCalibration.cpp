@@ -29,12 +29,20 @@ QByteArray canonical(const QJsonObject& j) { return QJsonDocument(j).toJson(QJso
 QJsonValue optional(double v) { return std::isfinite(v) ? QJsonValue(v) : QJsonValue(QJsonValue::Null); }
 double optional(const QJsonValue& v) { return v.isDouble() ? v.toDouble() : std::numeric_limits<double>::quiet_NaN(); }
 bool unitValid(const QString& unit) { return unit == "ppmv" || unit == "mol/mol" || unit == "mg/m3"; }
+QString inputError(const Sample& s)
+{
+    if (s.origin != "software_test" && s.origin != "unverified") return QStringLiteral("未知数据来源类型");
+    const auto sourceError = s.feature.sourceError();
+    if (!sourceError.isEmpty()) return sourceError;
+    QString environmentError;
+    Environment::fromJson(s.environment.toJson(), &environmentError);
+    if (!environmentError.isEmpty()) return environmentError;
+    return {};
+}
 QString sampleError(const Sample& s)
 {
     if (!std::isfinite(s.concentration) || s.concentration < 0) return QStringLiteral("标气浓度必须为非负有限数");
-    if (s.origin != "software_test" && s.origin != "unverified") return QStringLiteral("未知数据来源类型");
-    if (s.feature.id.isEmpty() || s.feature.sessionDirectory.isEmpty()) return QStringLiteral("峰值来源记录不完整");
-    return {};
+    return inputError(s);
 }
 
 class LinearModel final : public FitModel
@@ -161,6 +169,12 @@ QJsonObject Environment::toJson() const
 Environment Environment::fromJson(const QJsonObject& j, QString *error)
 {
     Environment e;
+    for (const auto *key : {"temperature_c", "pressure_hpa"}) {
+        const auto value = j[QLatin1String(key)];
+        if (!value.isNull() && (!value.isDouble() || !std::isfinite(value.toDouble()))) {
+            *error = QStringLiteral("温压字段缺失或类型无效：%1").arg(QLatin1String(key)); return e;
+        }
+    }
     e.temperatureC = optional(j["temperature_c"]); e.pressureHpa = optional(j["pressure_hpa"]);
     bool t = false, d = false;
     e.snapshotTimeUs = j["snapshot_time_us"].toString().toULongLong(&t);
@@ -178,6 +192,10 @@ QJsonObject Sample::toJson() const
 Sample Sample::fromJson(const QJsonObject& j, QString *error)
 {
     Sample s;
+    if (!j["excluded"].isBool() || !j["note"].isString() || !j["origin"].isString() ||
+        !j["feature"].isObject() || !j["environment"].isObject()) {
+        *error = QStringLiteral("样本字段缺失或类型无效（含排除状态和来源）"); return s;
+    }
     s.feature = WaveformFeature::fromJson(j["feature"].toObject(), error);
     s.concentration = optional(j["concentration"]); s.excluded = j["excluded"].toBool();
     s.note = j["note"].toString(); s.origin = j["origin"].toString();
@@ -220,7 +238,9 @@ Dataset Dataset::fromJson(const QJsonObject& j, QString *error)
     d.wavelengthNm = j["wavelength_nm"].toInt(); d.channel = quint32(j["fpga_channel"].toInt());
     d.revision = j["revision"].toInt(-1); d.createdUtc = j["created_utc"].toString(); d.modifiedUtc = j["modified_utc"].toString();
     d.archived = j["archived"].toBool();
-    if (j["parameter_version"].toInt() != SchemaVersion || !j["samples"].isArray()) *error = QStringLiteral("不支持的数据集版本或缺少样本字段");
+    if (j["parameter_version"].toInt() != SchemaVersion || !j["samples"].isArray() || !j["archived"].isBool()) {
+        *error = QStringLiteral("不支持的数据集版本、字段缺失或类型无效"); return d;
+    }
     for (const auto& row : j["samples"].toArray()) { d.samples.append(Sample::fromJson(row.toObject(), error)); if (!error->isEmpty()) break; }
     if (error->isEmpty()) *error = d.validate();
     return d;
@@ -305,13 +325,15 @@ ConcentrationResult calculate(const Sample& sample, int wavelength, const Fit *f
 {
     ConcentrationResult r; r.input = sample; r.wavelengthNm = wavelength; r.calculatedUtc = now(); r.origin = sample.origin;
     const auto fail = [&](const QString& reason) { r.status = reason; return r; };
+    const auto invalidInput = inputError(sample); if (!invalidInput.isEmpty()) return fail(invalidInput);
     if (!fit) return fail(QStringLiteral("未启用定标参数"));
     r.calibrationId = fit->id; r.datasetId = fit->dataset.id; r.datasetRevision = fit->dataset.revision; r.unit = fit->dataset.unit;
     for (const auto& s : fit->dataset.samples) if (s.origin == "software_test") r.origin = "software_test";
     if (wavelength != fit->dataset.wavelengthNm || sample.feature.channel != fit->dataset.channel)
         return fail(QStringLiteral("波长或 DLIA 通道与定标参数不匹配"));
     const auto invalid = sample.feature.invalidReason(); if (!invalid.isEmpty()) return fail(invalid);
-    if (!std::isfinite(fit->a) || !std::isfinite(fit->b) || !std::isfinite(fit->rMin) || !std::isfinite(fit->rMax) ||
+    if (QUuid(fit->id).isNull() || QUuid(fit->dataset.id).isNull() || !dateValid(fit->createdUtc) ||
+        !std::isfinite(fit->a) || !std::isfinite(fit->b) || !std::isfinite(fit->rMin) || !std::isfinite(fit->rMax) ||
         fit->rMin >= fit->rMax || !unitValid(fit->dataset.unit)) return fail(QStringLiteral("定标参数无效"));
     if (sample.feature.peak < fit->rMin || sample.feature.peak > fit->rMax) return fail(QStringLiteral("峰值超出定标范围；未外推"));
     auto model = FitModel::create(fit->model, fit->modelVersion);

@@ -23,6 +23,7 @@ private:
     void importData();
     void saveDataset(bool fit);
     void setActive(bool enabled);
-    void calculateSession();
+    void calculateSession(bool announce = true);
+    void clearResults();
 };
 }

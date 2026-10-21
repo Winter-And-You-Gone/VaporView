@@ -27,9 +27,10 @@ bool decode(WaveformFeature& r, QString *error)
         *error = QStringLiteral("特征 CSV 存在重复字段名"); return false;
     }
     const auto field = [&](const char *key) { return SessionCsv::csvValueAt(r.fields, r.headers.indexOf(QLatin1String(key))); };
-    for (const auto *key : {"host_time_us", "channel_id", "peak", "quality_flags", "original_point_count",
-                            "peak_index", "source", "component", "algorithm_version", "cycle_id", "segment_id",
-                            "fpga_tick", "waveform_sequence", "search_start_index", "search_end_index"}) {
+    for (const auto *key : {"host_time_us", "epsilon_time_us", "channel_id", "peak", "mean", "rms", "min_value", "max_value",
+                            "quality_flags", "original_point_count", "peak_index", "peak_x", "source", "component",
+                            "algorithm_version", "cycle_id", "segment_id", "fpga_tick", "waveform_sequence",
+                            "search_start_index", "search_end_index"}) {
         if (!r.headers.contains(QLatin1String(key))) { *error = QStringLiteral("特征 CSV 缺少字段：%1").arg(QLatin1String(key)); return false; }
     }
     bool ok = true;
@@ -54,6 +55,14 @@ bool decode(WaveformFeature& r, QString *error)
     if (!ok || !indexOk || (!field("peak").isEmpty() && (!peakOk || !std::isfinite(r.peak)))) {
         *error = QStringLiteral("特征记录包含无效数值（第 %1 行）").arg(r.csvLine); return false;
     }
+    bool positionOk = false, maximumOk = false;
+    const auto position = field("peak_x").toLongLong(&positionOk);
+    const auto maximum = field("max_value").toDouble(&maximumOk);
+    if ((r.peakIndex >= 0 && (!positionOk || position != r.peakIndex)) ||
+        (r.peakIndex < 0 && !field("peak_x").isEmpty()) ||
+        (peakOk && (!maximumOk || !std::isfinite(maximum) || maximum != r.peak))) {
+        *error = QStringLiteral("特征峰值或位置字段不一致（第 %1 行）").arg(r.csvLine); return false;
+    }
     if (field("source") != "fpga" || field("component") != "H2/H1" || field("algorithm_version") != "1" ||
         field("search_start_index") != "0" || field("search_end_index") != "0" ||
         (r.channel != 0x30 && r.channel != 0x31)) {
@@ -62,6 +71,19 @@ bool decode(WaveformFeature& r, QString *error)
     r.id = recordId(r.sessionKey, r.channel, r.waveformSequence);
     return true;
 }
+}
+
+QString WaveformFeature::sourceError() const
+{
+    QString error;
+    const auto decoded = fromJson(toJson(), &error);
+    if (!error.isEmpty()) return error;
+    if (decoded.hostTimeUs != hostTimeUs || decoded.waveformSequence != waveformSequence || decoded.fpgaTick != fpgaTick ||
+        decoded.segmentId != segmentId || decoded.channel != channel || decoded.cycleId != cycleId ||
+        decoded.qualityFlags != qualityFlags || decoded.originalPoints != originalPoints || decoded.peakIndex != peakIndex ||
+        !(decoded.peak == peak || (std::isnan(decoded.peak) && std::isnan(peak))))
+        return QStringLiteral("峰值输入与原始来源特征字段不一致");
+    return {};
 }
 
 QString WaveformFeature::invalidReason() const
@@ -86,8 +108,15 @@ WaveformFeature WaveformFeature::fromJson(const QJsonObject& j, QString *error)
     WaveformFeature r;
     r.sessionKey = j["session_key"].toString();
     r.sessionDirectory = j["session"].toString(); r.csvFilename = j["csv"].toString(); r.csvLine = j["line"].toInt();
-    for (const auto& v : j["headers"].toArray()) r.headers.append(v.toString());
-    for (const auto& v : j["fields"].toArray()) r.fields.append(v.toString());
+    if (!j["headers"].isArray() || !j["fields"].isArray()) { *error = QStringLiteral("特征原始字段必须为字符串数组"); return r; }
+    for (const auto& v : j["headers"].toArray()) {
+        if (!v.isString()) { *error = QStringLiteral("特征字段名必须为字符串"); return r; }
+        r.headers.append(v.toString());
+    }
+    for (const auto& v : j["fields"].toArray()) {
+        if (!v.isString()) { *error = QStringLiteral("特征原始字段必须为字符串"); return r; }
+        r.fields.append(v.toString());
+    }
     if (r.sessionKey.isEmpty() || r.sessionDirectory.isEmpty() || r.csvFilename.isEmpty() || r.csvLine < 2 || r.fields.size() != r.headers.size())
         *error = QStringLiteral("特征来源信息不完整");
     else if (decode(r, error) && r.id != j["id"].toString()) *error = QStringLiteral("特征记录标识不匹配");
@@ -111,11 +140,13 @@ WaveformFeaturesResult SessionWaveformFeatures::readFile(const QString& filename
     }
     const auto header = file.readLine();
     const auto context = VaporView::Session::loadSessionPathContext(directory);
+    if (!context.manifestError.isEmpty()) { result.error = context.manifestError; return result; }
     if (!header.endsWith('\n') && context.manifest["state"].toString() == "recording") {
         // A newly opened recorder may not have flushed even its header yet.
         result.success = true; return result;
     }
-    const auto headers = SessionCsv::parseCsvLine(QString::fromUtf8(header).trimmed());
+    const auto headers = SessionCsv::parseCsvLine(QString::fromUtf8(header).trimmed(), &result.error);
+    if (!result.error.isEmpty()) return result;
     // Validate the header even when the file contains no data yet.
     WaveformFeature probe; probe.headers = headers; QString headerError;
     decode(probe, &headerError);
@@ -146,10 +177,15 @@ WaveformFeaturesResult SessionWaveformFeatures::readFile(const QString& filename
         r.sessionKey = sessionKey;
         r.sessionDirectory = QDir::fromNativeSeparators(QFileInfo(directory).absoluteFilePath());
         r.csvFilename = QFileInfo(filename).absoluteFilePath(); r.csvLine = line; r.headers = headers;
-        r.fields = SessionCsv::parseCsvLine(QString::fromUtf8(bytes).trimmed());
+        r.fields = SessionCsv::parseCsvLine(QString::fromUtf8(bytes).trimmed(), &result.error);
+        if (!result.error.isEmpty() || r.fields.size() != headers.size()) {
+            result.error = QStringLiteral("特征 CSV 第 %1 行无效：%2").arg(line).arg(
+                result.error.isEmpty() ? QStringLiteral("列数错误") : result.error);
+            return result;
+        }
         const int source = headers.indexOf("source"), component = headers.indexOf("component");
         if (SessionCsv::csvValueAt(r.fields, source) != "fpga" || SessionCsv::csvValueAt(r.fields, component) != "H2/H1") continue;
-        if (r.fields.size() != headers.size() || !decode(r, &result.error)) {
+        if (!decode(r, &result.error)) {
             if (result.error.isEmpty()) result.error = QStringLiteral("特征列数错误（第 %1 行）").arg(line);
             return result;
         }
