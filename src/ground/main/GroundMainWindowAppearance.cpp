@@ -1270,7 +1270,10 @@ void MainWindow::updateResponsiveHomeLayout()
     }
 
     const int epsilonHeight = contentHeightFor(state_->epsilon_group_);
-    const int envHeight = environmentInOverview ? 0 : contentHeightFor(state_->env_group_);
+    const int envMinimumHeight = state_->env_group_
+        ? std::max(contentHeightFor(state_->env_group_),
+                   state_->env_group_->property(kMainCardMinimumHeightProperty).toInt()) : 0;
+    const int envHeight = environmentInOverview ? 0 : envMinimumHeight;
     int targetHeight = std::max(epsilonHeight, envHeight);
     if (stackSensorCards && epsilonHeight > 0 && envHeight > 0)
     {
@@ -1311,7 +1314,8 @@ void MainWindow::updateResponsiveHomeLayout()
             }
             if (state_->env_group_ && !environmentInOverview)
             {
-                state_->env_group_->setFixedHeight(dataCardHeight);
+                state_->env_group_->setMinimumHeight(envMinimumHeight);
+                state_->env_group_->setMaximumHeight(dataCardHeight);
             }
         }
         state_->sensor_row_widget_->setMinimumHeight(dataMinimumHeight);

@@ -5346,6 +5346,7 @@ void MainWindow::setupDataPanels()
     });
     state_->temperature_overview_panel_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     temperatureOverviewLayout->addWidget(state_->temperature_overview_panel_, 0);
+    temperatureOverviewLayout->addStretch(1);
 
     state_->ai8_temperature_overview_group_ =
         new QGroupBox(state_->home_temperature_overview_column_);

@@ -4354,6 +4354,24 @@ void requireHomeCardFillsSensorRow(QWidget *card, QWidget *row)
             "a sensor card occupying its own row fills the available row width");
 }
 
+void requireHomeSharedCardMinimumHeight(MainWindow &window)
+{
+    auto *overview = window.findChild<QSplitter *>(QStringLiteral("homeOverviewSplitter"));
+    auto *environment = window.findChild<QWidget *>(QStringLiteral("environmentSectionTitleBar"))->parentWidget();
+    QGroupBox *laser = nullptr;
+    for (QGroupBox *card : window.findChildren<QGroupBox *>())
+        if (card->property("homeLaserTemperatureOverviewCard").toBool())
+            laser = card;
+    require(overview && environment && laser, "shared-height test exposes the three home cards");
+    QWidget *device = overview->widget(0);
+    const int minimum = device->minimumHeight();
+    require(minimum > 0 && laser->minimumHeight() == minimum && environment->minimumHeight() == minimum,
+            "device, laser and environment cards share one minimum height in every row arrangement");
+    for (QWidget *card : {device, static_cast<QWidget *>(laser), environment})
+        require(minimum >= card->minimumSizeHint().height() && minimum >= card->sizeHint().height(),
+                "the shared minimum height fits every card's full content");
+}
+
 void requireHomeThreeColumnLayout()
 {
     MainWindow window;
@@ -4373,6 +4391,7 @@ void requireHomeThreeColumnLayout()
     require(overview && sensors && scroll && environment && pressure && plot,
             "three-column test exposes the existing cards and pressure plot");
     bool englishActive = false;
+    int standardMinimumHeight = 0;
     for (int scale : {100, 130})
     {
         for (QAction *action : window.findChildren<QAction *>())
@@ -4398,6 +4417,14 @@ void requireHomeThreeColumnLayout()
             pressure->updateRate(9999.9);
             window.resize(2400, 700);
             processEventsFor(400);
+            if (!english)
+            {
+                if (scale == 100)
+                    standardMinimumHeight = overview->widget(0)->minimumHeight();
+                else
+                    require(overview->widget(0)->minimumHeight() > standardMinimumHeight,
+                            "the shared card minimum grows with the larger font");
+            }
             const int sampleCount = plot->property("sampleCount").toInt();
             const QList<int> minima{overview->widget(0)->minimumWidth(), overview->widget(1)->minimumWidth(),
                 std::max(environment->minimumWidth(), environment->minimumSizeHint().width())};
@@ -4432,6 +4459,7 @@ void requireHomeThreeColumnLayout()
                               << ',' << environment->minimumSizeHint().width() << " count=" << overview->count() << '\n';
                 require(moved, "environment moves at the sum of three safe minima and two gaps");
                 processEventsFor(80);
+                requireHomeSharedCardMinimumHeight(window);
                 if (extra >= 0)
                 {
                     require(overview->widget(2) == environment && sensors->count() == 1,
@@ -4486,6 +4514,10 @@ void requireHomeThreeColumnLayout()
             action->trigger();
             break;
         }
+    processEventsFor(200);
+    requireHomeSharedCardMinimumHeight(window);
+    require(overview->widget(0)->minimumHeight() == standardMinimumHeight,
+            "the shared card minimum returns to its original value at 100 percent");
     window.close();
 }
 
@@ -6840,6 +6872,7 @@ int main(int argc, char **argv)
                 temperatureOverviewCard->minimumHeight() == temperatureOverviewCard->maximumHeight() &&
                 ai8TemperatureOverviewCard->minimumHeight() == ai8TemperatureOverviewCard->maximumHeight(),
             "right-side temperature overview cards remain compact instead of filling the overview row");
+    requireHomeSharedCardMinimumHeight(window);
     requireHomeDeviceMinimumWidthMatchesControls(&window);
 
     auto *homeConfigCard = deviceOverviewCard;
