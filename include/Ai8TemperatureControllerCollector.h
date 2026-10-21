@@ -39,6 +39,7 @@ public:
                   const Ai8TemperatureControllerProtocol::Selection& selection,
                   Ai8TemperatureControllerProtocol::PageData& data,
                   QString *errorMessage = nullptr);
+    bool readLiveData(Ai8TemperatureControllerProtocol::LiveData& data);
     bool writePage(const Ai8TemperatureControllerProtocol::PageData& data,
                    QString *resultMessage = nullptr);
 
@@ -78,7 +79,6 @@ private:
     bool writeInputPage(const Ai8TemperatureControllerProtocol::PageData& data, QString *errorMessage);
     bool writeOutputPage(const Ai8TemperatureControllerProtocol::PageData& data, QString *errorMessage);
     bool writeGlobalPage(const Ai8TemperatureControllerProtocol::PageData& data, QString *resultMessage);
-    bool readLiveData(Ai8TemperatureControllerProtocol::LiveData& data);
     void publishRawFrame(quint16 recordType, const std::vector<quint8>& frame);
 
     Ai8TemperatureControllerProtocol::LiveData latestData_;

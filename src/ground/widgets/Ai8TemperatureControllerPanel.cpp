@@ -58,6 +58,20 @@ constexpr int kAi8OverviewCellGap = 2;
 constexpr int kAi8OverviewHorizontalPadding = 8;
 constexpr int kAi8OverviewVerticalPadding = 1;
 
+class OverviewTemperatureLabel final : public QLabel
+{
+public:
+    using QLabel::QLabel;
+
+    QSize minimumSizeHint() const override
+    {
+        QSize hint = QLabel::minimumSizeHint();
+        // Derive the reservation from the current font, including after a UI scale change.
+        hint.setWidth(std::max(hint.width(), fontMetrics().horizontalAdvance(QStringLiteral("-3276.8 °C")) + 1));
+        return hint;
+    }
+};
+
 class Ai8ParameterFieldFrame final : public QFrame
 {
 public:
@@ -1598,26 +1612,48 @@ Ai8TemperatureOverviewPanel::Ai8TemperatureOverviewPanel(QWidget *parent)
         cell->setAttribute(Qt::WA_StyledBackground, true);
         cell->setMinimumHeight(kAi8OverviewCellHeight);
         cell->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-        auto *cellLayout = new QVBoxLayout(cell);
-        cellLayout->setContentsMargins(4, 1, 4, 1);
-        cellLayout->setSpacing(1);
+        auto *cellLayout = new QGridLayout(cell);
+        cellLayout->setContentsMargins(4, 2, 4, 2);
+        cellLayout->setHorizontalSpacing(2);
+        cellLayout->setVerticalSpacing(2);
+        cellLayout->setColumnStretch(3, 1);
 
         auto *channelLabel = new QLabel(cell);
         channelLabel->setObjectName(QStringLiteral("ai8TemperatureOverviewChannelLabel"));
         channelLabel->setProperty("channelIndex", index);
         channelLabel->setAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
-        channelLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-        cellLayout->addWidget(channelLabel, 0, Qt::AlignHCenter);
+        channelLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
+        cellLayout->addWidget(channelLabel, 0, 0, 2, 1);
 
-        auto *valueLabel = new QLabel(cell);
+        auto *divider = new QFrame(cell);
+        divider->setObjectName(QStringLiteral("ai8TemperatureOverviewDivider"));
+        divider->setFixedWidth(1);
+        cellLayout->addWidget(divider, 0, 1, 2, 1);
+
+        auto *targetCaption = new QLabel(cell);
+        auto *currentCaption = new QLabel(cell);
+        for (QLabel *caption : {targetCaption, currentCaption})
+            caption->setObjectName(QStringLiteral("ai8TemperatureOverviewCaptionLabel"));
+        cellLayout->addWidget(targetCaption, 0, 2);
+        cellLayout->addWidget(currentCaption, 1, 2);
+
+        auto *targetLabel = new OverviewTemperatureLabel(cell);
+        targetLabel->setObjectName(QStringLiteral("ai8TemperatureOverviewTargetLabel"));
+        targetLabel->setProperty("channelIndex", index);
+        targetLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        cellLayout->addWidget(targetLabel, 0, 3);
+
+        auto *valueLabel = new OverviewTemperatureLabel(cell);
         valueLabel->setObjectName(QStringLiteral("ai8TemperatureOverviewValueLabel"));
         valueLabel->setProperty("channelIndex", index);
-        valueLabel->setAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
-        valueLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-        cellLayout->addWidget(valueLabel, 0, Qt::AlignHCenter);
+        valueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        cellLayout->addWidget(valueLabel, 1, 3);
 
         channel_labels_[static_cast<size_t>(index)] = channelLabel;
         value_labels_[static_cast<size_t>(index)] = valueLabel;
+        target_labels_[static_cast<size_t>(index)] = targetLabel;
+        target_captions_[static_cast<size_t>(index)] = targetCaption;
+        current_captions_[static_cast<size_t>(index)] = currentCaption;
         layout->addWidget(cell, index / kAi8OverviewColumnCount, index % kAi8OverviewColumnCount);
     }
     for (int column = 0; column < kAi8OverviewColumnCount; ++column)
@@ -1654,8 +1690,20 @@ void Ai8TemperatureOverviewPanel::refreshLabels()
             continue;
         }
 
-        const QString channelText = english_ ? QStringLiteral("Channel %1").arg(index + 1)
-                                             : QStringLiteral("通道 %1").arg(index + 1);
+        const QString channelText = english_ ? QStringLiteral("CH\n%1").arg(index + 1)
+                                             : QStringLiteral("通\n道\n%1").arg(index + 1);
+        QLabel *targetLabel = target_labels_[static_cast<size_t>(index)];
+        target_captions_[static_cast<size_t>(index)]->setText(english_ ? QStringLiteral("Target") : QStringLiteral("目标"));
+        current_captions_[static_cast<size_t>(index)]->setText(english_ ? QStringLiteral("Current") : QStringLiteral("当前"));
+        const double target = latest_live_data_.setpointsValid
+            ? latest_live_data_.setpointsC[static_cast<size_t>(index)]
+            : latest_live_data_.detailedChannel == index + 1 ? latest_live_data_.setpointC
+            : std::numeric_limits<double>::quiet_NaN();
+        targetLabel->setText(latest_live_data_.valid && std::isfinite(target)
+            ? temperatureText(target) : QStringLiteral("---"));
+        targetLabel->setAccessibleName(english_
+            ? QStringLiteral("Channel %1 target temperature %2").arg(index + 1).arg(targetLabel->text())
+            : QStringLiteral("通道 %1 目标温度 %2").arg(index + 1).arg(targetLabel->text()));
         const double measured = latest_live_data_.measuredC[static_cast<size_t>(index)];
         const bool available = latest_live_data_.valid && std::isfinite(measured);
         const QString valueText = available
@@ -1683,8 +1731,8 @@ void Ai8TemperatureOverviewPanel::refreshLabels()
         valueLabel->setText(valueText);
         valueLabel->setProperty("displayText", valueText);
         valueLabel->setAccessibleName(
-            english_ ? QStringLiteral("Channel %1 %2").arg(index + 1).arg(valueText)
-                     : QStringLiteral("通道 %1 %2").arg(index + 1).arg(valueText));
+            english_ ? QStringLiteral("Channel %1 current temperature %2").arg(index + 1).arg(valueText)
+                     : QStringLiteral("通道 %1 当前温度 %2").arg(index + 1).arg(valueText));
     }
 }
 

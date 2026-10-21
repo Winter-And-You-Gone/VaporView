@@ -62,7 +62,7 @@ void FpgaSensorAdapter::reset()
     epsilon_ = EpsilonData{};
     epsilonStatusTimestamp_.reset();
     epsilonPosition_={};epsilonVelocity_={};
-    ai8ScanValues_={};ai8ScanTicks_={};
+    ai8ScanValues_={};ai8ScanSetpoints_={};ai8ScanTicks_={};
 }
 
 double FpgaSensorAdapter::updateRate(const Reading &reading, quint16 key)
@@ -134,10 +134,15 @@ AdaptedMeasurements FpgaSensorAdapter::accept(const Reading &input)
         out.ai8 = s;
         Ai8TemperatureControllerProtocol::LiveData live;
         live.measuredC.fill(std::numeric_limits<double>::quiet_NaN());
+        live.setpointsC.fill(std::numeric_limits<double>::quiet_NaN());
+        live.setpointsValid = true;
         if (s.channel >= 1 && s.channel <= Ai8TemperatureControllerProtocol::kChannelCount)
         {
             const int index = s.channel - 1;
-            if (s.measurementValid) live.measuredC[index] = s.measuredC;
+            if (s.measurementValid) {
+                live.measuredC[index] = s.measuredC;
+                live.setpointsC[index] = s.setpointC;
+            }
             const int shift = s.channel % 2 ? 8 : 0;
             live.alarmStatusRegisters[index / 2] = quint16(s.alarm) << shift;
             live.valid = s.measurementValid;
@@ -152,12 +157,20 @@ AdaptedMeasurements FpgaSensorAdapter::accept(const Reading &input)
         }
         if(input.schema==3 && s.channel>=1 && s.channel<=8) {
             for(int i=0;i<8;++i) {
-                if(input.timestamp<ai8ScanTicks_[i] || input.timestamp-ai8ScanTicks_[i]>500000000)ai8ScanValues_[i].reset();
+                if(input.timestamp<ai8ScanTicks_[i] || input.timestamp-ai8ScanTicks_[i]>500000000) {
+                    ai8ScanValues_[i].reset();
+                    ai8ScanSetpoints_[i].reset();
+                }
             }
             ai8ScanTicks_[s.channel-1]=input.timestamp;
             ai8ScanValues_[s.channel-1]=s.measurementValid?std::optional<double>(s.measuredC):std::nullopt;
+            ai8ScanSetpoints_[s.channel-1]=s.measurementValid?std::optional<double>(s.setpointC):std::nullopt;
             live.valid=false;
-            for(int i=0;i<8;++i) {live.measuredC[i]=ai8ScanValues_[i].value_or(std::numeric_limits<double>::quiet_NaN());live.valid|=ai8ScanValues_[i].has_value();}
+            for(int i=0;i<8;++i) {
+                live.measuredC[i]=ai8ScanValues_[i].value_or(std::numeric_limits<double>::quiet_NaN());
+                live.setpointsC[i]=ai8ScanSetpoints_[i].value_or(std::numeric_limits<double>::quiet_NaN());
+                live.valid|=ai8ScanValues_[i].has_value();
+            }
         }
         out.ai8Live = live;
         out.reading.validity.measurement = s.measurementValid;

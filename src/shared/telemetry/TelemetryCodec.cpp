@@ -1467,6 +1467,7 @@ QByteArray TelemetryCodec::serializeAi8TemperatureControllerStatus(
     if (data.alarmStatusValid) flags |= 0x04;
     if (data.mainStatusValid) flags |= 0x08;
     if (data.detailedChannel) flags |= 0x10;
+    if (data.setpointsValid) flags |= 0x20;
     payload.append(static_cast<char>(flags));
     appendLe<quint16>(payload, 0);
     for (double value : data.measuredC)
@@ -1486,6 +1487,9 @@ QByteArray TelemetryCodec::serializeAi8TemperatureControllerStatus(
         payload.append(char(data.detailedChannel));appendDoubleLe(payload,data.setpointC);appendDoubleLe(payload,data.displayedSetpointC);
         appendLe<quint16>(payload,data.outputRaw);payload.append(char(data.alarmRaw));payload.append(char(data.controlRaw));
     }
+    if (data.setpointsValid)
+        for (double value : data.setpointsC)
+            appendDoubleLe(payload, value);
     return payload;
 }
 
@@ -1501,7 +1505,7 @@ bool TelemetryCodec::parseAi8TemperatureControllerStatus(
         Ai8TemperatureControllerProtocol::kChannelCount +
         Ai8TemperatureControllerProtocol::kAlarmStatusRegisterCount * static_cast<int>(sizeof(quint16)) +
         static_cast<int>(sizeof(quint16));
-    if (payload.size() != kExpectedPayloadSize && payload.size() != kExpectedPayloadSize+21)
+    if (payload.size() < kExpectedPayloadSize)
     {
         return false;
     }
@@ -1511,6 +1515,10 @@ bool TelemetryCodec::parseAi8TemperatureControllerStatus(
         return false;
     }
     const quint8 flags = static_cast<quint8>(payload.at(offset++));
+    const qsizetype expectedSize = kExpectedPayloadSize + ((flags & 0x10) ? 21 : 0) +
+        ((flags & 0x20) ? Ai8TemperatureControllerProtocol::kChannelCount * sizeof(double) : 0);
+    if (payload.size() != expectedSize)
+        return false;
     quint16 reserved = 0;
     if (!readLe(payload, offset, reserved))
     {
@@ -1545,13 +1553,17 @@ bool TelemetryCodec::parseAi8TemperatureControllerStatus(
     }
     if(!readLe(payload,offset,data.mainStatusRaw))return false;
     if(flags&0x10) {
-        if(payload.size()!=kExpectedPayloadSize+21)return false;
         data.detailedChannel=quint8(payload[offset++]);
         if(data.detailedChannel<1 || data.detailedChannel>8 || !readDoubleLe(payload,offset,data.setpointC) ||
            !readDoubleLe(payload,offset,data.displayedSetpointC) || !std::isfinite(data.setpointC) ||
            !std::isfinite(data.displayedSetpointC) || !readLe(payload,offset,data.outputRaw))return false;
         data.alarmRaw=quint8(payload[offset++]);data.controlRaw=quint8(payload[offset++]);
     }
+    data.setpointsValid = (flags & 0x20) != 0;
+    if (data.setpointsValid)
+        for (double& value : data.setpointsC)
+            if (!readDoubleLe(payload, offset, value) || std::isinf(value))
+                return false;
     return offset==payload.size();
 }
 

@@ -7,6 +7,7 @@
 #include "ground/navigation/EpsilonConfigPanel.h"
 #include "ground/rtk/RtkConfigDialog.h"
 #include "ground/widgets/TelemetryPanels.h"
+#include "ground/widgets/Ai8TemperatureControllerPanel.h"
 #include "ground/widgets/EpsilonPanel.h"
 #include "ground/widgets/SegmentedSwitchButton.h"
 #include "ground/widgets/VisualTextLabel.h"
@@ -4391,9 +4392,20 @@ void requireHomeTemperatureColumnMinimumHeight(MainWindow &window)
     auto *grid = panel ? qobject_cast<QGridLayout *>(panel->layout()) : nullptr;
     require(grid && grid->rowCount() == 2 && grid->columnCount() == 4,
             "device temperatures use two equal rows of four wide channels");
+    require(panel->findChildren<QLabel *>(QStringLiteral("ai8TemperatureOverviewTargetLabel")).size() == 8,
+            "every channel exposes its own target temperature row");
     for (QLabel *label : panel->findChildren<QLabel *>())
-        require(label->contentsRect().width() >= label->fontMetrics().horizontalAdvance(label->text()),
-                "wide channel capsules keep the full channel and temperature text visible");
+        for (const QString &line : label->text().split(QLatin1Char('\n')))
+        {
+            if (label->contentsRect().width() < label->fontMetrics().horizontalAdvance(line) ||
+                label->height() < label->sizeHint().height())
+                std::cerr << "AI8 label " << label->objectName().toStdString() << " text=" << line.toStdString()
+                    << " actual=" << label->width() << 'x' << label->height()
+                    << " hint=" << label->sizeHint().width() << 'x' << label->sizeHint().height() << '\n';
+            require(label->contentsRect().width() >= label->fontMetrics().horizontalAdvance(line) &&
+                        label->height() >= label->sizeHint().height(),
+                    "channel capsules keep both temperature rows and every line of the vertical title visible");
+        }
 }
 
 void requireHomeThreeColumnLayout()
@@ -4449,6 +4461,19 @@ void requireHomeThreeColumnLayout()
                     require(environment->minimumHeight() > standardMinimumHeight,
                             "the temperature column and environment minimum grow with the larger font");
             }
+            auto *temperaturePanel = dynamic_cast<VaporView::Ground::Widgets::Ai8TemperatureOverviewPanel *>(
+                window.findChild<QWidget *>(QStringLiteral("ai8TemperatureOverviewPanel")));
+            require(temperaturePanel, "home temperature overview exposes its live-data view");
+            VaporView::Ai8TemperatureControllerProtocol::LiveData live;
+            live.valid = true;
+            live.setpointsValid = true;
+            live.setpointsC.fill(-3276.8);
+            live.measuredC.fill(3276.7);
+            temperaturePanel->applyLiveData(live);
+            window.resize(2399, 700);
+            processEventsFor(100);
+            window.resize(2400, 700);
+            processEventsFor(200);
             const int sampleCount = plot->property("sampleCount").toInt();
             const QList<int> minima{overview->widget(0)->minimumWidth(), overview->widget(1)->minimumWidth(),
                 std::max(environment->minimumWidth(), environment->minimumSizeHint().width())};
@@ -4479,6 +4504,7 @@ void requireHomeThreeColumnLayout()
                               << " extra=" << extra << " required=" << breakpoint << " window=" << window.width()
                               << " content=" << scroll->viewport()->width() - margins.left() - margins.right()
                               << " windowMin=" << window.minimumWidth()
+                              << " captured=" << minima.at(0) << ',' << minima.at(1) << ',' << minima.at(2)
                               << " minima=" << overview->widget(0)->minimumWidth() << ',' << overview->widget(1)->minimumWidth()
                               << ',' << environment->minimumSizeHint().width() << " count=" << overview->count() << '\n';
                 require(moved, "environment moves at the sum of three safe minima and two gaps");

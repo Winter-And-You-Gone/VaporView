@@ -1409,6 +1409,21 @@ QLabel#ai8TemperatureOverviewChannelLabel {
     font-size: 11px;
     font-weight: 600;
 }
+QLabel#ai8TemperatureOverviewCaptionLabel {
+    color: @vv-text-muted;
+    font-size: 11px;
+}
+QFrame#ai8TemperatureOverviewDivider {
+    background-color: @vv-border;
+    border: none;
+    border-radius: 0px;
+}
+QLabel#ai8TemperatureOverviewTargetLabel {
+    color: @vv-hd-ok;
+    font-family: "Consolas", "Monaco", "Courier New", monospace;
+    font-size: 13px;
+    font-weight: 700;
+}
 QLabel#ai8TemperatureOverviewValueLabel {
     color: @vv-text-strong;
     font-family: "Consolas", "Monaco", "Courier New", monospace;

@@ -151,6 +151,9 @@ private:
 
     std::array<QLabel *, Ai8TemperatureControllerProtocol::kChannelCount> channel_labels_{};
     std::array<QLabel *, Ai8TemperatureControllerProtocol::kChannelCount> value_labels_{};
+    std::array<QLabel *, Ai8TemperatureControllerProtocol::kChannelCount> target_labels_{};
+    std::array<QLabel *, Ai8TemperatureControllerProtocol::kChannelCount> target_captions_{};
+    std::array<QLabel *, Ai8TemperatureControllerProtocol::kChannelCount> current_captions_{};
     Ai8TemperatureControllerProtocol::LiveData latest_live_data_;
     bool english_ = false;
 };

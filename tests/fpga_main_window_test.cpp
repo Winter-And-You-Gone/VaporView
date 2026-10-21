@@ -24,6 +24,7 @@
 #include <QProxyStyle>
 #include <QTabWidget>
 #include <QScrollArea>
+#include <QScrollBar>
 #include <QAbstractButton>
 #include <QToolButton>
 #include <QComboBox>
@@ -158,7 +159,9 @@ static void verifyCardMargins(MainWindow &window,FpgaControlPage *page,int scale
     window.resize(originalSize.expandedTo(QSize(2000,1000))); processFor(50);
     auto *stack=window.findChild<QStackedWidget*>("mainPageStack");
     auto *homeCards=window.findChild<QWidget*>("homeOverviewSplitter");
-    stack->setCurrentIndex(0); processFor(50);
+    stack->setCurrentIndex(0); processFor(200);
+    auto *homeScroll=window.findChild<QScrollArea*>("mainCardsScrollArea");
+    const int homeOverflow=homeScroll->horizontalScrollBar()->maximum();
     auto *internal=window.findChild<QLabel*>("homeInternalEnvironment");
     require(internal && internal->height()>=internal->sizeHint().height()
         && internal->width()>=internal->sizeHint().width(),
@@ -169,7 +172,8 @@ static void verifyCardMargins(MainWindow &window,FpgaControlPage *page,int scale
     require(!internal->text().contains('\n') && standardTitle
         && internal->parentWidget()->height()==standardTitle->height(),
         "internal environment stays on one line without increasing the standard title bar height");
-    const QRect homeRect(homeCards->mapTo(stack,QPoint()),homeCards->size());
+    // Large fonts may require horizontal scrolling; compare the visible card edge.
+    const QRect homeRect=QRect(homeCards->mapTo(stack,QPoint()),homeCards->size()).adjusted(0,0,-homeOverflow,0);
     stack->setCurrentIndex(4); processFor(50);
     page->setUiTestState(true,false,false,5000);page->simulateOperation({{"op","connect"}});
     require(waitUntil([&]{return page->uiTestReady()&&!page->uiTestBusy();}),"layout fixture reads actual simulated board registers");

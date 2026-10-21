@@ -691,7 +691,17 @@ void MainWindow::updateHomeDeviceOverviewMinimumWidth()
         const int minimumWidth = std::max(kHomeOverviewTemperatureMinWidth,
                                           layout->totalMinimumSize().width());
         state_->temperature_overview_group_->setMinimumWidth(minimumWidth);
-        state_->home_temperature_overview_column_->setMinimumWidth(minimumWidth);
+        int columnMinimumWidth = minimumWidth;
+        if (state_->ai8_temperature_overview_group_)
+        {
+            QLayout *ai8Layout = state_->ai8_temperature_overview_group_->layout();
+            ai8Layout->invalidate();
+            const int ai8MinimumWidth = std::max(kHomeOverviewTemperatureMinWidth,
+                                                ai8Layout->totalMinimumSize().width());
+            state_->ai8_temperature_overview_group_->setMinimumWidth(ai8MinimumWidth);
+            columnMinimumWidth = std::max(columnMinimumWidth, ai8MinimumWidth);
+        }
+        state_->home_temperature_overview_column_->setMinimumWidth(columnMinimumWidth);
     }
 
     QSplitter *overviewSplitter = state_->home_overview_splitter_;

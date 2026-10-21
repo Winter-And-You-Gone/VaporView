@@ -62,7 +62,7 @@ public:
             epsilon_={};epsilonStatusTimestamp_.reset();epsilonPosition_={};epsilonVelocity_={};
             for(int id=0;id<256;++id)rates_.remove(quint16(0x4200+id));
         }
-        if(source==0x46) {for(int i=1;i<=8;++i)rates_.remove(quint16(0x4600+i));ai8ScanValues_={};ai8ScanTicks_={};}
+        if(source==0x46) {for(int i=1;i<=8;++i)rates_.remove(quint16(0x4600+i));ai8ScanValues_={};ai8ScanSetpoints_={};ai8ScanTicks_={};}
     }
     void setAi8Channel(int channel) { ai8Channel_ = channel; }
 
@@ -86,6 +86,7 @@ private:
     quint64 epsilonStatusMaxAgeTicks_;
     int ai8Channel_;
     std::array<std::optional<double>,8> ai8ScanValues_;
+    std::array<std::optional<double>,8> ai8ScanSetpoints_;
     std::array<quint64,8> ai8ScanTicks_{};
 };
 } // namespace VaporView::FpgaSensor

@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 
 namespace
 {
@@ -468,10 +469,29 @@ void testAi8TemperatureControllerStatus()
                 parsed.controlStates[2] == Ai8::ChannelControlState::Stopped,
             "AI-8 channel control states round-trip");
     require(parsed.alarmStatusRegisters[3] == 0x0103, "AI-8 alarm registers round-trip");
+    require(!parsed.setpointsValid, "legacy status without targets remains readable");
+
+    status.setpointsValid = true;
+    for (int index = 0; index < 8; ++index) status.setpointsC[index] = -30.5 + index;
+    status.setpointsC[7] = std::numeric_limits<double>::quiet_NaN();
+    const auto targets = VaporView::TelemetryCodec::serializeAi8TemperatureControllerStatus(status);
+    require(VaporView::TelemetryCodec::parseAi8TemperatureControllerStatus(targets, parsed) &&
+                parsed.setpointsValid && parsed.setpointsC[0] == -30.5 && parsed.setpointsC[6] == -24.5 &&
+                std::isnan(parsed.setpointsC[7]), "per-channel targets and unavailable scan channels survive remote transport");
+    require(!VaporView::TelemetryCodec::parseAi8TemperatureControllerStatus(targets.chopped(1), parsed),
+            "truncated target extension is rejected");
 
     status.detailedChannel=3;status.setpointC=26.5;status.displayedSetpointC=26.0;status.outputRaw=501;status.alarmRaw=2;status.controlRaw=1;
     const auto details=VaporView::TelemetryCodec::serializeAi8TemperatureControllerStatus(status);
     require(VaporView::TelemetryCodec::parseAi8TemperatureControllerStatus(details,parsed) && parsed.detailedChannel==3 && parsed.setpointC==26.5 && parsed.displayedSetpointC==26.0 && parsed.outputRaw==501 && parsed.alarmRaw==2,"selected FPGA AI8 channel details survive remote transport");
+    require(parsed.setpointsValid && parsed.setpointsC[0] == -30.5,
+            "per-channel targets coexist with the selected channel details");
+    auto legacyDetails = status;
+    legacyDetails.setpointsValid = false;
+    require(VaporView::TelemetryCodec::parseAi8TemperatureControllerStatus(
+                VaporView::TelemetryCodec::serializeAi8TemperatureControllerStatus(legacyDetails), parsed) &&
+                parsed.detailedChannel == 3 && !parsed.setpointsValid,
+            "legacy FPGA details without a target array remain readable");
     status.detailedChannel=9;require(!VaporView::TelemetryCodec::parseAi8TemperatureControllerStatus(VaporView::TelemetryCodec::serializeAi8TemperatureControllerStatus(status),parsed),"invalid selected channel rejected");
     Ai8::LiveData ignored;
     require(!VaporView::TelemetryCodec::parseAi8TemperatureControllerStatus(payload.left(payload.size() - 1), ignored),

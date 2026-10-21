@@ -127,6 +127,35 @@ int main()
     require(!adapter.accept(alarmReading).ai8->measurementValid,"alarm cannot authorize an incomplete snapshot");
     require(sample.ai8Live && sample.ai8Live->measuredC[0]==-2.5 && std::isnan(sample.ai8Live->measuredC[1]),"AI8 maps only selected channel");
     require(sample.ai8Live->detailedChannel==1 && sample.ai8Live->setpointC==40 && sample.ai8Live->outputRaw==500 && sample.ai8Live->alarmRaw==0x20 && !sample.ai8Live->alarmStatusValid && !sample.ai8Live->controlStatesValid,"selected channel details never claim all-channel validity");
+    require(sample.ai8Live->setpointsValid && sample.ai8Live->setpointsC[0] == 40 &&
+        std::isnan(sample.ai8Live->setpointsC[1]), "single-channel snapshots expose only that channel's target");
+    FpgaSensorAdapter scan;
+    auto scanReading = aiReading;
+    scanReading.schema = 3;
+    scanReading.ai8Channel = 1;
+    scanReading.timestamp = 1000;
+    scan.accept(scanReading);
+    scanReading.ai8Channel = 2;
+    scanReading.ai8SpRaw = -155;
+    scanReading.timestamp = 2000;
+    auto scanned = scan.accept(scanReading);
+    require(scanned.ai8Live->setpointsValid && scanned.ai8Live->setpointsC[0] == 40 &&
+        scanned.ai8Live->setpointsC[1] == -15.5 && std::isnan(scanned.ai8Live->setpointsC[2]),
+        "scan accumulates independent channel targets without inventing unread channels");
+    scanReading.ai8DeviceStatus = 3;
+    scanned = scan.accept(scanReading);
+    require(scanned.ai8Live->setpointsC[0] == 40 && std::isnan(scanned.ai8Live->setpointsC[1]),
+        "failed scan clears only the failed channel target");
+    scanReading.timestamp += 500000001;
+    require(std::isnan(scan.accept(scanReading).ai8Live->setpointsC[0]),
+        "expired target uses the same freshness window as its measured temperature");
+    scanReading = aiReading;
+    scanReading.schema = 3; scanReading.ai8Channel = 1;
+    scan.accept(scanReading);
+    scan.resetRate(0x46);
+    scanReading.ai8Channel = 2;
+    require(std::isnan(scan.accept(scanReading).ai8Live->setpointsC[0]),
+        "restarting AI8 clears targets accumulated before the restart");
     aiReading.ai8DeviceStatus=3; sample=adapter.accept(aiReading);
     require(!sample.ai8->measurementValid && sample.ai8->online,"AI8 transport failure isolates stale snapshot");
     aiReading.ai8SetResult=0; require(!adapter.accept(aiReading).ai8->setSucceeded,"zero result without valid bit is not success");

@@ -684,6 +684,7 @@ bool Ai8TemperatureControllerCollector::writePage(const PageData& data, QString 
 
 bool Ai8TemperatureControllerCollector::readLiveData(LiveData& data)
 {
+    data = LiveData{};
     std::vector<quint16> values;
     if (!readRegisters(static_cast<quint16>(Register::MeasuredValueBase),
                        kChannelCount,
@@ -703,6 +704,15 @@ bool Ai8TemperatureControllerCollector::readLiveData(LiveData& data)
         data.measuredC[static_cast<size_t>(index)] = decodeSignedTenths(values[static_cast<size_t>(index)]);
     }
     data.valid = true;
+
+    std::vector<quint16> setpoints;
+    if (readRegisters(static_cast<quint16>(Register::SetpointBase), kChannelCount, setpoints) &&
+        setpoints.size() == kChannelCount)
+    {
+        for (int index = 0; index < kChannelCount; ++index)
+            data.setpointsC[static_cast<size_t>(index)] = decodeSignedTenths(setpoints[static_cast<size_t>(index)]);
+        data.setpointsValid = true;
+    }
 
     std::vector<quint16> alarmValues;
     if (readRegisters(static_cast<quint16>(Register::AlarmStatusBase),

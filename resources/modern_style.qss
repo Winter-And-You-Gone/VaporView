@@ -609,6 +609,24 @@ QFrame#ai8TemperatureOverviewCell QLabel {
     border: none;
 }
 
+QFrame#ai8TemperatureOverviewDivider {
+    background-color: @vv-border;
+    border: none;
+    border-radius: 0px;
+}
+
+QLabel#ai8TemperatureOverviewCaptionLabel {
+    color: @vv-text-muted;
+    font-size: 11px;
+}
+
+QLabel#ai8TemperatureOverviewTargetLabel {
+    color: @vv-hd-ok;
+    font-family: "Consolas", "Monaco", "Courier New", monospace;
+    font-size: 13px;
+    font-weight: 700;
+}
+
 QLabel#temperatureOverviewOutputPercentPill {
     background-color: @vv-surface;
     border: 1px solid @vv-border;

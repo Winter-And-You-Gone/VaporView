@@ -130,6 +130,33 @@ int main()
         return Protocol::groupRegister(reg, group);
     };
 
+    for (int channel = 1; channel <= 8; ++channel)
+    {
+        backend.registers[channelAddress(Protocol::Register::SetpointBase, channel)] =
+            Protocol::encodeSignedTenths(-30.0 + channel);
+        backend.registers[channelAddress(Protocol::Register::MeasuredValueBase, channel)] =
+            Protocol::encodeSignedTenths(20.0 + channel);
+    }
+    Protocol::LiveData live;
+    require(collector.readLiveData(live) && live.valid && live.setpointsValid,
+            "live polling reads eight target temperatures along with measured values");
+    for (int index = 0; index < 8; ++index)
+        require(live.setpointsC[index] == -29.0 + index && live.measuredC[index] == 21.0 + index,
+                "SP polling preserves channel order and negative tenths independently of PV");
+    collector.setRegisterBackendForTest(
+        [&backend](quint16 address, quint16 count, std::vector<quint16>& values) {
+            return address != static_cast<quint16>(Protocol::Register::SetpointBase) && backend.read(address, count, values);
+        }, {});
+    require(collector.readLiveData(live) && live.valid && !live.setpointsValid && live.measuredC[7] == 28.0,
+            "failed SP read clears stale targets without hiding valid measured temperatures");
+    collector.setRegisterBackendForTest(
+        [&backend](quint16 address, quint16 count, std::vector<quint16>& values) {
+            return backend.read(address, count, values);
+        },
+        [&backend](quint16 address, quint16 value, QString *errorMessage) {
+            return backend.writeAndConfirm(address, value, errorMessage);
+        });
+
     backend.registers.clear();
     backend.registers[channelAddress(Protocol::Register::SetpointBase, 1)] =
         Protocol::encodeSignedTenths(30.0);

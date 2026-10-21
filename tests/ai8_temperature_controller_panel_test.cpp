@@ -109,11 +109,12 @@ int main(int argc, char **argv)
         overview.findChildren<QLabel *>(QStringLiteral("ai8TemperatureOverviewChannelLabel"));
     const QList<QLabel *> overviewValueLabels =
         overview.findChildren<QLabel *>(QStringLiteral("ai8TemperatureOverviewValueLabel"));
+    const auto overviewTargets = overview.findChildren<QLabel *>(QStringLiteral("ai8TemperatureOverviewTargetLabel"));
     const QList<QFrame *> overviewCells =
         overview.findChildren<QFrame *>(QStringLiteral("ai8TemperatureOverviewCell"));
     auto *overviewLayout = qobject_cast<QGridLayout *>(overview.layout());
-    require(overviewChannelLabels.size() == 8 && overviewValueLabels.size() == 8,
-            "AI-8288 overview exposes one direct temperature value for each of eight channels");
+    require(overviewChannelLabels.size() == 8 && overviewValueLabels.size() == 8 && overviewTargets.size() == 8,
+            "AI-8288 overview exposes target and current temperatures for all eight channels");
     require(overviewCells.size() == 8,
             "AI-8288 overview wraps each channel in its own capsule frame");
     for (QFrame *cell : overviewCells)
@@ -121,7 +122,7 @@ int main(int argc, char **argv)
         require(cell->frameShape() == QFrame::NoFrame &&
                     cell->testAttribute(Qt::WA_StyledBackground) &&
                     cell->height() >= 36 && cell->width() >= 100 &&
-                    qobject_cast<QVBoxLayout *>(cell->layout()) != nullptr,
+                    qobject_cast<QGridLayout *>(cell->layout()) != nullptr,
                 "AI-8288 overview channel capsules use a stable styled frame");
     }
     require(overviewLayout != nullptr && overviewLayout->rowCount() == 2 &&
@@ -142,26 +143,29 @@ int main(int argc, char **argv)
     for (QLabel *channelLabel : overviewChannelLabels)
     {
         const int index = channelLabel->property("channelIndex").toInt();
-        require(channelLabel->text() == QStringLiteral("通道 %1").arg(index + 1),
+        require(channelLabel->text() == QStringLiteral("通\n道\n%1").arg(index + 1),
                 "AI-8288 overview identifies each capsule with its channel number");
         auto *cell = qobject_cast<QFrame *>(channelLabel->parentWidget());
-        auto *cellLayout = cell ? qobject_cast<QVBoxLayout *>(cell->layout()) : nullptr;
+        auto *cellLayout = cell ? qobject_cast<QGridLayout *>(cell->layout()) : nullptr;
         auto *valueLabel = cell ? cell->findChild<QLabel *>(
                                      QStringLiteral("ai8TemperatureOverviewValueLabel"))
                                 : nullptr;
-        require(cellLayout != nullptr && cellLayout->count() == 2 && valueLabel != nullptr &&
-                    cellLayout->contentsMargins().top() == 1 &&
-                    cellLayout->contentsMargins().bottom() == 1 &&
-                    channelLabel->geometry().top() < valueLabel->geometry().top() &&
-                    (channelLabel->alignment() & Qt::AlignHCenter) &&
-                    (valueLabel->alignment() & Qt::AlignHCenter),
-                "AI-8288 overview capsules stack the channel number above its temperature");
+        auto *target = cell->findChild<QLabel *>(QStringLiteral("ai8TemperatureOverviewTargetLabel"));
+        auto *divider = cell->findChild<QFrame *>(QStringLiteral("ai8TemperatureOverviewDivider"));
+        require(cellLayout && target && valueLabel && divider &&
+                    channelLabel->geometry().right() < divider->geometry().left() &&
+                    divider->geometry().right() < target->geometry().left() &&
+                    target->geometry().bottom() < valueLabel->geometry().top() &&
+                    channelLabel->height() >= channelLabel->sizeHint().height(),
+                "vertical channel rail is separated from the two temperature rows without clipping");
     }
     VaporView::Ai8TemperatureControllerProtocol::LiveData overviewLiveData;
     overviewLiveData.valid = true;
+    overviewLiveData.setpointsValid = true;
     for (int index = 0; index < VaporView::Ai8TemperatureControllerProtocol::kChannelCount; ++index)
     {
         overviewLiveData.measuredC[static_cast<size_t>(index)] = 20.0 + index * 0.25;
+        overviewLiveData.setpointsC[static_cast<size_t>(index)] = index ? 25.0 + index : -3276.8;
     }
     overview.applyLiveData(overviewLiveData);
     QApplication::processEvents();
@@ -172,10 +176,17 @@ int main(int argc, char **argv)
                     valueLabel->text() == QString::number(20.0 + index * 0.25, 'f', 1) +
                         QStringLiteral(" °C") &&
                     valueLabel->accessibleName() ==
-                        QStringLiteral("通道 %1 %2")
+                        QStringLiteral("通道 %1 当前温度 %2")
                             .arg(index + 1)
                             .arg(valueLabel->text()),
                 "AI-8288 overview formats each live channel temperature and exposes it to accessibility tools");
+    }
+    for (QLabel *target : overviewTargets)
+    {
+        const int index = target->property("channelIndex").toInt();
+        require(target->text() == QString::number(index ? 25.0 + index : -3276.8, 'f', 1) + QStringLiteral(" °C") &&
+                    target->width() >= target->fontMetrics().horizontalAdvance(target->text()),
+                "each channel displays its own target including a full-width negative temperature");
     }
     const double thresholdValues[] = {40.0, 40.1, 60.0, 60.1, -5.0,
         std::numeric_limits<double>::quiet_NaN(),
@@ -198,10 +209,20 @@ int main(int argc, char **argv)
     for (QLabel *channelLabel : overviewChannelLabels)
     {
         const int index = channelLabel->property("channelIndex").toInt();
-        require(channelLabel->text() == QStringLiteral("Channel %1").arg(index + 1),
-                "AI-8288 overview uses full channel labels in English");
+        require(channelLabel->text() == QStringLiteral("CH\n%1").arg(index + 1),
+                "AI-8288 overview localizes the compact vertical channel rail");
     }
+    overviewLiveData.setpointsValid = false;
+    overviewLiveData.detailedChannel = 3;
+    overviewLiveData.setpointC = -15.5;
+    overview.applyLiveData(overviewLiveData);
+    for (QLabel *target : overviewTargets)
+        require(target->text() == (target->property("channelIndex").toInt() == 2
+                    ? QStringLiteral("-15.5 °C") : QStringLiteral("---")),
+                "legacy single-channel details cannot leak a target into another channel");
     overview.applyLiveData({});
+    for (QLabel *target : overviewTargets)
+        require(target->text() == QStringLiteral("---"), "unavailable data clears target temperatures");
     for (QLabel *valueLabel : overviewValueLabels)
     {
         require(valueLabel->text() == QStringLiteral("---") &&

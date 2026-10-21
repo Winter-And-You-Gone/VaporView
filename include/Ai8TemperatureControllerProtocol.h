@@ -209,6 +209,9 @@ struct PageData
 struct LiveData
 {
     std::array<double, kChannelCount> measuredC{};
+    // Per-channel SP readbacks; NaN marks a channel absent from an FPGA scan.
+    std::array<double, kChannelCount> setpointsC{};
+    bool setpointsValid = false;
     std::array<ChannelControlState, kChannelCount> controlStates{};
     std::array<quint16, kAlarmStatusRegisterCount> alarmStatusRegisters{};
     bool valid = false;
