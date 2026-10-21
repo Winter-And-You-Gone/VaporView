@@ -813,24 +813,23 @@ void MainWindow::updateConfigCardHeightForSourceMode()
     const auto naturalCardHeight = [](QWidget *card) {
         return card ? std::max(card->minimumSizeHint().height(), card->sizeHint().height()) : 0;
     };
-    // Share the cards' content-safe floor; the stacked temperature column
-    // still determines the height of the complete overview row.
-    const int sharedCardMinimumHeight = std::max({minimumHeight, naturalCardHeight(state_->config_group_),
-        naturalCardHeight(state_->temperature_overview_group_), naturalCardHeight(state_->env_group_)});
-    const int laserOverviewHeight = sharedCardMinimumHeight;
+    const int naturalLaserHeight = naturalCardHeight(state_->temperature_overview_group_);
     const int ai8OverviewHeight = naturalCardHeight(state_->ai8_temperature_overview_group_);
-    const int overviewColumnHeight = laserOverviewHeight > 0 && ai8OverviewHeight > 0
-        ? laserOverviewHeight + kTopLevelCardGap + ai8OverviewHeight
-        : std::max(laserOverviewHeight, ai8OverviewHeight);
-    minimumHeight = std::max(sharedCardMinimumHeight, overviewColumnHeight);
+    const int overviewGap = naturalLaserHeight > 0 && ai8OverviewHeight > 0
+        ? std::max(0, state_->home_temperature_overview_column_->layout()->spacing()) : 0;
+    // Match the complete temperature stack (including its gap) to the environment card.
+    const int overviewColumnMinimumHeight = std::max(
+        naturalLaserHeight + overviewGap + ai8OverviewHeight, naturalCardHeight(state_->env_group_));
+    const int laserOverviewHeight = overviewColumnMinimumHeight - overviewGap - ai8OverviewHeight;
+    minimumHeight = std::max(minimumHeight, overviewColumnMinimumHeight);
     const bool environmentInOverview = state_->home_overview_splitter_ &&
         state_->home_overview_splitter_->indexOf(state_->env_group_) >= 0;
-    state_->config_group_->setProperty(kMainCardMinimumHeightProperty, sharedCardMinimumHeight);
-    state_->config_group_->setMinimumHeight(sharedCardMinimumHeight);
+    state_->config_group_->setProperty(kMainCardMinimumHeightProperty, minimumHeight);
+    state_->config_group_->setMinimumHeight(minimumHeight);
     if (state_->env_group_)
     {
-        state_->env_group_->setProperty(kMainCardMinimumHeightProperty, sharedCardMinimumHeight);
-        state_->env_group_->setMinimumHeight(sharedCardMinimumHeight);
+        state_->env_group_->setProperty(kMainCardMinimumHeightProperty, overviewColumnMinimumHeight);
+        state_->env_group_->setMinimumHeight(overviewColumnMinimumHeight);
     }
     if (state_->home_overview_splitter_)
     {
@@ -839,17 +838,18 @@ void MainWindow::updateConfigCardHeightForSourceMode()
         state_->home_overview_splitter_->setProperty(kMainCardMinimumHeightProperty,
                                                      contentMinimumHeight);
         const int targetHeight = std::max(currentHeight, contentMinimumHeight);
-        if (state_->config_group_->minimumHeight() != sharedCardMinimumHeight ||
+        if (state_->config_group_->minimumHeight() != minimumHeight ||
             state_->config_group_->maximumHeight() != targetHeight)
         {
-            state_->config_group_->setMinimumHeight(sharedCardMinimumHeight);
+            state_->config_group_->setMinimumHeight(minimumHeight);
             state_->config_group_->setMaximumHeight(targetHeight);
         }
         if (state_->home_temperature_overview_column_ &&
-            (state_->home_temperature_overview_column_->minimumHeight() != targetHeight ||
+            (state_->home_temperature_overview_column_->minimumHeight() != overviewColumnMinimumHeight ||
              state_->home_temperature_overview_column_->maximumHeight() != targetHeight))
         {
-            state_->home_temperature_overview_column_->setFixedHeight(targetHeight);
+            state_->home_temperature_overview_column_->setMinimumHeight(overviewColumnMinimumHeight);
+            state_->home_temperature_overview_column_->setMaximumHeight(targetHeight);
         }
         if (state_->temperature_overview_group_ &&
             (state_->temperature_overview_group_->minimumHeight() != laserOverviewHeight ||
