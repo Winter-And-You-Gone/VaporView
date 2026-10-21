@@ -4322,6 +4322,157 @@ void requireHomeEnvironmentCardLayout(MainWindow& window, bool requireSideBySide
             "home sensor cards return to their original wide-window layout");
 }
 
+void requireHomeMaximumValueWidths()
+{
+    MainWindow window;
+    window.resize(2400, 1100);
+    window.show();
+    require(waitForWindowExposed(&window), "maximum-value test window becomes exposed");
+    processEventsFor(200);
+    for (QTimer *timer : window.findChildren<QTimer *>(QString(), Qt::FindDirectChildrenOnly))
+        if (timer->interval() == 100)
+            timer->stop();
+    auto *splitter = window.findChild<QSplitter *>(QStringLiteral("homeSensorCardSplitter"));
+    auto *epsilon = static_cast<VaporView::Ground::Widgets::EpsilonPanel *>(
+        splitter->widget(0)->findChild<QWidget *>(QStringLiteral("epsilonPanel")));
+    auto *environment = splitter->widget(1);
+    auto *ptb = environment->findChild<PtbPanel *>();
+    auto *hmp = environment->findChild<HmpPanel *>();
+    auto *lidar = environment->findChild<LidarPanel *>();
+    require(epsilon && ptb && hmp && lidar, "maximum-value test exposes both cards");
+    VaporView::EpsilonData sample;
+    sample.valid = true;
+    sample.gnss_fix_code = 6;
+    sample.gnss_fix_text = "RTK_FIXED";
+    sample.gnss_satellites = 99;
+    sample.device_timestamp_us = std::numeric_limits<uint64_t>::max();
+    sample.raw_frame_count = std::numeric_limits<uint64_t>::max();
+    sample.dropped_frame_count = std::numeric_limits<uint64_t>::max();
+    sample.latitude_deg = -89.99999999;
+    sample.longitude_deg = -179.99999999;
+    sample.height_m = -9999.999;
+    sample.hacc_m = sample.vacc_m = 9999.999;
+    sample.vel_n_mps = sample.vel_e_mps = sample.vel_d_mps = -999.999;
+    sample.imu_acc_x_mps2 = sample.imu_acc_y_mps2 = sample.imu_acc_z_mps2 = -999.999;
+    sample.imu_gyr_x_radps = sample.imu_gyr_y_radps = sample.imu_gyr_z_radps = -999.9999;
+    sample.roll_deg = sample.yaw_deg = -180;
+    sample.pitch_deg = -90;
+    sample.filter_status_bits = 0xffff;
+    sample.attitude_source_count = 3;
+    sample.attitude_delta_max_deg = sample.attitude_delta_ahrs_euler_deg =
+        sample.attitude_delta_ahrs_quat_deg = sample.attitude_delta_euler_quat_deg = 180;
+    VaporView::PtbData pressure;
+    pressure.valid = true;
+    pressure.pressure_hpa = -1100;
+    VaporView::HmpData humidity;
+    humidity.valid = true;
+    humidity.temperature = humidity.humidity = -100;
+    VaporView::LidarData distance;
+    distance.valid = true;
+    distance.distance_m = -9999.99;
+    distance.signal_strength = 65535;
+    const auto requireLabelsFit = [](QWidget *root) {
+        for (QLabel *label : root->findChildren<QLabel *>())
+        {
+            if (label->text().isEmpty() || !label->isVisibleTo(root))
+                continue;
+            const QRect textRect = label->contentsRect().adjusted(
+                label->margin(), label->margin(), -label->margin(), -label->margin());
+            const QRect bounds = label->fontMetrics().boundingRect(
+                textRect, label->alignment() | (label->wordWrap() ? Qt::TextWordWrap : 0), label->text());
+            if (bounds.width() > textRect.width() + 2 || bounds.height() > textRect.height() + 2)
+                std::cerr << "Clipped maximum value: " << label->text().toStdString()
+                          << " text=" << bounds.width() << 'x' << bounds.height()
+                          << " label=" << textRect.width() << 'x' << textRect.height() << '\n';
+            require(bounds.width() <= textRect.width() + 2 && bounds.height() <= textRect.height() + 2,
+                    "maximum-value text fits inside its label at the safe minimum width");
+            const QRect geometry(label->mapTo(root, QPoint()), label->size());
+            if (!root->rect().contains(geometry))
+                std::cerr << "Outside minimum panel: " << label->text().toStdString()
+                          << " panel=" << root->objectName().toStdString() << ' '
+                          << root->width() << 'x' << root->height()
+                          << " label=" << geometry.x() << ',' << geometry.y() << ' '
+                          << geometry.width() << 'x' << geometry.height() << '\n';
+            require(root->rect().contains(geometry), "maximum-value labels stay inside their panel");
+        }
+    };
+    bool englishActive = false;
+    for (int scale : {100, 130})
+    {
+        for (QAction *action : window.findChildren<QAction *>())
+            if (action->data().toInt() == scale)
+            {
+                action->trigger();
+                break;
+            }
+        processEventsFor(250);
+        window.resize(2400, 1100);
+        for (bool english : {false, true})
+        {
+            if (englishActive != english)
+            {
+                require(QMetaObject::invokeMethod(&window, "onSwitchLanguage", Qt::DirectConnection),
+                        "maximum-value test switches the complete window language");
+                englishActive = english;
+                processEventsFor(250);
+            }
+            epsilon->updateData(sample);
+            ptb->updateData(pressure);
+            hmp->updateData(humidity);
+            lidar->updateData(distance);
+            for (double rate : {9999.9, 10000.0})
+            {
+                ptb->updateRate(rate);
+                hmp->updateRate(rate);
+                lidar->updateRate(rate);
+                processEventsFor(100);
+                bool hasMaximumCount = false;
+                bool hasNegativeTriple = false;
+                for (QLabel *label : epsilon->findChildren<QLabel *>())
+                {
+                    hasMaximumCount = hasMaximumCount || label->text().contains(QStringLiteral("18446744073709551615"));
+                    hasNegativeTriple = hasNegativeTriple || label->text() == QStringLiteral("-999.999/-999.999/-999.999");
+                }
+                require(hasMaximumCount && hasNegativeTriple, "maximum-value fixture remains populated after language and scale changes");
+                for (QWidget *panel : {static_cast<QWidget *>(epsilon), static_cast<QWidget *>(ptb),
+                                       static_cast<QWidget *>(hmp), static_cast<QWidget *>(lidar)})
+                {
+                    panel->resize(panel == epsilon ? epsilon->preferredWrappedWidth() : panel->minimumSizeHint().width(),
+                                  panel->height());
+                    activateLayouts(panel);
+                    panel->resize(panel->width(), std::max(panel->height(), panel->sizeHint().height()));
+                    activateLayouts(panel);
+                    requireLabelsFit(panel);
+                }
+            }
+            const int reservedWidth = epsilon->preferredWrappedWidth();
+            sample.vel_n_mps = sample.vel_e_mps = sample.vel_d_mps = -1e24;
+            epsilon->updateData(sample);
+            require(epsilon->preferredWrappedWidth() > reservedWidth,
+                    "oversized actual values exceed the reserved EPSILON format");
+            require(processEventsUntil(1000, [splitter, epsilon]() {
+                        const QMargins margins = splitter->widget(0)->layout()->contentsMargins();
+                        return splitter->widget(0)->maximumWidth() >= epsilon->preferredWrappedWidth() +
+                            margins.left() + margins.right();
+                    }), "EPSILON card expands when actual values exceed the reserved format");
+            sample.vel_n_mps = sample.vel_e_mps = sample.vel_d_mps = -999.999;
+        }
+    }
+    if (englishActive)
+    {
+        require(QMetaObject::invokeMethod(&window, "onSwitchLanguage", Qt::DirectConnection),
+                "maximum-value test restores the original language");
+        processEventsFor(250);
+    }
+    for (QAction *action : window.findChildren<QAction *>())
+        if (action->data().toInt() == 100)
+        {
+            action->trigger();
+            break;
+        }
+    window.close();
+}
+
 void requireHomeSensorLayoutAfterSidebarRestore()
 {
     MainWindow window;
@@ -4398,9 +4549,16 @@ void requireHomeSensorLayoutAfterSidebarRestore()
     for (int scale : {100, 130})
     {
         setScale(scale);
+        dragSidebarTo(0);
+        processEventsFor(200);
+        const QMargins epsilonMargins = cards->widget(0)->layout()->contentsMargins();
+        const int readableRowWidth = std::max(cards->widget(0)->minimumSizeHint().width(),
+            panel->preferredWrappedWidth() + epsilonMargins.left() + epsilonMargins.right()) +
+            cards->handleWidth() + std::max(cards->widget(1)->minimumWidth(), cards->widget(1)->minimumSizeHint().width());
+        const int readableWindowWidth = window.width() - cards->parentWidget()->width() + readableRowWidth + 50;
         for (int extraWidth : {0, 50, 100})
         {
-            window.resize((scale == 100 ? 1400 : 1600) + extraWidth, 900);
+            window.resize(readableWindowWidth + extraWidth, 900);
             processEventsFor(100);
             dragSidebarTo(400);
             maximize->click();
@@ -4440,6 +4598,7 @@ void requireHomeSensorLayoutAfterSidebarRestore()
 
 void requireHomeThemeLayoutStability()
 {
+    requireHomeMaximumValueWidths();
     requireHomeSensorLayoutAfterSidebarRestore();
     MainWindow window;
     window.setWindowTitle(QStringLiteral("VaporView"));
@@ -4451,7 +4610,7 @@ void requireHomeThemeLayoutStability()
     processEventsFor(300);
     activateLayouts(&window);
 
-    window.resize(1400, 1000);
+    window.resize(2000, 1000);
     activateLayouts(&window);
     requireHomeEnvironmentCardLayout(window, true);
     window.resize(1280, 800);

@@ -156,7 +156,6 @@ class PtbPanel : public QWidget
 
 public:
     explicit PtbPanel(QWidget *parent = nullptr);
-    QSize minimumSizeHint() const override;
     void updateData(const VaporView::PtbData& ptb_data);
     void updateRate(double hz);
     void setEnglish(bool english);
@@ -179,7 +178,6 @@ class HmpPanel : public QWidget
 
 public:
     explicit HmpPanel(QWidget *parent = nullptr);
-    QSize minimumSizeHint() const override;
     void updateData(const VaporView::HmpData& hmp_data);
     void updateRate(double hz);
     void setEnglish(bool english);
@@ -208,7 +206,6 @@ class LidarPanel : public QWidget
 
 public:
     explicit LidarPanel(QWidget *parent = nullptr);
-    QSize minimumSizeHint() const override;
     void updateData(const VaporView::LidarData& lidar_data);
     void updateRate(double hz);
     void setEnglish(bool english);

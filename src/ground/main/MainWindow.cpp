@@ -801,6 +801,25 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
     }
 
     const QEvent::Type eventType = event->type();
+    if (eventType == QEvent::LayoutRequest &&
+        (watched == state_->epsilon_group_ || watched == state_->env_group_) &&
+        state_->epsilon_panel_ && state_->sensor_card_splitter_ && state_->sensor_row_widget_ &&
+        state_->epsilon_group_ && state_->env_group_ && state_->epsilon_group_->layout())
+    {
+        const QMargins margins = state_->epsilon_group_->layout()->contentsMargins();
+        const int readableWidth = state_->epsilon_panel_->preferredWrappedWidth() +
+            margins.left() + margins.right();
+        const bool capped = !state_->sensor_card_splitter_
+            ->property(kHomeSensorSplitterUserResizedProperty).toBool() &&
+            readableWidth + scalePixels(16) > state_->epsilon_group_->maximumWidth();
+        const int rowMinimumWidth = std::max(readableWidth, state_->epsilon_group_->minimumSizeHint().width()) +
+            state_->sensor_card_splitter_->handleWidth() +
+            std::max(state_->env_group_->minimumWidth(), state_->env_group_->minimumSizeHint().width());
+        const bool rowTooNarrow = state_->sensor_card_splitter_->orientation() == Qt::Horizontal &&
+            state_->sensor_row_widget_->contentsRect().width() < rowMinimumWidth;
+        if (capped || rowTooNarrow)
+            queueResponsiveHomeLayoutRefresh();
+    }
     if (state_->main_cards_scroll_area_ &&
         watched == state_->main_cards_scroll_area_->viewport() &&
         eventType == QEvent::Resize &&

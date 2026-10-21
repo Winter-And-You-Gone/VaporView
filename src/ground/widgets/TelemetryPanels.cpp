@@ -30,7 +30,6 @@ constexpr qreal kEnvironmentTimeXAxisLabelGap = 4.0;
 constexpr qreal kEnvironmentXAxisLabelRightInset = 2.0;
 constexpr qreal kEnvironmentXAxisTickLength = 3.0;
 constexpr qint64 kEnvironmentTimeAxisMsecsPerInterval = 1000;
-constexpr int kEnvironmentPanelSideBySideMinimumWidth = 340;
 
 QFont numericFontFrom(const QFont& base)
 {
@@ -1293,13 +1292,6 @@ PtbPanel::PtbPanel(QWidget *parent)
     setupUi();
 }
 
-QSize PtbPanel::minimumSizeHint() const
-{
-    QSize hint = QWidget::minimumSizeHint();
-    hint.setWidth(std::min(hint.width(), kEnvironmentPanelSideBySideMinimumWidth));
-    return hint;
-}
-
 void PtbPanel::setupUi()
 {
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
@@ -1311,7 +1303,7 @@ void PtbPanel::setupUi()
     rate_label_->setObjectName("rateLabel");
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     rate_label_->setMinimumHeight(20);
-    setFixedNumericLabelWidth(rate_label_, {QStringLiteral("999.9 Hz"), QStringLiteral("-- Hz")}, 2);
+    setFixedNumericLabelWidth(rate_label_, {QStringLiteral("9999.9 Hz"), QStringLiteral("    -- Hz")}, 2);
 
     auto *pressLayout = new QHBoxLayout();
     pressLayout->setSpacing(1);
@@ -1323,7 +1315,7 @@ void PtbPanel::setupUi()
     pressure_label_->setObjectName("highlightedValue");
     pressure_label_->setMinimumHeight(20);
     pressure_label_->setAlignment(Qt::AlignCenter | Qt::AlignVCenter);
-    setMinimumNumericLabelWidth(pressure_label_, {QStringLiteral("1100.00 hPa"), QStringLiteral("--- hPa")}, 4);
+    setMinimumNumericLabelWidth(pressure_label_, {QStringLiteral("-1100.00 hPa"), QStringLiteral("--- hPa")}, 4);
     pressLayout->addWidget(pressure_label_, 1);
     pressLayout->addWidget(rate_label_);
     layout->addLayout(pressLayout);
@@ -1346,6 +1338,7 @@ void PtbPanel::updateRate(double hz)
         rate_label_->setText((hz > 0.0 && std::isfinite(hz))
             ? fixedDecimalWithUnit(hz, 1, 6, QStringLiteral("Hz"))
             : QStringLiteral("%1 Hz").arg(fixedTextField(QStringLiteral("--"), 6)));
+        refreshFixedNumericLabelWidth(rate_label_);
     }
 }
 
@@ -1380,6 +1373,7 @@ void PtbPanel::updateData(const VaporView::PtbData& ptb_data)
         pressure_label_->setProperty("data-valid", false);
         polishNumericLabel(pressure_label_);
     }
+    setMinimumNumericLabelWidth(pressure_label_, {QStringLiteral("-1100.00 hPa"), QStringLiteral("--- hPa")}, 4);
 }
 
 HmpPanel::HmpPanel(QWidget *parent)
@@ -1398,13 +1392,6 @@ HmpPanel::HmpPanel(QWidget *parent)
     setupUi();
 }
 
-QSize HmpPanel::minimumSizeHint() const
-{
-    QSize hint = QWidget::minimumSizeHint();
-    hint.setWidth(std::min(hint.width(), kEnvironmentPanelSideBySideMinimumWidth));
-    return hint;
-}
-
 void HmpPanel::setupUi()
 {
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
@@ -1416,12 +1403,12 @@ void HmpPanel::setupUi()
     rate_label_->setObjectName("rateLabel");
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     rate_label_->setMinimumHeight(20);
-    setFixedNumericLabelWidth(rate_label_, {QStringLiteral("999.9 Hz"), QStringLiteral("-- Hz")}, 2);
+    setFixedNumericLabelWidth(rate_label_, {QStringLiteral("9999.9 Hz"), QStringLiteral("    -- Hz")}, 2);
     humidity_rate_label_ = new VaporView::VisualTextLabel(this);
     humidity_rate_label_->setObjectName("rateLabel");
     humidity_rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     humidity_rate_label_->setMinimumHeight(20);
-    setFixedNumericLabelWidth(humidity_rate_label_, {QStringLiteral("999.9 Hz"), QStringLiteral("-- Hz")}, 2);
+    setFixedNumericLabelWidth(humidity_rate_label_, {QStringLiteral("9999.9 Hz"), QStringLiteral("    -- Hz")}, 2);
 
     auto *tempLayout = new QHBoxLayout();
     tempLayout->setSpacing(1);
@@ -1432,7 +1419,7 @@ void HmpPanel::setupUi()
     temperature_label_ = new QLabel("--- °C", this);
     temperature_label_->setObjectName("highlightedValue");
     temperature_label_->setMinimumHeight(20);
-    setFixedNumericLabelWidth(temperature_label_, {QStringLiteral("-99.9 °C"), QStringLiteral("100.0 °C"), QStringLiteral("--- °C")}, 4);
+    setFixedNumericLabelWidth(temperature_label_, {QStringLiteral("-100.0 °C"), QStringLiteral("--- °C")}, 4);
     tempLayout->addWidget(temperature_label_);
     tempLayout->addStretch();
     tempLayout->addWidget(rate_label_);
@@ -1455,7 +1442,7 @@ void HmpPanel::setupUi()
     humidity_label_ = new QLabel("--- %RH", this);
     humidity_label_->setObjectName("highlightedValue");
     humidity_label_->setMinimumHeight(20);
-    setFixedNumericLabelWidth(humidity_label_, {QStringLiteral("100.0 %RH"), QStringLiteral("--- %RH")}, 4);
+    setFixedNumericLabelWidth(humidity_label_, {QStringLiteral("-100.0 %RH"), QStringLiteral("--- %RH")}, 4);
     humidLayout->addWidget(humidity_label_);
     humidLayout->addStretch();
     humidLayout->addWidget(humidity_rate_label_);
@@ -1482,6 +1469,7 @@ void HmpPanel::updateRate(double hz)
         if (label)
         {
             label->setText(rateText);
+            refreshFixedNumericLabelWidth(label);
         }
     }
 }
@@ -1550,13 +1538,6 @@ LidarPanel::LidarPanel(QWidget *parent)
     setupUi();
 }
 
-QSize LidarPanel::minimumSizeHint() const
-{
-    QSize hint = QWidget::minimumSizeHint();
-    hint.setWidth(std::min(hint.width(), kEnvironmentPanelSideBySideMinimumWidth));
-    return hint;
-}
-
 void LidarPanel::setupUi()
 {
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
@@ -1568,7 +1549,7 @@ void LidarPanel::setupUi()
     rate_label_->setObjectName("rateLabel");
     rate_label_->setMinimumHeight(20);
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    setFixedNumericLabelWidth(rate_label_, {QStringLiteral("999.9 Hz"), QStringLiteral("-- Hz")}, 2);
+    setFixedNumericLabelWidth(rate_label_, {QStringLiteral("9999.9 Hz"), QStringLiteral("    -- Hz")}, 2);
 
     auto *distanceLayout = new QHBoxLayout();
     distanceLayout->setSpacing(1);
@@ -1579,7 +1560,7 @@ void LidarPanel::setupUi()
     distance_label_ = new QLabel("--- m", this);
     distance_label_->setObjectName("highlightedValue");
     distance_label_->setMinimumHeight(20);
-    setFixedNumericLabelWidth(distance_label_, {QStringLiteral("9999.99 m"), QStringLiteral("--- m")}, 2);
+    setFixedNumericLabelWidth(distance_label_, {QStringLiteral("-9999.99 m"), QStringLiteral("--- m")}, 2);
     distanceLayout->addWidget(distance_label_);
     distanceLayout->addSpacing(10);
     strength_lbl_ = new QLabel(this);
@@ -1605,6 +1586,7 @@ void LidarPanel::updateRate(double hz)
         rate_label_->setText((hz > 0.0 && std::isfinite(hz))
             ? fixedDecimalWithUnit(hz, 1, 6, QStringLiteral("Hz"))
             : QStringLiteral("%1 Hz").arg(fixedTextField(QStringLiteral("--"), 6)));
+        refreshFixedNumericLabelWidth(rate_label_);
     }
 }
 

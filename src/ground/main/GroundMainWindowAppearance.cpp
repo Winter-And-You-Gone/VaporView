@@ -1107,7 +1107,7 @@ void MainWindow::updateResponsiveHomeLayout()
     const bool compactCardsFitSideBySide =
         sensorAvailableWidth > 0 &&
         sensorAvailableWidth >= compactEpsilonMinimumWidth + sensorCardGap + environmentMinimumWidth;
-    const bool stackSensorCards = compact && !compactCardsFitSideBySide;
+    const bool stackSensorCards = !compactCardsFitSideBySide;
 
     const Qt::Orientation sensorOrientation =
         stackSensorCards ? Qt::Vertical : Qt::Horizontal;

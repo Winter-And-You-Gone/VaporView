@@ -564,17 +564,19 @@ private:
 
     QStringList valueWidthSamplesForSection(const QString& key) const
     {
+        // Reserve full counters and signed fixed-point formats before data arrives.
+        // syncSectionColumnWidths also measures live values that exceed these samples.
         if (key == QStringLiteral("status"))
         {
             return is_english_
                 ? QStringList{QStringLiteral("2026-07-01T23:59:59.999Z"),
-                              QStringLiteral("999999999 us"),
-                              QStringLiteral("raw 9999 / dropped 999"),
+                              QStringLiteral("18446744073709551615 us"),
+                              QStringLiteral("raw 18446744073709551615 / dropped 18446744073709551615"),
                               QStringLiteral("0X0060 initialized / position fusion active"),
                               QStringLiteral("Yes")}
                 : QStringList{QStringLiteral("2026-07-01T23:59:59.999Z"),
-                              QStringLiteral("999999999 us"),
-                              QStringLiteral("原始 9999 / 丢帧 999"),
+                              QStringLiteral("18446744073709551615 us"),
+                              QStringLiteral("原始 18446744073709551615 / 丢帧 18446744073709551615"),
                               QStringLiteral("0X0060 已初始化 / 定位融合中"),
                               QStringLiteral("是")};
         }
@@ -584,21 +586,19 @@ private:
                                QStringLiteral("99"),
                                QStringLiteral("-179.99999999"),
                                QStringLiteral("-9999.999"),
-                               QStringLiteral("0.999m/0.999m")};
+                               QStringLiteral("9999.999m/9999.999m")};
         }
         if (key == QStringLiteral("motion"))
         {
             return is_english_
-                ? QStringList{QStringLiteral("-12.345/12.345/-12.345"),
-                              QStringLiteral("-12.345/-12.345/12.345"),
-                              QStringLiteral("-0.1234/-0.1234/0.1234"),
-                              QStringLiteral("-179.99/-89.99/359.99"),
-                              QStringLiteral("max 0.999° (41-63 0.999°, 41-64 0.999°, 63-64 0.999°)")}
-                : QStringList{QStringLiteral("-12.345/12.345/-12.345"),
-                              QStringLiteral("-12.345/-12.345/12.345"),
-                              QStringLiteral("-0.1234/-0.1234/0.1234"),
-                              QStringLiteral("-179.99/-89.99/359.99"),
-                              QStringLiteral("最大 0.999°（41-63 0.999°，41-64 0.999°，63-64 0.999°）")};
+                ? QStringList{QStringLiteral("-999.999/-999.999/-999.999"),
+                              QStringLiteral("-999.9999/-999.9999/-999.9999"),
+                              QStringLiteral("-180.00/-90.00/-180.00"),
+                              QStringLiteral("max 180.000° (41-63 180.000°, 41-64 180.000°, 63-64 180.000°)")}
+                : QStringList{QStringLiteral("-999.999/-999.999/-999.999"),
+                              QStringLiteral("-999.9999/-999.9999/-999.9999"),
+                              QStringLiteral("-180.00/-90.00/-180.00"),
+                              QStringLiteral("最大 180.000°（41-63 180.000°，41-64 180.000°，63-64 180.000°）")};
         }
         return {};
     }

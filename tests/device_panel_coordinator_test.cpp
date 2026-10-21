@@ -125,8 +125,9 @@ void requireReadableLabelGap(QWidget& panel,
                              const char *message)
 {
     require(leftLabel != nullptr && rightLabel != nullptr, message);
+    // Short readings leave room inside the numeric field for the longest signed value.
     const int gap = visibleTextLeftInPanel(rightLabel, panel) -
-                    visibleTextRightInPanel(leftLabel, panel);
+                    leftLabel->mapTo(&panel, QPoint(leftLabel->width(), 0)).x();
     require(gap >= minimumGap && gap <= maximumGap, message);
 }
 
