@@ -5239,11 +5239,11 @@ void MainWindow::setupDataPanels()
     env_group->setFixedHeight(sensorCardHeight);
     state_->sensor_row_widget_->setMinimumHeight(sensorCardHeight);
 
-    state_->sensor_card_splitter_->addWidget(env_group);
+    state_->sensor_card_splitter_->insertWidget(0, env_group);
     state_->sensor_card_splitter_->setCollapsible(0, false);
     state_->sensor_card_splitter_->setCollapsible(1, false);
-    state_->sensor_card_splitter_->setStretchFactor(0, kSensorNavigationStretch);
-    state_->sensor_card_splitter_->setStretchFactor(1, kSensorEnvironmentStretch);
+    state_->sensor_card_splitter_->setStretchFactor(0, kSensorEnvironmentStretch);
+    state_->sensor_card_splitter_->setStretchFactor(1, kSensorNavigationStretch);
     state_->sensor_layout_->addWidget(state_->sensor_card_splitter_, 1);
     state_->sensor_card_splitter_->handle(1)->installEventFilter(this);
     connect(state_->sensor_card_splitter_, &QSplitter::splitterMoved, this, [this]() {

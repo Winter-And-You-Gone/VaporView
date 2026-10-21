@@ -1035,18 +1035,18 @@ void requireHomeSensorCardSplitterResizable(MainWindow& window)
     const QList<int> originalSizes = splitter->sizes();
     require(originalSizes.size() == 2,
             "home sensor card splitter exposes two card widths");
-    QWidget *environmentCard = splitter->widget(1);
+    QWidget *environmentCard = splitter->widget(0);
     require(environmentCard != nullptr,
             "home sensor card splitter exposes the environment card");
-    QWidget *epsilonCard = splitter->widget(0);
+    QWidget *epsilonCard = splitter->widget(1);
     require(epsilonCard != nullptr,
             "home sensor card splitter exposes the EPSILON card");
     const int environmentMinimumWidth = std::max(
         environmentCard->minimumWidth(), environmentCard->minimumSizeHint().width());
     const int epsilonMinimumWidth = std::max(
         epsilonCard->minimumWidth(), epsilonCard->minimumSizeHint().width());
-    const int environmentShrink = originalSizes.at(1) - environmentMinimumWidth;
-    const int environmentExpand = originalSizes.at(0) - epsilonMinimumWidth;
+    const int environmentShrink = originalSizes.at(0) - environmentMinimumWidth;
+    const int environmentExpand = originalSizes.at(1) - epsilonMinimumWidth;
     const bool dragTowardEnvironment = environmentShrink < 40 && environmentExpand >= 40;
     const int availableGrowth = dragTowardEnvironment ? environmentExpand : environmentShrink;
     const int dragDistance = std::min(72, availableGrowth);
@@ -1062,7 +1062,7 @@ void requireHomeSensorCardSplitterResizable(MainWindow& window)
                       Qt::LeftButton,
                       Qt::NoModifier);
     QCoreApplication::sendEvent(handle, &press);
-    const int dragDirection = dragTowardEnvironment ? -1 : 1;
+    const int dragDirection = dragTowardEnvironment ? 1 : -1;
     const QPoint localEnd = localStart + QPoint(dragDirection * dragDistance, 0);
     const QPoint globalEnd = globalStart + QPoint(dragDirection * dragDistance, 0);
     QMouseEvent move(QEvent::MouseMove,
@@ -4102,10 +4102,10 @@ void requireHomeOverviewLanguageWidthRoundTrip()
     const QRect wideEnvironmentCardRect = wideWidgetRect(wideEnvironmentCard);
     require(std::abs(wideEpsilonCardRect.top() - wideEnvironmentCardRect.top()) <= 1,
             "wide overview keeps the environment card on the EPSILON row");
-    require(std::abs((wideEnvironmentCardRect.left() -
-                      wideRightEdge(wideEpsilonCardRect)) -
+    require(std::abs((wideEpsilonCardRect.left() -
+                      wideRightEdge(wideEnvironmentCardRect)) -
                      VaporView::Ground::MainSupport::kTopLevelCardGap) <= 1,
-            "wide overview places the environment card to the right of EPSILON with the shared gap");
+            "wide overview places the environment card to the left of EPSILON with the shared gap");
     QLabel *wideAttitudeConsistencyValue = epsilonValueLabelForField(
         wideEpsilonPanel,
         QStringLiteral("姿态一致性[最大差值]:"));
@@ -4179,12 +4179,12 @@ void requireHomeEnvironmentCardLayout(MainWindow& window, bool requireSideBySide
     const bool sideBySideFits = dataGroup->contentsRect().width() >= sideBySideRequiredWidth;
     const bool sideBySide =
         std::abs(environmentGeometry.top() - epsilonGeometry.top()) <= 1 &&
-        environmentGeometry.left() > epsilonGeometry.right();
+        epsilonGeometry.left() > environmentGeometry.right();
     const bool stacked =
         std::abs(environmentGeometry.left() - epsilonGeometry.left()) <= 4 &&
-        environmentGeometry.top() > epsilonGeometry.bottom();
+        epsilonGeometry.top() > environmentGeometry.bottom();
     require((sideBySideFits || requireSideBySide) ? sideBySide : (sideBySide || stacked),
-            "home data cards either place environment to the right when width permits, or stack cleanly when narrow");
+            "home data cards place environment to the left when width permits, or above EPSILON when narrow");
     require(environmentGeometry.right() <= dataGroup->contentsRect().right() + 1,
             "default environment and lidar card stays inside the home data card edge");
 
@@ -4294,7 +4294,7 @@ void requireHomeEnvironmentCardLayout(MainWindow& window, bool requireSideBySide
     const QRect expandedEpsilonGeometry = epsilonGroup->geometry();
     const QRect expandedEnvironmentGeometry = environmentGroup->geometry();
     require(std::abs(expandedEnvironmentGeometry.top() - expandedEpsilonGeometry.top()) <= 1 &&
-                expandedEnvironmentGeometry.left() > expandedEpsilonGeometry.right(),
+                expandedEpsilonGeometry.left() > expandedEnvironmentGeometry.right(),
             "grown home sensor cards remain side by side");
     const int expandedRowWidth =
         expandedEpsilonGeometry.width() + expandedEnvironmentGeometry.width();
@@ -4335,8 +4335,8 @@ void requireHomeMaximumValueWidths()
             timer->stop();
     auto *splitter = window.findChild<QSplitter *>(QStringLiteral("homeSensorCardSplitter"));
     auto *epsilon = static_cast<VaporView::Ground::Widgets::EpsilonPanel *>(
-        splitter->widget(0)->findChild<QWidget *>(QStringLiteral("epsilonPanel")));
-    auto *environment = splitter->widget(1);
+        splitter->widget(1)->findChild<QWidget *>(QStringLiteral("epsilonPanel")));
+    auto *environment = splitter->widget(0);
     auto *ptb = environment->findChild<PtbPanel *>();
     auto *hmp = environment->findChild<HmpPanel *>();
     auto *lidar = environment->findChild<LidarPanel *>();
@@ -4452,8 +4452,8 @@ void requireHomeMaximumValueWidths()
             require(epsilon->preferredWrappedWidth() > reservedWidth,
                     "oversized actual values exceed the reserved EPSILON format");
             require(processEventsUntil(1000, [splitter, epsilon]() {
-                        const QMargins margins = splitter->widget(0)->layout()->contentsMargins();
-                        return splitter->widget(0)->maximumWidth() >= epsilon->preferredWrappedWidth() +
+                        const QMargins margins = splitter->widget(1)->layout()->contentsMargins();
+                        return splitter->widget(1)->maximumWidth() >= epsilon->preferredWrappedWidth() +
                             margins.left() + margins.right();
                     }), "EPSILON card expands when actual values exceed the reserved format");
             sample.vel_n_mps = sample.vel_e_mps = sample.vel_d_mps = -999.999;
@@ -4523,7 +4523,7 @@ void requireHomeSensorLayoutAfterSidebarRestore()
             timer->stop();
     }
     auto *panel = static_cast<VaporView::Ground::Widgets::EpsilonPanel *>(
-        cards->widget(0)->findChild<QWidget *>(QStringLiteral("epsilonPanel")));
+        cards->widget(1)->findChild<QWidget *>(QStringLiteral("epsilonPanel")));
     require(panel != nullptr, "sidebar restore test exposes the EPSILON panel");
     VaporView::EpsilonData sample;
     sample.valid = true;
@@ -4552,10 +4552,10 @@ void requireHomeSensorLayoutAfterSidebarRestore()
         setScale(scale);
         dragSidebarTo(0);
         processEventsFor(200);
-        const QMargins epsilonMargins = cards->widget(0)->layout()->contentsMargins();
-        const int readableRowWidth = std::max(cards->widget(0)->minimumSizeHint().width(),
+        const QMargins epsilonMargins = cards->widget(1)->layout()->contentsMargins();
+        const int readableRowWidth = std::max(cards->widget(1)->minimumSizeHint().width(),
             panel->preferredWrappedWidth() + epsilonMargins.left() + epsilonMargins.right()) +
-            cards->handleWidth() + std::max(cards->widget(1)->minimumWidth(), cards->widget(1)->minimumSizeHint().width());
+            cards->handleWidth() + std::max(cards->widget(0)->minimumWidth(), cards->widget(0)->minimumSizeHint().width());
         const int readableWindowWidth = window.width() - cards->parentWidget()->width() + readableRowWidth + 50;
         for (int extraWidth : {0, 50, 100})
         {
@@ -4571,14 +4571,16 @@ void requireHomeSensorLayoutAfterSidebarRestore()
             processEventsFor(150);
             require(cards->orientation() == Qt::Vertical,
                     "wide sidebar and restored window stack the sensor cards when narrow");
+            require(cards->widget(1)->y() > cards->widget(0)->geometry().bottom(),
+                    "stacked sensor cards place environment above EPSILON");
             if (extraWidth == 50)
                 clickWidget(logo);
             else
                 dragSidebarTo(0);
             processEventsFor(300);
             require(sidebar->sizes().at(0) == 0, "sidebar restore test collapses the wide sidebar");
-            auto *epsilon = cards->widget(0);
-            auto *environment = cards->widget(1);
+            auto *epsilon = cards->widget(1);
+            auto *environment = cards->widget(0);
             const QMargins margins = epsilon->layout()->contentsMargins();
             const int requiredWidth = std::max(epsilon->minimumSizeHint().width(),
                 panel->preferredWrappedWidth() + margins.left() + margins.right()) +
@@ -4587,7 +4589,7 @@ void requireHomeSensorLayoutAfterSidebarRestore()
                     "collapsed sidebar leaves enough space for both sensor cards");
             require(cards->orientation() == Qt::Horizontal &&
                         std::abs(epsilon->y() - environment->y()) <= 1 &&
-                        environment->x() > epsilon->geometry().right(),
+                        epsilon->x() > environment->geometry().right(),
                     "sensor cards return side by side after maximize, restore and sidebar collapse");
         }
     }
@@ -6056,13 +6058,13 @@ int main(int argc, char **argv)
     if (std::abs(epsilonCardRect.top() - environmentCardRect.top()) <= 1)
     {
         const int homeSensorCardGap =
-            environmentCardRect.left() - rightEdge(epsilonCardRect);
+            epsilonCardRect.left() - rightEdge(environmentCardRect);
         require(std::abs(homeSensorCardGap - homeOverviewCardGap) <= 1,
                 "home EPSILON and environment cards match the device and temperature overview gap");
     }
     else
     {
-        require(std::abs((environmentCardRect.top() - bottomEdge(epsilonCardRect)) -
+        require(std::abs((epsilonCardRect.top() - bottomEdge(environmentCardRect)) -
                          kExpectedTopLevelCardGap) <= 1,
                 "home EPSILON and environment cards keep the shared vertical gap");
     }
@@ -11687,12 +11689,12 @@ int main(int argc, char **argv)
         dataGroup->contentsRect().width() >= compactSideBySideRequiredWidth;
     const bool compactSideBySide =
         std::abs(compactEnvironmentGeometry.top() - compactEpsilonGeometry.top()) <= 1 &&
-        compactEnvironmentGeometry.left() > compactEpsilonGeometry.right();
+        compactEpsilonGeometry.left() > compactEnvironmentGeometry.right();
     const bool compactStacked =
         std::abs(compactEnvironmentGeometry.left() - compactEpsilonGeometry.left()) <= 4 &&
-        compactEnvironmentGeometry.top() > compactEpsilonGeometry.bottom();
+        compactEpsilonGeometry.top() > compactEnvironmentGeometry.bottom();
     require(compactSideBySideFits ? compactSideBySide : (compactSideBySide || compactStacked),
-            "default home data cards either place environment to the right when width permits, or stack cleanly when narrow");
+            "default home data cards place environment to the left when width permits, or above EPSILON when narrow");
     require(compactEnvironmentGeometry.right() <= dataGroup->contentsRect().right() + 1,
             "default environment and lidar card stays inside the home data card edge");
     window.resize(1920, 1000);
@@ -11714,13 +11716,13 @@ int main(int argc, char **argv)
                                                     temperatureOverviewCard);
     const bool sensorCardsStacked =
         std::abs(epsilonGroup->x() - environmentGroup->x()) <= 4 &&
-        environmentGroup->y() > epsilonGroup->y();
+        epsilonGroup->y() > environmentGroup->y();
     if (sensorCardsStacked)
     {
         require(std::abs(epsilonGroup->width() - environmentGroup->width()) <= 4,
                 "compact sensor cards keep matching widths");
-        require(environmentGroup->y() >= epsilonGroup->geometry().bottom(),
-                "compact environment card is stacked below the EPSILON card");
+        require(epsilonGroup->y() >= environmentGroup->geometry().bottom(),
+                "compact environment card is stacked above the EPSILON card");
     }
     else
     {
@@ -11743,8 +11745,8 @@ int main(int argc, char **argv)
     const QRect wideEpsilonGeometry = epsilonGroup->geometry();
     const QRect wideEnvironmentGeometry = environmentGroup->geometry();
     require(std::abs(wideEnvironmentGeometry.top() - wideEpsilonGeometry.top()) <= 1 &&
-                wideEnvironmentGeometry.left() > wideEpsilonGeometry.right(),
-            "wide home data cards place environment and lidar to the right of EPSILON");
+                wideEpsilonGeometry.left() > wideEnvironmentGeometry.right(),
+            "wide home data cards place environment and lidar to the left of EPSILON");
     require(wideEnvironmentGeometry.right() <= dataGroup->contentsRect().right() + 1,
             "wide environment and lidar card stays inside the home data card edge");
     if (compactSideBySide &&
@@ -11776,7 +11778,7 @@ int main(int argc, char **argv)
                    "EPSILON panel content rhythm remains the reference");
     const bool compactSensorCardsStacked =
         std::abs(epsilonGroup->x() - environmentGroup->x()) <= 4 &&
-        environmentGroup->y() > epsilonGroup->y();
+        epsilonGroup->y() > environmentGroup->y();
     if (compactSensorCardsStacked)
     {
         const int epsilonMinimumWidth = epsilonGroup->minimumSizeHint().width();

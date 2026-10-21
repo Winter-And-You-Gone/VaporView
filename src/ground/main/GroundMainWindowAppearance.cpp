@@ -1168,7 +1168,7 @@ void MainWindow::updateResponsiveHomeLayout()
             availableCardWidth - desiredEpsilonWidth);
         if (!userResized)
         {
-            setSensorCardSplitterSizes({desiredEpsilonWidth, desiredEnvironmentWidth});
+            setSensorCardSplitterSizes({desiredEnvironmentWidth, desiredEpsilonWidth});
         }
     }
 
@@ -1256,7 +1256,7 @@ void MainWindow::updateResponsiveHomeLayout()
         state_->data_group_->setFixedHeight(dataCardHeight);
         if (stackSensorCards && epsilonHeight > 0 && envHeight > 0)
         {
-            setSensorCardSplitterSizes({epsilonHeight, envHeight});
+            setSensorCardSplitterSizes({envHeight, epsilonHeight});
         }
     }
 
