@@ -10,10 +10,13 @@
 2. 选择完整 Session 目录，录入本次已知标气浓度，导入已有特征。支持多 Session、多浓度、同浓度重复测量。相同来源记录跳过并报告数量，不重算原始波形峰值。
 3. 检查质量、温压、来源、各浓度有效/总数量、均值、总体标准差、极值。记录每页 200 条；选择记录查看原始 CSV 字段和来源。支持编辑浓度/备注、排除/恢复、确认后删除。删除只影响当前编辑修订，已保存快照保留。
 4. “存为新修订”保存数据；“线性拟合并保存新版本”同时保存输入快照和不可变参数。检查公式、散点、拟合线、R²、RMSE、逐记录残差和有效范围后，手动启用；不自动启用。可切回历史参数或停用。两波长独立启停，禁止同时启用同一 DLIA 的两个波长映射。
-5. “初始浓度”对所选 Session 的已落盘峰值分别应用两波长的 active 版本。可每 2 秒跟随正在录制的 Session。远程场景需先取得完整 Session，不把抽稀预览当作正式计算输入。异常结果显示原因，不输出有效浓度。
-6. 结果表显示最近 2000 条，双击查看完整追溯。JSON 导出包含本次计算全部结果及原始输入，不修改原 Session。
+5. “初始浓度”对所选 Session 的已落盘峰值分别应用两波长的 active 版本。**默认每 2 秒自动跟随所选 Session**，无需反复刷新；不自动选择最新录制任务。远程场景需先取得完整 Session，不把抽稀预览当作正式计算输入。异常结果显示具体原因，不输出有效浓度。
+6. 结果表显示最近 2000 条、主机记录时间、通道/原始序号、数据来源及版本；双击查看完整输入和原拟合参数。参数摘要展示两波长的启用版本、单位及 R/C 范围。JSON 导出包含本次计算全部结果、原始输入及完整定标参数，不修改原 Session。
+7. 需要保存历史时点击“导出可追溯结果”。应用重启后点击“读取浓度快照”，选择导出的 JSON；读取会暂停自动跟随，保留原计算时间和原参数，不改变当前定标库或启用状态。可再次导出该历史快照。恢复当前计算时重新选择来源 Session 并勾选自动跟随，或点击计算按钮。
 
-切换来源、模拟标记或启停定标版本时，当前结果和导出缓存失效；需重新计算，跟随模式会在下一轮计算。已导出的历史快照保留原参数 ID。跟随指定 Session，不自动切换到最新录制任务。专项审查与缺陷修复证据见 [水汽定标代码审查记录](water_calibration_review.md)。
+切换来源、模拟标记或启停定标版本时，当前结果和导出缓存失效；需重新计算，跟随模式会在下一轮计算。**当前视图仍是整份所选 Session 按当前启用版本重新计算的快照，不是逐周期追加的浓度日志**。已经导出的文件保留原参数和结果；若要保留版本切换前的结果，必须先导出。页面关闭不会自动保存当前浓度，下一次打开可读取已导出快照或重新选择 Session 计算。专项审查与缺陷修复证据见 [水汽定标代码审查记录](water_calibration_review.md)。
+
+录制暂停后不接收新周期，恢复沿用原 Session 并增加 segment；停止后录制服务拒绝迟到输入。计算侧只读已经落盘的特征，不向 Session 写回浓度。来源切换使进行中的旧计算失效；页面销毁后异步只读任务可安全结束，不回填已销毁页面。文件大小/修改时间、启用版本或测试标志变化才触发下一次跟随计算；读取失败会停止自动跟随并显示原因。
 
 模拟测量必须勾选“软件测试数据”。同时检测配置中的 `backend=simulator` / `mode=simulation`；模拟样本拟合的版本会使后续结果继续标记 `software_test`。其余来源标为 `unverified`（待核实），不宣称为真实仪器测量；未检测到模拟标志不等于实机来源已验证。
 
@@ -71,6 +74,14 @@ host_time_us,epsilon_time_us,original_point_count,search_start_index,search_end_
 
 编辑/删除新增修订，归档新增带标记修订，历史不覆盖。归档不自动停用已有参数，页面明确提示。切换/停用只改 active 引用。切换任务、重载或新建前提示放弃未保存编辑；其它进程更新库时拒绝覆盖，需重新加载。
 
+浓度结果继续采用**用户选择位置的手动 JSON 快照导出**，不添加 Session 文件或自动存档系统。`ConcentrationResults.cpp` 提供 `exportResults` / `readResults`：
+
+- 新导出 schema **v2**：`kind=water_initial_concentrations`，`results` 保存所有计算结果和输入，`calibrations` 按版本 ID 保存每个实际引用的完整 `Fit` 一次（含模型、系数、范围、数据集及其原始标气记录），`sha256` 校验整个快照。
+- 读取先检查摘要，再复用 `Fit::fromJson` 校验模型版本和拟合数据；逐条复用 `calculate` 核对结果、质量、通道及引用。通过后恢复**原** `calculated_utc`，保留微秒字符串原始记录时间；不使用当前 active 版本替换历史参数。损坏或不支持的文件整体拒绝，保留此前显示的结果。
+- v2 文件可在没有定标库的另一进程中独立读取，不要求原 Session 仍然存在；它保留来源路径和标识，不伪造原始文件可用性。双击历史行可查看内嵌的原模型和数据集。
+- 兼容原 schema **v1** 导出：必须在当前库中存在结果引用的**原版本 ID**，否则明确报缺失参数。读取成功给出旧版提示，建议重新导出为 v2；不会用最新版本猜测历史参数。
+- 每条 JSON 结果包含 `compensation_status=未进行温压补偿`，包括无效结果；`compensated=false`、`compensation_model=unconfigured`。摘要用于损坏检测，不是防篡改签名或仪器精度证明。
+
 ## 待正式算法 / 功能补全（后续持续更新）
 
 | 待确认项 | 当前边界 | 接入点与验收证据 |
@@ -83,6 +94,7 @@ host_time_us,epsilon_time_us,original_point_count,search_start_index,search_end_
 | 稳态/权重/异常值策略 | 所有周期，人工排除 | 稳态区间、漂移、噪声/饱和阈值、加权和交叉验证依据；不能仅凭 R² 合格 |
 | 真实数据来源确认 | 自动识别部分模拟标记，其余待核实 | 统一模拟/实测 provenance 与实机验收；未核实不称真实浓度 |
 | 无 Session 浓度流 | 跟随已落盘特征 | 如需要，建立带完整周期质量和来源 ID 的正式事件，不从 UI 抽稀波形提峰；超大 Session 可增加增量文件游标 |
+| 自动逐周期浓度归档 | 当前版本整 Session 计算、手动保存自包含历史快照 | 如需自动追加归档或在同一 Session 中永久保留逐周期启用版本，需单独确定录制时版本捕获、归档生命周期、兼容格式和恢复策略；本阶段不改变 Session 结构 |
 | 库规模/迁移 | 原子 JSON、全历史核对；旧来源路径回退 | 大库可拆分不可变快照；补 schema 迁移、备份恢复、历史路径重定位 UI |
 | 廓线/柱浓度/三维融合 | 本次未实现 | 独立物理算法、量纲、时空匹配和验证资料，单峰浓度不等同廓线 |
 
@@ -94,6 +106,17 @@ host_time_us,epsilon_time_us,original_point_count,search_start_index,search_end_
 
 `water_calibration_ui_test` 使用隔离设置，执行两种标气导入→拟合保存→启用→计算→关闭重建→重载→停用。另运行既有 Session、FPGA 记录/回放/导出和主窗口回归。所有合成数据及结果标记为 `software_test`，不作为实机浓度验收证据。
 
+`water_calibration_e2e_test` 通过生产 `GroundRecordingService::recordFpgaHarmonics` 写出真实格式的**合成测试** Session，执行下列闭环，不自行生成另一套峰值算法：
+
+| 场景 | 实际断言 |
+|---|---|
+| A 标气→拟合→保存→重载 | 4 个独立 Session 的 R=[2,4,6,2]、C=[5,9,12,5]；重复周期跳过、独立同浓度保留；独立核对 a=39/22、b=17/11、R²=1521/1529、RMSE=√(1/22)、4 样本/3 浓度及范围；排除样本、退化输入拒绝；两通道独立拟合、重载预测 |
+| B 录制→自动浓度→历史/导出 | 使用页面实际默认 2 秒跟随，连续两个通道；结果输入 JSON 与 CSV 解析结果逐条相等（Session、channel、sequence、host time、tick）；导出后新进程无库读取；暂停/恢复相同 cycle/time 仍按 segment/sequence 区分；停止拒绝迟到周期；切换 Session 不继承旧结果 |
+| C 版本切换 | 同一 R 使用另一组系数，816 切换不影响 1368；旧导出字节、原计算时间和原参数保持；读取历史暂停跟随，重导出保持相同内容；停用后新结果无效 |
+| D 异常/生命周期 | 无有效分母、溢出、超范围、缺失/停用/通道不符；切换来源丢弃待完成任务，页面销毁后任务安全结束；库/快照损坏与不支持模型拒绝；旧 v1 必须有原参数；测试数据、未补偿状态始终保留；原始 DAT/CSV 不变 |
+
+测试使用隔离配置和临时 Session，退出后清理；不修改用户定标库。开发机在初始化 VS/MSVC 环境后执行 `cmake --build build/Release --config Release --parallel 4`，再执行 `ctest --test-dir build/Release -R "^water_calibration_.*test$" --output-on-failure -j3`。全量回归使用 `ctest --test-dir build/Release --output-on-failure -j4`。
+
 ### 2026-10-21 本机执行记录
 
 - 基于 `origin/main` 的 `a82220f`，在 VS/MSVC Developer 环境中执行 `cmake --build build/Release --config Release --parallel 4`，完整构建成功。
@@ -101,3 +124,15 @@ host_time_us,epsilon_time_us,original_point_count,search_start_index,search_end_
 - 唯一失败为 `combination_navigation_page_test` 的 `overview titles remain fully visible in both languages`，与 [既有架构执行记录](architecture_execution_plan.md) 中的修改前基线失败一致；本次没有改动该总览标题布局。
 - 跳过项：`update_relauncher_elevated_parent_test` 需要管理员测试进程；`ifw_staging_test` 缺少本机 IFW stage 目录。未将跳过项视为通过。
 - 已检查亮/暗主题页面，临时截图与诊断代码已移除；测试完成后恢复应用配置，确认任务启动的测试进程退出。未连接实机进行标气或浓度精度验证。
+
+### 2026-10-21 端到端流程补全与回归
+
+- 起点为 `31212c1`，开发前同步到 `62f61e8`，期间再次同步主线到 `040c0c4`；保留其首页布局改动。本次修改范围为定标模块、直接测试及本文，不修改 FPGA 算法/协议、Session 格式或 PPK。
+- 最终在 VS/MSVC Developer 环境执行 `cmake --build build/Release --config Release --parallel 4`，完整 Release 构建成功。本工作树原有配置为 `VAPORVIEW_ENABLE_OSGEARTH=OFF`，本次未改变开关；没有据此宣称验证了 3D 地图或实机算法。
+- 全量首轮 `ctest --test-dir build/Release --output-on-failure -j4`：138 项中 **127 通过、9 失败、2 跳过**，496.98 秒。包括 Session 读写/历史/导出、FPGA 谐波录制、PPK 管线和 PPK 页面在内的相关测试通过。跳过原因仍为管理员权限及缺少 IFW stage，未视为通过。
+- 新端到端测试在该轮暴露等待短暂“已启用”状态文案的竞态：自动跟随可立即覆盖文案。已改为等待实际启用参数摘要，再核对计算结果；另检查独立残差与适用范围，以及在摘要正确但浓度不符时拒绝读取快照。
+- 同步 `040c0c4`、重建后，对首轮 9 个失败项串行复测：**8 通过、1 失败**，513.75 秒；定标端到端测试、FPGA 控制/启动告警、主窗口、首页布局、标题菜单、导航覆盖及独立查看器均通过。
+- 恢复本次改动并完成最终完整 Release 构建后，`ctest --test-dir build/Release -R "^water_calibration_.*test$" --output-on-failure --repeat until-fail:3 -j3`：**4 项各连续 3 次通过**（共 12 次，11.52 秒），覆盖最后新增的残差、结果一致性检查及状态等待修正。
+- 剩余 `fpga_local_simulator_test` 在带本次改动时失败于 `coalesced simulator packets populate home LLH plus navigation position, speed and attitude`（44.94 秒）；临时保存全部本次改动，在**工作区干净的 `040c0c4`** 重新构建同目标后，测试也失败于 `fresh navigation returns after actual EPSILON reconnect`（62.63 秒）。首轮则失败于 RD105 异步读取。证明该测试在未修改主线也不稳定，但不宣称这些不同断言已经定位到同一根因；本次未改动相关断言或放宽超时。
+- 开发前 `62f61e8` 基线的 `combination_navigation_page_test` 失败于标题可见性（44.10 秒），全量首轮同测试通过（74.14 秒），未作无关修复，也不将其记为稳定失败。
+- 已以 Qt 实际渲染快照检查初始浓度页，修正状态和测试来源的列宽；临时截图与截图代码移除后完成最终构建。历史快照读写、独立进程重载、版本切换、暂停/恢复及来源切换均由测试检查实际数据，而非只检查控件存在。

@@ -53,7 +53,8 @@ int main(int argc,char **argv)
     check(QFile::copy(first+"/session.json",copied+"/session.json")&&QFile::copy(first+"/sensors/waveform_features.csv",copied+"/sensors/waveform_features.csv"),"copy existing Session identity and features");
     const auto relocated=importSession(copied,dataset,5,true);
     check(relocated.success&&relocated.samples.isEmpty()&&relocated.duplicates==4,"copying or moving standard Session does not duplicate original features");
-    auto sample=dataset.samples.first();auto concentration=calculate(sample,816,&fitted.fit);
+    const auto predictionFit=fitted.fit;
+    auto sample=dataset.samples.first();auto concentration=calculate(sample,816,&predictionFit);
     check(concentration.valid&&concentration.value==5&&!concentration.compensated&&concentration.status.contains(QStringLiteral("未进行温压补偿")),"known prediction, explicitly uncompensated");
     check(concentration.origin=="software_test"&&!calculate(sample,1368,&fitted.fit).valid,"software-test label and wavelength isolation");
     sample.feature.channel=0x31;check(!calculate(sample,816,&fitted.fit).valid,"DLIA isolation");sample=dataset.samples.first();
@@ -91,7 +92,7 @@ int main(int argc,char **argv)
     auto json=v2.fit.toJson();json["model_version"]=99;Fit::fromJson(json,&error);check(!error.isEmpty(),"reject unsupported model version");
     error.clear();json=v2.fit.toJson();json["a"]=123;Fit::fromJson(json,&error);check(!error.isEmpty(),"validate saved coefficients against dataset snapshot");
     check(!importSession(temp.filePath("gone"),dataset,1,true).success,"missing source Session is explicit");
-    check(exportResults(temp.filePath("results.json"),{concentration},&error),"export nested provenance atomically");
+    check(exportResults(temp.filePath("results.json"),{concentration},&error,{predictionFit}),"export nested provenance atomically");
     const auto result=QJsonDocument::fromJson(read(temp.filePath("results.json"))).object()["results"].toArray().first().toObject();
     check(result["origin"]=="software_test"&&!result["compensated"].toBool()&&result["input"].toObject()["feature"].toObject()["id"]==concentration.input.feature.id,"export is traceable and never calls simulated concentration real");
     const auto metadata=SessionLoader::loadMetadata(first);auto catalog=SessionWaveformRepository::loadCatalog(metadata.metadata);
