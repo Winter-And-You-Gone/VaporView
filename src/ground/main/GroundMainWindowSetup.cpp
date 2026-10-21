@@ -2236,7 +2236,7 @@ void MainWindow::setupCentralWidget()
     state_->temperature_nav_btn_ = createNavButton(QStringLiteral("温控"), QStringLiteral("thermometer"));
     state_->rtk_config_nav_btn_ = createNavButton(QStringLiteral("组合导航"), QStringLiteral("satellite"));
     state_->fpga_nav_btn_ = createNavButton(QStringLiteral("FPGA"), QStringLiteral("cpu"));
-    state_->water_calibration_nav_btn_ = createNavButton(QStringLiteral("水汽定标"), QStringLiteral("square-activity"));
+    state_->water_calibration_nav_btn_ = createNavButton(QStringLiteral("水汽定标"), QStringLiteral("chart-scatter"));
     state_->app_nav_button_group_->addButton(state_->home_nav_btn_, 0);
     state_->app_nav_button_group_->addButton(state_->device_config_nav_btn_, 1);
     state_->app_nav_button_group_->addButton(state_->temperature_nav_btn_, 2);

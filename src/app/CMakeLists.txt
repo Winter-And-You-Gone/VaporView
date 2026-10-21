@@ -29,6 +29,7 @@ set(NAV_RESOURCES
 set(LUCIDE_RESOURCES
     ${CMAKE_SOURCE_DIR}/resources/lucide/activity.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/audio-waveform.svg
+    ${CMAKE_SOURCE_DIR}/resources/lucide/chart-scatter.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/check.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-down.svg
     ${CMAKE_SOURCE_DIR}/resources/lucide/chevron-down-dark.svg

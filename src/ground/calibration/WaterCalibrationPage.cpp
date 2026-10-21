@@ -276,7 +276,7 @@ void WaterCalibrationPage::setTheme(bool dark, int fontScalePercent)
         "QWidget#waterCalibrationPage QTabBar::tab:selected { background: @vv-primary; color: @vv-white; }"
         "QWidget#waterCalibrationPage QTabBar::tab:hover { background: @vv-primary-subtle; color: @vv-primary; }"
         "QWidget#waterCalibrationPage QTabBar::tab:focus { border-color: @vv-focus; }"
-        "QWidget#waterCalibrationPage QScrollArea { border: none; background: @vv-window; }"
+        "QWidget#waterCalibrationPage QScrollArea, QWidget#waterCalibrationPage QScrollArea > QWidget, QWidget#waterCalibrationPage QScrollArea > QWidget > QWidget { border: none; background: @vv-window; }"
         "QWidget#waterCalibrationPage QPushButton { background: @vv-surface-alt; color: @vv-text; border: 1px solid @vv-border; border-radius: 6px; padding: 6px 12px; }"
         "QWidget#waterCalibrationPage QPushButton:hover { background: @vv-primary-subtle; color: @vv-primary; }"
         "QWidget#waterCalibrationPage QPushButton#calibrationFit { background: @vv-primary; color: @vv-white; }"
