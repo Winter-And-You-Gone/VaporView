@@ -4,6 +4,8 @@
 
 | source | category | event | recommended level | 中文 message | required fields | optional fields | error_code / reason_code |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| water_calibration | calibration | water_calibration_operation_completed | Info | 水汽定标操作已完成（页面显示具体结果）。 | dataset_id |  |  |
+| water_calibration | calibration | water_calibration_operation_failed | Warning | 水汽定标操作失败（页面显示具体原因）。 | dataset_id |  |  |
 | Ground/SkyCore | device.internal | internal_serial_error | Warning | 内部环境串口桥连接失败。 | device_id, reason, reason_code |  | SERIAL_BRIDGE_CONNECT_FAILED |
 | Ground/SkyCore | device.fpga | fpga_operation_diagnostic | Info/Warning/Error | FPGA 操作诊断；具体原因保留在 message。 | operation, ready, busy | error_code | FPGA_OPERATION_FAILED |
 | Ground/SkyCore | device.fpga | fpga_device_connection_result | Info/Warning | {device} 经 FPGA 连接成功 / 连接失败 / 通道已启用。 | device, fpga_source, result, reason_code, reason, ui_visibility | module_status, module_error | CHANNEL_ENABLED / VALID_SAMPLE / CONTROL_READBACK / TRANSACTION_FAILED / NO_VALID_SAMPLE |

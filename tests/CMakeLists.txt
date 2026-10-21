@@ -1452,6 +1452,9 @@ set_property(TEST combination_navigation_page_test APPEND PROPERTY LABELS main-w
 set_property(TEST navigation_status_panel_test APPEND PROPERTY LABELS navigation-status ui layout)
 set_property(TEST ui_test_mode_window_test APPEND PROPERTY LABELS main-window ui-test-mode)
 set_property(TEST ui_test_navigation_coverage_test APPEND PROPERTY LABELS main-window ui-test-mode navigation)
+# Four theme/scale combinations now exercise six sidebar destinations, including
+# repeated simulated-device start/stop. Keep that complete coverage bounded.
+set_property(TEST ui_test_navigation_coverage_test PROPERTY TIMEOUT 180)
 set_property(TEST dark_epsilon_layout_test APPEND PROPERTY LABELS main-window ui-test-mode layout)
 set_property(TEST main_window_session_viewer_test APPEND PROPERTY LABELS main-window session-viewer)
 set_property(TEST session_viewer_io_test APPEND PROPERTY LABELS session-viewer io)
@@ -1508,6 +1511,15 @@ set_tests_properties(vaporview_startup_test PROPERTIES LABELS "integration;ui;sm
 add_dependencies(vaporview_startup_test VaporView)
 
 # Build only the binaries used by the selected suite; helpers remain target dependencies.
+add_executable(water_calibration_test water_calibration_test.cpp)
+target_link_libraries(water_calibration_test PRIVATE vaporview_water_calibration_core)
+vaporview_add_test(NAME water_calibration_test COMMAND water_calibration_test)
+set_tests_properties(water_calibration_test PROPERTIES LABELS "fast;unit;calibration;session" TIMEOUT 60)
+add_executable(water_calibration_ui_test water_calibration_ui_test.cpp)
+target_link_libraries(water_calibration_ui_test PRIVATE vaporview_water_calibration_ui)
+vaporview_add_test(NAME water_calibration_ui_test COMMAND water_calibration_ui_test)
+set_tests_properties(water_calibration_ui_test PROPERTIES LABELS "integration;ui;calibration" TIMEOUT 60)
+
 add_custom_target(VaporViewTests)
 add_custom_target(VaporViewFastTests)
 get_property(registered_tests DIRECTORY PROPERTY TESTS)

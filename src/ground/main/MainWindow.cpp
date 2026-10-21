@@ -850,6 +850,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
                 state_->temperature_nav_btn_,
                 state_->rtk_config_nav_btn_,
                 state_->fpga_nav_btn_,
+                state_->water_calibration_nav_btn_,
             };
             const int currentIndex = buttons.indexOf(sidebarButton);
             if (currentIndex >= 0)

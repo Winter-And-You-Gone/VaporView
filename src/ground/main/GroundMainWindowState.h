@@ -15,6 +15,7 @@
 #include <QSet>
 
 class FpgaControlPage;
+namespace VaporView::Ground::Calibration { class WaterCalibrationPage; }
 class QThread;
 namespace VaporView::Ground::Devices { class FpgaDeviceController; }
 namespace VaporView::Ground::Widgets { class SegmentedSwitchButton; }
@@ -306,6 +307,8 @@ struct MainWindowState
     QPushButton *device_config_nav_btn_;
     QPushButton *fpga_nav_btn_ = nullptr;
     FpgaControlPage *fpga_page_ = nullptr;
+    QPushButton *water_calibration_nav_btn_ = nullptr;
+    VaporView::Ground::Calibration::WaterCalibrationPage *water_calibration_page_ = nullptr;
     FpgaControlConfig fpga_config_;
     QMap<int, QMap<quint16, QJsonObject>> fpga_sensor_drafts_;
     bool fpga_connected_ = false;

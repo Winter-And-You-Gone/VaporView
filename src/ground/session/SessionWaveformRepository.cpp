@@ -3,6 +3,7 @@
 #include "shared/io/SafeWritePath.h"
 
 #include "ground/session/SessionCsv.h"
+#include "ground/session/SessionWaveformFeatures.h"
 #include "shared/session/UnifiedRawDat.h"
 #include "shared/session/HarmonicWaveform.h"
 #include "shared/session/FpgaSessionArchive.h"
@@ -843,30 +844,16 @@ SessionWaveformPeakSeriesResult SessionWaveformRepository::loadCachedPeakSeries(
     SessionWaveformPeakSeriesResult result;
     if (catalog.fpgaSource) {
         if (catalog.fpgaComponent != 6 || catalog.rawTcpFrames.isEmpty() || !catalog.rawTcpFrames.first().harmonicPair) return result;
-        QFile features(QDir(catalog.sessionDirectory).filePath(QStringLiteral("sensors/waveform_features.csv")));
-        if (!features.open(QIODevice::ReadOnly | QIODevice::Text)) return result;
-        QTextStream input(&features); input.setEncoding(QStringConverter::Utf8);
-        const auto headers = parseCsvLine(input.readLine());
-        const auto column = [&](const char *key) { return headers.indexOf(QLatin1String(key)); };
-        for (const auto *key : {"host_time_us", "channel_id", "peak", "source", "component", "algorithm_version",
-                                "waveform_sequence", "search_start_index", "search_end_index"})
-            if (column(key) < 0) return result;
+        const auto features = SessionWaveformFeatures::read(catalog.sessionDirectory);
+        if (!features.success) { result.error = features.error; return result; }
         qsizetype index = 0;
-        while (!input.atEnd()) {
-            const auto fields = parseCsvLine(input.readLine());
-            const auto field = [&](const char *key) { return csvValueAt(fields, column(key)); };
-            if (field("source") != "fpga" || field("component") != "H2/H1" || field("channel_id").toUInt() != catalog.fpgaSource) continue;
-            if (index >= catalog.rawTcpFrames.size() || field("algorithm_version") != "1" ||
-                field("search_start_index") != "0" || field("search_end_index") != "0") return {};
+        for (const auto& feature : features.records) {
+            if (feature.channel != catalog.fpgaSource) continue;
+            if (index >= catalog.rawTcpFrames.size()) return {};
             const auto& frame = catalog.rawTcpFrames[index++];
-            bool sequenceOk = false, timeOk = false;
-            const auto sequence = field("waveform_sequence").toULongLong(&sequenceOk);
-            const auto time = field("host_time_us").toULongLong(&timeOk);
-            if (!sequenceOk || !timeOk || sequence != frame.waveformSequence || time != frame.timestampUs) return {};
-            bool valueOk = false; const double value = field("peak").toDouble(&valueOk);
-            if (!field("peak").isEmpty() && (!valueOk || !std::isfinite(value))) return {};
-            result.timestampsUs.append(time);
-            result.peakValues.append(valueOk ? float(value) : std::numeric_limits<float>::quiet_NaN());
+            if (feature.waveformSequence != frame.waveformSequence || feature.hostTimeUs != frame.timestampUs) return {};
+            result.timestampsUs.append(feature.hostTimeUs);
+            result.peakValues.append(feature.invalidReason().isEmpty() ? float(feature.peak) : std::numeric_limits<float>::quiet_NaN());
         }
         result.success = index == catalog.rawTcpFrames.size();
         return result;

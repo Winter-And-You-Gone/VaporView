@@ -1099,7 +1099,7 @@ int main(int argc, char **argv)
         require(settingsSnapshotsEqual(snapshotAll(), before, "navigation UI test preserves persistent settings"),
                 "all navigation simulations leave persistent settings unchanged");
         const auto sidebarButtons = window->findChildren<QPushButton *>(QStringLiteral("appSidebarButton"));
-        require(sidebarButtons.size() == 5, "sidebar restoration covers every navigation icon");
+        require(sidebarButtons.size() == 6, "sidebar restoration covers every navigation icon including calibration");
         const auto requireSidebarColors = [&]() {
             for (auto *button : sidebarButtons)
             {
@@ -1132,6 +1132,7 @@ int main(int argc, char **argv)
                 processEvents();
                 require(transportSwitch->size() == sourceSwitch->size(),
                         "title sensor path and source capsules scale together");
+                std::cout << "Navigation restoration: dark=" << dark << ", scale=" << scale << std::endl;
                 for (int index = 0; index < sidebarButtons.size(); ++index)
                 {
                     sidebarButtons[index]->click();processEvents();

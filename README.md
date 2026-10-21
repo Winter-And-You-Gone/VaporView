@@ -4,6 +4,8 @@
 
 ## 快速开始
 
+主侧栏“水汽定标”支持 FPGA 峰值导入、线性验证模型拟合、参数历史版本和可追溯初始浓度。正式算法及温压补偿待确认事项见[实现与待补全清单](docs/water_calibration.md)。
+
 ### 依赖
 
 - Qt 6.10.1+（Core, Widgets, SerialPort, Network, Svg）

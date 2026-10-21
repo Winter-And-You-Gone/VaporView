@@ -573,7 +573,8 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
         if (!SessionRawDat::writeRecord(output, header, record.bytes)) return false;
         ++harmonic_writer_->count;
         const auto row = Session::harmonicFeatureCsv(record.timestamp, header.sequence, record.bytes);
-        if (row.isEmpty() || storage_->write(feature_record_file_, row.constData(), row.size()) != row.size()) return false;
+        if (row.isEmpty() || storage_->write(feature_record_file_, row.constData(), row.size()) != row.size() ||
+            !storage_->flush(feature_record_file_)) return false;
         ++harmonic_writer_->featureCount;
         return true;
     });

@@ -1,6 +1,7 @@
 #include "ground/main/GroundMainWindowImplementation.h"
 #include "ground/widgets/SerialPortComboSupport.h"
 #include "BaudRateComboSupport.h"
+#include "ground/calibration/WaterCalibrationPage.h"
 
 void MainWindow::loadModernStyleSheet()
 {
@@ -562,6 +563,7 @@ void MainWindow::updateAppSidebarButtonTexts()
     applyButtonText(state_->rtk_config_nav_btn_, state_->is_english_ ? QStringLiteral("Combination Navigation") : QStringLiteral("组合导航"));
     applyButtonText(state_->device_config_nav_btn_, state_->is_english_ ? QStringLiteral("Device") : QStringLiteral("设备配置"));
     applyButtonText(state_->fpga_nav_btn_, QStringLiteral("FPGA"));
+    applyButtonText(state_->water_calibration_nav_btn_, state_->is_english_ ? QStringLiteral("Water Calibration") : QStringLiteral("水汽定标"));
     updateRtkConfigIcon();
     updateCustomTitleBarTexts();
 }
@@ -1392,6 +1394,7 @@ void MainWindow::syncDeviceConfigNumericColumnFonts()
 void MainWindow::applyStyleConfiguration()
 {
     if (state_->fpga_page_) state_->fpga_page_->setTheme(state_->dark_theme_enabled_, state_->font_scale_percent_);
+    if (state_->water_calibration_page_) state_->water_calibration_page_->setTheme(state_->dark_theme_enabled_, state_->font_scale_percent_);
     QFont appFont = qApp->font();
     appFont.setPointSizeF(state_->base_font_point_size_ * state_->font_scale_percent_ / 100.0);
     qApp->setPalette(appThemePalette(state_->dark_theme_enabled_));

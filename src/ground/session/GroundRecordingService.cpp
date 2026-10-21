@@ -1016,7 +1016,10 @@ private:
                         const QByteArray row = VaporView::Session::harmonicFeatureCsv(
                             record.timestampUs, rawWaveformRecordCount.load() - 1, record.payload);
                         std::lock_guard<std::mutex> lock(filesMutex);
-                        if (row.isEmpty() || storage->write(*waveformFeaturesFile, row.constData(), row.size()) != row.size())
+                        // Publish the existing feature row for live readers even
+                        // at low cycle rates, before QFile's buffer fills.
+                        if (row.isEmpty() || storage->write(*waveformFeaturesFile, row.constData(), row.size()) != row.size() ||
+                            !storage->flush(*waveformFeaturesFile))
                             markWriteFailure();
                         else ++harmonicFrameCount;
                     } else {

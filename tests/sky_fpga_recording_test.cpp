@@ -12,6 +12,7 @@
 #include "shared/session/SessionPackageLayout.h"
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QElapsedTimer>
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
@@ -144,6 +145,9 @@ void skyRoundTripAndFailures() {
     require(recorder.start(temporary.path(),"",0,&error),"Sky resumes");
     require(!recorder.recordFpgaHarmonics(nowUs(),spanningPause),"Sky rejects cycles started before resume");
     require(recorder.recordFpgaHarmonics(nowUs(),wave(0x31,1)),"Sky second lane");
+    QElapsedTimer visibleDeadline;visibleDeadline.start();
+    while(visibleDeadline.elapsed()<3000&&read(directory+"/sensors/waveform_features.csv").count('\n')<3)QThread::msleep(10);
+    require(read(directory+"/sensors/waveform_features.csv").count('\n')==3,"Sky feature rows visible before recording stops");
     require(recorder.stop(&error),"Sky drains and seals"); checkPackage(directory,2);
     require(recorder.rawWaveformRecordCount()==2 && recorder.waveformFeatureRecordCount()==2 && recorder.rawFpgaRecordCount()==0,"status reports shared waveform and feature counts");
     for(bool flush:{false,true}) {

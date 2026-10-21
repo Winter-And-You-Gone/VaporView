@@ -4,6 +4,7 @@
 #include "BaudRateComboSupport.h"
 #include "ground/widgets/DeviceEnabledCheckBox.h"
 #include "FpgaExtensions.h"
+#include "ground/calibration/WaterCalibrationPage.h"
 
 #include <QEvent>
 #include <QGraphicsOpacityEffect>
@@ -2235,11 +2236,13 @@ void MainWindow::setupCentralWidget()
     state_->temperature_nav_btn_ = createNavButton(QStringLiteral("温控"), QStringLiteral("thermometer"));
     state_->rtk_config_nav_btn_ = createNavButton(QStringLiteral("组合导航"), QStringLiteral("satellite"));
     state_->fpga_nav_btn_ = createNavButton(QStringLiteral("FPGA"), QStringLiteral("cpu"));
+    state_->water_calibration_nav_btn_ = createNavButton(QStringLiteral("水汽定标"), QStringLiteral("square-activity"));
     state_->app_nav_button_group_->addButton(state_->home_nav_btn_, 0);
     state_->app_nav_button_group_->addButton(state_->device_config_nav_btn_, 1);
     state_->app_nav_button_group_->addButton(state_->temperature_nav_btn_, 2);
     state_->app_nav_button_group_->addButton(state_->rtk_config_nav_btn_, 3);
     state_->app_nav_button_group_->addButton(state_->fpga_nav_btn_, 4);
+    state_->app_nav_button_group_->addButton(state_->water_calibration_nav_btn_, 5);
     sidebarLayout->addStretch(1);
     state_->home_nav_btn_->setChecked(true);
     updateSidebarNavIcons();
@@ -2616,6 +2619,8 @@ void MainWindow::setupCentralWidget()
     });
     state_->main_page_stack_->addWidget(state_->combination_navigation_page_);
     setupFpgaControlPage();
+    state_->water_calibration_page_ = new VaporView::Ground::Calibration::WaterCalibrationPage(state_->main_page_stack_);
+    state_->main_page_stack_->addWidget(state_->water_calibration_page_);
 
     connect(state_->app_nav_button_group_, &QButtonGroup::idClicked, this, [this](int id) {
         if (id == 3)
@@ -3593,7 +3598,7 @@ void MainWindow::updateSidebarNavIcons()
     const bool dark = state_->dark_theme_enabled_;
     const QColor normalColor = appThemeColor(AppThemeColor::Text, dark);
     const QColor activeColor = QColor(255, 255, 255);
-    for (QPushButton *button : {state_->home_nav_btn_, state_->temperature_nav_btn_, state_->rtk_config_nav_btn_, state_->device_config_nav_btn_, state_->fpga_nav_btn_})
+    for (QPushButton *button : {state_->home_nav_btn_, state_->temperature_nav_btn_, state_->rtk_config_nav_btn_, state_->device_config_nav_btn_, state_->fpga_nav_btn_, state_->water_calibration_nav_btn_})
     {
         if (!button)
         {

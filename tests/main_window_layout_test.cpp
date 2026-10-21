@@ -1709,9 +1709,10 @@ void requireRtkSidebarPage(
     const qint64 stoppedIconKey = rtkButton->icon().pixmap(iconSize).cacheKey();
 
     auto *pageStack = window.findChild<QStackedWidget *>(QStringLiteral("mainPageStack"));
-    require(pageStack != nullptr && pageStack->count() == 5 &&
-                pageStack->widget(4)->objectName() == QStringLiteral("fpgaControlPage"),
-            "main page stack preserves the existing page order and appends FPGA control");
+    require(pageStack != nullptr && pageStack->count() == 6 &&
+                pageStack->widget(4)->objectName() == QStringLiteral("fpgaControlPage") &&
+                pageStack->widget(5)->objectName() == QStringLiteral("waterCalibrationPage"),
+            "main page stack preserves existing pages and appends water calibration after FPGA");
     auto *preDialog = window.findChild<RtkConfigDialog *>();
     require(preDialog != nullptr, "embedded RTK dialog exists before sidebar click");
     auto *preGgaCard = findCardByTitle(preDialog,

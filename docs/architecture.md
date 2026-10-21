@@ -22,6 +22,13 @@ change the existing IPC or telemetry protocol.
 
 ## Directory layout
 
+Water standard-gas calibration lives in `src/ground/calibration`:
+`vaporview_water_calibration_core` owns datasets, versioned fit models, atomic
+library persistence and initial concentrations; `vaporview_water_calibration_ui`
+provides the sidebar page and asynchronous operations. Replay and calibration
+share `SessionWaveformFeatures` in the existing session core. See
+[implementation and pending scientific algorithms](water_calibration.md).
+
 ```text
 cmake/
   Dependencies.cmake       # Qt, threads, RTKLIB, and optional dependency discovery

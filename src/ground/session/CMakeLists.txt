@@ -27,6 +27,8 @@ add_library(vaporview_ground_session_core STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionTrajectoryController.h
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionWaveformRepository.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/SessionWaveformRepository.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/SessionWaveformFeatures.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/SessionWaveformFeatures.h
 )
 
 target_include_directories(vaporview_ground_session_core PUBLIC
