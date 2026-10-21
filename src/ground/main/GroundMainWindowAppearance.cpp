@@ -976,6 +976,9 @@ void MainWindow::updateResponsiveHomeLayout()
     };
 
     const bool compact = shouldUseCompactHomeLayout();
+    bool environmentInOverview = state_->home_overview_splitter_ &&
+        state_->home_overview_splitter_->indexOf(state_->env_group_) >= 0;
+    bool environmentRowChanged = false;
     const bool layoutChanged = state_->compact_home_layout_ != compact;
     state_->compact_home_layout_ = compact;
     const int currentDataCardHeight = state_->data_group_->height();
@@ -1030,8 +1033,48 @@ void MainWindow::updateResponsiveHomeLayout()
         const int viewportWidth = std::max(0, state_->main_cards_scroll_area_->viewport()->width());
         const int viewportContentWidth =
             std::max(0, viewportWidth - contentMargins.left() - contentMargins.right());
+        const int environmentMinimumWidth = state_->env_group_
+            ? std::max(state_->env_group_->minimumWidth(), state_->env_group_->minimumSizeHint().width()) : 0;
+        if (state_->home_overview_splitter_ && state_->config_group_ && state_->home_temperature_overview_column_ && state_->env_group_)
+        {
+            const int threeColumnMinimumWidth = state_->config_group_->minimumWidth() +
+                state_->home_temperature_overview_column_->minimumWidth() + environmentMinimumWidth +
+                2 * state_->home_overview_splitter_->handleWidth();
+            state_->home_overview_splitter_->setProperty(kHomeOverviewColumnMinimaProperty,
+                QVariant::fromValue(QList<int>{state_->config_group_->minimumWidth(),
+                    state_->home_temperature_overview_column_->minimumWidth(), environmentMinimumWidth}));
+            const bool useThreeColumns = viewportContentWidth >= threeColumnMinimumWidth;
+            if (useThreeColumns != environmentInOverview)
+            {
+                // Move the existing card so its plots, controls and data stay intact.
+                state_->env_group_->setMinimumHeight(0);
+                state_->env_group_->setMaximumHeight(QWIDGETSIZE_MAX);
+                if (useThreeColumns)
+                    state_->home_overview_splitter_->addWidget(state_->env_group_);
+                else
+                    sensorCardSplitter->insertWidget(0, state_->env_group_);
+                state_->env_group_->show();
+                environmentInOverview = useThreeColumns;
+                environmentRowChanged = true;
+                state_->home_overview_splitter_->setProperty(kHomeOverviewSplitterInitializedProperty, false);
+                state_->home_overview_splitter_->setProperty(kHomeOverviewDeviceAutoManagedWidthProperty, true);
+                sensorCardSplitter->setProperty(kHomeSensorSplitterUserResizedProperty, false);
+                state_->home_overview_splitter_->setStretchFactor(0, useThreeColumns ? 1 : 0);
+                state_->home_overview_splitter_->setStretchFactor(1, 1);
+                if (useThreeColumns)
+                    state_->home_overview_splitter_->setStretchFactor(2, 1);
+                else
+                {
+                    sensorCardSplitter->setStretchFactor(0, kSensorEnvironmentStretch);
+                    sensorCardSplitter->setStretchFactor(1, kSensorNavigationStretch);
+                    sensorCardSplitter->handle(1)->installEventFilter(this);
+                }
+            }
+        }
         const int overviewMinimumWidth = state_->home_overview_splitter_ && state_->config_group_ && state_->home_temperature_overview_column_
-            ? state_->config_group_->minimumWidth() + state_->home_temperature_overview_column_->minimumWidth() + state_->home_overview_splitter_->handleWidth()
+            ? state_->config_group_->minimumWidth() + state_->home_temperature_overview_column_->minimumWidth() +
+                state_->home_overview_splitter_->handleWidth() +
+                (environmentInOverview ? environmentMinimumWidth + state_->home_overview_splitter_->handleWidth() : 0)
             : (state_->config_group_ ? state_->config_group_->minimumWidth() : 0);
         const bool widthConstrained = overviewMinimumWidth > 0 && viewportWidth > 0 &&
             viewportContentWidth < overviewMinimumWidth;
@@ -1064,10 +1107,27 @@ void MainWindow::updateResponsiveHomeLayout()
             const bool invalidSizes = sizes.size() < 2 || (sizes.at(0) + sizes.at(1)) <= 0;
             const int totalWidth =
                 overviewWidth > 0 ? overviewWidth : std::max(overviewMinimumWidth, state_->home_overview_splitter_->width());
-            const int availableWidth = std::max(0, totalWidth - state_->home_overview_splitter_->handleWidth());
+            const int availableWidth = std::max(0, totalWidth - state_->home_overview_splitter_->handleWidth() *
+                (environmentInOverview ? 2 : 1));
             const bool sizeTooNarrow = sizes.size() >= 2 && availableWidth >= leftMinimum + rightMinimum &&
                 (sizes.at(0) < leftMinimum || sizes.at(1) < rightMinimum);
-            if ((!initialized || invalidSizes || sizeTooNarrow) && viewportWidth > 0)
+            if (environmentInOverview)
+            {
+                // Give each column the same scale factor relative to its safe minimum.
+                const int minimumSum = leftMinimum + rightMinimum + environmentMinimumWidth;
+                const int leftWidth = qRound(availableWidth * (double(leftMinimum) / minimumSum));
+                const int rightWidth = qRound(availableWidth * (double(rightMinimum) / minimumSum));
+                const QList<int> targetSizes{leftWidth, rightWidth, availableWidth - leftWidth - rightWidth};
+                if (sizes != targetSizes && state_->home_overview_splitter_
+                        ->property(kHomeOverviewDeviceAutoManagedWidthProperty).toBool())
+                {
+                    state_->home_overview_splitter_->setProperty(kHomeOverviewDeviceProgrammaticResizeProperty, true);
+                    state_->home_overview_splitter_->setSizes(targetSizes);
+                    state_->home_overview_splitter_->setProperty(kHomeOverviewDeviceProgrammaticResizeProperty, false);
+                }
+                state_->home_overview_splitter_->setProperty(kHomeOverviewSplitterInitializedProperty, true);
+            }
+            else if ((!initialized || invalidSizes || sizeTooNarrow) && viewportWidth > 0)
             {
                 const int maxLeftWidth = std::max(leftMinimum, availableWidth - rightMinimum);
                 const int leftWidth = std::min(leftMinimum, maxLeftWidth);
@@ -1079,6 +1139,8 @@ void MainWindow::updateResponsiveHomeLayout()
                 state_->home_overview_splitter_->setProperty(kHomeOverviewSplitterInitializedProperty, true);
             }
         }
+        if (environmentInOverview || environmentRowChanged)
+            updateConfigCardHeightForSourceMode();
     }
 
     // Decide wrapping after the viewport width and panel metrics have settled.
@@ -1109,7 +1171,7 @@ void MainWindow::updateResponsiveHomeLayout()
     const bool compactCardsFitSideBySide =
         sensorAvailableWidth > 0 &&
         sensorAvailableWidth >= compactEpsilonMinimumWidth + sensorCardGap + environmentMinimumWidth;
-    const bool stackSensorCards = !compactCardsFitSideBySide;
+    const bool stackSensorCards = !environmentInOverview && !compactCardsFitSideBySide;
 
     const Qt::Orientation sensorOrientation =
         stackSensorCards ? Qt::Vertical : Qt::Horizontal;
@@ -1153,7 +1215,7 @@ void MainWindow::updateResponsiveHomeLayout()
         state_->env_group_->setMaximumWidth(QWIDGETSIZE_MAX);
         state_->env_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     }
-    if (!stackSensorCards && sensorAvailableWidth > sensorCardGap)
+    if (!environmentInOverview && !stackSensorCards && sensorAvailableWidth > sensorCardGap)
     {
         const bool userResized = sensorCardSplitter
             ->property(kHomeSensorSplitterUserResizedProperty)
@@ -1193,7 +1255,8 @@ void MainWindow::updateResponsiveHomeLayout()
     };
 
     clearFixedHeight(state_->epsilon_group_);
-    clearFixedHeight(state_->env_group_);
+    if (!environmentInOverview)
+        clearFixedHeight(state_->env_group_);
     clearFixedHeight(state_->sensor_row_widget_);
     if (!preserveDataCardHeight)
     {
@@ -1206,7 +1269,7 @@ void MainWindow::updateResponsiveHomeLayout()
     }
 
     const int epsilonHeight = contentHeightFor(state_->epsilon_group_);
-    const int envHeight = contentHeightFor(state_->env_group_);
+    const int envHeight = environmentInOverview ? 0 : contentHeightFor(state_->env_group_);
     int targetHeight = std::max(epsilonHeight, envHeight);
     if (stackSensorCards && epsilonHeight > 0 && envHeight > 0)
     {
@@ -1234,7 +1297,7 @@ void MainWindow::updateResponsiveHomeLayout()
             {
                 state_->epsilon_group_->setMinimumHeight(epsilonHeight);
             }
-            if (state_->env_group_)
+            if (state_->env_group_ && !environmentInOverview)
             {
                 state_->env_group_->setMinimumHeight(envHeight);
             }
@@ -1245,7 +1308,7 @@ void MainWindow::updateResponsiveHomeLayout()
             {
                 state_->epsilon_group_->setFixedHeight(dataCardHeight);
             }
-            if (state_->env_group_)
+            if (state_->env_group_ && !environmentInOverview)
             {
                 state_->env_group_->setFixedHeight(dataCardHeight);
             }

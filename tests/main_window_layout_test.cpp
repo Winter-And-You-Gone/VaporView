@@ -1017,6 +1017,15 @@ void requireHomeSensorCardSplitterResizable(MainWindow& window)
 {
     auto *splitter = window.findChild<QSplitter *>(QStringLiteral("homeSensorCardSplitter"));
     require(splitter != nullptr, "home sensor card splitter exists");
+    if (splitter->count() == 1)
+    {
+        auto *overview = window.findChild<QSplitter *>(QStringLiteral("homeOverviewSplitter"));
+        require(overview->count() == 3 &&
+                    overview->widget(2)->findChild<QWidget *>(QStringLiteral("environmentSectionTitleBar")) &&
+                    splitter->widget(0)->findChild<QWidget *>(QStringLiteral("epsilonPanel")),
+                "wide overview owns environment while the sensor row contains only EPSILON");
+        return;
+    }
     require(splitter->orientation() == Qt::Horizontal &&
                 splitter->count() == 2 &&
                 !splitter->isCollapsible(0) &&
@@ -1318,14 +1327,20 @@ void requireHomeDeviceGeometryStableAcrossCardResize(QWidget *scope,
     }
 
     const QList<int> originalSizes = splitter->sizes();
-    require(originalSizes.size() == 2,
-            "home overview splitter exposes two resize sections");
+    require(originalSizes.size() >= 2,
+            "home overview splitter exposes the device and temperature resize sections");
     const int availableGrowth = originalSizes.at(1) - companionCard->minimumWidth();
     const int growth = std::min(80, availableGrowth);
     require(growth >= 40,
             "home overview splitter has enough room to test a wider device card");
 
-    splitter->setSizes({originalSizes.at(0) + growth, originalSizes.at(1) - growth});
+    QList<int> expandedSizes = originalSizes;
+    expandedSizes[0] += growth;
+    expandedSizes[1] -= growth;
+    const QVariant wasAutoManaged = splitter->property(
+        VaporView::Ground::MainSupport::kHomeOverviewDeviceAutoManagedWidthProperty);
+    splitter->setProperty(VaporView::Ground::MainSupport::kHomeOverviewDeviceAutoManagedWidthProperty, false);
+    splitter->setSizes(expandedSizes);
     processEventsFor(40);
     activateLayouts(scope);
     require(deviceCard->width() >= originalSizes.at(0) + growth - 1,
@@ -1342,6 +1357,7 @@ void requireHomeDeviceGeometryStableAcrossCardResize(QWidget *scope,
     requireHomeDeviceColumnsAligned(scope);
 
     splitter->setSizes(originalSizes);
+    splitter->setProperty(VaporView::Ground::MainSupport::kHomeOverviewDeviceAutoManagedWidthProperty, wasAutoManaged);
     processEventsFor(40);
     activateLayouts(scope);
 }
@@ -3884,7 +3900,7 @@ void requireHomeOverviewLanguageWidthRoundTrip()
 {
     MainWindow languageOverviewWindow;
     languageOverviewWindow.setWindowTitle(QStringLiteral("VaporView"));
-    languageOverviewWindow.resize(1600, 800);
+    languageOverviewWindow.resize(1300, 800);
     languageOverviewWindow.show();
     require(waitForWindowExposed(&languageOverviewWindow),
             "dedicated language overview window becomes exposed");
@@ -3949,6 +3965,7 @@ void requireHomeOverviewLanguageWidthRoundTrip()
                                       "onSwitchLanguage",
                                       Qt::DirectConnection),
             "language overview window switches to English");
+    languageOverviewWindow.resize(1600, 800);
     require(processEventsUntil(1000, [&languageOverviewWindow,
                                       languageHomeOverviewSplitter,
                                       languageDeviceOverviewCard,
@@ -4003,6 +4020,7 @@ void requireHomeOverviewLanguageWidthRoundTrip()
                                       "onSwitchLanguage",
                                       Qt::DirectConnection),
             "language overview window switches back to Chinese");
+    languageOverviewWindow.resize(1300, 800);
     const bool returnedToChineseWidth = processEventsUntil(1000, [&languageOverviewWindow,
                                                                   languageHomeOverviewSplitter,
                                                                   languageDeviceOverviewCard,
@@ -4079,7 +4097,7 @@ void requireHomeOverviewLanguageWidthRoundTrip()
             wideOverviewWindow.findChild<QGroupBox *>(QStringLiteral("sensorRowContainer")))
     {
         for (QGroupBox *card :
-             wideDataGroup->findChildren<QGroupBox *>(QStringLiteral("sensorGroupBox")))
+             wideOverviewWindow.findChildren<QGroupBox *>(QStringLiteral("sensorGroupBox")))
         {
             if (card != wideEpsilonCard &&
                 card->findChildren<QLabel *>(QStringLiteral("envStatusIcon")).size() == 3)
@@ -4100,9 +4118,11 @@ void requireHomeOverviewLanguageWidthRoundTrip()
             "wide overview exposes EPSILON and environment top-level cards");
     const QRect wideEpsilonCardRect = wideWidgetRect(wideEpsilonCard);
     const QRect wideEnvironmentCardRect = wideWidgetRect(wideEnvironmentCard);
-    require(std::abs(wideEpsilonCardRect.top() - wideEnvironmentCardRect.top()) <= 1,
-            "wide overview keeps the environment card on the EPSILON row");
-    require(std::abs((wideEpsilonCardRect.left() -
+    auto *wideOverview = wideOverviewWindow.findChild<QSplitter *>(QStringLiteral("homeOverviewSplitter"));
+    const bool environmentInOverview = wideOverview->indexOf(wideEnvironmentCard) == 2;
+    require(environmentInOverview || std::abs(wideEpsilonCardRect.top() - wideEnvironmentCardRect.top()) <= 1,
+            "wide overview places environment in the overview row or beside EPSILON");
+    require(environmentInOverview || std::abs((wideEpsilonCardRect.left() -
                       wideRightEdge(wideEnvironmentCardRect)) -
                      VaporView::Ground::MainSupport::kTopLevelCardGap) <= 1,
             "wide overview places the environment card to the left of EPSILON with the shared gap");
@@ -4151,7 +4171,7 @@ void requireHomeEnvironmentCardLayout(MainWindow& window, bool requireSideBySide
     QGroupBox *epsilonGroup = nullptr;
     QGroupBox *environmentGroup = nullptr;
     const QList<QGroupBox*> sensorGroups =
-        dataGroup->findChildren<QGroupBox *>(QStringLiteral("sensorGroupBox"));
+        window.findChildren<QGroupBox *>(QStringLiteral("sensorGroupBox"));
     for (QGroupBox *group : sensorGroups)
     {
         if (!group)
@@ -4172,6 +4192,8 @@ void requireHomeEnvironmentCardLayout(MainWindow& window, bool requireSideBySide
 
     const QRect epsilonGeometry = epsilonGroup->geometry();
     const QRect environmentGeometry = environmentGroup->geometry();
+    auto *overview = window.findChild<QSplitter *>(QStringLiteral("homeOverviewSplitter"));
+    const bool environmentInOverview = overview->indexOf(environmentGroup) == 2;
     const int sideBySideRequiredWidth =
         epsilonGroup->minimumSizeHint().width() +
         VaporView::Ground::MainSupport::kTopLevelCardGap +
@@ -4183,9 +4205,9 @@ void requireHomeEnvironmentCardLayout(MainWindow& window, bool requireSideBySide
     const bool stacked =
         std::abs(environmentGeometry.left() - epsilonGeometry.left()) <= 4 &&
         epsilonGeometry.top() > environmentGeometry.bottom();
-    require((sideBySideFits || requireSideBySide) ? sideBySide : (sideBySide || stacked),
+    require(environmentInOverview || ((sideBySideFits || requireSideBySide) ? sideBySide : (sideBySide || stacked)),
             "home data cards place environment to the left when width permits, or above EPSILON when narrow");
-    require(environmentGeometry.right() <= dataGroup->contentsRect().right() + 1,
+    require(environmentGeometry.right() <= environmentGroup->parentWidget()->contentsRect().right() + 1,
             "default environment and lidar card stays inside the home data card edge");
 
     auto labelContains = [](QWidget *panel, const QString& objectName, const QString& token) -> QLabel * {
@@ -4293,8 +4315,8 @@ void requireHomeEnvironmentCardLayout(MainWindow& window, bool requireSideBySide
 
     const QRect expandedEpsilonGeometry = epsilonGroup->geometry();
     const QRect expandedEnvironmentGeometry = environmentGroup->geometry();
-    require(std::abs(expandedEnvironmentGeometry.top() - expandedEpsilonGeometry.top()) <= 1 &&
-                expandedEpsilonGeometry.left() > expandedEnvironmentGeometry.right(),
+    require(environmentInOverview || (std::abs(expandedEnvironmentGeometry.top() - expandedEpsilonGeometry.top()) <= 1 &&
+                expandedEpsilonGeometry.left() > expandedEnvironmentGeometry.right()),
             "grown home sensor cards remain side by side");
     const int expandedRowWidth =
         expandedEpsilonGeometry.width() + expandedEnvironmentGeometry.width();
@@ -4303,9 +4325,9 @@ void requireHomeEnvironmentCardLayout(MainWindow& window, bool requireSideBySide
         expandedEnvironmentGeometry.width() - originalEnvironmentGeometry.width();
     const int epsilonWidthGrowth =
         expandedEpsilonGeometry.width() - originalEpsilonGeometry.width();
-    require(rowWidthGrowth >= 100 &&
+    require((environmentInOverview ? environmentWidthGrowth > 0 : rowWidthGrowth >= 100) &&
                 std::abs(epsilonWidthGrowth) <= 1 &&
-                std::abs(environmentWidthGrowth - rowWidthGrowth) <= 1,
+                (environmentInOverview || std::abs(environmentWidthGrowth - rowWidthGrowth) <= 1),
             "wide home sensor cards keep EPSILON fixed while environment absorbs new width");
 
     window.resize(originalSize);
@@ -4323,6 +4345,135 @@ void requireHomeEnvironmentCardLayout(MainWindow& window, bool requireSideBySide
             "home sensor cards return to their original wide-window layout");
 }
 
+void requireHomeThreeColumnLayout()
+{
+    MainWindow window;
+    window.resize(2400, 700);
+    window.show();
+    require(waitForWindowExposed(&window), "three-column window becomes exposed");
+    processEventsFor(200);
+    for (QTimer *timer : window.findChildren<QTimer *>(QString(), Qt::FindDirectChildrenOnly))
+        if (timer->interval() == 100)
+            timer->stop();
+    auto *overview = window.findChild<QSplitter *>(QStringLiteral("homeOverviewSplitter"));
+    auto *sensors = window.findChild<QSplitter *>(QStringLiteral("homeSensorCardSplitter"));
+    auto *scroll = window.findChild<QScrollArea *>(QStringLiteral("mainCardsScrollArea"));
+    auto *environment = window.findChild<QWidget *>(QStringLiteral("environmentSectionTitleBar"))->parentWidget();
+    auto *pressure = environment->findChild<PtbPanel *>();
+    auto *plot = pressure->findChild<QWidget *>(QStringLiteral("environmentPressureTrendPlot"));
+    require(overview && sensors && scroll && environment && pressure && plot,
+            "three-column test exposes the existing cards and pressure plot");
+    bool englishActive = false;
+    for (int scale : {100, 130})
+    {
+        for (QAction *action : window.findChildren<QAction *>())
+            if (action->data().toInt() == scale)
+            {
+                action->trigger();
+                break;
+            }
+        processEventsFor(200);
+        for (bool english : {false, true})
+        {
+            if (englishActive != english)
+            {
+                require(QMetaObject::invokeMethod(&window, "onSwitchLanguage", Qt::DirectConnection),
+                        "three-column test switches language");
+                englishActive = english;
+                processEventsFor(200);
+            }
+            VaporView::PtbData sample;
+            sample.valid = true;
+            sample.pressure_hpa = -1100.0;
+            pressure->updateData(sample);
+            pressure->updateRate(9999.9);
+            window.resize(2400, 700);
+            processEventsFor(400);
+            const int sampleCount = plot->property("sampleCount").toInt();
+            const QList<int> minima{overview->widget(0)->minimumWidth(), overview->widget(1)->minimumWidth(),
+                std::max(environment->minimumWidth(), environment->minimumSizeHint().width())};
+            const int minimumSum = minima.at(0) + minima.at(1) + minima.at(2);
+            const int breakpoint = minimumSum + 2 * overview->handleWidth();
+            const QMargins margins = scroll->widget()->layout()->contentsMargins();
+            int chrome = window.width() - scroll->viewport()->width() + margins.left() + margins.right();
+            for (int extra : {-1, 0, 1, 180, 500, -1, 0, -1})
+            {
+                window.resize(chrome + breakpoint + extra, 700);
+                for (int attempt = 0; attempt < 4; ++attempt)
+                {
+                    processEventsFor(100);
+                    const QMargins currentMargins = scroll->widget()->layout()->contentsMargins();
+                    const int contentWidth = scroll->viewport()->width() - currentMargins.left() - currentMargins.right();
+                    const int correction = breakpoint + extra - contentWidth;
+                    if (!correction)
+                        break;
+                    window.resize(window.width() + correction, 700);
+                }
+                chrome = window.width() - scroll->viewport()->width() + margins.left() + margins.right();
+                const bool moved = processEventsUntil(1500, [&, extra] {
+                            activateLayouts(&window);
+                            return overview->count() == (extra >= 0 ? 3 : 2);
+                        });
+                if (!moved)
+                    std::cerr << "Three-column breakpoint: scale=" << scale << " english=" << english
+                              << " extra=" << extra << " required=" << breakpoint << " window=" << window.width()
+                              << " content=" << scroll->viewport()->width() - margins.left() - margins.right()
+                              << " windowMin=" << window.minimumWidth()
+                              << " minima=" << overview->widget(0)->minimumWidth() << ',' << overview->widget(1)->minimumWidth()
+                              << ',' << environment->minimumSizeHint().width() << " count=" << overview->count() << '\n';
+                require(moved, "environment moves at the sum of three safe minima and two gaps");
+                processEventsFor(80);
+                if (extra >= 0)
+                {
+                    require(overview->widget(2) == environment && sensors->count() == 1,
+                            "environment is the rightmost overview column and EPSILON remains below");
+                    const QList<int> widths = overview->sizes();
+                    const int available = overview->width() - 2 * overview->handleWidth();
+                    for (int i = 0; i < 3; ++i)
+                    {
+                        require(widths.at(i) >= minima.at(i) &&
+                            std::abs(widths.at(i) - available * (double(minima.at(i)) / minimumSum)) <= 2,
+                            "all three overview columns grow by the same factor above their safe minima");
+                    }
+                    require(environment->x() > overview->widget(1)->geometry().right() &&
+                            environment->height() == overview->widget(0)->height(),
+                            "three overview columns share the same row and height");
+                }
+                else
+                {
+                    require(sensors->count() == 2 && sensors->widget(0) == environment,
+                            "narrow windows restore environment before EPSILON");
+                }
+                require(environment->findChild<PtbPanel *>() == pressure &&
+                            pressure->findChild<QWidget *>(QStringLiteral("environmentPressureTrendPlot")) == plot &&
+                            plot->property("sampleCount").toInt() == sampleCount,
+                        "moving the card preserves panel identity and recorded trend samples");
+            }
+            window.resize(chrome + breakpoint + 20, 700);
+            require(processEventsUntil(1000, [&] { return overview->count() == 3; }),
+                    "three-column test restores a viewport close to the breakpoint");
+            sample.pressure_hpa = -1e30;
+            pressure->updateData(sample);
+            require(processEventsUntil(1500, [&] { return overview->count() == 2 && sensors->widget(0) == environment; }),
+                    "a wider live value moves environment down without a window resize");
+            sample.pressure_hpa = -1100.0;
+            pressure->updateData(sample);
+            require(processEventsUntil(1500, [&] { return overview->count() == 3; }),
+                    "restoring a shorter live value returns environment to the overview row");
+        }
+    }
+    require(QMetaObject::invokeMethod(&window, "onSwitchLanguage", Qt::DirectConnection),
+            "three-column test restores Chinese");
+    processEventsFor(200);
+    for (QAction *action : window.findChildren<QAction *>())
+        if (action->data().toInt() == 100)
+        {
+            action->trigger();
+            break;
+        }
+    window.close();
+}
+
 void requireHomeMaximumValueWidths()
 {
     MainWindow window;
@@ -4333,10 +4484,9 @@ void requireHomeMaximumValueWidths()
     for (QTimer *timer : window.findChildren<QTimer *>(QString(), Qt::FindDirectChildrenOnly))
         if (timer->interval() == 100)
             timer->stop();
-    auto *splitter = window.findChild<QSplitter *>(QStringLiteral("homeSensorCardSplitter"));
     auto *epsilon = static_cast<VaporView::Ground::Widgets::EpsilonPanel *>(
-        splitter->widget(1)->findChild<QWidget *>(QStringLiteral("epsilonPanel")));
-    auto *environment = splitter->widget(0);
+        window.findChild<QWidget *>(QStringLiteral("epsilonPanel")));
+    auto *environment = window.findChild<QWidget *>(QStringLiteral("environmentSectionTitleBar"))->parentWidget();
     auto *ptb = environment->findChild<PtbPanel *>();
     auto *hmp = environment->findChild<HmpPanel *>();
     auto *lidar = environment->findChild<LidarPanel *>();
@@ -4451,9 +4601,9 @@ void requireHomeMaximumValueWidths()
             epsilon->updateData(sample);
             require(epsilon->preferredWrappedWidth() > reservedWidth,
                     "oversized actual values exceed the reserved EPSILON format");
-            require(processEventsUntil(1000, [splitter, epsilon]() {
-                        const QMargins margins = splitter->widget(1)->layout()->contentsMargins();
-                        return splitter->widget(1)->maximumWidth() >= epsilon->preferredWrappedWidth() +
+            require(processEventsUntil(1000, [epsilon]() {
+                        const QMargins margins = epsilon->parentWidget()->layout()->contentsMargins();
+                        return epsilon->parentWidget()->maximumWidth() >= epsilon->preferredWrappedWidth() +
                             margins.left() + margins.right();
                     }), "EPSILON card expands when actual values exceed the reserved format");
             sample.vel_n_mps = sample.vel_e_mps = sample.vel_d_mps = -999.999;
@@ -4523,7 +4673,10 @@ void requireHomeSensorLayoutAfterSidebarRestore()
             timer->stop();
     }
     auto *panel = static_cast<VaporView::Ground::Widgets::EpsilonPanel *>(
-        cards->widget(1)->findChild<QWidget *>(QStringLiteral("epsilonPanel")));
+        window.findChild<QWidget *>(QStringLiteral("epsilonPanel")));
+    auto *environmentCard = window.findChild<QWidget *>(QStringLiteral("environmentSectionTitleBar"))->parentWidget();
+    auto *epsilonCard = panel->parentWidget();
+    auto *overview = window.findChild<QSplitter *>(QStringLiteral("homeOverviewSplitter"));
     require(panel != nullptr, "sidebar restore test exposes the EPSILON panel");
     VaporView::EpsilonData sample;
     sample.valid = true;
@@ -4552,10 +4705,10 @@ void requireHomeSensorLayoutAfterSidebarRestore()
         setScale(scale);
         dragSidebarTo(0);
         processEventsFor(200);
-        const QMargins epsilonMargins = cards->widget(1)->layout()->contentsMargins();
-        const int readableRowWidth = std::max(cards->widget(1)->minimumSizeHint().width(),
+        const QMargins epsilonMargins = epsilonCard->layout()->contentsMargins();
+        const int readableRowWidth = std::max(epsilonCard->minimumSizeHint().width(),
             panel->preferredWrappedWidth() + epsilonMargins.left() + epsilonMargins.right()) +
-            cards->handleWidth() + std::max(cards->widget(0)->minimumWidth(), cards->widget(0)->minimumSizeHint().width());
+            cards->handleWidth() + std::max(environmentCard->minimumWidth(), environmentCard->minimumSizeHint().width());
         const int readableWindowWidth = window.width() - cards->parentWidget()->width() + readableRowWidth + 50;
         for (int extraWidth : {0, 50, 100})
         {
@@ -4569,7 +4722,7 @@ void requireHomeSensorLayoutAfterSidebarRestore()
             require(processEventsUntil(1000, [&window] { return !window.isMaximized(); }),
                     "sidebar restore test restores the window through its title button");
             processEventsFor(150);
-            require(cards->orientation() == Qt::Vertical,
+            require(cards->count() == 2 && cards->orientation() == Qt::Vertical,
                     "wide sidebar and restored window stack the sensor cards when narrow");
             require(cards->widget(1)->y() > cards->widget(0)->geometry().bottom(),
                     "stacked sensor cards place environment above EPSILON");
@@ -4579,8 +4732,14 @@ void requireHomeSensorLayoutAfterSidebarRestore()
                 dragSidebarTo(0);
             processEventsFor(300);
             require(sidebar->sizes().at(0) == 0, "sidebar restore test collapses the wide sidebar");
-            auto *epsilon = cards->widget(1);
-            auto *environment = cards->widget(0);
+            if (overview->indexOf(environmentCard) == 2)
+            {
+                require(cards->count() == 1 && cards->widget(0) == epsilonCard,
+                        "sidebar collapse moves environment into the first row when three minima fit");
+                continue;
+            }
+            auto *epsilon = epsilonCard;
+            auto *environment = environmentCard;
             const QMargins margins = epsilon->layout()->contentsMargins();
             const int requiredWidth = std::max(epsilon->minimumSizeHint().width(),
                 panel->preferredWrappedWidth() + margins.left() + margins.right()) +
@@ -4790,6 +4949,13 @@ int main(int argc, char **argv)
     {
         requireHomeOverviewLanguageWidthRoundTrip();
         std::cout << "home_overview_language_layout_test passed\n";
+        return 0;
+    }
+
+    if (app.arguments().contains(QStringLiteral("--home-three-column-only")))
+    {
+        requireHomeThreeColumnLayout();
+        std::cout << "home_three_column_layout_test passed\n";
         return 0;
     }
 
@@ -6596,7 +6762,7 @@ int main(int argc, char **argv)
 
     auto *homeOverviewSplitter = window.findChild<QSplitter *>(QStringLiteral("homeOverviewSplitter"));
     require(homeOverviewSplitter != nullptr, "home overview splitter exists");
-    require(homeOverviewSplitter->count() == 2, "home overview splitter has device and temperature columns");
+    require(homeOverviewSplitter->count() >= 2, "home overview splitter has device and temperature columns");
     require(!homeOverviewSplitter->isCollapsible(0) &&
                 !homeOverviewSplitter->isCollapsible(1),
             "home overview splitter keeps both overview cards non-collapsible");
@@ -11590,7 +11756,7 @@ int main(int argc, char **argv)
     QGroupBox *epsilonGroup = nullptr;
     QGroupBox *environmentGroup = nullptr;
     const QList<QGroupBox*> sensorGroups =
-        dataGroup->findChildren<QGroupBox *>(QStringLiteral("sensorGroupBox"));
+        window.findChildren<QGroupBox *>(QStringLiteral("sensorGroupBox"));
     for (QGroupBox *group : sensorGroups)
     {
         if (group->findChild<QWidget *>(QStringLiteral("epsilonPanel")))
@@ -11693,7 +11859,8 @@ int main(int argc, char **argv)
     const bool compactStacked =
         std::abs(compactEnvironmentGeometry.left() - compactEpsilonGeometry.left()) <= 4 &&
         compactEpsilonGeometry.top() > compactEnvironmentGeometry.bottom();
-    require(compactSideBySideFits ? compactSideBySide : (compactSideBySide || compactStacked),
+    require(homeOverviewSplitter->indexOf(environmentGroup) == 2 ||
+                (compactSideBySideFits ? compactSideBySide : (compactSideBySide || compactStacked)),
             "default home data cards place environment to the left when width permits, or above EPSILON when narrow");
     require(compactEnvironmentGeometry.right() <= dataGroup->contentsRect().right() + 1,
             "default environment and lidar card stays inside the home data card edge");
@@ -11744,8 +11911,9 @@ int main(int argc, char **argv)
 
     const QRect wideEpsilonGeometry = epsilonGroup->geometry();
     const QRect wideEnvironmentGeometry = environmentGroup->geometry();
-    require(std::abs(wideEnvironmentGeometry.top() - wideEpsilonGeometry.top()) <= 1 &&
-                wideEpsilonGeometry.left() > wideEnvironmentGeometry.right(),
+    require(homeOverviewSplitter->indexOf(environmentGroup) == 2 ||
+                (std::abs(wideEnvironmentGeometry.top() - wideEpsilonGeometry.top()) <= 1 &&
+                wideEpsilonGeometry.left() > wideEnvironmentGeometry.right()),
             "wide home data cards place environment and lidar to the left of EPSILON");
     require(wideEnvironmentGeometry.right() <= dataGroup->contentsRect().right() + 1,
             "wide environment and lidar card stays inside the home data card edge");

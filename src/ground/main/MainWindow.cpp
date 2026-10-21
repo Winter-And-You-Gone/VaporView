@@ -802,7 +802,9 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 
     const QEvent::Type eventType = event->type();
     if (eventType == QEvent::LayoutRequest &&
-        (watched == state_->epsilon_group_ || watched == state_->env_group_) &&
+        (watched == state_->epsilon_group_ || watched == state_->env_group_ ||
+         watched == state_->config_group_ || watched == state_->home_temperature_overview_column_ ||
+         watched == state_->home_overview_splitter_) &&
         state_->epsilon_panel_ && state_->sensor_card_splitter_ && state_->sensor_row_widget_ &&
         state_->epsilon_group_ && state_->env_group_ && state_->epsilon_group_->layout())
     {
@@ -816,8 +818,17 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
             state_->sensor_card_splitter_->handleWidth() +
             std::max(state_->env_group_->minimumWidth(), state_->env_group_->minimumSizeHint().width());
         const bool rowTooNarrow = state_->sensor_card_splitter_->orientation() == Qt::Horizontal &&
+            state_->sensor_card_splitter_->count() == 2 &&
             state_->sensor_row_widget_->contentsRect().width() < rowMinimumWidth;
-        if (capped || rowTooNarrow)
+        const bool overviewTooNarrow = state_->home_overview_splitter_ &&
+            state_->home_overview_splitter_->indexOf(state_->env_group_) >= 0 &&
+            state_->env_group_->width() < state_->env_group_->minimumSizeHint().width();
+        const bool columnMinimaChanged = state_->home_overview_splitter_ && state_->config_group_ &&
+            state_->home_temperature_overview_column_ &&
+            state_->home_overview_splitter_->property(kHomeOverviewColumnMinimaProperty).value<QList<int>>() !=
+                QList<int>{state_->config_group_->minimumWidth(), state_->home_temperature_overview_column_->minimumWidth(),
+                    std::max(state_->env_group_->minimumWidth(), state_->env_group_->minimumSizeHint().width())};
+        if (capped || rowTooNarrow || overviewTooNarrow || columnMinimaChanged)
             queueResponsiveHomeLayoutRefresh();
     }
     if (state_->main_cards_scroll_area_ &&

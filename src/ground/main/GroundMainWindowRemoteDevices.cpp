@@ -702,6 +702,9 @@ void MainWindow::updateHomeDeviceOverviewMinimumWidth()
     // changes still follow the normal minimum-width convergence below.
     const bool themeChanged = previousTheme.isValid() && previousTheme.toBool() != darkTheme;
     overviewSplitter->setProperty(kHomeOverviewDeviceThemeProperty, darkTheme);
+    // Three-column overview sizes are proportional to all three content minima.
+    if (overviewSplitter->indexOf(state_->env_group_) >= 0)
+        return;
 
     auto rememberAutoMinimumWidth = [this, contentMinimumWidth]() {
         state_->home_overview_splitter_->setProperty(
@@ -816,6 +819,10 @@ void MainWindow::updateConfigCardHeightForSourceMode()
         ? laserOverviewHeight + kTopLevelCardGap + ai8OverviewHeight
         : std::max(laserOverviewHeight, ai8OverviewHeight);
     minimumHeight = std::max(minimumHeight, overviewColumnHeight);
+    const bool environmentInOverview = state_->home_overview_splitter_ &&
+        state_->home_overview_splitter_->indexOf(state_->env_group_) >= 0;
+    if (environmentInOverview)
+        minimumHeight = std::max(minimumHeight, naturalCardHeight(state_->env_group_));
     state_->config_group_->setProperty(kMainCardMinimumHeightProperty, minimumHeight);
     state_->config_group_->setMinimumHeight(minimumHeight);
     if (state_->home_overview_splitter_)
@@ -853,6 +860,8 @@ void MainWindow::updateConfigCardHeightForSourceMode()
         {
             state_->home_overview_splitter_->setFixedHeight(targetHeight);
         }
+        if (environmentInOverview)
+            state_->env_group_->setFixedHeight(targetHeight);
         updateHomeDeviceOverviewMinimumWidth();
         return;
     }
