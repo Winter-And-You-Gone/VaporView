@@ -62,6 +62,13 @@
 static int fontWarnings=0;
 static void captureFont(QtMsgType,const QMessageLogContext&,const QString &message){if(message.contains("QFont::setPointSize")){++fontWarnings;std::cerr<<message.toStdString()<<'\n';}}
 static void require(bool v,const char *why) { if(!v) {std::cerr<<why<<'\n';std::exit(1);} }
+static QString internalEnvironmentText(QWidget *row)
+{
+    QStringList values;
+    for (auto *label : row->findChildren<QLabel*>("homeInternalEnvironmentValueLabel"))
+        values.append(label->text());
+    return values.join(QLatin1Char(' '));
+}
 static void verifyConnectionCard(FpgaControlPage *page,int scale)
 {
     const int side=qRound(40*scale/100.0);
@@ -162,16 +169,19 @@ static void verifyCardMargins(MainWindow &window,FpgaControlPage *page,int scale
     stack->setCurrentIndex(0); processFor(200);
     auto *homeScroll=window.findChild<QScrollArea*>("mainCardsScrollArea");
     const int homeOverflow=homeScroll->horizontalScrollBar()->maximum();
-    auto *internal=window.findChild<QLabel*>("homeInternalEnvironment");
+    auto *internal=window.findChild<QWidget*>("homeInternalEnvironment");
     require(internal && internal->height()>=internal->sizeHint().height()
         && internal->width()>=internal->sizeHint().width(),
-        "home internal environment title fits three metrics at the current font scale");
+        "home internal environment row fits three metrics at the current font scale");
     QWidget *standardTitle=nullptr;
     for(auto *title:window.findChildren<QWidget*>("sectionTitleBar"))
         if(title->parentWidget()->property("homeLaserTemperatureOverviewCard").toBool())standardTitle=title;
-    require(!internal->text().contains('\n') && standardTitle
-        && internal->parentWidget()->height()==standardTitle->height(),
-        "internal environment stays on one line without increasing the standard title bar height");
+    require(internal->findChildren<QLabel*>("homeInternalEnvironmentValueLabel").size()==3 && standardTitle
+        && internal->y()>=standardTitle->height(),
+        "three internal environment capsules sit below the standard title bar");
+    for (auto *label : internal->findChildren<QLabel*>())
+        require(label->width()>=label->sizeHint().width() && label->height()>=label->sizeHint().height(),
+            "internal metric names and values remain fully visible at the current font scale");
     // Large fonts may require horizontal scrolling; compare the visible card edge.
     const QRect homeRect=QRect(homeCards->mapTo(stack,QPoint()),homeCards->size()).adjusted(0,0,-homeOverflow,0);
     stack->setCurrentIndex(4); processFor(50);
@@ -491,7 +501,7 @@ static void remoteHomeActions()
         <<", "<<qPrintable(distanceRate->text())<<", "<<qPrintable(epsilonRate->text())<<'\n';
     require(ratesShown,
         "remote FPGA rates come from Sky raw sensors and fixed PTB, with HMP unavailable until HMP data arrives");
-    auto *internal=window.findChild<QLabel*>("homeInternalEnvironment");
+    auto *internal=window.findChild<QWidget*>("homeInternalEnvironment");
     require(internal,"home internal metrics exist");
     FpgaSensor::Reading bmp;bmp.source=0x43;bmp.kind=FpgaSensor::SensorKind::Bmp390;
     bmp.validity={true,true,true,true};bmp.pressurePa=100000;
@@ -499,13 +509,13 @@ static void remoteHomeActions()
     sht.validity={true,true,true,true};sht.temperatureC=22;sht.humidityPct=33;
     send(MsgType::FpgaSensor,FpgaRemote::encodeSensor(bmp,1));
     send(MsgType::FpgaSensor,FpgaRemote::encodeSensor(sht,2));
-    require(waitUntil([&]{return internal->text().contains("1000.00") && internal->text().contains("22.00") && internal->text().contains("33.00");}),
+    require(waitUntil([&]{return internalEnvironmentText(internal).contains("1000.00") && internalEnvironmentText(internal).contains("22.00") && internalEnvironmentText(internal).contains("33.00");}),
         "remote internal metrics use typed FPGA sensors independently of basic environmental telemetry");
     sht.validity.measurement=false;send(MsgType::FpgaSensor,FpgaRemote::encodeSensor(sht,2));
-    require(waitUntil([&]{return internal->text().count(QStringLiteral("—"))==2 && internal->text().contains("1000.00");}),
+    require(waitUntil([&]{return internalEnvironmentText(internal).count(QStringLiteral("—"))==2 && internalEnvironmentText(internal).contains("1000.00");}),
         "invalid SHT clears temperature and humidity without clearing independent BMP pressure");
     registers[QString::number(0x6304)]=0;status["registers"]=registers;send(MsgType::FpgaStatus,FpgaRemote::encodeStatus(status));
-    require(waitUntil([&]{return internal->text().count(QStringLiteral("—"))==3;}),"disabled BMP cannot retain a live internal value");
+    require(waitUntil([&]{return internalEnvironmentText(internal).count(QStringLiteral("—"))==3;}),"disabled BMP cannot retain a live internal value");
     registers[QString::number(0x6304)]=1;status["registers"]=registers;send(MsgType::FpgaStatus,FpgaRemote::encodeStatus(status));
     const QStringList names{"EPSILON","PTB210","TFA1500","AI-8288",QStringLiteral("波形源")};
     const QList<quint16> sources{0x42,0x40,0x45,0x46,0};
@@ -897,9 +907,9 @@ static void localSimulatorRouting()
     check(waitUntil([&]{return rateHz(pressureRate)>0.0&&rateHz(humidityRate)>0.0
         &&rateHz(distanceRate)>0.0&&rateHz(epsilonRate)>20.0;}),
         "local FPGA simulator supplies visible rates without serial collectors");
-    auto *internal=window.findChild<QLabel*>("homeInternalEnvironment");
-    check(internal && waitUntil([&]{return !internal->text().contains(QStringLiteral("—"));}),
-        "both internal sensors reach the home title bar through real VLP frames");
+    auto *internal=window.findChild<QWidget*>("homeInternalEnvironment");
+    check(internal && waitUntil([&]{return !internalEnvironmentText(internal).contains(QStringLiteral("—"));}),
+        "both internal sensors reach the home capsules through real VLP frames");
     auto *environmentPressure=window.findChild<PtbPanel*>()->findChild<QLabel*>("highlightedValue");
     const double pressureHpa=QRegularExpression("([0-9]+\\.[0-9]+)").match(environmentPressure->text()).captured(1).toDouble();
     check(pressureHpa>=1012.97&&pressureHpa<=1013.53,"BMP pressure never replaces environmental PTB pressure across the PTB simulation cycle");
@@ -1428,21 +1438,21 @@ static void directInternalEnvironmentRouting()
     TelemetryStatus status;
     for(auto id:{SkyDeviceId::Bmp390,SkyDeviceId::Sht45}){DeviceStatusItem item;item.device_id=id;item.state=DeviceState::Connected;status.devices.append(item);}
     send(MsgType::TelemetryStatus,TelemetryCodec::serializeTelemetryStatus(status));
-    auto *label=window.findChild<QLabel*>("homeInternalEnvironment");
+    auto *label=window.findChild<QWidget*>("homeInternalEnvironment");
     require(waitUntil([&]{return remote->deviceState(SkyDeviceId::Sht45)==DeviceState::Connected;}),"independent remote device IDs are accepted");
     const auto environmentBefore=window.findChild<PtbPanel*>()->findChild<QLabel*>("highlightedValue")->text();
     FpgaSensor::Reading reading;reading.source=0x43;reading.kind=FpgaSensor::SensorKind::Bmp390;reading.pressurePa=100000;reading.validity={true,true,true,true};
     send(MsgType::InternalEnvironment,FpgaRemote::encodeSensor(reading,1));
     reading.source=0x44;reading.kind=FpgaSensor::SensorKind::Sht45;reading.pressurePa.reset();reading.temperatureC=30;reading.humidityPct=70;
     send(MsgType::InternalEnvironment,FpgaRemote::encodeSensor(reading,2));
-    require(waitUntil([&]{return label->text().contains("1000.00")&&label->text().contains("30.00")&&label->text().contains("70.00");}),
+    require(waitUntil([&]{return internalEnvironmentText(label).contains("1000.00")&&internalEnvironmentText(label).contains("30.00")&&internalEnvironmentText(label).contains("70.00");}),
         "direct Sky internal telemetry reaches the three home internal metrics");
     require(window.findChild<PtbPanel*>()->findChild<QLabel*>("highlightedValue")->text()==environmentBefore,
         "internal serial telemetry never overwrites the environmental PTB panel");
     status.devices[0].state=DeviceState::Disconnected;send(MsgType::TelemetryStatus,TelemetryCodec::serializeTelemetryStatus(status));
-    require(waitUntil([&]{return label->text().contains(QStringLiteral("—"))&&label->text().contains("30.00");}),
+    require(waitUntil([&]{return internalEnvironmentText(label).contains(QStringLiteral("—"))&&internalEnvironmentText(label).contains("30.00");}),
         "individual BMP disconnect invalidates pressure while preserving SHT values");
-    require(waitUntil([&]{return label->text().count(QStringLiteral("—"))==3;},6000),"stale direct internal data expires without a disconnect");
+    require(waitUntil([&]{return internalEnvironmentText(label).count(QStringLiteral("—"))==3;},6000),"stale direct internal data expires without a disconnect");
     remote->close();window.close();
 }
 

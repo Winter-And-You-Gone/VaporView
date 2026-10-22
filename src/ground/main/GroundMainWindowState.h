@@ -396,7 +396,9 @@ struct MainWindowState
     QLabel *env_hmp_status_icon_;
     QLabel *temperature_overview_inline_title_lbl_;
     QLabel *ai8_temperature_overview_inline_title_lbl_;
-    QLabel *internal_environment_lbl_ = nullptr;
+    QWidget *internal_environment_row_ = nullptr;
+    QLabel *internal_environment_names_[3] = {};
+    QLabel *internal_environment_values_[3] = {};
     int internal_environment_context_ = -1;
     QMap<quint16, VaporView::FpgaSensor::Reading> internal_environment_;
     QMap<quint16, std::chrono::steady_clock::time_point> internal_environment_times_;

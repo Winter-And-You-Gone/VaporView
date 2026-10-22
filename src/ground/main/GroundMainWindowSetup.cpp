@@ -5381,12 +5381,31 @@ void MainWindow::setupDataPanels()
     ai8TemperatureOverviewTitleLayout->addStretch(1);
     ai8TemperatureOverviewLayout->addWidget(ai8TemperatureOverviewTitleBar);
 
-    state_->internal_environment_lbl_ = new QLabel(state_->ai8_temperature_overview_group_);
-    state_->internal_environment_lbl_->setObjectName(QStringLiteral("homeInternalEnvironment"));
-    state_->internal_environment_lbl_->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    state_->internal_environment_lbl_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    state_->internal_environment_lbl_->setContentsMargins(8, 2, 8, 2);
-    ai8TemperatureOverviewLayout->addWidget(state_->internal_environment_lbl_, 1);
+    state_->internal_environment_row_ = new QWidget(state_->ai8_temperature_overview_group_);
+    state_->internal_environment_row_->setObjectName(QStringLiteral("homeInternalEnvironment"));
+    auto *internalEnvironmentLayout = new QHBoxLayout(state_->internal_environment_row_);
+    internalEnvironmentLayout->setContentsMargins(8, 2, 8, 2);
+    internalEnvironmentLayout->setSpacing(4);
+    for (int index = 0; index < 3; ++index)
+    {
+        auto *pill = new QFrame(state_->internal_environment_row_);
+        pill->setObjectName(QStringLiteral("homeInternalEnvironmentPill"));
+        pill->setAttribute(Qt::WA_StyledBackground, true);
+        auto *pillLayout = new QHBoxLayout(pill);
+        pillLayout->setContentsMargins(6, 3, 6, 3);
+        pillLayout->setSpacing(4);
+        auto *name = new QLabel(pill);
+        name->setObjectName(QStringLiteral("homeInternalEnvironmentNameLabel"));
+        auto *value = new QLabel(pill);
+        value->setObjectName(QStringLiteral("homeInternalEnvironmentValueLabel"));
+        value->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        pillLayout->addWidget(name);
+        pillLayout->addWidget(value, 1, Qt::AlignRight | Qt::AlignVCenter);
+        state_->internal_environment_names_[index] = name;
+        state_->internal_environment_values_[index] = value;
+        internalEnvironmentLayout->addWidget(pill, 1, Qt::AlignVCenter);
+    }
+    ai8TemperatureOverviewLayout->addWidget(state_->internal_environment_row_, 1);
     refreshInternalEnvironment();
 
     state_->ai8_temperature_overview_panel_ =

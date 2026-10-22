@@ -1177,7 +1177,7 @@ void MainWindow::updateInternalEnvironment(const VaporView::FpgaSensor::Reading 
 
 void MainWindow::refreshInternalEnvironment()
 {
-    if (!state_->internal_environment_lbl_) return;
+    if (!state_->internal_environment_row_) return;
     const int context=(isRemoteSkyMode()?1:0)+(isUiTestMode()?2:0)+(isFpgaRelayPath()?0:4);
     if (context!=state_->internal_environment_context_) {
         state_->internal_environment_.clear();state_->internal_environment_times_.clear();
@@ -1218,10 +1218,16 @@ void MainWindow::refreshInternalEnvironment()
     const auto pressure = value(0x43,&VaporView::FpgaSensor::Reading::pressurePa,0.01);
     const auto temperature = value(0x44,&VaporView::FpgaSensor::Reading::temperatureC,1);
     const auto humidity = value(0x44,&VaporView::FpgaSensor::Reading::humidityPct,1);
-    state_->internal_environment_lbl_->setText((state_->is_english_
-        ? QStringLiteral("Internal pressure: %1 hPa    Internal temperature: %2 °C    Internal humidity: %3 %RH")
-        : QStringLiteral("内部气压：%1 hPa    内部温度：%2 °C    内部湿度：%3 %RH")).arg(pressure,temperature,humidity));
-    state_->internal_environment_lbl_->setToolTip(state_->is_english_
+    const QStringList names = state_->is_english_
+        ? QStringList{QStringLiteral("Internal pressure"), QStringLiteral("Internal temperature"), QStringLiteral("Internal humidity")}
+        : QStringList{QStringLiteral("内部气压"), QStringLiteral("内部温度"), QStringLiteral("内部湿度")};
+    const QStringList values{pressure + QStringLiteral(" hPa"), temperature + QStringLiteral(" °C"), humidity + QStringLiteral(" %RH")};
+    for (int index = 0; index < 3; ++index)
+    {
+        state_->internal_environment_names_[index]->setText(names.at(index));
+        state_->internal_environment_values_[index]->setText(values.at(index));
+    }
+    state_->internal_environment_row_->setToolTip(state_->is_english_
         ? QStringLiteral("BMP390 pressure; SHT45 temperature/humidity. Environmental PTB210/HMP data and session fields are separate.")
         : QStringLiteral("BMP390 内部气压；SHT45 内部温湿度。环境数据及 session 字段继续使用 PTB210/HMP。"));
 }

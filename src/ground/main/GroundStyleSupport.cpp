@@ -1391,6 +1391,13 @@ QLabel#temperatureOverviewOutputLabel {
 QWidget#ai8TemperatureOverviewPanel {
     background-color: transparent;
 }
+QFrame#homeInternalEnvironmentPill {
+    background-color: transparent;
+    border: 1px solid @vv-border;
+}
+QFrame#homeInternalEnvironmentPill QLabel#homeInternalEnvironmentValueLabel {
+    color: @vv-primary;
+}
 QFrame#ai8TemperatureOverviewCell {
     background-color: transparent;
     border: 1px solid @vv-border;
