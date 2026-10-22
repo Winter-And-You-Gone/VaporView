@@ -182,6 +182,35 @@ static void verifyCardMargins(MainWindow &window,FpgaControlPage *page,int scale
     for (auto *label : internal->findChildren<QLabel*>())
         require(label->width()>=label->sizeHint().width() && label->height()>=label->sizeHint().height(),
             "internal metric names and values remain fully visible at the current font scale");
+    const auto values=internal->findChildren<QLabel*>("homeInternalEnvironmentValueLabel");
+    QStringList originalTexts;
+    QList<QRect> originalRects;
+    for (auto *value:values) {
+        originalTexts.append(value->text());
+        originalRects.append(value->geometry());
+    }
+    const QList<QStringList> readings{
+        {"9.99 hPa",QStringLiteral("9.99 °C"),"9.99 %RH"},
+        {"1000.00 hPa",QStringLiteral("-0.01 °C"),"100.00 %RH"},
+        {"-9999.99 hPa",QStringLiteral("-999.99 °C"),"-999.99 %RH"},
+        {QStringLiteral("— hPa"),QStringLiteral("— °C"),QStringLiteral("— %RH")}
+    };
+    for (const auto &reading:readings) {
+        for (int index=0;index<values.size();++index)values[index]->setText(reading[index]);
+        internal->layout()->activate();
+        for (auto *value:values)value->parentWidget()->layout()->activate();
+        for (int index=0;index<values.size();++index) {
+            auto *value=values[index];
+            require(value->text()==reading[index],"layout check retains the injected internal reading");
+            require(value->geometry()==originalRects[index],
+                "internal metric value bounds remain stable across placeholders, digit counts and negative readings");
+            require(value->alignment().testFlag(Qt::AlignRight),"internal metric text is right aligned inside the value area");
+            require(value->width()>=value->fontMetrics().horizontalAdvance(value->text()),
+                "internal metric reading and full unit fit without clipping");
+        }
+    }
+    for (int index=0;index<values.size();++index)values[index]->setText(originalTexts[index]);
+    processFor(40);
     // Large fonts may require horizontal scrolling; compare the visible card edge.
     const QRect homeRect=QRect(homeCards->mapTo(stack,QPoint()),homeCards->size()).adjusted(0,0,-homeOverflow,0);
     stack->setCurrentIndex(4); processFor(50);

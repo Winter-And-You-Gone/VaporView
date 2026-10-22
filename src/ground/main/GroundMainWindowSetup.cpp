@@ -28,6 +28,29 @@ namespace
 constexpr int kMainContentBottomFadeHeight = 36;
 constexpr int kDeviceConfigEpsilonPacketRatesButtonMinWidth = 194;
 
+class InternalEnvironmentValueLabel final : public QLabel
+{
+public:
+    InternalEnvironmentValueLabel(const QString &reservedText, QWidget *parent)
+        : QLabel(parent), reserved_text_(reservedText)
+    {
+        setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    }
+
+    QSize sizeHint() const override
+    {
+        QSize hint = QLabel::sizeHint();
+        // Keep a stable value area, recalculated for the active font and UI scale.
+        hint.setWidth(std::max(hint.width(), fontMetrics().horizontalAdvance(reserved_text_) + 1));
+        return hint;
+    }
+
+    QSize minimumSizeHint() const override { return sizeHint(); }
+
+private:
+    QString reserved_text_;
+};
+
 
 QString epsilonSideTitleText(const QString& source)
 {
@@ -5386,6 +5409,8 @@ void MainWindow::setupDataPanels()
     auto *internalEnvironmentLayout = new QHBoxLayout(state_->internal_environment_row_);
     internalEnvironmentLayout->setContentsMargins(8, 2, 8, 2);
     internalEnvironmentLayout->setSpacing(4);
+    const QStringList internalEnvironmentReservations{
+        QStringLiteral("-9999.99 hPa"), QStringLiteral("-999.99 °C"), QStringLiteral("-999.99 %RH")};
     for (int index = 0; index < 3; ++index)
     {
         auto *pill = new QFrame(state_->internal_environment_row_);
@@ -5396,11 +5421,11 @@ void MainWindow::setupDataPanels()
         pillLayout->setSpacing(4);
         auto *name = new QLabel(pill);
         name->setObjectName(QStringLiteral("homeInternalEnvironmentNameLabel"));
-        auto *value = new QLabel(pill);
+        auto *value = new InternalEnvironmentValueLabel(internalEnvironmentReservations.at(index), pill);
         value->setObjectName(QStringLiteral("homeInternalEnvironmentValueLabel"));
         value->setTextInteractionFlags(Qt::TextSelectableByMouse);
         pillLayout->addWidget(name);
-        pillLayout->addWidget(value, 1, Qt::AlignRight | Qt::AlignVCenter);
+        pillLayout->addWidget(value, 1);
         state_->internal_environment_names_[index] = name;
         state_->internal_environment_values_[index] = value;
         internalEnvironmentLayout->addWidget(pill, 1, Qt::AlignVCenter);
