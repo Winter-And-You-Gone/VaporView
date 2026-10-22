@@ -4518,11 +4518,14 @@ void requireHomeThreeColumnLayout()
                     requireHomeCardFillsSensorRow(sensors->widget(0), sensors->parentWidget()->parentWidget());
                     const QList<int> widths = overview->sizes();
                     const int available = overview->width() - 2 * overview->handleWidth();
-                    for (int i = 0; i < 3; ++i)
+                    require(std::abs(widths.at(0) - minima.at(0)) <= 1,
+                            "the device overview stays at its content minimum as the window widens");
+                    for (int i = 1; i < 3; ++i)
                     {
                         require(widths.at(i) >= minima.at(i) &&
-                            std::abs(widths.at(i) - available * (double(minima.at(i)) / minimumSum)) <= 2,
-                            "all three overview columns grow by the same factor above their safe minima");
+                            std::abs(widths.at(i) - (available - widths.at(0)) *
+                                (double(minima.at(i)) / (minima.at(1) + minima.at(2)))) <= 2,
+                            "temperature and environment columns share the remaining width proportionally");
                     }
                     require(environment->x() > overview->widget(1)->geometry().right() &&
                             environment->height() == overview->widget(0)->height(),
@@ -4543,6 +4546,32 @@ void requireHomeThreeColumnLayout()
                             plot->property("sampleCount").toInt() == sampleCount,
                         "moving the card preserves panel identity and recorded trend samples");
             }
+            window.resize(chrome + breakpoint + 400, 700);
+            processEventsFor(200);
+            auto *handle = overview->handle(1);
+            const int compactDeviceWidth = overview->sizes().at(0);
+            const QPoint start = handle->rect().center();
+            const QPoint globalStart = handle->mapToGlobal(start);
+            const QPoint offset(80, 0);
+            QMouseEvent press(QEvent::MouseButtonPress, start, globalStart,
+                              Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+            QCoreApplication::sendEvent(handle, &press);
+            QMouseEvent move(QEvent::MouseMove, start + offset, globalStart + offset,
+                             Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+            QCoreApplication::sendEvent(handle, &move);
+            QMouseEvent release(QEvent::MouseButtonRelease, start + offset, globalStart + offset,
+                                Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+            QCoreApplication::sendEvent(handle, &release);
+            processEventsFor(200);
+            const int manualDeviceWidth = overview->sizes().at(0);
+            require(manualDeviceWidth >= compactDeviceWidth + 40 &&
+                        !overview->property(VaporView::Ground::MainSupport::kHomeOverviewDeviceAutoManagedWidthProperty).toBool(),
+                    "the device overview remains manually resizable through its splitter handle");
+            window.resize(window.width() + 160, 700);
+            processEventsFor(200);
+            require(std::abs(overview->sizes().at(0) - manualDeviceWidth) <= 1,
+                    "window growth preserves the manually selected device overview width");
+            overview->setProperty(VaporView::Ground::MainSupport::kHomeOverviewDeviceAutoManagedWidthProperty, true);
             window.resize(chrome + breakpoint + 20, 700);
             require(processEventsUntil(1000, [&] { return overview->count() == 3; }),
                     "three-column test restores a viewport close to the breakpoint");

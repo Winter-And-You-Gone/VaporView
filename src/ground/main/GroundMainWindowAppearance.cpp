@@ -1058,7 +1058,7 @@ void MainWindow::updateResponsiveHomeLayout()
                 state_->home_overview_splitter_->setProperty(kHomeOverviewSplitterInitializedProperty, false);
                 state_->home_overview_splitter_->setProperty(kHomeOverviewDeviceAutoManagedWidthProperty, true);
                 sensorCardSplitter->setProperty(kHomeSensorSplitterUserResizedProperty, false);
-                state_->home_overview_splitter_->setStretchFactor(0, useThreeColumns ? 1 : 0);
+                state_->home_overview_splitter_->setStretchFactor(0, 0);
                 state_->home_overview_splitter_->setStretchFactor(1, 1);
                 if (useThreeColumns)
                     state_->home_overview_splitter_->setStretchFactor(2, 1);
@@ -1112,10 +1112,11 @@ void MainWindow::updateResponsiveHomeLayout()
                 (sizes.at(0) < leftMinimum || sizes.at(1) < rightMinimum);
             if (environmentInOverview)
             {
-                // Give each column the same scale factor relative to its safe minimum.
-                const int minimumSum = leftMinimum + rightMinimum + environmentMinimumWidth;
-                const int leftWidth = qRound(availableWidth * (double(leftMinimum) / minimumSum));
-                const int rightWidth = qRound(availableWidth * (double(rightMinimum) / minimumSum));
+                // Keep the device card compact; share surplus width between the other columns.
+                const int leftWidth = leftMinimum;
+                const int remainingMinimum = rightMinimum + environmentMinimumWidth;
+                const int rightWidth = qRound((availableWidth - leftWidth) *
+                    (double(rightMinimum) / remainingMinimum));
                 const QList<int> targetSizes{leftWidth, rightWidth, availableWidth - leftWidth - rightWidth};
                 if (sizes != targetSizes && state_->home_overview_splitter_
                         ->property(kHomeOverviewDeviceAutoManagedWidthProperty).toBool())
