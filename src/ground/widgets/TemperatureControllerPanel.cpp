@@ -1094,19 +1094,19 @@ public:
         output_percent_value_->setObjectName(QStringLiteral("temperatureOverviewOutputPercentPill"));
         output_percent_value_->setAlignment(Qt::AlignCenter);
         output_percent_value_->setWordWrap(false);
-        output_percent_value_->setFixedSize(kOverviewControlWidth, 64);
+        output_percent_value_->setFixedSize(kOverviewControlWidth, 56);
         summaryLayout->addWidget(output_percent_value_);
 
         auto *outputCapsule = new QFrame(summary_widget_);
         outputCapsule->setObjectName(QStringLiteral("temperatureOverviewOutputCapsule"));
-        outputCapsule->setFixedSize(kOverviewControlWidth, 100);
+        outputCapsule->setFixedSize(kOverviewControlWidth, 84);
         auto *outputLayout = new QVBoxLayout(outputCapsule);
         outputLayout->setContentsMargins(4, 3, 4, 3);
         outputLayout->setSpacing(2);
         output_label_ = new QLabel(outputCapsule);
         output_label_->setObjectName(QStringLiteral("temperatureOverviewOutputLabel"));
         output_label_->setAlignment(Qt::AlignCenter);
-        output_label_->setFixedHeight(18);
+        output_label_->setFixedHeight(16);
         outputLayout->addWidget(output_label_);
         for (int index = 0; index < 2; ++index)
         {
@@ -1119,9 +1119,9 @@ public:
             row->addWidget(number);
             auto *button = new TemperatureOverviewSwitchButton(outputCapsule);
             button->setProperty("temperatureChannel", index + 1);
-            button->setFixedSize(94, 34);
+            button->setFixedSize(94, 27);
             button->setStyleSheet(QStringLiteral(
-                "QPushButton#temperatureOverviewOutputSwitch { min-height: 34px; max-height: 34px; }"));
+                "QPushButton#temperatureOverviewOutputSwitch { min-height: 27px; max-height: 27px; }"));
             connect(button, &SegmentedSwitchButton::selectionRequested, this, [this, index](bool enabled) {
                 if (output_enabled_callback_)
                     output_enabled_callback_(static_cast<quint8>(index + 1), enabled);
@@ -1148,7 +1148,9 @@ public:
             plot->setChannelIndex(index);
             plot->setCompactMode(true);
             plot->setTimeAxisEnabled(true);
-            plot->setFixedHeight(144);
+            plot->setXAxisVisible(index == 1);
+            // Share the original 144px column; only the lower plot needs time labels.
+            plot->setFixedHeight(index == 0 ? 62 : 78);
             plots_[index] = plot;
             plots->addWidget(plot);
         }

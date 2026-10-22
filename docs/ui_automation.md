@@ -53,7 +53,7 @@ objectName=map3DLayer_satelliteImagery
 | 轨迹热力图 | `trajectoryHeatMetricMenuAction_<metricKey>` / `trajectoryHeatPaletteMenuAction_<paletteKey>` | 轨迹热力图指标和色带 |
 | SingleLevelPopupComboBox | `<comboObjectName>MenuAction_<itemDataToken>` | 固定选项 combo 的自绘菜单行 |
 
-首页激光驱动温控概览同时显示两路温控：上图为通道 1，下图为通道 2，标题栏按两行显示各自的目标和当前温度，已移除通道选择菜单。输出百分比同时显示两路读数；两个输出使能开关分别控制对应通道，并等待设备回读确认。Qt 测试可按 `temperatureOverviewOutputSwitch` 查找开关，再通过 `temperatureChannel=1/2` 区分；可访问名称也包含通道号。
+首页激光驱动温控概览同时显示两路温控：上图为通道 1，下图为通道 2，标题栏按两行显示各自的目标和当前温度，已移除通道选择菜单。两图共用单图版的高度，仅下图显示时间坐标，纵轴刻度随绘图区高度调整。输出百分比同时显示两路读数；两个输出使能开关分别控制对应通道，并等待设备回读确认。Qt 测试可按 `temperatureOverviewOutputSwitch` 查找开关，再通过 `temperatureChannel=1/2` 区分；可访问名称也包含通道号。
 
 ## 自动化验收路径
 

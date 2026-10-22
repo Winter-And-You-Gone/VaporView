@@ -55,7 +55,7 @@ int main(int argc, char **argv)
     VaporView::Ground::Widgets::DevicePanelCoordinator coordinator(bindings);
     panel.resize(900, 420);
     panel.show();
-    overview->resize(640, 300);
+    overview->resize(640, 148);
     overview->show();
     QApplication::processEvents();
 
@@ -107,6 +107,21 @@ int main(int argc, char **argv)
     require(!overview->findChild<QWidget *>(QStringLiteral("temperatureOverviewChannelButton")) &&
                 overviewPlots[0]->geometry().bottom() < overviewPlots[1]->geometry().top(),
             "RD105 home overview stacks channel 1 above channel 2 without a channel selector");
+    require(overview->sizeHint().height() == 148 && overview->height() == 148,
+            "Both RD105 channels fit the original single-plot overview height");
+    for (auto *homePlot : overviewPlots)homePlot->grab();
+    require(!overviewPlots[0]->property("xAxisLabelsVisible").toBool() &&
+                overviewPlots[1]->property("xAxisLabelsVisible").toBool(),
+            "Only the lower RD105 plot displays the shared time-axis labels");
+    require(overviewPlots[0]->property("plotAreaLeft") == overviewPlots[1]->property("plotAreaLeft") &&
+                overviewPlots[0]->property("plotAreaRight") == overviewPlots[1]->property("plotAreaRight") &&
+                std::abs((overviewPlots[0]->property("plotAreaBottom").toDouble() - overviewPlots[0]->property("plotAreaTop").toDouble()) -
+                    (overviewPlots[1]->property("plotAreaBottom").toDouble() - overviewPlots[1]->property("plotAreaTop").toDouble())) <= 2.0,
+            "The two compact RD105 plotting areas align and retain balanced drawing heights");
+    require(overviewPlots[0]->property("xAxisTimeSpanSeconds") == overviewPlots[1]->property("xAxisTimeSpanSeconds") &&
+                overviewPlots[0]->property("yAxisTickCount").toInt() < 7 &&
+                overviewPlots[1]->property("yAxisTickCount").toInt() < 7,
+            "The shared time range is unchanged and small plots reduce vertical tick density");
     require(outputs[0]->property("temperatureChannel").toInt() == 1 && outputs[0]->isChecked() &&
                 outputs[1]->property("temperatureChannel").toInt() == 2 && !outputs[1]->isChecked(),
             "Both home output switches show their own channel's confirmed state");

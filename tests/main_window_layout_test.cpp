@@ -7666,6 +7666,8 @@ int main(int argc, char **argv)
             "temperature overview output enable capsule exists");
     require(temperatureOutputPercentPill != nullptr,
             "temperature overview output percent capsule exists");
+    require(temperatureOutputPercentPill->height() >= temperatureOutputPercentPill->sizeHint().height(),
+            "the compact output-percent capsule fits its title and both channel rows");
     require(temperatureOutputPercentPill->textFormat() == Qt::RichText &&
                 temperatureOutputPercentPill->text().contains(QStringLiteral("<br/>")) &&
                 temperatureOutputPercentPill->text().contains(QStringLiteral("输出百分比")) &&
@@ -7681,9 +7683,8 @@ int main(int argc, char **argv)
                 temperatureOutputLabel->text() == QStringLiteral("输出使能"),
             "temperature overview keeps the output-enable label above the switch in one capsule");
     require(temperatureConfigOutputSwitch != nullptr &&
-                temperatureOutputSwitch->height() == temperatureConfigOutputSwitch->height() &&
-                temperatureOutputSwitch->height() == 34,
-            "temperature overview and configuration use the same segmented-switch height");
+                temperatureOutputSwitch->height() == 27,
+            "temperature overview uses compact switches for both output rows");
     require(!temperatureOutputSwitch->isEnabled(),
             "temperature overview output enable capsule is disabled without controller data");
     auto *temperatureOverviewSummary =
@@ -7702,8 +7703,8 @@ int main(int argc, char **argv)
     require(temperatureOutputCapsule->geometry().top() ==
                 temperatureOutputPercentPill->geometry().bottom() + 1 + summarySpacing,
             "temperature overview places output enable directly below output percent without a stretch gap");
-    require(temperatureOverviewPlot->height() == 144,
-            "temperature overview keeps the home trend plot compact instead of filling the card height");
+    require(temperatureOverviewBody->height() == 148 && temperatureOverviewPlot->height() == 62,
+            "temperature overview preserves its original height with a compact upper plot");
     QList<QWidget *> overviewPlots;
     for (auto *plot : window.findChildren<QWidget *>(QStringLiteral("temperatureTrendPlot")))
         if (plot->property("temperatureOverviewPlot").toBool())overviewPlots.append(plot);
@@ -7711,6 +7712,10 @@ int main(int argc, char **argv)
                 overviewPlots[1]->property("temperatureChannel").toInt() == 2 &&
                 overviewPlots[0]->geometry().bottom() < overviewPlots[1]->geometry().top(),
             "temperature overview stacks channel 1 above channel 2");
+    require(overviewPlots[1]->height() == 78 &&
+                !overviewPlots[0]->property("xAxisLabelsVisible").toBool() &&
+                overviewPlots[1]->property("xAxisLabelsVisible").toBool(),
+            "only the lower compact plot reserves room for shared time labels");
     temperatureOverviewPlot->repaint();
     auto *temperatureOverviewTitleBar = temperatureOverviewTitleStatus->parentWidget();
     auto *temperatureOverviewTitleLayout = temperatureOverviewTitleBar->layout();
@@ -7749,7 +7754,7 @@ int main(int argc, char **argv)
                                  QStringLiteral("QPushButton#temperatureOverviewOutputSwitch {"),
                                  QStringLiteral("font-size: 14px"),
                                  "temperature overview output switch font is enlarged for readability");
-    require(temperatureOutputPercentPill->height() >= 64 && temperatureOutputCapsule->height() >= 100,
+    require(temperatureOutputPercentPill->height() == 56 && temperatureOutputCapsule->height() == 84,
             "temperature overview capsules fit the two channel rows");
     require(temperatureValuePills[0]->geometry().right() < temperatureValuePills[1]->geometry().left() &&
                 temperatureValuePills[2]->geometry().right() < temperatureValuePills[3]->geometry().left() &&
@@ -10287,7 +10292,8 @@ int main(int argc, char **argv)
                 std::abs(plot->property("xAxisTimeSpanSeconds").toDouble() -
                          static_cast<double>(xAxisTickCount - 1)) < 1e-6
             : xAxisTickCount == 5;
-        require(plot->property("yAxisTickCount").toInt() == 7 &&
+        require(plot->property("yAxisTickCount").toInt() >= 3 &&
+                    plot->property("yAxisTickCount").toInt() <= 7 &&
                     xAxisTickCountIsValid,
                 "temperature trend plot shows numeric ticks on both axes");
     }

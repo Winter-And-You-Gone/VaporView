@@ -21,6 +21,7 @@ public:
     void setSamples(const QVector<double>& samples);
     void setSampleTimes(const QVector<double>& sampleTimes);
     void setTimeAxisEnabled(bool enabled);
+    void setXAxisVisible(bool visible);
     void setTargetTemperature(double celsius);
     QRectF plotAreaRect() const;
 
@@ -36,6 +37,7 @@ private:
     std::pair<double, double> visibleTemperatureAxisRange(double now) const;
     void updateSampleProperties();
     void applyPlotSizing();
+    int yAxisIntervals() const;
 
     QVector<double> samples_;
     QVector<double> sample_times_;
@@ -43,5 +45,6 @@ private:
     int channel_index_ = 0;
     bool compact_mode_ = false;
     bool time_axis_enabled_ = false;
+    bool x_axis_visible_ = true;
     bool is_english_ = false;
 };
