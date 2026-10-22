@@ -5063,7 +5063,7 @@ void MainWindow::setupConfigPanel()
         columnWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         auto *columnLayout = new QGridLayout(columnWidget);
         columnLayout->setContentsMargins(0, 0, 0, 0);
-        columnLayout->setHorizontalSpacing(4);
+        columnLayout->setHorizontalSpacing(2);
         columnLayout->setVerticalSpacing(kHomeDeviceGridRowGap);
         if (column == kHomeDeviceGridColumns - 1)
         {
@@ -5118,6 +5118,8 @@ void MainWindow::setupConfigPanel()
     addHomeDevice(state_->home_temperature_status_lbl_, state_->home_temperature_action_btn_, VaporView::SkyDeviceId::TemperatureController);
     addHomeDevice(state_->home_wave_status_lbl_, state_->home_wave_action_btn_, VaporView::SkyDeviceId::WaveTcp);
     addHomeDevice(state_->home_ai8_temperature_status_lbl_, state_->home_ai8_temperature_action_btn_, VaporView::SkyDeviceId::Ai8TemperatureController);
+    addHomeDevice(state_->home_bmp390_status_lbl_, state_->home_bmp390_action_btn_, VaporView::SkyDeviceId::Bmp390);
+    addHomeDevice(state_->home_sht45_status_lbl_, state_->home_sht45_action_btn_, VaporView::SkyDeviceId::Sht45);
     state_->home_device_action_spinner_timer_ = new QTimer(this);
     state_->home_device_action_spinner_timer_->setTimerType(Qt::PreciseTimer);
     state_->home_device_action_spinner_timer_->setInterval(kHomeDeviceActionSpinnerIntervalMs);

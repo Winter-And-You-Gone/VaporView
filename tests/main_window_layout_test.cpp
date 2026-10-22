@@ -1220,8 +1220,8 @@ void requireHomeDeviceColumnsAligned(QWidget *scope)
         const QList<QToolButton *> actionButtons =
             column->findChildren<QToolButton *>(QStringLiteral("homeDeviceActionButton"),
                                                 Qt::FindDirectChildrenOnly);
-        require(capsules.size() >= 2 && actionButtons.size() == capsules.size(),
-                "each home device column contains aligned capsules and actions");
+        require(capsules.size() == 3 && actionButtons.size() == capsules.size(),
+                "each home device column contains three aligned capsules and actions");
         for (int i = 1; i < capsules.size(); ++i)
         {
             require(capsules.at(0)->width() == capsules.at(i)->width(),
@@ -1315,8 +1315,8 @@ void requireHomeDeviceGeometryStableAcrossCardResize(QWidget *scope,
     {
         controls.append(button);
     }
-    require(controls.size() == 14,
-            "home device resize check covers seven capsules and seven action icons");
+    require(controls.size() == 18,
+            "home device resize check covers nine capsules and nine action icons");
 
     std::vector<std::pair<QWidget *, QRect>> originalGeometries;
     originalGeometries.reserve(static_cast<std::size_t>(controls.size()));
@@ -7183,12 +7183,17 @@ int main(int argc, char **argv)
 
     const QList<QLabel*> homeDeviceCapsules =
         window.findChildren<QLabel *>(QStringLiteral("homeDeviceStatusCapsule"));
-    require(homeDeviceCapsules.size() == 7,
-            "home device overview includes seven status capsules");
+    require(homeDeviceCapsules.size() == 9,
+            "home device overview includes all nine status capsules");
+    QStringList homeDeviceNames;
+    for (auto *capsule : homeDeviceCapsules)homeDeviceNames.append(capsule->text());
+    require(homeDeviceNames.contains(QStringLiteral("BMP390 气压")) &&
+                homeDeviceNames.contains(QStringLiteral("SHT45 温湿度")),
+            "internal sensors include their model and measurement description");
     const QList<QToolButton*> homeDeviceActionButtons =
         window.findChildren<QToolButton *>(QStringLiteral("homeDeviceActionButton"));
-    require(homeDeviceActionButtons.size() >= 7,
-            "home device overview includes seven connection action buttons");
+    require(homeDeviceActionButtons.size() >= 9,
+            "home device overview includes all nine connection action buttons");
     requireHomeDeviceColumnsAligned(&window);
     requireHomeDeviceMinimumWidthMatchesControls(&window);
     const bool homeDeviceActionDark =
@@ -7703,19 +7708,20 @@ int main(int argc, char **argv)
     require(temperatureOutputCapsule->geometry().top() ==
                 temperatureOutputPercentPill->geometry().bottom() + 1 + summarySpacing,
             "temperature overview places output enable directly below output percent without a stretch gap");
-    require(temperatureOverviewBody->height() == 148 && temperatureOverviewPlot->height() == 62,
-            "temperature overview preserves its original height with a compact upper plot");
+    require(temperatureOverviewBody->height() == 148 && temperatureOverviewPlot->height() == 144,
+            "temperature overview preserves its original height with side-by-side plots");
     QList<QWidget *> overviewPlots;
     for (auto *plot : window.findChildren<QWidget *>(QStringLiteral("temperatureTrendPlot")))
         if (plot->property("temperatureOverviewPlot").toBool())overviewPlots.append(plot);
     require(overviewPlots.size() == 2 && overviewPlots[0]->property("temperatureChannel").toInt() == 1 &&
                 overviewPlots[1]->property("temperatureChannel").toInt() == 2 &&
-                overviewPlots[0]->geometry().bottom() < overviewPlots[1]->geometry().top(),
-            "temperature overview stacks channel 1 above channel 2");
-    require(overviewPlots[1]->height() == 78 &&
-                !overviewPlots[0]->property("xAxisLabelsVisible").toBool() &&
+                overviewPlots[0]->geometry().right() < overviewPlots[1]->geometry().left() &&
+                std::abs(overviewPlots[0]->width() - overviewPlots[1]->width()) <= 1,
+            "temperature overview places channel 1 left of channel 2 at equal width");
+    require(overviewPlots[1]->height() == 144 &&
+                overviewPlots[0]->property("xAxisLabelsVisible").toBool() &&
                 overviewPlots[1]->property("xAxisLabelsVisible").toBool(),
-            "only the lower compact plot reserves room for shared time labels");
+            "both side-by-side plots reserve room for their time labels");
     temperatureOverviewPlot->repaint();
     auto *temperatureOverviewTitleBar = temperatureOverviewTitleStatus->parentWidget();
     auto *temperatureOverviewTitleLayout = temperatureOverviewTitleBar->layout();

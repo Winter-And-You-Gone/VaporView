@@ -638,6 +638,8 @@ void MainWindow::updateHomeDeviceStatusCapsules()
     updateCapsule(state_->home_wave_status_lbl_, state_->home_wave_action_btn_, VaporView::SkyDeviceId::WaveTcp);
     updateHomeFpgaWaveActions();
     updateCapsule(state_->home_ai8_temperature_status_lbl_, state_->home_ai8_temperature_action_btn_, VaporView::SkyDeviceId::Ai8TemperatureController);
+    updateCapsule(state_->home_bmp390_status_lbl_, state_->home_bmp390_action_btn_, VaporView::SkyDeviceId::Bmp390);
+    updateCapsule(state_->home_sht45_status_lbl_, state_->home_sht45_action_btn_, VaporView::SkyDeviceId::Sht45);
     if (state_->home_device_action_spinner_timer_)
     {
         if (anySpinnerActive)
@@ -697,6 +699,8 @@ void MainWindow::updateHomeDeviceActionSpinnerIcons()
     updateButton(state_->home_temperature_action_btn_, VaporView::SkyDeviceId::TemperatureController);
     updateButton(state_->home_wave_action_btn_, VaporView::SkyDeviceId::WaveTcp);
     updateButton(state_->home_ai8_temperature_action_btn_, VaporView::SkyDeviceId::Ai8TemperatureController);
+    updateButton(state_->home_bmp390_action_btn_, VaporView::SkyDeviceId::Bmp390);
+    updateButton(state_->home_sht45_action_btn_, VaporView::SkyDeviceId::Sht45);
     updateButton(state_->device_config_.epsilon_remote_action_btn, VaporView::SkyDeviceId::Epsilon);
     updateButton(state_->device_config_.ptb_remote_action_btn, VaporView::SkyDeviceId::Ptb);
     updateButton(state_->device_config_.hmp_remote_action_btn, VaporView::SkyDeviceId::Hmp);

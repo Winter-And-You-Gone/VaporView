@@ -374,6 +374,8 @@ struct MainWindowState
     QLabel *home_temperature_status_lbl_;
     QLabel *home_wave_status_lbl_;
     QLabel *home_ai8_temperature_status_lbl_;
+    QLabel *home_bmp390_status_lbl_;
+    QLabel *home_sht45_status_lbl_;
     QToolButton *home_epsilon_action_btn_;
     QToolButton *home_ptb_action_btn_;
     QToolButton *home_hmp_action_btn_;
@@ -381,6 +383,8 @@ struct MainWindowState
     QToolButton *home_temperature_action_btn_;
     QToolButton *home_wave_action_btn_;
     QToolButton *home_ai8_temperature_action_btn_;
+    QToolButton *home_bmp390_action_btn_;
+    QToolButton *home_sht45_action_btn_;
     QWidget *data_telemetry_summary_card_;
     QFrame *data_telemetry_summary_source_pill_;
     QVBoxLayout *data_telemetry_summary_layout_;

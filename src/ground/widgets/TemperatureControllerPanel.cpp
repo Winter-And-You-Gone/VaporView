@@ -1138,7 +1138,7 @@ public:
         divider->setFixedWidth(1);
         layout->addWidget(divider);
 
-        auto *plots = new QVBoxLayout;
+        auto *plots = new QHBoxLayout;
         plots->setSpacing(4);
         for (int index = 0; index < 2; ++index)
         {
@@ -1148,11 +1148,9 @@ public:
             plot->setChannelIndex(index);
             plot->setCompactMode(true);
             plot->setTimeAxisEnabled(true);
-            plot->setXAxisVisible(index == 1);
-            // Share the original 144px column; only the lower plot needs time labels.
-            plot->setFixedHeight(index == 0 ? 62 : 78);
+            plot->setFixedHeight(144);
             plots_[index] = plot;
-            plots->addWidget(plot);
+            plots->addWidget(plot, 1);
         }
         layout->addLayout(plots, 1);
 

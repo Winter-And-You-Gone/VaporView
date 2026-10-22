@@ -105,23 +105,25 @@ int main(int argc, char **argv)
     require(overviewPlots.size() == 2 && outputs.size() == 2,
             "RD105 home overview exposes two simultaneous plots and independent output switches");
     require(!overview->findChild<QWidget *>(QStringLiteral("temperatureOverviewChannelButton")) &&
-                overviewPlots[0]->geometry().bottom() < overviewPlots[1]->geometry().top(),
-            "RD105 home overview stacks channel 1 above channel 2 without a channel selector");
+                overviewPlots[0]->geometry().right() < overviewPlots[1]->geometry().left() &&
+                overviewPlots[0]->geometry().top() == overviewPlots[1]->geometry().top() &&
+                std::abs(overviewPlots[0]->width() - overviewPlots[1]->width()) <= 1,
+            "RD105 home overview places channel 1 left of channel 2 at equal width without a selector");
     require(overview->sizeHint().height() == 148 && overview->height() == 148,
             "Both RD105 channels fit the original single-plot overview height");
     for (auto *homePlot : overviewPlots)homePlot->grab();
-    require(!overviewPlots[0]->property("xAxisLabelsVisible").toBool() &&
+    require(overviewPlots[0]->property("xAxisLabelsVisible").toBool() &&
                 overviewPlots[1]->property("xAxisLabelsVisible").toBool(),
-            "Only the lower RD105 plot displays the shared time-axis labels");
+            "Both side-by-side RD105 plots display their time-axis labels");
     require(overviewPlots[0]->property("plotAreaLeft") == overviewPlots[1]->property("plotAreaLeft") &&
-                overviewPlots[0]->property("plotAreaRight") == overviewPlots[1]->property("plotAreaRight") &&
+                std::abs(overviewPlots[0]->property("plotAreaRight").toDouble() -
+                    overviewPlots[1]->property("plotAreaRight").toDouble()) <= 1.0 &&
                 std::abs((overviewPlots[0]->property("plotAreaBottom").toDouble() - overviewPlots[0]->property("plotAreaTop").toDouble()) -
                     (overviewPlots[1]->property("plotAreaBottom").toDouble() - overviewPlots[1]->property("plotAreaTop").toDouble())) <= 2.0,
             "The two compact RD105 plotting areas align and retain balanced drawing heights");
     require(overviewPlots[0]->property("xAxisTimeSpanSeconds") == overviewPlots[1]->property("xAxisTimeSpanSeconds") &&
-                overviewPlots[0]->property("yAxisTickCount").toInt() < 7 &&
-                overviewPlots[1]->property("yAxisTickCount").toInt() < 7,
-            "The shared time range is unchanged and small plots reduce vertical tick density");
+                overviewPlots[0]->height() == 144 && overviewPlots[1]->height() == 144,
+            "The two plots retain the shared time range and original drawing height");
     require(outputs[0]->property("temperatureChannel").toInt() == 1 && outputs[0]->isChecked() &&
                 outputs[1]->property("temperatureChannel").toInt() == 2 && !outputs[1]->isChecked(),
             "Both home output switches show their own channel's confirmed state");

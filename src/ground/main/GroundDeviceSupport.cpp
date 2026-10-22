@@ -499,8 +499,10 @@ QString homeDeviceDisplayName(VaporView::SkyDeviceId device, bool english)
 {
     switch (device)
     {
-    case VaporView::SkyDeviceId::Bmp390: return QStringLiteral("BMP390");
-    case VaporView::SkyDeviceId::Sht45: return QStringLiteral("SHT45");
+    case VaporView::SkyDeviceId::Bmp390:
+        return english ? QStringLiteral("BMP390 Pressure") : QStringLiteral("BMP390 气压");
+    case VaporView::SkyDeviceId::Sht45:
+        return english ? QStringLiteral("SHT45 Temp/Humidity") : QStringLiteral("SHT45 温湿度");
     case VaporView::SkyDeviceId::Epsilon:
         return english ? QStringLiteral("EPSILON Nav") : QStringLiteral("EPSILON 组合导航");
     case VaporView::SkyDeviceId::Ptb:

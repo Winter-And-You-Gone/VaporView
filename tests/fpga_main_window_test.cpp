@@ -128,7 +128,7 @@ static bool onlyPressureDataAvailable(MainWindow& window)
 static bool onlyPressureConnected(MainWindow &window)
 {
     if(homeAction(window,"PTB210")->property("state")!="connected")return false;
-    for(const auto& name:QStringList{"EPSILON","HMP","TFA1500","AI-8288",QStringLiteral("波形源")})
+    for(const auto& name:QStringList{"EPSILON","HMP","TFA1500","AI-8288","BMP390","SHT45",QStringLiteral("波形源")})
         if(homeAction(window,name)->property("state")!="disconnected")return false;
     int internalSensors=0;
     for(auto *button:window.findChildren<QToolButton*>("homeDeviceActionButton")) {
@@ -1108,9 +1108,7 @@ static void simulatedMonitorActions()
         require(value&&value->currentText()==QString::fromUtf8(entry.second),"UI test sensor register values update inline fields immediately");
     }
     auto *rate=window.findChild<QComboBox*>("deviceInternalRateSHT45FpgaEditor");
-    QToolButton *humidity=nullptr;
-    for(auto *button:window.findChildren<QToolButton*>("homeDeviceActionButton"))
-        if(button->property("fpgaSensorSource").toUInt()==0x44)humidity=button;
+    auto *humidity=homeAction(window,"SHT45");
     require(rate&&humidity&&!rate->isEnabled(),"UI test connected sensor locks inline frequency");
     require(waitUntil([&]{return humidity->isEnabled();}),"title connection releases individual controls after their action spinner settles");humidity->click();
     require(waitUntil([&]{return rate->isEnabled();}),"UI test individual disconnect enables frequency");rate->setCurrentText("2.");
@@ -1121,6 +1119,17 @@ static void simulatedMonitorActions()
     require(waitUntil([&]{return !rate->isEnabled()&&humidity->isEnabled();}),
         "UI test connect applies staged frequency");
     processFor(150);require(rate->currentText()=="2.5","periodic simulation retains applied frequency");
+    auto *internalPressure=homeAction(window,"BMP390");
+    require(waitUntil([&]{return internalPressure->isEnabled()&&internalPressure->property("state")=="connected";}),
+        "home overview reports the connected BMP390 independently");
+    internalPressure->click();
+    require(waitUntil([&]{return internalPressure->isEnabled()&&internalPressure->property("state")=="disconnected";}),
+        "home BMP390 action stops its own sensor");
+    require(pressure->property("state")=="connected"&&humidity->property("state")=="connected",
+        "stopping BMP390 preserves PTB210 and SHT45");
+    internalPressure->click();
+    require(waitUntil([&]{return internalPressure->isEnabled()&&internalPressure->property("state")=="connected";}),
+        "home BMP390 action restarts its own sensor");
     harmonic->click();
     require(waitUntil([&]{return harmonic->isEnabled()&&harmonic->text().contains(QStringLiteral("开始"));}),"simulated monitor stops acquisition");
     raw->click();
@@ -1446,6 +1455,9 @@ static void directInternalEnvironmentRouting()
         port->addItem("COM-"+name,"COM-"+name);port->setCurrentText("COM-"+name);
         rate->setCurrentText("2");window.findChild<QCheckBox*>("deviceInternalEnabled"+name)->setChecked(true);
     }
+    for (const auto &name : {QStringLiteral("BMP390"), QStringLiteral("SHT45")})
+        require(homeAction(window,name)->isEnabled()&&homeAction(window,name)->property("state")=="disconnected",
+            "home internal sensor actions follow the independent direct serial presets");
     const auto before=window.testLocalDeviceConfigSnapshot();
     require(before.value("bmp390").toObject().value("port")=="COM-BMP390"
         &&before.value("sht45").toObject().value("rate_hz")==2,"internal model contains independent direct settings");
@@ -1468,7 +1480,9 @@ static void directInternalEnvironmentRouting()
     for(auto id:{SkyDeviceId::Bmp390,SkyDeviceId::Sht45}){DeviceStatusItem item;item.device_id=id;item.state=DeviceState::Connected;status.devices.append(item);}
     send(MsgType::TelemetryStatus,TelemetryCodec::serializeTelemetryStatus(status));
     auto *label=window.findChild<QWidget*>("homeInternalEnvironment");
-    require(waitUntil([&]{return remote->deviceState(SkyDeviceId::Sht45)==DeviceState::Connected;}),"independent remote device IDs are accepted");
+    require(waitUntil([&]{return remote->deviceState(SkyDeviceId::Sht45)==DeviceState::Connected
+        &&homeAction(window,"BMP390")->property("state")=="connected"
+        &&homeAction(window,"SHT45")->property("state")=="connected";}),"home internal sensor actions reflect independent remote device IDs");
     const auto environmentBefore=window.findChild<PtbPanel*>()->findChild<QLabel*>("highlightedValue")->text();
     FpgaSensor::Reading reading;reading.source=0x43;reading.kind=FpgaSensor::SensorKind::Bmp390;reading.pressurePa=100000;reading.validity={true,true,true,true};
     send(MsgType::InternalEnvironment,FpgaRemote::encodeSensor(reading,1));
@@ -1479,7 +1493,9 @@ static void directInternalEnvironmentRouting()
     require(window.findChild<PtbPanel*>()->findChild<QLabel*>("highlightedValue")->text()==environmentBefore,
         "internal serial telemetry never overwrites the environmental PTB panel");
     status.devices[0].state=DeviceState::Disconnected;send(MsgType::TelemetryStatus,TelemetryCodec::serializeTelemetryStatus(status));
-    require(waitUntil([&]{return internalEnvironmentText(label).contains(QStringLiteral("—"))&&internalEnvironmentText(label).contains("30.00");}),
+    require(waitUntil([&]{return internalEnvironmentText(label).contains(QStringLiteral("—"))&&internalEnvironmentText(label).contains("30.00")
+        &&homeAction(window,"BMP390")->property("state")=="disconnected"
+        &&homeAction(window,"SHT45")->property("state")=="connected";}),
         "individual BMP disconnect invalidates pressure while preserving SHT values");
     require(waitUntil([&]{return internalEnvironmentText(label).count(QStringLiteral("—"))==3;},6000),"stale direct internal data expires without a disconnect");
     remote->close();window.close();
