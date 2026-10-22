@@ -582,14 +582,9 @@ QLabel#temperatureOverviewValuePill {
 }
 
 QFrame#ai8TemperatureOverviewCell {
-    background-color: @vv-surface-alt;
+    background-color: transparent;
     border: 1px solid @vv-border;
     border-radius: 12px;
-}
-
-QFrame#ai8TemperatureOverviewCell[available="true"] {
-    background-color: @vv-hd-ok-bg;
-    border-color: @vv-hd-ok;
 }
 
 QLabel#ai8TemperatureOverviewValueLabel[temperatureState="normal"] {
@@ -607,6 +602,10 @@ QLabel#ai8TemperatureOverviewValueLabel[temperatureState="hot"] {
 QFrame#ai8TemperatureOverviewCell QLabel {
     background-color: transparent;
     border: none;
+}
+
+QFrame#ai8TemperatureOverviewCell QLabel#ai8TemperatureOverviewChannelLabel {
+    background-color: @vv-surface-alt;
 }
 
 QFrame#ai8TemperatureOverviewDivider {

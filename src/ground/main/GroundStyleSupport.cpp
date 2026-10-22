@@ -1392,19 +1392,16 @@ QWidget#ai8TemperatureOverviewPanel {
     background-color: transparent;
 }
 QFrame#ai8TemperatureOverviewCell {
-    background-color: @vv-surface-alt;
+    background-color: transparent;
     border: 1px solid @vv-border;
     border-radius: 12px;
-}
-QFrame#ai8TemperatureOverviewCell[available="true"] {
-    background-color: @vv-hd-ok-bg;
-    border-color: @vv-hd-ok;
 }
 QFrame#ai8TemperatureOverviewCell QLabel {
     background-color: transparent;
     border: none;
 }
-QLabel#ai8TemperatureOverviewChannelLabel {
+QFrame#ai8TemperatureOverviewCell QLabel#ai8TemperatureOverviewChannelLabel {
+    background-color: @vv-surface-alt;
     color: @vv-text-muted;
     font-size: 11px;
     font-weight: 600;
