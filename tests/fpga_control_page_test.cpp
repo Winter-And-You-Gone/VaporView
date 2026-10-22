@@ -84,6 +84,11 @@ int main(int argc,char **argv) {
     require(c.adcRateHz==1000000 && c.dlia[0].outputRateHz==10000 && c.dlia[1].mode==3,"shared ADC / DLIA defaults");
     require(c.wms[0].scanMilliHz==100000 && c.wms[1].scanAmplitude==107374182,"WMS units and defaults");
     require(c.dac[0].deviceCtrl==0x312 && c.dac[1].spiClockHz==20000000 && c.ai8.slaveAddress==1 && c.ai8.channel==1,"DAC / AI8 safe defaults");
+    require(c.ai8.scan && page.findChild<QCheckBox*>("fpgaAi8Scan")->isChecked(),"AI8 eight-channel scan is selected by default");
+    auto oldAi8=c.toJson();auto ai8=oldAi8.value("ai8").toObject();ai8.remove("scan");oldAi8["ai8"]=ai8;
+    require(FpgaControlConfig::fromJson(oldAi8).ai8.scan,"configuration without a scan preference defaults to all channels");
+    ai8["scan"]=false;oldAi8["ai8"]=ai8;
+    require(!FpgaControlConfig::fromJson(oldAi8).ai8.scan,"explicit single-channel preference remains supported");
     require(c.recordSensors && c.recordDlia && !c.recordRaw,"RAW recording off / sensor and DLIA recording");
     require(!page.findChild<QDoubleSpinBox*>("fpgaRawSeconds")&&!c.toJson().contains("rawWindowSeconds"),"RAW has no duration setting or persisted timer policy");
     auto legacy=c.toJson();legacy.insert("rawWindowSeconds",1);

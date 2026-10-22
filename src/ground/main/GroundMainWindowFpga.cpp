@@ -520,6 +520,17 @@ void MainWindow::setupFpgaControlPage()
     state_->fpga_config_ = FpgaControlConfig::fromJson(saved.object());
     state_->fpga_session_.remoteConfig = FpgaControlConfig::fromJson(
         QJsonDocument::fromJson(settings.value(QStringLiteral("Fpga/remoteDesiredConfiguration")).toByteArray()).object());
+    // Older releases persisted scan=false as the default. Migrate it once so
+    // subsequent explicit single-channel choices still survive a restart.
+    if (!settings.value(QStringLiteral("Fpga/ai8EightChannelDefaultApplied"), false).toBool()) {
+        state_->fpga_config_.ai8.scan = true;
+        state_->fpga_session_.remoteConfig.ai8.scan = true;
+        VaporView::setPersistentSetting(settings, QStringLiteral("Fpga/desiredConfiguration"),
+            QJsonDocument(state_->fpga_config_.toJson()).toJson(QJsonDocument::Compact));
+        VaporView::setPersistentSetting(settings, QStringLiteral("Fpga/remoteDesiredConfiguration"),
+            QJsonDocument(state_->fpga_session_.remoteConfig.toJson()).toJson(QJsonDocument::Compact));
+        VaporView::setPersistentSetting(settings, QStringLiteral("Fpga/ai8EightChannelDefaultApplied"), true);
+    }
     state_->fpga_page_ = new FpgaControlPage(state_->main_page_stack_);
     state_->fpga_page_->setObjectName(QStringLiteral("fpgaControlPage"));
     state_->fpga_page_->setConfiguration(isRemoteSkyMode() ? state_->fpga_session_.remoteConfig : state_->fpga_config_);

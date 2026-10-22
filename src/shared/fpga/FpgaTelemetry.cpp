@@ -107,7 +107,7 @@ bool configurationShapeValid(QJsonObject object)
     if(!object.contains("sensorParameters"))object["sensorParameters"]=QJsonObject{};
     if(!object.contains("adcCnvTicks"))object["adcCnvTicks"]=2;
     if(!object.contains("adcBusyTimeoutTicks"))object["adcBusyTimeoutTicks"]=100;
-    if(object.value("ai8").isObject()) {auto ai=object.value("ai8").toObject();if(!ai.contains("scan"))ai["scan"]=false;object["ai8"]=ai;}
+    if(object.value("ai8").isObject()) {auto ai=object.value("ai8").toObject();if(!ai.contains("scan"))ai["scan"]=FpgaControlConfig{}.ai8.scan;object["ai8"]=ai;}
     if(object.value("channels").isArray()) {auto channels=object.value("channels").toArray();for(int i=0;i<channels.size();++i)if(channels[i].isObject()){auto c=channels[i].toObject();if(!c.contains("expectedPoints"))c["expectedPoints"]=0;if(!c.contains("fragmentPoints"))c["fragmentPoints"]=256;if(!c.contains("cutoffHz"))c["cutoffHz"]=1000;channels[i]=c;}object["channels"]=channels;}
     return configurationShape(object, FpgaControlConfig{}.toJson());
 }

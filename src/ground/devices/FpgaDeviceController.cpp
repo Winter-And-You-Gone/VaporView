@@ -665,7 +665,6 @@ void FpgaDeviceController::applyConfiguration(const FpgaControlConfig& config, c
     const bool acquisition=section=="all" || section=="acquisition";
     if (!wms && !dlia && !acquisition) { fail(QStringLiteral("未知参数分区。")); return; }
     const quint32 adcRate=acquisition?config.adcRateHz:registers_.value(0x4014);
-    if(acquisition && config.ai8.scan && !(extensions()&FpgaExtensions::Ai8Scan)) {fail(QStringLiteral("当前固件不支持 AI8 八通道扫描。"));return;}
     if(dlia)for(const auto& d:config.dlia) {
         if(!FpgaExtensions::cutoff(d.cutoffHz) || (d.cutoffHz!=1000 && (!(extensions()&FpgaExtensions::DliaCutoff) || adcRate!=1000000))) {
             fail(QStringLiteral("截止频率档位不合法，或非默认档位不满足固件能力及标称 1 MHz 采样率要求。"));return;
@@ -804,6 +803,14 @@ void FpgaDeviceController::setSensorEnabled(quint16 source, bool enable)
 bool FpgaDeviceController::appendSensorEnable(quint16 source, bool enable)
 {
     if (enable && !enableUpload()) return false;
+    // Apply the polling mode before START, including home/SkyCore connections
+    // that do not submit the acquisition configuration. Legacy firmware has no
+    // scan register and continues to report its selected channel.
+    if (source==0x46 && enable && (extensions()&FpgaExtensions::Ai8Scan)
+        && !(registers_.value(0x6604)&1) && bool(registers_.value(0x6668))!=configuration_.ai8.scan) {
+        write(0x6668,configuration_.ai8.scan?1:0);
+        verify(0x6668,configuration_.ai8.scan?1:0);
+    }
     if (source==0x40 && enable && registers_.value(0x600c)) {
         // PTB firmware marks every new pressure sample invalid while any old
         // error is latched. Preserve evidence before acknowledging those bits;

@@ -26,7 +26,7 @@ struct FpgaControlConfig
         quint32 spiClockHz = 20000000, gain = 0x40000000;
         qint32 offset = 0;
     };
-    struct Ai8 { quint32 slaveAddress = 1, channel = 1, pollIntervalMs = 1000, timeoutMs = 200, retryLimit = 1; bool scan = false; };
+    struct Ai8 { quint32 slaveAddress = 1, channel = 1, pollIntervalMs = 1000, timeoutMs = 200, retryLimit = 1; bool scan = true; };
     quint32 adcRateHz = 1000000, adcCnvTicks = 2, adcBusyTimeoutTicks = 100;
     std::array<quint32,2> adcExpectedPoints{{0,0}};
     QMap<quint16,QJsonObject> sensorParameters;
@@ -71,7 +71,7 @@ struct FpgaControlConfig
         c.recordRaw = o.value("recordRaw").toBool(false);
         const auto ai = o.value("ai8").toObject();c.ai8.slaveAddress=u(ai,"slaveAddress",1);c.ai8.channel=u(ai,"channel",1);c.ai8.pollIntervalMs=u(ai,"pollIntervalMs",1000);
         c.ai8.timeoutMs=u(ai,"timeoutMs",200);c.ai8.retryLimit=u(ai,"retryLimit",1);
-        c.ai8.scan=ai.value("scan").toBool(false);
+        c.ai8.scan=ai.value("scan").toBool(c.ai8.scan);
         const auto a = o.value("channels").toArray();
         for (int i = 0; i < qMin(2, int(a.size())); ++i) {
             const auto v = a[i].toObject(); auto &w = c.wms[i]; auto &d = c.dlia[i]; auto &f = c.frontend[i];

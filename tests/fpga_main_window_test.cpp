@@ -659,7 +659,10 @@ static void localSimulatorRouting()
     auto settings=VaporView::applicationConfigSettings();
     QSettings native("VaporView","MainWindow");
     native.setValue("recording_directory",output.path());
-    settings.remove("Fpga/desiredConfiguration");
+    FpgaControlConfig oldConfiguration;oldConfiguration.ai8.scan=false;
+    settings.setValue("Fpga/desiredConfiguration",QJsonDocument(oldConfiguration.toJson()).toJson(QJsonDocument::Compact));
+    settings.setValue("Fpga/remoteDesiredConfiguration",QJsonDocument(oldConfiguration.toJson()).toJson(QJsonDocument::Compact));
+    settings.remove("Fpga/ai8EightChannelDefaultApplied");
     MainWindow window;
 #ifdef Q_OS_WIN
     auto *focusStyle=qobject_cast<QProxyStyle*>(qApp->style());
@@ -911,15 +914,26 @@ static void localSimulatorRouting()
 
     auto *ai8Action=homeAction(window,"AI-8288");
     auto *ai8Channel=page->findChild<QDoubleSpinBox*>("fpgaAi8Channel");
+    auto *ai8Scan=page->findChild<QCheckBox*>("fpgaAi8Scan");
     auto *apply=page->findChild<QAbstractButton*>("fpgaApply");
     QLabel *channel8=nullptr;
     for(auto *label:window.findChildren<QLabel*>("ai8TemperatureOverviewValueLabel"))
         if(label->property("channelIndex").toInt()==7)channel8=label;
-    check(ai8Channel&&apply&&channel8&&channel8->text()=="---","unpolled AI8 channel eight is unavailable");
+    check(ai8Channel&&ai8Scan&&apply&&channel8&&ai8Scan->isChecked(),"old single-channel defaults migrate to eight-channel scanning");
+    check(FpgaControlConfig::fromJson(QJsonDocument::fromJson(settings.value("Fpga/remoteDesiredConfiguration").toByteArray()).object()).ai8.scan,
+        "remote FPGA preferences receive the same one-time default migration");
+    check(waitUntil([&]{
+        const auto measured=window.findChildren<QLabel*>("ai8TemperatureOverviewValueLabel");
+        const auto targets=window.findChildren<QLabel*>("ai8TemperatureOverviewTargetLabel");
+        if(measured.size()!=8||targets.size()!=8)return false;
+        for(auto *label:measured)if(!label->text().contains("°C"))return false;
+        for(auto *label:targets)if(!label->text().contains("°C"))return false;
+        return true;
+    }),"home connection automatically populates all eight measured and target temperatures without applying scan settings");
     ai8Action->click();
     check(waitUntil([&]{return ai8Action->isEnabled()&&ai8Channel->isEnabled();}),
         "AI8 disconnect unlocks channel selection");
-    ai8Channel->setValue(8);apply->click();
+    ai8Scan->setChecked(false);ai8Channel->setValue(8);apply->click();
     check(waitUntil([&]{
         for(auto *label:page->findChildren<QLabel*>())
             if(label->text().contains("0x661c = 8"))return apply->isEnabled();

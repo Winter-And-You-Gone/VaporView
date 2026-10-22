@@ -60,8 +60,8 @@ int main(int argc,char** argv) {
     check(!result.value("ok").toBool(),"RD105 missing device ACK cannot report success");
     result=call({{"op","device_temperature"},{"source",0x48},{"celsius",26.12345}});
     check(result.value("ok").toBool() && controller.hardwareValues().value(0x6840)==26123450,"RD105 setpoint preserves native precision and uses verified completion counter");
-    result=call({{"op","ai8_scan"},{"enabled",true}});check(result.value("ok").toBool(),"AI8 scan mode while disabled");
     controller.setSensorEnabled(0x46,true);check(waitFor([&]{return !controller.busy();}),"enable AI8");
+    check(controller.hardwareValues().value(0x6668)==1,"AI8 enable applies and verifies eight-channel scanning by default");
     check(waitFor([&]{QSet<quint32> channels;for(const auto& r:readings)if(r.source==0x46 && r.schema==3 && r.ai8Channel)channels.insert(*r.ai8Channel);return channels.size()==8;}),"all 8 AI8 channels survive presentation coalescing");
     {
         FpgaSensor::FpgaSensorAdapter adapter;FpgaSensor::Reading first,second;
