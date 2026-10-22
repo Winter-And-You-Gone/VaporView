@@ -1057,7 +1057,16 @@ static void localSimulatorRouting()
 }
 static void simulatedMonitorActions()
 {
+    QTemporaryDir logs;
+    VaporView::LogService logService("FpgaRd105HomeTest",nullptr,logs.path(),logs.path());
+    QMap<int,bool> confirmedOutputs;
     MainWindow window;
+    QObject::connect(&logService,&VaporView::LogService::recordPublished,&window,[&](const VaporView::LogRecord& record) {
+        if(record.fields.value("event")=="temperature_command_completed"
+            &&record.fields.value("command")=="SetTemperatureOutputEnabled")
+            confirmedOutputs[record.fields.value("channel").toInt()]=record.fields.value("output_enabled").toBool();
+    });
+    window.resize(1600,1000);window.show();
     QMetaObject::invokeMethod(&window,"onDataSourceModeChanged",Q_ARG(int,0));
     auto *mode=window.findChild<QAction*>("uiTestModeAction");
     auto *page=window.findChild<FpgaControlPage*>();
@@ -1085,6 +1094,38 @@ static void simulatedMonitorActions()
         "title connection starts every supported device on a cold simulated board");
     verifyRelayIndicators(window,{"Epsilon","Pressure","Humidity","Lidar","Temperature","Ai8","Wave","Bmp390","Sht45"});
     require(raw->text().contains(QStringLiteral("开始")),"connecting all devices does not start RAW upload");
+    require(waitUntil([&]{
+        auto *percent=window.findChild<QLabel*>("temperatureOverviewOutputPercentPill");
+        int populatedPlots=0;
+        for(auto *plot:window.findChildren<QWidget*>("temperatureTrendPlot"))
+            if(plot->property("temperatureOverviewPlot").toBool()&&plot->property("sampleCount").toInt()>=2)++populatedPlots;
+        return percent&&percent->property("channel1OutputPercentText").toString()=="0.00%"
+            &&percent->property("channel2OutputPercentText").toString()=="0.00%"&&populatedPlots==2;
+    },6000),"FPGA simulator fills both RD105 overview trends and both measured output percentages");
+    const auto outputs=window.findChildren<QAbstractButton*>("temperatureOverviewOutputSwitch");
+    require(outputs.size()==2,"simulated RD105 overview exposes both output controls");
+    for(auto *output:outputs) {
+        require(output->isEnabled(),"simulated RD105 output control is available");
+        QTimer confirm;
+        QObject::connect(&confirm,&QTimer::timeout,&window,[]{
+            if(auto *box=qobject_cast<QMessageBox*>(QApplication::activeModalWidget()))
+                if(auto *yes=box->button(QMessageBox::Yes))yes->click();
+        });
+        confirm.start(10);output->click();confirm.stop();
+        require(waitUntil([&]{return output->isChecked()&&confirmedOutputs.value(output->property("temperatureChannel").toInt(),false);},6000),
+            "simulated output enable reaches confirmed telemetry and command completion");
+    }
+    auto *percent=window.findChild<QLabel*>("temperatureOverviewOutputPercentPill");
+    const auto outputPercent=[&](int channel) {
+        return percent->property(channel==1?"channel1OutputPercentText":"channel2OutputPercentText").toString().remove('%').toDouble();
+    };
+    require(waitUntil([&]{return outputPercent(1)>0&&outputPercent(2)<0;}),
+        "home overview displays positive and negative RD105 output percentages from decoded simulator data");
+    outputs[0]->click();
+    require(waitUntil([&]{return !outputs[0]->isChecked()&&outputPercent(1)==0&&outputPercent(2)<0&&!confirmedOutputs.value(1,true);}),
+        "stopping channel one displays zero output while channel two keeps running");
+    outputs[1]->click();
+    require(waitUntil([&]{return !outputs[1]->isChecked()&&outputPercent(2)==0&&!confirmedOutputs.value(2,true);}),"both simulated outputs can be stopped independently");
     mode->trigger();mode->trigger();
     require(waitUntil([&]{return page->uiTestController()!=nullptr&&!page->uiTestConnected();}),"reset protocol board for selective connection regression");
     require(QMetaObject::invokeMethod(&window,"onDisconnectClicked",Qt::DirectConnection),"disconnect layout simulation before individual connection");

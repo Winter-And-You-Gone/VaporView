@@ -325,6 +325,7 @@ QByteArray encodeSensor(const FpgaSensor::Reading& r, quint64 hostTimestampUs)
     PUT(ai8PvRaw) PUT(ai8SpRaw) PUT(ai8SvRaw) PUT(ai8PvMicroC) PUT(ai8SpMicroC) PUT(ai8OpRaw) PUT(ai8Alarm)
     PUT(ai8Control) PUT(ai8Host) PUT(ai8SetResult) PUT(ai8DeviceStatus) PUT(ai8DeviceError) PUT(ai8SampleCounter)
     PUT(ai8Channel) PUT(rd105TargetMicroC) PUT(rd105ActualMicroC) PUT(rd105Error) PUT(rd105Channel)
+    PUT(rd105OutputRaw) PUT(rd105OutputEnabled)
     PUT(bmpPressureRaw) PUT(bmpTemperatureRaw) PUT(epsilonMessageId) PUT(epsilonSequence)
 #undef PUT
     if (r.epsilonDeviceTimestampUs) values.insert("epsilonDeviceTimestampUs", QString::number(*r.epsilonDeviceTimestampUs));
@@ -369,6 +370,7 @@ bool parseSensor(const QByteArray& payload, FpgaSensor::Reading& reading, quint6
     GET(ai8SampleCounter,0,4294967295.0) GET(bmpPressureRaw,0,16777215) GET(bmpTemperatureRaw,0,16777215)
     GET(epsilonMessageId,0,255) GET(epsilonSequence,0,255)
     GET(ai8Channel,1,8) GET(rd105TargetMicroC,-2147483648.0,2147483647.0) GET(rd105ActualMicroC,-2147483648.0,2147483647.0) GET(rd105Error,0,4294967295.0) GET(rd105Channel,1,2)
+    GET(rd105OutputRaw,-2000000,2000000) GET(rd105OutputEnabled,0,1)
 #undef GET
     if(values.contains("epsilonDeviceTimestampUs")) {
         bool ok=false; const auto x=values.value("epsilonDeviceTimestampUs");

@@ -1025,9 +1025,10 @@ void FpgaDeviceController::acceptReading(const FpgaSensor::Reading& reading)
             if(!replaying_)emit observationEpochReceived(Ppk::encodeEpoch(*epoch));
         return; // Observations must not replace coalesced navigation state.
     }
-    const quint16 key=reading.ai8Channel?quint16(0x4600+*reading.ai8Channel):reading.source;
+    const quint16 key=reading.ai8Channel?quint16(0x4600+*reading.ai8Channel)
+        :reading.rd105Channel?quint16(0x4800+*reading.rd105Channel):reading.source;
     auto contextual=reading;
-    if(contextual.source==0x48 && registers_.contains(0x681c))contextual.rd105Channel=registers_.value(0x681c);
+    if(contextual.source==0x48 && !contextual.rd105Channel && registers_.contains(0x681c))contextual.rd105Channel=registers_.value(0x681c);
     auto adapted=adapter_.accept(contextual);
     const bool keepHealthyScan=reading.source==0x46 && reading.schema==3 && !adapted.reading.validity.measurement
         && latestReadings_.contains(reading.source) && latestReadings_.value(reading.source).reading.validity.measurement;

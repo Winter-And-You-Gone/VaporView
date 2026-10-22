@@ -137,7 +137,12 @@ private:
         for(int ch=1;ch<=8;++ch) {ai8Registers_[quint16(ch-1)]=250+ch;ai8Registers_[quint16(0x600+ch-1)]=230+ch;ai8Registers_[quint16(0x480+ch-1)]=250+ch;}
         for(int i=0;i<8;++i)ai8Measured_[i]=230+i;
         ai8Registers_[0x840]=1;ai8Registers_[0x841]=2;
-        for(quint16 channel:{1,2}) {const quint16 base=channel*0x1000;rd105Registers_[base]=38;rd105Registers_[base+1]=9632;rd105Registers_[base+2]=35;rd105Registers_[base+3]=60000;}
+        for(quint16 channel:{1,2}) {
+            const quint16 base=channel*0x1000;
+            const quint32 target=(25+2*(channel-1))*100000;
+            rd105Registers_[base]=quint16(target>>16);rd105Registers_[base+1]=quint16(target);
+            rd105Registers_[base+0x10e]=90;
+        }
         rd105Registers_[2]=2;rd105Registers_[9]=1;
         for(const auto& spec:FpgaRemote::sensorParameters())regs_[spec.address]=spec.fallback;
         regs_[0x6714]=1000;regs_[0x6718]=255;regs_[0x671c]=505;regs_[0x6708]=2;
@@ -587,11 +592,22 @@ private:
           }
         }
         if(enabled(0x48)) {
-            const auto address=quint16(regs_[0x681c]*0x1000);
-            const qint32 target=qint32((quint32(rd105Registers_.value(address))<<16)|rd105Registers_.value(address+1))*10;
-            const qint32 actual=23500000+qint32(std::sin(t)*300000);
-            regs_[0x6824]=quint32(actual);regs_[0x6840]=quint32(target);++regs_[0x6844];
-            QByteArray p;put16(p,1);put16(p,3);tlv(p,0x14,7,scalar(quint32(target)));tlv(p,0x15,7,scalar(quint32(actual)));tlv(p,2,3,scalar(0));data(0x48,0x1100,p,ticks);
+            for(quint16 channel:{1,2}) {
+                const quint16 address=channel*0x1000;
+                const qint32 target=qint32((quint32(rd105Registers_.value(address))<<16)|rd105Registers_.value(address+1))*10;
+                const qint32 actual=(channel==1?23500000:26250000)+qint32(std::sin(t+channel)*300000);
+                const quint32 outputEnabled=rd105Registers_.value(address+0x100)!=0;
+                const qint32 duty=outputEnabled?qint32((channel==1?35+8*std::sin(t):-42+6*std::cos(t))*20000):0;
+                rd105Registers_[address+2]=quint16((actual/10)>>16);rd105Registers_[address+3]=quint16(actual/10);
+                const quint64 dutyBits=quint64(qint64(duty));
+                for(int i=0;i<4;++i)rd105Registers_[address+0x103+i]=quint16(dutyBits>>(48-16*i));
+                if(channel==regs_[0x681c]) {regs_[0x6824]=quint32(actual);regs_[0x6840]=quint32(target);++regs_[0x6844];}
+                // Simulator schema 2 adds per-channel output telemetry; production schema 1 stays unchanged.
+                QByteArray p;put16(p,2);put16(p,6);
+                tlv(p,0x14,7,scalar(quint32(target)));tlv(p,0x15,7,scalar(quint32(actual)));tlv(p,2,3,scalar(0));
+                tlv(p,0x480,3,scalar(channel));tlv(p,0x481,7,scalar(quint32(duty)));tlv(p,0x482,3,scalar(outputEnabled));
+                data(0x48,0x1100,p,ticks);
+            }
         }
         for(int ch=0;ch<2;++ch) {
             const quint32 offset=ch*0x100;

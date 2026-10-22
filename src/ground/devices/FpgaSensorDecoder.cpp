@@ -85,8 +85,11 @@ Reading FpgaSensorDecoder::decode(const QByteArray &payload, quint16 source, qui
     else if(out.kind==SensorKind::Tfa1500 && out.schema==1) scalarU(0x13,out.distanceMm);
     else if(out.kind==SensorKind::Bmp390 && out.schema==1){ if(auto r=find(out.records,0x100);r&&r->type==11)out.bmpCalibration=r->value; scalarU(0x101,out.bmpPressureRaw); scalarU(0x102,out.bmpTemperatureRaw); }
     else if(out.kind==SensorKind::Ai8 && (out.schema==2 || out.schema==3)){ scalarI(0x460,out.ai8PvRaw); scalarI(0x461,out.ai8SpRaw); scalarI(0x462,out.ai8SvRaw); scalarU(0x463,out.ai8OpRaw); scalarU(0x464,out.ai8Alarm); scalarU(0x465,out.ai8Control); scalarU(0x466,out.ai8Host); scalarU(0x467,out.ai8SetResult); scalarU(0x468,out.ai8Channel); scalarU(1,out.ai8DeviceStatus); scalarU(2,out.ai8DeviceError); scalarU(4,out.ai8SampleCounter); scalarI(0x14,out.ai8SpMicroC); scalarI(0x15,out.ai8PvMicroC); if(out.ai8DeviceStatus) out.validity.deviceOnline=(*out.ai8DeviceStatus&1)!=0; }
-    else if(out.kind==SensorKind::Rd105 && out.schema==1) {
+    else if(out.kind==SensorKind::Rd105 && (out.schema==1 || out.schema==2)) {
         scalarI(0x14,out.rd105TargetMicroC);scalarI(0x15,out.rd105ActualMicroC);scalarU(2,out.rd105Error);
+        if(out.schema==2) {
+            scalarU(0x480,out.rd105Channel);scalarI(0x481,out.rd105OutputRaw);scalarU(0x482,out.rd105OutputEnabled);
+        }
     }
     out.validity.measurement = false;
     if (out.kind==SensorKind::Bmp390) out.validity.measurement=out.schema==1 && out.bmpPressureRaw && out.bmpTemperatureRaw && *out.bmpPressureRaw<0x1000000 && *out.bmpTemperatureRaw<0x1000000;
@@ -100,6 +103,10 @@ Reading FpgaSensorDecoder::decode(const QByteArray &payload, quint16 source, qui
     if (out.kind==SensorKind::Rd105) out.validity.measurement=out.rd105TargetMicroC && out.rd105ActualMicroC
         && out.rd105Error && !*out.rd105Error && *out.rd105TargetMicroC!=std::numeric_limits<qint32>::min()
         && *out.rd105ActualMicroC!=std::numeric_limits<qint32>::min();
+    if (out.kind==SensorKind::Rd105 && out.schema==2)
+        out.validity.measurement = out.validity.measurement && out.rd105Channel && *out.rd105Channel>=1 && *out.rd105Channel<=2
+            && out.rd105OutputRaw && *out.rd105OutputRaw>=-2000000 && *out.rd105OutputRaw<=2000000
+            && out.rd105OutputEnabled && *out.rd105OutputEnabled<=1;
     // AI8 sets the packet error flag for instrument alarms as well as I/O
     // failures. A successful poll still carries usable PV/SP with its alarm.
     const bool ai8AlarmOnly = out.kind==SensorKind::Ai8 && (out.schema==2 || out.schema==3)

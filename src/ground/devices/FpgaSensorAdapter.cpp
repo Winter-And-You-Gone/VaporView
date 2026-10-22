@@ -255,7 +255,8 @@ AdaptedMeasurements FpgaSensorAdapter::accept(const Reading &input)
     const bool sample = input.pressureMilliPa || input.bmpPressureRaw || input.bmpTemperatureRaw
         || (input.temperatureC && input.humidityPct) || input.distanceMm || out.epsilon
         || (out.ai8 && out.ai8->online && !(out.ai8->deviceStatus & 0x1ffe)) || input.rd105ActualMicroC;
-    if (sample) out.sampleRateHz = updateRate(input,input.ai8Channel?quint16(0x4600+*input.ai8Channel):input.source);
+    if (sample) out.sampleRateHz = updateRate(input,input.ai8Channel?quint16(0x4600+*input.ai8Channel)
+        :input.rd105Channel?quint16(0x4800+*input.rd105Channel):input.source);
     return out;
 }
 } // namespace VaporView::FpgaSensor

@@ -64,6 +64,8 @@ struct Reading
     std::optional<qint32> rd105TargetMicroC, rd105ActualMicroC;
     std::optional<quint32> rd105Error;
     std::optional<quint32> rd105Channel;
+    std::optional<qint32> rd105OutputRaw;
+    std::optional<quint32> rd105OutputEnabled;
     QByteArray bmpCalibration;
     std::optional<quint32> bmpPressureRaw;
     std::optional<quint32> bmpTemperatureRaw;

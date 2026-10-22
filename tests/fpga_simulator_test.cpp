@@ -42,6 +42,7 @@ void protocol()
     FpgaVlp1::StreamParser parser;FpgaSensor::FpgaSensorAdapter adapter;FpgaWave::Assembler assembler;
     QSet<quint16> sensors,waves;QSet<quint8> epsilonIds;EpsilonData epsilonData;
     bool bmp=false,navigation=false;
+    QSet<quint32> rd105Channels;
     const auto collect=[&] {
         QByteArray b;const auto count=transport->read(b,16384);check(count>=0&&count<=503,"bounded fragmented reads");
         for(const auto& f:parser.feed(reinterpret_cast<const std::uint8_t*>(b.constData()),b.size())) {
@@ -52,6 +53,17 @@ void protocol()
                 check(sample.reading.validity.structure && sample.reading.validity.crc,"valid TLV or FDILink wire payload");
                 if(sample.reading.validity.measurement)sensors.insert(f.header.source);
                 if(f.header.source==0x43)bmp=sample.reading.pressurePa.has_value();
+                if(f.header.source==0x48 && sample.reading.validity.measurement) {
+                    const auto& r=sample.reading;
+                    check(r.schema==2&&r.rd105Channel&&r.rd105OutputRaw==0&&r.rd105OutputEnabled==0,
+                        "both simulated RD105 outputs start disabled with measured zero percent");
+                    rd105Channels.insert(*r.rd105Channel);
+                    FpgaSensor::Reading remote;
+                    check(FpgaRemote::parseSensor(FpgaRemote::encodeSensor(r,100),remote)
+                        &&remote.rd105Channel==r.rd105Channel&&remote.rd105OutputRaw==r.rd105OutputRaw
+                        &&remote.rd105OutputEnabled==r.rd105OutputEnabled,
+                        "RD105 channel and output telemetry survive remote encoding");
+                }
                 if(sample.epsilon) {
                     epsilonIds.insert(*sample.reading.epsilonMessageId);epsilonData=*sample.epsilon;
                     navigation|=sample.navigationValid&&sample.utcValid;
@@ -64,7 +76,7 @@ void protocol()
         }
     };
     wait([&]{collect();return sensors.size()==8&&sensors.contains(0x48)&&waves.contains(0x30)&&waves.contains(0x31)&&bmp&&navigation
-        &&epsilonIds.size()==14&&epsilonData.ecef_packet_rate_hz>0;},
+        &&rd105Channels.size()==2&&epsilonIds.size()==14&&epsilonData.ecef_packet_rate_hz>0;},
          "eight sensors including RD105, calibrated BMP and valid EPSILON navigation traverse the actual decoder");
     check(epsilonIds==QSet<quint8>({0x39,0x40,0x41,0x42,0x50,0x51,0x53,0x59,0x5a,0x5c,0x5d,0x5f,0x63,0x64}),
         "all supported core EPSILON navigation messages traverse real FDILink frames");

@@ -47,11 +47,30 @@ int main(int argc,char** argv) {
     };
     controller.setSensorEnabled(0x48,true);check(waitFor([&]{return !controller.busy();}),"enable independent RD105");
     check(waitFor([&]{for(const auto& r:readings)if(r.source==0x48 && r.validity.measurement)return true;return false;}),"RD105 valid measurement TLV");
+    check(waitFor([&]{QSet<quint32> channels;for(const auto& r:readings)if(r.source==0x48&&r.validity.measurement&&r.rd105Channel)channels.insert(*r.rd105Channel);return channels.size()==2;}),
+        "both RD105 channels survive controller presentation coalescing");
     check(!(controller.hardwareValues().value(0x6604)&1),"RD105 enable does not enable AI8");
     auto result=param(0x48,2,0x1100,1,QByteArray::fromHex("0001"));
     check(result.value("ok").toBool() && result.value("verified").toBool(),"RD105 write is independently verified");
     result=param(0x48,1,0x1100,1);
     check(QByteArray::fromBase64(result.value("data").toString().toLatin1())==QByteArray::fromHex("0001"),"RD105 actual parameter bytes");
+    result=param(0x48,2,0x2100,1,QByteArray::fromHex("0001"));
+    check(result.value("ok").toBool(),"RD105 channel two output can be enabled independently");
+    check(waitFor([&]{bool positive=false,negative=false;for(const auto& r:readings)if(r.source==0x48&&r.validity.measurement&&r.rd105OutputEnabled==1&&r.rd105OutputRaw) {
+        positive|=r.rd105Channel==1&&*r.rd105OutputRaw>0;negative|=r.rd105Channel==2&&*r.rd105OutputRaw<0;
+    }return positive&&negative;}),"RD105 simulator exposes signed output percentages for both enabled channels");
+    FpgaSensor::Reading negativeOutput;
+    for(const auto& r:readings)if(r.rd105Channel==2&&r.rd105OutputRaw&&*r.rd105OutputRaw<0)negativeOutput=r;
+    FpgaSensor::Reading remoteOutput;
+    check(FpgaRemote::parseSensor(FpgaRemote::encodeSensor(negativeOutput,100),remoteOutput)
+        &&remoteOutput.rd105OutputRaw==negativeOutput.rd105OutputRaw&&remoteOutput.rd105OutputEnabled==1,
+        "remote telemetry preserves a negative RD105 output");
+    readings.clear();
+    result=param(0x48,2,0x1100,1,QByteArray::fromHex("0000"));
+    check(result.value("ok").toBool()&&waitFor([&]{bool stopped=false,running=false;for(const auto& r:readings) {
+        stopped|=r.rd105Channel==1&&r.rd105OutputEnabled==0&&r.rd105OutputRaw==0;
+        running|=r.rd105Channel==2&&r.rd105OutputEnabled==1&&r.rd105OutputRaw&&*r.rd105OutputRaw<0;
+    }return stopped&&running;}),"disabling RD105 channel one clears only its output percentage");
     QByteArray block;for(int i=0;i<32;++i)block.append(char(i+1));
     result=param(0x48,2,0x1315,16,block);check(result.value("ok").toBool(),"RD105 full 16-register transaction");
     transport->injectFault("parameter_mismatch");result=param(0x48,2,0x1100,1,QByteArray::fromHex("0002"));

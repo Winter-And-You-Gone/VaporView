@@ -17,4 +17,22 @@ int main(){
     auto p=FpgaSensorDecoder::decode(tlv(0x12,7,101459000),0x40); require(p.validity.structure&&p.pressurePa&&*p.pressurePa==101459.0);
     auto s=tlv(0x10,7,25321); s[2]=char(3); s[3]=char(3); /* malformed length is rejected */ require(!FpgaSensorDecoder::decode(s,0x44).validity.structure);
     QByteArray e; e.append(char(0xfc));e.append(char(0x41));e.append(char(0));e.append(char(7));e.append(char(0));e.append(char(0));e.append(char(0));e.append(char(0xfd)); auto er=FpgaSensorDecoder::decode(e,0x42); require(er.kind==SensorKind::Epsilon&&er.validity.structure&&!er.validity.crc);
+    const auto rd105Payload=[](quint16 schema,quint32 channel,qint32 duty,quint32 enabled) {
+        QByteArray b;put16(b,schema);put16(b,schema==2?6:3);
+        const auto add=[&](quint16 tag,quint8 type,quint32 value) {
+            put16(b,tag);b.append(char(type));b.append(char(4));put32(b,value);
+        };
+        add(0x14,7,27000000);add(0x15,7,26250000);add(2,3,0);
+        if(schema==2) {add(0x480,3,channel);add(0x481,7,quint32(duty));add(0x482,3,enabled);}
+        return b;
+    };
+    const auto legacyRd=FpgaSensorDecoder::decode(rd105Payload(1,0,0,0),0x48);
+    require(legacyRd.validity.measurement&&!legacyRd.rd105Channel&&!legacyRd.rd105OutputRaw&&!legacyRd.rd105OutputEnabled);
+    const auto dualRd=FpgaSensorDecoder::decode(rd105Payload(2,2,-845000,1),0x48);
+    require(dualRd.validity.measurement&&dualRd.rd105Channel==2&&dualRd.rd105OutputRaw==-845000&&dualRd.rd105OutputEnabled==1);
+    const auto disabledRd=FpgaSensorDecoder::decode(rd105Payload(2,1,0,0),0x48);
+    require(disabledRd.validity.measurement&&disabledRd.rd105OutputRaw==0&&disabledRd.rd105OutputEnabled==0);
+    for(quint32 channel:{0u,3u})require(!FpgaSensorDecoder::decode(rd105Payload(2,channel,0,0),0x48).validity.measurement);
+    require(!FpgaSensorDecoder::decode(rd105Payload(2,1,2000001,1),0x48).validity.measurement);
+    require(!FpgaSensorDecoder::decode(rd105Payload(2,1,0,2),0x48).validity.measurement);
     std::cout<<"fpga sensor decoder tests passed\n"; }
