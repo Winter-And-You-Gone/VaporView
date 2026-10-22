@@ -879,7 +879,7 @@ bool temperatureOverviewOutputPercentShows(QLabel *pill, const QString& expected
         pill->text().contains(QStringLiteral("<br/>")) &&
         (pill->text().contains(QStringLiteral("输出百分比")) ||
          pill->text().contains(QStringLiteral("Output Percent"))) &&
-        pill->text().contains(expectedValue);
+        pill->property("channel1OutputPercentText").toString() == expectedValue;
 }
 
 bool temperatureOverviewOutputPercentShowsNonZero(QLabel *pill)
@@ -889,9 +889,9 @@ bool temperatureOverviewOutputPercentShowsNonZero(QLabel *pill)
         pill->text().contains(QStringLiteral("<br/>")) &&
         (pill->text().contains(QStringLiteral("输出百分比")) ||
          pill->text().contains(QStringLiteral("Output Percent"))) &&
-        pill->text().contains(QLatin1Char('%')) &&
-        !pill->text().contains(QStringLiteral("0.00%")) &&
-        !pill->text().contains(QStringLiteral("---"));
+        pill->property("channel1OutputPercentText").toString().contains(QLatin1Char('%')) &&
+        pill->property("channel1OutputPercentText").toString() != QStringLiteral("0.00%") &&
+        pill->property("channel1OutputPercentText").toString() != QStringLiteral("---");
 }
 
 bool acceptOpenMessageBoxesAsYes()

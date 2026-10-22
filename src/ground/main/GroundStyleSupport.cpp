@@ -1443,16 +1443,6 @@ QLabel#ai8TemperatureOverviewValueLabel[temperatureState="warm"] {
 QLabel#ai8TemperatureOverviewValueLabel[temperatureState="hot"] {
     color: @vv-hd-bad;
 }
-QToolButton#temperatureOverviewChannelButton {
-    background-color: @vv-surface-alt;
-    border: 1px solid @vv-border;
-    color: @vv-primary;
-}
-QToolButton#temperatureOverviewChannelButton[available="false"] {
-    background-color: @vv-surface-alt;
-    border-color: @vv-border;
-    color: @vv-text-muted;
-}
 QPushButton#temperatureOverviewOutputSwitch {
     background-color: transparent;
     color: @vv-text;

@@ -4,13 +4,11 @@
 
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/SingleLevelPopupComboBox.h"
-#include "shared/theme/SingleLevelPopupMenu.h"
 #include "ground/widgets/LabelTextSelection.h"
 #include "ground/widgets/VisualTextLabel.h"
 #include "ground/widgets/TelemetryPanels.h"
 #include "ground/widgets/TemperatureTrendPlotWidget.h"
 
-#include <QAction>
 #include <QAbstractAnimation>
 #include <QApplication>
 #include <QButtonGroup>
@@ -29,7 +27,6 @@
 #include <QIntValidator>
 #include <QKeyEvent>
 #include <QLocale>
-#include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPaintEvent>
@@ -42,13 +39,10 @@
 #include <QShortcut>
 #include <QStyle>
 #include <QStyleOptionComboBox>
-#include <QStyleOptionToolButton>
 #include <QSvgRenderer>
 #include <QTimer>
-#include <QToolButton>
 #include <QVariantAnimation>
 #include <QVBoxLayout>
-#include <QWidgetAction>
 
 #include <algorithm>
 #include <array>
@@ -60,9 +54,6 @@
 using VaporView::AppThemeColor;
 using VaporView::appThemeColor;
 using VaporView::SingleLevelPopupComboBox;
-using VaporView::SingleLevelPopupMenu;
-using VaporView::SingleLevelPopupMenuRow;
-using VaporView::SingleLevelPopupTextAlignment;
 using VaporView::Ground::Widgets::SegmentedSwitchButton;
 using VaporView::Ground::Widgets::SourceModeOverviewSwitchButton;
 using VaporView::Ground::Widgets::TemperatureControllerOverviewPanel;
@@ -1018,7 +1009,7 @@ void setTemperatureOverviewPillText(QLabel *label,
     label->style()->polish(label);
 }
 
-void setTemperatureOverviewOutputPercentText(QLabel *label, const QString& title, const QString& value)
+void setTemperatureOverviewOutputPercentText(QLabel *label, const QString& title, const QString& first, const QString& second)
 {
     if (!label)
     {
@@ -1029,9 +1020,11 @@ void setTemperatureOverviewOutputPercentText(QLabel *label, const QString& title
     label->setText(QStringLiteral(
         "<div align=\"center\" style=\"line-height: 13px; white-space: nowrap;\">"
         "<span style=\"font-size: 12px; font-weight: 700;\">%1</span><br/>"
-        "<span style=\"font-size: 14px; font-weight: 700;\">%2</span>"
+        "<span style=\"font-size: 14px; font-weight: 700;\">1: %2<br/>2: %3</span>"
         "</div>")
-        .arg(title.toHtmlEscaped(), value.toHtmlEscaped()));
+        .arg(title.toHtmlEscaped(), first.toHtmlEscaped(), second.toHtmlEscaped()));
+    label->setProperty("channel1OutputPercentText", first);
+    label->setProperty("channel2OutputPercentText", second);
     label->setToolTip(title);
     label->setAccessibleName(title);
 }
@@ -1078,49 +1071,6 @@ public:
     }
 };
 
-class TemperatureOverviewChannelButton final : public QToolButton
-{
-public:
-    explicit TemperatureOverviewChannelButton(QWidget *parent = nullptr)
-        : QToolButton(parent)
-    {
-        setProperty("textAlignment", QStringLiteral("center"));
-        setProperty("iconAlignment", QStringLiteral("right"));
-    }
-
-protected:
-    void paintEvent(QPaintEvent *event) override
-    {
-        Q_UNUSED(event);
-
-        QPainter painter(this);
-        QStyleOptionToolButton option;
-        initStyleOption(&option);
-        option.text.clear();
-        option.icon = QIcon();
-        option.arrowType = Qt::NoArrow;
-        style()->drawComplexControl(QStyle::CC_ToolButton, &option, &painter, this);
-
-        painter.setRenderHint(QPainter::Antialiasing, true);
-        painter.setPen(palette().color(QPalette::ButtonText));
-        QFont textFont = font();
-        textFont.setWeight(QFont::Medium);
-        painter.setFont(textFont);
-        painter.drawText(rect().adjusted(18, 0, -18, 0), Qt::AlignCenter, text());
-
-        const QIcon currentIcon = icon();
-        if (!currentIcon.isNull())
-        {
-            const QSize size = iconSize().isValid() ? iconSize() : QSize(14, 14);
-            const QRect iconRect(width() - size.width() - 10,
-                                 (height() - size.height()) / 2,
-                                 size.width(),
-                                 size.height());
-            currentIcon.paint(&painter, iconRect, Qt::AlignCenter, isEnabled() ? QIcon::Normal : QIcon::Disabled);
-        }
-    }
-};
-
 class TemperatureControllerOverviewPanelImpl final : public TemperatureControllerOverviewPanel
 {
 public:
@@ -1129,207 +1079,131 @@ public:
     {
         setObjectName(QStringLiteral("temperatureOverviewPanel"));
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-
         auto *layout = new QHBoxLayout(this);
-        layout->setContentsMargins(kHomeOverviewBodyPadding,
-                                   kHomeOverviewBodyPadding,
-                                   kHomeOverviewBodyPadding,
-                                   kHomeOverviewBodyPadding);
+        layout->setContentsMargins(kHomeOverviewBodyPadding, kHomeOverviewBodyPadding,
+                                   kHomeOverviewBodyPadding, kHomeOverviewBodyPadding);
         layout->setSpacing(7);
 
         summary_widget_ = new QWidget(this);
         summary_widget_->setObjectName(QStringLiteral("temperatureOverviewSummary"));
-        summary_widget_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
         summary_widget_->setFixedWidth(kOverviewControlWidth);
-        summary_widget_->installEventFilter(this);
         auto *summaryLayout = new QVBoxLayout(summary_widget_);
         summaryLayout->setContentsMargins(0, 0, 0, 0);
-        summaryLayout->setSpacing(kOverviewSummarySpacing);
-
-        channel_button_ = new TemperatureOverviewChannelButton(summary_widget_);
-        channel_button_->setObjectName(QStringLiteral("temperatureOverviewChannelButton"));
-        channel_button_->setFixedWidth(kOverviewControlWidth);
-        channel_button_->setFixedHeight(kOverviewChannelHeight);
-        channel_button_->setPopupMode(QToolButton::DelayedPopup);
-        channel_button_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-        channel_button_->setLayoutDirection(Qt::RightToLeft);
-        channel_button_->setIconSize(QSize(14, 14));
-        channel_button_->setFocusPolicy(Qt::StrongFocus);
-        channel_button_->setCursor(Qt::PointingHandCursor);
-        channel_menu_ = new SingleLevelPopupMenu(channel_button_);
-        channel_menu_->setObjectName(QStringLiteral("temperatureOverviewChannelMenu"));
-        channel_menu_->setFixedWidth(kOverviewMenuOuterWidth);
-        channel_menu_->setPanelPadding(kOverviewMenuPadding);
-        channel_menu_->setCornerRadius(kOverviewMenuCornerRadius);
-        channel_menu_->refreshTheme();
-        connect(channel_menu_, &QMenu::aboutToShow, this, [this]() {
-            updateSummaryControlHeights();
-            if (channel_menu_) channel_menu_->applyRoundedMask();
-        });
-        connect(channel_button_, &QToolButton::clicked, this, [this]() {
-            popupChannelMenu();
-        });
-        auto configureChannelMenuAction = [this](SingleLevelPopupMenuRow *row, const QString& text, const QString& objectName) {
-            QFont rowFont = row->font();
-            rowFont.setWeight(QFont::Medium);
-            row->setObjectName(objectName);
-            row->setFont(rowFont);
-            row->setTextAlignment(SingleLevelPopupTextAlignment::Center);
-            row->setCheckSlotWidth(18);
-            row->setCheckIconSize(QSize(14, 14));
-            row->setHorizontalPadding(12, 10);
-            row->setRowSpacing(4);
-            row->setRowHeight(kOverviewChannelHeight);
-            row->setMinimumRowWidth(kOverviewMenuItemWidth);
-            row->setFixedSize(kOverviewMenuItemWidth, kOverviewChannelHeight);
-            row->setCursor(Qt::PointingHandCursor);
-            row->setFocusPolicy(Qt::StrongFocus);
-            row->setText(text);
-            QWidgetAction *action = channel_menu_->addRow(row);
-            action->setObjectName(objectName);
-            action->setText(text);
-            return action;
-        };
-        channel_menu_row_1_ = new SingleLevelPopupMenuRow(channel_menu_);
-        channel_menu_row_2_ = new SingleLevelPopupMenuRow(channel_menu_);
-        channel_action_1_ = configureChannelMenuAction(channel_menu_row_1_, QStringLiteral("通道1"),
-                                                       QStringLiteral("temperatureOverviewChannel1MenuAction"));
-        channel_action_2_ = configureChannelMenuAction(channel_menu_row_2_, QStringLiteral("通道2"),
-                                                       QStringLiteral("temperatureOverviewChannel2MenuAction"));
-        for (QAction *action : {channel_action_1_, channel_action_2_})
-        {
-            action->setCheckable(true);
-        }
-        connect(channel_action_1_, &QAction::triggered, this, [this]() {
-            selectChannel(0);
-            if (channel_menu_) channel_menu_->hide();
-        });
-        connect(channel_action_2_, &QAction::triggered, this, [this]() {
-            selectChannel(1);
-            if (channel_menu_) channel_menu_->hide();
-        });
-        channel_button_->setMenu(channel_menu_);
-        channel_button_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
-        summaryLayout->addWidget(channel_button_, 0);
-
+        summaryLayout->setSpacing(4);
         output_percent_value_ = new QLabel(summary_widget_);
         output_percent_value_->setObjectName(QStringLiteral("temperatureOverviewOutputPercentPill"));
         output_percent_value_->setAlignment(Qt::AlignCenter);
         output_percent_value_->setWordWrap(false);
-        output_percent_value_->setFixedWidth(kOverviewControlWidth);
-        output_percent_value_->setFixedHeight(kOverviewOutputPercentHeight);
-        output_percent_value_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-        summaryLayout->addWidget(output_percent_value_, 0);
+        output_percent_value_->setFixedSize(kOverviewControlWidth, 64);
+        summaryLayout->addWidget(output_percent_value_);
 
-        output_capsule_ = new QFrame(summary_widget_);
-        output_capsule_->setObjectName(QStringLiteral("temperatureOverviewOutputCapsule"));
-        output_capsule_->setFixedSize(kOverviewControlWidth, kOverviewOutputCapsuleHeight);
-        output_capsule_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-        auto *outputLayout = new QVBoxLayout(output_capsule_);
-        outputLayout->setContentsMargins(kOverviewOutputHorizontalMargin,
-                                         kOverviewOutputVerticalMargin,
-                                         kOverviewOutputHorizontalMargin,
-                                         kOverviewOutputVerticalMargin);
-        outputLayout->setSpacing(kOverviewOutputSpacing);
-
-        output_label_ = new QLabel(output_capsule_);
+        auto *outputCapsule = new QFrame(summary_widget_);
+        outputCapsule->setObjectName(QStringLiteral("temperatureOverviewOutputCapsule"));
+        outputCapsule->setFixedSize(kOverviewControlWidth, 100);
+        auto *outputLayout = new QVBoxLayout(outputCapsule);
+        outputLayout->setContentsMargins(4, 3, 4, 3);
+        outputLayout->setSpacing(2);
+        output_label_ = new QLabel(outputCapsule);
         output_label_->setObjectName(QStringLiteral("temperatureOverviewOutputLabel"));
         output_label_->setAlignment(Qt::AlignCenter);
-        output_label_->setFixedHeight(kOverviewOutputLabelHeight);
-        output_label_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        outputLayout->addWidget(output_label_, 0);
-
-        output_switch_button_ = new TemperatureOverviewSwitchButton(output_capsule_);
-        output_switch_button_->setFixedWidth(kOverviewOutputSwitchWidth);
-        output_switch_button_->setFixedHeight(kOverviewOutputSwitchHeight);
-        output_switch_button_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-        output_switch_button_->setStyleSheet(QStringLiteral(
-            "QPushButton#temperatureOverviewOutputSwitch { min-height: %1px; max-height: %1px; }")
-            .arg(kOverviewOutputSwitchHeight));
-        connect(output_switch_button_, &SegmentedSwitchButton::selectionRequested, this, [this](bool requested) {
-            if (output_enabled_callback_)
-            {
-                output_enabled_callback_(currentChannelNumber(), requested);
-            }
-        });
-        outputLayout->addWidget(output_switch_button_, 0, Qt::AlignHCenter);
-        summaryLayout->addWidget(output_capsule_, 0);
+        output_label_->setFixedHeight(18);
+        outputLayout->addWidget(output_label_);
+        for (int index = 0; index < 2; ++index)
+        {
+            auto *row = new QHBoxLayout;
+            row->setSpacing(2);
+            auto *number = new QLabel(QStringLiteral("%1:").arg(index + 1), outputCapsule);
+            number->setObjectName(QStringLiteral("temperatureOverviewOutputChannelLabel"));
+            number->setAlignment(Qt::AlignCenter);
+            number->setFixedWidth(18);
+            row->addWidget(number);
+            auto *button = new TemperatureOverviewSwitchButton(outputCapsule);
+            button->setProperty("temperatureChannel", index + 1);
+            button->setFixedSize(94, 34);
+            button->setStyleSheet(QStringLiteral(
+                "QPushButton#temperatureOverviewOutputSwitch { min-height: 34px; max-height: 34px; }"));
+            connect(button, &SegmentedSwitchButton::selectionRequested, this, [this, index](bool enabled) {
+                if (output_enabled_callback_)
+                    output_enabled_callback_(static_cast<quint8>(index + 1), enabled);
+            });
+            output_switch_buttons_[index] = button;
+            row->addWidget(button);
+            outputLayout->addLayout(row);
+        }
+        summaryLayout->addWidget(outputCapsule);
         summaryLayout->addStretch(1);
-
-        layout->addWidget(summary_widget_, 0);
-
+        layout->addWidget(summary_widget_);
         auto *divider = new QFrame(this);
         divider->setObjectName(QStringLiteral("homeOverviewDivider"));
         divider->setFixedWidth(1);
-        divider->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
         layout->addWidget(divider);
 
-        auto *plotSection = new QWidget(this);
-        plotSection->setFixedHeight(kOverviewTrendPlotHeight);
-        plotSection->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        auto *plotSectionLayout = new QVBoxLayout(plotSection);
-        plotSectionLayout->setContentsMargins(0, 0, 0, 0);
-        plotSectionLayout->setSpacing(0);
-
-        plot_ = new TemperatureTrendPlotWidget(plotSection);
-        plot_->setProperty("temperatureOverviewPlot", true);
-        plot_->setCompactMode(true);
-        plot_->setTimeAxisEnabled(true);
-        plot_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-        plotSectionLayout->addWidget(plot_, 1);
+        auto *plots = new QVBoxLayout;
+        plots->setSpacing(4);
+        for (int index = 0; index < 2; ++index)
+        {
+            auto *plot = new TemperatureTrendPlotWidget(this);
+            plot->setProperty("temperatureOverviewPlot", true);
+            plot->setProperty("temperatureChannel", index + 1);
+            plot->setChannelIndex(index);
+            plot->setCompactMode(true);
+            plot->setTimeAxisEnabled(true);
+            plot->setFixedHeight(144);
+            plots_[index] = plot;
+            plots->addWidget(plot);
+        }
+        layout->addLayout(plots, 1);
 
         title_status_strip_ = new QWidget(this);
         title_status_strip_->setObjectName(QStringLiteral("temperatureOverviewTitleStatusStrip"));
         title_status_strip_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
         title_status_strip_->hide();
-        auto *statusLayout = new QHBoxLayout(title_status_strip_);
+        auto *statusLayout = new QVBoxLayout(title_status_strip_);
         statusLayout->setContentsMargins(0, 0, 0, 0);
-        statusLayout->setSpacing(12);
+        statusLayout->setSpacing(0);
         statusLayout->setSizeConstraint(QLayout::SetFixedSize);
-
-        target_temp_value_ = new QLabel(title_status_strip_);
-        target_temp_value_->setObjectName(QStringLiteral("temperatureOverviewValuePill"));
-        target_temp_value_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-        target_temp_value_->setWordWrap(false);
-        target_temp_value_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
-        statusLayout->addWidget(target_temp_value_);
-
-        current_temp_value_ = new QLabel(title_status_strip_);
-        current_temp_value_->setObjectName(QStringLiteral("temperatureOverviewValuePill"));
-        current_temp_value_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-        current_temp_value_->setWordWrap(false);
-        current_temp_value_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
-        statusLayout->addWidget(current_temp_value_);
+        for (int index = 0; index < 2; ++index)
+        {
+            auto *row = new QHBoxLayout;
+            row->setSpacing(8);
+            auto *number = new QLabel(QStringLiteral("%1:").arg(index + 1), title_status_strip_);
+            number->setObjectName(QStringLiteral("temperatureOverviewStatusChannelLabel"));
+            row->addWidget(number);
+            for (QLabel **value : {&target_temp_values_[index], &current_temp_values_[index]})
+            {
+                *value = new QLabel(title_status_strip_);
+                (*value)->setObjectName(QStringLiteral("temperatureOverviewValuePill"));
+                (*value)->setProperty("temperatureChannel", index + 1);
+                (*value)->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+                (*value)->setWordWrap(false);
+                (*value)->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+                (*value)->installEventFilter(this);
+                row->addWidget(*value);
+            }
+            statusLayout->addLayout(row);
+        }
         title_status_strip_->installEventFilter(this);
-        target_temp_value_->installEventFilter(this);
-        current_temp_value_->installEventFilter(this);
-        layout->addWidget(plotSection, 1, Qt::AlignTop);
-
         setEnglish(false);
         updateData(VaporView::TemperatureControllerData());
-        updateSummaryControlHeights();
-        scheduleSummaryControlHeightUpdate();
     }
 
-    QWidget *titleStatusWidget() const override
-    {
-        return title_status_strip_;
-    }
+    QWidget *titleStatusWidget() const override { return title_status_strip_; }
 
-    void setEnglish(bool english)
+    void setEnglish(bool english) override
     {
         is_english_ = english;
-        if (channel_action_1_) channel_action_1_->setText(english ? QStringLiteral("CH 1") : QStringLiteral("通道1"));
-        if (channel_action_2_) channel_action_2_->setText(english ? QStringLiteral("CH 2") : QStringLiteral("通道2"));
-
-        if (output_label_) output_label_->setText(english ? QStringLiteral("Output Enable") : QStringLiteral("输出使能"));
-        if (output_switch_button_) output_switch_button_->setEnglish(english);
-        if (plot_)
+        output_label_->setText(english ? QStringLiteral("Output Enable") : QStringLiteral("输出使能"));
+        for (int index = 0; index < 2; ++index)
         {
-            plot_->setEnglish(english);
+            output_switch_buttons_[index]->setEnglish(english);
+            plots_[index]->setEnglish(english);
+            const QString channel = english ? QStringLiteral("Channel %1").arg(index + 1)
+                                            : QStringLiteral("通道%1").arg(index + 1);
+            plots_[index]->setAccessibleName(channel);
+            plots_[index]->setToolTip(channel);
+            output_switch_buttons_[index]->setStateDescription(channel + QStringLiteral(" ") + output_label_->text(),
+                english ? QStringLiteral(": ") : QStringLiteral("："));
         }
-        updateChannelButtonText();
-        updateThemedIcons();
         refreshChannelUi();
     }
 
@@ -1384,286 +1258,89 @@ public:
         refreshChannelUi();
     }
 
-    void setOutputEnabledCallback(std::function<void(quint8, bool)> callback)
+    void setOutputEnabledCallback(std::function<void(quint8, bool)> callback) override
     {
         output_enabled_callback_ = std::move(callback);
     }
 
-protected:
-    void resizeEvent(QResizeEvent *event) override
-    {
-        QWidget::resizeEvent(event);
-        updateSummaryControlHeights();
-        scheduleSummaryControlHeightUpdate();
-    }
+    void updateThemedIcons() override { refreshChannelUi(); }
 
+protected:
     bool eventFilter(QObject *watched, QEvent *event) override
     {
-        if (watched == summary_widget_ && event->type() == QEvent::Resize)
-        {
-            scheduleSummaryControlHeightUpdate();
-        }
-        if ((watched == title_status_strip_ || watched == target_temp_value_ ||
-             watched == current_temp_value_) &&
-            (event->type() == QEvent::Show || event->type() == QEvent::FontChange ||
-             event->type() == QEvent::StyleChange))
-        {
-            QTimer::singleShot(0, this, [this]() {
-                updateOverviewValueWidths();
-            });
-        }
+        if (event->type() == QEvent::Show || event->type() == QEvent::FontChange ||
+            event->type() == QEvent::StyleChange)
+            QTimer::singleShot(0, this, [this]() { updateOverviewValueWidths(); });
         return QWidget::eventFilter(watched, event);
     }
 
-public:
-    void updateThemedIcons()
-    {
-        if (channel_button_)
-        {
-            channel_button_->setIcon(createLucideIcon(QStringLiteral("chevron-down"),
-                                                      toolbarColor(AppThemeColor::ToolbarBlue)));
-            channel_button_->setIconSize(QSize(14, 14));
-        }
-        syncChannelMenuRow(channel_menu_row_1_, channel_action_1_);
-        syncChannelMenuRow(channel_menu_row_2_, channel_action_2_);
-    }
-
 private:
-    static constexpr int kOverviewControlWidth = 99;
-    static constexpr int kOverviewMenuPadding = 12;
-    static constexpr int kOverviewMenuCornerRadius = 10;
-    static constexpr int kOverviewMenuShadowMargin = 22;
-    static constexpr int kOverviewMenuItemWidth = kOverviewControlWidth;
-    static constexpr int kOverviewMenuOuterWidth = kOverviewControlWidth + kOverviewMenuShadowMargin * 2;
-    static constexpr int kOverviewSummarySpacing = 4;
-    static constexpr int kOverviewChannelHeight = 28;
-    static constexpr int kOverviewOutputPercentHeight = 42;
-    static constexpr int kOverviewTrendPlotHeight = 144;
-    static constexpr int kOverviewOutputCapsuleHeight = 60;
-    static constexpr int kOverviewOutputSwitchHeight = 34;
-    static constexpr int kOverviewOutputFrameWidth = 1;
-    static constexpr int kOverviewOutputHorizontalMargin = 4;
-    static constexpr int kOverviewOutputVerticalMargin = 3;
-    static constexpr int kOverviewOutputSpacing = 2;
-    static constexpr int kOverviewOutputLabelHeight = 18;
-    static constexpr int kOverviewOutputSwitchWidth =
-        kOverviewControlWidth -
-        (kOverviewOutputHorizontalMargin + kOverviewOutputFrameWidth) * 2;
-
-    quint8 currentChannelNumber() const
-    {
-        return static_cast<quint8>(currentChannelIndex() + 1);
-    }
-
-    void scheduleSummaryControlHeightUpdate()
-    {
-        if (summary_height_update_pending_)
-        {
-            return;
-        }
-        summary_height_update_pending_ = true;
-        QTimer::singleShot(0, this, [this]() {
-            summary_height_update_pending_ = false;
-            updateSummaryControlHeights();
-        });
-    }
+    static constexpr int kOverviewControlWidth = 124;
 
     void updateOverviewValueWidths()
     {
-        for (QLabel *label : {target_temp_value_, current_temp_value_})
-        {
-            label->ensurePolished();
-            const QFontMetrics metrics(label->font());
-            const int currentWidth = metrics.horizontalAdvance(
-                label->property("displayText").toString());
-            const int reservedWidth = metrics.horizontalAdvance(
-                label->property("reservedDisplayText").toString());
-            label->setFixedWidth(std::max(currentWidth, reservedWidth) + 2);
-        }
+        for (int index = 0; index < 2; ++index)
+            for (QLabel *label : {target_temp_values_[index], current_temp_values_[index]})
+            {
+                label->ensurePolished();
+                const QFontMetrics metrics(label->font());
+                const int currentWidth = metrics.horizontalAdvance(label->property("displayText").toString());
+                const int reservedWidth = metrics.horizontalAdvance(label->property("reservedDisplayText").toString());
+                label->setFixedWidth(std::max(currentWidth, reservedWidth) + 2);
+            }
         title_status_strip_->layout()->invalidate();
         title_status_strip_->layout()->activate();
     }
 
-    void updateSummaryControlHeights()
-    {
-        if (!summary_widget_ || !channel_button_)
-        {
-            return;
-        }
-
-        const int channelHeight = channel_button_->height();
-        auto setMenuItemHeight = [](SingleLevelPopupMenuRow *widget, const QSize& size) {
-            if (!widget)
-            {
-                return;
-            }
-
-            widget->setRowHeight(size.height());
-            widget->setMinimumRowWidth(size.width());
-            if (widget->minimumSize() != size || widget->maximumSize() != size || widget->size() != size)
-            {
-                widget->setFixedSize(size);
-                widget->resize(size);
-                widget->updateGeometry();
-            }
-        };
-        setMenuItemHeight(channel_menu_row_1_, QSize(kOverviewMenuItemWidth, channelHeight));
-        setMenuItemHeight(channel_menu_row_2_, QSize(kOverviewMenuItemWidth, channelHeight));
-        if (channel_menu_)
-        {
-            channel_menu_->setFixedWidth(kOverviewMenuOuterWidth);
-            channel_menu_->refreshTheme();
-        }
-    }
-
-    void popupChannelMenu()
-    {
-        if (!channel_button_ || !channel_menu_)
-        {
-            return;
-        }
-
-        updateSummaryControlHeights();
-        channel_menu_->popupFrom(channel_button_);
-    }
-
-    int currentChannelIndex() const
-    {
-        return std::clamp(selected_channel_index_, 0, 1);
-    }
-
-    QString channelText(int index) const
-    {
-        if (is_english_)
-        {
-            return index == 0 ? QStringLiteral("CH 1") : QStringLiteral("CH 2");
-        }
-        return index == 0 ? QStringLiteral("通道1") : QStringLiteral("通道2");
-    }
-
-    void selectChannel(int index)
-    {
-        const int nextIndex = std::clamp(index, 0, 1);
-        if (selected_channel_index_ == nextIndex)
-        {
-            updateChannelButtonText();
-            return;
-        }
-        selected_channel_index_ = nextIndex;
-        updateChannelButtonText();
-        refreshChannelUi();
-    }
-
-    void updateChannelButtonText()
-    {
-        if (channel_button_)
-        {
-            const QString text = channelText(currentChannelIndex());
-            channel_button_->setText(text);
-            channel_button_->setToolTip(is_english_
-                ? QStringLiteral("Select temperature controller channel")
-                : QStringLiteral("选择温控通道"));
-            channel_button_->setAccessibleName(channel_button_->toolTip());
-        }
-        if (channel_action_1_) channel_action_1_->setChecked(currentChannelIndex() == 0);
-        if (channel_action_2_) channel_action_2_->setChecked(currentChannelIndex() == 1);
-        syncChannelMenuRow(channel_menu_row_1_, channel_action_1_);
-        syncChannelMenuRow(channel_menu_row_2_, channel_action_2_);
-    }
-
-    void syncChannelMenuRow(SingleLevelPopupMenuRow *row, QAction *action)
-    {
-        if (!row || !action)
-        {
-            return;
-        }
-        row->setText(action->text());
-        const bool selected = action->isChecked();
-        row->setCheckIcon(createLucideIcon(QStringLiteral("check"),
-                                           toolbarColor(AppThemeColor::MenuCheckText)));
-        row->setChecked(selected);
-        row->refreshTheme();
-        row->update();
-    }
-
     void refreshChannelUi()
     {
-        const int index = currentChannelIndex();
         const bool dark = VaporView::isDarkThemeEnabled();
         const bool valid = latest_data_.valid;
-        const VaporView::TemperatureControllerChannelData& channel = latest_data_.channels[index];
-        const bool measuredValid = valid && std::isfinite(channel.measured_temperature_c);
-        const bool targetValid = valid && std::isfinite(channel.target_temperature_c);
-        const bool outputPercentValid = valid && std::isfinite(channel.output_percent);
-        setTemperatureOverviewOutputPercentText(
-            output_percent_value_,
-            is_english_ ? QStringLiteral("Output Percent") : QStringLiteral("输出百分比"),
-            temperatureOverviewOutputPercentText(outputPercentValid
-                ? channel.output_percent
-                : std::numeric_limits<double>::quiet_NaN()));
-        setTemperatureOverviewPillText(
-            target_temp_value_,
-            is_english_ ? QStringLiteral("Target") : QStringLiteral("目标"),
-            temperatureOverviewNumberText(targetValid ? channel.target_temperature_c : std::numeric_limits<double>::quiet_NaN()),
-            is_english_ ? QStringLiteral("°C") : QStringLiteral("℃"),
-            appThemeColor(AppThemeColor::ToolbarGreen, dark));
-        setTemperatureOverviewPillText(
-            current_temp_value_,
-            is_english_ ? QStringLiteral("Current") : QStringLiteral("当前"),
-            temperatureOverviewNumberText(measuredValid ? channel.measured_temperature_c : std::numeric_limits<double>::quiet_NaN()),
-            is_english_ ? QStringLiteral("°C") : QStringLiteral("℃"),
-            appThemeColor(AppThemeColor::PlotSeriesTemperature, dark));
-        if (channel_button_)
+        QStringList outputPercentTexts;
+        for (int index = 0; index < 2; ++index)
         {
-            channel_button_->setProperty("available", valid);
-            channel_button_->setEnabled(valid);
-            channel_button_->style()->unpolish(channel_button_);
-            channel_button_->style()->polish(channel_button_);
-            channel_button_->update();
-        }
-        if (output_switch_button_)
-        {
+            const auto &channel = latest_data_.channels[index];
+            outputPercentTexts.append(temperatureOverviewOutputPercentText(valid
+                ? channel.output_percent : std::numeric_limits<double>::quiet_NaN()));
+            setTemperatureOverviewPillText(target_temp_values_[index],
+                is_english_ ? QStringLiteral("Target") : QStringLiteral("目标"),
+                temperatureOverviewNumberText(valid ? channel.target_temperature_c : std::numeric_limits<double>::quiet_NaN()),
+                is_english_ ? QStringLiteral("°C") : QStringLiteral("℃"), appThemeColor(AppThemeColor::ToolbarGreen, dark));
+            setTemperatureOverviewPillText(current_temp_values_[index],
+                is_english_ ? QStringLiteral("Current") : QStringLiteral("当前"),
+                temperatureOverviewNumberText(valid ? channel.measured_temperature_c : std::numeric_limits<double>::quiet_NaN()),
+                is_english_ ? QStringLiteral("°C") : QStringLiteral("℃"), appThemeColor(AppThemeColor::PlotSeriesTemperature, dark));
+            auto *button = output_switch_buttons_[index];
             const bool outputEnabled = valid && channel.output_enabled;
-            output_switch_button_->setEnabled(valid);
-            output_switch_button_->setSwitchChecked(outputEnabled, output_switch_button_->switchChecked() != outputEnabled);
+            button->setEnabled(valid);
+            button->setSwitchChecked(outputEnabled, button->switchChecked() != outputEnabled);
+            plots_[index]->setTargetTemperature(target_temperature_by_channel_[index]);
+            plots_[index]->setSamples(measured_temperature_history_[index]);
+            plots_[index]->setSampleTimes(measured_temperature_time_history_[index]);
         }
-        if (plot_)
-        {
-            plot_->setChannelIndex(index);
-            plot_->setTargetTemperature(target_temperature_by_channel_[index]);
-            plot_->setSamples(measured_temperature_history_[index]);
-            plot_->setSampleTimes(measured_temperature_time_history_[index]);
-        }
+        setTemperatureOverviewOutputPercentText(output_percent_value_,
+            is_english_ ? QStringLiteral("Output Percent") : QStringLiteral("输出百分比"),
+            outputPercentTexts[0], outputPercentTexts[1]);
         updateOverviewValueWidths();
     }
 
-    QToolButton *channel_button_ = nullptr;
     QWidget *summary_widget_ = nullptr;
-    SingleLevelPopupMenu *channel_menu_ = nullptr;
-    QAction *channel_action_1_ = nullptr;
-    QAction *channel_action_2_ = nullptr;
-    SingleLevelPopupMenuRow *channel_menu_row_1_ = nullptr;
-    SingleLevelPopupMenuRow *channel_menu_row_2_ = nullptr;
     QLabel *output_percent_value_ = nullptr;
-    QLabel *target_temp_value_ = nullptr;
-    QLabel *current_temp_value_ = nullptr;
-    QWidget *title_status_strip_ = nullptr;
-    QFrame *output_capsule_ = nullptr;
     QLabel *output_label_ = nullptr;
-    TemperatureOverviewSwitchButton *output_switch_button_ = nullptr;
-    TemperatureTrendPlotWidget *plot_ = nullptr;
+    std::array<QLabel *, 2> target_temp_values_{};
+    std::array<QLabel *, 2> current_temp_values_{};
+    QWidget *title_status_strip_ = nullptr;
+    std::array<TemperatureOverviewSwitchButton *, 2> output_switch_buttons_{};
+    std::array<TemperatureTrendPlotWidget *, 2> plots_{};
     VaporView::TemperatureControllerData latest_data_;
     std::array<QVector<double>, 2> measured_temperature_history_{};
     std::array<QVector<double>, 2> measured_temperature_time_history_{};
     std::array<double, 2> target_temperature_by_channel_{
-        std::numeric_limits<double>::quiet_NaN(),
-        std::numeric_limits<double>::quiet_NaN()};
+        std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()};
     std::chrono::steady_clock::time_point temperature_history_origin_{};
     std::chrono::steady_clock::time_point last_temperature_timestamp_{};
     double temperature_history_origin_local_seconds_ = 0.0;
     std::function<void(quint8, bool)> output_enabled_callback_;
-    int selected_channel_index_ = 0;
-    bool summary_height_update_pending_ = false;
     bool temperature_history_origin_valid_ = false;
     bool is_english_ = false;
 };

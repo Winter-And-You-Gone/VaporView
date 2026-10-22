@@ -7589,100 +7589,12 @@ int main(int argc, char **argv)
     require(temperatureRateCombo->currentText() == QStringLiteral("5"),
             "RD105 local polling rate defaults to 5 Hz");
 
-    auto *temperatureChannelButton =
-        window.findChild<QToolButton *>(QStringLiteral("temperatureOverviewChannelButton"));
-    require(temperatureChannelButton != nullptr, "temperature overview channel selector exists");
-    require(temperatureChannelButton->toolButtonStyle() == Qt::ToolButtonTextBesideIcon &&
-                temperatureChannelButton->layoutDirection() == Qt::RightToLeft &&
-                !temperatureChannelButton->icon().isNull(),
-            "temperature overview channel selector uses a right-side lucide chevron icon");
-    require(temperatureChannelButton->property("textAlignment").toString() == QStringLiteral("center") &&
-                temperatureChannelButton->property("iconAlignment").toString() == QStringLiteral("right"),
-            "temperature overview channel selector keeps its text centered with the chevron right-aligned");
-    require(temperatureChannelButton->property("available").isValid() &&
-                !temperatureChannelButton->property("available").toBool(),
-            "temperature overview channel selector starts unavailable without controller data");
-    require(!temperatureChannelButton->isEnabled(),
-            "temperature overview channel selector is disabled without controller data");
-    require(VaporView::appStyleSheet().contains(QStringLiteral("QToolButton#temperatureOverviewChannelButton[available=\"false\"]")),
-            "temperature overview channel selector has a gray unavailable state");
-    requireLastStyleRuleContains(VaporView::appStyleSheet(),
-                                 QStringLiteral("QToolButton#temperatureOverviewChannelButton::menu-indicator {"),
-                                 QStringLiteral("image: none"),
-                                 "temperature overview channel selector hides the default dropdown indicator");
-    requireLastStyleRuleContains(VaporView::appStyleSheet(),
-                                 QStringLiteral("QToolButton#temperatureOverviewChannelButton {"),
-                                 QStringLiteral("font-weight: 500"),
-                                 "temperature overview channel selector uses the normal selector font weight");
-    require(temperatureChannelButton->menu() != nullptr,
-            "temperature overview channel selector menu exists");
-    require(temperatureChannelButton->menu()->testAttribute(Qt::WA_TranslucentBackground) &&
-                !temperatureChannelButton->menu()->testAttribute(Qt::WA_StyledBackground),
-            "temperature overview channel menu uses the floating translucent popup chrome");
-    require(temperatureChannelButton->menu()->actions().size() == 2,
-            "temperature overview channel menu has two channel options");
-    const QList<VaporView::SingleLevelPopupMenuRow*> temperatureChannelMenuRows =
-        temperatureChannelButton->menu()->findChildren<VaporView::SingleLevelPopupMenuRow *>();
-    require(temperatureChannelMenuRows.size() == 2,
-            "temperature overview channel menu uses the shared single-level popup rows");
-    int selectedTemperatureChannelMenuItems = 0;
-    for (VaporView::SingleLevelPopupMenuRow *row : temperatureChannelMenuRows)
-    {
-        require(row->property("textAlignment").toString() == QStringLiteral("center") &&
-                    row->property("checkIconAlignment").toString() == QStringLiteral("right"),
-                "temperature overview channel menu item text is centered while check icon is right-aligned");
-        require(row->textLabel() != nullptr && row->checkLabel() != nullptr,
-                "temperature overview channel menu row exposes text and check slots");
-        require(row->font().weight() <= QFont::Medium,
-                "temperature overview channel menu text uses the normal selector weight");
-        require(row->textLabel()->alignment() == Qt::AlignCenter,
-                "temperature overview channel menu text label is centered");
-        require(row->checkLabel()->geometry().right() > row->textLabel()->geometry().right(),
-                "temperature overview channel menu check slot is right-aligned");
-        if (row->property("hasCheckIcon").toBool())
-        {
-            ++selectedTemperatureChannelMenuItems;
-            require(row->isChecked(),
-                    "temperature overview selected channel menu item shows a check icon");
-        }
-    }
-    require(selectedTemperatureChannelMenuItems == 1,
-            "temperature overview channel menu marks only the selected channel with a check icon");
-    auto *temperatureChannelPopup = qobject_cast<VaporView::SingleLevelPopupMenu *>(temperatureChannelButton->menu());
-    require(temperatureChannelPopup != nullptr &&
-                temperatureChannelPopup->cornerRadius() == 10 &&
-                temperatureChannelPopup->panelPadding() == 12,
-            "temperature overview channel menu uses the shared single-level popup chrome");
-    const int temperatureChannelShadowMargin = temperatureChannelPopup->property("shadowMargin").toInt();
-    require(temperatureChannelShadowMargin == 22 &&
-                temperatureChannelPopup->property("shadowBottomMargin").toInt() == 50 &&
-                temperatureChannelPopup->property("floatingPanelChrome").toBool(),
-            "temperature overview channel menu uses the unified horizontal and extended bottom popup margins");
-    require(temperatureChannelButton->menu()->minimumWidth() == temperatureChannelButton->width() + temperatureChannelShadowMargin * 2 &&
-                temperatureChannelButton->menu()->maximumWidth() == temperatureChannelButton->width() + temperatureChannelShadowMargin * 2,
-            "temperature overview channel menu reserves shadow space outside the capsule width");
-    require(temperatureChannelPopup->styleSheet().contains(QStringLiteral("background-color: transparent; border: none; border-radius: 10px; padding: 12px 0px")),
-            "temperature overview channel menu applies the shared floating popup style");
-    temperatureChannelButton->menu()->popup(temperatureChannelButton->mapToGlobal(QPoint(0, temperatureChannelButton->height())));
-    processEventsFor(50);
-    require(!temperatureChannelButton->menu()->property("roundedMaskApplied").toBool() &&
-                temperatureChannelButton->menu()->mask().isEmpty(),
-            "temperature overview channel menu leaves rounded clipping to the floating popup painter");
-    for (QAction *action : temperatureChannelButton->menu()->actions())
-    {
-        const QRect actionRect = temperatureChannelButton->menu()->actionGeometry(action);
-        require(std::abs(actionRect.width() - temperatureChannelButton->width()) <= 4,
-                "temperature overview channel menu option width matches capsule width");
-        require(std::abs(actionRect.height() - temperatureChannelButton->height()) <= 4,
-                "temperature overview channel menu option height matches capsule height");
-    }
-    temperatureChannelButton->menu()->hide();
-    processEventsFor(50);
-
+    require(!window.findChild<QToolButton *>(QStringLiteral("temperatureOverviewChannelButton")),
+            "temperature overview shows both channels without a selector");
     const QList<QLabel*> temperatureValuePills =
         window.findChildren<QLabel *>(QStringLiteral("temperatureOverviewValuePill"));
-    require(temperatureValuePills.size() == 2,
-            "temperature overview target and current value pills exist");
+    require(temperatureValuePills.size() == 4,
+            "temperature overview target and current values exist for both channels");
     auto *temperatureOverviewTitleStatus =
         window.findChild<QWidget *>(QStringLiteral("temperatureOverviewTitleStatusStrip"));
     QWidget *temperatureOverviewPlot = nullptr;
@@ -7780,16 +7692,10 @@ int main(int argc, char **argv)
             "temperature overview summary column exists");
     require(temperatureOverviewSummary->layout() != nullptr,
             "temperature overview summary column has a layout");
-    require(temperatureOverviewSummary->layout()->indexOf(temperatureChannelButton) >= 0 &&
-                temperatureOverviewSummary->layout()->indexOf(temperatureOutputPercentPill) >
-                    temperatureOverviewSummary->layout()->indexOf(temperatureChannelButton) &&
+    require(temperatureOverviewSummary->layout()->indexOf(temperatureOutputPercentPill) >= 0 &&
                 temperatureOverviewSummary->layout()->indexOf(temperatureOutputPercentPill) <
-                    temperatureOverviewSummary->layout()->indexOf(temperatureOutputCapsule) &&
-                std::none_of(temperatureValuePills.cbegin(), temperatureValuePills.cend(),
-                             [temperatureOverviewSummary](QLabel *pill) {
-                                 return temperatureOverviewSummary->layout()->indexOf(pill) >= 0;
-                             }),
-            "temperature overview summary keeps channel and output controls while readings move to the title bar");
+                    temperatureOverviewSummary->layout()->indexOf(temperatureOutputCapsule),
+            "temperature overview shows both channel percentages above the output switches");
     processEventsFor(50);
     activateLayouts(&window);
     const int summarySpacing = temperatureOverviewSummary->layout()->spacing();
@@ -7798,6 +7704,13 @@ int main(int argc, char **argv)
             "temperature overview places output enable directly below output percent without a stretch gap");
     require(temperatureOverviewPlot->height() == 144,
             "temperature overview keeps the home trend plot compact instead of filling the card height");
+    QList<QWidget *> overviewPlots;
+    for (auto *plot : window.findChildren<QWidget *>(QStringLiteral("temperatureTrendPlot")))
+        if (plot->property("temperatureOverviewPlot").toBool())overviewPlots.append(plot);
+    require(overviewPlots.size() == 2 && overviewPlots[0]->property("temperatureChannel").toInt() == 1 &&
+                overviewPlots[1]->property("temperatureChannel").toInt() == 2 &&
+                overviewPlots[0]->geometry().bottom() < overviewPlots[1]->geometry().top(),
+            "temperature overview stacks channel 1 above channel 2");
     temperatureOverviewPlot->repaint();
     auto *temperatureOverviewTitleBar = temperatureOverviewTitleStatus->parentWidget();
     auto *temperatureOverviewTitleLayout = temperatureOverviewTitleBar->layout();
@@ -7836,17 +7749,12 @@ int main(int argc, char **argv)
                                  QStringLiteral("QPushButton#temperatureOverviewOutputSwitch {"),
                                  QStringLiteral("font-size: 14px"),
                                  "temperature overview output switch font is enlarged for readability");
-    require(temperatureOutputPercentPill->height() > temperatureChannelButton->height() &&
-                temperatureOutputPercentPill->height() >= 42,
-            "temperature overview output percent capsule is taller than the compact channel selector");
-    require(temperatureChannelButton->height() <= 30,
-            "temperature overview channel selector is shorter than the value and output capsules");
-    require(temperatureOutputCapsule->height() == 60 &&
-                temperatureOutputCapsule->width() == temperatureChannelButton->width(),
-            "temperature overview output capsule keeps the compact summary-column width and height");
-    require(temperatureValuePills.first()->geometry().right() < temperatureValuePills.last()->geometry().left() &&
-                temperatureValuePills.first()->geometry().center().y() == temperatureValuePills.last()->geometry().center().y(),
-            "temperature overview title values share one horizontal row");
+    require(temperatureOutputPercentPill->height() >= 64 && temperatureOutputCapsule->height() >= 100,
+            "temperature overview capsules fit the two channel rows");
+    require(temperatureValuePills[0]->geometry().right() < temperatureValuePills[1]->geometry().left() &&
+                temperatureValuePills[2]->geometry().right() < temperatureValuePills[3]->geometry().left() &&
+                temperatureValuePills[0]->geometry().bottom() < temperatureValuePills[2]->geometry().top(),
+            "temperature overview title uses one target/current row per channel");
     for (QLabel *value : temperatureValuePills)
     {
         require(temperatureOverviewTitleStatus->rect().contains(value->geometry()) &&
@@ -8232,10 +8140,6 @@ int main(int argc, char **argv)
             VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceRaised, true)),
         "dark AI-8 detail parameter cards use the raised surface background");
     requireLastStyleRuleContains(darkOverviewStyleSheet,
-                                 QStringLiteral("QToolButton#temperatureOverviewChannelButton[available=\"false\"] {"),
-                                 VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt, true),
-                                 "dark theme overrides unavailable temperature channel selector background");
-    requireLastStyleRuleContains(darkOverviewStyleSheet,
                                  QStringLiteral("QPushButton#appSidebarButton:hover,"),
                                  QStringLiteral("background-color: %1")
                                      .arg(VaporView::appThemeColorName(
@@ -8308,6 +8212,10 @@ int main(int argc, char **argv)
     validTemperatureData.channels[0].measured_temperature_c = 24.75;
     validTemperatureData.channels[0].output_percent = 32.5;
     validTemperatureData.channels[0].output_enabled = true;
+    validTemperatureData.channels[1].target_temperature_c = 28.0;
+    validTemperatureData.channels[1].measured_temperature_c = 27.5;
+    validTemperatureData.channels[1].output_percent = -12.5;
+    validTemperatureData.channels[1].output_enabled = false;
     validTemperatureData.channels[0].output_mode = 0;
     validTemperatureData.channels[0].max_output_percent = 70;
     validTemperatureData.channels[0].kp = 10;
@@ -8332,15 +8240,13 @@ int main(int argc, char **argv)
     require(temperatureUpdateInvoked,
             "temperature overview can receive a valid controller data frame");
     processEventsFor(50);
-    require(temperatureChannelButton->isEnabled(),
-            "temperature overview channel selector is enabled with controller data");
-    require(temperatureChannelButton->property("available").isValid() &&
-                temperatureChannelButton->property("available").toBool(),
-            "temperature overview channel selector marks valid controller data as available");
     require(temperatureOutputSwitch->isEnabled(),
             "temperature overview output enable capsule is enabled with controller data");
     require(temperatureOutputSwitch->isChecked(),
             "temperature overview output enable capsule reflects the confirmed controller output state");
+    const auto overviewOutputs = window.findChildren<QPushButton *>(QStringLiteral("temperatureOverviewOutputSwitch"));
+    require(overviewOutputs.size() == 2 && overviewOutputs[0]->isChecked() && !overviewOutputs[1]->isChecked(),
+            "temperature overview reflects the independent confirmed output states");
     require(temperatureOutputPercentPill->textFormat() == Qt::RichText &&
                 temperatureOutputPercentPill->text().contains(QStringLiteral("<br/>")) &&
                 temperatureOutputPercentPill->text().contains(QStringLiteral("输出百分比")) &&
@@ -10368,9 +10274,10 @@ int main(int argc, char **argv)
     {
         require(plot->property("sampleCount").toInt() > 0,
                 "temperature trend plot has samples after controller data arrives");
-        require(plot->property("yAxisMinC").toDouble() == 24.0 &&
-                    plot->property("yAxisMaxC").toDouble() == 26.0,
-                "temperature trend plot centers the default axis range around the target temperature");
+        const bool secondChannel = plot->property("temperatureChannel").toInt() == 2;
+        require(plot->property("yAxisMinC").toDouble() == (secondChannel ? 27.0 : 24.0) &&
+                    plot->property("yAxisMaxC").toDouble() == (secondChannel ? 29.0 : 26.0),
+                "each temperature trend centers its default axis on its own channel target");
         require(plot->property("axisLabelsVisible").toBool(),
                 "temperature trend plot exposes visible axis labels");
         const int xAxisTickCount = plot->property("xAxisTickCount").toInt();
@@ -10394,9 +10301,10 @@ int main(int argc, char **argv)
     processEventsFor(50);
     for (QWidget *plot : temperatureTrendPlots)
     {
-        require(plot->property("yAxisMinC").toDouble() == 11.0 &&
-                    plot->property("yAxisMaxC").toDouble() == 26.0,
-                "temperature trend plot extends the lower axis only when data drops below the target-centered range");
+        const bool secondChannel = plot->property("temperatureChannel").toInt() == 2;
+        require(plot->property("yAxisMinC").toDouble() == (secondChannel ? 27.0 : 11.0) &&
+                    plot->property("yAxisMaxC").toDouble() == (secondChannel ? 29.0 : 26.0),
+                "a low channel-1 sample changes its own axis without changing channel 2");
     }
     VaporView::TelemetryStatus disconnectedTemperatureStatus;
     disconnectedTemperatureStatus.devices.push_back(
@@ -10412,11 +10320,6 @@ int main(int argc, char **argv)
                                       Q_ARG(VaporView::TelemetryStatus, disconnectedTemperatureStatus)),
             "remote temperature controller disconnect status can be applied");
     processEventsFor(50);
-    require(!temperatureChannelButton->isEnabled(),
-            "temperature overview channel selector is disabled after controller disconnect");
-    require(temperatureChannelButton->property("available").isValid() &&
-                !temperatureChannelButton->property("available").toBool(),
-            "temperature overview channel selector marks disconnected controller data unavailable");
     require(!temperatureOutputSwitch->isEnabled(),
             "temperature overview output enable capsule is disabled after controller disconnect");
     for (QWidget *plot : temperatureTrendPlots)

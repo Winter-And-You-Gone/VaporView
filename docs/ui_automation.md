@@ -25,7 +25,6 @@ ScreenShotTool-MCP 和 UI 自动化脚本优先使用 objectName：
 ```text
 objectName=logFilterAttentionMenuAction
 objectName=tcpWaveDisplayRawMenuAction
-objectName=temperatureOverviewChannel1MenuAction
 objectName=trajectoryHeatMetricMenuAction_peak
 objectName=trajectoryHeatPaletteMenuAction_candy
 objectName=map3DLayer_satelliteImagery
@@ -50,10 +49,11 @@ objectName=map3DLayer_satelliteImagery
 | 日志筛选 | `logFilterAttentionMenuAction` / `logFilterAllMenuAction` / `logFilterDebugMenuAction` / `logFilterAutoFollowMenuAction` | 主窗口日志筛选 Popup |
 | 3D 图层 | `map3DLayer_<layerKey>` | 3D 地图图层显隐，多选项 closeOnClick=false |
 | 3D 本地影像 | `map3DLocalImagery_<optionKey>` | 动态本地影像模板项 |
-| 温控通道 | `temperatureOverviewChannel1MenuAction` / `temperatureOverviewChannel2MenuAction` | 温控概览通道切换 |
 | TCP 波形显示 | `tcpWaveDisplayShowAllMenuAction` / `tcpWaveDisplayRawMenuAction` / `tcpWaveDisplayHarmonicMenuAction` / `tcpWaveDisplayPeakTrendMenuAction` | 波形显示模式 |
 | 轨迹热力图 | `trajectoryHeatMetricMenuAction_<metricKey>` / `trajectoryHeatPaletteMenuAction_<paletteKey>` | 轨迹热力图指标和色带 |
 | SingleLevelPopupComboBox | `<comboObjectName>MenuAction_<itemDataToken>` | 固定选项 combo 的自绘菜单行 |
+
+首页激光驱动温控概览同时显示两路温控：上图为通道 1，下图为通道 2，标题栏按两行显示各自的目标和当前温度，已移除通道选择菜单。输出百分比同时显示两路读数；两个输出使能开关分别控制对应通道，并等待设备回读确认。Qt 测试可按 `temperatureOverviewOutputSwitch` 查找开关，再通过 `temperatureChannel=1/2` 区分；可访问名称也包含通道号。
 
 ## 自动化验收路径
 

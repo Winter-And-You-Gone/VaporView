@@ -6,6 +6,8 @@
 
 #include <QApplication>
 #include <QColor>
+#include <QLabel>
+#include <QPushButton>
 #include <QWidget>
 
 #include <cmath>
@@ -53,6 +55,8 @@ int main(int argc, char **argv)
     VaporView::Ground::Widgets::DevicePanelCoordinator coordinator(bindings);
     panel.resize(900, 420);
     panel.show();
+    overview->resize(640, 300);
+    overview->show();
     QApplication::processEvents();
 
     QWidget *plot = findConfigTemperaturePlot(panel);
@@ -67,6 +71,10 @@ int main(int argc, char **argv)
     data.channels[0].measured_temperature_c = 24.6;
     data.channels[1].target_temperature_c = 27.0;
     data.channels[1].measured_temperature_c = 26.8;
+    data.channels[0].output_percent = 32.5;
+    data.channels[1].output_percent = -42.25;
+    data.channels[0].output_enabled = true;
+    data.channels[1].output_enabled = false;
     data.timestamp = std::chrono::steady_clock::now();
     coordinator.updateTemperatureData(data);
     QApplication::processEvents();
@@ -92,12 +100,39 @@ int main(int argc, char **argv)
 
     auto *overviewPlot = overview->findChild<QWidget *>(QStringLiteral("temperatureTrendPlot"));
     require(overviewPlot != nullptr, "RD105 home overview exposes its temperature trend");
+    const auto overviewPlots = overview->findChildren<QWidget *>(QStringLiteral("temperatureTrendPlot"));
+    const auto outputs = overview->findChildren<QPushButton *>(QStringLiteral("temperatureOverviewOutputSwitch"));
+    require(overviewPlots.size() == 2 && outputs.size() == 2,
+            "RD105 home overview exposes two simultaneous plots and independent output switches");
+    require(!overview->findChild<QWidget *>(QStringLiteral("temperatureOverviewChannelButton")) &&
+                overviewPlots[0]->geometry().bottom() < overviewPlots[1]->geometry().top(),
+            "RD105 home overview stacks channel 1 above channel 2 without a channel selector");
+    require(outputs[0]->property("temperatureChannel").toInt() == 1 && outputs[0]->isChecked() &&
+                outputs[1]->property("temperatureChannel").toInt() == 2 && !outputs[1]->isChecked(),
+            "Both home output switches show their own channel's confirmed state");
+    auto *percent = overview->findChild<QLabel *>(QStringLiteral("temperatureOverviewOutputPercentPill"));
+    require(percent && percent->text().contains(QStringLiteral("1: 32.50%")) &&
+                percent->text().contains(QStringLiteral("2: -42.25%")),
+            "Both output percentages are visible with their channel numbers");
+    QList<QPair<quint8, bool>> outputRequests;
+    overview->setOutputEnabledCallback([&](quint8 channel, bool enabled) { outputRequests.append({channel, enabled}); });
+    outputs[0]->click();
+    outputs[1]->click();
+    require(outputRequests == QList<QPair<quint8, bool>>{{1, false}, {2, true}} &&
+                outputs[0]->isChecked() && !outputs[1]->isChecked(),
+            "Home switches route each request independently and wait for confirmed readback");
+    data.channels[0].output_enabled = false;
+    data.channels[1].output_enabled = true;
+    coordinator.updateTemperatureData(data);
+    require(!outputs[0]->isChecked() && outputs[1]->isChecked(),
+            "Readback updates each channel's switch independently");
     const double latestSampleTime = plot->property("xAxisTimeMaxSeconds").toDouble();
     for (int refresh = 0; refresh < 500; ++refresh)
         coordinator.updateTemperatureData(data);
     plot->grab();
     require(plot->property("sampleCount").toInt() == 2 &&
-                overviewPlot->property("sampleCount").toInt() == 2 &&
+                overviewPlots[0]->property("sampleCount").toInt() == 2 &&
+                overviewPlots[1]->property("sampleCount").toInt() == 2 &&
                 plot->property("xAxisTimeMaxSeconds").toDouble() == latestSampleTime,
             "Cached RD105 refreshes cannot consume history or advance the sample time");
 
@@ -108,6 +143,8 @@ int main(int argc, char **argv)
             "A new timestamp records a sample even when the temperature is unchanged");
     data.valid = false;
     coordinator.updateTemperatureData(data);
+    require(!outputs[0]->isEnabled() && !outputs[1]->isEnabled(),
+            "Unavailable controller data disables both output switches");
     data.valid = true;
     coordinator.updateTemperatureData(data);
     require(plot->property("sampleCount").toInt() == 3 &&
