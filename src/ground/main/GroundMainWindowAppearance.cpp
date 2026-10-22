@@ -100,7 +100,7 @@ void MainWindow::loadModernStyleSheet()
             "QDialog#rtkConfigDialog QLabel#sectionTitleLabel { background-color: transparent; border: none; color: @vv-text; margin: 0px; padding: 0px; }"
             "QWidget#sectionTitleBar { background-color: @vv-surface; border-bottom: 1px solid @vv-border; border-top-left-radius: 7px; border-top-right-radius: 7px; min-height: 40px; max-height: 40px; }"
             "QWidget#sectionTitleBar QLabel { background-color: transparent; border: none; }"
-            "QLabel#homeInternalEnvironment { font-size: 11px; font-weight: normal; }"
+            "QLabel#homeInternalEnvironment { font-size: 14px; font-weight: normal; }"
             "QLabel { color: @vv-text; background-color: transparent; border: none; }"
             "QLabel#rateLabel { color: @vv-text; font-size: 13px; font-weight: bold; font-family: \"Cascadia Mono\", \"Consolas\", \"Courier New\", monospace; margin: 0px; padding: 0px; }"
             "TemperatureControllerPanel QLabel#rateLabel[temperatureControllerRateValue=\"true\"] { font-size: 16px; font-weight: 700; }"

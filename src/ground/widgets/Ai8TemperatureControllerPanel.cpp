@@ -1592,7 +1592,7 @@ Ai8TemperatureOverviewPanel::Ai8TemperatureOverviewPanel(QWidget *parent)
     : QWidget(parent)
 {
     setObjectName(QStringLiteral("ai8TemperatureOverviewPanel"));
-    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
     auto *layout = new QGridLayout(this);
     layout->setContentsMargins(kAi8OverviewHorizontalPadding,
@@ -1611,7 +1611,7 @@ Ai8TemperatureOverviewPanel::Ai8TemperatureOverviewPanel(QWidget *parent)
         cell->setAttribute(Qt::WA_StyledBackground, true);
         cell->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
         auto *cellLayout = new QGridLayout(cell);
-        cellLayout->setContentsMargins(4, 2, 4, 2);
+        cellLayout->setContentsMargins(4, 1, 4, 1);
         cellLayout->setHorizontalSpacing(2);
         cellLayout->setVerticalSpacing(2);
         cellLayout->setColumnStretch(3, 1);

@@ -368,7 +368,7 @@ QWidget#sectionTitleBar {
 
 QLabel[internalDeviceName="true"] { font-size: 14px; font-weight: 600; }
 QLabel#homeInternalEnvironment {
-    font-size: 11px;
+    font-size: 14px;
     font-weight: normal;
 }
 
@@ -606,6 +606,7 @@ QFrame#ai8TemperatureOverviewCell QLabel {
 
 QFrame#ai8TemperatureOverviewCell QLabel#ai8TemperatureOverviewChannelLabel {
     background-color: @vv-surface-alt;
+    font-size: 11px;
 }
 
 QFrame#ai8TemperatureOverviewDivider {
