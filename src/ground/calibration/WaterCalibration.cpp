@@ -231,6 +231,14 @@ QJsonObject Dataset::toJson() const
             {"revision", revision}, {"created_utc", createdUtc}, {"modified_utc", modifiedUtc},
             {"archived", archived}, {"samples", rows}, {"parameter_version", SchemaVersion}};
 }
+QString Dataset::hardwareMappingError() const
+{
+    const auto expected = channelForWavelength(wavelengthNm);
+    if (!expected) return QStringLiteral("不支持的定标波长");
+    if (expected && channel == expected) return {};
+    return QStringLiteral("%1 nm 固定对应 DLIA%2（界面通道 %3）；当前为 DLIA%4。历史记录保留，请按固定光路新建定标任务。")
+        .arg(wavelengthNm).arg(expected - 0x30).arg(expected - 0x30 + 1).arg(channel - 0x30);
+}
 Dataset Dataset::fromJson(const QJsonObject& j, QString *error)
 {
     Dataset d;
@@ -281,6 +289,7 @@ ImportResult importSession(const QString& directory, const Dataset& data, double
 {
     ImportResult result;
     result.error = data.validate();
+    if (result.error.isEmpty()) result.error = data.hardwareMappingError();
     if (!std::isfinite(concentration) || concentration < 0) result.error = QStringLiteral("标气浓度无效");
     if (!result.error.isEmpty()) return result;
     const auto metadata = SessionLoader::loadMetadata(directory);

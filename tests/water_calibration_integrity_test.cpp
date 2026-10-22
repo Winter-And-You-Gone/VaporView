@@ -43,7 +43,7 @@ int main(int argc, char **argv)
     const auto second = recordSession(temp.filePath("second"), 2);
     const auto third = recordSession(temp.filePath("third"), 3);
     const auto repeated = recordSession(temp.filePath("independent_repeat"), 1);
-    auto data = Dataset::create("SOFTWARE TEST ONLY", 816, 0x30, "ppmv");
+    auto data = Dataset::create("SOFTWARE TEST ONLY", 816, 0x31, "ppmv");
     data.samples = importSession(first, data, 2, true).samples;
     const auto independent = importSession(repeated, data, 2, true);
     expect(independent.success && independent.samples.size() == 1, "independent measurement with identical peak is retained");
@@ -147,13 +147,13 @@ int main(int argc, char **argv)
     options.fpgaConfiguration = {{"backend", "simulator"}};
     check(recorder.start(options), "start lifecycle Session");
     const auto lifecyclePath = recorder.status().sessionDirectory;
-    VaporView::FpgaWave::CompletedStream wave; wave.source = 0x30; wave.totalPoints = 1; wave.complete = true;
+    VaporView::FpgaWave::CompletedStream wave; wave.source = 0x31; wave.totalPoints = 1; wave.complete = true;
     wave.format = 0; wave.cycleId = 7;
     VaporView::FpgaWave::CompletedStream::DliaPoint point; point.hasHarmonics = true; point.h1 = point.h2 = 1;
     wave.dliaPoints.append(point);
     const quint64 timestamp = 1700000000000000ULL;
     check(recorder.recordFpgaHarmonics(timestamp, wave) && recorder.pause(), "first cycle is drained on pause");
-    auto lifecycleData = Dataset::create("LIFECYCLE SOFTWARE TEST", 816, 0x30, "ppmv");
+    auto lifecycleData = Dataset::create("LIFECYCLE SOFTWARE TEST", 816, 0x31, "ppmv");
     auto batch = importSession(lifecyclePath, lifecycleData, 2, true);
     expect(batch.success && batch.samples.size() == 1, "paused Session exposes exactly its completed cycles");
     lifecycleData.samples = batch.samples;

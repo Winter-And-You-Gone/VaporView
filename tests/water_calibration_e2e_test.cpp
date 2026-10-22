@@ -73,7 +73,7 @@ void run()
     const QStringList sources{recordSession(temp.filePath("low"),2),recordSession(temp.filePath("mid"),4),
         recordSession(temp.filePath("high"),6),recordSession(temp.filePath("independent_repeat"),2)};
     const auto rawBefore=read(sources[0]+"/raw/waveform.dat"),featuresBefore=read(sources[0]+"/sensors/waveform_features.csv");
-    auto data=Dataset::create("E2E SOFTWARE TEST ONLY",816,0x30,"ppmv");
+    auto data=Dataset::create("E2E SOFTWARE TEST ONLY",816,0x31,"ppmv");
     const QVector<double> concentrations{5,9,12,5};
     for(int i=0;i<sources.size();++i){const auto imported=importSession(sources[i],data,concentrations[i],false);
         require(imported.success&&imported.samples.size()==1,"A: actual-format Session import and channel filtering");data.samples+=imported.samples;}
@@ -89,7 +89,7 @@ void run()
     auto excluded=data;excluded.samples[1].excluded=true;require(model->fit(excluded).fit.sampleCount==3,"A: excluded row leaves fit statistics");
     auto edited=data;edited.revision=2;for(auto& s:edited.samples)s.concentration=4*s.feature.peak+2;
     const auto v2=model->fit(edited).fit;require(v2.a==4&&v2.b==2&&v1.dataset.samples[0].concentration==5,"C: editing creates different coefficients without mutating v1");
-    auto infrared=Dataset::create("1368 E2E SOFTWARE TEST",1368,0x31,"ppmv");infrared.revision=1;
+    auto infrared=Dataset::create("1368 E2E SOFTWARE TEST",1368,0x30,"ppmv");infrared.revision=1;
     for(int i=0;i<3;++i)infrared.samples+=importSession(sources[i],infrared,3*(i*2+2)+4,true).samples;
     const auto ir=model->fit(infrared).fit;require(ir.a==3&&ir.b==4,"A: independent 1368 model");
     const auto filename=temp.filePath("library.json");Store store(filename);Library library;
@@ -97,9 +97,9 @@ void run()
     QString error;require(store.save(library,&error),qPrintable(error));Library reopened;
     require(Store(filename).load(reopened,&error)&&reopened.activeFit(816)->id==v1.id,"A: fresh service loads exact saved active version");
     require(closeTo(calculate(data.samples[0],816,reopened.activeFit(816)).value,56.0/11),"A: restored coefficients predict independently expected value");
-    auto singular=Dataset::create("DEGENERATE SOFTWARE TEST",816,0x30,"ppmv");
+    auto singular=Dataset::create("DEGENERATE SOFTWARE TEST",816,0x31,"ppmv");
     singular.samples=importSession(sources[0],singular,5,true).samples;singular.samples+=importSession(sources[3],singular,9,true).samples;
-    require(!model->fit(singular).success&&!model->fit(Dataset::create("empty",816,0x30,"ppmv")).success,"D: genuinely constant recorded peaks and insufficient data fail");
+    require(!model->fit(singular).success&&!model->fit(Dataset::create("empty",816,0x31,"ppmv")).success,"D: genuinely constant recorded peaks and insufficient data fail");
     const auto storedLibrary=read(filename);write(filename,"{damaged");
     require(!store.load(reopened,&error)&&reopened.activeFit(816)->id==v1.id,"D: corrupted reload cannot discard the existing version");write(filename,storedLibrary);
 
@@ -115,16 +115,17 @@ void run()
         auto *follow=control<QCheckBox>(page,"calibrationFollow");auto *timer=page.findChild<QTimer*>();
         require(follow->isChecked()&&timer&&timer->interval()==2000,"B: automatic follow is the actual default two-second cadence");
         control<QLineEdit>(page,"calibrationSession")->setText(firstSession);
-        send(recorder,0x30,0,3,timestamp);send(recorder,0x31,0,3,timestamp+1);
+        send(recorder,0x31,0,3,timestamp);send(recorder,0x30,0,4,timestamp+1);
         auto *table=control<QTableWidget>(page,"calibrationResults");ready(page,[&]{return table->rowCount()==2;});
         require(table->item(0,6)->text().startsWith(QStringLiteral("软件测试数据"))&&
             table->fontMetrics().horizontalAdvance(table->item(0,5)->text())+12<=table->columnWidth(5),
             "B: visible software-test provenance and uncompensated status");
         auto saved=save(page,snapshotFile,2);const auto originalBytes=read(snapshotFile);
-        require(closeTo(resultFor(saved,816,0).value,151.0/22)&&resultFor(saved,1368,1).value==13,"B: automatic calculation uses independent active models");
+        require(closeTo(resultFor(saved,816,0).value,151.0/22)&&resultFor(saved,1368,1).value==16,"B: distinct channel peaks use the fixed 816/DLIA1 and 1368/DLIA0 models");
         const auto features=SessionWaveformFeatures::read(firstSession);require(features.success&&features.records.size()==2,"B: complete recorded feature rows visible");
         for(const auto& r:saved.results){bool matched=false;for(const auto& f:features.records)if(f.id==r.input.feature.id){matched=true;
-            require(r.input.feature.toJson()==f.toJson()&&r.input.feature.hostTimeUs==(r.wavelengthNm==816?timestamp:timestamp+1),"B: exact Session/channel/time/record mapping, not nearest-time guessing");}
+            require(r.input.feature.toJson()==f.toJson()&&r.input.feature.channel==(r.wavelengthNm==816?0x31:0x30)&&
+                r.input.feature.hostTimeUs==(r.wavelengthNm==816?timestamp:timestamp+1),"B: exact fixed channel/Session/time/record mapping, not nearest-time guessing");}
             require(matched,"B: every output has an original feature");}
         QProcess fresh;fresh.start(QCoreApplication::applicationFilePath(),{"--read-snapshot",snapshotFile});
         require(fresh.waitForFinished(10000)&&fresh.exitStatus()==QProcess::NormalExit&&fresh.exitCode()==0,"A/B: independent process reads persisted results and parameters without a calibration library");
@@ -141,17 +142,17 @@ void run()
         require(!follow->isChecked()&&closeTo(table->item(0,3)->text().toDouble(),151.0/22),"C: history view pauses follow and shows the original result");
         save(page,temp.filePath("history-copy.json"),2);require(read(temp.filePath("history-copy.json"))==originalBytes,"C: exporting loaded history never substitutes current active parameters or calculation time");
         tabs->setCurrentIndex(1);click(page,"calibrationDisable");ready(page,[&]{return !control<QLabel>(page,"calibrationCalculationSummary")->text().contains(v2.id);});tabs->setCurrentIndex(2);
-        send(recorder,0x30,1,3,timestamp+2);follow->setChecked(true);ready(page,[&]{return table->rowCount()==3;});
+        send(recorder,0x31,1,3,timestamp+2);follow->setChecked(true);ready(page,[&]{return table->rowCount()==3;});
         const auto disabled=save(page,temp.filePath("disabled.json"),3);
         require(!resultFor(disabled,816,2).valid&&resultFor(disabled,816,2).status.contains(QStringLiteral("未启用")),"C: disabled version never validates subsequent results");
         require(recorder.pause(),"B: pause drains recording");
         FpgaWave::CompletedStream late;require(!recorder.recordFpgaHarmonics(timestamp,late),"B: paused input rejected");
-        require(recorder.start(options),"B: resume same Session");send(recorder,0x30,1,4,timestamp+2);
-        send(recorder,0x31,1,7,timestamp+3);send(recorder,0x31,2,3,timestamp+4,2);
+        require(recorder.start(options),"B: resume same Session");send(recorder,0x31,1,4,timestamp+2);
+        send(recorder,0x30,1,7,timestamp+3);send(recorder,0x30,2,3,timestamp+4,2);
         ready(page,[&]{return table->rowCount()==6;});tabs->setCurrentIndex(1);click(page,"calibrationEnable");
         ready(page,[&]{return control<QLabel>(page,"calibrationCalculationSummary")->text().contains(v2.id);});
         tabs->setCurrentIndex(2);
-        send(recorder,0x30,2,3,timestamp+5,1);ready(page,[&]{return table->rowCount()==7;});
+        send(recorder,0x31,2,3,timestamp+5,1);ready(page,[&]{return table->rowCount()==7;});
         const auto faults=save(page,temp.filePath("faults.json"),7);
         require(!resultFor(faults,1368,4).valid&&resultFor(faults,1368,4).status.contains(QStringLiteral("超出"))&&
             !resultFor(faults,1368,5).valid&&!resultFor(faults,816,6).valid,"D: out-of-range, overflow and invalid denominator produce explicit invalid records");
@@ -161,7 +162,7 @@ void run()
         require(!recorder.stop().writeFailed,"B: stop seals source");const auto sealed=read(firstSession+"/sensors/waveform_features.csv");
         require(!recorder.recordFpgaHarmonics(timestamp,late)&&read(firstSession+"/sensors/waveform_features.csv")==sealed,"B: late callbacks cannot write to sealed source");
         options.baseDirectory=temp.filePath("second-live");require(recorder.start(options),"B: second Session");const auto secondSession=recorder.status().sessionDirectory;
-        send(recorder,0x30,0,4,timestamp+6);send(recorder,0x31,0,4,timestamp+7);require(!recorder.stop().writeFailed,"B: second Session sealed");
+        send(recorder,0x31,0,4,timestamp+6);send(recorder,0x30,0,4,timestamp+7);require(!recorder.stop().writeFailed,"B: second Session sealed");
         follow->setChecked(false);click(page,"calibrationCalculate");control<QLineEdit>(page,"calibrationSession")->setText(secondSession);
         ready(page,[]{return true;});require(table->rowCount()==0,"D: pending old-source task cannot refill the switched Session");
         follow->setChecked(true);ready(page,[&]{return table->rowCount()==2;});const auto second=save(page,temp.filePath("second.json"),2);

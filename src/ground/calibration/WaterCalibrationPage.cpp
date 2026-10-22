@@ -105,12 +105,13 @@ struct WaterCalibrationPage::State
 {
     Store store;
     Library library;
-    Dataset dataset = Dataset::create(QStringLiteral("新定标任务"),816,0x30,"ppmv");
+    Dataset dataset = Dataset::create(QStringLiteral("新定标任务"),816,channelForWavelength(816),"ppmv");
     std::optional<Fit> fit;
     QVector<ConcentrationResult> results;
     QVector<Fit> resultCalibrations;
     bool dirty = false, busy = false;
-    QComboBox *datasets, *wavelength, *channel, *unit, *versions;
+    QComboBox *datasets, *wavelength, *unit, *versions;
+    QLabel *channel;
     QLineEdit *name, *session;
     QDoubleSpinBox *concentration;
     QSpinBox *recordPage;
@@ -169,10 +170,11 @@ WaterCalibrationPage::WaterCalibrationPage(QWidget *parent, const QString& filen
     s.name = new QLineEdit(management); s.name->setObjectName("calibrationName"); form->addRow("任务名称",s.name);
     auto *identity = new QHBoxLayout;
     s.wavelength = new QComboBox(management); s.wavelength->addItem("816 nm",816); s.wavelength->addItem("1368 nm",1368); s.wavelength->setObjectName("calibrationWavelength");
-    s.channel = new QComboBox(management); s.channel->addItem("DLIA0 (0x30)",0x30); s.channel->addItem("DLIA1 (0x31)",0x31); s.channel->setObjectName("calibrationChannel");
+    s.channel = new QLabel(management); s.channel->setObjectName("calibrationChannel");
+    s.channel->setTextInteractionFlags(Qt::TextSelectableByMouse|Qt::TextSelectableByKeyboard);
     s.unit = new QComboBox(management); s.unit->addItems({"ppmv","mol/mol","mg/m3"}); s.unit->setObjectName("calibrationUnit");
-    identity->addWidget(s.wavelength); identity->addWidget(s.channel); identity->addWidget(s.unit); form->addRow("波长 / 实际硬件映射 / 单位",identity);
-    auto *mapping = new QLabel("请核对实际光路与 DLIA 通道对应关系；此处选择是显式映射，程序不推断物理波长。不自动换算浓度单位。",management);
+    identity->addWidget(s.wavelength); identity->addWidget(s.channel); identity->addWidget(s.unit); form->addRow("波长 / 固定硬件通道 / 单位",identity);
+    auto *mapping = new QLabel("固定光路：816 nm → ADC1 / DLIA1（界面通道2），DAC1 / WMS1（界面WMS2）；\n1368 nm → ADC0 / DLIA0（界面通道1），DAC0 / WMS0（界面WMS1）。不自动换算浓度单位。",management);
     mapping->setWordWrap(true); form->addRow(mapping);
     s.session = new QLineEdit(management); s.session->setObjectName("calibrationSession"); s.session->setPlaceholderText("完整的本地 Session 目录（可正在录制）");
     auto *source = new QHBoxLayout; source->addWidget(s.session,1);
@@ -236,10 +238,10 @@ WaterCalibrationPage::WaterCalibrationPage(QWidget *parent, const QString& filen
     connect(s.recordPage,qOverload<int>(&QSpinBox::valueChanged),this,[this]{refresh();});
     connect(s.samples,&QTableWidget::currentCellChanged,this,[this](int row,int,int,int){ if(row<0)return;row+=state_->sampleOffset;if(row<state_->dataset.samples.size()) state_->details->setPlainText(QString::fromUtf8(QJsonDocument(state_->dataset.samples[row].toJson()).toJson())); });
     connect(s.output,&QTableWidget::cellDoubleClicked,this,[this](int row,int){ row+=state_->output->property("resultOffset").toInt();if(row<0||row>=state_->results.size())return; auto json=state_->results[row].toJson();for(const auto& f:state_->resultCalibrations)if(f.id==state_->results[row].calibrationId){json["calibration"]=f.toJson();break;}auto *dialog=new QDialog(this); dialog->setAttribute(Qt::WA_DeleteOnClose);dialog->setWindowTitle("浓度完整追溯");auto *l=new QVBoxLayout(dialog);auto *text=new QPlainTextEdit(dialog);text->setReadOnly(true);text->setPlainText(QString::fromUtf8(QJsonDocument(json).toJson()));l->addWidget(text);dialog->resize(750,550);dialog->show(); });
-    const auto changed=[this]{ auto& s=*state_;s.dataset.name=s.name->text();s.dataset.wavelengthNm=s.wavelength->currentData().toInt();s.dataset.channel=s.channel->currentData().toUInt();s.dataset.unit=s.unit->currentText();s.dirty=true;s.fit.reset();s.plot->fit.reset();s.plot->update();s.fitSummary->setText("数据已编辑，尚未拟合并保存当前修订。");refreshVersions(); };
+    const auto changed=[this]{ auto& s=*state_;s.dataset.name=s.name->text();s.dataset.wavelengthNm=s.wavelength->currentData().toInt();s.dataset.unit=s.unit->currentText();s.dirty=true;s.fit.reset();s.plot->fit.reset();s.plot->update();s.fitSummary->setText("数据已编辑，尚未拟合并保存当前修订。");refreshVersions(); };
     connect(s.name,&QLineEdit::textEdited,this,changed);
-    connect(s.wavelength,&QComboBox::activated,this,[this,changed]{state_->channel->setCurrentIndex(state_->wavelength->currentIndex());changed();});
-    connect(s.channel,&QComboBox::activated,this,changed); connect(s.unit,&QComboBox::activated,this,changed);
+    connect(s.wavelength,&QComboBox::activated,this,[this,changed]{state_->dataset.channel=channelForWavelength(state_->wavelength->currentData().toInt());changed();refresh();});
+    connect(s.unit,&QComboBox::activated,this,changed);
     connect(s.datasets,&QComboBox::activated,this,[this](int index){
         auto& s=*state_; if(!discardChanges()) {refresh();return;}
         const int i=s.datasets->itemData(index).toInt();if(i<0||i>=s.library.datasets.size())return;
@@ -303,7 +305,7 @@ void WaterCalibrationPage::setStatus(const QString& text, bool error, bool publi
 }
 void WaterCalibrationPage::newDataset(bool announce)
 {
-    auto& s=*state_;s.dataset=Dataset::create("新定标任务",s.wavelength->currentData().toInt(),s.channel->currentData().toUInt(),s.unit->currentText());s.dirty=false;s.fit.reset();refresh();setStatus("已创建未保存任务；请填写名称并核对波长、DLIA 映射和浓度单位",false,announce);
+    auto& s=*state_;const int wave=s.wavelength->currentData().toInt();s.dataset=Dataset::create("新定标任务",wave,channelForWavelength(wave),s.unit->currentText());s.dirty=false;s.fit.reset();refresh();setStatus("已创建未保存任务；请选择波长和浓度单位，硬件通道按固定光路确定",false,announce);
 }
 void WaterCalibrationPage::loadLibrary(bool announce)
 {
@@ -321,6 +323,7 @@ void WaterCalibrationPage::importData()
 void WaterCalibrationPage::saveDataset(bool fit)
 {
     auto& s=*state_;auto data=s.dataset;auto library=s.library;const auto store=s.store;
+    if(fit&&!data.hardwareMappingError().isEmpty()){setStatus(data.hardwareMappingError(),true);return;}
     int latest=0;for(const auto& d:library.datasets)if(d.id==data.id)latest=std::max(latest,d.revision);
     data.revision=latest+1;data.modifiedUtc=QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
     s.run(this,[data,library,store,fit]()mutable{Work w;w.dataset=data;w.library=library;w.error=data.validate();if(!w.error.isEmpty())return w;
@@ -334,6 +337,7 @@ void WaterCalibrationPage::setActive(bool enabled)
     auto& s=*state_;auto library=s.library;const auto store=s.store;const int wavelength=s.dataset.wavelengthNm;
     const int i=s.versions->currentData().toInt();
     if(enabled&&(s.versions->currentIndex()<0||i<0||i>=library.fits.size())){setStatus("请先拟合或选择已保存版本",true);return;}
+    if(enabled&&!library.fits[i].dataset.hardwareMappingError().isEmpty()){setStatus(library.fits[i].dataset.hardwareMappingError(),true);return;}
     library.active[wavelength]=enabled?library.fits[i].id:QString();
     s.run(this,[library,store]()mutable{Work w;w.library=library;store.save(w.library,&w.error);return w;},[this,enabled](Work w){state_->library=std::move(w.library);clearResults();refreshVersions();setStatus(enabled?"已启用所选波长定标版本；请重新计算来源 Session":"已停用当前波长定标版本；旧计算显示已清除");});
 }
@@ -361,6 +365,9 @@ void WaterCalibrationPage::loadConcentrationResults(const QString& filename)
         [this,filename,generation](Work w){auto& s=*state_;if(generation!=s.resultGeneration)return;
             s.results=std::move(w.results);s.resultCalibrations=std::move(w.calibrations);
             refreshResults("历史快照（原计算时间与原定标版本；自动跟随已暂停）："+filename);
+            for(const auto& f:s.resultCalibrations)if(!f.dataset.hardwareMappingError().isEmpty()){
+                w.message+=QStringLiteral("历史快照包含旧硬件映射，仅供追溯；不能用于当前固定光路计算。");break;
+            }
             setStatus(QStringLiteral("已读取并核对 %1 条历史结果。%2").arg(s.results.size()).arg(w.message));});
 }
 void WaterCalibrationPage::calculateSession(bool announce)
@@ -370,7 +377,7 @@ void WaterCalibrationPage::calculateSession(bool announce)
     s.results.clear();s.output->setRowCount(0);
     s.run(this,[library,path,test]{Work w;w.calibrations=library.fits;for(const int wavelength:{816,1368}){
         const auto *fit=library.activeFit(wavelength);
-        auto d=Dataset::create("计算输入",wavelength,fit?fit->dataset.channel:(wavelength==816?0x30:0x31),fit?fit->dataset.unit:"ppmv");
+        auto d=Dataset::create("计算输入",wavelength,channelForWavelength(wavelength),fit?fit->dataset.unit:"ppmv");
         const auto imported=importSession(path,d,0,test);if(!imported.success){w.error=imported.error;return w;}
         for(const auto& sample:imported.samples)w.results.append(calculate(sample,wavelength,fit));
         if(!imported.warning.isEmpty())w.message+=imported.warning+'\n';
@@ -404,20 +411,23 @@ void WaterCalibrationPage::refreshVersions()
         if(s.fit&&s.fit->id==f.id)s.versions->setCurrentIndex(s.versions->count()-1);
     }
     QStringList active;
-    for(const int wave:{816,1368}){const auto *f=s.library.activeFit(wave);active<<QStringLiteral("%1 nm：%2").arg(wave).arg(f?QStringLiteral("%1 / DLIA%2 / %3 / %4；验证用线性模型，R∈[%5, %6]，C∈[%7, %8]").arg(f->id).arg(f->dataset.channel-0x30).arg(f->dataset.unit,f->dataset.name,number(f->rMin),number(f->rMax),number(f->cMin),number(f->cMax)):QStringLiteral("未启用"));}
+    for(const int wave:{816,1368}){const auto *f=s.library.activeFit(wave);active<<QStringLiteral("%1 nm：%2").arg(wave).arg(f?QStringLiteral("%1 / DLIA%2 / %3 / %4；验证用线性模型，R∈[%5, %6]，C∈[%7, %8]").arg(f->id).arg(f->dataset.channel-0x30).arg(f->dataset.unit,f->dataset.name,number(f->rMin),number(f->rMax),number(f->cMin),number(f->cMax))+(f->dataset.hardwareMappingError().isEmpty()?QString():QStringLiteral("；旧映射不符，当前计算无效，请停用并重新定标")):QStringLiteral("未启用"));}
     s.activeSummary->setText(active.join('\n'));
     s.calculationSummary->setText("当前启用参数（历史快照使用其保存的原版本）：\n"+active.join('\n'));
 }
 void WaterCalibrationPage::refresh()
 {
-    auto& s=*state_;QSignalBlocker taskBlock(s.datasets),nameBlock(s.name),waveBlock(s.wavelength),channelBlock(s.channel),unitBlock(s.unit),pageBlock(s.recordPage);
+    auto& s=*state_;QSignalBlocker taskBlock(s.datasets),nameBlock(s.name),waveBlock(s.wavelength),unitBlock(s.unit),pageBlock(s.recordPage);
     s.datasets->clear();s.datasets->addItem("未保存 / 当前编辑",-1);
     for(int i=0;i<s.library.datasets.size();++i){const auto& d=s.library.datasets[i];s.datasets->addItem(QStringLiteral("%1 · %2 nm · 修订 %3%4").arg(d.name).arg(d.wavelengthNm).arg(d.revision).arg(d.archived?" [已归档]":""),i);
         if(d.id==s.dataset.id&&d.revision==s.dataset.revision)s.datasets->setCurrentIndex(s.datasets->count()-1);}
-    s.name->setText(s.dataset.name);s.wavelength->setCurrentIndex(s.wavelength->findData(s.dataset.wavelengthNm));s.channel->setCurrentIndex(s.channel->findData(int(s.dataset.channel)));s.unit->setCurrentText(s.dataset.unit);
+    s.name->setText(s.dataset.name);s.wavelength->setCurrentIndex(s.wavelength->findData(s.dataset.wavelengthNm));s.unit->setCurrentText(s.dataset.unit);
+    const auto channel=int(s.dataset.channel)-0x30;
+    s.channel->setText(QStringLiteral("ADC%1 / DLIA%1（界面通道%2）%3").arg(channel).arg(channel+1).arg(s.dataset.hardwareMappingError().isEmpty()?QString():QStringLiteral("【历史映射不符】")));
+    s.channel->setToolTip(s.dataset.hardwareMappingError());
     // A saved dataset's identity cannot be relabelled; create another task instead.
     const bool identityEditable=s.dataset.samples.isEmpty()&&s.dataset.revision==0;
-    s.wavelength->setEnabled(identityEditable);s.channel->setEnabled(identityEditable);s.unit->setEnabled(identityEditable);
+    s.wavelength->setEnabled(identityEditable);s.unit->setEnabled(identityEditable);
     s.recordPage->setMaximum(std::max(1,(int(s.dataset.samples.size())+199)/200));s.sampleOffset=(s.recordPage->value()-1)*200;
     s.samples->setRowCount(0);s.details->clear();s.plot->points.clear();s.plot->unit=s.dataset.unit;s.plot->fit=s.fit;
     QMap<double,QVector<double>> peaks;QMap<double,int> totals;

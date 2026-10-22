@@ -30,20 +30,26 @@ int main(int argc,char **argv)
     const auto sensorFile=QDir(first).filePath(VaporView::Session::standardSessionPackageLayout().sensorSummaryCsvPath);
     QFile sensors(sensorFile);check(sensors.open(QIODevice::WriteOnly),"write software-test sensor snapshot");
     sensors.write("record_timestamp_us,hmp_temperature_c,ptb_pressure_hpa\n1700000000000000,23.5,1001.2\n");sensors.close();
-    auto dataset=Dataset::create("SOFTWARE TEST ONLY",816,0x30,"ppmv");
+    auto dataset=Dataset::create("SOFTWARE TEST ONLY",816,0x31,"ppmv");
+    check(channelForWavelength(816)==0x31&&channelForWavelength(1368)==0x30&&channelForWavelength(0)==0,
+        "confirmed hardware mapping is 816/DLIA1 and 1368/DLIA0");
+    const auto wrongMapping=importSession(first,Dataset::create("OLD MAPPING SOFTWARE TEST",816,0x30,"ppmv"),5,true);
+    check(!wrongMapping.success&&wrongMapping.samples.isEmpty()&&wrongMapping.error.contains(QStringLiteral("固定对应")),
+        "wrong hardware mapping cannot import or relabel the other channel");
     const auto imported=importSession(first,dataset,5,false);
     check(imported.success&&imported.samples.size()==4&&imported.invalid==2,"map actual CSV, retain bad-quality rows");
     dataset.samples=imported.samples;
+    check(dataset.samples.first().feature.channel==0x31,"816 imports the confirmed DLIA1 feature records");
     check(dataset.samples[0].feature.peak==2&&dataset.samples[0].feature.peakIndex==1,"use max(H2/H1), not max(H2)/max(H1)");
-    check(dataset.samples[0].feature.fpgaTick==0xfedcba9876543210ULL&&dataset.samples[0].feature.waveformSequence==0,"lossless tick and record identity");
+    check(dataset.samples[0].feature.fpgaTick==0xfedcba9876543210ULL&&dataset.samples[0].feature.waveformSequence==4,"lossless tick and record identity");
     check(dataset.samples[1].feature.qualityFlags==1&&dataset.samples[1].feature.invalidReason().isEmpty(),"skip invalid point but retain valid-cycle peak");
     check(dataset.samples[2].feature.invalidReason().size()>0&&dataset.samples[3].feature.invalidReason().size()>0,"reject no-valid and overflow cycles");
     check(dataset.samples[0].origin=="software_test","detect recorded simulator provenance");
     check(dataset.samples[0].environment.temperatureC==23.5&&dataset.samples[0].environment.pressureHpa==1001.2&&
-        dataset.samples[0].environment.snapshotTimeUs==1700000000000000ULL&&dataset.samples[0].environment.deltaUs==0x30,"reuse existing sensor time alignment and retain snapshot timestamp");
+        dataset.samples[0].environment.snapshotTimeUs==1700000000000000ULL&&dataset.samples[0].environment.deltaUs==0x31,"reuse existing sensor time alignment and retain snapshot timestamp");
     check(!std::isfinite(importSession(second,dataset,9,true).samples.first().environment.temperatureC),"missing temperature stays missing");
     auto model=FitModel::create("linear",1);check(bool(model),"versioned model factory");
-    check(!model->fit(Dataset::create("empty",816,0x30,"ppmv")).success,"reject insufficient samples");
+    check(!model->fit(Dataset::create("empty",816,0x31,"ppmv")).success,"reject insufficient samples");
     check(!model->fit(dataset).success,"reject one concentration level");
     auto more=importSession(second,dataset,9,true);check(more.success&&more.samples.size()==1,"import another known standard");dataset.samples+=more.samples;
     auto fitted=model->fit(dataset);check(fitted.success&&std::abs(fitted.fit.a-2)<1e-12&&std::abs(fitted.fit.b-1)<1e-12,"synthetic linear coefficients C=2R+1");
@@ -57,12 +63,12 @@ int main(int argc,char **argv)
     auto sample=dataset.samples.first();auto concentration=calculate(sample,816,&predictionFit);
     check(concentration.valid&&concentration.value==5&&!concentration.compensated&&concentration.status.contains(QStringLiteral("未进行温压补偿")),"known prediction, explicitly uncompensated");
     check(concentration.origin=="software_test"&&!calculate(sample,1368,&fitted.fit).valid,"software-test label and wavelength isolation");
-    sample.feature.channel=0x31;check(!calculate(sample,816,&fitted.fit).valid,"DLIA isolation");sample=dataset.samples.first();
+    sample.feature.channel=0x30;check(!calculate(sample,816,&fitted.fit).valid,"DLIA isolation");sample=dataset.samples.first();
     sample.feature.peak=5;check(!calculate(sample,816,&fitted.fit).valid,"no extrapolation above range");sample.feature.peak=1;check(!calculate(sample,816,&fitted.fit).valid,"no extrapolation below range");
     check(!calculate(dataset.samples[2],816,&fitted.fit).valid&&!calculate(dataset.samples.first(),816,nullptr).valid,"invalid input and missing calibration");
     auto invalid=dataset;invalid.samples[0].concentration=std::numeric_limits<double>::quiet_NaN();check(!model->fit(invalid).success,"reject invalid concentration");
     invalid=dataset;for(auto& s:invalid.samples)s.feature.peak=2;check(!model->fit(invalid).success,"reject singular matrix");
-    invalid=dataset;invalid.samples[0].feature.channel=0x31;check(!model->fit(invalid).success,"reject mixed channel fitting");
+    invalid=dataset;invalid.samples[0].feature.channel=0x30;check(!model->fit(invalid).success,"reject mixed channel fitting");
     invalid=dataset;invalid.unit="ppm";check(!model->fit(invalid).success,"reject ambiguous unit");
     invalid=dataset;invalid.samples+=dataset.samples.first();check(!model->fit(invalid).success,"reject repeated source samples");
     QString error;Store store(temp.filePath("calibration/library.json"));Library library;
@@ -81,8 +87,9 @@ int main(int argc,char **argv)
     auto wrongWave=library;wrongWave.active[1368]=oldId;check(!store.save(wrongWave,&error),"persisted cross-wavelength activation rejected");
     library.active[816].clear();check(store.save(library,&error),"disable calibration version");
     check(store.load(reopened,&error)&&!reopened.activeFit(816)&&reopened.fits.size()==2,"disable survives restart, versions retained");
-    auto infrared=Dataset::create("1368 SOFTWARE TEST ONLY",1368,0x31,"ppmv");
+    auto infrared=Dataset::create("1368 SOFTWARE TEST ONLY",1368,0x30,"ppmv");
     infrared.samples=importSession(first,infrared,10,true).samples;
+    check(infrared.samples.first().feature.channel==0x30,"1368 imports the confirmed DLIA0 feature records");
     infrared.samples+=importSession(second,infrared,16,true).samples;infrared.revision=1;
     const auto irFit=model->fit(infrared);check(irFit.success&&irFit.fit.a==3&&irFit.fit.b==4,"1368 model fitted independently");
     library.datasets.append(infrared);library.fits.append(irFit.fit);library.active[1368]=irFit.fit.id;library.active[816]=oldId;

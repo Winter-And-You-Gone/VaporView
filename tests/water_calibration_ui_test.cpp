@@ -46,6 +46,12 @@ int main(int argc,char **argv)
     {
         WaterCalibrationPage page(nullptr,libraryFilename);page.resize(1150,900);page.show();
         complete(page,[&]{return find<QLabel>(page,"calibrationStatus")->text().contains(QStringLiteral("定标库已加载"));});
+        check(!page.findChild<QComboBox*>("calibrationChannel")&&find<QLabel>(page,"calibrationChannel")->text().contains("DLIA1"),
+            "816 has a read-only DLIA1 mapping, not a selectable channel");
+        auto *wavelength=find<QComboBox>(page,"calibrationWavelength");
+        wavelength->setCurrentIndex(1);QMetaObject::invokeMethod(wavelength,"activated",Qt::DirectConnection,Q_ARG(int,1));
+        check(find<QLabel>(page,"calibrationChannel")->text().contains("DLIA0"),"1368 automatically fixes DLIA0");
+        wavelength->setCurrentIndex(0);QMetaObject::invokeMethod(wavelength,"activated",Qt::DirectConnection,Q_ARG(int,0));
         find<QLineEdit>(page,"calibrationSession")->setText(low);find<QDoubleSpinBox>(page,"calibrationKnownConcentration")->setValue(5);click(page,"calibrationImport");
         complete(page,[&]{return find<QTableWidget>(page,"calibrationSamples")->rowCount()==1;});
         find<QLineEdit>(page,"calibrationSession")->setText(high);find<QDoubleSpinBox>(page,"calibrationKnownConcentration")->setValue(9);click(page,"calibrationImport");
@@ -57,8 +63,8 @@ int main(int argc,char **argv)
             find<QTableWidget>(page,"calibrationSamples")->item(0,7)->text()!=QStringLiteral("—"),"duplicate-only import preserves sample count and existing fit state");
         click(page,"calibrationEnable");complete(page,[&]{return find<QLabel>(page,"calibrationStatus")->text().contains(QStringLiteral("已启用"));});
         tabs->setCurrentIndex(2);click(page,"calibrationCalculate");complete(page,[&]{return find<QTableWidget>(page,"calibrationResults")->rowCount()==2;});
-        auto *results=find<QTableWidget>(page,"calibrationResults");check(results->item(0,3)->text()=="9"&&results->item(0,5)->text().contains(QStringLiteral("未进行温压补偿")),"visible known initial concentration and compensation status");
-        check(results->item(1,3)->text()==QStringLiteral("—")&&results->item(1,5)->text().contains(QStringLiteral("未启用")),"other wavelength cannot silently use current fit");
+        auto *results=find<QTableWidget>(page,"calibrationResults");check(results->item(1,3)->text()=="9"&&results->item(1,5)->text().contains(QStringLiteral("未进行温压补偿")),"visible known initial concentration and compensation status");
+        check(results->item(0,3)->text()==QStringLiteral("—")&&results->item(0,5)->text().contains(QStringLiteral("未启用")),"other wavelength cannot silently use current fit");
         click(page,"calibrationDisable");complete(page,[&]{return find<QLabel>(page,"calibrationStatus")->text().contains(QStringLiteral("已停用"));});
         check(results->rowCount()==0,"disabling calibration clears obsolete current concentration display");
         click(page,"calibrationEnable");complete(page,[&]{return find<QLabel>(page,"calibrationStatus")->text().contains(QStringLiteral("已启用"));});
@@ -85,7 +91,7 @@ int main(int argc,char **argv)
         check(recorder.start(options),"start followed software-test Session");
         find<QLineEdit>(page,"calibrationSession")->setText(recorder.status().sessionDirectory);
         auto *follow=find<QCheckBox>(page,"calibrationFollow");auto *timer=page.findChild<QTimer*>();check(timer,"single follow timer exists");timer->setInterval(20);follow->setChecked(true);
-        VaporView::FpgaWave::CompletedStream wave;wave.source=0x30;wave.totalPoints=1;wave.complete=true;
+        VaporView::FpgaWave::CompletedStream wave;wave.source=0x31;wave.totalPoints=1;wave.complete=true;
         VaporView::FpgaWave::CompletedStream::DliaPoint point;point.hasHarmonics=true;point.h1=1;point.h2=3;wave.dliaPoints.append(point);
         const auto timestamp=VaporView::Ground::Session::GroundRecordingService::currentTimestampUs();
         check(recorder.recordFpgaHarmonics(timestamp,wave),"admit followed cycle");
@@ -125,6 +131,56 @@ int main(int argc,char **argv)
         check(find<QTableWidget>(reopened,"calibrationSamples")->rowCount()==2,"saved input records reload after page recreation");
         click(reopened,"calibrationDisable");complete(reopened,[&]{return find<QLabel>(reopened,"calibrationStatus")->text().contains(QStringLiteral("已停用"));});
         Library library;QString error;check(Store(libraryFilename).load(library,&error)&&!library.activeFit(816)&&library.fits.size()==1,"UI activation lifecycle persists without removing history");
+    }
+    {
+        // Construct a schema-v1 library from the previously selectable mapping.
+        // It must stay inspectable without moving samples to another channel.
+        auto oldData=Dataset::create("LEGACY MAPPING SOFTWARE TEST",1368,0x30,"ppmv");
+        oldData.samples=importSession(low,oldData,5,true).samples;
+        oldData.samples+=importSession(high,oldData,9,true).samples;
+        oldData.wavelengthNm=816;oldData.revision=1;
+        const auto oldFit=FitModel::create("linear",1)->fit(oldData);
+        check(oldFit.success,"historical linear model remains reproducible");
+        Library library;library.datasets={oldData};library.fits={oldFit.fit};library.active[816]=oldFit.fit.id;
+        QString error;const auto oldFilename=temp.filePath("old-mapping-library.json");
+        check(Store(oldFilename).save(library,&error),qPrintable(error));
+        const auto originalLibrary=read(oldFilename);
+        const auto oldResult=calculate(oldData.samples.first(),816,&oldFit.fit);
+        const auto historyFilename=temp.filePath("old-mapping-results.json");
+        check(exportResults(historyFilename,{oldResult},&error,{oldFit.fit}),qPrintable(error));
+        WaterCalibrationPage page(nullptr,oldFilename);page.resize(1200,900);page.show();
+        complete(page,[&]{return find<QLabel>(page,"calibrationStatus")->text().contains(QStringLiteral("定标库已加载"));});
+        find<QCheckBox>(page,"calibrationFollow")->setChecked(false);
+        check(find<QLabel>(page,"calibrationCalculationSummary")->text().contains(QStringLiteral("旧映射不符")),
+            "legacy active mapping is explicitly identified");
+        auto *versions=find<QComboBox>(page,"calibrationVersions");
+        QMetaObject::invokeMethod(versions,"activated",Qt::DirectConnection,Q_ARG(int,0));
+        check(find<QLabel>(page,"calibrationChannel")->text().contains(QStringLiteral("历史映射不符")),
+            "old dataset retains its actual recorded channel");
+        click(page,"calibrationEnable");
+        check(find<QLabel>(page,"calibrationStatus")->property("calibrationError").toBool(),"legacy wrong-channel version cannot be enabled");
+        click(page,"calibrationFit");
+        check(find<QLabel>(page,"calibrationStatus")->property("calibrationError").toBool(),"legacy wrong-channel data cannot produce a new calibration version");
+        find<QLineEdit>(page,"calibrationSession")->setText(high);click(page,"calibrationCalculate");
+        complete(page,[&]{return find<QTableWidget>(page,"calibrationResults")->rowCount()==2;});
+        auto *results=find<QTableWidget>(page,"calibrationResults");
+        for(int row=0;row<results->rowCount();++row){
+            check(results->item(row,3)->text()==QStringLiteral("—"),"old enabled mapping cannot produce a valid current concentration");
+            if(results->item(row,0)->text()=="816")
+                check(results->item(row,7)->text().startsWith("DLIA1")&&results->item(row,5)->text().contains(QStringLiteral("不匹配")),
+                    "current 816 input always comes from DLIA1 even with old active parameters");
+        }
+        check(read(oldFilename)==originalLibrary,"loading and calculating never rewrite legacy library or relabel samples");
+        page.loadConcentrationResults(historyFilename);
+        complete(page,[&]{return results->rowCount()==1;});
+        check(results->item(0,3)->text()=="5"&&results->item(0,7)->text().startsWith("DLIA0"),
+            "historical concentration retains its original parameters and channel");
+        check(find<QLabel>(page,"calibrationStatus")->text().contains(QStringLiteral("旧硬件映射")),
+            "historical values cannot be mistaken for a calculation with the current wiring");
+        click(page,"calibrationNew");
+        check(find<QLabel>(page,"calibrationChannel")->text().contains("DLIA1")&&
+            !find<QLabel>(page,"calibrationChannel")->text().contains(QStringLiteral("历史映射不符")),
+            "new task after viewing legacy data returns to fixed wiring");
     }
     std::cout<<"water_calibration_ui_test passed (SOFTWARE TEST DATA ONLY)\n";return 0;
 }

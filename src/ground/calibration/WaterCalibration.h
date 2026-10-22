@@ -8,6 +8,11 @@ namespace VaporView::Ground::Calibration
 {
 constexpr int SchemaVersion = 1;
 constexpr quint64 EnvironmentWindowUs = 2000000;
+// Confirmed optical wiring: UI channel 2 is 816 nm; UI channel 1 is 1368 nm.
+constexpr quint32 channelForWavelength(int wavelengthNm)
+{
+    return wavelengthNm == 816 ? 0x31 : wavelengthNm == 1368 ? 0x30 : 0;
+}
 
 struct Environment
 {
@@ -32,12 +37,14 @@ struct Dataset
 {
     QString id, name, unit = QStringLiteral("ppmv"), createdUtc, modifiedUtc;
     int wavelengthNm = 816;
-    quint32 channel = 0x30;
+    quint32 channel = channelForWavelength(816);
     int revision = 0;
     bool archived = false;
     QVector<Sample> samples;
     static Dataset create(const QString& name, int wavelength, quint32 channel, const QString& unit);
     QString validate() const;
+    // Apply to current imports/fits/activation, not immutable historical decoding.
+    QString hardwareMappingError() const;
     QJsonObject toJson() const;
     static Dataset fromJson(const QJsonObject&, QString *error);
 };
