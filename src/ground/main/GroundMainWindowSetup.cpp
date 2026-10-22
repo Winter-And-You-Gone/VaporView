@@ -5378,22 +5378,24 @@ void MainWindow::setupDataPanels()
                             : QStringLiteral("设备温控概览"));
     ai8TemperatureOverviewTitleLayout->addWidget(
         ai8TemperatureOverviewTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    state_->internal_environment_lbl_ = new QLabel(ai8TemperatureOverviewTitleBar);
+    ai8TemperatureOverviewTitleLayout->addStretch(1);
+    ai8TemperatureOverviewLayout->addWidget(ai8TemperatureOverviewTitleBar);
+
+    state_->internal_environment_lbl_ = new QLabel(state_->ai8_temperature_overview_group_);
     state_->internal_environment_lbl_->setObjectName(QStringLiteral("homeInternalEnvironment"));
     state_->internal_environment_lbl_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    state_->internal_environment_lbl_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    state_->internal_environment_lbl_->setContentsMargins(8, 2, 8, 2);
     auto internalFont = state_->internal_environment_lbl_->font();
     internalFont.setPointSizeF(qMax(9.0, internalFont.pointSizeF() - 2));
     state_->internal_environment_lbl_->setFont(internalFont);
-    ai8TemperatureOverviewTitleLayout->addStretch(1);
-    ai8TemperatureOverviewTitleLayout->addWidget(state_->internal_environment_lbl_, 0, Qt::AlignVCenter);
+    ai8TemperatureOverviewLayout->addWidget(state_->internal_environment_lbl_, 1);
     refreshInternalEnvironment();
-
-    ai8TemperatureOverviewLayout->addWidget(ai8TemperatureOverviewTitleBar);
 
     state_->ai8_temperature_overview_panel_ =
         new Ai8TemperatureOverviewPanel(state_->ai8_temperature_overview_group_);
     state_->ai8_temperature_overview_panel_->setEnglish(state_->is_english_);
-    ai8TemperatureOverviewLayout->addWidget(state_->ai8_temperature_overview_panel_, 1);
+    ai8TemperatureOverviewLayout->addWidget(state_->ai8_temperature_overview_panel_, 4);
 
     temperatureOverviewColumnLayout->addWidget(state_->temperature_overview_group_, 0, Qt::AlignTop);
     temperatureOverviewColumnLayout->addWidget(state_->ai8_temperature_overview_group_, 1);

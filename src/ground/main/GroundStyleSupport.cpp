@@ -1407,7 +1407,7 @@ QFrame#ai8TemperatureOverviewCell QLabel#ai8TemperatureOverviewChannelLabel {
     font-weight: 600;
 }
 QLabel#ai8TemperatureOverviewCaptionLabel {
-    color: @vv-text-muted;
+    color: @vv-text-strong;
     font-size: 11px;
 }
 QFrame#ai8TemperatureOverviewDivider {

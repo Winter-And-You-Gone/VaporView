@@ -53,7 +53,6 @@ constexpr int kCommonEditorMinimumWidth = (kEditorMinimumWidth * 4) / 3;
 constexpr int kCommonParameterStackWidth =
     kCommonEditorMinimumWidth * kPageColumnCount + kAi8CommonControlGap;
 constexpr int kAi8OverviewColumnCount = 4;
-constexpr int kAi8OverviewCellHeight = 36;
 constexpr int kAi8OverviewCellGap = 2;
 constexpr int kAi8OverviewHorizontalPadding = 8;
 constexpr int kAi8OverviewVerticalPadding = 1;
@@ -1610,7 +1609,6 @@ Ai8TemperatureOverviewPanel::Ai8TemperatureOverviewPanel(QWidget *parent)
         cell->setProperty("channelIndex", index);
         cell->setFrameShape(QFrame::NoFrame);
         cell->setAttribute(Qt::WA_StyledBackground, true);
-        cell->setMinimumHeight(kAi8OverviewCellHeight);
         cell->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
         auto *cellLayout = new QGridLayout(cell);
         cellLayout->setContentsMargins(4, 2, 4, 2);
@@ -1622,7 +1620,7 @@ Ai8TemperatureOverviewPanel::Ai8TemperatureOverviewPanel(QWidget *parent)
         channelLabel->setObjectName(QStringLiteral("ai8TemperatureOverviewChannelLabel"));
         channelLabel->setProperty("channelIndex", index);
         channelLabel->setAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
-        channelLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
+        channelLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::MinimumExpanding);
         cellLayout->addWidget(channelLabel, 0, 0, 2, 1);
 
         auto *divider = new QFrame(cell);

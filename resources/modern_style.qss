@@ -615,7 +615,7 @@ QFrame#ai8TemperatureOverviewDivider {
 }
 
 QLabel#ai8TemperatureOverviewCaptionLabel {
-    color: @vv-text-muted;
+    color: @vv-black;
     font-size: 11px;
 }
 

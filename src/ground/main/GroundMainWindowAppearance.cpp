@@ -138,7 +138,7 @@ void MainWindow::loadModernStyleSheet()
             "QFrame#ai8TemperatureOverviewCell { background-color: transparent; border: 1px solid @vv-border; border-radius: 12px; }"
             "QFrame#ai8TemperatureOverviewCell QLabel { background-color: transparent; border: none; }"
             "QFrame#ai8TemperatureOverviewCell QLabel#ai8TemperatureOverviewChannelLabel { background-color: @vv-surface-alt; color: @vv-text-muted; font-size: 11px; font-weight: 600; }"
-            "QLabel#ai8TemperatureOverviewCaptionLabel { color: @vv-text-muted; font-size: 11px; }"
+            "QLabel#ai8TemperatureOverviewCaptionLabel { color: @vv-black; font-size: 11px; }"
             "QFrame#ai8TemperatureOverviewDivider { background-color: @vv-border; border: none; border-radius: 0px; }"
             "QLabel#ai8TemperatureOverviewTargetLabel { color: @vv-hd-ok; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 13px; font-weight: 700; }"
             "QLabel#ai8TemperatureOverviewValueLabel { color: @vv-text-strong; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 13px; font-weight: 700; }"
@@ -1141,7 +1141,11 @@ void MainWindow::updateResponsiveHomeLayout()
                 state_->home_overview_splitter_->setProperty(kHomeOverviewSplitterInitializedProperty, true);
             }
         }
-        if (environmentInOverview || environmentRowChanged)
+        const bool temperatureContentGrew = state_->ai8_temperature_overview_group_ &&
+            state_->ai8_temperature_overview_group_->minimumHeight() <
+                std::max(state_->ai8_temperature_overview_group_->sizeHint().height(),
+                         state_->ai8_temperature_overview_group_->minimumSizeHint().height());
+        if (environmentInOverview || environmentRowChanged || temperatureContentGrew)
             updateConfigCardHeightForSourceMode();
     }
 
