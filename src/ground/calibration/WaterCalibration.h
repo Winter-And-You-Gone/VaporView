@@ -3,10 +3,12 @@
 #include "ground/session/SessionWaveformFeatures.h"
 #include <QMap>
 #include <memory>
+#include <optional>
 
 namespace VaporView::Ground::Calibration
 {
 constexpr int SchemaVersion = 1;
+constexpr int LibrarySchemaVersion = 2;
 constexpr quint64 EnvironmentWindowUs = 2000000;
 // Confirmed optical wiring: UI channel 2 is 816 nm; UI channel 1 is 1368 nm.
 constexpr quint32 channelForWavelength(int wavelengthNm)
@@ -35,7 +37,7 @@ struct Sample
 };
 struct Dataset
 {
-    QString id, name, unit = QStringLiteral("ppmv"), createdUtc, modifiedUtc;
+    QString id, name, unit = QStringLiteral("ppmv"), createdUtc, modifiedUtc, taskId;
     int wavelengthNm = 816;
     quint32 channel = channelForWavelength(816);
     int revision = 0;
@@ -47,6 +49,13 @@ struct Dataset
     QString hardwareMappingError() const;
     QJsonObject toJson() const;
     static Dataset fromJson(const QJsonObject&, QString *error);
+};
+struct CalibrationTask
+{
+    QString id; // Empty for an unchanged legacy single-wavelength task.
+    QMap<int, Dataset> datasets;
+    static CalibrationTask create(const QString& name, const QString& unit);
+    QString validate() const;
 };
 struct Fit
 {
@@ -79,6 +88,14 @@ struct ImportResult
     int duplicates = 0, invalid = 0;
 };
 ImportResult importSession(const QString& session, const Dataset&, double concentration, bool softwareTest);
+struct TaskImportResult
+{
+    bool success = false;
+    QString error;
+    QMap<int, ImportResult> channels;
+};
+TaskImportResult importTaskSession(const QString& session, const CalibrationTask&, double concentration,
+                                   bool softwareTest, bool singleConcentrationConfirmed);
 
 // Compensation is deliberately separate from the initial calibration model.
 struct CompensationResult { bool applied = false; double value = 0; QString status; };
@@ -120,6 +137,15 @@ public:
 private:
     QString filename_;
 };
+struct TaskSaveResult
+{
+    bool success = false;
+    QString error;
+    CalibrationTask task;
+    Library library;
+    std::optional<Fit> fit;
+};
+TaskSaveResult saveTask(const CalibrationTask&, const Library&, const Store&, int fitWavelength = 0);
 struct ConcentrationSnapshot
 {
     bool success = false;

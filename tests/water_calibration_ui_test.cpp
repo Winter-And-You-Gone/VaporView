@@ -12,6 +12,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QTabWidget>
+#include <QTabBar>
 #include <QTableWidget>
 #include <QThread>
 #include <QThreadPool>
@@ -35,6 +36,7 @@ void complete(QWidget& page,const std::function<bool()>& ready)
 }
 void click(QWidget& page,const char *name)
 {
+    if(QByteArray(name)=="calibrationImport")find<QCheckBox>(page,"calibrationSingleConcentration")->setChecked(true);
     auto *b=find<QPushButton>(page,name);check(b->isEnabled(),"button available");b->click();
 }
 }
@@ -46,12 +48,11 @@ int main(int argc,char **argv)
     {
         WaterCalibrationPage page(nullptr,libraryFilename);page.resize(1150,900);page.show();
         complete(page,[&]{return find<QLabel>(page,"calibrationStatus")->text().contains(QStringLiteral("定标库已加载"));});
-        check(!page.findChild<QComboBox*>("calibrationChannel")&&find<QLabel>(page,"calibrationChannel")->text().contains("DLIA1"),
-            "816 has a read-only DLIA1 mapping, not a selectable channel");
-        auto *wavelength=find<QComboBox>(page,"calibrationWavelength");
-        wavelength->setCurrentIndex(1);QMetaObject::invokeMethod(wavelength,"activated",Qt::DirectConnection,Q_ARG(int,1));
-        check(find<QLabel>(page,"calibrationChannel")->text().contains("DLIA0"),"1368 automatically fixes DLIA0");
-        wavelength->setCurrentIndex(0);QMetaObject::invokeMethod(wavelength,"activated",Qt::DirectConnection,Q_ARG(int,0));
+        check(!page.findChild<QComboBox*>("calibrationWavelength")&&!page.findChild<QComboBox*>("calibrationChannel"),
+            "joint import has no wavelength or channel dropdown");
+        auto *views=find<QTabBar>(page,"calibrationWavelengthViews");
+        check(views->count()==2&&views->tabText(0).contains("816")&&views->tabText(1).contains("1368"),
+            "two separate wavelength views are available");
         find<QLineEdit>(page,"calibrationSession")->setText(low);find<QDoubleSpinBox>(page,"calibrationKnownConcentration")->setValue(5);click(page,"calibrationImport");
         complete(page,[&]{return find<QTableWidget>(page,"calibrationSamples")->rowCount()==1;});
         find<QLineEdit>(page,"calibrationSession")->setText(high);find<QDoubleSpinBox>(page,"calibrationKnownConcentration")->setValue(9);click(page,"calibrationImport");

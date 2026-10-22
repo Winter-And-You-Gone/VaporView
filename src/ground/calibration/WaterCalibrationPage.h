@@ -19,7 +19,7 @@ private:
     void refresh();
     void refreshVersions();
     void setStatus(const QString&, bool error = false, bool publishLog = true);
-    bool discardChanges();
+    bool discardChanges(bool currentOnly = false);
     void newDataset(bool announce = true);
     void loadLibrary(bool announce = true);
     void importData();

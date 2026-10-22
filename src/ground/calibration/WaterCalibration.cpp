@@ -122,13 +122,14 @@ QJsonObject libraryJson(const Library& library)
     for (const auto& f : library.fits) fits.append(f.toJson());
     QJsonObject active;
     for (auto it = library.active.begin(); it != library.active.end(); ++it) active[QString::number(it.key())] = it.value();
-    return {{"schema_version", SchemaVersion}, {"datasets", datasets}, {"fits", fits}, {"active", active}};
+    return {{"schema_version", LibrarySchemaVersion}, {"datasets", datasets}, {"fits", fits}, {"active", active}};
 }
 QString validateLibrary(const Library& library)
 {
     QSet<QString> revisions, fits;
     QMap<QString, int> latest;
     QMap<QString, Dataset> firstRevision;
+    QMap<QString, CalibrationTask> tasks;
     for (const auto& d : library.datasets) {
         const auto error = d.validate(); if (!error.isEmpty()) return error;
         const QString key = d.id + ':' + QString::number(d.revision);
@@ -137,10 +138,17 @@ QString validateLibrary(const Library& library)
         revisions.insert(key); latest[d.id] = d.revision;
         if (firstRevision.contains(d.id)) {
             const auto& first = firstRevision[d.id];
-            if (first.wavelengthNm != d.wavelengthNm || first.channel != d.channel || first.unit != d.unit || first.createdUtc != d.createdUtc)
+            if (first.wavelengthNm != d.wavelengthNm || first.channel != d.channel || first.unit != d.unit || first.createdUtc != d.createdUtc || first.taskId != d.taskId)
                 return QStringLiteral("数据集的波长、硬件通道、单位和创建时间不可在修订中改变");
         } else firstRevision[d.id] = d;
+        if (!d.taskId.isEmpty()) {
+            auto& task = tasks[d.taskId]; task.id = d.taskId;
+            if (task.datasets.contains(d.wavelengthNm) && task.datasets[d.wavelengthNm].id != d.id)
+                return QStringLiteral("联合任务的同一波长存在多个数据集标识");
+            task.datasets[d.wavelengthNm] = d;
+        }
     }
+    for (const auto& task : tasks) { const auto error = task.validate(); if (!error.isEmpty()) return error; }
     for (const auto& f : library.fits) {
         if (fits.contains(f.id)) return QStringLiteral("定标参数 ID 重复");
         fits.insert(f.id);
@@ -210,6 +218,7 @@ Dataset Dataset::create(const QString& name, int wavelength, quint32 channel, co
 }
 QString Dataset::validate() const
 {
+    if (!taskId.isEmpty() && QUuid(taskId).isNull()) return QStringLiteral("联合定标任务 ID 无效");
     if (QUuid(id).isNull() || name.trimmed().isEmpty() || !dateValid(createdUtc) || !dateValid(modifiedUtc) || revision < 0)
         return QStringLiteral("数据集标识、名称、时间或版本无效");
     if ((wavelengthNm != 816 && wavelengthNm != 1368) || (channel != 0x30 && channel != 0x31))
@@ -227,9 +236,11 @@ QString Dataset::validate() const
 QJsonObject Dataset::toJson() const
 {
     QJsonArray rows; for (const auto& s : samples) rows.append(s.toJson());
-    return {{"id", id}, {"name", name}, {"unit", unit}, {"wavelength_nm", wavelengthNm}, {"fpga_channel", int(channel)},
+    QJsonObject json{{"id", id}, {"name", name}, {"unit", unit}, {"wavelength_nm", wavelengthNm}, {"fpga_channel", int(channel)},
             {"revision", revision}, {"created_utc", createdUtc}, {"modified_utc", modifiedUtc},
             {"archived", archived}, {"samples", rows}, {"parameter_version", SchemaVersion}};
+    if (!taskId.isEmpty()) json["task_id"] = taskId;
+    return json;
 }
 QString Dataset::hardwareMappingError() const
 {
@@ -242,6 +253,10 @@ QString Dataset::hardwareMappingError() const
 Dataset Dataset::fromJson(const QJsonObject& j, QString *error)
 {
     Dataset d;
+    if (j.contains("task_id") && (!j["task_id"].isString() || QUuid(j["task_id"].toString()).isNull())) {
+        *error = QStringLiteral("联合定标任务 ID 字段无效"); return d;
+    }
+    d.taskId = j["task_id"].toString();
     d.id = j["id"].toString(); d.name = j["name"].toString(); d.unit = j["unit"].toString();
     d.wavelengthNm = j["wavelength_nm"].toInt(); d.channel = quint32(j["fpga_channel"].toInt());
     d.revision = j["revision"].toInt(-1); d.createdUtc = j["created_utc"].toString(); d.modifiedUtc = j["modified_utc"].toString();
@@ -252,6 +267,30 @@ Dataset Dataset::fromJson(const QJsonObject& j, QString *error)
     for (const auto& row : j["samples"].toArray()) { d.samples.append(Sample::fromJson(row.toObject(), error)); if (!error->isEmpty()) break; }
     if (error->isEmpty()) *error = d.validate();
     return d;
+}
+CalibrationTask CalibrationTask::create(const QString& name, const QString& unit)
+{
+    CalibrationTask task; task.id = uuid();
+    for (const int wave : {816, 1368}) {
+        auto data = Dataset::create(name, wave, channelForWavelength(wave), unit);
+        data.taskId = task.id; task.datasets[wave] = data;
+    }
+    return task;
+}
+QString CalibrationTask::validate() const
+{
+    if (id.isEmpty()) {
+        if (datasets.size() != 1 || !datasets.first().taskId.isEmpty()) return QStringLiteral("历史单波长任务结构无效");
+    } else if (QUuid(id).isNull() || datasets.size() != 2 || !datasets.contains(816) || !datasets.contains(1368))
+        return QStringLiteral("联合任务必须包含两路独立数据集");
+    for (auto it = datasets.begin(); it != datasets.end(); ++it) {
+        const auto error = it->validate(); if (!error.isEmpty()) return error;
+        if (it.key() != it->wavelengthNm || it->taskId != id) return QStringLiteral("任务与数据集的波长或任务 ID 不一致");
+        if (!id.isEmpty() && (!it->hardwareMappingError().isEmpty() || it->name != datasets.first().name ||
+                             it->unit != datasets.first().unit || it->archived != datasets.first().archived))
+            return QStringLiteral("联合任务的固定通道、名称、单位或归档状态不一致");
+    }
+    return {};
 }
 QJsonObject Fit::toJson() const
 {
@@ -285,11 +324,15 @@ std::unique_ptr<FitModel> FitModel::create(const QString& type, int version)
     return {};
 }
 
-ImportResult importSession(const QString& directory, const Dataset& data, double concentration, bool softwareTest)
+namespace
 {
-    ImportResult result;
-    result.error = data.validate();
-    if (result.error.isEmpty()) result.error = data.hardwareMappingError();
+TaskImportResult importChannels(const QString& directory, const CalibrationTask& task, double concentration,
+                               bool softwareTest, bool checkConcentration)
+{
+    TaskImportResult result;
+    result.error = task.validate();
+    for (const auto& data : task.datasets)
+        if (result.error.isEmpty()) result.error = data.hardwareMappingError();
     if (!std::isfinite(concentration) || concentration < 0) result.error = QStringLiteral("标气浓度无效");
     if (!result.error.isEmpty()) return result;
     const auto metadata = SessionLoader::loadMetadata(directory);
@@ -297,37 +340,78 @@ ImportResult importSession(const QString& directory, const Dataset& data, double
     const auto features = SessionWaveformFeatures::read(metadata.metadata.sessionDirectory);
     if (!features.success) { result.error = features.error; return result; }
     const auto sensors = SessionLoader::loadSensors(metadata.metadata);
-    result.warning = sensors.warning;
-    const bool sensorTimesOrdered = std::is_sorted(sensors.data.timestamps_us.cbegin(), sensors.data.timestamps_us.cend());
-    if (!sensorTimesOrdered) result.warning += QStringLiteral("；传感器快照时间不单调，未进行温压关联");
+    QString warning = sensors.warning;
+    const bool ordered = std::is_sorted(sensors.data.timestamps_us.cbegin(), sensors.data.timestamps_us.cend());
+    if (!ordered) warning += QStringLiteral("；传感器快照时间不单调，未进行温压关联");
     QFile config(QDir(metadata.metadata.sessionDirectory).filePath(VaporView::Session::standardSessionPackageLayout().deviceConfigPath));
     if (config.open(QIODevice::ReadOnly)) softwareTest = softwareTest || containsSimulation(QJsonDocument::fromJson(config.readAll()).object());
-    QSet<QString> existing;
-    for (const auto& s : data.samples) existing.insert(s.feature.id);
+    QMap<int, QMap<QString, double>> existing;
+    for (auto it = task.datasets.begin(); it != task.datasets.end(); ++it) {
+        result.channels[it.key()].warning = warning;
+        for (const auto& sample : it->samples) existing[it.key()][sample.feature.id] = sample.concentration;
+    }
     for (const auto& feature : features.records) {
-        if (feature.channel != data.channel) continue;
-        if (existing.contains(feature.id)) { ++result.duplicates; continue; }
-        Sample s; s.feature = feature; s.concentration = concentration; s.origin = softwareTest ? "software_test" : "unverified";
-        if (!feature.invalidReason().isEmpty()) ++result.invalid;
-        if (sensors.success && sensorTimesOrdered) {
+        const int wave = feature.channel == 0x31 ? 816 : 1368;
+        if (!task.datasets.contains(wave)) continue;
+        auto& imported = result.channels[wave];
+        if (existing[wave].contains(feature.id)) {
+            if (checkConcentration && existing[wave][feature.id] != concentration) {
+                result.error = QStringLiteral("同一来源记录已关联另一标气浓度；当前不支持自动区分同一 Session 内的浓度区间。请使用独立 Session。");
+                result.channels.clear(); return result;
+            }
+            ++imported.duplicates; continue;
+        }
+        Sample sample; sample.feature = feature; sample.concentration = concentration;
+        sample.origin = softwareTest ? "software_test" : "unverified";
+        if (!feature.invalidReason().isEmpty()) ++imported.invalid;
+        if (sensors.success && ordered) {
             const auto& sensor = sensors.data;
             const int i = VaporView::Ground::Session::closestTimestampIndex(sensor.timestamps_us, feature.hostTimeUs);
             if (i >= 0 && i < sensor.timestamps_us.size()) {
                 const auto time = sensor.timestamps_us[i];
                 const auto delta = time > feature.hostTimeUs ? time - feature.hostTimeUs : feature.hostTimeUs - time;
                 if (time && delta <= EnvironmentWindowUs) {
-                    auto& e = s.environment; e.snapshotTimeUs = time; e.deltaUs = delta;
+                    auto& e = sample.environment; e.snapshotTimeUs = time; e.deltaUs = delta;
                     e.source = metadata.metadata.sensorSummaryCsvFilename + QStringLiteral(":%1 (record snapshot)").arg(i + 2);
                     if (i < sensor.temperature_values.size()) e.temperatureC = sensor.temperature_values[i];
                     if (i < sensor.pressure_values.size()) e.pressureHpa = sensor.pressure_values[i];
                 }
             }
         }
-        result.samples.append(s);
+        imported.samples.append(sample);
+    }
+    for (auto& imported : result.channels) {
+        imported.success = true;
+        if (imported.samples.isEmpty() && !imported.duplicates)
+            imported.warning += QStringLiteral("；该波长没有记录，未复制另一路数据");
+        else if (!imported.samples.isEmpty() && imported.invalid == imported.samples.size())
+            imported.warning += QStringLiteral("；该波长新增记录全部质量不合格，仅保留追溯");
     }
     result.success = true;
-    if (result.samples.isEmpty() && !result.duplicates) result.warning += QStringLiteral("；未找到所选 DLIA 通道的 FPGA H2/H1 特征");
     return result;
+}
+}
+ImportResult importSession(const QString& directory, const Dataset& data, double concentration, bool softwareTest)
+{
+    CalibrationTask task; task.datasets[data.wavelengthNm] = data;
+    // Single-channel callers also read linked historical datasets independently.
+    task.id = data.taskId;
+    if (!task.id.isEmpty()) {
+        auto standalone = data; standalone.taskId.clear(); task.id.clear(); task.datasets[data.wavelengthNm] = standalone;
+    }
+    const auto result = importChannels(directory, task, concentration, softwareTest, false);
+    if (!result.success) { ImportResult failed; failed.error = result.error; return failed; }
+    return result.channels.value(data.wavelengthNm);
+}
+TaskImportResult importTaskSession(const QString& directory, const CalibrationTask& task, double concentration,
+                                  bool softwareTest, bool singleConcentrationConfirmed)
+{
+    if (!singleConcentrationConfirmed) {
+        TaskImportResult result;
+        result.error = QStringLiteral("请确认整个 Session 对应同一标气浓度；当前不支持自动识别同一 Session 内的浓度切换。");
+        return result;
+    }
+    return importChannels(directory, task, concentration, softwareTest, true);
 }
 
 ConcentrationResult calculate(const Sample& sample, int wavelength, const Fit *fit)
@@ -384,7 +468,7 @@ bool Store::load(Library& target, QString *error) const
     if (!file.open(QIODevice::ReadOnly)) { *error = file.errorString(); return false; }
     const auto bytes = file.readAll(); QJsonParseError parse;
     const auto root = QJsonDocument::fromJson(bytes, &parse).object(); const auto payload = root["payload"].toObject();
-    if (parse.error != QJsonParseError::NoError || payload["schema_version"].toInt() != SchemaVersion ||
+    if (parse.error != QJsonParseError::NoError || (payload["schema_version"].toInt() != 1 && payload["schema_version"].toInt() != LibrarySchemaVersion) ||
         root["sha256"].toString().toLatin1() != digest(canonical(payload)) || !payload["datasets"].isArray() || !payload["fits"].isArray() || !payload["active"].isObject()) {
         *error = QStringLiteral("定标库损坏、字段缺失或版本不支持；原文件未修改"); return false;
     }
@@ -424,5 +508,31 @@ bool Store::save(Library& library, QString *error) const
     QSaveFile file(filename_);
     if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit()) { *error = file.errorString(); return false; }
     library.diskDigest = digest(bytes); return true;
+}
+TaskSaveResult saveTask(const CalibrationTask& task, const Library& library, const Store& store, int fitWavelength)
+{
+    TaskSaveResult result; result.task = task; result.library = library;
+    result.error = task.validate(); if (!result.error.isEmpty()) return result;
+    if (fitWavelength && !task.datasets.contains(fitWavelength)) {
+        result.error = QStringLiteral("任务中没有所选波长"); return result;
+    }
+    for (auto& data : result.task.datasets) {
+        const Dataset *latest = nullptr;
+        for (const auto& saved : library.datasets)
+            if (saved.id == data.id && (!latest || saved.revision > latest->revision)) latest = &saved;
+        if (!latest || latest->toJson() != data.toJson() || data.wavelengthNm == fitWavelength) {
+            data.revision = latest ? latest->revision + 1 : 1;
+            data.modifiedUtc = now(); result.library.datasets.append(data);
+        }
+    }
+    if (fitWavelength) {
+        const auto& data = result.task.datasets[fitWavelength];
+        result.error = data.hardwareMappingError(); if (!result.error.isEmpty()) return result;
+        const auto fitted = FitModel::create("linear", 1)->fit(data);
+        if (!fitted.success) { result.error = QStringLiteral("%1 nm 拟合失败：%2").arg(fitWavelength).arg(fitted.error); return result; }
+        result.fit = fitted.fit; result.library.fits.append(fitted.fit);
+    }
+    if (!store.save(result.library, &result.error)) return result;
+    result.success = true; return result;
 }
 }
