@@ -138,6 +138,7 @@ RemoteEpsilonTelemetry decodeRemoteEpsilonTelemetry(
     result.data.system_status_bits = telemetry.status_bits;
     result.data.filter_status_bits = telemetry.filter_status_bits;
     result.data.update_status_bits = telemetry.update_status_bits;
+    result.data.diff_age_s = telemetry.diff_age_s;
     if (hasFlag(telemetry, VaporView::BasicHasGnssQuality))
     {
         result.data.gnss_satellites = telemetry.gnss_satellites;

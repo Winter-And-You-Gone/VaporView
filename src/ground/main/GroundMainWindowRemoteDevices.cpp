@@ -1098,6 +1098,37 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
             }
             return state_->fpga_sources_.contains(homeFpgaSensorSource(device));
         }
+        if (!isRemoteSkyMode())
+        {
+            if (!homeDeviceConnected(device)) return false;
+            const auto fresh = [timeoutMs](const auto &sample) {
+                const auto age = std::chrono::steady_clock::now() - sample.timestamp;
+                return sample.valid && sample.timestamp != std::chrono::steady_clock::time_point{} &&
+                    age >= std::chrono::steady_clock::duration::zero() &&
+                    age < std::chrono::milliseconds(timeoutMs);
+            };
+            switch (device)
+            {
+            case VaporView::SkyDeviceId::Epsilon: return fresh(state_->current_epsilon_);
+            case VaporView::SkyDeviceId::Ptb: return fresh(state_->current_ptb_);
+            case VaporView::SkyDeviceId::Hmp: return fresh(state_->current_hmp_);
+            case VaporView::SkyDeviceId::Lidar: return fresh(state_->current_lidar_);
+            case VaporView::SkyDeviceId::TemperatureController: return fresh(state_->current_temperature_controller_);
+            case VaporView::SkyDeviceId::Ai8TemperatureController: {
+                const auto collectors = snapshotCollectors();
+                return collectors.ai8_temperature_controller && collectors.ai8_temperature_controller->getLatestData().valid;
+            }
+            case VaporView::SkyDeviceId::Bmp390:
+            case VaporView::SkyDeviceId::Sht45: {
+                const quint16 source = device == VaporView::SkyDeviceId::Bmp390 ? 0x43 : 0x44;
+                const auto age = std::chrono::steady_clock::now() - state_->internal_environment_times_.value(source);
+                return state_->internal_environment_.value(source).validity.measurement &&
+                    age >= std::chrono::steady_clock::duration::zero() && age < std::chrono::milliseconds(timeoutMs);
+            }
+            case VaporView::SkyDeviceId::WaveTcp: return state_->tcp_wave_panel_->hasRecentData(timeoutMs);
+            default: return false;
+            }
+        }
         return connected && remoteDeviceDataValid(device, timeoutMs);
     };
     auto hasUiTestDeviceData = [this, &uiTestSnapshot](VaporView::SkyDeviceId device) {
@@ -1115,6 +1146,9 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
             return uiTestSnapshot.temperature.valid;
         case VaporView::SkyDeviceId::Ai8TemperatureController:
             return uiTestSnapshot.ai8Temperature.valid;
+        case VaporView::SkyDeviceId::Bmp390:
+        case VaporView::SkyDeviceId::Sht45:
+            return state_->internal_environment_.value(device == VaporView::SkyDeviceId::Bmp390 ? 0x43 : 0x44).validity.measurement;
         case VaporView::SkyDeviceId::WaveTcp:
             return state_->ui_test_model_->deviceState(VaporView::SkyDeviceId::WaveTcp) ==
                        VaporView::DeviceState::Connected &&
@@ -1275,6 +1309,10 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         appendDevice(VaporView::SkyDeviceId::WaveTcp, 3000, QStringLiteral("波形"));
     }
 
+    appendDevice(VaporView::SkyDeviceId::TemperatureController, 3000, QStringLiteral("RD105"));
+    appendDevice(VaporView::SkyDeviceId::Ai8TemperatureController, 3000, QStringLiteral("AI-8288"));
+    appendDevice(VaporView::SkyDeviceId::Bmp390, 3000, QStringLiteral("BMP390"));
+    appendDevice(VaporView::SkyDeviceId::Sht45, 3000, QStringLiteral("SHT45"));
     RemoteTelemetrySummarySections sections;
     sections.rateItems = rateRows;
     sections.linkItems = linkRows;
@@ -1302,10 +1340,12 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         ? QStringList{QStringLiteral("Sky->Ground"), QStringLiteral("Ground->Sky"), QStringLiteral("Total")}
         : QStringList{QStringLiteral("天空端→地面端"), QStringLiteral("地面端→天空端"), QStringLiteral("合计")};
     const QStringList deviceLabels = state_->is_english_
-        ? QStringList{QStringLiteral("EPSILON navigation"), QStringLiteral("PTB210 pressure"),
-            QStringLiteral("HMP humidity"), QStringLiteral("Laser ranging"), QStringLiteral("Waveform")}
-        : QStringList{QStringLiteral("EPSILON组合导航"), QStringLiteral("PTB210气压"),
-            QStringLiteral("HMP温湿度"), QStringLiteral("激光测距"), QStringLiteral("波形数据")};
+        ? QStringList{QStringLiteral("EPSILON"), QStringLiteral("PTB210"), QStringLiteral("HMP"),
+            QStringLiteral("TFA1500-L"), QStringLiteral("Waveform"), QStringLiteral("RD105"),
+            QStringLiteral("AI-8288"), QStringLiteral("BMP390"), QStringLiteral("SHT45")}
+        : QStringList{QStringLiteral("EPSILON"), QStringLiteral("PTB210"), QStringLiteral("HMP"),
+            QStringLiteral("TFA1500-L"), QStringLiteral("波形"), QStringLiteral("RD105"),
+            QStringLiteral("AI-8288"), QStringLiteral("BMP390"), QStringLiteral("SHT45")};
     for (int i = 0; i < homeSections.rateItems.size(); ++i)
         homeSections.rateItems[i].label = rateLabels.at(i);
     for (int i = 0; i < homeSections.linkItems.size(); ++i)

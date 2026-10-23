@@ -4630,6 +4630,8 @@ void requireHomeMaximumValueWidths()
     sample.longitude_deg = -179.99999999;
     sample.height_m = -9999.999;
     sample.hacc_m = sample.vacc_m = 9999.999;
+    sample.diff_age_s = 99999.9;
+    sample.hdop = sample.vdop = 999.99;
     sample.vel_n_mps = sample.vel_e_mps = sample.vel_d_mps = -999.999;
     sample.imu_acc_x_mps2 = sample.imu_acc_y_mps2 = sample.imu_acc_z_mps2 = -999.999;
     sample.imu_gyr_x_radps = sample.imu_gyr_y_radps = sample.imu_gyr_z_radps = -999.9999;
@@ -7933,14 +7935,16 @@ int main(int argc, char **argv)
     bool homeDataHasEpsilon = false;
     const QList<QFrame*> dataPills =
         homeDataSection->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
-    require(dataPills.size() == 5,
-            "home data availability row keeps five device pills");
+    require(dataPills.size() == 9,
+            "home data availability row covers all nine devices");
+    const QStringList compactDeviceNames = {"EPSILON", "PTB210", "HMP", "TFA1500-L", "RD105", "AI-8288", "BMP390", "SHT45", QStringLiteral("波形"), "Waveform"};
     for (QFrame *pill : dataPills)
     {
         QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
         QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
         require(nameLabel != nullptr && valueLabel != nullptr,
                 "home data availability pill has a descriptive name and value");
+        require(compactDeviceNames.contains(nameLabel->text()), "Home availability uses model names or a short textual device name");
         if (nameLabel->text().contains(QStringLiteral("EPSILON")))
         {
             homeDataHasEpsilon = true;

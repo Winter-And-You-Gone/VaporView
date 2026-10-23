@@ -1158,7 +1158,15 @@ public:
         title_status_strip_->setObjectName(QStringLiteral("temperatureOverviewTitleStatusStrip"));
         title_status_strip_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
         title_status_strip_->hide();
-        auto *statusLayout = new QVBoxLayout(title_status_strip_);
+        auto *titleStatusLayout = new QHBoxLayout(title_status_strip_);
+        titleStatusLayout->setContentsMargins(0, 0, 0, 0);
+        titleStatusLayout->setSpacing(8);
+        titleStatusLayout->setSizeConstraint(QLayout::SetFixedSize);
+        error_status_label_ = new QLabel(title_status_strip_);
+        error_status_label_->setObjectName(QStringLiteral("temperatureOverviewErrorStatusLabel"));
+        titleStatusLayout->addWidget(error_status_label_);
+        auto *statusLayout = new QVBoxLayout;
+        titleStatusLayout->addLayout(statusLayout);
         statusLayout->setContentsMargins(0, 0, 0, 0);
         statusLayout->setSpacing(0);
         statusLayout->setSizeConstraint(QLayout::SetFixedSize);
@@ -1296,6 +1304,16 @@ private:
     {
         const bool dark = VaporView::isDarkThemeEnabled();
         const bool valid = latest_data_.valid;
+        const QString errorCode = QStringLiteral("0x%1").arg(latest_data_.error_code, 4, 16, QLatin1Char('0')).toUpper();
+        error_status_label_->setText(latest_data_.error_code != 0 ? QString(is_english_ ? "Error %1" : "故障 %1").arg(errorCode)
+            : valid ? (is_english_ ? QStringLiteral("Normal") : QStringLiteral("正常"))
+            : (is_english_ ? QStringLiteral("Status: —") : QStringLiteral("状态：—")));
+        error_status_label_->setToolTip(valid || latest_data_.error_code != 0
+            ? QString(is_english_ ? "RD105 error code: %1" : "RD105 错误码：%1").arg(errorCode)
+            : (is_english_ ? QStringLiteral("No valid RD105 status") : QStringLiteral("未收到有效 RD105 状态")));
+        error_status_label_->setStyleSheet(QStringLiteral("color: %1; background: transparent;")
+            .arg(appThemeColor(latest_data_.error_code != 0 ? AppThemeColor::ToolbarRed
+                : valid ? AppThemeColor::ToolbarGreen : AppThemeColor::TextMuted, dark).name()));
         QStringList outputPercentTexts;
         for (int index = 0; index < 2; ++index)
         {
@@ -1330,6 +1348,7 @@ private:
     std::array<QLabel *, 2> target_temp_values_{};
     std::array<QLabel *, 2> current_temp_values_{};
     QWidget *title_status_strip_ = nullptr;
+    QLabel *error_status_label_ = nullptr;
     std::array<TemperatureOverviewSwitchButton *, 2> output_switch_buttons_{};
     std::array<TemperatureTrendPlotWidget *, 2> plots_{};
     VaporView::TemperatureControllerData latest_data_;

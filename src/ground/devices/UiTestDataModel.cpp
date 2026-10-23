@@ -524,6 +524,7 @@ UiTestSnapshot UiTestDataModel::snapshot(qint64 elapsedMs) const
     result.epsilon.heading_valid = true;
     result.epsilon.hdop = 0.62;
     result.epsilon.vdop = 0.88;
+    result.epsilon.diff_age_s = 0.4 + std::abs(slow) * 0.2;
     result.epsilon.hacc_m = gnssStatus.horizontalAccuracyM;
     result.epsilon.vacc_m = gnssStatus.verticalAccuracyM;
     result.epsilon.imu_temp_c = 34.0 + slow;

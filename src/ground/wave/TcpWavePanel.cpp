@@ -1775,6 +1775,12 @@ bool TcpWavePanel::hasVisibleWaveDisplay() const
     return fpga_mode_ || wave_display_all_ || wave_display_raw_ || wave_display_harmonic_ || wave_display_peak_trend_;
 }
 
+bool TcpWavePanel::hasRecentData(qint64 timeoutMs) const
+{
+    const qint64 age = QDateTime::currentMSecsSinceEpoch() - last_live_decode_time_ms_;
+    return isConnected() && last_live_decode_time_ms_ > 0 && age >= 0 && age < timeoutMs;
+}
+
 bool TcpWavePanel::usesExpandedPanelHeight() const
 {
     if (fpga_mode_) return true;
@@ -2398,9 +2404,12 @@ void TcpWavePanel::refreshFpgaWaveform()
     peak_history_ = trend.values;
     peak_wall_msecs_ = trend.wallMsecs;
     peak_plot_->setPeakValues(peak_history_, peak_wall_msecs_);
+    const QString peakText = trend.values.isEmpty() || !std::isfinite(trend.values.last())
+        ? QStringLiteral("—") : QString::number(trend.values.last(), 'g', 7);
     fpga_peak_info_label_->setText(trend.values.isEmpty() ? waiting
-        : trend.preview ? (is_english_ ? QStringLiteral("Preview peaks") : QStringLiteral("预览峰值"))
-                        : (is_english_ ? QStringLiteral("Cycle peaks") : QStringLiteral("周期峰值")));
+        : QString(is_english_ ? "%1 · Latest: %2" : "%1 · 最新：%2")
+            .arg(trend.preview ? (is_english_ ? QStringLiteral("Preview peaks") : QStringLiteral("预览峰值"))
+                               : (is_english_ ? QStringLiteral("Cycle peaks") : QStringLiteral("周期峰值")), peakText));
     fpga_peak_info_label_->setToolTip(is_english_
         ? QStringLiteral("Maximum of valid pointwise H2/H1 per cycle (dimensionless), before display decimation. Invalid references are excluded. Preview peaks cover received points only. Time is host receipt time.")
         : QStringLiteral("每周期有效 H2/H1 的最大值（无量纲），在绘图抽稀前计算；无效参考不参与峰值。预览峰值仅覆盖收到的点，时间为本机接收时间。"));

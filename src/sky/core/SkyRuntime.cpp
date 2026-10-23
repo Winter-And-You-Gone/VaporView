@@ -969,6 +969,7 @@ void SkyRuntime::sendBasicTelemetry()
         data.sys_state_packet_rate_hz = static_cast<float>(epsilon.sys_state_packet_rate_hz);
         data.status_packet_rate_hz = static_cast<float>(epsilon.status_packet_rate_hz);
         data.raw_gnss_packet_rate_hz = static_cast<float>(epsilon.raw_gnss_packet_rate_hz);
+        data.diff_age_s = static_cast<float>(epsilon.diff_age_s);
         data.raw_satellite_epoch_rate_hz = static_cast<float>(epsilon.raw_satellite_epoch_rate_hz);
         data.satellite_packet_rate_hz = static_cast<float>(epsilon.satellite_packet_rate_hz);
         data.geodetic_packet_rate_hz = static_cast<float>(epsilon.geodetic_packet_rate_hz);

@@ -266,6 +266,10 @@ public:
         setValue(QStringLiteral("lat"), gnss_fix_valid ? scalar(epsilon_data.latitude_deg, 8) : QString());
         setValue(QStringLiteral("lon"), gnss_fix_valid ? scalar(epsilon_data.longitude_deg, 8) : QString());
         setValue(QStringLiteral("height"), gnss_fix_valid ? scalar(epsilon_data.height_m, 3) : QString());
+        setValue(QStringLiteral("diff_age"), epsilon_data.diff_age_s >= 0.0 && std::isfinite(epsilon_data.diff_age_s)
+            ? scalar(epsilon_data.diff_age_s, 1) + QStringLiteral(" s") : QString());
+        setValue(QStringLiteral("dop"), epsilon_data.hdop > 0.0 && epsilon_data.vdop > 0.0
+            ? scalar(epsilon_data.hdop, 2) + QStringLiteral("/") + scalar(epsilon_data.vdop, 2) : QString());
         setValue(QStringLiteral("ned_vel"), gnss_fix_valid
             ? valueTriple(epsilon_data.vel_n_mps, epsilon_data.vel_e_mps, epsilon_data.vel_d_mps, 3)
             : QString());
@@ -586,7 +590,8 @@ private:
                                QStringLiteral("99"),
                                QStringLiteral("-179.99999999"),
                                QStringLiteral("-9999.999"),
-                               QStringLiteral("9999.999m/9999.999m")};
+                               QStringLiteral("9999.999m/9999.999m"),
+                               QStringLiteral("99999.9 s"), QStringLiteral("999.99/999.99")};
         }
         if (key == QStringLiteral("motion"))
         {
@@ -1041,6 +1046,8 @@ private:
         addField(positionGrid, row++, 0, QStringLiteral("lon"), QStringLiteral("经度[deg]:"), QStringLiteral("Longitude [deg]:"), kEpsilonPositionValueColumnWidth);
         addField(positionGrid, row++, 0, QStringLiteral("height"), QStringLiteral("高度[m]:"), QStringLiteral("Height [m]:"), kEpsilonPositionValueColumnWidth);
         addField(positionGrid, row++, 0, QStringLiteral("acc"), QStringLiteral("hAcc/vAcc:"), QStringLiteral("hAcc/vAcc:"), kEpsilonPositionValueColumnWidth);
+        addField(positionGrid, row++, 0, QStringLiteral("diff_age"), QStringLiteral("差分龄期:"), QStringLiteral("Diff. Age:"), kEpsilonPositionValueColumnWidth);
+        addField(positionGrid, row++, 0, QStringLiteral("dop"), QStringLiteral("HDOP/VDOP:"), QStringLiteral("HDOP/VDOP:"), kEpsilonPositionValueColumnWidth);
 
         QGridLayout *motionGrid = addSectionCard(QStringLiteral("motion"),
                                                  QStringLiteral("姿态与运动"),

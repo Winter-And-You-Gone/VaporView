@@ -12,6 +12,7 @@
 
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <map>
 
 namespace VaporView
@@ -255,6 +256,8 @@ struct TelemetryBasic
     float ecef_packet_rate_hz = 0.0f;
     float euler_orien_packet_rate_hz = 0.0f;
     float quat_orien_packet_rate_hz = 0.0f;
+    // Optional tail extension. Absent in older telemetry payloads.
+    float diff_age_s = std::numeric_limits<float>::quiet_NaN();
 };
 
 struct DownsampledWaveform

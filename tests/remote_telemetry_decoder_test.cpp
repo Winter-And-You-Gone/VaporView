@@ -42,6 +42,7 @@ int main(int argc, char** argv)
     telemetry.gnss_fix_code = 0;
     telemetry.gnss_satellites = 15;
     telemetry.hdop = 0.8f;
+    telemetry.diff_age_s = 1.25f;
     telemetry.vel_n_mps = 1.0f;
     telemetry.vel_e_mps = 2.0f;
     telemetry.vel_d_mps = -0.5f;
@@ -71,7 +72,7 @@ int main(int argc, char** argv)
                                              decoded.data.ecef_z_m),
             "position-only telemetry derives plausible ECEF coordinates");
     require(decoded.data.gnss_satellites == 15 && decoded.data.vel_e_mps == 2.0 &&
-                decoded.data.yaw_deg == 93.0 && decoded.data.raw_frame_count == 99,
+                decoded.data.yaw_deg == 93.0 && decoded.data.raw_frame_count == 99 && decoded.data.diff_age_s == 1.25,
             "quality, velocity, attitude, and diagnostics fields are copied");
 
     VaporView::TelemetryBasic ecefOnly;

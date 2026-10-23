@@ -586,6 +586,20 @@ void MainWindow::updateLogFilterAction()
 
 void MainWindow::updateRecordingStatusLabel()
 {
+    const auto withFpgaStatistics = [this](QString text, const QJsonObject &statistics) {
+        if (!isFpgaRelayPath()) return text;
+        const QString prefix = state_->is_english_ ? QStringLiteral("Wave features:") : QStringLiteral("波形特征：");
+        const int start = text.indexOf(prefix);
+        if (start < 0) return text;
+        const int end = text.indexOf(QLatin1Char('\n'), start);
+        const QString counts = QString(state_->is_english_
+            ? "H1/H2 cycles: %1\nNormalized peak records: %2"
+            : "H1/H2 周期：%1\n归一化峰值记录：%2")
+            .arg(statistics.value("waveform_frames").toString(QStringLiteral("0")),
+                 statistics.value("normalized_features").toString(QStringLiteral("0")));
+        text.replace(start, (end < 0 ? text.size() : end) - start, counts);
+        return text;
+    };
     if (!isRemoteSkyMode() && state_->fpga_page_ && state_->recording_service_)
     {
         const auto status = state_->recording_service_->status();
@@ -675,7 +689,10 @@ void MainWindow::updateRecordingStatusLabel()
                   .arg(rawLaserTemperatureController)
                   .arg(rawSystemTemperatureController)
                   .arg(rawTotal);
-        const QString text = QStringLiteral("%1\n%2").arg(stateText, detail);
+        QJsonObject simulatedStatistics;
+        simulatedStatistics.insert("waveform_frames", QString::number(countAtRate(10)));
+        simulatedStatistics.insert("normalized_features", QString::number(countAtRate(10)));
+        const QString text = QStringLiteral("%1\n%2").arg(stateText, withFpgaStatistics(detail, simulatedStatistics));
         setSectionTitleIconName(state_->recording_status_title_lbl_,
                                 state_->ui_test_recording_state_ == 1
                                     ? QStringLiteral("pencil-sparkles")
@@ -837,7 +854,7 @@ void MainWindow::updateRecordingStatusLabel()
                   .arg(displayStatus.raw_laser_temperature_controller_record_count)
                   .arg(displayStatus.raw_system_temperature_controller_record_count + fpgaCount(fpgaStatistics,QStringLiteral("70")))
                   .arg(rawTotal);
-        const QString detailWithSchedule = appendScheduledLine(appendFpgaCounts(detail,fpgaStatistics,fpgaTotal));
+        const QString detailWithSchedule = appendScheduledLine(appendFpgaCounts(withFpgaStatistics(detail, fpgaStatistics),fpgaStatistics,fpgaTotal));
         if (state_->remote_recording_state_ == 1)
         {
             setRecordingTitleIcon(true);
@@ -893,7 +910,7 @@ void MainWindow::updateRecordingStatusLabel()
         static_cast<qulonglong>(recordingStatus.rawLaserTemperatureControllerRecords),
         static_cast<qulonglong>(recordingStatus.rawSystemTemperatureControllerRecords + fpgaCount(recordingStatus.fpgaStatistics,QStringLiteral("70"))),
         rawTotal);
-    detail=appendFpgaCounts(detail,recordingStatus.fpgaStatistics,recordingStatus.rawFpgaRecords);
+    detail=appendFpgaCounts(withFpgaStatistics(detail, recordingStatus.fpgaStatistics),recordingStatus.fpgaStatistics,recordingStatus.rawFpgaRecords);
     if (recordingStatus.sessionOpen)
     {
         if (recordingStatus.writeFailed)

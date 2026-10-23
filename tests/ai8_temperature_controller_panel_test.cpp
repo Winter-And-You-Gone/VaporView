@@ -205,7 +205,34 @@ int main(int argc, char **argv)
                         std::isfinite(thresholdValues[index]),
                 "Overview colors follow strict temperature thresholds and finite data availability");
     }
+    overviewLiveData.measuredC.fill(25.0);
+    overviewLiveData.controlStatesValid = false;
+    overviewLiveData.alarmStatusValid = false;
+    overviewLiveData.detailedChannel = 1;
+    overviewLiveData.controlRaw = 1;
+    overviewLiveData.alarmRaw = 0;
+    overview.applyLiveData(overviewLiveData);
+    overviewLiveData.detailedChannel = 2;
+    overviewLiveData.controlRaw = 2;
+    overviewLiveData.alarmRaw = 4;
+    overview.applyLiveData(overviewLiveData);
+    const auto statuses = overview.findChildren<QLabel *>(QStringLiteral("ai8TemperatureOverviewStatusLabel"));
+    require(statuses.size() == 8 && statuses[0]->text() == QStringLiteral("运行") &&
+        statuses[1]->text() == QStringLiteral("告警") && statuses[2]->text() == QStringLiteral("—"),
+        "FPGA scans retain each channel state without leaking it to other channels");
+    overviewLiveData.measuredC[0] = std::numeric_limits<double>::quiet_NaN();
+    overview.applyLiveData(overviewLiveData);
+    require(statuses[0]->text() == QStringLiteral("—"), "Missing FPGA channel clears its cached status");
+    overviewLiveData.controlStatesValid = true;
+    overviewLiveData.alarmStatusValid = true;
+    overviewLiveData.detailedChannel = 0;
+    overviewLiveData.measuredC.fill(25.0);
+    overviewLiveData.controlStates.fill(VaporView::Ai8TemperatureControllerProtocol::ChannelControlState::AutoTuning);
+    overviewLiveData.alarmStatusRegisters.fill(0);
+    overview.applyLiveData(overviewLiveData);
+    require(statuses[7]->text() == QStringLiteral("自整定"), "Direct all-channel states are shown");
     overview.setEnglish(true);
+    require(statuses[7]->text() == QStringLiteral("Auto tuning"), "Channel states follow the selected language");
     for (QLabel *channelLabel : overviewChannelLabels)
     {
         const int index = channelLabel->property("channelIndex").toInt();
@@ -221,6 +248,7 @@ int main(int argc, char **argv)
                     ? QStringLiteral("-15.5 °C") : QStringLiteral("---")),
                 "legacy single-channel details cannot leak a target into another channel");
     overview.applyLiveData({});
+    for (QLabel *status : statuses) require(status->text() == QStringLiteral("—"), "Disconnect clears all channel statuses");
     for (QLabel *target : overviewTargets)
         require(target->text() == QStringLiteral("---"), "unavailable data clears target temperatures");
     for (QLabel *valueLabel : overviewValueLabels)

@@ -573,10 +573,11 @@ int main(int argc, char **argv)
         firstDataRow == (QStringList() << QStringLiteral("磁盘") << QStringLiteral("记录") << QStringLiteral("CRC"));
     const bool englishStatusRow =
         firstDataRow == (QStringList() << QStringLiteral("Disk") << QStringLiteral("Record") << QStringLiteral("CRC"));
-    require(dataRows.size() == 3 &&
+    require(dataRows.size() == 4 &&
                 dataRows.at(0).size() == 3 &&
                 dataRows.at(1).size() == 3 &&
-                dataRows.at(2).size() == 2 &&
+                dataRows.at(2).size() == 3 &&
+                dataRows.at(3).size() == 3 &&
                 (chineseStatusRow || englishStatusRow),
             "data subcard places disk, recording state, and CRC on the first row");
     requireAlignedColumns(subCards.at(2), 3,

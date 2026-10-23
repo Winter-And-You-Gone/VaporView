@@ -132,6 +132,19 @@ int main(int argc, char **argv)
                 percent->text().contains(QStringLiteral("2: -42.25%")),
             "Both output percentages are visible with their channel numbers");
     QList<QPair<quint8, bool>> outputRequests;
+    auto *errorStatus = overview->titleStatusWidget()->findChild<QLabel *>(QStringLiteral("temperatureOverviewErrorStatusLabel"));
+    require(errorStatus && errorStatus->text() == QStringLiteral("正常"), "Home RD105 header shows confirmed normal status");
+    data.error_code = 0x12;
+    coordinator.updateTemperatureData(data);
+    require(errorStatus->text().contains(QStringLiteral("0X0012")), "Home RD105 header exposes controller faults");
+    data.valid = false;
+    coordinator.updateTemperatureData(data);
+    require(errorStatus->text().contains(QStringLiteral("0X0012")), "A controller fault remains visible when its measurement is invalid");
+    data.error_code = 0;
+    coordinator.updateTemperatureData(data);
+    require(errorStatus->text().contains(QStringLiteral("—")), "Missing RD105 data does not report normal status");
+    data.valid = true;
+    coordinator.updateTemperatureData(data);
     overview->setOutputEnabledCallback([&](quint8 channel, bool enabled) { outputRequests.append({channel, enabled}); });
     outputs[0]->click();
     outputs[1]->click();

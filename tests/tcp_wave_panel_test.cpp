@@ -680,12 +680,13 @@ int main(int argc, char **argv)
             &&std::abs(panel.testSecondHarmonicSamples().first()-std::hypot(5,7))<0.0001,
             "IQ-only H1 and H2 graphs display magnitudes of their respective quadrature pairs");
         panel.setFpgaSecondHarmonicPeak(0x31,2,200,10,true);
-        require(panel.findChild<QLabel*>("fpgaMonitorPeakInfo")->text()=="预览峰值","bounded previews are explicitly marked in the peak trend");
+        require(panel.findChild<QLabel*>("fpgaMonitorPeakInfo")->text()=="预览峰值 · 最新：10","bounded previews show the latest peak and retain the preview label");
         panel.setFpgaWaveform(0x31,{{},{},{},{},{}},{"I1","Q1","I2","Q2","H2/H1"},"incomplete",2);
         require(raw->property("sampleCount").toInt()==0&&h2->property("sampleCount").toInt()==0
             &&dlia->property("sampleCount").toInt()==0,"invalid FPGA cycle clears all three harmonic waveforms");
         panel.setFpgaSecondHarmonicPeak(0x31,3,300,std::numeric_limits<double>::quiet_NaN(),false);
         require(panel.testPeakValues().size()==2&&std::isnan(panel.testPeakValues().last()),"invalid cycles leave a gap in the trend");
+        require(panel.findChild<QLabel*>("fpgaMonitorPeakInfo")->text().endsWith(QStringLiteral("最新：—")), "invalid latest peaks never retain the previous numeric result");
         channel->setCurrentIndex(0);
         require(panel.testPeakValues()==QVector<float>({4}),"switching back restores the independent channel trend");
         QMetaObject::invokeMethod(&panel,"onClearPeakPlotClicked");

@@ -154,6 +154,9 @@ private:
     std::array<QLabel *, Ai8TemperatureControllerProtocol::kChannelCount> target_labels_{};
     std::array<QLabel *, Ai8TemperatureControllerProtocol::kChannelCount> target_captions_{};
     std::array<QLabel *, Ai8TemperatureControllerProtocol::kChannelCount> current_captions_{};
+    std::array<QLabel *, Ai8TemperatureControllerProtocol::kChannelCount> status_labels_{};
+    std::array<Ai8TemperatureControllerProtocol::ChannelControlState, Ai8TemperatureControllerProtocol::kChannelCount> control_states_{};
+    std::array<int, Ai8TemperatureControllerProtocol::kChannelCount> alarm_states_{-1, -1, -1, -1, -1, -1, -1, -1};
     Ai8TemperatureControllerProtocol::LiveData latest_live_data_;
     bool english_ = false;
 };

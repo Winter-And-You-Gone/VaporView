@@ -198,7 +198,7 @@ struct EpsilonData
   double lat_std_m = 0.0;
   double lon_std_m = 0.0;
   double height_std_m = 0.0;
-  double diff_age_s = 0.0;
+  double diff_age_s = std::numeric_limits<double>::quiet_NaN();
   double gnss_course_deg = std::numeric_limits<double>::quiet_NaN();
   double geoid_separation_m = std::numeric_limits<double>::quiet_NaN();
   bool gnss_velocity_valid = false;

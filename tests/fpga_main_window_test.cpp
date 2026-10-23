@@ -15,6 +15,7 @@
 #include "FpgaDeviceController.h"
 #include "FpgaVlp1.h"
 #include "ground/session/SessionWaveformRepository.h"
+#include "ground/main/RecordingStatusView.h"
 #include <QFile>
 #include "ground/wave/TcpWavePanel.h"
 #include "SkyConfig.h"
@@ -47,6 +48,8 @@
 #include <QStackedWidget>
 #include <QThread>
 #include <QTimer>
+#include <QTcpServer>
+#include <QTcpSocket>
 #include <QDoubleSpinBox>
 #include <QTemporaryDir>
 #include <QDir>
@@ -55,6 +58,7 @@
 #include <QSignalBlocker>
 #include <stdexcept>
 #include <cmath>
+#include <cstring>
 #include <QtEndian>
 #include <cstdlib>
 #include <iostream>
@@ -119,11 +123,11 @@ static bool onlyPressureDataAvailable(MainWindow& window)
         auto *value=pill->findChild<QLabel*>("homeTelemetrySummaryValueLabel");
         if(!name||!value)continue;
         if(QStringList{QStringLiteral("基础"),QStringLiteral("特征值"),QStringLiteral("状态"),QStringLiteral("原始波形"),QStringLiteral("谐波波形"),QStringLiteral("波形采集"),QStringLiteral("天→地"),QStringLiteral("地→天"),QStringLiteral("合")}.contains(name->text())&&value->property("telemetryAvailable").toBool())return false;
-        if(!QStringList{"EPSILON","PTB","HMP","Lidar",QStringLiteral("波形")}.contains(name->text()))continue;
-        if(value->property("telemetryAvailable").toBool()!=(name->text()=="PTB"))return false;
+        if(!QStringList{"EPSILON","PTB","PTB210","HMP","Lidar","TFA1500-L","RD105","AI-8288","BMP390","SHT45",QStringLiteral("波形")}.contains(name->text()))continue;
+        if(value->property("telemetryAvailable").toBool()!=(name->text()=="PTB"||name->text()=="PTB210"))return false;
         ++found;
     }
-    return found>=5;
+    return found>=9;
 }
 static bool onlyPressureConnected(MainWindow &window)
 {
@@ -1484,6 +1488,39 @@ static void directInternalEnvironmentRouting()
     MainWindow window;QMetaObject::invokeMethod(&window,"onDataSourceModeChanged",Q_ARG(int,0));
     auto *path=window.findChild<QComboBox*>("deviceSensorTransportPathCombo");
     path->setCurrentIndex(path->findData("direct_devices"));
+    QTcpServer waveServer;
+    require(waveServer.listen(QHostAddress::LocalHost, 0), "Local direct waveform server listens");
+    auto *wavePanel = window.findChild<TcpWavePanel *>();
+    wavePanel->setConnectionEndpoint("127.0.0.1", waveServer.serverPort());
+    wavePanel->toggleConnection();
+    require(waitUntil([&] { return wavePanel->isConnected() && waveServer.hasPendingConnections(); }), "Direct waveform opens without a remote Sky connection");
+    auto *waveSocket = waveServer.nextPendingConnection();
+    const auto frame = [](int count, bool harmonic) {
+        QByteArray bytes(4 + count * 4, '\0');
+        qToLittleEndian<qint32>(count * 4, bytes.data());
+        for (int i = 0; i < count; ++i)
+        {
+            const float value = harmonic ? float(std::exp(-std::pow((i - count * 0.45) / (count * 0.08), 2)))
+                : float((i % 80) / 79.0 * 2.0 - 1.0);
+            quint32 bits;
+            std::memcpy(&bits, &value, sizeof(bits));
+            qToLittleEndian<quint32>(bits, bytes.data() + 4 + i * 4);
+        }
+        return bytes;
+    };
+    waveSocket->write(frame(2000, false) + frame(1800, true));
+    const auto waveAvailable = [&] {
+        for (auto *pill : window.findChildren<QFrame *>("homeTelemetrySummaryPill"))
+        {
+            auto *name = pill->findChild<QLabel *>("homeTelemetrySummaryNameLabel");
+            auto *value = pill->findChild<QLabel *>("homeTelemetrySummaryValueLabel");
+            if (name && value && name->text() == QStringLiteral("波形") && value->property("telemetryAvailable").toBool()) return true;
+        }
+        return false;
+    };
+    require(waitUntil(waveAvailable), "Local direct summary reports received data while the remote link is closed");
+    require(waitUntil([&] { return !waveAvailable(); }, 5000), "Stalled local waveform becomes unavailable without disconnecting");
+    wavePanel->toggleConnection();
     auto *stack=window.findChild<QStackedWidget*>("mainPageStack");
     QWidget *configPage=path;while(stack->indexOf(configPage)<0)configPage=configPage->parentWidget();
     stack->setCurrentWidget(configPage);window.resize(1600,1000);window.show();processFor(100);
@@ -1630,6 +1667,10 @@ static void harmonicRecordingUi()
     auto *recordingStatus=page->findChild<QLabel*>("fpgaRecordingStatus");
     check(recordingStatus&&recordingStatus->text().contains(
         QStringLiteral("H1/H2 周期：%1").arg(metadata.metadata.waveformFrames)),"recording UI reports actual harmonic cycle counts");
+    auto *homeRecording = static_cast<VaporView::Ground::Main::RecordingStatusView *>(window.findChild<QWidget *>("recordingStatusView"));
+    check(homeRecording && homeRecording->statusText().contains(QStringLiteral("归一化峰值记录：%1").arg(metadata.metadata.waveformFrames)) &&
+        homeRecording->statusText().contains(QStringLiteral("H1/H2 周期：%1").arg(metadata.metadata.waveformFrames)) &&
+        !homeRecording->statusText().contains(QStringLiteral("仅远程有效")), "Home recording summary exposes real harmonic and normalized feature counts");
     window.close();
 }
 

@@ -2,6 +2,7 @@
 #include "ground/widgets/TemperatureTrendPlotWidget.h"
 #include "ground/widgets/TemperatureControllerWidgets.h"
 #include "Ai8TemperatureControllerProtocol.h"
+#include "shared/theme/AppTheme.h"
 
 #include <QAbstractButton>
 #include <QButtonGroup>
@@ -1621,12 +1622,12 @@ Ai8TemperatureOverviewPanel::Ai8TemperatureOverviewPanel(QWidget *parent)
         channelLabel->setProperty("channelIndex", index);
         channelLabel->setAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
         channelLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::MinimumExpanding);
-        cellLayout->addWidget(channelLabel, 0, 0, 2, 1);
+        cellLayout->addWidget(channelLabel, 0, 0, 3, 1);
 
         auto *divider = new QFrame(cell);
         divider->setObjectName(QStringLiteral("ai8TemperatureOverviewDivider"));
         divider->setFixedWidth(1);
-        cellLayout->addWidget(divider, 0, 1, 2, 1);
+        cellLayout->addWidget(divider, 0, 1, 3, 1);
 
         auto *targetCaption = new QLabel(cell);
         auto *currentCaption = new QLabel(cell);
@@ -1646,6 +1647,13 @@ Ai8TemperatureOverviewPanel::Ai8TemperatureOverviewPanel(QWidget *parent)
         valueLabel->setProperty("channelIndex", index);
         valueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
         cellLayout->addWidget(valueLabel, 1, 3);
+
+        auto *statusLabel = new QLabel(cell);
+        statusLabel->setObjectName(QStringLiteral("ai8TemperatureOverviewStatusLabel"));
+        statusLabel->setProperty("channelIndex", index);
+        statusLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        cellLayout->addWidget(statusLabel, 2, 2, 1, 2);
+        status_labels_[static_cast<size_t>(index)] = statusLabel;
 
         channel_labels_[static_cast<size_t>(index)] = channelLabel;
         value_labels_[static_cast<size_t>(index)] = valueLabel;
@@ -1674,6 +1682,25 @@ void Ai8TemperatureOverviewPanel::applyLiveData(
     const Ai8TemperatureControllerProtocol::LiveData& liveData)
 {
     latest_live_data_ = liveData;
+    using namespace Ai8TemperatureControllerProtocol;
+    for (int index = 0; index < kChannelCount; ++index)
+    {
+        if (!liveData.valid || !std::isfinite(liveData.measuredC[index]))
+        {
+            control_states_[index] = ChannelControlState::Unknown;
+            alarm_states_[index] = -1;
+            continue;
+        }
+        if (liveData.controlStatesValid) control_states_[index] = liveData.controlStates[index];
+        if (liveData.alarmStatusValid)
+            alarm_states_[index] = decodeChannelAlarmStatus(liveData.alarmStatusRegisters[index / 2], index + 1);
+        if (liveData.detailedChannel == index + 1)
+        {
+            control_states_[index] = decodeChannelControlState(quint16(liveData.controlRaw) << 8, 1);
+            alarm_states_[index] = liveData.alarmRaw;
+            if (liveData.mainStatusValid && (liveData.mainStatusRaw & 0x300)) alarm_states_[index] |= 0x100;
+        }
+    }
     refreshLabels();
 }
 
@@ -1704,6 +1731,23 @@ void Ai8TemperatureOverviewPanel::refreshLabels()
             : QStringLiteral("通道 %1 目标温度 %2").arg(index + 1).arg(targetLabel->text()));
         const double measured = latest_live_data_.measuredC[static_cast<size_t>(index)];
         const bool available = latest_live_data_.valid && std::isfinite(measured);
+        using Ai8TemperatureControllerProtocol::ChannelControlState;
+        QString stateText;
+        if (alarm_states_[index] > 0) stateText = english_ ? QStringLiteral("Alarm") : QStringLiteral("告警");
+        else switch (control_states_[index])
+        {
+        case ChannelControlState::ApidOutput: stateText = english_ ? QStringLiteral("Running") : QStringLiteral("运行"); break;
+        case ChannelControlState::AutoTuning: stateText = english_ ? QStringLiteral("Auto tuning") : QStringLiteral("自整定"); break;
+        case ChannelControlState::Stopped: stateText = english_ ? QStringLiteral("Stopped") : QStringLiteral("停止"); break;
+        default: stateText = QStringLiteral("—"); break;
+        }
+        status_labels_[index]->setText(stateText);
+        status_labels_[index]->setToolTip(QString(english_ ? "Channel %1 status: %2; alarm: %3" : "通道%1状态：%2；告警：%3")
+            .arg(index + 1).arg(stateText, alarm_states_[index] < 0 ? QStringLiteral("—")
+                : QStringLiteral("0x%1").arg(alarm_states_[index], 2, 16, QLatin1Char('0'))));
+        status_labels_[index]->setStyleSheet(QStringLiteral("color: %1;")
+            .arg(appThemeColor(alarm_states_[index] > 0 ? AppThemeColor::ToolbarRed
+                : AppThemeColor::Text, VaporView::isDarkThemeEnabled()).name()));
         const QString valueText = available
             ? temperatureText(measured)
             : QStringLiteral("---");

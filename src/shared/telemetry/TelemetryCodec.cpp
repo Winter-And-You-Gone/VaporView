@@ -543,6 +543,7 @@ QByteArray TelemetryCodec::serializeBasicTelemetry(const TelemetryBasic& data)
         appendLe<quint32>(payload, data.firmware_version);
         payload.append(data.firmware_name.toLatin1().left(8).leftJustified(8, '\0'));
     }
+    if (std::isfinite(data.diff_age_s)) appendFloatLe(payload, data.diff_age_s);
     return payload;
 }
 
@@ -642,9 +643,10 @@ bool TelemetryCodec::parseBasicTelemetry(const QByteArray& payload, TelemetryBas
     }
     if(payload.size()-offset>=static_cast<qsizetype>(sizeof(float)) &&
        !readFloatLe(payload,offset,data.raw_satellite_epoch_rate_hz))return false;
-    if (payload.size() > offset)
+    const qsizetype remaining = payload.size() - offset;
+    if (remaining != 0 && remaining != 4 && remaining != 40 && remaining != 44) return false;
+    if (remaining >= 40)
     {
-        if (payload.size() - offset != 40) return false;
         for (auto& value : data.serial_number)
             if (!readLe(payload, offset, value)) return false;
         if (!readLe(payload, offset, data.hardware_version)) return false;
@@ -664,6 +666,7 @@ bool TelemetryCodec::parseBasicTelemetry(const QByteArray& payload, TelemetryBas
             !readName(data.firmware_name)) return false;
         data.device_info_valid = true;
     }
+    if (payload.size() > offset && !readFloatLe(payload, offset, data.diff_age_s)) return false;
     return true;
 }
 

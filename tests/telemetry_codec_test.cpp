@@ -190,6 +190,21 @@ void testFrameRoundTrip()
     invalidIdentity[payload.size() + 20] = '\1';
     require(!VaporView::TelemetryCodec::parseBasicTelemetry(invalidIdentity, identityParsed),
             "reject unsafe version text in telemetry");
+    require(!std::isfinite(parsed.diff_age_s), "Legacy telemetry does not fabricate differential age");
+    for (bool identity : {false, true})
+    {
+        auto extended = identity ? identityBasic : basic;
+        extended.diff_age_s = 3.25f;
+        const auto extendedPayload = VaporView::TelemetryCodec::serializeBasicTelemetry(extended);
+        VaporView::TelemetryBasic roundTrip;
+        require(VaporView::TelemetryCodec::parseBasicTelemetry(extendedPayload, roundTrip) &&
+            roundTrip.diff_age_s == extended.diff_age_s && roundTrip.device_info_valid == identity,
+            "Differential age round-trips alongside optional device identity");
+        require(!VaporView::TelemetryCodec::parseBasicTelemetry(extendedPayload.chopped(1), roundTrip),
+            "Truncated differential age is rejected");
+        require(VaporView::TelemetryCodec::parseBasicTelemetry(extendedPayload.chopped(4), roundTrip) &&
+            !std::isfinite(roundTrip.diff_age_s), "Old payloads remain readable without differential age");
+    }
     require(std::fabs(parsed.imu_packet_rate_hz - basic.imu_packet_rate_hz) < 0.000001f, "basic imu packet rate");
     require(std::fabs(parsed.ecef_packet_rate_hz - basic.ecef_packet_rate_hz) < 0.000001f, "basic ecef packet rate");
     require(std::fabs(parsed.status_packet_rate_hz - basic.status_packet_rate_hz) < 0.000001f, "basic status packet rate");

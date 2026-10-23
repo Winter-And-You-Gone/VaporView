@@ -40,6 +40,7 @@ public:
     QString host() const;
     int port() const;
     bool isConnected() const;
+    bool hasRecentData(qint64 timeoutMs) const;
     bool isConnecting() const;
     bool endpointEditable() const;
     void toggleConnection();

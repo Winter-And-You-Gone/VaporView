@@ -2210,6 +2210,6 @@ void MainWindow::onRefreshTimer()
         state_->device_panel_coordinator_->updateRates(panelRates);
         state_->device_panel_coordinator_->updateTemperatureData(state_->current_temperature_controller_);
     }
-    if(isFpgaRelayPath())updateRemoteTelemetrySummaryLabel();
+    updateRemoteTelemetrySummaryLabel();
     updateHomeDeviceStatusCapsules();
 }

@@ -96,6 +96,7 @@ collector   |
 ## Telemetry And Recording
 
 - `TelemetryBasic` remains for neutral physical quantities: pressure, temperature, humidity, lidar, navigation, and health/status fields.
+- 首页 EPSILON 显示差分龄期和 HDOP/VDOP。`TelemetryBasic` 在现有频率尾部及可选 40 字节设备身份信息之后，可追加 4 字节 little-endian float 差分龄期（秒）；未提供时不追加，上位机以 NaN/“—”处理。新版 Ground/SkyTui 兼容没有该扩展的旧载荷；接收新增龄期载荷需要同步更新接收端，旧接收端不支持此尾部。FPGA 固件协议不变。
 - Independent BMP/SHT internal measurements use `InternalEnvironment` (`0x0F`) on the same telemetry TCP link. Ground displays their typed readings in the temperature overview title, with independent connection and freshness handling. They do not feed environmental session/raw callbacks.
 - `TelemetryStatus` includes RTCM correction receive/drop counters so Ground can distinguish configured/streaming/error states without logging every RTCM chunk.
 - RD105 continues to use dedicated `TemperatureControllerStatus` telemetry and `sensors/laser_temperature_controller.csv`.

@@ -655,6 +655,7 @@ void SkyLocalIpcClient::updateFromBasic(const TelemetryBasic& basic)
         dashboard_.epsilon.sys_state_packet_rate_hz = basic.sys_state_packet_rate_hz;
         dashboard_.epsilon.status_packet_rate_hz = basic.status_packet_rate_hz;
         dashboard_.epsilon.raw_gnss_packet_rate_hz = basic.raw_gnss_packet_rate_hz;
+        dashboard_.epsilon.diff_age_s = basic.diff_age_s;
         dashboard_.epsilon.satellite_packet_rate_hz = basic.satellite_packet_rate_hz;
         dashboard_.epsilon.geodetic_packet_rate_hz = basic.geodetic_packet_rate_hz;
         dashboard_.epsilon.ecef_packet_rate_hz = basic.ecef_packet_rate_hz;
