@@ -3475,6 +3475,44 @@ void requireTelemetrySummaryPillsOrdered(QWidget *summaryContainer, const char *
     }
 }
 
+void requireHomeDataRowsPacked(QWidget *summaryContainer)
+{
+    processEventsFor(100);
+    const auto sections = sortedTelemetrySections(summaryContainer);
+    require(sections.size() == 3, "Home summary has three sections");
+    auto *section = sections.last();
+    auto pills = section->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
+    std::sort(pills.begin(), pills.end(), [section](QFrame *a, QFrame *b) {
+        const QPoint left = a->mapTo(section, QPoint());
+        const QPoint right = b->mapTo(section, QPoint());
+        return left.y() == right.y() ? left.x() < right.x() : left.y() < right.y();
+    });
+    require(pills.size() == 9, "Automatic wrapping preserves all nine devices");
+    for (int i = 1; i < pills.size(); ++i)
+    {
+        auto *previous = pills.at(i - 1);
+        auto *next = pills.at(i);
+        if (previous->parentWidget() == next->parentWidget())
+        {
+            continue;
+        }
+        const auto *rowLayout = previous->parentWidget()->layout();
+        const int usedRight = previous->mapTo(section, QPoint()).x() + previous->width();
+        const int contentRight = section->contentsRect().right() + 1 - section->layout()->contentsMargins().right();
+        if (usedRight + rowLayout->spacing() + next->sizeHint().width() <= contentRight)
+        {
+            std::cerr << "Premature data wrap: section=" << section->width()
+                      << " previous=" << previous->findChild<QLabel *>("homeTelemetrySummaryNameLabel")->text().toStdString()
+                      << " usedRight=" << usedRight << " nextWidth=" << next->sizeHint().width()
+                      << " contentRight=" << contentRight << '\n';
+        }
+        require(usedRight + rowLayout->spacing() + next->sizeHint().width() > contentRight,
+            "Home data row wraps only when the next device cannot fit");
+    }
+    requireTelemetrySummaryPillsOrdered(summaryContainer, "Automatically wrapped devices stay ordered without overlap");
+    requireTelemetryLabelsFit(summaryContainer, "Automatic wrapping keeps device names and values visible");
+}
+
 bool isRemoteSourceModeText(const QString& text)
 {
     return text.contains(QStringLiteral("天地远程")) ||
@@ -3928,6 +3966,7 @@ void requireHomeOverviewLanguageWidthRoundTrip()
     requireTelemetryLabelsFit(
         languageTelemetrySummaryContainer,
         "language overview telemetry labels fit at startup");
+    requireHomeDataRowsPacked(languageTelemetrySummaryContainer);
     const QVector<TelemetryPillWidthSnapshotItem> initialTelemetryPillWidths =
         telemetryPillWidthSnapshot(languageTelemetrySummaryContainer);
     requireEpsilonSectionTitleWidths(languageEpsilonPanel, false);
@@ -4024,6 +4063,7 @@ void requireHomeOverviewLanguageWidthRoundTrip()
     requireTelemetryLabelsFit(
         languageTelemetrySummaryContainer,
         "language overview telemetry labels fit in English");
+    requireHomeDataRowsPacked(languageTelemetrySummaryContainer);
     requireEpsilonSectionTitleWidths(languageEpsilonPanel, true);
     require(QMetaObject::invokeMethod(&languageOverviewWindow,
                                       "onSwitchLanguage",
@@ -4062,6 +4102,7 @@ void requireHomeOverviewLanguageWidthRoundTrip()
     requireTelemetryLabelsFit(
         languageTelemetrySummaryContainer,
         "language overview telemetry labels fit after returning to Chinese");
+    requireHomeDataRowsPacked(languageTelemetrySummaryContainer);
     requireTelemetryPillWidthSnapshotNotWider(
         initialTelemetryPillWidths,
         telemetryPillWidthSnapshot(languageTelemetrySummaryContainer),
@@ -4511,6 +4552,8 @@ void requireHomeThreeColumnLayout()
                 processEventsFor(80);
                 requireHomeTemperatureColumnMinimumHeight(window);
                 requireTelemetryLabelsFit(overview->widget(0), "full overview descriptions fit every pill");
+                requireHomeDataRowsPacked(overview->widget(0)->findChild<QWidget *>(
+                    QStringLiteral("homeTelemetrySummaryContainer")));
                 if (extra >= 0)
                 {
                     require(overview->widget(2) == environment && sensors->count() == 1,
@@ -4564,11 +4607,15 @@ void requireHomeThreeColumnLayout()
             QCoreApplication::sendEvent(handle, &release);
             processEventsFor(200);
             const int manualDeviceWidth = overview->sizes().at(0);
+            requireHomeDataRowsPacked(overview->widget(0)->findChild<QWidget *>(
+                QStringLiteral("homeTelemetrySummaryContainer")));
             require(manualDeviceWidth >= compactDeviceWidth + 40 &&
                         !overview->property(VaporView::Ground::MainSupport::kHomeOverviewDeviceAutoManagedWidthProperty).toBool(),
                     "the device overview remains manually resizable through its splitter handle");
             window.resize(window.width() + 160, 700);
             processEventsFor(200);
+            requireHomeDataRowsPacked(overview->widget(0)->findChild<QWidget *>(
+                QStringLiteral("homeTelemetrySummaryContainer")));
             require(std::abs(overview->sizes().at(0) - manualDeviceWidth) <= 1,
                     "window growth preserves the manually selected device overview width");
             overview->setProperty(VaporView::Ground::MainSupport::kHomeOverviewDeviceAutoManagedWidthProperty, true);
@@ -4594,6 +4641,8 @@ void requireHomeThreeColumnLayout()
             action->trigger();
             break;
         }
+    // Compare at the original width: automatic summary wrapping changes height with width.
+    window.resize(2400, 700);
     processEventsFor(200);
     requireHomeTemperatureColumnMinimumHeight(window);
     require(environment->minimumHeight() == standardMinimumHeight,

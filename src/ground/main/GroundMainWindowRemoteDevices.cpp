@@ -211,6 +211,111 @@ bool updateSummarySectionValues(QVBoxLayout *sectionLayout,
     return true;
 }
 
+void reflowHomeDeviceSummary(QVBoxLayout *sectionLayout, int rowHeight, int spacing, int borderAllowance)
+{
+    auto *section = sectionLayout ? qobject_cast<QWidget *>(sectionLayout->parent()) : nullptr;
+    // Newly rebuilt rows may not be visible yet, but still need their first reflow.
+    if (!section || sectionLayout->count() == 0)
+    {
+        return;
+    }
+    QList<QWidget *> lines;
+    QList<QFrame *> pills;
+    QList<QList<QFrame *>> currentRows;
+    for (int i = 0; i < sectionLayout->count(); ++i)
+    {
+        QWidget *line = sectionLayout->itemAt(i)->widget();
+        if (!line)
+        {
+            continue;
+        }
+        lines << line;
+        currentRows.append(QList<QFrame *>{});
+        for (int j = 0; j < line->layout()->count(); ++j)
+        {
+            if (auto *pill = qobject_cast<QFrame *>(line->layout()->itemAt(j)->widget());
+                pill && pill->objectName() == QStringLiteral("homeTelemetrySummaryPill"))
+            {
+                pills << pill;
+                currentRows.last() << pill;
+            }
+        }
+    }
+    if (lines.isEmpty() || pills.isEmpty())
+    {
+        return;
+    }
+    auto *title = lines.first()->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryTitleLabel"));
+    const QMargins margins = sectionLayout->contentsMargins();
+    const int available = section->contentsRect().width() - margins.left() - margins.right();
+    QList<QList<QFrame *>> rows{{}};
+    int used = title ? title->width() : 0;
+    int minimumWidth = used;
+    for (QFrame *pill : pills)
+    {
+        const int width = std::max(pill->minimumWidth(), pill->sizeHint().width());
+        minimumWidth = std::max(minimumWidth, width + (pill == pills.first() && title ? title->width() + spacing : 0));
+        if (!rows.last().isEmpty() && used + spacing + width > available)
+        {
+            rows.append(QList<QFrame *>{});
+            used = 0;
+        }
+        used += (used > 0 ? spacing : 0) + width;
+        rows.last() << pill;
+    }
+    if (currentRows != rows)
+    {
+        for (QWidget *line : lines)
+        {
+            while (QLayoutItem *item = line->layout()->takeAt(0))
+            {
+                delete item;
+            }
+        }
+        while (lines.size() < rows.size())
+        {
+            auto *line = new QWidget(section);
+            line->setFixedHeight(rowHeight);
+            auto *layout = new QHBoxLayout(line);
+            layout->setContentsMargins(0, 0, 0, 0);
+            layout->setSpacing(spacing);
+            sectionLayout->addWidget(line, 1, Qt::AlignTop);
+            lines << line;
+        }
+        if (title)
+        {
+            lines.first()->layout()->addWidget(title);
+        }
+        for (int i = 0; i < rows.size(); ++i)
+        {
+            auto *layout = static_cast<QHBoxLayout *>(lines.at(i)->layout());
+            for (QFrame *pill : rows.at(i))
+            {
+                layout->addWidget(pill, 0, Qt::AlignVCenter);
+                pill->show();
+            }
+            layout->addStretch(1);
+        }
+        while (lines.size() > rows.size())
+        {
+            delete lines.takeLast();
+        }
+    }
+    // Row contents must not pin the section to a previous, wider arrangement.
+    for (QWidget *line : lines)
+    {
+        line->setFixedHeight(rowHeight);
+        line->layout()->setSpacing(spacing);
+        line->setMinimumWidth(0);
+        line->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+        line->show();
+    }
+    section->setMinimumWidth(minimumWidth + margins.left() + margins.right());
+    section->setFixedHeight(margins.top() + margins.bottom() + rows.size() * rowHeight +
+        (rows.size() - 1) * sectionLayout->spacing() + borderAllowance);
+    sectionLayout->activate();
+}
+
 QString rd105OutcomeName(VaporView::Ground::Devices::Rd105OperationOutcome outcome)
 {
     using Outcome = VaporView::Ground::Devices::Rd105OperationOutcome;
@@ -791,6 +896,7 @@ void MainWindow::updateConfigCardHeightForSourceMode()
         return;
     }
 
+    reflowHomeDeviceSummary(state_->data_telemetry_device_summary_layout_, scalePixels(28), scalePixels(2), scalePixels(2));
     int minimumHeight = scaledConfiguredHeight(state_->config_group_, kConfigCardMinHeight);
     if (state_->data_telemetry_summary_card_)
     {
@@ -1453,7 +1559,8 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
     bool homeSummaryNeedsRender = false;
     if (state_->data_telemetry_summary_card_)
     {
-        homeSummaryNeedsRender = !(
+        homeSummaryNeedsRender =
+            state_->data_telemetry_summary_card_->property(kSummaryStructureKeyProperty).toString() != summaryStructureKey || !(
             updateSummarySectionValues(state_->data_telemetry_summary_layout_,
                                        homeSections.rateItems,
                                        false,
@@ -1806,6 +1913,10 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             section->setFixedHeight(sectionHeight);
             section->adjustSize();
             section->updateGeometry();
+        }
+        if (sectionLayout == state_->data_telemetry_device_summary_layout_)
+        {
+            reflowHomeDeviceSummary(sectionLayout, scalePixels(28), scalePixels(2), scalePixels(2));
         }
     };
     auto updateSummaryMinimumWidth = [](QWidget *summaryWidget) {
