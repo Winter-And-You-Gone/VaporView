@@ -5408,6 +5408,7 @@ void MainWindow::setupDataPanels()
 
     state_->internal_environment_row_ = new QWidget(state_->ai8_temperature_overview_group_);
     state_->internal_environment_row_->setObjectName(QStringLiteral("homeInternalEnvironment"));
+    state_->internal_environment_row_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     auto *internalEnvironmentLayout = new QHBoxLayout(state_->internal_environment_row_);
     internalEnvironmentLayout->setContentsMargins(8, 2, 8, 2);
     internalEnvironmentLayout->setSpacing(4);
@@ -5432,13 +5433,14 @@ void MainWindow::setupDataPanels()
         state_->internal_environment_values_[index] = value;
         internalEnvironmentLayout->addWidget(pill, 1, Qt::AlignVCenter);
     }
-    ai8TemperatureOverviewLayout->addWidget(state_->internal_environment_row_, 1);
+    ai8TemperatureOverviewLayout->addWidget(state_->internal_environment_row_, 0);
     refreshInternalEnvironment();
 
     state_->ai8_temperature_overview_panel_ =
         new Ai8TemperatureOverviewPanel(state_->ai8_temperature_overview_group_);
     state_->ai8_temperature_overview_panel_->setEnglish(state_->is_english_);
-    ai8TemperatureOverviewLayout->addWidget(state_->ai8_temperature_overview_panel_, 0);
+    state_->ai8_temperature_overview_panel_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    ai8TemperatureOverviewLayout->addWidget(state_->ai8_temperature_overview_panel_, 1);
 
     temperatureOverviewColumnLayout->addWidget(state_->temperature_overview_group_, 0, Qt::AlignTop);
     temperatureOverviewColumnLayout->addWidget(state_->ai8_temperature_overview_group_, 1);

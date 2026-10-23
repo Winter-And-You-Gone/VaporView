@@ -950,11 +950,10 @@ void MainWindow::updateConfigCardHeightForSourceMode()
     }
     if (state_->home_overview_splitter_)
     {
-        const int currentHeight = state_->home_overview_splitter_->height();
         const int contentMinimumHeight = minimumHeight;
         state_->home_overview_splitter_->setProperty(kMainCardMinimumHeightProperty,
                                                      contentMinimumHeight);
-        const int targetHeight = std::max(currentHeight, contentMinimumHeight);
+        const int targetHeight = contentMinimumHeight;
         if (state_->config_group_->minimumHeight() != minimumHeight ||
             state_->config_group_->maximumHeight() != targetHeight)
         {

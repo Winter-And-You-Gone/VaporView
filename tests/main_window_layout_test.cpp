@@ -4421,6 +4421,13 @@ void requireHomeTemperatureColumnMinimumHeight(MainWindow &window)
     const int minimum = laser->minimumHeight() + column->layout()->spacing() + ai8->minimumHeight();
     require(minimum > 0 && column->minimumHeight() == minimum && environment->minimumHeight() == minimum,
             "the two temperature cards plus their gap match the environment minimum in every row arrangement");
+    auto *overview = window.findChild<QSplitter *>(QStringLiteral("homeOverviewSplitter"));
+    if (overview->height() != minimum)
+    {
+        std::cerr << "Overview height=" << overview->height() << " content minimum=" << minimum << '\n';
+    }
+    require(overview->height() == minimum,
+            "the overview row shrinks to its current content height without retaining temporary extra height");
     for (QWidget *card : {static_cast<QWidget *>(laser), static_cast<QWidget *>(ai8), environment})
         require(card->minimumHeight() >= card->minimumSizeHint().height() &&
                     card->minimumHeight() >= card->sizeHint().height(),
@@ -4430,6 +4437,9 @@ void requireHomeTemperatureColumnMinimumHeight(MainWindow &window)
     require(ai8->geometry().bottom() == column->contentsRect().bottom(),
             "the device temperature card fills the remaining column height");
     auto *panel = ai8->findChild<QWidget *>(QStringLiteral("ai8TemperatureOverviewPanel"));
+    auto *internalEnvironment = ai8->findChild<QWidget *>(QStringLiteral("homeInternalEnvironment"));
+    require(internalEnvironment && internalEnvironment->height() <= internalEnvironment->sizeHint().height() + 1,
+            "internal environment pills keep their natural height without stretching into blank space");
     auto *grid = panel ? qobject_cast<QGridLayout *>(panel->layout()) : nullptr;
     require(grid && grid->rowCount() == 2 && grid->columnCount() == 4,
             "device temperatures use two equal rows of four wide channels");
@@ -4609,6 +4619,7 @@ void requireHomeThreeColumnLayout()
             const int manualDeviceWidth = overview->sizes().at(0);
             requireHomeDataRowsPacked(overview->widget(0)->findChild<QWidget *>(
                 QStringLiteral("homeTelemetrySummaryContainer")));
+            requireHomeTemperatureColumnMinimumHeight(window);
             require(manualDeviceWidth >= compactDeviceWidth + 40 &&
                         !overview->property(VaporView::Ground::MainSupport::kHomeOverviewDeviceAutoManagedWidthProperty).toBool(),
                     "the device overview remains manually resizable through its splitter handle");
