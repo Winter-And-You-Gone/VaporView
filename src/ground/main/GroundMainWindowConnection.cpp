@@ -481,7 +481,10 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         {
             state_->home_device_action_spinner_until_ms_.remove(device);
         }
-        const VaporView::DeviceState state = homeDeviceActionState(device);
+        const VaporView::DeviceState actionState = homeDeviceActionState(device);
+        // A serialized FPGA command locks actions without changing channel connectivity.
+        const VaporView::DeviceState state = isFpgaRelayPath() && actionState == VaporView::DeviceState::Disabled
+            ? homeFpgaDeviceState(device) : actionState;
         const bool connected = state == VaporView::DeviceState::Connected;
         const bool connecting = state == VaporView::DeviceState::Connecting || state == VaporView::DeviceState::Reconnecting;
         const bool spinnerActive = connecting || homeDeviceActionSpinnerActive(device, nowMs);
@@ -535,7 +538,7 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         }
         const bool remoteMode = isRemoteSkyMode();
         const bool linkOpen = state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen();
-        const bool enabled = state == VaporView::DeviceState::Disabled || spinnerActive
+        const bool enabled = actionState == VaporView::DeviceState::Disabled || spinnerActive
             ? false
             : isFpgaRelayPath() || isUiTestMode()
                 ? true

@@ -1216,6 +1216,28 @@ static void simulatedMonitorActions()
     },6000),"FPGA simulator fills both RD105 overview trends and both measured output percentages");
     const auto outputs=window.findChildren<QAbstractButton*>("temperatureOverviewOutputSwitch");
     require(outputs.size()==2,"simulated RD105 overview exposes both output controls");
+    const auto capsules=window.findChildren<QLabel*>("homeDeviceStatusCapsule");
+    QList<QObject*> watched;
+    struct OutputStateObserver : QObject {
+        bool capsuleChanged=false, actionsLocked=false;
+        bool eventFilter(QObject *object,QEvent *event) override {
+            if(event->type()==QEvent::DynamicPropertyChange&&object->objectName()=="homeDeviceStatusCapsule")
+                capsuleChanged|=object->property("state")!="connected"||!object->property("connected").toBool();
+            if(event->type()==QEvent::EnabledChange&&object->objectName()=="homeDeviceActionButton")
+                actionsLocked|=!static_cast<QWidget*>(object)->isEnabled();
+            return false;
+        }
+    } outputState;
+    require(capsules.size()==9&&waitUntil([&]{
+        for(auto *capsule:capsules)if(capsule->property("state")!="connected")return false;
+        for(auto *button:window.findChildren<QToolButton*>("homeDeviceActionButton"))
+            if(!button->property("deviceConfigAction").toBool()&&!button->isEnabled())return false;
+        return true;
+    }),"all nine device capsules are connected before testing RD105 output commands");
+    for(auto *capsule:capsules)watched.append(capsule);
+    for(auto *button:window.findChildren<QToolButton*>("homeDeviceActionButton"))
+        if(!button->property("deviceConfigAction").toBool())watched.append(button);
+    for(auto *object:watched)object->installEventFilter(&outputState);
     for(auto *output:outputs) {
         require(output->isEnabled(),"simulated RD105 output control is available");
         QTimer confirm;
@@ -1238,6 +1260,9 @@ static void simulatedMonitorActions()
         "stopping channel one displays zero output while channel two keeps running");
     outputs[1]->click();
     require(waitUntil([&]{return !outputs[1]->isChecked()&&outputPercent(2)==0&&!confirmedOutputs.value(2,true);}),"both simulated outputs can be stopped independently");
+    for(auto *object:watched)object->removeEventFilter(&outputState);
+    require(outputState.actionsLocked,"RD105 output commands still lock conflicting device actions");
+    require(!outputState.capsuleChanged,"RD105 output enable and disable never flash connected device capsules to unavailable");
     mode->trigger();mode->trigger();
     require(waitUntil([&]{return page->uiTestController()!=nullptr&&!page->uiTestConnected();}),"reset protocol board for selective connection regression");
     require(QMetaObject::invokeMethod(&window,"onDisconnectClicked",Qt::DirectConnection),"disconnect layout simulation before individual connection");
