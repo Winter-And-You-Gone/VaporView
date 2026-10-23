@@ -645,7 +645,7 @@ QColor deviceConfigRemoteIconColor(VaporView::CommandId command)
     case VaporView::CommandId::ConnectDevice:
         return toolbarColor(AppThemeColor::ToolbarGreen);
     case VaporView::CommandId::DisconnectDevice:
-        return toolbarColor(AppThemeColor::ToolbarBlue);
+        return toolbarColor(AppThemeColor::ToolbarRed);
     case VaporView::CommandId::ReconnectDevice:
         return toolbarColor(AppThemeColor::ToolbarBlue);
     default:

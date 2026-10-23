@@ -598,7 +598,7 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         {
             const QString iconName = connected ? QStringLiteral("unlink") : QStringLiteral("link");
             const QColor iconColor = connected
-                ? toolbarColor(AppThemeColor::ToolbarBlue)
+                ? toolbarColor(AppThemeColor::ToolbarRed)
                 : state == VaporView::DeviceState::Disabled
                     ? toolbarColor(AppThemeColor::ToolbarDisabled)
                     : toolbarColor(AppThemeColor::HomeDeviceSuccess);

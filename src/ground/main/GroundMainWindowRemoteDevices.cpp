@@ -2658,7 +2658,7 @@ void MainWindow::updateTemperatureTitleButtonsState()
         else
         {
             const QColor iconColor = connected
-                ? toolbarColor(AppThemeColor::ToolbarBlue)
+                ? toolbarColor(AppThemeColor::ToolbarRed)
                 : deviceState == VaporView::DeviceState::Disabled
                     ? toolbarColor(AppThemeColor::ToolbarDisabled)
                     : toolbarColor(AppThemeColor::HomeDeviceSuccess);
