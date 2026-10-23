@@ -144,14 +144,20 @@ void refreshFixedNumericLabelWidth(QLabel *label)
     applyFixedNumericLabelWidth(label, widthCandidates, std::max(0, padding));
 }
 
-void polishNumericLabel(QLabel *label)
+void setNumericLabelValidity(QLabel *label, bool valid)
 {
     if (!label)
     {
         return;
     }
-    label->style()->unpolish(label);
-    label->style()->polish(label);
+    // Reapplying the same stylesheet state invalidates layouts and repaints
+    // the surrounding cards on every telemetry tick.
+    if (label->property("data-valid") != QVariant(valid))
+    {
+        label->setProperty("data-valid", valid);
+        label->style()->unpolish(label);
+        label->style()->polish(label);
+    }
     refreshFixedNumericLabelWidth(label);
 }
 
@@ -1357,8 +1363,7 @@ void PtbPanel::updateData(const VaporView::PtbData& ptb_data)
     if (ptb_data.valid)
     {
         pressure_label_->setText(fixedDecimalWithUnit(ptb_data.pressure_hpa, 2, 7, QStringLiteral("hPa")));
-        pressure_label_->setProperty("data-valid", true);
-        polishNumericLabel(pressure_label_);
+        setNumericLabelValidity(pressure_label_, true);
         if (pressure_trend_plot_ &&
             shouldAppendEnvironmentSample(ptb_data.timestamp,
                                           last_pressure_timestamp_,
@@ -1370,8 +1375,7 @@ void PtbPanel::updateData(const VaporView::PtbData& ptb_data)
     else
     {
         pressure_label_->setText(fixedDecimalWithUnit(std::numeric_limits<double>::quiet_NaN(), 2, 7, QStringLiteral("hPa")));
-        pressure_label_->setProperty("data-valid", false);
-        polishNumericLabel(pressure_label_);
+        setNumericLabelValidity(pressure_label_, false);
     }
     setMinimumNumericLabelWidth(pressure_label_, {QStringLiteral("-1100.00 hPa"), QStringLiteral("--- hPa")}, 4);
 }
@@ -1495,10 +1499,8 @@ void HmpPanel::updateData(const VaporView::HmpData& hmp_data)
     {
         temperature_label_->setText(fixedDecimalWithUnit(hmp_data.temperature, 1, 5, QStringLiteral("°C")));
         humidity_label_->setText(fixedDecimalWithUnit(hmp_data.humidity, 1, 5, QStringLiteral("%RH")));
-        temperature_label_->setProperty("data-valid", true);
-        polishNumericLabel(temperature_label_);
-        humidity_label_->setProperty("data-valid", true);
-        polishNumericLabel(humidity_label_);
+        setNumericLabelValidity(temperature_label_, true);
+        setNumericLabelValidity(humidity_label_, true);
         if (temperature_trend_plot_ &&
             shouldAppendEnvironmentSample(hmp_data.timestamp,
                                           last_temperature_timestamp_,
@@ -1518,10 +1520,8 @@ void HmpPanel::updateData(const VaporView::HmpData& hmp_data)
     {
         temperature_label_->setText(fixedDecimalWithUnit(std::numeric_limits<double>::quiet_NaN(), 1, 5, QStringLiteral("°C")));
         humidity_label_->setText(fixedDecimalWithUnit(std::numeric_limits<double>::quiet_NaN(), 1, 5, QStringLiteral("%RH")));
-        temperature_label_->setProperty("data-valid", false);
-        polishNumericLabel(temperature_label_);
-        humidity_label_->setProperty("data-valid", false);
-        polishNumericLabel(humidity_label_);
+        setNumericLabelValidity(temperature_label_, false);
+        setNumericLabelValidity(humidity_label_, false);
     }
 }
 
@@ -1603,18 +1603,14 @@ void LidarPanel::updateData(const VaporView::LidarData& lidar_data)
     {
         distance_label_->setText(fixedDecimalWithUnit(lidar_data.distance_m, 2, 6, QStringLiteral("m")));
         strength_label_->setText(fixedTextField(QString::number(lidar_data.signal_strength), 4));
-        distance_label_->setProperty("data-valid", true);
-        strength_label_->setProperty("data-valid", true);
-        polishNumericLabel(distance_label_);
-        polishNumericLabel(strength_label_);
+        setNumericLabelValidity(distance_label_, true);
+        setNumericLabelValidity(strength_label_, true);
     }
     else
     {
         distance_label_->setText(fixedDecimalWithUnit(std::numeric_limits<double>::quiet_NaN(), 2, 6, QStringLiteral("m")));
         strength_label_->setText(fixedTextField(QStringLiteral("---"), 4));
-        distance_label_->setProperty("data-valid", false);
-        strength_label_->setProperty("data-valid", false);
-        polishNumericLabel(distance_label_);
-        polishNumericLabel(strength_label_);
+        setNumericLabelValidity(distance_label_, false);
+        setNumericLabelValidity(strength_label_, false);
     }
 }

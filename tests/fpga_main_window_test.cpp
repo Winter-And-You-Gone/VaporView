@@ -1,6 +1,7 @@
 #include "test_settings_sandbox.h"
 #include "ground/main/MainWindow.h"
 #include "ground/widgets/FpgaControlPage.h"
+#include "ground/widgets/Ai8TemperatureControllerPanel.h"
 #include "ground/widgets/TelemetryPanels.h"
 #include "ground/navigation/CombinationNavigationPage.h"
 #include "ground/rtk/RtkConfigDialog.h"
@@ -694,6 +695,113 @@ static void remoteHomeActions()
     processFor(50);require(requests.size()==count&&stack->currentIndex()==0,"link closure sends no FPGA stop and never changes page");
     QMetaObject::invokeMethod(&window,"onDataSourceModeChanged",Q_ARG(int,0));window.close();server.close();
 }
+static void simulatorRefreshBudget()
+{
+    for (bool uiTest : {false, true}) {
+        MainWindow window;
+        window.resize(1600, 1000);
+        QMetaObject::invokeMethod(&window, "onDataSourceModeChanged", Q_ARG(int, 0));
+        auto *path = window.findChild<QComboBox *>("deviceSensorTransportPathCombo");
+        path->setCurrentIndex(path->findData("fpga_relay"));
+        auto *page = window.findChild<FpgaControlPage *>("fpgaControlPage");
+        auto *mode = window.findChild<QAction *>("uiTestModeAction");
+        if (uiTest) mode->setChecked(true);
+        else {
+            auto *backend = page->findChild<QComboBox *>("fpgaBackend");
+            backend->setCurrentIndex(backend->findData("simulator"));
+        }
+        window.show();
+        require(QMetaObject::invokeMethod(&window, "onConnectClicked", Qt::DirectConnection),
+                "refresh budget connects all simulated devices");
+        auto *grid = window.findChild<QWidget *>("homeOverviewDeviceGrid");
+        const auto actions = grid->findChildren<QToolButton *>("homeDeviceActionButton");
+        require(actions.size() == 9, "refresh budget covers all nine devices");
+        require(waitUntil([&] {
+            return std::all_of(actions.cbegin(), actions.cend(), [](auto *button) {
+                return button->property("state") == "connected";
+            });
+        }, 20000), "refresh budget waits for all device connections");
+        processFor(500);
+
+        int measurements = 0, viewUpdates = 0;
+        auto *ai8 = window.findChild<VaporView::Ground::Widgets::Ai8TemperatureControllerPanel *>();
+        require(ai8, "refresh budget observes the AI8 view");
+        const auto viewConnection = QObject::connect(ai8,
+            &VaporView::Ground::Widgets::Ai8TemperatureControllerPanel::outputStatusChanged,
+            &window, [&] { ++viewUpdates; });
+        auto *controller = uiTest ? page->uiTestController() : window.testFpgaController();
+        const auto measurementConnection = QObject::connect(controller,
+            &VaporView::Ground::Devices::FpgaDeviceController::measurementUpdated,
+            &window, [&](const auto &) { ++measurements; });
+        QList<QPointer<QFrame>> summaryPills;
+        for (auto *pill : window.findChildren<QFrame *>("homeTelemetrySummaryPill"))
+            summaryPills.append(pill);
+        require(!summaryPills.isEmpty(), "refresh budget observes visible and hidden summary fields");
+        QVector<qint64> delays;
+        QElapsedTimer clock;
+        clock.start();
+        qint64 previous = 0;
+        QTimer heartbeat;
+        heartbeat.setTimerType(Qt::PreciseTimer);
+        QObject::connect(&heartbeat, &QTimer::timeout, &window, [&] {
+            const qint64 now = clock.elapsed();
+            delays.append(now - previous);
+            previous = now;
+        });
+        heartbeat.start(10);
+        processFor(2500);
+        heartbeat.stop();
+        std::sort(delays.begin(), delays.end());
+        require(!delays.isEmpty(), "GUI heartbeat produced samples");
+        const qint64 p95 = delays.at((delays.size() - 1) * 95 / 100);
+        std::cout << (uiTest ? "UI simulator" : "Local simulator")
+                  << ": measurements=" << measurements << " viewUpdates=" << viewUpdates
+                  << " heartbeatSamples=" << delays.size() << " p95Ms=" << p95
+                  << " maxMs=" << delays.last() << std::endl;
+        require(measurements > 20,
+                "responsiveness measurement runs under sustained FPGA data");
+
+        VaporView::FpgaSensor::AdaptedMeasurements batch;
+        batch.reading.source = 0x46;
+        batch.reading.kind = VaporView::FpgaSensor::SensorKind::Ai8;
+        batch.reading.validity = {true, true, true, true};
+        batch.ai8 = VaporView::FpgaSensor::Ai8Sample{};
+        batch.ai8Live = VaporView::Ai8TemperatureControllerProtocol::LiveData{};
+        batch.ai8Live->valid = true;
+        batch.ai8Live->setpointsValid = true;
+        const int before = viewUpdates;
+        for (int channel = 1; channel <= 8; ++channel) {
+            batch.ai8->channel = channel;
+            batch.ai8Live->measuredC[channel - 1] = -20.0 + channel;
+            batch.ai8Live->setpointsC[channel - 1] = 20.0 + channel;
+            page->simulationMeasurementsUpdated(batch);
+        }
+        require(viewUpdates == before,
+                "a burst of eight channel packets must not synchronously rebuild the AI8 view");
+        require(QMetaObject::invokeMethod(&window, "onRefreshTimer", Qt::DirectConnection),
+                "display tick presents the accumulated AI8 channels");
+        require(viewUpdates == before + 1, "eight channel packets produce one AI8 view update");
+        const auto measured = window.findChildren<QLabel *>("ai8TemperatureOverviewValueLabel");
+        const auto targets = window.findChildren<QLabel *>("ai8TemperatureOverviewTargetLabel");
+        require(measured.size() == 8 && targets.size() == 8, "all eight channels remain visible");
+        for (auto *label : measured)
+            require(label->text().contains(QString::number(-19.0 + label->property("channelIndex").toInt(), 'f', 1)),
+                    "coalescing preserves every channel's latest measured temperature");
+        for (auto *label : targets)
+            require(label->text().contains(QString::number(21.0 + label->property("channelIndex").toInt(), 'f', 1)),
+                    "coalescing preserves every channel's latest target temperature");
+        for (const auto &pill : summaryPills)
+            require(!pill.isNull(), "unchanged summaries on hidden pages must not be rebuilt per display tick");
+        QObject::disconnect(viewConnection);
+        QObject::disconnect(measurementConnection);
+        require(p95 < 100 && delays.last() < 250,
+                "connected simulator keeps the GUI event loop responsive");
+        QMetaObject::invokeMethod(&window, "onDisconnectClicked", Qt::DirectConnection);
+        if (uiTest) mode->setChecked(false);
+        window.close();
+    }
+}
+
 static void localSimulatorRouting()
 {
     const auto check=[](bool ok,const char *message){if(!ok)throw std::runtime_error(message);};
@@ -1721,6 +1829,9 @@ int main(int argc,char **argv)
     if(app.arguments().contains("--local-simulator")) {
         try { localSimulatorRouting();std::cout<<"Local FPGA simulator GUI test passed\n";return 0; }
         catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}
+    }
+    if(app.arguments().contains("--refresh-budget")) {
+        simulatorRefreshBudget();std::cout<<"FPGA refresh budget test passed\n";return 0;
     }
     epsilonMixedPacketPresentation();
     const auto standardFont=app.font();

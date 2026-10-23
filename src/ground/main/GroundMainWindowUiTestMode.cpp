@@ -501,6 +501,7 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
     state_->current_hmp_ = VaporView::HmpData();
     state_->current_lidar_ = VaporView::LidarData();
     state_->current_temperature_controller_ = VaporView::TemperatureControllerData();
+    state_->fpga_ai8_ui_dirty_ = state_->fpga_rd105_ui_dirty_ = false;
     if (state_->fpga_page_)
     {
         state_->fpga_page_->setUiTestState(false);
@@ -647,7 +648,7 @@ void MainWindow::applyUiTestSnapshot()
         }
         if(state_->epsilon_config_panel_)state_->epsilon_config_panel_->setLivePacketRates(state_->current_epsilon_);
         updateEnvironmentStatusIcons(state_->current_lidar_.valid,state_->current_ptb_.valid,state_->current_hmp_.valid);
-        updateRemoteTelemetrySummaryLabel();updateHomeDeviceStatusCapsules();updateDeviceConfigState();updateRecordingStatusLabel();
+        updateRemoteTelemetrySummaryLabel();updateHomeDeviceStatusCapsules();updateRecordingStatusLabel();
         return;
     }
     auto snapshot = state_->ui_test_model_->snapshot(elapsed);

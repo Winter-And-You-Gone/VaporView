@@ -334,6 +334,8 @@ struct MainWindowState
     std::mutex fpga_snapshot_mutex_;
     VaporView::Ground::Session::GroundSensorSnapshot fpga_recording_snapshot_;
     VaporView::Ai8TemperatureControllerProtocol::LiveData fpga_ai8_live_;
+    bool fpga_ai8_ui_dirty_ = false;
+    bool fpga_rd105_ui_dirty_ = false;
     QStackedWidget *main_page_stack_;
     AppSidebarMode app_sidebar_mode_;
     bool app_sidebar_adjusting_;

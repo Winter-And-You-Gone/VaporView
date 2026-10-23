@@ -1042,8 +1042,7 @@ void MainWindow::receiveFpgaMeasurements(const VaporView::FpgaSensor::AdaptedMea
         if (channel >= 0 && channel < VaporView::Ai8TemperatureControllerProtocol::kChannelCount)
         {
             if(m.ai8Live)state_->fpga_ai8_live_=*m.ai8Live;
-            if (state_->ai8_temperature_controller_panel_) state_->ai8_temperature_controller_panel_->applyLiveData(state_->fpga_ai8_live_);
-            if (state_->ai8_temperature_overview_panel_) state_->ai8_temperature_overview_panel_->applyLiveData(state_->fpga_ai8_live_);
+            state_->fpga_ai8_ui_dirty_ = true;
         }
     }
     else if(r.kind==VaporView::FpgaSensor::SensorKind::Rd105) {
@@ -1055,8 +1054,7 @@ void MainWindow::receiveFpgaMeasurements(const VaporView::FpgaSensor::AdaptedMea
         data.channels[channel].measured_temperature_c=r.rd105ActualMicroC?*r.rd105ActualMicroC/1000000.0:std::numeric_limits<double>::quiet_NaN();
         if(r.rd105OutputRaw)data.channels[channel].output_percent=valid?*r.rd105OutputRaw/20000.0:std::numeric_limits<double>::quiet_NaN();
         if(r.rd105OutputEnabled)data.channels[channel].output_enabled=valid&&*r.rd105OutputEnabled!=0;
-        if(state_->temperature_controller_panel_)state_->temperature_controller_panel_->updateData(data);
-        if(state_->temperature_overview_panel_)state_->temperature_overview_panel_->updateData(data);
+        state_->fpga_rd105_ui_dirty_ = true;
     }
     {
         const std::lock_guard<std::mutex> lock(state_->fpga_snapshot_mutex_);
@@ -1072,9 +1070,26 @@ void MainWindow::receiveFpgaMeasurements(const VaporView::FpgaSensor::AdaptedMea
             snapshot.hasLidar=state_->fpga_sources_.contains(0x45) && snapshot.lidar.valid;
         }
     }
-    updateHomeDeviceStatusCapsules();
-    if (state_->combination_navigation_page_) state_->combination_navigation_page_->refreshStatus();
-    onRefreshTimer();
+    // Keep every measurement in the model/recording snapshot. The 100 ms display
+    // timer presents the newest values; packet bursts must not refresh whole pages.
+}
+
+void MainWindow::refreshFpgaTemperaturePanels()
+{
+    if (!isFpgaRelayPath())
+    {
+        state_->fpga_ai8_ui_dirty_ = state_->fpga_rd105_ui_dirty_ = false;
+        return;
+    }
+    if (std::exchange(state_->fpga_ai8_ui_dirty_, false))
+    {
+        if (state_->ai8_temperature_controller_panel_)
+            state_->ai8_temperature_controller_panel_->applyLiveData(state_->fpga_ai8_live_);
+        if (state_->ai8_temperature_overview_panel_)
+            state_->ai8_temperature_overview_panel_->applyLiveData(state_->fpga_ai8_live_);
+    }
+    if (std::exchange(state_->fpga_rd105_ui_dirty_, false) && state_->device_panel_coordinator_)
+        state_->device_panel_coordinator_->updateTemperatureData(state_->current_temperature_controller_);
 }
 
 void MainWindow::updateFpgaPageBackend()
@@ -1154,13 +1169,15 @@ void MainWindow::invalidateFpgaMeasurements()
     if (isFpgaRelayPath()) state_->current_hmp_ = VaporView::HmpData{};
     state_->internal_environment_.clear();state_->internal_environment_times_.clear();
     if (state_->fpga_sources_.contains(0x45)) state_->current_lidar_ = VaporView::LidarData{};
-    if (state_->fpga_sources_.contains(0x48))state_->current_temperature_controller_=VaporView::TemperatureControllerData{};
+    if (state_->fpga_sources_.contains(0x48)) {
+        state_->current_temperature_controller_=VaporView::TemperatureControllerData{};
+        state_->fpga_rd105_ui_dirty_ = true;
+    }
     if (state_->fpga_sources_.contains(0x46))
     {
         state_->fpga_ai8_live_ = VaporView::Ai8TemperatureControllerProtocol::LiveData{};
         state_->fpga_ai8_live_.measuredC.fill(std::numeric_limits<double>::quiet_NaN());
-        if (state_->ai8_temperature_controller_panel_) state_->ai8_temperature_controller_panel_->applyLiveData(state_->fpga_ai8_live_);
-        if (state_->ai8_temperature_overview_panel_) state_->ai8_temperature_overview_panel_->applyLiveData(state_->fpga_ai8_live_);
+        state_->fpga_ai8_ui_dirty_ = true;
     }
     state_->fpga_sources_.clear();
     onRefreshTimer();
@@ -1168,9 +1185,9 @@ void MainWindow::invalidateFpgaMeasurements()
 
 void MainWindow::updateInternalEnvironment(const VaporView::FpgaSensor::Reading &reading)
 {
-    refreshInternalEnvironment();
     if ((reading.source == 0x43 && reading.kind == VaporView::FpgaSensor::SensorKind::Bmp390)
         || (reading.source == 0x44 && reading.kind == VaporView::FpgaSensor::SensorKind::Sht45)) {
+        refreshInternalEnvironment();
         state_->internal_environment_[reading.source] = reading;
         state_->internal_environment_times_[reading.source] = std::chrono::steady_clock::now();
         refreshInternalEnvironment();

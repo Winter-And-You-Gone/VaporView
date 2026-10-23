@@ -257,6 +257,7 @@ private:
     void receiveFpgaWaveform(const VaporView::FpgaWave::CompletedStream &stream);
     void updateInternalEnvironment(const VaporView::FpgaSensor::Reading &reading);
     void refreshInternalEnvironment();
+    void refreshFpgaTemperaturePanels();
     void updateFpgaPageBackend();
     void syncFpgaDeviceConfigUi();
     QMap<quint16, QJsonObject>& fpgaSensorDrafts();

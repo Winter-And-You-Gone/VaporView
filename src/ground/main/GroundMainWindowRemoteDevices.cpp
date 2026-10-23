@@ -5,7 +5,6 @@
 #include <QStyle>
 
 #include <algorithm>
-#include <tuple>
 
 namespace
 {
@@ -167,11 +166,10 @@ bool updateSummarySectionValues(QVBoxLayout *sectionLayout,
 
     QList<QFrame *> pills =
         section->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
-    std::stable_sort(pills.begin(), pills.end(), [section](QFrame *left, QFrame *right) {
-        const QPoint leftPos = left->mapTo(section, QPoint(0, 0));
-        const QPoint rightPos = right->mapTo(section, QPoint(0, 0));
-        return std::make_tuple(leftPos.y(), leftPos.x()) <
-               std::make_tuple(rightPos.y(), rightPos.x());
+    // Hidden pages have no reliable layout coordinates. Keep the model order
+    // even when the home pills have been moved between rows during reflow.
+    std::sort(pills.begin(), pills.end(), [](QFrame *left, QFrame *right) {
+        return left->property("summaryItemIndex").toInt() < right->property("summaryItemIndex").toInt();
     });
     if (pills.size() != items.size())
     {
@@ -1503,20 +1501,6 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         const QString accessibleText = QStringLiteral("%1: %2").arg(sourceName, sourceValue);
         setAccessibleNameIfChanged(pill, accessibleText);
         setWidgetToolTipIfChanged(pill, accessibleText);
-        if (QLayout *layout = pill->layout())
-        {
-            layout->invalidate();
-            layout->activate();
-        }
-        pill->updateGeometry();
-        if (QWidget *titleBar = pill->parentWidget())
-        {
-            if (QLayout *layout = titleBar->layout())
-            {
-                layout->invalidate();
-                layout->activate();
-            }
-        }
     };
     updateSourcePill(state_->data_telemetry_summary_source_pill_);
     updateSourcePill(state_->device_config_.data_telemetry_summary_source_pill);
@@ -1575,7 +1559,6 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         if (!homeSummaryNeedsRender)
         {
             state_->data_telemetry_summary_card_->setProperty(kSummaryStructureKeyProperty, summaryStructureKey);
-            state_->data_telemetry_summary_card_->update();
         }
     }
 
@@ -1598,16 +1581,11 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         if (!deviceConfigSummaryNeedsRender)
         {
             state_->device_config_.data_telemetry_summary_card->setProperty(kSummaryStructureKeyProperty, summaryStructureKey);
-            state_->device_config_.data_telemetry_summary_card->update();
         }
     }
 
     if (!homeSummaryNeedsRender && !deviceConfigSummaryNeedsRender)
     {
-        if (state_->home_overview_splitter_)
-        {
-            updateConfigCardHeightForSourceMode();
-        }
         return;
     }
     auto clearLayout = [](QLayout *layout) {
@@ -1804,7 +1782,9 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
 
             for (int i = begin; i < end; ++i)
             {
-                linePills << addItemLabel(lineLayout, line, items.at(i));
+                auto *pill = addItemLabel(lineLayout, line, items.at(i));
+                pill->setProperty("summaryItemIndex", i);
+                linePills << pill;
             }
             if (!useSideTitle)
             {
