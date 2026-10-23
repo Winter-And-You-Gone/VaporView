@@ -7,6 +7,7 @@
 #include "ground/navigation/EpsilonConfigPanel.h"
 #include "ground/rtk/RtkConfigDialog.h"
 #include "ground/widgets/TelemetryPanels.h"
+#include "ground/widgets/TemperatureControllerWidgets.h"
 #include "ground/widgets/Ai8TemperatureControllerPanel.h"
 #include "ground/widgets/EpsilonPanel.h"
 #include "ground/widgets/SegmentedSwitchButton.h"
@@ -64,6 +65,9 @@
 #include <QStringList>
 #include <QTemporaryDir>
 #include <QTextOption>
+#include <QTextBlock>
+#include <QTextDocument>
+#include <QTextLayout>
 #include <QTimer>
 #include <QToolButton>
 #include <QVariantAnimation>
@@ -841,6 +845,66 @@ void activateLayouts(QWidget *widget)
     {
         activateLayouts(child);
     }
+}
+
+void requireTemperatureOverviewHeaderStable(QWidget *window)
+{
+    using VaporView::Ground::Widgets::TemperatureControllerOverviewPanel;
+    auto *panel = dynamic_cast<TemperatureControllerOverviewPanel *>(
+        window->findChild<QWidget *>(QStringLiteral("temperatureOverviewPanel")));
+    require(panel != nullptr, "RD105 overview exists for header alignment checks");
+    const auto values = panel->titleStatusWidget()->findChildren<QLabel *>(
+        QStringLiteral("temperatureOverviewValuePill"));
+    require(values.size() == 4, "RD105 header contains both channels' target and current values");
+    auto positions = [&]() {
+        activateLayouts(window);
+        QVector<QPair<QRect, qreal>> result;
+        for (QLabel *label : values)
+        {
+            QTextDocument document;
+            document.setDefaultFont(label->font());
+            document.setDocumentMargin(0);
+            document.setHtml(label->text());
+            document.setTextWidth(label->contentsRect().width());
+            document.size();
+            const QTextBlock block = document.begin();
+            const int unitIndex = block.text().indexOf(QChar(0x2103));
+            const QTextLine line = block.layout()->lineAt(0);
+            require(unitIndex >= 0 && line.isValid() && block.layout()->lineCount() == 1,
+                    "RD105 header value and unit fit on one line");
+            require(line.cursorToX(unitIndex + 1) <= label->contentsRect().width(),
+                    "RD105 header keeps the entire Celsius unit visible");
+            result.append({QRect(label->mapTo(window, QPoint(0, 0)), label->size()),
+                           line.cursorToX(unitIndex)});
+        }
+        return result;
+    };
+    VaporView::TemperatureControllerData sample;
+    sample.valid = true;
+    sample.channels[0].target_temperature_c = 25.0;
+    sample.channels[0].measured_temperature_c = 23.41191;
+    sample.channels[1].target_temperature_c = 27.0;
+    sample.channels[1].measured_temperature_c = 25.96109;
+    panel->updateData(sample);
+    const auto populated = positions();
+    for (int state = 0; state < 4; ++state)
+    {
+        sample.valid = state != 0 && state != 3;
+        sample.channels[0].target_temperature_c = state == 1 ? -40.0 : 100.0;
+        sample.channels[0].measured_temperature_c = state == 1 ? -9.12345 : 0.0;
+        sample.channels[1].target_temperature_c = state == 1 ? 100.0 : -40.0;
+        sample.channels[1].measured_temperature_c = state == 1 ? 99.99999 : -40.12345;
+        if (state == 2)
+            sample.channels[1].measured_temperature_c = std::numeric_limits<double>::quiet_NaN();
+        panel->updateData(sample);
+        const auto changed = positions();
+        for (int index = 0; index < values.size(); ++index)
+            require(changed[index].first == populated[index].first &&
+                        std::abs(changed[index].second - populated[index].second) < 0.1,
+                    "RD105 labels and units stay at populated positions across missing, negative and full-width values");
+    }
+    panel->updateData(VaporView::TemperatureControllerData());
+    activateLayouts(window);
 }
 
 void clickWidgetAt(QWidget *widget, const QPoint& localPoint, int waitMs = 50)
@@ -12259,6 +12323,7 @@ int main(int argc, char **argv)
                         editorRect.left() <= 1,
                     "scaled temperature common label keeps its last character clear above the editor");
         }
+        requireTemperatureOverviewHeaderStable(&scaledWindow);
         triggerFontScaleAction(scaledWindow, 100);
         scaledWindow.close();
         processEventsFor(100);
@@ -12266,6 +12331,7 @@ int main(int argc, char **argv)
         settings.sync();
     }
 
+    requireTemperatureOverviewHeaderStable(&window);
     window.close();
     processEventsFor(100);
 

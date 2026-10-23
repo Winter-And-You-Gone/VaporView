@@ -998,8 +998,12 @@ void setTemperatureOverviewPillText(QLabel *label,
     label->setProperty("displayText", displayText);
     label->setProperty("legendNumberColor", numberColor.name(QColor::HexRgb));
     label->setTextFormat(Qt::RichText);
-    label->setText(QStringLiteral("%1&nbsp;<span style=\"color: %2;\">%3</span>&nbsp;%4")
+    // Keep the monospace number column full-width even for short values or "---".
+    const QString numberPadding = QStringLiteral("&nbsp;").repeated(
+        std::max(0, static_cast<int>(temperatureOverviewReservedNumberText().size() - number.size())));
+    label->setText(QStringLiteral("%1&nbsp;%2<span style=\"color: %3;\">%4</span>&nbsp;%5")
                        .arg(title.toHtmlEscaped(),
+                            numberPadding,
                             numberColor.name(QColor::HexRgb),
                             number.toHtmlEscaped(),
                             unit.toHtmlEscaped()));
