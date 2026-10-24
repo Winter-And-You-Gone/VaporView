@@ -573,25 +573,37 @@ void testFpgaPeakHeaderStaysStable()
 {
     TcpWavePanel panel; panel.setFpgaMode(true); panel.resize(1200,900); panel.show();
     auto *info=panel.findChild<QLabel*>("fpgaMonitorPeakInfo");
+    auto *valueLabel=panel.findChild<QLabel*>("fpgaMonitorPeakValue");
     auto *mode=panel.findChild<QWidget*>("tcpWavePeakPlotModeSwitch");
-    require(info&&mode,"FPGA peak header controls exist");
+    require(info&&valueLabel&&mode,"FPGA peak header controls exist");
     auto *header=info->parentWidget();
     QPushButton *clear=nullptr;
     for(auto *button:header->findChildren<QPushButton*>("compactTcpButton"))
         if(!button->isHidden())clear=button;
     require(clear,"FPGA peak clear button exists");
     quint32 cycle=0;
-    for(bool english:{false,true}) {
+    const auto baseFont=panel.font();
+    for(double scale:{1.0,1.3}) for(bool english:{false,true}) {
+        auto font=baseFont; font.setPointSizeF(baseFont.pointSizeF()*scale); panel.setFont(font);
         panel.setEnglish(english); QApplication::processEvents();
-        const auto modeRect=mode->geometry(),clearRect=clear->geometry(),infoRect=info->geometry();
+        ++cycle; panel.setFpgaSecondHarmonicPeak(0x30,cycle,cycle,1.0,false); QApplication::processEvents();
+        const auto modeRect=mode->geometry(),clearRect=clear->geometry(),infoRect=info->geometry(),valueRect=valueLabel->geometry();
+        const auto captionImage=info->grab().toImage();
         require(info->alignment().testFlag(Qt::AlignRight)&&infoRect.left()>clearRect.right()
-            &&infoRect.right()==header->width()-header->layout()->contentsMargins().right()-1,
+            &&valueRect.left()>infoRect.right()
+            &&valueRect.right()==header->width()-header->layout()->contentsMargins().right()-1,
             "latest FPGA peak occupies the right edge after both buttons");
-        for(double value:{1.0,0.2281666,1.234567e-20,1.234567e30,std::numeric_limits<double>::quiet_NaN()}) {
+        require(valueLabel->minimumWidth()==valueLabel->maximumWidth()
+            &&valueLabel->fontMetrics().horizontalAdvance("1111111")==valueLabel->fontMetrics().horizontalAdvance("8888888"),
+            "latest peak reserves a fixed width with equal-width digits");
+        for(double value:{1.0,0.2281666,-0.0001000001,-1.234567e-20,1.234567e30,
+                          double(std::numeric_limits<float>::max()),-double(std::numeric_limits<float>::denorm_min()),
+                          std::numeric_limits<double>::quiet_NaN()}) {
             ++cycle;panel.setFpgaSecondHarmonicPeak(0x30,cycle,cycle,value,false);QApplication::processEvents();
-            require(mode->geometry()==modeRect&&clear->geometry()==clearRect&&info->geometry()==infoRect,
+            require(mode->geometry()==modeRect&&clear->geometry()==clearRect&&info->geometry()==infoRect&&valueLabel->geometry()==valueRect,
                 "short, fractional, scientific and invalid peaks never move the header buttons");
-            require(info->fontMetrics().horizontalAdvance(info->text())<=info->width(),
+            require(info->grab().toImage()==captionImage,"changing peak values never move the rendered latest caption");
+            require(valueLabel->fontMetrics().horizontalAdvance(valueLabel->text())<=valueLabel->contentsRect().width(),
                 "latest peak text fits the remaining title space");
         }
     }
@@ -710,13 +722,14 @@ int main(int argc, char **argv)
             &&std::abs(panel.testSecondHarmonicSamples().first()-std::hypot(5,7))<0.0001,
             "IQ-only H1 and H2 graphs display magnitudes of their respective quadrature pairs");
         panel.setFpgaSecondHarmonicPeak(0x31,2,200,10,true);
-        require(panel.findChild<QLabel*>("fpgaMonitorPeakInfo")->text()=="预览峰值 · 最新：10","bounded previews show the latest peak and retain the preview label");
+        require(panel.findChild<QLabel*>("fpgaMonitorPeakInfo")->text()=="预览峰值 · 最新："
+            &&panel.findChild<QLabel*>("fpgaMonitorPeakValue")->text()=="10","bounded previews show the latest peak and retain the preview label");
         panel.setFpgaWaveform(0x31,{{},{},{},{},{}},{"I1","Q1","I2","Q2","H2/H1"},"incomplete",2);
         require(raw->property("sampleCount").toInt()==0&&h2->property("sampleCount").toInt()==0
             &&dlia->property("sampleCount").toInt()==0,"invalid FPGA cycle clears all three harmonic waveforms");
         panel.setFpgaSecondHarmonicPeak(0x31,3,300,std::numeric_limits<double>::quiet_NaN(),false);
         require(panel.testPeakValues().size()==2&&std::isnan(panel.testPeakValues().last()),"invalid cycles leave a gap in the trend");
-        require(panel.findChild<QLabel*>("fpgaMonitorPeakInfo")->text().endsWith(QStringLiteral("最新：—")), "invalid latest peaks never retain the previous numeric result");
+        require(panel.findChild<QLabel*>("fpgaMonitorPeakValue")->text()==QStringLiteral("—"), "invalid latest peaks never retain the previous numeric result");
         channel->setCurrentIndex(0);
         require(panel.testPeakValues()==QVector<float>({4}),"switching back restores the independent channel trend");
         QMetaObject::invokeMethod(&panel,"onClearPeakPlotClicked");

@@ -289,6 +289,7 @@ private:
     bool fpga_mode_ = false;
     QComboBox *fpga_channel_combo_ = nullptr;
     QLabel *fpga_peak_info_label_ = nullptr;
+    QLabel *fpga_peak_value_label_ = nullptr;
     QMap<quint16, FpgaWaveDisplay> fpga_waves_;
     QMap<quint16, FpgaPeakTrend> fpga_peaks_;
     bool ui_test_connected_ = false;

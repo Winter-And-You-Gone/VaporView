@@ -2065,8 +2065,11 @@ void TcpWavePanel::setupUi()
     fpga_peak_info_label_ = new QLabel(peakHeaderBar);
     fpga_peak_info_label_->setObjectName(QStringLiteral("fpgaMonitorPeakInfo"));
     fpga_peak_info_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    fpga_peak_info_label_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     fpga_peak_info_label_->hide();
+    fpga_peak_value_label_ = new QLabel(peakHeaderBar);
+    fpga_peak_value_label_->setObjectName(QStringLiteral("fpgaMonitorPeakValue"));
+    fpga_peak_value_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    fpga_peak_value_label_->hide();
     peak_filter_button_ = new QPushButton(this);
     peak_filter_button_->setObjectName("compactTcpButton");
     peak_filter_button_->setFixedHeight(kTcpButtonHeight);
@@ -2093,8 +2096,9 @@ void TcpWavePanel::setupUi()
     peak_clear_button_->setMinimumWidth(72);
     connect(peak_clear_button_, &QPushButton::clicked, this, &TcpWavePanel::onClearPeakPlotClicked);
     peakHeaderLayout->addWidget(peak_clear_button_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    peakHeaderLayout->addWidget(fpga_peak_info_label_, 1);
-    peakHeaderLayout->addStretch(0);
+    peakHeaderLayout->addStretch(1);
+    peakHeaderLayout->addWidget(fpga_peak_info_label_);
+    peakHeaderLayout->addWidget(fpga_peak_value_label_);
     peakLayout->addWidget(peakHeaderBar);
     peak_plot_ = new PeakTrendPlotWidget(this);
     peak_plot_->setObjectName(QStringLiteral("tcpWavePeakTrendPlot"));
@@ -2290,6 +2294,7 @@ void TcpWavePanel::setFpgaMode(bool enabled)
     fpga_raw_button_->setVisible(enabled);
     fpga_harmonic_button_->setVisible(enabled);
     fpga_peak_info_label_->setVisible(enabled);
+    fpga_peak_value_label_->setVisible(enabled);
     peak_filter_button_->setVisible(!enabled);
     clearRemoteWaveformDisplay();
     if (!enabled) { fpga_waves_.clear(); fpga_peaks_.clear(); }
@@ -2409,9 +2414,15 @@ void TcpWavePanel::refreshFpgaWaveform()
     const QString peakText = trend.values.isEmpty() || !std::isfinite(trend.values.last())
         ? QStringLiteral("—") : QString::number(trend.values.last(), 'g', 7);
     fpga_peak_info_label_->setText(trend.values.isEmpty() ? waiting
-        : QString(is_english_ ? "%1 · Latest: %2" : "%1 · 最新：%2")
+        : QString(is_english_ ? "%1 · Latest:" : "%1 · 最新：")
             .arg(trend.preview ? (is_english_ ? QStringLiteral("Preview peaks") : QStringLiteral("预览峰值"))
-                               : (is_english_ ? QStringLiteral("Cycle peaks") : QStringLiteral("周期峰值")), peakText));
+                               : (is_english_ ? QStringLiteral("Cycle peaks") : QStringLiteral("周期峰值"))));
+    fpga_peak_value_label_->setFont(numericFontFrom(fpga_peak_info_label_->font()));
+    // Seven significant digits may use a sign, decimal point and exponent. Reserve
+    // the longest representation rather than letting the latest value size the header.
+    fpga_peak_value_label_->setFixedWidth(widestTextWidth(fpga_peak_value_label_,
+        {QStringLiteral("-1.234567e-308"), QStringLiteral("—")}) + 2);
+    fpga_peak_value_label_->setText(peakText);
     fpga_peak_info_label_->setToolTip(is_english_
         ? QStringLiteral("Maximum of valid pointwise H2/H1 per cycle (dimensionless), before display decimation. Invalid references are excluded. Preview peaks cover received points only. Time is host receipt time.")
         : QStringLiteral("每周期有效 H2/H1 的最大值（无量纲），在绘图抽稀前计算；无效参考不参与峰值。预览峰值仅覆盖收到的点，时间为本机接收时间。"));
