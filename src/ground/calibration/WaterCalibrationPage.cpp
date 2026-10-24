@@ -210,6 +210,7 @@ WaterCalibrationPage::WaterCalibrationPage(QWidget *parent, const QString& filen
     m->addLayout(form); layout->addWidget(management);
     s.importSummary=new QLabel(s.controls);s.importSummary->setObjectName("calibrationImportSummary");s.importSummary->setWordWrap(true);layout->addWidget(s.importSummary);
     s.wavelengthViews=new QTabBar(s.controls);s.wavelengthViews->setObjectName("calibrationWavelengthViews");
+    s.wavelengthViews->setDrawBase(false);
     s.wavelengthViews->setExpanding(false);s.wavelengthViews->setAccessibleName("分别查看记录及操作定标参数，导入始终处理整个任务");layout->addWidget(s.wavelengthViews);
     connect(s.wavelengthViews,&QTabBar::currentChanged,this,[this](int index){
         if(index<0)return;state_->viewWave=state_->wavelengthViews->tabData(index).toInt();state_->recordPage->setValue(1);refresh();
