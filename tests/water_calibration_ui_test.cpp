@@ -6,7 +6,10 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QDir>
 #include <QElapsedTimer>
+#include <QFileDialog>
+#include <QFileInfo>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
@@ -18,6 +21,7 @@
 #include <QThreadPool>
 #include <QTimer>
 #include <QTemporaryDir>
+#include <QScopeGuard>
 
 using namespace WaterCalibrationTest;
 using namespace VaporView::Ground::Calibration;
@@ -42,12 +46,30 @@ void click(QWidget& page,const char *name)
 }
 int main(int argc,char **argv)
 {
+    QApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
     QApplication app(argc,argv);QTemporaryDir temp;check(temp.isValid(),"isolated UI scope");
+    const auto dataDirectory=VaporView::Ground::Session::GroundRecordingService::defaultRecordingDirectory();
+    const bool dataExisted=QFileInfo::exists(dataDirectory);
+    const auto cleanupData=qScopeGuard([&]{if(!dataExisted)check(QDir().rmdir(dataDirectory),"remove empty test-created data directory");});
     const auto low=recordSession(temp.filePath("low"),2),high=recordSession(temp.filePath("high"),4);
     const auto libraryFilename=temp.filePath("library.json");
     {
         WaterCalibrationPage page(nullptr,libraryFilename);page.resize(1150,900);page.show();
         complete(page,[&]{return find<QLabel>(page,"calibrationStatus")->text().contains(QStringLiteral("定标库已加载"));});
+        find<QCheckBox>(page,"calibrationFollow")->setChecked(false);
+        for(const bool cancel:{false,true}){
+            bool inspected=false;
+            QTimer::singleShot(0,[&]{
+                auto* dialog=qobject_cast<QFileDialog*>(QApplication::activeModalWidget());check(dialog,"Session browser opens");
+                check(dialog->directory().canonicalPath()==QDir(dataDirectory).canonicalPath(),"Session browser starts at project data even after a previous selection");
+                inspected=true;
+                if(cancel)dialog->reject();else{dialog->setDirectory(low);QMetaObject::invokeMethod(dialog,"accept",Qt::DirectConnection);}
+            });
+            click(page,"calibrationBrowse");
+            check(inspected&&QDir(find<QLineEdit>(page,"calibrationSession")->text()).canonicalPath()==QDir(low).canonicalPath(),"selection sets the source and cancellation preserves it");
+            check(find<QTableWidget>(page,"calibrationSamples")->rowCount()==0&&!QFileInfo::exists(libraryFilename),"browsing alone does not assign a standard concentration or import calibration samples");
+        }
+        find<QCheckBox>(page,"calibrationFollow")->setChecked(true);
         check(!page.findChild<QComboBox*>("calibrationWavelength")&&!page.findChild<QComboBox*>("calibrationChannel"),
             "joint import has no wavelength or channel dropdown");
         auto *views=find<QTabBar>(page,"calibrationWavelengthViews");

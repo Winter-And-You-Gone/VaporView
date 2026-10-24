@@ -3,11 +3,13 @@
 #include "LogService.h"
 #include "shared/theme/AppTheme.h"
 #include "ground/session/SessionLoader.h"
+#include "ground/session/GroundRecordingService.h"
 #include "shared/session/SessionPathResolver.h"
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDateTime>
 #include <QDoubleSpinBox>
+#include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
@@ -199,7 +201,12 @@ WaterCalibrationPage::WaterCalibrationPage(QWidget *parent, const QString& filen
     mapping->setWordWrap(true); form->addRow(mapping);
     s.session = new QLineEdit(management); s.session->setObjectName("calibrationSession"); s.session->setPlaceholderText("完整的本地 Session 目录（可正在录制）");
     auto *source = new QHBoxLayout; source->addWidget(s.session,1);
-    button("选择 Session","calibrationBrowse",source,[this]{ const auto p=QFileDialog::getExistingDirectory(this,"选择 Session",state_->session->text()); if(!p.isEmpty()) state_->session->setText(p); });
+    button("选择 Session","calibrationBrowse",source,[this]{
+        const auto directory=VaporView::Ground::Session::GroundRecordingService::defaultRecordingDirectory();
+        if(!QDir().mkpath(directory)){setStatus("无法打开 Session 数据目录："+directory,true);return;}
+        const auto p=QFileDialog::getExistingDirectory(this,"选择 Session",directory);
+        if(!p.isEmpty()) state_->session->setText(p);
+    });
     form->addRow("来源 Session",source);
     auto *standard = new QHBoxLayout; s.concentration = new QDoubleSpinBox(management); s.concentration->setDecimals(9); s.concentration->setRange(0,1e12); s.concentration->setObjectName("calibrationKnownConcentration");
     s.softwareTest = new QCheckBox("软件测试数据",management); s.softwareTest->setToolTip("模拟数据必须勾选；已检测到 Session 模拟标记时也会自动标为软件测试。其余来源标为待核实。");
