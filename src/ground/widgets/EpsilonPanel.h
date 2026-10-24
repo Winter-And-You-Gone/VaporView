@@ -568,19 +568,19 @@ private:
 
     QStringList valueWidthSamplesForSection(const QString& key) const
     {
-        // Reserve full counters and signed fixed-point formats before data arrives.
+        // Reserve eight-digit frame counters and signed fixed-point formats before data arrives.
         // syncSectionColumnWidths also measures live values that exceed these samples.
         if (key == QStringLiteral("status"))
         {
             return is_english_
                 ? QStringList{QStringLiteral("2026-07-01T23:59:59.999Z"),
                               QStringLiteral("18446744073709551615 us"),
-                              QStringLiteral("raw 18446744073709551615 / dropped 18446744073709551615"),
+                              QStringLiteral("raw 99999999 / dropped 99999999"),
                               QStringLiteral("0X0060 initialized / position fusion active"),
                               QStringLiteral("Yes")}
                 : QStringList{QStringLiteral("2026-07-01T23:59:59.999Z"),
                               QStringLiteral("18446744073709551615 us"),
-                              QStringLiteral("原始 18446744073709551615 / 丢帧 18446744073709551615"),
+                              QStringLiteral("原始 99999999 / 丢帧 99999999"),
                               QStringLiteral("0X0060 已初始化 / 定位融合中"),
                               QStringLiteral("是")};
         }

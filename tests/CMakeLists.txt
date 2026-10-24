@@ -868,6 +868,9 @@ vaporview_add_test(NAME home_overview_language_layout_test
 vaporview_add_test(NAME home_appearance_layout_test
     COMMAND main_window_layout_test --home-appearance-only
 )
+vaporview_add_test(NAME home_maximum_value_widths_test
+    COMMAND main_window_layout_test --home-maximum-values-only
+)
 vaporview_add_test(NAME home_three_column_layout_test
     COMMAND main_window_layout_test --home-three-column-only
 )
@@ -1399,6 +1402,7 @@ set(VAPORVIEW_SLOW_UI_TESTS
     main_window_layout_test
     home_overview_language_layout_test
     home_appearance_layout_test
+    home_maximum_value_widths_test
     home_three_column_layout_test
     input_arrow_style_test
     combination_navigation_page_test
@@ -1453,6 +1457,7 @@ set_property(TEST main_window_layout_test APPEND PROPERTY LABELS main-window lay
 set_property(TEST device_config_layout_test APPEND PROPERTY LABELS main-window layout)
 set_property(TEST home_overview_language_layout_test APPEND PROPERTY LABELS main-window layout)
 set_property(TEST home_appearance_layout_test APPEND PROPERTY LABELS main-window layout)
+set_property(TEST home_maximum_value_widths_test APPEND PROPERTY LABELS main-window layout)
 set_property(TEST home_three_column_layout_test APPEND PROPERTY LABELS main-window layout)
 set_property(TEST input_arrow_style_test APPEND PROPERTY LABELS main-window layout)
 set_property(TEST combination_navigation_page_test APPEND PROPERTY LABELS main-window layout)

@@ -3922,7 +3922,7 @@ void requireEpsilonSectionCardsStayInsidePanel(QWidget *epsilonPanel, const char
     require(inside, message);
 }
 
-void requireEpsilonSectionCardsFillWrappedTopRow(QWidget *epsilonPanel, const char *message)
+void requireEpsilonSectionCardsFillRows(QWidget *epsilonPanel, const char *message)
 {
     const QList<QFrame*> cards = sortedEpsilonSectionCards(epsilonPanel);
     require(epsilonPanel != nullptr && cards.size() == 3,
@@ -3932,15 +3932,22 @@ void requireEpsilonSectionCardsFillWrappedTopRow(QWidget *epsilonPanel, const ch
     const QRect third(cards.at(2)->mapTo(epsilonPanel, QPoint(0, 0)), cards.at(2)->size());
     const QRect bounds = epsilonPanel->contentsRect();
     const int topRowJoinGap = second.left() - first.right() - 1;
-    const bool fillsWrappedRow =
+    const bool fillsTopRowStart =
         std::abs(first.top() - second.top()) <= 4 &&
         topRowJoinGap >= 0 &&
         topRowJoinGap <= 1 &&
-        first.left() <= bounds.left() + 6 &&
+        first.left() <= bounds.left() + 6;
+    const bool fillsWrappedRow = fillsTopRowStart &&
+        third.top() > first.bottom() &&
         third.left() <= first.left() + 2 &&
         std::abs(second.right() - third.right()) <= 2 &&
         second.right() >= bounds.right() - 6;
-    if (!fillsWrappedRow)
+    const int lastJoinGap = third.left() - second.right() - 1;
+    const bool fillsSingleRow = fillsTopRowStart &&
+        std::abs(first.top() - third.top()) <= 4 &&
+        lastJoinGap >= 0 && lastJoinGap <= 1 &&
+        third.right() >= bounds.right() - 6;
+    if (!fillsWrappedRow && !fillsSingleRow)
     {
         std::cerr << "EPSILON wrapped fill geometry: bounds=" << bounds.width()
                   << " first=[" << first.x() << ',' << first.y() << ' '
@@ -3950,7 +3957,7 @@ void requireEpsilonSectionCardsFillWrappedTopRow(QWidget *epsilonPanel, const ch
                   << " third=[" << third.x() << ',' << third.y() << ' '
                   << third.width() << 'x' << third.height() << "]\n";
     }
-    require(fillsWrappedRow, message);
+    require(fillsWrappedRow || fillsSingleRow, message);
 }
 
 QLabel *epsilonValueLabelForField(QWidget *epsilonPanel, const QString& fieldText)
@@ -4255,12 +4262,9 @@ void requireHomeOverviewLanguageWidthRoundTrip()
     requireEpsilonSectionCardsStayInsidePanel(
         wideEpsilonPanel,
         "wide overview EPSILON section cards stay inside the EPSILON panel");
-    requireEpsilonSectionCardsFillWrappedTopRow(
+    requireEpsilonSectionCardsFillRows(
         wideEpsilonPanel,
-        "wide overview EPSILON first-row cards fill the wrapped row without a center gap");
-    requireEpsilonSectionCardsUseWrappedMotionRow(
-        wideEpsilonPanel,
-        "wide overview wraps motion details instead of overflowing into the environment card");
+        "wide overview EPSILON cards fill one or two rows without a center gap");
     const QRect wideAttitudeConsistencyBounds = wrappedTextBounds(wideAttitudeConsistencyValue);
     require(wideAttitudeConsistencyBounds.height() <= wideAttitudeConsistencyValue->height() + 2,
             "wide overview shows the full EPSILON attitude consistency value without clipping");
@@ -4748,8 +4752,8 @@ void requireHomeMaximumValueWidths()
     sample.gnss_fix_text = "RTK_FIXED";
     sample.gnss_satellites = 99;
     sample.device_timestamp_us = std::numeric_limits<uint64_t>::max();
-    sample.raw_frame_count = std::numeric_limits<uint64_t>::max();
-    sample.dropped_frame_count = std::numeric_limits<uint64_t>::max();
+    sample.raw_frame_count = 99999999;
+    sample.dropped_frame_count = 99999999;
     sample.latitude_deg = -89.99999999;
     sample.longitude_deg = -179.99999999;
     sample.height_m = -9999.999;
@@ -4820,7 +4824,16 @@ void requireHomeMaximumValueWidths()
                 englishActive = english;
                 processEventsFor(250);
             }
+            sample.raw_frame_count = sample.dropped_frame_count = 0;
             epsilon->updateData(sample);
+            QLabel *frameCountsLabel = findLabelByText(epsilon, {english
+                ? QStringLiteral("raw 0 / dropped 0") : QStringLiteral("原始 0 / 丢帧 0")});
+            require(frameCountsLabel, "EPSILON exposes the combined frame counters");
+            const int reservedCounterWidth = frameCountsLabel->minimumWidth();
+            sample.raw_frame_count = sample.dropped_frame_count = 99999999;
+            epsilon->updateData(sample);
+            require(frameCountsLabel->minimumWidth() == reservedCounterWidth,
+                    "eight-digit counters fit the initial reservation without widening it");
             ptb->updateData(pressure);
             hmp->updateData(humidity);
             lidar->updateData(distance);
@@ -4834,7 +4847,7 @@ void requireHomeMaximumValueWidths()
                 bool hasNegativeTriple = false;
                 for (QLabel *label : epsilon->findChildren<QLabel *>())
                 {
-                    hasMaximumCount = hasMaximumCount || label->text().contains(QStringLiteral("18446744073709551615"));
+                    hasMaximumCount = hasMaximumCount || label->text().count(QStringLiteral("99999999")) == 2;
                     hasNegativeTriple = hasNegativeTriple || label->text() == QStringLiteral("-999.999/-999.999/-999.999");
                 }
                 require(hasMaximumCount && hasNegativeTriple, "maximum-value fixture remains populated after language and scale changes");
@@ -4850,6 +4863,18 @@ void requireHomeMaximumValueWidths()
                 }
             }
             const int reservedWidth = epsilon->preferredWrappedWidth();
+            sample.raw_frame_count = sample.dropped_frame_count = std::numeric_limits<uint64_t>::max();
+            epsilon->updateData(sample);
+            require(frameCountsLabel->text().count(QStringLiteral("18446744073709551615")) == 2 &&
+                        frameCountsLabel->minimumWidth() > reservedCounterWidth &&
+                        epsilon->preferredWrappedWidth() > reservedWidth,
+                    "larger counters retain their full values and expand the compact card");
+            epsilon->resize(epsilon->preferredWrappedWidth(), epsilon->height());
+            activateLayouts(epsilon);
+            epsilon->resize(epsilon->width(), std::max(epsilon->height(), epsilon->sizeHint().height()));
+            activateLayouts(epsilon);
+            requireLabelsFit(epsilon);
+            sample.raw_frame_count = sample.dropped_frame_count = 99999999;
             sample.vel_n_mps = sample.vel_e_mps = sample.vel_d_mps = -1e24;
             epsilon->updateData(sample);
             require(epsilon->preferredWrappedWidth() > reservedWidth,
@@ -5218,6 +5243,13 @@ int main(int argc, char **argv)
     {
         requireHomeThemeLayoutStability();
         std::cout << "home_appearance_layout_test passed\n";
+        return 0;
+    }
+
+    if (app.arguments().contains(QStringLiteral("--home-maximum-values-only")))
+    {
+        requireHomeMaximumValueWidths();
+        std::cout << "home_maximum_value_widths_test passed\n";
         return 0;
     }
 
@@ -12126,7 +12158,7 @@ int main(int argc, char **argv)
     requireEpsilonSectionCardsUseWrappedMotionRow(
         epsilonPanel,
         "EPSILON motion details use the second row at the default window size");
-    requireEpsilonSectionCardsFillWrappedTopRow(
+    requireEpsilonSectionCardsFillRows(
         epsilonPanel,
         "EPSILON first-row cards fill the outer card width without a center gap");
 
