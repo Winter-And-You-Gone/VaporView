@@ -2417,7 +2417,7 @@ void TcpWavePanel::refreshFpgaWaveform()
         : QString(is_english_ ? "%1 · Latest:" : "%1 · 最新：")
             .arg(trend.preview ? (is_english_ ? QStringLiteral("Preview peaks") : QStringLiteral("预览峰值"))
                                : (is_english_ ? QStringLiteral("Cycle peaks") : QStringLiteral("周期峰值"))));
-    fpga_peak_value_label_->setFont(numericFontFrom(fpga_peak_info_label_->font()));
+    fpga_peak_value_label_->ensurePolished();
     // Seven significant digits may use a sign, decimal point and exponent. Reserve
     // the longest representation rather than letting the latest value size the header.
     fpga_peak_value_label_->setFixedWidth(widestTextWidth(fpga_peak_value_label_,

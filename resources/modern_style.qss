@@ -787,7 +787,8 @@ QComboBox#ai8TitlePortCombo::down-arrow {
     margin-right: 6px;
 }
 
-QLabel#valueLabel {
+QLabel#valueLabel,
+QLabel#fpgaMonitorPeakValue {
     color: @vv-primary;
     font-family: "Consolas", "Monaco", "Courier New", monospace;
     font-size: 14px;

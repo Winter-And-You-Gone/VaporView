@@ -686,7 +686,8 @@ QLabel#epsilonSectionLabel {
     border-right: 1px solid @vv-border;
     font-weight: 700;
 }
-QLabel#valueLabel {
+QLabel#valueLabel,
+QLabel#fpgaMonitorPeakValue {
     color: @vv-primary;
     background-color: transparent;
     font-family: "Consolas", "Monaco", "Courier New", monospace;
