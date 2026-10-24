@@ -12,6 +12,7 @@
 #include <QImage>
 #include <QLabel>
 #include <QLineEdit>
+#include <QLayout>
 #include <QPushButton>
 #include <QPixmap>
 #include <QSettings>
@@ -568,6 +569,34 @@ void testNormalizedWaveformGapsRender()
     require(plot->grab().toImage().copy(right)==connected.copy(right),"an invalid first reference does not suppress the remaining finite waveform");
 }
 
+void testFpgaPeakHeaderStaysStable()
+{
+    TcpWavePanel panel; panel.setFpgaMode(true); panel.resize(1200,900); panel.show();
+    auto *info=panel.findChild<QLabel*>("fpgaMonitorPeakInfo");
+    auto *mode=panel.findChild<QWidget*>("tcpWavePeakPlotModeSwitch");
+    require(info&&mode,"FPGA peak header controls exist");
+    auto *header=info->parentWidget();
+    QPushButton *clear=nullptr;
+    for(auto *button:header->findChildren<QPushButton*>("compactTcpButton"))
+        if(!button->isHidden())clear=button;
+    require(clear,"FPGA peak clear button exists");
+    quint32 cycle=0;
+    for(bool english:{false,true}) {
+        panel.setEnglish(english); QApplication::processEvents();
+        const auto modeRect=mode->geometry(),clearRect=clear->geometry(),infoRect=info->geometry();
+        require(info->alignment().testFlag(Qt::AlignRight)&&infoRect.left()>clearRect.right()
+            &&infoRect.right()==header->width()-header->layout()->contentsMargins().right()-1,
+            "latest FPGA peak occupies the right edge after both buttons");
+        for(double value:{1.0,0.2281666,1.234567e-20,1.234567e30,std::numeric_limits<double>::quiet_NaN()}) {
+            ++cycle;panel.setFpgaSecondHarmonicPeak(0x30,cycle,cycle,value,false);QApplication::processEvents();
+            require(mode->geometry()==modeRect&&clear->geometry()==clearRect&&info->geometry()==infoRect,
+                "short, fractional, scientific and invalid peaks never move the header buttons");
+            require(info->fontMetrics().horizontalAdvance(info->text())<=info->width(),
+                "latest peak text fits the remaining title space");
+        }
+    }
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -619,6 +648,7 @@ int main(int argc, char **argv)
     testRemoteSkyModeKeepsLocalEndpointText();
     testPeakPlotModeSwitch();
     testNormalizedWaveformGapsRender();
+    testFpgaPeakHeaderStaysStable();
     {
         TcpWavePanel panel;panel.setConnectionEndpoint("127.0.0.9",9901);panel.setFpgaMode(true);
         panel.setFpgaWaveform(0x20,{{1,2,3}},{"ADC"},"ADC complete",3);

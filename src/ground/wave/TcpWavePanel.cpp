@@ -2064,8 +2064,9 @@ void TcpWavePanel::setupUi()
     peakHeaderLayout->addWidget(peak_title_label_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     fpga_peak_info_label_ = new QLabel(peakHeaderBar);
     fpga_peak_info_label_->setObjectName(QStringLiteral("fpgaMonitorPeakInfo"));
+    fpga_peak_info_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    fpga_peak_info_label_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     fpga_peak_info_label_->hide();
-    peakHeaderLayout->addWidget(fpga_peak_info_label_, 0, Qt::AlignVCenter);
     peak_filter_button_ = new QPushButton(this);
     peak_filter_button_->setObjectName("compactTcpButton");
     peak_filter_button_->setFixedHeight(kTcpButtonHeight);
@@ -2092,7 +2093,8 @@ void TcpWavePanel::setupUi()
     peak_clear_button_->setMinimumWidth(72);
     connect(peak_clear_button_, &QPushButton::clicked, this, &TcpWavePanel::onClearPeakPlotClicked);
     peakHeaderLayout->addWidget(peak_clear_button_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    peakHeaderLayout->addStretch(1);
+    peakHeaderLayout->addWidget(fpga_peak_info_label_, 1);
+    peakHeaderLayout->addStretch(0);
     peakLayout->addWidget(peakHeaderBar);
     peak_plot_ = new PeakTrendPlotWidget(this);
     peak_plot_->setObjectName(QStringLiteral("tcpWavePeakTrendPlot"));
