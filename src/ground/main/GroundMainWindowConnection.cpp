@@ -1766,6 +1766,7 @@ void MainWindow::onConnectClicked()
 }
 void MainWindow::onDisconnectClicked()
 {
+    cancelFpgaActions();
     state_->fpga_home_connect_queue_.clear();
     state_->fpga_home_raw_start_pending_=false;
     state_->fpga_home_action_device_=VaporView::SkyDeviceId::All;

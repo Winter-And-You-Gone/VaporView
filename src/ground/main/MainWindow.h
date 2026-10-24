@@ -371,10 +371,16 @@ private:
     double homeFpgaSensorRate(VaporView::SkyDeviceId device) const;
     VaporView::DeviceState homeFpgaDeviceActionState(VaporView::SkyDeviceId device) const;
     void setHomeFpgaDeviceEnabled(VaporView::SkyDeviceId device, bool enabled);
+    void executeHomeFpgaDeviceAction(VaporView::SkyDeviceId device, bool enabled);
+    void queueFpgaAction(std::function<void()> action, std::function<void(const QString&)> cancel,
+        std::function<bool()> canRun = {});
+    void processFpgaActions();
+    void cancelFpgaActions();
     void connectNextHomeFpgaDevice();
     QMap<quint32, quint32> homeFpgaRegisters() const;
     quint32 homeFpgaExtensions() const;
     void submitFpgaInstrument(const QJsonObject& request,std::function<void(const QJsonObject&)> reply);
+    void executeFpgaInstrument(const QJsonObject& request,std::function<void(const QJsonObject&)> reply);
     bool enqueueFpgaRtcm(const QByteArray& bytes);
     void drainFpgaRtcm();
     void updateHomeFpgaWaveActions();

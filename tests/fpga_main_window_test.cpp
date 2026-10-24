@@ -583,7 +583,7 @@ static void remoteHomeActions()
                 navigation->refreshStatus();
                 require(navigationPanel->snapshot().navigationDataAvailable&&navigationPanel->snapshot().gnssFixCode==6,
                     "a pending remote sensor command preserves EPSILON navigation");
-                require(!epsilon->isEnabled(),"unrelated EPSILON action remains locked during the remote transaction");
+                require(epsilon->isEnabled(),"unrelated EPSILON action stays available during the remote transaction");
             }
             button->click();processFor(20);require(requests.size()==count+1,"in-flight home action cannot be duplicated");
             if(sources[index])registers[QString::number(0x6004+(sources[index]-0x40)*0x100)]=enabled?1:0;
@@ -614,6 +614,36 @@ static void remoteHomeActions()
         response.operation=DeviceOperation::FpgaControl;response.error_code=error;response.payload=FpgaRemote::encodeStatus(status);
         send(MsgType::DeviceOperationResponse,TelemetryCodec::serializeDeviceOperationResponse(response));
     };
+    for (bool enabled : {false, true}) {
+        const int count = requests.size();
+        auto *pressure = homeAction(window,"PTB210");
+        auto *distance = homeAction(window,"TFA1500");
+        pressure->click();
+        require(waitUntil([&]{return requests.size()==count+1;}),"first queued remote operation starts immediately");
+        require(epsilon->isEnabled()&&distance->isEnabled(),"busy FPGA leaves other device buttons available");
+        epsilon->click();distance->click();
+        require(!epsilon->isEnabled()&&!distance->isEnabled(),"only selected queued devices block duplicate clicks");
+        epsilon->click();distance->click();processFor(60);
+        require(requests.size()==count+1,"queued actions cannot reach the transport before final readback");
+        for (int source : {0x40,0x42,0x45}) {
+            QJsonObject control;
+            require(FpgaRemote::parseControl(requests.last().payload,control)&&control.value("source").toInt()==source
+                &&control.value("enabled").toBool()==enabled,"remote actions preserve click order and intent");
+            registers[QString::number(0x6004+(source-0x40)*0x100)]=enabled?1:0;
+            const int before=requests.size();complete();
+            if(source!=0x45)require(waitUntil([&]{return requests.size()==before+1;}),"final readback dispatches the next queued device");
+            else require(waitUntil([&]{return distance->isEnabled();}),"last queued device unlocks after confirmation");
+        }
+        require(waitUntil([&]{return epsilon->isEnabled()&&pressure->isEnabled();}),"completed queue releases each selected control");
+    }
+    const int beforeFailedQueue=requests.size();
+    homeAction(window,"PTB210")->click();
+    require(waitUntil([&]{return requests.size()==beforeFailedQueue+1;}),"queue failure fixture starts one transaction");
+    epsilon->click();
+    require(!epsilon->isEnabled(),"next device is queued before failure");
+    complete(CommandErrorCode::ConfigApplyFailed);
+    require(waitUntil([&]{return epsilon->isEnabled()&&homeAction(window,"PTB210")->isEnabled();}),"failed operation cancels queued actions and releases controls");
+    processFor(60);require(requests.size()==beforeFailedQueue+1,"failure never sends or retries the queued write");
     const auto expectRequest=[&](QAbstractButton *button,const QString &op,bool enabled) {
         const int count=requests.size();button->click();
         require(waitUntil([&]{return requests.size()==count+1;}),"monitor sends one typed FPGA operation");
@@ -1005,7 +1035,7 @@ static void localSimulatorRouting()
     });
     for(bool enabled:{false,true}) {
         pressureAction->click();navigation->refreshStatus();
-        check(!homeAction(window,"EPSILON")->isEnabled(),"EPSILON action remains locked during the local PTB transaction");
+        check(homeAction(window,"EPSILON")->isEnabled(),"EPSILON action stays available during the local PTB transaction");
         check(navigationPanel->snapshot().navigationDataAvailable&&navigationPanel->snapshot().gnssFixCode==6,
             "a pending PTB210 command preserves local EPSILON navigation");
         check(waitUntil([&]{return pressureAction->isEnabled()&&pressureAction->property("state")== (enabled?"connected":"disconnected");},10000),
@@ -1261,8 +1291,34 @@ static void simulatedMonitorActions()
     outputs[1]->click();
     require(waitUntil([&]{return !outputs[1]->isChecked()&&outputPercent(2)==0&&!confirmedOutputs.value(2,true);}),"both simulated outputs can be stopped independently");
     for(auto *object:watched)object->removeEventFilter(&outputState);
-    require(outputState.actionsLocked,"RD105 output commands still lock conflicting device actions");
+    require(!outputState.actionsLocked,"RD105 output commands never disable unrelated home connection buttons");
     require(!outputState.capsuleChanged,"RD105 output enable and disable never flash connected device capsules to unavailable");
+    auto *queuedPressure=homeAction(window,"PTB210");
+    queuedPressure->click();
+    require(!queuedPressure->isEnabled()&&homeAction(window,"HMP")->isEnabled(),"local device action locks only its own control");
+    QTimer confirmQueuedOutput;
+    QObject::connect(&confirmQueuedOutput,&QTimer::timeout,&window,[]{
+        if(auto *box=qobject_cast<QMessageBox*>(QApplication::activeModalWidget()))
+            if(auto *yes=box->button(QMessageBox::Yes))yes->click();
+    });
+    confirmQueuedOutput.start(10);outputs[0]->click();confirmQueuedOutput.stop();
+    require(waitUntil([&]{return confirmedOutputs.value(1,false)&&queuedPressure->isEnabled()
+        &&queuedPressure->property("state")=="disconnected";},10000),"RD105 command waits behind a local sensor transaction and completes");
+    auto *queuedHumidity=homeAction(window,"HMP");
+    bool queuedDuringOutput=false;
+    const auto queueObserver=QObject::connect(page->uiTestController(),&VaporView::Ground::Devices::FpgaDeviceController::connectionChanged,
+        &window,[&](bool ready,bool busy,const QString&) {
+            if(!ready||!busy||queuedDuringOutput)return;
+            queuedDuringOutput=true;
+            require(queuedHumidity->isEnabled()&&homeAction(window,"EPSILON")->isEnabled(),"RD105 transaction leaves other device controls clickable");
+            queuedHumidity->click();queuedHumidity->click();
+            homeAction(window,"RD105")->click();
+        });
+    outputs[0]->click();
+    require(waitUntil([&]{return queuedDuringOutput&&!confirmedOutputs.value(1,true)&&queuedHumidity->isEnabled()
+        &&queuedHumidity->property("state")=="disconnected"&&homeAction(window,"RD105")->isEnabled()
+        &&homeAction(window,"RD105")->property("state")=="disconnected";},10000),"queued sensor and RD105 disconnect finish after the full output command readback");
+    QObject::disconnect(queueObserver);
     mode->trigger();mode->trigger();
     require(waitUntil([&]{return page->uiTestController()!=nullptr&&!page->uiTestConnected();}),"reset protocol board for selective connection regression");
     require(QMetaObject::invokeMethod(&window,"onDisconnectClicked",Qt::DirectConnection),"disconnect layout simulation before individual connection");

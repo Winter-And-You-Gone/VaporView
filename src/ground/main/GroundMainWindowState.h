@@ -180,6 +180,17 @@ struct MainWindowState
     Devices::FpgaControlSession fpga_session_;
     quint32 fpga_extensions_=0;
     std::function<void(const QJsonObject&)> fpga_instrument_reply_;
+    struct FpgaQueuedAction {
+        std::function<void()> run;
+        std::function<void(const QString&)> cancel;
+        std::function<bool()> canRun;
+        bool remote, simulation;
+        quint64 linkGeneration;
+        std::chrono::steady_clock::time_point deadline;
+    };
+    QList<FpgaQueuedAction> fpga_action_queue_;
+    QTimer *fpga_action_timer_ = nullptr;
+    QSet<VaporView::SkyDeviceId> fpga_pending_home_actions_;
     QByteArray fpga_rtcm_buffer_;
     QList<QPair<qint64,QJsonObject>> fpga_rtcm_queue_;
     bool fpga_rtcm_busy_=false;
