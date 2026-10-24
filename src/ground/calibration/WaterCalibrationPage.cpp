@@ -211,7 +211,9 @@ WaterCalibrationPage::WaterCalibrationPage(QWidget *parent, const QString& filen
     auto *standard = new QHBoxLayout; s.concentration = new QDoubleSpinBox(management); s.concentration->setDecimals(9); s.concentration->setRange(0,1e12); s.concentration->setObjectName("calibrationKnownConcentration");
     s.softwareTest = new QCheckBox("软件测试数据",management); s.softwareTest->setToolTip("模拟数据必须勾选；已检测到 Session 模拟标记时也会自动标为软件测试。其余来源标为待核实。");
     standard->addWidget(s.concentration); standard->addWidget(s.softwareTest);
-    button("导入 Session（双波长）","calibrationImport",standard,[this]{ importData(); }); form->addRow("本次标气浓度",standard);
+    button("添加标气记录（双波长）","calibrationImport",standard,[this]{ importData(); })
+        ->setToolTip("将所选 Session 的峰值按当前标气浓度和单位添加到定标任务；添加后请保存任务。");
+    form->addRow("本次标气浓度",standard);
     s.singleConcentration=new QCheckBox("确认整个 Session 使用同一标气浓度（不支持自动区分 Session 内的浓度切换）",management);
     s.singleConcentration->setObjectName("calibrationSingleConcentration");form->addRow(s.singleConcentration);
     m->addLayout(form); layout->addWidget(management);
@@ -368,7 +370,7 @@ void WaterCalibrationPage::importData()
         for(auto it=s.imports.begin();it!=s.imports.end();++it)if(!it->samples.isEmpty()){
             s.task.datasets[it.key()].samples+=it->samples;s.dirtyFlags[it.key()]=true;s.fits[it.key()].reset();
         }
-        refresh();setStatus("导入完成（尚未保存）：\n"+s.importSummary->text());
+        refresh();setStatus("标气记录添加完成（尚未保存）：\n"+s.importSummary->text());
     });
 }
 void WaterCalibrationPage::saveDataset(bool fit)
@@ -492,7 +494,7 @@ void WaterCalibrationPage::refresh()
     s.channel->setToolTip(s.dataset().hardwareMappingError());
     bool identityEditable=true;for(const auto& data:s.task.datasets)identityEditable&=data.samples.isEmpty()&&data.revision==0;
     s.unit->setEnabled(identityEditable);
-    findChild<QPushButton*>("calibrationImport")->setText(s.task.id.isEmpty()?"导入 Session（历史单波长）":"导入 Session（双波长）");
+    findChild<QPushButton*>("calibrationImport")->setText(s.task.id.isEmpty()?"添加标气记录（历史单波长）":"添加标气记录（双波长）");
     int valid=0,invalid=0,excluded=0;
     for(const auto& sample:s.dataset().samples){if(sample.excluded)++excluded;else if(sample.feature.invalidReason().isEmpty())++valid;else ++invalid;}
     s.sampleSummary->setText(QStringLiteral("%1 nm / DLIA%2 · 数据集 %3 · 修订 %4 · 有效 %5 / 质量不合格 %6 / 已排除 %7 · 任务 %8")
