@@ -228,6 +228,44 @@ int widestTextWidth(const QLabel *label, const QStringList& candidates)
     return width;
 }
 
+class DecimalAlignedPeakLabel final : public QLabel
+{
+public:
+    using QLabel::QLabel;
+
+    void setPeakText(const QString& value)
+    {
+        ensurePolished();
+        const QFontMetrics metrics(font());
+        // A float displayed with seven significant digits needs up to seven
+        // integer digits plus a sign, or ten fractional digits / an exponent.
+        setFixedWidth(metrics.horizontalAdvance(QStringLiteral("-9999999")) +
+                      metrics.horizontalAdvance(QStringLiteral(".0001234567")) + 2);
+        setText(value);
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        const QString value = text();
+        int decimal = value.indexOf(QLatin1Char('.'));
+        if (decimal < 0)
+            decimal = value.indexOf(QLatin1Char('e'));
+        if (decimal < 0)
+            decimal = value.size();
+        const QFontMetrics metrics(font());
+        const QRect area = contentsRect();
+        const int decimalX = area.left() + metrics.horizontalAdvance(QStringLiteral("-9999999"));
+        QPainter painter(this);
+        painter.setFont(font());
+        painter.setPen(palette().color(isEnabled() ? QPalette::Active : QPalette::Disabled, QPalette::WindowText));
+        painter.setClipRect(area);
+        const int baseline = area.top() + (area.height() - metrics.height()) / 2 + metrics.ascent();
+        painter.drawText(QPoint(decimalX - metrics.horizontalAdvance(value.left(decimal)), baseline), value.left(decimal));
+        painter.drawText(QPoint(decimalX, baseline), value.mid(decimal));
+    }
+};
+
 QString fixedStatusText(const QString& text, int width)
 {
     return text.rightJustified(std::max(width, static_cast<int>(text.size())), QLatin1Char(' '));
@@ -2066,9 +2104,8 @@ void TcpWavePanel::setupUi()
     fpga_peak_info_label_->setObjectName(QStringLiteral("fpgaMonitorPeakInfo"));
     fpga_peak_info_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     fpga_peak_info_label_->hide();
-    fpga_peak_value_label_ = new QLabel(peakHeaderBar);
+    fpga_peak_value_label_ = new DecimalAlignedPeakLabel(peakHeaderBar);
     fpga_peak_value_label_->setObjectName(QStringLiteral("fpgaMonitorPeakValue"));
-    fpga_peak_value_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     fpga_peak_value_label_->hide();
     peak_filter_button_ = new QPushButton(this);
     peak_filter_button_->setObjectName("compactTcpButton");
@@ -2417,12 +2454,7 @@ void TcpWavePanel::refreshFpgaWaveform()
         : QString(is_english_ ? "%1 · Latest:" : "%1 · 最新：")
             .arg(trend.preview ? (is_english_ ? QStringLiteral("Preview peaks") : QStringLiteral("预览峰值"))
                                : (is_english_ ? QStringLiteral("Cycle peaks") : QStringLiteral("周期峰值"))));
-    fpga_peak_value_label_->ensurePolished();
-    // Seven significant digits may use a sign, decimal point and exponent. Reserve
-    // the longest representation rather than letting the latest value size the header.
-    fpga_peak_value_label_->setFixedWidth(widestTextWidth(fpga_peak_value_label_,
-        {QStringLiteral("-1.234567e-308"), QStringLiteral("—")}) + 2);
-    fpga_peak_value_label_->setText(peakText);
+    static_cast<DecimalAlignedPeakLabel *>(fpga_peak_value_label_)->setPeakText(peakText);
     fpga_peak_info_label_->setToolTip(is_english_
         ? QStringLiteral("Maximum of valid pointwise H2/H1 per cycle (dimensionless), before display decimation. Invalid references are excluded. Preview peaks cover received points only. Time is host receipt time.")
         : QStringLiteral("每周期有效 H2/H1 的最大值（无量纲），在绘图抽稀前计算；无效参考不参与峰值。预览峰值仅覆盖收到的点，时间为本机接收时间。"));

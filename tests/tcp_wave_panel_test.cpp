@@ -606,6 +606,29 @@ void testFpgaPeakHeaderStaysStable()
             require(valueLabel->fontMetrics().horizontalAdvance(valueLabel->text())<=valueLabel->contentsRect().width(),
                 "latest peak text fits the remaining title space");
         }
+        const auto renderPeak=[&](double value) {
+            ++cycle; panel.setFpgaSecondHarmonicPeak(0x30,cycle,cycle,value,false);
+            QApplication::processEvents();
+            return valueLabel->grab().toImage();
+        };
+        const QImage fractional=renderPeak(0.2336055);
+        const QColor background=fractional.pixelColor(0,0);
+        int firstInk=fractional.width();
+        for(int x=0;x<fractional.width()&&firstInk==fractional.width();++x)
+            for(int y=0;y<fractional.height();++y)
+                if(fractional.pixelColor(x,y)!=background) {firstInk=x;break;}
+        require(firstInk<fractional.width(),"latest peak paints its numeric text");
+        const qreal dpr=fractional.devicePixelRatio();
+        const int decimalX=firstInk+qRound(valueLabel->fontMetrics().horizontalAdvance("0")*dpr);
+        const QRect prefix(0,0,decimalX,fractional.height());
+        for(double value:{0.2,0.23,0.2336})
+            require(renderPeak(value).copy(prefix)==fractional.copy(prefix),
+                "shorter fractional parts never move the leading zero or decimal anchor");
+        const QImage shortInteger=renderPeak(0.25);
+        const QRect suffix(decimalX,0,shortInteger.width()-decimalX,shortInteger.height());
+        for(double value:{10.25,-10.25,12345.25})
+            require(renderPeak(value).copy(suffix)==shortInteger.copy(suffix),
+                "integer digit counts and negative signs never move the decimal or fractional digits");
     }
 }
 
