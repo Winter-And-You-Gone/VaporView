@@ -28,6 +28,43 @@ namespace
 constexpr int kMainContentBottomFadeHeight = 36;
 constexpr int kDeviceConfigEpsilonPacketRatesButtonMinWidth = 194;
 
+class AppSidebarButton final : public QPushButton
+{
+public:
+    using QPushButton::QPushButton;
+
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        if (!property(kSidebarCompactProperty).toBool())
+        {
+            QPushButton::paintEvent(event);
+            return;
+        }
+
+        QStyleOptionButton option;
+        initStyleOption(&option);
+        option.text.clear();
+        option.icon = QIcon();
+        QPainter painter(this);
+        style()->drawControl(QStyle::CE_PushButton, &option, &painter, this);
+
+        const QFontMetrics metrics(font());
+        const int gap = std::max(2, height() / 20);
+        const int contentHeight = iconSize().height() + gap + metrics.height();
+        const int top = (height() - contentHeight) / 2;
+        const QRect iconRect((width() - iconSize().width()) / 2, top,
+                             iconSize().width(), iconSize().height());
+        icon().paint(&painter, iconRect, Qt::AlignCenter,
+                     isEnabled() ? QIcon::Normal : QIcon::Disabled,
+                     isChecked() ? QIcon::On : QIcon::Off);
+        const QRect textRect(2, iconRect.bottom() + 1 + gap, width() - 4, metrics.height());
+        if (isChecked()) option.palette.setColor(QPalette::ButtonText, Qt::white);
+        style()->drawItemText(&painter, textRect, Qt::AlignCenter, option.palette,
+                               isEnabled(), text(), QPalette::ButtonText);
+    }
+};
+
 class InternalEnvironmentValueLabel final : public QLabel
 {
 public:
@@ -2234,8 +2271,9 @@ void MainWindow::setupCentralWidget()
     state_->app_nav_button_group_ = new QButtonGroup(this);
     state_->app_nav_button_group_->setExclusive(true);
     auto createNavButton = [this, sidebarLayout](const QString& text, const QString& iconName) {
-        auto *button = new QPushButton(text, state_->app_sidebar_);
+        auto *button = new AppSidebarButton(text, state_->app_sidebar_);
         button->setObjectName(QStringLiteral("appSidebarButton"));
+        button->setProperty("_vv_sidebar_caption", true);
         button->setProperty(kSidebarIconNameProperty, iconName);
         button->setProperty(kSidebarCompactProperty, false);
         button->setProperty(kSidebarHoverProperty, false);

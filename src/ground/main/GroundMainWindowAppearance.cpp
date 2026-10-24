@@ -61,6 +61,7 @@ void MainWindow::loadModernStyleSheet()
             "QPushButton#appSidebarButton { background-color: transparent; border: 1px solid transparent; border-radius: 6px; color: @vv-text; font-weight: 600; min-height: 34px; max-height: 34px; padding: 6px 8px; text-align: left; outline: none; }"
             "QPushButton#appSidebarButton:focus { outline: none; }"
             "QPushButton#appSidebarButton[_vv_sidebar_compact=\"true\"] { min-width: 42px; max-width: 42px; min-height: 42px; max-height: 42px; padding: 0px; text-align: center; outline: none; }"
+            "QPushButton#appSidebarButton[_vv_sidebar_compact=\"true\"][_vv_sidebar_caption=\"true\"] { min-height: 54px; max-height: 54px; font-size: 10px; }"
             "QPushButton#appSidebarButton:hover, QPushButton#appSidebarButton[_vv_hover=\"true\"] { background-color: @vv-title-hover; color: @vv-text; }"
             "QPushButton#appSidebarButton:checked { background-color: @vv-primary; border-color: @vv-primary; color: @vv-white; }"
             "QPushButton#dangerButton { background-color: @vv-danger; border: 1px solid @vv-danger; border-radius: 6px; color: @vv-white; font-weight: 700; padding: 6px 14px; }"
@@ -525,19 +526,20 @@ void MainWindow::setAppSidebarWidth(int width)
 void MainWindow::updateAppSidebarButtonTexts()
 {
     const bool compact = state_->app_sidebar_mode_ != AppSidebarMode::Full;
-    auto applyButtonText = [this, compact](QPushButton *button, const QString& label) {
+    auto applyButtonText = [this, compact](QPushButton *button, const QString& label,
+                                          const QString& compactLabel = QString()) {
         if (!button)
         {
             return;
         }
-        button->setText(compact ? QString() : label);
+        button->setText(compact && !compactLabel.isEmpty() ? compactLabel : label);
         button->setToolTip(label);
         button->setAccessibleName(label);
         button->setProperty(kSidebarCompactProperty, compact);
         if (compact)
         {
             const int buttonSize = scalePixels(kAppSidebarCompactButtonSize);
-            button->setFixedSize(buttonSize, buttonSize);
+            button->setFixedSize(buttonSize, scalePixels(kAppSidebarCompactButtonHeight));
             button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         }
         else
@@ -559,10 +561,12 @@ void MainWindow::updateAppSidebarButtonTexts()
 
     applyButtonText(state_->home_nav_btn_, state_->is_english_ ? QStringLiteral("Home") : QStringLiteral("首页"));
     applyButtonText(state_->temperature_nav_btn_, state_->is_english_ ? QStringLiteral("Thermal") : QStringLiteral("温控"));
-    applyButtonText(state_->rtk_config_nav_btn_, state_->is_english_ ? QStringLiteral("Combination Navigation") : QStringLiteral("组合导航"));
+    applyButtonText(state_->rtk_config_nav_btn_, state_->is_english_ ? QStringLiteral("Combination Navigation") : QStringLiteral("组合导航"),
+                    state_->is_english_ ? QStringLiteral("Nav") : QString());
     applyButtonText(state_->device_config_nav_btn_, state_->is_english_ ? QStringLiteral("Device") : QStringLiteral("设备配置"));
     applyButtonText(state_->fpga_nav_btn_, QStringLiteral("FPGA"));
-    applyButtonText(state_->water_calibration_nav_btn_, state_->is_english_ ? QStringLiteral("Water Calibration") : QStringLiteral("水汽定标"));
+    applyButtonText(state_->water_calibration_nav_btn_, state_->is_english_ ? QStringLiteral("Water Calibration") : QStringLiteral("水汽定标"),
+                    state_->is_english_ ? QStringLiteral("Calib.") : QString());
     updateRtkConfigIcon();
     updateCustomTitleBarTexts();
 }

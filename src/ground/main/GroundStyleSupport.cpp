@@ -524,6 +524,11 @@ QPushButton#appSidebarButton[_vv_sidebar_compact="true"] {
     text-align: center;
     outline: none;
 }
+QPushButton#appSidebarButton[_vv_sidebar_compact="true"][_vv_sidebar_caption="true"] {
+    min-height: 54px;
+    max-height: 54px;
+    font-size: 10px;
+}
 QPushButton#appSidebarButton:hover,
 QPushButton#appSidebarButton[_vv_hover="true"] {
     background-color: @vv-title-hover;

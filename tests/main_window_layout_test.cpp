@@ -6526,15 +6526,18 @@ int main(int argc, char **argv)
         }
     }
     require(checkedSidebarButton != nullptr, "checked compact sidebar button exists");
-    require(checkedSidebarButton->text().isEmpty(),
-            "compact sidebar hides navigation text");
-    require(checkedSidebarButton->height() == 44,
-            "compact sidebar option is 4px smaller");
-    require(checkedSidebarButton->width() == checkedSidebarButton->height(),
-            "compact sidebar option is a strict rounded square");
-    require(checkedSidebarButton->iconSize().width() >= 28 &&
-                checkedSidebarButton->iconSize().height() >= 28,
-            "compact sidebar lucide icon is visually larger");
+    require(appSidebar->width() == 62 && checkedSidebarButton->width() == 44,
+            "compact sidebar preserves its existing width");
+    require(checkedSidebarButton->height() == 56,
+            "compact sidebar reserves height for the caption below its icon");
+    for (QPushButton *button : sidebarButtons)
+    {
+        require(!button->text().isEmpty() &&
+                    button->fontMetrics().horizontalAdvance(button->text()) <= button->width() - 4,
+                "every compact sidebar caption fits without truncation");
+        require(button->iconSize().height() + button->fontMetrics().height() + 4 < button->height(),
+                "compact sidebar icon and caption fit vertically");
+    }
     require(checkedSidebarButton->focusPolicy() == Qt::TabFocus,
             "compact sidebar remains keyboard reachable after collapsing");
     QPushButton *temperatureNavButton = nullptr;
@@ -12193,6 +12196,12 @@ int main(int argc, char **argv)
         require(waitForWindowExposed(&scaledWindow),
                 "scaled main window becomes exposed for first-layout validation");
         activateLayouts(&scaledWindow);
+        for (QPushButton *button : scaledWindow.findChildren<QPushButton *>(QStringLiteral("appSidebarButton")))
+        {
+            require(!button->text().isEmpty() &&
+                        button->fontMetrics().horizontalAdvance(button->text()) <= button->width() - 4,
+                    "compact sidebar captions fit at 130 percent font scale");
+        }
         requireHomeDeviceColumnsAligned(&scaledWindow);
         requireHomeDeviceMinimumWidthMatchesControls(&scaledWindow);
         auto *scaledTemperatureOverviewTitleStatus =
