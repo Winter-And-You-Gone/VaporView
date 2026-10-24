@@ -723,7 +723,7 @@ void requireUiTestEpsilonPanelFieldsCovered(QWidget *epsilonPanel)
         QStringLiteral("IMU角速度[rad/s][X/Y/Z]:"),
         QStringLiteral("姿态角[deg][Roll/Pitch/Yaw]:"),
         QStringLiteral("姿态来源[0x41/0x63/0x64]:"),
-        QStringLiteral("姿态一致性[最大差值]:")
+        QStringLiteral("姿态一致性:")
     };
     for (const QString& field : requiredFields)
     {
@@ -742,8 +742,8 @@ void requireUiTestEpsilonPanelFieldsCovered(QWidget *epsilonPanel)
     require(filterStatus.contains(QStringLiteral("定位融合中")) &&
                 !filterStatus.contains(QStringLiteral("未初始化")),
             "UI-test EPSILON filter status matches the RTK fixed sample");
-    const QString attitudeConsistency = values.value(QStringLiteral("姿态一致性[最大差值]:"));
-    require(attitudeConsistency.contains(QStringLiteral("最大")) &&
+    const QString attitudeConsistency = values.value(QStringLiteral("姿态一致性:"));
+    require(!attitudeConsistency.contains(QStringLiteral("最大")) &&
                 attitudeConsistency.contains(QStringLiteral("41-63")) &&
                 attitudeConsistency.contains(QStringLiteral("41-64")) &&
                 attitudeConsistency.contains(QStringLiteral("63-64")),
@@ -1175,7 +1175,7 @@ int main(int argc, char **argv)
         require(VaporViewTest::processEventsUntil(2500, [epsilonPanel]() {
                     const QMap<QString, QString> values = epsilonPanelFieldValues(epsilonPanel);
                     return values.value(QStringLiteral("UTC时间:")) != QStringLiteral("--") &&
-                           values.value(QStringLiteral("姿态一致性[最大差值]:"))
+                           values.value(QStringLiteral("姿态一致性:"))
                                .contains(QStringLiteral("41-63"));
                 }),
                 "dark EPSILON layout test receives the populated UI-test sample");

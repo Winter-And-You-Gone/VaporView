@@ -4046,11 +4046,11 @@ void requireHomeOverviewLanguageWidthRoundTrip()
         "language overview EPSILON Chinese cards start with motion details on the second row");
     QLabel *attitudeConsistencyValue = epsilonValueLabelForField(
         languageEpsilonPanel,
-        QStringLiteral("姿态一致性[最大差值]:"));
+        QStringLiteral("姿态一致性:"));
     require(attitudeConsistencyValue != nullptr,
             "language overview exposes the EPSILON attitude consistency value label");
     attitudeConsistencyValue->setText(
-        QStringLiteral("最大 0.066°（41-63 0.037°，41-64 0.030°，63-64 0.066°）"));
+        QStringLiteral("41-63 0.037°，41-64 0.030°，63-64 0.066°"));
     attitudeConsistencyValue->setToolTip(attitudeConsistencyValue->text());
     attitudeConsistencyValue->updateGeometry();
     activateLayouts(&languageOverviewWindow);
@@ -4249,11 +4249,11 @@ void requireHomeOverviewLanguageWidthRoundTrip()
             "wide overview places the environment card to the left of EPSILON with the shared gap");
     QLabel *wideAttitudeConsistencyValue = epsilonValueLabelForField(
         wideEpsilonPanel,
-        QStringLiteral("姿态一致性[最大差值]:"));
+        QStringLiteral("姿态一致性:"));
     require(wideAttitudeConsistencyValue != nullptr,
             "wide overview exposes the EPSILON attitude consistency value label");
     wideAttitudeConsistencyValue->setText(
-        QStringLiteral("最大 0.066°（41-63 0.037°，41-64 0.030°，63-64 0.066°）"));
+        QStringLiteral("41-63 0.037°，41-64 0.030°，63-64 0.066°"));
     wideAttitudeConsistencyValue->setToolTip(wideAttitudeConsistencyValue->text());
     wideAttitudeConsistencyValue->updateGeometry();
     activateLayouts(&wideOverviewWindow);
@@ -4832,6 +4832,10 @@ void requireHomeMaximumValueWidths()
             const int reservedCounterWidth = frameCountsLabel->minimumWidth();
             sample.raw_frame_count = sample.dropped_frame_count = 99999999;
             epsilon->updateData(sample);
+            require(findLabelByText(epsilon, {english
+                        ? QStringLiteral("41-63 180.000°, 41-64 180.000°, 63-64 180.000°")
+                        : QStringLiteral("41-63 180.000°， 41-64 180.000°， 63-64 180.000°")}),
+                    "EPSILON attitude consistency shows the three pairwise deltas without a maximum summary");
             require(frameCountsLabel->minimumWidth() == reservedCounterWidth,
                     "eight-digit counters fit the initial reservation without widening it");
             ptb->updateData(pressure);

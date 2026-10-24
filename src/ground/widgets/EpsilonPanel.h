@@ -213,7 +213,7 @@ public:
                 : QStringLiteral("%1 路").arg(sourceCount);
         };
         auto attitudeDeltaText = [this](const VaporView::EpsilonData& sample) {
-            if (sample.attitude_source_count < 2 || !std::isfinite(sample.attitude_delta_max_deg))
+            if (sample.attitude_source_count < 2)
             {
                 return QString();
             }
@@ -234,10 +234,7 @@ public:
             {
                 parts << QStringLiteral("63-64 %1").arg(formatDelta(sample.attitude_delta_euler_quat_deg));
             }
-            const QString maxText = formatDelta(sample.attitude_delta_max_deg);
-            return is_english_
-                ? QStringLiteral("max %1 (%2)").arg(maxText, parts.join(QStringLiteral(", ")))
-                : QStringLiteral("最大 %1（%2）").arg(maxText, parts.join(QStringLiteral("， ")));
+            return parts.join(is_english_ ? QStringLiteral(", ") : QStringLiteral("， "));
         };
         const bool gnss_fix_valid = epsilon_data.gnss_fix_code >= 2;
         const bool utc_valid = epsilon_data.utc_unix_s > 0;
@@ -599,11 +596,11 @@ private:
                 ? QStringList{QStringLiteral("-999.999/-999.999/-999.999"),
                               QStringLiteral("-999.9999/-999.9999/-999.9999"),
                               QStringLiteral("-180.00/-90.00/-180.00"),
-                              QStringLiteral("max 180.000° (41-63 180.000°, 41-64 180.000°, 63-64 180.000°)")}
+                              QStringLiteral("41-63 180.000°, 41-64 180.000°, 63-64 180.000°")}
                 : QStringList{QStringLiteral("-999.999/-999.999/-999.999"),
                               QStringLiteral("-999.9999/-999.9999/-999.9999"),
                               QStringLiteral("-180.00/-90.00/-180.00"),
-                              QStringLiteral("最大 180.000°（41-63 180.000°，41-64 180.000°，63-64 180.000°）")};
+                              QStringLiteral("41-63 180.000°，41-64 180.000°，63-64 180.000°")};
         }
         return {};
     }
@@ -1060,7 +1057,7 @@ private:
         addField(motionGrid, row++, 0, QStringLiteral("imu_gyr"), QStringLiteral("IMU角速度[rad/s][X/Y/Z]:"), QStringLiteral("IMU Gyro [rad/s][X/Y/Z]:"), kEpsilonMotionValueColumnWidth);
         addField(motionGrid, row++, 0, QStringLiteral("rpy"), QStringLiteral("姿态角[deg][Roll/Pitch/Yaw]:"), QStringLiteral("Attitude [deg][Roll/Pitch/Yaw]:"), kEpsilonMotionValueColumnWidth);
         addField(motionGrid, row++, 0, QStringLiteral("attitude_sources"), QStringLiteral("姿态来源[0x41/0x63/0x64]:"), QStringLiteral("Attitude Sources [0x41/0x63/0x64]:"), kEpsilonMotionValueColumnWidth);
-        addField(motionGrid, row++, 0, QStringLiteral("attitude_delta"), QStringLiteral("姿态一致性[最大差值]:"), QStringLiteral("Attitude Consistency [max delta]:"), kEpsilonMotionValueColumnWidth);
+        addField(motionGrid, row++, 0, QStringLiteral("attitude_delta"), QStringLiteral("姿态一致性:"), QStringLiteral("Attitude Consistency:"), kEpsilonMotionValueColumnWidth);
 
         updateCardGridLayout(true);
         layout->addLayout(cards_layout_, 0);
