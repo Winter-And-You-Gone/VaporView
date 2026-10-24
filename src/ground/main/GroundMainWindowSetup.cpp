@@ -5287,11 +5287,10 @@ void MainWindow::setupDataPanels()
     env_layout->addWidget(state_->lidar_panel_);
 
     state_->ptb_panel_ = new PtbPanel(this);
-    env_layout->addWidget(state_->ptb_panel_);
+    env_layout->addWidget(state_->ptb_panel_, 1);
 
     state_->hmp_panel_ = new HmpPanel(this);
-    env_layout->addWidget(state_->hmp_panel_);
-    env_layout->addStretch(1);
+    env_layout->addWidget(state_->hmp_panel_, 2);
     updateEnvironmentStatusIcons(false, false, false);
 
     const int sensorCardHeight = std::max({

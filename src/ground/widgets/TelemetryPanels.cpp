@@ -216,8 +216,7 @@ public:
         , unit_(unit)
     {
         setMinimumHeight(kEnvironmentTrendPlotHeight);
-        setMaximumHeight(kEnvironmentTrendPlotHeight);
-        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
         setAttribute(Qt::WA_OpaquePaintEvent, true);
         setProperty("sampleCount", 0);
         setProperty("yAxisUnitLabel", unit_);
@@ -1300,7 +1299,7 @@ PtbPanel::PtbPanel(QWidget *parent)
 
 void PtbPanel::setupUi()
 {
-    setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+    setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
     auto *layout = new QVBoxLayout(this);
     layout->setSpacing(2);
     layout->setContentsMargins(6, 1, 6, 4);
@@ -1332,7 +1331,7 @@ void PtbPanel::setupUi()
         this);
     pressure_trend_plot_->setObjectName(QStringLiteral("environmentPressureTrendPlot"));
     pressure_trend_plot_->setProperty("seriesRole", QStringLiteral("pressure"));
-    layout->addWidget(pressure_trend_plot_);
+    layout->addWidget(pressure_trend_plot_, 1);
 
     setEnglish(false);
 }
@@ -1398,7 +1397,7 @@ HmpPanel::HmpPanel(QWidget *parent)
 
 void HmpPanel::setupUi()
 {
-    setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+    setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
     auto *layout = new QVBoxLayout(this);
     layout->setSpacing(2);
     layout->setContentsMargins(6, 1, 6, 4);
@@ -1435,7 +1434,7 @@ void HmpPanel::setupUi()
         this);
     temperature_trend_plot_->setObjectName(QStringLiteral("environmentTemperatureTrendPlot"));
     temperature_trend_plot_->setProperty("seriesRole", QStringLiteral("temperature"));
-    layout->addWidget(temperature_trend_plot_);
+    layout->addWidget(temperature_trend_plot_, 1);
 
     auto *humidLayout = new QHBoxLayout();
     humidLayout->setSpacing(1);
@@ -1458,7 +1457,7 @@ void HmpPanel::setupUi()
         this);
     humidity_trend_plot_->setObjectName(QStringLiteral("environmentHumidityTrendPlot"));
     humidity_trend_plot_->setProperty("seriesRole", QStringLiteral("humidity"));
-    layout->addWidget(humidity_trend_plot_);
+    layout->addWidget(humidity_trend_plot_, 1);
 
     setEnglish(false);
 }

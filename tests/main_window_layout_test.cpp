@@ -4504,6 +4504,24 @@ void requireHomeTemperatureColumnMinimumHeight(MainWindow &window)
             "the laser overview retains its natural height without blank padding");
     require(ai8->geometry().bottom() == column->contentsRect().bottom(),
             "the device temperature card fills the remaining column height");
+    int smallestPlotHeight = std::numeric_limits<int>::max();
+    int largestPlotHeight = 0;
+    for (const char *name : {"environmentPressureTrendPlot", "environmentTemperatureTrendPlot",
+                             "environmentHumidityTrendPlot"})
+    {
+        QWidget *plot = environment->findChild<QWidget *>(QLatin1String(name));
+        require(plot && plot->height() >= plot->minimumSizeHint().height(),
+                "environment plots retain their readable minimum height");
+        smallestPlotHeight = std::min(smallestPlotHeight, plot->height());
+        largestPlotHeight = std::max(largestPlotHeight, plot->height());
+    }
+    require(largestPlotHeight - smallestPlotHeight <= 3,
+            "the three environment plots share available height evenly");
+    QWidget *humidityPlot = environment->findChild<QWidget *>(QStringLiteral("environmentHumidityTrendPlot"));
+    const int bottomGap = environment->contentsRect().bottom() -
+        humidityPlot->mapTo(environment, QPoint(0, humidityPlot->height() - 1)).y();
+    require(bottomGap >= 0 && bottomGap <= 8,
+            "environment plots fill the card without retaining a large bottom gap");
     auto *panel = ai8->findChild<QWidget *>(QStringLiteral("ai8TemperatureOverviewPanel"));
     auto *internalEnvironment = ai8->findChild<QWidget *>(QStringLiteral("homeInternalEnvironment"));
     require(internalEnvironment && internalEnvironment->height() <= internalEnvironment->sizeHint().height() + 1,
