@@ -4545,8 +4545,104 @@ void requireHomeTemperatureColumnMinimumHeight(MainWindow &window)
         }
 }
 
+void requireHomeEpsilonHeightAfterMaximize()
+{
+    MainWindow window;
+    window.resize(1600, 900);
+    window.show();
+    require(waitForWindowExposed(&window), "EPSILON height test window becomes exposed");
+    processEventsFor(300);
+    auto *panel = static_cast<VaporView::Ground::Widgets::EpsilonPanel *>(
+        window.findChild<QWidget *>(QStringLiteral("epsilonPanel")));
+    auto *card = panel ? panel->parentWidget() : nullptr;
+    auto *row = window.findChild<QGroupBox *>(QStringLiteral("sensorRowContainer"));
+    auto *maximize = window.findChild<QToolButton *>(QStringLiteral("windowMaximizeButton"));
+    auto *overview = window.findChild<QSplitter *>(QStringLiteral("homeOverviewSplitter"));
+    require(panel && card && row && maximize && overview,
+            "EPSILON height test exposes the card and maximize button");
+    for (QTimer *timer : window.findChildren<QTimer *>(QString(), Qt::FindDirectChildrenOnly))
+        if (timer->interval() == 100)
+            timer->stop();
+    VaporView::EpsilonData sample;
+    sample.valid = true;
+    sample.gnss_fix_code = 6;
+    sample.gnss_fix_text = "RTK_FIXED";
+    sample.gnss_satellites = 24;
+    sample.filter_status_bits = 0x006f;
+    sample.utc_unix_s = 1792567686;
+    sample.device_timestamp_us = 159784000;
+    sample.raw_frame_count = 22260;
+    sample.latitude_deg = 22.30008901;
+    sample.longitude_deg = 114.1700118;
+    sample.height_m = 35.495;
+    sample.hacc_m = 0.03;
+    sample.vacc_m = 0.05;
+    sample.attitude_source_count = 3;
+    sample.attitude_delta_ahrs_euler_deg = 0;
+    sample.attitude_delta_ahrs_quat_deg = 0;
+    sample.attitude_delta_euler_quat_deg = 0;
+    for (int scale : {100, 130})
+    {
+        for (QAction *action : window.findChildren<QAction *>())
+            if (action->data().toInt() == scale)
+            {
+                action->trigger();
+                break;
+            }
+        panel->updateData(sample);
+        processEventsFor(300);
+        maximize->click();
+        require(processEventsUntil(1000, [&window] { return window.isMaximized(); }),
+                "EPSILON height test maximizes through the title-bar button");
+        processEventsFor(300);
+        if (overview->count() == 3)
+        {
+            const int contentHeight = std::max(card->minimumSizeHint().height(), card->sizeHint().height());
+            require(std::abs(card->height() - contentHeight) <= 2 &&
+                        std::abs(row->height() - card->height()) <= 2,
+                    "maximized EPSILON card releases obsolete wrapped-row height");
+        }
+        maximize->click();
+        require(processEventsUntil(1000, [&window] { return !window.isMaximized(); }),
+                "EPSILON height test restores through the title-bar button");
+        processEventsFor(300);
+        requireEpsilonSectionCardsStayInsidePanel(panel,
+            "restored EPSILON sections remain inside the card");
+        for (int width : {2400, 3200, 2400, 1600})
+        {
+            window.resize(width, 900);
+            processEventsFor(300);
+            if (width == 3200)
+            {
+                require(overview->count() == 3 &&
+                            epsilonSectionCardsShareRow(panel),
+                        "wide EPSILON height test exercises the single-row section layout");
+            }
+            if (overview->count() == 3)
+            {
+                const int contentHeight = std::max(card->minimumSizeHint().height(), card->sizeHint().height());
+                if (std::abs(card->height() - contentHeight) > 2)
+                    std::cerr << "EPSILON width=" << width << " scale=" << scale
+                              << " height=" << card->height() << " content=" << contentHeight << '\n';
+                require(std::abs(card->height() - contentHeight) <= 2,
+                        "EPSILON card height follows its content after a wide-window reflow");
+                requireEpsilonSectionCardsStayInsidePanel(panel,
+                    "wide EPSILON sections remain inside the resized card");
+            }
+        }
+    }
+    for (QAction *action : window.findChildren<QAction *>())
+        if (action->data().toInt() == 100)
+        {
+            action->trigger();
+            break;
+        }
+    window.close();
+}
+
 void requireHomeThreeColumnLayout()
 {
+    requireHomeEpsilonHeightAfterMaximize();
     MainWindow window;
     window.resize(2400, 700);
     window.show();
@@ -12128,9 +12224,9 @@ int main(int argc, char **argv)
     requireEpsilonSectionCardsStayInsidePanel(
         wideEpsilonPanel,
         "wide EPSILON section cards stay inside the EPSILON panel");
-    requireEpsilonSectionCardsUseWrappedMotionRow(
+    requireEpsilonSectionCardsFillRows(
         wideEpsilonPanel,
-        "wide EPSILON panel defaults to the wrapped motion row at maximized-style width");
+        "wide EPSILON sections fill one or two rows according to the available width");
 
     const QRect wideEpsilonGeometry = epsilonGroup->geometry();
     const QRect wideEnvironmentGeometry = environmentGroup->geometry();

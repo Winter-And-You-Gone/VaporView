@@ -513,6 +513,7 @@ struct MainWindowState
     QVector<UiTestWidgetStateEntry> ui_test_widget_states_;
     std::unique_ptr<VaporView::Ground::Devices::UiTestDataModel> ui_test_model_;
     bool compact_home_layout_;
+    int epsilon_content_height_;
     bool responsive_home_layout_refresh_pending_;
     bool log_side_panel_width_initialized_;
     bool log_side_panel_collapsed_;

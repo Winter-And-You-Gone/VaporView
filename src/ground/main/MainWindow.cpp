@@ -837,7 +837,12 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
             state_->home_overview_splitter_->property(kHomeOverviewColumnMinimaProperty).value<QList<int>>() !=
                 QList<int>{state_->config_group_->minimumWidth(), state_->home_temperature_overview_column_->minimumWidth(),
                     std::max(state_->env_group_->minimumWidth(), state_->env_group_->minimumSizeHint().width())};
-        if (capped || rowTooNarrow || overviewTooNarrow || columnMinimaChanged)
+        // Section wrapping can settle after the outer card has already been
+        // measured. Refit once its natural height changes, even at the same width.
+        const bool epsilonHeightChanged = watched == state_->epsilon_group_ &&
+            state_->epsilon_content_height_ != std::max(state_->epsilon_group_->minimumSizeHint().height(),
+                                                       state_->epsilon_group_->sizeHint().height());
+        if (capped || rowTooNarrow || overviewTooNarrow || columnMinimaChanged || epsilonHeightChanged)
             queueResponsiveHomeLayoutRefresh();
     }
     if (state_->main_cards_scroll_area_ &&

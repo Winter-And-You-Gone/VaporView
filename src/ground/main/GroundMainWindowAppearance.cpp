@@ -1279,6 +1279,7 @@ void MainWindow::updateResponsiveHomeLayout()
     }
 
     const int epsilonHeight = contentHeightFor(state_->epsilon_group_);
+    state_->epsilon_content_height_ = epsilonHeight;
     const int envMinimumHeight = state_->env_group_
         ? std::max(contentHeightFor(state_->env_group_),
                    state_->env_group_->property(kMainCardMinimumHeightProperty).toInt()) : 0;

@@ -252,6 +252,7 @@ MainWindowState::MainWindowState()
 #endif
     , ui_test_model_(std::make_unique<VaporView::Ground::Devices::UiTestDataModel>())
     , compact_home_layout_(false)
+    , epsilon_content_height_(0)
     , responsive_home_layout_refresh_pending_(false)
     , log_side_panel_width_initialized_(false)
     , log_side_panel_collapsed_(false)
