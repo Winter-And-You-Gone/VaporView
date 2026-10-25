@@ -2,8 +2,10 @@
 #include "ground/wave/TcpWavePanel.h"
 #include "ground/widgets/SegmentedSwitchButton.h"
 #include "LogService.h"
+#include "shared/theme/SingleLevelPopupMenu.h"
 
 #include <QApplication>
+#include <QAction>
 #include <QComboBox>
 #include <QByteArray>
 #include <QDateTime>
@@ -20,6 +22,7 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTemporaryDir>
+#include <QToolButton>
 #include <QVector>
 #include <QtEndian>
 #include <algorithm>
@@ -634,6 +637,90 @@ void testFpgaPeakHeaderStaysStable()
 
 }  // namespace
 
+void testFpgaWaveDisplaySelection()
+{
+    TcpWavePanel panel;
+    panel.resize(1500, 900);
+    panel.show();
+    QApplication::processEvents();
+    auto *button = panel.findChild<QToolButton *>(QStringLiteral("tcpWaveDisplayButton"));
+    auto *menu = panel.findChild<VaporView::SingleLevelPopupMenu *>(QStringLiteral("waveDisplayMenu"));
+    require(button && menu, "wave display menu and title-bar entry exist");
+    const QStringList actions = {QStringLiteral("tcpWaveDisplayRawMenuAction"),
+                                 QStringLiteral("fpgaWaveDisplayH2MenuAction"),
+                                 QStringLiteral("tcpWaveDisplayHarmonicMenuAction"),
+                                 QStringLiteral("tcpWaveDisplayPeakTrendMenuAction")};
+    const QList<QWidget *> plots = {panel.findChild<QWidget *>("tcpWaveRawPlot"),
+                                    panel.findChild<QWidget *>("fpgaWaveH2Plot"),
+                                    panel.findChild<QWidget *>("tcpWaveHarmonicPlot"),
+                                    panel.findChild<QWidget *>("tcpWavePeakTrendPlot")};
+    const auto clickRow = [&](const QString &name) {
+        button->click();
+        require(waitUntil([&] { return menu->isVisible(); }), "wave display menu opens in either transport mode");
+        auto *row = menu->findChild<VaporView::SingleLevelPopupMenuRow *>(name);
+        require(row && row->isVisible(), "requested display row is available in the active mode");
+        row->click();
+        menu->hide();
+        QApplication::processEvents();
+    };
+    const auto checkPlots = [&](int mask) {
+        for (int index = 0; index < plots.size(); ++index)
+            require(plots[index] && plots[index]->isVisible() == bool(mask & (1 << index)),
+                    "selected waveform subset matches actual plot visibility");
+        require(panel.hasVisibleWaveDisplay() == (mask != 0), "empty selection reports no visible plots");
+        require(panel.usesExpandedPanelHeight() == (mask && (mask & (mask - 1))),
+                "expanded height follows the number of selected graphs");
+    };
+    clickRow(actions[0]); // Remember a different selection for direct mode.
+    panel.setFpgaMode(true);
+    require(button->isVisible(), "FPGA keeps the wave display settings button visible");
+    checkPlots(15);
+    const int allHeight = panel.preferredPanelHeight();
+    int acquisitionRequests = 0;
+    QObject::connect(&panel, &TcpWavePanel::fpgaAcquisitionRequested, &panel,
+                     [&](bool, bool) { ++acquisitionRequests; });
+    const QString showAll = QStringLiteral("tcpWaveDisplayShowAllMenuAction");
+    for (int mask = 0; mask < 16; ++mask) {
+        if (mask > 0) clickRow(showAll); // Restore all, then deselect all to reset the subset.
+        clickRow(showAll);
+        for (int index = 0; index < actions.size(); ++index)
+            if (mask & (1 << index)) clickRow(actions[index]);
+        checkPlots(mask);
+        if (!mask) require(panel.preferredPanelHeight() < 80, "hiding all FPGA graphs collapses to the title bar");
+        if (mask == 2) {
+            const int singleHeight = panel.preferredPanelHeight();
+            require(singleHeight < allHeight, "H2 alone releases the unused peak-trend height");
+            panel.setCompactLayout(true);
+            require(panel.preferredPanelHeight() == singleHeight, "hidden FPGA plots reserve no compact-layout height");
+            panel.setCompactLayout(false);
+        }
+    }
+    clickRow(showAll);
+    checkPlots(15);
+    clickRow(showAll);
+    checkPlots(0);
+    panel.setFpgaWaveform(0x30, {{10, 20}, {40, 50}, {4, 2.5}}, {"H1", "H2", "H2/H1"}, "complete", 2);
+    panel.setFpgaSecondHarmonicPeak(0x30, 1, 100, 4, false);
+    require(panel.testPeakValues() == QVector<float>({4}), "hidden trend continues collecting cycle peaks");
+    clickRow(actions[2]);
+    clickRow(actions[3]);
+    checkPlots(12);
+    require(panel.testHarmonicSamples() == QVector<float>({4, 2.5}), "reopening plots retains the latest normalized samples");
+    panel.setEnglish(true);
+    auto *normalizedRow = menu->findChild<VaporView::SingleLevelPopupMenuRow *>(actions[2]);
+    require(normalizedRow->text() == QStringLiteral("Show Normalized Second Harmonic"), "FPGA display labels follow the language");
+    checkPlots(12);
+    panel.setFpgaMode(false);
+    QApplication::processEvents();
+    checkPlots(1);
+    require(!menu->findChild<VaporView::SingleLevelPopupMenuRow *>(actions[1])->defaultAction()->isVisible(),
+            "direct mode hides the FPGA-only H2 menu item");
+    panel.setFpgaMode(true);
+    QApplication::processEvents();
+    checkPlots(12);
+    require(acquisitionRequests == 0, "display selections do not send acquisition commands");
+}
+
 int main(int argc, char **argv)
 {
     QTemporaryDir settingsDir;
@@ -684,6 +771,7 @@ int main(int argc, char **argv)
     testPeakPlotModeSwitch();
     testNormalizedWaveformGapsRender();
     testFpgaPeakHeaderStaysStable();
+    testFpgaWaveDisplaySelection();
     {
         TcpWavePanel panel;panel.setConnectionEndpoint("127.0.0.9",9901);panel.setFpgaMode(true);
         panel.setFpgaWaveform(0x20,{{1,2,3}},{"ADC"},"ADC complete",3);

@@ -59,6 +59,7 @@
 #include <cmath>
 #include <functional>
 #include <limits>
+#include <utility>
 
 using VaporView::AppThemeColor;
 using VaporView::appThemeColor;
@@ -529,6 +530,7 @@ public:
         menu_->refreshTheme();
         show_all_row_ = addModeRow(0);
         show_raw_row_ = addModeRow(1);
+        show_h2_row_ = addModeRow(4);
         show_harmonic_row_ = addModeRow(2);
         show_peak_trend_row_ = addModeRow(3);
         setCurrentStates(true, false, false, false);
@@ -574,42 +576,52 @@ public:
         update();
     }
 
-    void setEnglish(bool english)
+    void setEnglish(bool english, bool fpgaMode)
     {
         const QString title = english ? QStringLiteral("Wave display settings") : QStringLiteral("波形显示设置");
         setToolTip(title);
         setAccessibleName(title);
         menu_->setTitle(english ? QStringLiteral("Wave Display") : QStringLiteral("波形显示"));
         show_all_row_->setText(english ? QStringLiteral("Show All") : QStringLiteral("全部显示"));
-        show_raw_row_->setText(english ? QStringLiteral("Show Raw Signal") : QStringLiteral("显示原始信号"));
-        show_harmonic_row_->setText(english ? QStringLiteral("Show Second Harmonic") : QStringLiteral("显示二次谐波"));
-        show_peak_trend_row_->setText(english ? QStringLiteral("Show Second Harmonic Peak Trend") : QStringLiteral("显示二次谐波峰值趋势"));
+        show_raw_row_->setText(fpgaMode
+            ? (english ? QStringLiteral("Show First Harmonic H1") : QStringLiteral("显示一次谐波H1"))
+            : (english ? QStringLiteral("Show Raw Signal") : QStringLiteral("显示原始信号")));
+        show_h2_row_->setText(english ? QStringLiteral("Show Second Harmonic H2") : QStringLiteral("显示二次谐波H2"));
+        show_h2_row_->defaultAction()->setVisible(fpgaMode);
+        show_harmonic_row_->setText(fpgaMode
+            ? (english ? QStringLiteral("Show Normalized Second Harmonic") : QStringLiteral("显示归一化二次谐波"))
+            : (english ? QStringLiteral("Show Second Harmonic") : QStringLiteral("显示二次谐波")));
+        show_peak_trend_row_->setText(fpgaMode
+            ? (english ? QStringLiteral("Show Normalized Second Harmonic Peak Trend") : QStringLiteral("显示归一化二次谐波峰值趋势"))
+            : (english ? QStringLiteral("Show Second Harmonic Peak Trend") : QStringLiteral("显示二次谐波峰值趋势")));
         refreshTooltipAnchor();
     }
 
-    void setCurrentStates(bool showAll, bool showRaw, bool showHarmonic, bool showPeakTrend)
+    void setCurrentStates(bool showAll, bool showRaw, bool showHarmonic, bool showPeakTrend, bool showH2 = false)
     {
         show_all_ = showAll;
         show_raw_ = showRaw;
         show_harmonic_ = showHarmonic;
         show_peak_trend_ = showPeakTrend;
+        show_h2_ = showH2;
         show_all_row_->setChecked(show_all_);
         show_raw_row_->setChecked(show_raw_);
         show_harmonic_row_->setChecked(show_harmonic_);
         show_peak_trend_row_->setChecked(show_peak_trend_);
+        show_h2_row_->setChecked(show_h2_);
     }
 
     void setCheckIcon(const QIcon& icon)
     {
         check_icon_ = icon;
-        for (SingleLevelPopupMenuRow *row : {show_all_row_, show_raw_row_, show_harmonic_row_, show_peak_trend_row_})
+        for (SingleLevelPopupMenuRow *row : {show_all_row_, show_raw_row_, show_h2_row_, show_harmonic_row_, show_peak_trend_row_})
         {
             row->setCheckIcon(check_icon_);
             row->refreshTheme();
         }
     }
 
-    void setModeChangedCallback(std::function<void(bool, bool, bool, bool)> callback)
+    void setModeChangedCallback(std::function<void(bool, bool, bool, bool, bool)> callback)
     {
         mode_changed_ = std::move(callback);
     }
@@ -748,13 +760,15 @@ private:
     SingleLevelPopupMenu *menu_;
     SingleLevelPopupMenuRow *show_all_row_ = nullptr;
     SingleLevelPopupMenuRow *show_raw_row_ = nullptr;
+    SingleLevelPopupMenuRow *show_h2_row_ = nullptr;
     SingleLevelPopupMenuRow *show_harmonic_row_ = nullptr;
     SingleLevelPopupMenuRow *show_peak_trend_row_ = nullptr;
-    std::function<void(bool, bool, bool, bool)> mode_changed_;
+    std::function<void(bool, bool, bool, bool, bool)> mode_changed_;
     bool show_all_ = false;
     bool show_raw_ = false;
     bool show_harmonic_ = false;
     bool show_peak_trend_ = false;
+    bool show_h2_ = false;
     bool icon_hovered_ = false;
     bool inline_icon_visible_ = false;
 
@@ -770,6 +784,8 @@ private:
                 return QStringLiteral("tcpWaveDisplayHarmonicMenuAction");
             case 3:
                 return QStringLiteral("tcpWaveDisplayPeakTrendMenuAction");
+            case 4:
+                return QStringLiteral("fpgaWaveDisplayH2MenuAction");
             case 0:
             default:
                 return QStringLiteral("tcpWaveDisplayShowAllMenuAction");
@@ -807,11 +823,15 @@ private:
                 {
                     show_peak_trend_ = !show_peak_trend_;
                 }
-                setCurrentStates(false, show_raw_, show_harmonic_, show_peak_trend_);
+                else if (mode == 4)
+                {
+                    show_h2_ = !show_h2_;
+                }
+                setCurrentStates(false, show_raw_, show_harmonic_, show_peak_trend_, show_h2_);
             }
             if (mode_changed_)
             {
-                mode_changed_(show_all_, show_raw_, show_harmonic_, show_peak_trend_);
+                mode_changed_(show_all_, show_raw_, show_harmonic_, show_peak_trend_, show_h2_);
             }
         });
         return row;
@@ -1704,10 +1724,6 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , remote_waveform_status_text_()
     , remote_feature_status_text_()
     , peak_filter_settings_()
-    , wave_display_all_(true)
-    , wave_display_raw_(false)
-    , wave_display_harmonic_(false)
-    , wave_display_peak_trend_(false)
     , peak_search_start_index_(kDefaultPeakSearchStartIndex)
     , peak_search_end_index_(kDefaultPeakSearchEndIndex)
     , peak_plot_scatter_mode_(true)
@@ -1773,23 +1789,31 @@ void TcpWavePanel::setCompactLayout(bool compact)
 int TcpWavePanel::preferredPanelHeight() const
 {
     const int topControlsHeight = control_layout_ ? control_layout_->sizeHint().height() : kTcpTitleBarHeight;
+    const auto &mode = waveDisplayMode();
     if (fpga_mode_) {
-        const int h1Height = wave1_group_->minimumSizeHint().height();
-        const int h2Height = fpga_h2_group_->minimumSizeHint().height();
-        const int normalizedHeight = wave4_group_->minimumSizeHint().height();
-        const int wavesHeight = compact_layout_
-            ? h1Height + h2Height + normalizedHeight + 2 * plots_layout_->spacing()
-            : std::max({h1Height, h2Height, normalizedHeight});
+        int wavesHeight = 0;
+        int waveCount = 0;
+        for (const auto &wave : {std::pair{wave1_group_, mode.all || mode.raw},
+                                std::pair{fpga_h2_group_, mode.all || mode.h2},
+                                std::pair{wave4_group_, mode.all || mode.harmonic}}) {
+            if (!wave.second) continue;
+            const int height = wave.first->minimumSizeHint().height();
+            wavesHeight = compact_layout_ ? wavesHeight + height : std::max(wavesHeight, height);
+            ++waveCount;
+        }
+        if (compact_layout_) wavesHeight += std::max(0, waveCount - 1) * plots_layout_->spacing();
         const QMargins margins = layout()->contentsMargins();
-        return topControlsHeight + wavesHeight
-            + std::max(peak_group_->minimumHeight(), peak_group_->minimumSizeHint().height())
-            + 2 * layout()->spacing() + margins.top() + margins.bottom();
+        const bool showPeak = mode.all || mode.peak_trend;
+        return topControlsHeight + wavesHeight + (showPeak
+            ? std::max(peak_group_->minimumHeight(), peak_group_->minimumSizeHint().height()) : 0)
+            + ((waveCount > 0 ? 1 : 0) + (showPeak ? 1 : 0)) * layout()->spacing()
+            + margins.top() + margins.bottom();
     }
     int height = topControlsHeight + 4;
 
-    const bool showRawWave = fpga_mode_ || wave_display_all_ || wave_display_raw_;
-    const bool showHarmonicWave = fpga_mode_ || wave_display_all_ || wave_display_harmonic_;
-    const bool showPeakTrend = fpga_mode_ || wave_display_all_ || wave_display_peak_trend_;
+    const bool showRawWave = mode.all || mode.raw;
+    const bool showHarmonicWave = mode.all || mode.harmonic;
+    const bool showPeakTrend = mode.all || mode.peak_trend;
     const int visibleWaveRows = (showRawWave ? 1 : 0) + (showHarmonicWave ? 1 : 0);
 
     if (visibleWaveRows > 0)
@@ -1810,7 +1834,8 @@ int TcpWavePanel::preferredPanelHeight() const
 
 bool TcpWavePanel::hasVisibleWaveDisplay() const
 {
-    return fpga_mode_ || wave_display_all_ || wave_display_raw_ || wave_display_harmonic_ || wave_display_peak_trend_;
+    const auto &mode = waveDisplayMode();
+    return mode.all || mode.raw || mode.harmonic || mode.peak_trend || (fpga_mode_ && mode.h2);
 }
 
 bool TcpWavePanel::hasRecentData(qint64 timeoutMs) const
@@ -1821,11 +1846,12 @@ bool TcpWavePanel::hasRecentData(qint64 timeoutMs) const
 
 bool TcpWavePanel::usesExpandedPanelHeight() const
 {
-    if (fpga_mode_) return true;
+    const auto &mode = waveDisplayMode();
     const int visibleDisplayCount =
-        ((wave_display_all_ || wave_display_raw_) ? 1 : 0) +
-        ((wave_display_all_ || wave_display_harmonic_) ? 1 : 0) +
-        ((wave_display_all_ || wave_display_peak_trend_) ? 1 : 0);
+        ((mode.all || mode.raw) ? 1 : 0) +
+        ((mode.all || mode.harmonic) ? 1 : 0) +
+        ((mode.all || mode.peak_trend) ? 1 : 0) +
+        ((fpga_mode_ && (mode.all || mode.h2)) ? 1 : 0);
     return visibleDisplayCount > 1;
 }
 
@@ -1849,11 +1875,8 @@ void TcpWavePanel::setupUi()
     control_layout_->addWidget(topControlsBar, 0, 0, 1, 6);
 
     auto *waveDisplayTitle = new WaveDisplayTitleLabel(topControlsBar);
-    waveDisplayTitle->setModeChangedCallback([this](bool showAll, bool showRaw, bool showHarmonic, bool showPeakTrend) {
-        wave_display_all_ = showAll;
-        wave_display_raw_ = showRaw;
-        wave_display_harmonic_ = showHarmonic;
-        wave_display_peak_trend_ = showPeakTrend;
+    waveDisplayTitle->setModeChangedCallback([this](bool showAll, bool showRaw, bool showHarmonic, bool showPeakTrend, bool showH2) {
+        (fpga_mode_ ? fpga_wave_display_ : direct_wave_display_) = {showAll, showRaw, showHarmonic, showPeakTrend, showH2};
         applyWaveDisplayMode();
     });
     panel_title_label_ = waveDisplayTitle;
@@ -2323,10 +2346,9 @@ void TcpWavePanel::setFpgaMode(bool enabled)
     if (enabled && socket_ && socket_->state() != QAbstractSocket::UnconnectedState)
         requestGracefulDisconnect();
     const QList<QWidget *> tcpControls = {host_label_, host_edit_, port_label_, port_edit_,
-                                         connect_button_, frame_rate_label_, wave_display_button_};
+                                         connect_button_, frame_rate_label_};
     for (QWidget *widget : tcpControls)
         widget->setVisible(!enabled);
-    panel_title_label_->setAttribute(Qt::WA_TransparentForMouseEvents, enabled);
     fpga_channel_combo_->setVisible(enabled);
     fpga_raw_button_->setVisible(enabled);
     fpga_harmonic_button_->setVisible(enabled);
@@ -2481,7 +2503,7 @@ void TcpWavePanel::updateWaveDisplayModeTexts()
 {
     if (auto *titleLabel = dynamic_cast<WaveDisplayTitleLabel *>(panel_title_label_))
     {
-        titleLabel->setEnglish(is_english_);
+        titleLabel->setEnglish(is_english_, fpga_mode_);
     }
 }
 
@@ -2511,16 +2533,23 @@ void TcpWavePanel::updateWaveDisplayModeIcon()
     }
 }
 
+const TcpWavePanel::WaveDisplayMode &TcpWavePanel::waveDisplayMode() const
+{
+    return fpga_mode_ ? fpga_wave_display_ : direct_wave_display_;
+}
+
 void TcpWavePanel::applyWaveDisplayMode()
 {
-    fpga_h2_group_->setVisible(fpga_mode_);
-    const bool showRawWave = fpga_mode_ || wave_display_all_ || wave_display_raw_;
-    const bool showHarmonicWave = fpga_mode_ || wave_display_all_ || wave_display_harmonic_;
-    const bool showPeakTrend = fpga_mode_ || wave_display_all_ || wave_display_peak_trend_;
+    const auto &mode = waveDisplayMode();
+    const bool showH2 = fpga_mode_ && (mode.all || mode.h2);
+    fpga_h2_group_->setVisible(showH2);
+    const bool showRawWave = mode.all || mode.raw;
+    const bool showHarmonicWave = mode.all || mode.harmonic;
+    const bool showPeakTrend = mode.all || mode.peak_trend;
 
     if (auto *titleLabel = dynamic_cast<WaveDisplayTitleLabel *>(panel_title_label_))
     {
-        titleLabel->setCurrentStates(wave_display_all_, wave_display_raw_, wave_display_harmonic_, wave_display_peak_trend_);
+        titleLabel->setCurrentStates(mode.all, mode.raw, mode.harmonic, mode.peak_trend, mode.h2);
     }
 
     if (wave1_group_)
@@ -2537,6 +2566,8 @@ void TcpWavePanel::applyWaveDisplayMode()
     }
 
     const bool wavePlotsFillAvailableHeight = !showPeakTrend;
+    fpga_h2_plot_->setMaximumHeight(showH2 && wavePlotsFillAvailableHeight
+        ? QWIDGETSIZE_MAX : kWavePlotMaximumHeight);
     if (wave1_plot_)
     {
         wave1_plot_->setMaximumHeight(showRawWave && wavePlotsFillAvailableHeight
@@ -2743,15 +2774,15 @@ void TcpWavePanel::updateLiveDisplay()
     }
 
     live_display_dirty_ = false;
-    if ((wave_display_all_ || wave_display_raw_) && wave1_plot_)
+    if ((direct_wave_display_.all || direct_wave_display_.raw) && wave1_plot_)
     {
         wave1_plot_->setSamples(wave1_history_, wave1_wall_msecs_);
     }
-    if ((wave_display_all_ || wave_display_harmonic_) && wave4_plot_)
+    if ((direct_wave_display_.all || direct_wave_display_.harmonic) && wave4_plot_)
     {
         wave4_plot_->setSamples(wave4_history_, wave4_wall_msecs_);
     }
-    if ((wave_display_all_ || wave_display_peak_trend_) && peak_plot_)
+    if ((direct_wave_display_.all || direct_wave_display_.peak_trend) && peak_plot_)
     {
         peak_plot_->setPeakValues(peak_history_, peak_wall_msecs_);
     }

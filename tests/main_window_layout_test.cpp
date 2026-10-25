@@ -10668,7 +10668,9 @@ int main(int argc, char **argv)
             menu = visibleWaveDisplayMenu();
         }
         require(menu != nullptr, "TCP wave display menu opens from the title-bar settings button");
-        require(menu->rows().size() == 4,
+        const auto displayRows = menu->rows();
+        require(std::count_if(displayRows.cbegin(), displayRows.cend(),
+                              [](QWidget *row) { return row->isVisible(); }) == 4,
                 "TCP wave display menu exposes the four display modes");
         require(menu->cornerRadius() == 10,
                 "TCP wave display menu uses the unified 10px corner radius");

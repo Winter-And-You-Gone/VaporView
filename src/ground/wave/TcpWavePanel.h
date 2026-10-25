@@ -159,6 +159,14 @@ private:
     void updateWaveDisplayModeTexts();
     void updateWaveDisplayModeIcon();
     void applyWaveDisplayMode();
+    struct WaveDisplayMode {
+        bool all = true;
+        bool raw = false;
+        bool harmonic = false;
+        bool peak_trend = false;
+        bool h2 = false;
+    };
+    const WaveDisplayMode &waveDisplayMode() const;
     void updatePeakPlotModeButtonText();
     void updatePeakFilterButtonText();
     QString peakFilterModeText(PeakFilterMode mode) const;
@@ -242,10 +250,8 @@ private:
     QString remote_waveform_status_text_;
     QString remote_feature_status_text_;
     PeakFilterSettings peak_filter_settings_;
-    bool wave_display_all_;
-    bool wave_display_raw_;
-    bool wave_display_harmonic_;
-    bool wave_display_peak_trend_;
+    WaveDisplayMode direct_wave_display_;
+    WaveDisplayMode fpga_wave_display_;
     int peak_search_start_index_;
     int peak_search_end_index_;
     bool peak_plot_scatter_mode_;
