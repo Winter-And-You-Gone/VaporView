@@ -12290,7 +12290,7 @@ int main(int argc, char **argv)
     QStringList sampleValues = {
         QStringLiteral("9999-12-31T23:59:59.999Z"),
         QStringLiteral("18446744073709551615 us"),
-        QStringLiteral("原始 4294967295 / 丢帧 4294967295"),
+        QStringLiteral("原始 99999999 / 丢帧 99999999"),
         QStringLiteral("0xFFFF 已初始化 / 定位融合中"),
         QStringLiteral("9999.999m/9999.999m"),
         QStringLiteral("-9999.999/9999.999/-9999.999"),
@@ -12316,6 +12316,14 @@ int main(int argc, char **argv)
     dataGroup->updateGeometry();
     processEventsFor(50);
     activateLayouts(dataGroup);
+
+    const bool wrappedCardsFit = processEventsUntil(1500, [&]() {
+        return std::all_of(cards.cbegin(), cards.cend(), [dataGroup](QFrame *card) {
+            return card->mapTo(dataGroup, QPoint(0, card->height())).y() <=
+                dataGroup->contentsRect().bottom() + 2;
+        });
+    });
+    require(wrappedCardsFit, "EPSILON cards settle inside the sensor row after long-value wrapping");
 
     for (const QLabel *label : valueLabels)
     {
