@@ -1546,6 +1546,7 @@ void Map3DWindow::refreshLayerMenuTheme()
             "QLabel { color: @vv-text; }"
             "QComboBox, QSpinBox { background: @vv-field-background; color: @vv-text; border: 1px solid @vv-border; border-radius: 6px; padding: 6px; }"
             "QToolButton { background: @vv-surface-alt; color: @vv-text; border: 1px solid @vv-border; border-radius: 6px; padding: 6px 12px; }"
+            "QToolButton[customTitleBarButton=\"true\"] { padding: 0px; }"
             "QToolButton:checked, QToolButton:hover { background: @vv-primary-subtle; color: @vv-primary; border-color: @vv-primary; }"), dark));
     }
     if (auto* menu = findChild<QMenu*>(QStringLiteral("map3DMoreMenu")))

@@ -19,10 +19,20 @@
 #include <QSpinBox>
 #include <QThread>
 #include <QVBoxLayout>
+#include <atomic>
 #include <functional>
 #include <iostream>
 
 using namespace VaporView::Ground::Motion;
+std::atomic<int> titleBarSizeWarnings{0};
+QtMessageHandler previousMessageHandler = nullptr;
+void captureTitleBarSizeWarnings(QtMsgType type, const QMessageLogContext& context, const QString& message)
+{
+    if (type == QtWarningMsg && message.contains(QStringLiteral("QWidget::setMaximumSize")) &&
+        message.contains(QStringLiteral("sectionTitleBar")))
+        ++titleBarSizeWarnings;
+    if (previousMessageHandler) previousMessageHandler(type, context, message);
+}
 void check(bool ok, const char *message) { if (!ok) { std::cerr << "FAIL: " << message << '\n'; std::exit(1); } }
 template<typename T> T *find(QWidget& root, const char *name)
 {
@@ -64,6 +74,7 @@ void checkCardGeometry(QWidget& scope)
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv); check(argc == 2, "fake SDK directory supplied");
+    previousMessageHandler = qInstallMessageHandler(captureTitleBarSizeWarnings);
     qputenv("VAPORVIEW_EMFWC3_SDK_DIR", QByteArray(argv[1]));
     const auto directory = VaporView::Ground::Session::GroundRecordingService::defaultRecordingDirectory();
     const bool existed = QFileInfo::exists(directory);
@@ -149,5 +160,7 @@ int main(int argc, char **argv)
         QApplication::processEvents();
         page.close(); settings.close();
     }
+    qInstallMessageHandler(previousMessageHandler);
+    check(titleBarSizeWarnings == 0, "motion card title bars do not exceed Qt's maximum widget size");
     std::cout << "PASS: independent motion UI, FPGA switching, commands and responsive layout\n";
 }

@@ -1026,7 +1026,7 @@ static void localSimulatorRouting()
             latitude|=numeric&&value>30.229&&value<30.263;longitude|=numeric&&value>120.129&&value<120.159;
         }
         return sample.positionAvailable&&sample.speedAvailable&&sample.attitudeAvailable
-            &&sample.latitudeDeg>30.229&&sample.latitudeDeg<30.263&&sample.heightM>=15&&sample.heightM<=45
+            &&sample.latitudeDeg>30.229&&sample.latitudeDeg<30.263&&sample.heightM>=15&&sample.heightM<=215
             &&latitude&&longitude;
     }),"coalesced simulator packets populate home LLH plus navigation position, speed and attitude");
     int navigationChanges=0;

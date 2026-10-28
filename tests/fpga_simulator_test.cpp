@@ -43,48 +43,58 @@ void trajectory()
     const double period = fpgaSimulatorNavigationLoopSeconds();
     const auto start = fpgaSimulatorNavigationAt(0);
     const auto end = fpgaSimulatorNavigationAt(period);
-    check(period == 120.0 && std::abs(start.latitudeRadians * degrees - 30.25564) < 1e-6 &&
-          std::abs(start.longitudeRadians * degrees - 120.15762) < 1e-6 &&
+    check(period > 135.0 && period < 140.0 && std::abs(start.latitudeRadians * degrees - 30.2556566) < 1e-6 &&
+          std::abs(start.longitudeRadians * degrees - 120.1582333) < 1e-6 &&
           std::abs(start.heightM - groundHeight) < 1e-9,
           "trajectory starts at in77 on the simulated ground");
     const double startSpeed = std::hypot(start.velocityNed[0], start.velocityNed[1]);
     check(startSpeed > 70.0 && startSpeed < 80.0,
-          "two-minute loop reports the five-times-faster horizontal speed");
+          "the revised loop preserves the five-times-faster horizontal speed");
     check(std::hypot(end.northM - start.northM, end.eastM - start.eastM) < 1e-6 &&
           std::abs(end.heightM - start.heightM) < 1e-9 &&
           std::hypot(end.velocityNed[0] - start.velocityNed[0], end.velocityNed[1] - start.velocityNed[1]) < 1e-6,
           "trajectory closes at in77 without a position or velocity jump");
-    bool south = false, north = false, ascending = false, descending = false;
+    // Independent OSM checkpoints cover the southern shore, both causeways and the return.
+    const std::array<std::array<double, 2>, 15> checkpoints{{
+        {30.2482389, 120.1560885}, {30.2377887, 120.1521554}, {30.2322668, 120.1482021},
+        {30.2309416, 120.1397001}, {30.2351850, 120.1373635}, {30.2412334, 120.1348552},
+        {30.2495160, 120.1322976}, {30.2539615, 120.1308621},
+        {30.2531746, 120.1346615}, {30.2523710, 120.1350904},
+        {30.2535121, 120.1402059}, {30.2549374, 120.1416786},
+        {30.2595579, 120.1458221}, {30.2614347, 120.1474858}, {30.2616221, 120.1525273},
+    }};
+    std::size_t checkpoint = 0;
+    bool ascending = false, descending = false;
     double maxHeight = groundHeight;
     auto previous = start;
-    for (int tick = 1; tick <= int(period * 5); ++tick) {
-        const auto sample = fpgaSimulatorNavigationAt(tick * 0.2);
+    for (int tick = 1; tick <= int(period * 10); ++tick) {
+        const auto sample = fpgaSimulatorNavigationAt(tick * 0.1);
         const double latitude = sample.latitudeRadians * degrees;
         const double longitude = sample.longitudeRadians * degrees;
-        const auto isNearWaypoint = [&](double lat, double lon) {
-            return std::hypot((latitude - lat) * 111000.0, (longitude - lon) * 96000.0) < 35.0;
-        };
-        south |= isNearWaypoint(30.2300, 120.1410);
-        north |= isNearWaypoint(30.2520, 120.1310);
-        check(sample.heightM >= groundHeight - 1e-8 && sample.heightM <= groundHeight + 30.0 + 1e-8 &&
+        if (checkpoint < checkpoints.size() &&
+            std::hypot((latitude - checkpoints[checkpoint][0]) * 111000.0,
+                       (longitude - checkpoints[checkpoint][1]) * 96000.0) < 15.0)
+            ++checkpoint;
+        check(sample.heightM >= groundHeight - 1e-8 && sample.heightM <= groundHeight + 200.0 + 1e-8 &&
               std::abs(sample.heightM + sample.downM - groundHeight) < 1e-8,
-              "height and local down remain within the simulated 0 to 30 metre ground clearance");
+              "height and local down remain within the simulated 0 to 200 metre ground clearance");
         if (sample.heightM > groundHeight + 0.1) {
-            check(latitude > 30.229 && latitude < 30.253 && longitude > 120.130 && longitude < 120.142,
+            check(latitude > 30.230 && latitude < 30.255 && longitude > 120.130 && longitude < 120.141,
                   "ascent and descent occur on Su Causeway");
             ascending |= sample.velocityNed[2] < -0.01;
             descending |= sample.velocityNed[2] > 0.01;
         }
         maxHeight = std::max(maxHeight, sample.heightM);
-        check(std::hypot(sample.northM - previous.northM, sample.eastM - previous.eastM) < 30.0 &&
-              std::abs(sample.heightM - previous.heightM) < 2.0,
+        check(std::hypot(sample.northM - previous.northM, sample.eastM - previous.eastM) < 15.0 &&
+              std::abs(sample.heightM - previous.heightM) < 2.0 &&
+              std::isfinite(sample.headingRadians) && std::isfinite(sample.headingRateRadiansPerSecond),
               "consecutive trajectory samples do not jump across the lake or vertically");
         previous = sample;
     }
-    check(south && north && ascending && descending && maxHeight > groundHeight + 29.99,
-          "loop crosses Su Causeway and smoothly climbs to 30 metres before landing");
-    for (double t : {3.0, 20.0, 50.0, 80.0, 110.0}) {
-        constexpr double dt = 0.01;
+    check(checkpoint == checkpoints.size() && ascending && descending && maxHeight > groundHeight + 199.99,
+          "loop follows both causeways in order and smoothly climbs to 200 metres before landing");
+    for (double t : {3.0, 20.0, 50.0, 60.0, 75.0, 110.0, 130.0}) {
+        constexpr double dt = 0.00001;
         const auto before = fpgaSimulatorNavigationAt(t - dt);
         const auto current = fpgaSimulatorNavigationAt(t);
         const auto after = fpgaSimulatorNavigationAt(t + dt);

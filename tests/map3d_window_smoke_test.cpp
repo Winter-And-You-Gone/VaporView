@@ -58,6 +58,25 @@ void require(bool condition, const char* message)
     }
 }
 
+bool titleIconHasVisibleSize(QToolButton* button)
+{
+    const QImage image = button->grab().toImage();
+    const qreal ratio = button->devicePixelRatioF();
+    const int inset = qRound(4 * ratio);
+    if (image.width() <= 2 * inset || image.height() <= 2 * inset) return false;
+    const QColor background = image.pixelColor(inset, inset);
+    int left = image.width(), right = -1, top = image.height(), bottom = -1;
+    for (int y = inset; y < image.height() - inset; ++y)
+        for (int x = inset; x < image.width() - inset; ++x) {
+            const QColor pixel = image.pixelColor(x, y);
+            if (qMax(qMax(qAbs(pixel.red() - background.red()), qAbs(pixel.green() - background.green())),
+                     qAbs(pixel.blue() - background.blue())) < 60) continue;
+            left = qMin(left, x); right = qMax(right, x);
+            top = qMin(top, y); bottom = qMax(bottom, y);
+        }
+    return right - left + 1 >= qRound(10 * ratio) && bottom - top + 1 >= qRound(10 * ratio);
+}
+
 void requireComboPopupStyled(QComboBox *combo, const char *message)
 {
     require(combo != nullptr, message);
@@ -503,6 +522,16 @@ int main(int argc, char** argv)
                 && window.menuWidget()->objectName() == QStringLiteral("customTitleBar"),
             "map window uses the shared title bar above its toolbar");
     actionByName(window, QStringLiteral("map3DDisplayAction"))->trigger();
+    QCoreApplication::processEvents();
+    auto* displayPanel = window.findChild<QDialog*>(QStringLiteral("map3DDisplayPanel"));
+    require(displayPanel != nullptr, "display settings panel exists");
+    int titleIconCount = 0;
+    for (QToolButton* button : displayPanel->findChildren<QToolButton*>()) {
+        if (!button->property("customTitleBarButton").toBool()) continue;
+        ++titleIconCount;
+        require(titleIconHasVisibleSize(button), "display panel title icons retain their visible size");
+    }
+    require(titleIconCount == 3, "display panel has language, theme and close title icons");
     actionByName(window, QStringLiteral("map3DMapResourcesAction"))->trigger();
     for (QDialog* dialog : window.findChildren<QDialog*>())
     {

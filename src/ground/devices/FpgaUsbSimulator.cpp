@@ -20,25 +20,12 @@ namespace VaporView::Ground::Devices
 namespace
 {
 constexpr double pi = 3.14159265358979323846;
-constexpr double navigationLoopSeconds = 120.0;
+// Preserve the previous five-times-faster simulated travel speed as the route changes.
+constexpr double navigationSpeedMps = 75.54431579521265;
 constexpr double simulatedGroundHeightM = 15.0;
 
 struct Waypoint { double latitude, longitude; };
-// WGS84: in77 A area, southern shore, Su Causeway south-to-north,
-// Beishan Road and Broken Bridge, then the lakeside back to in77.
-constexpr std::array<Waypoint, 26> navigationWaypoints{{
-    {30.25564, 120.15762}, {30.2544, 120.1571}, {30.2520, 120.1567},
-    {30.2490, 120.1558}, {30.2452, 120.1533}, {30.2419, 120.1511},
-    {30.2385, 120.1495}, {30.2360, 120.1476}, {30.2340, 120.1452},
-    {30.2315, 120.1426}, {30.2300, 120.1410}, // Su Causeway south
-    {30.2330, 120.1394}, {30.2370, 120.1370}, {30.2405, 120.1355},
-    {30.2440, 120.1340}, {30.2480, 120.1325}, {30.2520, 120.1310}, // Su Causeway north
-    {30.2537, 120.1327}, {30.2552, 120.1353}, {30.2570, 120.1384},
-    {30.2590, 120.1420}, {30.2608, 120.1469}, {30.2612, 120.1493},
-    {30.2604, 120.1524}, {30.2584, 120.1550}, {30.2566, 120.1570},
-}};
-constexpr std::size_t suSouth = 10;
-constexpr std::size_t suNorth = 16;
+#include "FpgaSimulatorWestLakeRoute.inc"
 
 struct LocalPoint { double north, east; };
 struct NavigationRoute
@@ -70,7 +57,7 @@ const NavigationRoute& navigationRoute()
             const auto& bPoint = result.points[(i + 1) % result.points.size()];
             result.distance[i + 1] = result.distance[i] + std::hypot(bPoint.north - aPoint.north, bPoint.east - aPoint.east);
         }
-        result.speed = result.distance.back() / navigationLoopSeconds;
+        result.speed = navigationSpeedMps;
         for (std::size_t i = 0; i < result.points.size(); ++i) {
             const auto& previous = result.points[(i + result.points.size() - 1) % result.points.size()];
             const auto& current = result.points[i];
@@ -90,8 +77,9 @@ const NavigationRoute& navigationRoute()
 FpgaSimulatorNavigation navigationAt(double seconds)
 {
     const auto& route = navigationRoute();
-    double elapsed = std::fmod(seconds, navigationLoopSeconds);
-    if (elapsed < 0) elapsed += navigationLoopSeconds;
+    const double loopSeconds = route.distance.back() / route.speed;
+    double elapsed = std::fmod(seconds, loopSeconds);
+    if (elapsed < 0) elapsed += loopSeconds;
     const double travelled = elapsed * route.speed;
     const auto upper = std::upper_bound(route.distance.begin(), route.distance.end(), travelled);
     const std::size_t index = std::min<std::size_t>(std::size_t(upper - route.distance.begin() - 1), route.points.size() - 1);
@@ -113,9 +101,9 @@ FpgaSimulatorNavigation navigationAt(double seconds)
     if (elapsed >= suStart && elapsed <= suEnd) {
         const double phase = 2 * pi * (elapsed - suStart) / (suEnd - suStart);
         const double rate = 2 * pi / (suEnd - suStart);
-        aboveGround = 15 * (1 - std::cos(phase));
-        velocityDown = -15 * rate * std::sin(phase);
-        accelerationDown = -15 * rate * rate * std::cos(phase);
+        aboveGround = 100 * (1 - std::cos(phase));
+        velocityDown = -100 * rate * std::sin(phase);
+        accelerationDown = -100 * rate * rate * std::cos(phase);
     }
     double heading = std::atan2(east[1], north[1]);
     if (heading < 0) heading += 2 * pi;
@@ -756,7 +744,7 @@ private:
 };
 }
 FpgaSimulatorNavigation fpgaSimulatorNavigationAt(double seconds) { return navigationAt(seconds); }
-double fpgaSimulatorNavigationLoopSeconds() { return navigationLoopSeconds; }
+double fpgaSimulatorNavigationLoopSeconds() { const auto& route = navigationRoute(); return route.distance.back() / route.speed; }
 std::unique_ptr<FpgaUsbSimulator> makeFpgaUsbSimulator(QObject *parent, FpgaSimulatorStartup startup)
 { return std::make_unique<Simulator>(parent, startup); }
 }

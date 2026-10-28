@@ -366,11 +366,12 @@ void MotionControlPage::setLanguage(bool english)
 void MotionControlPage::setTheme(bool dark, int fontScalePercent)
 {
     auto& s = *state_; s.dark = dark; s.scale = fontScalePercent;
+    // Leave ample room for wrapped titles without scaling Qt's maximum-size sentinel.
     const QString style = applyAppThemeTokens(QStringLiteral(
         "QWidget#motionControlPage, QWidget#emFwc3MotionContent { background-color: @vv-window; color: @vv-text; }"
         "QWidget#motionControlPage QScrollArea { border: none; background: @vv-window; }"
         "QFrame[emFwc3Card=true] { background-color: @vv-surface-raised; color: @vv-text; border: 1px solid @vv-border; border-radius: 12px; }"
-        "QFrame[emFwc3Card=true] > QWidget#sectionTitleBar { background-color: @vv-surface-raised; border: none; border-bottom: 1px solid @vv-border; border-top-left-radius: 11px; border-top-right-radius: 11px; min-height: %2px; max-height: 16777215px; }"
+        "QFrame[emFwc3Card=true] > QWidget#sectionTitleBar { background-color: @vv-surface-raised; border: none; border-bottom: 1px solid @vv-border; border-top-left-radius: 11px; border-top-right-radius: 11px; min-height: %2px; max-height: 4096px; }"
         "QWidget#emFwc3CardBody { background-color: @vv-surface-raised; border: none; border-bottom-left-radius: 11px; border-bottom-right-radius: 11px; }"
         "QLabel, QLabel#sectionTitleLabel { background-color: transparent; color: @vv-text; border: none; }"
         "QCheckBox { color: @vv-text; background-color: transparent; }"
