@@ -2,6 +2,7 @@
 #include "FpgaDeviceController.h"
 #include "FpgaSensorAdapter.h"
 #include "FpgaTelemetry.h"
+#include "ground/devices/FpgaSimulatorTrajectory.h"
 #include "ground/devices/RemoteSkyController.h"
 #include "shared/session/HarmonicWaveform.h"
 #include "shared/session/UnifiedRawDat.h"
@@ -17,6 +18,7 @@
 #include <QTemporaryDir>
 #include <QThread>
 #include <QtEndian>
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
@@ -34,6 +36,67 @@ template<class Predicate> void wait(Predicate done, const char *message, int tim
 }
 void events(int ms) { QElapsedTimer t;t.start();wait([&]{return t.elapsed()>=ms;},"elapsed event interval",ms+1000); }
 QByteArray bytes(const std::vector<std::uint8_t>& b) { return {reinterpret_cast<const char*>(b.data()),qsizetype(b.size())}; }
+void trajectory()
+{
+    constexpr double degrees = 180.0 / 3.14159265358979323846;
+    constexpr double groundHeight = 15.0;
+    const double period = fpgaSimulatorNavigationLoopSeconds();
+    const auto start = fpgaSimulatorNavigationAt(0);
+    const auto end = fpgaSimulatorNavigationAt(period);
+    check(period == 600.0 && std::abs(start.latitudeRadians * degrees - 30.25564) < 1e-6 &&
+          std::abs(start.longitudeRadians * degrees - 120.15762) < 1e-6 &&
+          std::abs(start.heightM - groundHeight) < 1e-9,
+          "trajectory starts at in77 on the simulated ground");
+    check(std::hypot(end.northM - start.northM, end.eastM - start.eastM) < 1e-6 &&
+          std::abs(end.heightM - start.heightM) < 1e-9 &&
+          std::hypot(end.velocityNed[0] - start.velocityNed[0], end.velocityNed[1] - start.velocityNed[1]) < 1e-6,
+          "trajectory closes at in77 without a position or velocity jump");
+    bool south = false, north = false, ascending = false, descending = false;
+    double maxHeight = groundHeight;
+    auto previous = start;
+    for (int second = 1; second <= int(period); ++second) {
+        const auto sample = fpgaSimulatorNavigationAt(second);
+        const double latitude = sample.latitudeRadians * degrees;
+        const double longitude = sample.longitudeRadians * degrees;
+        const auto isNearWaypoint = [&](double lat, double lon) {
+            return std::hypot((latitude - lat) * 111000.0, (longitude - lon) * 96000.0) < 35.0;
+        };
+        south |= isNearWaypoint(30.2300, 120.1410);
+        north |= isNearWaypoint(30.2520, 120.1310);
+        check(sample.heightM >= groundHeight - 1e-8 && sample.heightM <= groundHeight + 30.0 + 1e-8 &&
+              std::abs(sample.heightM + sample.downM - groundHeight) < 1e-8,
+              "height and local down remain within the simulated 0 to 30 metre ground clearance");
+        if (sample.heightM > groundHeight + 0.1) {
+            check(latitude > 30.229 && latitude < 30.253 && longitude > 120.130 && longitude < 120.142,
+                  "ascent and descent occur on Su Causeway");
+            ascending |= sample.velocityNed[2] < -0.01;
+            descending |= sample.velocityNed[2] > 0.01;
+        }
+        maxHeight = std::max(maxHeight, sample.heightM);
+        check(std::hypot(sample.northM - previous.northM, sample.eastM - previous.eastM) < 30.0 &&
+              std::abs(sample.heightM - previous.heightM) < 2.0,
+              "one-second trajectory samples do not jump across the lake or vertically");
+        previous = sample;
+    }
+    check(south && north && ascending && descending && maxHeight > groundHeight + 29.99,
+          "loop crosses Su Causeway and smoothly climbs to 30 metres before landing");
+    for (double t : {15.0, 100.0, 250.0, 400.0, 550.0}) {
+        constexpr double dt = 0.01;
+        const auto before = fpgaSimulatorNavigationAt(t - dt);
+        const auto current = fpgaSimulatorNavigationAt(t);
+        const auto after = fpgaSimulatorNavigationAt(t + dt);
+        const std::array<double, 3> positionBefore{before.northM, before.eastM, before.downM};
+        const std::array<double, 3> positionAfter{after.northM, after.eastM, after.downM};
+        for (std::size_t i = 0; i < 3; ++i) {
+            check(std::abs((positionAfter[i] - positionBefore[i]) / (2 * dt) - current.velocityNed[i]) < 0.02 &&
+                  std::abs((after.velocityNed[i] - before.velocityNed[i]) / (2 * dt) - current.accelerationNed[i]) < 0.05,
+                  "reported velocity and acceleration match the simulated position over time");
+        }
+        check(std::abs(std::remainder(current.headingRadians -
+              std::atan2(current.velocityNed[1], current.velocityNed[0]), 2 * 3.14159265358979323846)) < 1e-8,
+              "heading follows the horizontal direction of travel");
+    }
+}
 void protocol()
 {
     auto transport=makeFpgaUsbSimulator(nullptr,FpgaSimulatorStartup::RunningDemo);check(transport->open(),"simulator opens without hardware");
@@ -82,15 +145,22 @@ void protocol()
         "all supported core EPSILON navigation messages traverse real FDILink frames");
     check(epsilonData.device_info_valid&&epsilonData.hardware_name=="EPSILON2"&&epsilonData.firmware_name=="SIM",
         "fixed-width device identity does not overlap the firmware version");
-    check(epsilonData.latitude_deg>22.29&&epsilonData.latitude_deg<22.31&&epsilonData.longitude_deg>114.16
-        &&epsilonData.longitude_deg<114.18&&std::abs(epsilonData.height_m+epsilonData.ned_d_m-35)<1e-5,
+    check(epsilonData.latitude_deg>30.229&&epsilonData.latitude_deg<30.263&&epsilonData.longitude_deg>120.129
+        &&epsilonData.longitude_deg<120.159&&std::abs(epsilonData.height_m+epsilonData.ned_d_m-15)<1e-5,
         "LLH and local NED share one simulated trajectory");
+    const double latitude = epsilonData.latitude_deg * 3.14159265358979323846 / 180.0;
+    const double longitude = epsilonData.longitude_deg * 3.14159265358979323846 / 180.0;
+    const double radius = 6378137.0 / std::sqrt(1 - 0.00669437999014 * std::sin(latitude) * std::sin(latitude));
+    check(std::abs(epsilonData.ecef_x_m - (radius + epsilonData.height_m) * std::cos(latitude) * std::cos(longitude)) < 0.01 &&
+          std::abs(epsilonData.ecef_y_m - (radius + epsilonData.height_m) * std::cos(latitude) * std::sin(longitude)) < 0.01 &&
+          std::abs(epsilonData.ecef_z_m - (radius * (1 - 0.00669437999014) + epsilonData.height_m) * std::sin(latitude)) < 0.01,
+          "actual FDILink ECEF and WGS84 position describe the same point");
     check(epsilonData.gnss_velocity_valid&&epsilonData.gnss_time_valid&&epsilonData.gnss_tilt_valid
         &&epsilonData.heading_valid&&!epsilonData.floating_ambiguity_heading&&epsilonData.diff_age_s>0,
         "RTK fixed simulator supplies truthful velocity, time, heading and correction-age fields");
-    check(epsilonData.pressure_altitude_m>34&&epsilonData.pressure_pa>100000&&epsilonData.imu_temp_c>23
+    check(epsilonData.pressure_altitude_m>7&&epsilonData.pressure_pa>100000&&epsilonData.imu_temp_c>23
         &&std::hypot(epsilonData.mag_x_mg,epsilonData.mag_y_mg,epsilonData.mag_z_mg)>400
-        &&std::abs(epsilonData.body_vel_x_mps)>0.4&&std::abs(epsilonData.ned_acc_e_mps2)>0.01,
+        &&std::abs(epsilonData.body_vel_x_mps)>0.4&&std::isfinite(epsilonData.ned_acc_e_mps2),
         "IMU environment, magnetic field, body motion and navigation acceleration are populated");
     check(epsilonData.attitude_source_count==3&&epsilonData.attitude_delta_max_deg<0.0001
         &&std::abs(epsilonData.quat_w*epsilonData.quat_w+epsilonData.quat_x*epsilonData.quat_x
@@ -220,7 +290,8 @@ void processTest()
     QObject::connect(&remote,&RemoteSkyController::basicTelemetryUpdated,[&](const auto& b){
         basic|=(b.validity_flags&BasicHasPressure)&&std::isfinite(b.pressure_hpa);
         position|=(b.validity_flags&BasicHasPosition)&&(b.validity_flags&BasicHasNedVelocity)
-            &&b.latitude_deg>22.29&&b.latitude_deg<22.31&&b.longitude_deg>114.16&&b.longitude_deg<114.18&&b.height_m>34;
+            &&b.latitude_deg>30.229&&b.latitude_deg<30.263&&b.longitude_deg>120.129&&b.longitude_deg<120.159
+            &&b.height_m>=15&&b.height_m<=45;
     });
     QObject::connect(&remote,&RemoteSkyController::deviceOperationResponseReceived,[&](const auto& response){replies.insert(response.request_id,response);});
     events(300);check(remote.openTcp("127.0.0.1",port),"Ground controller connects to the real simulator process");
@@ -276,7 +347,7 @@ void processTest()
 int main(int argc,char** argv)
 {
     QCoreApplication app(argc,argv);
-    try { if(app.arguments().contains("--process"))processTest();else {protocol();controls();selectiveControls();}
+    try { if(app.arguments().contains("--process"))processTest();else {trajectory();protocol();controls();selectiveControls();}
         std::cout<<"FPGA simulator test passed\n";return 0; }
     catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}
 }

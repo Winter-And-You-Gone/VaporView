@@ -1,6 +1,7 @@
 #include "FpgaUsbSimulator.h"
 #include "FpgaAdvancedParameters.h"
 #include "FpgaControlConfig.h"
+#include "ground/devices/FpgaSimulatorTrajectory.h"
 #include "FpgaVlp1.h"
 #include "FpgaExtensions.h"
 #include "EpsilonSettings.h"
@@ -19,6 +20,113 @@ namespace VaporView::Ground::Devices
 namespace
 {
 constexpr double pi = 3.14159265358979323846;
+constexpr double navigationLoopSeconds = 600.0;
+constexpr double simulatedGroundHeightM = 15.0;
+
+struct Waypoint { double latitude, longitude; };
+// WGS84: in77 A area, southern shore, Su Causeway south-to-north,
+// Beishan Road and Broken Bridge, then the lakeside back to in77.
+constexpr std::array<Waypoint, 26> navigationWaypoints{{
+    {30.25564, 120.15762}, {30.2544, 120.1571}, {30.2520, 120.1567},
+    {30.2490, 120.1558}, {30.2452, 120.1533}, {30.2419, 120.1511},
+    {30.2385, 120.1495}, {30.2360, 120.1476}, {30.2340, 120.1452},
+    {30.2315, 120.1426}, {30.2300, 120.1410}, // Su Causeway south
+    {30.2330, 120.1394}, {30.2370, 120.1370}, {30.2405, 120.1355},
+    {30.2440, 120.1340}, {30.2480, 120.1325}, {30.2520, 120.1310}, // Su Causeway north
+    {30.2537, 120.1327}, {30.2552, 120.1353}, {30.2570, 120.1384},
+    {30.2590, 120.1420}, {30.2608, 120.1469}, {30.2612, 120.1493},
+    {30.2604, 120.1524}, {30.2584, 120.1550}, {30.2566, 120.1570},
+}};
+constexpr std::size_t suSouth = 10;
+constexpr std::size_t suNorth = 16;
+
+struct LocalPoint { double north, east; };
+struct NavigationRoute
+{
+    std::array<LocalPoint, navigationWaypoints.size()> points{};
+    std::array<LocalPoint, navigationWaypoints.size()> tangents{};
+    std::array<double, navigationWaypoints.size() + 1> distance{};
+    double latitudeScale = 0;
+    double longitudeScale = 0;
+    double speed = 0;
+};
+
+const NavigationRoute& navigationRoute()
+{
+    static const NavigationRoute route = [] {
+        NavigationRoute result;
+        const double latitude = navigationWaypoints.front().latitude * pi / 180.0;
+        constexpr double a = 6378137.0, eccentricitySquared = 0.00669437999014;
+        const double w = std::sqrt(1.0 - eccentricitySquared * std::sin(latitude) * std::sin(latitude));
+        result.latitudeScale = a * (1.0 - eccentricitySquared) / (w * w * w);
+        result.longitudeScale = a * std::cos(latitude) / w;
+        for (std::size_t i = 0; i < result.points.size(); ++i) {
+            result.points[i] = {
+                (navigationWaypoints[i].latitude - navigationWaypoints.front().latitude) * pi / 180.0 * result.latitudeScale,
+                (navigationWaypoints[i].longitude - navigationWaypoints.front().longitude) * pi / 180.0 * result.longitudeScale};
+        }
+        for (std::size_t i = 0; i < result.points.size(); ++i) {
+            const auto& aPoint = result.points[i];
+            const auto& bPoint = result.points[(i + 1) % result.points.size()];
+            result.distance[i + 1] = result.distance[i] + std::hypot(bPoint.north - aPoint.north, bPoint.east - aPoint.east);
+        }
+        result.speed = result.distance.back() / navigationLoopSeconds;
+        for (std::size_t i = 0; i < result.points.size(); ++i) {
+            const auto& previous = result.points[(i + result.points.size() - 1) % result.points.size()];
+            const auto& current = result.points[i];
+            const auto& next = result.points[(i + 1) % result.points.size()];
+            const double beforeLength = std::hypot(current.north - previous.north, current.east - previous.east);
+            const double afterLength = std::hypot(next.north - current.north, next.east - current.east);
+            const double n = (current.north - previous.north) / beforeLength + (next.north - current.north) / afterLength;
+            const double e = (current.east - previous.east) / beforeLength + (next.east - current.east) / afterLength;
+            const double length = std::hypot(n, e);
+            result.tangents[i] = {result.speed * n / length, result.speed * e / length};
+        }
+        return result;
+    }();
+    return route;
+}
+
+FpgaSimulatorNavigation navigationAt(double seconds)
+{
+    const auto& route = navigationRoute();
+    double elapsed = std::fmod(seconds, navigationLoopSeconds);
+    if (elapsed < 0) elapsed += navigationLoopSeconds;
+    const double travelled = elapsed * route.speed;
+    const auto upper = std::upper_bound(route.distance.begin(), route.distance.end(), travelled);
+    const std::size_t index = std::min<std::size_t>(std::size_t(upper - route.distance.begin() - 1), route.points.size() - 1);
+    const std::size_t next = (index + 1) % route.points.size();
+    const double duration = (route.distance[index + 1] - route.distance[index]) / route.speed;
+    const double u = (travelled - route.distance[index]) / (route.distance[index + 1] - route.distance[index]);
+    const double u2 = u * u, u3 = u2 * u;
+    const auto component = [&](double p0, double p1, double v0, double v1) {
+        return std::array<double, 3>{
+            (2*u3 - 3*u2 + 1)*p0 + (u3 - 2*u2 + u)*duration*v0 + (-2*u3 + 3*u2)*p1 + (u3 - u2)*duration*v1,
+            ((6*u2 - 6*u)*p0 + (3*u2 - 4*u + 1)*duration*v0 + (-6*u2 + 6*u)*p1 + (3*u2 - 2*u)*duration*v1) / duration,
+            ((12*u - 6)*p0 + (6*u - 4)*duration*v0 + (-12*u + 6)*p1 + (6*u - 2)*duration*v1) / (duration*duration)};
+    };
+    const auto north = component(route.points[index].north, route.points[next].north, route.tangents[index].north, route.tangents[next].north);
+    const auto east = component(route.points[index].east, route.points[next].east, route.tangents[index].east, route.tangents[next].east);
+    const double suStart = route.distance[suSouth] / route.speed;
+    const double suEnd = route.distance[suNorth] / route.speed;
+    double aboveGround = 0, velocityDown = 0, accelerationDown = 0;
+    if (elapsed >= suStart && elapsed <= suEnd) {
+        const double phase = 2 * pi * (elapsed - suStart) / (suEnd - suStart);
+        const double rate = 2 * pi / (suEnd - suStart);
+        aboveGround = 15 * (1 - std::cos(phase));
+        velocityDown = -15 * rate * std::sin(phase);
+        accelerationDown = -15 * rate * rate * std::cos(phase);
+    }
+    double heading = std::atan2(east[1], north[1]);
+    if (heading < 0) heading += 2 * pi;
+    const double horizontalSpeedSquared = north[1]*north[1] + east[1]*east[1];
+    return {navigationWaypoints.front().latitude*pi/180.0 + north[0]/route.latitudeScale,
+        navigationWaypoints.front().longitude*pi/180.0 + east[0]/route.longitudeScale,
+        simulatedGroundHeightM + aboveGround, north[0], east[0], -aboveGround,
+        {north[1], east[1], velocityDown}, {north[2], east[2], accelerationDown}, heading,
+        (north[1]*east[2] - east[1]*north[2]) / horizontalSpeedSquared};
+}
+
 void put16(QByteArray &b, quint16 v) { b.append(char(v)); b.append(char(v >> 8)); }
 void put32(QByteArray &b, quint32 v) { for (int i = 0; i < 4; ++i) b.append(char(v >> (i * 8))); }
 quint32 word(const QByteArray &b, int offset) { return qFromLittleEndian<quint32>(b.constData() + offset); }
@@ -456,13 +564,12 @@ private:
     void navigation(double seconds, quint64 ticks)
     {
         const auto now = QDateTime::currentMSecsSinceEpoch();
-        const double phase=seconds*0.05, originLat=22.3*pi/180;
-        const double north=10*std::sin(phase), east=10*(1-std::cos(phase)), down=-0.5*std::sin(phase);
-        const double latitude=originLat+north/6378137.0;
-        const double longitude=114.17*pi/180+east/(6378137.0*std::cos(originLat)), height=35-down;
-        const std::array<double,3> velocity{0.5*std::cos(phase),0.5*std::sin(phase),-0.025*std::cos(phase)};
-        const std::array<double,3> acceleration{-0.025*std::sin(phase),0.025*std::cos(phase),0.00125*std::sin(phase)};
-        const double roll=0.02, pitch=-0.01, yaw=std::fmod(phase,2*pi);
+        const auto position = fpgaSimulatorNavigationAt(seconds);
+        const double latitude=position.latitudeRadians, longitude=position.longitudeRadians, height=position.heightM;
+        const double north=position.northM, east=position.eastM, down=position.downM;
+        const auto& velocity=position.velocityNed;
+        const auto& acceleration=position.accelerationNed;
+        const double roll=0.02, pitch=-0.01, yaw=position.headingRadians;
         const double cr=std::cos(roll),sr=std::sin(roll),cp=std::cos(pitch),sp=std::sin(pitch),cy=std::cos(yaw),sy=std::sin(yaw);
         const auto body=[&](const std::array<double,3>& v) -> std::array<double,3> {
             return {cp*cy*v[0]+cp*sy*v[1]-sp*v[2],
@@ -472,14 +579,16 @@ private:
         const auto bodyVelocity=body(velocity), bodyAcceleration=body(acceleration);
         const auto imuAcceleration=body({acceleration[0],acceleration[1],acceleration[2]-9.81});
         const auto magnetic=body({200,30,400});
-        const std::array<double,3> angularVelocity{-sp*0.05,sr*cp*0.05,cr*cp*0.05};
+        const std::array<double,3> angularVelocity{-sp*position.headingRateRadiansPerSecond,
+            sr*cp*position.headingRateRadiansPerSecond,cr*cp*position.headingRateRadiansPerSecond};
         const double chr=std::cos(roll/2),shr=std::sin(roll/2),chp=std::cos(pitch/2),shp=std::sin(pitch/2),chy=std::cos(yaw/2),shy=std::sin(yaw/2);
         const std::array<double,4> quaternion{chr*chp*chy+shr*shp*shy,shr*chp*chy-chr*shp*shy,
             chr*shp*chy+shr*chp*shy,chr*chp*shy-shr*shp*chy};
         const auto vector=[&](QByteArray& packet,int offset,const auto& values) {
             for(int i=0;i<int(values.size());++i)at<float>(packet,offset+i*4,float(values[i]));
         };
-        const double pressure=101325*std::pow(1-height/44330.0,5.255), temperature=24+0.5*std::sin(seconds*0.1);
+        const double pressureAltitude = 8.0 - down;
+        const double pressure=101325*std::pow(1-pressureAltitude/44330.0,5.255), temperature=24+0.5*std::sin(seconds*0.1);
         QByteArray identity(40,0);
         for(int i=0;i<4;++i)at<quint32>(identity,i*4,0x53494d31u+quint32(i));
         at<quint32>(identity,16,1);
@@ -498,7 +607,7 @@ private:
         at<quint64>(ahrs,40,ticks/100); epsilon(0x41,ahrs,ticks);
         QByteArray ins(72,0); vector(ins,0,bodyVelocity); vector(ins,12,bodyAcceleration);
         vector(ins,24,std::array<double,3>{north,east,down}); vector(ins,36,velocity); vector(ins,48,acceleration);
-        at<float>(ins,60,float(height)); at<quint64>(ins,64,ticks/100); epsilon(0x42,ins,ticks);
+        at<float>(ins,60,float(pressureAltitude)); at<quint64>(ins,64,ticks/100); epsilon(0x42,ins,ticks);
         QByteArray filter(4,0); at<quint16>(filter,2,0x6f); epsilon(0x53,filter,ticks);
         QByteArray gnss(74,0); at<quint32>(gnss,0,quint32(now/1000)); at<quint32>(gnss,4,quint32(now%1000)*1000);
         at<double>(gnss,8,latitude); at<double>(gnss,16,longitude); at<double>(gnss,24,height);
@@ -646,6 +755,8 @@ private:
     double measured_ = 235;
 };
 }
+FpgaSimulatorNavigation fpgaSimulatorNavigationAt(double seconds) { return navigationAt(seconds); }
+double fpgaSimulatorNavigationLoopSeconds() { return navigationLoopSeconds; }
 std::unique_ptr<FpgaUsbSimulator> makeFpgaUsbSimulator(QObject *parent, FpgaSimulatorStartup startup)
 { return std::make_unique<Simulator>(parent, startup); }
 }

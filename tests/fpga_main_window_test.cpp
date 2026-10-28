@@ -1023,10 +1023,10 @@ static void localSimulatorRouting()
         bool latitude=false,longitude=false;
         for(auto *label:epsilonPanel->findChildren<QLabel*>("valueLabel")) {
             bool numeric=false;const double value=label->text().toDouble(&numeric);
-            latitude|=numeric&&value>22.29&&value<22.31;longitude|=numeric&&value>114.16&&value<114.18;
+            latitude|=numeric&&value>30.229&&value<30.263;longitude|=numeric&&value>120.129&&value<120.159;
         }
         return sample.positionAvailable&&sample.speedAvailable&&sample.attitudeAvailable
-            &&sample.latitudeDeg>22.29&&sample.latitudeDeg<22.31&&sample.heightM>34
+            &&sample.latitudeDeg>30.229&&sample.latitudeDeg<30.263&&sample.heightM>=15&&sample.heightM<=45
             &&latitude&&longitude;
     }),"coalesced simulator packets populate home LLH plus navigation position, speed and attitude");
     int navigationChanges=0;
