@@ -9,7 +9,7 @@
 #include <QDir>
 #include <QDoubleSpinBox>
 #include <QElapsedTimer>
-#include <QGroupBox>
+#include <QFrame>
 #include <QLabel>
 #include <QLibrary>
 #include <QPushButton>
@@ -18,6 +18,7 @@
 #include <QStackedWidget>
 #include <QSpinBox>
 #include <QThread>
+#include <QVBoxLayout>
 #include <functional>
 #include <iostream>
 
@@ -32,6 +33,33 @@ void until(const std::function<bool()>& ready)
     QElapsedTimer timer; timer.start();
     while (!ready() && timer.elapsed() < 6000) { QApplication::processEvents(); QThread::msleep(10); }
     check(ready(), "UI asynchronous operation completes");
+}
+void checkCardGeometry(QWidget& scope)
+{
+    auto frames = scope.findChildren<QFrame*>();
+    if (auto *frame = qobject_cast<QFrame*>(&scope)) frames.prepend(frame);
+    int count = 0;
+    for (auto *card : frames) {
+        if (!card->property("emFwc3Card").toBool()) continue;
+        ++count;
+        auto *header = card->findChild<QWidget*>(QStringLiteral("sectionTitleBar"), Qt::FindDirectChildrenOnly);
+        auto *body = card->findChild<QWidget*>(QStringLiteral("emFwc3CardBody"), Qt::FindDirectChildrenOnly);
+        check(header && body, "card title and controls have separate layout regions");
+        auto *title = header->findChild<QLabel*>(QStringLiteral("sectionTitleLabel"));
+        check(title && !title->text().isEmpty(), "card has a visible internal title");
+        const QRect titleRect(title->mapTo(card, QPoint(0, 0)), title->size());
+        check(card->rect().adjusted(2, 2, -2, -2).contains(titleRect), "title stays inside the card, clear of its outer border");
+        check(title->contentsRect().height() >= title->fontMetrics().height(), "card title is not vertically clipped at larger fonts");
+        check(!header->geometry().intersects(body->geometry()), "title bar and card content never overlap");
+        const auto controls = body->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly);
+        for (int i = 0; i < controls.size(); ++i) {
+            if (!controls[i]->isVisibleTo(body)) continue;
+            check(body->rect().contains(controls[i]->geometry()), "card controls stay inside their content region");
+            for (int j = i + 1; j < controls.size(); ++j)
+                if (controls[j]->isVisibleTo(body)) check(!controls[i]->geometry().intersects(controls[j]->geometry()), "adjacent card labels and controls do not overlap");
+        }
+    }
+    check(count > 0, "scope contains motion-control cards");
 }
 int main(int argc, char **argv)
 {
@@ -71,43 +99,55 @@ int main(int argc, char **argv)
         find<QPushButton>(*page, "emFwc3Go3")->click();
         until([&] { return find<QLabel>(*page, "emFwc3Position3")->text() == QStringLiteral("12.500°"); });
         check(motions() == 1, "selected channel UI command reaches SDK");
-        const auto firstCard = find<QGroupBox>(*page, "emFwc3Channel1")->geometry();
-        const auto secondCard = find<QGroupBox>(*page, "emFwc3Channel2")->geometry();
+        const auto firstCard = find<QFrame>(*page, "emFwc3Channel1")->geometry();
+        const auto secondCard = find<QFrame>(*page, "emFwc3Channel2")->geometry();
         check(firstCard.y() == secondCard.y(), "first opening in the main window uses settled viewport width for side-by-side channels");
+        checkCardGeometry(*page);
         VaporView::setSettingsWritesSuspended(true);
         find<QPushButton>(*page, "emFwc3Go3")->click(); QApplication::processEvents();
         check(motions() == 1, "UI test write barrier also blocks hardware commands");
         VaporView::setSettingsWritesSuspended(false);
         find<QPushButton>(*page, "emFwc3ConnectionSettings")->click();
         check(find<QStackedWidget>(window, "mainPageStack")->currentWidget()->objectName() == QStringLiteral("deviceConfigPage"), "motion page navigates to connection settings");
+        checkCardGeometry(*panel);
         find<QPushButton>(*panel, "emFwc3Disconnect")->click(); until([&] { return !page->session()->state().connected && !page->session()->state().busy; });
         check(find<QLabel>(*page, "emFwc3Position3")->text() == QStringLiteral("—"), "disconnection clears position readbacks");
         window.close();
     }
     {
         MotionControlPage page(nullptr, QString::fromLocal8Bit(argv[1]));
-        QWidget settings; page.createConnectionPanel(&settings);
+        QWidget settings; auto *settingsLayout = new QVBoxLayout(&settings);
+        settingsLayout->addWidget(page.createConnectionPanel(&settings));
+        settingsLayout->addStretch();
+        settings.resize(1200, 1100); settings.show();
         page.resize(1200, 1000); page.show(); QApplication::processEvents();
-        for (bool dark : {false, true}) for (int scale : {100, 130}) {
+        for (bool english : {false, true}) for (bool dark : {false, true}) for (int scale : {100, 130}) {
             QFont font = app.font(); font.setPointSizeF(10 * scale / 100.0); page.setFont(font);
-            page.setTheme(dark, scale); page.setLanguage(true);
+            settings.setFont(font); page.setTheme(dark, scale); page.setLanguage(english);
             for (int width : {1200, 600}) {
-                page.resize(width, 1000); QApplication::processEvents();
-                const auto a = find<QGroupBox>(page, "emFwc3Channel1")->geometry();
-                const auto b = find<QGroupBox>(page, "emFwc3Channel2")->geometry();
-                const auto c = find<QGroupBox>(page, "emFwc3Channel3")->geometry();
+                page.resize(width, 1000); settings.resize(width, 1100); QApplication::processEvents();
+                const auto a = find<QFrame>(page, "emFwc3Channel1")->geometry();
+                const auto b = find<QFrame>(page, "emFwc3Channel2")->geometry();
+                const auto c = find<QFrame>(page, "emFwc3Channel3")->geometry();
                 check(!a.intersects(b) && !b.intersects(c) && !a.intersects(c), "channel cards reflow without overlap at both font scales");
-                for (int i = 1; i <= 3; ++i) {
-                    const auto cardName = QStringLiteral("emFwc3Channel%1").arg(i);
-                    auto *card = page.findChild<QGroupBox*>(cardName);
-                    for (auto *button : card->findChildren<QPushButton*>(QString(), Qt::FindDirectChildrenOnly))
-                        check(card->rect().contains(button->geometry()), "channel action remains inside its card");
+                for (bool expanded : {false, true}) {
+                    for (int i = 1; i <= 3; ++i)
+                        page.findChild<QCheckBox*>(QStringLiteral("emFwc3ContinuousToggle%1").arg(i))->setChecked(expanded);
+                    QApplication::processEvents(); checkCardGeometry(page); checkCardGeometry(settings);
+                    for (int i = 1; i <= 3; ++i) {
+                        auto *area = page.findChild<QWidget*>(QStringLiteral("emFwc3ContinuousArea%1").arg(i));
+                        auto *toggle = page.findChild<QCheckBox*>(QStringLiteral("emFwc3ContinuousToggle%1").arg(i));
+                        auto *body = page.findChild<QWidget*>(QStringLiteral("emFwc3ContinuousBody%1").arg(i));
+                        check(body->isHidden() != expanded, "continuous controls collapse without an empty frame");
+                        check(area->rect().contains(toggle->geometry()), "continuous-motion label stays inside its layout");
+                        if (expanded) check(!toggle->geometry().intersects(body->geometry()), "continuous-motion heading and controls do not overlap");
+                    }
                 }
             }
         }
         page.setLanguage(false); page.setTheme(false, 100); page.resize(1200, 1000);
         QApplication::processEvents();
-        page.close();
+        page.close(); settings.close();
     }
     std::cout << "PASS: independent motion UI, FPGA switching, commands and responsive layout\n";
 }

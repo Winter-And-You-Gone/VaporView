@@ -2,12 +2,13 @@
 #include "shared/config/SettingsWriteBarrier.h"
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/TopLevelCardStyle.h"
+#include "ground/widgets/LabelTextSelection.h"
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QEvent>
 #include <QGridLayout>
-#include <QGroupBox>
+#include <QFrame>
 #include <QLabel>
 #include <QMessageBox>
 #include <QPointer>
@@ -43,6 +44,29 @@ QLabel *label(QWidget *parent, const char *cn, const char *en)
 {
     auto *l = new QLabel(parent); wording(l, cn, en); l->setWordWrap(true); return l;
 }
+struct Card
+{
+    QFrame *frame;
+    QLabel *title;
+    QWidget *body;
+};
+Card createCard(QWidget *parent, const QString& name)
+{
+    auto *frame = new QFrame(parent); frame->setObjectName(name);
+    frame->setProperty("emFwc3Card", true);
+    configureTopLevelCard(frame);
+    auto *layout = new QVBoxLayout(frame);
+    layout->setContentsMargins(1, 1, 1, 1); layout->setSpacing(0);
+    auto *header = new QWidget(frame); header->setObjectName(QStringLiteral("sectionTitleBar"));
+    header->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    auto *headerLayout = new QHBoxLayout(header); headerLayout->setContentsMargins(12, 6, 12, 6);
+    auto *title = new VisualTextLabel(header); title->setObjectName(QStringLiteral("sectionTitleLabel"));
+    configureSelectableCardTitle(title); headerLayout->addWidget(title, 1);
+    layout->addWidget(header);
+    auto *body = new QWidget(frame); body->setObjectName(QStringLiteral("emFwc3CardBody"));
+    body->setAttribute(Qt::WA_StyledBackground, true); layout->addWidget(body);
+    return {frame, title, body};
+}
 QDoubleSpinBox *angle(QWidget *parent, const QString& name, bool step)
 {
     auto *spin = new QDoubleSpinBox(parent); spin->setObjectName(name);
@@ -58,7 +82,8 @@ struct MotionControlPage::State
     QPointer<QWidget> config;
     QScrollArea *scroll = nullptr;
     QGridLayout *grid = nullptr;
-    std::array<QGroupBox*, 3> cards{};
+    std::array<QFrame*, 3> cards{};
+    std::array<QLabel*, 3> channelTitles{};
     std::array<QLabel*, 3> positions{};
     std::array<QDoubleSpinBox*, 3> targets{}, steps{};
     std::array<QComboBox*, 3> types{};
@@ -106,9 +131,10 @@ MotionControlPage::MotionControlPage(QWidget *parent, const QString& sdkDirector
     s.grid = new QGridLayout; s.grid->setSpacing(12);
     for (int i = 0; i < 3; ++i) {
         const auto suffix = QString::number(i + 1);
-        auto *card = new QGroupBox(content); card->setObjectName(QStringLiteral("emFwc3Channel") + suffix);
-        s.cards[i] = card;
-        auto *v = new QVBoxLayout(card); v->setSpacing(8);
+        const auto section = createCard(content, QStringLiteral("emFwc3Channel") + suffix);
+        s.cards[i] = section.frame; s.channelTitles[i] = section.title;
+        auto *card = section.body;
+        auto *v = new QVBoxLayout(card); v->setContentsMargins(12, 10, 12, 12); v->setSpacing(8);
         v->addWidget(label(card, "当前角度（设备读回）", "Current angle (device readback)"));
         s.positions[i] = new QLabel(QStringLiteral("—"), card);
         s.positions[i]->setObjectName(QStringLiteral("emFwc3Position") + suffix); v->addWidget(s.positions[i]);
@@ -137,28 +163,35 @@ MotionControlPage::MotionControlPage(QWidget *parent, const QString& sdkDirector
                 run(EmFwc3Session::Command::Home, i);
         });
         connect(stop, &QPushButton::clicked, this, [this, i] { run(EmFwc3Session::Command::Continuous, i, 0); });
-        auto *advanced = new QGroupBox(card); wording(advanced, "连续运动", "Continuous motion");
-        advanced->setCheckable(true); advanced->setChecked(false);
-        auto *a = new QVBoxLayout(advanced);
-        auto *reverse = button(advanced, qPrintable(QStringLiteral("emFwc3Reverse") + suffix), "反向连续运行", "Run reverse");
-        auto *forward = button(advanced, qPrintable(QStringLiteral("emFwc3Forward") + suffix), "正向连续运行", "Run forward");
-        a->addWidget(reverse); a->addWidget(forward); v->addWidget(advanced);
-        reverse->hide(); forward->hide();
+        auto *advanced = new QWidget(card);
+        advanced->setObjectName(QStringLiteral("emFwc3ContinuousArea") + suffix);
+        auto *a = new QVBoxLayout(advanced); a->setContentsMargins(0, 4, 0, 0); a->setSpacing(8);
+        auto *toggle = new QCheckBox(advanced);
+        toggle->setFocusPolicy(Qt::TabFocus);
+        toggle->setObjectName(QStringLiteral("emFwc3ContinuousToggle") + suffix);
+        wording(toggle, "连续运动", "Continuous motion"); a->addWidget(toggle);
+        auto *continuousBody = new QWidget(advanced);
+        continuousBody->setObjectName(QStringLiteral("emFwc3ContinuousBody") + suffix);
+        auto *continuousLayout = new QVBoxLayout(continuousBody); continuousLayout->setContentsMargins(0, 0, 0, 0);
+        auto *reverse = button(continuousBody, qPrintable(QStringLiteral("emFwc3Reverse") + suffix), "反向连续运行", "Run reverse");
+        auto *forward = button(continuousBody, qPrintable(QStringLiteral("emFwc3Forward") + suffix), "正向连续运行", "Run forward");
+        continuousLayout->addWidget(reverse); continuousLayout->addWidget(forward);
+        a->addWidget(continuousBody); continuousBody->hide(); v->addWidget(advanced);
         advanced->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-        connect(advanced, &QGroupBox::toggled, this, [reverse, forward](bool expanded) {
-            reverse->setVisible(expanded); forward->setVisible(expanded);
-        });
+        connect(toggle, &QCheckBox::toggled, continuousBody, &QWidget::setVisible);
         s.normalActions << advanced;
         for (auto *b : {reverse, forward}) connect(b, &QPushButton::clicked, this, [this, i, b, forward] {
             if (QMessageBox::question(this, text("连续运动", "Continuous motion"),
                 text("连续运动将持续到下发停止指令，确认开始？", "Continuous motion runs until a stop command. Start?")) == QMessageBox::Yes)
                 run(EmFwc3Session::Command::Continuous, i, b == forward ? 1 : -1);
         });
-        s.grid->addWidget(card, 0, i);
+        s.grid->addWidget(section.frame, 0, i);
     }
     layout->addLayout(s.grid);
-    auto *parameters = new QGroupBox(content); wording(parameters, "设备公共参数", "Device-wide parameters");
-    auto *p = new QVBoxLayout(parameters);
+    const auto parameterCard = createCard(content, QStringLiteral("emFwc3Parameters"));
+    wording(parameterCard.title, "设备公共参数", "Device-wide parameters");
+    auto *parameters = parameterCard.body;
+    auto *p = new QVBoxLayout(parameters); p->setContentsMargins(12, 10, 12, 12);
     s.speedReadback = new QLabel(parameters); s.speedReadback->setObjectName(QStringLiteral("emFwc3SpeedReadback")); p->addWidget(s.speedReadback);
     s.speed = new QSpinBox(parameters); s.speed->setObjectName(QStringLiteral("emFwc3Speed"));
     s.speed->setRange(1, std::numeric_limits<int>::max()); s.speed->setValue(50); s.speed->setKeyboardTracking(false);
@@ -173,7 +206,7 @@ MotionControlPage::MotionControlPage(QWidget *parent, const QString& sdkDirector
             text("将当前位置写入设备 EEPROM？此操作不应频繁执行。", "Write the current positions to device EEPROM? Avoid frequent writes.")) == QMessageBox::Yes)
             run(EmFwc3Session::Command::SavePosition);
     });
-    layout->addWidget(parameters);
+    layout->addWidget(parameterCard.frame);
     s.status = new QLabel(content); s.status->setObjectName(QStringLiteral("emFwc3Status")); s.status->setWordWrap(true); layout->addWidget(s.status);
     layout->addStretch(); s.scroll->setWidget(content); outer->addWidget(s.scroll);
     connect(s.session, &EmFwc3Session::stateChanged, this, [this] { refresh(); });
@@ -199,11 +232,11 @@ QWidget *MotionControlPage::createConnectionPanel(QWidget *parent)
 {
     auto& s = *state_;
     if (s.config) return s.config;
-    auto *panel = new QGroupBox(parent); s.config = panel;
-    panel->setObjectName(QStringLiteral("emFwc3ConnectionPanel"));
-    wording(panel, "本机直连设备 · EM-FWC3", "Local direct devices · EM-FWC3");
-    configureTopLevelCard(panel);
-    auto *v = new QVBoxLayout(panel); v->setContentsMargins(16, 24, 16, 16); v->setSpacing(8);
+    const auto section = createCard(parent, QStringLiteral("emFwc3ConnectionPanel"));
+    s.config = section.frame;
+    wording(section.title, "本机直连设备 · EM-FWC3", "Local direct devices · EM-FWC3");
+    auto *panel = section.body;
+    auto *v = new QVBoxLayout(panel); v->setContentsMargins(12, 10, 12, 12); v->setSpacing(8);
     v->addWidget(label(panel, "USB 虚拟串口直连当前电脑，保持独立连接。切换直连 / FPGA 或本地 / 远端采集不会断开本设备。",
         "USB virtual COM connected to this computer. Its connection is independent of Direct / FPGA and Local / Remote acquisition."));
     s.configConnection = new QLabel(panel); s.configConnection->setObjectName(QStringLiteral("emFwc3ConfigState")); v->addWidget(s.configConnection);
@@ -248,7 +281,7 @@ QWidget *MotionControlPage::createConnectionPanel(QWidget *parent)
         if (index >= 0) s.port->setCurrentIndex(index); else s.port->setEditText(savedPort);
     }
     connect(s.port, &QComboBox::currentTextChanged, this, [this] { saveSettings(); refresh(); });
-    setLanguage(s.english); setTheme(s.dark, s.scale); refresh(); return panel;
+    setLanguage(s.english); setTheme(s.dark, s.scale); refresh(); return section.frame;
 }
 void MotionControlPage::refreshPorts()
 {
@@ -321,12 +354,11 @@ void MotionControlPage::setLanguage(bool english)
             if (!value.isValid()) continue;
             if (auto *l = qobject_cast<QLabel*>(object)) l->setText(value.toString());
             else if (auto *b = qobject_cast<QAbstractButton*>(object)) { b->setText(value.toString()); b->setAccessibleName(value.toString()); }
-            else if (auto *g = qobject_cast<QGroupBox*>(object)) g->setTitle(value.toString());
         }
     };
     translate(this); translate(s.config);
     for (int i = 0; i < 3; ++i) {
-        s.cards[i]->setTitle(text("通道 %1", "Channel %1").arg(i + 1));
+        s.channelTitles[i]->setText(text("通道 %1", "Channel %1").arg(i + 1));
         if (s.config) s.config->findChild<QLabel*>(QStringLiteral("emFwc3TypeLabel%1").arg(i + 1))->setText(text("通道 %1 电机型号", "Channel %1 motor type").arg(i + 1));
     }
     refresh(); reflow();
@@ -337,13 +369,17 @@ void MotionControlPage::setTheme(bool dark, int fontScalePercent)
     const QString style = applyAppThemeTokens(QStringLiteral(
         "QWidget#motionControlPage, QWidget#emFwc3MotionContent { background-color: @vv-window; color: @vv-text; }"
         "QWidget#motionControlPage QScrollArea { border: none; background: @vv-window; }"
-        "QGroupBox { background: @vv-surface; color: @vv-text; border: 1px solid @vv-border; border-radius: 12px; margin-top: 12px; padding: 12px; }"
-        "QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 12px; top: 0px; padding: 0px 4px; color: @vv-text; background-color: transparent; }"
+        "QFrame[emFwc3Card=true] { background-color: @vv-surface-raised; color: @vv-text; border: 1px solid @vv-border; border-radius: 12px; }"
+        "QFrame[emFwc3Card=true] > QWidget#sectionTitleBar { background-color: @vv-surface-raised; border: none; border-bottom: 1px solid @vv-border; border-top-left-radius: 11px; border-top-right-radius: 11px; min-height: %2px; max-height: 16777215px; }"
+        "QWidget#emFwc3CardBody { background-color: @vv-surface-raised; border: none; border-bottom-left-radius: 11px; border-bottom-right-radius: 11px; }"
         "QLabel, QLabel#sectionTitleLabel { background-color: transparent; color: @vv-text; border: none; }"
+        "QCheckBox { color: @vv-text; background-color: transparent; }"
+        "QCheckBox:disabled { color: @vv-text-disabled; }"
+        "QWidget#sectionTitleBar QLabel#sectionTitleLabel { font-size: %3px; font-weight: 700; padding: 0px; margin: 0px; }"
         "QLabel[emFwc3Error=true] { color: @vv-danger; }"
         "QLabel#emFwc3Position1, QLabel#emFwc3Position2, QLabel#emFwc3Position3 { font-size: %1px; font-weight: 600; }"
         "QPushButton#emFwc3StopAll:enabled, QPushButton#emFwc3Stop1:enabled, QPushButton#emFwc3Stop2:enabled, QPushButton#emFwc3Stop3:enabled { background-color: @vv-danger; color: @vv-text-inverse; }"
-    ).arg(qRound(24 * fontScalePercent / 100.0)), dark);
+    ).arg(qRound(24 * fontScalePercent / 100.0)).arg(qRound(40 * fontScalePercent / 100.0)).arg(qRound(16 * fontScalePercent / 100.0)), dark);
     setStyleSheet(style); if (s.config) s.config->setStyleSheet(style);
     setPalette(appThemePalette(dark));
     if (s.config) s.config->setPalette(appThemePalette(dark));
