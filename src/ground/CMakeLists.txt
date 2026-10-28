@@ -38,6 +38,7 @@ add_subdirectory(trajectory)
 add_subdirectory(wave)
 add_subdirectory(session)
 add_subdirectory(calibration)
+add_subdirectory(motion)
 
 set(NAV_WINDOW_SOURCES
     ${CMAKE_SOURCE_DIR}/src/ground/navigation/CombinationNavigationPage.cpp
@@ -106,6 +107,7 @@ target_link_libraries(vaporview_main_window PUBLIC
 )
 
 target_link_libraries(vaporview_main_window PRIVATE
+    vaporview_ground_motion
     vaporview_water_calibration_ui
     vaporview_app_config
     vaporview_app_theme

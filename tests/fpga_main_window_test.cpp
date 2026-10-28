@@ -1921,7 +1921,7 @@ int main(int argc,char **argv)
         MainWindow window;
         auto *stack=window.findChild<QStackedWidget*>(QStringLiteral("mainPageStack"));
         auto *page=window.findChild<FpgaControlPage*>(QStringLiteral("fpgaControlPage"));
-        require(stack && stack->count()==6 && page && stack->widget(4)==page,"FPGA remains the fifth standalone persistent page after adding calibration");
+        require(stack && stack->count()==7 && page && stack->widget(4)==page,"FPGA remains the fifth standalone persistent page after adding motion control");
         worker=window.testFpgaController()->thread();
         require(worker && worker->isRunning(),"USB worker has its own running event loop");
         require(page->configuration().pressureSource==0x40 && page->configuration().backend=="auto","PTB210 and auto backend defaults");

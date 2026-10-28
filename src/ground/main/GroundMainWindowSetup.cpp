@@ -2295,6 +2295,7 @@ void MainWindow::setupCentralWidget()
     state_->home_nav_btn_ = createNavButton(QStringLiteral("首页"), QStringLiteral("square-activity"));
     state_->device_config_nav_btn_ = createNavButton(QStringLiteral("设备配置"), QStringLiteral("sliders-vertical"));
     state_->temperature_nav_btn_ = createNavButton(QStringLiteral("温控"), QStringLiteral("thermometer"));
+    state_->motion_nav_btn_ = createNavButton(QStringLiteral("运动控制"), QStringLiteral("refresh-cw"));
     state_->rtk_config_nav_btn_ = createNavButton(QStringLiteral("组合导航"), QStringLiteral("satellite"));
     state_->fpga_nav_btn_ = createNavButton(QStringLiteral("FPGA"), QStringLiteral("cpu"));
     state_->water_calibration_nav_btn_ = createNavButton(QStringLiteral("水汽定标"), QStringLiteral("chart-scatter"));
@@ -2304,6 +2305,7 @@ void MainWindow::setupCentralWidget()
     state_->app_nav_button_group_->addButton(state_->rtk_config_nav_btn_, 3);
     state_->app_nav_button_group_->addButton(state_->fpga_nav_btn_, 4);
     state_->app_nav_button_group_->addButton(state_->water_calibration_nav_btn_, 5);
+    state_->app_nav_button_group_->addButton(state_->motion_nav_btn_, 6);
     sidebarLayout->addStretch(1);
     state_->home_nav_btn_->setChecked(true);
     updateSidebarNavIcons();
@@ -2389,6 +2391,18 @@ void MainWindow::setupCentralWidget()
 
     state_->home_page_ = state_->main_cards_scroll_area_;
     state_->main_page_stack_->addWidget(state_->home_page_);
+    state_->motion_page_ = new VaporView::Ground::Motion::MotionControlPage(state_->main_page_stack_);
+    connect(state_->motion_page_, &VaporView::Ground::Motion::MotionControlPage::showConnectionSettingsRequested,
+            this, [this] { state_->device_config_nav_btn_->click(); });
+    connect(state_->motion_page_, &VaporView::Ground::Motion::MotionControlPage::showControlsRequested,
+            this, [this] { state_->motion_nav_btn_->click(); });
+    connect(state_->motion_page_->session(), &VaporView::Ground::Motion::EmFwc3Session::operationFinished,
+            this, [this](const QString& operation, int code, const QString& detail) {
+        publishGroundLog(code == 0 ? VaporView::LogLevel::Info : VaporView::LogLevel::Warning,
+            QStringLiteral("device.motion"), QStringLiteral("emfwc3_operation"),
+            QStringLiteral("EM-FWC3 操作结果：%1，返回码 %2。%3").arg(operation).arg(code).arg(detail),
+            {{QStringLiteral("operation"), operation}, {QStringLiteral("error_code"), code}});
+    });
     setupDeviceConfigPage();
 
     state_->temperature_page_ = new QWidget(this);
@@ -2682,6 +2696,7 @@ void MainWindow::setupCentralWidget()
     setupFpgaControlPage();
     state_->water_calibration_page_ = new VaporView::Ground::Calibration::WaterCalibrationPage(state_->main_page_stack_);
     state_->main_page_stack_->addWidget(state_->water_calibration_page_);
+    state_->main_page_stack_->addWidget(state_->motion_page_);
 
     connect(state_->app_nav_button_group_, &QButtonGroup::idClicked, this, [this](int id) {
         if (id == 3)
@@ -3622,6 +3637,7 @@ void MainWindow::setupDeviceConfigPage()
 
     contentLayout->addWidget(state_->device_config_.data_telemetry_summary_card, 0);
     contentLayout->addWidget(serialCard, 0);
+    contentLayout->addWidget(state_->motion_page_->createConnectionPanel(content), 0);
     contentLayout->addWidget(remoteConfigCard, 0);
     contentLayout->addStretch(1);
 
@@ -3659,7 +3675,7 @@ void MainWindow::updateSidebarNavIcons()
     const bool dark = state_->dark_theme_enabled_;
     const QColor normalColor = appThemeColor(AppThemeColor::Text, dark);
     const QColor activeColor = QColor(255, 255, 255);
-    for (QPushButton *button : {state_->home_nav_btn_, state_->temperature_nav_btn_, state_->rtk_config_nav_btn_, state_->device_config_nav_btn_, state_->fpga_nav_btn_, state_->water_calibration_nav_btn_})
+    for (QPushButton *button : {state_->home_nav_btn_, state_->temperature_nav_btn_, state_->motion_nav_btn_, state_->rtk_config_nav_btn_, state_->device_config_nav_btn_, state_->fpga_nav_btn_, state_->water_calibration_nav_btn_})
     {
         if (!button)
         {

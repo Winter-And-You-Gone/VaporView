@@ -4,6 +4,7 @@
 
 | source | category | event | recommended level | 中文 message | required fields | optional fields | error_code / reason_code |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| Ground | device.motion | emfwc3_operation | Info/Warning | EM-FWC3 操作结果与 SDK 返回码。 | operation, error_code |  |  |
 | water_calibration | calibration | water_calibration_operation_completed | Info | 水汽定标操作已完成（页面显示具体结果）。 | dataset_id |  |  |
 | water_calibration | calibration | water_calibration_operation_failed | Warning | 水汽定标操作失败（页面显示具体原因）。 | dataset_id |  |  |
 | Ground/SkyCore | device.internal | internal_serial_error | Warning | 内部环境串口桥连接失败。 | device_id, reason, reason_code |  | SERIAL_BRIDGE_CONNECT_FAILED |

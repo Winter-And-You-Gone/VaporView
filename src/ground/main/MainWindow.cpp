@@ -701,6 +701,7 @@ MainWindow::~MainWindow()
         state_->port_detection_thread_.join();
     }
     shutdownFpgaWorker();
+    if (state_->motion_page_) state_->motion_page_->shutdown();
     stopRecording(false);
     state_->recording_service_->setStatusCallback({});
     state_->recording_service_->setWarningCallback({});
@@ -873,6 +874,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
                 state_->home_nav_btn_,
                 state_->device_config_nav_btn_,
                 state_->temperature_nav_btn_,
+                state_->motion_nav_btn_,
                 state_->rtk_config_nav_btn_,
                 state_->fpga_nav_btn_,
                 state_->water_calibration_nav_btn_,

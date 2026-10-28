@@ -241,6 +241,7 @@ bool MainWindow::isUiTestMode() const
 bool MainWindow::canEnterUiTestMode(QString *reason) const
 {
     const bool busy = state_->is_connected_ ||
+        (state_->motion_page_ && (state_->motion_page_->session()->state().connected || state_->motion_page_->session()->state().busy)) ||
         state_->connection_attempt_in_progress_ ||
         state_->port_detection_in_progress_ ||
         state_->epsilon_reconfigure_in_progress_ ||

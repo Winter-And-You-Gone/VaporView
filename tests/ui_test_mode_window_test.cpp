@@ -1099,7 +1099,7 @@ int main(int argc, char **argv)
         require(settingsSnapshotsEqual(snapshotAll(), before, "navigation UI test preserves persistent settings"),
                 "all navigation simulations leave persistent settings unchanged");
         const auto sidebarButtons = window->findChildren<QPushButton *>(QStringLiteral("appSidebarButton"));
-        require(sidebarButtons.size() == 6, "sidebar restoration covers every navigation icon including calibration");
+        require(sidebarButtons.size() == 7, "sidebar restoration covers every navigation icon including motion control");
         const auto requireSidebarColors = [&]() {
             for (auto *button : sidebarButtons)
             {
@@ -1147,7 +1147,12 @@ int main(int argc, char **argv)
         for (auto *action : window->findChildren<QAction *>())
             if (action->data().toInt() == 100) { action->trigger(); break; }
         QMetaObject::invokeMethod(window, "onToggleTheme", Qt::DirectConnection);processEvents();
-        sidebarButtons[3]->click();VaporViewTest::processEventsFor(550);
+        QPushButton *navigationSidebar = nullptr;
+        for (auto *button : sidebarButtons)
+            if (button->accessibleName() == QStringLiteral("组合导航") ||
+                button->accessibleName() == QStringLiteral("Combination Navigation")) navigationSidebar = button;
+        require(navigationSidebar != nullptr, "combination-navigation sidebar entry is identified independently of visual order");
+        navigationSidebar->click();VaporViewTest::processEventsFor(550);
         auto *navigationThumb = navigation->findChild<QFrame *>(QStringLiteral("combinationNavigationNavigationSelectionThumb"));
         auto *navigationStatusButton = navigation->findChild<QPushButton *>(QStringLiteral("combinationNavigationStatusButton"));
         require(navigationThumb && navigationStatusButton && VaporViewTest::processEventsUntil(2000, [&]() {

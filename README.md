@@ -6,6 +6,8 @@
 
 主侧栏“水汽定标”支持 FPGA 峰值导入、线性验证模型拟合、参数历史版本和可追溯初始浓度。正式算法及温压补偿待确认事项见[实现与待补全清单](docs/water_calibration.md)。
 
+主侧栏“运动控制”支持 EM-FWC3 三路电机定位、步进、回零、连续运动与停止。设备通过本机 USB 虚拟串口独立连接，FPGA 中转或远端采集模式下仍保持直连；配置入口、可选 SDK 部署与验证说明见 [EM-FWC3 接入说明](docs/emfwc3.md)。
+
 ### 依赖
 
 - Qt 6.10.1+（Core, Widgets, SerialPort, Network, Svg）

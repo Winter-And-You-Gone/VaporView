@@ -1544,6 +1544,31 @@ target_link_libraries(water_calibration_joint_test PRIVATE vaporview_water_calib
 vaporview_add_test(NAME water_calibration_joint_test COMMAND water_calibration_joint_test)
 set_tests_properties(water_calibration_joint_test PROPERTIES LABELS "integration;ui;calibration;e2e;session" TIMEOUT 90)
 
+add_library(emfwc3_fake_sdk SHARED emfwc3_fake_sdk.cpp)
+set_target_properties(emfwc3_fake_sdk PROPERTIES
+    OUTPUT_NAME LB_Control_Library_x64
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/emfwc3_test_sdk"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/emfwc3_test_sdk")
+foreach(config DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
+    set_target_properties(emfwc3_fake_sdk PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY_${config} "${CMAKE_CURRENT_BINARY_DIR}/emfwc3_test_sdk")
+endforeach()
+if(WIN32)
+    add_custom_command(TARGET emfwc3_fake_sdk POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:emfwc3_fake_sdk> $<TARGET_FILE_DIR:emfwc3_fake_sdk>/lubonCore.dll
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:emfwc3_fake_sdk> $<TARGET_FILE_DIR:emfwc3_fake_sdk>/libusb-1.0.dll)
+endif()
+add_executable(emfwc3_session_test emfwc3_session_test.cpp)
+target_link_libraries(emfwc3_session_test PRIVATE vaporview_ground_motion)
+add_dependencies(emfwc3_session_test emfwc3_fake_sdk)
+vaporview_add_test(NAME emfwc3_session_test COMMAND emfwc3_session_test $<TARGET_FILE_DIR:emfwc3_fake_sdk>)
+set_tests_properties(emfwc3_session_test PROPERTIES LABELS "fast;unit;motion" TIMEOUT 45)
+add_executable(emfwc3_ui_test emfwc3_ui_test.cpp)
+target_link_libraries(emfwc3_ui_test PRIVATE vaporview_main_window vaporview_ground_motion)
+add_dependencies(emfwc3_ui_test emfwc3_fake_sdk VaporViewRuntimeResources)
+vaporview_add_test(NAME emfwc3_ui_test COMMAND emfwc3_ui_test $<TARGET_FILE_DIR:emfwc3_fake_sdk>)
+set_tests_properties(emfwc3_ui_test PROPERTIES LABELS "integration;ui;motion" TIMEOUT 90)
+
 add_custom_target(VaporViewTests)
 add_custom_target(VaporViewFastTests)
 get_property(registered_tests DIRECTORY PROPERTY TESTS)

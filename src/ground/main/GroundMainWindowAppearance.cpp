@@ -562,6 +562,8 @@ void MainWindow::updateAppSidebarButtonTexts()
 
     applyButtonText(state_->home_nav_btn_, state_->is_english_ ? QStringLiteral("Home") : QStringLiteral("首页"));
     applyButtonText(state_->temperature_nav_btn_, state_->is_english_ ? QStringLiteral("Thermal") : QStringLiteral("温控"));
+    applyButtonText(state_->motion_nav_btn_, state_->is_english_ ? QStringLiteral("Motion") : QStringLiteral("运动控制"));
+    if (state_->motion_page_) state_->motion_page_->setLanguage(state_->is_english_);
     applyButtonText(state_->rtk_config_nav_btn_, state_->is_english_ ? QStringLiteral("Combination Navigation") : QStringLiteral("组合导航"),
                     state_->is_english_ ? QStringLiteral("Nav") : QString());
     applyButtonText(state_->device_config_nav_btn_, state_->is_english_ ? QStringLiteral("Device") : QStringLiteral("设备配置"));
@@ -1473,6 +1475,7 @@ void MainWindow::applyStyleConfiguration()
 {
     if (state_->fpga_page_) state_->fpga_page_->setTheme(state_->dark_theme_enabled_, state_->font_scale_percent_);
     if (state_->water_calibration_page_) state_->water_calibration_page_->setTheme(state_->dark_theme_enabled_, state_->font_scale_percent_);
+    if (state_->motion_page_) state_->motion_page_->setTheme(state_->dark_theme_enabled_, state_->font_scale_percent_);
     QFont appFont = qApp->font();
     appFont.setPointSizeF(state_->base_font_point_size_ * state_->font_scale_percent_ / 100.0);
     qApp->setPalette(appThemePalette(state_->dark_theme_enabled_));
