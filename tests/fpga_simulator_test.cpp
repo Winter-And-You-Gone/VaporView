@@ -43,10 +43,13 @@ void trajectory()
     const double period = fpgaSimulatorNavigationLoopSeconds();
     const auto start = fpgaSimulatorNavigationAt(0);
     const auto end = fpgaSimulatorNavigationAt(period);
-    check(period == 600.0 && std::abs(start.latitudeRadians * degrees - 30.25564) < 1e-6 &&
+    check(period == 120.0 && std::abs(start.latitudeRadians * degrees - 30.25564) < 1e-6 &&
           std::abs(start.longitudeRadians * degrees - 120.15762) < 1e-6 &&
           std::abs(start.heightM - groundHeight) < 1e-9,
           "trajectory starts at in77 on the simulated ground");
+    const double startSpeed = std::hypot(start.velocityNed[0], start.velocityNed[1]);
+    check(startSpeed > 70.0 && startSpeed < 80.0,
+          "two-minute loop reports the five-times-faster horizontal speed");
     check(std::hypot(end.northM - start.northM, end.eastM - start.eastM) < 1e-6 &&
           std::abs(end.heightM - start.heightM) < 1e-9 &&
           std::hypot(end.velocityNed[0] - start.velocityNed[0], end.velocityNed[1] - start.velocityNed[1]) < 1e-6,
@@ -54,8 +57,8 @@ void trajectory()
     bool south = false, north = false, ascending = false, descending = false;
     double maxHeight = groundHeight;
     auto previous = start;
-    for (int second = 1; second <= int(period); ++second) {
-        const auto sample = fpgaSimulatorNavigationAt(second);
+    for (int tick = 1; tick <= int(period * 5); ++tick) {
+        const auto sample = fpgaSimulatorNavigationAt(tick * 0.2);
         const double latitude = sample.latitudeRadians * degrees;
         const double longitude = sample.longitudeRadians * degrees;
         const auto isNearWaypoint = [&](double lat, double lon) {
@@ -75,12 +78,12 @@ void trajectory()
         maxHeight = std::max(maxHeight, sample.heightM);
         check(std::hypot(sample.northM - previous.northM, sample.eastM - previous.eastM) < 30.0 &&
               std::abs(sample.heightM - previous.heightM) < 2.0,
-              "one-second trajectory samples do not jump across the lake or vertically");
+              "consecutive trajectory samples do not jump across the lake or vertically");
         previous = sample;
     }
     check(south && north && ascending && descending && maxHeight > groundHeight + 29.99,
           "loop crosses Su Causeway and smoothly climbs to 30 metres before landing");
-    for (double t : {15.0, 100.0, 250.0, 400.0, 550.0}) {
+    for (double t : {3.0, 20.0, 50.0, 80.0, 110.0}) {
         constexpr double dt = 0.01;
         const auto before = fpgaSimulatorNavigationAt(t - dt);
         const auto current = fpgaSimulatorNavigationAt(t);

@@ -20,7 +20,7 @@ namespace VaporView::Ground::Devices
 namespace
 {
 constexpr double pi = 3.14159265358979323846;
-constexpr double navigationLoopSeconds = 600.0;
+constexpr double navigationLoopSeconds = 120.0;
 constexpr double simulatedGroundHeightM = 15.0;
 
 struct Waypoint { double latitude, longitude; };
