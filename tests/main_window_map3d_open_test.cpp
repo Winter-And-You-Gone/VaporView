@@ -186,7 +186,7 @@ int main(int argc, char** argv)
         processEventsFor(300);
         const bool english = qApp->property("vaporViewEnglish").toBool();
         require(english == (i == 0 ? !originalEnglish : originalEnglish), QStringLiteral("map language button switches global language"));
-        require(mapWindow->windowTitle() == (english ? QStringLiteral("VaporView 3D Map") : QStringLiteral("VaporView 三维地图")), QStringLiteral("map title switches immediately"));
+        require(mapWindow->windowTitle() == (english ? QStringLiteral("VaporView 3D Map - Live") : QStringLiteral("VaporView 三维地图 - 实时")), QStringLiteral("map title switches immediately: %1").arg(mapWindow->windowTitle()));
         require(diagnosticsAction->text() == (english ? QStringLiteral("Map diagnostics") : QStringLiteral("地图诊断")), QStringLiteral("map menu switches immediately"));
         require(diagnostics->toPlainText().contains(english ? QStringLiteral("Track data:") : QStringLiteral("轨迹数据：")), QStringLiteral("open diagnostics switches immediately"));
         require(diagnostics->window()->windowTitle() == (english ? QStringLiteral("3D Map Diagnostics") : QStringLiteral("三维地图数据诊断")), QStringLiteral("diagnostics title is fully translated"));

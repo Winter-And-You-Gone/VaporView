@@ -107,21 +107,17 @@ The 3D Map persists its local UI state with `QSettings("VaporView", "Map3D")`: `
 
 ## Session Replay
 
-After loading a session:
+Opening a Session switches the window to **Session replay**, showing the complete recorded track and heat data. The title identifies the current mode. The title-bar **回到实时地图 / Back to live map** button returns to current navigation; it then becomes **返回 Session 回放 / Return to Session replay** so the loaded Session can be restored without reading it again. There are no visible playback transport controls or timeline slider.
 
-- `播放` starts replay.
-- `暂停` pauses replay.
-- `停止回放` stops and rewinds to the first sample.
-- Speed choices are `0.5x`, `1x`, `2x`, `5x`, and `10x`.
-- Playback advances by elapsed session time, so sparse or irregular GNSS sample intervals are preserved.
-- The slider seeks by elapsed session time from the first recorded sample. The status bar still reports the current sample index and the elapsed/duration time.
+Live positions continue to enter a bounded cache while a Session is loading or displayed. They never cancel the Session load, replace its navigation source, append to its track, or move its aircraft marker. Returning to live restores the latest positions and focuses the live aircraft. Returning to Session restores the complete Session track, heat data and Original/PPK source selection. Display settings are shared between modes.
 
-Replay is local to the 3D Map window and does not change the recorded session files.
-Loading a session automatically flies the camera to the complete track so the first view is useful without manual searching. Loading or reloading an earth file also re-centers on the current track when track samples are already present.
+Switching to live while loading leaves the load running; completion caches the Session without taking over the live map. Loading another Session replaces the cached Session when successful. Clearing the live track preserves the Session cache; the clear action is disabled during Session replay. Closing the 3D window discards the Session cache and invalidates outstanding loads. Merely hiding or minimizing the window does not discard it.
+
+Replay only changes the local map display and never modifies recorded samples. Loading a Session automatically frames the complete track. Loading or reloading an earth file also re-centers on the displayed track.
 
 ## Realtime Track
 
-When the main VaporView window receives navigation samples and the 3D Map window exists, the map receives `NavSample` data behind the `VAPORVIEW_HAS_OSGEARTH` guard. If the 3D Map window is closed, the normal acquisition, recording, telemetry, SkyCore, and SkyTui paths continue without requiring the map.
+When the main VaporView window receives navigation samples and the 3D Map window exists, the map receives `NavSample` data behind the `VAPORVIEW_HAS_OSGEARTH` guard. Live acquisition and recording continue while the map displays Session replay. Closing the 3D window leaves acquisition, recording, telemetry, SkyCore, and SkyTui running.
 
 ## Status Bar
 
@@ -139,7 +135,7 @@ The status bar shows:
 - height reference label
 - readable fix quality (`Fixed`, `Float`, `DGPS`, `Single`, `Invalid`, or `Unknown`)
 - aircraft attitude source (`Quaternion`, `Euler`, or `none`)
-- replay position and speed
+- active live or Session source
 
 Height reference labels are display hints only. The status bar and diagnostics intentionally show `Height ref unchecked` / `height reference unchecked` whenever a displayed height is based on the raw navigation sample. VaporView currently does not compute AGL or terrain-clearance safety decisions because RTK/GNSS and DEM height references may not be unified.
 

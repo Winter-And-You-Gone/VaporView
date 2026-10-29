@@ -49,6 +49,7 @@
 #include <QResizeEvent>
 #include <QPlainTextEdit>
 #include <QProgressDialog>
+#include <QPromise>
 #include <QScreen>
 #include <QToolTip>
 #include <QPixmap>
@@ -863,6 +864,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     connect(openSessionAction, &QAction::triggered, this, &Map3DWindow::openSessionDirectory);
 
     QAction* clearAction = toolbar->addAction(mapText(QStringLiteral("清空轨迹")));
+    clearAction->setObjectName(QStringLiteral("map3DClearTrackAction"));
     connect(clearAction, &QAction::triggered, this, &Map3DWindow::clearTrack);
 
     auto* displayPanel = new QDialog(this, Qt::Tool);
@@ -1238,6 +1240,14 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     setCentralWidget(mapCanvas);
     setMenuWidget(titleBar);
     titleWrapper->deleteLater();
+
+    map_mode_button_ = new QToolButton(this);
+    map_mode_button_->setObjectName(QStringLiteral("map3DModeButton"));
+    connect(map_mode_button_, &QToolButton::clicked, this, [this]() {
+        setSessionMapActive(track_data_mode_ == TrackDataMode::Live);
+    });
+    VaporView::addWidgetToCustomTitleBar(this, map_mode_button_);
+    updateMapModeUi();
 
     statusBar()->addPermanentWidget(status_label_, 1);
     updateReplayUi();
@@ -1780,19 +1790,87 @@ void Map3DWindow::updateHeatLegend()
     heat_legend_label_->setText(heatLegendText(heat_metric_, range));
 }
 
+void Map3DWindow::updateMapModeUi()
+{
+    const bool live = track_data_mode_ == TrackDataMode::Live;
+    const bool loading = session_load_watcher_ && !session_load_watcher_->isCanceled();
+    map_mode_button_->setText(mapText(live
+        ? (replay_render_storage_ || loading
+            ? QStringLiteral("返回 Session 回放") : QStringLiteral("实时地图"))
+        : QStringLiteral("回到实时地图")));
+    map_mode_button_->setEnabled(!live || replay_render_storage_ || loading);
+    map_mode_button_->setMinimumWidth(map_mode_button_->fontMetrics().horizontalAdvance(map_mode_button_->text()) + 24);
+    map_mode_button_->setAccessibleName(map_mode_button_->text());
+    setWindowTitle(mapText(live ? QStringLiteral("VaporView 三维地图 - 实时")
+                               : QStringLiteral("VaporView 三维地图 - Session 回放")));
+    navigation_source_combo_->setEnabled(!live && !loaded_session_directory_.isEmpty());
+    if (auto* clear = findChild<QAction*>(QStringLiteral("map3DClearTrackAction")))
+        clear->setEnabled(live);
+}
+
+void Map3DWindow::setSessionMapActive(bool active)
+{
+    track_data_mode_ = active ? TrackDataMode::Session : TrackDataMode::Live;
+    replay_timer_->stop();
+    replay_.pause();
+    replay_tick_clock_.invalidate();
+    clearSelectedTrajectorySample();
+    has_latest_status_sample_ = false;
+    latest_camera_note_.clear();
+    if (view_) view_->clearTrack();
+    headless_sample_count_ = 0;
+    headless_samples_.clear();
+    headless_render_samples_.clear();
+    if (active && replay_render_storage_)
+    {
+        if (view_) view_->setSamples(replay_render_storage_);
+        if (headless_view_)
+        {
+            headless_render_samples_ = *replay_render_storage_;
+            for (const auto& sample : *replay_render_storage_)
+                headless_samples_.push_back(sample.navigation);
+        }
+        const QSignalBlocker blocker(navigation_source_combo_);
+        auto* model = qobject_cast<QStandardItemModel*>(navigation_source_combo_->model());
+        if (model) model->item(1)->setEnabled(VaporView::Ppk::PpkProcessor::status(loaded_session_directory_).completed);
+        navigation_source_combo_->setCurrentIndex(
+            VaporView::Ppk::sessionNavigationSource(loaded_session_directory_) == VaporView::Ppk::NavigationSource::Ppk ? 1 : 0);
+        recordTrackSource(mapText(QStringLiteral("会话")), replay_.currentSample(), session_track_note_);
+        if (headless_view_) headless_sample_count_ = static_cast<int>(headless_samples_.size());
+        updateStatus(replay_.currentSample());
+        autoFocusTrack(mapText(QStringLiteral("自动轨迹视角")));
+    }
+    else
+    {
+        const std::vector<VaporView::Geo::NavSample> samples = active
+            ? std::vector<VaporView::Geo::NavSample>()
+            : std::vector<VaporView::Geo::NavSample>(live_samples_.begin(), live_samples_.end());
+        if (view_ && !samples.empty()) view_->setSamples(samples);
+        if (headless_view_)
+        {
+            headless_samples_ = samples;
+            for (const auto& sample : samples)
+                headless_render_samples_.push_back(renderSampleFromNavSample(sample));
+        }
+        recordTrackSource(mapText(samples.empty() ? QStringLiteral("无") : QStringLiteral("实时")),
+                          samples.empty() ? nullptr : &samples.back());
+        if (!samples.empty()) updateStatus(&samples.back());
+        if (!active && view_ && !samples.empty()) view_->flyToAircraft();
+    }
+    if (headless_view_) headless_sample_count_ = static_cast<int>(headless_samples_.size());
+    if (!active && session_progress_dialog_) session_progress_dialog_->hide();
+    updateMapModeUi();
+    updateHeatLegend();
+    updateReplayUi();
+    updateStatus(nullptr, true);
+}
+
 void Map3DWindow::appendSample(const VaporView::Geo::NavSample& sample)
 {
-    invalidateSessionLoadRequest();
-    loaded_session_directory_.clear();
-    navigation_source_combo_->setEnabled(false);
-    track_data_mode_ = TrackDataMode::Live;
-    if (replay_.isPlaying())
-    {
-        stopReplay();
-    }
-    replay_.clear();
-    replay_render_storage_.reset();
-    rendered_replay_index_ = -1;
+    live_samples_.push_back(sample);
+    while (static_cast<int>(live_samples_.size()) > max_visible_samples_)
+        live_samples_.pop_front();
+    if (track_data_mode_ != TrackDataMode::Live) return;
     if (view_)
     {
         view_->appendNavigationSample(sample);
@@ -1811,17 +1889,13 @@ void Map3DWindow::appendSample(const VaporView::Geo::NavSample& sample)
 
 void Map3DWindow::appendSamples(const std::vector<VaporView::Geo::NavSample>& samples)
 {
-    invalidateSessionLoadRequest();
-    loaded_session_directory_.clear();
-    navigation_source_combo_->setEnabled(false);
-    track_data_mode_ = TrackDataMode::Live;
-    if (replay_.isPlaying())
+    for (const auto& sample : samples)
     {
-        stopReplay();
+        live_samples_.push_back(sample);
+        while (static_cast<int>(live_samples_.size()) > max_visible_samples_)
+            live_samples_.pop_front();
     }
-    replay_.clear();
-    replay_render_storage_.reset();
-    rendered_replay_index_ = -1;
+    if (track_data_mode_ != TrackDataMode::Live) return;
     if (view_)
     {
         view_->appendNavigationSamples(samples);
@@ -1845,14 +1919,10 @@ void Map3DWindow::appendSamples(const std::vector<VaporView::Geo::NavSample>& sa
 
 void Map3DWindow::clearTrack()
 {
-    invalidateSessionLoadRequest();
-    loaded_session_directory_.clear();
-    navigation_source_combo_->setEnabled(false);
-    track_data_mode_ = TrackDataMode::Live;
+    // Clearing the live track must not discard the cached Session.
+    live_samples_.clear();
+    if (track_data_mode_ != TrackDataMode::Live) return;
     replay_timer_->stop();
-    replay_.clear();
-    replay_render_storage_.reset();
-    rendered_replay_index_ = -1;
     clearSelectedTrajectorySample();
     if (view_)
     {
@@ -1894,20 +1964,12 @@ void Map3DWindow::loadSessionDirectory(const QString& sessionDir)
         statusBar()->showMessage(mapText(QStringLiteral("[界面测试] 已模拟会话轨迹加载；未读取业务文件。")), 6000);
         return;
     }
-    loaded_session_directory_ = sessionDir;
-    if(navigation_source_combo_)
-    {
-        QSignalBlocker blocker(navigation_source_combo_);
-        navigation_source_combo_->setEnabled(true);
-        auto *model=qobject_cast<QStandardItemModel *>(navigation_source_combo_->model());
-        if(model)model->item(1)->setEnabled(VaporView::Ppk::PpkProcessor::status(sessionDir).completed);
-        navigation_source_combo_->setCurrentIndex(VaporView::Ppk::sessionNavigationSource(sessionDir)==VaporView::Ppk::NavigationSource::Ppk?1:0);
-    }
     if (!view_ && !headless_view_)
     {
         startRendering();
     }
     const quint64 generation = ++session_load_generation_;
+    setSessionMapActive(true);
     if (session_load_watcher_)
     {
         pending_session_directory_ = sessionDir;
@@ -1969,7 +2031,6 @@ void Map3DWindow::startSessionLoad(const QString& sessionDir, quint64 generation
             &QFutureWatcher<VaporView::Ground::Session::SessionTrajectoryRenderLoadResult>::finished,
             this,
             [this, watcher, generation, sessionDir]() {
-        auto result = watcher->result();
         if (session_load_watcher_ == watcher)
         {
             session_load_watcher_ = nullptr;
@@ -1987,6 +2048,9 @@ void Map3DWindow::startSessionLoad(const QString& sessionDir, quint64 generation
             }
             return;
         }
+        // A cancelled future need not contain a result (even after finished).
+        if (watcher->isCanceled() || watcher->future().resultCount() == 0) return;
+        auto result = watcher->result();
         if (!result.success)
         {
             if (display_source_refresh_pending_)
@@ -2016,42 +2080,28 @@ void Map3DWindow::startSessionLoad(const QString& sessionDir, quint64 generation
             : QStringLiteral("%1 | %2").arg(sourceCsvPath, result.warning);
         const QString loadWarning = result.warning;
 
-        replay_timer_->stop();
-        clearSelectedTrajectorySample();
-        if (view_)
-        {
-            view_->setSamples(renderSamples);
-        }
-        if (headless_view_)
-        {
-            headless_sample_count_ = static_cast<int>(renderSamples->size());
-            headless_samples_.clear();
-            headless_samples_.reserve(renderSamples->size());
-            for (const VaporView::Geo::TrajectoryRenderSample& sample : *renderSamples)
-            {
-                headless_samples_.push_back(sample.navigation);
-            }
-            headless_render_samples_ = *renderSamples;
-        }
         replay_.setRenderSamples(renderSamples);
-        track_data_mode_ = TrackDataMode::Session;
         replay_render_storage_ = renderSamples;
+        loaded_session_directory_ = sessionDir;
+        session_track_note_ = trackNote;
         rendered_replay_index_ = -1;
-        latest_drop_source_.clear();
-        latest_drop_reason_.clear();
-        latest_drop_record_timestamp_us_ = 0;
-        recordTrackSource(mapText(QStringLiteral("会话")),
-                          replay_.currentSample(),
-                          trackNote);
-        resetAutomaticSentinel2Imagery();
-        applyHeatControlsToView();
-        updateHeatLegend();
         if (display_source_refresh_pending_)
         {
             display_source_refresh_pending_ = false;
             setDisplayRefreshStatus(QStringLiteral("已刷新"));
         }
-        const bool focusedTrack = autoFocusTrack(mapText(QStringLiteral("自动轨迹视角")));
+        if (track_data_mode_ == TrackDataMode::Live)
+        {
+            session_progress_dialog_->hide();
+            updateMapModeUi();
+            updateStatus(nullptr, true);
+            return;
+        }
+        setSessionMapActive(true);
+        resetAutomaticSentinel2Imagery();
+        applyHeatControlsToView();
+        updateHeatLegend();
+        const bool focusedTrack = currentTrackSampleCount() > 0;
         applyConfiguredTiandituSatelliteImagery(false);
         updateReplayUi();
         updateStatus(replay_.currentSample());
@@ -2079,16 +2129,23 @@ void Map3DWindow::startSessionLoad(const QString& sessionDir, quint64 generation
                                           warningSuffix),
                                  5000);
     });
-    watcher->setFuture(QtConcurrent::run([this, sessionDir, generation]() {
-        return VaporView::Ground::Session::SessionTrajectoryRenderLoader::loadSessionDirectory(sessionDir,
-            [this, generation](int percent, const QString& stage) {
-                QMetaObject::invokeMethod(this, [this, generation, percent, stage]() {
-                    if (generation == session_load_generation_ && session_load_watcher_ && session_progress_dialog_) {
-                        session_progress_dialog_->setValue(percent);
-                        session_progress_dialog_->setLabelText(stage);
-                    }
-                }, Qt::QueuedConnection);
+    connect(watcher, &QFutureWatcherBase::progressValueChanged, this, [this, generation](int percent) {
+        if (generation == session_load_generation_ && track_data_mode_ != TrackDataMode::Live)
+            session_progress_dialog_->setValue(percent);
+    });
+    connect(watcher, &QFutureWatcherBase::progressTextChanged, this, [this, generation](const QString& stage) {
+        if (generation == session_load_generation_ && track_data_mode_ != TrackDataMode::Live)
+            session_progress_dialog_->setLabelText(stage);
+    });
+    // Workers report through the future, never through a raw window pointer.
+    watcher->setFuture(QtConcurrent::run([sessionDir](
+        QPromise<VaporView::Ground::Session::SessionTrajectoryRenderLoadResult>& promise) {
+        promise.setProgressRange(0, 100);
+        auto result = VaporView::Ground::Session::SessionTrajectoryRenderLoader::loadSessionDirectory(sessionDir,
+            [&promise](int percent, const QString& stage) {
+                promise.setProgressValueAndText(percent, stage);
             });
+        promise.addResult(std::move(result));
     }));
 }
 
@@ -2978,6 +3035,13 @@ void Map3DWindow::rebuildReplayAt(int index, bool forceStatus)
 
 void Map3DWindow::closeEvent(QCloseEvent* event)
 {
+    invalidateSessionLoadRequest();
+    loaded_session_directory_.clear();
+    session_track_note_.clear();
+    replay_.clear();
+    replay_render_storage_.reset();
+    rendered_replay_index_ = -1;
+    setSessionMapActive(false);
     if (sentinel2_auto_load_timer_)
     {
         sentinel2_auto_load_timer_->stop();
@@ -2989,7 +3053,7 @@ bool Map3DWindow::eventFilter(QObject* watched, QEvent* event)
 {
     if (watched == qApp && event->type() == QEvent::DynamicPropertyChange
         && static_cast<QDynamicPropertyChangeEvent*>(event)->propertyName() == "vaporViewEnglish")
-        QTimer::singleShot(0, this, &Map3DWindow::refreshLanguage);
+        refreshLanguage();
     if (event->type() == QEvent::Show) {
         auto* widget = qobject_cast<QWidget*>(watched);
         if (widget && widget->isWindow() && (widget == this || isAncestorOf(widget)))
@@ -3037,6 +3101,7 @@ void Map3DWindow::refreshLanguage()
     }
     latest_track_source_ = mapRenderedText(latest_track_source_, english);
     latest_camera_note_ = mapRenderedText(latest_camera_note_, english);
+    updateMapModeUi();
     updateReplayUi();
     updateHeatLegend();
     updateStatus(nullptr, true);

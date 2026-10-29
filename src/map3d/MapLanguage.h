@@ -8,6 +8,11 @@
 namespace VaporView::Map3D {
 inline const QHash<QString, QString>& mapLanguageCatalog() {
     static const QHash<QString, QString> catalog{
+        {QStringLiteral("回到实时地图"), QStringLiteral("Back to live map")},
+        {QStringLiteral("返回 Session 回放"), QStringLiteral("Return to Session replay")},
+        {QStringLiteral("实时地图"), QStringLiteral("Live map")},
+        {QStringLiteral("VaporView 三维地图 - 实时"), QStringLiteral("VaporView 3D Map - Live")},
+        {QStringLiteral("VaporView 三维地图 - Session 回放"), QStringLiteral("VaporView 3D Map - Session replay")},
         {QStringLiteral("高度基准仅用于显示；不用于离地高度或地形净空判断"), QStringLiteral("vertical reference applied for display; no AGL/terrain-clearance decision")},
         {QStringLiteral("WGS84 椭球高"), QStringLiteral("WGS84 ellipsoid")},
         {QStringLiteral("本地 NED"), QStringLiteral("local NED")},

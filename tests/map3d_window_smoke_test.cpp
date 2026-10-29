@@ -42,6 +42,7 @@
 #include <QTemporaryDir>
 #include <QTextStream>
 #include <QThread>
+#include <QThreadPool>
 #include <QToolButton>
 #include <QWidgetAction>
 
@@ -923,6 +924,8 @@ int main(int argc, char** argv)
     QTemporaryDir sessionDir;
     writeSessionTrack(sessionDir);
     window.loadSessionDirectory(sessionDir.path());
+    window.appendSamples({sample, sample});
+    window.appendSample(sample);
     require(waitForText(label, QStringLiteral("来源 会话"), 3000),
             "asynchronous session load completes without blocking the window");
     auto *navigationSource = window.findChild<QComboBox *>(QStringLiteral("map3DNavigationSourceCombo"));
@@ -1099,13 +1102,68 @@ int main(int argc, char** argv)
     require(waitForText(label, QStringLiteral("来源 会话"), 1000),
             "the newest asynchronous session request applies its track on the GUI thread");
     window.appendSample(sample);
-    require(!navigationSource->isEnabled(), "live navigation disables the previous Session source selector");
+    require(navigationSource->isEnabled(), "live navigation cannot take over Session playback");
+    auto* modeButton = window.findChild<QToolButton*>(QStringLiteral("map3DModeButton"));
+    require(modeButton && modeButton->parentWidget()->objectName() == QStringLiteral("customTitleBar"),
+            "map mode switch lives in the title bar");
+    require(modeButton->text() == QStringLiteral("回到实时地图"), "Session shows a return-to-live button");
+    require(label->text().contains(QStringLiteral("采样点：2")), "live input does not append to the Session track");
+    modeButton->click();
+    require(!navigationSource->isEnabled(), "live mode disables the Session source selector");
+    require(modeButton->text() == QStringLiteral("返回 Session 回放"), "live mode offers the cached Session");
+    require(label->text().contains(QStringLiteral("采样点：4")), "returning live includes positions received during playback");
+    window.appendSample(sample);
+    modeButton->click();
+    require(label->text().contains(QStringLiteral("采样点：2")), "returning to Session restores its original track");
+    require(navigationSource->isEnabled(), "returning to Session restores the source selector");
+    modeButton->click();
     window.clearTrack();
     require(!navigationSource->isEnabled(), "cleared navigation has no active Session source selector");
+    require(modeButton->isEnabled(), "clearing live keeps the Session cache available");
+    modeButton->click();
+    require(label->text().contains(QStringLiteral("采样点：2")), "clearing live leaves Session data intact");
+
+    QTemporaryDir loadingSessionDir;
+    writeSessionTrack(loadingSessionDir);
+    window.loadSessionDirectory(loadingSessionDir.path());
+    modeButton->click();
+    window.appendSample(sample);
+    require(waitForSessionDirectory(loadingSessionDir.path(), 3000), "loading completes after returning live");
+    require(modeButton->text() == QStringLiteral("返回 Session 回放") && !navigationSource->isEnabled(),
+            "background load completion does not take over the live map");
+    modeButton->click();
+    require(label->text().contains(QStringLiteral("采样点：2")), "background-loaded Session can be restored");
+    qApp->setProperty("vaporViewEnglish", true);
+    QCoreApplication::processEvents();
+    require(modeButton->text() == QStringLiteral("Back to live map"), "map mode switch translates to English");
+    qApp->setProperty("vaporViewEnglish", false);
+    QCoreApplication::processEvents();
+    window.close();
+    window.show();
+    require(!modeButton->isEnabled() && !navigationSource->isEnabled(), "closing discards the Session cache");
+
+    // Force cancellation before the worker can publish any result.
+    auto* pool = QThreadPool::globalInstance();
+    require(pool->waitForDone(5000), "previous Session jobs have finished");
+    const int savedThreadCount = pool->maxThreadCount();
+    pool->setMaxThreadCount(1);
+    pool->reserveThread();
+    {
+        VaporView::Map3D::Map3DWindow cancelledWindow;
+        cancelledWindow.loadSessionDirectory(latestSessionDir.path());
+        cancelledWindow.close();
+        pool->releaseThread();
+        require(pool->waitForDone(5000), "cancelled worker finishes");
+        QCoreApplication::processEvents();
+        require(!cancelledWindow.findChild<QToolButton*>(QStringLiteral("map3DModeButton"))->isEnabled(),
+                "cancelled result cannot repopulate a closed map");
+    }
+    pool->setMaxThreadCount(savedThreadCount);
 
     auto* closingWindow = new VaporView::Map3D::Map3DWindow;
     closingWindow->loadSessionDirectory(latestSessionDir.path());
     delete closingWindow;
+    require(pool->waitForDone(5000), "Session worker safely finishes after window destruction");
     QCoreApplication::processEvents();
 
     return 0;

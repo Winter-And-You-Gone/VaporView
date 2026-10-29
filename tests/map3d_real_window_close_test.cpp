@@ -22,6 +22,8 @@
 #include <QTemporaryDir>
 #include <QThread>
 #include <QTextStream>
+#include <QTimer>
+#include <QToolButton>
 
 #include <algorithm>
 #include <array>
@@ -275,6 +277,18 @@ int main(int argc, char** argv)
     sessionStream.flush();
     devicesCsv.close();
 
+    VaporView::Geo::NavSample liveSample;
+    liveSample.latDeg = 30.13;
+    liveSample.lonDeg = 120.075;
+    liveSample.heightM = 50.0;
+    liveSample.recordTimestampUs = 1000000;
+    window->appendSample(liveSample);
+    QTimer liveTimer;
+    QObject::connect(&liveTimer, &QTimer::timeout, window, [&]() {
+        liveSample.recordTimestampUs += 50000;
+        window->appendSamples({liveSample});
+    });
+    liveTimer.start(50);
     window->loadSessionDirectory(sessionDir.path());
     require(waitUntil([&]() {
                 return view->sampleCount() == kSessionSampleCount;
@@ -289,6 +303,17 @@ int main(int argc, char** argv)
     require(hasVisibleMapSurface(view->grabFramebuffer()),
             QStringLiteral("session auto-focus keeps the Earth surface visible instead of a black route-only frame"));
 
+    auto* modeButton = window->findChild<QToolButton*>(QStringLiteral("map3DModeButton"));
+    require(modeButton != nullptr, QStringLiteral("real map provides a title-bar mode switch"));
+    modeButton->click();
+    require(view->sampleCount() > 0 && view->sampleCount() < kSessionSampleCount,
+            QStringLiteral("live map restores only live positions, without Session samples"));
+    processEventsFor(200);
+    modeButton->click();
+    require(view->sampleCount() == kSessionSampleCount,
+            QStringLiteral("Session track survives ongoing live input and mode switches"));
+    liveTimer.stop();
+
     window->close();
     processEventsFor(250);
     require(!window->isVisible(), QStringLiteral("real map window closes after session load"));
@@ -296,10 +321,11 @@ int main(int argc, char** argv)
     processEventsFor(250);
     require(window->isVisible()
                 && view->hasEarthMap()
-                && view->sampleCount() == kSessionSampleCount,
-            QStringLiteral("reopened real map window keeps the Earth map and session track"));
+                && view->sampleCount() < kSessionSampleCount
+                && !modeButton->isEnabled(),
+            QStringLiteral("reopened real map keeps the Earth map and releases the Session cache"));
     require(view->flyToTrack(),
-            QStringLiteral("reopened corrupt-ECEF session still focuses with LLH"));
+            QStringLiteral("reopened live track still focuses with LLH"));
     window->close();
     processEventsFor(250);
     delete window;

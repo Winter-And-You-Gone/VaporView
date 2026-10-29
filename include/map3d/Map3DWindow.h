@@ -10,6 +10,7 @@
 #include <QMainWindow>
 #include <QString>
 #include <array>
+#include <deque>
 #include <memory>
 #include <vector>
 
@@ -29,6 +30,7 @@ class QEvent;
 class QHideEvent;
 class QShowEvent;
 class QToolBar;
+class QToolButton;
 class QFutureWatcherBase;
 
 namespace VaporView {
@@ -74,6 +76,8 @@ protected:
 
 private:
     void refreshLanguage();
+    void setSessionMapActive(bool active);
+    void updateMapModeUi();
     enum class TrackDataMode {
         Live,
         Session,
@@ -154,6 +158,9 @@ private:
     VaporView::Geo::HeatMetric heat_metric_ = VaporView::Geo::HeatMetric::Peak;
     VaporView::Geo::HeatPalette heat_palette_ = VaporView::Geo::HeatPalette::Candy;
     QAction* follow_action_ = nullptr;
+    QToolButton* map_mode_button_ = nullptr;
+    std::deque<VaporView::Geo::NavSample> live_samples_;
+    QString session_track_note_;
     QLabel* status_label_ = nullptr;
     QLabel* heat_legend_label_ = nullptr;
     QLabel* display_refresh_status_ = nullptr;
