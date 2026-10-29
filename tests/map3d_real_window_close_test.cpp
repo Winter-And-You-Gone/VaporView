@@ -5,15 +5,20 @@
 #include <QApplication>
 #include <QCoreApplication>
 #include <QAction>
+#include <QCheckBox>
+#include <QComboBox>
 #include <QDateTime>
 #include <QDir>
+#include <QDialog>
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QFile>
 #include <QFileInfo>
 #include <QImage>
 #include <QLocale>
+#include <QLabel>
 #include <QSettings>
+#include <QSpinBox>
 #include <QTemporaryDir>
 #include <QThread>
 #include <QTextStream>
@@ -134,6 +139,45 @@ int main(int argc, char** argv)
     require(startupLoaded,
             QStringLiteral("lightweight startup map loads before selecting local detail: %1: %2")
                 .arg(startupDiagnostics.requestedPath, startupDiagnostics.failureReason));
+    auto* displayAction = window->findChild<QAction*>(QStringLiteral("map3DDisplayAction"));
+    require(displayAction != nullptr, QStringLiteral("display settings action exists"));
+    displayAction->trigger();
+    auto* displayPanel = window->findChild<QDialog*>(QStringLiteral("map3DDisplayPanel"));
+    require(displayPanel != nullptr, QStringLiteral("display settings panel exists"));
+    auto* lineCheck = displayPanel->findChild<QCheckBox*>(QStringLiteral("map3DTrackLineVisibleCheckBox"));
+    auto* pointCheck = displayPanel->findChild<QCheckBox*>(QStringLiteral("map3DTrackPointsVisibleCheckBox"));
+    auto* metricCombo = displayPanel->findChild<QComboBox*>(QStringLiteral("map3DHeatMetricCombo"));
+    auto* paletteCombo = displayPanel->findChild<QComboBox*>(QStringLiteral("map3DHeatPaletteCombo"));
+    auto* samplesSpin = displayPanel->findChild<QSpinBox*>(QStringLiteral("map3DMaxVisibleSamplesSpin"));
+    auto* lineSpin = displayPanel->findChild<QSpinBox*>(QStringLiteral("map3DTrackLineWidthSpin"));
+    auto* pointSpin = displayPanel->findChild<QSpinBox*>(QStringLiteral("map3DTrackPointSizeSpin"));
+    auto* refreshStatus = displayPanel->findChild<QLabel*>(QStringLiteral("map3DDisplayRefreshStatus"));
+    require(lineCheck && pointCheck && metricCombo && paletteCombo && samplesSpin && lineSpin && pointSpin && refreshStatus,
+            QStringLiteral("display settings controls are present"));
+    const bool initialLine = lineCheck->isChecked(), initialPoints = pointCheck->isChecked();
+    const int initialMetric = metricCombo->currentIndex(), initialPalette = paletteCombo->currentIndex();
+    const int initialSamples = samplesSpin->value(), initialLineWidth = lineSpin->value(), initialPointSize = pointSpin->value();
+    lineCheck->setChecked(!initialLine);
+    pointCheck->setChecked(!initialPoints);
+    metricCombo->setCurrentIndex(1);
+    paletteCombo->setCurrentIndex(2);
+    samplesSpin->setValue(10000);
+    lineSpin->setValue(9);
+    pointSpin->setValue(11);
+    require(view->trackLineVisible() == !initialLine && view->trackPointsVisible() == !initialPoints &&
+                view->heatMetric() == VaporView::Geo::HeatMetric::Humidity &&
+                view->heatPalette() == VaporView::Geo::HeatPalette::SpectralReverse &&
+                view->maxVisibleSamples() == 10000 && view->trackLineWidth() == 9 && view->trackPointSize() == 11 &&
+                refreshStatus->text() == QStringLiteral("已刷新"),
+            QStringLiteral("display settings immediately update the real map view and report the refresh"));
+    lineCheck->setChecked(initialLine);
+    pointCheck->setChecked(initialPoints);
+    metricCombo->setCurrentIndex(initialMetric);
+    paletteCombo->setCurrentIndex(initialPalette);
+    samplesSpin->setValue(initialSamples);
+    lineSpin->setValue(initialLineWidth);
+    pointSpin->setValue(initialPointSize);
+    displayPanel->hide();
     require(!view->hasLocal3DTilesPreview(), QStringLiteral("buildings are not loaded at startup"));
     auto* buildings = window->findChild<QAction*>(QStringLiteral("map3DLayer_buildings3D"));
     require(buildings && !buildings->isChecked(), QStringLiteral("building layer starts disabled"));

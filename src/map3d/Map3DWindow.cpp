@@ -2,6 +2,7 @@
 #include "map3d/Map3DWindow.h"
 
 #include "ground/widgets/CustomTitleBar.h"
+#include "ground/widgets/DeviceEnabledCheckBox.h"
 
 #include "Map3DDiagnosticsFormatter.h"
 
@@ -24,6 +25,7 @@
 #include <QDynamicPropertyChangeEvent>
 #include <QAbstractButton>
 #include <QCloseEvent>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDialog>
@@ -35,6 +37,7 @@
 #include <QFileInfo>
 #include <QHideEvent>
 #include <QHeaderView>
+#include <QHBoxLayout>
 #include <QPushButton>
 #include <QTableWidget>
 #include <QIcon>
@@ -78,6 +81,43 @@
 
 namespace VaporView::Map3D {
 namespace {
+
+class HeatPalettePreview final : public QWidget
+{
+public:
+    explicit HeatPalettePreview(QWidget* parent) : QWidget(parent)
+    {
+        setObjectName(QStringLiteral("map3DHeatPalettePreview"));
+        setAccessibleName(mapText(QStringLiteral("配色预览")));
+        setFixedHeight(10);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    }
+
+    void setHeatPalette(VaporView::Geo::HeatPalette palette)
+    {
+        palette_ = palette;
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter painter(this);
+        QPainterPath clip;
+        clip.addRoundedRect(rect(), 3, 3);
+        painter.setClipPath(clip);
+        for (int x = 0; x < width(); ++x)
+        {
+            const auto color = VaporView::Geo::heatPaletteColor(
+                width() > 1 ? static_cast<double>(x) / (width() - 1) : 0.0, palette_);
+            painter.setPen(QColor::fromRgbF(color.r, color.g, color.b, color.a));
+            painter.drawLine(x, 0, x, height() - 1);
+        }
+    }
+
+private:
+    VaporView::Geo::HeatPalette palette_ = VaporView::Geo::HeatPalette::Candy;
+};
 
 class MapOptionsMenu final : public QMenu
 {
@@ -828,6 +868,9 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     auto* displayPanel = new QDialog(this, Qt::Tool);
     displayPanel->setObjectName(QStringLiteral("map3DDisplayPanel"));
     displayPanel->setWindowTitle(mapText(QStringLiteral("显示设置")));
+    display_refresh_status_ = new QLabel(mapText(QStringLiteral("实时更新")), displayPanel);
+    display_refresh_status_->setObjectName(QStringLiteral("map3DDisplayRefreshStatus"));
+    display_refresh_status_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
     auto* displayRoot = new QVBoxLayout(displayPanel);
     displayRoot->setContentsMargins(0, 0, 0, 0);
     auto* displayContent = new QWidget(displayPanel);
@@ -839,6 +882,10 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     displayAction->setObjectName(QStringLiteral("map3DDisplayAction"));
     connect(displayAction, &QAction::triggered, this, [this, displayPanel]() {
         VaporView::installCustomTitleBar(displayPanel, false);
+        if (display_refresh_status_->parentWidget() != displayPanel->findChild<QWidget*>(QStringLiteral("customTitleBar"))) {
+            VaporView::addWidgetToCustomTitleBar(displayPanel, display_refresh_status_);
+            display_refresh_status_->show();
+        }
         refreshLayerMenuTheme();
         displayPanel->adjustSize();
         displayPanel->move(mapToGlobal(QPoint(16, 70)));
@@ -877,6 +924,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         QSettings settings = map3DSettings();
         VaporView::setPersistentSetting(settings, QStringLiteral("maxVisibleSamples"), max_visible_samples_);
         updateStatus(nullptr);
+        markDisplaySettingsApplied();
     });
 
     auto *navigationSourceCombo = new VaporView::SingleLevelPopupComboBox(toolbar);
@@ -889,8 +937,16 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     connect(navigation_source_combo_,QOverload<int>::of(&QComboBox::currentIndexChanged),this,[this](int index){
         if(loaded_session_directory_.isEmpty())return;
         QString error;
-        if(!VaporView::Ppk::setSessionNavigationSource(loaded_session_directory_,index?VaporView::Ppk::NavigationSource::Ppk:VaporView::Ppk::NavigationSource::Original,&error))
+        if(!VaporView::Ppk::setSessionNavigationSource(loaded_session_directory_,index?VaporView::Ppk::NavigationSource::Ppk:VaporView::Ppk::NavigationSource::Original,&error)) {
             statusBar()->showMessage(error,6000);
+            const QSignalBlocker blocker(navigation_source_combo_);
+            navigation_source_combo_->setCurrentIndex(VaporView::Ppk::sessionNavigationSource(loaded_session_directory_) == VaporView::Ppk::NavigationSource::Ppk ? 1 : 0);
+            display_source_refresh_pending_ = false;
+            setDisplayRefreshStatus(QStringLiteral("刷新失败"));
+        } else {
+            display_source_refresh_pending_ = true;
+            setDisplayRefreshStatus(QStringLiteral("刷新中…"));
+        }
     });
     connect(VaporView::Ppk::SessionNavigationEvents::instance(),&VaporView::Ppk::SessionNavigationEvents::changed,
         this,[this](const QString& session){
@@ -917,6 +973,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         VaporView::setPersistentSetting(settings, QStringLiteral("heatMetric"), index);
         updateHeatLegend();
         updateStatus(nullptr);
+        markDisplaySettingsApplied();
     });
 
     auto *heatPaletteCombo = new VaporView::SingleLevelPopupComboBox(toolbar);
@@ -929,26 +986,30 @@ Map3DWindow::Map3DWindow(QWidget* parent)
                                    mapText(QStringLiteral("反向光谱"))});
     heat_palette_combo_->setCurrentIndex(heatPaletteComboIndex(heat_palette_));
     heat_palette_combo_->setToolTip(mapText(QStringLiteral("3D 轨迹热力调色板")));
-    displayLayout->addRow(mapText(QStringLiteral("配色")), heat_palette_combo_);
-    connect(heat_palette_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
+    auto* paletteField = new QWidget(displayPanel);
+    auto* paletteLayout = new QVBoxLayout(paletteField);
+    paletteLayout->setContentsMargins(0, 0, 0, 0);
+    paletteLayout->setSpacing(6);
+    paletteLayout->addWidget(heat_palette_combo_);
+    auto* palettePreview = new HeatPalettePreview(paletteField);
+    palettePreview->setHeatPalette(heat_palette_);
+    paletteLayout->addWidget(palettePreview);
+    displayLayout->addRow(mapText(QStringLiteral("配色")), paletteField);
+    connect(heat_palette_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, palettePreview](int index) {
         heat_palette_ = heatPaletteFromComboIndex(index);
+        palettePreview->setHeatPalette(heat_palette_);
         applyHeatControlsToView();
         QSettings settings = map3DSettings();
         VaporView::setPersistentSetting(settings, QStringLiteral("heatPalette"), index);
         updateHeatLegend();
         updateStatus(nullptr);
+        markDisplaySettingsApplied();
     });
 
     track_line_visible_action_ = new QAction(mapText(QStringLiteral("轨迹线")), this);
     track_line_visible_action_->setObjectName(QStringLiteral("map3DTrackLineVisibleAction"));
     track_line_visible_action_->setCheckable(true);
     track_line_visible_action_->setChecked(trackLineVisible);
-    {
-        auto* toggle = new QToolButton(displayPanel);
-        toggle->setDefaultAction(track_line_visible_action_);
-        toggle->setToolButtonStyle(Qt::ToolButtonTextOnly);
-        displayLayout->addRow(toggle);
-    }
     connect(track_line_visible_action_, &QAction::toggled, this, [this](bool visible) {
         if (view_)
         {
@@ -957,18 +1018,13 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         QSettings settings = map3DSettings();
         VaporView::setPersistentSetting(settings, QStringLiteral("trackLineVisible"), visible);
         updateStatus(nullptr);
+        markDisplaySettingsApplied();
     });
 
     track_points_visible_action_ = new QAction(mapText(QStringLiteral("轨迹点")), this);
     track_points_visible_action_->setObjectName(QStringLiteral("map3DTrackPointsVisibleAction"));
     track_points_visible_action_->setCheckable(true);
     track_points_visible_action_->setChecked(trackPointsVisible);
-    {
-        auto* toggle = new QToolButton(displayPanel);
-        toggle->setDefaultAction(track_points_visible_action_);
-        toggle->setToolButtonStyle(Qt::ToolButtonTextOnly);
-        displayLayout->addRow(toggle);
-    }
     connect(track_points_visible_action_, &QAction::toggled, this, [this](bool visible) {
         if (view_)
         {
@@ -977,7 +1033,27 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         QSettings settings = map3DSettings();
         VaporView::setPersistentSetting(settings, QStringLiteral("trackPointsVisible"), visible);
         updateStatus(nullptr);
+        markDisplaySettingsApplied();
     });
+
+    auto* trackVisibilityRow = new QWidget(displayPanel);
+    auto* trackVisibilityLayout = new QHBoxLayout(trackVisibilityRow);
+    trackVisibilityLayout->setContentsMargins(0, 0, 0, 0);
+    trackVisibilityLayout->setSpacing(24);
+    const auto addTrackCheckBox = [trackVisibilityRow, trackVisibilityLayout](QAction* action, const QString& name) {
+        auto* checkBox = new DeviceEnabledCheckBox(trackVisibilityRow);
+        checkBox->setText(action->text());
+        checkBox->setObjectName(name);
+        checkBox->setLayoutDirection(Qt::RightToLeft);
+        checkBox->setChecked(action->isChecked());
+        QObject::connect(checkBox, &QCheckBox::toggled, action, &QAction::setChecked);
+        QObject::connect(action, &QAction::toggled, checkBox, &QCheckBox::setChecked);
+        trackVisibilityLayout->addWidget(checkBox);
+    };
+    addTrackCheckBox(track_line_visible_action_, QStringLiteral("map3DTrackLineVisibleCheckBox"));
+    addTrackCheckBox(track_points_visible_action_, QStringLiteral("map3DTrackPointsVisibleCheckBox"));
+    trackVisibilityLayout->addStretch();
+    displayLayout->addRow(trackVisibilityRow);
 
     track_line_width_spin_ = new QSpinBox(toolbar);
     track_line_width_spin_->setObjectName(QStringLiteral("map3DTrackLineWidthSpin"));
@@ -993,6 +1069,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         }
         QSettings settings = map3DSettings();
         VaporView::setPersistentSetting(settings, QStringLiteral("trackLineWidth"), value);
+        markDisplaySettingsApplied();
     });
 
     track_point_size_spin_ = new QSpinBox(toolbar);
@@ -1009,6 +1086,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         }
         QSettings settings = map3DSettings();
         VaporView::setPersistentSetting(settings, QStringLiteral("trackPointSize"), value);
+        markDisplaySettingsApplied();
     });
 
     heat_legend_label_ = new QLabel(toolbar);
@@ -1544,10 +1622,14 @@ void Map3DWindow::refreshLayerMenuTheme()
         panel->setStyleSheet(applyAppThemeTokens(QStringLiteral(
             "QDialog#map3DDisplayPanel { background: @vv-surface; color: @vv-text; }"
             "QLabel { color: @vv-text; }"
+            "QLabel#map3DDisplayRefreshStatus { color: @vv-text-secondary; font-size: 11px; }"
             "QComboBox, QSpinBox { background: @vv-field-background; color: @vv-text; border: 1px solid @vv-border; border-radius: 6px; padding: 6px; }"
             "QToolButton { background: @vv-surface-alt; color: @vv-text; border: 1px solid @vv-border; border-radius: 6px; padding: 6px 12px; }"
-            "QToolButton[customTitleBarButton=\"true\"] { padding: 0px; }"
-            "QToolButton:checked, QToolButton:hover { background: @vv-primary-subtle; color: @vv-primary; border-color: @vv-primary; }"), dark));
+            "QToolButton:checked, QToolButton:hover { background: @vv-primary-subtle; color: @vv-primary; border-color: @vv-primary; }"
+            "QToolButton[customTitleBarButton=\"true\"] { background: transparent; border: none; padding: 0px; }"
+            "QToolButton[customTitleBarButton=\"true\"]:hover, QToolButton[customTitleBarButton=\"true\"][titleBarHover=\"true\"] { background: @vv-title-hover; }"
+            "QToolButton#windowCloseButton:hover, QToolButton#windowCloseButton[titleBarHover=\"true\"] { background: @vv-close-hover; }"
+            "QCheckBox { color: @vv-text; spacing: 8px; }"), dark));
     }
     if (auto* menu = findChild<QMenu*>(QStringLiteral("map3DMoreMenu")))
     {
@@ -1674,6 +1756,18 @@ void Map3DWindow::applyHeatControlsToView()
     }
 }
 
+void Map3DWindow::setDisplayRefreshStatus(const QString& status)
+{
+    if (display_refresh_status_)
+        display_refresh_status_->setText(mapText(status));
+}
+
+void Map3DWindow::markDisplaySettingsApplied()
+{
+    if (!display_source_refresh_pending_)
+        setDisplayRefreshStatus(view_ ? QStringLiteral("已刷新") : QStringLiteral("已设置"));
+}
+
 void Map3DWindow::updateHeatLegend()
 {
     if (!heat_legend_label_)
@@ -1778,10 +1872,25 @@ void Map3DWindow::clearTrack()
 
 void Map3DWindow::loadSessionDirectory(const QString& sessionDir)
 {
-    if (sessionDir.isEmpty() || !QFileInfo(sessionDir).isDir()) return;
+    if (sessionDir.isEmpty() || !QFileInfo(sessionDir).isDir()) {
+        if (display_source_refresh_pending_) {
+            display_source_refresh_pending_ = false;
+            setDisplayRefreshStatus(QStringLiteral("刷新失败"));
+        }
+        return;
+    }
+    if (display_source_refresh_pending_ &&
+        QFileInfo(sessionDir).absoluteFilePath() != QFileInfo(loaded_session_directory_).absoluteFilePath()) {
+        display_source_refresh_pending_ = false;
+        setDisplayRefreshStatus(QStringLiteral("实时更新"));
+    }
     if (VaporView::settingsWritesSuspended())
     {
         Q_UNUSED(sessionDir);
+        if (display_source_refresh_pending_) {
+            display_source_refresh_pending_ = false;
+            setDisplayRefreshStatus(QStringLiteral("已设置"));
+        }
         statusBar()->showMessage(mapText(QStringLiteral("[界面测试] 已模拟会话轨迹加载；未读取业务文件。")), 6000);
         return;
     }
@@ -1810,6 +1919,11 @@ void Map3DWindow::loadSessionDirectory(const QString& sessionDir)
 
 void Map3DWindow::invalidateSessionLoadRequest()
 {
+    if (display_source_refresh_pending_)
+    {
+        display_source_refresh_pending_ = false;
+        setDisplayRefreshStatus(QStringLiteral("实时更新"));
+    }
     if (!session_load_watcher_ && pending_session_directory_.isEmpty())
     {
         return;
@@ -1875,6 +1989,11 @@ void Map3DWindow::startSessionLoad(const QString& sessionDir, quint64 generation
         }
         if (!result.success)
         {
+            if (display_source_refresh_pending_)
+            {
+                display_source_refresh_pending_ = false;
+                setDisplayRefreshStatus(QStringLiteral("刷新失败"));
+            }
             session_progress_dialog_->reset();
             session_progress_dialog_->hide();
             updateStatus(nullptr, true);
@@ -1927,6 +2046,11 @@ void Map3DWindow::startSessionLoad(const QString& sessionDir, quint64 generation
         resetAutomaticSentinel2Imagery();
         applyHeatControlsToView();
         updateHeatLegend();
+        if (display_source_refresh_pending_)
+        {
+            display_source_refresh_pending_ = false;
+            setDisplayRefreshStatus(QStringLiteral("已刷新"));
+        }
         const bool focusedTrack = autoFocusTrack(mapText(QStringLiteral("自动轨迹视角")));
         applyConfiguredTiandituSatelliteImagery(false);
         updateReplayUi();
@@ -2905,6 +3029,8 @@ void Map3DWindow::refreshLanguage()
             }
         }
     }
+    if (auto* preview = findChild<QWidget*>(QStringLiteral("map3DHeatPalettePreview")))
+        preview->setAccessibleName(mapText(QStringLiteral("配色预览")));
     if (auto* card = findChild<QWidget*>(QStringLiteral("map3DTrajectoryInfoCard"))) {
         QEvent languageChange(QEvent::LanguageChange);
         QCoreApplication::sendEvent(card, &languageChange);

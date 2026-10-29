@@ -102,6 +102,8 @@ private:
     void refreshLayerMenuTheme();
     void refreshLayerMenuAvailability();
     void applyHeatControlsToView();
+    void setDisplayRefreshStatus(const QString& status);
+    void markDisplaySettingsApplied();
     void updateHeatLegend();
     void flyToAircraft();
     void flyToTrack();
@@ -154,6 +156,8 @@ private:
     QAction* follow_action_ = nullptr;
     QLabel* status_label_ = nullptr;
     QLabel* heat_legend_label_ = nullptr;
+    QLabel* display_refresh_status_ = nullptr;
+    bool display_source_refresh_pending_ = false;
     QAction* diagnostics_action_ = nullptr;
     QAction* map_resources_action_ = nullptr;
     QAction* track_line_visible_action_ = nullptr;

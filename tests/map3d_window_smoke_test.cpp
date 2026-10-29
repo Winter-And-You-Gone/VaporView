@@ -20,8 +20,10 @@
 #include <QAbstractItemView>
 #include <QAction>
 #include <QApplication>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QCoreApplication>
+#include <QEnterEvent>
 #include <QDir>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -35,6 +37,7 @@
 #include <QSettings>
 #include <QSlider>
 #include <QSpinBox>
+#include <QStandardItemModel>
 #include <QStringList>
 #include <QTemporaryDir>
 #include <QTextStream>
@@ -43,6 +46,7 @@
 #include <QWidgetAction>
 
 #include <cstdlib>
+#include <cmath>
 #include <iostream>
 #include <vector>
 
@@ -60,7 +64,7 @@ void require(bool condition, const char* message)
 
 bool titleIconHasVisibleSize(QToolButton* button)
 {
-    const QImage image = button->grab().toImage();
+    const QImage image = button->parentWidget()->grab(button->geometry()).toImage();
     const qreal ratio = button->devicePixelRatioF();
     const int inset = qRound(4 * ratio);
     if (image.width() <= 2 * inset || image.height() <= 2 * inset) return false;
@@ -525,11 +529,73 @@ int main(int argc, char** argv)
     QCoreApplication::processEvents();
     auto* displayPanel = window.findChild<QDialog*>(QStringLiteral("map3DDisplayPanel"));
     require(displayPanel != nullptr, "display settings panel exists");
+    auto* refreshStatus = displayPanel->findChild<QLabel*>(QStringLiteral("map3DDisplayRefreshStatus"));
+    require(refreshStatus && refreshStatus->isVisible() &&
+                refreshStatus->parentWidget()->objectName() == QStringLiteral("customTitleBar") &&
+                refreshStatus->text() == QStringLiteral("实时更新") &&
+                refreshStatus->width() >= refreshStatus->sizeHint().width(),
+            "display title bar communicates live updates");
+    auto* lineCheck = displayPanel->findChild<QCheckBox*>(QStringLiteral("map3DTrackLineVisibleCheckBox"));
+    auto* pointCheck = displayPanel->findChild<QCheckBox*>(QStringLiteral("map3DTrackPointsVisibleCheckBox"));
+    require(lineCheck && pointCheck && lineCheck->parentWidget() == pointCheck->parentWidget() &&
+                lineCheck->geometry().center().y() == pointCheck->geometry().center().y() &&
+                lineCheck->layoutDirection() == Qt::RightToLeft && pointCheck->layoutDirection() == Qt::RightToLeft,
+            "track visibility checkboxes share one row with indicators on the right");
+    auto* lineAction = actionByName(window, QStringLiteral("map3DTrackLineVisibleAction"));
+    lineCheck->click();
+    require(!lineCheck->isChecked() && !lineAction->isChecked() &&
+                refreshStatus->text() == QStringLiteral("已设置"),
+            "checkbox immediately updates the action and reports the headless setting change");
+    lineAction->setChecked(true);
+    require(lineCheck->isChecked(), "external visibility action changes synchronize back to the checkbox");
+    const QVariant originalEnglish = qApp->property("vaporViewEnglish");
+    qApp->setProperty("vaporViewEnglish", true);
+    QCoreApplication::processEvents();
+    auto* palettePreview = displayPanel->findChild<QWidget*>(QStringLiteral("map3DHeatPalettePreview"));
+    require(lineCheck->text() == QStringLiteral("Track line") && refreshStatus->text() == QStringLiteral("Set") &&
+                palettePreview && palettePreview->accessibleName() == QStringLiteral("Palette preview"),
+            "visibility controls and refresh status translate to English");
+    qApp->setProperty("vaporViewEnglish", originalEnglish);
+    QCoreApplication::processEvents();
+    require(lineCheck->text() == QStringLiteral("轨迹线") && refreshStatus->text() == QStringLiteral("已设置"),
+            "visibility controls and refresh status translate back to Chinese");
+    auto* paletteCombo = displayPanel->findChild<QComboBox*>(QStringLiteral("map3DHeatPaletteCombo"));
+    require(paletteCombo && palettePreview && palettePreview->isVisible(), "current heat palette has a visible preview");
+    for (int index = 0; index < 3; ++index) {
+        paletteCombo->setCurrentIndex(index);
+        const QImage preview = palettePreview->grab().toImage();
+        require(!preview.isNull(), "palette preview renders");
+        const auto palette = index == 0 ? VaporView::Geo::HeatPalette::Candy :
+                             index == 1 ? VaporView::Geo::HeatPalette::BlueRedFast :
+                                          VaporView::Geo::HeatPalette::SpectralReverse;
+        for (double position : {0.15, 0.5, 0.85}) {
+            const QColor pixel = preview.pixelColor(qRound(position * (preview.width() - 1)), preview.height() / 2);
+            const auto expected = VaporView::Geo::heatPaletteColor(position, palette);
+            require(std::abs(pixel.redF() - expected.r) < 0.06 &&
+                        std::abs(pixel.greenF() - expected.g) < 0.06 &&
+                        std::abs(pixel.blueF() - expected.b) < 0.06,
+                    "palette preview colors match the trajectory heat palette");
+        }
+    }
+    paletteCombo->setCurrentIndex(0);
     int titleIconCount = 0;
     for (QToolButton* button : displayPanel->findChildren<QToolButton*>()) {
         if (!button->property("customTitleBarButton").toBool()) continue;
         ++titleIconCount;
         require(titleIconHasVisibleSize(button), "display panel title icons retain their visible size");
+        QEvent leave(QEvent::Leave);
+        QApplication::sendEvent(button, &leave);
+        const auto background = [button]() {
+            const QImage image = button->parentWidget()->grab(button->geometry()).toImage();
+            const int inset = qRound(5 * button->devicePixelRatioF());
+            return image.pixelColor(inset, inset);
+        };
+        const QColor idle = background();
+        QEnterEvent enter(QPointF(5, 5), QPointF(5, 5), QPointF(button->mapToGlobal(QPoint(5, 5))));
+        QApplication::sendEvent(button, &enter);
+        require(button->property("titleBarHover").toBool() && background() != idle,
+                "transparent title buttons gain a background on hover");
+        QApplication::sendEvent(button, &leave);
     }
     require(titleIconCount == 3, "display panel has language, theme and close title icons");
     actionByName(window, QStringLiteral("map3DMapResourcesAction"))->trigger();
@@ -862,6 +928,30 @@ int main(int argc, char** argv)
     auto *navigationSource = window.findChild<QComboBox *>(QStringLiteral("map3DNavigationSourceCombo"));
     require(navigationSource && navigationSource->isEnabled() && navigationSource->count() == 2,
             "Session exposes the shared Original/PPK navigation source");
+    auto* navigationModel = qobject_cast<QStandardItemModel*>(navigationSource->model());
+    require(navigationModel && navigationModel->item(1), "navigation source model exposes the PPK entry");
+    navigationModel->item(1)->setEnabled(true);
+    navigationSource->setCurrentIndex(1);
+    require(navigationSource->currentIndex() == 0 && refreshStatus->text() == QStringLiteral("刷新失败"),
+            "an unavailable PPK source reports failure and restores the active selection");
+    QDir sessionRoot(sessionDir.path());
+    require(sessionRoot.mkpath(QStringLiteral("ppk")), "create temporary PPK fixtures");
+    QFile quality(sessionRoot.filePath(QStringLiteral("ppk/ppk_quality.json")));
+    require(quality.open(QIODevice::WriteOnly), "create PPK quality fixture");
+    quality.write("{\"state\":\"Completed\"}"); quality.close();
+    QFile corrected(sessionRoot.filePath(QStringLiteral("ppk/trajectory.csv")));
+    require(corrected.open(QIODevice::WriteOnly), "create PPK trajectory fixture");
+    corrected.write("gnss_utc_ns,session_timestamp_us,latitude,longitude,ellipsoidal_height,ecef_x,ecef_y,ecef_z,quality,satellite_count,sd_n,sd_e,sd_u,age,ratio,source,reference_point\n"
+                    "1000000000,1000000,39.9,116.3,45,-2170992.035,4392668.582,4069502.541,1,12,0.1,0.1,0.1,0,1,PPK,IMU\n"
+                    "2000000000,2000000,39.90001,116.30002,46,-2170993.592,4392667.874,4069504.034,1,12,0.1,0.1,0.1,0,1,PPK,IMU\n");
+    corrected.close();
+    navigationSource->setCurrentIndex(1);
+    require(refreshStatus->text() == QStringLiteral("刷新中…"), "source switch reports the queued reload");
+    require(waitForText(refreshStatus, QStringLiteral("已刷新"), 3000), "source switch reports refresh only after loading");
+    navigationSource->setCurrentIndex(0);
+    require(refreshStatus->text() == QStringLiteral("刷新中…") &&
+                waitForText(refreshStatus, QStringLiteral("已刷新"), 3000),
+            "switching back to the original trajectory also completes asynchronously");
     {
         QSettings settings = map3DTestSettings();
         require(settings.value(QStringLiteral("lastSessionDir")).toString()
