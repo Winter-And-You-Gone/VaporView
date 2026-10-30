@@ -545,13 +545,18 @@ float Trajectory3DLayer::trackLineWidth() const
 
 void Trajectory3DLayer::setTrackPointSize(float size)
 {
-    const float sanitized = std::clamp(size, 1.0f, 32.0f);
+    const float sanitized = std::clamp(size, 1.0f, static_cast<float>(kMaxTrackPointSizePx));
     if (std::abs(track_point_size_ - sanitized) <= 0.001f)
     {
         return;
     }
     track_point_size_ = sanitized;
-    rebuildSegments();
+    for (const auto& segment : segments_)
+    {
+        if (segment.sphereGeometry.valid())
+            segment.sphereGeometry->getOrCreateStateSet()->setAttributeAndModes(
+                new osg::Point(track_point_size_), osg::StateAttribute::ON);
+    }
 }
 
 float Trajectory3DLayer::trackPointSize() const
@@ -934,6 +939,8 @@ void Trajectory3DLayer::rebuildSegmentGeometry(
     osg::ref_ptr<osg::FloatArray> pointHeatValidity = new osg::FloatArray;
     osg::ref_ptr<osg::DrawElementsUInt> sphereIndices =
         new osg::DrawElementsUInt(osg::PrimitiveSet::TRIANGLES);
+    osg::ref_ptr<osg::DrawElementsUInt> screenPointIndices =
+        new osg::DrawElementsUInt(osg::PrimitiveSet::POINTS);
     if (!heat_rendering_enabled_)
     {
         std::size_t markerCount = 0;
@@ -944,9 +951,10 @@ void Trajectory3DLayer::rebuildSegmentGeometry(
                 ++markerCount;
             }
         }
-        pointVertices->reserve(markerCount * kIcosphereVertexCount);
-        pointColors->reserve(markerCount * kIcosphereVertexCount);
+        pointVertices->reserve(markerCount * (kIcosphereVertexCount + 1));
+        pointColors->reserve(markerCount * (kIcosphereVertexCount + 1));
         sphereIndices->reserve(markerCount * kIcosphereIndexCount);
+        screenPointIndices->reserve(markerCount);
     }
     else
     {
@@ -983,6 +991,11 @@ void Trajectory3DLayer::rebuildSegmentGeometry(
                             position,
                             kTrajectorySphereRadiusM,
                             qualityColor(sample));
+            // A fixed-size 3D sphere shrinks at a distant camera; its centre
+            // also needs a screen-space point for the pixel-size setting.
+            screenPointIndices->push_back(static_cast<unsigned int>(pointVertices->size()));
+            pointVertices->push_back(position);
+            pointColors->push_back(qualityColor(sample));
         }
         ++segment.sphereMarkerCount;
     }
@@ -1008,6 +1021,7 @@ void Trajectory3DLayer::rebuildSegmentGeometry(
         else if (!sphereIndices->empty())
         {
             sphereGeometry->addPrimitiveSet(sphereIndices.get());
+            sphereGeometry->addPrimitiveSet(screenPointIndices.get());
         }
     }
     configureSphereMarkerState(*sphereGeometry);
@@ -1079,9 +1093,12 @@ bool Trajectory3DLayer::appendSphereMarkerGeometry(TrajectorySegment& segment, i
     auto* vertices = dynamic_cast<osg::Vec3dArray*>(segment.sphereGeometry->getVertexArray());
     auto* colors = dynamic_cast<osg::Vec4Array*>(segment.sphereGeometry->getColorArray());
     osg::DrawElementsUInt* indices = nullptr;
+    osg::DrawElementsUInt* screenPointIndices = nullptr;
     if (segment.sphereGeometry->getNumPrimitiveSets() > 0)
     {
         indices = dynamic_cast<osg::DrawElementsUInt*>(segment.sphereGeometry->getPrimitiveSet(0));
+        if (segment.sphereGeometry->getNumPrimitiveSets() > 1)
+            screenPointIndices = dynamic_cast<osg::DrawElementsUInt*>(segment.sphereGeometry->getPrimitiveSet(1));
     }
     if (!vertices || !colors)
     {
@@ -1093,6 +1110,13 @@ bool Trajectory3DLayer::appendSphereMarkerGeometry(TrajectorySegment& segment, i
             new osg::DrawElementsUInt(osg::PrimitiveSet::TRIANGLES);
         segment.sphereGeometry->addPrimitiveSet(created.get());
         indices = created.get();
+    }
+    if (!screenPointIndices)
+    {
+        osg::ref_ptr<osg::DrawElementsUInt> created =
+            new osg::DrawElementsUInt(osg::PrimitiveSet::POINTS);
+        segment.sphereGeometry->addPrimitiveSet(created.get());
+        screenPointIndices = created.get();
     }
 
     osg::Vec3d position;
@@ -1107,10 +1131,14 @@ bool Trajectory3DLayer::appendSphereMarkerGeometry(TrajectorySegment& segment, i
                     position,
                     kTrajectorySphereRadiusM,
                     qualityColor(sample));
+    screenPointIndices->push_back(static_cast<unsigned int>(vertices->size()));
+    vertices->push_back(position);
+    colors->push_back(qualityColor(sample));
     ++segment.sphereMarkerCount;
     vertices->dirty();
     colors->dirty();
     indices->dirty();
+    screenPointIndices->dirty();
     segment.sphereGeometry->dirtyBound();
     return true;
 }

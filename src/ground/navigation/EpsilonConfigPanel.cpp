@@ -5,6 +5,7 @@
 #include "ground/devices/DeviceRatePolicy.h"
 #include "ground/main/GroundMainWindowSupport.h"
 #include "shared/theme/AppTheme.h"
+#include "shared/theme/CheckedIndicator.h"
 #include "shared/theme/TopLevelCardStyle.h"
 
 #include <QComboBox>
@@ -14,7 +15,6 @@
 #include <QButtonGroup>
 #include <QStackedWidget>
 #include <QPainter>
-#include <QPainterPath>
 #include <QStyleOptionButton>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -222,6 +222,14 @@ protected:
         if (!isEnabled()) color.setAlphaF(0.6f);
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing);
+        if (checkState() == Qt::Checked)
+        {
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(VaporView::appThemeColor(VaporView::AppThemeColor::PrimarySubtle, dark));
+            painter.drawRoundedRect(QRectF(rect).adjusted(2, 2, -2, -2), 3, 3);
+            VaporView::drawSquareCheckBig(painter, rect, color);
+            return;
+        }
         painter.translate(rect.topLeft());
         painter.scale(rect.width() / 20.0, rect.height() / 20.0);
         painter.setPen(QPen(color, 1.6, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
@@ -230,14 +238,6 @@ protected:
         painter.drawRoundedRect(QRectF(1, 1, 18, 18), 3, 3);
         if (checkState() == Qt::PartiallyChecked)
             painter.drawLine(QPointF(5, 10), QPointF(15, 10));
-        else if (isChecked())
-        {
-            QPainterPath check;
-            check.moveTo(5, 10);
-            check.lineTo(8, 13);
-            check.lineTo(15, 6);
-            painter.drawPath(check);
-        }
     }
 };
 

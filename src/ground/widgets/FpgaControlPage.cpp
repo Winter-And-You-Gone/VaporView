@@ -7,6 +7,7 @@
 #include "FpgaHarmonics.h"
 #include "shared/theme/SingleLevelPopupComboBox.h"
 #include "shared/theme/AppTheme.h"
+#include "shared/theme/CheckedIndicator.h"
 #include "shared/theme/TopLevelCardStyle.h"
 #include "VisualTextLabel.h"
 #include "LabelTextSelection.h"
@@ -72,13 +73,17 @@ protected:
         QColor color=VaporView::appThemeColor(isChecked()?VaporView::AppThemeColor::Primary:VaporView::AppThemeColor::TextSecondary,dark);
         if (!isEnabled()) color.setAlphaF(0.6f);
         QPainter painter(this); painter.setRenderHint(QPainter::Antialiasing);
+        if (isChecked()) {
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(VaporView::appThemeColor(VaporView::AppThemeColor::PrimarySubtle,dark));
+            painter.drawRoundedRect(QRectF(indicator).adjusted(2,2,-2,-2),3,3);
+            VaporView::drawSquareCheckBig(painter,indicator,color);
+            return;
+        }
         painter.translate(indicator.topLeft()); painter.scale(indicator.width()/20.0,indicator.height()/20.0);
         painter.setPen(QPen(color,1.6,Qt::SolidLine,Qt::RoundCap,Qt::RoundJoin));
-        painter.setBrush(VaporView::appThemeColor(isChecked()?VaporView::AppThemeColor::PrimarySubtle:VaporView::AppThemeColor::Surface,dark));
+        painter.setBrush(VaporView::appThemeColor(VaporView::AppThemeColor::Surface,dark));
         painter.drawRoundedRect(QRectF(1,1,18,18),3,3);
-        if (isChecked()) {
-            QPainterPath check; check.moveTo(5,10); check.lineTo(8,13); check.lineTo(15,6); painter.drawPath(check);
-        }
     }
 };
 
@@ -354,7 +359,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     field(ai8grid,2,"轮询间隔 / ms","Polling interval / ms","fpgaAi8Interval",0x662c,1,3600000,0,[](const auto &c){return c.ai8.pollIntervalMs;},[](auto &c,double v){c.ai8.pollIntervalMs=quint32(v);});
     field(ai8grid,3,"通信超时 / ms","Communication timeout / ms","fpgaAi8Timeout",0x6660,1,65535,0,[](const auto &c){return c.ai8.timeoutMs;},[](auto &c,double v){c.ai8.timeoutMs=quint32(v);});
     field(ai8grid,4,"重试上限","Retry limit","fpgaAi8Retry",0x6664,0,3,0,[](const auto &c){return c.ai8.retryLimit;},[](auto &c,double v){c.ai8.retryLimit=quint32(v);});
-    ai8Scan_=new QCheckBox(ai8config);label(ai8Scan_,QStringLiteral("扫描全部 8 通道（间隔表示整轮扫描周期）"),QStringLiteral("Scan all 8 channels (interval is a complete scan cycle)"));ai8Scan_->setObjectName("fpgaAi8Scan");ai8Scan_->setProperty("fpgaExtension",VaporView::FpgaExtensions::Ai8Scan);onlineControls_.append(ai8Scan_);ai8grid->addWidget(ai8Scan_,6,0,1,3);
+    ai8Scan_=new FpgaCheckBox(ai8config);label(ai8Scan_,QStringLiteral("扫描全部 8 通道（间隔表示整轮扫描周期）"),QStringLiteral("Scan all 8 channels (interval is a complete scan cycle)"));ai8Scan_->setObjectName("fpgaAi8Scan");ai8Scan_->setProperty("fpgaExtension",VaporView::FpgaExtensions::Ai8Scan);onlineControls_.append(ai8Scan_);ai8grid->addWidget(ai8Scan_,6,0,1,3);
     connect(ai8Scan_,&QCheckBox::toggled,this,[this](bool checked){config_.ai8.scan=checked;emit configurationChanged(configuration());});
     auto *ai8hint=new QLabel(ai8config);label(ai8hint,QStringLiteral("共享总线固定 19200 / 8N1。保留仪表报警与超时；不会自动修改仪表参数。"),QStringLiteral("Shared bus: 19200 / 8N1. Instrument alarms and timeouts are retained; instrument parameters are not automatically changed."));ai8hint->setWordWrap(true);ai8grid->addWidget(ai8hint,5,0,1,3);
     auto* runtimeChannel=new VaporView::SingleLevelPopupComboBox(ai8config);runtimeChannel->setObjectName("fpgaAi8RuntimeChannel");

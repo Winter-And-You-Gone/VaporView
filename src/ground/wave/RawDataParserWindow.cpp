@@ -1,9 +1,11 @@
 #include "shared/session/FpgaSessionArchive.h"
 #include "shared/theme/AppTheme.h"
+#include "shared/theme/CheckedIndicator.h"
 #include "shared/theme/SingleLevelPopupMenu.h"
 #include "RawDataParserWindow.h"
 #include "BoundedLruCache.h"
 #include "ground/widgets/CustomTitleBar.h"
+#include "ground/widgets/DeviceEnabledCheckBox.h"
 #include "shared/session/UnifiedRawDat.h"
 #include "shared/session/HarmonicWaveform.h"
 #include "shared/session/SessionPathResolver.h"
@@ -771,7 +773,15 @@ public:
                   style->pixelMetric(QStyle::PM_IndicatorHeight, &option, option.widget)), option.rect);
         indicator.state &= ~(QStyle::State_On | QStyle::State_Off | QStyle::State_NoChange);
         indicator.state |= checkState == Qt::Checked ? QStyle::State_On : QStyle::State_Off;
-        style->drawPrimitive(QStyle::PE_IndicatorItemViewItemCheck, &indicator, painter, option.widget);
+        if (checkState == Qt::Checked)
+        {
+            QColor color = VaporView::appThemeColor(VaporView::AppThemeColor::Primary,
+                                                    VaporView::isDarkThemePalette(option.palette));
+            if (!(option.state & QStyle::State_Enabled)) color.setAlphaF(0.6);
+            VaporView::drawSquareCheckBig(*painter, indicator.rect, color);
+        }
+        else
+            style->drawPrimitive(QStyle::PE_IndicatorItemViewItemCheck, &indicator, painter, option.widget);
     }
 
     bool editorEvent(QEvent *event, QAbstractItemModel *model, const QStyleOptionViewItem& option,
@@ -1117,7 +1127,7 @@ void RawDataParserWindow::Impl::setupUi()
     payload_min = new QLineEdit(owner);
     payload_max = new QLineEdit(owner);
     search_edit = new QLineEdit(owner);
-    abnormal_only = new QCheckBox(owner);
+    abnormal_only = new DeviceEnabledCheckBox(owner);
     reload_btn = new QPushButton(owner);
     export_btn = new QPushButton(owner);
     export_btn->setObjectName(QStringLiteral("rawDataExportButton"));

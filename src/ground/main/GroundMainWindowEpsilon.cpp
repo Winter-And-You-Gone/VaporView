@@ -3,6 +3,7 @@
 #include "BaudRateComboSupport.h"
 #include "SerialBaudRate.h"
 #include "FpgaExtensions.h"
+#include "ground/widgets/DeviceEnabledCheckBox.h"
 
 #include <QSettings>
 
@@ -885,7 +886,7 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
         formLayout->addRow(state_->is_english_ ? "RTCM Port Baud:" : "RTCM 串口波特率：",
                            forwardBaudCombo);
 
-        auto *openRtkConfigCheck = new QCheckBox(
+        auto *openRtkConfigCheck = new DeviceEnabledCheckBox(
             state_->is_english_ ? "Open RTK Config after success" : "成功后打开 RTK 配置",
             &dialog);
         openRtkConfigCheck->setChecked(true);
@@ -1032,7 +1033,7 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
     configureComboPopup(forwardBaudCombo);
     formLayout->addRow(state_->is_english_ ? "RTCM Port Baud:" : "RTCM 串口波特率：", forwardBaudCombo);
 
-    auto *openRtkConfigCheck = new QCheckBox(
+    auto *openRtkConfigCheck = new DeviceEnabledCheckBox(
         state_->is_english_ ? "Open RTK Config after success" : "成功后打开 RTK 配置",
         &dialog);
     openRtkConfigCheck->setChecked(true);

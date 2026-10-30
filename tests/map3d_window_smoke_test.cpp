@@ -787,6 +787,7 @@ int main(int argc, char** argv)
             "track line width control starts at the default");
     require(trackPointSizeSpin != nullptr && trackPointSizeSpin->value() == 7,
             "track point size control starts at the default");
+    require(trackPointSizeSpin->maximum() == 128, "track point size can be increased to 128 pixels");
     require(heatLegendLabel != nullptr
                 && heatLegendLabel->text().contains(QStringLiteral("峰值"))
                 && heatLegendLabel->text().contains(QStringLiteral("无有效数据")),
@@ -800,7 +801,7 @@ int main(int argc, char** argv)
     trackLineVisibleAction->setChecked(false);
     trackPointsVisibleAction->setChecked(false);
     trackLineWidthSpin->setValue(9);
-    trackPointSizeSpin->setValue(11);
+    trackPointSizeSpin->setValue(96);
     QCoreApplication::processEvents();
     {
         QSettings settings = map3DTestSettings();
@@ -814,7 +815,7 @@ int main(int argc, char** argv)
                 "track point visibility setting is persisted");
         require(settings.value(QStringLiteral("trackLineWidth")).toInt() == 9,
                 "track line width setting is persisted");
-        require(settings.value(QStringLiteral("trackPointSize")).toInt() == 11,
+        require(settings.value(QStringLiteral("trackPointSize")).toInt() == 96,
                 "track point size setting is persisted");
     }
     require(heatLegendLabel->text().contains(QStringLiteral("温度")),

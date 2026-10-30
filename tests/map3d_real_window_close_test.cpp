@@ -95,6 +95,21 @@ bool hasVisibleMapSurface(const QImage& frame)
     return visiblePixelCount * 2 > sampledPixelCount;
 }
 
+int countColor(const QImage& frame, const QColor& expected)
+{
+    const QImage rgb = frame.convertToFormat(QImage::Format_RGB32);
+    int count = 0;
+    for (int y = 0; y < rgb.height(); ++y) {
+        const QRgb* row = reinterpret_cast<const QRgb*>(rgb.constScanLine(y));
+        for (int x = 0; x < rgb.width(); ++x)
+            if (std::abs(qRed(row[x]) - expected.red()) < 28 &&
+                std::abs(qGreen(row[x]) - expected.green()) < 28 &&
+                std::abs(qBlue(row[x]) - expected.blue()) < 28)
+                ++count;
+    }
+    return count;
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -165,11 +180,11 @@ int main(int argc, char** argv)
     paletteCombo->setCurrentIndex(2);
     samplesSpin->setValue(10000);
     lineSpin->setValue(9);
-    pointSpin->setValue(11);
+    pointSpin->setValue(96);
     require(view->trackLineVisible() == !initialLine && view->trackPointsVisible() == !initialPoints &&
                 view->heatMetric() == VaporView::Geo::HeatMetric::Humidity &&
                 view->heatPalette() == VaporView::Geo::HeatPalette::SpectralReverse &&
-                view->maxVisibleSamples() == 10000 && view->trackLineWidth() == 9 && view->trackPointSize() == 11 &&
+                view->maxVisibleSamples() == 10000 && view->trackLineWidth() == 9 && view->trackPointSize() == 96 &&
                 refreshStatus->text() == QStringLiteral("已刷新"),
             QStringLiteral("display settings immediately update the real map view and report the refresh"));
     lineCheck->setChecked(initialLine);
@@ -180,6 +195,59 @@ int main(int argc, char** argv)
     lineSpin->setValue(initialLineWidth);
     pointSpin->setValue(initialPointSize);
     displayPanel->hide();
+    VaporView::Geo::NavSample pointProbe;
+    pointProbe.latDeg = 30.25;
+    pointProbe.lonDeg = 120.15;
+    pointProbe.heightM = 200.0;
+    pointProbe.heightReference = VaporView::Geo::HeightReference::Wgs84Ellipsoid;
+    pointProbe.recordTimestampUs = 1000000;
+    pointProbe.fixQuality = VaporView::Geo::FixQuality::Fixed;
+    pointProbe.satellites = 12;
+    pointProbe.hdop = 0.9;
+    auto pointProbe2 = pointProbe;
+    pointProbe2.lonDeg += 0.002;
+    pointProbe2.recordTimestampUs += 10000000;
+    view->setTrackLineVisible(false);
+    view->setTrackPointsVisible(true);
+    view->setSamples(std::vector<VaporView::Geo::NavSample>{pointProbe, pointProbe2});
+    require(view->flyToTrack(), QStringLiteral("focus on the ordinary trajectory point"));
+    processEventsFor(3000);
+    pointSpin->setValue(7);
+    processEventsFor(400);
+    const QImage smallPointFrame = view->grabFramebuffer();
+    pointSpin->setValue(96);
+    processEventsFor(400);
+    const QImage largePointFrame = view->grabFramebuffer();
+    const int smallGreen = countColor(smallPointFrame, QColor(13, 255, 89));
+    const int largeGreen = countColor(largePointFrame, QColor(13, 255, 89));
+    require(largeGreen > smallGreen + 1000,
+            QStringLiteral("ordinary trajectory pixels visibly grow when the point size increases"));
+    const auto initialHeatMetric = view->heatMetric();
+    const auto initialHeatPalette = view->heatPalette();
+    view->setHeatMetric(VaporView::Geo::HeatMetric::Peak);
+    view->setHeatPalette(VaporView::Geo::HeatPalette::BlueRedFast);
+    VaporView::Geo::TrajectoryRenderSample heatProbe;
+    heatProbe.navigation = pointProbe;
+    heatProbe.heat.peak = 5.0;
+    auto heatProbe2 = heatProbe;
+    heatProbe2.navigation = pointProbe2;
+    pointSpin->setValue(7);
+    view->setSamples(std::vector<VaporView::Geo::TrajectoryRenderSample>{heatProbe, heatProbe2});
+    processEventsFor(500);
+    const QImage smallHeatFrame = view->grabFramebuffer();
+    pointSpin->setValue(96);
+    processEventsFor(500);
+    const QImage largeHeatFrame = view->grabFramebuffer();
+    const int smallHeat = countColor(smallHeatFrame, QColor(66, 255, 56));
+    const int largeHeat = countColor(largeHeatFrame, QColor(66, 255, 56));
+    require(largeHeat > smallHeat + 1000,
+            QStringLiteral("heat trajectory pixels visibly grow when the point size increases"));
+    view->setHeatMetric(initialHeatMetric);
+    view->setHeatPalette(initialHeatPalette);
+    view->clearTrack();
+    view->setTrackLineVisible(initialLine);
+    view->setTrackPointsVisible(initialPoints);
+    pointSpin->setValue(initialPointSize);
     require(!view->hasLocal3DTilesPreview(), QStringLiteral("buildings are not loaded at startup"));
     auto* buildings = window->findChild<QAction*>(QStringLiteral("map3DLayer_buildings3D"));
     require(buildings && !buildings->isChecked(), QStringLiteral("building layer starts disabled"));

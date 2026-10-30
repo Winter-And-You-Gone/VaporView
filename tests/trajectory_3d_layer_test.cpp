@@ -146,8 +146,13 @@ int main()
             "trajectory markers isolate vertex attributes from the terrain renderer");
     require(firstSphereGeometry != nullptr && firstSphereGeometry->getVertexArray() != nullptr,
             "trajectory sphere marker geometry exists");
-    require(firstSphereGeometry->getVertexArray()->getNumElements() == 4096 * 42,
-            "trajectory markers use one-subdivision icospheres instead of faceted polyhedrons");
+    require(firstSphereGeometry->getVertexArray()->getNumElements() == 4096 * 43,
+            "trajectory markers retain their icospheres and add screen-sized points");
+    const auto* firstScreenPoints = firstSphereGeometry->getNumPrimitiveSets() > 1
+        ? dynamic_cast<const osg::DrawElementsUInt*>(firstSphereGeometry->getPrimitiveSet(1)) : nullptr;
+    require(firstScreenPoints && firstScreenPoints->getMode() == osg::PrimitiveSet::POINTS &&
+                firstScreenPoints->size() == 4096,
+            "ordinary trajectories have one screen-space point for each visible sphere marker");
     const auto* firstSphereVertices =
         dynamic_cast<const osg::Vec3dArray*>(firstSphereGeometry->getVertexArray());
     require(firstSphereVertices != nullptr
@@ -155,6 +160,14 @@ int main()
                                0.5,
                                1.0e-9),
             "trajectory ball radius is reduced to half a metre");
+    const int rebuildsBeforePointSize = layer.fullRebuildCount();
+    layer.setTrackPointSize(96.0f);
+    const auto* normalPointSize = dynamic_cast<const osg::Point*>(
+        firstSphereGeometry->getStateSet()->getAttribute(osg::StateAttribute::POINT));
+    require(normalPointSize && nearlyEqual(normalPointSize->getSize(), 96.0) &&
+                layer.fullRebuildCount() == rebuildsBeforePointSize,
+            "ordinary trajectory point size updates without rebuilding its geometry");
+    layer.setTrackPointSize(7.0f);
 
     layer.setMaxVisibleSamples(5000);
     require(layer.sampleCount() == 5000, "visible cap releases old retained samples");
@@ -350,8 +363,8 @@ int main()
     auto* qualityMarkerGeometry = dynamic_cast<osg::Geometry*>(qualityGeode->getDrawable(1));
     require(qualityMarkerGeometry != nullptr
                 && qualityMarkerGeometry->getVertexArray() != nullptr
-                && qualityMarkerGeometry->getVertexArray()->getNumElements() == 8 * 42,
-            "legacy quality marker geometry renders all visible samples as smooth spheres");
+                && qualityMarkerGeometry->getVertexArray()->getNumElements() == 8 * 43,
+            "quality markers retain smooth spheres and screen-sized points");
     const VaporView::Map3D::TrajectoryQualityStats qualityStats = qualityLayer.qualityStats();
     require(qualityStats.fixedSamples == 6, "quality stats count fixed line samples");
     require(qualityStats.invalidSamples == 1, "quality stats count invalid marker samples");
@@ -380,7 +393,7 @@ int main()
     auto* outlierMarkerGeometry = dynamic_cast<osg::Geometry*>(outlierGeode->getDrawable(1));
     require(outlierMarkerGeometry != nullptr
                 && outlierMarkerGeometry->getVertexArray() != nullptr
-                && outlierMarkerGeometry->getVertexArray()->getNumElements() == 5 * 42,
+                && outlierMarkerGeometry->getVertexArray()->getNumElements() == 5 * 43,
             "outlier marker geometry still renders every visible short-track sample");
     const VaporView::Map3D::TrajectoryQualityStats outlierQualityStats = outlierLayer.qualityStats();
     require(outlierQualityStats.jumpSamples == 1, "only the outlier is counted as a jump");
@@ -513,14 +526,16 @@ int main()
         : nullptr;
     require(heatLineWidth != nullptr && nearlyEqual(heatLineWidth->getWidth(), 9.0),
             "heat line width is configurable");
-    heatLayer.setTrackPointSize(11.0f);
+    heatLayer.setTrackPointSize(128.0f);
     heatPointGeometry = dynamic_cast<osg::Geometry*>(heatGeode->getDrawable(1));
     const auto* heatPointSize = heatPointGeometry
         ? dynamic_cast<const osg::Point*>(
               heatPointGeometry->getStateSet()->getAttribute(osg::StateAttribute::POINT))
         : nullptr;
-    require(heatPointSize != nullptr && nearlyEqual(heatPointSize->getSize(), 11.0),
-            "heat point size is configurable");
+    require(heatPointSize != nullptr && nearlyEqual(heatPointSize->getSize(), 128.0),
+            "heat point size supports the extended range");
+    heatLayer.setTrackPointSize(999.0f);
+    require(nearlyEqual(heatLayer.trackPointSize(), 128.0), "point size remains bounded at 128 pixels");
     heatLayer.clear();
     require(heatLayer.sampleCount() == 0 && heatGeode->getNumDrawables() == 0,
             "clearing heat trajectory removes line and point geometry");

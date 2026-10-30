@@ -905,7 +905,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     const int trackLineWidth =
         std::clamp(settings.value(QStringLiteral("trackLineWidth"), 5).toInt(), 1, 20);
     const int trackPointSize =
-        std::clamp(settings.value(QStringLiteral("trackPointSize"), 7).toInt(), 1, 32);
+        std::clamp(settings.value(QStringLiteral("trackPointSize"), 7).toInt(), 1, kMaxTrackPointSizePx);
 
     max_visible_samples_spin_ = new QSpinBox(toolbar);
     max_visible_samples_spin_->setObjectName(QStringLiteral("map3DMaxVisibleSamplesSpin"));
@@ -1076,7 +1076,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
 
     track_point_size_spin_ = new QSpinBox(toolbar);
     track_point_size_spin_->setObjectName(QStringLiteral("map3DTrackPointSizeSpin"));
-    track_point_size_spin_->setRange(1, 32);
+    track_point_size_spin_->setRange(1, kMaxTrackPointSizePx);
     track_point_size_spin_->setValue(trackPointSize);
     track_point_size_spin_->setPrefix(mapText(QStringLiteral("点 ")));
     track_point_size_spin_->setSuffix(QStringLiteral(" px"));

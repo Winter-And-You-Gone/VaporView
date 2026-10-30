@@ -3,6 +3,7 @@
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/TopLevelCardStyle.h"
 #include "ground/widgets/LabelTextSelection.h"
+#include "ground/widgets/DeviceEnabledCheckBox.h"
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
@@ -166,7 +167,7 @@ MotionControlPage::MotionControlPage(QWidget *parent, const QString& sdkDirector
         auto *advanced = new QWidget(card);
         advanced->setObjectName(QStringLiteral("emFwc3ContinuousArea") + suffix);
         auto *a = new QVBoxLayout(advanced); a->setContentsMargins(0, 4, 0, 0); a->setSpacing(8);
-        auto *toggle = new QCheckBox(advanced);
+        auto *toggle = new DeviceEnabledCheckBox(advanced);
         toggle->setFocusPolicy(Qt::TabFocus);
         toggle->setObjectName(QStringLiteral("emFwc3ContinuousToggle") + suffix);
         wording(toggle, "连续运动", "Continuous motion"); a->addWidget(toggle);
@@ -256,7 +257,7 @@ QWidget *MotionControlPage::createConnectionPanel(QWidget *parent)
         v->addWidget(s.types[i]);
         connect(s.types[i], &QComboBox::currentTextChanged, this, [this] { state_->confirmTypes->setChecked(false); saveSettings(); });
     }
-    s.confirmTypes = new QCheckBox(panel); s.confirmTypes->setObjectName(QStringLiteral("emFwc3ConfirmTypes"));
+    s.confirmTypes = new DeviceEnabledCheckBox(panel); s.confirmTypes->setObjectName(QStringLiteral("emFwc3ConfirmTypes"));
     wording(s.confirmTypes, "已核对三路电机型号（影响角度换算）", "I have checked all three motor types (used for angle conversion)");
     v->addWidget(s.confirmTypes);
     connect(s.confirmTypes, &QCheckBox::toggled, this, [this] { refresh(); });

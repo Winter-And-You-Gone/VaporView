@@ -21,6 +21,8 @@ class Node;
 
 namespace VaporView::Map3D {
 
+inline constexpr int kMaxTrackPointSizePx = 128;
+
 struct TrajectoryQualityStats {
     int fixedSamples = 0;
     int floatSamples = 0;

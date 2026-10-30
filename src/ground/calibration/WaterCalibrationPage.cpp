@@ -2,6 +2,7 @@
 #include "WaterCalibration.h"
 #include "LogService.h"
 #include "shared/theme/AppTheme.h"
+#include "ground/widgets/DeviceEnabledCheckBox.h"
 #include "ground/session/SessionLoader.h"
 #include "ground/session/GroundRecordingService.h"
 #include "shared/session/SessionPathResolver.h"
@@ -209,12 +210,12 @@ WaterCalibrationPage::WaterCalibrationPage(QWidget *parent, const QString& filen
     });
     form->addRow("来源 Session",source);
     auto *standard = new QHBoxLayout; s.concentration = new QDoubleSpinBox(management); s.concentration->setDecimals(9); s.concentration->setRange(0,1e12); s.concentration->setObjectName("calibrationKnownConcentration");
-    s.softwareTest = new QCheckBox("软件测试数据",management); s.softwareTest->setToolTip("模拟数据必须勾选；已检测到 Session 模拟标记时也会自动标为软件测试。其余来源标为待核实。");
+    s.softwareTest = new DeviceEnabledCheckBox("软件测试数据",management); s.softwareTest->setToolTip("模拟数据必须勾选；已检测到 Session 模拟标记时也会自动标为软件测试。其余来源标为待核实。");
     standard->addWidget(s.concentration); standard->addWidget(s.softwareTest);
     button("添加标气记录（双波长）","calibrationImport",standard,[this]{ importData(); })
         ->setToolTip("将所选 Session 的峰值按当前标气浓度和单位添加到定标任务；添加后请保存任务。");
     form->addRow("本次标气浓度",standard);
-    s.singleConcentration=new QCheckBox("确认整个 Session 使用同一标气浓度（不支持自动区分 Session 内的浓度切换）",management);
+    s.singleConcentration=new DeviceEnabledCheckBox("确认整个 Session 使用同一标气浓度（不支持自动区分 Session 内的浓度切换）",management);
     s.singleConcentration->setObjectName("calibrationSingleConcentration");form->addRow(s.singleConcentration);
     m->addLayout(form); layout->addWidget(management);
     s.importSummary=new QLabel(s.controls);s.importSummary->setObjectName("calibrationImportSummary");s.importSummary->setWordWrap(true);layout->addWidget(s.importSummary);
@@ -255,7 +256,7 @@ WaterCalibrationPage::WaterCalibrationPage(QWidget *parent, const QString& filen
     s.activeSummary=new QLabel(fitPage); s.activeSummary->setWordWrap(true); fl->addWidget(s.activeSummary); tabs->addTab(fitPage,"拟合与版本");
     auto *calculation=new QWidget(tabs); auto *cl=new QVBoxLayout(calculation); auto *calcActions=new QHBoxLayout;
     button("计算来源 Session（两波长）","calibrationCalculate",calcActions,[this]{ calculateSession(); });
-    s.follow=new QCheckBox("自动跟随所选 Session（2 s）",calculation); s.follow->setObjectName("calibrationFollow");s.follow->setChecked(true);calcActions->addWidget(s.follow);
+    s.follow=new DeviceEnabledCheckBox("自动跟随所选 Session（2 s）",calculation); s.follow->setObjectName("calibrationFollow");s.follow->setChecked(true);calcActions->addWidget(s.follow);
     button("导出可追溯结果","calibrationExport",calcActions,[this]{
         auto& s=*state_; if(s.results.isEmpty()){setStatus("没有可导出的计算结果",true);return;}
         const QSignalBlocker timerBlock(s.timer);

@@ -1,12 +1,17 @@
 #include "test_settings_sandbox.h"
 #include "test_ui_helpers.h"
 #include "shared/theme/AppTheme.h"
+#include "shared/theme/CheckedIndicator.h"
+#include "ground/widgets/DeviceEnabledCheckBox.h"
 
 #include <QApplication>
 #include <QCheckBox>
 #include <QDialogButtonBox>
+#include <QDir>
 #include <QFocusEvent>
+#include <QFileInfo>
 #include <QImage>
+#include <QImageReader>
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QMessageBox>
@@ -68,6 +73,31 @@ void clickWidget(QWidget *widget)
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
+    QString svgPath = QDir(QCoreApplication::applicationDirPath())
+        .filePath(QStringLiteral("resources/lucide/square-check-big.svg"));
+    if (!QFileInfo::exists(svgPath))
+        svgPath = QFileInfo(QString::fromUtf8(__FILE__)).absoluteDir()
+            .filePath(QStringLiteral("../resources/lucide/square-check-big.svg"));
+    QImageReader svg(svgPath);
+    svg.setScaledSize(QSize(96, 96));
+    const QImage reference = svg.read().convertToFormat(QImage::Format_ARGB32);
+    require(!reference.isNull(), "the shared Lucide checked icon can be loaded");
+    QImage drawn(reference.size(), QImage::Format_ARGB32_Premultiplied);
+    drawn.fill(Qt::transparent);
+    {
+        QPainter painter(&drawn);
+        VaporView::drawSquareCheckBig(painter, drawn.rect(), Qt::black);
+    }
+    int intersection = 0, combined = 0;
+    for (int y = 0; y < drawn.height(); ++y)
+        for (int x = 0; x < drawn.width(); ++x) {
+            const bool a = qAlpha(drawn.pixel(x, y)) > 64;
+            const bool b = qAlpha(reference.pixel(x, y)) > 64;
+            intersection += a && b;
+            combined += a || b;
+        }
+    require(combined > 100 && intersection > combined * 0.85,
+            "custom checkboxes use the same visible shape as square-check-big.svg");
     VaporView::installButtonFocusStyle();
     auto *style = app.style();
     VaporView::installButtonFocusStyle();
@@ -76,6 +106,35 @@ int main(int argc, char **argv)
     {
         app.setProperty(VaporView::kAppDarkThemeProperty, dark);
         app.setPalette(VaporView::appThemePalette(dark));
+        {
+            QWidget window;
+            window.setStyleSheet(VaporView::applyAppThemeTokens(QStringLiteral(
+                "QWidget { background: @vv-surface; color: @vv-text; }"
+                "QCheckBox::indicator { width: 20px; height: 20px; }"
+                "QCheckBox::indicator:checked { image: url(%1); }")
+                .arg(svgPath), dark));
+            auto *layout = new QVBoxLayout(&window);
+            auto *checkbox = new DeviceEnabledCheckBox(QStringLiteral("Checkbox"), &window);
+            checkbox->setChecked(true);
+            layout->addWidget(checkbox);
+            window.show();
+            app.processEvents();
+            const QImage checked = checkbox->grab().toImage();
+            const QColor primary = VaporView::appThemeColor(VaporView::AppThemeColor::Primary, dark);
+            int primaryPixels = 0;
+            for (int y = 0; y < checked.height(); ++y)
+                for (int x = 0; x < checked.width(); ++x) {
+                    const QColor pixel = checked.pixelColor(x, y);
+                    if (qAbs(pixel.red() - primary.red()) < 30 &&
+                        qAbs(pixel.green() - primary.green()) < 30 &&
+                        qAbs(pixel.blue() - primary.blue()) < 30)
+                        ++primaryPixels;
+                }
+            checkbox->setChecked(false);
+            const QImage unchecked = checkbox->grab().toImage();
+            require(!checked.isNull() && checked != unchecked && primaryPixels > 5,
+                    "checked and unchecked controls remain visibly distinct in both themes");
+        }
         for (bool styled : {false, true})
         {
             QWidget window;

@@ -2,8 +2,8 @@
 #include "ppk/SessionNavigationSource.h"
 #include <QCheckBox>
 #include "shared/theme/AppTheme.h"
+#include "shared/theme/CheckedIndicator.h"
 #include <QPainter>
-#include <QPainterPath>
 #include <QStyleOptionButton>
 #include <QComboBox>
 #include <QDateTime>
@@ -51,32 +51,19 @@ protected:
         const QRect rect = style()->subElementRect(QStyle::SE_CheckBoxIndicator, &option, this);
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing);
-        painter.translate(rect.topLeft());
-        painter.scale(rect.width() / 24.0, rect.height() / 24.0);
         QColor color = appThemeColor(AppThemeColor::Primary, isDarkThemeEnabled());
         if (!isEnabled())
             color.setAlphaF(0.4);
-        painter.setPen(QPen(color, 2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-        painter.setBrush(Qt::NoBrush);
         if (isChecked())
         {
-            QPainterPath check;
-            // Match resources/lucide/square-check-big.svg, including its open corner.
-            check.moveTo(21, 10.656);
-            check.lineTo(21, 19);
-            check.arcTo(QRectF(17, 17, 4, 4), 0, -90);
-            check.lineTo(5, 21);
-            check.arcTo(QRectF(3, 17, 4, 4), -90, -90);
-            check.lineTo(3, 5);
-            check.arcTo(QRectF(3, 3, 4, 4), 180, -90);
-            check.lineTo(17.344, 3);
-            check.moveTo(9, 11);
-            check.lineTo(12, 14);
-            check.lineTo(22, 4);
-            painter.drawPath(check);
+            drawSquareCheckBig(painter, rect, color);
+            return;
         }
-        else
-            painter.drawRoundedRect(QRectF(3, 3, 18, 18), 2, 2);
+        painter.translate(rect.topLeft());
+        painter.scale(rect.width() / 24.0, rect.height() / 24.0);
+        painter.setPen(QPen(color, 2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRoundedRect(QRectF(3, 3, 18, 18), 2, 2);
     }
 };
 }
