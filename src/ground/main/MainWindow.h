@@ -260,6 +260,8 @@ private:
     void refreshFpgaTemperaturePanels();
     void updateFpgaPageBackend();
     void syncFpgaDeviceConfigUi();
+    bool homeFpgaDeviceSelected(VaporView::SkyDeviceId device) const;
+    void setHomeFpgaDeviceSelected(VaporView::SkyDeviceId device, bool selected);
     QMap<quint16, QJsonObject>& fpgaSensorDrafts();
     QJsonObject fpgaSensorConnectRequest(quint16 source);
     void confirmFpgaSensorDraft(quint16 source, const QMap<quint32, quint32>& registers);

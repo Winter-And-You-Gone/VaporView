@@ -3462,6 +3462,8 @@ void MainWindow::updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId dev
         ? (state_->is_english_ ? QStringLiteral("Connecting") : QStringLiteral("连接中"))
         : connected
             ? (state_->is_english_ ? QStringLiteral("Disconnect") : QStringLiteral("断开"))
+            : state == VaporView::DeviceState::Disabled && isFpgaRelayPath() && !homeFpgaDeviceSelected(device)
+                ? (state_->is_english_ ? QStringLiteral("Select Enabled first") : QStringLiteral("请先勾选启用"))
             : state == VaporView::DeviceState::Disabled && isFpgaRelayPath()
                 ? (state_->is_english_ ? QStringLiteral("FPGA device unavailable") : QStringLiteral("FPGA 设备不可用"))
             : state == VaporView::DeviceState::Disabled

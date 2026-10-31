@@ -57,6 +57,7 @@
 #include <QStandardItemModel>
 #include <QSet>
 #include <QSignalBlocker>
+#include <QScopeGuard>
 #include <stdexcept>
 #include <cmath>
 #include <cstring>
@@ -157,12 +158,22 @@ static void verifyRelayIndicators(MainWindow &window,const QStringList &enabled)
             qMakePair("Bmp390","deviceInternalEnabledBMP390"),
             qMakePair("Sht45","deviceInternalEnabledSHT45")}) {
         auto *check=window.findChild<QCheckBox*>(item.second);
-        require(check&&!check->isEnabled(),"all relay enable indicators are read-only");
-        require(check->isChecked()==enabled.contains(item.first),"relay indicators reflect only confirmed FPGA channel states");
+        require(check&&check->isChecked(),"relay desired enable selection survives actual channel changes");
         require(!check->toolTip().isEmpty()&&check->accessibleDescription()==check->toolTip(),
-            "relay readback availability and operation guidance are accessible");
-        check->click();
-        require(check->isChecked()==enabled.contains(item.first),"clicking a read-only indicator cannot toggle its state");
+            "relay enable selection guidance is accessible");
+        const QMap<QString,VaporView::SkyDeviceId> ids{{"Epsilon",VaporView::SkyDeviceId::Epsilon},
+            {"Pressure",VaporView::SkyDeviceId::Ptb},{"Humidity",VaporView::SkyDeviceId::Hmp},
+            {"Lidar",VaporView::SkyDeviceId::Lidar},{"Temperature",VaporView::SkyDeviceId::TemperatureController},
+            {"Ai8",VaporView::SkyDeviceId::Ai8TemperatureController},{"Wave",VaporView::SkyDeviceId::WaveTcp},
+            {"Bmp390",VaporView::SkyDeviceId::Bmp390},{"Sht45",VaporView::SkyDeviceId::Sht45}};
+        QToolButton *action=nullptr;
+        for(auto *button:window.findChildren<QToolButton*>("homeDeviceActionButton"))
+            if(button->property("deviceConfigAction").toBool()
+                &&button->property("deviceConfigRemoteDevice").toInt()==int(ids.value(item.first))) action=button;
+        const bool confirmed=waitUntil([&]{return action&&action->property("connected").toBool()==enabled.contains(item.first);},2000);
+        if(!confirmed) std::cerr<<"relay action "<<item.first<<" expected "<<enabled.contains(item.first)
+            <<" state "<<(action?action->property("state").toString().toStdString():"missing")<<"\n";
+        require(confirmed,"actual relay state remains on the action button, independent of enable selection");
     }
 }
 static void verifyCardMargins(MainWindow &window,FpgaControlPage *page,int scale)
@@ -556,8 +567,17 @@ static void remoteHomeActions()
     auto *waveEnabled=window.findChild<QCheckBox*>("deviceFpgaAcquisitionEnabledCheck");
     require(waitUntil([&]{return window.findChild<QCheckBox*>("deviceInternalEnabledBMP390")->isChecked();}),
         "remote BMP enable readback arrives before indicator verification");
-    require(waveEnabled&&!waveEnabled->isEnabled()&&waveEnabled->isChecked(),"remote acquisition read-only state reflects confirmed registers");
+    require(waveEnabled&&waveEnabled->isEnabled()&&waveEnabled->isChecked(),"remote acquisition selection is editable independently of registers");
     verifyRelayIndicators(window,{"Epsilon","Pressure","Lidar","Ai8","Wave","Bmp390","Sht45"});
+    auto *epsilonSelection=window.findChild<QCheckBox*>("deviceRemoteEpsilonEnabledCheck");
+    const int beforeSelection=requests.size();
+    epsilonSelection->click();processFor(50);
+    require(!epsilonSelection->isChecked()&&requests.size()==beforeSelection
+        &&homeAction(window,"EPSILON")->property("connected").toBool(),
+        "remote selection changes persist without sending hardware commands or stopping the channel");
+    send(MsgType::FpgaStatus,FpgaRemote::encodeStatus(status));processFor(50);
+    require(!epsilonSelection->isChecked(),"remote hardware readback never overwrites a cleared selection");
+    epsilonSelection->click();
     require(deviceWaveRate(window)&&deviceWaveRate(window)->text().contains("250000")
         &&deviceWaveRate(window)->toolTip().contains("2000"),"remote ADC and DLIA rates use actual register readback");
     for (int index=0;index<names.size();++index) {
@@ -576,8 +596,8 @@ static void remoteHomeActions()
             CommandAck ack;ack.command_id=CommandId::DeviceOperation;ack.command_seq=commandSequence;
             send(MsgType::CommandAck,TelemetryCodec::serializeCommandAck(ack));processFor(30);
             require(!button->isEnabled()&&button->property("state")=="connecting","ACK does not change confirmed device state");
-            if(!sources[index])require(!waveEnabled->isEnabled()&&waveEnabled->isChecked()!=enabled,
-                "remote acquisition checkbox keeps readback state until final confirmation");
+            if(!sources[index])require(waveEnabled->isEnabled()&&waveEnabled->isChecked(),
+                "remote acquisition selection does not change on ACK");
             if(sources[index]!=0x42) {
                 status["busy"]=true;send(MsgType::FpgaStatus,FpgaRemote::encodeStatus(status));processFor(20);
                 navigation->refreshStatus();
@@ -594,8 +614,8 @@ static void remoteHomeActions()
             send(MsgType::DeviceOperationResponse,TelemetryCodec::serializeDeviceOperationResponse(response));
             require(waitUntil([&]{return button->isEnabled()&&button->property("state")== (enabled?"connected":"disconnected");}),
                 "final register readback confirms the home connection state");
-            if(!sources[index])require(!waveEnabled->isEnabled()&&waveEnabled->isChecked()==enabled,
-                "remote checkbox changes only after final acquisition readback");
+            if(!sources[index])require(waveEnabled->isEnabled()&&waveEnabled->isChecked(),
+                "remote acquisition readback does not overwrite enable selection");
             if(sources[index]!=0x42) {
                 navigation->refreshStatus();
                 require(navigationChanges==changesBefore,"remote sensor actions do not log false GNSS loss and recovery");
@@ -933,7 +953,44 @@ static void localSimulatorRouting()
     check(waitUntil([&]{return homeAction(window,"HMP")->isEnabled()&&homeAction(window,"HMP")->property("state")=="connected";})
         &&pressureAction->property("state")=="connected","connecting a second home device preserves the first");
     check(waitUntil([&]{return connectionSuccesses.contains(0x41);}),"individual HMP connection confirms valid data before reconnect");
+    homeAction(window,"HMP")->click();
+    check(waitUntil([&]{return homeAction(window,"HMP")->property("state")=="disconnected";}),"stop HMP before testing an idle FPGA batch");
+    pressureAction->click();
+    check(waitUntil([&]{return pressureAction->property("state")=="disconnected";}),"stop PTB before testing an idle FPGA batch");
     disconnect->click();check(waitUntil([&]{return connectButton->isEnabled();}),"individual connection releases USB before full-connect regression");
+    const QStringList relaySelectionNames{"deviceRemoteEpsilonEnabledCheck","deviceRemotePressureEnabledCheck",
+        "deviceRemoteHumidityEnabledCheck","deviceRemoteLidarEnabledCheck","deviceRemoteTemperatureEnabledCheck",
+        "deviceRemoteAi8TemperatureEnabledCheck","deviceFpgaAcquisitionEnabledCheck","deviceInternalEnabledBMP390","deviceInternalEnabledSHT45"};
+    for(const auto &name:relaySelectionNames) window.findChild<QCheckBox*>(name)->setChecked(false);
+    connectionSuccesses.clear();
+    QMetaObject::invokeMethod(&window,"onConnectClicked");processFor(100);
+    check(connectButton->isEnabled()&&connectionSuccesses.isEmpty(),"empty selection does not open or start FPGA devices");
+    auto *pressureSelected=window.findChild<QCheckBox*>("deviceRemotePressureEnabledCheck");
+    pressureSelected->setChecked(true);
+    QMetaObject::invokeMethod(&window,"onConnectClicked");
+    check(waitUntil([&]{return connectionSuccesses.contains(0x40)&&pressureAction->isEnabled();},15000),
+        "bulk connect starts the selected PTB210");
+    check(connectionSuccesses==QSet<quint16>{0x40}&&lastRegisters.value(0x6204)==0
+        &&lastRegisters.value(0x6304)==0&&lastRegisters.value(0x6404)==0&&lastRegisters.value(0x4004)==0,
+        "bulk connect skips unchecked serial, internal and ADC/DLIA devices");
+    pressureSelected->setChecked(false);processFor(100);
+    check(lastRegisters.value(0x6004)==1&&pressureAction->isEnabled()&&pressureAction->property("connected").toBool(),
+        "clearing selection leaves the running channel and its disconnect action intact");
+    pressureAction->click();
+    const bool stopped=waitUntil([&]{return lastRegisters.value(0x6004)==0&&disconnect->isEnabled();});
+    if(!stopped)std::cerr<<"PTB stop: state="<<pressureAction->property("state").toString().toStdString()
+        <<" control="<<lastRegisters.value(0x6004)<<" disconnect="<<disconnect->isEnabled()<<"\n";
+    check(stopped,"unselected running PTB remains stoppable and completes before USB disconnect");
+    disconnect->click();check(waitUntil([&]{return connectButton->isEnabled();}),"filtered batch releases USB");
+    connectionSuccesses.clear();
+    window.findChild<QCheckBox*>("deviceRemoteTemperatureEnabledCheck")->setChecked(true);
+    QMetaObject::invokeMethod(&window,"onConnectClicked");
+    check(waitUntil([&]{return connectionSuccesses.contains(0x48)&&homeAction(window,"RD105")->isEnabled();},15000)
+        &&connectionSuccesses==QSet<quint16>{0x48},"RD105-only bulk selection opens FPGA before checking firmware capability");
+    homeAction(window,"RD105")->click();
+    check(waitUntil([&]{return homeAction(window,"RD105")->property("state")=="disconnected";}),"RD105-only batch stops normally");
+    disconnect->click();check(waitUntil([&]{return connectButton->isEnabled();}),"RD105-only batch releases USB");
+    for(const auto &name:relaySelectionNames) window.findChild<QCheckBox*>(name)->setChecked(true);
     QMetaObject::invokeMethod(&window,"onConnectClicked");
     check(waitUntil([&]{auto *wave=homeAction(window,QStringLiteral("波形源"));
         return wave->isEnabled()&&wave->property("state")=="connected";},20000),
@@ -1010,8 +1067,8 @@ static void localSimulatorRouting()
             check(waitUntil([&]{return button->isEnabled()&&button->property("state")== (enabled?"connected":"disconnected");},10000),
                 "local home action confirms sensor or acquisition enable through actual VLP1 readback");
             check(disconnect->isEnabled()&&stack->currentIndex()==0,"individual stop keeps USB open and stays on home");
-            if(name==QStringLiteral("波形源"))check(!waveEnabled->isEnabled()&&waveEnabled->isChecked()==enabled,
-                "local acquisition checkbox follows confirmed VLP1 start and stop");
+            if(name==QStringLiteral("波形源"))check(waveEnabled->isEnabled()&&waveEnabled->isChecked(),
+                "local VLP1 start and stop preserve desired acquisition selection");
         }
     }
     for (const auto& entry : QList<QPair<QString,VaporView::SkyDeviceId>>{
@@ -1467,6 +1524,16 @@ static void harmonicHomeGraphs()
 
 static void relayConfigurationPresentation()
 {
+    auto preferences=VaporView::applicationConfigSettings();
+    const auto oldLocal=preferences.value("Fpga/localDisabledHomeSources");
+    const auto oldRemote=preferences.value("Fpga/remoteDisabledHomeSources");
+    const auto restoreSelection=qScopeGuard([&] {
+        for(const auto &item:{qMakePair(QStringLiteral("Fpga/localDisabledHomeSources"),oldLocal),
+                qMakePair(QStringLiteral("Fpga/remoteDisabledHomeSources"),oldRemote)}) {
+            if(item.second.isValid()) preferences.setValue(item.first,item.second); else preferences.remove(item.first);
+        }
+    });
+    preferences.remove("Fpga/localDisabledHomeSources");preferences.remove("Fpga/remoteDisabledHomeSources");
     const QStringList presetNames{"deviceRemoteEpsilonEnabledCheck","deviceRemotePressureEnabledCheck",
         "deviceRemoteHumidityEnabledCheck","deviceRemoteLidarEnabledCheck","deviceRemoteTemperatureEnabledCheck",
         "deviceRemoteAi8TemperatureEnabledCheck","deviceTcpWaveEnabledCheck","deviceInternalEnabledBMP390","deviceInternalEnabledSHT45"};
@@ -1496,8 +1563,16 @@ static void relayConfigurationPresentation()
     auto *waveEnabled=window.findChild<QCheckBox*>("deviceFpgaAcquisitionEnabledCheck");
     auto *grid=qobject_cast<QGridLayout*>(waveEnabled->parentWidget()->layout());
     require(grid&&grid->columnCount()==7,"device actions immediately follow enable without an empty source column");
-    require(waveEnabled->isVisible()&&!waveEnabled->isEnabled()&&deviceWaveRate(window)->text().contains(QStringLiteral("—")),
-        "unavailable FPGA acquisition cannot show a preset as actual sampling or enabled state");
+    require(waveEnabled->isVisible()&&waveEnabled->isEnabled()&&deviceWaveRate(window)->text().contains(QStringLiteral("—")),
+        "FPGA selection is editable before connection while actual sampling remains unknown");
+    auto *epsilonEnabled=window.findChild<QCheckBox*>(presetNames[0]);
+    epsilonEnabled->click();waveEnabled->click();
+    require(!epsilonEnabled->isChecked()&&!waveEnabled->isChecked(),"FPGA selections can be cleared without a connection");
+    require(!homeAction(window,"EPSILON")->isEnabled(),"unselected disconnected devices cannot be started until enabled");
+    path->setCurrentIndex(path->findData("direct_devices"));
+    require(epsilonEnabled->isChecked()==enabledPresets[0],"FPGA selection does not overwrite Direct selection");
+    path->setCurrentIndex(path->findData("fpga_relay"));
+    require(!epsilonEnabled->isChecked()&&!waveEnabled->isChecked(),"returning to FPGA restores its own selections");
     const bool originalDark=VaporView::isDarkThemeEnabled();
     for(bool dark:{true,false}) {
         if(VaporView::isDarkThemeEnabled()!=dark) {
@@ -1507,8 +1582,7 @@ static void relayConfigurationPresentation()
                 "deviceRemoteHumidityEnabledCheck","deviceRemoteLidarEnabledCheck",
                 "deviceRemoteTemperatureEnabledCheck","deviceRemoteAi8TemperatureEnabledCheck"}) {
             auto *check=window.findChild<QCheckBox*>(name);
-            require(check&&!check->isEnabled(),"FPGA channel readback stays read-only");
-            const QSignalBlocker blocker(check);
+            require(check&&check->isEnabled(),"FPGA enable configuration is editable before connection");
             const bool beforeChecked=check->isChecked();
             for(bool checked:{false,true}) {
                 check->setChecked(checked);
@@ -1520,7 +1594,7 @@ static void relayConfigurationPresentation()
                     themePixels+=std::abs(pixel.red()-primary.red())<12
                         &&std::abs(pixel.green()-primary.green())<12&&std::abs(pixel.blue()-primary.blue())<12;
                 }
-                require(themePixels>8,"read-only checked and unchecked device indicators render the active theme accent");
+                require(themePixels>8,"editable enable checkboxes render the active theme accent");
             }
             check->setChecked(beforeChecked);
         }
@@ -1617,6 +1691,10 @@ static void relayConfigurationPresentation()
         auto *port=window.findChild<QComboBox*>("device"+device+"PortCombo");
         require(!port->isEnabled()&&!port->isVisible(),"remote config refresh cannot enable relay serial ports");
     }
+    auto *remoteEnable=window.findChild<QCheckBox*>(presetNames[0]);
+    require(remoteEnable->isChecked(),"remote FPGA selection is independent of local selection");
+    remoteEnable->click();
+    require(!remoteEnable->isChecked(),"remote FPGA selection can be edited without changing Direct presets");
     QString error;
     const auto saved=window.testRemoteSkyConfigFromDeviceConfigUi(&error);
     require(error.isEmpty()&&saved.value("epsilon").toObject().value("port")=="REMOTE-COM7",
@@ -1637,6 +1715,14 @@ static void relayConfigurationPresentation()
     MainWindow restored;
     auto *path=restored.findChild<QComboBox*>("deviceSensorTransportPathCombo");
     require(path->currentData()=="fpga_relay","restarted window retains the FPGA path");
+    require(!restored.findChild<QCheckBox*>(presetNames[0])->isChecked()
+        &&!restored.findChild<QCheckBox*>("deviceFpgaAcquisitionEnabledCheck")->isChecked(),
+        "restart restores local FPGA selections independently of Direct configuration");
+    QMetaObject::invokeMethod(&restored,"onDataSourceModeChanged",Q_ARG(int,1));
+    auto remote=VaporView::SkyConfig::defaults();remote.sensor_transport_path=VaporView::SensorTransportPath::FpgaRelay;
+    restored.testInjectRemoteSkyConfig(remote.toJson());
+    require(!restored.findChild<QCheckBox*>(presetNames[0])->isChecked(),"restart restores remote FPGA selection");
+    QMetaObject::invokeMethod(&restored,"onDataSourceModeChanged",Q_ARG(int,0));
     path->setCurrentIndex(path->findData("direct_devices"));
     for(int i=0;i<presetNames.size();++i)
         require(restored.findChild<QCheckBox*>(presetNames[i])->isChecked()==enabledPresets[i],

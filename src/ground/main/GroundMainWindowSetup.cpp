@@ -3202,14 +3202,19 @@ void MainWindow::setupDeviceConfigPage()
     auto addDeviceEnabledCheck = [this, formLayout, formWidget](
             QCheckBox *&checkBox,
             int row,
-            const QString& objectName) {
+            const QString& objectName,
+            VaporView::SkyDeviceId device) {
         checkBox = new DeviceEnabledCheckBox(formWidget);
         checkBox->setObjectName(objectName);
         checkBox->setFocusPolicy(Qt::TabFocus);
         checkBox->setText(QString());
         checkBox->setChecked(true);
         formLayout->addWidget(checkBox, row + 1, 5, Qt::AlignVCenter | Qt::AlignHCenter);
-        connect(checkBox, &QCheckBox::toggled, this, [this](bool) {
+        connect(checkBox, &QCheckBox::toggled, this, [this, device](bool selected) {
+            if (isFpgaRelayPath()) {
+                setHomeFpgaDeviceSelected(device, selected);
+                return;
+            }
             if (isRemoteSkyMode())
             {
                 markRemoteSkyConfigDirty();
@@ -3222,25 +3227,28 @@ void MainWindow::setupDeviceConfigPage()
         });
     };
     addDeviceEnabledCheck(state_->device_config_.epsilon_enabled_check, 0,
-                          QStringLiteral("deviceRemoteEpsilonEnabledCheck"));
+                          QStringLiteral("deviceRemoteEpsilonEnabledCheck"), VaporView::SkyDeviceId::Epsilon);
     addDeviceEnabledCheck(state_->device_config_.ptb_enabled_check, 1,
-                          QStringLiteral("deviceRemotePressureEnabledCheck"));
+                          QStringLiteral("deviceRemotePressureEnabledCheck"), VaporView::SkyDeviceId::Ptb);
     addDeviceEnabledCheck(state_->device_config_.hmp_enabled_check, 2,
-                          QStringLiteral("deviceRemoteHumidityEnabledCheck"));
+                          QStringLiteral("deviceRemoteHumidityEnabledCheck"), VaporView::SkyDeviceId::Hmp);
     addDeviceEnabledCheck(state_->device_config_.lidar_enabled_check, 3,
-                          QStringLiteral("deviceRemoteLidarEnabledCheck"));
+                          QStringLiteral("deviceRemoteLidarEnabledCheck"), VaporView::SkyDeviceId::Lidar);
     addDeviceEnabledCheck(state_->device_config_.temperature_enabled_check, 4,
-                          QStringLiteral("deviceRemoteTemperatureEnabledCheck"));
+                          QStringLiteral("deviceRemoteTemperatureEnabledCheck"), VaporView::SkyDeviceId::TemperatureController);
     addDeviceEnabledCheck(state_->device_config_.ai8_temperature_enabled_check, 5,
-                          QStringLiteral("deviceRemoteAi8TemperatureEnabledCheck"));
+                          QStringLiteral("deviceRemoteAi8TemperatureEnabledCheck"), VaporView::SkyDeviceId::Ai8TemperatureController);
     addDeviceEnabledCheck(state_->device_config_.tcp_wave_enabled_check, kTcpWaveDeviceRow,
-                          QStringLiteral("deviceTcpWaveEnabledCheck"));
+                          QStringLiteral("deviceTcpWaveEnabledCheck"), VaporView::SkyDeviceId::WaveTcp);
     state_->device_config_.fpga_wave_enabled_check = new DeviceEnabledCheckBox(formWidget);
     state_->device_config_.fpga_wave_enabled_check->setObjectName(QStringLiteral("deviceFpgaAcquisitionEnabledCheck"));
     state_->device_config_.fpga_wave_enabled_check->setFocusPolicy(Qt::TabFocus);
     formLayout->addWidget(state_->device_config_.fpga_wave_enabled_check, tcpWaveGridRow, 5,
                           Qt::AlignVCenter | Qt::AlignHCenter);
     state_->device_config_.fpga_wave_enabled_check->setAccessibleName(QStringLiteral("ADC / DLIA"));
+    connect(state_->device_config_.fpga_wave_enabled_check, &QCheckBox::toggled, this, [this](bool selected) {
+        if (isFpgaRelayPath()) setHomeFpgaDeviceSelected(VaporView::SkyDeviceId::WaveTcp, selected);
+    });
 
     auto addDeviceRemoteButton = [this, formLayout, formWidget](
             int row,
@@ -3301,7 +3309,7 @@ void MainWindow::setupDeviceConfigPage()
         rate->setValidator(new QIntValidator(1,20,rate));
         refreshLocalSerialPortComboOptions(port,availablePorts);
         VaporView::configureSerialBaudRateCombo(baud,VaporView::hostSerialLinkBaudCapabilities(),"115200");
-        QCheckBox *enabled=nullptr;addDeviceEnabledCheck(enabled,row,"deviceInternalEnabled"+name);
+        QCheckBox *enabled=nullptr;addDeviceEnabledCheck(enabled,row,"deviceInternalEnabled"+name,id);
         {const QSignalBlocker blocker(enabled);enabled->setChecked(false);}
         QWidget *buttons=nullptr;QToolButton *action=nullptr;addDeviceRemoteButton(row,buttons,action,id);
         action->setProperty("fpgaSensorSource",source);
@@ -4120,9 +4128,7 @@ void MainWindow::updateDeviceConfigTexts()
     if (state_->device_config_.port_header_lbl) state_->device_config_.port_header_lbl->setText(state_->is_english_ ? QStringLiteral("Serial / Host") : QStringLiteral("串口/主机"));
     if (state_->device_config_.baud_header_lbl) state_->device_config_.baud_header_lbl->setText(state_->is_english_ ? QStringLiteral("Baud / Port") : QStringLiteral("波特率/端口"));
     if (state_->device_config_.rate_header_lbl) state_->device_config_.rate_header_lbl->setText(state_->is_english_ ? QStringLiteral("Rate / Poll") : QStringLiteral("频率/轮询"));
-    if (state_->device_config_.enabled_header_lbl) state_->device_config_.enabled_header_lbl->setText(isFpgaRelayPath()
-        ? (state_->is_english_ ? QStringLiteral("State") : QStringLiteral("状态"))
-        : (state_->is_english_ ? QStringLiteral("Enabled") : QStringLiteral("启用")));
+    if (state_->device_config_.enabled_header_lbl) state_->device_config_.enabled_header_lbl->setText(state_->is_english_ ? QStringLiteral("Enabled") : QStringLiteral("启用"));
     if (state_->device_config_.source_header_lbl) state_->device_config_.source_header_lbl->setText(state_->is_english_ ? QStringLiteral("Source") : QStringLiteral("来源"));
     if (state_->device_config_.action_header_lbl) state_->device_config_.action_header_lbl->setText(state_->is_english_ ? QStringLiteral("Action") : QStringLiteral("操作"));
     if (state_->device_config_.epsilon_lbl) state_->device_config_.epsilon_lbl->setText(QStringLiteral("EPSILON"));

@@ -62,20 +62,18 @@ void MainWindow::syncFpgaDeviceConfigUi()
     if(state_->rtk_config_dialog_ && (state_->rtk_config_dialog_->property("fpgaExtensions").toUInt()!=extensions || state_->rtk_config_dialog_->property("fpgaRelay").toBool()!=relay)) {
         state_->rtk_config_dialog_->setProperty("fpgaExtensions",extensions);state_->rtk_config_dialog_->setProperty("fpgaRelay",relay);syncRtkConfigPageState();
     }
-    const auto enabledState = [&](QCheckBox *check, bool known, bool enabled, bool supported = true) {
+    const auto enabledSelection = [&](QCheckBox *check, VaporView::SkyDeviceId device, bool supported = true) {
         if (!check || !relay) return;
         const QSignalBlocker blocker(check);
-        check->setChecked(supported && known && enabled);
-        check->setEnabled(false);
+        check->setChecked(homeFpgaDeviceSelected(device));
+        check->setEnabled(supported && (!isRemoteSkyMode()
+            || (!state_->remote_config_session_.reading && !state_->remote_config_session_.applying)));
         const QString tooltip = !supported
             ? (state_->is_english_ ? QStringLiteral("This device is not supported by the FPGA protocol.")
                 : QStringLiteral("当前 FPGA 协议不支持此设备。"))
-            : !known
-            ? (state_->is_english_ ? QStringLiteral("No valid FPGA readback. Use the action button on the right to connect.")
-                : QStringLiteral("尚无有效的 FPGA 状态读回；请使用右侧操作按钮连接。"))
             : (state_->is_english_
-                ? QStringLiteral("FPGA channel %1 (read-only). Use the action button on the right to start or stop.").arg(enabled ? "enabled" : "disabled")
-                : QStringLiteral("FPGA 通道%1（只读）；请使用右侧操作按钮启停。").arg(enabled ? QStringLiteral("已启用") : QStringLiteral("未启用")));
+                ? QStringLiteral("Include this device in bulk connection. Changing this selection does not start or stop it; use the action button on the right.")
+                : QStringLiteral("勾选后参与批量连接。修改勾选不会立即启停设备；单独启停请使用右侧操作按钮。"));
         check->setToolTip(tooltip);
         check->setAccessibleDescription(tooltip);
     };
@@ -153,12 +151,11 @@ void MainWindow::syncFpgaDeviceConfigUi()
         const auto &widgets=it.value();
         field(qobject_cast<QComboBox*>(widgets[4]),it.key(),"poll_ms",it.key()==0x43?0x6314:0x6414);
         field(qobject_cast<QComboBox*>(widgets[2]),it.key(),{},0,QStringLiteral("I²C"));
-        const quint32 control=0x6004+(it.key()-0x40)*0x100;
         auto *check=qobject_cast<QCheckBox*>(widgets[5]);
         const auto id=it.key()==0x43?VaporView::SkyDeviceId::Bmp390:VaporView::SkyDeviceId::Sht45;
-        enabledState(check,registers.contains(control),(registers.value(control)&1)!=0);
+        enabledSelection(check,id);
         if(!relay) {check->setToolTip(QString());check->setAccessibleDescription(QString());}
-        check->setEnabled(!relay&&homeDeviceActionState(id)!=VaporView::DeviceState::Connected
+        if (!relay) check->setEnabled(homeDeviceActionState(id)!=VaporView::DeviceState::Connected
             &&homeDeviceActionState(id)!=VaporView::DeviceState::Connecting
             &&(!isRemoteSkyMode()||state_->remote_sky_controller_->isOpen()));
         qobject_cast<QLabel*>(widgets[3])->setText(relay?(state_->is_english_?QStringLiteral("Rate:"):QStringLiteral("频率："))
@@ -189,13 +186,8 @@ void MainWindow::syncFpgaDeviceConfigUi()
     field(state_->device_config_.lidar_rate_combo,0x45,{},0,state_->is_english_?QStringLiteral("Device output"):QStringLiteral("设备输出"));
     field(state_->device_config_.temperature_rate_combo,0x48,(extensions&VaporView::FpgaExtensions::Rd105)?"poll_ms":"",0x682c,QStringLiteral("—"));
     if (auto *check=state_->device_config_.fpga_wave_enabled_check) {
-        bool known=true,enabled=false;
-        for(quint32 control:{0x4004u,0x4104u,0x5004u,0x5104u}) {
-            known &= registers.contains(control);
-            enabled |= (registers.value(control)&1)!=0;
-        }
         check->setVisible(relay);
-        enabledState(check,known,enabled);
+        enabledSelection(check,VaporView::SkyDeviceId::WaveTcp);
     }
     if (relay && state_->device_config_.tcp_wave_transport_hint_lbl) {
         const auto rate=[&](quint32 address) {return registers.value(address)?QString::number(registers.value(address)):QStringLiteral("—");};
@@ -222,16 +214,39 @@ void MainWindow::syncFpgaDeviceConfigUi()
             ? (state_->is_english_?QStringLiteral("Configure EPSILON packet rates through the FPGA mailbox, then verify readback."):QStringLiteral("通过 FPGA 邮箱设置 EPSILON 包频率并读回确认。"))
             : epsilonUnsupported);
     }
-    for (const auto &item : {qMakePair(state_->device_config_.epsilon_enabled_check,quint16(0x42)),
-             qMakePair(state_->device_config_.ptb_enabled_check,pressure),
-             qMakePair(state_->device_config_.hmp_enabled_check,quint16(0x41)),
-             qMakePair(state_->device_config_.lidar_enabled_check,quint16(0x45)),
-             qMakePair(state_->device_config_.temperature_enabled_check,quint16((extensions&VaporView::FpgaExtensions::Rd105)?0x48:0)),
-             qMakePair(state_->device_config_.ai8_temperature_enabled_check,quint16(0x46))}) {
-        const quint32 control=0x6004+(item.second-0x40)*0x100;
-        enabledState(item.first,registers.contains(control),(registers.value(control)&1)!=0,item.second!=0);
+    using VaporView::SkyDeviceId;
+    for (const auto &item : {qMakePair(state_->device_config_.epsilon_enabled_check,SkyDeviceId::Epsilon),
+             qMakePair(state_->device_config_.ptb_enabled_check,SkyDeviceId::Ptb),
+             qMakePair(state_->device_config_.hmp_enabled_check,SkyDeviceId::Hmp),
+             qMakePair(state_->device_config_.lidar_enabled_check,SkyDeviceId::Lidar),
+             qMakePair(state_->device_config_.temperature_enabled_check,SkyDeviceId::TemperatureController),
+             qMakePair(state_->device_config_.ai8_temperature_enabled_check,SkyDeviceId::Ai8TemperatureController)}) {
+        const bool supported = item.second != SkyDeviceId::TemperatureController || registers.isEmpty()
+            || (extensions & VaporView::FpgaExtensions::Rd105);
+        enabledSelection(item.first,item.second,supported);
     }
 
+}
+
+bool MainWindow::homeFpgaDeviceSelected(VaporView::SkyDeviceId device) const
+{
+    return !state_->fpga_home_disabled_sources_[isRemoteSkyMode() ? 1 : 0].contains(homeFpgaSensorSource(device));
+}
+
+void MainWindow::setHomeFpgaDeviceSelected(VaporView::SkyDeviceId device, bool selected)
+{
+    auto &disabled = state_->fpga_home_disabled_sources_[isRemoteSkyMode() ? 1 : 0];
+    const auto source = homeFpgaSensorSource(device);
+    if (selected) disabled.remove(source); else disabled.insert(source);
+    QStringList sources;
+    for (auto id : disabled) sources.append(QString::number(id));
+    sources.sort();
+    auto settings = VaporView::applicationConfigSettings();
+    VaporView::setPersistentSetting(settings, isRemoteSkyMode()
+        ? QStringLiteral("Fpga/remoteDisabledHomeSources") : QStringLiteral("Fpga/localDisabledHomeSources"), sources);
+    updateHomeDeviceStatusCapsules();
+    updateTemperatureTitleButtonsState();
+    updateDeviceConfigState();
 }
 
 QMap<quint16, QJsonObject>& MainWindow::fpgaSensorDrafts()
@@ -310,7 +325,8 @@ VaporView::DeviceState MainWindow::homeFpgaDeviceActionState(VaporView::SkyDevic
             || state_->fpga_session_.remoteStatus.value("busy").toBool())) return DeviceState::Disabled;
     } else if ((state_->fpga_busy_ && !state_->fpga_ready_) || state_->fpga_replaying_ || anyCollectorRunning()
         || state_->connection_attempt_in_progress_) return DeviceState::Disabled;
-    return homeFpgaDeviceState(device);
+    const auto actual = homeFpgaDeviceState(device);
+    return actual != DeviceState::Connected && !homeFpgaDeviceSelected(device) ? DeviceState::Disabled : actual;
 }
 
 QMap<quint32, quint32> MainWindow::homeFpgaRegisters() const
@@ -513,7 +529,9 @@ void MainWindow::connectNextHomeFpgaDevice()
         || (isUiTestMode() ? state_->fpga_sim_busy_ : state_->fpga_busy_)) return;
     while (!state_->fpga_home_connect_queue_.isEmpty()) {
         const auto device = state_->fpga_home_connect_queue_.takeFirst();
-        if(device==VaporView::SkyDeviceId::TemperatureController && !(homeFpgaExtensions()&VaporView::FpgaExtensions::Rd105))continue;
+        if (!homeFpgaDeviceSelected(device)) continue;
+        if(device==VaporView::SkyDeviceId::TemperatureController && !homeFpgaRegisters().isEmpty()
+            && !(homeFpgaExtensions()&VaporView::FpgaExtensions::Rd105))continue;
         if (homeFpgaDeviceState(device) == VaporView::DeviceState::Connected
             && fpgaSensorDrafts().value(homeFpgaSensorSource(device)).isEmpty()) continue;
         setHomeFpgaDeviceEnabled(device,true);
@@ -576,6 +594,7 @@ void MainWindow::executeHomeFpgaDeviceAction(VaporView::SkyDeviceId device, bool
                     if (!window || window->state_->fpga_home_action_device_ != device) return;
                     window->state_->fpga_home_action_device_ = SkyDeviceId::All;
                     if (window->isFpgaRelayPath() && (!window->isRemoteSkyMode() || window->isUiTestMode())
+                        && window->homeFpgaDeviceActionState(device) != VaporView::DeviceState::Disabled
                         && (window->homeFpgaDeviceActionState(device) != VaporView::DeviceState::Connected
                             || !window->fpgaSensorDrafts().value(window->homeFpgaSensorSource(device)).isEmpty()))
                         window->setHomeFpgaDeviceEnabled(device,true);
@@ -611,6 +630,11 @@ void MainWindow::setupFpgaControlPage()
     using Controller = VaporView::Ground::Devices::FpgaDeviceController;
     qRegisterMetaType<VaporView::FpgaWave::CompletedStream>();
     QSettings settings = VaporView::applicationConfigSettings();
+    for (int target = 0; target < 2; ++target) {
+        const auto key = target ? QStringLiteral("Fpga/remoteDisabledHomeSources") : QStringLiteral("Fpga/localDisabledHomeSources");
+        for (const auto &source : settings.value(key).toStringList())
+            state_->fpga_home_disabled_sources_[target].insert(source.toUShort());
+    }
     const auto saved = QJsonDocument::fromJson(settings.value(QStringLiteral("Fpga/desiredConfiguration")).toByteArray());
     state_->fpga_config_ = FpgaControlConfig::fromJson(saved.object());
     state_->fpga_session_.remoteConfig = FpgaControlConfig::fromJson(

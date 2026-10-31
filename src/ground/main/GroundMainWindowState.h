@@ -345,6 +345,8 @@ struct MainWindowState
     bool fpga_home_raw_start_pending_ = false;
     VaporView::SkyDeviceId fpga_home_connect_device_ = VaporView::SkyDeviceId::All;
     QList<VaporView::SkyDeviceId> fpga_home_connect_queue_;
+    // Desired bulk-connect selection, independent of CONTROL readback and Direct presets.
+    QSet<quint16> fpga_home_disabled_sources_[2]; // local / remote; source 0 is ADC/DLIA
     std::mutex fpga_snapshot_mutex_;
     VaporView::Ground::Session::GroundSensorSnapshot fpga_recording_snapshot_;
     VaporView::Ai8TemperatureControllerProtocol::LiveData fpga_ai8_live_;

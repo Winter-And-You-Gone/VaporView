@@ -564,6 +564,8 @@ void MainWindow::updateHomeDeviceStatusCapsules()
             }
             if (state == VaporView::DeviceState::Disabled)
             {
+                if (isFpgaRelayPath() && !homeFpgaDeviceSelected(device))
+                    return state_->is_english_ ? QStringLiteral("Select Enabled first") : QStringLiteral("请先勾选启用");
                 if (isFpgaRelayPath()) return state_->is_english_ ? QStringLiteral("FPGA device unavailable") : QStringLiteral("FPGA 设备不可用");
                 if (remoteMode)
                 {
