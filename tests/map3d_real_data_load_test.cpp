@@ -1,5 +1,11 @@
 #include "test_settings_sandbox.h"
 #include "map3d/OsgEarthViewWidget.h"
+#include "../src/map3d/Map3DAssetLoader.h"
+
+#include <osgEarth/ElevationPool>
+#include <osgEarth/Map>
+#include <osgEarth/MapNode>
+#include <osgEarth/SpatialReference>
 
 #include <QApplication>
 #include <QDateTime>
@@ -20,9 +26,11 @@
 #include <QThreadPool>
 #include <QTemporaryDir>
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <functional>
+#include <limits>
 
 namespace
 {
@@ -77,6 +85,40 @@ int main(int argc, char** argv)
     {
         std::cout << "SKIP: Hangzhou Xihu real-3D local data is not installed\n";
         return 77;
+    }
+
+    const QString imageryEarth = sourceRoot.filePath(
+        QStringLiteral("resources/maps/vaporview_with_sentinel2_imagery.earth"));
+    const QString demVrt = sourceRoot.filePath(
+        QStringLiteral("resources/maps/terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt"));
+    if (QFileInfo::exists(imageryEarth) && QFileInfo::exists(demVrt))
+    {
+        auto asset = VaporView::Map3D::Detail::loadEarthAsset(imageryEarth);
+        require(asset.mapNode && asset.mapNode->getMap()
+                    && asset.diagnostics.openElevationLayerName == QStringLiteral("Copernicus DEM GLO-30"),
+                QStringLiteral("local imagery opens the real DEM data source"));
+        auto* pool = asset.mapNode->getMap()->getElevationPool();
+        const auto* wgs84 = osgEarth::SpatialReference::get("wgs84");
+        require(pool && wgs84, QStringLiteral("imagery scene exposes an elevation sampler"));
+        int validSamples = 0;
+        double minHeight = (std::numeric_limits<double>::max)();
+        double maxHeight = (std::numeric_limits<double>::lowest)();
+        for (double lat : {30.10, 30.13, 30.16, 30.20})
+        {
+            for (double lon : {120.02, 120.05, 120.08, 120.11})
+            {
+                const auto sample = pool->getSample(osgEarth::GeoPoint(wgs84, lon, lat), nullptr);
+                if (!sample.hasData()) continue;
+                const double height = sample.elevation().getValue();
+                minHeight = (std::min)(minHeight, height);
+                maxHeight = (std::max)(maxHeight, height);
+                ++validSamples;
+            }
+        }
+        std::cout << "Local imagery terrain: " << validSamples << " elevations, "
+                  << minHeight << " to " << maxHeight << " m\n";
+        require(validSamples >= 4 && maxHeight - minHeight > 10.0,
+                QStringLiteral("local imagery scene returns varying real terrain heights"));
     }
 
     int presentedFrames = 0;

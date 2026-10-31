@@ -87,6 +87,7 @@ struct EarthLoadDiagnostics {
     bool foundMapNode = false;
     int layerCount = 0;
     int openLayerCount = 0;
+    QString openElevationLayerName;
     QString failureReason;
     QStringList layerSummaries;
 };

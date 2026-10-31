@@ -881,6 +881,22 @@ bool MapDataManager::isBuiltInEarthFile(const QString& earthPath) const
         || fileName == QStringLiteral("vaporview_real3d_local.earth");
 }
 
+bool MapDataManager::isLocalImageryEarthFile(const QString& earthPath) const
+{
+    const QFileInfo requested(earthPath);
+    if (!requested.isFile()) return false;
+    for (const QString& root : candidateRoots())
+    {
+        for (const char* relative : {kSentinel2ImageryEarthRelative,
+                                     kLandsatImageryEarthRelative,
+                                     kOpenAerialMapImageryEarthRelative})
+        {
+            if (requested == QFileInfo(absolutePath(root, relative))) return true;
+        }
+    }
+    return false;
+}
+
 QString MapDataManager::modeLabel(MapDataMode mode)
 {
     switch (mode)

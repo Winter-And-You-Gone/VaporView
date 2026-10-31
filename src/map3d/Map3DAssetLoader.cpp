@@ -1,6 +1,7 @@
 #include "MapLanguage.h"
 #include "Map3DAssetLoader.h"
 #include "Map3DRuntime.h"
+#include "map3d/MapDataManager.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -16,11 +17,14 @@
 #include <osg/Texture2D>
 #include <osgDB/ReadFile>
 #include <osgEarth/Layer>
+#include <osgEarth/ElevationLayer>
+#include <osgEarth/GDAL>
 #include <osgEarth/Map>
 #include <osgEarth/MapNode>
 #include <osgEarth/Registry>
 #include <osgUtil/Optimizer>
 
+#include <algorithm>
 #include <cmath>
 #include <functional>
 
@@ -215,6 +219,32 @@ EarthAssetLoadResult loadEarthAsset(const QString& earthPath)
         result.node = nullptr;
         return result;
     }
+    // Local imagery templates only contain imagery. Restore the best available
+    // DEM before opening the scene so switching imagery cannot flatten terrain.
+    MapDataManager mapDataManager;
+    if (result.mapNode->getMap() && mapDataManager.isLocalImageryEarthFile(earthPath))
+    {
+        osgEarth::LayerVector layers;
+        result.mapNode->getMap()->getLayers(layers);
+        const bool hasElevation = std::any_of(layers.cbegin(), layers.cend(), [](const auto& layer) {
+            return dynamic_cast<osgEarth::ElevationLayer*>(layer.get()) != nullptr;
+        });
+        if (!hasElevation)
+        {
+            const auto diagnostics = mapDataManager.selectBestAvailableMap(
+                MapDataScanMode::LightweightStartup).diagnostics;
+            const bool copernicus = diagnostics.copernicusDemAvailable;
+            const QString demPath = copernicus ? diagnostics.copernicusDemVrtPath
+                                              : diagnostics.srtmDemVrtPath;
+            if ((copernicus || diagnostics.srtmDemAvailable) && QFileInfo(demPath).isFile())
+            {
+                osg::ref_ptr<osgEarth::GDALElevationLayer> elevation = new osgEarth::GDALElevationLayer;
+                elevation->setName(copernicus ? "Copernicus DEM GLO-30" : "SRTM");
+                elevation->setURL(osgEarth::URI(QDir::fromNativeSeparators(demPath).toStdString()));
+                result.mapNode->getMap()->addLayer(elevation.get());
+            }
+        }
+    }
     result.mapNode->openMapLayers();
     if (result.mapNode->getMap())
     {
@@ -230,6 +260,8 @@ EarthAssetLoadResult loadEarthAsset(const QString& earthPath)
             if (layer->isOpen())
             {
                 ++result.diagnostics.openLayerCount;
+                if (dynamic_cast<osgEarth::ElevationLayer*>(layer.get()))
+                    result.diagnostics.openElevationLayerName = QString::fromStdString(layer->getName());
             }
             result.diagnostics.layerSummaries.push_back(
                 mapText(QStringLiteral("%1 | 已打开=%2 | 状态=%3"))

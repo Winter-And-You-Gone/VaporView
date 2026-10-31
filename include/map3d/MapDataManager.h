@@ -125,6 +125,7 @@ public:
 
     MapDataSelection selectBestAvailableMap(MapDataScanMode scanMode = MapDataScanMode::Full) const;
     bool isBuiltInEarthFile(const QString& earthPath) const;
+    bool isLocalImageryEarthFile(const QString& earthPath) const;
 
     static QString modeLabel(MapDataMode mode);
     static QString modeKey(MapDataMode mode);

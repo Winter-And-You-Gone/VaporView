@@ -111,6 +111,27 @@ int main(int argc, char** argv)
     touch(root, QStringLiteral("resources/maps/vaporview_default.earth"));
     touch(root, QStringLiteral("resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png"));
     VaporView::Map3D::MapDataManager builtInManager({root.absolutePath()});
+    {
+        QTemporaryDir imageryRoot;
+        QTemporaryDir otherRoot;
+        require(imageryRoot.isValid() && otherRoot.isValid(), "imagery roots are available");
+        const QDir imageryDir(imageryRoot.path());
+        const QDir otherDir(otherRoot.path());
+        const QStringList templates = {
+            QStringLiteral("resources/maps/vaporview_with_sentinel2_imagery.earth"),
+            QStringLiteral("resources/maps/vaporview_with_landsat_imagery.earth"),
+            QStringLiteral("resources/maps/vaporview_with_openaerialmap_imagery.earth")};
+        VaporView::Map3D::MapDataManager imageryManager({imageryDir.absolutePath()});
+        for (const QString& path : templates)
+        {
+            touch(imageryDir, path);
+            touch(otherDir, path);
+            require(imageryManager.isLocalImageryEarthFile(imageryDir.filePath(path)),
+                    "known local imagery scene is recognized in a configured root");
+            require(!imageryManager.isLocalImageryEarthFile(otherDir.filePath(path)),
+                    "unrelated custom scenes with matching names are left alone");
+        }
+    }
     require(builtInManager.isBuiltInEarthFile(QStringLiteral("resources/maps/vaporview_full_local_srtm.earth")),
             "SRTM full-local earth template should be treated as built in");
     require(builtInManager.isBuiltInEarthFile(QStringLiteral("resources/maps/vaporview_real3d_local.earth")),

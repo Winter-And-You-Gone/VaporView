@@ -119,6 +119,12 @@ int main(int argc, char** argv)
         sourceRoot.filePath(QStringLiteral("resources/maps/vaporview_real3d_local.earth"));
     const QString tilesetPath =
         sourceRoot.filePath(QStringLiteral("resources/maps/tiles3d/local/tileset.json"));
+    const QString imageryEarthPath =
+        sourceRoot.filePath(QStringLiteral("resources/maps/vaporview_with_sentinel2_imagery.earth"));
+    const QString imageryVrtPath =
+        sourceRoot.filePath(QStringLiteral("resources/maps/imagery/sentinel2/sentinel2.vrt"));
+    const QString demVrtPath =
+        sourceRoot.filePath(QStringLiteral("resources/maps/terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt"));
 
     if (!QFileInfo::exists(earthPath) || !QFileInfo::exists(tilesetPath))
     {
@@ -144,6 +150,16 @@ int main(int argc, char** argv)
     app.setOrganizationName(QStringLiteral("VaporViewMap3DRealWindowCloseTest"));
     app.setApplicationName(QStringLiteral("map3d_real_window_close_test"));
 
+    const bool hasImageryAndDem = QFileInfo::exists(imageryEarthPath)
+        && QFileInfo::exists(imageryVrtPath) && QFileInfo::exists(demVrtPath);
+    if (hasImageryAndDem)
+    {
+        QSettings mapSettings(QSettings::defaultFormat(), QSettings::UserScope,
+                              QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+        mapSettings.setValue(QStringLiteral("lastEarthFile"), imageryEarthPath);
+        mapSettings.sync();
+    }
+
     auto* window = new VaporView::Map3D::Map3DWindow;
     window->resize(1100, 760);
     window->show();
@@ -156,6 +172,16 @@ int main(int argc, char** argv)
     require(startupLoaded,
             QStringLiteral("lightweight startup map loads before selecting local detail: %1: %2")
                 .arg(startupDiagnostics.requestedPath, startupDiagnostics.failureReason));
+    if (hasImageryAndDem)
+    {
+        require(QFileInfo(startupDiagnostics.requestedPath) == QFileInfo(imageryEarthPath)
+                    && view->layerAvailable(VaporView::Map3D::Map3DLayer::DigitalElevation)
+                    && startupDiagnostics.openElevationLayerName == QStringLiteral("Copernicus DEM GLO-30"),
+                QStringLiteral("restoring a local imagery scene also loads the available DEM"));
+        auto* status = window->findChild<QLabel*>(QStringLiteral("map3DStatusLabel"));
+        require(status && status->text().contains(QStringLiteral("Copernicus DEM GLO-30")),
+                QStringLiteral("the displayed map status reports the loaded imagery terrain"));
+    }
     auto* displayAction = window->findChild<QAction*>(QStringLiteral("map3DDisplayAction"));
     require(displayAction != nullptr, QStringLiteral("display settings action exists"));
     displayAction->trigger();
@@ -276,6 +302,20 @@ int main(int argc, char** argv)
     require(tileDiagnostics.loadedPayloadCount == 55,
             QStringLiteral("real window loads all 55 building payloads, got %1")
                 .arg(tileDiagnostics.loadedPayloadCount));
+    if (hasImageryAndDem)
+    {
+        auto* imagery = window->findChild<QAction*>(QStringLiteral("map3DLocalImagery_sentinel2"));
+        require(imagery && imagery->isEnabled(), QStringLiteral("local Sentinel-2 action is available"));
+        imagery->trigger();
+        require(waitUntil([&]() {
+                    const auto diagnostics = view->earthLoadDiagnostics();
+                    return diagnostics.loaded && QFileInfo(diagnostics.requestedPath) == QFileInfo(imageryEarthPath);
+                }, 30000),
+                QStringLiteral("switching to local imagery completes"));
+        require(view->earthLoadDiagnostics().openElevationLayerName == QStringLiteral("Copernicus DEM GLO-30")
+                    && view->layerVisible(VaporView::Map3D::Map3DLayer::DigitalElevation),
+                QStringLiteral("switching imagery keeps the actual DEM open and visible"));
+    }
     view->setMaxVisibleSamples(10000);
 
     QTemporaryDir failedLoadDir;

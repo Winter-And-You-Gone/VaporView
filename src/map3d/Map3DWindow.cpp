@@ -3442,6 +3442,23 @@ QString Map3DWindow::replayTimeLabel() const
 void Map3DWindow::setMapSelection(const MapDataSelection& selection)
 {
     map_selection_ = selection;
+    if (view_ && map_data_manager_.isLocalImageryEarthFile(selection.earthFile))
+    {
+        const EarthLoadDiagnostics loaded = view_->earthLoadDiagnostics();
+        if (loaded.loaded && QFileInfo(loaded.requestedPath) == QFileInfo(selection.earthFile))
+        {
+            auto& diagnostics = map_selection_.diagnostics;
+            diagnostics.selectedDemLayerAvailable = !loaded.openElevationLayerName.isEmpty();
+            diagnostics.selectedElevationSource = loaded.openElevationLayerName;
+            if (loaded.openElevationLayerName == QStringLiteral("Copernicus DEM GLO-30"))
+                map_selection_.mode = MapDataMode::NaturalEarthWithCopernicusDem;
+            else if (loaded.openElevationLayerName == QStringLiteral("SRTM"))
+                map_selection_.mode = MapDataMode::NaturalEarthWithSrtm;
+            diagnostics.selectedBaseMode = map_selection_.mode;
+            diagnostics.selectedBaseModeLabel = MapDataManager::modeLabel(map_selection_.mode);
+            diagnostics.selectedBaseModeKey = MapDataManager::modeKey(map_selection_.mode);
+        }
+    }
     if (local_imagery_menu_)
     {
         local_imagery_menu_->clear();
