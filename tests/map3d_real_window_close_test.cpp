@@ -308,15 +308,27 @@ int main(int argc, char** argv)
     {
         auto* imagery = window->findChild<QAction*>(QStringLiteral("map3DLocalImagery_sentinel2"));
         auto* online = window->findChild<QAction*>(QStringLiteral("map3DOnlineImagery_tianditu"));
+        auto* openAerialMap = window->findChild<QAction*>(QStringLiteral("map3DOnlineImagery_openaerialmap"));
         auto* imageryMenu = window->findChild<QMenu*>(QStringLiteral("map3DLocalImageryMenu"));
         require(imagery && imagery->isEnabled(), QStringLiteral("local Sentinel-2 action is available"));
         require(online && imageryMenu && !online->isEnabled(), QStringLiteral("online imagery initially needs a key"));
+        require(openAerialMap && openAerialMap->isEnabled(), QStringLiteral("OpenAerialMap needs no key"));
         view->setSamples(std::vector<VaporView::Geo::NavSample>{pointProbe, pointProbe2});
         const QString previousEarth = view->earthLoadDiagnostics().requestedPath;
         const QString previousDem = view->earthLoadDiagnostics().openElevationLayerName;
         const int previousSamples = view->sampleCount();
         const double previousRange = view->earthCameraRangeM();
         view->hide(); // Keep the fake test key away from network requests.
+        openAerialMap->trigger();
+        require(view->activeSatelliteImagerySource() == QStringLiteral("online:openaerialmap")
+                    && openAerialMap->isChecked(), QStringLiteral("OpenAerialMap can be selected without a key"));
+        {
+            QSettings mapSettings(QSettings::defaultFormat(), QSettings::UserScope,
+                                  QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+            require(mapSettings.value(QStringLiteral("satelliteImagerySource")).toString()
+                        == QStringLiteral("online:openaerialmap"),
+                    QStringLiteral("the OpenAerialMap choice is persisted"));
+        }
         {
             QSettings config(qEnvironmentVariable("VAPORVIEW_CONFIG_FILE"), QSettings::IniFormat);
             config.setValue(QStringLiteral("TrajectoryViewer/map/tianditu_key"), QStringLiteral("test-key-not-sent"));
@@ -325,7 +337,8 @@ int main(int argc, char** argv)
         QMetaObject::invokeMethod(imageryMenu, "aboutToShow", Qt::DirectConnection);
         require(online->isEnabled(), QStringLiteral("online option becomes available when a key is configured"));
         online->trigger();
-        require(view->activeSatelliteImagerySource() == QStringLiteral("online:tianditu") && online->isChecked(),
+        require(view->activeSatelliteImagerySource() == QStringLiteral("online:tianditu") && online->isChecked()
+                    && !openAerialMap->isChecked(),
                 QStringLiteral("selecting online activates the Tianditu layer"));
         imagery->trigger();
         require(view->activeSatelliteImagerySource().startsWith(QStringLiteral("local:")) && imagery->isChecked()
@@ -518,9 +531,33 @@ int main(int argc, char** argv)
             QStringLiteral("cold session open automatically focuses after both loads finish"));
     require(hasVisibleMapSurface(view->grabFramebuffer()),
             QStringLiteral("cold session open renders the Earth surface"));
+    if (hasImageryAndDem)
+    {
+        view->hide(); // Keep the reload deterministic without relying on the network.
+        auto* oam = window->findChild<QAction*>(QStringLiteral("map3DOnlineImagery_openaerialmap"));
+        auto* reloadMap = window->findChild<QAction*>(QStringLiteral("map3DReloadBestMapAction"));
+        require(oam && reloadMap, QStringLiteral("OpenAerialMap and map reload actions are available"));
+        oam->trigger();
+        reloadMap->trigger();
+        require(waitUntil([&]() {
+                    return view->earthLoadDiagnostics().loaded
+                        && view->activeSatelliteImagerySource() == QStringLiteral("online:openaerialmap");
+                }, 30000), QStringLiteral("map reload restores the selected OpenAerialMap source"));
+        require(view->sampleCount() == kSessionSampleCount
+                    && view->layerAvailable(VaporView::Map3D::Map3DLayer::DigitalElevation)
+                    && view->layerVisible(VaporView::Map3D::Map3DLayer::DigitalElevation),
+                QStringLiteral("OpenAerialMap reload preserves the Session track and visible terrain"));
+    }
     window->close();
     delete window;
     processEventsFor(500);
+
+    if (hasImageryAndDem)
+    {
+        VaporView::Map3D::Map3DWindow restored;
+        const auto* oam = restored.findChild<QAction*>(QStringLiteral("map3DOnlineImagery_openaerialmap"));
+        require(oam && oam->isChecked(), QStringLiteral("a new window remembers the OpenAerialMap choice"));
+    }
 
     std::cout << "map3d_real_window_close_test passed: real window opened, rendered, and closed\n";
     return 0;

@@ -9,6 +9,7 @@
 #include "map3d/Map3DRuntime.h"
 #include "map3d/EarthProjectionProfile.h"
 #include "map3d/TiandituImageLayer.h"
+#include "map3d/OpenAerialMapImageLayer.h"
 #include <osgEarth/Map>
 #include <osgEarth/TerrainTileModelFactory>
 #include <osgDB/ReadFile>
@@ -457,6 +458,37 @@ int main(int argc, char** argv)
 
     checkImageryFallback();
     {
+        osg::ref_ptr<VaporView::Map3D::Detail::OpenAerialMapImageLayer> layer =
+            new VaporView::Map3D::Detail::OpenAerialMapImageLayer;
+        require(layer->options().minLevel().get() == 14u,
+                "OpenAerialMap does not mistake the low zoom coverage grid for imagery");
+        require(QString::fromStdString(layer->getURL().full())
+                    == QStringLiteral("https://global.imagery.hotosm.org/{z}/{x}/{y}.png"),
+                "OpenAerialMap uses the official global imagery service");
+        osg::ref_ptr<osg::Image> empty = new osg::Image;
+        empty->allocateImage(256, 256, 1, GL_RGBA, GL_UNSIGNED_BYTE);
+        for (int y = 0; y < 256; ++y)
+            for (int x = 0; x < 256; ++x)
+            {
+                auto* pixel = empty->data(x, y);
+                pixel[0] = pixel[1] = pixel[2] = 0;
+                pixel[3] = 255;
+            }
+        const auto* profile = osgEarth::Profile::create(osgEarth::Profile::SPHERICAL_MERCATOR);
+        const osgEarth::TileKey key(14, 0, 0, profile);
+        const auto mask = [&key, &empty]() {
+            return VaporView::Map3D::Detail::maskOpenAerialMapNoData(osgEarth::GeoImage(empty.get(), key.getExtent()));
+        };
+        require(!mask().valid(),
+                "an all-black no-coverage tile falls through to the basemap");
+        empty->data(255, 255)[0] = 1;
+        const auto partial = mask();
+        require(partial.valid() && partial.getImage()->getColor(0, 0).a() == 0.0f
+                    && partial.getImage()->getColor(255, 255).a() == 1.0f
+                    && empty->getColor(0, 0).a() == 1.0f,
+                "no-data pixels are transparent while dark imagery and the cached input are retained");
+    }
+    {
         auto settings = map3DTestSettings();
         settings.setValue(QStringLiteral("layers/roadNetworkVisible"), true);
         settings.setValue(QStringLiteral("layers/satelliteImageryVisible"), false);
@@ -481,10 +513,32 @@ int main(int argc, char** argv)
             "keyboard navigation opens second and third level map menus");
     require(imageryMenu->title() == QStringLiteral("卫星影像"), "imagery menu uses the satellite title");
     auto* onlineImagery = window.findChild<QAction*>(QStringLiteral("map3DOnlineImagery_tianditu"));
+    auto* openAerialMap = window.findChild<QAction*>(QStringLiteral("map3DOnlineImagery_openaerialmap"));
     require(onlineImagery && !onlineImagery->isEnabled()
                 && onlineImagery->text().contains(QStringLiteral("在线"))
                 && onlineImagery->text().contains(QStringLiteral("未配置 Key")),
             "online imagery is listed with an explanation when no key is configured");
+    require(openAerialMap && openAerialMap->isEnabled() && openAerialMap->isCheckable()
+                && openAerialMap->text() == QStringLiteral("在线 · OpenAerialMap"),
+            "OpenAerialMap is available online without a key");
+    const auto hasMenuCheckMark = [imageryMenu, openAerialMap]() {
+        const bool wasChecked = openAerialMap->isChecked();
+        openAerialMap->setChecked(false);
+        const QImage unchecked = imageryMenu->grab().toImage();
+        openAerialMap->setChecked(true);
+        const QImage checked = imageryMenu->grab().toImage();
+        openAerialMap->setChecked(wasChecked);
+        const QRect item = imageryMenu->actionGeometry(openAerialMap);
+        const qreal dpr = imageryMenu->devicePixelRatioF();
+        const QRect slot(qRound((item.left() + 8) * dpr), qRound((item.center().y() - 10) * dpr),
+                         qRound(20 * dpr), qRound(20 * dpr));
+        int changed = 0;
+        for (int y = slot.top(); y <= slot.bottom() && y < checked.height(); ++y)
+            for (int x = slot.left(); x <= slot.right() && x < checked.width(); ++x)
+                if (x >= 0 && y >= 0 && checked.pixel(x, y) != unchecked.pixel(x, y)) ++changed;
+        return changed > 8;
+    };
+    require(hasMenuCheckMark(), "checked imagery source paints a visible check icon");
     for (const QString& key : {QStringLiteral("sentinel2"), QStringLiteral("landsat"),
                                QStringLiteral("openaerialmap")})
     {
@@ -575,6 +629,7 @@ int main(int argc, char** argv)
             "visibility controls and refresh status translate to English");
     require(imageryMenu->title() == QStringLiteral("Satellite image sources")
                 && onlineImagery->text().startsWith(QStringLiteral("Online · "))
+                && openAerialMap->text() == QStringLiteral("Online · OpenAerialMap")
                 && window.findChild<QAction*>(QStringLiteral("map3DLocalImagery_sentinel2"))
                        ->text().startsWith(QStringLiteral("Local · ")),
             "satellite imagery menu translates its source prefixes");
@@ -725,6 +780,13 @@ int main(int argc, char** argv)
         QCoreApplication::processEvents();
         more->popup(moreButton->mapToGlobal(QPoint(0, moreButton->height())));
         QCoreApplication::processEvents();
+        if (dark)
+        {
+            imageryMenu->popup(window.mapToGlobal(QPoint(40, 120)));
+            QCoreApplication::processEvents();
+            require(hasMenuCheckMark(), "checked imagery source remains visible in the dark theme");
+            imageryMenu->hide();
+        }
         more->hide();
     }
     qApp->setProperty(VaporView::kAppDarkThemeProperty, originalTheme);

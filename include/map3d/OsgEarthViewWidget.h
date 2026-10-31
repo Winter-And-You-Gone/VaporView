@@ -143,6 +143,7 @@ public:
     void loadEarthFileAsync(const QString& earthPath, std::function<void(bool)> finished);
     void loadEarthFilePreservingViewAsync(const QString& earthPath, std::function<void(bool)> finished);
     bool applyTiandituSatelliteImagery(const QString& key);
+    bool applyOpenAerialMapImagery();
     bool applyLocalSatelliteImagery(const QString& vrtPath);
     QString activeSatelliteImagerySource() const;
     bool loadLocal3DTilesPreview(const QString& tilesetPath);

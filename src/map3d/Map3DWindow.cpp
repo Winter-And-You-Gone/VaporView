@@ -207,7 +207,25 @@ public:
         setWindowFlag(Qt::NoDropShadowWindowHint, true);
         setAttribute(Qt::WA_TranslucentBackground);
     }
+    void setCheckIcon(const QIcon& icon)
+    {
+        check_icon_ = icon;
+        update();
+    }
 protected:
+    void paintEvent(QPaintEvent* event) override
+    {
+        QMenu::paintEvent(event);
+        QPainter painter(this);
+        for (QAction* action : actions())
+        {
+            if (!action->isCheckable() || !action->isChecked() || !action->isVisible()) continue;
+            const QRect item = actionGeometry(action);
+            const QRect iconRect(item.left() + 10, item.center().y() - 8, 16, 16);
+            check_icon_.paint(&painter, iconRect, Qt::AlignCenter,
+                              action->isEnabled() ? QIcon::Normal : QIcon::Disabled);
+        }
+    }
     void showEvent(QShowEvent* event) override
     {
         QMenu::showEvent(event);
@@ -236,6 +254,8 @@ protected:
         }
         return QMenu::event(event);
     }
+private:
+    QIcon check_icon_;
 };
 
 constexpr qint64 kStatusUpdateIntervalMs = 200;
@@ -1735,10 +1755,11 @@ void Map3DWindow::refreshLayerMenuTheme()
             map3DRuntimeRootCandidates(), {dark ? QStringLiteral("resources/lucide/chevron-right-dark.svg")
                                                : QStringLiteral("resources/lucide/chevron-right.svg")}));
         const QString style = applyAppThemeTokens(QStringLiteral(
-            "QMenu { background: @vv-surface; color: @vv-text; border: 1px solid @vv-border; border-radius: 12px; padding: 6px 0px; }"
+            "QMenu { background: @vv-menu-panel; color: @vv-menu-text; border: 1px solid @vv-border; border-radius: 10px; padding: 12px 0px; }"
             "QMenu::item { margin: 0px; padding: 8px 32px 8px 16px; border-radius: 0px; min-width: 190px; }"
-            "QMenu::item:selected { background: @vv-primary-subtle; }"
-            "QMenu::item:disabled { color: @vv-text-disabled; }"
+            "QMenu::item:selected { background: @vv-menu-hover; }"
+            "QMenu::item:disabled { color: @vv-menu-disabled; }"
+            "QMenu::indicator { image: none; width: 18px; height: 18px; }"
             "QMenu::right-arrow { image: url(\"%1\"); width: 16px; height: 16px; }").arg(arrow), dark);
         menu->setStyleSheet(style);
         for (auto* child : menu->findChildren<QMenu*>())
@@ -1762,6 +1783,12 @@ void Map3DWindow::refreshLayerMenuTheme()
     }
     const QIcon checkIcon = map3DIcon(QStringLiteral("check"),
                                      appThemeColor(AppThemeColor::MenuCheckText, dark));
+    if (auto* moreMenu = findChild<QMenu*>(QStringLiteral("map3DMoreMenu")))
+    {
+        if (auto* styledMenu = dynamic_cast<MapOptionsMenu*>(moreMenu)) styledMenu->setCheckIcon(checkIcon);
+        for (QMenu* child : moreMenu->findChildren<QMenu*>())
+            if (auto* styledMenu = dynamic_cast<MapOptionsMenu*>(child)) styledMenu->setCheckIcon(checkIcon);
+    }
     for (VaporView::SingleLevelPopupMenuRow* row : layer_rows_)
     {
         if (row)
@@ -2606,6 +2633,18 @@ bool Map3DWindow::applySelectedSatelliteImagery(bool showStatusMessage)
     if (VaporView::settingsWritesSuspended() || !view_ || !view_->hasEarthMap()
         || !layerVisible(Map3DLayer::SatelliteImagery))
         return false;
+
+    if (satellite_imagery_source_ == QStringLiteral("online:openaerialmap"))
+    {
+        const bool loaded = view_->applyOpenAerialMapImagery();
+        if (loaded) tianditu_satellite_imagery_loaded_ = false;
+        if (showStatusMessage)
+            statusBar()->showMessage(loaded
+                ? mapText(QStringLiteral("已启用 OpenAerialMap；影像覆盖因地区而异，远景显示本地底图。"))
+                : mapText(QStringLiteral("OpenAerialMap 加载失败，已保留当前影像。")), 8000);
+        updateStatus(nullptr, true);
+        return loaded;
+    }
 
     const QString key = satellite_imagery_source_.mid(QStringLiteral("local:").size());
     const auto& options = map_selection_.diagnostics.localImageryOptions;
@@ -3516,6 +3555,19 @@ void Map3DWindow::refreshSatelliteImageryMenu()
     online->setChecked(satellite_imagery_source_ == QStringLiteral("online:tianditu")
                        || (satellite_imagery_source_.isEmpty() && tianditu_satellite_imagery_loaded_));
 
+    auto* openAerialMap = local_imagery_menu_->findChild<QAction*>(QStringLiteral("map3DOnlineImagery_openaerialmap"));
+    if (!openAerialMap)
+    {
+        openAerialMap = local_imagery_menu_->addAction(QString());
+        openAerialMap->setObjectName(QStringLiteral("map3DOnlineImagery_openaerialmap"));
+        openAerialMap->setCheckable(true);
+        connect(openAerialMap, &QAction::triggered, this, [this]() {
+            selectSatelliteImagerySource(QStringLiteral("online:openaerialmap"));
+        });
+    }
+    openAerialMap->setText(mapText(QStringLiteral("在线 · OpenAerialMap")));
+    openAerialMap->setChecked(satellite_imagery_source_ == QStringLiteral("online:openaerialmap"));
+
     for (const LocalImageryOption& option : map_selection_.diagnostics.localImageryOptions)
     {
         const QString objectName = QStringLiteral("map3DLocalImagery_%1").arg(option.key);
@@ -3739,6 +3791,10 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest, bool for
         if (tianditu_satellite_imagery_loaded_)
         {
             text += mapText(QStringLiteral(" | 影像 天地图卫星"));
+        }
+        else if (view_ && view_->activeSatelliteImagerySource() == QStringLiteral("online:openaerialmap"))
+        {
+            text += mapText(QStringLiteral(" | 影像 OpenAerialMap（覆盖因地区而异）"));
         }
         text += QStringLiteral(" | DEM %1 | OSM %2")
                     .arg(selectedDemLabel(map_selection_.diagnostics),
