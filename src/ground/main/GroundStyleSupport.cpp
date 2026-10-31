@@ -991,19 +991,21 @@ QCheckBox,
 QRadioButton {
     color: @vv-text-title;
 }
-QCheckBox::indicator,
 QRadioButton::indicator {
     background-color: @vv-surface;
     border-color: @vv-border;
 }
+QCheckBox::indicator {
+    background-color: transparent;
+    border-color: @vv-border;
+}
 QWidget#sessionPpkPanel QCheckBox::indicator {
-    background-color: @vv-surface-alt;
-    border: 1px solid @vv-text-secondary;
-    border-radius: 4px;
+    background-color: transparent;
+    border: none;
 }
 QWidget#sessionPpkPanel QCheckBox::indicator:checked {
-    background-color: @vv-primary;
-    border-color: @vv-primary;
+    background-color: transparent;
+    border: none;
 }
 QLabel[data-valid="true"] {
     color: @vv-white;

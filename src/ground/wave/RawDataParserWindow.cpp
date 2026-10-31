@@ -771,17 +771,15 @@ public:
         indicator.rect = QStyle::alignedRect(option.direction, Qt::AlignCenter,
             QSize(style->pixelMetric(QStyle::PM_IndicatorWidth, &option, option.widget),
                   style->pixelMetric(QStyle::PM_IndicatorHeight, &option, option.widget)), option.rect);
-        indicator.state &= ~(QStyle::State_On | QStyle::State_Off | QStyle::State_NoChange);
-        indicator.state |= checkState == Qt::Checked ? QStyle::State_On : QStyle::State_Off;
+        QColor color = VaporView::appThemeColor(checkState == Qt::Checked
+                                                    ? VaporView::AppThemeColor::Primary
+                                                    : VaporView::AppThemeColor::TextSecondary,
+                                                VaporView::isDarkThemePalette(option.palette));
+        if (!(option.state & QStyle::State_Enabled)) color.setAlphaF(0.6);
         if (checkState == Qt::Checked)
-        {
-            QColor color = VaporView::appThemeColor(VaporView::AppThemeColor::Primary,
-                                                    VaporView::isDarkThemePalette(option.palette));
-            if (!(option.state & QStyle::State_Enabled)) color.setAlphaF(0.6);
             VaporView::drawSquareCheckBig(*painter, indicator.rect, color);
-        }
         else
-            style->drawPrimitive(QStyle::PE_IndicatorItemViewItemCheck, &indicator, painter, option.widget);
+            VaporView::drawSquare(*painter, indicator.rect, color);
     }
 
     bool editorEvent(QEvent *event, QAbstractItemModel *model, const QStyleOptionViewItem& option,

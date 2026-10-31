@@ -98,6 +98,36 @@ int main(int argc, char **argv)
         }
     require(combined > 100 && intersection > combined * 0.85,
             "custom checkboxes use the same visible shape as square-check-big.svg");
+    QImageReader squareSvg(QFileInfo(svgPath).absoluteDir().filePath(QStringLiteral("square.svg")));
+    squareSvg.setScaledSize(reference.size());
+    const QImage squareReference = squareSvg.read().convertToFormat(QImage::Format_ARGB32);
+    require(!squareReference.isNull(), "the shared Lucide square icon can be loaded");
+    QImage squareDrawn(reference.size(), QImage::Format_ARGB32_Premultiplied);
+    squareDrawn.fill(Qt::transparent);
+    {
+        QPainter painter(&squareDrawn);
+        VaporView::drawSquare(painter, squareDrawn.rect(), Qt::black);
+    }
+    intersection = 0;
+    combined = 0;
+    int checkedTop = reference.height(), checkedBottom = -1;
+    int uncheckedTop = reference.height(), uncheckedBottom = -1;
+    for (int y = 0; y < reference.height(); ++y)
+        for (int x = 0; x < reference.width(); ++x) {
+            const bool square = qAlpha(squareDrawn.pixel(x, y)) > 64;
+            const bool expected = qAlpha(squareReference.pixel(x, y)) > 64;
+            intersection += square && expected;
+            combined += square || expected;
+            // The left side belongs only to the frame, not the protruding check mark.
+            if (x < reference.width() / 3) {
+                if (square) { uncheckedTop = qMin(uncheckedTop, y); uncheckedBottom = qMax(uncheckedBottom, y); }
+                if (qAlpha(drawn.pixel(x, y)) > 64) { checkedTop = qMin(checkedTop, y); checkedBottom = qMax(checkedBottom, y); }
+            }
+        }
+    require(combined > 100 && intersection > combined * 0.85,
+            "custom unchecked checkboxes use the same shape as square.svg");
+    require(checkedTop == uncheckedTop && checkedBottom == uncheckedBottom,
+            "checked and unchecked frames have the same height and vertical position");
     VaporView::installButtonFocusStyle();
     auto *style = app.style();
     VaporView::installButtonFocusStyle();
@@ -134,6 +164,35 @@ int main(int argc, char **argv)
             const QImage unchecked = checkbox->grab().toImage();
             require(!checked.isNull() && checked != unchecked && primaryPixels > 5,
                     "checked and unchecked controls remain visibly distinct in both themes");
+            QStyleOptionButton checkOption;
+            checkOption.initFrom(checkbox);
+            const QRect indicator = checkbox->style()->subElementRect(QStyle::SE_CheckBoxIndicator, &checkOption, checkbox);
+            const qreal side = qMin(indicator.width(), indicator.height());
+            const QPointF center = QRectF(indicator).center();
+            const qreal ratio = checked.devicePixelRatio();
+            const QPoint interior(qRound((center.x() - side / 4.0) * ratio),
+                                  qRound((center.y() + side / 5.0) * ratio));
+            require(checked.pixelColor(interior) == checked.pixelColor(0, 0) &&
+                        unchecked.pixelColor(interior) == unchecked.pixelColor(0, 0),
+                    "checked and unchecked indicators leave the underlying background visible");
+            const auto frameEdge = [&](const QImage& image) {
+                QRect bounds;
+                const int left = qRound((center.x() - side / 2.0) * ratio);
+                const int right = qRound((center.x() - side / 6.0) * ratio);
+                const int top = qRound((center.y() - side / 2.0) * ratio);
+                const int bottom = qRound((center.y() + side / 2.0) * ratio);
+                for (int y = top; y < bottom; ++y)
+                    for (int x = left; x < right; ++x) {
+                        const QColor pixel = image.pixelColor(x, y);
+                        if (qAbs(pixel.red() - primary.red()) < 30 &&
+                            qAbs(pixel.green() - primary.green()) < 30 &&
+                            qAbs(pixel.blue() - primary.blue()) < 30)
+                            bounds |= QRect(x, y, 1, 1);
+                    }
+                return bounds;
+            };
+            require(!frameEdge(checked).isEmpty() && frameEdge(checked) == frameEdge(unchecked),
+                    "rendered checked and unchecked frames keep the same size and position");
         }
         for (bool styled : {false, true})
         {

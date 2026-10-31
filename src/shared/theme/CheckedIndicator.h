@@ -8,6 +8,21 @@
 namespace VaporView
 {
 
+// Draw resources/lucide/square.svg on the same 24-unit canvas as the checked icon.
+inline void drawSquare(QPainter& painter, const QRectF& rect, const QColor& color)
+{
+    const qreal side = qMin(rect.width(), rect.height());
+    if (side <= 0) return;
+    painter.save();
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.translate(rect.center() - QPointF(side / 2, side / 2));
+    painter.scale(side / 24.0, side / 24.0);
+    painter.setPen(QPen(color, 2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    painter.setBrush(Qt::NoBrush);
+    painter.drawRoundedRect(QRectF(3, 3, 18, 18), 2, 2);
+    painter.restore();
+}
+
 // Draw the two paths from resources/lucide/square-check-big.svg, tinted for the current theme.
 inline void drawSquareCheckBig(QPainter& painter, const QRectF& rect, const QColor& color)
 {

@@ -72,18 +72,9 @@ protected:
         const bool dark=VaporView::isDarkThemePalette(palette());
         QColor color=VaporView::appThemeColor(isChecked()?VaporView::AppThemeColor::Primary:VaporView::AppThemeColor::TextSecondary,dark);
         if (!isEnabled()) color.setAlphaF(0.6f);
-        QPainter painter(this); painter.setRenderHint(QPainter::Antialiasing);
-        if (isChecked()) {
-            painter.setPen(Qt::NoPen);
-            painter.setBrush(VaporView::appThemeColor(VaporView::AppThemeColor::PrimarySubtle,dark));
-            painter.drawRoundedRect(QRectF(indicator).adjusted(2,2,-2,-2),3,3);
-            VaporView::drawSquareCheckBig(painter,indicator,color);
-            return;
-        }
-        painter.translate(indicator.topLeft()); painter.scale(indicator.width()/20.0,indicator.height()/20.0);
-        painter.setPen(QPen(color,1.6,Qt::SolidLine,Qt::RoundCap,Qt::RoundJoin));
-        painter.setBrush(VaporView::appThemeColor(VaporView::AppThemeColor::Surface,dark));
-        painter.drawRoundedRect(QRectF(1,1,18,18),3,3);
+        QPainter painter(this);
+        if (isChecked()) VaporView::drawSquareCheckBig(painter,indicator,color);
+        else VaporView::drawSquare(painter,indicator,color);
     }
 };
 

@@ -54,16 +54,8 @@ protected:
         QColor color = appThemeColor(AppThemeColor::Primary, isDarkThemeEnabled());
         if (!isEnabled())
             color.setAlphaF(0.4);
-        if (isChecked())
-        {
-            drawSquareCheckBig(painter, rect, color);
-            return;
-        }
-        painter.translate(rect.topLeft());
-        painter.scale(rect.width() / 24.0, rect.height() / 24.0);
-        painter.setPen(QPen(color, 2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-        painter.setBrush(Qt::NoBrush);
-        painter.drawRoundedRect(QRectF(3, 3, 18, 18), 2, 2);
+        if (isChecked()) drawSquareCheckBig(painter, rect, color);
+        else drawSquare(painter, rect, color);
     }
 };
 }

@@ -221,23 +221,21 @@ protected:
                                                           : VaporView::AppThemeColor::TextSecondary, dark);
         if (!isEnabled()) color.setAlphaF(0.6f);
         QPainter painter(this);
-        painter.setRenderHint(QPainter::Antialiasing);
         if (checkState() == Qt::Checked)
         {
-            painter.setPen(Qt::NoPen);
-            painter.setBrush(VaporView::appThemeColor(VaporView::AppThemeColor::PrimarySubtle, dark));
-            painter.drawRoundedRect(QRectF(rect).adjusted(2, 2, -2, -2), 3, 3);
             VaporView::drawSquareCheckBig(painter, rect, color);
             return;
         }
-        painter.translate(rect.topLeft());
-        painter.scale(rect.width() / 20.0, rect.height() / 20.0);
-        painter.setPen(QPen(color, 1.6, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-        painter.setBrush(VaporView::appThemeColor(isChecked() ? VaporView::AppThemeColor::PrimarySubtle
-                                                           : VaporView::AppThemeColor::Surface, dark));
-        painter.drawRoundedRect(QRectF(1, 1, 18, 18), 3, 3);
+        VaporView::drawSquare(painter, rect, color);
         if (checkState() == Qt::PartiallyChecked)
-            painter.drawLine(QPointF(5, 10), QPointF(15, 10));
+        {
+            const qreal side = qMin(rect.width(), rect.height());
+            const QPointF center = QRectF(rect).center();
+            painter.setRenderHint(QPainter::Antialiasing);
+            painter.setPen(QPen(color, side / 12.0, Qt::SolidLine, Qt::RoundCap));
+            painter.drawLine(center + QPointF(-side * 5.0 / 24.0, 0),
+                             center + QPointF(side * 5.0 / 24.0, 0));
+        }
     }
 };
 
