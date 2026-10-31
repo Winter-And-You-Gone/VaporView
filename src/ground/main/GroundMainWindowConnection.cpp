@@ -480,6 +480,11 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         if (spinnerUntilMs > 0 && spinnerUntilMs <= nowMs)
         {
             state_->home_device_action_spinner_until_ms_.remove(device);
+            // This refresh can consume expiry before the animation timer sees it.
+            updateDeviceConfigRemoteActionButton(device);
+            if (device == VaporView::SkyDeviceId::TemperatureController ||
+                device == VaporView::SkyDeviceId::Ai8TemperatureController)
+                updateTemperatureTitleButtonsState();
         }
         const VaporView::DeviceState actionState = homeDeviceActionState(device);
         // A serialized FPGA command locks actions without changing channel connectivity.

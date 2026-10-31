@@ -844,7 +844,10 @@ static void localSimulatorRouting()
     settings.setValue("Fpga/desiredConfiguration",QJsonDocument(oldConfiguration.toJson()).toJson(QJsonDocument::Compact));
     settings.setValue("Fpga/remoteDesiredConfiguration",QJsonDocument(oldConfiguration.toJson()).toJson(QJsonDocument::Compact));
     settings.remove("Fpga/ai8EightChannelDefaultApplied");
+    QMap<quint32,quint32> lastRegisters;
     MainWindow window;
+    QObject::connect(window.testFpgaController(), &VaporView::Ground::Devices::FpgaDeviceController::hardwareValuesChanged,
+        &window, [&](const QMap<quint32,quint32>& values) { lastRegisters = values; });
 #ifdef Q_OS_WIN
     auto *focusStyle=qobject_cast<QProxyStyle*>(qApp->style());
     check(focusStyle&&focusStyle->baseStyle()->objectName()=="fusion",
@@ -1010,6 +1013,32 @@ static void localSimulatorRouting()
             if(name==QStringLiteral("波形源"))check(!waveEnabled->isEnabled()&&waveEnabled->isChecked()==enabled,
                 "local acquisition checkbox follows confirmed VLP1 start and stop");
         }
+    }
+    for (const auto& entry : QList<QPair<QString,VaporView::SkyDeviceId>>{
+             {"RD105",VaporView::SkyDeviceId::TemperatureController},
+             {"AI-8288",VaporView::SkyDeviceId::Ai8TemperatureController},
+             {QStringLiteral("波形源"),VaporView::SkyDeviceId::WaveTcp}}) {
+        auto* action = homeAction(window,entry.first);
+        QToolButton* configAction = nullptr;
+        for (auto* candidate : window.findChildren<QToolButton*>("homeDeviceActionButton"))
+            if (candidate->property("deviceConfigAction").toBool()
+                && candidate->property("deviceConfigRemoteDevice").toInt() == static_cast<int>(entry.second))
+                configAction = candidate;
+        check(configAction,"device configuration has a matching device action");
+        check(waitUntil([&]{return action->isEnabled();}),"device action is idle before reconnect");
+        action->click();
+        check(waitUntil([&]{return action->isEnabled()&&!action->property("connected").toBool();}),"device disconnect completes");
+        action->click();
+        check(waitUntil([&]{return action->property("connected").toBool();}),"reconnection completes before minimum animation ends");
+        check(configAction->property("state")=="connecting","configuration displays the minimum connection animation");
+        // Deliver register updates before timer events after the GUI was busy.
+        QThread::msleep(1100);
+        const auto confirmed = lastRegisters;
+        emit window.testFpgaController()->hardwareValuesChanged(confirmed);
+        QCoreApplication::sendPostedEvents(&window,QEvent::MetaCall);
+        check(configAction->isEnabled()&&configAction->property("state")=="connected"
+            &&!configAction->toolTip().contains(QStringLiteral("连接中")),
+            "home refresh consuming spinner expiry also restores device configuration actions");
     }
     check(homeAction(window,"RD105")->isEnabled(),"local relay exposes RD105 capability from GET_CAPABILITIES");
     auto *navigation=window.findChild<VaporView::Ground::Navigation::CombinationNavigationPage*>("combinationNavigationPage");
