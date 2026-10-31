@@ -153,7 +153,7 @@ void applyMapModeButtonStyle(QToolButton* button, bool dark)
 {
     if (!button) return;
     const QString style = applyAppThemeTokens(QStringLiteral(
-        "QToolButton#map3DModeButton { background: transparent; color: @vv-primary; border: 1px solid transparent; border-radius: 6px; padding: 0px 10px; }"
+        "QToolButton#map3DModeButton { background: transparent; color: @vv-primary; border: 1px solid transparent; border-radius: 6px; padding: 0px 10px; font-size: 16px; }"
         "QToolButton#map3DModeButton:hover { background: @vv-title-hover; }"
         "QToolButton#map3DModeButton:pressed { background: @vv-primary-subtle-pressed; }"
         "QToolButton#map3DModeButton:disabled { background: transparent; color: @vv-text-disabled; }"), dark);
@@ -567,6 +567,13 @@ QIcon map3DIcon(const QString& iconName, const QColor& color)
         icon.addPixmap(renderMap3DIconPixmap(svgData, disabledColor, dpr), QIcon::Disabled);
     }
     return icon;
+}
+
+void applyMapModeButtonIcon(QToolButton* button, bool sessionTarget, bool dark)
+{
+    if (!button) return;
+    button->setIcon(map3DIcon(sessionTarget ? QStringLiteral("route") : QStringLiteral("radar"),
+                              appThemeColor(AppThemeColor::Primary, dark)));
 }
 
 QString tiandituKeySettingKey()
@@ -1320,7 +1327,8 @@ Map3DWindow::Map3DWindow(QWidget* parent)
 
     map_mode_button_ = new QToolButton(this);
     map_mode_button_->setObjectName(QStringLiteral("map3DModeButton"));
-    map_mode_button_->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    map_mode_button_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    map_mode_button_->setIconSize(QSize(22, 22));
     map_mode_button_->setFixedHeight(34);
     applyMapModeButtonStyle(map_mode_button_, isDarkThemeEnabled());
     connect(map_mode_button_, &QToolButton::clicked, this, [this]() {
@@ -1692,6 +1700,9 @@ void Map3DWindow::refreshLayerMenuTheme()
 {
     const bool dark = isDarkThemeEnabled();
     applyMapModeButtonStyle(map_mode_button_, dark);
+    const bool sessionTarget = track_data_mode_ == TrackDataMode::Live
+        && (replay_render_storage_ || (session_load_watcher_ && !session_load_watcher_->isCanceled()));
+    applyMapModeButtonIcon(map_mode_button_, sessionTarget, dark);
     applyMapSessionProgressStyle(session_progress_dialog_, dark);
     if (auto* toolbar = findChild<QToolBar*>(QStringLiteral("map3DToolbar")))
     {
@@ -1881,7 +1892,9 @@ void Map3DWindow::updateMapModeUi()
             ? QStringLiteral("返回 Session 回放") : QStringLiteral("实时地图"))
         : QStringLiteral("回到实时地图")));
     map_mode_button_->setEnabled(!live || replay_render_storage_ || loading);
-    map_mode_button_->setMinimumWidth(map_mode_button_->fontMetrics().horizontalAdvance(map_mode_button_->text()) + 24);
+    applyMapModeButtonIcon(map_mode_button_, live && (replay_render_storage_ || loading), isDarkThemeEnabled());
+    map_mode_button_->setMinimumWidth(map_mode_button_->fontMetrics().horizontalAdvance(map_mode_button_->text())
+                                      + map_mode_button_->iconSize().width() + 30);
     map_mode_button_->setAccessibleName(map_mode_button_->text());
     setWindowTitle(mapText(live ? QStringLiteral("VaporView 三维地图 - 实时")
                                : QStringLiteral("VaporView 三维地图 - Session 回放")));

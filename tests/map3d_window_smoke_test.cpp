@@ -965,10 +965,17 @@ int main(int argc, char** argv)
             "Session progress presents the current loading stage and percentage");
     require(modeButtonDuringLoad && modeButtonDuringLoad->isEnabled()
                 && modeButtonDuringLoad->height() == 34
-                && modeButtonDuringLoad->toolButtonStyle() == Qt::ToolButtonTextOnly
+                && modeButtonDuringLoad->toolButtonStyle() == Qt::ToolButtonTextBesideIcon
+                && modeButtonDuringLoad->font().pixelSize() == 16
+                && modeButtonDuringLoad->iconSize() == QSize(22, 22)
+                && !modeButtonDuringLoad->icon().isNull()
+                && modeButtonDuringLoad->minimumWidth()
+                    >= modeButtonDuringLoad->fontMetrics().horizontalAdvance(modeButtonDuringLoad->text())
+                        + modeButtonDuringLoad->iconSize().width() + 24
                 && modeButtonDuringLoad->styleSheet().contains(QStringLiteral("background: transparent"))
                 && modeButtonDuringLoad->styleSheet().contains(QStringLiteral(":hover")),
             "the title-bar return-to-live action has the shared compact transparent style");
+    QImage lightModeIcon;
     for (bool dark : {false, true})
     {
         qApp->setProperty(VaporView::kAppDarkThemeProperty, dark);
@@ -984,6 +991,12 @@ int main(int argc, char** argv)
         require(!progress->styleSheet().contains(QStringLiteral("@vv-"))
                     && !modeButtonDuringLoad->styleSheet().contains(QStringLiteral("@vv-")),
                 "Session progress and title-bar action resolve all theme tokens");
+        const QImage modeIcon = modeButtonDuringLoad->icon().pixmap(QSize(22, 22), QIcon::Normal).toImage();
+        require(!modeIcon.isNull(), "the title-bar mode icon is rendered");
+        if (dark)
+            require(modeIcon != lightModeIcon, "the title-bar mode icon follows the active theme");
+        else
+            lightModeIcon = modeIcon;
     }
     qApp->setProperty(VaporView::kAppDarkThemeProperty, originalTheme);
     qApp->setPalette(originalPalette);
@@ -1173,10 +1186,13 @@ int main(int argc, char** argv)
     require(modeButton && modeButton->parentWidget()->objectName() == QStringLiteral("customTitleBar"),
             "map mode switch lives in the title bar");
     require(modeButton->text() == QStringLiteral("回到实时地图"), "Session shows a return-to-live button");
+    const QImage returnToLiveIcon = modeButton->icon().pixmap(QSize(22, 22), QIcon::Normal).toImage();
     require(label->text().contains(QStringLiteral("采样点：2")), "live input does not append to the Session track");
     modeButton->click();
     require(!navigationSource->isEnabled(), "live mode disables the Session source selector");
     require(modeButton->text() == QStringLiteral("返回 Session 回放"), "live mode offers the cached Session");
+    require(modeButton->icon().pixmap(QSize(22, 22), QIcon::Normal).toImage() != returnToLiveIcon,
+            "mode switch icons distinguish live navigation from Session playback");
     require(label->text().contains(QStringLiteral("采样点：4")), "returning live includes positions received during playback");
     window.appendSample(sample);
     modeButton->click();
