@@ -117,6 +117,66 @@ bool nearlyEqual(double lhs, double rhs, double tolerance = 1.0e-9)
 
 int main()
 {
+    for (bool includeHeat : {false, true})
+    {
+        std::vector<VaporView::Geo::TrajectoryRenderSample> mixed;
+        for (int index = 0; index < 12; ++index)
+            mixed.push_back(heatSample(index, includeHeat && index >= 2
+                                                  ? std::optional<double>(index % 4)
+                                                  : std::nullopt));
+        mixed[7].navigation.fixQuality = VaporView::Geo::FixQuality::Invalid;
+        mixed[9].navigation.nedNM = 10000.0;
+        VaporView::Map3D::Trajectory3DLayer batch, incremental;
+        batch.setMaxVisibleSamples(5);
+        incremental.setMaxVisibleSamples(5);
+        batch.appendRenderSamples(mixed);
+        for (const auto& item : mixed) incremental.appendRenderSample(item);
+        const auto actual = batch.qualityStats();
+        const auto expected = incremental.qualityStats();
+        const auto actualRange = batch.heatRange();
+        const auto expectedRange = incremental.heatRange();
+        require(batch.sampleCount() == incremental.sampleCount()
+                    && batch.heatRenderingEnabled() == incremental.heatRenderingEnabled()
+                    && batch.sphereMarkerCount() == incremental.sphereMarkerCount()
+                    && actual.fixedSamples == expected.fixedSamples
+                    && actual.invalidSamples == expected.invalidSamples
+                    && actual.jumpSamples == expected.jumpSamples
+                    && actual.lineSamples == expected.lineSamples
+                    && actual.markerSamples == expected.markerSamples,
+                "batch loading preserves incremental retention and quality classifications");
+        require(actualRange.valid == expectedRange.valid
+                    && actualRange.validCount == expectedRange.validCount
+                    && (!actualRange.valid || (nearlyEqual(actualRange.minimum, expectedRange.minimum)
+                                               && nearlyEqual(actualRange.maximum, expectedRange.maximum))),
+                "batch loading preserves incremental heat statistics after eviction");
+        for (int index = 0; index < batch.sampleCount(); ++index)
+        {
+            osg::Vec3d actualPosition, expectedPosition;
+            require(batch.displayPositionForSample(index, actualPosition)
+                        && incremental.displayPositionForSample(index, expectedPosition)
+                        && (actualPosition - expectedPosition).length() < 1.0e-9,
+                    "batch loading preserves retained sample positions");
+        }
+    }
+
+    // Loading a Session submits its whole display track at once. Rebuilding a
+    // segment for every point makes the GUI-thread handoff needlessly quadratic.
+    VaporView::Map3D::Trajectory3DLayer bulkHeatLayer;
+    std::vector<VaporView::Geo::TrajectoryRenderSample> bulkHeatSamples;
+    constexpr int kBulkHeatCount = 4100;
+    bulkHeatSamples.reserve(kBulkHeatCount);
+    for (int index = 0; index < kBulkHeatCount; ++index)
+        bulkHeatSamples.push_back(heatSample(index, static_cast<double>(index)));
+    bulkHeatLayer.appendRenderSamples(bulkHeatSamples);
+    require(bulkHeatLayer.sampleCount() == kBulkHeatCount && bulkHeatLayer.heatRenderingEnabled(),
+            "bulk Session heat data retains every sample");
+    require(bulkHeatLayer.segmentGeometryRebuildCount() <= bulkHeatLayer.segmentCount(),
+            "bulk Session loading builds each segment at most once");
+    require(bulkHeatLayer.heatRange().valid &&
+                nearlyEqual(bulkHeatLayer.heatRange().minimum, 0.0) &&
+                nearlyEqual(bulkHeatLayer.heatRange().maximum, kBulkHeatCount - 1.0),
+            "bulk Session loading preserves the heat range");
+
     VaporView::Map3D::Trajectory3DLayer layer;
     require(layer.sampleCount() == 0, "new layer has no samples");
     require(layer.segmentSize() == 4096, "segment size is fixed at 4096 samples");

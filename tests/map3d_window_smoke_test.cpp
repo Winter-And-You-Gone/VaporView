@@ -34,7 +34,11 @@
 #include <QFileInfo>
 #include <QLabel>
 #include <QPlainTextEdit>
+#include <QProgressBar>
+#include <QProgressDialog>
 #include <QSettings>
+#include <QSemaphore>
+#include <QRunnable>
 #include <QSlider>
 #include <QSpinBox>
 #include <QStandardItemModel>
@@ -924,7 +928,68 @@ int main(int argc, char** argv)
 
     QTemporaryDir sessionDir;
     writeSessionTrack(sessionDir);
+    auto* loadingPool = QThreadPool::globalInstance();
+    require(loadingPool->waitForDone(5000), "previous map workers have finished");
+    const int previousPoolSize = loadingPool->maxThreadCount();
+    loadingPool->setMaxThreadCount(1);
+    QSemaphore poolBusy, releasePool;
+    loadingPool->start(QRunnable::create([&]() {
+        poolBusy.release();
+        releasePool.tryAcquire(1, 15000);
+    }));
+    require(poolBusy.tryAcquire(1, 5000), "test holds the worker until the progress UI is inspected");
     window.loadSessionDirectory(sessionDir.path());
+    QCoreApplication::processEvents();
+    auto* progress = window.findChild<QProgressDialog*>(QStringLiteral("map3DSessionProgress"));
+    auto* modeButtonDuringLoad = window.findChild<QToolButton*>(QStringLiteral("map3DModeButton"));
+    require(progress && progress->isVisible() && progress->windowFlags().testFlag(Qt::FramelessWindowHint)
+                && progress->findChild<QWidget*>(QStringLiteral("customTitleBar")),
+            "Session loading uses the shared custom title bar");
+    auto* progressContent = progress->findChild<QWidget*>(QStringLiteral("customTitleBarContent"));
+    auto* progressText = progress->findChild<QLabel*>(QStringLiteral("map3DSessionProgressLabel"));
+    auto* progressBar = progress->findChild<QProgressBar*>(QStringLiteral("map3DSessionProgressBar"));
+    require(progressContent && progressText && progressBar && progressText->isVisible() && progressBar->isVisible()
+                && progressText->parentWidget() == progressContent && progressBar->parentWidget() == progressContent
+                && progressContent->rect().contains(progressText->geometry())
+                && progressContent->rect().contains(progressBar->geometry()),
+            "Session progress text and bar are visible inside the themed content");
+    require(progress->value() == 0 && progressBar->value() == 0,
+            "Session progress starts at zero while the worker is waiting");
+    progress->setLabelText(QStringLiteral("正在读取 Session 数据…"));
+    progress->setValue(43);
+    require(progressBar->value() == 43, "Session progress updates the visible progress bar");
+    progress->setLabelText(QStringLiteral("波形关联完成；生成显示数据…"));
+    progress->setValue(80);
+    require(progressText->text() == QStringLiteral("波形关联完成；生成显示数据…")
+                && progressBar->value() == 80,
+            "Session progress presents the current loading stage and percentage");
+    require(modeButtonDuringLoad && modeButtonDuringLoad->isEnabled()
+                && modeButtonDuringLoad->height() == 34
+                && modeButtonDuringLoad->toolButtonStyle() == Qt::ToolButtonTextOnly
+                && modeButtonDuringLoad->styleSheet().contains(QStringLiteral("background: transparent"))
+                && modeButtonDuringLoad->styleSheet().contains(QStringLiteral(":hover")),
+            "the title-bar return-to-live action has the shared compact transparent style");
+    for (bool dark : {false, true})
+    {
+        qApp->setProperty(VaporView::kAppDarkThemeProperty, dark);
+        qApp->setPalette(VaporView::appThemePalette(dark));
+        QCoreApplication::processEvents();
+        require(progressContent->rect().contains(progressText->geometry())
+                    && progressContent->rect().contains(progressBar->geometry()),
+                "Session progress stays inside its content after a theme change");
+        const QImage contentImage = progressContent->grab().toImage();
+        require(contentImage.pixelColor(3, 3) == VaporView::appThemeColor(
+                    dark ? VaporView::AppThemeColor::Window : VaporView::AppThemeColor::Surface, dark),
+                "Session loading content follows the active light or dark theme");
+        require(!progress->styleSheet().contains(QStringLiteral("@vv-"))
+                    && !modeButtonDuringLoad->styleSheet().contains(QStringLiteral("@vv-")),
+                "Session progress and title-bar action resolve all theme tokens");
+    }
+    qApp->setProperty(VaporView::kAppDarkThemeProperty, originalTheme);
+    qApp->setPalette(originalPalette);
+    QCoreApplication::processEvents();
+    releasePool.release();
+    loadingPool->setMaxThreadCount(previousPoolSize);
     window.appendSamples({sample, sample});
     window.appendSample(sample);
     require(waitForText(label, QStringLiteral("来源 会话"), 3000),

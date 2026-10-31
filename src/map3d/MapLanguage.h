@@ -362,6 +362,7 @@ inline const QHash<QString, QString>& mapLanguageCatalog() {
         {QStringLiteral("打开 Session"), QStringLiteral("Open session")},
         {QStringLiteral("选择 Session 目录"), QStringLiteral("Select session folder")},
         {QStringLiteral("加载 Session"), QStringLiteral("Load session")},
+        {QStringLiteral("正在准备地图轨迹…"), QStringLiteral("Preparing map trajectory…")},
         {QStringLiteral("清空轨迹"), QStringLiteral("Clear track")},
         {QStringLiteral("加载 Earth 文件"), QStringLiteral("Load Earth file")},
         {QStringLiteral("本地影像"), QStringLiteral("Local imagery")},

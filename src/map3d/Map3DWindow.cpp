@@ -48,6 +48,7 @@
 #include <QPainterPath>
 #include <QResizeEvent>
 #include <QPlainTextEdit>
+#include <QProgressBar>
 #include <QProgressDialog>
 #include <QPromise>
 #include <QScreen>
@@ -82,6 +83,82 @@
 
 namespace VaporView::Map3D {
 namespace {
+
+class MapSessionProgressDialog final : public QProgressDialog
+{
+public:
+    explicit MapSessionProgressDialog(QWidget* parent) : QProgressDialog(parent)
+    {
+        setObjectName(QStringLiteral("map3DSessionProgress"));
+        setRange(0, 100);
+        setAutoClose(false);
+        setAutoReset(false);
+        setCancelButton(nullptr);
+        setWindowModality(Qt::NonModal);
+        setModal(false);
+        setMinimumDuration(0);
+        setMinimumWidth(360);
+        setWindowTitle(mapText(QStringLiteral("加载 Session")));
+
+        auto* layout = new QVBoxLayout(this);
+        layout->setContentsMargins(22, 18, 22, 18);
+        layout->setSpacing(14);
+        auto* label = findChild<QLabel*>(QString(), Qt::FindDirectChildrenOnly);
+        auto* bar = findChild<QProgressBar*>(QString(), Qt::FindDirectChildrenOnly);
+        label->setObjectName(QStringLiteral("map3DSessionProgressLabel"));
+        label->setWordWrap(true);
+        bar->setObjectName(QStringLiteral("map3DSessionProgressBar"));
+        bar->setMinimumHeight(14);
+        bar->setTextVisible(true);
+        layout->addWidget(label);
+        layout->addWidget(bar);
+        VaporView::installCustomTitleBar(this, false);
+    }
+
+    QSize sizeHint() const override { return QDialog::sizeHint(); }
+
+protected:
+    // The shared title-bar wrapper owns child geometry; QProgressDialog's
+    // manual relayout otherwise moves the bar out of the content on theme changes.
+    void resizeEvent(QResizeEvent* event) override { QDialog::resizeEvent(event); }
+    void changeEvent(QEvent* event) override { QDialog::changeEvent(event); }
+};
+
+void applyMapSessionProgressStyle(QProgressDialog* dialog, bool dark)
+{
+    if (!dialog) return;
+    const QColor panel = appThemeColor(dark ? AppThemeColor::Window : AppThemeColor::Surface, dark);
+    QPalette palette = appThemePalette(dark);
+    palette.setColor(QPalette::Window, panel);
+    palette.setColor(QPalette::Base, panel);
+    if (dialog->palette() != palette) dialog->setPalette(palette);
+    dialog->setAutoFillBackground(true);
+    if (auto* content = dialog->findChild<QWidget*>(QStringLiteral("customTitleBarContent")))
+    {
+        if (content->palette() != palette) content->setPalette(palette);
+        content->setAutoFillBackground(true);
+    }
+    const QString style = applyAppThemeTokens(QStringLiteral(
+        "QProgressDialog#map3DSessionProgress, QWidget#customTitleBarContent { background: %1; color: @vv-text; }"
+        "QWidget#customTitleBarContent QLabel { background: transparent; color: @vv-text; font-size: 14px; }"
+        "QWidget#customTitleBarContent QProgressBar { background: @vv-field-bg; border: 1px solid @vv-field-border; border-radius: 4px; min-height: 10px; text-align: center; color: @vv-text; }"
+        "QWidget#customTitleBarContent QProgressBar::chunk { background: @vv-progress-chunk; border-radius: 3px; }"
+        "QToolButton[customTitleBarButton=\"true\"] { background: transparent; border: none; padding: 0px; }"
+        "QToolButton[customTitleBarButton=\"true\"]:hover, QToolButton[customTitleBarButton=\"true\"][titleBarHover=\"true\"] { background: @vv-title-hover; }"
+        "QToolButton#windowCloseButton:hover, QToolButton#windowCloseButton[titleBarHover=\"true\"] { background: @vv-close-hover; }").arg(panel.name()), dark);
+    if (dialog->styleSheet() != style) dialog->setStyleSheet(style);
+}
+
+void applyMapModeButtonStyle(QToolButton* button, bool dark)
+{
+    if (!button) return;
+    const QString style = applyAppThemeTokens(QStringLiteral(
+        "QToolButton#map3DModeButton { background: transparent; color: @vv-primary; border: 1px solid transparent; border-radius: 6px; padding: 0px 10px; }"
+        "QToolButton#map3DModeButton:hover { background: @vv-title-hover; }"
+        "QToolButton#map3DModeButton:pressed { background: @vv-primary-subtle-pressed; }"
+        "QToolButton#map3DModeButton:disabled { background: transparent; color: @vv-text-disabled; }"), dark);
+    if (button->styleSheet() != style) button->setStyleSheet(style);
+}
 
 class HeatPalettePreview final : public QWidget
 {
@@ -1243,6 +1320,9 @@ Map3DWindow::Map3DWindow(QWidget* parent)
 
     map_mode_button_ = new QToolButton(this);
     map_mode_button_->setObjectName(QStringLiteral("map3DModeButton"));
+    map_mode_button_->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    map_mode_button_->setFixedHeight(34);
+    applyMapModeButtonStyle(map_mode_button_, isDarkThemeEnabled());
     connect(map_mode_button_, &QToolButton::clicked, this, [this]() {
         setSessionMapActive(track_data_mode_ == TrackDataMode::Live);
     });
@@ -1611,6 +1691,8 @@ bool Map3DWindow::layerVisible(Map3DLayer layer) const
 void Map3DWindow::refreshLayerMenuTheme()
 {
     const bool dark = isDarkThemeEnabled();
+    applyMapModeButtonStyle(map_mode_button_, dark);
+    applyMapSessionProgressStyle(session_progress_dialog_, dark);
     if (auto* toolbar = findChild<QToolBar*>(QStringLiteral("map3DToolbar")))
     {
         const QString arrow = QDir::fromNativeSeparators(firstExistingMap3DFile(
@@ -2008,13 +2090,8 @@ void Map3DWindow::startSessionLoad(const QString& sessionDir, quint64 generation
     statusBar()->showMessage(mapText(QStringLiteral("正在加载会话 轨迹及热力数据，完成后自动定位…")));
     if (!session_progress_dialog_)
     {
-        session_progress_dialog_ = new QProgressDialog(this);
-        session_progress_dialog_->setObjectName(QStringLiteral("map3DSessionProgress"));
-        session_progress_dialog_->setRange(0, 100);
-        session_progress_dialog_->setAutoClose(false);
-        session_progress_dialog_->setAutoReset(false);
-        session_progress_dialog_->setCancelButton(nullptr);
-        session_progress_dialog_->setWindowTitle(mapText(QStringLiteral("加载 Session")));
+        session_progress_dialog_ = new MapSessionProgressDialog(this);
+        applyMapSessionProgressStyle(session_progress_dialog_, isDarkThemeEnabled());
     }
     if (session_progress_dialog_)
     {
@@ -2050,7 +2127,8 @@ void Map3DWindow::startSessionLoad(const QString& sessionDir, quint64 generation
         }
         // A cancelled future need not contain a result (even after finished).
         if (watcher->isCanceled() || watcher->future().resultCount() == 0) return;
-        auto result = watcher->result();
+        auto future = watcher->future();
+        auto result = future.takeResult();
         if (!result.success)
         {
             if (display_source_refresh_pending_)
@@ -2080,6 +2158,12 @@ void Map3DWindow::startSessionLoad(const QString& sessionDir, quint64 generation
             : QStringLiteral("%1 | %2").arg(sourceCsvPath, result.warning);
         const QString loadWarning = result.warning;
 
+        if (track_data_mode_ != TrackDataMode::Live)
+        {
+            session_progress_dialog_->setLabelText(mapText(QStringLiteral("正在准备地图轨迹…")));
+            session_progress_dialog_->setValue(90);
+            session_progress_dialog_->repaint();
+        }
         replay_.setRenderSamples(renderSamples);
         replay_render_storage_ = renderSamples;
         loaded_session_directory_ = sessionDir;

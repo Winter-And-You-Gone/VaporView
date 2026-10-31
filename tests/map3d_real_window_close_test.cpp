@@ -276,7 +276,7 @@ int main(int argc, char** argv)
     require(tileDiagnostics.loadedPayloadCount == 55,
             QStringLiteral("real window loads all 55 building payloads, got %1")
                 .arg(tileDiagnostics.loadedPayloadCount));
-    view->setMaxVisibleSamples(5000);
+    view->setMaxVisibleSamples(10000);
 
     QTemporaryDir failedLoadDir;
     require(failedLoadDir.isValid(), QStringLiteral("temporary failed-load directory"));
@@ -323,7 +323,7 @@ int main(int argc, char** argv)
     sessionStream.setRealNumberNotation(QTextStream::FixedNotation);
     sessionStream.setRealNumberPrecision(9);
     sessionStream
-        << "record_timestamp_us,nav_lat_deg,nav_lon_deg,nav_height_m,ecef_x_m,ecef_y_m,ecef_z_m,gnss_fix\n";
+        << "record_timestamp_us,nav_lat_deg,nav_lon_deg,nav_height_m,ecef_x_m,ecef_y_m,ecef_z_m,gnss_fix,hmp_humidity_rh\n";
     constexpr int kSessionSampleCount = 57911;
     const std::array<double, 5> latitudes = {
         30.130669989, 30.124458407, 30.128837606, 30.132797391, 30.130669989};
@@ -340,7 +340,8 @@ int main(int argc, char** argv)
         const double longitude =
             longitudes[segment] + (longitudes[segment + 1] - longitudes[segment]) * fraction;
         sessionStream << (i + 1) * 1000LL << ',' << latitude << ',' << longitude
-                      << ",9.000000000,365504425.008990,13374370.950326,58160.200631,RTK_DUAL\n";
+                      << ",9.000000000,365504425.008990,13374370.950326,58160.200631,RTK_DUAL,"
+                      << 40.0 + (i % 100) * 0.1 << '\n';
     }
     sessionStream.flush();
     devicesCsv.close();
@@ -357,12 +358,31 @@ int main(int argc, char** argv)
         window->appendSamples({liveSample});
     });
     liveTimer.start(50);
+    metricCombo->setCurrentIndex(1); // Exercise heat geometry as well as the full Session track.
+    QElapsedTimer guiPulseClock;
+    guiPulseClock.start();
+    qint64 longestGuiGapMs = 0;
+    int guiPulses = 0;
+    QTimer guiPulse;
+    QObject::connect(&guiPulse, &QTimer::timeout, window, [&]() {
+        longestGuiGapMs = (std::max)(longestGuiGapMs, guiPulseClock.restart());
+        ++guiPulses;
+    });
+    guiPulse.start(50);
     window->loadSessionDirectory(sessionDir.path());
     require(waitUntil([&]() {
                 return view->sampleCount() == kSessionSampleCount;
             },
             30000),
             QStringLiteral("real window loads corrupt-ECEF session through LLH fallback"));
+    longestGuiGapMs = (std::max)(longestGuiGapMs, guiPulseClock.elapsed());
+    guiPulse.stop();
+    std::cout << "Session load: " << guiPulses << " GUI pulses; longest gap "
+              << longestGuiGapMs << " ms\n";
+    require(guiPulses > 0 && longestGuiGapMs < 5000,
+            QStringLiteral("large Session loading keeps the GUI responsive"));
+    require(view->heatRange().valid,
+            QStringLiteral("large Session retains its humidity heat data"));
     require(view->hasEarthMap(),
             QStringLiteral("loading corrupt-ECEF session preserves the Earth map"));
     require(view->earthCameraRangeM() < 20000.0,

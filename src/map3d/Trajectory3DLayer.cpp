@@ -364,6 +364,45 @@ void Trajectory3DLayer::appendSamplesInternal(
     {
         return;
     }
+    if (samples_.empty())
+    {
+        // A loaded Session is installed as one batch on the GUI thread. Build
+        // its bookkeeping first and create each drawable once, instead of
+        // rebuilding a growing heat segment for every sample.
+        for (const auto& sample : samples)
+        {
+            const bool includeHeat = enableHeatRendering
+                && (heat_rendering_enabled_
+                    || VaporView::Geo::metricValue(sample, heat_metric_).has_value());
+            if (includeHeat) heat_rendering_enabled_ = true;
+            const std::uint64_t sequence = next_sample_sequence_++;
+            samples_.push_back(sample);
+            sample_sequences_.push_back(sequence);
+            if (includeHeat) appendHeatStatistics(sample, sequence);
+
+            const int index = sampleCount() - 1;
+            const bool line = shouldUseAsLineSample(index);
+            line_sample_flags_.push_back(line ? 1 : 0);
+            if (line) last_line_sample_index_ = index;
+            adjustQualityStats(index, 1);
+
+            if (sampleCount() > max_visible_samples_)
+            {
+                adjustQualityStats(0, -1);
+                if (heat_rendering_enabled_)
+                    evictHeatStatistics(sample_sequences_.front(),
+                        VaporView::Geo::metricValue(samples_.front(), heat_metric_).has_value());
+                samples_.pop_front();
+                sample_sequences_.pop_front();
+                line_sample_flags_.pop_front();
+                if (last_line_sample_index_ >= 0) --last_line_sample_index_;
+            }
+        }
+        sphere_marker_stride_ = sphereMarkerStride();
+        if (heat_rendering_enabled_) updateHeatRenderingState();
+        rebuildSegments();
+        return;
+    }
     for (const VaporView::Geo::TrajectoryRenderSample& sample : samples)
     {
         appendSampleInternal(sample, enableHeatRendering);
