@@ -89,11 +89,13 @@ private:
     void applyCurrentControlsToView();
     void openSessionDirectory();
     void openEarthFile();
-    void loadLocalImageryTemplate(const VaporView::Map3D::LocalImageryOption& option);
+    void selectSatelliteImagerySource(const QString& source);
+    void refreshSatelliteImageryMenu();
     void loadLocal3DTilesPreview();
     bool loadConfiguredLocal3DTiles(bool showStatusMessage);
     void clearLocal3DTilesPreview();
     bool applyConfiguredTiandituSatelliteImagery(bool showStatusMessage);
+    bool applySelectedSatelliteImagery(bool showStatusMessage);
     void openAircraftModel();
     void resetAircraftModel();
     void reloadBestLocalMap();
@@ -202,6 +204,7 @@ private:
     MapResourceDialog* map_resource_dialog_ = nullptr;
     MapDataManager map_data_manager_;
     MapDataSelection map_selection_;
+    QString satellite_imagery_source_;
     VaporView::Geo::TrajectoryReplay replay_;
     TrackDataMode track_data_mode_ = TrackDataMode::Live;
     std::shared_ptr<const std::vector<VaporView::Geo::TrajectoryRenderSample>> replay_render_storage_;

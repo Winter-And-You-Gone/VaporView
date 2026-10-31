@@ -479,6 +479,19 @@ int main(int argc, char** argv)
     QCoreApplication::processEvents();
     require(resourcesMenu->isVisible() && imageryMenu->isVisible(),
             "keyboard navigation opens second and third level map menus");
+    require(imageryMenu->title() == QStringLiteral("卫星影像"), "imagery menu uses the satellite title");
+    auto* onlineImagery = window.findChild<QAction*>(QStringLiteral("map3DOnlineImagery_tianditu"));
+    require(onlineImagery && !onlineImagery->isEnabled()
+                && onlineImagery->text().contains(QStringLiteral("在线"))
+                && onlineImagery->text().contains(QStringLiteral("未配置 Key")),
+            "online imagery is listed with an explanation when no key is configured");
+    for (const QString& key : {QStringLiteral("sentinel2"), QStringLiteral("landsat"),
+                               QStringLiteral("openaerialmap")})
+    {
+        const auto* action = window.findChild<QAction*>(QStringLiteral("map3DLocalImagery_%1").arg(key));
+        require(action && action->text().startsWith(QStringLiteral("本地 · ")),
+                "all local imagery options have a local prefix");
+    }
     require(!resourcesMenu->geometry().intersects(imageryMenu->geometry()),
             "third level menu does not cover its parent menu or arrow");
     require(!imageryMenu->toolTipsVisible(), "imagery menu does not show obstructing tooltips");
@@ -560,10 +573,18 @@ int main(int argc, char** argv)
     require(lineCheck->text() == QStringLiteral("Track line") && refreshStatus->text() == QStringLiteral("Set") &&
                 palettePreview && palettePreview->accessibleName() == QStringLiteral("Palette preview"),
             "visibility controls and refresh status translate to English");
+    require(imageryMenu->title() == QStringLiteral("Satellite image sources")
+                && onlineImagery->text().startsWith(QStringLiteral("Online · "))
+                && window.findChild<QAction*>(QStringLiteral("map3DLocalImagery_sentinel2"))
+                       ->text().startsWith(QStringLiteral("Local · ")),
+            "satellite imagery menu translates its source prefixes");
     qApp->setProperty("vaporViewEnglish", originalEnglish);
     QCoreApplication::processEvents();
     require(lineCheck->text() == QStringLiteral("轨迹线") && refreshStatus->text() == QStringLiteral("已设置"),
             "visibility controls and refresh status translate back to Chinese");
+    require(imageryMenu->title() == QStringLiteral("卫星影像")
+                && onlineImagery->text().startsWith(QStringLiteral("在线 · ")),
+            "satellite imagery menu translates back to Chinese");
     auto* paletteCombo = displayPanel->findChild<QComboBox*>(QStringLiteral("map3DHeatPaletteCombo"));
     require(paletteCombo && palettePreview && palettePreview->isVisible(), "current heat palette has a visible preview");
     for (int index = 0; index < 3; ++index) {
@@ -756,13 +777,8 @@ int main(int argc, char** argv)
     require(localImageryAction->menu() != nullptr, "local imagery action has a menu");
     require(localImageryAction->menu() == imageryMenu,
             "local imagery action uses the cascading map menu");
-    bool hasEnabledImageryEntry = false;
-    for (QAction* action : localImageryAction->menu()->actions())
-    {
-        hasEnabledImageryEntry = hasEnabledImageryEntry || action->isEnabled();
-    }
-    require(localImageryAction->isEnabled() == hasEnabledImageryEntry,
-            "local imagery action enabled state follows available local imagery entries");
+    require(localImageryAction->isEnabled(),
+            "imagery menu remains available to explain missing imagery sources");
     require(!clearLocal3DTilesAction->isEnabled(), "clear local 3D Tiles action starts disabled before preview load");
     require(loadAircraftModelAction->isEnabled(), "load aircraft model action exists");
     require(resetAircraftModelAction->isEnabled(), "reset aircraft model action exists");

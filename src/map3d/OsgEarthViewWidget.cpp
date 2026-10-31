@@ -30,6 +30,7 @@
 #include <osgViewer/Viewer>
 #include <osgEarth/EarthManipulator>
 #include <osgEarth/ElevationLayer>
+#include <osgEarth/GDAL>
 #include <osgEarth/GeoData>
 #include <osgEarth/GLUtils>
 #include <osgEarth/ImageLayer>
@@ -113,6 +114,7 @@ osg::ref_ptr<osg::Node> createStarfieldNode()
 }
 
 constexpr const char* kTiandituSatelliteLayerName = "Tianditu Satellite imagery";
+constexpr const char* kSelectedLocalSatelliteLayerName = "VaporView selected local satellite imagery";
 constexpr const char* kTiandituBrowserUserAgent =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36";
@@ -1271,6 +1273,45 @@ bool OsgEarthViewWidget::applyTiandituSatelliteImagery(const QString& key)
     return true;
 }
 
+bool OsgEarthViewWidget::applyLocalSatelliteImagery(const QString& vrtPath)
+{
+    assertGuiThread(this, Q_FUNC_INFO);
+    if (shutdown_ || !map_node_ || !map_node_->getMap() || !QFileInfo(vrtPath).isFile())
+        return false;
+
+    osgEarth::Map* map = map_node_->getMap();
+    const std::string url = QDir::fromNativeSeparators(QFileInfo(vrtPath).absoluteFilePath()).toStdString();
+    auto* existing = dynamic_cast<osgEarth::GDALImageLayer*>(
+        map->getLayerByName(kSelectedLocalSatelliteLayerName));
+    if (!existing || !existing->isOpen() || existing->getURL().full() != url)
+    {
+        osg::ref_ptr<osgEarth::GDALImageLayer> layer = new osgEarth::GDALImageLayer;
+        layer->setName(kSelectedLocalSatelliteLayerName);
+        layer->setURL(osgEarth::URI(url));
+        if (layer->open().isError()) return false;
+        removeLayerByName(map, kSelectedLocalSatelliteLayerName);
+        map->insertLayer(layer.get(), tiandituSatelliteInsertIndex(map));
+    }
+    removeLayerByName(map, kTiandituSatelliteLayerName);
+    applyLayerVisibility(Map3DLayer::SatelliteImagery);
+    update();
+    return true;
+}
+
+QString OsgEarthViewWidget::activeSatelliteImagerySource() const
+{
+    if (!map_node_ || !map_node_->getMap() || !layerVisible(Map3DLayer::SatelliteImagery))
+        return {};
+    const auto* online = dynamic_cast<const osgEarth::VisibleLayer*>(
+        map_node_->getMap()->getLayerByName(kTiandituSatelliteLayerName));
+    if (online && online->isOpen() && online->getVisible()) return QStringLiteral("online:tianditu");
+    const auto* local = dynamic_cast<const osgEarth::GDALImageLayer*>(
+        map_node_->getMap()->getLayerByName(kSelectedLocalSatelliteLayerName));
+    if (local && local->isOpen() && local->getVisible())
+        return QStringLiteral("local:") + QString::fromStdString(local->getURL().full());
+    return {};
+}
+
 void OsgEarthViewWidget::loadEarthFileAsync(const QString& earthPath,
                                             bool preserveCurrentEarthView,
                                             std::function<void(bool)> finished)
@@ -1539,6 +1580,10 @@ void OsgEarthViewWidget::applyLayerVisibility(Map3DLayer layer)
     const auto* online = map_node_ && map_node_->getMap()
         ? map_node_->getMap()->getLayerByName(kTiandituSatelliteLayerName) : nullptr;
     const bool onlineSatellite = online && online->isOpen() && layerVisible(Map3DLayer::SatelliteImagery);
+    const auto* selectedLocal = map_node_ && map_node_->getMap()
+        ? map_node_->getMap()->getLayerByName(kSelectedLocalSatelliteLayerName) : nullptr;
+    const bool localSatellite = selectedLocal && selectedLocal->isOpen()
+        && layerVisible(Map3DLayer::SatelliteImagery) && !onlineSatellite;
     const bool visible = layerVisible(layer)
         || (layer == Map3DLayer::BaseMap && layerVisible(Map3DLayer::SatelliteImagery) && !onlineSatellite);
     if (layer == Map3DLayer::SatelliteImagery) applyLayerVisibility(Map3DLayer::BaseMap);
@@ -1573,7 +1618,9 @@ void OsgEarthViewWidget::applyLayerVisibility(Map3DLayer layer)
                 const bool competingImagery = onlineSatellite && candidate.get() != online
                     && dynamic_cast<osgEarth::ImageLayer*>(candidate.get())
                     && (layer == Map3DLayer::BaseMap || layer == Map3DLayer::SatelliteImagery);
-                visibleLayer->setVisible(visible && !competingImagery);
+                const bool otherLocalImagery = localSatellite && layer == Map3DLayer::SatelliteImagery
+                    && candidate.get() != selectedLocal && dynamic_cast<osgEarth::ImageLayer*>(candidate.get());
+                visibleLayer->setVisible(visible && !competingImagery && !otherLocalImagery);
             }
         }
     }

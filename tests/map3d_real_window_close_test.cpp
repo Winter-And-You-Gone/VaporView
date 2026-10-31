@@ -17,6 +17,7 @@
 #include <QImage>
 #include <QLocale>
 #include <QLabel>
+#include <QMenu>
 #include <QSettings>
 #include <QSpinBox>
 #include <QTemporaryDir>
@@ -27,6 +28,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdlib>
 #include <functional>
 #include <iostream>
@@ -305,16 +307,49 @@ int main(int argc, char** argv)
     if (hasImageryAndDem)
     {
         auto* imagery = window->findChild<QAction*>(QStringLiteral("map3DLocalImagery_sentinel2"));
+        auto* online = window->findChild<QAction*>(QStringLiteral("map3DOnlineImagery_tianditu"));
+        auto* imageryMenu = window->findChild<QMenu*>(QStringLiteral("map3DLocalImageryMenu"));
         require(imagery && imagery->isEnabled(), QStringLiteral("local Sentinel-2 action is available"));
+        require(online && imageryMenu && !online->isEnabled(), QStringLiteral("online imagery initially needs a key"));
+        view->setSamples(std::vector<VaporView::Geo::NavSample>{pointProbe, pointProbe2});
+        const QString previousEarth = view->earthLoadDiagnostics().requestedPath;
+        const QString previousDem = view->earthLoadDiagnostics().openElevationLayerName;
+        const int previousSamples = view->sampleCount();
+        const double previousRange = view->earthCameraRangeM();
+        view->hide(); // Keep the fake test key away from network requests.
+        {
+            QSettings config(qEnvironmentVariable("VAPORVIEW_CONFIG_FILE"), QSettings::IniFormat);
+            config.setValue(QStringLiteral("TrajectoryViewer/map/tianditu_key"), QStringLiteral("test-key-not-sent"));
+            config.sync();
+        }
+        QMetaObject::invokeMethod(imageryMenu, "aboutToShow", Qt::DirectConnection);
+        require(online->isEnabled(), QStringLiteral("online option becomes available when a key is configured"));
+        online->trigger();
+        require(view->activeSatelliteImagerySource() == QStringLiteral("online:tianditu") && online->isChecked(),
+                QStringLiteral("selecting online activates the Tianditu layer"));
         imagery->trigger();
-        require(waitUntil([&]() {
-                    const auto diagnostics = view->earthLoadDiagnostics();
-                    return diagnostics.loaded && QFileInfo(diagnostics.requestedPath) == QFileInfo(imageryEarthPath);
-                }, 30000),
-                QStringLiteral("switching to local imagery completes"));
-        require(view->earthLoadDiagnostics().openElevationLayerName == QStringLiteral("Copernicus DEM GLO-30")
+        require(view->activeSatelliteImagerySource().startsWith(QStringLiteral("local:")) && imagery->isChecked()
+                    && !online->isChecked(), QStringLiteral("selecting local imagery replaces online imagery"));
+        require(QFileInfo(view->earthLoadDiagnostics().requestedPath) == QFileInfo(previousEarth)
+                    && view->sampleCount() == previousSamples
+                    && std::abs(view->earthCameraRangeM() - previousRange) < 1.0,
+                QStringLiteral("switching imagery preserves the scene, track and camera"));
+        require(previousDem.contains(QStringLiteral("Copernicus DEM GLO-30"))
+                    && view->earthLoadDiagnostics().openElevationLayerName == previousDem
+                    && view->layerAvailable(VaporView::Map3D::Map3DLayer::DigitalElevation)
                     && view->layerVisible(VaporView::Map3D::Map3DLayer::DigitalElevation),
                 QStringLiteral("switching imagery keeps the actual DEM open and visible"));
+        QSettings mapSettings(QSettings::defaultFormat(), QSettings::UserScope,
+                              QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+        require(mapSettings.value(QStringLiteral("satelliteImagerySource")).toString()
+                    == QStringLiteral("local:sentinel2"), QStringLiteral("selected source is persisted"));
+        {
+            QSettings config(qEnvironmentVariable("VAPORVIEW_CONFIG_FILE"), QSettings::IniFormat);
+            config.remove(QStringLiteral("TrajectoryViewer/map/tianditu_key"));
+            config.sync();
+        }
+        view->show();
+        view->clearTrack();
     }
     view->setMaxVisibleSamples(10000);
 
@@ -469,6 +504,15 @@ int main(int argc, char** argv)
                 return view->hasEarthMap() && view->sampleCount() == kSessionSampleCount;
             }, 30000),
             QStringLiteral("cold session open loads both Earth and track"));
+    if (hasImageryAndDem)
+    {
+        require(waitUntil([&]() {
+                    return view->activeSatelliteImagerySource().startsWith(QStringLiteral("local:"));
+                }, 10000), QStringLiteral("the selected local source survives a cold Session open"));
+        require(view->layerAvailable(VaporView::Map3D::Map3DLayer::DigitalElevation)
+                    && view->layerVisible(VaporView::Map3D::Map3DLayer::DigitalElevation),
+                QStringLiteral("the restored imagery keeps the DEM visible"));
+    }
     processEventsFor(1500);
     require(view->earthCameraRangeM() < 20000.0,
             QStringLiteral("cold session open automatically focuses after both loads finish"));
