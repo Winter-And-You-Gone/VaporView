@@ -1,3 +1,4 @@
+#include "ground/calibration/CalibrationService.h"
 #include "ground/main/GroundMainWindowImplementation.h"
 
 void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& telemetry)
@@ -74,6 +75,13 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
     {
         state_->current_ptb_.error_message = remoteNoDataText(state_->is_english_).toStdString();
     }
+    state_->calibration_service_->noteSensor(QStringLiteral("remote_environment"),
+        {{"host_received_utc_us",QString::number(VaporView::Session::harmonicReceptionTimeUs())},
+         {"source_host_time_us",QString::number(telemetry.host_time_us)},
+         {"sensor_sample_utc",QJsonValue(QJsonValue::Null)},{"alignment","host_receipt_uncertain"},
+         {"temperature_valid",hasFlag(VaporView::BasicHasTemperature)},{"pressure_valid",hasFlag(VaporView::BasicHasPressure)},
+         {"temperature_c",hasFlag(VaporView::BasicHasTemperature)?QJsonValue(telemetry.temperature_c):QJsonValue(QJsonValue::Null)},
+         {"pressure_hpa",hasFlag(VaporView::BasicHasPressure)?QJsonValue(telemetry.pressure_hpa):QJsonValue(QJsonValue::Null)}});
 
     refreshRemoteSkyDataUi();
 }
@@ -193,6 +201,8 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
     {
         state_->tcp_wave_panel_->setRemoteFeatureRateHz(status.feature_rate_hz);
     }
+    if(isRemoteSkyMode() && state_->remote_recording_state_!=0 && status.recording_state==0 && !isUiTestMode())state_->calibration_service_->finish();
+    if(isRemoteSkyMode())state_->calibration_service_->setExternalSessionOpen(status.recording_state!=0);
     state_->remote_recording_state_ = status.recording_state;
     for (const VaporView::DeviceStatusItem& item : status.devices)
     {

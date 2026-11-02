@@ -19,6 +19,8 @@
 #include <atomic>
 #include <memory>
 #include <thread>
+#include <mutex>
+#include <deque>
 
 namespace VaporView
 {
@@ -153,6 +155,11 @@ private:
     bool fpga_storage_failure_handled_ = false;
     qint64 fpga_status_last_sent_ms_ = -1000;
     QHash<quint16, qint64> fpga_preview_sent_ms_;
+    QTimer fpga_feature_timer_;
+    std::mutex fpga_feature_mutex_;
+    std::deque<QByteArray> fpga_features_;
+    QString fpga_feature_stream_;
+    quint64 fpga_feature_sequence_ = 0;
     bool waveform_streaming_enabled_ = false;
     quint64 started_time_us_ = 0;
     quint64 last_sent_feature_time_us_ = 0;

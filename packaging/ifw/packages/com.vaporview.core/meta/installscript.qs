@@ -91,6 +91,10 @@ Component.prototype.createOperations = function() {
     component.createOperations();
 
     component.addOperation("Mkdir", "@TargetDir@/data");
+    // User-owned files are never package payloads or explicit removal targets.
+    // Mkdir undo only removes empty directories; calibration data survives updates.
+    component.addOperation("Mkdir", "@TargetDir@/calibrations");
+    component.addOperation("Mkdir", "@TargetDir@/calibrations/drafts");
 
     if (systemInfo.productType === "windows") {
         component.addOperation("Execute",

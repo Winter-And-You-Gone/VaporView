@@ -48,6 +48,8 @@ C:\包含中文的目录\VaporView
 - 保留 `SYSTEM` 和内置 `Administrators` 的 Full Control。
 - 不向 `Everyone`、`Users` 或 `Authenticated Users` 授予 Full Control。
 - 对安装目录根、已有文件和子目录递归生效，后续新增文件和目录通过继承获得权限。
+- 水汽定标文件固定写入安装根 `calibrations/`，草稿写入 `calibrations/drafts/`；使用同一交互用户 ACL，不以管理员身份运行应用，不回退到 AppData。
+- IFW 只创建定标目录，不将用户 `.vcal`/`.vcaldraft` 纳入包，也不添加递归删除操作。更新保留用户文件；卸载只撤销空目录创建，非空定标目录保留，重新安装到原目录可以继续读取。
 - 重复执行是幂等的，不会不断增加重复 ACE。
 - 目录树中的 reparse point 默认跳过，不跟随到安装目录之外。
 - `verify` 不只检查 ACL 文本结构：它会复用同一交互会话的用户 token，通过 Windows `AccessCheck` 计算目标用户的有效 Full Control，并在 `ImpersonateLoggedOnUser` 状态下实际创建、读取、改写、重命名、改属性和删除探针文件/目录。这样可以发现“提升后的安装器能写入，但目标普通用户不能写入”的错误。

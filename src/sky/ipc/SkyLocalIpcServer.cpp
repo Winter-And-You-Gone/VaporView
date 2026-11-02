@@ -24,6 +24,7 @@ bool shouldBroadcastRuntimeFrame(MsgType type)
     case MsgType::FpgaStatus:
     case MsgType::FpgaSensor:
     case MsgType::FpgaWaveformPreview:
+    case MsgType::FpgaCycleFeature:
     case MsgType::WaveformDownsampled:
     case MsgType::WaveformFeature:
     case MsgType::TelemetryStatus:

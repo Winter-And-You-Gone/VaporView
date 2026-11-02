@@ -39,6 +39,10 @@ public:
         storage_failure_callback_ = std::move(callback);
     }
     bool storageFailed() const;
+    bool setCalibrationSnapshot(const QJsonObject&, QString *error);
+    bool hasCalibrationSnapshot() const;
+    void restoreCalibrationLock(const QString& baseDirectory);
+    bool hasRecoveredCalibrationLock() const;
     void setFpgaConfiguration(const FpgaControlConfig& configuration, bool enabled = true);
     bool recordFpgaHarmonics(quint64 hostTimeUs, const FpgaWave::CompletedStream& stream);
     bool recordFpgaSnapshot(quint64 hostTimeUs, const QJsonObject& snapshot);
@@ -134,7 +138,12 @@ private:
     quint64 fpga_segment_start_us_ = 0;
     FpgaControlConfig fpga_configuration_;
     QJsonObject fpga_snapshot_;
-    bool enqueueFpga(quint64 hostTimeUs, quint16 kind, const QByteArray& bytes);
+    bool enqueueFpga(quint64 hostTimeUs, quint16 kind, const QByteArray& bytes,
+                     std::optional<FpgaWave::NormalizedFeature> feature = {});
+    QJsonObject calibration_snapshot_;
+    QFile concentration_file_;
+    QString calibration_lock_file_;
+    bool recovered_calibration_lock_ = false;
     void recordFpgaBoundary(const QString& event);
     std::array<double,3> imu_to_main_antenna_body_m_{};
     bool openRawDatFile(QFile& file, const QString& filename, quint16 sourceId, QString *errorMessage);

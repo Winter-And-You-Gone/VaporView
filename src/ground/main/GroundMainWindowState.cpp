@@ -1,3 +1,4 @@
+#include "ground/calibration/CalibrationService.h"
 #include "ground/main/GroundMainWindowImplementation.h"
 
 namespace VaporView::Ground::Main
@@ -207,6 +208,8 @@ MainWindowState::MainWindowState()
     , local_connection_coordinator_(
           std::make_unique<VaporView::Ground::Devices::LocalConnectionCoordinator>())
     , recording_service_(std::make_unique<VaporView::Ground::Session::GroundRecordingService>())
+    , calibration_service_(std::make_shared<VaporView::Ground::Calibration::CalibrationService>())
+    , calibration_peak_bus_(std::make_unique<VaporView::Ground::Calibration::RealtimePeakBus>())
     , recording_schedule_controller_(std::make_unique<RecordingScheduleController>())
     , refresh_timer_(nullptr)
     , scheduled_recording_timer_(nullptr)

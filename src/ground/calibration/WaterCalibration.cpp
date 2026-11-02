@@ -1,4 +1,5 @@
 #include "WaterCalibration.h"
+#include "shared/session/CalibrationRuntime.h"
 #include "ground/session/SessionIndex.h"
 #include "ground/session/SessionLoader.h"
 #include "shared/config/ApplicationConfig.h"
@@ -61,42 +62,18 @@ public:
         }
         if (rows.size() < 2) { result.error = QStringLiteral("至少需要两个有效样本"); return result; }
         if (concentrations.size() < 2) { result.error = QStringLiteral("至少需要两个不同的有效标气浓度"); return result; }
-        long double meanR = 0, meanC = 0;
-        for (const auto *s : rows) { meanR += s->feature.peak; meanC += s->concentration; }
-        meanR /= rows.size(); meanC /= rows.size();
-        long double rr = 0, rc = 0, cc = 0;
-        for (const auto *s : rows) {
-            const long double r = s->feature.peak - meanR, c = s->concentration - meanC;
-            rr += r*r; rc += r*c; cc += c*c;
-        }
+        QVector<QPair<double, double>> points;
+        for (const auto *row : rows) points.append({row->feature.peak, row->concentration});
+        result = fitLinearPoints(points);
+        if (!result.success) return result;
         auto& f = result.fit;
-        f.rMin = f.rMax = rows.first()->feature.peak;
-        f.cMin = f.cMax = rows.first()->concentration;
-        for (const auto *s : rows) {
-            f.rMin = std::min(f.rMin, s->feature.peak); f.rMax = std::max(f.rMax, s->feature.peak);
-            f.cMin = std::min(f.cMin, s->concentration); f.cMax = std::max(f.cMax, s->concentration);
-        }
-        if (!(rr > 0) || f.rMin == f.rMax || !std::isfinite(rr) || !std::isfinite(rc) || !std::isfinite(cc)) {
-            result.error = QStringLiteral("峰值无变化或拟合矩阵不可解"); return result;
-        }
-        f.a = double(rc / rr); f.b = double(meanC - (rc / rr) * meanR);
-        long double residualSquares = 0;
-        for (const auto *s : rows) {
-            const double residual = s->concentration - evaluate(f, s->feature.peak);
-            f.residuals.append(residual); residualSquares += static_cast<long double>(residual)*residual;
-        }
-        f.rmse = std::sqrt(double(residualSquares / rows.size()));
-        f.rSquared = cc > 0 ? double(1 - residualSquares / cc) : std::numeric_limits<double>::quiet_NaN();
-        if (!std::isfinite(f.a) || !std::isfinite(f.b) || !std::isfinite(f.rmse) || !std::isfinite(f.rSquared)) {
-            result.error = QStringLiteral("拟合产生非有限参数，已拒绝保存"); return result;
-        }
         f.id = uuid(); f.dataset = data; f.createdUtc = now();
         f.datasetDigest = QString::fromLatin1(digest(canonical(data.toJson())));
         f.sampleCount = int(rows.size()); f.concentrationCount = int(concentrations.size());
         result.success = true;
         return result;
     }
-    double evaluate(const Fit& f, double r) const override { return std::fma(f.a, r, f.b); }
+    double evaluate(const Fit& f, double r) const override { return VaporView::Session::evaluateWaterLinear(f.a,f.b,r); }
 };
 class UnconfiguredCompensation final : public CompensationModel
 {
@@ -168,6 +145,48 @@ QString validateLibrary(const Library& library)
 }
 }
 
+FitResult fitLinearPoints(const QVector<QPair<double, double>>& rows)
+{
+    FitResult result;
+    QSet<double> concentrations;
+    for (const auto& row : rows) {
+        if (!std::isfinite(row.first) || !std::isfinite(row.second) || row.second < 0) { result.error = QStringLiteral("拟合输入无效"); return result; }
+        concentrations.insert(row.second);
+    }
+    if (rows.size() < 2 || concentrations.size() < 2) { result.error = QStringLiteral("至少需要两个不同的有效标气浓度"); return result; }
+    long double meanR = 0, meanC = 0;
+    for (const auto& s : rows) { meanR += s.first; meanC += s.second; }
+    meanR /= rows.size(); meanC /= rows.size();
+    long double rr = 0, rc = 0, cc = 0;
+    for (const auto& s : rows) {
+        const long double r = s.first - meanR, c = s.second - meanC;
+        rr += r*r; rc += r*c; cc += c*c;
+    }
+    auto& f = result.fit;
+    f.rMin = f.rMax = rows.first().first;
+    f.cMin = f.cMax = rows.first().second;
+    for (const auto& s : rows) {
+        f.rMin = std::min(f.rMin, s.first); f.rMax = std::max(f.rMax, s.first);
+        f.cMin = std::min(f.cMin, s.second); f.cMax = std::max(f.cMax, s.second);
+    }
+    if (!(rr > 0) || f.rMin == f.rMax || !std::isfinite(rr) || !std::isfinite(rc) || !std::isfinite(cc)) {
+        result.error = QStringLiteral("峰值无变化或拟合矩阵不可解"); return result;
+    }
+    f.a = double(rc / rr); f.b = double(meanC - (rc / rr) * meanR);
+    long double residualSquares = 0;
+    for (const auto& s : rows) {
+        const double residual = s.second - std::fma(f.a, s.first, f.b);
+        f.residuals.append(residual); residualSquares += static_cast<long double>(residual)*residual;
+    }
+    f.rmse = std::sqrt(double(residualSquares / rows.size()));
+    f.rSquared = cc > 0 ? double(1 - residualSquares / cc) : std::numeric_limits<double>::quiet_NaN();
+    if (!std::isfinite(f.a) || !std::isfinite(f.b) || !std::isfinite(f.rmse) || !std::isfinite(f.rSquared)) {
+        result.error = QStringLiteral("拟合产生非有限参数，已拒绝保存"); return result;
+    }
+    f.sampleCount = int(rows.size()); f.concentrationCount = int(concentrations.size());
+    result.success = true; return result;
+}
+
 QJsonObject Environment::toJson() const
 {
     return {{"temperature_c", optional(temperatureC)}, {"pressure_hpa", optional(pressureHpa)},
@@ -204,7 +223,7 @@ Sample Sample::fromJson(const QJsonObject& j, QString *error)
         !j["feature"].isObject() || !j["environment"].isObject()) {
         *error = QStringLiteral("样本字段缺失或类型无效（含排除状态和来源）"); return s;
     }
-    s.feature = WaveformFeature::fromJson(j["feature"].toObject(), error);
+    s.feature = HarmonicPeakFeature::fromJson(j["feature"].toObject(), error);
     s.concentration = optional(j["concentration"]); s.excluded = j["excluded"].toBool();
     s.note = j["note"].toString(); s.origin = j["origin"].toString();
     s.environment = Environment::fromJson(j["environment"].toObject(), error);
@@ -428,11 +447,10 @@ ConcentrationResult calculate(const Sample& sample, int wavelength, const Fit *f
     if (QUuid(fit->id).isNull() || QUuid(fit->dataset.id).isNull() || !dateValid(fit->createdUtc) ||
         !std::isfinite(fit->a) || !std::isfinite(fit->b) || !std::isfinite(fit->rMin) || !std::isfinite(fit->rMax) ||
         fit->rMin >= fit->rMax || !unitValid(fit->dataset.unit)) return fail(QStringLiteral("定标参数无效"));
-    if (sample.feature.peak < fit->rMin || sample.feature.peak > fit->rMax) return fail(QStringLiteral("峰值超出定标范围；未外推"));
     auto model = FitModel::create(fit->model, fit->modelVersion);
     if (!model) return fail(QStringLiteral("不支持的定标模型版本"));
-    r.initial = model->evaluate(*fit, sample.feature.peak);
-    if (!std::isfinite(r.initial) || r.initial < 0) return fail(QStringLiteral("初始浓度非有限或小于零"));
+    QString predictionStatus;
+    if(!VaporView::Session::calculateWaterInitial(fit->a,fit->b,fit->rMin,fit->rMax,sample.feature.peak,r.initial,predictionStatus))return fail(predictionStatus);
     const auto compensation = UnconfiguredCompensation().apply(r.initial, sample.environment);
     r.value = compensation.value; r.compensated = compensation.applied; r.status = compensation.status; r.valid = true;
     return r;

@@ -6,6 +6,7 @@
 #include <QJsonDocument>
 #include <QRegularExpression>
 #include <QStringList>
+#include <QUuid>
 #include <QtEndian>
 #include <cmath>
 #include <cstring>
@@ -386,6 +387,41 @@ bool parseSensor(const QByteArray& payload, FpgaSensor::Reading& reading, quint6
     reading=r; if(hostTimestampUs) *hostTimestampUs=host; return true;
 }
 
+QByteArray encodeCycleFeature(quint64 host,const FpgaWave::CompletedStream& s)
+{
+    if(!s.normalizedFeature || s.preview || (s.source!=0x30 && s.source!=0x31))return {};
+    const auto& f=*s.normalizedFeature;
+    return QJsonDocument(QJsonObject{{"schema",1},{"host_time_us",QString::number(host)},
+        {"channel",s.source},{"cycle",double(s.cycleId)},{"tick",QString::number(s.timestamp)},
+        {"points",double(s.totalPoints)},{"quality",double(f.quality)},{"valid_points",double(f.validPoints)},
+        {"peak_index",double(f.peakIndex)},{"peak",std::isfinite(f.peak)?QJsonValue(f.peak):QJsonValue(QJsonValue::Null)},
+        {"minimum",std::isfinite(f.minimum)?QJsonValue(f.minimum):QJsonValue(QJsonValue::Null)},
+        {"mean",std::isfinite(f.mean)?QJsonValue(f.mean):QJsonValue(QJsonValue::Null)},
+        {"rms",std::isfinite(f.rms)?QJsonValue(f.rms):QJsonValue(QJsonValue::Null)}}).toJson(QJsonDocument::Compact);
+}
+bool parseCycleFeature(const QByteArray& bytes,quint64& host,FpgaWave::CompletedStream& s)
+{
+    if(bytes.size()>4096)return false;
+    const auto j=QJsonDocument::fromJson(bytes).object();bool h=false,t=false;
+    for(const auto *key:{"channel","cycle","points","quality","valid_points"})if(!integer(j[QLatin1String(key)]))return false;
+    if(!integer(j["peak_index"],-1,4294967295.0))return false;
+    host=j["host_time_us"].toString().toULongLong(&h);s.timestamp=j["tick"].toString().toULongLong(&t);
+    s.source=quint16(j["channel"].toInt());s.cycleId=quint32(j["cycle"].toDouble());s.totalPoints=quint32(j["points"].toDouble());
+    FpgaWave::NormalizedFeature f;f.quality=quint32(j["quality"].toDouble());f.validPoints=quint32(j["valid_points"].toDouble());
+    f.peakIndex=qint64(j["peak_index"].toDouble(-2));
+    const auto number=[&](const char *key){return j[QLatin1String(key)].isDouble()?j[QLatin1String(key)].toDouble():std::numeric_limits<double>::quiet_NaN();};
+    f.peak=number("peak");f.minimum=number("minimum");f.mean=number("mean");f.rms=number("rms");
+    if(j.contains("stream_id")) {
+        if(QUuid(j["stream_id"].toString()).isNull() || !decimal(j["event_sequence"],s.featureSequence) || !s.featureSequence)return false;
+        s.featureStreamId=j["stream_id"].toString();
+    }
+    if(j["schema"]!=1 || !h || !t || !host || (s.source!=0x30 && s.source!=0x31) ||
+       !s.totalPoints || f.validPoints>s.totalPoints || (f.quality & ~quint32(31)) ||
+       (f.validPoints && (!std::isfinite(f.peak) || f.peakIndex<0 || quint64(f.peakIndex)>=s.totalPoints)) ||
+       (!f.validPoints && !(f.quality&2)))return false;
+    s.complete=!(f.quality&28);s.partial=bool(f.quality&4);s.overflow=bool(f.quality&8);s.continuityError=bool(f.quality&16);
+    s.normalizedFeature=f;s.hasFullCyclePeak=true;s.fullCyclePeak=f.peak;return true;
+}
 QByteArray encodeWaveformPreview(const FpgaWave::CompletedStream& s)
 {
     const qsizetype count = !s.dliaPoints.isEmpty() ? s.dliaPoints.size() :

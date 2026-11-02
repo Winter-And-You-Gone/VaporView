@@ -20,6 +20,7 @@ namespace VaporView { class RecordingStorage; }
 
 namespace VaporView::Ground::Session
 {
+class SessionCalibrationPolicy;
 
 struct GroundSensorSnapshot
 {
@@ -131,6 +132,7 @@ public:
     void setSensorSnapshotProvider(SensorSnapshotProvider provider);
     void setStatusCallback(StatusCallback callback);
     void setWarningCallback(WarningCallback callback);
+    void setCalibrationPolicy(std::shared_ptr<SessionCalibrationPolicy> policy);
 
     bool start(const GroundRecordingOptions& options,
                GroundRecordingStartError *startError = nullptr,

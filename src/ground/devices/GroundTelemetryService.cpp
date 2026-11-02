@@ -680,6 +680,12 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
                 ||(reading.source==0x44&&reading.kind==FpgaSensor::SensorKind::Sht45)))emit internalEnvironmentUpdated(reading);
         break;
     }
+    case MsgType::FpgaCycleFeature:
+    {
+        FpgaWave::CompletedStream stream;quint64 host=0;
+        if(FpgaRemote::parseCycleFeature(frame.payload,host,stream))emit fpgaCycleFeatureUpdated(host,stream);
+        break;
+    }
     case MsgType::FpgaWaveformPreview:
     {
         FpgaWave::CompletedStream stream;

@@ -71,4 +71,9 @@ if ($configText -notmatch '<AllowNonAsciiCharacters>true</AllowNonAsciiCharacter
     throw "Generated IFW config.xml does not allow non-ASCII installation paths"
 }
 
+foreach ($relative in @('calibrations', 'water_calibration\library.json')) {
+    if (Test-Path -LiteralPath (Join-Path $StageDir $relative)) {
+        throw "User calibration data must not be included in installer payload: $relative"
+    }
+}
 Write-Host "ifw_staging_test passed"

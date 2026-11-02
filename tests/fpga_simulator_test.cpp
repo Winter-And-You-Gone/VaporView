@@ -8,6 +8,7 @@
 #include "shared/session/UnifiedRawDat.h"
 #include <QFile>
 #include "test_settings_sandbox.h"
+#include "IndependentCalibrationFixture.h"
 
 #include <QCoreApplication>
 #include <QElapsedTimer>
@@ -324,7 +325,13 @@ void processTest()
     operation({{"op","temperature"},{"celsius",32.5}});
     operation({{"op","raw"},{"enabled",true}});
     wait([&]{return waves.contains(0x20)&&waves.contains(0x21);},"RAW previews cross process and telemetry boundaries");
-    remote.sendCommand(CommandId::StartRecording);
+    IndependentCalibrationTest::Rig calibration;
+    const auto calibrationFile=calibration.complete();
+    calibration.service->selectFile(calibrationFile.filename);calibration.service->synchronize();
+    QJsonObject calibrationSnapshot;QString calibrationError;
+    check(calibration.service->prepare(calibrationSnapshot,&calibrationError),qPrintable(calibrationError));
+    calibrationSnapshot.remove("vcal_document");
+    remote.sendCommand(CommandId::StartRecording,QJsonDocument(calibrationSnapshot).toJson(QJsonDocument::Compact));
     wait([&]{return status.value("recording_state").toInt()==1;},"recording becomes active");
     sensors.clear();waves.clear();
     wait([&]{return sensors.size()==8&&waves.size()==4&&fullCyclePeakReceived&&

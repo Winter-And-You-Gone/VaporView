@@ -1,3 +1,4 @@
+#include "ground/calibration/CalibrationService.h"
 #include "ground/main/GroundMainWindowImplementation.h"
 #include "ground/devices/DeviceRatePolicy.h"
 #include "ground/widgets/SerialPortComboSupport.h"
@@ -2694,7 +2695,7 @@ void MainWindow::setupCentralWidget()
     });
     state_->main_page_stack_->addWidget(state_->combination_navigation_page_);
     setupFpgaControlPage();
-    state_->water_calibration_page_ = new VaporView::Ground::Calibration::WaterCalibrationPage(state_->main_page_stack_);
+    state_->water_calibration_page_ = new VaporView::Ground::Calibration::WaterCalibrationPage(state_->main_page_stack_, {}, state_->calibration_service_);
     state_->main_page_stack_->addWidget(state_->water_calibration_page_);
     state_->main_page_stack_->addWidget(state_->motion_page_);
 

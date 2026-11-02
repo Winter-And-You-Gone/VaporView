@@ -80,6 +80,7 @@ target_link_libraries(vaporview_ground_session_ui PRIVATE
     vaporview_app_config
     vaporview_app_theme
     vaporview_ground_session_core
+    vaporview_water_calibration_core
     vaporview_ground_trajectory
     vaporview_ground_ui_support
     vaporview_ground_widgets

@@ -3,13 +3,25 @@
 #include <QByteArray>
 #include <QVector>
 #include <QMetaType>
+#include <QString>
 
 #include <cstdint>
 #include <map>
 #include <optional>
+#include <limits>
 
 namespace VaporView::FpgaWave
 {
+
+struct NormalizedFeature
+{
+    double peak = std::numeric_limits<double>::quiet_NaN();
+    double minimum = std::numeric_limits<double>::quiet_NaN();
+    double mean = std::numeric_limits<double>::quiet_NaN();
+    double rms = std::numeric_limits<double>::quiet_NaN();
+    qint64 peakIndex = -1;
+    quint32 validPoints = 0, quality = 0;
+};
 
 struct Fragment
 {
@@ -43,6 +55,10 @@ struct CompletedStream
     quint32 previewStride = 1;
     bool hasFullCyclePeak = false;
     double fullCyclePeak = 0;
+    std::optional<NormalizedFeature> normalizedFeature;
+      // Host telemetry sequence; never serialized into the FPGA raw format.
+      QString featureStreamId;
+      quint64 featureSequence = 0;
     quint64 firstHostTimeUs = 0;
     QVector<qint32> signed32Samples;
     QVector<quint32> unsigned32Samples;

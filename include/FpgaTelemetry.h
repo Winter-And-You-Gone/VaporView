@@ -21,5 +21,7 @@ QByteArray encodeSensor(const FpgaSensor::Reading& reading, quint64 hostTimestam
 bool parseSensor(const QByteArray& payload, FpgaSensor::Reading& reading,
                  quint64 *hostTimestampUs = nullptr);
 QByteArray encodeWaveformPreview(const FpgaWave::CompletedStream& stream);
+QByteArray encodeCycleFeature(quint64 hostTimeUs, const FpgaWave::CompletedStream& stream);
+bool parseCycleFeature(const QByteArray&, quint64& hostTimeUs, FpgaWave::CompletedStream&);
 bool parseWaveformPreview(const QByteArray& payload, FpgaWave::CompletedStream& stream);
 }

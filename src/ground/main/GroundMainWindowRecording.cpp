@@ -1,3 +1,4 @@
+#include "ground/calibration/CalibrationService.h"
 #include "ground/main/GroundMainWindowImplementation.h"
 
 #include <QProgressBar>
@@ -7,6 +8,19 @@
 
 namespace
 {
+bool prepareRemoteCalibration(const std::shared_ptr<VaporView::Ground::Calibration::CalibrationService>& service,
+                              bool resuming,QByteArray& payload,QString *error)
+{
+    if(resuming) {
+        if(!service->view().locked){if(error)*error=QStringLiteral("缺少原 Session 的定标锁，请先处理异常会话");return false;}
+        return true;
+    }
+    QJsonObject snapshot;
+    if(!service->prepare(snapshot,error))return false;
+    snapshot.remove("vcal_document"); // The complete numerical snapshot fits a bounded command; raw task data stays in .vcal.
+    payload=QJsonDocument(snapshot).toJson(QJsonDocument::Compact);
+    return true;
+}
 
 void publishPendingUiLogDropNotice(quint64 dropped)
 {
@@ -1109,7 +1123,7 @@ bool MainWindow::startRecordingSession()
                          fields);
         QMessageBox::warning(this,
                              state_->is_english_ ? QStringLiteral("Error") : QStringLiteral("错误"),
-                             message);
+                             message+(errorMessage.isEmpty()?QString():"\n"+errorMessage));
         return false;
     }
 
@@ -1310,9 +1324,14 @@ bool MainWindow::tryStartScheduledRecording(QString *failureReason)
 
     if (isRemoteSkyMode())
     {
+        QByteArray calibrationPayload;QString calibrationError;
+        if(!prepareRemoteCalibration(state_->calibration_service_,state_->remote_recording_state_==2,calibrationPayload,&calibrationError)) {
+            if(failureReason)*failureReason=calibrationError;return false;
+        }
         const quint16 seq = state_->remote_sky_controller_
-            ? state_->remote_sky_controller_->sendCommand(VaporView::CommandId::StartRecording)
+            ? state_->remote_sky_controller_->sendCommand(VaporView::CommandId::StartRecording,calibrationPayload)
             : 0;
+        if(!seq && state_->remote_recording_state_!=2)state_->calibration_service_->finish();
         if (seq != 0)
         {
             publishGroundLog(VaporView::LogLevel::Info,
@@ -1827,7 +1846,11 @@ void MainWindow::onStartRecordingClicked()
                               {QStringLiteral("ui_dedupe_key"), QStringLiteral("recording:remote_sky:not_connected")}});
             return;
         }
-        state_->remote_sky_controller_->sendCommand(VaporView::CommandId::StartRecording);
+        QByteArray calibrationPayload;QString calibrationError;
+        if(!prepareRemoteCalibration(state_->calibration_service_,state_->remote_recording_state_==2,calibrationPayload,&calibrationError)) {
+            publishGroundLog(VaporView::LogLevel::Warning,QStringLiteral("session.recording"),QStringLiteral("calibration_start_rejected"),calibrationError);return;
+        }
+        if(!state_->remote_sky_controller_->sendCommand(VaporView::CommandId::StartRecording,calibrationPayload) && state_->remote_recording_state_!=2)state_->calibration_service_->finish();
         return;
     }
 

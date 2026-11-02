@@ -7,7 +7,10 @@
 #include "shared/session/SessionSensorCsv.h"
 #include "shared/session/UnifiedRawDat.h"
 #include "shared/session/HarmonicWaveform.h"
+#include "shared/session/CalibrationRuntime.h"
+#include "FpgaHarmonics.h"
 #include <QJsonDocument>
+#include <QSaveFile>
 #include <atomic>
 #include <condition_variable>
 #include <deque>
@@ -181,7 +184,7 @@ QString applicationSoftwareVersion()
 // Queue overflow fails the session explicitly; complete harmonic cycles are never silently dropped.
 struct SkySessionRecorder::HarmonicWriter
 {
-    struct Record { quint64 timestamp; quint16 kind; QByteArray bytes; };
+    struct Record { quint64 timestamp; quint16 kind; QByteArray bytes; std::optional<FpgaWave::NormalizedFeature> feature; };
     static constexpr qsizetype kQueueBudget = 16 * 1024 * 1024;
     std::function<bool(const Record&)> write;
     std::atomic_bool failed{false};
@@ -205,12 +208,12 @@ struct SkySessionRecorder::HarmonicWriter
         worker.join();
         return !failed;
     }
-    bool enqueue(quint64 timestamp, quint16 kind, const QByteArray& bytes) {
+    bool enqueue(quint64 timestamp, quint16 kind, const QByteArray& bytes, std::optional<FpgaWave::NormalizedFeature> feature = {}) {
         std::lock_guard<std::mutex> lock(mutex);
         if (failed || stopping) return false;
         const qsizetype size = bytes.size() + 64;
         if (size > kQueueBudget - queuedBytes) { failed = true; changed.notify_all(); return false; }
-        queue.push_back({timestamp, kind, bytes}); queuedBytes += size;
+        queue.push_back({timestamp, kind, bytes, feature}); queuedBytes += size;
         changed.notify_all();
         return true;
     }
@@ -266,6 +269,39 @@ SkySessionRecorder::~SkySessionRecorder()
     storage_failure_callback_ = {};
     closeFiles();
 }
+bool SkySessionRecorder::setCalibrationSnapshot(const QJsonObject& snapshot,QString *error)
+{
+    std::lock_guard<std::recursive_mutex> lock(recording_mutex_);
+    if(isRecording() || isPaused()) {
+        if(snapshot==calibration_snapshot_)return true;
+        if(error)*error=QStringLiteral("Session 已锁定定标参数，暂停期间也不能切换");return false;
+    }
+    const auto e=Session::validateRuntimeCalibration(snapshot["runtime"].toObject());
+    if(!e.isEmpty()){if(error)*error=e;return false;}
+    const auto runtime=snapshot["runtime"].toObject();
+    if(snapshot["kind"]!="vaporview_session_calibration" || snapshot["schema_version"]!=1 ||
+       snapshot["file_id"]!=runtime["file_id"] || snapshot["file_sha256"]!=runtime["file_sha256"]) {
+        if(error)*error=QStringLiteral("Session 定标快照与运行参数来源不一致");return false;
+    }
+    calibration_snapshot_=snapshot;return true;
+}
+bool SkySessionRecorder::hasCalibrationSnapshot() const
+{std::lock_guard<std::recursive_mutex> lock(recording_mutex_);return !calibration_snapshot_.isEmpty();}
+bool SkySessionRecorder::hasRecoveredCalibrationLock() const
+{std::lock_guard<std::recursive_mutex> lock(recording_mutex_);return recovered_calibration_lock_;}
+void SkySessionRecorder::restoreCalibrationLock(const QString& baseDirectory)
+{
+    std::lock_guard<std::recursive_mutex> lock(recording_mutex_);
+    calibration_lock_file_=QDir(baseDirectory).filePath(".calibration-session-lock.json");
+    QFile file(calibration_lock_file_);if(!file.exists())return;
+    recovered_calibration_lock_=true;recording_state_=2;
+    if(file.open(QIODevice::ReadOnly)) {
+        const auto j=QJsonDocument::fromJson(file.readAll()).object();
+        session_directory_=j["session_directory"].toString();session_metadata_filename_=j["metadata_file"].toString();
+        const auto snapshot=j["snapshot"].toObject();
+        if(Session::validateRuntimeCalibration(snapshot["runtime"].toObject()).isEmpty())calibration_snapshot_=snapshot;
+    }
+}
 
 bool SkySessionRecorder::storageFailed() const
 {
@@ -295,11 +331,11 @@ QJsonObject SkySessionRecorder::fpgaRecordingStatistics() const
         {"normalized_features", QString::number(harmonic_writer_->featureCount.load())}} : QJsonObject{};
 }
 
-bool SkySessionRecorder::enqueueFpga(quint64 timestamp, quint16 kind, const QByteArray& bytes)
+bool SkySessionRecorder::enqueueFpga(quint64 timestamp, quint16 kind, const QByteArray& bytes, std::optional<FpgaWave::NormalizedFeature> feature)
 {
     std::lock_guard<std::recursive_mutex> recordingLock(recording_mutex_);
     if (!isRecording()) return false;
-    if (!harmonic_writer_->enqueue(timestamp, kind, bytes)) { markStorageFailure(); return false; }
+    if (!harmonic_writer_->enqueue(timestamp, kind, bytes, feature)) { markStorageFailure(); return false; }
     return true;
 }
 
@@ -311,7 +347,8 @@ bool SkySessionRecorder::recordFpgaHarmonics(quint64 timestamp, const FpgaWave::
     const auto payload = Session::encodeHarmonics(stream, fpga_segment_);
     if (payload.isEmpty()) return false;
     fpga_recording_enabled_ = true;
-    return enqueueFpga(timestamp, SessionRawDat::kRecordTypeHarmonicPair, payload);
+    return enqueueFpga(timestamp, SessionRawDat::kRecordTypeHarmonicPair, payload,
+        stream.normalizedFeature ? stream.normalizedFeature : std::optional(FpgaWave::normalizedCycleFeature(stream)));
 }
 bool SkySessionRecorder::recordFpgaSnapshot(quint64 timestamp, const QJsonObject& snapshot)
 {
@@ -371,6 +408,8 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
                                const QString& telemetryEndpoint)
 {
     std::lock_guard<std::recursive_mutex> recordingLock(recording_mutex_);
+    if(recording_state_==0 && QFileInfo::exists(QDir(baseDirectory).filePath(".calibration-session-lock.json")))restoreCalibrationLock(baseDirectory);
+    if(recovered_calibration_lock_){if(errorMessage)*errorMessage=QStringLiteral("已恢复异常 Session 定标锁；请先停止异常会话，再开始新的 Session，不能伪装恢复丢失的记录区间");return false;}
     if (recording_state_ == 2 && !session_directory_.isEmpty())
     {
         if (storageFailed())
@@ -431,11 +470,26 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
 
     session_name_ = initResult.sessionName;
     session_directory_ = initResult.sessionDirectory;
+    if(!calibration_snapshot_.isEmpty()) {
+        QSaveFile file(QDir(session_directory_).filePath("calibration_snapshot.json"));const auto bytes=QJsonDocument(calibration_snapshot_).toJson(QJsonDocument::Compact);
+        if(!file.open(QIODevice::WriteOnly) || file.write(bytes)!=bytes.size() || !file.commit()) {
+            if(errorMessage)*errorMessage=QStringLiteral("无法写入 Sky Session 定标快照");return false;
+        }
+        concentration_file_.setFileName(QDir(session_directory_).filePath("calibration_concentrations.jsonl"));
+        if(!concentration_file_.open(QIODevice::WriteOnly)){if(errorMessage)*errorMessage=concentration_file_.errorString();return false;}
+    }
     Ppk::PpkConfig ppkConfig;
     ppkConfig.imuToAntennaBodyM = imu_to_main_antenna_body_m_;
     if(!Ppk::PpkProcessor::saveConfig(session_directory_,ppkConfig,errorMessage))return false;
     const VaporView::Session::SessionPackageLayout& packageLayout = initResult.layout;
     session_metadata_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.manifestPath);
+    if(!calibration_snapshot_.isEmpty()) {
+        calibration_lock_file_=QDir(baseDirectory).filePath(".calibration-session-lock.json");
+        QSaveFile lockFile(calibration_lock_file_);lockFile.setDirectWriteFallback(false);
+        const auto lockBytes=QJsonDocument(QJsonObject{{"snapshot",calibration_snapshot_},{"session_directory",session_directory_},{"metadata_file",session_metadata_filename_}}).toJson(QJsonDocument::Compact);
+        if(!lockFile.open(QIODevice::WriteOnly) || lockFile.write(lockBytes)!=lockBytes.size() || !lockFile.commit()){
+            if(errorMessage)*errorMessage=QStringLiteral("无法持久化 Sky Session 定标锁：%1").arg(lockFile.errorString());return false;}
+    }
     sensor_summary_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.sensorSummaryCsvPath);
     feature_filename_ = VaporView::Session::sessionPackageFilePath(session_directory_, packageLayout.waveformFeaturesCsvPath);
     temperature_controller_filename_ = VaporView::Session::sessionPackageFilePath(
@@ -572,7 +626,15 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
         RecordingOutputDevice output(*storage_, waveform_raw_file_);
         if (!SessionRawDat::writeRecord(output, header, record.bytes)) return false;
         ++harmonic_writer_->count;
-        const auto row = Session::harmonicFeatureCsv(record.timestamp, header.sequence, record.bytes);
+        Session::HarmonicLayout layout;
+        Session::parseHarmonicLayout(record.bytes,quint32(record.bytes.size()),layout);
+        const auto row = record.feature ? Session::harmonicFeatureCsv(record.timestamp,header.sequence,layout,*record.feature)
+            : Session::harmonicFeatureCsv(record.timestamp, header.sequence, record.bytes);
+        if(!calibration_snapshot_.isEmpty() && record.feature) {
+            const auto value=Session::calculateRuntimeConcentration(calibration_snapshot_["runtime"].toObject(),session_directory_,record.timestamp,header.sequence,layout,*record.feature);
+            const auto bytes=QJsonDocument(value).toJson(QJsonDocument::Compact)+'\n';
+            if(concentration_file_.write(bytes)!=bytes.size() || !concentration_file_.flush())return false;
+        }
         if (row.isEmpty() || storage_->write(feature_record_file_, row.constData(), row.size()) != row.size() ||
             !storage_->flush(feature_record_file_)) return false;
         ++harmonic_writer_->featureCount;
@@ -592,6 +654,7 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
 void SkySessionRecorder::pause()
 {
     std::lock_guard<std::recursive_mutex> recordingLock(recording_mutex_);
+    if(recovered_calibration_lock_)return;
     if (isRecording()) recordFpgaBoundary(QStringLiteral("pause"));
     if (recording_state_ == 1)
     {
@@ -610,6 +673,18 @@ void SkySessionRecorder::pause()
 bool SkySessionRecorder::stop(QString *errorMessage)
 {
     std::lock_guard<std::recursive_mutex> recordingLock(recording_mutex_);
+    if(recovered_calibration_lock_) {
+        if(!session_metadata_filename_.isEmpty()) {
+            QFile file(session_metadata_filename_);if(!file.open(QIODevice::ReadOnly)){if(errorMessage)*errorMessage=file.errorString();return false;}
+            auto j=QJsonDocument::fromJson(file.readAll()).object();file.close();
+            if(j.isEmpty()){if(errorMessage)*errorMessage=QStringLiteral("异常 Session 元数据损坏，请先恢复元数据");return false;}
+            if(j["state"]!="complete")j["state"]="incomplete";
+            QSaveFile save(session_metadata_filename_);const auto bytes=QJsonDocument(j).toJson();
+            if(!save.open(QIODevice::WriteOnly) || save.write(bytes)!=bytes.size() || !save.commit()){if(errorMessage)*errorMessage=save.errorString();return false;}
+        }
+        if(!QFile::remove(calibration_lock_file_)){if(errorMessage)*errorMessage=QStringLiteral("无法解除 Sky 异常 Session 锁，请检查录制目录写权限");return false;}
+        recovered_calibration_lock_=false;recording_state_=0;calibration_snapshot_={};return true;
+    }
     if (isRecording()) recordFpgaBoundary(QStringLiteral("stop"));
     recording_elapsed_ms_ = recordingElapsedMs();
     active_segment_timer_.invalidate();
@@ -618,6 +693,9 @@ bool SkySessionRecorder::stop(QString *errorMessage)
     const bool metadataWritten = writeSessionMetadata(QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs),
                                                       errorMessage);
     recording_state_ = 0;
+    calibration_snapshot_={};
+    if(!calibration_lock_file_.isEmpty() && QFileInfo::exists(calibration_lock_file_) && !QFile::remove(calibration_lock_file_)){
+        recovered_calibration_lock_=true;recording_state_=2;if(errorMessage)*errorMessage=QStringLiteral("Session 已停止，但持久化定标锁无法删除，请检查目录权限");return false;}
     if (storage_failed_ && errorMessage && errorMessage->isEmpty())
         *errorMessage = QStringLiteral("Recording is incomplete because data could not be written or flushed.");
     return metadataWritten && !storage_failed_;
@@ -1372,7 +1450,7 @@ void SkySessionRecorder::closeFiles()
     ppk_attitudes_.close();
     bool failed = false;
     std::unique_lock<std::mutex> lock(files_mutex_);
-    for (QFile *file : {&basic_record_file_,
+    for (QFile *file : {&concentration_file_, &basic_record_file_,
                         &navigation_status_file_,
                         &feature_record_file_,
                         &temperature_controller_record_file_,

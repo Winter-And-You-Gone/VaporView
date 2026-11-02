@@ -21,7 +21,7 @@ QString recordId(const QString& sessionKey, quint32 channel, quint64 sequence)
         (sessionKey + '|' + QString::number(channel) + '|' + QString::number(sequence)).toUtf8(),
         QCryptographicHash::Sha256).toHex());
 }
-bool decode(WaveformFeature& r, QString *error)
+bool decode(HarmonicPeakFeature& r, QString *error)
 {
     if (QSet<QString>(r.headers.begin(), r.headers.end()).size() != r.headers.size()) {
         *error = QStringLiteral("特征 CSV 存在重复字段名"); return false;
@@ -73,7 +73,7 @@ bool decode(WaveformFeature& r, QString *error)
 }
 }
 
-QString WaveformFeature::sourceError() const
+QString HarmonicPeakFeature::sourceError() const
 {
     QString error;
     const auto decoded = fromJson(toJson(), &error);
@@ -86,7 +86,7 @@ QString WaveformFeature::sourceError() const
     return {};
 }
 
-QString WaveformFeature::invalidReason() const
+QString HarmonicPeakFeature::invalidReason() const
 {
     using namespace VaporView::Session;
     // InvalidReference marks skipped samples, not an invalid cycle. Match the
@@ -98,14 +98,43 @@ QString WaveformFeature::invalidReason() const
     return {};
 }
 
-QJsonObject WaveformFeature::toJson() const
+QJsonObject HarmonicPeakFeature::toJson() const
 {
+    if (!streamIdentity.isEmpty())
+        return {{"kind", "live_harmonic_v1"}, {"stream", streamIdentity}, {"id", id},
+            {"host_time_us", QString::number(hostTimeUs)}, {"sequence", QString::number(waveformSequence)},
+            {"fpga_tick", QString::number(fpgaTick)}, {"segment", QString::number(segmentId)},
+            {"channel", int(channel)}, {"cycle", double(cycleId)}, {"quality", double(qualityFlags)},
+            {"points", double(originalPoints)}, {"valid_points", double(validPoints)},
+            {"peak_index", double(peakIndex)}, {"peak", std::isfinite(peak) ? QJsonValue(peak) : QJsonValue(QJsonValue::Null)}};
     return {{"id", id}, {"session_key", sessionKey}, {"session", sessionDirectory}, {"csv", csvFilename}, {"line", csvLine},
             {"headers", QJsonArray::fromStringList(headers)}, {"fields", QJsonArray::fromStringList(fields)}};
 }
-WaveformFeature WaveformFeature::fromJson(const QJsonObject& j, QString *error)
+HarmonicPeakFeature HarmonicPeakFeature::fromJson(const QJsonObject& j, QString *error)
 {
-    WaveformFeature r;
+    HarmonicPeakFeature r;
+    if (j["kind"] == "live_harmonic_v1") {
+        r.streamIdentity = j["stream"].toString(); r.id = j["id"].toString();
+        bool ok = true;
+        const auto integer = [&](const char *key) { bool parsed = false; const auto n = j[QLatin1String(key)].toString().toULongLong(&parsed); ok &= parsed; return n; };
+        r.hostTimeUs = integer("host_time_us"); r.waveformSequence = integer("sequence");
+        r.fpgaTick = integer("fpga_tick"); r.segmentId = integer("segment");
+        const auto u32 = [&](const char *key) { const auto v=j[QLatin1String(key)]; const auto n=v.toDouble(-1); ok &= v.isDouble() && n>=0 && n<=UINT32_MAX && std::floor(n)==n; return quint32(ok?n:0); };
+        r.channel=u32("channel"); r.cycleId=u32("cycle"); r.qualityFlags=u32("quality");
+        r.originalPoints=u32("points"); r.validPoints=u32("valid_points");
+        const auto index=j["peak_index"].toDouble(-2);
+        ok &= j["peak_index"].isDouble() && index>=-1 && index<=UINT32_MAX && std::floor(index)==index;
+        r.peakIndex=ok?qint64(index):-2;
+        r.peak=j["peak"].isNull()?std::numeric_limits<double>::quiet_NaN():j["peak"].toDouble(std::numeric_limits<double>::quiet_NaN());
+        const auto expected=recordId(r.streamIdentity,r.channel,r.waveformSequence);
+        if (!ok || r.streamIdentity.isEmpty() || r.id!=expected || !r.hostTimeUs ||
+            (r.channel!=0x30 && r.channel!=0x31) || !j["peak_index"].isDouble() ||
+            j["peak_index"].toDouble()!=r.peakIndex || r.peakIndex < -1 ||
+            r.validPoints>r.originalPoints || (r.validPoints && (!std::isfinite(r.peak) || r.peakIndex<0 || quint64(r.peakIndex)>=r.originalPoints)) ||
+            (!r.validPoints && (!j["peak"].isNull() || !(r.qualityFlags & 2))))
+            *error=QStringLiteral("实时周期特征的来源、标识或数值无效");
+        return r;
+    }
     r.sessionKey = j["session_key"].toString();
     r.sessionDirectory = j["session"].toString(); r.csvFilename = j["csv"].toString(); r.csvLine = j["line"].toInt();
     if (!j["headers"].isArray() || !j["fields"].isArray()) { *error = QStringLiteral("特征原始字段必须为字符串数组"); return r; }
@@ -123,7 +152,7 @@ WaveformFeature WaveformFeature::fromJson(const QJsonObject& j, QString *error)
     return r;
 }
 
-WaveformFeaturesResult SessionWaveformFeatures::read(const QString& directory)
+HarmonicPeakFeaturesResult SessionWaveformFeatures::read(const QString& directory)
 {
     const auto context = VaporView::Session::loadSessionPathContext(directory);
     if (!context.manifestError.isEmpty()) return {false, context.manifestError, {}};
@@ -131,9 +160,9 @@ WaveformFeaturesResult SessionWaveformFeatures::read(const QString& directory)
         VaporView::Session::SessionFileKind::WaveformFeaturesCsv).absolutePath, directory);
 }
 
-WaveformFeaturesResult SessionWaveformFeatures::readFile(const QString& filename, const QString& directory)
+HarmonicPeakFeaturesResult SessionWaveformFeatures::readFile(const QString& filename, const QString& directory)
 {
-    WaveformFeaturesResult result;
+    HarmonicPeakFeaturesResult result;
     QFile file(filename);
     if (!QFileInfo(directory).isDir() || !file.open(QIODevice::ReadOnly)) {
         result.error = QStringLiteral("来源 Session 或特征文件不存在/无法读取：%1").arg(filename); return result;
@@ -148,7 +177,7 @@ WaveformFeaturesResult SessionWaveformFeatures::readFile(const QString& filename
     const auto headers = SessionCsv::parseCsvLine(QString::fromUtf8(header).trimmed(), &result.error);
     if (!result.error.isEmpty()) return result;
     // Validate the header even when the file contains no data yet.
-    WaveformFeature probe; probe.headers = headers; QString headerError;
+    HarmonicPeakFeature probe; probe.headers = headers; QString headerError;
     decode(probe, &headerError);
     if (headerError.startsWith(QStringLiteral("特征 CSV"))) { result.error = headerError; return result; }
     const auto manifest = context.manifest;
@@ -173,7 +202,7 @@ WaveformFeaturesResult SessionWaveformFeatures::readFile(const QString& filename
         // A recorder may be in the middle of writing its last row. Retry later.
         if (!bytes.endsWith('\n') && context.manifest["state"].toString() == "recording") break;
         if (bytes.trimmed().isEmpty()) continue;
-        WaveformFeature r;
+        HarmonicPeakFeature r;
         r.sessionKey = sessionKey;
         r.sessionDirectory = QDir::fromNativeSeparators(QFileInfo(directory).absoluteFilePath());
         r.csvFilename = QFileInfo(filename).absoluteFilePath(); r.csvLine = line; r.headers = headers;

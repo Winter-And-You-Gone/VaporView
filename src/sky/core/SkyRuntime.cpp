@@ -12,6 +12,7 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
+#include <QUuid>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -154,6 +155,8 @@ SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
     , codec_(1024u * 1024u)
     , device_manager_(this)
 {
+    session_recorder_.restoreCalibrationLock(options_.simulate_fpga
+        ? QDir(QFileInfo(options_.config_path).absolutePath()).filePath(QStringLiteral("simulated_sessions")) : defaultRecordingDirectory());
     fpga_serial_status_timer_.setSingleShot(true);
     connect(&fpga_serial_status_timer_, &QTimer::timeout, this, [this] {
         if (!fpga_serial_status_pending_.isEmpty()) {
@@ -275,6 +278,24 @@ SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
     status_timer_.setTimerType(Qt::PreciseTimer);
     connect(&device_manager_, &SkyDeviceManager::fpgaHarmonicCycleReady, this,
         [this](quint64 t, const auto& stream){session_recorder_.recordFpgaHarmonics(t,stream);}, Qt::DirectConnection);
+    fpga_feature_stream_=QUuid::createUuid().toString(QUuid::WithoutBraces);
+    fpga_feature_timer_.setInterval(20);
+    connect(&fpga_feature_timer_,&QTimer::timeout,this,[this]{
+        std::deque<QByteArray> batch;
+        {std::lock_guard lock(fpga_feature_mutex_);batch.swap(fpga_features_);}
+        for(const auto& payload:batch)sendFrame(MsgType::FpgaCycleFeature,payload);
+    });
+    fpga_feature_timer_.start();
+    connect(&device_manager_, &SkyDeviceManager::fpgaHarmonicCycleReady, this,
+        [this](quint64 t,const auto& stream){
+            auto j=QJsonDocument::fromJson(FpgaRemote::encodeCycleFeature(t,stream)).object();
+            if(j.isEmpty())return;
+            std::lock_guard lock(fpga_feature_mutex_);
+            j["stream_id"]=fpga_feature_stream_;j["event_sequence"]=QString::number(++fpga_feature_sequence_);
+            // A sequence gap is observable at the receiver and pauses collection.
+            if(fpga_features_.size()>=4096)fpga_features_.pop_front();
+            fpga_features_.push_back(QJsonDocument(j).toJson(QJsonDocument::Compact));
+        },Qt::DirectConnection);
     connect(&device_manager_, &SkyDeviceManager::fpgaSnapshotReceived, this,
         [this](quint64 t,const QJsonObject& o){session_recorder_.recordFpgaSnapshot(t,o);}, Qt::DirectConnection);
     connect(&device_manager_, &SkyDeviceManager::fpgaStatusChanged, this, [this](const QJsonObject&) {
@@ -563,7 +584,7 @@ void SkyRuntime::stop()
     fpga_serial_status_timer_.stop();
     fpga_serial_status_pending_.clear();
 
-    if (session_recorder_.isRecording() || session_recorder_.isPaused())
+    if ((session_recorder_.isRecording() || session_recorder_.isPaused()) && !session_recorder_.hasRecoveredCalibrationLock())
     {
         publishRuntimeLog(LogLevel::Info,
                           QStringLiteral("session.recording"),
@@ -646,6 +667,13 @@ void SkyRuntime::reconnectAllDevices()
 
 bool SkyRuntime::startRecording(QString *error)
 {
+    if(device_manager_.config().fpga.enabled && !currentFpgaStatus().value("ready").toBool()){
+        if(error)*error=QStringLiteral("FPGA 尚未连接并完成握手，不能开始正式 Session");return false;
+    }
+    if(!session_recorder_.hasCalibrationSnapshot()) {
+        if(error)*error=QStringLiteral("正式 Session 必须先在 VaporView 选择有效双波长 .vcal，并由开始录制命令传入完整运行参数快照。");
+        return false;
+    }
     if (epsilon_settings_operation_pending_)
     {
         if (error) *error = QStringLiteral("EPSILON 参数操作尚未完成，请等待操作结束再开始记录。");
@@ -1549,6 +1577,13 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
                                  : CommandErrorCode::SerialPortDetectionNotRunning);
         break;
     case CommandId::StartRecording:
+        if(!command.payload.isEmpty()) {
+            QString calibrationError;
+            if(!session_recorder_.setCalibrationSnapshot(QJsonDocument::fromJson(command.payload).object(),&calibrationError)) {
+                publishRuntimeLog(LogLevel::Warning,QStringLiteral("session.recording"),QStringLiteral("calibration_snapshot_rejected"),calibrationError);
+                result.ack=makeAck(command,CommandErrorCode::InvalidPayload);break;
+            }
+        }
         if (epsilon_settings_operation_pending_)
         {
             result.ack = makeAck(command, CommandErrorCode::DeviceOperationBusy);
@@ -2184,7 +2219,7 @@ void SkyRuntime::sendLinkFrame(MsgType type, const QByteArray& payload)
             fpga_serial_status_pending_.clear();
             fpga_serial_status_sent_ms_=now;
         }
-        if (type==MsgType::FpgaSensor || type==MsgType::FpgaWaveformPreview)
+        if (type==MsgType::FpgaSensor || type==MsgType::FpgaWaveformPreview || type==MsgType::FpgaCycleFeature)
         {
             // Never add diagnostic backlog ahead of control results. USB capture
             // and the full-size IPC payload were already handled independently.
@@ -2193,7 +2228,7 @@ void SkyRuntime::sendLinkFrame(MsgType type, const QByteArray& payload)
             if (type==MsgType::FpgaWaveformPreview) {
                 physicalPayload=fpga_serial_budget_.previewPayload(payload);
                 if (physicalPayload.isEmpty()) return;
-            } else {
+            } else if(type!=MsgType::FpgaCycleFeature) {
                 const auto value=QJsonDocument::fromJson(payload).object().value("source");
                 if (!value.isDouble()) return;
                 source=value.toInt();

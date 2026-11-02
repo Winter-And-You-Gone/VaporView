@@ -73,6 +73,10 @@ SkyFpgaBackend::SkyFpgaBackend(std::unique_ptr<Ground::Devices::FpgaUsbTransport
     connect(controller_, &Ground::Devices::FpgaDeviceController::rawUsbBytes, this, &SkyFpgaBackend::rawUsbBytes, Qt::DirectConnection);
     connect(controller_, &Ground::Devices::FpgaDeviceController::snapshot, this, &SkyFpgaBackend::snapshot, Qt::DirectConnection);
     connect(controller_,&Ground::Devices::FpgaDeviceController::snapshot,this,[this](quint64,const QJsonObject& document) {
+        if(document.value("event")=="connected") {
+            for(const auto *key:{"backend","locator","usb"})status_[QLatin1String(key)]=document[QLatin1String(key)];
+            emit statusChanged(status_);
+        }
         if(document.value("event")=="operation_completed" && document.value("configuration").isObject())status_["configuration"]=document.value("configuration");
     });
     connect(controller_, &Ground::Devices::FpgaDeviceController::logRecordGenerated, this, [this](LogRecord record) {

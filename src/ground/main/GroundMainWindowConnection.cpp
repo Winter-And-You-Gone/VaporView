@@ -1,4 +1,6 @@
 #include "ground/main/GroundMainWindowImplementation.h"
+#include "ground/calibration/CalibrationService.h"
+#include "shared/session/HarmonicWaveform.h"
 #include "ground/devices/DeviceRatePolicy.h"
 #include "ground/widgets/SerialPortComboSupport.h"
 #include "SerialBaudRateCapabilities.h"
@@ -1938,6 +1940,11 @@ void MainWindow::onPtbDataReady()
     if (collectors.ptb)
     {
         state_->current_ptb_ = collectors.ptb->getLatestData();
+        const auto& p=state_->current_ptb_;
+        state_->calibration_service_->noteSensor(QStringLiteral("serial_pressure"),
+            {{"host_received_utc_us",QString::number(VaporView::Session::harmonicReceptionTimeUs())},
+             {"sensor_sample_utc",QJsonValue(QJsonValue::Null)},{"alignment","host_receipt_uncertain"},{"valid",p.valid},
+             {"pressure_hpa",p.valid?QJsonValue(p.pressure_hpa):QJsonValue(QJsonValue::Null)}});
     }
 }
 
@@ -1947,6 +1954,12 @@ void MainWindow::onHmpDataReady()
     if (collectors.hmp)
     {
         state_->current_hmp_ = collectors.hmp->getLatestData();
+        const auto& h=state_->current_hmp_;
+        state_->calibration_service_->noteSensor(QStringLiteral("serial_humidity"),
+            {{"host_received_utc_us",QString::number(VaporView::Session::harmonicReceptionTimeUs())},
+             {"sensor_sample_utc",QJsonValue(QJsonValue::Null)},{"alignment","host_receipt_uncertain"},{"valid",h.valid},
+             {"temperature_c",h.valid?QJsonValue(h.temperature):QJsonValue(QJsonValue::Null)},
+             {"humidity_percent",h.valid?QJsonValue(h.humidity):QJsonValue(QJsonValue::Null)}});
     }
 }
 

@@ -1,4 +1,5 @@
 #include "ground/session/GroundRecordingService.h"
+#include "ground/session/SessionCalibrationPolicy.h"
 #include "ppk/PpkProcessor.h"
 #include "ppk/ObservationStore.h"
 #include "ppk/AttitudeStore.h"
@@ -12,6 +13,7 @@
 #include "shared/session/UnifiedRawDat.h"
 #include "shared/session/RecordingStorage.h"
 #include "shared/session/HarmonicWaveform.h"
+#include "FpgaHarmonics.h"
 #include <QJsonDocument>
 #include "shared/concurrency/BoundedByteQueue.h"
 #include "shared/config/SettingsWriteBarrier.h"
@@ -23,6 +25,8 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QTextStream>
+#include <QSaveFile>
+#include <QScopeGuard>
 
 #include <algorithm>
 #include <atomic>
@@ -48,6 +52,7 @@ constexpr quint64 kDeviceRawRecordQueueMaxBytes = 8ULL * 1024ULL * 1024ULL;
 constexpr qint64 kDeviceRawRecordQueueWarningIntervalMs = 5000;
 struct TcpRawRecord
 {
+    std::optional<FpgaWave::NormalizedFeature> normalizedFeature;
     quint64 timestampUs = 0;
     quint32 flags = 0;
     quint16 recordType = SessionRawDat::kRecordTypeWaveformPayload;
@@ -249,6 +254,13 @@ public:
         }
 
         options = requestedOptions;
+        QJsonObject calibrationSnapshot;
+        bool calibrationBound = false, calibrationPrepared = false;
+        const auto rollbackCalibration = qScopeGuard([&] {
+            if (calibrationPolicy && calibrationPrepared && !calibrationBound) calibrationPolicy->finish();
+        });
+        if (calibrationPolicy && !calibrationPolicy->prepare(calibrationSnapshot, errorMessage)) return false;
+        calibrationPrepared = bool(calibrationPolicy);
         writeFailed.store(false);
         storageFailureReported.store(false);
         options.exportRateHz = std::clamp(options.exportRateHz, 1, 200);
@@ -295,6 +307,20 @@ public:
             return false;
         }
         layout = groundLayoutFromPackage(initResult);
+        if (calibrationPolicy) {
+            const auto path=QDir(layout.sessionDirectory).filePath("calibration_snapshot.json");
+            QSaveFile file(path);const auto bytes=QJsonDocument(calibrationSnapshot).toJson(QJsonDocument::Compact);
+            if (!file.open(QIODevice::WriteOnly) || file.write(bytes)!=bytes.size() || !file.commit() ||
+                !calibrationPolicy->bindSession(layout.sessionDirectory,errorMessage)) {
+                if(startError)*startError=GroundRecordingStartError::WriteSessionMetadata;
+                if(errorMessage && errorMessage->isEmpty())*errorMessage=QStringLiteral("无法保存 Session 定标快照");
+                return false;
+            }
+            concentrationFile=std::make_unique<QFile>(QDir(layout.sessionDirectory).filePath("calibration_concentrations.jsonl"));
+            if(!concentrationFile->open(QIODevice::WriteOnly)) {
+                if(errorMessage)*errorMessage=concentrationFile->errorString();return false;
+            }
+        }
         Ppk::PpkConfig ppkConfig;
         ppkConfig.imuToAntennaBodyM = options.imuToMainAntennaBodyM;
         if(!Ppk::PpkProcessor::saveConfig(layout.sessionDirectory,ppkConfig,errorMessage))
@@ -410,6 +436,7 @@ public:
         }
 
         startWorkers();
+        calibrationBound = true;
         notifyStatus();
         return true;
     }
@@ -502,6 +529,8 @@ public:
             warn(GroundRecordingWarning::MetadataUpdateFailed, 0);
         }
         resetFiles();
+        concentrationFile.reset();
+        if(calibrationPolicy)calibrationPolicy->finish();
         resetCurrentCounts();
         paused.store(false);
         layout = {};
@@ -1013,8 +1042,15 @@ private:
                         VaporView::Session::HarmonicLayout harmonic;
                         VaporView::Session::parseHarmonicLayout(record.payload, quint32(record.payload.size()), harmonic);
                         waveformPointsPerFrame.store(harmonic.originalPoints);
-                        const QByteArray row = VaporView::Session::harmonicFeatureCsv(
-                            record.timestampUs, rawWaveformRecordCount.load() - 1, record.payload);
+                        const auto sequence = rawWaveformRecordCount.load() - 1;
+                        const QByteArray row = record.normalizedFeature
+                            ? VaporView::Session::harmonicFeatureCsv(record.timestampUs, sequence, harmonic, *record.normalizedFeature)
+                            : VaporView::Session::harmonicFeatureCsv(record.timestampUs, sequence, record.payload);
+                        if(calibrationPolicy && record.normalizedFeature && concentrationFile) {
+                            const auto value=calibrationPolicy->concentration(record.timestampUs,sequence,harmonic,*record.normalizedFeature);
+                            const auto bytes=QJsonDocument(value).toJson(QJsonDocument::Compact)+'\n';
+                            if(concentrationFile->write(bytes)!=bytes.size() || !concentrationFile->flush())markWriteFailure();
+                        }
                         std::lock_guard<std::mutex> lock(filesMutex);
                         // Publish the existing feature row for live readers even
                         // at low cycle rates, before QFile's buffer fills.
@@ -1246,6 +1282,8 @@ public:
 
     std::atomic<quint64> harmonicFrameCount{0};
     std::atomic<quint64> fpgaSegment{1};
+    std::shared_ptr<SessionCalibrationPolicy> calibrationPolicy;
+    std::unique_ptr<QFile> concentrationFile;
     std::atomic<quint64> fpgaSegmentStartUs{0};
     std::mutex harmonicAdmissionMutex;
     std::atomic_bool fpgaSeen{false};
@@ -1321,6 +1359,10 @@ void GroundRecordingService::setWarningCallback(WarningCallback callback)
 {
     impl_->warningCallback = std::move(callback);
 }
+void GroundRecordingService::setCalibrationPolicy(std::shared_ptr<SessionCalibrationPolicy> policy)
+{
+    if (!isSessionOpen()) impl_->calibrationPolicy=std::move(policy);
+}
 
 bool GroundRecordingService::start(const GroundRecordingOptions& options,
                                    GroundRecordingStartError *startError,
@@ -1332,7 +1374,8 @@ bool GroundRecordingService::start(const GroundRecordingOptions& options,
         if (errorMessage) *errorMessage = QStringLiteral("UI test mode blocks recording service file creation.");
         return false;
     }
-    return impl_->start(options, startError, errorMessage);
+    QString localError;
+    return impl_->start(options, startError, errorMessage?errorMessage:&localError);
 }
 
 bool GroundRecordingService::pause()
@@ -1502,6 +1545,7 @@ bool GroundRecordingService::recordFpgaHarmonics(quint64 timestamp, const FpgaWa
     record.timestampUs = timestamp;
     record.recordType = SessionRawDat::kRecordTypeHarmonicPair;
     record.payload = VaporView::Session::encodeHarmonics(stream, impl_->fpgaSegment.load());
+    record.normalizedFeature = stream.normalizedFeature ? stream.normalizedFeature : std::optional(FpgaWave::normalizedCycleFeature(stream));
     if (record.payload.isEmpty()) return false;
     impl_->fpgaSeen.store(true);
     if (!impl_->enqueueTcpRawRecord(std::move(record))) { impl_->markWriteFailure(); return false; }

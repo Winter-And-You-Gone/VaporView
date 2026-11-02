@@ -124,23 +124,21 @@ QByteArray harmonicFeatureCsv(quint64 host, quint64 sequence, QByteArrayView pay
 {
     HarmonicLayout l;
     if (!parseHarmonicLayout(payload, quint32(payload.size()), l)) return {};
-    double peak = -std::numeric_limits<double>::infinity(), minimum = -peak, sum = 0, squares = 0;
-    qint64 peakIndex = -1;
-    quint32 valid = 0, quality = l.quality;
     const int width = l.sampleType == HarmonicSampleType::Int32 ? 4 : 8;
-    for (quint32 i = 0; i < l.storedPoints; ++i) {
+    const auto feature = FpgaWave::normalizedFeature(l.storedPoints, l.quality, [&](quint32 i) {
         const char *p = payload.data() + kHarmonicHeaderSize + qsizetype(i) * width * 2;
-        const double value = FpgaWave::normalizedSecondHarmonic(sample(p, l.sampleType), sample(p + width, l.sampleType));
-        if (!std::isfinite(value)) { quality |= InvalidReference; continue; }
-        if (value > peak) { peak = value; peakIndex = i; }
-        minimum = std::min(minimum, value); sum += value; squares += value * value; ++valid;
-    }
-    if (!valid) quality |= NoValidSamples;
+        return std::pair<double, double>{sample(p, l.sampleType), sample(p + width, l.sampleType)};
+    });
+    return harmonicFeatureCsv(host, sequence, l, feature);
+}
+
+QByteArray harmonicFeatureCsv(quint64 host, quint64 sequence, const HarmonicLayout& l,
+                             const FpgaWave::NormalizedFeature& f)
+{
     QStringList row{QString::number(host), "0", QString::number(l.originalPoints), "0", "0",
-        QString::number(l.channel), number(peak), valid ? number(sum / valid) : QString(),
-        valid ? number(std::sqrt(squares / valid)) : QString(), QString::number(peakIndex),
-        peakIndex >= 0 ? QString::number(peakIndex) : QString(), number(minimum), number(peak),
-        QString::number(quality), "fpga", "H2/H1", "1", QString::number(l.cycle),
+        QString::number(l.channel), number(f.peak), number(f.mean), number(f.rms), QString::number(f.peakIndex),
+        f.peakIndex >= 0 ? QString::number(f.peakIndex) : QString(), number(f.minimum), number(f.peak),
+        QString::number(f.quality), "fpga", "H2/H1", "1", QString::number(l.cycle),
         QString::number(l.segment), QString::number(l.fpgaTick), QString::number(sequence)};
     return (row.join(',') + '\n').toUtf8();
 }

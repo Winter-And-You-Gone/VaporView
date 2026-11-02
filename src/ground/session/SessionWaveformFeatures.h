@@ -8,7 +8,7 @@
 namespace VaporView::Ground
 {
 // A row of the existing FPGA feature index, never a peak recomputed from raw data.
-struct WaveformFeature
+struct HarmonicPeakFeature
 {
     QString id, sessionKey, sessionDirectory, csvFilename;
     int csvLine = 0;
@@ -17,23 +17,25 @@ struct WaveformFeature
     qint64 peakIndex = -1;
     double peak = std::numeric_limits<double>::quiet_NaN();
     QStringList headers, fields;
+    QString streamIdentity; // Native live-cycle provenance, independent of Session/CSV.
+    quint32 validPoints = 0;
     QString sourceError() const;
     QString invalidReason() const;
     QJsonObject toJson() const;
-    static WaveformFeature fromJson(const QJsonObject& json, QString *error);
+    static HarmonicPeakFeature fromJson(const QJsonObject& json, QString *error);
 };
 
-struct WaveformFeaturesResult
+struct HarmonicPeakFeaturesResult
 {
     bool success = false;
     QString error;
-    QVector<WaveformFeature> records;
+    QVector<HarmonicPeakFeature> records;
 };
 
 class SessionWaveformFeatures final
 {
 public:
-    static WaveformFeaturesResult read(const QString& sessionDirectory);
-    static WaveformFeaturesResult readFile(const QString& filename, const QString& sessionDirectory);
+    static HarmonicPeakFeaturesResult read(const QString& sessionDirectory);
+    static HarmonicPeakFeaturesResult readFile(const QString& filename, const QString& sessionDirectory);
 };
 }

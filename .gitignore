@@ -118,3 +118,5 @@ AGENTS.md
 MEETING*.md
 /LOCAL_PITFALLS.md
 *.vvidx
+# User calibration files and drafts are instrument data, never source artifacts.
+/calibrations/

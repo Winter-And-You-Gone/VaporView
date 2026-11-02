@@ -1,9 +1,11 @@
+#include "ground/calibration/CalibrationService.h"
 #include "ground/main/GroundMainWindowImplementation.h"
 
-MainWindow::MainWindow(QWidget *parent)
+MainWindow::MainWindow(QWidget *parent, std::shared_ptr<VaporView::Ground::Calibration::CalibrationService> calibration)
     : QMainWindow(parent)
     , state_(std::make_unique<MainWindowState>())
 {
+    if(calibration)state_->calibration_service_=std::move(calibration);
     VaporView::LogService::withCurrentInstance([this](VaporView::LogService& logService) {
         connect(&logService, &VaporView::LogService::recordPublished, this,
                 [this](const VaporView::LogRecord& record) {
@@ -151,6 +153,11 @@ MainWindow::MainWindow(QWidget *parent)
         if (fpga.hasLidar && fpgaFresh(fpga.lidar)) { snapshot.lidar=fpga.lidar; snapshot.hasLidar=true; }
         return snapshot;
     });
+    state_->recording_service_->setCalibrationPolicy(state_->calibration_service_);
+    connect(state_->calibration_peak_bus_.get(), &VaporView::Ground::Calibration::RealtimePeakBus::peakReady,
+        state_->calibration_service_.get(), &VaporView::Ground::Calibration::CalibrationService::offer, Qt::DirectConnection);
+    connect(state_->calibration_peak_bus_.get(), &VaporView::Ground::Calibration::RealtimePeakBus::deviceChanged,
+        state_->calibration_service_.get(), &VaporView::Ground::Calibration::CalibrationService::setDevice, Qt::DirectConnection);
     state_->recording_service_->setStatusCallback([this]() {
         QMetaObject::invokeMethod(this, [this]() {
             updateRecordingStatusLabel();
@@ -530,6 +537,10 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::onRemoteWaveformFeatureUpdated);
     connect(state_->remote_sky_controller_.get(), &RemoteSkyController::statusUpdated,
             this, &MainWindow::onRemoteTelemetryStatusUpdated);
+    connect(state_->remote_sky_controller_.get(), &RemoteSkyController::commandAckReceived, this, [this](const VaporView::CommandAck& ack) {
+        if(ack.command_id==VaporView::CommandId::StartRecording && ack.error_code!=VaporView::CommandErrorCode::Ok && state_->remote_recording_state_==0)
+            state_->calibration_service_->finish();
+    });
     connect(state_->remote_sky_controller_.get(), &RemoteSkyController::temperatureControllerStatusUpdated,
             this, &MainWindow::onRemoteTemperatureControllerStatusUpdated);
     connect(state_->remote_sky_controller_.get(), &RemoteSkyController::ai8TemperatureControllerStatusUpdated,

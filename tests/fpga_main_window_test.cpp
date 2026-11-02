@@ -1,4 +1,5 @@
 #include "test_settings_sandbox.h"
+#include "IndependentCalibrationFixture.h"
 #include "ground/main/MainWindow.h"
 #include "ground/widgets/FpgaControlPage.h"
 #include "ground/widgets/Ai8TemperatureControllerPanel.h"
@@ -865,7 +866,9 @@ static void localSimulatorRouting()
     settings.setValue("Fpga/remoteDesiredConfiguration",QJsonDocument(oldConfiguration.toJson()).toJson(QJsonDocument::Compact));
     settings.remove("Fpga/ai8EightChannelDefaultApplied");
     QMap<quint32,quint32> lastRegisters;
-    MainWindow window;
+    IndependentCalibrationTest::Rig calibration;const auto calibrationFile=calibration.complete();
+    calibration.service->selectFile(calibrationFile.filename);calibration.service->synchronize();
+    MainWindow window(nullptr,calibration.service);
     QObject::connect(window.testFpgaController(), &VaporView::Ground::Devices::FpgaDeviceController::hardwareValuesChanged,
         &window, [&](const QMap<quint32,quint32>& values) { lastRegisters = values; });
 #ifdef Q_OS_WIN
@@ -1246,6 +1249,7 @@ static void localSimulatorRouting()
     check(waitUntil([&]{return raw->isEnabled()&&raw->text().contains(QStringLiteral("开始"));}),"local monitor stops RAW upload");
     check(harmonic->text().contains(QStringLiteral("停止")),"local RAW stop preserves DLIA acquisition");
     raw->click();check(waitUntil([&]{return raw->isEnabled()&&raw->text().contains(QStringLiteral("停止"));}),"local RAW restarts without resetting running acquisition");
+    calibration.service->selectFile(calibrationFile.filename,true);calibration.service->synchronize();
     auto *record=page->findChild<QAbstractButton*>("fpgaRecord");record->click();
     check(waitUntil([&]{return record->text().contains("停止");}),"local record action starts recording");
     processFor(500);record->click();check(waitUntil([&]{return record->text().contains("开始");}),"local record action stops and drains");
@@ -1938,7 +1942,9 @@ static void harmonicRecordingUi()
     QTemporaryDir output;check(output.isValid(),"isolated harmonic recording directory");
     QSettings native("VaporView","MainWindow");native.setValue("recording_directory",output.path());
     VaporView::applicationConfigSettings().remove("Fpga/desiredConfiguration");
-    MainWindow window;window.resize(1600,1000);
+    IndependentCalibrationTest::Rig calibration;const auto file=calibration.complete();
+    calibration.service->selectFile(file.filename);calibration.service->synchronize();
+    MainWindow window(nullptr,calibration.service);window.resize(1600,1000);
     QMetaObject::invokeMethod(&window,"onDataSourceModeChanged",Q_ARG(int,0));
     auto *path=window.findChild<QComboBox*>("deviceSensorTransportPathCombo");
     check(path,"sensor transport selector exists");path->setCurrentIndex(path->findData("fpga_relay"));
@@ -1953,6 +1959,7 @@ static void harmonicRecordingUi()
     check(waitUntil([&]{return acquisition->isEnabled()&&page->findChild<QWidget*>("fpgaWavePlot48")->property("sampleCount").toInt()>0;}),"DLIA acquisition reaches the page");
     page->findChild<QAbstractButton*>("fpgaRawStart")->click();
     check(waitUntil([&]{return page->findChild<QWidget*>("fpgaWavePlot32")->property("sampleCount").toInt()>0;}),"RAW upload is active during recording verification");
+    calibration.service->selectFile(file.filename,true);calibration.service->synchronize();
     auto *record=page->findChild<QAbstractButton*>("fpgaRecord");record->click();
     check(waitUntil([&]{return record->text().contains(QStringLiteral("停止"));}),"UI starts common session recording");
     processFor(600);record->click();

@@ -102,8 +102,9 @@ void FpgaDeviceController::installSession(std::unique_ptr<FpgaUsbTransport> tran
             if (recoveringConnection_) return;
             auto completed = stream;
             if (stream.source == 0x30 || stream.source == 0x31) {
+                completed.normalizedFeature = FpgaWave::normalizedCycleFeature(stream);
                 completed.hasFullCyclePeak = true;
-                completed.fullCyclePeak = FpgaWave::normalizedCyclePeak(stream);
+                completed.fullCyclePeak = completed.normalizedFeature->peak;
                 if (!replaying_) emit harmonicCycleReady(nowUs(), completed);
             }
             latestWaves_[stream.source] = std::move(completed);

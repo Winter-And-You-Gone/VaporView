@@ -52,7 +52,11 @@ int main(int argc,char **argv)
     });
     runtime.setFpgaTransportForTesting(std::move(mock));
     require(runtime.start(),"start FPGA-only SkyCore");
-    if(!discoveryOnly) waitUntil([&]{return runtime.currentFpgaStatus().value("ready").toBool();},"Sky FPGA handshake ready");
+    if(!discoveryOnly) {
+        waitUntil([&]{return runtime.currentFpgaStatus().value("ready").toBool();},"Sky FPGA handshake ready");
+        require(runtime.currentFpgaStatus().value("locator")=="mock" && runtime.currentFpgaStatus().value("usb").isObject(),
+                "remote calibration receives stable USB connection identity");
+    }
     DeviceOperationRequest discoveryRequest;discoveryRequest.request_id=100;discoveryRequest.device_id=SkyDeviceId::Fpga;
     discoveryRequest.operation=DeviceOperation::FpgaControl;discoveryRequest.payload=FpgaRemote::encodeControl({{"op","discover"}});
     CommandMessage discoveryCommand;discoveryCommand.command_id=CommandId::DeviceOperation;discoveryCommand.command_seq=100;

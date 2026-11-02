@@ -49,6 +49,7 @@ enum class MsgType : quint8
     InternalEnvironment = 0x0F,
     Command = 0x10,
     CommandAck = 0x11,
+    FpgaCycleFeature = 0x12, // Full-cycle summary; never inferred from a preview.
     Heartbeat = 0x20,
     LogEvent = 0x7E,
     Error = 0x7F,

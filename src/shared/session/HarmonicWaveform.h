@@ -39,5 +39,7 @@ bool parseHarmonicLayout(QByteArrayView prefix, quint32 payloadSize, HarmonicLay
 // Components follow the viewer's existing choices: 0=H2, 1=H1, 6=H2/H1.
 QVector<float> harmonicSamples(QByteArrayView payload, int component);
 QByteArray harmonicFeatureCsv(quint64 hostTimeUs, quint64 waveformSequence, QByteArrayView payload);
+QByteArray harmonicFeatureCsv(quint64 hostTimeUs, quint64 waveformSequence,
+                             const HarmonicLayout&, const FpgaWave::NormalizedFeature&);
 
 } // namespace VaporView::Session

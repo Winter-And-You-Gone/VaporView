@@ -15,7 +15,7 @@
 #include <QSet>
 
 class FpgaControlPage;
-namespace VaporView::Ground::Calibration { class WaterCalibrationPage; }
+namespace VaporView::Ground::Calibration { class WaterCalibrationPage; class CalibrationService; class RealtimePeakBus; }
 namespace VaporView::Ground::Motion { class MotionControlPage; }
 class QThread;
 namespace VaporView::Ground::Devices { class FpgaDeviceController; }
@@ -455,6 +455,8 @@ struct MainWindowState
     VaporView::Ground::Devices::LocalDeviceConfig local_device_config_;
     VaporView::Ground::Devices::RemoteSkyLinkConfig remote_sky_link_config_;
     std::unique_ptr<VaporView::Ground::Session::GroundRecordingService> recording_service_;
+    std::shared_ptr<VaporView::Ground::Calibration::CalibrationService> calibration_service_;
+    std::unique_ptr<VaporView::Ground::Calibration::RealtimePeakBus> calibration_peak_bus_;
     std::unique_ptr<VaporView::Ground::Session::RecordingScheduleController> recording_schedule_controller_;
 
     QTimer *refresh_timer_;

@@ -99,6 +99,7 @@ namespace VaporView::Ground::Devices { struct Rd105SessionResult; }
 namespace VaporView::Ground { struct EpsilonDeviceOperation; }
 namespace VaporView::Ground::Devices { class UiTestDataModel; enum class UiTestScenario; }
 namespace VaporView::Ground::Session { class GroundRecordingService; }
+namespace VaporView::Ground::Calibration { class CalibrationService; }
 namespace VaporView::Ground::Session { class RecordingScheduleController; }
 namespace VaporView::Ground::Main
 {
@@ -113,7 +114,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    explicit MainWindow(QWidget *parent = nullptr);
+    explicit MainWindow(QWidget *parent = nullptr, std::shared_ptr<VaporView::Ground::Calibration::CalibrationService> calibration = {});
     ~MainWindow() override;
 
 #ifdef VAPORVIEW_MAIN_WINDOW_TESTING

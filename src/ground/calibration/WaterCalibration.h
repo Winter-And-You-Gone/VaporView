@@ -27,7 +27,7 @@ struct Environment
 };
 struct Sample
 {
-    WaveformFeature feature;
+    HarmonicPeakFeature feature;
     double concentration = 0;
     bool excluded = false;
     QString note, origin = QStringLiteral("unverified");
@@ -70,6 +70,8 @@ struct Fit
     static Fit fromJson(const QJsonObject&, QString *error);
 };
 struct FitResult { bool success = false; QString error; Fit fit; };
+// Equal-weight representative points; shared with the legacy fitter.
+FitResult fitLinearPoints(const QVector<QPair<double, double>>& points);
 
 // New scientific models implement this interface and add a versioned factory entry.
 class FitModel

@@ -29,6 +29,11 @@
 #include "ground/session/SessionPlaybackController.h"
 #include "ground/session/SessionWaveformRepository.h"
 #include "ground/session/GroundRecordingService.h"
+#include "ground/calibration/RecordedConcentrations.h"
+#include <QDialog>
+#include <QPlainTextEdit>
+#include <QSaveFile>
+#include <QJsonDocument>
 
 #include <QDir>
 #include <QCloseEvent>
@@ -358,6 +363,29 @@ void SessionViewerWindow::setupUi()
     device_data_page_ = new SessionDeviceDataWidget(splitter);
     loading_dialog_ = std::make_unique<SessionLoadingDialog>(this);
     upperLayout->addWidget(overview_page_);
+    auto *calibrationHistory=new QPushButton(QStringLiteral("查看本 Session 定标参数与初始浓度"),upperWidget);
+    calibrationHistory->setObjectName(QStringLiteral("sessionCalibrationHistory"));upperLayout->addWidget(calibrationHistory);
+    connect(calibrationHistory,&QPushButton::clicked,this,[this]{
+        using namespace VaporView::Ground::Calibration;
+        const auto session=session_directory_;auto *watcher=new QFutureWatcher<RecordedConcentrations>(this);
+        connect(watcher,&QFutureWatcher<RecordedConcentrations>::finished,this,[this,watcher,session]{
+            const auto result=watcher->result();watcher->deleteLater();if(session!=session_directory_)return;
+            if(!result.success){setStatusText(result.error);return;}
+            auto *dialog=new QDialog(this);dialog->setAttribute(Qt::WA_DeleteOnClose);dialog->setWindowTitle(QStringLiteral("Session 原始定标参数 · 初始浓度未温压补偿"));dialog->resize(920,650);
+            auto *layout=new QVBoxLayout(dialog);auto *text=new QPlainTextEdit(dialog);text->setReadOnly(true);
+            QJsonArray preview;for(int i=0;i<std::min(200,int(result.rows.size()));++i)preview.append(result.rows[i]);
+            auto snapshot=result.snapshot;snapshot.remove("vcal_document");
+            text->setPlainText(QString::fromUtf8(QJsonDocument(QJsonObject{{"snapshot",snapshot},{"record_count",result.rows.size()},{"preview_first_200",preview}}).toJson()));layout->addWidget(text);
+            auto *save=new QPushButton(QStringLiteral("导出全部浓度和原始参数"),dialog);layout->addWidget(save);
+            connect(save,&QPushButton::clicked,dialog,[dialog,result]{
+                const auto filename=QFileDialog::getSaveFileName(dialog,QStringLiteral("导出历史浓度"),{},"JSON (*.json)");if(filename.isEmpty())return;
+                auto *exporter=new QFutureWatcher<QString>(dialog);
+                connect(exporter,&QFutureWatcher<QString>::finished,dialog,[dialog,exporter]{const auto error=exporter->result();exporter->deleteLater();if(!error.isEmpty())QMessageBox::warning(dialog,QStringLiteral("导出失败"),error);});
+                exporter->setFuture(QtConcurrent::run([filename,result]{QString error;exportRecordedConcentrations(filename,result,&error);return error;}));
+            });dialog->show();
+        });
+        watcher->setFuture(QtConcurrent::run([session]{return readRecordedConcentrations(QDir(session).filePath("calibration_snapshot.json"));}));
+    });
     connect(VaporView::Ppk::SessionNavigationEvents::instance(), &VaporView::Ppk::SessionNavigationEvents::changed,
         this, [this](const QString& session) {
             if (ppk_session_available_ && QFileInfo(session_directory_).absoluteFilePath() == session)

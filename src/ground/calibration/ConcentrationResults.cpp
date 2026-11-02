@@ -30,7 +30,7 @@ bool decodeResult(const QJsonObject& json, const QMap<QString, Fit>& fits,
 {
     const auto input = json["input"].toObject();
     Sample sample;
-    sample.feature = WaveformFeature::fromJson(input["feature"].toObject(), &error);
+    sample.feature = HarmonicPeakFeature::fromJson(input["feature"].toObject(), &error);
     if (!error.isEmpty()) return false;
     sample.environment = Environment::fromJson(input["environment"].toObject(), &error);
     if (!error.isEmpty()) return false;

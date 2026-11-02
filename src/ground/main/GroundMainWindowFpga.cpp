@@ -1,3 +1,4 @@
+#include "ground/calibration/CalibrationService.h"
 #include "ground/main/GroundMainWindowImplementation.h"
 #include "ground/devices/UiTestDataModel.h"
 #include <QFileDialog>
@@ -940,9 +941,27 @@ void MainWindow::setupFpgaControlPage()
         updateConnectionStatus(anyLocalDeviceConnected());
     }, Qt::QueuedConnection);
     connect(controller,&Controller::measurementUpdated,this,&MainWindow::receiveFpgaMeasurements,Qt::QueuedConnection);
+    auto *calibration=state_->calibration_service_.get();
+    connect(controller,&Controller::measurementUpdated,calibration,[calibration](const auto& m){
+        const auto& r=m.reading;if(r.source!=0x40 && r.source!=0x41)return;
+        const bool valid=r.validity.structure && r.validity.crc && r.validity.deviceOnline && r.validity.measurement;
+        QJsonObject sample{{"source",int(r.source)},{"fpga_tick",QString::number(r.timestamp)},
+            {"host_received_utc_us",QString::number(VaporView::Session::harmonicReceptionTimeUs())},
+            {"sensor_sample_utc",QJsonValue(QJsonValue::Null)},{"alignment","host_receipt_uncertain"},{"valid",valid},
+            {"temperature_c",valid && r.temperatureC?QJsonValue(*r.temperatureC):QJsonValue(QJsonValue::Null)},
+            {"pressure_pa",valid && r.pressurePa?QJsonValue(*r.pressurePa):QJsonValue(QJsonValue::Null)}};
+        calibration->noteSensor(r.source==0x40?QStringLiteral("PTB210"):QStringLiteral("HMP"),sample);
+    },Qt::DirectConnection);
 
     // These APIs enqueue under the recording service's lock, independent of GUI delivery.
     auto *recorder = state_->recording_service_.get();
+    auto *peakBus = state_->calibration_peak_bus_.get();
+    connect(controller,&Controller::harmonicCycleReady,peakBus,[peakBus](quint64 t,const auto& s){peakBus->publish(t,s);},Qt::DirectConnection);
+    connect(controller,&Controller::transportConnectionChanged,peakBus,[peakBus](bool connected){if(!connected)peakBus->setDevice(false,{});},Qt::DirectConnection);
+    connect(controller,&Controller::snapshot,peakBus,[peakBus](quint64,const QJsonObject& o){
+        if(o.value("event")=="connected")peakBus->setDevice(true,{{"transport","fpga_usb"},{"backend",o.value("backend")},{"locator",o.value("locator")},{"usb",o.value("usb")}});
+        else if(o.value("event")!="firmware_event")peakBus->boundary();
+    },Qt::DirectConnection);
     connect(controller,&Controller::harmonicCycleReady,this,[recorder](quint64 t,const auto& s){recorder->recordFpgaHarmonics(t,s);},Qt::DirectConnection);
     connect(controller,&Controller::snapshot,this,[recorder](quint64 t,const QJsonObject &o){recorder->recordFpgaSnapshot(t,o);},Qt::DirectConnection);
     const auto config = state_->fpga_config_;
@@ -951,6 +970,19 @@ void MainWindow::setupFpgaControlPage()
     using Remote = VaporView::Ground::Devices::RemoteSkyController;
     auto *remote = state_->remote_sky_controller_.get();
     connect(remote, &Remote::fpgaStatusUpdated, this, &MainWindow::receiveRemoteFpgaStatus);
+    connect(remote, &Remote::linkOpenChanged, peakBus, [peakBus](bool open){if(!open)peakBus->setDevice(false,{});});
+    connect(remote->telemetryService(),&VaporView::GroundTelemetryService::fpgaCycleFeatureUpdated,peakBus,
+        [peakBus](quint64 t,const auto& stream){const QString transport="remote_fpga";peakBus->publish(t,stream,transport);},Qt::DirectConnection);
+    connect(remote->telemetryService(),&VaporView::GroundTelemetryService::fpgaSensorUpdated,calibration,[calibration](const auto& r){
+        if(r.source!=0x40 && r.source!=0x41)return;
+        const bool valid=r.validity.structure && r.validity.crc && r.validity.deviceOnline && r.validity.measurement;
+        calibration->noteSensor(r.source==0x40?QStringLiteral("remote_PTB210"):QStringLiteral("remote_HMP"),
+            {{"source",int(r.source)},{"fpga_tick",QString::number(r.timestamp)},
+             {"host_received_utc_us",QString::number(VaporView::Session::harmonicReceptionTimeUs())},
+             {"sensor_sample_utc",QJsonValue(QJsonValue::Null)},{"alignment","host_receipt_uncertain"},{"valid",valid},
+             {"temperature_c",valid && r.temperatureC?QJsonValue(*r.temperatureC):QJsonValue(QJsonValue::Null)},
+             {"pressure_pa",valid && r.pressurePa?QJsonValue(*r.pressurePa):QJsonValue(QJsonValue::Null)}});
+    },Qt::DirectConnection);
     connect(remote,&Remote::internalEnvironmentUpdated,this,[this](const VaporView::FpgaSensor::Reading& reading) {
         if(isRemoteSkyMode()&&!isFpgaRelayPath()&&state_->remote_sky_controller_->isOpen())updateInternalEnvironment(reading);
     });
@@ -1078,6 +1110,8 @@ void MainWindow::sendRemoteFpgaControl(const QJsonObject& request)
 
 void MainWindow::receiveRemoteFpgaStatus(const QJsonObject& status)
 {
+    if(isRemoteSkyMode())state_->calibration_peak_bus_->setDevice(status.value("ready").toBool(),
+        {{"transport","remote_fpga"},{"backend",status.value("backend")},{"usb",status.value("usb")},{"locator",status.value("locator")}});
     const auto configuration = status.value("configuration").toObject();
     const bool configurationChanged = configuration != state_->fpga_session_.remoteStatus.value("configuration").toObject();
     state_->fpga_session_.updateRemoteStatus(status);
