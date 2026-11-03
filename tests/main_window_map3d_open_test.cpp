@@ -1,6 +1,7 @@
 #include "test_settings_sandbox.h"
 #include "ground/main/MainWindow.h"
 #include "map3d/OsgEarthViewWidget.h"
+#include "map3d/Map3DWindow.h"
 #include "map3d/MapLanguage.h"
 
 #include <QAction>
@@ -23,6 +24,15 @@
 #include <QTemporaryDir>
 #include <QThread>
 #include <QWidget>
+#include <QWindow>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QTimer>
+#include <QProcess>
+#include <QJsonArray>
+#include <algorithm>
+#include <cmath>
+#include <functional>
 
 #include <cstdlib>
 #include <iostream>
@@ -75,6 +85,103 @@ QWidget* findMap3DWindow()
     return nullptr;
 }
 
+class OpenProbe final : public QObject
+{
+public:
+    QElapsedTimer clock;
+    qint64 shown=-1,exposed=-1,loadingPaint=-1;
+    std::function<void(VaporView::Map3D::OsgEarthViewWidget*)> viewShown;
+    bool eventFilter(QObject* object,QEvent* event) override
+    {
+        if(event->type()==QEvent::Show && object->objectName()=="map3DWindow" && shown<0)shown=clock.elapsed();
+        if(event->type()==QEvent::Paint && object->objectName()=="map3DRenderPlaceholder" && loadingPaint<0)loadingPaint=clock.elapsed();
+        if(event->type()==QEvent::Show && object->objectName()=="map3DView" && viewShown)
+            if(auto* view=qobject_cast<VaporView::Map3D::OsgEarthViewWidget*>(object))viewShown(view);
+        if(event->type()==QEvent::Expose && exposed<0) {
+            auto* map=findMap3DWindow();
+            if(auto* window=qobject_cast<QWindow*>(object);window && map && window->isExposed()) {
+                for(auto* ancestor=window;ancestor;ancestor=ancestor->parent())
+                    if(ancestor==map->windowHandle()){exposed=clock.elapsed();break;}
+            }
+        }
+        return false;
+    }
+};
+
+void measureOpen(QApplication& app,QAction* action,const char* kind,int iteration)
+{
+    OpenProbe probe;app.installEventFilter(&probe);
+    auto* window=findMap3DWindow();
+    auto* view=window?window->findChild<VaporView::Map3D::OsgEarthViewWidget*>("map3DView"):nullptr;
+    qint64 firstFrame=-1,ready=-1,responsive=-1;
+    const auto observeFrame=[&] {
+        return QObject::connect(view,&QOpenGLWidget::frameSwapped,&probe,[&]{
+            if(firstFrame<0 && view->isRenderingStarted() && !view->framebufferSize().isEmpty()) {
+                firstFrame=probe.clock.elapsed();if(ready<0)ready=firstFrame;
+                QTimer::singleShot(0,&probe,[&]{responsive=probe.clock.elapsed();});
+            }
+        });
+    };
+    // Reopening an existing renderer can present synchronously inside show().
+    // Observe it before triggering, otherwise the first warm frame is missed.
+    QMetaObject::Connection connection;if(view)connection=observeFrame();
+    probe.viewShown=[&](auto* created){if(!view){view=created;connection=observeFrame();}};
+    probe.clock.start();action->trigger();const qint64 returned=probe.clock.elapsed();
+    window=findMap3DWindow();require(window && window->isVisible(),"map is visible after action");
+    const auto nativeHandle=window->internalWinId();
+    while(probe.clock.elapsed()<10000 && (responsive<0 || !view || !view->earthLoadDiagnostics().attempted)) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents,10);
+        if(!view) {
+            view=window->findChild<VaporView::Map3D::OsgEarthViewWidget*>("map3DView");
+            if(view)connection=observeFrame();
+        }
+        if(view && ready<0 && view->isRenderingStarted() && view->context() && view->context()->isValid()
+            && !view->framebufferSize().isEmpty())ready=probe.clock.elapsed();
+        QThread::msleep(1);
+    }
+    QObject::disconnect(connection);app.removeEventFilter(&probe);
+    std::cout<<QJsonDocument(QJsonObject{{"kind",kind},{"iteration",iteration},{"action_return_ms",returned},
+        {"window_show_ms",probe.shown},{"window_expose_ms",probe.exposed},{"renderer_ready_ms",ready},
+        {"loading_paint_ms",probe.loadingPaint},{"first_presented_ms",firstFrame},{"responsive_after_frame_ms",responsive}}).toJson(QJsonDocument::Compact).constData()<<std::endl;
+    require(returned<750,QStringLiteral("map action retains 750 ms gate, elapsed %1").arg(returned));
+    require(window->internalWinId()==nativeHandle,"starting GL preserves the existing native map window");
+    if(QLatin1String(kind)=="cold")require(probe.loadingPaint>=0 && probe.loadingPaint<firstFrame,
+        "loading state actually paints before GL driver/scene initialization completes");
+    require(probe.shown>=0 && probe.exposed>=0 && ready>=0 && firstFrame>=0 && responsive>=0,
+            "real window exposure, valid GL renderer, presented frame and responsive event loop complete");
+    require(view->earthLoadDiagnostics().attempted,"normal asynchronous Earth loading starts");
+    window->close();processEventsFor(100);
+}
+
+bool performanceMatrix()
+{
+    QMap<QString,QVector<qint64>> samples;bool success=true;
+    for(int run=0;run<5;++run) {
+        QProcess child;child.setProcessChannelMode(QProcess::MergedChannels);
+        child.start(QCoreApplication::applicationFilePath(),{"--performance"});
+        if(!child.waitForStarted(10000))return false;
+        QElapsedTimer timeout;timeout.start();
+        while(!child.waitForFinished(100))if(timeout.elapsed()>60000) {
+            child.kill();child.waitForFinished(5000);return false;
+        }
+        const auto output=child.readAll();std::cout<<output.constData()<<std::flush;
+        success &= child.exitStatus()==QProcess::NormalExit && child.exitCode()==0;
+        for(const auto& line:output.split('\n')) {
+            const auto data=QJsonDocument::fromJson(line).object();if(!data.contains("kind"))continue;
+            for(const auto& metric:{"action_return_ms","window_show_ms","window_expose_ms","renderer_ready_ms","first_presented_ms","responsive_after_frame_ms"})
+                samples[data["kind"].toString()+'/'+QLatin1String(metric)].append(data[metric].toInteger());
+        }
+    }
+    for(auto it=samples.begin();it!=samples.end();++it) {
+        auto values=it.value();std::sort(values.begin(),values.end());QJsonArray distribution;
+        for(auto value:values)distribution.append(value);
+        std::cout<<QJsonDocument(QJsonObject{{"metric",it.key()},{"samples",distribution},
+            {"median_ms",values[values.size()/2]},{"p95_ms",values[int(std::ceil(values.size()*0.95))-1]},
+            {"max_ms",values.last()}}).toJson(QJsonDocument::Compact).constData()<<std::endl;
+    }
+    return success && samples["cold/action_return_ms"].size()==5 && samples["warm/action_return_ms"].size()==25;
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -89,6 +196,9 @@ int main(int argc, char** argv)
     QApplication app(argc, argv);
     app.setOrganizationName(QStringLiteral("VaporViewMap3DOpenTest"));
     app.setApplicationName(QStringLiteral("main_window_map3d_open_test"));
+    if(app.arguments().contains("--performance-matrix")) {
+        require(performanceMatrix(),"five fresh processes and 25 warm opens retain all timing/rendering gates");return 0;
+    }
 
     const QString originalPath = QStringLiteral("  请求路径： X:/地图/会话%2.earth");
     const QString translatedPath = VaporView::Map3D::mapRenderedText(originalPath, true);
@@ -107,12 +217,27 @@ int main(int argc, char** argv)
                                            QStringLiteral("3D Map")});
     require(mapAction != nullptr, QStringLiteral("3D map action exists"));
 
+    if(app.arguments().contains("--performance")) {
+        measureOpen(app,mapAction,"cold",0);
+        for(int iteration=0;iteration<5;++iteration)measureOpen(app,mapAction,"warm",iteration);
+        window.close();processEventsFor(100);return 0;
+    }
+
     QElapsedTimer triggerTimer;
     triggerTimer.start();
     mapAction->trigger();
     const qint64 triggerMs = triggerTimer.elapsed();
     require(triggerMs < 750,
             QStringLiteral("3D map action should return quickly, elapsed %1 ms").arg(triggerMs));
+    auto* openingMap = qobject_cast<VaporView::Map3D::Map3DWindow*>(findMap3DWindow());
+    require(openingMap && !openingMap->findChild<VaporView::Map3D::OsgEarthViewWidget*>(),
+            QStringLiteral("loading window opens before constructing the GL renderer"));
+    VaporView::Geo::NavSample pendingSample;
+    pendingSample.recordTimestampUs = 1000000;
+    pendingSample.latDeg = 31.2;
+    pendingSample.lonDeg = 121.5;
+    pendingSample.heightM = 100;
+    openingMap->appendSample(pendingSample);
     processEventsFor(250);
 
     QWidget* mapWindow = findMap3DWindow();
@@ -137,6 +262,10 @@ int main(int argc, char** argv)
             QStringLiteral("3D map initializes an OpenGL framebuffer after rendering starts"));
     require(view->earthLoadDiagnostics().attempted,
             QStringLiteral("3D map starts loading the built-in Earth scene after rendering starts"));
+    require(view->sampleCount() == 1,
+            QStringLiteral("live navigation arriving before GL initialization is retained"));
+    const QImage framebuffer = view->grabFramebuffer();
+    require(!framebuffer.isNull(), QStringLiteral("real GL framebuffer can be read after startup"));
 
     auto* notice = mapWindow->findChild<QLabel*>(QStringLiteral("map3DNoticeBubble"));
     require(notice && !notice->isVisible(), QStringLiteral("imagery notice is hidden until needed"));
@@ -164,6 +293,10 @@ int main(int argc, char** argv)
     require(mapWindow->isVisible() && renderPlaceholder->isVisible()
                 && renderPlaceholder->text().contains(QStringLiteral("test renderer failure")),
             QStringLiteral("render failure leaves the window open with a diagnostic"));
+    auto* cornerControls = mapWindow->findChild<QWidget*>(QStringLiteral("map3DCornerControls"));
+    require(cornerControls && cornerControls->isVisible()
+                && cornerControls->parentWidget()->rect().contains(cornerControls->geometry()),
+            QStringLiteral("map controls remain visible and contained after renderer failure"));
 
     auto* diagnosticsAction = mapWindow->findChild<QAction*>(QStringLiteral("map3DDiagnosticsAction"));
     diagnosticsAction->trigger();

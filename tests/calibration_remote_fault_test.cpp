@@ -88,7 +88,7 @@ void exercise() {
     require(QFile::remove(file.filename),"delete original selected file");
     const auto history=Ground::Calibration::readRecordedConcentrations(QDir(session).filePath("calibration_snapshot.json"));
     require(history.success,"Sky history validates independently of deleted original and current Ground selection");
-    write(file.filename,QJsonDocument(file.document).toJson(QJsonDocument::Indented));
+    write(file.filename,QJsonDocument(file.document()).toJson(QJsonDocument::Indented));
     QJsonObject changed;require(!ground.service->prepare(changed,&error)&&error.contains(QStringLiteral("变化")),"external byte-only file modification fails selected SHA check");
     controller.close();sky.write("quit\n");sky.closeWriteChannel();require(sky.waitForFinished(5000),"SkyCore exits after fault tests");
     require(sky.exitStatus()==QProcess::NormalExit&&sky.exitCode()==0,"clean final Sky process exit");

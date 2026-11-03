@@ -915,7 +915,6 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         auto* renderHost = new QWidget(this);
         render_stack_ = new QStackedLayout(renderHost);
         render_stack_->setContentsMargins(0, 0, 0, 0);
-        render_stack_->setStackingMode(QStackedLayout::StackAll);
 
         render_placeholder_label_ = new QLabel(renderHost);
         render_placeholder_label_->setObjectName(QStringLiteral("map3DRenderPlaceholder"));
@@ -926,12 +925,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         render_placeholder_label_->setText(
             mapText(QStringLiteral("正在检查并启动 3D 渲染…")));
 
-        // Create the first QOpenGLWidget before the top-level window is shown.
-        // Qt otherwise recreates the native window when rendering is started.
-        prewarmed_view_ = new OsgEarthViewWidget(renderHost, true);
-        prewarmed_view_->setObjectName(QStringLiteral("map3DView"));
         render_stack_->addWidget(render_placeholder_label_);
-        render_stack_->addWidget(prewarmed_view_);
         render_stack_->setCurrentWidget(render_placeholder_label_);
         setCentralWidget(renderHost);
     }
@@ -1428,10 +1422,6 @@ Map3DWindow::~Map3DWindow()
     {
         view_->shutdown();
     }
-    else if (prewarmed_view_)
-    {
-        prewarmed_view_->shutdown();
-    }
 }
 
 void Map3DWindow::configureViewSignals()
@@ -1499,34 +1489,63 @@ void Map3DWindow::startRendering()
         statusBar()->showMessage(mapText(QStringLiteral("3D 渲染已启动。")), 3000);
         return;
     }
-    if (!prewarmed_view_ || !render_stack_)
+    if (!render_stack_)
     {
         statusBar()->showMessage(mapText(QStringLiteral("无法创建 3D 渲染视图。")), 8000);
         return;
     }
 
     statusBar()->showMessage(mapText(QStringLiteral("正在启动 3D 渲染视图...")));
-    view_ = prewarmed_view_;
+    // Create GL only after the loading state has painted. Its native child
+    // owns RHI composition, so enabling GL does not recreate the raster window.
+    render_host_ = new QWidget;
+#ifdef Q_OS_WIN
+    render_host_->setAttribute(Qt::WA_DontCreateNativeAncestors);
+    render_host_->setAttribute(Qt::WA_NativeWindow);
+#endif
+    auto* viewLayout = new QVBoxLayout(render_host_);
+    viewLayout->setContentsMargins(0, 0, 0, 0);
+    view_ = new OsgEarthViewWidget(render_host_, true);
+    view_->setObjectName(QStringLiteral("map3DView"));
+    viewLayout->addWidget(view_);
+    render_stack_->addWidget(render_host_);
+    map_notice_label_->setParent(render_host_);
+    if (auto* controls = findChild<QWidget*>(QStringLiteral("map3DCornerControls")))
+    {
+        controls->setParent(render_host_);
+    }
     configureViewSignals();
-    render_stack_->setCurrentWidget(view_);
+    connect(view_, &OsgEarthViewWidget::renderingFailed, this, [this](const QString& reason) {
+        render_placeholder_label_->setText(mapText(QStringLiteral("3D 渲染已停止：%1\n可关闭窗口或查看地图文件状态。")).arg(reason));
+        render_stack_->setCurrentWidget(render_placeholder_label_);
+        render_host_->hide();
+        render_placeholder_label_->show();
+        if (auto* controls = findChild<QWidget*>(QStringLiteral("map3DCornerControls")))
+        {
+            controls->setParent(centralWidget());
+            controls->show();
+            controls->raise();
+            controls->move(centralWidget()->width() - controls->width() - 16,
+                           centralWidget()->height() - controls->height() - 16);
+        }
+        statusBar()->showMessage(reason);
+    });
+    view_->startRendering();
+    if (!view_->isRenderingStarted())
+    {
+        return;
+    }
+    render_stack_->setCurrentWidget(render_host_);
     if (auto* controls = findChild<QWidget*>(QStringLiteral("map3DCornerControls")))
     {
         controls->show();
         controls->raise();
     }
-    if (render_placeholder_label_)
-    {
-        render_placeholder_label_->hide();
-    }
-    connect(view_, &OsgEarthViewWidget::renderingFailed, this, [this](const QString& reason) {
-        render_placeholder_label_->setText(mapText(QStringLiteral("3D 渲染已停止：%1\n可关闭窗口或查看地图文件状态。")).arg(reason));
-        render_stack_->setCurrentWidget(render_placeholder_label_);
-        render_placeholder_label_->show();
-        statusBar()->showMessage(reason);
-    });
-    view_->startRendering();
-    if (!view_->isRenderingStarted()) return;
     applyCurrentControlsToView();
+    if (track_data_mode_ == TrackDataMode::Live && !live_samples_.empty())
+    {
+        view_->setSamples(std::vector<VaporView::Geo::NavSample>(live_samples_.begin(), live_samples_.end()));
+    }
     refreshLayerMenuAvailability();
     updateStatus(nullptr);
 
@@ -3189,6 +3208,12 @@ void Map3DWindow::closeEvent(QCloseEvent* event)
 
 bool Map3DWindow::eventFilter(QObject* watched, QEvent* event)
 {
+    if (watched == render_placeholder_label_ && event->type() == QEvent::Paint && !view_ && !isMap3DHeadlessTest())
+    {
+        QTimer::singleShot(0, this, [this]() {
+            if (isVisible() && !view_) startRendering();
+        });
+    }
     if (watched == qApp && event->type() == QEvent::DynamicPropertyChange
         && static_cast<QDynamicPropertyChangeEvent*>(event)->propertyName() == "vaporViewEnglish")
         refreshLanguage();
@@ -3276,9 +3301,6 @@ void Map3DWindow::showEvent(QShowEvent* event)
     }
     refreshLayerMenuTheme();
     refreshLayerMenuAvailability();
-    QTimer::singleShot(0, this, [this]() {
-        if (isVisible() && !view_) startRendering();
-    });
     if (sentinel2_auto_load_timer_
         && view_
         && view_->hasEarthMap()

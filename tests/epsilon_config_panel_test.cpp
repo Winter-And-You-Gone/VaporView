@@ -16,6 +16,7 @@
 #include <QPushButton>
 #include <QGridLayout>
 #include <QSet>
+#include <QScreen>
 
 #include <algorithm>
 #include <cstdlib>
@@ -56,13 +57,16 @@ QList<QComboBox *> packetRateCombos(
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
+    if(app.arguments().value(1)=="--dpi-check")
+        require(std::abs(app.primaryScreen()->devicePixelRatio()-app.arguments().value(2).toDouble())<0.02,
+                "EPSILON rendering uses the requested actual DPI");
     using VaporView::Ground::Navigation::EpsilonConfigPanel;
     using namespace VaporView::Ground::DeviceRates;
 
     EpsilonConfigPanel panel;
     panel.resize(1100, 420);
     panel.show();
-    QApplication::processEvents();
+    VaporViewTest::processEventsFor(60);
 
     int sectionCardCount = 0;
     auto *communicationPage = panel.findChild<QWidget *>(QStringLiteral("epsilonCommunicationPage"));
@@ -610,6 +614,9 @@ int main(int argc, char *argv[])
                     VaporViewTest::processEventsFor(40);
                     auto *card = groupPages->currentWidget()->findChild<QFrame *>();
                     require(card != nullptr, "every advanced group has its parameter card");
+                    require(card->isVisible() && maintenanceCard->isVisible(), "selected group and adjacent maintenance remain visible");
+                    for(int page=0;page<groupPages->count();++page)
+                        require(groupPages->widget(page)->isVisible()==(page==group), "only the selected group contributes visible fields");
                     auto *grid = card->findChild<QGridLayout *>();
                     require(grid != nullptr, "every advanced group has a compact field grid");
                     int columns = 0;
@@ -626,9 +633,19 @@ int main(int argc, char *argv[])
                             require(!rect.intersects(previous), "advanced field cells never overlap");
                         fieldRects.push_back(rect);
                         for (auto *label : field->findChildren<QLabel *>())
-                            if (label->isVisible())
+                            if (label->isVisible()) {
+                                if (label->heightForWidth(label->width()) > label->height()) {
+                                    std::cerr << "label clip: width=" << width << " actual=" << panel.width()
+                                              << " english=" << english << " group=" << group
+                                              << " label=" << label->text().toStdString()
+                                              << " size=" << label->width() << 'x' << label->height()
+                                              << " hfw=" << label->heightForWidth(label->width())
+                                              << " field=" << field->width() << 'x' << field->height()
+                                              << " card=" << card->width() << 'x' << card->height() << '\n';
+                                }
                                 require(label->heightForWidth(label->width()) <= label->height(),
                                         "wrapped advanced labels retain their full height");
+                            }
                     }
                     require(columns >= 1 && columns <= 4 && (width < 1000 || columns >= 2),
                             "advanced groups use multiple columns when space permits");
@@ -647,8 +664,21 @@ int main(int argc, char *argv[])
                     }
                     const int gap = maintenanceCard->mapTo(&panel, QPoint()).y() -
                         (card->mapTo(&panel, QPoint()).y() + card->height());
+                    if (gap < 0 || gap > 16) {
+                        std::cerr << "gap=" << gap << " width=" << width << " actual=" << panel.width()
+                                  << " english=" << english << " group=" << group
+                                  << " stack=" << groupPages->height() << " hint=" << groupPages->sizeHint().height()
+                                  << " hfw=" << groupPages->heightForWidth(groupPages->width())
+                                  << " page=" << groupPages->currentWidget()->height() << " card=" << card->height() << '\n';
+                        std::cerr << "outer=" << pages->height() << " hfw=" << pages->heightForWidth(pages->width())
+                                  << " pageHint=" << pages->currentWidget()->sizeHint().height()
+                                  << " pageMin=" << pages->currentWidget()->minimumSizeHint().height() << '\n';
+                    }
                     require(gap >= 0 && gap <= 16,
                             "hidden longer parameter groups cannot leave a blank gap before maintenance");
+                    const auto rendered=panel.grab();
+                    require(!rendered.isNull() && rendered.width()==qRound(panel.width()*panel.devicePixelRatioF()),
+                            "real Qt paint completes after each resize and group switch");
                 }
                 auto *buttons = maintenanceCard->findChild<QGridLayout *>(QStringLiteral("epsilonMaintenanceButtonGrid"));
                 require(buttons && (width < 1000 || buttons->itemAt(0)->widget()->y() == buttons->itemAt(4)->widget()->y()),

@@ -38,6 +38,20 @@ QMap<QString, QMap<int, int>> recordCounts(const CalibrationProject& project)
         for (int wave : {816, 1368}) counts[stage.id][wave] = stage.samples.value(wave).size();
     return counts;
 }
+QJsonObject documentSummary(QJsonObject document)
+{
+    auto project=document["project"].toObject();auto stages=project["stages"].toArray();
+    for(int index=0;index<stages.size();++index) {
+        auto stage=stages[index].toObject();auto channels=stage["channels"].toObject();
+        for(const auto& wave:channels.keys())channels[wave]=QJsonObject{{"raw_sample_count",channels[wave].toArray().size()}};
+        stage["channels"]=channels;stage["audit_operation_count"]=stage.take("exclusions").toArray().size();stages[index]=stage;
+    }
+    project["stages"]=stages;document["project"]=project;return document;
+}
+}
+QJsonObject CalibrationFile::document() const
+{
+    return QJsonDocument::fromJson(qUncompress(compressedDocument_)).object();
 }
 CalibrationFileStore::CalibrationFileStore(QString root)
     :root_(root.isEmpty()?QCoreApplication::applicationDirPath():QFileInfo(root).absoluteFilePath()) {}
@@ -153,30 +167,44 @@ bool CalibrationFileStore::generate(const CalibrationProject& p,const QString& n
     const auto path=uniqueFilename(name);if(!write(path,j,false,error))return false;
     out=read(path,false,error);return out.valid;
 }
-CalibrationFile CalibrationFileStore::decode(const QByteArray& bytes,bool draft,QString *error)
+CalibrationFile CalibrationFileStore::decode(QByteArray bytes,bool draft,QString *error,const CalibrationReadObserver& observer)
 {
     error->clear();CalibrationFile f;QJsonParseError parse;
     if(bytes.size()>256*1024*1024) { *error=QStringLiteral("定标文件超过 256 MiB 限制");return f; }
-    auto doc=QJsonDocument::fromJson(bytes,&parse);auto j=doc.object();const auto hash=j.take("sha256").toString();
+    f.sha256=QString::fromLatin1(QCryptographicHash::hash(bytes,QCryptographicHash::Sha256).toHex());
+    if(observer)observer("file_sha");
+    f.compressedDocument_=qCompress(bytes,1);f.compressedDocument_.squeeze();
+    if(observer)observer("source_cache");
+    auto doc=QJsonDocument::fromJson(bytes,&parse);auto j=doc.object();
+    bytes.clear();bytes.squeeze();
+    if(observer)observer("json_parse");
+    const auto hash=j.take("sha256").toString();
     if(parse.error!=QJsonParseError::NoError || !doc.isObject() || j["schema_version"]!=1 ||
        j["kind"]!=(draft?"vaporview_calibration_draft":"vaporview_calibration") || hash.toLatin1()!=calibrationDigest(j) ||
        QUuid(j["file_id"].toString()).isNull() || !QDateTime::fromString(j["created_utc"].toString(),Qt::ISODateWithMs).isValid()) { *error=QStringLiteral("定标文件损坏、SHA-256 不匹配或 schema 不兼容");return f; }
-    f.project=CalibrationProject::fromJson(j["project"].toObject(),error);if(!error->isEmpty())return f;
+    if(observer)observer("canonical_sha");
+    f.id=j["file_id"].toString();f.createdUtc=j["created_utc"].toString();
+    f.summary=documentSummary(doc.object());
+    auto project=j["project"].toObject();doc={};j={};
+    f.project=CalibrationProject::fromJson(std::move(project),error,observer);if(!error->isEmpty())return f;
     *error=f.project.validate(!draft);if(!error->isEmpty())return f;
-    f.id=j["file_id"].toString();f.createdUtc=j["created_utc"].toString();f.document=doc.object();
-    f.sha256=QString::fromLatin1(QCryptographicHash::hash(bytes,QCryptographicHash::Sha256).toHex());f.valid=true;return f;
+    f.valid=true;
+    if(observer)observer("validated");
+    return f;
 }
-CalibrationFile CalibrationFileStore::read(const QString& path,bool draft,QString *error) const
+CalibrationFile CalibrationFileStore::read(const QString& path,bool draft,QString *error,const CalibrationReadObserver& observer) const
 {
     QFile file(path);if(!file.open(QIODevice::ReadOnly)) { *error=QStringLiteral("无法读取定标文件 %1：%2").arg(path,file.errorString());return {}; }
     if(file.size()>256*1024*1024) { *error=QStringLiteral("定标文件过大");return {}; }
-    auto f=decode(file.readAll(),draft,error);f.filename=QFileInfo(path).absoluteFilePath();
+    auto bytes=file.readAll();
+    if(observer)observer("file_read");
+    auto f=decode(std::move(bytes),draft,error,observer);f.filename=QFileInfo(path).absoluteFilePath();
     if(!draft || !f.valid)return f;
     const auto partsDirectory=path+QStringLiteral(".parts");
     const auto parts=QDir(partsDirectory).entryList({f.id+"_*.vcalpart"},QDir::Files,QDir::Name);
     if(parts.isEmpty())return f;
     f.project={}; // Avoid keeping a second native copy while rebuilding the full raw arrays.
-    auto merged=f.document;auto project=merged["project"].toObject();
+    auto merged=f.document();auto project=merged["project"].toObject();
     auto stages=project["stages"].toArray();QMap<QString,QMap<int,QJsonArray>> rows;
     for(const auto& value:stages) {
         const auto stage=value.toObject();
@@ -231,7 +259,7 @@ CalibrationFile CalibrationFileStore::read(const QString& path,bool draft,QStrin
 bool CalibrationFileStore::copy(const QString& source,const QString& name,CalibrationFile& out,QString *error) const
 {
     const auto f=read(source,false,error);if(!f.valid)return false;
-    const auto path=uniqueFilename(name);if(!write(path,f.document,false,error))return false;
+    const auto path=uniqueFilename(name);if(!write(path,f.document(),false,error))return false;
     out=read(path,false,error);return out.valid;
 }
 bool CalibrationFileStore::remove(const QString& path,const QString& locked,QString *error) const

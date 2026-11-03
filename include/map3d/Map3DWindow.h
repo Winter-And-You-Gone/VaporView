@@ -146,7 +146,7 @@ private:
     void positionMapNotice();
 
     OsgEarthViewWidget* view_ = nullptr;
-    OsgEarthViewWidget* prewarmed_view_ = nullptr;
+    QWidget* render_host_ = nullptr;
     QWidget* headless_view_ = nullptr;
     QLabel* render_placeholder_label_ = nullptr;
     QLabel* map_notice_label_ = nullptr;

@@ -904,6 +904,12 @@ target_include_directories(epsilon_config_panel_test PRIVATE
 )
 target_link_libraries(epsilon_config_panel_test PRIVATE vaporview_main_window)
 vaporview_add_test(NAME epsilon_config_panel_test COMMAND epsilon_config_panel_test)
+vaporview_add_test(NAME epsilon_config_panel_100dpi_test COMMAND epsilon_config_panel_test --dpi-check 1.0)
+vaporview_add_test(NAME epsilon_config_panel_130dpi_test COMMAND epsilon_config_panel_test --dpi-check 1.3)
+set_tests_properties(epsilon_config_panel_test epsilon_config_panel_100dpi_test epsilon_config_panel_130dpi_test
+    PROPERTIES LABELS "integration;ui;navigation" TIMEOUT 90)
+set_tests_properties(epsilon_config_panel_100dpi_test PROPERTIES ENVIRONMENT "QT_SCREEN_SCALE_FACTORS=1;QT_ENABLE_HIGHDPI_SCALING=0;QT_FONT_DPI=96")
+set_tests_properties(epsilon_config_panel_130dpi_test PROPERTIES ENVIRONMENT "QT_SCREEN_SCALE_FACTORS=1.3")
 
 add_executable(navigation_status_panel_test
     ${CMAKE_CURRENT_SOURCE_DIR}/navigation_status_panel_test.cpp
@@ -1284,6 +1290,8 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
         vaporview_stage_osgearth_runtime(main_window_map3d_open_test)
     endif()
     vaporview_add_test(NAME main_window_map3d_open_test COMMAND main_window_map3d_open_test)
+    vaporview_add_test(NAME main_window_map3d_open_performance_test COMMAND main_window_map3d_open_test --performance-matrix)
+    set_tests_properties(main_window_map3d_open_performance_test PROPERTIES LABELS "integration;3d;ui;performance" TIMEOUT 150 RUN_SERIAL TRUE)
 
     add_executable(main_window_map3d_real_close_test
         ${CMAKE_CURRENT_SOURCE_DIR}/main_window_map3d_real_close_test.cpp
@@ -1543,6 +1551,10 @@ set_tests_properties(calibration_process_recovery_test PROPERTIES LABELS "integr
 vaporview_add_test(NAME calibration_capacity_roundtrip_test COMMAND calibration_quality_test --capacity 20 1)
 vaporview_add_test(NAME calibration_capacity_limit_test COMMAND calibration_quality_test --capacity 20 10)
 vaporview_add_test(NAME calibration_capacity_guard_test COMMAND calibration_quality_test --capacity 18 10)
+if(WIN32)
+    vaporview_add_test(NAME calibration_memory_matrix_test COMMAND calibration_quality_test --memory-matrix)
+    set_tests_properties(calibration_memory_matrix_test PROPERTIES LABELS "integration;calibration;capacity;slow" TIMEOUT 600 RUN_SERIAL TRUE)
+endif()
 set_tests_properties(calibration_capacity_roundtrip_test calibration_capacity_limit_test calibration_capacity_guard_test
     PROPERTIES LABELS "integration;calibration;capacity;slow" TIMEOUT 300 RUN_SERIAL TRUE)
 target_link_libraries(independent_calibration_test PRIVATE vaporview_water_calibration_core vaporview_fpga_device_core)

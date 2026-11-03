@@ -61,10 +61,28 @@ int main(int argc,char **argv)
     p.stages[0].samples[816][0]=invalid;
     check(p.stages[0].statistics(816).invalid==1,"manual restoration never overrides hardware quality");
     CalibrationFileStore store(r.root.path());CalibrationFile duplicate;
+    {
+        auto original=f.document();original["future_optional_metadata"]=QJsonObject{{"note",QStringLiteral("保留未知字段")}};
+        original.remove("sha256");original["sha256"]=QString::fromLatin1(calibrationDigest(original));
+        auto verified=CalibrationFileStore::decode(QJsonDocument(original).toJson(),false,&error);
+        check(verified.valid && verified.document()==original,"verified immutable source retains full raw data, audit and unknown metadata");
+        const auto sourcePath=QDir(r.root.path()).filePath("temporary-source.vcal");write(sourcePath,QJsonDocument(original).toJson());
+        verified=store.read(sourcePath,false,&error);check(QFile::remove(sourcePath),"remove original calibration source");
+        check(verified.valid && verified.document()==original,"full verified snapshot remains available after source deletion");
+        auto metadata=f.project.stages[0].samples[816][0];
+        const QJsonObject sensors{{"ptb",QJsonObject{{"temperature",25.1},{"future_field",QJsonArray{1,"raw",true}}}}};
+        metadata.setSensorReadings(sensors);
+        const auto decoded=PeakRecord::fromJson(metadata.toJson(),&error);
+        check(error.isEmpty() && decoded.toJson()==metadata.toJson() && decoded.sensorReadings()==sensors,
+            "compact sensor storage preserves all original values and unknown fields");
+        const auto stage=verified.summary["project"].toObject()["stages"].toArray().first().toObject();
+        check(stage["channels"].toObject()["816"].toObject()["raw_sample_count"].toInt()==4,
+            "light inspection summary retains raw sample counts");
+    }
     check(store.generate(f.project,QStringLiteral("中文 软件测试定标"),duplicate,&error)&&duplicate.filename!=f.filename,"Chinese filename collision creates another file");
     auto bytes=read(f.filename);bytes[bytes.size()/2]^=1;
     check(!CalibrationFileStore::decode(bytes,false,&error).valid,"corrupt SHA rejected");
-    auto bad=f.document;bad["schema_version"]=99;bad.remove("sha256");bad["sha256"]=QString::fromLatin1(calibrationDigest(bad));
+    auto bad=f.document();bad["schema_version"]=99;bad.remove("sha256");bad["sha256"]=QString::fromLatin1(calibrationDigest(bad));
     check(!CalibrationFileStore::decode(QJsonDocument(bad).toJson(),false,&error).valid,"unsupported schema rejected even with correct digest");
     auto snapshot=f.project.toJson();auto mapping=snapshot["hardware_mapping"].toObject();mapping["816"]=0x30;snapshot["hardware_mapping"]=mapping;
     CalibrationProject::fromJson(snapshot,&error);check(!error.isEmpty(),"incompatible mapping rejected");

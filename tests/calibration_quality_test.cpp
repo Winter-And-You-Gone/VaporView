@@ -11,6 +11,9 @@
 #include <QScopeGuard>
 #include <QThread>
 #include <QDirIterator>
+#include <QSaveFile>
+#include <atomic>
+#include <thread>
 #ifdef Q_OS_WIN
 #include <psapi.h>
 #include <aclapi.h>
@@ -32,6 +35,19 @@ void report(QJsonObject fields)
     fields["evidence"] = "software_simulation_only";
     fields["peak_working_set_bytes"] = QString::number(peakMemoryBytes());
     std::cout << QJsonDocument(fields).toJson(QJsonDocument::Compact).constData() << std::endl;
+}
+QJsonObject memorySnapshot()
+{
+    QJsonObject result;
+#ifdef Q_OS_WIN
+    PROCESS_MEMORY_COUNTERS_EX memory{};
+    check(GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS *>(&memory), sizeof(memory)), "query process memory");
+    result = {{"working_set_bytes",QString::number(memory.WorkingSetSize)},
+        {"private_bytes",QString::number(memory.PrivateUsage)},
+        {"process_peak_working_set_bytes",QString::number(memory.PeakWorkingSetSize)},
+        {"process_peak_commit_bytes",QString::number(memory.PeakPagefileUsage)}};
+#endif
+    return result;
 }
 CalibrationProject syntheticProject(int stages, int rate)
 {
@@ -74,10 +90,12 @@ CalibrationProject syntheticProject(int stages, int rate)
                 record.environment.source = "SOFTWARE_TEST_PTB_HMP";
                 record.environment.snapshotTimeUs = feature.hostTimeUs;
                 record.alignment = "host_receipt_uncertain";
+                QJsonObject readings;
                 for (const QString& source : {QStringLiteral("ptb"), QStringLiteral("hmp")})
-                    record.sensorReadings[source] = QJsonObject{{"valid", true}, {"source", source},
+                    readings[source] = QJsonObject{{"valid", true}, {"source", source},
                         {"host_received_utc_us", QString::number(feature.hostTimeUs)}, {"peak_delta_us", "0"},
                         {"temperature_c", 25.123}, {"pressure_hpa", 1013.25}, {"timestamp_kind", "host_receipt_uncertain"}};
+                record.setSensorReadings(readings);
                 rows.append(record);
                 if (index % 1000 == 0)
                     stage.operations.append({feature.id, QStringLiteral("软件测试：人工排除保留原始值"), calibrationUtcNow(), true, project.revision});
@@ -89,6 +107,105 @@ CalibrationProject syntheticProject(int stages, int rate)
     const auto error = project.validate(stages > 1);
     check(error.isEmpty(), qPrintable(error));
     return project;
+}
+void memoryFixture(const QString& path,int stages,int rate)
+{
+    auto project=syntheticProject(stages,rate);
+    QJsonObject document{{"kind",stages>1?"vaporview_calibration":"vaporview_calibration_draft"},
+        {"schema_version",1},{"file_id",calibrationUuid()},{"created_utc",calibrationUtcNow()},{"project",project.toJson()}};
+    document["sha256"]=QString::fromLatin1(calibrationDigest(document));
+    const auto bytes=QJsonDocument(document).toJson(QJsonDocument::Compact);
+    check(bytes.size()<=256LL*1024*1024,"memory fixture is below format limit");
+    QSaveFile file(path);check(file.open(QIODevice::WriteOnly)&&file.write(bytes)==bytes.size()&&file.commit(),"write isolated memory fixture");
+    report({{"phase","memory_fixture"},{"file",path},{"file_bytes",QString::number(bytes.size())},{"stages",stages},{"rate",rate}});
+}
+void digestContract()
+{
+    QJsonArray scalars{QJsonValue(),true,false,0.0,-0.0,1e-300,1e300,
+        std::numeric_limits<double>::infinity(),std::numeric_limits<double>::quiet_NaN(),
+        QStringLiteral("中文 \" / \\ \n\t"),QString::fromUtf8("🛰️"),QString(QChar(0xd800))};
+    QJsonObject object{{"z",scalars},{"a",QJsonObject{{"nested",scalars}}},{QStringLiteral("中文键"),"value"}};
+    for(int iteration=0;iteration<6;++iteration) {
+        check(calibrationDigest(object)==QCryptographicHash::hash(QJsonDocument(object).toJson(QJsonDocument::Compact),QCryptographicHash::Sha256).toHex(),
+            "incremental canonical hash exactly matches Qt Compact JSON for nested values and UTF-8 escaping");
+        object=QJsonObject{{"array",QJsonArray{object,object,scalars}},{"iteration",iteration}};
+    }
+}
+void memoryLoad(const QString& path,int iterations)
+{
+    quint64 firstClosed=0;
+    const auto paths=path.split('|');
+    for(int iteration=0;iteration<iterations;++iteration) {
+        const auto filename=paths[iteration%paths.size()];const auto fileBytes=quint64(QFileInfo(filename).size());
+        // A sampler belongs to one load/close interval. Joining it before the
+        // next interval prevents an in-flight old sample from restoring a peak
+        // after reset and making the next, smaller file appear to exceed budget.
+        std::atomic<bool> done=false;std::atomic<quint64> peakPrivate=0,peakWorkingSet=0;
+        std::thread sampler([&]{while(!done){
+            const auto memory=memorySnapshot();
+            peakPrivate=std::max(peakPrivate.load(),memory["private_bytes"].toString().toULongLong());
+            peakWorkingSet=std::max(peakWorkingSet.load(),memory["working_set_bytes"].toString().toULongLong());QThread::msleep(2);
+        }});
+        const auto stop=qScopeGuard([&]{done=true;if(sampler.joinable())sampler.join();});
+        const auto initialPrivate=memorySnapshot()["private_bytes"].toString().toULongLong();
+        QElapsedTimer timer;timer.start();
+        const auto observe=[&](const char *phase) {
+            auto fields=memorySnapshot();fields["phase"]=QLatin1String(phase);fields["iteration"]=iteration;
+            fields["elapsed_ms"]=timer.elapsed();fields["sampled_peak_private_bytes"]=QString::number(peakPrivate.load());report(fields);
+        };
+        observe("load_begin");
+        {
+            QString error;auto file=CalibrationFileStore().read(filename,filename.endsWith(".vcaldraft"),&error,observe);
+            check(file.valid,qPrintable(error));
+            observe("loaded");
+            quint64 raw=0;for(const auto& stage:file.project.stages)for(int wave:{816,1368})raw+=stage.statistics(wave).raw;
+            check(raw>0,"memory load retains all raw samples");
+#ifdef Q_OS_WIN
+            check(memorySnapshot()["private_bytes"].toString().toULongLong()<=initialPrivate+2*fileBytes+64ULL*1024*1024,
+                "loaded project does not retain a second expanded raw JSON tree");
+#endif
+        }
+        observe("closed");
+        done=true;sampler.join();
+        const auto closed=memorySnapshot()["private_bytes"].toString().toULongLong();
+        report({{"phase","memory_result"},{"file",filename},{"file_bytes",QString::number(fileBytes)},
+            {"iteration",iteration},{"load_and_close_ms",timer.elapsed()},
+            {"sampled_peak_private_bytes",QString::number(peakPrivate.load())},
+            {"sampled_peak_working_set_bytes",QString::number(peakWorkingSet.load())},
+            {"closed_private_bytes",QString::number(closed)}});
+#ifdef Q_OS_WIN
+        check(peakPrivate.load()<=initialPrivate+6*fileBytes+192ULL*1024*1024,
+            "load peak stays within measured full-JSON parsing budget");
+#endif
+        if(!iteration)firstClosed=closed;
+        else check(closed<=firstClosed+64ULL*1024*1024,"repeated load/close private bytes remain within allocator plateau");
+    }
+}
+bool memoryMatrix()
+{
+    QTemporaryDir root;if(!root.isValid())return false;
+    const auto child=[&](const QStringList& arguments) {
+        QProcess process;process.setProcessChannelMode(QProcess::ForwardedChannels);
+        process.start(QCoreApplication::applicationFilePath(),arguments);
+        if(!process.waitForStarted(10000))return false;
+        QElapsedTimer timeout;timeout.start();
+        while(!process.waitForFinished(250))if(timeout.elapsed()>180000) {
+            process.kill();process.waitForFinished(5000);return false;
+        }
+        return process.exitStatus()==QProcess::NormalExit && process.exitCode()==0;
+    };
+    struct Case {const char* name;int stages,rate;};
+    QStringList files;
+    for(const auto& sample: {Case{"small",2,1},Case{"medium",5,2},Case{"ten-stage",10,10},
+        Case{"twenty-stage",20,1},Case{"near-limit",18,10}}) {
+        const auto path=root.filePath(QString::fromLatin1(sample.name)+".vcal");
+        if(!child({"--memory-fixture",path,QString::number(sample.stages),QString::number(sample.rate)}))return false;
+        if(!child({"--memory-load",path,"1"}))return false;
+        files.append(path);
+    }
+    // Two complete passes over different sizes in one fresh process detect
+    // cumulative retention separately from each case's isolated load peak.
+    return child({"--memory-load",files.join('|'),"10"});
 }
 void capacity(int stages, int rate)
 {
@@ -576,6 +693,7 @@ void deploymentFixture(const QString& root,bool verify)
 int main(int argc, char** argv)
 {
     QCoreApplication app(argc, argv);
+    digestContract();
     const auto args = app.arguments();
     if (args.value(1) == "--fault-child") faultChild(args.value(2),args.value(3));
     else if (args.value(1) == "--faults") processFaults();
@@ -585,6 +703,9 @@ int main(int argc, char** argv)
     else if (args.value(1) == "--verify-deployment-fixture") deploymentFixture(args.value(2),true);
     else if (args.value(1) == "--stress") {featureContract();rates();interruptions();failuresAndShutdown();throughput(100000);overloadedCheckpoint();}
     else if (args.value(1) == "--capacity") capacity(args.value(2).toInt(), args.value(3, "10").toInt());
+    else if (args.value(1) == "--memory-fixture") memoryFixture(args.value(2),args.value(3).toInt(),args.value(4).toInt());
+    else if (args.value(1) == "--memory-load") memoryLoad(args.value(2),args.value(3,"1").toInt());
+    else if (args.value(1) == "--memory-matrix") check(memoryMatrix(),"isolated memory matrix and mixed-file load/close pass");
     else throughput(args.value(2, "20000").toInt());
     return 0;
 }

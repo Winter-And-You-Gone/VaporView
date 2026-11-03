@@ -264,13 +264,15 @@ void CalibrationService::process(const PendingPeak& p)
     if(state_.acquiring && previous && p.time-previous>StreamGapMs)
         pause(QStringLiteral("实时数据流中断，有效计时已暂停，请重新确认稳定"));
     auto& s=state_.project.stages[state_.activeStage];auto stored=r;stored.taskId=state_.project.id;stored.stageId=s.id;
+    auto readings=stored.sensorReadings();
     for(auto i=sensorReadings_.begin();i!=sensorReadings_.end();++i) {
         const bool remote=r.deviceIdentity["transport"]=="remote_fpga";
         if(i.key().startsWith("remote_")!=remote)continue;
         auto reading=i.value().toObject();const auto receipt=reading["host_received_utc_us"].toString().toULongLong();
         const auto delta=receipt>r.feature.hostTimeUs?receipt-r.feature.hostTimeUs:r.feature.hostTimeUs-receipt;
-        if(receipt && delta<=EnvironmentWindowUs) {reading["peak_delta_us"]=QString::number(delta);stored.sensorReadings[i.key()]=reading;stored.alignment="host_receipt_uncertain";}
+        if(receipt && delta<=EnvironmentWindowUs) {reading["peak_delta_us"]=QString::number(delta);readings[i.key()]=reading;stored.alignment="host_receipt_uncertain";}
     }
+    stored.setSensorReadings(readings);
     // Host reception summaries do not assert sensor sample-time alignment.
     if(stored.alignment=="unavailable" && environment_.snapshotTimeUs) {
         const auto delta=r.feature.hostTimeUs>environment_.snapshotTimeUs?r.feature.hostTimeUs-environment_.snapshotTimeUs:environment_.snapshotTimeUs-r.feature.hostTimeUs;
@@ -333,7 +335,7 @@ void CalibrationService::listFiles() {const auto paths=outsideStateLock([this]{r
 void CalibrationService::refreshFiles() {submit([this]{listFiles();});}
 void CalibrationService::inspectFile(const QString& filename)
 {submit([this,filename]{QString error;const auto f=outsideStateLock([&]{return store_.read(filename,false,&error);});
-    if(!f.valid){message(error,true);return;}state_.inspectedDocument=f.document;++state_.inspection;message(QStringLiteral("文件完整性及双波长参数已校验：%1").arg(filename));});}
+    if(!f.valid){message(error,true);return;}state_.inspectedDocument=f.summary;++state_.inspection;message(QStringLiteral("文件完整性及双波长参数已校验：%1").arg(filename));});}
 void CalibrationService::generateFile(const QString& name)
 {submit([this,name]{if(!editable())return;QString e;CalibrationFile f;const auto project=state_.project;if(!persist() || !outsideStateLock([&]{return store_.generate(project,name,f,&e);})){if(!e.isEmpty())message(e,true);return;}listFiles();message(QStringLiteral("定标文件已生成：%1").arg(f.filename));});}
 void CalibrationService::openProject(const QString& filename,bool draft)
@@ -420,7 +422,7 @@ bool CalibrationService::prepareImpl(QJsonObject& snapshot,QString *error)
     if(f.sha256!=state_.selected.sha256){*error=QStringLiteral("所选定标文件已变化，请重新选择并核对");return false;}
     if(!state_.identityWarning.isEmpty() && !state_.identityWarning.contains(QStringLiteral("用户已核对"))){*error=state_.identityWarning;return false;}
     lockSnapshot_={{"kind","vaporview_session_calibration"},{"schema_version",1},{"file_id",f.id},{"file_sha256",f.sha256},
-        {"filename",QFileInfo(f.filename).fileName()},{"task_name",f.project.name},{"vcal_document",f.document},
+        {"filename",QFileInfo(f.filename).fileName()},{"task_name",f.project.name},{"vcal_document",f.document()},
         {"identity_warning",state_.identityWarning}};
     const auto runtime=runtimeParameters(f);
     *error=VaporView::Session::validateRuntimeCalibration(runtime);if(!error->isEmpty())return false;

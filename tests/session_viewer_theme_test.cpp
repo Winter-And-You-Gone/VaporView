@@ -484,6 +484,11 @@ void testRawDataExportMenu()
             window->raise();
             window->activateWindow();
             require(waitForWindowExposed(window), "export menu parser exposed");
+            // Native activation can arrive after Expose on the isolated Windows
+            // desktop; finish it before opening a popup that closes on deactivation.
+            window->activateWindow();
+            require(processEventsUntil(2000, [&]() { return window->isActiveWindow(); }),
+                    "export menu parser active before opening popup");
             auto *button = parser.findChild<QPushButton *>(QStringLiteral("rawDataExportButton"));
             auto *menu = parser.findChild<VaporView::SingleLevelPopupMenu *>(QStringLiteral("rawDataExportMenu"));
             require(button && menu && menu->actions().size() == 5, "one export button provides five actions");

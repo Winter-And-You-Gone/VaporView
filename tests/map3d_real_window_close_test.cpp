@@ -203,9 +203,12 @@ int main(int argc, char** argv)
     window->show();
 
 
-    auto* view = window->findChild<VaporView::Map3D::OsgEarthViewWidget*>(QStringLiteral("map3DView"));
+    VaporView::Map3D::OsgEarthViewWidget* view = nullptr;
+    const bool startupLoaded = waitUntil([&]() {
+        view = window->findChild<VaporView::Map3D::OsgEarthViewWidget*>(QStringLiteral("map3DView"));
+        return view && view->hasEarthMap();
+    }, 10000);
     require(view != nullptr, QStringLiteral("real OSG/osgEarth 3D view exists"));
-    const bool startupLoaded = waitUntil([&]() { return view->hasEarthMap(); }, 10000);
     const auto startupDiagnostics = view->earthLoadDiagnostics();
     require(startupLoaded,
             QStringLiteral("lightweight startup map loads before selecting local detail: %1: %2")

@@ -154,6 +154,9 @@ public:
     explicit EpsilonPages(QWidget *parent = nullptr) : QStackedWidget(parent)
     {
         layout()->setSizeConstraint(QLayout::SetNoConstraint);
+        connect(this, &QStackedWidget::currentChanged, this, [this]() {
+            updateGeometry();
+        });
     }
     QSize sizeHint() const override
     {
@@ -173,6 +176,17 @@ public:
         return currentWidget()->hasHeightForWidth() ? currentWidget()->heightForWidth(width)
                                                    : currentWidget()->sizeHint().height();
     }
+};
+
+// QWidgetItem normally bypasses QWidget::heightForWidth when it has a layout,
+// and QStackedLayout measures every hidden page. Use the current-page override
+// above directly so nested stacks reflow without frozen, stale fixed heights.
+class EpsilonPageItem final : public QWidgetItem
+{
+public:
+    explicit EpsilonPageItem(QWidget *page) : QWidgetItem(page) {}
+    int heightForWidth(int width) const override { return widget()->heightForWidth(width); }
+    int minimumHeightForWidth(int width) const override { return heightForWidth(width); }
 };
 
 class EpsilonSettingsTrack final : public QFrame
@@ -415,7 +429,9 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
 {
     setObjectName(QStringLiteral("epsilonSectionCard"));
     setMinimumWidth(0);
-    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
+    // The preferred hint is measured at its own narrow width. A scroll area
+    // must be allowed to use the smaller height-for-width at the actual width.
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     setAttribute(Qt::WA_StyledBackground, true);
     setAutoFillBackground(true);
 
@@ -466,7 +482,7 @@ EpsilonConfigPanel::EpsilonConfigPanel(QWidget *parent)
     communicationLayout->setContentsMargins(0, 0, 0, 0);
     communicationLayout->setSpacing(kCardGap);
     pages_->addWidget(communication_page_);
-    panelLayout->addWidget(pages_);
+    panelLayout->addItem(new EpsilonPageItem(pages_));
 
     auto *overview = new QWidget(communication_page_);
     overview->setObjectName(QStringLiteral("epsilonCommunicationOverview"));
@@ -1235,9 +1251,6 @@ void EpsilonConfigPanel::arrangeAdvancedFields()
     if (advanced_pages_)
     {
         // QWidgetItem otherwise measures every page in the stacked layout.
-        advanced_pages_->setFixedHeight(advanced_pages_->heightForWidth(width()));
-        pages_->currentWidget()->layout()->invalidate();
-        pages_->setFixedHeight(std::max(pages_->heightForWidth(width()), pages_->sizeHint().height()));
         advanced_pages_->updateGeometry();
     }
 }
@@ -1274,8 +1287,10 @@ void EpsilonConfigPanel::createAdvancedSettingsPage()
     layout->addWidget(advanced_hint_);
     advanced_pages_ = new EpsilonPages(page);
     advanced_pages_->setObjectName(QStringLiteral("epsilonAdvancedGroupPages"));
-    advanced_pages_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
-    layout->addWidget(advanced_pages_);
+    // Maximum would cap the page at its width-independent sizeHint, even when
+    // wrapped labels need a taller heightForWidth after a column reflow.
+    advanced_pages_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    layout->addItem(new EpsilonPageItem(advanced_pages_));
     for (auto group : advanced_groups_)
     {
         auto *groupPage = new QWidget(advanced_pages_);

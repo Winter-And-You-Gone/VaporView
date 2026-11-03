@@ -12,10 +12,55 @@ namespace VaporView::Ground::Calibration
 {
 QString calibrationUtcNow() { return QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs); }
 QString calibrationUuid() { return QUuid::createUuid().toString(QUuid::WithoutBraces); }
-QByteArray calibrationDigest(const QJsonObject& j)
-{ return QCryptographicHash::hash(QJsonDocument(j).toJson(QJsonDocument::Compact), QCryptographicHash::Sha256).toHex(); }
 namespace
 {
+// Preserve Qt Compact JSON byte ordering/escaping without allocating another
+// complete UTF-8 copy of a large project solely to calculate its digest.
+class CanonicalJsonHash
+{
+public:
+    void append(const QJsonValue& value)
+    {
+        int budget=128;
+        if(small(value,budget)) {
+            writeBytes(value.toJson(QJsonValue::JsonFormat::Compact));return;
+        }
+        if (value.isObject()) {
+            writeBytes("{");bool first=true;const auto object=value.toObject();
+            for(auto it=object.constBegin();it!=object.constEnd();++it) {
+                if(!first)writeBytes(",");first=false;
+                writeBytes(QJsonValue(it.key()).toJson(QJsonValue::JsonFormat::Compact));writeBytes(":");append(it.value());
+            }
+            writeBytes("}");
+        } else if(value.isArray()) {
+            writeBytes("[");bool first=true;
+            for(const auto& item:value.toArray()) {if(!first)writeBytes(",");first=false;append(item);}
+            writeBytes("]");
+        } else writeBytes(value.toJson(QJsonValue::JsonFormat::Compact));
+    }
+    QByteArray result() {flush();return hash_.result().toHex();}
+private:
+    QCryptographicHash hash_{QCryptographicHash::Sha256};
+    QByteArray buffer_;
+    static bool small(const QJsonValue& value,int& remaining)
+    {
+        if(--remaining<0)return false;
+        if(value.isObject()) {
+            const auto object=value.toObject();
+            for(auto it=object.constBegin();it!=object.constEnd();++it)if(!small(it.value(),remaining))return false;
+        } else if(value.isArray()) {
+            for(const auto& item:value.toArray())if(!small(item,remaining))return false;
+        }
+        return true;
+    }
+    void flush() {hash_.addData(buffer_);buffer_.clear();}
+    void writeBytes(QByteArrayView bytes)
+    {
+        if(buffer_.size()+bytes.size()>65536)flush();
+        if(bytes.size()>65536)hash_.addData(bytes);
+        else buffer_.append(bytes);
+    }
+};
 bool date(const QString& s) { return QDateTime::fromString(s, Qt::ISODateWithMs).isValid(); }
 QJsonObject parametersJson(const Fit& f)
 {
@@ -24,8 +69,16 @@ QJsonObject parametersJson(const Fit& f)
 bool finite(const QJsonObject& j, const char *key)
 { return j[QLatin1String(key)].isDouble() && std::isfinite(j[QLatin1String(key)].toDouble()); }
 }
+QByteArray calibrationDigest(const QJsonObject& object)
+{
+    CanonicalJsonHash hash;hash.append(object);return hash.result();
+}
 QJsonObject PeakRecord::toJson() const
-{ return {{"task_id",taskId},{"stage_id",stageId},{"feature",feature.toJson()}, {"environment",environment.toJson()}, {"device_identity",deviceIdentity}, {"alignment",alignment},{"sensor_readings",sensorReadings}}; }
+{ return {{"task_id",taskId},{"stage_id",stageId},{"feature",feature.toJson()}, {"environment",environment.toJson()}, {"device_identity",deviceIdentity}, {"alignment",alignment},{"sensor_readings",sensorReadings()}}; }
+QJsonObject PeakRecord::sensorReadings() const
+{ return QJsonDocument::fromJson(sensorReadingsJson).object(); }
+void PeakRecord::setSensorReadings(const QJsonObject& readings)
+{ sensorReadingsJson=QJsonDocument(readings).toJson(QJsonDocument::Compact); }
 PeakRecord PeakRecord::fromJson(const QJsonObject& j, QString *error)
 {
     error->clear();
@@ -35,7 +88,7 @@ PeakRecord PeakRecord::fromJson(const QJsonObject& j, QString *error)
     if (!error->isEmpty()) return r;
     r.environment=Environment::fromJson(j["environment"].toObject(),error);
     r.deviceIdentity=j["device_identity"].toObject(); r.alignment=j["alignment"].toString();
-    r.sensorReadings=j["sensor_readings"].toObject();
+    r.setSensorReadings(j["sensor_readings"].toObject());
     if(!j["sensor_readings"].isObject()){*error=QStringLiteral("原始传感器来源记录无效");return r;}
     if (!j["device_identity"].isObject() || (r.alignment!="unavailable" && r.alignment!="host_receipt_uncertain"))
         *error=QStringLiteral("传感器或设备来源字段无效");
@@ -184,7 +237,7 @@ QJsonObject CalibrationProject::toJson() const
         {"hardware_mapping",hardwareMapping},{"peak_algorithm","pointwise_h2_over_h1_v1"},{"model","validation_linear_v1"},
         {"compensation","unconfigured"},{"stages",ss},{"fits",ff},{"legacy_fits",legacy}};
 }
-CalibrationProject CalibrationProject::fromJson(const QJsonObject& j,QString *error)
+CalibrationProject CalibrationProject::fromJson(QJsonObject j,QString *error,const CalibrationReadObserver& observer)
 {
     error->clear();
     CalibrationProject p;
@@ -195,8 +248,12 @@ CalibrationProject CalibrationProject::fromJson(const QJsonObject& j,QString *er
        j["peak_algorithm"]!="pointwise_h2_over_h1_v1" || j["model"]!="validation_linear_v1" || j["compensation"]!="unconfigured") {
         *error=QStringLiteral("任务 schema 或算法版本不兼容"); return p;
     }
-    for(const auto& v:j["stages"].toArray()) {
-        const auto o=v.toObject(); ConcentrationStage s;
+    auto stages=j.take("stages").toArray();
+    // Detach the small header from removed raw-array storage before consuming
+    // stages, so a decoded stage can be released as its native records are built.
+    j=QJsonDocument::fromJson(QJsonDocument(j).toJson(QJsonDocument::Compact)).object();
+    while(!stages.isEmpty()) {
+        const auto o=stages.takeAt(0).toObject(); ConcentrationStage s;
         s.id=o["id"].toString();s.note=o["note"].toString();s.status=o["status"].toString();
         s.startedUtc=o["started_utc"].toString();s.completedUtc=o["completed_utc"].toString();s.concentration=o["concentration"].toDouble(-1);
         bool ok=true;
@@ -206,18 +263,24 @@ CalibrationProject CalibrationProject::fromJson(const QJsonObject& j,QString *er
         for(int w:{816,1368}) {
             const auto a=o["channels"].toObject()[QString::number(w)];
             if(!a.isArray() || a.toArray().size()>2000000) { *error=QStringLiteral("样本数组无效或过大");return p; }
+            s.samples[w].reserve(a.toArray().size());
             for(const auto& row:a.toArray()) {
-                auto r=PeakRecord::fromJson(row.toObject(),error);if(!error->isEmpty()) return p;s.samples[w].append(r);
+                auto r=PeakRecord::fromJson(row.toObject(),error);if(!error->isEmpty()) return p;
+                if(r.deviceIdentity!=p.deviceIdentity) { *error=QStringLiteral("样本设备身份不匹配");return p; }
+                r.deviceIdentity=p.deviceIdentity;
+                s.samples[w].append(r);
             }
         }
         for(const auto& op:o["exclusions"].toArray()) {
             const auto x=op.toObject();if(!x["excluded"].isBool()) { *error=QStringLiteral("排除状态类型错误");return p; }
             s.operations.append({x["record_id"].toString(),x["reason"].toString(),x["utc"].toString(),x["excluded"].toBool(),x["revision"].toInt()});
         }
+        if(observer)observer("stage_records");
         for(int w:{816,1368}) if(o["statistics"].toObject()[QString::number(w)]!=s.statistics(w).toJson()) {
             *error=QStringLiteral("阶段统计与原始数据不一致");return p;
         }
         p.stages.append(s);
+        if(observer)observer("stage_statistics");
     }
     for(const auto& v:j["legacy_fits"].toArray()) {
         auto f=Fit::fromJson(v.toObject(),error);if(!error->isEmpty()) return p;p.legacyFits.append(f);
@@ -227,6 +290,7 @@ CalibrationProject CalibrationProject::fromJson(const QJsonObject& j,QString *er
         if(p.legacyFits.size()!=2 || !p.stages.isEmpty()) { *error=QStringLiteral("旧版导入必须保留两路原始 Fit，不得伪造采集阶段");return p; }
         expected=importLegacy(p.legacyFits[0],p.legacyFits[1],error);if(!error->isEmpty()) return p;
     } else expected.fit();
+    if(observer)observer("refit");
     const auto fits=j["fits"].toObject();
     for(auto i=fits.begin();i!=fits.end();++i) {
         bool ok=false;const int w=i.key().toInt(&ok);const auto saved=i.value().toObject();const auto param=saved["parameters"].toObject();

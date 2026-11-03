@@ -2,16 +2,22 @@
 
 #include "WaterCalibration.h"
 #include <QSet>
+#include <functional>
 
 namespace VaporView::Ground::Calibration
 {
+using CalibrationReadObserver = std::function<void(const char *phase)>;
 struct PeakRecord
 {
     HarmonicPeakFeature feature;
     QString taskId, stageId; // Original acquisition provenance, retained in revisions.
     Environment environment;
     QJsonObject deviceIdentity;
-    QJsonObject sensorReadings; // Each source retains its own receipt time and FPGA tick.
+    // Compact immutable sensor provenance; a large review project need not keep
+    // a separate Qt JSON object tree for every source of every sample.
+    QByteArray sensorReadingsJson = "{}";
+    QJsonObject sensorReadings() const;
+    void setSensorReadings(const QJsonObject&);
     QString alignment = QStringLiteral("unavailable");
     QJsonObject toJson() const;
     static PeakRecord fromJson(const QJsonObject&, QString *error);
@@ -68,7 +74,7 @@ struct CalibrationProject
     QMap<int, QString> fit();
     Fit calculationFit(int wavelength) const;
     QJsonObject toJson() const;
-    static CalibrationProject fromJson(const QJsonObject&, QString *error);
+    static CalibrationProject fromJson(QJsonObject, QString *error, const CalibrationReadObserver& observer = {});
     // Legacy stages are deliberately absent; immutable original fits retain provenance.
     static CalibrationProject importLegacy(const Fit& fit816, const Fit& fit1368, QString *error);
 };

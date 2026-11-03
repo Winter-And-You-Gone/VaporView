@@ -72,9 +72,9 @@ QString documentSummary(QJsonObject document)
     for(int i=0;i<stages.size();++i) {
         auto stage=stages[i].toObject();auto channels=stage["channels"].toObject();
         for(const auto& wave:channels.keys()) {
-            channels[wave]=QJsonObject{{"raw_sample_count",channels[wave].toArray().size()}};
+            if(channels[wave].isArray())channels[wave]=QJsonObject{{"raw_sample_count",channels[wave].toArray().size()}};
         }
-        stage["audit_operation_count"]=stage.take("exclusions").toArray().size();
+        if(stage.contains("exclusions"))stage["audit_operation_count"]=stage.take("exclusions").toArray().size();
         stage["channels"]=channels;stages[i]=stage;
     }
     if(!project.isEmpty()){project["stages"]=stages;document["project"]=project;}
@@ -248,7 +248,7 @@ void WaterCalibrationPage::refresh()
     const auto fill=[](QComboBox *combo,const QStringList& paths){const auto old=combo->currentData().toString();QSignalBlocker b(combo);combo->clear();for(const auto& path:paths)combo->addItem(QFileInfo(path).fileName(),path);const int i=combo->findData(old);if(i>=0)combo->setCurrentIndex(i);};
     fill(s.files,v.files);fill(s.drafts,v.drafts);
     {QSignalBlocker block(s.reviewStage);s.reviewStage->clear();for(const auto& stage:v.project.stages)s.reviewStage->addItem(QStringLiteral("%1 %2 · %3").arg(stage.concentration,0,'g',8).arg(v.project.unit,statusText(stage.status)));s.reviewStage->setCurrentIndex(s.stageIndex);}
-    if(v.selected.valid && s.details->toPlainText().isEmpty())s.details->setPlainText(documentSummary(v.selected.document));
+    if(v.selected.valid && s.details->toPlainText().isEmpty())s.details->setPlainText(documentSummary(v.selected.summary));
     if(s.inspection!=v.inspection){s.inspection=v.inspection;s.details->setPlainText(documentSummary(v.inspectedDocument));}
     refreshReview();
 }
