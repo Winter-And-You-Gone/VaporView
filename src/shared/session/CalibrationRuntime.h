@@ -42,6 +42,15 @@ inline QString validateRuntimeCalibration(const QJsonObject& document)
     }
     return {};
 }
+inline QString validateSessionRuntimeSnapshot(const QJsonObject& snapshot)
+{
+    const auto runtime=snapshot["runtime"].toObject();const auto error=validateRuntimeCalibration(runtime);
+    if(!error.isEmpty())return error;
+    if(snapshot["kind"]!="vaporview_session_calibration" || snapshot["schema_version"]!=1 ||
+        snapshot["file_id"]!=runtime["file_id"] || snapshot["file_sha256"]!=runtime["file_sha256"])
+        return QStringLiteral("Session 定标快照与运行参数来源不一致");
+    return {};
+}
 // Shared numeric predictor used by WaterCalibration::calculate and the headless
 // Sky recorder. Model selection, identity and source checks precede this call.
 inline bool calculateWaterInitial(double a,double b,double rMin,double rMax,double peak,

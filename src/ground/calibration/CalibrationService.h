@@ -34,6 +34,7 @@ public:
     explicit CalibrationService(QString installationDirectory = {}, Clock clock = {}, QObject *parent = nullptr);
     ~CalibrationService() override;
     CalibrationView view() const;
+    QJsonObject diagnostics() const;
     void offer(const PeakRecord&);
     void setDevice(bool connected, const QJsonObject& identity);
     void setExternalSessionOpen(bool open);
@@ -67,13 +68,14 @@ public:
 signals:
     void changed();
 private:
-    struct PendingPeak { PeakRecord record; quint64 time = 0; };
+    struct PendingPeak { PeakRecord record; quint64 time = 0, offeredNs = 0, serial = 0; QString stageId; };
+    struct Command { std::function<void()> work; quint64 throughPeak = 0; };
     CalibrationFileStore store_;
     Clock clock_;
     mutable std::recursive_mutex mutex_;
     std::condition_variable_any wake_;
     std::deque<PendingPeak> peaks_;
-    std::deque<std::function<void()>> commands_;
+    std::deque<Command> commands_;
     std::thread worker_;
     bool stopping_ = false, dirty_ = false, overflowed_ = false, externalSessionOpen_ = false;
     CalibrationView state_;
@@ -85,13 +87,22 @@ private:
     QString alignment_ = QStringLiteral("unavailable");
     QJsonObject sensorReadings_;
     QJsonObject lockSnapshot_;
+    quint64 inputCount_ = 0, processedCount_ = 0, droppedCount_ = 0, duplicateCount_ = 0;
+    quint64 admittedSerial_ = 0;
+    quint64 validCount_ = 0, invalidCount_ = 0, recordedCount_ = 0, abandonedCount_ = 0;
+    quint64 queuePeak_ = 0, maximumLatencyNs_ = 0, totalLatencyNs_ = 0, maximumAdmissionNs_ = 0;
+    quint64 saveCount_ = 0, saveFailureCount_ = 0, maximumSaveNs_ = 0;
+    quint64 lastSaveAttempt_ = 0, autoPauseCount_ = 0;
+    quint64 draftBudgetBytes_ = 0, capacityRejectedCount_ = 0;
+    QString lastAutoPauseReason_;
+    QMap<int, quint64> laneMaximumLatencyNs_, laneProcessedCount_;
     QString sessionDirectory_;
     void submit(std::function<void()>);
     void run();
     void process(const PendingPeak&);
     void tick();
-    bool persist();
-    void pause(const QString&, bool stopped = false);
+    bool persist(bool acquisitionProgress = false);
+    void pause(const QString&, bool stopped = false, bool automatic = true);
     void message(const QString&, bool error = false);
     bool editable();
     QString preflight(bool identityConfirmed) const;

@@ -24,6 +24,7 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSignalBlocker>
+#include <QScopeGuard>
 #include <QSpinBox>
 #include <QSplitter>
 #include <QTabWidget>
@@ -261,6 +262,12 @@ void WaterCalibrationPage::refreshReview()
     if(key!=s.reviewFingerprint) {
         s.reviewFingerprint=key;const int pages=std::max(1,(int(rows.size())+499)/500);s.samplePage->setMaximum(pages);
         const int offset=(s.samplePage->value()-1)*500,count=std::min(500,int(rows.size())-offset);
+        // A visible ResizeToContents header otherwise measures the entire table
+        // after every replaced cell. Resize once after the page is populated.
+        auto *header=s.samples->horizontalHeader();const auto mode=header->sectionResizeMode(0);
+        const bool updates=s.samples->updatesEnabled();s.samples->setUpdatesEnabled(false);
+        header->setSectionResizeMode(QHeaderView::Interactive);
+        const auto restore=qScopeGuard([&]{header->setSectionResizeMode(mode);s.samples->setUpdatesEnabled(updates);});
         QSignalBlocker block(s.samples);s.samples->setRowCount(std::max(0,count));
         for(int i=0;i<count;++i){const auto& row=rows[offset+i];const auto& f=row.feature;
             cell(s.samples,i,0,f.id);cell(s.samples,i,1,QDateTime::fromMSecsSinceEpoch(qint64(f.hostTimeUs/1000),Qt::UTC).toString(Qt::ISODateWithMs));cell(s.samples,i,2,std::isfinite(f.peak)?QString::number(f.peak,'g',10):"—");cell(s.samples,i,3,QStringLiteral("%1 / %2").arg(f.cycleId).arg(f.fpgaTick));cell(s.samples,i,4,f.invalidReason().isEmpty()?QStringLiteral("有效"):f.invalidReason());cell(s.samples,i,5,stage.isExcluded(f.id)?QStringLiteral("已人工排除"):QStringLiteral("保留"));}
@@ -295,7 +302,8 @@ void WaterCalibrationPage::setTheme(bool dark,int percent)
         "QWidget#waterCalibrationPage QTabBar::tab { padding: 6px 14px; background: @vv-surface-alt; color: @vv-text; }"
         "QWidget#waterCalibrationPage QTabBar::tab:selected { background: @vv-primary; color: @vv-white; }"
     ).arg(qRound(18*scale)),dark));
-    const auto colors=appThemePalette(dark);
+    auto colors=appThemePalette(dark);
+    colors.setColor(QPalette::PlaceholderText,appThemeColor(AppThemeColor::TextMuted,dark));
     for(auto *widget:findChildren<QWidget*>())widget->setPalette(colors);
     for(auto *edit:{state_->details,state_->sampleDetails}) {
         edit->viewport()->setStyleSheet(applyAppThemeTokens(QStringLiteral("background-color: @vv-surface; color: @vv-text;"),dark));

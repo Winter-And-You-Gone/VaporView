@@ -22,6 +22,9 @@
 #include <QSpinBox>
 #include <QTemporaryDir>
 #include <QThread>
+#include <QThreadPool>
+#include <QFutureWatcher>
+#include <QtConcurrent>
 #include <QTextStream>
 #include <QTimer>
 #include <QToolButton>
@@ -31,6 +34,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <functional>
+#include <future>
 #include <iostream>
 
 #ifdef Q_OS_WIN
@@ -112,6 +116,35 @@ int countColor(const QImage& frame, const QColor& expected)
     return count;
 }
 
+void testCancelledAssets()
+{
+    auto *pool=QThreadPool::globalInstance();const int oldMaximum=pool->maxThreadCount();
+    pool->setMaxThreadCount(1);
+    for(int asset=0;asset<3;++asset) {
+        std::promise<void> started,release;auto released=release.get_future().share();
+        auto blocker=QtConcurrent::run([&]{started.set_value();released.wait();});started.get_future().wait();
+        VaporView::Map3D::OsgEarthViewWidget view(nullptr,true);int callbacks=0;
+        const auto finished=[&](bool loaded){require(!loaded,QStringLiteral("cancelled asset cannot be applied"));++callbacks;};
+        if(asset==0)view.loadEarthFileAsync(QStringLiteral("missing.earth"),finished);
+        if(asset==1)view.loadLocal3DTilesPreviewAsync(QStringLiteral("missing-tileset.json"),finished);
+        if(asset==2)view.loadAircraftModelAsync(QStringLiteral("missing.osgb"),finished);
+        const auto watchers=view.findChildren<QFutureWatcherBase*>();
+        require(watchers.size()==1,QStringLiteral("one queued asset watcher exists"));
+        watchers.first()->cancel();release.set_value();blocker.waitForFinished();
+        require(waitUntil([&]{return callbacks==1;},5000),QStringLiteral("cancelled asset returns failure without reading a nonexistent result"));
+        view.shutdown();
+    }
+    {
+        std::promise<void> started,release;auto released=release.get_future().share();
+        auto blocker=QtConcurrent::run([&]{started.set_value();released.wait();});started.get_future().wait();
+        int callbacks=0;auto *view=new VaporView::Map3D::OsgEarthViewWidget(nullptr,true);
+        view->loadLocal3DTilesPreviewAsync(QStringLiteral("missing-tileset.json"),[&](bool){++callbacks;});
+        view->shutdown();delete view;release.set_value();blocker.waitForFinished();processEventsFor(100);
+        require(callbacks==0,QStringLiteral("destroying a view cancels queued work and disconnects all late callbacks"));
+    }
+    pool->setMaxThreadCount(oldMaximum);
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -128,7 +161,8 @@ int main(int argc, char** argv)
     const QString demVrtPath =
         sourceRoot.filePath(QStringLiteral("resources/maps/terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt"));
 
-    if (!QFileInfo::exists(earthPath) || !QFileInfo::exists(tilesetPath))
+    const bool cancellationsOnly=argc>1 && QString::fromLocal8Bit(argv[1])==QStringLiteral("--cancelled-assets-only");
+    if (!cancellationsOnly && (!QFileInfo::exists(earthPath) || !QFileInfo::exists(tilesetPath)))
     {
         std::cout << "SKIP: Hangzhou Xihu real-3D local data is not installed\n";
         return 77;
@@ -151,6 +185,8 @@ int main(int argc, char** argv)
     QApplication app(argc, argv);
     app.setOrganizationName(QStringLiteral("VaporViewMap3DRealWindowCloseTest"));
     app.setApplicationName(QStringLiteral("map3d_real_window_close_test"));
+    testCancelledAssets();
+    if(cancellationsOnly)return 0;
 
     const bool hasImageryAndDem = QFileInfo::exists(imageryEarthPath)
         && QFileInfo::exists(imageryVrtPath) && QFileInfo::exists(demVrtPath);

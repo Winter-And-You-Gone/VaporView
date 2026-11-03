@@ -345,7 +345,9 @@ void testFrameSliderThemeAndHover(MainWindow& window, SessionViewerWindow& viewe
                     const int scanBottom = rendered.height() - qRound(40 * ratio);
                     int left = rendered.width();
                     int right = 0;
-                    for (int x = 0; x < rendered.width(); ++x)
+                    // The outermost pixel can carry a native/style edge at
+                    // fractional DPR; it is not the inset plot border.
+                    for (int x = 1; x < rendered.width() - 1; ++x)
                     {
                         int linePixels = 0;
                         for (int y = scanTop; y < scanBottom; ++y)
@@ -358,6 +360,12 @@ void testFrameSliderThemeAndHover(MainWindow& window, SessionViewerWindow& viewe
                         }
                     }
                     const int plotX = plot->mapTo(waveform, QPoint()).x();
+                    if(std::abs(plotX + qRound(left / ratio) - trackLeft) > 3 ||
+                       std::abs(plotX + qRound(right / ratio) - trackRight) > 3)
+                        std::cerr << "alignment plot=" << plotName.toStdString() << " scale=" << scale
+                                  << " dark=" << dark << " frame=" << frame << " dpr=" << ratio
+                                  << " plot=" << plotX + qRound(left / ratio) << ',' << plotX + qRound(right / ratio)
+                                  << " track=" << trackLeft << ',' << trackRight << '\n';
                     require(std::abs(plotX + qRound(left / ratio) - trackLeft) <= 3 &&
                                 std::abs(plotX + qRound(right / ratio) - trackRight) <= 3,
                             "navigator track aligns with the rendered plot area of every waveform and trend chart");

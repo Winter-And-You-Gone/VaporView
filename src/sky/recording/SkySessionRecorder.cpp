@@ -276,13 +276,8 @@ bool SkySessionRecorder::setCalibrationSnapshot(const QJsonObject& snapshot,QStr
         if(snapshot==calibration_snapshot_)return true;
         if(error)*error=QStringLiteral("Session 已锁定定标参数，暂停期间也不能切换");return false;
     }
-    const auto e=Session::validateRuntimeCalibration(snapshot["runtime"].toObject());
+    const auto e=Session::validateSessionRuntimeSnapshot(snapshot);
     if(!e.isEmpty()){if(error)*error=e;return false;}
-    const auto runtime=snapshot["runtime"].toObject();
-    if(snapshot["kind"]!="vaporview_session_calibration" || snapshot["schema_version"]!=1 ||
-       snapshot["file_id"]!=runtime["file_id"] || snapshot["file_sha256"]!=runtime["file_sha256"]) {
-        if(error)*error=QStringLiteral("Session 定标快照与运行参数来源不一致");return false;
-    }
     calibration_snapshot_=snapshot;return true;
 }
 bool SkySessionRecorder::hasCalibrationSnapshot() const
@@ -299,7 +294,7 @@ void SkySessionRecorder::restoreCalibrationLock(const QString& baseDirectory)
         const auto j=QJsonDocument::fromJson(file.readAll()).object();
         session_directory_=j["session_directory"].toString();session_metadata_filename_=j["metadata_file"].toString();
         const auto snapshot=j["snapshot"].toObject();
-        if(Session::validateRuntimeCalibration(snapshot["runtime"].toObject()).isEmpty())calibration_snapshot_=snapshot;
+        if(Session::validateSessionRuntimeSnapshot(snapshot).isEmpty())calibration_snapshot_=snapshot;
     }
 }
 

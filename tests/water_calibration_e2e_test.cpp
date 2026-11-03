@@ -14,13 +14,19 @@ int main(int argc,char **argv)
     QCoreApplication app(argc,argv);Rig r;auto f=r.complete();
     Ground::Session::GroundRecordingService recorder;recorder.setCalibrationPolicy(r.service);
     Ground::Session::GroundRecordingOptions options;options.baseDirectory=QDir(r.root.path()).filePath("sessions");
-    QString error;check(!recorder.start(options,nullptr,&error),"formal Session requires selected valid vcal");
+    QString error;check(!r.service->bindSession(options.baseDirectory,&error),"unprepared policy cannot bind a Session");
+    check(!recorder.start(options,nullptr,&error),"formal Session requires selected valid vcal");
     r.bus.setDevice(false,{});r.service->synchronize();r.service->selectFile(f.filename);r.service->synchronize();
     check(r.service->view().selected.valid,"selection allowed before connection");
     check(!recorder.start(options,nullptr,&error),"connection required");
     r.bus.setDevice(true,r.identity);r.service->synchronize();
     check(recorder.start(options,nullptr,&error),qPrintable(error));const auto dir=recorder.status().sessionDirectory;
     check(r.service->view().locked,"formal start locks calibration in the service");
+    check(!r.service->bindSession(dir+"_other",&error),"another Session cannot replace an existing lock binding");
+    {
+        Ground::Session::GroundRecordingService concurrent;concurrent.setCalibrationPolicy(r.service);
+        check(!concurrent.start(options,nullptr,&error) && r.service->view().locked,"a failed second recorder cannot release the first recorder's lock");
+    }
     r.service->selectFile(f.filename);r.service->synchronize();check(r.service->view().error,"selection blocked while recording");
     r.service->startStage(0);r.service->synchronize();check(!r.service->view().acquiring,"ordinary Session blocks independent acquisition");
     auto stream=cycle(816,4,888);check(recorder.recordFpgaHarmonics(1700000000000000ULL,stream),"shared canonical feature recorded");
@@ -77,6 +83,15 @@ int main(int argc,char **argv)
         const auto recorded=readRecordedConcentrations(QDir(session).filePath("calibration_snapshot.json"));
         check(recorded.success&&recorded.rows.size()==1&&recorded.rows[0].toObject()["initial_concentration"].toDouble()==200,"headless Sky history independently reproduces 1368 nm concentration");
         check(!restarted.hasCalibrationSnapshot(),"a new Sky Session requires fresh parameter selection");
+        {
+            SkySessionRecorder writer;check(writer.setCalibrationSnapshot(snapshot,&error)&&writer.start(base,"",0,&error),"prepare Sky persisted envelope integrity fixture");
+        }
+        const auto lockPath=QDir(base).filePath(".calibration-session-lock.json");auto lock=QJsonDocument::fromJson(read(lockPath)).object();
+        auto altered=lock["snapshot"].toObject();altered["file_id"]=calibrationUuid();lock["snapshot"]=altered;
+        write(lockPath,QJsonDocument(lock).toJson(QJsonDocument::Compact));
+        SkySessionRecorder corrupted;corrupted.restoreCalibrationLock(base);
+        check(corrupted.hasRecoveredCalibrationLock()&&!corrupted.hasCalibrationSnapshot()&&corrupted.isPaused(),"Sky recovery retains lock but refuses mismatched envelope and runtime identity");
+        check(!corrupted.start(base,"",0,&error)&&corrupted.stop(&error),"corrupt recovered Sky lock requires explicit stop without using its parameters");
     }
     {
         Rig source;const auto file=source.complete();CalibrationFileStore target(crashRoot.path());CalibrationFile copy;
@@ -88,6 +103,19 @@ int main(int argc,char **argv)
         CalibrationService recovered(crashRoot.path());recovered.synchronize();check(recovered.view().locked&&recovered.view().selected.valid,"restart restores parameter snapshot and lock");
         recovered.selectFile(QStringLiteral("anything"));recovered.synchronize();check(recovered.view().locked,"UI restart never unlocks Session");
         recovered.finishRecoveredSession();recovered.synchronize();check(!recovered.view().locked,"explicit recovered Session termination releases lock");
+    }
+    {
+        Rig source;const auto file=source.complete();source.service->selectFile(file.filename);source.service->synchronize();
+        QJsonObject snapshot;check(source.service->prepare(snapshot,&error),"prepare lock integrity fixture");
+        const auto path=QDir(CalibrationFileStore(source.root.path()).draftsDirectory()).filePath("session_lock.json");
+        source.service.reset();auto lock=QJsonDocument::fromJson(read(path)).object();
+        auto altered=lock["snapshot"].toObject();auto runtime=altered["runtime"].toObject();auto channels=runtime["channels"].toObject();
+        auto channel=channels["816"].toObject();channel["a"]=channel["a"].toDouble()*2;channels["816"]=channel;runtime["channels"]=channels;
+        runtime.remove("sha256");runtime["sha256"]=QString::fromLatin1(VaporView::Session::runtimeCalibrationDigest(runtime));
+        altered["runtime"]=runtime;lock["snapshot"]=altered;write(path,QJsonDocument(lock).toJson(QJsonDocument::Compact));
+        CalibrationService recovered(source.root.path());recovered.synchronize();
+        check(recovered.view().locked && !recovered.view().selected.valid && recovered.view().error,
+            "recovery retains the lock but refuses runtime coefficients inconsistent with the full vcal snapshot");
     }
     std::cout<<"Independent acquisition / vcal / Session lock software E2E passed.\n";
 }

@@ -1358,10 +1358,14 @@ void OsgEarthViewWidget::loadEarthFileAsync(const QString& earthPath,
     registerAsyncWatcher(watcher);
     connect(watcher, &QFutureWatcher<Detail::EarthAssetLoadResult>::finished,
             this, [this, watcher, generation, preserveCurrentEarthView, finished = std::move(finished)]() mutable {
-        const Detail::EarthAssetLoadResult result = watcher->result();
         unregisterAsyncWatcher(watcher);
         watcher->deleteLater();
         if (shutdown_ || generation != earth_load_generation_) return;
+        if (watcher->isCanceled() || watcher->future().resultCount()==0) {
+            if (finished) finished(false);
+            return;
+        }
+        const Detail::EarthAssetLoadResult result = watcher->result();
         const bool loaded = applyEarthLoad(result.diagnostics,
                                            result.node,
                                            result.mapNode,
@@ -1451,10 +1455,14 @@ void OsgEarthViewWidget::loadLocal3DTilesPreviewAsync(
     registerAsyncWatcher(watcher);
     connect(watcher, &QFutureWatcher<Detail::Local3DTilesAssetLoadResult>::finished,
             this, [this, watcher, generation, finished = std::move(finished)]() mutable {
-        const Detail::Local3DTilesAssetLoadResult result = watcher->result();
         unregisterAsyncWatcher(watcher);
         watcher->deleteLater();
         if (shutdown_ || generation != local_3d_tiles_load_generation_) return;
+        if (watcher->isCanceled() || watcher->future().resultCount()==0) {
+            if (finished) finished(false);
+            return;
+        }
+        const Detail::Local3DTilesAssetLoadResult result = watcher->result();
         const bool loaded = applyLocal3DTilesLoad(result.diagnostics, result.node);
         if (finished) finished(loaded);
     });
@@ -2408,10 +2416,14 @@ void OsgEarthViewWidget::loadAircraftModelFileAsync(
     registerAsyncWatcher(watcher);
     connect(watcher, &QFutureWatcher<Detail::AircraftAssetLoadResult>::finished,
             this, [this, watcher, generation, finished = std::move(finished)]() mutable {
-        const Detail::AircraftAssetLoadResult result = watcher->result();
         unregisterAsyncWatcher(watcher);
         watcher->deleteLater();
         if (shutdown_ || generation != aircraft_load_generation_) return;
+        if (watcher->isCanceled() || watcher->future().resultCount()==0) {
+            if (finished) finished(false);
+            return;
+        }
+        const Detail::AircraftAssetLoadResult result = watcher->result();
         const bool loaded = applyAircraftModelLoad(result.diagnostics, result.node);
         if (finished) finished(loaded);
     });

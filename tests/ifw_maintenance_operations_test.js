@@ -51,4 +51,7 @@ for (const platform of ['windows', 'linux']) {
     assert.ok(operations.some(op => op[0] === 'Mkdir' && op[1] === '@TargetDir@/calibrations/drafts'));
     assert.equal(operations.some(op => /Delete|Remove|Rmdir/.test(op[0])), false);
 }
-console.log('IFW calibration directories preserve user data; no removal operation');
+const installerConfig = fs.readFileSync(path.join(__dirname,
+    '../packaging/ifw/config.xml.in'), 'utf8');
+assert.match(installerConfig, /<RemoveTargetDir>false<\/RemoveTargetDir>/);
+console.log('IFW components have no user-data removal operations; installer disables recursive target removal');

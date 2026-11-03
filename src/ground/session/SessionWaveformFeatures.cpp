@@ -75,6 +75,17 @@ bool decode(HarmonicPeakFeature& r, QString *error)
 
 QString HarmonicPeakFeature::sourceError() const
 {
+    if (!streamIdentity.isEmpty()) {
+        // The native fields already have integer types. Check the same live
+        // contract without allocating and reparsing a JSON document per cycle.
+        if (id != recordId(streamIdentity, channel, waveformSequence) || !hostTimeUs ||
+            (channel != 0x30 && channel != 0x31) || peakIndex < -1 || peakIndex > UINT32_MAX ||
+            validPoints > originalPoints ||
+            (validPoints && (!std::isfinite(peak) || peakIndex < 0 || quint64(peakIndex) >= originalPoints)) ||
+            (!validPoints && (!std::isnan(peak) || !(qualityFlags & 2))))
+            return QStringLiteral("实时周期特征的来源、标识或数值无效");
+        return {};
+    }
     QString error;
     const auto decoded = fromJson(toJson(), &error);
     if (!error.isEmpty()) return error;

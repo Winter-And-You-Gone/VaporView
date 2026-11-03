@@ -9,6 +9,8 @@
     <WizardDefaultWidth>600</WizardDefaultWidth>
     <WizardDefaultHeight>400</WizardDefaultHeight>
     <TargetDir>@VAPORVIEW_TARGET_DIR@</TargetDir>
+    <!-- User-owned calibrations and Session history live below TargetDir. -->
+    <RemoveTargetDir>false</RemoveTargetDir>
     <AllowNonAsciiCharacters>true</AllowNonAsciiCharacters>
     <StartMenuDir>VaporView</StartMenuDir>
     <InstallerApplicationIcon>VaporViewInstallerIcon</InstallerApplicationIcon>

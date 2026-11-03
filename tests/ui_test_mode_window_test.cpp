@@ -374,8 +374,8 @@ bool homeTelemetrySummaryShowsUiTestRates(QWidget *homeConfigCard)
     for (QLabel *valueLabel : sections.at(2)->findChildren<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel")))
     {
         sawAvailableData = sawAvailableData ||
-            valueLabel->text() == QStringLiteral("有") ||
-            valueLabel->text() == QStringLiteral("Yes");
+            valueLabel->text() == QStringLiteral("有数据") ||
+            valueLabel->text() == QStringLiteral("Data available");
     }
     return threeDigitHzValues >= 6 && threeDigitMbpsValues == 3 && sawAvailableData;
 }
@@ -1434,15 +1434,21 @@ int main(int argc, char **argv)
     const auto overviewCells = window->findChildren<QFrame *>(
         QStringLiteral("ai8TemperatureOverviewCell"));
     require(overviewCells.size() == 8, "UI test mode exposes eight temperature capsules");
+    const QImage overviewWindowImage = window->grab().toImage();
+    const auto imagePoint = [&](const QPoint& point) {
+        const qreal ratio = overviewWindowImage.devicePixelRatio();
+        return QPoint(qRound(point.x() * ratio), qRound(point.y() * ratio));
+    };
     for (QFrame *cell : overviewCells)
     {
         require(cell->property("available").toBool(),
                 "UI test mode supplies valid data to each temperature capsule");
-        const QImage rendered = cell->grab().toImage();
-        require(rendered.pixelColor(3, cell->height() / 2) ==
-                    VaporView::appThemeColor(VaporView::AppThemeColor::HomeDeviceSuccessBackground,
-                        qApp->property(VaporView::kAppDarkThemeProperty).toBool()),
-                "UI test temperature capsules render green using the loaded resource stylesheet");
+        const QPoint backgroundPixel = cell->mapTo(window, QPoint(3, cell->height() / 2));
+        const QPoint parentBackgroundPixel = cell->parentWidget()->mapTo(window,
+            QPoint(0, cell->geometry().center().y()));
+        require(overviewWindowImage.pixelColor(imagePoint(backgroundPixel)) ==
+                    overviewWindowImage.pixelColor(imagePoint(parentBackgroundPixel)),
+                "UI test temperature capsules preserve the card background using the loaded resource stylesheet");
         auto *value = cell->findChild<QLabel *>(QStringLiteral("ai8TemperatureOverviewValueLabel"));
         require(value != nullptr && value->property("temperatureState").toString() ==
                     QStringLiteral("normal") &&
@@ -2434,14 +2440,20 @@ int main(int argc, char **argv)
         }
         return true;
     };
-    require(VaporViewTest::processEventsUntil(1500, [recordingStatus, recordingStatusUnitColumnIsStable]() {
+    const bool recordingUsesFpga = uiTestSensorPath->currentData().toString() == QStringLiteral("fpga_relay");
+    require(VaporViewTest::processEventsUntil(1500, [recordingStatus, recordingStatusUnitColumnIsStable, recordingUsesFpga]() {
                 const QString text = recordingStatus->statusText();
                 return text.contains(QStringLiteral("记录（本地）：进行中（测试）")) &&
                     text.contains(QStringLiteral("会话：UI-TEST-SESSION")) &&
                     text.contains(QStringLiteral("外部设备记录：")) &&
                     !text.contains(QStringLiteral("外部设备记录：0 行\n")) &&
                     text.contains(QStringLiteral("波形帧数：")) &&
-                    text.contains(QStringLiteral("波形特征：仅远程有效")) &&
+                    (recordingUsesFpga
+                        ? (text.contains(QStringLiteral("H1/H2 周期：")) &&
+                           text.contains(QStringLiteral("归一化峰值记录：")) &&
+                           !text.contains(QStringLiteral("H1/H2 周期：0\n")) &&
+                           !text.contains(QStringLiteral("归一化峰值记录：0\n")))
+                        : text.contains(QStringLiteral("波形特征：仅远程有效"))) &&
                     text.contains(QStringLiteral(" 帧\n已记录条数\n")) &&
                     text.contains(QStringLiteral("已记录条数\nRAW EPSILON：")) &&
                     text.contains(QStringLiteral(" 条\nRAW PTB210：")) &&
@@ -2683,7 +2695,7 @@ int main(int argc, char **argv)
         QGroupBox *remoteHomeConfigCard = findHomeDeviceOverviewCard(connectionWindow);
         require(remoteHomeConfigCard != nullptr && connectionSourceModeSwitch->switchChecked(),
                 "remote source mode is active for zero-rate link coverage");
-        for (const QString& name : {QStringLiteral("天→地"), QStringLiteral("地→天"), QStringLiteral("合")})
+        for (const QString& name : {QStringLiteral("天空端→地面端"), QStringLiteral("地面端→天空端"), QStringLiteral("合计")})
         {
             QFrame *pill = homeTelemetryPill(remoteHomeConfigCard, name);
             require(pill != nullptr,

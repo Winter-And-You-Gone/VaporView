@@ -70,6 +70,9 @@ if ($configText -notmatch '<TargetDir>C:\\VaporView</TargetDir>') {
 if ($configText -notmatch '<AllowNonAsciiCharacters>true</AllowNonAsciiCharacters>') {
     throw "Generated IFW config.xml does not allow non-ASCII installation paths"
 }
+if ($configText -notmatch '<RemoveTargetDir>false</RemoveTargetDir>') {
+    throw "Generated IFW config.xml must preserve user files below TargetDir on uninstall"
+}
 
 foreach ($relative in @('calibrations', 'water_calibration\library.json')) {
     if (Test-Path -LiteralPath (Join-Path $StageDir $relative)) {

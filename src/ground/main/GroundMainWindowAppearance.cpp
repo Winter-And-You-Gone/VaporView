@@ -1178,6 +1178,16 @@ void MainWindow::updateResponsiveHomeLayout()
     {
         sensorAvailableWidth = std::max(0, state_->data_group_->contentsRect().width());
     }
+    // The overview's minimum width may make the scroll content wider than the
+    // visible page. Wrap sensor cards against the space the user can see.
+    if (state_->main_cards_scroll_area_ && state_->main_cards_scroll_area_->viewport() &&
+        state_->main_cards_scroll_area_->widget())
+    {
+        QLayout *contentLayout = state_->main_cards_scroll_area_->widget()->layout();
+        const QMargins margins = contentLayout ? contentLayout->contentsMargins() : QMargins();
+        sensorAvailableWidth = std::min(sensorAvailableWidth,
+            std::max(0, state_->main_cards_scroll_area_->viewport()->width() - margins.left() - margins.right()));
+    }
     const int sensorCardGap = std::max(0, sensorCardSplitter->handleWidth());
     const bool compactCardsFitSideBySide =
         sensorAvailableWidth > 0 &&

@@ -1632,9 +1632,12 @@ int main(int argc, char **argv)
                 !humidityPortCombo->isEnabled() && !humidityBaudCombo->isEnabled() &&
                 !lidarBaudCombo->isEnabled() && !temperaturePortCombo->isEnabled() &&
                 !ai8PortCombo->isEnabled() && !ai8BaudCombo->isEnabled() &&
-                !ai8RateCombo->isEnabled() && !ai8EnabledCheck->isEnabled() &&
-                !temperatureEnabledCheck->isEnabled(),
-            "remote FPGA exposes source selection and protects Direct baud/rate/startup presets");
+                !ai8RateCombo->isEnabled(),
+            "remote FPGA exposes source selection and protects Direct baud/rate presets");
+    require(ai8EnabledCheck->isEnabled() && temperatureEnabledCheck->isEnabled() &&
+                ai8EnabledCheck->toolTip().contains(QStringLiteral("批量连接")) &&
+                temperatureEnabledCheck->toolTip().contains(QStringLiteral("批量连接")),
+            "remote FPGA enable checkboxes select bulk-connection membership without starting hardware");
     // The remaining serial/TCP endpoint regressions exercise Direct mode.
     remoteConfig.sensor_transport_path = VaporView::SensorTransportPath::DirectDevices;
     window.testInjectRemoteSkyConfig(remoteConfig.toJson());

@@ -17,11 +17,13 @@ public:
     void setDevice(bool connected, const QJsonObject& identity);
     void boundary();
     void publish(quint64 hostTimeUs, const FpgaWave::CompletedStream&, const QString& transport = {});
+    QJsonObject diagnostics() const;
 signals:
     void peakReady(const VaporView::Ground::Calibration::PeakRecord&);
     void deviceChanged(bool connected, const QJsonObject& identity);
 private:
-    QMutex mutex_;
+    mutable QMutex mutex_;
+    quint64 inputCount_ = 0, publishedCount_ = 0, duplicateCount_ = 0, continuityCount_ = 0;
     bool connected_ = false;
     QJsonObject identity_;
     QString stream_;

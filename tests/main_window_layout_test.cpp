@@ -3158,15 +3158,10 @@ void requireDarkAi8OverviewCapsulesReadable(MainWindow& window)
     requireLastStyleRuleContains(
         styleSheet,
         QStringLiteral("QFrame#ai8TemperatureOverviewCell {"),
-        QStringLiteral("background-color: %1").arg(
-            VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt, true)),
-        "dark AI-8 overview capsules use the alternate dark surface");
-    requireLastStyleRuleContains(
-        styleSheet,
-        QStringLiteral("QFrame#ai8TemperatureOverviewCell[available=\"true\"] {"),
-        QStringLiteral("background-color: %1").arg(VaporView::appThemeColorName(
-            VaporView::AppThemeColor::HomeDeviceSuccessBackground, true)),
-        "dark AI-8 overview available capsules use the dark success background");
+        QStringLiteral("background-color: transparent"),
+        "dark AI-8 overview capsules preserve the parent card background");
+    require(!styleSheet.contains(QStringLiteral("QFrame#ai8TemperatureOverviewCell[available=\"true\"]")),
+            "availability does not replace the intentionally neutral capsule background");
     requireLastStyleRuleContains(
         styleSheet,
         QStringLiteral("QLabel#ai8TemperatureOverviewChannelLabel {"),
@@ -3187,8 +3182,11 @@ void requireDarkAi8OverviewCapsulesReadable(MainWindow& window)
         QStringLiteral("ai8TemperatureOverviewCell"));
     require(cells.size() == 8, "dark AI-8 overview has all eight temperature capsules");
 
-    const QColor background =
-        VaporView::appThemeColor(VaporView::AppThemeColor::SurfaceAlt, true);
+    const QImage overviewWindowImage = window.grab().toImage();
+    const qreal imageRatio = overviewWindowImage.devicePixelRatio();
+    const auto imagePoint = [&](const QPoint& point) {
+        return QPoint(qRound(point.x() * imageRatio), qRound(point.y() * imageRatio));
+    };
     const QColor channelText =
         VaporView::appThemeColor(VaporView::AppThemeColor::TextMuted, true);
     const QColor valueText =
@@ -3202,10 +3200,16 @@ void requireDarkAi8OverviewCapsulesReadable(MainWindow& window)
         require(!cell->property("available").toBool() && channelLabel != nullptr &&
                     valueLabel != nullptr && valueLabel->text() == QStringLiteral("---"),
                 "dark AI-8 overview starts with a readable unavailable capsule");
-        requireWidgetInteriorUsesBackground(
-            cell,
-            background,
-            "dark AI-8 overview unavailable capsule renders the alternate dark surface");
+        const QPoint cellOrigin = cell->mapTo(&window, QPoint(0, 0));
+        const QPoint parentBackgroundPixel = overview->mapTo(&window,
+            QPoint(0, cell->geometry().center().y()));
+        const QImage capsule = overviewWindowImage.copy(QRect(imagePoint(cellOrigin),
+            QSize(qRound(cell->width() * imageRatio), qRound(cell->height() * imageRatio))));
+        const QRect interior = capsule.rect().adjusted(2, 2, -2, -2);
+        require(countPixelsNearColor(capsule, interior,
+                    overviewWindowImage.pixelColor(imagePoint(parentBackgroundPixel)), 0) >=
+                    interior.width() * interior.height() / 4,
+                "dark AI-8 transparent capsule preserves the rendered parent background");
         require(channelLabel->palette().color(QPalette::WindowText) == channelText &&
                     valueLabel->palette().color(QPalette::WindowText) == valueText,
                 "dark AI-8 overview labels use their configured readable text colors");

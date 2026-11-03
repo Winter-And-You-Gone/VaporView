@@ -236,19 +236,21 @@ int main(int argc, char **argv)
         temperatureOverview->findChild<QLabel *>(QStringLiteral("temperatureOverviewOutputLabel"));
     auto *overviewOutputSwitch =
         temperatureOverview->findChild<SegmentedSwitchButton *>(QStringLiteral("temperatureOverviewOutputSwitch"));
+    const auto overviewOutputSwitches = temperatureOverview->findChildren<SegmentedSwitchButton *>(
+        QStringLiteral("temperatureOverviewOutputSwitch"));
     require(overviewOutputCapsule != nullptr &&
                 overviewOutputLabel != nullptr &&
-                overviewOutputSwitch != nullptr,
+                overviewOutputSwitch != nullptr && overviewOutputSwitches.size() == 2,
             "temperature overview exposes the output capsule, label, and switch");
     require(overviewOutputLabel->parentWidget() == overviewOutputCapsule &&
                 overviewOutputSwitch->parentWidget() == overviewOutputCapsule &&
                 overviewOutputLabel->text() == QStringLiteral("输出使能"),
             "temperature overview places the output-enable label above the switch in one capsule");
     require(overviewOutputSwitch->property("segmentedSwitchControl").toBool() &&
-                overviewOutputSwitch->height() == 34 &&
+                overviewOutputSwitch->height() == 27 &&
                 overviewOutputSwitch->animationDuration() == 480 &&
-                overviewOutputCapsule->height() == 60,
-            "temperature overview uses the shared 480 ms jelly switch inside a compact capsule");
+                overviewOutputCapsule->height() == 84,
+            "dual-channel temperature overview uses the shared 480 ms switches in the compact capsule");
     temperatureOverview->show();
     QApplication::processEvents();
     auto *overviewOutputPercent =
@@ -260,11 +262,15 @@ int main(int argc, char **argv)
                 overviewOutputCapsule->geometry().top() ==
                     overviewOutputPercent->geometry().bottom() + 1 + overviewSummary->layout()->spacing(),
             "temperature overview places output enable directly below output percent without a stretch gap");
-    const int overviewSwitchLeftGap = overviewOutputSwitch->geometry().left();
-    const int overviewSwitchRightGap =
-        overviewOutputCapsule->width() - overviewOutputSwitch->geometry().right() - 1;
-    require(std::abs(overviewSwitchLeftGap - overviewSwitchRightGap) <= 1,
-            "temperature overview segmented switch is horizontally centered in its capsule");
+    require(overviewOutputSwitches[0]->geometry().left() == overviewOutputSwitches[1]->geometry().left() &&
+                overviewOutputSwitches[0]->geometry().width() == overviewOutputSwitches[1]->geometry().width() &&
+                overviewOutputSwitches[0]->geometry().bottom() < overviewOutputSwitches[1]->geometry().top(),
+            "dual output switches align in separate channel rows without overlap");
+    for (int channel = 0; channel < 2; ++channel)
+        require(overviewOutputSwitches[channel]->property("temperatureChannel").toInt() == channel + 1 &&
+                    overviewOutputSwitches[channel]->animationDuration() == 480 &&
+                    overviewOutputCapsule->rect().contains(overviewOutputSwitches[channel]->geometry()),
+                "both shared switches retain their physical channel and fit inside the capsule");
 
     auto *overviewTitleStatus = temperatureOverview->titleStatusWidget();
     const QList<QLabel *> overviewValuePills =
@@ -278,7 +284,7 @@ int main(int argc, char **argv)
             break;
         }
     }
-    require(overviewTitleStatus != nullptr && overviewValuePills.size() == 2 &&
+    require(overviewTitleStatus != nullptr && overviewValuePills.size() == 4 &&
                 overviewPlot != nullptr &&
                 !overviewPlot->isAncestorOf(overviewTitleStatus) &&
                 !temperatureOverview->findChild<QWidget *>(QStringLiteral("temperatureOverviewValueOverlay")),
@@ -309,6 +315,10 @@ int main(int argc, char **argv)
     overviewData.valid = true;
     overviewData.channels[0].target_temperature_c = 25.0;
     overviewData.channels[0].measured_temperature_c = 24.75;
+    overviewData.channels[0].output_enabled = false;
+    overviewData.channels[1].target_temperature_c = 35.0;
+    overviewData.channels[1].measured_temperature_c = 34.5;
+    overviewData.channels[1].output_enabled = true;
     temperatureOverview->updateData(overviewData);
     QApplication::processEvents();
     require(overviewValuePills.at(0)->property("displayText").toString() == QStringLiteral("目标 25.00000 ℃") &&
@@ -320,6 +330,23 @@ int main(int argc, char **argv)
                 overviewValuePills.at(1)->text().contains(
                     QStringLiteral("<span style=\"color: %1;\">24.75000</span>").arg(currentLegendNumberColor)),
             "temperature overview value pills format five-decimal values with matching legend colors");
+    require(overviewValuePills[2]->property("displayText").toString() == QStringLiteral("目标 35.00000 ℃") &&
+                overviewValuePills[3]->property("displayText").toString() == QStringLiteral("当前 34.50000 ℃") &&
+                !overviewOutputSwitches[0]->switchChecked() && overviewOutputSwitches[1]->switchChecked(),
+            "each RD105 channel independently displays its own temperature and output readback");
+    int requestedChannel = 0;
+    bool requestedEnabled = false;
+    temperatureOverview->setOutputEnabledCallback([&](quint8 channel, bool enabled) {
+        requestedChannel = channel;
+        requestedEnabled = enabled;
+    });
+    for (int channel = 0; channel < 2; ++channel)
+    {
+        auto *output = overviewOutputSwitches[channel];
+        sendMouseClick(output, QPointF(channel == 0 ? output->width() - 5 : 5, output->height() / 2));
+        require(requestedChannel == channel + 1 && requestedEnabled == (channel == 0),
+                "output requests address the selected channel without changing the other channel");
+    }
     overviewTitleStatus->adjustSize();
     overviewTitleStatus->layout()->activate();
     require(overviewValuePills.at(0)->geometry().right() < overviewValuePills.at(1)->geometry().left() &&
