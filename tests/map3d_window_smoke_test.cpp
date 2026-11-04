@@ -487,6 +487,24 @@ int main(int argc, char** argv)
                     && partial.getImage()->getColor(255, 255).a() == 1.0f
                     && empty->getColor(0, 0).a() == 1.0f,
                 "no-data pixels are transparent while dark imagery and the cached input are retained");
+        for (int y = 0; y < 256; ++y)
+            for (int x = 0; x < 256; ++x)
+            {
+                auto* pixel = empty->data(x, y);
+                pixel[0] = pixel[1] = pixel[2] = static_cast<unsigned char>(98 + x / 64);
+                pixel[3] = 255;
+            }
+        empty->data(255, 255)[0] = empty->data(255, 255)[1] = empty->data(255, 255)[2] = 102;
+        require(!mask().valid(), "almost uniform gray OAM tiles fall through to the basemap");
+        osgEarth::GeoImage cachedGray(empty.get(), key.getExtent());
+        layer->postCreateImageImplementation(cachedGray, key, nullptr);
+        require(!cachedGray.valid() && empty->getColor(0, 0).a() == 1.0f,
+                "cached gray tiles also fall through without changing the cached image");
+        empty->data(255, 255)[0] = empty->data(255, 255)[1] = empty->data(255, 255)[2] = 103;
+        require(mask().valid(), "textured grayscale imagery remains visible");
+        empty->data(255, 255)[0] = 99;
+        empty->data(255, 255)[1] = empty->data(255, 255)[2] = 98;
+        require(mask().valid(), "subtle color imagery remains visible");
     }
     {
         auto settings = map3DTestSettings();
