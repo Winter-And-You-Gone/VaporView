@@ -65,8 +65,7 @@ environment variables, passwords, serial payloads, device data, or window text.
 
 ## Windows LocalDumps
 
-For development or field diagnosis, WER LocalDumps for `VaporView.exe` can be
-configured manually with:
+WER LocalDumps can be configured explicitly for all three processes:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\diagnostics\configure-vaporview-localdumps.ps1 -Enable
@@ -74,17 +73,39 @@ powershell -ExecutionPolicy Bypass -File scripts\diagnostics\configure-vaporview
 powershell -ExecutionPolicy Bypass -File scripts\diagnostics\configure-vaporview-localdumps.ps1 -Disable
 ```
 
-`-Enable` accepts `-DumpFolder`, `-DumpCount`, and `-DumpType`; for example:
+The script defaults to `VaporView.exe`, `VaporViewSkyCore.exe`, and
+`VaporViewSkyTui.exe`. To configure only SkyCore and use a custom dump root:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\diagnostics\configure-vaporview-localdumps.ps1 -Enable -DumpFolder X:\Debug\VaporViewDumps
+.\scripts\diagnostics\configure-vaporview-localdumps.ps1 -Enable -Executable VaporViewSkyCore.exe -DumpFolder 'X:\Debug\VaporView Dumps'
+.\scripts\diagnostics\configure-vaporview-localdumps.ps1 -Status -Executable VaporViewSkyCore.exe -DumpFolder 'X:\Debug\VaporView Dumps'
+.\scripts\diagnostics\configure-vaporview-localdumps.ps1 -Disable -Executable VaporViewSkyCore.exe
 ```
 
-The script writes
-`HKLM\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\VaporView.exe`
-and therefore requires an elevated PowerShell session for `-Enable` and
-`-Disable`. It does not silently elevate, and VaporView does not run it from the
-application, installer, or updater.
+Each executable has its own key under
+`HKLM\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps` and its
+own directory below `%LOCALAPPDATA%\VaporView\Dumps` by default, named
+`VaporView`, `VaporViewSkyCore`, or `VaporViewSkyTui`. Enable and disable require
+an elevated PowerShell session. The script never runs automatically. Status
+compares registry value types and values and checks directory existence; pass the
+same custom `-DumpFolder`, `-DumpCount`, and `-DumpType` used to enable it.
+These checks cannot prove WER will successfully write a dump: the crashing
+process must have permission to write its folder, and system WER policy and
+runtime conditions also matter.
+
+The default is a full dump (`DumpType=2`) with `DumpCount=10` per process. Full
+dumps can approach the process memory size, so reserve sufficient disk space
+for up to ten large files per process. Windows WER enforces its own retention;
+the script does not delete existing dumps, including on disable. Locate `.dmp`
+files in the process directory above. Open a dump in WinDbg, set symbols with
+`.symfix` and `.reload`, then run `!analyze -v` and inspect the stack with `k`.
+Use matching application binaries and symbols for useful stacks.
+
+The default folder is resolved under the account running the configuration
+script, not necessarily the account that will crash. Verify write permissions
+for the target process identity or specify a suitable explicit `-DumpFolder`.
+The isolated crash-helper procedure, backup/restore precautions, and current
+real WER validation status are described in [WER validation](wer-localdumps-validation.md).
 
 Full dumps may contain runtime memory such as device data, local paths,
 connection details, credentials, or other sensitive content. Do not commit or

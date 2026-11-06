@@ -29,6 +29,13 @@ target_link_libraries(log_context_test PRIVATE vaporview_sky_core Qt6::Core)
 vaporview_add_test(NAME log_context_test COMMAND log_context_test)
 set_tests_properties(log_context_test PROPERTIES LABELS "fast;unit;logging" TIMEOUT 30)
 
+if(WIN32)
+    add_executable(wer_crash_helper wer_crash_helper.cpp)
+    vaporview_add_test(NAME wer_crash_helper_safe_test COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass
+        -File ${CMAKE_SOURCE_DIR}/scripts/diagnostics/test-wer-crash-helper.ps1 -Helper $<TARGET_FILE:wer_crash_helper>)
+    set_tests_properties(wer_crash_helper_safe_test PROPERTIES LABELS "fast;unit;diagnostics" TIMEOUT 30)
+endif()
+
 add_executable(epsilon_raw_satellite_test epsilon_raw_satellite_test.cpp)
 target_link_libraries(epsilon_raw_satellite_test PRIVATE vaporview_ppk_observation)
 vaporview_add_test(NAME epsilon_raw_satellite_test COMMAND epsilon_raw_satellite_test)
