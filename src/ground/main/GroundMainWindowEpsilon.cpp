@@ -733,14 +733,22 @@ void MainWindow::drainFpgaRtcm()
     const bool busy=pendingDevice || (isUiTestMode()?state_->fpga_sim_busy_:isRemoteSkyMode()?bool(state_->fpga_session_.requestId)||state_->fpga_session_.remoteStatus.value("busy").toBool():state_->fpga_busy_);
     if(busy) {QTimer::singleShot(50,this,&MainWindow::drainFpgaRtcm);return;}
     const auto request=state_->fpga_rtcm_queue_.takeFirst().second;state_->fpga_rtcm_busy_=true;
-    submitFpgaInstrument(request,[this](const QJsonObject& result) {
+    const QString correlationId = state_->rtk_config_dialog_ ? state_->rtk_config_dialog_->rtcmCorrelationId() : QString();
+    submitFpgaInstrument(request, fpgaRtcmCompletion(correlationId));
+}
+
+std::function<void(const QJsonObject&)> MainWindow::fpgaRtcmCompletion(const QString& correlationId)
+{
+    return [this, correlationId](const QJsonObject& result) {
         state_->fpga_rtcm_busy_=false;
         if(!result.value("ok").toBool()) {
-            state_->fpga_rtcm_queue_.clear();state_->fpga_rtcm_buffer_.clear();
-            if(state_->rtk_config_dialog_)state_->rtk_config_dialog_->appendLog(QStringLiteral("FPGA RTCM 转发失败，未重发：")+result.value("detail").toString());
+            if (!state_->rtk_config_dialog_ || state_->rtk_config_dialog_->rtcmCorrelationId() == correlationId) {
+                state_->fpga_rtcm_queue_.clear();state_->fpga_rtcm_buffer_.clear();
+            }
+            if(state_->rtk_config_dialog_)state_->rtk_config_dialog_->appendLog(QStringLiteral("FPGA RTCM 转发失败，未重发：")+result.value("detail").toString(), {correlationId, {}});
         }
         QTimer::singleShot(0,this,&MainWindow::drainFpgaRtcm);
-    });
+    };
 }
 
 void MainWindow::onRtkConfigClicked()

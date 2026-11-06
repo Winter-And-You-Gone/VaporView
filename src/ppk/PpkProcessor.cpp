@@ -16,6 +16,7 @@
 #include <QRegularExpression>
 #include <QLockFile>
 #include <QTemporaryDir>
+#include <QUuid>
 #include <algorithm>
 #include <cstdarg>
 #include <cstdio>
@@ -87,7 +88,8 @@ bool writeJson(const QString &filename, const QJsonObject &json, QString *error 
         *error = file.errorString();
     return ok;
 }
-void publishPpkLog(const QString &session, const QString &event, const QString &reason, QVariantMap fields = {})
+void publishPpkLog(const QString &session, const QString &correlationId, const QString &event, const QString &reason, QVariantMap fields = {},
+                   const char *file = VAPORVIEW_LOG_FILE, const char *function = VAPORVIEW_LOG_FUNCTION, int line = VAPORVIEW_LOG_LINE)
 {
     fields.insert(QStringLiteral("event"), event);
     const auto code = reason.section(':', 0, 0);
@@ -100,8 +102,8 @@ void publishPpkLog(const QString &session, const QString &event, const QString &
         [&](LogService &log)
         {
             log.publish(reason == QStringLiteral("OK") ? LogLevel::Info : LogLevel::Error, QStringLiteral("ppk"),
-                        QStringLiteral("session.ppk"), QStringLiteral("Session PPK 处理状态已更新。"), fields, {},
-                        session);
+                        QStringLiteral("session.ppk"), QStringLiteral("Session PPK 处理状态已更新。"), fields, correlationId,
+                        session, file, function, line);
         });
 }
 bool archive(const QString &session, const QString &source, const QString &relative, QString *error)
@@ -360,26 +362,30 @@ bool PpkProcessor::clearResult(const QString &session, QString *error)
 }
 
 PpkProcessResult PpkProcessor::process(const QString &session, const PpkConfig &requested,
-                                       const std::atomic_bool *cancel, const Progress &progress)
+                                       const std::atomic_bool *cancel, const Progress &progress,
+                                       const QString &correlationId)
 {
+    const QString operationId = correlationId.isEmpty() ? QUuid::createUuid().toString(QUuid::WithoutBraces) : correlationId;
     PpkProcessResult result;
     PpkConfig config = requested;
+    publishPpkLog(session, operationId, QStringLiteral("ppk_processing_started"), QStringLiteral("OK"));
     QDir().mkpath(path(session, QStringLiteral("ppk")));
     QLockFile sessionLock(path(session, QStringLiteral("ppk/processing.lock")));
     sessionLock.setStaleLockTime(0);
     if (!sessionLock.tryLock())
     {
         result.error = QStringLiteral("SESSION_PPK_BUSY");
-        publishPpkLog(session, QStringLiteral("ppk_processing_failed"), result.error);
+        publishPpkLog(session, operationId, QStringLiteral("ppk_processing_failed"), result.error);
         return result;
     }
-    auto fail = [&](const QString &reason)
+    auto fail = [&](const QString &reason, const char *file = VAPORVIEW_LOG_FILE,
+                    const char *function = VAPORVIEW_LOG_FUNCTION, int line = VAPORVIEW_LOG_LINE)
     {
         result.error = reason;
         result.cancelled = (cancel && cancel->load()) || reason == QStringLiteral("CANCELLED");
         writeJson(path(session, QStringLiteral("ppk/ppk_quality.json")),
                   {{"state", "Failed"}, {"error", reason}, {"cancelled", result.cancelled}});
-        publishPpkLog(session, QStringLiteral("ppk_processing_failed"), reason);
+        publishPpkLog(session, operationId, QStringLiteral("ppk_processing_failed"), reason, {}, file, function, line);
         return result;
     };
     if (!std::isfinite(config.elevationMaskDeg) || config.elevationMaskDeg < 0 || config.elevationMaskDeg >= 90 ||
@@ -395,7 +401,6 @@ PpkProcessResult PpkProcessor::process(const QString &session, const PpkConfig &
         return fail(QStringLiteral("MISSING_BASE_OR_NAVIGATION"));
     if (!writeJson(path(session, QStringLiteral("ppk/ppk_quality.json")), {{"state", "Processing"}}, &result.error))
         return fail(result.error);
-    publishPpkLog(session, QStringLiteral("ppk_processing_started"), QStringLiteral("OK"));
     if (config.roverObs.isEmpty() || QFileInfo(ObservationStore::filename(session)).size() > 12)
     {
         config.roverObs = QStringLiteral("ppk/rover/rover.obs");
@@ -404,7 +409,7 @@ PpkProcessResult PpkProcessor::process(const QString &session, const PpkConfig &
                                       static_cast<uint8_t>(config.receiver), cancel);
         if (!rinex.success)
             return fail(rinex.error);
-        publishPpkLog(session, QStringLiteral("ppk_rinex_generated"), QStringLiteral("OK"),
+        publishPpkLog(session, operationId, QStringLiteral("ppk_rinex_generated"), QStringLiteral("OK"),
                       {{"epochs", qulonglong(rinex.epochs)}});
     }
     if (!saveConfig(session, config, &result.error))
@@ -467,7 +472,16 @@ PpkProcessResult PpkProcessor::process(const QString &session, const PpkConfig &
         if (cancel && cancel->load())
             return fail(QStringLiteral("CANCELLED"));
         processingCancel = cancel;
-        processingProgress = progress;
+        int lastLoggedBucket = -1;
+        processingProgress = [&](int percent, const QString &message) {
+            const int bucket = std::clamp(percent, 0, 100) / 10;
+            if (bucket > lastLoggedBucket) {
+                lastLoggedBucket = bucket;
+                publishPpkLog(session, operationId, QStringLiteral("ppk_processing_progress"), QStringLiteral("OK"),
+                              {{QStringLiteral("percent"), percent}});
+            }
+            if (progress) progress(percent, message);
+        };
         processingMessage.clear();
         processingStart = processingEnd = 0;
         processingPercent = -1;
@@ -516,7 +530,7 @@ PpkProcessResult PpkProcessor::process(const QString &session, const PpkConfig &
         !writeJson(path(session, QStringLiteral("ppk/ppk_quality.json")), result.quality, &result.error))
         return fail(result.error);
     result.success = true;
-    publishPpkLog(session, QStringLiteral("ppk_processing_completed"), QStringLiteral("OK"),
+    publishPpkLog(session, operationId, QStringLiteral("ppk_processing_completed"), QStringLiteral("OK"),
                   {{"sample_count", int(result.trajectory.size())}, {"fix_count", fixed}, {"float_count", floating}});
     return result;
 }

@@ -23,6 +23,12 @@ function(vaporview_add_test)
     set_property(TEST ${test_NAME} PROPERTY VAPORVIEW_BUILD_TARGET "${build_target}")
 endfunction()
 
+add_executable(log_context_test log_context_test.cpp)
+target_include_directories(log_context_test PRIVATE ${CMAKE_SOURCE_DIR}/include)
+target_link_libraries(log_context_test PRIVATE vaporview_sky_core Qt6::Core)
+vaporview_add_test(NAME log_context_test COMMAND log_context_test)
+set_tests_properties(log_context_test PROPERTIES LABELS "fast;unit;logging" TIMEOUT 30)
+
 add_executable(epsilon_raw_satellite_test epsilon_raw_satellite_test.cpp)
 target_link_libraries(epsilon_raw_satellite_test PRIVATE vaporview_ppk_observation)
 vaporview_add_test(NAME epsilon_raw_satellite_test COMMAND epsilon_raw_satellite_test)
@@ -407,7 +413,7 @@ set_tests_properties(fpga_serial_budget_test PROPERTIES LABELS "fast;unit;fpga" 
 add_executable(fpga_remote_controller_test ${CMAKE_CURRENT_SOURCE_DIR}/fpga_remote_controller_test.cpp)
 target_link_libraries(fpga_remote_controller_test PRIVATE vaporview_ground_device_core)
 vaporview_add_test(NAME fpga_remote_controller_test COMMAND fpga_remote_controller_test)
-set_tests_properties(fpga_remote_controller_test PROPERTIES LABELS "fast;unit;fpga" TIMEOUT 60)
+set_tests_properties(fpga_remote_controller_test PROPERTIES LABELS "unit;fpga" TIMEOUT 120)
 
 foreach(sky_fpga_test backend runtime recording)
     add_executable(sky_fpga_${sky_fpga_test}_test ${CMAKE_CURRENT_SOURCE_DIR}/sky_fpga_${sky_fpga_test}_test.cpp)
@@ -418,6 +424,8 @@ endforeach()
 
 vaporview_add_test(NAME sky_fpga_usb_discovery_test COMMAND sky_fpga_runtime_test --discovery-only)
 set_tests_properties(sky_fpga_usb_discovery_test PROPERTIES LABELS "fast;unit;fpga;sky" TIMEOUT 30)
+vaporview_add_test(NAME sky_fpga_storage_failure_context_test COMMAND sky_fpga_runtime_test --storage-failure-context)
+set_tests_properties(sky_fpga_storage_failure_context_test PROPERTIES LABELS "integration;fpga;sky;logging" TIMEOUT 90)
 
 add_executable(fpga_session_archive_test ${CMAKE_CURRENT_SOURCE_DIR}/fpga_session_archive_test.cpp)
 target_link_libraries(fpga_session_archive_test PRIVATE vaporview_ground_session_core)
@@ -441,6 +449,8 @@ if(COMMAND vaporview_stage_osgearth_runtime)
 endif()
 vaporview_add_test(NAME fpga_main_window_test COMMAND fpga_main_window_test)
 set_tests_properties(fpga_main_window_test PROPERTIES LABELS "gui;fpga" TIMEOUT 120 RUN_SERIAL TRUE)
+vaporview_add_test(NAME fpga_rtcm_context_test COMMAND fpga_main_window_test --rtcm-context)
+set_tests_properties(fpga_rtcm_context_test PROPERTIES LABELS "gui;fpga;logging" TIMEOUT 60 RUN_SERIAL TRUE)
 vaporview_add_test(NAME fpga_local_simulator_test COMMAND fpga_main_window_test --local-simulator)
 set_tests_properties(fpga_local_simulator_test PROPERTIES LABELS "gui;fpga;integration" TIMEOUT 90 RUN_SERIAL TRUE)
 vaporview_add_test(NAME fpga_refresh_budget_test COMMAND fpga_main_window_test --refresh-budget)
@@ -460,6 +470,7 @@ set_tests_properties(internal_environment_serial_test PROPERTIES LABELS "fast;un
 
 add_executable(log_service_test
     ${CMAKE_CURRENT_SOURCE_DIR}/log_service_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/log_location_other.cpp
 )
 target_include_directories(log_service_test PRIVATE
     ${CMAKE_SOURCE_DIR}/include
@@ -519,14 +530,31 @@ target_include_directories(sky_ground_simulation_e2e_test PRIVATE
 )
 target_link_libraries(sky_ground_simulation_e2e_test PRIVATE
     vaporview_ground_device_core
+    vaporview_water_calibration_core
     Qt6::Network
 )
 add_dependencies(sky_ground_simulation_e2e_test VaporViewSkyCore)
 vaporview_add_test(NAME sky_ground_simulation_e2e_test COMMAND sky_ground_simulation_e2e_test)
+vaporview_add_test(NAME sky_ground_long_session_e2e_test COMMAND sky_ground_simulation_e2e_test --long-session-v2)
+vaporview_add_test(NAME sky_ground_unexpected_exit_e2e_test COMMAND sky_ground_simulation_e2e_test --unexpected-sky-exit)
+set_tests_properties(sky_ground_unexpected_exit_e2e_test PROPERTIES
+    TIMEOUT 90
+    LABELS "integration;sky;tcp;logging"
+)
+set_tests_properties(sky_ground_long_session_e2e_test PROPERTIES
+    TIMEOUT 120
+    SKIP_RETURN_CODE 77
+    LABELS "integration;sky;tcp;logging"
+)
 set_tests_properties(sky_ground_simulation_e2e_test PROPERTIES
     TIMEOUT 90
     LABELS "integration;sky;tcp"
 )
+
+add_executable(sky_cancellation_e2e_test sky_cancellation_e2e_test.cpp)
+target_link_libraries(sky_cancellation_e2e_test PRIVATE vaporview_ground_device_core vaporview_sky_core)
+vaporview_add_test(NAME sky_cancellation_e2e_test COMMAND sky_cancellation_e2e_test)
+set_tests_properties(sky_cancellation_e2e_test PROPERTIES TIMEOUT 45 LABELS "integration;sky;tcp")
 
 add_executable(sky_device_manager_simulation_test
     ${CMAKE_CURRENT_SOURCE_DIR}/sky_device_manager_simulation_test.cpp
@@ -1364,7 +1392,6 @@ set(VAPORVIEW_FAST_UNIT_TESTS
     telemetry_tcp_link_test
     sky_device_manager_simulation_test
     sky_session_recorder_test
-    sky_local_ipc_client_test
     sky_tui_controller_device_test
     visual_text_label_test
     segmented_switch_button_test
@@ -1394,6 +1421,7 @@ set(VAPORVIEW_FAST_UNIT_TESTS
 )
 set_tests_properties(${VAPORVIEW_FAST_UNIT_TESTS} PROPERTIES TIMEOUT 30)
 set_property(TEST ${VAPORVIEW_FAST_UNIT_TESTS} PROPERTY LABELS fast unit)
+set_tests_properties(sky_local_ipc_client_test PROPERTIES LABELS "unit;sky" TIMEOUT 90)
 set_tests_properties(epsilon_device_session_test PROPERTIES LABELS "integration;protocol;slow" TIMEOUT 120)
 set_property(TEST lifecycle_breadcrumb_test APPEND PROPERTY LABELS logging)
 

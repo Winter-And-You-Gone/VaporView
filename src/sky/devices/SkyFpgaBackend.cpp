@@ -100,7 +100,7 @@ void SkyFpgaBackend::shutdown()
     if (completion_) { auto callback = std::move(completion_); activeRequest_ = 0;
         callback(CommandErrorCode::DeviceDisconnectFailed, QStringLiteral("SkyCore stopped; execution state must be read back."), status_); }
 }
-void SkyFpgaBackend::submit(const QJsonObject& operation, Completion completion)
+void SkyFpgaBackend::submit(const QJsonObject& operation, Completion completion, const QString& correlationId, const QString& sessionId)
 {
     QString error;
     if (!validateOperation(operation, &error)) { completion(CommandErrorCode::InvalidPayload, error, status_); return; }
@@ -108,20 +108,38 @@ void SkyFpgaBackend::submit(const QJsonObject& operation, Completion completion)
     if (!worker_.isRunning()) { completion(CommandErrorCode::DeviceNotConnected, QStringLiteral("FPGA worker stopped."), status_); return; }
     const quint64 identity = nextRequest_++;
     activeRequest_ = identity; completion_ = std::move(completion);
-    QTimer::singleShot(120000,this,[this,identity,operation] {
+    // The handle is created here but read and written only on the controller thread.
+    // Timeout and normal completion both disconnect this operation's observer.
+    const auto observer = std::make_shared<QMetaObject::Connection>();
+    QTimer::singleShot(operationTimeoutMs_,this,[this,identity,operation,observer] {
         if (activeRequest_!=identity) return;
         // Cancel the receive/command loop; a timeout never resubmits a physical write.
-        if (operation.value("op").toString() != "discover")
-            QMetaObject::invokeMethod(controller_, &Ground::Devices::FpgaDeviceController::disconnectDevice,Qt::QueuedConnection);
+        QMetaObject::invokeMethod(controller_, [controller = controller_, identity, operation, observer] {
+            QObject::disconnect(*observer);
+            if (operation.value("op").toString() != "discover") controller->disconnectDevice();
+            controller->clearOperationLogContext(identity);
+        }, Qt::QueuedConnection);
         auto callback=std::move(completion_);activeRequest_=0;
         if(callback) callback(CommandErrorCode::ConfigApplyFailed,operation.value("op").toString() == "discover"
             ? QStringLiteral("USB discovery timed out; USB connection was left unchanged.")
             : QStringLiteral("FPGA operation timed out; physical outcome is unknown. Reconnect and read back before retrying."),status_);
     });
     QPointer<SkyFpgaBackend> self(this);
-    QMetaObject::invokeMethod(controller_, [self, controller = controller_, identity, operation] {
+    QMetaObject::invokeMethod(controller_, [self, controller = controller_, identity, operation, correlationId, sessionId, observer] {
+        controller->setOperationLogContext(identity, correlationId, sessionId);
+        if (!correlationId.isEmpty() && self) {
+            LogRecord record;
+            record.source = QStringLiteral("SkyCore"); record.category = QStringLiteral("device.fpga");
+            record.level = LogLevel::Info; record.message = QStringLiteral("FPGA 工作线程开始执行设备操作。");
+            record.correlation_id = correlationId; record.session_id = sessionId;
+            record.thread_id = static_cast<quint64>(reinterpret_cast<quintptr>(QThread::currentThreadId()));
+            record.fields.insert(QStringLiteral("event"), QStringLiteral("fpga_worker_started"));
+            LogService::addCallLocation(record, VAPORVIEW_LOG_FILE, VAPORVIEW_LOG_FUNCTION, VAPORVIEW_LOG_LINE);
+            emit self->logRecord(record);
+        }
         if (operation.value("op").toString() == "discover") {
             const auto discovery = controller->discoverDevices();
+            controller->clearOperationLogContext(identity);
             if (self) QMetaObject::invokeMethod(self, [self, identity, discovery] {
                 if (!self || self->activeRequest_ != identity) return;
                 auto document = self->status_;
@@ -133,6 +151,7 @@ void SkyFpgaBackend::submit(const QJsonObject& operation, Completion completion)
             return;
         }
         auto finish = [self, identity, operation, controller](CommandErrorCode code, const QString& detail) {
+            controller->clearOperationLogContext(identity);
             if (!self) return;
             QJsonObject registers;
             const auto& values=controller->hardwareValues();
@@ -146,7 +165,10 @@ void SkyFpgaBackend::submit(const QJsonObject& operation, Completion completion)
                 if(code==CommandErrorCode::Ok && operation.value("op").toString()=="configure") {
                     self->status_["configuration"]=operation.value("configuration").toObject();
                 }
-                emit self->statusChanged(self->status_);
+                const QJsonObject status = self->status_;
+                emit self->statusChanged(status);
+                // A direct status listener may shut down or destroy the backend.
+                if (!self || self->activeRequest_ != identity) return;
                 auto callback = std::move(self->completion_); self->activeRequest_ = 0;
                 if (callback) callback(code, detail, self->status_);
             }, Qt::QueuedConnection);
@@ -160,7 +182,6 @@ void SkyFpgaBackend::submit(const QJsonObject& operation, Completion completion)
                 : QStringLiteral("FPGA handshake/readback not ready.")); return;
         }
         // This observer exists only for this worker invocation; periodic refreshes cannot complete another request.
-        auto observer = std::make_shared<QMetaObject::Connection>();
         *observer = QObject::connect(controller, &Ground::Devices::FpgaDeviceController::snapshot, controller,
             [finish, observer](quint64, const QJsonObject& document) {
                 const QString event = document.value("event").toString();

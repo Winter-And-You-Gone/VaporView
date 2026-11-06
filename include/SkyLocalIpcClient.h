@@ -2,6 +2,7 @@
 #define VaporView_SKY_LOCAL_IPC_CLIENT_H_
 
 #include "SkyConfig.h"
+#include "LogService.h"
 #include "SkyDashboardTypes.h"
 #include "TelemetryCodec.h"
 
@@ -10,6 +11,7 @@
 #include <QTcpSocket>
 #include <QTimer>
 #include <QVariantMap>
+#include <QHash>
 
 namespace VaporView
 {
@@ -69,13 +71,30 @@ private slots:
     void onErrorOccurred(QAbstractSocket::SocketError error);
 
 private:
+    friend class SkyLocalIpcClientTestAccess;
+    struct ConfigResultContext {
+        CommandMessage command;
+        bool awaitingAck = false;
+        bool sessionKnown = false;
+    };
+    void rememberConfigResultContext(const CommandMessage& command, bool awaitingAck, bool sessionKnown);
     quint16 sendCommand(CommandId commandId, const QByteArray& payload = QByteArray());
     void publishClientLog(LogLevel level,
                           const QString& category,
                           const QString& event,
                           const QString& message,
-                          QVariantMap fields = QVariantMap());
+                          QVariantMap fields = QVariantMap(),
+                          const QString& correlationId = {},
+                          const char *file = VAPORVIEW_LOG_FILE,
+                          const char *function = VAPORVIEW_LOG_FUNCTION,
+                          int line = VAPORVIEW_LOG_LINE);
     void dispatchFrame(const TelemetryFrame& frame);
+    void publishCommandLog(const CommandMessage& command, const QString& event,
+                           const QString& message, LogLevel level = LogLevel::Info,
+                           const QString& sessionId = {},
+                           const char *file = VAPORVIEW_LOG_FILE,
+                           const char *function = VAPORVIEW_LOG_FUNCTION,
+                           int line = VAPORVIEW_LOG_LINE);
     void attemptReconnect();
     void scheduleReconnect();
     void updateFromBasic(const TelemetryBasic& basic);
@@ -97,6 +116,9 @@ private:
     bool user_disconnect_requested_ = false;
     quint16 next_frame_seq_ = 1;
     quint16 next_command_seq_ = 1;
+    QHash<quint16, CommandMessage> pending_commands_;
+    QHash<quint16, ConfigResultContext> config_result_contexts_;
+    quint64 connection_generation_ = 0;
     TelemetryStatus status_;
     SkyConfig config_ = SkyConfig::defaults();
     SkyDashboardSnapshot dashboard_;

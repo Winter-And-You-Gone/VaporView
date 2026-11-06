@@ -2,6 +2,8 @@
 #define VaporView_DATA_COLLECTOR_H
 
 #include "LogRecord.h"
+#include "LogContext.h"
+#include "LogService.h"
 #include "data_types.h"
 #include "serial_port.h"
 #include "EpsilonRawSatellite.h"
@@ -64,6 +66,12 @@ public:
                                                    const std::string&,
                                                    const std::string&,
                                                    StructuredLogFields)>;
+  using LocatedStructuredLogCallback = std::function<void(LogLevel,
+                                                          const std::string&,
+                                                          const std::string&,
+                                                          const std::string&,
+                                                          StructuredLogFields,
+                                                          const char*, const char*, int)>;
   using CancelCallback = std::function<bool()>;
 
   DataCollector();
@@ -80,6 +88,7 @@ public:
   void setDataCallback(DataCallback callback);
   void setLogCallback(LogCallback callback);
   void setStructuredLogCallback(StructuredLogCallback callback);
+  void setLocatedStructuredLogCallback(LocatedStructuredLogCallback callback);
   void setCancelCallback(CancelCallback callback);
   void setEnglish(bool english);
   void setSampleRate(int hz);
@@ -101,7 +110,10 @@ protected:
                      const std::string& category,
                      const std::string& event,
                      const std::string& message,
-                     StructuredLogFields fields = {});
+                     StructuredLogFields fields = {},
+                     const char* file = VAPORVIEW_LOG_FILE,
+                     const char* function = VAPORVIEW_LOG_FUNCTION,
+                     int line = VAPORVIEW_LOG_LINE);
   bool isEnglishLog() const;
   bool isCancelRequested() const;
 
@@ -112,7 +124,7 @@ protected:
   mutable std::mutex mutex_;
   DataCallback data_callback_;
   LogCallback log_callback_;
-  StructuredLogCallback structured_log_callback_;
+  LocatedStructuredLogCallback structured_log_callback_;
   CancelCallback cancel_callback_;
   SerialConfig serial_config_;
   std::atomic<bool> log_english_{false};
@@ -216,6 +228,8 @@ public:
   bool checkDeviceResponse() override;
   void setRawResponseCallback(RawResponseCallback callback);
   void setProtocol(PressureSensorProtocol protocol);
+  // Set before startStreaming(); consumed only by the first PTB startup write.
+  void setStartupLogContext(LogContext context);
   PressureSensorProtocol protocol() const;
 
 protected:
@@ -227,6 +241,7 @@ private:
   PtbData latest_data_;
   RawResponseCallback raw_response_callback_;
   PressureSensorProtocol protocol_ = PressureSensorProtocol::Ptb210;
+  LogContext startup_log_context_;
   static constexpr const char* PTB_CMD_PRESSURE = ".P\r";
   static constexpr const char* PTB_CMD_CONTINUOUS = ".BP\r";
   static constexpr const char* PTB_CMD_STOP = "\r";
@@ -272,6 +287,8 @@ public:
   bool setDeviceSampleRate(int hz) override;
   bool checkDeviceResponse() override;
   void setRawFrameCallback(RawFrameCallback callback);
+  // Set before startStreaming(); consumed only by the first startup command.
+  void setStartupLogContext(LogContext context);
 
 protected:
   void run() override;
@@ -279,8 +296,10 @@ protected:
   void cleanup() override;
 
 private:
+  friend class LidarCollectorTestAccess;
   LidarData latest_data_;
   RawFrameCallback raw_frame_callback_;
+  LogContext startup_log_context_;
 
   static constexpr uint8_t TFA1500_HEADER = 0x5C;
   static constexpr size_t TFA1500_FRAME_SIZE = 5;

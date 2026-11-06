@@ -25,6 +25,8 @@
 #include <thread>
 
 #include "data_types.h"
+#include "LogService.h"
+#include "LogContext.h"
 #include "shared/theme/AppTheme.h"
 #include "serial_port.h"
 #include "RtkStreamService.h"
@@ -44,7 +46,11 @@ public:
     explicit RtkConfigDialog(QWidget *parent = nullptr, bool embedded = false);
     ~RtkConfigDialog() override;
 
-    void appendLog(const QString& message);
+    void appendLog(const QString& message, const char *file = VAPORVIEW_LOG_FILE,
+                   const char *function = VAPORVIEW_LOG_FUNCTION, int line = VAPORVIEW_LOG_LINE);
+    void appendLog(const QString& message, const VaporView::LogContext& context,
+                   const char *file = VAPORVIEW_LOG_FILE,
+                   const char *function = VAPORVIEW_LOG_FUNCTION, int line = VAPORVIEW_LOG_LINE);
     void appendRawLogLine(const QString& line);
     bool isRunning() const;
     bool hasActiveExternalOperation() const;
@@ -61,6 +67,8 @@ public:
     std::array<double,3> mainAntennaLeverArm() const;
     using RtcmCorrectionSink = std::function<bool(const QByteArray&)>;
     void setRtcmCorrectionSink(RtcmCorrectionSink sink, const QString& label);
+    void setRecordingSessionProvider(std::function<QString()> provider);
+    QString rtcmCorrelationId() const;
     int fpgaRtcmTarget() const;
     int fpgaRtcmBaud() const;
     void setTransportSupported(bool supported, const QString& reason = QString());
@@ -88,6 +96,7 @@ private slots:
     void onGgaPollTimer();
 
 private:
+    friend class RtkStatusLogTestAccess;
     void setupUi();
     void loadSettings();
     void saveSettings();
@@ -126,6 +135,12 @@ private:
     QString ggaPortName() const;
     void refreshPortCombos();
     void pollRtkServiceStatus(bool forceLog = false);
+    void handleRtkServiceStatus(const RtkStreamStats& stats, bool forceLog);
+    void appendRawLogLine(const QString& line, const QString& correlationId);
+    void logRtcmLifecycle(const QString& event, bool failed = false, const QString& reason = {},
+                          const char *file = VAPORVIEW_LOG_FILE,
+                          const char *function = VAPORVIEW_LOG_FUNCTION,
+                          int line = VAPORVIEW_LOG_LINE, const VaporView::LogContext *captured = nullptr);
     void joinBackgroundTasks();
     bool isBackgroundTaskRunning() const;
     bool sendReceiverCommands(const QStringList& commands, QString *errorMessage = nullptr);
@@ -224,6 +239,12 @@ private:
     bool compact_layout_;
     int combination_navigation_top_inset_ = 0;
     std::unique_ptr<RtkStreamService> rtk_service_;
+    QString rtcm_correlation_id_;
+    bool rtcm_starting_ = false;
+    bool rtcm_start_cancelled_ = false;
+    QString rtcm_cancel_session_id_;
+    bool rtcm_stopping_ = false;
+    std::function<QString()> recording_session_provider_;
     bool is_running_;
     bool is_english_;
     int font_scale_percent_;

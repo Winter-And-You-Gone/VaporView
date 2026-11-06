@@ -1,28 +1,60 @@
 #include "LogService.h"
+#include "ground/calibration/CalibrationService.h"
 #include "ground/main/MainWindow.h"
+#include "ground/main/GroundMainWindowState.h"
+#include "ground/session/GroundRecordingService.h"
 #include "ground/main/UiLogModel.h"
 #include "shared/config/SettingsWriteBarrier.h"
 #include "shared/theme/AppTheme.h"
+#include "test_settings_sandbox.h"
 #include "test_ui_helpers.h"
 
 #include <QAbstractItemModel>
 #include <QAction>
 #include <QApplication>
+#include <QFile>
 #include <QLayout>
 #include <QLineEdit>
 #include <QListView>
 #include <QMenu>
+#include <QMessageBox>
 #include <QMetaObject>
 #include <QMouseEvent>
 #include <QPushButton>
 #include <QScrollBar>
+#include <QScopeGuard>
+#include <QSet>
 #include <QSettings>
 #include <QTemporaryDir>
+#include <QTimer>
 #include <QToolButton>
 
 #include <cstdlib>
+#include <algorithm>
 #include <iostream>
 #include <memory>
+
+struct MainWindowRecordingTestAccess
+{
+    static bool start(MainWindow& window) { return window.startRecordingSession(); }
+    static void pause(MainWindow& window) { window.pauseRecordingSession(); }
+    static void stop(MainWindow& window) { window.stopRecording(); }
+    static void remoteAck(MainWindow& window, const VaporView::CommandAck& ack)
+    {
+        window.onRemoteCommandAckReceived(ack);
+    }
+    static void unrelatedCommandLog(MainWindow& window)
+    {
+        window.publishGroundLog(VaporView::LogLevel::Info, QStringLiteral("telemetry.command"),
+                                QStringLiteral("test_unrelated_command_event"), QStringLiteral("测试事件。"));
+    }
+    static VaporView::Ground::Main::MainWindowState& state(MainWindow& window) { return *window.state_; }
+    static void unrelated(MainWindow& window)
+    {
+        window.publishGroundLog(VaporView::LogLevel::Info, QStringLiteral("session.recording"),
+                                QStringLiteral("test_unrelated_recording_event"), QStringLiteral("测试事件。"));
+    }
+};
 
 namespace
 {
@@ -201,12 +233,6 @@ void clickLogRow(QListView *logList, const QModelIndex& index)
 
 int main(int argc, char **argv)
 {
-    QTemporaryDir settingsDirectory;
-    require(settingsDirectory.isValid(), "temporary settings directory created");
-    QSettings::setDefaultFormat(QSettings::IniFormat);
-    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDirectory.path());
-    QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, settingsDirectory.path());
-
     QTemporaryDir logDirectory;
     require(logDirectory.isValid(), "temporary log directory created");
 
@@ -558,6 +584,171 @@ int main(int argc, char **argv)
         VaporViewTest::processEventsFor(90);
     }
 
+    {
+        QTemporaryDir recordingDirectory;
+        require(recordingDirectory.isValid(), "temporary recording directory created");
+        auto& state = MainWindowRecordingTestAccess::state(*window);
+        const QString originalDirectory = state.recording_directory_;
+        const bool originalRemoteMode = state.remote_sky_mode_;
+        state.recording_directory_ = recordingDirectory.path();
+        state.remote_sky_mode_ = false;
+        state.recording_service_->setCalibrationPolicy(nullptr);
+        QVector<VaporView::LogRecord> recordingRecords;
+        const auto connection = QObject::connect(&logService, &VaporView::LogService::recordPublished,
+            window.get(), [&recordingRecords](const VaporView::LogRecord& record) {
+                if (record.category == QStringLiteral("session.recording")) recordingRecords.push_back(record);
+            }, Qt::DirectConnection);
+        QString unexpectedModal;
+        QTimer modalCloser;
+        QObject::connect(&modalCloser, &QTimer::timeout, window.get(), [&unexpectedModal] {
+            if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
+                unexpectedModal = box->text();
+                std::cerr << "recording correlation test: unexpected dialog: "
+                          << unexpectedModal.toStdString() << std::endl;
+                box->accept();
+            }
+        });
+        modalCloser.start(10);
+        const bool writesWereSuspended = VaporView::settingsWritesSuspended();
+        const auto restoreWriteBarrier = qScopeGuard([writesWereSuspended] {
+            VaporView::setSettingsWritesSuspended(writesWereSuspended);
+        });
+        VaporView::setSettingsWritesSuspended(false);
+        std::cerr << "recording correlation test: starting" << std::endl;
+        require(MainWindowRecordingTestAccess::start(*window), "start real local recording");
+        require(unexpectedModal.isEmpty(), "start recording displayed an unexpected modal dialog");
+        std::cerr << "recording correlation test: pausing" << std::endl;
+        MainWindowRecordingTestAccess::pause(*window);
+        require(unexpectedModal.isEmpty(), "pause recording displayed an unexpected modal dialog");
+        std::cerr << "recording correlation test: resuming" << std::endl;
+        require(MainWindowRecordingTestAccess::start(*window), "resume real local recording");
+        require(unexpectedModal.isEmpty(), "resume recording displayed an unexpected modal dialog");
+        std::cerr << "recording correlation test: stopping" << std::endl;
+        MainWindowRecordingTestAccess::stop(*window);
+        require(unexpectedModal.isEmpty(), "stop recording displayed an unexpected modal dialog");
+        VaporView::setSettingsWritesSuspended(writesWereSuspended);
+        modalCloser.stop();
+        std::cerr << "recording correlation test: stopped" << std::endl;
+        MainWindowRecordingTestAccess::unrelated(*window);
+        const QStringList expected{QStringLiteral("session_recording_started"),
+            QStringLiteral("session_recording_paused"), QStringLiteral("session_recording_resumed"),
+            QStringLiteral("session_recording_stopped")};
+        QSet<QString> operationIds;
+        QString sessionId;
+        for (const QString& event : expected) {
+            const auto it = std::find_if(recordingRecords.cbegin(), recordingRecords.cend(),
+                [&event](const VaporView::LogRecord& record) { return record.fields.value(QStringLiteral("event")) == event; });
+            require(it != recordingRecords.cend() && !it->correlation_id.isEmpty(), "recording event has operation identity");
+            require(!it->session_id.isEmpty(), "recording event has actual session identity");
+            if (sessionId.isEmpty()) sessionId = it->session_id;
+            require(it->session_id == sessionId, "recording lifecycle keeps the same session identity");
+            operationIds.insert(it->correlation_id);
+        }
+        require(operationIds.size() == expected.size(), "recording operations use distinct identities");
+        const auto unrelated = std::find_if(recordingRecords.cbegin(), recordingRecords.cend(),
+            [](const VaporView::LogRecord& record) { return record.fields.value(QStringLiteral("event")) == QStringLiteral("test_unrelated_recording_event"); });
+        require(unrelated != recordingRecords.cend() && unrelated->correlation_id.isEmpty() && unrelated->session_id.isEmpty(),
+                "later unrelated recording log does not inherit previous identity");
+
+        recordingRecords.clear();
+        QFile blockedDirectory(recordingDirectory.filePath(QStringLiteral("not-a-directory")));
+        require(blockedDirectory.open(QIODevice::WriteOnly), "create invalid recording directory target");
+        blockedDirectory.close();
+        state.recording_directory_ = blockedDirectory.fileName();
+        bool observedFailureModal = false;
+        QTimer failureModalCloser;
+        QObject::connect(&failureModalCloser, &QTimer::timeout, window.get(), [&] {
+            if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
+                observedFailureModal = true;
+                MainWindowRecordingTestAccess::unrelated(*window);
+                box->accept();
+            }
+        });
+        failureModalCloser.start(10);
+        VaporView::setSettingsWritesSuspended(false);
+        const bool unexpectedlyStarted = MainWindowRecordingTestAccess::start(*window);
+        VaporView::setSettingsWritesSuspended(writesWereSuspended);
+        failureModalCloser.stop();
+        QObject::disconnect(connection);
+        require(!unexpectedlyStarted && observedFailureModal, "failed start displayed its error dialog");
+        const auto failure = std::find_if(recordingRecords.cbegin(), recordingRecords.cend(),
+            [](const VaporView::LogRecord& record) { return record.fields.value(QStringLiteral("event")) == QStringLiteral("session_recording_start_failed"); });
+        require(failure != recordingRecords.cend() && !failure->correlation_id.isEmpty() && failure->session_id.isEmpty(),
+                "failed new recording has its own operation identity and no session");
+        const auto modalUnrelated = std::find_if(recordingRecords.cbegin(), recordingRecords.cend(),
+            [](const VaporView::LogRecord& record) { return record.fields.value(QStringLiteral("event")) == QStringLiteral("test_unrelated_recording_event"); });
+        require(modalUnrelated != recordingRecords.cend() && modalUnrelated->correlation_id.isEmpty() && modalUnrelated->session_id.isEmpty(),
+                "unrelated event in failure dialog does not inherit recording context");
+        state.recording_service_->setCalibrationPolicy(state.calibration_service_);
+        state.recording_directory_ = originalDirectory;
+        state.remote_sky_mode_ = originalRemoteMode;
+    }
+    {
+        QVector<VaporView::LogRecord> records;
+        const auto connection = QObject::connect(&logService, &VaporView::LogService::recordPublished,
+            window.get(), [&records](const VaporView::LogRecord& record) {
+                const QString event = record.fields.value(QStringLiteral("event")).toString();
+                if (event == QStringLiteral("remote_command_ack_received") ||
+                    event == QStringLiteral("remote_command_failed") ||
+                    event == QStringLiteral("remote_serial_port_detection_cancel_failed") ||
+                    event == QStringLiteral("peak_search_range_applied") ||
+                    event == QStringLiteral("test_unrelated_command_event"))
+                    records.push_back(record);
+            }, Qt::DirectConnection);
+        VaporView::CommandAck ack;
+        ack.command_id = VaporView::CommandId::SaveSkyConfig;
+        ack.command_seq = 65432;
+        ack.correlation_id = QStringLiteral("ack-success");
+        ack.session_id = QStringLiteral("active-session");
+        MainWindowRecordingTestAccess::remoteAck(*window, ack);
+        ack.correlation_id = QStringLiteral("ack-failure");
+        ack.result = 1;
+        ack.error_code = VaporView::CommandErrorCode::InvalidPayload;
+        MainWindowRecordingTestAccess::remoteAck(*window, ack);
+        ack.correlation_id.clear();
+        ack.session_id.clear();
+        ack.result = 0;
+        ack.error_code = VaporView::CommandErrorCode::Ok;
+        MainWindowRecordingTestAccess::remoteAck(*window, ack);
+        auto& state = MainWindowRecordingTestAccess::state(*window);
+        ack.command_id = VaporView::CommandId::CancelSerialPortDetection;
+        ack.command_seq = 65431;
+        ack.correlation_id = QStringLiteral("cancel-failure");
+        ack.session_id = QStringLiteral("cancel-session");
+        ack.result = 1;
+        ack.error_code = VaporView::CommandErrorCode::InvalidPayload;
+        state.remote_serial_detection_cancel_seq_ = ack.command_seq;
+        MainWindowRecordingTestAccess::remoteAck(*window, ack);
+        ack.command_id = VaporView::CommandId::SetPeakSearchRange;
+        ack.command_seq = 65430;
+        ack.correlation_id = QStringLiteral("peak-success");
+        ack.session_id = QStringLiteral("peak-session");
+        ack.result = 0;
+        ack.error_code = VaporView::CommandErrorCode::Ok;
+        require(state.tcp_wave_panel_ != nullptr, "peak range test has a wave panel");
+        state.remote_peak_search_commands_.insert(ack.command_seq, {10, 20});
+        MainWindowRecordingTestAccess::remoteAck(*window, ack);
+        MainWindowRecordingTestAccess::unrelatedCommandLog(*window);
+        QObject::disconnect(connection);
+        require(records.size() == 8, "ACK, derived and unrelated logs published");
+        require(records[0].fields.value(QStringLiteral("event")) == QStringLiteral("remote_command_ack_received") &&
+                records[0].correlation_id == QStringLiteral("ack-success") &&
+                records[0].session_id == QStringLiteral("active-session"), "successful ACK keeps its context");
+        require(records[1].fields.value(QStringLiteral("event")) == QStringLiteral("remote_command_failed") &&
+                records[1].correlation_id == QStringLiteral("ack-failure") &&
+                records[1].session_id == QStringLiteral("active-session"), "failed ACK keeps its context");
+        require(records[2].fields.value(QStringLiteral("event")) == QStringLiteral("remote_command_ack_received") &&
+                records[2].correlation_id.isEmpty() && records[2].session_id.isEmpty(),
+                "legacy ACK does not invent context");
+        require(records[4].fields.value(QStringLiteral("event")) == QStringLiteral("remote_serial_port_detection_cancel_failed") &&
+                records[4].correlation_id == QStringLiteral("cancel-failure") &&
+                records[4].session_id == QStringLiteral("cancel-session"), "cancel failure keeps ACK context");
+        require(records[6].fields.value(QStringLiteral("event")) == QStringLiteral("peak_search_range_applied") &&
+                records[6].correlation_id == QStringLiteral("peak-success") &&
+                records[6].session_id == QStringLiteral("peak-session"), "applied peak range keeps ACK context");
+        require(records[7].correlation_id.isEmpty() && records[7].session_id.isEmpty(),
+                "unrelated command log does not inherit ACK context");
+    }
     window.reset();
     VaporView::setSettingsWritesSuspended(false);
     backup.restore();

@@ -3,9 +3,11 @@
 
 #include "TelemetryCodec.h"
 #include "TelemetryLink.h"
+#include "LogService.h"
 
 #include "FpgaTelemetry.h"
 #include <QHash>
+#include <QSet>
 #include <QObject>
 #include <QTimer>
 #include <QVector>
@@ -41,7 +43,7 @@ public:
     quint64 totalReceivedBytes() const;
     quint64 totalTransmittedBytes() const;
 
-    quint16 sendCommand(CommandId commandId, const QByteArray& payload = QByteArray());
+    quint16 sendCommand(CommandId commandId, const QByteArray& payload = QByteArray(), QString *correlationId = nullptr);
     quint16 sendDeviceOperation(const DeviceOperationRequest& request);
     bool sendRtcmCorrectionData(const QByteArray& data);
     quint16 sendDeviceCommand(CommandId commandId, SkyDeviceId deviceId);
@@ -76,6 +78,7 @@ private slots:
     void onRetryTimer();
 
 private:
+    friend class GroundTelemetryServiceTestAccess;
     struct PendingCommand
     {
         CommandMessage command;
@@ -83,19 +86,32 @@ private:
         int retry_count = 0;
         int retry_interval_ms = 800;
         qint64 next_retry_ms = 0;
+        bool ack_received = false;
+        bool context_session_observed = false;
+    };
+    struct AwaitedConfigResult
+    {
+        CommandMessage command;
+        bool sessionKnown = false;
     };
 
     void dispatchFrame(const TelemetryFrame& frame);
     void sendCommandPayload(PendingCommand& pending);
     bool openLink(std::unique_ptr<TelemetryLink> link);
     void attachLinkSignals();
+    void clearPendingForDisconnect();
     void noteReceivedBytes(qint64 bytes);
     void noteTransmittedBytes(qint64 bytes);
     void publishTelemetryLog(LogLevel level,
                              const QString& category,
                              const QString& event,
                              const QString& message,
-                             QVariantMap fields = QVariantMap());
+                             QVariantMap fields = QVariantMap(),
+                             const QString& correlationId = {},
+                             const QString& sessionId = {},
+                             const char *file = VAPORVIEW_LOG_FILE,
+                             const char *function = VAPORVIEW_LOG_FUNCTION,
+                             int line = VAPORVIEW_LOG_LINE);
     void reportProtocolDiagnostic(LogLevel level,
                                   const QString& category,
                                   const QString& event,
@@ -112,6 +128,16 @@ private:
     RtcmFrameSequence rtcm_sequence_;
     bool rtcm_observability_supported_ = false;
     QHash<quint16, PendingCommand> pending_commands_;
+    // Completed contextual results may arrive before their ACK. These entries
+    // reserve only command sequences, never device request IDs.
+    QHash<quint16, CommandMessage> completed_awaiting_ack_;
+    QHash<quint16, CommandMessage> config_completed_awaiting_ack_;
+    QHash<quint16, AwaitedConfigResult> config_results_awaited_;
+    QSet<quint16> command_sequences_being_sent_;
+    QSet<quint32> device_requests_being_sent_;
+    QHash<TelemetryLink *, int> open_changed_depth_;
+    // Briefly retain ACK context for peers that also send a typed result.
+    QHash<quint32, CommandMessage> recently_rejected_operations_;
 
     QVector<ByteSample> rx_byte_samples_;
     QVector<ByteSample> tx_byte_samples_;

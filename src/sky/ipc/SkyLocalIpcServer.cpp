@@ -80,7 +80,8 @@ SkyLocalIpcServer::~SkyLocalIpcServer()
 void SkyLocalIpcServer::publishIpcLog(LogLevel level,
                                       const QString& event,
                                       const QString& message,
-                                      QVariantMap fields)
+                                      QVariantMap fields, const QString& correlationId, const QString& sessionId,
+                                      const char *file, const char *function, int line)
 {
     fields.insert(QStringLiteral("event"), event);
     if (level >= LogLevel::Error &&
@@ -95,7 +96,10 @@ void SkyLocalIpcServer::publishIpcLog(LogLevel level,
     record.source = QStringLiteral("SkyCore");
     record.category = QStringLiteral("ipc");
     record.message = message;
+    record.correlation_id = correlationId;
+    record.session_id = sessionId;
     record.fields = fields;
+    LogService::addCallLocation(record, file, function, line);
     const bool published = LogService::withCurrentInstance([&](LogService& logService) {
         logService.publish(record);
     });
@@ -205,15 +209,19 @@ void SkyLocalIpcServer::onNewConnection()
                       QStringLiteral("本地 IPC 客户端已连接。"),
                       {{QStringLiteral("peer_host"), socket->peerAddress().toString()},
                        {QStringLiteral("peer_port"), socket->peerPort()}});
-        sendStatus(socket);
-        sendSkyConfig(socket);
-        sendFrame(socket, MsgType::FpgaStatus, FpgaRemote::encodeStatus(runtime_->currentFpgaStatus()));
+        if (runtime_)
+        {
+            sendStatus(socket);
+            sendSkyConfig(socket);
+            sendFrame(socket, MsgType::FpgaStatus, FpgaRemote::encodeStatus(runtime_->currentFpgaStatus()));
+        }
     }
 }
 
 void SkyLocalIpcServer::onStatusTimer()
 {
-    broadcastFrame(MsgType::TelemetryStatus, TelemetryCodec::serializeTelemetryStatus(runtime_->currentStatus()));
+    if (runtime_)
+        broadcastFrame(MsgType::TelemetryStatus, TelemetryCodec::serializeTelemetryStatus(runtime_->currentStatus()));
 }
 
 SkyLocalIpcServer::ClientState *SkyLocalIpcServer::stateFor(QTcpSocket *socket) const
@@ -256,9 +264,12 @@ void SkyLocalIpcServer::onReadyRead(QTcpSocket *socket)
         return;
     }
 
+    const quint64 connectionId = state->connection_id;
     const QVector<TelemetryFrame> frames = state->codec.feedBytes(socket->readAll());
     for (const TelemetryFrame& frame : frames)
     {
+        const ClientState *current = stateFor(socket);
+        if (!current || current->connection_id != connectionId) break;
         dispatchClientFrame(socket, frame);
     }
 }
@@ -293,6 +304,9 @@ void SkyLocalIpcServer::handleCommand(QTcpSocket *socket, const CommandMessage& 
         ack.command_seq = command.command_seq;
         ack.result = 0;
         ack.error_code = CommandErrorCode::Ok;
+        ack.correlation_id = command.correlation_id;
+        ack.session_id = runtime_ ? runtime_->activeSessionId() : QString();
+        ack.extended_ack_context_allowed = command.extended_ack_context_requested;
         sendFrame(socket, MsgType::CommandAck, TelemetryCodec::serializeCommandAck(ack));
         if (socket)
         {
@@ -302,7 +316,7 @@ void SkyLocalIpcServer::handleCommand(QTcpSocket *socket, const CommandMessage& 
                       QStringLiteral("sky_ipc_shutdown_requested"),
                       QStringLiteral("已收到本地 IPC 停止请求。"),
                       {{QStringLiteral("command_id"), static_cast<quint16>(command.command_id)},
-                       {QStringLiteral("command_seq"), command.command_seq}});
+                       {QStringLiteral("command_seq"), command.command_seq}}, command.correlation_id, ack.session_id);
         QTimer::singleShot(100, QCoreApplication::instance(), []() {
             QCoreApplication::quit();
         });
@@ -316,17 +330,22 @@ void SkyLocalIpcServer::handleCommand(QTcpSocket *socket, const CommandMessage& 
         ack.command_seq = command.command_seq;
         ack.result = 1;
         ack.error_code = CommandErrorCode::InternalError;
+        ack.correlation_id = command.correlation_id;
+        ack.extended_ack_context_allowed = command.extended_ack_context_requested;
         sendFrame(socket, MsgType::CommandAck, TelemetryCodec::serializeCommandAck(ack));
         return;
     }
 
+    const ClientState *state = stateFor(socket);
+    if (!state) return;
+    const quint64 connectionId = state->connection_id;
     const QPointer<SkyLocalIpcServer> self(this);
     const QPointer<QTcpSocket> peer(socket);
     runtime_->submitCommand(command, [self, peer](const SkyCommandResult& result) {
         if (!self || !peer) return;
         self->sendFrame(peer, MsgType::CommandAck, TelemetryCodec::serializeCommandAck(result.ack));
         self->sendCommandResultFrames(peer, result);
-    }, QByteArray("ipc:") + QByteArray::number(stateFor(socket)->connection_id));
+    }, QByteArray("ipc:") + QByteArray::number(connectionId));
 }
 
 void SkyLocalIpcServer::sendCommandResultFrames(QTcpSocket *socket, const SkyCommandResult& result)
@@ -342,6 +361,8 @@ void SkyLocalIpcServer::sendCommandResultFrames(QTcpSocket *socket, const SkyCom
     if (result.send_config_apply_result)
     {
         sendConfigApplyResult(socket, result.config_apply_result);
+        if (!result.config_apply_result_context.isEmpty())
+            sendFrame(socket, MsgType::SkyConfigApplyResultContext, result.config_apply_result_context);
     }
     if (result.send_one_waveform)
     {
@@ -349,10 +370,11 @@ void SkyLocalIpcServer::sendCommandResultFrames(QTcpSocket *socket, const SkyCom
     }
     if (result.send_device_operation_response)
     {
+        const bool contextual = result.ack.typed_response_context_supported;
         sendFrame(socket,
-                  MsgType::DeviceOperationResponse,
-                  TelemetryCodec::serializeDeviceOperationResponse(
-                      result.device_operation_response));
+                  contextual ? MsgType::DeviceOperationResponseContext : MsgType::DeviceOperationResponse,
+                  contextual ? result.device_operation_response_context
+                             : TelemetryCodec::serializeDeviceOperationResponse(result.device_operation_response));
     }
 }
 

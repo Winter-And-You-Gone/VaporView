@@ -231,7 +231,7 @@ void TcpTelemetryLink::onSocketDisconnected()
 void TcpTelemetryLink::emitTcpLog(LogLevel level,
                                   const QString& event,
                                   const QString& message,
-                                  QVariantMap fields)
+                                  QVariantMap fields, const char *file, const char *function, int line)
 {
     fields.insert(QStringLiteral("event"), event);
 
@@ -241,6 +241,7 @@ void TcpTelemetryLink::emitTcpLog(LogLevel level,
     record.category = QStringLiteral("telemetry.link");
     record.message = message;
     record.fields = std::move(fields);
+    LogService::addCallLocation(record, file, function, line);
     emit logRecordGenerated(record);
 }
 

@@ -2,7 +2,7 @@
 #define VaporView_SKY_DEVICE_MANAGER_H_
 
 #include "Ai8TemperatureControllerCollector.h"
-#include "LogRecord.h"
+#include "LogService.h"
 #include "SkyConfig.h"
 #include "TelemetryTypes.h"
 #include "TcpWaveEncoding.h"
@@ -13,6 +13,7 @@
 #include <QObject>
 #include <QTcpSocket>
 #include <QTimer>
+#include <QElapsedTimer>
 #include <atomic>
 #include <array>
 #include <cstdint>
@@ -21,6 +22,7 @@
 #include <mutex>
 #include <thread>
 #include <functional>
+#include <optional>
 
 #include "shared/concurrency/BoundedByteQueue.h"
 
@@ -55,21 +57,23 @@ public:
     void setFpgaSimulationEnabled(bool enabled);
     void loadConfig(const SkyConfig& config);
     const SkyConfig& config() const;
-    void submitFpgaControl(QJsonObject operation, SkyFpgaBackend::Completion completion);
+    void submitFpgaControl(QJsonObject operation, SkyFpgaBackend::Completion completion, const QString& correlationId = {}, const QString& sessionId = {});
     QJsonObject fpgaStatus() const;
     void setFpgaTransportForTesting(std::unique_ptr<Ground::Devices::FpgaUsbTransport> transport);
 
-    bool connectDevice(SkyDeviceId id, CommandErrorCode *errorCode = nullptr);
+    bool connectDevice(SkyDeviceId id, CommandErrorCode *errorCode = nullptr,
+                       const QString& correlationId = {}, const QString& sessionId = {});
     bool disconnectDevice(SkyDeviceId id, CommandErrorCode *errorCode = nullptr);
-    bool reconnectDevice(SkyDeviceId id, CommandErrorCode *errorCode = nullptr);
-    void connectAll();
+    bool reconnectDevice(SkyDeviceId id, CommandErrorCode *errorCode = nullptr,
+                         const QString& correlationId = {}, const QString& sessionId = {});
+    void connectAll(const QString& correlationId = {}, const QString& sessionId = {});
     void disconnectAll(bool publishLogs = true);
-    void reconnectAll();
+    void reconnectAll(const QString& correlationId = {}, const QString& sessionId = {});
     void shutdown(bool publishLogs = false);
 
     DeviceStatusItem status(SkyDeviceId id) const;
     QVector<DeviceStatusItem> allStatuses() const;
-    ApplyConfigResult applyConfig(const SkyConfig& newConfig);
+    ApplyConfigResult applyConfig(const SkyConfig& newConfig, const QString& correlationId = {}, const QString& sessionId = {});
     bool setPeakSearchRange(quint32 startIndex, quint32 endIndex, CommandErrorCode *errorCode = nullptr);
     bool configureEpsilonPacketRates(const EpsilonPacketRatesOperation& operation,
                                      CommandErrorCode *errorCode = nullptr,
@@ -176,9 +180,12 @@ private slots:
     void onWaveTcpConnected();
     void onWaveTcpDisconnected();
     void onWaveTcpReadyRead();
-    void onWaveTcpError();
+    void onWaveTcpError(QAbstractSocket::SocketError error);
+    void finishWaveTcpConnect(const QString& event, bool failed, QVariantMap details = {});
 
 private:
+    friend class SkyRuntimeEpsilonContextTestAccess;
+    friend class SkyRtcmWriterTestAccess;
     void ensureFpgaBackend();
     void acceptFpgaMeasurement(const FpgaSensor::AdaptedMeasurements& measurement);
     void invalidateFpgaMeasurements();
@@ -203,7 +210,10 @@ private:
                           const QString& category,
                           const QString& event,
                           const QString& message,
-                          QVariantMap fields = QVariantMap());
+                          QVariantMap fields = QVariantMap(),
+                          const char *file = VAPORVIEW_LOG_FILE,
+                          const char *function = VAPORVIEW_LOG_FUNCTION,
+                          int line = VAPORVIEW_LOG_LINE);
     void publishWaveform(const QVector<float>& raw, const QVector<float>& harmonic);
     void handleEpsilonData(const EpsilonData& data);
     void handlePtbData(const PtbData& data);
@@ -228,7 +238,8 @@ private:
     void invalidateDeviceData(SkyDeviceId id);
     void restartRtcmWriter();
     void stopRtcmWriter();
-    void rtcmWriterLoop(QString port, int baudRate);
+    void rtcmWriterLoop(QString port, int baudRate, quint64 generation);
+    void drainRtcmDiagnostics(quint64 generation);
 
     SkyConfig config_ = SkyConfig::defaults();
     bool simulate_data_ = false;
@@ -259,6 +270,9 @@ private:
     bool simulated_ai8_pages_initialized_ = false;
 
     QTcpSocket *wave_socket_ = nullptr;
+    QString wave_connect_correlation_id_;
+    QString wave_connect_session_id_;
+    quint64 wave_connection_generation_ = 0;
     QByteArray wave_buffer_;
     TcpFloatEncoding wave_float_encoding_ = TcpFloatEncoding::Unknown;
     quint64 wave_frame_count_ = 0;
@@ -281,6 +295,37 @@ private:
     quint64 raw_event_drops_reported_ = 0;
 
     BoundedByteQueue<QByteArray> pending_rtcm_corrections_{512ULL * 1024ULL, 256};
+    struct RtcmDiagnostic {
+        bool recovered = false;
+        QString port;
+        int baudRate = 0;
+        QString reason;
+        QString detail;
+        qint64 requestedBytes = 0;
+        qint64 writtenBytes = 0;
+        quint64 threadId = 0;
+        quint64 timestampUs = 0;
+        const char *file = nullptr;
+        const char *function = nullptr;
+        int line = 0;
+    };
+    std::mutex rtcm_diagnostic_mutex_;
+    std::optional<RtcmDiagnostic> rtcm_first_failure_;
+    std::optional<RtcmDiagnostic> rtcm_latest_diagnostic_;
+    bool rtcm_diagnostics_active_ = false;
+    bool rtcm_diagnostic_scheduled_ = false;
+    bool rtcm_first_failure_delivered_ = false;
+    bool rtcm_reported_failure_ = false;
+    quint64 rtcm_diagnostic_generation_ = 0;
+    QElapsedTimer rtcm_diagnostic_clock_;
+    quint64 rtcm_writer_generation_ = 0;
+    struct RtcmTestIo {
+        std::function<bool()> open;
+        std::function<qint64(const QByteArray&)> write;
+        std::function<QString()> error;
+        std::function<void()> close;
+    };
+    std::shared_ptr<RtcmTestIo> rtcm_test_io_;
     std::thread rtcm_writer_thread_;
     std::atomic<quint64> rtcm_correction_bytes_received_{0};
     std::atomic<quint64> rtcm_correction_chunks_received_{0};

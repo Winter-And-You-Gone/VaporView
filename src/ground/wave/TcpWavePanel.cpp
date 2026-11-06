@@ -3881,7 +3881,7 @@ void TcpWavePanel::resetParserState()
 void TcpWavePanel::publishTcpWaveLog(VaporView::LogLevel level,
                                      const QString& event,
                                      const QString& message,
-                                     QVariantMap fields) const
+                                     QVariantMap fields, const char *file, const char *function, int line) const
 {
     fields.insert(QStringLiteral("event"), event);
     fields.insert(QStringLiteral("ui_visible"), true);
@@ -3898,6 +3898,7 @@ void TcpWavePanel::publishTcpWaveLog(VaporView::LogLevel level,
     record.category = QStringLiteral("telemetry.wave.tcp");
     record.message = message;
     record.fields = std::move(fields);
+    VaporView::LogService::addCallLocation(record, file, function, line);
     if (!VaporView::LogService::withCurrentInstance([&](VaporView::LogService& logService) {
             logService.publish(record);
         }))

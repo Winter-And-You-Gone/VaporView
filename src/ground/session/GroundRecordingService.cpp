@@ -365,6 +365,10 @@ public:
             return false;
         }
 
+        {
+            std::lock_guard<std::mutex> lock(filesMutex);
+            fileSessionDirectory = layout.sessionDirectory;
+        }
         resetCurrentCounts();
         {
             VaporView::RecordingOutputDevice output(*storage, *eventLogFile);
@@ -435,6 +439,10 @@ public:
             return false;
         }
 
+        {
+            std::lock_guard<std::mutex> lock(warningSessionMutex);
+            warningSessionDirectory = layout.sessionDirectory;
+        }
         startWorkers();
         calibrationBound = true;
         notifyStatus();
@@ -533,10 +541,14 @@ public:
         if(calibrationPolicy)calibrationPolicy->finish();
         resetCurrentCounts();
         paused.store(false);
+        {
+            std::lock_guard<std::mutex> lock(warningSessionMutex);
+            warningSessionDirectory.clear();
+        }
         layout = {};
         sessionStartTimeUtc.clear();
         sessionStartTimeUs = 0;
-        notifyStatus();
+        notifyStatus(&summary.sessionDirectory);
         return summary;
     }
 
@@ -696,6 +708,11 @@ public:
     bool appendEvent(const QString& level, const QString& message)
     {
         std::lock_guard<std::mutex> lock(filesMutex);
+        return appendEventUnlocked(level, message);
+    }
+
+    bool appendEventUnlocked(const QString& level, const QString& message)
+    {
         if (!eventLogFile || !eventLogFile->isOpen())
         {
             return false;
@@ -736,6 +753,11 @@ public:
     bool appendError(const QString& message)
     {
         std::lock_guard<std::mutex> lock(filesMutex);
+        return appendErrorUnlocked(message);
+    }
+
+    bool appendErrorUnlocked(const QString& message)
+    {
         if (!errorLogFile || !errorLogFile->isOpen())
         {
             return false;
@@ -752,6 +774,21 @@ public:
         return ok;
     }
 
+    GroundLogAppendResult appendLogRecord(const QString& level, const QString& message,
+                                          bool isError, const QString& sessionId)
+    {
+        std::lock_guard<std::mutex> lock(filesMutex);
+        GroundLogAppendResult result;
+        if (fileSessionDirectory.isEmpty() || (!sessionId.isEmpty() && sessionId != fileSessionDirectory))
+        {
+            result.skipped = true;
+            return result;
+        }
+        result.eventWritten = appendEventUnlocked(level, message);
+        result.errorWritten = !isError || appendErrorUnlocked(message);
+        return result;
+    }
+
     quint64 steadyToEpochUs(const std::chrono::steady_clock::time_point& timePoint) const
     {
         if (timePoint == std::chrono::steady_clock::time_point{})
@@ -765,21 +802,28 @@ public:
             systemPoint.time_since_epoch()).count());
     }
 
-    void notifyStatus() const
+    void notifyStatus(const QString *warningSession = nullptr) const
     {
         if (writeFailed.load() && !storageFailureReported.exchange(true))
-            warn(GroundRecordingWarning::DataWriteFailed, 0);
+            warn(GroundRecordingWarning::DataWriteFailed, 0, warningSession);
         if (statusCallback)
         {
             statusCallback();
         }
     }
 
-    void warn(GroundRecordingWarning warning, quint64 value) const
+    void warn(GroundRecordingWarning warning, quint64 value, const QString *sessionOverride = nullptr) const
     {
         if (warningCallback)
         {
-            warningCallback(warning, value);
+            QString session;
+            if (sessionOverride)
+                session = *sessionOverride;
+            else {
+                std::lock_guard<std::mutex> lock(warningSessionMutex);
+                session = warningSessionDirectory;
+            }
+            warningCallback(warning, value, session);
         }
     }
 
@@ -1188,6 +1232,7 @@ private:
     void closeFiles()
     {
         std::lock_guard<std::mutex> lock(filesMutex);
+        fileSessionDirectory.clear();
         for (QFile *file : {navigationRawFile.get(),
                             pressureRawFile.get(),
                             temperatureHumidityRawFile.get(),
@@ -1261,6 +1306,8 @@ public:
     SensorSnapshotProvider sensorSnapshotProvider;
     StatusCallback statusCallback;
     WarningCallback warningCallback;
+    mutable std::mutex warningSessionMutex;
+    QString warningSessionDirectory;
     GroundRecordingOptions options;
     RecordingSessionLayout layout;
     Ppk::ObservationStore ppkObservations;
@@ -1306,6 +1353,7 @@ public:
     std::unique_ptr<QFile> errorLogFile;
 
     mutable std::mutex filesMutex;
+    QString fileSessionDirectory;
     std::thread sensorThread;
     std::atomic<bool> workerRunning{false};
     std::atomic<bool> paused{false};
@@ -1567,6 +1615,12 @@ bool GroundRecordingService::recordNavigationStatus(const VaporView::Session::Na
 bool GroundRecordingService::appendError(const QString& message)
 {
     return impl_->appendError(message);
+}
+
+GroundLogAppendResult GroundRecordingService::appendLogRecord(const QString& level, const QString& message,
+                                                              bool isError, const QString& sessionId)
+{
+    return impl_->appendLogRecord(level, message, isError, sessionId);
 }
 
 quint64 GroundRecordingService::steadyToEpochUs(

@@ -197,7 +197,11 @@ void controls()
     check(controller.discoverDevices().value("devices").toArray().size()==1,
           "local factory discovers a simulator independently of physical USB");
     QSet<quint16> sensors,waves;QMap<quint16,int> waveCount;QString failure;bool configuredRaw=false;QObject observer;
-    QObject::connect(&controller,&FpgaDeviceController::logRecordGenerated,&observer,[&](const LogRecord& r){if(r.level>=LogLevel::Error)failure=r.message;});
+    LogRecord connectionLog;
+    QObject::connect(&controller,&FpgaDeviceController::logRecordGenerated,&observer,[&](const LogRecord& r){
+        if(r.level>=LogLevel::Error)failure=r.message;
+        if(r.fields.value("event")==QStringLiteral("fpga_device_connection_result"))connectionLog=r;
+    });
     QObject::connect(&controller,&FpgaDeviceController::measurementUpdated,&observer,[&](const auto& r){if(r.reading.validity.measurement)sensors.insert(r.reading.source);});
     QObject::connect(&controller,&FpgaDeviceController::waveformUpdated,&observer,[&](const auto& w){if(w.complete){waves.insert(w.source);++waveCount[w.source];
         if(w.source==0x20)configuredRaw=w.totalPoints==8000&&w.signed32Samples.size()==8000&&
@@ -208,6 +212,10 @@ void controls()
     for(quint16 source:{0x40,0x41,0x42,0x43,0x44,0x45,0x46}) {
         controller.connectSensor({{"op","sensor"},{"source",source},{"enabled",true}});wait(idle,"explicit sensor startup");
     }
+    check(connectionLog.fields.value("file").toString().endsWith("FpgaDeviceController.cpp") &&
+          connectionLog.fields.value("function").toString().contains("Connection") &&
+          connectionLog.fields.value("line").toInt()>0,
+          "FPGA connection result keeps the business call location before signal forwarding");
     for(int ch=0;ch<2;++ch){controller.setDac(ch,true);wait(idle,"explicit DAC startup");}
     controller.setAcquisition(true);wait(idle,"explicit acquisition startup");
     wait([&]{return sensors.size()==7&&waves.size()==2;},"controller receives six sensors and both DLIA channels");

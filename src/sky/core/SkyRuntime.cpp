@@ -1,6 +1,7 @@
 #include "SkyRuntime.h"
 #include "FpgaTelemetry.h"
 #include "LogService.h"
+#include "LogContext.h"
 #include "SerialBaudRate.h"
 #include "ground/devices/SerialPortDetectionService.h"
 #include "geo/CoordinateTransform.h"
@@ -12,13 +13,16 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
+#include <QSet>
 #include <QUuid>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
+#include <QPointer>
 #include <QRandomGenerator>
+#include <QScopeGuard>
 #include <QStorageInfo>
 #include <QtGlobal>
 #include <QtEndian>
@@ -32,6 +36,34 @@ namespace VaporView
 {
 namespace
 {
+void logCommandContext(const CommandMessage& command, const QString& event, LogLevel level,
+                       const QVariantMap& extra = {}, const char *file = VAPORVIEW_LOG_FILE,
+                       const char *function = VAPORVIEW_LOG_FUNCTION, int line = VAPORVIEW_LOG_LINE)
+{
+    if (command.correlation_id.isEmpty()) return;
+    LogRecord record;
+    record.level = level;
+    record.source = QStringLiteral("SkyCore");
+    record.category = QStringLiteral("sky.command");
+    if (event == QStringLiteral("sky_command_received")) record.message = QStringLiteral("天空端已收到命令。");
+    else if (event == QStringLiteral("sky_command_progress")) record.message = QStringLiteral("天空端命令正在执行。");
+    else if (event == QStringLiteral("sky_device_operation_started")) record.message = QStringLiteral("天空端开始执行设备操作。");
+    else if (event == QStringLiteral("sky_device_operation_finished")) record.message = QStringLiteral("天空端设备操作已结束。");
+    else if (event == QStringLiteral("sky_device_worker_started")) record.message = QStringLiteral("设备工作线程开始执行操作。");
+    else if (event == QStringLiteral("sky_device_worker_finished")) record.message = QStringLiteral("设备工作线程已完成操作。");
+    else if (event == QStringLiteral("sky_device_result_discarded")) record.message = QStringLiteral("运行时停止，尚未交付的设备操作结果已丢弃；设备实际状态需要确认。");
+    else record.message = QStringLiteral("天空端命令处理已结束。");
+    record.correlation_id = command.correlation_id;
+    record.session_id = command.session_id;
+    record.fields = extra;
+    LogService::addCallLocation(record, file, function, line);
+    record.fields.insert(QStringLiteral("event"), event);
+    record.fields.insert(QStringLiteral("command_seq"), command.command_seq);
+    record.fields.insert(QStringLiteral("command_id"), static_cast<quint16>(command.command_id));
+    if (!LogService::withCurrentInstance([&](LogService& service) { service.publish(record); }))
+        LogService::writeLogFallback(record);
+}
+
 int intervalMs(double hz)
 {
     return std::max(1, static_cast<int>(1000.0 / std::max(0.001, hz)));
@@ -89,6 +121,23 @@ CommandAck makeAck(const CommandMessage& command, CommandErrorCode errorCode = C
     ack.result = errorCode == CommandErrorCode::Ok ? 0 : 1;
     ack.error_code = errorCode;
     return ack;
+}
+
+SkyCommandResult stoppedCommandResult(const CommandMessage& command)
+{
+    SkyCommandResult result;
+    result.ack = makeAck(command, CommandErrorCode::DeviceOperationBusy);
+    DeviceOperationRequest request;
+    if (command.command_id == CommandId::DeviceOperation &&
+        TelemetryCodec::parseDeviceOperationRequest(command.payload, request)) {
+        result.send_device_operation_response = true;
+        result.device_operation_response.request_id = request.request_id;
+        result.device_operation_response.device_id = request.device_id;
+        result.device_operation_response.operation = request.operation;
+        result.device_operation_response.error_code = CommandErrorCode::DeviceOperationBusy;
+        result.device_operation_response.error_message = QStringLiteral("Sky runtime is stopping.");
+    }
+    return result;
 }
 
 QString defaultConfigPath()
@@ -181,13 +230,17 @@ SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
     });
     command_clock_.start();
     session_recorder_.setStorageFailureCallback([this]() {
-        QMetaObject::invokeMethod(this, [this]() {
+        const auto context = storageFailureContext(session_recorder_.sessionDirectory());
+        QMetaObject::invokeMethod(this, [this, context]() {
+            ScopedLogContext scope(context);
             publishRuntimeLog(LogLevel::Error, QStringLiteral("session.write"),
                               QStringLiteral("recording_data_write_failed"),
-                              QStringLiteral("天空端录制写入失败，会话已暂停并标记为不完整。"),
+                              QStringLiteral("天空端录制写入失败，会话已标记为不完整。"),
                               {{QStringLiteral("error_code"), QStringLiteral("RECORDING_DATA_WRITE_FAILED")},
                                {QStringLiteral("session_sink_failure"), true}});
-            sendTelemetryStatus();
+            if ((session_recorder_.isRecording() || session_recorder_.isPaused()) &&
+                session_recorder_.sessionDirectory() == context.sessionId && session_recorder_.storageFailed())
+                sendTelemetryStatus();
         }, Qt::QueuedConnection);
     });
     LogService::withCurrentInstance([this](LogService& logService) {
@@ -214,7 +267,8 @@ SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
                                                 {QStringLiteral("event_ok"), eventOk},
                                                 {QStringLiteral("error_ok"), errorFileOk},
                                                 {QStringLiteral("source"), record.source},
-                                                {QStringLiteral("category"), record.category}});
+                                                {QStringLiteral("category"), record.category}},
+                                               record.correlation_id, record.session_id);
                         });
                     }
                 });
@@ -336,6 +390,13 @@ QJsonObject SkyRuntime::currentFpgaStatus() const
 void SkyRuntime::setFpgaTransportForTesting(std::unique_ptr<Ground::Devices::FpgaUsbTransport> transport)
 { device_manager_.setFpgaTransportForTesting(std::move(transport)); }
 
+bool SkyRuntime::setEpsilonMaintenanceExchangeForTesting(EpsilonMaintenanceExchange exchange)
+{
+    if (running_ || !options_.simulate_data) return false;
+    maintenance_exchange_for_testing_ = std::move(exchange);
+    return true;
+}
+
 SkyRuntime::~SkyRuntime()
 {
     stop();
@@ -345,7 +406,7 @@ void SkyRuntime::publishRuntimeLog(LogLevel level,
                                    const QString& category,
                                    const QString& event,
                                    const QString& message,
-                                   QVariantMap fields)
+                                   QVariantMap fields, const char *file, const char *function, int line)
 {
     fields.insert(QStringLiteral("event"), event);
     if (level >= LogLevel::Error &&
@@ -364,6 +425,15 @@ void SkyRuntime::publishRuntimeLog(LogLevel level,
     record.category = category;
     record.message = message;
     record.fields = fields;
+    if (const auto *context = currentLogContext())
+    {
+        record.correlation_id = context->correlationId;
+        record.session_id = context->sessionId;
+        if (record.session_id.isEmpty() && event == QStringLiteral("sky_recording_started") &&
+            (session_recorder_.isRecording() || session_recorder_.isPaused()))
+            record.session_id = session_recorder_.sessionDirectory();
+    }
+    LogService::addCallLocation(record, file, function, line);
     const bool published = LogService::withCurrentInstance([&](LogService& logService) {
         logService.publish(record);
     });
@@ -376,6 +446,7 @@ void SkyRuntime::publishRuntimeLog(LogLevel level,
 
 bool SkyRuntime::start()
 {
+    if (stopping_) return false;
     if (running_)
     {
         return true;
@@ -550,9 +621,14 @@ bool SkyRuntime::start()
 
 void SkyRuntime::stop()
 {
+    if (stopping_) return;
+    stopping_ = true;
+    const auto stopGuard = qScopeGuard([this] { stopping_ = false; });
     ++device_command_generation_;
     if (maintenance_cancel_) maintenance_cancel_->store(true);
     if (device_command_thread_.joinable()) device_command_thread_.join();
+    const auto interruptedCommands = std::move(active_command_log_contexts_);
+    active_command_log_contexts_.clear();
     active_command_key_.clear();
     maintenance_cancel_.reset();
     maintenance_request_id_ = 0;
@@ -560,12 +636,29 @@ void SkyRuntime::stop()
     active_command_callbacks_.clear();
     command_results_.clear();
     command_request_payloads_.clear();
+    QSet<QString> interruptedIds;
+    for (const auto& interruptedCommand : interruptedCommands) {
+        if (interruptedCommand.correlation_id.isEmpty() || interruptedIds.contains(interruptedCommand.correlation_id)) continue;
+        interruptedIds.insert(interruptedCommand.correlation_id);
+        logCommandContext(interruptedCommand, QStringLiteral("sky_device_result_discarded"), LogLevel::Warning,
+                          {{QStringLiteral("reason_code"), QStringLiteral("RUNTIME_STOPPED")}});
+    }
+    ++serial_port_detection_generation_;
+    const bool interruptedDetection = serial_port_detection_in_progress_.exchange(false);
+    const LogContext interruptedContext = std::move(serial_port_detection_context_);
+    serial_port_detection_context_ = {};
     serial_port_detection_cancel_requested_.store(true);
     if (serial_port_detection_thread_.joinable())
     {
         serial_port_detection_thread_.join();
     }
-    serial_port_detection_in_progress_.store(false);
+    if (interruptedDetection) {
+        ScopedLogContext scope(interruptedContext);
+        publishRuntimeLog(LogLevel::Warning, QStringLiteral("device.connection"),
+                          QStringLiteral("serial_port_detection_interrupted"),
+                          QStringLiteral("运行时停止，天空端串口自动识别已中断。"),
+                          {{QStringLiteral("reason_code"), QStringLiteral("RUNTIME_STOPPED")}});
+    }
 
     if (!running_)
     {
@@ -586,6 +679,12 @@ void SkyRuntime::stop()
 
     if ((session_recorder_.isRecording() || session_recorder_.isPaused()) && !session_recorder_.hasRecoveredCalibrationLock())
     {
+        const auto *current = currentLogContext();
+        const LogContext shutdownContext{
+            current && !current->correlationId.isEmpty()
+                ? current->correlationId : QUuid::createUuid().toString(QUuid::WithoutBraces),
+            session_recorder_.sessionDirectory()};
+        const ScopedLogContext scope(shutdownContext);
         publishRuntimeLog(LogLevel::Info,
                           QStringLiteral("session.recording"),
                           QStringLiteral("sky_recording_stop_requested"),
@@ -629,10 +728,10 @@ bool SkyRuntime::isRunning() const
     return running_;
 }
 
-bool SkyRuntime::connectDevice(SkyDeviceId id, CommandErrorCode *error)
+bool SkyRuntime::connectDevice(SkyDeviceId id, CommandErrorCode *error, const QString& correlationId, const QString& sessionId)
 {
     if (!active_command_key_.isEmpty()) { if (error) *error = CommandErrorCode::DeviceOperationBusy; return false; }
-    return device_manager_.connectDevice(id, error);
+    return device_manager_.connectDevice(id, error, correlationId, sessionId);
 }
 
 bool SkyRuntime::disconnectDevice(SkyDeviceId id, CommandErrorCode *error)
@@ -641,16 +740,16 @@ bool SkyRuntime::disconnectDevice(SkyDeviceId id, CommandErrorCode *error)
     return device_manager_.disconnectDevice(id, error);
 }
 
-bool SkyRuntime::reconnectDevice(SkyDeviceId id, CommandErrorCode *error)
+bool SkyRuntime::reconnectDevice(SkyDeviceId id, CommandErrorCode *error, const QString& correlationId, const QString& sessionId)
 {
     if (!active_command_key_.isEmpty()) { if (error) *error = CommandErrorCode::DeviceOperationBusy; return false; }
-    return device_manager_.reconnectDevice(id, error);
+    return device_manager_.reconnectDevice(id, error, correlationId, sessionId);
 }
 
-void SkyRuntime::connectAllDevices()
+void SkyRuntime::connectAllDevices(const QString& correlationId, const QString& sessionId)
 {
     if (!active_command_key_.isEmpty()) return;
-    device_manager_.connectAll();
+    device_manager_.connectAll(correlationId, sessionId);
 }
 
 void SkyRuntime::disconnectAllDevices()
@@ -659,10 +758,10 @@ void SkyRuntime::disconnectAllDevices()
     device_manager_.disconnectAll();
 }
 
-void SkyRuntime::reconnectAllDevices()
+void SkyRuntime::reconnectAllDevices(const QString& correlationId, const QString& sessionId)
 {
     if (!active_command_key_.isEmpty()) return;
-    device_manager_.reconnectAll();
+    device_manager_.reconnectAll(correlationId, sessionId);
 }
 
 bool SkyRuntime::startRecording(QString *error)
@@ -763,6 +862,12 @@ bool SkyRuntime::stopRecording(QString *error)
                       QStringLiteral("天空端会话记录已停止。"),
                       {{QStringLiteral("session_directory"), session_recorder_.sessionDirectory()}});
     return true;
+}
+
+QString SkyRuntime::activeSessionId() const
+{
+    return session_recorder_.isRecording() || session_recorder_.isPaused()
+        ? session_recorder_.sessionDirectory() : QString();
 }
 
 TelemetryStatus SkyRuntime::currentStatus() const
@@ -1121,15 +1226,38 @@ void SkyRuntime::sendHeartbeat()
     sendFrame(MsgType::Heartbeat, payload);
 }
 
+LogContext SkyRuntime::storageFailureContext(const QString& sessionId)
+{
+    std::lock_guard<std::mutex> lock(storage_failure_context_mutex_);
+    if (storage_failure_context_.sessionId != sessionId || storage_failure_context_.correlationId.isEmpty())
+        storage_failure_context_ = {QUuid::createUuid().toString(QUuid::WithoutBraces), sessionId};
+    return storage_failure_context_;
+}
+
 void SkyRuntime::sendTelemetryStatus()
 {
     if (device_manager_.config().fpga.enabled && session_recorder_.storageFailed() && !fpga_storage_failure_handled_) {
+        const auto context = storageFailureContext(session_recorder_.sessionDirectory());
+        ScopedLogContext scope(context);
         fpga_storage_failure_handled_=true;
+        const bool sessionOpen = session_recorder_.isRecording() || session_recorder_.isPaused();
         session_recorder_.pause();
         publishRuntimeLog(LogLevel::Error,QStringLiteral("session.write"),QStringLiteral("fpga_recording_storage_failed"),
-            QStringLiteral("FPGA 存储写入失败，会话已暂停并标记为不完整，正在停止采集。"),
+            sessionOpen ? QStringLiteral("FPGA 存储写入失败，会话已暂停并标记为不完整，正在停止采集。")
+                        : QStringLiteral("FPGA 存储写入失败，会话已结束并标记为不完整，正在停止采集。"),
             {{QStringLiteral("error_code"),QStringLiteral("FPGA_RECORDING_STORAGE_FAILED")},{QStringLiteral("session_sink_failure"),true}});
-        device_manager_.submitFpgaControl({{"op","acquisition"},{"enabled",false}},[this](CommandErrorCode code,QString detail,QJsonObject) {
+        device_manager_.submitFpgaControl({{"op","acquisition"},{"enabled",false}},[this, context](CommandErrorCode code,QString detail,QJsonObject) {
+            ScopedLogContext scope(context);
+            if (code == CommandErrorCode::Ok)
+                publishRuntimeLog(LogLevel::Info, QStringLiteral("device.fpga"), QStringLiteral("fpga_storage_recovery_finished"),
+                    QStringLiteral("存储故障后采集已停止。"),
+                    {{QStringLiteral("reason_code"), QStringLiteral("STOPPED")}, {QStringLiteral("session_sink_failure"), true}});
+            else
+                publishRuntimeLog(LogLevel::Error, QStringLiteral("device.fpga"), QStringLiteral("fpga_storage_recovery_finished"),
+                    QStringLiteral("存储故障后停止采集失败。"),
+                    {{QStringLiteral("error_code"), QStringLiteral("FPGA_STORAGE_RECOVERY_FAILED")},
+                     {QStringLiteral("reason_code"), QStringLiteral("STOP_FAILED")}, {QStringLiteral("detail"), detail},
+                     {QStringLiteral("session_sink_failure"), true}});
             if(code!=CommandErrorCode::Ok) {
                 // No retry of an uncertain write. Closing USB cancels current work and stops host ingestion.
                 device_manager_.disconnectDevice(SkyDeviceId::Fpga);
@@ -1138,7 +1266,7 @@ void SkyRuntime::sendTelemetryStatus()
                     {{QStringLiteral("error_code"),QStringLiteral("FPGA_STOP_UNCONFIRMED")},{QStringLiteral("detail"),detail}});
             }
             sendFrame(MsgType::FpgaStatus,FpgaRemote::encodeStatus(currentFpgaStatus()));
-        });
+        }, context.correlationId, context.sessionId);
     }
     const TelemetryStatus status = currentStatus();
     sendFrame(MsgType::TelemetryStatus, TelemetryCodec::serializeTelemetryStatus(status));
@@ -1259,6 +1387,68 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
                               std::function<void(const SkyCommandResult&)> completion,
                               const QByteArray& clientScope)
 {
+    const quint64 commandGeneration = device_command_generation_;
+    CommandMessage logContext = command;
+    logContext.session_id.clear();
+    if (session_recorder_.isRecording() || session_recorder_.isPaused())
+        logContext.session_id = session_recorder_.sessionDirectory();
+    logCommandContext(logContext, QStringLiteral("sky_command_received"), LogLevel::Info);
+    const bool deviceOperation = command.command_id == CommandId::DeviceOperation ||
+        command.command_id == CommandId::ConnectDevice || command.command_id == CommandId::DisconnectDevice ||
+        command.command_id == CommandId::ReconnectDevice || command.command_id == CommandId::ConnectAllDevices ||
+        command.command_id == CommandId::DisconnectAllDevices || command.command_id == CommandId::ReconnectAllDevices;
+    if (deviceOperation)
+        logCommandContext(logContext, QStringLiteral("sky_device_operation_started"), LogLevel::Info);
+    auto originalCompletion = std::move(completion);
+    const QPointer<SkyRuntime> self(this);
+    completion = [logContext, deviceOperation, self, callback = std::move(originalCompletion)](const SkyCommandResult& original) {
+        auto context = logContext;
+        auto result = original;
+        if (context.session_id.isEmpty() && self && context.command_id == CommandId::StartRecording &&
+            result.ack.error_code == CommandErrorCode::Ok &&
+            (self->session_recorder_.isRecording() || self->session_recorder_.isPaused()))
+            context.session_id = self->session_recorder_.sessionDirectory();
+        result.ack.correlation_id = context.correlation_id;
+        result.ack.session_id = context.session_id;
+        result.ack.extended_ack_context_allowed = context.extended_ack_context_requested;
+        result.ack.allow_session_id_omission = context.command_id == CommandId::SetSkyConfig &&
+            context.config_result_context_requested && context.config_ack_session_omission_supported;
+        result.device_operation_response.correlation_id = context.correlation_id;
+        result.device_operation_response.session_id = context.session_id;
+        if (result.send_config_apply_result && context.command_id == CommandId::SetSkyConfig &&
+            context.config_result_context_requested && !context.correlation_id.isEmpty())
+            result.config_apply_result_context = TelemetryCodec::serializeSkyConfigApplyResultContext(
+                result.config_apply_result, context.correlation_id, context.session_id, context.command_seq,
+                context.extended_result_context_requested);
+        if (context.command_id == CommandId::SetSkyConfig && context.config_result_context_requested &&
+            !context.correlation_id.isEmpty())
+            result.ack.config_result_context_expected = !result.config_apply_result_context.isEmpty();
+        result.device_operation_response_context.clear();
+        if (result.send_device_operation_response && context.command_id == CommandId::DeviceOperation &&
+            context.typed_response_context_requested && !context.correlation_id.isEmpty())
+            result.device_operation_response_context = TelemetryCodec::serializeDeviceOperationResponseContext(
+                result.device_operation_response, context.extended_result_context_requested);
+        result.ack.typed_response_context_supported = !result.device_operation_response_context.isEmpty();
+        if (result.ack.typed_response_context_supported) {
+            CommandAck transmittedAck;
+            if (!TelemetryCodec::parseCommandAck(TelemetryCodec::serializeCommandAck(result.ack), transmittedAck) ||
+                !transmittedAck.typed_response_context_supported ||
+                transmittedAck.correlation_id != result.ack.correlation_id ||
+                transmittedAck.session_id != result.ack.session_id)
+                result.ack.typed_response_context_supported = false;
+        }
+        const auto level = result.ack.error_code == CommandErrorCode::Ok ? LogLevel::Info : LogLevel::Warning;
+        const QVariantMap fields{{QStringLiteral("ack_error_code"), static_cast<quint32>(result.ack.error_code)}};
+        logCommandContext(context, result.is_progress ? QStringLiteral("sky_command_progress")
+                                                      : QStringLiteral("sky_command_completed"), level, fields);
+        if (deviceOperation && !result.is_progress)
+            logCommandContext(context, QStringLiteral("sky_device_operation_finished"), level, fields);
+        callback(result);
+    };
+    if (stopping_ || commandGeneration != device_command_generation_) {
+        completion(stoppedCommandResult(command));
+        return;
+    }
     DeviceOperationRequest fpgaIdentity;
     const bool hasFpgaIdentity=command.command_id==CommandId::DeviceOperation &&
         TelemetryCodec::parseDeviceOperationRequest(command.payload,fpgaIdentity) && fpgaIdentity.device_id==SkyDeviceId::Fpga;
@@ -1283,7 +1473,15 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
         if (now - it.value().first >= 120000) {
             command_request_payloads_.remove(it.key());it = command_results_.erase(it);
         } else ++it;
-    const auto identityPayload = TelemetryCodec::serializeCommand(command);
+    auto identityCommand = command;
+    identityCommand.correlation_id.clear();
+    identityCommand.session_id.clear();
+    identityCommand.typed_response_context_requested = false;
+    identityCommand.config_result_context_requested = false;
+    identityCommand.config_ack_session_omission_supported = false;
+    identityCommand.extended_ack_context_requested = false;
+    identityCommand.extended_result_context_requested = false;
+    const auto identityPayload = TelemetryCodec::serializeCommand(identityCommand);
     const auto requestPayload = hasFpgaIdentity ? command.payload : identityPayload;
     if(cacheable && command_request_payloads_.contains(key) && command_request_payloads_.value(key)!=requestPayload) {
         SkyCommandResult result;result.ack=makeAck(command,CommandErrorCode::InvalidPayload);
@@ -1296,6 +1494,9 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
     if (cacheable && cached != command_results_.cend()) { completion(cached.value().second); return; }
     if (cacheable && key == active_command_key_ && active_command_callbacks_.size() < 16)
     {
+        auto waitingContext = logContext;
+        waitingContext.payload.clear();
+        active_command_log_contexts_.push_back(std::move(waitingContext));
         active_command_callbacks_.push_back(std::move(completion));
         return;
     }
@@ -1358,7 +1559,8 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
             result.device_operation_response={request.request_id,request.device_id,request.operation,CommandErrorCode::InvalidPayload,error,{}};
             completion(result); return;
         }
-        active_command_key_=key; active_command_callbacks_.push_back(std::move(completion));
+        active_command_key_=key; active_command_log_contexts_.push_back(logContext); active_command_log_contexts_.back().payload.clear();
+        active_command_callbacks_.push_back(std::move(completion));
         command_request_payloads_.insert(key,requestPayload);
         const quint64 generation=device_command_generation_;
         device_manager_.submitFpgaControl(operation, [this,command,request,key,generation,fpgaDeviceOperation](CommandErrorCode code,QString error,QJsonObject document) {
@@ -1371,9 +1573,10 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
             if (document.contains("usb_discovery")) status["usb_discovery"] = document.value("usb_discovery");
             result.device_operation_response={request.request_id,request.device_id,request.operation,code,error,FpgaRemote::encodeStatus(status)};
             command_results_.insert(key,qMakePair(command_clock_.elapsed(),result)); active_command_key_.clear();
+            active_command_log_contexts_.clear();
             const auto callbacks=std::move(active_command_callbacks_); active_command_callbacks_.clear();
             for (const auto& callback:callbacks) callback(result);
-        });
+        }, logContext.correlation_id, logContext.session_id);
         return;
     }
     if (quint16(command.command_id) >= quint16(CommandId::SetTemperatureTarget) &&
@@ -1382,6 +1585,8 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
         auto work = device_manager_.prepareTemperatureOperation(command);
         if (device_command_thread_.joinable()) device_command_thread_.join();
         active_command_key_ = key;
+        active_command_log_contexts_.push_back(logContext);
+        active_command_log_contexts_.back().payload.clear();
         command_request_payloads_.insert(key, requestPayload);
         active_command_callbacks_.push_back(std::move(completion));
         const auto generation = device_command_generation_;
@@ -1397,6 +1602,7 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
             }
             command_results_.insert(key, qMakePair(command_clock_.elapsed(), result));
             active_command_key_.clear();
+            active_command_log_contexts_.clear();
             const auto callbacks = std::move(active_command_callbacks_);
             active_command_callbacks_.clear();
             for (const auto& callback : callbacks) callback(result);
@@ -1404,9 +1610,16 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
         if (!work) QTimer::singleShot(0, this, [finish] { finish(CommandErrorCode::Ok); });
         else {
             try {
-                device_command_thread_ = std::thread([this, work = std::move(work), finish] {
+                device_command_thread_ = std::thread([this, work = std::move(work), finish, logContext] {
                     CommandErrorCode error = CommandErrorCode::InternalError;
-                    try { error = work(); } catch (...) { }
+                    logCommandContext(logContext, QStringLiteral("sky_device_worker_started"), LogLevel::Info);
+                    try {
+                        ScopedLogContext scope({logContext.correlation_id, logContext.session_id});
+                        error = work();
+                    } catch (...) { }
+                    logCommandContext(logContext, QStringLiteral("sky_device_worker_finished"),
+                                      error == CommandErrorCode::Ok ? LogLevel::Info : LogLevel::Warning,
+                                      {{QStringLiteral("error_code_value"), static_cast<quint32>(error)}});
                     QMetaObject::invokeMethod(this, [finish, error] { finish(error); }, Qt::QueuedConnection);
                 });
             } catch (const std::system_error&) { finish(CommandErrorCode::InternalError); }
@@ -1452,6 +1665,7 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
             if (progressGeneration != device_command_generation_ || maintenance_request_id_ != request.request_id ||
                 active_command_key_.isEmpty() || value.status != EpsilonMaintenanceStatus::Running) return;
             SkyCommandResult result;
+            result.is_progress = true;
             result.ack = makeAck(command, CommandErrorCode::Ok);
             result.send_device_operation_response = true;
             result.device_operation_response.request_id = request.request_id;
@@ -1463,20 +1677,48 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
         }, Qt::QueuedConnection);
     }) : EpsilonMaintenanceProgress();
     auto work = device_manager_.prepareEpsilonOperation(request, snapshot, message, maintenance, dgnss, maintenance_cancel_, progress);
+    if (magnetic && options_.simulate_data && maintenance_exchange_for_testing_) {
+        EpsilonMaintenanceAction action;
+        if (TelemetryCodec::parseEpsilonMaintenanceAction(request.payload, action) &&
+            action == (request.operation == DeviceOperation::CalibrateEpsilonMagnetic2D
+                ? EpsilonMaintenanceAction::Magnetic2D : EpsilonMaintenanceAction::Magnetic3D)) {
+            const auto exchange = maintenance_exchange_for_testing_;
+            const auto cancel = maintenance_cancel_;
+            work = [exchange, action, maintenance, message, cancel, progress]() {
+                std::string error;
+                const bool ok = runEpsilonMaintenance(action, exchange, *maintenance, error, progress,
+                    [cancel] { return cancel && cancel->load(); });
+                *message = QString::fromStdString(error);
+                return ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed;
+            };
+        }
+    }
     if (device_command_thread_.joinable()) device_command_thread_.join();
     active_command_key_ = key;
+    active_command_log_contexts_.push_back(logContext);
+    active_command_log_contexts_.back().payload.clear();
     command_request_payloads_.insert(key,requestPayload);
     epsilon_settings_operation_pending_ = settingsOperation;
     active_command_callbacks_.push_back(std::move(completion));
     const quint64 generation = device_command_generation_;
     try
     {
-    device_command_thread_ = std::thread([this, work = std::move(work), request, command, key, generation, snapshot, message, maintenance, dgnss]() {
+    device_command_thread_ = std::thread([this, work = std::move(work), request, command, key, generation, snapshot, message, maintenance, dgnss, logContext]() {
         CommandErrorCode error = CommandErrorCode::InternalError;
-        try { error = work(); } catch (...) { }
-        QMetaObject::invokeMethod(this, [this, request, command, key, generation, error, snapshot, message, maintenance, dgnss]() {
+        logCommandContext(logContext, QStringLiteral("sky_device_worker_started"), LogLevel::Info);
+        try {
+            ScopedLogContext scope({logContext.correlation_id, logContext.session_id});
+            error = work();
+        } catch (...) { }
+        logCommandContext(logContext, QStringLiteral("sky_device_worker_finished"),
+                          error == CommandErrorCode::Ok ? LogLevel::Info : LogLevel::Warning,
+                          {{QStringLiteral("error_code_value"), static_cast<quint32>(error)}});
+        QMetaObject::invokeMethod(this, [this, request, command, key, generation, error, snapshot, message, maintenance, dgnss, logContext]() {
             if (generation != device_command_generation_) return;
-            device_manager_.completeEpsilonOperation(request, error, *snapshot);
+            {
+                ScopedLogContext scope({logContext.correlation_id, logContext.session_id});
+                device_manager_.completeEpsilonOperation(request, error, *snapshot);
+            }
             SkyCommandResult result;
             result.ack = makeAck(command, error);
             result.send_status = true;
@@ -1497,6 +1739,7 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
                 result.device_operation_response.error_message = QStringLiteral("EPSILON device operation failed; verify physical state before retrying.");
             command_results_.insert(key, qMakePair(command_clock_.elapsed(), result));
             active_command_key_.clear();
+            active_command_log_contexts_.clear();
             maintenance_cancel_.reset();
             maintenance_request_id_ = 0;
             epsilon_settings_operation_pending_ = false;
@@ -1512,6 +1755,7 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
         maintenance_cancel_.reset();
         maintenance_request_id_ = 0;
         active_command_key_.clear();
+        active_command_log_contexts_.clear();
         command_request_payloads_.remove(key);
         epsilon_settings_operation_pending_ = false;
         const auto callbacks = std::move(active_command_callbacks_);
@@ -1524,8 +1768,13 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
 
 SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
 {
+    ScopedLogContext commandScope({command.correlation_id,
+        session_recorder_.isRecording() || session_recorder_.isPaused() ? session_recorder_.sessionDirectory() : QString()});
     SkyCommandResult result;
     result.ack = makeAck(command);
+
+    if (stopping_)
+        return stoppedCommandResult(command);
 
     auto deviceCommand = [&](auto method) {
         SkyDeviceId id = SkyDeviceId::All;
@@ -1681,6 +1930,8 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
     }
     case CommandId::DeviceOperation:
     {
+        ScopedLogContext scope({command.correlation_id,
+            session_recorder_.isRecording() || session_recorder_.isPaused() ? session_recorder_.sessionDirectory() : QString()});
         DeviceOperationRequest request;
         DeviceOperationResponse response;
         if (!TelemetryCodec::parseDeviceOperationRequest(command.payload, request))
@@ -1981,21 +2232,35 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
         result.send_status = true;
         break;
     case CommandId::ConnectDevice:
-        return deviceCommand([this](SkyDeviceId id, CommandErrorCode *error) { return connectDevice(id, error); });
+        return deviceCommand([this, &command](SkyDeviceId id, CommandErrorCode *error) {
+            return connectDevice(id, error, command.correlation_id,
+                session_recorder_.isRecording() || session_recorder_.isPaused() ? session_recorder_.sessionDirectory() : QString()); });
     case CommandId::DisconnectDevice:
+    {
+        ScopedLogContext scope({command.correlation_id,
+            session_recorder_.isRecording() || session_recorder_.isPaused() ? session_recorder_.sessionDirectory() : QString()});
         return deviceCommand([this](SkyDeviceId id, CommandErrorCode *error) { return disconnectDevice(id, error); });
+    }
     case CommandId::ReconnectDevice:
-        return deviceCommand([this](SkyDeviceId id, CommandErrorCode *error) { return reconnectDevice(id, error); });
+        return deviceCommand([this, &command](SkyDeviceId id, CommandErrorCode *error) {
+            return reconnectDevice(id, error, command.correlation_id,
+                session_recorder_.isRecording() || session_recorder_.isPaused() ? session_recorder_.sessionDirectory() : QString()); });
     case CommandId::ConnectAllDevices:
-        connectAllDevices();
+        connectAllDevices(command.correlation_id,
+            session_recorder_.isRecording() || session_recorder_.isPaused() ? session_recorder_.sessionDirectory() : QString());
         result.send_status = true;
         break;
     case CommandId::DisconnectAllDevices:
+    {
+        ScopedLogContext scope({command.correlation_id,
+            session_recorder_.isRecording() || session_recorder_.isPaused() ? session_recorder_.sessionDirectory() : QString()});
         disconnectAllDevices();
         result.send_status = true;
         break;
+    }
     case CommandId::ReconnectAllDevices:
-        reconnectAllDevices();
+        reconnectAllDevices(command.correlation_id,
+            session_recorder_.isRecording() || session_recorder_.isPaused() ? session_recorder_.sessionDirectory() : QString());
         result.send_status = true;
         break;
     case CommandId::GetSkyConfig:
@@ -2003,6 +2268,9 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
         break;
     case CommandId::SetSkyConfig:
     {
+        const QString sessionId = session_recorder_.isRecording() || session_recorder_.isPaused()
+            ? session_recorder_.sessionDirectory() : QString();
+        ScopedLogContext scope({command.correlation_id, sessionId});
         const QJsonDocument document = QJsonDocument::fromJson(command.payload);
         SkyConfig config;
         QString error;
@@ -2017,7 +2285,7 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
             result.ack = makeAck(command, CommandErrorCode::ConfigInvalid);
             break;
         }
-        const ApplyConfigResult applyResult = device_manager_.applyConfig(config);
+        const ApplyConfigResult applyResult = device_manager_.applyConfig(config, command.correlation_id, sessionId);
         updateTimerIntervals();
         const CommandErrorCode errorCode = applyResult.error_code == CommandErrorCode::Ok
             ? CommandErrorCode::ConfigApplyFailed
@@ -2064,7 +2332,7 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
 
 bool SkyRuntime::startSerialPortDetection()
 {
-    if (!running_)
+    if (!running_ || stopping_)
     {
         return false;
     }
@@ -2098,16 +2366,22 @@ bool SkyRuntime::startSerialPortDetection()
     request.temperatureSlaveAddress = config.temperature_controller.slave_address;
     request.ai8SlaveAddress = config.ai8_temperature_controller.slave_address;
     serial_port_detection_cancel_requested_.store(false);
+    const LogContext operationContext = currentLogContext() ? *currentLogContext() : LogContext{};
+    serial_port_detection_context_ = operationContext;
+    const quint64 detectionGeneration = ++serial_port_detection_generation_;
+    const auto portsForTesting = serial_port_detection_ports_for_testing_;
 
-    serial_port_detection_thread_ = std::thread([this, request = std::move(request)]() mutable {
+    serial_port_detection_thread_ = std::thread([this, request = std::move(request), operationContext, detectionGeneration, portsForTesting]() mutable {
         request.availablePorts =
-            VaporView::Ground::Devices::SerialPortDetectionService::availablePorts();
+            portsForTesting ? portsForTesting() : VaporView::Ground::Devices::SerialPortDetectionService::availablePorts();
         const auto outcome =
             VaporView::Ground::Devices::SerialPortDetectionService::detect(
                 request,
                 [this]() { return serial_port_detection_cancel_requested_.load(); },
-                [this](const VaporView::Ground::Devices::SerialPortDetectionService::LogEntry& entry) {
-                    QMetaObject::invokeMethod(this, [this, entry]() {
+                [this, operationContext, detectionGeneration](const VaporView::Ground::Devices::SerialPortDetectionService::LogEntry& entry) {
+                    QMetaObject::invokeMethod(this, [this, entry, operationContext, detectionGeneration]() {
+                        if (detectionGeneration != serial_port_detection_generation_) return;
+                        ScopedLogContext scope(operationContext);
                         publishRuntimeLog(entry.level,
                                           QStringLiteral("device.connection"),
                                           entry.event,
@@ -2116,7 +2390,9 @@ bool SkyRuntime::startSerialPortDetection()
                     }, Qt::QueuedConnection);
                 });
 
-        QMetaObject::invokeMethod(this, [this, outcome]() {
+        QMetaObject::invokeMethod(this, [this, outcome, operationContext, detectionGeneration]() {
+            if (detectionGeneration != serial_port_detection_generation_) return;
+            ScopedLogContext scope(operationContext);
             QJsonObject result;
             result.insert(QStringLiteral("success"), !outcome.canceled);
             result.insert(QStringLiteral("canceled"), outcome.canceled);
@@ -2131,6 +2407,7 @@ bool SkyRuntime::startSerialPortDetection()
             result.insert(QStringLiteral("detections"), detections);
             serial_port_detection_in_progress_.store(false);
             serial_port_detection_cancel_requested_.store(false);
+            serial_port_detection_context_ = {};
             sendSerialPortDetectionResult(result);
             publishRuntimeLog(LogLevel::Info,
                               QStringLiteral("device.connection"),
@@ -2179,6 +2456,8 @@ void SkyRuntime::sendCommandResultFrames(const SkyCommandResult& result)
     if (result.send_config_apply_result)
     {
         sendSkyConfigApplyResult(result.config_apply_result);
+        if (!result.config_apply_result_context.isEmpty())
+            sendFrame(MsgType::SkyConfigApplyResultContext, result.config_apply_result_context);
     }
     if (result.send_one_waveform)
     {
@@ -2186,8 +2465,10 @@ void SkyRuntime::sendCommandResultFrames(const SkyCommandResult& result)
     }
     if (result.send_device_operation_response)
     {
-        sendFrame(MsgType::DeviceOperationResponse,
-                  TelemetryCodec::serializeDeviceOperationResponse(result.device_operation_response));
+        const bool contextual = result.ack.typed_response_context_supported;
+        sendFrame(contextual ? MsgType::DeviceOperationResponseContext : MsgType::DeviceOperationResponse,
+                  contextual ? result.device_operation_response_context
+                             : TelemetryCodec::serializeDeviceOperationResponse(result.device_operation_response));
     }
 }
 

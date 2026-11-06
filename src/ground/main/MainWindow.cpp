@@ -1,5 +1,6 @@
 #include "ground/calibration/CalibrationService.h"
 #include "ground/main/GroundMainWindowImplementation.h"
+#include "LogContext.h"
 
 MainWindow::MainWindow(QWidget *parent, std::shared_ptr<VaporView::Ground::Calibration::CalibrationService> calibration)
     : QMainWindow(parent)
@@ -9,15 +10,17 @@ MainWindow::MainWindow(QWidget *parent, std::shared_ptr<VaporView::Ground::Calib
     VaporView::LogService::withCurrentInstance([this](VaporView::LogService& logService) {
         connect(&logService, &VaporView::LogService::recordPublished, this,
                 [this](const VaporView::LogRecord& record) {
-                    if (!state_->recording_service_->isSessionOpen() ||
-                        record.category == QStringLiteral("ui.progress") ||
+                    if (record.category == QStringLiteral("ui.progress") ||
                         record.fields.value(QStringLiteral("session_sink_failure")).toBool())
                     {
                         return;
                     }
                     const bool errorRecord = record.level >= VaporView::LogLevel::Error;
-                    if (!state_->recording_service_->appendEvent(
-                            VaporView::logLevelName(record.level).toLower(), record.message))
+                    const auto appended = state_->recording_service_->appendLogRecord(
+                        VaporView::logLevelName(record.level).toLower(), record.message,
+                        errorRecord, record.session_id);
+                    if (appended.skipped) return;
+                    if (!appended.eventWritten)
                     {
                         VaporView::LogService::withCurrentInstance([&](VaporView::LogService& logService) {
                             logService.publish(VaporView::LogLevel::Error,
@@ -31,7 +34,7 @@ MainWindow::MainWindow(QWidget *parent, std::shared_ptr<VaporView::Ground::Calib
                                                 {QStringLiteral("category"), record.category}});
                         });
                     }
-                    if (errorRecord && !state_->recording_service_->appendError(record.message))
+                    if (errorRecord && !appended.errorWritten)
                     {
                         VaporView::LogService::withCurrentInstance([&](VaporView::LogService& logService) {
                             logService.publish(VaporView::LogLevel::Error,
@@ -165,8 +168,11 @@ MainWindow::MainWindow(QWidget *parent, std::shared_ptr<VaporView::Ground::Calib
     });
     state_->recording_service_->setWarningCallback([this](
         VaporView::Ground::Session::GroundRecordingWarning warning,
-        quint64 value) {
-        QMetaObject::invokeMethod(this, [this, warning, value]() {
+        quint64 value, const QString& sessionId) {
+        const auto *currentContext = VaporView::currentLogContext();
+        const VaporView::LogContext warningContext{currentContext ? currentContext->correlationId : QString(), sessionId};
+        QMetaObject::invokeMethod(this, [this, warning, value, warningContext]() {
+            VaporView::ScopedLogContext logContext(warningContext);
             using Warning = VaporView::Ground::Session::GroundRecordingWarning;
             switch (warning)
             {

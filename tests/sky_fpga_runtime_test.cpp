@@ -1,13 +1,311 @@
 #include "SkyRuntime.h"
+#include "LogService.h"
 #include "FpgaTelemetry.h"
 #include "sky_fpga_test_transport.h"
+#include "FailingRecordingStorage.h"
+#include "shared/session/CalibrationRuntime.h"
 #include <QTemporaryDir>
 #include <QTcpSocket>
+#include <QDateTime>
+#include <QMutex>
+#include <QMutexLocker>
 #include <cmath>
+
+namespace VaporView {
+class SkyRuntimeEpsilonContextTestAccess {
+public:
+    static void setFpgaTimeout(SkyDeviceManager& manager, int timeoutMs) {
+        manager.ensureFpgaBackend();
+        manager.fpga_backend_->setOperationTimeoutForTesting(timeoutMs);
+    }
+};
+class SkyRuntimeStorageFailureTestAccess {
+public:
+    static void storage(SkyRuntime& runtime, const std::shared_ptr<RecordingStorage>& value) {
+        runtime.session_recorder_.storage_ = value;
+    }
+    static SkySessionRecorder& recorder(SkyRuntime& runtime) { return runtime.session_recorder_; }
+    static QString waveformFileName(SkyRuntime& runtime) {
+        auto& recorder = runtime.session_recorder_;
+        std::lock_guard<std::recursive_mutex> recordingLock(recorder.recording_mutex_);
+        std::lock_guard<std::mutex> filesLock(recorder.files_mutex_);
+        return recorder.waveform_raw_file_.fileName();
+    }
+    static void closeLog(SkyRuntime& runtime, bool event) {
+        auto& recorder = runtime.session_recorder_;
+        std::lock_guard<std::recursive_mutex> recordingLock(recorder.recording_mutex_);
+        std::lock_guard<std::mutex> filesLock(recorder.files_mutex_);
+        (event ? recorder.event_log_file_ : recorder.error_log_file_).close();
+    }
+    static bool reopenLog(SkyRuntime& runtime, bool event) {
+        auto& recorder = runtime.session_recorder_;
+        std::lock_guard<std::recursive_mutex> recordingLock(recorder.recording_mutex_);
+        std::lock_guard<std::mutex> filesLock(recorder.files_mutex_);
+        return (event ? recorder.event_log_file_ : recorder.error_log_file_).open(QIODevice::WriteOnly | QIODevice::Append);
+    }
+};
+}
+
+class FailingFpgaTransport final : public FpgaUsbTransport {
+public:
+    bool open(const QString&) override { return false; }
+    void close() override {}
+    bool isOpen() const override { return false; }
+    qint64 read(QByteArray&, qint64) override { return 0; }
+    qint64 write(const QByteArray&) override { return -1; }
+    FpgaUsbDiagnostic diagnostic() const override { return {}; }
+};
+
+static void asyncConnectionLogTest()
+{
+    for (int scenario = 0; scenario < 3; ++scenario) {
+        SkyDeviceManager manager;
+        auto config = SkyConfig::defaults();
+        config.fpga.enabled = true;
+        config.fpga.locator = QStringLiteral("mock");
+        config.sensor_transport_path = SensorTransportPath::FpgaRelay;
+        manager.loadConfig(config);
+        if (scenario == 1) manager.setFpgaTransportForTesting(std::make_unique<FailingFpgaTransport>());
+        else {
+            auto transport = std::make_unique<ScriptedTransport>();
+            if (scenario == 2) transport->holdResponses = true;
+            manager.setFpgaTransportForTesting(std::move(transport));
+        }
+        if (scenario == 2) SkyRuntimeEpsilonContextTestAccess::setFpgaTimeout(manager, 50);
+        const QString id = QStringLiteral("fpga-async-connect-%1").arg(scenario);
+        const QString session = QStringLiteral("session-for-fpga-connect");
+        QVector<LogRecord> records;
+        QObject::connect(&manager, &SkyDeviceManager::logRecord, &manager, [&](const LogRecord& record) {
+            if (record.fields.value(QStringLiteral("event")) == QStringLiteral("fpga_async_connection_result")) records.push_back(record);
+        });
+        CommandErrorCode accepted;
+        require(manager.connectDevice(SkyDeviceId::Fpga, &accepted, id, session) && accepted == CommandErrorCode::Ok,
+                "asynchronous FPGA connection retains scheduling behavior");
+        waitUntil([&] { return !records.isEmpty(); }, "asynchronous FPGA connection emits result");
+        require(records.size() == 1 && records.first().correlation_id == id && records.first().session_id == session,
+                "FPGA connection result retains original context once");
+        require((records.first().fields.value(QStringLiteral("result_code")).toInt() == int(CommandErrorCode::Ok)) == (scenario == 0),
+                "FPGA connection result distinguishes success from failure");
+        if (scenario == 2) require(records.first().fields.value(QStringLiteral("detail")).toString().contains(QStringLiteral("timed out")),
+                                   "FPGA timeout retains real diagnostic detail");
+        manager.shutdown();
+    }
+}
+
+static QJsonObject calibrationSnapshot()
+{
+    const QString fileId = QStringLiteral("11111111-1111-4111-8111-111111111111");
+    const QString fileHash(64, QLatin1Char('a'));
+    QJsonObject channels;
+    for (int wavelength : {816, 1368}) {
+        channels[QString::number(wavelength)] = QJsonObject{
+            {"wavelength", wavelength}, {"channel", wavelength == 816 ? 0x31 : 0x30},
+            {"model", "linear"}, {"model_version", 1},
+            {"parameter_id", "22222222-2222-4222-8222-222222222222"},
+            {"a", 1.0}, {"b", 0.0}, {"r_min", 0.0}, {"r_max", 10.0},
+            {"c_min", 0.0}, {"c_max", 10.0}, {"r_squared", 1.0}, {"rmse", 0.0},
+            {"sample_count", 2}, {"concentration_count", 2}, {"unit", "ppmv"}};
+    }
+    QJsonObject runtime{{"schema_version", 1}, {"kind", "water_runtime_parameters"},
+        {"file_id", fileId}, {"file_sha256", fileHash}, {"peak_algorithm", "pointwise_h2_over_h1_v1"},
+        {"model", "validation_linear_v1"}, {"compensation", "unconfigured"},
+        {"hardware_mapping", QJsonObject{{"816", 0x31}, {"1368", 0x30}}},
+        {"task_id", "33333333-3333-4333-8333-333333333333"}, {"task_name", "storage test"},
+        {"created_utc", "2026-01-01T00:00:00.000Z"}, {"device_identity", QJsonObject{}}, {"channels", channels}};
+    runtime["sha256"] = QString::fromLatin1(Session::runtimeCalibrationDigest(runtime));
+    return {{"kind", "vaporview_session_calibration"}, {"schema_version", 1},
+        {"file_id", fileId}, {"file_sha256", fileHash}, {"runtime", runtime}};
+}
+
+static void sessionLogFailureContextTest()
+{
+    QTemporaryDir directory;
+    require(directory.isValid(), "session log failure fixture directory");
+    const auto configPath = directory.filePath(QStringLiteral("sky.json"));
+    require(SkyConfig::defaults().saveToFile(configPath), "save session log failure config");
+    QVector<LogRecord> failures;
+    QMutex failuresMutex;
+    VaporView::LogService logs(QStringLiteral("SkySessionLogFailureTest"), nullptr,
+                               directory.path(), directory.path());
+    SkyRuntimeOptions options;
+    options.config_path = configPath;
+    options.telemetry_tcp_port = 0;
+    options.simulate_data = true;
+    SkyRuntime runtime(options);
+    require(runtime.start(), "start session log failure runtime");
+    auto& recorder = SkyRuntimeStorageFailureTestAccess::recorder(runtime);
+    QString error;
+    require(recorder.start(directory.path(), QStringLiteral("session-log-test"), 0, &error),
+            "start isolated session for log failure test");
+    const QString session = recorder.sessionDirectory();
+    require(!session.isEmpty(), "session log failure fixture has a session");
+    QObject::connect(&logs, &VaporView::LogService::recordPublished, &runtime,
+                     [&](const LogRecord& record) {
+        if (record.fields.value(QStringLiteral("event")) == QStringLiteral("sky_session_log_append_failed")) {
+            QMutexLocker locker(&failuresMutex);
+            failures.push_back(record);
+        }
+    }, Qt::DirectConnection);
+
+    for (int scenario = 0; scenario < 3; ++scenario) {
+        const bool eventFile = scenario == 0;
+        const QString id = QStringLiteral("session-log-failure-%1").arg(scenario);
+        const QString recordSession = scenario == 2 ? QString() : session;
+        SkyRuntimeStorageFailureTestAccess::closeLog(runtime, eventFile);
+        qsizetype previous = 0;
+        {
+            QMutexLocker locker(&failuresMutex);
+            previous = failures.size();
+        }
+        logs.publish(eventFile ? LogLevel::Info : LogLevel::Warning,
+                     QStringLiteral("SkyCore"), QStringLiteral("test.session"),
+                     QStringLiteral("session log failure fixture"), {}, id, recordSession);
+        QCoreApplication::processEvents();
+        QVector<LogRecord> observed;
+        {
+            QMutexLocker locker(&failuresMutex);
+            observed = failures;
+        }
+        if (observed.size() != previous + 1) {
+            std::fprintf(stderr, "scenario=%d previous=%lld current=%lld expected_id=%s\n",
+                         scenario, static_cast<long long>(previous), static_cast<long long>(observed.size()),
+                         qPrintable(id));
+            for (qsizetype index = previous; index < observed.size(); ++index) {
+                const auto& record = observed.at(index);
+                std::fprintf(stderr, "diagnostic[%lld] correlation_id=%s session_id=%s source=%s category=%s event=%s thread_id=%llu\n",
+                             static_cast<long long>(index), qPrintable(record.correlation_id),
+                             qPrintable(record.session_id), qPrintable(record.source), qPrintable(record.category),
+                             qPrintable(record.fields.value(QStringLiteral("event")).toString()),
+                             static_cast<unsigned long long>(record.thread_id));
+            }
+        }
+        require(observed.size() == previous + 1, "one diagnostic and no recursive sink failure");
+        const auto& failure = observed.last();
+        require(failure.correlation_id == id && failure.session_id == recordSession &&
+                    failure.fields.value(QStringLiteral("session_sink_failure")).toBool() &&
+                    failure.fields.value(QStringLiteral("event_ok")).toBool() == !eventFile &&
+                    failure.fields.value(QStringLiteral("error_ok")).toBool() == eventFile,
+                "session sink diagnostic retains context and actual failing file");
+        require(SkyRuntimeStorageFailureTestAccess::reopenLog(runtime, eventFile),
+                "restore isolated session log file");
+    }
+    require(runtime.stopRecording(&error), "stop isolated session after log failure test");
+    runtime.stop();
+}
+
+static void storageFailureContextTest(bool stale, bool writerFailure = false, bool stopBeforeRecovery = false)
+{
+    QTemporaryDir directory; require(directory.isValid(), "storage failure fixture directory");
+    auto config = SkyConfig::defaults();
+    const auto configPath = directory.filePath("sky.json");
+    require(config.saveToFile(configPath), "save storage failure configuration");
+    SkyRuntimeOptions options; options.config_path = configPath; options.telemetry_tcp_port = 0;
+    options.simulate_fpga = true;
+    SkyRuntime runtime(options);
+    auto storage = std::make_shared<FailingRecordingStorage>();
+    SkyRuntimeStorageFailureTestAccess::storage(runtime, storage);
+    QVector<LogRecord> records;
+    QObject::connect(&runtime, &SkyRuntime::logRecord, [&records](const LogRecord& record) { records.push_back(record); });
+    require(runtime.start(), "start storage failure runtime");
+    waitUntil([&] { return runtime.currentFpgaStatus().value("ready").toBool(); }, "storage failure FPGA ready");
+    QString error;
+    auto& recorder = SkyRuntimeStorageFailureTestAccess::recorder(runtime);
+    const auto snapshot = calibrationSnapshot();
+    const bool snapshotValid = recorder.setCalibrationSnapshot(snapshot, &error);
+    require(snapshotValid, qPrintable(error));
+    const bool sessionStarted = runtime.startRecording(&error);
+    require(sessionStarted, qPrintable(error));
+    const QString failedSession = recorder.sessionDirectory();
+    if (writerFailure) {
+        const QString waveformFile = SkyRuntimeStorageFailureTestAccess::waveformFileName(runtime);
+        require(!waveformFile.isEmpty(), "waveform failure target is configured");
+        storage->setFailWriteFile(waveformFile);
+    }
+    storage->failWrites = true;
+    const quint64 now = quint64(QDateTime::currentMSecsSinceEpoch()) * 1000;
+    if (writerFailure) {
+        FpgaWave::CompletedStream stream;
+        stream.source = 0x30; stream.message = 0x1001; stream.schema = 2; stream.format = 0;
+        stream.totalPoints = 1; stream.bytesPerPoint = 8; stream.rate = 10000; stream.complete = true;
+        FpgaWave::CompletedStream::DliaPoint point; point.hasHarmonics = true;
+        stream.dliaPoints.append(point);
+        require(recorder.recordFpgaHarmonics(now, stream), "writer accepts waveform before short write");
+        QElapsedTimer clock; clock.start();
+        while (!recorder.storageFailed() && clock.elapsed() < 10000) QThread::msleep(1);
+    } else {
+        WaveformFeature feature; feature.host_time_us = now;
+        recorder.recordWaveformFeature(feature);
+    }
+    require(recorder.storageFailed(), "real short write marks storage failure");
+    if (writerFailure) require(storage->shortWriteObserved.load(), "waveform write was shortened");
+    storage->failWrites = false;
+    if (stale) {
+        runtime.stopRecording(&error);
+        error.clear();
+        const bool newSnapshotValid = recorder.setCalibrationSnapshot(snapshot, &error);
+        require(newSnapshotValid, qPrintable(error));
+        const bool newSessionStarted = runtime.startRecording(&error);
+        require(newSessionStarted, qPrintable(error));
+        const QString newSession = recorder.sessionDirectory();
+        require(newSession != failedSession, "new session uses another directory");
+        waitUntil([&] {
+            for (const auto& r : records) if (r.fields.value("event") == "recording_data_write_failed") return true;
+            return false;
+        }, "queued old failure observed");
+        require(recorder.isRecording() && recorder.sessionDirectory() == newSession,
+                "old queued failure does not stop or pause new session");
+        for (const auto& r : records) {
+            if (r.fields.value("event") == "recording_data_write_failed")
+                require(r.session_id == failedSession && !r.correlation_id.isEmpty(), "old failure keeps old context");
+            require(r.fields.value("event") != "fpga_recording_storage_failed", "old callback never recovers new session");
+        }
+        runtime.stopRecording(&error);
+    } else {
+        if (stopBeforeRecovery) {
+            require(!runtime.stopRecording(&error), "failed session stops as incomplete");
+            require(!recorder.isRecording() && !recorder.isPaused(), "failed session is closed before recovery");
+        }
+        require(QMetaObject::invokeMethod(&runtime, "sendTelemetryStatus", Qt::DirectConnection), "timer runs before queued failure");
+        waitUntil([&] {
+            bool failed = false, finished = false;
+            for (const auto& r : records) {
+                failed |= r.fields.value("event") == "recording_data_write_failed";
+                finished |= r.fields.value("event") == "fpga_storage_recovery_finished";
+            }
+            return failed && finished;
+        }, "storage recovery callback completed");
+        QString id; int stages = 0;
+        for (const auto& r : records) {
+            const auto event = r.fields.value("event").toString();
+            if (event != "recording_data_write_failed" && event != "fpga_recording_storage_failed" &&
+                event != "fpga_worker_started" && event != "fpga_storage_recovery_finished") continue;
+            if (event == "fpga_worker_started" && r.session_id != failedSession) continue;
+            if (stopBeforeRecovery && event == "fpga_recording_storage_failed")
+                require(r.message.contains(QStringLiteral("会话已结束")) && !r.message.contains(QStringLiteral("会话已暂停")),
+                        "recovery describes the already closed session accurately");
+            if (id.isEmpty()) id = r.correlation_id;
+            require(!id.isEmpty() && r.correlation_id == id && r.session_id == failedSession,
+                    "failure, worker and callback retain one session context");
+            ++stages;
+        }
+        require(stages >= 4, "all storage recovery stages observed");
+        if (!stopBeforeRecovery) runtime.stopRecording(&error);
+    }
+    runtime.stop();
+}
 
 int main(int argc,char **argv)
 {
     QCoreApplication app(argc,argv);
+    if (app.arguments().contains("--storage-failure-context")) {
+        sessionLogFailureContextTest();
+        storageFailureContextTest(false);
+        storageFailureContextTest(true);
+        storageFailureContextTest(false, true);
+        storageFailureContextTest(false, false, true);
+        return 0;
+    }
+    if (!app.arguments().contains("--discovery-only")) asyncConnectionLogTest();
     QTemporaryDir directory; require(directory.isValid(),"isolated config directory");
     auto config=SkyConfig::defaults(); config.fpga.enabled=true; config.fpga.locator="mock";
     const bool discoveryOnly=app.arguments().contains("--discovery-only");

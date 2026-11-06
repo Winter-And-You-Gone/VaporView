@@ -830,6 +830,10 @@ bool SkySessionRecorder::appendEvent(const LogRecord& record)
 {
     std::lock_guard<std::recursive_mutex> recordingLock(recording_mutex_);
     std::lock_guard<std::mutex> lock(files_mutex_);
+    if (!record.session_id.isEmpty() && record.session_id != session_directory_)
+    {
+        return true;
+    }
     if (!event_log_file_.isOpen())
     {
         return false;
@@ -855,6 +859,10 @@ bool SkySessionRecorder::appendError(const LogRecord& record)
 {
     std::lock_guard<std::recursive_mutex> recordingLock(recording_mutex_);
     std::lock_guard<std::mutex> lock(files_mutex_);
+    if (!record.session_id.isEmpty() && record.session_id != session_directory_)
+    {
+        return true;
+    }
     if (!error_log_file_.isOpen())
     {
         return false;

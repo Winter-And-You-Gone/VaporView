@@ -1,6 +1,7 @@
 #include "test_settings_sandbox.h"
 #include "IndependentCalibrationFixture.h"
 #include "ground/main/MainWindow.h"
+#include "ground/main/GroundMainWindowState.h"
 #include "ground/widgets/FpgaControlPage.h"
 #include "ground/widgets/Ai8TemperatureControllerPanel.h"
 #include "ground/widgets/TelemetryPanels.h"
@@ -66,9 +67,60 @@
 #include <cstdlib>
 #include <iostream>
 
+struct MainWindowRtcmTestAccess
+{
+    static VaporView::Ground::Main::MainWindowState& state(MainWindow& window) { return *window.state_; }
+    static std::function<void(const QJsonObject&)> completion(MainWindow& window, const QString& id)
+    { return window.fpgaRtcmCompletion(id); }
+};
+
+struct MainWindowRecordingTestAccess
+{
+    static bool startScheduled(MainWindow& window) { return window.tryStartScheduledRecording(); }
+    static bool stopScheduled(MainWindow& window) { return window.tryStopScheduledRecording(); }
+};
+
 static int fontWarnings=0;
 static void captureFont(QtMsgType,const QMessageLogContext&,const QString &message){if(message.contains("QFont::setPointSize")){++fontWarnings;std::cerr<<message.toStdString()<<'\n';}}
 static void require(bool v,const char *why) { if(!v) {std::cerr<<why<<'\n';std::exit(1);} }
+static void rtcmCompletionContext()
+{
+    QTemporaryDir logs;
+    require(logs.isValid(), "RTCM log directory exists");
+    VaporView::LogService service("RtcmCompletionTest", nullptr, logs.path(), logs.path());
+    QVector<VaporView::LogRecord> records;
+    MainWindow window;
+    auto& state = MainWindowRtcmTestAccess::state(window);
+    auto *rtk = state.rtk_config_dialog_;
+    require(rtk, "RTCM dialog exists");
+    QObject::connect(&service, &VaporView::LogService::recordPublished, &window,
+        [&records](const VaporView::LogRecord& record) { records.append(record); }, Qt::DirectConnection);
+    rtk->setUiTestMode(true);
+    require(QMetaObject::invokeMethod(rtk, "onStartClicked", Qt::DirectConnection), "start old stream");
+    const QString oldId = rtk->rtcmCorrelationId();
+    require(!oldId.isEmpty(), "old stream has an identity");
+    auto oldCompletion = MainWindowRtcmTestAccess::completion(window, oldId);
+    require(QMetaObject::invokeMethod(rtk, "onStopClicked", Qt::DirectConnection), "stop old stream");
+    require(QMetaObject::invokeMethod(rtk, "onStartClicked", Qt::DirectConnection), "start new stream");
+    const QString newId = rtk->rtcmCorrelationId();
+    require(!newId.isEmpty() && newId != oldId, "new stream has another identity");
+    state.fpga_rtcm_queue_.append(qMakePair(qint64(1), QJsonObject{{"op", "new-stream"}}));
+    state.fpga_rtcm_buffer_ = QByteArray("new-stream");
+    state.fpga_rtcm_busy_ = true;
+    oldCompletion({{"ok", false}, {"detail", "old failure"}});
+    require(!state.fpga_rtcm_busy_ && state.fpga_rtcm_queue_.size() == 1 &&
+            state.fpga_rtcm_buffer_ == QByteArray("new-stream"), "old failure preserves new stream work");
+    bool found = false;
+    for (const auto& record : records)
+        if (record.fields.value("ui_message").toString().contains("old failure"))
+            found = record.correlation_id == oldId && record.session_id.isEmpty();
+    require(found, "old failure keeps its original stream identity without inventing a session");
+    state.fpga_rtcm_busy_ = true;
+    MainWindowRtcmTestAccess::completion(window, newId)({{"ok", false}, {"detail", "current failure"}});
+    require(!state.fpga_rtcm_busy_ && state.fpga_rtcm_queue_.isEmpty() && state.fpga_rtcm_buffer_.isEmpty(),
+            "current stream failure preserves the existing cleanup behavior");
+    require(QMetaObject::invokeMethod(rtk, "onStopClicked", Qt::DirectConnection), "stop new stream");
+}
 static QString internalEnvironmentText(QWidget *row)
 {
     QStringList values;
@@ -1985,6 +2037,55 @@ static void harmonicRecordingUi()
     window.close();
 }
 
+static void scheduledRecordingCorrelation()
+{
+    using namespace VaporView;
+    QTemporaryDir output;
+    require(output.isValid(), "scheduled recording log directory");
+    LogService logs(QStringLiteral("ScheduledRecordingTest"), nullptr, output.path(), output.path());
+    IndependentCalibrationTest::Rig calibration;
+    const auto file = calibration.complete();
+    calibration.service->selectFile(file.filename);
+    calibration.service->synchronize();
+    TcpTelemetryLink server;
+    require(server.listen(QStringLiteral("127.0.0.1"), 0), "scheduled fake Sky listens");
+    MainWindow window(nullptr, calibration.service);
+    require(QMetaObject::invokeMethod(&window, "onDataSourceModeChanged", Q_ARG(int, 1)), "scheduled remote mode");
+    auto *remote = window.testRemoteSkyController();
+    require(remote && remote->openTcp(QStringLiteral("127.0.0.1"), server.localPort()) &&
+                waitUntil([&] { return remote->isOpen(); }), "scheduled fake Sky connection");
+    QVector<LogRecord> records;
+    QVector<CommandMessage> commands;
+    TelemetryCodec decoder;
+    QObject::connect(&logs, &LogService::recordPublished, &window,
+                     [&](const LogRecord& record) { records.push_back(record); }, Qt::DirectConnection);
+    QObject::connect(&server, &TelemetryLink::bytesReceived, &window, [&](const QByteArray& bytes) {
+        for (const auto& frame : decoder.feedBytes(bytes)) {
+            CommandMessage command;
+            if (frame.type == MsgType::Command && TelemetryCodec::parseCommand(frame.payload, command) &&
+                (command.command_id == CommandId::StartRecording || command.command_id == CommandId::StopRecording))
+                commands.push_back(command);
+        }
+    });
+    require(MainWindowRecordingTestAccess::startScheduled(window), "scheduled remote recording starts");
+    require(MainWindowRecordingTestAccess::stopScheduled(window), "scheduled remote recording stops");
+    require(waitUntil([&] { return commands.size() == 2; }), "scheduled commands reach Sky TCP");
+    for (int i = 0; i < 2; ++i) {
+        const QString event = i == 0 ? QStringLiteral("scheduled_recording_start_command_sent")
+                                     : QStringLiteral("scheduled_recording_stop_command_sent");
+        bool matched = false;
+        for (const auto& record : records) {
+            if (record.fields.value(QStringLiteral("event")) == event)
+                matched = record.fields.value(QStringLiteral("command_seq")).toUInt() == commands[i].command_seq &&
+                          !record.correlation_id.isEmpty() && record.correlation_id == commands[i].correlation_id &&
+                          record.session_id.isEmpty();
+        }
+        require(matched, "scheduled log retains transmitted command identity without inventing a session");
+    }
+    require(commands[0].correlation_id != commands[1].correlation_id, "scheduled operations use independent identities");
+    remote->close();
+}
+
 int main(int argc,char **argv)
 {
     require(VaporViewTest::SettingsSandbox::initialized,"isolated native/INI application settings");
@@ -2005,6 +2106,7 @@ int main(int argc,char **argv)
 #endif
     app.setOrganizationName(QStringLiteral("VaporViewFpgaTest"));
     app.setApplicationName(QStringLiteral("fpga_main_window_test"));
+    if(app.arguments().contains("--rtcm-context")) { rtcmCompletionContext(); scheduledRecordingCorrelation(); return 0; }
     QSettings native("VaporView","MainWindow");
     native.setValue("font_scale_percent",100);
     native.setValue("app_sidebar_width",62);

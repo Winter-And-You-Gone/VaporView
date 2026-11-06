@@ -27,6 +27,7 @@ class RecordingStorage;
 
 class SkySessionRecorder
 {
+    friend class SkyRuntimeStorageFailureTestAccess;
 public:
     void setMainAntennaLeverArm(const std::array<double,3>& arm) {
         std::lock_guard<std::recursive_mutex> lock(recording_mutex_);

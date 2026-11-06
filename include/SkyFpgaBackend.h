@@ -13,8 +13,10 @@ public:
     using Completion = std::function<void(CommandErrorCode, QString, QJsonObject)>;
     explicit SkyFpgaBackend(std::unique_ptr<Ground::Devices::FpgaUsbTransport> transport = {}, QObject *parent = nullptr);
     ~SkyFpgaBackend() override;
-    void submit(const QJsonObject& operation, Completion completion);
+    void submit(const QJsonObject& operation, Completion completion, const QString& correlationId = {}, const QString& sessionId = {});
     void shutdown();
+    // Allows deterministic exercise of timeout handling with simulated transports.
+    void setOperationTimeoutForTesting(int timeoutMs) { operationTimeoutMs_ = timeoutMs; }
     void setConfiguration(const FpgaControlConfig& configuration);
     QJsonObject statusDocument() const { return status_; }
     static bool validateOperation(const QJsonObject& operation, QString *error = nullptr);
@@ -36,5 +38,6 @@ private:
         {"configuration",FpgaControlConfig{}.toJson()},{"detail",QStringLiteral("FPGA disconnected")},{"archived_records",QStringLiteral("0")}};
     quint64 nextRequest_ = 1, activeRequest_ = 0;
     Completion completion_;
+    int operationTimeoutMs_ = 120000;
 };
 }

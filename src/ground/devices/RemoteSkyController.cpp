@@ -316,10 +316,13 @@ double RemoteSkyController::transmitBitsPerSecond() const
     return service_.transmitBitsPerSecond();
 }
 
-quint16 RemoteSkyController::sendCommand(CommandId command, const QByteArray& payload)
+quint16 RemoteSkyController::sendCommand(CommandId command, const QByteArray& payload, QString *correlationId)
 {
-    if (VaporView::settingsWritesSuspended()) return 0;
-    return service_.sendCommand(command, payload);
+    if (VaporView::settingsWritesSuspended()) {
+        if (correlationId) correlationId->clear();
+        return 0;
+    }
+    return service_.sendCommand(command, payload, correlationId);
 }
 
 quint32 RemoteSkyController::readAi8Page(Ai8TemperatureControllerProtocol::Page page,

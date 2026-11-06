@@ -31,7 +31,9 @@ FpgaDeviceController::FpgaDeviceController(std::unique_ptr<FpgaUsbTransport> tra
         if(event=="epsilon_raw_satellite_epoch_completed")return;
         LogRecord record;record.source=QStringLiteral("Ground");record.category=QStringLiteral("device.fpga");record.level=LogLevel::Warning;
         record.message=QStringLiteral("EPSILON 原始观测：%1，接收 %2/%3 包。").arg(QString::fromStdString(reason)).arg(received).arg(expected);
-        record.fields={{"event","fpga_firmware_event"},{"observation_event",QString::fromStdString(event)},{"receiver",receiver},{"utc_ns",QString::number(utc)}};emit logRecordGenerated(record);
+        record.fields={{"event","fpga_firmware_event"},{"observation_event",QString::fromStdString(event)},{"receiver",receiver},{"utc_ns",QString::number(utc)}};
+        LogService::addCallLocation(record, VAPORVIEW_LOG_FILE, VAPORVIEW_LOG_FUNCTION, VAPORVIEW_LOG_LINE);
+        emit logRecordGenerated(record);
     });
     qRegisterMetaType<FpgaControlConfig>();
     qRegisterMetaType<FpgaSensor::AdaptedMeasurements>();
@@ -51,7 +53,7 @@ FpgaDeviceController::FpgaDeviceController(std::unique_ptr<FpgaUsbTransport> tra
     if (transport) installSession(std::move(transport));
 }
 
-FpgaDeviceController::~FpgaDeviceController() { disconnectDevice(); }
+FpgaDeviceController::~FpgaDeviceController() { pendingConnections_.clear(); disconnectDevice(); }
 
 QJsonObject FpgaDeviceController::discoverDevices(const QString& backend) const
 {
@@ -73,7 +75,24 @@ void FpgaDeviceController::installSession(std::unique_ptr<FpgaUsbTransport> tran
     connect(session_, &FpgaDeviceSession::commandCompleted, this,
         [this](quint32 seq, quint16, bool success, quint32 status, const QByteArray&) { completed(seq, success, status); });
     connect(session_, &FpgaDeviceSession::commandTimedOut, this,
-        [this](quint32, quint16) { fail(QStringLiteral("命令超时，执行结果未知；请刷新读回状态，写操作未自动重发。")); });
+        [this](quint32 seq, quint16 message) {
+            if (seq == pendingSequence_) {
+                fail(QStringLiteral("命令超时，执行结果未知；请刷新读回状态，写操作未自动重发。"));
+                return;
+            }
+            LogRecord record;
+            record.level = LogLevel::Warning; record.source = QStringLiteral("Ground");
+            record.category = QStringLiteral("device.fpga");
+            record.message = QStringLiteral("FPGA 队列中的另一条命令超时。");
+            record.fields = {{QStringLiteral("event"), QStringLiteral("fpga_unrelated_command_timeout")},
+                {QStringLiteral("command_sequence"), seq}, {QStringLiteral("command_message"), message}};
+            LogService::addCallLocation(record, VAPORVIEW_LOG_FILE, VAPORVIEW_LOG_FUNCTION, VAPORVIEW_LOG_LINE);
+            emit logRecordGenerated(record);
+            const bool foreground = busy_ && !backgroundRefresh_;
+            fail(foreground
+                ? QStringLiteral("队列中另一条命令超时，当前操作已中止；请刷新读回状态，写操作未自动重发。")
+                : QStringLiteral("队列中另一条命令超时；请刷新读回状态，写操作未自动重发。"), foreground);
+        });
     connect(session_, &FpgaDeviceSession::errorOccurred, this, [this](const QString& message) {
         if (!session_->isOpen()) { ready_ = false; emit transportConnectionChanged(false); }
         fail(message);
@@ -109,7 +128,8 @@ void FpgaDeviceController::installSession(std::unique_ptr<FpgaUsbTransport> tran
             }
             latestWaves_[stream.source] = std::move(completed);
             if (!stream.complete) report(QStringLiteral("source %1 cycle %2：周期不完整，本周期特征标记为无效。")
-                .arg(hex(stream.source)).arg(stream.cycleId));
+                .arg(hex(stream.source)).arg(stream.cycleId), LogLevel::Warning,
+                VAPORVIEW_LOG_FILE, VAPORVIEW_LOG_FUNCTION, VAPORVIEW_LOG_LINE, false);
         });
     connect(session_, &FpgaDeviceSession::rawFrameReceived, this,
         [this](quint32, quint16 source, quint16 msg, const QByteArray& bytes) {
@@ -145,7 +165,7 @@ void FpgaDeviceController::publishManagementEvent(const QJsonObject& event)
     if(!replaying_)emit snapshot(nowUs(),{{"event","firmware_event"},{"data",event}});
 }
 
-void FpgaDeviceController::logManagementEvent(const QJsonObject& event, bool afterStartup)
+void FpgaDeviceController::logManagementEvent(const QJsonObject& event, bool afterStartup, const char *file, const char *function, int line)
 {
     const auto msg=quint16(event.value("message").toInt());
     const auto source=quint16(event.value("source").toInt());
@@ -162,7 +182,14 @@ void FpgaDeviceController::logManagementEvent(const QJsonObject& event, bool aft
     if(afterStartup) {
         record.message=QStringLiteral("启动等待 3 秒后仍异常；启动期间记录：")+record.message;
         record.fields.insert(QStringLiteral("startup_grace_ms"),3000);
+        const auto context = startupWarningLogContexts_.constFind(source);
+        if (context != startupWarningLogContexts_.cend()) {
+            record.correlation_id = context->correlationId;
+            record.session_id = context->sessionId;
+            record.thread_id = static_cast<quint64>(reinterpret_cast<quintptr>(QThread::currentThreadId()));
+        }
     }
+    LogService::addCallLocation(record, file, function, line);
     emit logRecordGenerated(record);
 }
 
@@ -192,15 +219,19 @@ void FpgaDeviceController::connectDevice(const QString& locator, const QString& 
 
 void FpgaDeviceController::disconnectDevice()
 {
+    const auto pendingSources = pendingConnections_.keys();
+    for (quint16 source : pendingSources)
+        reportConnection(source, QStringLiteral("cancelled"), QStringLiteral("DISCONNECTED"),
+            QStringLiteral("设备断开，未完成的连接已取消。"));
     if(!extensionRequest_.isEmpty()) {
         const auto ticket=extensionRequest_.value("ticket");extensionRequest_={};emit extensionCompleted({{"ticket",ticket},{"ok",false},{"detail",QStringLiteral("FPGA 已断开，未完成事务的执行结果未知。")}});
     }
     ++operationGeneration_;
     connectionStartTick_.reset();pendingManagement_.clear();connectionClock_.invalidate();
-    startupWarningDeadlines_.clear();startupWarnings_.clear();
+    startupWarningDeadlines_.clear();startupWarnings_.clear();startupWarningLogContexts_.clear();
     observations_.flush();
     presentationTimer_.stop(); statusTimer_.stop();watchdogTimer_.stop();
-    pendingConnections_.clear(); operationConnections_.clear();
+    pendingConnections_.clear(); operationConnections_.clear(); pendingConnectionLogContexts_.clear();
     rawOperation_.reset();
     if (session_) session_->close();
     flushPresentation();
@@ -397,8 +428,12 @@ void FpgaDeviceController::advance()
         if (s.address==1) {
             latestReadings_.remove(s.source); lastReadingMs_.remove(s.source);
             if (!s.expected && !operationConnections_.contains(s.source)) {
+                if (pendingConnections_.contains(s.source))
+                    reportConnection(s.source, QStringLiteral("cancelled"), QStringLiteral("SENSOR_DISABLED"),
+                        QStringLiteral("收到禁用请求，未完成的连接已取消。"));
                 pendingConnections_.remove(s.source);
-                startupWarningDeadlines_.remove(s.source);startupWarnings_.remove(s.source);
+                pendingConnectionLogContexts_.remove(s.source);
+                startupWarningDeadlines_.remove(s.source);startupWarnings_.remove(s.source);startupWarningLogContexts_.remove(s.source);
             }
         }
         pendingSequence_=session_->sensorAction(s.address,s.expected,s.source); break;
@@ -427,7 +462,7 @@ void FpgaDeviceController::completed(quint32 seq, bool success, quint32 status)
     QTimer::singleShot(0,this,&FpgaDeviceController::advance);
 }
 
-void FpgaDeviceController::fail(const QString& detail)
+void FpgaDeviceController::fail(const QString& detail, bool operationScoped)
 {
     if (rawOperation_) {
         reportRawResult(*rawOperation_,false,detail);
@@ -437,13 +472,14 @@ void FpgaDeviceController::fail(const QString& detail)
     for (quint16 source:affected) {
         if (pendingConnections_.contains(source)) reportConnection(source,QStringLiteral("failed"),QStringLiteral("TRANSACTION_FAILED"),detail);
         pendingConnections_.remove(source);
-        startupWarningDeadlines_.remove(source);startupWarnings_.remove(source);
+        pendingConnectionLogContexts_.remove(source);
+        startupWarningDeadlines_.remove(source);startupWarnings_.remove(source);startupWarningLogContexts_.remove(source);
     }
     operationConnections_.clear();
     if(recoveringConnection_) {ready_=false;recoveringConnection_=false;connectionRecoveryFailed_=true;}
     steps_.clear(); current_.reset(); pendingSequence_=0; busy_=false; drainWaveforms_=false; backgroundRefresh_=false;
     if (session_) session_->cancelQueuedCommands();
-    detail_=detail; report(detail, LogLevel::Error);
+    detail_=detail; report(detail, LogLevel::Error, VAPORVIEW_LOG_FILE, VAPORVIEW_LOG_FUNCTION, VAPORVIEW_LOG_LINE, operationScoped);
     if(!extensionRequest_.isEmpty()) {
         extensionRequest_={};extensionResult_["ok"]=false;extensionResult_["detail"]=detail;
         emit extensionCompleted(extensionResult_);
@@ -453,18 +489,25 @@ void FpgaDeviceController::fail(const QString& detail)
     emit snapshot(nowUs(),{{"event","operation_failed"},{"detail",detail}});
 }
 
-void FpgaDeviceController::report(const QString& detail, LogLevel level)
+void FpgaDeviceController::report(const QString& detail, LogLevel level, const char *file, const char *function, int line, bool operationScoped)
 {
     LogRecord record;
     record.level=level; record.source=QStringLiteral("Ground"); record.category=QStringLiteral("device.fpga");
     record.message=detail;
     record.fields={{QStringLiteral("event"),QStringLiteral("fpga_operation_diagnostic")},
-        {QStringLiteral("operation"),operation_},{QStringLiteral("ready"),ready_},{QStringLiteral("busy"),busy_}};
+        {QStringLiteral("operation"),operationScoped?operation_:QString()},{QStringLiteral("ready"),ready_},{QStringLiteral("busy"),busy_}};
     if (level>=LogLevel::Error) record.fields.insert(QStringLiteral("error_code"),QStringLiteral("FPGA_OPERATION_FAILED"));
+    if (operationScoped) {
+        record.correlation_id = operationCorrelationId_;
+        record.session_id = operationSessionId_;
+        if (!operationCorrelationId_.isEmpty())
+            record.thread_id = static_cast<quint64>(reinterpret_cast<quintptr>(QThread::currentThreadId()));
+    }
+    LogService::addCallLocation(record, file, function, line);
     emit logRecordGenerated(record);
 }
 
-void FpgaDeviceController::reportRawResult(bool enabled, bool succeeded, const QString& detail)
+void FpgaDeviceController::reportRawResult(bool enabled, bool succeeded, const QString& detail, const char *file, const char *function, int line)
 {
     LogRecord record;
     record.source=QStringLiteral("Ground"); record.category=QStringLiteral("device.fpga");
@@ -474,19 +517,31 @@ void FpgaDeviceController::reportRawResult(bool enabled, bool succeeded, const Q
     record.fields={{QStringLiteral("event"),QStringLiteral("fpga_raw_acquisition_result")},
         {QStringLiteral("enabled"),enabled},{QStringLiteral("result"),succeeded?QStringLiteral("succeeded"):QStringLiteral("failed")},
         {QStringLiteral("reason"),detail},{QStringLiteral("ui_visibility"),QStringLiteral("attention")}};
+    record.correlation_id = operationCorrelationId_;
+    record.session_id = operationSessionId_;
+    if (!operationCorrelationId_.isEmpty())
+        record.thread_id = static_cast<quint64>(reinterpret_cast<quintptr>(QThread::currentThreadId()));
+    LogService::addCallLocation(record, file, function, line);
     emit logRecordGenerated(record);
 }
 
 void FpgaDeviceController::trackConnection(quint16 source)
 {
+    if (pendingConnections_.contains(source))
+        reportConnection(source, QStringLiteral("cancelled"), QStringLiteral("SUPERSEDED"),
+            QStringLiteral("新的连接请求替代了未完成的连接。"));
     pendingConnections_[source]=0; operationConnections_.insert(source);
+    if (operationCorrelationId_.isEmpty()) pendingConnectionLogContexts_.remove(source);
+    else pendingConnectionLogContexts_.insert(source, {operationCorrelationId_, operationSessionId_});
     if(FpgaExtensions::sensor(source)) {
         startupWarningDeadlines_[source]=-1;
         startupWarnings_.remove(source);
+        if (operationCorrelationId_.isEmpty()) startupWarningLogContexts_.remove(source);
+        else startupWarningLogContexts_.insert(source, {operationCorrelationId_, operationSessionId_});
     }
 }
 
-void FpgaDeviceController::reportConnection(quint16 source, const QString& result, const QString& reasonCode, const QString& detail)
+void FpgaDeviceController::reportConnection(quint16 source, const QString& result, const QString& reasonCode, const QString& detail, const char *file, const char *function, int line)
 {
     const QMap<quint16,QString> names{{0,QStringLiteral("ADC / DLIA")},{0x40,QStringLiteral("PTB210")},
         {0x41,QStringLiteral("HMP3")},{0x42,QStringLiteral("EPSILON")},{0x43,QStringLiteral("BMP390")},{0x44,QStringLiteral("SHT45")},
@@ -495,7 +550,8 @@ void FpgaDeviceController::reportConnection(quint16 source, const QString& resul
     record.level=(result==QStringLiteral("failed") || result==QStringLiteral("warning"))?LogLevel::Warning:LogLevel::Info;
     record.message=names.value(source)+QStringLiteral(" 经 FPGA ")+
         (result==QStringLiteral("succeeded")?QStringLiteral("连接成功："):result==QStringLiteral("failed")?
-         QStringLiteral("连接失败："):QStringLiteral("通道已启用："))+detail;
+         QStringLiteral("连接失败："):result==QStringLiteral("cancelled")?QStringLiteral("连接已取消："):
+         QStringLiteral("通道已启用："))+detail;
     record.fields={{QStringLiteral("event"),QStringLiteral("fpga_device_connection_result")},
         {QStringLiteral("device"),names.value(source)},{QStringLiteral("fpga_source"),source},
         {QStringLiteral("result"),result},{QStringLiteral("reason_code"),reasonCode},
@@ -505,6 +561,20 @@ void FpgaDeviceController::reportConnection(quint16 source, const QString& resul
         record.fields.insert(QStringLiteral("module_status"),registers_.value(base+8));
         record.fields.insert(QStringLiteral("module_error"),registers_.value(base+12));
     }
+    const auto context = pendingConnectionLogContexts_.constFind(source);
+    if (context != pendingConnectionLogContexts_.cend()) {
+        record.correlation_id = context->correlationId;
+        record.session_id = context->sessionId;
+        record.thread_id = static_cast<quint64>(reinterpret_cast<quintptr>(QThread::currentThreadId()));
+    } else if (reasonCode == QStringLiteral("STARTUP_UNHEALTHY")) {
+        const auto startup = startupWarningLogContexts_.constFind(source);
+        if (startup != startupWarningLogContexts_.cend()) {
+            record.correlation_id = startup->correlationId;
+            record.session_id = startup->sessionId;
+            record.thread_id = static_cast<quint64>(reinterpret_cast<quintptr>(QThread::currentThreadId()));
+        }
+    }
+    LogService::addCallLocation(record, file, function, line);
     emit logRecordGenerated(record);
 }
 
@@ -514,7 +584,7 @@ void FpgaDeviceController::confirmConnection(quint16 source)
     if(!source) {
         reportConnection(source,QStringLiteral("succeeded"),QStringLiteral("CONTROL_READBACK"),
             QStringLiteral("采集 CONTROL 读回确认；波形上传由 RAW 开关独立控制。"));
-        pendingConnections_.remove(source); operationConnections_.remove(source); return;
+        pendingConnections_.remove(source); operationConnections_.remove(source); pendingConnectionLogContexts_.remove(source); return;
     }
     const quint32 pollAddress=source==0x40?0x6018:source==0x41?0x611c:source==0x43?0x6314:source==0x44?0x6414:source==0x46?0x662c:source==0x48?0x682c:0;
     const qint64 timeout=qMax<qint64>(8000,3*qint64(registers_.value(pollAddress))+5000);
@@ -539,7 +609,7 @@ void FpgaDeviceController::checkConnectionResults()
             reportConnection(i.key(),QStringLiteral("failed"),QStringLiteral("NO_VALID_SAMPLE"),
                 QStringLiteral("等待有效数据超时；通道已启用，请检查设备供电、接线及通信参数。"));
         } else continue;
-        pendingConnections_.remove(i.key()); operationConnections_.remove(i.key());
+        pendingConnections_.remove(i.key()); operationConnections_.remove(i.key()); pendingConnectionLogContexts_.remove(i.key());
     }
 }
 
@@ -566,10 +636,12 @@ void FpgaDeviceController::checkStartupWarnings()
         const quint32 base=0x6000+(source-0x40)*0x100;
         const bool hardwareFault=(errors & registers_.value(base+12) & 0x30)!=0;
         const bool newerSample=event.isEmpty() || sample.reading.timestamp>=event.value("tick").toString().toULongLong();
-        if(healthy && newerSample && !hardwareFault)continue;
-        if(!event.isEmpty())logManagementEvent(event,true);
-        else reportConnection(source,QStringLiteral("warning"),QStringLiteral("STARTUP_UNHEALTHY"),
-            QStringLiteral("启动等待 3 秒后仍未获得有效测量或设备仍在报警，请检查设备状态。"));
+        if(!(healthy && newerSample && !hardwareFault)) {
+            if(!event.isEmpty())logManagementEvent(event,true);
+            else reportConnection(source,QStringLiteral("warning"),QStringLiteral("STARTUP_UNHEALTHY"),
+                QStringLiteral("启动等待 3 秒后仍未获得有效测量或设备仍在报警，请检查设备状态。"));
+        }
+        startupWarningLogContexts_.remove(source);
     }
 }
 
@@ -765,7 +837,11 @@ void FpgaDeviceController::setAcquisition(bool enable)
         for (quint32 b:{0x5000u,0x5100u}) { write(b+4,1); waitFor(b+8,7,3); }
         for (quint32 b:{0x4000u,0x4100u}) { write(b+4,1); waitFor(b+8,5,1); }
     } else {
+        if (pendingConnections_.contains(0))
+            reportConnection(0, QStringLiteral("cancelled"), QStringLiteral("ACQUISITION_STOPPED"),
+                QStringLiteral("收到停止采集请求，未完成的连接已取消。"));
         pendingConnections_.remove(0);
+        pendingConnectionLogContexts_.remove(0);
         stopAndDrain();
         write(0x403c,0); write(0x413c,0); write(0x0050,0);
     }
@@ -1019,7 +1095,9 @@ void FpgaDeviceController::acceptReading(const FpgaSensor::Reading& reading)
             observations_.flush();
             LogRecord record;record.source=QStringLiteral("Ground");record.category=QStringLiteral("device.fpga");record.level=LogLevel::Warning;
             record.message=QStringLiteral("EPSILON 原始观测包无效：")+(reason.empty()?QStringLiteral("结构、CRC 或连续性校验失败。"):QString::fromStdString(reason));
-            record.fields={{"event","fpga_firmware_event"},{"observation_event","invalid_packet"}};emit logRecordGenerated(record);return;
+            record.fields={{"event","fpga_firmware_event"},{"observation_event","invalid_packet"}};
+            LogService::addCallLocation(record, VAPORVIEW_LOG_FILE, VAPORVIEW_LOG_FUNCTION, VAPORVIEW_LOG_LINE);
+            emit logRecordGenerated(record);return;
         }
         packet.epoch.hostTimestampUs=nowUs();
         if(auto epoch=observations_.accept(std::move(packet)))

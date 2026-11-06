@@ -36,7 +36,7 @@ public:
     double receiveBitsPerSecond() const;
     double transmitBitsPerSecond() const;
 
-    quint16 sendCommand(CommandId command, const QByteArray& payload = QByteArray());
+    quint16 sendCommand(CommandId command, const QByteArray& payload = QByteArray(), QString *correlationId = nullptr);
     quint32 sendFpgaControl(const QJsonObject& control);
     quint32 readAi8Page(Ai8TemperatureControllerProtocol::Page page,
                         const Ai8TemperatureControllerProtocol::Selection& selection);

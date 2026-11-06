@@ -1,7 +1,9 @@
 #include "ground/calibration/CalibrationService.h"
 #include "ground/main/GroundMainWindowImplementation.h"
+#include "LogContext.h"
 
 #include <QProgressBar>
+#include <QUuid>
 #include <algorithm>
 #include <cmath>
 #include <utility>
@@ -47,7 +49,7 @@ void MainWindow::publishGroundLog(VaporView::LogLevel level,
                                   const QString& category,
                                   const QString& event,
                                   const QString& message,
-                                  QVariantMap fields)
+                                  QVariantMap fields, const char *file, const char *function, int line)
 {
     bool hasProgressCurrent = false;
     bool hasProgressTotal = false;
@@ -77,7 +79,18 @@ void MainWindow::publishGroundLog(VaporView::LogLevel level,
     record.source = QStringLiteral("Ground");
     record.category = category;
     record.message = message;
+    if (const auto *context = VaporView::currentLogContext())
+    {
+        record.correlation_id = context->correlationId;
+        record.session_id = context->sessionId;
+    }
+    else if (category.startsWith(QStringLiteral("session.")) &&
+             !isRemoteSkyMode() && state_->recording_service_)
+        record.session_id = VaporView::Ground::Session::recordingSessionIdForLog(
+            state_->recording_service_->status(), event,
+            fields.value(QStringLiteral("session_directory")).toString());
     record.fields = std::move(fields);
+    VaporView::LogService::addCallLocation(record, file, function, line);
 
     const bool published = VaporView::LogService::withCurrentInstance([&](VaporView::LogService& logService) {
         logService.publish(record);
@@ -197,7 +210,7 @@ void MainWindow::stopEpsilonReconfigureProgress()
 void MainWindow::publishTemperatureCommandLog(VaporView::LogLevel level,
                                               const QString& event,
                                               const QString& message,
-                                              QVariantMap fields)
+                                              QVariantMap fields, const char *file, const char *function, int line)
 {
     fields.insert(QStringLiteral("device"), fields.value(QStringLiteral("device"), QStringLiteral("RD105")));
     fields.insert(QStringLiteral("device_id"),
@@ -206,7 +219,7 @@ void MainWindow::publishTemperatureCommandLog(VaporView::LogLevel level,
                      QStringLiteral("device.temperature.command"),
                      event,
                      message,
-                     std::move(fields));
+                     std::move(fields), file, function, line);
 }
 
 void MainWindow::enqueueUiLogRecord(const VaporView::LogRecord& record)
@@ -1031,6 +1044,9 @@ bool MainWindow::startRecordingSession()
         return true;
     }
     const bool resuming = state_->recording_service_->isSessionOpen() && state_->recording_service_->isPaused();
+    const QString operationId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    const VaporView::LogContext operationContext{operationId, resuming
+        ? state_->recording_service_->status().sessionDirectory : QString()};
     VaporView::Ground::Session::GroundRecordingOptions options;
     if(state_->rtk_config_dialog_)
         options.imuToMainAntennaBodyM = state_->rtk_config_dialog_->mainAntennaLeverArm();
@@ -1083,7 +1099,12 @@ bool MainWindow::startRecordingSession()
     VaporView::Ground::Session::GroundRecordingStartError startError =
         VaporView::Ground::Session::GroundRecordingStartError::None;
     QString errorMessage;
-    if (!state_->recording_service_->start(options, &startError, &errorMessage))
+    bool started = false;
+    {
+        const VaporView::ScopedLogContext logContext(operationContext);
+        started = state_->recording_service_->start(options, &startError, &errorMessage);
+    }
+    if (!started)
     {
         using StartError = VaporView::Ground::Session::GroundRecordingStartError;
         QString message;
@@ -1116,11 +1137,14 @@ bool MainWindow::startRecordingSession()
         {
             fields.insert(QStringLiteral("system_error"), errorMessage);
         }
-        publishGroundLog(VaporView::LogLevel::Error,
-                         QStringLiteral("session.recording"),
-                         QStringLiteral("session_recording_start_failed"),
-                         QStringLiteral("启动记录会话失败。"),
-                         fields);
+        {
+            const VaporView::ScopedLogContext logContext(operationContext);
+            publishGroundLog(VaporView::LogLevel::Error,
+                             QStringLiteral("session.recording"),
+                             QStringLiteral("session_recording_start_failed"),
+                             QStringLiteral("启动记录会话失败。"),
+                             fields);
+        }
         QMessageBox::warning(this,
                              state_->is_english_ ? QStringLiteral("Error") : QStringLiteral("错误"),
                              message+(errorMessage.isEmpty()?QString():"\n"+errorMessage));
@@ -1133,6 +1157,7 @@ bool MainWindow::startRecordingSession()
     if (state_->combination_navigation_page_)
         state_->combination_navigation_page_->refreshStatus();
     updateRecordingStatusLabel();
+    const VaporView::ScopedLogContext completedContext({operationId, status.sessionDirectory});
     if (resuming)
     {
         publishGroundLog(VaporView::LogLevel::Info,
@@ -1328,12 +1353,14 @@ bool MainWindow::tryStartScheduledRecording(QString *failureReason)
         if(!prepareRemoteCalibration(state_->calibration_service_,state_->remote_recording_state_==2,calibrationPayload,&calibrationError)) {
             if(failureReason)*failureReason=calibrationError;return false;
         }
+        QString correlationId;
         const quint16 seq = state_->remote_sky_controller_
-            ? state_->remote_sky_controller_->sendCommand(VaporView::CommandId::StartRecording,calibrationPayload)
+            ? state_->remote_sky_controller_->sendCommand(VaporView::CommandId::StartRecording,calibrationPayload, &correlationId)
             : 0;
         if(!seq && state_->remote_recording_state_!=2)state_->calibration_service_->finish();
         if (seq != 0)
         {
+            const VaporView::ScopedLogContext logContext({correlationId, {}});
             publishGroundLog(VaporView::LogLevel::Info,
                              QStringLiteral("session.recording"),
                              QStringLiteral("scheduled_recording_start_command_sent"),
@@ -1379,9 +1406,11 @@ bool MainWindow::tryStopScheduledRecording()
         {
             return false;
         }
-        const quint16 seq = state_->remote_sky_controller_->sendCommand(VaporView::CommandId::StopRecording);
+        QString correlationId;
+        const quint16 seq = state_->remote_sky_controller_->sendCommand(VaporView::CommandId::StopRecording, {}, &correlationId);
         if (seq != 0)
         {
+            const VaporView::ScopedLogContext logContext({correlationId, {}});
             publishGroundLog(VaporView::LogLevel::Info,
                              QStringLiteral("session.recording"),
                              QStringLiteral("scheduled_recording_stop_command_sent"),
@@ -1916,6 +1945,7 @@ void MainWindow::onStopRecordingClicked()
 void MainWindow::pauseRecordingSession(bool announce)
 {
     const QString sessionDirectory = state_->recording_service_->status().sessionDirectory;
+    const VaporView::ScopedLogContext logContext({QUuid::createUuid().toString(QUuid::WithoutBraces), sessionDirectory});
     if (!state_->recording_service_->pause())
     {
         return;
@@ -1935,17 +1965,21 @@ void MainWindow::pauseRecordingSession(bool announce)
 void MainWindow::stopRecording(bool announce)
 {
     const auto beforeStop = state_->recording_service_->status();
+    const VaporView::LogContext operationContext{QUuid::createUuid().toString(QUuid::WithoutBraces),
+                                                 beforeStop.sessionOpen ? beforeStop.sessionDirectory : QString()};
+    const VaporView::ScopedLogContext logContext(operationContext);
     if (beforeStop.sessionOpen)
     {
         if (!state_->recording_service_->appendEvent(QStringLiteral("info"), QStringLiteral("Recording stop requested.")))
         {
-            VaporView::LogService::withCurrentInstance([](VaporView::LogService& logService) {
+            VaporView::LogService::withCurrentInstance([&](VaporView::LogService& logService) {
                 logService.publish(VaporView::LogLevel::Error,
                                    QStringLiteral("Ground"),
                                    QStringLiteral("session.write"),
                                    QStringLiteral("无法写入记录停止摘要。"),
                                    {{QStringLiteral("event"), QStringLiteral("recording_stop_summary_append_failed")},
-                                    {QStringLiteral("error_code"), QStringLiteral("RECORDING_STOP_SUMMARY_APPEND_FAILED")}});
+                                    {QStringLiteral("error_code"), QStringLiteral("RECORDING_STOP_SUMMARY_APPEND_FAILED")}},
+                                   operationContext.correlationId, beforeStop.sessionDirectory);
             });
         }
     }

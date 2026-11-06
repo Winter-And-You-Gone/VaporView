@@ -101,7 +101,7 @@ Every record is normalized before it enters the asynchronous queue or is emitted
 through `recordPublished`. Limits are measured on UTF-8/compact JSON bytes:
 
 - `message`: 64 KiB;
-- one string value or map key: 64 KiB;
+- one string value or map key: 64 KiB, except top-level `session_id`, which is limited to 128 KiB;
 - one `QByteArray`: 64 KiB before JSON conversion;
 - the compact `fields` object: 192 KiB;
 - one complete JSONL line, including `\n`: 256 KiB;

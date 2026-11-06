@@ -46,7 +46,8 @@ class PpkProcessor final
     using Progress = std::function<void(int percent, const QString &message)>;
     // GUI callers execute this synchronous service on a worker.
     static PpkProcessResult process(const QString &sessionDirectory, const PpkConfig &config,
-                                    const std::atomic_bool *cancel = nullptr, const Progress &progress = {});
+                                    const std::atomic_bool *cancel = nullptr, const Progress &progress = {},
+                                    const QString &correlationId = {});
     static PpkConfig loadConfig(const QString &sessionDirectory);
     static bool saveConfig(const QString &sessionDirectory, const PpkConfig &config, QString *error = nullptr);
     static PpkStatus status(const QString &sessionDirectory);

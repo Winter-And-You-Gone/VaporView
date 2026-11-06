@@ -1,6 +1,8 @@
 #include "InternalEnvironmentSerialController.h"
 #include "data_collector.h"
 #include "SerialBaudRateCapabilities.h"
+#include <QThread>
+#include <QPointer>
 #include <atomic>
 #include <cmath>
 #include <thread>
@@ -11,6 +13,8 @@ struct InternalEnvironmentSerialController::Channel {
     DeviceState state=DeviceState::Disconnected;
     std::atomic<bool> cancel{false};
     quint64 generation=0;
+    QString pendingCorrelationId;
+    QString pendingSessionId;
     std::shared_ptr<DataCollector> collector;
     std::thread worker;
 };
@@ -34,11 +38,26 @@ bool InternalEnvironmentSerialController::active() const
         if(c->state==DeviceState::Connecting||c->state==DeviceState::Connected)return true;
     return false;
 }
-void InternalEnvironmentSerialController::reportFailure(SkyDeviceId id,const QString& reason)
+void InternalEnvironmentSerialController::reportConnectionStage(SkyDeviceId id, const QString& event, const QString& message,
+                                                                const QString& correlationId, const QString& sessionId,
+                                                                const char *file, const char *function, int line)
+{
+    if (correlationId.isEmpty()) return;
+    LogRecord record;record.level=LogLevel::Info;record.category=QStringLiteral("device.internal");
+    record.thread_id=static_cast<quint64>(reinterpret_cast<quintptr>(QThread::currentThreadId()));
+    record.message=message;record.correlation_id=correlationId;record.session_id=sessionId;
+    record.fields={{"event",event},{"device_id",skyDeviceIdName(id)}};
+    LogService::addCallLocation(record,file,function,line);
+    emit logRecordGenerated(record);
+}
+void InternalEnvironmentSerialController::reportFailure(SkyDeviceId id,const QString& reason, const QString& correlationId, const QString& sessionId, const char *file, const char *function, int line)
 {
     LogRecord record;record.level=LogLevel::Warning;record.category=QStringLiteral("device.internal");
+    record.thread_id=static_cast<quint64>(reinterpret_cast<quintptr>(QThread::currentThreadId()));
     record.message=QStringLiteral("内部环境串口桥连接失败：%1。").arg(reason);
     record.fields={{"event","internal_serial_error"},{"device_id",skyDeviceIdName(id)},{"reason",reason},{"reason_code","SERIAL_BRIDGE_CONNECT_FAILED"}};
+    record.correlation_id=correlationId;record.session_id=sessionId;
+    LogService::addCallLocation(record, file, function, line);
     emit logRecordGenerated(record);
 }
 void InternalEnvironmentSerialController::configure(SkyDeviceId id,const SerialDeviceConfig& config)
@@ -49,24 +68,39 @@ void InternalEnvironmentSerialController::configure(SkyDeviceId id,const SerialD
 void InternalEnvironmentSerialController::disconnectDevice(SkyDeviceId id)
 {
     auto *c=channel(id);if(!c)return;
+    const bool connecting=c->state==DeviceState::Connecting;
+    const QString correlationId=c->pendingCorrelationId;
+    const QString sessionId=c->pendingSessionId;
+    c->pendingCorrelationId.clear();c->pendingSessionId.clear();
     ++c->generation;c->cancel=true;
     if(c->worker.joinable())c->worker.join();
     if(c->collector)c->collector->stop();
-    c->collector.reset();changeState(id,DeviceState::Disconnected);
+    c->collector.reset();
+    QPointer<InternalEnvironmentSerialController> self(this);
+    changeState(id,DeviceState::Disconnected);
+    if(self && connecting)
+        reportConnectionStage(id,QStringLiteral("internal_serial_connect_cancelled"),QStringLiteral("内部环境串口桥连接已取消。"),correlationId,sessionId);
 }
 void InternalEnvironmentSerialController::disconnectAll()
 { disconnectDevice(SkyDeviceId::Bmp390);disconnectDevice(SkyDeviceId::Sht45); }
-bool InternalEnvironmentSerialController::connectDevice(SkyDeviceId id)
+bool InternalEnvironmentSerialController::connectDevice(SkyDeviceId id, const QString& correlationId, const QString& sessionId)
 {
     auto *c=channel(id);if(!c||c->state==DeviceState::Connecting||c->state==DeviceState::Connected)return false;
+    QPointer<InternalEnvironmentSerialController> self(this);
     const auto config=c->config;
     const auto &baud=id==SkyDeviceId::Bmp390?bmp390SerialAdapterBaudCapabilities():sht45SerialAdapterBaudCapabilities();
     if(!config.enabled||config.port.trimmed().isEmpty()||!std::isfinite(config.frequency_hz)
         ||config.frequency_hz<1||config.frequency_hz>20||std::floor(config.frequency_hz)!=config.frequency_hz
         ||!isBaudRateSupported(baud,config.baud_rate)) {
-        changeState(id,DeviceState::Error);reportFailure(id,QStringLiteral("串口或接收频率参数无效"));return false;
+        changeState(id,DeviceState::Error);
+        if(self)reportFailure(id,QStringLiteral("串口或接收频率参数无效"),correlationId,sessionId);
+        return false;
     }
-    disconnectDevice(id);c->cancel=false;
+    const quint64 resetGeneration=c->generation+1;
+    disconnectDevice(id);
+    if(!self||c->generation!=resetGeneration||c->state!=DeviceState::Disconnected)return false;
+    c->cancel=false;
+    c->pendingCorrelationId=correlationId;c->pendingSessionId=sessionId;
     const auto generation=c->generation;
     const bool pressure=id==SkyDeviceId::Bmp390;
     if(pressure){auto p=std::make_shared<PtbCollector>();p->setProtocol(PressureSensorProtocol::Bmp390Serial);c->collector=p;}
@@ -90,7 +124,9 @@ bool InternalEnvironmentSerialController::connectDevice(SkyDeviceId id)
         },Qt::QueuedConnection);
     });
     changeState(id,DeviceState::Connecting);
-    c->worker=std::thread([this,c,id,generation,collector,config] {
+    if(!self||c->generation!=generation||c->state!=DeviceState::Connecting)return false;
+    c->worker=std::thread([this,c,id,generation,collector,config,correlationId,sessionId] {
+        reportConnectionStage(id,QStringLiteral("internal_serial_worker_started"),QStringLiteral("内部环境串口桥开始连接。"),correlationId,sessionId);
         const bool ok=collector->start(config.port.toStdString(),SerialConfig::N81(config.baud_rate))
             &&!c->cancel&&(id==SkyDeviceId::Bmp390
                 ?static_cast<PtbCollector*>(collector.get())->checkDeviceResponse()
@@ -101,10 +137,14 @@ bool InternalEnvironmentSerialController::connectDevice(SkyDeviceId id)
             if(error.isEmpty())error=QStringLiteral("未收到有效串口文本；请核对桥程序、串口和波特率。");
             collector->stop();
         }
-        QMetaObject::invokeMethod(this,[this,c,id,generation,ok,error] {
+        QMetaObject::invokeMethod(this,[this,c,id,generation,ok,error,correlationId,sessionId] {
             if(c->generation!=generation)return;
+            c->pendingCorrelationId.clear();c->pendingSessionId.clear();
+            QPointer<InternalEnvironmentSerialController> self(this);
             changeState(id,ok?DeviceState::Connected:DeviceState::Error);
-            if(!ok)reportFailure(id,error);
+            if(!self)return;
+            if(!ok)reportFailure(id,error,correlationId,sessionId);
+            else reportConnectionStage(id,QStringLiteral("internal_serial_connected"),QStringLiteral("内部环境串口桥已连接。"),correlationId,sessionId);
         },Qt::QueuedConnection);
     });
     return true;

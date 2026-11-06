@@ -1,5 +1,6 @@
 #include "ground/calibration/CalibrationService.h"
 #include "ground/main/GroundMainWindowImplementation.h"
+#include "LogContext.h"
 
 void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& telemetry)
 {
@@ -332,6 +333,7 @@ void MainWindow::onRemoteCommandAckReceived(const VaporView::CommandAck& ack)
     if (!isTemperatureCommand(ack.command_id) &&
         ack.command_id != VaporView::CommandId::DeviceOperation)
     {
+        const VaporView::ScopedLogContext context({ack.correlation_id, ack.session_id});
         QVariantMap fields{{QStringLiteral("command"), commandName},
                            {QStringLiteral("command_id"), static_cast<quint16>(ack.command_id)},
                            {QStringLiteral("command_seq"), ack.command_seq},
@@ -418,6 +420,7 @@ void MainWindow::onRemoteCommandAckReceived(const VaporView::CommandAck& ack)
              !(ok && noError))
     {
         state_->remote_serial_detection_cancel_seq_ = 0;
+        const VaporView::ScopedLogContext context({ack.correlation_id, ack.session_id});
         publishGroundLog(VaporView::LogLevel::Warning,
                          QStringLiteral("device.connection"),
                          QStringLiteral("remote_serial_port_detection_cancel_failed"),
@@ -453,6 +456,7 @@ void MainWindow::onRemoteCommandAckReceived(const VaporView::CommandAck& ack)
                 if (ok)
                 {
                     state_->tcp_wave_panel_->applyRemotePeakSearchRange(range.start_index, range.end_index);
+                    const VaporView::ScopedLogContext context({ack.correlation_id, ack.session_id});
                     publishGroundLog(VaporView::LogLevel::Info,
                                      QStringLiteral("telemetry.command"),
                                      QStringLiteral("peak_search_range_applied"),

@@ -170,7 +170,9 @@ void connectionEventTimeFilter(){
 void startupWarningGrace(){
     for(int scenario=0;scenario<4;++scenario) {
         const quint16 source=scenario==3?0x46:0x45;
-        Fixture f;f.transport->regs[0x6504]=source==0x45;f.transport->regs[0x6604]=source==0x46;f.connect();
+        Fixture f;f.transport->regs[0x6504]=source==0x45;f.transport->regs[0x6604]=source==0x46;
+        f.controller.setOperationLogContext(1,QStringLiteral("startup-operation"),QStringLiteral("startup-session"));
+        f.connect();f.controller.clearOperationLogContext(1);
         auto* session=f.controller.findChild<FpgaDeviceSession*>();
         const auto errors=[&] {int n=0;for(const auto& r:f.records)
             if((r.fields.value("event")=="fpga_firmware_event" && r.fields.value("source_id").toUInt()==source)
@@ -200,16 +202,38 @@ void startupWarningGrace(){
         require(errors()==0,"startup errors are quiet during the grace period");
         while(elapsed.elapsed()<3300){QCoreApplication::processEvents();QThread::msleep(1);}
         require(errors()==(scenario==0?0:1),"recovered startup is quiet; persistent error or invalid data warns once");
-        if(scenario==0){injectError();require(errors()==1,"new faults after grace are reported immediately");}
+        if(scenario!=0)for(const auto& record:f.records)
+            if((record.fields.value("event")=="fpga_firmware_event" && record.fields.value("source_id").toUInt()==source)
+               || (record.fields.value("fpga_source").toUInt()==source && record.fields.value("reason_code")=="STARTUP_UNHEALTHY"))
+            {
+                require(record.correlation_id==QStringLiteral("startup-operation") && record.session_id==QStringLiteral("startup-session"),
+                        "deferred startup warning retains originating operation context");
+                require(record.source_location.file.endsWith(QStringLiteral("FpgaDeviceController.cpp")) &&
+                        record.source_location.function.contains(QStringLiteral("checkStartupWarnings")) && record.source_location.line>0,
+                        "deferred warning identifies its actual emitting call site");
+            }
+        if(scenario==0){injectError();require(errors()==1,"new faults after grace are reported immediately");
+            require(f.records.constLast().correlation_id.isEmpty() && f.records.constLast().session_id.isEmpty(),"independent post-grace fault does not inherit startup context");}
         samples.stop();f.controller.disconnectDevice();
         QCoreApplication::processEvents();require(errors()==1,"disconnect does not publish deferred startup errors");
     }
-    Fixture disconnected;disconnected.transport->regs[0x6504]=1;disconnected.connect();
+    Fixture disconnected;disconnected.transport->regs[0x6504]=1;
+    disconnected.controller.setOperationLogContext(10,QStringLiteral("cancelled-start"),QStringLiteral("old-session"));
+    disconnected.connect();disconnected.controller.clearOperationLogContext(10);
     disconnected.controller.disconnectDevice();
     const auto count=disconnected.records.size();
     QElapsedTimer elapsed;elapsed.start();
     while(elapsed.elapsed()<3300){QCoreApplication::processEvents();QThread::msleep(1);}
     require(disconnected.records.size()==count,"disconnect cancels startup grace without delayed warnings");
+    disconnected.controller.setOperationLogContext(11,QStringLiteral("new-start"),QStringLiteral("new-session"));
+    disconnected.connect();disconnected.controller.clearOperationLogContext(11);
+    elapsed.restart();while(elapsed.elapsed()<3300){QCoreApplication::processEvents();QThread::msleep(1);}
+    bool newWarning=false;
+    for(const auto& record:disconnected.records)if(record.fields.value("fpga_source").toUInt()==0x45 && record.fields.value("reason_code")=="STARTUP_UNHEALTHY") {
+        newWarning=true;
+        require(record.correlation_id==QStringLiteral("new-start") && record.session_id==QStringLiteral("new-session"),"reconnected source uses new context after cancellation");
+    }
+    require(newWarning,"reconnected source emits startup diagnostic");
 }
 void advancedDataPaths(){
     Fixture f;f.connect();f.transport->clear();
@@ -254,7 +278,10 @@ void connectionResultLogs(){
     };
     Fixture f;
     for(quint16 source:{0x40,0x45,0x46})f.transport->regs[0x6004+(source-0x40)*0x100]=1;
+    f.controller.setOperationLogContext(1, QStringLiteral("connect-original"), QStringLiteral("active-session"));
     f.connect();
+    f.controller.clearOperationLogContext(1);
+    f.controller.setOperationLogContext(2, QStringLiteral("unrelated-next-operation"), {});
     for(quint16 source:{0x40,0x45,0x46})require(count(f,source,"waiting")==1,"each recovered sensor logs confirmed enable separately");
     require(count(f,0x45,"succeeded")==0,"CONTROL readback alone never reports sensor connection success");
     auto *session=f.controller.findChild<FpgaDeviceSession*>();
@@ -274,6 +301,13 @@ void connectionResultLogs(){
     feed(0);waitUntil([&]{return count(f,0x45,"succeeded")==1;},"first valid sample reports connection success");
     feed(0);waitUntil([&]{return count(f,0x40,"failed")==1&&count(f,0x46,"failed")==1;},"missing data reports per-device failure",11000);
     require(count(f,0x45,"succeeded")==1&&count(f,0x45,"failed")==0,"continuous samples never spam connection logs");
+    for (const auto& record : f.records) {
+        if (record.fields.value("event") == "fpga_device_connection_result" &&
+            (record.fields.value("reason_code") == "VALID_SAMPLE" || record.fields.value("reason_code") == "NO_VALID_SAMPLE"))
+            require(record.correlation_id == QStringLiteral("connect-original") && record.session_id == QStringLiteral("active-session"),
+                    "delayed sensor results keep original per-source context instead of later operation context");
+    }
+    f.controller.clearOperationLogContext(2);
     f.controller.refresh();f.finish();
     require(count(f,0x40,"failed")==1,"periodic or manual reads do not repeat failed results");
     Fixture failed;
@@ -283,9 +317,35 @@ void connectionResultLogs(){
     for(quint16 source:{0x40,0x42,0x43,0x44,0x45,0x46}) {
         require(count(failed,source,"failed")==1&&count(failed,source,"succeeded")==0,"aborted recovery logs every affected device and no false success");
     }
-    Fixture cancelled;cancelled.connect();cancelled.controller.connectSensor({{"op","sensor"},{"source",0x45},{"enabled",true}});cancelled.finish();
-    cancelled.controller.disconnectDevice();
-    require(count(cancelled,0x45,"succeeded")==0&&count(cancelled,0x45,"failed")==0,"manual cancellation clears pending connection evidence");
+    for (int scenario=0;scenario<5;++scenario) {
+        Fixture cancelled;cancelled.connect();
+        if (scenario!=4)
+            cancelled.controller.setOperationLogContext(10,QStringLiteral("original-connect"),QStringLiteral("original-session"));
+        cancelled.controller.connectSensor({{"op","sensor"},{"source",0x45},{"enabled",true}});cancelled.finish();
+        require(count(cancelled,0x45,"waiting")==1,"sensor waits for a valid sample before cancellation");
+        cancelled.controller.clearOperationLogContext(10);
+        cancelled.controller.setOperationLogContext(11,QStringLiteral("later-operation"),QStringLiteral("later-session"));
+        if (scenario==0 || scenario==4) cancelled.controller.disconnectDevice();
+        else if (scenario==1) { cancelled.controller.connectDevice({},"auto");cancelled.finish(); }
+        else if (scenario==2) { cancelled.controller.setSensorEnabled(0x45,false);cancelled.finish(); }
+        else { cancelled.controller.connectSensor({{"op","sensor"},{"source",0x45},{"enabled",true}});cancelled.finish(); }
+        const QString reason=scenario==2?QStringLiteral("SENSOR_DISABLED"):
+            scenario==3?QStringLiteral("SUPERSEDED"):QStringLiteral("DISCONNECTED");
+        int cancellations=0;
+        for (const auto& record:cancelled.records) {
+            if (record.fields.value("event")!="fpga_device_connection_result" ||
+                record.fields.value("fpga_source").toUInt()!=0x45 || record.fields.value("result")!="cancelled") continue;
+            ++cancellations;
+            require(record.fields.value("reason_code")==reason,"connection cancellation identifies its cause");
+            require(record.correlation_id==(scenario==4?QString():QStringLiteral("original-connect")) &&
+                    record.session_id==(scenario==4?QString():QStringLiteral("original-session")),
+                    "connection cancellation retains its own context and never inherits the later operation");
+        }
+        require(cancellations==1,"each interrupted connection has one cancellation result");
+        require(count(cancelled,0x45,"succeeded")==0&&count(cancelled,0x45,"failed")==0,
+                "cancellation is not reported as connection success or failure");
+        cancelled.controller.clearOperationLogContext(11);
+    }
 }
 int indexOfWrite(const QVector<Command>& commands,quint32 address,quint32 value){for(int i=0;i<commands.size();++i)if(commands[i].message==3&&commands[i].address==address&&commands[i].value==value)return i;return -1;}
 void sensorRates(){
@@ -421,6 +481,66 @@ void backgroundRefresh(){
     QMetaObject::invokeMethod(statusTimer,"timeout",Qt::DirectConnection);
     waitUntil([&]{return !f.controller.ready();},"background version failure completes");
     require(!f.controller.ready()&&stateChanges==3&&!f.diagnostics.isEmpty(),"background version failure remains visible and disables writes");
+}
+void commandTimeoutAttribution(){
+    for (int scenario=0;scenario<3;++scenario) {
+        Fixture f;f.connect();f.transport->clear();f.transport->holdResponses=true;
+        auto *session=f.controller.findChild<FpgaDeviceSession*>();
+        quint32 sentSequence=0;quint16 sentMessage=0;
+        QObject::connect(session,&FpgaDeviceSession::commandSent,&f.controller,[&](const QByteArray& bytes) {
+            FpgaVlp1::StreamParser parser;
+            const auto frames=parser.feed(reinterpret_cast<const std::uint8_t*>(bytes.constData()),bytes.size());
+            require(frames.size()==1,"timeout test captures a complete command");
+            sentSequence=frames.front().header.sequence;sentMessage=frames.front().header.message;
+        });
+        if (scenario==0) {
+            QTimer *statusTimer=nullptr;
+            for (auto *timer:f.controller.findChildren<QTimer*>())if(timer->interval()==2000)statusTimer=timer;
+            require(statusTimer,"periodic status timer exists for timeout attribution");
+            QMetaObject::invokeMethod(statusTimer,"timeout",Qt::DirectConnection);
+            require(sentSequence && sentMessage==2,"background read sequence captured");
+        } else if (scenario==2) {
+            session->writeRegisters(0x44,{1});
+            require(sentSequence && sentMessage==3,"independent watchdog write sequence captured");
+        }
+        f.controller.setOperationLogContext(90,QStringLiteral("foreground-operation"),QStringLiteral("active-session"));
+        if (scenario!=2) {
+            f.controller.setDac(1,true);
+            require(f.controller.busy(),"foreground operation started");
+            require(sentSequence && (scenario==0?sentMessage==2:sentMessage==3),"expected command remains on the wire");
+        }
+        const auto timedOutSequence=sentSequence;
+        const auto timedOutMessage=sentMessage;
+        emit session->commandTimedOut(timedOutSequence,timedOutMessage);
+        require(!f.controller.busy(),"timeout retains operation cancellation behavior");
+        int unrelated=0,failures=0;
+        for (const auto& record:f.records) {
+            if (record.fields.value("event")=="fpga_unrelated_command_timeout") {
+                ++unrelated;
+                require(record.fields.value("command_sequence").toUInt()==timedOutSequence &&
+                        record.fields.value("command_message").toUInt()==timedOutMessage,
+                        "independent timeout records its own command identity");
+                require(record.correlation_id.isEmpty() && record.session_id.isEmpty() && !record.fields.contains("operation"),
+                        "independent timeout never inherits a foreground context or operation");
+            } else if (record.fields.value("event")=="fpga_operation_diagnostic" && record.level==LogLevel::Error) {
+                ++failures;
+                if (scenario==2) {
+                    require(record.correlation_id.isEmpty() && record.session_id.isEmpty() &&
+                            record.fields.value("operation").toString().isEmpty(),"idle watchdog failure remains independent");
+                } else {
+                    require(record.correlation_id==QStringLiteral("foreground-operation") && record.session_id==QStringLiteral("active-session"),
+                            "foreground failure retains its original context");
+                    require(record.message.contains(scenario==0?QStringLiteral("另一条命令超时"):QStringLiteral("命令超时")),
+                            "foreground failure describes the timed out command accurately");
+                }
+            }
+        }
+        require(unrelated==(scenario==1?0:1) && failures==1,"matching and unrelated timeouts take distinct diagnostic paths");
+        if (scenario==0) require(f.transport->writes().isEmpty(),"cancelled foreground write is never sent behind the timed out read");
+        f.controller.clearOperationLogContext(90);
+        f.transport->holdResponses=false;
+        QCoreApplication::processEvents();
+    }
 }
 void independentAndAcquisition(){
     Fixture f;f.connect();f.transport->clear();f.controller.setWaveform(0,true);f.finish();
@@ -656,6 +776,7 @@ int main(int argc,char **argv){
     if(app.arguments().contains("--selective-connection")) {selectiveConnection();std::puts("FPGA selective connection tests passed");return 0;}
     if(app.arguments().contains("--sensor-config")) {sensorConfiguration();std::puts("FPGA sensor configuration tests passed");return 0;}
     if(app.arguments().contains("--startup-grace")) {startupWarningGrace();std::puts("FPGA startup warning grace tests passed");return 0;}
+    if(app.arguments().contains("--command-timeout")) {commandTimeoutAttribution();std::puts("FPGA command timeout attribution tests passed");return 0;}
     if(app.arguments().contains("--hardware-probe")) {
         FpgaDeviceController controller;
         const int durationIndex=app.arguments().indexOf("--hardware-duration-ms");
@@ -712,5 +833,5 @@ int main(int argc,char **argv){
         }
         std::puts("hardware controller connect/idle/reconnect probe passed");return 0;
     }
-    connectionEventTimeFilter();advancedDataPaths();connectionResultLogs();sensorRates();connectionAndVersions();connectionRecovery();backgroundRefresh();independentAndAcquisition();restartClearsDliaState();configurationAndFailure();scopedConfiguration();rawAndBusy();temperature();sensorUploadAndFailure();ai8DisabledConfiguration();ptbHistoricalErrorRecovery();threadCleanup();std::puts("FPGA controller tests passed");return 0;
+    connectionEventTimeFilter();advancedDataPaths();connectionResultLogs();sensorRates();connectionAndVersions();connectionRecovery();backgroundRefresh();commandTimeoutAttribution();independentAndAcquisition();restartClearsDliaState();configurationAndFailure();scopedConfiguration();rawAndBusy();temperature();sensorUploadAndFailure();ai8DisabledConfiguration();ptbHistoricalErrorRecovery();threadCleanup();std::puts("FPGA controller tests passed");return 0;
 }

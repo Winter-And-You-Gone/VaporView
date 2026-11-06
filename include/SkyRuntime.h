@@ -2,6 +2,8 @@
 #define VaporView_SKY_RUNTIME_H_
 
 #include "LogRecord.h"
+#include "LogContext.h"
+#include "LogService.h"
 #include "SerialTelemetryLink.h"
 #include "SkyDashboardTypes.h"
 #include "SkyDeviceManager.h"
@@ -13,6 +15,7 @@
 
 #include <QJsonObject>
 #include <QObject>
+#include <QStringList>
 #include <QTimer>
 #include <QElapsedTimer>
 #include <QHash>
@@ -42,13 +45,16 @@ struct SkyRuntimeOptions
 struct SkyCommandResult
 {
     CommandAck ack;
+    bool is_progress = false;
     bool send_status = false;
     bool send_sky_config = false;
     bool send_config_apply_result = false;
     QJsonObject config_apply_result;
+    QByteArray config_apply_result_context;
     bool send_one_waveform = false;
     bool send_device_operation_response = false;
     DeviceOperationResponse device_operation_response;
+    QByteArray device_operation_response_context;
 };
 
 class SkyRuntime : public QObject
@@ -63,22 +69,26 @@ public:
     void stop();
     bool isRunning() const;
 
-    bool connectDevice(SkyDeviceId id, CommandErrorCode *error = nullptr);
+    bool connectDevice(SkyDeviceId id, CommandErrorCode *error = nullptr,
+                       const QString& correlationId = {}, const QString& sessionId = {});
     bool disconnectDevice(SkyDeviceId id, CommandErrorCode *error = nullptr);
-    bool reconnectDevice(SkyDeviceId id, CommandErrorCode *error = nullptr);
+    bool reconnectDevice(SkyDeviceId id, CommandErrorCode *error = nullptr,
+                         const QString& correlationId = {}, const QString& sessionId = {});
 
-    void connectAllDevices();
+    void connectAllDevices(const QString& correlationId = {}, const QString& sessionId = {});
     void disconnectAllDevices();
-    void reconnectAllDevices();
+    void reconnectAllDevices(const QString& correlationId = {}, const QString& sessionId = {});
 
     bool startRecording(QString *error = nullptr);
     bool pauseRecording(QString *error = nullptr);
     bool stopRecording(QString *error = nullptr);
 
     TelemetryStatus currentStatus() const;
+    QString activeSessionId() const;
     SkyConfig currentConfig() const;
     QJsonObject currentFpgaStatus() const;
     void setFpgaTransportForTesting(std::unique_ptr<Ground::Devices::FpgaUsbTransport> transport);
+    bool setEpsilonMaintenanceExchangeForTesting(EpsilonMaintenanceExchange exchange);
     SkyDashboardSnapshot dashboardSnapshot() const;
     QVector<DownsampledWaveform> currentDownsampledWaveforms() const;
 
@@ -109,6 +119,10 @@ private slots:
     void sendAi8TemperatureControllerStatus();
 
 private:
+    friend class SkyRuntimeEpsilonContextTestAccess;
+    friend class SkyRuntimeStorageFailureTestAccess;
+    friend class SkyRuntimeSerialDetectionTestAccess;
+    LogContext storageFailureContext(const QString& sessionId);
     void dispatchFrame(const TelemetryFrame& frame);
     void handleCommand(const CommandMessage& command);
     void sendCommandResultFrames(const SkyCommandResult& result);
@@ -125,7 +139,10 @@ private:
                            const QString& category,
                            const QString& event,
                            const QString& message,
-                           QVariantMap fields = QVariantMap());
+                           QVariantMap fields = QVariantMap(),
+                           const char *file = VAPORVIEW_LOG_FILE,
+                           const char *function = VAPORVIEW_LOG_FUNCTION,
+                           int line = VAPORVIEW_LOG_LINE);
     void updateTimerIntervals();
     quint64 currentTimestampUs() const;
     QVector<float> waveformPreview(const QVector<float>& samples, int maxPoints) const;
@@ -150,8 +167,11 @@ private:
     quint16 next_frame_seq_ = 1;
     quint32 rx_total_frames_ = 0;
     quint64 last_frame_time_us_ = 0;
+    std::mutex storage_failure_context_mutex_;
+    LogContext storage_failure_context_;
     SkySessionRecorder session_recorder_;
     bool running_ = false;
+    bool stopping_ = false;
     bool fpga_storage_failure_handled_ = false;
     qint64 fpga_status_last_sent_ms_ = -1000;
     QHash<quint16, qint64> fpga_preview_sent_ms_;
@@ -167,12 +187,17 @@ private:
     std::atomic_bool serial_port_detection_in_progress_{false};
     std::atomic_bool serial_port_detection_cancel_requested_{false};
     std::thread serial_port_detection_thread_;
+    quint64 serial_port_detection_generation_ = 0;
+    LogContext serial_port_detection_context_;
+    std::function<QStringList()> serial_port_detection_ports_for_testing_;
     QElapsedTimer command_clock_;
     QHash<QByteArray, QPair<qint64, SkyCommandResult>> command_results_;
     QHash<QByteArray, QByteArray> command_request_payloads_;
     QByteArray active_command_key_;
+    QVector<CommandMessage> active_command_log_contexts_;
     bool epsilon_settings_operation_pending_ = false;
     std::shared_ptr<std::atomic_bool> maintenance_cancel_;
+    EpsilonMaintenanceExchange maintenance_exchange_for_testing_;
     quint32 maintenance_request_id_ = 0;
     QByteArray maintenance_client_scope_;
     DeviceOperation maintenance_operation_ = DeviceOperation::CalibrateEpsilonLevel;

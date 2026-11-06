@@ -1,4 +1,5 @@
 #include "ground/rtk/RtkConfigDialog.h"
+#include "LogService.h"
 #include "ground/widgets/SerialPortComboSupport.h"
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/SingleLevelPopupComboBox.h"
@@ -38,6 +39,19 @@
 #include <cstdlib>
 #include <functional>
 #include <iostream>
+
+class RtkStatusLogTestAccess
+{
+public:
+    static void handle(RtkConfigDialog& dialog, const RtkStreamStats& stats)
+    {
+        dialog.handleRtkServiceStatus(stats, true);
+    }
+    static bool hasSink(const RtkConfigDialog& dialog)
+    {
+        return static_cast<bool>(dialog.rtcm_correction_sink_server_);
+    }
+};
 
 namespace
 {
@@ -812,6 +826,265 @@ int main(int argc, char **argv)
                 "embedded RTK service can stop after an internal page switch");
         require(!embeddedDialog->isRunning(),
                 "embedded RTK service stops only when explicitly requested");
+    }
+
+    {
+        QTemporaryDir logDir;
+        require(logDir.isValid(), "temporary RTK log directory");
+        VaporView::LogService logs(QStringLiteral("RtkCorrelationTest"), &app, logDir.path());
+        QList<VaporView::LogRecord> records;
+        QList<VaporView::LogRecord> rawRecords;
+        QObject::connect(&logs, &VaporView::LogService::recordPublished, &logs,
+                         [&records, &rawRecords](const VaporView::LogRecord& record) {
+            if (record.category == QStringLiteral("rtcm.lifecycle")) records.append(record);
+            if (record.category == QStringLiteral("service.raw")) rawRecords.append(record);
+        }, Qt::DirectConnection);
+        RtkConfigDialog isolated(nullptr, false);
+        isolated.setUiTestMode(true);
+        for (int i = 0; i < 2; ++i) {
+            require(QMetaObject::invokeMethod(&isolated, "onStartClicked", Qt::DirectConnection), "start simulated RTCM");
+            require(QMetaObject::invokeMethod(&isolated, "onStopClicked", Qt::DirectConnection), "stop simulated RTCM");
+        }
+        require(records.size() == 6, "RTCM emits lifecycle records only at operation boundaries");
+        for (int i = 0; i < 2; ++i) {
+            require(records[i * 3].fields.value(QStringLiteral("event")) == QStringLiteral("rtcm_stream_start_requested") &&
+                    records[i * 3 + 1].fields.value(QStringLiteral("event")) == QStringLiteral("rtcm_stream_started") &&
+                    records[i * 3 + 2].fields.value(QStringLiteral("event")) == QStringLiteral("rtcm_stream_stopped"),
+                    "RTCM lifecycle records preserve stable event names");
+        }
+        require(!records[0].correlation_id.isEmpty() && records[0].correlation_id == records[1].correlation_id &&
+                records[1].correlation_id == records[2].correlation_id, "first RTCM lifecycle retains ID");
+        require(!records[3].correlation_id.isEmpty() && records[3].correlation_id != records[0].correlation_id &&
+                records[3].correlation_id == records[4].correlation_id && records[4].correlation_id == records[5].correlation_id,
+                "next RTCM lifecycle gets a fresh ID");
+        require(records[0].session_id.isEmpty(), "no invented session ID for RTCM stream");
+        records.clear();
+        bool nestedStart = false;
+        const auto startReentry = QObject::connect(&logs, &VaporView::LogService::recordPublished, &isolated,
+            [&](const VaporView::LogRecord& record) {
+                if (!nestedStart && record.fields.value(QStringLiteral("event")) == QStringLiteral("rtcm_stream_start_requested")) {
+                    nestedStart = true;
+                    QMetaObject::invokeMethod(&isolated, "onStartClicked", Qt::DirectConnection);
+                }
+            }, Qt::DirectConnection);
+        require(QMetaObject::invokeMethod(&isolated, "onStartClicked", Qt::DirectConnection), "start with synchronous log reentry");
+        QObject::disconnect(startReentry);
+        require(nestedStart && isolated.isRunning() && records.size() == 2 &&
+                records[0].correlation_id == records[1].correlation_id,
+                "recursive start is suppressed without changing the operation identity");
+        const QString oldId = records[0].correlation_id;
+        bool restarted = false;
+        const auto stopReentry = QObject::connect(&isolated, &RtkConfigDialog::rtkRunningChanged, &isolated,
+            [&](bool running) {
+                if (!running && !restarted) {
+                    restarted = true;
+                    QMetaObject::invokeMethod(&isolated, "onStartClicked", Qt::DirectConnection);
+                }
+            }, Qt::DirectConnection);
+        require(QMetaObject::invokeMethod(&isolated, "onStopClicked", Qt::DirectConnection), "stop with synchronous restart");
+        QObject::disconnect(stopReentry);
+        require(restarted && isolated.isRunning() && isolated.rtcmCorrelationId() != oldId &&
+                records.last().fields.value(QStringLiteral("event")) == QStringLiteral("rtcm_stream_stopped") &&
+                records.last().correlation_id == oldId,
+                "old stop retains its identity and leaves the restarted stream intact");
+        require(QMetaObject::invokeMethod(&isolated, "onStopClicked", Qt::DirectConnection), "stop restarted stream");
+        records.clear();
+        require(QMetaObject::invokeMethod(&isolated, "onStartClicked", Qt::DirectConnection), "start status reentry fixture");
+        const QString failedId = isolated.rtcmCorrelationId();
+        bool statusRestarted = false;
+        const auto statusReentry = QObject::connect(&isolated, &RtkConfigDialog::rtkRunningChanged, &isolated,
+            [&](bool running) {
+                if (!running && !statusRestarted) {
+                    statusRestarted = true;
+                    QMetaObject::invokeMethod(&isolated, "onStartClicked", Qt::DirectConnection);
+                }
+            }, Qt::DirectConnection);
+        RtkStreamStats failedStatus;
+        failedStatus.running = false;
+        failedStatus.message = QStringLiteral("previous stream failed");
+        RtkStatusLogTestAccess::handle(isolated, failedStatus);
+        QObject::disconnect(statusReentry);
+        require(statusRestarted && isolated.isRunning() && isolated.rtcmCorrelationId() != failedId &&
+                records.last().fields.value(QStringLiteral("event")) == QStringLiteral("rtcm_stream_unexpected_stop") &&
+                records.last().correlation_id == failedId,
+                "old status failure retains its identity without clearing the restarted stream");
+        require(QMetaObject::invokeMethod(&isolated, "onStopClicked", Qt::DirectConnection), "stop status reentry fixture");
+        VaporView::LogRecord located;
+        const auto locationConnection = QObject::connect(&logs, &VaporView::LogService::recordPublished, &isolated,
+            [&](const VaporView::LogRecord& record) {
+                if (record.fields.value(QStringLiteral("event")) == QStringLiteral("rtk_service_log")) located = record;
+            }, Qt::DirectConnection);
+        const int expectedLine = __LINE__ + 1;
+        isolated.appendLog(QStringLiteral("context location test"), VaporView::LogContext{oldId, {}});
+        QObject::disconnect(locationConnection);
+        require(located.correlation_id == oldId && located.source_location.line == expectedLine &&
+                located.source_location.file.endsWith(QStringLiteral("rtk_config_dialog_test.cpp")),
+                "RTCM forwarding log retains the actual caller location");
+        records.clear();
+        isolated.setUiTestMode(false);
+        auto *serverEdit = isolated.findChild<QLineEdit *>(QStringLiteral("rtkServerEdit"));
+        require(serverEdit, "RTCM server input exists for validation failure");
+        serverEdit->clear();
+        QString validationMessage;
+        QTimer closeValidation;
+        QObject::connect(&closeValidation, &QTimer::timeout, &isolated, [&validationMessage] {
+            if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
+                validationMessage = box->text();
+                box->accept();
+            }
+        });
+        closeValidation.start(10);
+        require(QMetaObject::invokeMethod(&isolated, "onStartClicked", Qt::DirectConnection),
+                "invoke real RTCM start with invalid configuration");
+        closeValidation.stop();
+        require(records.size() == 2 &&
+                records[0].fields.value(QStringLiteral("event")) == QStringLiteral("rtcm_stream_start_requested") &&
+                records[1].fields.value(QStringLiteral("event")) == QStringLiteral("rtcm_stream_start_failed"),
+                "invalid RTCM configuration emits requested and failed lifecycle records");
+        require(!records[0].correlation_id.isEmpty() && records[0].correlation_id == records[1].correlation_id &&
+                !validationMessage.isEmpty() && records[1].fields.value(QStringLiteral("reason")).toString() == validationMessage,
+                "RTCM failure record preserves the operation identity and actual validation reason");
+
+        records.clear();
+        isolated.setUiTestMode(true);
+        require(QMetaObject::invokeMethod(&isolated, "onStartClicked", Qt::DirectConnection), "start RTCM status fixture");
+        require(records.size() == 2 && !records[0].correlation_id.isEmpty(), "status fixture gets a stream identity");
+        const QString streamId = records[0].correlation_id;
+        rawRecords.clear();
+        RtkStreamStats running;
+        running.running = true;
+        running.message = QStringLiteral("caster retry");
+        RtkStatusLogTestAccess::handle(isolated, running);
+        isolated.appendRawLogLine(QStringLiteral("independent no-signal task"));
+        require(rawRecords.size() == 2 && rawRecords[0].correlation_id == streamId &&
+                rawRecords[1].correlation_id.isEmpty(), "stream status retains identity and independent diagnostics do not inherit it");
+        RtkStreamStats stopped;
+        stopped.running = false;
+        stopped.message = QStringLiteral("caster authentication rejected");
+        RtkStatusLogTestAccess::handle(isolated, stopped);
+        require(rawRecords.size() == 3 && rawRecords[2].correlation_id == streamId &&
+                records.last().fields.value(QStringLiteral("event")) == QStringLiteral("rtcm_stream_unexpected_stop") &&
+                records.last().fields.value(QStringLiteral("reason")).toString() == stopped.message &&
+                records.last().correlation_id == streamId, "unexpected stop retains stream identity and actual reason");
+        isolated.appendRawLogLine(QStringLiteral("after stop"));
+        require(rawRecords.last().correlation_id.isEmpty(), "post-stop diagnostic has no stale stream identity");
+
+        QString recordingSession;
+        isolated.setRecordingSessionProvider([&] { return recordingSession; });
+        records.clear(); rawRecords.clear();
+        require(QMetaObject::invokeMethod(&isolated, "onStartClicked", Qt::DirectConnection), "restart RTCM with session provider");
+        const QString restartId = records.first().correlation_id;
+        require(!restartId.isEmpty() && records.first().session_id.isEmpty(), "stream starts without an invented session");
+        recordingSession = QStringLiteral("actual-local-session");
+        RtkStatusLogTestAccess::handle(isolated, running);
+        require(rawRecords.last().correlation_id == restartId && rawRecords.last().session_id == recordingSession,
+                "running stream status captures the current session");
+        RtkStatusLogTestAccess::handle(isolated, running);
+        require(rawRecords.last().session_id == recordingSession, "paused session remains associated while open");
+        recordingSession.clear();
+        RtkStatusLogTestAccess::handle(isolated, running);
+        require(rawRecords.last().session_id.isEmpty(), "stream status after session stop has no stale session");
+        isolated.appendRawLogLine(QStringLiteral("independent no-signal task"));
+        require(rawRecords.last().correlation_id.isEmpty() && rawRecords.last().session_id.isEmpty(),
+                "independent status does not inherit stream or session");
+        isolated.appendLog(QStringLiteral("delayed failure"), {restartId, {}});
+        require(QMetaObject::invokeMethod(&isolated, "onStopClicked", Qt::DirectConnection), "stop RTCM provider fixture");
+
+        recordingSession = QStringLiteral("cancel-session");
+        records.clear();
+        const auto cancelRequested = QObject::connect(&logs, &VaporView::LogService::recordPublished, &isolated,
+            [&](const VaporView::LogRecord& record) {
+                if (record.fields.value(QStringLiteral("event")) == QStringLiteral("rtcm_stream_start_requested"))
+                    QMetaObject::invokeMethod(&isolated, "onStopClicked", Qt::DirectConnection);
+            }, Qt::DirectConnection);
+        require(QMetaObject::invokeMethod(&isolated, "onStartClicked", Qt::DirectConnection), "cancel simulated RTCM request");
+        QObject::disconnect(cancelRequested);
+        require(!isolated.isRunning() && isolated.rtcmCorrelationId().isEmpty() && records.size() == 2 &&
+                records[1].fields.value(QStringLiteral("event")) == QStringLiteral("rtcm_stream_start_cancelled") &&
+                !records[0].correlation_id.isEmpty() && records[0].correlation_id == records[1].correlation_id &&
+                records[1].session_id == recordingSession, "cancelled request retains operation and actual session");
+        const QString cancelledId = records[0].correlation_id;
+
+        bool transportDisabled = false;
+        const auto disableDuringStart = QObject::connect(&logs, &VaporView::LogService::recordPublished, &isolated,
+            [&](const VaporView::LogRecord& record) {
+                if (!transportDisabled && record.fields.value(QStringLiteral("event")) == QStringLiteral("rtcm_stream_start_requested")) {
+                    transportDisabled = true;
+                    isolated.setTransportSupported(false, QStringLiteral("transport unavailable"));
+                }
+            }, Qt::DirectConnection);
+        records.clear();
+        require(QMetaObject::invokeMethod(&isolated, "onStartClicked", Qt::DirectConnection), "disable transport during RTCM start");
+        QObject::disconnect(disableDuringStart);
+        require(transportDisabled && !isolated.isRunning() && isolated.rtcmCorrelationId().isEmpty() &&
+                records.size() == 2 && records[1].fields.value(QStringLiteral("event")) == QStringLiteral("rtcm_stream_start_cancelled") &&
+                !records[0].correlation_id.isEmpty() && records[0].correlation_id == records[1].correlation_id &&
+                records[1].session_id == recordingSession,
+                "transport loss cancels the starting operation with its original context");
+        isolated.setTransportSupported(true);
+
+        isolated.setUiTestMode(false);
+        isolated.setRtcmCorrectionSink([](const QByteArray&) { return true; }, QStringLiteral("Remote Sky"));
+        auto *cancelServer = isolated.findChild<QLineEdit *>(QStringLiteral("rtkServerEdit"));
+        auto *cancelMountpoint = isolated.findChild<QComboBox *>(QStringLiteral("rtkMountpointCombo"));
+        require(cancelServer && cancelMountpoint, "RTCM cancellation configuration controls exist");
+        cancelServer->setText(QStringLiteral("127.0.0.1"));
+        cancelMountpoint->setEditText(QStringLiteral("TEST"));
+        bool providerCancelled = false;
+        isolated.setEpsilonDataProvider([&] {
+            providerCancelled = true;
+            QMetaObject::invokeMethod(&isolated, "onStopClicked", Qt::DirectConnection);
+            return VaporView::EpsilonData{};
+        });
+        records.clear();
+        require(QMetaObject::invokeMethod(&isolated, "onStartClicked", Qt::DirectConnection), "cancel RTCM config callback");
+        require(providerCancelled && !isolated.isRunning() && !RtkStatusLogTestAccess::hasSink(isolated) &&
+                records.size() == 2 && records[1].fields.value(QStringLiteral("event")) == QStringLiteral("rtcm_stream_start_cancelled") &&
+                records[0].correlation_id == records[1].correlation_id && records[1].session_id == recordingSession,
+                "configuration callback cancellation preserves context and never opens sink");
+
+        isolated.setEpsilonDataProvider([] { return VaporView::EpsilonData{}; });
+        bool sinkWasOpen = false;
+        const auto cancelAfterSink = QObject::connect(&logs, &VaporView::LogService::recordPublished, &isolated,
+            [&](const VaporView::LogRecord& record) {
+                if (!sinkWasOpen && record.fields.value(QStringLiteral("event")) == QStringLiteral("rtk_service_log") &&
+                    RtkStatusLogTestAccess::hasSink(isolated)) {
+                    sinkWasOpen = true;
+                    QMetaObject::invokeMethod(&isolated, "onStopClicked", Qt::DirectConnection);
+                }
+            }, Qt::DirectConnection);
+        records.clear();
+        require(QMetaObject::invokeMethod(&isolated, "onStartClicked", Qt::DirectConnection), "cancel RTCM after sink opens");
+        QObject::disconnect(cancelAfterSink);
+        require(sinkWasOpen && !isolated.isRunning() && !RtkStatusLogTestAccess::hasSink(isolated) &&
+                isolated.rtcmCorrelationId().isEmpty() && records.size() == 2 &&
+                records[1].fields.value(QStringLiteral("event")) == QStringLiteral("rtcm_stream_start_cancelled") &&
+                records[0].correlation_id == records[1].correlation_id && records[1].session_id == recordingSession,
+                "cancelling after sink creation closes it and retains context");
+
+        bool sinkChanged = false;
+        const auto changeSinkDuringStart = QObject::connect(&logs, &VaporView::LogService::recordPublished, &isolated,
+            [&](const VaporView::LogRecord& record) {
+                if (!sinkChanged && record.fields.value(QStringLiteral("event")) == QStringLiteral("rtk_service_log") &&
+                    RtkStatusLogTestAccess::hasSink(isolated)) {
+                    sinkChanged = true;
+                    isolated.setRtcmCorrectionSink([](const QByteArray&) { return true; }, QStringLiteral("New Sky"));
+                }
+            }, Qt::DirectConnection);
+        records.clear();
+        require(QMetaObject::invokeMethod(&isolated, "onStartClicked", Qt::DirectConnection), "change sink during RTCM start");
+        QObject::disconnect(changeSinkDuringStart);
+        require(sinkChanged && !isolated.isRunning() && !RtkStatusLogTestAccess::hasSink(isolated) &&
+                isolated.rtcmCorrelationId().isEmpty() && records.size() == 2 &&
+                records[1].fields.value(QStringLiteral("event")) == QStringLiteral("rtcm_stream_start_cancelled") &&
+                !records[0].correlation_id.isEmpty() && records[0].correlation_id == records[1].correlation_id &&
+                records[1].session_id == recordingSession,
+                "sink change cancels the starting operation and closes its listener");
+        isolated.setUiTestMode(true);
+        records.clear();
+        require(QMetaObject::invokeMethod(&isolated, "onStartClicked", Qt::DirectConnection) && isolated.isRunning() &&
+                records.first().correlation_id != cancelledId, "normal start after cancellation gets a fresh identity");
+        require(QMetaObject::invokeMethod(&isolated, "onStopClicked", Qt::DirectConnection), "stop post-cancellation stream");
     }
 
     std::cout << "rtk_config_dialog_test passed\n";

@@ -7,7 +7,10 @@
 
 #include <QDateTime>
 #include <QJsonDocument>
+#include <QPointer>
 #include <QRandomGenerator>
+#include <QScopeGuard>
+#include <QUuid>
 #include <limits>
 #include <algorithm>
 #include <chrono>
@@ -19,6 +22,38 @@ namespace
 {
 constexpr int kCommandMaxRetries = 3;
 constexpr qint64 kBitRateWindowMs = 5000;
+
+void logCommandContext(const CommandMessage& command, const QString& event, LogLevel level,
+                       const QVariantMap& extra = {}, const char *file = VAPORVIEW_LOG_FILE,
+                       const char *function = VAPORVIEW_LOG_FUNCTION, int line = VAPORVIEW_LOG_LINE)
+{
+    if (command.correlation_id.isEmpty()) return;
+    LogRecord record;
+    record.level = level;
+    record.source = QStringLiteral("Ground");
+    record.category = QStringLiteral("telemetry.command");
+    if (event == QStringLiteral("ground_command_send")) record.message = QStringLiteral("已发起天空端命令。");
+    else if (event == QStringLiteral("ground_command_retry")) record.message = QStringLiteral("正在重试天空端命令。");
+    else if (event == QStringLiteral("ground_command_timeout")) record.message = QStringLiteral("等待天空端命令响应超时。");
+    else if (event == QStringLiteral("ground_command_ack_context_mismatch")) record.message = QStringLiteral("天空端响应的关联标识不匹配。");
+    else if (event == QStringLiteral("ground_command_disconnected")) record.message = QStringLiteral("连接已断开，天空端命令尚未完成。");
+    else if (event == QStringLiteral("ground_device_operation_response")) record.message = QStringLiteral("已收到天空端设备操作结果。");
+    else if (event == QStringLiteral("ground_config_apply_result_context")) record.message = QStringLiteral("已收到天空端配置应用关联结果。");
+    else if (event == QStringLiteral("ground_device_result_context_expired")) record.message = QStringLiteral("设备操作结果等待上下文已过期。");
+    else if (event == QStringLiteral("ground_device_result_context_evicted")) record.message = QStringLiteral("设备操作结果等待上下文因容量限制被移除。");
+    else if (event == QStringLiteral("ground_config_result_context_expired")) record.message = QStringLiteral("配置结果等待上下文已过期。");
+    else if (event == QStringLiteral("ground_config_result_context_evicted")) record.message = QStringLiteral("配置结果等待上下文因容量限制被移除。");
+    else record.message = QStringLiteral("已收到天空端命令响应。");
+    record.correlation_id = command.correlation_id;
+    record.session_id = command.session_id;
+    record.fields = extra;
+    LogService::addCallLocation(record, file, function, line);
+    record.fields.insert(QStringLiteral("event"), event);
+    record.fields.insert(QStringLiteral("command_seq"), command.command_seq);
+    record.fields.insert(QStringLiteral("command_id"), static_cast<quint16>(command.command_id));
+    if (!LogService::withCurrentInstance([&](LogService& service) { service.publish(record); }))
+        LogService::writeLogFallback(record);
+}
 
 quint64 nowUs()
 {
@@ -137,9 +172,12 @@ bool GroundTelemetryService::openTcp(const QString& host, quint16 port)
 bool GroundTelemetryService::openTcpAsync(const QString& host, quint16 port)
 {
     auto link = std::make_unique<TcpTelemetryLink>();
-    auto *tcp = link.get();
+    const QPointer<TcpTelemetryLink> tcp(link.get());
+    const QPointer<GroundTelemetryService> self(this);
     transport_type_ = TelemetryTransportType::Tcp;
     openLink(std::move(link));
+    if (!self || !tcp || link_.get() != tcp.data())
+        return false;
     return tcp->connectToHostAsync(host, port);
 }
 
@@ -151,15 +189,26 @@ bool GroundTelemetryService::isConnecting() const
 
 void GroundTelemetryService::close()
 {
+    const QPointer<GroundTelemetryService> self(this);
     const bool wasOpen = link_ && link_->isOpen();
+    TelemetryLink *const closingLink = link_.get();
+    const quint64 generation = link_generation_;
     retry_timer_.stop();
-    pending_commands_.clear();
+    clearPendingForDisconnect();
+    if (!self || generation != link_generation_ || link_.get() != closingLink)
+        return;
     rx_byte_samples_.clear();
     tx_byte_samples_.clear();
     if (link_)
     {
+        const QPointer<TelemetryLink> linkGuard(link_.get());
         link_->close();
-        link_.reset();
+        if (!self || !linkGuard || link_.get() != linkGuard.data())
+            return;
+        if (open_changed_depth_.contains(linkGuard.data()))
+            link_.release()->deleteLater();
+        else
+            link_.reset();
     }
     if (!wasOpen)
     {
@@ -207,18 +256,66 @@ quint64 GroundTelemetryService::totalTransmittedBytes() const
     return total_tx_bytes_;
 }
 
-quint16 GroundTelemetryService::sendCommand(CommandId commandId, const QByteArray& payload)
+quint16 GroundTelemetryService::sendCommand(CommandId commandId, const QByteArray& payload, QString *correlationId)
 {
+    if (correlationId) correlationId->clear();
+    DeviceOperationRequest operation;
+    const bool isDeviceOperation = commandId == CommandId::DeviceOperation &&
+        TelemetryCodec::parseDeviceOperationRequest(payload, operation);
+    if (isDeviceOperation)
+    {
+        bool duplicate = device_requests_being_sent_.contains(operation.request_id) ||
+            recently_rejected_operations_.contains(operation.request_id);
+        for (auto it = pending_commands_.cbegin(); !duplicate && it != pending_commands_.cend(); ++it)
+        {
+            DeviceOperationRequest outstanding;
+            duplicate = it->command.command_id == CommandId::DeviceOperation &&
+                TelemetryCodec::parseDeviceOperationRequest(it->command.payload, outstanding) &&
+                outstanding.request_id == operation.request_id;
+        }
+        if (duplicate)
+        {
+            publishTelemetryLog(LogLevel::Warning, QStringLiteral("telemetry.command"),
+                                QStringLiteral("telemetry_device_request_id_conflict"),
+                                QStringLiteral("设备请求标识仍在使用，命令未发送。"),
+                                {{QStringLiteral("reason_code"), QStringLiteral("DEVICE_REQUEST_ID_IN_USE")},
+                                 {QStringLiteral("request_id"), operation.request_id}});
+            return 0;
+        }
+    }
+    quint16 sequence = 0;
+    for (quint32 attempt = 0; attempt < 65536; ++attempt)
+    {
+        const quint16 candidate = next_command_seq_++;
+        if (candidate && !pending_commands_.contains(candidate) && !completed_awaiting_ack_.contains(candidate) &&
+            !config_completed_awaiting_ack_.contains(candidate) &&
+            !config_results_awaited_.contains(candidate) &&
+            !command_sequences_being_sent_.contains(candidate))
+        {
+            sequence = candidate;
+            break;
+        }
+    }
+    if (!sequence) return 0;
+    // Publishing may synchronously re-enter sendCommand before pending insertion.
+    command_sequences_being_sent_.insert(sequence);
+    if (isDeviceOperation) device_requests_being_sent_.insert(operation.request_id);
     CommandMessage command;
     command.command_id = commandId;
-    command.command_seq = next_command_seq_++;
+    command.command_seq = sequence;
     command.payload = payload;
+    command.typed_response_context_requested = isDeviceOperation;
+    command.config_result_context_requested = commandId == CommandId::SetSkyConfig;
+    command.config_ack_session_omission_supported = command.config_result_context_requested;
+    if (commandId != CommandId::RequestStatus && commandId != CommandId::QueryDeviceStatus &&
+        commandId != CommandId::GetSkyConfig && commandId != CommandId::RequestOneWaveform)
+        command.correlation_id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    command.extended_ack_context_requested = !command.correlation_id.isEmpty();
+    command.extended_result_context_requested = isDeviceOperation || command.config_result_context_requested;
 
     PendingCommand pending;
     pending.command = command;
-    DeviceOperationRequest operation;
-    if (commandId == CommandId::DeviceOperation &&
-        TelemetryCodec::parseDeviceOperationRequest(payload, operation) && operation.device_id == SkyDeviceId::Epsilon)
+    if (isDeviceOperation && operation.device_id == SkyDeviceId::Epsilon)
     {
         pending.retry_interval_ms = 15000;
         if (operation.operation == DeviceOperation::ReadEpsilonSettings ||
@@ -236,17 +333,36 @@ quint16 GroundTelemetryService::sendCommand(CommandId commandId, const QByteArra
             pending.retry_count = kCommandMaxRetries;
         }
     }
-    if (commandId == CommandId::DeviceOperation &&
-        TelemetryCodec::parseDeviceOperationRequest(payload, operation) &&
+    if (isDeviceOperation &&
         operation.device_id == SkyDeviceId::Fpga && operation.operation == DeviceOperation::FpgaControl)
     {
         pending.retry_interval_ms = 120000;
         pending.retry_count = kCommandMaxRetries; // Never replay hardware writes.
     }
     pending.encodedPayload = TelemetryCodec::serializeCommand(command);
+    if (command.extended_ack_context_requested) {
+        CommandMessage encodedCommand;
+        const bool parsed = TelemetryCodec::parseCommand(pending.encodedPayload, encodedCommand);
+        pending.command.extended_ack_context_requested = parsed && encodedCommand.extended_ack_context_requested;
+        pending.command.extended_result_context_requested = parsed && encodedCommand.extended_result_context_requested;
+        pending.command.config_ack_session_omission_supported = parsed && encodedCommand.config_ack_session_omission_supported;
+    }
     pending.next_retry_ms = nowMs() + pending.retry_interval_ms;
-    sendCommandPayload(pending);
-    pending_commands_.insert(command.command_seq, pending);
+    const quint64 sendGeneration = link_generation_;
+    logCommandContext(command, QStringLiteral("ground_command_send"), LogLevel::Info);
+    if (sendGeneration == link_generation_)
+        sendCommandPayload(pending);
+    const bool sentOnSameLink = sendGeneration == link_generation_;
+    if (sentOnSameLink)
+        pending_commands_.insert(command.command_seq, pending);
+    command_sequences_being_sent_.remove(sequence);
+    if (isDeviceOperation)
+        device_requests_being_sent_.remove(operation.request_id);
+    if (!sentOnSameLink) {
+        logCommandContext(command, QStringLiteral("ground_command_disconnected"), LogLevel::Warning);
+        return 0;
+    }
+    if (correlationId) *correlationId = command.correlation_id;
     return command.command_seq;
 }
 
@@ -319,6 +435,8 @@ quint16 GroundTelemetryService::saveSkyConfig()
 
 void GroundTelemetryService::onBytesReceived(const QByteArray& bytes)
 {
+    const QPointer<GroundTelemetryService> self(this);
+    const quint64 receiveGeneration = link_generation_;
     noteReceivedBytes(bytes.size());
     const QVector<TelemetryFrame> frames = codec_.feedBytes(bytes);
     const qint64 currentMs = nowMs();
@@ -350,43 +468,59 @@ void GroundTelemetryService::onBytesReceived(const QByteArray& bytes)
     }
     for (const TelemetryFrame& frame : frames)
     {
+        if (receiveGeneration != link_generation_) break;
         dispatchFrame(frame);
+        if (!self) return;
     }
 }
 
 void GroundTelemetryService::onRetryTimer()
 {
     const qint64 currentMs = nowMs();
-    QList<quint16> expired;
-    for (auto it = pending_commands_.begin(); it != pending_commands_.end(); ++it)
+    const quint64 generation = link_generation_;
+    const auto sequences = pending_commands_.keys();
+    for (quint16 sequence : sequences)
     {
-        PendingCommand& pending = it.value();
-        if (pending.next_retry_ms > currentMs)
+        auto it = pending_commands_.find(sequence);
+        if (it == pending_commands_.end() || it->next_retry_ms > currentMs)
         {
             continue;
         }
-        if (pending.retry_count >= kCommandMaxRetries)
+        if (it->retry_count >= kCommandMaxRetries)
         {
-            expired.push_back(it.key());
+            const PendingCommand pending = it.value();
+            pending_commands_.erase(it);
+            logCommandContext(pending.command, QStringLiteral("ground_command_timeout"), LogLevel::Warning);
+            if (generation != link_generation_) return;
+            const bool awaitingResult = pending.ack_received;
             publishTelemetryLog(LogLevel::Warning,
                                 QStringLiteral("telemetry.command"),
-                                QStringLiteral("telemetry_command_ack_timeout"),
-                                QStringLiteral("天空端命令 ACK 等待超时。"),
-                                {{QStringLiteral("reason_code"), QStringLiteral("TELEMETRY_COMMAND_ACK_TIMEOUT")},
+                                awaitingResult ? QStringLiteral("telemetry_device_result_timeout")
+                                               : QStringLiteral("telemetry_command_ack_timeout"),
+                                awaitingResult ? QStringLiteral("天空端设备操作结果等待超时。")
+                                               : QStringLiteral("天空端命令 ACK 等待超时。"),
+                                {{QStringLiteral("reason_code"), awaitingResult ? QStringLiteral("TELEMETRY_DEVICE_RESULT_TIMEOUT")
+                                                                                : QStringLiteral("TELEMETRY_COMMAND_ACK_TIMEOUT")},
                                  {QStringLiteral("command_id"), commandIdName(pending.command.command_id)},
                                  {QStringLiteral("command_value"),
                                   static_cast<quint16>(pending.command.command_id)},
-                                 {QStringLiteral("command_seq"), pending.command.command_seq}});
+                                 {QStringLiteral("command_seq"), pending.command.command_seq}},
+                                pending.command.correlation_id, pending.command.session_id);
+            if (generation != link_generation_) return;
             emit commandTimedOut(pending.command.command_id, pending.command.command_seq);
+            if (generation != link_generation_) return;
             continue;
         }
-        ++pending.retry_count;
-        pending.next_retry_ms = currentMs + pending.retry_interval_ms;
+        ++it->retry_count;
+        it->next_retry_ms = currentMs + it->retry_interval_ms;
+        PendingCommand pending = it.value();
+        logCommandContext(pending.command, QStringLiteral("ground_command_retry"), LogLevel::Warning,
+                          {{QStringLiteral("retry_count"), pending.retry_count}});
+        if (generation != link_generation_) return;
+        const auto current = pending_commands_.constFind(sequence);
+        if (current == pending_commands_.cend() || current->command.correlation_id != pending.command.correlation_id) continue;
         sendCommandPayload(pending);
-    }
-    for (quint16 seq : expired)
-    {
-        pending_commands_.remove(seq);
+        if (generation != link_generation_) return;
     }
 }
 
@@ -465,10 +599,76 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
     }
     case MsgType::CommandAck:
     {
+        const quint64 dispatchGeneration = link_generation_;
         CommandAck ack;
         if (TelemetryCodec::parseCommandAck(frame.payload, ack))
         {
             const auto pending = pending_commands_.constFind(ack.command_seq);
+            const auto configCompleted = config_completed_awaiting_ack_.constFind(ack.command_seq);
+            if (pending == pending_commands_.cend() && configCompleted != config_completed_awaiting_ack_.cend())
+            {
+                if (ack.command_id != CommandId::SetSkyConfig || ack.correlation_id.isEmpty() ||
+                    (ack.extended_ack_context && !configCompleted->extended_ack_context_requested) ||
+                    (ack.session_id_omitted && !configCompleted->config_ack_session_omission_supported) ||
+                    ack.correlation_id != configCompleted->correlation_id ||
+                    (!ack.session_id_omitted && ack.session_id != configCompleted->session_id))
+                    break;
+                const CommandMessage context = *configCompleted;
+                if (ack.session_id_omitted) ack.session_id = context.session_id;
+                config_completed_awaiting_ack_.remove(ack.command_seq);
+                logCommandContext(context, QStringLiteral("ground_command_ack"),
+                                  ack.error_code == CommandErrorCode::Ok ? LogLevel::Info : LogLevel::Warning,
+                                  {{QStringLiteral("ack_error_code"), static_cast<quint32>(ack.error_code)}});
+                if (dispatchGeneration == link_generation_) emit commandAckReceived(ack);
+                break;
+            }
+            const auto completed = completed_awaiting_ack_.constFind(ack.command_seq);
+            if (pending == pending_commands_.cend() && completed != completed_awaiting_ack_.cend())
+            {
+                if (ack.session_id_omitted || (ack.extended_ack_context && !completed->extended_ack_context_requested) ||
+                    ack.command_id != completed->command_id ||
+                    (completed->command_id == CommandId::DeviceOperation && !ack.typed_response_context_supported) ||
+                    ack.correlation_id != completed->correlation_id || ack.session_id != completed->session_id)
+                    break;
+                const CommandMessage context = *completed;
+                completed_awaiting_ack_.remove(ack.command_seq);
+                logCommandContext(context, QStringLiteral("ground_command_ack"),
+                                  ack.error_code == CommandErrorCode::Ok ? LogLevel::Info : LogLevel::Warning,
+                                  {{QStringLiteral("ack_error_code"), static_cast<quint32>(ack.error_code)}});
+                if (dispatchGeneration == link_generation_) emit commandAckReceived(ack);
+                break;
+            }
+            if ((ack.extended_ack_context && (pending == pending_commands_.cend() ||
+                                              !pending->command.extended_ack_context_requested || ack.correlation_id.isEmpty())) ||
+                (ack.session_id_omitted && (pending == pending_commands_.cend() || ack.command_id != CommandId::SetSkyConfig ||
+                                            !pending->command.config_ack_session_omission_supported)) ||
+                (pending != pending_commands_.cend() && pending->command.command_id != ack.command_id) ||
+                (!ack.correlation_id.isEmpty() &&
+                 (pending == pending_commands_.cend() || pending->command.correlation_id != ack.correlation_id)) ||
+                (pending != pending_commands_.cend() && pending->context_session_observed &&
+                 (!ack.typed_response_context_supported || ack.correlation_id != pending->command.correlation_id ||
+                  ack.session_id != pending->command.session_id)))
+            {
+                if (pending != pending_commands_.cend())
+                    logCommandContext(pending->command, QStringLiteral("ground_command_ack_context_mismatch"), LogLevel::Warning);
+                break;
+            }
+            CommandMessage ackLogContext;
+            bool hasAckLogContext = false;
+            if (pending != pending_commands_.cend() && pending->command.command_id == ack.command_id)
+            {
+                auto context = pending->command;
+                pending_commands_[ack.command_seq].ack_received = true;
+                pending_commands_[ack.command_seq].command.typed_response_context_requested =
+                    ack.typed_response_context_supported && !ack.correlation_id.isEmpty();
+                context.typed_response_context_requested = pending_commands_[ack.command_seq].command.typed_response_context_requested;
+                if (!ack.correlation_id.isEmpty() && !ack.session_id_omitted) {
+                    context.session_id = ack.session_id;
+                    pending_commands_[ack.command_seq].command.session_id = ack.session_id;
+                }
+                ackLogContext = std::move(context);
+                hasAckLogContext = true;
+            }
             DeviceOperationRequest operation;
             const bool settingsReplyRequired = pending != pending_commands_.cend() &&
                 pending->command.command_id == CommandId::DeviceOperation &&
@@ -482,20 +682,97 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
                  operation.operation == DeviceOperation::CalibrateEpsilonMagnetic2D || operation.operation == DeviceOperation::CalibrateEpsilonMagnetic3D);
             const bool typedFailureExpected = settingsReplyRequired && ack.error_code != CommandErrorCode::Ok &&
                 ack.error_code != CommandErrorCode::UnknownCommand && ack.error_code != CommandErrorCode::InvalidPayload;
+            CommandMessage evictedContext;
+            quint32 evictedRequestId = 0;
+            bool contextEvicted = false;
+            CommandMessage evictedConfigContext;
+            bool configContextEvicted = false;
             if (typedFailureExpected)
             {
                 const quint64 generation = link_generation_;
                 const quint32 requestId = operation.request_id;
-                QTimer::singleShot(30000, this, [this, generation, requestId, sequence = ack.command_seq]() {
+                const QString correlationId = pending->command.correlation_id;
+                QTimer::singleShot(30000, this, [this, generation, requestId, sequence = ack.command_seq, correlationId]() {
                     const auto outstanding = pending_commands_.constFind(sequence);
                     DeviceOperationRequest request;
                     if (generation == link_generation_ && outstanding != pending_commands_.cend() &&
-                        TelemetryCodec::parseDeviceOperationRequest(outstanding->command.payload, request) && request.request_id == requestId)
+                        outstanding->command.correlation_id == correlationId &&
+                        TelemetryCodec::parseDeviceOperationRequest(outstanding->command.payload, request) && request.request_id == requestId) {
+                        const CommandMessage context = outstanding->command;
                         pending_commands_.remove(sequence);
+                        logCommandContext(context, QStringLiteral("ground_device_result_context_expired"), LogLevel::Warning,
+                                          {{QStringLiteral("request_id"), requestId},
+                                           {QStringLiteral("stage"), QStringLiteral("awaiting_failed_device_result")}});
+                    }
+                });
+            }
+            if (!typedFailureExpected && (!settingsReplyRequired || ack.error_code != CommandErrorCode::Ok) &&
+                pending != pending_commands_.cend() && pending->command.command_id == CommandId::DeviceOperation &&
+                TelemetryCodec::parseDeviceOperationRequest(pending->command.payload, operation)) {
+                if (recently_rejected_operations_.size() >= 256) {
+                    const auto evicted = recently_rejected_operations_.begin();
+                    evictedRequestId = evicted.key();
+                    evictedContext = evicted.value();
+                    contextEvicted = true;
+                    recently_rejected_operations_.erase(evicted);
+                }
+                const CommandMessage context = pending->command;
+                const quint32 requestId = operation.request_id;
+                const quint64 generation = link_generation_;
+                recently_rejected_operations_.insert(requestId, context);
+                QTimer::singleShot(30000, this, [this, generation, requestId, context] {
+                    const auto it = recently_rejected_operations_.constFind(requestId);
+                    if (generation == link_generation_ && it != recently_rejected_operations_.cend() &&
+                        it->correlation_id == context.correlation_id) {
+                        recently_rejected_operations_.remove(requestId);
+                        logCommandContext(context, QStringLiteral("ground_device_result_context_expired"), LogLevel::Info,
+                                          {{QStringLiteral("request_id"), requestId},
+                                           {QStringLiteral("stage"), QStringLiteral("awaiting_device_result")}});
+                    }
+                });
+            }
+            if (pending != pending_commands_.cend() && pending->command.command_id == CommandId::SetSkyConfig &&
+                ack.config_result_context_expected.value_or(true)) {
+                if (config_results_awaited_.size() >= 256) {
+                    const auto evicted = config_results_awaited_.begin();
+                    evictedConfigContext = evicted->command;
+                    configContextEvicted = true;
+                    config_results_awaited_.erase(evicted);
+                }
+                CommandMessage context = pending->command;
+                context.payload.clear();
+                const auto generation = link_generation_;
+                config_results_awaited_.insert(ack.command_seq, {context, !ack.correlation_id.isEmpty() && !ack.session_id_omitted});
+                QTimer::singleShot(30000, this, [this, generation, sequence = ack.command_seq, id = context.correlation_id] {
+                    const auto entry = config_results_awaited_.constFind(sequence);
+                    if (generation == link_generation_ && entry != config_results_awaited_.cend() && entry->command.correlation_id == id) {
+                        const CommandMessage expiredContext = entry->command;
+                        config_results_awaited_.remove(sequence);
+                        logCommandContext(expiredContext, QStringLiteral("ground_config_result_context_expired"), LogLevel::Warning,
+                                          {{QStringLiteral("stage"), QStringLiteral("awaiting_config_result")}});
+                    }
                 });
             }
             if ((!typedFailureExpected && ack.error_code != CommandErrorCode::Ok) || !settingsReplyRequired)
                 pending_commands_.remove(ack.command_seq);
+            if (contextEvicted) {
+                logCommandContext(evictedContext, QStringLiteral("ground_device_result_context_evicted"), LogLevel::Warning,
+                                  {{QStringLiteral("request_id"), evictedRequestId},
+                                   {QStringLiteral("stage"), QStringLiteral("awaiting_device_result")}});
+                if (dispatchGeneration != link_generation_) break;
+            }
+            if (configContextEvicted) {
+                const QPointer<GroundTelemetryService> self(this);
+                logCommandContext(evictedConfigContext, QStringLiteral("ground_config_result_context_evicted"), LogLevel::Warning,
+                                  {{QStringLiteral("stage"), QStringLiteral("awaiting_config_result")}});
+                if (!self) return;
+                if (dispatchGeneration != link_generation_) break;
+            }
+            if (hasAckLogContext)
+                logCommandContext(ackLogContext, QStringLiteral("ground_command_ack"),
+                                  ack.error_code == CommandErrorCode::Ok ? LogLevel::Info : LogLevel::Warning,
+                                  {{QStringLiteral("ack_error_code"), static_cast<quint32>(ack.error_code)}});
+            if (dispatchGeneration != link_generation_) break;
             emit commandAckReceived(ack);
         }
         else
@@ -542,6 +819,60 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         }
         break;
     }
+    case MsgType::SkyConfigApplyResultContext:
+    {
+        QJsonObject result;
+        QString correlationId, sessionId;
+        quint16 sequence = 0;
+        bool extendedResult = false;
+        if (TelemetryCodec::parseSkyConfigApplyResultContext(frame.payload, result, correlationId, sessionId, sequence, &extendedResult))
+        {
+            auto pending = pending_commands_.find(sequence);
+            CommandMessage context;
+            if (pending != pending_commands_.end()) {
+                if (pending->command.command_id != CommandId::SetSkyConfig ||
+                    (extendedResult && !pending->command.extended_result_context_requested) ||
+                    pending->command.correlation_id != correlationId ||
+                    (pending->context_session_observed && pending->command.session_id != sessionId)) break;
+                context = pending->command;
+                context.session_id = sessionId;
+                if (!pending->ack_received) {
+                    if (config_completed_awaiting_ack_.size() >= 256)
+                        config_completed_awaiting_ack_.erase(config_completed_awaiting_ack_.begin());
+                    CommandMessage reserved = context;
+                    reserved.payload.clear();
+                    const auto generation = link_generation_;
+                    config_completed_awaiting_ack_.insert(sequence, reserved);
+                    QTimer::singleShot(30000, this, [this, generation, sequence, correlationId] {
+                        const auto entry = config_completed_awaiting_ack_.constFind(sequence);
+                        if (generation == link_generation_ && entry != config_completed_awaiting_ack_.cend() && entry->correlation_id == correlationId)
+                            config_completed_awaiting_ack_.remove(sequence);
+                    });
+                }
+                pending_commands_.erase(pending);
+            } else {
+                const auto awaited = config_results_awaited_.constFind(sequence);
+                if (awaited == config_results_awaited_.cend() || awaited->command.command_id != CommandId::SetSkyConfig ||
+                    awaited->command.correlation_id != correlationId ||
+                    (extendedResult && !awaited->command.extended_result_context_requested) ||
+                    (awaited->sessionKnown && awaited->command.session_id != sessionId)) break;
+                context = awaited->command;
+                context.session_id = sessionId;
+                config_results_awaited_.remove(sequence);
+            }
+            logCommandContext(context, QStringLiteral("ground_config_apply_result_context"), LogLevel::Info,
+                              {{QStringLiteral("config_apply_result"), result.toVariantMap()}});
+        }
+        else
+        {
+            reportProtocolDiagnostic(LogLevel::Warning, QStringLiteral("protocol.parse"),
+                                     QStringLiteral("sky_config_apply_context_parse_failed"),
+                                     QStringLiteral("无法解析天空端配置应用关联结果。"),
+                                     {{QStringLiteral("message_type"), static_cast<int>(frame.type)},
+                                      {QStringLiteral("payload_bytes"), frame.payload.size()}});
+        }
+        break;
+    }
     case MsgType::SerialPortDetectionResult:
     {
         const QJsonDocument document = QJsonDocument::fromJson(frame.payload);
@@ -578,10 +909,16 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         break;
     }
     case MsgType::DeviceOperationResponse:
+    case MsgType::DeviceOperationResponseContext:
     {
+        const quint64 dispatchGeneration = link_generation_;
+        const bool contextual = frame.type == MsgType::DeviceOperationResponseContext;
         DeviceOperationResponse response;
-        if (TelemetryCodec::parseDeviceOperationResponse(frame.payload, response))
+        bool extendedResult = false;
+        if (contextual ? TelemetryCodec::parseDeviceOperationResponseContext(frame.payload, response, &extendedResult)
+                       : TelemetryCodec::parseDeviceOperationResponse(frame.payload, response))
         {
+            bool matched = false;
             for (auto it = pending_commands_.begin(); it != pending_commands_.end(); ++it)
             {
                 DeviceOperationRequest request;
@@ -589,18 +926,81 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
                     TelemetryCodec::parseDeviceOperationRequest(it->command.payload, request) && request.request_id == response.request_id &&
                     request.device_id == response.device_id && request.operation == response.operation)
                 {
+                    if (contextual && ((extendedResult && !it->command.extended_result_context_requested) ||
+                                       response.correlation_id != it->command.correlation_id)) break;
+                    if ((it->context_session_observed && !contextual) ||
+                        (it->ack_received && contextual != it->command.typed_response_context_requested) ||
+                        (contextual && (it->ack_received || it->context_session_observed) &&
+                         response.session_id != it->command.session_id)) return;
+                    if (contextual && !it->ack_received) {
+                        it->command.session_id = response.session_id;
+                        it->context_session_observed = true;
+                    }
+                    if (!contextual) {
+                        response.correlation_id = it->command.correlation_id;
+                        response.session_id = it->command.session_id;
+                    }
+                    matched = true;
+                    const CommandMessage logContext = it->command;
                     EpsilonMaintenanceResult progress;
+                    bool finished = true;
                     if (request.operation == DeviceOperation::CalibrateEpsilonMagnetic2D || request.operation == DeviceOperation::CalibrateEpsilonMagnetic3D)
                     {
-                        if (response.payload.isEmpty() && response.error_code != CommandErrorCode::Ok) { pending_commands_.erase(it); break; }
-                        if (!TelemetryCodec::parseEpsilonMaintenanceResult(response.payload, progress) ||
+                        if (!(response.payload.isEmpty() && response.error_code != CommandErrorCode::Ok) &&
+                            (!TelemetryCodec::parseEpsilonMaintenanceResult(response.payload, progress) ||
                             progress.action != (request.operation == DeviceOperation::CalibrateEpsilonMagnetic2D ? EpsilonMaintenanceAction::Magnetic2D : EpsilonMaintenanceAction::Magnetic3D) ||
-                            progress.status == EpsilonMaintenanceStatus::Running) break;
+                            progress.status == EpsilonMaintenanceStatus::Running)) finished = false;
                     }
-                    pending_commands_.erase(it);
+                    if (finished) {
+                        if (contextual && !it->ack_received) {
+                            const quint16 sequence = it.key();
+                            const quint64 generation = link_generation_;
+                            CommandMessage context = it->command;
+                            context.payload.clear();
+                            const QString correlationId = context.correlation_id;
+                            completed_awaiting_ack_.insert(sequence, context);
+                            QTimer::singleShot(30000, this, [this, generation, sequence, correlationId] {
+                                const auto entry = completed_awaiting_ack_.constFind(sequence);
+                                if (generation == link_generation_ && entry != completed_awaiting_ack_.cend() &&
+                                    entry->correlation_id == correlationId)
+                                    completed_awaiting_ack_.remove(sequence);
+                            });
+                        }
+                        pending_commands_.erase(it);
+                    }
+                    logCommandContext(logContext, QStringLiteral("ground_device_operation_response"),
+                                      response.error_code == CommandErrorCode::Ok ? LogLevel::Info : LogLevel::Warning,
+                                      {{QStringLiteral("request_id"), response.request_id},
+                                       {QStringLiteral("result_error_code"), static_cast<quint32>(response.error_code)}});
                     break;
                 }
             }
+            if (dispatchGeneration != link_generation_) break;
+            if (!matched) {
+                const auto rejected = recently_rejected_operations_.constFind(response.request_id);
+                DeviceOperationRequest request;
+                if (rejected != recently_rejected_operations_.cend() &&
+                    TelemetryCodec::parseDeviceOperationRequest(rejected->payload, request) &&
+                    request.device_id == response.device_id && request.operation == response.operation) {
+                    if ((extendedResult && !rejected->extended_result_context_requested) ||
+                        contextual != rejected->typed_response_context_requested ||
+                        (contextual && (response.correlation_id != rejected->correlation_id ||
+                                        response.session_id != rejected->session_id))) return;
+                    if (!contextual) {
+                        response.correlation_id = rejected->correlation_id;
+                        response.session_id = rejected->session_id;
+                    }
+                    matched = true;
+                    const CommandMessage logContext = *rejected;
+                    recently_rejected_operations_.remove(response.request_id);
+                    logCommandContext(logContext, QStringLiteral("ground_device_operation_response"),
+                                      response.error_code == CommandErrorCode::Ok ? LogLevel::Info : LogLevel::Warning,
+                                      {{QStringLiteral("request_id"), response.request_id},
+                                       {QStringLiteral("result_error_code"), static_cast<quint32>(response.error_code)}});
+                }
+            }
+            if (dispatchGeneration != link_generation_) break;
+            if (contextual && !matched) break;
             emit deviceOperationResponseReceived(response);
         }
         else
@@ -733,14 +1133,20 @@ void GroundTelemetryService::sendCommandPayload(PendingCommand& pending)
 
 bool GroundTelemetryService::openLink(std::unique_ptr<TelemetryLink> link)
 {
+    const QPointer<GroundTelemetryService> self(this);
     codec_.reset();
     close();
+    if (!self || link_)
+        return false;
     rtcm_sequence_ = {QRandomGenerator::global()->generate64() | 1ULL, 0};
     rtcm_observability_supported_ = false;
     link_ = std::move(link);
     attachLinkSignals();
     ++link_generation_;
-    pending_commands_.clear();
+    const QPointer<TelemetryLink> installedLink(link_.get());
+    clearPendingForDisconnect();
+    if (!self || !installedLink || link_.get() != installedLink.data())
+        return false;
     rx_byte_samples_.clear();
     tx_byte_samples_.clear();
     total_rx_bytes_ = 0;
@@ -776,11 +1182,21 @@ void GroundTelemetryService::attachLinkSignals()
         {
             return;
         }
+        const QPointer<GroundTelemetryService> self(this);
+        ++open_changed_depth_[activeLink];
+        const auto depthGuard = qScopeGuard([self, activeLink] {
+            if (!self) return;
+            auto it = self->open_changed_depth_.find(activeLink);
+            if (it != self->open_changed_depth_.end() && --it.value() == 0)
+                self->open_changed_depth_.erase(it);
+        });
         if (!open)
         {
             retry_timer_.stop();
-            pending_commands_.clear();
-            ++link_generation_;
+            const quint64 generation = ++link_generation_;
+            clearPendingForDisconnect();
+            if (!self || generation != link_generation_ || link_.get() != activeLink)
+                return;
         }
         else retry_timer_.start();
         emit linkOpenChanged(open);
@@ -825,6 +1241,26 @@ void GroundTelemetryService::attachLinkSignals()
     });
 }
 
+void GroundTelemetryService::clearPendingForDisconnect()
+{
+    QHash<quint16, PendingCommand> pending;
+    QHash<quint32, CommandMessage> awaitingResults;
+    QHash<quint16, AwaitedConfigResult> awaitingConfigResults;
+    pending.swap(pending_commands_);
+    awaitingResults.swap(recently_rejected_operations_);
+    awaitingConfigResults.swap(config_results_awaited_);
+    completed_awaiting_ack_.clear();
+    config_completed_awaiting_ack_.clear();
+    for (const auto& item : pending)
+        logCommandContext(item.command, QStringLiteral("ground_command_disconnected"), LogLevel::Warning);
+    for (const auto& command : awaitingResults)
+        logCommandContext(command, QStringLiteral("ground_command_disconnected"), LogLevel::Warning,
+                          {{QStringLiteral("stage"), QStringLiteral("awaiting_device_result")}});
+    for (const auto& item : awaitingConfigResults)
+        logCommandContext(item.command, QStringLiteral("ground_command_disconnected"), LogLevel::Warning,
+                          {{QStringLiteral("stage"), QStringLiteral("awaiting_config_result")}});
+}
+
 void GroundTelemetryService::noteReceivedBytes(qint64 bytes)
 {
     if (bytes <= 0)
@@ -853,7 +1289,8 @@ void GroundTelemetryService::publishTelemetryLog(LogLevel level,
                                                  const QString& category,
                                                  const QString& event,
                                                  const QString& message,
-                                                 QVariantMap fields)
+                                                 QVariantMap fields, const QString& correlationId,
+                                                 const QString& sessionId, const char *file, const char *function, int line)
 {
     fields.insert(QStringLiteral("event"), event);
     fields.insert(QStringLiteral("ui_visible"), true);
@@ -874,7 +1311,10 @@ void GroundTelemetryService::publishTelemetryLog(LogLevel level,
     record.source = QStringLiteral("Ground");
     record.category = category;
     record.message = message;
+    record.correlation_id = correlationId;
+    record.session_id = sessionId;
     record.fields = fields;
+    LogService::addCallLocation(record, file, function, line);
     if (!LogService::withCurrentInstance([&](LogService& logService) {
             logService.publish(record);
         }))

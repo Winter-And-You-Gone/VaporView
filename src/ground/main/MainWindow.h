@@ -1,7 +1,7 @@
 #ifndef VaporView_MAIN_WINDOW_H_
 #define VaporView_MAIN_WINDOW_H_
 
-#include "LogRecord.h"
+#include "LogService.h"
 #include "EpsilonSettings.h"
 #include "Ai8TemperatureControllerProtocol.h"
 #include "SkyConfig.h"
@@ -240,6 +240,8 @@ private slots:
     void onUiTestScenarioTriggered(QAction *action);
 
 private:
+    friend struct MainWindowRecordingTestAccess;
+    friend struct MainWindowRtcmTestAccess;
     void applyLocalPortDetections(
         const QVector<VaporView::Ground::Devices::SerialPortDetectionResult>& detections);
     using AppSidebarMode = VaporView::Ground::Main::AppSidebarMode;
@@ -301,11 +303,17 @@ private:
                           const QString& category,
                           const QString& event,
                           const QString& message,
-                          QVariantMap fields = {});
+                          QVariantMap fields = {},
+                          const char *file = VAPORVIEW_LOG_FILE,
+                          const char *function = VAPORVIEW_LOG_FUNCTION,
+                          int line = VAPORVIEW_LOG_LINE);
     void publishTemperatureCommandLog(VaporView::LogLevel level,
                                       const QString& event,
                                       const QString& message,
-                                      QVariantMap fields = {});
+                                      QVariantMap fields = {},
+                                      const char *file = VAPORVIEW_LOG_FILE,
+                                      const char *function = VAPORVIEW_LOG_FUNCTION,
+                                      int line = VAPORVIEW_LOG_LINE);
     void updateRecordingStatusLabel();
     qint64 uiTestRecordingElapsedMs() const;
     void startOrResumeUiTestRecording();
@@ -386,6 +394,7 @@ private:
     void executeFpgaInstrument(const QJsonObject& request,std::function<void(const QJsonObject&)> reply);
     bool enqueueFpgaRtcm(const QByteArray& bytes);
     void drainFpgaRtcm();
+    std::function<void(const QJsonObject&)> fpgaRtcmCompletion(const QString& correlationId);
     void updateHomeFpgaWaveActions();
     void requestHomeFpgaWaveAction(bool raw, bool enabled);
     void finishHomeFpgaRawStart();

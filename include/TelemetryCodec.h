@@ -7,6 +7,7 @@
 #include "LogRecord.h"
 
 #include <QByteArray>
+#include <QJsonObject>
 #include <QVector>
 
 namespace VaporView
@@ -105,6 +106,13 @@ public:
     static QByteArray serializeDeviceOperationResponse(const DeviceOperationResponse& response);
     static bool parseDeviceOperationResponse(const QByteArray& payload,
                                              DeviceOperationResponse& response);
+    static QByteArray serializeDeviceOperationResponseContext(const DeviceOperationResponse& response, bool extended = false);
+    static bool parseDeviceOperationResponseContext(const QByteArray& payload,
+                                                    DeviceOperationResponse& response, bool *extended = nullptr);
+    static QByteArray serializeSkyConfigApplyResultContext(const QJsonObject& result, const QString& correlationId,
+                                                           const QString& sessionId, quint16 commandSeq, bool extended = false);
+    static bool parseSkyConfigApplyResultContext(const QByteArray& payload, QJsonObject& result,
+                                                  QString& correlationId, QString& sessionId, quint16& commandSeq, bool *extended = nullptr);
     static QByteArray serializeLogRecord(const LogRecord& record);
     static bool parseLogRecord(const QByteArray& payload, LogRecord& record);
 

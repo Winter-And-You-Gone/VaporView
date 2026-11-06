@@ -4,16 +4,32 @@
 
 | source | category | event | recommended level | 中文 message | required fields | optional fields | error_code / reason_code |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| SkyCore | device.rtcm.output | rtcm_serial_output_failed | Warning | RTCM 串口输出失败，数据已丢弃。 | port, baud, reason_code, system_error, requested_bytes, written_bytes |  | SERIAL_OPEN_FAILED / SERIAL_WRITE_FAILED |
+| SkyCore | device.rtcm.output | rtcm_serial_output_recovered | Info | RTCM 串口输出已恢复。 | port, baud |  |  |
 | Ground | device.motion | emfwc3_operation | Info/Warning | EM-FWC3 操作结果与 SDK 返回码。 | operation, error_code |  |  |
 | water_calibration | calibration | calibration_state | Info/Warning | 独立定标任务状态或操作结果，页面显示具体原因。 | task_id |  |  |
 | Ground | session.recording | calibration_start_rejected | Warning | 正式录制的定标校验未通过，显示具体原因。 |  |  |  |
 | SkyCore | session.recording | calibration_snapshot_rejected | Warning | Session 定标快照无效，显示具体原因。 |  |  |  |
 | Ground/SkyCore | device.internal | internal_serial_error | Warning | 内部环境串口桥连接失败。 | device_id, reason, reason_code |  | SERIAL_BRIDGE_CONNECT_FAILED |
+| SkyCore | device.fpga | fpga_worker_started | Info | FPGA 工作线程开始执行设备操作。 |  |  |  |
 | Ground/SkyCore | device.fpga | fpga_operation_diagnostic | Info/Warning/Error | FPGA 操作诊断；具体原因保留在 message。 | operation, ready, busy | error_code | FPGA_OPERATION_FAILED |
-| Ground/SkyCore | device.fpga | fpga_device_connection_result | Info/Warning | {device} 经 FPGA 连接成功 / 连接失败 / 通道已启用。 | device, fpga_source, result, reason_code, reason, ui_visibility | module_status, module_error | CHANNEL_ENABLED / VALID_SAMPLE / CONTROL_READBACK / TRANSACTION_FAILED / NO_VALID_SAMPLE |
+| SkyCore | device.fpga | fpga_async_connection_result | Info/Warning | FPGA 异步连接结果；失败时需核对设备状态。 | result_code, detail | correlation_id, session_id |  |
+| Ground/SkyCore | device.fpga | fpga_unrelated_command_timeout | Warning | 设备会话中不属于当前操作的排队命令超时；前台操作被中止时另记其关联诊断。 | command_sequence, command_message |  |  |
+| Ground | telemetry.command | ground_config_apply_result_context | Info | 已收到天空端配置应用关联结果。 | command_seq, command_id, config_apply_result |  |  |
+| Ground | protocol.parse | sky_config_apply_context_parse_failed | Warning | 无法解析天空端配置应用关联结果。 | message_type, payload_bytes |  |  |
+| SkyTui | ipc.config | sky_ipc_config_apply_result_context_received | Info | 已收到 SkyCore 配置应用关联结果。 | command_seq, config_apply_result |  |  |
+| SkyTui | ipc.command | sky_ipc_command_started | Info | 已发起 SkyCore IPC 命令。 | command_id, command_seq | correlation_id, session_id |  |
+| SkyTui | ipc.command | sky_ipc_command_ack | Info/Warning | 已收到 SkyCore IPC 命令响应。 | command_id, command_seq | correlation_id, session_id |  |
+| SkyTui | ipc.command | sky_ipc_command_disconnected | Warning | SkyCore IPC 断开，命令未完成。 | command_id, command_seq | correlation_id, session_id |  |
+| SkyTui | ipc.command | sky_ipc_command_timeout | Warning | 等待 SkyCore IPC 命令响应超时。 | command_id, command_seq | correlation_id, session_id |  |
+| SkyTui | ipc.command | sky_ipc_config_result_disconnected | Warning | SkyCore IPC 已断开，配置关联结果尚未收到。 | command_id, command_seq | correlation_id, session_id |  |
+| SkyTui | ipc.command | sky_ipc_config_result_context_expired | Warning | 等待 SkyCore 配置关联结果的上下文已过期。 | command_id, command_seq | correlation_id, session_id |  |
+| SkyTui | ipc.command | sky_ipc_config_result_context_evicted | Warning | 等待 SkyCore 配置关联结果的上下文因容量限制被移除。 | command_id, command_seq | correlation_id, session_id |  |
+| Ground/SkyCore | device.fpga | fpga_device_connection_result | Info/Warning | {device} 经 FPGA 连接成功 / 连接失败 / 通道已启用 / 连接已取消。取消事件保留原连接的 correlation_id 和 session_id。 | device, fpga_source, result, reason_code, reason, ui_visibility | module_status, module_error | CHANNEL_ENABLED / VALID_SAMPLE / CONTROL_READBACK / TRANSACTION_FAILED / NO_VALID_SAMPLE / DISCONNECTED / SENSOR_DISABLED / SUPERSEDED / ACQUISITION_STOPPED |
 | Ground/SkyCore | device.fpga | fpga_raw_acquisition_result | Info/Warning | 原始信号：开始采集 / 停止采集成功或失败，{reason}。 | enabled, result, reason, ui_visibility |  |  |
 | Ground/SkyCore | device.fpga | fpga_firmware_event | Info/Warning | FPGA 模块新增错误、上传丢包、电机运动完成或 EPSILON 原始观测组包诊断。 |  | message_id, source_id, tick, payload, observation_event, receiver, utc_ns, ui_visibility |  |
-| SkyCore | session.write | fpga_recording_storage_failed | Error | FPGA 存储写入失败，会话已暂停并标记为不完整，正在停止采集。 | error_code, session_sink_failure |  | FPGA_RECORDING_STORAGE_FAILED |
+| SkyCore | session.write | fpga_recording_storage_failed | Error | FPGA 存储写入失败，会话已暂停或结束并标记为不完整，正在停止采集。 | error_code, session_sink_failure |  | FPGA_RECORDING_STORAGE_FAILED |
+| SkyCore | device.fpga | fpga_storage_recovery_finished | Info/Error | 存储故障后 FPGA 采集停止结果。 | reason_code, session_sink_failure | detail, error_code | STOPPED / STOP_FAILED / FPGA_STORAGE_RECOVERY_FAILED |
 | SkyCore | device.fpga | fpga_storage_failure_usb_closed | Error | 采集停止未确认，USB 接收已关闭；请核对下位机物理状态。 | error_code, detail |  | FPGA_STOP_UNCONFIRMED |
 | Ground/SkyCore | navigation.corrections | navigation_correction_status_changed | Info/Warning | 导航与差分状态变化。 | record_timestamp_us, source_mode, rtcm_health, rtcm_age_ms, navigation_available, gnss_fix_code, rtk_fix_transition, baseline_reset | epsilon_device_timestamp_us, sky_report_timestamp_us, sky_boot_id, rtcm_stream_id, hacc_m, latitude_deg, longitude_deg |  |
 | Ground | telemetry.rtcm | rtcm_stream_interrupted | Warning | 天空端 RTCM 数据已中断。 | age_ms |  |  |
@@ -30,6 +46,7 @@
 | ppk | session.ppk | ppk_rover_observation_failed | Error | PPK Rover 原始观测写入失败。 | reason_code, session, error |  | OBSERVATION_WRITE_FAILED |
 | ppk | session.ppk | ppk_rinex_generated | Info | Session PPK 处理状态已更新。 | reason_code, session, epochs |  | OK |
 | ppk | session.ppk | ppk_processing_started | Info | Session PPK 处理状态已更新。 | reason_code, session |  | OK |
+| ppk | session.ppk | ppk_processing_progress | Info | Session PPK 处理状态已更新。 | reason_code, session, percent |  | OK |
 | ppk | session.ppk | ppk_processing_completed | Info | Session PPK 处理状态已更新。 | reason_code, session, sample_count, fix_count, float_count |  | OK |
 | ppk | session.ppk | ppk_processing_failed | Error | Session PPK 处理状态已更新。 | reason_code, session |  | CANCELLED / SESSION_PPK_BUSY / INVALID_PPK_CONFIG / INVALID_LEVER_ARM / MISSING_BASE_OR_NAVIGATION / MISSING_GNSS_UTC_ATTITUDE / RTKLIB_POSTPOS_FAILED / ATTITUDE_UTC_ALIGNMENT_UNAVAILABLE / PPK_INPUT_COPY_FAILED |
 | ppk | session.ppk | ppk_track_activated | Info | Session 导航轨迹来源已切换。 | reason_code, navigation_source | session | OK |
@@ -132,6 +149,27 @@
 | Ground | telemetry.tcp | ground_telemetry_tcp_connect_failed | Error | 无法连接天空端 TCP 数传端点。 | endpoint, host, port | system_error, ui_message, ui_visibility | GROUND_TELEMETRY_TCP_CONNECT_FAILED |
 | Ground | telemetry.link | ground_telemetry_link_error | Warning | 地面端遥测链路异常。 | system_error |  | GROUND_TELEMETRY_LINK_ERROR |
 | Ground | telemetry.command | telemetry_command_ack_timeout | Warning | 天空端命令 ACK 等待超时。 | command_id, command_value, command_seq |  | TELEMETRY_COMMAND_ACK_TIMEOUT |
+| Ground | telemetry.command | telemetry_device_result_timeout | Warning | 天空端设备操作结果等待超时。 | command_id, command_value, command_seq | correlation_id, session_id | TELEMETRY_DEVICE_RESULT_TIMEOUT |
+| Ground | telemetry.command | telemetry_device_request_id_conflict | Warning | 设备请求标识仍在使用，命令未发送。 | request_id |  | DEVICE_REQUEST_ID_IN_USE |
+| Ground | telemetry.command | ground_command_send | Info | 已发起天空端命令。 | command_id, command_seq | correlation_id, session_id |  |
+| Ground | telemetry.command | ground_command_retry | Warning | 正在重试天空端命令。 | command_id, command_seq | correlation_id, session_id |  |
+| Ground | telemetry.command | ground_command_timeout | Warning | 等待天空端命令响应超时。 | command_id, command_seq | correlation_id, session_id |  |
+| Ground | telemetry.command | ground_command_ack | Info/Warning | 已收到天空端命令响应。 | command_id, command_seq, ack_error_code | correlation_id, session_id |  |
+| Ground | telemetry.command | ground_command_ack_context_mismatch | Warning | 天空端响应的关联标识不匹配。 | command_id, command_seq | correlation_id, session_id |  |
+| Ground | telemetry.command | ground_command_disconnected | Warning | 连接已断开，天空端命令尚未完成。 | command_id, command_seq | correlation_id, session_id, stage |  |
+| Ground | telemetry.command | ground_device_operation_response | Info/Warning | 已收到天空端设备操作结果。 | command_id, command_seq, request_id, result_error_code | correlation_id, session_id |  |
+| Ground | telemetry.command | ground_device_result_context_expired | Info / Warning | 设备操作结果等待上下文已过期。 | request_id, command_id, command_seq, stage | correlation_id, session_id |  |
+| Ground | telemetry.command | ground_device_result_context_evicted | Warning | 设备操作结果等待上下文因容量限制被移除。 | request_id, command_id, command_seq, stage | correlation_id, session_id |  |
+| Ground | telemetry.command | ground_config_result_context_expired | Warning | 配置结果等待上下文已过期。 | command_id, command_seq, stage | correlation_id, session_id |  |
+| Ground | telemetry.command | ground_config_result_context_evicted | Warning | 配置结果等待上下文因容量限制被移除。 | command_id, command_seq, stage | correlation_id, session_id |  |
+| SkyCore | sky.command | sky_command_received | Info | 天空端已收到命令。 | command_id, command_seq | correlation_id, session_id |  |
+| SkyCore | sky.command | sky_command_progress | Info/Warning | 天空端命令正在执行。 | command_id, command_seq, ack_error_code | correlation_id, session_id |  |
+| SkyCore | sky.command | sky_command_completed | Info/Warning | 天空端命令处理已结束。 | command_id, command_seq, ack_error_code | correlation_id, session_id |  |
+| SkyCore | sky.command | sky_device_operation_started | Info | 天空端开始执行设备操作。 | command_id, command_seq | correlation_id, session_id |  |
+| SkyCore | sky.command | sky_device_operation_finished | Info/Warning | 天空端设备操作已结束。 | command_id, command_seq, ack_error_code | correlation_id, session_id |  |
+| SkyCore | sky.command | sky_device_worker_started | Info | 设备工作线程开始执行操作。 | command_id, command_seq | correlation_id, session_id |  |
+| SkyCore | sky.command | sky_device_worker_finished | Info/Warning | 设备工作线程已完成操作。 | command_id, command_seq | correlation_id, session_id |  |
+| SkyCore | sky.command | sky_device_result_discarded | Warning | 运行时停止，尚未交付的设备操作结果已丢弃；设备实际状态需要确认。 | command_id, command_seq, reason_code | correlation_id, session_id | RUNTIME_STOPPED |
 | Ground | protocol.crc | telemetry_crc_or_version_error | Warning | 遥测解码器拒绝了 CRC 或协议版本错误的数据帧。 | total_errors, delta |  |  |
 | Ground | protocol.frame | telemetry_frame_dropped | Warning | 遥测解码器已丢弃过大或格式错误的数据帧。 | total_dropped, delta |  |  |
 | Ground | protocol.parse | telemetry_basic_parse_failed | Warning | 无法解析 TelemetryBasic 遥测载荷。 | message_type, payload_bytes |  |  |
@@ -179,6 +217,7 @@
 | Ground | session.recording | scheduled_recording_stop_command_sent | Info | 定时记录停止命令已发送。 | execution_path, command, command_seq | ui_visibility |  |
 | Ground | device.connection | serial_ports_refreshed | Info | 串口列表已刷新。 | serial_port_count | ui_visibility |  |
 | Ground | device.connection | serial_port_detection_started | Info | 开始自动识别串口。 |  | ui_visibility |  |
+| SkyCore | device.connection | serial_port_detection_interrupted | Warning | 运行时停止，天空端串口自动识别已中断。 | reason_code |  | RUNTIME_STOPPED |
 | Ground | device.connection | remote_serial_port_detection_started | Info | 已请求天空端自动识别串口。 | command_seq | ui_visibility |  |
 | Ground | device.connection | serial_port_detection_cancel_requested | Info | 已请求取消，正在停止自动识别串口。 | reason_code | ui_visibility | USER_CANCELLED |
 | Ground | device.connection | remote_serial_port_detection_cancel_failed | Warning | 天空端取消串口自动识别失败。 | error_code | ui_visibility |  |

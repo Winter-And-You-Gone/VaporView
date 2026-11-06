@@ -45,6 +45,78 @@ QByteArray littleEndianFloat(float value)
 int main(int argc, char **argv)
 {
     QCoreApplication application(argc, argv);
+    {
+        QTemporaryDir firstDirectory;
+        QTemporaryDir secondDirectory;
+        auto storage = std::make_shared<FailingRecordingStorage>();
+        VaporView::Ground::Session::GroundRecordingService recorder(storage);
+        std::atomic_bool warningQueued{false};
+        QString deliveredSession;
+        recorder.setWarningCallback([&](VaporView::Ground::Session::GroundRecordingWarning warning,
+                                        quint64, const QString& session) {
+            if (warning != VaporView::Ground::Session::GroundRecordingWarning::DataWriteFailed) return;
+            QMetaObject::invokeMethod(&application, [&deliveredSession, session] {
+                deliveredSession = session;
+            }, Qt::QueuedConnection);
+            warningQueued.store(true);
+        });
+        VaporView::Ground::Session::GroundRecordingOptions options;
+        options.baseDirectory = firstDirectory.path();
+        require(recorder.start(options), "start first warning session");
+        const QString firstSession = recorder.status().sessionDirectory;
+        storage->failWrites.store(true);
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (!warningQueued.load() && std::chrono::steady_clock::now() < deadline)
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        require(warningQueued.load(), "write failure queues a warning from recording worker");
+        recorder.stop();
+        storage->failWrites.store(false);
+        options.baseDirectory = secondDirectory.path();
+        require(recorder.start(options), "start second warning session before delivery");
+        const QString secondSession = recorder.status().sessionDirectory;
+        require(secondSession != firstSession, "second session has distinct identity");
+        QCoreApplication::processEvents();
+        require(deliveredSession == firstSession, "delayed write warning retains originating session");
+        const auto stale = recorder.appendLogRecord(QStringLiteral("error"), QStringLiteral("old-session-warning"),
+                                                    true, deliveredSession);
+        require(stale.skipped, "old session record is not written to the new session");
+        const auto current = recorder.appendLogRecord(QStringLiteral("error"), QStringLiteral("current-session-error"),
+                                                      true, secondSession);
+        require(!current.skipped && current.eventWritten && current.errorWritten, "matching record writes both sinks");
+        const auto background = recorder.appendLogRecord(QStringLiteral("info"), QStringLiteral("unrelated-background"), false);
+        require(!background.skipped && background.eventWritten, "unassociated logs retain existing sink behavior");
+        recorder.stop();
+        QFile eventFile(QDir(secondSession).filePath(QStringLiteral("logs/event_log.csv")));
+        require(eventFile.open(QIODevice::ReadOnly), "open second session event log");
+        const QByteArray events = eventFile.readAll();
+        require(!events.contains("old-session-warning") && events.contains("current-session-error") &&
+                events.contains("unrelated-background"), "session event log contains only eligible records");
+        QFile errorFile(QDir(secondSession).filePath(QStringLiteral("logs/error_log.txt")));
+        require(errorFile.open(QIODevice::ReadOnly), "open second session error log");
+        const QByteArray errors = errorFile.readAll();
+        require(!errors.contains("old-session-warning") && errors.contains("current-session-error"),
+                "session error log excludes prior session record");
+    }
+    {
+        QTemporaryDir faultDirectory;
+        auto storage = std::make_shared<FailingRecordingStorage>();
+        VaporView::Ground::Session::GroundRecordingService recorder(storage);
+        QString warningSession;
+        recorder.setWarningCallback([&](VaporView::Ground::Session::GroundRecordingWarning warning,
+                                         quint64, const QString& session) {
+            if (warning == VaporView::Ground::Session::GroundRecordingWarning::DataWriteFailed)
+                warningSession = session;
+        });
+        VaporView::Ground::Session::GroundRecordingOptions options;
+        options.baseDirectory = faultDirectory.path();
+        require(recorder.start(options), "start stop-flush warning session");
+        const QString session = recorder.status().sessionDirectory;
+        require(recorder.pause(), "pause workers before injecting close flush failure");
+        storage->failFlush.store(true);
+        const auto summary = recorder.stop();
+        require(summary.writeFailed && warningSession == session,
+                "stop flush warning keeps stopped session identity");
+    }
     for (bool failAtFlush : {false, true})
     {
         QTemporaryDir faultDirectory;
@@ -60,6 +132,10 @@ int main(int argc, char **argv)
             storage->failWrites.store(false);
         }
         require(faultRecorder.start(faultOptions), "start storage fault fixture");
+        const auto faultStatus = faultRecorder.status();
+        require(VaporView::Ground::Session::recordingSessionIdForLog(
+                    faultStatus, QStringLiteral("session_write_failed")) == faultStatus.sessionDirectory,
+                "write failure keeps the active session identity");
         const QString manifestPath = QDir(faultRecorder.status().sessionDirectory).filePath(QStringLiteral("session.json"));
         storage->failWrites.store(!failAtFlush);
         storage->failFlush.store(failAtFlush);
@@ -71,6 +147,9 @@ int main(int argc, char **argv)
         }
         const auto failedStop = faultRecorder.stop();
         require(failedStop.writeFailed, "stop exposes write or flush failure");
+        require(VaporView::Ground::Session::recordingSessionIdForLog(
+                    faultRecorder.status(), QStringLiteral("session_recording_stopped"), failedStop.sessionDirectory)
+                    == faultStatus.sessionDirectory, "failed stop retains the stopped session identity");
         QFile manifest(manifestPath);
         require(manifest.open(QIODevice::ReadOnly), "open incomplete manifest");
         require(QJsonDocument::fromJson(manifest.readAll()).object().value(QStringLiteral("state")) ==
@@ -110,6 +189,10 @@ int main(int argc, char **argv)
     require(startError == VaporView::Ground::Session::GroundRecordingStartError::None,
             "start error state");
     require(recorder.isSessionOpen(), "session open after start");
+    const QString activeSessionId = recorder.status().sessionDirectory;
+    require(!activeSessionId.isEmpty() && VaporView::Ground::Session::recordingSessionIdForLog(
+                recorder.status(), QStringLiteral("session_recording_started")) == activeSessionId,
+            "start logs use the actual session identity");
     QFile initialManifest(QDir(recorder.status().sessionDirectory).filePath(QStringLiteral("session.json")));
     require(initialManifest.open(QIODevice::ReadOnly), "read original session origin");
     const QJsonValue originalStartTime = QJsonDocument::fromJson(initialManifest.readAll()).object()
@@ -150,6 +233,9 @@ int main(int argc, char **argv)
     require(recorder.isSessionOpen(), "session remains open while paused");
     require(recorder.isPaused(), "paused state");
     const auto pausedStatus = recorder.status();
+    require(VaporView::Ground::Session::recordingSessionIdForLog(
+                pausedStatus, QStringLiteral("session_recording_paused")) == activeSessionId,
+            "pause preserves session identity");
     require(pausedStatus.recordingElapsedMs > 0, "paused recording preserves elapsed time");
     require(!recorder.recordRawLaserTemperatureControllerResponse(
                 1'000'200,
@@ -161,6 +247,9 @@ int main(int argc, char **argv)
                 pausedStatus.rawLaserTemperatureControllerRecords,
             "paused recording does not increase laser raw count");
     require(recorder.start(options, &startError, &errorMessage), "resume recording");
+    require(VaporView::Ground::Session::recordingSessionIdForLog(
+                recorder.status(), QStringLiteral("session_recording_resumed")) == activeSessionId,
+            "resume preserves session identity");
     require(recorder.recordRawLaserTemperatureControllerResponse(
                 1'000'250,
                 0x0121,
@@ -184,6 +273,12 @@ int main(int argc, char **argv)
     const auto summary = recorder.stop();
     require(summary.hadOpenSession, "stop reports open session");
     require(!recorder.isSessionOpen(), "session closed after stop");
+    require(VaporView::Ground::Session::recordingSessionIdForLog(
+                recorder.status(), QStringLiteral("session_recording_stopped"), summary.sessionDirectory) == activeSessionId,
+            "stop log preserves session identity");
+    require(VaporView::Ground::Session::recordingSessionIdForLog(
+                recorder.status(), QStringLiteral("session_write_failed")).isEmpty(),
+            "later unrelated operation cannot inherit stopped session identity");
     require(summary.sensorRows >= 2, "stop summary rows");
 
     QFile devicesFile(QDir(sessionDirectory).filePath(QStringLiteral("sensors/sensor_summary.csv")));

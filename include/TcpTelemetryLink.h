@@ -2,6 +2,7 @@
 #define VaporView_TCP_TELEMETRY_LINK_H_
 
 #include "TelemetryLink.h"
+#include "LogService.h"
 
 #include <QHostAddress>
 #include <QTcpServer>
@@ -45,7 +46,10 @@ private:
     void emitTcpLog(LogLevel level,
                     const QString& event,
                     const QString& message,
-                    QVariantMap fields = {});
+                    QVariantMap fields = {},
+                    const char *file = VAPORVIEW_LOG_FILE,
+                    const char *function = VAPORVIEW_LOG_FUNCTION,
+                    int line = VAPORVIEW_LOG_LINE);
     void attachSocket(QTcpSocket *socket);
     void closeSocket();
     static QHostAddress addressFromString(const QString& host);

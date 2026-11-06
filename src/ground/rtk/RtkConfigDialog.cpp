@@ -25,6 +25,7 @@
 #include <QDir>
 #include <QDirIterator>
 #include <QDateTime>
+#include <QUuid>
 #include <QDialog>
 #include <QCloseEvent>
 #include <QEvent>
@@ -44,6 +45,7 @@
 #include <QResizeEvent>
 #include <QSerialPortInfo>
 #include <QSignalBlocker>
+#include <QScopedValueRollback>
 #include <QScrollArea>
 #include <QSvgRenderer>
 #include <QTemporaryFile>
@@ -2922,7 +2924,7 @@ void RtkConfigDialog::setEpsilonMainAntennaLeverArmApplier(EpsilonLeverArmApplie
 void RtkConfigDialog::setRtcmCorrectionSink(RtcmCorrectionSink sink, const QString& label)
 {
     if(bool(sink)==bool(rtcm_correction_sink_) && label.trimmed()==rtcm_correction_sink_label_)return;
-    if (is_running_)
+    if (is_running_ || rtcm_starting_)
     {
         onStopClicked();
     }
@@ -2930,6 +2932,16 @@ void RtkConfigDialog::setRtcmCorrectionSink(RtcmCorrectionSink sink, const QStri
     rtcm_correction_sink_label_ = label.trimmed();
     refreshPortCombos();
     updateButtonStates();
+}
+
+void RtkConfigDialog::setRecordingSessionProvider(std::function<QString()> provider)
+{
+    recording_session_provider_ = std::move(provider);
+}
+
+QString RtkConfigDialog::rtcmCorrelationId() const
+{
+    return rtcm_correlation_id_;
 }
 int RtkConfigDialog::fpgaRtcmTarget() const {return rtcm_correction_sink_label_=="FPGA"?output_port_combo_->currentData().toInt():0;}
 int RtkConfigDialog::fpgaRtcmBaud() const {return currentOutputBaudrate();}
@@ -3145,7 +3157,7 @@ void RtkConfigDialog::setTransportSupported(bool supported, const QString& reaso
 {
     transport_supported_ = supported; transport_unavailable_reason_ = reason;
     if (!supported) {
-        if (is_running_) onStopClicked();
+        if (is_running_ || rtcm_starting_) onStopClicked();
         stopGgaMonitor();
     }
     updateButtonStates();
@@ -3204,7 +3216,12 @@ void RtkConfigDialog::pollRtkServiceStatus(bool forceLog)
         return;
     }
 
-    const RtkStreamStats stats = rtk_service_->stats();
+    handleRtkServiceStatus(rtk_service_->stats(), forceLog);
+}
+
+void RtkConfigDialog::handleRtkServiceStatus(const RtkStreamStats& stats, bool forceLog)
+{
+    const QString statusId = rtcm_correlation_id_;
     updateStreamStatusFields(&stats);
     const QString message = stats.message.isEmpty()
         ? textFor("Streaming RTCM data", "正在转发 RTCM 数据")
@@ -3221,20 +3238,26 @@ void RtkConfigDialog::pollRtkServiceStatus(bool forceLog)
         nowMs - last_rtk_status_log_ms_ >= 30000;
     if ((forceLog || statusChanged || heartbeatDue) && !message.isEmpty())
     {
-        appendRawLogLine(summaryLine);
+        appendRawLogLine(summaryLine, rtcm_correlation_id_);
+        if (rtcm_correlation_id_ != statusId) return;
         last_rtk_status_log_ms_ = nowMs;
     }
     last_rtk_status_message_ = message;
 
     if (!stats.running && is_running_)
     {
+        VaporView::LogContext stoppedContext{rtcm_correlation_id_, {}};
+        if (recording_session_provider_) stoppedContext.sessionId = recording_session_provider_();
         is_running_ = false;
         if (rtk_status_timer_ && rtk_status_timer_->isActive())
         {
             rtk_status_timer_->stop();
         }
         emit rtkRunningChanged(false);
-        updateButtonStates();
+        if (rtcm_correlation_id_ == stoppedContext.correlationId) updateButtonStates();
+        logRtcmLifecycle(QStringLiteral("rtcm_stream_unexpected_stop"), true, stats.message,
+                         VAPORVIEW_LOG_FILE, VAPORVIEW_LOG_FUNCTION, VAPORVIEW_LOG_LINE, &stoppedContext);
+        if (rtcm_correlation_id_ == stoppedContext.correlationId) rtcm_correlation_id_.clear();
         appendLog(textFor("RTK service stopped unexpectedly", "RTK 服务已意外停止"));
         return;
     }
@@ -4611,14 +4634,35 @@ void RtkConfigDialog::onFetchMountpointsClicked()
 
 void RtkConfigDialog::onStartClicked()
 {
-    if (!transport_supported_) return;
+    if (!transport_supported_ || is_running_ || rtcm_starting_) return;
+    QScopedValueRollback<bool> starting(rtcm_starting_, true);
+    rtcm_start_cancelled_ = false;
+    rtcm_cancel_session_id_.clear();
+    rtcm_correlation_id_ = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    const QString startingId = rtcm_correlation_id_;
+    const auto cancelStart = [&]() {
+        if (!rtcm_start_cancelled_) return false;
+        if (rtk_service_ && rtk_service_->isRunning()) rtk_service_->stop();
+        stopRtcmCorrectionSinkServer();
+        const VaporView::LogContext cancelledContext{startingId, rtcm_cancel_session_id_};
+        if (rtcm_correlation_id_ == startingId) rtcm_correlation_id_.clear();
+        logRtcmLifecycle(QStringLiteral("rtcm_stream_start_cancelled"), false, {},
+                         VAPORVIEW_LOG_FILE, VAPORVIEW_LOG_FUNCTION, VAPORVIEW_LOG_LINE, &cancelledContext);
+        return true;
+    };
+    logRtcmLifecycle(QStringLiteral("rtcm_stream_start_requested"));
+    if (cancelStart()) return;
+    if (rtcm_correlation_id_ != startingId || is_running_) return;
     if (ui_test_mode_)
     {
         is_running_ = true;
         emit rtkRunningChanged(true);
+        if (!is_running_ || rtcm_correlation_id_ != startingId) return;
         updateButtonStates();
         setServiceStatus(textFor("Status: Running (UI test)", "状态：运行中（界面测试）"),
                          QStringLiteral("check"), VaporView::AppThemeColor::Success);
+        logRtcmLifecycle(QStringLiteral("rtcm_stream_started"));
+        if (!is_running_ || rtcm_correlation_id_ != startingId) return;
         appendLog(textFor("[界面测试] Simulated RTK service started; no serial or network I/O",
                           "[界面测试] 模拟 RTK 服务已启动；无串口或网络访问"));
         return;
@@ -4627,8 +4671,13 @@ void RtkConfigDialog::onStartClicked()
     QString description;
     QString validationError;
     const bool usingCorrectionSink = static_cast<bool>(rtcm_correction_sink_);
-    if (!buildRtkStreamConfig(&config, &description, &validationError, !usingCorrectionSink))
+    const bool valid = buildRtkStreamConfig(&config, &description, &validationError, !usingCorrectionSink);
+    if (cancelStart()) return;
+    if (!valid)
     {
+        logRtcmLifecycle(QStringLiteral("rtcm_stream_start_failed"), true, validationError);
+        if (cancelStart()) return;
+        rtcm_correlation_id_.clear();
         QMessageBox::warning(this, textFor("Error", "错误"), validationError);
         return;
     }
@@ -4636,8 +4685,13 @@ void RtkConfigDialog::onStartClicked()
     if (usingCorrectionSink)
     {
         QString sinkError;
-        if (!startRtcmCorrectionSinkServer(&config, &sinkError))
+        const bool sinkStarted = startRtcmCorrectionSinkServer(&config, &sinkError);
+        if (cancelStart()) return;
+        if (!sinkStarted)
         {
+            logRtcmLifecycle(QStringLiteral("rtcm_stream_start_failed"), true, sinkError);
+            if (cancelStart()) return;
+            rtcm_correlation_id_.clear();
             QMessageBox::warning(this, textFor("Error", "错误"), sinkError);
             return;
         }
@@ -4647,7 +4701,9 @@ void RtkConfigDialog::onStartClicked()
     }
 
     appendLog(textFor("Starting RTK service...", "正在启动 RTK 服务..."));
+    if (cancelStart()) return;
     appendLog(description);
+    if (cancelStart()) return;
     if (config.sendNmeaGga)
     {
         appendLog(textFor("NTRIP GGA will be generated from the EPSILON main-port position; RTCM is written only to the configured output port.",
@@ -4658,12 +4714,16 @@ void RtkConfigDialog::onStartClicked()
         appendLog(textFor("No valid EPSILON main-port position is available, so RTK service keeps output-port GGA relay fallback.",
                           "当前没有可用的 EPSILON 主串口定位，RTK 服务保留输出口回读 GGA 的兼容模式。"));
     }
+    if (cancelStart()) return;
 
     QString errorMessage;
-    if (rtk_service_ && rtk_service_->start(config, &errorMessage))
+    const bool serviceStarted = rtk_service_ && rtk_service_->start(config, &errorMessage);
+    if (cancelStart()) return;
+    if (serviceStarted)
     {
         is_running_ = true;
         emit rtkRunningChanged(true);
+        if (!is_running_ || rtcm_correlation_id_ != startingId) return;
         last_rtk_status_message_.clear();
         last_rtk_status_log_ms_ = 0;
         updateButtonStates();
@@ -4672,11 +4732,17 @@ void RtkConfigDialog::onStartClicked()
             rtk_status_timer_->start();
         }
         pollRtkServiceStatus(true);
+        if (!is_running_ || rtcm_correlation_id_ != startingId) return;
+        logRtcmLifecycle(QStringLiteral("rtcm_stream_started"));
+        if (!is_running_ || rtcm_correlation_id_ != startingId) return;
         appendLog(textFor("RTK service started successfully", "RTK 服务启动成功"));
     }
     else
     {
         stopRtcmCorrectionSinkServer();
+        logRtcmLifecycle(QStringLiteral("rtcm_stream_start_failed"), true, errorMessage);
+        if (cancelStart()) return;
+        rtcm_correlation_id_.clear();
         appendLog(textFor("Failed to start RTK service: %1", "RTK 服务启动失败: %1")
             .arg(errorMessage.isEmpty() ? textFor("Unknown error", "未知错误") : errorMessage));
     }
@@ -4684,21 +4750,44 @@ void RtkConfigDialog::onStartClicked()
 
 void RtkConfigDialog::onStopClicked()
 {
+    if (rtcm_starting_ && !is_running_)
+    {
+        if (!rtcm_start_cancelled_)
+        {
+            rtcm_start_cancelled_ = true;
+            if (recording_session_provider_) rtcm_cancel_session_id_ = recording_session_provider_();
+        }
+        return;
+    }
+    if (rtcm_stopping_) return;
+    QScopedValueRollback<bool> stopping(rtcm_stopping_, true);
     if (ui_test_mode_)
     {
         if (is_running_)
         {
+            VaporView::LogContext stoppedContext{rtcm_correlation_id_, {}};
+            if (recording_session_provider_) stoppedContext.sessionId = recording_session_provider_();
             is_running_ = false;
             emit rtkRunningChanged(false);
+            if (rtcm_correlation_id_ != stoppedContext.correlationId) {
+                logRtcmLifecycle(QStringLiteral("rtcm_stream_stopped"), false, {},
+                                 VAPORVIEW_LOG_FILE, VAPORVIEW_LOG_FUNCTION, VAPORVIEW_LOG_LINE, &stoppedContext);
+                return;
+            }
             updateButtonStates();
             setServiceStatus(textFor("Status: Stopped (UI test)", "状态：已停止（界面测试）"),
                              QStringLiteral("circle"), VaporView::AppThemeColor::TextMuted);
+            logRtcmLifecycle(QStringLiteral("rtcm_stream_stopped"), false, {},
+                             VAPORVIEW_LOG_FILE, VAPORVIEW_LOG_FUNCTION, VAPORVIEW_LOG_LINE, &stoppedContext);
+            if (rtcm_correlation_id_ == stoppedContext.correlationId) rtcm_correlation_id_.clear();
             appendLog(textFor("[界面测试] Simulated RTK service stopped", "[界面测试] 模拟 RTK 服务已停止"));
         }
         return;
     }
     if (rtk_service_ && rtk_service_->isRunning())
     {
+        VaporView::LogContext stoppedContext{rtcm_correlation_id_, {}};
+        if (recording_session_provider_) stoppedContext.sessionId = recording_session_provider_();
         appendLog(textFor("Stopping RTK service...", "正在停止 RTK 服务..."));
         rtk_service_->stop();
         stopRtcmCorrectionSinkServer();
@@ -4708,9 +4797,17 @@ void RtkConfigDialog::onStopClicked()
         }
         is_running_ = false;
         emit rtkRunningChanged(false);
+        if (rtcm_correlation_id_ != stoppedContext.correlationId) {
+            logRtcmLifecycle(QStringLiteral("rtcm_stream_stopped"), false, {},
+                             VAPORVIEW_LOG_FILE, VAPORVIEW_LOG_FUNCTION, VAPORVIEW_LOG_LINE, &stoppedContext);
+            return;
+        }
         last_rtk_status_message_.clear();
         last_rtk_status_log_ms_ = 0;
         updateButtonStates();
+        logRtcmLifecycle(QStringLiteral("rtcm_stream_stopped"), false, {},
+                         VAPORVIEW_LOG_FILE, VAPORVIEW_LOG_FUNCTION, VAPORVIEW_LOG_LINE, &stoppedContext);
+        if (rtcm_correlation_id_ == stoppedContext.correlationId) rtcm_correlation_id_.clear();
         appendLog(textFor("RTK service stopped", "RTK 服务已停止"));
     }
 }
@@ -5042,7 +5139,30 @@ void RtkConfigDialog::onClearLogClicked()
     log_text_edit_->clear();
 }
 
-void RtkConfigDialog::appendLog(const QString& message)
+void RtkConfigDialog::logRtcmLifecycle(const QString& event, bool failed, const QString& reason,
+                                          const char *file, const char *function, int line, const VaporView::LogContext *captured)
+{
+    if ((captured ? captured->correlationId : rtcm_correlation_id_).isEmpty()) return;
+    QVariantMap fields{{QStringLiteral("event"), event}, {QStringLiteral("simulated"), ui_test_mode_}};
+    if (!reason.isEmpty()) fields.insert(QStringLiteral("reason"), reason);
+    VaporView::LogContext context = captured ? *captured : VaporView::LogContext{rtcm_correlation_id_, {}};
+    if (!captured && recording_session_provider_) context.sessionId = recording_session_provider_();
+    VaporView::LogService::withCurrentInstance([&](VaporView::LogService& service) {
+        service.publish(failed ? VaporView::LogLevel::Warning : VaporView::LogLevel::Info,
+                        QStringLiteral("RTK"), QStringLiteral("rtcm.lifecycle"),
+                        failed ? QStringLiteral("RTCM 转发操作失败或意外停止。")
+                               : QStringLiteral("RTCM 转发操作状态已更新。"),
+                        fields, context.correlationId, context.sessionId, file, function, line);
+    });
+}
+
+void RtkConfigDialog::appendLog(const QString& message, const char *file, const char *function, int line)
+{
+    appendLog(message, VaporView::LogContext{}, file, function, line);
+}
+
+void RtkConfigDialog::appendLog(const QString& message, const VaporView::LogContext& context,
+                                const char *file, const char *function, int line)
 {
     VaporView::LogService::withCurrentInstance([&](VaporView::LogService& logService) {
         logService.publish(VaporView::LogLevel::Info,
@@ -5052,7 +5172,7 @@ void RtkConfigDialog::appendLog(const QString& message)
                            {{QStringLiteral("ui_visible"), true},
                              {QStringLiteral("ui_visibility"), QStringLiteral("details")},
                              {QStringLiteral("event"), QStringLiteral("rtk_service_log")},
-                            {QStringLiteral("ui_message"), message}});
+                            {QStringLiteral("ui_message"), message}}, context.correlationId, context.sessionId, file, function, line);
     });
     if (!log_text_edit_) return;
 
@@ -5071,7 +5191,15 @@ void RtkConfigDialog::appendLog(const QString& message)
 
 void RtkConfigDialog::appendRawLogLine(const QString& line)
 {
+    appendRawLogLine(line, {});
+}
+
+void RtkConfigDialog::appendRawLogLine(const QString& line, const QString& correlationId)
+{
     if (line.isEmpty()) return;
+
+    const QString sessionId = !correlationId.isEmpty() && recording_session_provider_
+        ? recording_session_provider_() : QString();
 
     VaporView::LogService::withCurrentInstance([&](VaporView::LogService& logService) {
         logService.publish(VaporView::LogLevel::Debug,
@@ -5081,7 +5209,7 @@ void RtkConfigDialog::appendRawLogLine(const QString& line)
                            {{QStringLiteral("ui_visible"), true},
                              {QStringLiteral("ui_visibility"), QStringLiteral("hidden")},
                              {QStringLiteral("event"), QStringLiteral("rtk_service_raw_output")},
-                            {QStringLiteral("external_raw_text"), line.trimmed()}});
+                            {QStringLiteral("external_raw_text"), line.trimmed()}}, correlationId, sessionId);
     });
     if (!log_text_edit_) return;
 

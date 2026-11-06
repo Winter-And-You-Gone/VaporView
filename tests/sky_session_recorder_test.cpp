@@ -18,6 +18,18 @@
 #include <QThread>
 #include <iostream>
 
+namespace VaporView {
+class SkyRuntimeStorageFailureTestAccess {
+public:
+    static void setSessionDirectory(SkySessionRecorder& recorder, const QString& value)
+    {
+        std::lock_guard<std::recursive_mutex> recordingLock(recorder.recording_mutex_);
+        std::lock_guard<std::mutex> filesLock(recorder.files_mutex_);
+        recorder.session_directory_ = value;
+    }
+};
+}
+
 namespace
 {
 void require(bool condition, const char *message)
@@ -168,6 +180,45 @@ void verifyObservationCloseCanAppendSessionLog()
             "completed observation log persisted in session");
 }
 
+void verifyLongSessionLogIsolation()
+{
+    QTemporaryDir tempDir;
+    require(tempDir.isValid(), "temporary long session log directory");
+    VaporView::LogService logs(QStringLiteral("LongSessionIsolationTest"), nullptr,
+                               tempDir.path() + QStringLiteral("/diagnostics"), tempDir.path());
+    VaporView::SkySessionRecorder recorder;
+    QString error;
+    require(recorder.start(tempDir.path(), QStringLiteral("test"), 0, &error),
+            "start recorder for synthetic session identity test");
+    const QString actualDirectory = recorder.sessionDirectory();
+    QString first = QStringLiteral("C:/");
+    for (int i = 0; i < 130; ++i) first += QString(240, QChar(0x4e2d)) + QLatin1Char('/');
+    const QString second = first + QStringLiteral("second");
+    first += QStringLiteral("first");
+    require(first.size() < 32767 && first.toUtf8().size() > 64 * 1024,
+            "synthetic session identities exceed previous logging limit");
+    VaporView::SkyRuntimeStorageFailureTestAccess::setSessionDirectory(recorder, first);
+    const auto connection = QObject::connect(&logs, &VaporView::LogService::recordPublished,
+        QCoreApplication::instance(), [&](const VaporView::LogRecord& record) {
+            if (record.category == QStringLiteral("long.session.isolation"))
+                require(recorder.appendEvent(record), "append bounded event to synthetic session sink");
+        }, Qt::DirectConnection);
+    logs.publish(VaporView::LogLevel::Info, QStringLiteral("SkyCore"),
+                 QStringLiteral("long.session.isolation"), QStringLiteral("first-session-event"), {},
+                 QStringLiteral("first-id"), first);
+    logs.publish(VaporView::LogLevel::Info, QStringLiteral("SkyCore"),
+                 QStringLiteral("long.session.isolation"), QStringLiteral("other-session-event"), {},
+                 QStringLiteral("other-id"), second);
+    QObject::disconnect(connection);
+    VaporView::SkyRuntimeStorageFailureTestAccess::setSessionDirectory(recorder, actualDirectory);
+    require(recorder.stop(&error), "stop synthetic session fixture");
+    QFile events(actualDirectory + QStringLiteral("/logs/event_log.csv"));
+    require(events.open(QIODevice::ReadOnly), "read synthetic session event file");
+    const QByteArray contents = events.readAll();
+    require(contents.contains("first-session-event") && !contents.contains("other-session-event"),
+            "long session events are kept separate using the full identity");
+}
+
 int main(int argc, char *argv[])
 {
     QCoreApplication app(argc, argv);
@@ -218,6 +269,7 @@ int main(int argc, char *argv[])
 
     verifyWaveformFeatureRecordingBoundaries();
     verifyObservationCloseCanAppendSessionLog();
+    verifyLongSessionLogIsolation();
 
     VaporView::LogRecord eventRecord;
     eventRecord.timestamp_utc = QStringLiteral("2026-07-30T12:00:00.000Z");

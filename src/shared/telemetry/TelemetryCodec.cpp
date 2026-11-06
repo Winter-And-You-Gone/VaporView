@@ -360,10 +360,11 @@ bool TelemetryCodec::parseLogRecord(const QByteArray& payload, LogRecord& record
     record.correlation_id = object.value(QStringLiteral("correlation_id")).toString();
     record.session_id = object.value(QStringLiteral("session_id")).toString();
     record.message = object.value(QStringLiteral("message")).toString();
-    if (object.value(QStringLiteral("fields")).isObject())
-    {
-        record.fields = object.value(QStringLiteral("fields")).toObject().toVariantMap();
-    }
+    const QJsonObject location = object.value(QStringLiteral("source_location")).toObject();
+    record.source_location.file = location.value(QStringLiteral("file")).toString();
+    record.source_location.function = location.value(QStringLiteral("function")).toString();
+    record.source_location.line = location.value(QStringLiteral("line")).toInt();
+    record.fields = object.value(QStringLiteral("fields")).toObject().toVariantMap();
     record = LoggingInternal::boundLogRecord(std::move(record));
     return true;
 }
@@ -927,6 +928,42 @@ QByteArray TelemetryCodec::serializeCommand(const CommandMessage& command)
     appendLe<quint16>(payload, command.command_seq);
     appendLe<quint32>(payload, static_cast<quint32>(command.payload.size()));
     payload.append(command.payload);
+    if (!command.correlation_id.isEmpty() || !command.session_id.isEmpty() || command.typed_response_context_requested ||
+        command.config_result_context_requested || command.config_ack_session_omission_supported || command.extended_ack_context_requested ||
+        command.extended_result_context_requested)
+    {
+        QJsonObject object{
+            {QStringLiteral("correlation_id"), command.correlation_id},
+            {QStringLiteral("session_id"), command.session_id}};
+        if (command.typed_response_context_requested)
+            object.insert(QStringLiteral("typed_result_context_version"), 1);
+        if (command.config_result_context_requested)
+            object.insert(QStringLiteral("config_result_context_version"), 1);
+        if (command.config_ack_session_omission_supported)
+            object.insert(QStringLiteral("config_ack_session_omission_version"), 1);
+        if (command.extended_ack_context_requested)
+            object.insert(QStringLiteral("ack_context_version"), 2);
+        if (command.extended_result_context_requested)
+            object.insert(QStringLiteral("result_context_version"), 2);
+        QByteArray metadata = QJsonDocument(object).toJson(QJsonDocument::Compact);
+        if (metadata.size() > 1024 && command.extended_result_context_requested) {
+            object.remove(QStringLiteral("result_context_version"));
+            metadata = QJsonDocument(object).toJson(QJsonDocument::Compact);
+        }
+        if (metadata.size() > 1024 && command.extended_ack_context_requested) {
+            object.remove(QStringLiteral("ack_context_version"));
+            metadata = QJsonDocument(object).toJson(QJsonDocument::Compact);
+        }
+        if (metadata.size() > 1024 && command.config_ack_session_omission_supported) {
+            object.remove(QStringLiteral("config_ack_session_omission_version"));
+            metadata = QJsonDocument(object).toJson(QJsonDocument::Compact);
+        }
+        if (metadata.size() <= 1024)
+        {
+            payload.append("VLC1", 4);
+            payload.append(metadata);
+        }
+    }
     return payload;
 }
 
@@ -944,6 +981,71 @@ bool TelemetryCodec::parseCommand(const QByteArray& payload, CommandMessage& com
     }
     command.command_id = static_cast<CommandId>(commandId);
     command.payload = payload.mid(offset, static_cast<int>(payloadLen));
+    command.correlation_id.clear();
+    command.session_id.clear();
+    command.typed_response_context_requested = false;
+    command.config_result_context_requested = false;
+    command.config_ack_session_omission_supported = false;
+    command.extended_ack_context_requested = false;
+    command.extended_result_context_requested = false;
+    offset += payloadLen;
+    const QByteArray extension = payload.mid(offset);
+    if (extension.startsWith("VLC1") && extension.size() <= 1028)
+    {
+        const QJsonDocument metadata = QJsonDocument::fromJson(extension.mid(4));
+        if (metadata.isObject())
+        {
+            command.correlation_id = metadata.object().value(QStringLiteral("correlation_id")).toString();
+            command.session_id = metadata.object().value(QStringLiteral("session_id")).toString();
+            command.typed_response_context_requested = metadata.object().value(QStringLiteral("typed_result_context_version")).toInt() == 1;
+            command.config_result_context_requested = metadata.object().value(QStringLiteral("config_result_context_version")).toInt() == 1;
+            command.config_ack_session_omission_supported = metadata.object().value(QStringLiteral("config_ack_session_omission_version")).toInt() == 1;
+            command.extended_ack_context_requested = metadata.object().value(QStringLiteral("ack_context_version")).toInt() == 2;
+            command.extended_result_context_requested = metadata.object().value(QStringLiteral("result_context_version")).toInt() == 2;
+        }
+    }
+    return true;
+}
+
+QByteArray TelemetryCodec::serializeSkyConfigApplyResultContext(const QJsonObject& result, const QString& correlationId,
+                                                               const QString& sessionId, quint16 commandSeq, bool extended)
+{
+    const QByteArray correlation = correlationId.toUtf8();
+    const QByteArray session = sessionId.toUtf8();
+    if (correlation.isEmpty() || correlation.size() > 256 || session.size() > (extended ? 256 * 1024 : 4096) ||
+        QString::fromUtf8(correlation) != correlationId || QString::fromUtf8(session) != sessionId)
+        return {};
+    const QJsonObject object{{QStringLiteral("version"), session.size() > 4096 ? 2 : 1}, {QStringLiteral("command_seq"), commandSeq},
+                             {QStringLiteral("correlation_id"), correlationId}, {QStringLiteral("session_id"), sessionId},
+                             {QStringLiteral("result"), result}};
+    const QByteArray payload = QJsonDocument(object).toJson(QJsonDocument::Compact);
+    return payload.size() <= 512 * 1024 ? payload : QByteArray();
+}
+
+bool TelemetryCodec::parseSkyConfigApplyResultContext(const QByteArray& payload, QJsonObject& result,
+                                                      QString& correlationId, QString& sessionId, quint16& commandSeq, bool *extended)
+{
+    if (payload.size() > 512 * 1024 || QString::fromUtf8(payload).toUtf8() != payload) return false;
+    const QJsonDocument document = QJsonDocument::fromJson(payload);
+    if (!document.isObject()) return false;
+    const auto object = document.object();
+    const auto seq = object.value(QStringLiteral("command_seq"));
+    const auto corr = object.value(QStringLiteral("correlation_id"));
+    const auto session = object.value(QStringLiteral("session_id"));
+    const auto value = object.value(QStringLiteral("result"));
+    const int seqValue = seq.toInt(-1);
+    const auto versionValue = object.value(QStringLiteral("version"));
+    const int version = versionValue.toInt();
+    const int sessionBytes = session.toString().toUtf8().size();
+    if (!versionValue.isDouble() || versionValue.toDouble() != version || (version != 1 && version != 2) ||
+        !seq.isDouble() || seqValue < 0 || seqValue > 65535 ||
+        seq.toDouble() != seqValue || !corr.isString() || corr.toString().isEmpty() ||
+        corr.toString().toUtf8().size() > 256 || QString::fromUtf8(corr.toString().toUtf8()) != corr.toString() ||
+        !session.isString() || QString::fromUtf8(session.toString().toUtf8()) != session.toString() ||
+        (version == 1 ? sessionBytes > 4096 : sessionBytes <= 4096 || sessionBytes > 256 * 1024) || !value.isObject())
+        return false;
+    result = value.toObject(); correlationId = corr.toString(); sessionId = session.toString(); commandSeq = quint16(seqValue);
+    if (extended) *extended = version == 2;
     return true;
 }
 
@@ -956,6 +1058,37 @@ QByteArray TelemetryCodec::serializeCommandAck(const CommandAck& ack)
     payload.append(static_cast<char>(ack.result));
     payload.append('\0');
     appendLe<quint32>(payload, static_cast<quint32>(ack.error_code));
+    if (!ack.correlation_id.isEmpty() || !ack.session_id.isEmpty() || ack.typed_response_context_supported || ack.config_result_context_expected.has_value())
+    {
+        QJsonObject object{
+            {QStringLiteral("correlation_id"), ack.correlation_id},
+            {QStringLiteral("session_id"), ack.session_id}};
+        if (ack.typed_response_context_supported)
+            object.insert(QStringLiteral("typed_result_context_version"), 1);
+        if (ack.config_result_context_expected.has_value())
+            object.insert(QStringLiteral("config_result_context_expected"), *ack.config_result_context_expected);
+        if (ack.session_id_omitted && ack.session_id.isEmpty() && !ack.correlation_id.isEmpty()) {
+            object.remove(QStringLiteral("session_id"));
+            object.insert(QStringLiteral("session_id_omitted"), true);
+        }
+        QByteArray metadata = QJsonDocument(object).toJson(QJsonDocument::Compact);
+        if (metadata.size() > 1024 && ack.extended_ack_context_allowed && !ack.correlation_id.isEmpty()) {
+            object.insert(QStringLiteral("ack_context_version"), 2);
+            const QByteArray extended = QJsonDocument(object).toJson(QJsonDocument::Compact);
+            if (extended.size() <= 256 * 1024) {
+                payload.append("VLC1", 4);
+                payload.append(extended);
+                return payload;
+            }
+            object.remove(QStringLiteral("ack_context_version"));
+        }
+        if (metadata.size() > 1024 && ack.allow_session_id_omission && !ack.correlation_id.isEmpty() && !ack.session_id.isEmpty()) {
+            object.remove(QStringLiteral("session_id"));
+            object.insert(QStringLiteral("session_id_omitted"), true);
+            metadata = QJsonDocument(object).toJson(QJsonDocument::Compact);
+        }
+        if (metadata.size() <= 1024) { payload.append("VLC1", 4); payload.append(metadata); }
+    }
     return payload;
 }
 
@@ -980,6 +1113,51 @@ bool TelemetryCodec::parseCommandAck(const QByteArray& payload, CommandAck& ack)
         return false;
     }
     ack.error_code = static_cast<CommandErrorCode>(errorCode);
+    ack.correlation_id.clear();
+    ack.session_id.clear();
+    ack.typed_response_context_supported = false;
+    ack.config_result_context_expected.reset();
+    ack.session_id_omitted = false;
+    ack.allow_session_id_omission = false;
+    ack.extended_ack_context_allowed = false;
+    ack.extended_ack_context = false;
+    const QByteArray extension = payload.mid(offset);
+    if (extension.startsWith("VLC1") && extension.size() > 256 * 1024 + 4)
+        return false;
+    if (extension.startsWith("VLC1") && extension.size() <= 256 * 1024 + 4)
+    {
+        const QJsonDocument metadata = QJsonDocument::fromJson(extension.mid(4));
+        const bool extended = extension.size() > 1028;
+        if (extended)
+        {
+            if (!metadata.isObject()) return false;
+            const QJsonObject object = metadata.object();
+            const auto correlation = object.value(QStringLiteral("correlation_id"));
+            const auto session = object.value(QStringLiteral("session_id"));
+            const auto omitted = object.value(QStringLiteral("session_id_omitted"));
+            const bool hasSession = object.contains(QStringLiteral("session_id"));
+            if (object.value(QStringLiteral("ack_context_version")).toInt() != 2 ||
+                !correlation.isString() || correlation.toString().isEmpty() ||
+                (!omitted.isUndefined() && !omitted.isBool()) ||
+                (hasSession ? !session.isString() || omitted.toBool(false)
+                            : !omitted.isBool() || !omitted.toBool()))
+                return false;
+        }
+        if (metadata.isObject())
+        {
+            ack.correlation_id = metadata.object().value(QStringLiteral("correlation_id")).toString();
+            ack.session_id = metadata.object().value(QStringLiteral("session_id")).toString();
+            ack.typed_response_context_supported = metadata.object().value(QStringLiteral("typed_result_context_version")).toInt() == 1;
+            const auto configExpected = metadata.object().value(QStringLiteral("config_result_context_expected"));
+            if (configExpected.isBool()) ack.config_result_context_expected = configExpected.toBool();
+            ack.session_id_omitted = !ack.correlation_id.isEmpty() &&
+                !metadata.object().contains(QStringLiteral("session_id")) &&
+                metadata.object().value(QStringLiteral("session_id_omitted")).toBool(false);
+            ack.allow_session_id_omission = ack.session_id_omitted;
+            ack.extended_ack_context = extended;
+            ack.extended_ack_context_allowed = extended;
+        }
+    }
     return true;
 }
 
@@ -2331,7 +2509,69 @@ bool TelemetryCodec::parseDeviceOperationResponse(const QByteArray& payload,
     Q_UNUSED(reserved);
     response.operation = static_cast<DeviceOperation>(operationValue);
     response.error_code = static_cast<CommandErrorCode>(errorValue);
+    response.correlation_id.clear();
+    response.session_id.clear();
     response.payload = payload.mid(offset, static_cast<int>(payloadSize));
+    return true;
+}
+
+QByteArray TelemetryCodec::serializeDeviceOperationResponseContext(const DeviceOperationResponse& response, bool extended)
+{
+    constexpr qsizetype maxCorrelationBytes = 256;
+    const QByteArray correlation = response.correlation_id.toUtf8();
+    const QByteArray session = response.session_id.toUtf8();
+    const bool version2 = extended && session.size() > 4096;
+    const qsizetype headerBytes = version2 ? 14 : 12;
+    if (correlation.isEmpty() || correlation.size() > maxCorrelationBytes || session.size() > (version2 ? 256 * 1024 : 4096) ||
+        QString::fromUtf8(correlation) != response.correlation_id || QString::fromUtf8(session) != response.session_id ||
+        response.payload.size() > kDefaultMaxPayloadSize)
+        return {};
+    const QByteArray legacy = serializeDeviceOperationResponse(response);
+    if (headerBytes + legacy.size() + correlation.size() + session.size() > kDefaultMaxPayloadSize)
+        return {};
+    QByteArray result(version2 ? "VRC2" : "VRC1", 4);
+    appendLe<quint32>(result, static_cast<quint32>(legacy.size()));
+    appendLe<quint16>(result, static_cast<quint16>(correlation.size()));
+    if (version2) appendLe<quint32>(result, static_cast<quint32>(session.size()));
+    else appendLe<quint16>(result, static_cast<quint16>(session.size()));
+    result.append(legacy);
+    result.append(correlation);
+    result.append(session);
+    return result;
+}
+
+bool TelemetryCodec::parseDeviceOperationResponseContext(const QByteArray& payload,
+                                                         DeviceOperationResponse& response, bool *extended)
+{
+    constexpr quint16 maxCorrelationBytes = 256;
+    const bool version2 = payload.startsWith("VRC2");
+    if (payload.size() > kDefaultMaxPayloadSize || (!version2 && !payload.startsWith("VRC1"))) return false;
+    qsizetype offset = 4;
+    quint32 legacySize = 0;
+    quint16 correlationSize = 0, legacySessionSize = 0;
+    quint32 sessionSize = 0;
+    if (!readLe(payload, offset, legacySize) || !readLe(payload, offset, correlationSize)) return false;
+    if (version2) {
+        if (!readLe(payload, offset, sessionSize)) return false;
+    } else {
+        if (!readLe(payload, offset, legacySessionSize)) return false;
+        sessionSize = legacySessionSize;
+    }
+    if (correlationSize == 0 || correlationSize > maxCorrelationBytes ||
+        (version2 ? sessionSize <= 4096 || sessionSize > 256 * 1024 : sessionSize > 4096) ||
+        static_cast<quint64>(offset) + legacySize + correlationSize + sessionSize != static_cast<quint64>(payload.size()))
+        return false;
+    DeviceOperationResponse parsed;
+    if (!parseDeviceOperationResponse(payload.mid(offset, legacySize), parsed)) return false;
+    offset += legacySize;
+    const QByteArray correlation = payload.mid(offset, correlationSize);
+    offset += correlationSize;
+    const QByteArray session = payload.mid(offset, sessionSize);
+    parsed.correlation_id = QString::fromUtf8(correlation);
+    parsed.session_id = QString::fromUtf8(session);
+    if (parsed.correlation_id.toUtf8() != correlation || parsed.session_id.toUtf8() != session) return false;
+    response = std::move(parsed);
+    if (extended) *extended = version2;
     return true;
 }
 

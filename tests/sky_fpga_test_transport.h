@@ -52,7 +52,7 @@ public:
     std::shared_ptr<std::atomic_bool> destroyedClosed;
     ~ScriptedTransport() override { if(destroyedClosed) destroyedClosed->store(closed && !opened); }
     bool opened=false,closed=false,strict=true;
-    bool holdResponses=false;
+    std::atomic_bool holdResponses{false};
     quint32 failWriteAddress=0xffffffff;
     bool failTemperature=false,confirmTemperature=true;
     QMap<quint32,quint32> regs;

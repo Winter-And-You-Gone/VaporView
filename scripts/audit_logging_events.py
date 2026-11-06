@@ -118,6 +118,44 @@ def extract_event_uses_from_text(path_label: str, text: str) -> list[EventUse]:
                 seen.add(key)
                 uses.append(use)
 
+    # The Ground and SkyCore helpers both publish a CommandMessage context,
+    # but their source and category differ by translation unit.
+    for match in re.finditer(r"\blogCommandContext\s*\(", scan_text):
+        open_pos = scan_text.find("(", match.start())
+        end = lang.find_balanced_parenthesis(scan_text, open_pos)
+        if end < 0:
+            continue
+        args = lang.split_top_level_args(scan_text[open_pos + 1:end])
+        if len(args) < 3:
+            continue
+        event_arg = args[1]
+        conditional = CONDITIONAL_EVENT_LITERAL_RE.search(event_arg)
+        events = [conditional.group("true"), conditional.group("false")] if conditional else [lang.literal_from_arg(event_arg)]
+        level_match = re.search(r"LogLevel::([A-Za-z]+)", args[2])
+        source, category = (("Ground", "telemetry.command") if path_label.startswith("src/ground/") else
+                            ("SkyCore", "sky.command") if path_label.startswith("src/sky/") else (None, None))
+        for event in events:
+            if event:
+                uses.append(EventUse(event, category, level_match.group(1) if level_match else None,
+                                     source, path_label, lang.line_for_offset(scan_text, match.start())))
+
+    if path_label.replace("\\", "/") == "src/sky/ipc/SkyLocalIpcClient.cpp":
+        for match in re.finditer(r"\bpublishCommandLog\s*\(", scan_text):
+            open_pos = scan_text.find("(", match.start())
+            end = lang.find_balanced_parenthesis(scan_text, open_pos)
+            if end < 0:
+                continue
+            args = lang.split_top_level_args(scan_text[open_pos + 1:end])
+            if len(args) < 3:
+                continue
+            event = lang.literal_from_arg(args[1])
+            if not event:
+                continue
+            level_match = re.search(r"LogLevel::([A-Za-z]+)", args[3]) if len(args) > 3 else None
+            level = level_match.group(1) if level_match else ("Info" if len(args) == 3 else None)
+            uses.append(EventUse(event, "ipc.command", level, "SkyTui", path_label,
+                                 lang.line_for_offset(scan_text, match.start())))
+
     for regex in (lang.FIELD_PAIR_RE, lang.FIELD_INSERT_RE):
         for match in regex.finditer(scan_text):
             if regex is lang.FIELD_PAIR_RE and not lang.looks_like_log_field_pair_context(scan_text, match.start()):
@@ -393,6 +431,82 @@ void good(LogService& logService) {
             "| SkyCore | old | old_event | deprecated | 已废弃事件。 |  | status=deprecated |  |",
         ])
         assert not audit_catalog(root), "planned/deprecated catalog entries should not fail as stale"
+
+        (root / "src" / "fixture.cpp").write_text(r'''
+void ppk(const QString& session, const QString& correlationId) {
+    publishPpkLog(session, correlationId, QStringLiteral("ppk_processing_started"), QStringLiteral("OK"));
+    publishPpkLog(session, correlationId, QStringLiteral("ppk_processing_progress"), QStringLiteral("OK"), {{"percent", 10}});
+}
+''', encoding="utf-8")
+        write_catalog(root, header + [
+            "| ppk | session.ppk | ppk_processing_started | Info | PPK 已启动。 |  |  |  |",
+            "| ppk | session.ppk | ppk_processing_progress | Info | PPK 进度已更新。 |  |  |  |",
+        ])
+        assert not audit_catalog(root), "PPK correlation argument must not hide event names"
+        write_catalog(root, header)
+        assert len([issue for issue in audit_catalog(root) if issue.code == "missing-catalog-event"]) == 2, \
+            "both PPK events must remain subject to catalog coverage"
+
+        (root / "src" / "fixture.cpp").write_text(r'''
+void handle(const CommandMessage& command, bool progress) {
+    logCommandContext(command, QStringLiteral("context_expired"), LogLevel::Warning);
+    logCommandContext(command, progress ? QStringLiteral("context_progress") : QStringLiteral("context_done"), LogLevel::Info);
+}
+''', encoding="utf-8")
+        write_catalog(root, header + [
+            "| Ground | telemetry.command | context_expired | Warning | 上下文已过期。 |  |  |  |",
+            "| Ground | telemetry.command | context_progress | Info | 正在处理。 |  |  |  |",
+            "| Ground | telemetry.command | context_done | Info | 已完成。 |  |  |  |",
+        ])
+        assert not audit_catalog(root), "command context events should be discovered"
+        context_uses = extract_event_uses_from_text("src/ground/fixture.cpp", (root / "src" / "fixture.cpp").read_text(encoding="utf-8"))
+        assert all(use.category == "telemetry.command" and use.source == "Ground" for use in context_uses), \
+            "Ground command context metadata must be checked"
+        (root / "src" / "fixture.cpp").write_text("", encoding="utf-8")
+        assert len([issue for issue in audit_catalog(root) if issue.code == "stale-catalog-event"]) == 3, \
+            "removed command context events must still be reported as stale"
+        (root / "src" / "fixture.cpp").write_text(r'''
+void handle(const CommandMessage& command, bool progress) {
+    logCommandContext(command, QStringLiteral("context_expired"), LogLevel::Warning);
+    logCommandContext(command, progress ? QStringLiteral("context_progress") : QStringLiteral("context_done"), LogLevel::Info);
+}
+''', encoding="utf-8")
+        write_catalog(root, header)
+        assert len([issue for issue in audit_catalog(root) if issue.code == "missing-catalog-event"]) == 3, \
+            "command context events must remain subject to catalog coverage"
+
+        (root / "src" / "fixture.cpp").write_text("", encoding="utf-8")
+        tui_dir = root / "src" / "sky" / "ipc"
+        tui_dir.mkdir(parents=True)
+        tui_file = tui_dir / "SkyLocalIpcClient.cpp"
+        tui_file.write_text(r'''
+void handle(const CommandMessage& command) {
+    publishCommandLog(command, QStringLiteral("tui_default"), QStringLiteral("默认。"));
+    publishCommandLog(command, QStringLiteral("tui_warning"), QStringLiteral("警告。"), LogLevel::Warning);
+}
+''', encoding="utf-8")
+        write_catalog(root, header + [
+            "| SkyTui | ipc.command | tui_default | Info | 默认。 |  |  |  |",
+            "| SkyTui | ipc.command | tui_warning | Warning | 警告。 |  |  |  |",
+        ])
+        assert not audit_catalog(root), "SkyTui command wrapper events should be discovered"
+        write_catalog(root, header + [
+            "| SkyTui | ipc.other | tui_default | Info | 默认。 |  |  |  |",
+        ])
+        tui_issues = audit_catalog(root)
+        assert any(issue.code == "catalog-category-conflict" for issue in tui_issues), \
+            "SkyTui wrapper category must be checked"
+        assert any(issue.code == "missing-catalog-event" for issue in tui_issues), \
+            "undocumented SkyTui wrapper events must be reported"
+        write_catalog(root, header + [
+            "| SkyTui | ipc.command | tui_default | Warning | 默认。 |  |  |  |",
+            "| SkyTui | ipc.command | tui_warning | Info | 警告。 |  |  |  |",
+        ])
+        assert len([issue for issue in audit_catalog(root) if issue.code == "catalog-level-conflict"]) == 2, \
+            "SkyTui wrapper default and explicit levels must be checked"
+        tui_file.write_text("", encoding="utf-8")
+        assert any(issue.code == "stale-catalog-event" for issue in audit_catalog(root)), \
+            "removed SkyTui wrapper events must be reported as stale"
 
 
 def main(argv: Sequence[str]) -> int:

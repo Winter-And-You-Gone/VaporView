@@ -1,7 +1,7 @@
 #ifndef VaporView_TCP_WAVE_PANEL_H_
 #define VaporView_TCP_WAVE_PANEL_H_
 
-#include "LogRecord.h"
+#include "LogService.h"
 #include "TcpWaveEncoding.h"
 #include "TelemetryTypes.h"
 
@@ -187,7 +187,10 @@ private:
     void publishTcpWaveLog(VaporView::LogLevel level,
                            const QString& event,
                            const QString& message,
-                           QVariantMap fields = {}) const;
+                           QVariantMap fields = {},
+                           const char *file = VAPORVIEW_LOG_FILE,
+                           const char *function = VAPORVIEW_LOG_FUNCTION,
+                           int line = VAPORVIEW_LOG_LINE) const;
     bool isValidPayloadSize(qint32 candidate) const;
     qint32 decodeHeaderValue(const char *raw, HeaderByteOrder order) const;
     bool tryConsumeHeader();

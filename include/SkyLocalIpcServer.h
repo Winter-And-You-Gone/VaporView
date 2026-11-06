@@ -60,7 +60,12 @@ private:
     void publishIpcLog(LogLevel level,
                        const QString& event,
                        const QString& message,
-                       QVariantMap fields = QVariantMap());
+                       QVariantMap fields = QVariantMap(),
+                       const QString& correlationId = {},
+                       const QString& sessionId = {},
+                       const char *file = VAPORVIEW_LOG_FILE,
+                       const char *function = VAPORVIEW_LOG_FUNCTION,
+                       int line = VAPORVIEW_LOG_LINE);
     quint64 currentTimestampUs() const;
 
     SkyRuntime *runtime_ = nullptr;

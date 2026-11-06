@@ -944,6 +944,11 @@ QJsonObject LogRecord::toJsonObject() const
     object.insert(QStringLiteral("session_id"), session_id);
     object.insert(QStringLiteral("message"), message);
     object.insert(QStringLiteral("fields"), QJsonObject::fromVariantMap(fields));
+    if (!source_location.isEmpty())
+        object.insert(QStringLiteral("source_location"), QJsonObject{
+            {QStringLiteral("file"), source_location.file},
+            {QStringLiteral("function"), source_location.function},
+            {QStringLiteral("line"), source_location.line}});
     return object;
 }
 
@@ -1096,8 +1101,12 @@ void LogService::installQtMessageHandler()
     }
 }
 
-void LogService::publish(LogRecord record)
+void LogService::publish(LogRecord record, const char *file, const char *function, int line)
 {
+    // Forwarded records retain the origin process's metadata; never attribute
+    // an external record to the receiving process.
+    if (record.process_id == 0)
+        addCallLocation(record, file, function, line);
     submit(std::move(record));
 }
 
@@ -1168,7 +1177,8 @@ void reportUserIssue(LogLevel level,
                      const QString& source,
                      const QString& category,
                      const QString& message,
-                     const QVariantMap& details)
+                     const QVariantMap& details,
+                     const char *file, const char *function, int line)
 {
     LogService::withCurrentInstance([&](LogService& logService) {
         QVariantMap fields = details;
@@ -1188,7 +1198,7 @@ void reportUserIssue(LogLevel level,
             fields.insert(QStringLiteral("error_code"),
                           QStringLiteral("UNCLASSIFIED_USER_ISSUE"));
         }
-        logService.publish(level, source, category, message, fields);
+        logService.publish(level, source, category, message, fields, {}, {}, file, function, line);
     });
 }
 
@@ -1280,7 +1290,8 @@ LogRecord LogService::publish(LogLevel level,
                               const QString& message,
                               const QVariantMap& fields,
                               const QString& correlationId,
-                              const QString& sessionId)
+                              const QString& sessionId,
+                              const char *file, const char *function, int line)
 {
     LogRecord record;
     record.level = level;
@@ -1288,6 +1299,7 @@ LogRecord LogService::publish(LogLevel level,
     record.category = category;
     record.message = message;
     record.fields = fields;
+    addCallLocation(record, file, function, line);
     record.correlation_id = correlationId;
     record.session_id = sessionId;
     record.timestamp_us = currentTimestampUs();
@@ -1394,7 +1406,7 @@ void LogService::qtMessageHandler(QtMsgType type,
                            QStringLiteral("Qt"),
                            context.category ? QString::fromUtf8(context.category) : QStringLiteral("default"),
                            message,
-                           fields);
+                           fields, {}, {}, context.file, context.function, context.line);
     });
 
     QtMessageHandler previous = nullptr;

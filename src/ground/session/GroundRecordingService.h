@@ -94,6 +94,24 @@ struct GroundRecordingStopSummary
     qint64 waveformFrames = 0;
 };
 
+struct GroundLogAppendResult
+{
+    bool skipped = false;
+    bool eventWritten = false;
+    bool errorWritten = false;
+};
+
+// A stopped session's directory is retained by status for display. Only the
+// stop event may explicitly refer to that historical session.
+inline QString recordingSessionIdForLog(const GroundRecordingStatus& status,
+                                        const QString& event,
+                                        const QString& stoppedSession = {})
+{
+    if (status.sessionOpen) return status.sessionDirectory;
+    if (event == QStringLiteral("session_recording_stopped")) return stoppedSession;
+    return {};
+}
+
 enum class GroundRecordingStartError
 {
     None,
@@ -121,7 +139,7 @@ class GroundRecordingService final
 public:
     using SensorSnapshotProvider = std::function<GroundSensorSnapshot()>;
     using StatusCallback = std::function<void()>;
-    using WarningCallback = std::function<void(GroundRecordingWarning, quint64)>;
+    using WarningCallback = std::function<void(GroundRecordingWarning, quint64, const QString&)>;
 
     explicit GroundRecordingService(std::shared_ptr<VaporView::RecordingStorage> storage = {});
     ~GroundRecordingService();
@@ -176,6 +194,8 @@ public:
     bool appendEvent(const QString& level, const QString& message);
     bool recordNavigationStatus(const VaporView::Session::NavigationStatusRecord& record);
     bool appendError(const QString& message);
+    GroundLogAppendResult appendLogRecord(const QString& level, const QString& message,
+                                         bool isError, const QString& sessionId = {});
 
     quint64 steadyToEpochUs(const std::chrono::steady_clock::time_point& timePoint) const;
     static quint64 currentTimestampUs();

@@ -1,4 +1,5 @@
 #include "SkyDeviceManager.h"
+#include "LogContext.h"
 #include "FpgaUsbSimulator.h"
 #include "TelemetryCodec.h"
 #include "ppk/ObservationStore.h"
@@ -10,6 +11,7 @@
 #include <QJsonObject>
 #include <QMetaObject>
 #include <QPointer>
+#include <QThread>
 #include <QtEndian>
 #include <algorithm>
 #include <cmath>
@@ -441,7 +443,7 @@ SkyDeviceManager::SkyDeviceManager(QObject *parent)
     connect(internal_serial_.get(),&InternalEnvironmentSerialController::stateChanged,this,
         [this](SkyDeviceId id,DeviceState state){setState(id,state,state==DeviceState::Error?quint16(CommandErrorCode::DeviceConnectFailed):0);});
     connect(internal_serial_.get(),&InternalEnvironmentSerialController::logRecordGenerated,this,
-        [this](const LogRecord& record){publishDeviceLog(record.level,record.category,record.fields.value("event").toString(),record.message,record.fields);});
+        [this](LogRecord record){record.source=QStringLiteral("SkyCore");emit logRecord(record);});
     connect(internal_serial_.get(),&InternalEnvironmentSerialController::readingUpdated,this,
         [this](const FpgaSensor::Reading& reading){
             if(config_.sensor_transport_path!=SensorTransportPath::DirectDevices)return;
@@ -463,7 +465,7 @@ void SkyDeviceManager::publishDeviceLog(LogLevel level,
                                         const QString& category,
                                         const QString& event,
                                         const QString& message,
-                                        QVariantMap fields)
+                                        QVariantMap fields, const char *file, const char *function, int line)
 {
     fields.insert(QStringLiteral("event"), event);
     if (level >= LogLevel::Error &&
@@ -478,7 +480,13 @@ void SkyDeviceManager::publishDeviceLog(LogLevel level,
     record.source = QStringLiteral("SkyCore");
     record.category = category;
     record.message = message;
+    record.thread_id = static_cast<quint64>(reinterpret_cast<quintptr>(QThread::currentThreadId()));
     record.fields = fields;
+    if (const auto *context = currentLogContext()) {
+        record.correlation_id = context->correlationId;
+        record.session_id = context->sessionId;
+    }
+    LogService::addCallLocation(record, file, function, line);
     emit logRecord(record);
 }
 
@@ -675,7 +683,7 @@ void SkyDeviceManager::ensureFpgaBackend()
     connect(fpga_backend_.get(), &SkyFpgaBackend::logRecord, this, &SkyDeviceManager::logRecord);
 }
 
-void SkyDeviceManager::submitFpgaControl(QJsonObject operation, SkyFpgaBackend::Completion completion)
+void SkyDeviceManager::submitFpgaControl(QJsonObject operation, SkyFpgaBackend::Completion completion, const QString& correlationId, const QString& sessionId)
 {
     if (!config_.fpga.enabled) { completion(CommandErrorCode::ConfigInvalid, QStringLiteral("Enable fpga.enabled in Sky config first."), fpgaStatus()); return; }
     ensureFpgaBackend();
@@ -695,7 +703,7 @@ void SkyDeviceManager::submitFpgaControl(QJsonObject operation, SkyFpgaBackend::
             for(auto it=parameters.begin();it!=parameters.end();++it)config_.fpga.configuration.sensorParameters[source][it.key()]=it.value();
         }
         completion(code, error, document);
-    });
+    }, correlationId, sessionId);
 }
 
 void SkyDeviceManager::invalidateFpgaMeasurements()
@@ -765,22 +773,35 @@ void SkyDeviceManager::acceptFpgaMeasurement(const FpgaSensor::AdaptedMeasuremen
     emit fpgaSensorUpdated(r);
 }
 
-bool SkyDeviceManager::connectDevice(SkyDeviceId id, CommandErrorCode *errorCode)
+bool SkyDeviceManager::connectDevice(SkyDeviceId id, CommandErrorCode *errorCode, const QString& correlationId, const QString& sessionId)
 {
+    ScopedLogContext scope({correlationId, sessionId});
     if (id == SkyDeviceId::Fpga || config_.sensor_transport_path == SensorTransportPath::FpgaRelay) {
         if (id != SkyDeviceId::Fpga && id != SkyDeviceId::All) {
             if (errorCode) *errorCode = CommandErrorCode::UnknownCommand; return false;
         }
         if (!config_.fpga.enabled) { if (errorCode) *errorCode = CommandErrorCode::ConfigInvalid; return false; }
         ensureFpgaBackend();
+        QPointer<SkyDeviceManager> self(this);
         submitFpgaControl({{"op","connect"},{"locator",config_.fpga.locator},{"backend",config_.fpga.configuration.backend}},
-                          [](CommandErrorCode, QString, QJsonObject) {});
+                          [self, correlationId, sessionId](CommandErrorCode code, const QString& detail, QJsonObject) {
+            if (!self) return;
+            ScopedLogContext scope({correlationId, sessionId});
+            const bool succeeded = code == CommandErrorCode::Ok;
+            self->publishDeviceLog(succeeded ? LogLevel::Info : LogLevel::Warning,
+                                   QStringLiteral("device.fpga"),
+                                   QStringLiteral("fpga_async_connection_result"),
+                                   succeeded ? QStringLiteral("FPGA 异步连接已完成。")
+                                             : QStringLiteral("FPGA 异步连接未完成，请核对设备状态。"),
+                                   {{QStringLiteral("result_code"), static_cast<int>(code)},
+                                    {QStringLiteral("detail"), detail}});
+        }, correlationId, sessionId);
         // Connecting is asynchronous; this return only schedules startup, never a remote command ACK.
         if (errorCode) *errorCode = CommandErrorCode::Ok; return true;
     }
     if (id == SkyDeviceId::All)
     {
-        connectAll();
+        connectAll(correlationId,sessionId);
         if (errorCode) *errorCode = CommandErrorCode::Ok;
         return true;
     }
@@ -826,7 +847,7 @@ bool SkyDeviceManager::connectDevice(SkyDeviceId id, CommandErrorCode *errorCode
 
     if(id==SkyDeviceId::Bmp390||id==SkyDeviceId::Sht45) {
         internal_serial_->configure(id,id==SkyDeviceId::Bmp390?config_.bmp390:config_.sht45);
-        const bool accepted=internal_serial_->connectDevice(id);
+        const bool accepted=internal_serial_->connectDevice(id,correlationId,sessionId);
         if(errorCode)*errorCode=accepted?CommandErrorCode::Ok:CommandErrorCode::DeviceConnectFailed;
         return accepted;
     }
@@ -880,13 +901,23 @@ bool SkyDeviceManager::disconnectDeviceInternal(SkyDeviceId id,
         stopCollector(ai8_temperature_controller_);
         break;
     case SkyDeviceId::WaveTcp:
+    {
+        const quint64 generation = wave_connection_generation_ + 1;
+        QPointer<SkyDeviceManager> self(this);
         disconnectWaveTcp();
+        if (!self || wave_connection_generation_ != generation)
+            return false;
         break;
+    }
     case SkyDeviceId::All:
         break;
     }
     invalidateDeviceData(id);
+    const quint64 waveGeneration = wave_connection_generation_;
+    QPointer<SkyDeviceManager> self(this);
     setState(id, DeviceState::Disconnected);
+    if (!self || (id == SkyDeviceId::WaveTcp && wave_connection_generation_ != waveGeneration))
+        return false;
     if (publishLog && shouldPublishDisconnectLog)
     {
         publishDeviceLog(LogLevel::Info,
@@ -899,24 +930,26 @@ bool SkyDeviceManager::disconnectDeviceInternal(SkyDeviceId id,
     return true;
 }
 
-bool SkyDeviceManager::reconnectDevice(SkyDeviceId id, CommandErrorCode *errorCode)
+bool SkyDeviceManager::reconnectDevice(SkyDeviceId id, CommandErrorCode *errorCode, const QString& correlationId, const QString& sessionId)
 {
+    ScopedLogContext scope({correlationId, sessionId});
     if (id == SkyDeviceId::All)
     {
-        reconnectAll();
+        reconnectAll(correlationId,sessionId);
         if (errorCode) *errorCode = CommandErrorCode::Ok;
         return true;
     }
     setState(id, DeviceState::Reconnecting);
     disconnectDevice(id);
-    return connectDevice(id, errorCode);
+    return connectDevice(id, errorCode, correlationId, sessionId);
 }
 
-void SkyDeviceManager::connectAll()
+void SkyDeviceManager::connectAll(const QString& correlationId, const QString& sessionId)
 {
+    ScopedLogContext scope({correlationId, sessionId});
     if (config_.sensor_transport_path == SensorTransportPath::FpgaRelay)
     {
-        connectDevice(SkyDeviceId::Fpga);
+        connectDevice(SkyDeviceId::Fpga, nullptr, correlationId, sessionId);
         return;
     }
     for (SkyDeviceId id : {SkyDeviceId::Epsilon, SkyDeviceId::Ptb, SkyDeviceId::Hmp, SkyDeviceId::Lidar, SkyDeviceId::TemperatureController, SkyDeviceId::Ai8TemperatureController, SkyDeviceId::WaveTcp, SkyDeviceId::Bmp390, SkyDeviceId::Sht45})
@@ -924,7 +957,7 @@ void SkyDeviceManager::connectAll()
         if (deviceEnabled(config_, id))
         {
             CommandErrorCode ignored = CommandErrorCode::Ok;
-            connectDevice(id, &ignored);
+            connectDevice(id, &ignored, correlationId, sessionId);
         }
         else
         {
@@ -944,10 +977,11 @@ void SkyDeviceManager::disconnectAll(bool publishLogs)
     }
 }
 
-void SkyDeviceManager::reconnectAll()
+void SkyDeviceManager::reconnectAll(const QString& correlationId, const QString& sessionId)
 {
+    ScopedLogContext scope({correlationId, sessionId});
     disconnectAll();
-    connectAll();
+    connectAll(correlationId,sessionId);
 }
 
 void SkyDeviceManager::shutdown(bool publishLogs)
@@ -994,8 +1028,9 @@ QVector<DeviceStatusItem> SkyDeviceManager::allStatuses() const
     return {epsilon_status_, ptb_status_, hmp_status_, lidar_status_, temperature_controller_status_, ai8_temperature_controller_status_, wave_tcp_status_,bmp390_status_,sht45_status_};
 }
 
-ApplyConfigResult SkyDeviceManager::applyConfig(const SkyConfig& requestedConfig)
+ApplyConfigResult SkyDeviceManager::applyConfig(const SkyConfig& requestedConfig, const QString& correlationId, const QString& sessionId)
 {
+    ScopedLogContext scope({correlationId, sessionId});
     auto newConfig = requestedConfig;
     newConfig.normalizeEnvironmentalDevices();
     ApplyConfigResult result;
@@ -1027,13 +1062,13 @@ ApplyConfigResult SkyDeviceManager::applyConfig(const SkyConfig& requestedConfig
     }
     if (diff.sensor_transport_path_changed)
     {
-        connectAll();
+        connectAll(correlationId, sessionId);
         result.json = {{"success", true},
                        {"sensor_transport_path", sensorTransportPathToString(newConfig.sensor_transport_path)}};
         return result;
     }
 
-    auto reconfigureDevice = [this, &result](SkyDeviceId id, bool changed, bool enabled) {
+    auto reconfigureDevice = [this, &result, &correlationId, &sessionId](SkyDeviceId id, bool changed, bool enabled) {
         bool reconfigured = false;
         if (changed)
         {
@@ -1043,7 +1078,7 @@ ApplyConfigResult SkyDeviceManager::applyConfig(const SkyConfig& requestedConfig
             if (enabled)
             {
                 CommandErrorCode connectError = CommandErrorCode::Ok;
-                if (!connectDevice(id, &connectError))
+                if (!connectDevice(id, &connectError, correlationId, sessionId))
                 {
                     result.success = false;
                     if (result.error_code == CommandErrorCode::Ok)
@@ -1683,15 +1718,35 @@ void SkyDeviceManager::restartRtcmWriter()
         return;
     }
     pending_rtcm_corrections_.reset(true);
+    const quint64 generation = rtcm_writer_generation_;
+    {
+        std::lock_guard<std::mutex> lock(rtcm_diagnostic_mutex_);
+        rtcm_diagnostic_generation_ = generation;
+        rtcm_diagnostics_active_ = true;
+        rtcm_diagnostic_scheduled_ = false;
+        rtcm_first_failure_delivered_ = false;
+        rtcm_reported_failure_ = false;
+        rtcm_first_failure_.reset();
+        rtcm_latest_diagnostic_.reset();
+        rtcm_diagnostic_clock_.invalidate();
+    }
     rtcm_writer_thread_ = std::thread([this,
                                        port = config_.epsilon_rtcm.forward_port.trimmed(),
-                                       baud = config_.epsilon_rtcm.baud_rate]() {
-        rtcmWriterLoop(port, baud);
+                                       baud = config_.epsilon_rtcm.baud_rate, generation]() {
+        rtcmWriterLoop(port, baud, generation);
     });
 }
 
 void SkyDeviceManager::stopRtcmWriter()
 {
+    ++rtcm_writer_generation_;
+    {
+        std::lock_guard<std::mutex> lock(rtcm_diagnostic_mutex_);
+        rtcm_diagnostics_active_ = false;
+        rtcm_diagnostic_scheduled_ = false;
+        rtcm_first_failure_.reset();
+        rtcm_latest_diagnostic_.reset();
+    }
     pending_rtcm_corrections_.close();
     if (rtcm_writer_thread_.joinable())
     {
@@ -1700,33 +1755,146 @@ void SkyDeviceManager::stopRtcmWriter()
     pending_rtcm_corrections_.reset(false);
 }
 
-void SkyDeviceManager::rtcmWriterLoop(QString port, int baudRate)
+void SkyDeviceManager::drainRtcmDiagnostics(quint64 generation)
+{
+    QPointer<SkyDeviceManager> self(this);
+    RtcmDiagnostic diagnostic;
+    {
+        std::lock_guard<std::mutex> lock(rtcm_diagnostic_mutex_);
+        if (!rtcm_diagnostics_active_ || rtcm_diagnostic_generation_ != generation) return;
+        if (rtcm_diagnostic_clock_.isValid() && rtcm_diagnostic_clock_.elapsed() < 1000) {
+            const int delay = static_cast<int>(1000 - rtcm_diagnostic_clock_.elapsed());
+            QTimer::singleShot(qMax(1, delay), this, [self, generation] {
+                if (self) self->drainRtcmDiagnostics(generation);
+            });
+            return;
+        }
+        if (rtcm_first_failure_) {
+            diagnostic = std::move(*rtcm_first_failure_);
+            rtcm_first_failure_.reset();
+            rtcm_first_failure_delivered_ = true;
+            if (rtcm_latest_diagnostic_ && !rtcm_latest_diagnostic_->recovered)
+                rtcm_latest_diagnostic_.reset();
+        } else if (rtcm_latest_diagnostic_) {
+            diagnostic = std::move(*rtcm_latest_diagnostic_);
+            rtcm_latest_diagnostic_.reset();
+            if (diagnostic.recovered != rtcm_reported_failure_) {
+                rtcm_diagnostic_scheduled_ = false;
+                return;
+            }
+        } else {
+            rtcm_diagnostic_scheduled_ = false;
+            return;
+        }
+        rtcm_reported_failure_ = !diagnostic.recovered;
+        rtcm_diagnostic_clock_.start();
+        if (rtcm_latest_diagnostic_) {
+            QTimer::singleShot(1000, this, [self, generation] {
+                if (self) self->drainRtcmDiagnostics(generation);
+            });
+        } else {
+            rtcm_diagnostic_scheduled_ = false;
+        }
+    }
+    LogRecord record;
+    record.level = diagnostic.recovered ? LogLevel::Info : LogLevel::Warning;
+    record.source = QStringLiteral("SkyCore");
+    record.category = QStringLiteral("device.rtcm.output");
+    record.message = diagnostic.recovered ? QStringLiteral("RTCM 串口输出已恢复。")
+                                          : QStringLiteral("RTCM 串口输出失败，数据已丢弃。");
+    record.thread_id = diagnostic.threadId;
+    record.timestamp_us = diagnostic.timestampUs;
+    record.timestamp_utc = QDateTime::fromMSecsSinceEpoch(
+        static_cast<qint64>(diagnostic.timestampUs / 1000), Qt::UTC).toString(Qt::ISODateWithMs);
+    record.fields = {{QStringLiteral("port"), diagnostic.port},
+                     {QStringLiteral("baud"), diagnostic.baudRate}};
+    if (diagnostic.recovered)
+        record.fields.insert(QStringLiteral("event"), QStringLiteral("rtcm_serial_output_recovered"));
+    else
+        record.fields.insert(QStringLiteral("event"), QStringLiteral("rtcm_serial_output_failed"));
+    if (!diagnostic.recovered) {
+        record.fields.insert(QStringLiteral("reason_code"), diagnostic.reason);
+        record.fields.insert(QStringLiteral("system_error"), diagnostic.detail);
+        record.fields.insert(QStringLiteral("requested_bytes"), diagnostic.requestedBytes);
+        record.fields.insert(QStringLiteral("written_bytes"), diagnostic.writtenBytes);
+    }
+    LogService::addCallLocation(record, diagnostic.file, diagnostic.function, diagnostic.line);
+    emit logRecord(record);
+}
+
+void SkyDeviceManager::rtcmWriterLoop(QString port, int baudRate, quint64 generation)
 {
     SerialPort serial;
+    const auto testIo = rtcm_test_io_;
+    const auto closeSerial = [&] { if (testIo) testIo->close(); else serial.close(); };
+    auto report = [this, generation, &port, baudRate](bool recovered, const QString& reason,
+                                                       const QString& detail, qint64 requested, qint64 written) {
+        RtcmDiagnostic diagnostic;
+        diagnostic.recovered = recovered;
+        diagnostic.port = port.left(4096);
+        diagnostic.baudRate = baudRate;
+        diagnostic.reason = reason;
+        diagnostic.detail = detail.left(4096);
+        diagnostic.requestedBytes = requested;
+        diagnostic.writtenBytes = written;
+        diagnostic.threadId = static_cast<quint64>(reinterpret_cast<quintptr>(QThread::currentThreadId()));
+        diagnostic.timestampUs = nowUs();
+        diagnostic.file = VAPORVIEW_LOG_FILE;
+        diagnostic.function = VAPORVIEW_LOG_FUNCTION;
+        diagnostic.line = VAPORVIEW_LOG_LINE;
+        bool schedule = false;
+        {
+            std::lock_guard<std::mutex> lock(rtcm_diagnostic_mutex_);
+            if (!rtcm_diagnostics_active_ || rtcm_diagnostic_generation_ != generation) return;
+            if (!rtcm_first_failure_delivered_ && !rtcm_first_failure_ && !recovered)
+                rtcm_first_failure_ = std::move(diagnostic);
+            else
+                rtcm_latest_diagnostic_ = std::move(diagnostic);
+            if (!rtcm_diagnostic_scheduled_) {
+                rtcm_diagnostic_scheduled_ = true;
+                schedule = true;
+            }
+        }
+        if (schedule) {
+            QPointer<SkyDeviceManager> self(this);
+            QMetaObject::invokeMethod(this, [self, generation] { if (self) self->drainRtcmDiagnostics(generation); }, Qt::QueuedConnection);
+        }
+    };
     bool opened = false;
+    bool failed = false;
     QByteArray payload;
     while (pending_rtcm_corrections_.waitPop(&payload))
     {
         if (!opened)
         {
-            opened = serial.open(port.toStdString(), SerialConfig::N81(baudRate));
+            opened = testIo ? testIo->open() : serial.open(port.toStdString(), SerialConfig::N81(baudRate));
         }
         if (!opened)
         {
             rtcm_correction_dropped_bytes_.fetch_add(static_cast<quint64>(payload.size()));
             rtcm_correction_dropped_chunks_.fetch_add(1);
+            if (!failed) report(false, QStringLiteral("SERIAL_OPEN_FAILED"),
+                                testIo ? testIo->error() : QString::fromStdString(serial.lastError()), payload.size(), 0);
+            failed = true;
             continue;
         }
-        const ssize_t written = serial.write(payload.constData(), static_cast<size_t>(payload.size()));
+        const qint64 written = testIo ? testIo->write(payload) : serial.write(payload.constData(), static_cast<size_t>(payload.size()));
         if (written != payload.size())
         {
             rtcm_correction_dropped_bytes_.fetch_add(static_cast<quint64>(payload.size()));
             rtcm_correction_dropped_chunks_.fetch_add(1);
-            serial.close();
+            if (!failed) report(false, QStringLiteral("SERIAL_WRITE_FAILED"),
+                                testIo ? testIo->error() : QString::fromStdString(serial.lastError()), payload.size(), written);
+            failed = true;
+            closeSerial();
             opened = false;
         }
+        else if (failed) {
+            report(true, {}, {}, 0, 0);
+            failed = false;
+        }
     }
-    serial.close();
+    closeSerial();
 }
 
 bool SkyDeviceManager::setTemperatureTarget(quint8 channel, double celsius, CommandErrorCode *errorCode)
@@ -2631,11 +2799,19 @@ void SkyDeviceManager::generateSimulatedData()
 
 void SkyDeviceManager::onWaveTcpConnected()
 {
+    const auto generation = wave_connection_generation_;
+    QPointer<SkyDeviceManager> self(this);
+    finishWaveTcpConnect(QStringLiteral("wave_tcp_connect_succeeded"), false);
+    if (!self || generation != wave_connection_generation_) return;
     setState(SkyDeviceId::WaveTcp, DeviceState::Connected);
 }
 
 void SkyDeviceManager::onWaveTcpDisconnected()
 {
+    const auto generation = wave_connection_generation_;
+    QPointer<SkyDeviceManager> self(this);
+    finishWaveTcpConnect(QStringLiteral("wave_tcp_connect_failed"), true);
+    if (!self || generation != wave_connection_generation_) return;
     invalidateDeviceData(SkyDeviceId::WaveTcp);
     setState(SkyDeviceId::WaveTcp, DeviceState::Disconnected);
 }
@@ -2650,8 +2826,14 @@ void SkyDeviceManager::onWaveTcpReadyRead()
     processWaveTcpBuffer();
 }
 
-void SkyDeviceManager::onWaveTcpError()
+void SkyDeviceManager::onWaveTcpError(QAbstractSocket::SocketError error)
 {
+    const auto generation = wave_connection_generation_;
+    QPointer<SkyDeviceManager> self(this);
+    const QVariantMap details{{QStringLiteral("socket_error"), static_cast<int>(error)},
+                              {QStringLiteral("system_error"), wave_socket_ ? wave_socket_->errorString() : QString()}};
+    finishWaveTcpConnect(QStringLiteral("wave_tcp_connect_failed"), true, details);
+    if (!self || generation != wave_connection_generation_) return;
     invalidateDeviceData(SkyDeviceId::WaveTcp);
     setState(SkyDeviceId::WaveTcp, DeviceState::Error, 1);
 }
@@ -2679,7 +2861,8 @@ void SkyDeviceManager::setState(SkyDeviceId id, DeviceState state, quint16 error
     }
     item.state = state;
     item.error_code = errorCode;
-    emit deviceStatusChanged(id, item);
+    const DeviceStatusItem snapshot = item;
+    emit deviceStatusChanged(id, snapshot);
 }
 
 DeviceStatusItem& SkyDeviceManager::mutableStatus(SkyDeviceId id)
@@ -2784,14 +2967,15 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
                                             const std::string& category,
                                             const std::string& event,
                                             const std::string& message,
-                                            DataCollector::StructuredLogFields fields) {
+                                            DataCollector::StructuredLogFields fields,
+                                            const char *file, const char *function, int line) {
         QVariantMap mappedFields = structuredLogFieldsFromStd(fields);
         mappedFields.insert(QStringLiteral("device_id"), skyDeviceIdName(id));
         publishDeviceLog(level,
                          QString::fromStdString(category),
                          QString::fromStdString(event),
                          QString::fromStdString(message),
-                         mappedFields);
+                         mappedFields, file, function, line);
     };
 
     switch (id)
@@ -2799,7 +2983,7 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
     case SkyDeviceId::Epsilon:
         epsilon_ = std::make_shared<EpsilonCollector>();
         epsilon_->setLogCallback(logCallback);
-        epsilon_->setStructuredLogCallback(structuredLogCallback);
+        epsilon_->setLocatedStructuredLogCallback(structuredLogCallback);
         epsilon_->setSampleRate(static_cast<int>(config.frequency_hz));
         epsilon_->setDataCallback([self = QPointer<SkyDeviceManager>(this), weakCollector = std::weak_ptr<EpsilonCollector>(epsilon_)]() {
             if (!self)
@@ -2860,7 +3044,7 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
         ptb_ = std::make_shared<PtbCollector>();
         ptb_->setProtocol(pressureProtocolForSource(config.source));
         ptb_->setLogCallback(logCallback);
-        ptb_->setStructuredLogCallback(structuredLogCallback);
+        ptb_->setLocatedStructuredLogCallback(structuredLogCallback);
         ptb_->setSampleRate(static_cast<int>(config.frequency_hz));
         ptb_->setDataCallback([self = QPointer<SkyDeviceManager>(this), weakCollector = std::weak_ptr<PtbCollector>(ptb_)]() {
             if (!self)
@@ -2907,13 +3091,15 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
                              : SerialConfig::E71(config.baud_rate))) return fail(CommandErrorCode::DeviceConnectFailed);
         if (!ptb_->checkDeviceResponse()) return fail(CommandErrorCode::DeviceConnectFailed);
         ptb_->setDeviceSampleRate(static_cast<int>(config.frequency_hz));
+        if (ptb_->protocol() == PressureSensorProtocol::Ptb210)
+            if (const auto *context = currentLogContext()) ptb_->setStartupLogContext(*context);
         if (!ptb_->startStreaming()) return fail(CommandErrorCode::DeviceConnectFailed);
         break;
     case SkyDeviceId::Hmp:
         hmp_ = std::make_shared<HmpCollector>();
         hmp_->setProtocol(humidityProtocolForSource(config.source));
         hmp_->setLogCallback(logCallback);
-        hmp_->setStructuredLogCallback(structuredLogCallback);
+        hmp_->setLocatedStructuredLogCallback(structuredLogCallback);
         hmp_->setSampleRate(static_cast<int>(config.frequency_hz));
         hmp_->setDataCallback([self = QPointer<SkyDeviceManager>(this), weakCollector = std::weak_ptr<HmpCollector>(hmp_)]() {
             if (!self)
@@ -2964,7 +3150,7 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
     case SkyDeviceId::Lidar:
         lidar_ = std::make_shared<LidarCollector>();
         lidar_->setLogCallback(logCallback);
-        lidar_->setStructuredLogCallback(structuredLogCallback);
+        lidar_->setLocatedStructuredLogCallback(structuredLogCallback);
         lidar_->setSampleRate(static_cast<int>(config.frequency_hz));
         lidar_->setDataCallback([self = QPointer<SkyDeviceManager>(this), weakCollector = std::weak_ptr<LidarCollector>(lidar_)]() {
             if (!self)
@@ -3010,12 +3196,13 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
         if (!lidar_->start(config.port.toStdString(), SerialConfig::N81(config.baud_rate))) return fail(CommandErrorCode::DeviceConnectFailed);
         if (!lidar_->checkDeviceResponse()) return fail(CommandErrorCode::DeviceConnectFailed);
         lidar_->setDeviceSampleRate(static_cast<int>(config.frequency_hz));
+        if (const auto *context = currentLogContext()) lidar_->setStartupLogContext(*context);
         if (!lidar_->startStreaming()) return fail(CommandErrorCode::DeviceConnectFailed);
         break;
     case SkyDeviceId::TemperatureController:
         temperature_controller_ = std::make_shared<TemperatureControllerCollector>();
         temperature_controller_->setLogCallback(logCallback);
-        temperature_controller_->setStructuredLogCallback(structuredLogCallback);
+        temperature_controller_->setLocatedStructuredLogCallback(structuredLogCallback);
         temperature_controller_->setSampleRate(static_cast<int>(config.frequency_hz));
         temperature_controller_->setSlaveAddress(static_cast<uint8_t>(std::clamp(config_.temperature_controller.slave_address, 1, 247)));
         temperature_controller_->setDataCallback([self = QPointer<SkyDeviceManager>(this), weakCollector = std::weak_ptr<TemperatureControllerCollector>(temperature_controller_)]() {
@@ -3068,7 +3255,7 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
     case SkyDeviceId::Ai8TemperatureController:
         ai8_temperature_controller_ = std::make_shared<Ai8TemperatureControllerCollector>();
         ai8_temperature_controller_->setLogCallback(logCallback);
-        ai8_temperature_controller_->setStructuredLogCallback(structuredLogCallback);
+        ai8_temperature_controller_->setLocatedStructuredLogCallback(structuredLogCallback);
         ai8_temperature_controller_->setSampleRate(static_cast<int>(config.frequency_hz));
         ai8_temperature_controller_->setSlaveAddress(
             static_cast<uint8_t>(std::clamp(config_.ai8_temperature_controller.slave_address, 1, 88)));
@@ -3211,10 +3398,21 @@ bool SkyDeviceManager::connectWaveTcp(CommandErrorCode *errorCode)
         if (errorCode) *errorCode = CommandErrorCode::Ok;
         return true;
     }
+    const quint64 generation = wave_connection_generation_ + 1;
+    QPointer<SkyDeviceManager> self(this);
     disconnectWaveTcp();
+    if (!self || generation != wave_connection_generation_) return false;
+    if (const auto *context = currentLogContext())
+    {
+        wave_connect_correlation_id_ = context->correlationId;
+        wave_connect_session_id_ = context->sessionId;
+    }
     setState(SkyDeviceId::WaveTcp, DeviceState::Connecting);
+    if (!self || generation != wave_connection_generation_) return false;
     QTcpSocket *socket = new QTcpSocket(this);
     wave_socket_ = socket;
+    socket->setProperty("vaporview_target_host", config_.wave_tcp.host);
+    socket->setProperty("vaporview_target_port", config_.wave_tcp.port);
     connect(socket, &QTcpSocket::connected, this, [this, socket]() {
         if (socket == wave_socket_)
         {
@@ -3233,10 +3431,10 @@ bool SkyDeviceManager::connectWaveTcp(CommandErrorCode *errorCode)
             onWaveTcpReadyRead();
         }
     });
-    connect(socket, &QTcpSocket::errorOccurred, this, [this, socket](QAbstractSocket::SocketError) {
+    connect(socket, &QTcpSocket::errorOccurred, this, [this, socket](QAbstractSocket::SocketError error) {
         if (socket == wave_socket_)
         {
-            onWaveTcpError();
+            onWaveTcpError(error);
         }
     });
     wave_socket_->connectToHost(config_.wave_tcp.host, static_cast<quint16>(config_.wave_tcp.port));
@@ -3246,13 +3444,39 @@ bool SkyDeviceManager::connectWaveTcp(CommandErrorCode *errorCode)
 
 void SkyDeviceManager::disconnectWaveTcp()
 {
-    if (wave_socket_)
-    {
-        wave_socket_->disconnectFromHost();
-        wave_socket_->deleteLater();
-        wave_socket_ = nullptr;
-    }
+    ++wave_connection_generation_;
+    QTcpSocket *socket = wave_socket_;
+    wave_socket_ = nullptr;
     wave_buffer_.clear();
+    if (socket)
+    {
+        socket->disconnectFromHost();
+        socket->deleteLater();
+    }
+    finishWaveTcpConnect(QStringLiteral("wave_tcp_connect_cancelled"), true);
+}
+
+void SkyDeviceManager::finishWaveTcpConnect(const QString& event, bool failed, QVariantMap details)
+{
+    if (wave_connect_correlation_id_.isEmpty())
+    {
+        wave_connect_session_id_.clear();
+        return;
+    }
+    const LogContext context{std::move(wave_connect_correlation_id_), std::move(wave_connect_session_id_)};
+    wave_connect_correlation_id_.clear();
+    wave_connect_session_id_.clear();
+    ScopedLogContext scope(context);
+    if (wave_socket_) {
+        details.insert(QStringLiteral("host"), wave_socket_->property("vaporview_target_host"));
+        details.insert(QStringLiteral("port"), wave_socket_->property("vaporview_target_port"));
+    }
+    details.insert(QStringLiteral("event"), event);
+    details.insert(QStringLiteral("reason_code"), failed ? QStringLiteral("WAVE_TCP_CONNECT_FAILED") : QStringLiteral("WAVE_TCP_CONNECTED"));
+    publishDeviceLog(failed ? LogLevel::Warning : LogLevel::Info,
+                     QStringLiteral("device.wave_tcp"), event,
+                     failed ? QStringLiteral("Wave TCP 连接失败或已取消。") : QStringLiteral("Wave TCP 已连接。"),
+                     details);
 }
 
 void SkyDeviceManager::processWaveTcpBuffer()

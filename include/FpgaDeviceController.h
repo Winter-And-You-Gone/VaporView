@@ -3,7 +3,7 @@
 #include "FpgaControlConfig.h"
 #include "FpgaDeviceSession.h"
 #include "FpgaSensorAdapter.h"
-#include "LogRecord.h"
+#include "LogService.h"
 #include "EpsilonRawSatellite.h"
 
 #include <QMap>
@@ -22,6 +22,11 @@ class FpgaDeviceController final : public QObject
 {
     Q_OBJECT
 public:
+    // Accessed only on the controller's owning worker thread.
+    void setOperationLogContext(quint64 identity, const QString& correlationId, const QString& sessionId)
+    { operationLogIdentity_ = identity; operationCorrelationId_ = correlationId; operationSessionId_ = sessionId; }
+    void clearOperationLogContext(quint64 identity)
+    { if (operationLogIdentity_ == identity) { operationLogIdentity_ = 0; operationCorrelationId_.clear(); operationSessionId_.clear(); } }
     enum class ConnectMode { RecoverEnabledModules, PreserveRunningModules };
     explicit FpgaDeviceController(std::unique_ptr<FpgaUsbTransport> transport = {}, QObject *parent = nullptr);
     ~FpgaDeviceController() override;
@@ -73,6 +78,11 @@ signals:
     void replayFinished(bool success, const QString& detail);
 
 private:
+    quint64 operationLogIdentity_ = 0;
+    QString operationCorrelationId_;
+    QString operationSessionId_;
+    struct PendingConnectionLogContext { QString correlationId; QString sessionId; };
+    QHash<quint16, PendingConnectionLogContext> pendingConnectionLogContexts_;
     enum class Kind { Management, Read, Write, Commit, Ping, Capabilities, Sensor, Wait, Delay, PrepareSensorConfig, FinishSensorConfig, CheckVersions, RecoverConnection, FinishRawStop, CheckTemperature, ConfirmConnection, FinishWatchdog, Callback };
     struct Step {
         Kind kind = Kind::Read;
@@ -87,13 +97,13 @@ private:
     bool begin(const QString& label, bool background = false);
     void advance();
     void completed(quint32 sequence, bool success, quint32 status);
-    void fail(const QString& detail);
-    void report(const QString& detail, LogLevel level = LogLevel::Warning);
-    void reportRawResult(bool enabled, bool succeeded, const QString& detail);
+    void fail(const QString& detail, bool operationScoped = true);
+    void report(const QString& detail, LogLevel level = LogLevel::Warning, const char *file = VAPORVIEW_LOG_FILE, const char *function = VAPORVIEW_LOG_FUNCTION, int line = VAPORVIEW_LOG_LINE, bool operationScoped = true);
+    void reportRawResult(bool enabled, bool succeeded, const QString& detail, const char *file = VAPORVIEW_LOG_FILE, const char *function = VAPORVIEW_LOG_FUNCTION, int line = VAPORVIEW_LOG_LINE);
     void trackConnection(quint16 source);
     void confirmConnection(quint16 source);
     void checkConnectionResults();
-    void reportConnection(quint16 source, const QString& result, const QString& reasonCode, const QString& detail);
+    void reportConnection(quint16 source, const QString& result, const QString& reasonCode, const QString& detail, const char *file = VAPORVIEW_LOG_FILE, const char *function = VAPORVIEW_LOG_FUNCTION, int line = VAPORVIEW_LOG_LINE);
     void read(quint32 address, quint16 count = 1);
     void write(quint32 address, quint32 value);
     void verify(quint32 address, quint32 value);
@@ -111,7 +121,10 @@ private:
     void resetAcquisition();
     void recoverConnection();
     void publishManagementEvent(const QJsonObject& event);
-    void logManagementEvent(const QJsonObject& event, bool afterStartup = false);
+    void logManagementEvent(const QJsonObject& event, bool afterStartup = false,
+                            const char *file = VAPORVIEW_LOG_FILE,
+                            const char *function = VAPORVIEW_LOG_FUNCTION,
+                            int line = VAPORVIEW_LOG_LINE);
     void checkStartupWarnings();
     void acceptReading(const VaporView::FpgaSensor::Reading& reading);
     void flushPresentation();
@@ -129,6 +142,7 @@ private:
     QElapsedTimer connectionClock_;
     QMap<quint16,qint64> startupWarningDeadlines_;
     QMap<quint16,QJsonObject> startupWarnings_;
+    QHash<quint16, PendingConnectionLogContext> startupWarningLogContexts_;
     std::deque<Step> steps_;
     std::optional<Step> current_;
     QMap<quint32, quint32> registers_;

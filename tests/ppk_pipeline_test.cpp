@@ -5,6 +5,7 @@
 #include "ppk/SessionNavigationSource.h"
 #include "data_collector.h"
 #include "SkySessionRecorder.h"
+#include "LogService.h"
 #include "ground/session/GroundRecordingService.h"
 #include "ground/session/SessionLoader.h"
 #include "ground/session/SessionTrajectoryRenderLoader.h"
@@ -22,6 +23,7 @@
 #include <stdexcept>
 #include <iostream>
 #include <memory>
+#include <future>
 #include "rtklib.h"
 #undef lock
 #undef unlock
@@ -281,7 +283,48 @@ int runTest(int argc, char **argv)
     config.elevationMaskDeg = 10;
     config.imuToAntennaBodyM = {0.1, 0.2, 0.3};
     require(PpkProcessor::status(session).ready(), "session ready for PPK");
-    const auto processed = PpkProcessor::process(session, config);
+    PpkProcessResult processed;
+    {
+        QTemporaryDir logDirectory;
+        QVector<VaporView::LogRecord> ppkLogs;
+        VaporView::LogService logService(QStringLiteral("PpkTest"), nullptr, logDirectory.path());
+        QObject::connect(&logService, &VaporView::LogService::recordPublished, &logService,
+                         [&](const VaporView::LogRecord &record) {
+                             if (record.category == QStringLiteral("session.ppk")) ppkLogs.push_back(record);
+                         }, Qt::DirectConnection);
+        const QString operationId = QStringLiteral("ppk-operation-test");
+        auto worker = std::async(std::launch::async, [&] { return PpkProcessor::process(session, config, nullptr, {}, operationId); });
+        processed = worker.get();
+        bool started = false, completed = false;
+        for (const auto &record : ppkLogs) {
+            require(record.correlation_id == operationId && record.session_id == session,
+                    "PPK worker logs preserve operation and session IDs");
+            const auto event = record.fields.value(QStringLiteral("event")).toString();
+            started |= event == QStringLiteral("ppk_processing_started");
+            completed |= event == QStringLiteral("ppk_processing_completed");
+        }
+        require(started && completed, "PPK start and completion share the operation ID");
+        ppkLogs.clear();
+        QLockFile busyLock(QDir(session).filePath("ppk/processing.lock"));
+        require(busyLock.tryLock(), "claim PPK lock for failure logging");
+        require(PpkProcessor::process(session, config).error == QStringLiteral("SESSION_PPK_BUSY"), "busy PPK operation is logged");
+        require(ppkLogs.size() >= 2 && !ppkLogs.first().correlation_id.isEmpty() &&
+                    ppkLogs.first().correlation_id != operationId &&
+                    ppkLogs.first().correlation_id == ppkLogs.last().correlation_id &&
+                    ppkLogs.last().fields.value(QStringLiteral("event")) == QStringLiteral("ppk_processing_failed"),
+                "legacy PPK call generates a distinct ID for start and failure");
+        ppkLogs.clear();
+        QTemporaryDir invalidSession;
+        auto invalidConfig = config;
+        invalidConfig.frequencies = 0;
+        require(PpkProcessor::process(invalidSession.path(), invalidConfig).error == QStringLiteral("INVALID_PPK_CONFIG"),
+                "invalid PPK config exercises the failure wrapper");
+        const auto failureFields = ppkLogs.last().fields;
+        require(failureFields.value(QStringLiteral("file")).toString().endsWith(QStringLiteral("PpkProcessor.cpp")) &&
+                    failureFields.value(QStringLiteral("function")).toString().contains(QStringLiteral("process")) &&
+                    failureFields.value(QStringLiteral("line")).toInt() > 0,
+                "PPK failure wrapper preserves its business call location");
+    }
     if (!processed.success)
         std::cerr << processed.error.toStdString() << '\n';
     require(processed.success && !processed.trajectory.empty(), "real RTKLIB Kinematic PPK");

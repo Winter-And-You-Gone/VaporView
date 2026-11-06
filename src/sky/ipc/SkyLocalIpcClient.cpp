@@ -6,6 +6,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTimer>
+#include <QUuid>
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -62,7 +63,8 @@ void SkyLocalIpcClient::publishClientLog(LogLevel level,
                                          const QString& category,
                                          const QString& event,
                                          const QString& message,
-                                         QVariantMap fields)
+                                         QVariantMap fields, const QString& correlationId,
+                                         const char *file, const char *function, int line)
 {
     fields.insert(QStringLiteral("event"), event);
     fields.insert(QStringLiteral("ui_visible"), true);
@@ -84,7 +86,9 @@ void SkyLocalIpcClient::publishClientLog(LogLevel level,
     record.source = QStringLiteral("SkyTui");
     record.category = category;
     record.message = message;
+    record.correlation_id = correlationId;
     record.fields = fields;
+    LogService::addCallLocation(record, file, function, line);
     emit logRecordGenerated(record);
     if (!LogService::withCurrentInstance([](LogService&) {}))
     {
@@ -248,16 +252,21 @@ quint16 SkyLocalIpcClient::requestCoreShutdown()
 
 void SkyLocalIpcClient::onConnected()
 {
+    ++connection_generation_;
+    const quint64 generation = connection_generation_;
     reconnect_timer_.stop();
     connected_time_us_ = currentTimestampUs();
     emit connectedChanged(true);
+    if (generation != connection_generation_ || !isConnected()) return;
     publishClientLog(LogLevel::Info,
                      QStringLiteral("ipc.connection"),
                      QStringLiteral("sky_ipc_connected"),
                      QStringLiteral("SkyCore IPC 已连接。"),
                      {{QStringLiteral("host"), core_host_},
                       {QStringLiteral("port"), core_port_}});
-    QTimer::singleShot(0, this, [this]() {
+    if (generation != connection_generation_ || !isConnected()) return;
+    QTimer::singleShot(0, this, [this, generation]() {
+        if (generation != connection_generation_ || !isConnected()) return;
         requestStatus();
         getConfig();
     });
@@ -265,21 +274,74 @@ void SkyLocalIpcClient::onConnected()
 
 void SkyLocalIpcClient::onDisconnected()
 {
+    ++connection_generation_;
+    const quint64 generation = connection_generation_;
+    QHash<quint16, ConfigResultContext> awaitingConfig;
+    awaitingConfig.swap(config_result_contexts_);
+    QHash<quint16, CommandMessage> pending;
+    pending.swap(pending_commands_);
+    for (const auto& command : pending)
+        publishCommandLog(command, QStringLiteral("sky_ipc_command_disconnected"),
+                          QStringLiteral("SkyCore IPC 断开，命令未完成。"), LogLevel::Warning);
+    for (const auto& context : awaitingConfig) {
+        if (!context.awaitingAck)
+            publishCommandLog(context.command, QStringLiteral("sky_ipc_config_result_disconnected"),
+                              QStringLiteral("SkyCore IPC 已断开，配置关联结果尚未收到。"),
+                              LogLevel::Warning, context.command.session_id);
+    }
+    if (generation != connection_generation_ || isConnected()) return;
     emit connectedChanged(false);
+    if (generation != connection_generation_ || isConnected()) return;
     publishClientLog(LogLevel::Info,
                      QStringLiteral("ipc.connection"),
                      QStringLiteral("sky_ipc_disconnected"),
                      QStringLiteral("SkyCore IPC 连接已断开。"));
+    if (generation != connection_generation_ || isConnected()) return;
     scheduleReconnect();
 }
 
 void SkyLocalIpcClient::onReadyRead()
 {
+    const quint64 generation = connection_generation_;
     const QVector<TelemetryFrame> frames = decoder_.feedBytes(socket_.readAll());
     for (const TelemetryFrame& frame : frames)
     {
+        if (generation != connection_generation_) break;
         dispatchFrame(frame);
     }
+}
+
+void SkyLocalIpcClient::rememberConfigResultContext(const CommandMessage& command, bool awaitingAck, bool sessionKnown)
+{
+    ConfigResultContext evicted;
+    bool reportEviction = false;
+    if (!config_result_contexts_.contains(command.command_seq) && config_result_contexts_.size() >= 256) {
+        const auto oldest = config_result_contexts_.begin();
+        evicted = oldest.value();
+        reportEviction = !evicted.awaitingAck;
+        config_result_contexts_.erase(oldest);
+    }
+    CommandMessage stored = command;
+    stored.payload.clear();
+    config_result_contexts_.insert(command.command_seq, {stored, awaitingAck, sessionKnown});
+    const quint64 generation = connection_generation_;
+    const QString correlationId = command.correlation_id;
+    QTimer::singleShot(30000, this, [this, generation, sequence = command.command_seq, correlationId] {
+        const auto it = config_result_contexts_.constFind(sequence);
+        if (generation == connection_generation_ && it != config_result_contexts_.cend() &&
+            it->command.correlation_id == correlationId) {
+            const ConfigResultContext expired = *it;
+            config_result_contexts_.remove(sequence);
+            if (!expired.awaitingAck)
+                publishCommandLog(expired.command, QStringLiteral("sky_ipc_config_result_context_expired"),
+                                  QStringLiteral("等待 SkyCore 配置关联结果的上下文已过期。"),
+                                  LogLevel::Warning, expired.command.session_id);
+        }
+    });
+    if (reportEviction)
+        publishCommandLog(evicted.command, QStringLiteral("sky_ipc_config_result_context_evicted"),
+                          QStringLiteral("等待 SkyCore 配置关联结果的上下文因容量限制被移除。"),
+                          LogLevel::Warning, evicted.command.session_id);
 }
 
 void SkyLocalIpcClient::onErrorOccurred(QAbstractSocket::SocketError error)
@@ -311,6 +373,9 @@ void SkyLocalIpcClient::onErrorOccurred(QAbstractSocket::SocketError error)
 
 quint16 SkyLocalIpcClient::sendCommand(CommandId commandId, const QByteArray& payload)
 {
+    const bool isBusinessCommand = commandId != CommandId::RequestStatus && commandId != CommandId::GetSkyConfig &&
+                                   commandId != CommandId::QueryDeviceStatus && commandId != CommandId::RequestOneWaveform;
+    const QString correlationId = isBusinessCommand ? QUuid::createUuid().toString(QUuid::WithoutBraces) : QString();
     if (!isConnected())
     {
         publishClientLog(LogLevel::Warning,
@@ -319,20 +384,83 @@ quint16 SkyLocalIpcClient::sendCommand(CommandId commandId, const QByteArray& pa
                          QStringLiteral("未连接 SkyCore，命令未发送。"),
                          {{QStringLiteral("reason_code"), QStringLiteral("SKY_IPC_NOT_CONNECTED")},
                           {QStringLiteral("command_id"), commandIdName(commandId)},
-                          {QStringLiteral("command_value"), static_cast<quint16>(commandId)}});
+                          {QStringLiteral("command_value"), static_cast<quint16>(commandId)}}, correlationId);
         return 0;
     }
 
+    const quint64 generation = connection_generation_;
     CommandMessage command;
     command.command_id = commandId;
-    command.command_seq = next_command_seq_++;
+    for (quint32 attempt = 0; attempt < 65536; ++attempt) {
+        const quint16 candidate = next_command_seq_++;
+        if (candidate && !pending_commands_.contains(candidate) && !config_result_contexts_.contains(candidate)) {
+            command.command_seq = candidate;
+            break;
+        }
+    }
+    if (!command.command_seq) {
+        publishClientLog(LogLevel::Warning, QStringLiteral("ipc.command"),
+                         QStringLiteral("sky_ipc_command_send_skipped"),
+                         QStringLiteral("命令序号已用尽，命令未发送。"),
+                         {{QStringLiteral("reason_code"), QStringLiteral("SKY_IPC_SEQUENCE_EXHAUSTED")},
+                          {QStringLiteral("command_id"), commandIdName(commandId)},
+                          {QStringLiteral("command_value"), static_cast<quint16>(commandId)}}, correlationId);
+        return 0;
+    }
     command.payload = payload;
+    command.config_result_context_requested = commandId == CommandId::SetSkyConfig;
+    command.config_ack_session_omission_supported = command.config_result_context_requested;
+    command.extended_ack_context_requested = isBusinessCommand;
+    command.extended_result_context_requested = command.config_result_context_requested;
+    command.correlation_id = correlationId;
+    const QByteArray commandPayload = TelemetryCodec::serializeCommand(command);
+    if (isBusinessCommand)
+    {
+        CommandMessage encodedCommand;
+        const bool parsed = TelemetryCodec::parseCommand(commandPayload, encodedCommand);
+        command.extended_ack_context_requested = parsed && encodedCommand.extended_ack_context_requested;
+        command.extended_result_context_requested = parsed && encodedCommand.extended_result_context_requested;
+        command.config_ack_session_omission_supported = parsed && encodedCommand.config_ack_session_omission_supported;
+        pending_commands_.insert(command.command_seq, command);
+        publishCommandLog(command, QStringLiteral("sky_ipc_command_started"),
+                          QStringLiteral("已发起 SkyCore IPC 命令。"));
+        const auto pending = pending_commands_.constFind(command.command_seq);
+        if (generation != connection_generation_ || !isConnected() || pending == pending_commands_.cend() ||
+            pending->correlation_id != command.correlation_id) return 0;
+        QTimer::singleShot(30000, this, [this, command]() {
+            const auto it = pending_commands_.find(command.command_seq);
+            if (it == pending_commands_.end() || it->correlation_id != command.correlation_id) return;
+            pending_commands_.erase(it);
+            publishCommandLog(command, QStringLiteral("sky_ipc_command_timeout"),
+                              QStringLiteral("等待 SkyCore IPC 命令响应超时。"), LogLevel::Warning);
+        });
+    }
     const QByteArray encoded = encoder_.encodeFrame(MsgType::Command,
-                                                    TelemetryCodec::serializeCommand(command),
+                                                    commandPayload,
                                                     next_frame_seq_++,
                                                     currentTimestampUs());
     socket_.write(encoded);
     return command.command_seq;
+}
+
+void SkyLocalIpcClient::publishCommandLog(const CommandMessage& command, const QString& event,
+                                          const QString& message, LogLevel level, const QString& sessionId,
+                                          const char *file, const char *function, int line)
+{
+    LogRecord record;
+    record.level = level;
+    record.source = QStringLiteral("SkyTui");
+    record.category = QStringLiteral("ipc.command");
+    record.message = message;
+    record.correlation_id = command.correlation_id;
+    record.session_id = sessionId;
+    record.fields = {{QStringLiteral("event"), event},
+                     {QStringLiteral("command_seq"), command.command_seq},
+                     {QStringLiteral("command_id"), static_cast<quint16>(command.command_id)}};
+    LogService::addCallLocation(record, file, function, line);
+    emit logRecordGenerated(record);
+    if (!LogService::withCurrentInstance([](LogService&) {}))
+        LogService::writeLogFallback(record);
 }
 
 void SkyLocalIpcClient::attemptReconnect()
@@ -495,9 +623,51 @@ void SkyLocalIpcClient::dispatchFrame(const TelemetryFrame& frame)
     }
     case MsgType::CommandAck:
     {
+        const quint64 generation = connection_generation_;
         CommandAck ack;
         if (TelemetryCodec::parseCommandAck(frame.payload, ack))
         {
+            const auto pending = pending_commands_.find(ack.command_seq);
+            const auto completed = config_result_contexts_.find(ack.command_seq);
+            if (pending == pending_commands_.end() && completed != config_result_contexts_.end() && completed->awaitingAck) {
+                if (ack.command_id != CommandId::SetSkyConfig || ack.correlation_id.isEmpty() ||
+                    (ack.extended_ack_context && !completed->command.extended_ack_context_requested) ||
+                    (ack.session_id_omitted && !completed->command.config_ack_session_omission_supported) ||
+                    ack.correlation_id != completed->command.correlation_id ||
+                    (!ack.session_id_omitted && ack.session_id != completed->command.session_id))
+                    break;
+                const auto command = completed->command;
+                if (ack.session_id_omitted) ack.session_id = command.session_id;
+                config_result_contexts_.erase(completed);
+                publishCommandLog(command, QStringLiteral("sky_ipc_command_ack"),
+                                  QStringLiteral("已收到 SkyCore IPC 命令响应。"),
+                                  ack.error_code == CommandErrorCode::Ok ? LogLevel::Info : LogLevel::Warning, ack.session_id);
+                if (generation == connection_generation_) emit ackReceived(ack);
+                break;
+            }
+            if ((ack.extended_ack_context && (pending == pending_commands_.end() ||
+                                              !pending->extended_ack_context_requested || ack.correlation_id.isEmpty())) ||
+                (ack.session_id_omitted && (pending == pending_commands_.end() || ack.command_id != CommandId::SetSkyConfig ||
+                                            !pending->config_ack_session_omission_supported)) ||
+                (pending != pending_commands_.end() && pending->command_id != ack.command_id) ||
+                (!ack.correlation_id.isEmpty() &&
+                 (pending == pending_commands_.end() || pending->correlation_id != ack.correlation_id)))
+                break;
+            if (pending != pending_commands_.end() && pending->command_id == ack.command_id) {
+                const auto command = pending.value();
+                pending_commands_.erase(pending);
+                if (command.command_id == CommandId::SetSkyConfig && ack.config_result_context_expected.value_or(true)) {
+                    auto context = command;
+                    if (!ack.session_id_omitted) context.session_id = ack.session_id;
+                    rememberConfigResultContext(context, false, !ack.correlation_id.isEmpty() && !ack.session_id_omitted);
+                    if (generation != connection_generation_) break;
+                }
+                publishCommandLog(command, QStringLiteral("sky_ipc_command_ack"),
+                                  QStringLiteral("已收到 SkyCore IPC 命令响应。"),
+                                  ack.error_code == CommandErrorCode::Ok ? LogLevel::Info : LogLevel::Warning,
+                                  ack.correlation_id.isEmpty() || ack.session_id_omitted ? QString() : ack.session_id);
+            }
+            if (generation != connection_generation_) break;
             if (ack.error_code == CommandErrorCode::Ok)
             {
                 if (ack.command_id == CommandId::EnableWaveformStreaming)
@@ -553,6 +723,49 @@ void SkyLocalIpcClient::dispatchFrame(const TelemetryFrame& frame)
                          QStringLiteral("已收到 SkyCore 配置应用结果。"),
                          {{QStringLiteral("config_apply_result"), QString::fromUtf8(frame.payload)}});
         break;
+    case MsgType::SkyConfigApplyResultContext:
+    {
+        const quint64 generation = connection_generation_;
+        QJsonObject result;
+        QString correlationId, sessionId;
+        quint16 commandSeq = 0;
+        bool extendedResult = false;
+        if (!TelemetryCodec::parseSkyConfigApplyResultContext(frame.payload, result, correlationId, sessionId, commandSeq, &extendedResult))
+            break;
+        auto pending = pending_commands_.find(commandSeq);
+        auto completed = config_result_contexts_.find(commandSeq);
+        if (pending != pending_commands_.end()) {
+            if (pending->command_id != CommandId::SetSkyConfig || pending->correlation_id != correlationId ||
+                (extendedResult && !pending->extended_result_context_requested)) break;
+            auto context = pending.value();
+            context.session_id = sessionId;
+            pending_commands_.erase(pending);
+            rememberConfigResultContext(context, true, true);
+            if (generation != connection_generation_) break;
+        } else {
+            if (completed == config_result_contexts_.end() || completed->awaitingAck ||
+                completed->command.command_id != CommandId::SetSkyConfig ||
+                (extendedResult && !completed->command.extended_result_context_requested) ||
+                completed->command.correlation_id != correlationId ||
+                (completed->sessionKnown && completed->command.session_id != sessionId)) break;
+            config_result_contexts_.erase(completed);
+        }
+        LogRecord record;
+        record.level = LogLevel::Info;
+        record.source = QStringLiteral("SkyTui");
+        record.category = QStringLiteral("ipc.config");
+        record.message = QStringLiteral("已收到带关联信息的 SkyCore 配置应用结果。");
+        record.correlation_id = correlationId;
+        record.session_id = sessionId;
+        record.fields = {{QStringLiteral("event"), QStringLiteral("sky_ipc_config_apply_result_context_received")},
+                         {QStringLiteral("command_seq"), commandSeq},
+                         {QStringLiteral("config_apply_result"), QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact))}};
+        LogService::addCallLocation(record, VAPORVIEW_LOG_FILE, VAPORVIEW_LOG_FUNCTION, VAPORVIEW_LOG_LINE);
+        emit logRecordGenerated(record);
+        if (!LogService::withCurrentInstance([](LogService&) {}))
+            LogService::writeLogFallback(record);
+        break;
+    }
     case MsgType::LogEvent:
     {
         LogRecord record;

@@ -53,15 +53,82 @@ void diagnosticReadback()
     backend.shutdown();
 }
 
+void timeoutObserverIsolation()
+{
+    auto mock = std::make_unique<ScriptedTransport>();
+    auto *wire = mock.get();
+    QVector<LogRecord> records;
+    QObject receiver;
+    SkyFpgaBackend backend(std::move(mock));
+    QObject::connect(&backend, &SkyFpgaBackend::logRecord, &receiver,
+                     [&](const LogRecord& record) { records.push_back(record); });
+    bool connected = false;
+    backend.submit({{"op","connect"},{"backend","auto"},{"locator","mock"}},
+                   [&](CommandErrorCode code, QString, QJsonObject) { connected = code == CommandErrorCode::Ok; });
+    waitUntil([&] { return connected; }, "timeout test connects simulator");
+    wire->holdResponses = true;
+    backend.setOperationTimeoutForTesting(50);
+    int timedOutCallbacks = 0;
+    backend.submit({{"op","refresh"}}, [&](CommandErrorCode code, QString, QJsonObject) {
+        require(code == CommandErrorCode::ConfigApplyFailed, "stalled FPGA operation times out");
+        ++timedOutCallbacks;
+    }, QStringLiteral("expired-operation"));
+    waitUntil([&] { return timedOutCallbacks == 1; }, "timed out callback returns once");
+    waitUntil([&] { return !backend.statusDocument().value("connected").toBool(); },
+              "timed out operation disconnects worker");
+    wire->holdResponses = false;
+    backend.setOperationTimeoutForTesting(120000);
+    int nextCallbacks = 0;
+    backend.submit({{"op","connect"},{"backend","auto"},{"locator","mock"}},
+                   [&](CommandErrorCode code, QString, QJsonObject) {
+                       require(code == CommandErrorCode::Ok, "new operation succeeds after timeout cleanup");
+                       ++nextCallbacks;
+                   }, QStringLiteral("next-operation"));
+    waitUntil([&] { return nextCallbacks == 1; }, "new operation completes after prior timeout");
+    QCoreApplication::processEvents();
+    require(timedOutCallbacks == 1, "stale observer cannot complete expired callback again");
+    bool newWorkerSeen = false;
+    for (const auto& record : records)
+        if (record.fields.value("event") == "fpga_worker_started" && record.correlation_id == "next-operation")
+            newWorkerSeen = true;
+    require(newWorkerSeen, "new worker uses its own context after timeout");
+    backend.shutdown();
+}
+
+void statusListenerMayDestroyBackend()
+{
+    auto mock = std::make_unique<ScriptedTransport>();
+    auto *backend = new SkyFpgaBackend(std::move(mock));
+    QPointer<SkyFpgaBackend> guard(backend);
+    QObject receiver;
+    int completions = 0;
+    QObject::connect(backend, &SkyFpgaBackend::statusChanged, &receiver,
+                     [&guard](const QJsonObject& status) {
+                         if (guard && status.contains(QStringLiteral("operation_result")))
+                             delete guard.data();
+                     });
+    backend->submit({{"op", "connect"}, {"backend", "auto"}, {"locator", "mock"}},
+                    [&](CommandErrorCode, QString, QJsonObject) { ++completions; },
+                    QStringLiteral("destroy-during-status"));
+    waitUntil([&] { return !guard; }, "direct status listener destroys backend during completion");
+    require(completions == 1, "destruction completes pending operation exactly once");
+    QCoreApplication::processEvents();
+    require(completions == 1, "late completion cannot access destroyed backend");
+}
+
 int main(int argc,char **argv)
 {
     QCoreApplication app(argc,argv);
     selectiveConnection();
     diagnosticReadback();
+    timeoutObserverIsolation();
+    statusListenerMayDestroyBackend();
     auto mock=std::make_unique<ScriptedTransport>(); auto *wire=mock.get(); mock->failTemperature=true;mock->failWriteAddress=0x2010;
+    QVector<LogRecord> operationLogs;
     SkyFpgaBackend backend(std::move(mock));
-    QObject::connect(&backend,&SkyFpgaBackend::logRecord,[](const LogRecord& record) {
+    QObject::connect(&backend,&SkyFpgaBackend::logRecord,&app,[&](const LogRecord& record) {
         require(record.source=="SkyCore","shared controller diagnostics identify actual Sky execution owner");
+        operationLogs.push_back(record);
     });
     int completions=0;
     bool discovered=false;
@@ -126,10 +193,19 @@ int main(int argc,char **argv)
     }
     backend.submit({{"op","temperature"},{"celsius",25.0}},[&](CommandErrorCode code,QString error,QJsonObject) {
         require(code==CommandErrorCode::ConfigApplyFailed && !error.isEmpty(),"hardware failure delivered after FPGA response"); ++completions;
-    });
+    }, QStringLiteral("fpga-operation-test"), QStringLiteral("test-session"));
     require(completions==1,"temperature cannot complete at enqueue");
     waitUntil([&]{return completions==2;},"failed temperature final callback");
     require(wire->temperatureWrites.load()==1,"failed write never automatically retries");
+    waitUntil([&] { for (const auto& log : operationLogs)
+        if (log.fields.value(QStringLiteral("event")).toString() == QStringLiteral("fpga_operation_diagnostic") &&
+            log.correlation_id == QStringLiteral("fpga-operation-test") && log.session_id == QStringLiteral("test-session") && log.thread_id != 0) return true;
+        return false; }, "worker driver failure preserves operation context and worker thread");
+    bool started = false;
+    for (const auto& log : operationLogs)
+        if (log.fields.value(QStringLiteral("event")).toString() == QStringLiteral("fpga_worker_started") &&
+            log.correlation_id == QStringLiteral("fpga-operation-test")) started = true;
+    require(started, "queued FPGA worker starts with captured operation context");
     waitUntil([&]{return backend.statusDocument().value("sensor_rates_hz").toObject().value("69").toDouble()==1000.0;},
         "Sky status retains raw sensor frequency despite presentation coalescing");
     const auto confirmedConfiguration=backend.statusDocument().value("configuration").toObject();

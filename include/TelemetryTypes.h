@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <limits>
 #include <map>
+#include <optional>
 
 namespace VaporView
 {
@@ -50,6 +51,8 @@ enum class MsgType : quint8
     Command = 0x10,
     CommandAck = 0x11,
     FpgaCycleFeature = 0x12, // Full-cycle summary; never inferred from a preview.
+    DeviceOperationResponseContext = 0x13,
+    SkyConfigApplyResultContext = 0x14,
     Heartbeat = 0x20,
     LogEvent = 0x7E,
     Error = 0x7F,
@@ -414,6 +417,14 @@ struct CommandMessage
     CommandId command_id = CommandId::RequestStatus;
     quint16 command_seq = 0;
     QByteArray payload;
+    // Optional diagnostics metadata, carried outside the device command payload.
+    QString correlation_id;
+    QString session_id;
+    bool typed_response_context_requested = false;
+    bool config_result_context_requested = false;
+    bool config_ack_session_omission_supported = false;
+    bool extended_ack_context_requested = false;
+    bool extended_result_context_requested = false;
 };
 
 struct CommandAck
@@ -422,6 +433,14 @@ struct CommandAck
     quint16 command_seq = 0;
     quint8 result = 0;
     CommandErrorCode error_code = CommandErrorCode::Ok;
+    QString correlation_id;
+    QString session_id;
+    bool typed_response_context_supported = false;
+    std::optional<bool> config_result_context_expected;
+    bool session_id_omitted = false;
+    bool allow_session_id_omission = false;
+    bool extended_ack_context_allowed = false;
+    bool extended_ack_context = false;
 };
 
 struct DeviceOperationRequest
@@ -440,6 +459,9 @@ struct DeviceOperationResponse
     CommandErrorCode error_code = CommandErrorCode::Ok;
     QString error_message;
     QByteArray payload;
+    // Diagnostic context is carried by the negotiated response envelope.
+    QString correlation_id;
+    QString session_id;
 };
 
 QString skyDeviceIdName(SkyDeviceId id);

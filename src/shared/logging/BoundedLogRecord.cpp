@@ -748,13 +748,36 @@ LogRecord minimalBoundedRecord(LogRecord record, const TruncationState& state)
     shrinkString(record.source, 1024);
     shrinkString(record.category, 1024);
     shrinkString(record.message, 4096);
-    record.correlation_id.clear();
-    record.session_id.clear();
+    shrinkString(record.source_location.file, 2048);
+    shrinkString(record.source_location.function, 2048);
     QJsonObject metadata = truncationMetadata(state);
     metadata.insert(QStringLiteral("_log_truncated"), true);
     metadata.insert(QStringLiteral("_log_truncation_reasons"),
                     QJsonArray{QStringLiteral("record_size_limit")});
     record.fields = metadata.toVariantMap();
+    if (serializeRawRecord(record).size() > LogRecordLimits::kMaxSerializedRecordBytes -
+                                                kSequenceSerializationHeadroomBytes)
+    {
+        shrinkString(record.correlation_id, 2048);
+        if (serializeRawRecord(record).size() > LogRecordLimits::kMaxSerializedRecordBytes -
+                                                    kSequenceSerializationHeadroomBytes)
+        {
+            const QString original = record.session_id;
+            qsizetype low = 0;
+            qsizetype high = original.toUtf8().size();
+            while (low < high)
+            {
+                const qsizetype mid = low + (high - low + 1) / 2;
+                record.session_id = truncateUtf8(original, mid).value;
+                if (serializeRawRecord(record).size() <= LogRecordLimits::kMaxSerializedRecordBytes -
+                                                        kSequenceSerializationHeadroomBytes)
+                    low = mid;
+                else
+                    high = mid - 1;
+            }
+            record.session_id = truncateUtf8(original, low).value;
+        }
+    }
     return record;
 }
 
@@ -775,25 +798,27 @@ LogRecord boundLogRecord(LogRecord record)
         state.addReason(QStringLiteral("message_limit"));
     }
 
-    auto boundTopLevelString = [&state, &boundedTopLevelUtf8Bytes](QString& value) {
+    auto boundTopLevelString = [&state, &boundedTopLevelUtf8Bytes](QString& value, qsizetype limit) {
         const TruncatedString bounded = truncateUtf8(
-            value, LogRecordLimits::kMaxSingleStringUtf8Bytes);
+            value, limit);
         value = bounded.value;
         boundedTopLevelUtf8Bytes = saturatedAdd(
             boundedTopLevelUtf8Bytes,
             (std::min)(bounded.original_utf8_bytes,
-                       static_cast<qint64>(LogRecordLimits::kMaxSingleStringUtf8Bytes)));
+                       static_cast<qint64>(limit)));
         if (bounded.truncated)
         {
             ++state.truncated_strings;
             state.addReason(QStringLiteral("top_level_string_limit"));
         }
     };
-    boundTopLevelString(record.timestamp_utc);
-    boundTopLevelString(record.source);
-    boundTopLevelString(record.category);
-    boundTopLevelString(record.correlation_id);
-    boundTopLevelString(record.session_id);
+    boundTopLevelString(record.timestamp_utc, LogRecordLimits::kMaxSingleStringUtf8Bytes);
+    boundTopLevelString(record.source, LogRecordLimits::kMaxSingleStringUtf8Bytes);
+    boundTopLevelString(record.category, LogRecordLimits::kMaxSingleStringUtf8Bytes);
+    boundTopLevelString(record.correlation_id, LogRecordLimits::kMaxSingleStringUtf8Bytes);
+    boundTopLevelString(record.session_id, LogRecordLimits::kMaxSessionIdUtf8Bytes);
+    boundTopLevelString(record.source_location.file, LogRecordLimits::kMaxSingleStringUtf8Bytes);
+    boundTopLevelString(record.source_location.function, LogRecordLimits::kMaxSingleStringUtf8Bytes);
 
     QList<std::pair<QString, QVariant>> entries;
     entries.reserve((std::min)(record.fields.size(), LogRecordLimits::kMaxContainerElements));
@@ -853,13 +878,6 @@ LogRecord boundLogRecord(LogRecord record)
                                 QStringLiteral("record_size_limit"));
     record.fields = finalFields.toVariantMap();
     shrinkMessageToFit(record, state, targetBytes);
-    line = serializeRawRecord(record);
-
-    if (line.size() > targetBytes)
-    {
-        record.correlation_id.clear();
-        record.session_id.clear();
-    }
     if (serializeRawRecord(record).size() > targetBytes)
     {
         shrinkString(record.source, 4096);

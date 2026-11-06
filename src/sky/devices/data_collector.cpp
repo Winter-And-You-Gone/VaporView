@@ -1885,6 +1885,21 @@ void DataCollector::setLogCallback(LogCallback callback)
 
 void DataCollector::setStructuredLogCallback(StructuredLogCallback callback)
 {
+  LocatedStructuredLogCallback located;
+  if (callback)
+  {
+    located = [callback = std::move(callback)](LogLevel level, const std::string& category,
+        const std::string& event, const std::string& message, StructuredLogFields fields,
+        const char*, const char*, int) {
+      callback(level, category, event, message, std::move(fields));
+    };
+  }
+  std::lock_guard<std::mutex> lock(mutex_);
+  structured_log_callback_ = std::move(located);
+}
+
+void DataCollector::setLocatedStructuredLogCallback(LocatedStructuredLogCallback callback)
+{
   std::lock_guard<std::mutex> lock(mutex_);
   structured_log_callback_ = std::move(callback);
 }
@@ -1917,16 +1932,17 @@ void DataCollector::logStructured(LogLevel level,
                                   const std::string& category,
                                   const std::string& event,
                                   const std::string& message,
-                                  StructuredLogFields fields)
+                                  StructuredLogFields fields,
+                                  const char* file, const char* function, int line)
 {
-  StructuredLogCallback callback;
+  LocatedStructuredLogCallback callback;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     callback = structured_log_callback_;
   }
   if (callback)
   {
-    callback(level, category, event, message, std::move(fields));
+    callback(level, category, event, message, std::move(fields), file, function, line);
     return;
   }
   log(message);
@@ -3782,6 +3798,11 @@ void PtbCollector::setProtocol(PressureSensorProtocol protocol)
   protocol_ = protocol;
 }
 
+void PtbCollector::setStartupLogContext(LogContext context)
+{
+  startup_log_context_ = std::move(context);
+}
+
 PressureSensorProtocol PtbCollector::protocol() const
 {
   std::lock_guard<std::mutex> lock(mutex_);
@@ -4180,9 +4201,11 @@ void PtbCollector::run()
 
   // PTB210 needs a short recovery window after .RESET before it accepts .BP reliably.
   sleepMs(500);
-  if (!startContinuousOutput())
   {
-    return;
+    ScopedLogContext startupScope(std::move(startup_log_context_));
+    startup_log_context_ = {};
+    if (!startContinuousOutput())
+      return;
   }
 
   auto last_data_time = std::chrono::steady_clock::now();
@@ -5351,6 +5374,11 @@ void LidarCollector::setRawFrameCallback(RawFrameCallback callback)
   raw_frame_callback_ = std::move(callback);
 }
 
+void LidarCollector::setStartupLogContext(LogContext context)
+{
+  startup_log_context_ = std::move(context);
+}
+
 bool LidarCollector::initialize()
 {
   serial_.setNonBlocking(true);
@@ -5636,17 +5664,21 @@ void LidarCollector::run()
   std::vector<uint8_t> buffer;
   buffer.reserve(512);
 
-  if (active_protocol_ == LidarProtocol::TFA1500HighFrequency)
   {
-    ensureTfa1500Streaming();
-  }
-  else if (active_protocol_ == LidarProtocol::TFA1500DistanceFrame)
-  {
-    ensureTfa1500DistanceOutput();
-  }
-  else if (active_protocol_ == LidarProtocol::TFA1500LowFrequencyFrame)
-  {
-    ensureTfa1500LowFrequencyContinuous();
+    ScopedLogContext startupScope(std::move(startup_log_context_));
+    startup_log_context_ = {};
+    if (active_protocol_ == LidarProtocol::TFA1500HighFrequency)
+    {
+      ensureTfa1500Streaming();
+    }
+    else if (active_protocol_ == LidarProtocol::TFA1500DistanceFrame)
+    {
+      ensureTfa1500DistanceOutput();
+    }
+    else if (active_protocol_ == LidarProtocol::TFA1500LowFrequencyFrame)
+    {
+      ensureTfa1500LowFrequencyContinuous();
+    }
   }
 
   while (running_.load())

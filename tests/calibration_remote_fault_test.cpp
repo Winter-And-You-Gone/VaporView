@@ -47,19 +47,35 @@ void exercise() {
     QObject::connect(&sky,&QProcess::readyRead,[&]{output+=sky.readAll();if(output.size()>65536)output=output.right(65536);});
     Ground::Devices::RemoteSkyController controller;QHash<quint16,CommandAck> acks;bool discardAck=false;
     TelemetryStatus status;
+    bool fpgaReady = false;
     QObject::connect(&controller,&Ground::Devices::RemoteSkyController::commandAckReceived,
         [&](const CommandAck& ack){if(!discardAck)acks.insert(ack.command_seq,ack);});
     QObject::connect(&controller,&Ground::Devices::RemoteSkyController::statusUpdated,[&](const TelemetryStatus& value){status=value;});
+    QObject::connect(&controller,&Ground::Devices::RemoteSkyController::fpgaStatusUpdated,
+        [&](const QJsonObject& value){fpgaReady=value.value(QStringLiteral("ready")).toBool();});
     auto launch=[&]{sky.start();require(sky.waitForStarted(5000),"launch independent SkyCore process");};
     auto connect=[&]{require(waitFor([&]{if(!controller.isOpen())controller.openTcp("127.0.0.1",port);return controller.isOpen();},sky),"TCP telemetry connects");};
+    CommandAck lastAck;
     auto command=[&](CommandId id,const QJsonObject& snapshot=QJsonObject{}) {
         const auto seq=controller.sendCommand(id,snapshot.isEmpty()?QByteArray{}:QJsonDocument(snapshot).toJson(QJsonDocument::Compact));
-        require(waitFor([&]{return acks.contains(seq);},sky),"command receives ACK");return acks.take(seq).error_code;
+        require(waitFor([&]{return acks.contains(seq);},sky),"command receives ACK");lastAck=acks.take(seq);return lastAck.error_code;
     };
     const auto base=root.filePath("simulated_sessions");const auto lock=QDir(base).filePath(".calibration-session-lock.json");
     launch();connect();
+    require(waitFor([&]{return fpgaReady;},sky),"simulated FPGA handshake completes before starting a session");
     require(command(CommandId::StartRecording)!=CommandErrorCode::Ok,"Sky independently rejects missing calibration while Ground is prepared");
     require(ground.service->view().locked&&!QFile::exists(lock),"one-end preparation remains explicit and never creates a Sky Session");
+    const auto startResult = command(CommandId::StartRecording,remote);
+    if (startResult != CommandErrorCode::Ok)
+        std::cerr << "SkyCore output for failed session start: " << output.constData() << '\n';
+    require(startResult==CommandErrorCode::Ok,"valid calibration snapshot starts a test session");
+    const auto firstSession = lastAck.session_id;
+    require(!lastAck.correlation_id.isEmpty() && !firstSession.isEmpty(),
+            "start ACK carries correlation and newly created session identity");
+    require(command(CommandId::StopRecording)==CommandErrorCode::Ok && lastAck.session_id==firstSession,
+            "stop ACK retains the first session identity");
+    require(command(CommandId::RequestStatus)==CommandErrorCode::Ok && lastAck.session_id.isEmpty(),
+            "new command after first stop cannot inherit its session");
     // Drop the Start ACK at the receiving endpoint, then interrupt the transport
     // after the persistent Sky lock proves the command was committed.
     discardAck=true;controller.sendCommand(CommandId::StartRecording,QJsonDocument(remote).toJson(QJsonDocument::Compact));
@@ -70,11 +86,15 @@ void exercise() {
     require(ground.service->bindSession(QDir(ground.root.path()).filePath("remote_session"),&error),"Ground binds its own Session without changing Sky identity");
     connect();require(waitFor([&]{return status.recording_state==1;},sky),"reconnect observes original Sky recording");
     require(command(CommandId::PauseRecording)==CommandErrorCode::Ok,"pause over real transport");
+    require(!lastAck.correlation_id.isEmpty() && lastAck.session_id == session,
+            "pause ACK carries operation correlation and active Sky session");
     auto alternate=remote;auto runtime=alternate["runtime"].toObject();auto channels=runtime["channels"].toObject();
     auto lane=channels["816"].toObject();lane["a"]=lane["a"].toDouble()*2;channels["816"]=lane;runtime["channels"]=channels;
     runtime.remove("sha256");runtime["sha256"]=QString::fromLatin1(Session::runtimeCalibrationDigest(runtime));alternate["runtime"]=runtime;
     require(command(CommandId::StartRecording,alternate)==CommandErrorCode::InvalidPayload,"paused Sky refuses alternate validly hashed coefficients");
     require(command(CommandId::StartRecording,remote)==CommandErrorCode::Ok,"resume preserves original parameters");
+    require(!lastAck.correlation_id.isEmpty() && lastAck.session_id == session,
+            "resume ACK carries the original active session");
     require(QJsonDocument::fromJson(read(lock)).object()==locked,"pause and resume preserve persistent lock identity");
     // Abrupt process loss, not a recorder destructor or a graceful Stop command.
     controller.close();sky.kill();require(sky.waitForFinished(5000),"killed SkyCore is reaped");
@@ -82,6 +102,10 @@ void exercise() {
     status={};launch();connect();require(waitFor([&]{return status.recording_state==2;},sky),"restarted Sky reports recovered pause");
     require(command(CommandId::StartRecording,remote)!=CommandErrorCode::Ok,"restart cannot silently bridge missing writer interval");
     require(command(CommandId::StopRecording)==CommandErrorCode::Ok&&!QFile::exists(lock),"explicit Stop clears recovered Sky lock");
+    require(!lastAck.correlation_id.isEmpty() && lastAck.session_id == session,
+            "stop ACK preserves the session identity from before stop");
+    require(command(CommandId::RequestStatus)==CommandErrorCode::Ok && lastAck.session_id.isEmpty(),
+            "operation after stop does not inherit the old session");
     require(ground.service->view().locked,"Sky Stop alone does not silently clear Ground lock");
     ground.service->finish();require(!ground.service->view().locked,"explicit Ground completion releases its lock");
     require(command(CommandId::StartRecording)!=CommandErrorCode::Ok,"new Session requires fresh parameters");

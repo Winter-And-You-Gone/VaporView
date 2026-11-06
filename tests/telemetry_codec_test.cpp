@@ -33,6 +33,8 @@ void testProtocolEnumValues()
     require(static_cast<quint8>(VaporView::MsgType::RtcmCorrectionData) == 0x0A, "MsgType RtcmCorrectionData value");
     require(static_cast<quint8>(VaporView::MsgType::Command) == 0x10, "MsgType Command value");
     require(static_cast<quint8>(VaporView::MsgType::CommandAck) == 0x11, "MsgType CommandAck value");
+    require(static_cast<quint8>(VaporView::MsgType::DeviceOperationResponseContext) == 0x13, "MsgType context response value");
+    require(static_cast<quint8>(VaporView::MsgType::SkyConfigApplyResultContext) == 0x14, "MsgType config result context value");
     require(static_cast<quint16>(VaporView::CommandId::StartRecording) == 1, "CommandId StartRecording value");
     require(static_cast<quint16>(VaporView::CommandId::RequestStatus) == 10, "CommandId RequestStatus value");
     require(static_cast<quint16>(VaporView::CommandId::RebootDevice) == 11, "CommandId RebootDevice value");
@@ -236,6 +238,33 @@ void testCommandAndDevicePayload()
     VaporView::SkyDeviceId id = VaporView::SkyDeviceId::All;
     require(VaporView::TelemetryCodec::parseDeviceCommand(parsed.payload, id), "parse device payload");
     require(id == VaporView::SkyDeviceId::Ai8TemperatureController, "AI-8 device id");
+    const QByteArray legacy = VaporView::TelemetryCodec::serializeCommand(command);
+    command.correlation_id = QStringLiteral("unique-operation-1");
+    command.session_id = QStringLiteral("active-session");
+    command.typed_response_context_requested = true;
+    command.config_result_context_requested = true;
+    command.config_ack_session_omission_supported = true;
+    command.extended_ack_context_requested = true;
+    command.extended_result_context_requested = true;
+    const QByteArray extended = VaporView::TelemetryCodec::serializeCommand(command);
+    require(extended.startsWith(legacy), "extension preserves legacy command prefix");
+    require(VaporView::TelemetryCodec::parseCommand(extended, parsed) &&
+            parsed.correlation_id == command.correlation_id && parsed.session_id == command.session_id &&
+            parsed.payload == command.payload && parsed.typed_response_context_requested && parsed.config_result_context_requested &&
+            parsed.config_ack_session_omission_supported && parsed.extended_ack_context_requested && parsed.extended_result_context_requested,
+            "command context round trips independently of device payload");
+    require(VaporView::TelemetryCodec::parseCommand(legacy, parsed) &&
+            parsed.correlation_id.isEmpty() && parsed.session_id.isEmpty() && !parsed.typed_response_context_requested &&
+            !parsed.config_result_context_requested && !parsed.config_ack_session_omission_supported && !parsed.extended_ack_context_requested &&
+            !parsed.extended_result_context_requested,
+            "legacy command clears reused context and capability");
+    command.typed_response_context_requested = false;
+    command.config_result_context_requested = false;
+    command.config_ack_session_omission_supported = false;
+    command.extended_ack_context_requested = false;
+    command.extended_result_context_requested = false;
+    require(VaporView::TelemetryCodec::parseCommand(VaporView::TelemetryCodec::serializeCommand(command), parsed) &&
+            !parsed.typed_response_context_requested, "older context extension does not imply capability");
 
     VaporView::CommandAck ack;
     ack.command_id = command.command_id;
@@ -245,6 +274,155 @@ void testCommandAndDevicePayload()
     VaporView::CommandAck parsedAck;
     require(VaporView::TelemetryCodec::parseCommandAck(VaporView::TelemetryCodec::serializeCommandAck(ack), parsedAck), "parse ack");
     require(parsedAck.error_code == VaporView::CommandErrorCode::DeviceConnectFailed, "ack error");
+    const QByteArray legacyAck = VaporView::TelemetryCodec::serializeCommandAck(ack);
+    ack.correlation_id = QStringLiteral("ack-operation");
+    ack.session_id = QStringLiteral("ack-session");
+    ack.typed_response_context_supported = true;
+    const QByteArray extendedAck = VaporView::TelemetryCodec::serializeCommandAck(ack);
+    require(extendedAck.startsWith(legacyAck), "ACK extension preserves legacy prefix");
+    require(VaporView::TelemetryCodec::parseCommandAck(extendedAck, parsedAck) &&
+            parsedAck.correlation_id == ack.correlation_id && parsedAck.session_id == ack.session_id &&
+            parsedAck.typed_response_context_supported,
+            "ACK context round trips");
+    require(VaporView::TelemetryCodec::parseCommandAck(legacyAck, parsedAck) &&
+            parsedAck.correlation_id.isEmpty() && parsedAck.session_id.isEmpty() && !parsedAck.typed_response_context_supported &&
+            !parsedAck.config_result_context_expected.has_value(),
+            "legacy ACK clears reused context and capability");
+    for (const bool expected : {false, true}) {
+        ack.config_result_context_expected = expected;
+        require(VaporView::TelemetryCodec::parseCommandAck(VaporView::TelemetryCodec::serializeCommandAck(ack), parsedAck) &&
+                parsedAck.config_result_context_expected.has_value() && *parsedAck.config_result_context_expected == expected,
+                "ACK config result expectation round trips");
+    }
+    ack.config_result_context_expected.reset();
+    ack.typed_response_context_supported = false;
+    require(VaporView::TelemetryCodec::parseCommandAck(VaporView::TelemetryCodec::serializeCommandAck(ack), parsedAck) &&
+            !parsedAck.typed_response_context_supported, "older ACK extension does not imply capability");
+    ack.session_id = QString(1300, QLatin1Char('s'));
+    require(VaporView::TelemetryCodec::parseCommandAck(VaporView::TelemetryCodec::serializeCommandAck(ack), parsedAck) &&
+            parsedAck.correlation_id.isEmpty() && !parsedAck.session_id_omitted,
+            "unnegotiated oversized ACK stays legacy compatible");
+    ack.allow_session_id_omission = true;
+    require(VaporView::TelemetryCodec::parseCommandAck(VaporView::TelemetryCodec::serializeCommandAck(ack), parsedAck) &&
+            parsedAck.correlation_id == ack.correlation_id && parsedAck.session_id.isEmpty() && parsedAck.session_id_omitted,
+            "negotiated oversized ACK preserves identity and explicitly omits session");
+    const QByteArray forwardedAck = VaporView::TelemetryCodec::serializeCommandAck(parsedAck);
+    require(VaporView::TelemetryCodec::parseCommandAck(forwardedAck, parsedAck) && parsedAck.session_id_omitted &&
+            parsedAck.correlation_id == ack.correlation_id, "re-encoding preserves the omission marker");
+    require(VaporView::TelemetryCodec::parseCommandAck(legacyAck, parsedAck) && !parsedAck.session_id_omitted,
+            "legacy ACK clears omission marker");
+
+    ack.extended_ack_context_allowed = true;
+    ack.session_id = QString(1500, QChar(0x4e2d)) + QString(200, QChar(1));
+    const QByteArray longAck = VaporView::TelemetryCodec::serializeCommandAck(ack);
+    require(longAck.size() > 1028 && VaporView::TelemetryCodec::parseCommandAck(longAck, parsedAck) &&
+            parsedAck.extended_ack_context && parsedAck.correlation_id == ack.correlation_id &&
+            parsedAck.session_id == ack.session_id && !parsedAck.session_id_omitted,
+            "negotiated extended ACK preserves escaped and multibyte session");
+    const auto reencodedLongAck = VaporView::TelemetryCodec::serializeCommandAck(parsedAck);
+    require(VaporView::TelemetryCodec::parseCommandAck(reencodedLongAck, parsedAck) &&
+            parsedAck.extended_ack_context && parsedAck.session_id == ack.session_id,
+            "re-encoding extended ACK preserves its context");
+    QByteArray invalidMarker = longAck;
+    invalidMarker.replace("\"ack_context_version\":2", "\"ack_context_version\":1");
+    require(!VaporView::TelemetryCodec::parseCommandAck(invalidMarker, parsedAck),
+            "oversized metadata requires version marker");
+    QByteArray invalidJson = longAck;
+    invalidJson[14] = '?';
+    require(!VaporView::TelemetryCodec::parseCommandAck(invalidJson, parsedAck),
+            "oversized invalid JSON cannot fall back to legacy ACK");
+    QJsonObject extendedMetadata{{QStringLiteral("ack_context_version"), 2},
+                                 {QStringLiteral("correlation_id"), ack.correlation_id},
+                                 {QStringLiteral("padding"), QString(1100, QLatin1Char('p'))}};
+    const auto encodeMetadata = [&legacyAck](const QJsonObject& value) {
+        return legacyAck + QByteArrayLiteral("VLC1") + QJsonDocument(value).toJson(QJsonDocument::Compact);
+    };
+    require(!VaporView::TelemetryCodec::parseCommandAck(encodeMetadata(extendedMetadata), parsedAck),
+            "extended ACK rejects missing session without omission marker");
+    extendedMetadata.insert(QStringLiteral("session_id"), 42);
+    require(!VaporView::TelemetryCodec::parseCommandAck(encodeMetadata(extendedMetadata), parsedAck),
+            "extended ACK rejects non-string session");
+    extendedMetadata.insert(QStringLiteral("session_id"), QString());
+    require(VaporView::TelemetryCodec::parseCommandAck(encodeMetadata(extendedMetadata), parsedAck) &&
+            parsedAck.extended_ack_context && parsedAck.session_id.isEmpty(),
+            "extended ACK accepts an explicitly empty session");
+    extendedMetadata.insert(QStringLiteral("session_id_omitted"), true);
+    require(!VaporView::TelemetryCodec::parseCommandAck(encodeMetadata(extendedMetadata), parsedAck),
+            "extended ACK rejects contradictory session omission");
+    extendedMetadata.remove(QStringLiteral("session_id"));
+    require(VaporView::TelemetryCodec::parseCommandAck(encodeMetadata(extendedMetadata), parsedAck) &&
+            parsedAck.session_id_omitted, "extended ACK accepts explicit omission");
+    extendedMetadata.insert(QStringLiteral("session_id_omitted"), QStringLiteral("true"));
+    require(!VaporView::TelemetryCodec::parseCommandAck(encodeMetadata(extendedMetadata), parsedAck),
+            "extended ACK rejects non-boolean omission");
+    extendedMetadata.insert(QStringLiteral("session_id_omitted"), true);
+    extendedMetadata.insert(QStringLiteral("correlation_id"), 12);
+    require(!VaporView::TelemetryCodec::parseCommandAck(encodeMetadata(extendedMetadata), parsedAck),
+            "extended ACK rejects non-string correlation ID");
+    const QByteArray oversizedExtension = legacyAck + QByteArrayLiteral("VLC1") + QByteArray(256 * 1024 + 1, 'x');
+    require(!VaporView::TelemetryCodec::parseCommandAck(oversizedExtension, parsedAck),
+            "oversized metadata is rejected before parsing");
+    require(VaporView::TelemetryCodec::parseCommandAck(legacyAck + QByteArray(1100, 'x'), parsedAck) &&
+            parsedAck.correlation_id.isEmpty(), "non-VLC1 trailing bytes retain legacy behavior");
+    require(VaporView::TelemetryCodec::parseCommandAck(legacyAck, parsedAck) && !parsedAck.extended_ack_context,
+            "legacy ACK clears reused extended marker");
+    ack.session_id = QString(256 * 1024, QLatin1Char('s'));
+    require(VaporView::TelemetryCodec::parseCommandAck(VaporView::TelemetryCodec::serializeCommandAck(ack), parsedAck) &&
+            !parsedAck.extended_ack_context && parsedAck.session_id_omitted,
+            "oversized extended ACK falls back to negotiated omission");
+
+    command.correlation_id = QStringLiteral("bounded-request");
+    command.extended_ack_context_requested = true;
+    bool strippedExtendedCapability = false;
+    for (int length = 900; length < 1024 && !strippedExtendedCapability; ++length) {
+        command.session_id = QString(length, QLatin1Char('s'));
+        require(VaporView::TelemetryCodec::parseCommand(VaporView::TelemetryCodec::serializeCommand(command), parsed),
+                "parse bounded request");
+        strippedExtendedCapability = !parsed.correlation_id.isEmpty() && !parsed.extended_ack_context_requested;
+    }
+    require(strippedExtendedCapability, "oversized capability is removed before existing request metadata");
+}
+
+void testSkyConfigApplyResultContext()
+{
+    using VaporView::TelemetryCodec;
+    const QJsonObject original{{QStringLiteral("correlation_id"), QStringLiteral("business-id")},
+                               {QStringLiteral("session_id"), QStringLiteral("business-session")},
+                               {QStringLiteral("command_seq"), 27}, {QStringLiteral("version"), 5},
+                               {QStringLiteral("result"), QJsonObject{{QStringLiteral("nested"), true}}}};
+    const QString expectedCorrelation(256, QLatin1Char('c'));
+    const QString expectedSession(4096, QLatin1Char('s'));
+    const QByteArray encoded = TelemetryCodec::serializeSkyConfigApplyResultContext(original, expectedCorrelation, expectedSession, 65535);
+    QJsonObject decoded; QString correlation, session; quint16 sequence = 0;
+    require(!encoded.isEmpty() && TelemetryCodec::parseSkyConfigApplyResultContext(encoded, decoded, correlation, session, sequence) &&
+            decoded == original && correlation == expectedCorrelation && session == expectedSession && sequence == 65535,
+            "config context preserves metadata bounds and all same-named business fields");
+    require(TelemetryCodec::serializeSkyConfigApplyResultContext(original, {}, {}, 0).isEmpty(), "config context rejects empty ID");
+    require(TelemetryCodec::serializeSkyConfigApplyResultContext(original, QString(257, QLatin1Char('c')), {}, 0).isEmpty(), "config context rejects long ID");
+    require(TelemetryCodec::serializeSkyConfigApplyResultContext(original, QStringLiteral("id"), QString(4097, QLatin1Char('s')), 0).isEmpty(), "config context rejects long session");
+    for (int length : {4096, 4097, 65535, 65536}) {
+        const QString value(length, QLatin1Char('s'));
+        bool version2 = false;
+        const auto wire = TelemetryCodec::serializeSkyConfigApplyResultContext(original, QStringLiteral("id"), value, 7, true);
+        require(!wire.isEmpty() && TelemetryCodec::parseSkyConfigApplyResultContext(wire, decoded, correlation, session, sequence, &version2) &&
+                version2 == (length > 4096) && session == value && sequence == 7,
+                "config v2 boundary round trip");
+    }
+    const QString unicodeSession = QString(2000, QChar(0x4e2d)) + QString(20, QChar(1));
+    bool configExtended = false;
+    const auto unicodeConfig = TelemetryCodec::serializeSkyConfigApplyResultContext(original, QStringLiteral("id"), unicodeSession, 4, true);
+    require(TelemetryCodec::parseSkyConfigApplyResultContext(unicodeConfig, decoded, correlation, session, sequence, &configExtended) &&
+            configExtended && session == unicodeSession, "config v2 retains unicode and escaped session");
+    require(TelemetryCodec::serializeSkyConfigApplyResultContext(original, QStringLiteral("id"), QString(256 * 1024 + 1, QLatin1Char('s')), 0, true).isEmpty(),
+            "config v2 session limit");
+    require(TelemetryCodec::serializeSkyConfigApplyResultContext({{QStringLiteral("x"), QString(512 * 1024, QLatin1Char('x'))}}, QStringLiteral("id"), {}, 0).isEmpty(), "config context rejects oversized result");
+    for (const QByteArray& invalid : {QByteArray(), QByteArray("{}"), QByteArray("[]"), QByteArray("{broken"), QByteArray(512 * 1024 + 1, ' '),
+            QByteArray(R"({"version":2,"command_seq":1,"correlation_id":"id","session_id":"","result":{}})"),
+            QByteArray(R"({"version":1,"command_seq":1.5,"correlation_id":"id","session_id":"","result":{}})"),
+            QByteArray(R"({"version":1,"command_seq":65536,"correlation_id":"id","session_id":"","result":{}})"),
+            QByteArray(R"({"version":1,"command_seq":1,"correlation_id":"","session_id":"","result":{}})"),
+            QByteArray(R"({"version":1,"command_seq":1,"correlation_id":"id","session_id":"","result":[]})")})
+        require(!TelemetryCodec::parseSkyConfigApplyResultContext(invalid, decoded, correlation, session, sequence), "config context rejects malformed envelope");
 }
 
 void testWaveform()
@@ -825,6 +1003,62 @@ void testAi8DeviceOperation()
                 parsedResponse.error_message == response.error_message &&
                 parsedResponse.payload == response.payload,
             "DeviceOperation response round-trip");
+    response.correlation_id = QStringLiteral("operation-uuid");
+    response.session_id = QStringLiteral("session-path");
+    const QByteArray contextPayload = TelemetryCodec::serializeDeviceOperationResponseContext(response);
+    require(!contextPayload.isEmpty() && TelemetryCodec::parseDeviceOperationResponseContext(contextPayload, parsedResponse) &&
+            parsedResponse.request_id == response.request_id && parsedResponse.device_id == response.device_id &&
+            parsedResponse.operation == response.operation && parsedResponse.error_code == response.error_code &&
+            parsedResponse.error_message == response.error_message && parsedResponse.payload == response.payload &&
+            parsedResponse.correlation_id == response.correlation_id && parsedResponse.session_id == response.session_id,
+            "context response preserves legacy result and both identifiers");
+    require(!TelemetryCodec::parseDeviceOperationResponse(contextPayload, parsedResponse),
+            "legacy typed parser cannot mistake envelope for a legacy response");
+    for (int length : {4096, 4097, 65535, 65536}) {
+        response.session_id = QString(length, QLatin1Char('s'));
+        bool version2 = false;
+        const auto wire = TelemetryCodec::serializeDeviceOperationResponseContext(response, true);
+        require(!wire.isEmpty() && TelemetryCodec::parseDeviceOperationResponseContext(wire, parsedResponse, &version2) &&
+                version2 == (length > 4096) && parsedResponse.session_id == response.session_id,
+                "typed v2 boundary round trip");
+        require(!TelemetryCodec::parseDeviceOperationResponseContext(wire.chopped(1), parsedResponse), "typed v2 rejects truncation");
+    }
+    response.session_id = QString(2000, QChar(0x4e2d)) + QString(20, QChar(1));
+    bool typedExtended = false;
+    const auto unicodeTyped = TelemetryCodec::serializeDeviceOperationResponseContext(response, true);
+    require(TelemetryCodec::parseDeviceOperationResponseContext(unicodeTyped, parsedResponse, &typedExtended) &&
+            typedExtended && parsedResponse.session_id == response.session_id, "typed v2 retains unicode session");
+    require(TelemetryCodec::serializeDeviceOperationResponseContext(response).isEmpty(), "legacy typed context rejects long session");
+    response.session_id = QStringLiteral("session-path");
+    require(TelemetryCodec::parseDeviceOperationResponseContext(contextPayload, parsedResponse), "restore typed context fixture");
+    require(!TelemetryCodec::parseDeviceOperationResponseContext(contextPayload.chopped(1), parsedResponse) &&
+            !TelemetryCodec::parseDeviceOperationResponseContext(contextPayload + 'x', parsedResponse),
+            "context response rejects truncation and trailing bytes");
+    QByteArray badMagic = contextPayload; badMagic[0] = 'X';
+    require(!TelemetryCodec::parseDeviceOperationResponseContext(badMagic, parsedResponse), "context response rejects bad magic");
+    QByteArray zeroCorrelation = contextPayload; zeroCorrelation[8] = 0; zeroCorrelation[9] = 0;
+    require(!TelemetryCodec::parseDeviceOperationResponseContext(zeroCorrelation, parsedResponse), "context response rejects empty correlation");
+    QByteArray excessiveCorrelation = contextPayload; excessiveCorrelation[8] = 1; excessiveCorrelation[9] = 1;
+    require(!TelemetryCodec::parseDeviceOperationResponseContext(excessiveCorrelation, parsedResponse), "context response rejects oversized correlation length");
+    QByteArray excessiveSession = contextPayload; excessiveSession[10] = 1; excessiveSession[11] = 16;
+    require(!TelemetryCodec::parseDeviceOperationResponseContext(excessiveSession, parsedResponse), "context response rejects oversized session length");
+    QByteArray badLegacy = contextPayload; badLegacy[17] = char(99);
+    require(!TelemetryCodec::parseDeviceOperationResponseContext(badLegacy, parsedResponse), "context response validates enclosed typed payload");
+    require(!TelemetryCodec::parseDeviceOperationResponseContext(QByteArray(TelemetryCodec::kDefaultMaxPayloadSize + 1, 'x'), parsedResponse),
+            "context decoder rejects oversized frames");
+    QByteArray badUtf8 = contextPayload;
+    badUtf8[badUtf8.size() - response.session_id.toUtf8().size() - response.correlation_id.toUtf8().size()] = char(0xff);
+    require(!TelemetryCodec::parseDeviceOperationResponseContext(badUtf8, parsedResponse), "context response rejects invalid UTF-8");
+    require(parsedResponse.correlation_id == response.correlation_id && parsedResponse.session_id == response.session_id,
+            "rejected context payload leaves output untouched");
+    response.correlation_id.clear();
+    require(TelemetryCodec::serializeDeviceOperationResponseContext(response).isEmpty(), "context response requires correlation");
+    response.correlation_id = QString(257, QLatin1Char('x'));
+    require(TelemetryCodec::serializeDeviceOperationResponseContext(response).isEmpty(), "context correlation is bounded");
+    response.correlation_id = QStringLiteral("id"); response.session_id = QString(4097, QLatin1Char('x'));
+    require(TelemetryCodec::serializeDeviceOperationResponseContext(response).isEmpty(), "context session is bounded");
+    response.session_id.clear(); response.payload = QByteArray(TelemetryCodec::kDefaultMaxPayloadSize, 'x');
+    require(TelemetryCodec::serializeDeviceOperationResponseContext(response).isEmpty(), "context envelope is frame bounded");
 }
 
 void testEpsilonDeviceOperationPayloads()
@@ -1031,6 +1265,7 @@ int main(int argc, char **argv)
     testFrameRoundTrip();
     testCrcError();
     testCommandAndDevicePayload();
+    testSkyConfigApplyResultContext();
     testWaveform();
     testAi8TemperatureControllerStatus();
     testSkyConfigDiff();

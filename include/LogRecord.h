@@ -14,6 +14,7 @@ namespace LogRecordLimits
 {
 constexpr qsizetype kMaxMessageUtf8Bytes = 64 * 1024;
 constexpr qsizetype kMaxSingleStringUtf8Bytes = 64 * 1024;
+constexpr qsizetype kMaxSessionIdUtf8Bytes = 128 * 1024;
 constexpr qsizetype kMaxByteArrayBytes = 64 * 1024;
 constexpr qsizetype kMaxFieldsJsonBytes = 192 * 1024;
 constexpr qsizetype kMaxSerializedRecordBytes = 256 * 1024;
@@ -36,6 +37,13 @@ LogLevel logLevelFromName(const QString& name);
 
 struct LogRecord
 {
+    struct SourceLocation
+    {
+        QString file;
+        QString function;
+        int line = 0;
+        bool isEmpty() const { return file.isEmpty() && function.isEmpty() && line <= 0; }
+    };
     int schema_version = 1;
     QString timestamp_utc;
     quint64 timestamp_us = 0;
@@ -49,6 +57,7 @@ struct LogRecord
     QString session_id;
     QString message;
     QVariantMap fields;
+    SourceLocation source_location;
 
     QJsonObject toJsonObject() const;
     QByteArray toJsonLine() const;

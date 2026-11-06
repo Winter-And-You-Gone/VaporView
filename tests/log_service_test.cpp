@@ -37,6 +37,8 @@ struct UnsupportedLogValue
 
 Q_DECLARE_METATYPE(UnsupportedLogValue)
 
+VaporView::LogRecord publishFromOtherFile(VaporView::LogService& service, int& expectedLine);
+
 namespace
 {
 void require(bool condition, const char *message)
@@ -166,6 +168,63 @@ int main(int argc, char **argv)
     require(parsed.level == VaporView::LogLevel::Warning, "log level round trip");
     require(parsed.message == source.message, "log message round trip");
     require(parsed.fields.value(QStringLiteral("dropped_count")).toInt() == 3, "log fields round trip");
+
+    {
+        // Synthetic Windows-shaped path: valid component lengths and less than 32767 UTF-16 units.
+        QString session = QStringLiteral("C:/");
+        for (int i = 0; i < 130; ++i) session += QString(240, QChar(0x4e2d)) + QLatin1Char('/');
+        session += QStringLiteral("session");
+        require(session.size() < 32767 && session.toUtf8().size() > 64 * 1024,
+                "long session fixture spans the previous string limit");
+        QTemporaryDir logDir;
+        require(logDir.isValid(), "long session log directory");
+        VaporView::LogRecord emitted;
+        VaporView::LogService service(QStringLiteral("LongSessionTest"), nullptr, logDir.path(), logDir.path());
+        QObject::connect(&service, &VaporView::LogService::recordPublished, &app,
+                         [&](const VaporView::LogRecord& record) { emitted = record; }, Qt::DirectConnection);
+        QVariantMap fields;
+        for (int i = 0; i < 8; ++i)
+            fields.insert(QStringLiteral("large_%1").arg(i), QString(64000, QLatin1Char('x')));
+        const QString id = QStringLiteral("long-session-correlation");
+        const auto bounded = service.publish(VaporView::LogLevel::Critical, QStringLiteral("SkyCore"),
+                                             QStringLiteral("long.session"), QStringLiteral("failure"),
+                                             fields, id, session);
+        require(bounded.session_id == session && emitted.session_id == session && bounded.correlation_id == id,
+                "publish and signal preserve full long session and correlation under field pressure");
+        const QJsonObject record = parseJsonLine(bounded.toJsonLine());
+        require(record.value(QStringLiteral("session_id")).toString() == session,
+                "bounded JSONL preserves full long session");
+        VaporView::LogRecord ipc;
+        require(VaporView::TelemetryCodec::parseLogRecord(VaporView::TelemetryCodec::serializeLogRecord(bounded), ipc) &&
+                    ipc.session_id == session && ipc.correlation_id == id,
+                "IPC log serialization preserves the long session");
+        bool found = false;
+        for (const auto& line : readJsonLines(service.logFilePath()))
+            if (line.value(QStringLiteral("category")) == QStringLiteral("long.session")) {
+                require(line.value(QStringLiteral("session_id")).toString() == session,
+                        "written JSONL retains full long session");
+                found = true;
+            }
+        require(found, "long session JSONL record was written");
+
+        VaporView::LogRecord extreme = source;
+        extreme.correlation_id = id;
+        extreme.session_id = QString(VaporView::LogRecordLimits::kMaxSessionIdUtf8Bytes * 2, QChar(1));
+        const QJsonObject extremeJson = parseJsonLine(extreme.toJsonLine());
+        require(extremeJson.value(QStringLiteral("correlation_id")).toString() == id &&
+                    extremeJson.value(QStringLiteral("session_id")).toString().endsWith(QStringLiteral("...<truncated>")) &&
+                    extremeJson.value(QStringLiteral("fields")).toObject().value(QStringLiteral("_log_truncated")).toBool(),
+                "extreme escaped session is bounded and explicitly marked without losing correlation");
+    }
+
+    require(VaporView::TelemetryCodec::parseLogRecord(QByteArrayLiteral("{\"message\":\"legacy\"}"), parsed),
+            "legacy record without fields decodes into a reused output");
+    require(parsed.message == QStringLiteral("legacy") && parsed.fields.isEmpty(),
+            "missing fields do not inherit the previous record's fields");
+    parsed.fields.insert(QStringLiteral("event"), QStringLiteral("previous_event"));
+    require(VaporView::TelemetryCodec::parseLogRecord(QByteArrayLiteral("{\"message\":\"legacy\",\"fields\":null}"), parsed),
+            "record with non-object fields decodes into a reused output");
+    require(parsed.fields.isEmpty(), "non-object fields do not inherit the previous record's fields");
 
     // ExplicitLogLevelIsIndependentOfMessageText: the same failure wording may
     // be intentionally emitted at different levels by different call sites.
@@ -428,6 +487,31 @@ int main(int argc, char **argv)
                 "whole-record size reason is machine-readable");
     }
 
+    // Oversized origin metadata must not erase normal operation identifiers.
+    for (const QChar character : {QChar('x'), QChar(1)})
+    {
+        VaporView::LogRecord record = source;
+        record.source = QString(64 * 1024, character);
+        record.category = QString(64 * 1024, character);
+        record.source_location.file = QString(64 * 1024, character);
+        record.source_location.function = QString(64 * 1024, character);
+        record.source_location.line = 42;
+        record.message = QStringLiteral("device operation failed");
+        record.correlation_id = QStringLiteral("3a9d8906-dadd-4be1-95f9-9a6a426ad5b5");
+        record.session_id = QStringLiteral("C:/sessions/session_2026-11-05");
+        const QByteArray line = record.toJsonLine();
+        require(line.size() <= VaporView::LogRecordLimits::kMaxSerializedRecordBytes,
+                "oversized origin metadata respects the serialized record limit");
+        const QJsonObject object = parseJsonLine(line);
+        require(object.value(QStringLiteral("correlation_id")).toString() == record.correlation_id,
+                "oversized origin metadata preserves correlation id");
+        require(object.value(QStringLiteral("session_id")).toString() == record.session_id,
+                "oversized origin metadata preserves session id");
+        require(object.value(QStringLiteral("fields")).toObject()
+                    .value(QStringLiteral("_log_truncated")).toBool(),
+                "oversized origin metadata reports truncation");
+    }
+
     using VaporView::LoggingInternal::LogRecordQueue;
     using VaporView::LoggingInternal::QueueEnqueueAction;
 
@@ -543,6 +627,41 @@ int main(int argc, char **argv)
 
     {
         VaporView::LogService service(QStringLiteral("VaporViewTest"), &app, directory.path());
+        const int expectedLine = __LINE__ + 1;
+        const auto located = service.publish(VaporView::LogLevel::Info, QStringLiteral("Test"), QStringLiteral("location"), QStringLiteral("located"), {{QStringLiteral("event"), QStringLiteral("unchanged")}});
+        require(located.fields.value(QStringLiteral("file")).toString().endsWith(QStringLiteral("log_service_test.cpp")), "publish captures calling file");
+        require(located.fields.value(QStringLiteral("function")).toString().contains(QStringLiteral("main")), "publish captures calling function");
+        require(located.fields.value(QStringLiteral("line")).toInt() == expectedLine, "publish captures calling line");
+        require(located.source_location.line == expectedLine, "canonical location captures calling line");
+        require(located.fields.value(QStringLiteral("event")).toString() == QStringLiteral("unchanged"), "publish preserves business fields");
+        int otherLine = 0;
+        const auto other = publishFromOtherFile(service, otherLine);
+        require(other.fields.value(QStringLiteral("file")).toString().endsWith(QStringLiteral("log_location_other.cpp")), "publish captures another source file");
+        require(other.fields.value(QStringLiteral("line")).toInt() == otherLine, "publish captures another source line");
+        const auto preserved = service.publish(VaporView::LogLevel::Info, QStringLiteral("Test"), QStringLiteral("location"), QStringLiteral("preserved"), {{QStringLiteral("file"), QStringLiteral("business-value")}});
+        require(preserved.fields.value(QStringLiteral("file")).toString() == QStringLiteral("business-value"), "location does not overwrite business fields");
+        for (const QString& key : {QStringLiteral("file"), QStringLiteral("function"), QStringLiteral("line")})
+        {
+            const int callLine = __LINE__ + 1;
+            const auto collision = service.publish(VaporView::LogLevel::Info, QStringLiteral("Test"), QStringLiteral("location"), QStringLiteral("collision"), {{key, QStringLiteral("business-value")}});
+            require(collision.fields.value(key).toString() == QStringLiteral("business-value"), "individual business location field survives");
+            const auto origin = collision.source_location;
+            require(origin.file.endsWith(QStringLiteral("log_service_test.cpp")) && origin.function.contains(QStringLiteral("main")) && origin.line == callLine, "location remains complete with individual collision");
+        }
+        const int collisionLine = __LINE__ + 1;
+        const auto collision = service.publish(VaporView::LogLevel::Info, QStringLiteral("Test"), QStringLiteral("location"), QStringLiteral("all-collision"), {{QStringLiteral("file"), QStringLiteral("device_config.json")}, {QStringLiteral("function"), QStringLiteral("business-function")}, {QStringLiteral("line"), 42}, {QStringLiteral("source_location"), QStringLiteral("business-location")}});
+        require(collision.fields.value(QStringLiteral("file")).toString() == QStringLiteral("device_config.json") && collision.fields.value(QStringLiteral("function")).toString() == QStringLiteral("business-function") && collision.fields.value(QStringLiteral("line")).toInt() == 42 && collision.fields.value(QStringLiteral("source_location")).toString() == QStringLiteral("business-location"), "all colliding business fields survive");
+        const auto collisionOrigin = collision.source_location;
+        require(collisionOrigin.file.endsWith(QStringLiteral("log_service_test.cpp")) && collisionOrigin.function.contains(QStringLiteral("main")) && collisionOrigin.line == collisionLine, "collision retains true source location");
+        const auto serializedOrigin = collision.toJsonObject().value(QStringLiteral("source_location")).toObject();
+        require(serializedOrigin.value(QStringLiteral("line")).toInt() == collisionLine, "source location survives JSON serialization");
+        VaporView::LogRecord forwarded;
+        require(VaporView::TelemetryCodec::parseLogRecord(VaporView::TelemetryCodec::serializeLogRecord(collision), forwarded), "source location IPC decodes");
+        require(forwarded.source_location.line == collisionLine && forwarded.source_location.file == collisionOrigin.file && forwarded.fields.value(QStringLiteral("source_location")).toString() == QStringLiteral("business-location"), "IPC preserves both source location and business collision");
+        const QVariantMap pretendLocation{{QStringLiteral("_vaporview_source_location"), true}, {QStringLiteral("line"), 999}};
+        const int pretenderLine = __LINE__ + 1;
+        const auto pretender = service.publish(VaporView::LogLevel::Info, QStringLiteral("Test"), QStringLiteral("location"), QStringLiteral("pretender"), {{QStringLiteral("source_location"), pretendLocation}});
+        require(pretender.fields.value(QStringLiteral("source_location")).toMap() == pretendLocation && pretender.source_location.line == pretenderLine, "business object cannot impersonate source metadata");
         const VaporView::LogRecord first = service.publish(VaporView::LogLevel::Info,
                                                             QStringLiteral("Test"),
                                                             QStringLiteral("sequence"),
@@ -554,6 +673,18 @@ int main(int argc, char **argv)
         require(second.sequence > first.sequence, "sequence is monotonic");
         service.publish(source);
         service.installQtMessageHandler();
+        VaporView::LogRecord qtRecord;
+        const auto qtConnection = QObject::connect(&service, &VaporView::LogService::recordPublished, &service,
+                         [&qtRecord](const VaporView::LogRecord& record) {
+                             if (record.message == QStringLiteral("qt location test")) qtRecord = record;
+                         }, Qt::DirectConnection);
+        const int qtLine = __LINE__ + 1;
+        QMessageLogger(__FILE__, qtLine, Q_FUNC_INFO).warning("qt location test");
+        require(qtRecord.fields.value(QStringLiteral("file")).toString().endsWith(QStringLiteral("log_service_test.cpp")), "Qt message keeps original file");
+        require(qtRecord.fields.value(QStringLiteral("line")).toInt() == qtLine, "Qt message keeps original line");
+        require(qtRecord.fields.value(QStringLiteral("function")).toString().contains(QStringLiteral("main")), "Qt message keeps original function");
+        require(qtRecord.source_location.line == qtLine, "Qt canonical source location is original call site");
+        QObject::disconnect(qtConnection);
         qWarning("qt handler test message");
         require(waitForFile(service.logFilePath()), "JSONL file is written");
 
@@ -1007,12 +1138,15 @@ int main(int argc, char **argv)
             workers.emplace_back([&service, threadIndex]() {
                 for (int recordIndex = 0; recordIndex < kRecordsPerThread; ++recordIndex)
                 {
-                    service.publish(VaporView::LogLevel::Info,
+                    const int callLine = __LINE__ + 1;
+                    const auto result = service.publish(VaporView::LogLevel::Info,
                                     QStringLiteral("ConcurrentTest"),
                                     QStringLiteral("concurrent.publish"),
                                     QStringLiteral("thread-%1-record-%2")
                                         .arg(threadIndex)
                                         .arg(recordIndex));
+                    require(result.fields.value(QStringLiteral("line")).toInt() == callLine, "concurrent publish keeps caller location");
+                    require(result.source_location.line == callLine, "concurrent canonical locations stay isolated");
                 }
             });
         }

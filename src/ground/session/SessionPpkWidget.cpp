@@ -24,6 +24,7 @@
 #include <QStandardItemModel>
 #include <QSpinBox>
 #include <QVBoxLayout>
+#include <QUuid>
 #include <QtConcurrent/QtConcurrentRun>
 
 namespace VaporView::Ground::SessionUi
@@ -442,9 +443,10 @@ void SessionPpkWidget::run()
     cancel_flag_ = std::make_shared<std::atomic_bool>(false);
     auto cancel = cancel_flag_;
     const QString session = session_;
+    const QString correlationId = QUuid::createUuid().toString(QUuid::WithoutBraces);
     const QPointer<SessionPpkWidget> self(this);
     startWork(
-        [session, config, cancel, self]
+        [session, config, cancel, self, correlationId]
         {
             return PpkProcessor::process(session, config, cancel.get(),
                                          [self](int percent, const QString &message)
@@ -461,7 +463,7 @@ void SessionPpkWidget::run()
                                                          }
                                                      },
                                                      Qt::QueuedConnection);
-                                         });
+                                         }, correlationId);
         },
         true);
 }

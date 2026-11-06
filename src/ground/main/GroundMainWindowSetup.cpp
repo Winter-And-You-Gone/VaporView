@@ -2438,6 +2438,11 @@ void MainWindow::setupCentralWidget()
     state_->main_page_stack_->addWidget(state_->temperature_page_);
 
     state_->rtk_config_dialog_ = new RtkConfigDialog(state_->main_page_stack_, true);
+    state_->rtk_config_dialog_->setRecordingSessionProvider([this] {
+        if (isRemoteSkyMode() || isUiTestMode() || !state_->recording_service_) return QString();
+        const auto status = state_->recording_service_->status();
+        return status.sessionOpen ? status.sessionDirectory : QString();
+    });
     state_->rtk_config_dialog_->setAttribute(Qt::WA_QuitOnClose, false);
     auto *rtkScrollArea =
         state_->rtk_config_dialog_->findChild<QScrollArea *>(QStringLiteral("rtkConfigScrollArea"));
