@@ -1,7 +1,6 @@
 #include "test_settings_sandbox.h"
 #include "ground/main/MainWindow.h"
 #include "ground/motion/MotionControlPage.h"
-#include "ground/session/GroundRecordingService.h"
 #include "shared/config/SettingsWriteBarrier.h"
 #include <QApplication>
 #include <QCheckBox>
@@ -18,6 +17,8 @@
 #include <QStackedWidget>
 #include <QSpinBox>
 #include <QThread>
+#include <QTemporaryDir>
+#include <QSettings>
 #include <QVBoxLayout>
 #include <atomic>
 #include <functional>
@@ -76,9 +77,23 @@ int main(int argc, char **argv)
     QApplication app(argc, argv); check(argc == 2, "fake SDK directory supplied");
     previousMessageHandler = qInstallMessageHandler(captureTitleBarSizeWarnings);
     qputenv("VAPORVIEW_EMFWC3_SDK_DIR", QByteArray(argv[1]));
-    const auto directory = VaporView::Ground::Session::GroundRecordingService::defaultRecordingDirectory();
-    const bool existed = QFileInfo::exists(directory);
-    const auto cleanup = qScopeGuard([&] { if (!existed) check(QDir().rmdir(directory), "remove empty test data directory"); });
+    // Own the directory: this motion-only test never starts a recording and must
+    // not depend on, or remove, the repository's shared default data directory.
+    QTemporaryDir recordingDirectory;
+    check(recordingDirectory.isValid(), "create isolated test recording directory");
+    {
+        QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+        settings.setValue(QStringLiteral("recording_directory"), recordingDirectory.path());
+    }
+    const auto cleanup = qScopeGuard([&] {
+        // rmdir deliberately rejects unexpected files and unreleased handles.
+        const bool removed = QDir().rmdir(recordingDirectory.path());
+        if (!removed)
+            std::cerr << "Recording directory cleanup failed: "
+                      << recordingDirectory.path().toStdString() << '\n';
+        check(removed, "remove empty test data directory");
+        check(!QFileInfo::exists(recordingDirectory.path()), "test recording directory is removed");
+    });
     QLibrary fake(QString::fromLocal8Bit(argv[1]) + QStringLiteral("/LB_Control_Library_x64")); check(fake.load(), qPrintable(fake.errorString()));
     const auto reset = reinterpret_cast<void(*)()>(fake.resolve("testReset"));
     const auto motions = reinterpret_cast<int(*)()>(fake.resolve("testMotionCount")); check(reset && motions, "test SDK symbols exist"); reset();

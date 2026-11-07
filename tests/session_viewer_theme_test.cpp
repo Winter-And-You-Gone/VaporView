@@ -2192,12 +2192,26 @@ void testTrajectoryViewerUsesSidebarLayout()
 
     auto *filterScroll = dialog.findChild<QScrollArea *>(QStringLiteral("trajectoryFilterScroll"));
     require(filterScroll, "filter list has its own scroll area");
+    auto waitForFilterLayout = [&](int expectedRows) {
+        // A slow paint/event handler can consume a timed event pump before the
+        // LayoutRequest posted by setFixedHeight reaches the card's parent.
+        const bool settled = processEventsUntil(2000, [&] {
+            return visibleFilterRows().size() == expectedRows
+                && filterCard->height() == filterCard->sizeHint().height()
+                && (expectedRows <= 3 || filterScroll->verticalScrollBar()->maximum() > 0);
+        });
+        if (!settled)
+            std::cerr << "Filter layout did not settle: rows=" << visibleFilterRows().size()
+                      << " card=" << filterCard->height()
+                      << " expected=" << filterCard->sizeHint().height() << '\n';
+        require(settled, "filter card receives its pending layout update");
+    };
     filterCurrentButton->click();
-    processEventsFor(50);
+    waitForFilterLayout(3);
     const int threeRowHeight = filterCard->height();
     filterCurrentButton->click();
     filterCurrentButton->click();
-    processEventsFor(100);
+    waitForFilterLayout(5);
     require(filterCard->height() == threeRowHeight, "filter card stops growing after three rows");
     require(filterScroll->verticalScrollBar()->maximum() > 0, "additional filters scroll inside their card");
     filterScroll->verticalScrollBar()->setValue(filterScroll->verticalScrollBar()->maximum());
