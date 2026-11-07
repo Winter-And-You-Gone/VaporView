@@ -5,6 +5,7 @@
 #include "map3d/Aircraft3DLayer.h"
 #include "map3d/AircraftHeading.h"
 #include "Map3DAssetLoader.h"
+#include "MapLayerRemoval.h"
 #include "EarthProjectionProfile.h"
 #include "OpenAerialMapImageLayer.h"
 #include "TiandituImageLayer.h"
@@ -684,23 +685,7 @@ QString tiandituSatelliteUrlTemplate(const QString& key)
         .arg(encodedKey);
 }
 
-void removeLayerByName(osgEarth::Map* map, const char* layerName)
-{
-    if (!map || !layerName)
-    {
-        return;
-    }
-
-    while (true)
-    {
-        osg::ref_ptr<osgEarth::Layer> existing = map->getLayerByName(layerName);
-        if (!existing)
-        {
-            return;
-        }
-        map->removeLayer(existing.get());
-    }
-}
+using Detail::removeLayerByName;
 
 unsigned tiandituSatelliteInsertIndex(osgEarth::Map* map)
 {

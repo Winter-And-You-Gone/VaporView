@@ -36,6 +36,9 @@
 #include "app/StartupSplash.h"
 #include "ground/devices/RemoteSkyController.h"
 #include "ground/main/MainWindow.h"
+#ifdef VAPORVIEW_HAS_OSGEARTH
+#include "ground/map/Map3DController.h"
+#endif
 #ifdef VAPORVIEW_HAS_SKY_CORE
 #include "SkyRuntime.h"
 #endif
@@ -921,6 +924,13 @@ int runApplication(int argc, char *argv[])
     {
         startRemoteDeviceE2e(app, mainWindow, parser.value(remoteDeviceE2eOption));
     }
+
+#ifdef VAPORVIEW_HAS_OSGEARTH
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, &app, []() {
+        // Join map workers before GDAL unload waits on their raster blocks.
+        VaporView::Ground::Map3DController::shutdownBackgroundJobs();
+    });
+#endif
 
     return runEventLoop();
 }

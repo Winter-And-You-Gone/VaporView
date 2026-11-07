@@ -26,6 +26,8 @@ public:
     explicit Map3DController(QObject *parent = nullptr);
     ~Map3DController() override;
 
+    static void shutdownBackgroundJobs();
+
     void open();
     void showDiagnostics();
     void close();

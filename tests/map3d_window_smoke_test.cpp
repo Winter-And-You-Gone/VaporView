@@ -10,6 +10,7 @@
 #include "map3d/EarthProjectionProfile.h"
 #include "map3d/TiandituImageLayer.h"
 #include "map3d/OpenAerialMapImageLayer.h"
+#include "map3d/MapLayerRemoval.h"
 #include <osgEarth/Map>
 #include <osgEarth/TerrainTileModelFactory>
 #include <osgDB/ReadFile>
@@ -54,6 +55,7 @@
 #include <cstdlib>
 #include <cmath>
 #include <iostream>
+#include <future>
 #include <vector>
 
 namespace
@@ -66,6 +68,46 @@ void require(bool condition, const char* message)
         std::cerr << "FAIL: " << message << '\n';
         std::exit(1);
     }
+}
+
+void testRemovedImageryLifetime()
+{
+    osg::ref_ptr<osgEarth::Map> map = new osgEarth::Map;
+    osg::ref_ptr<osgEarth::XYZImageLayer> layer = new osgEarth::XYZImageLayer;
+    layer->setName("lifetime probe");
+    layer->setURL(osgEarth::URI("https://example.invalid/{z}/{x}/{y}.png"));
+    layer->setProfile(osgEarth::Profile::create(osgEarth::Profile::SPHERICAL_MERCATOR));
+    map->addLayer(layer.get());
+    require(layer->isOpen(), "in-memory imagery profile opens without a network request");
+    layer->setDataExtents({osgEarth::DataExtent(layer->getProfile()->getExtent(), 0u, 5u)});
+    osg::observer_ptr<osgEarth::XYZImageLayer> observer(layer.get());
+    layer = nullptr;
+
+    std::promise<void> acquired, resume;
+    auto resumeFuture = resume.get_future();
+    auto worker = std::async(std::launch::async, [&]() {
+        // TerrainTileModelFactory also retains this reference-counted snapshot.
+        osgEarth::LayerVector snapshot;
+        map->getLayers(snapshot);
+        auto* tileLayer = dynamic_cast<osgEarth::TileLayer*>(snapshot.front().get());
+        const auto& extent = tileLayer->getDataExtentsUnion();
+        const auto* srs = extent.getSRS();
+        acquired.set_value();
+        resumeFuture.wait();
+        return srs && extent.getSRS() == srs && tileLayer->isOpen()
+            && extent.intersects(osgEarth::Profile::create(osgEarth::Profile::GLOBAL_GEODETIC)->getExtent());
+    });
+    require(acquired.get_future().wait_for(std::chrono::seconds(5)) == std::future_status::ready,
+            "terrain reader acquires the imagery extent within a bounded wait");
+    VaporView::Map3D::Detail::removeLayerByName(map.get(), "lifetime probe");
+    const bool removed = map->getNumLayers() == 0;
+    resume.set_value();
+    require(worker.wait_for(std::chrono::seconds(5)) == std::future_status::ready,
+            "detached terrain reader finishes within a bounded wait");
+    const bool usable = worker.get();
+    require(removed, "switched imagery is immediately absent from the map");
+    require(usable, "removing imagery preserves the extent and driver until its terrain reader finishes");
+    require(!observer.valid(), "detached imagery is destroyed after the last terrain reader finishes");
 }
 
 bool titleIconHasVisibleSize(QToolButton* button)
@@ -445,6 +487,8 @@ int main(int argc, char** argv)
     }
 
     QApplication app(argc, argv);
+    testRemovedImageryLifetime();
+    if (app.arguments().contains(QStringLiteral("--layer-lifetime-only"))) return 0;
     QCoreApplication::setOrganizationName(QStringLiteral("VaporViewTest"));
     QCoreApplication::setApplicationName(QStringLiteral("map3d_window_smoke_test"));
 

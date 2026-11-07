@@ -4,6 +4,7 @@
 #include "geo/CoordinateTransform.h"
 
 #include <cmath>
+#include <osgEarth/Threading>
 
 namespace VaporView::Ground
 {
@@ -19,6 +20,11 @@ Map3DController::Map3DController(QObject *parent)
 Map3DController::~Map3DController()
 {
     close();
+}
+
+void Map3DController::shutdownBackgroundJobs()
+{
+    jobs::shutdown();
 }
 
 void Map3DController::open()
