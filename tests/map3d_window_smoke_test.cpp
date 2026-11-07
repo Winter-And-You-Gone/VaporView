@@ -30,6 +30,7 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QPushButton>
+#include <QPointer>
 #include <QTableWidget>
 #include <QElapsedTimer>
 #include <QFile>
@@ -54,7 +55,9 @@
 
 #include <cstdlib>
 #include <cmath>
+#include <cstring>
 #include <iostream>
+#include <memory>
 #include <future>
 #include <vector>
 
@@ -68,6 +71,59 @@ void require(bool condition, const char* message)
         std::cerr << "FAIL: " << message << '\n';
         std::exit(1);
     }
+}
+
+class DeleteSiblingOnTranslation final : public QObject
+{
+public:
+    QPointer<QObject> victim;
+    bool fired = false;
+
+    bool eventFilter(QObject*, QEvent* event) override
+    {
+        if (event->type() == QEvent::ToolTipChange && victim) {
+            fired = true;
+            delete victim.data();
+        }
+        return false;
+    }
+};
+
+class TranslationVictim final : public QObject
+{
+public:
+    using QObject::QObject;
+    // Keep storage until the test ends, but make stale virtual calls fail
+    // deterministically instead of depending on allocator reuse.
+    static void operator delete(void* storage) noexcept
+    {
+        std::memset(storage, 0, sizeof(void*));
+    }
+};
+
+void testLanguageObjectLifetime()
+{
+    const QVariant originalEnglish = qApp->property("vaporViewEnglish");
+    qApp->setProperty("vaporViewEnglish", false);
+    {
+        VaporView::Map3D::Map3DWindow window;
+        auto* trigger = new QWidget(&window);
+        trigger->setToolTip(QStringLiteral("关闭"));
+        DeleteSiblingOnTranslation deletion;
+        auto* victim = new TranslationVictim(&window);
+        std::unique_ptr<void, void(*)(void*)> storage(victim, [](void* p) { ::operator delete(p); });
+        deletion.victim = victim;
+        trigger->installEventFilter(&deletion);
+        qApp->setProperty("vaporViewEnglish", true);
+        require(deletion.fired && deletion.victim.isNull(),
+                "translation can synchronously destroy a later child in the snapshot");
+        require(trigger->toolTip() == QStringLiteral("Close"),
+                "translation completes after a child is destroyed");
+        qApp->setProperty("vaporViewEnglish", false);
+        require(trigger->toolTip() == QStringLiteral("关闭"),
+                "translation remains usable after child destruction");
+    }
+    qApp->setProperty("vaporViewEnglish", originalEnglish);
 }
 
 void testRemovedImageryLifetime()
@@ -491,6 +547,8 @@ int main(int argc, char** argv)
     if (app.arguments().contains(QStringLiteral("--layer-lifetime-only"))) return 0;
     QCoreApplication::setOrganizationName(QStringLiteral("VaporViewTest"));
     QCoreApplication::setApplicationName(QStringLiteral("map3d_window_smoke_test"));
+    testLanguageObjectLifetime();
+    if (app.arguments().contains(QStringLiteral("--language-lifetime-only"))) return 0;
 
     const QString expectedProjectData = QDir::cleanPath(
         QDir(QCoreApplication::applicationDirPath()).absoluteFilePath(QStringLiteral("../../data")));

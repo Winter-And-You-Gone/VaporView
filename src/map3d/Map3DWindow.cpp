@@ -22,6 +22,7 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QPointer>
 #include <QDynamicPropertyChangeEvent>
 #include <QAbstractButton>
 #include <QCloseEvent>
@@ -3228,27 +3229,32 @@ bool Map3DWindow::eventFilter(QObject* watched, QEvent* event)
 void Map3DWindow::refreshLanguage()
 {
     const bool english = qApp->property("vaporViewEnglish").toBool();
-    QList<QObject*> objects = findChildren<QObject*>();
-    objects.prepend(this);
-    for (QObject* object : objects) {
+    // Translating a property can synchronously destroy other children (for
+    // example Qt style animations). Do not retain raw snapshot pointers.
+    QList<QPointer<QObject>> objects{this};
+    for (QObject* child : findChildren<QObject*>()) objects.append(child);
+    for (const QPointer<QObject>& object : objects) {
         for (const char* property : {"windowTitle", "toolTip", "statusTip", "title", "placeholderText", "prefix", "suffix"}) {
+            if (!object) break;
             const QVariant value = object->property(property);
             if (value.metaType().id() == QMetaType::QString) {
                 const QString translated = mapRenderedText(value.toString(), english);
                 if (translated != value.toString()) object->setProperty(property, translated);
             }
         }
-        if (qobject_cast<QAction*>(object) || qobject_cast<QAbstractButton*>(object) || qobject_cast<QLabel*>(object)) {
+        if (!object) continue;
+        if (qobject_cast<QAction*>(object.data()) || qobject_cast<QAbstractButton*>(object.data()) || qobject_cast<QLabel*>(object.data())) {
             const QString value = object->property("text").toString();
             const QString translated = mapRenderedText(value, english);
             if (translated != value) object->setProperty("text", translated);
         }
-        if (auto* combo = qobject_cast<QComboBox*>(object)) {
+        if (!object) continue;
+        if (auto* combo = qobject_cast<QComboBox*>(object.data())) {
             const QSignalBlocker blocker(combo);
             for (int i = 0; i < combo->count(); ++i)
                 combo->setItemText(i, mapRenderedText(combo->itemText(i), english));
         }
-        if (auto* table = qobject_cast<QTableWidget*>(object)) {
+        if (auto* table = qobject_cast<QTableWidget*>(object.data())) {
             for (int c = 0; c < table->columnCount(); ++c) {
                 if (auto* item = table->horizontalHeaderItem(c)) item->setText(mapRenderedText(item->text(), english));
                 for (int r = 0; r < table->rowCount(); ++r)
