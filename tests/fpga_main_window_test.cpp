@@ -17,6 +17,7 @@
 #include "FpgaTelemetry.h"
 #include "FpgaDeviceController.h"
 #include "FpgaVlp1.h"
+#include "FpgaExtensions.h"
 #include "ground/session/SessionWaveformRepository.h"
 #include "ground/main/RecordingStatusView.h"
 #include <QFile>
@@ -66,6 +67,7 @@
 #include <QtEndian>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 
 struct MainWindowRtcmTestAccess
 {
@@ -486,6 +488,187 @@ static void remotePageRouting()
     require(worker.isNull(), "Remote regression teardown joins and deletes Local USB worker");
     server.close();
 }
+static void configurationActionReadback()
+{
+    using namespace VaporView;
+    TcpTelemetryLink server;
+    require(server.listen("127.0.0.1",0),"configuration readback fake Sky server");
+    auto owner=std::make_unique<MainWindow>();
+    auto &window=*owner;
+    QMetaObject::invokeMethod(&window,"onDataSourceModeChanged",Q_ARG(int,1));
+    auto sky=SkyConfig::defaults();sky.sensor_transport_path=SensorTransportPath::FpgaRelay;
+    window.testInjectRemoteSkyConfig(sky.toJson());
+    auto *remote=window.testRemoteSkyController();
+    auto *page=window.findChild<FpgaControlPage*>("fpgaControlPage");
+    TelemetryCodec decoder,encoder;quint16 sequence=1;
+    QList<DeviceOperationRequest> requests;
+    QList<quint16> commandSequences;
+    int replies=0,acknowledgments=0;
+    QObject::connect(remote,&Ground::Devices::RemoteSkyController::deviceOperationResponseReceived,
+        &window,[&](const DeviceOperationResponse&){++replies;});
+    QObject::connect(remote,&Ground::Devices::RemoteSkyController::commandAckReceived,
+        &window,[&](const CommandAck&){++acknowledgments;});
+    const auto send=[&](MsgType type,const QByteArray &payload) {
+        const auto bytes=encoder.encodeFrame(type,payload,sequence++,1);
+        require(server.writeBytes(bytes)==bytes.size(),"configuration fixture sends a Sky frame");
+    };
+    QObject::connect(&server,&TelemetryLink::bytesReceived,&window,[&](const QByteArray &bytes) {
+        for(const auto &frame:decoder.feedBytes(bytes)) {
+            CommandMessage command;
+            if(frame.type!=MsgType::Command||!TelemetryCodec::parseCommand(frame.payload,command))continue;
+            if(command.command_id==CommandId::GetSkyConfig) {
+                CommandAck ack;ack.command_id=command.command_id;ack.command_seq=command.command_seq;
+                send(MsgType::CommandAck,TelemetryCodec::serializeCommandAck(ack));
+                send(MsgType::SkyConfig,QJsonDocument(sky.toJson()).toJson(QJsonDocument::Compact));
+            } else if(command.command_id==CommandId::DeviceOperation) {
+                DeviceOperationRequest request;
+                require(TelemetryCodec::parseDeviceOperationRequest(command.payload,request)
+                    &&request.device_id==SkyDeviceId::Fpga&&request.operation==DeviceOperation::FpgaControl,
+                    "configuration action uses the existing typed FPGA control path");
+                requests.append(request);commandSequences.append(command.command_seq);
+            }
+        }
+    });
+    require(remote->openTcp("127.0.0.1",server.localPort())&&waitUntil([&]{return remote->isOpen();}),
+        "configuration fixture opens the real asynchronous telemetry controller");
+    window.testInjectRemoteSkyConfig(sky.toJson());
+    auto *stack=window.findChild<QStackedWidget*>("mainPageStack");
+    QWidget *configurationPage=window.findChild<QCheckBox*>("deviceRemotePressureEnabledCheck");
+    while(configurationPage&&stack->indexOf(configurationPage)<0)configurationPage=configurationPage->parentWidget();
+    require(configurationPage,"configuration action test finds the actual device configuration page");
+    stack->setCurrentWidget(configurationPage);window.resize(1200,800);window.show();
+    const auto action=[&](SkyDeviceId id) {
+        for(auto *button:window.findChildren<QToolButton*>("homeDeviceActionButton"))
+            if(button->property("deviceConfigAction").toBool()
+                &&button->property("deviceConfigRemoteDevice").toInt()==int(id))return button;
+        return static_cast<QToolButton*>(nullptr);
+    };
+    QJsonObject registers;
+    for(quint32 address:{0x6004u,0x6104u,0x6204u,0x6304u,0x6404u,0x6504u,0x6604u,0x6804u,
+                        0x4004u,0x4104u,0x5004u,0x5104u})registers[QString::number(address)]=0;
+    registers[QString::number(0x6010)]=4800;
+    QJsonObject status{{"connected",true},{"ready",true},{"busy",false},{"detail","ready"},
+        {"extensions",double(FpgaExtensions::Rd105)},{"configuration",FpgaControlConfig{}.toJson()},{"archived_records","0"}};
+    int marker=0;
+    const auto confirmed=[&] { return MainWindowRtcmTestAccess::state(window).fpga_session_.remoteStatus.value("registers").toObject(); };
+    const auto publish=[&] {
+        registers["256"]=++marker;status["registers"]=registers;
+        QJsonObject parsed;
+        require(FpgaRemote::parseStatus(FpgaRemote::encodeStatus(status),parsed),"configuration fixture supplies a valid status payload");
+        send(MsgType::FpgaStatus,FpgaRemote::encodeStatus(status));
+        require(waitUntil([&]{return page->uiTestHardwareValues().value(0x100)==quint32(marker)
+            &&confirmed().value("256").toInt()==marker;}),
+            "fresh register state reaches the authoritative FPGA page model");
+    };
+    publish();
+    const QList<SkyDeviceId> devices{SkyDeviceId::Epsilon,SkyDeviceId::Ptb,SkyDeviceId::Hmp,SkyDeviceId::Lidar,
+        SkyDeviceId::TemperatureController,SkyDeviceId::Ai8TemperatureController,SkyDeviceId::WaveTcp,
+        SkyDeviceId::Bmp390,SkyDeviceId::Sht45};
+    // No language switch, checkbox click or page re-open may repair stale buttons.
+    for(bool enabled:{true,false}) {
+        for(auto it=registers.begin();it!=registers.end();++it)
+            if(it.key()!="256"&&it.key()!=QString::number(0x6010))it.value()=enabled?1:0;
+        publish();
+        for(auto id:devices) {
+            auto *button=action(id);
+            if(!button||button->property("connected").toBool()!=enabled)
+                std::cerr<<"configuration readback mismatch device="<<int(id)<<" expected="<<enabled<<'\n';
+            require(button&&button->property("connected").toBool()==enabled,
+                "configuration buttons immediately match external register readback");
+            require(button->isEnabled()&&button->toolTip().contains(enabled?QStringLiteral("断开"):QStringLiteral("连接")),
+                "configuration action and accessible text reflect actual running state");
+        }
+    }
+    auto *button=action(SkyDeviceId::Ptb);
+    QComboBox *baud=nullptr;
+    for(auto *editor:window.findChildren<QComboBox*>())
+        if(editor->objectName().endsWith("FpgaEditor")&&editor->property("source").toUInt()==0x40
+            &&editor->property("parameter")=="baud")baud=editor;
+    require(baud&&baud->isEnabled(),"disconnected PTB staged editor exists");
+    const auto click=[&](bool enabled) {
+        const int before=requests.size();button->click();
+        require(waitUntil([&]{return requests.size()==before+1;}),"configuration button sends one asynchronous request");
+        QJsonObject control;
+        require(FpgaRemote::parseControl(requests.last().payload,control)&&control.value("op")=="sensor"
+            &&control.value("source").toInt()==0x40&&control.value("enabled").toBool()==enabled,
+            "configuration button sends the correct sensor intent");
+        require(!button->isEnabled()&&button->property("state")=="connecting","pending configuration is visibly busy");
+        return control;
+    };
+    const auto complete=[&](CommandErrorCode error=CommandErrorCode::Ok) {
+        status["registers"]=registers;
+        DeviceOperationResponse response;response.request_id=requests.last().request_id;
+        response.device_id=SkyDeviceId::Fpga;response.operation=DeviceOperation::FpgaControl;
+        response.error_code=error;response.error_message=error==CommandErrorCode::Ok?QString():QStringLiteral("fixture configuration rejected");
+        response.payload=FpgaRemote::encodeStatus(status);
+        send(MsgType::DeviceOperationResponse,TelemetryCodec::serializeDeviceOperationResponse(response));
+        return response;
+    };
+    baud->setCurrentText("9600");
+    require(click(true).value("baud").toInt()==9600,"connection carries the staged configuration");
+    const auto firstId=requests.last().request_id;
+    const int beforeAck=acknowledgments;
+    CommandAck ack;ack.command_id=CommandId::DeviceOperation;ack.command_seq=commandSequences.last();
+    send(MsgType::CommandAck,TelemetryCodec::serializeCommandAck(ack));
+    require(waitUntil([&]{return acknowledgments>beforeAck;}),"acceptance ACK is delivered");
+    require(page->uiTestHardwareValues().value(0x6004)==0&&!button->property("connected").toBool()
+        &&button->property("state")=="connecting","ACK alone neither writes confirmed state nor announces success");
+    button->click();button->click();
+    registers[QString::number(0x6004)]=1;registers[QString::number(0x6010)]=9600;
+    auto firstResponse=complete();
+    require(waitUntil([&]{return button->isEnabled()&&button->property("connected").toBool()&&!baud->isEnabled();}),
+        "successful result automatically refreshes the configuration page");
+    require(page->uiTestHardwareValues().value(0x6010)==9600&&confirmed().value(QString::number(0x6010)).toInt()==9600
+        &&requests.size()==1,"confirmed readback matches UI without duplicate writes");
+    click(false);complete(CommandErrorCode::ConfigApplyFailed);
+    require(waitUntil([&]{return button->isEnabled()&&button->property("connected").toBool();})
+        &&page->uiTestHardwareValues().value(0x6004)==1&&confirmed().value(QString::number(0x6004)).toInt()==1,
+        "failure preserves the last valid running state");
+    require(page->findChild<QPlainTextEdit*>("fpgaDiagnostics")->toPlainText().contains("fixture configuration rejected"),
+        "failed configuration is explicitly reported");
+    click(false);registers[QString::number(0x6004)]=0;complete();
+    require(waitUntil([&]{return button->isEnabled()&&baud->isEnabled()&&!button->property("connected").toBool();}),
+        "successful stop restores editing from actual readback");
+    baud->setCurrentText("19200");
+    require(click(true).value("baud").toInt()==19200&&requests.last().request_id!=firstId,
+        "repeated configuration has a fresh request identity and new staged values");
+    const int beforeLate=replies;
+    send(MsgType::DeviceOperationResponse,TelemetryCodec::serializeDeviceOperationResponse(firstResponse));publish();
+    require(replies==beforeLate&&button->property("state")=="connecting"&&page->uiTestHardwareValues().value(0x6004)==0,
+        "late old result cannot complete or overwrite a newer in-flight configuration");
+    registers[QString::number(0x6004)]=1;registers[QString::number(0x6010)]=19200;complete();
+    require(waitUntil([&]{return button->isEnabled()&&button->property("connected").toBool()&&baud->currentText()=="19200";}),
+        "newer configuration is confirmed by its own returned registers");
+    const int completedReplies=replies;
+    send(MsgType::DeviceOperationResponse,TelemetryCodec::serializeDeviceOperationResponse(firstResponse));publish();
+    require(replies==completedReplies&&page->uiTestHardwareValues().value(0x6010)==19200&&baud->currentText()=="19200"
+        &&confirmed().value(QString::number(0x6010)).toInt()==19200,
+        "late duplicate cannot roll back confirmed UI or register state");
+    stack->setCurrentWidget(page);
+    const int beforeRead=requests.size();page->findChild<QAbstractButton*>("fpgaRefresh")->click();
+    require(waitUntil([&]{return requests.size()==beforeRead+1;}),"explicit configuration readback sends a request");
+    QJsonObject read;require(FpgaRemote::parseControl(requests.last().payload,read)&&read.value("op")=="refresh","readback uses existing refresh operation");
+    const int beforeReadReply=replies;complete();
+    require(waitUntil([&]{return replies==beforeReadReply+1;})&&page->uiTestHardwareValues().value(0x6010)==19200
+        &&button->property("connected").toBool(),"reread and UI agree with the last confirmed configuration");
+    stack->setCurrentWidget(configurationPage);
+    click(false);
+    auto closingResponse=firstResponse;closingResponse.request_id=requests.last().request_id;
+    auto closingStatus=status;auto closingRegisters=registers;
+    closingRegisters[QString::number(0x6004)]=0;closingStatus["registers"]=closingRegisters;
+    closingResponse.payload=FpgaRemote::encodeStatus(closingStatus);
+    send(MsgType::DeviceOperationResponse,TelemetryCodec::serializeDeviceOperationResponse(closingResponse));
+    QPointer<MainWindow> weak=owner.get();QPointer<QThread> worker=window.testFpgaController()->thread();
+    QElapsedTimer closing;closing.start();
+    owner.reset();
+    require(weak.isNull()&&worker.isNull()&&closing.elapsed()<5000,"closing during configuration destroys UI and joins its worker");
+    bool lateDelivered=false;
+    QTimer::singleShot(0,&server,[&]{server.writeBytes(encoder.encodeFrame(MsgType::DeviceOperationResponse,
+        TelemetryCodec::serializeDeviceOperationResponse(closingResponse),sequence++,1));lateDelivered=true;});
+    require(waitUntil([&]{return lateDelivered;}),"late transport activity after UI destruction is safe");
+    server.close();
+}
+
 static void remoteHomeActions()
 {
     using namespace VaporView;
@@ -2118,6 +2301,12 @@ int main(int argc,char **argv)
     if(app.arguments().contains("--remote-home-actions")) {
         remoteHomeActions();std::cout<<"Remote FPGA home actions test passed\n";return 0;
     }
+    if(app.arguments().contains("--configuration-action-readback")) {
+        configurationActionReadback();std::cout<<"FPGA configuration action readback test passed\n";return 0;
+    }
+    if(app.arguments().contains("--remote-page-routing")) {
+        remotePageRouting();std::cout<<"FPGA remote page routing test passed\n";return 0;
+    }
     if(app.arguments().contains("--transport-capabilities")) {
         remoteTransportAndCapabilities();std::cout<<"Transport capabilities test passed\n";return 0;
     }
@@ -2138,7 +2327,10 @@ int main(int argc,char **argv)
     if(app.arguments().contains("--refresh-budget")) {
         simulatorRefreshBudget();std::cout<<"FPGA refresh budget test passed\n";return 0;
     }
-    epsilonMixedPacketPresentation();
+    QElapsedTimer phases;phases.start();
+    const auto phase=[&](const char *name) { std::cout<<"FPGA_TEST_PHASE elapsed_ms="<<phases.elapsed()<<" phase="<<name<<std::endl; };
+    phase("epsilon_packets");epsilonMixedPacketPresentation();
+    phase("initial_window");
     const auto standardFont=app.font();
     QPointer<QThread> worker;
     {
@@ -2174,6 +2366,7 @@ int main(int argc,char **argv)
         require(!worker->isInterruptionRequested(),"worker still alive before teardown");
     }
     require(worker.isNull(),"MainWindow teardown joins and deletes USB worker");
+    phase("scaled_windows");
     for(int scale : {150,100}) {
         app.setFont(standardFont);
         native.setValue("font_scale_percent",scale);
@@ -2185,10 +2378,15 @@ int main(int argc,char **argv)
         verifyCardMargins(restored,page,scale);restored.close();
     }
     app.setFont(standardFont);
-    relayConfigurationPresentation();
-    remotePageRouting();
-    remoteHomeActions();
-    remoteTransportAndCapabilities();
+    if(app.arguments().contains("--window-layout-only")) {
+        require(native.value("font_scale_percent").toInt()==100,"font scale stays at standard 100 percent");
+        std::cout<<"FPGA main window layout tests passed\n";return 0;
+    }
+    phase("relay_presentation");relayConfigurationPresentation();
+    phase("remote_page");remotePageRouting();
+    phase("remote_home");remoteHomeActions();
+    phase("transport_capabilities");remoteTransportAndCapabilities();
+    phase("finished");
     require(native.value("font_scale_percent").toInt()==100,"font scale stays at standard 100 percent");
     std::cout<<"fpga main window tests passed\n";
 }

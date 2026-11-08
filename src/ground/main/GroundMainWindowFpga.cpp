@@ -225,7 +225,10 @@ void MainWindow::syncFpgaDeviceConfigUi()
         const bool supported = item.second != SkyDeviceId::TemperatureController || registers.isEmpty()
             || (extensions & VaporView::FpgaExtensions::Rd105);
         enabledSelection(item.first,item.second,supported);
+        // Selection is independent of readback; the action must show actual state.
+        if (relay) updateDeviceConfigRemoteActionButton(item.second);
     }
+    if (relay) updateDeviceConfigRemoteActionButton(SkyDeviceId::WaveTcp);
 
 }
 
