@@ -891,7 +891,6 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
                 state_->home_nav_btn_,
                 state_->device_config_nav_btn_,
                 state_->temperature_nav_btn_,
-                state_->motion_nav_btn_,
                 state_->rtk_config_nav_btn_,
                 state_->fpga_nav_btn_,
                 state_->water_calibration_nav_btn_,

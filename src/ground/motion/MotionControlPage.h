@@ -1,25 +1,21 @@
 #pragma once
 
 #include "EmFwc3Session.h"
-#include <QWidget>
+#include <QFrame>
 #include <memory>
 
 namespace VaporView::Ground::Motion
 {
-class MotionControlPage final : public QWidget
+class MotionControlPage final : public QFrame
 {
     Q_OBJECT
 public:
     explicit MotionControlPage(QWidget *parent = nullptr, const QString& sdkDirectory = {});
     ~MotionControlPage() override;
-    QWidget *createConnectionPanel(QWidget *parent);
     EmFwc3Session *session() const;
     void setTheme(bool dark, int fontScalePercent = 100);
     void setLanguage(bool english);
     void shutdown();
-signals:
-    void showConnectionSettingsRequested();
-    void showControlsRequested();
 protected:
     void resizeEvent(QResizeEvent *event) override;
     bool eventFilter(QObject *watched, QEvent *event) override;

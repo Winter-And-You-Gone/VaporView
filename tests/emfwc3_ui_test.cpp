@@ -17,6 +17,8 @@
 #include <QStackedWidget>
 #include <QSpinBox>
 #include <QThread>
+#include <QTimer>
+#include <QMessageBox>
 #include <QTemporaryDir>
 #include <QSettings>
 #include <QVBoxLayout>
@@ -39,11 +41,11 @@ template<typename T> T *find(QWidget& root, const char *name)
 {
     auto *result = root.findChild<T*>(QString::fromLatin1(name)); check(result != nullptr, name); return result;
 }
-void until(const std::function<bool()>& ready)
+void until(const char *message, const std::function<bool()>& ready)
 {
     QElapsedTimer timer; timer.start();
     while (!ready() && timer.elapsed() < 6000) { QApplication::processEvents(); QThread::msleep(10); }
-    check(ready(), "UI asynchronous operation completes");
+    check(ready(), message);
 }
 void checkCardGeometry(QWidget& scope)
 {
@@ -62,6 +64,9 @@ void checkCardGeometry(QWidget& scope)
         check(card->rect().adjusted(2, 2, -2, -2).contains(titleRect), "title stays inside the card, clear of its outer border");
         check(title->contentsRect().height() >= title->fontMetrics().height(), "card title is not vertically clipped at larger fonts");
         check(!header->geometry().intersects(body->geometry()), "title bar and card content never overlap");
+        for (auto *action : header->findChildren<QPushButton*>())
+            check(action->width() >= action->fontMetrics().horizontalAdvance(action->text()) + 12,
+                  "connection actions retain enough width for their complete labels");
         const auto controls = body->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly);
         for (int i = 0; i < controls.size(); ++i) {
             if (!controls[i]->isVisibleTo(body)) continue;
@@ -99,7 +104,7 @@ int main(int argc, char **argv)
     const auto motions = reinterpret_cast<int(*)()>(fake.resolve("testMotionCount")); check(reset && motions, "test SDK symbols exist"); reset();
     {
         MainWindow window; window.resize(1280, 850); window.show();
-        auto *page = find<MotionControlPage>(window, "motionControlPage");
+        auto *page = find<MotionControlPage>(window, "emFwc3ConnectionPanel");
         auto *panel = find<QWidget>(window, "emFwc3ConnectionPanel");
         auto *connect = find<QPushButton>(*panel, "emFwc3Connect");
         for (auto *action : panel->findChildren<QPushButton*>())
@@ -110,7 +115,7 @@ int main(int argc, char **argv)
         check(!page->session()->state().connected && !find<QPushButton>(*page, "emFwc3Go1")->isEnabled(), "startup never connects or enables motion");
         check(!connect->isEnabled(), "motor types must be checked before connecting");
         find<QCheckBox>(*panel, "emFwc3ConfirmTypes")->setChecked(true); check(connect->isEnabled(), "explicit model confirmation enables connection");
-        connect->click(); until([&] { return page->session()->state().connected && !page->session()->state().busy; });
+        connect->click(); until("connect completes", [&] { return page->session()->state().connected && !page->session()->state().busy; });
         check(motions() == 0, "connecting from configuration never causes motion");
         check(find<QSpinBox>(*page, "emFwc3Speed")->value() == 100, "speed editor starts from the actual device readback");
         auto *transport = find<QComboBox>(window, "deviceSensorTransportPathCombo");
@@ -119,63 +124,85 @@ int main(int argc, char **argv)
         check(page->session()->state().connected && find<QPushButton>(*panel, "emFwc3Disconnect")->isEnabled(), "USB session stays available in FPGA mode");
         transport->setCurrentIndex(transport->findData(QStringLiteral("direct_devices")));
         QApplication::processEvents(); check(page->session()->state().connected, "returning to Direct preserves USB connection");
-        find<QPushButton>(*panel, "emFwc3OpenControls")->click();
-        check(find<QStackedWidget>(window, "mainPageStack")->currentWidget() == page, "configuration navigates to independent motion page");
-        find<QDoubleSpinBox>(*page, "emFwc3Target3")->setValue(12.5);
-        find<QPushButton>(*page, "emFwc3Go3")->click();
-        until([&] { return find<QLabel>(*page, "emFwc3Position3")->text() == QStringLiteral("12.500°"); });
-        check(motions() == 1, "selected channel UI command reaches SDK");
-        const auto firstCard = find<QFrame>(*page, "emFwc3Channel1")->geometry();
-        const auto secondCard = find<QFrame>(*page, "emFwc3Channel2")->geometry();
-        check(firstCard.y() == secondCard.y(), "first opening in the main window uses settled viewport width for side-by-side channels");
-        checkCardGeometry(*page);
+        auto *pages = find<QStackedWidget>(window, "mainPageStack");
+        auto *configuration = find<QWidget>(window, "deviceConfigPage");
+        pages->setCurrentWidget(configuration); QApplication::processEvents();
+        check(configuration->isAncestorOf(panel) && pages->indexOf(page) == -1 && pages->count() == 6,
+              "motion controls belong to device configuration without a separate navigation page");
+        auto *header = panel->findChild<QWidget*>(QStringLiteral("sectionTitleBar"));
+        check(header->isAncestorOf(port) && header->isAncestorOf(connect) &&
+              header->isAncestorOf(find<QPushButton>(*panel, "emFwc3Disconnect")), "serial and connection actions are in the card title bar");
+        auto *selector = find<QComboBox>(*page, "emFwc3ChannelSelector");
+        check(selector->count() == 3, "one selector exposes all three channels");
+        for (int i = 1; i <= 3; ++i) {
+            selector->setCurrentIndex(i - 1); QApplication::processEvents();
+            for (int j = 1; j <= 3; ++j)
+                check(page->findChild<QWidget*>(QStringLiteral("emFwc3Channel%1").arg(j))->isVisibleTo(page) == (i == j), "only the selected channel is visible");
+            auto *target = page->findChild<QDoubleSpinBox*>(QStringLiteral("emFwc3Target%1").arg(i));
+            auto *step = page->findChild<QDoubleSpinBox*>(QStringLiteral("emFwc3Step%1").arg(i));
+            auto *position = page->findChild<QLabel*>(QStringLiteral("emFwc3Position%1").arg(i));
+            target->setValue(i * 10.0); step->setValue(i * 0.5);
+            page->findChild<QPushButton*>(QStringLiteral("emFwc3Go%1").arg(i))->click();
+            until("absolute position reaches selected channel", [&] { return position->text() == QString::number(i * 10.0, 'f', 3) + QStringLiteral("°") && !page->session()->state().busy; });
+            page->findChild<QPushButton*>(QStringLiteral("emFwc3Plus%1").arg(i))->click();
+            until("positive step reaches selected channel", [&] { return position->text() == QString::number(i * 10.5, 'f', 3) + QStringLiteral("°") && !page->session()->state().busy; });
+            page->findChild<QPushButton*>(QStringLiteral("emFwc3Minus%1").arg(i))->click();
+            until("negative step reaches selected channel", [&] { return position->text() == QString::number(i * 10.0, 'f', 3) + QStringLiteral("°") && !page->session()->state().busy; });
+            for (const char *prefix : {"emFwc3Home", "emFwc3Stop", "emFwc3Reverse", "emFwc3Forward"})
+                check(page->findChild<QPushButton*>(QString::fromLatin1(prefix) + QString::number(i)) != nullptr, "all per-channel actions remain available");
+        }
+        check(motions() == 9, "absolute and both relative commands route to each selected SDK channel");
+        selector->setCurrentIndex(0); QApplication::processEvents();
+        check(find<QDoubleSpinBox>(*page, "emFwc3Target1")->value() == 10 && find<QDoubleSpinBox>(*page, "emFwc3Step1")->value() == 0.5,
+              "switching channels preserves each channel's inputs");
+        const auto stops = reinterpret_cast<int(*)(int)>(fake.resolve("testStops")); check(stops, "stop counters exist");
+        find<QPushButton>(*page, "emFwc3StopAll")->click();
+        until("stop all reaches three channels", [&] { return stops(0) == 1 && stops(1) == 1 && stops(2) == 1 && !page->session()->state().busy; });
+        find<QSpinBox>(*page, "emFwc3Speed")->setValue(80);
+        find<QPushButton>(*page, "emFwc3ApplySpeed")->click();
+        until("speed is applied and read back", [&] { return page->session()->state().speed == 80 && !page->session()->state().busy; });
+        const auto saves = reinterpret_cast<int(*)()>(fake.resolve("testSaves")); check(saves, "save counter exists");
+        QTimer::singleShot(0, [] { auto *box = qobject_cast<QMessageBox*>(QApplication::activeModalWidget()); check(box, "save confirmation appears"); box->button(QMessageBox::Yes)->click(); });
+        find<QPushButton>(*page, "emFwc3SavePosition")->click();
+        until("confirmed position save reaches SDK", [&] { return saves() == 1 && !page->session()->state().busy; });
+        checkCardGeometry(*panel);
         VaporView::setSettingsWritesSuspended(true);
         find<QPushButton>(*page, "emFwc3Go3")->click(); QApplication::processEvents();
-        check(motions() == 1, "UI test write barrier also blocks hardware commands");
+        check(motions() == 9, "UI test write barrier also blocks hardware commands");
         VaporView::setSettingsWritesSuspended(false);
-        find<QPushButton>(*page, "emFwc3ConnectionSettings")->click();
-        check(find<QStackedWidget>(window, "mainPageStack")->currentWidget()->objectName() == QStringLiteral("deviceConfigPage"), "motion page navigates to connection settings");
-        checkCardGeometry(*panel);
-        find<QPushButton>(*panel, "emFwc3Disconnect")->click(); until([&] { return !page->session()->state().connected && !page->session()->state().busy; });
+        find<QPushButton>(*panel, "emFwc3Disconnect")->click(); until("disconnect completes", [&] { return !page->session()->state().connected && !page->session()->state().busy; });
         check(find<QLabel>(*page, "emFwc3Position3")->text() == QStringLiteral("—"), "disconnection clears position readbacks");
         window.close();
     }
     {
-        MotionControlPage page(nullptr, QString::fromLocal8Bit(argv[1]));
-        QWidget settings; auto *settingsLayout = new QVBoxLayout(&settings);
-        settingsLayout->addWidget(page.createConnectionPanel(&settings));
-        settingsLayout->addStretch();
-        settings.resize(1200, 1100); settings.show();
-        page.resize(1200, 1000); page.show(); QApplication::processEvents();
+        QWidget host; auto *hostLayout = new QVBoxLayout(&host);
+        auto *page = new MotionControlPage(&host, QString::fromLocal8Bit(argv[1]));
+        hostLayout->addWidget(page); hostLayout->addStretch(); host.resize(1200, 1100); host.show(); QApplication::processEvents();
         for (bool english : {false, true}) for (bool dark : {false, true}) for (int scale : {100, 130}) {
-            QFont font = app.font(); font.setPointSizeF(10 * scale / 100.0); page.setFont(font);
-            settings.setFont(font); page.setTheme(dark, scale); page.setLanguage(english);
+            QFont font = app.font(); font.setPointSizeF(10 * scale / 100.0); host.setFont(font);
+            page->setTheme(dark, scale); page->setLanguage(english);
             for (int width : {1200, 600}) {
-                page.resize(width, 1000); settings.resize(width, 1100); QApplication::processEvents();
-                const auto a = find<QFrame>(page, "emFwc3Channel1")->geometry();
-                const auto b = find<QFrame>(page, "emFwc3Channel2")->geometry();
-                const auto c = find<QFrame>(page, "emFwc3Channel3")->geometry();
-                check(!a.intersects(b) && !b.intersects(c) && !a.intersects(c), "channel cards reflow without overlap at both font scales");
-                for (bool expanded : {false, true}) {
-                    for (int i = 1; i <= 3; ++i)
-                        page.findChild<QCheckBox*>(QStringLiteral("emFwc3ContinuousToggle%1").arg(i))->setChecked(expanded);
-                    QApplication::processEvents(); checkCardGeometry(page); checkCardGeometry(settings);
-                    for (int i = 1; i <= 3; ++i) {
-                        auto *area = page.findChild<QWidget*>(QStringLiteral("emFwc3ContinuousArea%1").arg(i));
-                        auto *toggle = page.findChild<QCheckBox*>(QStringLiteral("emFwc3ContinuousToggle%1").arg(i));
-                        auto *body = page.findChild<QWidget*>(QStringLiteral("emFwc3ContinuousBody%1").arg(i));
+                host.resize(width, 1100); QApplication::processEvents();
+                check(host.width() == width, "compact controls fit requested window width at both font scales");
+                for (int channel = 1; channel <= 3; ++channel) {
+                    find<QComboBox>(*page, "emFwc3ChannelSelector")->setCurrentIndex(channel - 1);
+                    for (bool expanded : {false, true}) {
+                        auto *toggle = page->findChild<QCheckBox*>(QStringLiteral("emFwc3ContinuousToggle%1").arg(channel));
+                        toggle->setChecked(expanded); QApplication::processEvents(); checkCardGeometry(*page);
+                        auto *area = page->findChild<QWidget*>(QStringLiteral("emFwc3ContinuousArea%1").arg(channel));
+                        auto *body = page->findChild<QWidget*>(QStringLiteral("emFwc3ContinuousBody%1").arg(channel));
                         check(body->isHidden() != expanded, "continuous controls collapse without an empty frame");
                         check(area->rect().contains(toggle->geometry()), "continuous-motion label stays inside its layout");
                         if (expanded) check(!toggle->geometry().intersects(body->geometry()), "continuous-motion heading and controls do not overlap");
                     }
                 }
+
             }
         }
-        page.setLanguage(false); page.setTheme(false, 100); page.resize(1200, 1000);
-        QApplication::processEvents();
-        page.close(); settings.close();
+        page->setLanguage(false); page->setTheme(false, 100); host.setFont(app.font()); host.resize(1200, 1100);
+        QApplication::processEvents(); host.close();
     }
     qInstallMessageHandler(previousMessageHandler);
     check(titleBarSizeWarnings == 0, "motion card title bars do not exceed Qt's maximum widget size");
-    std::cout << "PASS: independent motion UI, FPGA switching, commands and responsive layout\n";
+    std::cout << "PASS: embedded motion card, channel selection, FPGA switching, commands and compact layout\n";
 }

@@ -25,21 +25,24 @@ in `bin/emfwc3`. Without the optional SDK, the rest of the application still
 builds and runs; attempting a motion connection reports the loader error.
 The runtime environment variable `VAPORVIEW_EMFWC3_SDK_DIR` can override the
 default application-relative `emfwc3` directory. Other platforms retain the
-page but require an appropriate manufacturer runtime before connection.
+card but require an appropriate manufacturer runtime before connection.
 
 ## Operation
 
-1. Open **Device configuration → Local direct devices · EM-FWC3**.
+1. Open **Device configuration → Motion control · EM-FWC3**.
 2. Select the actual COM port. Port numbers may change between computers or
    USB sockets; CH340 identifies the bridge, not uniquely the attached product.
-3. Check each channel's physical motor type (EM-FPM or CEM-FPM; the confirmed
-   project hardware defaults to CEM-FPM on all three channels), then explicitly
+3. Use the channel dropdown to check each channel's physical motor type
+   (EM-FPM or CEM-FPM; the confirmed project hardware defaults to CEM-FPM on
+   all three channels), then explicitly
    confirm the three types. They are used by the SDK's angle conversion.
 4. Connect. Success requires initialization, serial open, motor-type setup,
    three finite position responses, and a speed response. Connection never
    homes, moves, changes speed, clears the origin, or writes EEPROM.
-5. Open **Motion control** from the sidebar, after **Thermal**, or from the
-   configuration panel. Channels 1–3 map to SDK motor indices 0–2.
+5. Operate the selected channel directly in the same card. Channels 1–3 map
+   to SDK motor indices 0–2. Switching channels retains each channel's target,
+   step and motor type. The serial selector, refresh, connect and disconnect
+   controls are in the card header; no separate motion page is needed.
 
 Each channel provides absolute positioning, relative steps, homing, continuous
 motion, and stop. Homing and continuous motion require explicit confirmation.
@@ -78,8 +81,9 @@ cleanup, and stopping owned movement on shutdown.
 
 `emfwc3_ui_test` uses that same isolated SDK to verify explicit model
 confirmation, startup without motion, operation from the real main window,
-independence from Direct/FPGA switching, page navigation, the UI test barrier,
-and channel layout at 100%/130% font scales in light/dark themes.
+independence from Direct/FPGA switching, channel selection and retained inputs,
+command routing, the UI test barrier, and compact card layout at 100%/130%
+font scales in light/dark themes.
 
 These automated tests do not access physical hardware. Actual mechanism
 movement and physical travel limits require a separate operator-controlled
