@@ -611,7 +611,19 @@ int main(int argc, char *argv[])
                 for (int group = 0; group < selector->count(); ++group)
                 {
                     selector->setCurrentIndex(group);
-                    VaporViewTest::processEventsFor(40);
+                    require(VaporViewTest::processEventsUntil(1500, [&]() {
+                        auto *activePage = groupPages->currentWidget();
+                        auto *activeGrid = activePage->findChild<QGridLayout *>();
+                        if (groupPages->currentIndex() != group || !activePage->isVisible() || !activeGrid)
+                            return false;
+                        for (int index = 0; index < activeGrid->count(); ++index)
+                            if (auto *field = activeGrid->itemAt(index)->widget())
+                                for (auto *label : field->findChildren<QLabel *>())
+                                    if (label->isVisible() &&
+                                        label->heightForWidth(label->width()) > label->height())
+                                        return false;
+                        return true;
+                    }), "advanced wrapped labels finish layout after font, width and group changes");
                     auto *card = groupPages->currentWidget()->findChild<QFrame *>();
                     require(card != nullptr, "every advanced group has its parameter card");
                     require(card->isVisible() && maintenanceCard->isVisible(), "selected group and adjacent maintenance remain visible");

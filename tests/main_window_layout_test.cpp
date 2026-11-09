@@ -48,6 +48,7 @@
 #include <QMenu>
 #include <QMouseEvent>
 #include <QPushButton>
+#include <QPointer>
 #include <QRadioButton>
 #include <QResizeEvent>
 #include <QScrollArea>
@@ -845,6 +846,51 @@ void activateLayouts(QWidget *widget)
     {
         activateLayouts(child);
     }
+}
+
+void requireCommunicationOverviewTitles(
+    VaporView::Ground::Navigation::CombinationNavigationPage *navigation, bool english)
+{
+    using Section = VaporView::Ground::Navigation::CombinationNavigationPage::Section;
+    auto *panel = navigation->epsilonConfigPanel();
+    auto *pages = panel->findChild<QStackedWidget *>(QStringLiteral("epsilonSettingsPages"));
+    auto *scroll = navigation->findChild<QScrollArea *>(QStringLiteral("epsilonConfigScrollArea"));
+    auto *summary = panel->findChild<QFrame *>(QStringLiteral("epsilonStatusCard"));
+    auto *live = panel->findChild<QFrame *>(QStringLiteral("epsilonLivePacketRateCard"));
+    require(pages && scroll && summary && live, "communication title fixture exposes its active page and cards");
+    const std::array<std::pair<QLabel *, QString>, 2> titles{{
+        {summary->findChild<QLabel *>(QStringLiteral("sectionTitleLabel")),
+         english ? QStringLiteral("Configuration Summary") : QStringLiteral("配置摘要")},
+        {live->findChild<QLabel *>(QStringLiteral("sectionTitleLabel")),
+         english ? QStringLiteral("Live Packet Rates") : QStringLiteral("实时数据包频率")},
+    }};
+    scroll->verticalScrollBar()->setValue(scroll->verticalScrollBar()->minimum());
+    // Text changes and scaled fonts can need several nested LayoutRequest passes.
+    // Observe the rendered page's geometry instead of assuming a fixed delay settles it.
+    const bool ready = processEventsUntil(1500, [&]() {
+        if (!navigation->window()->isVisible() || !navigation->isVisible() ||
+            navigation->currentSection() != Section::Epsilon ||
+            pages->currentIndex() != 0)
+            return false;
+        for (const auto& [title, text] : titles)
+        {
+            if (!title || title->text() != text || !title->isVisible() ||
+                title->contentsRect().width() < title->fontMetrics().horizontalAdvance(text) ||
+                !title->parentWidget()->rect().contains(title->geometry()) ||
+                !scroll->viewport()->rect().contains(QRect(title->mapTo(scroll->viewport(), QPoint()), title->size())))
+                return false;
+        }
+        if (summary->y() == live->y() && summary->width() > summary->sizeHint().width() + 1)
+            return false;
+        return true;
+    });
+    if (!ready)
+        for (const auto& [title, text] : titles)
+            if (title)
+                std::cerr << "Navigation title not ready: " << text.toStdString()
+                          << " visible=" << title->isVisible() << " width=" << title->width()
+                          << " required=" << title->fontMetrics().horizontalAdvance(text) << '\n';
+    require(ready, "communication overview titles finish layout with correct text and full viewport visibility");
 }
 
 void requireTemperatureOverviewHeaderStable(QWidget *window)
@@ -5407,6 +5453,7 @@ int main(int argc, char **argv)
 
     if (app.arguments().contains(QStringLiteral("--combination-navigation-only")))
     {
+        QPointer<QWidget> firstNavigationPage;
         {
             MainWindow firstShowWindow;
             firstShowWindow.show();
@@ -5420,6 +5467,7 @@ int main(int argc, char **argv)
             auto *ntrip = findCardByTitle(rtk, {QStringLiteral("NTRIP 服务器配置"),
                                               QStringLiteral("NTRIP Server Configuration")});
             require(navigation && mainStack && gga && ntrip, "fresh navigation page exposes both top cards");
+            firstNavigationPage = navigation;
             mainStack->setCurrentWidget(navigation);
             processEventsFor(100);
             ResizeWidthRecorder recorder(gga);
@@ -5438,8 +5486,30 @@ int main(int argc, char **argv)
             processEventsFor(100);
             require(initialGgaBounds == gga->geometry() && initialNtripBounds == ntrip->geometry(),
                     "subsequent differential switches preserve the settled card boundary");
+            navigation->setCurrentSection(VaporView::Ground::Navigation::CombinationNavigationPage::Section::Epsilon);
+            auto *output = navigation->findChild<QPushButton *>(QStringLiteral("epsilonSettingsTab_0"));
+            require(output, "first navigation page exposes communication output");
+            clickWidget(output, 0);
+            const bool english = output->text() == QStringLiteral("Output");
+            requireCommunicationOverviewTitles(navigation, english);
+            int completedUpdates = 0;
+            for (int update = 0; update < 3; ++update)
+                QTimer::singleShot(0, navigation, [&]() {
+                    VaporView::EpsilonData data;
+                    data.valid = true;
+                    navigation->epsilonConfigPanel()->setLivePacketRates(data);
+                    ++completedUpdates;
+                });
+            require(processEventsUntil(1500, [&]() { return completedUpdates == 3; }),
+                    "queued live status updates complete before checking navigation titles");
+            requireCommunicationOverviewTitles(navigation, english);
+            mainStack->setCurrentIndex(0);
+            require(!navigation->isVisible(), "inactive navigation page is hidden by its main stack");
+            mainStack->setCurrentWidget(navigation);
+            requireCommunicationOverviewTitles(navigation, english);
             firstShowWindow.close();
         }
+        require(firstNavigationPage.isNull(), "first navigation page is destroyed before creating the next window");
         MainWindow combinationWindow;
         combinationWindow.setWindowTitle(QStringLiteral("VaporView"));
         combinationWindow.resize(1280, 800);
@@ -5724,7 +5794,8 @@ int main(int argc, char **argv)
                     require(summaryTitle && liveTitle, "overview cards have standard titles");
                     for (bool english : {true, false})
                     {
-                        navigation->setEnglish(english);processEventsFor(80);
+                        navigation->setEnglish(english);
+                        requireCommunicationOverviewTitles(navigation, english);
                         require(liveTitle->font() == summaryTitle->font() && liveTitle->font().bold(),
                                 "live packet-rate title shares the standard font and weight in both languages and scales");
                         if (cardRect(summary).top() == cardRect(liveRates).top())

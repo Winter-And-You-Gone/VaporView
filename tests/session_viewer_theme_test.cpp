@@ -2241,6 +2241,7 @@ void testTrajectoryViewerExternalSidebarScrollBar()
             TrajectoryViewerDialog dialog;
             dialog.resize(1080, 660);
             dialog.show();
+            require(waitForWindowExposed(&dialog), "trajectory scrollbar window becomes exposed");
             RtkTrackPoint point;
             point.latitude = 30.23094;
             point.longitude = 120.13970;
@@ -2253,10 +2254,30 @@ void testTrajectoryViewerExternalSidebarScrollBar()
             auto *mapPanel = dialog.findChild<QFrame *>(QStringLiteral("trajectoryViewerMapPanel"));
             require(sidebar && card && bar && mapPanel, "external sidebar scrollbar and its layout exist");
             auto *internalBar = sidebar->verticalScrollBar();
+            const auto scrollBarsSynchronized = [&]() {
+                const int viewportHeight = sidebar->viewport()->height();
+                return viewportHeight > 0 &&
+                    internalBar->maximum() == std::max(0, sidebar->widget()->height() - viewportHeight) &&
+                    internalBar->pageStep() == viewportHeight &&
+                    bar->minimum() == internalBar->minimum() &&
+                    bar->maximum() == internalBar->maximum() &&
+                    bar->pageStep() == internalBar->pageStep();
+            };
             for (bool english : {false, true})
             {
                 dialog.setEnglish(english);
                 processEventsFor(100);
+                // Range notifications are queued until the viewport's page step is current.
+                const bool synchronized = processEventsUntil(1500, [&]() {
+                    return bar->isVisible() && !internalBar->isVisible() && scrollBarsSynchronized();
+                });
+                if (!synchronized)
+                    std::cerr << "Trajectory scrollbar not synchronized: dark=" << dark
+                              << " scale=" << fontScale << " english=" << english
+                              << " external=" << bar->maximum() << ':' << bar->pageStep()
+                              << " internal=" << internalBar->maximum() << ':' << internalBar->pageStep()
+                              << " viewport_height=" << sidebar->viewport()->height() << '\n';
+                require(synchronized, "external sidebar scrollbar completes queued layout synchronization");
                 require(bar->isVisible() && !card->isAncestorOf(bar) && !internalBar->isVisible(),
                         "overflow scrollbar sits outside the card and the native scrollbar stays hidden");
                 const QRect cardRect(card->mapTo(&dialog, QPoint(0, 0)), card->size());
@@ -2286,9 +2307,22 @@ void testTrajectoryViewerExternalSidebarScrollBar()
                 require(internalBar->value() > 0 && bar->value() == internalBar->value(),
                         "mouse wheel still scrolls the card with its native scrollbar hidden");
             }
+            const QSize originalSize = dialog.size();
+            const int originalViewportHeight = sidebar->viewport()->height();
+            dialog.resize(originalSize.width(), originalSize.height() + 24);
+            require(processEventsUntil(1500, [&]() {
+                return sidebar->viewport()->height() > originalViewportHeight && scrollBarsSynchronized();
+            }), "overflow resize synchronizes the scrollbar range and thumb with the actual viewport");
+            dialog.resize(originalSize);
+            require(processEventsUntil(1500, [&]() {
+                return sidebar->viewport()->height() == originalViewportHeight && scrollBarsSynchronized();
+            }), "restoring the window restores the synchronized viewport and scrollbar geometry");
             const int mapLeft = mapPanel->mapTo(&dialog, QPoint(0, 0)).x();
             dialog.resize(1080, 1400);
             processEventsFor(100);
+            require(processEventsUntil(1500, [&]() {
+                return internalBar->maximum() == 0 && !bar->isVisible();
+            }), "expanded viewport completes queued scrollbar visibility synchronization");
             require(internalBar->maximum() == 0 && !bar->isVisible(),
                     "external scrollbar hides when the viewport fits all controls");
             require(mapPanel->mapTo(&dialog, QPoint(0, 0)).x() == mapLeft,
