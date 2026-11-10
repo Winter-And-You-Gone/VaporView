@@ -11,7 +11,35 @@
 using namespace IndependentCalibrationTest;
 int main(int argc,char **argv)
 {
-    QCoreApplication app(argc,argv);Rig r;auto f=r.complete();
+    QCoreApplication app(argc,argv);
+    {
+        QTemporaryDir simulationRoot;
+        auto service=std::make_shared<CalibrationService>(simulationRoot.path());
+        const QJsonObject identity{{"transport","fpga_usb"},{"backend","simulator"},
+                                   {"locator","simulation://fpga"},
+                                   {"usb",QJsonObject{{"mode","simulation"},{"serial","SIMULATED-GP01"}}}};
+        service->setDevice(true,identity);
+        service->ensureSimulationFile(identity);
+        service->synchronize();
+        check(service->view().files.size()==1&&service->view().selected.valid,
+              "fresh simulator installation seeds and selects a valid vcal");
+        check(service->view().selected.project.origin==QStringLiteral("software_test"),
+              "simulator vcal is marked as software test data");
+        Ground::Session::GroundRecordingService recorder;
+        recorder.setCalibrationPolicy(service);
+        Ground::Session::GroundRecordingOptions options;
+        options.baseDirectory=QDir(simulationRoot.path()).filePath("sessions");
+        QString error;
+        check(recorder.start(options,nullptr,&error),qPrintable(error));
+        check(recorder.stop().writeFailed==false,"simulator recording stops after seeded calibration");
+        service->setDevice(true,QJsonObject{{"transport","fpga_usb"},{"backend","winusb"},
+                                            {"locator","USB\\VID_0000&PID_0000"},
+                                            {"usb",QJsonObject{{"mode","hardware"},{"serial","REAL"}}}});
+        service->synchronize();
+        check(!recorder.start(options,nullptr,&error)&&error.contains(QStringLiteral("仅可用于 FPGA 模拟器")),
+              "simulator calibration is rejected on a real device");
+    }
+    Rig r;auto f=r.complete();
     Ground::Session::GroundRecordingService recorder;recorder.setCalibrationPolicy(r.service);
     Ground::Session::GroundRecordingOptions options;options.baseDirectory=QDir(r.root.path()).filePath("sessions");
     QString error;check(!r.service->bindSession(options.baseDirectory,&error),"unprepared policy cannot bind a Session");

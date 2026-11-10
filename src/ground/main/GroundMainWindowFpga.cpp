@@ -963,8 +963,13 @@ void MainWindow::setupFpgaControlPage()
     auto *peakBus = state_->calibration_peak_bus_.get();
     connect(controller,&Controller::harmonicCycleReady,peakBus,[peakBus](quint64 t,const auto& s){peakBus->publish(t,s);},Qt::DirectConnection);
     connect(controller,&Controller::transportConnectionChanged,peakBus,[peakBus](bool connected){if(!connected)peakBus->setDevice(false,{});},Qt::DirectConnection);
-    connect(controller,&Controller::snapshot,peakBus,[peakBus](quint64,const QJsonObject& o){
-        if(o.value("event")=="connected")peakBus->setDevice(true,{{"transport","fpga_usb"},{"backend",o.value("backend")},{"locator",o.value("locator")},{"usb",o.value("usb")}});
+    connect(controller,&Controller::snapshot,peakBus,[peakBus,calibration](quint64,const QJsonObject& o){
+        if(o.value("event")=="connected") {
+            const QJsonObject identity{{"transport","fpga_usb"},{"backend",o.value("backend")},
+                                       {"locator",o.value("locator")},{"usb",o.value("usb")}};
+            peakBus->setDevice(true,identity);
+            calibration->ensureSimulationFile(identity);
+        }
         else if(o.value("event")!="firmware_event")peakBus->boundary();
     },Qt::DirectConnection);
     connect(controller,&Controller::harmonicCycleReady,this,[recorder](quint64 t,const auto& s){recorder->recordFpgaHarmonics(t,s);},Qt::DirectConnection);
@@ -1116,7 +1121,17 @@ void MainWindow::sendRemoteFpgaControl(const QJsonObject& request)
 void MainWindow::receiveRemoteFpgaStatus(const QJsonObject& status)
 {
     if(isRemoteSkyMode())state_->calibration_peak_bus_->setDevice(status.value("ready").toBool(),
-        {{"transport","remote_fpga"},{"backend",status.value("backend")},{"usb",status.value("usb")},{"locator",status.value("locator")}});
+        {{"transport","remote_fpga"},{"backend",status.value("backend")},{"usb",status.value("usb")},
+         {"locator",status.value("locator")},{"simulation",status.value("simulation")}});
+    if (isRemoteSkyMode()) {
+        const auto usb=status.value("usb").toObject();
+        if (status.value("simulation").toBool() || status.value("locator").toString()==QStringLiteral("simulation://fpga") ||
+            usb.value("mode").toString()==QStringLiteral("simulation")) {
+            state_->calibration_service_->ensureSimulationFile(
+                {{"transport","remote_fpga"},{"backend",status.value("backend")},{"usb",status.value("usb")},
+                 {"locator",status.value("locator")},{"simulation",true}});
+        }
+    }
     const auto configuration = status.value("configuration").toObject();
     const bool configurationChanged = configuration != state_->fpga_session_.remoteStatus.value("configuration").toObject();
     state_->fpga_session_.updateRemoteStatus(status);

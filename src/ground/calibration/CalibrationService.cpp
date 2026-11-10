@@ -5,6 +5,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QCryptographicHash>
 #include <QJsonDocument>
 #include <QSaveFile>
 #include <QScopeGuard>
@@ -45,6 +46,66 @@ QJsonObject runtimeParameters(const CalibrationFile& f)
         {"software_version",f.project.softwareVersion},{"origin",softwareTest?QStringLiteral("software_test"):f.project.origin},{"source_origin",f.project.origin},{"channels",channels},
         {"peak_algorithm","pointwise_h2_over_h1_v1"},{"model","validation_linear_v1"},{"compensation","unconfigured"}};
     runtime["sha256"]=QString::fromLatin1(VaporView::Session::runtimeCalibrationDigest(runtime));return runtime;
+}
+bool isSimulationIdentity(const QJsonObject& identity)
+{
+    const auto usb=identity.value(QStringLiteral("usb")).toObject();
+    return identity.value(QStringLiteral("backend")).toString()==QStringLiteral("simulator") ||
+        identity.value(QStringLiteral("locator")).toString()==QStringLiteral("simulation://fpga") ||
+        identity.value(QStringLiteral("simulation")).toBool() ||
+        usb.value(QStringLiteral("mode")).toString()==QStringLiteral("simulation");
+}
+bool isSimulationCalibration(const CalibrationProject& project)
+{ return project.origin==QStringLiteral("software_test") && isSimulationIdentity(project.deviceIdentity); }
+HarmonicPeakFeature simulationFeature(int wavelength, double peak, quint64 sequence)
+{
+    HarmonicPeakFeature feature;
+    feature.streamIdentity = QStringLiteral("vaporview-fpga-simulator-calibration");
+    feature.waveformSequence = sequence;
+    feature.hostTimeUs = 1700000000000000ULL + sequence * 1000;
+    feature.fpgaTick = sequence * 100000;
+    feature.segmentId = 1;
+    feature.channel = channelForWavelength(wavelength);
+    feature.cycleId = quint32(sequence);
+    feature.qualityFlags = 0;
+    feature.originalPoints = 3;
+    feature.validPoints = 3;
+    feature.peakIndex = 1;
+    feature.peak = peak;
+    feature.id = QString::fromLatin1(QCryptographicHash::hash(
+        (feature.streamIdentity + '|' + QString::number(feature.channel) + '|' +
+         QString::number(feature.waveformSequence)).toUtf8(), QCryptographicHash::Sha256).toHex());
+    return feature;
+}
+CalibrationProject simulationProject(const QJsonObject& identity)
+{
+    auto project = CalibrationProject::create(QStringLiteral("FPGA 模拟双波长定标"), QStringLiteral("ppmv"));
+    project.origin = QStringLiteral("software_test");
+    project.deviceIdentity = identity;
+    const auto stamp = calibrationUtcNow();
+    quint64 sequence = 1;
+    for (const auto& definition : {QPair<double, double>{100.0, 0.05},
+                                   QPair<double, double>{300.0, 0.15},
+                                   QPair<double, double>{500.0, 0.25}}) {
+        auto stage = ConcentrationStage::create(definition.first, 1000);
+        stage.status = QStringLiteral("complete");
+        stage.startedUtc = stamp;
+        stage.completedUtc = stamp;
+        stage.effectiveMs = stage.configuredMs;
+        stage.wallMs = stage.configuredMs;
+        for (const int wavelength : {816, 1368}) {
+            PeakRecord record;
+            record.taskId = project.id;
+            record.stageId = stage.id;
+            record.deviceIdentity = identity;
+            record.alignment = QStringLiteral("unavailable");
+            record.feature = simulationFeature(wavelength, definition.second, sequence++);
+            stage.samples[wavelength].append(record);
+        }
+        project.stages.append(stage);
+    }
+    project.fit();
+    return project;
 }
 }
 CalibrationService::CalibrationService(QString root,Clock clock,QObject *parent)
@@ -146,6 +207,43 @@ void CalibrationService::setDevice(bool connected,const QJsonObject& identity)
         state_.connected=connected;device_=identity;
         state_.identityWarning=state_.selected.valid && !state_.selected.project.deviceIdentity.isEmpty() && state_.selected.project.deviceIdentity!=device_
             ?QStringLiteral("当前设备与所选定标文件身份不同，开始录制前必须核对并确认"):QString();
+    });
+}
+void CalibrationService::ensureSimulationFile(const QJsonObject& identity)
+{
+    submit([this,identity]{
+        if (!isSimulationIdentity(identity) || state_.locked || externalSessionOpen_ || state_.acquiring) return;
+        if (state_.selected.valid && !isSimulationCalibration(state_.selected.project)) return;
+        if (state_.selected.valid && state_.selected.project.deviceIdentity==identity) return;
+        const auto paths=outsideStateLock([this]{return store_.files();});
+        bool hasValidRealFile=false;
+        for (const auto& path : paths) {
+            QString readError;
+            const auto file=outsideStateLock([&]{return store_.read(path,false,&readError);});
+            if (!file.valid) continue;
+            if (isSimulationCalibration(file.project) && file.project.deviceIdentity==identity) {
+                QString error;
+                if (!atomicJson(QDir(store_.directory()).filePath("selection.json"),
+                                {{"filename",file.filename},{"sha256",file.sha256}},&error)) {
+                    message(error,true);return;
+                }
+                state_.selected=file;
+                message(QStringLiteral("已选择 FPGA 模拟定标文件：%1").arg(QFileInfo(file.filename).fileName()));
+                return;
+            }
+            if (!isSimulationCalibration(file.project)) hasValidRealFile=true;
+        }
+        if (hasValidRealFile) return;
+        auto project=simulationProject(identity);
+        QString error;CalibrationFile file;
+        if (!outsideStateLock([&]{return store_.generate(project,QStringLiteral("FPGA模拟双波长定标"),file,&error);})){message(error,true);return;}
+        if (!atomicJson(QDir(store_.directory()).filePath("selection.json"),
+                        {{"filename",file.filename},{"sha256",file.sha256}},&error)) {
+            message(error,true);return;
+        }
+        state_.selected=file;
+        listFiles();
+        message(QStringLiteral("已创建并选择 FPGA 模拟定标文件：%1").arg(QFileInfo(file.filename).fileName()));
     });
 }
 void CalibrationService::setEnvironment(const Environment& e,const QString& a)
@@ -420,6 +518,9 @@ bool CalibrationService::prepareImpl(QJsonObject& snapshot,QString *error)
         *error=QStringLiteral("正式录制需要已连接设备、有效双波长 .vcal，且没有定标采集或未结束 Session");return false;}
     const auto selectedFilename=state_.selected.filename;auto f=outsideStateLock([&]{return store_.read(selectedFilename,false,error);});if(!f.valid)return false;
     if(f.sha256!=state_.selected.sha256){*error=QStringLiteral("所选定标文件已变化，请重新选择并核对");return false;}
+    if(isSimulationCalibration(f.project) && !isSimulationIdentity(device_)) {
+        *error=QStringLiteral("FPGA 模拟定标文件仅可用于 FPGA 模拟器，真实设备请先选择实机定标文件");return false;
+    }
     if(!state_.identityWarning.isEmpty() && !state_.identityWarning.contains(QStringLiteral("用户已核对"))){*error=state_.identityWarning;return false;}
     lockSnapshot_={{"kind","vaporview_session_calibration"},{"schema_version",1},{"file_id",f.id},{"file_sha256",f.sha256},
         {"filename",QFileInfo(f.filename).fileName()},{"task_name",f.project.name},{"vcal_document",f.document()},

@@ -2175,11 +2175,14 @@ static void harmonicRecordingUi()
 {
     const auto check=[](bool ok,const char *message){if(!ok)throw std::runtime_error(message);};
     QTemporaryDir output;check(output.isValid(),"isolated harmonic recording directory");
+    QTemporaryDir calibrationRoot;check(calibrationRoot.isValid(),"isolated simulator calibration directory");
     QSettings native("VaporView","MainWindow");native.setValue("recording_directory",output.path());
     VaporView::applicationConfigSettings().remove("Fpga/desiredConfiguration");
-    IndependentCalibrationTest::Rig calibration;const auto file=calibration.complete();
-    calibration.service->selectFile(file.filename);calibration.service->synchronize();
-    MainWindow window(nullptr,calibration.service);window.resize(1600,1000);
+    auto calibration=std::make_shared<VaporView::Ground::Calibration::CalibrationService>(calibrationRoot.path());
+    calibration->synchronize();
+    check(calibration->view().files.isEmpty()&&!calibration->view().selected.valid,
+          "simulator recording starts with an empty calibration installation");
+    MainWindow window(nullptr,calibration);window.resize(1600,1000);
     QMetaObject::invokeMethod(&window,"onDataSourceModeChanged",Q_ARG(int,0));
     auto *path=window.findChild<QComboBox*>("deviceSensorTransportPathCombo");
     check(path,"sensor transport selector exists");path->setCurrentIndex(path->findData("fpga_relay"));
@@ -2190,11 +2193,16 @@ static void harmonicRecordingUi()
     check(waitUntil([&]{return devices->currentData().toString()=="simulation://fpga"&&connect->isEnabled();},10000),"simulator enumerates for recording");
     connect->click();auto *acquisition=page->findChild<QAbstractButton*>("fpgaAcquisitionStart");
     check(waitUntil([&]{return acquisition->isEnabled();},20000),"recording simulator handshake completes");
+    check(waitUntil([&]{
+        const auto view=calibration->view();
+        return view.files.size()==1&&view.selected.valid&&view.selected.project.origin==QStringLiteral("software_test");
+    },20000),"simulator connection creates and selects a software calibration file");
+    check(QFileInfo(calibration->view().selected.filename).absolutePath()==QFileInfo(calibrationRoot.filePath("calibrations")).absoluteFilePath(),
+          "simulator calibration is stored in the isolated installation directory");
     acquisition->click();
     check(waitUntil([&]{return acquisition->isEnabled()&&page->findChild<QWidget*>("fpgaWavePlot48")->property("sampleCount").toInt()>0;}),"DLIA acquisition reaches the page");
     page->findChild<QAbstractButton*>("fpgaRawStart")->click();
     check(waitUntil([&]{return page->findChild<QWidget*>("fpgaWavePlot32")->property("sampleCount").toInt()>0;}),"RAW upload is active during recording verification");
-    calibration.service->selectFile(file.filename,true);calibration.service->synchronize();
     auto *record=page->findChild<QAbstractButton*>("fpgaRecord");record->click();
     check(waitUntil([&]{return record->text().contains(QStringLiteral("停止"));}),"UI starts common session recording");
     processFor(600);record->click();

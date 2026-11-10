@@ -37,6 +37,8 @@ public:
     QJsonObject diagnostics() const;
     void offer(const PeakRecord&);
     void setDevice(bool connected, const QJsonObject& identity);
+    // Seed a valid double-wavelength file for a fresh local FPGA simulator.
+    void ensureSimulationFile(const QJsonObject& identity);
     void setExternalSessionOpen(bool open);
     void setEnvironment(const Environment&, const QString& alignment);
     void noteSensor(const QString& source, const QJsonObject& reading);
