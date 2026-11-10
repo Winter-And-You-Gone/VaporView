@@ -5,6 +5,7 @@
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/TopLevelCardStyle.h"
 #include "LogService.h"
+#include <QButtonGroup>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDateTime>
@@ -121,9 +122,17 @@ WaterCalibrationPage::WaterCalibrationPage(QWidget *parent,const QString& root,s
     auto *body=new QWidget(card);body->setObjectName("calibrationCardBody");auto *layout=new QVBoxLayout(body);cardLayout->addWidget(body,1);
     s.currentFile=new QLabel;s.currentFile->setObjectName("calibrationCurrentFile");s.currentFile->setWordWrap(true);layout->addWidget(s.currentFile);
     s.live=new QLabel;s.live->setObjectName("calibrationLiveConcentration");s.live->setWordWrap(true);layout->addWidget(s.live);
-    s.tabs=new QTabWidget;s.tabs->setObjectName("calibrationWorkspaces");
-    s.tabs->tabBar()->setObjectName("calibrationNavigationBar");
-    layout->addWidget(s.tabs,1);
+    auto *navigation=new QFrame(body);navigation->setObjectName("calibrationNavigationBar");navigation->setAttribute(Qt::WA_StyledBackground,true);
+    auto *navigationLayout=new QHBoxLayout(navigation);navigationLayout->setContentsMargins(4,3,4,3);navigationLayout->setSpacing(4);
+    auto *pageButtons=new QButtonGroup(this);pageButtons->setExclusive(true);
+    const QStringList pageNames{QStringLiteral("任务与采集"),QStringLiteral("审核与拟合"),QStringLiteral("定标文件管理")};
+    for(int i=0;i<pageNames.size();++i){auto *selector=new QPushButton(pageNames[i],navigation);selector->setObjectName(QStringLiteral("calibrationPageSelectorButton%1").arg(i+1));selector->setCheckable(true);selector->setCursor(Qt::PointingHandCursor);selector->setFocusPolicy(Qt::TabFocus);navigationLayout->addWidget(selector);pageButtons->addButton(selector,i);}
+    layout->addWidget(navigation,0,Qt::AlignLeft);
+    auto *workspaceCard=new QFrame(body);workspaceCard->setObjectName("calibrationWorkspaceCard");workspaceCard->setAttribute(Qt::WA_StyledBackground,true);
+    auto *workspaceLayout=new QVBoxLayout(workspaceCard);workspaceLayout->setContentsMargins(6,12,6,12);layout->addWidget(workspaceCard,1);
+    s.tabs=new QTabWidget;s.tabs->setObjectName("calibrationWorkspaces");workspaceLayout->addWidget(s.tabs);
+    connect(pageButtons,&QButtonGroup::idClicked,s.tabs,&QTabWidget::setCurrentIndex);
+    connect(s.tabs,&QTabWidget::currentChanged,this,[pageButtons](int index){if(auto *selector=pageButtons->button(index))selector->setChecked(true);});
     auto *acquisition=new QWidget;auto *a=new QVBoxLayout(acquisition);
     auto *createRow=new QHBoxLayout;s.name=new QLineEdit;s.name->setObjectName("calibrationTaskName");s.name->setPlaceholderText(QStringLiteral("例如：实验室标准定标"));s.name->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Fixed);
     s.unit=new QComboBox;s.unit->setObjectName("calibrationUnit");s.unit->addItems({"ppmv","mol/mol","mg/m³"});
@@ -206,6 +215,7 @@ WaterCalibrationPage::WaterCalibrationPage(QWidget *parent,const QString& root,s
         if(QMessageBox::question(this,QStringLiteral("结束异常会话"),QStringLiteral("确认此会话已经停止？将解除持久化定标锁，保留历史快照。"))==QMessageBox::Yes)state_->service->finishRecoveredSession();});history->addStretch();f->addLayout(history);
     s.details=new QPlainTextEdit;s.details->setReadOnly(true);s.details->setObjectName("calibrationDetails");f->addWidget(s.details,1);
     auto *boundary=new QLabel(QStringLiteral("验证用线性模型 C=aR+b；显示初始浓度，未进行温压补偿。文件长期有效，不自动过期。\n文件和草稿固定保存于程序安装目录 calibrations/，写入失败不会改存其他目录。"));boundary->setWordWrap(true);f->addWidget(boundary);workspace(files,QStringLiteral("定标文件管理"));
+    s.tabs->tabBar()->hide();pageButtons->button(s.tabs->currentIndex())->setChecked(true);
     s.status=new QLabel;s.status->setObjectName("calibrationStatus");s.status->setWordWrap(true);s.status->setTextInteractionFlags(Qt::TextSelectableByMouse);layout->addWidget(s.status);
     connect(s.service.get(),&CalibrationService::changed,this,[this]{refresh();},Qt::QueuedConnection);
     connect(s.stages,&QTableWidget::itemSelectionChanged,this,[this]{auto& s=*state_;s.stageIndex=s.stages->currentRow();s.reviewFingerprint.clear();
@@ -317,17 +327,16 @@ void WaterCalibrationPage::setTheme(bool dark,int percent)
         "QWidget#waterCalibrationPage QLineEdit:focus, QWidget#waterCalibrationPage QComboBox:focus, QWidget#waterCalibrationPage QAbstractSpinBox:focus { border-color: @vv-primary; }"
         "QWidget#waterCalibrationPage QLineEdit:disabled, QWidget#waterCalibrationPage QComboBox:disabled, QWidget#waterCalibrationPage QAbstractSpinBox:disabled { background-color: @vv-surface-alt; color: @vv-text-disabled; }"
         "QWidget#waterCalibrationPage QAbstractSpinBox QLineEdit { background-color: transparent; border: none; border-radius: 0px; padding: 0px; min-height: 0px; max-height: 16777215px; }"
-        "QWidget#waterCalibrationPage QTabWidget#calibrationWorkspaces { background-color: transparent; border: none; }"
-        "QWidget#waterCalibrationPage QTabBar#calibrationNavigationBar { background-color: @vv-primary-subtle; border: 1px solid @vv-border-strong; border-radius: 12px; padding: 3px; }"
-        "QWidget#waterCalibrationPage QTabBar#calibrationNavigationBar::tab { background-color: transparent; color: @vv-text; border: 1px solid transparent; border-radius: 8px; padding: 0px %7px; margin: 0px; min-height: %8px; font-size: %2px; font-weight: 600; }"
-        "QWidget#waterCalibrationPage QTabBar#calibrationNavigationBar::tab:hover { background-color: @vv-primary-subtle-pressed; color: @vv-primary; }"
-        "QWidget#waterCalibrationPage QTabBar#calibrationNavigationBar::tab:selected { background-color: @vv-primary; color: @vv-white; }"
-        "QWidget#waterCalibrationPage QTabBar#calibrationNavigationBar::tab:focus { border-color: @vv-focus; }"
-        "QWidget#waterCalibrationPage QTabWidget#calibrationWorkspaces::pane { background-color: @vv-surface-raised; border: 1px solid @vv-border-strong; border-radius: 12px; top: 8px; }"
+        "QWidget#waterCalibrationPage QFrame#calibrationNavigationBar { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; }"
+        "QWidget#waterCalibrationPage QFrame#calibrationNavigationBar QPushButton { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: %2px; font-weight: 500; min-height: %8px; max-height: %8px; padding: 0px %7px; text-align: center; outline: none; }"
+        "QWidget#waterCalibrationPage QFrame#calibrationNavigationBar QPushButton:checked { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
+        "QWidget#waterCalibrationPage QFrame#calibrationNavigationBar QPushButton:!checked:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
+        "QWidget#waterCalibrationPage QFrame#calibrationWorkspaceCard { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 8px; }"
+        "QWidget#waterCalibrationPage QTabWidget#calibrationWorkspaces, QWidget#waterCalibrationPage QTabWidget#calibrationWorkspaces::pane { background-color: transparent; border: none; }"
         "QWidget#waterCalibrationPage QScrollArea#calibrationWorkspaceScroll { background-color: @vv-surface-raised; border: none; }"
         "QWidget#waterCalibrationPage QScrollArea#calibrationWorkspaceScroll QWidget#calibrationWorkspaceViewport, QWidget#waterCalibrationPage QWidget#calibrationWorkspace { background-color: @vv-surface-raised; }"
     ).arg(pixels(16)).arg(pixels(14)).arg(pixels(16)).arg(pixels(15)).arg(pixels(28))
-        .arg(pixels(26)).arg(pixels(12)).arg(pixels(36)).arg(pixels(40)),dark));
+        .arg(pixels(26)).arg(pixels(10)).arg(pixels(30)).arg(pixels(40)),dark));
     auto colors=appThemePalette(dark);
     colors.setColor(QPalette::PlaceholderText,appThemeColor(AppThemeColor::TextMuted,dark));
     for(auto *widget:findChildren<QWidget*>())widget->setPalette(colors);

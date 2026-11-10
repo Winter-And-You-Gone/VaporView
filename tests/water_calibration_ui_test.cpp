@@ -6,6 +6,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QFrame>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
@@ -113,6 +114,16 @@ int main(int argc,char **argv)
         check(std::abs(app.primaryScreen()->devicePixelRatio()-app.arguments().value(2).toDouble())<0.01,"Qt renders at the requested process DPI scale");
     }
     Rig r;WaterCalibrationPage page(nullptr,r.root.path(),r.service);page.resize(1280,1000);page.show();
+    auto *tabs=control<QTabWidget>(page,"calibrationWorkspaces");auto *navigation=control<QFrame>(page,"calibrationNavigationBar");
+    auto *workspaceCard=control<QFrame>(page,"calibrationWorkspaceCard");
+    for(int i=0;i<tabs->count();++i) {
+        auto *selector=control<QPushButton>(page,qPrintable(QStringLiteral("calibrationPageSelectorButton%1").arg(i+1)));
+        selector->click();QApplication::processEvents();
+        check(tabs->currentIndex()==i&&selector->isChecked()&&tabs->currentWidget()->isVisible(),"navigation selects its corresponding workspace");
+    }
+    tabs->setCurrentIndex(0);QApplication::processEvents();
+    check(control<QPushButton>(page,"calibrationPageSelectorButton1")->isChecked(),"programmatic tab changes update navigation selection");
+    check(navigation->geometry().bottom()<workspaceCard->geometry().top(),"navigation sits above the workspace card");
     auto *name=control<QLineEdit>(page,"calibrationTaskName");auto *unit=control<QComboBox>(page,"calibrationUnit");
     auto *create=control<QPushButton>(page,"calibrationCreateTask");auto *viewport=name->parentWidget()->parentWidget();
     for(int scale:{100,130})for(int width:{900,1280}) {
