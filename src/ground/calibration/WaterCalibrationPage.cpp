@@ -2,6 +2,7 @@
 #include "CalibrationService.h"
 #include "CalibrationReviewPlot.h"
 #include "RecordedConcentrations.h"
+#include "ground/widgets/LabelTextSelection.h"
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/TopLevelCardStyle.h"
 #include "LogService.h"
@@ -117,8 +118,8 @@ WaterCalibrationPage::WaterCalibrationPage(QWidget *parent,const QString& root,s
     auto *card=new QFrame(this);card->setObjectName("calibrationPageCard");configureTopLevelCard(card);rootLayout->addWidget(card);
     auto *cardLayout=new QVBoxLayout(card);cardLayout->setContentsMargins(1,0,1,1);cardLayout->setSpacing(0);
     auto *header=new QWidget(card);header->setObjectName("calibrationCardHeader");auto *headerLayout=new QHBoxLayout(header);headerLayout->setContentsMargins(10,2,10,2);
-    auto *title=new QLabel(QStringLiteral("水汽定标"));title->setObjectName("sectionTitleLabel");
-    title->setTextInteractionFlags(Qt::TextSelectableByMouse|Qt::TextSelectableByKeyboard);title->setFocusPolicy(Qt::ClickFocus);headerLayout->addWidget(title);cardLayout->addWidget(header);
+    auto *title=new VisualTextLabel(QStringLiteral("水汽定标"));title->setObjectName("sectionTitleLabel");
+    configureSelectableCardTitle(title);headerLayout->addWidget(title);cardLayout->addWidget(header);
     auto *body=new QWidget(card);body->setObjectName("calibrationCardBody");auto *layout=new QVBoxLayout(body);cardLayout->addWidget(body,1);
     s.currentFile=new QLabel;s.currentFile->setObjectName("calibrationCurrentFile");s.currentFile->setWordWrap(true);layout->addWidget(s.currentFile);
     s.live=new QLabel;s.live->setObjectName("calibrationLiveConcentration");s.live->setWordWrap(true);layout->addWidget(s.live);

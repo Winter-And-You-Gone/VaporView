@@ -2,6 +2,7 @@
 #include "IndependentCalibrationFixture.h"
 #include "ground/calibration/WaterCalibrationPage.h"
 #include "ground/calibration/CalibrationReviewPlot.h"
+#include "ground/widgets/VisualTextLabel.h"
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
@@ -114,6 +115,11 @@ int main(int argc,char **argv)
         check(std::abs(app.primaryScreen()->devicePixelRatio()-app.arguments().value(2).toDouble())<0.01,"Qt renders at the requested process DPI scale");
     }
     Rig r;WaterCalibrationPage page(nullptr,r.root.path(),r.service);page.resize(1280,1000);page.show();
+    auto *title=control<QLabel>(page,"sectionTitleLabel");
+    check(dynamic_cast<VaporView::VisualTextLabel*>(title)&&
+          !title->textInteractionFlags().testFlag(Qt::TextSelectableByMouse)&&
+          title->textInteractionFlags().testFlag(Qt::TextSelectableByKeyboard)&&title->focusPolicy()==Qt::ClickFocus,
+          "card title uses shared selection behavior without a text caret");
     auto *tabs=control<QTabWidget>(page,"calibrationWorkspaces");auto *navigation=control<QFrame>(page,"calibrationNavigationBar");
     auto *workspaceCard=control<QFrame>(page,"calibrationWorkspaceCard");
     for(int i=0;i<tabs->count();++i) {
