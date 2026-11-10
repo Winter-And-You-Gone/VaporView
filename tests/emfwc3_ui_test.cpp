@@ -181,9 +181,19 @@ int main(int argc, char **argv)
         for (bool english : {false, true}) for (bool dark : {false, true}) for (int scale : {100, 130}) {
             QFont font = app.font(); font.setPointSizeF(10 * scale / 100.0); host.setFont(font);
             page->setTheme(dark, scale); page->setLanguage(english);
-            for (int width : {1200, 600}) {
+            for (int width : {1200, 1000, 800, 600}) {
                 host.resize(width, 1100); QApplication::processEvents();
                 check(host.width() == width, "compact controls fit requested window width at both font scales");
+                auto *port = find<QComboBox>(*page, "emFwc3Port");
+                check(port->width() >= 80 && port->width() <= qRound(150 * scale / 100.0),
+                      "serial selector remains compact at each font scale");
+                const auto bounds = [page](QWidget *widget) {
+                    return QRect(widget->mapTo(page, QPoint(0, 0)), widget->size());
+                };
+                const auto sameRow = [&](QWidget *left, QWidget *right) {
+                    const QRect a = bounds(left), b = bounds(right);
+                    return a.top() <= b.bottom() && b.top() <= a.bottom() && !a.intersects(b);
+                };
                 for (int channel = 1; channel <= 3; ++channel) {
                     find<QComboBox>(*page, "emFwc3ChannelSelector")->setCurrentIndex(channel - 1);
                     for (bool expanded : {false, true}) {
@@ -194,6 +204,24 @@ int main(int argc, char **argv)
                         check(body->isHidden() != expanded, "continuous controls collapse without an empty frame");
                         check(area->rect().contains(toggle->geometry()), "continuous-motion label stays inside its layout");
                         if (expanded) check(!toggle->geometry().intersects(body->geometry()), "continuous-motion heading and controls do not overlap");
+                        const auto named = [&](const QString& name) {
+                            auto *widget = page->findChild<QWidget*>(name);
+                            check(widget != nullptr, "motion control exists");
+                            return widget;
+                        };
+                        const QString suffix = QString::number(channel);
+                        auto *target = named(QStringLiteral("emFwc3Target") + suffix);
+                        auto *step = named(QStringLiteral("emFwc3Step") + suffix);
+                        auto *home = named(QStringLiteral("emFwc3Home") + suffix);
+                        auto *speed = named(QStringLiteral("emFwc3Speed"));
+                        auto *save = named(QStringLiteral("emFwc3SavePosition"));
+                        for (auto *widget : {target, step, home, static_cast<QWidget*>(toggle), speed, save})
+                            check(page->rect().contains(bounds(widget)), "motion controls stay within the card at wide and narrow widths");
+                        if (width == 1200 && scale == 100 && !english) {
+                            check(sameRow(target, step), "wide card places target and relative step on one row");
+                            check(sameRow(home, toggle), "wide card places motion actions and continuous controls on one row");
+                            check(sameRow(speed, save), "wide card places common speed and device actions on one row");
+                        }
                     }
                 }
 

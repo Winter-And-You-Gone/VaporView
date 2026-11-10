@@ -58,6 +58,10 @@ struct MotionControlPage::State
     EmFwc3Session *session = nullptr;
     QWidget *header = nullptr, *connectionControls = nullptr;
     QGridLayout *headerLayout = nullptr;
+    std::array<QGridLayout*, 3> motionLayouts{};
+    std::array<std::array<QWidget*, 4>, 3> motionGroups{};
+    QGridLayout *deviceLayout = nullptr;
+    std::array<QWidget*, 2> deviceGroups{};
     QLabel *title = nullptr;
     QComboBox *channel = nullptr;
     QStackedWidget *channels = nullptr;
@@ -94,9 +98,9 @@ MotionControlPage::MotionControlPage(QWidget *parent, const QString& sdkDirector
     s.connectionControls = new QWidget(s.header);
     auto *connectionLayout = new QHBoxLayout(s.connectionControls);
     connectionLayout->setContentsMargins(0, 0, 0, 0); connectionLayout->setSpacing(6);
+    connectionLayout->addStretch();
     s.port = new QComboBox(s.connectionControls); s.port->setEditable(true); s.port->setInsertPolicy(QComboBox::NoInsert);
-    s.port->setObjectName(QStringLiteral("emFwc3Port")); s.port->setMinimumWidth(120);
-    s.port->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    s.port->setObjectName(QStringLiteral("emFwc3Port")); s.port->setFixedWidth(110);
     s.port->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     s.port->setMinimumContentsLength(8); connectionLayout->addWidget(s.port);
     s.refreshPorts = button(s.connectionControls, "emFwc3RefreshPorts", "刷新串口", "Refresh ports"); connectionLayout->addWidget(s.refreshPorts);
@@ -134,24 +138,30 @@ MotionControlPage::MotionControlPage(QWidget *parent, const QString& sdkDirector
         s.positions[i] = new QLabel(QStringLiteral("—"), card);
         s.positions[i]->setObjectName(QStringLiteral("emFwc3Position") + suffix); readback->addWidget(s.positions[i]); readback->addStretch(); v->addLayout(readback);
         connect(s.types[i], &QComboBox::currentTextChanged, this, [this] { state_->confirmTypes->setChecked(false); saveSettings(); });
-        auto *moves = new QGridLayout; moves->setHorizontalSpacing(6); moves->setVerticalSpacing(6);
-        moves->addWidget(label(card, "目标角度", "Target angle"), 0, 0);
-        s.targets[i] = angle(card, QStringLiteral("emFwc3Target") + suffix, false); moves->addWidget(s.targets[i], 0, 1);
+        auto *moves = new QGridLayout; moves->setHorizontalSpacing(12); moves->setVerticalSpacing(6);
+        s.motionLayouts[i] = moves;
+        auto *targetGroup = new QWidget(card); auto *targetRow = new QHBoxLayout(targetGroup);
+        targetRow->setContentsMargins(0, 0, 0, 0); targetRow->setSpacing(6);
+        targetRow->addWidget(label(card, "目标角度", "Target angle"));
+        s.targets[i] = angle(card, QStringLiteral("emFwc3Target") + suffix, false); targetRow->addWidget(s.targets[i]);
         auto *go = button(card, qPrintable(QStringLiteral("emFwc3Go") + suffix), "定位", "Move to target");
-        moves->addWidget(go, 0, 2, 1, 2, Qt::AlignLeft); s.normalActions << go << s.targets[i];
+        targetRow->addWidget(go); s.normalActions << go << s.targets[i];
         connect(go, &QPushButton::clicked, this, [this, i] { run(EmFwc3Session::Command::Absolute, i, state_->targets[i]->value()); });
-        moves->addWidget(label(card, "相对步长", "Relative step"), 1, 0);
-        s.steps[i] = angle(card, QStringLiteral("emFwc3Step") + suffix, true); moves->addWidget(s.steps[i], 1, 1);
+        auto *stepGroup = new QWidget(card); auto *stepRow = new QHBoxLayout(stepGroup);
+        stepRow->setContentsMargins(0, 0, 0, 0); stepRow->setSpacing(6);
+        stepRow->addWidget(label(card, "相对步长", "Relative step"));
+        s.steps[i] = angle(card, QStringLiteral("emFwc3Step") + suffix, true); stepRow->addWidget(s.steps[i]);
         auto *minus = button(card, qPrintable(QStringLiteral("emFwc3Minus") + suffix), "反向步进", "Step −");
         auto *plus = button(card, qPrintable(QStringLiteral("emFwc3Plus") + suffix), "正向步进", "Step +");
-        moves->addWidget(minus, 1, 2); moves->addWidget(plus, 1, 3); moves->setColumnStretch(4, 1); v->addLayout(moves);
+        stepRow->addWidget(minus); stepRow->addWidget(plus); v->addLayout(moves);
         s.normalActions << minus << plus << s.steps[i];
         connect(minus, &QPushButton::clicked, this, [this, i] { run(EmFwc3Session::Command::Relative, i, -state_->steps[i]->value()); });
         connect(plus, &QPushButton::clicked, this, [this, i] { run(EmFwc3Session::Command::Relative, i, state_->steps[i]->value()); });
-        auto *actions = new QHBoxLayout;
+        auto *actionGroup = new QWidget(card); auto *actions = new QHBoxLayout(actionGroup);
+        actions->setContentsMargins(0, 0, 0, 0); actions->setSpacing(6);
         auto *home = button(card, qPrintable(QStringLiteral("emFwc3Home") + suffix), "回零", "Home");
         auto *stop = button(card, qPrintable(QStringLiteral("emFwc3Stop") + suffix), "停止", "Stop");
-        actions->addWidget(home); actions->addWidget(stop); actions->addStretch(); v->addLayout(actions);
+        actions->addWidget(home); actions->addWidget(stop); actions->addStretch();
         s.normalActions << home; s.stopActions << stop;
         connect(home, &QPushButton::clicked, this, [this, i] {
             if (QMessageBox::question(this, text("回零", "Home"),
@@ -168,9 +178,14 @@ MotionControlPage::MotionControlPage(QWidget *parent, const QString& sdkDirector
         auto *reverse = button(continuousBody, qPrintable(QStringLiteral("emFwc3Reverse") + suffix), "反向连续运行", "Run reverse");
         auto *forward = button(continuousBody, qPrintable(QStringLiteral("emFwc3Forward") + suffix), "正向连续运行", "Run forward");
         continuousLayout->addWidget(reverse); continuousLayout->addWidget(forward);
-        a->addWidget(continuousBody); a->addStretch(); continuousBody->hide(); v->addWidget(advanced);
+        a->addWidget(continuousBody); a->addStretch(); continuousBody->hide();
         advanced->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-        connect(toggle, &QCheckBox::toggled, continuousBody, &QWidget::setVisible); s.normalActions << advanced;
+        s.motionGroups[i] = {targetGroup, stepGroup, actionGroup, advanced};
+        for (int group = 0; group < 4; ++group) moves->addWidget(s.motionGroups[i][group], group, 0);
+        moves->setColumnStretch(0, 1);
+        connect(toggle, &QCheckBox::toggled, continuousBody, &QWidget::setVisible);
+        connect(toggle, &QCheckBox::toggled, this, [this] { QTimer::singleShot(0, this, &MotionControlPage::reflow); });
+        s.normalActions << advanced;
         for (auto *b : {reverse, forward}) connect(b, &QPushButton::clicked, this, [this, i, b, forward] {
             if (QMessageBox::question(this, text("连续运动", "Continuous motion"),
                 text("连续运动将持续到下发停止指令，确认开始？", "Continuous motion runs until a stop command. Start?")) == QMessageBox::Yes)
@@ -184,15 +199,21 @@ MotionControlPage::MotionControlPage(QWidget *parent, const QString& sdkDirector
     connect(s.confirmTypes, &QCheckBox::toggled, this, [this] { refresh(); });
     auto *separator = new QFrame(content); separator->setFrameShape(QFrame::HLine); layout->addWidget(separator);
     layout->addWidget(label(content, "设备公共参数 · 速度单位及有效范围请按实际电机确认", "Device-wide parameters · verify speed units and range for the fitted motor"));
-    auto *speedRow = new QHBoxLayout;
+    s.deviceLayout = new QGridLayout; s.deviceLayout->setHorizontalSpacing(12); s.deviceLayout->setVerticalSpacing(6);
+    auto *speedGroup = new QWidget(content); auto *speedRow = new QHBoxLayout(speedGroup);
+    speedRow->setContentsMargins(0, 0, 0, 0); speedRow->setSpacing(6);
     speedRow->addWidget(label(content, "速度", "Speed"));
     s.speed = new QSpinBox(content); s.speed->setObjectName(QStringLiteral("emFwc3Speed"));
     s.speed->setRange(1, std::numeric_limits<int>::max()); s.speed->setValue(50); s.speed->setKeyboardTracking(false); speedRow->addWidget(s.speed);
     auto *apply = button(content, "emFwc3ApplySpeed", "应用速度并读回", "Apply speed and read back"); speedRow->addWidget(apply);
-    s.speedReadback = new QLabel(content); s.speedReadback->setObjectName(QStringLiteral("emFwc3SpeedReadback")); speedRow->addStretch(); layout->addLayout(speedRow);
-    auto *deviceActions = new QHBoxLayout;
+    s.speedReadback = new QLabel(content); s.speedReadback->setObjectName(QStringLiteral("emFwc3SpeedReadback")); speedRow->addStretch();
+    auto *deviceGroup = new QWidget(content); auto *deviceActions = new QHBoxLayout(deviceGroup);
+    deviceActions->setContentsMargins(0, 0, 0, 0); deviceActions->setSpacing(6);
     auto *save = button(content, "emFwc3SavePosition", "保存位置到设备", "Save positions to device"); deviceActions->addWidget(save);
-    s.stopAll = button(content, "emFwc3StopAll", "全部停止", "Stop all"); deviceActions->addWidget(s.stopAll); deviceActions->addWidget(s.speedReadback); deviceActions->addStretch(); layout->addLayout(deviceActions);
+    s.stopAll = button(content, "emFwc3StopAll", "全部停止", "Stop all"); deviceActions->addWidget(s.stopAll); deviceActions->addWidget(s.speedReadback); deviceActions->addStretch();
+    s.deviceGroups = {speedGroup, deviceGroup};
+    s.deviceLayout->addWidget(speedGroup, 0, 0); s.deviceLayout->addWidget(deviceGroup, 1, 0);
+    s.deviceLayout->setColumnStretch(0, 1); layout->addLayout(s.deviceLayout);
     s.normalActions << s.speed << apply << save; s.stopActions << s.stopAll;
     connect(s.stopAll, &QPushButton::clicked, this, [this] { run(EmFwc3Session::Command::StopAll); });
     connect(apply, &QPushButton::clicked, this, [this] { run(EmFwc3Session::Command::Speed, 0, state_->speed->value()); });
@@ -246,8 +267,10 @@ void MotionControlPage::refreshPorts()
     QString previous = port->currentData().isValid() && port->currentText() == port->itemText(port->currentIndex())
         ? port->currentData().toString() : port->currentText();
     port->blockSignals(true); port->clear();
-    for (const auto& info : QSerialPortInfo::availablePorts())
-        port->addItem(info.portName() + QStringLiteral(" — ") + info.description(), info.portName());
+    for (const auto& info : QSerialPortInfo::availablePorts()) {
+        port->addItem(info.portName(), info.portName());
+        port->setItemData(port->count() - 1, info.description(), Qt::ToolTipRole);
+    }
     int index = port->findData(previous);
     if (index >= 0) port->setCurrentIndex(index);
     else port->setEditText(previous);
@@ -277,7 +300,11 @@ void MotionControlPage::refresh()
     s.connection->setText(connection);
     for (int i = 0; i < 3; ++i) s.positions[i]->setText(snapshot.connected && snapshot.valid[i]
         ? QString::number(snapshot.positions[i], 'f', 3) + QStringLiteral("°") : QStringLiteral("—"));
-    s.speedReadback->setText(text("速度读回：%1", "Speed readback: %1").arg(snapshot.connected && snapshot.speedValid ? QString::number(snapshot.speed) : QStringLiteral("—")));
+    const QString speedReadback = text("速度读回：%1", "Speed readback: %1").arg(snapshot.connected && snapshot.speedValid ? QString::number(snapshot.speed) : QStringLiteral("—"));
+    if (s.speedReadback->text() != speedReadback) {
+        s.speedReadback->setText(speedReadback);
+        QTimer::singleShot(0, this, &MotionControlPage::reflow);
+    }
     for (auto *w : s.normalActions) w->setEnabled(snapshot.connected && !snapshot.busy);
     for (auto *w : s.stopActions) w->setEnabled(snapshot.connected);
     {
@@ -317,6 +344,7 @@ void MotionControlPage::setLanguage(bool english)
 }
 void MotionControlPage::setTheme(bool dark, int fontScalePercent)
 {
+    state_->port->setFixedWidth(qRound(110 * fontScalePercent / 100.0));
     // Leave ample room for wrapped titles without scaling Qt's maximum-size sentinel.
     const QString style = applyAppThemeTokens(QStringLiteral(
         "QFrame[emFwc3Card=true] { background-color: @vv-surface-raised; color: @vv-text; border: 1px solid @vv-border; border-radius: 12px; }"
@@ -350,8 +378,30 @@ void MotionControlPage::reflow()
     const bool wrap = width() - 34 < s.title->sizeHint().width() + s.connectionControls->layout()->sizeHint().width();
     int row, column, rowSpan, columnSpan;
     s.headerLayout->getItemPosition(s.headerLayout->indexOf(s.connectionControls), &row, &column, &rowSpan, &columnSpan);
-    if (row == (wrap ? 1 : 0)) return;
-    s.headerLayout->removeWidget(s.connectionControls);
-    s.headerLayout->addWidget(s.connectionControls, wrap ? 1 : 0, wrap ? 0 : 1, 1, wrap ? 2 : 1);
+    if (row != (wrap ? 1 : 0)) {
+        s.headerLayout->removeWidget(s.connectionControls);
+        s.headerLayout->addWidget(s.connectionControls, wrap ? 1 : 0, wrap ? 0 : 1, 1, wrap ? 2 : 1);
+    }
+    const int available = width() - 28;
+    const auto arrange = [available](QGridLayout *grid, const auto& groups) {
+        if (!grid || !groups[0] || !groups[1]) return;
+        int firstColumn = 0, secondColumn = 0;
+        for (size_t i = 0; i + 1 < groups.size(); i += 2)
+        {
+            firstColumn = qMax(firstColumn, groups[i]->sizeHint().width());
+            secondColumn = qMax(secondColumn, groups[i + 1]->sizeHint().width());
+        }
+        const int needed = firstColumn + secondColumn + grid->horizontalSpacing();
+        const bool twoColumns = available >= needed;
+        int currentRow, currentColumn, rowSpan, columnSpan;
+        grid->getItemPosition(grid->indexOf(groups[1]), &currentRow, &currentColumn, &rowSpan, &columnSpan);
+        if (currentColumn == (twoColumns ? 1 : 0)) return;
+        for (auto *group : groups) grid->removeWidget(group);
+        grid->setColumnStretch(1, twoColumns ? 1 : 0);
+        for (size_t i = 0; i < groups.size(); ++i)
+            grid->addWidget(groups[i], twoColumns ? int(i / 2) : int(i), twoColumns ? int(i % 2) : 0);
+    };
+    for (int i = 0; i < 3; ++i) arrange(s.motionLayouts[i], s.motionGroups[i]);
+    arrange(s.deviceLayout, s.deviceGroups);
 }
 }
