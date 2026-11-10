@@ -289,22 +289,34 @@ void WaterCalibrationPage::setTheme(bool dark,int percent)
 {
     setProperty(kAppDarkThemeProperty,dark);setPalette(appThemePalette(dark));
     const qreal scale=qBound(60,percent,180)/100.0;
+    const auto pixels=[scale](int value){return qRound(value*scale);};
     setStyleSheet(applyAppThemeTokens(QStringLiteral(
-        "QWidget#waterCalibrationPage { background: @vv-window; color: @vv-text; }"
-        "QWidget#calibrationWorkspace { background: @vv-window; color: @vv-text; }"
-        "QWidget#waterCalibrationPage QLabel { color: @vv-text; background: transparent; }"
-        "QLabel#sectionTitleLabel { font-size: %1px; font-weight: 700; }"
-        "QWidget#waterCalibrationPage QPushButton { background: @vv-surface-alt; color: @vv-text; border: 1px solid @vv-border; border-radius: 6px; padding: 6px 10px; }"
-        "QWidget#waterCalibrationPage QPushButton:hover { background: @vv-primary-subtle; }"
+        "QWidget#waterCalibrationPage, QWidget#calibrationWorkspace { background-color: @vv-window; color: @vv-text; }"
+        "QWidget#waterCalibrationPage QLabel { color: @vv-text; background-color: transparent; font-size: %2px; }"
+        "QWidget#waterCalibrationPage QLabel#sectionTitleLabel { background-color: @vv-surface; border: none; border-bottom: 1px solid @vv-border; border-radius: 0px; color: @vv-text; font-size: %1px; font-weight: 700; margin: 0px; padding: 0px; }"
+        "QWidget#waterCalibrationPage QPushButton { background-color: @vv-primary; color: @vv-white; border: none; border-radius: 6px; padding: 4px %3px; font-size: %4px; font-weight: 500; min-height: %5px; max-height: %5px; }"
+        "QWidget#waterCalibrationPage QPushButton:hover { background-color: @vv-primary-hover; }"
+        "QWidget#waterCalibrationPage QPushButton:pressed { background-color: @vv-primary-pressed; }"
+        "QWidget#waterCalibrationPage QPushButton:disabled { background-color: @vv-border-strong; color: @vv-white; }"
+        "QWidget#waterCalibrationPage QPushButton:focus { border: 1px solid @vv-focus; }"
         "QWidget#waterCalibrationPage QTableWidget, QWidget#waterCalibrationPage QPlainTextEdit { background: @vv-surface; alternate-background-color: @vv-surface-alt; color: @vv-text; gridline-color: @vv-border; }"
         "QWidget#waterCalibrationPage QHeaderView::section { background: @vv-surface-alt; color: @vv-text; padding: 4px; }"
-        "QWidget#waterCalibrationPage QLineEdit, QWidget#waterCalibrationPage QComboBox, QWidget#waterCalibrationPage QAbstractSpinBox { background: @vv-surface; color: @vv-text; }"
-        "QWidget#waterCalibrationPage QTabBar::tab { padding: 6px 14px; background: @vv-surface-alt; color: @vv-text; }"
-        "QWidget#waterCalibrationPage QTabBar::tab:selected { background: @vv-primary; color: @vv-white; }"
-    ).arg(qRound(18*scale)),dark));
+        "QWidget#waterCalibrationPage QLineEdit, QWidget#waterCalibrationPage QComboBox, QWidget#waterCalibrationPage QAbstractSpinBox { background-color: @vv-field-bg; border: 1px solid @vv-border; border-radius: 6px; padding: 4px 10px; min-height: %6px; max-height: %6px; color: @vv-text; font-size: %2px; }"
+        "QWidget#waterCalibrationPage QLineEdit:hover, QWidget#waterCalibrationPage QComboBox:hover, QWidget#waterCalibrationPage QAbstractSpinBox:hover { border-color: @vv-border-strong; }"
+        "QWidget#waterCalibrationPage QLineEdit:focus, QWidget#waterCalibrationPage QComboBox:focus, QWidget#waterCalibrationPage QAbstractSpinBox:focus { border-color: @vv-primary; }"
+        "QWidget#waterCalibrationPage QLineEdit:disabled, QWidget#waterCalibrationPage QComboBox:disabled, QWidget#waterCalibrationPage QAbstractSpinBox:disabled { background-color: @vv-surface-alt; color: @vv-text-disabled; }"
+        "QWidget#waterCalibrationPage QAbstractSpinBox QLineEdit { background-color: transparent; border: none; border-radius: 0px; padding: 0px; min-height: 0px; max-height: 16777215px; }"
+        "QWidget#waterCalibrationPage QTabWidget::pane { border: none; background-color: @vv-window; }"
+        "QWidget#waterCalibrationPage QTabBar::tab { background-color: @vv-surface-alt; color: @vv-text; border: 1px solid transparent; border-radius: 6px; padding: 0px %7px; margin-right: 4px; min-height: %8px; font-size: %2px; font-weight: 600; }"
+        "QWidget#waterCalibrationPage QTabBar::tab:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
+        "QWidget#waterCalibrationPage QTabBar::tab:selected { background-color: @vv-primary; color: @vv-white; }"
+        "QWidget#waterCalibrationPage QTabBar::tab:focus { border-color: @vv-focus; }"
+    ).arg(pixels(16)).arg(pixels(14)).arg(pixels(16)).arg(pixels(15)).arg(pixels(28))
+        .arg(pixels(26)).arg(pixels(12)).arg(pixels(36)),dark));
     auto colors=appThemePalette(dark);
     colors.setColor(QPalette::PlaceholderText,appThemeColor(AppThemeColor::TextMuted,dark));
     for(auto *widget:findChildren<QWidget*>())widget->setPalette(colors);
+    for(auto *combo:findChildren<QComboBox*>())configureComboBoxPopup(combo,dark);
     for(auto *edit:{state_->details,state_->sampleDetails}) {
         edit->viewport()->setStyleSheet(applyAppThemeTokens(QStringLiteral("background-color: @vv-surface; color: @vv-text;"),dark));
     }
