@@ -578,7 +578,7 @@ void MainWindow::setEnglish(bool english)
     updateTemperatureTitleButtonsState();
     if (state_->device_config_.epsilon_packet_rates_btn)
     {
-        state_->device_config_.epsilon_packet_rates_btn->setText(english ? "Packet Rates" : "配置EPSILON包频率");
+        state_->device_config_.epsilon_packet_rates_btn->setText(english ? "Packet Rates" : "包频率设置");
         state_->device_config_.epsilon_packet_rates_btn->setToolTip(english
             ? "Configure EPSILON packet output rates"
             : "配置 EPSILON 各数据包输出频率");

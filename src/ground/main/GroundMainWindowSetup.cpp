@@ -27,7 +27,6 @@ namespace
 {
 
 constexpr int kMainContentBottomFadeHeight = 36;
-constexpr int kDeviceConfigEpsilonPacketRatesButtonMinWidth = 194;
 
 class DeviceCardsLayoutController final : public QObject
 {
@@ -2842,7 +2841,7 @@ void MainWindow::setupDeviceConfigPage()
 
     constexpr int kDeviceConfigPortComboWidth = 108;
     constexpr int kDeviceConfigBaudComboWidth = 100;
-    constexpr int kDeviceConfigRateComboWidth = 88;
+    constexpr int kDeviceConfigRateComboWidth = 76;
 
     auto createCombo = [this](QWidget *parent, int width, bool editable = false) {
         auto *combo = new QComboBox(parent);
@@ -2993,6 +2992,7 @@ void MainWindow::setupDeviceConfigPage()
         label->setObjectName(QStringLiteral("fieldLabel"));
         label->setMinimumHeight(kMainPageInputHeight);
         label->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Minimum);
+        label->setAlignment(Qt::AlignCenter);
         formLayout->addWidget(label, gridRow, 0);
 
         portCombo = createCombo(formWidget, kDeviceConfigPortComboWidth);
@@ -3106,6 +3106,7 @@ void MainWindow::setupDeviceConfigPage()
     state_->device_config_.tcp_wave_lbl->setObjectName(QStringLiteral("fieldLabel"));
     state_->device_config_.tcp_wave_lbl->setFixedHeight(kMainPageInputHeight);
     state_->device_config_.tcp_wave_lbl->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+    state_->device_config_.tcp_wave_lbl->setAlignment(Qt::AlignCenter);
     formLayout->addWidget(state_->device_config_.tcp_wave_lbl, tcpWaveGridRow, 0);
 
     state_->device_config_.tcp_wave_host_edit = new QLineEdit(formWidget);
@@ -3188,8 +3189,6 @@ void MainWindow::setupDeviceConfigPage()
     state_->device_config_.epsilon_packet_rates_btn->setObjectName(
         QStringLiteral("deviceEpsilonPacketRatesButton"));
     state_->device_config_.epsilon_packet_rates_btn->setFixedHeight(kMainPageInputHeight);
-    state_->device_config_.epsilon_packet_rates_btn->setMinimumWidth(
-        kDeviceConfigEpsilonPacketRatesButtonMinWidth);
     state_->device_config_.epsilon_packet_rates_btn->setFocusPolicy(Qt::TabFocus);
     state_->device_config_.epsilon_packet_rates_btn->setCursor(Qt::PointingHandCursor);
     connect(state_->device_config_.epsilon_packet_rates_btn,
@@ -4268,9 +4267,6 @@ void MainWindow::updateDeviceConfigTexts()
                 : QStringLiteral("跳转到组合导航 > EPSILON 的详细包频率设置。"));
         state_->device_config_.epsilon_packet_rates_btn->setAccessibleName(
             state_->device_config_.epsilon_packet_rates_btn->text());
-        fitButtonFixedWidth(state_->device_config_.epsilon_packet_rates_btn,
-                            kDeviceConfigEpsilonPacketRatesButtonMinWidth,
-                            kDeviceConfigTopButtonPadding);
     }
     if (state_->device_config_.ptb_rate_lbl) state_->device_config_.ptb_rate_lbl->setText(state_->is_english_ ? "Rate:" : "频率:");
     if (state_->device_config_.hmp_rate_lbl) state_->device_config_.hmp_rate_lbl->setText(state_->is_english_ ? "Rate:" : "频率:");

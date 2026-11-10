@@ -796,6 +796,8 @@ int main(int argc, char **argv)
     {
         requireLabelFits(findExactLabel(serialCard, labelText),
                          "serial configuration uses model-plus-device labels without clipping");
+        require((findExactLabel(serialCard, labelText)->alignment() & Qt::AlignHorizontal_Mask) == Qt::AlignHCenter,
+                "serial configuration device names are horizontally centered");
     }
     int widestDeviceLabelText = 0;
     int deviceLabelWidth = -1;
@@ -831,6 +833,9 @@ int main(int argc, char **argv)
     }
     auto *epsilonPacketRatesButton =
         serialCard->findChild<QPushButton *>(QStringLiteral("deviceEpsilonPacketRatesButton"));
+    require(epsilonPacketRatesButton && epsilonPacketRatesButton->width() < 194 &&
+                epsilonPacketRatesButton->width() >= epsilonPacketRatesButton->fontMetrics().horizontalAdvance(epsilonPacketRatesButton->text()) + 16,
+            "packet-rate button fits its text without the old oversized minimum width");
     requireHeaderAboveWidget(serialCard,
                              findExactLabel(serialCard, QStringLiteral("设备")),
                              findExactLabel(serialCard, QStringLiteral("EPSILON2-D4G\n组合导航")),

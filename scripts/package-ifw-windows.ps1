@@ -188,7 +188,7 @@ foreach ($root in $runtimeRoots) {
     Get-ChildItem -LiteralPath $root -Filter *.dll -File -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -notmatch $excludedRuntimeDllRegex } |
         Copy-Item -Destination $stageDir -Force
-    foreach ($pattern in @("generic", "iconengines", "imageformats", "networkinformation", "platforms", "styles", "tls", "osgPlugins-*")) {
+    foreach ($pattern in @("generic", "iconengines", "imageformats", "networkinformation", "platforms", "styles", "tls", "osgPlugins-*", "emfwc3")) {
         Get-ChildItem -LiteralPath $root -Directory -Filter $pattern -ErrorAction SilentlyContinue |
             ForEach-Object { Copy-DirectoryContents $_.FullName (Join-Path $stageDir $_.Name) }
     }
