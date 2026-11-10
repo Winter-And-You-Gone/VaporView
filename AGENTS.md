@@ -35,6 +35,7 @@
 - 如果仓库根目录存在未跟踪的 `LOCAL_PITFALLS.md`，开始构建、测试、GUI 验证或排查环境问题前先读取它；该文件用于记录本机专属路径、代理、工具链位置、历史失败症状和规避命令，不应提交到 Git。
 - 每轮首次 GUI 验证前读取 `LOCAL_PITFALLS.md`（若存在）；文件或环境变化、出现相关故障时重读。按其中记录选择验证路径，禁止重试已知不兼容的接口。
 - Windows/MSVC 下执行 `cmake --build`、`ctest` 或任何依赖 MSVC 编译器的验证前，必须先进入 VS/MSVC Developer 环境；不要直接在普通 PowerShell/Codex shell 里跑 Release 构建：即使能找到 `cl.exe`，也可能缺少标准库 `INCLUDE/LIB` 环境，典型失败是 Qt 头间接包含 `<utility>`、`<type_traits>` 等标准库头时出现 `fatal error C1083`。本机专属的 VS 安装路径、代理端口、工具链位置等不要写进本文件，记录到未跟踪的 `LOCAL_PITFALLS.md`。
+- 默认使用 6 个并行任务构建，包括单个 target 的构建：`cmake --build build/Release --config Release --parallel 6`。测试并行度按测试策略单独决定。
 - 长任务续接与等待：
   - 仅使用本次会话中工具实际返回、仍有效的句柄：`functions.exec` 的 `cell_id` 用 `functions.wait`；shell 的 `session_id` 用 `write_stdin`。两者不可混用，不猜测句柄。
   - 句柄完成、失效或工具明确禁止继续等待时，立即停止续接。新的命令使用新的 exec，不重复启动尚在执行的任务。
