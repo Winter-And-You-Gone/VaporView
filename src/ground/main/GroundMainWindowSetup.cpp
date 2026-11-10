@@ -2454,7 +2454,9 @@ void MainWindow::setupCentralWidget()
     state_->main_page_stack_->addWidget(state_->home_page_);
     state_->motion_page_ = new VaporView::Ground::Motion::MotionControlPage(state_->main_page_stack_);
     state_->home_motion_panel_ = new VaporView::Ground::Motion::HomeMotionPanel(
-        state_->motion_page_->session(), state_->home_motion_card_);
+        state_->motion_page_->session(),
+        state_->home_motion_card_->findChild<QComboBox *>(QStringLiteral("homeMotionChannelCombo")),
+        state_->home_motion_card_);
     static_cast<QVBoxLayout *>(state_->home_motion_card_->layout())->addWidget(state_->home_motion_panel_, 1);
     connect(state_->home_motion_panel_, &VaporView::Ground::Motion::HomeMotionPanel::openConfigurationRequested,
             state_->device_config_nav_btn_, &QPushButton::click);
@@ -5350,6 +5352,16 @@ void MainWindow::setupDataPanels()
     createSectionTitleCluster(motionTitleBar, QStringLiteral("locate-fixed"),
                               kMainPageButtonHeight, &motionTitleCluster);
     motionTitleLayout->addWidget(motionTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    auto *motionChannelCombo = createSingleLevelPopupComboBox(motionTitleBar, false, true);
+    motionChannelCombo->setObjectName(QStringLiteral("homeMotionChannelCombo"));
+    motionChannelCombo->setEditable(false);
+    motionChannelCombo->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    motionChannelCombo->setFixedHeight(kMainPageButtonHeight);
+    motionChannelCombo->setCursor(Qt::PointingHandCursor);
+    motionChannelCombo->setFocusPolicy(Qt::TabFocus);
+    for (int channel = 1; channel <= 3; ++channel)
+        motionChannelCombo->addItem(QStringLiteral("通道 %1").arg(channel), channel);
+    motionTitleLayout->addWidget(motionChannelCombo, 0, Qt::AlignVCenter | Qt::AlignLeft);
     motionTitleLayout->addStretch();
     motionLayout->addWidget(motionTitleBar);
     sensorColumnLayout->addWidget(state_->home_motion_card_, 1);

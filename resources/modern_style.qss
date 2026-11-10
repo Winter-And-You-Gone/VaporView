@@ -742,6 +742,7 @@ QWidget#environmentSectionTitleBar QWidget#sectionTitleCluster QLabel#sectionTit
 }
 
 QComboBox#temperatureTitlePortCombo,
+QComboBox#homeMotionChannelCombo,
 QComboBox#ai8TitlePortCombo {
     background-color: transparent;
     border: none;
@@ -755,6 +756,7 @@ QComboBox#ai8TitlePortCombo {
 }
 
 QComboBox#temperatureTitlePortCombo:hover,
+QComboBox#homeMotionChannelCombo:hover,
 QComboBox#ai8TitlePortCombo:hover {
     background-color: @vv-title-hover;
     border: none;
@@ -762,6 +764,8 @@ QComboBox#ai8TitlePortCombo:hover {
 
 QComboBox#temperatureTitlePortCombo:focus,
 QComboBox#temperatureTitlePortCombo:on,
+QComboBox#homeMotionChannelCombo:focus,
+QComboBox#homeMotionChannelCombo:on,
 QComboBox#ai8TitlePortCombo:focus,
 QComboBox#ai8TitlePortCombo:on {
     background-color: @vv-title-hover;
@@ -769,6 +773,7 @@ QComboBox#ai8TitlePortCombo:on {
 }
 
 QComboBox#temperatureTitlePortCombo:disabled,
+QComboBox#homeMotionChannelCombo:disabled,
 QComboBox#ai8TitlePortCombo:disabled {
     background-color: transparent;
     border: none;
@@ -776,12 +781,14 @@ QComboBox#ai8TitlePortCombo:disabled {
 }
 
 QComboBox#temperatureTitlePortCombo::drop-down,
+QComboBox#homeMotionChannelCombo::drop-down,
 QComboBox#ai8TitlePortCombo::drop-down {
     border: none;
     width: 20px;
 }
 
 QComboBox#temperatureTitlePortCombo::down-arrow,
+QComboBox#homeMotionChannelCombo::down-arrow,
 QComboBox#ai8TitlePortCombo::down-arrow {
     image: url(lucide/chevron-down-primary.svg);
     width: 14px;

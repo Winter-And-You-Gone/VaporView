@@ -109,10 +109,15 @@ int main(int argc, char **argv)
         auto *homeMotion = find<HomeMotionPanel>(window, "homeMotionPanel");
         auto *homeStop = find<QPushButton>(*homeMotion, "homeMotionStopAll");
         auto *homeConnection = find<QLabel>(*homeMotion, "homeMotionConnectionState");
+        auto *homeSelector = find<QComboBox>(window, "homeMotionChannelCombo");
+        auto *homePosition = find<QLabel>(*homeMotion, "homeMotionPosition");
+        auto *homeCard = find<QWidget>(window, "homeMotionCard");
+        auto *homeHeader = homeCard->findChild<QWidget *>(QStringLiteral("sectionTitleBar"), Qt::FindDirectChildrenOnly);
+        check(homeHeader && homeHeader->isAncestorOf(homeSelector), "home channel selector is in the title bar");
+        check(homeSelector->count() == 3 && homeSelector->currentIndex() == 0,
+              "home selector defaults to channel one and offers three channels");
         check(!homeStop->isEnabled(), "home stop is disabled while disconnected");
-        for (int i = 1; i <= 3; ++i)
-            check(homeMotion->findChild<QLabel*>(QStringLiteral("homeMotionPosition%1").arg(i))->text() == QStringLiteral("—"),
-                  "home positions are empty while disconnected");
+        check(homePosition->text() == QStringLiteral("—"), "home position is empty while disconnected");
         int configurationRequests = 0;
         QObject::connect(homeMotion, &HomeMotionPanel::openConfigurationRequested, &window, [&] { ++configurationRequests; });
         find<QPushButton>(*homeMotion, "homeMotionConfigure")->click();
@@ -163,12 +168,19 @@ int main(int argc, char **argv)
             until("positive step reaches selected channel", [&] { return position->text() == QString::number(i * 10.5, 'f', 3) + QStringLiteral("°") && !page->session()->state().busy; });
             page->findChild<QPushButton*>(QStringLiteral("emFwc3Minus%1").arg(i))->click();
             until("negative step reaches selected channel", [&] { return position->text() == QString::number(i * 10.0, 'f', 3) + QStringLiteral("°") && !page->session()->state().busy; });
-            check(homeMotion->findChild<QLabel*>(QStringLiteral("homeMotionPosition%1").arg(i))->text() == position->text(),
-                  "home position follows the corresponding device channel");
+            const int motionCountBeforeSelection = motions();
+            homeSelector->setCurrentIndex(i - 1); QApplication::processEvents();
+            check(homePosition->text() == position->text(), "home position follows the selected device channel");
+            check(motions() == motionCountBeforeSelection, "selecting a home channel does not send motion commands");
             for (const char *prefix : {"emFwc3Home", "emFwc3Stop", "emFwc3Reverse", "emFwc3Forward"})
                 check(page->findChild<QPushButton*>(QString::fromLatin1(prefix) + QString::number(i)) != nullptr, "all per-channel actions remain available");
         }
         check(motions() == 9, "absolute and both relative commands route to each selected SDK channel");
+        for (int i = 1; i <= 3; ++i) {
+            homeSelector->setCurrentIndex(i - 1); QApplication::processEvents();
+            check(homePosition->text() == QString::number(i * 10.0, 'f', 3) + QStringLiteral("°"),
+                  "switching the home selector immediately shows the selected channel readback");
+        }
         selector->setCurrentIndex(0); QApplication::processEvents();
         check(find<QDoubleSpinBox>(*page, "emFwc3Target1")->value() == 10 && find<QDoubleSpinBox>(*page, "emFwc3Step1")->value() == 0.5,
               "switching channels preserves each channel's inputs");
@@ -194,9 +206,10 @@ int main(int argc, char **argv)
         find<QPushButton>(*panel, "emFwc3Disconnect")->click(); until("disconnect completes", [&] { return !page->session()->state().connected && !page->session()->state().busy; });
         check(find<QLabel>(*page, "emFwc3Position3")->text() == QStringLiteral("—"), "disconnection clears position readbacks");
         check(!homeStop->isEnabled() && homeConnection->text() == QStringLiteral("未连接"), "disconnection updates home status and disables stop");
-        for (int i = 1; i <= 3; ++i)
-            check(homeMotion->findChild<QLabel*>(QStringLiteral("homeMotionPosition%1").arg(i))->text() == QStringLiteral("—"),
-                  "disconnection clears home positions");
+        for (int i = 0; i < 3; ++i) {
+            homeSelector->setCurrentIndex(i); QApplication::processEvents();
+            check(homePosition->text() == QStringLiteral("—"), "disconnection clears every selected channel readback");
+        }
         window.close();
     }
     {

@@ -1,10 +1,10 @@
 #pragma once
 
 #include <QWidget>
-#include <array>
 
 class QLabel;
 class QPushButton;
+class QComboBox;
 
 namespace VaporView::Ground::Motion
 {
@@ -14,7 +14,7 @@ class HomeMotionPanel final : public QWidget
 {
     Q_OBJECT
 public:
-    explicit HomeMotionPanel(EmFwc3Session *session, QWidget *parent = nullptr);
+    explicit HomeMotionPanel(EmFwc3Session *session, QComboBox *channelCombo, QWidget *parent = nullptr);
     void setTheme(bool dark, int fontScalePercent = 100);
     void setLanguage(bool english);
 
@@ -26,8 +26,8 @@ private:
 
     EmFwc3Session *session_;
     QLabel *connection_;
-    std::array<QLabel *, 3> channels_{};
-    std::array<QLabel *, 3> positions_{};
+    QComboBox *channel_combo_;
+    QLabel *position_;
     QPushButton *stop_;
     QPushButton *configure_;
     bool english_ = false;
