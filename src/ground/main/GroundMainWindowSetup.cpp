@@ -2991,8 +2991,8 @@ void MainWindow::setupDeviceConfigPage()
         const int gridRow = row + 1;
         label = new QLabel(formWidget);
         label->setObjectName(QStringLiteral("fieldLabel"));
-        label->setFixedHeight(kMainPageInputHeight);
-        label->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+        label->setMinimumHeight(kMainPageInputHeight);
+        label->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Minimum);
         formLayout->addWidget(label, gridRow, 0);
 
         portCombo = createCombo(formWidget, kDeviceConfigPortComboWidth);
@@ -4200,23 +4200,22 @@ void MainWindow::updateDeviceConfigTexts()
     if (state_->device_config_.enabled_header_lbl) state_->device_config_.enabled_header_lbl->setText(state_->is_english_ ? QStringLiteral("Enabled") : QStringLiteral("启用"));
     if (state_->device_config_.source_header_lbl) state_->device_config_.source_header_lbl->setText(state_->is_english_ ? QStringLiteral("Source") : QStringLiteral("来源"));
     if (state_->device_config_.action_header_lbl) state_->device_config_.action_header_lbl->setText(state_->is_english_ ? QStringLiteral("Action") : QStringLiteral("操作"));
-    if (state_->device_config_.epsilon_lbl) state_->device_config_.epsilon_lbl->setText(QStringLiteral("EPSILON"));
     if (state_->device_config_.ptb_lbl)
     {
         state_->device_config_.ptb_lbl->setText(state_->is_english_
-            ? QStringLiteral("PTB210 Barometer")
-            : QStringLiteral("PTB210 气压计"));
+            ? QStringLiteral("PTB210\nBarometer")
+            : QStringLiteral("PTB210\n气压计"));
     }
     if (state_->device_config_.hmp_lbl)
     {
         state_->device_config_.hmp_lbl->setText(state_->is_english_
-            ? QStringLiteral("HMP3 Temp/Humidity")
-            : QStringLiteral("HMP3 温湿度计"));
+            ? QStringLiteral("HMP3\nTemp/Humidity")
+            : QStringLiteral("HMP3\n温湿度计"));
     }
-    if (state_->device_config_.epsilon_lbl) state_->device_config_.epsilon_lbl->setText(state_->is_english_ ? QStringLiteral("EPSILON2-D4G Integrated Navigation") : QStringLiteral("EPSILON2-D4G 组合导航"));
-    if (state_->device_config_.lidar_lbl) state_->device_config_.lidar_lbl->setText(state_->is_english_ ? QStringLiteral("TFA1500-L LiDAR") : QStringLiteral("TFA1500-L 激光测距"));
-    if (state_->device_config_.temperature_lbl) state_->device_config_.temperature_lbl->setText(state_->is_english_ ? QStringLiteral("RD105 Thermal") : QStringLiteral("RD105 温控器"));
-    if (state_->device_config_.ai8_temperature_lbl) state_->device_config_.ai8_temperature_lbl->setText(state_->is_english_ ? QStringLiteral("AI-8288D92J0 8-Channel Thermal") : QStringLiteral("AI-8288D92J0 八路温控器"));
+    if (state_->device_config_.epsilon_lbl) state_->device_config_.epsilon_lbl->setText(state_->is_english_ ? QStringLiteral("EPSILON2-D4G\nIntegrated Navigation") : QStringLiteral("EPSILON2-D4G\n组合导航"));
+    if (state_->device_config_.lidar_lbl) state_->device_config_.lidar_lbl->setText(state_->is_english_ ? QStringLiteral("TFA1500-L\nLiDAR") : QStringLiteral("TFA1500-L\n激光测距"));
+    if (state_->device_config_.temperature_lbl) state_->device_config_.temperature_lbl->setText(state_->is_english_ ? QStringLiteral("RD105\nLaser Thermal Controller") : QStringLiteral("RD105\n激光驱动温控器"));
+    if (state_->device_config_.ai8_temperature_lbl) state_->device_config_.ai8_temperature_lbl->setText(state_->is_english_ ? QStringLiteral("AI-8288D92J0\n8-Channel Thermal") : QStringLiteral("AI-8288D92J0\n八路温控器"));
     if (state_->device_config_.tcp_wave_lbl) state_->device_config_.tcp_wave_lbl->setText(state_->is_english_ ? QStringLiteral("TCP Waveform") : QStringLiteral("TCP 波形"));
     if (state_->device_config_.tcp_wave_host_edit) state_->device_config_.tcp_wave_host_edit->setPlaceholderText(state_->is_english_ ? QStringLiteral("Host address") : QStringLiteral("主机地址"));
     if (state_->device_config_.tcp_wave_transport_hint_lbl) state_->device_config_.tcp_wave_transport_hint_lbl->setText(state_->is_english_ ? QStringLiteral("TCP service") : QStringLiteral("TCP 服务"));

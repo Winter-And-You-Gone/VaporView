@@ -226,7 +226,10 @@ QLabel *findSubsectionLabel(QWidget *parent, const QString& sectionKey)
 void requireLabelFits(QLabel *label, const char *message)
 {
     require(label != nullptr, message);
-    const int textWidth = label->fontMetrics().horizontalAdvance(label->text());
+    int textWidth = 0;
+    for (const QString& line : label->text().split(QLatin1Char('\n')))
+        textWidth = std::max(textWidth, label->fontMetrics().horizontalAdvance(line));
+    require(label->contentsRect().height() >= label->fontMetrics().boundingRect(label->contentsRect(), Qt::TextExpandTabs, label->text()).height(), message);
     if (textWidth > label->width() + 1)
     {
         std::cerr << "Label clipped: text='"
@@ -641,6 +644,8 @@ int main(int argc, char **argv)
     QLabel *lastDeviceLabel = findExactLabel(serialCard, QStringLiteral("SHT45"));
     scaledControlsFit = scaledControlsFit && lastDeviceLabel &&
         serialCard->rect().contains(rectInPage(lastDeviceLabel, serialCard));
+    requireLabelFits(findExactLabel(serialCard, QStringLiteral("RD105\n激光驱动温控器")),
+                     "two-line device label fits at 130 percent font scale");
     if (!scaledCardsAligned || !scaledCardsFit || !scaledControlsFit)
     {
         std::cerr << "130% layout: window=" << window.width() << 'x' << window.height()
@@ -780,12 +785,12 @@ int main(int argc, char **argv)
     }
 
     const QStringList formattedDeviceLabels{
-        QStringLiteral("EPSILON2-D4G 组合导航"),
-        QStringLiteral("PTB210 气压计"),
-        QStringLiteral("HMP3 温湿度计"),
-        QStringLiteral("TFA1500-L 激光测距"),
-        QStringLiteral("RD105 温控器"),
-        QStringLiteral("AI-8288D92J0 八路温控器"),
+        QStringLiteral("EPSILON2-D4G\n组合导航"),
+        QStringLiteral("PTB210\n气压计"),
+        QStringLiteral("HMP3\n温湿度计"),
+        QStringLiteral("TFA1500-L\n激光测距"),
+        QStringLiteral("RD105\n激光驱动温控器"),
+        QStringLiteral("AI-8288D92J0\n八路温控器"),
     };
     for (const QString& labelText : formattedDeviceLabels)
     {
@@ -798,8 +803,9 @@ int main(int argc, char **argv)
     {
         QLabel *label = findExactLabel(serialCard, labelText);
         require(label != nullptr, "serial configuration device label exists for width measurement");
-        widestDeviceLabelText = std::max(widestDeviceLabelText,
-                                         label->fontMetrics().horizontalAdvance(labelText));
+        for (const QString& line : labelText.split(QLatin1Char('\n')))
+            widestDeviceLabelText = std::max(widestDeviceLabelText,
+                                             label->fontMetrics().horizontalAdvance(line));
         if (deviceLabelWidth < 0)
         {
             deviceLabelWidth = label->width();
@@ -827,7 +833,7 @@ int main(int argc, char **argv)
         serialCard->findChild<QPushButton *>(QStringLiteral("deviceEpsilonPacketRatesButton"));
     requireHeaderAboveWidget(serialCard,
                              findExactLabel(serialCard, QStringLiteral("设备")),
-                             findExactLabel(serialCard, QStringLiteral("EPSILON2-D4G 组合导航")),
+                             findExactLabel(serialCard, QStringLiteral("EPSILON2-D4G\n组合导航")),
                              "device column header sits above the device names");
     requireHeaderAboveWidget(serialCard,
                              findExactLabel(serialCard, QStringLiteral("串口/主机")),
@@ -886,9 +892,9 @@ int main(int argc, char **argv)
     auto *humiditySourceCombo =
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceHumiditySourceCombo"));
     require(!pressureSourceCombo && !humiditySourceCombo,"environmental source selectors are removed");
-    requireLabelFits(findExactLabel(serialCard, QStringLiteral("PTB210 气压计")),
+    requireLabelFits(findExactLabel(serialCard, QStringLiteral("PTB210\n气压计")),
                      "pressure device row restores the model-plus-device label");
-    requireLabelFits(findExactLabel(serialCard, QStringLiteral("HMP3 温湿度计")),
+    requireLabelFits(findExactLabel(serialCard, QStringLiteral("HMP3\n温湿度计")),
                      "humidity device row restores the model-plus-device label");
     QLabel *tcpWaveDeviceLabel = findExactLabel(serialCard, QStringLiteral("TCP 波形"));
     requireLabelFits(tcpWaveDeviceLabel,
@@ -966,7 +972,7 @@ int main(int argc, char **argv)
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceHumidityBaudCombo"));
     auto *lidarBaudCombo =
         serialCard->findChild<QComboBox *>(QStringLiteral("deviceLidarBaudCombo"));
-    auto *ai8DeviceLabel = findExactLabel(serialCard, QStringLiteral("AI-8288D92J0 八路温控器"));
+    auto *ai8DeviceLabel = findExactLabel(serialCard, QStringLiteral("AI-8288D92J0\n八路温控器"));
     require(tcpWaveDeviceLabel && ai8DeviceLabel &&
                 tcpWaveDeviceLabel->mapTo(serialCard, QPoint(0, 0)).y() >
                     ai8DeviceLabel->mapTo(serialCard, QPoint(0, 0)).y(),

@@ -206,7 +206,9 @@ void MainWindow::syncFpgaDeviceConfigUi()
             if (check) {check->setToolTip(QString());check->setAccessibleDescription(QString());}
         return;
     }
-    if (state_->device_config_.ptb_lbl) state_->device_config_.ptb_lbl->setText(pressure == 0x43 ? QStringLiteral("BMP390") : QStringLiteral("PTB210"));
+    if (state_->device_config_.ptb_lbl) state_->device_config_.ptb_lbl->setText(
+        (pressure == 0x43 ? QStringLiteral("BMP390\n") : QStringLiteral("PTB210\n")) +
+        (state_->is_english_ ? QStringLiteral("Barometer") : QStringLiteral("气压计")));
 
     if (state_->device_config_.epsilon_packet_rates_btn) {
         const bool supported=extensions&VaporView::FpgaExtensions::EpsilonMailbox;
