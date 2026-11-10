@@ -116,7 +116,9 @@ WaterCalibrationPage::WaterCalibrationPage(QWidget *parent,const QString& root,s
     title->setTextInteractionFlags(Qt::TextSelectableByMouse|Qt::TextSelectableByKeyboard);title->setFocusPolicy(Qt::ClickFocus);layout->addWidget(title);
     s.currentFile=new QLabel;s.currentFile->setObjectName("calibrationCurrentFile");s.currentFile->setWordWrap(true);layout->addWidget(s.currentFile);
     s.live=new QLabel;s.live->setObjectName("calibrationLiveConcentration");s.live->setWordWrap(true);layout->addWidget(s.live);
-    s.tabs=new QTabWidget;s.tabs->setObjectName("calibrationWorkspaces");layout->addWidget(s.tabs,1);
+    s.tabs=new QTabWidget;s.tabs->setObjectName("calibrationWorkspaces");
+    s.tabs->tabBar()->setObjectName("calibrationNavigationBar");
+    layout->addWidget(s.tabs,1);
     auto *acquisition=new QWidget;auto *a=new QVBoxLayout(acquisition);
     auto *form=new QFormLayout;s.name=new QLineEdit;s.name->setObjectName("calibrationTaskName");s.name->setPlaceholderText(QStringLiteral("例如：实验室标准定标"));
     s.unit=new QComboBox;s.unit->setObjectName("calibrationUnit");s.unit->addItems({"ppmv","mol/mol","mg/m³"});
@@ -150,7 +152,7 @@ WaterCalibrationPage::WaterCalibrationPage(QWidget *parent,const QString& root,s
     auto *trends=new QHBoxLayout;s.trend816=new CalibrationReviewPlot;s.trend1368=new CalibrationReviewPlot;
     s.trend816->setStage({},816);s.trend1368->setStage({},1368);
     trends->addWidget(s.trend816);trends->addWidget(s.trend1368);a->addLayout(trends);
-    const auto workspace=[&](QWidget *content,const QString& name){content->setObjectName("calibrationWorkspace");auto *scroll=new QScrollArea;scroll->setWidgetResizable(true);scroll->setFrameShape(QFrame::NoFrame);scroll->setWidget(content);s.tabs->addTab(scroll,name);};
+    const auto workspace=[&](QWidget *content,const QString& name){content->setObjectName("calibrationWorkspace");auto *scroll=new QScrollArea;scroll->setObjectName("calibrationWorkspaceScroll");scroll->viewport()->setObjectName("calibrationWorkspaceViewport");scroll->setWidgetResizable(true);scroll->setFrameShape(QFrame::NoFrame);scroll->setWidget(content);s.tabs->addTab(scroll,name);};
     workspace(acquisition,QStringLiteral("任务与采集"));
 
     auto *review=new QWidget;auto *r=new QVBoxLayout(review);
@@ -306,11 +308,15 @@ void WaterCalibrationPage::setTheme(bool dark,int percent)
         "QWidget#waterCalibrationPage QLineEdit:focus, QWidget#waterCalibrationPage QComboBox:focus, QWidget#waterCalibrationPage QAbstractSpinBox:focus { border-color: @vv-primary; }"
         "QWidget#waterCalibrationPage QLineEdit:disabled, QWidget#waterCalibrationPage QComboBox:disabled, QWidget#waterCalibrationPage QAbstractSpinBox:disabled { background-color: @vv-surface-alt; color: @vv-text-disabled; }"
         "QWidget#waterCalibrationPage QAbstractSpinBox QLineEdit { background-color: transparent; border: none; border-radius: 0px; padding: 0px; min-height: 0px; max-height: 16777215px; }"
-        "QWidget#waterCalibrationPage QTabWidget::pane { border: none; background-color: @vv-window; }"
-        "QWidget#waterCalibrationPage QTabBar::tab { background-color: @vv-surface-alt; color: @vv-text; border: 1px solid transparent; border-radius: 6px; padding: 0px %7px; margin-right: 4px; min-height: %8px; font-size: %2px; font-weight: 600; }"
-        "QWidget#waterCalibrationPage QTabBar::tab:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
-        "QWidget#waterCalibrationPage QTabBar::tab:selected { background-color: @vv-primary; color: @vv-white; }"
-        "QWidget#waterCalibrationPage QTabBar::tab:focus { border-color: @vv-focus; }"
+        "QWidget#waterCalibrationPage QTabWidget#calibrationWorkspaces { background-color: transparent; border: none; }"
+        "QWidget#waterCalibrationPage QTabBar#calibrationNavigationBar { background-color: @vv-primary-subtle; border: 1px solid @vv-border-strong; border-radius: 12px; padding: 3px; }"
+        "QWidget#waterCalibrationPage QTabBar#calibrationNavigationBar::tab { background-color: transparent; color: @vv-text; border: 1px solid transparent; border-radius: 8px; padding: 0px %7px; margin: 0px; min-height: %8px; font-size: %2px; font-weight: 600; }"
+        "QWidget#waterCalibrationPage QTabBar#calibrationNavigationBar::tab:hover { background-color: @vv-primary-subtle-pressed; color: @vv-primary; }"
+        "QWidget#waterCalibrationPage QTabBar#calibrationNavigationBar::tab:selected { background-color: @vv-primary; color: @vv-white; }"
+        "QWidget#waterCalibrationPage QTabBar#calibrationNavigationBar::tab:focus { border-color: @vv-focus; }"
+        "QWidget#waterCalibrationPage QTabWidget#calibrationWorkspaces::pane { background-color: @vv-surface-raised; border: 1px solid @vv-border-strong; border-radius: 12px; top: 8px; }"
+        "QWidget#waterCalibrationPage QScrollArea#calibrationWorkspaceScroll { background-color: @vv-surface-raised; border: none; }"
+        "QWidget#waterCalibrationPage QScrollArea#calibrationWorkspaceScroll QWidget#calibrationWorkspaceViewport, QWidget#waterCalibrationPage QWidget#calibrationWorkspace { background-color: @vv-surface-raised; }"
     ).arg(pixels(16)).arg(pixels(14)).arg(pixels(16)).arg(pixels(15)).arg(pixels(28))
         .arg(pixels(26)).arg(pixels(12)).arg(pixels(36)),dark));
     auto colors=appThemePalette(dark);
