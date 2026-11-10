@@ -117,6 +117,7 @@ osg::ref_ptr<osg::Node> createStarfieldNode()
 
 constexpr const char* kTiandituSatelliteLayerName = "Tianditu Satellite imagery";
 constexpr const char* kOpenAerialMapLayerName = "OpenAerialMap Satellite imagery";
+constexpr const char* kEsriLayerName = "Esri World Imagery Satellite imagery";
 constexpr const char* kSelectedLocalSatelliteLayerName = "VaporView selected local satellite imagery";
 constexpr const char* kTiandituBrowserUserAgent =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -1212,6 +1213,7 @@ bool OsgEarthViewWidget::applyTiandituSatelliteImagery(const QString& key)
         && existing->getURL().full() == tiandituSatelliteUrlTemplate(trimmedKey).toStdString())
     {
         removeLayerByName(map, kOpenAerialMapLayerName);
+        removeLayerByName(map, kEsriLayerName);
         applyLayerVisibility(Map3DLayer::SatelliteImagery);
         return true;
     }
@@ -1245,6 +1247,7 @@ bool OsgEarthViewWidget::applyTiandituSatelliteImagery(const QString& key)
     const unsigned insertIndex = tiandituSatelliteInsertIndex(map);
     map->insertLayer(layer.get(), insertIndex);
     removeLayerByName(map, kOpenAerialMapLayerName);
+    removeLayerByName(map, kEsriLayerName);
     earth_load_diagnostics_.layerSummaries.push_back(
         mapText(QStringLiteral("天地图卫星影像已添加到图层索引 %1%2。"))
             .arg(insertIndex)
@@ -1276,6 +1279,38 @@ bool OsgEarthViewWidget::applyOpenAerialMapImagery()
         map->insertLayer(layer.get(), tiandituSatelliteInsertIndex(map));
     }
     removeLayerByName(map, kTiandituSatelliteLayerName);
+    removeLayerByName(map, kEsriLayerName);
+    applyLayerVisibility(Map3DLayer::SatelliteImagery);
+    update();
+    return true;
+}
+
+bool OsgEarthViewWidget::applyEsriWorldImagery(const QString& key)
+{
+    assertGuiThread(this, Q_FUNC_INFO);
+    if (shutdown_ || !map_node_ || !map_node_->getMap() || key.trimmed().isEmpty()) return false;
+    osgEarth::Map* map = map_node_->getMap();
+    const QString trimmedKey = key.trimmed();
+    auto* existing = dynamic_cast<osgEarth::XYZImageLayer*>(map->getLayerByName(kEsriLayerName));
+    if (!existing || !existing->isOpen() || esri_imagery_key_ != trimmedKey)
+    {
+        osg::ref_ptr<osgEarth::XYZImageLayer> layer = new osgEarth::XYZImageLayer;
+        layer->setName(kEsriLayerName);
+        osgEarth::URIContext context;
+        context.addHeader("Authorization", std::string("Bearer ") + trimmedKey.toStdString());
+        layer->setURL(osgEarth::URI("https://ibasemaps-api.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", context));
+        layer->setProfile(osgEarth::Profile::create(osgEarth::Profile::SPHERICAL_MERCATOR));
+        layer->setFormat("jpg");
+        layer->options().maxLevel() = 23u;
+        layer->options().maxDataLevel() = 23u;
+        layer->setCachePolicy(osgEarth::CachePolicy::NO_CACHE);
+        if (layer->open().isError()) return false;
+        removeLayerByName(map, kEsriLayerName);
+        map->insertLayer(layer.get(), tiandituSatelliteInsertIndex(map));
+        esri_imagery_key_ = trimmedKey;
+    }
+    removeLayerByName(map, kTiandituSatelliteLayerName);
+    removeLayerByName(map, kOpenAerialMapLayerName);
     applyLayerVisibility(Map3DLayer::SatelliteImagery);
     update();
     return true;
@@ -1302,6 +1337,7 @@ bool OsgEarthViewWidget::applyLocalSatelliteImagery(const QString& vrtPath)
     }
     removeLayerByName(map, kTiandituSatelliteLayerName);
     removeLayerByName(map, kOpenAerialMapLayerName);
+    removeLayerByName(map, kEsriLayerName);
     applyLayerVisibility(Map3DLayer::SatelliteImagery);
     update();
     return true;
@@ -1318,6 +1354,9 @@ QString OsgEarthViewWidget::activeSatelliteImagerySource() const
         map_node_->getMap()->getLayerByName(kOpenAerialMapLayerName));
     if (openAerialMap && openAerialMap->isOpen() && openAerialMap->getVisible())
         return QStringLiteral("online:openaerialmap");
+    const auto* esri = dynamic_cast<const osgEarth::VisibleLayer*>(
+        map_node_->getMap()->getLayerByName(kEsriLayerName));
+    if (esri && esri->isOpen() && esri->getVisible()) return QStringLiteral("online:esri");
     const auto* local = dynamic_cast<const osgEarth::GDALImageLayer*>(
         map_node_->getMap()->getLayerByName(kSelectedLocalSatelliteLayerName));
     if (local && local->isOpen() && local->getVisible())
@@ -1601,7 +1640,10 @@ void OsgEarthViewWidget::applyLayerVisibility(Map3DLayer layer)
         ? map_node_->getMap()->getLayerByName(kTiandituSatelliteLayerName) : nullptr;
     const auto* openAerialMap = map_node_ && map_node_->getMap()
         ? map_node_->getMap()->getLayerByName(kOpenAerialMapLayerName) : nullptr;
-    const auto* online = tianditu && tianditu->isOpen() ? tianditu : openAerialMap;
+    const auto* esri = map_node_ && map_node_->getMap()
+        ? map_node_->getMap()->getLayerByName(kEsriLayerName) : nullptr;
+    const auto* online = tianditu && tianditu->isOpen() ? tianditu
+        : openAerialMap && openAerialMap->isOpen() ? openAerialMap : esri;
     const bool onlineSatellite = online && online->isOpen() && layerVisible(Map3DLayer::SatelliteImagery);
     const bool showBaseForOpenAerialMap = onlineSatellite && online == openAerialMap;
     const auto* selectedLocal = map_node_ && map_node_->getMap()

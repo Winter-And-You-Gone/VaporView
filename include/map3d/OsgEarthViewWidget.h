@@ -144,6 +144,7 @@ public:
     void loadEarthFilePreservingViewAsync(const QString& earthPath, std::function<void(bool)> finished);
     bool applyTiandituSatelliteImagery(const QString& key);
     bool applyOpenAerialMapImagery();
+    bool applyEsriWorldImagery(const QString& key);
     bool applyLocalSatelliteImagery(const QString& vrtPath);
     QString activeSatelliteImagerySource() const;
     bool loadLocal3DTilesPreview(const QString& tilesetPath);
@@ -307,6 +308,7 @@ private:
     bool preserve_full_track_extent_ = false;
     TrackDataMode track_data_mode_ = TrackDataMode::LiveNavigation;
     QString height_reference_status_;
+    QString esri_imagery_key_;
     std::unique_ptr<Trajectory3DLayer> trajectory_layer_;
     std::unique_ptr<Aircraft3DLayer> aircraft_layer_;
     std::array<bool, kMap3DLayerCount> layer_visibility_{};

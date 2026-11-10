@@ -634,6 +634,7 @@ int main(int argc, char** argv)
     require(imageryMenu->title() == QStringLiteral("卫星影像"), "imagery menu uses the satellite title");
     auto* onlineImagery = window.findChild<QAction*>(QStringLiteral("map3DOnlineImagery_tianditu"));
     auto* openAerialMap = window.findChild<QAction*>(QStringLiteral("map3DOnlineImagery_openaerialmap"));
+    auto* esriImagery = window.findChild<QAction*>(QStringLiteral("map3DOnlineImagery_esri"));
     require(onlineImagery && !onlineImagery->isEnabled()
                 && onlineImagery->text().contains(QStringLiteral("在线"))
                 && onlineImagery->text().contains(QStringLiteral("未配置 Key")),
@@ -641,6 +642,20 @@ int main(int argc, char** argv)
     require(openAerialMap && openAerialMap->isEnabled() && openAerialMap->isCheckable()
                 && openAerialMap->text() == QStringLiteral("在线 · OpenAerialMap"),
             "OpenAerialMap is available online without a key");
+    require(esriImagery && !esriImagery->isEnabled() && esriImagery->isCheckable()
+                && esriImagery->text().contains(QStringLiteral("Esri World Imagery"))
+                && esriImagery->text().contains(QStringLiteral("未配置 Key")),
+            "Esri World Imagery requires a configured key");
+    require(window.findChild<QAction*>(QStringLiteral("map3DEsriKeyAction")),
+            "Esri API key configuration is available");
+    {
+        auto settings = map3DTestSettings();
+        settings.setValue(QStringLiteral("esriApiKey"), QStringLiteral("test-key-not-sent"));
+        settings.sync();
+    }
+    QMetaObject::invokeMethod(imageryMenu, "aboutToShow", Qt::DirectConnection);
+    require(esriImagery->isEnabled() && esriImagery->text() == QStringLiteral("在线 · Esri World Imagery"),
+            "configured Esri imagery becomes selectable");
     const auto hasMenuCheckMark = [imageryMenu, openAerialMap]() {
         const bool wasChecked = openAerialMap->isChecked();
         openAerialMap->setChecked(false);
@@ -750,9 +765,15 @@ int main(int argc, char** argv)
     require(imageryMenu->title() == QStringLiteral("Satellite image sources")
                 && onlineImagery->text().startsWith(QStringLiteral("Online · "))
                 && openAerialMap->text() == QStringLiteral("Online · OpenAerialMap")
+                && esriImagery->text() == QStringLiteral("Online · Esri World Imagery")
                 && window.findChild<QAction*>(QStringLiteral("map3DLocalImagery_sentinel2"))
                        ->text().startsWith(QStringLiteral("Local · ")),
             "satellite imagery menu translates its source prefixes");
+    {
+        auto settings = map3DTestSettings();
+        settings.remove(QStringLiteral("esriApiKey"));
+        settings.sync();
+    }
     qApp->setProperty("vaporViewEnglish", originalEnglish);
     QCoreApplication::processEvents();
     require(lineCheck->text() == QStringLiteral("轨迹线") && refreshStatus->text() == QStringLiteral("已设置"),

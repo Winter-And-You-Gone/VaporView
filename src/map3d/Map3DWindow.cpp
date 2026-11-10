@@ -42,7 +42,9 @@
 #include <QPushButton>
 #include <QTableWidget>
 #include <QIcon>
+#include <QInputDialog>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMenu>
 #include <QMessageBox>
 #include <QPainter>
@@ -2665,6 +2667,18 @@ bool Map3DWindow::applySelectedSatelliteImagery(bool showStatusMessage)
         updateStatus(nullptr, true);
         return loaded;
     }
+    if (satellite_imagery_source_ == QStringLiteral("online:esri"))
+    {
+        const QString esriKey = map3DSettings().value(QStringLiteral("esriApiKey")).toString().trimmed();
+        const bool loaded = view_->applyEsriWorldImagery(esriKey);
+        if (loaded) tianditu_satellite_imagery_loaded_ = false;
+        if (showStatusMessage)
+            statusBar()->showMessage(loaded
+                ? mapText(QStringLiteral("已切换至 Esri World Imagery，等待影像加载。"))
+                : mapText(QStringLiteral("无法创建 Esri World Imagery 图层。")), 8000);
+        updateStatus(nullptr, true);
+        return loaded;
+    }
 
     const QString key = satellite_imagery_source_.mid(QStringLiteral("local:").size());
     const auto& options = map_selection_.diagnostics.localImageryOptions;
@@ -3596,6 +3610,43 @@ void Map3DWindow::refreshSatelliteImageryMenu()
     openAerialMap->setText(mapText(QStringLiteral("在线 · OpenAerialMap")));
     openAerialMap->setChecked(satellite_imagery_source_ == QStringLiteral("online:openaerialmap"));
 
+    auto* esri = local_imagery_menu_->findChild<QAction*>(QStringLiteral("map3DOnlineImagery_esri"));
+    if (!esri)
+    {
+        esri = local_imagery_menu_->addAction(QString());
+        esri->setObjectName(QStringLiteral("map3DOnlineImagery_esri"));
+        esri->setCheckable(true);
+        connect(esri, &QAction::triggered, this, [this]() {
+            selectSatelliteImagerySource(QStringLiteral("online:esri"));
+        });
+    }
+    const bool esriAvailable = !map3DSettings().value(QStringLiteral("esriApiKey")).toString().trimmed().isEmpty();
+    esri->setText(mapText(esriAvailable ? QStringLiteral("在线 · Esri World Imagery")
+                                       : QStringLiteral("在线 · Esri World Imagery（未配置 Key）")));
+    esri->setEnabled(esriAvailable);
+    esri->setChecked(satellite_imagery_source_ == QStringLiteral("online:esri"));
+    auto* esriKeyAction = local_imagery_menu_->findChild<QAction*>(QStringLiteral("map3DEsriKeyAction"));
+    if (!esriKeyAction)
+    {
+        esriKeyAction = local_imagery_menu_->addAction(QString());
+        esriKeyAction->setObjectName(QStringLiteral("map3DEsriKeyAction"));
+        connect(esriKeyAction, &QAction::triggered, this, [this]() {
+            auto settings = map3DSettings();
+            bool accepted = false;
+            const QString key = QInputDialog::getText(this, mapText(QStringLiteral("设置 Esri Key")),
+                mapText(QStringLiteral("ArcGIS API Key")), QLineEdit::Password,
+                settings.value(QStringLiteral("esriApiKey")).toString(), &accepted).trimmed();
+            if (!accepted) return;
+            VaporView::setPersistentSetting(settings, QStringLiteral("esriApiKey"), key);
+            if (satellite_imagery_source_ == QStringLiteral("online:esri") && !key.isEmpty())
+                applySelectedSatelliteImagery(true);
+            else if (satellite_imagery_source_ == QStringLiteral("online:esri"))
+                selectSatelliteImagerySource(QStringLiteral("online:openaerialmap"));
+            refreshSatelliteImageryMenu();
+        });
+    }
+    esriKeyAction->setText(mapText(QStringLiteral("设置 Esri Key")));
+
     for (const LocalImageryOption& option : map_selection_.diagnostics.localImageryOptions)
     {
         const QString objectName = QStringLiteral("map3DLocalImagery_%1").arg(option.key);
@@ -3879,6 +3930,8 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest, bool for
                         .arg(fixQualityLabel(selected_track_sample_.fixQuality));
         }
     }
+    if (view_ && view_->activeSatelliteImagerySource() == QStringLiteral("online:esri"))
+        text.prepend(QStringLiteral("Esri, Vantor, Earthstar Geographics, GIS User Community | "));
     status_label_->setText(text);
 }
 

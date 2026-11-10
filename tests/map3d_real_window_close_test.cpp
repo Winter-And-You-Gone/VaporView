@@ -348,10 +348,12 @@ int main(int argc, char** argv)
         auto* imagery = window->findChild<QAction*>(QStringLiteral("map3DLocalImagery_sentinel2"));
         auto* online = window->findChild<QAction*>(QStringLiteral("map3DOnlineImagery_tianditu"));
         auto* openAerialMap = window->findChild<QAction*>(QStringLiteral("map3DOnlineImagery_openaerialmap"));
+        auto* esriImagery = window->findChild<QAction*>(QStringLiteral("map3DOnlineImagery_esri"));
         auto* imageryMenu = window->findChild<QMenu*>(QStringLiteral("map3DLocalImageryMenu"));
         require(imagery && imagery->isEnabled(), QStringLiteral("local Sentinel-2 action is available"));
         require(online && imageryMenu && !online->isEnabled(), QStringLiteral("online imagery initially needs a key"));
         require(openAerialMap && openAerialMap->isEnabled(), QStringLiteral("OpenAerialMap needs no key"));
+        require(esriImagery && !esriImagery->isEnabled(), QStringLiteral("Esri imagery needs a key"));
         view->setSamples(std::vector<VaporView::Geo::NavSample>{pointProbe, pointProbe2});
         const QString previousEarth = view->earthLoadDiagnostics().requestedPath;
         const QString previousDem = view->earthLoadDiagnostics().openElevationLayerName;
@@ -369,6 +371,28 @@ int main(int argc, char** argv)
                     QStringLiteral("the OpenAerialMap choice is persisted"));
         }
         {
+            QSettings mapSettings(QSettings::defaultFormat(), QSettings::UserScope,
+                                  QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+            mapSettings.setValue(QStringLiteral("esriApiKey"), QStringLiteral("test-key-not-sent"));
+            mapSettings.sync();
+        }
+        QMetaObject::invokeMethod(imageryMenu, "aboutToShow", Qt::DirectConnection);
+        require(esriImagery->isEnabled(), QStringLiteral("Esri becomes selectable when a key is configured"));
+        esriImagery->trigger();
+        require(view->activeSatelliteImagerySource() == QStringLiteral("online:esri")
+                    && esriImagery->isChecked() && !openAerialMap->isChecked(),
+                QStringLiteral("selecting Esri replaces OpenAerialMap"));
+        auto* mapStatus = window->findChild<QLabel*>(QStringLiteral("map3DStatusLabel"));
+        require(mapStatus && mapStatus->text().startsWith(QStringLiteral("Esri, Vantor, Earthstar Geographics")),
+                QStringLiteral("Esri attribution is shown in the map status"));
+        {
+            QSettings mapSettings(QSettings::defaultFormat(), QSettings::UserScope,
+                                  QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+            require(mapSettings.value(QStringLiteral("satelliteImagerySource")).toString()
+                        == QStringLiteral("online:esri"),
+                    QStringLiteral("the Esri choice is persisted"));
+        }
+        {
             QSettings config(qEnvironmentVariable("VAPORVIEW_CONFIG_FILE"), QSettings::IniFormat);
             config.setValue(QStringLiteral("TrajectoryViewer/map/tianditu_key"), QStringLiteral("test-key-not-sent"));
             config.sync();
@@ -377,8 +401,10 @@ int main(int argc, char** argv)
         require(online->isEnabled(), QStringLiteral("online option becomes available when a key is configured"));
         online->trigger();
         require(view->activeSatelliteImagerySource() == QStringLiteral("online:tianditu") && online->isChecked()
-                    && !openAerialMap->isChecked(),
+                    && !openAerialMap->isChecked() && !esriImagery->isChecked(),
                 QStringLiteral("selecting online activates the Tianditu layer"));
+        require(!mapStatus->text().startsWith(QStringLiteral("Esri, Vantor")),
+                QStringLiteral("Esri attribution is removed when another source is selected"));
         imagery->trigger();
         require(view->activeSatelliteImagerySource().startsWith(QStringLiteral("local:")) && imagery->isChecked()
                     && !online->isChecked(), QStringLiteral("selecting local imagery replaces online imagery"));
@@ -574,8 +600,9 @@ int main(int argc, char** argv)
     {
         view->hide(); // Keep the reload deterministic without relying on the network.
         auto* oam = window->findChild<QAction*>(QStringLiteral("map3DOnlineImagery_openaerialmap"));
+        auto* esri = window->findChild<QAction*>(QStringLiteral("map3DOnlineImagery_esri"));
         auto* reloadMap = window->findChild<QAction*>(QStringLiteral("map3DReloadBestMapAction"));
-        require(oam && reloadMap, QStringLiteral("OpenAerialMap and map reload actions are available"));
+        require(oam && esri && reloadMap, QStringLiteral("online imagery and map reload actions are available"));
         oam->trigger();
         reloadMap->trigger();
         require(waitUntil([&]() {
@@ -586,6 +613,16 @@ int main(int argc, char** argv)
                     && view->layerAvailable(VaporView::Map3D::Map3DLayer::DigitalElevation)
                     && view->layerVisible(VaporView::Map3D::Map3DLayer::DigitalElevation),
                 QStringLiteral("OpenAerialMap reload preserves the Session track and visible terrain"));
+        esri->trigger();
+        reloadMap->trigger();
+        require(waitUntil([&]() {
+                    return view->earthLoadDiagnostics().loaded
+                        && view->activeSatelliteImagerySource() == QStringLiteral("online:esri");
+                }, 30000), QStringLiteral("map reload restores the selected Esri source"));
+        require(view->sampleCount() == kSessionSampleCount
+                    && view->layerAvailable(VaporView::Map3D::Map3DLayer::DigitalElevation)
+                    && view->layerVisible(VaporView::Map3D::Map3DLayer::DigitalElevation),
+                QStringLiteral("Esri reload preserves the Session track and visible terrain"));
     }
     window->close();
     delete window;
@@ -594,8 +631,12 @@ int main(int argc, char** argv)
     if (hasImageryAndDem)
     {
         VaporView::Map3D::Map3DWindow restored;
-        const auto* oam = restored.findChild<QAction*>(QStringLiteral("map3DOnlineImagery_openaerialmap"));
-        require(oam && oam->isChecked(), QStringLiteral("a new window remembers the OpenAerialMap choice"));
+        const auto* esri = restored.findChild<QAction*>(QStringLiteral("map3DOnlineImagery_esri"));
+        require(esri && esri->isChecked(), QStringLiteral("a new window remembers the Esri choice"));
+        QSettings mapSettings(QSettings::defaultFormat(), QSettings::UserScope,
+                              QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+        mapSettings.remove(QStringLiteral("esriApiKey"));
+        mapSettings.sync();
     }
 
     std::cout << "map3d_real_window_close_test passed: real window opened, rendered, and closed\n";
