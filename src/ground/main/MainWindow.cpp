@@ -819,6 +819,14 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
     }
 
     const QEvent::Type eventType = event->type();
+    if (state_->device_config_.data_telemetry_summary_card && eventType == QEvent::Resize &&
+        (watched == state_->device_config_.data_telemetry_summary_card->findChild<QWidget *>(QStringLiteral("homeTelemetrySummaryContainer")) ||
+         (state_->device_config_.page && state_->device_config_.page->findChild<QScrollArea *>(QStringLiteral("mainCardsScrollArea")) &&
+          watched == state_->device_config_.page->findChild<QScrollArea *>(QStringLiteral("mainCardsScrollArea"))->viewport())) &&
+        static_cast<QResizeEvent *>(event)->size().width() != static_cast<QResizeEvent *>(event)->oldSize().width())
+    {
+        QTimer::singleShot(0, this, [this]() { reflowDeviceTelemetryData(); });
+    }
     if (state_->data_telemetry_device_summary_layout_ &&
         watched == state_->data_telemetry_device_summary_layout_->parent() &&
         (eventType == QEvent::LayoutRequest ||

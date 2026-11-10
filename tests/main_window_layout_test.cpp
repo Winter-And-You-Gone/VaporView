@@ -11541,8 +11541,9 @@ int main(int argc, char **argv)
         (deviceConfigPageScrollable
              ? kExpectedHomeShadowSafeRightInset
              : kExpectedNoScrollPageRightInset);
-    require(std::abs(serialConfigCard->width() - expectedDeviceConfigCardWidth) <= 4,
-            "device configuration serial card fills the main content row");
+    require(serialConfigCard->width() <= expectedDeviceConfigCardWidth + 4 &&
+                serialConfigCard->width() <= serialConfigCard->sizeHint().width() + 4,
+            "device configuration serial card fits the content row and follows its contents");
     requireCardTitleBar(serialConfigCard,
                         QStringList{QStringLiteral("设备配置 [本机]"), QStringLiteral("Device Configuration [Local]")},
                         QStringLiteral("usb"),
@@ -11876,8 +11877,8 @@ int main(int argc, char **argv)
                 "device telemetry summary subcards are arranged horizontally");
         require(previousSubCardTop < 0 || std::abs(subCardRect.top() - previousSubCardTop) <= 2,
                 "device telemetry summary subcards share a top edge");
-        require(subCard->sizePolicy().horizontalPolicy() == QSizePolicy::Fixed &&
-                    std::abs(subCardRect.width() - subCard->sizeHint().width()) <= 2,
+        require(i == 2 || (subCard->sizePolicy().horizontalPolicy() == QSizePolicy::Fixed &&
+                    std::abs(subCardRect.width() - subCard->sizeHint().width()) <= 2),
                 "device telemetry summary subcard width follows its widest content row");
         previousSubCardRight = subCardRect.right();
         previousSubCardTop = subCardRect.top();
@@ -11999,8 +12000,8 @@ int main(int argc, char **argv)
                     kExpectedTopLevelCardGap + 2,
             "device telemetry summary card sits on the first row above the serial configuration card");
     require(std::abs(telemetrySummaryPageRect.left() - serialConfigPageRect.left()) <= 2 &&
-                std::abs(telemetrySummaryPageRect.right() - serialConfigPageRect.right()) <= 2,
-            "device telemetry summary and serial configuration cards share the full-row width");
+                serialConfigPageRect.right() <= telemetrySummaryPageRect.right() + 2,
+            "device telemetry summary and serial configuration cards share the left edge");
     for (const QFrame *summaryCard : deviceSummaryCards)
     {
         if (!summaryCard->isVisible())

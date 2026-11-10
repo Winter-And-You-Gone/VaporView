@@ -1424,6 +1424,99 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
     return sections;
 }
 
+void MainWindow::reflowDeviceTelemetryData()
+{
+    auto *sectionLayout = state_->device_config_.data_telemetry_device_summary_layout;
+    auto *section = sectionLayout ? qobject_cast<QWidget *>(sectionLayout->parent()) : nullptr;
+    auto *body = sectionLayout && sectionLayout->count() ? sectionLayout->itemAt(0)->widget() : nullptr;
+    auto *bodyLayout = body ? qobject_cast<QHBoxLayout *>(body->layout()) : nullptr;
+    auto *lineParent = bodyLayout && bodyLayout->count() > 1 ? bodyLayout->itemAt(1)->widget() : nullptr;
+    auto *linesLayout = lineParent ? qobject_cast<QVBoxLayout *>(lineParent->layout()) : nullptr;
+    auto *container = section ? section->parentWidget() : nullptr;
+    if (!linesLayout || !container || !container->layout()) return;
+
+    QList<QFrame *> pills = lineParent->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
+    if (pills.isEmpty()) return;
+    std::sort(pills.begin(), pills.end(), [](QFrame *a, QFrame *b) {
+        return a->property("summaryItemIndex").toInt() < b->property("summaryItemIndex").toInt();
+    });
+    int pillWidth = 0;
+    for (QFrame *pill : pills) {
+        auto *layout = pill->layout();
+        const QMargins margins = layout->contentsMargins();
+        int width = margins.left() + margins.right();
+        for (int i = 0; i < layout->count(); ++i) {
+            if (i) width += layout->spacing();
+            if (QWidget *widget = layout->itemAt(i)->widget())
+                width += widget->minimumWidth();
+        }
+        pillWidth = std::max({pillWidth, width, pill->minimumWidth(), pill->sizeHint().width()});
+    }
+    for (QFrame *pill : pills) pill->setFixedWidth(pillWidth);
+    const int spacing = scalePixels(2);
+    const QMargins bodyMargins = container->layout()->contentsMargins();
+    int otherWidth = bodyMargins.left() + bodyMargins.right();
+    for (int i = 0; i < container->layout()->count(); ++i) {
+        QWidget *other = container->layout()->itemAt(i)->widget();
+        if (other && other != section) otherWidth += other->sizeHint().width() + container->layout()->spacing();
+    }
+    const QMargins lineMargins = linesLayout->contentsMargins();
+    const int overhead = bodyLayout->itemAt(0)->widget()->minimumWidth() + bodyLayout->spacing() +
+        lineMargins.left() + lineMargins.right() + scalePixels(2);
+    auto *scrollArea = state_->device_config_.page->findChild<QScrollArea *>(QStringLiteral("mainCardsScrollArea"));
+    const int viewportWidth = scrollArea
+        ? scrollArea->viewport()->width() - std::max(0, container->mapTo(scrollArea->viewport(), QPoint()).x()) - scalePixels(8)
+        : container->width();
+    const int availableWidth = std::min(container->width(), viewportWidth);
+    const int columns = availableWidth - otherWidth >= overhead + 4 * pillWidth + 3 * spacing ? 4 : 3;
+    const int rowHeight = scalePixels(26);
+    const int rows = (pills.size() + columns - 1) / columns;
+    const int contentHeight = scalePixels(4) + rows * rowHeight + (rows - 1) * scalePixels(2);
+    if (section->property("dataColumns").toInt() == columns &&
+        section->property("dataPillWidth").toInt() == pillWidth &&
+        body->height() == contentHeight && section->height() == contentHeight + scalePixels(2)) return;
+
+    for (QFrame *pill : pills) pill->setParent(lineParent);
+    while (QLayoutItem *item = linesLayout->takeAt(0)) {
+        delete item->widget();
+        delete item;
+    }
+    for (int begin = 0; begin < pills.size(); begin += columns) {
+        auto *line = new QWidget(lineParent);
+        line->setProperty("deviceTelemetryDynamicMetrics", true);
+        line->setFixedHeight(rowHeight);
+        auto *row = new QHBoxLayout(line);
+        row->setContentsMargins(0, 0, 0, 0);
+        row->setSpacing(spacing);
+        for (int i = begin; i < std::min(begin + columns, int(pills.size())); ++i)
+            row->addWidget(pills.at(i), 0, Qt::AlignVCenter);
+        row->addStretch();
+        line->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+        linesLayout->addWidget(line, 1, Qt::AlignTop);
+        line->show();
+        for (int i = begin; i < std::min(begin + columns, int(pills.size())); ++i) pills.at(i)->show();
+    }
+    section->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    section->setMaximumWidth(overhead + columns * pillWidth + (columns - 1) * spacing);
+    section->setMinimumWidth(overhead + columns * pillWidth + (columns - 1) * spacing);
+    section->setProperty("deviceTelemetryDynamicMetrics", true);
+    body->setProperty("deviceTelemetryDynamicMetrics", true);
+    body->setFixedHeight(contentHeight);
+    section->setFixedHeight(contentHeight + scalePixels(2));
+    section->setProperty("dataColumns", columns);
+    section->setProperty("dataPillWidth", pillWidth);
+    sectionLayout->invalidate();
+    container->layout()->invalidate();
+    container->layout()->activate();
+    sectionLayout->activate();
+    bodyLayout->activate();
+    linesLayout->activate();
+    for (int i = 0; i < linesLayout->count(); ++i) {
+        if (QWidget *line = linesLayout->itemAt(i)->widget()) line->layout()->activate();
+    }
+    section->updateGeometry();
+}
+
 void MainWindow::updateRemoteTelemetrySummaryLabel()
 {
     if (!state_->data_telemetry_summary_card_ && !state_->device_config_.data_telemetry_summary_card)
@@ -1950,6 +2043,10 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
     }
     if (deviceConfigSummaryNeedsRender && state_->device_config_.data_telemetry_summary_card)
     {
+        if (QWidget *dataSection = qobject_cast<QWidget *>(state_->device_config_.data_telemetry_device_summary_layout->parent())) {
+            dataSection->setProperty("dataColumns", 0);
+            dataSection->setMaximumWidth(QWIDGETSIZE_MAX);
+        }
         renderSummarySection(state_->device_config_.data_telemetry_summary_card,
                              state_->device_config_.data_telemetry_rate_summary_layout,
                              state_->is_english_ ? QStringLiteral("Data stream rates") : QStringLiteral("数据频率"),
@@ -1979,6 +2076,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         }
         state_->device_config_.data_telemetry_summary_card->updateGeometry();
         state_->device_config_.data_telemetry_summary_card->setProperty(kSummaryStructureKeyProperty, summaryStructureKey);
+        reflowDeviceTelemetryData();
     }
     if (state_->home_overview_splitter_)
     {

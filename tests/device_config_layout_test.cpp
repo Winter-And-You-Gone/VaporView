@@ -375,6 +375,32 @@ void requirePillLabelsFit(QFrame *subCard, const char *message)
     require(!pills.isEmpty(), message);
     for (QFrame *pill : pills)
     {
+        QWidget *parent = pill->parentWidget();
+        if (!parent || !parent->rect().contains(pill->geometry()))
+            std::cerr << "Pill outside row: " << pillName(pill).toStdString()
+                      << " pill=" << pill->geometry().x() << ',' << pill->geometry().y() << ','
+                      << pill->width() << ',' << pill->height() << " row="
+                      << (parent ? parent->width() : -1) << ',' << (parent ? parent->height() : -1) << '\n';
+        require(parent && parent->rect().contains(pill->geometry()), message);
+        const QRect pillRect(pill->mapTo(subCard, QPoint(0, 0)), pill->size());
+        if (!subCard->rect().contains(pillRect))
+            std::cerr << "Pill outside card: " << pillName(pill).toStdString()
+                      << " pill=" << pillRect.x() << ',' << pillRect.y() << ',' << pillRect.width() << ',' << pillRect.height()
+                      << " card=" << subCard->width() << ',' << subCard->height() << '\n';
+        require(subCard->rect().contains(pillRect), message);
+        for (QFrame *other : pills)
+        {
+            if (other == pill) continue;
+            const QRect otherRect(other->mapTo(subCard, QPoint(0, 0)), other->size());
+            if (pillRect.intersects(otherRect))
+                std::cerr << "Pills overlap: " << pillName(pill).toStdString() << " and "
+                          << pillName(other).toStdString() << " first=" << pillRect.x() << ',' << pillRect.y() << ','
+                          << pillRect.width() << ',' << pillRect.height() << " second=" << otherRect.x() << ','
+                          << otherRect.y() << ',' << otherRect.width() << ',' << otherRect.height()
+                          << " row=" << parent->width() << ',' << parent->height()
+                          << " card=" << subCard->width() << ',' << subCard->height() << '\n';
+            require(!pillRect.intersects(otherRect), message);
+        }
         const QList<QLabel *> labels = pill->findChildren<QLabel *>();
         for (QLabel *label : labels)
         {
@@ -382,6 +408,12 @@ void requirePillLabelsFit(QFrame *subCard, const char *message)
             {
                 continue;
             }
+            const QRect labelRect(label->mapTo(pill, QPoint(0, 0)), label->size());
+            if (!pill->rect().contains(labelRect))
+                std::cerr << "Label outside pill: " << label->text().toStdString()
+                          << " label=" << labelRect.x() << ',' << labelRect.y() << ',' << labelRect.width() << ',' << labelRect.height()
+                          << " pill=" << pill->width() << ',' << pill->height() << '\n';
+            require(pill->rect().contains(labelRect), message);
             const int textWidth = label->fontMetrics().horizontalAdvance(label->text());
             if (textWidth > label->width() + 1)
             {
@@ -512,12 +544,22 @@ int main(int argc, char **argv)
             "link-status card is on the first row");
     require(serialRect.top() > linkRect.bottom(),
             "serial configuration card is on the second row");
-    require(std::abs(linkRect.left() - serialRect.left()) <= 2 &&
-                std::abs(linkRect.right() - serialRect.right()) <= 2,
-            "both device configuration cards share the same horizontal span");
-    require(std::abs(linkStatusCard->width() - expectedCardWidth) <= 4 &&
-                std::abs(serialCard->width() - expectedCardWidth) <= 4,
-            "both device configuration cards fill the main content width");
+    require(std::abs(linkRect.left() - serialRect.left()) <= 2,
+            "device configuration cards share the same left edge");
+    require(std::abs(linkStatusCard->width() - expectedCardWidth) <= 4,
+            "link-status card fills the main content width");
+    require(serialCard->width() <= expectedCardWidth + 4 &&
+                serialCard->width() <= serialCard->sizeHint().width() + 4,
+            "serial configuration card follows its content width");
+    window.resize(1200, 760);
+    VaporViewTest::processEventsFor(180);
+    activateLayouts(&window);
+    require(serialCard->width() <= scrollArea->viewport()->width() - margins.left() - margins.right() + 4 &&
+                serialCard->width() <= serialCard->sizeHint().width() + 4,
+            "serial configuration card remains content-sized in a narrower window");
+    window.resize(1280, 760);
+    VaporViewTest::processEventsFor(180);
+    activateLayouts(&window);
     require(cardHasAnyLabel(linkStatusCard,
                             QStringList() << QStringLiteral("记录") << QStringLiteral("Record")),
             "link-status card includes the remote recording state field");
@@ -570,22 +612,37 @@ int main(int argc, char **argv)
     const QList<QList<QFrame *>> dataRows = pillRows(subCards.at(2));
     const QStringList firstDataRow = dataRows.isEmpty() ? QStringList() : pillNames(dataRows.first());
     const bool chineseStatusRow =
-        firstDataRow == (QStringList() << QStringLiteral("磁盘") << QStringLiteral("记录") << QStringLiteral("CRC"));
+        firstDataRow.mid(0, 3) == (QStringList() << QStringLiteral("磁盘") << QStringLiteral("记录") << QStringLiteral("CRC"));
     const bool englishStatusRow =
-        firstDataRow == (QStringList() << QStringLiteral("Disk") << QStringLiteral("Record") << QStringLiteral("CRC"));
-    require(dataRows.size() == 4 &&
-                dataRows.at(0).size() == 3 &&
-                dataRows.at(1).size() == 3 &&
-                dataRows.at(2).size() == 3 &&
-                dataRows.at(3).size() == 3 &&
+        firstDataRow.mid(0, 3) == (QStringList() << QStringLiteral("Disk") << QStringLiteral("Record") << QStringLiteral("CRC"));
+    const int dataColumns = firstDataRow.size();
+    require((dataColumns == 3 || dataColumns == 4) &&
+                dataRows.size() == 12 / dataColumns &&
+                std::all_of(dataRows.cbegin(), dataRows.cend(), [dataColumns](const auto& row) { return row.size() == dataColumns; }) &&
                 (chineseStatusRow || englishStatusRow),
             "data subcard places disk, recording state, and CRC on the first row");
-    requireAlignedColumns(subCards.at(2), 3,
-                          "data subcard keeps all rows aligned to the same three columns");
+    requireAlignedColumns(subCards.at(2), dataColumns,
+                          "data subcard keeps all rows aligned to the same columns");
     requirePillsUseWidestColumnWidth(subCards.at(2),
                                      "data subcard uses its widest pill as every column width");
     requirePillLabelsFit(subCards.at(2),
                          "data subcard pill labels fit without clipping");
+    for (const auto& scenario : {std::pair<int, int>{2400, 4}, {800, 3}, {2400, 4}})
+    {
+        window.resize(scenario.first, 760);
+        VaporViewTest::processEventsFor(180);
+        activateLayouts(&window);
+        VaporViewTest::processEventsFor(100);
+        const auto rows = pillRows(subCards.at(2));
+        require(!rows.isEmpty() && rows.first().size() == scenario.second,
+                "data subcard switches columns when the window width changes");
+        requireAlignedColumns(subCards.at(2), scenario.second,
+                              "data subcard columns remain aligned after resizing");
+        requirePillLabelsFit(subCards.at(2), "data subcard labels fit after resizing");
+    }
+    window.resize(1280, 760);
+    VaporViewTest::processEventsFor(180);
+    activateLayouts(&window);
 
     const int summaryTop = summaryContainer->layout()->contentsMargins().top();
     int previousRight = -1;
@@ -599,8 +656,9 @@ int main(int argc, char **argv)
         require(subRect.right() <= summaryContainer->width() &&
                     subRect.bottom() <= summaryContainer->height(),
                 "link-status subcards stay inside the summary container");
-        require(subCard->sizePolicy().horizontalPolicy() == QSizePolicy::Fixed &&
-                    std::abs(subRect.width() - subCard->sizeHint().width()) <= 2,
+        require(subCard == subCards.at(2) ||
+                    (subCard->sizePolicy().horizontalPolicy() == QSizePolicy::Fixed &&
+                     std::abs(subRect.width() - subCard->sizeHint().width()) <= 2),
                 "link-status subcard width follows its widest content row");
         previousRight = subRect.right();
     }

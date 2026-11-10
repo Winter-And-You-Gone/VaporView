@@ -511,6 +511,7 @@ private:
     int homeDeviceOverviewContentMinimumWidth() const;
     void updateHomeDeviceOverviewMinimumWidth();
     void updateConfigCardHeightForSourceMode();
+    void reflowDeviceTelemetryData();
     void syncDeviceConfigTcpWaveEndpointFromPanel();
     void applyDeviceConfigTcpWaveEndpoint();
     void updateDeviceConfigTexts();

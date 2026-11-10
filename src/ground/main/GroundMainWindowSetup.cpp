@@ -2732,6 +2732,7 @@ void MainWindow::setupDeviceConfigPage()
     scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     scrollArea->setFrameShape(QFrame::NoFrame);
+    scrollArea->viewport()->installEventFilter(this);
 
     auto *content = new QWidget(scrollArea);
     auto *contentLayout = new QVBoxLayout(content);
@@ -3362,6 +3363,7 @@ void MainWindow::setupDeviceConfigPage()
 
     auto *summaryBodyWidget = new QWidget(state_->device_config_.data_telemetry_summary_card);
     summaryBodyWidget->setObjectName(QStringLiteral("homeTelemetrySummaryContainer"));
+    summaryBodyWidget->installEventFilter(this);
     auto *summaryBodyLayout = new QHBoxLayout(summaryBodyWidget);
     summaryBodyLayout->setContentsMargins(4, 6, 4, 6);
     summaryBodyLayout->setSpacing(4);
@@ -3643,7 +3645,7 @@ void MainWindow::setupDeviceConfigPage()
     });
 
     contentLayout->addWidget(state_->device_config_.data_telemetry_summary_card, 0);
-    contentLayout->addWidget(serialCard, 0);
+    contentLayout->addWidget(serialCard, 0, Qt::AlignLeft);
     contentLayout->addWidget(state_->motion_page_, 0);
     contentLayout->addWidget(remoteConfigCard, 0);
     contentLayout->addStretch(1);

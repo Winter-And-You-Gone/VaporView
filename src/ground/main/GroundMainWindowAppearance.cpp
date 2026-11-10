@@ -844,7 +844,8 @@ void MainWindow::applyScaledUiMetrics()
 {
     auto applyWidgetMetrics = [this](QWidget *widget) {
         // FPGA icon actions and plots scale their fixed sizes in FpgaControlPage::setTheme().
-        if (!widget || widget->property("fpgaIconOnly").toBool() || widget->property("fpgaFixedPlot").toBool())
+        if (!widget || widget->property("fpgaIconOnly").toBool() || widget->property("fpgaFixedPlot").toBool() ||
+            widget->property("deviceTelemetryDynamicMetrics").toBool())
         {
             return;
         }
@@ -1555,6 +1556,7 @@ void MainWindow::applyStyleConfiguration()
     releaseFixedHeight(state_->data_group_);
     releaseFixedHeight(state_->tcp_wave_group_);
     updateRemoteTelemetrySummaryLabel();
+    reflowDeviceTelemetryData();
     updateResponsiveHomeLayout();
     QTimer::singleShot(0, this, [this]() {
         updateRemoteTelemetrySummaryLabel();
