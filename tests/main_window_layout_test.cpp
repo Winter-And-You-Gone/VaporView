@@ -11529,8 +11529,8 @@ int main(int argc, char **argv)
     requireTopLevelCardElevation(serialConfigCard,
                                  1.0,
                                  "device serial configuration card uses the shared soft elevation");
-    require(serialConfigCard->sizePolicy().horizontalPolicy() == QSizePolicy::Expanding,
-            "device configuration serial card expands to fill its row");
+    require(serialConfigCard->sizePolicy().horizontalPolicy() == QSizePolicy::Maximum,
+            "device configuration serial card keeps its content-based width");
     const QRect serialConfigPageRect(serialConfigCard->mapTo(deviceConfigPage, QPoint(0, 0)),
                                      serialConfigCard->size());
     require(std::abs(widgetRectInCentral(serialConfigCard).left() - homePrimaryCardLeft) <= 1,

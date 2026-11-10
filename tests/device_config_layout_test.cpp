@@ -12,6 +12,7 @@
 #include "test_ui_helpers.h"
 
 #include <QApplication>
+#include <QAction>
 #include <QCheckBox>
 #include <QColor>
 #include <QComboBox>
@@ -515,8 +516,10 @@ int main(int argc, char **argv)
 
     QFrame *linkStatusCard = findLinkStatusCard(deviceConfigPage);
     QGroupBox *serialCard = deviceConfigPage->findChild<QGroupBox *>(QStringLiteral("sensorGroupBox"));
+    QWidget *motionCard = deviceConfigPage->findChild<QWidget *>(QStringLiteral("emFwc3ConnectionPanel"));
     require(linkStatusCard != nullptr, "link-status card can be identified");
     require(serialCard != nullptr, "serial configuration card can be identified");
+    require(motionCard != nullptr, "motion control card can be identified");
     require(linkStatusCard->parentWidget() == serialCard->parentWidget(),
             "link-status and serial configuration cards are siblings");
     QFrame *linkStatusSourcePill = findTelemetrySummarySourcePill(linkStatusCard);
@@ -551,6 +554,119 @@ int main(int argc, char **argv)
     require(serialCard->width() <= expectedCardWidth + 4 &&
                 serialCard->width() <= serialCard->sizeHint().width() + 4,
             "serial configuration card follows its content width");
+
+    for (const auto& scenario : {std::pair<int, bool>{2400, true}, {1200, false}, {2400, true}})
+    {
+        window.resize(scenario.first, 760);
+        VaporViewTest::processEventsFor(180);
+        activateLayouts(&window);
+        VaporViewTest::processEventsFor(100);
+        const QRect deviceBounds = rectInPage(serialCard, scrollArea->widget());
+        const QRect motionBounds = rectInPage(motionCard, scrollArea->widget());
+        require(!deviceBounds.intersects(motionBounds), "device and motion cards do not overlap");
+        require(scrollArea->widget()->rect().contains(deviceBounds) &&
+                    scrollArea->widget()->rect().contains(motionBounds),
+                "device and motion cards stay within the page content");
+        if (scenario.second)
+        {
+            require(motionBounds.left() > deviceBounds.right() &&
+                        std::abs(motionBounds.top() - deviceBounds.top()) <= 2,
+                    "wide page places motion control to the right of device configuration");
+            require(std::abs(motionBounds.height() - deviceBounds.height()) <= 2,
+                    "side-by-side device and motion cards share a height");
+            require(scrollArea->horizontalScrollBar()->maximum() == 0,
+                    "side-by-side cards fit without horizontal overflow");
+        }
+        else
+        {
+            require(motionBounds.top() > deviceBounds.bottom(),
+                    "narrow page places motion control below device configuration");
+        }
+    }
+    auto *continuousToggle = motionCard->findChild<QCheckBox *>(QStringLiteral("emFwc3ContinuousToggle1"));
+    auto *continuousBody = motionCard->findChild<QWidget *>(QStringLiteral("emFwc3ContinuousBody1"));
+    require(continuousToggle && continuousBody, "motion card exposes continuous controls");
+    continuousToggle->setChecked(true);
+    VaporViewTest::processEventsFor(180);
+    activateLayouts(&window);
+    require(!continuousBody->isHidden() &&
+                motionCard->rect().contains(QRect(continuousBody->mapTo(motionCard, QPoint()), continuousBody->size())),
+            "expanded continuous controls stay inside motion card");
+    require(std::abs(serialCard->height() - motionCard->height()) <= 2,
+            "expanded motion and device cards remain aligned in a wide window");
+    continuousToggle->setChecked(false);
+    VaporViewTest::processEventsFor(180);
+    activateLayouts(&window);
+    const auto setFontScale = [&window](int scale) {
+        for (QAction *action : window.findChildren<QAction *>())
+        {
+            if (action->data().toInt() == scale)
+            {
+                action->trigger();
+                VaporViewTest::processEventsFor(180);
+                activateLayouts(&window);
+                return;
+            }
+        }
+        require(false, "font scale action exists");
+    };
+    setFontScale(100);
+    const qreal standardFontSize = QApplication::font().pointSizeF();
+    setFontScale(130);
+    window.resize(2400, 760);
+    VaporViewTest::processEventsFor(180);
+    activateLayouts(&window);
+    VaporViewTest::processEventsFor(100);
+    const qreal scaledFontSize = QApplication::font().pointSizeF();
+    const QRect scaledSerial = rectInPage(serialCard, scrollArea->widget());
+    const QRect scaledMotion = rectInPage(motionCard, scrollArea->widget());
+    const bool scaledCardsAligned = scaledMotion.left() > scaledSerial.right() &&
+        std::abs(scaledMotion.top() - scaledSerial.top()) <= 2 &&
+        std::abs(scaledMotion.height() - scaledSerial.height()) <= 2;
+    const int serialMinimumHeight = serialCard->minimumSizeHint().height();
+    const int motionMinimumHeight = motionCard->minimumSizeHint().height();
+    const bool scaledCardsFit = scaledSerial.height() >= serialMinimumHeight &&
+        scaledMotion.height() >= motionMinimumHeight;
+    bool scaledControlsFit = true;
+    for (const QString& name : {QStringLiteral("emFwc3Target1"), QStringLiteral("emFwc3Step1"),
+                                 QStringLiteral("emFwc3Speed"), QStringLiteral("emFwc3StopAll")})
+    {
+        QWidget *control = motionCard->findChild<QWidget *>(name);
+        if (!control || !motionCard->rect().contains(rectInPage(control, motionCard)))
+        {
+            scaledControlsFit = false;
+            std::cerr << "130% motion control outside card: " << name.toStdString() << '\n';
+        }
+    }
+    QLabel *lastDeviceLabel = findExactLabel(serialCard, QStringLiteral("SHT45"));
+    scaledControlsFit = scaledControlsFit && lastDeviceLabel &&
+        serialCard->rect().contains(rectInPage(lastDeviceLabel, serialCard));
+    if (!scaledCardsAligned || !scaledCardsFit || !scaledControlsFit)
+    {
+        std::cerr << "130% layout: window=" << window.width() << 'x' << window.height()
+                  << " viewport=" << scrollArea->viewport()->width() << 'x' << scrollArea->viewport()->height()
+                  << " content=" << scrollArea->widget()->width() << 'x' << scrollArea->widget()->height()
+                  << " serial=" << scaledSerial.x() << ',' << scaledSerial.y() << ','
+                  << scaledSerial.width() << ',' << scaledSerial.height()
+                  << " serialHint=" << serialCard->sizeHint().width() << 'x' << serialCard->sizeHint().height()
+                  << " serialMinHeight=" << serialMinimumHeight
+                  << " motion=" << scaledMotion.x() << ',' << scaledMotion.y() << ','
+                  << scaledMotion.width() << ',' << scaledMotion.height()
+                  << " motionHint=" << motionCard->sizeHint().width() << 'x' << motionCard->sizeHint().height()
+                  << " motionMinHeight=" << motionMinimumHeight
+                  << " font=" << standardFontSize << "->" << scaledFontSize << '\n';
+    }
+    setFontScale(100);
+    const qreal restoredFontSize = QApplication::font().pointSizeF();
+    require(scaledFontSize > standardFontSize * 1.2 &&
+                std::abs(restoredFontSize - standardFontSize) < 0.1,
+            "font scale changes to 130 percent and returns to 100 percent");
+    require(scaledCardsAligned, "wide cards remain aligned at 130 percent font scale");
+    require(scaledCardsFit, "wide cards fit their minimum content height at 130 percent font scale");
+    require(scaledControlsFit, "wide cards keep their controls inside their bounds at 130 percent font scale");
+    window.resize(1280, 760);
+    VaporViewTest::processEventsFor(180);
+    activateLayouts(&window);
     window.resize(1200, 760);
     VaporViewTest::processEventsFor(180);
     activateLayouts(&window);
@@ -1370,6 +1486,21 @@ int main(int argc, char **argv)
                     "Sky Link transport returns to TCP before remote connection");
     VaporViewTest::processEventsFor(60);
     require(remoteCard->isVisible(), "remote sky service/config card appears in remote mode");
+    window.resize(2400, 760);
+    VaporViewTest::processEventsFor(180);
+    activateLayouts(&window);
+    const QRect remoteDeviceBounds = rectInPage(serialCard, scrollArea->widget());
+    const QRect remoteMotionBounds = rectInPage(motionCard, scrollArea->widget());
+    const QRect remoteSettingsBounds = rectInPage(remoteCard, scrollArea->widget());
+    require(remoteMotionBounds.left() > remoteDeviceBounds.right() &&
+                std::abs(remoteMotionBounds.top() - remoteDeviceBounds.top()) <= 2 &&
+                std::abs(remoteMotionBounds.height() - remoteDeviceBounds.height()) <= 2,
+            "remote mode keeps motion and device cards aligned side by side");
+    require(remoteSettingsBounds.top() > std::max(remoteDeviceBounds.bottom(), remoteMotionBounds.bottom()),
+            "remote settings card remains below both device and motion cards");
+    window.resize(1280, 760);
+    VaporViewTest::processEventsFor(180);
+    activateLayouts(&window);
     QWidget *serialTitleBar =
         serialCard->findChild<QWidget *>(QStringLiteral("sectionTitleBar"), Qt::FindDirectChildrenOnly);
     QWidget *remoteTitleBar =

@@ -29,6 +29,69 @@ namespace
 constexpr int kMainContentBottomFadeHeight = 36;
 constexpr int kDeviceConfigEpsilonPacketRatesButtonMinWidth = 194;
 
+class DeviceCardsLayoutController final : public QObject
+{
+public:
+    DeviceCardsLayoutController(QScrollArea *scroll, QGridLayout *layout, QWidget *serial, QWidget *motion)
+        : QObject(scroll), scroll_(scroll), layout_(layout), serial_(serial), motion_(motion)
+    {
+        scroll_->viewport()->installEventFilter(this);
+        serial_->installEventFilter(this);
+        motion_->installEventFilter(this);
+        schedule();
+    }
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if (event->type() == QEvent::Resize || event->type() == QEvent::LayoutRequest ||
+            event->type() == QEvent::Show || event->type() == QEvent::FontChange ||
+            event->type() == QEvent::StyleChange)
+            schedule();
+        return QObject::eventFilter(watched, event);
+    }
+
+private:
+    void schedule()
+    {
+        if (pending_) return;
+        pending_ = true;
+        QTimer::singleShot(0, this, [this] {
+            pending_ = false;
+            // Source-mode transitions temporarily fix the serial card's height.
+            // Release that lock once the transition has settled so scaled or
+            // expanded contents can determine the height of the shared row.
+            if (serial_->maximumHeight() != QWIDGETSIZE_MAX)
+                serial_->setMaximumHeight(QWIDGETSIZE_MAX);
+            if (serial_->minimumHeight() != 0)
+                serial_->setMinimumHeight(0);
+            const auto margins = scroll_->widget()->layout()->contentsMargins();
+            const int available = scroll_->viewport()->width() - margins.left() - margins.right();
+            const int serialWidth = std::max(serial_->minimumSizeHint().width(), serial_->sizeHint().width());
+            const int motionWidth = std::max(480, motion_->minimumSizeHint().width());
+            const bool sideBySide = available >= serialWidth + layout_->horizontalSpacing() + motionWidth;
+            if (sideBySide == side_by_side_ && initialized_) return;
+            initialized_ = true;
+            side_by_side_ = sideBySide;
+            layout_->removeWidget(serial_);
+            layout_->removeWidget(motion_);
+            serial_->setSizePolicy(QSizePolicy::Maximum, sideBySide ? QSizePolicy::Preferred : QSizePolicy::Fixed);
+            motion_->setSizePolicy(QSizePolicy::Expanding, sideBySide ? QSizePolicy::Preferred : QSizePolicy::Fixed);
+            layout_->addWidget(serial_, 0, 0);
+            layout_->addWidget(motion_, sideBySide ? 0 : 1, sideBySide ? 1 : 0);
+            layout_->setColumnStretch(1, sideBySide ? 1 : 0);
+            layout_->invalidate();
+        });
+    }
+    QScrollArea *scroll_;
+    QGridLayout *layout_;
+    QWidget *serial_;
+    QWidget *motion_;
+    bool pending_ = false;
+    bool initialized_ = false;
+    bool side_by_side_ = false;
+};
+
 class AppSidebarButton final : public QPushButton
 {
 public:
@@ -3645,8 +3708,13 @@ void MainWindow::setupDeviceConfigPage()
     });
 
     contentLayout->addWidget(state_->device_config_.data_telemetry_summary_card, 0);
-    contentLayout->addWidget(serialCard, 0, Qt::AlignLeft);
-    contentLayout->addWidget(state_->motion_page_, 0);
+    auto *deviceCardsLayout = new QGridLayout;
+    deviceCardsLayout->setContentsMargins(0, 0, 0, 0);
+    deviceCardsLayout->setSpacing(contentLayout->spacing());
+    deviceCardsLayout->addWidget(serialCard, 0, 0, Qt::AlignLeft);
+    deviceCardsLayout->addWidget(state_->motion_page_, 1, 0);
+    contentLayout->addLayout(deviceCardsLayout);
+    new DeviceCardsLayoutController(scrollArea, deviceCardsLayout, serialCard, state_->motion_page_);
     contentLayout->addWidget(remoteConfigCard, 0);
     contentLayout->addStretch(1);
 
