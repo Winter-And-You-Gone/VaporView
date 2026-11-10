@@ -28,18 +28,11 @@ namespace VaporView::Ground::Widgets
 constexpr int kEpsilonSideTitleWidth = 24;
 constexpr int kEpsilonSideTitleHorizontalPadding = 8;
 constexpr int kEpsilonTitleColumnWidth = 90;
-constexpr int kEpsilonMotionTitleColumnWidth = 180;
 constexpr int kEpsilonLeftValueColumnWidth = 130;
 constexpr int kEpsilonPositionValueColumnWidth = 112;
-constexpr int kEpsilonMotionValueColumnWidth = 145;
 constexpr int kEpsilonFieldBaseSpacing = 2;
-constexpr int kEpsilonMotionFieldSpacing = 8;
 constexpr int kEpsilonValueColumnSlack = 14;
-// The motion card spans the wrapped row; keep its minimum just inside the
-// default panel width and let the word-wrapped value label use the extra room.
-constexpr int kEpsilonMotionValueColumnSlack = 8;
 constexpr int kEpsilonFieldMinimumHeight = 20;
-constexpr int kEpsilonThreeColumnContentReserve = 180;
 
 inline QFont numericFontFrom(const QFont& base)
 {
@@ -483,22 +476,10 @@ private:
         const QVector<int> widths = standardCardWidths();
         const int gap = std::max(0, cards_layout_ ? cards_layout_->horizontalSpacing() : 0);
         const int cardCount = widths.size();
-        int allWidth = 0;
-        for (int width : widths)
-        {
-            allWidth += width;
-        }
-        allWidth += gap * std::max(0, cardCount - 1);
-        if (cardCount >= 3 && availableWidth >= allWidth + kEpsilonThreeColumnContentReserve)
-        {
-            return 3;
-        }
-
         if (cardCount >= 2)
         {
             const int firstRowWidth = widths.at(0) + widths.at(1) + gap;
-            const int wrappedRowWidth = cardCount >= 3 ? widths.at(2) : 0;
-            if (availableWidth >= std::max(firstRowWidth, wrappedRowWidth))
+            if (availableWidth >= firstRowWidth)
             {
                 return 2;
             }
@@ -520,9 +501,8 @@ private:
 
     int fieldSpacingForSection(const QString& key) const
     {
-        return key == QStringLiteral("motion")
-            ? kEpsilonMotionFieldSpacing
-            : kEpsilonFieldBaseSpacing;
+        Q_UNUSED(key);
+        return kEpsilonFieldBaseSpacing;
     }
 
     int sectionTitleWidthForCard(int cardIndex) const
@@ -589,18 +569,6 @@ private:
                                QStringLiteral("-9999.999"),
                                QStringLiteral("9999.999m/9999.999m"),
                                QStringLiteral("99999.9 s"), QStringLiteral("999.99/999.99")};
-        }
-        if (key == QStringLiteral("motion"))
-        {
-            return is_english_
-                ? QStringList{QStringLiteral("-999.999/-999.999/-999.999"),
-                              QStringLiteral("-999.9999/-999.9999/-999.9999"),
-                              QStringLiteral("-180.00/-90.00/-180.00"),
-                              QStringLiteral("41-63 180.000°, 41-64 180.000°, 63-64 180.000°")}
-                : QStringList{QStringLiteral("-999.999/-999.999/-999.999"),
-                              QStringLiteral("-999.9999/-999.9999/-999.9999"),
-                              QStringLiteral("-180.00/-90.00/-180.00"),
-                              QStringLiteral("41-63 180.000°，41-64 180.000°，63-64 180.000°")};
         }
         return {};
     }
@@ -675,9 +643,7 @@ private:
                     }
                 }
             }
-            valueWidth += sectionKey == QStringLiteral("motion")
-                ? kEpsilonMotionValueColumnSlack
-                : kEpsilonValueColumnSlack;
+            valueWidth += kEpsilonValueColumnSlack;
             QGridLayout *grid = section_card_grids_.at(i);
             if (!grid)
             {
@@ -806,16 +772,7 @@ private:
 
         const int availableWidth = std::max(0, availableCardWidth());
         const int gap = std::max(0, cards_layout_ ? cards_layout_->horizontalSpacing() : 0);
-        if (columns >= 3)
-        {
-            for (int i = 0; i < widths.size(); ++i)
-            {
-                updateFieldSpacingForCard(i, widths.at(i));
-            }
-            return;
-        }
-
-        if (columns == 2 && widths.size() >= 3)
+        if (columns == 2 && widths.size() >= 2)
         {
             const int firstRowAvailableWidth = std::max(0, availableWidth - gap);
             const int firstRowStandardWidth = std::max(1, widths.at(0) + widths.at(1));
@@ -823,7 +780,6 @@ private:
             const int secondWidth = std::max(widths.at(1), firstRowAvailableWidth - firstWidth);
             updateFieldSpacingForCard(0, firstWidth);
             updateFieldSpacingForCard(1, secondWidth);
-            updateFieldSpacingForCard(2, availableWidth);
             return;
         }
 
@@ -867,23 +823,10 @@ private:
             cards_layout_->setColumnMinimumWidth(i, 0);
         }
 
-        if (columns >= 3)
+        if (columns == 2 && section_cards_.size() >= 2)
         {
             setCardsExpandable(true);
-            for (int i = 0; i < section_cards_.size(); ++i)
-            {
-                if (i < widths.size())
-                {
-                    cards_layout_->setColumnMinimumWidth(i, widths.at(i));
-                    cards_layout_->setColumnStretch(i, std::max(1, widths.at(i)));
-                }
-                cards_layout_->addWidget(section_cards_.at(i), 0, i);
-            }
-        }
-        else if (columns == 2 && section_cards_.size() >= 3)
-        {
-            setCardsExpandable(true);
-            // Keep the top cards touching while letting them fill the wrapped row.
+            // Keep the two status cards touching while they fill the row.
             section_cards_.at(0)->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
             section_cards_.at(1)->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
             cards_layout_->setColumnMinimumWidth(0, widths.at(0));
@@ -892,7 +835,6 @@ private:
             cards_layout_->setColumnStretch(1, std::max(1, widths.at(1)));
             cards_layout_->addWidget(section_cards_.at(0), 0, 0);
             cards_layout_->addWidget(section_cards_.at(1), 0, 1);
-            cards_layout_->addWidget(section_cards_.at(2), 1, 0, 1, 2);
         }
         else
         {
@@ -1045,19 +987,6 @@ private:
         addField(positionGrid, row++, 0, QStringLiteral("acc"), QStringLiteral("hAcc/vAcc:"), QStringLiteral("hAcc/vAcc:"), kEpsilonPositionValueColumnWidth);
         addField(positionGrid, row++, 0, QStringLiteral("diff_age"), QStringLiteral("差分龄期:"), QStringLiteral("Diff. Age:"), kEpsilonPositionValueColumnWidth);
         addField(positionGrid, row++, 0, QStringLiteral("dop"), QStringLiteral("HDOP/VDOP:"), QStringLiteral("HDOP/VDOP:"), kEpsilonPositionValueColumnWidth);
-
-        QGridLayout *motionGrid = addSectionCard(QStringLiteral("motion"),
-                                                 QStringLiteral("姿态与运动"),
-                                                 QStringLiteral("Attitude / Motion"),
-                                                 kEpsilonMotionTitleColumnWidth,
-                                                 kEpsilonMotionValueColumnWidth);
-        row = 0;
-        addField(motionGrid, row++, 0, QStringLiteral("ned_vel"), QStringLiteral("NED速度[m/s][N/E/D]:"), QStringLiteral("NED Velocity [m/s][N/E/D]:"), kEpsilonMotionValueColumnWidth);
-        addField(motionGrid, row++, 0, QStringLiteral("imu_acc"), QStringLiteral("IMU加速度[m/s²][X/Y/Z]:"), QStringLiteral("IMU Accel [m/s²][X/Y/Z]:"), kEpsilonMotionValueColumnWidth);
-        addField(motionGrid, row++, 0, QStringLiteral("imu_gyr"), QStringLiteral("IMU角速度[rad/s][X/Y/Z]:"), QStringLiteral("IMU Gyro [rad/s][X/Y/Z]:"), kEpsilonMotionValueColumnWidth);
-        addField(motionGrid, row++, 0, QStringLiteral("rpy"), QStringLiteral("姿态角[deg][Roll/Pitch/Yaw]:"), QStringLiteral("Attitude [deg][Roll/Pitch/Yaw]:"), kEpsilonMotionValueColumnWidth);
-        addField(motionGrid, row++, 0, QStringLiteral("attitude_sources"), QStringLiteral("姿态来源[0x41/0x63/0x64]:"), QStringLiteral("Attitude Sources [0x41/0x63/0x64]:"), kEpsilonMotionValueColumnWidth);
-        addField(motionGrid, row++, 0, QStringLiteral("attitude_delta"), QStringLiteral("姿态一致性:"), QStringLiteral("Attitude Consistency:"), kEpsilonMotionValueColumnWidth);
 
         updateCardGridLayout(true);
         layout->addLayout(cards_layout_, 0);

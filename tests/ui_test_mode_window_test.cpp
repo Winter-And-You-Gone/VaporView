@@ -718,12 +718,8 @@ void requireUiTestEpsilonPanelFieldsCovered(QWidget *epsilonPanel)
         QStringLiteral("经度[deg]:"),
         QStringLiteral("高度[m]:"),
         QStringLiteral("hAcc/vAcc:"),
-        QStringLiteral("NED速度[m/s][N/E/D]:"),
-        QStringLiteral("IMU加速度[m/s²][X/Y/Z]:"),
-        QStringLiteral("IMU角速度[rad/s][X/Y/Z]:"),
-        QStringLiteral("姿态角[deg][Roll/Pitch/Yaw]:"),
-        QStringLiteral("姿态来源[0x41/0x63/0x64]:"),
-        QStringLiteral("姿态一致性:")
+        QStringLiteral("差分龄期:"),
+        QStringLiteral("HDOP/VDOP:")
     };
     for (const QString& field : requiredFields)
     {
@@ -742,12 +738,6 @@ void requireUiTestEpsilonPanelFieldsCovered(QWidget *epsilonPanel)
     require(filterStatus.contains(QStringLiteral("定位融合中")) &&
                 !filterStatus.contains(QStringLiteral("未初始化")),
             "UI-test EPSILON filter status matches the RTK fixed sample");
-    const QString attitudeConsistency = values.value(QStringLiteral("姿态一致性:"));
-    require(!attitudeConsistency.contains(QStringLiteral("最大")) &&
-                attitudeConsistency.contains(QStringLiteral("41-63")) &&
-                attitudeConsistency.contains(QStringLiteral("41-64")) &&
-                attitudeConsistency.contains(QStringLiteral("63-64")),
-            "UI-test EPSILON attitude consistency covers all three attitude sources");
 }
 
 void requireUiTestEpsilonValueColor(QWidget *epsilonPanel, bool dark, const char *message)
@@ -826,15 +816,22 @@ QList<QFrame *> sortedEpsilonSectionCards(QWidget *epsilonPanel)
     return cards;
 }
 
-void requireUiTestEpsilonPanelWrappedTopRowFilled(QWidget *epsilonPanel)
+void requireUiTestEpsilonPanelStatusCardsVisible(QWidget *epsilonPanel)
 {
     const QList<QFrame *> cards = sortedEpsilonSectionCards(epsilonPanel);
-    require(epsilonPanel != nullptr && cards.size() == 3,
-            "UI-test EPSILON panel exposes three section cards");
+    require(epsilonPanel != nullptr && cards.size() == 2,
+            "UI-test EPSILON panel exposes two status cards");
+    const QList<QLabel *> titles =
+        epsilonPanel->findChildren<QLabel *>(QStringLiteral("epsilonSectionLabel"));
+    require(titles.size() == 2 &&
+                std::none_of(titles.cbegin(), titles.cend(), [](const QLabel *label) {
+                    return label && (label->text().contains(QStringLiteral("Motion")) ||
+                                     label->text().contains(QStringLiteral("姿态与运动")));
+                }),
+            "UI-test EPSILON panel omits the attitude and motion card title");
 
     const QRect first(cards.at(0)->mapTo(epsilonPanel, QPoint(0, 0)), cards.at(0)->size());
     const QRect second(cards.at(1)->mapTo(epsilonPanel, QPoint(0, 0)), cards.at(1)->size());
-    const QRect third(cards.at(2)->mapTo(epsilonPanel, QPoint(0, 0)), cards.at(2)->size());
     const QRect bounds = epsilonPanel->contentsRect();
     const auto staysInsidePanel = [&bounds](const QRect& rect) {
         return rect.left() >= bounds.left() - 2 &&
@@ -848,28 +845,20 @@ void requireUiTestEpsilonPanelWrappedTopRowFilled(QWidget *epsilonPanel)
         topRowJoinGap >= 0 &&
         topRowJoinGap <= 1 &&
         first.left() <= bounds.left() + 6 &&
-        third.top() > first.bottom() &&
-        third.left() <= first.left() + 2 &&
-        std::abs(second.right() - third.right()) <= 2 &&
         second.right() >= bounds.right() - 6 &&
         staysInsidePanel(first) &&
         staysInsidePanel(second) &&
-        staysInsidePanel(third) &&
-        !first.intersects(second) &&
-        !first.intersects(third) &&
-        !second.intersects(third);
+        !first.intersects(second);
     if (!fillsTopRow)
     {
         std::cerr << "UI-test EPSILON wrapped row geometry: bounds=" << bounds.width()
                   << " first=[" << first.x() << ',' << first.y() << ' '
                   << first.width() << 'x' << first.height() << ']'
                   << " second=[" << second.x() << ',' << second.y() << ' '
-                  << second.width() << 'x' << second.height() << ']'
-                  << " third=[" << third.x() << ',' << third.y() << ' '
-                  << third.width() << 'x' << third.height() << "]\n";
+                  << second.width() << 'x' << second.height() << "]\n";
     }
     require(fillsTopRow,
-            "UI-test EPSILON top-row cards fill the outer card width without a center gap");
+            "UI-test EPSILON status cards fill the outer card width without a center gap");
 }
 
 bool temperatureOverviewOutputPercentShows(QLabel *pill, const QString& expectedValue)
@@ -1179,13 +1168,11 @@ int main(int argc, char **argv)
                 "dark EPSILON layout test exposes the home panel");
         require(VaporViewTest::processEventsUntil(2500, [epsilonPanel]() {
                     const QMap<QString, QString> values = epsilonPanelFieldValues(epsilonPanel);
-                    return values.value(QStringLiteral("UTC时间:")) != QStringLiteral("--") &&
-                           values.value(QStringLiteral("姿态一致性:"))
-                               .contains(QStringLiteral("41-63"));
+                    return values.value(QStringLiteral("UTC时间:")) != QStringLiteral("--");
                 }),
                 "dark EPSILON layout test receives the populated UI-test sample");
         requireUiTestEpsilonPanelFieldsCovered(epsilonPanel);
-        requireUiTestEpsilonPanelWrappedTopRowFilled(epsilonPanel);
+        requireUiTestEpsilonPanelStatusCardsVisible(epsilonPanel);
         requireUiTestEpsilonValueColor(
             epsilonPanel, true, "dark UI-test EPSILON values use the orange theme color");
         const QList<QFrame *> overviewCells = window->findChildren<QFrame *>(
@@ -1494,7 +1481,7 @@ int main(int argc, char **argv)
     require(epsilonPanel && epsilonPanel->isVisible(),
             "UI test mode exposes the EPSILON home panel");
     requireUiTestEpsilonPanelFieldsCovered(epsilonPanel);
-    requireUiTestEpsilonPanelWrappedTopRowFilled(epsilonPanel);
+    requireUiTestEpsilonPanelStatusCardsVisible(epsilonPanel);
     requireUiTestEpsilonValueColor(
         epsilonPanel, false, "light UI-test EPSILON values keep the blue theme color");
     require(VaporViewTest::processEventsUntil(4000, [window]() {
