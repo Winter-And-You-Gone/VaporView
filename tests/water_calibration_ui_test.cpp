@@ -113,6 +113,17 @@ int main(int argc,char **argv)
         check(std::abs(app.primaryScreen()->devicePixelRatio()-app.arguments().value(2).toDouble())<0.01,"Qt renders at the requested process DPI scale");
     }
     Rig r;WaterCalibrationPage page(nullptr,r.root.path(),r.service);page.resize(1280,1000);page.show();
+    auto *name=control<QLineEdit>(page,"calibrationTaskName");auto *unit=control<QComboBox>(page,"calibrationUnit");
+    auto *create=control<QPushButton>(page,"calibrationCreateTask");auto *viewport=name->parentWidget()->parentWidget();
+    for(int scale:{100,130})for(int width:{900,1280}) {
+        page.setTheme(false,scale);page.resize(width,1000);QApplication::processEvents();
+        const QRect nameRect(name->mapTo(&page,QPoint()),name->size());const QRect unitRect(unit->mapTo(&page,QPoint()),unit->size());
+        const QRect createRect(create->mapTo(&page,QPoint()),create->size());const QRect viewportRect(viewport->mapTo(&page,QPoint()),viewport->size());
+        check(nameRect.center().y()==unitRect.center().y()&&unitRect.center().y()==createRect.center().y(),"task controls share one row");
+        check(nameRect.right()<unitRect.left()&&unitRect.right()<createRect.left(),"task controls are ordered without overlap");
+        check(viewportRect.contains(nameRect)&&viewportRect.contains(unitRect)&&viewportRect.contains(createRect),"task controls fit the visible workspace");
+    }
+    page.setTheme(false,100);page.resize(1280,1000);QApplication::processEvents();
     control<QLineEdit>(page,"calibrationTaskName")->setText(QStringLiteral("软件测试独立任务"));
     control<QPushButton>(page,"calibrationCreateTask")->click();r.service->synchronize();QApplication::processEvents();
     check(control<QSpinBox>(page,"calibrationStageSeconds")->value()==600,"UI ten-minute default");
