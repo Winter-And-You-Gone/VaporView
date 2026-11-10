@@ -4,6 +4,7 @@
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QStringList>
+#include <QNetworkProxy>
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
@@ -42,6 +43,10 @@ bool waitUntil(Predicate predicate, int timeoutMs = 3000)
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
+    // Device telemetry must bypass an application proxy in both connect paths
+    // and in the listening socket, without changing that application's proxy.
+    const QNetworkProxy proxy(QNetworkProxy::HttpCachingProxy, QStringLiteral("127.0.0.1"), 1);
+    QNetworkProxy::setApplicationProxy(proxy);
 
     VaporView::TcpTelemetryLink server;
     VaporView::TelemetryCodec serverDecoder;

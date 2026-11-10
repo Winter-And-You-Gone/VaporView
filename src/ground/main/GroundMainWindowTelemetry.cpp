@@ -84,7 +84,8 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
          {"temperature_c",hasFlag(VaporView::BasicHasTemperature)?QJsonValue(telemetry.temperature_c):QJsonValue(QJsonValue::Null)},
          {"pressure_hpa",hasFlag(VaporView::BasicHasPressure)?QJsonValue(telemetry.pressure_hpa):QJsonValue(QJsonValue::Null)}});
 
-    refreshRemoteSkyDataUi();
+    // The existing 100 ms display timer renders the latest snapshot. Keep
+    // recording and navigation forwarding above on every packet.
 }
 
 #ifdef VAPORVIEW_HAS_OSGEARTH
@@ -181,6 +182,7 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
                          {{QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
     state_->remote_status_ = status;
+    maybeConnectRemoteDevices();
     const quint64 rawTotal =
         status.raw_navigation_record_count +
         status.raw_pressure_record_count +
@@ -368,6 +370,7 @@ void MainWindow::onRemoteCommandAckReceived(const VaporView::CommandAck& ack)
         !(ok && noError))
     {
         state_->remote_config_session_.reading = false;
+        state_->remote_connect_devices_pending_ = false;
         clearPendingRemoteWaveTcpConnection();
         setRemoteSkyConfigStatus(state_->is_english_
             ? QStringLiteral("Remote Sky config read was rejected: %1").arg(errorText)
@@ -493,7 +496,9 @@ void MainWindow::onRemoteLinkOpenChanged(bool open)
                     {{QStringLiteral("error_code"), QStringLiteral("TELEMETRY_LINK_OPEN_FAILED")},
                      {QStringLiteral("endpoint"), state_->remote_sky_controller_->telemetryService()->endpointDescription()},
                      {QStringLiteral("transport"), QStringLiteral("tcp")},
-                     {QStringLiteral("ui_message"), QStringLiteral("无法打开天空端 TCP 数传链路。请确认 SkyCore 已启动并监听该地址。")},
+                     {QStringLiteral("ui_message"), QStringLiteral("无法连接天空端 %1：%2")
+                         .arg(state_->remote_sky_controller_->telemetryService()->endpointDescription(),
+                              state_->remote_sky_controller_->telemetryService()->lastLinkError())},
                      {QStringLiteral("ui_dedupe_key"), QStringLiteral("remote_sky:connection_open_failed")}});
             }
         }

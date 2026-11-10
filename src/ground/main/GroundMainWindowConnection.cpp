@@ -1454,6 +1454,8 @@ void MainWindow::testApplyLocalPortDetection(const QString& deviceKey,
 
 void MainWindow::onConnectClicked()
 {
+    if (isRemoteSkyMode() && !isUiTestMode() && state_->remote_sky_controller_ &&
+        (state_->remote_sky_controller_->isOpen() || state_->remote_sky_controller_->telemetryService()->isConnecting())) return;
     if (isFpgaRelayPath() &&
         (state_->fpga_connected_ || state_->fpga_busy_ || state_->fpga_replaying_))
     {
@@ -1511,6 +1513,7 @@ void MainWindow::onConnectClicked()
     if (isRemoteSkyMode())
     {
         clearRemoteSkyDataUi();
+        state_->remote_connect_devices_pending_ = true;
         const auto& skyLink = state_->remote_sky_link_config_;
         const bool tcpTelemetry = skyLink.transport == VaporView::TelemetryTransportType::Tcp;
         bool opened = false;
@@ -1521,6 +1524,7 @@ void MainWindow::onConnectClicked()
             const int tcpPort = skyLink.tcpPort;
             if (host.isEmpty())
             {
+                state_->remote_connect_devices_pending_ = false;
                 publishGroundLog(VaporView::LogLevel::Warning,
                                  QStringLiteral("telemetry.connection"),
                                  QStringLiteral("remote_sky_connection_rejected_missing_host"),
@@ -1538,9 +1542,9 @@ void MainWindow::onConnectClicked()
                              {{QStringLiteral("transport"), QStringLiteral("tcp")},
                               {QStringLiteral("endpoint"), openedText},
                               {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
+            state_->connection_attempt_in_progress_ = true;
             opened = state_->remote_sky_controller_ && state_->remote_sky_controller_->openTcpAsync(host, static_cast<quint16>(tcpPort));
             if (opened) {
-                state_->connection_attempt_in_progress_ = true;
                 updateConnectionStatus(false);
                 return;
             }
@@ -1551,6 +1555,7 @@ void MainWindow::onConnectClicked()
             const int baud = skyLink.serialBaudRate;
             if (port.isEmpty())
             {
+                state_->remote_connect_devices_pending_ = false;
                 publishGroundLog(VaporView::LogLevel::Warning,
                                  QStringLiteral("telemetry.connection"),
                                  QStringLiteral("remote_sky_connection_rejected_missing_port"),
@@ -1562,6 +1567,7 @@ void MainWindow::onConnectClicked()
             }
             if (!VaporView::isValidSerialBaudRate(baud))
             {
+                state_->remote_connect_devices_pending_ = false;
                 publishGroundLog(VaporView::LogLevel::Warning,
                                  QStringLiteral("telemetry.connection"),
                                  QStringLiteral("remote_sky_connection_rejected_invalid_baud"),
@@ -1599,6 +1605,8 @@ void MainWindow::onConnectClicked()
         }
         else
         {
+            state_->remote_connect_devices_pending_ = false;
+            state_->connection_attempt_in_progress_ = false;
             updateConnectionStatus(false);
             publishGroundLog(VaporView::LogLevel::Error,
                              QStringLiteral("telemetry.connection"),

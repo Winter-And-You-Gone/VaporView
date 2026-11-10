@@ -2,6 +2,8 @@
 #include "SkyRuntime.h"
 #include "LogService.h"
 #include "SerialBaudRate.h"
+#include "SkyConsoleDiagnostics.h"
+#include <QElapsedTimer>
 
 #include <QCommandLineParser>
 #include <QCoreApplication>
@@ -239,13 +241,27 @@ int main(int argc, char *argv[])
     shutdownTimer.start();
     startStdinShutdownWatcher();
 
+    VaporView::SkyConsoleDiagnostics consoleDiagnostics;
+    QElapsedTimer consoleClock;
+    consoleClock.start();
+    const auto printLines = [](const QStringList& lines) {
+        for (const auto &line : lines) QTextStream(stdout) << line << "\n";
+    };
+    QTimer consoleFlush;
+    consoleFlush.setInterval(1000);
+    // Runtime shutdown may emit diagnostics, including after startup failure.
     VaporView::SkyRuntime runtime(options);
-    QObject::connect(&runtime, &VaporView::SkyRuntime::logRecord, [](const VaporView::LogRecord& record) {
-        QTextStream(stdout) << record.message << "\n";
+    QObject::connect(&consoleFlush, &QTimer::timeout, &app, [&] {
+        printLines(consoleDiagnostics.flush(consoleClock.elapsed()));
     });
-    QObject::connect(&app, &QCoreApplication::aboutToQuit, [&runtime]() {
+    consoleFlush.start();
+    QObject::connect(&runtime, &VaporView::SkyRuntime::logRecord, &app, [&](const VaporView::LogRecord& record) {
+        printLines(consoleDiagnostics.accept(record, consoleClock.elapsed()));
+    });
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, [&]() {
         QTextStream(stdout) << "正在停止 SkyCore 运行时。\n";
         runtime.stop();
+        printLines(consoleDiagnostics.flush(consoleClock.elapsed(), true));
         QTextStream(stdout) << "SkyCore 运行时已停止。\n";
     });
 

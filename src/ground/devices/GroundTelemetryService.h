@@ -33,6 +33,7 @@ public:
     bool openTcp(const QString& host, quint16 port);
     bool openTcpAsync(const QString& host, quint16 port);
     bool isConnecting() const;
+    QString lastLinkError() const { return last_link_error_; }
     void close();
     bool isOpen() const;
     TelemetryTransportType transportType() const;
@@ -119,6 +120,7 @@ private:
                                   const QVariantMap& fields = QVariantMap());
 
     std::unique_ptr<TelemetryLink> link_;
+    QString last_link_error_;
     TelemetryTransportType transport_type_ = TelemetryTransportType::Tcp;
     TelemetryCodec codec_;
     QTimer retry_timer_;

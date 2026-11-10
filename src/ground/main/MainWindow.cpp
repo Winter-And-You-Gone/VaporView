@@ -575,6 +575,7 @@ MainWindow::MainWindow(QWidget *parent, std::shared_ptr<VaporView::Ground::Calib
             commandSeq == state_->remote_config_session_.readSequence)
         {
             state_->remote_config_session_.reading = false;
+            state_->remote_connect_devices_pending_ = false;
             clearPendingRemoteWaveTcpConnection();
             setRemoteSkyConfigStatus(state_->is_english_
                 ? QStringLiteral("Remote Sky config read timed out.")

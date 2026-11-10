@@ -937,7 +937,7 @@ void Ai8TemperatureControllerPanel::updateRunStateCombo(quint16 rawValue)
             break;
         }
     }
-    if (selectedIndex >= 0)
+    if (selectedIndex >= 0 && run_state_combo_->currentIndex() != selectedIndex)
     {
         const QSignalBlocker blocker(run_state_combo_);
         run_state_combo_->setCurrentIndex(selectedIndex);

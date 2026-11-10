@@ -37,7 +37,24 @@ void logCommandContext(const CommandMessage& command, const QString& event, LogL
     else if (event == QStringLiteral("ground_command_timeout")) record.message = QStringLiteral("等待天空端命令响应超时。");
     else if (event == QStringLiteral("ground_command_ack_context_mismatch")) record.message = QStringLiteral("天空端响应的关联标识不匹配。");
     else if (event == QStringLiteral("ground_command_disconnected")) record.message = QStringLiteral("连接已断开，天空端命令尚未完成。");
-    else if (event == QStringLiteral("ground_device_operation_response")) record.message = QStringLiteral("已收到天空端设备操作结果。");
+    else if (event == QStringLiteral("ground_device_operation_response")) {
+        const auto code = static_cast<CommandErrorCode>(extra.value(QStringLiteral("result_error_code")).toUInt());
+        QString operation = extra.value(QStringLiteral("operation")).toString();
+        DeviceOperationRequest request;
+        QJsonObject control;
+        if (TelemetryCodec::parseDeviceOperationRequest(command.payload, request) &&
+            request.operation == DeviceOperation::FpgaControl && FpgaRemote::parseControl(request.payload, control)) {
+            operation = QStringLiteral("FPGA %1").arg(control.value("op").toString());
+            if (control.contains("source"))
+                operation += QStringLiteral(" source=0x%1").arg(control.value("source").toInt(), 2, 16, QLatin1Char('0'));
+        }
+        record.message = QStringLiteral("天空端 %1 操作 %2 %3（错误码 %4）：%5")
+            .arg(extra.value(QStringLiteral("device")).toString(), operation,
+                 code == CommandErrorCode::Ok ? QStringLiteral("成功") : QStringLiteral("失败"))
+            .arg(static_cast<quint16>(code))
+            .arg(extra.value(QStringLiteral("system_error")).toString().isEmpty()
+                ? commandErrorCodeText(code, false) : extra.value(QStringLiteral("system_error")).toString());
+    }
     else if (event == QStringLiteral("ground_config_apply_result_context")) record.message = QStringLiteral("已收到天空端配置应用关联结果。");
     else if (event == QStringLiteral("ground_device_result_context_expired")) record.message = QStringLiteral("设备操作结果等待上下文已过期。");
     else if (event == QStringLiteral("ground_device_result_context_evicted")) record.message = QStringLiteral("设备操作结果等待上下文因容量限制被移除。");
@@ -133,6 +150,7 @@ bool GroundTelemetryService::open(const QString& portName, int baudRate)
 
 bool GroundTelemetryService::openTcp(const QString& host, quint16 port)
 {
+    last_link_error_.clear();
     auto link = std::make_unique<TcpTelemetryLink>();
     QString systemError;
     const QMetaObject::Connection errorConnection =
@@ -144,6 +162,7 @@ bool GroundTelemetryService::openTcp(const QString& host, quint16 port)
     QObject::disconnect(errorConnection);
     if (!ok)
     {
+        last_link_error_ = systemError;
         const QString endpoint = QStringLiteral("%1:%2").arg(host.trimmed()).arg(port);
         QVariantMap fields{
             {QStringLiteral("error_code"), QStringLiteral("GROUND_TELEMETRY_TCP_CONNECT_FAILED")},
@@ -151,7 +170,7 @@ bool GroundTelemetryService::openTcp(const QString& host, quint16 port)
             {QStringLiteral("host"), host},
             {QStringLiteral("port"), port},
             {QStringLiteral("ui_message"),
-             QStringLiteral("无法连接天空端 TCP 数传端点（%1）。").arg(endpoint)},
+             QStringLiteral("无法连接天空端 %1：%2").arg(endpoint, systemError)},
             {QStringLiteral("ui_visibility"), QStringLiteral("details")},
         };
         if (!systemError.isEmpty())
@@ -161,7 +180,7 @@ bool GroundTelemetryService::openTcp(const QString& host, quint16 port)
         publishTelemetryLog(LogLevel::Error,
                             QStringLiteral("telemetry.tcp"),
                             QStringLiteral("ground_telemetry_tcp_connect_failed"),
-                            QStringLiteral("无法连接天空端 TCP 数传端点。"),
+                            QStringLiteral("无法连接天空端 %1：%2").arg(endpoint, systemError),
                             fields);
         return false;
     }
@@ -171,6 +190,7 @@ bool GroundTelemetryService::openTcp(const QString& host, quint16 port)
 
 bool GroundTelemetryService::openTcpAsync(const QString& host, quint16 port)
 {
+    last_link_error_.clear();
     auto link = std::make_unique<TcpTelemetryLink>();
     const QPointer<TcpTelemetryLink> tcp(link.get());
     const QPointer<GroundTelemetryService> self(this);
@@ -971,7 +991,10 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
                     logCommandContext(logContext, QStringLiteral("ground_device_operation_response"),
                                       response.error_code == CommandErrorCode::Ok ? LogLevel::Info : LogLevel::Warning,
                                       {{QStringLiteral("request_id"), response.request_id},
-                                       {QStringLiteral("result_error_code"), static_cast<quint32>(response.error_code)}});
+                                       {QStringLiteral("result_error_code"), static_cast<quint32>(response.error_code)},
+                                       {QStringLiteral("device"), skyDeviceIdName(response.device_id)},
+                                       {QStringLiteral("operation"), static_cast<quint16>(response.operation)},
+                                       {QStringLiteral("system_error"), response.error_message}});
                     break;
                 }
             }
@@ -996,7 +1019,10 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
                     logCommandContext(logContext, QStringLiteral("ground_device_operation_response"),
                                       response.error_code == CommandErrorCode::Ok ? LogLevel::Info : LogLevel::Warning,
                                       {{QStringLiteral("request_id"), response.request_id},
-                                       {QStringLiteral("result_error_code"), static_cast<quint32>(response.error_code)}});
+                                       {QStringLiteral("result_error_code"), static_cast<quint32>(response.error_code)},
+                                       {QStringLiteral("device"), skyDeviceIdName(response.device_id)},
+                                       {QStringLiteral("operation"), static_cast<quint16>(response.operation)},
+                                       {QStringLiteral("system_error"), response.error_message}});
                 }
             }
             if (dispatchGeneration != link_generation_) break;
@@ -1206,10 +1232,11 @@ void GroundTelemetryService::attachLinkSignals()
         {
             return;
         }
+        last_link_error_ = systemError;
         publishTelemetryLog(LogLevel::Warning,
                             QStringLiteral("telemetry.link"),
                             QStringLiteral("ground_telemetry_link_error"),
-                            QStringLiteral("地面端遥测链路异常。"),
+                            QStringLiteral("地面端遥测链路异常（%1）：%2").arg(endpointDescription(), systemError),
                             {{QStringLiteral("reason_code"), QStringLiteral("GROUND_TELEMETRY_LINK_ERROR")},
                              {QStringLiteral("system_error"), systemError}});
     });

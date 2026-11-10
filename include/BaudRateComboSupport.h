@@ -69,6 +69,10 @@ inline bool setSerialBaudRateComboText(QComboBox *combo, const QString& value)
 
     const QSignalBlocker blocker(combo);
     const int index = combo->findText(normalized, Qt::MatchExactly);
+    if (combo->currentText() == normalized && (index < 0 || combo->currentIndex() == index)) {
+        combo->setProperty(kSerialBaudRateLastValidProperty, normalized);
+        return true;
+    }
     if (index >= 0)
     {
         combo->setCurrentIndex(index);
@@ -134,6 +138,13 @@ inline void configureSerialBaudRateCombo(QComboBox *combo,
 {
     if (!combo)
     {
+        return;
+    }
+    const auto current = serialBaudRateComboCapabilities(combo);
+    if (isSerialBaudRateCombo(combo) && current.presets == capabilities.presets &&
+        current.inputMode == capabilities.inputMode && current.customMinimum == capabilities.customMinimum &&
+        current.customMaximum == capabilities.customMaximum) {
+        if (!defaultValue.isEmpty()) setSerialBaudRateComboText(combo, defaultValue);
         return;
     }
     const QString previousValue = combo->currentText().trimmed();

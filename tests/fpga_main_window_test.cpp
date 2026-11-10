@@ -561,7 +561,7 @@ static void configurationActionReadback()
             "fresh register state reaches the authoritative FPGA page model");
     };
     publish();
-    const QList<SkyDeviceId> devices{SkyDeviceId::Epsilon,SkyDeviceId::Ptb,SkyDeviceId::Hmp,SkyDeviceId::Lidar,
+    const QList<SkyDeviceId> devices{SkyDeviceId::Epsilon,SkyDeviceId::Ptb,SkyDeviceId::Lidar,
         SkyDeviceId::TemperatureController,SkyDeviceId::Ai8TemperatureController,SkyDeviceId::WaveTcp,
         SkyDeviceId::Bmp390,SkyDeviceId::Sht45};
     // No language switch, checkbox click or page re-open may repair stale buttons.
@@ -569,6 +569,11 @@ static void configurationActionReadback()
         for(auto it=registers.begin();it!=registers.end();++it)
             if(it.key()!="256"&&it.key()!=QString::number(0x6010))it.value()=enabled?1:0;
         publish();
+        auto *hmp = action(SkyDeviceId::Hmp);
+        auto *hmpSelection = window.findChild<QCheckBox*>("deviceRemoteHumidityEnabledCheck");
+        require(hmp && !hmp->isEnabled() && !hmp->property("connected").toBool()
+            && hmpSelection && !hmpSelection->isEnabled(),
+            "remote FPGA HMP stays unavailable even when legacy registers report enabled");
         for(auto id:devices) {
             auto *button=action(id);
             if(!button||button->property("connected").toBool()!=enabled)

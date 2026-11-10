@@ -722,6 +722,7 @@ void applyComboText(QComboBox *combo, const QString& value)
     }
     const QSignalBlocker blocker(combo);
     const int idx = combo->findText(value);
+    if (combo->currentText() == value && (idx < 0 || combo->currentIndex() == idx)) return;
     if (idx >= 0)
     {
         combo->setCurrentIndex(idx);

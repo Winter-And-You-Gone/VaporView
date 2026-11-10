@@ -529,6 +529,7 @@ struct MainWindowState
     int last_log_side_panel_width_;
     bool remote_sky_mode_;
     bool remote_sky_online_;
+    bool remote_connect_devices_pending_ = false;
     bool remote_sky_config_raw_mode_;
     bool remote_sky_config_updating_ui_;
     bool remote_serial_detection_pending_ = false;

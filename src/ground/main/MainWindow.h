@@ -523,6 +523,7 @@ private:
     void markRemoteSkyLinkClosed();
     void refreshRemoteSkyDataUi();
     bool remoteDeviceDataValid(VaporView::SkyDeviceId device, qint64 timeout_ms) const;
+    void maybeConnectRemoteDevices();
     QString remoteDeviceInvalidText(VaporView::SkyDeviceId device, qint64 timeout_ms) const;
     double remotePacketRate(VaporView::MsgType type) const;
     double remoteWaveformPacketRate(quint16 channelId) const;

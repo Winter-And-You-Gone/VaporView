@@ -1248,6 +1248,7 @@ void MainWindow::handleRemoteSkyConfigReceived(const QJsonObject& object, bool b
         state_->remote_sky_config_raw_mode_ = true;
         setRemoteSkyConfigJsonValidation(false, error);
         setRemoteSkyConfigStatus(QStringLiteral("Invalid config from sky: %1").arg(error), true);
+        state_->remote_connect_devices_pending_ = false;
         clearPendingRemoteWaveTcpConnection();
         updateRemoteSkyConfigControlsState();
         return;
@@ -1278,6 +1279,7 @@ void MainWindow::handleRemoteSkyConfigReceived(const QJsonObject& object, bool b
         state_->remote_serial_detection_pending_ = false;
         startRemoteSerialPortDetection();
     }
+    maybeConnectRemoteDevices();
     if (state_->remote_wave_connect_after_config_read_)
     {
         const QString pendingHost = state_->remote_wave_pending_host_;

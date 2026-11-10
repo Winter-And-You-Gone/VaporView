@@ -2955,12 +2955,14 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
     };
 
     auto logCallback = [this, id](const std::string& message) {
-        publishDeviceLog(LogLevel::Info,
+        const QString raw = QString::fromStdString(message);
+        const QString summary = raw.simplified().left(240);
+        publishDeviceLog(LogLevel::Debug,
                          QStringLiteral("device.collector"),
                          QStringLiteral("device_collector_output"),
-                         QStringLiteral("设备采集器输出了原始诊断信息。"),
+                         QStringLiteral("%1：%2").arg(skyDeviceIdName(id), summary),
                          {{QStringLiteral("device_id"), skyDeviceIdName(id)},
-                          {QStringLiteral("process_output"), QString::fromStdString(message)},
+                          {QStringLiteral("process_output"), raw},
                           {QStringLiteral("external_raw_text"), true}});
     };
     auto structuredLogCallback = [this, id](LogLevel level,

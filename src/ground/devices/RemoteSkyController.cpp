@@ -113,7 +113,24 @@ RemoteSkyController::RemoteSkyController(QObject *parent)
             if (!isCurrentOpenEvent(generation)) return;
             const auto now = QDateTime::currentMSecsSinceEpoch();
             state_.notePacket(MsgType::FpgaSensor, now);
-            if (reading.validity.measurement) state_.noteDeviceData(SkyDeviceId::Fpga, now);
+            const bool valid = reading.validity.structure && reading.validity.crc &&
+                reading.validity.deviceOnline && reading.validity.measurement;
+            SkyDeviceId device = SkyDeviceId::All;
+            switch (reading.source) {
+            case 0x40: device = SkyDeviceId::Ptb; break;
+            case 0x42: device = SkyDeviceId::Epsilon; break;
+            case 0x43: device = SkyDeviceId::Bmp390; break;
+            case 0x44: device = SkyDeviceId::Sht45; break;
+            case 0x45: device = SkyDeviceId::Lidar; break;
+            case 0x46: device = SkyDeviceId::Ai8TemperatureController; break;
+            case 0x48: device = SkyDeviceId::TemperatureController; break;
+            default: break;
+            }
+            if (valid) state_.noteDeviceData(SkyDeviceId::Fpga, now);
+            if (device != SkyDeviceId::All) {
+                if (valid) state_.noteDeviceData(device, now);
+                else state_.clearDeviceData(device);
+            }
             emit fpgaSensorUpdated(reading);
         }, Qt::QueuedConnection);
     }, Qt::DirectConnection);
@@ -123,7 +140,10 @@ RemoteSkyController::RemoteSkyController(QObject *parent)
             if(!isCurrentOpenEvent(generation))return;
             const auto now=QDateTime::currentMSecsSinceEpoch();
             state_.notePacket(MsgType::InternalEnvironment,now);
-            if(reading.validity.measurement)state_.noteDeviceData(reading.source==0x43?SkyDeviceId::Bmp390:SkyDeviceId::Sht45,now);
+            const auto device = reading.source == 0x43 ? SkyDeviceId::Bmp390 : SkyDeviceId::Sht45;
+            if (reading.validity.structure && reading.validity.crc && reading.validity.deviceOnline && reading.validity.measurement)
+                state_.noteDeviceData(device, now);
+            else state_.clearDeviceData(device);
             emit internalEnvironmentUpdated(reading);
         },Qt::QueuedConnection);
     },Qt::DirectConnection);
@@ -133,7 +153,11 @@ RemoteSkyController::RemoteSkyController(QObject *parent)
             if (!isCurrentOpenEvent(generation)) return;
             const auto now = QDateTime::currentMSecsSinceEpoch();
             state_.notePacket(MsgType::FpgaWaveformPreview, now);
-            state_.noteDeviceData(SkyDeviceId::Fpga, now);
+            if (stream.complete) {
+                state_.noteDeviceData(SkyDeviceId::Fpga, now);
+                state_.noteDeviceData(SkyDeviceId::WaveTcp, now);
+                state_.noteWaveformPacket(stream.source < 0x30 ? 1 : 4, now);
+            }
             emit fpgaWaveformUpdated(stream);
         }, Qt::QueuedConnection);
     }, Qt::DirectConnection);

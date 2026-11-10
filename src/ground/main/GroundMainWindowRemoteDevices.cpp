@@ -1062,6 +1062,8 @@ void MainWindow::clearRemoteSkyDataUi()
 
 void MainWindow::markRemoteSkyLinkClosed()
 {
+    state_->remote_connect_devices_pending_ = false;
+    state_->fpga_home_connect_queue_.clear();
     state_->remote_sky_controller_->markLinkClosed();
     state_->remote_serial_detection_pending_ = false;
     state_->port_detection_in_progress_ = false;
@@ -1121,6 +1123,26 @@ void MainWindow::markRemoteSkyLinkClosed()
     updateRecordingStatusLabel();
 }
 
+void MainWindow::maybeConnectRemoteDevices()
+{
+    auto *remote = state_->remote_sky_controller_.get();
+    if (!state_->remote_connect_devices_pending_ || !isRemoteSkyMode() || isUiTestMode()
+        || !remote || !remote->isOpen() || !state_->remote_sky_online_
+        || !state_->remote_config_session_.loaded || state_->remote_config_session_.pending()
+        || state_->remote_config_session_.loadedGeneration != remote->linkGeneration()) return;
+    state_->remote_connect_devices_pending_ = false;
+    state_->remote_wave_stream_auto_start_ = true;
+    if (isFpgaRelayPath()) {
+        using VaporView::SkyDeviceId;
+        state_->fpga_home_connect_queue_ = {SkyDeviceId::Epsilon, SkyDeviceId::Ptb,
+            SkyDeviceId::Lidar, SkyDeviceId::Ai8TemperatureController, SkyDeviceId::Bmp390,
+            SkyDeviceId::Sht45, SkyDeviceId::TemperatureController, SkyDeviceId::WaveTcp};
+        connectNextHomeFpgaDevice();
+    } else {
+        remote->sendCommand(VaporView::CommandId::ConnectAllDevices);
+    }
+}
+
 bool MainWindow::remoteDeviceDataValid(VaporView::SkyDeviceId device, qint64 timeout_ms) const
 {
     if (isFpgaRelayPath() && device == VaporView::SkyDeviceId::Hmp) return false;
@@ -1133,15 +1155,24 @@ bool MainWindow::remoteDeviceDataValid(VaporView::SkyDeviceId device, qint64 tim
     {
         return false;
     }
-    if (state_->remote_sky_controller_->deviceState(device) != VaporView::DeviceState::Connected)
+    const auto deviceState = isFpgaRelayPath() ? homeFpgaDeviceState(device)
+        : state_->remote_sky_controller_->deviceState(device);
+    if (deviceState != VaporView::DeviceState::Connected)
     {
         return false;
+    }
+    if (device == VaporView::SkyDeviceId::Bmp390 || device == VaporView::SkyDeviceId::Sht45) {
+        const auto source = device == VaporView::SkyDeviceId::Bmp390 ? 0x43 : 0x44;
+        const quint32 polling = homeFpgaRegisters().value(0x6000 + (source - 0x40) * 0x100 + 0x14, 1000);
+        timeout_ms = isFpgaRelayPath() ? qMax<qint64>(4000, quint64(polling) * 3) : 4000;
     }
     return state_->remote_sky_controller_->deviceDataFresh(device, nowMs, timeout_ms);
 }
 
 QString MainWindow::remoteDeviceInvalidText(VaporView::SkyDeviceId device, qint64 timeout_ms) const
 {
+    if (isFpgaRelayPath() && device == VaporView::SkyDeviceId::Hmp)
+        return state_->is_english_ ? QStringLiteral("Unavailable on FPGA path") : QStringLiteral("FPGA 路径不提供");
     if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
     {
         return remoteDisconnectedText(state_->is_english_);
@@ -1155,14 +1186,29 @@ QString MainWindow::remoteDeviceInvalidText(VaporView::SkyDeviceId device, qint6
     {
         return remoteStaleText(state_->is_english_);
     }
-    if (state_->remote_sky_controller_->deviceState(device) != VaporView::DeviceState::Connected)
+    if (isFpgaRelayPath() && std::chrono::steady_clock::now() - state_->fpga_session_.statusTime >= std::chrono::seconds(4))
+        return remoteStaleText(state_->is_english_);
+    const auto deviceState = isFpgaRelayPath() ? homeFpgaDeviceState(device)
+        : state_->remote_sky_controller_->deviceState(device);
+    if (deviceState == VaporView::DeviceState::Disabled)
+        return state_->is_english_ ? QStringLiteral("Not enabled") : QStringLiteral("未启用");
+    if (deviceState == VaporView::DeviceState::Error)
+        return state_->is_english_ ? QStringLiteral("Error") : QStringLiteral("异常");
+    if (deviceState != VaporView::DeviceState::Connected)
     {
+        if (isFpgaRelayPath() && !homeFpgaRegisters().isEmpty())
+            return state_->is_english_ ? QStringLiteral("Not enabled") : QStringLiteral("未启用");
         return remoteDisconnectedText(state_->is_english_);
     }
     const qint64 lastDataMs = state_->remote_sky_controller_->lastDeviceDataMs(device);
     if (lastDataMs <= 0)
     {
         return remoteNoDataText(state_->is_english_);
+    }
+    if (device == VaporView::SkyDeviceId::Bmp390 || device == VaporView::SkyDeviceId::Sht45) {
+        const auto source = device == VaporView::SkyDeviceId::Bmp390 ? 0x43 : 0x44;
+        const quint32 polling = homeFpgaRegisters().value(0x6000 + (source - 0x40) * 0x100 + 0x14, 1000);
+        timeout_ms = isFpgaRelayPath() ? qMax<qint64>(4000, quint64(polling) * 3) : 4000;
     }
     if (!state_->remote_sky_controller_->deviceDataFresh(device, nowMs, timeout_ms))
     {
@@ -1355,7 +1401,15 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
     };
     auto appendDevice = [&](VaporView::SkyDeviceId device, qint64 timeoutMs, const QString& label) {
         const bool hasData = uiTestMode ? hasUiTestDeviceData(device) : hasDeviceData(device, timeoutMs);
-        deviceRows << makeItem(label, hasText(hasData), hasData, QString(), true);
+        const bool remoteFpga = isRemoteSkyMode() && isFpgaRelayPath() && !isUiTestMode();
+        const QString availability = !hasData && remoteFpga
+            ? remoteDeviceInvalidText(device, timeoutMs) : hasText(hasData);
+        const QString widthText = !remoteFpga ? QString()
+            : device == VaporView::SkyDeviceId::Hmp
+                ? (state_->is_english_ ? QStringLiteral("Unavailable on FPGA path") : QStringLiteral("FPGA 路径不提供"))
+                : (state_->is_english_ ? QStringLiteral("Data available") : QStringLiteral("未连接"));
+        deviceRows << makeItem(label, availability, hasData,
+            widthText, true);
     };
     if (state_->is_english_)
     {
@@ -1554,10 +1608,13 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
     {
         auto &item = homeSections.deviceItems[i];
         item.label = deviceLabels.at(i);
-        item.value = state_->is_english_
-            ? (item.hasData ? QStringLiteral("Data available") : QStringLiteral("No data"))
-            : (item.hasData ? QStringLiteral("有数据") : QStringLiteral("无数据"));
-        item.valueWidthText = state_->is_english_ ? QStringLiteral("Data available") : QStringLiteral("有数据");
+        const bool remoteFpga = isRemoteSkyMode() && isFpgaRelayPath() && !isUiTestMode();
+        if (item.hasData || !remoteFpga)
+            item.value = state_->is_english_
+                ? (item.hasData ? QStringLiteral("Data available") : QStringLiteral("No data"))
+                : (item.hasData ? QStringLiteral("有数据") : QStringLiteral("无数据"));
+        if (!remoteFpga)
+            item.valueWidthText = state_->is_english_ ? QStringLiteral("Data available") : QStringLiteral("有数据");
     }
     const auto updateSourcePill = [this](QFrame *pill) {
         if (!pill)
@@ -1633,7 +1690,13 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
     QList<RemoteTelemetrySummarySections::Item> deviceConfigDataItems = sections.linkStatusItems;
     for (const RemoteTelemetrySummarySections::Item& item : sections.deviceItems)
     {
-        deviceConfigDataItems << item;
+        auto compactItem = item;
+        if (isRemoteSkyMode() && isFpgaRelayPath() && !isUiTestMode() && item.label == QStringLiteral("HMP")) {
+            compactItem.value = state_->is_english_ ? QStringLiteral("N/A") : QStringLiteral("不支持");
+            compactItem.valueWidthText = compactItem.value;
+            compactItem.compactAvailabilityValue = false;
+        }
+        deviceConfigDataItems << compactItem;
     }
 
     bool homeSummaryNeedsRender = false;

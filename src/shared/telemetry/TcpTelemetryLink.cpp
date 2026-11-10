@@ -1,6 +1,7 @@
 #include "TcpTelemetryLink.h"
 
 #include <utility>
+#include <QNetworkProxy>
 
 namespace VaporView
 {
@@ -8,6 +9,7 @@ namespace VaporView
 TcpTelemetryLink::TcpTelemetryLink(QObject *parent)
     : TelemetryLink(parent)
 {
+    server_.setProxy(QNetworkProxy::NoProxy);
     connect(&server_, &QTcpServer::newConnection, this, &TcpTelemetryLink::onNewConnection);
     connect_timer_.setSingleShot(true);
     connect(&connect_timer_, &QTimer::timeout, this, [this] {
@@ -52,6 +54,7 @@ bool TcpTelemetryLink::connectToHost(const QString& host, quint16 port)
     host_ = host.trimmed();
     port_ = port;
     auto *socket = new QTcpSocket(this);
+    socket->setProxy(QNetworkProxy::NoProxy);
     attachSocket(socket);
     socket->connectToHost(host_, port_);
     if (!socket->waitForConnected(3000))
@@ -83,6 +86,7 @@ bool TcpTelemetryLink::connectToHostAsync(const QString& host, quint16 port)
     port_ = port;
     if (host_.isEmpty() || !port_) return false;
     auto *socket = new QTcpSocket(this);
+    socket->setProxy(QNetworkProxy::NoProxy);
     attachSocket(socket);
     connect_timer_.start(3000);
     socket->connectToHost(host_, port_);
