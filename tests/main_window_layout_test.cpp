@@ -4415,6 +4415,29 @@ void requireHomeSensorColumnLayout(MainWindow& window)
             "home sensor column contains the EPSILON and motion cards");
     require(epsilon->isVisible() && motion->isVisible(),
             "home EPSILON and motion cards are visible");
+    auto *motionPanel = motion->findChild<QWidget *>(QStringLiteral("homeMotionPanel"));
+    require(motionPanel != nullptr, "home motion controls exist");
+    for (const char *name : {"homeMotionPosition", "homeMotionTarget", "homeMotionStep",
+                             "homeMotionGo", "homeMotionMinus", "homeMotionPlus"})
+    {
+        auto *control = motionPanel->findChild<QWidget *>(QString::fromLatin1(name));
+        require(control && control->isVisible(), "home motion channel control is visible");
+    }
+    const auto controls = motionPanel->findChildren<QWidget *>(QString(), Qt::FindDirectChildrenOnly);
+    for (int i = 0; i < controls.size(); ++i)
+    {
+        QWidget *control = controls.at(i);
+        if (!control->isVisible()) continue;
+        require(motionPanel->rect().contains(control->geometry()),
+                "home motion controls stay inside their card");
+        if (auto *label = qobject_cast<QLabel *>(control); label && !label->wordWrap())
+            require(label->contentsRect().width() >= label->fontMetrics().horizontalAdvance(label->text()),
+                    "home motion labels remain readable");
+        for (int j = i + 1; j < controls.size(); ++j)
+            if (controls.at(j)->isVisible())
+                require(!control->geometry().intersects(controls.at(j)->geometry()),
+                        "home motion controls do not overlap");
+    }
     const QRect epsilonRect(epsilon->mapTo(column, QPoint()), epsilon->size());
     const QRect motionRect(motion->mapTo(column, QPoint()), motion->size());
     require(std::abs(epsilonRect.left() - motionRect.left()) <= 2 &&

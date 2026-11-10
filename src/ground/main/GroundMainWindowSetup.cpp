@@ -2454,7 +2454,7 @@ void MainWindow::setupCentralWidget()
     state_->main_page_stack_->addWidget(state_->home_page_);
     state_->motion_page_ = new VaporView::Ground::Motion::MotionControlPage(state_->main_page_stack_);
     state_->home_motion_panel_ = new VaporView::Ground::Motion::HomeMotionPanel(
-        state_->motion_page_->session(),
+        state_->motion_page_,
         state_->home_motion_card_->findChild<QComboBox *>(QStringLiteral("homeMotionChannelCombo")),
         state_->home_motion_card_);
     static_cast<QVBoxLayout *>(state_->home_motion_card_->layout())->addWidget(state_->home_motion_panel_, 1);

@@ -151,6 +151,8 @@ MotionControlPage::MotionControlPage(QWidget *parent, const QString& sdkDirector
         stepRow->setContentsMargins(0, 0, 0, 0); stepRow->setSpacing(6);
         stepRow->addWidget(label(card, "相对步长", "Relative step"));
         s.steps[i] = angle(card, QStringLiteral("emFwc3Step") + suffix, true); stepRow->addWidget(s.steps[i]);
+        connect(s.targets[i], QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this, i] { emit channelParametersChanged(i); });
+        connect(s.steps[i], QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this, i] { emit channelParametersChanged(i); });
         auto *minus = button(card, qPrintable(QStringLiteral("emFwc3Minus") + suffix), "反向步进", "Step −");
         auto *plus = button(card, qPrintable(QStringLiteral("emFwc3Plus") + suffix), "正向步进", "Step +");
         stepRow->addWidget(minus); stepRow->addWidget(plus); v->addLayout(moves);
@@ -255,6 +257,12 @@ MotionControlPage::MotionControlPage(QWidget *parent, const QString& sdkDirector
 
 MotionControlPage::~MotionControlPage() = default;
 EmFwc3Session *MotionControlPage::session() const { return state_->session; }
+double MotionControlPage::targetAngle(int channel) const { return state_->targets.at(channel)->value(); }
+double MotionControlPage::stepAngle(int channel) const { return state_->steps.at(channel)->value(); }
+void MotionControlPage::setTargetAngle(int channel, double value) { state_->targets.at(channel)->setValue(value); }
+void MotionControlPage::setStepAngle(int channel, double value) { state_->steps.at(channel)->setValue(value); }
+void MotionControlPage::moveToTarget(int channel) { run(EmFwc3Session::Command::Absolute, channel, targetAngle(channel)); }
+void MotionControlPage::moveStep(int channel, int direction) { run(EmFwc3Session::Command::Relative, channel, direction * stepAngle(channel)); }
 void MotionControlPage::shutdown() { state_->session->shutdown(); }
 QString MotionControlPage::text(const char *cn, const char *en) const
 {

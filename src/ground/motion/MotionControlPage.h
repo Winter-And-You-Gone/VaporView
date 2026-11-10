@@ -13,9 +13,17 @@ public:
     explicit MotionControlPage(QWidget *parent = nullptr, const QString& sdkDirectory = {});
     ~MotionControlPage() override;
     EmFwc3Session *session() const;
+    double targetAngle(int channel) const;
+    double stepAngle(int channel) const;
+    void setTargetAngle(int channel, double value);
+    void setStepAngle(int channel, double value);
+    void moveToTarget(int channel);
+    void moveStep(int channel, int direction);
     void setTheme(bool dark, int fontScalePercent = 100);
     void setLanguage(bool english);
     void shutdown();
+signals:
+    void channelParametersChanged(int channel);
 protected:
     void resizeEvent(QResizeEvent *event) override;
     bool eventFilter(QObject *watched, QEvent *event) override;

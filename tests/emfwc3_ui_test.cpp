@@ -111,12 +111,19 @@ int main(int argc, char **argv)
         auto *homeConnection = find<QLabel>(*homeMotion, "homeMotionConnectionState");
         auto *homeSelector = find<QComboBox>(window, "homeMotionChannelCombo");
         auto *homePosition = find<QLabel>(*homeMotion, "homeMotionPosition");
+        auto *homeTarget = find<QDoubleSpinBox>(*homeMotion, "homeMotionTarget");
+        auto *homeStep = find<QDoubleSpinBox>(*homeMotion, "homeMotionStep");
+        auto *homeGo = find<QPushButton>(*homeMotion, "homeMotionGo");
+        auto *homeMinus = find<QPushButton>(*homeMotion, "homeMotionMinus");
+        auto *homePlus = find<QPushButton>(*homeMotion, "homeMotionPlus");
         auto *homeCard = find<QWidget>(window, "homeMotionCard");
         auto *homeHeader = homeCard->findChild<QWidget *>(QStringLiteral("sectionTitleBar"), Qt::FindDirectChildrenOnly);
         check(homeHeader && homeHeader->isAncestorOf(homeSelector), "home channel selector is in the title bar");
         check(homeSelector->count() == 3 && homeSelector->currentIndex() == 0,
               "home selector defaults to channel one and offers three channels");
         check(!homeStop->isEnabled(), "home stop is disabled while disconnected");
+        check(!homeGo->isEnabled() && !homeMinus->isEnabled() && !homePlus->isEnabled(),
+              "home motion actions are disabled while disconnected");
         check(homePosition->text() == QStringLiteral("—"), "home position is empty while disconnected");
         int configurationRequests = 0;
         QObject::connect(homeMotion, &HomeMotionPanel::openConfigurationRequested, &window, [&] { ++configurationRequests; });
@@ -180,7 +187,44 @@ int main(int argc, char **argv)
             homeSelector->setCurrentIndex(i - 1); QApplication::processEvents();
             check(homePosition->text() == QString::number(i * 10.0, 'f', 3) + QStringLiteral("°"),
                   "switching the home selector immediately shows the selected channel readback");
+            check(homeTarget->value() == i * 10.0 && homeStep->value() == i * 0.5,
+                  "home editors follow the selected channel settings from the device page");
         }
+        homeSelector->setCurrentIndex(1);
+        homeTarget->setValue(24.0); homeStep->setValue(0.75); QApplication::processEvents();
+        check(find<QDoubleSpinBox>(*page, "emFwc3Target2")->value() == 24.0 &&
+              find<QDoubleSpinBox>(*page, "emFwc3Step2")->value() == 0.75,
+              "home edits update the corresponding device page channel");
+        homeSelector->setCurrentIndex(0); QApplication::processEvents();
+        check(homeTarget->value() == 10.0 && homeStep->value() == 0.5,
+              "switching channels preserves independent target and step values");
+        homeSelector->setCurrentIndex(1); QApplication::processEvents();
+        check(homeTarget->value() == 24.0 && homeStep->value() == 0.75,
+              "returning to a channel restores its target and step");
+        find<QDoubleSpinBox>(*page, "emFwc3Target2")->setValue(25.0);
+        find<QDoubleSpinBox>(*page, "emFwc3Step2")->setValue(1.25);
+        QApplication::processEvents();
+        check(homeTarget->value() == 25.0 && homeStep->value() == 1.25,
+              "device page edits immediately update the selected home channel");
+        check(homeGo->isEnabled() && homeMinus->isEnabled() && homePlus->isEnabled(),
+              "home motion actions are enabled for a connected idle device");
+        homeGo->click();
+        check(page->session()->state().busy && !homeGo->isEnabled() && !homeMinus->isEnabled() &&
+                  !homePlus->isEnabled() && homeStop->isEnabled(),
+              "busy home motion disables movement while retaining the stop action");
+        until("home absolute move reaches selected channel exactly once", [&] {
+            return motions() == 10 && homePosition->text() == QStringLiteral("25.000°") && !page->session()->state().busy;
+        });
+        homePlus->click();
+        until("home positive step reaches selected channel exactly once", [&] {
+            return motions() == 11 && homePosition->text() == QStringLiteral("26.250°") && !page->session()->state().busy;
+        });
+        homeMinus->click();
+        until("home negative step reaches selected channel exactly once", [&] {
+            return motions() == 12 && homePosition->text() == QStringLiteral("25.000°") && !page->session()->state().busy;
+        });
+        homeSelector->setCurrentIndex(0); QApplication::processEvents();
+        check(homePosition->text() == QStringLiteral("10.000°"), "home motion does not affect other channels");
         selector->setCurrentIndex(0); QApplication::processEvents();
         check(find<QDoubleSpinBox>(*page, "emFwc3Target1")->value() == 10 && find<QDoubleSpinBox>(*page, "emFwc3Step1")->value() == 0.5,
               "switching channels preserves each channel's inputs");
@@ -199,13 +243,16 @@ int main(int argc, char **argv)
         checkCardGeometry(*panel);
         VaporView::setSettingsWritesSuspended(true);
         find<QPushButton>(*page, "emFwc3Go3")->click(); QApplication::processEvents();
-        check(motions() == 9, "UI test write barrier also blocks hardware commands");
+        homeGo->click(); homePlus->click(); homeMinus->click(); QApplication::processEvents();
+        check(motions() == 12, "UI test write barrier blocks device and home motion commands");
         homeStop->click(); QApplication::processEvents();
         check(stops(0) == 2 && stops(1) == 2 && stops(2) == 2, "write barrier also blocks home stop");
         VaporView::setSettingsWritesSuspended(false);
         find<QPushButton>(*panel, "emFwc3Disconnect")->click(); until("disconnect completes", [&] { return !page->session()->state().connected && !page->session()->state().busy; });
         check(find<QLabel>(*page, "emFwc3Position3")->text() == QStringLiteral("—"), "disconnection clears position readbacks");
         check(!homeStop->isEnabled() && homeConnection->text() == QStringLiteral("未连接"), "disconnection updates home status and disables stop");
+        check(!homeGo->isEnabled() && !homeMinus->isEnabled() && !homePlus->isEnabled(),
+              "disconnection disables home motion actions");
         for (int i = 0; i < 3; ++i) {
             homeSelector->setCurrentIndex(i); QApplication::processEvents();
             check(homePosition->text() == QStringLiteral("—"), "disconnection clears every selected channel readback");
