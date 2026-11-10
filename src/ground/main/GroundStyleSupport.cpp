@@ -479,6 +479,7 @@ QDialog#rtkConfigDialog QLabel#sectionTitleLabel {
     padding: 0px;
 }
 QGroupBox#sensorGroupBox,
+QGroupBox#homeMotionCard,
 QGroupBox#deviceRemoteSkyConfigCard {
     background-color: @vv-surface;
     border: 1px solid @vv-border;
@@ -488,6 +489,7 @@ QGroupBox#deviceRemoteSkyConfigCard {
     color: @vv-text;
 }
 QGroupBox#sensorGroupBox::title,
+QGroupBox#homeMotionCard::title,
 QGroupBox#deviceRemoteSkyConfigCard::title {
     color: transparent;
     height: 0px;
@@ -1234,6 +1236,7 @@ QMenu::item:disabled {
     color: @vv-menu-disabled;
 }
 QGroupBox#sensorGroupBox[vaporViewTopLevelCard="true"],
+QGroupBox#homeMotionCard[vaporViewTopLevelCard="true"],
 QGroupBox#deviceRemoteSkyConfigCard[vaporViewTopLevelCard="true"],
 QFrame#epsilonSectionCard[vaporViewTopLevelCard="true"],
 QFrame#recordingStatusCard[vaporViewTopLevelCard="true"],
@@ -1244,6 +1247,7 @@ QFrame[vaporViewTopLevelCard="true"] {
     border-radius: 12px;
 }
 QGroupBox#sensorGroupBox[vaporViewTopLevelCard="true"] > QWidget#sectionTitleBar,
+QGroupBox#homeMotionCard[vaporViewTopLevelCard="true"] > QWidget#sectionTitleBar,
 QGroupBox#deviceRemoteSkyConfigCard[vaporViewTopLevelCard="true"] > QWidget#sectionTitleBar,
 QGroupBox#sensorGroupBox[vaporViewTopLevelCard="true"] > QWidget#environmentSectionTitleBar,
 QGroupBox#sensorGroupBox[vaporViewTopLevelCard="true"] > TcpWavePanel > QWidget#sectionTitleBar,
@@ -1492,6 +1496,7 @@ QString mainCardsTopLevelCardStyleSheet()
 {
     return QStringLiteral(
         "QScrollArea#mainCardsScrollArea QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"], "
+        "QScrollArea#mainCardsScrollArea QGroupBox#homeMotionCard[vaporViewTopLevelCard=\"true\"], "
         "QScrollArea#mainCardsScrollArea QGroupBox#deviceRemoteSkyConfigCard[vaporViewTopLevelCard=\"true\"], "
         "QScrollArea#mainCardsScrollArea QFrame#epsilonSectionCard[vaporViewTopLevelCard=\"true\"], "
         "QScrollArea#mainCardsScrollArea QFrame#recordingStatusCard[vaporViewTopLevelCard=\"true\"], "

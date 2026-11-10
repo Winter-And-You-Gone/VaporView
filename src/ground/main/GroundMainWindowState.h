@@ -16,7 +16,7 @@
 
 class FpgaControlPage;
 namespace VaporView::Ground::Calibration { class WaterCalibrationPage; class CalibrationService; class RealtimePeakBus; }
-namespace VaporView::Ground::Motion { class MotionControlPage; }
+namespace VaporView::Ground::Motion { class MotionControlPage; class HomeMotionPanel; }
 class QThread;
 namespace VaporView::Ground::Devices { class FpgaDeviceController; }
 namespace VaporView::Ground::Widgets { class SegmentedSwitchButton; }
@@ -316,6 +316,7 @@ struct MainWindowState
     QPushButton *home_nav_btn_;
     QPushButton *temperature_nav_btn_;
     VaporView::Ground::Motion::MotionControlPage *motion_page_ = nullptr;
+    VaporView::Ground::Motion::HomeMotionPanel *home_motion_panel_ = nullptr;
     QPushButton *rtk_config_nav_btn_;
     QPushButton *device_config_nav_btn_;
     QPushButton *fpga_nav_btn_ = nullptr;
@@ -367,12 +368,14 @@ struct MainWindowState
     QGroupBox *config_group_;
     QGroupBox *data_group_;
     QWidget *sensor_row_widget_;
+    QWidget *home_sensor_column_;
     QHBoxLayout *sensor_layout_;
     QSplitter *sensor_card_splitter_;
     QWidget *log_side_panel_;
     QFrame *log_group_;
     QGroupBox *tcp_wave_group_;
     QGroupBox *epsilon_group_;
+    QGroupBox *home_motion_card_;
     QGroupBox *gnss_group_;
     QGroupBox *imu_group_;
     QGroupBox *ptb_group_;

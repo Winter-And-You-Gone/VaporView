@@ -2453,6 +2453,11 @@ void MainWindow::setupCentralWidget()
     state_->home_page_ = state_->main_cards_scroll_area_;
     state_->main_page_stack_->addWidget(state_->home_page_);
     state_->motion_page_ = new VaporView::Ground::Motion::MotionControlPage(state_->main_page_stack_);
+    state_->home_motion_panel_ = new VaporView::Ground::Motion::HomeMotionPanel(
+        state_->motion_page_->session(), state_->home_motion_card_);
+    static_cast<QVBoxLayout *>(state_->home_motion_card_->layout())->addWidget(state_->home_motion_panel_, 1);
+    connect(state_->home_motion_panel_, &VaporView::Ground::Motion::HomeMotionPanel::openConfigurationRequested,
+            state_->device_config_nav_btn_, &QPushButton::click);
     connect(state_->motion_page_->session(), &VaporView::Ground::Motion::EmFwc3Session::operationFinished,
             this, [this](const QString& operation, int code, const QString& detail) {
         publishGroundLog(code == 0 ? VaporView::LogLevel::Info : VaporView::LogLevel::Warning,
@@ -5285,6 +5290,13 @@ void MainWindow::setupDataPanels()
     state_->sensor_card_splitter_->setProperty(kHomeSensorSplitterProgrammaticResizeProperty, false);
     state_->sensor_card_splitter_->setProperty(kHomeSensorSplitterUserResizedProperty, false);
 
+    state_->home_sensor_column_ = new QWidget(state_->sensor_card_splitter_);
+    state_->home_sensor_column_->setObjectName(QStringLiteral("homeSensorColumn"));
+    state_->home_sensor_column_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    auto *sensorColumnLayout = new QVBoxLayout(state_->home_sensor_column_);
+    sensorColumnLayout->setContentsMargins(0, 0, 0, 0);
+    sensorColumnLayout->setSpacing(kTopLevelCardGap);
+
     state_->epsilon_group_ = new QGroupBox(this);
     state_->epsilon_group_->setObjectName("sensorGroupBox");
     configureTopLevelCard(state_->epsilon_group_);
@@ -5321,7 +5333,27 @@ void MainWindow::setupDataPanels()
     epsilon_layout->addWidget(epsilonTitleBar);
     state_->epsilon_panel_ = new EpsilonPanel(epsilonRateTitleLabel, this);
     epsilon_layout->addWidget(state_->epsilon_panel_);
-    state_->sensor_card_splitter_->addWidget(state_->epsilon_group_);
+    sensorColumnLayout->addWidget(state_->epsilon_group_);
+    state_->home_motion_card_ = new QGroupBox(state_->home_sensor_column_);
+    state_->home_motion_card_->setObjectName(QStringLiteral("homeMotionCard"));
+    configureTopLevelCard(state_->home_motion_card_);
+    state_->home_motion_card_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    auto *motionLayout = new QVBoxLayout(state_->home_motion_card_);
+    motionLayout->setContentsMargins(1, 0, 1, 1);
+    motionLayout->setSpacing(0);
+    auto *motionTitleBar = new QWidget(state_->home_motion_card_);
+    motionTitleBar->setObjectName(QStringLiteral("sectionTitleBar"));
+    motionTitleBar->setFixedHeight(kMainPageTitleBarHeight);
+    auto *motionTitleLayout = new QHBoxLayout(motionTitleBar);
+    motionTitleLayout->setContentsMargins(8, 2, 8, 2);
+    QWidget *motionTitleCluster = nullptr;
+    createSectionTitleCluster(motionTitleBar, QStringLiteral("locate-fixed"),
+                              kMainPageButtonHeight, &motionTitleCluster);
+    motionTitleLayout->addWidget(motionTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    motionTitleLayout->addStretch();
+    motionLayout->addWidget(motionTitleBar);
+    sensorColumnLayout->addWidget(state_->home_motion_card_, 1);
+    state_->sensor_card_splitter_->addWidget(state_->home_sensor_column_);
 
     state_->gnss_group_ = nullptr;
     state_->imu_group_ = nullptr;
@@ -5380,10 +5412,10 @@ void MainWindow::setupDataPanels()
     updateEnvironmentStatusIcons(false, false, false);
 
     const int sensorCardHeight = std::max({
-        state_->epsilon_group_->sizeHint().height(),
-        state_->epsilon_group_->minimumSizeHint().height()
+        state_->home_sensor_column_->sizeHint().height(),
+        state_->home_sensor_column_->minimumSizeHint().height()
     });
-    state_->epsilon_group_->setFixedHeight(sensorCardHeight);
+    state_->home_sensor_column_->setFixedHeight(sensorCardHeight);
     env_group->setFixedHeight(sensorCardHeight);
     state_->sensor_row_widget_->setMinimumHeight(sensorCardHeight);
 
@@ -5403,10 +5435,10 @@ void MainWindow::setupDataPanels()
             return;
         }
         state_->sensor_card_splitter_->setProperty(kHomeSensorSplitterUserResizedProperty, true);
-        if (state_->epsilon_group_)
+        if (state_->home_sensor_column_)
         {
-            state_->epsilon_group_->setMaximumWidth(QWIDGETSIZE_MAX);
-            state_->epsilon_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+            state_->home_sensor_column_->setMaximumWidth(QWIDGETSIZE_MAX);
+            state_->home_sensor_column_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
         }
     });
 

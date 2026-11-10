@@ -529,6 +529,9 @@ void MainWindow::setEnglish(bool english)
     {
         state_->epsilon_inline_title_lbl_->setText(english ? "EPSILON Integrated Navigation" : "EPSILON组合导航");
     }
+    if (state_->home_motion_card_)
+        if (auto *title = state_->home_motion_card_->findChild<QLabel *>(QStringLiteral("sectionTitleLabel")))
+            title->setText(english ? QStringLiteral("Motion Control") : QStringLiteral("运动控制"));
     if (state_->gnss_inline_title_lbl_)
     {
         state_->gnss_inline_title_lbl_->setText(english ? "GNSS / RTK" : "GNSS / RTK");

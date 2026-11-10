@@ -79,8 +79,8 @@ void MainWindow::loadModernStyleSheet()
             "QToolBar QToolButton:disabled { color: @vv-text; }"
             "QStatusBar { background-color: @vv-surface; border-top: 1px solid @vv-border; padding: 4px 12px; color: @vv-text; font-size: 14px; }"
             "QGroupBox { background-color: @vv-surface; border: 1px solid @vv-border; border-top: 40px solid @vv-surface; border-radius: 8px; margin-top: 0px; padding: 8px 8px 8px 8px; font-size: 15px; font-weight: bold; color: @vv-text; }"
-            "QGroupBox#sensorGroupBox, QGroupBox#deviceRemoteSkyConfigCard { margin-top: 0px; background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; padding: 0px 0px 0px 0px; }"
-            "QGroupBox#sensorGroupBox::title, QGroupBox#deviceRemoteSkyConfigCard::title { color: transparent; height: 0px; margin: 0px; padding: 0px; }"
+            "QGroupBox#sensorGroupBox, QGroupBox#homeMotionCard, QGroupBox#deviceRemoteSkyConfigCard { margin-top: 0px; background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; padding: 0px 0px 0px 0px; }"
+            "QGroupBox#sensorGroupBox::title, QGroupBox#homeMotionCard::title, QGroupBox#deviceRemoteSkyConfigCard::title { color: transparent; height: 0px; margin: 0px; padding: 0px; }"
             "QWidget#tcpWaveCardOutline { background-color: transparent; border: 1px solid @vv-border; border-radius: 8px; }"
             "QGroupBox#sensorRowContainer { margin-top: 0px; background-color: transparent; border: none; border-radius: 0px; padding: 0px 0px 0px 0px; }"
             "QFrame#logPanelFrame { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; }"
@@ -280,8 +280,8 @@ void MainWindow::loadModernStyleSheet()
             "QWidget#ai8TemperatureControllerPanel QToolButton[ai8DetailToggle=\"true\"]:focus { border-color: @vv-primary; }"
             "QWidget#ai8TemperatureControllerPanel QWidget[ai8DetailContent=\"true\"] { background-color: transparent; border: none; }"
             "QToolTip { background-color: rgb(45, 45, 45); color: #FFFFFF; border: 1px solid #474747; border-radius: 13px; padding: 8px 16px; font-size: 16px; }"
-            "QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"], QGroupBox#deviceRemoteSkyConfigCard[vaporViewTopLevelCard=\"true\"], QFrame#epsilonSectionCard[vaporViewTopLevelCard=\"true\"], QFrame#recordingStatusCard[vaporViewTopLevelCard=\"true\"], QFrame#logPanelFrame[vaporViewTopLevelCard=\"true\"], QFrame[vaporViewTopLevelCard=\"true\"] { background-color: @vv-surface-raised; border: 1px solid rgba(0, 0, 0, 0.04); border-radius: 12px; }"
-            "QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"] > QWidget#sectionTitleBar, QGroupBox#deviceRemoteSkyConfigCard[vaporViewTopLevelCard=\"true\"] > QWidget#sectionTitleBar, QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"] > QWidget#environmentSectionTitleBar, QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"] > TcpWavePanel > QWidget#sectionTitleBar, QFrame#epsilonSectionCard[vaporViewTopLevelCard=\"true\"] > QWidget#sectionTitleBar, QFrame#recordingStatusCard[vaporViewTopLevelCard=\"true\"] > QWidget#sectionTitleBar, QFrame#logPanelFrame[vaporViewTopLevelCard=\"true\"] > QWidget#sectionTitleBar { background-color: @vv-surface-raised; border-top-left-radius: 11px; border-top-right-radius: 11px; }"
+            "QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"], QGroupBox#homeMotionCard[vaporViewTopLevelCard=\"true\"], QGroupBox#deviceRemoteSkyConfigCard[vaporViewTopLevelCard=\"true\"], QFrame#epsilonSectionCard[vaporViewTopLevelCard=\"true\"], QFrame#recordingStatusCard[vaporViewTopLevelCard=\"true\"], QFrame#logPanelFrame[vaporViewTopLevelCard=\"true\"], QFrame[vaporViewTopLevelCard=\"true\"] { background-color: @vv-surface-raised; border: 1px solid rgba(0, 0, 0, 0.04); border-radius: 12px; }"
+            "QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"] > QWidget#sectionTitleBar, QGroupBox#homeMotionCard[vaporViewTopLevelCard=\"true\"] > QWidget#sectionTitleBar, QGroupBox#deviceRemoteSkyConfigCard[vaporViewTopLevelCard=\"true\"] > QWidget#sectionTitleBar, QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"] > QWidget#environmentSectionTitleBar, QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"] > TcpWavePanel > QWidget#sectionTitleBar, QFrame#epsilonSectionCard[vaporViewTopLevelCard=\"true\"] > QWidget#sectionTitleBar, QFrame#recordingStatusCard[vaporViewTopLevelCard=\"true\"] > QWidget#sectionTitleBar, QFrame#logPanelFrame[vaporViewTopLevelCard=\"true\"] > QWidget#sectionTitleBar { background-color: @vv-surface-raised; border-top-left-radius: 11px; border-top-right-radius: 11px; }"
             "QFrame#recordingStatusCard[vaporViewTopLevelCard=\"true\"] > QWidget#recordingStatusBody { background-color: @vv-surface-raised; border-bottom-left-radius: 11px; border-bottom-right-radius: 11px; }";
     }
 
@@ -563,6 +563,7 @@ void MainWindow::updateAppSidebarButtonTexts()
     applyButtonText(state_->home_nav_btn_, state_->is_english_ ? QStringLiteral("Home") : QStringLiteral("首页"));
     applyButtonText(state_->temperature_nav_btn_, state_->is_english_ ? QStringLiteral("Thermal") : QStringLiteral("温控"));
     if (state_->motion_page_) state_->motion_page_->setLanguage(state_->is_english_);
+    if (state_->home_motion_panel_) state_->home_motion_panel_->setLanguage(state_->is_english_);
     applyButtonText(state_->rtk_config_nav_btn_, state_->is_english_ ? QStringLiteral("Combination Navigation") : QStringLiteral("组合导航"),
                     state_->is_english_ ? QStringLiteral("Nav") : QString());
     applyButtonText(state_->device_config_nav_btn_, state_->is_english_ ? QStringLiteral("Device") : QStringLiteral("设备配置"));
@@ -1162,14 +1163,15 @@ void MainWindow::updateResponsiveHomeLayout()
     const int compactEpsilonContentWidth = state_->epsilon_panel_
         ? state_->epsilon_panel_->preferredWrappedWidth() + epsilonGroupMargins.left() + epsilonGroupMargins.right()
         : (state_->epsilon_group_ ? state_->epsilon_group_->minimumSizeHint().width() : 0);
-    const int compactEpsilonTargetWidth = state_->epsilon_group_
-        ? std::max(state_->epsilon_group_->minimumSizeHint().width(),
-                   compactEpsilonContentWidth + scalePixels(16))
-        : compactEpsilonContentWidth;
-    const int compactEpsilonMinimumWidth = state_->epsilon_group_
-        ? std::max(state_->epsilon_group_->minimumSizeHint().width(),
-                   compactEpsilonContentWidth)
-        : compactEpsilonContentWidth;
+    const int motionMinimumWidth = state_->home_motion_card_
+        ? std::max(state_->home_motion_card_->minimumWidth(),
+                   state_->home_motion_card_->minimumSizeHint().width()) : 0;
+    const int compactEpsilonMinimumWidth = std::max({
+        compactEpsilonContentWidth,
+        state_->epsilon_group_ ? state_->epsilon_group_->minimumSizeHint().width() : 0,
+        motionMinimumWidth});
+    const int compactEpsilonTargetWidth = std::max(compactEpsilonMinimumWidth,
+                                                    compactEpsilonContentWidth + scalePixels(16));
     const int environmentMinimumWidth = state_->env_group_
         ? std::max(state_->env_group_->minimumWidth(), state_->env_group_->minimumSizeHint().width())
         : 0;
@@ -1210,26 +1212,26 @@ void MainWindow::updateResponsiveHomeLayout()
     }
     state_->sensor_layout_->setSpacing(0);
 
-    if (state_->epsilon_group_)
+    if (state_->home_sensor_column_)
     {
         if (stackSensorCards || environmentInOverview)
         {
             // A card on its own row must also release the vertical splitter's width cap.
-            state_->epsilon_group_->setMaximumWidth(QWIDGETSIZE_MAX);
-            state_->epsilon_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+            state_->home_sensor_column_->setMaximumWidth(QWIDGETSIZE_MAX);
+            state_->home_sensor_column_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
         }
         else if (!sensorCardSplitter->property(kHomeSensorSplitterUserResizedProperty).toBool())
         {
             // In the automatic layout, keep the navigation card at its readable
             // content width so all additional viewport space goes to the
             // environment and lidar card.
-            state_->epsilon_group_->setMaximumWidth(compactEpsilonTargetWidth);
-            state_->epsilon_group_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
+            state_->home_sensor_column_->setMaximumWidth(compactEpsilonTargetWidth);
+            state_->home_sensor_column_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
         }
         else
         {
-            state_->epsilon_group_->setMaximumWidth(QWIDGETSIZE_MAX);
-            state_->epsilon_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+            state_->home_sensor_column_->setMaximumWidth(QWIDGETSIZE_MAX);
+            state_->home_sensor_column_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
         }
     }
     if (state_->env_group_)
@@ -1277,6 +1279,7 @@ void MainWindow::updateResponsiveHomeLayout()
     };
 
     clearFixedHeight(state_->epsilon_group_);
+    clearFixedHeight(state_->home_sensor_column_);
     if (!environmentInOverview)
         clearFixedHeight(state_->env_group_);
     clearFixedHeight(state_->sensor_row_widget_);
@@ -1292,14 +1295,20 @@ void MainWindow::updateResponsiveHomeLayout()
 
     const int epsilonHeight = contentHeightFor(state_->epsilon_group_);
     state_->epsilon_content_height_ = epsilonHeight;
+    const int motionHeight = contentHeightFor(state_->home_motion_card_);
+    if (state_->home_motion_card_)
+        state_->home_motion_card_->setProperty("homeMotionContentHeight", motionHeight);
+    const int sensorColumnHeight = epsilonHeight + std::max(0, motionHeight) +
+        (state_->home_sensor_column_ && state_->home_sensor_column_->layout()
+             ? state_->home_sensor_column_->layout()->spacing() : 0);
     const int envMinimumHeight = state_->env_group_
         ? std::max(contentHeightFor(state_->env_group_),
                    state_->env_group_->property(kMainCardMinimumHeightProperty).toInt()) : 0;
     const int envHeight = environmentInOverview ? 0 : envMinimumHeight;
-    int targetHeight = std::max(epsilonHeight, envHeight);
-    if (stackSensorCards && epsilonHeight > 0 && envHeight > 0)
+    int targetHeight = std::max(sensorColumnHeight, envHeight);
+    if (stackSensorCards && sensorColumnHeight > 0 && envHeight > 0)
     {
-        targetHeight = epsilonHeight + envHeight + sensorCardGap;
+        targetHeight = sensorColumnHeight + envHeight + sensorCardGap;
     }
 
     bool hadStoredDataMinimumHeight = false;
@@ -1319,9 +1328,9 @@ void MainWindow::updateResponsiveHomeLayout()
     {
         if (stackSensorCards)
         {
-            if (state_->epsilon_group_)
+            if (state_->home_sensor_column_)
             {
-                state_->epsilon_group_->setMinimumHeight(epsilonHeight);
+                state_->home_sensor_column_->setMinimumHeight(sensorColumnHeight);
             }
             if (state_->env_group_ && !environmentInOverview)
             {
@@ -1330,9 +1339,9 @@ void MainWindow::updateResponsiveHomeLayout()
         }
         else
         {
-            if (state_->epsilon_group_)
+            if (state_->home_sensor_column_)
             {
-                state_->epsilon_group_->setFixedHeight(dataCardHeight);
+                state_->home_sensor_column_->setFixedHeight(dataCardHeight);
             }
             if (state_->env_group_ && !environmentInOverview)
             {
@@ -1344,9 +1353,9 @@ void MainWindow::updateResponsiveHomeLayout()
         state_->data_group_->setProperty(kMainCardMinimumHeightProperty, dataMinimumHeight);
         state_->data_group_->setMinimumHeight(dataMinimumHeight);
         state_->data_group_->setFixedHeight(dataCardHeight);
-        if (stackSensorCards && epsilonHeight > 0 && envHeight > 0)
+        if (stackSensorCards && sensorColumnHeight > 0 && envHeight > 0)
         {
-            setSensorCardSplitterSizes({envHeight, epsilonHeight});
+            setSensorCardSplitterSizes({envHeight, sensorColumnHeight});
         }
     }
 
@@ -1486,6 +1495,7 @@ void MainWindow::applyStyleConfiguration()
     if (state_->fpga_page_) state_->fpga_page_->setTheme(state_->dark_theme_enabled_, state_->font_scale_percent_);
     if (state_->water_calibration_page_) state_->water_calibration_page_->setTheme(state_->dark_theme_enabled_, state_->font_scale_percent_);
     if (state_->motion_page_) state_->motion_page_->setTheme(state_->dark_theme_enabled_, state_->font_scale_percent_);
+    if (state_->home_motion_panel_) state_->home_motion_panel_->setTheme(state_->dark_theme_enabled_, state_->font_scale_percent_);
     QFont appFont = qApp->font();
     appFont.setPointSizeF(state_->base_font_point_size_ * state_->font_scale_percent_ / 100.0);
     qApp->setPalette(appThemePalette(state_->dark_theme_enabled_));

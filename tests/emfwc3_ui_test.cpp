@@ -1,5 +1,6 @@
 #include "test_settings_sandbox.h"
 #include "ground/main/MainWindow.h"
+#include "ground/motion/HomeMotionPanel.h"
 #include "ground/motion/MotionControlPage.h"
 #include "shared/config/SettingsWriteBarrier.h"
 #include <QApplication>
@@ -105,6 +106,20 @@ int main(int argc, char **argv)
     {
         MainWindow window; window.resize(1280, 850); window.show();
         auto *page = find<MotionControlPage>(window, "emFwc3ConnectionPanel");
+        auto *homeMotion = find<HomeMotionPanel>(window, "homeMotionPanel");
+        auto *homeStop = find<QPushButton>(*homeMotion, "homeMotionStopAll");
+        auto *homeConnection = find<QLabel>(*homeMotion, "homeMotionConnectionState");
+        check(!homeStop->isEnabled(), "home stop is disabled while disconnected");
+        for (int i = 1; i <= 3; ++i)
+            check(homeMotion->findChild<QLabel*>(QStringLiteral("homeMotionPosition%1").arg(i))->text() == QStringLiteral("—"),
+                  "home positions are empty while disconnected");
+        int configurationRequests = 0;
+        QObject::connect(homeMotion, &HomeMotionPanel::openConfigurationRequested, &window, [&] { ++configurationRequests; });
+        find<QPushButton>(*homeMotion, "homeMotionConfigure")->click();
+        check(configurationRequests == 1, "home configuration action emits one navigation request");
+        auto *pages = find<QStackedWidget>(window, "mainPageStack");
+        auto *configuration = find<QWidget>(window, "deviceConfigPage");
+        check(pages->currentWidget() == configuration, "home configuration action opens device configuration");
         auto *panel = find<QWidget>(window, "emFwc3ConnectionPanel");
         auto *connect = find<QPushButton>(*panel, "emFwc3Connect");
         for (auto *action : panel->findChildren<QPushButton*>())
@@ -116,6 +131,8 @@ int main(int argc, char **argv)
         check(!connect->isEnabled(), "motor types must be checked before connecting");
         find<QCheckBox>(*panel, "emFwc3ConfirmTypes")->setChecked(true); check(connect->isEnabled(), "explicit model confirmation enables connection");
         connect->click(); until("connect completes", [&] { return page->session()->state().connected && !page->session()->state().busy; });
+        check(homeStop->isEnabled() && homeConnection->text().contains(QStringLiteral("已连接")),
+              "home panel follows the device page's connected session");
         check(motions() == 0, "connecting from configuration never causes motion");
         check(find<QSpinBox>(*page, "emFwc3Speed")->value() == 100, "speed editor starts from the actual device readback");
         auto *transport = find<QComboBox>(window, "deviceSensorTransportPathCombo");
@@ -124,8 +141,6 @@ int main(int argc, char **argv)
         check(page->session()->state().connected && find<QPushButton>(*panel, "emFwc3Disconnect")->isEnabled(), "USB session stays available in FPGA mode");
         transport->setCurrentIndex(transport->findData(QStringLiteral("direct_devices")));
         QApplication::processEvents(); check(page->session()->state().connected, "returning to Direct preserves USB connection");
-        auto *pages = find<QStackedWidget>(window, "mainPageStack");
-        auto *configuration = find<QWidget>(window, "deviceConfigPage");
         pages->setCurrentWidget(configuration); QApplication::processEvents();
         check(configuration->isAncestorOf(panel) && pages->indexOf(page) == -1 && pages->count() == 6,
               "motion controls belong to device configuration without a separate navigation page");
@@ -148,6 +163,8 @@ int main(int argc, char **argv)
             until("positive step reaches selected channel", [&] { return position->text() == QString::number(i * 10.5, 'f', 3) + QStringLiteral("°") && !page->session()->state().busy; });
             page->findChild<QPushButton*>(QStringLiteral("emFwc3Minus%1").arg(i))->click();
             until("negative step reaches selected channel", [&] { return position->text() == QString::number(i * 10.0, 'f', 3) + QStringLiteral("°") && !page->session()->state().busy; });
+            check(homeMotion->findChild<QLabel*>(QStringLiteral("homeMotionPosition%1").arg(i))->text() == position->text(),
+                  "home position follows the corresponding device channel");
             for (const char *prefix : {"emFwc3Home", "emFwc3Stop", "emFwc3Reverse", "emFwc3Forward"})
                 check(page->findChild<QPushButton*>(QString::fromLatin1(prefix) + QString::number(i)) != nullptr, "all per-channel actions remain available");
         }
@@ -158,6 +175,8 @@ int main(int argc, char **argv)
         const auto stops = reinterpret_cast<int(*)(int)>(fake.resolve("testStops")); check(stops, "stop counters exist");
         find<QPushButton>(*page, "emFwc3StopAll")->click();
         until("stop all reaches three channels", [&] { return stops(0) == 1 && stops(1) == 1 && stops(2) == 1 && !page->session()->state().busy; });
+        homeStop->click();
+        until("home stop reaches each channel once", [&] { return stops(0) == 2 && stops(1) == 2 && stops(2) == 2 && !page->session()->state().busy; });
         find<QSpinBox>(*page, "emFwc3Speed")->setValue(80);
         find<QPushButton>(*page, "emFwc3ApplySpeed")->click();
         until("speed is applied and read back", [&] { return page->session()->state().speed == 80 && !page->session()->state().busy; });
@@ -169,9 +188,15 @@ int main(int argc, char **argv)
         VaporView::setSettingsWritesSuspended(true);
         find<QPushButton>(*page, "emFwc3Go3")->click(); QApplication::processEvents();
         check(motions() == 9, "UI test write barrier also blocks hardware commands");
+        homeStop->click(); QApplication::processEvents();
+        check(stops(0) == 2 && stops(1) == 2 && stops(2) == 2, "write barrier also blocks home stop");
         VaporView::setSettingsWritesSuspended(false);
         find<QPushButton>(*panel, "emFwc3Disconnect")->click(); until("disconnect completes", [&] { return !page->session()->state().connected && !page->session()->state().busy; });
         check(find<QLabel>(*page, "emFwc3Position3")->text() == QStringLiteral("—"), "disconnection clears position readbacks");
+        check(!homeStop->isEnabled() && homeConnection->text() == QStringLiteral("未连接"), "disconnection updates home status and disables stop");
+        for (int i = 1; i <= 3; ++i)
+            check(homeMotion->findChild<QLabel*>(QStringLiteral("homeMotionPosition%1").arg(i))->text() == QStringLiteral("—"),
+                  "disconnection clears home positions");
         window.close();
     }
     {

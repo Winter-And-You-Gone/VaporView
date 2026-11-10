@@ -807,10 +807,10 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         // Release the automatic width cap before QSplitter computes the first
         // drag position; splitterMoved is too late for that first movement.
         state_->sensor_card_splitter_->setProperty(kHomeSensorSplitterUserResizedProperty, true);
-        if (state_->epsilon_group_)
+        if (state_->home_sensor_column_)
         {
-            state_->epsilon_group_->setMaximumWidth(QWIDGETSIZE_MAX);
-            state_->epsilon_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+            state_->home_sensor_column_->setMaximumWidth(QWIDGETSIZE_MAX);
+            state_->home_sensor_column_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
         }
     }
     if (event->type() == QEvent::ToolTip && showAppTooltip(watched, event, state_->dark_theme_enabled_))
@@ -837,19 +837,22 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         QTimer::singleShot(0, this, [this]() { updateConfigCardHeightForSourceMode(); });
     }
     if (eventType == QEvent::LayoutRequest &&
-        (watched == state_->epsilon_group_ || watched == state_->env_group_ ||
+        (watched == state_->epsilon_group_ || watched == state_->home_motion_card_ || watched == state_->env_group_ ||
          watched == state_->config_group_ || watched == state_->home_temperature_overview_column_ ||
          watched == state_->home_overview_splitter_) &&
         state_->epsilon_panel_ && state_->sensor_card_splitter_ && state_->sensor_row_widget_ &&
-        state_->epsilon_group_ && state_->env_group_ && state_->epsilon_group_->layout())
+        state_->epsilon_group_ && state_->home_sensor_column_ && state_->env_group_ && state_->epsilon_group_->layout())
     {
         const QMargins margins = state_->epsilon_group_->layout()->contentsMargins();
         const int readableWidth = state_->epsilon_panel_->preferredWrappedWidth() +
             margins.left() + margins.right();
         const bool capped = !state_->sensor_card_splitter_
             ->property(kHomeSensorSplitterUserResizedProperty).toBool() &&
-            readableWidth + scalePixels(16) > state_->epsilon_group_->maximumWidth();
-        const int rowMinimumWidth = std::max(readableWidth, state_->epsilon_group_->minimumSizeHint().width()) +
+            readableWidth + scalePixels(16) > state_->home_sensor_column_->maximumWidth();
+        const int motionMinimumWidth = state_->home_motion_card_
+            ? std::max(state_->home_motion_card_->minimumWidth(),
+                       state_->home_motion_card_->minimumSizeHint().width()) : 0;
+        const int rowMinimumWidth = std::max({readableWidth, state_->epsilon_group_->minimumSizeHint().width(), motionMinimumWidth}) +
             state_->sensor_card_splitter_->handleWidth() +
             std::max(state_->env_group_->minimumWidth(), state_->env_group_->minimumSizeHint().width());
         const bool rowTooNarrow = state_->sensor_card_splitter_->orientation() == Qt::Horizontal &&
@@ -868,7 +871,11 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         const bool epsilonHeightChanged = watched == state_->epsilon_group_ &&
             state_->epsilon_content_height_ != std::max(state_->epsilon_group_->minimumSizeHint().height(),
                                                        state_->epsilon_group_->sizeHint().height());
-        if (capped || rowTooNarrow || overviewTooNarrow || columnMinimaChanged || epsilonHeightChanged)
+        const bool motionHeightChanged = watched == state_->home_motion_card_ &&
+            state_->home_motion_card_->property("homeMotionContentHeight").toInt() !=
+                std::max(state_->home_motion_card_->minimumSizeHint().height(),
+                         state_->home_motion_card_->sizeHint().height());
+        if (capped || rowTooNarrow || overviewTooNarrow || columnMinimaChanged || epsilonHeightChanged || motionHeightChanged)
             queueResponsiveHomeLayoutRefresh();
     }
     if (state_->main_cards_scroll_area_ &&

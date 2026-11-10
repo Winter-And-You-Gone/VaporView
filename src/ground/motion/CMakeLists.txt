@@ -1,6 +1,7 @@
 add_library(vaporview_ground_motion STATIC
     EmFwc3Session.cpp EmFwc3Session.h
     MotionControlPage.cpp MotionControlPage.h
+    HomeMotionPanel.cpp HomeMotionPanel.h
 )
 target_include_directories(vaporview_ground_motion PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/include)
 target_link_libraries(vaporview_ground_motion PUBLIC Qt6::Widgets PRIVATE

@@ -2,6 +2,7 @@
 
 #include "ground/main/MainWindow.h"
 #include "ground/motion/MotionControlPage.h"
+#include "ground/motion/HomeMotionPanel.h"
 #include "ground/main/GroundMainWindowState.h"
 #include "ground/main/RecordingStatusView.h"
 #include "ground/main/UiLogModel.h"
