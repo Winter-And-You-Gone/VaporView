@@ -1137,6 +1137,8 @@ void MainWindow::maybeConnectRemoteDevices()
         state_->fpga_home_connect_queue_ = {SkyDeviceId::Epsilon, SkyDeviceId::Ptb,
             SkyDeviceId::Lidar, SkyDeviceId::Ai8TemperatureController, SkyDeviceId::Bmp390,
             SkyDeviceId::Sht45, SkyDeviceId::TemperatureController, SkyDeviceId::WaveTcp};
+        if (state_->fpga_session_.remoteStatus.value("simulation").toBool())
+            state_->fpga_home_connect_queue_.insert(2, SkyDeviceId::Hmp);
         connectNextHomeFpgaDevice();
     } else {
         remote->sendCommand(VaporView::CommandId::ConnectAllDevices);
@@ -1145,7 +1147,8 @@ void MainWindow::maybeConnectRemoteDevices()
 
 bool MainWindow::remoteDeviceDataValid(VaporView::SkyDeviceId device, qint64 timeout_ms) const
 {
-    if (isFpgaRelayPath() && device == VaporView::SkyDeviceId::Hmp) return false;
+    if (isFpgaRelayPath() && device == VaporView::SkyDeviceId::Hmp &&
+        !state_->fpga_session_.remoteStatus.value("simulation").toBool()) return false;
     if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
     {
         return false;
@@ -1171,7 +1174,8 @@ bool MainWindow::remoteDeviceDataValid(VaporView::SkyDeviceId device, qint64 tim
 
 QString MainWindow::remoteDeviceInvalidText(VaporView::SkyDeviceId device, qint64 timeout_ms) const
 {
-    if (isFpgaRelayPath() && device == VaporView::SkyDeviceId::Hmp)
+    if (isFpgaRelayPath() && device == VaporView::SkyDeviceId::Hmp &&
+        !state_->fpga_session_.remoteStatus.value("simulation").toBool())
         return state_->is_english_ ? QStringLiteral("Unavailable on FPGA path") : QStringLiteral("FPGA 路径不提供");
     if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
     {
@@ -1349,7 +1353,9 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
 
     const double waveCaptureRateHz = uiTestMode
         ? uiTestSnapshot.waveCaptureRateHz
-        : static_cast<double>(state_->remote_status_.wave_tcp_actual_rate_hz);
+        : isFpgaRelayPath()
+            ? remotePacketRate(VaporView::MsgType::FpgaCycleFeature)
+            : static_cast<double>(state_->remote_status_.wave_tcp_actual_rate_hz);
     const QString actualWaveRate = formatFrequencyText(
         connected ? waveCaptureRateHz : 0.0);
     const double rxBps = connected
@@ -1418,7 +1424,7 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         appendPacketRate(VaporView::MsgType::TelemetryStatus, QStringLiteral("Status"));
         appendWaveformRate(1, QStringLiteral("Wave raw"));
         appendWaveformRate(4, QStringLiteral("Wave harm."));
-        rateRows << makeItem(QStringLiteral("Wave capture"), actualWaveRate, connected && waveCaptureRateHz > 0.0, frequencyWidthText);
+        rateRows << makeItem(isFpgaRelayPath() ? QStringLiteral("FPGA cycles") : QStringLiteral("Wave capture"), actualWaveRate, connected && waveCaptureRateHz > 0.0, frequencyWidthText);
         linkRows << makeItem(QStringLiteral("Sky->Ground"), formatBitRate(rxBps), linkRateAvailable, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("Ground->Sky"), formatBitRate(txBps), linkRateAvailable, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("Total"), formatBitRate(rxBps + txBps), linkRateAvailable, bitRateWidthText);
@@ -1447,7 +1453,7 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         appendPacketRate(VaporView::MsgType::TelemetryStatus, QStringLiteral("状态"));
         appendWaveformRate(1, QStringLiteral("原始波形"));
         appendWaveformRate(4, QStringLiteral("谐波波形"));
-        rateRows << makeItem(QStringLiteral("波形采集"), actualWaveRate, connected && waveCaptureRateHz > 0.0, frequencyWidthText);
+        rateRows << makeItem(isFpgaRelayPath() ? QStringLiteral("FPGA 周期") : QStringLiteral("波形采集"), actualWaveRate, connected && waveCaptureRateHz > 0.0, frequencyWidthText);
         linkRows << makeItem(QStringLiteral("天→地"), formatBitRate(rxBps), linkRateAvailable, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("地→天"), formatBitRate(txBps), linkRateAvailable, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("合"), formatBitRate(rxBps + txBps), linkRateAvailable, bitRateWidthText);

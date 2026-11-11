@@ -224,7 +224,8 @@ void MainWindow::syncFpgaDeviceConfigUi()
              qMakePair(state_->device_config_.lidar_enabled_check,SkyDeviceId::Lidar),
              qMakePair(state_->device_config_.temperature_enabled_check,SkyDeviceId::TemperatureController),
              qMakePair(state_->device_config_.ai8_temperature_enabled_check,SkyDeviceId::Ai8TemperatureController)}) {
-        const bool supported = !(isRemoteSkyMode() && !isUiTestMode() && item.second == SkyDeviceId::Hmp)
+        const bool supported = !(isRemoteSkyMode() && !isUiTestMode() && item.second == SkyDeviceId::Hmp
+                && !state_->fpga_session_.remoteStatus.value("simulation").toBool())
             && (item.second != SkyDeviceId::TemperatureController || registers.isEmpty()
                 || (extensions & VaporView::FpgaExtensions::Rd105));
         enabledSelection(item.first,item.second,supported);
@@ -320,7 +321,8 @@ VaporView::DeviceState MainWindow::homeFpgaDeviceActionState(VaporView::SkyDevic
 {
     using VaporView::DeviceState;
     using VaporView::SkyDeviceId;
-    if (isRemoteSkyMode() && !isUiTestMode() && device == SkyDeviceId::Hmp) return DeviceState::Disabled;
+    if (isRemoteSkyMode() && !isUiTestMode() && device == SkyDeviceId::Hmp
+        && !state_->fpga_session_.remoteStatus.value("simulation").toBool()) return DeviceState::Disabled;
     if (!homeFpgaSensorSource(device) && device != SkyDeviceId::WaveTcp) return DeviceState::Disabled;
     if(device==SkyDeviceId::TemperatureController && !homeFpgaRegisters().isEmpty() && !(homeFpgaExtensions()&VaporView::FpgaExtensions::Rd105))return DeviceState::Disabled;
     if (state_->fpga_home_action_device_ == device || state_->fpga_pending_home_actions_.contains(device))
@@ -504,7 +506,8 @@ void MainWindow::finishHomeFpgaRawStart()
 VaporView::DeviceState MainWindow::homeFpgaDeviceState(VaporView::SkyDeviceId device) const
 {
     using VaporView::DeviceState;
-    if (isRemoteSkyMode() && !isUiTestMode() && device == VaporView::SkyDeviceId::Hmp) return DeviceState::Disabled;
+    if (isRemoteSkyMode() && !isUiTestMode() && device == VaporView::SkyDeviceId::Hmp
+        && !state_->fpga_session_.remoteStatus.value("simulation").toBool()) return DeviceState::Disabled;
     const auto source = homeFpgaSensorSource(device);
     if (!source && device != VaporView::SkyDeviceId::WaveTcp) return DeviceState::Disabled;
     // Command serialization locks actions, but does not disconnect other devices.

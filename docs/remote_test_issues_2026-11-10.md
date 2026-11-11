@@ -238,3 +238,12 @@ MSVC Release 的项目编译单元增加 `/Z7`，EXE/DLL 链接增加 `/DEBUG:FU
 4. 验收覆盖本地/远程 FPGA、ADC RAW 上传启停、DLIA 持续采集、状态消息与预览交错到达、断链重连及记录回放；分别核对数据摘要、频率、图表和记录的一致性。
 
 另记 HMP：用户确认真实下位机暂未接入，但模拟器应可模拟。源码已有 `0x41` 温湿度生成及 SkyCore 解析路径，地面端远程 FPGA 的无条件禁用需要调整；真实板卡与模拟模式应分别判断支持能力。此项仍待修复，不沿用上一轮“HMP 不可用”的验收结论作为模拟模式的预期行为。
+
+
+## 2026-11-11 本轮完成：FPGA 模拟、记录与状态卡片
+
+- FPGA 远程模拟器的 HMP `0x41` 数据纳入远程状态与首页摘要；只有真实 FPGA 路径不提供 HMP，明确显示“不支持”，模拟器路径按模拟标识连接并校验新鲜度。
+- FPGA 波形预览的新鲜度不再被独立 `WaveTcp` 状态清空；FPGA 完整周期特征使用 `FpgaCycleFeature` 统计，首页不再读取独立 TCP 波形采集器的目标频率冒充 FPGA 周期频率。完整周期记录、预览和旧 TCP 兼容入口保持分离。
+- FPGA 模拟器记录继续写入 `simulated_sessions`，本地界面演示模式保持仅内存，不创建记录目录或文件。远程 SkyCore 模拟器仍使用天空端的模拟记录目录。
+- 记录状态卡片中的“会话/Session”改为标题和值两行，避免长会话名挤压其它字段。
+- 验收：`remote_connection_workflow_test`、`fpga_local_simulator_test`、`sky_fpga_recording_test`、`fpga_harmonic_recording_ui_test` 通过；完整 Release 构建成功。运动控制仍是独立本地链路，不由远程 FPGA 模拟器伪造。

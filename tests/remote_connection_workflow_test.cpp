@@ -189,7 +189,7 @@ static void simulatedSkyWorkflow()
     window.show();
     QMetaObject::invokeMethod(&window, "onConnectClicked");
     const auto ready = [&] {
-        for (const auto device : {SkyDeviceId::Ptb, SkyDeviceId::Epsilon, SkyDeviceId::Lidar,
+        for (const auto device : {SkyDeviceId::Ptb, SkyDeviceId::Epsilon, SkyDeviceId::Hmp, SkyDeviceId::Lidar,
                  SkyDeviceId::Ai8TemperatureController, SkyDeviceId::Bmp390, SkyDeviceId::Sht45,
                  SkyDeviceId::TemperatureController, SkyDeviceId::WaveTcp})
             if (!MainWindowRtcmTestAccess::valid(window, device)) return false;

@@ -118,6 +118,7 @@ RemoteSkyController::RemoteSkyController(QObject *parent)
             SkyDeviceId device = SkyDeviceId::All;
             switch (reading.source) {
             case 0x40: device = SkyDeviceId::Ptb; break;
+            case 0x41: device = SkyDeviceId::Hmp; break;
             case 0x42: device = SkyDeviceId::Epsilon; break;
             case 0x43: device = SkyDeviceId::Bmp390; break;
             case 0x44: device = SkyDeviceId::Sht45; break;
@@ -161,6 +162,14 @@ RemoteSkyController::RemoteSkyController(QObject *parent)
             emit fpgaWaveformUpdated(stream);
         }, Qt::QueuedConnection);
     }, Qt::DirectConnection);
+    connect(&service_, &GroundTelemetryService::fpgaCycleFeatureUpdated, this,
+        [this](quint64, const FpgaWave::CompletedStream&) {
+            const auto generation = service_.linkGeneration();
+            QMetaObject::invokeMethod(this, [this, generation] {
+                if (isCurrentOpenEvent(generation))
+                    state_.notePacket(MsgType::FpgaCycleFeature, QDateTime::currentMSecsSinceEpoch());
+            }, Qt::QueuedConnection);
+        }, Qt::DirectConnection);
     connect(&service_, &GroundTelemetryService::deviceOperationResponseReceived,
             this, [this](const DeviceOperationResponse& response) {
                 const quint64 generation = service_.linkGeneration();
@@ -641,7 +650,9 @@ void RemoteSkyController::updateStatusState(const TelemetryStatus& status)
     for (const DeviceStatusItem& item : status.devices)
     {
         state_.setDeviceState(item.device_id, item.state);
-        if (item.state != DeviceState::Connected)
+        // FPGA telemetry owns its own sensor freshness.  The legacy WaveTcp
+        // status can remain disconnected while FPGA previews are streaming.
+        if (item.state != DeviceState::Connected && item.device_id != SkyDeviceId::WaveTcp)
         {
             state_.clearDeviceData(item.device_id);
         }
