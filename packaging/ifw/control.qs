@@ -33,7 +33,9 @@ function vaporViewDefaultTargetDirectory(text) {
 }
 
 function Controller() {
-    installer.setDefaultPageVisible(QInstaller.Introduction, true);
+    // Keep the installer flow compact: the target-directory page is also the
+    // welcome page, so users can start installation from a single screen.
+    installer.setDefaultPageVisible(QInstaller.Introduction, false);
     installer.setDefaultPageVisible(QInstaller.TargetDirectory, true);
     installer.setDefaultPageVisible(QInstaller.ComponentSelection, true);
 }
@@ -49,6 +51,12 @@ Controller.prototype.TargetDirectoryPageCallback = function() {
     }
 
     var lineEdit = page.TargetDirectoryLineEdit;
+    if (page.title !== undefined) {
+        page.title = qsTr("欢迎安装 VaporView");
+    }
+    if (page.subtitle !== undefined) {
+        page.subtitle = qsTr("选择安装文件夹，然后点击下一步开始安装。");
+    }
     var applyDefaultTarget = function(text) {
         var target = vaporViewDefaultTargetDirectory(text);
         if (target !== text) {
