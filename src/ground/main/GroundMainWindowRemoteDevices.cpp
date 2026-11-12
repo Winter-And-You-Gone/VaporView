@@ -1448,12 +1448,12 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
     }
     else
     {
-        appendPacketRate(VaporView::MsgType::TelemetryBasic, QStringLiteral("基础"));
-        appendPacketRate(VaporView::MsgType::WaveformFeature, QStringLiteral("特征值"));
-        appendPacketRate(VaporView::MsgType::TelemetryStatus, QStringLiteral("状态"));
-        appendWaveformRate(1, QStringLiteral("原始波形"));
-        appendWaveformRate(4, QStringLiteral("谐波波形"));
-        rateRows << makeItem(isFpgaRelayPath() ? QStringLiteral("FPGA 周期") : QStringLiteral("波形采集"), actualWaveRate, connected && waveCaptureRateHz > 0.0, frequencyWidthText);
+        appendPacketRate(VaporView::MsgType::TelemetryBasic, isFpgaRelayPath() ? QStringLiteral("基础遥测") : QStringLiteral("基础"));
+        appendPacketRate(VaporView::MsgType::TelemetryStatus, isFpgaRelayPath() ? QStringLiteral("遥测状态") : QStringLiteral("状态"));
+        appendWaveformRate(1, isFpgaRelayPath() ? QStringLiteral("原始波形预览（H1/H2）") : QStringLiteral("原始波形"));
+        appendWaveformRate(4, isFpgaRelayPath() ? QStringLiteral("归一化二次谐波预览") : QStringLiteral("谐波波形"));
+        appendPacketRate(VaporView::MsgType::WaveformFeature, isFpgaRelayPath() ? QStringLiteral("波形特征值") : QStringLiteral("特征值"));
+        rateRows << makeItem(isFpgaRelayPath() ? QStringLiteral("采集周期频率") : QStringLiteral("波形采集"), actualWaveRate, connected && waveCaptureRateHz > 0.0, frequencyWidthText);
         linkRows << makeItem(QStringLiteral("天→地"), formatBitRate(rxBps), linkRateAvailable, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("地→天"), formatBitRate(txBps), linkRateAvailable, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("合"), formatBitRate(rxBps + txBps), linkRateAvailable, bitRateWidthText);
