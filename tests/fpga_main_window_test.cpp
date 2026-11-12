@@ -47,6 +47,7 @@
 #include <QPixmap>
 #include <QLayout>
 #include <QBoxLayout>
+#include <QSplitter>
 #include <QPointer>
 #include <QPlainTextEdit>
 #include <QStackedWidget>
@@ -71,6 +72,8 @@
 
 struct MainWindowRtcmTestAccess
 {
+    static auto summary(MainWindow& window) { return window.remoteTelemetrySummarySections(); }
+    static void refreshSummary(MainWindow& window) { window.updateRemoteTelemetrySummaryLabel(); }
     static VaporView::Ground::Main::MainWindowState& state(MainWindow& window) { return *window.state_; }
     static std::function<void(const QJsonObject&)> completion(MainWindow& window, const QString& id)
     { return window.fpgaRtcmCompletion(id); }
@@ -787,6 +790,52 @@ static void remoteHomeActions()
         <<", "<<qPrintable(distanceRate->text())<<", "<<qPrintable(epsilonRate->text())<<'\n';
     require(ratesShown,
         "remote FPGA rates come from Sky raw sensors and fixed PTB, with HMP unavailable until HMP data arrives");
+    {
+        const auto summary = MainWindowRtcmTestAccess::summary(window);
+        const QStringList expected{QStringLiteral("基础遥测"), QStringLiteral("遥测状态"),
+            QStringLiteral("原始波形预览（H1/H2）"), QStringLiteral("归一化二次谐波预览"),
+            QStringLiteral("波形特征值"), QStringLiteral("采集周期频率")};
+        require(summary.rateItems.size() == 6, "FPGA summary has exactly six rates");
+        MainWindowRtcmTestAccess::refreshSummary(window);
+        for (int i = 0; i < expected.size(); ++i) {
+            require(summary.rateItems[i].label == expected[i] && !summary.rateItems[i].tooltip.isEmpty(),
+                    "FPGA labels, order and explanations match specification");
+            bool found = false;
+            for (auto *label : window.findChildren<QLabel*>()) {
+                if (label->text() != expected[i] || label->toolTip().isEmpty()) continue;
+                found = true;
+                bool matchingValue = false;
+                for (auto *sibling : label->parentWidget()->findChildren<QLabel*>())
+                    if (sibling != label && sibling->toolTip() == label->toolTip()) matchingValue = true;
+                require(matchingValue, "rate name and value share the tooltip");
+            }
+            require(found, "actual summary labels are not overwritten by legacy titles");
+        }
+        require(summary.rateItems[5].value == QStringLiteral("不可用"),
+                "acquisition rate does not substitute received feature rate");
+        const QSize original = window.size();
+        const bool wasVisible = window.isVisible();
+        window.show();
+        auto& state = MainWindowRtcmTestAccess::state(window);
+        auto *columnLayout = qobject_cast<QBoxLayout*>(state.home_sensor_column_->layout());
+        require(columnLayout, "navigation and motion share a responsive layout");
+        for (const QSize size : {QSize(2500, 1200), QSize(1100, 850), QSize(2500, 1200)}) {
+            window.resize(size); processFor(150);
+            const bool environmentOnTop = state.home_overview_splitter_->indexOf(state.env_group_) >= 0;
+            if (size.width() == 2500) {
+                require(environmentOnTop && columnLayout->direction() == QBoxLayout::LeftToRight,
+                        "wide home places navigation and motion on the same row");
+                require(state.epsilon_group_->geometry().right() < state.home_motion_card_->geometry().left(),
+                        "navigation and motion do not overlap");
+            } else {
+                require(columnLayout->direction() == QBoxLayout::TopToBottom,
+                        "narrow home restores navigation and motion stacking");
+            }
+        }
+        window.resize(original);
+        if (!wasVisible) window.hide();
+        processFor(100);
+    }
     auto *internal=window.findChild<QWidget*>("homeInternalEnvironment");
     require(internal,"home internal metrics exist");
     FpgaSensor::Reading bmp;bmp.source=0x43;bmp.kind=FpgaSensor::SensorKind::Bmp390;

@@ -205,6 +205,8 @@ bool updateSummarySectionValues(QVBoxLayout *sectionLayout,
         }
         setTelemetryAvailability(nameLabel, item.hasData);
         setTelemetryAvailability(valueLabel, item.hasData);
+        nameLabel->setToolTip(item.tooltip);
+        valueLabel->setToolTip(item.tooltip);
     }
     return true;
 }
@@ -1353,9 +1355,7 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
 
     const double waveCaptureRateHz = uiTestMode
         ? uiTestSnapshot.waveCaptureRateHz
-        : isFpgaRelayPath()
-            ? remotePacketRate(VaporView::MsgType::FpgaCycleFeature)
-            : static_cast<double>(state_->remote_status_.wave_tcp_actual_rate_hz);
+        : static_cast<double>(state_->remote_status_.wave_tcp_actual_rate_hz);
     const QString actualWaveRate = formatFrequencyText(
         connected ? waveCaptureRateHz : 0.0);
     const double rxBps = connected
@@ -1448,12 +1448,12 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
     }
     else
     {
-        appendPacketRate(VaporView::MsgType::TelemetryBasic, isFpgaRelayPath() ? QStringLiteral("基础遥测") : QStringLiteral("基础"));
-        appendPacketRate(VaporView::MsgType::TelemetryStatus, isFpgaRelayPath() ? QStringLiteral("遥测状态") : QStringLiteral("状态"));
-        appendWaveformRate(1, isFpgaRelayPath() ? QStringLiteral("原始波形预览（H1/H2）") : QStringLiteral("原始波形"));
-        appendWaveformRate(4, isFpgaRelayPath() ? QStringLiteral("归一化二次谐波预览") : QStringLiteral("谐波波形"));
-        appendPacketRate(VaporView::MsgType::WaveformFeature, isFpgaRelayPath() ? QStringLiteral("波形特征值") : QStringLiteral("特征值"));
-        rateRows << makeItem(isFpgaRelayPath() ? QStringLiteral("采集周期频率") : QStringLiteral("波形采集"), actualWaveRate, connected && waveCaptureRateHz > 0.0, frequencyWidthText);
+        appendPacketRate(VaporView::MsgType::TelemetryBasic, QStringLiteral("基础"));
+        appendPacketRate(VaporView::MsgType::WaveformFeature, QStringLiteral("特征值"));
+        appendPacketRate(VaporView::MsgType::TelemetryStatus, QStringLiteral("状态"));
+        appendWaveformRate(1, QStringLiteral("原始波形"));
+        appendWaveformRate(4, QStringLiteral("谐波波形"));
+        rateRows << makeItem(QStringLiteral("波形采集"), actualWaveRate, connected && waveCaptureRateHz > 0.0, frequencyWidthText);
         linkRows << makeItem(QStringLiteral("天→地"), formatBitRate(rxBps), linkRateAvailable, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("地→天"), formatBitRate(txBps), linkRateAvailable, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("合"), formatBitRate(rxBps + txBps), linkRateAvailable, bitRateWidthText);
@@ -1474,6 +1474,45 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         appendDevice(VaporView::SkyDeviceId::Hmp, 3000, QStringLiteral("HMP"));
         appendDevice(VaporView::SkyDeviceId::Lidar, 2000, QStringLiteral("Lidar"));
         appendDevice(VaporView::SkyDeviceId::WaveTcp, 3000, QStringLiteral("波形"));
+    }
+
+    if (isFpgaRelayPath()) {
+        rateRows.clear();
+        const bool fpgaStatusFresh = connected &&
+            std::chrono::steady_clock::now() - state_->fpga_session_.statusTime < std::chrono::seconds(4);
+        const auto packet = [&](VaporView::MsgType type) {
+            return connected ? state_->remote_sky_controller_->packetRate(type, true) : -1.0;
+        };
+        const auto preview = [&](quint16 channel) {
+            return connected ? state_->remote_sky_controller_->waveformPacketRate(channel, true) : -1.0;
+        };
+        const double rates[] = {packet(VaporView::MsgType::TelemetryBasic),
+            packet(VaporView::MsgType::TelemetryStatus), preview(1), preview(4),
+            packet(VaporView::MsgType::FpgaCycleFeature), -1.0};
+        const QStringList labels = state_->is_english_
+            ? QStringList{QStringLiteral("Basic telemetry"), QStringLiteral("Telemetry status"), QStringLiteral("H1/H2 preview"), QStringLiteral("Normalized H2 preview"), QStringLiteral("Waveform features"), QStringLiteral("Acquisition cycles")}
+            : QStringList{QStringLiteral("基础遥测"), QStringLiteral("遥测状态"), QStringLiteral("原始波形预览（H1/H2）"), QStringLiteral("归一化二次谐波预览"), QStringLiteral("波形特征值"), QStringLiteral("采集周期频率")};
+        const QStringList explanations = {QStringLiteral("地面端每秒收到的基础遥测消息数，包含导航、环境等设备信息。它不是各传感器的采样频率。"),
+            QStringLiteral("地面端每秒收到的天空端状态消息数，用于更新设备连接、记录及系统状态。它不表示波形采集频率。"),
+            QStringLiteral("FPGA 输出的 H1/H2 波形预览。为节省远程带宽，预览可抽稀；此处显示地面端每秒收到的完整预览数，不是 ADC 采样率，也不代表传输了全部原始点。"),
+            QStringLiteral("由同周期 H1/H2 计算得到的归一化二次谐波形状，通常为 H2/H1；仅 IQ 格式使用幅值比。显示每秒有效预览更新次数，横轴为周期内采样位置，不是逐周期峰值趋势。"),
+            QStringLiteral("地面端每秒收到的 FPGA 周期特征消息数。归一化二次谐波峰值应由完整周期计算后传输，用于绘制随时间变化的“峰值波形”；不能从抽稀预览重新求峰值代替。其它特征仅按实际支持内容提供。"),
+            QStringLiteral("天空端每秒实际产生的完整 FPGA 波形周期数。它不同于预览接收频率、特征消息接收频率和 ADC 点采样率；不能用配置目标频率或地面接收包数代替。")};
+        for (int i = 0; i < 6; ++i) {
+            const bool available = connected && (i < 2 || fpgaStatusFresh) && rates[i] >= 0.0;
+            QString value = available ? formatFrequencyText(rates[i])
+                : !connected ? (state_->is_english_ ? QStringLiteral("Disconnected") : QStringLiteral("未连接"))
+                : (state_->is_english_ ? QStringLiteral("No recent data") : QStringLiteral("未收到/已过期"));
+            if (i == 5) value = state_->is_english_ ? QStringLiteral("Unavailable") : QStringLiteral("不可用");
+            auto item = makeItem(labels[i], value, available, value);
+            item.tooltip = explanations[i];
+            if (i < 5) item.tooltip += QStringLiteral(" 以最近 5 秒收到的事件数除以 5 秒统计；超过 5 秒无事件显示未收到/已过期。");
+            if (i >= 2 && i <= 4)
+                item.tooltip += QStringLiteral(" 统计口径：DLIA0 与 DLIA1 两路合计，不是单通道频率。预览未收到或过期时请检查采集和预览上传状态。");
+            if (i == 5)
+                item.tooltip += QStringLiteral(" 当前协议未提供远端完整周期计数及统计时间窗，不能用特征接收率替代，因此显示不可用。");
+            rateRows << item;
+        }
     }
 
     appendDevice(VaporView::SkyDeviceId::TemperatureController, 3000, QStringLiteral("RD105"));
@@ -1606,8 +1645,9 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         : QStringList{QStringLiteral("EPSILON"), QStringLiteral("PTB210"), QStringLiteral("HMP"),
             QStringLiteral("TFA1500-L"), QStringLiteral("波形"), QStringLiteral("RD105"),
             QStringLiteral("AI-8288"), QStringLiteral("BMP390"), QStringLiteral("SHT45")};
-    for (int i = 0; i < homeSections.rateItems.size(); ++i)
-        homeSections.rateItems[i].label = rateLabels.at(i);
+    if (!isFpgaRelayPath())
+        for (int i = 0; i < homeSections.rateItems.size(); ++i)
+            homeSections.rateItems[i].label = rateLabels.at(i);
     for (int i = 0; i < homeSections.linkItems.size(); ++i)
         homeSections.linkItems[i].label = linkLabels.at(i);
     for (int i = 0; i < homeSections.deviceItems.size(); ++i)
@@ -1813,6 +1853,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
 
             auto *nameLabel = new QLabel(item.label, pill);
             nameLabel->setObjectName(QStringLiteral("homeTelemetrySummaryNameLabel"));
+            nameLabel->setToolTip(item.tooltip);
             nameLabel->setProperty("deviceConfigLink", useSideTitle);
             nameLabel->setProperty("telemetryAvailable", item.hasData);
             nameLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
@@ -1830,6 +1871,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             const QString valueText = summaryItemValueText(item, compactAvailabilityValues, state_->is_english_);
             auto *valueLabel = new QLabel(valueText, pill);
             valueLabel->setObjectName(QStringLiteral("homeTelemetrySummaryValueLabel"));
+            valueLabel->setToolTip(item.tooltip);
             valueLabel->setProperty("deviceConfigLink", useSideTitle);
             valueLabel->setProperty("telemetryAvailable", item.hasData);
             valueLabel->setFont(numericFontFrom(valueLabel->font()));

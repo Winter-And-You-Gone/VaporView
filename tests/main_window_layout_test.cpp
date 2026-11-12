@@ -4440,11 +4440,16 @@ void requireHomeSensorColumnLayout(MainWindow& window)
     }
     const QRect epsilonRect(epsilon->mapTo(column, QPoint()), epsilon->size());
     const QRect motionRect(motion->mapTo(column, QPoint()), motion->size());
-    require(std::abs(epsilonRect.left() - motionRect.left()) <= 2 &&
-                std::abs(epsilonRect.right() - motionRect.right()) <= 2 &&
-                motionRect.top() > epsilonRect.bottom() &&
-                column->rect().contains(epsilonRect) && column->rect().contains(motionRect),
-            "home motion card fits below and aligns with the EPSILON card");
+    require(column->rect().contains(epsilonRect) && column->rect().contains(motionRect),
+            "navigation and motion cards stay inside their shared container");
+    if (motionRect.left() > epsilonRect.right()) {
+        require(splitter->indexOf(environment) < 0 && std::abs(epsilonRect.top() - motionRect.top()) <= 2,
+                "navigation and motion share a row only when environment is in the overview");
+    } else {
+        require(std::abs(epsilonRect.left() - motionRect.left()) <= 2 &&
+                    std::abs(epsilonRect.right() - motionRect.right()) <= 2 && motionRect.top() > epsilonRect.bottom(),
+                "stacked motion card aligns below the navigation card");
+    }
     if (splitter->orientation() == Qt::Horizontal && splitter->indexOf(environment) >= 0)
     {
         const QRect columnRect(column->mapTo(&window, QPoint()), column->size());
@@ -4601,9 +4606,10 @@ void requireHomeEpsilonHeightAfterMaximize()
             requireHomeSensorColumnLayout(window);
             if (width == 3200)
             {
-                require(overview->count() == 3 &&
-                            epsilonSectionCardsShareRow(panel),
-                        "wide EPSILON height test exercises the single-row section layout");
+                require(overview->count() == 3,
+                        "wide EPSILON height test keeps environment in the overview");
+                requireEpsilonSectionCardsFillRows(panel,
+                    "EPSILON sections use the width available beside motion controls");
             }
             if (overview->count() == 3)
             {

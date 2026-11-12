@@ -77,8 +77,8 @@ public:
     qint64 lastStatusMs() const;
     bool deviceDataFresh(SkyDeviceId device, qint64 nowMs, qint64 timeoutMs) const;
     qint64 lastDeviceDataMs(SkyDeviceId device) const;
-    double packetRate(MsgType type) const;
-    double waveformPacketRate(quint16 channelId) const;
+    double packetRate(MsgType type, bool requireFresh = false) const;
+    double waveformPacketRate(quint16 channelId, bool requireFresh = false) const;
     RtcmStatusSnapshot rtcmStatus(bool remote, bool rtkRunning);
 
 signals:

@@ -44,6 +44,7 @@ struct RemoteTelemetrySummarySections
         QString label;
         QString value;
         QString valueWidthText;
+        QString tooltip;
         bool hasData = false;
         bool compactAvailabilityValue = false;
     };
