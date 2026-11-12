@@ -37,7 +37,8 @@ function Controller() {
     // welcome page, so users can start installation from a single screen.
     installer.setDefaultPageVisible(QInstaller.Introduction, false);
     installer.setDefaultPageVisible(QInstaller.TargetDirectory, true);
-    installer.setDefaultPageVisible(QInstaller.ComponentSelection, true);
+    // There is only one mandatory product component; skip the empty selector.
+    installer.setDefaultPageVisible(QInstaller.ComponentSelection, false);
 }
 
 Controller.prototype.TargetDirectoryPageCallback = function() {
