@@ -54,7 +54,7 @@
 - 环境卡片在首行且两张卡片最小宽度与间距能容纳时，EPSILON 和运动控制同行；缩窄恢复上下排列。
 - 回归覆盖实际字段及提示、双通道统计、ADC 排除、重复预览、归一化无效点、停止后的过期状态，以及宽→窄→宽布局恢复。现场硬件采集和 SSH 不在本次验证范围。
 
-## 2026-11-12 交付验证
+## 1.0.28 交付验证（2026-11-12）
 
 - 在 VS/MSVC Developer 环境执行 `cmake --build build/Release --config Release --parallel 6`，最终构建成功。
 - 直接相关验证通过：`remote_telemetry_state_test`、`fpga_remote_controller_test`、`fpga_remote_home_actions_test`、`home_three_column_layout_test`；独立查看器 `session_viewer_theme_test` 通过。
@@ -67,3 +67,20 @@
 - 本次沿用已有本机构建配置 `VAPORVIEW_ENABLE_OSGEARTH=OFF`，本机没有 `.local_deps` 的 osgEarth 依赖；本包不含可用 3D 地图。固定导航页位置/数量断言与这一构建配置不一致。未改动该开关，也未以关闭功能的方式规避本次构建失败。
 - 安装器 1.0.28 修正了过早隐藏 Introduction 页面导致组件树未初始化、磁盘需求显示 0 字节的问题。先自动完成组件初始化，再停留在合并的欢迎/目录页；省略组件选择及许可协议页面。
 - 已实际运行向导，确认准备安装页显示约 103.97 MB；未执行安装或改变现有安装。`ifw_staging_test` 和 IFW 操作脚本测试通过，打包主程序与 Release 构建校验一致。安装包保存在 `build/Release/ifw` 并复制到本机桌面，不进行 SSH 发送。
+
+
+## 1.0.29 标题栏与遥测刷新修复
+
+- 远程模式下，刷新按钮前增加独立的“打开天地链路 / 断开天地链路”操作，文字提示和插头图标随连接状态切换。正在打开 TCP 链路时也可以用该按钮取消。
+- 原“连接 / 断开”按钮分别连接所有已勾选设备、断开所有设备；远程直连和远程 FPGA 都保留这一语义。先打开天地链路，再连接设备。仅打开链路不会自动启动设备，断开设备保留天地链路，关闭天地链路不会向远端发送停止设备命令。
+- 远程断开按钮依据实际远程链路状态启用，不再被本地 FPGA 连接状态覆盖；FPGA 断开沿用串行操作队列，取消尚未执行的批量连接，并等待正在执行的事务完成后断开。
+- 遥测频率值不再参与布局结构签名；字段按数值和无数据状态预留稳定宽度，仅在字体、标签等布局需求改变时重排。连接中和连续遥测更新均保留原频率、链路速率、数据控件，避免整区空白或闪烁。
+- 新增 `remote_title_actions_test`，覆盖直连/FPGA 的独立开链路、批量连接、断开设备、重连、按钮位置及文字/图标切换，以及连接中和连续数值变化时的控件身份与可见性。
+
+### 1.0.29 验证结果
+
+- 在 VS/MSVC Developer 环境执行 `cmake --build build/Release --config Release --parallel 6`，最终构建成功。
+- `remote_title_actions_test`、`remote_connection_workflow_test`（包含真实 SkyCore 模拟数据）、`fpga_remote_home_actions_test`、`fpga_refresh_budget_test`、`device_config_layout_test`、`home_three_column_layout_test`、`session_viewer_theme_test` 通过。Qt 实际渲染截图已确认链路按钮位于刷新前，频率、链路速率、数据区域完整显示；临时截图及导出代码已删除。
+- 完整运行 `ctest --test-dir build/Release --output-on-failure -j2`，共 171 项。修正自动化开链路入口和迁移日志事件后，`sky_ground_simulation_e2e_test`、`logging_event_catalog_audit_test` 复测通过；最终汇总 166 项通过、1 项管理员场景跳过、4 项既有失败：`fpga_main_window_test` 固定页面索引、`main_window_layout_test` 串口卡片圆角断言、`ui_test_mode_window_test` 模拟记录计数、`ui_test_navigation_coverage_test` 导航数量/恢复。
+- 沿用已有 osgEarth OFF 配置，未改变地图开关；本包不含可用 3D 地图。
+- `ifw_staging_test` 和 IFW 维护操作脚本检查通过；包内主程序与最终 Release 主程序 SHA-256 一致。1.0.29 离线安装包已保存本机桌面，并按本次请求复制到指定 SSH 电脑的桌面；传输后再次核对 SHA-256。未在远端执行安装。

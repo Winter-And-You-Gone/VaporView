@@ -728,6 +728,11 @@ void MainWindow::setupMenuBar()
 
 void MainWindow::setupToolBar()
 {
+    state_->telemetry_link_btn_ = new QAction(this);
+    state_->telemetry_link_btn_->setObjectName(QStringLiteral("telemetryLinkAction"));
+    connect(state_->telemetry_link_btn_, &QAction::triggered, this, &MainWindow::onTelemetryLinkClicked);
+    updateTelemetryLinkAction();
+
     state_->refresh_ports_btn_ = new QAction(this);
     state_->refresh_ports_btn_->setIcon(createRefreshIcon());
     connect(state_->refresh_ports_btn_, &QAction::triggered, this, &MainWindow::onRefreshPortsClicked);
@@ -952,6 +957,7 @@ void MainWindow::setupCustomTitleBar()
             });
     titleLayout->addWidget(state_->sensor_transport_switch_, 0, Qt::AlignVCenter);
     addTitleBarSeparator(titleLayout);
+    titleLayout->addWidget(createTitleBarActionButton(state_->telemetry_link_btn_, state_->custom_title_bar_), 0, Qt::AlignVCenter);
     titleLayout->addWidget(createTitleBarActionButton(state_->refresh_ports_btn_, state_->custom_title_bar_), 0, Qt::AlignVCenter);
     titleLayout->addWidget(createTitleBarActionButton(state_->connect_btn_, state_->custom_title_bar_), 0, Qt::AlignVCenter);
     titleLayout->addWidget(createTitleBarActionButton(state_->cancel_connect_btn_, state_->custom_title_bar_), 0, Qt::AlignVCenter);
@@ -1022,6 +1028,7 @@ QToolButton *MainWindow::createTitleBarActionButton(QAction *action, QWidget *pa
         button->setCheckable(action->isCheckable());
         button->setChecked(action->isChecked());
         button->setToolTip(action->toolTip());
+        button->setAccessibleName(action->text());
         button->setWhatsThis(action->whatsThis());
         button->setProperty(kTooltipShortcutProperty, shortcutTextFromAction(action));
     };

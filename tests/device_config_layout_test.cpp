@@ -955,7 +955,7 @@ int main(int argc, char **argv)
             {
                 refreshPortsTitleIndex = index;
             }
-            else if (toolTip == QStringLiteral("连接") || toolTip == QStringLiteral("Connect"))
+            else if (toolTip == QStringLiteral("连接所有设备") || toolTip == QStringLiteral("Connect all devices"))
             {
                 connectTitleIndex = index;
             }
@@ -1687,7 +1687,7 @@ int main(int argc, char **argv)
                     static_cast<int>(fakeSkyServer.serverPort()),
             "Sky Link model supplies the fake TCP endpoint before remote connection");
     VaporView::setSettingsWritesSuspended(false);
-    require(QMetaObject::invokeMethod(&window, "onConnectClicked", Qt::DirectConnection) &&
+    require(QMetaObject::invokeMethod(&window, "onTelemetryLinkClicked", Qt::DirectConnection) &&
                 remoteController->telemetryService()->isConnecting() && !remoteController->isOpen(),
             "Remote connection returns while its TCP handshake is pending");
     require(QMetaObject::invokeMethod(&window, "onCancelConnectClicked", Qt::DirectConnection),
@@ -1782,7 +1782,7 @@ int main(int argc, char **argv)
     });
     VaporView::setSettingsWritesSuspended(false);
     const bool remoteConnectInvoked = QMetaObject::invokeMethod(
-        &window, "onConnectClicked", Qt::DirectConnection);
+        &window, "onTelemetryLinkClicked", Qt::DirectConnection);
     const bool remoteOpened = remoteConnectInvoked && VaporViewTest::processEventsUntil(3000, [&] {
         return remoteController->isOpen();
     });

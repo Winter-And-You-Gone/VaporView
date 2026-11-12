@@ -182,7 +182,8 @@ bool updateSummarySectionValues(QVBoxLayout *sectionLayout,
         QFrame *pill = pills.at(index);
         auto *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
         auto *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
-        if (!nameLabel || !valueLabel || nameLabel->text() != item.label)
+        if (!nameLabel || !valueLabel || nameLabel->text() != item.label
+            || nameLabel->fontMetrics().horizontalAdvance(item.label) > nameLabel->minimumWidth())
         {
             return false;
         }
@@ -1504,7 +1505,8 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
                 : !connected ? (state_->is_english_ ? QStringLiteral("Disconnected") : QStringLiteral("未连接"))
                 : (state_->is_english_ ? QStringLiteral("No recent data") : QStringLiteral("未收到/已过期"));
             if (i == 5) value = state_->is_english_ ? QStringLiteral("Unavailable") : QStringLiteral("不可用");
-            auto item = makeItem(labels[i], value, available, value);
+            const QString widthText = state_->is_english_ ? QStringLiteral("No recent data") : QStringLiteral("未收到/已过期");
+            auto item = makeItem(labels[i], value, available, widthText);
             item.tooltip = explanations[i];
             if (i < 5) item.tooltip += QStringLiteral(" 以最近 5 秒收到的事件数除以 5 秒统计；超过 5 秒无事件显示未收到/已过期。");
             if (i >= 2 && i <= 4)
@@ -1714,7 +1716,6 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         for (const RemoteTelemetrySummarySections::Item& item : items)
         {
             summaryStructureTokens << item.label
-                                   << item.valueWidthText
                                    << (item.compactAvailabilityValue ? QStringLiteral("compact") : QStringLiteral("value"));
         }
     };
@@ -1771,7 +1772,8 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
     bool deviceConfigSummaryNeedsRender = false;
     if (state_->device_config_.data_telemetry_summary_card)
     {
-        deviceConfigSummaryNeedsRender = !(
+        deviceConfigSummaryNeedsRender =
+            state_->device_config_.data_telemetry_summary_card->property(kSummaryStructureKeyProperty).toString() != summaryStructureKey || !(
             updateSummarySectionValues(state_->device_config_.data_telemetry_rate_summary_layout,
                                        sections.rateItems,
                                        false,

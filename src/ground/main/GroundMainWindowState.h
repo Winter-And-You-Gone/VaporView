@@ -252,6 +252,7 @@ struct MainWindowState
     QComboBox *imu_port_combo_;
     QComboBox *gnss_baud_combo_;
     QComboBox *imu_baud_combo_;
+    QAction *telemetry_link_btn_ = nullptr;
     QAction *connect_btn_;
     QAction *cancel_connect_btn_;
     QAction *disconnect_btn_;

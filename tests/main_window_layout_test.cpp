@@ -11989,7 +11989,7 @@ int main(int argc, char **argv)
             {
                 refreshPortsTitleIndex = index;
             }
-            else if (toolTip == QStringLiteral("连接") || toolTip == QStringLiteral("Connect"))
+            else if (toolTip == QStringLiteral("连接所有设备") || toolTip == QStringLiteral("Connect all devices"))
             {
                 connectTitleIndex = index;
             }
