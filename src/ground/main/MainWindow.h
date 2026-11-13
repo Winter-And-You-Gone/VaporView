@@ -250,6 +250,11 @@ private:
 
     void setupMenuBar();
     void setupToolBar();
+    void initializeGateway();
+    void configureGatewayRuntime();
+    void updateGatewayTray();
+    void showGatewaySettings();
+    void exitApplication();
     void setupCustomTitleBar();
     void setupCentralWidget();
     void setupConfigPanel();

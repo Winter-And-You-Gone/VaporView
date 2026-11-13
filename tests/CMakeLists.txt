@@ -1675,6 +1675,22 @@ add_dependencies(emfwc3_ui_test emfwc3_fake_sdk VaporViewRuntimeResources)
 vaporview_add_test(NAME emfwc3_ui_test COMMAND emfwc3_ui_test $<TARGET_FILE_DIR:emfwc3_fake_sdk>)
 set_tests_properties(emfwc3_ui_test PROPERTIES LABELS "integration;ui;motion" TIMEOUT 90)
 
+add_executable(gateway_offline_queue_test gateway_offline_queue_test.cpp)
+target_link_libraries(gateway_offline_queue_test PRIVATE vaporview_ground_gateway)
+vaporview_add_test(NAME gateway_offline_queue_test COMMAND gateway_offline_queue_test)
+set_tests_properties(gateway_offline_queue_test PROPERTIES LABELS "fast;unit;gateway" TIMEOUT 30)
+
+add_executable(gateway_service_test gateway_service_test.cpp)
+target_link_libraries(gateway_service_test PRIVATE vaporview_ground_gateway Qt6::Network)
+vaporview_add_test(NAME gateway_service_test COMMAND gateway_service_test)
+set_tests_properties(gateway_service_test PROPERTIES LABELS "integration;gateway;tcp" TIMEOUT 90)
+
+add_executable(gateway_settings_test gateway_settings_test.cpp)
+target_link_libraries(gateway_settings_test PRIVATE vaporview_main_window)
+add_dependencies(gateway_settings_test VaporViewRuntimeResources)
+vaporview_add_test(NAME gateway_settings_test COMMAND gateway_settings_test)
+set_tests_properties(gateway_settings_test PROPERTIES LABELS "integration;gateway;ui" TIMEOUT 60)
+
 add_custom_target(VaporViewTests)
 add_custom_target(VaporViewFastTests)
 get_property(registered_tests DIRECTORY PROPERTY TESTS)

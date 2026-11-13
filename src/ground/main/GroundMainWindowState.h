@@ -12,12 +12,14 @@
 #include "FpgaSensorAdapter.h"
 #include "InternalEnvironmentSerialController.h"
 #include "ground/session/GroundRecordingService.h"
+#include "ground/main/GatewaySettingsDialog.h"
 #include <QSet>
 
 class FpgaControlPage;
 namespace VaporView::Ground::Calibration { class WaterCalibrationPage; class CalibrationService; class RealtimePeakBus; }
 namespace VaporView::Ground::Motion { class MotionControlPage; class HomeMotionPanel; }
 class QThread;
+class QSystemTrayIcon;
 namespace VaporView::Ground::Devices { class FpgaDeviceController; }
 namespace VaporView::Ground::Widgets { class SegmentedSwitchButton; }
 
@@ -287,6 +289,11 @@ struct MainWindowState
     QAction *epsilon_packet_rates_action_;
     QAction *recording_directory_action_;
     QAction *exit_action_;
+    QAction *gateway_action_ = nullptr;
+    QAction *gateway_show_action_ = nullptr;
+    QSystemTrayIcon *gateway_tray_ = nullptr;
+    GatewaySettings gateway_settings_;
+    bool gateway_exit_requested_ = false;
     QAction *check_updates_action_;
     QAction *about_action_;
     QActionGroup *font_scale_group_;
@@ -552,6 +559,7 @@ struct MainWindowState
     QHash<VaporView::SkyDeviceId, qint64> home_device_action_spinner_until_ms_;
     QHash<VaporView::SkyDeviceId, qint64> home_device_action_spinner_started_ms_;
     std::unique_ptr<VaporView::Ground::Devices::RemoteSkyController> remote_sky_controller_;
+    std::unique_ptr<VaporView::Ground::Gateway::GatewayService> gateway_service_;
     std::unique_ptr<VaporView::Ground::Devices::Ai8DeviceSession> ai8_device_session_;
     std::unique_ptr<VaporView::Ground::Devices::EpsilonDeviceSession> epsilon_device_session_;
     QString epsilon_settings_target_;

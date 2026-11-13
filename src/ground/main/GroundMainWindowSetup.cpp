@@ -603,6 +603,11 @@ void MainWindow::setupMenuBar()
     state_->recording_rate_menu_ = state_->data_menu_->addMenu("");
     rebuildRecordingRateMenu();
 
+    state_->gateway_action_ = new QAction(this);
+    state_->gateway_action_->setObjectName(QStringLiteral("gatewaySettingsAction"));
+    connect(state_->gateway_action_, &QAction::triggered, this, &MainWindow::showGatewaySettings);
+    state_->data_menu_->addAction(state_->gateway_action_);
+
     state_->devices_menu_ = menuBar()->addMenu("");
 
     state_->epsilon_packet_rates_action_ = new QAction(this);
@@ -667,7 +672,7 @@ void MainWindow::setupMenuBar()
 
     state_->exit_action_ = new QAction(this);
     state_->exit_action_->setShortcut(QKeySequence::Quit);
-    connect(state_->exit_action_, &QAction::triggered, this, &QMainWindow::close);
+    connect(state_->exit_action_, &QAction::triggered, this, &MainWindow::exitApplication);
     state_->data_menu_->addAction(state_->exit_action_);
 
     state_->font_menu_ = menuBar()->addMenu("");

@@ -437,6 +437,8 @@ void MainWindow::setEnglish(bool english)
     }
 #endif
     state_->exit_action_->setText(english ? "E&xit" : "退出(&X)");
+    state_->gateway_action_->setText(english ? "Cloud Gateway…" : "云端 Gateway…");
+    updateGatewayTray();
 
     setNativeMenuTitle(state_->font_menu_, english ? QStringLiteral("Font &Size") : QStringLiteral("字号(&S)"));
     state_->font_tiny_action_->setText(english ? "Tiny (60%)" : "超小 (60%)");

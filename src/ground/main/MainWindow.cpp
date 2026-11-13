@@ -1,6 +1,7 @@
 #include "ground/calibration/CalibrationService.h"
 #include "ground/main/GroundMainWindowImplementation.h"
 #include "LogContext.h"
+#include <QSystemTrayIcon>
 
 MainWindow::MainWindow(QWidget *parent, std::shared_ptr<VaporView::Ground::Calibration::CalibrationService> calibration)
     : QMainWindow(parent)
@@ -666,11 +667,14 @@ MainWindow::MainWindow(QWidget *parent, std::shared_ptr<VaporView::Ground::Calib
     updateRecordingStatusLabel();
     updateConnectionStatus(false);
     updateSourceModeUi();
+    initializeGateway();
     qApp->installEventFilter(this);
 }
 
 MainWindow::~MainWindow()
 {
+    if (state_->gateway_tray_) state_->gateway_tray_->hide();
+    state_->gateway_service_.reset();
     qApp->removeEventFilter(this);
     saveAppSidebarWidth();
     if (state_->rtk_config_dialog_)
@@ -781,6 +785,14 @@ void MainWindow::syncMainHoverStateFromCursor()
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
+    if (!isUiTestMode() && !state_->gateway_exit_requested_ &&
+        state_->gateway_settings_.closeToTray && state_->gateway_tray_ &&
+        state_->gateway_tray_->isVisible() && QSystemTrayIcon::isSystemTrayAvailable())
+    {
+        hide();
+        event->ignore();
+        return;
+    }
     if (isUiTestMode())
     {
         state_->ui_test_application_closing_ = true;
