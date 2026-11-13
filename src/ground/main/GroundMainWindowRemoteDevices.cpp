@@ -192,25 +192,34 @@ bool updateSummarySectionValues(QVBoxLayout *sectionLayout,
         const QString valueText = summaryItemValueText(item, compactAvailabilityValues, english);
         const bool compactWidth = !pill->property("deviceConfigLink").toBool();
         const QString widthText = compactWidth ? valueText : summaryItemWidthText(item, compactAvailabilityValues, english);
-        if (compactWidth && valueLabel->text() != valueText
-            && valueLabel->fontMetrics().horizontalAdvance(valueLabel->text())
-                != valueLabel->fontMetrics().horizontalAdvance(valueText))
-        {
-            return false;
-        }
         const int requiredValueWidth = std::max(valueLabel->fontMetrics().horizontalAdvance(valueText),
                                                valueLabel->fontMetrics().horizontalAdvance(widthText));
         const int availableValueWidth = std::max(
             valueLabel->width(),
             std::max(valueLabel->minimumWidth(), valueLabel->sizeHint().width()));
-        if (requiredValueWidth > availableValueWidth + 1)
+        if (!compactWidth && requiredValueWidth > availableValueWidth + 1)
         {
             return false;
         }
 
         if (valueLabel->text() != valueText)
         {
+            const int oldTextWidth = valueLabel->fontMetrics().horizontalAdvance(valueLabel->text());
+            const int widthPadding = std::max(0, valueLabel->minimumWidth() - oldTextWidth);
             valueLabel->setText(valueText);
+            if (compactWidth)
+            {
+                valueLabel->setFixedWidth(requiredValueWidth + widthPadding);
+                if (QLayout *layout = pill->layout())
+                {
+                    const QMargins margins = layout->contentsMargins();
+                    pill->setMinimumWidth(margins.left() + nameLabel->minimumWidth()
+                                          + layout->spacing() + valueLabel->minimumWidth()
+                                          + margins.right());
+                    layout->invalidate();
+                    pill->updateGeometry();
+                }
+            }
         }
         setTelemetryAvailability(nameLabel, item.hasData);
         setTelemetryAvailability(valueLabel, item.hasData);
