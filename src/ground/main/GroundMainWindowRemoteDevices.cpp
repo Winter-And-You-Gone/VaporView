@@ -190,7 +190,14 @@ bool updateSummarySectionValues(QVBoxLayout *sectionLayout,
         }
 
         const QString valueText = summaryItemValueText(item, compactAvailabilityValues, english);
-        const QString widthText = summaryItemWidthText(item, compactAvailabilityValues, english);
+        const bool compactWidth = !pill->property("deviceConfigLink").toBool();
+        const QString widthText = compactWidth ? valueText : summaryItemWidthText(item, compactAvailabilityValues, english);
+        if (compactWidth && valueLabel->text() != valueText
+            && valueLabel->fontMetrics().horizontalAdvance(valueLabel->text())
+                != valueLabel->fontMetrics().horizontalAdvance(valueText))
+        {
+            return false;
+        }
         const int requiredValueWidth = std::max(valueLabel->fontMetrics().horizontalAdvance(valueText),
                                                valueLabel->fontMetrics().horizontalAdvance(widthText));
         const int availableValueWidth = std::max(
@@ -1901,7 +1908,9 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             valueLabel->setTextFormat(Qt::PlainText);
             valueLabel->ensurePolished();
             valueLabel->setMinimumHeight(valueLabel->fontMetrics().height() + scalePixels(2));
-            const QString widthValue = summaryItemWidthText(item, compactAvailabilityValues, state_->is_english_);
+            const QString widthValue = useSideTitle
+                ? summaryItemWidthText(item, compactAvailabilityValues, state_->is_english_)
+                : valueText;
             const int polishedValueWidth =
                 std::max(valueLabel->sizeHint().width(),
                          std::max(valueLabel->fontMetrics().horizontalAdvance(widthValue),

@@ -8157,8 +8157,8 @@ int main(int argc, char **argv)
         QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
         require(valueLabel != nullptr,
                 "home data-stream telemetry pill has a value label");
-        require(valueLabel->width() >= valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9 Hz")),
-                "home data-stream rate value label reserves room for 999.9 Hz");
+        require(valueLabel->width() >= valueLabel->fontMetrics().horizontalAdvance(valueLabel->text()),
+                "home data-stream rate value label fits current text");
         if (nameLabel && nameLabel->text().contains(QStringLiteral("波形总包")))
         {
             waveformTotalRateVisible = true;
@@ -8214,8 +8214,8 @@ int main(int argc, char **argv)
                 "home link-rate value text fits its compact label");
         const int compactKbpsWidth = valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9 kbps"));
         const int oldMbpsReserveWidth = valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9 Mbps")) + 8;
-        require(valueLabel->width() >= compactKbpsWidth,
-                "home link-rate value label reserves room for 999.9 kbps");
+        require(valueLabel->width() <= std::max(compactKbpsWidth, valueLabel->fontMetrics().horizontalAdvance(valueLabel->text())) + 4,
+                "home link-rate value label avoids excess reserved space");
         require(valueLabel->width() < oldMbpsReserveWidth,
                 "home link-rate value label no longer reserves the wider 999.9 Mbps width");
         requireCompactTelemetryPillTextGap(
