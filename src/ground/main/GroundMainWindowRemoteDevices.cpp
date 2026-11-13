@@ -190,14 +190,15 @@ bool updateSummarySectionValues(QVBoxLayout *sectionLayout,
         }
 
         const QString valueText = summaryItemValueText(item, compactAvailabilityValues, english);
-        const bool compactWidth = !pill->property("deviceConfigLink").toBool();
+        const bool fixedFrequencyWidth = item.valueWidthText == QStringLiteral("100.0 Hz");
+        const bool compactWidth = !pill->property("deviceConfigLink").toBool() && !fixedFrequencyWidth;
         const QString widthText = compactWidth ? valueText : summaryItemWidthText(item, compactAvailabilityValues, english);
         const int requiredValueWidth = std::max(valueLabel->fontMetrics().horizontalAdvance(valueText),
                                                valueLabel->fontMetrics().horizontalAdvance(widthText));
         const int availableValueWidth = std::max(
             valueLabel->width(),
             std::max(valueLabel->minimumWidth(), valueLabel->sizeHint().width()));
-        if (!compactWidth && requiredValueWidth > availableValueWidth + 1)
+        if (!compactWidth && !fixedFrequencyWidth && requiredValueWidth > availableValueWidth + 1)
         {
             return false;
         }
@@ -1412,7 +1413,7 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
     QList<RemoteTelemetrySummarySections::Item> linkRows;
     QList<RemoteTelemetrySummarySections::Item> linkStatusRows;
     QList<RemoteTelemetrySummarySections::Item> deviceRows;
-    const QString frequencyWidthText = QStringLiteral("999.9 Hz");
+    const QString frequencyWidthText = QStringLiteral("100.0 Hz");
     const QString bitRateWidthText = uiTestMode
         ? QStringLiteral("999.9 Mbps")
         : QStringLiteral("999.9 kbps");
@@ -1525,18 +1526,15 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
             QStringLiteral("天空端每秒实际收到的完整有效 FPGA 波形周期数。它不同于预览接收频率、特征消息接收频率和 ADC 点采样率；不能用配置目标频率或地面接收包数代替。")};
         for (int i = 0; i < 6; ++i) {
             const bool available = connected && (i < 2 || fpgaStatusFresh) && rates[i] >= 0.0;
-            QString value = available ? formatFrequencyText(rates[i])
-                : !connected ? (state_->is_english_ ? QStringLiteral("Disconnected") : QStringLiteral("未连接"))
-                : (state_->is_english_ ? QStringLiteral("No recent data") : QStringLiteral("未收到/已过期"));
-            if (i == 5 && cycleRate < 0) value = state_->is_english_ ? QStringLiteral("Unavailable") : QStringLiteral("不可用");
-            const QString widthText = state_->is_english_ ? QStringLiteral("No recent data") : QStringLiteral("未收到/已过期");
+            const QString value = formatFrequencyText(available ? rates[i] : 0.0);
+            const QString widthText = frequencyWidthText;
             auto item = makeItem(labels[i], value, available, widthText);
             item.tooltip = explanations[i];
-            if (i < 5) item.tooltip += QStringLiteral(" 以最近 5 秒收到的事件数除以 5 秒统计；超过 5 秒无事件显示未收到/已过期。");
+            if (i < 5) item.tooltip += QStringLiteral(" 以最近 5 秒收到的事件数除以 5 秒统计；超过 5 秒无事件显示 0.0 Hz。");
             if (i >= 2 && i <= 4)
                 item.tooltip += QStringLiteral(" 统计口径：DLIA0 与 DLIA1 两路合计，不是单通道频率。预览未收到或过期时请检查采集和预览上传状态。");
             if (i == 5)
-                item.tooltip += QStringLiteral(" 天空端在预览抽稀前统计实际收到的完整有效 DLIA0/1 周期，以周期数除以实际统计时间窗；双通道合计，不使用目标频率或地面特征接收率。旧天空端未提供该统计时显示不可用。");
+                item.tooltip += QStringLiteral(" 天空端在预览抽稀前统计实际收到的完整有效 DLIA0/1 周期，以周期数除以实际统计时间窗；双通道合计，不使用目标频率或地面特征接收率。旧天空端未提供该统计时显示 0.0 Hz。");
             rateRows << item;
         }
     }
@@ -1938,7 +1936,8 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             valueLabel->setTextFormat(Qt::PlainText);
             valueLabel->ensurePolished();
             valueLabel->setMinimumHeight(valueLabel->fontMetrics().height() + scalePixels(2));
-            const QString widthValue = useSideTitle
+            const bool fixedFrequencyWidth = item.valueWidthText == QStringLiteral("100.0 Hz");
+            const QString widthValue = (useSideTitle || fixedFrequencyWidth)
                 ? summaryItemWidthText(item, compactAvailabilityValues, state_->is_english_)
                 : valueText;
             const int polishedValueWidth =
@@ -1946,7 +1945,9 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                          std::max(valueLabel->fontMetrics().horizontalAdvance(widthValue),
                                   valueLabel->fontMetrics().horizontalAdvance(valueText))) +
                 scalePixels(useSideTitle ? 2 : 2);
-            const int valueWidth = polishedValueWidth;
+            const int valueWidth = fixedFrequencyWidth
+                ? valueLabel->fontMetrics().horizontalAdvance(widthValue) + scalePixels(2)
+                : polishedValueWidth;
             valueLabel->setFixedWidth(valueWidth);
             valueLabel->setProperty("summaryWidthPadding", scalePixels(2));
             if (useSideTitle) {

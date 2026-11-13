@@ -811,7 +811,7 @@ static void remoteHomeActions()
             }
             require(found, "actual summary labels are not overwritten by legacy titles");
         }
-        require(summary.rateItems[5].value == QStringLiteral("不可用"),
+        require(summary.rateItems[5].value == QStringLiteral("0.0 Hz"),
                 "acquisition rate does not substitute received feature rate");
         const QSize original = window.size();
         const bool wasVisible = window.isVisible();
