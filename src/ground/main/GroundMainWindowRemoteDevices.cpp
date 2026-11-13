@@ -1931,7 +1931,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             valueLabel->setProperty("deviceConfigLink", useSideTitle);
             valueLabel->setProperty("telemetryAvailable", item.hasData);
             valueLabel->setFont(numericFontFrom(valueLabel->font()));
-            valueLabel->setAlignment((useSideTitle ? Qt::AlignRight : Qt::AlignLeft) | Qt::AlignVCenter);
+            valueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
             valueLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
             valueLabel->setTextFormat(Qt::PlainText);
             valueLabel->ensurePolished();
