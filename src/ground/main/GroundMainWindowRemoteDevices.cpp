@@ -1653,6 +1653,8 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
     }
     const RemoteTelemetrySummarySections sections = remoteTelemetrySummarySections();
     RemoteTelemetrySummarySections homeSections = sections;
+    if (isFpgaRelayPath() && homeSections.rateItems.size() == 6)
+        homeSections.rateItems.swapItemsAt(3, 4);
     const QStringList rateLabels = state_->is_english_
         ? QStringList{QStringLiteral("Basic telemetry"), QStringLiteral("Waveform features"),
             QStringLiteral("Telemetry status"), QStringLiteral("Raw waveform"),
