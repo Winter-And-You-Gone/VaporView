@@ -26,7 +26,7 @@ struct UiTestSnapshot
     GnssData gnss;
     ImuData imu;
     PtbData ptb;
-    HmpData hmp;
+    Hc2aData hc2a;
     LidarData lidar;
     TemperatureControllerData temperature;
     Ai8TemperatureControllerProtocol::LiveData ai8Temperature;
@@ -37,7 +37,7 @@ struct UiTestSnapshot
     double gnssRateHz = 0.0;
     double imuRateHz = 0.0;
     double ptbRateHz = 0.0;
-    double hmpRateHz = 0.0;
+    double hc2aRateHz = 0.0;
     double lidarRateHz = 0.0;
     double temperatureRateHz = 0.0;
     double waveformFeatureRateHz = 0.0;

@@ -226,7 +226,7 @@ int runTest(int argc, char **argv)
         VaporView::PtbData pressure;
         pressure.valid = true;
         pressure.pressure_hpa = 1012.3;
-        VaporView::HmpData humidity;
+        VaporView::Hc2aData humidity;
         humidity.valid = true;
         humidity.temperature = 23.4;
         humidity.humidity = 45.6;

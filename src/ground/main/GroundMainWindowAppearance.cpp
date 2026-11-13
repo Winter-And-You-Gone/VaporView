@@ -155,7 +155,7 @@ void MainWindow::loadModernStyleSheet()
             "QLabel#valueLabel, QLabel#fpgaMonitorPeakValue { font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 14px; font-weight: 600; }"
             "QLabel#fpgaMonitorPeakValue { color: @vv-primary; }"
             "QLabel#highlightedValue { font-family: \"Cascadia Mono\", \"Consolas\", \"Courier New\", monospace; }"
-            "PtbPanel QLabel#highlightedValue, HmpPanel QLabel#highlightedValue, LidarPanel QLabel#highlightedValue, TemperatureControllerPanel QLabel#highlightedValue { font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 14px; font-weight: 600; background-color: transparent; padding: 0px; border-radius: 0px; }"
+            "PtbPanel QLabel#highlightedValue, Hc2aPanel QLabel#highlightedValue, LidarPanel QLabel#highlightedValue, TemperatureControllerPanel QLabel#highlightedValue { font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 14px; font-weight: 600; background-color: transparent; padding: 0px; border-radius: 0px; }"
             "QComboBox { background-color: @vv-field-bg; border: 1px solid @vv-border; border-radius: 6px; padding: 4px 10px; min-height: 26px; max-height: 26px; color: @vv-text; font-size: 14px; }"
             "QComboBox:hover { border-color: @vv-border-strong; }"
             "QComboBox:focus { border-color: @vv-primary; border-width: 1px; }"
@@ -1423,7 +1423,7 @@ void MainWindow::syncDeviceConfigNumericColumnFonts()
     const QList<QWidget *> controls = {
         state_->device_config_.epsilon_baud_combo,
         state_->device_config_.ptb_baud_combo,
-        state_->device_config_.hmp_baud_combo,
+        state_->device_config_.hc2a_baud_combo,
         state_->device_config_.lidar_baud_combo,
         state_->device_config_.temperature_baud_combo,
         state_->device_config_.ai8_temperature_baud_combo,
@@ -1804,7 +1804,7 @@ void MainWindow::loadLocalDeviceEnabledState()
     auto &config = state_->local_device_config_;
     loadCheck(state_->device_config_.epsilon_enabled_check, QStringLiteral("local_enabled/epsilon"), config.epsilon.enabled);
     loadCheck(state_->device_config_.ptb_enabled_check, QStringLiteral("local_enabled/ptb"), config.ptb.enabled);
-    loadCheck(state_->device_config_.hmp_enabled_check, QStringLiteral("local_enabled/hmp"), config.hmp.enabled);
+    loadCheck(state_->device_config_.hc2a_enabled_check, QStringLiteral("local_enabled/hc2a"), config.hc2a.enabled);
     loadCheck(state_->device_config_.lidar_enabled_check, QStringLiteral("local_enabled/lidar"), config.lidar.enabled);
     loadCheck(state_->device_config_.temperature_enabled_check, QStringLiteral("local_enabled/temperature"), config.temperatureController.enabled);
     loadCheck(state_->device_config_.ai8_temperature_enabled_check, QStringLiteral("local_enabled/ai8_temperature"), config.ai8TemperatureController.enabled);
@@ -1827,7 +1827,7 @@ void MainWindow::saveLocalDeviceEnabledState() const
     const auto &config = state_->local_device_config_;
     saveCheck(QStringLiteral("local_enabled/epsilon"), config.epsilon.enabled);
     saveCheck(QStringLiteral("local_enabled/ptb"), config.ptb.enabled);
-    saveCheck(QStringLiteral("local_enabled/hmp"), config.hmp.enabled);
+    saveCheck(QStringLiteral("local_enabled/hc2a"), config.hc2a.enabled);
     saveCheck(QStringLiteral("local_enabled/lidar"), config.lidar.enabled);
     saveCheck(QStringLiteral("local_enabled/temperature"), config.temperatureController.enabled);
     saveCheck(QStringLiteral("local_enabled/ai8_temperature"), config.ai8TemperatureController.enabled);
@@ -1874,7 +1874,7 @@ void MainWindow::loadRememberedInputState()
 
     loadCombo(state_->device_config_.epsilon_port_combo, QStringLiteral("serial/epsilon_port"), QStringLiteral("serial/gnss_port"));
     loadCombo(state_->device_config_.ptb_port_combo, QStringLiteral("serial/ptb_port"));
-    loadCombo(state_->device_config_.hmp_port_combo, QStringLiteral("serial/hmp_port"));
+    loadCombo(state_->device_config_.hc2a_port_combo, QStringLiteral("serial/hc2a_port"));
     loadCombo(state_->device_config_.lidar_port_combo, QStringLiteral("serial/lidar_port"));
     loadCombo(state_->device_config_.temperature_port_combo, QStringLiteral("serial/temperature_port"));
     loadCombo(state_->device_config_.ai8_temperature_port_combo,
@@ -1930,7 +1930,7 @@ void MainWindow::loadRememberedInputState()
     loadCombo(state_->device_config_.temperature_baud_combo, QStringLiteral("serial/temperature_baud"));
 
     loadCombo(state_->device_config_.ptb_rate_combo, QStringLiteral("rate/ptb"));
-    loadCombo(state_->device_config_.hmp_rate_combo, QStringLiteral("rate/hmp"));
+    loadCombo(state_->device_config_.hc2a_rate_combo, QStringLiteral("rate/hc2a"));
     loadCombo(state_->device_config_.lidar_rate_combo, QStringLiteral("rate/lidar"));
     loadCombo(state_->device_config_.temperature_rate_combo, QStringLiteral("rate/temperature"));
     loadLocalDeviceEnabledState();
@@ -1944,15 +1944,15 @@ void MainWindow::loadRememberedInputState()
         pressureSource = state_->device_config_.ptb_source_combo->currentData().toString();
         state_->device_config_.ptb_source_combo->setProperty(kSensorBaudSourceProperty, pressureSource);
     }
-    QString humiditySource = QStringLiteral("hmp3");
-    if (state_->device_config_.hmp_source_combo)
+    QString humiditySource = QStringLiteral("hc2a");
+    if (state_->device_config_.hc2a_source_combo)
     {
-        const int index = state_->device_config_.hmp_source_combo->findData(
-            settings.value(QStringLiteral("sensor/humidity_source"), QStringLiteral("hmp3")).toString());
-        const QSignalBlocker blocker(state_->device_config_.hmp_source_combo);
-        state_->device_config_.hmp_source_combo->setCurrentIndex(index >= 0 ? index : 0);
-        humiditySource = state_->device_config_.hmp_source_combo->currentData().toString();
-        state_->device_config_.hmp_source_combo->setProperty(kSensorBaudSourceProperty, humiditySource);
+        const int index = state_->device_config_.hc2a_source_combo->findData(
+            settings.value(QStringLiteral("sensor/humidity_source"), QStringLiteral("hc2a")).toString());
+        const QSignalBlocker blocker(state_->device_config_.hc2a_source_combo);
+        state_->device_config_.hc2a_source_combo->setCurrentIndex(index >= 0 ? index : 0);
+        humiditySource = state_->device_config_.hc2a_source_combo->currentData().toString();
+        state_->device_config_.hc2a_source_combo->setProperty(kSensorBaudSourceProperty, humiditySource);
     }
     const QString pressureBaud = rememberedSensorBaud(
         settings, pressureSource, QStringLiteral("serial/ptb_baud"));
@@ -1965,15 +1965,15 @@ void MainWindow::loadRememberedInputState()
         rememberedSensorPort(settings, pressureSource, QStringLiteral("serial/ptb_port")));
     applyComboText(state_->device_config_.ptb_baud_combo, pressureBaud);
     const QString humidityBaud = rememberedSensorBaud(
-        settings, humiditySource, QStringLiteral("serial/hmp_baud"));
+        settings, humiditySource, QStringLiteral("serial/hc2a_baud"));
     VaporView::configureSerialBaudRateCombo(
-        state_->device_config_.hmp_baud_combo,
+        state_->device_config_.hc2a_baud_combo,
         VaporView::humiditySensorBaudCapabilities(humiditySource),
         humidityBaud);
     setLocalSerialPortComboText(
-        state_->device_config_.hmp_port_combo,
-        rememberedSensorPort(settings, humiditySource, QStringLiteral("serial/hmp_port")));
-    applyComboText(state_->device_config_.hmp_baud_combo, humidityBaud);
+        state_->device_config_.hc2a_port_combo,
+        rememberedSensorPort(settings, humiditySource, QStringLiteral("serial/hc2a_port")));
+    applyComboText(state_->device_config_.hc2a_baud_combo, humidityBaud);
     // Capture the local profile before a remembered Remote mode can make the
     // device page show remote Sky values.
     updateLocalDeviceConfigFromUi();
@@ -2124,7 +2124,7 @@ void MainWindow::saveRememberedInputState() const
     {
         saveCombo(QStringLiteral("serial/epsilon_port"), state_->device_config_.epsilon_port_combo);
         saveCombo(QStringLiteral("serial/ptb_port"), state_->device_config_.ptb_port_combo);
-        saveCombo(QStringLiteral("serial/hmp_port"), state_->device_config_.hmp_port_combo);
+        saveCombo(QStringLiteral("serial/hc2a_port"), state_->device_config_.hc2a_port_combo);
         saveCombo(QStringLiteral("serial/lidar_port"), state_->device_config_.lidar_port_combo);
         saveCombo(QStringLiteral("serial/temperature_port"), state_->device_config_.temperature_port_combo);
         saveCombo(QStringLiteral("serial/ai8_temperature_port"),
@@ -2136,7 +2136,7 @@ void MainWindow::saveRememberedInputState() const
 
         saveCombo(QStringLiteral("serial/epsilon_baud"), state_->device_config_.epsilon_baud_combo);
         saveCombo(QStringLiteral("serial/ptb_baud"), state_->device_config_.ptb_baud_combo);
-        saveCombo(QStringLiteral("serial/hmp_baud"), state_->device_config_.hmp_baud_combo);
+        saveCombo(QStringLiteral("serial/hc2a_baud"), state_->device_config_.hc2a_baud_combo);
         saveCombo(QStringLiteral("serial/lidar_baud"), state_->device_config_.lidar_baud_combo);
         saveCombo(QStringLiteral("serial/temperature_baud"), state_->device_config_.temperature_baud_combo);
         saveRememberedSensorBaud(
@@ -2147,10 +2147,10 @@ void MainWindow::saveRememberedInputState() const
             state_->device_config_.ptb_baud_combo);
         saveRememberedSensorBaud(
             settings,
-            state_->device_config_.hmp_source_combo
-                ? state_->device_config_.hmp_source_combo->currentData().toString()
-                : QStringLiteral("hmp3"),
-            state_->device_config_.hmp_baud_combo);
+            state_->device_config_.hc2a_source_combo
+                ? state_->device_config_.hc2a_source_combo->currentData().toString()
+                : QStringLiteral("hc2a"),
+            state_->device_config_.hc2a_baud_combo);
 
         const auto saveSensorProfiles = [&settings](
                 const std::map<QString, VaporView::Ground::Devices::LocalSerialDeviceSettings>& profiles) {
@@ -2172,7 +2172,7 @@ void MainWindow::saveRememberedInputState() const
         saveSensorProfiles(state_->local_device_config_.humidityBySource);
 
         saveCombo(QStringLiteral("rate/ptb"), state_->device_config_.ptb_rate_combo);
-        saveCombo(QStringLiteral("rate/hmp"), state_->device_config_.hmp_rate_combo);
+        saveCombo(QStringLiteral("rate/hc2a"), state_->device_config_.hc2a_rate_combo);
         saveCombo(QStringLiteral("rate/lidar"), state_->device_config_.lidar_rate_combo);
         saveCombo(QStringLiteral("rate/temperature"), state_->device_config_.temperature_rate_combo);
         saveLocalDeviceEnabledState();
@@ -2180,9 +2180,9 @@ void MainWindow::saveRememberedInputState() const
         {
             VaporView::setPersistentSetting(settings, QStringLiteral("sensor/pressure_source"), state_->device_config_.ptb_source_combo->currentData());
         }
-        if (state_->device_config_.hmp_source_combo)
+        if (state_->device_config_.hc2a_source_combo)
         {
-            VaporView::setPersistentSetting(settings, QStringLiteral("sensor/humidity_source"), state_->device_config_.hmp_source_combo->currentData());
+            VaporView::setPersistentSetting(settings, QStringLiteral("sensor/humidity_source"), state_->device_config_.hc2a_source_combo->currentData());
         }
     }
     if (state_->data_source_mode_combo_)
@@ -2224,7 +2224,7 @@ void MainWindow::bindRememberedInputState()
 
     bindCombo(state_->device_config_.epsilon_port_combo);
     bindCombo(state_->device_config_.ptb_port_combo);
-    bindCombo(state_->device_config_.hmp_port_combo);
+    bindCombo(state_->device_config_.hc2a_port_combo);
     bindCombo(state_->device_config_.lidar_port_combo);
     bindCombo(state_->device_config_.temperature_port_combo);
     bindCombo(state_->device_config_.ai8_temperature_port_combo);
@@ -2232,15 +2232,15 @@ void MainWindow::bindRememberedInputState()
     bindCombo(state_->device_config_.ai8_temperature_rate_combo);
     bindCombo(state_->device_config_.epsilon_baud_combo);
     bindCombo(state_->device_config_.ptb_baud_combo);
-    bindCombo(state_->device_config_.hmp_baud_combo);
+    bindCombo(state_->device_config_.hc2a_baud_combo);
     bindCombo(state_->device_config_.lidar_baud_combo);
     bindCombo(state_->device_config_.temperature_baud_combo);
     bindCombo(state_->device_config_.ptb_rate_combo);
-    bindCombo(state_->device_config_.hmp_rate_combo);
+    bindCombo(state_->device_config_.hc2a_rate_combo);
     bindCombo(state_->device_config_.lidar_rate_combo);
     bindCombo(state_->device_config_.temperature_rate_combo);
     bindCombo(state_->device_config_.ptb_source_combo);
-    bindCombo(state_->device_config_.hmp_source_combo);
+    bindCombo(state_->device_config_.hc2a_source_combo);
     bindCombo(state_->data_source_mode_combo_);
     const auto persistSkyLink = [this](bool transportChanged) {
         updateRemoteSkyLinkConfigFromUi();

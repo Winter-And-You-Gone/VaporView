@@ -118,7 +118,7 @@ RemoteSkyController::RemoteSkyController(QObject *parent)
             SkyDeviceId device = SkyDeviceId::All;
             switch (reading.source) {
             case 0x40: device = SkyDeviceId::Ptb; break;
-            case 0x41: device = SkyDeviceId::Hmp; break;
+            case 0x41: device = SkyDeviceId::Hc2a; break;
             case 0x42: device = SkyDeviceId::Epsilon; break;
             case 0x43: device = SkyDeviceId::Bmp390; break;
             case 0x44: device = SkyDeviceId::Sht45; break;
@@ -627,8 +627,8 @@ void RemoteSkyController::updateBasicState(const TelemetryBasic& telemetry)
         ? state_.noteDeviceData(SkyDeviceId::Lidar, nowMs)
         : state_.clearDeviceData(SkyDeviceId::Lidar);
     (hasFlag(BasicHasTemperature) && hasFlag(BasicHasHumidity))
-        ? state_.noteDeviceData(SkyDeviceId::Hmp, nowMs)
-        : state_.clearDeviceData(SkyDeviceId::Hmp);
+        ? state_.noteDeviceData(SkyDeviceId::Hc2a, nowMs)
+        : state_.clearDeviceData(SkyDeviceId::Hc2a);
     hasFlag(BasicHasPressure)
         ? state_.noteDeviceData(SkyDeviceId::Ptb, nowMs)
         : state_.clearDeviceData(SkyDeviceId::Ptb);

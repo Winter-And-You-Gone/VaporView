@@ -76,6 +76,11 @@ void FpgaDeviceController::installSession(std::unique_ptr<FpgaUsbTransport> tran
         [this](quint32 seq, quint16, bool success, quint32 status, const QByteArray&) { completed(seq, success, status); });
     connect(session_, &FpgaDeviceSession::commandTimedOut, this,
         [this](quint32 seq, quint16 message) {
+            if (motorSafetySequences_.remove(seq)) {
+                motorOwnerEnabled_ = false;
+                report(QStringLiteral("DM422 安全命令超时，结果未知；停止心跳，未重发，请检查电机状态。"));
+                return;
+            }
             if (seq == pendingSequence_) {
                 fail(QStringLiteral("命令超时，执行结果未知；请刷新读回状态，写操作未自动重发。"));
                 return;
@@ -231,6 +236,9 @@ void FpgaDeviceController::disconnectDevice()
     startupWarningDeadlines_.clear();startupWarnings_.clear();startupWarningLogContexts_.clear();
     observations_.flush();
     presentationTimer_.stop(); statusTimer_.stop();watchdogTimer_.stop();
+    motorOwnerEnabled_=false;motorSafetySequences_.clear();
+    if (session_ && session_->isOpen() && registers_.value(0x6700)==0x00470200)
+        session_->motorSafetyAction(4);
     pendingConnections_.clear(); operationConnections_.clear(); pendingConnectionLogContexts_.clear();
     rawOperation_.reset();
     if (session_) session_->close();
@@ -278,7 +286,12 @@ void FpgaDeviceController::readAll()
     read(0x0048,3);
     read(0x0110,3);
     read(0x1000,17);
-    read(0x6110,15); read(0x6710,10); read(0x6700,4); // Motor remains idle unless explicitly requested.
+    // Reading 1044 latches one coherent PPS calibration snapshot. Do not read
+    // that trigger again until every member of this snapshot has been copied.
+    read(0x1044);read(0x1048,9);
+    read(0x6110,20); read(0x6710,15); read(0x6700,4);
+    // LC identification/status only; RX_DATA at +1c has destructive pop semantics.
+    read(0x6800,6);read(0x6820,8);read(0x6900,6);read(0x6920,8);
     read(0x7000,4); read(0x7014); read(0x701c,6); read(0x7038,4);
     read(0x8000,4); read(0x8010,12);
     for (quint32 base : kBases) read(base,4);
@@ -315,7 +328,8 @@ bool FpgaDeviceController::versionsMatch(QString *detail) const
 {
     const QMap<quint32,quint32> expected{{0x4000,0x00200101},{0x4100,0x00210101},
         {0x4018,0x00011800},{0x4118,0x00011800},{0x5000,0x00300101},{0x5100,0x00310101},
-        {0x5024,0x00040101},{0x5124,0x00040101},{0x6600,0x00460200}};
+        {0x5024,0x00040101},{0x5124,0x00040101},{0x6600,0x00460200},
+        {0x6100,0x00410106},{0x614c,0x48434432},{0x1000,0x00020200},{0x6700,0x00470200}};
     const auto cap = session_->capabilities();
     if (!registers_.contains(0x8004) || !(registers_.value(0x8004)&1)) {
         if(detail)*detail=QStringLiteral("USB 上传通路未启用，保留只读诊断并禁止写操作；不能盲目写入恢复。请恢复下位机通路后重新连接。");
@@ -362,7 +376,6 @@ void FpgaDeviceController::advance()
     if(current_->kind==Kind::Callback) {
         auto action=std::move(current_->callback);current_.reset();action();advance();return;
     }
-    if(current_->label==QStringLiteral("hmp_confirmation"))current_->expected=hmpCompensationBaseline_+1u;
     const auto& s=*current_;
     if (s.kind==Kind::ConfirmConnection) {
         confirmConnection(s.source); current_.reset(); advance(); return;
@@ -444,6 +457,13 @@ void FpgaDeviceController::advance()
 
 void FpgaDeviceController::completed(quint32 seq, bool success, quint32 status)
 {
+    if(motorSafetySequences_.remove(seq)) {
+        if(!success) {
+            motorOwnerEnabled_=false;
+            report(QStringLiteral("DM422 安全命令被拒绝：VLP status=%1；已停止心跳。").arg(status));
+        }
+        return;
+    }
     if (!current_ || seq!=pendingSequence_) return;
     if (!success) { fail(QStringLiteral("%1失败：VLP status=%2；请查看模块状态和错误。") .arg(operation_).arg(status)); return; }
     if (current_->kind==Kind::Wait &&
@@ -457,13 +477,13 @@ void FpgaDeviceController::completed(quint32 seq, bool success, quint32 status)
     }
     if (current_->label==QStringLiteral("temperature_baseline"))
         temperatureBaseline_=registers_.value(0x6648);
-    if(current_->label==QStringLiteral("hmp_baseline"))hmpCompensationBaseline_=registers_.value(0x6148);
     current_.reset(); pendingSequence_=0;
     QTimer::singleShot(0,this,&FpgaDeviceController::advance);
 }
 
 void FpgaDeviceController::fail(const QString& detail, bool operationScoped)
 {
+    motorOwnerEnabled_=false;motorSafetySequences_.clear();
     if (rawOperation_) {
         reportRawResult(*rawOperation_,false,detail);
         rawOperation_.reset();
@@ -486,7 +506,7 @@ void FpgaDeviceController::fail(const QString& detail, bool operationScoped)
     }
     emit hardwareValuesChanged(registers_);
     emit connectionChanged(ready_,false,detail);
-    emit snapshot(nowUs(),{{"event","operation_failed"},{"detail",detail}});
+    emit snapshot(nowUs(),{{"event","operation_failed"},{"detail",detail},{"interrupted_by_motor_stop",interruptingForMotorStop_}});
 }
 
 void FpgaDeviceController::report(const QString& detail, LogLevel level, const char *file, const char *function, int line, bool operationScoped)
@@ -544,7 +564,7 @@ void FpgaDeviceController::trackConnection(quint16 source)
 void FpgaDeviceController::reportConnection(quint16 source, const QString& result, const QString& reasonCode, const QString& detail, const char *file, const char *function, int line)
 {
     const QMap<quint16,QString> names{{0,QStringLiteral("ADC / DLIA")},{0x40,QStringLiteral("PTB210")},
-        {0x41,QStringLiteral("HMP3")},{0x42,QStringLiteral("EPSILON")},{0x43,QStringLiteral("BMP390")},{0x44,QStringLiteral("SHT45")},
+        {0x41,QStringLiteral("HC2A")},{0x42,QStringLiteral("EPSILON")},{0x43,QStringLiteral("BMP390")},{0x44,QStringLiteral("SHT45")},
         {0x45,QStringLiteral("TFA1500-L")},{0x46,QStringLiteral("AI-8288D92J0")},{0x48,QStringLiteral("RD105")}};
     LogRecord record; record.source=QStringLiteral("Ground"); record.category=QStringLiteral("device.fpga");
     record.level=(result==QStringLiteral("failed") || result==QStringLiteral("warning"))?LogLevel::Warning:LogLevel::Info;
@@ -630,7 +650,7 @@ void FpgaDeviceController::checkStartupWarnings()
             && QDateTime::currentMSecsSinceEpoch()-lastReadingMs_.value(source)<=(source==0x45?1000:5000);
         const bool healthy=fresh && validity.structure && validity.crc && validity.deviceOnline && validity.measurement
             && (!sample.ai8 || (sample.ai8->measurementValid && !sample.ai8->alarmActive))
-            && sample.reading.hmpDeviceError.value_or(0)==0;
+            && sample.reading.hc2aDeviceError.value_or(0)==0;
         const auto words=event.value("words").toArray();
         const quint32 errors=words.size()==7?quint32(words[1].toDouble()):0;
         const quint32 base=0x6000+(source-0x40)*0x100;
@@ -695,7 +715,8 @@ void FpgaDeviceController::recoverConnection()
     emit connectionChanged(false,true,operation_);
     snapshotConfiguration();
     for(quint16 source:{0x40,0x41,0x42,0x43,0x44,0x45,0x46,0x48})
-        if(saved.value(0x6004+(source-0x40)*0x100)&1)trackConnection(source);
+        if((source!=0x48 || (extensions()&FpgaExtensions::Rd105))
+            && (saved.value(0x6004+(source-0x40)*0x100)&1))trackConnection(source);
     for(quint32 control:{0x4004u,0x4104u,0x5004u,0x5104u})
         if(saved.value(control)&1) {trackConnection(0);break;}
     if(!enableUpload())return;
@@ -956,6 +977,9 @@ void FpgaDeviceController::prepareSensorConfiguration(quint16 source, quint32 ba
 {
     const quint32 base=0x6000+(source-0x40)*0x100;
     const bool enabled=registers_.value(base+4)&1;
+    if(source==0x41 && (registers_.value(0x6100)!=0x00410106 || registers_.value(0x614c)!=0x48434432)) {
+        fail(QStringLiteral("HC2A 型号/诊断版本不匹配；未写入设备参数。"));return;
+    }
     if(source==0x40 && pollMs && quint32(pendingSensorParameters_.value("mode").toDouble(registers_.value(0x601c)))!=0) {
         fail(QStringLiteral("PTB 连续输出模式不使用轮询间隔；未修改参数。"));return;
     }
@@ -983,6 +1007,7 @@ void FpgaDeviceController::prepareSensorConfiguration(quint16 source, quint32 ba
     const bool modeBeforeBaud=source==0x45 && pendingSensorParameters_.contains("mode") && pendingSensorParameters_.value("mode").toInt()!=2;
     if(modeBeforeBaud)parameter(0x6514,quint32(pendingSensorParameters_.value("mode").toInt()));
     if(baud)parameter(base+0x10,baud);
+    if(source==0x41)parameter(0x6118,0); // HC2A uses fixed 8N1.
     if(pollMs)parameter(base+(source==0x40?0x18:source==0x41?0x1c:(source==0x46 || source==0x48)?0x2c:0x14),pollMs);
     for(const auto& spec:FpgaRemote::sensorParameters())if(spec.source==source && pendingSensorParameters_.contains(spec.key) && !(modeBeforeBaud && QString::fromLatin1(spec.key)=="mode"))parameter(spec.address,quint32(pendingSensorParameters_.value(spec.key).toDouble()));
     if(source==0x43 && !pendingSensorParameters_.isEmpty())commit(source,base);
@@ -1002,6 +1027,34 @@ void FpgaDeviceController::prepareSensorConfiguration(quint16 source, quint32 ba
 void FpgaDeviceController::executeOperation(const QJsonObject& request)
 {
     const auto requestedOp=request.value("op").toString();
+    if(requestedOp=="motor_heartbeat") {
+        if(FpgaRemote::validateControl(request) && ready_ && connected() && motorOwnerEnabled_
+            && registers_.value(0x6700)==0x00470200) {
+            if(const auto sequence=session_->motorSafetyAction(5))motorSafetySequences_.insert(sequence);
+        }
+        return;
+    }
+    const auto motorAction=request.value("action").toInt();
+    if(requestedOp=="motor" && (motorAction==2 || (motorAction==4 && request.value("value").toInt()==0))
+        && FpgaRemote::validateControl(request) && connected() && registers_.value(0x6700)==0x00470200) {
+        // An explicit STOP/disable must not wait for a sensor transaction or
+        // background register scan. Cancel only host work, never replay writes.
+        const bool keepOwner=motorAction==2 && motorOwnerEnabled_;
+        if(busy_) {
+            interruptingForMotorStop_=true;
+            fail(QStringLiteral("当前操作被显式电机停止请求中止，已发出的写操作结果请读回确认。"));
+            interruptingForMotorStop_=false;
+        }
+        motorOwnerEnabled_=keepOwner;
+        if(!begin(QStringLiteral("DM422 停止与状态读回")))return;
+        Step safety;safety.kind=Kind::Management;safety.address=12;safety.source=0x47;safety.values={quint32(motorAction),0};
+        current_=safety;
+        pendingSequence_=session_->motorSafetyAction(quint32(motorAction));
+        if(motorAction==4)verify(0x6704,0);
+        readAll();
+        if(!pendingSequence_)fail(QStringLiteral("DM422 停止命令未发送。"));
+        return;
+    }
     if(requestedOp=="instrument" || requestedOp=="epsilon_mailbox" || requestedOp=="ai8_scan" || requestedOp=="ai8_cache" || requestedOp=="dlia_cutoff" || requestedOp=="device_temperature") {
         executeExtension(request);return;
     }
@@ -1015,23 +1068,36 @@ void FpgaDeviceController::executeOperation(const QJsonObject& request)
     const quint16 source=quint16(request.value("source").toInt());
     auto command=[&](quint16 message,quint16 target,QVector<quint32> words){Step s;s.kind=Kind::Management;s.address=message;s.source=target;s.values=words;steps_.push_back(s);};
     if(op=="time")command(13,2,{action,value});
-    else if(op=="time_tag") {
-        for(auto pair:{qMakePair(0x1038u,quint32(request.value("low").toDouble())),qMakePair(0x103cu,quint32(request.value("high").toDouble()))}){write(pair.first,pair.second);verify(pair.first,pair.second);}
-    } else if(op=="motor")command(12,0x47,{action,value});
+    else if(op=="motor") {
+        if(registers_.value(0x6700)!=0x00470200) {fail(QStringLiteral("DM422 模块版本不匹配。"));return;}
+        if(action==4 && value==1) {
+            write(0x0004,registers_.value(4)|1u);
+            verify(0x0004,registers_.value(4)|1u);
+            command(12,0x47,{5,0});
+        }
+        command(12,0x47,{action,value});
+        if(action==4) {verify(0x6704,value);callback([this,value]{motorOwnerEnabled_=value!=0;});}
+    }
     else if(op=="motor_config") {
+        motorOwnerEnabled_=false;
         waitFor(0x6708,8,0);write(0x6704,0);verify(0x6704,0);
-        for(auto pair:{qMakePair(0x6714u,quint32(request.value("frequency").toDouble())),qMakePair(0x6718u,quint32(request.value("high_ticks").toDouble())),qMakePair(0x671cu,quint32(request.value("dir_ticks").toDouble())),qMakePair(0x6730u,quint32(request.value("polarity").toDouble()))}) {write(pair.first,pair.second);verify(pair.first,pair.second);}
+        const auto frequency=quint32(request.value("frequency").toDouble());
+        write(0x6714,frequency);
+        // Integer divider reads the actual frequency, rounded down.
+        read(0x6714);verify(0x6730,4);
+        callback([this,frequency] {
+            const quint32 clock=session_->capabilities().timeClockHz;
+            const quint32 halfPeriod=(clock+2*frequency-1)/(2*frequency);
+            if(!halfPeriod || registers_.value(0x6714)!=clock/(2*halfPeriod))
+                fail(QStringLiteral("DM422 实际频率读回与固定占空比分频结果不符。"));
+        });
     } else if(op=="channel_acquisition") {
         const int channel=request.value("channel").toInt();const quint32 mask=1u<<(16+channel);
         if(request.value("enabled").toBool() && !enableUpload())return;
         command(request.value("enabled").toBool()?6:7,1,{0,mask,0,0});
         if(!request.value("enabled").toBool())drainWaveforms_=true;
     } else if(op=="sensor_action") {
-        if(source==0x41 && action==16) {
-            Step baseline;baseline.kind=Kind::Read;baseline.address=0x6148;baseline.label=QStringLiteral("hmp_baseline");steps_.push_back(baseline);
-        }
         Step s;s.kind=Kind::Sensor;s.address=action;s.source=source;s.expected=value;steps_.push_back(s);
-        if(source==0x41 && action==16) {waitFor(0x6148,0xffffffff,0);steps_.back().label=QStringLiteral("hmp_confirmation");verify(0x6140,value);}
     } else if(op=="maintenance") {
         if(action==8 || action==9) {const quint64 mask=quint64(1)<<(source&63);command(quint16(action),source,{quint32(mask),quint32(mask>>32)});}
     } else if(op=="stream_config") {

@@ -55,11 +55,16 @@ static void workflow(bool fpga)
     SkyConfig config = SkyConfig::defaults();
     config.sensor_transport_path = fpga ? SensorTransportPath::FpgaRelay : SensorTransportPath::DirectDevices;
     QJsonObject registers;
-    for (quint32 control : {0x6004u, 0x6304u, 0x6404u, 0x6804u, 0x4004u, 0x4104u, 0x5004u, 0x5104u})
+    for (quint32 control : {0x6004u, 0x6104u, 0x6304u, 0x6404u, 0x4004u, 0x4104u, 0x5004u, 0x5104u})
         registers[QString::number(control)] = 0;
+    registers[QString::number(0x6100)] = 0x00410106;
+    registers[QString::number(0x614c)] = 0x48434432;
+    registers[QString::number(0x6800)] = 0x00480100;
+    registers[QString::number(0x6900)] = 0x00490100;
     QJsonObject status{{"version", 1}, {"connected", false}, {"ready", false}, {"busy", false},
         {"detail", "test board"}, {"archived_records", "0"},
-        {"extensions", int(FpgaExtensions::Rd105)}, {"configuration", config.fpga.configuration.toJson()}};
+        {"extensions", int(FpgaExtensions::RawSchema2 | FpgaExtensions::EpsilonMailbox | FpgaExtensions::DliaCutoff)},
+        {"configuration", config.fpga.configuration.toJson()}};
     TelemetryCodec encoder, decoder; quint16 sequence = 1;
     int bulk = 0, operations = 0, failures = 0;
     const auto send = [&](MsgType type, const QByteArray &payload) {
@@ -124,18 +129,33 @@ static void workflow(bool fpga)
             return r.message.contains("失败") && r.message.contains("sensor") && r.message.contains("10") && r.message.contains("port busy");
         }); }), "visible result identifies operation, error code and remote reason");
         publishStatus();
-        for (quint16 source : {0x43, 0x44, 0x48}) {
+        require(!MainWindowRtcmTestAccess::valid(window, SkyDeviceId::Hc2a),
+            "enabled HC2A remains unavailable until a valid measurement arrives");
+        for (quint16 source : {0x41, 0x43, 0x44}) {
             FpgaSensor::Reading reading; reading.source = source; reading.validity = {true, true, true, true};
             reading.temperatureC = 24.; reading.pressurePa = 101300.; reading.humidityPct = 40.;
             send(MsgType::FpgaSensor, FpgaRemote::encodeSensor(reading, 1));
         }
         require(waitUntil([&] { return MainWindowRtcmTestAccess::valid(window, SkyDeviceId::Bmp390)
             && MainWindowRtcmTestAccess::valid(window, SkyDeviceId::Sht45)
-            && MainWindowRtcmTestAccess::valid(window, SkyDeviceId::TemperatureController); }), "per sensor FPGA freshness agrees with details");
-        require(MainWindowRtcmTestAccess::invalid(window, SkyDeviceId::Hmp).contains("FPGA"), "unsupported HMP is explicit");
+            && MainWindowRtcmTestAccess::valid(window, SkyDeviceId::Hc2a); }), "per sensor FPGA freshness agrees with HC2A and internal environment details");
+        require(!MainWindowRtcmTestAccess::valid(window, SkyDeviceId::TemperatureController),
+            "HCD2 does not treat the LC0 page as an RD105 temperature controller");
         FpgaSensor::Reading invalid; invalid.source = 0x43;
         send(MsgType::FpgaSensor, FpgaRemote::encodeSensor(invalid, 2));
         require(waitUntil([&] { return !MainWindowRtcmTestAccess::valid(window, SkyDeviceId::Bmp390); }), "invalid reading clears summary freshness");
+        invalid.source = 0x41;
+        send(MsgType::FpgaSensor, FpgaRemote::encodeSensor(invalid, 3));
+        require(waitUntil([&] { return !MainWindowRtcmTestAccess::valid(window, SkyDeviceId::Hc2a); }),
+            "invalid HC2A reading clears environmental freshness");
+        require(MainWindowRtcmTestAccess::valid(window, SkyDeviceId::Sht45),
+            "HC2A failure leaves independent SHT45 freshness intact");
+        FpgaSensor::Reading recovered; recovered.source = 0x41; recovered.validity = {true, true, true, true};
+        recovered.temperatureC = 25.; recovered.humidityPct = 42.;
+        send(MsgType::FpgaSensor, FpgaRemote::encodeSensor(recovered, 4));
+        require(waitUntil([&] { return MainWindowRtcmTestAccess::valid(window, SkyDeviceId::Hc2a); }) &&
+            !MainWindowRtcmTestAccess::valid(window, SkyDeviceId::Bmp390),
+            "new valid HC2A measurement restores only its own freshness");
     }
     const int before = operations + bulk;
     for (int i = 0; i < 5; ++i) publishStatus();
@@ -189,9 +209,9 @@ static void simulatedSkyWorkflow()
     window.show();
     QMetaObject::invokeMethod(&window, "onConnectClicked");
     const auto ready = [&] {
-        for (const auto device : {SkyDeviceId::Ptb, SkyDeviceId::Epsilon, SkyDeviceId::Hmp, SkyDeviceId::Lidar,
+        for (const auto device : {SkyDeviceId::Ptb, SkyDeviceId::Epsilon, SkyDeviceId::Hc2a, SkyDeviceId::Lidar,
                  SkyDeviceId::Ai8TemperatureController, SkyDeviceId::Bmp390, SkyDeviceId::Sht45,
-                 SkyDeviceId::TemperatureController, SkyDeviceId::WaveTcp})
+                 SkyDeviceId::WaveTcp})
             if (!MainWindowRtcmTestAccess::valid(window, device)) return false;
         return state.fpga_home_connect_queue_.isEmpty() && !state.fpga_session_.requestId
             && window.testRemoteSkyController()->waveformPacketRate(4) > 0;
@@ -200,6 +220,9 @@ static void simulatedSkyWorkflow()
     if (!connected) std::cerr << child.process.readAll().constData() << std::endl;
     require(connected, "one title click connects real SkyCore simulated sensors, summaries and waveform rate");
     require(state.fpga_session_.remoteStatus.value("simulation").toBool(), "Sky identifies simulation");
+    require(!(state.fpga_session_.remoteStatus.value("extensions").toInt() & FpgaExtensions::Rd105) &&
+            !MainWindowRtcmTestAccess::valid(window, SkyDeviceId::TemperatureController),
+            "default HCD2 simulator exposes HC2A while the withdrawn RD105 extension remains unavailable");
     const auto registers = state.fpga_session_.remoteStatus.value("registers").toObject();
     // WMS supplies acquisition cycle labels; physical DAC outputs remain independent.
     for (const quint32 address : {0x3004u, 0x3104u})

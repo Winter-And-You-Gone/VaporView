@@ -1501,7 +1501,7 @@ QRadioButton[temperatureSensorModelOption="true"]::indicator:checked {
 }
 
 /* 自定义面板样式 */
-GnssPanel, ImuPanel, PtbPanel, HmpPanel, LidarPanel, TemperatureControllerPanel {
+GnssPanel, ImuPanel, PtbPanel, Hc2aPanel, LidarPanel, TemperatureControllerPanel {
     background-color: transparent;
 }
 
@@ -1529,7 +1529,7 @@ QLabel#highlightedValue {
 }
 
 PtbPanel QLabel#highlightedValue,
-HmpPanel QLabel#highlightedValue,
+Hc2aPanel QLabel#highlightedValue,
 LidarPanel QLabel#highlightedValue,
 TemperatureControllerPanel QLabel#highlightedValue {
     font-family: "Consolas", "Monaco", "Courier New", monospace;

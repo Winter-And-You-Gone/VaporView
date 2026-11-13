@@ -623,7 +623,7 @@ void MainWindow::setEnglish(bool english)
     {
         state_->imu_rate_1000_btn_->setToolTip(english ? "Switch IMU output frequency to 1000 Hz" : "一键切换 IMU 输出频率到 1000 Hz");
     }
-    for (QComboBox *combo : {state_->device_config_.ptb_rate_combo, state_->device_config_.hmp_rate_combo,
+    for (QComboBox *combo : {state_->device_config_.ptb_rate_combo, state_->device_config_.hc2a_rate_combo,
                              state_->device_config_.lidar_rate_combo, state_->device_config_.temperature_rate_combo,
                              state_->device_config_.ai8_temperature_rate_combo})
     {
@@ -653,7 +653,7 @@ void MainWindow::setEnglish(bool english)
     if (state_->gnss_panel_) state_->gnss_panel_->setEnglish(english);
     if (state_->imu_panel_) state_->imu_panel_->setEnglish(english);
     if (state_->ptb_panel_) state_->ptb_panel_->setEnglish(english);
-    if (state_->hmp_panel_) state_->hmp_panel_->setEnglish(english);
+    if (state_->hc2a_panel_) state_->hc2a_panel_->setEnglish(english);
     if (state_->lidar_panel_) state_->lidar_panel_->setEnglish(english);
     if (state_->tcp_wave_panel_) state_->tcp_wave_panel_->setEnglish(english);
 
@@ -662,7 +662,7 @@ void MainWindow::setEnglish(bool english)
     if (collectors.gnss) collectors.gnss->setEnglish(english);
     if (collectors.imu) collectors.imu->setEnglish(english);
     if (collectors.ptb) collectors.ptb->setEnglish(english);
-    if (collectors.hmp) collectors.hmp->setEnglish(english);
+    if (collectors.hc2a) collectors.hc2a->setEnglish(english);
     if (collectors.lidar) collectors.lidar->setEnglish(english);
     if (collectors.temperature_controller) collectors.temperature_controller->setEnglish(english);
 
@@ -685,7 +685,7 @@ void MainWindow::setEnglish(bool english)
     }
     else
     {
-        updateEnvironmentStatusIcons(state_->current_lidar_.valid, state_->current_ptb_.valid, state_->current_hmp_.valid);
+        updateEnvironmentStatusIcons(state_->current_lidar_.valid, state_->current_ptb_.valid, state_->current_hc2a_.valid);
     }
     updateSourceModeUi();
     updateHomeDeviceOverviewMinimumWidth();

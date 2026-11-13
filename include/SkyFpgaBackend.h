@@ -38,6 +38,7 @@ private:
         {"configuration",FpgaControlConfig{}.toJson()},{"detail",QStringLiteral("FPGA disconnected")},{"archived_records",QStringLiteral("0")}};
     quint64 nextRequest_ = 1, activeRequest_ = 0;
     Completion completion_;
+    std::shared_ptr<QMetaObject::Connection> operationObserver_;
     int operationTimeoutMs_ = 120000;
 };
 }

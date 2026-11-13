@@ -658,15 +658,15 @@ void MainWindow::updateSourceModeUi()
         !state_->connection_attempt_in_progress_ && !state_->port_detection_in_progress_ && !state_->epsilon_reconfigure_in_progress_;
     const QList<QWidget*> localWidgets = {state_->device_config_.epsilon_port_combo, state_->device_config_.epsilon_baud_combo,
                                           state_->device_config_.ptb_port_combo, state_->device_config_.ptb_baud_combo,
-                                          state_->device_config_.hmp_port_combo, state_->device_config_.hmp_baud_combo,
+                                          state_->device_config_.hc2a_port_combo, state_->device_config_.hc2a_baud_combo,
                                           state_->device_config_.lidar_port_combo, state_->device_config_.lidar_baud_combo,
                                           state_->device_config_.temperature_port_combo, state_->device_config_.temperature_baud_combo,
                                           state_->device_config_.epsilon_packet_rates_btn,
-                                          state_->device_config_.ptb_rate_combo, state_->device_config_.hmp_rate_combo,
+                                          state_->device_config_.ptb_rate_combo, state_->device_config_.hc2a_rate_combo,
                                           state_->device_config_.lidar_rate_combo, state_->device_config_.temperature_rate_combo,
                                           state_->device_config_.ai8_temperature_rate_combo,
                                           state_->device_config_.ptb_source_combo,
-                                          state_->device_config_.hmp_source_combo};
+                                          state_->device_config_.hc2a_source_combo};
     for (QWidget *widget : localWidgets)
     {
         if (widget)
@@ -1025,12 +1025,12 @@ void MainWindow::clearRemoteSkyDataUi()
     state_->current_gnss_ = VaporView::GnssData();
     state_->current_imu_ = VaporView::ImuData();
     state_->current_ptb_ = VaporView::PtbData();
-    state_->current_hmp_ = VaporView::HmpData();
+    state_->current_hc2a_ = VaporView::Hc2aData();
     state_->current_lidar_ = VaporView::LidarData();
     state_->current_temperature_controller_ = VaporView::TemperatureControllerData();
 
     state_->current_ptb_.error_message = remoteNoDataText(state_->is_english_).toStdString();
-    state_->current_hmp_.error_message = remoteNoDataText(state_->is_english_).toStdString();
+    state_->current_hc2a_.error_message = remoteNoDataText(state_->is_english_).toStdString();
     state_->current_lidar_.error_message = remoteNoDataText(state_->is_english_).toStdString();
     if (state_->tcp_wave_panel_)
     {
@@ -1051,7 +1051,7 @@ void MainWindow::clearRemoteSkyDataUi()
         state_->device_panel_coordinator_->clearRates();
         state_->device_panel_coordinator_->updateAllData(
             state_->current_epsilon_, state_->current_gnss_, 0,
-            state_->current_imu_, 0, state_->current_ptb_, state_->current_hmp_,
+            state_->current_imu_, 0, state_->current_ptb_, state_->current_hc2a_,
             state_->current_lidar_, state_->current_temperature_controller_);
     }
     updateEnvironmentStatusIcons(false, false, false);
@@ -1134,11 +1134,9 @@ void MainWindow::maybeConnectRemoteDevices()
     state_->remote_wave_stream_auto_start_ = true;
     if (isFpgaRelayPath()) {
         using VaporView::SkyDeviceId;
-        state_->fpga_home_connect_queue_ = {SkyDeviceId::Epsilon, SkyDeviceId::Ptb,
+        state_->fpga_home_connect_queue_ = {SkyDeviceId::Epsilon, SkyDeviceId::Ptb, SkyDeviceId::Hc2a,
             SkyDeviceId::Lidar, SkyDeviceId::Ai8TemperatureController, SkyDeviceId::Bmp390,
             SkyDeviceId::Sht45, SkyDeviceId::TemperatureController, SkyDeviceId::WaveTcp};
-        if (state_->fpga_session_.remoteStatus.value("simulation").toBool())
-            state_->fpga_home_connect_queue_.insert(2, SkyDeviceId::Hmp);
         connectNextHomeFpgaDevice();
     } else {
         remote->sendCommand(VaporView::CommandId::ConnectAllDevices);
@@ -1147,8 +1145,6 @@ void MainWindow::maybeConnectRemoteDevices()
 
 bool MainWindow::remoteDeviceDataValid(VaporView::SkyDeviceId device, qint64 timeout_ms) const
 {
-    if (isFpgaRelayPath() && device == VaporView::SkyDeviceId::Hmp &&
-        !state_->fpga_session_.remoteStatus.value("simulation").toBool()) return false;
     if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
     {
         return false;
@@ -1174,9 +1170,6 @@ bool MainWindow::remoteDeviceDataValid(VaporView::SkyDeviceId device, qint64 tim
 
 QString MainWindow::remoteDeviceInvalidText(VaporView::SkyDeviceId device, qint64 timeout_ms) const
 {
-    if (isFpgaRelayPath() && device == VaporView::SkyDeviceId::Hmp &&
-        !state_->fpga_session_.remoteStatus.value("simulation").toBool())
-        return state_->is_english_ ? QStringLiteral("Unavailable on FPGA path") : QStringLiteral("FPGA 路径不提供");
     if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen())
     {
         return remoteDisconnectedText(state_->is_english_);
@@ -1268,7 +1261,7 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
             {
             case VaporView::SkyDeviceId::Epsilon: return fresh(state_->current_epsilon_);
             case VaporView::SkyDeviceId::Ptb: return fresh(state_->current_ptb_);
-            case VaporView::SkyDeviceId::Hmp: return fresh(state_->current_hmp_);
+            case VaporView::SkyDeviceId::Hc2a: return fresh(state_->current_hc2a_);
             case VaporView::SkyDeviceId::Lidar: return fresh(state_->current_lidar_);
             case VaporView::SkyDeviceId::TemperatureController: return fresh(state_->current_temperature_controller_);
             case VaporView::SkyDeviceId::Ai8TemperatureController: {
@@ -1295,8 +1288,8 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
             return uiTestSnapshot.epsilon.valid;
         case VaporView::SkyDeviceId::Ptb:
             return uiTestSnapshot.ptb.valid;
-        case VaporView::SkyDeviceId::Hmp:
-            return uiTestSnapshot.hmp.valid;
+        case VaporView::SkyDeviceId::Hc2a:
+            return uiTestSnapshot.hc2a.valid;
         case VaporView::SkyDeviceId::Lidar:
             return uiTestSnapshot.lidar.valid;
         case VaporView::SkyDeviceId::TemperatureController:
@@ -1411,9 +1404,7 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         const QString availability = !hasData && remoteFpga
             ? remoteDeviceInvalidText(device, timeoutMs) : hasText(hasData);
         const QString widthText = !remoteFpga ? QString()
-            : device == VaporView::SkyDeviceId::Hmp
-                ? (state_->is_english_ ? QStringLiteral("Unavailable on FPGA path") : QStringLiteral("FPGA 路径不提供"))
-                : (state_->is_english_ ? QStringLiteral("Data available") : QStringLiteral("未连接"));
+            : (state_->is_english_ ? QStringLiteral("Data available") : QStringLiteral("未连接"));
         deviceRows << makeItem(label, availability, hasData,
             widthText, true);
     };
@@ -1442,7 +1433,7 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
                                    QStringLiteral("999999"));
         appendDevice(VaporView::SkyDeviceId::Epsilon, 2000, QStringLiteral("EPSILON"));
         appendDevice(VaporView::SkyDeviceId::Ptb, 3000, QStringLiteral("PTB"));
-        appendDevice(VaporView::SkyDeviceId::Hmp, 3000, QStringLiteral("HMP"));
+        appendDevice(VaporView::SkyDeviceId::Hc2a, 3000, QStringLiteral("HC2A"));
         appendDevice(VaporView::SkyDeviceId::Lidar, 2000, QStringLiteral("Lidar"));
         appendDevice(VaporView::SkyDeviceId::WaveTcp, 3000, QStringLiteral("Wave"));
     }
@@ -1471,7 +1462,7 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
                                    QStringLiteral("999999"));
         appendDevice(VaporView::SkyDeviceId::Epsilon, 2000, QStringLiteral("EPSILON"));
         appendDevice(VaporView::SkyDeviceId::Ptb, 3000, QStringLiteral("PTB"));
-        appendDevice(VaporView::SkyDeviceId::Hmp, 3000, QStringLiteral("HMP"));
+        appendDevice(VaporView::SkyDeviceId::Hc2a, 3000, QStringLiteral("HC2A"));
         appendDevice(VaporView::SkyDeviceId::Lidar, 2000, QStringLiteral("Lidar"));
         appendDevice(VaporView::SkyDeviceId::WaveTcp, 3000, QStringLiteral("波形"));
     }
@@ -1600,10 +1591,10 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         ? QStringList{QStringLiteral("Sky->Ground"), QStringLiteral("Ground->Sky"), QStringLiteral("Total")}
         : QStringList{QStringLiteral("天空端→地面端"), QStringLiteral("地面端→天空端"), QStringLiteral("合计")};
     const QStringList deviceLabels = state_->is_english_
-        ? QStringList{QStringLiteral("EPSILON"), QStringLiteral("PTB210"), QStringLiteral("HMP"),
+        ? QStringList{QStringLiteral("EPSILON"), QStringLiteral("PTB210"), QStringLiteral("HC2A"),
             QStringLiteral("TFA1500-L"), QStringLiteral("Waveform"), QStringLiteral("RD105"),
             QStringLiteral("AI-8288"), QStringLiteral("BMP390"), QStringLiteral("SHT45")}
-        : QStringList{QStringLiteral("EPSILON"), QStringLiteral("PTB210"), QStringLiteral("HMP"),
+        : QStringList{QStringLiteral("EPSILON"), QStringLiteral("PTB210"), QStringLiteral("HC2A"),
             QStringLiteral("TFA1500-L"), QStringLiteral("波形"), QStringLiteral("RD105"),
             QStringLiteral("AI-8288"), QStringLiteral("BMP390"), QStringLiteral("SHT45")};
     for (int i = 0; i < homeSections.rateItems.size(); ++i)
@@ -1697,11 +1688,6 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
     for (const RemoteTelemetrySummarySections::Item& item : sections.deviceItems)
     {
         auto compactItem = item;
-        if (isRemoteSkyMode() && isFpgaRelayPath() && !isUiTestMode() && item.label == QStringLiteral("HMP")) {
-            compactItem.value = state_->is_english_ ? QStringLiteral("N/A") : QStringLiteral("不支持");
-            compactItem.valueWidthText = compactItem.value;
-            compactItem.compactAvailabilityValue = false;
-        }
         deviceConfigDataItems << compactItem;
     }
 
@@ -2358,7 +2344,7 @@ void MainWindow::saveDeviceConfigEpsilonPacketRates(bool applyAfterSave)
     }
 }
 
-void MainWindow::updateEnvironmentStatusIcons(bool lidarValid, bool ptbValid, bool hmpValid)
+void MainWindow::updateEnvironmentStatusIcons(bool lidarValid, bool ptbValid, bool hc2aValid)
 {
     auto updateIcon = [this](QLabel *label, bool valid, const QString& zhName, const QString& enName) {
         if (!label)
@@ -2390,27 +2376,27 @@ void MainWindow::updateEnvironmentStatusIcons(bool lidarValid, bool ptbValid, bo
 
     updateIcon(state_->env_lidar_status_icon_, lidarValid, QStringLiteral("Lidar"), QStringLiteral("Lidar"));
     updateIcon(state_->env_ptb_status_icon_, ptbValid, QStringLiteral("PTB"), QStringLiteral("PTB"));
-    updateIcon(state_->env_hmp_status_icon_, hmpValid, QStringLiteral("HMP"), QStringLiteral("HMP"));
+    updateIcon(state_->env_hc2a_status_icon_, hc2aValid, QStringLiteral("HC2A"), QStringLiteral("HC2A"));
 }
 
 void MainWindow::refreshRemoteSkyDataUi()
 {
     VaporView::EpsilonData epsilon = state_->current_epsilon_;
     VaporView::PtbData ptb = state_->current_ptb_;
-    VaporView::HmpData hmp = state_->current_hmp_;
+    VaporView::Hc2aData hc2a = state_->current_hc2a_;
     VaporView::LidarData lidar = state_->current_lidar_;
 
     const bool epsilonValid = remoteDeviceDataValid(VaporView::SkyDeviceId::Epsilon, 2000);
     const bool ptbValid = remoteDeviceDataValid(VaporView::SkyDeviceId::Ptb, 3000);
-    const bool hmpValid = remoteDeviceDataValid(VaporView::SkyDeviceId::Hmp, 3000);
+    const bool hc2aValid = remoteDeviceDataValid(VaporView::SkyDeviceId::Hc2a, 3000);
     const bool lidarValid = remoteDeviceDataValid(VaporView::SkyDeviceId::Lidar, 2000);
 
     epsilon.valid = epsilonValid;
     ptb.valid = ptbValid;
-    hmp.valid = hmpValid;
+    hc2a.valid = hc2aValid;
     lidar.valid = lidarValid;
     if (!ptbValid) ptb.error_message = remoteDeviceInvalidText(VaporView::SkyDeviceId::Ptb, 3000).toStdString();
-    if (!hmpValid) hmp.error_message = remoteDeviceInvalidText(VaporView::SkyDeviceId::Hmp, 3000).toStdString();
+    if (!hc2aValid) hc2a.error_message = remoteDeviceInvalidText(VaporView::SkyDeviceId::Hc2a, 3000).toStdString();
     if (!lidarValid) lidar.error_message = remoteDeviceInvalidText(VaporView::SkyDeviceId::Lidar, 2000).toStdString();
 
     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
@@ -2422,7 +2408,7 @@ void MainWindow::refreshRemoteSkyDataUi()
         DevicePanelRates panelRates;
         panelRates.epsilonHz = epsilonValid ? basicRate : 0.0;
         panelRates.ptbHz = ptbValid ? basicRate : 0.0;
-        panelRates.hmpHz = hmpValid ? basicRate : 0.0;
+        panelRates.hc2aHz = hc2aValid ? basicRate : 0.0;
         panelRates.lidarHz = lidarValid ? basicRate : 0.0;
         panelRates.temperatureHz = remoteDeviceDataValid(
             VaporView::SkyDeviceId::TemperatureController, 3000)
@@ -2432,10 +2418,10 @@ void MainWindow::refreshRemoteSkyDataUi()
         {
             panelRates.epsilonHz = homeFpgaSensorRate(VaporView::SkyDeviceId::Epsilon);
             panelRates.ptbHz = homeFpgaSensorRate(VaporView::SkyDeviceId::Ptb);
-            panelRates.hmpHz = homeFpgaSensorRate(VaporView::SkyDeviceId::Hmp);
+            panelRates.hc2aHz = homeFpgaSensorRate(VaporView::SkyDeviceId::Hc2a);
             panelRates.lidarHz = homeFpgaSensorRate(VaporView::SkyDeviceId::Lidar);
         }
-        state_->device_panel_coordinator_->updateEnvironmentData(epsilon, ptb, hmp, lidar);
+        state_->device_panel_coordinator_->updateEnvironmentData(epsilon, ptb, hc2a, lidar);
         state_->device_panel_coordinator_->updateTemperatureData(state_->current_temperature_controller_);
         state_->device_panel_coordinator_->updateRates(panelRates);
     }
@@ -2443,7 +2429,7 @@ void MainWindow::refreshRemoteSkyDataUi()
     {
         state_->epsilon_config_panel_->setLivePacketRates(epsilon);
     }
-    updateEnvironmentStatusIcons(lidarValid, ptbValid, hmpValid);
+    updateEnvironmentStatusIcons(lidarValid, ptbValid, hc2aValid);
     updateRemoteTelemetrySummaryLabel();
     updateHomeDeviceStatusCapsules();
 }
@@ -2633,7 +2619,7 @@ void MainWindow::setRemoteDeviceButtonsEnabled(bool enabled)
 {
     for (QToolButton *button : {state_->device_config_.epsilon_remote_action_btn,
                                 state_->device_config_.ptb_remote_action_btn,
-                                state_->device_config_.hmp_remote_action_btn,
+                                state_->device_config_.hc2a_remote_action_btn,
                                 state_->device_config_.lidar_remote_action_btn,
                                 state_->device_config_.temperature_remote_action_btn,
                                 state_->device_config_.ai8_temperature_remote_action_btn,
@@ -2646,7 +2632,7 @@ void MainWindow::setRemoteDeviceButtonsEnabled(bool enabled)
     }
     for (QWidget *widget : {state_->device_config_.epsilon_remote_buttons_widget,
                             state_->device_config_.ptb_remote_buttons_widget,
-                            state_->device_config_.hmp_remote_buttons_widget,
+                            state_->device_config_.hc2a_remote_buttons_widget,
                             state_->device_config_.lidar_remote_buttons_widget,
                             state_->device_config_.temperature_remote_buttons_widget,
                             state_->device_config_.ai8_temperature_remote_buttons_widget,
@@ -3551,8 +3537,8 @@ void MainWindow::updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId dev
     case VaporView::SkyDeviceId::Ptb:
         button = state_->device_config_.ptb_remote_action_btn;
         break;
-    case VaporView::SkyDeviceId::Hmp:
-        button = state_->device_config_.hmp_remote_action_btn;
+    case VaporView::SkyDeviceId::Hc2a:
+        button = state_->device_config_.hc2a_remote_action_btn;
         break;
     case VaporView::SkyDeviceId::Lidar:
         button = state_->device_config_.lidar_remote_action_btn;

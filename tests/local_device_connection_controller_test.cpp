@@ -25,20 +25,19 @@ int main()
     using namespace VaporView::Ground::Devices;
 
     LocalDeviceConfig config;
-    config.hmp.port = QStringLiteral("COM42");
-    config.hmp.baudText = QStringLiteral("256000");
-    config.hmp.enabled = true;
+    config.hc2a.port = QStringLiteral("COM42");
+    config.hc2a.baudText = QStringLiteral("57600");
+    config.hc2a.enabled = true;
     const LocalSerialDeviceSettings requestSettings =
-        makeLocalConnectionSettings(config.hmp, true, 100, false);
+        makeLocalConnectionSettings(config.hc2a, true, 100, false);
     require(requestSettings.requested && requestSettings.enabled,
             "enabled model entry remains requested in connection settings");
     require(requestSettings.port == QStringLiteral("COM42") &&
-                requestSettings.baudText == QStringLiteral("256000"),
-            "connection settings retain a custom host-link baud from the non-UI model");
+                requestSettings.baudText == QStringLiteral("57600"),
+            "connection settings retain a supported HC2A baud from the non-UI model");
     require(requestSettings.sampleRateHz == 100,
             "connection settings use the effective runtime sample rate");
     const std::vector<std::pair<const char *, LocalSerialDeviceSettings *>> customHostSerialSettings = {
-        {"hmp", &config.hmp},
         {"lidar", &config.lidar},
     };
     for (const auto& item : customHostSerialSettings)
@@ -79,7 +78,7 @@ int main()
     request.selectText = QStringLiteral("未选择");
     request.epsilon.port = request.selectText;
     request.ptb.port = request.selectText;
-    request.hmp.port = request.selectText;
+    request.hc2a.port = request.selectText;
     request.lidar.port = request.selectText;
     request.temperatureController.port = request.selectText;
     require(controller.connectAsync(request), "start asynchronous connection attempt");
@@ -121,8 +120,8 @@ int main()
     singleDeviceRequest.selectText = QStringLiteral("未选择");
     singleDeviceRequest.epsilon.requested = false;
     singleDeviceRequest.ptb.requested = false;
-    singleDeviceRequest.hmp.port = QStringLiteral("__invalid_vaporview_port__");
-    singleDeviceRequest.hmp.baudText = QStringLiteral("256000");
+    singleDeviceRequest.hc2a.port = QStringLiteral("__invalid_vaporview_port__");
+    singleDeviceRequest.hc2a.baudText = QStringLiteral("57600");
     singleDeviceRequest.lidar.requested = false;
     singleDeviceRequest.temperatureController.requested = false;
     singleDeviceRequest.ai8TemperatureController.requested = false;
@@ -133,25 +132,25 @@ int main()
             "single requested-device failure completes without connected devices");
     {
         std::lock_guard<std::mutex> lock(mutex);
-        bool foundHmpAttempt = false;
-        bool foundCustomHmpBaud = false;
+        bool foundHc2aAttempt = false;
+        bool foundCustomHc2aBaud = false;
         bool foundUnexpectedSkippedDevice = false;
         for (const LocalConnectionLogEntry& entry : logs)
         {
-            foundHmpAttempt = foundHmpAttempt ||
+            foundHc2aAttempt = foundHc2aAttempt ||
                 (entry.event == QStringLiteral("local_device_connection_started") &&
-                 entry.fields.value(QStringLiteral("device")).toString() == QStringLiteral("HMP3"));
-            foundCustomHmpBaud = foundCustomHmpBaud ||
+                 entry.fields.value(QStringLiteral("device")).toString() == QStringLiteral("HC2A"));
+            foundCustomHc2aBaud = foundCustomHc2aBaud ||
                 (entry.event == QStringLiteral("local_device_connection_started") &&
-                 entry.fields.value(QStringLiteral("device")).toString() == QStringLiteral("HMP3") &&
-                 entry.fields.value(QStringLiteral("baud")).toString() == QStringLiteral("256000"));
+                 entry.fields.value(QStringLiteral("device")).toString() == QStringLiteral("HC2A") &&
+                 entry.fields.value(QStringLiteral("baud")).toString() == QStringLiteral("57600"));
             foundUnexpectedSkippedDevice = foundUnexpectedSkippedDevice ||
                 (entry.event == QStringLiteral("local_device_connection_skipped") &&
-                 entry.fields.value(QStringLiteral("device")).toString() != QStringLiteral("HMP3"));
+                 entry.fields.value(QStringLiteral("device")).toString() != QStringLiteral("HC2A"));
         }
-        require(foundHmpAttempt, "single requested-device attempt logs the target device");
-        require(foundCustomHmpBaud,
-                "single requested-device attempt passes custom host-link baud into the serial backend");
+        require(foundHc2aAttempt, "single requested-device attempt logs the target device");
+        require(foundCustomHc2aBaud,
+                "single requested-device attempt passes supported HC2A baud into the serial backend");
         require(!foundUnexpectedSkippedDevice,
                 "non-requested devices do not emit skipped-device noise");
     }
@@ -164,7 +163,7 @@ int main()
     finished = false;
     connected = true;
     LocalConnectionRequest invalidBaudRequest = singleDeviceRequest;
-    invalidBaudRequest.hmp.baudText = QStringLiteral("0");
+    invalidBaudRequest.hc2a.baudText = QStringLiteral("0");
     require(controller.connectAsync(invalidBaudRequest),
             "start invalid-baud connection attempt");
     controller.wait();
@@ -175,7 +174,7 @@ int main()
         const bool rejectedInvalidBaud = std::any_of(
             logs.cbegin(), logs.cend(), [](const LocalConnectionLogEntry& entry) {
                 return entry.event == QStringLiteral("local_device_connection_rejected_invalid_baud") &&
-                    entry.fields.value(QStringLiteral("device")).toString() == QStringLiteral("HMP3") &&
+                    entry.fields.value(QStringLiteral("device")).toString() == QStringLiteral("HC2A") &&
                     entry.fields.value(QStringLiteral("configured_baud")).toString() == QStringLiteral("0");
             });
         require(rejectedInvalidBaud,
@@ -194,7 +193,7 @@ int main()
     unsupportedAi8Request.selectText = QStringLiteral("未选择");
     unsupportedAi8Request.epsilon.requested = false;
     unsupportedAi8Request.ptb.requested = false;
-    unsupportedAi8Request.hmp.requested = false;
+    unsupportedAi8Request.hc2a.requested = false;
     unsupportedAi8Request.lidar.requested = false;
     unsupportedAi8Request.temperatureController.requested = false;
     unsupportedAi8Request.ai8TemperatureController.port = QStringLiteral("__invalid_vaporview_port__");
@@ -235,7 +234,7 @@ int main()
     unsupportedLidarRequest.selectText = QStringLiteral("未选择");
     unsupportedLidarRequest.epsilon.requested = false;
     unsupportedLidarRequest.ptb.requested = false;
-    unsupportedLidarRequest.hmp.requested = false;
+    unsupportedLidarRequest.hc2a.requested = false;
     unsupportedLidarRequest.lidar.port = QStringLiteral("__invalid_vaporview_port__");
     unsupportedLidarRequest.lidar.baudText = QStringLiteral("9600");
     unsupportedLidarRequest.lidar.requested = true;

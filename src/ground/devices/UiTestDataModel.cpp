@@ -231,7 +231,7 @@ void UiTestDataModel::setScenario(UiTestScenario scenario, qint64 elapsedMs)
     if (scenario == UiTestScenario::PartialFailure)
     {
         setDeviceState(SkyDeviceId::Ptb, DeviceState::Error);
-        setDeviceState(SkyDeviceId::Hmp, DeviceState::Disconnected);
+        setDeviceState(SkyDeviceId::Hc2a, DeviceState::Disconnected);
         temperature_state_.error_code = 0x0004;
     }
 }
@@ -612,13 +612,13 @@ UiTestSnapshot UiTestDataModel::snapshot(qint64 elapsedMs) const
             : "UI test data stalled";
     }
 
-    result.hmp.valid = connected(deviceState(SkyDeviceId::Hmp)) && !stalled;
-    result.hmp.timestamp = timestamp;
-    result.hmp.temperature = 23.8 + medium * 0.8;
-    result.hmp.humidity = 56.0 + slow * 3.0;
-    if (!result.hmp.valid)
+    result.hc2a.valid = connected(deviceState(SkyDeviceId::Hc2a)) && !stalled;
+    result.hc2a.timestamp = timestamp;
+    result.hc2a.temperature = 23.8 + medium * 0.8;
+    result.hc2a.humidity = 56.0 + slow * 3.0;
+    if (!result.hc2a.valid)
     {
-        result.hmp.error_message = scenario_ == UiTestScenario::PartialFailure
+        result.hc2a.error_message = scenario_ == UiTestScenario::PartialFailure
             ? "UI test humidity sensor disconnected"
             : "UI test data stalled";
     }
@@ -712,7 +712,7 @@ UiTestSnapshot UiTestDataModel::snapshot(qint64 elapsedMs) const
     result.gnssRateHz = result.gnss.valid ? boundedRandom(sampleElapsedMs, 2, 100.0, 140.0) : 0.0;
     result.imuRateHz = result.imu.valid ? boundedRandom(sampleElapsedMs, 3, 190.0, 240.0) : 0.0;
     result.ptbRateHz = result.ptb.valid ? boundedRandom(sampleElapsedMs, 4, 100.0, 135.0) : 0.0;
-    result.hmpRateHz = result.hmp.valid ? boundedRandom(sampleElapsedMs, 5, 100.0, 135.0) : 0.0;
+    result.hc2aRateHz = result.hc2a.valid ? boundedRandom(sampleElapsedMs, 5, 100.0, 135.0) : 0.0;
     result.lidarRateHz = result.lidar.valid ? boundedRandom(sampleElapsedMs, 6, 120.0, 180.0) : 0.0;
     result.temperatureRateHz = result.temperature.valid ? boundedRandom(sampleElapsedMs, 7, 100.0, 130.0) : 0.0;
     result.waveformFeatureRateHz = waveFresh ? boundedRandom(sampleElapsedMs, 8, 110.0, 160.0) : 0.0;
@@ -731,7 +731,7 @@ int UiTestDataModel::deviceIndex(SkyDeviceId device)
     {
     case SkyDeviceId::Epsilon: return 0;
     case SkyDeviceId::Ptb: return 1;
-    case SkyDeviceId::Hmp: return 2;
+    case SkyDeviceId::Hc2a: return 2;
     case SkyDeviceId::Lidar: return 3;
     case SkyDeviceId::WaveTcp: return 4;
     case SkyDeviceId::TemperatureController: return 5;

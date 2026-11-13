@@ -117,8 +117,8 @@ QString skyDeviceIdName(SkyDeviceId id)
         return QStringLiteral("epsilon");
     case SkyDeviceId::Ptb:
         return QStringLiteral("ptb");
-    case SkyDeviceId::Hmp:
-        return QStringLiteral("hmp");
+    case SkyDeviceId::Hc2a:
+        return QStringLiteral("hc2a");
     case SkyDeviceId::Lidar:
         return QStringLiteral("lidar");
     case SkyDeviceId::WaveTcp:
@@ -263,7 +263,7 @@ bool skyDeviceIdFromValue(quint8 value, SkyDeviceId& id)
         id = SkyDeviceId::Ptb;
         return true;
     case 3:
-        id = SkyDeviceId::Hmp;
+        id = SkyDeviceId::Hc2a;
         return true;
     case 4:
         id = SkyDeviceId::Lidar;

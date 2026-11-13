@@ -84,11 +84,14 @@ int main(int argc,char **argv) {
     require(c.adcRateHz==1000000 && c.dlia[0].outputRateHz==10000 && c.dlia[1].mode==3,"shared ADC / DLIA defaults");
     require(c.wms[0].scanMilliHz==100000 && c.wms[1].scanAmplitude==107374182,"WMS units and defaults");
     require(c.dac[0].deviceCtrl==0x312 && c.dac[1].spiClockHz==20000000 && c.ai8.slaveAddress==1 && c.ai8.channel==1,"DAC / AI8 safe defaults");
-    require(c.ai8.scan && page.findChild<QCheckBox*>("fpgaAi8Scan")->isChecked(),"AI8 eight-channel scan is selected by default");
+    require(!c.ai8.scan && !page.findChild<QCheckBox*>("fpgaAi8Scan")->isChecked(),"AI8 defaults to the firmware's selected single channel");
     auto oldAi8=c.toJson();auto ai8=oldAi8.value("ai8").toObject();ai8.remove("scan");oldAi8["ai8"]=ai8;
-    require(FpgaControlConfig::fromJson(oldAi8).ai8.scan,"configuration without a scan preference defaults to all channels");
+    require(!FpgaControlConfig::fromJson(oldAi8).ai8.scan,"configuration without a scan preference defaults to the selected channel");
     ai8["scan"]=false;oldAi8["ai8"]=ai8;
     require(!FpgaControlConfig::fromJson(oldAi8).ai8.scan,"explicit single-channel preference remains supported");
+    auto oldProbe=c.toJson();oldProbe["sensorParameters"]=QJsonObject{{"65",QJsonObject{{"address",240},{"pressure",1013.25}}}};
+    const auto migratedProbe=FpgaControlConfig::fromJson(oldProbe).sensorParameters.value(0x41);
+    require(migratedProbe.value("address")==99 && !migratedProbe.contains("pressure"),"obsolete humidity address and pressure presets cannot reach HC2A");
     require(c.recordSensors && c.recordDlia && !c.recordRaw,"RAW recording off / sensor and DLIA recording");
     require(!page.findChild<QDoubleSpinBox*>("fpgaRawSeconds")&&!c.toJson().contains("rawWindowSeconds"),"RAW has no duration setting or persisted timer policy");
     auto legacy=c.toJson();legacy.insert("rawWindowSeconds",1);
@@ -111,6 +114,26 @@ int main(int argc,char **argv) {
     page.setHardwareValues({{0x6304,0},{0x6310,119}});require(bmpAddress->value()==118,"readback preserves staged settings");
     QJsonObject advancedRequest;QObject::connect(&page,&FpgaControlPage::operationRequested,&page,[&](const QJsonObject& request){advancedRequest=request;});
     page.findChild<QPushButton*>("fpgaTimeRearm")->click();require(advancedRequest.value("op")=="time" && advancedRequest.value("action")==2,"time control emits typed operation");page.setConnectionState(true,false);
+    require(!page.findChild<QPushButton*>("fpgaTimeTag")&&!page.findChild<QPushButton*>("fpgaHc2aSetPressure"),"UTC tag writes and historical pressure compensation have no control entry");
+    auto* hc2aAddress=page.findChild<QDoubleSpinBox*>("fpgaSensorParameter6114");
+    require(hc2aAddress && hc2aAddress->minimum()==0 && hc2aAddress->maximum()==99,"HC2A address editor includes discovery and address zero");
+    page.setHardwareValues({{0x1060,5},{0x104c,7},{0x1050,123},{0x1058,123456789},{0x6800,0x00480100},{0x6900,0x00490100}});
+    require(page.findChild<QLabel*>("fpgaPpsCalibrationStatus")->text().contains(QStringLiteral("未确认"))
+        && !page.findChild<QLabel*>("fpgaPpsCalibrationStatus")->text().contains("123456789"),"qualified PPS without UTC anchor never displays an absolute time");
+    require(page.findChild<QLabel*>("fpgaLcStatus")->text().contains(QStringLiteral("厂家命令协议尚未提供")),"LC status explains why vendor controls are unavailable");
+    auto* motorFrequency=page.findChild<QDoubleSpinBox*>("fpgaMotorFrequency");auto* motorSteps=page.findChild<QDoubleSpinBox*>("fpgaMotorSteps");
+    require(motorFrequency->minimum()==20 && motorFrequency->maximum()==400 && motorSteps->minimum()==-400 && motorSteps->maximum()==400
+        && !page.findChild<QDoubleSpinBox*>("fpgaMotorHigh") && !page.findChild<QDoubleSpinBox*>("fpgaMotorPolarity"),"DM422 exposes bounded motion and fixed timing/polarity");
+    int heartbeats=0;QObject::connect(&page,&FpgaControlPage::motorHeartbeatRequested,&page,[&]{++heartbeats;});
+    page.findChild<QPushButton*>("fpgaMotorEnable")->click();page.setConnectionState(true,true);
+    QElapsedTimer leaseTime;leaseTime.start();while(leaseTime.elapsed()<250){QCoreApplication::processEvents();QThread::msleep(1);}
+    require(heartbeats>0 && page.findChild<QPushButton*>("fpgaMotorStop")->isEnabled(),"live host lease continues while ordinary operations are busy and STOP remains enabled");
+    page.findChild<QPushButton*>("fpgaMotorStop")->click();const int stoppedHeartbeats=heartbeats;
+    leaseTime.restart();while(leaseTime.elapsed()<250){QCoreApplication::processEvents();QThread::msleep(1);}
+    require(heartbeats>stoppedHeartbeats && advancedRequest.value("action")==2,"normal STOP keeps the owner's holding heartbeat");
+    page.findChild<QPushButton*>("fpgaMotorDisable")->click();const int disabledHeartbeats=heartbeats;
+    leaseTime.restart();while(leaseTime.elapsed()<250){QCoreApplication::processEvents();QThread::msleep(1);}
+    require(heartbeats==disabledHeartbeats,"Disable ends host heartbeat ownership immediately");page.setConnectionState(true,false);
     int submitted=0;FpgaControlConfig requested;
     QObject::connect(&page,&FpgaControlPage::applyRequested,&page,[&](const FpgaControlConfig &v){++submitted;requested=v;});
     page.setConnectionState(true,false,"GP01");

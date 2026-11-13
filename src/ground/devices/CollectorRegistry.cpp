@@ -37,7 +37,7 @@ void CollectorRegistry::replaceAll(CollectorSet collectors, bool english)
     applyLanguage(collectors.gnss, english);
     applyLanguage(collectors.imu, english);
     applyLanguage(collectors.ptb, english);
-    applyLanguage(collectors.hmp, english);
+    applyLanguage(collectors.hc2a, english);
     applyLanguage(collectors.lidar, english);
     applyLanguage(collectors.temperature_controller, english);
     applyLanguage(collectors.ai8_temperature_controller, english);
@@ -73,7 +73,7 @@ bool CollectorRegistry::anyRunning() const
            (current.gnss && current.gnss->isRunning()) ||
            (current.imu && current.imu->isRunning()) ||
            (current.ptb && current.ptb->isRunning()) ||
-           (current.hmp && current.hmp->isRunning()) ||
+           (current.hc2a && current.hc2a->isRunning()) ||
            (current.lidar && current.lidar->isRunning()) ||
            (current.temperature_controller && current.temperature_controller->isRunning()) ||
            (current.ai8_temperature_controller && current.ai8_temperature_controller->isRunning());
@@ -86,7 +86,7 @@ void CollectorRegistry::setEnglish(bool english)
     applyLanguage(current.gnss, english);
     applyLanguage(current.imu, english);
     applyLanguage(current.ptb, english);
-    applyLanguage(current.hmp, english);
+    applyLanguage(current.hc2a, english);
     applyLanguage(current.lidar, english);
     applyLanguage(current.temperature_controller, english);
     applyLanguage(current.ai8_temperature_controller, english);
@@ -107,7 +107,7 @@ void CollectorRegistry::stopAll()
     stopCollector(current.gnss);
     stopCollector(current.imu);
     stopCollector(current.ptb);
-    stopCollector(current.hmp);
+    stopCollector(current.hc2a);
     stopCollector(current.lidar);
     stopCollector(current.temperature_controller);
     stopCollector(current.ai8_temperature_controller);

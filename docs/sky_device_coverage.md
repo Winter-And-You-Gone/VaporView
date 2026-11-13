@@ -11,8 +11,8 @@
 | EPSILON | PASS | PASS | PASS | PASS | PASS | PASS | 同一个 `EpsilonConfigPanel` / RTK UI，经 `EpsilonDeviceSession` 路由 Local 或 Remote backend。 |
 | PTB210 | PASS | PASS | N/A | N/A | PASS | PASS | 压力槽串口/频率配置，设备内部参数页 N/A。 |
 | BMP390 | PASS | PASS | N/A | N/A | PASS | PASS | 独立 `bmp390` 配置与设备 ID 9；USB 串口文本桥，内部气压不写 PTB 环境槽。 |
-| HMP3 | PASS | PASS | N/A | N/A | PASS | PASS | 温湿度槽串口/频率配置，设备内部参数页 N/A。 |
-| SHT45 | PASS | PASS | N/A | N/A | PASS | PASS | 独立 `sht45` 配置与设备 ID 10；USB 串口文本桥，内部温湿度不写 HMP 环境槽。 |
+| HC2A | PASS | PASS | N/A | N/A | PASS | PASS | 温湿度槽串口/频率配置，设备内部参数页 N/A。 |
+| SHT45 | PASS | PASS | N/A | N/A | PASS | PASS | 独立 `sht45` 配置与设备 ID 10；USB 串口文本桥，内部温湿度不写 HC2A 环境槽。 |
 | TFA1500-L | PASS | PASS | N/A | N/A | PASS | PASS | 当前 Local 没有真实用户可修改的内部参数。 |
 | RD105 | PASS | PASS | PASS | PASS | PASS | PASS | 同一个 `TemperatureControllerPanel`，经 `Rd105DeviceSession` 路由 Local 或 Remote backend。 |
 | AI-8288 / AI-8 | PASS | PASS | PASS | PASS | PASS | PASS | 同一个 `Ai8TemperatureControllerPanel`，写入后 Sky 端回读确认。 |
@@ -87,11 +87,11 @@ collector   |
 ## SkyConfig
 
 - `epsilon` stores `enabled`, `port`, `baud`, and `packet_rates`; legacy `frequency_hz` is accepted when reading older files but is no longer serialized. `packet_rates` is a stable array of `{packet_id, rate_hz}` entries for the EPSILON output profile. If the field is absent, the recommended profile is used; Ground falls back to the legacy `RemoteEpsilonPacketProfile` until the first SkyConfig read/apply migrates it.
-- Environmental pressure and temperature/humidity remain PTB210 (`ptb`) and HMP3 (`hmp`). Older alternate source fields are accepted for migration and normalized to these fixed environmental identities.
+- Environmental pressure and temperature/humidity remain PTB210 (`ptb`) and HC2A (`hc2a`). Older alternate source fields are accepted for migration and normalized to these fixed environmental identities.
 - `bmp390` / `sht45` independently store `enabled`, `port`, `baud`, and `frequency_hz`; absent legacy sections default disabled, at 115200 baud and 1 Hz receive updates. These serial text bridges have no generic UART command for changing physical I2C sampling.
 - `ai8_temperature_controller` is a first-class SkyConfig section with `enabled`, `port`, `baud`, `frequency_hz`, and `slave_address`; missing legacy section defaults disabled.
 - `epsilon.rtcm` / legacy `epsilon_rtcm` stores Sky-side RTCM forwarding state: `enabled`, EPSILON `device_port_index`, Sky `forward_port`, and `baud`; missing legacy values default disabled and do not open a serial port.
-- Internal bridge configuration changes participate in `SkyConfigDiff` and reconfigure only that independent collector, preserving PTB/HMP and the other internal device.
+- Internal bridge configuration changes participate in `SkyConfigDiff` and reconfigure only that independent collector, preserving PTB/HC2A and the other internal device.
 
 ## Telemetry And Recording
 

@@ -12,7 +12,7 @@
 
 原因：
 
-- VaporView 已有 Epsilon、PTB、HMP、Lidar 等串口设备采集器与面板。
+- VaporView 已有 Epsilon、PTB、HC2A、Lidar 等串口设备采集器与面板。
 - 温控器也是串口设备，适合接入 `DataCollector`、`SkyDeviceManager`、`SkyConfig`。
 - 温控器有主动控制命令，必须和连接状态、配置、日志、安全确认绑定，避免独立窗口产生状态割裂。
 - 官方软件的窗口结构可作为温控面板布局参考，但交互应保持 VaporView 当前风格。

@@ -130,8 +130,8 @@ VaporView::SkyConfig testConfig()
     config.epsilon = {true, QStringLiteral("/dev/test-epsilon"), 921600};
     config.ptb = {true, QStringLiteral("/dev/test-ptb210"), 9600, 20.0};
     config.ptb.source = QStringLiteral("ptb210");
-    config.hmp = {true, QStringLiteral("/dev/test-hmp3"), 19200, 20.0};
-    config.hmp.source = QStringLiteral("hmp3");
+    config.hc2a = {true, QStringLiteral("/dev/test-hc2a"), 19200, 20.0};
+    config.hc2a.source = QStringLiteral("hc2a");
     config.bmp390={true,QStringLiteral("/dev/test-internal-bmp"),115200,1.0,{}};
     config.sht45={true,QStringLiteral("/dev/test-internal-sht"),115200,1.0,{}};
     config.lidar = {true, QStringLiteral("/dev/test-lidar"), 500000, 100.0};
@@ -1074,8 +1074,8 @@ int main(int argc, char **argv)
     require(receivedConfig.value(QStringLiteral("ptb")).toObject().value(QStringLiteral("source")).toString() ==
                 QStringLiteral("ptb210"),
             "initial pressure source returned");
-    require(receivedConfig.value(QStringLiteral("hmp")).toObject().value(QStringLiteral("source")).toString() ==
-                QStringLiteral("hmp3"),
+    require(receivedConfig.value(QStringLiteral("hc2a")).toObject().value(QStringLiteral("source")).toString() ==
+                QStringLiteral("hc2a"),
             "initial humidity source returned");
     require(!receivedConfig.value(QStringLiteral("epsilon")).toObject().contains(QStringLiteral("frequency_hz")),
             "GetSkyConfig omits EPSILON single frequency");
@@ -1088,9 +1088,9 @@ int main(int argc, char **argv)
     config.ptb.source = QStringLiteral("bmp390");
     config.ptb.port = QStringLiteral("/dev/test-bmp390");
     config.ptb.baud_rate = 115200;
-    config.hmp.source = QStringLiteral("sht45");
-    config.hmp.port = QStringLiteral("/dev/test-sht45");
-    config.hmp.baud_rate = 115200;
+    config.hc2a.source = QStringLiteral("sht45");
+    config.hc2a.port = QStringLiteral("/dev/test-sht45");
+    config.hc2a.baud_rate = 115200;
     config.temperature_controller.port = QStringLiteral("/dev/test-rd105");
     config.temperature_controller.slave_address = 3;
     config.ai8_temperature_controller.port = QStringLiteral("/dev/test-ai8-updated");
@@ -1113,11 +1113,11 @@ int main(int argc, char **argv)
                        QStringLiteral("ptb210");
             }, &process),
             "GetSkyConfig migrates legacy BMP390 environment selection to PTB210");
-    require(receivedConfig.value(QStringLiteral("hmp")).toObject().value(QStringLiteral("source")).toString() ==
-                QStringLiteral("hmp3"),
-            "GetSkyConfig migrates legacy SHT45 environment selection to HMP");
+    require(receivedConfig.value(QStringLiteral("hc2a")).toObject().value(QStringLiteral("source")).toString() ==
+                QStringLiteral("hc2a"),
+            "GetSkyConfig migrates legacy SHT45 environment selection to HC2A");
     require(receivedConfig.value(QStringLiteral("ptb")).toObject().value(QStringLiteral("baud")).toInt() == 9600 &&
-                receivedConfig.value(QStringLiteral("hmp")).toObject().value(QStringLiteral("baud")).toInt() == 19200,
+                receivedConfig.value(QStringLiteral("hc2a")).toObject().value(QStringLiteral("baud")).toInt() == 19200,
             "legacy internal sensor serial settings do not reach environmental instruments");
     require(receivedConfig.value(QStringLiteral("ai8_temperature_controller")).toObject()
                 .value(QStringLiteral("slave_address")).toInt() == 7,
@@ -1133,7 +1133,7 @@ int main(int argc, char **argv)
     require(waitUntil([&]() {
                 return hasConnectedDevice(lastStatus, VaporView::SkyDeviceId::Epsilon) &&
                        hasConnectedDevice(lastStatus, VaporView::SkyDeviceId::Ptb) &&
-                       hasConnectedDevice(lastStatus, VaporView::SkyDeviceId::Hmp) &&
+                       hasConnectedDevice(lastStatus, VaporView::SkyDeviceId::Hc2a) &&
                        hasConnectedDevice(lastStatus, VaporView::SkyDeviceId::Lidar) &&
                        hasConnectedDevice(lastStatus, VaporView::SkyDeviceId::TemperatureController) &&
                        hasConnectedDevice(lastStatus, VaporView::SkyDeviceId::Ai8TemperatureController) &&
@@ -1467,8 +1467,8 @@ int main(int argc, char **argv)
                        QStringLiteral("ptb210");
             }, &process),
             "Restarted SkyCore reloads saved pressure source");
-    require(receivedConfig.value(QStringLiteral("hmp")).toObject().value(QStringLiteral("source")).toString() ==
-                QStringLiteral("hmp3"),
+    require(receivedConfig.value(QStringLiteral("hc2a")).toObject().value(QStringLiteral("source")).toString() ==
+                QStringLiteral("hc2a"),
             "Restarted SkyCore reloads saved humidity source");
     require(receivedConfig.value(QStringLiteral("ai8_temperature_controller")).toObject()
                 .value(QStringLiteral("port")).toString() == QStringLiteral("/dev/test-ai8-updated"),

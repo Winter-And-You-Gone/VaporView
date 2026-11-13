@@ -93,6 +93,7 @@ bool FpgaDeviceSession::open(const QString& locator, QString *errorMessage)
     waveformAssembler_.clear();
     commandQueue_.clear();
     pendingCommand_.reset();
+    motorSafetyCommands_.clear();
     capabilities_ = {};
     if (!transport_->open(locator))
     {
@@ -115,6 +116,7 @@ void FpgaDeviceSession::close()
     pollTimer_.stop();
     commandQueue_.clear();
     pendingCommand_.reset();
+    motorSafetyCommands_.clear();
     parser_ = FpgaVlp1::StreamParser();
     flushWaveforms();
     waveformAssembler_.clear();
@@ -194,6 +196,15 @@ void FpgaDeviceSession::poll()
     // (which can be much coarser on Windows). Empty reads back off as before.
     pollTimer_.setInterval(drained ? 1 : 0);
 
+    const auto safetySequences = motorSafetyCommands_.keys();
+    for (quint32 sequence : safetySequences) {
+        const auto command = motorSafetyCommands_.constFind(sequence);
+        if (command != motorSafetyCommands_.cend() && command->timer.elapsed() > 500) {
+            motorSafetyCommands_.remove(sequence);
+            emit commandTimedOut(sequence, 12);
+        }
+    }
+
     if (pendingCommand_ && pendingCommand_->timer.elapsed() > commandTimeoutMs_)
     {
         const auto command = pendingCommand_->command;
@@ -222,6 +233,7 @@ void FpgaDeviceSession::cancelQueuedCommands()
 {
     commandQueue_.clear();
     pendingCommand_.reset();
+    motorSafetyCommands_.clear();
 }
 
 void FpgaDeviceSession::ingestReplayBytes(const QByteArray& bytes)
@@ -355,6 +367,31 @@ quint32 FpgaDeviceSession::managementAction(quint16 message, quint16 source, con
     return enqueue(source,message,FpgaVlp1::buildFrame(FpgaVlp1::FrameType::Command,sequence,source,message,toBytes(payload)));
 }
 
+quint32 FpgaDeviceSession::motorSafetyAction(quint32 action)
+{
+    if (!isOpen() || (action != 2 && action != 4 && action != 5)) return 0;
+    // At most one outstanding heartbeat. Dropping a heartbeat is safer than
+    // replaying stale leases after a delayed USB transaction.
+    if (action == 5) for (const auto& pending : motorSafetyCommands_)
+        if (readU32(pending.command.bytes.constData() + 40) == 5) return 0;
+    QByteArray payload; appendU32(payload, action); appendU32(payload, 0);
+    const quint32 sequence = nextSequence_++;
+    const auto wire = FpgaVlp1::buildFrame(FpgaVlp1::FrameType::Command, sequence, 0x47, 12, toBytes(payload));
+    PendingCommand pending;
+    pending.command = {sequence, 0x47, 12, QByteArray(reinterpret_cast<const char*>(wire.data()), int(wire.size()))};
+    pending.timer.start();
+    const auto bytes = pending.command.bytes;
+    motorSafetyCommands_.insert(sequence, std::move(pending));
+    if (transport_->write(bytes) != bytes.size()) {
+        motorSafetyCommands_.remove(sequence);
+        emit errorOccurred(QStringLiteral("FPGA motor safety command write failed"));
+        return 0;
+    }
+    emit commandSent(bytes);
+    QMetaObject::invokeMethod(this, &FpgaDeviceSession::poll, Qt::QueuedConnection);
+    return sequence;
+}
+
 quint32 FpgaDeviceSession::sensorAction(quint32 action, quint32 value, quint16 source)
 {
     QByteArray payload;
@@ -465,15 +502,15 @@ void FpgaDeviceSession::processFrame(const FpgaVlp1::Frame& frame)
             data.valid = reading.validity.measurement;
             emit ptbDataUpdated(data);
         }
-        else if (reading.kind == FpgaSensor::SensorKind::Hmp &&
+        else if (reading.kind == FpgaSensor::SensorKind::Hc2a &&
                  reading.temperatureC && reading.humidityPct)
         {
-            HmpData data;
+            Hc2aData data;
             data.temperature = *reading.temperatureC;
             data.humidity = *reading.humidityPct;
             data.timestamp = now;
             data.valid = reading.validity.measurement;
-            emit hmpDataUpdated(data);
+            emit hc2aDataUpdated(data);
         }
         else if (reading.kind == FpgaSensor::SensorKind::Tfa1500 && reading.distanceMm)
         {
@@ -486,6 +523,16 @@ void FpgaDeviceSession::processFrame(const FpgaVlp1::Frame& frame)
         return;
     }
 
+    const auto safety = motorSafetyCommands_.constFind(frame.header.sequence);
+    if (safety != motorSafetyCommands_.cend() && FpgaVlp1::matchesResponse(frame,
+            {safety->command.sequence, safety->command.source, safety->command.message})) {
+        quint32 status = std::numeric_limits<quint32>::max();
+        const bool success = payload.size() == 4 && FpgaVlp1::responseSucceeded(frame, &status);
+        const auto sequence = safety->command.sequence;
+        motorSafetyCommands_.remove(sequence);
+        emit commandCompleted(sequence, 12, success, status, payload);
+        return;
+    }
     if (!pendingCommand_)
         return;
     const FpgaVlp1::ResponseMatch expected{

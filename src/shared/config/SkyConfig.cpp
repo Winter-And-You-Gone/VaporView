@@ -651,8 +651,8 @@ SkyConfig SkyConfig::defaults()
     config.epsilon_rtcm = {false, 2, QString(), 115200};
     config.ptb = {true, QStringLiteral("COM5"), 9600, 20.0};
     config.ptb.source = QStringLiteral("ptb210");
-    config.hmp = {true, QStringLiteral("COM6"), 19200, 20.0};
-    config.hmp.source = QStringLiteral("hmp3");
+    config.hc2a = {true, QStringLiteral("COM6"), 19200, 1.0};
+    config.hc2a.source = QStringLiteral("hc2a");
     config.lidar = {true, QStringLiteral("COM7"), 500000, 100.0};
     config.temperature_controller = {false, QStringLiteral("COM9"), 38400, 5.0, 1};
     config.ai8_temperature_controller = {false, QStringLiteral("COM10"), 19200, 5.0, 1};
@@ -661,8 +661,8 @@ SkyConfig SkyConfig::defaults()
     config.epsilon_rtcm = {false, 2, QString(), 115200};
     config.ptb = {true, QStringLiteral("/dev/ttyBARO"), 9600, 20.0};
     config.ptb.source = QStringLiteral("ptb210");
-    config.hmp = {true, QStringLiteral("/dev/ttyHMP"), 19200, 20.0};
-    config.hmp.source = QStringLiteral("hmp3");
+    config.hc2a = {true, QStringLiteral("/dev/ttyHC2A"), 19200, 1.0};
+    config.hc2a.source = QStringLiteral("hc2a");
     config.lidar = {true, QStringLiteral("/dev/ttyLidar"), 500000, 100.0};
     config.temperature_controller = {false, QStringLiteral("/dev/ttyRD105"), 38400, 5.0, 1};
     config.ai8_temperature_controller = {false, QStringLiteral("/dev/ttyAI8"), 19200, 5.0, 1};
@@ -704,9 +704,9 @@ void SkyConfig::normalizeEnvironmentalDevices()
     // Migrate old interchangeable sensor presets without applying their serial
     // settings to the environmental instruments.
     if (ptb.source == QStringLiteral("bmp390")) ptb.baud_rate = 9600;
-    if (hmp.source == QStringLiteral("sht45")) hmp.baud_rate = 19200;
+    if (hc2a.source == QStringLiteral("sht45")) hc2a.baud_rate = 19200;
     ptb.source = QStringLiteral("ptb210");
-    hmp.source = QStringLiteral("hmp3");
+    hc2a.source = QStringLiteral("hc2a");
     fpga.configuration.pressureSource = 0x40;
 }
 
@@ -759,10 +759,15 @@ bool SkyConfig::fromJson(const QJsonObject& object, SkyConfig& config, QString *
         (!readSectionObject(object, QStringLiteral("ptb"), section, errorMessage) ||
          !serialFromJson(section, next.ptb, QStringLiteral("ptb"), errorMessage))) return false;
     if (next.ptb.source.isEmpty()) next.ptb.source = QStringLiteral("ptb210");
-    if (object.contains("hmp") &&
-        (!readSectionObject(object, QStringLiteral("hmp"), section, errorMessage) ||
-         !serialFromJson(section, next.hmp, QStringLiteral("hmp"), errorMessage))) return false;
-    if (next.hmp.source.isEmpty()) next.hmp.source = QStringLiteral("hmp3");
+    // Older profiles used the environmental sensor slot named hmp. Prefer the
+    // current HC2A section, and migrate legacy settings on read only.
+    const QString humiditySection = object.contains("hc2a") ? QStringLiteral("hc2a") : QStringLiteral("hmp");
+    if (object.contains(humiditySection) &&
+        (!readSectionObject(object, humiditySection, section, errorMessage) ||
+         !serialFromJson(section, next.hc2a, humiditySection, errorMessage))) return false;
+    if (next.hc2a.source == QStringLiteral("hmp3") || next.hc2a.source == QStringLiteral("hmp"))
+        next.hc2a.source = QStringLiteral("hc2a");
+    if (next.hc2a.source.isEmpty()) next.hc2a.source = QStringLiteral("hc2a");
     for (const auto &name : {QStringLiteral("bmp390"),QStringLiteral("sht45")}) {
         auto &bridge=name==QStringLiteral("bmp390")?next.bmp390:next.sht45;
         if(object.contains(name)&&(!readSectionObject(object,name,section,errorMessage)
@@ -805,7 +810,7 @@ QJsonObject SkyConfig::toJson() const
     epsilonObject["rtcm"] = epsilonRtcmToJson(epsilon_rtcm);
     root["epsilon"] = epsilonObject;
     root["ptb"] = serialToJson(ptb);
-    root["hmp"] = serialToJson(hmp);
+    root["hc2a"] = serialToJson(hc2a);
     root["bmp390"] = serialToJson(bmp390);
     root["sht45"] = serialToJson(sht45);
     root["lidar"] = serialToJson(lidar);
@@ -834,10 +839,10 @@ bool SkyConfig::validate(QString *errorMessage) const
                         QStringLiteral("ptb210"),
                         {QStringLiteral("ptb210"), QStringLiteral("bmp390")},
                         errorMessage) ||
-        !validateSource(QStringLiteral("hmp"),
-                        hmp.source,
-                        QStringLiteral("hmp3"),
-                        {QStringLiteral("hmp3"), QStringLiteral("sht45")},
+        !validateSource(QStringLiteral("hc2a"),
+                        hc2a.source,
+                        QStringLiteral("hc2a"),
+                        {QStringLiteral("hc2a"), QStringLiteral("sht45")},
                         errorMessage))
     {
         return false;
@@ -845,15 +850,15 @@ bool SkyConfig::validate(QString *errorMessage) const
     const QString pressureSource = ptb.source.trimmed().isEmpty()
         ? QStringLiteral("ptb210")
         : ptb.source.trimmed();
-    const QString humiditySource = hmp.source.trimmed().isEmpty()
-        ? QStringLiteral("hmp3")
-        : hmp.source.trimmed();
+    const QString humiditySource = hc2a.source.trimmed().isEmpty()
+        ? QStringLiteral("hc2a")
+        : hc2a.source.trimmed();
     return validateSupportedBaud(QStringLiteral("ptb"),
                                  ptb.baud_rate,
                                  pressureSensorBaudCapabilities(pressureSource),
                                  errorMessage) &&
-           validateSupportedBaud(QStringLiteral("hmp"),
-                                 hmp.baud_rate,
+           validateSupportedBaud(QStringLiteral("hc2a"),
+                                 hc2a.baud_rate,
                                  humiditySensorBaudCapabilities(humiditySource),
                                  errorMessage) &&
            validateSupportedBaud(QStringLiteral("lidar"),
@@ -863,7 +868,7 @@ bool SkyConfig::validate(QString *errorMessage) const
            epsilonFromJson(epsilonToJson(epsilon), copy.epsilon, errorMessage) &&
            epsilonRtcmFromJson(epsilonRtcmToJson(epsilon_rtcm), copy.epsilon_rtcm, errorMessage) &&
            serialFromJson(serialToJson(ptb), copy.ptb, QStringLiteral("ptb"), errorMessage) &&
-           serialFromJson(serialToJson(hmp), copy.hmp, QStringLiteral("hmp"), errorMessage) &&
+           serialFromJson(serialToJson(hc2a), copy.hc2a, QStringLiteral("hc2a"), errorMessage) &&
            serialFromJson(serialToJson(bmp390), copy.bmp390, QStringLiteral("bmp390"), errorMessage) &&
            serialFromJson(serialToJson(sht45), copy.sht45, QStringLiteral("sht45"), errorMessage) &&
            std::isfinite(bmp390.frequency_hz) && bmp390.frequency_hz>=1 && bmp390.frequency_hz<=20 && std::floor(bmp390.frequency_hz)==bmp390.frequency_hz &&
@@ -886,7 +891,7 @@ SkyConfigDiff SkyConfig::diff(const SkyConfig& other) const
     result.epsilon_packet_rates_changed = epsilon.packet_rates != other.epsilon.packet_rates;
     result.epsilon_rtcm_changed = epsilon_rtcm != other.epsilon_rtcm;
     result.ptb_changed = ptb != other.ptb;
-    result.hmp_changed = hmp != other.hmp;
+    result.hc2a_changed = hc2a != other.hc2a;
     result.bmp390_changed = bmp390 != other.bmp390;
     result.sht45_changed = sht45 != other.sht45;
     result.lidar_changed = lidar != other.lidar;

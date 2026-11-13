@@ -16,7 +16,7 @@ struct SkyDashboardSnapshot
     quint64 uptime_ms = 0;
     EpsilonData epsilon;
     PtbData ptb;
-    HmpData hmp;
+    Hc2aData hc2a;
     LidarData lidar;
     TemperatureControllerData temperature_controller;
     Ai8TemperatureControllerProtocol::LiveData ai8_temperature_controller;
@@ -27,7 +27,7 @@ struct SkyDashboardSnapshot
     TelemetryStatus telemetry_status;
     double epsilon_acquisition_rate_hz = 0.0;
     double ptb_acquisition_rate_hz = 0.0;
-    double hmp_acquisition_rate_hz = 0.0;
+    double hc2a_acquisition_rate_hz = 0.0;
     double lidar_acquisition_rate_hz = 0.0;
     double wave_tcp_acquisition_rate_hz = 0.0;
     double devices_csv_recording_rate_hz = 0.0;
@@ -37,7 +37,7 @@ struct SkyDashboardSnapshot
     double waveform_downsampled_rate_hz = 0.0;
     bool epsilon_stale = true;
     bool ptb_stale = true;
-    bool hmp_stale = true;
+    bool hc2a_stale = true;
     bool lidar_stale = true;
     bool temperature_controller_stale = true;
     bool ai8_temperature_controller_stale = true;

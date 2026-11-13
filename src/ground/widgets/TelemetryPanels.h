@@ -172,13 +172,13 @@ private:
     bool is_english_ = false;
 };
 
-class HmpPanel : public QWidget
+class Hc2aPanel : public QWidget
 {
     Q_OBJECT
 
 public:
-    explicit HmpPanel(QWidget *parent = nullptr);
-    void updateData(const VaporView::HmpData& hmp_data);
+    explicit Hc2aPanel(QWidget *parent = nullptr);
+    void updateData(const VaporView::Hc2aData& hc2a_data);
     void updateRate(double hz);
     void setEnglish(bool english);
 

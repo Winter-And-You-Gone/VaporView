@@ -1379,7 +1379,7 @@ void PtbPanel::updateData(const VaporView::PtbData& ptb_data)
     setMinimumNumericLabelWidth(pressure_label_, {QStringLiteral("-1100.00 hPa"), QStringLiteral("--- hPa")}, 4);
 }
 
-HmpPanel::HmpPanel(QWidget *parent)
+Hc2aPanel::Hc2aPanel(QWidget *parent)
     : QWidget(parent)
     , rate_label_(nullptr)
     , humidity_rate_label_(nullptr)
@@ -1395,7 +1395,7 @@ HmpPanel::HmpPanel(QWidget *parent)
     setupUi();
 }
 
-void HmpPanel::setupUi()
+void Hc2aPanel::setupUi()
 {
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
     auto *layout = new QVBoxLayout(this);
@@ -1462,7 +1462,7 @@ void HmpPanel::setupUi()
     setEnglish(false);
 }
 
-void HmpPanel::updateRate(double hz)
+void Hc2aPanel::updateRate(double hz)
 {
     const QString rateText = (hz > 0.0 && std::isfinite(hz))
         ? fixedDecimalWithUnit(hz, 1, 6, QStringLiteral("Hz"))
@@ -1477,7 +1477,7 @@ void HmpPanel::updateRate(double hz)
     }
 }
 
-void HmpPanel::setEnglish(bool english)
+void Hc2aPanel::setEnglish(bool english)
 {
     is_english_ = english;
     setLocalizedFixedTextLabel(temp_lbl_, english, QStringLiteral("Environmental temperature:"), QStringLiteral("环境温度:"));
@@ -1492,27 +1492,27 @@ void HmpPanel::setEnglish(bool english)
     }
 }
 
-void HmpPanel::updateData(const VaporView::HmpData& hmp_data)
+void Hc2aPanel::updateData(const VaporView::Hc2aData& hc2a_data)
 {
-    if (hmp_data.valid)
+    if (hc2a_data.valid)
     {
-        temperature_label_->setText(fixedDecimalWithUnit(hmp_data.temperature, 1, 5, QStringLiteral("°C")));
-        humidity_label_->setText(fixedDecimalWithUnit(hmp_data.humidity, 1, 5, QStringLiteral("%RH")));
+        temperature_label_->setText(fixedDecimalWithUnit(hc2a_data.temperature, 1, 5, QStringLiteral("°C")));
+        humidity_label_->setText(fixedDecimalWithUnit(hc2a_data.humidity, 1, 5, QStringLiteral("%RH")));
         setNumericLabelValidity(temperature_label_, true);
         setNumericLabelValidity(humidity_label_, true);
         if (temperature_trend_plot_ &&
-            shouldAppendEnvironmentSample(hmp_data.timestamp,
+            shouldAppendEnvironmentSample(hc2a_data.timestamp,
                                           last_temperature_timestamp_,
                                           has_temperature_timestamp_))
         {
-            temperature_trend_plot_->appendSample(hmp_data.temperature, hmp_data.timestamp);
+            temperature_trend_plot_->appendSample(hc2a_data.temperature, hc2a_data.timestamp);
         }
         if (humidity_trend_plot_ &&
-            shouldAppendEnvironmentSample(hmp_data.timestamp,
+            shouldAppendEnvironmentSample(hc2a_data.timestamp,
                                           last_humidity_timestamp_,
                                           has_humidity_timestamp_))
         {
-            humidity_trend_plot_->appendSample(hmp_data.humidity, hmp_data.timestamp);
+            humidity_trend_plot_->appendSample(hc2a_data.humidity, hc2a_data.timestamp);
         }
     }
     else

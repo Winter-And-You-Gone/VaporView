@@ -9,6 +9,7 @@
 #include <QElapsedTimer>
 #include <QSet>
 #include <QWidget>
+#include <QTimer>
 #include <QJsonObject>
 #include <functional>
 #include <memory>
@@ -73,6 +74,7 @@ signals:
     void configurationChanged(const FpgaControlConfig &config);
     void refreshRequested();
     void operationRequested(const QJsonObject& request);
+    void motorHeartbeatRequested();
     void acquisitionRequested(bool enable);
     void waveformRequested(int channel, bool enable);
     void dacRequested(int channel, bool enable);
@@ -141,6 +143,9 @@ private:
     QAbstractButton *refresh_ = nullptr;
     QAbstractButton *record_ = nullptr;
     QLabel *status_ = nullptr, *recordStatus_ = nullptr, *managementStatus_ = nullptr;
+    QLabel *calibrationStatus_ = nullptr, *motorStatus_ = nullptr, *lcStatus_ = nullptr;
+    QTimer motorHeartbeatTimer_;
+    bool motorLeaseRequested_ = false;
     QPlainTextEdit *diagnostics_ = nullptr;
     QComboBox *backend_ = nullptr;
     std::array<QComboBox*,2> cutoff_{{nullptr,nullptr}};

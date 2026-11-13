@@ -52,17 +52,17 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
         state_->current_lidar_.error_message = remoteNoDataText(state_->is_english_).toStdString();
     }
 
-    state_->current_hmp_ = VaporView::HmpData();
+    state_->current_hc2a_ = VaporView::Hc2aData();
     if (!isFpgaRelayPath() && hasFlag(VaporView::BasicHasTemperature) && hasFlag(VaporView::BasicHasHumidity))
     {
-        state_->current_hmp_.valid = true;
-        state_->current_hmp_.timestamp = now;
-        state_->current_hmp_.temperature = telemetry.temperature_c;
-        state_->current_hmp_.humidity = telemetry.humidity_percent;
+        state_->current_hc2a_.valid = true;
+        state_->current_hc2a_.timestamp = now;
+        state_->current_hc2a_.temperature = telemetry.temperature_c;
+        state_->current_hc2a_.humidity = telemetry.humidity_percent;
     }
     else
     {
-        state_->current_hmp_.error_message = remoteNoDataText(state_->is_english_).toStdString();
+        state_->current_hc2a_.error_message = remoteNoDataText(state_->is_english_).toStdString();
     }
 
     state_->current_ptb_ = VaporView::PtbData();
@@ -226,10 +226,10 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
                 state_->current_ptb_ = VaporView::PtbData();
                 state_->current_ptb_.error_message = remoteDisconnectedText(state_->is_english_).toStdString();
             }
-            else if (item.device_id == VaporView::SkyDeviceId::Hmp)
+            else if (item.device_id == VaporView::SkyDeviceId::Hc2a)
             {
-                state_->current_hmp_ = VaporView::HmpData();
-                state_->current_hmp_.error_message = remoteDisconnectedText(state_->is_english_).toStdString();
+                state_->current_hc2a_ = VaporView::Hc2aData();
+                state_->current_hc2a_.error_message = remoteDisconnectedText(state_->is_english_).toStdString();
             }
             else if (item.device_id == VaporView::SkyDeviceId::Lidar)
             {

@@ -233,6 +233,11 @@ target_include_directories(temperature_controller_protocol_test PRIVATE
 target_link_libraries(temperature_controller_protocol_test PRIVATE vaporview_sky_core)
 vaporview_add_test(NAME temperature_controller_protocol_test COMMAND temperature_controller_protocol_test)
 
+add_executable(hc2a_protocol_test hc2a_protocol_test.cpp)
+target_include_directories(hc2a_protocol_test PRIVATE ${CMAKE_SOURCE_DIR}/include)
+vaporview_add_test(NAME hc2a_protocol_test COMMAND hc2a_protocol_test)
+set_tests_properties(hc2a_protocol_test PROPERTIES LABELS "fast;unit;protocol" TIMEOUT 30)
+
 add_executable(serial_baud_rate_test
     ${CMAKE_CURRENT_SOURCE_DIR}/serial_baud_rate_test.cpp
 )

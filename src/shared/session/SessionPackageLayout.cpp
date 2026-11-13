@@ -124,9 +124,9 @@ const SessionPathAliases& sessionPathAliases(SessionFileKind kind)
          {QStringLiteral("pressure_raw"), QStringLiteral("ptb_raw")},
          {QStringLiteral("pressure"), QStringLiteral("ptb")}},
         {layout.temperatureHumidityRawPath,
-         {QStringLiteral("raw/hmp.dat")},
-         {QStringLiteral("temperature_humidity_raw"), QStringLiteral("hmp_raw")},
-         {QStringLiteral("temperature_humidity"), QStringLiteral("hmp")}},
+         {QStringLiteral("raw/hc2a.dat"), QStringLiteral("raw/hmp.dat")},
+         {QStringLiteral("temperature_humidity_raw"), QStringLiteral("hc2a_raw"), QStringLiteral("hmp_raw")},
+         {QStringLiteral("temperature_humidity"), QStringLiteral("hc2a"), QStringLiteral("hmp")}},
         {layout.distanceRawPath,
          {QStringLiteral("raw/lidar.dat")},
          {QStringLiteral("distance_raw"), QStringLiteral("lidar_raw")},
@@ -218,6 +218,7 @@ QString rawDatFormatDocumentText()
         "- Record header size: 36 bytes\n"
         "- Timestamp unit: microseconds\n"
         "- Standard sources: navigation=1, pressure=2, temperature_humidity=3, distance=4, waveform=5, laser_temperature_controller=6, system_temperature_controller=7\n"
+        "- temperature_humidity type 1 stores complete HC2A RO-ASCII RDD responses including CR; type 3 is a legacy HMP Modbus RTU response.\n"
         "  (the historical source ID values are unchanged)\n\n"
         "- raw/waveform.dat source=5: type=1 retains the direct TCP raw/harmonic payload layout; type=2 stores FPGA H1/H2 only.\n"
         "  Type-2 little-endian prefix (48 bytes): uint16 payload_version=1, header_size=48, channel_id, sample_type;\n"

@@ -133,11 +133,11 @@ void tlv(QByteArray &b, quint16 tag, quint8 type, const QByteArray &v)
     put16(b, tag); b.append(char(type)); b.append(char(v.size())); b.append(v);
     while (b.size() % 4) b.append(char(0));
 }
-bool readable(quint32 a)
+bool readable(quint32 a, bool historical)
 {
     if (a % 4) return false;
     if (a <= 0x10 || (a >= 0x20 && a <= 0x40) || (a >= 0x48 && a <= 0x50) ||
-        (a >= 0x110 && a <= 0x118) || (a >= 0x1000 && a <= 0x1040)) return true;
+        (a >= 0x110 && a <= 0x118) || (a >= 0x1000 && a <= 0x1068) || (a >= 0x1070 && a <= 0x1078)) return true;
     const auto base = a & ~255u, offset = a & 255;
     if (base == 0x2000 || base == 0x2100) return offset <= 0x48;
     if (base == 0x3000 || base == 0x3100) return offset <= 0x44;
@@ -148,10 +148,11 @@ bool readable(quint32 a)
     if (base == 0x6200) return offset <= 0x7c;
     if (base == 0x6300) return offset <= 0x40;
     if (base == 0x6500) return offset <= 0x5c;
-    if (base == 0x6600) return offset <= 0x6c || (offset>=0x80 && offset<=0xb4) || offset==0xfc;
-    if (base == 0x6800) return offset <= 0x48 || (offset>=0x80 && offset<=0x90) || offset>=0xc0;
-    if (base == 0x6100) return offset <= 0x48;
-    if (base == 0x6700) return offset <= 0x34;
+    if (base == 0x6600) return offset <= 0x64 || (historical && (offset == 0x68 || offset == 0x6c || (offset>=0x80 && offset<=0xb4) || offset==0xfc));
+    if (base == 0x6800 && historical) return offset <= 0x48 || (offset>=0x80 && offset<=0x90) || offset>=0xc0;
+    if (base == 0x6800 || base == 0x6900) return offset <= 0x3c;
+    if (base == 0x6100) return true;
+    if (base == 0x6700) return offset <= 0x48;
     if (base == 0x7000) return offset <= 12 || offset == 0x10 || offset == 0x14 || offset == 0x18 || offset == 0x34 ||
         (offset >= 0x1c && offset <= 0x30) || (offset >= 0x38 && offset <= 0x44);
     return base == 0x8000 && offset <= 0x3c;
@@ -160,7 +161,8 @@ bool readable(quint32 a)
 class Simulator final : public FpgaUsbSimulator
 {
 public:
-    Simulator(QObject *parent, FpgaSimulatorStartup startup) : FpgaUsbSimulator(parent), startup_(startup)
+    Simulator(QObject *parent, FpgaSimulatorStartup startup, FpgaSimulatorFirmware firmware)
+        : FpgaUsbSimulator(parent), startup_(startup), historical_(firmware == FpgaSimulatorFirmware::HistoricalExtensions)
     { initialize(); clock_.start(); }
     bool open(const QString &) override
     {
@@ -205,6 +207,7 @@ public:
         if (maximum <= 0) return 0;
         const auto elapsed = clock_.elapsed();
         completeExtensions(elapsed);
+        updateBoard(elapsed);
         if (elapsed - lastCycleMs_ >= 100 && incoming_.size() < 1024 * 1024) {
             lastCycleMs_ = elapsed; generate(elapsed);
         }
@@ -216,6 +219,7 @@ public:
     qint64 write(const QByteArray &bytes) override
     {
         if (!opened_) return -1;
+        updateBoard(clock_.elapsed());
         const auto frames = parser_.feed(reinterpret_cast<const std::uint8_t *>(bytes.constData()), bytes.size());
         for (const auto &frame : frames) respond(frame);
         diagnostic_.bytesWritten += bytes.size(); return bytes.size();
@@ -224,12 +228,19 @@ private:
     void initialize()
     {
         regs_.clear();
+        extensions_ = historical_ ? 0x3f : 0x29;
         regs_ = {{0x4000,0x00200101},{0x4100,0x00210101},{0x4018,0x00011800},{0x4118,0x00011800},
             {0x5000,0x00300101},{0x5100,0x00310101},{0x5024,0x00040101},{0x5124,0x00040101},
             {0x6600,0x00460200},{0x0004,0},{0x7004,1},{0x8004,1},{0x002c,0xffffffff},{0x0030,0xffffffff},
             {0x6610,19200},{0x6614,1},{0x661c,1},{0x662c,1000},{0x6660,200},{0x6664,1},{0x6310,0x77}};
-        regs_[0x6800]=0x00480103;regs_[0x6810]=19200;regs_[0x6814]=2;regs_[0x681c]=1;regs_[0x682c]=1000;
-        regs_[0x66fc]=15;regs_[0x6698]=1;regs_[0x6270]=2000;regs_[0x6278]=115200;
+        if(historical_) {
+            regs_[0x6800]=0x00480103;regs_[0x6810]=19200;regs_[0x6814]=2;regs_[0x681c]=1;regs_[0x682c]=1000;
+            regs_[0x66fc]=15;regs_[0x6698]=1;
+        } else for(quint32 base:{0x6800u,0x6900u}) {
+            regs_[base]=base==0x6800?0x00480100:0x00490100;
+            regs_[base+0x10]=115200;regs_[base+0x14]=0x108;regs_[base+0x3c]=256;
+        }
+        regs_[0x6270]=2000;regs_[0x6278]=115200;
         for(int ch=1;ch<=8;++ch) {ai8Registers_[quint16(ch-1)]=250+ch;ai8Registers_[quint16(0x600+ch-1)]=230+ch;ai8Registers_[quint16(0x480+ch-1)]=250+ch;}
         for(int i=0;i<8;++i)ai8Measured_[i]=230+i;
         ai8Registers_[0x840]=1;ai8Registers_[0x841]=2;
@@ -240,9 +251,13 @@ private:
             rd105Registers_[base+0x10e]=90;
         }
         rd105Registers_[2]=2;rd105Registers_[9]=1;
-        for(const auto& spec:FpgaRemote::sensorParameters())regs_[spec.address]=spec.fallback;
-        regs_[0x6714]=1000;regs_[0x6718]=255;regs_[0x671c]=505;regs_[0x6708]=2;
-        regs_[0x6100]=0x00410101;regs_[0x6110]=19200;regs_[0x6114]=240;regs_[0x611c]=1000;regs_[0x6120]=3;
+        for(const auto& spec:FpgaRemote::sensorParameters())if(historical_ || spec.source!=0x48)regs_[spec.address]=spec.fallback;
+        regs_[0x6700]=0x00470200;regs_[0x6710]=40;regs_[0x6714]=100;regs_[0x6718]=500000;
+        regs_[0x671c]=1000000;regs_[0x6730]=4;regs_[0x6708]=2;
+        regs_[0x6740]=100000000;regs_[0x6744]=2000;regs_[0x6748]=400;
+        regs_[0x1000]=0x00020200;regs_[0x1028]=2000;regs_[0x1068]=100000000;
+        regs_[0x6100]=0x00410106;regs_[0x6110]=19200;regs_[0x6114]=99;regs_[0x6118]=0;
+        regs_[0x611c]=1000;regs_[0x6120]=3;regs_[0x614c]=0x48434432;
         regs_[0x6010] = 9600; regs_[0x6018] = 1000; regs_[0x6514] = 2;
         regs_[0x6210] = 921600; regs_[0x6510] = 500000;
         regs_[0x6314] = regs_[0x6414] = 1000;
@@ -250,9 +265,10 @@ private:
         const quint32 enabled = startup_ == FpgaSimulatorStartup::RunningDemo ? 1 : 0;
         regs_[4] = enabled;
         const FpgaControlConfig defaults;
-        for (quint32 b : {0x6000u,0x6100u,0x6200u,0x6300u,0x6400u,0x6500u,0x6600u,0x6800u}) {
+        for (quint32 b : {0x6000u,0x6100u,0x6200u,0x6300u,0x6400u,0x6500u,0x6600u}) {
             regs_[b + 4] = enabled; regs_[b + 8] = enabled;
         }
+        if(historical_)regs_[0x6804]=regs_[0x6808]=enabled;
         for (int ch = 0; ch < 2; ++ch) {
             const quint32 offset = ch * 0x100;
             for (quint32 b : {0x2000u,0x3000u,0x4000u,0x5000u}) setControl(b + offset, enabled);
@@ -281,8 +297,41 @@ private:
     void setRegister(quint32 address, quint32 value)
     {
         const auto base = address & ~255u;
+        if(base==0x6700) {
+            if(address==0x6738) {lastHeartbeatMs_=clock_.elapsed();++regs_[address];}
+            else if(address==0x670c)regs_[address]&=~value;
+            else if(address==0x6704) {
+                regs_[address]=value&1;
+                if(!(value&1)) {motorBusy_=motorDone_=false;if(lastHeartbeatMs_>=0 && clock_.elapsed()-lastHeartbeatMs_<2000)motorFault_=false;}
+                if(value&2) {regs_[0x6724]=regs_[0x6728]=regs_[0x670c]=0;}
+            } else if(address==0x6714) {
+                regs_[0x6718]=quint32((100000000ull+2ull*value-1)/(2ull*value));
+                regs_[address]=100000000u/(2*regs_[0x6718]);
+            } else if(address==0x672c) {
+                if(value==1) {motorBusy_=true;motorDone_=false;motorStartedMs_=clock_.elapsed();motorSent_=0;motorTarget_=qint32(regs_[0x6710]);
+                    regs_[0x6728]=quint32(std::abs(motorTarget_));++regs_[0x6734];}
+                else if(value==2) {motorBusy_=motorDone_=false;}
+                else {regs_[0x6724]=regs_[0x6728]=0;}
+            } else regs_[address]=value;
+            updateBoard(clock_.elapsed());return;
+        }
+        if(address==0x1078) {
+            utcAnchored_=value==1;
+            if(utcAnchored_) {anchorPps_=ppsSequence_;anchorUtc_=quint64(regs_[0x1070])*1000000;}
+            return;
+        }
+        if(base==0x1000 && (address==0x1004 || address==0x1024 || address==0x1028)) {
+            utcAnchored_=false;
+            if(address==0x1004)timeEnabledMs_=value&1?clock_.elapsed():-1;
+        }
+        if(address==4 && !(value&1)) {regs_[0x6704]=0;motorBusy_=motorDone_=false;}
+        if(address==0x6104) {
+            regs_[address]=value&1;regs_[0x6108]=(value&1)?0x11:0;
+            if(value&2) {regs_[0x610c]=0;regs_[0x6144]=regs_[0x6148]=regs_[0x6150]=regs_[0x6154]=0;}
+            return;
+        }
         if (address >= 0x2000 && address <= 0x5104 && (address & 255) == 4) setControl(base, value);
-        else if (address >= 0x6000 && address <= 0x680c && (address & 255) == 12) regs_[address] &= ~value;
+        else if (address >= 0x6000 && address <= 0x690c && (address & 255) == 12) regs_[address] &= ~value;
         else regs_[address] = value;
         if(address==0x6680 || address==0x6880) {regs_[address+12]=0x10000;pendingParameters_[base]={value,clock_.elapsed()+30};}
         if(address==0x6244) {mailbox_.clear();regs_[0x626c]=0;}
@@ -293,6 +342,43 @@ private:
         if(address==0x6240) {regs_[0x624c]=0x10000;mailboxDue_=clock_.elapsed()+30;}
         if(address==0x6698)for(int i=0;i<6;++i)regs_[0x66a0+quint32(i*4)]=ai8Cache_[qBound(1,int(value),8)-1][i];
         if(address==0x103c)regs_[0x1040]=1;
+    }
+    void updateBoard(qint64 now)
+    {
+        if(!(regs_[4]&1)) {regs_[0x6704]=0;motorBusy_=motorDone_=false;}
+        const bool alive=lastHeartbeatMs_>=0 && now-lastHeartbeatMs_<2000;
+        if(!(regs_[0x6704]&1) && alive)motorFault_=false;
+        if(motorBusy_) {
+            const auto end=alive?now:qMin(now,lastHeartbeatMs_+2000);
+            const int sent=qBound(0,int(qMax<qint64>(0,end-motorStartedMs_-10)*regs_[0x6714]/1000),std::abs(motorTarget_));
+            regs_[0x6724]+=quint32((motorTarget_<0?-1:1)*(sent-motorSent_));motorSent_=sent;
+            regs_[0x6728]=quint32(std::abs(motorTarget_)-sent);
+            if(sent==std::abs(motorTarget_)) {motorBusy_=false;motorDone_=true;}
+        }
+        if(!alive && (regs_[0x6704]&1)) {motorFault_=true;motorBusy_=motorDone_=false;regs_[0x670c]|=1;}
+        const bool enabled=(regs_[0x6704]&1) && (regs_[4]&1) && alive && !motorFault_;
+        regs_[0x673c]=(enabled?1u:0u)|(motorBusy_?2u:0u)|(motorDone_?4u:0u)|(motorFault_?8u:0u)|
+            (alive?32u:0u)|(motorTarget_<0?64u:0u)|(quint32(motorSent_)<<8);
+        regs_[0x6708]=(regs_[0x6704]&1)|(motorBusy_?8u:2u)|(motorDone_?16u:0u)|(alive?32u:0u)|
+            (enabled?64u:0u)|(regs_[0x670c]?128u:0u);
+        const auto periods=timeEnabledMs_>=0?quint32((now-timeEnabledMs_)/1000):0u;
+        ppsSequence_=periods;
+        const bool calibrated=periods>=4;
+        if(!calibrated || !(regs_[0x6204]&1))utcAnchored_=false;
+        timeStatus_=(calibrated?1u:0u)|(utcAnchored_?2u:0u)|(periods?4u:0u)|
+            ((regs_[0x6204]&1)?8u:0u)|(qMin(3u,periods?periods-1:0u)<<8);
+        regs_[0x1044]=timeStatus_;
+    }
+    quint32 readRegister(quint32 address)
+    {
+        if(address==0x1044) {
+            const quint64 tick=quint64(qMax<qint64>(0,timeEnabledMs_)+qint64(ppsSequence_)*1000)*100000;
+            const quint64 utc=utcAnchored_?anchorUtc_+quint64(ppsSequence_-anchorPps_)*1000000:0;
+            regs_[0x1048]=timeStatus_&1?100000000:0;regs_[0x104c]=ppsSequence_;
+            regs_[0x1050]=quint32(tick);regs_[0x1054]=quint32(tick>>32);
+            regs_[0x1058]=quint32(utc);regs_[0x105c]=quint32(utc>>32);regs_[0x1060]=timeStatus_;
+        }
+        return regs_.value(address);
     }
     void completeExtensions(qint64 now)
     {
@@ -401,7 +487,39 @@ private:
     quint32 sensorWriteStatus(quint32 address, quint32 value) const
     {
         const auto base=address&~255u;
+        const auto offset=address&255u;
         const bool enabled=regs_.value(base+4)&1;
+        if(base==0x6100) {
+            if(offset==4)return value&~11u?7:0;
+            if(offset==12)return 0;
+            if(offset!=0x10 && offset!=0x14 && offset!=0x18 && offset!=0x1c && offset!=0x20)return 6;
+            if(enabled)return 8;
+            if(offset==0x10 && (value<1200 || value>115200))return 7;
+            if(offset==0x14 && value>64 && value!=99)return 7;
+            if(offset==0x18 && value)return 7;
+            if(offset==0x1c && (value<100 || value>3600000))return 7;
+            if(offset==0x20 && (!value || value>3))return 7;
+        }
+        if(base==0x6700) {
+            if(offset==4) {if(value&~3u)return 7;if((value&2) && (enabled || motorBusy_ || (value&1)))return 8;}
+            else if(offset==0x10) {if(motorBusy_)return 8;const auto n=qint64(qint32(value));if(!n || std::abs(n)>400)return 7;}
+            else if(offset==0x14) {if(motorBusy_)return 8;if(value<20 || value>400)return 7;}
+            else if(offset==0x20) {if(value)return 7;}
+            else if(offset==0x24) {if(motorBusy_)return 8;}
+            else if(offset==0x2c) {if(value<1 || value>3)return 7;if(value!=2 && motorBusy_)return 8;
+                if(value==1 && (!(regs_.value(4)&1) || !enabled || !(regs_.value(0x673c)&1)))return 11;}
+            else if(offset==0x30) {if(enabled || motorBusy_)return 8;if(value!=4)return 7;}
+            else if(offset==0x38) {if(value!=1)return 7;}
+            else if(offset!=12)return 6;
+        }
+        if(base==0x1000 && offset>=0x44) {
+            if(offset==0x70) {if(value<946684800)return 7;}
+            else if(offset==0x74) {}
+            else if(offset==0x78) {if(value!=1 && value!=2)return 7;
+                if(value==1 && ((timeStatus_&9)!=9 || regs_.value(0x1074)!=ppsSequence_))return 7;}
+            else return 6;
+        }
+        if(!historical_ && (base==0x6800 || base==0x6900))return 6;
         if(address==0x6668 && (enabled || value>1))return 7;
         if(address==0x666c && value>8)return 7;
         if(address==0x6810 && (enabled || value!=19200))return 7;
@@ -459,14 +577,15 @@ private:
                 const quint32 address = word(p,0); const auto count = qFromLittleEndian<quint16>(p.constData()+4);
                 if (!count || count > 1000 || p.size() != (message == 2 ? 8 : 8 + count * 4)) status = 2;
                 for (int i = 0; !status && i < count; ++i)
-                    if ((!readable(address + i * 4) && !(message==3 && address+i*4==0x44)) || address + quint64(i) * 4 > 0xffff) status = 5;
+                    if ((!readable(address + i * 4,historical_) && !(message==3 && address+i*4==0x44)) || address + quint64(i) * 4 > 0xffff) status = 5;
+                if(!status && !historical_ && message==2 && ((address<=0x681c && address+quint32(count)*4>0x681c) || (address<=0x691c && address+quint32(count)*4>0x691c)))status=11;
                 if (!status && message == 2) {
                     put32(result,address); put16(result,count); put16(result,0);
-                    for (int i = 0; i < count; ++i) put32(result,regs_.value(address + i * 4));
+                    for (int i = 0; i < count; ++i) put32(result,readRegister(address + i * 4));
                 } else if (!status) {
                     for (int i = 0; i < count; ++i) {
                         const auto a = address + i * 4;
-                        if (a >= 0x2000 && ((a & 255) == 0 || (a & 255) == 8)) { status = 5; break; }
+                        if (a >= 0x2000 && ((a & 255) == 0 || (a & 255) == 8)) { status = 6; break; }
                         status=sensorWriteStatus(a,word(p,8+i*4));if(status)break;
                     }
                     if (!status) for (int i = 0; i < count; ++i) setRegister(address + i * 4,word(p,8 + i * 4));
@@ -474,14 +593,16 @@ private:
             }
         } else if (message == 5) {
             if (p.size() != 8) status = 2;
+            else if(f.header.source==0x41 || (!historical_ && (f.header.source==0x48 || f.header.source==0x49)))status=14;
             else {
                 const quint64 mask = qFromLittleEndian<quint64>(p.constData());
                 for (quint16 source : {0x10,0x11,0x12,0x13,0x20,0x21,0x30,0x31})
                     if (mask & (quint64(1) << source)) commit(source);
             }
         } else if (message == 4) {
-            if (p.size() != 12 || !readable(word(p,0))) status = 5;
-            else setRegister(word(p,0),(regs_.value(word(p,0)) & ~word(p,4)) | (word(p,8) & word(p,4)));
+            if (p.size() != 12 || !readable(word(p,0),historical_)) status = 5;
+            else {const auto a=word(p,0),v=(regs_.value(a)&~word(p,4))|(word(p,8)&word(p,4));
+                status=sensorWriteStatus(a,v);if(!status)setRegister(a,v);}
         } else if (message == 0xa) {
             if (p.size() != 16) status = 2;
             else { regs_[0x2c]=word(p,0);regs_[0x30]=word(p,4);regs_[0x50]=word(p,12)&3;
@@ -500,16 +621,26 @@ private:
         } else if(message==12 || message==13) {
             if(p.size()!=8)status=2;
             else {const auto action=word(p,0),value=word(p,4);
-                if(message==13) {if(action==1)regs_[0x1004]=value;else if(action==2){regs_[0x1004]=1;regs_[0x100c]=0;}else if(action==3)regs_[0x1024]=value;else if(action==4)regs_[0x1028]=value;else if(action==5)regs_[0x100c]&=~value;else status=7;}
-                else {if(action==4)regs_[0x6704]=value;else if(action==3)regs_[0x6724]=0;else if(action==2)regs_[0x6728]=0;else if(action==1){regs_[0x6724]+=value;++regs_[0x6734];QByteArray event;for(quint32 w:{1u,regs_[0x6734],regs_[0x6724],0u,0u,0u,0u,0u})put32(event,w);enqueue(FpgaVlp1::FrameType::Event,++sequence_,0x47,0x1300,event,quint64(clock_.elapsed())*100000,3);}else status=7;}
+                if(message==13) {if(action==1)setRegister(0x1004,value);else if(action==2){setRegister(0x1004,1);regs_[0x100c]=0;}else if(action==3)setRegister(0x1024,value);else if(action==4)setRegister(0x1028,value);else if(action==5)regs_[0x100c]&=~value;else status=7;}
+                else if(f.header.source!=0x47)status=4;
+                else {
+                    quint32 address=0,setting=0;
+                    if(action==1) {status=sensorWriteStatus(0x6710,value);if(!status) {setRegister(0x6710,value);address=0x672c;setting=1;}}
+                    else if(action==2 || action==3) {address=0x672c;setting=action;}
+                    else if(action==4) {address=0x6704;setting=value;if(value>1)status=7;}
+                    else if(action==5) {address=0x6738;setting=1;if(value)status=7;}
+                    else status=7;
+                    if(!status) {status=sensorWriteStatus(address,setting);if(!status)setRegister(address,setting);}
+                }
             }
         } else if (message == 0xb) {
             if (p.size() != 8 || !FpgaExtensions::sensor(f.header.source)) status = 2;
+            else if(!historical_ && f.header.source==0x48)status=4;
             else if (word(p,0) == 1 && word(p,4) <= 1) {
                 const auto base = 0x6000 + (f.header.source - 0x40) * 0x100;
                 regs_[base + 4] = regs_[base + 8] = word(p,4);
                 if(word(p,4))lastSensorMs_.remove(f.header.source);
-            } else if(word(p,0)==16 && f.header.source==0x41) {regs_[0x6134]=regs_[0x6140]=word(p,4);++regs_[0x6148];}
+            } else if((word(p,0)==16 || word(p,0)==2) && f.header.source==0x41)status=14;
             else if(word(p,0)==3 || word(p,0)==4 || word(p,0)==5) {const auto base=0x6000+(f.header.source-0x40)*0x100;if(word(p,0)==5)regs_[base+12]&=~word(p,4);else if(word(p,0)==4){regs_[base+4]=0;regs_[base+12]=0;}}
             else if(word(p,0)==32 && f.header.source==0x45)regs_[0x6514]=word(p,4);
             else if(word(p,0)==33 && f.header.source==0x45)regs_[0x6518]=word(p,4);
@@ -668,9 +799,13 @@ private:
             tlv(p,0x11,3,scalar(quint32(47000+std::cos(t)*2000)));tlv(p,1,3,scalar(0));data(0x44,0x1100,p,ticks);}
         if(enabled(0x45)) {QByteArray p;put16(p,1);put16(p,1);tlv(p,0x13,3,scalar(quint32(120000+std::sin(t)*2400)));data(0x45,0x1100,p,ticks);}
         if(enabled(0x41)) {
-            QByteArray p;put16(p,1);put16(p,3);
-            QByteArray value(4,0);at<float>(value,0,float(45+std::sin(t)));tlv(p,0x100,9,value);
-            at<float>(value,0,float(23+std::cos(t)));tlv(p,0x101,9,value);tlv(p,2,3,scalar(0));
+            if(regs_[0x6114]==99)regs_[0x6114]=0;
+            QByteArray p;put16(p,1);put16(p,quint16(1+((regs_[0x6120]&1)?1:0)+((regs_[0x6120]&2)?1:0)));
+            QByteArray value(4,0);at<float>(value,0,float(45+std::sin(t)));regs_[0x6124]=word(value,0);
+            if(regs_[0x6120]&1)tlv(p,0x100,9,value);
+            at<float>(value,0,float(23+std::cos(t)));regs_[0x6128]=word(value,0);
+            if(regs_[0x6120]&2)tlv(p,0x101,9,value);
+            tlv(p,2,3,scalar(0));regs_[0x6108]=0x11;++regs_[0x6144];regs_[0x6150]+=80;
             data(0x41,0x1100,p,ticks);
         }
         if(enabled(0x46)) {
@@ -688,7 +823,7 @@ private:
             data(0x46,0x1100,p,ticks);
           }
         }
-        if(enabled(0x48)) {
+        if(historical_ && enabled(0x48)) {
             for(quint16 channel:{1,2}) {
                 const quint16 address=channel*0x1000;
                 const qint32 target=qint32((quint32(rd105Registers_.value(address))<<16)|rd105Registers_.value(address+1))*10;
@@ -717,7 +852,13 @@ private:
         missingCycle_ = false;
     }
     const FpgaSimulatorStartup startup_;
-    quint32 extensions_=0x3f;
+    const bool historical_;
+    quint32 extensions_=0x29;
+    qint64 lastHeartbeatMs_=-1,motorStartedMs_=0,timeEnabledMs_=-1;
+    bool motorBusy_=false,motorDone_=false,motorFault_=false,utcAnchored_=false;
+    int motorTarget_=40,motorSent_=0;
+    quint32 ppsSequence_=0,timeStatus_=0,anchorPps_=0;
+    quint64 anchorUtc_=0;
     QString fault_;
     QMap<quint16,quint16> ai8Registers_,rd105Registers_;
     std::array<double,8> ai8Measured_{};
@@ -745,6 +886,7 @@ private:
 }
 FpgaSimulatorNavigation fpgaSimulatorNavigationAt(double seconds) { return navigationAt(seconds); }
 double fpgaSimulatorNavigationLoopSeconds() { const auto& route = navigationRoute(); return route.distance.back() / route.speed; }
-std::unique_ptr<FpgaUsbSimulator> makeFpgaUsbSimulator(QObject *parent, FpgaSimulatorStartup startup)
-{ return std::make_unique<Simulator>(parent, startup); }
+std::unique_ptr<FpgaUsbSimulator> makeFpgaUsbSimulator(QObject *parent, FpgaSimulatorStartup startup,
+    FpgaSimulatorFirmware firmware)
+{ return std::make_unique<Simulator>(parent, startup, firmware); }
 }

@@ -18,6 +18,7 @@
 #include <QTcpServer>
 #include <QTemporaryDir>
 #include <QThread>
+#include <QTimer>
 #include <QtEndian>
 #include <algorithm>
 #include <cmath>
@@ -119,7 +120,6 @@ void protocol()
     FpgaVlp1::StreamParser parser;FpgaSensor::FpgaSensorAdapter adapter;FpgaWave::Assembler assembler;
     QSet<quint16> sensors,waves;QSet<quint8> epsilonIds;EpsilonData epsilonData;
     bool bmp=false,navigation=false;
-    QSet<quint32> rd105Channels;
     const auto collect=[&] {
         QByteArray b;const auto count=transport->read(b,16384);check(count>=0&&count<=503,"bounded fragmented reads");
         for(const auto& f:parser.feed(reinterpret_cast<const std::uint8_t*>(b.constData()),b.size())) {
@@ -130,17 +130,6 @@ void protocol()
                 check(sample.reading.validity.structure && sample.reading.validity.crc,"valid TLV or FDILink wire payload");
                 if(sample.reading.validity.measurement)sensors.insert(f.header.source);
                 if(f.header.source==0x43)bmp=sample.reading.pressurePa.has_value();
-                if(f.header.source==0x48 && sample.reading.validity.measurement) {
-                    const auto& r=sample.reading;
-                    check(r.schema==2&&r.rd105Channel&&r.rd105OutputRaw==0&&r.rd105OutputEnabled==0,
-                        "both simulated RD105 outputs start disabled with measured zero percent");
-                    rd105Channels.insert(*r.rd105Channel);
-                    FpgaSensor::Reading remote;
-                    check(FpgaRemote::parseSensor(FpgaRemote::encodeSensor(r,100),remote)
-                        &&remote.rd105Channel==r.rd105Channel&&remote.rd105OutputRaw==r.rd105OutputRaw
-                        &&remote.rd105OutputEnabled==r.rd105OutputEnabled,
-                        "RD105 channel and output telemetry survive remote encoding");
-                }
                 if(sample.epsilon) {
                     epsilonIds.insert(*sample.reading.epsilonMessageId);epsilonData=*sample.epsilon;
                     navigation|=sample.navigationValid&&sample.utcValid;
@@ -152,9 +141,9 @@ void protocol()
             }
         }
     };
-    wait([&]{collect();return sensors.size()==8&&sensors.contains(0x48)&&waves.contains(0x30)&&waves.contains(0x31)&&bmp&&navigation
-        &&rd105Channels.size()==2&&epsilonIds.size()==14&&epsilonData.ecef_packet_rate_hz>0;},
-         "eight sensors including RD105, calibrated BMP and valid EPSILON navigation traverse the actual decoder");
+    wait([&]{collect();return sensors.size()==7&&sensors.contains(0x41)&&!sensors.contains(0x48)&&waves.contains(0x30)&&waves.contains(0x31)&&bmp&&navigation
+        &&epsilonIds.size()==14&&epsilonData.ecef_packet_rate_hz>0;},
+         "seven production sensors including HC2A, calibrated BMP and valid EPSILON navigation traverse the actual decoder");
     check(epsilonIds==QSet<quint8>({0x39,0x40,0x41,0x42,0x50,0x51,0x53,0x59,0x5a,0x5c,0x5d,0x5f,0x63,0x64}),
         "all supported core EPSILON navigation messages traverse real FDILink frames");
     check(epsilonData.device_info_valid&&epsilonData.hardware_name=="EPSILON2"&&epsilonData.firmware_name=="SIM",
@@ -189,6 +178,57 @@ void protocol()
                 rejected=f.payload.size()==4&&qFromLittleEndian<quint32>(f.payload.data())==5;
         return rejected;},"partial command reads are reassembled and bad register accesses fail");
     transport->close();QByteArray b;check(transport->read(b,10)==-1,"closed simulator cannot produce stale bytes");
+}
+void currentFirmwareContract()
+{
+    auto transport=makeFpgaUsbSimulator();check(transport->open(),"current HCD2 fixture opens");
+    FpgaVlp1::StreamParser parser;quint32 sequence=1000;
+    const auto exchange=[&](const std::vector<std::uint8_t>& request) {
+        const auto expected=qFromLittleEndian<quint32>(request.data()+12);
+        transport->write(bytes(request));std::vector<std::uint8_t> payload;bool received=false;
+        wait([&] {QByteArray part;transport->read(part,16384);
+            for(const auto& frame:parser.feed(reinterpret_cast<const std::uint8_t*>(part.constData()),part.size()))
+                if(frame.header.frameType==FpgaVlp1::FrameType::Response&&frame.header.sequence==expected){payload=frame.payload;received=true;}
+            return received;},"simulated command returns a matching CRC checked response");
+        return payload;
+    };
+    const auto value=[](const std::vector<std::uint8_t>& payload,int offset=0){check(payload.size()>=std::size_t(offset+4),"complete register response");return qFromLittleEndian<quint32>(payload.data()+offset);};
+    const auto read=[&](quint32 address){const auto p=exchange(FpgaVlp1::buildReadReg(++sequence,address,1));check(value(p)==0,"documented register is readable");return value(p,12);};
+    const auto write=[&](quint32 address,quint32 setting){return value(exchange(FpgaVlp1::buildWriteReg(++sequence,address,{setting})));};
+    const auto action=[&](quint16 source,quint16 message,quint32 operation,quint32 setting=0) {
+        std::vector<std::uint8_t> p;for(auto v:{operation,setting})for(int i=0;i<4;++i)p.push_back(quint8(v>>(i*8)));
+        return value(exchange(FpgaVlp1::buildFrame(FpgaVlp1::FrameType::Command,++sequence,source,message,p)));
+    };
+    check(value(exchange(FpgaVlp1::buildGetCapabilities(++sequence)),24)==0x29,"default simulator advertises only current production extensions");
+    check(read(0x6100)==0x00410106&&read(0x614c)==0x48434432&&read(0x6114)==99&&read(0x6118)==0,"HC2A identity, HCD2 signature and discovery defaults match firmware");
+    check(action(0x41,11,16)==14&&action(0x41,11,2)==14&&write(0x6134,0)==6&&write(0x6104,5)==7,
+        "HC2A rejects obsolete HMP compensation and commit without changing diagnostics");
+    check(write(0x6114,240)==7&&write(0x6118,2)==7,"HC2A rejects HMP address and serial format");
+    check(value(exchange(FpgaVlp1::buildReadReg(++sequence,0x6668,1)))==5&&write(0x6680,1)==5,
+        "withdrawn AI8 scanning and parameter addresses are absent");
+    check(read(0x6800)==0x00480100&&read(0x6900)==0x00490100&&read(0x683c)==256,
+        "LC pages identify raw UART modules instead of historical RD105");
+    check(value(exchange(FpgaVlp1::buildReadReg(++sequence,0x681c,1)))==11&&action(0x48,11,18)==4,
+        "empty LC receive reads and historical RD105 actions are rejected");
+    check(read(0x1000)==0x00020200&&read(0x1044)==0&&read(0x1060)==0&&write(0x1078,1)==7,
+        "PPS snapshot starts unqualified and cannot guess a UTC anchor");
+    check(read(0x6700)==0x00470200&&read(0x6714)==100&&read(0x6718)==500000&&read(0x671c)==1000000&&read(0x6730)==4,
+        "DM422 revision and fixed pulse timing match production firmware");
+    check(write(0x6710,401)==7&&write(0x6714,401)==7&&write(0x6718,10)==6&&action(0x47,12,1,40)==11,
+        "DM422 rejects out of range configuration, writes to pulse timing and unarmed movement");
+    check(write(4,1)==0&&action(0x47,12,5)==0&&action(0x47,12,4,1)==0&&action(0x47,12,1,40)==0,
+        "real heartbeat and enable arm an explicit finite movement");
+    check(read(0x6708)&8,"finite movement reports busy before completion");events(450);
+    check(read(0x6724)==40&&read(0x6728)==0&&(read(0x673c)&4),"finite movement completes and counts output pulses");
+    events(1700);check((read(0x673c)&8)&&!(read(0x673c)&1),"two seconds without host heartbeat faults and releases DM422");
+    check(action(0x47,12,5)==0&&action(0x47,12,1,40)==11,"a recovered heartbeat cannot replay movement through a latched fault");
+    check(action(0x47,12,4,0)==0&&action(0x47,12,4,1)==0&&(read(0x673c)&1),"explicit disable and enable restore DM422 after watchdog fault");
+    transport->close();
+    auto historical=makeFpgaUsbSimulator(nullptr,FpgaSimulatorStartup::Idle,FpgaSimulatorFirmware::HistoricalExtensions);
+    check(historical->open(),"historical extension fixture remains explicit and separate");
+    historical->write(bytes(FpgaVlp1::buildGetCapabilities(++sequence)));QByteArray part;historical->read(part,16384);
+    const auto frames=FpgaVlp1::StreamParser{}.feed(reinterpret_cast<const std::uint8_t*>(part.constData()),part.size());
+    check(frames.size()==1&&value(frames.front().payload,24)==0x3f,"historical extension coverage uses an explicit 0x3f profile");
 }
 void controls()
 {
@@ -283,6 +323,37 @@ void selectiveControls()
     controller.disconnectDevice();
 }
 
+void controllerMotorWatchdog()
+{
+    FpgaDeviceController controller(makeFpgaUsbSimulator());
+    controller.connectDevice("simulation://fpga","simulator");
+    const auto idle=[&]{return controller.ready()&&!controller.busy();};
+    wait(idle,"motor integration starts from an idle current board");
+    check(!(controller.hardwareValues().value(4)&1),"cold simulated board has its system gate closed");
+    controller.executeOperation({{"op","motor_config"},{"frequency",20}});wait(idle,"motor integration configures a finite low speed move");
+    controller.executeOperation({{"op","motor"},{"action",4},{"value",1}});wait(idle,"explicit motor enable opens the system gate and establishes heartbeat");
+    check((controller.hardwareValues().value(4)&1)&&(controller.hardwareValues().value(0x673c)&1),
+        "cold start enables the actual core through the global system gate");
+    int heartbeats=0;QObject observer;
+    QObject::connect(&controller,&FpgaDeviceController::rawCommand,&observer,[&](quint64,const QByteArray& data) {
+        FpgaVlp1::StreamParser parser;
+        for(const auto& frame:parser.feed(reinterpret_cast<const std::uint8_t*>(data.constData()),data.size()))
+            if(frame.header.message==12&&frame.header.source==0x47&&frame.payload.size()==8&&qFromLittleEndian<quint32>(frame.payload.data())==5)++heartbeats;
+    });
+    QTimer hostHeartbeat,readback;hostHeartbeat.setInterval(200);readback.setInterval(100);
+    QObject::connect(&hostHeartbeat,&QTimer::timeout,&observer,[&]{controller.executeOperation({{"op","motor_heartbeat"}});});
+    QObject::connect(&readback,&QTimer::timeout,&observer,[&]{if(idle())controller.refresh();});
+    hostHeartbeat.start();readback.start();
+    controller.executeOperation({{"op","motor"},{"action",1},{"value",40}});
+    wait([&]{return controller.hardwareValues().value(0x6724)==40&&bool(controller.hardwareValues().value(0x673c)&4);},
+        "real host timer heartbeats keep a move longer than two seconds alive");
+    check(heartbeats>=9&&!(controller.hardwareValues().value(0x673c)&8),"controller forwards real host leases during periodic readbacks");
+    hostHeartbeat.stop();const int sent=heartbeats;
+    wait([&]{return bool(controller.hardwareValues().value(0x673c)&8);},"read-only polling cannot prevent the two second motor watchdog");
+    check(heartbeats==sent&&!(controller.hardwareValues().value(0x673c)&1),"controller never fabricates heartbeat when the host timer stops");
+    readback.stop();controller.disconnectDevice();
+}
+
 struct Child
 {
     QProcess process;
@@ -326,9 +397,9 @@ void processTest()
         wait([&]{return replies.contains(id);},"final FPGA response received");
         check(replies[id].error_code==CommandErrorCode::Ok,qPrintable(replies[id].error_message));
     };
-    for(quint16 source:{0x40,0x41,0x42,0x43,0x44,0x45,0x46,0x48})operation({{"op","sensor"},{"source",source},{"enabled",true}});
+    for(quint16 source:{0x40,0x41,0x42,0x43,0x44,0x45,0x46})operation({{"op","sensor"},{"source",source},{"enabled",true}});
     operation({{"op","acquisition"},{"enabled",true}});
-    wait([&]{return sensors.size()==8&&waves.size()==2&&basic&&position;},
+    wait([&]{return sensors.size()==7&&waves.size()==2&&basic&&position;},
         "explicit startup yields sensors, waveforms and valid EPSILON position/velocity through SkyCore telemetry");
     operation({{"op","temperature"},{"celsius",32.5}});
     operation({{"op","raw"},{"enabled",true}});
@@ -342,7 +413,7 @@ void processTest()
     remote.sendCommand(CommandId::StartRecording,QJsonDocument(calibrationSnapshot).toJson(QJsonDocument::Compact));
     wait([&]{return status.value("recording_state").toInt()==1;},"recording becomes active");
     sensors.clear();waves.clear();
-    wait([&]{return sensors.size()==8&&waves.size()==4&&fullCyclePeakReceived&&
+    wait([&]{return sensors.size()==7&&waves.size()==4&&fullCyclePeakReceived&&
         status.value("recording_statistics").toObject().value("waveform_frames").toString().toULongLong()>5;},
          "recording saves complete harmonic cycles while bounded previews carry full-cycle peaks");
     const auto session=status.value("session_directory").toString();
@@ -375,7 +446,7 @@ void processTest()
 int main(int argc,char** argv)
 {
     QCoreApplication app(argc,argv);
-    try { if(app.arguments().contains("--process"))processTest();else {trajectory();protocol();controls();selectiveControls();}
+    try { if(app.arguments().contains("--process"))processTest();else {trajectory();protocol();currentFirmwareContract();controls();selectiveControls();controllerMotorWatchdog();}
         std::cout<<"FPGA simulator test passed\n";return 0; }
     catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}
 }

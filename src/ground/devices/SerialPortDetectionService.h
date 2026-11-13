@@ -25,12 +25,12 @@ struct SerialPortDetectionRequest
     QStringList availablePorts;
     SerialPortProbeSelection epsilon;
     SerialPortProbeSelection ptb;
-    SerialPortProbeSelection hmp;
+    SerialPortProbeSelection hc2a;
     SerialPortProbeSelection lidar;
     SerialPortProbeSelection temperatureController;
     SerialPortProbeSelection ai8TemperatureController;
     VaporView::PressureSensorProtocol pressureProtocol = VaporView::PressureSensorProtocol::Ptb210;
-    VaporView::HumiditySensorProtocol humidityProtocol = VaporView::HumiditySensorProtocol::Hmp3Modbus;
+    VaporView::HumiditySensorProtocol humidityProtocol = VaporView::HumiditySensorProtocol::Hc2aRoAscii;
     int temperatureSlaveAddress = 1;
     int ai8SlaveAddress = 1;
 };

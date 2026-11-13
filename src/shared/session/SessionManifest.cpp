@@ -119,7 +119,7 @@ void setRawRecordCountForKey(RawFileRecordCounts& counts, const QString& key, qu
 {
     if (key == QLatin1String("navigation") || key == QLatin1String("epsilon")) counts.navigation = value;
     else if (key == QLatin1String("pressure") || key == QLatin1String("ptb")) counts.pressure = value;
-    else if (key == QLatin1String("temperature_humidity") || key == QLatin1String("hmp")) counts.temperatureHumidity = value;
+    else if (key == QLatin1String("temperature_humidity") || key == QLatin1String("hc2a") || key == QLatin1String("hmp")) counts.temperatureHumidity = value;
     else if (key == QLatin1String("distance") || key == QLatin1String("lidar")) counts.distance = value;
     else if (key == QLatin1String("waveform") || key == QLatin1String("tcp_wave")) counts.waveform = value;
     else if (key == QLatin1String("laser_temperature_controller") || key == QLatin1String("rd105")) counts.laserTemperatureController = value;

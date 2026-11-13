@@ -4279,23 +4279,23 @@ void requireHomeEnvironmentCardLayout(MainWindow& window, bool requireSideBySide
         return QRect(label->mapTo(container, QPoint(0, 0)), label->size());
     };
 
-    auto *hmpPanel = environmentGroup->findChild<HmpPanel *>();
-    require(hmpPanel != nullptr, "environment card contains the temperature/humidity panel");
-    QLabel *humidityValueLabel = labelContains(hmpPanel, QStringLiteral("highlightedValue"), QStringLiteral("%RH"));
-    const QList<QLabel*> hmpRateLabels = hmpPanel->findChildren<QLabel *>(QStringLiteral("rateLabel"));
-    require(humidityValueLabel != nullptr && hmpRateLabels.size() >= 2,
+    auto *hc2aPanel = environmentGroup->findChild<Hc2aPanel *>();
+    require(hc2aPanel != nullptr, "environment card contains the temperature/humidity panel");
+    QLabel *humidityValueLabel = labelContains(hc2aPanel, QStringLiteral("highlightedValue"), QStringLiteral("%RH"));
+    const QList<QLabel*> hc2aRateLabels = hc2aPanel->findChildren<QLabel *>(QStringLiteral("rateLabel"));
+    require(humidityValueLabel != nullptr && hc2aRateLabels.size() >= 2,
             "humidity row has a dedicated polling-rate label");
-    const int humidityCenterY = labelCenterY(hmpPanel, humidityValueLabel);
+    const int humidityCenterY = labelCenterY(hc2aPanel, humidityValueLabel);
     bool humidityRateVisibleOnRow = false;
-    for (const QLabel *rateLabel : hmpRateLabels)
+    for (const QLabel *rateLabel : hc2aRateLabels)
     {
-        const QRect rateRect = labelRectInside(hmpPanel, rateLabel);
+        const QRect rateRect = labelRectInside(hc2aPanel, rateLabel);
         require(rateLabel->text().contains(QStringLiteral("Hz")) &&
-                    rateRect.right() <= hmpPanel->contentsRect().right() + 1,
-                "HMP polling-rate labels are visible inside the panel");
+                    rateRect.right() <= hc2aPanel->contentsRect().right() + 1,
+                "HC2A polling-rate labels are visible inside the panel");
         humidityRateVisibleOnRow =
             humidityRateVisibleOnRow ||
-            std::abs(labelCenterY(hmpPanel, rateLabel) - humidityCenterY) <= 2;
+            std::abs(labelCenterY(hc2aPanel, rateLabel) - humidityCenterY) <= 2;
     }
     require(humidityRateVisibleOnRow,
             "humidity row shows its polling-rate label on the same row");
@@ -4845,9 +4845,9 @@ void requireHomeMaximumValueWidths()
         window.findChild<QWidget *>(QStringLiteral("epsilonPanel")));
     auto *environment = window.findChild<QWidget *>(QStringLiteral("environmentSectionTitleBar"))->parentWidget();
     auto *ptb = environment->findChild<PtbPanel *>();
-    auto *hmp = environment->findChild<HmpPanel *>();
+    auto *hc2a = environment->findChild<Hc2aPanel *>();
     auto *lidar = environment->findChild<LidarPanel *>();
-    require(epsilon && ptb && hmp && lidar, "maximum-value test exposes both cards");
+    require(epsilon && ptb && hc2a && lidar, "maximum-value test exposes both cards");
     VaporView::EpsilonData sample;
     sample.valid = true;
     sample.gnss_fix_code = 6;
@@ -4874,7 +4874,7 @@ void requireHomeMaximumValueWidths()
     VaporView::PtbData pressure;
     pressure.valid = true;
     pressure.pressure_hpa = -1100;
-    VaporView::HmpData humidity;
+    VaporView::Hc2aData humidity;
     humidity.valid = true;
     humidity.temperature = humidity.humidity = -100;
     VaporView::LidarData distance;
@@ -4937,12 +4937,12 @@ void requireHomeMaximumValueWidths()
             require(frameCountsLabel->minimumWidth() == reservedCounterWidth,
                     "eight-digit counters fit the initial reservation without widening it");
             ptb->updateData(pressure);
-            hmp->updateData(humidity);
+            hc2a->updateData(humidity);
             lidar->updateData(distance);
             for (double rate : {9999.9, 10000.0})
             {
                 ptb->updateRate(rate);
-                hmp->updateRate(rate);
+                hc2a->updateRate(rate);
                 lidar->updateRate(rate);
                 processEventsFor(100);
                 bool hasMaximumCount = false;
@@ -4954,7 +4954,7 @@ void requireHomeMaximumValueWidths()
                 }
                 require(hasMaximumCount && hasHeight, "maximum-value fixture remains populated after language and scale changes");
                 for (QWidget *panel : {static_cast<QWidget *>(epsilon), static_cast<QWidget *>(ptb),
-                                       static_cast<QWidget *>(hmp), static_cast<QWidget *>(lidar)})
+                                       static_cast<QWidget *>(hc2a), static_cast<QWidget *>(lidar)})
                 {
                     panel->resize(panel == epsilon ? epsilon->preferredWrappedWidth() : panel->minimumSizeHint().width(),
                                   panel->height());
@@ -5893,8 +5893,8 @@ int main(int argc, char **argv)
         settings.setValue(QStringLiteral("source/mode"), QStringLiteral("local"));
         settings.setValue(QStringLiteral("sensor/pressure_source"), QStringLiteral("ptb210"));
         settings.setValue(QStringLiteral("serial/ptb_baud"), QStringLiteral("9600"));
-        settings.setValue(QStringLiteral("sensor/humidity_source"), QStringLiteral("hmp3"));
-        settings.setValue(QStringLiteral("serial/hmp_baud"), QStringLiteral("19200"));
+        settings.setValue(QStringLiteral("sensor/humidity_source"), QStringLiteral("hc2a"));
+        settings.setValue(QStringLiteral("serial/hc2a_baud"), QStringLiteral("19200"));
 #ifdef Q_OS_WIN
         settings.setValue(QStringLiteral("serial/temperature_port"), QStringLiteral("COM9"));
         QSettings(QSettings::defaultFormat(),
@@ -5912,7 +5912,7 @@ int main(int argc, char **argv)
 #endif
         settings.remove(QStringLiteral("serial/ptb210_baud"));
         settings.remove(QStringLiteral("serial/bmp390_baud"));
-        settings.remove(QStringLiteral("serial/hmp3_baud"));
+        settings.remove(QStringLiteral("serial/hc2a_baud"));
         settings.remove(QStringLiteral("serial/sht45_baud"));
         settings.sync();
 
@@ -5920,17 +5920,17 @@ int main(int argc, char **argv)
         applicationSettings.beginGroup(QStringLiteral("MainWindow"));
         applicationSettings.setValue(QStringLiteral("sensor/pressure_source"), QStringLiteral("ptb210"));
         applicationSettings.setValue(QStringLiteral("serial/ptb_baud"), QStringLiteral("9600"));
-        applicationSettings.setValue(QStringLiteral("sensor/humidity_source"), QStringLiteral("hmp3"));
-        applicationSettings.setValue(QStringLiteral("serial/hmp_baud"), QStringLiteral("19200"));
+        applicationSettings.setValue(QStringLiteral("sensor/humidity_source"), QStringLiteral("hc2a"));
+        applicationSettings.setValue(QStringLiteral("serial/hc2a_baud"), QStringLiteral("19200"));
         applicationSettings.setValue(QStringLiteral("local_enabled/epsilon"), true);
         applicationSettings.setValue(QStringLiteral("local_enabled/ptb"), true);
-        applicationSettings.setValue(QStringLiteral("local_enabled/hmp"), true);
+        applicationSettings.setValue(QStringLiteral("local_enabled/hc2a"), true);
         applicationSettings.setValue(QStringLiteral("local_enabled/lidar"), true);
         applicationSettings.setValue(QStringLiteral("local_enabled/temperature"), true);
         applicationSettings.setValue(QStringLiteral("local_enabled/ai8_temperature"), true);
         applicationSettings.remove(QStringLiteral("serial/ptb210_baud"));
         applicationSettings.remove(QStringLiteral("serial/bmp390_baud"));
-        applicationSettings.remove(QStringLiteral("serial/hmp3_baud"));
+        applicationSettings.remove(QStringLiteral("serial/hc2a_baud"));
         applicationSettings.remove(QStringLiteral("serial/sht45_baud"));
         applicationSettings.endGroup();
         applicationSettings.sync();
@@ -6340,7 +6340,7 @@ int main(int argc, char **argv)
     const QString recordingStatusDetail = recordingStatus->statusText();
     require(recordingStatusDetail.contains(QStringLiteral("RAW EPSILON")) &&
                 recordingStatusDetail.contains(QStringLiteral("RAW PTB210")) &&
-                recordingStatusDetail.contains(QStringLiteral("RAW HMP3")) &&
+                recordingStatusDetail.contains(QStringLiteral("RAW HC2A")) &&
                 recordingStatusDetail.contains(QStringLiteral("RAW TFA1500")) &&
                 recordingStatusDetail.contains(QStringLiteral("RAW WAVE")) &&
                 recordingStatusDetail.contains(QStringLiteral("RAW RD105")) &&
@@ -7893,7 +7893,7 @@ int main(int argc, char **argv)
     const QList<QPair<QString, const char *>> localSerialCombos = {
         {QStringLiteral("deviceEpsilonPortCombo"), "EPSILON local serial port combo uses select-plus-manual behavior"},
         {QStringLiteral("devicePressurePortCombo"), "PTB local serial port combo uses select-plus-manual behavior"},
-        {QStringLiteral("deviceHumidityPortCombo"), "HMP local serial port combo uses select-plus-manual behavior"},
+        {QStringLiteral("deviceHumidityPortCombo"), "HC2A local serial port combo uses select-plus-manual behavior"},
         {QStringLiteral("deviceLidarPortCombo"), "Lidar local serial port combo uses select-plus-manual behavior"},
         {QStringLiteral("deviceTemperaturePortCombo"), "RD105 local serial port combo uses select-plus-manual behavior"}};
     for (const auto& comboSpec : localSerialCombos)
@@ -8230,7 +8230,7 @@ int main(int argc, char **argv)
         homeDataSection->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
     require(dataPills.size() == 9,
             "home data availability row covers all nine devices");
-    const QStringList compactDeviceNames = {"EPSILON", "PTB210", "HMP", "TFA1500-L", "RD105", "AI-8288", "BMP390", "SHT45", QStringLiteral("波形"), "Waveform"};
+    const QStringList compactDeviceNames = {"EPSILON", "PTB210", "HC2A", "TFA1500-L", "RD105", "AI-8288", "BMP390", "SHT45", QStringLiteral("波形"), "Waveform"};
     for (QFrame *pill : dataPills)
     {
         QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
@@ -11177,7 +11177,7 @@ int main(int argc, char **argv)
         {QStringLiteral("deviceSkyTelemetryPortCombo"), "device sky telemetry serial combo uses select-plus-manual behavior"},
         {QStringLiteral("deviceEpsilonPortCombo"), "device EPSILON local serial combo uses select-plus-manual behavior"},
         {QStringLiteral("devicePressurePortCombo"), "device PTB local serial combo uses select-plus-manual behavior"},
-        {QStringLiteral("deviceHumidityPortCombo"), "device HMP local serial combo uses select-plus-manual behavior"},
+        {QStringLiteral("deviceHumidityPortCombo"), "device HC2A local serial combo uses select-plus-manual behavior"},
         {QStringLiteral("deviceLidarPortCombo"), "device Lidar local serial combo uses select-plus-manual behavior"},
         {QStringLiteral("deviceTemperaturePortCombo"), "device RD105 local serial combo uses select-plus-manual behavior"},
         {QStringLiteral("deviceAi8TemperaturePortCombo"), "device AI-8288 local serial combo uses select-plus-manual behavior"}};
@@ -12175,9 +12175,9 @@ int main(int argc, char **argv)
     QWidget *humidityPlot = environmentGroup->findChild<QWidget *>(QStringLiteral("environmentHumidityTrendPlot"));
     require(pressurePlot && qobject_cast<PtbPanel *>(pressurePlot->parentWidget()) != nullptr,
             "pressure trend plot sits under the pressure data panel");
-    require(temperaturePlot && qobject_cast<HmpPanel *>(temperaturePlot->parentWidget()) != nullptr,
+    require(temperaturePlot && qobject_cast<Hc2aPanel *>(temperaturePlot->parentWidget()) != nullptr,
             "temperature trend plot sits under the temperature data panel");
-    require(humidityPlot && qobject_cast<HmpPanel *>(humidityPlot->parentWidget()) != nullptr,
+    require(humidityPlot && qobject_cast<Hc2aPanel *>(humidityPlot->parentWidget()) != nullptr,
             "humidity trend plot sits under the humidity data panel");
     requireHomeEnvironmentCardLayout(window, false);
 

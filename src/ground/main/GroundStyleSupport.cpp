@@ -702,7 +702,7 @@ QLabel#highlightedValue {
     font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
 }
 PtbPanel QLabel#highlightedValue,
-HmpPanel QLabel#highlightedValue,
+Hc2aPanel QLabel#highlightedValue,
 LidarPanel QLabel#highlightedValue,
 TemperatureControllerPanel QLabel#highlightedValue {
     font-family: "Consolas", "Monaco", "Courier New", monospace;

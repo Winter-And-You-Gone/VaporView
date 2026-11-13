@@ -45,6 +45,11 @@ int main(int argc, char **argv)
     mainSettings.setValue(QStringLiteral("dark_theme_enabled"), true);
     mainSettings.setValue(QStringLiteral("recording_directory"), QStringLiteral("D:/records"));
     mainSettings.setValue(QStringLiteral("serial/epsilon_port"), QStringLiteral("COM7"));
+    mainSettings.setValue(QStringLiteral("serial/hmp3_port"), QStringLiteral("COM8"));
+    mainSettings.setValue(QStringLiteral("serial/hmp3_baud"), QStringLiteral("19200"));
+    mainSettings.setValue(QStringLiteral("rate/hmp"), QStringLiteral("1"));
+    mainSettings.setValue(QStringLiteral("local_enabled/hmp"), false);
+    mainSettings.setValue(QStringLiteral("sensor/humidity_source"), QStringLiteral("hmp3"));
     mainSettings.setValue(QStringLiteral("telemetry/tcp_host"), QStringLiteral("192.168.1.2"));
     mainSettings.setValue(QStringLiteral("recording_export_rate_hz"), 50);
     mainSettings.setValue(QStringLiteral("epsilon_custom_packet_rate_40"), 250);
@@ -74,6 +79,12 @@ int main(int argc, char **argv)
     VaporView::migrateLegacyApplicationConfig();
 
     QSettings applicationSettings = VaporView::applicationConfigSettings();
+    require(applicationSettings.value(QStringLiteral("MainWindow/serial/hc2a_port")) == QStringLiteral("COM8") &&
+                applicationSettings.value(QStringLiteral("MainWindow/serial/hc2a_baud")) == QStringLiteral("19200") &&
+                applicationSettings.value(QStringLiteral("MainWindow/rate/hc2a")) == QStringLiteral("1") &&
+                !applicationSettings.value(QStringLiteral("MainWindow/local_enabled/hc2a"), true).toBool() &&
+                applicationSettings.value(QStringLiteral("MainWindow/sensor/humidity_source")) == QStringLiteral("hc2a"),
+            "legacy HMP presets migrate to HC2A without losing their connection settings");
     require(QFileInfo(VaporView::applicationConfigFilePath()).absoluteFilePath()
                 .startsWith(QFileInfo(settingsDirectory.path()).absoluteFilePath()),
             "INI test mode keeps application config in the isolated settings directory");
@@ -132,7 +143,12 @@ int main(int argc, char **argv)
     require(mainSettings.contains(QStringLiteral("serial/epsilon_port")),
             "write barrier prevents migration while UI test mode is active");
     VaporView::setSettingsWritesSuspended(false);
+    applicationSettings.setValue(QStringLiteral("MainWindow/serial/hc2a_port"), QStringLiteral("COM42"));
+    applicationSettings.sync();
     VaporView::migrateLegacyApplicationConfig();
+    applicationSettings.sync();
+    require(applicationSettings.value(QStringLiteral("MainWindow/serial/hc2a_port")).toString() == QStringLiteral("COM42"),
+            "explicit HC2A presets take priority over legacy HMP aliases");
     require(applicationSettings.value(QStringLiteral("MainWindow/serial/epsilon_port")).toString() ==
                 QStringLiteral("COM9") &&
                 !mainSettings.contains(QStringLiteral("serial/epsilon_port")),

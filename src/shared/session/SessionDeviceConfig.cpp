@@ -63,7 +63,11 @@ QJsonObject sessionDeviceConfigToJson(const SessionDeviceConfig& config)
     QJsonObject sensors;
     sensors.insert(QStringLiteral("epsilon"), connectionToJson(config.epsilon));
     sensors.insert(QStringLiteral("ptb"), connectionToJson(config.ptb));
-    sensors.insert(QStringLiteral("hmp"), connectionToJson(config.hmp));
+    auto humidity = connectionToJson(config.hc2a);
+    humidity.insert(QStringLiteral("model"), QStringLiteral("HC2A"));
+    humidity.insert(QStringLiteral("protocol"), QStringLiteral("RO-ASCII RDD"));
+    humidity.insert(QStringLiteral("serial_format"), QStringLiteral("8N1"));
+    sensors.insert(QStringLiteral("hc2a"), humidity);
     sensors.insert(QStringLiteral("lidar"), connectionToJson(config.lidar));
     sensors.insert(QStringLiteral("laser_temperature_controller"),
                    connectionToJson(config.laserTemperatureController));

@@ -913,10 +913,10 @@ void SkySessionRecorder::recordBasicTelemetry(const TelemetryBasic& data)
     ptb.valid = hasPressure;
     ptb.pressure_hpa = data.pressure_hpa;
 
-    HmpData hmp;
-    hmp.valid = hasTemperatureHumidity;
-    hmp.temperature = data.temperature_c;
-    hmp.humidity = data.humidity_percent;
+    Hc2aData hc2a;
+    hc2a.valid = hasTemperatureHumidity;
+    hc2a.temperature = data.temperature_c;
+    hc2a.humidity = data.humidity_percent;
 
     LidarData lidar;
     lidar.valid = hasLidar;
@@ -928,7 +928,7 @@ void SkySessionRecorder::recordBasicTelemetry(const TelemetryBasic& data)
                          hasEpsilon,
                          ptb,
                          hasPressure,
-                         hmp,
+                         hc2a,
                          hasTemperatureHumidity,
                          lidar,
                          hasLidar);
@@ -959,8 +959,8 @@ void SkySessionRecorder::recordDeviceSnapshot(quint64 hostTimeUs,
                                               bool hasEpsilon,
                                               const PtbData& ptb,
                                               bool hasPtb,
-                                              const HmpData& hmp,
-                                              bool hasHmp,
+                                              const Hc2aData& hc2a,
+                                              bool hasHc2a,
                                               const LidarData& lidar,
                                               bool hasLidar)
 {
@@ -985,8 +985,8 @@ void SkySessionRecorder::recordDeviceSnapshot(quint64 hostTimeUs,
         hasEpsilon && resolvedEpsilon.valid,
         ptb,
         hasPtb && ptb.valid,
-        hmp,
-        hasHmp && hmp.valid,
+        hc2a,
+        hasHc2a && hc2a.valid,
         lidar,
         hasLidar && lidar.valid);
     out.flush();
@@ -1187,13 +1187,13 @@ void SkySessionRecorder::recordRawPtbResponse(quint64 hostTimeUs, const QByteArr
                    response.size());
 }
 
-void SkySessionRecorder::recordRawHmpResponse(quint64 hostTimeUs, const QByteArray& response)
+void SkySessionRecorder::recordRawHc2aResponse(quint64 hostTimeUs, const QByteArray& response)
 {
     std::lock_guard<std::recursive_mutex> recordingLock(recording_mutex_);
     writeRawRecord(temperature_humidity_raw_file_,
                    raw_temperature_humidity_record_count_,
                    SessionRawDat::kSourceTemperatureHumidity,
-                   SessionRawDat::kRecordTypeTemperatureHumidityModbusResponse,
+                   SessionRawDat::kRecordTypeTemperatureHumidityRoAsciiResponse,
                    0u,
                    hostTimeUs,
                    response.constData(),

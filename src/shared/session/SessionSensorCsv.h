@@ -15,8 +15,8 @@ QString formatRow(quint64 recordTimestampUs,
                   bool hasEpsilon,
                   const PtbData& ptb,
                   bool hasPtb,
-                  const HmpData& hmp,
-                  bool hasHmp,
+                  const Hc2aData& hc2a,
+                  bool hasHc2a,
                   const LidarData& lidar,
                   bool hasLidar);
 

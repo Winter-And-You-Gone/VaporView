@@ -141,8 +141,8 @@ int main()
 
     SerialPortDetectionRequest customProbeRequest;
     customProbeRequest.english = false;
-    customProbeRequest.hmp = {
-        QStringLiteral("VAPORVIEW_TEST_CUSTOM_PORT"), QStringLiteral("256000")};
+    customProbeRequest.hc2a = {
+        QStringLiteral("VAPORVIEW_TEST_CUSTOM_PORT"), QStringLiteral("25600")};
     logs.clear();
     SerialPortDetectionService::detect(
         customProbeRequest,
@@ -151,17 +151,17 @@ int main()
     const auto customStarted = std::find_if(logs.cbegin(), logs.cend(), [](const auto& entry) {
         return entry.event == QStringLiteral("serial_port_detection_probe_started") &&
                entry.fields.value(QStringLiteral("probe_phase")).toString() == QStringLiteral("selected") &&
-               entry.fields.value(QStringLiteral("device_key")).toString() == QStringLiteral("hmp");
+               entry.fields.value(QStringLiteral("device_key")).toString() == QStringLiteral("hc2a");
     });
     require(customStarted != logs.cend() &&
                 customStarted->fields.value(QStringLiteral("baud")).toString() ==
-                    QStringLiteral("256000"),
-            "custom-capable HMP host link retains a selected custom baud during auto-detect");
+                    QStringLiteral("25600"),
+            "custom-capable HC2A host link retains a selected custom baud during auto-detect");
 
     SerialPortDetectionRequest sourceAwareRequest;
     sourceAwareRequest.ptb = {
         QStringLiteral("VAPORVIEW_TEST_BMP_PORT"), QStringLiteral("256000")};
-    sourceAwareRequest.hmp = {
+    sourceAwareRequest.hc2a = {
         QStringLiteral("VAPORVIEW_TEST_SHT45_PORT"), QStringLiteral("256000")};
     sourceAwareRequest.pressureProtocol = VaporView::PressureSensorProtocol::Bmp390Serial;
     sourceAwareRequest.humidityProtocol = VaporView::HumiditySensorProtocol::Sht45Serial;
@@ -178,7 +178,7 @@ int main()
     const auto shtStarted = std::find_if(logs.cbegin(), logs.cend(), [](const auto& entry) {
         return entry.event == QStringLiteral("serial_port_detection_probe_started") &&
                entry.fields.value(QStringLiteral("probe_phase")).toString() == QStringLiteral("selected") &&
-               entry.fields.value(QStringLiteral("device_key")).toString() == QStringLiteral("hmp");
+               entry.fields.value(QStringLiteral("device_key")).toString() == QStringLiteral("hc2a");
     });
     require(bmpStarted != logs.cend() &&
                 bmpStarted->fields.value(QStringLiteral("device")).toString() ==

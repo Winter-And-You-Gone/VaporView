@@ -39,7 +39,7 @@ struct SessionDeviceConfig
     int waveformPort = 0;
     DeviceConnectionConfig epsilon;
     DeviceConnectionConfig ptb;
-    DeviceConnectionConfig hmp;
+    DeviceConnectionConfig hc2a;
     DeviceConnectionConfig lidar;
     DeviceConnectionConfig laserTemperatureController;
     DeviceConnectionConfig systemTemperatureController;

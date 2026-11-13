@@ -28,13 +28,14 @@ QByteArray rtcm(int length) {
 int main(int argc,char** argv) {
     QCoreApplication app(argc,argv);int errors=0;
     const auto check=[&](bool ok,const char* text){if(!ok){qCritical()<<text;++errors;}};
-    auto simulator=makeFpgaUsbSimulator();auto* transport=simulator.get();
+    auto simulator=makeFpgaUsbSimulator(nullptr,FpgaSimulatorStartup::Idle,FpgaSimulatorFirmware::HistoricalExtensions);auto* transport=simulator.get();
     FpgaDeviceController controller(std::move(simulator));
     QVector<FpgaSensor::Reading> readings;
     QObject::connect(&controller,&FpgaDeviceController::measurementUpdated,&app,[&](const FpgaSensor::AdaptedMeasurements& m){readings.append(m.reading);});
     controller.connectDevice({},"simulator",FpgaDeviceController::ConnectMode::PreserveRunningModules);
     check(waitFor([&]{return controller.ready()&&!controller.busy();}),"new firmware handshake");
     check(controller.extensions()==0x3f,"GET_CAPABILITIES extension bits");
+    auto historic=FpgaControlConfig{};historic.ai8.scan=true;controller.setConfiguration(historic);
     const auto call=[&](const QJsonObject& request) {
         bool finished=false;QJsonObject result;
         const auto observer=QObject::connect(&controller,&FpgaDeviceController::extensionCompleted,&app,[&](const QJsonObject& value){result=value;finished=true;});
@@ -136,7 +137,8 @@ int main(int argc,char** argv) {
     auto old=makeFpgaUsbSimulator();old->injectFault("legacy_extensions");FpgaDeviceController legacy(std::move(old));
     legacy.connectDevice({},"simulator",FpgaDeviceController::ConnectMode::PreserveRunningModules);
     check(waitFor([&]{return legacy.ready()&&!legacy.busy();}),"legacy extension word remains compatible");
-    check(!legacy.hardwareValues().contains(0x6800) && !legacy.hardwareValues().contains(0x5058),"legacy firmware never reads unsupported registers");
+    check(legacy.hardwareValues().value(0x6800)==0x00480100 && !legacy.hardwareValues().contains(0x6884)
+        && !legacy.hardwareValues().contains(0x5058),"reduced extension capabilities retain read-only LC identification without accessing RD105 parameters or DLIA cutoff registers");
     legacy.disconnectDevice();
     qInfo()<<"FPGA extension failures:"<<errors;return errors?1:0;
 }

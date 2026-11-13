@@ -51,7 +51,7 @@ int childMain(QCoreApplication& app, const QStringList& args)
     config.epsilon.port = QStringLiteral("TEST_ONLY_NO_SERIAL");
     config.epsilon_rtcm.enabled = false;
     config.ptb.enabled = false;
-    config.hmp.enabled = false;
+    config.hc2a.enabled = false;
     config.bmp390.enabled = false;
     config.sht45.enabled = false;
     config.lidar.enabled = false;

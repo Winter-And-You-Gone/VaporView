@@ -155,20 +155,20 @@ int main(int argc, char **argv)
     QLabel epsilonRate;
     VaporView::Ground::Widgets::EpsilonPanel epsilon(&epsilonRate);
     PtbPanel ptb;
-    HmpPanel hmp;
+    Hc2aPanel hc2a;
     LidarPanel lidar;
 
     VaporView::Ground::Widgets::DevicePanelBindings bindings;
     bindings.epsilon = &epsilon;
     bindings.ptb = &ptb;
-    bindings.hmp = &hmp;
+    bindings.hc2a = &hc2a;
     bindings.lidar = &lidar;
     VaporView::Ground::Widgets::DevicePanelCoordinator coordinator(bindings);
 
     VaporView::Ground::Widgets::DevicePanelRates rates;
     rates.epsilonHz = 100.0;
     rates.ptbHz = 12.5;
-    rates.hmpHz = 8.0;
+    rates.hc2aHz = 8.0;
     rates.lidarHz = 20.0;
     coordinator.updateRates(rates);
 
@@ -176,10 +176,10 @@ int main(int argc, char **argv)
             "EPSILON rate is presented through the coordinator");
     require(hasLabelText(ptb, QStringLiteral("rateLabel"), QStringLiteral("12.5")),
             "PTB rate is presented through the coordinator");
-    require(hasLabelText(hmp, QStringLiteral("rateLabel"), QStringLiteral("8.0")),
-            "HMP rate is presented through the coordinator");
-    require(labelTextCount(hmp, QStringLiteral("rateLabel"), QStringLiteral("8.0")) == 2,
-            "HMP rate is shown on both the temperature and humidity rows");
+    require(hasLabelText(hc2a, QStringLiteral("rateLabel"), QStringLiteral("8.0")),
+            "HC2A rate is presented through the coordinator");
+    require(labelTextCount(hc2a, QStringLiteral("rateLabel"), QStringLiteral("8.0")) == 2,
+            "HC2A rate is shown on both the temperature and humidity rows");
     require(hasLabelText(lidar, QStringLiteral("rateLabel"), QStringLiteral("20.0")),
             "Lidar rate is presented through the coordinator");
 
@@ -189,18 +189,18 @@ int main(int argc, char **argv)
     ptbData.valid = true;
     ptbData.pressure_hpa = 1001.25;
     ptbData.timestamp = baseTimestamp;
-    VaporView::HmpData hmpData;
-    hmpData.valid = true;
-    hmpData.temperature = 21.5;
-    hmpData.humidity = 48.0;
-    hmpData.timestamp = baseTimestamp;
+    VaporView::Hc2aData hc2aData;
+    hc2aData.valid = true;
+    hc2aData.temperature = 21.5;
+    hc2aData.humidity = 48.0;
+    hc2aData.timestamp = baseTimestamp;
     VaporView::LidarData lidarData;
     lidarData.valid = true;
     lidarData.distance_m = 120.75;
     lidarData.signal_strength = 321;
-    coordinator.updateEnvironmentData(epsilonData, ptbData, hmpData, lidarData);
+    coordinator.updateEnvironmentData(epsilonData, ptbData, hc2aData, lidarData);
     for (QWidget *panel : {static_cast<QWidget *>(&ptb),
-                           static_cast<QWidget *>(&hmp),
+                           static_cast<QWidget *>(&hc2a),
                            static_cast<QWidget *>(&lidar)})
     {
         panel->resize(560, std::max(1, panel->sizeHint().height()));
@@ -212,8 +212,8 @@ int main(int argc, char **argv)
 
     require(hasLabelText(ptb, QStringLiteral("highlightedValue"), QStringLiteral("1001.25")),
             "PTB data is presented through the coordinator");
-    require(hasLabelText(hmp, QStringLiteral("highlightedValue"), QStringLiteral("21.5")),
-            "HMP data is presented through the coordinator");
+    require(hasLabelText(hc2a, QStringLiteral("highlightedValue"), QStringLiteral("21.5")),
+            "HC2A data is presented through the coordinator");
     require(hasLabelText(lidar, QStringLiteral("highlightedValue"), QStringLiteral("120.75")),
             "Lidar data is presented through the coordinator");
     auto *lidarDistanceValue =
@@ -258,8 +258,8 @@ int main(int argc, char **argv)
                                 strengthField,
                                 lidarStrengthValue,
                                 "strength field and value keep a compact readable gap");
-    auto *temperatureTrend = hmp.findChild<QWidget *>(QStringLiteral("environmentTemperatureTrendPlot"));
-    auto *humidityTrend = hmp.findChild<QWidget *>(QStringLiteral("environmentHumidityTrendPlot"));
+    auto *temperatureTrend = hc2a.findChild<QWidget *>(QStringLiteral("environmentTemperatureTrendPlot"));
+    auto *humidityTrend = hc2a.findChild<QWidget *>(QStringLiteral("environmentHumidityTrendPlot"));
     auto *pressureTrend = ptb.findChild<QWidget *>(QStringLiteral("environmentPressureTrendPlot"));
     require(temperatureTrend && humidityTrend && pressureTrend,
             "environment trend plots are embedded under their data panels");
@@ -287,12 +287,12 @@ int main(int argc, char **argv)
     pressureTrend->resize(420, 64);
     for (int i = 1; i <= 8; ++i)
     {
-        hmpData.timestamp = baseTimestamp + std::chrono::seconds(i);
-        hmpData.temperature = 21.5 + i * 0.1;
-        hmpData.humidity = 48.0 + i * 0.2;
-        ptbData.timestamp = hmpData.timestamp;
+        hc2aData.timestamp = baseTimestamp + std::chrono::seconds(i);
+        hc2aData.temperature = 21.5 + i * 0.1;
+        hc2aData.humidity = 48.0 + i * 0.2;
+        ptbData.timestamp = hc2aData.timestamp;
         ptbData.pressure_hpa = 1001.25 + i * 0.05;
-        coordinator.updateEnvironmentData(epsilonData, ptbData, hmpData, lidarData);
+        coordinator.updateEnvironmentData(epsilonData, ptbData, hc2aData, lidarData);
     }
     const QPixmap compactTemperatureTrendSnapshot = temperatureTrend->grab();
     require(!compactTemperatureTrendSnapshot.isNull(),
@@ -334,12 +334,12 @@ int main(int argc, char **argv)
     temperatureTrend->resize(840, 64);
     humidityTrend->resize(840, 64);
     pressureTrend->resize(840, 64);
-    hmpData.timestamp = baseTimestamp + std::chrono::seconds(9);
-    hmpData.temperature = 22.5;
-    hmpData.humidity = 50.0;
-    ptbData.timestamp = hmpData.timestamp;
+    hc2aData.timestamp = baseTimestamp + std::chrono::seconds(9);
+    hc2aData.temperature = 22.5;
+    hc2aData.humidity = 50.0;
+    ptbData.timestamp = hc2aData.timestamp;
     ptbData.pressure_hpa = 1002.0;
-    coordinator.updateEnvironmentData(epsilonData, ptbData, hmpData, lidarData);
+    coordinator.updateEnvironmentData(epsilonData, ptbData, hc2aData, lidarData);
     const QStringList wideTemperatureXAxisTicks =
         temperatureTrend->property("xAxisTickLabels").toStringList();
     require(wideTemperatureXAxisTicks.size() > compactXAxisTickCount &&
@@ -351,16 +351,16 @@ int main(int argc, char **argv)
     for (QWidget *plot : {temperatureTrend, humidityTrend, pressureTrend})
         requireTimeLabelsMatchRange(plot);
 
-    hmpData.timestamp = baseTimestamp + std::chrono::seconds(120);
-    ptbData.timestamp = hmpData.timestamp;
-    coordinator.updateEnvironmentData(epsilonData, ptbData, hmpData, lidarData);
+    hc2aData.timestamp = baseTimestamp + std::chrono::seconds(120);
+    ptbData.timestamp = hc2aData.timestamp;
+    coordinator.updateEnvironmentData(epsilonData, ptbData, hc2aData, lidarData);
     require(std::abs(temperatureTrend->property("xAxisTimeSpanSeconds").toDouble() -
                      static_cast<double>(wideTemperatureXAxisTicks.size() - 1)) < 1e-6,
             "long-running environment plots retain the fixed one-second tick window");
     for (QWidget *plot : {temperatureTrend, humidityTrend, pressureTrend})
         requireTimeLabelsMatchRange(plot);
 
-    hmp.setEnglish(true);
+    hc2a.setEnglish(true);
     ptb.setEnglish(true);
     require(temperatureTrend->property("xAxisLeftLabel").toString().contains(QLatin1Char(':')) &&
                 humidityTrend->property("xAxisLeftLabel").toString().contains(QLatin1Char(':')) &&
@@ -372,8 +372,8 @@ int main(int argc, char **argv)
             "clearing rates invalidates the EPSILON rate display");
     require(hasLabelText(ptb, QStringLiteral("rateLabel"), QStringLiteral("--")),
             "clearing rates invalidates the PTB rate display");
-    require(labelTextCount(hmp, QStringLiteral("rateLabel"), QStringLiteral("--")) == 2,
-            "clearing rates invalidates both HMP temperature and humidity rate displays");
+    require(labelTextCount(hc2a, QStringLiteral("rateLabel"), QStringLiteral("--")) == 2,
+            "clearing rates invalidates both HC2A temperature and humidity rate displays");
 
     std::cout << "device panel coordinator tests passed\n";
     return 0;

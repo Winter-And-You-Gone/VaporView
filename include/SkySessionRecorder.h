@@ -97,8 +97,8 @@ public:
                               bool hasEpsilon,
                               const PtbData& ptb,
                               bool hasPtb,
-                              const HmpData& hmp,
-                              bool hasHmp,
+                              const Hc2aData& hc2a,
+                              bool hasHc2a,
                               const LidarData& lidar,
                               bool hasLidar);
     void recordWaveformFeature(const WaveformFeature& feature);
@@ -115,7 +115,7 @@ public:
                                const QByteArray& frame);
     void recordEpsilonObservationEpoch(const QByteArray& encodedEpoch);
     void recordRawPtbResponse(quint64 hostTimeUs, const QByteArray& response);
-    void recordRawHmpResponse(quint64 hostTimeUs, const QByteArray& response);
+    void recordRawHc2aResponse(quint64 hostTimeUs, const QByteArray& response);
     void recordRawLidarFrame(quint64 hostTimeUs, quint16 protocol, const QByteArray& frame);
     void recordRawLaserTemperatureControllerResponse(quint64 hostTimeUs,
                                                      quint16 recordType,

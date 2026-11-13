@@ -3046,8 +3046,8 @@ void MainWindow::setupDeviceConfigPage()
                state_->device_config_.epsilon_rate_lbl, state_->device_config_.epsilon_rate_combo, 0);
     addPortRow(state_->device_config_.ptb_lbl, state_->device_config_.ptb_port_combo, state_->device_config_.ptb_baud_combo,
                state_->device_config_.ptb_rate_lbl, state_->device_config_.ptb_rate_combo, 1);
-    addPortRow(state_->device_config_.hmp_lbl, state_->device_config_.hmp_port_combo, state_->device_config_.hmp_baud_combo,
-               state_->device_config_.hmp_rate_lbl, state_->device_config_.hmp_rate_combo, 2);
+    addPortRow(state_->device_config_.hc2a_lbl, state_->device_config_.hc2a_port_combo, state_->device_config_.hc2a_baud_combo,
+               state_->device_config_.hc2a_rate_lbl, state_->device_config_.hc2a_rate_combo, 2);
     addPortRow(state_->device_config_.lidar_lbl, state_->device_config_.lidar_port_combo, state_->device_config_.lidar_baud_combo,
                state_->device_config_.lidar_rate_lbl, state_->device_config_.lidar_rate_combo, 3);
     addPortRow(state_->device_config_.temperature_lbl, state_->device_config_.temperature_port_combo, state_->device_config_.temperature_baud_combo,
@@ -3061,7 +3061,7 @@ void MainWindow::setupDeviceConfigPage()
     const QStringList availablePorts = getAvailablePorts();
     for (QComboBox *portCombo : {state_->device_config_.epsilon_port_combo,
                                  state_->device_config_.ptb_port_combo,
-                                 state_->device_config_.hmp_port_combo,
+                                 state_->device_config_.hc2a_port_combo,
                                  state_->device_config_.lidar_port_combo,
                                  state_->device_config_.temperature_port_combo})
     {
@@ -3076,8 +3076,8 @@ void MainWindow::setupDeviceConfigPage()
         VaporView::ptb210BaudCapabilities(),
         QStringLiteral("9600"));
     VaporView::configureSerialBaudRateCombo(
-        state_->device_config_.hmp_baud_combo,
-        VaporView::hmp3BaudCapabilities(),
+        state_->device_config_.hc2a_baud_combo,
+        VaporView::hc2aBaudCapabilities(),
         QStringLiteral("19200"));
     VaporView::configureSerialBaudRateCombo(
         state_->device_config_.lidar_baud_combo,
@@ -3102,7 +3102,7 @@ void MainWindow::setupDeviceConfigPage()
     populateRate(state_->device_config_.ptb_rate_combo,
                  kPtbMaxSampleRateHz,
                  kDefaultPtbSampleRateHz);
-    populateRate(state_->device_config_.hmp_rate_combo, 1000, kDefaultHmpSampleRateHz);
+    populateRate(state_->device_config_.hc2a_rate_combo, 1000, kDefaultHc2aSampleRateHz);
     populateRate(state_->device_config_.lidar_rate_combo, 100, kDefaultLidarSampleRateHz);
     populateRate(state_->device_config_.temperature_rate_combo,
                  kMaxTemperatureSampleRateHz,
@@ -3183,7 +3183,7 @@ void MainWindow::setupDeviceConfigPage()
                 }
             });
     state_->device_config_.ptb_baud_combo->setObjectName(QStringLiteral("devicePressureBaudCombo"));
-    state_->device_config_.hmp_baud_combo->setObjectName(QStringLiteral("deviceHumidityBaudCombo"));
+    state_->device_config_.hc2a_baud_combo->setObjectName(QStringLiteral("deviceHumidityBaudCombo"));
     if (state_->device_config_.epsilon_baud_combo)
     {
         state_->device_config_.epsilon_baud_combo->setObjectName(QStringLiteral("deviceEpsilonBaudCombo"));
@@ -3231,17 +3231,17 @@ void MainWindow::setupDeviceConfigPage()
     {
         state_->device_config_.ptb_port_combo->setObjectName(QStringLiteral("devicePressurePortCombo"));
     }
-    if (state_->device_config_.hmp_port_combo)
+    if (state_->device_config_.hc2a_port_combo)
     {
-        state_->device_config_.hmp_port_combo->setObjectName(QStringLiteral("deviceHumidityPortCombo"));
+        state_->device_config_.hc2a_port_combo->setObjectName(QStringLiteral("deviceHumidityPortCombo"));
     }
     if (state_->device_config_.ptb_rate_combo)
     {
         state_->device_config_.ptb_rate_combo->setObjectName(QStringLiteral("devicePressureRateCombo"));
     }
-    if (state_->device_config_.hmp_rate_combo)
+    if (state_->device_config_.hc2a_rate_combo)
     {
-        state_->device_config_.hmp_rate_combo->setObjectName(QStringLiteral("deviceHumidityRateCombo"));
+        state_->device_config_.hc2a_rate_combo->setObjectName(QStringLiteral("deviceHumidityRateCombo"));
     }
     if (state_->device_config_.lidar_port_combo)
     {
@@ -3299,8 +3299,8 @@ void MainWindow::setupDeviceConfigPage()
                           QStringLiteral("deviceRemoteEpsilonEnabledCheck"), VaporView::SkyDeviceId::Epsilon);
     addDeviceEnabledCheck(state_->device_config_.ptb_enabled_check, 1,
                           QStringLiteral("deviceRemotePressureEnabledCheck"), VaporView::SkyDeviceId::Ptb);
-    addDeviceEnabledCheck(state_->device_config_.hmp_enabled_check, 2,
-                          QStringLiteral("deviceRemoteHumidityEnabledCheck"), VaporView::SkyDeviceId::Hmp);
+    addDeviceEnabledCheck(state_->device_config_.hc2a_enabled_check, 2,
+                          QStringLiteral("deviceRemoteHumidityEnabledCheck"), VaporView::SkyDeviceId::Hc2a);
     addDeviceEnabledCheck(state_->device_config_.lidar_enabled_check, 3,
                           QStringLiteral("deviceRemoteLidarEnabledCheck"), VaporView::SkyDeviceId::Lidar);
     addDeviceEnabledCheck(state_->device_config_.temperature_enabled_check, 4,
@@ -3348,9 +3348,9 @@ void MainWindow::setupDeviceConfigPage()
     addDeviceRemoteButton(1, state_->device_config_.ptb_remote_buttons_widget,
                            state_->device_config_.ptb_remote_action_btn,
                            VaporView::SkyDeviceId::Ptb);
-    addDeviceRemoteButton(2, state_->device_config_.hmp_remote_buttons_widget,
-                           state_->device_config_.hmp_remote_action_btn,
-                           VaporView::SkyDeviceId::Hmp);
+    addDeviceRemoteButton(2, state_->device_config_.hc2a_remote_buttons_widget,
+                           state_->device_config_.hc2a_remote_action_btn,
+                           VaporView::SkyDeviceId::Hc2a);
     addDeviceRemoteButton(3, state_->device_config_.lidar_remote_buttons_widget,
                            state_->device_config_.lidar_remote_action_btn,
                            VaporView::SkyDeviceId::Lidar);
@@ -3800,7 +3800,7 @@ void MainWindow::updateLocalDeviceConfigFromUi() const
     };
     capture(state_->device_config_.epsilon_port_combo, state_->device_config_.epsilon_baud_combo, state_->local_device_config_.epsilon);
     capture(state_->device_config_.ptb_port_combo, state_->device_config_.ptb_baud_combo, state_->local_device_config_.ptb);
-    capture(state_->device_config_.hmp_port_combo, state_->device_config_.hmp_baud_combo, state_->local_device_config_.hmp);
+    capture(state_->device_config_.hc2a_port_combo, state_->device_config_.hc2a_baud_combo, state_->local_device_config_.hc2a);
     capture(state_->device_config_.lidar_port_combo, state_->device_config_.lidar_baud_combo, state_->local_device_config_.lidar);
     capture(state_->device_config_.temperature_port_combo, state_->device_config_.temperature_baud_combo, state_->local_device_config_.temperatureController);
     capture(state_->device_config_.ai8_temperature_port_combo, state_->device_config_.ai8_temperature_baud_combo, state_->local_device_config_.ai8TemperatureController);
@@ -3821,13 +3821,13 @@ void MainWindow::updateLocalDeviceConfigFromUi() const
         value = effectiveRateOrDefault(text, value, 1000);
     };
     captureRate(state_->device_config_.ptb_rate_combo, state_->local_device_config_.ptbRateText, state_->local_device_config_.ptb.sampleRateHz, state_->local_device_config_.ptb.skipDeviceRate);
-    captureRate(state_->device_config_.hmp_rate_combo, state_->local_device_config_.hmpRateText, state_->local_device_config_.hmp.sampleRateHz, state_->local_device_config_.hmp.skipDeviceRate);
+    captureRate(state_->device_config_.hc2a_rate_combo, state_->local_device_config_.hc2aRateText, state_->local_device_config_.hc2a.sampleRateHz, state_->local_device_config_.hc2a.skipDeviceRate);
     captureRate(state_->device_config_.lidar_rate_combo, state_->local_device_config_.lidarRateText, state_->local_device_config_.lidar.sampleRateHz, state_->local_device_config_.lidar.skipDeviceRate);
     captureRate(state_->device_config_.temperature_rate_combo, state_->local_device_config_.temperatureRateText, state_->local_device_config_.temperatureController.sampleRateHz, state_->local_device_config_.temperatureController.skipDeviceRate);
     captureRate(state_->device_config_.ai8_temperature_rate_combo, state_->local_device_config_.ai8RateText, state_->local_device_config_.ai8TemperatureController.sampleRateHz, state_->local_device_config_.ai8TemperatureController.skipDeviceRate);
     if (state_->device_config_.epsilon_enabled_check) state_->local_device_config_.epsilon.enabled = state_->device_config_.epsilon_enabled_check->isChecked();
     if (state_->device_config_.ptb_enabled_check) state_->local_device_config_.ptb.enabled = state_->device_config_.ptb_enabled_check->isChecked();
-    if (state_->device_config_.hmp_enabled_check) state_->local_device_config_.hmp.enabled = state_->device_config_.hmp_enabled_check->isChecked();
+    if (state_->device_config_.hc2a_enabled_check) state_->local_device_config_.hc2a.enabled = state_->device_config_.hc2a_enabled_check->isChecked();
     if (state_->device_config_.lidar_enabled_check) state_->local_device_config_.lidar.enabled = state_->device_config_.lidar_enabled_check->isChecked();
     if (state_->device_config_.temperature_enabled_check) state_->local_device_config_.temperatureController.enabled = state_->device_config_.temperature_enabled_check->isChecked();
     if (state_->device_config_.ai8_temperature_enabled_check) state_->local_device_config_.ai8TemperatureController.enabled = state_->device_config_.ai8_temperature_enabled_check->isChecked();
@@ -3842,16 +3842,16 @@ void MainWindow::updateLocalDeviceConfigFromUi() const
         }
     }
     state_->local_device_config_.pressureSource = QStringLiteral("ptb210");
-    state_->local_device_config_.humiditySource = QStringLiteral("hmp3");
+    state_->local_device_config_.humiditySource = QStringLiteral("hc2a");
     state_->local_device_config_.pressureProtocol = state_->local_device_config_.pressureSource == QStringLiteral("bmp390") ? VaporView::PressureSensorProtocol::Bmp390Serial : VaporView::PressureSensorProtocol::Ptb210;
-    state_->local_device_config_.humidityProtocol = state_->local_device_config_.humiditySource == QStringLiteral("sht45") ? VaporView::HumiditySensorProtocol::Sht45Serial : VaporView::HumiditySensorProtocol::Hmp3Modbus;
+    state_->local_device_config_.humidityProtocol = state_->local_device_config_.humiditySource == QStringLiteral("sht45") ? VaporView::HumiditySensorProtocol::Sht45Serial : VaporView::HumiditySensorProtocol::Hc2aRoAscii;
     state_->local_device_config_.pressureBySource[state_->local_device_config_.pressureSource] =
         state_->local_device_config_.ptb;
     state_->local_device_config_.humidityBySource[state_->local_device_config_.humiditySource] =
-        state_->local_device_config_.hmp;
+        state_->local_device_config_.hc2a;
     state_->epsilon_sample_rate_ = std::clamp(state_->local_device_config_.epsilon.sampleRateHz, 20, 200);
     state_->ptb_sample_rate_ = state_->local_device_config_.ptb.sampleRateHz;
-    state_->hmp_sample_rate_ = state_->local_device_config_.hmp.sampleRateHz;
+    state_->hc2a_sample_rate_ = state_->local_device_config_.hc2a.sampleRateHz;
     state_->lidar_sample_rate_ = state_->local_device_config_.lidar.sampleRateHz;
     state_->temperature_sample_rate_ = state_->local_device_config_.temperatureController.sampleRateHz;
 }
@@ -3860,7 +3860,7 @@ void MainWindow::refreshDeviceConfigUiFromLocalModel()
 {
     const auto& c = state_->local_device_config_;
     for (const auto& entry : {qMakePair(state_->device_config_.ptb_source_combo, c.pressureSource),
-                             qMakePair(state_->device_config_.hmp_source_combo, c.humiditySource)}) {
+                             qMakePair(state_->device_config_.hc2a_source_combo, c.humiditySource)}) {
         if (!entry.first) continue;
         const QSignalBlocker blocker(entry.first);
         entry.first->setCurrentIndex(entry.first->findData(entry.second));
@@ -3900,7 +3900,7 @@ void MainWindow::refreshDeviceConfigUiFromLocalModel()
     const auto& humidityCapabilities = VaporView::humiditySensorBaudCapabilities(c.humiditySource);
     apply(state_->device_config_.ptb_port_combo, state_->device_config_.ptb_baud_combo, c.ptb,
           &pressureCapabilities);
-    apply(state_->device_config_.hmp_port_combo, state_->device_config_.hmp_baud_combo, c.hmp,
+    apply(state_->device_config_.hc2a_port_combo, state_->device_config_.hc2a_baud_combo, c.hc2a,
           &humidityCapabilities);
     apply(state_->device_config_.lidar_port_combo, state_->device_config_.lidar_baud_combo, c.lidar);
     apply(state_->device_config_.temperature_port_combo, state_->device_config_.temperature_baud_combo, c.temperatureController);
@@ -3913,7 +3913,7 @@ void MainWindow::refreshDeviceConfigUiFromLocalModel()
         }
     };
     setText(state_->device_config_.ptb_rate_combo, c.ptbRateText);
-    setText(state_->device_config_.hmp_rate_combo, c.hmpRateText);
+    setText(state_->device_config_.hc2a_rate_combo, c.hc2aRateText);
     setText(state_->device_config_.lidar_rate_combo, c.lidarRateText);
     setText(state_->device_config_.temperature_rate_combo, c.temperatureRateText);
     setText(state_->device_config_.ai8_temperature_rate_combo, c.ai8RateText);
@@ -3926,7 +3926,7 @@ void MainWindow::refreshDeviceConfigUiFromLocalModel()
     };
     setChecked(state_->device_config_.epsilon_enabled_check, c.epsilon.enabled);
     setChecked(state_->device_config_.ptb_enabled_check, c.ptb.enabled);
-    setChecked(state_->device_config_.hmp_enabled_check, c.hmp.enabled);
+    setChecked(state_->device_config_.hc2a_enabled_check, c.hc2a.enabled);
     setChecked(state_->device_config_.lidar_enabled_check, c.lidar.enabled);
     setChecked(state_->device_config_.temperature_enabled_check, c.temperatureController.enabled);
     setChecked(state_->device_config_.ai8_temperature_enabled_check, c.ai8TemperatureController.enabled);
@@ -4212,11 +4212,11 @@ void MainWindow::updateDeviceConfigTexts()
             ? QStringLiteral("PTB210\nBarometer")
             : QStringLiteral("PTB210\n气压计"));
     }
-    if (state_->device_config_.hmp_lbl)
+    if (state_->device_config_.hc2a_lbl)
     {
-        state_->device_config_.hmp_lbl->setText(state_->is_english_
-            ? QStringLiteral("HMP3\nTemp/Humidity")
-            : QStringLiteral("HMP3\n温湿度计"));
+        state_->device_config_.hc2a_lbl->setText(state_->is_english_
+            ? QStringLiteral("HC2A\nTemp/Humidity")
+            : QStringLiteral("HC2A\n温湿度计"));
     }
     if (state_->device_config_.epsilon_lbl) state_->device_config_.epsilon_lbl->setText(state_->is_english_ ? QStringLiteral("EPSILON2-D4G\nIntegrated Navigation") : QStringLiteral("EPSILON2-D4G\n组合导航"));
     if (state_->device_config_.lidar_lbl) state_->device_config_.lidar_lbl->setText(state_->is_english_ ? QStringLiteral("TFA1500-L\nLiDAR") : QStringLiteral("TFA1500-L\n激光测距"));
@@ -4257,7 +4257,7 @@ void MainWindow::updateDeviceConfigTexts()
     };
     updateEnabledCheckPresentation(state_->device_config_.epsilon_enabled_check, QStringLiteral("EPSILON"));
     updateEnabledCheckPresentation(state_->device_config_.ptb_enabled_check, state_->is_english_ ? QStringLiteral("Pressure") : QStringLiteral("气压"));
-    updateEnabledCheckPresentation(state_->device_config_.hmp_enabled_check, state_->is_english_ ? QStringLiteral("Humidity") : QStringLiteral("温湿度"));
+    updateEnabledCheckPresentation(state_->device_config_.hc2a_enabled_check, state_->is_english_ ? QStringLiteral("Humidity") : QStringLiteral("温湿度"));
     updateEnabledCheckPresentation(state_->device_config_.lidar_enabled_check, QStringLiteral("TFA1500-L"));
     updateEnabledCheckPresentation(state_->device_config_.temperature_enabled_check, QStringLiteral("RD105"));
     updateEnabledCheckPresentation(state_->device_config_.ai8_temperature_enabled_check, QStringLiteral("AI-8288"));
@@ -4276,7 +4276,7 @@ void MainWindow::updateDeviceConfigTexts()
             state_->device_config_.epsilon_packet_rates_btn->text());
     }
     if (state_->device_config_.ptb_rate_lbl) state_->device_config_.ptb_rate_lbl->setText(state_->is_english_ ? "Rate:" : "频率:");
-    if (state_->device_config_.hmp_rate_lbl) state_->device_config_.hmp_rate_lbl->setText(state_->is_english_ ? "Rate:" : "频率:");
+    if (state_->device_config_.hc2a_rate_lbl) state_->device_config_.hc2a_rate_lbl->setText(state_->is_english_ ? "Rate:" : "频率:");
     if (state_->device_config_.lidar_rate_lbl) state_->device_config_.lidar_rate_lbl->setText(state_->is_english_ ? "Rate:" : "频率:");
     if (state_->device_config_.temperature_rate_lbl) state_->device_config_.temperature_rate_lbl->setText(state_->is_english_ ? "Poll:" : "轮询:");
     if (state_->device_config_.ai8_temperature_rate_lbl) state_->device_config_.ai8_temperature_rate_lbl->setText(state_->is_english_ ? "Poll:" : "轮询:");
@@ -4321,7 +4321,7 @@ void MainWindow::updateDeviceConfigTexts()
     if (state_->device_config_.remote_sky_save_btn) state_->device_config_.remote_sky_save_btn->setText(state_->is_english_ ? "Save to Sky" : "保存到天空端");
     for (VaporView::SkyDeviceId device : {VaporView::SkyDeviceId::Epsilon,
                                           VaporView::SkyDeviceId::Ptb,
-                                          VaporView::SkyDeviceId::Hmp,
+                                          VaporView::SkyDeviceId::Hc2a,
                                           VaporView::SkyDeviceId::Lidar,
                                           VaporView::SkyDeviceId::TemperatureController,
                                           VaporView::SkyDeviceId::Ai8TemperatureController,
@@ -4427,9 +4427,9 @@ void MainWindow::updateDeviceConfigState()
         state_->device_config_.ptb_port_combo,
         state_->device_config_.ptb_baud_combo,
         state_->device_config_.ptb_source_combo,
-        state_->device_config_.hmp_port_combo,
-        state_->device_config_.hmp_baud_combo,
-        state_->device_config_.hmp_source_combo,
+        state_->device_config_.hc2a_port_combo,
+        state_->device_config_.hc2a_baud_combo,
+        state_->device_config_.hc2a_source_combo,
         state_->device_config_.lidar_port_combo,
         state_->device_config_.lidar_baud_combo,
         state_->device_config_.temperature_port_combo,
@@ -4438,7 +4438,7 @@ void MainWindow::updateDeviceConfigState()
         state_->device_config_.ai8_temperature_baud_combo,
         state_->device_config_.ai8_temperature_rate_combo,
         state_->device_config_.ptb_rate_combo,
-        state_->device_config_.hmp_rate_combo,
+        state_->device_config_.hc2a_rate_combo,
         state_->device_config_.lidar_rate_combo
     };
     for (QWidget *widget : directSensorWidgets)
@@ -4486,10 +4486,10 @@ void MainWindow::updateDeviceConfigState()
     if (state_->device_config_.enabled_header_lbl) state_->device_config_.enabled_header_lbl->setVisible(true);
     if (state_->device_config_.source_header_lbl) state_->device_config_.source_header_lbl->setVisible(true);
     if (state_->device_config_.ptb_source_combo) state_->device_config_.ptb_source_combo->setVisible(true);
-    if (state_->device_config_.hmp_source_combo) state_->device_config_.hmp_source_combo->setVisible(true);
+    if (state_->device_config_.hc2a_source_combo) state_->device_config_.hc2a_source_combo->setVisible(true);
     for (QCheckBox *check : {state_->device_config_.epsilon_enabled_check,
                              state_->device_config_.ptb_enabled_check,
-                             state_->device_config_.hmp_enabled_check,
+                             state_->device_config_.hc2a_enabled_check,
                              state_->device_config_.lidar_enabled_check,
                              state_->device_config_.temperature_enabled_check,
                              state_->device_config_.ai8_temperature_enabled_check,
@@ -4545,12 +4545,12 @@ void MainWindow::updateDeviceConfigState()
                 ? (state_->is_english_
                     ? QStringLiteral("RD105 connection is unavailable: the current FPGA VLP1 relay does not expose an RD105 source.")
                     : QStringLiteral("当前 FPGA VLP1 中转协议未提供 RD105 通道，暂不支持实际连接。"))
-                : fpgaRelay?QStringLiteral("RD105 与 HMP、AI8 共用 RS485；请预先设置 19200 / 8N1、地址 2，并在 FPGA 参数页选择测量通道。"):QString());
+                : fpgaRelay?QStringLiteral("历史 RD105 扩展与 AI8 共用 RS485，需核对对应固件和仪表通信参数；HC2A 使用独立 UART。"):QString());
     }
 
     for (QWidget *widget : {state_->device_config_.epsilon_remote_buttons_widget,
                             state_->device_config_.ptb_remote_buttons_widget,
-                            state_->device_config_.hmp_remote_buttons_widget,
+                            state_->device_config_.hc2a_remote_buttons_widget,
                             state_->device_config_.lidar_remote_buttons_widget,
                             state_->device_config_.temperature_remote_buttons_widget,
                             state_->device_config_.ai8_temperature_remote_buttons_widget,
@@ -4563,7 +4563,7 @@ void MainWindow::updateDeviceConfigState()
     }
     for (VaporView::SkyDeviceId device : {VaporView::SkyDeviceId::Epsilon,
                                           VaporView::SkyDeviceId::Ptb,
-                                          VaporView::SkyDeviceId::Hmp,
+                                          VaporView::SkyDeviceId::Hc2a,
                                           VaporView::SkyDeviceId::Lidar,
                                           VaporView::SkyDeviceId::TemperatureController,
                                           VaporView::SkyDeviceId::Ai8TemperatureController,
@@ -4596,7 +4596,7 @@ void MainWindow::updateDeviceConfigState()
     };
     for (QComboBox *port : {state_->device_config_.epsilon_port_combo,
                            state_->device_config_.ptb_port_combo,
-                           state_->device_config_.hmp_port_combo,
+                           state_->device_config_.hc2a_port_combo,
                            state_->device_config_.lidar_port_combo,
                            state_->device_config_.temperature_port_combo,
                            state_->device_config_.ai8_temperature_port_combo})
@@ -5061,7 +5061,7 @@ void MainWindow::refreshLocalSerialPortManualOptionTexts()
 {
     for (QComboBox *combo : {state_->device_config_.epsilon_port_combo,
                              state_->device_config_.ptb_port_combo,
-                             state_->device_config_.hmp_port_combo,
+                             state_->device_config_.hc2a_port_combo,
                              state_->device_config_.lidar_port_combo,
                              state_->device_config_.temperature_port_combo,
                              state_->device_config_.ai8_temperature_port_combo,
@@ -5244,7 +5244,7 @@ void MainWindow::setupConfigPanel()
 
     addHomeDevice(state_->home_epsilon_status_lbl_, state_->home_epsilon_action_btn_, VaporView::SkyDeviceId::Epsilon);
     addHomeDevice(state_->home_ptb_status_lbl_, state_->home_ptb_action_btn_, VaporView::SkyDeviceId::Ptb);
-    addHomeDevice(state_->home_hmp_status_lbl_, state_->home_hmp_action_btn_, VaporView::SkyDeviceId::Hmp);
+    addHomeDevice(state_->home_hc2a_status_lbl_, state_->home_hc2a_action_btn_, VaporView::SkyDeviceId::Hc2a);
     addHomeDevice(state_->home_lidar_status_lbl_, state_->home_lidar_action_btn_, VaporView::SkyDeviceId::Lidar);
     addHomeDevice(state_->home_temperature_status_lbl_, state_->home_temperature_action_btn_, VaporView::SkyDeviceId::TemperatureController);
     addHomeDevice(state_->home_wave_status_lbl_, state_->home_wave_action_btn_, VaporView::SkyDeviceId::WaveTcp);
@@ -5407,10 +5407,10 @@ void MainWindow::setupDataPanels()
     };
     state_->env_lidar_status_icon_ = createStatusIcon();
     state_->env_ptb_status_icon_ = createStatusIcon();
-    state_->env_hmp_status_icon_ = createStatusIcon();
+    state_->env_hc2a_status_icon_ = createStatusIcon();
     envTitleLayout->addWidget(state_->env_lidar_status_icon_, 0, Qt::AlignVCenter);
     envTitleLayout->addWidget(state_->env_ptb_status_icon_, 0, Qt::AlignVCenter);
-    envTitleLayout->addWidget(state_->env_hmp_status_icon_, 0, Qt::AlignVCenter);
+    envTitleLayout->addWidget(state_->env_hc2a_status_icon_, 0, Qt::AlignVCenter);
     env_layout->addWidget(envTitleBar);
 
     state_->lidar_panel_ = new LidarPanel(this);
@@ -5419,8 +5419,8 @@ void MainWindow::setupDataPanels()
     state_->ptb_panel_ = new PtbPanel(this);
     env_layout->addWidget(state_->ptb_panel_, 1);
 
-    state_->hmp_panel_ = new HmpPanel(this);
-    env_layout->addWidget(state_->hmp_panel_, 2);
+    state_->hc2a_panel_ = new Hc2aPanel(this);
+    env_layout->addWidget(state_->hc2a_panel_, 2);
     updateEnvironmentStatusIcons(false, false, false);
 
     const int sensorCardHeight = std::max({
@@ -5463,7 +5463,7 @@ void MainWindow::setupDataPanels()
 
     state_->lidar_group_ = nullptr;
     state_->ptb_group_ = nullptr;
-    state_->hmp_group_ = nullptr;
+    state_->hc2a_group_ = nullptr;
 
     state_->home_temperature_overview_column_ = new QWidget(this);
     state_->home_temperature_overview_column_->setObjectName(
@@ -6006,7 +6006,7 @@ void MainWindow::setupDataPanels()
         state_->gnss_panel_,
         state_->imu_panel_,
         state_->ptb_panel_,
-        state_->hmp_panel_,
+        state_->hc2a_panel_,
         state_->lidar_panel_,
         state_->temperature_controller_panel_,
         state_->temperature_overview_panel_});

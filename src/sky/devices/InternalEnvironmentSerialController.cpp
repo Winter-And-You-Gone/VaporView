@@ -104,7 +104,7 @@ bool InternalEnvironmentSerialController::connectDevice(SkyDeviceId id, const QS
     const auto generation=c->generation;
     const bool pressure=id==SkyDeviceId::Bmp390;
     if(pressure){auto p=std::make_shared<PtbCollector>();p->setProtocol(PressureSensorProtocol::Bmp390Serial);c->collector=p;}
-    else{auto p=std::make_shared<HmpCollector>();p->setProtocol(HumiditySensorProtocol::Sht45Serial);c->collector=p;}
+    else{auto p=std::make_shared<Hc2aCollector>();p->setProtocol(HumiditySensorProtocol::Sht45Serial);c->collector=p;}
     auto collector=c->collector;
     collector->setCancelCallback([c]{return c->cancel.load();});
     collector->setSampleRate(int(config.frequency_hz));
@@ -114,7 +114,7 @@ bool InternalEnvironmentSerialController::connectDevice(SkyDeviceId id, const QS
         bool valid;
         if(pressure){const auto data=static_cast<PtbCollector*>(ptr)->getLatestData();valid=data.valid&&std::isfinite(data.pressure_hpa)&&data.pressure_hpa>0;
             if(valid)reading.pressurePa=data.pressure_hpa*100;}
-        else{const auto data=static_cast<HmpCollector*>(ptr)->getLatestData();valid=data.valid&&std::isfinite(data.temperature)&&std::isfinite(data.humidity)&&data.humidity>=0&&data.humidity<=100;
+        else{const auto data=static_cast<Hc2aCollector*>(ptr)->getLatestData();valid=data.valid&&std::isfinite(data.temperature)&&std::isfinite(data.humidity)&&data.humidity>=0&&data.humidity<=100;
             if(valid){reading.temperatureC=data.temperature;reading.humidityPct=data.humidity;}}
         // Text bridges have no wire CRC; validity here means a complete parsed
         // record, rather than claiming an I2C/USB CRC was checked by the host.
@@ -130,7 +130,7 @@ bool InternalEnvironmentSerialController::connectDevice(SkyDeviceId id, const QS
         const bool ok=collector->start(config.port.toStdString(),SerialConfig::N81(config.baud_rate))
             &&!c->cancel&&(id==SkyDeviceId::Bmp390
                 ?static_cast<PtbCollector*>(collector.get())->checkDeviceResponse()
-                :static_cast<HmpCollector*>(collector.get())->checkDeviceResponse())
+                :static_cast<Hc2aCollector*>(collector.get())->checkDeviceResponse())
             &&!c->cancel&&collector->startStreaming();
         QString error=QString::fromStdString(collector->getLastError());
         if(!ok) {

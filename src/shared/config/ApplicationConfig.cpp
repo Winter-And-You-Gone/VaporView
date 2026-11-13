@@ -78,6 +78,7 @@ bool isMainWindowApplicationConfigKey(const QString& key)
              QStringLiteral("serial/"),
              QStringLiteral("rate/"),
              QStringLiteral("sensor/"),
+             QStringLiteral("local_enabled/"),
              QStringLiteral("source/"),
              QStringLiteral("telemetry/"),
              QStringLiteral("tdlas/")})
@@ -109,7 +110,10 @@ bool isMainWindowApplicationConfigKey(const QString& key)
         QStringLiteral("ptb_port"),
         QStringLiteral("ptb_baud"),
         QStringLiteral("ptb_rate"),
-        QStringLiteral("hmp_port"),
+        QStringLiteral("hc2a_port"),
+        QStringLiteral("hc2a_baud"),
+        QStringLiteral("hc2a_rate"),
+        QStringLiteral("hmp_port"), // Legacy profiles are migrated to HC2A below.
         QStringLiteral("hmp_baud"),
         QStringLiteral("hmp_rate"),
         QStringLiteral("lidar_port"),
@@ -190,6 +194,27 @@ void migrateLegacyApplicationConfig()
 
     QSettings target = applicationConfigSettings();
     migrateLegacyScope(target, QStringLiteral("MainWindow"), isMainWindowApplicationConfigKey);
+    // Preserve existing environmental-device presets when upgrading. Writes
+    // after migration use the HC2A keys; explicit HC2A presets take priority.
+    for (const auto& alias : {
+             qMakePair("serial/hmp3_port", "serial/hc2a_port"),
+             qMakePair("serial/hmp_port", "serial/hc2a_port"),
+             qMakePair("serial/hmp3_baud", "serial/hc2a_baud"),
+             qMakePair("serial/hmp_baud", "serial/hc2a_baud"),
+             qMakePair("rate/hmp", "rate/hc2a"),
+             qMakePair("local_enabled/hmp", "local_enabled/hc2a"),
+             qMakePair("hmp_port", "hc2a_port"),
+             qMakePair("hmp_baud", "hc2a_baud"),
+             qMakePair("hmp_rate", "hc2a_rate")}) {
+        const QString legacy = QStringLiteral("MainWindow/") + QLatin1String(alias.first);
+        const QString current = QStringLiteral("MainWindow/") + QLatin1String(alias.second);
+        if (!target.contains(current) && target.contains(legacy)) target.setValue(current, target.value(legacy));
+    }
+    const QString humiditySource = QStringLiteral("MainWindow/sensor/humidity_source");
+    if (target.value(humiditySource).toString() == QStringLiteral("hmp3") ||
+        target.value(humiditySource).toString() == QStringLiteral("hmp"))
+        target.setValue(humiditySource, QStringLiteral("hc2a"));
+    target.sync();
     migrateLegacyScope(target, QStringLiteral("TcpWavePanel"), [](const QString& key) {
         return key.startsWith(QStringLiteral("connection/"), Qt::CaseInsensitive);
     });

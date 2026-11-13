@@ -476,7 +476,7 @@ int main(int argc, char** argv)
     sessionStream.setRealNumberNotation(QTextStream::FixedNotation);
     sessionStream.setRealNumberPrecision(9);
     sessionStream
-        << "record_timestamp_us,nav_lat_deg,nav_lon_deg,nav_height_m,ecef_x_m,ecef_y_m,ecef_z_m,gnss_fix,hmp_humidity_rh\n";
+        << "record_timestamp_us,nav_lat_deg,nav_lon_deg,nav_height_m,ecef_x_m,ecef_y_m,ecef_z_m,gnss_fix,hc2a_humidity_rh\n";
     constexpr int kSessionSampleCount = 57911;
     const std::array<double, 5> latitudes = {
         30.130669989, 30.124458407, 30.128837606, 30.132797391, 30.130669989};

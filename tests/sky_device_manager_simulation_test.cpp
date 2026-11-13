@@ -532,8 +532,8 @@ int main(int argc, char **argv)
     config.epsilon.enabled = true;
     config.ptb = {true, QStringLiteral("/dev/test-bmp390"), 115200, 20.0};
     config.ptb.source = QStringLiteral("bmp390");
-    config.hmp = {true, QStringLiteral("/dev/test-sht45"), 115200, 20.0};
-    config.hmp.source = QStringLiteral("sht45");
+    config.hc2a = {true, QStringLiteral("/dev/test-sht45"), 115200, 20.0};
+    config.hc2a.source = QStringLiteral("sht45");
     config.lidar.enabled = true;
     config.temperature_controller = {true, QStringLiteral("/dev/test-rd105"), 38400, 5.0, 3};
     config.ai8_temperature_controller = {true, QStringLiteral("/dev/test-ai8"), 19200, 5.0, 5};
@@ -572,7 +572,7 @@ int main(int argc, char **argv)
     requireConnectedWithData(manager,VaporView::SkyDeviceId::Sht45);
     for (VaporView::SkyDeviceId id : {VaporView::SkyDeviceId::Epsilon,
                                       VaporView::SkyDeviceId::Ptb,
-                                      VaporView::SkyDeviceId::Hmp,
+                                      VaporView::SkyDeviceId::Hc2a,
                                       VaporView::SkyDeviceId::Lidar,
                                       VaporView::SkyDeviceId::TemperatureController,
                                       VaporView::SkyDeviceId::Ai8TemperatureController,
@@ -588,7 +588,7 @@ int main(int argc, char **argv)
             "simulated EPSILON starts with the SkyConfig packet-rate profile");
     require(manager.latestPtb().valid && std::fabs(manager.latestPtb().pressure_hpa) > 1.0,
             "simulated pressure data is valid");
-    require(manager.latestHmp().valid && std::fabs(manager.latestHmp().humidity) > 1.0,
+    require(manager.latestHc2a().valid && std::fabs(manager.latestHc2a().humidity) > 1.0,
             "simulated humidity data is valid");
     require(manager.latestLidar().valid && manager.latestLidar().distance_m > 0.0,
             "simulated lidar data is valid");

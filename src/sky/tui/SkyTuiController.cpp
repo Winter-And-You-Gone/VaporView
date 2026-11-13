@@ -165,16 +165,16 @@ QList<SkyTuiCommandItem> SkyTuiController::commandPalette() const
         {QStringLiteral("/overview"), QStringLiteral("打开设备总览")},
         {QStringLiteral("/home"), QStringLiteral("返回天空端首页")},
         {QStringLiteral("/status"), QStringLiteral("查看天空端运行状态、记录状态和链路统计")},
-        {QStringLiteral("/devices"), QStringLiteral("查看 EPSILON/PTB/HMP/Lidar/RD105/AI-8/Wave TCP 设备状态")},
+        {QStringLiteral("/devices"), QStringLiteral("查看 EPSILON/PTB/HC2A/Lidar/RD105/AI-8/Wave TCP 设备状态")},
         {QStringLiteral("/connect epsilon"), QStringLiteral("请求天空端连接 EPSILON")},
         {QStringLiteral("/disconnect epsilon"), QStringLiteral("请求天空端断开 EPSILON")},
         {QStringLiteral("/reconnect epsilon"), QStringLiteral("请求天空端重连 EPSILON")},
         {QStringLiteral("/connect ptb"), QStringLiteral("请求天空端连接 PTB 气压计")},
         {QStringLiteral("/disconnect ptb"), QStringLiteral("请求天空端断开 PTB 气压计")},
         {QStringLiteral("/reconnect ptb"), QStringLiteral("请求天空端重连 PTB 气压计")},
-        {QStringLiteral("/connect hmp"), QStringLiteral("请求天空端连接 HMP 温湿度计")},
-        {QStringLiteral("/disconnect hmp"), QStringLiteral("请求天空端断开 HMP 温湿度计")},
-        {QStringLiteral("/reconnect hmp"), QStringLiteral("请求天空端重连 HMP 温湿度计")},
+        {QStringLiteral("/connect hc2a"), QStringLiteral("请求天空端连接 HC2A 温湿度计")},
+        {QStringLiteral("/disconnect hc2a"), QStringLiteral("请求天空端断开 HC2A 温湿度计")},
+        {QStringLiteral("/reconnect hc2a"), QStringLiteral("请求天空端重连 HC2A 温湿度计")},
         {QStringLiteral("/connect lidar"), QStringLiteral("请求天空端连接激光测距模块")},
         {QStringLiteral("/disconnect lidar"), QStringLiteral("请求天空端断开激光测距模块")},
         {QStringLiteral("/reconnect lidar"), QStringLiteral("请求天空端重连激光测距模块")},
@@ -211,7 +211,7 @@ QStringList SkyTuiController::helpLines() const
         QStringLiteral("  devices, /devices              # 查看设备状态"),
         QStringLiteral("  /device overview, /overview    # 打开设备总览页面"),
         QStringLiteral("  /home                          # 返回首页"),
-        QStringLiteral("  connect <device>               # 连接设备：epsilon/ptb/hmp/lidar/rd105/ai8/wave/all"),
+        QStringLiteral("  connect <device>               # 连接设备：epsilon/ptb/hc2a/lidar/rd105/ai8/wave/all"),
         QStringLiteral("  disconnect <device>            # 断开设备"),
         QStringLiteral("  reconnect <device>             # 重连设备"),
         QStringLiteral("  record start|pause|stop        # 控制天空端本地记录"),
@@ -235,9 +235,9 @@ bool SkyTuiController::parseDeviceName(const QString& name, SkyDeviceId& id) con
     {
         id = SkyDeviceId::Ptb;
     }
-    else if (key == QStringLiteral("hmp"))
+    else if (key == QStringLiteral("hc2a"))
     {
-        id = SkyDeviceId::Hmp;
+        id = SkyDeviceId::Hc2a;
     }
     else if (key == QStringLiteral("lidar"))
     {
@@ -292,7 +292,7 @@ SkyTuiCommandResult SkyTuiController::handleDeviceCommand(const QString& action,
     SkyDeviceId id = SkyDeviceId::All;
     if (!parseDeviceName(deviceName, id))
     {
-        result.messages << QStringLiteral("设备名无效。可用：epsilon、ptb、hmp、lidar、rd105、ai8、wave、all。");
+        result.messages << QStringLiteral("设备名无效。可用：epsilon、ptb、hc2a、lidar、rd105、ai8、wave、all。");
         return result;
     }
 

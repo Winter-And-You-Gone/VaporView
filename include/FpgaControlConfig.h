@@ -26,7 +26,7 @@ struct FpgaControlConfig
         quint32 spiClockHz = 20000000, gain = 0x40000000;
         qint32 offset = 0;
     };
-    struct Ai8 { quint32 slaveAddress = 1, channel = 1, pollIntervalMs = 1000, timeoutMs = 200, retryLimit = 1; bool scan = true; };
+    struct Ai8 { quint32 slaveAddress = 1, channel = 1, pollIntervalMs = 1000, timeoutMs = 200, retryLimit = 1; bool scan = false; };
     quint32 adcRateHz = 1000000, adcCnvTicks = 2, adcBusyTimeoutTicks = 100;
     std::array<quint32,2> adcExpectedPoints{{0,0}};
     QMap<quint16,QJsonObject> sensorParameters;
@@ -63,6 +63,14 @@ struct FpgaControlConfig
     static FpgaControlConfig fromJson(const QJsonObject &o) {
         FpgaControlConfig c;
         const auto sensors=o.value("sensorParameters").toObject();for(auto it=sensors.begin();it!=sensors.end();++it)c.sensorParameters[quint16(it.key().toUInt())]=it.value().toObject();
+        // Previous HMP presets share lane 0x41 but their address 240 is not an
+        // HC2A address. Never carry that preset into the replacement probe.
+        if(c.sensorParameters.contains(0x41)) {
+            auto& probe=c.sensorParameters[0x41];
+            const int address=probe.value("address").toInt(99);
+            if(address<0 || (address>64 && address!=99))probe["address"]=99;
+            probe.remove("pressure");probe.remove("pressureCompensation");
+        }
         c.backend = o.value("backend").toString(QStringLiteral("auto"));
         auto u = [](const QJsonObject &v, const char *key, quint32 fallback) { return quint32(v.value(QLatin1String(key)).toDouble(fallback)); };
         c.adcRateHz = u(o, "adcRateHz", c.adcRateHz);

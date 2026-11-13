@@ -151,7 +151,7 @@ int main(int argc, char **argv)
         options.telemetry_tcp_port = 0;
         options.config_path = isolated.filePath(QStringLiteral("sky.json"));
         auto config = VaporView::SkyConfig::defaults();
-        config.epsilon.port.clear(); config.ptb.port.clear(); config.hmp.port.clear();
+        config.epsilon.port.clear(); config.ptb.port.clear(); config.hc2a.port.clear();
         config.lidar.port.clear(); config.temperature_controller.port.clear();
         config.ai8_temperature_controller.port.clear();
         require(config.saveToFile(options.config_path), "save detection fixture");

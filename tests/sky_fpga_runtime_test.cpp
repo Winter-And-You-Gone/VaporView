@@ -338,7 +338,7 @@ int main(int argc,char **argv)
     bool pressureReceived=false,fpgaSensorReceived=false;
     QObject::connect(&runtime,&SkyRuntime::telemetryFrameReady,[&](MsgType type,const QByteArray& bytes) {
         if(type==MsgType::TelemetryBasic) { TelemetryBasic data;
-            if(TelemetryCodec::parseBasicTelemetry(bytes,data)) require(!(data.validity_flags&(BasicHasTemperature|BasicHasHumidity)),"SHT45 never becomes environmental HMP telemetry");
+            if(TelemetryCodec::parseBasicTelemetry(bytes,data)) require(!(data.validity_flags&(BasicHasTemperature|BasicHasHumidity)),"SHT45 never becomes environmental HC2A telemetry");
             if(TelemetryCodec::parseBasicTelemetry(bytes,data) && (data.validity_flags&BasicHasPressure))
                 pressureReceived=std::abs(data.pressure_hpa-1014.59)<0.02;
         } else if(type==MsgType::FpgaSensor) { FpgaSensor::Reading reading;

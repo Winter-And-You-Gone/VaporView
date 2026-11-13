@@ -1,5 +1,7 @@
 # 天空端 FPGA 与数传部署
 
+> 当前设备身份、能力及记录迁移以[HCD2适配说明（2026-11-14）](fpga_hcd2_adaptation_20261114.md)为准。本地与天空端需部署同步版本；本文未记录的HC2A/PPS/DM422/LC边界沿用该说明，旧历史扩展不能作为现场启动条件。
+
 最终接线以用户确认的天空端工控机为中心：
 
 ```mermaid
@@ -35,7 +37,7 @@ FPGA 的 VLP1 通道上送，Ground/SkyCore 不再为这些设备启动第二套
 原配置中，切回直连后恢复。波特率、频率和数据源仍保留设备参数编辑。RD105 同样
 显示 `FPGA`，但当前 VLP1 没有对应通道，实际连接不可用，不回退到直连串口。
 波形行随路径切换，首页仍名为“波形监控”：FPGA 下可选择双通道 ADC/DLIA，固定
-显示原始信号、归一化二次谐波和归一化二次谐波峰值趋势，不显示一次谐波。
+显示一次谐波H1、二次谐波H2、归一化二次谐波和归一化峰值趋势；ADC RAW在FPGA诊断页查看。
 format0/2 按同周期、同采样点计算 `H2/H1`；仅 IQ 的 format1 计算
 `hypot(I2, Q2)/hypot(I1, Q1)`，结果为无量纲比值，不是气体浓度。
 H1 非正或输入无效时保留采样位置并留断点；该点不参与峰值，整周期无有效参考时峰值留断点。
@@ -72,7 +74,7 @@ Windows USB 设备，也不代表已经完成 GP01 实板或 VLP1 原始字节�
   },
   "epsilon": {"enabled": false, "rtcm": {"enabled": false}},
   "ptb": {"enabled": false},
-  "hmp": {"enabled": false},
+  "hc2a": {"enabled": false},
   "lidar": {"enabled": false},
   "temperature_controller": {"enabled": false},
   "ai8_temperature_controller": {"enabled": false},

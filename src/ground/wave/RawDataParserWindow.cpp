@@ -11,6 +11,7 @@
 #include "shared/session/SessionPathResolver.h"
 #include "shared/config/SettingsWriteBarrier.h"
 #include "TcpWaveEncoding.h"
+#include "Hc2aProtocol.h"
 
 #include <QAbstractTableModel>
 #include <QAction>
@@ -191,7 +192,7 @@ constexpr int kRawDataParserDefaultHeight = 800;
 constexpr int kFloatBytes = 4;
 constexpr uint8_t kFdilinkFrameHead = 0xFC;
 constexpr uint8_t kFdilinkFrameTail = 0xFD;
-constexpr uint8_t kHmpSlaveAddress = 240;
+constexpr uint8_t kLegacyHmpSlaveAddress = 240;
 
 struct RawRecordIndex
 {
@@ -311,7 +312,7 @@ QString sourceName(quint16 sourceId, bool english)
     case VaporView::SessionRawDat::kSourcePressure:
         return english ? QStringLiteral("PTB210") : QStringLiteral("PTB210气压计");
     case VaporView::SessionRawDat::kSourceTemperatureHumidity:
-        return english ? QStringLiteral("HMP3") : QStringLiteral("HMP3温湿度");
+        return english ? QStringLiteral("HC2A") : QStringLiteral("HC2A温湿度");
     case VaporView::SessionRawDat::kSourceDistance:
         return english ? QStringLiteral("Lidar") : QStringLiteral("激光测距");
     case VaporView::SessionRawDat::kSourceWaveform:
@@ -370,7 +371,8 @@ QString recordTypeName(quint16 sourceId, quint16 recordType, bool english)
     case VaporView::SessionRawDat::kSourcePressure:
         return QStringLiteral("PTB response");
     case VaporView::SessionRawDat::kSourceTemperatureHumidity:
-        return QStringLiteral("Modbus function %1").arg(formatHex(recordType));
+        return recordType == VaporView::SessionRawDat::kRecordTypeTemperatureHumidityRoAsciiResponse
+            ? QStringLiteral("HC2A RDD") : QStringLiteral("Legacy HMP Modbus %1").arg(formatHex(recordType));
     case VaporView::SessionRawDat::kSourceDistance:
         return lidarProtocolName(recordType, english);
     case VaporView::SessionRawDat::kSourceWaveform:
@@ -2782,9 +2784,29 @@ void decodePtbPayload(RawDecodedRecord& decoded, const QByteArray& payload, bool
     decoded.summary = ok ? QStringLiteral("%1 hPa").arg(number(pressure, 3)) : trimmed;
 }
 
-void decodeHmpPayload(RawDecodedRecord& decoded, const QByteArray& payload, bool english)
+void decodeHc2aPayload(RawDecodedRecord& decoded, const QByteArray& payload, quint16 recordType, bool english)
 {
-    decoded.title = QStringLiteral("HMP3 Modbus RTU");
+    if (recordType == VaporView::SessionRawDat::kRecordTypeTemperatureHumidityRoAsciiResponse) {
+        decoded.title = QStringLiteral("HC2A RO-ASCII RDD");
+        VaporView::Hc2aProtocol::Reading reading;
+        const bool valid = VaporView::Hc2aProtocol::decode(
+            std::string_view(payload.constData(), size_t(payload.size())), 99, reading);
+        addField(decoded, QStringLiteral("HC2A RDD"), QStringLiteral("response"), QString::fromLatin1(payload),
+                 valid ? QStringLiteral("OK") : QStringLiteral("BAD"), QString(), 0, payload.size(), QString(), !valid);
+        if (valid) {
+            addField(decoded, QStringLiteral("HC2A RDD"), QStringLiteral("address"), QString::number(reading.address), QString(), QString(), 2, 2);
+            addNumericField(decoded, QStringLiteral("HC2A RDD"), QStringLiteral("humidity"), reading.humidity, QStringLiteral("%RH"), 0, payload.size(), 2);
+            addNumericField(decoded, QStringLiteral("HC2A RDD"), QStringLiteral("temperature"), reading.temperature, QStringLiteral("degC"), 0, payload.size(), 2);
+            addField(decoded, QStringLiteral("HC2A RDD"), QStringLiteral("alarms"), formatHex(reading.alarms),
+                     reading.alarms ? QStringLiteral("ALARM") : QStringLiteral("OK"), QString(), 0, payload.size(), QString(), reading.alarms != 0);
+        }
+        decoded.status = valid && !reading.alarms ? (english ? QStringLiteral("OK") : QStringLiteral("正常"))
+            : (english ? QStringLiteral("Invalid / alarm") : QStringLiteral("无效 / 报警"));
+        decoded.summary = valid ? QStringLiteral("%1 %RH, %2 degC").arg(number(reading.humidity, 2), number(reading.temperature, 2))
+            : (english ? QStringLiteral("Invalid RDD response") : QStringLiteral("RDD 应答无效"));
+        return;
+    }
+    decoded.title = QStringLiteral("Legacy HMP Modbus RTU");
     if (payload.size() < 5)
     {
         addField(decoded, QStringLiteral("Modbus"), QStringLiteral("frame"), QString::number(payload.size()), QString(), QStringLiteral("bytes"), 0, payload.size(), QStringLiteral("Too short"), true);
@@ -2798,7 +2820,7 @@ void decodeHmpPayload(RawDecodedRecord& decoded, const QByteArray& payload, bool
     const uint16_t receivedCrc = readU16LE(bytes + payload.size() - 2);
     const uint16_t calculatedCrc = modbusCrc16(bytes, static_cast<size_t>(payload.size() - 2));
     const bool crcOk = receivedCrc == calculatedCrc;
-    addField(decoded, QStringLiteral("Modbus"), QStringLiteral("slave"), QString::number(slave), slave == kHmpSlaveAddress ? QStringLiteral("OK") : QStringLiteral("Unexpected"), QString(), 0, 1, QStringLiteral("expected 240"), slave != kHmpSlaveAddress);
+    addField(decoded, QStringLiteral("Legacy HMP Modbus"), QStringLiteral("slave"), QString::number(slave), slave == kLegacyHmpSlaveAddress ? QStringLiteral("OK") : QStringLiteral("Unexpected"), QString(), 0, 1, QStringLiteral("expected 240"), slave != kLegacyHmpSlaveAddress);
     addField(decoded, QStringLiteral("Modbus"), QStringLiteral("function"), formatHex(functionCode), QString(), QString(), 1, 1);
     addField(decoded, QStringLiteral("Modbus"), QStringLiteral("crc"), formatHex(receivedCrc, 4), crcOk ? QStringLiteral("OK") : QStringLiteral("BAD"), QString(), payload.size() - 2, 2, QString(), !crcOk);
     if ((functionCode & 0x80u) != 0 && payload.size() >= 5)
@@ -2991,7 +3013,7 @@ RawDecodedRecord decodeRawRecord(const RawRecordIndex& record, const QByteArray&
         decodePtbPayload(decoded, payload, english);
         break;
     case VaporView::SessionRawDat::kSourceTemperatureHumidity:
-        decodeHmpPayload(decoded, payload, english);
+        decodeHc2aPayload(decoded, payload, record.record_type, english);
         break;
     case VaporView::SessionRawDat::kSourceDistance:
         decodeLidarPayload(decoded, payload, record.record_type, english);

@@ -366,7 +366,7 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
             QStringLiteral("UI-TEST-GNSS"),
             QStringLiteral("UI-TEST-IMU"),
             QStringLiteral("UI-TEST-PTB"),
-            QStringLiteral("UI-TEST-HMP"),
+            QStringLiteral("UI-TEST-HC2A"),
             QStringLiteral("UI-TEST-LIDAR"),
             QStringLiteral("UI-TEST-RD105"),
             QStringLiteral("UI-TEST-SKY"),
@@ -376,7 +376,7 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
             state_->device_config_.epsilon_port_combo,
             state_->gnss_port_combo_, state_->imu_port_combo_,
             state_->device_config_.ptb_port_combo,
-            state_->device_config_.hmp_port_combo,
+            state_->device_config_.hc2a_port_combo,
             state_->device_config_.lidar_port_combo,
             state_->device_config_.temperature_port_combo,
             state_->device_config_.sky_telemetry_port_combo
@@ -499,7 +499,7 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
     state_->current_gnss_ = VaporView::GnssData();
     state_->current_imu_ = VaporView::ImuData();
     state_->current_ptb_ = VaporView::PtbData();
-    state_->current_hmp_ = VaporView::HmpData();
+    state_->current_hc2a_ = VaporView::Hc2aData();
     state_->current_lidar_ = VaporView::LidarData();
     state_->current_temperature_controller_ = VaporView::TemperatureControllerData();
     state_->fpga_ai8_ui_dirty_ = state_->fpga_rd105_ui_dirty_ = false;
@@ -520,7 +520,7 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
     {
         state_->device_panel_coordinator_->updateAllData(
             state_->current_epsilon_, state_->current_gnss_, 0,
-            state_->current_imu_, 0, state_->current_ptb_, state_->current_hmp_,
+            state_->current_imu_, 0, state_->current_ptb_, state_->current_hc2a_,
             state_->current_lidar_, state_->current_temperature_controller_);
         state_->device_panel_coordinator_->clearRates();
     }
@@ -642,13 +642,13 @@ void MainWindow::applyUiTestSnapshot()
         state_->fpga_page_->setUiTestState(true,scenario==UiTestScenario::DataStalled,
             scenario==UiTestScenario::PartialFailure,elapsed,VaporView::SensorTransportPath::FpgaRelay);
         if(state_->device_panel_coordinator_) {
-            state_->device_panel_coordinator_->updateEnvironmentData(state_->current_epsilon_,state_->current_ptb_,state_->current_hmp_,state_->current_lidar_);
+            state_->device_panel_coordinator_->updateEnvironmentData(state_->current_epsilon_,state_->current_ptb_,state_->current_hc2a_,state_->current_lidar_);
             DevicePanelRates rates;rates.epsilonHz=state_->fpga_sensor_rates_.value(0x42);rates.ptbHz=state_->fpga_sensor_rates_.value(0x40);
-            rates.hmpHz=state_->fpga_sensor_rates_.value(0x41);rates.lidarHz=state_->fpga_sensor_rates_.value(0x45);
+            rates.hc2aHz=state_->fpga_sensor_rates_.value(0x41);rates.lidarHz=state_->fpga_sensor_rates_.value(0x45);
             state_->device_panel_coordinator_->updateRates(rates);
         }
         if(state_->epsilon_config_panel_)state_->epsilon_config_panel_->setLivePacketRates(state_->current_epsilon_);
-        updateEnvironmentStatusIcons(state_->current_lidar_.valid,state_->current_ptb_.valid,state_->current_hmp_.valid);
+        updateEnvironmentStatusIcons(state_->current_lidar_.valid,state_->current_ptb_.valid,state_->current_hc2a_.valid);
         updateRemoteTelemetrySummaryLabel();updateHomeDeviceStatusCapsules();updateRecordingStatusLabel();
         return;
     }
@@ -657,7 +657,7 @@ void MainWindow::applyUiTestSnapshot()
     state_->current_gnss_ = snapshot.gnss;
     state_->current_imu_ = snapshot.imu;
     state_->current_ptb_ = snapshot.ptb;
-    state_->current_hmp_ = snapshot.hmp;
+    state_->current_hc2a_ = snapshot.hc2a;
     state_->current_lidar_ = snapshot.lidar;
     state_->current_temperature_controller_ = snapshot.temperature;
     if (state_->ai8_temperature_controller_panel_)
@@ -678,13 +678,13 @@ void MainWindow::applyUiTestSnapshot()
         state_->device_panel_coordinator_->updateAllData(
             snapshot.epsilon, snapshot.gnss, static_cast<quint64>(elapsed) * 1000,
             snapshot.imu, static_cast<quint64>(elapsed) * 1000,
-            snapshot.ptb, snapshot.hmp, snapshot.lidar, snapshot.temperature);
+            snapshot.ptb, snapshot.hc2a, snapshot.lidar, snapshot.temperature);
         DevicePanelRates rates;
         rates.epsilonHz = snapshot.epsilonRateHz;
         rates.gnssHz = snapshot.gnssRateHz;
         rates.imuHz = snapshot.imuRateHz;
         rates.ptbHz = snapshot.ptbRateHz;
-        rates.hmpHz = snapshot.hmpRateHz;
+        rates.hc2aHz = snapshot.hc2aRateHz;
         rates.lidarHz = snapshot.lidarRateHz;
         rates.temperatureHz = snapshot.temperatureRateHz;
         state_->device_panel_coordinator_->updateRates(rates);
@@ -693,7 +693,7 @@ void MainWindow::applyUiTestSnapshot()
     {
         state_->epsilon_config_panel_->setLivePacketRates(snapshot.epsilon);
     }
-    updateEnvironmentStatusIcons(snapshot.lidar.valid, snapshot.ptb.valid, snapshot.hmp.valid);
+    updateEnvironmentStatusIcons(snapshot.lidar.valid, snapshot.ptb.valid, snapshot.hc2a.valid);
     if (state_->tcp_wave_panel_ && !snapshot.rawWaveform.isEmpty())
     {
         const quint64 timestampUs = static_cast<quint64>(std::max<qint64>(1, elapsed)) * 1000;

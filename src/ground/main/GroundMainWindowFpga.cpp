@@ -125,8 +125,8 @@ void MainWindow::syncFpgaDeviceConfigUi()
             editor->clear();editor->setProperty("source",source);editor->setProperty("parameter",key);
             const auto *oldValidator=editor->validator();editor->setValidator(nullptr);delete oldValidator;
             if(key=="baud") {
-                const int minimum=source==0x40?1200:source==0x42?9600:115200;
-                const int maximum=source==0x40?19200:6250000;
+                const int minimum=(source==0x40 || source==0x41)?1200:source==0x42?9600:115200;
+                const int maximum=source==0x40?19200:source==0x41?115200:6250000;
                 editor->setValidator(new QIntValidator(minimum,maximum,editor));
                 for(int baud:{1200,2400,4800,9600,19200,38400,57600,115200,230400,460800,500000,921600,1000000,2000000,6250000})
                     if(baud>=minimum&&baud<=maximum)editor->addItem(QString::number(baud));
@@ -177,12 +177,12 @@ void MainWindow::syncFpgaDeviceConfigUi()
     const quint16 pressure = homeFpgaSensorSource(VaporView::SkyDeviceId::Ptb);
     field(state_->device_config_.epsilon_baud_combo,0x42,"baud",0x6210);
     field(state_->device_config_.ptb_baud_combo,pressure,pressure==0x40?"baud":"",0x6010,QStringLiteral("I²C"));
-    field(state_->device_config_.hmp_baud_combo,0x41,{},0,QStringLiteral("19200"));
+    field(state_->device_config_.hc2a_baud_combo,0x41,"baud",0x6110);
     field(state_->device_config_.lidar_baud_combo,0x45,"baud",0x6510);
     field(state_->device_config_.ai8_temperature_baud_combo,0x46,{},0,registers.contains(0x6610)?QString::number(registers.value(0x6610)):QStringLiteral("19200"));
     field(state_->device_config_.temperature_baud_combo,0x48,{},0,(extensions&VaporView::FpgaExtensions::Rd105)?QStringLiteral("19200"):state_->is_english_?QStringLiteral("Unsupported"):QStringLiteral("不支持"));
     field(state_->device_config_.ptb_rate_combo,pressure,"poll_ms",pressure==0x43?0x6314:0x6018);
-    field(state_->device_config_.hmp_rate_combo,0x41,"poll_ms",0x611c);
+    field(state_->device_config_.hc2a_rate_combo,0x41,"poll_ms",0x611c);
     field(state_->device_config_.ai8_temperature_rate_combo,0x46,"poll_ms",0x662c);
     field(state_->device_config_.lidar_rate_combo,0x45,{},0,state_->is_english_?QStringLiteral("Device output"):QStringLiteral("设备输出"));
     field(state_->device_config_.temperature_rate_combo,0x48,(extensions&VaporView::FpgaExtensions::Rd105)?"poll_ms":"",0x682c,QStringLiteral("—"));
@@ -200,7 +200,7 @@ void MainWindow::syncFpgaDeviceConfigUi()
     }
     if (!relay) {
         for (auto *check : {state_->device_config_.epsilon_enabled_check, state_->device_config_.ptb_enabled_check,
-                 state_->device_config_.hmp_enabled_check, state_->device_config_.lidar_enabled_check,
+                 state_->device_config_.hc2a_enabled_check, state_->device_config_.lidar_enabled_check,
                  state_->device_config_.temperature_enabled_check, state_->device_config_.ai8_temperature_enabled_check,
                  state_->device_config_.tcp_wave_enabled_check})
             if (check) {check->setToolTip(QString());check->setAccessibleDescription(QString());}
@@ -220,14 +220,12 @@ void MainWindow::syncFpgaDeviceConfigUi()
     using VaporView::SkyDeviceId;
     for (const auto &item : {qMakePair(state_->device_config_.epsilon_enabled_check,SkyDeviceId::Epsilon),
              qMakePair(state_->device_config_.ptb_enabled_check,SkyDeviceId::Ptb),
-             qMakePair(state_->device_config_.hmp_enabled_check,SkyDeviceId::Hmp),
+             qMakePair(state_->device_config_.hc2a_enabled_check,SkyDeviceId::Hc2a),
              qMakePair(state_->device_config_.lidar_enabled_check,SkyDeviceId::Lidar),
              qMakePair(state_->device_config_.temperature_enabled_check,SkyDeviceId::TemperatureController),
              qMakePair(state_->device_config_.ai8_temperature_enabled_check,SkyDeviceId::Ai8TemperatureController)}) {
-        const bool supported = !(isRemoteSkyMode() && !isUiTestMode() && item.second == SkyDeviceId::Hmp
-                && !state_->fpga_session_.remoteStatus.value("simulation").toBool())
-            && (item.second != SkyDeviceId::TemperatureController || registers.isEmpty()
-                || (extensions & VaporView::FpgaExtensions::Rd105));
+        const bool supported = item.second != SkyDeviceId::TemperatureController || registers.isEmpty()
+                || (extensions & VaporView::FpgaExtensions::Rd105);
         enabledSelection(item.first,item.second,supported);
         // Selection is independent of readback; the action must show actual state.
         if (relay) updateDeviceConfigRemoteActionButton(item.second);
@@ -299,7 +297,7 @@ quint16 MainWindow::homeFpgaSensorSource(VaporView::SkyDeviceId device) const
     case SkyDeviceId::Ptb: return 0x40;
     case SkyDeviceId::Bmp390: return 0x43;
     case SkyDeviceId::Sht45: return 0x44;
-    case SkyDeviceId::Hmp: return 0x41;
+    case SkyDeviceId::Hc2a: return 0x41;
     case SkyDeviceId::Lidar: return 0x45;
     case SkyDeviceId::Ai8TemperatureController: return 0x46;
     case SkyDeviceId::TemperatureController: return 0x48;
@@ -321,8 +319,6 @@ VaporView::DeviceState MainWindow::homeFpgaDeviceActionState(VaporView::SkyDevic
 {
     using VaporView::DeviceState;
     using VaporView::SkyDeviceId;
-    if (isRemoteSkyMode() && !isUiTestMode() && device == SkyDeviceId::Hmp
-        && !state_->fpga_session_.remoteStatus.value("simulation").toBool()) return DeviceState::Disabled;
     if (!homeFpgaSensorSource(device) && device != SkyDeviceId::WaveTcp) return DeviceState::Disabled;
     if(device==SkyDeviceId::TemperatureController && !homeFpgaRegisters().isEmpty() && !(homeFpgaExtensions()&VaporView::FpgaExtensions::Rd105))return DeviceState::Disabled;
     if (state_->fpga_home_action_device_ == device || state_->fpga_pending_home_actions_.contains(device))
@@ -506,8 +502,6 @@ void MainWindow::finishHomeFpgaRawStart()
 VaporView::DeviceState MainWindow::homeFpgaDeviceState(VaporView::SkyDeviceId device) const
 {
     using VaporView::DeviceState;
-    if (isRemoteSkyMode() && !isUiTestMode() && device == VaporView::SkyDeviceId::Hmp
-        && !state_->fpga_session_.remoteStatus.value("simulation").toBool()) return DeviceState::Disabled;
     const auto source = homeFpgaSensorSource(device);
     if (!source && device != VaporView::SkyDeviceId::WaveTcp) return DeviceState::Disabled;
     // Command serialization locks actions, but does not disconnect other devices.
@@ -651,17 +645,6 @@ void MainWindow::setupFpgaControlPage()
     state_->fpga_config_ = FpgaControlConfig::fromJson(saved.object());
     state_->fpga_session_.remoteConfig = FpgaControlConfig::fromJson(
         QJsonDocument::fromJson(settings.value(QStringLiteral("Fpga/remoteDesiredConfiguration")).toByteArray()).object());
-    // Older releases persisted scan=false as the default. Migrate it once so
-    // subsequent explicit single-channel choices still survive a restart.
-    if (!settings.value(QStringLiteral("Fpga/ai8EightChannelDefaultApplied"), false).toBool()) {
-        state_->fpga_config_.ai8.scan = true;
-        state_->fpga_session_.remoteConfig.ai8.scan = true;
-        VaporView::setPersistentSetting(settings, QStringLiteral("Fpga/desiredConfiguration"),
-            QJsonDocument(state_->fpga_config_.toJson()).toJson(QJsonDocument::Compact));
-        VaporView::setPersistentSetting(settings, QStringLiteral("Fpga/remoteDesiredConfiguration"),
-            QJsonDocument(state_->fpga_session_.remoteConfig.toJson()).toJson(QJsonDocument::Compact));
-        VaporView::setPersistentSetting(settings, QStringLiteral("Fpga/ai8EightChannelDefaultApplied"), true);
-    }
     state_->fpga_page_ = new FpgaControlPage(state_->main_page_stack_);
     state_->fpga_page_->setObjectName(QStringLiteral("fpgaControlPage"));
     state_->fpga_page_->setConfiguration(isRemoteSkyMode() ? state_->fpga_session_.remoteConfig : state_->fpga_config_);
@@ -770,6 +753,15 @@ void MainWindow::setupFpgaControlPage()
         dispatch({{"op", "configure"}, {"section", "dlia"}, {"configuration", config.toJson()}}, [controller, config] { controller->applyConfiguration(config,"dlia"); });
     });
     connect(page,&FpgaControlPage::operationRequested,this,[dispatch,controller](const QJsonObject& request){dispatch(request,[controller,request]{controller->executeOperation(request);});});
+    connect(page,&FpgaControlPage::motorHeartbeatRequested,this,[this,controller] {
+        const QJsonObject heartbeat{{"op","motor_heartbeat"}};
+        if (isUiTestMode()) state_->fpga_page_->simulateOperation(heartbeat);
+        else if (isRemoteSkyMode()) {
+            if (state_->remote_sky_controller_ && state_->remote_sky_controller_->isOpen()
+                && state_->fpga_session_.remoteReady()) state_->remote_sky_controller_->sendFpgaControl(heartbeat);
+        } else if (state_->fpga_ready_)
+            QMetaObject::invokeMethod(controller,[controller,heartbeat]{controller->executeOperation(heartbeat);},Qt::QueuedConnection);
+    });
     connect(page, &FpgaControlPage::configurationChanged, this, [this, controller](const FpgaControlConfig &config) {
         if (isUiTestMode()) { state_->fpga_sim_pressure_source_ = config.pressureSource; syncFpgaDeviceConfigUi(); return; }
         if (isRemoteSkyMode())
@@ -961,7 +953,7 @@ void MainWindow::setupFpgaControlPage()
             {"sensor_sample_utc",QJsonValue(QJsonValue::Null)},{"alignment","host_receipt_uncertain"},{"valid",valid},
             {"temperature_c",valid && r.temperatureC?QJsonValue(*r.temperatureC):QJsonValue(QJsonValue::Null)},
             {"pressure_pa",valid && r.pressurePa?QJsonValue(*r.pressurePa):QJsonValue(QJsonValue::Null)}};
-        calibration->noteSensor(r.source==0x40?QStringLiteral("PTB210"):QStringLiteral("HMP"),sample);
+        calibration->noteSensor(r.source==0x40?QStringLiteral("PTB210"):QStringLiteral("HC2A"),sample);
     },Qt::DirectConnection);
 
     // These APIs enqueue under the recording service's lock, independent of GUI delivery.
@@ -992,7 +984,7 @@ void MainWindow::setupFpgaControlPage()
     connect(remote->telemetryService(),&VaporView::GroundTelemetryService::fpgaSensorUpdated,calibration,[calibration](const auto& r){
         if(r.source!=0x40 && r.source!=0x41)return;
         const bool valid=r.validity.structure && r.validity.crc && r.validity.deviceOnline && r.validity.measurement;
-        calibration->noteSensor(r.source==0x40?QStringLiteral("remote_PTB210"):QStringLiteral("remote_HMP"),
+        calibration->noteSensor(r.source==0x40?QStringLiteral("remote_PTB210"):QStringLiteral("remote_HC2A"),
             {{"source",int(r.source)},{"fpga_tick",QString::number(r.timestamp)},
              {"host_received_utc_us",QString::number(VaporView::Session::harmonicReceptionTimeUs())},
              {"sensor_sample_utc",QJsonValue(QJsonValue::Null)},{"alignment","host_receipt_uncertain"},{"valid",valid},
@@ -1188,12 +1180,12 @@ void MainWindow::receiveFpgaMeasurements(const VaporView::FpgaSensor::AdaptedMea
         state_->current_ptb_ = VaporView::PtbData{};
         if (valid && r.pressurePa) { state_->current_ptb_.pressure_hpa = *r.pressurePa/100.; state_->current_ptb_.valid=true; state_->current_ptb_.timestamp=now; }
     }
-    else if (r.kind == VaporView::FpgaSensor::SensorKind::Hmp)
+    else if (r.kind == VaporView::FpgaSensor::SensorKind::Hc2a)
     {
-        state_->current_hmp_ = VaporView::HmpData{};
+        state_->current_hc2a_ = VaporView::Hc2aData{};
         if (valid && r.temperatureC && r.humidityPct) {
-            state_->current_hmp_.temperature=*r.temperatureC;state_->current_hmp_.humidity=*r.humidityPct;
-            state_->current_hmp_.valid=true;state_->current_hmp_.timestamp=now;
+            state_->current_hc2a_.temperature=*r.temperatureC;state_->current_hc2a_.humidity=*r.humidityPct;
+            state_->current_hc2a_.valid=true;state_->current_hc2a_.timestamp=now;
         }
     }
     else if (r.kind == VaporView::FpgaSensor::SensorKind::Tfa1500)
@@ -1255,10 +1247,10 @@ void MainWindow::receiveFpgaMeasurements(const VaporView::FpgaSensor::AdaptedMea
         if (state_->fpga_ready_ && state_->fpga_config_.recordSensors)
         {
             snapshot.epsilon=state_->current_epsilon_; snapshot.ptb=state_->current_ptb_;
-            snapshot.hmp=state_->current_hmp_; snapshot.lidar=state_->current_lidar_;
+            snapshot.hc2a=state_->current_hc2a_; snapshot.lidar=state_->current_lidar_;
             snapshot.hasEpsilon=state_->fpga_sources_.contains(0x42) && snapshot.epsilon.valid;
             snapshot.hasPtb=state_->fpga_sources_.contains(0x40) && snapshot.ptb.valid;
-            snapshot.hasHmp=state_->fpga_sources_.contains(0x41) && snapshot.hmp.valid;
+            snapshot.hasHc2a=state_->fpga_sources_.contains(0x41) && snapshot.hc2a.valid;
             snapshot.hasLidar=state_->fpga_sources_.contains(0x45) && snapshot.lidar.valid;
         }
     }
@@ -1360,7 +1352,7 @@ void MainWindow::invalidateFpgaMeasurements()
     state_->fpga_velocity_valid_=false;
     if (state_->fpga_sources_.contains(0x42)) state_->current_epsilon_ = VaporView::EpsilonData{};
     if (state_->fpga_sources_.contains(0x40)) state_->current_ptb_ = VaporView::PtbData{};
-    if (isFpgaRelayPath()) state_->current_hmp_ = VaporView::HmpData{};
+    if (isFpgaRelayPath()) state_->current_hc2a_ = VaporView::Hc2aData{};
     state_->internal_environment_.clear();state_->internal_environment_times_.clear();
     if (state_->fpga_sources_.contains(0x45)) state_->current_lidar_ = VaporView::LidarData{};
     if (state_->fpga_sources_.contains(0x48)) {
@@ -1441,6 +1433,6 @@ void MainWindow::refreshInternalEnvironment()
         state_->internal_environment_values_[index]->setText(values.at(index));
     }
     state_->internal_environment_row_->setToolTip(state_->is_english_
-        ? QStringLiteral("BMP390 pressure; SHT45 temperature/humidity. Environmental PTB210/HMP data and session fields are separate.")
-        : QStringLiteral("BMP390 内部气压；SHT45 内部温湿度。环境数据及 session 字段继续使用 PTB210/HMP。"));
+        ? QStringLiteral("BMP390 pressure; SHT45 temperature/humidity. Environmental PTB210/HC2A data and session fields are separate.")
+        : QStringLiteral("BMP390 内部气压；SHT45 内部温湿度。环境数据及 session 字段继续使用 PTB210/HC2A。"));
 }

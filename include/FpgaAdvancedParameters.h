@@ -11,7 +11,7 @@ inline const QVector<SensorParameter>& sensorParameters() {
         {0x40,"format",0x6014,0,255,72,"UART 格式码 (数据位/校验/停止位)"},
         {0x40,"mode",0x601c,0,1,0,"输出模式 (0 轮询 / 1 连续)"},
         {0x40,"timeout",0x602c,1,3600000,1000,"响应超时 / ms"},
-        {0x41,"address",0x6114,1,247,240,"Modbus 地址"},
+        {0x41,"address",0x6114,0,99,99,"HC2A 地址 (0..64 / 99 单探头发现)"},
         {0x41,"measurements",0x6120,1,3,3,"测量掩码 (1 湿度 / 2 温度)"},
         {0x42,"filterLow",0x6214,0,0xffffffff,0xffffffff,"消息过滤掩码低 32 位"},
         {0x42,"filterHigh",0x6218,0,0xffffffff,0xffffffff,"消息过滤掩码高 32 位"},
@@ -42,6 +42,7 @@ inline bool validSensorParameters(quint16 source,const QJsonObject& values) {
         const double v=it.value().toDouble();
         if(!std::isfinite(v) || v!=std::floor(v) || v<spec->minimum || v>spec->maximum)return false;
         const quint32 u=quint32(v);
+        if(source==0x41 && it.key()=="address" && u>64 && u!=99)return false;
         if(source==0x40 && it.key()=="format" && !((u%16==7 || u%16==8) && ((u>>4)&3)<=2 && ((u>>6)==1 || (u>>6)==2)))return false;
         if(source==0x43 && ((it.key()=="oversampling" && ((u&7)>5 || (u>>3)>5)) || (it.key()=="iir" && (u&1)) || (it.key()=="power" && (u&~0x33u))))return false;
     }return true;

@@ -87,11 +87,11 @@ CalibrationProject syntheticProject(int stages, int rate)
                 feature.peak = (stageIndex + 1) * (wavelength == 816 ? 2.0 : 4.0) + (index % 11 - 5) * 0.001;
                 record.environment.temperatureC = 25.123;
                 record.environment.pressureHpa = 1013.25;
-                record.environment.source = "SOFTWARE_TEST_PTB_HMP";
+                record.environment.source = "SOFTWARE_TEST_PTB_HC2A";
                 record.environment.snapshotTimeUs = feature.hostTimeUs;
                 record.alignment = "host_receipt_uncertain";
                 QJsonObject readings;
-                for (const QString& source : {QStringLiteral("ptb"), QStringLiteral("hmp")})
+                for (const QString& source : {QStringLiteral("ptb"), QStringLiteral("hc2a")})
                     readings[source] = QJsonObject{{"valid", true}, {"source", source},
                         {"host_received_utc_us", QString::number(feature.hostTimeUs)}, {"peak_delta_us", "0"},
                         {"temperature_c", 25.123}, {"pressure_hpa", 1013.25}, {"timestamp_kind", "host_receipt_uncertain"}};

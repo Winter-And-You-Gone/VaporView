@@ -251,7 +251,7 @@ struct PtbData
   std::string error_message;
 };
 
-struct HmpData
+struct Hc2aData
 {
   double humidity = 0.0;
   double temperature = 0.0;

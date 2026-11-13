@@ -29,7 +29,7 @@ int main(int argc,char **argv)
     // asserted physical sensor acquisition time. No invented compensation.
     const auto sensorFile=QDir(first).filePath(VaporView::Session::standardSessionPackageLayout().sensorSummaryCsvPath);
     QFile sensors(sensorFile);check(sensors.open(QIODevice::WriteOnly),"write software-test sensor snapshot");
-    sensors.write("record_timestamp_us,hmp_temperature_c,ptb_pressure_hpa\n1700000000000000,23.5,1001.2\n");sensors.close();
+    sensors.write("record_timestamp_us,hc2a_temperature_c,ptb_pressure_hpa\n1700000000000000,23.5,1001.2\n");sensors.close();
     auto dataset=Dataset::create("SOFTWARE TEST ONLY",816,0x31,"ppmv");
     check(channelForWavelength(816)==0x31&&channelForWavelength(1368)==0x30&&channelForWavelength(0)==0,
         "confirmed hardware mapping is 816/DLIA1 and 1368/DLIA0");

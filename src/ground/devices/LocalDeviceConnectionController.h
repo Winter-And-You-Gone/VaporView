@@ -23,7 +23,7 @@ enum class LocalDeviceKind
 {
     Epsilon,
     Ptb,
-    Hmp,
+    Hc2a,
     Lidar,
     TemperatureController,
     Ai8TemperatureController
@@ -47,7 +47,7 @@ struct LocalDeviceConfig
     VaporView::SensorTransportPath sensorTransportPath = VaporView::SensorTransportPath::DirectDevices;
     LocalSerialDeviceSettings epsilon{true, true, {}, QStringLiteral("921600"), 100, false};
     LocalSerialDeviceSettings ptb{true, true, {}, QStringLiteral("9600"), 1, false};
-    LocalSerialDeviceSettings hmp{true, true, {}, QStringLiteral("19200"), 1, false};
+    LocalSerialDeviceSettings hc2a{true, true, {}, QStringLiteral("19200"), 1, false};
     LocalSerialDeviceSettings bmp390{true, false, {}, QStringLiteral("115200"), 1, false};
     LocalSerialDeviceSettings sht45{true, false, {}, QStringLiteral("115200"), 1, false};
     LocalSerialDeviceSettings lidar{true, true, {}, QStringLiteral("500000"), 1, false};
@@ -56,16 +56,16 @@ struct LocalDeviceConfig
     bool waveTcpEnabled = true;
 
     PressureSensorProtocol pressureProtocol = PressureSensorProtocol::Ptb210;
-    HumiditySensorProtocol humidityProtocol = HumiditySensorProtocol::Hmp3Modbus;
+    HumiditySensorProtocol humidityProtocol = HumiditySensorProtocol::Hc2aRoAscii;
     QString pressureSource = QStringLiteral("ptb210");
-    QString humiditySource = QStringLiteral("hmp3");
+    QString humiditySource = QStringLiteral("hc2a");
     QString ptbRateText = QStringLiteral("1");
-    QString hmpRateText = QStringLiteral("1");
+    QString hc2aRateText = QStringLiteral("1");
     QString lidarRateText = QStringLiteral("1");
     QString temperatureRateText = QStringLiteral("1");
     QString ai8RateText = QStringLiteral("5");
 
-    // PTB/HMP keep independent port/baud values per source.  The active values
+    // PTB/HC2A keep independent port/baud values per source.  The active values
     // above are mirrored into these maps whenever a source is changed.
     std::map<QString, LocalSerialDeviceSettings> pressureBySource;
     std::map<QString, LocalSerialDeviceSettings> humidityBySource;
@@ -84,12 +84,12 @@ struct LocalConnectionRequest
     QString selectText;
     LocalSerialDeviceSettings epsilon;
     LocalSerialDeviceSettings ptb;
-    LocalSerialDeviceSettings hmp;
+    LocalSerialDeviceSettings hc2a;
     LocalSerialDeviceSettings lidar;
     LocalSerialDeviceSettings temperatureController;
     LocalSerialDeviceSettings ai8TemperatureController;
     PressureSensorProtocol pressureProtocol = PressureSensorProtocol::Ptb210;
-    HumiditySensorProtocol humidityProtocol = HumiditySensorProtocol::Hmp3Modbus;
+    HumiditySensorProtocol humidityProtocol = HumiditySensorProtocol::Hc2aRoAscii;
     int temperatureSlaveAddress = 1;
     int ai8SlaveAddress = 1;
     std::map<uint8_t, int> epsilonPacketRates;
@@ -128,7 +128,7 @@ struct LocalConnectionCallbacks
     std::function<void(quint64, quint8, quint8, const void *, size_t)> rawEpsilonFrame;
     std::function<void(const Ppk::RawSatelliteEpoch&)> epsilonObservationEpoch;
     std::function<void(quint64, const void *, size_t)> rawPtbResponse;
-    std::function<void(quint64, const void *, size_t)> rawHmpResponse;
+    std::function<void(quint64, const void *, size_t)> rawHc2aResponse;
     std::function<void(quint64, quint16, const void *, size_t)> rawLidarFrame;
     std::function<void(quint64, quint16, const void *, size_t)> rawLaserTemperatureControllerResponse;
     std::function<void(quint64, quint16, const void *, size_t)> rawSystemTemperatureControllerResponse;
@@ -140,7 +140,7 @@ struct LocalSampleRateConfiguration
     std::map<uint8_t, int> epsilonPacketRates;
     int ptbRateHz = 1;
     bool applyPtbDeviceRate = true;
-    int hmpRateHz = 1;
+    int hc2aRateHz = 1;
     int lidarRateHz = 1;
     bool applyLidarDeviceRate = true;
     int temperatureRateHz = 1;
@@ -205,7 +205,7 @@ public:
         int callbackRateHz,
         const std::map<uint8_t, int>& packetRates);
     LocalSampleRateApplyResult setPtbSampleRate(int rateHz, bool applyDeviceRate);
-    void setHmpSampleRate(int rateHz);
+    void setHc2aSampleRate(int rateHz);
     void setLidarSampleRate(int rateHz, bool applyDeviceRate);
     void setTemperatureSampleRate(int rateHz);
     void setAi8TemperatureSampleRate(int rateHz);

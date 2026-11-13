@@ -470,6 +470,10 @@ void testCorruptionRemainsFatal()
 
 void testSensorCsvCompatibility()
 {
+    require(isValidRecordType(kSourceTemperatureHumidity, kRecordTypeTemperatureHumidityRoAsciiResponse) &&
+                isValidRecordType(kSourceTemperatureHumidity, kRecordTypeTemperatureHumidityModbusResponse) &&
+                !isValidRecordType(kSourceTemperatureHumidity, 2),
+            "HC2A RDD and legacy HMP raw records have distinct supported types");
     const QString expectedHeader = QStringLiteral(
         "record_timestamp_us,"
         "epsilon_host_timestamp_us,epsilon_device_timestamp_us,epsilon_utc_unix_s,epsilon_utc_microseconds,"
@@ -495,16 +499,16 @@ void testSensorCsvCompatibility()
         "epsilon_raw_gnss_packet_rate_hz,epsilon_satellite_packet_rate_hz,"
         "epsilon_geodetic_packet_rate_hz,epsilon_ecef_packet_rate_hz,"
         "epsilon_valid,epsilon_error_message,"
-        "hmp_temperature_c,hmp_humidity_rh,ptb_pressure_hpa,lidar_distance_m,lidar_signal_strength,lidar_valid\n");
+        "hc2a_temperature_c,hc2a_humidity_rh,ptb_pressure_hpa,lidar_distance_m,lidar_signal_strength,lidar_valid\n");
     require(VaporView::SessionSensorCsv::header() == expectedHeader,
-            "devices.csv header and field order are unchanged");
+            "sensor summary uses HC2A column names and preserves field order");
 
     const VaporView::EpsilonData epsilon;
     const VaporView::PtbData ptb;
-    const VaporView::HmpData hmp;
+    const VaporView::Hc2aData hc2a;
     const VaporView::LidarData lidar;
     const QString emptyRow = VaporView::SessionSensorCsv::formatRow(
-        123u, 0u, epsilon, false, ptb, false, hmp, false, lidar, false);
+        123u, 0u, epsilon, false, ptb, false, hc2a, false, lidar, false);
     require(emptyRow == QStringLiteral("123") + QString(76, QLatin1Char(',')) + QLatin1Char('\n'),
             "devices.csv missing-value row is unchanged");
     require(VaporView::SessionSensorCsv::escape(QStringLiteral("a,b\"c\n")) ==
@@ -559,6 +563,7 @@ void testSessionPackageInitializerCreatesIdenticalGroundAndSkyPackages()
         QStringLiteral("sensors/rd105_temperature_controller.csv"),
         QStringLiteral("raw/epsilon.dat"),
         QStringLiteral("raw/ptb.dat"),
+        QStringLiteral("raw/hc2a.dat"),
         QStringLiteral("raw/hmp.dat"),
         QStringLiteral("raw/lidar.dat"),
         QStringLiteral("raw/rd105.dat"),
@@ -621,6 +626,10 @@ void testSessionPackageInitializerCreatesIdenticalGroundAndSkyPackages()
                 groundTelemetry.value(QStringLiteral("baud")).isNull(),
             "device config unused telemetry fields are explicit nulls");
     const QJsonObject groundSensors = groundDeviceConfig.value(QStringLiteral("sensors")).toObject();
+    const auto hc2aDevice = groundSensors.value(QStringLiteral("hc2a")).toObject();
+    require(!groundSensors.contains(QStringLiteral("hmp")) && hc2aDevice.value("model") == "HC2A" &&
+                hc2aDevice.value("protocol") == "RO-ASCII RDD" && hc2aDevice.value("serial_format") == "8N1",
+            "new session metadata records HC2A identity and actual serial protocol");
     require(groundSensors.value(QStringLiteral("epsilon")).toObject()
                 .value(QStringLiteral("port")).toString() == QStringLiteral("COM7"),
             "device config keeps populated sensor settings");

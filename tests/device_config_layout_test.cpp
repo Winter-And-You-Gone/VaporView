@@ -463,11 +463,11 @@ int main(int argc, char **argv)
     legacySettings.setValue(QStringLiteral("serial/epsilon_baud"), QStringLiteral("460800"));
     legacySettings.setValue(QStringLiteral("serial/ptb_port"), QStringLiteral("COM11"));
     legacySettings.setValue(QStringLiteral("serial/ptb_baud"), QStringLiteral("9600"));
-    legacySettings.setValue(QStringLiteral("serial/hmp_port"), QStringLiteral("COM12"));
-    legacySettings.setValue(QStringLiteral("serial/hmp_baud"), QStringLiteral("19200"));
+    legacySettings.setValue(QStringLiteral("serial/hc2a_port"), QStringLiteral("COM12"));
+    legacySettings.setValue(QStringLiteral("serial/hc2a_baud"), QStringLiteral("19200"));
     legacySettings.setValue(QStringLiteral("serial/lidar_baud"), QStringLiteral("9600"));
     legacySettings.setValue(QStringLiteral("sensor/pressure_source"), QStringLiteral("ptb210"));
-    legacySettings.setValue(QStringLiteral("sensor/humidity_source"), QStringLiteral("hmp3"));
+    legacySettings.setValue(QStringLiteral("sensor/humidity_source"), QStringLiteral("hc2a"));
     legacySettings.sync();
     MainWindow window;
     VaporView::setSettingsWritesSuspended(true);
@@ -787,7 +787,7 @@ int main(int argc, char **argv)
     const QStringList formattedDeviceLabels{
         QStringLiteral("EPSILON2-D4G\n组合导航"),
         QStringLiteral("PTB210\n气压计"),
-        QStringLiteral("HMP3\n温湿度计"),
+        QStringLiteral("HC2A\n温湿度计"),
         QStringLiteral("TFA1500-L\n激光测距"),
         QStringLiteral("RD105\n激光驱动温控器"),
         QStringLiteral("AI-8288D92J0\n八路温控器"),
@@ -899,7 +899,7 @@ int main(int argc, char **argv)
     require(!pressureSourceCombo && !humiditySourceCombo,"environmental source selectors are removed");
     requireLabelFits(findExactLabel(serialCard, QStringLiteral("PTB210\n气压计")),
                      "pressure device row restores the model-plus-device label");
-    requireLabelFits(findExactLabel(serialCard, QStringLiteral("HMP3\n温湿度计")),
+    requireLabelFits(findExactLabel(serialCard, QStringLiteral("HC2A\n温湿度计")),
                      "humidity device row restores the model-plus-device label");
     QLabel *tcpWaveDeviceLabel = findExactLabel(serialCard, QStringLiteral("TCP 波形"));
     requireLabelFits(tcpWaveDeviceLabel,
@@ -1099,7 +1099,7 @@ int main(int argc, char **argv)
     VaporView::setSettingsWritesSuspended(false);
     selectComboText(pressurePortCombo,QStringLiteral("COM11"),"environmental PTB port remains editable");
     pressureBaudCombo->setCurrentText(QStringLiteral("19200"));
-    selectComboText(humidityPortCombo,QStringLiteral("COM12"),"environmental HMP port remains editable");
+    selectComboText(humidityPortCombo,QStringLiteral("COM12"),"environmental HC2A port remains editable");
     humidityBaudCombo->setCurrentText(QStringLiteral("128000"));
     VaporView::setSettingsWritesSuspended(true);
     require(dataSourceModeSwitch->property("segmentedSwitchControl").toBool() &&
@@ -1632,7 +1632,7 @@ int main(int argc, char **argv)
     require(remoteStatus->property("status").toString() == QStringLiteral("disabled"),
             "disconnected remote mode explains the config state with a disabled status chip");
     require(!pressureSourceCombo && !humiditySourceCombo,
-            "remote mode keeps PTB/BMP390 and HMP/SHT45 source selectors visible");
+            "remote mode keeps PTB/BMP390 and HC2A/SHT45 source selectors visible");
     require(ai8EnabledCheck && ai8EnabledCheck->isVisible() &&
                 ai8PortCombo && ai8PortCombo->isVisible() &&
                 ai8BaudCombo && ai8BaudCombo->isVisible() &&
@@ -1663,8 +1663,8 @@ int main(int argc, char **argv)
     remoteConfig.epsilon = {true, QStringLiteral("/dev/ttyEPSILON"), 921600};
     remoteConfig.ptb = {true, QStringLiteral("/dev/ttyPTB210"), 9600, 20.0};
     remoteConfig.ptb.source = QStringLiteral("ptb210");
-    remoteConfig.hmp = {true, QStringLiteral("/dev/ttyHMP3"), 19200, 20.0};
-    remoteConfig.hmp.source = QStringLiteral("hmp3");
+    remoteConfig.hc2a = {true, QStringLiteral("/dev/ttyHC2A"), 19200, 20.0};
+    remoteConfig.hc2a.source = QStringLiteral("hc2a");
     remoteConfig.lidar = {true, QStringLiteral("/dev/ttyLIDAR"), 500000, 100.0};
     remoteConfig.temperature_controller = {true, QStringLiteral("/dev/ttyRD105"), 38400, 5.0, 9};
     remoteConfig.ai8_temperature_controller = {true, QStringLiteral("/dev/ttyAI8"), 19200, 5.0, 5};
@@ -2156,7 +2156,7 @@ int main(int argc, char **argv)
     require(uiJson.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("baud")).toInt() == 230400,
             "remote EPSILON documented baud is serialized into SetSkyConfig JSON");
     require(uiJson.value(QStringLiteral("ptb")).toObject().value(QStringLiteral("baud")).toInt() == 19200 &&
-                uiJson.value(QStringLiteral("hmp")).toObject().value(QStringLiteral("baud")).toInt() == 1000000 &&
+                uiJson.value(QStringLiteral("hc2a")).toObject().value(QStringLiteral("baud")).toInt() == 1000000 &&
                 uiJson.value(QStringLiteral("lidar")).toObject().value(QStringLiteral("baud")).toInt() == 1500000 &&
                 uiJson.value(QStringLiteral("temperature_controller")).toObject().value(QStringLiteral("baud")).toInt() == 460800,
             "remote source-specific and host-link baud controls serialize according to capability");
@@ -2167,8 +2167,8 @@ int main(int argc, char **argv)
     require(uiJson.value(QStringLiteral("ptb")).toObject().value(QStringLiteral("source")).toString() ==
                 QStringLiteral("ptb210"),
             "remote edited pressure source is serialized into SkyConfig JSON");
-    require(uiJson.value(QStringLiteral("hmp")).toObject().value(QStringLiteral("source")).toString() ==
-                QStringLiteral("hmp3"),
+    require(uiJson.value(QStringLiteral("hc2a")).toObject().value(QStringLiteral("source")).toString() ==
+                QStringLiteral("hc2a"),
             "remote edited humidity source is serialized into SkyConfig JSON");
     const QJsonObject ai8Json =
         uiJson.value(QStringLiteral("ai8_temperature_controller")).toObject();
@@ -2190,7 +2190,7 @@ int main(int argc, char **argv)
                 return setSkyConfigRequests == customBaudApplyRequestCount + 1 &&
                     remoteConfig.epsilon.baud_rate == 230400 &&
                     remoteConfig.ptb.baud_rate == 19200 &&
-                    remoteConfig.hmp.baud_rate == 1000000 &&
+                    remoteConfig.hc2a.baud_rate == 1000000 &&
                     remoteConfig.lidar.baud_rate == 1500000 &&
                     remoteConfig.temperature_controller.baud_rate == 460800 &&
                     remoteConfig.ai8_temperature_controller.baud_rate == 57600 &&
@@ -2267,18 +2267,18 @@ int main(int argc, char **argv)
 
     VaporView::setSettingsWritesSuspended(false);
 
-    humidityBaudCombo->setCurrentText(QStringLiteral("256000"));
+    humidityBaudCombo->setCurrentText(QStringLiteral("25600"));
     VaporViewTest::processEventsFor(80);
     localConfig = window.testLocalDeviceConfigSnapshot();
-    require(humidityBaudCombo->currentText() == QStringLiteral("256000") &&
-                localConfig.value(QStringLiteral("hmp")).toObject().value(QStringLiteral("baud")).toString() ==
-                    QStringLiteral("256000"),
-            "local SHT45 adapter custom baud remains in the model before settings round-trip");
+    require(humidityBaudCombo->currentText() == QStringLiteral("25600") &&
+                localConfig.value(QStringLiteral("hc2a")).toObject().value(QStringLiteral("baud")).toString() ==
+                    QStringLiteral("25600"),
+            "HC2A in-range custom baud remains in the model before settings round-trip");
     QSettings customBaudSettings = VaporView::applicationConfigSettings();
     customBaudSettings.beginGroup(QStringLiteral("MainWindow"));
-    require(customBaudSettings.value(QStringLiteral("serial/hmp3_baud")).toString() ==
-                QStringLiteral("256000"),
-            "local adapter custom baud is persisted before the next window is created");
+    require(customBaudSettings.value(QStringLiteral("serial/hc2a_baud")).toString() ==
+                QStringLiteral("25600"),
+            "HC2A custom baud is persisted before the next window is created");
     customBaudSettings.endGroup();
     customBaudSettings.sync();
     window.close();
@@ -2352,8 +2352,8 @@ int main(int argc, char **argv)
             "restored device page uses the shared title-bar source switch and local EPSILON baud controls");
     restoredSourceModeSwitch->click();
     VaporViewTest::processEventsFor(120);
-    require(restoredHumidityBaud->currentText() == QStringLiteral("256000"),
-            "local adapter custom baud survives a settings save and a new window instance");
+    require(restoredHumidityBaud->currentText() == QStringLiteral("25600"),
+            "HC2A custom baud survives a settings save and a new window instance");
     require(!restoredAi8Baud->isEditable() &&
                 restoredAi8Baud->currentText() == QStringLiteral("19200"),
             "legacy invalid AI-8288 setting falls back to the protocol default without a blank combo");

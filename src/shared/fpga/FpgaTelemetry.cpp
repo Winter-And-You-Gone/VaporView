@@ -50,7 +50,7 @@ FpgaSensor::SensorKind kind(int source)
 {
     switch (source) {
     case 0x40: return FpgaSensor::SensorKind::Ptb210;
-    case 0x41: return FpgaSensor::SensorKind::Hmp;
+    case 0x41: return FpgaSensor::SensorKind::Hc2a;
     case 0x42: return FpgaSensor::SensorKind::Epsilon;
     case 0x43: return FpgaSensor::SensorKind::Bmp390;
     case 0x44: return FpgaSensor::SensorKind::Sht45;
@@ -136,7 +136,7 @@ QJsonObject decodeManagementEvent(quint8 type, quint16 source, quint16 message,
         if(page==0)expected=1;else if(page==0x10)expected=2;
         else if(page==0x20 || page==0x30)expected=0x10;else if(page==0x21 || page==0x31)expected=0x11;
         else if(page==0x40 || page==0x41)expected=quint16(page-0x20);else if(page==0x50 || page==0x51)expected=quint16(page-0x20);
-        else if(page>=0x60 && page<=0x68)expected=quint16(page-0x20);else if(page==0x70 || page==0x80)expected=0x50;
+        else if(page>=0x60 && page<=0x69)expected=quint16(page-0x20);else if(page==0x70 || page==0x80)expected=0x50;
         if(source!=expected)return {};
     }
     QJsonArray words;for(int i=1;i<8;++i)words.append(double(word(i)));
@@ -195,30 +195,29 @@ bool validateControl(const QJsonObject& control, QString *error)
         if (!control.contains("baud") && !control.contains("poll_ms") && !control.contains("parameters")) return fail();
         if(control.contains("parameters") && (!control.value("parameters").isObject() || !validSensorParameters(quint16(source),control.value("parameters").toObject())))return fail();
         if (control.contains("baud")) {
-            if (source != 0x40 && source != 0x42 && source != 0x45) return fail();
-            if (!integer(control.value("baud"), source == 0x40 ? 1200 : source == 0x42 ? 9600 : 115200,
-                         source == 0x40 ? 19200 : 6250000)) return fail();
+            if (source != 0x40 && source != 0x41 && source != 0x42 && source != 0x45) return fail();
+            if (!integer(control.value("baud"), (source == 0x40 || source == 0x41) ? 1200 : source == 0x42 ? 9600 : 115200,
+                         source == 0x40 ? 19200 : source == 0x41 ? 115200 : 6250000)) return fail();
         }
         if (control.contains("poll_ms") &&
             ((source != 0x40 && source != 0x41 && source != 0x43 && source != 0x44 && source != 0x46 && source != 0x48) ||
-             !integer(control.value("poll_ms"), 1, 3600000))) return fail();
+             !integer(control.value("poll_ms"), source==0x41?100:1, 3600000))) return fail();
     } else if(op=="time" || op=="motor" || op=="sensor_action" || op=="maintenance") {
         keys << "action" << "value";
         if(!integer(control.value("action"),1,33) || !integer(control.value("value"),op=="motor"?-2147483648.0:0,op=="motor"?2147483647.0:4294967295.0))return fail();
         const int a=control.value("action").toInt();const double v=control.value("value").toDouble();
-        if(op=="time" && !((a==1 || a==3)?v<=1:a==2?v==0:a==4?(v>=1 && v<=3600000):a==5))return fail();
-        if(op=="motor" && !(a==1 || ((a==2 || a==3) && v==0) || (a==4 && v>=0 && v<=1)))return fail();
+        if(op=="time" && !((a==1 || a==3)?v<=1:a==2?v==0:a==4?(v>=1 && v<=3600000):false))return fail();
+        if(op=="motor" && !((a==1 && std::abs(v)>=1 && std::abs(v)<=400) || ((a==2 || a==3) && v==0) || (a==4 && v>=0 && v<=1)))return fail();
         if(op=="sensor_action" || op=="maintenance") {
             keys << "source";if(!integer(control.value("source"),0,65535))return fail();const int src=control.value("source").toInt();
-            if(op=="sensor_action" && !(sensorSource(src) && (((a==3 || a==4) && v==0) || a==5 || (a==16 && src==0x41) || (a==32 && src==0x45 && v<=2) || (a==33 && src==0x45 && v>=1 && v<=4))))return fail();
-            if(a==16 && src==0x41) {const quint32 bits=quint32(v);float pressure;std::memcpy(&pressure,&bits,4);if(!std::isfinite(pressure) || pressure<=0)return fail();}
+            if(op=="sensor_action" && !(sensorSource(src) && (((a==3 || a==4) && v==0) || (a==5 && src!=0x41) || (a==32 && src==0x45 && v<=2) || (a==33 && src==0x45 && v>=1 && v<=4))))return fail();
             if(op=="maintenance" && (!(a==8 || a==9) || v!=0 || !(src==2 || sensorSource(src) || src==0x10 || src==0x11 || src==0x20 || src==0x21 || src==0x30 || src==0x31 || src==0x47)))return fail();
         }
-    } else if(op=="time_tag") {
-        keys << "low" << "high";if(!integer(control.value("low")) || !integer(control.value("high")))return fail();
+    } else if(op=="motor_heartbeat") {
+        // Receipt of this message is the live controlling host's lease.
     } else if(op=="motor_config") {
-        keys << "frequency" << "high_ticks" << "dir_ticks" << "polarity";
-        if(!integer(control.value("frequency"),1,196078) || !integer(control.value("high_ticks"),255) || !integer(control.value("dir_ticks"),505) || !integer(control.value("polarity"),0,7) || control.value("high_ticks").toDouble()+255>std::floor(100000000/control.value("frequency").toDouble()))return fail();
+        keys << "frequency";
+        if(!integer(control.value("frequency"),20,400))return fail();
     } else if(op=="channel_acquisition") {
         keys << "channel" << "enabled";if(!integer(control.value("channel"),0,1) || !control.value("enabled").isBool())return fail();
     } else if(op=="stream_config") {

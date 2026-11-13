@@ -104,6 +104,28 @@ void SkyFpgaBackend::submit(const QJsonObject& operation, Completion completion,
 {
     QString error;
     if (!validateOperation(operation, &error)) { completion(CommandErrorCode::InvalidPayload, error, status_); return; }
+    const auto op = operation.value("op").toString();
+    Completion interruptedCompletion;
+    QJsonObject interruptedStatus;
+    const bool motorStop = op == "motor" && (operation.value("action").toInt() == 2
+        || (operation.value("action").toInt() == 4 && operation.value("value").toInt() == 0));
+    if (op == "motor_heartbeat") {
+        if (!worker_.isRunning() || !status_.value("ready").toBool()) {
+            completion(CommandErrorCode::DeviceNotConnected, QStringLiteral("FPGA is not ready."), {}); return;
+        }
+        QMetaObject::invokeMethod(controller_, [controller = controller_, operation] {
+            controller->executeOperation(operation);
+        }, Qt::QueuedConnection);
+        // This acknowledges heartbeat dispatch only; the controller tracks its USB ACK.
+        completion(CommandErrorCode::Ok, {}, {});
+        return;
+    }
+    if (activeRequest_ && motorStop) {
+        const auto observer = operationObserver_;
+        QMetaObject::invokeMethod(controller_, [observer] { if (observer) QObject::disconnect(*observer); }, Qt::QueuedConnection);
+        interruptedCompletion = std::move(completion_); activeRequest_ = 0;
+        interruptedStatus = status_;
+    }
     if (activeRequest_) { completion(CommandErrorCode::DeviceOperationBusy, QStringLiteral("FPGA operation is in progress."), status_); return; }
     if (!worker_.isRunning()) { completion(CommandErrorCode::DeviceNotConnected, QStringLiteral("FPGA worker stopped."), status_); return; }
     const quint64 identity = nextRequest_++;
@@ -111,6 +133,7 @@ void SkyFpgaBackend::submit(const QJsonObject& operation, Completion completion,
     // The handle is created here but read and written only on the controller thread.
     // Timeout and normal completion both disconnect this operation's observer.
     const auto observer = std::make_shared<QMetaObject::Connection>();
+    operationObserver_ = observer;
     QTimer::singleShot(operationTimeoutMs_,this,[this,identity,operation,observer] {
         if (activeRequest_!=identity) return;
         // Cancel the receive/command loop; a timeout never resubmits a physical write.
@@ -174,9 +197,11 @@ void SkyFpgaBackend::submit(const QJsonObject& operation, Completion completion,
             }, Qt::QueuedConnection);
         };
         const QString op = operation.value("op").toString();
-        if (controller->busy()) { finish(CommandErrorCode::DeviceOperationBusy, QStringLiteral("FPGA is busy.")); return; }
+        const bool motorStop = op == "motor" && (operation.value("action").toInt() == 2
+            || (operation.value("action").toInt() == 4 && operation.value("value").toInt() == 0));
+        if (controller->busy() && !motorStop) { finish(CommandErrorCode::DeviceOperationBusy, QStringLiteral("FPGA is busy.")); return; }
         // Match local read-only diagnostics while preserving the ready gate for every write.
-        const bool available = op == "refresh" ? controller->connected() : controller->ready();
+        const bool available = (op == "refresh" || motorStop) ? controller->connected() : controller->ready();
         if (op != "connect" && op != "disconnect" && !available) {
             finish(CommandErrorCode::DeviceNotConnected, op == "refresh" ? QStringLiteral("FPGA USB is not connected.")
                 : QStringLiteral("FPGA handshake/readback not ready.")); return;
@@ -186,6 +211,7 @@ void SkyFpgaBackend::submit(const QJsonObject& operation, Completion completion,
             [finish, observer](quint64, const QJsonObject& document) {
                 const QString event = document.value("event").toString();
                 if (event != "operation_completed" && event != "operation_failed") return;
+                if (document.value("interrupted_by_motor_stop").toBool()) return;
                 QObject::disconnect(*observer);
                 finish(event == "operation_completed" ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed,
                        document.value("detail").toString());
@@ -212,5 +238,12 @@ void SkyFpgaBackend::submit(const QJsonObject& operation, Completion completion,
         else controller->executeOperation(operation);
         if (!controller->busy()) { QObject::disconnect(*observer); finish(CommandErrorCode::ConfigApplyFailed, QStringLiteral("Operation was not started; verify FPGA state.")); }
     }, Qt::QueuedConnection);
+    if (interruptedCompletion) QTimer::singleShot(0, this,
+        [callback = std::move(interruptedCompletion), status = std::move(interruptedStatus)] {
+            // STOP already owns the operation slot and has been sent to the worker.
+            // The previous callback can now safely reenter or destroy the backend.
+            callback(CommandErrorCode::ConfigApplyFailed,
+                QStringLiteral("Operation interrupted by an explicit motor stop; read back device state."), status);
+        });
 }
 }

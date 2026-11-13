@@ -116,6 +116,76 @@ void statusListenerMayDestroyBackend()
     require(completions == 1, "late completion cannot access destroyed backend");
 }
 
+void motorSafetyDoesNotCompleteAnotherOperation()
+{
+    auto mock=std::make_unique<ScriptedTransport>();auto* wire=mock.get();
+    SkyFpgaBackend backend(std::move(mock));QObject receiver;
+    int reads=0,heartbeats=0,stops=0;
+    QObject::connect(&backend,&SkyFpgaBackend::rawCommand,&receiver,[&](quint64,const QByteArray& bytes) {
+        FpgaVlp1::StreamParser parser;
+        for(const auto& frame:parser.feed(reinterpret_cast<const std::uint8_t*>(bytes.constData()),bytes.size())) {
+            if(frame.header.message==2)++reads;
+            if(frame.header.message==12&&frame.header.source==0x47) {
+                const auto action=word(frame.payload,0);
+                if(action==5)++heartbeats;
+                if(action==2)++stops;
+            }
+        }
+    });
+    const auto finish=[&](const QJsonObject& request) {
+        bool done=false;
+        backend.submit(request,[&](CommandErrorCode code,QString,QJsonObject) {
+            require(code==CommandErrorCode::Ok,"motor safety setup completes");done=true;
+        });
+        waitUntil([&]{return done;},"motor safety setup final response");
+    };
+    const auto settle=[] {
+        QElapsedTimer clock;clock.start();
+        waitUntil([&]{return clock.elapsed()>=80;},"deliver queued safety ACKs");
+    };
+    finish({{"op","connect"},{"backend","auto"},{"locator","mock"}});
+    finish({{"op","motor"},{"action",4},{"value",1}});
+
+    wire->holdRegularResponses=true;reads=0;
+    int refreshCompletions=0,heartbeatCompletions=0;
+    backend.submit({{"op","refresh"}},[&](CommandErrorCode code,QString,QJsonObject) {
+        require(code==CommandErrorCode::Ok,"ordinary refresh finishes from its own register responses");++refreshCompletions;
+    });
+    waitUntil([&]{return reads>0;},"ordinary register request remains pending");
+    const int priorHeartbeats=heartbeats;
+    backend.submit({{"op","motor_heartbeat"}},[&](CommandErrorCode code,QString,QJsonObject status) {
+        require(code==CommandErrorCode::Ok&&status.isEmpty(),"heartbeat acknowledges dispatch without fabricating an operation readback");++heartbeatCompletions;
+    });
+    waitUntil([&]{return heartbeats>priorHeartbeats;},"heartbeat bypasses a pending ordinary register request");
+    settle();
+    require(heartbeatCompletions==1&&refreshCompletions==0,"heartbeat USB ACK cannot finish the pending ordinary operation");
+    bool busyRejected=false;
+    backend.submit({{"op","refresh"}},[&](CommandErrorCode code,QString,QJsonObject) {
+        busyRejected=code==CommandErrorCode::DeviceOperationBusy;
+    });
+    require(busyRejected,"parallel heartbeat preserves ordinary operation ownership");
+    wire->holdRegularResponses=false;
+    waitUntil([&]{return refreshCompletions==1;},"ordinary readback resumes after heartbeat ACK");
+
+    wire->holdRegularResponses=true;reads=0;
+    int interruptedCompletions=0,stopCompletions=0;
+    backend.submit({{"op","refresh"}},[&](CommandErrorCode code,QString error,QJsonObject) {
+        require(code==CommandErrorCode::ConfigApplyFailed&&error.contains("interrupted"),"STOP explicitly interrupts the previous operation once");++interruptedCompletions;
+    });
+    waitUntil([&]{return reads>0;},"another register request is held before STOP");
+    backend.submit({{"op","motor"},{"action",2},{"value",0}},[&](CommandErrorCode code,QString,QJsonObject) {
+        require(code==CommandErrorCode::Ok,"STOP completes only after its own acknowledgement and fresh readback");++stopCompletions;
+    });
+    waitUntil([&]{return stops==1;},"STOP reaches USB without waiting for the held request");
+    settle();
+    require(interruptedCompletions==1&&stopCompletions==0,"old interruption and priority STOP ACK do not impersonate STOP final readback");
+    wire->holdRegularResponses=false;
+    waitUntil([&]{return stopCompletions==1;},"STOP final readback completes independently");
+    settle();
+    require(interruptedCompletions==1&&stopCompletions==1,"late prior responses cannot complete either operation twice");
+    backend.shutdown();
+}
+
 int main(int argc,char **argv)
 {
     QCoreApplication app(argc,argv);
@@ -123,6 +193,7 @@ int main(int argc,char **argv)
     diagnosticReadback();
     timeoutObserverIsolation();
     statusListenerMayDestroyBackend();
+    motorSafetyDoesNotCompleteAnotherOperation();
     auto mock=std::make_unique<ScriptedTransport>(); auto *wire=mock.get(); mock->failTemperature=true;mock->failWriteAddress=0x2010;
     QVector<LogRecord> operationLogs;
     SkyFpgaBackend backend(std::move(mock));
@@ -168,16 +239,16 @@ int main(int argc,char **argv)
     require(!settingsDone,"parameter submission is not success at enqueue");
     waitUntil([&]{return settingsDone;},"remote parameter write and readback completed");
     settingsDone=false;
-    backend.submit({{"op","sensor"},{"source",0x41},{"enabled",true},{"poll_ms",500},{"parameters",QJsonObject{{"address",241}}}},
+    backend.submit({{"op","sensor"},{"source",0x41},{"enabled",true},{"poll_ms",500},{"parameters",QJsonObject{{"address",42}}}},
         [&](CommandErrorCode code,QString,QJsonObject status) {
             const auto values=status.value("registers").toObject();
             const auto config=FpgaControlConfig::fromJson(status.value("configuration").toObject());
-            require(code==CommandErrorCode::Ok && values.value(QString::number(0x6114)).toInt()==241
+            require(code==CommandErrorCode::Ok && values.value(QString::number(0x6114)).toInt()==42
                 && values.value(QString::number(0x611c)).toInt()==500 && values.value(QString::number(0x6104)).toInt()==1
-                && config.sensorParameters.value(0x41).value("address").toInt()==241,
-                "Sky HMP connects after advanced parameter verification and synchronizes confirmed configuration");settingsDone=true;
+                && config.sensorParameters.value(0x41).value("address").toInt()==42,
+                "Sky HC2A connects after advanced parameter verification and synchronizes confirmed configuration");settingsDone=true;
         });
-    waitUntil([&]{return settingsDone;},"remote HMP advanced configuration completed");
+    waitUntil([&]{return settingsDone;},"remote HC2A advanced configuration completed");
     settingsDone=false;
     backend.submit({{"op","sensor"},{"source",0x46},{"enabled",true},{"poll_ms",500}},
         [&](CommandErrorCode code,QString,QJsonObject status) {

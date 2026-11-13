@@ -30,7 +30,7 @@ enum class PressureSensorProtocol
 
 enum class HumiditySensorProtocol
 {
-  Hmp3Modbus,
+  Hc2aRoAscii,
   Sht45Serial
 };
 
@@ -247,12 +247,12 @@ private:
   static constexpr const char* PTB_CMD_STOP = "\r";
 };
 
-class HmpCollector : public DataCollector
+class Hc2aCollector : public DataCollector
 {
 public:
   using RawResponseCallback = std::function<void(uint64_t host_timestamp_us, const uint8_t* data, size_t size)>;
 
-  HmpData getLatestData();
+  Hc2aData getLatestData();
   bool checkDeviceResponse() override;
   void setRawResponseCallback(RawResponseCallback callback);
   void setProtocol(HumiditySensorProtocol protocol);
@@ -263,16 +263,13 @@ protected:
   bool initialize() override;
 
 private:
-  HmpData latest_data_;
+  Hc2aData latest_data_;
   RawResponseCallback raw_response_callback_;
-  HumiditySensorProtocol protocol_ = HumiditySensorProtocol::Hmp3Modbus;
+  HumiditySensorProtocol protocol_ = HumiditySensorProtocol::Hc2aRoAscii;
 
-  static constexpr uint8_t HMP3_SLAVE_ADDR = 240;
-  static constexpr uint16_t HMP3_REG_HUMIDITY = 0x0000;
-  static constexpr uint16_t HMP3_REG_TEMPERATURE = 0x0002;
+  unsigned probe_address_ = 99;
+  bool pollReading(int timeout_ms);
 
-  static uint16_t modbusCrc16(const uint8_t* data, size_t len);
-  static float decodeFloatLE(uint16_t reg0, uint16_t reg1);
 };
 
 class LidarCollector : public DataCollector

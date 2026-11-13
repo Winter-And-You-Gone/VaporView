@@ -27,8 +27,8 @@ VaporView::SkyConfig unloadedSkyConfig()
     config.epsilon.port.clear();
     config.ptb.enabled = false;
     config.ptb.port.clear();
-    config.hmp.enabled = false;
-    config.hmp.port.clear();
+    config.hc2a.enabled = false;
+    config.hc2a.port.clear();
     config.lidar.enabled = false;
     config.lidar.port.clear();
     config.temperature_controller.enabled = false;
@@ -313,7 +313,7 @@ void MainWindow::refreshRemoteSkySerialPortManualOptionTexts()
 {
     for (QComboBox *combo : {state_->device_config_.epsilon_port_combo,
                              state_->device_config_.ptb_port_combo,
-                             state_->device_config_.hmp_port_combo,
+                             state_->device_config_.hc2a_port_combo,
                              state_->device_config_.lidar_port_combo,
                              state_->device_config_.temperature_port_combo,
                              state_->device_config_.ai8_temperature_port_combo})
@@ -355,7 +355,7 @@ void MainWindow::enterLocalDeviceConfigMode()
 {
     for (QComboBox *combo : {state_->device_config_.epsilon_port_combo,
                              state_->device_config_.ptb_port_combo,
-                             state_->device_config_.hmp_port_combo,
+                             state_->device_config_.hc2a_port_combo,
                              state_->device_config_.lidar_port_combo,
                              state_->device_config_.temperature_port_combo,
                              state_->device_config_.ai8_temperature_port_combo})
@@ -372,7 +372,7 @@ void MainWindow::enterRemoteSkyDeviceConfigMode()
 {
     for (QComboBox *combo : {state_->device_config_.epsilon_port_combo,
                              state_->device_config_.ptb_port_combo,
-                             state_->device_config_.hmp_port_combo,
+                             state_->device_config_.hc2a_port_combo,
                              state_->device_config_.lidar_port_combo,
                              state_->device_config_.temperature_port_combo,
                              state_->device_config_.ai8_temperature_port_combo})
@@ -402,9 +402,9 @@ void MainWindow::enterRemoteSkyDeviceConfigMode()
         config.ptb.source = QStringLiteral("ptb210");
         config.ptb.baud_rate = rememberedBaud(
             config.ptb.source, QStringLiteral("serial/ptb_baud"));
-        config.hmp.source = QStringLiteral("hmp3");
-        config.hmp.baud_rate = rememberedBaud(
-            config.hmp.source, QStringLiteral("serial/hmp_baud"));
+        config.hc2a.source = QStringLiteral("hc2a");
+        config.hc2a.baud_rate = rememberedBaud(
+            config.hc2a.source, QStringLiteral("serial/hc2a_baud"));
     }
     setRemoteSkyConfigUi(config);
     updateRemoteSkyConfigControlsState();
@@ -475,17 +475,17 @@ void MainWindow::setRemoteSkyConfigUi(const VaporView::SkyConfig& config)
     };
     setComboData(state_->device_config_.ptb_source_combo,
                  config.ptb.source.isEmpty() ? QStringLiteral("ptb210") : config.ptb.source);
-    setComboData(state_->device_config_.hmp_source_combo,
-                 config.hmp.source.isEmpty() ? QStringLiteral("hmp3") : config.hmp.source);
+    setComboData(state_->device_config_.hc2a_source_combo,
+                 config.hc2a.source.isEmpty() ? QStringLiteral("hc2a") : config.hc2a.source);
 
     VaporView::configureSerialBaudRateCombo(
         state_->device_config_.ptb_baud_combo,
         VaporView::pressureSensorBaudCapabilities(config.ptb.source),
         QString::number(config.ptb.baud_rate));
     VaporView::configureSerialBaudRateCombo(
-        state_->device_config_.hmp_baud_combo,
-        VaporView::humiditySensorBaudCapabilities(config.hmp.source),
-        QString::number(config.hmp.baud_rate));
+        state_->device_config_.hc2a_baud_combo,
+        VaporView::humiditySensorBaudCapabilities(config.hc2a.source),
+        QString::number(config.hc2a.baud_rate));
 
     setSerial(state_->device_config_.epsilon_enabled_check,
               state_->device_config_.epsilon_port_combo,
@@ -504,14 +504,14 @@ void MainWindow::setRemoteSkyConfigUi(const VaporView::SkyConfig& config)
               config.ptb.port,
               config.ptb.baud_rate,
               config.ptb.frequency_hz);
-    setSerial(state_->device_config_.hmp_enabled_check,
-              state_->device_config_.hmp_port_combo,
-              state_->device_config_.hmp_baud_combo,
-              state_->device_config_.hmp_rate_combo,
-              config.hmp.enabled,
-              config.hmp.port,
-              config.hmp.baud_rate,
-              config.hmp.frequency_hz);
+    setSerial(state_->device_config_.hc2a_enabled_check,
+              state_->device_config_.hc2a_port_combo,
+              state_->device_config_.hc2a_baud_combo,
+              state_->device_config_.hc2a_rate_combo,
+              config.hc2a.enabled,
+              config.hc2a.port,
+              config.hc2a.baud_rate,
+              config.hc2a.frequency_hz);
     setSerial(state_->device_config_.lidar_enabled_check,
               state_->device_config_.lidar_port_combo,
               state_->device_config_.lidar_baud_combo,
@@ -701,17 +701,17 @@ VaporView::SkyConfig MainWindow::remoteSkyConfigFromDeviceConfigUi(QString *erro
                         state_->device_config_.ptb_baud_combo,
                         state_->device_config_.ptb_rate_combo,
                         config.ptb) ||
-            !readSerial(QStringLiteral("HMP"),
-                        state_->device_config_.hmp_enabled_check,
-                        state_->device_config_.hmp_port_combo,
-                        state_->device_config_.hmp_baud_combo,
-                        state_->device_config_.hmp_rate_combo,
-                        config.hmp))
+            !readSerial(QStringLiteral("HC2A"),
+                        state_->device_config_.hc2a_enabled_check,
+                        state_->device_config_.hc2a_port_combo,
+                        state_->device_config_.hc2a_baud_combo,
+                        state_->device_config_.hc2a_rate_combo,
+                        config.hc2a))
         {
             return config;
         }
         config.ptb.source = QStringLiteral("ptb210");
-        config.hmp.source = QStringLiteral("hmp3");
+        config.hc2a.source = QStringLiteral("hc2a");
         for(auto it=state_->device_config_.internal_sensor_rows.begin();it!=state_->device_config_.internal_sensor_rows.end();++it) {
             const auto &row=it.value();auto &bridge=it.key()==0x43?config.bmp390:config.sht45;
             if(!readSerial(it.key()==0x43?QStringLiteral("BMP390"):QStringLiteral("SHT45"),
@@ -941,10 +941,10 @@ void MainWindow::updateRemoteSkyConfigControlsState()
         state_->device_config_.ptb_baud_combo,
         state_->device_config_.ptb_rate_combo,
         state_->device_config_.ptb_source_combo,
-        state_->device_config_.hmp_port_combo,
-        state_->device_config_.hmp_baud_combo,
-        state_->device_config_.hmp_rate_combo,
-        state_->device_config_.hmp_source_combo,
+        state_->device_config_.hc2a_port_combo,
+        state_->device_config_.hc2a_baud_combo,
+        state_->device_config_.hc2a_rate_combo,
+        state_->device_config_.hc2a_source_combo,
         state_->device_config_.lidar_port_combo,
         state_->device_config_.lidar_baud_combo,
         state_->device_config_.lidar_rate_combo,
@@ -969,7 +969,7 @@ void MainWindow::updateRemoteSkyConfigControlsState()
     if (isFpgaRelayPath()) {
         for (QComboBox *port : {state_->device_config_.epsilon_port_combo,
                                state_->device_config_.ptb_port_combo,
-                               state_->device_config_.hmp_port_combo,
+                               state_->device_config_.hc2a_port_combo,
                                state_->device_config_.lidar_port_combo,
                                state_->device_config_.temperature_port_combo,
                                state_->device_config_.ai8_temperature_port_combo})
@@ -982,7 +982,7 @@ void MainWindow::updateRemoteSkyConfigControlsState()
 
     for (QCheckBox *check : {state_->device_config_.epsilon_enabled_check,
                              state_->device_config_.ptb_enabled_check,
-                             state_->device_config_.hmp_enabled_check,
+                             state_->device_config_.hc2a_enabled_check,
                              state_->device_config_.lidar_enabled_check,
                              state_->device_config_.temperature_enabled_check,
                              state_->device_config_.ai8_temperature_enabled_check,
@@ -1060,7 +1060,7 @@ void MainWindow::requestRemoteSkyConfigIfAvailable(bool force)
         config.sensor_transport_path = VaporView::SensorTransportPath::FpgaRelay;
         config.epsilon.port = QStringLiteral("UI-TEST-EPSILON");
         config.ptb.port = QStringLiteral("UI-TEST-PTB");
-        config.hmp.port = QStringLiteral("UI-TEST-HMP");
+        config.hc2a.port = QStringLiteral("UI-TEST-HC2A");
         config.lidar.port = QStringLiteral("UI-TEST-LIDAR");
         config.temperature_controller.enabled = true;
         config.temperature_controller.port = QStringLiteral("UI-TEST-RD105");
@@ -1319,7 +1319,7 @@ void MainWindow::handleRemoteSkyConfigApplyResultReceived(const QJsonObject& res
         if (pathChanged) {
             state_->fpga_session_.remoteStatus = {};
             state_->fpga_session_.statusTime = {};
-            for (const auto device : {VaporView::SkyDeviceId::Epsilon, VaporView::SkyDeviceId::Ptb, VaporView::SkyDeviceId::Hmp,
+            for (const auto device : {VaporView::SkyDeviceId::Epsilon, VaporView::SkyDeviceId::Ptb, VaporView::SkyDeviceId::Hc2a,
                      VaporView::SkyDeviceId::Lidar, VaporView::SkyDeviceId::TemperatureController, VaporView::SkyDeviceId::Ai8TemperatureController,
                      VaporView::SkyDeviceId::WaveTcp}) {
                 state_->remote_sky_controller_->clearDeviceData(device);

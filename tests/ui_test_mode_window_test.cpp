@@ -1088,7 +1088,7 @@ int main(int argc, char **argv)
         require(settingsSnapshotsEqual(snapshotAll(), before, "navigation UI test preserves persistent settings"),
                 "all navigation simulations leave persistent settings unchanged");
         const auto sidebarButtons = window->findChildren<QPushButton *>(QStringLiteral("appSidebarButton"));
-        require(sidebarButtons.size() == 7, "sidebar restoration covers every navigation icon including motion control");
+        require(sidebarButtons.size() == 6, "sidebar restoration covers all six current navigation icons");
         const auto requireSidebarColors = [&]() {
             for (auto *button : sidebarButtons)
             {
@@ -2444,7 +2444,7 @@ int main(int argc, char **argv)
                     text.contains(QStringLiteral(" 帧\n已记录条数\n")) &&
                     text.contains(QStringLiteral("已记录条数\nRAW EPSILON：")) &&
                     text.contains(QStringLiteral(" 条\nRAW PTB210：")) &&
-                    text.contains(QStringLiteral(" 条\nRAW HMP3：")) &&
+                    text.contains(QStringLiteral(" 条\nRAW HC2A：")) &&
                     text.contains(QStringLiteral(" 条\nRAW TFA1500：")) &&
                     text.contains(QStringLiteral(" 条\nRAW WAVE：")) &&
                     text.contains(QStringLiteral(" 条\nRAW RD105：")) &&
@@ -2951,7 +2951,7 @@ int main(int argc, char **argv)
         for (const QString& nonTargetDevice : {
                  QStringLiteral("PTB210"),
                  QStringLiteral("BMP390"),
-                 QStringLiteral("HMP3"),
+                 QStringLiteral("HC2A"),
                  QStringLiteral("SHT45"),
                  QStringLiteral("TFA1500-L"),
                  QStringLiteral("RD105"),

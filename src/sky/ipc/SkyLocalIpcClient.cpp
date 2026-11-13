@@ -889,9 +889,9 @@ void SkyLocalIpcClient::updateFromBasic(const TelemetryBasic& basic)
     }
     if ((basic.validity_flags & BasicHasTemperature) != 0 || (basic.validity_flags & BasicHasHumidity) != 0)
     {
-        dashboard_.hmp.valid = true;
-        dashboard_.hmp.temperature = basic.temperature_c;
-        dashboard_.hmp.humidity = basic.humidity_percent;
+        dashboard_.hc2a.valid = true;
+        dashboard_.hc2a.temperature = basic.temperature_c;
+        dashboard_.hc2a.humidity = basic.humidity_percent;
     }
     if ((basic.validity_flags & BasicHasPressure) != 0)
     {
@@ -943,7 +943,7 @@ void SkyLocalIpcClient::updateFromWaveform(const DownsampledWaveform& waveform)
 void SkyLocalIpcClient::updateDashboardRates()
 {
     dashboard_.ptb_acquisition_rate_hz = config_.ptb.frequency_hz;
-    dashboard_.hmp_acquisition_rate_hz = config_.hmp.frequency_hz;
+    dashboard_.hc2a_acquisition_rate_hz = config_.hc2a.frequency_hz;
     dashboard_.lidar_acquisition_rate_hz = config_.lidar.frequency_hz;
     dashboard_.devices_csv_recording_rate_hz = config_.telemetry.basic_rate_hz;
     dashboard_.raw_wave_recording_rate_hz = dashboard_.wave_tcp_acquisition_rate_hz;
@@ -970,12 +970,12 @@ void SkyLocalIpcClient::updateDeviceFreshness()
 
     const DeviceStatusItem epsilon = findStatus(SkyDeviceId::Epsilon);
     const DeviceStatusItem ptb = findStatus(SkyDeviceId::Ptb);
-    const DeviceStatusItem hmp = findStatus(SkyDeviceId::Hmp);
+    const DeviceStatusItem hc2a = findStatus(SkyDeviceId::Hc2a);
     const DeviceStatusItem lidar = findStatus(SkyDeviceId::Lidar);
     const DeviceStatusItem wave = findStatus(SkyDeviceId::WaveTcp);
     dashboard_.epsilon_stale = !isConnectedAndFresh(epsilon, nowUs, 2'000'000ULL);
     dashboard_.ptb_stale = !isConnectedAndFresh(ptb, nowUs, 3'000'000ULL);
-    dashboard_.hmp_stale = !isConnectedAndFresh(hmp, nowUs, 3'000'000ULL);
+    dashboard_.hc2a_stale = !isConnectedAndFresh(hc2a, nowUs, 3'000'000ULL);
     dashboard_.lidar_stale = !isConnectedAndFresh(lidar, nowUs, 2'000'000ULL);
     dashboard_.waveform_stale = !isConnectedAndFresh(wave, nowUs, 3'000'000ULL);
 }

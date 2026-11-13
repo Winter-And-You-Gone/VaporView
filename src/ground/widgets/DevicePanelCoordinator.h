@@ -6,7 +6,7 @@
 #include <QtGlobal>
 
 class GnssPanel;
-class HmpPanel;
+class Hc2aPanel;
 class ImuPanel;
 class LidarPanel;
 class PtbPanel;
@@ -24,7 +24,7 @@ struct DevicePanelBindings
     GnssPanel *gnss = nullptr;
     ImuPanel *imu = nullptr;
     PtbPanel *ptb = nullptr;
-    HmpPanel *hmp = nullptr;
+    Hc2aPanel *hc2a = nullptr;
     LidarPanel *lidar = nullptr;
     TemperatureControllerPanel *temperature = nullptr;
     TemperatureControllerOverviewPanel *temperatureOverview = nullptr;
@@ -36,7 +36,7 @@ struct DevicePanelRates
     double gnssHz = 0.0;
     double imuHz = 0.0;
     double ptbHz = 0.0;
-    double hmpHz = 0.0;
+    double hc2aHz = 0.0;
     double lidarHz = 0.0;
     double temperatureHz = 0.0;
 };
@@ -54,12 +54,12 @@ public:
                        const VaporView::ImuData& imu,
                        quint64 imuTimestampUs,
                        const VaporView::PtbData& ptb,
-                       const VaporView::HmpData& hmp,
+                       const VaporView::Hc2aData& hc2a,
                        const VaporView::LidarData& lidar,
                        const VaporView::TemperatureControllerData& temperature);
     void updateEnvironmentData(const VaporView::EpsilonData& epsilon,
                                const VaporView::PtbData& ptb,
-                               const VaporView::HmpData& hmp,
+                               const VaporView::Hc2aData& hc2a,
                                const VaporView::LidarData& lidar);
     void updateTemperatureData(const VaporView::TemperatureControllerData& temperature);
     void updateTemperatureRate(double rateHz);

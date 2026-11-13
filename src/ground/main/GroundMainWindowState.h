@@ -73,7 +73,7 @@ struct DeviceConfigPageWidgets
     QLabel *sky_telemetry_tcp_port_lbl = nullptr;
     QLabel *epsilon_lbl = nullptr;
     QLabel *ptb_lbl = nullptr;
-    QLabel *hmp_lbl = nullptr;
+    QLabel *hc2a_lbl = nullptr;
     QLabel *lidar_lbl = nullptr;
     QLabel *temperature_lbl = nullptr;
     QLabel *ai8_temperature_lbl = nullptr;
@@ -92,7 +92,7 @@ struct DeviceConfigPageWidgets
     QLabel *action_header_lbl = nullptr;
     QLabel *epsilon_rate_lbl = nullptr;
     QLabel *ptb_rate_lbl = nullptr;
-    QLabel *hmp_rate_lbl = nullptr;
+    QLabel *hc2a_rate_lbl = nullptr;
     QLabel *lidar_rate_lbl = nullptr;
     QLabel *temperature_rate_lbl = nullptr;
     QLabel *ai8_temperature_rate_lbl = nullptr;
@@ -129,9 +129,9 @@ struct DeviceConfigPageWidgets
     QComboBox *ptb_port_combo = nullptr;
     QComboBox *ptb_baud_combo = nullptr;
     QComboBox *ptb_source_combo = nullptr;
-    QComboBox *hmp_port_combo = nullptr;
-    QComboBox *hmp_baud_combo = nullptr;
-    QComboBox *hmp_source_combo = nullptr;
+    QComboBox *hc2a_port_combo = nullptr;
+    QComboBox *hc2a_baud_combo = nullptr;
+    QComboBox *hc2a_source_combo = nullptr;
     QComboBox *lidar_port_combo = nullptr;
     QComboBox *lidar_baud_combo = nullptr;
     QComboBox *temperature_port_combo = nullptr;
@@ -139,13 +139,13 @@ struct DeviceConfigPageWidgets
     QComboBox *ai8_temperature_port_combo = nullptr;
     QComboBox *ai8_temperature_baud_combo = nullptr;
     QComboBox *ptb_rate_combo = nullptr;
-    QComboBox *hmp_rate_combo = nullptr;
+    QComboBox *hc2a_rate_combo = nullptr;
     QComboBox *lidar_rate_combo = nullptr;
     QComboBox *temperature_rate_combo = nullptr;
     QComboBox *ai8_temperature_rate_combo = nullptr;
     QCheckBox *epsilon_enabled_check = nullptr;
     QCheckBox *ptb_enabled_check = nullptr;
-    QCheckBox *hmp_enabled_check = nullptr;
+    QCheckBox *hc2a_enabled_check = nullptr;
     QCheckBox *lidar_enabled_check = nullptr;
     QCheckBox *temperature_enabled_check = nullptr;
     QCheckBox *ai8_temperature_enabled_check = nullptr;
@@ -163,8 +163,8 @@ struct DeviceConfigPageWidgets
     QWidget *epsilon_remote_buttons_widget = nullptr;
     QToolButton *ptb_remote_action_btn = nullptr;
     QWidget *ptb_remote_buttons_widget = nullptr;
-    QToolButton *hmp_remote_action_btn = nullptr;
-    QWidget *hmp_remote_buttons_widget = nullptr;
+    QToolButton *hc2a_remote_action_btn = nullptr;
+    QWidget *hc2a_remote_buttons_widget = nullptr;
     QToolButton *lidar_remote_action_btn = nullptr;
     QWidget *lidar_remote_buttons_widget = nullptr;
     QToolButton *temperature_remote_action_btn = nullptr;
@@ -222,7 +222,7 @@ struct MainWindowState
     GnssPanel *gnss_panel_;
     ImuPanel *imu_panel_;
     PtbPanel *ptb_panel_;
-    HmpPanel *hmp_panel_;
+    Hc2aPanel *hc2a_panel_;
     LidarPanel *lidar_panel_;
     TemperatureControllerPanel *temperature_controller_panel_;
     VaporView::Ground::Widgets::Ai8TemperatureControllerPanel *ai8_temperature_controller_panel_;
@@ -379,7 +379,7 @@ struct MainWindowState
     QGroupBox *gnss_group_;
     QGroupBox *imu_group_;
     QGroupBox *ptb_group_;
-    QGroupBox *hmp_group_;
+    QGroupBox *hc2a_group_;
     QGroupBox *env_group_;
     QGroupBox *temperature_overview_group_;
     QGroupBox *ai8_temperature_overview_group_;
@@ -389,7 +389,7 @@ struct MainWindowState
 
     QLabel *home_epsilon_status_lbl_;
     QLabel *home_ptb_status_lbl_;
-    QLabel *home_hmp_status_lbl_;
+    QLabel *home_hc2a_status_lbl_;
     QLabel *home_lidar_status_lbl_;
     QLabel *home_temperature_status_lbl_;
     QLabel *home_wave_status_lbl_;
@@ -398,7 +398,7 @@ struct MainWindowState
     QLabel *home_sht45_status_lbl_;
     QToolButton *home_epsilon_action_btn_;
     QToolButton *home_ptb_action_btn_;
-    QToolButton *home_hmp_action_btn_;
+    QToolButton *home_hc2a_action_btn_;
     QToolButton *home_lidar_action_btn_;
     QToolButton *home_temperature_action_btn_;
     QToolButton *home_wave_action_btn_;
@@ -417,7 +417,7 @@ struct MainWindowState
     QLabel *env_inline_title_lbl_;
     QLabel *env_lidar_status_icon_;
     QLabel *env_ptb_status_icon_;
-    QLabel *env_hmp_status_icon_;
+    QLabel *env_hc2a_status_icon_;
     QLabel *temperature_overview_inline_title_lbl_;
     QLabel *ai8_temperature_overview_inline_title_lbl_;
     QWidget *internal_environment_row_ = nullptr;
@@ -470,7 +470,7 @@ struct MainWindowState
     VaporView::GnssData current_gnss_;
     VaporView::ImuData current_imu_;
     VaporView::PtbData current_ptb_;
-    VaporView::HmpData current_hmp_;
+    VaporView::Hc2aData current_hc2a_;
     VaporView::LidarData current_lidar_;
     VaporView::TemperatureControllerData current_temperature_controller_;
 
@@ -575,7 +575,7 @@ struct MainWindowState
     int gnss_sample_rate_;
     int imu_sample_rate_;
     int ptb_sample_rate_;
-    int hmp_sample_rate_;
+    int hc2a_sample_rate_;
     int lidar_sample_rate_;
     int temperature_sample_rate_;
     int recording_export_rate_hz_;

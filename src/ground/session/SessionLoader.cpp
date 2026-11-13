@@ -222,14 +222,14 @@ SessionSensorLoadResult SessionLoader::loadSensors(
         findHeaderIndex(data.headers, {QStringLiteral("th_timestamp_us"), QStringLiteral("th_valid")}) >= 0;
     const bool hasLegacyBarometerColumns =
         findHeaderIndex(data.headers, {QStringLiteral("baro_timestamp_us"), QStringLiteral("baro_valid")}) >= 0;
-    const int hmpTemperatureIndex = findHeaderIndex(
+    const int hc2aTemperatureIndex = findHeaderIndex(
         data.headers,
         hasLegacyThermometerColumns
-            ? QStringList{QStringLiteral("hmp_temperature_c"), QStringLiteral("temp_c")}
-            : QStringList{QStringLiteral("hmp_temperature_c")});
-    const int hmpHumidityIndex = findHeaderIndex(
+            ? QStringList{QStringLiteral("hc2a_temperature_c"), QStringLiteral("hmp_temperature_c"), QStringLiteral("temp_c")}
+            : QStringList{QStringLiteral("hc2a_temperature_c"), QStringLiteral("hmp_temperature_c")});
+    const int hc2aHumidityIndex = findHeaderIndex(
         data.headers,
-        {QStringLiteral("hmp_humidity_rh"), QStringLiteral("humidity_rh")});
+        {QStringLiteral("hc2a_humidity_rh"), QStringLiteral("hmp_humidity_rh"), QStringLiteral("humidity_rh")});
     const int ptbPressureIndex = findHeaderIndex(
         data.headers,
         hasLegacyBarometerColumns
@@ -277,14 +277,14 @@ SessionSensorLoadResult SessionLoader::loadSensors(
         const bool thValid = thValidIndex < 0 || parseBooleanCsvField(csvValueAt(fields, thValidIndex), true);
         const bool baroValid = baroValidIndex < 0 || parseBooleanCsvField(csvValueAt(fields, baroValidIndex), true);
         double temperatureValue = std::numeric_limits<double>::quiet_NaN();
-        if (hmpTemperatureIndex >= 0 && thValid)
+        if (hc2aTemperatureIndex >= 0 && thValid)
         {
-            temperatureValue = parseOptionalDouble(csvValueAt(fields, hmpTemperatureIndex));
+            temperatureValue = parseOptionalDouble(csvValueAt(fields, hc2aTemperatureIndex));
         }
         data.temperature_values.push_back(temperatureValue);
 
-        const double humidityValue = hmpHumidityIndex >= 0 && thValid
-            ? parseOptionalDouble(csvValueAt(fields, hmpHumidityIndex))
+        const double humidityValue = hc2aHumidityIndex >= 0 && thValid
+            ? parseOptionalDouble(csvValueAt(fields, hc2aHumidityIndex))
             : std::numeric_limits<double>::quiet_NaN();
         data.humidity_values.push_back(humidityValue);
 

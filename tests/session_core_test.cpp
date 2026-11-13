@@ -273,7 +273,7 @@ void testSessionMetadataLoading()
             "waveform_features_csv": "sensors/waveform_features.csv",
             "epsilon_raw": "raw/epsilon.dat",
             "ptb_raw": "raw/ptb.dat",
-            "hmp_raw": "raw/hmp.dat",
+            "hc2a_raw": "raw/hc2a.dat",
             "lidar_raw": "raw/lidar.dat",
             "tcp_wave_raw": "raw/tcp_wave.dat",
             "tcp_wave_peaks_csv": "raw/tcp_wave_peaks.csv",
@@ -285,7 +285,7 @@ void testSessionMetadataLoading()
         "raw_files": {
             "epsilon": {"path": "raw/epsilon.dat", "source_id": 1, "format_version": 2, "records": "0"},
             "ptb": {"path": "raw/ptb.dat", "source_id": 2, "format_version": 2, "records": "0"},
-            "hmp": {"path": "raw/hmp.dat", "source_id": 3, "format_version": 2, "records": "0"},
+            "hc2a": {"path": "raw/hc2a.dat", "source_id": 3, "format_version": 2, "records": "0"},
             "lidar": {"path": "raw/lidar.dat", "source_id": 4, "format_version": 2, "records": "0"},
             "tcp_wave": {"path": "raw/tcp_wave.dat", "source_id": 5, "format_version": 2, "records": "3"}
         }
@@ -399,7 +399,7 @@ void testSensorCsvLoadingAndTrackFiltering()
             "sensor CSV fixture opens");
     csvFile.write(
         "record_timestamp_us,nav_lat_deg,nav_lon_deg,nav_height_m,epsilon_valid,gnss_fix,"
-        "hmp_temperature_c,hmp_humidity_rh,ptb_pressure_hpa\n"
+        "hc2a_temperature_c,hc2a_humidity_rh,ptb_pressure_hpa\n"
         "1000000,30.0000000,120.0000000,10,true,FIXED,21.5,48.0,1001.2\n"
         "2000000,30.0000100,120.0000100,11,true,FIXED,21.6,48.5,1001.3\n"
         "3000000,30.0000200,120.0000200,12,false,FIXED,21.7,49.0,1001.4\n"
@@ -419,6 +419,18 @@ void testSensorCsvLoadingAndTrackFiltering()
                 result.data.humidity_values.at(1) == 48.5 &&
                 result.data.pressure_values.at(1) == 1001.3,
             "environment series retain recorded values");
+    require(csvFile.open(QIODevice::ReadOnly), "current HC2A summary opens for compatibility fixture");
+    QByteArray legacyCsv = csvFile.readAll();
+    csvFile.close();
+    legacyCsv.replace("hc2a_temperature_c", "hmp_temperature_c");
+    legacyCsv.replace("hc2a_humidity_rh", "hmp_humidity_rh");
+    require(csvFile.open(QIODevice::WriteOnly | QIODevice::Truncate), "legacy HMP summary fixture opens");
+    require(csvFile.write(legacyCsv) == legacyCsv.size(), "legacy HMP summary fixture is complete");
+    csvFile.close();
+    const auto legacyHumidity = VaporView::Ground::SessionLoader::loadSensors(metadata);
+    require(legacyHumidity.success && legacyHumidity.data.temperature_values.at(1) == 21.6 &&
+            legacyHumidity.data.humidity_values.at(1) == 48.5,
+            "historical HMP CSV columns remain readable after HC2A migration");
     require(result.data.track_stats.scanned_rows == 4 &&
                 result.data.track_stats.accepted_points == 2 &&
                 result.data.track_stats.rejected_invalid_nav == 1 &&
@@ -459,7 +471,7 @@ void testSessionTrajectoryRenderLoaderUsesCsvRowAlignment()
             "render-loader devices CSV fixture opens");
     csvFile.write(
         "record_timestamp_us,device_timestamp_us,nav_lat_deg,nav_lon_deg,nav_height_m,"
-        "epsilon_valid,gnss_fix,hmp_temperature_c,hmp_humidity_rh,ptb_pressure_hpa\n"
+        "epsilon_valid,gnss_fix,hc2a_temperature_c,hc2a_humidity_rh,ptb_pressure_hpa\n"
         "1000000,900000,30.0000000,120.0000000,10,false,FIXED,99.0,10.0,900.0\n"
         "2000000,1900000,30.0000100,120.0000100,11,true,FIXED,21.5,48.0,1001.2\n"
         "3000000,2900000,30.0000200,120.0000200,12,true,FIXED,21.6,48.5,1001.3\n");

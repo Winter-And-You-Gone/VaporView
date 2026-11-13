@@ -130,7 +130,7 @@ public:
 
     EpsilonData latestEpsilon() const;
     PtbData latestPtb() const;
-    HmpData latestHmp() const;
+    Hc2aData latestHc2a() const;
     LidarData latestLidar() const;
     TemperatureControllerData latestTemperatureController() const;
     Ai8TemperatureControllerProtocol::LiveData latestAi8TemperatureController() const;
@@ -152,7 +152,7 @@ signals:
     void deviceStatusChanged(SkyDeviceId id, DeviceStatusItem status);
     void epsilonDataUpdated(const EpsilonData& data);
     void ptbDataUpdated(const PtbData& data);
-    void hmpDataUpdated(const HmpData& data);
+    void hc2aDataUpdated(const Hc2aData& data);
     void lidarDataUpdated(const LidarData& data);
     void temperatureControllerDataUpdated(const TemperatureControllerData& data);
     void ai8TemperatureControllerDataUpdated(const Ai8TemperatureControllerProtocol::LiveData& data);
@@ -161,7 +161,7 @@ signals:
     void epsilonRawFrameReceived(quint64 timestampUs, quint8 packetId, quint8 serialNumber, QByteArray frame);
     void epsilonObservationEpochReceived(QByteArray encodedEpoch);
     void ptbRawResponseReceived(quint64 timestampUs, QByteArray response);
-    void hmpRawResponseReceived(quint64 timestampUs, QByteArray response);
+    void hc2aRawResponseReceived(quint64 timestampUs, QByteArray response);
     void lidarRawFrameReceived(quint64 timestampUs, quint16 protocol, QByteArray frame);
     void laserTemperatureControllerRawResponseReceived(quint64 timestampUs,
                                                        quint16 recordType,
@@ -217,7 +217,7 @@ private:
     void publishWaveform(const QVector<float>& raw, const QVector<float>& harmonic);
     void handleEpsilonData(const EpsilonData& data);
     void handlePtbData(const PtbData& data);
-    void handleHmpData(const HmpData& data);
+    void handleHc2aData(const Hc2aData& data);
     void handleLidarData(const LidarData& data);
     void handleTemperatureControllerData(const TemperatureControllerData& data);
     void handleAi8TemperatureControllerData(const Ai8TemperatureControllerProtocol::LiveData& data);
@@ -248,7 +248,7 @@ private:
 
     DeviceStatusItem epsilon_status_;
     DeviceStatusItem ptb_status_;
-    DeviceStatusItem hmp_status_;
+    DeviceStatusItem hc2a_status_;
     DeviceStatusItem lidar_status_;
     DeviceStatusItem wave_tcp_status_;
     DeviceStatusItem temperature_controller_status_;
@@ -256,7 +256,7 @@ private:
 
     std::shared_ptr<EpsilonCollector> epsilon_;
     std::shared_ptr<PtbCollector> ptb_;
-    std::shared_ptr<HmpCollector> hmp_;
+    std::shared_ptr<Hc2aCollector> hc2a_;
     std::shared_ptr<LidarCollector> lidar_;
     std::shared_ptr<TemperatureControllerCollector> temperature_controller_;
     std::shared_ptr<Ai8TemperatureControllerCollector> ai8_temperature_controller_;
@@ -282,7 +282,7 @@ private:
 
     EpsilonData latest_epsilon_;
     PtbData latest_ptb_;
-    HmpData latest_hmp_;
+    Hc2aData latest_hc2a_;
     LidarData latest_lidar_;
     TemperatureControllerData latest_temperature_controller_;
     Ai8TemperatureControllerProtocol::LiveData latest_ai8_temperature_controller_;

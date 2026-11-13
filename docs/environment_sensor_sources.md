@@ -1,8 +1,10 @@
 # 环境与内部环境设备的独立串口连接
 
-环境气压固定使用 PTB210，环境温湿度固定使用 HMP3，session 的对应字段保持这两个设备的语义。BMP390 与 SHT45 是独立内部环境设备，两者均在直连与 FPGA 的设备配置中占独立行：BMP390 提供内部气压，SHT45 提供内部温度、内部湿度，显示在首页设备温控概览标题栏。
+环境气压固定使用 PTB210，环境温湿度固定使用 HC2A，session 的对应字段保持这两个设备的语义。BMP390 与 SHT45 是独立内部环境设备，两者均在直连与 FPGA 的设备配置中占独立行：BMP390 提供内部气压，SHT45 提供内部温度、内部湿度，显示在首页设备温控概览标题栏。
 
 ## USB 串口桥方案
+
+HC2A本身使用独立RO-ASCII UART：19200/8N1、`{FxxRDD}\r`只读请求。首次99发现仅适用于唯一探头，成功后学习0..64实际地址。新配置/元数据使用`hc2a`，新摘要列为`hc2a_temperature_c` / `hc2a_humidity_rh`；历史`hmp`配置、`raw/hmp.dat`和CSV列仅保留读取迁移。HC2A不执行旧HMP的Modbus RTU、压力补偿或探头标定写入。
 
 当前直连路径采用 Arduino/ESP32 等开发板读取 I²C，再以 USB CDC 或开发板的 USB-UART 输出文本。每个传感器使用一个独立串口端点；不要让两行同时打开同一个 COM 口。普通 CH341、CP2112 等原始 USB-I²C 控制器的专用命令/HID 协议不在此文本接口范围内，购买时需确认输出方式，或者使用下面的桥程序。
 
@@ -30,8 +32,8 @@ Temperature: 23.75 degrees C
 Humidity: 48.20 % rH
 ```
 
-本地与 SkyCore 复用相同的独立串口控制器和文本解析，不复用 PTB/HMP 采集槽位或 raw/session 回调。SkyConfig 增加可选 `bmp390` / `sht45` 节，分别保存 enabled、port、baud、frequency_hz；旧配置缺少这两节时保持禁用。远程独立设备 ID 为 9 / 10，内部数据使用 `InternalEnvironment`（消息类型 `0x0F`，沿用已有类型化传感器 JSON 载荷），经同一数传 TCP 链路传到地面；需要天空端运行同步更新的 SkyCore。它不代表 VLP 固件新增了 source。
+本地与 SkyCore 复用相同的独立串口控制器和文本解析，不复用 PTB/HC2A 采集槽位或 raw/session 回调。SkyConfig 增加可选 `bmp390` / `sht45` 节，分别保存 enabled、port、baud、frequency_hz；旧配置缺少这两节时保持禁用。远程独立设备 ID 为 9 / 10，内部数据使用 `InternalEnvironment`（消息类型 `0x0F`，沿用已有类型化传感器 JSON 载荷），经同一数传 TCP 链路传到地面；需要天空端运行同步更新的 SkyCore。它不代表 VLP 固件新增了 source。
 
 FPGA 模式继续读取 source `0x43` / `0x44` 和各自 CONTROL、I²C 轮询寄存器，直连串口预设独立保存。当前自动识别串口仍以原有设备探测为主，这两个独立桥端口使用各自的串口下拉框选择。
 
-实机验收：分别确认桥程序识别传感器、115200 输出格式和单位；验证同时连接 PTB/HMP/BMP/SHT 时互不覆盖；逐一拔掉桥并等待过期；核对本地与 SkyCore 远程显示一致、切换路径保留各自预设、session 环境字段仍来自 PTB/HMP。
+实机验收：分别确认桥程序识别传感器、115200 输出格式和单位；验证同时连接 PTB/HC2A/BMP/SHT 时互不覆盖；逐一拔掉桥并等待过期；核对本地与 SkyCore 远程显示一致、切换路径保留各自预设、session 环境字段仍来自 PTB/HC2A。

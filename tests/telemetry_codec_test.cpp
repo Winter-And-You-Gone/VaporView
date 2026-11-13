@@ -708,7 +708,7 @@ void testSkyConfigDiff()
             "sky config defaults to direct sensor path");
     require(a.temperature_controller.baud_rate == 38400, "sky config RD105 default baud");
     require(a.ptb.source == QStringLiteral("ptb210") &&
-                a.hmp.source == QStringLiteral("hmp3") &&
+                a.hc2a.source == QStringLiteral("hc2a") &&
                 !a.ai8_temperature_controller.enabled,
             "sky config source and AI-8 defaults");
     VaporView::SkyConfig b = a;
@@ -727,11 +727,11 @@ void testSkyConfigDiff()
             "sky config diff detects sensor transport path change");
 
     b.ptb.source = QStringLiteral("bmp390");
-    b.hmp.source = QStringLiteral("sht45");
+    b.hc2a.source = QStringLiteral("sht45");
     b.ai8_temperature_controller = {true, QStringLiteral("/dev/ttyAI8"), 115200, 12.0, 7};
     b.epsilon_rtcm = {true, 3, QStringLiteral("/dev/ttyRTCM"), 230400};
     const VaporView::SkyConfigDiff sourceDiff = a.diff(b);
-    require(sourceDiff.ptb_changed && sourceDiff.hmp_changed &&
+    require(sourceDiff.ptb_changed && sourceDiff.hc2a_changed &&
                 sourceDiff.ai8_temperature_controller_changed &&
                 sourceDiff.epsilon_rtcm_changed,
             "sky config diff detects source, AI-8, and EPSILON RTCM changes");
@@ -752,7 +752,7 @@ void testSkyConfigDiff()
     require(parsed.epsilon.packet_rates == b.epsilon.packet_rates,
             "sky config EPSILON packet-rate profile round-trip");
     require(parsed.ptb.source == QStringLiteral("ptb210") &&
-                parsed.hmp.source == QStringLiteral("hmp3") &&
+                parsed.hc2a.source == QStringLiteral("hc2a") &&
                 parsed.ai8_temperature_controller.enabled &&
                 parsed.ai8_temperature_controller.port == QStringLiteral("/dev/ttyAI8") &&
                 parsed.ai8_temperature_controller.slave_address == 7 &&
@@ -766,9 +766,9 @@ void testSkyConfigDiff()
     QJsonObject legacyPtb = legacy.value(QStringLiteral("ptb")).toObject();
     legacyPtb.remove(QStringLiteral("source"));
     legacy.insert(QStringLiteral("ptb"), legacyPtb);
-    QJsonObject legacyHmp = legacy.value(QStringLiteral("hmp")).toObject();
-    legacyHmp.remove(QStringLiteral("source"));
-    legacy.insert(QStringLiteral("hmp"), legacyHmp);
+    QJsonObject legacyHc2a = legacy.value(QStringLiteral("hc2a")).toObject();
+    legacyHc2a.remove(QStringLiteral("source"));
+    legacy.insert(QStringLiteral("hc2a"), legacyHc2a);
     legacy.remove(QStringLiteral("ai8_temperature_controller"));
     QJsonObject legacyEpsilon = legacy.value(QStringLiteral("epsilon")).toObject();
     legacyEpsilon.remove(QStringLiteral("rtcm"));
@@ -780,7 +780,7 @@ void testSkyConfigDiff()
     error.clear();
     require(VaporView::SkyConfig::fromJson(legacy, parsed, &error), "sky config legacy parse");
     require(parsed.ptb.source == QStringLiteral("ptb210") &&
-                parsed.hmp.source == QStringLiteral("hmp3") &&
+                parsed.hc2a.source == QStringLiteral("hc2a") &&
                 !parsed.ai8_temperature_controller.enabled &&
                 !parsed.epsilon_rtcm.enabled &&
                 parsed.epsilon_rtcm.device_port_index == 2 &&

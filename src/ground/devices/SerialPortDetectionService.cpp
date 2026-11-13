@@ -124,7 +124,7 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
     const bool useBmp390 = request.pressureProtocol == VaporView::PressureSensorProtocol::Bmp390Serial;
     const bool useSht45 = request.humidityProtocol == VaporView::HumiditySensorProtocol::Sht45Serial;
     const QString ptbDefaultBaud = useBmp390 ? QStringLiteral("115200") : QStringLiteral("9600");
-    const QString hmpDefaultBaud = useSht45 ? QStringLiteral("115200") : QStringLiteral("19200");
+    const QString hc2aDefaultBaud = useSht45 ? QStringLiteral("115200") : QStringLiteral("19200");
     const QString lidarDefaultBaud = QStringLiteral("500000");
     const QString temperatureDefaultBaud = QStringLiteral("38400");
     const QString ai8TemperatureDefaultBaud = QStringLiteral("19200");
@@ -164,9 +164,9 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
                                       cancelRequested);
             }};
     };
-    auto makeHmpProbe = [&](const QString& baud) {
-        return ProbeSpec{QStringLiteral("hmp"),
-            useSht45 ? QStringLiteral("SHT45") : QStringLiteral("HMP3"),
+    auto makeHc2aProbe = [&](const QString& baud) {
+        return ProbeSpec{QStringLiteral("hc2a"),
+            useSht45 ? QStringLiteral("SHT45") : QStringLiteral("HC2A"),
             baud,
             [cancelRequested, baud, useSht45](const QString& port) {
                 const auto baudRate = VaporView::parseSerialBaudRate(baud);
@@ -174,14 +174,13 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
                 {
                     return false;
                 }
-                auto collector = std::make_unique<HmpCollector>();
+                auto collector = std::make_unique<Hc2aCollector>();
                 collector->setProtocol(useSht45
                                            ? VaporView::HumiditySensorProtocol::Sht45Serial
-                                           : VaporView::HumiditySensorProtocol::Hmp3Modbus);
+                                           : VaporView::HumiditySensorProtocol::Hc2aRoAscii);
                 return probeCollector(port,
                                       std::move(collector),
-                                      useSht45 ? SerialConfig::N81(*baudRate)
-                                               : SerialConfig::N82(*baudRate),
+                                      SerialConfig::N81(*baudRate),
                                       cancelRequested);
             }};
     };
@@ -285,14 +284,14 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
                                               useBmp390 ? VaporView::bmp390SerialAdapterBaudCapabilities()
                                                          : VaporView::ptb210BaudCapabilities())),
                 request.ptb.port);
-    addSelected(makeHmpProbe(selectedBaud(QStringLiteral("hmp"),
+    addSelected(makeHc2aProbe(selectedBaud(QStringLiteral("hc2a"),
                                           useSht45 ? QStringLiteral("SHT45")
-                                                   : QStringLiteral("HMP3"),
-                                          request.hmp.baud,
-                                          hmpDefaultBaud,
+                                                   : QStringLiteral("HC2A"),
+                                          request.hc2a.baud,
+                                          hc2aDefaultBaud,
                                           useSht45 ? VaporView::sht45SerialAdapterBaudCapabilities()
-                                                   : VaporView::hmp3BaudCapabilities())),
-                request.hmp.port);
+                                                   : VaporView::hc2aBaudCapabilities())),
+                request.hc2a.port);
     addSelected(makeLidarProbe(selectedBaud(QStringLiteral("lidar"),
                                             QStringLiteral("TFA1500-L"),
                                             request.lidar.baud,
@@ -317,7 +316,7 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
     QVector<ProbeSpec> defaults;
     defaults << makeEpsilonProbe(epsilonDefaultBaud)
              << makePtbProbe(ptbDefaultBaud)
-             << makeHmpProbe(hmpDefaultBaud)
+             << makeHc2aProbe(hc2aDefaultBaud)
              << makeLidarProbe(lidarDefaultBaud)
              << makeTemperatureProbe(temperatureDefaultBaud)
              << makeAi8TemperatureProbe(ai8TemperatureDefaultBaud);
@@ -489,7 +488,7 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
     const QHash<QString, QString> labels{
         {QStringLiteral("epsilon"), QStringLiteral("EPSILON")},
         {QStringLiteral("ptb"), QStringLiteral("PTB210")},
-        {QStringLiteral("hmp"), QStringLiteral("HMP3")},
+        {QStringLiteral("hc2a"), QStringLiteral("HC2A")},
         {QStringLiteral("lidar"), QStringLiteral("TFA1500-L")},
         {QStringLiteral("temperature"), QStringLiteral("RD105")},
         {QStringLiteral("ai8"), QStringLiteral("AI-8288")},

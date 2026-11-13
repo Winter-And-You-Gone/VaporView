@@ -15,7 +15,7 @@ struct CollectorSet
     std::shared_ptr<VaporView::GnssCollector> gnss;
     std::shared_ptr<VaporView::ImuCollector> imu;
     std::shared_ptr<VaporView::PtbCollector> ptb;
-    std::shared_ptr<VaporView::HmpCollector> hmp;
+    std::shared_ptr<VaporView::Hc2aCollector> hc2a;
     std::shared_ptr<VaporView::LidarCollector> lidar;
     std::shared_ptr<VaporView::TemperatureControllerCollector> temperature_controller;
     std::shared_ptr<VaporView::Ai8TemperatureControllerCollector> ai8_temperature_controller;

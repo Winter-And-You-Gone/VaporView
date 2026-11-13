@@ -12,7 +12,7 @@
 | --- | ---: | --- |
 | `raw/navigation.dat` | 1 | 组合导航、GNSS、INS、姿态和位置原始帧 |
 | `raw/pressure.dat` | 2 | 气压传感器有效压力响应原始行字节，包含行结束符 |
-| `raw/temperature_humidity.dat` | 3 | 温湿度传感器完整 Modbus 数据响应帧 |
+| `raw/temperature_humidity.dat` | 3 | HC2A完整RO-ASCII RDD应答（含CR）；历史type 3保留原HMP Modbus帧 |
 | `raw/distance.dat` | 4 | 已识别协议且校验通过的完整测距帧 |
 | `raw/waveform.dat` | 5 | type=1：直连信号/谐波 payload；type=2：FPGA H1/H2 及周期元数据 |
 | `raw/laser_temperature_controller.dat` | 6 | 激光温控完整、已校验 Modbus RTU response frame |
@@ -62,7 +62,7 @@
 
 - EPSILON：`record_type` 为 FDILink packet id，例如 `0x40 / 0x41 / 0x42 / 0x50`；`flags` 低 8 位保存 FDILink serial number。
 - PTB：`record_type = 1`，`flags = 0`。
-- HMP：`record_type = 0x03`，对应 Modbus function code。
+- HC2A：`record_type = 1`，payload为校验通过的RO-ASCII RDD完整应答（含CR）；历史HMP的`record_type = 0x03`仍按Modbus RTU读取，两者不混用。
 - LIDAR：`record_type` 使用程序内 `LidarProtocol` 枚举值：`1` 为历史保留值，当前不再生成；`2=TFA1500DistanceFrame`，`3=TFA1500LowFrequencyFrame`，`4=TFA1500HighFrequency`，`5=ObservedAaB7Frame`。
 - TCP 波形：`record_type = 1`，`flags` bit0 表示 payload 内含两个 length-prefixed 子 payload；`flags` bits8-9 记录 payload 浮点编码，`0=legacy/unknown`、`1=little-endian float32`、`2=big-endian float32`、`3=word-swapped float32`。
 - 激光温控：`record_type` 使用已校验 Modbus RTU response 的起始寄存器地址，`flags = 0`。
@@ -126,7 +126,7 @@ FPGA的VLP1头、tick/source/msg/flags/sequence/cycle位于内层payload，其�
 CSV 中的 `record_timestamp_us` 和 raw DAT 记录头中的 `host_timestamp_us` 使用同一主机 UTC 微秒时间基准，可用于离线对齐。CSV 保留解析后的摘要字段，raw DAT 保留原始帧字节。CSV schema、缺失字段表示、时间戳/浮点格式和 CSV 转义规则来自 `SessionSensorCsv`，因此地面端和天空端生成相同的列名、列顺序、单位和公共格式。
 
 历史路径兼容映射为：`raw/epsilon.dat` -> `raw/navigation.dat`、
-`raw/ptb.dat` -> `raw/pressure.dat`、`raw/hmp.dat` ->
+`raw/ptb.dat` -> `raw/pressure.dat`、`raw/hc2a.dat` ->
 `raw/temperature_humidity.dat`、`raw/lidar.dat` -> `raw/distance.dat`、
 `raw/tcp_wave.dat` -> `raw/waveform.dat`、`raw/rd105.dat` ->
 `raw/laser_temperature_controller.dat`、`raw/ai8.dat` /

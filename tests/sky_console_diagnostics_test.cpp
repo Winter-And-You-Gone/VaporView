@@ -19,7 +19,7 @@ int main()
     require(repeated.size() == 1 && repeated.first().contains("100"), "periodic repeat count");
     record.message = QStringLiteral("PTB: port closed");
     require(console.accept(record, 5001) == QStringList{record.message}, "new cause appears immediately");
-    record.fields["device_id"] = "HMP";
+    record.fields["device_id"] = "HC2A";
     require(console.accept(record, 5002).size() == 1, "devices are independent");
     record.fields["process_output"] = "changed beyond the displayed summary";
     require(console.accept(record, 5002).size() == 1, "different raw causes are never merged after summary truncation");

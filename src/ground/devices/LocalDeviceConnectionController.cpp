@@ -118,9 +118,9 @@ public:
                     collectors.ptb->setDeviceSampleRate(configuration.ptbRateHz);
             }
         }
-        if (collectors.hmp && collectors.hmp->isRunning())
+        if (collectors.hc2a && collectors.hc2a->isRunning())
         {
-            collectors.hmp->setSampleRate(configuration.hmpRateHz);
+            collectors.hc2a->setSampleRate(configuration.hc2aRateHz);
         }
         if (collectors.lidar && collectors.lidar->isRunning())
         {
@@ -177,9 +177,9 @@ public:
         return result;
     }
 
-    void setHmpSampleRate(int rateHz)
+    void setHc2aSampleRate(int rateHz)
     {
-        const auto collector = registry.snapshot().hmp;
+        const auto collector = registry.snapshot().hc2a;
         if (collector)
         {
             collector->setSampleRate(rateHz);
@@ -536,9 +536,9 @@ private:
         CollectorSet collectors;
         collectors.epsilon = std::make_shared<EpsilonCollector>();
         collectors.ptb = std::make_shared<PtbCollector>();
-        collectors.hmp = std::make_shared<HmpCollector>();
+        collectors.hc2a = std::make_shared<Hc2aCollector>();
         collectors.ptb->setProtocol(request.pressureProtocol);
-        collectors.hmp->setProtocol(request.humidityProtocol);
+        collectors.hc2a->setProtocol(request.humidityProtocol);
         collectors.lidar = std::make_shared<LidarCollector>();
         collectors.temperature_controller = std::make_shared<TemperatureControllerCollector>();
         collectors.ai8_temperature_controller = std::make_shared<Ai8TemperatureControllerCollector>();
@@ -552,7 +552,7 @@ private:
         };
         collectors.epsilon->setSampleRate(request.epsilon.sampleRateHz);
         collectors.ptb->setSampleRate(request.ptb.sampleRateHz);
-        collectors.hmp->setSampleRate(request.hmp.sampleRateHz);
+        collectors.hc2a->setSampleRate(request.hc2a.sampleRateHz);
         collectors.lidar->setSampleRate(request.lidar.sampleRateHz);
         collectors.temperature_controller->setSampleRate(request.temperatureController.sampleRateHz);
         collectors.temperature_controller->setSlaveAddress(
@@ -564,13 +564,13 @@ private:
 
         collectors.epsilon->setLogCallback(collectorLog);
         collectors.ptb->setLogCallback(collectorLog);
-        collectors.hmp->setLogCallback(collectorLog);
+        collectors.hc2a->setLogCallback(collectorLog);
         collectors.lidar->setLogCallback(collectorLog);
         collectors.temperature_controller->setLogCallback(collectorLog);
         collectors.ai8_temperature_controller->setLogCallback(collectorLog);
         collectors.epsilon->setCancelCallback(cancelRequested);
         collectors.ptb->setCancelCallback(cancelRequested);
-        collectors.hmp->setCancelCallback(cancelRequested);
+        collectors.hc2a->setCancelCallback(cancelRequested);
         collectors.lidar->setCancelCallback(cancelRequested);
         collectors.temperature_controller->setCancelCallback(cancelRequested);
         collectors.ai8_temperature_controller->setCancelCallback(cancelRequested);
@@ -596,11 +596,11 @@ private:
                     callbacks.rawPtbResponse(timestampUs, data, size);
                 }
             });
-        collectors.hmp->setRawResponseCallback(
+        collectors.hc2a->setRawResponseCallback(
             [this](uint64_t timestampUs, const uint8_t *data, size_t size) {
-                if (callbacks.rawHmpResponse)
+                if (callbacks.rawHc2aResponse)
                 {
-                    callbacks.rawHmpResponse(timestampUs, data, size);
+                    callbacks.rawHc2aResponse(timestampUs, data, size);
                 }
             });
         collectors.lidar->setRawFrameCallback(
@@ -893,35 +893,34 @@ private:
         }) < 0) return;
 
         const bool useSht45 = request.humidityProtocol == HumiditySensorProtocol::Sht45Serial;
-        const QString humidityName = useSht45 ? QStringLiteral("SHT45") : QStringLiteral("HMP3");
+        const QString humidityName = useSht45 ? QStringLiteral("SHT45") : QStringLiteral("HC2A");
         if (connectCollector(humidityName,
-                             request.hmp,
+                             request.hc2a,
                              useSht45 ? VaporView::sht45SerialAdapterBaudCapabilities()
-                                      : VaporView::hmp3BaudCapabilities(),
-                             collectors.hmp.get(),
+                                      : VaporView::hc2aBaudCapabilities(),
+                             collectors.hc2a.get(),
                              [useSht45](int baud) {
-                                 return useSht45 ? SerialConfig::N81(baud)
-                                                 : SerialConfig::N82(baud);
+                                 return SerialConfig::N81(baud);
                              },
                              [&]() {
-            collectors.hmp->setDataCallback([this]() { notifyData(LocalDeviceKind::Hmp); });
-            if (request.hmp.skipDeviceRate)
+            collectors.hc2a->setDataCallback([this]() { notifyData(LocalDeviceKind::Hc2a); });
+            if (request.hc2a.skipDeviceRate)
             {
                 postConnectionLog(VaporView::LogLevel::Info,
-                        QStringLiteral("hmp_polling_rate_defaulted"),
-                        QStringLiteral("HMP3 轮询频率保持不设定，使用默认主机轮询频率。"),
+                        QStringLiteral("hc2a_polling_rate_defaulted"),
+                        QStringLiteral("HC2A 轮询频率保持不设定，使用默认主机轮询频率。"),
                         {{QStringLiteral("device"), humidityName},
-                         {QStringLiteral("effective_rate_hz"), request.hmp.sampleRateHz}});
+                         {QStringLiteral("effective_rate_hz"), request.hc2a.sampleRateHz}});
             }
             else
             {
                 postConnectionLog(VaporView::LogLevel::Info,
-                        QStringLiteral("hmp_sample_rate_updated"),
-                        QStringLiteral("HMP3 采样频率已更新。"),
+                        QStringLiteral("hc2a_sample_rate_updated"),
+                        QStringLiteral("HC2A 采样频率已更新。"),
                         {{QStringLiteral("device"), humidityName},
-                         {QStringLiteral("requested_rate_hz"), request.hmp.sampleRateHz}});
+                         {QStringLiteral("requested_rate_hz"), request.hc2a.sampleRateHz}});
             }
-            if (collectors.hmp->startStreaming()) return true;
+            if (collectors.hc2a->startStreaming()) return true;
             postConnectionLog(VaporView::LogLevel::Error,
                     QStringLiteral("local_device_stream_start_failed"),
                     QStringLiteral("本地设备数据流启动失败。"),
@@ -1144,9 +1143,9 @@ LocalSampleRateApplyResult LocalDeviceConnectionController::setPtbSampleRate(
     return impl_->setPtbSampleRate(rateHz, applyDeviceRate);
 }
 
-void LocalDeviceConnectionController::setHmpSampleRate(int rateHz)
+void LocalDeviceConnectionController::setHc2aSampleRate(int rateHz)
 {
-    impl_->setHmpSampleRate(rateHz);
+    impl_->setHc2aSampleRate(rateHz);
 }
 
 void LocalDeviceConnectionController::setLidarSampleRate(int rateHz, bool applyDeviceRate)

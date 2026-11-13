@@ -485,7 +485,7 @@ QString skyDeviceDisplayName(VaporView::SkyDeviceId device)
     {
     case VaporView::SkyDeviceId::Epsilon: return QStringLiteral("EPSILON");
     case VaporView::SkyDeviceId::Ptb: return QStringLiteral("PTB210");
-    case VaporView::SkyDeviceId::Hmp: return QStringLiteral("HMP3");
+    case VaporView::SkyDeviceId::Hc2a: return QStringLiteral("HC2A");
     case VaporView::SkyDeviceId::Lidar: return QStringLiteral("TFA1500-L");
     case VaporView::SkyDeviceId::TemperatureController: return QStringLiteral("RD105");
     case VaporView::SkyDeviceId::Ai8TemperatureController: return QStringLiteral("AI-8288");
@@ -507,8 +507,8 @@ QString homeDeviceDisplayName(VaporView::SkyDeviceId device, bool english)
         return english ? QStringLiteral("EPSILON Nav") : QStringLiteral("EPSILON 组合导航");
     case VaporView::SkyDeviceId::Ptb:
         return english ? QStringLiteral("PTB210 Barometer") : QStringLiteral("PTB210 气压计");
-    case VaporView::SkyDeviceId::Hmp:
-        return english ? QStringLiteral("HMP Temp/Humidity") : QStringLiteral("HMP 温湿度");
+    case VaporView::SkyDeviceId::Hc2a:
+        return english ? QStringLiteral("HC2A Temp/Humidity") : QStringLiteral("HC2A 温湿度");
     case VaporView::SkyDeviceId::Lidar:
         return english ? QStringLiteral("TFA1500-L LiDAR") : QStringLiteral("TFA1500-L 激光测距");
     case VaporView::SkyDeviceId::TemperatureController:
@@ -748,9 +748,9 @@ QString sensorPortSettingsKey(const QString& source)
     {
         return QStringLiteral("serial/bmp390_port");
     }
-    if (source == QStringLiteral("hmp3"))
+    if (source == QStringLiteral("hc2a"))
     {
-        return QStringLiteral("serial/hmp3_port");
+        return QStringLiteral("serial/hc2a_port");
     }
     if (source == QStringLiteral("sht45"))
     {
@@ -781,9 +781,9 @@ QString sensorBaudSettingsKey(const QString& source)
     {
         return QStringLiteral("serial/bmp390_baud");
     }
-    if (source == QStringLiteral("hmp3"))
+    if (source == QStringLiteral("hc2a"))
     {
-        return QStringLiteral("serial/hmp3_baud");
+        return QStringLiteral("serial/hc2a_baud");
     }
     if (source == QStringLiteral("sht45"))
     {
@@ -798,7 +798,7 @@ QString sensorDefaultBaud(const QString& source)
     {
         return QStringLiteral("9600");
     }
-    if (source == QStringLiteral("hmp3"))
+    if (source == QStringLiteral("hc2a"))
     {
         return QStringLiteral("19200");
     }

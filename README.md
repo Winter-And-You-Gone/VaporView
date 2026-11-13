@@ -1,12 +1,14 @@
 # VaporView
 
-`VaporView` 是一个基于 Qt Widgets 的桌面程序。当前主界面面向 EPSILON 组合导航、PTB210/BMP390 气压来源、HMP3/SHT45 温湿度来源、TFA1500-L 激光测距模块、RD105 温控器、AI-8288 八路温控器和本地 TCP 波形流，提供串口接入、实时数据显示、RTK/NTRIP 转发、会话记录、离线查看和轨迹查看能力。
+`VaporView` 是一个基于 Qt Widgets 的桌面程序。当前主界面面向 EPSILON 组合导航、PTB210/BMP390 气压来源、HC2A/SHT45 温湿度来源、TFA1500-L 激光测距模块、RD105 温控器、AI-8288 八路温控器和本地 TCP 波形流，提供串口接入、实时数据显示、RTK/NTRIP 转发、会话记录、离线查看和轨迹查看能力。
 
 ## 快速开始
 
 主侧栏“水汽定标”支持 FPGA 峰值导入、线性验证模型拟合、参数历史版本和可追溯初始浓度。正式算法及温压补偿待确认事项见[实现与待补全清单](docs/water_calibration.md)。
 
 主侧栏“运动控制”支持 EM-FWC3 三路电机定位、步进、回零、连续运动与停止。设备通过本机 USB 虚拟串口独立连接，FPGA 中转或远端采集模式下仍保持直连；配置入口、可选 SDK 部署与验证说明见 [EM-FWC3 接入说明](docs/emfwc3.md)。
+
+FPGA模式当前适配本地下位机2026-11-13归档的HCD2版本：HC2A环境温湿度、AI8单选通道、新版DM422、PPS/UTC状态及LC只读诊断，见[HCD2最新适配说明](docs/fpga_hcd2_adaptation_20261114.md)。旧HMP补偿、自动八通道扫描/RD105和旧电机参数不适用于该固件。本轮仅离线软件验证，未连接板卡。
 
 ### 依赖
 
@@ -179,9 +181,9 @@ H300 网桥使用说明：
 
 - Qt Widgets 图形界面，应用名和窗口标题为 `VaporView`，应用版本为 `1.0.1`。
 - 中英文界面切换、F11 全屏、70% / 80% / 90% / 100% / 115% / 130% 字号缩放。
-- 串口刷新、手动端口输入与自动识别；正式设备配置覆盖 EPSILON、PTB210/BMP390、HMP3/SHT45、TFA1500-L、RD105、AI-8288 和 Wave TCP。
+- 串口刷新、手动端口输入与自动识别；正式设备配置覆盖 EPSILON、PTB210/BMP390、HC2A/SHT45、TFA1500-L、RD105、AI-8288 和 Wave TCP。
 - EPSILON `FDILink` 组合导航数据解析、包频率配置、RTCM 串口配置、主天线杆臂配置。
-- PTB210/BMP390 气压、HMP3/SHT45 温湿度、TFA1500-L 距离数据显示与频率统计。
+- PTB210/BMP390 气压、HC2A/SHT45 温湿度、TFA1500-L 距离数据显示与频率统计。
 - RD105 双通道温控与 AI-8288 八路温控数据显示、参数页面和当前产品化控制入口。
 - TCP 波形监视，默认连接 `127.0.0.1:8888`，显示原始信号、归一化二次谐波和峰值趋势。
 - RTK NTRIP 配置对话框，基于内置 RTKLIB `strsvr` 把 NTRIP 输入转发到串口或 TCP Client 输出。
@@ -404,7 +406,7 @@ Qt `SerialPort` 模块当前用于枚举可用串口；实际采集读写使用�
 - `DataCollector`：串口启停、线程管理、回调、日志、取消检测、采样率和实际接收频率统计。
 - `EpsilonCollector`：EPSILON `FDILink` 采集、校验、解析、包频率配置、RTCM 串口配置、主天线杆臂配置。
 - `PtbCollector`：PTB210 气压采集。
-- `HmpCollector`：HMP3 Modbus RTU 温湿度采集。
+- `Hc2aCollector`：HC2A RO-ASCII RDD 温湿度采集，校验地址、单位、checksum和报警。
 - `LidarCollector`：TFA1500-L 激光测距采集。
 - `GnssCollector` 和 `ImuCollector` 仍在源码中保留，但当前主窗口没有独立 GNSS 或 IMU 设备配置行。
 
@@ -490,23 +492,21 @@ EPSILON RTCM 与杆臂配置：
 - `.MPM` 写入值为 `hz * 60`，并限制在 `6` 到 `4200`
 - 运行时把设备返回的数值解析为 `pressure_hpa`
 
-### HMP3
+### HC2A
 
 当前主界面默认串口参数：
 
-- Windows：`COM6 @ 19200 N82`
-- 非 Windows：`/dev/ttyHMP @ 19200 N82`
+- Windows：`COM6 @ 19200 N81`
+- 非 Windows：`/dev/ttyHC2A @ 19200 N81`
 
 当前实现事实：
 
-- 协议：Modbus RTU
-- 从站地址：`240`
-- 功能码：`0x03`
-- 读取起始寄存器：`0x0000`
-- 读取寄存器数量：`4`
-- 湿度寄存器起点：`0x0000`
-- 温度寄存器起点：`0x0002`
-- 当前没有设备侧采样率命令；UI 频率改变的是主机轮询间隔。
+- 协议：Rotronic RO-ASCII，发送 `{FxxRDD}\r` 读取温湿度，使用完整应答的单字符 checksum。
+- 首次以地址 `99` 发现唯一探头，成功后使用应答中的实际地址 `0..64`；99 发现仅适用于单探头。
+- 只接受数字探头、摄氏温度、`%RH` / `%rh` 湿度和合法测量范围，设备报警值不作为正常温湿度。
+- 不写探头地址、标定或参数；波特率须与探头实际配置一致，主机支持范围为1200..115200。
+- 默认主机轮询为1Hz。UI频率改变主机请求节奏，不改变探头内部测量速率，也不能保证超出应答能力的采样率。
+- 新记录使用HC2A型号和`hc2a_temperature_c` / `hc2a_humidity_rh`列；历史HMP配置与CSV列保留只读迁移兼容。
 
 ### TFA1500-L
 
@@ -649,7 +649,7 @@ data/
 `laser_temperature_controller.csv`、`system_temperature_controller.csv`；
 具体设备型号、厂家和端口保存在
 `session.json` 或 `config/device_config.json`。Reader 兼容历史路径：
-`epsilon.dat`、`ptb.dat`、`hmp.dat`、`lidar.dat`、`tcp_wave.dat`、
+`epsilon.dat`、`ptb.dat`、`hc2a.dat`、`lidar.dat`、`tcp_wave.dat`、
 `tcp_wave_peaks.csv`、`devices.csv`、`temperature_controller.csv`、
 `ai8_temperature_controller.csv`、`rd105_temperature_controller.csv`、
 `rd105.dat`、`ai8.dat` 和 `ai8288.dat`。解析顺序是 manifest 显式路径、新默认
@@ -661,7 +661,7 @@ data/
 - 格式版本、`recording_origin`、当前记录目录和 session 目录
 - 遥测 transport / endpoint / port / baud；不适用项保留为 `null`
 - 波形主机、端口、记录模式、每帧点数和值类型
-- EPSILON、PTB、HMP、Lidar、RD105、AI-8288 的串口、波特率、频率文本和从站地址；天空端无法提供的
+- EPSILON、PTB、HC2A、Lidar、RD105、AI-8288 的串口、波特率、频率文本和从站地址；天空端无法提供的
   逐设备配置保留为 `null`
 
 ## 数据文件格式
@@ -682,7 +682,7 @@ data/
 - 姿态角、四元数、角速度、IMU 加速度、IMU 角速度、磁场
 - GNSS 状态、卫星数、DOP、精度、差分龄期、heading 状态、EPSILON 状态位
 - EPSILON 有效性和错误信息
-- HMP 温度 / 湿度、PTB 气压、Lidar 距离 / 信号强度 / 有效性
+- HC2A 温度 / 湿度、PTB 气压、Lidar 距离 / 信号强度 / 有效性
 
 其中 `ecef_x_m`、`ecef_y_m`、`ecef_z_m` 是程序使用的 resolved ECEF 字段：优先为设备可信 `0x5D`，否则为有效 LLH 的 WGS84 反算值。原始设备 `0x5D` 帧只在 `raw/navigation.dat` 中保真保存。
 
@@ -694,7 +694,7 @@ data/
 
 - `raw/navigation.dat`：完整已校验 EPSILON `FDILink` 帧。
 - `raw/pressure.dat`：有效压力响应原始行字节。
-- `raw/temperature_humidity.dat`：完整温湿度 Modbus 数据响应帧。
+- `raw/temperature_humidity.dat`：完整HC2A RO-ASCII RDD应答，保留checksum与CR行尾。
 - `raw/distance.dat`：已识别协议且校验通过的完整测距帧。
 - `raw/waveform.dat`：每组 TCP 原始信号 payload 和二次谐波 payload。
 

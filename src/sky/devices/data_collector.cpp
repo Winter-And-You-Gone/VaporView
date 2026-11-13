@@ -1,4 +1,5 @@
 #include "data_collector.h"
+#include "Hc2aProtocol.h"
 #include "EpsilonProtocol.h"
 #include "geo/CoordinateTransform.h"
 #include "geo/GeoTypes.h"
@@ -67,35 +68,7 @@ size_t trimUnterminatedLineBuffer(std::string& buffer, size_t maxBytes, size_t k
   return bytesToDrop;
 }
 
-uint16_t modbusCrc16Local(const uint8_t* data, size_t len)
-{
-  uint16_t crc = 0xFFFF;
-  for (size_t i = 0; i < len; i++)
-  {
-    crc ^= data[i];
-    for (int j = 0; j < 8; j++)
-    {
-      if (crc & 0x0001)
-      {
-        crc >>= 1;
-        crc ^= 0xA001;
-      }
-      else
-      {
-        crc >>= 1;
-      }
-    }
-  }
-  return crc;
-}
 
-float decodeFloatLELocal(uint16_t reg0, uint16_t reg1)
-{
-  uint32_t val = static_cast<uint32_t>(reg0) | (static_cast<uint32_t>(reg1) << 16);
-  float result;
-  std::memcpy(&result, &val, sizeof(float));
-  return result;
-}
 
 bool isSupportedImuMessageType(const std::string& message_type)
 {
@@ -1358,94 +1331,6 @@ bool extractNextLidarSample(std::vector<uint8_t>& buffer,
   return false;
 }
 
-enum class HmpParseResult
-{
-  None,
-  Data,
-  Exception,
-  CrcError
-};
-
-HmpParseResult parseHmpResponse(const uint8_t* buffer,
-                                size_t size,
-                                float& humidity,
-                                float& temperature,
-                                uint8_t& exception_code,
-                                uint8_t function_code,
-                                size_t* frame_offset = nullptr,
-                                size_t* frame_size = nullptr)
-{
-  constexpr uint8_t kSlaveAddr = 240;
-  const uint8_t exception_fc = static_cast<uint8_t>(function_code | 0x80);
-
-  for (size_t i = 0; i < size; ++i)
-  {
-    if (buffer[i] != kSlaveAddr)
-    {
-      continue;
-    }
-
-    if (i + 5 <= size && buffer[i + 1] == exception_fc)
-    {
-      uint16_t recv_crc = static_cast<uint16_t>(buffer[i + 3]) | (static_cast<uint16_t>(buffer[i + 4]) << 8);
-      uint16_t calc_crc = modbusCrc16Local(buffer + i, 3);
-      if (recv_crc == calc_crc)
-      {
-        if (frame_offset)
-        {
-          *frame_offset = i;
-        }
-        if (frame_size)
-        {
-          *frame_size = 5;
-        }
-        exception_code = buffer[i + 2];
-        return HmpParseResult::Exception;
-      }
-      return HmpParseResult::CrcError;
-    }
-
-    if (i + 3 <= size && buffer[i + 1] == function_code)
-    {
-      uint8_t byte_count = buffer[i + 2];
-      size_t frame_len = static_cast<size_t>(3 + byte_count + 2);
-      if (i + frame_len > size)
-      {
-        continue;
-      }
-
-      uint16_t recv_crc = static_cast<uint16_t>(buffer[i + frame_len - 2]) |
-                          (static_cast<uint16_t>(buffer[i + frame_len - 1]) << 8);
-      uint16_t calc_crc = modbusCrc16Local(buffer + i, frame_len - 2);
-      if (recv_crc != calc_crc)
-      {
-        return HmpParseResult::CrcError;
-      }
-
-      if (byte_count >= 8)
-      {
-        if (frame_offset)
-        {
-          *frame_offset = i;
-        }
-        if (frame_size)
-        {
-          *frame_size = frame_len;
-        }
-        uint16_t reg0 = static_cast<uint16_t>(buffer[i + 3] << 8) | buffer[i + 4];
-        uint16_t reg1 = static_cast<uint16_t>(buffer[i + 5] << 8) | buffer[i + 6];
-        uint16_t reg2 = static_cast<uint16_t>(buffer[i + 7] << 8) | buffer[i + 8];
-        uint16_t reg3 = static_cast<uint16_t>(buffer[i + 9] << 8) | buffer[i + 10];
-
-        humidity = decodeFloatLELocal(reg0, reg1);
-        temperature = decodeFloatLELocal(reg2, reg3);
-        return HmpParseResult::Data;
-      }
-    }
-  }
-
-  return HmpParseResult::None;
-}
 
 }
 
@@ -4279,37 +4164,38 @@ void PtbCollector::run()
   }
 }
 
-HmpData HmpCollector::getLatestData()
+Hc2aData Hc2aCollector::getLatestData()
 {
   std::lock_guard<std::mutex> lock(mutex_);
   return latest_data_;
 }
 
-void HmpCollector::setRawResponseCallback(RawResponseCallback callback)
+void Hc2aCollector::setRawResponseCallback(RawResponseCallback callback)
 {
   std::lock_guard<std::mutex> lock(mutex_);
   raw_response_callback_ = std::move(callback);
 }
 
-void HmpCollector::setProtocol(HumiditySensorProtocol protocol)
+void Hc2aCollector::setProtocol(HumiditySensorProtocol protocol)
 {
   std::lock_guard<std::mutex> lock(mutex_);
   protocol_ = protocol;
 }
 
-HumiditySensorProtocol HmpCollector::protocol() const
+HumiditySensorProtocol Hc2aCollector::protocol() const
 {
   std::lock_guard<std::mutex> lock(mutex_);
   return protocol_;
 }
 
-bool HmpCollector::initialize()
+bool Hc2aCollector::initialize()
 {
+  probe_address_ = 99;
   serial_.setNonBlocking(true);
   return true;
 }
 
-bool HmpCollector::checkDeviceResponse()
+bool Hc2aCollector::checkDeviceResponse()
 {
   if (protocol() == HumiditySensorProtocol::Sht45Serial)
   {
@@ -4354,98 +4240,51 @@ bool HmpCollector::checkDeviceResponse()
     return false;
   }
 
-  uint8_t request[8];
-  uint8_t response[64];
-  constexpr uint8_t function_code = 0x03;
-
-  request[0] = HMP3_SLAVE_ADDR;
-  request[1] = function_code;
-  request[2] = 0x00;
-  request[3] = 0x00;
-  request[4] = 0x00;
-  request[5] = 0x04;
-  uint16_t crc = modbusCrc16(request, 6);
-  request[6] = crc & 0xFF;
-  request[7] = (crc >> 8) & 0xFF;
-
-  int max_attempts = 5;
-
-  for (int i = 0; i < max_attempts; i++)
+  for (int attempt = 0; attempt < 2 && !isCancelRequested(); ++attempt)
   {
-    if (isCancelRequested())
-    {
-      return false;
-    }
-    constexpr int total_wait_ms = 500;
-    const auto attempt_start = std::chrono::steady_clock::now();
-    log(formatDetectionProgress("发送HMP寄存器查询", i + 1, max_attempts, computeRemainingSeconds(attempt_start, total_wait_ms)));
     serial_.flush();
-    serial_.write(request, 8);
-    constexpr int step_ms = 25;
-    size_t total = 0;
-    int elapsed = 0;
-    while (elapsed < total_wait_ms && total < sizeof(response))
-    {
-      if (isCancelRequested())
-      {
-        return false;
-      }
-      log(formatDetectionProgress("等待HMP寄存器返回", i + 1, max_attempts, computeRemainingSeconds(attempt_start, total_wait_ms)));
-      ssize_t chunk = serial_.read(response + total, sizeof(response) - total);
-      if (chunk > 0)
-      {
-        total += static_cast<size_t>(chunk);
-      }
-      sleepMs(step_ms);
-      elapsed += step_ms;
-    }
-
-    ssize_t n = static_cast<ssize_t>(total);
-    float humidity = 0.0f;
-    float temperature = 0.0f;
-    uint8_t exception_code = 0;
-    const size_t response_size = n > 0 ? static_cast<size_t>(n) : 0U;
-    HmpParseResult parsed = parseHmpResponse(response, response_size, humidity, temperature, exception_code, function_code);
-    if (parsed == HmpParseResult::Data)
-    {
-      return true;
-    }
+    if (pollReading(600)) return true;
   }
-
   return false;
 }
 
-uint16_t HmpCollector::modbusCrc16(const uint8_t* data, size_t len)
+bool Hc2aCollector::pollReading(int timeout_ms)
 {
-  uint16_t crc = 0xFFFF;
-  for (size_t i = 0; i < len; i++)
+  const auto request = Hc2aProtocol::request(probe_address_);
+  if (serial_.write(reinterpret_cast<const uint8_t*>(request.data()), request.size())
+      != static_cast<ssize_t>(request.size())) return false;
+  std::string buffer;
+  char chunk[192];
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+  while (!isCancelRequested() && std::chrono::steady_clock::now() < deadline)
   {
-    crc ^= data[i];
-    for (int j = 0; j < 8; j++)
+    const auto count = serial_.read(chunk, sizeof(chunk));
+    if (count <= 0) { sleepMs(5); continue; }
+    buffer.append(chunk, static_cast<size_t>(count));
+    Hc2aProtocol::Reading reading;
+    std::string raw;
+    if (!Hc2aProtocol::take(buffer, probe_address_, reading, &raw)) continue;
+    probe_address_ = reading.address;
+    RawResponseCallback raw_callback;
     {
-      if (crc & 0x0001)
-      {
-        crc >>= 1;
-        crc ^= 0xA001;
-      }
-      else
-      {
-        crc >>= 1;
-      }
+      std::lock_guard<std::mutex> lock(mutex_);
+      latest_data_.humidity = reading.humidity;
+      latest_data_.temperature = reading.temperature;
+      latest_data_.valid = reading.alarms == 0;
+      latest_data_.timestamp = std::chrono::steady_clock::now();
+      latest_data_.error_message = reading.alarms ? "HC2A probe alarm: " + std::to_string(reading.alarms) : "";
+      raw_callback = raw_response_callback_;
     }
+    if (raw_callback) raw_callback(systemTimestampUs(), reinterpret_cast<const uint8_t*>(raw.data()), raw.size());
+    return true;
   }
-  return crc;
+  std::lock_guard<std::mutex> lock(mutex_);
+  latest_data_.valid = false;
+  latest_data_.error_message = "HC2A response timeout or invalid RO-ASCII response";
+  return false;
 }
 
-float HmpCollector::decodeFloatLE(uint16_t reg0, uint16_t reg1)
-{
-  uint32_t val = static_cast<uint32_t>(reg0) | (static_cast<uint32_t>(reg1) << 16);
-  float result;
-  std::memcpy(&result, &val, sizeof(float));
-  return result;
-}
-
-void HmpCollector::run()
+void Hc2aCollector::run()
 {
   if (protocol() == HumiditySensorProtocol::Sht45Serial)
   {
@@ -4534,108 +4373,19 @@ void HmpCollector::run()
     return;
   }
 
-  uint8_t request[8];
-  uint8_t response[64];
-
   while (running_.load())
   {
-    auto start_time = std::chrono::steady_clock::now();
-    const int requested_rate_hz = getSampleRate();
-    const int interval_ms = std::max(1, 1000 / requested_rate_hz);
-    const int response_wait_ms = std::min(500, std::max(100, interval_ms));
-    
-    request[0] = HMP3_SLAVE_ADDR;
-    request[1] = 0x03;
-    request[2] = 0x00;
-    request[3] = 0x00;
-    request[4] = 0x00;
-    request[5] = 0x04;
-    uint16_t crc = modbusCrc16(request, 6);
-    request[6] = crc & 0xFF;
-    request[7] = (crc >> 8) & 0xFF;
-
-    serial_.write(request, 8);
-    float humidity = 0.0f;
-    float temperature = 0.0f;
-    uint8_t exception_code = 0;
-    HmpParseResult parsed = HmpParseResult::None;
-    size_t raw_frame_offset = 0;
-    size_t raw_frame_size = 0;
-    size_t total = 0;
-    int elapsed_wait_ms = 0;
-    constexpr int step_ms = 25;
-
-    while (running_.load() && elapsed_wait_ms < response_wait_ms && total < sizeof(response))
-    {
-      ssize_t chunk = serial_.read(response + total, sizeof(response) - total);
-      if (chunk > 0)
-      {
-        total += static_cast<size_t>(chunk);
-        parsed = parseHmpResponse(response, total, humidity, temperature, exception_code, 0x03, &raw_frame_offset, &raw_frame_size);
-        if (parsed != HmpParseResult::None)
-        {
-          break;
-        }
-      }
-
-      sleepMs(step_ms);
-      elapsed_wait_ms += step_ms;
-    }
-
-    if (parsed == HmpParseResult::None && total > 0)
-    {
-      parsed = parseHmpResponse(response, total, humidity, temperature, exception_code, 0x03, &raw_frame_offset, &raw_frame_size);
-    }
-
-    if (parsed == HmpParseResult::Data)
-    {
-      DataCallback callback;
-      RawResponseCallback raw_callback;
-      const uint64_t host_timestamp_us = systemTimestampUs();
-      {
-        std::lock_guard<std::mutex> lock(mutex_);
-        latest_data_.humidity = humidity;
-        latest_data_.temperature = temperature;
-        latest_data_.valid = true;
-        latest_data_.timestamp = std::chrono::steady_clock::now();
-        latest_data_.error_message.clear();
-        callback = data_callback_;
-        raw_callback = raw_response_callback_;
-      }
-
-      recordDataReceived();
-
-      if (raw_callback && raw_frame_size > 0 && raw_frame_offset + raw_frame_size <= total)
-      {
-        raw_callback(host_timestamp_us, response + raw_frame_offset, raw_frame_size);
-      }
-
-      if (callback && shouldEmitData())
-      {
-        updateLastEmitTime();
-        callback();
-      }
-    }
-    else if (parsed == HmpParseResult::Exception)
+    const auto start_time = std::chrono::steady_clock::now();
+    const bool received = pollReading(600);
+    if (received) recordDataReceived();
+    DataCallback callback;
     {
       std::lock_guard<std::mutex> lock(mutex_);
-      latest_data_.valid = false;
-      latest_data_.error_message = "Modbus 错误: " + std::to_string(exception_code);
+      callback = data_callback_;
     }
-    else if (parsed == HmpParseResult::CrcError)
-    {
-      std::lock_guard<std::mutex> lock(mutex_);
-      latest_data_.valid = false;
-      latest_data_.error_message = "CRC 校验错误";
-    }
-
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now() - start_time).count();
-    int remaining = interval_ms - static_cast<int>(elapsed);
-    if (remaining > 0)
-    {
-      sleepMs(remaining);
-    }
+    if (callback && shouldEmitData()) { updateLastEmitTime(); callback(); }
+    const auto interval = std::chrono::milliseconds(std::max(100, 1000 / std::max(1, getSampleRate())));
+    while (running_.load() && std::chrono::steady_clock::now() - start_time < interval) sleepMs(10);
   }
 }
 

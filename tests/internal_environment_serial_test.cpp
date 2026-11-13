@@ -122,7 +122,7 @@ int main(int argc,char **argv)
     config.bmp390={true,"TEST-BMP",57600,2.0,{}};config.sht45={true,"TEST-SHT",115200,5.0,{}};
     SkyConfig decoded;QString error;
     require(SkyConfig::fromJson(config.toJson(),decoded,&error)&&decoded.bmp390==config.bmp390&&decoded.sht45==config.sht45,
-        "bridge settings round trip independently from PTB/HMP");
+        "bridge settings round trip independently from PTB/HC2A");
     auto changed=config;changed.bmp390.baud_rate=115200;
     require(config.diff(changed).bmp390_changed&&!config.diff(changed).ptb_changed&&!config.diff(changed).sht45_changed,
         "only the changed internal collector is reconfigured");
@@ -130,6 +130,17 @@ int main(int argc,char **argv)
     require(!SkyConfig::fromJson(invalid,decoded,&error)&&decoded.sht45==config.sht45,"unsupported fractional receive rate is rejected atomically");
     auto legacy=config.toJson();legacy.remove("bmp390");legacy.remove("sht45");
     require(SkyConfig::fromJson(legacy,decoded,&error)&&!decoded.bmp390.enabled&&!decoded.sht45.enabled,"old peer configuration leaves new bridges disabled");
+    auto legacyHumidity = config.toJson();
+    auto legacyHumiditySection = legacyHumidity.take("hc2a").toObject();
+    legacyHumiditySection["source"] = "hmp3";
+    legacyHumiditySection["port"] = "LEGACY-HUMIDITY";
+    legacyHumidity["hmp"] = legacyHumiditySection;
+    require(SkyConfig::fromJson(legacyHumidity, decoded, &error) && decoded.hc2a.port == "LEGACY-HUMIDITY" &&
+            decoded.hc2a.source == "hc2a" && decoded.toJson().contains("hc2a") && !decoded.toJson().contains("hmp"),
+            "legacy HMP JSON reads as HC2A while new configuration writes use HC2A");
+    legacyHumidity["hc2a"] = config.toJson().value("hc2a");
+    require(SkyConfig::fromJson(legacyHumidity, decoded, &error) && decoded.hc2a == config.hc2a,
+            "explicit HC2A configuration wins over an old HMP alias");
     for(auto id:{SkyDeviceId::Bmp390,SkyDeviceId::Sht45}) {
         SkyDeviceId parsed;require(skyDeviceIdFromValue(quint8(id),parsed)&&parsed==id,"new device IDs decode independently");
         const auto payload=TelemetryCodec::serializeDeviceCommand(id);require(TelemetryCodec::parseDeviceCommand(payload,parsed)&&parsed==id,"direct device command preserves the bridge identity");

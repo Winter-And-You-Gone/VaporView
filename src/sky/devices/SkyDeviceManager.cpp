@@ -148,7 +148,7 @@ bool deviceEnabled(const SkyConfig& config, SkyDeviceId id)
     {
     case SkyDeviceId::Epsilon: return config.epsilon.enabled;
     case SkyDeviceId::Ptb: return config.ptb.enabled;
-    case SkyDeviceId::Hmp: return config.hmp.enabled;
+    case SkyDeviceId::Hc2a: return config.hc2a.enabled;
     case SkyDeviceId::Bmp390: return config.bmp390.enabled;
     case SkyDeviceId::Sht45: return config.sht45.enabled;
     case SkyDeviceId::Lidar: return config.lidar.enabled;
@@ -171,7 +171,7 @@ HumiditySensorProtocol humidityProtocolForSource(const QString& source)
 {
     return source.trimmed().compare(QStringLiteral("sht45"), Qt::CaseInsensitive) == 0
         ? HumiditySensorProtocol::Sht45Serial
-        : HumiditySensorProtocol::Hmp3Modbus;
+        : HumiditySensorProtocol::Hc2aRoAscii;
 }
 
 SerialDeviceConfig serialConfigFromTemperatureConfig(const TemperatureControllerConfig& config)
@@ -544,10 +544,10 @@ void SkyDeviceManager::drainRawEvents()
                 emit ptbRawResponseReceived(event.timestampUs, event.payload);
             }
             break;
-        case SkyDeviceId::Hmp:
-            if (hmp_.get() == event.collectorIdentity)
+        case SkyDeviceId::Hc2a:
+            if (hc2a_.get() == event.collectorIdentity)
             {
-                emit hmpRawResponseReceived(event.timestampUs, event.payload);
+                emit hc2aRawResponseReceived(event.timestampUs, event.payload);
             }
             break;
         case SkyDeviceId::Lidar:
@@ -710,7 +710,7 @@ void SkyDeviceManager::invalidateFpgaMeasurements()
 {
     fpga_position_valid_ = fpga_velocity_valid_ = false;
     fpga_position_time_us_ = fpga_velocity_time_us_ = 0;
-    for (auto id : {SkyDeviceId::Epsilon,SkyDeviceId::Ptb,SkyDeviceId::Hmp,SkyDeviceId::Lidar,SkyDeviceId::TemperatureController,SkyDeviceId::Ai8TemperatureController,SkyDeviceId::WaveTcp}) {
+    for (auto id : {SkyDeviceId::Epsilon,SkyDeviceId::Ptb,SkyDeviceId::Hc2a,SkyDeviceId::Lidar,SkyDeviceId::TemperatureController,SkyDeviceId::Ai8TemperatureController,SkyDeviceId::WaveTcp}) {
         invalidateDeviceData(id); setState(id, DeviceState::Disconnected);
     }
     latest_ai8_temperature_controller_.measuredC.fill(std::numeric_limits<double>::quiet_NaN());
@@ -726,11 +726,11 @@ void SkyDeviceManager::acceptFpgaMeasurement(const FpgaSensor::AdaptedMeasuremen
     if (r.kind == FpgaSensor::SensorKind::Ptb210 && r.source == 0x40) {
         PtbData data; if (valid && r.pressurePa) { data.pressure_hpa = *r.pressurePa/100.; data.valid=true; data.timestamp=timestamp; }
         setState(SkyDeviceId::Ptb, valid ? DeviceState::Connected : DeviceState::Error); handlePtbData(data);
-    } else if (r.kind == FpgaSensor::SensorKind::Hmp) {
-        HmpData data;if(valid && r.temperatureC && r.humidityPct) {
+    } else if (r.kind == FpgaSensor::SensorKind::Hc2a) {
+        Hc2aData data;if(valid && r.temperatureC && r.humidityPct) {
             data.temperature=*r.temperatureC;data.humidity=*r.humidityPct;data.valid=true;data.timestamp=timestamp;
         }
-        setState(SkyDeviceId::Hmp,valid?DeviceState::Connected:DeviceState::Error);handleHmpData(data);
+        setState(SkyDeviceId::Hc2a,valid?DeviceState::Connected:DeviceState::Error);handleHc2aData(data);
     } else if (r.kind == FpgaSensor::SensorKind::Tfa1500) {
         LidarData data; if (valid && r.distanceMm) { data.distance_m=*r.distanceMm/1000.;data.valid=true;data.timestamp=timestamp; }
         setState(SkyDeviceId::Lidar, valid ? DeviceState::Connected : DeviceState::Error); handleLidarData(data);
@@ -888,8 +888,8 @@ bool SkyDeviceManager::disconnectDeviceInternal(SkyDeviceId id,
     case SkyDeviceId::Ptb:
         stopCollector(ptb_);
         break;
-    case SkyDeviceId::Hmp:
-        stopCollector(hmp_);
+    case SkyDeviceId::Hc2a:
+        stopCollector(hc2a_);
         break;
     case SkyDeviceId::Lidar:
         stopCollector(lidar_);
@@ -952,7 +952,7 @@ void SkyDeviceManager::connectAll(const QString& correlationId, const QString& s
         connectDevice(SkyDeviceId::Fpga, nullptr, correlationId, sessionId);
         return;
     }
-    for (SkyDeviceId id : {SkyDeviceId::Epsilon, SkyDeviceId::Ptb, SkyDeviceId::Hmp, SkyDeviceId::Lidar, SkyDeviceId::TemperatureController, SkyDeviceId::Ai8TemperatureController, SkyDeviceId::WaveTcp, SkyDeviceId::Bmp390, SkyDeviceId::Sht45})
+    for (SkyDeviceId id : {SkyDeviceId::Epsilon, SkyDeviceId::Ptb, SkyDeviceId::Hc2a, SkyDeviceId::Lidar, SkyDeviceId::TemperatureController, SkyDeviceId::Ai8TemperatureController, SkyDeviceId::WaveTcp, SkyDeviceId::Bmp390, SkyDeviceId::Sht45})
     {
         if (deviceEnabled(config_, id))
         {
@@ -971,7 +971,7 @@ void SkyDeviceManager::disconnectAll(bool publishLogs)
     if (fpga_backend_) disconnectDeviceInternal(SkyDeviceId::Fpga, nullptr, publishLogs);
     disconnectDeviceInternal(SkyDeviceId::Bmp390,nullptr,publishLogs);
     disconnectDeviceInternal(SkyDeviceId::Sht45,nullptr,publishLogs);
-    for (SkyDeviceId id : {SkyDeviceId::Epsilon, SkyDeviceId::Ptb, SkyDeviceId::Hmp, SkyDeviceId::Lidar, SkyDeviceId::TemperatureController, SkyDeviceId::Ai8TemperatureController, SkyDeviceId::WaveTcp})
+    for (SkyDeviceId id : {SkyDeviceId::Epsilon, SkyDeviceId::Ptb, SkyDeviceId::Hc2a, SkyDeviceId::Lidar, SkyDeviceId::TemperatureController, SkyDeviceId::Ai8TemperatureController, SkyDeviceId::WaveTcp})
     {
         disconnectDeviceInternal(id, nullptr, publishLogs);
     }
@@ -1003,8 +1003,8 @@ DeviceStatusItem SkyDeviceManager::status(SkyDeviceId id) const
         return epsilon_status_;
     case SkyDeviceId::Ptb:
         return ptb_status_;
-    case SkyDeviceId::Hmp:
-        return hmp_status_;
+    case SkyDeviceId::Hc2a:
+        return hc2a_status_;
     case SkyDeviceId::Lidar:
         return lidar_status_;
     case SkyDeviceId::TemperatureController:
@@ -1023,9 +1023,9 @@ QVector<DeviceStatusItem> SkyDeviceManager::allStatuses() const
 {
     if (config_.sensor_transport_path == SensorTransportPath::FpgaRelay)
     {
-        return {fpga_status_,epsilon_status_,ptb_status_,hmp_status_,lidar_status_,ai8_temperature_controller_status_,wave_tcp_status_};
+        return {fpga_status_,epsilon_status_,ptb_status_,hc2a_status_,lidar_status_,ai8_temperature_controller_status_,wave_tcp_status_};
     }
-    return {epsilon_status_, ptb_status_, hmp_status_, lidar_status_, temperature_controller_status_, ai8_temperature_controller_status_, wave_tcp_status_,bmp390_status_,sht45_status_};
+    return {epsilon_status_, ptb_status_, hc2a_status_, lidar_status_, temperature_controller_status_, ai8_temperature_controller_status_, wave_tcp_status_,bmp390_status_,sht45_status_};
 }
 
 ApplyConfigResult SkyDeviceManager::applyConfig(const SkyConfig& requestedConfig, const QString& correlationId, const QString& sessionId)
@@ -1097,7 +1097,7 @@ ApplyConfigResult SkyDeviceManager::applyConfig(const SkyConfig& requestedConfig
 
     const bool epsilonReconfigured = reconfigureDevice(SkyDeviceId::Epsilon, diff.epsilon_changed, config_.epsilon.enabled);
     const bool ptbReconfigured = reconfigureDevice(SkyDeviceId::Ptb, diff.ptb_changed, config_.ptb.enabled);
-    const bool hmpReconfigured = reconfigureDevice(SkyDeviceId::Hmp, diff.hmp_changed, config_.hmp.enabled);
+    const bool hc2aReconfigured = reconfigureDevice(SkyDeviceId::Hc2a, diff.hc2a_changed, config_.hc2a.enabled);
     reconfigureDevice(SkyDeviceId::Bmp390,diff.bmp390_changed,config_.bmp390.enabled);
     reconfigureDevice(SkyDeviceId::Sht45,diff.sht45_changed,config_.sht45.enabled);
     const bool lidarReconfigured = reconfigureDevice(SkyDeviceId::Lidar, diff.lidar_changed, config_.lidar.enabled);
@@ -1164,7 +1164,7 @@ ApplyConfigResult SkyDeviceManager::applyConfig(const SkyConfig& requestedConfig
     QJsonObject devices;
     devices["epsilon"] = resultItem(diff.epsilon_changed, epsilonReconfigured, epsilon_status_);
     devices["ptb"] = resultItem(diff.ptb_changed, ptbReconfigured, ptb_status_);
-    devices["hmp"] = resultItem(diff.hmp_changed, hmpReconfigured, hmp_status_);
+    devices["hc2a"] = resultItem(diff.hc2a_changed, hc2aReconfigured, hc2a_status_);
     devices["lidar"] = resultItem(diff.lidar_changed, lidarReconfigured, lidar_status_);
     devices["temperature_controller"] = resultItem(diff.temperature_controller_changed, temperatureControllerReconfigured, temperature_controller_status_);
     devices["ai8_temperature_controller"] = resultItem(diff.ai8_temperature_controller_changed, ai8TemperatureControllerReconfigured, ai8_temperature_controller_status_);
@@ -2477,9 +2477,9 @@ PtbData SkyDeviceManager::latestPtb() const
     return latest_ptb_;
 }
 
-HmpData SkyDeviceManager::latestHmp() const
+Hc2aData SkyDeviceManager::latestHc2a() const
 {
-    return latest_hmp_;
+    return latest_hc2a_;
 }
 
 LidarData SkyDeviceManager::latestLidar() const
@@ -2691,15 +2691,15 @@ void SkyDeviceManager::generateSimulatedData()
         emit ptbDataUpdated(latest_ptb_);
     }
 
-    if (hmp_status_.state == DeviceState::Connected)
+    if (hc2a_status_.state == DeviceState::Connected)
     {
-        latest_hmp_.valid = true;
-        latest_hmp_.timestamp = timestamp;
-        latest_hmp_.temperature = 23.0 + std::sin(simulate_phase_ * 0.2) * 2.0;
-        latest_hmp_.humidity = 45.0 + std::cos(simulate_phase_ * 0.15) * 5.0;
-        hmp_status_.rx_count++;
-        hmp_status_.last_data_time_us = t;
-        emit hmpDataUpdated(latest_hmp_);
+        latest_hc2a_.valid = true;
+        latest_hc2a_.timestamp = timestamp;
+        latest_hc2a_.temperature = 23.0 + std::sin(simulate_phase_ * 0.2) * 2.0;
+        latest_hc2a_.humidity = 45.0 + std::cos(simulate_phase_ * 0.15) * 5.0;
+        hc2a_status_.rx_count++;
+        hc2a_status_.last_data_time_us = t;
+        emit hc2aDataUpdated(latest_hc2a_);
     }
 
     if (lidar_status_.state == DeviceState::Connected)
@@ -2845,7 +2845,7 @@ void SkyDeviceManager::initializeStatuses()
     fpga_status_.device_id = SkyDeviceId::Fpga;
     epsilon_status_.device_id = SkyDeviceId::Epsilon;
     ptb_status_.device_id = SkyDeviceId::Ptb;
-    hmp_status_.device_id = SkyDeviceId::Hmp;
+    hc2a_status_.device_id = SkyDeviceId::Hc2a;
     lidar_status_.device_id = SkyDeviceId::Lidar;
     wave_tcp_status_.device_id = SkyDeviceId::WaveTcp;
     temperature_controller_status_.device_id = SkyDeviceId::TemperatureController;
@@ -2876,8 +2876,8 @@ DeviceStatusItem& SkyDeviceManager::mutableStatus(SkyDeviceId id)
         return epsilon_status_;
     case SkyDeviceId::Ptb:
         return ptb_status_;
-    case SkyDeviceId::Hmp:
-        return hmp_status_;
+    case SkyDeviceId::Hc2a:
+        return hc2a_status_;
     case SkyDeviceId::Lidar:
         return lidar_status_;
     case SkyDeviceId::TemperatureController:
@@ -2900,8 +2900,8 @@ SerialDeviceConfig SkyDeviceManager::serialConfigFor(SkyDeviceId id) const
         return serialConfigFromEpsilonConfig(config_.epsilon);
     case SkyDeviceId::Ptb:
         return config_.ptb;
-    case SkyDeviceId::Hmp:
-        return config_.hmp;
+    case SkyDeviceId::Hc2a:
+        return config_.hc2a;
     case SkyDeviceId::Lidar:
         return config_.lidar;
     case SkyDeviceId::TemperatureController:
@@ -2932,8 +2932,8 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
         case SkyDeviceId::Ptb:
             stopCollector(ptb_);
             break;
-        case SkyDeviceId::Hmp:
-            stopCollector(hmp_);
+        case SkyDeviceId::Hc2a:
+            stopCollector(hc2a_);
             break;
         case SkyDeviceId::Lidar:
             stopCollector(lidar_);
@@ -3097,32 +3097,32 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
             if (const auto *context = currentLogContext()) ptb_->setStartupLogContext(*context);
         if (!ptb_->startStreaming()) return fail(CommandErrorCode::DeviceConnectFailed);
         break;
-    case SkyDeviceId::Hmp:
-        hmp_ = std::make_shared<HmpCollector>();
-        hmp_->setProtocol(humidityProtocolForSource(config.source));
-        hmp_->setLogCallback(logCallback);
-        hmp_->setLocatedStructuredLogCallback(structuredLogCallback);
-        hmp_->setSampleRate(static_cast<int>(config.frequency_hz));
-        hmp_->setDataCallback([self = QPointer<SkyDeviceManager>(this), weakCollector = std::weak_ptr<HmpCollector>(hmp_)]() {
+    case SkyDeviceId::Hc2a:
+        hc2a_ = std::make_shared<Hc2aCollector>();
+        hc2a_->setProtocol(humidityProtocolForSource(config.source));
+        hc2a_->setLogCallback(logCallback);
+        hc2a_->setLocatedStructuredLogCallback(structuredLogCallback);
+        hc2a_->setSampleRate(static_cast<int>(config.frequency_hz));
+        hc2a_->setDataCallback([self = QPointer<SkyDeviceManager>(this), weakCollector = std::weak_ptr<Hc2aCollector>(hc2a_)]() {
             if (!self)
             {
                 return;
             }
-            const std::shared_ptr<HmpCollector> collector = weakCollector.lock();
+            const std::shared_ptr<Hc2aCollector> collector = weakCollector.lock();
             if (!collector)
             {
                 return;
             }
-            const HmpData data = collector->getLatestData();
+            const Hc2aData data = collector->getLatestData();
             QMetaObject::invokeMethod(self.data(), [self, collector, data]() {
-                if (!self || self->hmp_ != collector)
+                if (!self || self->hc2a_ != collector)
                 {
                     return;
                 }
-                self->handleHmpData(data);
+                self->handleHc2aData(data);
             }, Qt::QueuedConnection);
         });
-        hmp_->setRawResponseCallback([self = QPointer<SkyDeviceManager>(this), weakCollector = std::weak_ptr<HmpCollector>(hmp_)](
+        hc2a_->setRawResponseCallback([self = QPointer<SkyDeviceManager>(this), weakCollector = std::weak_ptr<Hc2aCollector>(hc2a_)](
                                          uint64_t hostTimestampUs,
                                          const uint8_t* responseData,
                                          size_t size) {
@@ -3130,24 +3130,22 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
             {
                 return;
             }
-            const std::shared_ptr<HmpCollector> collector = weakCollector.lock();
+            const std::shared_ptr<Hc2aCollector> collector = weakCollector.lock();
             if (!collector)
             {
                 return;
             }
             PendingRawEvent event;
-            event.deviceId = SkyDeviceId::Hmp;
+            event.deviceId = SkyDeviceId::Hc2a;
             event.collectorIdentity = collector.get();
             event.timestampUs = static_cast<quint64>(hostTimestampUs);
             event.payload = QByteArray(reinterpret_cast<const char*>(responseData), static_cast<int>(size));
             self->enqueueRawEvent(std::move(event));
         });
-        if (!hmp_->start(config.port.toStdString(),
-                         humidityProtocolForSource(config.source) == HumiditySensorProtocol::Sht45Serial
-                             ? SerialConfig::N81(config.baud_rate)
-                             : SerialConfig::N82(config.baud_rate))) return fail(CommandErrorCode::DeviceConnectFailed);
-        if (!hmp_->checkDeviceResponse()) return fail(CommandErrorCode::DeviceConnectFailed);
-        if (!hmp_->startStreaming()) return fail(CommandErrorCode::DeviceConnectFailed);
+        if (!hc2a_->start(config.port.toStdString(),
+                         SerialConfig::N81(config.baud_rate))) return fail(CommandErrorCode::DeviceConnectFailed);
+        if (!hc2a_->checkDeviceResponse()) return fail(CommandErrorCode::DeviceConnectFailed);
+        if (!hc2a_->startStreaming()) return fail(CommandErrorCode::DeviceConnectFailed);
         break;
     case SkyDeviceId::Lidar:
         lidar_ = std::make_shared<LidarCollector>();
@@ -3360,12 +3358,12 @@ void SkyDeviceManager::handlePtbData(const PtbData& data)
     emit ptbDataUpdated(latest_ptb_);
 }
 
-void SkyDeviceManager::handleHmpData(const HmpData& data)
+void SkyDeviceManager::handleHc2aData(const Hc2aData& data)
 {
-    latest_hmp_ = data;
-    hmp_status_.rx_count++;
-    hmp_status_.last_data_time_us = nowUs();
-    emit hmpDataUpdated(latest_hmp_);
+    latest_hc2a_ = data;
+    hc2a_status_.rx_count++;
+    hc2a_status_.last_data_time_us = nowUs();
+    emit hc2aDataUpdated(latest_hc2a_);
 }
 
 void SkyDeviceManager::handleLidarData(const LidarData& data)
@@ -3720,9 +3718,9 @@ void SkyDeviceManager::invalidateDeviceData(SkyDeviceId id)
         latest_ptb_ = PtbData();
         ptb_status_.last_data_time_us = 0;
         break;
-    case SkyDeviceId::Hmp:
-        latest_hmp_ = HmpData();
-        hmp_status_.last_data_time_us = 0;
+    case SkyDeviceId::Hc2a:
+        latest_hc2a_ = Hc2aData();
+        hc2a_status_.last_data_time_us = 0;
         break;
     case SkyDeviceId::Lidar:
         latest_lidar_ = LidarData();
@@ -3750,7 +3748,7 @@ void SkyDeviceManager::invalidateDeviceData(SkyDeviceId id)
     case SkyDeviceId::All:
         invalidateDeviceData(SkyDeviceId::Epsilon);
         invalidateDeviceData(SkyDeviceId::Ptb);
-        invalidateDeviceData(SkyDeviceId::Hmp);
+        invalidateDeviceData(SkyDeviceId::Hc2a);
         invalidateDeviceData(SkyDeviceId::Lidar);
         invalidateDeviceData(SkyDeviceId::TemperatureController);
         invalidateDeviceData(SkyDeviceId::Ai8TemperatureController);

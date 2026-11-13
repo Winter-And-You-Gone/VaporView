@@ -19,11 +19,11 @@ void DevicePanelCoordinator::updateAllData(
     const VaporView::ImuData& imu,
     quint64 imuTimestampUs,
     const VaporView::PtbData& ptb,
-    const VaporView::HmpData& hmp,
+    const VaporView::Hc2aData& hc2a,
     const VaporView::LidarData& lidar,
     const VaporView::TemperatureControllerData& temperature)
 {
-    updateEnvironmentData(epsilon, ptb, hmp, lidar);
+    updateEnvironmentData(epsilon, ptb, hc2a, lidar);
     if (bindings_.gnss)
     {
         bindings_.gnss->updateData(gnss, gnssTimestampUs);
@@ -38,7 +38,7 @@ void DevicePanelCoordinator::updateAllData(
 void DevicePanelCoordinator::updateEnvironmentData(
     const VaporView::EpsilonData& epsilon,
     const VaporView::PtbData& ptb,
-    const VaporView::HmpData& hmp,
+    const VaporView::Hc2aData& hc2a,
     const VaporView::LidarData& lidar)
 {
     if (bindings_.epsilon)
@@ -49,9 +49,9 @@ void DevicePanelCoordinator::updateEnvironmentData(
     {
         bindings_.ptb->updateData(ptb);
     }
-    if (bindings_.hmp)
+    if (bindings_.hc2a)
     {
-        bindings_.hmp->updateData(hmp);
+        bindings_.hc2a->updateData(hc2a);
     }
     if (bindings_.lidar)
     {
@@ -90,9 +90,9 @@ void DevicePanelCoordinator::updateRates(const DevicePanelRates& rates)
     {
         bindings_.ptb->updateRate(rates.ptbHz);
     }
-    if (bindings_.hmp)
+    if (bindings_.hc2a)
     {
-        bindings_.hmp->updateRate(rates.hmpHz);
+        bindings_.hc2a->updateRate(rates.hc2aHz);
     }
     if (bindings_.lidar)
     {

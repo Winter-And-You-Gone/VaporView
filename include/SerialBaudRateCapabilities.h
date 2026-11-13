@@ -90,17 +90,15 @@ inline const BaudRateCapabilities& sht45SerialAdapterBaudCapabilities()
     return hostSerialLinkBaudCapabilities();
 }
 
-inline const BaudRateCapabilities& hmp3BaudCapabilities()
+inline const BaudRateCapabilities& hc2aBaudCapabilities()
 {
-    // HMP-Series Quick Guide M211982ZH-L documents the 19200 default and a
-    // configurable serial interface, but does not publish a complete baud
-    // whitelist or numeric range. Keep the existing editable compatibility
-    // policy without presenting 1..INT_MAX as an official device guarantee.
+    // RO-ASCII uses 8N1. Match the integrated HC2A interface's configurable
+    // range; the selected rate must also match the attached probe.
     static const BaudRateCapabilities capabilities{
-        {QStringLiteral("9600"), QStringLiteral("19200"), QStringLiteral("38400"),
-         QStringLiteral("57600"), QStringLiteral("115200"), QStringLiteral("230400"),
-         QStringLiteral("460800"), QStringLiteral("500000"), QStringLiteral("921600")},
-        BaudRateInputMode::PresetAndCustom};
+        {QStringLiteral("1200"), QStringLiteral("2400"), QStringLiteral("4800"),
+         QStringLiteral("9600"), QStringLiteral("19200"), QStringLiteral("38400"),
+         QStringLiteral("57600"), QStringLiteral("115200")},
+        BaudRateInputMode::PresetAndCustom, 1200, 115200};
     return capabilities;
 }
 
@@ -133,7 +131,7 @@ inline const BaudRateCapabilities& humiditySensorBaudCapabilities(const QString&
 {
     return source.trimmed() == QStringLiteral("sht45")
         ? sht45SerialAdapterBaudCapabilities()
-        : hmp3BaudCapabilities();
+        : hc2aBaudCapabilities();
 }
 
 inline const BaudRateCapabilities& epsilonConnectionBaudCapabilities()

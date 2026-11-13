@@ -25,7 +25,7 @@
 ## 有意保留英文
 
 - 稳定机器标识：`level`、`source`、`category`、`event`、`error_code`、`reason_code`、字段键、枚举值和协议类型。
-- 产品、协议和设备名称：SkyCore、SkyTui、IPC、TCP、JSON、CRC、EPSILON、PTB、HMP、RD105、Wave TCP 等。
+- 产品、协议和设备名称：SkyCore、SkyTui、IPC、TCP、JSON、CRC、EPSILON、PTB、HC2A、RD105、Wave TCP 等。
 - 命令行帮助、参数名、示例命令和 UI 英文界面文本。
 - 外部原始文本：Qt/OS/socket/serial 错误、子进程 stdout/stderr、设备/驱动输出、协议 payload。
 - 测试 sentinel 和审计自测 fixture。

@@ -690,7 +690,7 @@ void MainWindow::updateRecordingStatusLabel()
             ? QStringLiteral("--")
             : QStringLiteral("UI-TEST-SESSION");
         const QString detail = state_->is_english_
-            ? QStringLiteral("Session:\n%1\nElapsed: %2\nExternal device records: %3 rows\nWave features: remote only\nWaveform frames: %4 frames\nRecorded RAW EPSILON: %5 records\nRecorded RAW PTB210: %6 records\nRecorded RAW HMP3: %7 records\nRecorded RAW TFA1500: %8 records\nRecorded RAW WAVE: %9 records\nRecorded RAW RD105: %10 records\nRecorded RAW AI-8288: %11 records\nRecorded RAW total: %12 records\nFile output: none (memory only)")
+            ? QStringLiteral("Session:\n%1\nElapsed: %2\nExternal device records: %3 rows\nWave features: remote only\nWaveform frames: %4 frames\nRecorded RAW EPSILON: %5 records\nRecorded RAW PTB210: %6 records\nRecorded RAW HC2A: %7 records\nRecorded RAW TFA1500: %8 records\nRecorded RAW WAVE: %9 records\nRecorded RAW RD105: %10 records\nRecorded RAW AI-8288: %11 records\nRecorded RAW total: %12 records\nFile output: none (memory only)")
                   .arg(session)
                   .arg(formatElapsedCompact(static_cast<quint64>(std::max<qint64>(0, elapsedMs))))
                   .arg(countAtRate(20))
@@ -703,7 +703,7 @@ void MainWindow::updateRecordingStatusLabel()
                   .arg(rawLaserTemperatureController)
                   .arg(rawSystemTemperatureController)
                   .arg(rawTotal)
-            : QStringLiteral("会话：\n%1\n时长：%2\n外部设备记录：%3 行\n波形特征：仅远程有效\n波形帧数：%4 帧\n已记录条数\nRAW EPSILON：%5 条\nRAW PTB210：%6 条\nRAW HMP3：%7 条\nRAW TFA1500：%8 条\nRAW WAVE：%9 条\nRAW RD105：%10 条\nRAW AI-8288：%11 条\nRAW 记录总数：%12 条\n文件写入：无（仅内存模拟）")
+            : QStringLiteral("会话：\n%1\n时长：%2\n外部设备记录：%3 行\n波形特征：仅远程有效\n波形帧数：%4 帧\n已记录条数\nRAW EPSILON：%5 条\nRAW PTB210：%6 条\nRAW HC2A：%7 条\nRAW TFA1500：%8 条\nRAW WAVE：%9 条\nRAW RD105：%10 条\nRAW AI-8288：%11 条\nRAW 记录总数：%12 条\n文件写入：无（仅内存模拟）")
                   .arg(session)
                   .arg(formatElapsedCompact(static_cast<quint64>(std::max<qint64>(0, elapsedMs))))
                   .arg(countAtRate(20))
@@ -770,34 +770,34 @@ void MainWindow::updateRecordingStatusLabel()
                                   qlonglong waveformFrames,
                                   qulonglong rawEpsilon,
                                   qulonglong rawPtb,
-                                  qulonglong rawHmp,
+                                  qulonglong rawHc2a,
                                   qulonglong rawLidar,
                                   qulonglong rawWaveform,
                                   qulonglong rawLaserTemperature,
                                   qulonglong rawSystemTemperature,
                                   qulonglong rawTotal) {
         return state_->is_english_
-            ? QStringLiteral("Session:\n%1\nElapsed: %2\nExternal device records: %3 rows\nWave features: remote only\nWaveform frames: %4 frames\nRecorded RAW EPSILON: %5 records\nRecorded RAW PTB210: %6 records\nRecorded RAW HMP3: %7 records\nRecorded RAW TFA1500: %8 records\nRecorded RAW WAVE: %9 records\nRecorded RAW RD105: %10 records\nRecorded RAW AI-8288: %11 records\nRecorded RAW total: %12 records")
+            ? QStringLiteral("Session:\n%1\nElapsed: %2\nExternal device records: %3 rows\nWave features: remote only\nWaveform frames: %4 frames\nRecorded RAW EPSILON: %5 records\nRecorded RAW PTB210: %6 records\nRecorded RAW HC2A: %7 records\nRecorded RAW TFA1500: %8 records\nRecorded RAW WAVE: %9 records\nRecorded RAW RD105: %10 records\nRecorded RAW AI-8288: %11 records\nRecorded RAW total: %12 records")
                   .arg(session)
                   .arg(elapsed)
                   .arg(sensorRows)
                   .arg(waveformFrames)
                   .arg(rawEpsilon)
                   .arg(rawPtb)
-                  .arg(rawHmp)
+                  .arg(rawHc2a)
                   .arg(rawLidar)
                   .arg(rawWaveform)
                   .arg(rawLaserTemperature)
                   .arg(rawSystemTemperature)
                   .arg(rawTotal)
-            : QStringLiteral("会话：\n%1\n时长：%2\n外部设备记录：%3 行\n波形特征：仅远程有效\n波形帧数：%4 帧\n已记录条数\nRAW EPSILON：%5 条\nRAW PTB210：%6 条\nRAW HMP3：%7 条\nRAW TFA1500：%8 条\nRAW WAVE：%9 条\nRAW RD105：%10 条\nRAW AI-8288：%11 条\nRAW 记录总数：%12 条")
+            : QStringLiteral("会话：\n%1\n时长：%2\n外部设备记录：%3 行\n波形特征：仅远程有效\n波形帧数：%4 帧\n已记录条数\nRAW EPSILON：%5 条\nRAW PTB210：%6 条\nRAW HC2A：%7 条\nRAW TFA1500：%8 条\nRAW WAVE：%9 条\nRAW RD105：%10 条\nRAW AI-8288：%11 条\nRAW 记录总数：%12 条")
                   .arg(session)
                   .arg(elapsed)
                   .arg(sensorRows)
                   .arg(waveformFrames)
                   .arg(rawEpsilon)
                   .arg(rawPtb)
-                  .arg(rawHmp)
+                  .arg(rawHc2a)
                   .arg(rawLidar)
                   .arg(rawWaveform)
                   .arg(rawLaserTemperature)
@@ -853,7 +853,7 @@ void MainWindow::updateRecordingStatusLabel()
             ? QStringLiteral("--")
             : displayStatus.session_name;
         const QString detail = state_->is_english_
-            ? QStringLiteral("Session:\n%1\nElapsed: %2\nExternal device records: %3 rows\nWave features: %4 features\nWaveform frames: %5 frames\nRecorded RAW EPSILON: %6 records\nRecorded RAW PTB210: %7 records\nRecorded RAW HMP3: %8 records\nRecorded RAW TFA1500: %9 records\nRecorded RAW WAVE: %10 records\nRecorded RAW RD105: %11 records\nRecorded RAW AI-8288: %12 records\nRecorded RAW total: %13 records")
+            ? QStringLiteral("Session:\n%1\nElapsed: %2\nExternal device records: %3 rows\nWave features: %4 features\nWaveform frames: %5 frames\nRecorded RAW EPSILON: %6 records\nRecorded RAW PTB210: %7 records\nRecorded RAW HC2A: %8 records\nRecorded RAW TFA1500: %9 records\nRecorded RAW WAVE: %10 records\nRecorded RAW RD105: %11 records\nRecorded RAW AI-8288: %12 records\nRecorded RAW total: %13 records")
                   .arg(session)
                   .arg(elapsed)
                   .arg(displayStatus.telemetry_record_count)
@@ -867,7 +867,7 @@ void MainWindow::updateRecordingStatusLabel()
                   .arg(displayStatus.raw_laser_temperature_controller_record_count)
                   .arg(displayStatus.raw_system_temperature_controller_record_count + fpgaCount(fpgaStatistics,QStringLiteral("70")))
                   .arg(rawTotal)
-            : QStringLiteral("会话：\n%1\n时长：%2\n外部设备记录：%3 行\n波形特征：%4 条\n波形帧数：%5 帧\n已记录条数\nRAW EPSILON：%6 条\nRAW PTB210：%7 条\nRAW HMP3：%8 条\nRAW TFA1500：%9 条\nRAW WAVE：%10 条\nRAW RD105：%11 条\nRAW AI-8288：%12 条\nRAW 记录总数：%13 条")
+            : QStringLiteral("会话：\n%1\n时长：%2\n外部设备记录：%3 行\n波形特征：%4 条\n波形帧数：%5 帧\n已记录条数\nRAW EPSILON：%6 条\nRAW PTB210：%7 条\nRAW HC2A：%8 条\nRAW TFA1500：%9 条\nRAW WAVE：%10 条\nRAW RD105：%11 条\nRAW AI-8288：%12 条\nRAW 记录总数：%13 条")
                   .arg(session)
                   .arg(elapsed)
                   .arg(displayStatus.telemetry_record_count)
@@ -1083,7 +1083,7 @@ bool MainWindow::startRecordingSession()
     const auto& localConfig = state_->local_device_config_;
     options.deviceConfig.epsilon = serialConfig(localConfig.epsilon, QString::number(localConfig.epsilon.sampleRateHz));
     options.deviceConfig.ptb = serialConfig(localConfig.ptb, localConfig.ptbRateText);
-    options.deviceConfig.hmp = serialConfig(localConfig.hmp, localConfig.hmpRateText);
+    options.deviceConfig.hc2a = serialConfig(localConfig.hc2a, localConfig.hc2aRateText);
     options.deviceConfig.lidar = serialConfig(localConfig.lidar, localConfig.lidarRateText);
     options.deviceConfig.laserTemperatureController =
         serialConfig(localConfig.temperatureController, localConfig.temperatureRateText);
@@ -1230,7 +1230,7 @@ QString MainWindow::scheduledRecordingStartBlockReason() const
     if (isUiTestMode())
     {
         const std::array devices{VaporView::SkyDeviceId::Epsilon, VaporView::SkyDeviceId::Ptb,
-                                 VaporView::SkyDeviceId::Hmp, VaporView::SkyDeviceId::Lidar,
+                                 VaporView::SkyDeviceId::Hc2a, VaporView::SkyDeviceId::Lidar,
                                  VaporView::SkyDeviceId::TemperatureController, VaporView::SkyDeviceId::WaveTcp};
         const bool connected = std::any_of(devices.cbegin(), devices.cend(),
             [this](VaporView::SkyDeviceId device) {
@@ -2016,7 +2016,7 @@ void MainWindow::updateRecordingActionStates()
     if (isUiTestMode())
     {
         const std::array devices{VaporView::SkyDeviceId::Epsilon, VaporView::SkyDeviceId::Ptb,
-                                 VaporView::SkyDeviceId::Hmp, VaporView::SkyDeviceId::Lidar,
+                                 VaporView::SkyDeviceId::Hc2a, VaporView::SkyDeviceId::Lidar,
                                  VaporView::SkyDeviceId::TemperatureController, VaporView::SkyDeviceId::WaveTcp};
         const bool anyConnected = std::any_of(devices.cbegin(), devices.cend(),
             [this](VaporView::SkyDeviceId device) {

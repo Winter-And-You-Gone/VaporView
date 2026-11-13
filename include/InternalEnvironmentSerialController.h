@@ -9,7 +9,7 @@
 
 namespace VaporView {
 
-// Independent USB serial text bridges. These collectors never feed the PTB/HMP
+// Independent USB serial text bridges. These collectors never feed the PTB/HC2A
 // environmental slots or their session/raw callbacks.
 class InternalEnvironmentSerialController final : public QObject
 {

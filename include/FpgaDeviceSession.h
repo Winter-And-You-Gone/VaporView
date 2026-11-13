@@ -8,6 +8,7 @@
 
 #include <QObject>
 #include <QElapsedTimer>
+#include <QMap>
 #include <QQueue>
 #include <QTimer>
 #include <QVector>
@@ -86,6 +87,9 @@ public:
     quint32 setStreamMask(quint64 enableMask, quint64 rawEnableMask,
                           quint16 source = 0x0001);
     quint32 managementAction(quint16 message, quint16 source, const QVector<quint32>& words);
+    // STOP, disable and real owner heartbeats bypass ordinary queued reads.
+    // Each write has its own acknowledgement and is never automatically retried.
+    quint32 motorSafetyAction(quint32 action);
     quint32 sensorAction(quint32 action, quint32 value, quint16 source = 0x0001);
 
 signals:
@@ -101,7 +105,7 @@ signals:
     void sensorReadingReceived(const VaporView::FpgaSensor::Reading& reading);
     void waveformCompleted(const VaporView::FpgaWave::CompletedStream& stream);
     void ptbDataUpdated(const PtbData& data);
-    void hmpDataUpdated(const HmpData& data);
+    void hc2aDataUpdated(const Hc2aData& data);
     void lidarDataUpdated(const LidarData& data);
     void capabilitiesChanged(const VaporView::Ground::Devices::FpgaCapabilities& capabilities);
     void registerReadCompleted(quint32 sequence, quint32 address,
@@ -142,6 +146,7 @@ private:
     QTimer pollTimer_;
     QQueue<QueuedCommand> commandQueue_;
     std::optional<PendingCommand> pendingCommand_;
+    QMap<quint32, PendingCommand> motorSafetyCommands_;
     FpgaCapabilities capabilities_;
     FpgaSessionState state_ = FpgaSessionState::Closed;
     QString stateDetail_;

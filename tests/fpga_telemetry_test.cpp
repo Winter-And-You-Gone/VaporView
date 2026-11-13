@@ -47,7 +47,7 @@ int main(int argc, char **argv)
     invalidScope["section"]=1;require(!validateControl(invalidScope),"non-string scope rejected");
     auto bad=configure;auto config=bad.value("configuration").toObject(); config.insert("adcRateHz",1.5);bad.insert("configuration",config);
     require(!validateControl(bad),"fractional register value rejected before coercion");
-    require(validateControl({{"op","sensor"},{"source",0x41},{"enabled",true}}),"HMP source is supported");
+    require(validateControl({{"op","sensor"},{"source",0x41},{"enabled",true}}),"HC2A source is supported");
     require(parseControl(encodeControl({{"op","sensor_config"},{"source",0x40},{"baud",4800},{"poll_ms",250}}),parsed),"typed PTB settings survive remote transport");
     require(parseControl(encodeControl({{"op","sensor"},{"source",0x40},{"enabled",true},{"baud",4800},{"poll_ms",250}}),parsed),
         "sensor connect carries staged parameters through the typed remote contract");
@@ -71,24 +71,34 @@ int main(int argc, char **argv)
     require(!validateControl({{"op","refresh"},{"address",42}}),"arbitrary register fields rejected");
     require(encodeControl({{"op","write_register"},{"value",3}}).isEmpty(),"raw register operation rejected");
     for(const auto& operation:QVector<QJsonObject>{
-        {{"op","sensor"},{"source",0x41},{"enabled",true},{"poll_ms",1000},{"parameters",QJsonObject{{"address",240},{"measurements",3}}}},
+        {{"op","sensor"},{"source",0x41},{"enabled",true},{"baud",19200},{"poll_ms",1000},{"parameters",QJsonObject{{"address",99},{"measurements",3}}}},
+        {{"op","sensor_config"},{"source",0x41},{"parameters",QJsonObject{{"address",0}}}},
         {{"op","sensor_config"},{"source",0x43},{"parameters",QJsonObject{{"address",118},{"oversampling",45},{"iir",14}}}},
         {{"op","time"},{"action",2},{"value",0}},{{"op","motor"},{"action",1},{"value",-100}},
-        {{"op","motor_config"},{"frequency",1000},{"high_ticks",255},{"dir_ticks",505},{"polarity",0}},
+        {{"op","motor_config"},{"frequency",100}},{{"op","motor_heartbeat"}},
         {{"op","channel_acquisition"},{"channel",1},{"enabled",true}},
         {{"op","stream_config"},{"mode",1},{"high_water",4096},{"burst",8}},
         {{"op","watchdog"},{"value",30000}},{{"op","maintenance"},{"source",2},{"action",9},{"value",0}}})
         require(parseControl(encodeControl(operation),parsed),"advanced typed operations roundtrip for Local/SkyCore");
     for(const auto& operation:QVector<QJsonObject>{
         {{"op","sensor_config"},{"source",0x43},{"parameters",QJsonObject{{"iir",3}}}},
-        {{"op","sensor_config"},{"source",0x41},{"parameters",QJsonObject{{"address",0}}}},
+        {{"op","sensor_config"},{"source",0x41},{"parameters",QJsonObject{{"address",240}}}},
+        {{"op","sensor_config"},{"source",0x41},{"parameters",QJsonObject{{"address",65}}}},
+        {{"op","sensor_config"},{"source",0x41},{"poll_ms",99}},
+        {{"op","sensor_action"},{"source",0x41},{"action",16},{"value",double(0x447d5000)}},
+        {{"op","sensor_action"},{"source",0x41},{"action",5},{"value",0}},
+        {{"op","time_tag"},{"low",0},{"high",0}},
         {{"op","sensor_config"},{"source",0x44},{"parameters",QJsonObject{{"arbitrary",1}}}},
         {{"op","time"},{"action",9},{"value",0}},{{"op","watchdog"},{"value",100}},
         {{"op","motor_config"},{"frequency",196078},{"high_ticks",256},{"dir_ticks",505},{"polarity",0}},
+        {{"op","motor"},{"action",1},{"value",0}},{{"op","motor"},{"action",1},{"value",401}},
+        {{"op","motor_config"},{"frequency",19}},{{"op","motor_config"},{"frequency",401}},
         {{"op","motor"},{"action",3},{"value",1}}})require(!validateControl(operation),"unsafe or unknown advanced parameters rejected");
     QByteArray event(32,0);event[0]=1;
     require(!decodeManagementEvent(0x11,0x47,0x1300,42,event).isEmpty(),"motor event decoded");
     require(decodeManagementEvent(0x11,1,0x1300,42,event).isEmpty() && decodeManagementEvent(0x11,0x47,0x1300,42,event.left(31)).isEmpty(),"event source and size validated");
+    auto lcEvent=event;lcEvent[4]=char(0x69);
+    require(!decodeManagementEvent(0x12,0x49,0x1401,42,lcEvent).isEmpty(),"LC1 module status page is recognized");
     DeviceOperationRequest request;request.request_id=42;request.device_id=SkyDeviceId::Fpga;request.operation=DeviceOperation::FpgaControl;request.payload=encodeControl(configure);
     DeviceOperationRequest decoded;
     require(TelemetryCodec::parseDeviceOperationRequest(TelemetryCodec::serializeDeviceOperationRequest(request),decoded) &&

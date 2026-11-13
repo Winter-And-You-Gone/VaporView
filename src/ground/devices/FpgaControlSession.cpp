@@ -35,9 +35,11 @@ FpgaControlSession::Submission FpgaControlSession::submitRemote(RemoteSkyControl
     const QJsonObject& request, quint64 discovery, QString *error)
 {
     if (!remote.isOpen()) return Submission::NotConnected;
-    if (requestId) return Submission::Busy;
     const auto op = request.value("op").toString();
-    if (op != "connect" && op != "disconnect" && op != "refresh" && op != "discover" && !remoteReady())
+    const bool motorStop = op == "motor" && (request.value("action").toInt() == 2
+        || (request.value("action").toInt() == 4 && request.value("value").toInt() == 0));
+    if (requestId && !motorStop) return Submission::Busy;
+    if (!motorStop && op != "connect" && op != "disconnect" && op != "refresh" && op != "discover" && !remoteReady())
         return Submission::NotReady;
     if (!FpgaRemote::validateControl(request, error)) return Submission::Invalid;
     operation = op;

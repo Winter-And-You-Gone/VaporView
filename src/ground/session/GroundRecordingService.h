@@ -26,11 +26,11 @@ struct GroundSensorSnapshot
 {
     EpsilonData epsilon;
     PtbData ptb;
-    HmpData hmp;
+    Hc2aData hc2a;
     LidarData lidar;
     bool hasEpsilon = false;
     bool hasPtb = false;
-    bool hasHmp = false;
+    bool hasHc2a = false;
     bool hasLidar = false;
 };
 
@@ -48,7 +48,7 @@ struct GroundRecordingDeviceConfig
     int waveformPort = 8888;
     GroundRecordingSerialConfig epsilon;
     GroundRecordingSerialConfig ptb;
-    GroundRecordingSerialConfig hmp;
+    GroundRecordingSerialConfig hc2a;
     GroundRecordingSerialConfig lidar;
     GroundRecordingSerialConfig laserTemperatureController;
     GroundRecordingSerialConfig systemTemperatureController;
@@ -170,7 +170,7 @@ public:
                                size_t size);
     bool recordRawPtbResponse(quint64 hostTimestampUs, const void *data, size_t size);
     bool recordEpsilonObservationEpoch(const Ppk::RawSatelliteEpoch& epoch);
-    bool recordRawHmpResponse(quint64 hostTimestampUs, const void *data, size_t size);
+    bool recordRawHc2aResponse(quint64 hostTimestampUs, const void *data, size_t size);
     bool recordRawLidarFrame(quint64 hostTimestampUs,
                              quint16 protocol,
                              const void *data,

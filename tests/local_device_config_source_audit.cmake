@@ -17,8 +17,8 @@ set(forbidden_symbol_parts
     epsilon_baud _combo_
     ptb_port _combo_
     ptb_baud _combo_
-    hmp_port _combo_
-    hmp_baud _combo_
+    hc2a_port _combo_
+    hc2a_baud _combo_
     lidar_port _combo_
     lidar_baud _combo_
     temperature_port _combo_

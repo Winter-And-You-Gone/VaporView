@@ -66,7 +66,7 @@ class SessionViewerWindow;
 class GnssPanel;
 class ImuPanel;
 class PtbPanel;
-class HmpPanel;
+class Hc2aPanel;
 class LidarPanel;
 class TemperatureControllerPanel;
 class TemperatureTrendPlotWidget;
@@ -159,7 +159,7 @@ private slots:
     void onGnssDataReady();
     void onImuDataReady();
     void onPtbDataReady();
-    void onHmpDataReady();
+    void onHc2aDataReady();
     void onLidarDataReady();
     void onTemperatureControllerDataReady();
     void onAi8TemperatureControllerDataReady();
@@ -178,7 +178,7 @@ private slots:
     void onGnssRateChanged(const QString& text);
     void onImuRateChanged(const QString& text);
     void onPtbRateChanged(const QString& text);
-    void onHmpRateChanged(const QString& text);
+    void onHc2aRateChanged(const QString& text);
     void onLidarRateChanged(const QString& text);
     void onTemperatureRateChanged(const QString& text);
     void onRtkConfigClicked();
@@ -530,7 +530,7 @@ private:
 
     RemoteTelemetrySummarySections remoteTelemetrySummarySections() const;
     void updateRemoteTelemetrySummaryLabel();
-    void updateEnvironmentStatusIcons(bool lidarValid, bool ptbValid, bool hmpValid);
+    void updateEnvironmentStatusIcons(bool lidarValid, bool ptbValid, bool hc2aValid);
     void syncDeviceConfigEpsilonPanelFromSettings();
     std::map<uint8_t, int> legacyRemoteEpsilonPacketRates() const;
     void setDeviceConfigEpsilonPacketRates(const std::map<uint8_t, int>& packetRates);

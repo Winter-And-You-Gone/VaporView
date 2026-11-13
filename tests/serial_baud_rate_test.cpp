@@ -51,14 +51,15 @@ int main(int argc, char **argv)
                 !VaporView::parseSerialBaudRate(QStringLiteral("2147483648")),
             "invalid or overflowing baud text is rejected");
 
-    const auto& hmpCapabilities = VaporView::hmp3BaudCapabilities();
-    require(hmpCapabilities.inputMode == VaporView::BaudRateInputMode::PresetAndCustom &&
-                hmpCapabilities.customMinimum == 1 &&
-                hmpCapabilities.customMaximum == std::numeric_limits<int>::max() &&
-                hmpCapabilities.presets.contains(QStringLiteral("19200")) &&
-                VaporView::isBaudRateSupported(hmpCapabilities, 19200) &&
-                VaporView::isBaudRateSupported(hmpCapabilities, 750000),
-            "HMP3 keeps the documented default and editable compatibility policy");
+    const auto& hc2aCapabilities = VaporView::hc2aBaudCapabilities();
+    require(hc2aCapabilities.inputMode == VaporView::BaudRateInputMode::PresetAndCustom &&
+                hc2aCapabilities.customMinimum == 1200 &&
+                hc2aCapabilities.customMaximum == 115200 &&
+                hc2aCapabilities.presets.contains(QStringLiteral("19200")) &&
+                VaporView::isBaudRateSupported(hc2aCapabilities, 19200) &&
+                !VaporView::isBaudRateSupported(hc2aCapabilities, 750000) &&
+                !VaporView::isBaudRateSupported(hc2aCapabilities, 1199),
+            "HC2A keeps the RO-ASCII default and rejects out-of-range baud rates");
 
     const auto& lidarCapabilities = VaporView::lidarBaudCapabilities();
     // LidarCollector discovers the frequency mode after opening the device;
@@ -77,9 +78,9 @@ int main(int argc, char **argv)
 
     VaporView::SkyConfig skyDefaults = VaporView::SkyConfig::defaults();
     QString skyConfigError;
-    require(skyDefaults.hmp.baud_rate == 19200 && skyDefaults.lidar.baud_rate == 500000 &&
+    require(skyDefaults.hc2a.baud_rate == 19200 && skyDefaults.lidar.baud_rate == 500000 &&
                 skyDefaults.validate(&skyConfigError),
-            "HMP3 19200 and TFA1500-L 500000 defaults remain valid");
+            "HC2A 19200 and TFA1500-L 500000 defaults remain valid");
     skyDefaults.lidar.baud_rate = 9600;
     require(!skyDefaults.validate(&skyConfigError) &&
                 skyConfigError == QStringLiteral("lidar baud is unsupported"),

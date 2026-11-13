@@ -1509,9 +1509,9 @@ void SkyTuiApp::drawDeviceOverview(SkyTuiScreenBuffer& output, int top, int bott
         << QStringLiteral("GNSS 状态：%1").arg(d.epsilon.gnss_fix_text.empty() ? QStringLiteral("---") : QString::fromStdString(d.epsilon.gnss_fix_text));
 
     QStringList env;
-    env << QStringLiteral("温度：%1 °C  %2").arg(d.hmp.valid ? QString::number(d.hmp.temperature, 'f', 2) : QStringLiteral("---"),
-                                              freshnessText(d.hmp_stale, d.hmp.valid))
-        << QStringLiteral("湿度：%1 %").arg(d.hmp.valid ? QString::number(d.hmp.humidity, 'f', 2) : QStringLiteral("---"))
+    env << QStringLiteral("温度：%1 °C  %2").arg(d.hc2a.valid ? QString::number(d.hc2a.temperature, 'f', 2) : QStringLiteral("---"),
+                                              freshnessText(d.hc2a_stale, d.hc2a.valid))
+        << QStringLiteral("湿度：%1 %").arg(d.hc2a.valid ? QString::number(d.hc2a.humidity, 'f', 2) : QStringLiteral("---"))
         << QStringLiteral("气压：%1 hPa  %2").arg(d.ptb.valid ? QString::number(d.ptb.pressure_hpa, 'f', 2) : QStringLiteral("---"),
                                                 freshnessText(d.ptb_stale, d.ptb.valid))
         << QStringLiteral("激光测距：%1 m  %2").arg(d.lidar.valid ? QString::number(d.lidar.distance_m, 'f', 2) : QStringLiteral("---"),
@@ -1546,8 +1546,8 @@ void SkyTuiApp::drawDeviceOverview(SkyTuiScreenBuffer& output, int top, int bott
         };
         env = {
             QStringLiteral("环境: %1 °C / %2 % / %3 hPa")
-                .arg(d.hmp.valid ? QString::number(d.hmp.temperature, 'f', 1) : QStringLiteral("---"),
-                     d.hmp.valid ? QString::number(d.hmp.humidity, 'f', 1) : QStringLiteral("---"),
+                .arg(d.hc2a.valid ? QString::number(d.hc2a.temperature, 'f', 1) : QStringLiteral("---"),
+                     d.hc2a.valid ? QString::number(d.hc2a.humidity, 'f', 1) : QStringLiteral("---"),
                      d.ptb.valid ? QString::number(d.ptb.pressure_hpa, 'f', 1) : QStringLiteral("---")),
             QStringLiteral("Lidar: %1 m")
                 .arg(d.lidar.valid ? QString::number(d.lidar.distance_m, 'f', 2) : QStringLiteral("---")),
@@ -1711,10 +1711,10 @@ QStringList SkyTuiApp::dashboardSummaryLines(int width) const
                 .arg(d.uptime_ms / 1000)
                 .arg(d.epsilon.raw_frame_count)
                 .arg(humanBytes(d.telemetry_status.disk_free_bytes)),
-            QStringLiteral("采集：EPSILON %1 / PTB %2 / HMP %3 / Lidar %4 / Wave %5 Hz")
+            QStringLiteral("采集：EPSILON %1 / PTB %2 / HC2A %3 / Lidar %4 / Wave %5 Hz")
                 .arg(d.epsilon_acquisition_rate_hz, 0, 'f', 1)
                 .arg(d.ptb_acquisition_rate_hz, 0, 'f', 1)
-                .arg(d.hmp_acquisition_rate_hz, 0, 'f', 1)
+                .arg(d.hc2a_acquisition_rate_hz, 0, 'f', 1)
                 .arg(d.lidar_acquisition_rate_hz, 0, 'f', 1)
                 .arg(d.wave_tcp_acquisition_rate_hz, 0, 'f', 1),
             QStringLiteral("记录频率：CSV %1 / Raw Wave %2 Hz")
@@ -1735,10 +1735,10 @@ QStringList SkyTuiApp::dashboardSummaryLines(int width) const
             .arg(humanBytes(d.telemetry_status.disk_free_bytes))
             .arg(d.telemetry_status.rx_total_frames)
             .arg(d.telemetry_status.crc_error_count),
-        QStringLiteral("采集频率：EPSILON %1Hz | PTB %2Hz | HMP %3Hz | Lidar %4Hz | Wave %5Hz")
+        QStringLiteral("采集频率：EPSILON %1Hz | PTB %2Hz | HC2A %3Hz | Lidar %4Hz | Wave %5Hz")
             .arg(d.epsilon_acquisition_rate_hz, 0, 'f', 1)
             .arg(d.ptb_acquisition_rate_hz, 0, 'f', 1)
-            .arg(d.hmp_acquisition_rate_hz, 0, 'f', 1)
+            .arg(d.hc2a_acquisition_rate_hz, 0, 'f', 1)
             .arg(d.lidar_acquisition_rate_hz, 0, 'f', 1)
             .arg(d.wave_tcp_acquisition_rate_hz, 0, 'f', 1),
         QStringLiteral("记录频率：CSV %1Hz | Raw EPSILON full | Raw Wave %2Hz")
@@ -1886,11 +1886,11 @@ QString SkyTuiApp::deviceEndpointText(SkyDeviceId id) const
             .arg(model_.config.ptb.source.isEmpty() ? QStringLiteral("ptb210") : model_.config.ptb.source,
                  model_.config.ptb.port.isEmpty() ? QStringLiteral("-") : model_.config.ptb.port)
             .arg(model_.config.ptb.baud_rate);
-    case SkyDeviceId::Hmp:
+    case SkyDeviceId::Hc2a:
         return QStringLiteral("%1 串口 %2 @ %3")
-            .arg(model_.config.hmp.source.isEmpty() ? QStringLiteral("hmp3") : model_.config.hmp.source,
-                 model_.config.hmp.port.isEmpty() ? QStringLiteral("-") : model_.config.hmp.port)
-            .arg(model_.config.hmp.baud_rate);
+            .arg(model_.config.hc2a.source.isEmpty() ? QStringLiteral("hc2a") : model_.config.hc2a.source,
+                 model_.config.hc2a.port.isEmpty() ? QStringLiteral("-") : model_.config.hc2a.port)
+            .arg(model_.config.hc2a.baud_rate);
     case SkyDeviceId::Lidar:
         return QStringLiteral("串口 %1 @ %2").arg(model_.config.lidar.port.isEmpty() ? QStringLiteral("-") : model_.config.lidar.port)
                                            .arg(model_.config.lidar.baud_rate);

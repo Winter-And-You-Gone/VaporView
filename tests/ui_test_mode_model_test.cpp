@@ -239,7 +239,7 @@ int main(int argc, char **argv)
     first.setScenario(UiTestScenario::PartialFailure, 2500);
     const UiTestSnapshot partial = first.snapshot(2600);
     require(!partial.ptb.valid, "partial-failure scenario invalidates PTB");
-    require(!partial.hmp.valid, "partial-failure scenario disconnects HMP");
+    require(!partial.hc2a.valid, "partial-failure scenario disconnects HC2A");
     require(partial.temperature.error_code != 0, "partial-failure scenario reports RD105 alarm");
     require(partial.waveformFeature.quality_flags != 0, "partial-failure scenario marks waveform anomaly");
     require(partial.ai8Temperature.valid, "partial-failure scenario keeps AI-8 data available");

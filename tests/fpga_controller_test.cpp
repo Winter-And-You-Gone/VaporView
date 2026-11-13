@@ -27,7 +27,7 @@ struct Command { quint16 message=0,source=0;quint32 address=0,value=0;quint16 co
 bool readable(quint32 address){
     if(address%4)return false;
     if(address<=0x10||(address>=0x20&&address<=0x40)||(address>=0x48&&address<=0x50)||(address>=0x110&&address<=0x118))return true;
-    if(address>=0x1000&&address<=0x1040)return true;
+    if(address>=0x1000&&address<=0x1068)return true;
     const auto base=address&~255u,offset=address&255;
     if(base==0x2000||base==0x2100)return offset<=0x48;
     if(base==0x3000||base==0x3100)return offset<=0x44;
@@ -38,8 +38,9 @@ bool readable(quint32 address){
     if(base==0x6300)return offset<=0x40;
     if(base==0x6500)return offset<=0x5c;
     if(base==0x6600)return offset<=0x64;
-    if(base==0x6100)return offset<=0x48;
-    if(base==0x6700)return offset<=0x34;
+    if(base==0x6100)return offset<=0x5c;
+    if(base==0x6700)return offset<=0x48;
+    if(base==0x6800||base==0x6900)return offset<=0x14||(offset>=0x20&&offset<=0x3c);
     if(base==0x7000)return offset<=12||offset==0x10||offset==0x14||offset==0x18||offset==0x34||(offset>=0x1c&&offset<=0x30)||(offset>=0x38&&offset<=0x44);
     if(base==0x8000)return offset<=0x3c;
     return false;
@@ -65,6 +66,9 @@ public:
             {0x6010,4800},{0x6018,500},{0x6210,460800},{0x6510,115200},{0x6314,250},{0x6414,2000}};
         regs[0x8004]=1;regs[0x8014]=1;regs[0x7004]=1;regs[0x2c]=regs[0x30]=0xffffffff;
         regs[0x701c]=9;regs[0x802c]=7;regs[0x8034]=3;
+        regs[0x6100]=0x00410106;regs[0x614c]=0x48434432;regs[0x6110]=19200;regs[0x6114]=99;regs[0x6118]=0;
+        regs[0x1000]=0x00020200;regs[0x6700]=0x00470200;regs[0x6730]=4;regs[0x6744]=2000;
+        regs[0x6800]=0x00480100;regs[0x6900]=0x00490100;
         for(quint32 b:{0x2000u,0x2100u,0x3000u,0x3100u,0x4000u,0x4100u,0x5000u,0x5100u})regs[b+8]=2;
     }
     bool open(const QString&) override {opened=true;closed=false;return true;}
@@ -78,7 +82,7 @@ public:
         require(f.header.frameType==FpgaVlp1::FrameType::Command,"only commands sent to hardware");
         Command command;command.message=f.header.message;command.source=f.header.source;
         if(command.message==2||command.message==3){command.address=word(f.payload,0);command.count=half(f.payload,4);if(command.message==3)command.value=word(f.payload,8);}
-        else if(command.message==0xb){command.address=word(f.payload,0);command.value=word(f.payload,4);}
+        else if(command.message==0xb||command.message==0xc){command.address=word(f.payload,0);command.value=word(f.payload,4);}
         commands.append(command);
         quint32 status=0;
         if(command.message==2&&strict){for(int i=0;i<command.count;++i)if(!readable(command.address+4*i))status=5;}
@@ -111,8 +115,10 @@ public:
                 if(base==0x3000||base==0x3100)regs[base+0x3c]=16666666;
             } else if(command.message==0xb){
                 if(command.address==17&&confirmTemperature){++regs[0x6648];regs[0x664c]=0x10000;const auto raw=quint16(qint32(command.value)/100000);regs[0x6654]=(quint32(raw)<<16)|raw;regs[0x6658]=quint32(raw)<<16;}
-                else if(command.address==16&&command.source==0x41){regs[0x6140]=command.value;++regs[0x6148];}
                 else if(command.address==1){const auto base=0x6000+(command.source-0x40)*0x100;regs[base+4]=command.value;regs[base+8]=(regs.value(base+8)&~9u)|(command.value&1);if(base==0x6000&&!command.value)regs[base+8]|=8;if(base==0x6500)pendingReads[base+8]=2;}
+            } else if(command.message==0xc && command.source==0x47) {
+                if(command.address==5)++regs[0x6738];
+                if(command.address==4)regs[0x6704]=command.value;
             }
         }
         const auto wire=FpgaVlp1::buildFrame(FpgaVlp1::FrameType::Response,f.header.sequence,f.header.source,f.header.message,response,true,3,responseTick);
@@ -235,13 +241,63 @@ void startupWarningGrace(){
     }
     require(newWarning,"reconnected source emits startup diagnostic");
 }
+void currentFirmwareSafety(){
+    {
+        Fixture lc;lc.transport->regs[0x6804]=1;lc.connect();
+        require(lc.controller.hardwareValues().value(0x6800)==0x00480100
+            && lc.transport->regs.value(0x6804)==1,"connection preserves an independently enabled LC0");
+        for(const auto& command:lc.transport->commands)
+            require(!(command.message==3 && command.address>=0x6800 && command.address<0x6a00)
+                && !(command.message==0xb && command.source==0x48),"connection recovery never writes LC pages or starts RD105 on LC0");
+        lc.controller.disconnectDevice();
+        for(const auto& record:lc.records)
+            require(record.fields.value("fpga_source").toUInt()!=0x48,"enabled LC0 creates no RD105 connection, timeout or cancellation log");
+    }
+    Fixture f;f.connect();
+    int latch=-1,snapshot=-1;
+    for(int i=0;i<f.transport->commands.size();++i) {
+        const auto& command=f.transport->commands[i];
+        if(command.message==2 && command.address==0x1044)latch=i;
+        if(command.message==2 && command.address==0x1048 && command.count==9)snapshot=i;
+        if(command.message==2)for(int wordIndex=0;wordIndex<command.count;++wordIndex)
+            require(command.address+4*wordIndex!=0x681c && command.address+4*wordIndex!=0x691c,"readback never pops LC receive FIFOs");
+    }
+    require(latch>=0 && snapshot==latch+1,"PPS atomic snapshot trigger precedes one complete snapshot read");
+    f.controller.executeOperation({{"op","motor"},{"action",4},{"value",1}});f.finish();
+    require(f.transport->regs.value(0x6704)==1 && f.transport->regs.value(0x6738)==1,"motor enable follows one real heartbeat");
+    const auto initial=f.transport->regs.value(0x6738);
+    QElapsedTimer elapsed;elapsed.start();while(elapsed.elapsed()<650){QCoreApplication::processEvents(QEventLoop::AllEvents,10);QThread::msleep(1);}
+    require(f.transport->regs.value(0x6738)==initial,"worker does not fabricate heartbeats when controlling host is absent");
+    f.transport->holdResponses=true;
+    f.controller.executeOperation({{"op","motor_config"},{"frequency",100}});
+    require(f.controller.busy(),"ordinary motor configuration is waiting for a register read");
+    // Start a new explicit enable after the cancelled configuration, then hold
+    // an unrelated read. Owner heartbeats and STOP bypass the pending read.
+    f.transport->holdResponses=false;f.finish();
+    f.controller.executeOperation({{"op","motor"},{"action",4},{"value",1}});f.finish();
+    f.transport->holdResponses=true;f.controller.refresh();
+    const auto before=f.transport->commands.size();
+    f.controller.executeOperation({{"op","motor_heartbeat"}});
+    require(f.transport->commands.size()==before+1 && f.transport->commands.back().message==12 && f.transport->commands.back().address==5,"live owner heartbeat bypasses pending ordinary read");
+    f.controller.executeOperation({{"op","motor"},{"action",2},{"value",0}});
+    require(f.transport->commands.back().message==12 && f.transport->commands.back().address==2,"STOP bypasses pending read without waiting for its timeout");
+    f.transport->holdResponses=false;f.finish();
+    f.transport->clear();f.controller.executeOperation({{"op","motor_heartbeat"}});
+    require(f.transport->commands.size()==1,"normal STOP retains the live owner's holding heartbeat");
+    f.controller.executeOperation({{"op","motor"},{"action",4},{"value",0}});f.finish();
+    f.transport->clear();f.controller.executeOperation({{"op","motor_heartbeat"}});
+    require(f.transport->commands.isEmpty(),"disabled ownership cannot emit late heartbeats");
+    Fixture incompatible;incompatible.transport->regs[0x6100]=0x00410101;
+    incompatible.controller.connectDevice({},"auto");incompatible.finish();
+    require(!incompatible.controller.ready() && incompatible.transport->writes().isEmpty(),"old humidity model is read-only and never receives HC2A configuration");
+}
 void advancedDataPaths(){
     Fixture f;f.connect();f.transport->clear();
-    f.controller.connectSensor({{"op","sensor"},{"source",0x41},{"enabled",true},{"poll_ms",500},{"parameters",QJsonObject{{"address",241}}}});f.finish();
-    require(f.transport->regs.value(0x6114)==241 && f.transport->regs.value(0x611c)==500 && (f.transport->regs.value(0x6104)&1),"HMP advanced parameters applied before enable");
+    f.controller.connectSensor({{"op","sensor"},{"source",0x41},{"enabled",true},{"baud",19200},{"poll_ms",500},{"parameters",QJsonObject{{"address",99}}}});f.finish();
+    require(f.transport->regs.value(0x6114)==99 && f.transport->regs.value(0x6118)==0 && f.transport->regs.value(0x611c)==500 && (f.transport->regs.value(0x6104)&1),"HC2A discovery / 8N1 parameters applied before enable");
     f.transport->regs[0x6140]=0x447d5000;
     f.controller.executeOperation({{"op","sensor_action"},{"source",0x41},{"action",16},{"value",double(0x447d5000)}});f.finish();
-    require(f.transport->regs.value(0x6148)==1,"HMP compensation confirms a new write even when its value is unchanged");
+    require(f.transport->regs.value(0x6148)==0,"HC2A rejects historical pressure compensation before any write");
     FpgaControlConfig config;config.dlia[0].mode=6;config.dlia[1].mode=7;config.adcCnvTicks=3;config.adcBusyTimeoutTicks=200;config.adcExpectedPoints[1]=10000;config.dlia[1].fragmentPoints=128;
     f.controller.applyConfiguration(config,"acquisition");f.finish();require(f.transport->regs.value(0x4030)==3 && f.transport->regs.value(0x4034)==200 && f.transport->regs.value(0x411c)==10000,"ADC timing and cycle checks written");
     f.controller.applyConfiguration(config,"dlia");f.finish();require(f.transport->regs.value(0x5020)==6 && f.transport->regs.value(0x5120)==7 && f.transport->regs.value(0x5140)==128,"LPF bypass and fragment size applied");
@@ -257,9 +313,9 @@ void advancedDataPaths(){
     std::vector<std::uint8_t> event;for(quint32 word:{1u,0x60u,2u,2u,0u,0u,0u,0u})append32(event,word);inject(0x11,0x40,0x1402,event);
     waitUntil([&]{for(const auto& record:f.records)if(record.fields.value("event")=="fpga_firmware_event")return true;return false;},"firmware error event produces a visible log");
     f.controller.executeOperation({{"op","time_tag"},{"low",4294967295.0},{"high",123}});f.finish();
-    require(f.transport->regs.value(0x1038)==0xffffffff && f.transport->regs.value(0x103c)==123,"GNSS tag writes both halves without writing read-only tag-valid");
-    f.controller.executeOperation({{"op","motor_config"},{"frequency",1000},{"high_ticks",255},{"dir_ticks",505},{"polarity",3}});f.finish();
-    require(f.transport->regs.value(0x6704)==0 && f.transport->regs.value(0x6714)==1000 && f.transport->regs.value(0x6730)==3,"motor configuration confirms parameters while leaving motor disabled");
+    require(!f.transport->regs.value(0x1038) && !f.transport->regs.value(0x103c),"PPS status does not allow manual GNSS tag writes");
+    f.controller.executeOperation({{"op","motor_config"},{"frequency",100}});f.finish();
+    require(f.transport->regs.value(0x6704)==0 && f.transport->regs.value(0x6714)==100 && f.transport->regs.value(0x6730)==4,"DM422 frequency configured with fixed polarity and disabled drive");
     f.controller.executeOperation({{"op","stream_config"},{"mode",1},{"high_water",2048},{"burst",16}});f.finish();
     require(f.transport->regs.value(0x7010)==1 && f.transport->regs.value(0x7018)==2048 && f.transport->regs.value(0x7034)==16,"upload tuning has verified hardware readbacks");
     f.controller.executeOperation({{"op","watchdog"},{"value",30000}});f.finish();f.transport->clear();
@@ -641,7 +697,7 @@ void sensorUploadAndFailure(){
     f.transport->clear();f.controller.setSensorEnabled(0x40,true);f.finish();
     require(f.transport->regs.value(0x2c)==0xffffffff&&f.transport->regs.value(0x30)==0xffffffff&&f.transport->regs.value(0x7004)==1&&f.transport->regs.value(0x8004)==1,"sensor enable restores management/time upload bits and STREAM/USB path");
     require(f.transport->regs.value(0x50)==3,"sensor enable does not turn off existing RAW upload");
-    for(const auto &c:f.transport->writes())require(c.address!=0x6104&&c.address!=0x6704&&c.address!=0x1004&&c.address!=0x50,"upload preparation never starts HMP, motor, time or modifies RAW mask");
+    for(const auto &c:f.transport->writes())require(c.address!=0x6104&&c.address!=0x6704&&c.address!=0x1004&&c.address!=0x50,"upload preparation never starts HC2A, motor, time or modifies RAW mask");
     f.transport->clear();f.transport->failWriteAddress=0x2c;f.controller.setAcquisition(true);f.finish();
     require(f.transport->commands.size()==1&&f.transport->commands.front().address==0x2c,"upload mask failure aborts before acquisition side effects");
     f.transport->failWriteAddress=0xffffffff;f.transport->regs[0x8004]=0;f.controller.refresh();f.finish();f.transport->clear();f.controller.setAcquisition(true);
@@ -833,5 +889,5 @@ int main(int argc,char **argv){
         }
         std::puts("hardware controller connect/idle/reconnect probe passed");return 0;
     }
-    connectionEventTimeFilter();advancedDataPaths();connectionResultLogs();sensorRates();connectionAndVersions();connectionRecovery();backgroundRefresh();commandTimeoutAttribution();independentAndAcquisition();restartClearsDliaState();configurationAndFailure();scopedConfiguration();rawAndBusy();temperature();sensorUploadAndFailure();ai8DisabledConfiguration();ptbHistoricalErrorRecovery();threadCleanup();std::puts("FPGA controller tests passed");return 0;
+    connectionEventTimeFilter();currentFirmwareSafety();advancedDataPaths();connectionResultLogs();sensorRates();connectionAndVersions();connectionRecovery();backgroundRefresh();commandTimeoutAttribution();independentAndAcquisition();restartClearsDliaState();configurationAndFailure();scopedConfiguration();rawAndBusy();temperature();sensorUploadAndFailure();ai8DisabledConfiguration();ptbHistoricalErrorRecovery();threadCleanup();std::puts("FPGA controller tests passed");return 0;
 }

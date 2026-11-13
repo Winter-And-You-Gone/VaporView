@@ -56,7 +56,7 @@ QString header()
         "epsilon_raw_gnss_packet_rate_hz,epsilon_satellite_packet_rate_hz,"
         "epsilon_geodetic_packet_rate_hz,epsilon_ecef_packet_rate_hz,"
         "epsilon_valid,epsilon_error_message,"
-        "hmp_temperature_c,hmp_humidity_rh,ptb_pressure_hpa,lidar_distance_m,lidar_signal_strength,lidar_valid\n");
+        "hc2a_temperature_c,hc2a_humidity_rh,ptb_pressure_hpa,lidar_distance_m,lidar_signal_strength,lidar_valid\n");
 }
 
 QString formatRow(quint64 recordTimestampUs,
@@ -65,8 +65,8 @@ QString formatRow(quint64 recordTimestampUs,
                   bool hasEpsilon,
                   const PtbData& ptb,
                   bool hasPtb,
-                  const HmpData& hmp,
-                  bool hasHmp,
+                  const Hc2aData& hc2a,
+                  bool hasHc2a,
                   const LidarData& lidar,
                   bool hasLidar)
 {
@@ -152,10 +152,10 @@ QString formatRow(quint64 recordTimestampUs,
         appendEmptyColumns(row, 70);
     }
 
-    if (hasHmp)
+    if (hasHc2a)
     {
-        row << QString::number(hmp.temperature, 'f', 6)
-            << QString::number(hmp.humidity, 'f', 6);
+        row << QString::number(hc2a.temperature, 'f', 6)
+            << QString::number(hc2a.humidity, 'f', 6);
     }
     else
     {

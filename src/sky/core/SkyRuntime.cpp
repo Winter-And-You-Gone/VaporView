@@ -283,9 +283,9 @@ SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
             [this](quint64 timestampUs, const QByteArray& response) {
                 session_recorder_.recordRawPtbResponse(timestampUs, response);
             });
-    connect(&device_manager_, &SkyDeviceManager::hmpRawResponseReceived, this,
+    connect(&device_manager_, &SkyDeviceManager::hc2aRawResponseReceived, this,
             [this](quint64 timestampUs, const QByteArray& response) {
-                session_recorder_.recordRawHmpResponse(timestampUs, response);
+                session_recorder_.recordRawHc2aResponse(timestampUs, response);
             });
     connect(&device_manager_, &SkyDeviceManager::lidarRawFrameReceived, this,
             [this](quint64 timestampUs, quint16 protocol, const QByteArray& frame) {
@@ -478,7 +478,7 @@ bool SkyRuntime::start()
         config.fpga.enabled = true;
         config.fpga.locator = QStringLiteral("simulation://fpga");
         config.epsilon_rtcm.enabled = false;
-        config.hmp.source = QStringLiteral("hmp3");
+        config.hc2a.source = QStringLiteral("hc2a");
         config.ai8_temperature_controller.enabled = true;
         device_manager_.setFpgaSimulationEnabled(true);
     }
@@ -934,7 +934,7 @@ SkyDashboardSnapshot SkyRuntime::dashboardSnapshot() const
     snapshot.uptime_ms = started_time_us_ > 0 && nowUs >= started_time_us_ ? (nowUs - started_time_us_) / 1000ULL : 0;
     snapshot.epsilon = device_manager_.latestEpsilon();
     snapshot.ptb = device_manager_.latestPtb();
-    snapshot.hmp = device_manager_.latestHmp();
+    snapshot.hc2a = device_manager_.latestHc2a();
     snapshot.lidar = device_manager_.latestLidar();
     snapshot.temperature_controller = device_manager_.latestTemperatureController();
     snapshot.ai8_temperature_controller = device_manager_.latestAi8TemperatureController();
@@ -949,7 +949,7 @@ SkyDashboardSnapshot SkyRuntime::dashboardSnapshot() const
                                                ? snapshot.epsilon.imu_packet_rate_hz
                                                : kDefaultEpsilonCallbackRateHz;
     snapshot.ptb_acquisition_rate_hz = config.ptb.frequency_hz;
-    snapshot.hmp_acquisition_rate_hz = config.hmp.frequency_hz;
+    snapshot.hc2a_acquisition_rate_hz = config.hc2a.frequency_hz;
     snapshot.lidar_acquisition_rate_hz = config.lidar.frequency_hz;
     snapshot.wave_tcp_acquisition_rate_hz = device_manager_.waveTcpActualRateHz();
     snapshot.devices_csv_recording_rate_hz = config.telemetry.basic_rate_hz;
@@ -959,7 +959,7 @@ SkyDashboardSnapshot SkyRuntime::dashboardSnapshot() const
     snapshot.waveform_downsampled_rate_hz = config.telemetry.waveform_rate_hz;
     snapshot.epsilon_stale = deviceStale(SkyDeviceId::Epsilon, nowUs, 2'000'000ULL);
     snapshot.ptb_stale = deviceStale(SkyDeviceId::Ptb, nowUs, 3'000'000ULL);
-    snapshot.hmp_stale = deviceStale(SkyDeviceId::Hmp, nowUs, 3'000'000ULL);
+    snapshot.hc2a_stale = deviceStale(SkyDeviceId::Hc2a, nowUs, 3'000'000ULL);
     snapshot.lidar_stale = deviceStale(SkyDeviceId::Lidar, nowUs, 2'000'000ULL);
     snapshot.temperature_controller_stale = deviceStale(SkyDeviceId::TemperatureController, nowUs, 3'000'000ULL);
     snapshot.ai8_temperature_controller_stale = deviceStale(SkyDeviceId::Ai8TemperatureController, nowUs, 3'000'000ULL);
@@ -1025,7 +1025,7 @@ void SkyRuntime::sendBasicTelemetry()
     const quint64 nowUs = currentTimestampUs();
     EpsilonData epsilon = device_manager_.latestEpsilon();
     const PtbData ptb = device_manager_.latestPtb();
-    const HmpData hmp = device_manager_.latestHmp();
+    const Hc2aData hc2a = device_manager_.latestHc2a();
     const LidarData lidar = device_manager_.latestLidar();
 
     TelemetryBasic data;
@@ -1043,11 +1043,11 @@ void SkyRuntime::sendBasicTelemetry()
 
     const DeviceStatusItem epsilonStatus = device_manager_.status(SkyDeviceId::Epsilon);
     const DeviceStatusItem lidarStatus = device_manager_.status(SkyDeviceId::Lidar);
-    const DeviceStatusItem hmpStatus = device_manager_.status(SkyDeviceId::Hmp);
+    const DeviceStatusItem hc2aStatus = device_manager_.status(SkyDeviceId::Hc2a);
     const DeviceStatusItem ptbStatus = device_manager_.status(SkyDeviceId::Ptb);
     const bool hasEpsilon = epsilon.valid && connectedAndFresh(epsilonStatus, nowUs, 2'000'000ULL);
     const bool hasLidar = lidar.valid && connectedAndFresh(lidarStatus, nowUs, 2'000'000ULL);
-    const bool hasHmp = hmp.valid && connectedAndFresh(hmpStatus, nowUs, 3'000'000ULL);
+    const bool hasHc2a = hc2a.valid && connectedAndFresh(hc2aStatus, nowUs, 3'000'000ULL);
     const bool hasPtb = ptb.valid && connectedAndFresh(ptbStatus, nowUs, 3'000'000ULL);
 
     if (hasEpsilon)
@@ -1124,11 +1124,11 @@ void SkyRuntime::sendBasicTelemetry()
         data.lidar_signal_strength = lidar.signal_strength;
     }
 
-    if (hasHmp)
+    if (hasHc2a)
     {
         data.validity_flags |= BasicHasTemperature | BasicHasHumidity;
-        data.temperature_c = static_cast<float>(hmp.temperature);
-        data.humidity_percent = static_cast<float>(hmp.humidity);
+        data.temperature_c = static_cast<float>(hc2a.temperature);
+        data.humidity_percent = static_cast<float>(hc2a.humidity);
     }
 
     if (hasPtb)
@@ -1143,8 +1143,8 @@ void SkyRuntime::sendBasicTelemetry()
                                            hasEpsilon,
                                            ptb,
                                            hasPtb,
-                                           hmp,
-                                           hasHmp,
+                                           hc2a,
+                                           hasHc2a,
                                            lidar,
                                            hasLidar);
     sendFrame(MsgType::TelemetryBasic, TelemetryCodec::serializeBasicTelemetry(data));
@@ -1448,6 +1448,32 @@ void SkyRuntime::submitCommand(const CommandMessage& command,
     if (stopping_ || commandGeneration != device_command_generation_) {
         completion(stoppedCommandResult(command));
         return;
+    }
+    DeviceOperationRequest safetyRequest;
+    QJsonObject safetyOperation;
+    if (command.command_id == CommandId::DeviceOperation
+        && TelemetryCodec::parseDeviceOperationRequest(command.payload, safetyRequest)
+        && safetyRequest.device_id == SkyDeviceId::Fpga && safetyRequest.operation == DeviceOperation::FpgaControl
+        && FpgaRemote::parseControl(safetyRequest.payload, safetyOperation)) {
+        const auto op = safetyOperation.value("op").toString();
+        const bool heartbeat = op == "motor_heartbeat";
+        const bool stop = op == "motor" && (safetyOperation.value("action").toInt() == 2
+            || (safetyOperation.value("action").toInt() == 4 && safetyOperation.value("value").toInt() == 0));
+        if (heartbeat || stop) {
+            // Neither safety action waits behind another operation or fills the command replay cache.
+            device_manager_.submitFpgaControl(safetyOperation,
+                [this, command, safetyRequest, heartbeat, completion = std::move(completion)]
+                (CommandErrorCode code, QString error, QJsonObject document) {
+                    SkyCommandResult result;
+                    result.ack = makeAck(command, code);
+                    result.send_status = !heartbeat;
+                    result.send_device_operation_response = true;
+                    result.device_operation_response = {safetyRequest.request_id, safetyRequest.device_id,
+                        safetyRequest.operation, code, error, heartbeat ? QByteArray{} : FpgaRemote::encodeStatus(document)};
+                    completion(result);
+                }, logContext.correlation_id, logContext.session_id);
+            return;
+        }
     }
     DeviceOperationRequest fpgaIdentity;
     const bool hasFpgaIdentity=command.command_id==CommandId::DeviceOperation &&
@@ -2351,7 +2377,7 @@ bool SkyRuntime::startSerialPortDetection()
     const SkyConfig config = device_manager_.config();
     request.epsilon = {config.epsilon.port, QString::number(config.epsilon.baud_rate)};
     request.ptb = {config.ptb.port, QString::number(config.ptb.baud_rate)};
-    request.hmp = {config.hmp.port, QString::number(config.hmp.baud_rate)};
+    request.hc2a = {config.hc2a.port, QString::number(config.hc2a.baud_rate)};
     request.lidar = {config.lidar.port, QString::number(config.lidar.baud_rate)};
     request.temperatureController = {
         config.temperature_controller.port, QString::number(config.temperature_controller.baud_rate)};
@@ -2360,9 +2386,9 @@ bool SkyRuntime::startSerialPortDetection()
     request.pressureProtocol = config.ptb.source.trimmed() == QStringLiteral("bmp390")
         ? VaporView::PressureSensorProtocol::Bmp390Serial
         : VaporView::PressureSensorProtocol::Ptb210;
-    request.humidityProtocol = config.hmp.source.trimmed() == QStringLiteral("sht45")
+    request.humidityProtocol = config.hc2a.source.trimmed() == QStringLiteral("sht45")
         ? VaporView::HumiditySensorProtocol::Sht45Serial
-        : VaporView::HumiditySensorProtocol::Hmp3Modbus;
+        : VaporView::HumiditySensorProtocol::Hc2aRoAscii;
     request.temperatureSlaveAddress = config.temperature_controller.slave_address;
     request.ai8SlaveAddress = config.ai8_temperature_controller.slave_address;
     serial_port_detection_cancel_requested_.store(false);

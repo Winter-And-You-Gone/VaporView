@@ -131,7 +131,7 @@ enum class SkyDeviceId : quint8
 {
     Epsilon = 1,
     Ptb = 2,
-    Hmp = 3,
+    Hc2a = 3,
     Lidar = 4,
     WaveTcp = 5,
     TemperatureController = 6,

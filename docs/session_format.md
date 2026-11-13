@@ -232,7 +232,7 @@ The historical path mapping is:
 | --- | --- |
 | `raw/navigation.dat` | `raw/epsilon.dat` |
 | `raw/pressure.dat` | `raw/ptb.dat` |
-| `raw/temperature_humidity.dat` | `raw/hmp.dat` |
+| `raw/temperature_humidity.dat` | `raw/hc2a.dat` |
 | `raw/distance.dat` | `raw/lidar.dat` |
 | `raw/waveform.dat` | `raw/tcp_wave.dat` |
 | `raw/laser_temperature_controller.dat` | `raw/rd105.dat` |
@@ -260,7 +260,7 @@ the same JSON types for populated values. It contains:
 - `telemetry` with `transport`, `endpoint`, `port`, and `baud`
 - `waveform` with endpoint, frame, point, and scalar encoding settings
 - `raw_dat` with the shared RAW directory, format document, and write mode
-- `sensors` with `epsilon`, `ptb`, `hmp`, `lidar`,
+- `sensors` with `epsilon`, `ptb`, `hc2a`, `lidar`,
   `laser_temperature_controller`, and `system_temperature_controller`; each
   entry always contains `configured`, `enabled`, `port`, `baud`, `rate_hz`,
   and `slave_address`

@@ -134,10 +134,10 @@ MainWindow::MainWindow(QWidget *parent, std::shared_ptr<VaporView::Ground::Calib
             snapshot.ptb = collectors.ptb->getLatestData();
             snapshot.hasPtb = isFresh(collectors.ptb.get(), snapshot.ptb);
         }
-        if (collectors.hmp)
+        if (collectors.hc2a)
         {
-            snapshot.hmp = collectors.hmp->getLatestData();
-            snapshot.hasHmp = isFresh(collectors.hmp.get(), snapshot.hmp);
+            snapshot.hc2a = collectors.hc2a->getLatestData();
+            snapshot.hasHc2a = isFresh(collectors.hc2a.get(), snapshot.hc2a);
         }
         if (collectors.lidar)
         {
@@ -152,7 +152,7 @@ MainWindow::MainWindow(QWidget *parent, std::shared_ptr<VaporView::Ground::Calib
         };
         if (fpga.hasEpsilon && fpgaFresh(fpga.epsilon)) { snapshot.epsilon=fpga.epsilon; snapshot.hasEpsilon=true; }
         if (fpga.hasPtb && fpgaFresh(fpga.ptb)) { snapshot.ptb=fpga.ptb; snapshot.hasPtb=true; }
-        if (fpga.hasHmp && fpgaFresh(fpga.hmp)) { snapshot.hmp=fpga.hmp; snapshot.hasHmp=true; }
+        if (fpga.hasHc2a && fpgaFresh(fpga.hc2a)) { snapshot.hc2a=fpga.hc2a; snapshot.hasHc2a=true; }
         if (fpga.hasLidar && fpgaFresh(fpga.lidar)) { snapshot.lidar=fpga.lidar; snapshot.hasLidar=true; }
         return snapshot;
     });
@@ -296,7 +296,7 @@ MainWindow::MainWindow(QWidget *parent, std::shared_ptr<VaporView::Ground::Calib
             {
             case Device::Epsilon: onEpsilonDataReady(); break;
             case Device::Ptb: onPtbDataReady(); break;
-            case Device::Hmp: onHmpDataReady(); break;
+            case Device::Hc2a: onHc2aDataReady(); break;
             case Device::Lidar: onLidarDataReady(); break;
             case Device::TemperatureController: onTemperatureControllerDataReady(); break;
             case Device::Ai8TemperatureController: onAi8TemperatureControllerDataReady(); break;
@@ -316,8 +316,8 @@ MainWindow::MainWindow(QWidget *parent, std::shared_ptr<VaporView::Ground::Calib
     connectionCallbacks.rawPtbResponse = [this](quint64 timestampUs, const void *payload, size_t size) {
         state_->recording_service_->recordRawPtbResponse(timestampUs, payload, size);
     };
-    connectionCallbacks.rawHmpResponse = [this](quint64 timestampUs, const void *payload, size_t size) {
-        state_->recording_service_->recordRawHmpResponse(timestampUs, payload, size);
+    connectionCallbacks.rawHc2aResponse = [this](quint64 timestampUs, const void *payload, size_t size) {
+        state_->recording_service_->recordRawHc2aResponse(timestampUs, payload, size);
     };
     connectionCallbacks.rawLidarFrame = [this](quint64 timestampUs,
                                                 quint16 protocol,

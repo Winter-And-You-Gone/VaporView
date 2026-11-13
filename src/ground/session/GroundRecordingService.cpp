@@ -291,7 +291,7 @@ public:
         initOptions.deviceConfig.waveformPort = options.deviceConfig.waveformPort;
         initOptions.deviceConfig.epsilon = sessionDeviceConnectionConfig(options.deviceConfig.epsilon);
         initOptions.deviceConfig.ptb = sessionDeviceConnectionConfig(options.deviceConfig.ptb);
-        initOptions.deviceConfig.hmp = sessionDeviceConnectionConfig(options.deviceConfig.hmp);
+        initOptions.deviceConfig.hc2a = sessionDeviceConnectionConfig(options.deviceConfig.hc2a);
         initOptions.deviceConfig.lidar = sessionDeviceConnectionConfig(options.deviceConfig.lidar);
         initOptions.deviceConfig.laserTemperatureController =
             sessionDeviceConnectionConfig(options.deviceConfig.laserTemperatureController);
@@ -919,8 +919,8 @@ private:
                     snapshot.hasEpsilon,
                     snapshot.ptb,
                     snapshot.hasPtb,
-                    snapshot.hmp,
-                    snapshot.hasHmp,
+                    snapshot.hc2a,
+                    snapshot.hasHc2a,
                     snapshot.lidar,
                     snapshot.hasLidar);
                 {
@@ -1500,14 +1500,14 @@ bool GroundRecordingService::recordRawPtbResponse(quint64 hostTimestampUs,
                             size);
 }
 
-bool GroundRecordingService::recordRawHmpResponse(quint64 hostTimestampUs,
+bool GroundRecordingService::recordRawHc2aResponse(quint64 hostTimestampUs,
                                                   const void *data,
                                                   size_t size)
 {
     return impl_->recordRaw(impl_->temperatureHumidityRawFile,
                             impl_->rawTemperatureHumidityRecordCount,
                             SessionRawDat::kSourceTemperatureHumidity,
-                            SessionRawDat::kRecordTypeTemperatureHumidityModbusResponse,
+                            SessionRawDat::kRecordTypeTemperatureHumidityRoAsciiResponse,
                             0,
                             hostTimestampUs,
                             data,

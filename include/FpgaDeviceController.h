@@ -157,7 +157,9 @@ private:
     quint32 pendingSequence_ = 0;
     quint64 operationGeneration_ = 0;
     quint32 temperatureBaseline_ = 0;
-    quint32 hmpCompensationBaseline_ = 0;
+    bool motorOwnerEnabled_ = false;
+    bool interruptingForMotorStop_ = false;
+    QSet<quint32> motorSafetySequences_;
     qint16 temperatureTarget_ = 0;
     bool injected_ = false, ready_ = false, busy_ = false, replaying_ = false;
     bool drainWaveforms_ = false, backgroundRefresh_ = false, recoveringConnection_ = false, connectionRecoveryFailed_ = false;
