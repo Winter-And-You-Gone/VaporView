@@ -352,24 +352,23 @@ void requireAlignedColumns(QFrame *subCard, int columnCount, const char *message
 void requirePillsUseWidestColumnWidth(QFrame *subCard, const char *message)
 {
     const QList<QList<QFrame *>> rows = pillRows(subCard);
-    int widestWidth = 0;
-    int pillCount = 0;
-    for (const QList<QFrame *>& row : rows)
-    {
-        for (QFrame *pill : row)
-        {
-            widestWidth = std::max(widestWidth, pill->width());
-            ++pillCount;
-        }
+    require(!rows.isEmpty(), message);
+    QVector<int> widths;
+    for (const auto& row : rows) {
+        widths.resize(std::max(widths.size(), row.size()));
+        for (int i = 0; i < row.size(); ++i)
+            widths[i] = std::max(widths[i], row[i]->property("summaryNaturalWidth").toInt());
     }
-    require(pillCount > 0 && widestWidth > 0, message);
-    for (const QList<QFrame *>& row : rows)
-    {
-        for (QFrame *pill : row)
-        {
-            require(std::abs(pill->width() - widestWidth) <= 2, message);
+    for (const auto& row : rows)
+        for (int i = 0; i < row.size(); ++i) {
+            require(std::abs(row[i]->width() - widths[i]) <= 2, message);
+            auto *name = row[i]->findChild<QLabel *>("homeTelemetrySummaryNameLabel");
+            auto *value = row[i]->findChild<QLabel *>("homeTelemetrySummaryValueLabel");
+            require(name && value && (name->alignment() & Qt::AlignLeft) &&
+                (value->alignment() & Qt::AlignRight), "capsule name/value alignment");
+            require(value->x() - name->geometry().right() >= name->fontMetrics().horizontalAdvance(QStringLiteral("汉字")),
+                "capsule reserves two characters between name and value");
         }
-    }
 }
 
 void requirePillLabelsFit(QFrame *subCard, const char *message)
@@ -712,11 +711,11 @@ int main(int argc, char **argv)
     requireAlignedColumns(subCards.at(0), 2,
                           "data-rate subcard keeps all rows aligned to two columns");
     requirePillsUseWidestColumnWidth(subCards.at(0),
-                                     "data-rate subcard uses its widest pill as every column width");
+                                     "data-rate subcard uses each column's widest pill");
     requirePillLabelsFit(subCards.at(0),
                          "data-rate subcard pill labels fit without clipping");
     requirePillsUseWidestColumnWidth(subCards.at(1),
-                                     "link-rate subcard uses its widest pill as every column width");
+                                     "link-rate subcard uses each column's widest pill");
     requirePillLabelsFit(subCards.at(1),
                          "link-rate subcard pill labels fit without clipping");
     const QList<QFrame *> linkPills =
@@ -745,7 +744,7 @@ int main(int argc, char **argv)
     requireAlignedColumns(subCards.at(2), dataColumns,
                           "data subcard keeps all rows aligned to the same columns");
     requirePillsUseWidestColumnWidth(subCards.at(2),
-                                     "data subcard uses its widest pill as every column width");
+                                     "data subcard uses each column's widest pill");
     requirePillLabelsFit(subCards.at(2),
                          "data subcard pill labels fit without clipping");
     for (const auto& scenario : {std::pair<int, int>{2400, 4}, {800, 3}, {2400, 4}})

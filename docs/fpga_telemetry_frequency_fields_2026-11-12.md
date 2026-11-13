@@ -84,3 +84,24 @@
 - 完整运行 `ctest --test-dir build/Release --output-on-failure -j2`，共 171 项。修正自动化开链路入口和迁移日志事件后，`sky_ground_simulation_e2e_test`、`logging_event_catalog_audit_test` 复测通过；最终汇总 166 项通过、1 项管理员场景跳过、4 项既有失败：`fpga_main_window_test` 固定页面索引、`main_window_layout_test` 串口卡片圆角断言、`ui_test_mode_window_test` 模拟记录计数、`ui_test_navigation_coverage_test` 导航数量/恢复。
 - 沿用已有 osgEarth OFF 配置，未改变地图开关；本包不含可用 3D 地图。
 - `ifw_staging_test` 和 IFW 维护操作脚本检查通过；包内主程序与最终 Release 主程序 SHA-256 一致。1.0.29 离线安装包已保存本机桌面，并按本次请求复制到指定 SSH 电脑的桌面；传输后再次核对 SHA-256。未在远端执行安装。
+
+
+## 1.0.30：完整周期统计与模拟数据
+
+天空端在 USB 完整周期信号处、预览抽稀之前统计有效 DLIA0/1 周期，排除不完整、溢出、连续性错误和重复周期。每秒以实际时间窗上报 `acquisition_cycles`：`count`（十进制字符串）、`window_ms`、`rate_hz`、`scope=dlia0+dlia1`。地面端按计数除以时间窗显示双通道合计频率。统计是天空端实际收到的完整周期，不推断 USB 丢失或 FPGA 内部未上传的周期。
+
+此项取代上文“现有协议没有计数、不可用”的实现边界；需要天空端和地面端同时更新到 1.0.30。旧天空端缺少统计仍显示不可用，链路断开或过期不显示旧值。模拟器与真实 USB 使用同一统计路径。
+
+FPGA 模拟器的 HMP 环境温度约 23°C、湿度约 45%RH，分别以 ±0.3°C、±0.6%RH 小幅波动；地面端允许模拟来源的有效温湿度遥测进入显示，真实硬件的 HMP 支持边界不变。
+
+
+1.0.30 同时修复批量断开的设备动画，并对连接期间的寄存器解析、状态广播和配置刷新做合并/缓存；动画帧只重绘按钮，不触发整页布局。设备配置页三个子卡片按各列内容确定胶囊宽度，名称左对齐、数值单位右对齐，保留两字间距；缺失的频率用 `— Hz` 表示，悬停查看具体原因。
+
+### 1.0.30 验证结果
+
+- 在 VS/MSVC Developer 环境执行 `cmake --build build/Release --config Release --parallel 6`，最终构建成功。
+- 完整运行 171 项测试；本次发现的配置按钮即时读回/处理中状态回归已修复。最终串行复测 `remote_connection_workflow_test`、`fpga_config_action_readback_test`、`fpga_refresh_budget_test` 全部通过，远程首页操作、周期统计、设备配置布局和独立数据查看器主题测试亦通过。真实 SkyCore 模拟链路覆盖温湿度非零及波动、周期统计和批量断开动画。
+- 剩余失败：上一版记录的 4 项 UI 断言，以及 `sky_command_execution_test` 的串口检测完成断言；后者测试配置包含启用设备的空串口，未在本次扩大修改。管理员场景 1 项跳过，不能将本轮报告为全量通过。
+- Qt 实际渲染快照确认周期频率、环境数据及胶囊排列；临时截图和导出代码不纳入版本库。沿用 osgEarth OFF 构建配置。
+
+- IFW staging 与维护操作检查通过；包内 VaporView / VaporViewSkyCore 的 SHA-256 与最终 Release 一致。1.0.30 离线安装包已复制到本机及指定 SSH 电脑桌面，远端哈希一致；未在远端执行安装。

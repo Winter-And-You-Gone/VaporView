@@ -547,6 +547,8 @@ struct MainWindowState
     QString remote_wave_pending_host_;
     int remote_wave_pending_port_;
     int remote_recording_state_;
+    QSet<VaporView::SkyDeviceId> home_device_disconnecting_;
+    bool fpga_config_refresh_pending_ = false;
     QHash<VaporView::SkyDeviceId, qint64> home_device_action_spinner_until_ms_;
     QHash<VaporView::SkyDeviceId, qint64> home_device_action_spinner_started_ms_;
     std::unique_ptr<VaporView::Ground::Devices::RemoteSkyController> remote_sky_controller_;

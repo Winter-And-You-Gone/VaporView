@@ -669,8 +669,8 @@ private:
         if(enabled(0x45)) {QByteArray p;put16(p,1);put16(p,1);tlv(p,0x13,3,scalar(quint32(120000+std::sin(t)*2400)));data(0x45,0x1100,p,ticks);}
         if(enabled(0x41)) {
             QByteArray p;put16(p,1);put16(p,3);
-            QByteArray value(4,0);at<float>(value,0,float(45+std::sin(t)));tlv(p,0x100,9,value);
-            at<float>(value,0,float(23+std::cos(t)));tlv(p,0x101,9,value);tlv(p,2,3,scalar(0));
+            QByteArray value(4,0);at<float>(value,0,float(45+0.6*std::sin(t*0.3)));tlv(p,0x100,9,value);
+            at<float>(value,0,float(23+0.3*std::cos(t*0.2)));tlv(p,0x101,9,value);tlv(p,2,3,scalar(0));
             data(0x41,0x1100,p,ticks);
         }
         if(enabled(0x46)) {

@@ -240,6 +240,15 @@ static void simulatedSkyWorkflow()
     window.show();
     QMetaObject::invokeMethod(&window, "onTelemetryLinkClicked");
     require(waitUntil([&] { return state.remote_config_session_.loaded && state.remote_sky_online_; }), "simulator telemetry handshake");
+    QElapsedTimer initialLayout; initialLayout.start();
+    waitUntil([&] { return initialLayout.elapsed() >= 500; });
+    QElapsedTimer connectClock; connectClock.start();
+    QVector<qint64> connectDelays; qint64 lastConnectPulse = 0; QTimer connectPulse;
+    connectPulse.setTimerType(Qt::PreciseTimer); connectPulse.setInterval(10);
+    QObject::connect(&connectPulse, &QTimer::timeout, &window, [&] {
+        const auto now = connectClock.elapsed(); connectDelays.append(now - lastConnectPulse); lastConnectPulse = now;
+
+    }); connectPulse.start();
     QMetaObject::invokeMethod(&window, "onConnectClicked");
     const auto ready = [&] {
         for (const auto device : {SkyDeviceId::Ptb, SkyDeviceId::Epsilon, SkyDeviceId::Hmp, SkyDeviceId::Lidar,
@@ -250,9 +259,33 @@ static void simulatedSkyWorkflow()
             && window.testRemoteSkyController()->waveformPacketRate(4) > 0;
     };
     const bool connected = waitUntil(ready, 20000);
-    if (!connected) std::cerr << child.process.readAll().constData() << std::endl;
+    if (!connected) {
+        for (auto device : {SkyDeviceId::Ptb, SkyDeviceId::Epsilon, SkyDeviceId::Hmp, SkyDeviceId::Lidar,
+            SkyDeviceId::Ai8TemperatureController, SkyDeviceId::Bmp390, SkyDeviceId::Sht45, SkyDeviceId::TemperatureController, SkyDeviceId::WaveTcp})
+            std::cerr << "DEVICE " << int(device) << " valid=" << MainWindowRtcmTestAccess::valid(window,device)
+                << " reason=" << MainWindowRtcmTestAccess::invalid(window,device).toStdString() << std::endl;
+        std::cerr << "queue=" << state.fpga_home_connect_queue_.size() << " request=" << state.fpga_session_.requestId
+            << " wave=" << window.testRemoteSkyController()->waveformPacketRate(4) << std::endl;
+        std::cerr << child.process.readAll().constData() << std::endl;
+    }
     require(connected, "one title click connects real SkyCore simulated sensors, summaries and waveform rate");
     require(state.fpga_session_.remoteStatus.value("simulation").toBool(), "Sky identifies simulation");
+    connectPulse.stop();
+    require(!connectDelays.isEmpty(), "connection heartbeat samples");
+    std::sort(connectDelays.begin(), connectDelays.end());
+    std::cout << "Connecting: p95Ms=" << connectDelays[(connectDelays.size()-1)*95/100]
+        << " maxMs=" << connectDelays.last() << std::endl;
+    require(connectDelays[(connectDelays.size()-1)*95/100] < 100 && connectDelays.last() < 250,
+        "GUI stays responsive throughout connect-all animations");
+    require(waitUntil([&] { return state.current_hmp_.valid && state.current_hmp_.temperature > 22.0
+        && state.current_hmp_.temperature < 24.0 && state.current_hmp_.humidity > 44.0
+        && state.current_hmp_.humidity < 46.0; }), "simulator environmental values reach ground UI");
+    const auto initialTemperature = state.current_hmp_.temperature, initialHumidity = state.current_hmp_.humidity;
+    require(waitUntil([&] { return std::abs(state.current_hmp_.temperature - initialTemperature) > 0.001
+        && std::abs(state.current_hmp_.humidity - initialHumidity) > 0.001; }), "environmental values fluctuate");
+    require(waitUntil([&] { const auto cycles = state.fpga_session_.remoteStatus.value("acquisition_cycles").toObject();
+        return cycles.value("count").toString().toULongLong() > 0 && cycles.value("window_ms").toDouble() > 0
+            && cycles.value("rate_hz").toDouble() > 0; }), "Sky reports actual acquisition cycle count and window");
     const auto registers = state.fpga_session_.remoteStatus.value("registers").toObject();
     // WMS supplies acquisition cycle labels; physical DAC outputs remain independent.
     for (const quint32 address : {0x3004u, 0x3104u})
@@ -273,6 +306,12 @@ static void simulatedSkyWorkflow()
     std::cout << "Remote simulator: heartbeatSamples=" << delays.size() << " p95Ms=" << p95
         << " maxMs=" << delays.last() << std::endl;
     require(p95 < 100 && delays.last() < 250, "display event loop stays responsive during live simulated telemetry");
+    state.disconnect_btn_->trigger();
+    require(state.home_device_disconnecting_.contains(SkyDeviceId::Epsilon)
+        && state.home_device_action_spinner_timer_->isActive(), "bulk disconnect starts capsule animation");
+    require(waitUntil([&] { return !state.fpga_session_.requestId
+        && !state.fpga_session_.remoteStatus.value("connected").toBool(); }), "bulk disconnect completes");
+    require(waitUntil([&] { return state.home_device_disconnecting_.isEmpty(); }), "disconnect animation settles");
     window.testRemoteSkyController()->close(); window.close();
     child.process.write("quit\n"); child.process.closeWriteChannel();
     require(child.process.waitForFinished(8000) && child.process.exitStatus() == QProcess::NormalExit

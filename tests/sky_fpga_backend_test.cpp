@@ -1,4 +1,5 @@
 #include "SkyFpgaBackend.h"
+#include "FpgaUsbSimulator.h"
 #include "sky_fpga_test_transport.h"
 
 void selectiveConnection()
@@ -116,9 +117,39 @@ void statusListenerMayDestroyBackend()
     require(completions == 1, "late completion cannot access destroyed backend");
 }
 
+void acquisitionCycleStatistics()
+{
+    SkyFpgaBackend backend(makeFpgaUsbSimulator());
+    const auto operation = [&](const QJsonObject& request) {
+        bool done = false;
+        backend.submit(request, [&](CommandErrorCode code, QString error, QJsonObject) {
+            if(code != CommandErrorCode::Ok) fprintf(stderr,"Operation %s: %s\n",request.value("op").toString().toUtf8().constData(),error.toUtf8().constData());
+            require(code == CommandErrorCode::Ok, "simulated acquisition operation succeeds"); done = true;
+        });
+        waitUntil([&] { return done; }, "simulated acquisition operation completes");
+    };
+    operation({{"op","connect"},{"backend","auto"},{"locator",""}});
+    operation({{"op","acquisition"},{"enabled",true}});
+    operation({{"op","raw"},{"enabled",true}});
+    waitUntil([&] { return backend.statusDocument().value("acquisition_cycles").toObject()
+        .value("count").toString().toULongLong() > 0; }, "full simulated cycles are counted before preview thinning");
+    const auto stats = backend.statusDocument().value("acquisition_cycles").toObject();
+    const double expected = stats.value("count").toString().toULongLong() * 1000.0 / stats.value("window_ms").toDouble();
+    require(stats.value("scope") == "dlia0+dlia1" && std::abs(expected - stats.value("rate_hz").toDouble()) < 0.0001,
+        "cycle frequency uses reported count and actual time window");
+    operation({{"op","acquisition"},{"enabled",false}});
+    waitUntil([&] { const auto stats = backend.statusDocument().value("acquisition_cycles").toObject();
+        return stats.contains("count") && stats.value("count").toString() == "0" && stats.value("rate_hz").toDouble() == 0;
+    }, "stopped acquisition reports zero rather than retaining a previous cycle frequency");
+    operation({{"op","disconnect"}});
+    require(!backend.statusDocument().contains("acquisition_cycles"), "USB disconnect clears cycle statistics");
+    backend.shutdown();
+}
+
 int main(int argc,char **argv)
 {
     QCoreApplication app(argc,argv);
+    acquisitionCycleStatistics();
     selectiveConnection();
     diagnosticReadback();
     timeoutObserverIsolation();

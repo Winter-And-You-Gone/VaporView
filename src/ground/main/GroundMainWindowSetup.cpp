@@ -1,3 +1,4 @@
+#include "ground/widgets/DeviceActionButton.h"
 #include "ground/calibration/CalibrationService.h"
 #include "ground/main/GroundMainWindowImplementation.h"
 #include "ground/devices/DeviceRatePolicy.h"
@@ -3336,7 +3337,7 @@ void MainWindow::setupDeviceConfigPage()
         auto *layout = new QHBoxLayout(buttonsWidget);
         layout->setContentsMargins(0, 0, 0, 0);
         layout->setSpacing(2);
-        actionButton = new QToolButton(buttonsWidget);
+        actionButton = new DeviceActionButton(buttonsWidget);
         actionButton->setFocusPolicy(Qt::TabFocus);
         applyDeviceConfigRemoteButtonPresentation(actionButton,
                                                   VaporView::CommandId::ConnectDevice,
@@ -5224,7 +5225,7 @@ void MainWindow::setupConfigPanel()
     };
 
     auto createHomeDeviceActionButton = [this](QWidget *parent, VaporView::SkyDeviceId device) {
-        auto *button = new QToolButton(parent);
+        auto *button = new DeviceActionButton(parent);
         button->setObjectName(QStringLiteral("homeDeviceActionButton"));
         button->setToolButtonStyle(Qt::ToolButtonIconOnly);
         button->setIconSize(QSize(kHomeDeviceIconSize, kHomeDeviceIconSize));

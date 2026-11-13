@@ -1,3 +1,4 @@
+#include "ground/widgets/DeviceActionButton.h"
 #include "ground/main/GroundMainWindowImplementation.h"
 #include "ground/devices/DeviceRatePolicy.h"
 #include "BaudRateComboSupport.h"
@@ -1133,6 +1134,8 @@ void MainWindow::maybeConnectRemoteDevices()
         || !remote || !remote->isOpen() || !state_->remote_sky_online_
         || !state_->remote_config_session_.loaded || state_->remote_config_session_.pending()
         || state_->remote_config_session_.loadedGeneration != remote->linkGeneration()) return;
+    // The FPGA status identifies simulated channels; do not build a partial queue before it arrives.
+    if (isFpgaRelayPath() && state_->fpga_session_.remoteStatus.isEmpty()) return;
     state_->remote_connect_devices_pending_ = false;
     state_->remote_wave_stream_auto_start_ = true;
     if (isFpgaRelayPath()) {
@@ -1487,9 +1490,15 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         const auto preview = [&](quint16 channel) {
             return connected ? state_->remote_sky_controller_->waveformPacketRate(channel, true) : -1.0;
         };
+        const auto cycles = state_->fpga_session_.remoteStatus.value("acquisition_cycles").toObject();
+        const double cycleWindow = cycles.value("window_ms").toDouble();
+        bool cycleCountValid = false;
+        const auto cycleCount = cycles.value("count").toString().toULongLong(&cycleCountValid);
+        const double cycleRate = cycleCountValid && cycleWindow > 0 && cycles.value("scope") == "dlia0+dlia1"
+            ? cycleCount * 1000.0 / cycleWindow : -1.0;
         const double rates[] = {packet(VaporView::MsgType::TelemetryBasic),
             packet(VaporView::MsgType::TelemetryStatus), preview(1), preview(4),
-            packet(VaporView::MsgType::FpgaCycleFeature), -1.0};
+            packet(VaporView::MsgType::FpgaCycleFeature), cycleRate};
         const QStringList labels = state_->is_english_
             ? QStringList{QStringLiteral("Basic telemetry"), QStringLiteral("Telemetry status"), QStringLiteral("H1/H2 preview"), QStringLiteral("Normalized H2 preview"), QStringLiteral("Waveform features"), QStringLiteral("Acquisition cycles")}
             : QStringList{QStringLiteral("基础遥测"), QStringLiteral("遥测状态"), QStringLiteral("原始波形预览（H1/H2）"), QStringLiteral("归一化二次谐波预览"), QStringLiteral("波形特征值"), QStringLiteral("采集周期频率")};
@@ -1498,13 +1507,13 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
             QStringLiteral("FPGA 输出的 H1/H2 波形预览。为节省远程带宽，预览可抽稀；此处显示地面端每秒收到的完整预览数，不是 ADC 采样率，也不代表传输了全部原始点。"),
             QStringLiteral("由同周期 H1/H2 计算得到的归一化二次谐波形状，通常为 H2/H1；仅 IQ 格式使用幅值比。显示每秒有效预览更新次数，横轴为周期内采样位置，不是逐周期峰值趋势。"),
             QStringLiteral("地面端每秒收到的 FPGA 周期特征消息数。归一化二次谐波峰值应由完整周期计算后传输，用于绘制随时间变化的“峰值波形”；不能从抽稀预览重新求峰值代替。其它特征仅按实际支持内容提供。"),
-            QStringLiteral("天空端每秒实际产生的完整 FPGA 波形周期数。它不同于预览接收频率、特征消息接收频率和 ADC 点采样率；不能用配置目标频率或地面接收包数代替。")};
+            QStringLiteral("天空端每秒实际收到的完整有效 FPGA 波形周期数。它不同于预览接收频率、特征消息接收频率和 ADC 点采样率；不能用配置目标频率或地面接收包数代替。")};
         for (int i = 0; i < 6; ++i) {
             const bool available = connected && (i < 2 || fpgaStatusFresh) && rates[i] >= 0.0;
             QString value = available ? formatFrequencyText(rates[i])
                 : !connected ? (state_->is_english_ ? QStringLiteral("Disconnected") : QStringLiteral("未连接"))
                 : (state_->is_english_ ? QStringLiteral("No recent data") : QStringLiteral("未收到/已过期"));
-            if (i == 5) value = state_->is_english_ ? QStringLiteral("Unavailable") : QStringLiteral("不可用");
+            if (i == 5 && cycleRate < 0) value = state_->is_english_ ? QStringLiteral("Unavailable") : QStringLiteral("不可用");
             const QString widthText = state_->is_english_ ? QStringLiteral("No recent data") : QStringLiteral("未收到/已过期");
             auto item = makeItem(labels[i], value, available, widthText);
             item.tooltip = explanations[i];
@@ -1512,7 +1521,7 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
             if (i >= 2 && i <= 4)
                 item.tooltip += QStringLiteral(" 统计口径：DLIA0 与 DLIA1 两路合计，不是单通道频率。预览未收到或过期时请检查采集和预览上传状态。");
             if (i == 5)
-                item.tooltip += QStringLiteral(" 当前协议未提供远端完整周期计数及统计时间窗，不能用特征接收率替代，因此显示不可用。");
+                item.tooltip += QStringLiteral(" 天空端在预览抽稀前统计实际收到的完整有效 DLIA0/1 周期，以周期数除以实际统计时间窗；双通道合计，不使用目标频率或地面特征接收率。旧天空端未提供该统计时显示不可用。");
             rateRows << item;
         }
     }
@@ -1545,19 +1554,15 @@ void MainWindow::reflowDeviceTelemetryData()
     std::sort(pills.begin(), pills.end(), [](QFrame *a, QFrame *b) {
         return a->property("summaryItemIndex").toInt() < b->property("summaryItemIndex").toInt();
     });
-    int pillWidth = 0;
-    for (QFrame *pill : pills) {
-        auto *layout = pill->layout();
-        const QMargins margins = layout->contentsMargins();
-        int width = margins.left() + margins.right();
-        for (int i = 0; i < layout->count(); ++i) {
-            if (i) width += layout->spacing();
-            if (QWidget *widget = layout->itemAt(i)->widget())
-                width += widget->minimumWidth();
-        }
-        pillWidth = std::max({pillWidth, width, pill->minimumWidth(), pill->sizeHint().width()});
-    }
-    for (QFrame *pill : pills) pill->setFixedWidth(pillWidth);
+    auto widthsForColumns = [&](int columns) {
+        QVector<int> widths(columns, 0);
+        for (int i = 0; i < pills.size(); ++i)
+            widths[i % columns] = std::max(widths[i % columns], pills[i]->property("summaryNaturalWidth").toInt());
+        return widths;
+    };
+    auto totalWidth = [](const QVector<int>& widths) {
+        int total = 0; for (int width : widths) total += width; return total;
+    };
     const int spacing = scalePixels(2);
     const QMargins bodyMargins = container->layout()->contentsMargins();
     int otherWidth = bodyMargins.left() + bodyMargins.right();
@@ -1573,12 +1578,15 @@ void MainWindow::reflowDeviceTelemetryData()
         ? scrollArea->viewport()->width() - std::max(0, container->mapTo(scrollArea->viewport(), QPoint()).x()) - scalePixels(8)
         : container->width();
     const int availableWidth = std::min(container->width(), viewportWidth);
-    const int columns = availableWidth - otherWidth >= overhead + 4 * pillWidth + 3 * spacing ? 4 : 3;
+    const int columns = availableWidth - otherWidth >= overhead + totalWidth(widthsForColumns(4)) + 3 * spacing ? 4 : 3;
+    const auto columnWidths = widthsForColumns(columns);
+    const int pillsWidth = totalWidth(columnWidths);
+    for (int i = 0; i < pills.size(); ++i) pills[i]->setFixedWidth(columnWidths[i % columns]);
     const int rowHeight = scalePixels(26);
     const int rows = (pills.size() + columns - 1) / columns;
     const int contentHeight = scalePixels(4) + rows * rowHeight + (rows - 1) * scalePixels(2);
     if (section->property("dataColumns").toInt() == columns &&
-        section->property("dataPillWidth").toInt() == pillWidth &&
+        section->property("dataPillWidth").toInt() == pillsWidth &&
         body->height() == contentHeight && section->height() == contentHeight + scalePixels(2)) return;
 
     for (QFrame *pill : pills) pill->setParent(lineParent);
@@ -1602,14 +1610,14 @@ void MainWindow::reflowDeviceTelemetryData()
         for (int i = begin; i < std::min(begin + columns, int(pills.size())); ++i) pills.at(i)->show();
     }
     section->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    section->setMaximumWidth(overhead + columns * pillWidth + (columns - 1) * spacing);
-    section->setMinimumWidth(overhead + columns * pillWidth + (columns - 1) * spacing);
+    section->setMaximumWidth(overhead + pillsWidth + (columns - 1) * spacing);
+    section->setMinimumWidth(overhead + pillsWidth + (columns - 1) * spacing);
     section->setProperty("deviceTelemetryDynamicMetrics", true);
     body->setProperty("deviceTelemetryDynamicMetrics", true);
     body->setFixedHeight(contentHeight);
     section->setFixedHeight(contentHeight + scalePixels(2));
     section->setProperty("dataColumns", columns);
-    section->setProperty("dataPillWidth", pillWidth);
+    section->setProperty("dataPillWidth", pillsWidth);
     sectionLayout->invalidate();
     container->layout()->invalidate();
     container->layout()->activate();
@@ -1734,11 +1742,22 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
     {
         state_->device_config_.data_telemetry_summary_card->setVisible(true);
     }
+    auto deviceConfigRateItems = sections.rateItems;
+    if (isRemoteSkyMode() && isFpgaRelayPath() && !isUiTestMode()) {
+        for (auto& item : deviceConfigRateItems) {
+            item.valueWidthText = QStringLiteral("999.9 Hz");
+            if (!item.hasData) {
+                item.tooltip += QStringLiteral("\n") + item.value;
+                item.value = QStringLiteral("— Hz");
+            }
+        }
+    }
     QList<RemoteTelemetrySummarySections::Item> deviceConfigDataItems = sections.linkStatusItems;
     for (const RemoteTelemetrySummarySections::Item& item : sections.deviceItems)
     {
         auto compactItem = item;
-        if (isRemoteSkyMode() && isFpgaRelayPath() && !isUiTestMode() && item.label == QStringLiteral("HMP")) {
+        if (isRemoteSkyMode() && isFpgaRelayPath() && !isUiTestMode() && !state_->fpga_session_.remoteStatus.value("simulation").toBool()
+            && item.label == QStringLiteral("HMP")) {
             compactItem.value = state_->is_english_ ? QStringLiteral("N/A") : QStringLiteral("不支持");
             compactItem.valueWidthText = compactItem.value;
             compactItem.compactAvailabilityValue = false;
@@ -1775,7 +1794,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         deviceConfigSummaryNeedsRender =
             state_->device_config_.data_telemetry_summary_card->property(kSummaryStructureKeyProperty).toString() != summaryStructureKey || !(
             updateSummarySectionValues(state_->device_config_.data_telemetry_rate_summary_layout,
-                                       sections.rateItems,
+                                       deviceConfigRateItems,
                                        false,
                                        state_->is_english_) &&
             updateSummarySectionValues(state_->device_config_.data_telemetry_link_summary_layout,
@@ -1890,7 +1909,13 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                 scalePixels(useSideTitle ? 2 : 2);
             const int valueWidth = polishedValueWidth;
             valueLabel->setFixedWidth(valueWidth);
+            if (useSideTitle) {
+                pillLayout->setSpacing(0);
+                pillLayout->addSpacing(nameLabel->fontMetrics().horizontalAdvance(QStringLiteral("汉字")));
+                pillLayout->addStretch(1);
+            }
             pillLayout->addWidget(valueLabel, 0, Qt::AlignVCenter);
+            pill->setProperty("summaryNaturalWidth", pillLayout->sizeHint().width() + scalePixels(2));
             if (!useSideTitle)
             {
                 const int pillWidth = pillLayout->contentsMargins().left() +
@@ -1952,7 +1977,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
 
             lineParent = new QWidget(sectionBody);
             auto *contentLayout = new QVBoxLayout(lineParent);
-            contentLayout->setContentsMargins(0, 2, 6, 2);
+            contentLayout->setContentsMargins(0, 2, 4, 2);
             contentLayout->setSpacing(2);
             linesLayout = contentLayout;
             sectionBodyLayout->addWidget(lineParent, 1);
@@ -2027,24 +2052,14 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
 
         if (useSideTitle)
         {
-            int widestPillWidth = 0;
-            for (const RenderedSummaryLine& renderedLine : renderedLines)
-            {
-                for (QFrame *pill : renderedLine.pills)
-                {
-                    widestPillWidth = std::max(
-                        widestPillWidth,
-                        std::max(pill->minimumWidth(),
-                                 std::max(pill->minimumSizeHint().width(), pill->sizeHint().width())));
-                }
+            QVector<int> columnWidths;
+            for (const auto& line : renderedLines) {
+                columnWidths.resize(std::max(columnWidths.size(), line.pills.size()));
+                for (int i = 0; i < line.pills.size(); ++i)
+                    columnWidths[i] = std::max(columnWidths[i], line.pills[i]->property("summaryNaturalWidth").toInt());
             }
-            for (const RenderedSummaryLine& renderedLine : renderedLines)
-            {
-                for (QFrame *pill : renderedLine.pills)
-                {
-                    pill->setFixedWidth(widestPillWidth);
-                }
-            }
+            for (const auto& line : renderedLines)
+                for (int i = 0; i < line.pills.size(); ++i) line.pills[i]->setFixedWidth(columnWidths[i]);
         }
 
         for (RenderedSummaryLine& renderedLine : renderedLines)
@@ -2167,7 +2182,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         renderSummarySection(state_->device_config_.data_telemetry_summary_card,
                              state_->device_config_.data_telemetry_rate_summary_layout,
                              state_->is_english_ ? QStringLiteral("Data stream rates") : QStringLiteral("数据频率"),
-                             sections.rateItems,
+                             deviceConfigRateItems,
                              2,
                              2,
                              true);
@@ -2845,7 +2860,7 @@ void MainWindow::updateTemperatureTitleButtonsState()
         if (spinnerActive)
         {
             button->setProperty(kRemoteActionIconKeyProperty, QStringLiteral("spinner"));
-            button->setIcon(createRotatedLucideIcon(
+            setDeviceActionAnimationFrame(button, createRotatedLucideIcon(
                 QStringLiteral("refresh-cw"),
                 toolbarColor(AppThemeColor::HomeDeviceSuccess),
                 homeDeviceActionSpinnerDegrees(device, nowMs)));
@@ -3649,7 +3664,7 @@ void MainWindow::updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId dev
     if (busy)
     {
         button->setProperty(kRemoteActionIconKeyProperty, QStringLiteral("spinner"));
-        button->setIcon(createRotatedLucideIcon(QStringLiteral("refresh-cw"),
+        setDeviceActionAnimationFrame(button, createRotatedLucideIcon(QStringLiteral("refresh-cw"),
                                                 toolbarColor(AppThemeColor::HomeDeviceSuccess),
                                                 homeDeviceActionSpinnerDegrees(device, nowMs)));
     }
@@ -3674,7 +3689,9 @@ void MainWindow::updateDeviceConfigRemoteActionButton(VaporView::SkyDeviceId dev
     button->setEnabled(enabled);
 
     const QString actionText = busy
-        ? (state_->is_english_ ? QStringLiteral("Connecting") : QStringLiteral("连接中"))
+        ? (state_->home_device_disconnecting_.contains(device)
+            ? (state_->is_english_ ? QStringLiteral("Disconnecting") : QStringLiteral("断开中"))
+            : (state_->is_english_ ? QStringLiteral("Connecting") : QStringLiteral("连接中")))
         : connected
             ? (state_->is_english_ ? QStringLiteral("Disconnect") : QStringLiteral("断开"))
             : state == VaporView::DeviceState::Disabled && isFpgaRelayPath() && !homeFpgaDeviceSelected(device)

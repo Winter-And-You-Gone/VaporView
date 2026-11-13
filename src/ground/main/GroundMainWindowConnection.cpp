@@ -1,3 +1,4 @@
+#include "ground/widgets/DeviceActionButton.h"
 #include "ground/main/GroundMainWindowImplementation.h"
 #include "ground/calibration/CalibrationService.h"
 #include "shared/session/HarmonicWaveform.h"
@@ -503,6 +504,7 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         else
         {
             state_->home_device_action_spinner_started_ms_.remove(device);
+            state_->home_device_disconnecting_.remove(device);
         }
         const QString stateKey = connected
             ? QStringLiteral("connected")
@@ -559,7 +561,9 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         const QString actionText = [&]() {
             if (spinnerActive)
             {
-                return state_->is_english_ ? QStringLiteral("Connecting") : QStringLiteral("连接中");
+                return state_->home_device_disconnecting_.contains(device)
+                    ? (state_->is_english_ ? QStringLiteral("Disconnecting") : QStringLiteral("断开中"))
+                    : (state_->is_english_ ? QStringLiteral("Connecting") : QStringLiteral("连接中"));
             }
             if (connected)
             {
@@ -603,7 +607,7 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         if (spinnerActive)
         {
             button->setProperty(kHomeDeviceIconKeyProperty, QStringLiteral("spinner"));
-            button->setIcon(createRotatedLucideIcon(QStringLiteral("refresh-cw"),
+            setDeviceActionAnimationFrame(button, createRotatedLucideIcon(QStringLiteral("refresh-cw"),
                                                     toolbarColor(AppThemeColor::HomeDeviceSuccess),
                                                     homeDeviceActionSpinnerDegrees(device, nowMs)));
         }
@@ -695,14 +699,15 @@ void MainWindow::updateHomeDeviceActionSpinnerIcons()
         if (!spinnerActive)
         {
             state_->home_device_action_spinner_started_ms_.remove(device);
+            state_->home_device_disconnecting_.remove(device);
             return;
         }
 
         anySpinnerActive = true;
-        button->setIcon(createRotatedLucideIcon(QStringLiteral("refresh-cw"),
-                                                toolbarColor(AppThemeColor::HomeDeviceSuccess),
-                                                homeDeviceActionSpinnerDegrees(device, nowMs)));
-        button->update();
+        if (!button->isVisible()) return;
+        const auto icon = createRotatedLucideIcon(QStringLiteral("refresh-cw"),
+            toolbarColor(AppThemeColor::HomeDeviceSuccess), homeDeviceActionSpinnerDegrees(device, nowMs));
+        setDeviceActionAnimationFrame(button, icon);
     };
 
     updateButton(state_->home_epsilon_action_btn_, VaporView::SkyDeviceId::Epsilon);
@@ -732,7 +737,10 @@ void MainWindow::updateHomeDeviceActionSpinnerIcons()
     {
         updateHomeDeviceStatusCapsules();
         updateTemperatureTitleButtonsState();
-        updateDeviceConfigState();
+        for (auto device : {VaporView::SkyDeviceId::Epsilon, VaporView::SkyDeviceId::Ptb,
+                 VaporView::SkyDeviceId::Hmp, VaporView::SkyDeviceId::Lidar,
+                 VaporView::SkyDeviceId::TemperatureController, VaporView::SkyDeviceId::Ai8TemperatureController,
+                 VaporView::SkyDeviceId::WaveTcp}) updateDeviceConfigRemoteActionButton(device);
         return;
     }
     if (!anySpinnerActive && state_->home_device_action_spinner_timer_)
@@ -1849,6 +1857,16 @@ void MainWindow::onConnectClicked()
 }
 void MainWindow::onDisconnectClicked()
 {
+    for (auto device : {VaporView::SkyDeviceId::Epsilon, VaporView::SkyDeviceId::Ptb,
+             VaporView::SkyDeviceId::Hmp, VaporView::SkyDeviceId::Lidar,
+             VaporView::SkyDeviceId::TemperatureController, VaporView::SkyDeviceId::Ai8TemperatureController,
+             VaporView::SkyDeviceId::WaveTcp, VaporView::SkyDeviceId::Bmp390, VaporView::SkyDeviceId::Sht45}) {
+        if (homeDeviceConnected(device) || homeDeviceActionSpinnerActive(device, QDateTime::currentMSecsSinceEpoch())) {
+            state_->home_device_disconnecting_.insert(device);
+            startHomeDeviceActionSpinner(device);
+        }
+    }
+    updateHomeDeviceStatusCapsules();
     cancelFpgaActions();
     state_->fpga_home_connect_queue_.clear();
     state_->fpga_home_raw_start_pending_=false;

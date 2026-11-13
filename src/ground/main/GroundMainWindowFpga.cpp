@@ -28,6 +28,16 @@ VaporView::Ground::Devices::RemoteSkyController *MainWindow::testRemoteSkyContro
 }
 #endif
 
+void MainWindow::scheduleFpgaDeviceConfigUi()
+{
+    if (state_->fpga_config_refresh_pending_) return;
+    state_->fpga_config_refresh_pending_ = true;
+    QTimer::singleShot(100, this, [this] {
+        state_->fpga_config_refresh_pending_ = false;
+        syncFpgaDeviceConfigUi();
+    });
+}
+
 void MainWindow::syncFpgaDeviceConfigUi()
 {
     const bool relay = isFpgaRelayPath();
@@ -346,10 +356,7 @@ QMap<quint32, quint32> MainWindow::homeFpgaRegisters() const
         ? state_->fpga_registers_ : QMap<quint32, quint32>{};
     if (!state_->remote_sky_controller_ || !state_->remote_sky_controller_->isOpen() || !state_->fpga_session_.remoteStatus.value("ready").toBool()
         || std::chrono::steady_clock::now() - state_->fpga_session_.statusTime >= std::chrono::seconds(4)) return {};
-    QMap<quint32, quint32> registers;
-    const auto values = state_->fpga_session_.remoteStatus.value("registers").toObject();
-    for (auto it = values.begin(); it != values.end(); ++it) registers.insert(it.key().toUInt(), quint32(it.value().toDouble()));
-    return registers;
+    return state_->fpga_session_.remoteRegisterValues();
 }
 
 quint32 MainWindow::homeFpgaExtensions() const
@@ -370,8 +377,8 @@ void MainWindow::queueFpgaAction(std::function<void()> action, std::function<voi
     state_->fpga_action_queue_.append({std::move(action), std::move(cancel), std::move(canRun), remote, isUiTestMode(),
         remote && state_->remote_sky_controller_ ? state_->remote_sky_controller_->linkGeneration() : 0,
         std::chrono::steady_clock::now() + std::chrono::seconds(20)});
+    // Dispatch on the next timer turn so a burst of readbacks cannot starve paints and input.
     state_->fpga_action_timer_->start();
-    processFpgaActions();
 }
 
 void MainWindow::processFpgaActions()
@@ -1144,6 +1151,7 @@ void MainWindow::receiveRemoteFpgaStatus(const QJsonObject& status)
                  {"locator",status.value("locator")},{"simulation",true}});
         }
     }
+    const auto previousStatus = state_->fpga_session_.remoteStatus;
     const auto configuration = status.value("configuration").toObject();
     const bool configurationChanged = configuration != state_->fpga_session_.remoteStatus.value("configuration").toObject();
     state_->fpga_session_.updateRemoteStatus(status);
@@ -1156,13 +1164,17 @@ void MainWindow::receiveRemoteFpgaStatus(const QJsonObject& status)
         QMap<quint32, quint32> values;
         const auto registers = status.value("registers").toObject();
         for (auto it = registers.begin(); it != registers.end(); ++it) values.insert(it.key().toUInt(), quint32(it.value().toDouble()));
-        state_->fpga_page_->setHardwareValues(values);
-        state_->fpga_page_->setExtensions(quint32(status.value("extensions").toDouble()));
-        state_->fpga_page_->setManagementState(status.value("management").toObject());
+        if (previousStatus.value("registers") != status.value("registers")) {
+            state_->fpga_page_->setHardwareValues(values);
+            syncFpgaDeviceConfigUi();
+        }
+        if (previousStatus.value("extensions") != status.value("extensions")) state_->fpga_page_->setExtensions(quint32(status.value("extensions").toDouble()));
+        if (previousStatus.value("management") != status.value("management")) state_->fpga_page_->setManagementState(status.value("management").toObject());
         updateFpgaPageBackend();
-        syncFpgaDeviceConfigUi();
+        scheduleFpgaDeviceConfigUi();
         updateRecordingStatusLabel();
     }
+    maybeConnectRemoteDevices();
 }
 
 void MainWindow::receiveFpgaWaveform(const VaporView::FpgaWave::CompletedStream &stream)
@@ -1287,7 +1299,13 @@ void MainWindow::refreshFpgaTemperaturePanels()
 void MainWindow::updateFpgaPageBackend()
 {
     if (!state_->fpga_page_) return;
-    syncFpgaDeviceConfigUi();
+    // Keep the action/readback contract immediate; only the full editor refresh is deferred.
+    for (auto device : {VaporView::SkyDeviceId::Epsilon, VaporView::SkyDeviceId::Ptb,
+             VaporView::SkyDeviceId::Hmp, VaporView::SkyDeviceId::Lidar,
+             VaporView::SkyDeviceId::TemperatureController, VaporView::SkyDeviceId::Ai8TemperatureController,
+             VaporView::SkyDeviceId::WaveTcp, VaporView::SkyDeviceId::Bmp390, VaporView::SkyDeviceId::Sht45})
+        updateDeviceConfigRemoteActionButton(device);
+    scheduleFpgaDeviceConfigUi();
     if (isUiTestMode() && state_->ui_test_model_)
     {
         const qint64 elapsed = QDateTime::currentMSecsSinceEpoch() - state_->ui_test_started_ms_;

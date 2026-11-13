@@ -608,6 +608,7 @@ void FpgaControlPage::rebuildUsbDevices(){
     updateActions();
 }
 void FpgaControlPage::setTransportConnected(bool connected){
+    if (connected_ == connected) return;
     const bool lost=connected_&&!connected;connected_=connected;
     if(!connected_)ready_=false;
     if(lost){
