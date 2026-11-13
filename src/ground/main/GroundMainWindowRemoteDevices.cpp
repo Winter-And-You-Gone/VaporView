@@ -204,8 +204,7 @@ bool updateSummarySectionValues(QVBoxLayout *sectionLayout,
 
         if (valueLabel->text() != valueText)
         {
-            const int oldTextWidth = valueLabel->fontMetrics().horizontalAdvance(valueLabel->text());
-            const int widthPadding = std::max(0, valueLabel->minimumWidth() - oldTextWidth);
+            const int widthPadding = valueLabel->property("summaryWidthPadding").toInt();
             valueLabel->setText(valueText);
             if (compactWidth)
             {
@@ -213,7 +212,7 @@ bool updateSummarySectionValues(QVBoxLayout *sectionLayout,
                 if (QLayout *layout = pill->layout())
                 {
                     const QMargins margins = layout->contentsMargins();
-                    pill->setMinimumWidth(margins.left() + nameLabel->minimumWidth()
+                    pill->setFixedWidth(margins.left() + nameLabel->minimumWidth()
                                           + layout->spacing() + valueLabel->minimumWidth()
                                           + margins.right());
                     layout->invalidate();
@@ -1800,6 +1799,26 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                                        state_->is_english_));
         if (!homeSummaryNeedsRender)
         {
+            for (QVBoxLayout *sectionLayout : {state_->data_telemetry_summary_layout_,
+                                               state_->data_telemetry_link_summary_layout_,
+                                               state_->data_telemetry_device_summary_layout_})
+            {
+                auto *section = qobject_cast<QWidget *>(sectionLayout->parent());
+                for (int i = 0; i < sectionLayout->count(); ++i)
+                {
+                    QWidget *line = sectionLayout->itemAt(i)->widget();
+                    if (line && line->layout())
+                    {
+                        line->setMinimumWidth(0);
+                        line->layout()->invalidate();
+                    }
+                }
+                if (section) section->setMinimumWidth(0);
+                sectionLayout->invalidate();
+            }
+            state_->data_telemetry_summary_card_->setMinimumWidth(0);
+            state_->data_telemetry_summary_card_->layout()->invalidate();
+            updateHomeDeviceOverviewMinimumWidth();
             state_->data_telemetry_summary_card_->setProperty(kSummaryStructureKeyProperty, summaryStructureKey);
         }
     }
@@ -1927,6 +1946,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                 scalePixels(useSideTitle ? 2 : 2);
             const int valueWidth = polishedValueWidth;
             valueLabel->setFixedWidth(valueWidth);
+            valueLabel->setProperty("summaryWidthPadding", scalePixels(2));
             if (useSideTitle) {
                 pillLayout->setSpacing(0);
                 pillLayout->addSpacing(nameLabel->fontMetrics().horizontalAdvance(QStringLiteral("汉字")));
@@ -1941,7 +1961,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                                       pillLayout->spacing() +
                                       valueLabel->minimumWidth() +
                                       pillLayout->contentsMargins().right();
-                pill->setMinimumWidth(pillWidth);
+                pill->setFixedWidth(pillWidth);
             }
 
             lineLayout->addWidget(pill, 0, Qt::AlignVCenter);
