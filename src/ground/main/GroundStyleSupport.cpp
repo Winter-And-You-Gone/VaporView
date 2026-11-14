@@ -1054,28 +1054,34 @@ QLabel#homeDeviceStatusCapsule[state="connected"] {
     border: 1px solid @vv-hd-ok;
     color: @vv-hd-ok;
 }
+QToolButton#homeMotionActionButton,
 QToolButton#homeDeviceActionButton {
     background-color: @vv-surface-alt;
     border: 1px solid @vv-border;
     border-radius: 7px;
     padding: 2px;
 }
+QToolButton#homeMotionActionButton:disabled,
 QToolButton#homeDeviceActionButton:disabled {
     background-color: @vv-surface-alt;
     border-color: @vv-border;
 }
+QToolButton#homeMotionActionButton[state="disconnected"],
 QToolButton#homeDeviceActionButton[state="disconnected"] {
     background-color: @vv-hd-ok-bg;
     border-color: @vv-hd-ok;
 }
+QToolButton#homeMotionActionButton[state="connecting"],
 QToolButton#homeDeviceActionButton[state="connecting"] {
     background-color: @vv-hd-ok-bg;
     border-color: @vv-hd-ok;
 }
+QToolButton#homeMotionActionButton[state="connected"],
 QToolButton#homeDeviceActionButton[state="connected"] {
     background-color: @vv-surface-alt;
     border-color: @vv-border-strong;
 }
+QToolButton#homeMotionActionButton:hover,
 QToolButton#homeDeviceActionButton:hover {
     background-color: @vv-primary-subtle;
     border-color: @vv-border-strong;
@@ -1182,9 +1188,11 @@ QPushButton#appSidebarButton:checked:pressed {
     border-color: @vv-primary-pressed;
 }
 QComboBox#temperatureTitlePortCombo,
+QComboBox#homeMotionPort,
 QComboBox#homeMotionChannelCombo,
 QComboBox#ai8TitlePortCombo,
 QComboBox#temperatureTitlePortCombo:disabled,
+QComboBox#homeMotionPort:disabled,
 QComboBox#homeMotionChannelCombo:disabled,
 QComboBox#ai8TitlePortCombo:disabled {
     color: @vv-text-strong;
@@ -1192,6 +1200,9 @@ QComboBox#ai8TitlePortCombo:disabled {
 QComboBox#temperatureTitlePortCombo:hover,
 QComboBox#temperatureTitlePortCombo:focus,
 QComboBox#temperatureTitlePortCombo:on,
+QComboBox#homeMotionPort:hover,
+QComboBox#homeMotionPort:focus,
+QComboBox#homeMotionPort:on,
 QComboBox#homeMotionChannelCombo:hover,
 QComboBox#homeMotionChannelCombo:focus,
 QComboBox#homeMotionChannelCombo:on,
@@ -1203,6 +1214,7 @@ QComboBox#ai8TitlePortCombo:on {
     color: @vv-text-strong;
 }
 QComboBox#temperatureTitlePortCombo::down-arrow,
+QComboBox#homeMotionPort::down-arrow,
 QComboBox#homeMotionChannelCombo::down-arrow,
 QComboBox#ai8TitlePortCombo::down-arrow {
     image: url(lucide/chevron-down-dark.svg);
@@ -1210,6 +1222,9 @@ QComboBox#ai8TitlePortCombo::down-arrow {
 QComboBox#temperatureTitlePortCombo::down-arrow:hover,
 QComboBox#temperatureTitlePortCombo::down-arrow:focus,
 QComboBox#temperatureTitlePortCombo::down-arrow:on,
+QComboBox#homeMotionPort::down-arrow:hover,
+QComboBox#homeMotionPort::down-arrow:focus,
+QComboBox#homeMotionPort::down-arrow:on,
 QComboBox#homeMotionChannelCombo::down-arrow:hover,
 QComboBox#homeMotionChannelCombo::down-arrow:focus,
 QComboBox#homeMotionChannelCombo::down-arrow:on,

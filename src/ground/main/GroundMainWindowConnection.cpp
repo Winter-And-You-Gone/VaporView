@@ -470,6 +470,117 @@ int MainWindow::homeDeviceActionSpinnerDegrees(VaporView::SkyDeviceId device, qi
     return (frame * 360) / kHomeDeviceActionSpinnerFrames;
 }
 
+void MainWindow::startHomeMotionDeviceActionSpinner(bool disconnecting)
+{
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    if (state_->home_motion_action_spinner_until_ms_ <= nowMs)
+        state_->home_motion_action_spinner_started_ms_ = nowMs;
+    state_->home_motion_action_spinner_until_ms_ = nowMs + kHomeDeviceActionSpinnerMinimumMs;
+    state_->home_motion_disconnecting_ = disconnecting;
+    updateHomeDeviceStatusCapsules();
+}
+
+void MainWindow::triggerHomeMotionDeviceAction()
+{
+    if (!state_->motion_page_) return;
+    auto *session = state_->motion_page_->session();
+    const auto motionState = session->state();
+    if (motionState.busy || state_->home_motion_action_spinner_until_ms_ > QDateTime::currentMSecsSinceEpoch() ||
+        (!motionState.connected && state_->motion_page_->portName().isEmpty())) return;
+    startHomeMotionDeviceActionSpinner(motionState.connected);
+    if (motionState.connected) session->disconnectDevice();
+    else state_->motion_page_->connectDevice();
+}
+
+bool MainWindow::updateHomeMotionDeviceControls(qint64 nowMs, bool animationOnly)
+{
+    const auto motionState = state_->motion_page_
+        ? state_->motion_page_->session()->state() : VaporView::Ground::Motion::EmFwc3State{};
+    const bool connected = motionState.connected;
+    const bool ready = connected || (state_->motion_page_ && !state_->motion_page_->portName().isEmpty());
+    const bool spinnerActive = state_->home_motion_action_spinner_until_ms_ > nowMs ||
+        (motionState.busy && (!connected || state_->home_motion_disconnecting_));
+    const auto buttons = {state_->home_motion_action_btn_, state_->home_motion_title_action_btn_};
+    if (spinnerActive)
+    {
+        if (state_->home_motion_action_spinner_started_ms_ == 0)
+            state_->home_motion_action_spinner_started_ms_ = nowMs;
+        const qint64 elapsedMs = std::max<qint64>(0, nowMs - state_->home_motion_action_spinner_started_ms_);
+        const int frame = static_cast<int>((elapsedMs / kHomeDeviceActionSpinnerIntervalMs) % kHomeDeviceActionSpinnerFrames);
+        const auto icon = createRotatedLucideIcon(QStringLiteral("refresh-cw"),
+            toolbarColor(AppThemeColor::HomeDeviceSuccess), (frame * 360) / kHomeDeviceActionSpinnerFrames);
+        for (auto *button : buttons)
+            if (button && (!animationOnly || button->isVisible())) setDeviceActionAnimationFrame(button, icon);
+        if (animationOnly) return true;
+    }
+    else
+    {
+        state_->home_motion_action_spinner_started_ms_ = 0;
+        state_->home_motion_action_spinner_until_ms_ = 0;
+        state_->home_motion_disconnecting_ = false;
+        if (animationOnly && std::none_of(buttons.begin(), buttons.end(), [](QToolButton *button) {
+            return button && button->property("state").toString() == QStringLiteral("connecting");
+        })) return false;
+    }
+    const QString stateKey = connected ? QStringLiteral("connected")
+        : motionState.busy ? QStringLiteral("connecting")
+        : ready ? QStringLiteral("disconnected") : QStringLiteral("disabled");
+    const QString statusText = connected
+        ? (state_->is_english_ ? QStringLiteral("Connected") : QStringLiteral("已连接"))
+        : motionState.busy ? (state_->is_english_ ? QStringLiteral("Connecting") : QStringLiteral("连接中"))
+        : ready ? (state_->is_english_ ? QStringLiteral("Ready to connect") : QStringLiteral("可以连接"))
+        : (state_->is_english_ ? QStringLiteral("Not ready") : QStringLiteral("未就绪"));
+    if (auto *label = state_->home_motion_status_lbl_)
+    {
+        setLabelTextIfChanged(label, QStringLiteral("EM-FWC3"));
+        setWidgetToolTipIfChanged(label, state_->is_english_
+            ? QStringLiteral("EM-FWC3 motor controller status: %1 (local USB direct)").arg(statusText)
+            : QStringLiteral("EM-FWC3 电机控制器状态：%1（本机 USB 直连）").arg(statusText));
+        bool changed = setDynamicPropertyIfChanged(label, "connected", connected);
+        changed |= setDynamicPropertyIfChanged(label, "state", stateKey);
+        if (changed) { label->style()->unpolish(label); label->style()->polish(label); }
+    }
+    const QString actionText = spinnerActive
+        ? (state_->home_motion_disconnecting_
+            ? (state_->is_english_ ? QStringLiteral("Disconnecting") : QStringLiteral("断开中"))
+            : (state_->is_english_ ? QStringLiteral("Connecting") : QStringLiteral("连接中")))
+        : connected ? (state_->is_english_ ? QStringLiteral("Disconnect") : QStringLiteral("断开"))
+        : ready ? (state_->is_english_ ? QStringLiteral("Connect") : QStringLiteral("连接"))
+        : (state_->is_english_ ? QStringLiteral("Select port first") : QStringLiteral("请先选择串口"));
+    const QString toolTip = state_->is_english_
+        ? QStringLiteral("%1 EM-FWC3 (local USB direct)").arg(actionText)
+        : QStringLiteral("%1 EM-FWC3（本机 USB 直连）").arg(actionText);
+    for (auto *button : buttons)
+    {
+        if (!button) continue;
+        button->setEnabled(ready && !motionState.busy && !spinnerActive);
+        setWidgetToolTipIfChanged(button, toolTip);
+        button->setAccessibleName(toolTip);
+        if (spinnerActive) button->setProperty(kHomeDeviceIconKeyProperty, QStringLiteral("spinner"));
+        else
+        {
+            const QString iconName = connected ? QStringLiteral("unlink") : QStringLiteral("link");
+            const QColor iconColor = connected ? toolbarColor(AppThemeColor::ToolbarRed)
+                : toolbarColor(ready ? AppThemeColor::HomeDeviceSuccess : AppThemeColor::ToolbarDisabled);
+            const QString iconKey = QStringLiteral("%1|%2").arg(iconName, iconColor.name(QColor::HexArgb));
+            if (button->property(kHomeDeviceIconKeyProperty).toString() != iconKey)
+            {
+                button->setProperty(kHomeDeviceIconKeyProperty, iconKey);
+                button->setIcon(createLucideIcon(iconName, iconColor));
+            }
+        }
+        bool changed = setDynamicPropertyIfChanged(button, "connected", connected);
+        changed |= setDynamicPropertyIfChanged(button, "state", spinnerActive ? QStringLiteral("connecting") : stateKey);
+        if (changed) { button->style()->unpolish(button); button->style()->polish(button); }
+    }
+    if (state_->home_motion_card_)
+        if (auto *combo = state_->home_motion_card_->findChild<QComboBox *>(QStringLiteral("homeMotionPort")))
+            combo->setFixedWidth(std::clamp(
+                combo->fontMetrics().horizontalAdvance(combo->currentText()) + scalePixels(kTemperatureTitlePortChromeWidth),
+                scalePixels(kTemperatureTitlePortMinimumWidth), scalePixels(kTemperatureTitlePortMaximumWidth)));
+    return spinnerActive;
+}
+
 void MainWindow::updateHomeDeviceStatusCapsules()
 {
     updateTelemetryLinkAction();
@@ -657,6 +768,7 @@ void MainWindow::updateHomeDeviceStatusCapsules()
     updateCapsule(state_->home_ai8_temperature_status_lbl_, state_->home_ai8_temperature_action_btn_, VaporView::SkyDeviceId::Ai8TemperatureController);
     updateCapsule(state_->home_bmp390_status_lbl_, state_->home_bmp390_action_btn_, VaporView::SkyDeviceId::Bmp390);
     updateCapsule(state_->home_sht45_status_lbl_, state_->home_sht45_action_btn_, VaporView::SkyDeviceId::Sht45);
+    anySpinnerActive |= updateHomeMotionDeviceControls(nowMs);
     if (state_->home_device_action_spinner_timer_)
     {
         if (anySpinnerActive)
@@ -733,6 +845,7 @@ void MainWindow::updateHomeDeviceActionSpinnerIcons()
                  VaporView::SkyDeviceId::TemperatureController);
     updateButton(state_->ai8_temperature_title_action_btn_,
                  VaporView::SkyDeviceId::Ai8TemperatureController);
+    anySpinnerActive |= updateHomeMotionDeviceControls(nowMs, true);
     if (needsFullRefresh)
     {
         updateHomeDeviceStatusCapsules();

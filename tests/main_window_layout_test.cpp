@@ -1322,16 +1322,17 @@ void requireHomeDeviceColumnsAligned(QWidget *scope)
                 columns.last()->geometry().right() == deviceGrid->width() - 1,
             "Device columns fill both edges of the grid");
 
-    for (QWidget *column : columns)
+    for (int columnIndex = 0; columnIndex < columns.size(); ++columnIndex)
     {
+        QWidget *column = columns.at(columnIndex);
         const QList<QLabel *> capsules =
             column->findChildren<QLabel *>(QStringLiteral("homeDeviceStatusCapsule"),
                                            Qt::FindDirectChildrenOnly);
         const QList<QToolButton *> actionButtons =
             column->findChildren<QToolButton *>(QStringLiteral("homeDeviceActionButton"),
                                                 Qt::FindDirectChildrenOnly);
-        require(capsules.size() == 3 && actionButtons.size() == capsules.size(),
-                "each home device column contains three aligned capsules and actions");
+        require(capsules.size() == (columnIndex == 0 ? 4 : 3) && actionButtons.size() == capsules.size(),
+                "home device columns align ten capsules and their actions across four rows");
         for (int i = 1; i < capsules.size(); ++i)
         {
             require(capsules.at(0)->width() == capsules.at(i)->width(),
@@ -1425,8 +1426,8 @@ void requireHomeDeviceGeometryStableAcrossCardResize(QWidget *scope,
     {
         controls.append(button);
     }
-    require(controls.size() == 18,
-            "home device resize check covers nine capsules and nine action icons");
+    require(controls.size() == 20,
+            "home device resize check covers ten capsules and ten action icons");
 
     std::vector<std::pair<QWidget *, QRect>> originalGeometries;
     originalGeometries.reserve(static_cast<std::size_t>(controls.size()));
@@ -4005,6 +4006,17 @@ void requireHomeOverviewLanguageWidthRoundTrip()
     activateLayouts(languageDeviceOverviewCard);
     requireHomeDeviceColumnsAligned(&languageOverviewWindow);
     requireHomeDeviceMinimumWidthMatchesControls(&languageOverviewWindow);
+    const auto linkSections = sortedTelemetrySections(languageTelemetrySummaryContainer);
+    require(linkSections.size() == 3, "language overview exposes the link-rate section");
+    QStringList linkNames;
+    for (auto *pill : linkSections.at(1)->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill")))
+        linkNames << pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"))->text();
+    require(linkNames == QStringList{QStringLiteral("天→地"), QStringLiteral("地→天"), QStringLiteral("合计")},
+            "home link rates preserve receive, transmit, total order with compact Chinese labels");
+    bool hasMotorController = false;
+    for (auto *capsule : languageDeviceOverviewCard->findChildren<QLabel *>(QStringLiteral("homeDeviceStatusCapsule")))
+        hasMotorController |= capsule->text() == QStringLiteral("EM-FWC3");
+    require(hasMotorController, "language overview includes the local motor controller");
 
     const QList<int> initialHomeOverviewSizes = languageHomeOverviewSplitter->sizes();
     require(initialHomeOverviewSizes.size() == 2,
@@ -7513,17 +7525,19 @@ int main(int argc, char **argv)
 
     const QList<QLabel*> homeDeviceCapsules =
         window.findChildren<QLabel *>(QStringLiteral("homeDeviceStatusCapsule"));
-    require(homeDeviceCapsules.size() == 9,
-            "home device overview includes all nine status capsules");
+    require(homeDeviceCapsules.size() == 10,
+            "home device overview includes all ten status capsules");
     QStringList homeDeviceNames;
     for (auto *capsule : homeDeviceCapsules)homeDeviceNames.append(capsule->text());
     require(homeDeviceNames.contains(QStringLiteral("BMP390 气压")) &&
                 homeDeviceNames.contains(QStringLiteral("SHT45 温湿度")),
             "internal sensors include their model and measurement description");
+    require(homeDeviceNames.contains(QStringLiteral("EM-FWC3")),
+            "home device overview includes the local EM-FWC3 motor controller");
     const QList<QToolButton*> homeDeviceActionButtons =
         window.findChildren<QToolButton *>(QStringLiteral("homeDeviceActionButton"));
-    require(homeDeviceActionButtons.size() >= 9,
-            "home device overview includes all nine connection action buttons");
+    require(homeDeviceActionButtons.size() >= 10,
+            "home device overview includes all ten connection action buttons");
     requireHomeDeviceColumnsAligned(&window);
     requireHomeDeviceMinimumWidthMatchesControls(&window);
     const bool homeDeviceActionDark =
@@ -8141,10 +8155,10 @@ int main(int argc, char **argv)
             linkRateNames << nameLabel->text();
         }
     }
-    require(linkRateNames == QStringList{QStringLiteral("天空端→地面端"),
-                                         QStringLiteral("地面端→天空端"),
+    require(linkRateNames == QStringList{QStringLiteral("天→地"),
+                                         QStringLiteral("地→天"),
                                          QStringLiteral("合计")},
-            "home link-rate pills expose full direction and total descriptions");
+            "home link-rate pills show compact directions before the total");
     const QList<QFrame*> ratePills =
         homeRateSection->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
     require(!ratePills.isEmpty(),

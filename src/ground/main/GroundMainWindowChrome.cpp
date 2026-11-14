@@ -1712,13 +1712,7 @@ void MainWindow::updateThemedIcons()
     {
         state_->disconnect_btn_->setIcon(createDisconnectIcon());
     }
-    if (state_->home_motion_card_)
-    {
-        if (auto *button = state_->home_motion_card_->findChild<QToolButton *>(QStringLiteral("homeMotionConnect")))
-            button->setIcon(createConnectIcon());
-        if (auto *button = state_->home_motion_card_->findChild<QToolButton *>(QStringLiteral("homeMotionDisconnect")))
-            button->setIcon(createDisconnectIcon());
-    }
+    updateHomeMotionDeviceControls(QDateTime::currentMSecsSinceEpoch());
     if (state_->scheduled_recording_action_)
     {
         state_->scheduled_recording_action_->setIcon(createTimerIcon());

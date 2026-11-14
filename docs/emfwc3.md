@@ -41,8 +41,11 @@ card but require an appropriate manufacturer runtime before connection.
 5. Operate channel 1 directly in the same card or from the home motion card.
    Both the home and configuration cards share one USB session and synchronize
    the selected COM port. The home card header provides the serial selector and
-   icon-only connect/disconnect buttons, while its body shows the current angle,
-   target/step editors, home, stop and both continuous directions. Refresh and
+   one animated icon-only connect/disconnect button and the USB connection
+   status. Current angle, target angle and positioning share one row; both
+   continuous directions, home, stop and device settings share another row.
+   The home device overview also includes EM-FWC3 and shares its connection
+   action and status with the motion card. Refresh and
    speed/EEPROM settings remain in device configuration. The internal
    three-channel routing and per-channel target/step state are retained, with
    channels 1–3 mapping to SDK indices 0–2; both channel selectors stay hidden.

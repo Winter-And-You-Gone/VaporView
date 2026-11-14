@@ -116,7 +116,7 @@ int main(int argc, char **argv)
         auto *page = find<MotionControlPage>(window, "emFwc3ConnectionPanel");
         auto *homeMotion = find<HomeMotionPanel>(window, "homeMotionPanel");
         auto *homeStop = find<QPushButton>(*homeMotion, "homeMotionStopAll");
-        auto *homeConnection = find<QLabel>(*homeMotion, "homeMotionConnectionState");
+        auto *homeConnection = find<QLabel>(window, "homeMotionConnectionState");
         auto *homeSelector = find<QComboBox>(window, "homeMotionChannelCombo");
         auto *homePosition = find<QLabel>(*homeMotion, "homeMotionPosition");
         auto *homeTarget = find<QDoubleSpinBox>(*homeMotion, "homeMotionTarget");
@@ -127,16 +127,29 @@ int main(int argc, char **argv)
         auto *homeCard = find<QWidget>(window, "homeMotionCard");
         auto *homeHeader = homeCard->findChild<QWidget *>(QStringLiteral("sectionTitleBar"), Qt::FindDirectChildrenOnly);
         auto *homePort = find<QComboBox>(*homeCard, "homeMotionPort");
-        auto *homeConnect = find<QToolButton>(*homeCard, "homeMotionConnect");
-        auto *homeDisconnect = find<QToolButton>(*homeCard, "homeMotionDisconnect");
+        auto *homeAction = find<QToolButton>(*homeCard, "homeMotionActionButton");
+        auto *overview = find<QWidget>(window, "homeOverviewDeviceGrid");
+        QToolButton *overviewMotionAction = nullptr;
+        for (auto *button : overview->findChildren<QToolButton *>(QStringLiteral("homeDeviceActionButton")))
+            if (button->property("motionDeviceAction").toBool()) overviewMotionAction = button;
+        check(overviewMotionAction, "device overview includes the local motor action");
+        QLabel *overviewMotionStatus = nullptr;
+        for (auto *label : overview->findChildren<QLabel *>(QStringLiteral("homeDeviceStatusCapsule")))
+            if (label->text() == QStringLiteral("EM-FWC3")) overviewMotionStatus = label;
+        check(overviewMotionStatus, "device overview includes EM-FWC3 status");
         auto *homeHome = find<QPushButton>(*homeMotion, "homeMotionHome");
         auto *homeForward = find<QPushButton>(*homeMotion, "homeMotionForward");
         auto *homeReverse = find<QPushButton>(*homeMotion, "homeMotionReverse");
-        check(homeHeader && homeHeader->isAncestorOf(homePort) && homeHeader->isAncestorOf(homeConnect) &&
-              homeHeader->isAncestorOf(homeDisconnect), "home serial and connection controls belong to the title bar");
-        check(homePort->lineEdit()->contentsRect().width() >= homePort->fontMetrics().horizontalAdvance(QStringLiteral("COM50")),
-              "home serial selector reserves room for an actual COM port name");
-        for (auto *button : {homeConnect, homeDisconnect})
+        check(homeHeader && homeHeader->isAncestorOf(homePort) && homeHeader->isAncestorOf(homeAction) &&
+              homeHeader->isAncestorOf(homeConnection), "home serial, combined connection action and status belong to the title bar");
+        check(!homeCard->findChild<QToolButton *>(QStringLiteral("homeMotionConnect")) &&
+              !homeCard->findChild<QToolButton *>(QStringLiteral("homeMotionDisconnect")),
+              "home card exposes only one connection action");
+        auto *ai8Port = find<QComboBox>(window, "ai8TitlePortCombo");
+        check(!homePort->isEditable() && homePort->property("usesSingleLevelPopupMenu").toBool() &&
+              homePort->font().weight() == ai8Port->font().weight() && homePort->height() == ai8Port->height(),
+              "home serial selector reuses the AI-8 title dropdown presentation");
+        for (auto *button : {homeAction, overviewMotionAction})
             check(button->text().isEmpty() && !button->icon().isNull() && !button->toolTip().isEmpty() &&
                   !button->accessibleName().isEmpty(), "home connection actions use labeled accessible icons without visible text");
         check(homeForward->isVisibleTo(homeMotion) && homeReverse->isVisibleTo(homeMotion),
@@ -160,12 +173,14 @@ int main(int argc, char **argv)
         auto *connect = find<QPushButton>(*panel, "emFwc3Connect");
         for (auto *action : panel->findChildren<QPushButton*>())
             check(action->focusPolicy() == Qt::TabFocus && !action->accessibleName().isEmpty(), "independent device actions follow keyboard-focus and accessibility conventions");
-        auto *port = find<QComboBox>(*panel, "emFwc3Port"); port->setEditText(QStringLiteral("FAKE-COM"));
+        auto *port = find<QComboBox>(*panel, "emFwc3Port");
+        port->addItem(QStringLiteral("FAKE-COM")); port->setEditText(QStringLiteral("FAKE-COM"));
         check(homePort->currentText() == port->currentText(), "configuration port selection updates the home card");
-        homePort->setEditText(QString());
-        check(!homeConnect->isEnabled() && !connect->isEnabled(), "empty home COM selection disables both connect actions");
-        homePort->setEditText(QStringLiteral("HOME-COM"));
-        check(port->currentText() == QStringLiteral("HOME-COM") && homeConnect->isEnabled(),
+        homePort->setCurrentIndex(0);
+        check(!homeAction->isEnabled() && !overviewMotionAction->isEnabled() && !connect->isEnabled(),
+              "empty home COM selection disables all connect actions");
+        homePort->setCurrentIndex(homePort->findData(QStringLiteral("FAKE-COM")));
+        check(port->currentText() == QStringLiteral("FAKE-COM") && homeAction->isEnabled(),
               "home COM selection updates configuration and enables connection");
         for (int i = 1; i <= 3; ++i)
             check(panel->findChild<QLabel*>(QStringLiteral("emFwc3MotorType%1").arg(i))->text() == QStringLiteral("CEM-FPM") &&
@@ -174,9 +189,42 @@ int main(int argc, char **argv)
         check(!page->session()->state().connected && !find<QPushButton>(*page, "emFwc3Go1")->isEnabled(), "startup never connects or enables motion");
         check(!panel->findChild<QCheckBox*>(QStringLiteral("emFwc3ConfirmTypes")) && connect->isEnabled(),
               "connection needs only a COM port with no model-confirmation checkbox");
-        homeConnect->click(); until("connect completes", [&] { return page->session()->state().connected && !page->session()->state().busy; });
-        check(!homeConnect->isEnabled() && homeDisconnect->isEnabled() && !homePort->isEnabled(),
+        homeAction->click();
+        check(homeAction->property("state") == QStringLiteral("connecting") &&
+              overviewMotionAction->property("state") == QStringLiteral("connecting") && !homeAction->isEnabled(),
+              "both motor connection icons enter the shared transition");
+        QElapsedTimer transitionTimer; transitionTimer.start();
+        const QRect actionGeometry = homeAction->geometry();
+        const QRect overviewGeometry = overviewMotionAction->geometry();
+        while (transitionTimer.elapsed() < 150) { QApplication::processEvents(); QThread::msleep(10); }
+        check(homeAction->property("state") == QStringLiteral("connecting") && !homeAction->isEnabled() &&
+              homeAction->geometry() == actionGeometry && overviewMotionAction->geometry() == overviewGeometry,
+              "fast SDK responses retain a visible transition without moving either action");
+        until("connect completes", [&] { return page->session()->state().connected && !page->session()->state().busy && homeAction->isEnabled(); });
+        check(homeAction->property("state") == QStringLiteral("connected") && overviewMotionAction->isEnabled() && !homePort->isEnabled(),
               "home connection uses the same session and locks port editing");
+        check(overviewMotionStatus->property("connected").toBool(), "overview follows the same connected USB session");
+        pages->setCurrentIndex(0); QApplication::processEvents();
+        const auto homeBounds = [homeCard](QWidget *widget) {
+            return QRect(widget->mapTo(homeCard, QPoint()), widget->size());
+        };
+        const auto sameHomeRow = [&](QWidget *left, QWidget *right) {
+            const QRect a = homeBounds(left), b = homeBounds(right);
+            return a.top() <= b.bottom() && b.top() <= a.bottom() && !a.intersects(b);
+        };
+        check(sameHomeRow(homePosition, homeTarget) && sameHomeRow(homeTarget, homeGo),
+              "current angle, target angle and positioning share a row");
+        auto *homeConfigure = find<QPushButton>(*homeMotion, "homeMotionConfigure");
+        for (auto *button : {homeReverse, homeForward, homeHome, homeStop, homeConfigure}) {
+            check(homeCard->rect().contains(homeBounds(button)), "motion action fits within the home card");
+            if (button != homeReverse) check(sameHomeRow(homeReverse, button), "all five motion actions share a row");
+        }
+        auto *homeTitle = find<QLabel>(*homeHeader, "sectionTitleLabel");
+        check(homeBounds(homeTitle).right() < homeBounds(homePort).left() &&
+              homeBounds(homePort).right() < homeBounds(homeAction).left() &&
+              homeBounds(homeAction).right() < homeBounds(homeConnection).left() &&
+              homeConnection->alignment().testFlag(Qt::AlignRight),
+              "title, COM port and action align left with status on the right");
         check(cemFpmCount() == 3, "SDK always receives fixed CEM-FPM types while retaining its three-channel interface");
         check(homeStop->isEnabled() && homeConnection->text().contains(QStringLiteral("已连接")),
               "home panel follows the device page's connected session");
@@ -305,12 +353,16 @@ int main(int argc, char **argv)
         QTimer::singleShot(0, [] { auto *box = qobject_cast<QMessageBox*>(QApplication::activeModalWidget()); check(box, "home continuous confirmation appears"); box->button(QMessageBox::Yes)->click(); });
         homeReverse->click();
         until("home reverse continuous motion starts", [&] { return page->session()->state().continuousMotion && !page->session()->state().busy; });
-        check(!homeForward->isEnabled() && !homeHome->isEnabled() && homeStop->isEnabled() && homeDisconnect->isEnabled(),
+        check(!homeForward->isEnabled() && !homeHome->isEnabled() && homeStop->isEnabled() && homeAction->isEnabled(),
               "home continuous motion retains stop and disconnect without enabling other motion");
         homeStop->click();
         until("home stop ends continuous motion", [&] { return !page->session()->state().continuousMotion && !page->session()->state().busy; });
-        homeDisconnect->click(); until("disconnect completes", [&] { return !page->session()->state().connected && !page->session()->state().busy; });
-        check(homeConnect->isEnabled() && !homeDisconnect->isEnabled() && homePort->isEnabled(), "home disconnect restores connection controls");
+        homeAction->click();
+        check(homeAction->property("state") == QStringLiteral("connecting") && !overviewMotionAction->isEnabled(),
+              "disconnect also animates both motor actions");
+        until("disconnect completes", [&] { return !page->session()->state().connected && !page->session()->state().busy && homeAction->isEnabled(); });
+        check(homeAction->property("state") == QStringLiteral("disconnected") && homePort->isEnabled() &&
+              !overviewMotionStatus->property("connected").toBool(), "home disconnect restores shared connection controls");
         check(find<QLabel>(*page, "emFwc3Position3")->text() == QStringLiteral("—"), "disconnection clears position readbacks");
         check(!homeStop->isEnabled() && homeConnection->text() == QStringLiteral("未连接"), "disconnection updates home status and disables stop");
         check(!homeGo->isEnabled() && !homeMinus->isEnabled() && !homePlus->isEnabled(),
@@ -319,6 +371,20 @@ int main(int argc, char **argv)
             homeSelector->setCurrentIndex(i); QApplication::processEvents();
             check(homePosition->text() == QStringLiteral("—"), "disconnection clears every selected channel readback");
         }
+        overviewMotionAction->click();
+        until("overview action connects the motor", [&] { return page->session()->state().connected && homeAction->isEnabled(); });
+        const auto closeDelay = reinterpret_cast<void(*)(int)>(fake.resolve("testCloseDelay"));
+        check(closeDelay, "SDK close delay control exists"); closeDelay(1800);
+        find<QPushButton>(*page, "emFwc3Disconnect")->click();
+        check(homeAction->property("state") == QStringLiteral("connecting"), "configuration action shares the home transition");
+        transitionTimer.restart();
+        while (transitionTimer.elapsed() < 1200) { QApplication::processEvents(); QThread::msleep(10); }
+        check(page->session()->state().busy && !homeAction->isEnabled() &&
+              homeAction->property("state") == QStringLiteral("connecting") &&
+              overviewMotionAction->property("state") == QStringLiteral("connecting"),
+              "slow disconnect keeps both icons animating after the minimum transition time");
+        until("configuration disconnect updates both home actions", [&] { return !page->session()->state().connected && homeAction->isEnabled() && overviewMotionAction->isEnabled(); });
+        closeDelay(0);
         window.close();
     }
     {

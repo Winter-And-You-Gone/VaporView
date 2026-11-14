@@ -1653,7 +1653,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             QStringLiteral("谐波波形"), QStringLiteral("波形采集")};
     const QStringList linkLabels = state_->is_english_
         ? QStringList{QStringLiteral("Sky->Ground"), QStringLiteral("Ground->Sky"), QStringLiteral("Total")}
-        : QStringList{QStringLiteral("天空端→地面端"), QStringLiteral("地面端→天空端"), QStringLiteral("合计")};
+        : QStringList{QStringLiteral("天→地"), QStringLiteral("地→天"), QStringLiteral("合计")};
     const QStringList deviceLabels = state_->is_english_
         ? QStringList{QStringLiteral("EPSILON"), QStringLiteral("PTB210"), QStringLiteral("HC2A"),
             QStringLiteral("TFA1500-L"), QStringLiteral("Waveform"), QStringLiteral("RD105"),

@@ -6,7 +6,6 @@ class QLabel;
 class QPushButton;
 class QComboBox;
 class QDoubleSpinBox;
-class QToolButton;
 
 namespace VaporView::Ground::Motion
 {
@@ -18,7 +17,7 @@ class HomeMotionPanel final : public QWidget
     Q_OBJECT
 public:
     explicit HomeMotionPanel(MotionControlPage *motionPage, QComboBox *channelCombo, QComboBox *portCombo,
-                             QToolButton *connectButton, QToolButton *disconnectButton, QWidget *parent = nullptr);
+                             QLabel *connectionLabel, QWidget *parent = nullptr);
     void setTheme(bool dark, int fontScalePercent = 100);
     void setLanguage(bool english);
 
@@ -35,7 +34,6 @@ private:
     QLabel *connection_;
     QComboBox *channel_combo_;
     QComboBox *port_combo_;
-    QToolButton *connect_, *disconnect_;
     QLabel *position_;
     QLabel *position_label_, *target_label_, *step_label_;
     QDoubleSpinBox *target_, *step_;

@@ -1,10 +1,12 @@
 // An isolated C-ABI SDK double. It is built into its own test directory only.
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <limits>
 #include <mutex>
+#include <thread>
 
 #ifdef _WIN32
 #define API extern "C" __declspec(dllexport)
@@ -19,6 +21,7 @@ std::array<int, 3> stops{};
 std::array<bool, 3> running{};
 std::atomic<int> readFailure{0}, commandFailure{0}, motionCount{0}, saves{0}, closes{0}, deinits{0};
 std::atomic<int> cemFpmCount{0};
+std::atomic<int> closeDelayMs{0};
 std::atomic<bool> nonfinite{false};
 int speed = 100;
 bool opened = false;
@@ -28,7 +31,7 @@ API void testReset()
     std::lock_guard lock(mutex);
     positions = {0, 45, 90}; stops = {}; running = {}; speed = 100; opened = false;
     readFailure = 0; commandFailure = 0; motionCount = 0; saves = 0; closes = 0; deinits = 0; nonfinite = false;
-    cemFpmCount = 0;
+    cemFpmCount = 0; closeDelayMs = 0;
 }
 API void testFailRead(int code) { readFailure = code; }
 API void testFailCommand(int code) { commandFailure = code; }
@@ -40,10 +43,15 @@ API int testDeinits() { return deinits; }
 API int testStops(int channel) { std::lock_guard lock(mutex); return stops.at(channel); }
 API int testRunning(int channel) { std::lock_guard lock(mutex); return running.at(channel); }
 API int testCemFpmCount() { return cemFpmCount; }
+API void testCloseDelay(int milliseconds) { closeDelayMs = milliseconds; }
 API int libraryInit() { return 0; }
 API void libraryDeInit() { ++deinits; }
 API int COMMON_openSerialDevice(const char*, const char*) { std::lock_guard lock(mutex); opened = true; return 0; }
-API void COMMON_closeDevice(const char*) { std::lock_guard lock(mutex); opened = false; ++closes; }
+API void COMMON_closeDevice(const char*)
+{
+    std::this_thread::sleep_for(std::chrono::milliseconds(closeDelayMs.load()));
+    std::lock_guard lock(mutex); opened = false; ++closes;
+}
 API int EMFWC3_SetMotorType(const char*, int count, const char** types)
 {
     cemFpmCount = 0;

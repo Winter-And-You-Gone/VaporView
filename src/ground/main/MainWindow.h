@@ -411,6 +411,9 @@ private:
     int homeDeviceActionSpinnerDegrees(VaporView::SkyDeviceId device, qint64 nowMs) const;
     void updateHomeDeviceStatusCapsules();
     void updateHomeDeviceActionSpinnerIcons();
+    void triggerHomeMotionDeviceAction();
+    void startHomeMotionDeviceActionSpinner(bool disconnecting);
+    bool updateHomeMotionDeviceControls(qint64 nowMs, bool animationOnly = false);
     bool anyCollectorRunning() const;
     bool anyLocalDeviceConnected() const;
     void configureLocalConnectionCoordinator();

@@ -2470,12 +2470,21 @@ void MainWindow::setupCentralWidget()
         state_->motion_page_,
         state_->home_motion_card_->findChild<QComboBox *>(QStringLiteral("homeMotionChannelCombo")),
         state_->home_motion_card_->findChild<QComboBox *>(QStringLiteral("homeMotionPort")),
-        state_->home_motion_card_->findChild<QToolButton *>(QStringLiteral("homeMotionConnect")),
-        state_->home_motion_card_->findChild<QToolButton *>(QStringLiteral("homeMotionDisconnect")),
+        state_->home_motion_card_->findChild<QLabel *>(QStringLiteral("homeMotionConnectionState")),
         state_->home_motion_card_);
     static_cast<QVBoxLayout *>(state_->home_motion_card_->layout())->addWidget(state_->home_motion_panel_, 1);
     connect(state_->home_motion_panel_, &VaporView::Ground::Motion::HomeMotionPanel::openConfigurationRequested,
             state_->device_config_nav_btn_, &QPushButton::click);
+    connect(state_->motion_page_->session(), &VaporView::Ground::Motion::EmFwc3Session::stateChanged,
+            this, &MainWindow::updateHomeDeviceStatusCapsules);
+    connect(state_->motion_page_, &VaporView::Ground::Motion::MotionControlPage::portChanged,
+            this, [this] { updateHomeDeviceStatusCapsules(); });
+    for (const auto& entry : {std::pair{"emFwc3Connect", false}, std::pair{"emFwc3Disconnect", true}})
+        connect(state_->motion_page_->findChild<QPushButton *>(QString::fromLatin1(entry.first)),
+                &QPushButton::clicked, this, [this, disconnecting = entry.second] {
+                    startHomeMotionDeviceActionSpinner(disconnecting);
+                });
+    updateHomeDeviceStatusCapsules();
     connect(state_->motion_page_->session(), &VaporView::Ground::Motion::EmFwc3Session::operationFinished,
             this, [this](const QString& operation, int code, const QString& detail) {
         publishGroundLog(code == 0 ? VaporView::LogLevel::Info : VaporView::LogLevel::Warning,
@@ -5267,6 +5276,21 @@ void MainWindow::setupConfigPanel()
     addHomeDevice(state_->home_ai8_temperature_status_lbl_, state_->home_ai8_temperature_action_btn_, VaporView::SkyDeviceId::Ai8TemperatureController);
     addHomeDevice(state_->home_bmp390_status_lbl_, state_->home_bmp390_action_btn_, VaporView::SkyDeviceId::Bmp390);
     addHomeDevice(state_->home_sht45_status_lbl_, state_->home_sht45_action_btn_, VaporView::SkyDeviceId::Sht45);
+    {
+        auto *columnLayout = homeDeviceColumnLayouts[static_cast<std::size_t>(homeDeviceIndex % kHomeDeviceGridColumns)];
+        state_->home_motion_status_lbl_ = createHomeDeviceCapsule(columnLayout->parentWidget());
+        auto *button = new DeviceActionButton(columnLayout->parentWidget());
+        state_->home_motion_action_btn_ = button;
+        button->setObjectName(QStringLiteral("homeDeviceActionButton"));
+        button->setProperty("motionDeviceAction", true);
+        button->setToolButtonStyle(Qt::ToolButtonIconOnly);
+        button->setIconSize(QSize(kHomeDeviceIconSize, kHomeDeviceIconSize));
+        button->setFixedSize(kHomeDeviceButtonSize, kHomeDeviceButtonSize);
+        button->setFocusPolicy(Qt::TabFocus);
+        connect(button, &QToolButton::clicked, this, &MainWindow::triggerHomeMotionDeviceAction);
+        columnLayout->addWidget(state_->home_motion_status_lbl_, homeDeviceIndex / kHomeDeviceGridColumns, 0);
+        columnLayout->addWidget(button, homeDeviceIndex / kHomeDeviceGridColumns, 1, Qt::AlignVCenter);
+    }
     state_->home_device_action_spinner_timer_ = new QTimer(this);
     state_->home_device_action_spinner_timer_->setTimerType(Qt::PreciseTimer);
     state_->home_device_action_spinner_timer_->setInterval(kHomeDeviceActionSpinnerIntervalMs);
@@ -5378,21 +5402,30 @@ void MainWindow::setupDataPanels()
     for (int channel = 1; channel <= 3; ++channel)
         motionChannelCombo->addItem(QStringLiteral("通道 %1").arg(channel), channel);
     motionChannelCombo->hide(); // Keep channel routing available internally; use channel 1 in the UI.
-    motionTitleLayout->addStretch();
-    motionTitleLayout->setSpacing(4);
-    auto *motionPort = new QComboBox(motionTitleBar);
+    motionTitleLayout->setSpacing(8);
+    auto *motionPort = createSingleLevelPopupComboBox(motionTitleBar, false, true);
     motionPort->setObjectName(QStringLiteral("homeMotionPort"));
-    motionPort->setEditable(true);
-    motionPort->setInsertPolicy(QComboBox::NoInsert);
-    motionTitleLayout->addWidget(motionPort);
-    auto *motionConnect = createTitleBarIconButton(QStringLiteral("homeMotionConnect"), motionTitleBar);
-    auto *motionDisconnect = createTitleBarIconButton(QStringLiteral("homeMotionDisconnect"), motionTitleBar);
-    motionConnect->setFocusPolicy(Qt::TabFocus);
-    motionDisconnect->setFocusPolicy(Qt::TabFocus);
-    motionConnect->setIcon(createConnectIcon());
-    motionDisconnect->setIcon(createDisconnectIcon());
-    motionTitleLayout->addWidget(motionConnect);
-    motionTitleLayout->addWidget(motionDisconnect);
+    motionPort->setEditable(false);
+    motionPort->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    motionPort->setFixedHeight(kMainPageButtonHeight);
+    motionPort->setCursor(Qt::PointingHandCursor);
+    motionPort->setFocusPolicy(Qt::TabFocus);
+    motionTitleLayout->addWidget(motionPort, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    auto *motionAction = new DeviceActionButton(motionTitleBar);
+    state_->home_motion_title_action_btn_ = motionAction;
+    motionAction->setObjectName(QStringLiteral("homeMotionActionButton"));
+    motionAction->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    motionAction->setFixedSize(kHomeDeviceButtonSize, kHomeDeviceButtonSize);
+    motionAction->setIconSize(QSize(kHomeDeviceIconSize, kHomeDeviceIconSize));
+    motionAction->setFocusPolicy(Qt::TabFocus);
+    motionAction->setCursor(Qt::PointingHandCursor);
+    connect(motionAction, &QToolButton::clicked, this, &MainWindow::triggerHomeMotionDeviceAction);
+    motionTitleLayout->addWidget(motionAction, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    motionTitleLayout->addStretch(1);
+    auto *motionConnection = new QLabel(motionTitleBar);
+    motionConnection->setObjectName(QStringLiteral("homeMotionConnectionState"));
+    motionConnection->setAlignment(Qt::AlignVCenter | Qt::AlignRight);
+    motionTitleLayout->addWidget(motionConnection, 0, Qt::AlignVCenter | Qt::AlignRight);
     motionLayout->addWidget(motionTitleBar);
     sensorColumnLayout->addWidget(state_->home_motion_card_, 1);
     state_->sensor_card_splitter_->addWidget(state_->home_sensor_column_);

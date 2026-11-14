@@ -405,6 +405,7 @@ struct MainWindowState
     QLabel *home_ai8_temperature_status_lbl_;
     QLabel *home_bmp390_status_lbl_;
     QLabel *home_sht45_status_lbl_;
+    QLabel *home_motion_status_lbl_ = nullptr;
     QToolButton *home_epsilon_action_btn_;
     QToolButton *home_ptb_action_btn_;
     QToolButton *home_hc2a_action_btn_;
@@ -414,6 +415,11 @@ struct MainWindowState
     QToolButton *home_ai8_temperature_action_btn_;
     QToolButton *home_bmp390_action_btn_;
     QToolButton *home_sht45_action_btn_;
+    QToolButton *home_motion_action_btn_ = nullptr;
+    QToolButton *home_motion_title_action_btn_ = nullptr;
+    qint64 home_motion_action_spinner_started_ms_ = 0;
+    qint64 home_motion_action_spinner_until_ms_ = 0;
+    bool home_motion_disconnecting_ = false;
     QWidget *data_telemetry_summary_card_;
     QFrame *data_telemetry_summary_source_pill_;
     QVBoxLayout *data_telemetry_summary_layout_;
