@@ -51,6 +51,17 @@ int main(int argc, char **argv)
     require(validateControl({{"op","sensor"},{"source",0x4a},{"enabled",true},{"poll_ms",200},
         {"parameters",QJsonObject{{"address",2},{"channel",2}}}}),"RD105 uses its independent source and fixed shared-bus address");
     require(!validateControl({{"op","sensor"},{"source",0x48},{"enabled",true}}),"LC0 cannot be enabled through a historical RD105 request");
+    QJsonObject legacyRd105{{"sensorParameters",QJsonObject{{"72",QJsonObject{{"address",7},{"channel",2}}}}}};
+    const auto migratedRd105=FpgaControlConfig::fromJson(legacyRd105);
+    require(!migratedRd105.sensorParameters.contains(0x48)
+        &&migratedRd105.sensorParameters.value(0x4a)==QJsonObject{{"address",2},{"channel",2}},
+        "legacy RD105 presets migrate to the independent source and fixed shared-bus address");
+    require(validateControl({{"op","configure"},{"configuration",migratedRd105.toJson()}}),
+        "a migrated RD105 preset remains usable by the typed remote configuration contract");
+    legacyRd105["sensorParameters"]=QJsonObject{{"72",QJsonObject{{"address",7},{"channel",2}}},
+        {"74",QJsonObject{{"address",2},{"channel",1}}}};
+    require(FpgaControlConfig::fromJson(legacyRd105).sensorParameters.value(0x4a).value("channel")==1,
+        "an explicit current RD105 preset takes priority over legacy values");
     require(!validateControl({{"op","sensor_config"},{"source",0x4a},{"parameters",QJsonObject{{"address",1}}}}),"RD105 cannot collide with AI8 address 1");
     for(int address:{0,1,2,3,7,8,9,12}) {
         require(!validateControl({{"op","instrument"},{"source",0x4a},{"action",2},{"address",address},{"count",1},{"data","AAE="}}),

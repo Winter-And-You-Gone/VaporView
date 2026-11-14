@@ -63,6 +63,15 @@ struct FpgaControlConfig
     static FpgaControlConfig fromJson(const QJsonObject &o) {
         FpgaControlConfig c;
         const auto sensors=o.value("sensorParameters").toObject();for(auto it=sensors.begin();it!=sensors.end();++it)c.sensorParameters[quint16(it.key().toUInt())]=it.value().toObject();
+        // Only historical RD105 presets used lane 0x48 in this configuration model.
+        // Migrate saved fields, never live commands or the LC UART register page.
+        const auto rd105Legacy=c.sensorParameters.take(0x48);
+        if(!rd105Legacy.isEmpty()) {
+            auto& rd105=c.sensorParameters[0x4a];
+            if(!rd105.contains("address"))rd105["address"]=2;
+            if(!rd105.contains("channel") && (rd105Legacy.value("channel")==1 || rd105Legacy.value("channel")==2))
+                rd105["channel"]=rd105Legacy.value("channel");
+        }
         // Previous HMP presets share lane 0x41 but their address 240 is not an
         // HC2A address. Never carry that preset into the replacement probe.
         if(c.sensorParameters.contains(0x41)) {
