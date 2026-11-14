@@ -122,8 +122,18 @@ int main(int argc,char **argv) {
         && !page.findChild<QLabel*>("fpgaPpsCalibrationStatus")->text().contains("123456789"),"qualified PPS without UTC anchor never displays an absolute time");
     require(page.findChild<QLabel*>("fpgaLcStatus")->text().contains(QStringLiteral("厂家命令协议尚未提供")),"LC status explains why vendor controls are unavailable");
     auto* motorFrequency=page.findChild<QDoubleSpinBox*>("fpgaMotorFrequency");auto* motorSteps=page.findChild<QDoubleSpinBox*>("fpgaMotorSteps");
-    require(motorFrequency->minimum()==20 && motorFrequency->maximum()==400 && motorSteps->minimum()==-400 && motorSteps->maximum()==400
+    require(motorFrequency->minimum()==20 && motorFrequency->maximum()==400 && motorSteps->minimum()==-5000 && motorSteps->maximum()==5000
+        && motorSteps->value()==40 && motorSteps->decimals()==0
         && !page.findChild<QDoubleSpinBox*>("fpgaMotorHigh") && !page.findChild<QDoubleSpinBox*>("fpgaMotorPolarity"),"DM422 exposes bounded motion and fixed timing/polarity");
+    for(int pulses:{-5000,5000}) {
+        motorSteps->setValue(pulses);page.findChild<QPushButton*>("fpgaMotorRun")->click();
+        require(advancedRequest.value("op")=="motor" && advancedRequest.value("action")==1 && advancedRequest.value("value").toInt()==pulses,
+            "DM422 run submits both signed 5000-pulse bounds without clamping");
+        page.setConnectionState(true,false);
+    }
+    motorSteps->setValue(40);
+    require(page.findChild<QLabel*>("fpgaMotorSafetyStatus")->text().contains(QStringLiteral("旧 BIT 会拒绝")),
+        "motor guidance distinguishes the host range from old BIT limits");
     int heartbeats=0;QObject::connect(&page,&FpgaControlPage::motorHeartbeatRequested,&page,[&]{++heartbeats;});
     page.findChild<QPushButton*>("fpgaMotorEnable")->click();page.setConnectionState(true,true);
     QElapsedTimer leaseTime;leaseTime.start();while(leaseTime.elapsed()<250){QCoreApplication::processEvents();QThread::msleep(1);}

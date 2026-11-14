@@ -459,7 +459,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     auto *frequency=number(mg,0,"步进频率 / Hz (20..400)","fpgaMotorFrequency",20,400,100);
     operation(mg,0,2,"应用电机参数并停用","Configure and disable","fpgaMotorConfigure",[this,frequency]{motorLeaseRequested_=false;return QJsonObject{{"op","motor_config"},{"frequency",frequency->value()}};});
     motorStatus_=new QLabel(motor);motorStatus_->setObjectName("fpgaMotorSafetyStatus");motorStatus_->setWordWrap(true);mg->addWidget(motorStatus_,1,0,1,3);
-    auto *steps=number(mg,4,"相对运动脉冲数 (±1..400，正值向上接入)","fpgaMotorSteps",-400,400,40);
+    auto *steps=number(mg,4,"相对运动脉冲数 (±1..5000，正值向上接入)","fpgaMotorSteps",-5000,5000,40);
     operation(mg,5,0,"启用电机","Enable motor","fpgaMotorEnable",[this]{motorLeaseRequested_=true;return QJsonObject{{"op","motor"},{"action",4},{"value",1}};});operation(mg,5,1,"运行相对运动","Run relative move","fpgaMotorRun",[steps]{return QJsonObject{{"op","motor"},{"action",1},{"value",steps->value()}};});
     auto *stop=operation(mg,5,2,"停止电机（保持使能）","Stop motor (hold enabled)","fpgaMotorStop",[]{return QJsonObject{{"op","motor"},{"action",2},{"value",0}};});stop->setProperty("fpgaSafetyControl",true);
     auto *disable=operation(mg,6,0,"停用电机","Disable motor","fpgaMotorDisable",[this]{motorLeaseRequested_=false;return QJsonObject{{"op","motor"},{"action",4},{"value",0}};});disable->setProperty("fpgaSafetyControl",true);
@@ -663,8 +663,8 @@ void FpgaControlPage::setHardwareValues(const QMap<quint32,quint32> &v){
     calibrationStatus_->setText(text("PPS 沿新鲜：%1 · 频率校准有效：%2 · UTC 锚点确认：%3\nPPS #%4 · tick %5 · UTC / µs：%6\n仅展示下位机状态，不自动建立 UTC 对应关系。",
         "Recent PPS edge: %1 · Frequency calibrated: %2 · UTC anchor confirmed: %3\nPPS #%4 · tick %5 · UTC / µs: %6\nRead-only firmware status; UTC correspondence is never inferred.")
         .arg(bool(calibration&4)).arg(frequencyValid).arg(utcValid).arg(v.value(0x104c)).arg(ppsTick).arg(utcValid?QString::number(utcUs):text("未确认","Unconfirmed")));
-    motorStatus_->setText(text("DM422：请求使能 %1 · 实际使能 %2 · 心跳存活 %3 · 故障 %4\n本主机每 200 ms 发真实心跳；2 秒失联由 FPGA 释放。单次 ±1..400 脉冲、20..400 Hz，无回零/限位或机械到位检测。",
-        "DM422: requested enable %1 · actual enable %2 · heartbeat alive %3 · fault %4\nThis host sends real heartbeats every 200 ms; FPGA releases after 2 s without them. Moves: ±1..400 pulses, 20..400 Hz; no homing, limits or mechanical position sensing.")
+    motorStatus_->setText(text("DM422：请求使能 %1 · 实际使能 %2 · 心跳存活 %3 · 故障 %4\n本主机每 200 ms 发真实心跳；2 秒失联由 FPGA 释放。单次 ±1..5000 脉冲、20..400 Hz，无回零/限位或机械到位检测。\n超过 400 脉冲需加载支持 5000 脉冲的新 BIT；旧 BIT 会拒绝。",
+        "DM422: requested enable %1 · actual enable %2 · heartbeat alive %3 · fault %4\nThis host sends real heartbeats every 200 ms; FPGA releases after 2 s without them. Moves: ±1..5000 pulses, 20..400 Hz; no homing, limits or mechanical position sensing.\nMoves above 400 pulses require the new 5000-pulse BIT; older BITs reject them.")
         .arg(bool(v.value(0x6708)&1)).arg(bool(v.value(0x6708)&0x40)).arg(bool(v.value(0x6708)&0x20)).arg(bool(v.value(0x673c)&8)));
     lcStatus_->setText(text("LC0 模块匹配：%1 · LC1 模块匹配：%2\n仅查询 UART 状态；模块存在或启用不能证明激光器在线。厂家命令协议尚未提供，控制入口未开放。",
         "LC0 module matches: %1 · LC1 module matches: %2\nUART status only; module presence or enable does not prove a laser is online. Vendor command protocol is unavailable; controls are disabled.")

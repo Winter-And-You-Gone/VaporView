@@ -121,7 +121,7 @@ void motorSafetyDoesNotCompleteAnotherOperation()
 {
     auto mock=std::make_unique<ScriptedTransport>();auto* wire=mock.get();
     SkyFpgaBackend backend(std::move(mock));QObject receiver;
-    int reads=0,heartbeats=0,stops=0;
+    int reads=0,heartbeats=0,stops=0;QVector<qint32> moves;
     QObject::connect(&backend,&SkyFpgaBackend::rawCommand,&receiver,[&](quint64,const QByteArray& bytes) {
         FpgaVlp1::StreamParser parser;
         for(const auto& frame:parser.feed(reinterpret_cast<const std::uint8_t*>(bytes.constData()),bytes.size())) {
@@ -130,6 +130,7 @@ void motorSafetyDoesNotCompleteAnotherOperation()
                 const auto action=word(frame.payload,0);
                 if(action==5)++heartbeats;
                 if(action==2)++stops;
+                if(action==1)moves.append(qint32(word(frame.payload,4)));
             }
         }
     });
@@ -146,6 +147,15 @@ void motorSafetyDoesNotCompleteAnotherOperation()
     };
     finish({{"op","connect"},{"backend","auto"},{"locator","mock"}});
     finish({{"op","motor"},{"action",4},{"value",1}});
+    for(int pulses:{-5000,5000})finish({{"op","motor"},{"action",1},{"value",pulses}});
+    require(moves==QVector<qint32>{-5000,5000},"SkyCore forwards both signed 5000-pulse bounds unchanged");
+    for(double pulses:{0.0,-5001.0,5001.0,1.5}) {
+        bool rejected=false;
+        backend.submit({{"op","motor"},{"action",1},{"value",pulses}},[&](CommandErrorCode code,QString,QJsonObject) {
+            rejected=code==CommandErrorCode::InvalidPayload;
+        });
+        require(rejected&&moves.size()==2,"SkyCore rejects invalid pulse counts before dispatch");
+    }
 
     wire->holdRegularResponses=true;reads=0;
     int refreshCompletions=0,heartbeatCompletions=0;

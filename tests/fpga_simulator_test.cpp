@@ -214,7 +214,11 @@ void currentFirmwareContract()
         "PPS snapshot starts unqualified and cannot guess a UTC anchor");
     check(read(0x6700)==0x00470200&&read(0x6714)==100&&read(0x6718)==500000&&read(0x671c)==1000000&&read(0x6730)==4,
         "DM422 revision and fixed pulse timing match production firmware");
-    check(write(0x6710,401)==7&&write(0x6714,401)==7&&write(0x6718,10)==6&&action(0x47,12,1,40)==11,
+    for(qint32 pulses:{-5000,5000})check(write(0x6710,quint32(pulses))==0&&qint32(read(0x6710))==pulses,
+        "DM422 target register accepts both signed 5000-pulse bounds");
+    for(qint32 pulses:{0,-5001,5001})check(write(0x6710,quint32(pulses))==7&&read(0x6710)==5000,
+        "DM422 rejects zero and out-of-range targets without changing the accepted target");
+    check(write(0x6714,401)==7&&write(0x6718,10)==6&&action(0x47,12,1,40)==11,
         "DM422 rejects out of range configuration, writes to pulse timing and unarmed movement");
     check(write(4,1)==0&&action(0x47,12,5)==0&&action(0x47,12,4,1)==0&&action(0x47,12,1,40)==0,
         "real heartbeat and enable arm an explicit finite movement");
@@ -223,6 +227,11 @@ void currentFirmwareContract()
     events(1700);check((read(0x673c)&8)&&!(read(0x673c)&1),"two seconds without host heartbeat faults and releases DM422");
     check(action(0x47,12,5)==0&&action(0x47,12,1,40)==11,"a recovered heartbeat cannot replay movement through a latched fault");
     check(action(0x47,12,4,0)==0&&action(0x47,12,4,1)==0&&(read(0x673c)&1),"explicit disable and enable restore DM422 after watchdog fault");
+    for(qint32 pulses:{-5000,5000}) {
+        check(action(0x47,12,1,quint32(pulses))==0&&qint32(read(0x6710))==pulses&&(read(0x6708)&8),
+            "armed DM422 starts either signed 5000-pulse request");
+        check(action(0x47,12,2)==0&&!(read(0x6708)&8),"STOP can interrupt a 5000-pulse request without waiting for completion");
+    }
     transport->close();
     auto historical=makeFpgaUsbSimulator(nullptr,FpgaSimulatorStartup::Idle,FpgaSimulatorFirmware::HistoricalExtensions);
     check(historical->open(),"historical extension fixture remains explicit and separate");

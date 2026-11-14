@@ -207,7 +207,7 @@ bool validateControl(const QJsonObject& control, QString *error)
         if(!integer(control.value("action"),1,33) || !integer(control.value("value"),op=="motor"?-2147483648.0:0,op=="motor"?2147483647.0:4294967295.0))return fail();
         const int a=control.value("action").toInt();const double v=control.value("value").toDouble();
         if(op=="time" && !((a==1 || a==3)?v<=1:a==2?v==0:a==4?(v>=1 && v<=3600000):false))return fail();
-        if(op=="motor" && !((a==1 && std::abs(v)>=1 && std::abs(v)<=400) || ((a==2 || a==3) && v==0) || (a==4 && v>=0 && v<=1)))return fail();
+        if(op=="motor" && !((a==1 && std::abs(v)>=1 && std::abs(v)<=5000) || ((a==2 || a==3) && v==0) || (a==4 && v>=0 && v<=1)))return fail();
         if(op=="sensor_action" || op=="maintenance") {
             keys << "source";if(!integer(control.value("source"),0,65535))return fail();const int src=control.value("source").toInt();
             if(op=="sensor_action" && !(sensorSource(src) && (((a==3 || a==4) && v==0) || (a==5 && src!=0x41) || (a==32 && src==0x45 && v<=2) || (a==33 && src==0x45 && v>=1 && v<=4))))return fail();

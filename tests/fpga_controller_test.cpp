@@ -355,6 +355,18 @@ void advancedDataPaths(){
     require(!f.transport->regs.value(0x1038) && !f.transport->regs.value(0x103c),"PPS status does not allow manual GNSS tag writes");
     f.controller.executeOperation({{"op","motor_config"},{"frequency",100}});f.finish();
     require(f.transport->regs.value(0x6704)==0 && f.transport->regs.value(0x6714)==100 && f.transport->regs.value(0x6730)==4,"DM422 frequency configured with fixed polarity and disabled drive");
+    for(qint32 pulses:{-5000,5000}) {
+        f.transport->clear();f.controller.executeOperation({{"op","motor"},{"action",1},{"value",pulses}});f.finish();
+        int moves=0;
+        for(const auto& command:f.transport->commands)if(command.message==12&&command.source==0x47&&command.address==1) {
+            ++moves;require(qint32(command.value)==pulses,"DM422 signed 5000-pulse request reaches VLP unchanged");
+        }
+        require(moves==1,"a finite DM422 move is transmitted once");
+    }
+    for(double pulses:{0.0,-5001.0,5001.0,1.5}) {
+        f.transport->clear();f.controller.executeOperation({{"op","motor"},{"action",1},{"value",pulses}});
+        require(f.transport->commands.isEmpty(),"invalid DM422 pulse counts are rejected before USB transmission");
+    }
     f.controller.executeOperation({{"op","stream_config"},{"mode",1},{"high_water",2048},{"burst",16}});f.finish();
     require(f.transport->regs.value(0x7010)==1 && f.transport->regs.value(0x7018)==2048 && f.transport->regs.value(0x7034)==16,"upload tuning has verified hardware readbacks");
     f.controller.executeOperation({{"op","watchdog"},{"value",30000}});f.finish();f.transport->clear();

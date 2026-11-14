@@ -505,7 +505,7 @@ private:
         }
         if(base==0x6700) {
             if(offset==4) {if(value&~3u)return 7;if((value&2) && (enabled || motorBusy_ || (value&1)))return 8;}
-            else if(offset==0x10) {if(motorBusy_)return 8;const auto n=qint64(qint32(value));if(!n || std::abs(n)>400)return 7;}
+            else if(offset==0x10) {if(motorBusy_)return 8;const auto n=qint64(qint32(value));if(!n || std::abs(n)>5000)return 7;}
             else if(offset==0x14) {if(motorBusy_)return 8;if(value<20 || value>400)return 7;}
             else if(offset==0x20) {if(value)return 7;}
             else if(offset==0x24) {if(motorBusy_)return 8;}

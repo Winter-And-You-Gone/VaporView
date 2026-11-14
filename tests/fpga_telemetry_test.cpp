@@ -80,6 +80,11 @@ int main(int argc, char **argv)
         {{"op","stream_config"},{"mode",1},{"high_water",4096},{"burst",8}},
         {{"op","watchdog"},{"value",30000}},{{"op","maintenance"},{"source",2},{"action",9},{"value",0}}})
         require(parseControl(encodeControl(operation),parsed),"advanced typed operations roundtrip for Local/SkyCore");
+    for(int pulses:{-5000,-1,1,5000}) {
+        const QJsonObject operation{{"op","motor"},{"action",1},{"value",pulses}};
+        require(parseControl(encodeControl(operation),parsed)&&parsed.value("value").toInt()==pulses,
+            "signed DM422 pulse bounds survive Local/SkyCore encoding without clamping");
+    }
     for(const auto& operation:QVector<QJsonObject>{
         {{"op","sensor_config"},{"source",0x43},{"parameters",QJsonObject{{"iir",3}}}},
         {{"op","sensor_config"},{"source",0x41},{"parameters",QJsonObject{{"address",240}}}},
@@ -91,7 +96,9 @@ int main(int argc, char **argv)
         {{"op","sensor_config"},{"source",0x44},{"parameters",QJsonObject{{"arbitrary",1}}}},
         {{"op","time"},{"action",9},{"value",0}},{{"op","watchdog"},{"value",100}},
         {{"op","motor_config"},{"frequency",196078},{"high_ticks",256},{"dir_ticks",505},{"polarity",0}},
-        {{"op","motor"},{"action",1},{"value",0}},{{"op","motor"},{"action",1},{"value",401}},
+        {{"op","motor"},{"action",1},{"value",0}},{{"op","motor"},{"action",1},{"value",5001}},
+        {{"op","motor"},{"action",1},{"value",-5001}},{{"op","motor"},{"action",1},{"value",5000.5}},
+        {{"op","motor"},{"action",1},{"value",-5000.5}},{{"op","motor"},{"action",1},{"value",0.5}},
         {{"op","motor_config"},{"frequency",19}},{{"op","motor_config"},{"frequency",401}},
         {{"op","motor"},{"action",3},{"value",1}}})require(!validateControl(operation),"unsafe or unknown advanced parameters rejected");
     QByteArray event(32,0);event[0]=1;
