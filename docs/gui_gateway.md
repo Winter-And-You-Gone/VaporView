@@ -14,6 +14,8 @@ Session 同步仅针对已经落到地面端且结束写入的 Session（v1 `ses
 
 ## 服务器 v1 接口
 
+仓库提供可直接运行的[本地网页验证台](../tools/gateway_demo/README.md)，包含协议参考服务端、实时请求面板和真实 Gateway 的一键联调。它使用模拟 SkyCore 验证遥测、命令结果、Session 上传及断网恢复，适合在甲方服务器确定前验证接口。
+
 当前使用 Qt Network 提供 HTTPS REST 上传和异步命令轮询，不依赖 Qt WebSockets。以下是本仓库定义的 v1 对接协议；上线前应与甲方服务端确认并实现对应接口。
 
 所有路径相对于配置的服务器根地址。请求使用 `Authorization: Bearer <token>` 和 `X-VaporView-Device-Id`，JSON 为 UTF-8。服务端必须将 token 与设备权限绑定，校验设备 ID，并对上传消息 ID 幂等处理。客户端不跟随重定向。命令正常约每 5 秒轮询一次；请求超时为 15 秒，失败逐步退避到最多 60 秒，命令轮询失败不阻止数据上传。响应最大 1 MiB。
