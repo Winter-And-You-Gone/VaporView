@@ -762,12 +762,13 @@ void SkyDeviceManager::acceptFpgaMeasurement(const FpgaSensor::AdaptedMeasuremen
     } else if(r.kind==FpgaSensor::SensorKind::Rd105) {
         auto data=latest_temperature_controller_;
         const auto registers=fpgaStatus().value("registers").toObject();
-        const int channel=qBound(1,int(r.rd105Channel.value_or(quint32(registers.value(QString::number(0x681c)).toDouble(1)))),2)-1;
+        const int channel=qBound(1,int(r.rd105Channel.value_or(quint32(registers.value(QString::number(0x6a1c)).toDouble(1)))),2)-1;
         data.valid=valid;data.timestamp=timestamp;data.error_code=quint16(r.rd105Error.value_or(0));
-        data.channels[channel].target_temperature_c=r.rd105TargetMicroC?*r.rd105TargetMicroC/1000000.0:std::numeric_limits<double>::quiet_NaN();
-        data.channels[channel].measured_temperature_c=r.rd105ActualMicroC?*r.rd105ActualMicroC/1000000.0:std::numeric_limits<double>::quiet_NaN();
-        if(r.rd105OutputRaw)data.channels[channel].output_percent=valid?*r.rd105OutputRaw/20000.0:std::numeric_limits<double>::quiet_NaN();
-        if(r.rd105OutputEnabled)data.channels[channel].output_enabled=valid&&*r.rd105OutputEnabled!=0;
+        data.device_address=int(registers.value(QString::number(0x6a14)).toDouble(2));data.rs485_baud_index=2;
+        data.channels[channel].target_temperature_c=valid&&r.rd105TargetMicroC?*r.rd105TargetMicroC/1000000.0:std::numeric_limits<double>::quiet_NaN();
+        data.channels[channel].measured_temperature_c=valid&&r.rd105ActualMicroC?*r.rd105ActualMicroC/1000000.0:std::numeric_limits<double>::quiet_NaN();
+        data.channels[channel].output_percent=valid&&r.rd105OutputRaw?*r.rd105OutputRaw/20000.0:std::numeric_limits<double>::quiet_NaN();
+        data.channels[channel].output_enabled=valid&&r.rd105OutputEnabled&&*r.rd105OutputEnabled!=0;
         setState(SkyDeviceId::TemperatureController,valid?DeviceState::Connected:DeviceState::Error);handleTemperatureControllerData(data);
     }
     fpga_status_.rx_count++; fpga_status_.last_data_time_us=nowUs();
@@ -1024,7 +1025,7 @@ QVector<DeviceStatusItem> SkyDeviceManager::allStatuses() const
 {
     if (config_.sensor_transport_path == SensorTransportPath::FpgaRelay)
     {
-        return {fpga_status_,epsilon_status_,ptb_status_,hc2a_status_,lidar_status_,ai8_temperature_controller_status_,wave_tcp_status_};
+        return {fpga_status_,epsilon_status_,ptb_status_,hc2a_status_,lidar_status_,temperature_controller_status_,ai8_temperature_controller_status_,wave_tcp_status_};
     }
     return {epsilon_status_, ptb_status_, hc2a_status_, lidar_status_, temperature_controller_status_, ai8_temperature_controller_status_, wave_tcp_status_,bmp390_status_,sht45_status_};
 }

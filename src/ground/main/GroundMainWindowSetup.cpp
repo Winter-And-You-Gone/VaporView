@@ -5822,9 +5822,9 @@ void MainWindow::setupDataPanels()
     temperatureTitleLayout->addWidget(state_->temperature_title_action_btn_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     auto* readFpgaTemperature=createTemperatureTitleActionButton(temperatureTitleBar,QStringLiteral("temperatureFpgaReadParameters"),VaporView::SkyDeviceId::TemperatureController);
     readFpgaTemperature->setIcon(createLucideIcon(QStringLiteral("refresh-cw"),toolbarColor(AppThemeColor::ToolbarBlue)));
-    readFpgaTemperature->setToolTip(QStringLiteral("读取 RD105 当前测量通道及通用参数"));readFpgaTemperature->hide();
+    readFpgaTemperature->setToolTip(QStringLiteral("读取 RD105 双通道及通用参数"));readFpgaTemperature->hide();
     connect(readFpgaTemperature,&QToolButton::clicked,this,[this]{if(isFpgaRelayPath()) {
-        VaporView::TemperatureControllerCommand request;request.channel=quint8(homeFpgaRegisters().value(0x681c,1));
+        VaporView::TemperatureControllerCommand request;request.channel=2;
         sendTemperatureCommand(VaporView::CommandId::QueryDeviceStatus,request);
     }});
     if (QWidget *temperatureTitleStatus = state_->temperature_controller_panel_->titleStatusWidget())

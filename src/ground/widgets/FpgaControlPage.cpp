@@ -331,7 +331,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     auto *sensors=tab(QStringLiteral("传感器"),QStringLiteral("Sensors")); auto *sensorLayout=new QVBoxLayout(sensors);
     auto *sensorCard=card(sensors,sensorLayout,QStringLiteral("传感器状态"),QStringLiteral("Sensor status"),QStringLiteral("activity"));
     auto *sensorGrid=new QGridLayout(sensorCard);sensorGrid->setObjectName("fpgaSensorGrid");sensorGrid->setSpacing(12);sensorGrid->setColumnStretch(1,1);
-    const char *names[]={"PTB210","HC2A","EPSILON","BMP390","SHT45","SDFM300","RD105"}; const quint16 sources[]={0x40,0x41,0x42,0x43,0x44,0x45,0x48};
+    const char *names[]={"PTB210","HC2A","EPSILON","BMP390","SHT45","SDFM300","RD105"}; const quint16 sources[]={0x40,0x41,0x42,0x43,0x44,0x45,0x4a};
     for(int i=0;i<7;++i) {
         const auto source=sources[i]; const auto suffix=QString::number(source,16).rightJustified(4,QChar('0'));
         auto *name=new QLabel(QString::fromLatin1(names[i]),sensorCard); name->setObjectName("fpgaSensorName"+suffix);
@@ -341,7 +341,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
         sensorGrid->addWidget(l,i,1);
         auto* enable=action(sensorGrid,i,2,"启用","Enable","fpgaSensorEnable"+suffix,[this,source]{emit sensorEnableRequested(source,true);});
         auto* disable=action(sensorGrid,i,3,"停用","Disable","fpgaSensorDisable"+suffix,[this,source]{emit sensorEnableRequested(source,false);});
-        if(source==0x48) {enable->setProperty("fpgaExtension",VaporView::FpgaExtensions::Rd105);disable->setProperty("fpgaExtension",VaporView::FpgaExtensions::Rd105);}
+        if(source==0x4a) {enable->setProperty("fpgaExtension",VaporView::FpgaExtensions::Rd105);disable->setProperty("fpgaExtension",VaporView::FpgaExtensions::Rd105);}
     }
     auto *ai8config=card(sensors,sensorLayout,QStringLiteral("AI8 轮询配置（停用时提交）"),QStringLiteral("AI8 polling configuration (apply while disabled)"),QStringLiteral("sliders-vertical"));
     auto *ai8layout=new QHBoxLayout(ai8config);auto *ai8controls=new QVBoxLayout;auto *ai8grid=new QGridLayout;
@@ -481,7 +481,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
         {0x6900,"LC1 模块 ID","LC1 module ID"},{0x6908,"LC1 UART 状态","LC1 UART status"},{0x6928,"LC1 完成发送字节数","LC1 transmitted byte count"},{0x692c,"LC1 接收字节数","LC1 received byte count"}});
     auto *maintenance=card(advanced,advancedLayout,QStringLiteral("设备维护与上传"),QStringLiteral("Maintenance and upload"),QStringLiteral("settings"));auto *maintenanceGrid=new QGridLayout(maintenance);
     auto *module=new VaporView::SingleLevelPopupComboBox(maintenance);module->setObjectName("fpgaMaintenanceModule");maintenanceGrid->addWidget(module,0,0,1,2);
-    for(auto pair:{qMakePair("时间同步",2),qMakePair("WMS0 / DAC0",0x10),qMakePair("WMS1 / DAC1",0x11),qMakePair("ADC0",0x20),qMakePair("ADC1",0x21),qMakePair("DLIA0",0x30),qMakePair("DLIA1",0x31),qMakePair("PTB210",0x40),qMakePair("HC2A",0x41),qMakePair("EPSILON",0x42),qMakePair("BMP390",0x43),qMakePair("SHT45",0x44),qMakePair("SDFM300",0x45),qMakePair("AI8",0x46),qMakePair("步进电机",0x47),qMakePair("RD105",0x48)})module->addItem(QString::fromUtf8(pair.first),pair.second);
+    for(auto pair:{qMakePair("时间同步",2),qMakePair("WMS0 / DAC0",0x10),qMakePair("WMS1 / DAC1",0x11),qMakePair("ADC0",0x20),qMakePair("ADC1",0x21),qMakePair("DLIA0",0x30),qMakePair("DLIA1",0x31),qMakePair("PTB210",0x40),qMakePair("HC2A",0x41),qMakePair("EPSILON",0x42),qMakePair("BMP390",0x43),qMakePair("SHT45",0x44),qMakePair("SDFM300",0x45),qMakePair("AI8",0x46),qMakePair("步进电机",0x47),qMakePair("RD105",0x4a)})module->addItem(QString::fromUtf8(pair.first),pair.second);
     operation(maintenanceGrid,1,0,"复位所选模块","Reset selected module","fpgaModuleReset",[module]{return QJsonObject{{"op","maintenance"},{"source",module->currentData().toInt()},{"action",8},{"value",0}};});operation(maintenanceGrid,1,1,"清除所选模块错误","Clear selected errors","fpgaModuleClearErrors",[module]{return QJsonObject{{"op","maintenance"},{"source",module->currentData().toInt()},{"action",9},{"value",0}};});
     operation(maintenanceGrid,2,0,"清空所选传感器 FIFO","Clear sensor FIFO","fpgaSensorClearFifo",[module]{return QJsonObject{{"op","sensor_action"},{"source",module->currentData().toInt()},{"action",3},{"value",0}};});
     auto *watchdog=number(maintenanceGrid,5,"看门狗超时 / ms (0 关闭，启用至少 30000)","fpgaWatchdogTimeout",0,3600000,0);operation(maintenanceGrid,5,2,"设置看门狗","Set watchdog","fpgaWatchdogSet",[watchdog]{return QJsonObject{{"op","watchdog"},{"value",watchdog->value()}};});
@@ -666,7 +666,7 @@ void FpgaControlPage::setExtensions(quint32 bits) {
     if(ai8Scan_) {const QSignalBlocker block(ai8Scan_);ai8Scan_->setChecked(config_.ai8.scan && (bits&VaporView::FpgaExtensions::Ai8Scan));}
     if(auto* module=findChild<QComboBox*>("fpgaMaintenanceModule"))
         if(auto* model=qobject_cast<QStandardItemModel*>(module->model()))
-            if(auto* item=model->item(module->findData(0x48)))item->setEnabled(bits&VaporView::FpgaExtensions::Rd105);
+            if(auto* item=model->item(module->findData(0x4a)))item->setEnabled(bits&VaporView::FpgaExtensions::Rd105);
     updateActions();
 }
 void FpgaControlPage::showEvent(QShowEvent *event){
@@ -1105,7 +1105,7 @@ void FpgaControlPage::setUiTestState(bool enabled, bool dataStalled, bool partia
         simulation_.savedUsb=usbDiscovery_;simulation_.savedUsbRemote=usbRemote_;simulation_.savedUsbAvailable=usbHostAvailable_;
         const auto firmware=property("fpgaHistoricalExtensionsFixture").toBool()
             ? VaporView::Ground::Devices::FpgaSimulatorFirmware::HistoricalExtensions
-            : VaporView::Ground::Devices::FpgaSimulatorFirmware::CurrentHcd2;
+            : VaporView::Ground::Devices::FpgaSimulatorFirmware::Rd105Integrated;
         auto transport=VaporView::Ground::Devices::makeFpgaUsbSimulator(nullptr,
             VaporView::Ground::Devices::FpgaSimulatorStartup::Idle,firmware);
         const auto discovery=transport->discoverDevices();

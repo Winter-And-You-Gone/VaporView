@@ -125,7 +125,7 @@ RemoteSkyController::RemoteSkyController(QObject *parent)
             case 0x44: device = SkyDeviceId::Sht45; break;
             case 0x45: device = SkyDeviceId::Lidar; break;
             case 0x46: device = SkyDeviceId::Ai8TemperatureController; break;
-            case 0x48: device = SkyDeviceId::TemperatureController; break;
+            case 0x4a: device = SkyDeviceId::TemperatureController; break;
             default: break;
             }
             if (valid) state_.noteDeviceData(SkyDeviceId::Fpga, now);

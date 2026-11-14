@@ -10,7 +10,7 @@ constexpr quint32 Ai8Parameters = 4u;
 constexpr quint32 EpsilonMailbox = 8u;
 constexpr quint32 Rd105 = 16u;
 constexpr quint32 DliaCutoff = 32u;
-inline bool sensor(quint16 source) { return (source >= 0x40 && source <= 0x46) || source == 0x48; }
+inline bool sensor(quint16 source) { return (source >= 0x40 && source <= 0x46) || source == 0x4a; }
 inline bool cutoff(quint32 hz) {
     return hz==100 || hz==250 || hz==500 || hz==1000 || hz==2000 || hz==5000 || hz==10000;
 }

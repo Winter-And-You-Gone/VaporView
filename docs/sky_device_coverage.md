@@ -14,7 +14,7 @@
 | HC2A | PASS | PASS | N/A | N/A | PASS | PASS | 温湿度槽串口/频率配置，设备内部参数页 N/A。 |
 | SHT45 | PASS | PASS | N/A | N/A | PASS | PASS | 独立 `sht45` 配置与设备 ID 10；USB 串口文本桥，内部温湿度不写 HC2A 环境槽。 |
 | SDFM300 | PASS | PASS | N/A | N/A | PASS | PASS | 当前 Local 没有真实用户可修改的内部参数。 |
-| RD105 | PASS | PASS | PASS | PASS | PASS | PASS | 同一个 `TemperatureControllerPanel`，经 `Rd105DeviceSession` 路由 Local 或 Remote backend。 |
+| RD105 | PASS | PASS | PASS | PASS | PASS | PASS | 同一个 `TemperatureControllerPanel`，经 `Rd105DeviceSession` 路由 Local / Remote；新增 FPGA `0x4A/0x6A00` 双通道采集及写后读回，通信预配置和维护限制见 [RD105 接入说明](rd105.md)。 |
 | AI-8288 / AI-8 | PASS | PASS | PASS | PASS | PASS | PASS | 同一个 `Ai8TemperatureControllerPanel`，写入后 Sky 端回读确认。 |
 | AI-8288 / AI-8 factory reset | N/A | N/A | N/A（正式 UI） | N/A（真实 collector） | PASS | PASS | 当前正式 AI-8 页面没有恢复出厂按钮；仿真保留受控 factory-reset 验收。 |
 | Wave TCP | PASS | PASS | N/A | PASS | PASS | PASS | 网络数据源，不套用串口参数页。 |

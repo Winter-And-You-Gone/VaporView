@@ -67,6 +67,7 @@ public:
             for(int id=0;id<256;++id)rates_.remove(quint16(0x4200+id));
         }
         if(source==0x46) {for(int i=1;i<=8;++i)rates_.remove(quint16(0x4600+i));ai8ScanSnapshots_={};ai8ScanTicks_={};}
+        if(source==0x4a)for(int i=1;i<=2;++i)rates_.remove(quint16(0x4a00+i));
     }
     void setAi8Channel(int channel) { ai8Channel_ = channel; }
 

@@ -17,7 +17,7 @@ void FpgaDeviceController::readExtensions()
     const auto bits=extensions();emit capabilitiesUpdated(bits);
     if(bits&FpgaExtensions::Ai8Scan) {read(0x6668,2);read(0x6698);read(0x66a0,6);read(0x66fc);}
     if(bits&FpgaExtensions::Ai8Parameters)read(0x6684,5);
-    if(bits&FpgaExtensions::Rd105) {read(0x6800,19);read(0x6884,4);}
+    if(bits&FpgaExtensions::Rd105) {read(0x6a00,20);read(0x6a84,4);}
     if(bits&FpgaExtensions::EpsilonMailbox)read(0x6244,7);
     if(bits&FpgaExtensions::DliaCutoff) {read(0x5058,2);read(0x5158,2);}
     for(auto& step:remaining)steps_.push_back(std::move(step));
@@ -35,20 +35,20 @@ void FpgaDeviceController::executeExtension(const QJsonObject& request)
     const quint16 source=quint16(request.value("source").toInt());
     const quint32 required=op=="epsilon_mailbox"?FpgaExtensions::EpsilonMailbox:
         op=="dlia_cutoff"?FpgaExtensions::DliaCutoff:(op=="ai8_scan" || op=="ai8_cache")?FpgaExtensions::Ai8Scan:
-        source==0x48?FpgaExtensions::Rd105:op=="instrument"?FpgaExtensions::Ai8Parameters:
+        source==0x4a?FpgaExtensions::Rd105:op=="instrument"?FpgaExtensions::Ai8Parameters:
         request.value("channel").toInt()?FpgaExtensions::Ai8Scan:0;
     if(required && !(extensions()&required)) {reject(QStringLiteral("当前固件未报告此扩展能力；请更新下位机后重新连接。"));return;}
-    const QString label=op=="device_temperature"?(source==0x48?QStringLiteral("RD105 设温与确认"):QStringLiteral("AI8 设温与确认")):
-        op=="instrument"?(source==0x48?QStringLiteral("RD105 参数事务与回读"):QStringLiteral("AI8 参数事务与回读")):
+    const QString label=op=="device_temperature"?(source==0x4a?QStringLiteral("RD105 设温与确认"):QStringLiteral("AI8 设温与确认")):
+        op=="instrument"?(source==0x4a?QStringLiteral("RD105 参数事务与回读"):QStringLiteral("AI8 参数事务与回读")):
         op=="epsilon_mailbox"?QStringLiteral("EPSILON 命令与 RTCM 转发"):op=="ai8_cache"?QStringLiteral("AI8 通道缓存读回"):
         op=="ai8_scan"?QStringLiteral("AI8 扫描配置"):QStringLiteral("DLIA 截止频率配置");
     if(!begin(label))return;
     extensionRequest_=request;extensionResult_={{"op",op},{"ticket",request.value("ticket")},{"source",source},{"verified",false}};
     if(op=="instrument") {
-        const quint32 base=source==0x48?0x6800:0x6600;
+        const quint32 base=source==0x4a?0x6a00:0x6600;
         if(!(registers_.value(base+4)&1)) {fail(QStringLiteral("参数操作前请先启用对应设备。"));return;}
-        const bool rd=source==0x48;
-        const quint32 counter=base+(rd?0x90:0x94),status=base+(rd?0x8c:0x8c);
+        const bool rd=source==0x4a;
+        const quint32 counter=base+(rd?0x90:0x94),status=base+0x8c;
         const quint32 operation=quint32(request.value("action").toInt());
         const quint32 address=quint32(request.value("address").toInt());
         const auto data=QByteArray::fromBase64(request.value("data").toString().toLatin1());
@@ -70,7 +70,7 @@ void FpgaDeviceController::executeExtension(const QJsonObject& request)
             const quint32 code=state&0xf;
             extensionResult_["status"]=double(state);extensionResult_["counter"]=double(registers_.value(counter));
             if(registers_.value(counter)!=quint32(extensionResult_.value("baseline").toDouble())+1u
-                || (state&0x3ffff)!=(0x20000u+code) || (code!=0 && !(rd && operation==3 && code==6))) {
+                || (state&0x3ffff)!=0x20000u || code!=0) {
                 fail(QStringLiteral("设备参数事务未通过：状态 0x%1；执行结果可能未知，未自动重试。").arg(state,8,16,QLatin1Char('0')));return;
             }
             QByteArray actual;
@@ -78,13 +78,8 @@ void FpgaDeviceController::executeExtension(const QJsonObject& request)
             else {const auto raw=registers_.value(base+0x90);actual.append(char(raw>>8));actual.append(char(raw));}
             actual.truncate(count*2);
             extensionResult_["data"]=QString::fromLatin1(actual.toBase64());
-            extensionResult_["verified"]=code==0;
-            extensionResult_["unverified"]=code==6;
+            extensionResult_["verified"]=true;
             if(operation==2 && actual!=data) {fail(QStringLiteral("参数实际读回值与写入值不同。"));return;}
-            if(code==6) {
-                read(0x6804,3);
-                report(QStringLiteral("RD105 恢复出厂收到写 ACK，最终状态未验证；轮询已停止，请按恢复后的通信参数重新连接。"),LogLevel::Warning);
-            }
         });
     } else if(op=="epsilon_mailbox") {
         if(!(registers_.value(0x6204)&1)) {fail(QStringLiteral("EPSILON 命令或 RTCM 转发前请先启用 EPSILON。"));return;}
@@ -148,16 +143,16 @@ void FpgaDeviceController::executeExtension(const QJsonObject& request)
         callback([this,base,hz]{configuration_.dlia[(base-0x5000)/0x100].cutoffHz=hz;extensionResult_["verified"]=true;});
     } else if(op=="device_temperature") {
         const double c=request.value("celsius").toDouble();
-        const quint32 base=source==0x48?0x6800:0x6600;
+        const quint32 base=source==0x4a?0x6a00:0x6600;
         if(!(registers_.value(base+4)&1)) {fail(QStringLiteral("设温前请先启用对应设备。"));return;}
         const quint32 target=quint32(qint32(std::llround(c*1000000)));
         read(base+0x48);callback([this,base]{extensionResult_["baseline"]=double(registers_.value(base+0x48));});
         if(source==0x46 && request.contains("channel")) {write(0x666c,quint32(request.value("channel").toInt()));verify(0x666c,quint32(request.value("channel").toInt()));}
-        Step s;s.kind=Kind::Sensor;s.address=source==0x48?18:17;s.source=source;s.expected=target;steps_.push_back(s);
+        Step s;s.kind=Kind::Sensor;s.address=17;s.source=source;s.expected=target;steps_.push_back(s);
         callback([this,base,target,source] {
             // Completion is the verified device counter, not the VLP write ACK.
             waitFor(base+0x48,0xffffffff,quint32(extensionResult_.value("baseline").toDouble())+1u);
-            if(source==0x48)verify(0x6840,target);
+            if(source==0x4a)verify(0x6a40,target);
             else {read(0x664c);read(0x6654);callback([this,target] {
                 const auto raw=quint16(qint32(target)/100000);
                 if(registers_.value(0x664c)!=0x10000 || registers_.value(0x6654)!=(quint32(raw)<<16|raw))fail(QStringLiteral("AI8 设温回读不匹配。"));

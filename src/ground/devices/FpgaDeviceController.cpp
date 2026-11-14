@@ -326,7 +326,7 @@ void FpgaDeviceController::readAll()
     for (quint32 base : {0x3000u,0x3100u}) { read(base+0x10,14); }
     for (quint32 base : {0x4000u,0x4100u}) { read(base+0x10,12); }
     for (quint32 base : {0x5000u,0x5100u}) { read(base+0x10,18); }
-    for(const auto& spec:FpgaRemote::sensorParameters())if(spec.source!=0x48 || (extensions()&FpgaExtensions::Rd105))read(spec.address);
+    for(const auto& spec:FpgaRemote::sensorParameters())if(spec.source!=0x4a || (extensions()&FpgaExtensions::Rd105))read(spec.address);
     read(0x0040);read(0x7010);read(0x7018);read(0x7034);
     read(0x6010,3); // PTB baud, serial format and polling interval.
     read(0x6210);   // EPSILON baud.
@@ -369,7 +369,7 @@ bool FpgaDeviceController::versionsMatch(QString *detail) const
         if (detail) *detail=QStringLiteral("模块版本不匹配：%1 实际 %2，期望 %3；已禁用写操作。")
             .arg(hex(i.key()),hex(registers_.value(i.key())),hex(i.value())); return false;
     }
-    if((cap.extensions&FpgaExtensions::Rd105) && registers_.value(0x6800)!=0x00480103) {
+    if((cap.extensions&FpgaExtensions::Rd105) && registers_.value(0x6a00)!=0x004a0103) {
         if(detail)*detail=QStringLiteral("RD105 模块版本与扩展能力不一致。");return false;
     }
     return true;
@@ -605,7 +605,7 @@ void FpgaDeviceController::reportConnection(quint16 source, const QString& resul
 {
     const QMap<quint16,QString> names{{0,QStringLiteral("ADC / DLIA")},{0x40,QStringLiteral("PTB210")},
         {0x41,QStringLiteral("HC2A")},{0x42,QStringLiteral("EPSILON")},{0x43,QStringLiteral("BMP390")},{0x44,QStringLiteral("SHT45")},
-        {0x45,QStringLiteral("SDFM300")},{0x46,QStringLiteral("AI-8288D92J0")},{0x48,QStringLiteral("RD105")}};
+        {0x45,QStringLiteral("SDFM300")},{0x46,QStringLiteral("AI-8288D92J0")},{0x4a,QStringLiteral("RD105")}};
     LogRecord record; record.source=QStringLiteral("Ground"); record.category=QStringLiteral("device.fpga");
     record.level=(result==QStringLiteral("failed") || result==QStringLiteral("warning"))?LogLevel::Warning:LogLevel::Info;
     record.message=names.value(source)+QStringLiteral(" 经 FPGA ")+
@@ -657,7 +657,7 @@ void FpgaDeviceController::confirmConnection(quint16 source)
             QStringLiteral("采集 CONTROL 读回确认；波形上传由 RAW 开关独立控制。"));
         pendingConnections_.remove(source); operationConnections_.remove(source); pendingConnectionLogContexts_.remove(source); return;
     }
-    const quint32 pollAddress=source==0x40?0x6018:source==0x41?0x611c:source==0x43?0x6314:source==0x44?0x6414:source==0x46?0x662c:source==0x48?0x682c:0;
+    const quint32 pollAddress=source==0x40?0x6018:source==0x41?0x611c:source==0x43?0x6314:source==0x44?0x6414:source==0x46?0x662c:source==0x4a?0x6a2c:0;
     const qint64 timeout=qMax<qint64>(8000,3*qint64(pollAddress?registers_.value(pollAddress):0)+5000);
     pendingConnections_[source]=QDateTime::currentMSecsSinceEpoch()+timeout;
     startupWarningDeadlines_[source]=connectionClock_.elapsed()+startupWarningGraceMs(source,registers_);
@@ -774,15 +774,15 @@ void FpgaDeviceController::recoverConnection()
     operation_=QStringLiteral("连接后恢复采集与传感器");
     emit connectionChanged(false,true,operation_);
     snapshotConfiguration();
-    for(quint16 source:{0x40,0x41,0x42,0x43,0x44,0x45,0x46,0x48})
-        if((source!=0x48 || (extensions()&FpgaExtensions::Rd105))
+    for(quint16 source:{0x40,0x41,0x42,0x43,0x44,0x45,0x46,0x4a})
+        if((source!=0x4a || (extensions()&FpgaExtensions::Rd105))
             && (saved.value(0x6004+(source-0x40)*0x100)&1))trackConnection(source);
     for(quint32 control:{0x4004u,0x4104u,0x5004u,0x5104u})
         if(saved.value(control)&1) {trackConnection(0);break;}
     if(!enableUpload())return;
     stopAndDrain();resetAcquisition();
-    for(quint32 b:{0x6000u,0x6100u,0x6200u,0x6300u,0x6400u,0x6500u,0x6600u,0x6800u}) {
-        if(b==0x6800 && !(extensions()&FpgaExtensions::Rd105))continue;
+    for(quint32 b:{0x6000u,0x6100u,0x6200u,0x6300u,0x6400u,0x6500u,0x6600u,0x6a00u}) {
+        if(b==0x6a00 && !(extensions()&FpgaExtensions::Rd105))continue;
         if(saved.value(b+4)&1) {
             Step stop;stop.kind=Kind::Sensor;stop.address=1;stop.source=quint16(0x40+(b-0x6000)/0x100);stop.expected=0;
             steps_.push_back(stop);verify(b+4,0);
@@ -948,7 +948,7 @@ void FpgaDeviceController::setDac(int channel, bool enable)
 
 void FpgaDeviceController::setSensorEnabled(quint16 source, bool enable)
 {
-    if (!ready_ || !FpgaExtensions::sensor(source) || (source==0x48 && !(extensions()&FpgaExtensions::Rd105)) || !begin(QStringLiteral("设置传感器状态"))) return;
+    if (!ready_ || !FpgaExtensions::sensor(source) || (source==0x4a && !(extensions()&FpgaExtensions::Rd105)) || !begin(QStringLiteral("设置传感器状态"))) return;
     if(enable)trackConnection(source);
     if (source==0x43 && enable && (registers_.value(0x6304)&1)) {
         fail(QStringLiteral("修改 BMP 地址前请先禁用 BMP390。"));return;
@@ -996,7 +996,7 @@ void FpgaDeviceController::connectSensor(const QJsonObject& request)
         fail(QStringLiteral("传感器连接参数或范围无效。"));return;
     }
     const auto source=quint16(request.value("source").toInt());
-    if(source==0x48 && !(extensions()&FpgaExtensions::Rd105)) {fail(QStringLiteral("当前固件未报告 RD105 扩展能力。"));return;}
+    if(source==0x4a && !(extensions()&FpgaExtensions::Rd105)) {fail(QStringLiteral("当前固件未报告 RD105 扩展能力。"));return;}
     if (!request.contains("baud") && !request.contains("poll_ms") && !request.contains("parameters") && configuration_.sensorParameters.value(source).isEmpty()) {
         setSensorEnabled(quint16(request.value("source").toInt()),true);return;
     }
@@ -1016,7 +1016,7 @@ void FpgaDeviceController::startSensorConfiguration(const QJsonObject& request, 
     if (request.value("op").toString()!=QStringLiteral("sensor_config") || !FpgaRemote::validateControl(request)) {
         fail(QStringLiteral("传感器参数或范围无效。"));return;
     }
-    if(request.value("source").toInt()==0x48 && !(extensions()&FpgaExtensions::Rd105)) {fail(QStringLiteral("当前固件未报告 RD105 扩展能力。"));return;}
+    if(request.value("source").toInt()==0x4a && !(extensions()&FpgaExtensions::Rd105)) {fail(QStringLiteral("当前固件未报告 RD105 扩展能力。"));return;}
     if (!ready_ || !begin(QStringLiteral("配置传感器参数并读回"))) return;
     const auto source=quint16(request.value("source").toInt());
     pendingSensorParameters_=request.value("parameters").toObject();
@@ -1062,7 +1062,7 @@ void FpgaDeviceController::prepareSensorConfiguration(quint16 source, quint32 ba
     };
     if(baud)parameter(base+0x10,baud);
     if(source==0x41)parameter(0x6118,0); // HC2A uses fixed 8N1.
-    if(pollMs)parameter(base+(source==0x40?0x18:source==0x41?0x1c:(source==0x46 || source==0x48)?0x2c:0x14),pollMs);
+    if(pollMs)parameter(base+(source==0x40?0x18:source==0x41?0x1c:(source==0x46 || source==0x4a)?0x2c:0x14),pollMs);
     for(const auto& spec:FpgaRemote::sensorParameters())if(spec.source==source && pendingSensorParameters_.contains(spec.key))parameter(spec.address,quint32(pendingSensorParameters_.value(spec.key).toDouble()));
     if(source==0x43 && !pendingSensorParameters_.isEmpty())commit(source,base);
     if(source==0x45)waitFor(base+8,13,0);
@@ -1114,7 +1114,7 @@ void FpgaDeviceController::executeOperation(const QJsonObject& request)
     }
     if(busy_ && !backgroundRefresh_) {report(QStringLiteral("FPGA 操作被拒绝：已有事务正在执行。"));return;}
     if(!FpgaRemote::validateControl(request)) {fail(QStringLiteral("FPGA 操作参数无效。"));return;}
-    if(request.value("source").toInt()==0x48 && !(extensions()&FpgaExtensions::Rd105)) {fail(QStringLiteral("当前固件未报告 RD105 扩展能力。"));return;}
+    if(request.value("source").toInt()==0x4a && !(extensions()&FpgaExtensions::Rd105)) {fail(QStringLiteral("当前固件未报告 RD105 扩展能力。"));return;}
     if(!ready_ || !begin(QStringLiteral("FPGA 高级控制与读回")))return;
     snapshotConfiguration();
     const auto op=request.value("op").toString();
@@ -1225,9 +1225,9 @@ void FpgaDeviceController::acceptReading(const FpgaSensor::Reading& reading)
         return; // Observations must not replace coalesced navigation state.
     }
     const quint16 key=reading.ai8Channel?quint16(0x4600+*reading.ai8Channel)
-        :reading.rd105Channel?quint16(0x4800+*reading.rd105Channel):reading.source;
+        :reading.rd105Channel?quint16(0x4a00+*reading.rd105Channel):reading.source;
     auto contextual=reading;
-    if(contextual.source==0x48 && !contextual.rd105Channel && registers_.contains(0x681c))contextual.rd105Channel=registers_.value(0x681c);
+    if(contextual.source==0x4a && !contextual.rd105Channel && registers_.contains(0x6a1c))contextual.rd105Channel=registers_.value(0x6a1c);
     auto adapted=adapter_.accept(contextual);
     const bool keepHealthyScan=reading.source==0x46 && reading.schema==3 && !adapted.reading.validity.measurement
         && !(adapted.ai8 && adapted.ai8->snapshotValid && adapted.ai8->systemFault)

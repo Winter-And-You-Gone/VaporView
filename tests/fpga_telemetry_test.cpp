@@ -48,6 +48,20 @@ int main(int argc, char **argv)
     auto bad=configure;auto config=bad.value("configuration").toObject(); config.insert("adcRateHz",1.5);bad.insert("configuration",config);
     require(!validateControl(bad),"fractional register value rejected before coercion");
     require(validateControl({{"op","sensor"},{"source",0x41},{"enabled",true}}),"HC2A source is supported");
+    require(validateControl({{"op","sensor"},{"source",0x4a},{"enabled",true},{"poll_ms",200},
+        {"parameters",QJsonObject{{"address",2},{"channel",2}}}}),"RD105 uses its independent source and fixed shared-bus address");
+    require(!validateControl({{"op","sensor"},{"source",0x48},{"enabled",true}}),"LC0 cannot be enabled through a historical RD105 request");
+    require(!validateControl({{"op","sensor_config"},{"source",0x4a},{"parameters",QJsonObject{{"address",1}}}}),"RD105 cannot collide with AI8 address 1");
+    for(int address:{0,1,2,3,7,8,9,12}) {
+        require(!validateControl({{"op","instrument"},{"source",0x4a},{"action",2},{"address",address},{"count",1},{"data","AAE="}}),
+            "RD105 shared-bus and read-only instrument words reject writes");
+        require(validateControl({{"op","instrument"},{"source",0x4a},{"action",1},{"address",address},{"count",1},{"data",""}}),
+            "RD105 instrument words remain readable");
+    }
+    require(!validateControl({{"op","instrument"},{"source",0x4a},{"action",2},{"address",6},{"count",2},{"data","AAEAAQ=="}}),
+        "RD105 bulk writes cannot cross a protected register");
+    require(!validateControl({{"op","instrument"},{"source",0x4a},{"action",3},{"address",0},{"count",1},{"data","AAE="}}),
+        "FPGA rejects unsupported RD105 factory reset");
     require(parseControl(encodeControl({{"op","sensor_config"},{"source",0x40},{"baud",4800},{"poll_ms",250}}),parsed),"typed PTB settings survive remote transport");
     require(parseControl(encodeControl({{"op","sensor"},{"source",0x40},{"enabled",true},{"baud",4800},{"poll_ms",250}}),parsed),
         "sensor connect carries staged parameters through the typed remote contract");

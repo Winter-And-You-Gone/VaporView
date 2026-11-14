@@ -141,9 +141,9 @@ void protocol()
             }
         }
     };
-    wait([&]{collect();return sensors.size()==7&&sensors.contains(0x41)&&!sensors.contains(0x48)&&waves.contains(0x30)&&waves.contains(0x31)&&bmp&&navigation
+    wait([&]{collect();return sensors.size()==8&&sensors.contains(0x41)&&sensors.contains(0x4a)&&!sensors.contains(0x48)&&waves.contains(0x30)&&waves.contains(0x31)&&bmp&&navigation
         &&epsilonIds.size()==14&&epsilonData.ecef_packet_rate_hz>0;},
-         "seven production sensors including HC2A, calibrated BMP and valid EPSILON navigation traverse the actual decoder");
+         "eight production sensors including RD105, HC2A, calibrated BMP and valid EPSILON navigation traverse the actual decoder");
     check(epsilonIds==QSet<quint8>({0x39,0x40,0x41,0x42,0x50,0x51,0x53,0x59,0x5a,0x5c,0x5d,0x5f,0x63,0x64}),
         "all supported core EPSILON navigation messages traverse real FDILink frames");
     check(epsilonData.device_info_valid&&epsilonData.hardware_name=="EPSILON2"&&epsilonData.firmware_name=="SIM",
@@ -181,7 +181,7 @@ void protocol()
 }
 void currentFirmwareContract()
 {
-    auto transport=makeFpgaUsbSimulator();check(transport->open(),"current HCD2 fixture opens");
+    auto transport=makeFpgaUsbSimulator(nullptr,FpgaSimulatorStartup::Idle,FpgaSimulatorFirmware::CurrentHcd2);check(transport->open(),"old HCD2 fixture opens");
     FpgaVlp1::StreamParser parser;quint32 sequence=1000;
     const auto exchange=[&](const std::vector<std::uint8_t>& request) {
         const auto expected=qFromLittleEndian<quint32>(request.data()+12);
@@ -199,7 +199,7 @@ void currentFirmwareContract()
         std::vector<std::uint8_t> p;for(auto v:{operation,setting})for(int i=0;i<4;++i)p.push_back(quint8(v>>(i*8)));
         return value(exchange(FpgaVlp1::buildFrame(FpgaVlp1::FrameType::Command,++sequence,source,message,p)));
     };
-    check(value(exchange(FpgaVlp1::buildGetCapabilities(++sequence)),24)==0x29,"default simulator advertises only current production extensions");
+    check(value(exchange(FpgaVlp1::buildGetCapabilities(++sequence)),24)==0x29,"old HCD2 profile retains its original extension word");
     check(read(0x6500)==0x00450200 && read(0x6510)==460800,"SDFM300 revision and default baud match firmware");
     check(action(0x45,11,1,0)==0 && read(0x6508)==2,"SDFM300 READY remains set when reception is disabled");
     for(quint32 rate:{9600u,19200u,38400u,115200u,230400u,256000u,460800u})

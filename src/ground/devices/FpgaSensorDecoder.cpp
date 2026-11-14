@@ -4,7 +4,6 @@
 
 #include <cmath>
 #include <cstring>
-#include <limits>
 
 namespace VaporView::FpgaSensor
 {
@@ -66,7 +65,7 @@ Reading FpgaSensorDecoder::decode(const QByteArray &payload, quint16 source, qui
         if (out.validity.measurement && id==0x41) out.epsilonDeviceTimestampUs=qint64(u64le(payload.constData()+47));
         return out;
     }
-    out.kind = source==0x0040?SensorKind::Ptb210:source==0x0041?SensorKind::Hc2a:source==0x0043?SensorKind::Bmp390:source==0x0044?SensorKind::Sht45:source==0x0045?SensorKind::Sdfm300:source==0x0046?SensorKind::Ai8:source==0x0048?SensorKind::Rd105:SensorKind::Unknown;
+    out.kind = source==0x0040?SensorKind::Ptb210:source==0x0041?SensorKind::Hc2a:source==0x0043?SensorKind::Bmp390:source==0x0044?SensorKind::Sht45:source==0x0045?SensorKind::Sdfm300:source==0x0046?SensorKind::Ai8:source==0x004a?SensorKind::Rd105:SensorKind::Unknown;
     out.validity.structure=parseTlv(payload,out.schema,out.records); if(!out.validity.structure) return out;
     auto scalarI=[&](quint16 tag, std::optional<qint32> &dst){ if(auto r=find(out.records,tag)){qint32 v; if(readI32(*r,v)) dst=v;} };
     auto scalarU=[&](quint16 tag, std::optional<quint32> &dst){ if(auto r=find(out.records,tag)){quint32 v; if(readU32(*r,v)) dst=v;} };
@@ -102,8 +101,9 @@ Reading FpgaSensorDecoder::decode(const QByteArray &payload, quint16 source, qui
     if (out.kind==SensorKind::Ai8) out.validity.measurement=out.ai8DeviceStatus.has_value() && out.ai8DeviceError.has_value()
         && (out.schema==2 || (out.schema==3 && out.ai8Channel && *out.ai8Channel>=1 && *out.ai8Channel<=8));
     if (out.kind==SensorKind::Rd105) out.validity.measurement=out.rd105TargetMicroC && out.rd105ActualMicroC
-        && out.rd105Error && !*out.rd105Error && *out.rd105TargetMicroC!=std::numeric_limits<qint32>::min()
-        && *out.rd105ActualMicroC!=std::numeric_limits<qint32>::min();
+        && out.rd105Error && !*out.rd105Error && *out.rd105TargetMicroC>=-400000000 && *out.rd105TargetMicroC<=1000000000
+        && *out.rd105ActualMicroC>=-400000000 && *out.rd105ActualMicroC<=1000000000
+        && *out.rd105TargetMicroC%10==0 && *out.rd105ActualMicroC%10==0;
     if (out.kind==SensorKind::Rd105 && out.schema==2)
         out.validity.measurement = out.validity.measurement && out.rd105Channel && *out.rd105Channel>=1 && *out.rd105Channel<=2
             && out.rd105OutputRaw && *out.rd105OutputRaw>=-2000000 && *out.rd105OutputRaw<=2000000

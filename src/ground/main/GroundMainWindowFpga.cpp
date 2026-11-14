@@ -60,7 +60,12 @@ void MainWindow::syncFpgaDeviceConfigUi()
         state_->epsilon_device_session_->setFpgaTransport(call,(extensions&VaporView::FpgaExtensions::EpsilonMailbox) && (values.value(0x6204)&1));
         state_->epsilon_device_session_->setTransportSupported(!relay || (extensions&VaporView::FpgaExtensions::EpsilonMailbox),relay?epsilonUnsupported:QString());
     }
-    if(state_->rd105_device_session_)state_->rd105_device_session_->setFpgaTransport(call,(extensions&VaporView::FpgaExtensions::Rd105) && (values.value(0x6804)&1));
+    if(state_->rd105_device_session_)state_->rd105_device_session_->setFpgaTransport(call,(extensions&VaporView::FpgaExtensions::Rd105) && (values.value(0x6a04)&1));
+    const QString rd105CommunicationDetail=state_->is_english_
+        ? QStringLiteral("FPGA shared RS485 requires RD105 address 2 at 19200/8N1. Configure the instrument externally before connection; communication settings and factory reset are unavailable through FPGA.")
+        : QStringLiteral("FPGA 共用 RS485 要求 RD105 为站号 2、19200/8N1；请在连接前通过外部工具配置实体设备。FPGA 路径不提供通信参数修改和恢复出厂。");
+    for(const auto& name:{QStringLiteral("temperatureDeviceAddressSpin"),QStringLiteral("temperatureRs485BaudCombo"),QStringLiteral("temperatureFactoryResetButton")})
+        if(auto* control=findChild<QWidget*>(name)) {control->setEnabled(!relay);control->setToolTip(relay?rd105CommunicationDetail:QString());}
     if (relay && state_->ai8_temperature_controller_panel_) {
         state_->ai8_temperature_controller_panel_->setBackendConnected(
             homeFpgaDeviceState(VaporView::SkyDeviceId::Ai8TemperatureController) == VaporView::DeviceState::Connected,
@@ -70,6 +75,8 @@ void MainWindow::syncFpgaDeviceConfigUi()
     const auto registers = homeFpgaRegisters();
     if(auto* read=findChild<QToolButton*>(QStringLiteral("temperatureFpgaReadParameters"))) {
         read->setVisible(relay);read->setEnabled(relay && state_->rd105_device_session_ && state_->rd105_device_session_->operationsAvailable());
+        read->setToolTip(state_->is_english_?QStringLiteral("Read RD105 channel 1/2 and common parameters")
+            :QStringLiteral("读取 RD105 双通道及通用参数"));
     }
     if(state_->rtk_config_dialog_ && (state_->rtk_config_dialog_->property("fpgaExtensions").toUInt()!=extensions || state_->rtk_config_dialog_->property("fpgaRelay").toBool()!=relay)) {
         state_->rtk_config_dialog_->setProperty("fpgaExtensions",extensions);state_->rtk_config_dialog_->setProperty("fpgaRelay",relay);syncRtkConfigPageState();
@@ -196,12 +203,12 @@ void MainWindow::syncFpgaDeviceConfigUi()
     field(state_->device_config_.hc2a_baud_combo,0x41,"baud",0x6110);
     field(state_->device_config_.lidar_baud_combo,0x45,"baud",0x6510);
     field(state_->device_config_.ai8_temperature_baud_combo,0x46,{},0,registers.contains(0x6610)?QString::number(registers.value(0x6610)):QStringLiteral("19200"));
-    field(state_->device_config_.temperature_baud_combo,0x48,{},0,(extensions&VaporView::FpgaExtensions::Rd105)?QStringLiteral("19200"):state_->is_english_?QStringLiteral("Unsupported"):QStringLiteral("不支持"));
+    field(state_->device_config_.temperature_baud_combo,0x4a,{},0,(extensions&VaporView::FpgaExtensions::Rd105)?QStringLiteral("19200"):state_->is_english_?QStringLiteral("Unsupported"):QStringLiteral("不支持"));
     field(state_->device_config_.ptb_rate_combo,pressure,"poll_ms",pressure==0x43?0x6314:0x6018);
     field(state_->device_config_.hc2a_rate_combo,0x41,"poll_ms",0x611c);
     field(state_->device_config_.ai8_temperature_rate_combo,0x46,"poll_ms",0x662c);
     field(state_->device_config_.lidar_rate_combo,0x45,{},0,state_->is_english_?QStringLiteral("Auto 50/1000 Hz"):QStringLiteral("自动 50/1000 Hz"));
-    field(state_->device_config_.temperature_rate_combo,0x48,(extensions&VaporView::FpgaExtensions::Rd105)?"poll_ms":"",0x682c,QStringLiteral("—"));
+    field(state_->device_config_.temperature_rate_combo,0x4a,(extensions&VaporView::FpgaExtensions::Rd105)?"poll_ms":"",0x6a2c,QStringLiteral("—"));
     if (auto *check=state_->device_config_.fpga_wave_enabled_check) {
         check->setVisible(relay);
         enabledSelection(check,VaporView::SkyDeviceId::WaveTcp);
@@ -298,7 +305,7 @@ void MainWindow::confirmFpgaSensorDraft(quint16 source, const QMap<quint32, quin
     const auto request=fpgaSensorConnectRequest(source);
     const quint32 base=0x6000+(source-0x40)*0x100;
     for(const auto &key:draft.keys()) {
-        const quint32 address=base+(key=="baud"?0x10:source==0x40?0x18:source==0x41?0x1c:source==0x46?0x2c:0x14);
+        const quint32 address=base+(key=="baud"?0x10:source==0x40?0x18:source==0x41?0x1c:(source==0x46 || source==0x4a)?0x2c:0x14);
         if(request.value(key).isDouble()&&registers.contains(address)&&registers.value(address)==request.value(key).toDouble())
             drafts[source].remove(key);
     }
@@ -316,7 +323,7 @@ quint16 MainWindow::homeFpgaSensorSource(VaporView::SkyDeviceId device) const
     case SkyDeviceId::Hc2a: return 0x41;
     case SkyDeviceId::Lidar: return 0x45;
     case SkyDeviceId::Ai8TemperatureController: return 0x46;
-    case SkyDeviceId::TemperatureController: return 0x48;
+    case SkyDeviceId::TemperatureController: return 0x4a;
     default: return 0;
     }
 }
@@ -1294,14 +1301,15 @@ void MainWindow::receiveFpgaMeasurements(const VaporView::FpgaSensor::AdaptedMea
         }
     }
     else if(r.kind==VaporView::FpgaSensor::SensorKind::Rd105) {
-        const int channel=qBound(1,int(r.rd105Channel.value_or(homeFpgaRegisters().value(0x681c,1))),2)-1;
+        const int channel=qBound(1,int(r.rd105Channel.value_or(homeFpgaRegisters().value(0x6a1c,1))),2)-1;
         auto& data=state_->current_temperature_controller_;
         data.valid=valid;data.timestamp=std::chrono::steady_clock::now();
+        data.device_address=int(homeFpgaRegisters().value(0x6a14,2));data.rs485_baud_index=2;
         data.error_code=quint16(r.rd105Error.value_or(0));
-        data.channels[channel].target_temperature_c=r.rd105TargetMicroC?*r.rd105TargetMicroC/1000000.0:std::numeric_limits<double>::quiet_NaN();
-        data.channels[channel].measured_temperature_c=r.rd105ActualMicroC?*r.rd105ActualMicroC/1000000.0:std::numeric_limits<double>::quiet_NaN();
-        if(r.rd105OutputRaw)data.channels[channel].output_percent=valid?*r.rd105OutputRaw/20000.0:std::numeric_limits<double>::quiet_NaN();
-        if(r.rd105OutputEnabled)data.channels[channel].output_enabled=valid&&*r.rd105OutputEnabled!=0;
+        data.channels[channel].target_temperature_c=valid&&r.rd105TargetMicroC?*r.rd105TargetMicroC/1000000.0:std::numeric_limits<double>::quiet_NaN();
+        data.channels[channel].measured_temperature_c=valid&&r.rd105ActualMicroC?*r.rd105ActualMicroC/1000000.0:std::numeric_limits<double>::quiet_NaN();
+        data.channels[channel].output_percent=valid&&r.rd105OutputRaw?*r.rd105OutputRaw/20000.0:std::numeric_limits<double>::quiet_NaN();
+        data.channels[channel].output_enabled=valid&&r.rd105OutputEnabled&&*r.rd105OutputEnabled!=0;
         state_->fpga_rd105_ui_dirty_ = true;
     }
     {
@@ -1425,7 +1433,7 @@ void MainWindow::invalidateFpgaMeasurements()
     if (isFpgaRelayPath()) state_->current_hc2a_ = VaporView::Hc2aData{};
     state_->internal_environment_.clear();state_->internal_environment_times_.clear();
     if (state_->fpga_sources_.contains(0x45)) state_->current_lidar_ = VaporView::LidarData{};
-    if (state_->fpga_sources_.contains(0x48)) {
+    if (state_->fpga_sources_.contains(0x4a)) {
         state_->current_temperature_controller_=VaporView::TemperatureControllerData{};
         state_->fpga_rd105_ui_dirty_ = true;
     }

@@ -25,8 +25,8 @@ inline const QVector<SensorParameter>& sensorParameters() {
         {0x44,"heater",0x641c,0,6,0,"加热模式 (0 关闭)"},
         {0x45,"timeout",0x653c,1,0xffffffff,100000000,"接收超时 / 10 ns"},
         {0x45,"gap",0x6548,1,0xffffffff,1000000,"接收帧间隔超时 / 10 ns"},
-        {0x48,"address",0x6814,1,247,2,"RD105 Modbus 地址 (共用 RS485 默认 2)"},
-        {0x48,"channel",0x681c,1,2,1,"RD105 测量通道"}
+        {0x4a,"address",0x6a14,2,2,2,"RD105 Modbus 地址 (共用 RS485 固定 2)"},
+        {0x4a,"channel",0x6a1c,1,2,1,"RD105 设温通道 (两通道自动轮询)"}
     };return specs;
 }
 inline bool validSensorParameters(quint16 source,const QJsonObject& values) {

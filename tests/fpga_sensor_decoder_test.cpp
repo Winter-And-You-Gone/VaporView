@@ -31,15 +31,35 @@ int main(){
         if(schema==2) {add(0x480,3,channel);add(0x481,7,quint32(duty));add(0x482,3,enabled);}
         return b;
     };
-    const auto legacyRd=FpgaSensorDecoder::decode(rd105Payload(1,0,0,0),0x48);
+    const auto legacyRd=FpgaSensorDecoder::decode(rd105Payload(1,0,0,0),0x4a);
     require(legacyRd.validity.measurement&&!legacyRd.rd105Channel&&!legacyRd.rd105OutputRaw&&!legacyRd.rd105OutputEnabled);
-    const auto dualRd=FpgaSensorDecoder::decode(rd105Payload(2,2,-845000,1),0x48);
+    const auto dualRd=FpgaSensorDecoder::decode(rd105Payload(2,2,-845000,1),0x4a);
     require(dualRd.validity.measurement&&dualRd.rd105Channel==2&&dualRd.rd105OutputRaw==-845000&&dualRd.rd105OutputEnabled==1);
-    const auto disabledRd=FpgaSensorDecoder::decode(rd105Payload(2,1,0,0),0x48);
+    require(FpgaSensorDecoder::decode(rd105Payload(2,2,-845000,1),0x48).kind==SensorKind::Unknown);
+    const auto disabledRd=FpgaSensorDecoder::decode(rd105Payload(2,1,0,0),0x4a);
     require(disabledRd.validity.measurement&&disabledRd.rd105OutputRaw==0&&disabledRd.rd105OutputEnabled==0);
-    for(quint32 channel:{0u,3u})require(!FpgaSensorDecoder::decode(rd105Payload(2,channel,0,0),0x48).validity.measurement);
-    require(!FpgaSensorDecoder::decode(rd105Payload(2,1,2000001,1),0x48).validity.measurement);
-    require(!FpgaSensorDecoder::decode(rd105Payload(2,1,0,2),0x48).validity.measurement);
+    // Cross-check the lower-computer RD105 schema2 golden vectors, not the TLV helper above.
+    const auto goldenChannel1=FpgaSensorDecoder::decode(QByteArray::fromHex(
+        "020006001400070440787d011500070440787d010200030400000000800403040100000081040704c063ffff8204030400000000"),0x4a);
+    require(goldenChannel1.validity.measurement&&goldenChannel1.rd105Channel==1&&goldenChannel1.rd105TargetMicroC==25000000
+        &&goldenChannel1.rd105ActualMicroC==25000000&&goldenChannel1.rd105OutputRaw==-40000);
+    const auto goldenChannel2=FpgaSensorDecoder::decode(QByteArray::fromHex(
+        "0200060014000704e04341ff15000704806967ff0200030400000000800403040200000081040704204e00008204030400000000"),0x4a);
+    require(goldenChannel2.validity.measurement&&goldenChannel2.rd105Channel==2&&goldenChannel2.rd105TargetMicroC==-12500000
+        &&goldenChannel2.rd105ActualMicroC==-10000000&&goldenChannel2.rd105OutputRaw==20000);
+    for(quint32 channel:{0u,3u})require(!FpgaSensorDecoder::decode(rd105Payload(2,channel,0,0),0x4a).validity.measurement);
+    require(!FpgaSensorDecoder::decode(rd105Payload(2,1,2000001,1),0x4a).validity.measurement);
+    require(!FpgaSensorDecoder::decode(rd105Payload(2,1,0,2),0x4a).validity.measurement);
+    for(qint32 temperature:{-400000000,1000000000}) {
+        auto boundary=rd105Payload(2,1,0,0);
+        for(int offset:{8,16})for(int byte=0;byte<4;++byte)boundary[offset+byte]=char(quint32(temperature)>>(8*byte));
+        require(FpgaSensorDecoder::decode(boundary,0x4a).validity.measurement);
+    }
+    for(qint32 temperature:{-400000010,1000000010,25000001,std::numeric_limits<qint32>::min()}) {
+        auto invalid=rd105Payload(2,1,0,0);
+        for(int byte=0;byte<4;++byte)invalid[16+byte]=char(quint32(temperature)>>(8*byte));
+        require(!FpgaSensorDecoder::decode(invalid,0x4a).validity.measurement);
+    }
     for(quint32 mm:{50u,43540u,300000u}) {
         const auto range=FpgaSensorDecoder::decode(tlv(0x13,3,mm),0x45);
         require(range.kind==SensorKind::Sdfm300 && range.validity.measurement && range.distanceMm==mm);

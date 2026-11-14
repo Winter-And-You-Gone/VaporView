@@ -47,18 +47,18 @@ int main(int argc,char** argv) {
     const auto param=[&](int source,int action,int address,int count,const QByteArray& data=QByteArray{}) {
         return call(QJsonObject{{"op","instrument"},{"source",source},{"action",action},{"address",address},{"count",count},{"data",QString::fromLatin1(data.toBase64())}});
     };
-    controller.setSensorEnabled(0x48,true);check(waitFor([&]{return !controller.busy();}),"enable independent RD105");
-    check(waitFor([&]{for(const auto& r:readings)if(r.source==0x48 && r.validity.measurement)return true;return false;}),"RD105 valid measurement TLV");
-    check(waitFor([&]{QSet<quint32> channels;for(const auto& r:readings)if(r.source==0x48&&r.validity.measurement&&r.rd105Channel)channels.insert(*r.rd105Channel);return channels.size()==2;}),
+    controller.setSensorEnabled(0x4a,true);check(waitFor([&]{return !controller.busy();}),"enable independent RD105");
+    check(waitFor([&]{for(const auto& r:readings)if(r.source==0x4a && r.validity.measurement)return true;return false;}),"RD105 valid measurement TLV");
+    check(waitFor([&]{QSet<quint32> channels;for(const auto& r:readings)if(r.source==0x4a&&r.validity.measurement&&r.rd105Channel)channels.insert(*r.rd105Channel);return channels.size()==2;}),
         "both RD105 channels survive controller presentation coalescing");
     check(!(controller.hardwareValues().value(0x6604)&1),"RD105 enable does not enable AI8");
-    auto result=param(0x48,2,0x1100,1,QByteArray::fromHex("0001"));
+    auto result=param(0x4a,2,0x1100,1,QByteArray::fromHex("0001"));
     check(result.value("ok").toBool() && result.value("verified").toBool(),"RD105 write is independently verified");
-    result=param(0x48,1,0x1100,1);
+    result=param(0x4a,1,0x1100,1);
     check(QByteArray::fromBase64(result.value("data").toString().toLatin1())==QByteArray::fromHex("0001"),"RD105 actual parameter bytes");
-    result=param(0x48,2,0x2100,1,QByteArray::fromHex("0001"));
+    result=param(0x4a,2,0x2100,1,QByteArray::fromHex("0001"));
     check(result.value("ok").toBool(),"RD105 channel two output can be enabled independently");
-    check(waitFor([&]{bool positive=false,negative=false;for(const auto& r:readings)if(r.source==0x48&&r.validity.measurement&&r.rd105OutputEnabled==1&&r.rd105OutputRaw) {
+    check(waitFor([&]{bool positive=false,negative=false;for(const auto& r:readings)if(r.source==0x4a&&r.validity.measurement&&r.rd105OutputEnabled==1&&r.rd105OutputRaw) {
         positive|=r.rd105Channel==1&&*r.rd105OutputRaw>0;negative|=r.rd105Channel==2&&*r.rd105OutputRaw<0;
     }return positive&&negative;}),"RD105 simulator exposes signed output percentages for both enabled channels");
     FpgaSensor::Reading negativeOutput;
@@ -68,19 +68,19 @@ int main(int argc,char** argv) {
         &&remoteOutput.rd105OutputRaw==negativeOutput.rd105OutputRaw&&remoteOutput.rd105OutputEnabled==1,
         "remote telemetry preserves a negative RD105 output");
     readings.clear();
-    result=param(0x48,2,0x1100,1,QByteArray::fromHex("0000"));
+    result=param(0x4a,2,0x1100,1,QByteArray::fromHex("0000"));
     check(result.value("ok").toBool()&&waitFor([&]{bool stopped=false,running=false;for(const auto& r:readings) {
         stopped|=r.rd105Channel==1&&r.rd105OutputEnabled==0&&r.rd105OutputRaw==0;
         running|=r.rd105Channel==2&&r.rd105OutputEnabled==1&&r.rd105OutputRaw&&*r.rd105OutputRaw<0;
     }return stopped&&running;}),"disabling RD105 channel one clears only its output percentage");
     QByteArray block;for(int i=0;i<32;++i)block.append(char(i+1));
-    result=param(0x48,2,0x1315,16,block);check(result.value("ok").toBool(),"RD105 full 16-register transaction");
-    transport->injectFault("parameter_mismatch");result=param(0x48,2,0x1100,1,QByteArray::fromHex("0002"));
+    result=param(0x4a,2,0x1315,16,block);check(result.value("ok").toBool(),"RD105 full 16-register transaction");
+    transport->injectFault("parameter_mismatch");result=param(0x4a,2,0x1100,1,QByteArray::fromHex("0002"));
     check(!result.value("ok").toBool(),"RD105 mismatch cannot report success");
-    transport->injectFault("parameter_timeout");result=param(0x48,2,0x1100,1,QByteArray::fromHex("0001"));
+    transport->injectFault("parameter_timeout");result=param(0x4a,2,0x1100,1,QByteArray::fromHex("0001"));
     check(!result.value("ok").toBool(),"RD105 missing device ACK cannot report success");
-    result=call({{"op","device_temperature"},{"source",0x48},{"celsius",26.12345}});
-    check(result.value("ok").toBool() && controller.hardwareValues().value(0x6840)==26123450,"RD105 setpoint preserves native precision and uses verified completion counter");
+    result=call({{"op","device_temperature"},{"source",0x4a},{"celsius",26.12345}});
+    check(result.value("ok").toBool() && controller.hardwareValues().value(0x6a40)==26123450,"RD105 setpoint preserves native precision and uses verified completion counter");
     controller.setSensorEnabled(0x46,true);check(waitFor([&]{return !controller.busy();}),"enable AI8");
     check(controller.hardwareValues().value(0x6668)==1,"AI8 enable applies and verifies eight-channel scanning by default");
     check(waitFor([&]{QSet<quint32> channels;for(const auto& r:readings)if(r.source==0x46 && r.schema==3 && r.ai8Channel)channels.insert(*r.ai8Channel);return channels.size()==8;}),"all 8 AI8 channels survive presentation coalescing");
@@ -132,8 +132,8 @@ int main(int argc,char** argv) {
     result=mailbox(1,frame,1);check(result.value("ok").toBool() && result.value("rtcm_bytes").toInt()==2058,"external RS422 target accepts raw full RTCM");
     result=call({{"op","dlia_cutoff"},{"channel",0},{"hz",250}});check(result.value("ok").toBool() && controller.hardwareValues().value(0x505c)==250,"DLIA cutoff shadow and active readback");
     check(!FpgaRemote::validateControl({{"op","dlia_cutoff"},{"channel",0},{"hz",123}}),"unsupported cutoff rejected");
-    result=param(0x48,3,0,1,QByteArray::fromHex("0001"));check(result.value("ok").toBool() && result.value("unverified").toBool() && !result.value("verified").toBool(),"factory reset ACK is explicitly unverified");
-    check(!(controller.hardwareValues().value(0x6804)&1),"factory reset stops RD105 polling");
+    result=param(0x4a,3,0,1,QByteArray::fromHex("0001"));check(!result.value("ok").toBool(),"unsupported factory reset is rejected");
+    check(controller.hardwareValues().value(0x6a04)&1,"rejected factory reset preserves RD105 polling");
     controller.disconnectDevice();
     {
         auto scanSimulator=makeFpgaUsbSimulator(nullptr,FpgaSimulatorStartup::Idle,FpgaSimulatorFirmware::Hcd2Ai8Scan);
@@ -159,7 +159,7 @@ int main(int argc,char** argv) {
             "scan-only cache features exclude generic parameter transactions");
         check(wireWord(wireExchange(FpgaVlp1::buildReadReg(++sequence,0x6684,1)))==5 &&
             wireWord(wireExchange(FpgaVlp1::buildWriteReg(++sequence,0x6680,{1})))==5 &&
-            wireWord(wireExchange(FpgaVlp1::buildReadReg(++sequence,0x6884,1)))==5,
+            wireWord(wireExchange(FpgaVlp1::buildReadReg(++sequence,0x6a84,1)))==5,
             "scan-only firmware does not expose withdrawn AI8 or RD105 parameter registers");
         check(wireWord(wireExchange(FpgaVlp1::buildReadReg(++sequence,0x66b8,2)),12)==0 &&
             wireWord(wireExchange(FpgaVlp1::buildWriteReg(++sequence,0x66b8,{1})))==6,
@@ -172,7 +172,7 @@ int main(int argc,char** argv) {
         scanController.connectDevice({},"simulator",FpgaDeviceController::ConnectMode::PreserveRunningModules);
         check(waitFor([&]{return scanController.ready()&&!scanController.busy();}),"scan-only HCD2 handshake succeeds");
         check(scanController.extensions()==0x2b && scanController.hardwareValues().value(0x6800)==0x00480100 &&
-            !scanController.hardwareValues().contains(0x6684) && !scanController.hardwareValues().contains(0x6884),
+            !scanController.hardwareValues().contains(0x6684) && !scanController.hardwareValues().contains(0x6a84),
             "scan capability keeps LC identification and avoids unsupported parameter reads");
         const auto scanCall=[&](const QJsonObject& request) {
             bool finished=false;QJsonObject response;
@@ -189,7 +189,7 @@ int main(int argc,char** argv) {
             if(r.source==0x46&&r.schema==3&&r.ai8Channel&&r.ai8SampleCounter.value_or(0)>0)channels.insert(*r.ai8Channel);
             return channels.size()==8;}),"scan-only firmware delivers all eight channel-tagged snapshots with counters");
         check(!scanCall({{"op","instrument"},{"source",0x46},{"action",1},{"address",0},{"count",1},{"data",""}}).value("ok").toBool() &&
-            !scanCall({{"op","instrument"},{"source",0x48},{"action",1},{"address",0x1000},{"count",1},{"data",""}}).value("ok").toBool(),
+            !scanCall({{"op","instrument"},{"source",0x4a},{"action",1},{"address",0x1000},{"count",1},{"data",""}}).value("ok").toBool(),
             "scan-only controller rejects generic AI8 parameters and independent RD105 operations");
         const auto targeted=scanCall({{"op","device_temperature"},{"source",0x46},{"channel",8},{"celsius",31.6}});
         check(targeted.value("ok").toBool() && targeted.value("verified").toBool(),
@@ -213,10 +213,50 @@ int main(int argc,char** argv) {
             "AI8 module reset clears the new cached counters");
         scanTransport->close();
     }
-    auto old=makeFpgaUsbSimulator();old->injectFault("legacy_extensions");FpgaDeviceController legacy(std::move(old));
+    {
+        FpgaDeviceController production(makeFpgaUsbSimulator());
+        QSet<int> channels;
+        QObject::connect(&production,&FpgaDeviceController::measurementUpdated,&app,[&](const FpgaSensor::AdaptedMeasurements& value) {
+            if(value.reading.source==0x4a && value.reading.validity.measurement && value.reading.rd105Channel)
+                channels.insert(int(*value.reading.rd105Channel));
+        });
+        production.connectDevice({},"simulator",FpgaDeviceController::ConnectMode::PreserveRunningModules);
+        check(waitFor([&]{return production.ready()&&!production.busy();}),"integrated RD105 production profile handshakes");
+        check(production.extensions()==0x3b && production.hardwareValues().value(0x6a00)==0x004a0103
+            && production.hardwareValues().value(0x6800)==0x00480100 && production.hardwareValues().value(0x6900)==0x00490100,
+            "RD105 and both LC modules keep independent identities");
+        const auto relayCall=[&](const QJsonObject& request) {
+            bool done=false;QJsonObject reply;
+            const auto observer=QObject::connect(&production,&FpgaDeviceController::extensionCompleted,&app,
+                [&](const QJsonObject& value){reply=value;done=true;});
+            production.executeOperation(request);check(waitFor([&]{return done;}),"RD105 production transaction finishes");
+            QObject::disconnect(observer);return reply;
+        };
+        production.connectSensor({{"op","sensor"},{"source",0x4a},{"enabled",true},{"poll_ms",200},
+            {"parameters",QJsonObject{{"address",2},{"channel",2}}}});
+        check(waitFor([&]{return !production.busy();}) && production.hardwareValues().value(0x6a04)==1
+            && production.hardwareValues().value(0x6a2c)==200,"RD105 selective connection verifies the new page and polling draft");
+        check(waitFor([&]{return channels==QSet<int>{1,2};}),"production firmware delivers both RD105 channels");
+        TemperatureControllerCommand target;target.channel=2;target.target_temperature_c=-12.34567;
+        auto command=sendFpgaTemperatureCommand(relayCall,CommandId::SetTemperatureTarget,target);
+        check(command.status==LocalTemperatureCommandStatus::Confirmed,"RD105 channel two negative setpoint is verified");
+        TemperatureControllerCommand query;query.channel=2;
+        const auto full=sendFpgaTemperatureCommand(relayCall,CommandId::QueryDeviceStatus,query);
+        check(full.status==LocalTemperatureCommandStatus::Confirmed && std::abs(full.latestData.channels[1].target_temperature_c+12.34567)<1e-8
+            && full.latestData.channels[0].target_temperature_c==25.0 && full.latestData.device_address==2 && full.latestData.rs485_baud_index==2,
+            "RD105 configuration read preserves both channels and actual bus settings");
+        int forbiddenCalls=0;
+        const auto forbidden=[&](const QJsonObject&){++forbiddenCalls;return QJsonObject{};};
+        for(auto id:{CommandId::SetTemperatureDeviceAddress,CommandId::SetTemperatureRs485Baud,CommandId::RestoreTemperatureFactoryDefaults})
+            check(sendFpgaTemperatureCommand(forbidden,id,{}).status==LocalTemperatureCommandStatus::Rejected,
+                "unsupported shared-bus maintenance is rejected before transport");
+        check(forbiddenCalls==0,"RD105 maintenance never sends a destructive transaction");
+        production.disconnectDevice();
+    }
+    auto old=makeFpgaUsbSimulator(nullptr,FpgaSimulatorStartup::Idle,FpgaSimulatorFirmware::CurrentHcd2);old->injectFault("legacy_extensions");FpgaDeviceController legacy(std::move(old));
     legacy.connectDevice({},"simulator",FpgaDeviceController::ConnectMode::PreserveRunningModules);
     check(waitFor([&]{return legacy.ready()&&!legacy.busy();}),"legacy extension word remains compatible");
-    check(legacy.hardwareValues().value(0x6800)==0x00480100 && !legacy.hardwareValues().contains(0x6884)
+    check(legacy.hardwareValues().value(0x6800)==0x00480100 && !legacy.hardwareValues().contains(0x6a84)
         && !legacy.hardwareValues().contains(0x5058),"reduced extension capabilities retain read-only LC identification without accessing RD105 parameters or DLIA cutoff registers");
     legacy.disconnectDevice();
     qInfo()<<"FPGA extension failures:"<<errors;return errors?1:0;

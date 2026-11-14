@@ -74,20 +74,26 @@ LocalAi8OperationResult writeFpgaAi8Page(const FpgaInstrumentCall& call,const Ai
 LocalTemperatureCommandResult sendFpgaTemperatureCommand(const FpgaInstrumentCall& call,CommandId command,const TemperatureControllerCommand& payload)
 {
     LocalTemperatureCommandResult result;
+    if(command==CommandId::SetTemperatureDeviceAddress || command==CommandId::SetTemperatureRs485Baud
+        || command==CommandId::RestoreTemperatureFactoryDefaults) {
+        result.status=LocalTemperatureCommandStatus::Rejected;
+        result.message=QStringLiteral("FPGA 共用 RS485 不支持修改 RD105 通信参数或恢复出厂；请外部配置为站号 2、19200/8N1。");
+        return result;
+    }
     TemperatureControllerCollector collector;
     collector.setRegisterBackend(
-        [call](quint16 address,quint16 count,std::vector<quint16>& values) {
-            const auto result=parameter(call,0x48,address,count,1);
-            const auto data=QByteArray::fromBase64(result.value("data").toString().toLatin1());
-            if(!result.value("ok").toBool() || data.size()!=count*2)return false;
+        [call,&result](quint16 address,quint16 count,std::vector<quint16>& values) {
+            const auto reply=parameter(call,0x4a,address,count,1);
+            const auto data=QByteArray::fromBase64(reply.value("data").toString().toLatin1());
+            if(!reply.value("ok").toBool() || !reply.value("verified").toBool() || data.size()!=count*2) {
+                result.message=reply.value("detail").toString();return false;
+            }
             values.clear();for(int i=0;i<count;++i)values.push_back(qFromBigEndian<quint16>(data.constData()+i*2));return true;
         },
         [call,&result](quint16 address,const std::vector<quint16>& values) {
             QByteArray data;for(auto v:values) {char word[2];qToBigEndian(v,word);data.append(word,2);}
-            const auto reply=parameter(call,0x48,address,int(values.size()),address==0?3:2,data);
+            const auto reply=parameter(call,0x4a,address,int(values.size()),2,data);
             result.message=reply.value("detail").toString();result.unverified=reply.value("unverified").toBool();
-            if(result.unverified)result.message=QStringLiteral("RD105 恢复出厂收到写 ACK，最终状态未验证；请按恢复后的通信参数重新连接。");
-            // A factory-reset write ACK has no final-state verification.
             return reply.value("ok").toBool() && reply.value("verified").toBool();
         });
     const quint8 ch=payload.channel?payload.channel:1;
@@ -106,10 +112,7 @@ LocalTemperatureCommandResult sendFpgaTemperatureCommand(const FpgaInstrumentCal
     case CommandId::SetTemperatureStartupDelay:ok=collector.setStartupDelay(ch,payload.startup_delay_s);break;
     case CommandId::SetTemperatureSensorConfig:ok=collector.setSensorConfig(ch,payload.sensor_model,payload.ntc_b,payload.ntc_r0,payload.pt_r0,payload.pt_a,payload.pt_b,payload.pt_c,payload.polynomial_mantissas,payload.polynomial_exponents);break;
     case CommandId::SetTemperatureControllerMode:ok=collector.setControllerMode(payload.controller_mode);break;
-    case CommandId::SetTemperatureDeviceAddress:ok=collector.setDeviceAddress(payload.device_address);break;
-    case CommandId::SetTemperatureRs485Baud:ok=collector.setRs485BaudIndex(payload.rs485_baud_index);break;
     case CommandId::SetTemperatureOvertempOutputMode:ok=collector.setOvertempOutputMode(payload.overtemp_output_mode);break;
-    case CommandId::RestoreTemperatureFactoryDefaults:ok=collector.restoreFactoryDefaults();break;
     default:break;
     }
     result.status=ok?LocalTemperatureCommandStatus::Confirmed:LocalTemperatureCommandStatus::Rejected;

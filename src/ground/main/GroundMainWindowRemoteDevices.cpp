@@ -3323,6 +3323,21 @@ void MainWindow::onRd105SessionOperationFinished(
         {
             state_->current_temperature_controller_ = result.latest_data;
         }
+        else if (result.has_latest_data && result.success() && isFpgaRelayPath()
+                 && result.command == VaporView::CommandId::QueryDeviceStatus)
+        {
+            // A live sample can arrive while the full parameter read is queued back to the UI.
+            auto readback = result.latest_data;
+            const auto& live = state_->current_temperature_controller_;
+            readback.timestamp = live.timestamp;readback.valid = live.valid;readback.error_code = live.error_code;
+            for (size_t i = 0; i < readback.channels.size(); ++i) {
+                readback.channels[i].target_temperature_c = live.channels[i].target_temperature_c;
+                readback.channels[i].measured_temperature_c = live.channels[i].measured_temperature_c;
+                readback.channels[i].output_percent = live.channels[i].output_percent;
+                readback.channels[i].output_enabled = live.channels[i].output_enabled;
+            }
+            state_->current_temperature_controller_ = std::move(readback);
+        }
         if (result.success())
         {
             const auto settingsUpdate =

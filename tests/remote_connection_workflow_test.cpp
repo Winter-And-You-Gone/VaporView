@@ -2,6 +2,7 @@
 #include "ground/main/MainWindow.h"
 #include "ground/main/GroundMainWindowState.h"
 #include "ground/devices/RemoteSkyController.h"
+#include "ground/devices/Rd105DeviceSession.h"
 #include "ground/calibration/CalibrationService.h"
 #include "TcpTelemetryLink.h"
 #include "FpgaTelemetry.h"
@@ -23,6 +24,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <algorithm>
+#include <cmath>
 #include <stdexcept>
 
 struct MainWindowRtcmTestAccess {
@@ -30,6 +32,10 @@ struct MainWindowRtcmTestAccess {
     static auto& state(MainWindow& window) { return *window.state_; }
     static bool valid(MainWindow& window, VaporView::SkyDeviceId id) { return window.remoteDeviceDataValid(id, 3000); }
     static QString invalid(MainWindow& window, VaporView::SkyDeviceId id) { return window.remoteDeviceInvalidText(id, 3000); }
+    static void setTemperature(MainWindow& window,quint8 channel,double target) {
+        VaporView::TemperatureControllerCommand command;command.channel=channel;command.target_temperature_c=target;
+        window.sendTemperatureCommand(VaporView::CommandId::SetTemperatureTarget,command);
+    }
 };
 static void require(bool ok, const char *message) {
     if (!ok) throw std::runtime_error(message);
@@ -271,7 +277,7 @@ static void simulatedSkyWorkflow()
     }); connectPulse.start();
     QMetaObject::invokeMethod(&window, "onConnectClicked");
     const auto ready = [&] {
-        for (const auto device : {SkyDeviceId::Ptb, SkyDeviceId::Epsilon, SkyDeviceId::Hc2a, SkyDeviceId::Lidar,
+        for (const auto device : {SkyDeviceId::Ptb, SkyDeviceId::Epsilon, SkyDeviceId::Hc2a, SkyDeviceId::Lidar,SkyDeviceId::TemperatureController,
                  SkyDeviceId::Ai8TemperatureController, SkyDeviceId::Bmp390, SkyDeviceId::Sht45,
                  SkyDeviceId::WaveTcp})
             if (!MainWindowRtcmTestAccess::valid(window, device)) return false;
@@ -290,9 +296,9 @@ static void simulatedSkyWorkflow()
     }
     require(connected, "one title click connects real SkyCore simulated sensors, summaries and waveform rate");
     require(state.fpga_session_.remoteStatus.value("simulation").toBool(), "Sky identifies simulation");
-    require(!(state.fpga_session_.remoteStatus.value("extensions").toInt() & FpgaExtensions::Rd105) &&
-            !MainWindowRtcmTestAccess::valid(window, SkyDeviceId::TemperatureController),
-            "default HCD2 simulator exposes HC2A while the withdrawn RD105 extension remains unavailable");
+    require((state.fpga_session_.remoteStatus.value("extensions").toInt() & FpgaExtensions::Rd105) &&
+            MainWindowRtcmTestAccess::valid(window, SkyDeviceId::TemperatureController),
+            "default production simulator exposes independent RD105 alongside HC2A");
     connectPulse.stop();
     require(!connectDelays.isEmpty(), "connection heartbeat samples");
     std::sort(connectDelays.begin(), connectDelays.end());
@@ -300,6 +306,21 @@ static void simulatedSkyWorkflow()
         << " maxMs=" << connectDelays.last() << std::endl;
     require(connectDelays[(connectDelays.size()-1)*95/100] < 100 && connectDelays.last() < 250,
         "GUI stays responsive throughout connect-all animations");
+    require(waitUntil([&]{return state.current_temperature_controller_.valid
+        &&std::isfinite(state.current_temperature_controller_.channels[0].measured_temperature_c)
+        &&std::isfinite(state.current_temperature_controller_.channels[1].measured_temperature_c);}),
+        "both RD105 channels reach Ground through a real SkyCore TCP connection");
+    bool temperatureConfirmed=false;
+    const auto temperatureObserver=QObject::connect(state.rd105_device_session_.get(),
+        &VaporView::Ground::Devices::Rd105DeviceSession::operationFinished,&window,
+        [&](const VaporView::Ground::Devices::Rd105SessionResult& result) {
+            if(result.command==CommandId::SetTemperatureTarget&&result.payload.channel==2)temperatureConfirmed=result.success();
+        });
+    MainWindowRtcmTestAccess::setTemperature(window,2,-10.12345);
+    require(waitUntil([&]{return temperatureConfirmed
+        &&std::abs(state.current_temperature_controller_.channels[1].target_temperature_c+10.12345)<1e-8;},10000),
+        "remote RD105 channel two setpoint completes only after FPGA device readback");
+    QObject::disconnect(temperatureObserver);
     require(waitUntil([&] { return state.current_hc2a_.valid && state.current_hc2a_.temperature > 22.0
         && state.current_hc2a_.temperature < 24.0 && state.current_hc2a_.humidity > 44.0
         && state.current_hc2a_.humidity < 46.0; }), "simulator environmental values reach ground UI");

@@ -45,7 +45,7 @@ QByteArray bytes(QJsonObject object)
 bool sensorSource(int source)
 {
     return source == 0x40 || source == 0x41 || source == 0x42 || source == 0x43 ||
-        source == 0x44 || source == 0x45 || source == 0x46 || source == 0x48;
+        source == 0x44 || source == 0x45 || source == 0x46 || source == 0x4a;
 }
 FpgaSensor::SensorKind kind(int source)
 {
@@ -57,7 +57,7 @@ FpgaSensor::SensorKind kind(int source)
     case 0x44: return FpgaSensor::SensorKind::Sht45;
     case 0x45: return FpgaSensor::SensorKind::Sdfm300;
     case 0x46: return FpgaSensor::SensorKind::Ai8;
-    case 0x48: return FpgaSensor::SensorKind::Rd105;
+    case 0x4a: return FpgaSensor::SensorKind::Rd105;
     default: return FpgaSensor::SensorKind::Unknown;
     }
 }
@@ -202,7 +202,7 @@ bool validateControl(const QJsonObject& control, QString *error)
             if (source == 0x45 && !isBaudRateSupported(lidarBaudCapabilities(), control.value("baud").toInt())) return fail();
         }
         if (control.contains("poll_ms") &&
-            ((source != 0x40 && source != 0x41 && source != 0x43 && source != 0x44 && source != 0x46 && source != 0x48) ||
+            ((source != 0x40 && source != 0x41 && source != 0x43 && source != 0x44 && source != 0x46 && source != 0x4a) ||
              !integer(control.value("poll_ms"), source==0x41?100:1, 3600000))) return fail();
     } else if(op=="time" || op=="motor" || op=="sensor_action" || op=="maintenance") {
         keys << "action" << "value";
@@ -228,7 +228,7 @@ bool validateControl(const QJsonObject& control, QString *error)
         keys << "value";if(!integer(control.value("value"),0,3600000) || (control.value("value").toInt()!=0 && control.value("value").toInt()<30000))return fail();
     } else if(op=="instrument") {
         keys << "source" << "action" << "address" << "count" << "data";
-        if(!integer(control.value("source"),0,65535) || (control.value("source").toInt()!=0x46 && control.value("source").toInt()!=0x48)
+        if(!integer(control.value("source"),0,65535) || (control.value("source").toInt()!=0x46 && control.value("source").toInt()!=0x4a)
             || !integer(control.value("action"),1,3) || !integer(control.value("address"),0,65535)
             || !integer(control.value("count"),1,16) || !control.value("data").isString())return fail();
         const int src=control.value("source").toInt(),action=control.value("action").toInt(),address=control.value("address").toInt(),count=control.value("count").toInt();
@@ -237,7 +237,11 @@ bool validateControl(const QJsonObject& control, QString *error)
         if(data.toBase64()!=encoded || (action==1?!data.isEmpty():data.size()!=count*2))return fail();
         if(src==0x46 && (count!=1 || action==3 || !((address<=0x4df) || (address>=0x600 && address<=0x6ef) || (address>=0x800 && address<=0x85f))))return fail();
         if(src==0x46 && action==2 && ((address>=0x480 && address<0x800) || (address>=0x842 && address<=0x844) || address==0x851 || (address>=0x853 && address<=0x855)))return fail();
-        if(src==0x48 && ((action==2 && address==0) || (action==3 && (address!=0 || count!=1 || data!=QByteArray::fromHex("0001")))))return fail();
+        if(src==0x4a) {
+            if(action==3)return fail();
+            if(action==2)for(int word:{0,1,2,3,7,8,9,12})
+                if(address<=word && address+count>word)return fail();
+        }
     } else if(op=="epsilon_mailbox") {
         keys << "kind" << "data" << "target" << "baud" << "timeout_ms";
         if(!integer(control.value("kind"),0,1) || !control.value("data").isString()
@@ -258,11 +262,11 @@ bool validateControl(const QJsonObject& control, QString *error)
         keys << "celsius";
         if(op=="device_temperature") {
             keys << "source" << "channel";
-            if(!integer(control.value("source"),0,65535) || (control.value("source").toInt()!=0x46 && control.value("source").toInt()!=0x48)
+            if(!integer(control.value("source"),0,65535) || (control.value("source").toInt()!=0x46 && control.value("source").toInt()!=0x4a)
                 || (control.contains("channel") && (!integer(control.value("channel"),1,8) || control.value("source").toInt()!=0x46)))return fail();
         }
         const auto v = control.value("celsius");
-        const bool rd105=op=="device_temperature" && control.value("source").toInt()==0x48;
+        const bool rd105=op=="device_temperature" && control.value("source").toInt()==0x4a;
         const double scale=rd105?100000.0:10.0;
         if (!v.isDouble() || !std::isfinite(v.toDouble()) || v.toDouble() < (rd105?-400:-999) || v.toDouble() > (rd105?1000:2147.4) ||
             std::abs(v.toDouble() * scale - std::round(v.toDouble() * scale)) > 1e-6) return fail();

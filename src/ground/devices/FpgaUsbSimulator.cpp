@@ -134,7 +134,7 @@ void tlv(QByteArray &b, quint16 tag, quint8 type, const QByteArray &v)
     put16(b, tag); b.append(char(type)); b.append(char(v.size())); b.append(v);
     while (b.size() % 4) b.append(char(0));
 }
-bool readable(quint32 a, bool historical, bool hcd2Scan)
+bool readable(quint32 a, bool historical, bool hcd2Scan, bool rd105)
 {
     if (a % 4) return false;
     if (a <= 0x10 || (a >= 0x20 && a <= 0x40) || (a >= 0x48 && a <= 0x50) ||
@@ -152,7 +152,7 @@ bool readable(quint32 a, bool historical, bool hcd2Scan)
     if (base == 0x6600) return offset <= 0x64 ||
         (historical && (offset == 0x68 || offset == 0x6c || (offset>=0x80 && offset<=0xb4) || offset==0xfc)) ||
         (hcd2Scan && (offset == 0x68 || offset == 0x6c || offset == 0x98 || (offset>=0xa0 && offset<=0xbc) || offset==0xfc));
-    if (base == 0x6800 && historical) return offset <= 0x48 || (offset>=0x80 && offset<=0x90) || offset>=0xc0;
+    if (base == 0x6a00 && rd105) return offset <= 0x4c || (offset>=0x80 && offset<=0x90) || offset>=0xc0;
     if (base == 0x6800 || base == 0x6900) return offset <= 0x3c;
     if (base == 0x6100) return true;
     if (base == 0x6700) return offset <= 0x48;
@@ -166,7 +166,8 @@ class Simulator final : public FpgaUsbSimulator
 public:
     Simulator(QObject *parent, FpgaSimulatorStartup startup, FpgaSimulatorFirmware firmware)
         : FpgaUsbSimulator(parent), startup_(startup), historical_(firmware == FpgaSimulatorFirmware::HistoricalExtensions),
-          hcd2Scan_(firmware == FpgaSimulatorFirmware::Hcd2Ai8Scan)
+          hcd2Scan_(firmware == FpgaSimulatorFirmware::Hcd2Ai8Scan || firmware == FpgaSimulatorFirmware::Rd105Integrated),
+          rd105_(historical_ || firmware == FpgaSimulatorFirmware::Rd105Integrated)
     { initialize(); clock_.start(); }
     bool open(const QString &) override
     {
@@ -232,14 +233,15 @@ private:
     void initialize()
     {
         regs_.clear();
-        extensions_ = historical_ ? 0x3f : hcd2Scan_ ? 0x2b : 0x29;
+        extensions_ = historical_ ? 0x3f : rd105_ ? 0x3b : hcd2Scan_ ? 0x2b : 0x29;
         regs_ = {{0x4000,0x00200101},{0x4100,0x00210101},{0x4018,0x00011800},{0x4118,0x00011800},
             {0x5000,0x00300101},{0x5100,0x00310101},{0x5024,0x00040101},{0x5124,0x00040101},
             {0x6600,0x00460200},{0x0004,0},{0x7004,1},{0x8004,1},{0x002c,0xffffffff},{0x0030,0xffffffff},
             {0x6610,19200},{0x6614,1},{0x661c,1},{0x662c,1000},{0x6660,200},{0x6664,1},{0x6310,0x77}};
-        if(historical_) {
-            regs_[0x6800]=0x00480103;regs_[0x6810]=19200;regs_[0x6814]=2;regs_[0x681c]=1;regs_[0x682c]=1000;
-        } else for(quint32 base:{0x6800u,0x6900u}) {
+        if(rd105_) {
+            regs_[0x6a00]=0x004a0103;regs_[0x6a10]=19200;regs_[0x6a14]=2;regs_[0x6a1c]=1;regs_[0x6a2c]=1000;
+        }
+        for(quint32 base:{0x6800u,0x6900u}) {
             regs_[base]=base==0x6800?0x00480100:0x00490100;
             regs_[base+0x10]=115200;regs_[base+0x14]=0x108;regs_[base+0x3c]=256;
         }
@@ -254,8 +256,8 @@ private:
             rd105Registers_[base]=quint16(target>>16);rd105Registers_[base+1]=quint16(target);
             rd105Registers_[base+0x10e]=90;
         }
-        rd105Registers_[2]=2;rd105Registers_[9]=1;
-        for(const auto& spec:FpgaRemote::sensorParameters())if(historical_ || spec.source!=0x48)regs_[spec.address]=spec.fallback;
+        rd105Registers_[2]=2;rd105Registers_[9]=2;
+        for(const auto& spec:FpgaRemote::sensorParameters())if(rd105_ || spec.source!=0x4a)regs_[spec.address]=spec.fallback;
         regs_[0x6700]=0x00470200;regs_[0x6710]=40;regs_[0x6714]=100;regs_[0x6718]=500000;
         regs_[0x671c]=1000000;regs_[0x6730]=4;regs_[0x6708]=2;
         regs_[0x6740]=100000000;regs_[0x6744]=2000;regs_[0x6748]=400;
@@ -272,7 +274,7 @@ private:
         for (quint32 b : {0x6000u,0x6100u,0x6200u,0x6300u,0x6400u,0x6500u,0x6600u}) {
             regs_[b + 4] = enabled; regs_[b + 8] = enabled | (b==0x6500?2u:0u);
         }
-        if(historical_)regs_[0x6804]=regs_[0x6808]=enabled;
+        if(rd105_)regs_[0x6a04]=regs_[0x6a08]=enabled;
         for (int ch = 0; ch < 2; ++ch) {
             const quint32 offset = ch * 0x100;
             for (quint32 b : {0x2000u,0x3000u,0x4000u,0x5000u}) setControl(b + offset, enabled);
@@ -340,9 +342,9 @@ private:
             return;
         }
         if (address >= 0x2000 && address <= 0x5104 && (address & 255) == 4) setControl(base, value);
-        else if (address >= 0x6000 && address <= 0x690c && (address & 255) == 12) regs_[address] &= ~value;
+        else if (address >= 0x6000 && address <= 0x6a0c && (address & 255) == 12) regs_[address] &= ~value;
         else regs_[address] = value;
-        if(address==0x6680 || address==0x6880) {regs_[address+12]=0x10000;pendingParameters_[base]={value,clock_.elapsed()+30};}
+        if(address==0x6680 || address==0x6a80) {regs_[address+12]=0x10000;pendingParameters_[base]={value,clock_.elapsed()+30};}
         if(address==0x6244) {mailbox_.clear();regs_[0x626c]=0;}
         if(address==0x6268) {put32(mailbox_,value);++regs_[0x626c];}
         if(address==0x6260) {
@@ -395,11 +397,11 @@ private:
         for(auto it=pending.begin();it!=pending.end();++it) {
             if(now<it.value().second)continue;
             const quint32 base=it.key(),op=it.value().first,address=regs_[base+0x84];
-            const bool rd=base==0x6800;const int count=rd?int(regs_[base+0x88]):1;
+            const bool rd=base==0x6a00;const int count=rd?int(regs_[base+0x88]):1;
             auto& instrument=rd?rd105Registers_:ai8Registers_;
             quint32 result=0;
             if(!(regs_[base+4]&1))result=5;
-            else if(fault_=="parameter_timeout" || (rd && (regs_[0x6814]!=rd105Address_ || rd105Baud_!=19200))
+            else if(fault_=="parameter_timeout" || (rd && (regs_[0x6a14]!=rd105Address_ || rd105Baud_!=19200))
                 || (!rd && (regs_[0x6614]!=ai8Address_ || ai8Baud_!=19200)))result=op==1?2:1;
             if(result==0 && op!=1) {
                 if(rd)for(int i=0;i<count;++i) {
@@ -408,13 +410,10 @@ private:
                     instrument[quint16(address+i)]=quint16(((word>>shift)&255)*256+((word>>(shift+8))&255));
                 }
                 else instrument[quint16(address)]=quint16(regs_[base+0x88]);
-                if(rd && address==2) {rd105Address_=instrument.value(2);if(rd105Address_!=regs_[0x6814])result=2;}
-                if(rd && address==9) {const auto code=instrument.value(9);rd105Baud_=code==1?19200:code==0?9600:38400;if(rd105Baud_!=19200)result=2;}
                 if(!rd && address==0x840) {ai8Address_=instrument.value(0x840);if(ai8Address_!=regs_[0x6614])result=2;}
                 if(!rd && address==0x841) {const auto code=instrument.value(0x841);ai8Baud_=code==2?19200:code==3?38400:9600;if(ai8Baud_!=19200)result=2;}
                 if(!rd && address<8)instrument[quint16(0x480+address)]=instrument.value(quint16(address));
                 if(fault_=="parameter_mismatch") {instrument[quint16(address)]^=1;result=3;}
-                if(rd && op==3) {result=6;regs_[0x6804]=regs_[0x6808]=0;rd105Address_=1;rd105Baud_=9600;}
             }
             if(rd) {
                 QByteArray data;
@@ -538,28 +537,34 @@ private:
                 if(value==1 && ((timeStatus_&9)!=9 || regs_.value(0x1074)!=ppsSequence_))return 7;}
             else return 6;
         }
-        if(!historical_ && (base==0x6800 || base==0x6900))return 6;
+        if(base==0x6800 || base==0x6900)return 6;
         if(hcd2Scan_ && base==0x6600) {
             if((offset>=0xa0 && offset<=0xbc) || offset==0xfc)return 6;
             if(offset==0x98 && (value<1 || value>8))return 7;
         }
         if(address==0x6668 && (enabled || value>1))return 7;
         if(address==0x666c && value>8)return 7;
-        if(address==0x6810 && (enabled || value!=19200))return 7;
-        if((address==0x6814 || address==0x681c) && (enabled || value<1 || value>(address==0x6814?247u:2u)))return 7;
+        if(address==0x6a10 && (enabled || value!=19200))return 7;
+        if(address==0x6a14 && (enabled || value!=2))return 7;
+        if(address==0x6a1c && (enabled || value<1 || value>2))return 7;
         if(address==0x5058 || address==0x5158) {
             if(!FpgaExtensions::cutoff(value) || (value!=1000 && regs_.value(0x4014)!=1000000))return 7;
         }
-        if(address==0x6680 || address==0x6880) {
+        if(address==0x6680 || address==0x6a80) {
             if(!enabled || pendingParameters_.contains(base))return 6;
-            if(value<1 || value>(base==0x6800?3u:2u))return 13;
+            if(value<1 || value>2)return 13;
             if(base==0x6600) {
                 const auto a=regs_.value(0x6684);
                 if(!((a<=0x4df) || (a>=0x600&&a<=0x6ef) || (a>=0x800&&a<=0x85f)))return 7;
                 if(value==2 && ((a>=0x480&&a<0x800) || (a>=0x842&&a<=0x844) || a==0x851 || (a>=0x853&&a<=0x855)))return 7;
             }
-            if(base==0x6800 && (regs_.value(0x6888)<1 || regs_.value(0x6888)>16))return 7;
-            if(base==0x6800 && ((value==2 && !regs_.value(0x6884)) || (value==3 && (regs_.value(0x6884)!=0 || regs_.value(0x6888)!=1 || (regs_.value(0x68c0)&0xffff)!=0x0100))))return 7;
+            if(base==0x6a00 && (regs_.value(0x6a88)<1 || regs_.value(0x6a88)>16))return 7;
+            if(base==0x6a00) {
+                const auto start=regs_.value(0x6a84),count=regs_.value(0x6a88);
+                if(start>65535 || start+count>65536)return 7;
+                if(value==2)for(quint32 word:{0u,1u,2u,3u,7u,8u,9u,12u})
+                    if(start<=word && start+count>word)return 7;
+            }
         }
         if(pendingParameters_.contains(base) && ((address&255)>=0x80))return 6;
         if(base==0x6200 && (address&255)>=0x40) {
@@ -600,8 +605,8 @@ private:
                 const quint32 address = word(p,0); const auto count = qFromLittleEndian<quint16>(p.constData()+4);
                 if (!count || count > 1000 || p.size() != (message == 2 ? 8 : 8 + count * 4)) status = 2;
                 for (int i = 0; !status && i < count; ++i)
-                    if ((!readable(address + i * 4,historical_,hcd2Scan_) && !(message==3 && address+i*4==0x44)) || address + quint64(i) * 4 > 0xffff) status = 5;
-                if(!status && !historical_ && message==2 && ((address<=0x681c && address+quint32(count)*4>0x681c) || (address<=0x691c && address+quint32(count)*4>0x691c)))status=11;
+                    if ((!readable(address + i * 4,historical_,hcd2Scan_,rd105_) && !(message==3 && address+i*4==0x44)) || address + quint64(i) * 4 > 0xffff) status = 5;
+                if(!status && message==2 && ((address<=0x681c && address+quint32(count)*4>0x681c) || (address<=0x691c && address+quint32(count)*4>0x691c)))status=11;
                 if (!status && message == 2) {
                     put32(result,address); put16(result,count); put16(result,0);
                     for (int i = 0; i < count; ++i) put32(result,readRegister(address + i * 4));
@@ -616,14 +621,14 @@ private:
             }
         } else if (message == 5) {
             if (p.size() != 8) status = 2;
-            else if(f.header.source==0x41 || (!historical_ && (f.header.source==0x48 || f.header.source==0x49)))status=14;
+            else if(f.header.source==0x41 || (f.header.source==0x48 || f.header.source==0x49))status=14;
             else {
                 const quint64 mask = qFromLittleEndian<quint64>(p.constData());
                 for (quint16 source : {0x10,0x11,0x12,0x13,0x20,0x21,0x30,0x31})
                     if (mask & (quint64(1) << source)) commit(source);
             }
         } else if (message == 4) {
-            if (p.size() != 12 || !readable(word(p,0),historical_,hcd2Scan_)) status = 5;
+            if (p.size() != 12 || !readable(word(p,0),historical_,hcd2Scan_,rd105_)) status = 5;
             else {const auto a=word(p,0),v=(regs_.value(a)&~word(p,4))|(word(p,8)&word(p,4));
                 status=sensorWriteStatus(a,v);if(!status)setRegister(a,v);}
         } else if (message == 0xa) {
@@ -662,8 +667,10 @@ private:
                 }
             }
         } else if (message == 0xb) {
-            if (p.size() != 8 || !FpgaExtensions::sensor(f.header.source)) status = 2;
-            else if(!historical_ && f.header.source==0x48)status=4;
+            if (p.size() != 8) status = 2;
+            else if(f.header.source==0x48 || f.header.source==0x49)status=4;
+            else if(!FpgaExtensions::sensor(f.header.source))status=2;
+            else if(!rd105_ && f.header.source==0x4a)status=4;
             else if (word(p,0) == 1 && word(p,4) <= 1) {
                 const auto base = 0x6000 + (f.header.source - 0x40) * 0x100;
                 regs_[base + 4] = word(p,4); regs_[base + 8] = word(p,4) | (base==0x6500?2u:0u);
@@ -680,11 +687,11 @@ private:
                     target_ = qint16(microC / 100000);ai8Registers_[quint16(channel-1)]=ai8Registers_[quint16(0x480+channel-1)]=quint16(target_); ++regs_[0x6648]; regs_[0x664c] = 0x10000;
                     const auto raw = quint16(target_); regs_[0x6654] = (quint32(raw) << 16) | raw;
                 }
-            } else if(word(p,0)==18 && f.header.source==0x48 && (regs_[0x6804]&1)) {
+            } else if(word(p,0)==17 && f.header.source==0x4a && (regs_[0x6a04]&1)) {
                 const qint32 target=qint32(word(p,4));
                 if(target<-400000000 || target>1000000000 || target%10)status=7;
-                else if(rd105Address_!=regs_[0x6814] || rd105Baud_!=19200)regs_[0x680c]|=0x20;
-                else {const quint16 addr=quint16(regs_[0x681c]*0x1000);const quint32 raw=quint32(target/10);rd105Registers_[addr]=quint16(raw>>16);rd105Registers_[addr+1]=quint16(raw);regs_[0x6840]=quint32(target);++regs_[0x6848];}
+                else if(rd105Address_!=regs_[0x6a14] || rd105Baud_!=19200)regs_[0x6a0c]|=0x20;
+                else {const quint16 addr=quint16(regs_[0x6a1c]*0x1000);const quint32 raw=quint32(target/10);rd105Registers_[addr]=quint16(raw>>16);rd105Registers_[addr+1]=quint16(raw);regs_[0x6a40]=quint32(target);++regs_[0x6a48];}
             } else status = 14;
         } else status = 1;
         QByteArray response; put32(response,status); if (!status) response.append(result);
@@ -694,7 +701,7 @@ private:
     {
         quint32 flags = 3;
         if (partialFailure_ && (source == 0x40 || source == 0x44 || source == 0x45)) flags |= 1u<<4;
-        if((source==0x48 && (rd105Address_!=regs_[0x6814] || rd105Baud_!=19200)) ||
+        if((source==0x4a && (rd105Address_!=regs_[0x6a14] || rd105Baud_!=19200)) ||
             (source==0x46 && (ai8Address_!=regs_[0x6614] || ai8Baud_!=19200)))flags|=1u<<4;
         if (source >= 0x30 && source <= 0x31 && regs_.value(0x500c+(source-0x30)*0x100)) flags |= 1u<<5;
         enqueue(FpgaVlp1::FrameType::Data,++sequence_,source,message,payload,ticks,flags,cycle_);
@@ -814,7 +821,7 @@ private:
             return (regs_[bit<32?0x2c:0x30] & (1u<<(bit%32))) != 0; };
         const auto enabled = [&](quint16 source) {
             if(!(regs_[0x6004+(source-0x40)*0x100]&1)||!streamed(source))return false;
-            const quint32 poll=source==0x40?0x6018:source==0x41?0x611c:source==0x43?0x6314:source==0x44?0x6414:source==0x46?0x662c:source==0x48?0x682c:0;
+            const quint32 poll=source==0x40?0x6018:source==0x41?0x611c:source==0x43?0x6314:source==0x44?0x6414:source==0x46?0x662c:source==0x4a?0x6a2c:0;
             const qint64 interval=poll?qMax(1u,regs_.value(poll,1000)):100;
             if(lastSensorMs_.contains(source)&&elapsedMs-lastSensorMs_.value(source)<interval)return false;
             lastSensorMs_[source]=elapsedMs;return true; };
@@ -851,22 +858,22 @@ private:
             data(0x46,0x1100,p,ticks);
           }
         }
-        if(historical_ && enabled(0x48)) {
+        if(rd105_ && enabled(0x4a)) {
             for(quint16 channel:{1,2}) {
                 const quint16 address=channel*0x1000;
                 const qint32 target=qint32((quint32(rd105Registers_.value(address))<<16)|rd105Registers_.value(address+1))*10;
-                const qint32 actual=(channel==1?23500000:26250000)+qint32(std::sin(t+channel)*300000);
+                const qint32 actual=(channel==1?23500000:26250000)+qint32(std::sin(t+channel)*30000)*10;
                 const quint32 outputEnabled=rd105Registers_.value(address+0x100)!=0;
                 const qint32 duty=outputEnabled?qint32((channel==1?35+8*std::sin(t):-42+6*std::cos(t))*20000):0;
                 rd105Registers_[address+2]=quint16((actual/10)>>16);rd105Registers_[address+3]=quint16(actual/10);
                 const quint64 dutyBits=quint64(qint64(duty));
                 for(int i=0;i<4;++i)rd105Registers_[address+0x103+i]=quint16(dutyBits>>(48-16*i));
-                if(channel==regs_[0x681c]) {regs_[0x6824]=quint32(actual);regs_[0x6840]=quint32(target);++regs_[0x6844];}
-                // Simulator schema 2 adds per-channel output telemetry; production schema 1 stays unchanged.
+                regs_[0x6a24]=quint32(actual);regs_[0x6a4c]=channel;++regs_[0x6a44];
+                // The production RD105 schema carries independent channel and output telemetry.
                 QByteArray p;put16(p,2);put16(p,6);
                 tlv(p,0x14,7,scalar(quint32(target)));tlv(p,0x15,7,scalar(quint32(actual)));tlv(p,2,3,scalar(0));
                 tlv(p,0x480,3,scalar(channel));tlv(p,0x481,7,scalar(quint32(duty)));tlv(p,0x482,3,scalar(outputEnabled));
-                data(0x48,0x1100,p,ticks);
+                data(0x4a,0x1100,p,ticks);
             }
         }
         for(int ch=0;ch<2;++ch) {
@@ -882,6 +889,7 @@ private:
     const FpgaSimulatorStartup startup_;
     const bool historical_;
     const bool hcd2Scan_;
+    const bool rd105_;
     quint32 extensions_=0x29;
     qint64 lastHeartbeatMs_=-1,motorStartedMs_=0,timeEnabledMs_=-1;
     bool motorBusy_=false,motorDone_=false,motorFault_=false,utcAnchored_=false;

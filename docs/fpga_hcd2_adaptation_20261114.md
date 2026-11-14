@@ -1,6 +1,8 @@
 # FPGA HCD2 适配说明（2026-11-14）
 
-本文是当前 FPGA 模式的优先入口。依据本机 `Vapor_Radar_App_V2` 的 `7cf6986c0e3bfd6a1ed0101d0433a2689754b4c5`，以其中 `Docs/LOWER_COMPUTER_RELEASE_20261113.md`、`Docs/integration/sensors/HC2A_ROASCII.md`、`GNSS_PPS_DM422_20261027.md` 和 `LC_DUAL_UART_20261027.md` 为接口依据。其他 FPGA 文档中的旧型号、旧扩展或旧电机步骤与本文冲突时，以本文为准。
+> 这是旧 `0x29` 固件的适配记录。2026-11-15 新固件的独立 RD105、AI8 扫描及 SDFM300 范围以 [RD105 接入说明](rd105.md)和 [SDFM300 接入说明](sdfm300.md)为准；以下限制只适用于本文基线。
+
+本文依据本机 `Vapor_Radar_App_V2` 的 `7cf6986c0e3bfd6a1ed0101d0433a2689754b4c5`，以其中 `Docs/LOWER_COMPUTER_RELEASE_20261113.md`、`Docs/integration/sensors/HC2A_ROASCII.md`、`GNSS_PPS_DM422_20261027.md` 和 `LC_DUAL_UART_20261027.md` 为接口依据。
 
 下位机正式归档日期为2026-11-13；所附BIT在2026-10-28构建、2026-11-12继续实测，不能把归档日期当成新综合或新板测。本文描述上位机适配，不改变下位机代码或烧录状态。
 

@@ -12,6 +12,7 @@
 #include "shared/config/ApplicationConfig.h"
 #include "shared/theme/AppTheme.h"
 #include "ground/devices/RemoteSkyController.h"
+#include "ground/devices/Rd105DeviceSession.h"
 #include "TcpTelemetryLink.h"
 #include "TelemetryCodec.h"
 #include "FpgaTelemetry.h"
@@ -79,6 +80,8 @@ struct MainWindowRtcmTestAccess
     static auto summary(MainWindow& window) { return window.remoteTelemetrySummarySections(); }
     static void refreshSummary(MainWindow& window) { window.updateRemoteTelemetrySummaryLabel(); }
     static VaporView::Ground::Main::MainWindowState& state(MainWindow& window) { return *window.state_; }
+    static void temperatureResult(MainWindow& window,const VaporView::Ground::Devices::Rd105SessionResult& result)
+    { window.onRd105SessionOperationFinished(result); }
     static std::function<void(const QJsonObject&)> completion(MainWindow& window, const QString& id)
     { return window.fpgaRtcmCompletion(id); }
 };
@@ -608,7 +611,7 @@ static void configurationActionReadback()
         return static_cast<QToolButton*>(nullptr);
     };
     QJsonObject registers;
-    for(quint32 address:{0x6004u,0x6104u,0x6204u,0x6304u,0x6404u,0x6504u,0x6604u,0x6804u,
+    for(quint32 address:{0x6004u,0x6104u,0x6204u,0x6304u,0x6404u,0x6504u,0x6604u,0x6a04u,
                         0x4004u,0x4104u,0x5004u,0x5104u})registers[QString::number(address)]=0;
     registers[QString::number(0x6010)]=4800;
     QJsonObject status{{"connected",true},{"ready",true},{"busy",false},{"detail","ready"},
@@ -1147,12 +1150,12 @@ static void simulatorRefreshBudget()
         require(QMetaObject::invokeMethod(&window, "onConnectClicked", Qt::DirectConnection),
                 "refresh budget connects all simulated devices");
         auto *grid = window.findChild<QWidget *>("homeOverviewDeviceGrid");
-        const auto actions = grid->findChildren<QToolButton *>("homeDeviceActionButton");
+        auto actions = grid->findChildren<QToolButton *>("homeDeviceActionButton");
+        actions.removeAll(MainWindowRtcmTestAccess::state(window).home_motion_action_btn_);
         require(actions.size() == 9, "refresh budget covers all nine devices");
-        auto *unsupported=homeAction(window,"RD105");
         require(waitUntil([&] {
-            return std::all_of(actions.cbegin(), actions.cend(), [unsupported](auto *button) {
-                return button==unsupported ? !button->isEnabled() : button->property("state") == "connected";
+            return std::all_of(actions.cbegin(), actions.cend(), [](auto *button) {
+                return button->property("state") == "connected";
             });
         }, 20000), "refresh budget waits for every supported current-firmware device");
         processFor(500);
@@ -1413,19 +1416,20 @@ static void localSimulatorRouting()
     connectionSuccesses.clear();
     window.findChild<QCheckBox*>("deviceRemoteTemperatureEnabledCheck")->setChecked(true);
     QMetaObject::invokeMethod(&window,"onConnectClicked");
-    processFor(300);
-    check(connectionSuccesses.isEmpty()&&!homeAction(window,"RD105")->isEnabled(),
-        "RD105-only selection cannot start the LC0 page on current firmware");
+    check(waitUntil([&]{return connectionSuccesses==QSet<quint16>{0x4a}&&homeAction(window,"RD105")->isEnabled();}),
+        "RD105-only selection connects the independent source");
+    check(lastRegisters.value(0x6a04)==1&&lastRegisters.value(0x6804)==0&&lastRegisters.value(0x6904)==0,
+        "RD105 selective connection preserves both LC UART pages");
     if(disconnect->isEnabled())disconnect->click();
-    check(waitUntil([&]{return connectButton->isEnabled();}),"unsupported selection leaves the USB connection releasable");
+    check(waitUntil([&]{return connectButton->isEnabled();}),"RD105 connection leaves the USB connection releasable");
     for(const auto &name:relaySelectionNames) window.findChild<QCheckBox*>(name)->setChecked(true);
     QMetaObject::invokeMethod(&window,"onConnectClicked");
     check(waitUntil([&]{auto *wave=homeAction(window,QStringLiteral("波形源"));
         return wave->isEnabled()&&wave->property("state")=="connected";},20000),
         "title connection opens FPGA then starts every supported sensor and shared acquisition");
-    check(waitUntil([&]{return connectionSuccesses==QSet<quint16>{0,0x40,0x41,0x42,0x43,0x44,0x45,0x46};}),
-        "all seven current sensors and shared acquisition report confirmed connections");
-    verifyRelayIndicators(window,{"Epsilon","Pressure","Humidity","Lidar","Ai8","Wave","Bmp390","Sht45"});
+    check(waitUntil([&]{return connectionSuccesses==QSet<quint16>{0,0x40,0x41,0x42,0x43,0x44,0x45,0x46,0x4a};}),
+        "all eight current sensors and shared acquisition report confirmed connections");
+    verifyRelayIndicators(window,{"Epsilon","Pressure","Humidity","Lidar","Temperature","Ai8","Wave","Bmp390","Sht45"});
     check(connectionSuccesses.contains(0x41),"HC2A has its own confirmed connection log");
     {
         int rdReads=0,aiReads=0,asciiStarts=0;
@@ -1433,14 +1437,40 @@ static void localSimulatorRouting()
             &window,[&](quint64,const QByteArray& bytes) {
                 VaporView::FpgaVlp1::StreamParser parser;
                 for(const auto& frame:parser.feed(reinterpret_cast<const std::uint8_t*>(bytes.constData()),bytes.size()))if(frame.header.message==3 && frame.payload.size()>=12) {
-                    const auto address=qFromLittleEndian<quint32>(frame.payload.data());rdReads+=address==0x6880;aiReads+=address==0x6680;asciiStarts+=address==0x6240;
+                    const auto address=qFromLittleEndian<quint32>(frame.payload.data());rdReads+=address==0x6a80;aiReads+=address==0x6680;asciiStarts+=address==0x6240;
                 }
             },Qt::QueuedConnection);
         auto* readRd=window.findChild<QToolButton*>("temperatureFpgaReadParameters");
-        check(readRd&&!readRd->isEnabled(),"current LC0 identity keeps historical RD105 parameter writes disabled");
+        check(readRd&&readRd->isEnabled(),"RD105 capability enables the existing configuration read");
+        readRd->click();const bool rdReadFinished=waitUntil([&]{return rdReads>5&&readRd->isEnabled();},45000);
+        if(!rdReadFinished) {
+            const auto& current=MainWindowRtcmTestAccess::state(window);
+            std::cerr<<"RD105 parameter read: starts="<<rdReads<<" queue="<<current.fpga_action_queue_.size()
+                <<" reply="<<bool(current.fpga_instrument_reply_)<<" busy="<<current.fpga_busy_
+                <<" device="<<int(current.fpga_home_action_device_)<<" enabled="<<readRd->isEnabled()<<'\n';
+        }
+        check(rdReadFinished,"RD105 configuration page reads through the independent FPGA transaction interface");
+        {
+            auto& live=MainWindowRtcmTestAccess::state(window).current_temperature_controller_;
+            const auto before=live;
+            VaporView::Ground::Devices::Rd105SessionResult delayed;
+            delayed.command=VaporView::CommandId::QueryDeviceStatus;
+            delayed.outcome=VaporView::Ground::Devices::Rd105OperationOutcome::Success;
+            delayed.has_latest_data=true;delayed.latest_data=before;
+            delayed.latest_data.timestamp-=std::chrono::seconds(1);
+            delayed.latest_data.channels[0].kp=12345;delayed.latest_data.channels[0].measured_temperature_c=-123;
+            MainWindowRtcmTestAccess::temperatureResult(window,delayed);
+            check(live.channels[0].kp==12345&&live.channels[0].measured_temperature_c==before.channels[0].measured_temperature_c,
+                "a newer live sample preserves its measurement while the completed parameter read still updates PID");
+            live=before;
+        }
+        for(const auto& name:{"temperatureDeviceAddressSpin","temperatureRs485BaudCombo","temperatureFactoryResetButton"}) {
+            auto* control=window.findChild<QWidget*>(name);
+            check(control&&!control->isEnabled(),"FPGA mode disables unsupported RD105 communication maintenance");
+        }
         auto* readAi=window.findChild<QAbstractButton*>("ai8ReadParametersButton");
-        check(readAi&&!readAi->isEnabled(),"current AI8 single-channel firmware keeps withdrawn parameter transactions disabled");
-        check(rdReads==0&&aiReads==0,"current capability discovery never probes withdrawn parameter command registers");
+        check(readAi&&!readAi->isEnabled(),"current AI8 firmware keeps unsupported parameter transactions disabled");
+        check(aiReads==0,"RD105 configuration reads never access unsupported AI8 parameter commands");
         auto* readEpsilon=window.findChild<QAbstractButton*>("epsilonSettingsReadButton");
         check(readEpsilon&&readEpsilon->isEnabled(),"EPSILON existing settings page is enabled by extension capabilities");readEpsilon->click();
         check(waitUntil([&]{return asciiStarts>5&&readEpsilon->isEnabled();},12000),"EPSILON existing parameter page uses the mailbox through its production worker");
@@ -1527,7 +1557,7 @@ static void localSimulatorRouting()
             &&!configAction->toolTip().contains(QStringLiteral("连接中")),
             "home refresh consuming spinner expiry also restores device configuration actions");
     }
-    check(!homeAction(window,"RD105")->isEnabled(),"current local relay does not advertise withdrawn RD105 capability");
+    check(homeAction(window,"RD105")->isEnabled(),"current local relay advertises the independent RD105 capability");
     auto *navigation=window.findChild<VaporView::Ground::Navigation::CombinationNavigationPage*>("combinationNavigationPage");
     auto *navigationPanel=static_cast<VaporView::Ground::Navigation::NavigationStatusPanel*>(window.findChild<QWidget*>("navigationStatusPanel"));
     check(navigation&&navigationPanel,"local navigation status widgets exist");
@@ -1605,7 +1635,7 @@ static void localSimulatorRouting()
     QWidget *deviceConfig=path;
     while(stack->indexOf(deviceConfig)<0)deviceConfig=deviceConfig->parentWidget();
     stack->setCurrentWidget(deviceConfig);processFor(100);
-    verifyRelayIndicators(window,{"Epsilon","Pressure","Humidity","Lidar","Ai8","Wave","Bmp390","Sht45"});
+    verifyRelayIndicators(window,{"Epsilon","Pressure","Humidity","Lidar","Temperature","Ai8","Wave","Bmp390","Sht45"});
     check(deviceWaveRate(window)->width()>=deviceWaveRate(window)->sizeHint().width(),"actual ADC sampling rate fits its device configuration cell");
     stack->setCurrentIndex(0);processFor(100);
 
@@ -1733,10 +1763,7 @@ static void simulatedMonitorActions()
     auto *raw=monitor->findChild<QAbstractButton*>("fpgaMonitorRawButton");
     auto *harmonic=monitor->findChild<QAbstractButton*>("fpgaMonitorHarmonicButton");
     require(mode&&page&&raw&&harmonic,"simulated monitor controls exist");
-    // This scenario exercises withdrawn RD105 output/parameter workflows. All
-    // ordinary UI simulator scenarios retain the current HCD2/0x29 profile.
-    page->setProperty("fpgaHistoricalExtensionsFixture",true);
-    const auto restoreFirmware=qScopeGuard([page]{page->setProperty("fpgaHistoricalExtensionsFixture",QVariant{});});
+    // Exercise the production RD105/AI8 scan profile, without historical AI8 parameter support.
     mode->trigger();
     require(waitUntil([&]{return page->uiTestController()!=nullptr;}),"UI test installs an isolated protocol controller");
     require(!page->uiTestConnected()&&!raw->isEnabled(),"UI test mode does not fabricate an FPGA connection");
@@ -1767,7 +1794,8 @@ static void simulatedMonitorActions()
     },6000),"FPGA simulator fills both RD105 overview trends and both measured output percentages");
     const auto outputs=window.findChildren<QAbstractButton*>("temperatureOverviewOutputSwitch");
     require(outputs.size()==2,"simulated RD105 overview exposes both output controls");
-    const auto capsules=window.findChildren<QLabel*>("homeDeviceStatusCapsule");
+    auto capsules=window.findChildren<QLabel*>("homeDeviceStatusCapsule");
+    capsules.removeAll(MainWindowRtcmTestAccess::state(window).home_motion_status_lbl_);
     QList<QObject*> watched;
     struct OutputStateObserver : QObject {
         bool capsuleChanged=false, actionsLocked=false;
@@ -1782,12 +1810,12 @@ static void simulatedMonitorActions()
     require(capsules.size()==9&&waitUntil([&]{
         for(auto *capsule:capsules)if(capsule->property("state")!="connected")return false;
         for(auto *button:window.findChildren<QToolButton*>("homeDeviceActionButton"))
-            if(!button->property("deviceConfigAction").toBool()&&!button->isEnabled())return false;
+            if(!button->property("deviceConfigAction").toBool()&&!button->property("motionDeviceAction").toBool()&&!button->isEnabled())return false;
         return true;
     }),"all nine device capsules are connected before testing RD105 output commands");
     for(auto *capsule:capsules)watched.append(capsule);
     for(auto *button:window.findChildren<QToolButton*>("homeDeviceActionButton"))
-        if(!button->property("deviceConfigAction").toBool())watched.append(button);
+        if(!button->property("deviceConfigAction").toBool()&&!button->property("motionDeviceAction").toBool())watched.append(button);
     for(auto *object:watched)object->installEventFilter(&outputState);
     for(auto *output:outputs) {
         require(output->isEnabled(),"simulated RD105 output control is available");

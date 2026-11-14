@@ -1,6 +1,39 @@
 #include "SkyFpgaBackend.h"
 #include "FpgaUsbSimulator.h"
+#include "SkyDeviceManager.h"
 #include "sky_fpga_test_transport.h"
+
+void rd105Relay()
+{
+    SkyDeviceManager manager;
+    auto config=SkyConfig::defaults();config.sensor_transport_path=SensorTransportPath::FpgaRelay;config.fpga.enabled=true;
+    manager.loadConfig(config);
+    manager.setFpgaTransportForTesting(VaporView::Ground::Devices::makeFpgaUsbSimulator());
+    const auto submit=[&](const QJsonObject& request) {
+        bool done=false;QJsonObject document;
+        manager.submitFpgaControl(request,[&](CommandErrorCode code,QString,QJsonObject status) {
+            require(code==CommandErrorCode::Ok,"Sky RD105 relay operation succeeds");document=status;done=true;
+        });
+        waitUntil([&]{return done;},"Sky RD105 relay completes");return document;
+    };
+    const auto status=submit({{"op","connect"},{"recover",false}});
+    require(status.value("extensions").toInt()==0x3b,"Sky exposes the integrated RD105 firmware capability");
+    submit({{"op","sensor"},{"source",0x4a},{"enabled",true},{"poll_ms",100}});
+    waitUntil([&]{const auto data=manager.latestTemperatureController();return data.valid
+        &&std::isfinite(data.channels[0].measured_temperature_c)&&std::isfinite(data.channels[1].measured_temperature_c);},
+        "Sky merges real VLP samples for both RD105 channels");
+    const auto data=manager.latestTemperatureController();
+    require(data.device_address==2&&data.rs485_baud_index==2,"Sky publishes the shared-bus instrument settings");
+    bool listed=false;for(const auto& device:manager.allStatuses())if(device.device_id==SkyDeviceId::TemperatureController)listed=true;
+    require(listed,"Sky telemetry device status includes RD105 in FPGA mode");
+    auto response=submit({{"op","instrument"},{"source",0x4a},{"action",2},{"address",0x2000},{"count",2},{"data","AC3GwA=="}});
+    require(response.value("operation_result").toObject().value("verified").toBool(),"Sky returns independent RD105 device readback verification");
+    waitUntil([&]{return manager.latestTemperatureController().channels[1].target_temperature_c==30.0;},
+        "Sky receives the confirmed channel two setpoint through normal telemetry");
+    require(manager.latestTemperatureController().channels[0].target_temperature_c==25.0,"Sky channel two write preserves channel one");
+    submit({{"op","disconnect"}});
+    require(!manager.latestTemperatureController().valid,"Sky disconnect clears the RD105 snapshot");
+}
 
 void selectiveConnection()
 {
@@ -255,6 +288,7 @@ void acquisitionCycleStatistics()
 int main(int argc,char **argv)
 {
     QCoreApplication app(argc,argv);
+    rd105Relay();
     acquisitionCycleStatistics();
     selectiveConnection();
     diagnosticReadback();
