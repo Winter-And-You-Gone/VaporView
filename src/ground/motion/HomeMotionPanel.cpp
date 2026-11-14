@@ -125,12 +125,14 @@ void HomeMotionPanel::refresh()
         : state.connected ? (english_ ? QStringLiteral("Connected · local USB") : QStringLiteral("已连接 · 本机 USB 直连"))
                           : (english_ ? QStringLiteral("Disconnected") : QStringLiteral("未连接")));
     const int channel = channel_combo_->currentIndex();
-    position_->setText(channel >= 0 && channel < 3 && state.connected && state.valid[channel]
+    position_->setText(state.continuousMotion
+        ? (english_ ? QStringLiteral("Reading paused") : QStringLiteral("读取已暂停"))
+        : channel >= 0 && channel < 3 && state.connected && state.valid[channel]
         ? QString::number(state.positions[channel], 'f', 3) + QStringLiteral("°") : QStringLiteral("—"));
     stop_->setEnabled(state.connected);
     for (auto *widget : {static_cast<QWidget *>(target_), static_cast<QWidget *>(step_),
                          static_cast<QWidget *>(go_), static_cast<QWidget *>(minus_), static_cast<QWidget *>(plus_)})
-        widget->setEnabled(state.connected && !state.busy && channel >= 0 && channel < 3);
+        widget->setEnabled(state.connected && !state.busy && !state.continuousMotion && channel >= 0 && channel < 3);
 }
 
 void HomeMotionPanel::refreshParameters()

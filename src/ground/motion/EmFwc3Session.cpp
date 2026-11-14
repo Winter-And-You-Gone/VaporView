@@ -148,7 +148,13 @@ public:
             case Command::Absolute: code = sdk_.absolute(name_, value, motor); break;
             case Command::Home: code = sdk_.home(name_, motor); break;
             case Command::Continuous:
-                if (value == -1 || value == 0 || value == 1) code = sdk_.continuous(name_, int(value), motor);
+                if (value == -1 || value == 0 || value == 1) {
+                    if (value != 0) {
+                        state_.continuousMotion = true;
+                        state_.valid.fill(false);
+                    }
+                    code = sdk_.continuous(name_, int(value), motor);
+                }
                 break;
             case Command::StopAll:
                 code = stop(true); break;
@@ -165,6 +171,8 @@ public:
             case Command::SavePosition: code = sdk_.save(name_); break;
             }
             if (code == 0) {
+                if (command == Command::StopAll || (command == Command::Continuous && value == 0))
+                    state_.continuousMotion = false;
                 if (command == Command::Continuous && value == 0) motionIssued_[channel] = false;
             }
         }
@@ -190,6 +198,8 @@ private:
     }
     void poll()
     {
+        // On EM-FWC3, querying any channel's angle interrupts continuous motion.
+        if (state_.continuousMotion) return;
         const int code = readPositions();
         if (code == 0) failures_ = 0;
         else if (++failures_ >= 3) {
@@ -266,7 +276,7 @@ void EmFwc3Session::disconnectDevice()
 void EmFwc3Session::execute(Command command, int channel, double value)
 {
     const bool stop = command == Command::StopAll || (command == Command::Continuous && value == 0);
-    if (closing_ || !state_.connected || (state_.busy && !stop)) return;
+    if (closing_ || !state_.connected || ((state_.busy || state_.continuousMotion) && !stop)) return;
     ++pending_; state_.busy = true; emit stateChanged(state_);
     QMetaObject::invokeMethod(worker_, [this, command, channel, value] { worker_->command(command, channel, value); }, Qt::QueuedConnection);
 }

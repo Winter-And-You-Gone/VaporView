@@ -15,6 +15,7 @@ namespace
 std::mutex mutex;
 std::array<double, 3> positions{};
 std::array<int, 3> stops{};
+std::array<bool, 3> running{};
 std::atomic<int> readFailure{0}, commandFailure{0}, motionCount{0}, saves{0}, closes{0}, deinits{0};
 std::atomic<bool> nonfinite{false};
 int speed = 100;
@@ -23,7 +24,7 @@ bool opened = false;
 API void testReset()
 {
     std::lock_guard lock(mutex);
-    positions = {0, 45, 90}; stops = {}; speed = 100; opened = false;
+    positions = {0, 45, 90}; stops = {}; running = {}; speed = 100; opened = false;
     readFailure = 0; commandFailure = 0; motionCount = 0; saves = 0; closes = 0; deinits = 0; nonfinite = false;
 }
 API void testFailRead(int code) { readFailure = code; }
@@ -34,6 +35,7 @@ API int testSaves() { return saves; }
 API int testCloses() { return closes; }
 API int testDeinits() { return deinits; }
 API int testStops(int channel) { std::lock_guard lock(mutex); return stops.at(channel); }
+API int testRunning(int channel) { std::lock_guard lock(mutex); return running.at(channel); }
 API int libraryInit() { return 0; }
 API void libraryDeInit() { ++deinits; }
 API int COMMON_openSerialDevice(const char*, const char*) { std::lock_guard lock(mutex); opened = true; return 0; }
@@ -43,6 +45,8 @@ API int EMFWC3_GetPosition(const char*, double *pos, char channel)
 {
     std::lock_guard lock(mutex);
     if (!opened || readFailure) return readFailure ? readFailure.load() : -1;
+    // Reproduce the hardware: an angle query on any channel halts continuous motion.
+    running.fill(false);
     *pos = nonfinite ? std::numeric_limits<double>::quiet_NaN() : positions.at(channel); return 0;
 }
 API int EMFWC3_GetSpeed(const char*, int *value) { std::lock_guard lock(mutex); *value = speed; return 0; }
@@ -66,6 +70,7 @@ API int EMFWC3_RunContinue(const char*, int direction, char channel)
 {
     std::lock_guard lock(mutex);
     if (direction == 0) ++stops.at(channel); else if (!commandFailure) ++motionCount;
+    if (!commandFailure) running.at(channel) = direction != 0;
     return commandFailure;
 }
 API int EMFWC3_SavePosition(const char*) { if (commandFailure) return commandFailure; ++saves; return 0; }

@@ -57,7 +57,14 @@ is never automatic. Verify speed units, permitted speed, and mechanical
 travel against the actual fitted hardware; numeric input bounds are not
 mechanical limit protection. No XYZ/attitude meaning is assigned to channels.
 
-Position readback is polled every 500 ms, subject to SDK response time. A
+Position readback is polled every 500 ms, subject to SDK response time. On the
+EM-FWC3, reading any channel's position interrupts continuous motion, including
+motion on another channel (verified with the V1.0.1 SDK). During
+continuous motion, all angle polling pauses and both control panels display
+"Reading paused" instead of stale angles. Stop the motion before issuing other
+commands; stop, stop-all and disconnect remain available. Successful stopping
+resumes angle polling. With polling paused, connection-loss detection also
+waits until reading resumes. A
 command returning zero means it was sent successfully, not that the mechanism
 has arrived. The supplied EM-FWC3 API has no separate motion-complete/limit/
 alarm query; the UI reports angles without inventing hardware status. Invalid

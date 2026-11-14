@@ -247,7 +247,9 @@ MotionControlPage::MotionControlPage(QWidget *parent, const QString& sdkDirector
     connect(s.session, &EmFwc3Session::operationFinished, this, [this](const QString& operation, int code, const QString& detail) {
         const bool motion = operation == "relative" || operation == "absolute" || operation == "home" || operation == "continuous";
         const QString result = code == 0
-            ? (motion ? text("指令已发送，请观察角度读回；不代表已到位。", "Command sent; observe the angle readback. Arrival is not confirmed.")
+            ? (state_->session->state().continuousMotion
+                ? text("连续运行已请求；角度读取已暂停，停止后恢复。", "Continuous motion requested; angle readings resume after stopping.")
+                : motion ? text("指令已发送，请观察角度读回；不代表已到位。", "Command sent; observe the angle readback. Arrival is not confirmed.")
                       : text("操作成功。", "Operation succeeded."))
             : text("操作失败，错误码 %1。", "Operation failed, code %1.").arg(code);
         setStatus(operation + QStringLiteral(": ") + result + (detail.isEmpty() ? QString() : QStringLiteral("\n") + detail), code != 0);
@@ -306,14 +308,14 @@ void MotionControlPage::refresh()
     const QString connection = snapshot.busy ? text("操作进行中…", "Operation in progress…")
         : snapshot.connected ? text("已连接 · 本机 USB 直连", "Connected · local USB") : text("未连接", "Disconnected");
     s.connection->setText(connection);
-    for (int i = 0; i < 3; ++i) s.positions[i]->setText(snapshot.connected && snapshot.valid[i]
+    for (int i = 0; i < 3; ++i) s.positions[i]->setText(snapshot.continuousMotion ? text("读取已暂停", "Reading paused") : snapshot.connected && snapshot.valid[i]
         ? QString::number(snapshot.positions[i], 'f', 3) + QStringLiteral("°") : QStringLiteral("—"));
     const QString speedReadback = text("速度读回：%1", "Speed readback: %1").arg(snapshot.connected && snapshot.speedValid ? QString::number(snapshot.speed) : QStringLiteral("—"));
     if (s.speedReadback->text() != speedReadback) {
         s.speedReadback->setText(speedReadback);
         QTimer::singleShot(0, this, &MotionControlPage::reflow);
     }
-    for (auto *w : s.normalActions) w->setEnabled(snapshot.connected && !snapshot.busy);
+    for (auto *w : s.normalActions) w->setEnabled(snapshot.connected && !snapshot.busy && !snapshot.continuousMotion);
     for (auto *w : s.stopActions) w->setEnabled(snapshot.connected);
     {
         const bool editable = !snapshot.connected && !snapshot.busy;

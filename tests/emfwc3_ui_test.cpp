@@ -248,6 +248,21 @@ int main(int argc, char **argv)
         homeStop->click(); QApplication::processEvents();
         check(stops(0) == 2 && stops(1) == 2 && stops(2) == 2, "write barrier also blocks home stop");
         VaporView::setSettingsWritesSuspended(false);
+        QTimer::singleShot(0, [] { auto *box = qobject_cast<QMessageBox*>(QApplication::activeModalWidget()); check(box, "continuous confirmation appears"); box->button(QMessageBox::Yes)->click(); });
+        find<QPushButton>(*page, "emFwc3Forward1")->click();
+        until("continuous motion starts", [&] { return page->session()->state().continuousMotion && !page->session()->state().busy; });
+        check(homePosition->text() == QStringLiteral("读取已暂停") &&
+              find<QLabel>(*page, "emFwc3Position1")->text() == QStringLiteral("读取已暂停"),
+              "both panels explain why angle feedback pauses during continuous motion");
+        check(!homeGo->isEnabled() && !homePlus->isEnabled() && homeStop->isEnabled() &&
+              !find<QPushButton>(*page, "emFwc3ApplySpeed")->isEnabled() &&
+              find<QPushButton>(*page, "emFwc3Stop1")->isEnabled(),
+              "continuous motion keeps stop controls available and blocks interrupting commands");
+        homeStop->click();
+        until("stopping restores feedback and controls", [&] {
+            return !page->session()->state().continuousMotion && !page->session()->state().busy &&
+                   homePosition->text() == QStringLiteral("10.000°") && homeGo->isEnabled();
+        });
         find<QPushButton>(*panel, "emFwc3Disconnect")->click(); until("disconnect completes", [&] { return !page->session()->state().connected && !page->session()->state().busy; });
         check(find<QLabel>(*page, "emFwc3Position3")->text() == QStringLiteral("—"), "disconnection clears position readbacks");
         check(!homeStop->isEnabled() && homeConnection->text() == QStringLiteral("未连接"), "disconnection updates home status and disables stop");

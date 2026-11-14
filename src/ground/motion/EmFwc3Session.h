@@ -11,6 +11,7 @@ struct EmFwc3State
 {
     bool connected = false;
     bool busy = false;
+    bool continuousMotion = false;
     std::array<double, 3> positions{};
     std::array<bool, 3> valid{};
     int speed = 0;
