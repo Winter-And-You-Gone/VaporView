@@ -1,4 +1,5 @@
 add_subdirectory(devices)
+add_subdirectory(gateway)
 add_subdirectory(widgets)
 add_subdirectory(main)
 
@@ -41,6 +42,9 @@ add_subdirectory(calibration)
 add_subdirectory(motion)
 
 set(NAV_WINDOW_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/ground/main/GroundMainWindowGateway.cpp
+    ${CMAKE_SOURCE_DIR}/src/ground/main/GatewaySettingsDialog.cpp
+    ${CMAKE_SOURCE_DIR}/src/ground/main/GatewaySettingsDialog.h
     ${CMAKE_SOURCE_DIR}/src/ground/navigation/CombinationNavigationPage.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/navigation/NavigationStatusPanel.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/navigation/EpsilonConfigPanel.cpp
@@ -107,6 +111,7 @@ target_link_libraries(vaporview_main_window PUBLIC
 )
 
 target_link_libraries(vaporview_main_window PRIVATE
+    vaporview_ground_gateway
     vaporview_ground_motion
     vaporview_water_calibration_ui
     vaporview_app_config

@@ -3487,8 +3487,8 @@ void requireCompactTelemetryPillTextGap(QFrame *pill, const char *message)
     QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
     QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
     require(nameLabel != nullptr && valueLabel != nullptr, message);
-    require(valueLabel->alignment().testFlag(Qt::AlignLeft),
-            "home telemetry values start near their field names");
+    require(valueLabel->alignment().testFlag(Qt::AlignRight),
+            "home telemetry values align units to the right edge");
 
     const int nameTextRight = nameLabel->mapTo(pill, QPoint(0, 0)).x() +
         nameLabel->fontMetrics().horizontalAdvance(nameLabel->text());
@@ -4440,11 +4440,16 @@ void requireHomeSensorColumnLayout(MainWindow& window)
     }
     const QRect epsilonRect(epsilon->mapTo(column, QPoint()), epsilon->size());
     const QRect motionRect(motion->mapTo(column, QPoint()), motion->size());
-    require(std::abs(epsilonRect.left() - motionRect.left()) <= 2 &&
-                std::abs(epsilonRect.right() - motionRect.right()) <= 2 &&
-                motionRect.top() > epsilonRect.bottom() &&
-                column->rect().contains(epsilonRect) && column->rect().contains(motionRect),
-            "home motion card fits below and aligns with the EPSILON card");
+    require(column->rect().contains(epsilonRect) && column->rect().contains(motionRect),
+            "navigation and motion cards stay inside their shared container");
+    if (motionRect.left() > epsilonRect.right()) {
+        require(splitter->indexOf(environment) < 0 && std::abs(epsilonRect.top() - motionRect.top()) <= 2,
+                "navigation and motion share a row only when environment is in the overview");
+    } else {
+        require(std::abs(epsilonRect.left() - motionRect.left()) <= 2 &&
+                    std::abs(epsilonRect.right() - motionRect.right()) <= 2 && motionRect.top() > epsilonRect.bottom(),
+                "stacked motion card aligns below the navigation card");
+    }
     if (splitter->orientation() == Qt::Horizontal && splitter->indexOf(environment) >= 0)
     {
         const QRect columnRect(column->mapTo(&window, QPoint()), column->size());
@@ -4601,9 +4606,10 @@ void requireHomeEpsilonHeightAfterMaximize()
             requireHomeSensorColumnLayout(window);
             if (width == 3200)
             {
-                require(overview->count() == 3 &&
-                            epsilonSectionCardsShareRow(panel),
-                        "wide EPSILON height test exercises the single-row section layout");
+                require(overview->count() == 3,
+                        "wide EPSILON height test keeps environment in the overview");
+                requireEpsilonSectionCardsFillRows(panel,
+                    "EPSILON sections use the width available beside motion controls");
             }
             if (overview->count() == 3)
             {
@@ -8151,8 +8157,8 @@ int main(int argc, char **argv)
         QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
         require(valueLabel != nullptr,
                 "home data-stream telemetry pill has a value label");
-        require(valueLabel->width() >= valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9 Hz")),
-                "home data-stream rate value label reserves room for 999.9 Hz");
+        require(valueLabel->width() >= valueLabel->fontMetrics().horizontalAdvance(valueLabel->text()),
+                "home data-stream rate value label fits current text");
         if (nameLabel && nameLabel->text().contains(QStringLiteral("波形总包")))
         {
             waveformTotalRateVisible = true;
@@ -8208,8 +8214,8 @@ int main(int argc, char **argv)
                 "home link-rate value text fits its compact label");
         const int compactKbpsWidth = valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9 kbps"));
         const int oldMbpsReserveWidth = valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9 Mbps")) + 8;
-        require(valueLabel->width() >= compactKbpsWidth,
-                "home link-rate value label reserves room for 999.9 kbps");
+        require(valueLabel->width() <= std::max(compactKbpsWidth, valueLabel->fontMetrics().horizontalAdvance(valueLabel->text())) + 4,
+                "home link-rate value label avoids excess reserved space");
         require(valueLabel->width() < oldMbpsReserveWidth,
                 "home link-rate value label no longer reserves the wider 999.9 Mbps width");
         requireCompactTelemetryPillTextGap(
@@ -11983,7 +11989,7 @@ int main(int argc, char **argv)
             {
                 refreshPortsTitleIndex = index;
             }
-            else if (toolTip == QStringLiteral("连接") || toolTip == QStringLiteral("Connect"))
+            else if (toolTip == QStringLiteral("连接所有设备") || toolTip == QStringLiteral("Connect all devices"))
             {
                 connectTitleIndex = index;
             }

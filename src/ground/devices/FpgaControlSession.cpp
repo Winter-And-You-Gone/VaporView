@@ -25,6 +25,18 @@ void FpgaControlSession::shutdown()
     controller_ = nullptr;
 }
 
+QMap<quint32, quint32> FpgaControlSession::remoteRegisterValues() const
+{
+    const auto registers = remoteStatus.value("registers").toObject();
+    if (registers != cachedRegisters_) {
+        decodedRegisters_.clear();
+        for (auto it = registers.begin(); it != registers.end(); ++it)
+            decodedRegisters_.insert(it.key().toUInt(), quint32(it.value().toDouble()));
+    }
+    cachedRegisters_ = registers;
+    return decodedRegisters_;
+}
+
 bool FpgaControlSession::remoteReady() const
 {
     return remoteStatus.value("ready").toBool() &&

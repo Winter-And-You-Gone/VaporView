@@ -801,9 +801,9 @@ private:
         if(enabled(0x41)) {
             if(regs_[0x6114]==99)regs_[0x6114]=0;
             QByteArray p;put16(p,1);put16(p,quint16(1+((regs_[0x6120]&1)?1:0)+((regs_[0x6120]&2)?1:0)));
-            QByteArray value(4,0);at<float>(value,0,float(45+std::sin(t)));regs_[0x6124]=word(value,0);
+            QByteArray value(4,0);at<float>(value,0,float(45+0.6*std::sin(t*0.3)));regs_[0x6124]=word(value,0);
             if(regs_[0x6120]&1)tlv(p,0x100,9,value);
-            at<float>(value,0,float(23+std::cos(t)));regs_[0x6128]=word(value,0);
+            at<float>(value,0,float(23+0.3*std::cos(t*0.2)));regs_[0x6128]=word(value,0);
             if(regs_[0x6120]&2)tlv(p,0x101,9,value);
             tlv(p,2,3,scalar(0));regs_[0x6108]=0x11;++regs_[0x6144];regs_[0x6150]+=80;
             data(0x41,0x1100,p,ticks);

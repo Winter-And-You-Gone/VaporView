@@ -437,6 +437,8 @@ void MainWindow::setEnglish(bool english)
     }
 #endif
     state_->exit_action_->setText(english ? "E&xit" : "退出(&X)");
+    state_->gateway_action_->setText(english ? "Cloud Gateway…" : "云端 Gateway…");
+    updateGatewayTray();
 
     setNativeMenuTitle(state_->font_menu_, english ? QStringLiteral("Font &Size") : QStringLiteral("字号(&S)"));
     state_->font_tiny_action_->setText(english ? "Tiny (60%)" : "超小 (60%)");
@@ -461,11 +463,12 @@ void MainWindow::setEnglish(bool english)
     state_->refresh_ports_btn_->setText(english ? "Refresh" : "刷新");
     state_->refresh_ports_btn_->setToolTip(english ? "Refresh ports" : "刷新串口");
     state_->connect_btn_->setText(english ? "Connect" : "连接");
-    state_->connect_btn_->setToolTip(english ? "Connect" : "连接");
+    state_->connect_btn_->setToolTip(english ? "Connect all devices" : "连接所有设备");
+    updateTelemetryLinkAction();
     state_->cancel_connect_btn_->setText(english ? "Cancel" : "取消");
     state_->cancel_connect_btn_->setToolTip(english ? "Cancel connection" : "取消连接");
     state_->disconnect_btn_->setText(english ? "Disconnect" : "断开");
-    state_->disconnect_btn_->setToolTip(english ? "Disconnect" : "断开连接");
+    state_->disconnect_btn_->setToolTip(english ? "Disconnect all devices" : "断开所有设备");
     updateScheduledRecordingAction();
     state_->start_recording_btn_->setText(english ? "Start Recording" : "开始记录");
     state_->start_recording_btn_->setToolTip(english ? "Start recording" : "开始记录");
@@ -1692,6 +1695,7 @@ void MainWindow::updateThemedIcons()
     {
         state_->lang_action_->setIcon(createLanguageIcon());
     }
+    updateTelemetryLinkAction();
     if (state_->refresh_ports_btn_)
     {
         state_->refresh_ports_btn_->setIcon(createRefreshIcon());

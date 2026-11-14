@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>VaporView · Gateway 本地验证台</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="app-header">
+      <a class="brand" href="/" aria-label="VaporView Gateway 本地验证台">
+        <span class="brand-symbol" aria-hidden="true"><svg viewBox="0 0 30 30"><path d="m5 7 10 17L25 7M11 7l4 7 4-7"/></svg></span>
+        <span>VaporView<span class="brand-divider">/</span><span class="brand-product">Gateway</span></span>
+      </a>
+      <div class="header-meta"><span class="local-label"><span class="small-dot"></span>本地验证台</span><span class="version-label">PROTOCOL V1</span></div>
+    </header>
+
+    <main>
+      <div id="api-error" class="error-banner" role="alert" hidden></div>
+      <section class="page-heading" aria-labelledby="page-title">
+        <div><p class="eyebrow">GROUND TO CLOUD</p><h1 id="page-title">Gateway 接口验证</h1><p class="page-description">通过真实 GatewayService，验证数据复用、断网补传与远程命令。</p></div>
+        <div class="refresh-state"><span id="server-dot" class="status-dot pending"></span><span id="refresh-label">正在连接验证台</span></div>
+      </section>
+
+      <section class="pipeline-card" aria-labelledby="pipeline-title">
+        <div class="section-top"><div><p class="eyebrow">ONE CONNECTION, SHARED DATA</p><h2 id="pipeline-title">一条连接，贯通空地与云端</h2></div><span class="subtle-badge">安全的本机模拟环境</span></div>
+        <div class="pipeline">
+          <div class="pipeline-node"><span class="node-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z"/></svg></span><div><div class="node-label">模拟 SkyCore <span class="tiny-badge">SIM</span></div><p>本机 TCP · 模拟设备</p></div></div>
+          <div class="pipeline-link"><span>复用现有 TCP</span><svg viewBox="0 0 80 16" aria-hidden="true"><path d="M0 8h76m-6-5 6 5-6 5"/></svg></div>
+          <div class="pipeline-node primary-node"><span class="node-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v12H4zM9 21h6m-3-4v4m-5-9 3 3 7-7"/></svg></span><div><div class="node-label">真实 GatewayService</div><p>工作线程 · 缓存 · 命令路由</p></div></div>
+          <div class="pipeline-link"><span>Gateway v1 HTTP</span><svg viewBox="0 0 80 16" aria-hidden="true"><path d="M0 8h76m-6-5 6 5-6 5"/></svg></div>
+          <div class="pipeline-node"><span class="node-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 17a5 5 0 0 1-1-9.9A7 7 0 0 1 18.5 8 4.5 4.5 0 0 1 18 17M9 14l3-3 3 3m-3-3v10"/></svg></span><div><div class="node-label">演示服务器</div><p>此页面 · 接口接收与确认</p></div></div>
+        </div>
+        <div class="pipeline-footer"><span><span class="small-dot"></span>验证程序运行后产生真实 HTTP 请求；所有数值均来自服务器记录。</span><button id="network-toggle" type="button" class="network-control" disabled role="switch" aria-checked="false"><span id="network-dot" class="status-dot pending"></span><span id="network-label">读取网络状态</span><span class="toggle-track" aria-hidden="true"><span></span></span></button></div>
+      </section>
+
+      <section class="metrics" aria-label="接口接收统计">
+        <article class="metric"><div class="metric-label">已接收遥测帧<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></div><div id="metric-frames" class="metric-value">—</div><div id="metric-batches" class="metric-detail">等待服务器数据</div></article>
+        <article class="metric"><div class="metric-label">命令执行回执<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 12 5 5L20 6"/></svg></div><div id="metric-results" class="metric-value">—</div><div class="metric-detail">收到 Gateway 返回的命令结果</div></article>
+        <article class="metric"><div class="metric-label">已完成 Session<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h7l2 3h9v12H3zM12 11v6m-3-3 3 3 3-3"/></svg></div><div id="metric-sessions" class="metric-value">—</div><div id="metric-session-bytes" class="metric-detail">等待 Session 同步</div></article>
+        <article class="metric"><div class="metric-label">重传 / 请求拒绝<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 3M4 15l2 3a7 7 0 0 0 12-1"/></svg></div><div class="metric-value metric-split"><span id="metric-duplicates">—</span><span class="value-divider">/</span><span id="metric-rejections">—</span></div><div class="metric-detail">相同消息 ID / 非法或离线请求</div></article>
+      </section>
+
+      <div class="workspace-grid">
+        <section class="card verification-card" aria-labelledby="verification-title">
+          <div class="section-top"><div><p class="eyebrow">END-TO-END CHECK</p><h2 id="verification-title">运行完整链路验证</h2></div><span id="verification-badge" class="badge neutral">尚未运行</span></div>
+          <p class="card-description">启动本机模拟 SkyCore 与真实 GatewayService，逐项验证转发、断网补传、命令回执及 Session 同步。</p>
+          <div id="verification-detail" class="verification-detail" aria-live="polite">点击下方按钮开始。验证会产生实际遥测和测试 Session，无需连接真实设备。</div>
+          <ol id="verification-checks" class="verification-checks"><li class="check-empty">运行后将在这里显示检查结果。</li></ol>
+          <button id="verify-button" class="button primary verify-button" type="button" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 10 7-10 7Z"/></svg><span id="verify-button-label">运行真实 Gateway 验证</span></button>
+          <p class="fine-print">仅操作本机模拟设备。检查失败会保留失败原因，便于定位。</p>
+        </section>
+
+        <section class="card commands-card" aria-labelledby="commands-title">
+          <div class="section-top"><div><p class="eyebrow">COMMAND ROUND TRIP</p><h2 id="commands-title">远程命令</h2></div><span class="subtle-badge">有效期 60 秒</span></div>
+          <p class="card-description">选择命令，经演示服务器交由 Gateway 转发，再查看执行回执。</p>
+          <div class="device-notice"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v4m0 4h.01M12 3 2 21h20Z"/></svg><span>一键验证约 22 秒后模拟器退出。手动发送命令需桌面 GUI 在线，并在本地明确授权。</span></div>
+          <div class="command-options" role="group" aria-label="发送命令"><button class="button secondary" data-command="10" disabled type="button">读取状态<span>RequestStatus</span></button><button class="button secondary" data-command="1" disabled type="button">启动记录<span>StartRecording</span></button><button class="button secondary" data-command="3" disabled type="button">停止记录<span>StopRecording</span></button></div>
+          <p id="command-message" class="action-message" aria-live="polite">等待 Gateway 连接并轮询命令。</p>
+          <div class="table-scroll command-table-wrap"><table><caption class="sr-only">命令及执行状态</caption><thead><tr><th>命令</th><th>状态</th><th>结果</th></tr></thead><tbody id="commands-body"><tr><td colspan="3" class="empty-cell">尚未下发命令</td></tr></tbody></table></div>
+        </section>
+
+        <section class="card telemetry-card" aria-labelledby="telemetry-title">
+          <div class="section-top"><div><p class="eyebrow">LIVE TELEMETRY</p><h2 id="telemetry-title">实时遥测</h2></div><span id="telemetry-count" class="subtle-badge">0 条最近记录</span></div>
+          <div class="table-scroll"><table><caption class="sr-only">从 Gateway 实际收到的遥测帧</caption><thead><tr><th>类型</th><th>序号</th><th>采集时间 <span class="column-unit">µs</span></th><th>载荷</th><th><span class="sr-only">查看数据</span></th></tr></thead><tbody id="telemetry-body"><tr><td colspan="5" class="empty-cell tall-empty"><span class="empty-icon">↗</span><strong>等待第一帧遥测</strong><span>运行链路验证，或将 VaporView GUI 连接到本机服务器。</span></td></tr></tbody></table></div>
+        </section>
+
+        <section class="card sessions-card" aria-labelledby="sessions-title">
+          <div class="section-top"><div><p class="eyebrow">SESSION SYNC</p><h2 id="sessions-title">Session 同步</h2></div><span class="subtle-badge">地面端本地文件</span></div>
+          <div id="sessions-list" class="sessions-list"><div class="section-empty"><span class="empty-icon">▤</span><strong>还没有同步任务</strong><span>验证程序会同步一个测试 Session。真实 Session 需先结束记录，再从 GUI 手动同步。</span></div></div>
+        </section>
+      </div>
+
+      <section class="card events-card" aria-labelledby="events-title">
+        <div class="section-top"><div class="title-with-note"><h2 id="events-title">最近 HTTP 事件</h2><span>以服务器实际收到的请求为准</span></div><span id="events-count" class="subtle-badge">0 条事件</span></div>
+        <div class="table-scroll"><table><caption class="sr-only">最近 Gateway HTTP 请求</caption><thead><tr><th>时间</th><th>方法</th><th>请求路径</th><th>状态码</th><th>说明</th></tr></thead><tbody id="events-body"><tr><td colspan="5" class="empty-cell">暂无请求记录</td></tr></tbody></table></div>
+      </section>
+
+      <section class="connection-card" aria-labelledby="connection-title">
+        <div class="connection-intro"><span class="connection-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 7H7a5 5 0 0 0 0 10h3m4-10h3a5 5 0 0 1 0 10h-3M8 12h8"/></svg></span><div><h2 id="connection-title">连接你的 VaporView GUI</h2><p>数据 → 云端 Gateway，填入下方配置并保存启用。<br>本机 HTTP 地址仅用于本地验证；正式环境使用 HTTPS。<br>不要同时让自动验证和现场 GUI 使用同一设备 ID。</p></div></div>
+        <div class="connection-fields"><div class="connection-field"><label for="connection-url">服务器地址</label><div class="copy-field"><input id="connection-url" readonly placeholder="读取中…"><button id="copy-url" class="copy-button" type="button" disabled aria-label="复制服务器地址">复制</button></div></div><div class="connection-field"><label for="connection-device">设备标识</label><div class="copy-field"><input id="connection-device" readonly placeholder="读取中…"><button id="copy-device" class="copy-button" type="button" disabled aria-label="复制设备标识">复制</button></div></div><div class="connection-field"><label for="connection-token">访问令牌</label><div class="copy-field"><input id="connection-token" readonly type="password" placeholder="点击显示后复制" autocomplete="off"><button id="reveal-token" class="copy-button" type="button" disabled aria-controls="connection-token" aria-expanded="false">显示</button><button id="copy-token" class="copy-button" type="button" disabled aria-label="复制访问令牌">复制</button></div></div><p id="connection-message" class="action-message" aria-live="polite"></p></div>
+      </section>
+      <footer class="page-footer"><span>VaporView <span class="footer-slash">/</span> Gateway v1 本地验证台</span><span>一份数据 · 本地显示与云端复用</span></footer>
+    </main>
+  </div>
+  <dialog id="payload-dialog" class="payload-dialog"><div class="section-top"><div><p class="eyebrow">FRAME PAYLOAD</p><h2>原始遥测载荷</h2></div><button id="close-payload" class="dialog-close" type="button" aria-label="关闭">×</button></div><p id="payload-meta" class="card-description"></p><label for="payload-data" class="payload-label">payloadBase64</label><pre id="payload-data" tabindex="0"></pre><button id="copy-payload" class="button secondary" type="button">复制载荷</button><p id="payload-message" class="action-message" aria-live="polite"></p></dialog>
+</body>
+</html>

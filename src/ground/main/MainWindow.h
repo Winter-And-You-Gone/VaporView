@@ -153,6 +153,7 @@ protected:
     void changeEvent(QEvent *event) override;
 
 private slots:
+    void onTelemetryLinkClicked();
     void onConnectClicked();
     void onDisconnectClicked();
     void onEpsilonDataReady();
@@ -249,6 +250,11 @@ private:
 
     void setupMenuBar();
     void setupToolBar();
+    void initializeGateway();
+    void configureGatewayRuntime();
+    void updateGatewayTray();
+    void showGatewaySettings();
+    void exitApplication();
     void setupCustomTitleBar();
     void setupCentralWidget();
     void setupConfigPanel();
@@ -263,6 +269,7 @@ private:
     void refreshFpgaTemperaturePanels();
     void updateFpgaPageBackend();
     void syncFpgaDeviceConfigUi();
+    void scheduleFpgaDeviceConfigUi();
     bool homeFpgaDeviceSelected(VaporView::SkyDeviceId device) const;
     void setHomeFpgaDeviceSelected(VaporView::SkyDeviceId device, bool selected);
     QMap<quint16, QJsonObject>& fpgaSensorDrafts();
@@ -524,6 +531,8 @@ private:
     void refreshRemoteSkyDataUi();
     bool remoteDeviceDataValid(VaporView::SkyDeviceId device, qint64 timeout_ms) const;
     void maybeConnectRemoteDevices();
+    void openRemoteSkyLink();
+    void updateTelemetryLinkAction();
     QString remoteDeviceInvalidText(VaporView::SkyDeviceId device, qint64 timeout_ms) const;
     double remotePacketRate(VaporView::MsgType type) const;
     double remoteWaveformPacketRate(quint16 channelId) const;

@@ -1195,6 +1195,18 @@ void MainWindow::updateResponsiveHomeLayout()
         sensorAvailableWidth > 0 &&
         sensorAvailableWidth >= compactEpsilonMinimumWidth + sensorCardGap + environmentMinimumWidth;
     const bool stackSensorCards = !environmentInOverview && !compactCardsFitSideBySide;
+    auto *navigationMotionLayout = state_->home_sensor_column_
+        ? qobject_cast<QBoxLayout *>(state_->home_sensor_column_->layout()) : nullptr;
+    const int navigationMotionGap = navigationMotionLayout ? std::max(0, navigationMotionLayout->spacing()) : 0;
+    const bool navigationMotionSideBySide = environmentInOverview &&
+        sensorAvailableWidth >= compactEpsilonMinimumWidth + navigationMotionGap + motionMinimumWidth;
+    if (navigationMotionLayout) {
+        navigationMotionLayout->setDirection(navigationMotionSideBySide ? QBoxLayout::LeftToRight : QBoxLayout::TopToBottom);
+        navigationMotionLayout->setStretch(0, navigationMotionSideBySide ? 1 : 0);
+        navigationMotionLayout->setAlignment(state_->epsilon_group_, navigationMotionSideBySide ? Qt::AlignTop : Qt::Alignment{});
+        navigationMotionLayout->setAlignment(state_->home_motion_card_, navigationMotionSideBySide ? Qt::AlignTop : Qt::Alignment{});
+        navigationMotionLayout->invalidate();
+    }
 
     const Qt::Orientation sensorOrientation =
         stackSensorCards ? Qt::Vertical : Qt::Horizontal;
@@ -1298,7 +1310,7 @@ void MainWindow::updateResponsiveHomeLayout()
     const int motionHeight = contentHeightFor(state_->home_motion_card_);
     if (state_->home_motion_card_)
         state_->home_motion_card_->setProperty("homeMotionContentHeight", motionHeight);
-    const int sensorColumnHeight = epsilonHeight + std::max(0, motionHeight) +
+    const int sensorColumnHeight = navigationMotionSideBySide ? std::max(epsilonHeight, motionHeight) : epsilonHeight + std::max(0, motionHeight) +
         (state_->home_sensor_column_ && state_->home_sensor_column_->layout()
              ? state_->home_sensor_column_->layout()->spacing() : 0);
     const int envMinimumHeight = state_->env_group_

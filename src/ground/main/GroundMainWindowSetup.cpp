@@ -1,3 +1,4 @@
+#include "ground/widgets/DeviceActionButton.h"
 #include "ground/calibration/CalibrationService.h"
 #include "ground/main/GroundMainWindowImplementation.h"
 #include "ground/devices/DeviceRatePolicy.h"
@@ -602,6 +603,11 @@ void MainWindow::setupMenuBar()
     state_->recording_rate_menu_ = state_->data_menu_->addMenu("");
     rebuildRecordingRateMenu();
 
+    state_->gateway_action_ = new QAction(this);
+    state_->gateway_action_->setObjectName(QStringLiteral("gatewaySettingsAction"));
+    connect(state_->gateway_action_, &QAction::triggered, this, &MainWindow::showGatewaySettings);
+    state_->data_menu_->addAction(state_->gateway_action_);
+
     state_->devices_menu_ = menuBar()->addMenu("");
 
     state_->epsilon_packet_rates_action_ = new QAction(this);
@@ -666,7 +672,7 @@ void MainWindow::setupMenuBar()
 
     state_->exit_action_ = new QAction(this);
     state_->exit_action_->setShortcut(QKeySequence::Quit);
-    connect(state_->exit_action_, &QAction::triggered, this, &QMainWindow::close);
+    connect(state_->exit_action_, &QAction::triggered, this, &MainWindow::exitApplication);
     state_->data_menu_->addAction(state_->exit_action_);
 
     state_->font_menu_ = menuBar()->addMenu("");
@@ -728,6 +734,11 @@ void MainWindow::setupMenuBar()
 
 void MainWindow::setupToolBar()
 {
+    state_->telemetry_link_btn_ = new QAction(this);
+    state_->telemetry_link_btn_->setObjectName(QStringLiteral("telemetryLinkAction"));
+    connect(state_->telemetry_link_btn_, &QAction::triggered, this, &MainWindow::onTelemetryLinkClicked);
+    updateTelemetryLinkAction();
+
     state_->refresh_ports_btn_ = new QAction(this);
     state_->refresh_ports_btn_->setIcon(createRefreshIcon());
     connect(state_->refresh_ports_btn_, &QAction::triggered, this, &MainWindow::onRefreshPortsClicked);
@@ -952,6 +963,7 @@ void MainWindow::setupCustomTitleBar()
             });
     titleLayout->addWidget(state_->sensor_transport_switch_, 0, Qt::AlignVCenter);
     addTitleBarSeparator(titleLayout);
+    titleLayout->addWidget(createTitleBarActionButton(state_->telemetry_link_btn_, state_->custom_title_bar_), 0, Qt::AlignVCenter);
     titleLayout->addWidget(createTitleBarActionButton(state_->refresh_ports_btn_, state_->custom_title_bar_), 0, Qt::AlignVCenter);
     titleLayout->addWidget(createTitleBarActionButton(state_->connect_btn_, state_->custom_title_bar_), 0, Qt::AlignVCenter);
     titleLayout->addWidget(createTitleBarActionButton(state_->cancel_connect_btn_, state_->custom_title_bar_), 0, Qt::AlignVCenter);
@@ -1022,6 +1034,7 @@ QToolButton *MainWindow::createTitleBarActionButton(QAction *action, QWidget *pa
         button->setCheckable(action->isCheckable());
         button->setChecked(action->isChecked());
         button->setToolTip(action->toolTip());
+        button->setAccessibleName(action->text());
         button->setWhatsThis(action->whatsThis());
         button->setProperty(kTooltipShortcutProperty, shortcutTextFromAction(action));
     };
@@ -3329,7 +3342,7 @@ void MainWindow::setupDeviceConfigPage()
         auto *layout = new QHBoxLayout(buttonsWidget);
         layout->setContentsMargins(0, 0, 0, 0);
         layout->setSpacing(2);
-        actionButton = new QToolButton(buttonsWidget);
+        actionButton = new DeviceActionButton(buttonsWidget);
         actionButton->setFocusPolicy(Qt::TabFocus);
         applyDeviceConfigRemoteButtonPresentation(actionButton,
                                                   VaporView::CommandId::ConnectDevice,
@@ -5217,7 +5230,7 @@ void MainWindow::setupConfigPanel()
     };
 
     auto createHomeDeviceActionButton = [this](QWidget *parent, VaporView::SkyDeviceId device) {
-        auto *button = new QToolButton(parent);
+        auto *button = new DeviceActionButton(parent);
         button->setObjectName(QStringLiteral("homeDeviceActionButton"));
         button->setToolButtonStyle(Qt::ToolButtonIconOnly);
         button->setIconSize(QSize(kHomeDeviceIconSize, kHomeDeviceIconSize));

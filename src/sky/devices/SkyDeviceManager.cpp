@@ -702,6 +702,7 @@ void SkyDeviceManager::submitFpgaControl(QJsonObject operation, SkyFpgaBackend::
             const auto source=quint16(operation.value("source").toInt());const auto parameters=operation.value("parameters").toObject();
             for(auto it=parameters.begin();it!=parameters.end();++it)config_.fpga.configuration.sensorParameters[source][it.key()]=it.value();
         }
+        if (simulate_fpga_) document["simulation"] = true;
         completion(code, error, document);
     }, correlationId, sessionId);
 }

@@ -174,6 +174,7 @@ private:
     bool stopping_ = false;
     bool fpga_storage_failure_handled_ = false;
     qint64 fpga_status_last_sent_ms_ = -1000;
+    bool fpga_status_update_pending_ = false;
     QHash<quint16, qint64> fpga_preview_sent_ms_;
     QTimer fpga_feature_timer_;
     std::mutex fpga_feature_mutex_;

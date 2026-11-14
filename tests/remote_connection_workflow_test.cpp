@@ -8,6 +8,11 @@
 #include "FpgaExtensions.h"
 #include "BaudRateComboSupport.h"
 #include <QApplication>
+#include <QAction>
+#include <QFrame>
+#include <QLabel>
+#include <QPointer>
+#include <QToolButton>
 #include <QElapsedTimer>
 #include <QTemporaryDir>
 #include <QLineEdit>
@@ -21,6 +26,7 @@
 #include <stdexcept>
 
 struct MainWindowRtcmTestAccess {
+    static void refresh(MainWindow& window) { window.updateRemoteTelemetrySummaryLabel(); }
     static auto& state(MainWindow& window) { return *window.state_; }
     static bool valid(MainWindow& window, VaporView::SkyDeviceId id) { return window.remoteDeviceDataValid(id, 3000); }
     static QString invalid(MainWindow& window, VaporView::SkyDeviceId id) { return window.remoteDeviceInvalidText(id, 3000); }
@@ -66,7 +72,7 @@ static void workflow(bool fpga)
         {"extensions", int(FpgaExtensions::RawSchema2 | FpgaExtensions::EpsilonMailbox | FpgaExtensions::DliaCutoff)},
         {"configuration", config.fpga.configuration.toJson()}};
     TelemetryCodec encoder, decoder; quint16 sequence = 1;
-    int bulk = 0, operations = 0, failures = 0;
+    int bulk = 0, operations = 0, failures = 0, disconnects = 0;
     const auto send = [&](MsgType type, const QByteArray &payload) {
         require(server.writeBytes(encoder.encodeFrame(type, payload, sequence++, 1)) > 0, "Sky frame delivered");
     };
@@ -91,6 +97,7 @@ static void workflow(bool fpga)
             if (command.command_id == CommandId::GetSkyConfig)
                 send(MsgType::SkyConfig, QJsonDocument(config.toJson()).toJson(QJsonDocument::Compact));
             if (command.command_id == CommandId::ConnectAllDevices) ++bulk;
+            if (command.command_id == CommandId::DisconnectAllDevices) ++disconnects;
             if (command.command_id != CommandId::DeviceOperation) continue;
             DeviceOperationRequest request; QJsonObject control;
             require(TelemetryCodec::parseDeviceOperationRequest(command.payload, request) &&
@@ -100,6 +107,7 @@ static void workflow(bool fpga)
             DeviceOperationResponse response;
             response.request_id = request.request_id; response.device_id = request.device_id; response.operation = request.operation;
             if (op == "connect") { status["connected"] = true; status["ready"] = true; }
+            else if (op == "disconnect") { ++disconnects; status["connected"] = false; status["ready"] = false; }
             else if (op == "sensor") {
                 const auto source = control.value("source").toInt();
                 require(source != 0x42 && source != 0x45 && source != 0x46, "unchecked devices are excluded");
@@ -115,8 +123,35 @@ static void workflow(bool fpga)
             send(MsgType::DeviceOperationResponse, TelemetryCodec::serializeDeviceOperationResponse(response));
         }
     });
-    require(QMetaObject::invokeMethod(&window, "onConnectClicked"), "title connect invoked");
-    const bool completed = waitUntil([&] { return fpga ? operations >= 6 && state.fpga_home_connect_queue_.isEmpty()
+    auto *link = window.findChild<QAction*>("telemetryLinkAction");
+    require(link && link->isVisible() && link->isEnabled() && link->text().contains("打开"), "remote link action is available before connection");
+    const auto openIcon = link->icon().cacheKey();
+    require(!state.connect_btn_->isEnabled(), "device connect waits for an open telemetry link");
+    link->trigger();
+    require(waitUntil([&] { return state.remote_config_session_.loaded && state.remote_sky_online_; }), "link action completes handshake and configuration read");
+    require(bulk == 0 && operations == 0, "opening the telemetry link never starts devices");
+    require(link->text().contains("断开") && link->icon().cacheKey() != openIcon, "open link changes title and icon");
+    require(state.connect_btn_->isEnabled() && state.disconnect_btn_->isEnabled(), "remote device actions use remote link state");
+    window.resize(1600, 1000); window.show();
+    QElapsedTimer initialLayout; initialLayout.start();
+    waitUntil([&] { return initialLayout.elapsed() > 200; });
+    QToolButton *linkButton = nullptr, *refreshButton = nullptr;
+    for (auto *button : window.findChildren<QToolButton*>("titleBarButton")) {
+        if (button->accessibleName() == link->text()) linkButton = button;
+        if (button->toolTip() == state.refresh_ports_btn_->toolTip()) refreshButton = button;
+    }
+    require(linkButton && refreshButton && linkButton->isVisible()
+        && linkButton->geometry().right() < refreshButton->geometry().left(), "link toggle precedes Refresh in the title bar");
+    MainWindowRtcmTestAccess::refresh(window);
+    QList<QPointer<QFrame>> pills;
+    for (auto *pill : window.findChildren<QFrame*>("homeTelemetrySummaryPill")) pills.append(pill);
+    require(!pills.isEmpty(), "summary fields exist before device connection");
+    state.connect_btn_->trigger();
+    const bool completed = waitUntil([&] {
+        for (const auto& pill : pills) require(pill, "connecting devices never rebuilds or clears summary fields");
+        for (auto *label : state.data_telemetry_summary_card_->findChildren<QLabel*>("homeTelemetrySummaryNameLabel"))
+            require(label->isVisible(), "summary labels remain visible during connection");
+        return fpga ? operations >= 6 && state.fpga_home_connect_queue_.isEmpty()
         && !state.fpga_session_.requestId : bulk == 1; });
     if (!completed) std::cerr << "bulk=" << bulk << " operations=" << operations << " pending=" << state.remote_connect_devices_pending_
         << " online=" << state.remote_sky_online_ << " loaded=" << state.remote_config_session_.loaded
@@ -159,17 +194,33 @@ static void workflow(bool fpga)
     }
     const int before = operations + bulk;
     for (int i = 0; i < 5; ++i) publishStatus();
-    QMetaObject::invokeMethod(&window, "onConnectClicked");
     QElapsedTimer settle; settle.start();
     waitUntil([&] { return settle.elapsed() > 250; });
-    require(operations + bulk == before, "repeated status and clicks do not duplicate startup");
-    window.testRemoteSkyController()->close();
-    require(waitUntil([&] { return !state.remote_sky_online_; }), "disconnect clears handshake state");
-    QMetaObject::invokeMethod(&window, "onConnectClicked");
+    require(operations + bulk == before, "repeated status does not duplicate startup");
+    for (int i = 0; i < 12; ++i) {
+        send(MsgType::TelemetryBasic, TelemetryCodec::serializeBasicTelemetry(TelemetryBasic{}));
+        publishStatus();
+        QCoreApplication::processEvents();
+        MainWindowRtcmTestAccess::refresh(window);
+        for (const auto& pill : pills) require(pill, "changing rates and data availability preserve existing summary widgets");
+    }
+    for (auto *label : state.data_telemetry_summary_card_->findChildren<QLabel*>("homeTelemetrySummaryNameLabel"))
+        require(label->isVisible(), "frequency, link rate and device fields remain visible while connected");
+    link->trigger();
+    require(waitUntil([&] { return !state.remote_sky_online_; }), "link toggle clears handshake state");
+    require(disconnects == 0 && link->text().contains("打开"), "closing link preserves remote device acquisition");
+    link->trigger();
+    require(waitUntil([&] { return state.remote_config_session_.loadedGeneration == window.testRemoteSkyController()->linkGeneration()
+        && state.remote_sky_online_; }), "reopening reads configuration for the new link");
+    state.connect_btn_->trigger();
     require(waitUntil([&] { return fpga ? operations == before + 1 && !state.fpga_session_.requestId
         && state.fpga_home_connect_queue_.isEmpty() : bulk == 2; }),
         "explicit reconnect uses fresh config and preserves already running FPGA modules");
-    window.testRemoteSkyController()->close(); window.close(); server.close();
+    require(state.disconnect_btn_->isEnabled(), "title disconnect remains usable with remote devices connected");
+    state.disconnect_btn_->trigger();
+    require(waitUntil([&] { return disconnects == 1 && (!fpga || !state.fpga_session_.requestId); }), "title disconnect sends a device disconnect operation");
+    require(window.testRemoteSkyController()->isOpen(), "device disconnect keeps the telemetry link open");
+    link->trigger(); window.close(); server.close();
 }
 static void simulatedSkyWorkflow()
 {
@@ -207,6 +258,17 @@ static void simulatedSkyWorkflow()
     state.remote_sky_link_config_.tcpPort = port;
     state.fpga_home_disabled_sources_[1].clear();
     window.show();
+    QMetaObject::invokeMethod(&window, "onTelemetryLinkClicked");
+    require(waitUntil([&] { return state.remote_config_session_.loaded && state.remote_sky_online_; }), "simulator telemetry handshake");
+    QElapsedTimer initialLayout; initialLayout.start();
+    waitUntil([&] { return initialLayout.elapsed() >= 500; });
+    QElapsedTimer connectClock; connectClock.start();
+    QVector<qint64> connectDelays; qint64 lastConnectPulse = 0; QTimer connectPulse;
+    connectPulse.setTimerType(Qt::PreciseTimer); connectPulse.setInterval(10);
+    QObject::connect(&connectPulse, &QTimer::timeout, &window, [&] {
+        const auto now = connectClock.elapsed(); connectDelays.append(now - lastConnectPulse); lastConnectPulse = now;
+
+    }); connectPulse.start();
     QMetaObject::invokeMethod(&window, "onConnectClicked");
     const auto ready = [&] {
         for (const auto device : {SkyDeviceId::Ptb, SkyDeviceId::Epsilon, SkyDeviceId::Hc2a, SkyDeviceId::Lidar,
@@ -217,12 +279,36 @@ static void simulatedSkyWorkflow()
             && window.testRemoteSkyController()->waveformPacketRate(4) > 0;
     };
     const bool connected = waitUntil(ready, 20000);
-    if (!connected) std::cerr << child.process.readAll().constData() << std::endl;
+    if (!connected) {
+        for (auto device : {SkyDeviceId::Ptb, SkyDeviceId::Epsilon, SkyDeviceId::Hc2a, SkyDeviceId::Lidar,
+            SkyDeviceId::Ai8TemperatureController, SkyDeviceId::Bmp390, SkyDeviceId::Sht45, SkyDeviceId::TemperatureController, SkyDeviceId::WaveTcp})
+            std::cerr << "DEVICE " << int(device) << " valid=" << MainWindowRtcmTestAccess::valid(window,device)
+                << " reason=" << MainWindowRtcmTestAccess::invalid(window,device).toStdString() << std::endl;
+        std::cerr << "queue=" << state.fpga_home_connect_queue_.size() << " request=" << state.fpga_session_.requestId
+            << " wave=" << window.testRemoteSkyController()->waveformPacketRate(4) << std::endl;
+        std::cerr << child.process.readAll().constData() << std::endl;
+    }
     require(connected, "one title click connects real SkyCore simulated sensors, summaries and waveform rate");
     require(state.fpga_session_.remoteStatus.value("simulation").toBool(), "Sky identifies simulation");
     require(!(state.fpga_session_.remoteStatus.value("extensions").toInt() & FpgaExtensions::Rd105) &&
             !MainWindowRtcmTestAccess::valid(window, SkyDeviceId::TemperatureController),
             "default HCD2 simulator exposes HC2A while the withdrawn RD105 extension remains unavailable");
+    connectPulse.stop();
+    require(!connectDelays.isEmpty(), "connection heartbeat samples");
+    std::sort(connectDelays.begin(), connectDelays.end());
+    std::cout << "Connecting: p95Ms=" << connectDelays[(connectDelays.size()-1)*95/100]
+        << " maxMs=" << connectDelays.last() << std::endl;
+    require(connectDelays[(connectDelays.size()-1)*95/100] < 100 && connectDelays.last() < 250,
+        "GUI stays responsive throughout connect-all animations");
+    require(waitUntil([&] { return state.current_hc2a_.valid && state.current_hc2a_.temperature > 22.0
+        && state.current_hc2a_.temperature < 24.0 && state.current_hc2a_.humidity > 44.0
+        && state.current_hc2a_.humidity < 46.0; }), "simulator environmental values reach ground UI");
+    const auto initialTemperature = state.current_hc2a_.temperature, initialHumidity = state.current_hc2a_.humidity;
+    require(waitUntil([&] { return std::abs(state.current_hc2a_.temperature - initialTemperature) > 0.001
+        && std::abs(state.current_hc2a_.humidity - initialHumidity) > 0.001; }), "environmental values fluctuate");
+    require(waitUntil([&] { const auto cycles = state.fpga_session_.remoteStatus.value("acquisition_cycles").toObject();
+        return cycles.value("count").toString().toULongLong() > 0 && cycles.value("window_ms").toDouble() > 0
+            && cycles.value("rate_hz").toDouble() > 0; }), "Sky reports actual acquisition cycle count and window");
     const auto registers = state.fpga_session_.remoteStatus.value("registers").toObject();
     // WMS supplies acquisition cycle labels; physical DAC outputs remain independent.
     for (const quint32 address : {0x3004u, 0x3104u})
@@ -243,6 +329,12 @@ static void simulatedSkyWorkflow()
     std::cout << "Remote simulator: heartbeatSamples=" << delays.size() << " p95Ms=" << p95
         << " maxMs=" << delays.last() << std::endl;
     require(p95 < 100 && delays.last() < 250, "display event loop stays responsive during live simulated telemetry");
+    state.disconnect_btn_->trigger();
+    require(state.home_device_disconnecting_.contains(SkyDeviceId::Epsilon)
+        && state.home_device_action_spinner_timer_->isActive(), "bulk disconnect starts capsule animation");
+    require(waitUntil([&] { return !state.fpga_session_.requestId
+        && !state.fpga_session_.remoteStatus.value("connected").toBool(); }), "bulk disconnect completes");
+    require(waitUntil([&] { return state.home_device_disconnecting_.isEmpty(); }), "disconnect animation settles");
     window.testRemoteSkyController()->close(); window.close();
     child.process.write("quit\n"); child.process.closeWriteChannel();
     require(child.process.waitForFinished(8000) && child.process.exitStatus() == QProcess::NormalExit
@@ -254,7 +346,8 @@ int main(int argc, char **argv)
     qputenv("QT_STYLE_OVERRIDE", "Fusion");
     QApplication app(argc, argv);
     try {
-    workflow(false); workflow(true); simulatedSkyWorkflow();
+    workflow(false); workflow(true);
+    if (!app.arguments().contains("--title-actions-only")) simulatedSkyWorkflow();
     QComboBox baud;
     const auto capabilities = VaporView::hostSerialLinkBaudCapabilities();
     VaporView::configureSerialBaudRateCombo(&baud, capabilities, "115200");

@@ -53,7 +53,8 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
     }
 
     state_->current_hc2a_ = VaporView::Hc2aData();
-    if (!isFpgaRelayPath() && hasFlag(VaporView::BasicHasTemperature) && hasFlag(VaporView::BasicHasHumidity))
+    if ((!isFpgaRelayPath() || state_->fpga_session_.remoteStatus.value("simulation").toBool())
+        && hasFlag(VaporView::BasicHasTemperature) && hasFlag(VaporView::BasicHasHumidity))
     {
         state_->current_hc2a_.valid = true;
         state_->current_hc2a_.timestamp = now;
@@ -181,6 +182,15 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
                          QStringLiteral("天空端握手成功。"),
                          {{QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
+    bool deviceStatesChanged = status.devices.size() != state_->remote_status_.devices.size();
+    if (!deviceStatesChanged) {
+        for (int i = 0; i < status.devices.size(); ++i)
+            if (status.devices[i].device_id != state_->remote_status_.devices[i].device_id
+                || status.devices[i].state != state_->remote_status_.devices[i].state) {
+                deviceStatesChanged = true; break;
+            }
+    }
+    const auto previousDevices = state_->remote_status_.devices;
     state_->remote_status_ = status;
     maybeConnectRemoteDevices();
     const quint64 rawTotal =
@@ -209,8 +219,11 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
     state_->remote_recording_state_ = status.recording_state;
     for (const VaporView::DeviceStatusItem& item : status.devices)
     {
-        updateRemoteDeviceButtonText(item.device_id, item.state);
-        if (item.state != VaporView::DeviceState::Connected)
+        const auto previous = std::find_if(previousDevices.cbegin(), previousDevices.cend(),
+            [&](const auto& old) { return old.device_id == item.device_id; });
+        const bool changed = previous == previousDevices.cend() || previous->state != item.state;
+        if (changed) updateRemoteDeviceButtonText(item.device_id, item.state);
+        if (changed && item.state != VaporView::DeviceState::Connected)
         {
             if (item.device_id == VaporView::SkyDeviceId::Epsilon)
             {
@@ -274,9 +287,13 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
         state_->remote_wave_stream_enable_pending_ = true;
         state_->remote_sky_controller_->sendCommand(VaporView::CommandId::EnableWaveformStreaming);
     }
-    refreshRemoteSkyDataUi();
+    // The display timer renders telemetry; status packets only update changed actions.
     updateRecordingStatusLabel();
-    updateSourceModeUi();
+    updateTemperatureTitleButtonsState();
+    if (deviceStatesChanged) {
+        if (isFpgaRelayPath()) scheduleFpgaDeviceConfigUi();
+        else updateDeviceConfigState();
+    }
 }
 
 void MainWindow::onRemoteTemperatureControllerStatusUpdated(const VaporView::TemperatureControllerData& controllerData)

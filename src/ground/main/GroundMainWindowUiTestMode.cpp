@@ -341,6 +341,8 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
             state_->device_config_.sensor_transport_path_combo->setCurrentIndex(index >= 0 ? index : 1);
         }
         state_->ui_test_mode_enabled_ = true;
+        configureGatewayRuntime();
+        state_->gateway_action_->setEnabled(false);
         state_->ui_test_epsilon_operation_pending_ = false;
         if (state_->tcp_wave_panel_)
         {
@@ -430,6 +432,8 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
     state_->ui_test_connection_in_progress_ = false;
     resetUiTestRecording();
     state_->ui_test_mode_enabled_ = false;
+    configureGatewayRuntime();
+    state_->gateway_action_->setEnabled(true);
     state_->ui_test_epsilon_operation_pending_ = false;
     if (state_->epsilon_config_panel_) state_->epsilon_config_panel_->invalidateSettings();
     ++state_->ui_test_epsilon_operation_generation_;
