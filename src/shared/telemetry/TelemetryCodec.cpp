@@ -494,7 +494,7 @@ QByteArray TelemetryCodec::serializeBasicTelemetry(const TelemetryBasic& data)
         std::memcpy(&bits, &value, sizeof(double));
         appendLe<quint64>(payload, bits);
     }
-    appendFloatLe(payload, data.lidar_height_m);
+    appendFloatLe(payload, data.lidar_distance_m);
     appendFloatLe(payload, data.temperature_c);
     appendFloatLe(payload, data.humidity_percent);
     appendFloatLe(payload, data.pressure_hpa);
@@ -504,7 +504,7 @@ QByteArray TelemetryCodec::serializeBasicTelemetry(const TelemetryBasic& data)
     payload.append(static_cast<char>(data.gnss_fix_code));
     appendLe<quint32>(payload, data.validity_flags);
     appendLe<quint16>(payload, data.gnss_satellites);
-    appendLe<quint16>(payload, data.lidar_signal_strength);
+    appendLe<quint16>(payload, data.legacy_lidar_signal_strength);
     appendFloatLe(payload, data.hdop);
     appendFloatLe(payload, data.vdop);
     appendFloatLe(payload, data.hacc_m);
@@ -566,7 +566,7 @@ bool TelemetryCodec::parseBasicTelemetry(const QByteArray& payload, TelemetryBas
         }
         std::memcpy(value, &bits, sizeof(double));
     }
-    if (!(readFloatLe(payload, offset, data.lidar_height_m) &&
+    if (!(readFloatLe(payload, offset, data.lidar_distance_m) &&
           readFloatLe(payload, offset, data.temperature_c) &&
           readFloatLe(payload, offset, data.humidity_percent) &&
           readFloatLe(payload, offset, data.pressure_hpa) &&
@@ -587,7 +587,7 @@ bool TelemetryCodec::parseBasicTelemetry(const QByteArray& payload, TelemetryBas
         return true;
     }
     if (!(readLe(payload, offset, data.gnss_satellites) &&
-          readLe(payload, offset, data.lidar_signal_strength) &&
+          readLe(payload, offset, data.legacy_lidar_signal_strength) &&
           readFloatLe(payload, offset, data.hdop) &&
           readFloatLe(payload, offset, data.vdop) &&
           readFloatLe(payload, offset, data.hacc_m) &&

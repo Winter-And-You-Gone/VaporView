@@ -9,7 +9,7 @@
 namespace VaporView::FpgaSensor
 {
 
-enum class SensorKind { Unknown, Ptb210, Epsilon, Bmp390, Sht45, Tfa1500, Ai8, Hc2a, Rd105 };
+enum class SensorKind { Unknown, Ptb210, Epsilon, Bmp390, Sht45, Sdfm300, Ai8, Hc2a, Rd105 };
 
 struct TlvRecord
 {

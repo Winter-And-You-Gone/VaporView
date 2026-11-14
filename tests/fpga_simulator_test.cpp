@@ -200,6 +200,18 @@ void currentFirmwareContract()
         return value(exchange(FpgaVlp1::buildFrame(FpgaVlp1::FrameType::Command,++sequence,source,message,p)));
     };
     check(value(exchange(FpgaVlp1::buildGetCapabilities(++sequence)),24)==0x29,"default simulator advertises only current production extensions");
+    check(read(0x6500)==0x00450200 && read(0x6510)==460800,"SDFM300 revision and default baud match firmware");
+    check(action(0x45,11,1,0)==0 && read(0x6508)==2,"SDFM300 READY remains set when reception is disabled");
+    for(quint32 rate:{9600u,19200u,38400u,115200u,230400u,256000u,460800u})
+        check(write(0x6510,rate)==0 && read(0x6510)==rate,"SDFM300 accepts every documented baud");
+    check(write(0x6510,500000)==7 && write(0x651c,1)==6 && write(0x6504,4)==7,
+        "SDFM300 rejects old baud, measurement writes and unsupported commit");
+    for(quint32 address:{0x6514u,0x6518u,0x6544u,0x654cu,0x6550u,0x6558u})
+        check(value(exchange(FpgaVlp1::buildReadReg(++sequence,address,1)))==5 && write(address,1)==5,
+            "withdrawn TFA register reads and writes fail");
+    check(action(0x45,11,32)==13 && action(0x45,11,33,1)==13,"legacy TFA actions are unsupported");
+    check(action(0x45,11,1,1)==0 && write(0x6510,115200)==8 && action(0x45,11,1,0)==0,
+        "SDFM300 requires reception disabled before changing baud");
     check(read(0x6100)==0x00410106&&read(0x614c)==0x48434432&&read(0x6114)==99&&read(0x6118)==0,"HC2A identity, HCD2 signature and discovery defaults match firmware");
     check(action(0x41,11,16)==14&&action(0x41,11,2)==14&&write(0x6134,0)==6&&write(0x6104,5)==7,
         "HC2A rejects obsolete HMP compensation and commit without changing diagnostics");

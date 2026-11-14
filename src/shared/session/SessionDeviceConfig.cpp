@@ -68,7 +68,15 @@ QJsonObject sessionDeviceConfigToJson(const SessionDeviceConfig& config)
     humidity.insert(QStringLiteral("protocol"), QStringLiteral("RO-ASCII RDD"));
     humidity.insert(QStringLiteral("serial_format"), QStringLiteral("8N1"));
     sensors.insert(QStringLiteral("hc2a"), humidity);
-    sensors.insert(QStringLiteral("lidar"), connectionToJson(config.lidar));
+    auto distance = connectionToJson(config.lidar);
+    distance.insert(QStringLiteral("model"), QStringLiteral("SDFM300"));
+    distance.insert(QStringLiteral("protocol"), QStringLiteral("5C cm LE16 complement checksum"));
+    distance.insert(QStringLiteral("serial_format"), QStringLiteral("8N1"));
+    distance.insert(QStringLiteral("range_min_m"), 0.05);
+    distance.insert(QStringLiteral("range_max_m"), 300);
+    distance.insert(QStringLiteral("output_rate_mode"), QStringLiteral("automatic_1000_or_50_hz"));
+    distance.insert(QStringLiteral("signal_strength_supported"), false);
+    sensors.insert(QStringLiteral("lidar"), distance);
     sensors.insert(QStringLiteral("laser_temperature_controller"),
                    connectionToJson(config.laserTemperatureController));
     sensors.insert(QStringLiteral("system_temperature_controller"),

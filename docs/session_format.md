@@ -271,3 +271,9 @@ even when their per-device serial settings are unavailable. Common values such
 as the session directories, origin, export rates, capture connection, and
 format versions are filled by `SessionPackageInitializer`, so an endpoint
 cannot omit or change those schema fields while creating a package.
+
+## SDFM300 距离记录
+
+2026-11-15 起，新外部设备 CSV 使用 `sdfm300_distance_m,sdfm300_valid` 两列，删除旧 `lidar_signal_strength` 列，总列数由 77 变为 76；读取器按 CSV 表头识别其他传感器列，旧记录保持可读。距离单位为米。串口原始记录仍为 `raw/distance.dat`，source 4，新增类型 6，严格保存 4 字节帧；历史类型 1–5 保持原解释。
+
+`device_config.json` 的 `sensors.lidar` 保留通用设备键，新增 `model=SDFM300`、4 字节厘米协议、`serial_format=8N1`、0.05–300 m 量程、`output_rate_mode=automatic_1000_or_50_hz` 及 `signal_strength_supported=false`。`rate_hz` 表示主机刷新限制，不表示设备固定输出频率。配置键、raw source 和天地遥测 wire 布局保持兼容；新发送端清除历史强度标志并将其保留字节置零。

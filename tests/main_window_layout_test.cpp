@@ -4952,7 +4952,7 @@ void requireHomeMaximumValueWidths()
     VaporView::LidarData distance;
     distance.valid = true;
     distance.distance_m = -9999.99;
-    distance.signal_strength = 65535;
+    distance.legacy_signal_strength = 65535;
     const auto requireLabelsFit = [](QWidget *root) {
         for (QLabel *label : root->findChildren<QLabel *>())
         {
@@ -6416,7 +6416,7 @@ int main(int argc, char **argv)
     require(recordingStatusDetail.contains(QStringLiteral("RAW EPSILON")) &&
                 recordingStatusDetail.contains(QStringLiteral("RAW PTB210")) &&
                 recordingStatusDetail.contains(QStringLiteral("RAW HC2A")) &&
-                recordingStatusDetail.contains(QStringLiteral("RAW TFA1500")) &&
+                recordingStatusDetail.contains(QStringLiteral("SDFM300")) &&
                 recordingStatusDetail.contains(QStringLiteral("RAW WAVE")) &&
                 recordingStatusDetail.contains(QStringLiteral("RAW RD105")) &&
                 recordingStatusDetail.contains(QStringLiteral("RAW AI-8288")),
@@ -8303,7 +8303,7 @@ int main(int argc, char **argv)
         homeDataSection->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
     require(dataPills.size() == 10,
             "home data availability row covers all nine devices");
-    const QStringList compactDeviceNames = {"EPSILON", "PTB210", "HC2A", "TFA1500-L", "RD105", "AI-8288", "BMP390", "SHT45", QStringLiteral("波形"), "Waveform"};
+    const QStringList compactDeviceNames = {"EPSILON", "PTB210", "HC2A", "SDFM300", "RD105", "AI-8288", "BMP390", "SHT45", QStringLiteral("波形"), "Waveform"};
     for (QFrame *pill : dataPills)
     {
         QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));

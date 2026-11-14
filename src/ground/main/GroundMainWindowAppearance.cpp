@@ -1921,7 +1921,7 @@ void MainWindow::loadRememberedInputState()
     const QString lidarBaudKey = QStringLiteral("serial/lidar_baud");
     const QString lidarFallbackBaud = state_->device_config_.lidar_baud_combo
         ? state_->device_config_.lidar_baud_combo->currentText()
-        : QStringLiteral("500000");
+        : QStringLiteral("460800");
     const QString savedLidarBaud = settings.value(lidarBaudKey, lidarFallbackBaud).toString();
     if (!VaporView::setSerialBaudRateComboText(
             state_->device_config_.lidar_baud_combo, savedLidarBaud))
@@ -1932,8 +1932,8 @@ void MainWindow::loadRememberedInputState()
         publishGroundLog(VaporView::LogLevel::Warning,
                          QStringLiteral("configuration.apply"),
                          QStringLiteral("lidar_persisted_baud_rejected"),
-                         QStringLiteral("已忽略 TFA1500-L 的无效已保存波特率，并恢复默认值。"),
-                         {{QStringLiteral("device"), QStringLiteral("TFA1500-L")},
+                         QStringLiteral("已忽略 SDFM300 的无效已保存波特率，并恢复默认值。"),
+                         {{QStringLiteral("device"), QStringLiteral("SDFM300")},
                           {QStringLiteral("configured_baud"), savedLidarBaud},
                           {QStringLiteral("fallback_baud"), lidarFallbackBaud},
                           {QStringLiteral("error_code"), QStringLiteral("UNSUPPORTED_BAUD_RATE")},

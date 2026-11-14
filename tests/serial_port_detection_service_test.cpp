@@ -98,7 +98,7 @@ int main()
     SerialPortDetectionRequest invalidLidarRequest;
     invalidLidarRequest.english = false;
     invalidLidarRequest.lidar = {
-        QStringLiteral("VAPORVIEW_TEST_LIDAR_PORT"), QStringLiteral("9600")};
+        QStringLiteral("VAPORVIEW_TEST_LIDAR_PORT"), QStringLiteral("500000")};
     logs.clear();
     SerialPortDetectionService::detect(
         invalidLidarRequest,
@@ -107,8 +107,8 @@ int main()
     const auto rejectedLidar = std::find_if(logs.cbegin(), logs.cend(), [](const auto& entry) {
         return entry.event == QStringLiteral("serial_port_detection_rejected_unsupported_baud") &&
                entry.fields.value(QStringLiteral("device_key")).toString() == QStringLiteral("lidar") &&
-               entry.fields.value(QStringLiteral("configured_baud")).toString() == QStringLiteral("9600") &&
-               entry.fields.value(QStringLiteral("fallback_baud")).toString() == QStringLiteral("500000") &&
+               entry.fields.value(QStringLiteral("configured_baud")).toString() == QStringLiteral("500000") &&
+               entry.fields.value(QStringLiteral("fallback_baud")).toString() == QStringLiteral("460800") &&
                entry.fields.value(QStringLiteral("reason_code")).toString() ==
                    QStringLiteral("UNSUPPORTED_BAUD_RATE");
     });
@@ -116,15 +116,15 @@ int main()
         return entry.event == QStringLiteral("serial_port_detection_probe_started") &&
                entry.fields.value(QStringLiteral("probe_phase")).toString() == QStringLiteral("selected") &&
                entry.fields.value(QStringLiteral("device_key")).toString() == QStringLiteral("lidar") &&
-               entry.fields.value(QStringLiteral("baud")).toString() == QStringLiteral("500000");
+               entry.fields.value(QStringLiteral("baud")).toString() == QStringLiteral("460800");
     });
     require(rejectedLidar != logs.cend() && lidarFallbackStarted != logs.cend(),
-            "TFA1500-L auto-detect rejects 9600 and probes the legal 500000 default");
+            "SDFM300 auto-detect rejects 500000 and probes the legal 460800 default");
 
     SerialPortDetectionRequest customLidarRequest;
     customLidarRequest.english = false;
     customLidarRequest.lidar = {
-        QStringLiteral("VAPORVIEW_TEST_LIDAR_PORT"), QStringLiteral("750000")};
+        QStringLiteral("VAPORVIEW_TEST_LIDAR_PORT"), QStringLiteral("256000")};
     logs.clear();
     SerialPortDetectionService::detect(
         customLidarRequest,
@@ -134,10 +134,10 @@ int main()
         return entry.event == QStringLiteral("serial_port_detection_probe_started") &&
                entry.fields.value(QStringLiteral("probe_phase")).toString() == QStringLiteral("selected") &&
                entry.fields.value(QStringLiteral("device_key")).toString() == QStringLiteral("lidar") &&
-               entry.fields.value(QStringLiteral("baud")).toString() == QStringLiteral("750000");
+               entry.fields.value(QStringLiteral("baud")).toString() == QStringLiteral("256000");
     });
     require(customLidarStarted != logs.cend(),
-            "TFA1500-L auto-detect preserves a legal non-preset 750000 baud");
+            "SDFM300 auto-detect preserves a legal documented 256000 baud");
 
     SerialPortDetectionRequest customProbeRequest;
     customProbeRequest.english = false;

@@ -499,7 +499,7 @@ void testSensorCsvCompatibility()
         "epsilon_raw_gnss_packet_rate_hz,epsilon_satellite_packet_rate_hz,"
         "epsilon_geodetic_packet_rate_hz,epsilon_ecef_packet_rate_hz,"
         "epsilon_valid,epsilon_error_message,"
-        "hc2a_temperature_c,hc2a_humidity_rh,ptb_pressure_hpa,lidar_distance_m,lidar_signal_strength,lidar_valid\n");
+        "hc2a_temperature_c,hc2a_humidity_rh,ptb_pressure_hpa,sdfm300_distance_m,sdfm300_valid\n");
     require(VaporView::SessionSensorCsv::header() == expectedHeader,
             "sensor summary uses HC2A column names and preserves field order");
 
@@ -509,7 +509,7 @@ void testSensorCsvCompatibility()
     const VaporView::LidarData lidar;
     const QString emptyRow = VaporView::SessionSensorCsv::formatRow(
         123u, 0u, epsilon, false, ptb, false, hc2a, false, lidar, false);
-    require(emptyRow == QStringLiteral("123") + QString(76, QLatin1Char(',')) + QLatin1Char('\n'),
+    require(emptyRow == QStringLiteral("123") + QString(75, QLatin1Char(',')) + QLatin1Char('\n'),
             "devices.csv missing-value row is unchanged");
     require(VaporView::SessionSensorCsv::escape(QStringLiteral("a,b\"c\n")) ==
                 QStringLiteral("\"a,b\"\"c\n\""),

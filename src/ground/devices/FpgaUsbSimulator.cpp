@@ -1,3 +1,4 @@
+#include "SerialBaudRateCapabilities.h"
 #include "FpgaUsbSimulator.h"
 #include "FpgaAdvancedParameters.h"
 #include "FpgaControlConfig.h"
@@ -147,7 +148,7 @@ bool readable(quint32 a, bool historical, bool hcd2Scan)
     if (base == 0x6400) return offset <= 0x3c;
     if (base == 0x6200) return offset <= 0x7c;
     if (base == 0x6300) return offset <= 0x40;
-    if (base == 0x6500) return offset <= 0x5c;
+    if (base == 0x6500) return offset<=0x10 || offset==0x1c || offset==0x20 || (offset>=0x28 && offset<=0x40) || offset==0x48 || offset==0x5c;
     if (base == 0x6600) return offset <= 0x64 ||
         (historical && (offset == 0x68 || offset == 0x6c || (offset>=0x80 && offset<=0xb4) || offset==0xfc)) ||
         (hcd2Scan && (offset == 0x68 || offset == 0x6c || offset == 0x98 || (offset>=0xa0 && offset<=0xbc) || offset==0xfc));
@@ -261,15 +262,15 @@ private:
         regs_[0x1000]=0x00020200;regs_[0x1028]=2000;regs_[0x1068]=100000000;
         regs_[0x6100]=0x00410106;regs_[0x6110]=19200;regs_[0x6114]=99;regs_[0x6118]=0;
         regs_[0x611c]=1000;regs_[0x6120]=3;regs_[0x614c]=0x48434432;
-        regs_[0x6010] = 9600; regs_[0x6018] = 1000; regs_[0x6514] = 2;
-        regs_[0x6210] = 921600; regs_[0x6510] = 500000;
+        regs_[0x6010] = 9600; regs_[0x6018] = 1000; regs_[0x6500] = 0x00450200;
+        regs_[0x6210] = 921600; regs_[0x6510] = 460800;
         regs_[0x6314] = regs_[0x6414] = 1000;
         target_ = 250; measured_ = 235;
         const quint32 enabled = startup_ == FpgaSimulatorStartup::RunningDemo ? 1 : 0;
         regs_[4] = enabled;
         const FpgaControlConfig defaults;
         for (quint32 b : {0x6000u,0x6100u,0x6200u,0x6300u,0x6400u,0x6500u,0x6600u}) {
-            regs_[b + 4] = enabled; regs_[b + 8] = enabled;
+            regs_[b + 4] = enabled; regs_[b + 8] = enabled | (b==0x6500?2u:0u);
         }
         if(historical_)regs_[0x6804]=regs_[0x6808]=enabled;
         for (int ch = 0; ch < 2; ++ch) {
@@ -328,6 +329,11 @@ private:
             if(address==0x1004)timeEnabledMs_=value&1?clock_.elapsed():-1;
         }
         if(address==4 && !(value&1)) {regs_[0x6704]=0;motorBusy_=motorDone_=false;}
+        if(address==0x6504) {
+            regs_[address]=value&1;regs_[0x6508]=(value&1)|2;
+            if(value&2) {regs_[0x650c]=0;regs_[0x651c]=regs_[0x6520]=0;}
+            return;
+        }
         if(address==0x6104) {
             regs_[address]=value&1;regs_[0x6108]=(value&1)?0x11:0;
             if(value&2) {regs_[0x610c]=0;regs_[0x6144]=regs_[0x6148]=regs_[0x6150]=regs_[0x6154]=0;}
@@ -492,6 +498,16 @@ private:
         const auto base=address&~255u;
         const auto offset=address&255u;
         const bool enabled=regs_.value(base+4)&1;
+        if(base==0x6500) {
+            if(offset==4)return value&~11u?7:0;
+            if(offset==12)return 0;
+            if(offset==0x10) {
+                if(!isBaudRateSupported(lidarBaudCapabilities(),int(value)))return 7;
+                return enabled?8:0;
+            }
+            if(offset==0x3c || offset==0x48)return value?0:7;
+            return 6;
+        }
         if(base==0x6100) {
             if(offset==4)return value&~11u?7:0;
             if(offset==12)return 0;
@@ -559,8 +575,8 @@ private:
         if(address==0x6010 || address==0x6210 || address==0x6510) {
             const quint32 minimum=address==0x6010?1200:address==0x6210?9600:115200;
             const quint32 maximum=address==0x6010?19200:6250000;
-            if(value<minimum || value>maximum || (address==0x6510 && regs_.value(0x6514)==2 && value<500000))return 7;
-            if(enabled && address!=0x6510)return 7;
+            if(address==0x6510 ? !isBaudRateSupported(lidarBaudCapabilities(),int(value)) : value<minimum || value>maximum)return 7;
+            if(enabled)return 7;
         }
         if(address==0x6018 || address==0x6314 || address==0x6414 || address==0x662c) {
             if(value<1 || value>3600000)return 7;
@@ -650,12 +666,11 @@ private:
             else if(!historical_ && f.header.source==0x48)status=4;
             else if (word(p,0) == 1 && word(p,4) <= 1) {
                 const auto base = 0x6000 + (f.header.source - 0x40) * 0x100;
-                regs_[base + 4] = regs_[base + 8] = word(p,4);
+                regs_[base + 4] = word(p,4); regs_[base + 8] = word(p,4) | (base==0x6500?2u:0u);
                 if(word(p,4))lastSensorMs_.remove(f.header.source);
             } else if((word(p,0)==16 || word(p,0)==2) && f.header.source==0x41)status=14;
             else if(word(p,0)==3 || word(p,0)==4 || word(p,0)==5) {const auto base=0x6000+(f.header.source-0x40)*0x100;if(word(p,0)==5)regs_[base+12]&=~word(p,4);else if(word(p,0)==4){regs_[base+4]=0;regs_[base+12]=0;}}
-            else if(word(p,0)==32 && f.header.source==0x45)regs_[0x6514]=word(p,4);
-            else if(word(p,0)==33 && f.header.source==0x45)regs_[0x6518]=word(p,4);
+            else if((word(p,0)==32 || word(p,0)==33) && f.header.source==0x45)status=13;
             else if (word(p,0) == 17 && f.header.source == 0x46 && (regs_[0x6604] & 1)) {
                 const qint32 microC = qint32(word(p,4));
                 if (microC % 100000 || microC < -999000000 || microC > 2147400000) status = 14;

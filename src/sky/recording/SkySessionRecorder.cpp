@@ -920,7 +920,7 @@ void SkySessionRecorder::recordBasicTelemetry(const TelemetryBasic& data)
 
     LidarData lidar;
     lidar.valid = hasLidar;
-    lidar.distance_m = data.lidar_height_m;
+    lidar.distance_m = data.lidar_distance_m;
 
     recordDeviceSnapshot(data.host_time_us,
                          data.host_time_us,

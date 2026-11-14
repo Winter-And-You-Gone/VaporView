@@ -58,13 +58,18 @@ int main(int argc, char **argv)
         {{"op","sensor_config"},{"source",0x46},{"baud",19200}},
         {{"op","sensor_config"},{"source",0x42},{"poll_ms",1000}},
         {{"op","sensor_config"},{"source",0x40},{"baud",115200}},
-        {{"op","sensor_config"},{"source",0x45},{"baud",9600}},
+        {{"op","sensor_config"},{"source",0x45},{"baud",500000}},
         {{"op","sensor_config"},{"source",0x44},{"poll_ms",0}},
         {{"op","sensor_config"},{"source",0x46},{"poll_ms",3600001}},
         {{"op","sensor_config"},{"source",0x44},{"poll_ms",1.5}},
         {{"op","sensor_config"},{"source",0x40}},
         {{"op","sensor_config"},{"source",0x42},{"baud",921600},{"address",0x6210}}})
         require(!validateControl(request),"unsupported, invalid or arbitrary sensor settings rejected");
+    for(int baud:{9600,19200,38400,115200,230400,256000,460800})
+        require(validateControl({{"op","sensor_config"},{"source",0x45},{"baud",baud}}),"SDFM300 documented baud accepted by remote contract");
+    for(int action:{32,33})
+        require(!validateControl({{"op","sensor_action"},{"source",0x45},{"action",action},{"value",1}}),"legacy ranging actions rejected before transmission");
+    require(!validateControl({{"op","sensor_config"},{"source",0x45},{"parameters",QJsonObject{{"mode",2}}}}),"legacy ranging mode parameter rejected");
     require(!validateControl({{"op","dac"},{"channel",2},{"enabled",true}}),"channel out of range rejected");
     require(!validateControl({{"op","raw"},{"enabled",1}}),"boolean coercion rejected");
     require(!validateControl({{"op","temperature"},{"celsius",25.01}}),"temperature precision rejected");

@@ -884,8 +884,8 @@ void SkyLocalIpcClient::updateFromBasic(const TelemetryBasic& basic)
     if ((basic.validity_flags & BasicHasLidar) != 0)
     {
         dashboard_.lidar.valid = true;
-        dashboard_.lidar.distance_m = basic.lidar_height_m;
-        dashboard_.lidar.signal_strength = basic.lidar_signal_strength;
+        dashboard_.lidar.distance_m = basic.lidar_distance_m;
+        dashboard_.lidar.legacy_signal_strength = basic.legacy_lidar_signal_strength;
     }
     if ((basic.validity_flags & BasicHasTemperature) != 0 || (basic.validity_flags & BasicHasHumidity) != 0)
     {

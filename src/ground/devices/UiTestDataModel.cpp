@@ -626,10 +626,9 @@ UiTestSnapshot UiTestDataModel::snapshot(qint64 elapsedMs) const
     result.lidar.valid = connected(deviceState(SkyDeviceId::Lidar)) && !stalled;
     result.lidar.timestamp = timestamp;
     const double lidarDistanceBaseM = uiTestLidarUsesWideDistance(nonNegativeElapsedMs)
-        ? 1234.0
+        ? 297.0
         : 120.0;
     result.lidar.distance_m = lidarDistanceBaseM + std::sin(seconds * 0.7) * 2.5;
-    result.lidar.signal_strength = static_cast<uint16_t>(820 + 70 * slow);
     if (!result.lidar.valid)
     {
         result.lidar.error_message = "UI test data stalled";
@@ -713,7 +712,7 @@ UiTestSnapshot UiTestDataModel::snapshot(qint64 elapsedMs) const
     result.imuRateHz = result.imu.valid ? boundedRandom(sampleElapsedMs, 3, 190.0, 240.0) : 0.0;
     result.ptbRateHz = result.ptb.valid ? boundedRandom(sampleElapsedMs, 4, 100.0, 135.0) : 0.0;
     result.hc2aRateHz = result.hc2a.valid ? boundedRandom(sampleElapsedMs, 5, 100.0, 135.0) : 0.0;
-    result.lidarRateHz = result.lidar.valid ? boundedRandom(sampleElapsedMs, 6, 120.0, 180.0) : 0.0;
+    result.lidarRateHz = result.lidar.valid ? (uiTestLidarUsesWideDistance(nonNegativeElapsedMs) ? 50.0 : 1000.0) : 0.0;
     result.temperatureRateHz = result.temperature.valid ? boundedRandom(sampleElapsedMs, 7, 100.0, 130.0) : 0.0;
     result.waveformFeatureRateHz = waveFresh ? boundedRandom(sampleElapsedMs, 8, 110.0, 160.0) : 0.0;
     result.telemetryStatusRateHz = !stalled ? boundedRandom(sampleElapsedMs, 9, 100.0, 130.0) : 0.0;

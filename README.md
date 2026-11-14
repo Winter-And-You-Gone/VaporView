@@ -1,6 +1,6 @@
 # VaporView
 
-`VaporView` 是一个基于 Qt Widgets 的桌面程序。当前主界面面向 EPSILON 组合导航、PTB210/BMP390 气压来源、HC2A/SHT45 温湿度来源、TFA1500-L 激光测距模块、RD105 温控器、AI-8288 八路温控器和本地 TCP 波形流，提供串口接入、实时数据显示、RTK/NTRIP 转发、会话记录、离线查看和轨迹查看能力。
+`VaporView` 是一个基于 Qt Widgets 的桌面程序。当前主界面面向 EPSILON 组合导航、PTB210/BMP390 气压来源、HC2A/SHT45 温湿度来源、SDFM300 激光测距模块、RD105 温控器、AI-8288 八路温控器和本地 TCP 波形流，提供串口接入、实时数据显示、RTK/NTRIP 转发、会话记录、离线查看和轨迹查看能力。
 
 ## 快速开始
 
@@ -127,7 +127,7 @@ Sky 端正式设备、遥测、记录和模拟覆盖见 [docs/sky_device_coverag
 
 频率含义：
 
-- `Acquisition Rate`：天空端真实设备采集频率，例如 EPSILON、气压槽、温湿度槽、Lidar、RD105、AI-8 和 Wave TCP 的采集/接收频率。
+- `Acquisition Rate`：天空端真实设备采集频率，例如 EPSILON、气压槽、温湿度槽、SDFM300、RD105、AI-8 和 Wave TCP 的采集/接收频率。
 - `Recording Rate`：天空端本地 session 写盘频率，例如 CSV 摘要和原始波形记录频率。
 - `Telemetry Rate`：天空端通过数传下发给地面端的频率，例如 `TelemetryBasic`、`WaveformFeature`、`WaveformDownsampled`。
 - `TUI Render Rate`：终端显示刷新频率。TUI 使用 screen buffer diff 局部刷新，布局不变时不会持续 clear screen 全屏重绘。
@@ -168,7 +168,7 @@ H300 网桥使用说明：
 - 电脑和天空端设备需要手动配置到同一网段的静态 IP，例如天空端 `192.168.1.2`、地面端 `192.168.1.5`。H300 不负责替应用层自动分配 VaporView 的 TCP 端点。
 - 串口数传仍可用，但 H300 模块 TTL 串口固定 `115200 bps`。如果通过 H300 TTL 串口做兼容链路，需要同时把天空端和地面端串口遥测波特率改为 `115200`。
 
-天空-地面接收模式下，地面端工具栏的“开始记录 / 暂停记录 / 结束记录”会通过数传下发到天空端。天空端收到开始记录命令后在普通模式同一个默认 `data/` 目录下创建 `session_yyyy-MM-dd_HH-mm-ss`，并把 EPSILON、气压槽、温湿度槽、Lidar 和 TCP 波形的原始数据写入统一 `raw/*.dat`；RD105 和 AI-8288 写入结构化温控 CSV。天空端状态包会同步回传记录状态、时长、遥测行数和各 raw/CSV 文件记录条数，地面端右侧记录状态卡实时显示这些关键计数。
+天空-地面接收模式下，地面端工具栏的“开始记录 / 暂停记录 / 结束记录”会通过数传下发到天空端。天空端收到开始记录命令后在普通模式同一个默认 `data/` 目录下创建 `session_yyyy-MM-dd_HH-mm-ss`，并把 EPSILON、气压槽、温湿度槽、SDFM300 和 TCP 波形的原始数据写入统一 `raw/*.dat`；RD105 和 AI-8288 写入结构化温控 CSV。天空端状态包会同步回传记录状态、时长、遥测行数和各 raw/CSV 文件记录条数，地面端右侧记录状态卡实时显示这些关键计数。
 
 本文档只描述当前仓库中可以直接从代码、构建脚本和随仓库文档确认的内容。对应代码入口主要是：
 
@@ -183,9 +183,9 @@ H300 网桥使用说明：
 
 - Qt Widgets 图形界面，应用名和窗口标题为 `VaporView`，应用版本为 `1.0.1`。
 - 中英文界面切换、F11 全屏、70% / 80% / 90% / 100% / 115% / 130% 字号缩放。
-- 串口刷新、手动端口输入与自动识别；正式设备配置覆盖 EPSILON、PTB210/BMP390、HC2A/SHT45、TFA1500-L、RD105、AI-8288 和 Wave TCP。
+- 串口刷新、手动端口输入与自动识别；正式设备配置覆盖 EPSILON、PTB210/BMP390、HC2A/SHT45、SDFM300、RD105、AI-8288 和 Wave TCP。
 - EPSILON `FDILink` 组合导航数据解析、包频率配置、RTCM 串口配置、主天线杆臂配置。
-- PTB210/BMP390 气压、HC2A/SHT45 温湿度、TFA1500-L 距离数据显示与频率统计。
+- PTB210/BMP390 气压、HC2A/SHT45 温湿度、SDFM300 距离数据显示与频率统计。
 - RD105 双通道温控与 AI-8288 八路温控数据显示、参数页面和当前产品化控制入口。
 - TCP 波形监视，默认连接 `127.0.0.1:8888`，显示原始信号、归一化二次谐波和峰值趋势。
 - RTK NTRIP 配置对话框，基于内置 RTKLIB `strsvr` 把 NTRIP 输入转发到串口或 TCP Client 输出。
@@ -409,7 +409,7 @@ Qt `SerialPort` 模块当前用于枚举可用串口；实际采集读写使用�
 - `EpsilonCollector`：EPSILON `FDILink` 采集、校验、解析、包频率配置、RTCM 串口配置、主天线杆臂配置。
 - `PtbCollector`：PTB210 气压采集。
 - `Hc2aCollector`：HC2A RO-ASCII RDD 温湿度采集，校验地址、单位、checksum和报警。
-- `LidarCollector`：TFA1500-L 激光测距采集。
+- `LidarCollector`：SDFM300 激光测距采集。
 - `GnssCollector` 和 `ImuCollector` 仍在源码中保留，但当前主窗口没有独立 GNSS 或 IMU 设备配置行。
 
 ## 设备支持
@@ -510,27 +510,20 @@ EPSILON RTCM 与杆臂配置：
 - 默认主机轮询为1Hz。UI频率改变主机请求节奏，不改变探头内部测量速率，也不能保证超出应答能力的采样率。
 - 新记录使用HC2A型号和`hc2a_temperature_c` / `hc2a_humidity_rh`列；历史HMP配置与CSV列保留只读迁移兼容。
 
-### TFA1500-L
+### SDFM300 激光测距
 
-当前主界面默认串口参数：
+当前采购型号为 SDFM300。90% 反射率目标量程为 0.05–300 m，10% 反射率目标为 0.05–100 m；300 m 不是任意目标条件下的保证距离。
 
-- Windows：`COM7 @ 500000 N81`
-- 非 Windows：`/dev/ttyLidar @ 500000 N81`
+- 默认串口为 Windows `COM7 @ 460800 8N1`、非 Windows `/dev/ttyLidar @ 460800 8N1`；自动识别也先使用 460800。
+- 仅接受手册规定的 9600、19200、38400、115200、230400、256000、460800；原设备默认 500000 不适用，界面已保存的不支持值会恢复为 460800 并记入日志。选择主机波特率不会自动修改实体模块的波特率。
+- 上电主动输出，接入、探测及断开均不发送旧设备启停、LF/HF 或单次测量命令。模块根据回波自动切换 1000 / 50 Hz；界面“刷新率”只限制主机回调，原始记录保留每一帧。
+- 一帧严格为 `5C distance_cm_low distance_cm_high checksum` 共 4 字节，校验为距离两字节之和取反，不含帧头。例如 `5C 02 11 EC` 为 43.54 m；`5C FF FF 01` 表示测不到。
+- 只把 5–30000 cm 作为有效距离；无回波、低于最小量程或超出 300 m 均清除有效性。解析支持拆包、连包和坏帧后的重新同步。
+- 协议没有信号强度；面板显示距离、型号量程和接收频率。新 CSV 字段为 `sdfm300_distance_m` / `sdfm300_valid`，不生成虚构强度。
+- FPGA 外层保持 `source=0x45 / message=0x1100 / schema=1 / tag=0x0013 / u32 mm`；模块版本要求 `0x00450200`。旧 LF/HF 控制已移除。设备的厘米距离只在下位机乘 10 转为毫米，上位机再除 1000 转为米。
+- 新串口原始记录仍位于 `raw/distance.dat`，`source_id=4 / record_type=6`。历史类型 1–5 仅供读取，不与新 4 字节帧混用。
 
-自动识别顺序中：
-
-- TFA1500-L：`500000 N81`
-
-TFA1500-L 当前实现事实：
-
-- 支持高频模式、距离输出模式和低频连续测距模式的启动命令。
-- 高频启动命令：`55 AA CB CC CC CC CC FB`
-- 高频停止命令：`55 AA CC CC CC CC CC FC`
-- 待机命令：`55 00 02 00 00 57`
-- 距离输出命令：`5A 0A 02 02 00 F1`
-- 低频连续测距命令：`55 02 02 20 00 75`
-- TFA1500-L 距离帧头为 `0x5C`，当前距离帧长度为 `5` 字节。
-- 高频模式和 `>= 500000` 波特率下使用设备自适应输出，主机采样率限制最高保存到 `1000 Hz`。
+协议、配置兼容和验证详见 [SDFM300 接入说明](docs/sdfm300.md)。
 
 ## TCP 波形监视
 
@@ -663,7 +656,7 @@ data/
 - 格式版本、`recording_origin`、当前记录目录和 session 目录
 - 遥测 transport / endpoint / port / baud；不适用项保留为 `null`
 - 波形主机、端口、记录模式、每帧点数和值类型
-- EPSILON、PTB、HC2A、Lidar、RD105、AI-8288 的串口、波特率、频率文本和从站地址；天空端无法提供的
+- EPSILON、PTB、HC2A、SDFM300、RD105、AI-8288 的串口、波特率、频率文本和从站地址；天空端无法提供的
   逐设备配置保留为 `null`
 
 ## 数据文件格式
@@ -684,7 +677,7 @@ data/
 - 姿态角、四元数、角速度、IMU 加速度、IMU 角速度、磁场
 - GNSS 状态、卫星数、DOP、精度、差分龄期、heading 状态、EPSILON 状态位
 - EPSILON 有效性和错误信息
-- HC2A 温度 / 湿度、PTB 气压、Lidar 距离 / 信号强度 / 有效性
+- HC2A 温度 / 湿度、PTB 气压、SDFM300 距离 / 有效性
 
 其中 `ecef_x_m`、`ecef_y_m`、`ecef_z_m` 是程序使用的 resolved ECEF 字段：优先为设备可信 `0x5D`，否则为有效 LLH 的 WGS84 反算值。原始设备 `0x5D` 帧只在 `raw/navigation.dat` 中保真保存。
 

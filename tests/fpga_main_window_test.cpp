@@ -187,7 +187,7 @@ static bool onlyPressureDataAvailable(MainWindow& window)
         auto *value=pill->findChild<QLabel*>("homeTelemetrySummaryValueLabel");
         if(!name||!value)continue;
         if(QStringList{QStringLiteral("基础"),QStringLiteral("特征值"),QStringLiteral("状态"),QStringLiteral("原始波形"),QStringLiteral("谐波波形"),QStringLiteral("波形采集"),QStringLiteral("天→地"),QStringLiteral("地→天"),QStringLiteral("合")}.contains(name->text())&&value->property("telemetryAvailable").toBool())return false;
-        if(!QStringList{"EPSILON","PTB","PTB210","HC2A","Lidar","TFA1500-L","RD105","AI-8288","BMP390","SHT45",QStringLiteral("波形")}.contains(name->text()))continue;
+        if(!QStringList{"EPSILON","PTB","PTB210","HC2A","Lidar","SDFM300","RD105","AI-8288","BMP390","SHT45",QStringLiteral("波形")}.contains(name->text()))continue;
         if(value->property("telemetryAvailable").toBool()!=(name->text()=="PTB"||name->text()=="PTB210"))return false;
         ++found;
     }
@@ -196,7 +196,7 @@ static bool onlyPressureDataAvailable(MainWindow& window)
 static bool onlyPressureConnected(MainWindow &window)
 {
     if(homeAction(window,"PTB210")->property("state")!="connected")return false;
-    for(const auto& name:QStringList{"EPSILON","HC2A","TFA1500","AI-8288","BMP390","SHT45",QStringLiteral("波形源")})
+    for(const auto& name:QStringList{"EPSILON","HC2A","SDFM300","AI-8288","BMP390","SHT45",QStringLiteral("波形源")})
         if(homeAction(window,name)->property("state")!="disconnected")return false;
     int internalSensors=0;
     for(auto *button:window.findChildren<QToolButton*>("homeDeviceActionButton")) {
@@ -943,7 +943,7 @@ static void remoteHomeActions()
     registers[QString::number(0x6304)]=0;status["registers"]=registers;send(MsgType::FpgaStatus,FpgaRemote::encodeStatus(status));
     require(waitUntil([&]{return internalEnvironmentText(internal).count(QStringLiteral("—"))==3;}),"disabled BMP cannot retain a live internal value");
     registers[QString::number(0x6304)]=1;status["registers"]=registers;send(MsgType::FpgaStatus,FpgaRemote::encodeStatus(status));
-    const QStringList names{"EPSILON","PTB210","TFA1500","AI-8288",QStringLiteral("波形源")};
+    const QStringList names{"EPSILON","PTB210","SDFM300","AI-8288",QStringLiteral("波形源")};
     const QList<quint16> sources{0x42,0x40,0x45,0x46,0};
     auto *waveEnabled=window.findChild<QCheckBox*>("deviceFpgaAcquisitionEnabledCheck");
     require(waitUntil([&]{return window.findChild<QCheckBox*>("deviceInternalEnabledBMP390")->isChecked();}),
@@ -1018,7 +1018,7 @@ static void remoteHomeActions()
     for (bool enabled : {false, true}) {
         const int count = requests.size();
         auto *pressure = homeAction(window,"PTB210");
-        auto *distance = homeAction(window,"TFA1500");
+        auto *distance = homeAction(window,"SDFM300");
         pressure->click();
         require(waitUntil([&]{return requests.size()==count+1;}),"first queued remote operation starts immediately");
         require(epsilon->isEnabled()&&distance->isEnabled(),"busy FPGA leaves other device buttons available");
@@ -1450,7 +1450,7 @@ static void localSimulatorRouting()
     }
     for(const auto &entry: {qMakePair("deviceEpsilonBaudComboFpgaEditor","921600"),
             qMakePair("devicePressureBaudComboFpgaEditor","9600"),
-            qMakePair("deviceLidarBaudComboFpgaEditor","500000"),
+            qMakePair("deviceLidarBaudComboFpgaEditor","460800"),
             qMakePair("deviceAi8TemperatureBaudComboFpgaReadback","19200"),
             qMakePair("devicePressureRateComboFpgaEditor","1"),
             qMakePair("deviceInternalRateSHT45FpgaEditor","1")}) {
@@ -1480,10 +1480,14 @@ static void localSimulatorRouting()
     baudAction->click();
     check(waitUntil([&]{return !baud->isEnabled()&&baudAction->isEnabled()&&baudAction->property("state")=="connected"
         &&baud->currentText()=="460800";},12000),"local connection applies staged baud and locks editing after verified enable");
+    auto *distanceBaud=window.findChild<QComboBox*>("deviceLidarBaudComboFpgaEditor");
+    check(distanceBaud && !distanceBaud->isEditable() && distanceBaud->count()==7 &&
+        distanceBaud->findText("9600")>=0 && distanceBaud->findText("256000")>=0 &&
+        distanceBaud->findText("500000")<0,"FPGA SDFM300 editor exposes exactly the documented baud list");
     check(window.testLocalDeviceConfigSnapshot()==presets,"FPGA parameter writes preserve all Direct presets");
     check(!page->findChild<QLabel*>("fpgaConnectionStatus")->text().contains(QStringLiteral("修改 BMP 地址")),"already-enabled BMP does not receive a duplicate address-setting start");
     check(stack->currentIndex()==0,"local auto-connect keeps the home page selected");
-    const QStringList homeNames{"EPSILON","PTB210","TFA1500","AI-8288",QStringLiteral("波形源")};
+    const QStringList homeNames{"EPSILON","PTB210","SDFM300","AI-8288",QStringLiteral("波形源")};
     auto *waveEnabled=window.findChild<QCheckBox*>("deviceFpgaAcquisitionEnabledCheck");
     check(waveEnabled&&deviceWaveRate(window)&&deviceWaveRate(window)->text().contains("1000000"),
         "local ADC actual sampling rate is displayed");
@@ -1853,7 +1857,7 @@ static void simulatedMonitorActions()
     verifyRelayIndicators(window,{"Epsilon","Pressure","Humidity","Lidar","Temperature","Ai8","Wave","Bmp390","Sht45"});
     for(const auto &entry:{qMakePair("deviceEpsilonBaudComboFpgaEditor","921600"),
             qMakePair("devicePressureBaudComboFpgaEditor","9600"),
-            qMakePair("deviceLidarBaudComboFpgaEditor","500000"),
+            qMakePair("deviceLidarBaudComboFpgaEditor","460800"),
             qMakePair("deviceInternalRateSHT45FpgaEditor","1")}) {
         auto *value=window.findChild<QComboBox*>(entry.first);
         require(value&&value->currentText()==QString::fromUtf8(entry.second),"UI test sensor register values update inline fields immediately");

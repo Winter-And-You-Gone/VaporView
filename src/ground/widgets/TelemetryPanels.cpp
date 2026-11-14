@@ -1554,10 +1554,10 @@ LidarPanel::LidarPanel(QWidget *parent)
     : QWidget(parent)
     , rate_label_(nullptr)
     , distance_label_(nullptr)
-    , strength_label_(nullptr)
+    , range_label_(nullptr)
     , status_label_(nullptr)
     , distance_lbl_(nullptr)
-    , strength_lbl_(nullptr)
+    , range_lbl_(nullptr)
     , is_english_(false)
 {
     setupUi();
@@ -1588,15 +1588,15 @@ void LidarPanel::setupUi()
     setFixedNumericLabelWidth(distance_label_, {QStringLiteral("-9999.99 m"), QStringLiteral("--- m")}, 2);
     distanceLayout->addWidget(distance_label_);
     distanceLayout->addSpacing(10);
-    strength_lbl_ = new QLabel(this);
-    strength_lbl_->setObjectName("fieldLabel");
-    strength_lbl_->setMinimumHeight(20);
-    distanceLayout->addWidget(strength_lbl_);
-    strength_label_ = new QLabel("---", this);
-    strength_label_->setObjectName("highlightedValue");
-    strength_label_->setMinimumHeight(20);
-    setFixedNumericLabelWidth(strength_label_, {QStringLiteral("65535"), QStringLiteral("---")}, 2);
-    distanceLayout->addWidget(strength_label_);
+    range_lbl_ = new QLabel(this);
+    range_lbl_->setObjectName("fieldLabel");
+    range_lbl_->setMinimumHeight(20);
+    distanceLayout->addWidget(range_lbl_);
+    range_label_ = new QLabel("300 m", this);
+    range_label_->setObjectName("highlightedValue");
+    range_label_->setMinimumHeight(20);
+    setFixedNumericLabelWidth(range_label_, {QStringLiteral("300 m")}, 2);
+    distanceLayout->addWidget(range_label_);
     distanceLayout->addStretch();
     distanceLayout->addWidget(rate_label_);
     layout->addLayout(distanceLayout);
@@ -1619,7 +1619,10 @@ void LidarPanel::setEnglish(bool english)
 {
     is_english_ = english;
     setLocalizedFixedTextLabel(distance_lbl_, english, QStringLiteral("Distance:"), QStringLiteral("距离:"));
-    setLocalizedFixedTextLabel(strength_lbl_, english, QStringLiteral("Strength:"), QStringLiteral("强度:"));
+    setLocalizedFixedTextLabel(range_lbl_, english, QStringLiteral("Range:"), QStringLiteral("量程:"));
+    range_label_->setToolTip(english
+        ? QStringLiteral("SDFM300: 0.05–300 m at 90% reflectance; 0.05–100 m at 10% reflectance.")
+        : QStringLiteral("SDFM300：90% 反射率量程 0.05–300 m；10% 反射率量程 0.05–100 m。"));
 }
 
 void LidarPanel::updateData(const VaporView::LidarData& lidar_data)
@@ -1627,15 +1630,11 @@ void LidarPanel::updateData(const VaporView::LidarData& lidar_data)
     if (lidar_data.valid)
     {
         distance_label_->setText(fixedDecimalWithUnit(lidar_data.distance_m, 2, 6, QStringLiteral("m")));
-        strength_label_->setText(fixedTextField(QString::number(lidar_data.signal_strength), 4));
         setNumericLabelValidity(distance_label_, true);
-        setNumericLabelValidity(strength_label_, true);
     }
     else
     {
         distance_label_->setText(fixedDecimalWithUnit(std::numeric_limits<double>::quiet_NaN(), 2, 6, QStringLiteral("m")));
-        strength_label_->setText(fixedTextField(QStringLiteral("---"), 4));
         setNumericLabelValidity(distance_label_, false);
-        setNumericLabelValidity(strength_label_, false);
     }
 }

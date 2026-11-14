@@ -23,13 +23,8 @@ inline const QVector<SensorParameter>& sensorParameters() {
         {0x43,"power",0x6324,0,51,3,"电源模式码"},
         {0x44,"repeatability",0x6418,0,2,0,"重复精度 (0 高 / 1 中 / 2 低)"},
         {0x44,"heater",0x641c,0,6,0,"加热模式 (0 关闭)"},
-        {0x45,"mode",0x6514,0,2,1,"测距模式 (0 待机 / 1 LF / 2 HF)"},
         {0x45,"timeout",0x653c,1,0xffffffff,100000000,"接收超时 / 10 ns"},
-        {0x45,"silence",0x6544,1,0xffffffff,10000000,"静默时间 / 10 ns"},
-        {0x45,"gap",0x6548,1,0xffffffff,1000000,"帧间隔 / 10 ns"},
-        {0x45,"scale",0x654c,1,1000,1,"LF 毫米 / 计数"},
-        {0x45,"invalidMask",0x6550,0,255,0,"LF 无效状态掩码"},
-        {0x45,"versionCommand",0x6558,0,255,0,"版本查询命令码"},
+        {0x45,"gap",0x6548,1,0xffffffff,1000000,"接收帧间隔超时 / 10 ns"},
         {0x48,"address",0x6814,1,247,2,"RD105 Modbus 地址 (共用 RS485 默认 2)"},
         {0x48,"channel",0x681c,1,2,1,"RD105 测量通道"}
     };return specs;

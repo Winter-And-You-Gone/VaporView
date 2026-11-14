@@ -1862,7 +1862,7 @@ void MainWindow::onConnectClicked()
     const int epsilonRate = std::clamp(state_->epsilon_sample_rate_, 20, 200);
     const int ptbRate = clampPtbSampleRate(effectiveRateOrDefault(ptbRateText, kDefaultPtbSampleRateHz, kPtbMaxSampleRateHz));
     const int hc2aRate = effectiveRateOrDefault(hc2aRateText, kDefaultHc2aSampleRateHz);
-    const int lidarRate = effectiveRateOrDefault(lidarRateText, kDefaultLidarSampleRateHz, 100);
+    const int lidarRate = effectiveRateOrDefault(lidarRateText, kDefaultLidarSampleRateHz, 1000);
     const int temperatureRate = effectiveRateOrDefault(temperatureRateText, kDefaultTemperatureSampleRateHz, kMaxTemperatureSampleRateHz);
     const int ai8TemperatureRate = effectiveRateOrDefault(ai8TemperatureRateText, 5, 20);
     QSettings settings = VaporView::applicationConfigSettings();

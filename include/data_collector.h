@@ -49,10 +49,8 @@ bool parseEnvironmentSerialLine(const std::string& line, EnvironmentSerialValues
 enum class LidarProtocol
 {
   Unknown = 0,
-  TFA1500DistanceFrame = 2,
-  TFA1500LowFrequencyFrame = 3,
-  TFA1500HighFrequency = 4,
-  ObservedAaB7Frame = 5
+  // Values 1–5 belong to historical distance recordings.
+  Sdfm300DistanceFrame = 6
 };
 
 class DataCollector
@@ -284,32 +282,15 @@ public:
   bool setDeviceSampleRate(int hz) override;
   bool checkDeviceResponse() override;
   void setRawFrameCallback(RawFrameCallback callback);
-  // Set before startStreaming(); consumed only by the first startup command.
-  void setStartupLogContext(LogContext context);
-
 protected:
   void run() override;
   bool initialize() override;
   void cleanup() override;
 
 private:
-  friend class LidarCollectorTestAccess;
   LidarData latest_data_;
   RawFrameCallback raw_frame_callback_;
-  LogContext startup_log_context_;
 
-  static constexpr uint8_t TFA1500_HEADER = 0x5C;
-  static constexpr size_t TFA1500_FRAME_SIZE = 5;
-
-  LidarProtocol active_protocol_ = LidarProtocol::Unknown;
-  bool tfa1500_stream_started_ = false;
-
-  bool ensureTfa1500Streaming();
-  bool ensureTfa1500Standby();
-  bool ensureTfa1500DistanceOutput();
-  bool ensureTfa1500LowFrequencyContinuous();
-  void stopTfa1500Streaming();
-  static bool parseTfa1500Frame(const uint8_t* frame, size_t size, LidarData& sample);
 };
 
 class TemperatureControllerCollector : public DataCollector

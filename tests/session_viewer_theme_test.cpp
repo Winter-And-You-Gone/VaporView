@@ -1014,6 +1014,42 @@ void testRawDataParserRejectsTruncatedFdilinkFrame()
     processEventsFor(100);
 }
 
+void testRawDataParserSdfm300Distance()
+{
+    for (const QByteArray& payload : {QByteArray::fromHex("5c0211ec"), QByteArray::fromHex("5cffff01"), QByteArray::fromHex("5c0211ed")})
+    {
+        QTemporaryDir sessionDir;
+        require(sessionDir.isValid(), "temporary SDFM300 raw session directory");
+        QDir dir(sessionDir.path());
+        require(dir.mkpath(QStringLiteral("raw")), "temporary distance raw directory");
+        writeUnifiedRawPayloadFile(dir.filePath(QStringLiteral("raw/distance.dat")), 6, payload,
+                                   VaporView::SessionRawDat::kSourceDistance);
+        RawDataParserWindow parser;
+        parser.setEnglish(true);
+        parser.show();
+        require(waitForWindowExposed(&parser), "SDFM300 raw viewer exposed");
+        require(parser.openSessionPath(sessionDir.path()), "SDFM300 raw session accepted");
+        auto *table=parser.findChild<QTableView *>();
+        require(table && processEventsUntil(5000,[table] {
+            return table->model() && table->model()->rowCount()==1 &&
+                table->model()->index(0,4).data().toString().contains(QStringLiteral("SDFM300"));
+        }), "SDFM300 raw type is indexed independently of historical types");
+        auto *tree=parser.findChild<QTreeWidget *>();
+        require(tree && processEventsUntil(5000,[tree] {
+            const auto items=tree->findItems(QStringLiteral("sdfm300_distance_cm"),Qt::MatchExactly|Qt::MatchRecursive,0);
+            return !items.isEmpty();
+        }), "SDFM300 detail decoder exposes the two-byte centimeter field");
+        const auto distances=tree->findItems(QStringLiteral("sdfm300_distance_cm"),Qt::MatchExactly|Qt::MatchRecursive,0);
+        const auto valid=tree->findItems(QStringLiteral("sdfm300_valid"),Qt::MatchExactly|Qt::MatchRecursive,0);
+        const bool measured=payload==QByteArray::fromHex("5c0211ec");
+        require(distances.first()->text(2)==(measured?QStringLiteral("43.54"):QStringLiteral("---")) &&
+                    valid.size()==1 && valid.first()->text(1)==(measured?QStringLiteral("true"):QStringLiteral("false")),
+                "raw viewer never displays no-target or bad-checksum values as a measured distance");
+        parser.close();
+        processEventsFor(100);
+    }
+}
+
 void testRawDataParserUsesHardwareTemperatureSourceNames()
 {
     QTemporaryDir sessionDir;
@@ -2821,6 +2857,7 @@ int main(int argc, char **argv)
         testRawDataScanProgressVisible();
         testRawDataParserOpenIsNonBlocking();
         testRawDataParserRejectsTruncatedFdilinkFrame();
+        testRawDataParserSdfm300Distance();
         testRawDataParserUsesHardwareTemperatureSourceNames();
         testNormalizedWaveformGapsRender();
         testFpgaWaveformSelector();

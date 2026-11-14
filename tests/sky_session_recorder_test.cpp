@@ -363,7 +363,7 @@ int main(int argc, char *argv[])
     VaporView::LidarData lidar;
     lidar.valid = true;
     lidar.distance_m = 120.125;
-    lidar.signal_strength = 180;
+    lidar.legacy_signal_strength = 180;
     recorder.recordDeviceSnapshot(1100, 1000, epsilon, true, ptb, true, hc2a, true, lidar, true);
     VaporView::WaveformFeature feature;
     feature.host_time_us = recorder.recordingStartTimeUs();
@@ -448,15 +448,15 @@ int main(int argc, char *argv[])
     require(deviceLines.at(0) + QLatin1Char('\n') == VaporView::SessionSensorCsv::header(),
             "sky sensor summary uses shared header exactly");
     const QStringList deviceHeaders = deviceLines.at(0).split(',');
-    require(deviceHeaders.size() == 77, "devices csv header column count");
+    require(deviceHeaders.size() == 76, "devices csv header column count");
     require(deviceHeaders.contains(QStringLiteral("gnss_satellites")), "devices csv has satellites");
     require(deviceHeaders.contains(QStringLiteral("imu_acc_x_mps2")), "devices csv has imu accel");
     require(deviceHeaders.contains(QStringLiteral("attitude_source_count")), "devices csv has attitude source count");
     require(deviceHeaders.contains(QStringLiteral("attitude_delta_max_deg")), "devices csv has attitude max delta");
     require(deviceHeaders.contains(QStringLiteral("epsilon_imu_packet_rate_hz")), "devices csv has epsilon packet rates");
-    require(deviceHeaders.contains(QStringLiteral("lidar_signal_strength")), "devices csv has lidar strength");
+    require(deviceHeaders.contains(QStringLiteral("sdfm300_distance_m")) && !deviceHeaders.contains(QStringLiteral("lidar_signal_strength")), "SDFM300 CSV records distance without fabricated strength");
     const QStringList deviceCells = deviceLines.at(1).split(',');
-    require(deviceCells.size() == 77, "devices csv column count");
+    require(deviceCells.size() == 76, "devices csv column count");
     require(deviceCells.at(5) == QStringLiteral("31.230412345"), "latitude csv precision");
     require(deviceCells.at(6) == QStringLiteral("121.473712345"), "longitude csv precision");
     require(deviceCells.at(7) == QStringLiteral("1200.123457"), "height csv precision");
@@ -493,7 +493,7 @@ int main(int argc, char *argv[])
     require(deviceCells.at(72) == QStringLiteral("45.250000"), "humidity csv precision");
     require(deviceCells.at(73) == QStringLiteral("900.750000"), "pressure csv precision");
     require(deviceCells.at(74) == QStringLiteral("120.125000"), "lidar csv precision");
-    require(deviceCells.at(75) == QStringLiteral("180"), "lidar strength csv value");
+    require(deviceCells.at(75) == QStringLiteral("true"), "SDFM300 validity csv value");
 
     QFile featuresFile(sessionDir + QStringLiteral("/sensors/waveform_features.csv"));
     require(featuresFile.open(QIODevice::ReadOnly | QIODevice::Text), "open waveform features csv");

@@ -125,7 +125,7 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
     const bool useSht45 = request.humidityProtocol == VaporView::HumiditySensorProtocol::Sht45Serial;
     const QString ptbDefaultBaud = useBmp390 ? QStringLiteral("115200") : QStringLiteral("9600");
     const QString hc2aDefaultBaud = useSht45 ? QStringLiteral("115200") : QStringLiteral("19200");
-    const QString lidarDefaultBaud = QStringLiteral("500000");
+    const QString lidarDefaultBaud = QStringLiteral("460800");
     const QString temperatureDefaultBaud = QStringLiteral("38400");
     const QString ai8TemperatureDefaultBaud = QStringLiteral("19200");
 
@@ -185,7 +185,7 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
             }};
     };
     auto makeLidarProbe = [&](const QString& baud) {
-        return ProbeSpec{QStringLiteral("lidar"), QStringLiteral("TFA1500-L"), baud,
+        return ProbeSpec{QStringLiteral("lidar"), QStringLiteral("SDFM300"), baud,
             [cancelRequested, baud](const QString& port) {
                 const auto baudRate = VaporView::parseSerialBaudRate(baud);
                 if (!baudRate)
@@ -293,7 +293,7 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
                                                    : VaporView::hc2aBaudCapabilities())),
                 request.hc2a.port);
     addSelected(makeLidarProbe(selectedBaud(QStringLiteral("lidar"),
-                                            QStringLiteral("TFA1500-L"),
+                                            QStringLiteral("SDFM300"),
                                             request.lidar.baud,
                                             lidarDefaultBaud,
                                             VaporView::lidarBaudCapabilities())),
@@ -489,7 +489,7 @@ SerialPortDetectionOutcome SerialPortDetectionService::detect(
         {QStringLiteral("epsilon"), QStringLiteral("EPSILON")},
         {QStringLiteral("ptb"), QStringLiteral("PTB210")},
         {QStringLiteral("hc2a"), QStringLiteral("HC2A")},
-        {QStringLiteral("lidar"), QStringLiteral("TFA1500-L")},
+        {QStringLiteral("lidar"), QStringLiteral("SDFM300")},
         {QStringLiteral("temperature"), QStringLiteral("RD105")},
         {QStringLiteral("ai8"), QStringLiteral("AI-8288")},
     };

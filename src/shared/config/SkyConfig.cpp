@@ -653,7 +653,7 @@ SkyConfig SkyConfig::defaults()
     config.ptb.source = QStringLiteral("ptb210");
     config.hc2a = {true, QStringLiteral("COM6"), 19200, 1.0};
     config.hc2a.source = QStringLiteral("hc2a");
-    config.lidar = {true, QStringLiteral("COM7"), 500000, 100.0};
+    config.lidar = {true, QStringLiteral("COM7"), 460800, 100.0};
     config.temperature_controller = {false, QStringLiteral("COM9"), 38400, 5.0, 1};
     config.ai8_temperature_controller = {false, QStringLiteral("COM10"), 19200, 5.0, 1};
 #else
@@ -663,7 +663,7 @@ SkyConfig SkyConfig::defaults()
     config.ptb.source = QStringLiteral("ptb210");
     config.hc2a = {true, QStringLiteral("/dev/ttyHC2A"), 19200, 1.0};
     config.hc2a.source = QStringLiteral("hc2a");
-    config.lidar = {true, QStringLiteral("/dev/ttyLidar"), 500000, 100.0};
+    config.lidar = {true, QStringLiteral("/dev/ttyLidar"), 460800, 100.0};
     config.temperature_controller = {false, QStringLiteral("/dev/ttyRD105"), 38400, 5.0, 1};
     config.ai8_temperature_controller = {false, QStringLiteral("/dev/ttyAI8"), 19200, 5.0, 1};
 #endif

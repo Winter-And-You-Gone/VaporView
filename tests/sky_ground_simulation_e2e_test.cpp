@@ -134,7 +134,7 @@ VaporView::SkyConfig testConfig()
     config.hc2a.source = QStringLiteral("hc2a");
     config.bmp390={true,QStringLiteral("/dev/test-internal-bmp"),115200,1.0,{}};
     config.sht45={true,QStringLiteral("/dev/test-internal-sht"),115200,1.0,{}};
-    config.lidar = {true, QStringLiteral("/dev/test-lidar"), 500000, 100.0};
+    config.lidar = {true, QStringLiteral("/dev/test-lidar"), 460800, 100.0};
     config.temperature_controller = {true, QStringLiteral("/dev/test-rd105"), 38400, 5.0, 1};
     config.ai8_temperature_controller = {true, QStringLiteral("/dev/test-ai8"), 19200, 5.0, 1};
     config.wave_tcp = {true, QStringLiteral("127.0.0.1"), 9, 10, 0, 0};

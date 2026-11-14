@@ -1,3 +1,4 @@
+#include "SerialBaudRateCapabilities.h"
 #include "FpgaTelemetry.h"
 #include "FpgaControlConfig.h"
 #include "FpgaAdvancedParameters.h"
@@ -54,7 +55,7 @@ FpgaSensor::SensorKind kind(int source)
     case 0x42: return FpgaSensor::SensorKind::Epsilon;
     case 0x43: return FpgaSensor::SensorKind::Bmp390;
     case 0x44: return FpgaSensor::SensorKind::Sht45;
-    case 0x45: return FpgaSensor::SensorKind::Tfa1500;
+    case 0x45: return FpgaSensor::SensorKind::Sdfm300;
     case 0x46: return FpgaSensor::SensorKind::Ai8;
     case 0x48: return FpgaSensor::SensorKind::Rd105;
     default: return FpgaSensor::SensorKind::Unknown;
@@ -196,8 +197,9 @@ bool validateControl(const QJsonObject& control, QString *error)
         if(control.contains("parameters") && (!control.value("parameters").isObject() || !validSensorParameters(quint16(source),control.value("parameters").toObject())))return fail();
         if (control.contains("baud")) {
             if (source != 0x40 && source != 0x41 && source != 0x42 && source != 0x45) return fail();
-            if (!integer(control.value("baud"), (source == 0x40 || source == 0x41) ? 1200 : source == 0x42 ? 9600 : 115200,
+            if (!integer(control.value("baud"), (source == 0x40 || source == 0x41) ? 1200 : 9600,
                          source == 0x40 ? 19200 : source == 0x41 ? 115200 : 6250000)) return fail();
+            if (source == 0x45 && !isBaudRateSupported(lidarBaudCapabilities(), control.value("baud").toInt())) return fail();
         }
         if (control.contains("poll_ms") &&
             ((source != 0x40 && source != 0x41 && source != 0x43 && source != 0x44 && source != 0x46 && source != 0x48) ||
@@ -210,7 +212,7 @@ bool validateControl(const QJsonObject& control, QString *error)
         if(op=="motor" && !((a==1 && std::abs(v)>=1 && std::abs(v)<=5000) || ((a==2 || a==3) && v==0) || (a==4 && v>=0 && v<=1)))return fail();
         if(op=="sensor_action" || op=="maintenance") {
             keys << "source";if(!integer(control.value("source"),0,65535))return fail();const int src=control.value("source").toInt();
-            if(op=="sensor_action" && !(sensorSource(src) && (((a==3 || a==4) && v==0) || (a==5 && src!=0x41) || (a==32 && src==0x45 && v<=2) || (a==33 && src==0x45 && v>=1 && v<=4))))return fail();
+            if(op=="sensor_action" && !(sensorSource(src) && (((a==3 || a==4) && v==0) || (a==5 && src!=0x41))))return fail();
             if(op=="maintenance" && (!(a==8 || a==9) || v!=0 || !(src==2 || sensorSource(src) || src==0x10 || src==0x11 || src==0x20 || src==0x21 || src==0x30 || src==0x31 || src==0x47)))return fail();
         }
     } else if(op=="motor_heartbeat") {

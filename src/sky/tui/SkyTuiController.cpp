@@ -165,7 +165,7 @@ QList<SkyTuiCommandItem> SkyTuiController::commandPalette() const
         {QStringLiteral("/overview"), QStringLiteral("打开设备总览")},
         {QStringLiteral("/home"), QStringLiteral("返回天空端首页")},
         {QStringLiteral("/status"), QStringLiteral("查看天空端运行状态、记录状态和链路统计")},
-        {QStringLiteral("/devices"), QStringLiteral("查看 EPSILON/PTB/HC2A/Lidar/RD105/AI-8/Wave TCP 设备状态")},
+        {QStringLiteral("/devices"), QStringLiteral("查看 EPSILON/PTB/HC2A/SDFM300/RD105/AI-8/Wave TCP 设备状态")},
         {QStringLiteral("/connect epsilon"), QStringLiteral("请求天空端连接 EPSILON")},
         {QStringLiteral("/disconnect epsilon"), QStringLiteral("请求天空端断开 EPSILON")},
         {QStringLiteral("/reconnect epsilon"), QStringLiteral("请求天空端重连 EPSILON")},

@@ -732,7 +732,7 @@ void SkyDeviceManager::acceptFpgaMeasurement(const FpgaSensor::AdaptedMeasuremen
             data.temperature=*r.temperatureC;data.humidity=*r.humidityPct;data.valid=true;data.timestamp=timestamp;
         }
         setState(SkyDeviceId::Hc2a,valid?DeviceState::Connected:DeviceState::Error);handleHc2aData(data);
-    } else if (r.kind == FpgaSensor::SensorKind::Tfa1500) {
+    } else if (r.kind == FpgaSensor::SensorKind::Sdfm300) {
         LidarData data; if (valid && r.distanceMm) { data.distance_m=*r.distanceMm/1000.;data.valid=true;data.timestamp=timestamp; }
         setState(SkyDeviceId::Lidar, valid ? DeviceState::Connected : DeviceState::Error); handleLidarData(data);
     } else if (r.kind == FpgaSensor::SensorKind::Epsilon) {
@@ -2708,7 +2708,6 @@ void SkyDeviceManager::generateSimulatedData()
         latest_lidar_.valid = true;
         latest_lidar_.timestamp = timestamp;
         latest_lidar_.distance_m = 120.0 + std::sin(simulate_phase_ * 0.6) * 8.0;
-        latest_lidar_.signal_strength = 180;
         lidar_status_.rx_count++;
         lidar_status_.last_data_time_us = t;
         emit lidarDataUpdated(latest_lidar_);
@@ -3197,7 +3196,6 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
         if (!lidar_->start(config.port.toStdString(), SerialConfig::N81(config.baud_rate))) return fail(CommandErrorCode::DeviceConnectFailed);
         if (!lidar_->checkDeviceResponse()) return fail(CommandErrorCode::DeviceConnectFailed);
         lidar_->setDeviceSampleRate(static_cast<int>(config.frequency_hz));
-        if (const auto *context = currentLogContext()) lidar_->setStartupLogContext(*context);
         if (!lidar_->startStreaming()) return fail(CommandErrorCode::DeviceConnectFailed);
         break;
     case SkyDeviceId::TemperatureController:

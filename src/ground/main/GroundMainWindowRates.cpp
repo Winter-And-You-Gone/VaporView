@@ -12,7 +12,7 @@ void MainWindow::onGlobalRateChanged(const QString& text)
     state_->epsilon_sample_rate_ = std::clamp(rate, 20, 200);
     state_->ptb_sample_rate_ = skipPtbDeviceRate ? kDefaultPtbSampleRateHz : clampPtbSampleRate(rate);
     state_->hc2a_sample_rate_ = skipHc2aDeviceRate ? kDefaultHc2aSampleRateHz : rate;
-    state_->lidar_sample_rate_ = skipLidarDeviceRate ? kDefaultLidarSampleRateHz : std::min(rate, 100);
+    state_->lidar_sample_rate_ = skipLidarDeviceRate ? kDefaultLidarSampleRateHz : std::min(rate, 1000);
     state_->temperature_sample_rate_ = skipTemperatureDeviceRate ? kDefaultTemperatureSampleRateHz : std::min(rate, kMaxTemperatureSampleRateHz);
 
     if (state_->device_config_.ptb_rate_combo) state_->device_config_.ptb_rate_combo->blockSignals(true);
@@ -283,7 +283,7 @@ void MainWindow::onHc2aRateChanged(const QString& text)
 void MainWindow::onLidarRateChanged(const QString& text)
 {
     const bool skipDeviceRate = isRateUnspecified(text);
-    state_->lidar_sample_rate_ = effectiveRateOrDefault(text, kDefaultLidarSampleRateHz, 100);
+    state_->lidar_sample_rate_ = effectiveRateOrDefault(text, kDefaultLidarSampleRateHz, 1000);
     state_->local_connection_controller_->setLidarSampleRate(
         state_->lidar_sample_rate_,
         !skipDeviceRate);
@@ -292,8 +292,8 @@ void MainWindow::onLidarRateChanged(const QString& text)
         publishGroundLog(VaporView::LogLevel::Info,
                          QStringLiteral("device.lidar.command"),
                          QStringLiteral("lidar_output_rate_command_disabled"),
-                         QStringLiteral("已禁用激光测距仪输出频率下发，使用设备默认或自适应输出。"),
-                         {{QStringLiteral("device"), QStringLiteral("TFA1500-L")},
+                         QStringLiteral("SDFM300 使用自动输出，主机使用默认刷新频率。"),
+                         {{QStringLiteral("device"), QStringLiteral("SDFM300")},
                           {QStringLiteral("apply_device_rate"), false},
                           {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
@@ -302,8 +302,8 @@ void MainWindow::onLidarRateChanged(const QString& text)
         publishGroundLog(VaporView::LogLevel::Info,
                          QStringLiteral("device.rate"),
                          QStringLiteral("lidar_sample_rate_updated"),
-                         QStringLiteral("激光测距仪采样频率已更新。"),
-                         {{QStringLiteral("device"), QStringLiteral("TFA1500-L")},
+                         QStringLiteral("SDFM300 主机刷新频率已更新，设备保持自动输出。"),
+                         {{QStringLiteral("device"), QStringLiteral("SDFM300")},
                           {QStringLiteral("requested_rate_hz"), state_->lidar_sample_rate_},
                           {QStringLiteral("ui_visibility"), QStringLiteral("details")}});
     }
@@ -349,7 +349,7 @@ void MainWindow::applyAllSampleRates()
     const int epsilonRate = std::clamp(rate, 20, 200);
     const int ptbRate = skipPtbDeviceRate ? kDefaultPtbSampleRateHz : clampPtbSampleRate(rate);
     const int hc2aRate = skipHc2aDeviceRate ? kDefaultHc2aSampleRateHz : rate;
-    const int lidarRate = skipLidarDeviceRate ? kDefaultLidarSampleRateHz : std::min(rate, 100);
+    const int lidarRate = skipLidarDeviceRate ? kDefaultLidarSampleRateHz : std::min(rate, 1000);
     const int temperatureRate = skipTemperatureDeviceRate ? kDefaultTemperatureSampleRateHz : std::min(rate, kMaxTemperatureSampleRateHz);
     const std::map<uint8_t, int> epsilonDesiredPacketRates =
         effectiveEpsilonPacketRates(settings);

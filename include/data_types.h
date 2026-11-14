@@ -264,7 +264,8 @@ struct Hc2aData
 struct LidarData
 {
   double distance_m = 0.0;
-  uint16_t signal_strength = 0;
+  // Historical telemetry only; SDFM300 has no signal-strength field.
+  uint16_t legacy_signal_strength = 0;
 
   std::chrono::steady_clock::time_point timestamp{};
   bool valid = false;

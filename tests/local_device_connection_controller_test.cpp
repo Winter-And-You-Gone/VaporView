@@ -100,7 +100,7 @@ int main()
                  entry.fields.value(QStringLiteral("reason_code")).toString() == QStringLiteral("NO_DEVICE_CONNECTED"));
             foundLidarSkip = foundLidarSkip ||
                 (entry.event == QStringLiteral("local_device_connection_skipped") &&
-                 entry.fields.value(QStringLiteral("device")).toString() == QStringLiteral("TFA1500-L") &&
+                 entry.fields.value(QStringLiteral("device")).toString() == QStringLiteral("SDFM300") &&
                  entry.fields.value(QStringLiteral("reason_code")).toString() == QStringLiteral("PORT_NOT_SELECTED"));
         }
         require(foundSummary, "no-port result logged as structured warning");
@@ -236,32 +236,32 @@ int main()
     unsupportedLidarRequest.ptb.requested = false;
     unsupportedLidarRequest.hc2a.requested = false;
     unsupportedLidarRequest.lidar.port = QStringLiteral("__invalid_vaporview_port__");
-    unsupportedLidarRequest.lidar.baudText = QStringLiteral("9600");
+    unsupportedLidarRequest.lidar.baudText = QStringLiteral("500000");
     unsupportedLidarRequest.lidar.requested = true;
     unsupportedLidarRequest.temperatureController.requested = false;
     unsupportedLidarRequest.ai8TemperatureController.requested = false;
     require(controller.connectAsync(unsupportedLidarRequest),
-            "start unsupported TFA1500-L baud connection attempt");
+            "start unsupported SDFM300 baud connection attempt");
     controller.wait();
     require(finished && !connected,
-            "unsupported TFA1500-L baud completes without connecting a device");
+            "unsupported SDFM300 baud completes without connecting a device");
     {
         std::lock_guard<std::mutex> lock(mutex);
         const bool rejectedUnsupportedLidarBaud = std::any_of(
             logs.cbegin(), logs.cend(), [](const LocalConnectionLogEntry& entry) {
                 return entry.event == QStringLiteral("local_device_connection_rejected_unsupported_baud") &&
-                    entry.fields.value(QStringLiteral("device")).toString() == QStringLiteral("TFA1500-L") &&
-                    entry.fields.value(QStringLiteral("configured_baud")).toString() == QStringLiteral("9600") &&
+                    entry.fields.value(QStringLiteral("device")).toString() == QStringLiteral("SDFM300") &&
+                    entry.fields.value(QStringLiteral("configured_baud")).toString() == QStringLiteral("500000") &&
                     entry.fields.value(QStringLiteral("reason_code")).toString() ==
                         QStringLiteral("UNSUPPORTED_BAUD_RATE");
             });
         const bool openedLidarPort = std::any_of(
             logs.cbegin(), logs.cend(), [](const LocalConnectionLogEntry& entry) {
                 return entry.event == QStringLiteral("local_device_connection_started") &&
-                    entry.fields.value(QStringLiteral("device")).toString() == QStringLiteral("TFA1500-L");
+                    entry.fields.value(QStringLiteral("device")).toString() == QStringLiteral("SDFM300");
             });
         require(rejectedUnsupportedLidarBaud && !openedLidarPort,
-                "TFA1500-L 9600 is rejected before a serial-port open is attempted");
+                "SDFM300 500000 is rejected before a serial-port open is attempted");
     }
 
     controller.disconnect();
@@ -271,22 +271,22 @@ int main()
     }
     finished = false;
     connected = true;
-    unsupportedLidarRequest.lidar.baudText = QStringLiteral("750000");
+    unsupportedLidarRequest.lidar.baudText = QStringLiteral("256000");
     require(controller.connectAsync(unsupportedLidarRequest),
-            "start custom TFA1500-L baud connection attempt");
+            "start custom SDFM300 baud connection attempt");
     controller.wait();
     require(finished && !connected,
-            "custom TFA1500-L baud reaches the serial backend and then fails only on the test port");
+            "custom SDFM300 baud reaches the serial backend and then fails only on the test port");
     {
         std::lock_guard<std::mutex> lock(mutex);
         const bool attemptedCustomLidar = std::any_of(
             logs.cbegin(), logs.cend(), [](const LocalConnectionLogEntry& entry) {
                 return entry.event == QStringLiteral("local_device_connection_started") &&
-                    entry.fields.value(QStringLiteral("device")).toString() == QStringLiteral("TFA1500-L") &&
-                    entry.fields.value(QStringLiteral("baud")).toString() == QStringLiteral("750000");
+                    entry.fields.value(QStringLiteral("device")).toString() == QStringLiteral("SDFM300") &&
+                    entry.fields.value(QStringLiteral("baud")).toString() == QStringLiteral("256000");
             });
         require(attemptedCustomLidar,
-                "TFA1500-L accepts a non-preset 750000 baud before opening the port");
+                "SDFM300 accepts a documented 256000 baud before opening the port");
     }
 
     LocalSampleRateConfiguration rateConfiguration;

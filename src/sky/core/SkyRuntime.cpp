@@ -1044,7 +1044,7 @@ void SkyRuntime::sendBasicTelemetry()
     data.ecef_x_m = std::numeric_limits<double>::quiet_NaN();
     data.ecef_y_m = std::numeric_limits<double>::quiet_NaN();
     data.ecef_z_m = std::numeric_limits<double>::quiet_NaN();
-    data.lidar_height_m = std::numeric_limits<float>::quiet_NaN();
+    data.lidar_distance_m = std::numeric_limits<float>::quiet_NaN();
     data.temperature_c = std::numeric_limits<float>::quiet_NaN();
     data.humidity_percent = std::numeric_limits<float>::quiet_NaN();
     data.pressure_hpa = std::numeric_limits<float>::quiet_NaN();
@@ -1127,9 +1127,8 @@ void SkyRuntime::sendBasicTelemetry()
 
     if (hasLidar)
     {
-        data.validity_flags |= BasicHasLidar | BasicHasLidarStrength;
-        data.lidar_height_m = static_cast<float>(lidar.distance_m);
-        data.lidar_signal_strength = lidar.signal_strength;
+        data.validity_flags |= BasicHasLidar;
+        data.lidar_distance_m = static_cast<float>(lidar.distance_m);
     }
 
     if (hasHc2a)

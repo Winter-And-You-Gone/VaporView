@@ -63,7 +63,7 @@
 - EPSILON：`record_type` 为 FDILink packet id，例如 `0x40 / 0x41 / 0x42 / 0x50`；`flags` 低 8 位保存 FDILink serial number。
 - PTB：`record_type = 1`，`flags = 0`。
 - HC2A：`record_type = 1`，payload为校验通过的RO-ASCII RDD完整应答（含CR）；历史HMP的`record_type = 0x03`仍按Modbus RTU读取，两者不混用。
-- LIDAR：`record_type` 使用程序内 `LidarProtocol` 枚举值：`1` 为历史保留值，当前不再生成；`2=TFA1500DistanceFrame`，`3=TFA1500LowFrequencyFrame`，`4=TFA1500HighFrequency`，`5=ObservedAaB7Frame`。
+- Distance：当前为 SDFM300，`record_type=6`（`LidarProtocol::Sdfm300DistanceFrame`），payload 为原样 4 字节 `5C + cm LE16 + 距离两字节求和取反`，含有效和无回波帧。历史类型 `1` 保留、`2=TFA1500DistanceFrame`、`3=TFA1500LowFrequencyFrame`、`4=TFA1500HighFrequency`、`5=ObservedAaB7Frame` 继续只读兼容，均不再生成。新旧类型不得互相解释。
 - TCP 波形：`record_type = 1`，`flags` bit0 表示 payload 内含两个 length-prefixed 子 payload；`flags` bits8-9 记录 payload 浮点编码，`0=legacy/unknown`、`1=little-endian float32`、`2=big-endian float32`、`3=word-swapped float32`。
 - 激光温控：`record_type` 使用已校验 Modbus RTU response 的起始寄存器地址，`flags = 0`。
 - 系统温控：`record_type = 1` 表示 8 路测量值响应，`2` 表示报警状态响应，`3` 表示主状态响应，`4` 表示 8 路控制状态响应；`flags = 0`。

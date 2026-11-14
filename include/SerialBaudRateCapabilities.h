@@ -104,17 +104,12 @@ inline const BaudRateCapabilities& hc2aBaudCapabilities()
 
 inline const BaudRateCapabilities& lidarBaudCapabilities()
 {
-    // TFA1500-L manual: UART TTL 3.3 V, default 500000, low-frequency mode
-    // supports >=115200 and high-frequency mode supports >=500000. The active
-    // mode is discovered by LidarCollector at runtime rather than selected in
-    // the serial configuration, so this capability enforces only the global
-    // documented lower bound and cannot enforce the high-frequency bound here.
+    // SDFM300 manual lists exactly these seven UART rates; default is 460800.
     static const BaudRateCapabilities capabilities{
-        {QStringLiteral("115200"), QStringLiteral("230400"), QStringLiteral("460800"),
-         QStringLiteral("500000"), QStringLiteral("921600")},
-        BaudRateInputMode::PresetAndCustom,
-        115200,
-        std::numeric_limits<int>::max()};
+        {QStringLiteral("9600"), QStringLiteral("19200"), QStringLiteral("38400"),
+         QStringLiteral("115200"), QStringLiteral("230400"), QStringLiteral("256000"),
+         QStringLiteral("460800")},
+        BaudRateInputMode::PresetOnly};
     return capabilities;
 }
 

@@ -1455,7 +1455,7 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         appendDevice(VaporView::SkyDeviceId::Epsilon, 2000, QStringLiteral("EPSILON"));
         appendDevice(VaporView::SkyDeviceId::Ptb, 3000, QStringLiteral("PTB"));
         appendDevice(VaporView::SkyDeviceId::Hc2a, 3000, QStringLiteral("HC2A"));
-        appendDevice(VaporView::SkyDeviceId::Lidar, 2000, QStringLiteral("Lidar"));
+        appendDevice(VaporView::SkyDeviceId::Lidar, 2000, QStringLiteral("SDFM300"));
         appendDevice(VaporView::SkyDeviceId::WaveTcp, 3000, QStringLiteral("Wave"));
     }
     else
@@ -1484,7 +1484,7 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         appendDevice(VaporView::SkyDeviceId::Epsilon, 2000, QStringLiteral("EPSILON"));
         appendDevice(VaporView::SkyDeviceId::Ptb, 3000, QStringLiteral("PTB"));
         appendDevice(VaporView::SkyDeviceId::Hc2a, 3000, QStringLiteral("HC2A"));
-        appendDevice(VaporView::SkyDeviceId::Lidar, 2000, QStringLiteral("Lidar"));
+        appendDevice(VaporView::SkyDeviceId::Lidar, 2000, QStringLiteral("SDFM300"));
         appendDevice(VaporView::SkyDeviceId::WaveTcp, 3000, QStringLiteral("波形"));
     }
 
@@ -1657,10 +1657,10 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         : QStringList{QStringLiteral("天→地"), QStringLiteral("地→天"), QStringLiteral("合计")};
     const QStringList deviceLabels = state_->is_english_
         ? QStringList{QStringLiteral("EPSILON"), QStringLiteral("PTB210"), QStringLiteral("HC2A"),
-            QStringLiteral("TFA1500-L"), QStringLiteral("Waveform"), QStringLiteral("RD105"),
+            QStringLiteral("SDFM300"), QStringLiteral("Waveform"), QStringLiteral("RD105"),
             QStringLiteral("AI-8288"), QStringLiteral("BMP390"), QStringLiteral("SHT45")}
         : QStringList{QStringLiteral("EPSILON"), QStringLiteral("PTB210"), QStringLiteral("HC2A"),
-            QStringLiteral("TFA1500-L"), QStringLiteral("波形"), QStringLiteral("RD105"),
+            QStringLiteral("SDFM300"), QStringLiteral("波形"), QStringLiteral("RD105"),
             QStringLiteral("AI-8288"), QStringLiteral("BMP390"), QStringLiteral("SHT45")};
     if (!isFpgaRelayPath())
         for (int i = 0; i < homeSections.rateItems.size(); ++i)
@@ -2486,7 +2486,7 @@ void MainWindow::updateEnvironmentStatusIcons(bool lidarValid, bool ptbValid, bo
             : QStringLiteral("%1：%2").arg(name, state));
     };
 
-    updateIcon(state_->env_lidar_status_icon_, lidarValid, QStringLiteral("Lidar"), QStringLiteral("Lidar"));
+    updateIcon(state_->env_lidar_status_icon_, lidarValid, QStringLiteral("SDFM300"), QStringLiteral("SDFM300"));
     updateIcon(state_->env_ptb_status_icon_, ptbValid, QStringLiteral("PTB"), QStringLiteral("PTB"));
     updateIcon(state_->env_hc2a_status_icon_, hc2aValid, QStringLiteral("HC2A"), QStringLiteral("HC2A"));
 }

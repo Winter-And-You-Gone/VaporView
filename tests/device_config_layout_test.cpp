@@ -464,7 +464,7 @@ int main(int argc, char **argv)
     legacySettings.setValue(QStringLiteral("serial/ptb_baud"), QStringLiteral("9600"));
     legacySettings.setValue(QStringLiteral("serial/hc2a_port"), QStringLiteral("COM12"));
     legacySettings.setValue(QStringLiteral("serial/hc2a_baud"), QStringLiteral("19200"));
-    legacySettings.setValue(QStringLiteral("serial/lidar_baud"), QStringLiteral("9600"));
+    legacySettings.setValue(QStringLiteral("serial/lidar_baud"), QStringLiteral("500000"));
     legacySettings.setValue(QStringLiteral("sensor/pressure_source"), QStringLiteral("ptb210"));
     legacySettings.setValue(QStringLiteral("sensor/humidity_source"), QStringLiteral("hc2a"));
     legacySettings.sync();
@@ -787,7 +787,7 @@ int main(int argc, char **argv)
         QStringLiteral("EPSILON2-D4G\n组合导航"),
         QStringLiteral("PTB210\n气压计"),
         QStringLiteral("HC2A\n温湿度计"),
-        QStringLiteral("TFA1500-L\n激光测距"),
+        QStringLiteral("SDFM300\n激光测距"),
         QStringLiteral("RD105\n激光驱动温控器"),
         QStringLiteral("AI-8288D92J0\n八路温控器"),
     };
@@ -1020,13 +1020,13 @@ int main(int argc, char **argv)
     require(epsilonPortCombo->currentText() == QStringLiteral("COM7") &&
                 epsilonBaudCombo->currentText() == QStringLiteral("460800"),
             "legacy local serial settings load directly into the visible device page");
-    require(lidarBaudCombo->currentText() == QStringLiteral("500000"),
-            "legacy TFA1500-L 9600 setting falls back to the legal default");
+    require(lidarBaudCombo->currentText() == QStringLiteral("460800"),
+            "legacy SDFM300 500000 setting falls back to the legal default");
     QSettings lidarFallbackSettings = VaporView::applicationConfigSettings();
     lidarFallbackSettings.beginGroup(QStringLiteral("MainWindow"));
     require(lidarFallbackSettings.value(QStringLiteral("serial/lidar_baud")).toString() ==
-                QStringLiteral("500000"),
-            "legacy TFA1500-L baud setting is replaced by the legal default");
+                QStringLiteral("460800"),
+            "legacy SDFM300 baud setting is replaced by the legal default");
     lidarFallbackSettings.endGroup();
     bool foundLidarFallbackWarning = false;
     for (VaporView::Ground::Main::UiLogModel *model :
@@ -1041,16 +1041,16 @@ int main(int argc, char **argv)
                 foundLidarFallbackWarning =
                     entry->record.level == VaporView::LogLevel::Warning &&
                     entry->record.fields.value(QStringLiteral("device")).toString() ==
-                        QStringLiteral("TFA1500-L") &&
+                        QStringLiteral("SDFM300") &&
                     entry->record.fields.value(QStringLiteral("configured_baud")).toString() ==
-                        QStringLiteral("9600") &&
+                        QStringLiteral("500000") &&
                     entry->record.fields.value(QStringLiteral("fallback_baud")).toString() ==
-                        QStringLiteral("500000");
+                        QStringLiteral("460800");
             }
         }
     }
     require(foundLidarFallbackWarning,
-            "legacy TFA1500-L baud fallback emits a structured warning");
+            "legacy SDFM300 baud fallback emits a structured warning");
     QJsonObject localConfig = window.testLocalDeviceConfigSnapshot();
     require(localConfig.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("port")).toString() ==
                 QStringLiteral("COM7") &&
@@ -1146,7 +1146,7 @@ int main(int argc, char **argv)
         QStringLiteral("115200"),
         QStringLiteral("230400"),
         QStringLiteral("460800"),
-        QStringLiteral("500000"),
+        QStringLiteral("460800"),
         QStringLiteral("921600"),
     };
     require(skyTelemetryBaudCombo->count() == expectedSkyTelemetryBauds.size() &&
@@ -1664,7 +1664,7 @@ int main(int argc, char **argv)
     remoteConfig.ptb.source = QStringLiteral("ptb210");
     remoteConfig.hc2a = {true, QStringLiteral("/dev/ttyHC2A"), 19200, 20.0};
     remoteConfig.hc2a.source = QStringLiteral("hc2a");
-    remoteConfig.lidar = {true, QStringLiteral("/dev/ttyLIDAR"), 500000, 100.0};
+    remoteConfig.lidar = {true, QStringLiteral("/dev/ttyLIDAR"), 460800, 100.0};
     remoteConfig.temperature_controller = {true, QStringLiteral("/dev/ttyRD105"), 38400, 5.0, 9};
     remoteConfig.ai8_temperature_controller = {true, QStringLiteral("/dev/ttyAI8"), 19200, 5.0, 5};
     remoteConfig.wave_tcp = {true, QStringLiteral("10.0.0.2"), 8899, 12, 0, 0};
@@ -1897,13 +1897,13 @@ int main(int argc, char **argv)
     QJsonObject invalidLidarRemoteConfig = remoteConfig.toJson();
     QJsonObject invalidLidarRemoteSection = invalidLidarRemoteConfig.value(
         QStringLiteral("lidar")).toObject();
-    invalidLidarRemoteSection.insert(QStringLiteral("baud"), 9600);
+    invalidLidarRemoteSection.insert(QStringLiteral("baud"), 500000);
     invalidLidarRemoteConfig.insert(QStringLiteral("lidar"), invalidLidarRemoteSection);
     window.testInjectRemoteSkyConfig(invalidLidarRemoteConfig);
     VaporViewTest::processEventsFor(80);
     require(window.testRemoteSkyConfigStatusText().contains(QStringLiteral("lidar")) &&
-                lidarBaudCombo->currentText() == QStringLiteral("500000"),
-            "remote TFA1500-L config read rejects 9600 without accepting it into the UI");
+                lidarBaudCombo->currentText() == QStringLiteral("460800"),
+            "remote SDFM300 config read rejects 500000 without accepting it into the UI");
     window.testInjectRemoteSkyConfig(remoteConfig.toJson());
     VaporViewTest::processEventsFor(80);
     require(rawJsonEdit->isVisible() &&
@@ -2002,7 +2002,7 @@ int main(int argc, char **argv)
     remoteDetections.append(QJsonObject{
         {QStringLiteral("device_key"), QStringLiteral("lidar")},
         {QStringLiteral("port"), QStringLiteral("/dev/ttyLIDAR_INVALID")},
-        {QStringLiteral("baud"), QStringLiteral("9600")},
+        {QStringLiteral("baud"), QStringLiteral("500000")},
     });
     window.testInjectRemoteSerialPortDetectionResult(QJsonObject{
         {QStringLiteral("success"), true},
@@ -2018,19 +2018,19 @@ int main(int argc, char **argv)
                 epsilonBaudCombo->currentText() == QStringLiteral("460800") &&
                 ai8PortCombo->currentText() == QStringLiteral("/dev/ttyAI8") &&
                 ai8BaudCombo->currentText() == QStringLiteral("19200") &&
-                lidarBaudCombo->currentText() == QStringLiteral("500000") &&
+                lidarBaudCombo->currentText() == QStringLiteral("460800") &&
                 remoteDetectionJson.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("baud")).toInt() ==
                     460800 &&
                 remoteDetectionJson.value(QStringLiteral("ai8_temperature_controller")).toObject().value(
                     QStringLiteral("baud")).toInt() == 19200 &&
                 remoteDetectionJson.value(QStringLiteral("lidar")).toObject().value(
-                    QStringLiteral("baud")).toInt() == 500000,
-            "remote serial detection accepts valid fixed baud and rejects invalid AI-8288 and TFA1500-L bauds");
+                    QStringLiteral("baud")).toInt() == 460800,
+            "remote serial detection accepts valid fixed baud and rejects invalid AI-8288 and SDFM300 bauds");
     QJsonArray validLidarDetection;
     validLidarDetection.append(QJsonObject{
         {QStringLiteral("device_key"), QStringLiteral("lidar")},
         {QStringLiteral("port"), QStringLiteral("/dev/ttyLIDAR_CUSTOM")},
-        {QStringLiteral("baud"), QStringLiteral("750000")},
+        {QStringLiteral("baud"), QStringLiteral("256000")},
     });
     window.testInjectRemoteSerialPortDetectionResult(QJsonObject{
         {QStringLiteral("success"), true},
@@ -2042,10 +2042,10 @@ int main(int argc, char **argv)
     const QJsonObject validLidarDetectionJson =
         window.testRemoteSkyConfigFromDeviceConfigUi(&validLidarDetectionError);
     require(validLidarDetectionError.isEmpty() &&
-                lidarBaudCombo->currentText() == QStringLiteral("750000") &&
+                lidarBaudCombo->currentText() == QStringLiteral("256000") &&
                 validLidarDetectionJson.value(QStringLiteral("lidar")).toObject().value(
-                    QStringLiteral("baud")).toInt() == 750000,
-            "remote serial detection preserves a legal non-preset TFA1500-L baud");
+                    QStringLiteral("baud")).toInt() == 256000,
+            "remote serial detection preserves a legal documented SDFM300 baud");
     for (QWidget *control : numericColumnControls)
     {
         require(control &&
@@ -2136,7 +2136,7 @@ int main(int argc, char **argv)
 
     pressureBaudCombo->setCurrentText(QStringLiteral("19200"));
     humidityBaudCombo->setCurrentText(QStringLiteral("1000000"));
-    lidarBaudCombo->setCurrentText(QStringLiteral("1500000"));
+    lidarBaudCombo->setCurrentText(QStringLiteral("230400"));
     temperatureBaudCombo->setCurrentText(QStringLiteral("460800"));
     selectComboText(ai8PortCombo, QStringLiteral("/dev/ttyAI8_ALT"),
                     "remote AI-8 port can be edited independently");
@@ -2156,7 +2156,7 @@ int main(int argc, char **argv)
             "remote EPSILON documented baud is serialized into SetSkyConfig JSON");
     require(uiJson.value(QStringLiteral("ptb")).toObject().value(QStringLiteral("baud")).toInt() == 19200 &&
                 uiJson.value(QStringLiteral("hc2a")).toObject().value(QStringLiteral("baud")).toInt() == 1000000 &&
-                uiJson.value(QStringLiteral("lidar")).toObject().value(QStringLiteral("baud")).toInt() == 1500000 &&
+                uiJson.value(QStringLiteral("lidar")).toObject().value(QStringLiteral("baud")).toInt() == 230400 &&
                 uiJson.value(QStringLiteral("temperature_controller")).toObject().value(QStringLiteral("baud")).toInt() == 460800,
             "remote source-specific and host-link baud controls serialize according to capability");
     require(!uiJson.value(QStringLiteral("epsilon")).toObject().contains(QStringLiteral("frequency_hz")),
@@ -2190,7 +2190,7 @@ int main(int argc, char **argv)
                     remoteConfig.epsilon.baud_rate == 230400 &&
                     remoteConfig.ptb.baud_rate == 19200 &&
                     remoteConfig.hc2a.baud_rate == 1000000 &&
-                    remoteConfig.lidar.baud_rate == 1500000 &&
+                    remoteConfig.lidar.baud_rate == 230400 &&
                     remoteConfig.temperature_controller.baud_rate == 460800 &&
                     remoteConfig.ai8_temperature_controller.baud_rate == 57600 &&
                     remoteStatus->property("status").toString() == QStringLiteral("success");
@@ -2205,7 +2205,7 @@ int main(int argc, char **argv)
                     epsilonBaudCombo->currentText() == QStringLiteral("230400") &&
                     pressureBaudCombo->currentText() == QStringLiteral("19200") &&
                     humidityBaudCombo->currentText() == QStringLiteral("1000000") &&
-                    lidarBaudCombo->currentText() == QStringLiteral("1500000") &&
+                    lidarBaudCombo->currentText() == QStringLiteral("230400") &&
                     temperatureBaudCombo->currentText() == QStringLiteral("460800") &&
                     ai8BaudCombo->currentText() == QStringLiteral("57600") &&
                     remoteStatus->property("status").toString() == QStringLiteral("success");

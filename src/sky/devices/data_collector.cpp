@@ -1,3 +1,4 @@
+#include "Sdfm300Protocol.h"
 #include "data_collector.h"
 #include "Hc2aProtocol.h"
 #include "EpsilonProtocol.h"
@@ -950,387 +951,6 @@ int epsilonSerialBaudToParamValue(int baudRate)
   default: return 0;
   }
 }
-
-const char* lidarProtocolName(LidarProtocol protocol)
-{
-  switch (protocol)
-  {
-  case LidarProtocol::TFA1500DistanceFrame:
-    return "TFA1500-L";
-  case LidarProtocol::TFA1500LowFrequencyFrame:
-    return "TFA1500-L 低频";
-  case LidarProtocol::TFA1500HighFrequency:
-    return "TFA1500-L 高频";
-  case LidarProtocol::ObservedAaB7Frame:
-    return "AA-B7 激光测距帧";
-  case LidarProtocol::Unknown:
-  default:
-    return "未知协议";
-  }
-}
-
-constexpr uint8_t kTfa1500Header = 0x5C;
-constexpr size_t kTfa1500FrameSize = 5;
-constexpr uint8_t kTfa1500LowFrequencyHeader = 0x55;
-constexpr size_t kTfa1500LowFrequencyMinFrameSize = 6;
-constexpr uint8_t kObservedAaHeader = 0xAA;
-constexpr uint8_t kObservedB7Type = 0xB7;
-constexpr uint8_t kObservedBbTail = 0xBB;
-constexpr size_t kObservedAaB7FrameSize = 10;
-
-bool parseTfa1500FrameLocal(const uint8_t* frame, size_t size, LidarData& sample)
-{
-  if (!frame || size < kTfa1500FrameSize || frame[0] != kTfa1500Header)
-  {
-    return false;
-  }
-
-  uint8_t sum = 0;
-  for (size_t i = 1; i < 4; ++i)
-  {
-    sum = static_cast<uint8_t>(sum + frame[i]);
-  }
-  const uint8_t checksum = static_cast<uint8_t>(~sum);
-  if (checksum != frame[4])
-  {
-    return false;
-  }
-
-  const uint32_t distance_cm =
-      static_cast<uint32_t>(frame[1]) |
-      (static_cast<uint32_t>(frame[2]) << 8) |
-      (static_cast<uint32_t>(frame[3]) << 16);
-  const bool valid = distance_cm != 0x003FFFFFu;
-
-  sample.distance_m = valid ? (static_cast<double>(distance_cm) / 100.0) : 0.0;
-  sample.signal_strength = 0;
-  sample.timestamp = std::chrono::steady_clock::now();
-  sample.valid = valid && distance_cm > 0;
-  sample.error_message = sample.valid ? "" : "未检测到目标或超出量程";
-  return true;
-}
-
-bool parseTfa1500LowFrequencyFrameLocal(const uint8_t* frame, size_t size, LidarData& sample, size_t& consumed_size)
-{
-  consumed_size = 0;
-  if (!frame || size < kTfa1500LowFrequencyMinFrameSize || frame[0] != kTfa1500LowFrequencyHeader)
-  {
-    return false;
-  }
-
-  const size_t payload_len = static_cast<size_t>(frame[2]);
-  const size_t frame_len = 3 + payload_len + 1;
-  if (frame_len < kTfa1500LowFrequencyMinFrameSize || size < frame_len)
-  {
-    return false;
-  }
-
-  uint8_t checksum = 0;
-  for (size_t i = 0; i < frame_len - 1; ++i)
-  {
-    checksum ^= frame[i];
-  }
-  if (checksum != frame[frame_len - 1])
-  {
-    return false;
-  }
-
-  consumed_size = frame_len;
-
-  if (frame[1] != 0x02 || payload_len < 7)
-  {
-    return false;
-  }
-
-  const uint32_t distance_dm =
-      (static_cast<uint32_t>(frame[4]) << 16) |
-      (static_cast<uint32_t>(frame[5]) << 8) |
-      static_cast<uint32_t>(frame[6]);
-
-  sample.distance_m = distance_dm / 10.0;
-  sample.signal_strength = 0;
-  sample.timestamp = std::chrono::steady_clock::now();
-  sample.valid = distance_dm > 0;
-  sample.error_message = sample.valid ? "" : "未检测到目标或超出量程";
-  return true;
-}
-
-bool parseObservedAaB7FrameLocal(const uint8_t* frame, size_t size, LidarData& sample)
-{
-  if (!frame || size < kObservedAaB7FrameSize)
-  {
-    return false;
-  }
-  if (frame[0] != kObservedAaHeader || frame[1] != kObservedB7Type || frame[2] != kObservedAaB7FrameSize || frame[9] != kObservedBbTail)
-  {
-    return false;
-  }
-
-  const uint16_t distance_a = static_cast<uint16_t>(frame[3] << 8) | frame[4];
-  const uint16_t distance_b = static_cast<uint16_t>(frame[5] << 8) | frame[6];
-  if (distance_a != distance_b)
-  {
-    return false;
-  }
-
-  sample.distance_m = distance_a / 100.0;
-  sample.signal_strength = frame[8];
-  sample.timestamp = std::chrono::steady_clock::now();
-  sample.valid = distance_a > 0;
-  sample.error_message = sample.valid ? "" : "未检测到目标或超出量程";
-  return true;
-}
-
-bool extractNextTfa1500Sample(std::vector<uint8_t>& buffer, LidarData& sample, std::vector<uint8_t>* raw_frame = nullptr)
-{
-  while (buffer.size() >= kTfa1500FrameSize)
-  {
-    auto header = std::find(buffer.begin(), buffer.end(), kTfa1500Header);
-    if (header == buffer.end())
-    {
-      buffer.clear();
-      return false;
-    }
-    if (std::distance(header, buffer.end()) < static_cast<std::ptrdiff_t>(kTfa1500FrameSize))
-    {
-      buffer.erase(buffer.begin(), header);
-      return false;
-    }
-    if (parseTfa1500FrameLocal(&(*header), kTfa1500FrameSize, sample))
-    {
-      if (raw_frame)
-      {
-        raw_frame->assign(header, header + kTfa1500FrameSize);
-      }
-      buffer.erase(buffer.begin(), header + kTfa1500FrameSize);
-      return true;
-    }
-    buffer.erase(buffer.begin(), header + 1);
-  }
-  return false;
-}
-
-bool extractNextTfa1500LowFrequencySample(std::vector<uint8_t>& buffer, LidarData& sample, std::vector<uint8_t>* raw_frame = nullptr)
-{
-  while (buffer.size() >= kTfa1500LowFrequencyMinFrameSize)
-  {
-    auto header = std::find(buffer.begin(), buffer.end(), kTfa1500LowFrequencyHeader);
-    if (header == buffer.end())
-    {
-      buffer.clear();
-      return false;
-    }
-
-    std::vector<uint8_t>::difference_type remaining = std::distance(header, buffer.end());
-    if (remaining < static_cast<std::ptrdiff_t>(kTfa1500LowFrequencyMinFrameSize))
-    {
-      buffer.erase(buffer.begin(), header);
-      return false;
-    }
-
-    const size_t payload_len = static_cast<size_t>(*(header + 2));
-    const size_t frame_len = 3 + payload_len + 1;
-    if (frame_len < kTfa1500LowFrequencyMinFrameSize)
-    {
-      buffer.erase(buffer.begin(), header + 1);
-      continue;
-    }
-    if (remaining < static_cast<std::ptrdiff_t>(frame_len))
-    {
-      buffer.erase(buffer.begin(), header);
-      return false;
-    }
-
-    size_t consumed_size = 0;
-    if (parseTfa1500LowFrequencyFrameLocal(&(*header), static_cast<size_t>(remaining), sample, consumed_size))
-    {
-      if (raw_frame)
-      {
-        raw_frame->assign(header, header + consumed_size);
-      }
-      buffer.erase(buffer.begin(), header + consumed_size);
-      return true;
-    }
-
-    if (consumed_size > 0)
-    {
-      buffer.erase(buffer.begin(), header + consumed_size);
-      continue;
-    }
-
-    buffer.erase(buffer.begin(), header + 1);
-  }
-  return false;
-}
-
-bool extractNextObservedAaB7Sample(std::vector<uint8_t>& buffer, LidarData& sample, std::vector<uint8_t>* raw_frame = nullptr)
-{
-  while (buffer.size() >= kObservedAaB7FrameSize)
-  {
-    auto header = std::find(buffer.begin(), buffer.end(), kObservedAaHeader);
-    if (header == buffer.end())
-    {
-      buffer.clear();
-      return false;
-    }
-
-    if (std::distance(header, buffer.end()) < static_cast<std::ptrdiff_t>(kObservedAaB7FrameSize))
-    {
-      buffer.erase(buffer.begin(), header);
-      return false;
-    }
-
-    if (parseObservedAaB7FrameLocal(&(*header), static_cast<size_t>(std::distance(header, buffer.end())), sample))
-    {
-      if (raw_frame)
-      {
-        raw_frame->assign(header, header + kObservedAaB7FrameSize);
-      }
-      buffer.erase(buffer.begin(), header + kObservedAaB7FrameSize);
-      return true;
-    }
-
-    buffer.erase(buffer.begin(), header + 1);
-  }
-  return false;
-}
-
-bool extractNextLidarSample(std::vector<uint8_t>& buffer,
-                            LidarProtocol protocol_hint,
-                            LidarData& sample,
-                            LidarProtocol& detected_protocol,
-                            std::vector<uint8_t>* raw_frame = nullptr)
-{
-  if (protocol_hint == LidarProtocol::TFA1500HighFrequency)
-  {
-    if (extractNextTfa1500Sample(buffer, sample, raw_frame))
-    {
-      detected_protocol = LidarProtocol::TFA1500HighFrequency;
-      return true;
-    }
-    return false;
-  }
-
-  if (protocol_hint == LidarProtocol::TFA1500DistanceFrame)
-  {
-    if (extractNextTfa1500Sample(buffer, sample, raw_frame))
-    {
-      detected_protocol = LidarProtocol::TFA1500DistanceFrame;
-      return true;
-    }
-    return false;
-  }
-
-  if (protocol_hint == LidarProtocol::TFA1500LowFrequencyFrame)
-  {
-    if (extractNextTfa1500LowFrequencySample(buffer, sample, raw_frame))
-    {
-      detected_protocol = LidarProtocol::TFA1500LowFrequencyFrame;
-      return true;
-    }
-    return false;
-  }
-
-  if (protocol_hint == LidarProtocol::ObservedAaB7Frame)
-  {
-    if (extractNextObservedAaB7Sample(buffer, sample, raw_frame))
-    {
-      detected_protocol = LidarProtocol::ObservedAaB7Frame;
-      return true;
-    }
-    return false;
-  }
-
-  while (!buffer.empty())
-  {
-    auto tfa = std::find(buffer.begin(), buffer.end(), kTfa1500Header);
-    auto tfa_low = std::find(buffer.begin(), buffer.end(), kTfa1500LowFrequencyHeader);
-    auto aa_b7 = std::find(buffer.begin(), buffer.end(), kObservedAaHeader);
-
-    if (tfa == buffer.end() && tfa_low == buffer.end() && aa_b7 == buffer.end())
-    {
-      buffer.clear();
-      return false;
-    }
-
-    auto earliest = buffer.end();
-    if (tfa != buffer.end() && (earliest == buffer.end() || tfa < earliest)) earliest = tfa;
-    if (tfa_low != buffer.end() && (earliest == buffer.end() || tfa_low < earliest)) earliest = tfa_low;
-    if (aa_b7 != buffer.end() && (earliest == buffer.end() || aa_b7 < earliest)) earliest = aa_b7;
-
-    auto sync_failed_candidate = [&buffer](std::vector<uint8_t>::iterator candidate,
-                                           const std::vector<uint8_t>& parsed_suffix) {
-      const size_t candidate_offset = static_cast<size_t>(std::distance(buffer.begin(), candidate));
-      const size_t original_suffix_size = buffer.size() - candidate_offset;
-      if (parsed_suffix.size() < original_suffix_size)
-      {
-        buffer.assign(parsed_suffix.begin(), parsed_suffix.end());
-        return true;
-      }
-      if (candidate == buffer.begin())
-      {
-        return false;
-      }
-      buffer.erase(buffer.begin(), candidate);
-      return true;
-    };
-
-    if (earliest == tfa)
-    {
-      std::vector<uint8_t> slice(tfa, buffer.end());
-      if (extractNextTfa1500Sample(slice, sample, raw_frame))
-      {
-        detected_protocol = LidarProtocol::TFA1500DistanceFrame;
-        buffer.assign(slice.begin(), slice.end());
-        return true;
-      }
-
-      if (!sync_failed_candidate(tfa, slice))
-      {
-        return false;
-      }
-      continue;
-    }
-
-    if (earliest == tfa_low)
-    {
-      std::vector<uint8_t> slice(tfa_low, buffer.end());
-      if (extractNextTfa1500LowFrequencySample(slice, sample, raw_frame))
-      {
-        detected_protocol = LidarProtocol::TFA1500LowFrequencyFrame;
-        buffer.assign(slice.begin(), slice.end());
-        return true;
-      }
-
-      if (!sync_failed_candidate(tfa_low, slice))
-      {
-        return false;
-      }
-      continue;
-    }
-
-    if (earliest == aa_b7)
-    {
-      std::vector<uint8_t> slice(aa_b7, buffer.end());
-      if (extractNextObservedAaB7Sample(slice, sample, raw_frame))
-      {
-        detected_protocol = LidarProtocol::ObservedAaB7Frame;
-        buffer.assign(slice.begin(), slice.end());
-        return true;
-      }
-
-      if (!sync_failed_candidate(aa_b7, slice))
-      {
-        return false;
-      }
-      continue;
-    }
-    buffer.erase(buffer.begin(), earliest + 1);
-  }
-
-  return false;
-}
-
 
 }
 
@@ -5124,287 +4744,48 @@ void LidarCollector::setRawFrameCallback(RawFrameCallback callback)
   raw_frame_callback_ = std::move(callback);
 }
 
-void LidarCollector::setStartupLogContext(LogContext context)
-{
-  startup_log_context_ = std::move(context);
-}
-
 bool LidarCollector::initialize()
 {
   serial_.setNonBlocking(true);
-  active_protocol_ = LidarProtocol::Unknown;
-  tfa1500_stream_started_ = false;
   return true;
 }
 
 void LidarCollector::cleanup()
 {
-  stopTfa1500Streaming();
-  active_protocol_ = LidarProtocol::Unknown;
-}
-
-bool LidarCollector::ensureTfa1500Streaming()
-{
-  if (tfa1500_stream_started_)
-  {
-    return true;
-  }
-
-  static const uint8_t command[] = {0x55, 0xAA, 0xCB, 0xCC, 0xCC, 0xCC, 0xCC, 0xFB};
-  const ssize_t written = serial_.write(command, sizeof(command));
-  if (written != static_cast<ssize_t>(sizeof(command)))
-  {
-    logStructured(LogLevel::Error,
-                  "device.lidar.command",
-                  "lidar_high_frequency_start_failed",
-                  "TFA1500-L 高频测距启动命令发送失败。",
-                  {{"device", "TFA1500-L"},
-                   {"command", "high_frequency_start"},
-                   {"error_code", "SERIAL_WRITE_FAILED"}});
-    return false;
-  }
-
-  tfa1500_stream_started_ = true;
-  return true;
-}
-
-bool LidarCollector::ensureTfa1500Standby()
-{
-  static const uint8_t command[] = {0x55, 0x00, 0x02, 0x00, 0x00, 0x57};
-  const ssize_t written = serial_.write(command, sizeof(command));
-  if (written != static_cast<ssize_t>(sizeof(command)))
-  {
-    logStructured(LogLevel::Error,
-                  "device.lidar.command",
-                  "lidar_standby_command_failed",
-                  "TFA1500-L 待机命令发送失败。",
-                  {{"device", "TFA1500-L"},
-                   {"command", "standby"},
-                   {"error_code", "SERIAL_WRITE_FAILED"}});
-    return false;
-  }
-
-  tfa1500_stream_started_ = false;
-  return true;
-}
-
-bool LidarCollector::ensureTfa1500DistanceOutput()
-{
-  static const uint8_t command[] = {0x5A, 0x0A, 0x02, 0x02, 0x00, 0xF1};
-  const ssize_t written = serial_.write(command, sizeof(command));
-  if (written != static_cast<ssize_t>(sizeof(command)))
-  {
-    logStructured(LogLevel::Error,
-                  "device.lidar.command",
-                  "lidar_distance_output_command_failed",
-                  "TFA1500-L 距离输出命令发送失败。",
-                  {{"device", "TFA1500-L"},
-                   {"command", "distance_output"},
-                   {"error_code", "SERIAL_WRITE_FAILED"}});
-    return false;
-  }
-
-  return true;
-}
-
-bool LidarCollector::ensureTfa1500LowFrequencyContinuous()
-{
-  static const uint8_t command[] = {0x55, 0x02, 0x02, 0x20, 0x00, 0x75};
-  const ssize_t written = serial_.write(command, sizeof(command));
-  if (written != static_cast<ssize_t>(sizeof(command)))
-  {
-    logStructured(LogLevel::Error,
-                  "device.lidar.command",
-                  "lidar_low_frequency_continuous_command_failed",
-                  "TFA1500-L 低频连续测距命令发送失败。",
-                  {{"device", "TFA1500-L"},
-                   {"command", "low_frequency_continuous"},
-                   {"error_code", "SERIAL_WRITE_FAILED"}});
-    return false;
-  }
-
-  return true;
-}
-
-void LidarCollector::stopTfa1500Streaming()
-{
-  if (!tfa1500_stream_started_ || !serial_.isOpen())
-  {
-    return;
-  }
-
-  static const uint8_t command[] = {0x55, 0xAA, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xFC};
-  serial_.write(command, sizeof(command));
-  tfa1500_stream_started_ = false;
+  // SDFM300 streams on power-up; closing the host never sends legacy commands.
 }
 
 bool LidarCollector::setDeviceSampleRate(int hz)
 {
-  if (hz < 1)
-  {
-    hz = 1;
-  }
-
-  if (active_protocol_ == LidarProtocol::TFA1500HighFrequency || serial_config_.baudrate >= 500000)
-  {
-    if (!ensureTfa1500Streaming())
-    {
-      return false;
-    }
-
-    sample_rate_hz_.store(std::min(hz, 1000));
-    log("TFA1500-L: 高频模式使用设备自适应输出；主机采样率限制已设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
-    return true;
-  }
-
-  if (active_protocol_ == LidarProtocol::TFA1500DistanceFrame)
-  {
-    ensureTfa1500DistanceOutput();
-    sample_rate_hz_.store(std::min(hz, 100));
-    log("TFA1500-L: 距离输出模式不支持设备侧频率命令；主机采样率限制已设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
-    return true;
-  }
-
-  if (active_protocol_ == LidarProtocol::TFA1500LowFrequencyFrame)
-  {
-    ensureTfa1500LowFrequencyContinuous();
-    sample_rate_hz_.store(std::min(hz, 100));
-    log("TFA1500-L: 低频模式不支持设备侧频率命令；主机采样率限制已设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
-    return true;
-  }
-
-  ensureTfa1500DistanceOutput();
-  sample_rate_hz_.store(std::min(hz, 100));
-  log("TFA1500-L: 未识别具体输出模式，已使用距离输出命令并将主机采样率限制设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
-  return true;
-}
-
-bool LidarCollector::parseTfa1500Frame(const uint8_t* frame, size_t size, LidarData& sample)
-{
-  if (!frame || size < TFA1500_FRAME_SIZE || frame[0] != TFA1500_HEADER)
-  {
-    return false;
-  }
-
-  uint8_t sum = 0;
-  for (size_t i = 1; i < 4; ++i)
-  {
-    sum = static_cast<uint8_t>(sum + frame[i]);
-  }
-  const uint8_t checksum = static_cast<uint8_t>(~sum);
-  if (checksum != frame[4])
-  {
-    return false;
-  }
-
-  const uint32_t distance_cm =
-      static_cast<uint32_t>(frame[1]) |
-      (static_cast<uint32_t>(frame[2]) << 8) |
-      (static_cast<uint32_t>(frame[3]) << 16);
-  const bool valid = distance_cm != 0x003FFFFFu;
-
-  sample.distance_m = valid ? (static_cast<double>(distance_cm) / 100.0) : 0.0;
-  sample.signal_strength = 0;
-  sample.timestamp = std::chrono::steady_clock::now();
-  sample.valid = valid && distance_cm > 0;
-  sample.error_message = sample.valid ? "" : "未检测到目标或超出量程";
+  // The module switches between 1 kHz and 50 Hz automatically. This only
+  // limits host callbacks; every verified frame still reaches the raw recorder.
+  setSampleRate(std::clamp(hz, 1, 1000));
   return true;
 }
 
 bool LidarCollector::checkDeviceResponse()
 {
-  uint8_t chunk[128];
+  uint8_t chunk[256];
   std::vector<uint8_t> buffer;
-  buffer.reserve(256);
-
+  const auto start = std::chrono::steady_clock::now();
   constexpr int max_wait_ms = 3200;
-  constexpr int step_ms = 20;
-  const auto start_time = std::chrono::steady_clock::now();
-  int elapsed_ms = 0;
-  const bool prefer_tfa1500 = serial_config_.baudrate >= 500000;
-  bool tried_passive_listen = false;
-  bool tried_distance_output = false;
-  bool tried_distance_output_after_standby = false;
-  bool tried_low_frequency = false;
-  bool tried_low_frequency_after_standby = false;
-  bool tried_high_frequency = false;
-  bool tried_high_frequency_after_standby = false;
-
-  while (elapsed_ms < max_wait_ms)
+  while (std::chrono::steady_clock::now() - start < std::chrono::milliseconds(max_wait_ms))
   {
-    if (isCancelRequested())
-    {
-      return false;
-    }
-
-    if (!tried_passive_listen)
-    {
-      tried_passive_listen = true;
-    }
-    else if (!prefer_tfa1500 && !tried_distance_output && elapsed_ms >= 600)
-    {
-      ensureTfa1500DistanceOutput();
-      tried_distance_output = true;
-    }
-    else if (!prefer_tfa1500 && !tried_distance_output_after_standby && elapsed_ms >= 1100)
-    {
-      ensureTfa1500Standby();
-      ensureTfa1500DistanceOutput();
-      tried_distance_output_after_standby = true;
-    }
-    else if (!prefer_tfa1500 && !tried_low_frequency && elapsed_ms >= 1400)
-    {
-      ensureTfa1500LowFrequencyContinuous();
-      tried_low_frequency = true;
-    }
-    else if (!prefer_tfa1500 && !tried_low_frequency_after_standby && elapsed_ms >= 2200)
-    {
-      ensureTfa1500Standby();
-      ensureTfa1500LowFrequencyContinuous();
-      tried_low_frequency_after_standby = true;
-    }
-    else if (prefer_tfa1500 && !tried_high_frequency && elapsed_ms >= 200)
-    {
-      ensureTfa1500Streaming();
-      tried_high_frequency = true;
-    }
-    else if (prefer_tfa1500 && !tried_high_frequency_after_standby && elapsed_ms >= 1000)
-    {
-      ensureTfa1500Standby();
-      ensureTfa1500Streaming();
-      tried_high_frequency_after_standby = true;
-    }
-
-    log(formatDetectionProgress("等待激光测距帧", 1, 1, computeRemainingSeconds(start_time, max_wait_ms)));
-    ssize_t n = serial_.read(chunk, sizeof(chunk));
+    if (isCancelRequested()) return false;
+    const ssize_t n = serial_.read(chunk, sizeof(chunk));
     if (n > 0)
     {
       buffer.insert(buffer.end(), chunk, chunk + n);
-      while (!buffer.empty())
+      LidarData sample;
+      if (Sdfm300::extractSample(buffer, sample))
       {
-        LidarData sample;
-        LidarProtocol detected_protocol = LidarProtocol::Unknown;
-        if (extractNextLidarSample(buffer,
-                                   prefer_tfa1500 ? LidarProtocol::TFA1500HighFrequency : active_protocol_,
-                                   sample,
-                                   detected_protocol))
-        {
-          if (detected_protocol == LidarProtocol::TFA1500DistanceFrame && prefer_tfa1500)
-          {
-            detected_protocol = LidarProtocol::TFA1500HighFrequency;
-          }
-          active_protocol_ = detected_protocol;
-          log(std::string("激光测距仪: 已识别协议 ") + lidarProtocolName(active_protocol_));
-          return true;
-        }
-        break;
+        log("SDFM300: 已识别 4 字节厘米距离帧，设备自动切换 1 kHz / 50 Hz 输出。");
+        return true;
       }
     }
-
-    sleepMs(step_ms);
-    elapsed_ms += step_ms;
+    log(formatDetectionProgress("等待 SDFM300 测距帧", 1, 1, computeRemainingSeconds(start, max_wait_ms)));
+    sleepMs(20);
   }
-
   return false;
 }
 
@@ -5413,23 +4794,6 @@ void LidarCollector::run()
   uint8_t chunk[256];
   std::vector<uint8_t> buffer;
   buffer.reserve(512);
-
-  {
-    ScopedLogContext startupScope(std::move(startup_log_context_));
-    startup_log_context_ = {};
-    if (active_protocol_ == LidarProtocol::TFA1500HighFrequency)
-    {
-      ensureTfa1500Streaming();
-    }
-    else if (active_protocol_ == LidarProtocol::TFA1500DistanceFrame)
-    {
-      ensureTfa1500DistanceOutput();
-    }
-    else if (active_protocol_ == LidarProtocol::TFA1500LowFrequencyFrame)
-    {
-      ensureTfa1500LowFrequencyContinuous();
-    }
-  }
 
   while (running_.load())
   {
@@ -5440,11 +4804,9 @@ void LidarCollector::run()
       while (!buffer.empty())
       {
         LidarData sample;
-        LidarProtocol detected_protocol = active_protocol_;
         std::vector<uint8_t> raw_frame;
-        if (extractNextLidarSample(buffer, active_protocol_, sample, detected_protocol, &raw_frame))
+        if (Sdfm300::extractSample(buffer, sample, &raw_frame))
         {
-          active_protocol_ = detected_protocol;
           DataCallback callback;
           RawFrameCallback raw_callback;
           const uint64_t host_timestamp_us = systemTimestampUs();
@@ -5459,7 +4821,7 @@ void LidarCollector::run()
 
           if (raw_callback && !raw_frame.empty())
           {
-            raw_callback(host_timestamp_us, active_protocol_, raw_frame.data(), raw_frame.size());
+            raw_callback(host_timestamp_us, LidarProtocol::Sdfm300DistanceFrame, raw_frame.data(), raw_frame.size());
           }
 
           if (callback && shouldEmitData())

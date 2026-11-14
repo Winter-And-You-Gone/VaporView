@@ -224,7 +224,7 @@ int main()
 
     AdaptedMeasurements fast;
     for(int i=0;i<=1000;++i) {
-        Reading lidar;lidar.kind=SensorKind::Tfa1500;lidar.source=0x45;
+        Reading lidar;lidar.kind=SensorKind::Sdfm300;lidar.source=0x45;
         lidar.flags=1;lidar.validity.structure=true;lidar.distanceMm=120000;
         lidar.timestamp=origin+quint64(i)*100000;
         fast=rates.accept(lidar);

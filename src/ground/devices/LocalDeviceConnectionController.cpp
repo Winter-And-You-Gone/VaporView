@@ -929,43 +929,24 @@ private:
             return false;
         }) < 0) return;
 
-        if (connectCollector(QStringLiteral("TFA1500-L"),
+        if (connectCollector(QStringLiteral("SDFM300"),
                              request.lidar,
                              VaporView::lidarBaudCapabilities(),
                              collectors.lidar.get(),
                              [](int baud) { return SerialConfig::N81(baud); },
                              [&]() {
             collectors.lidar->setDataCallback([this]() { notifyData(LocalDeviceKind::Lidar); });
-            if (request.lidar.skipDeviceRate)
-            {
-                postConnectionLog(VaporView::LogLevel::Info,
-                        QStringLiteral("lidar_output_rate_command_skipped"),
-                        QStringLiteral("已跳过激光测距仪输出频率下发，使用设备默认或自适应输出。"),
-                        {{QStringLiteral("device"), QStringLiteral("TFA1500-L")},
-                         {QStringLiteral("reason_code"), QStringLiteral("RATE_UNSPECIFIED")}});
-            }
-            else if (!collectors.lidar->setDeviceSampleRate(request.lidar.sampleRateHz))
-            {
-                postConnectionLog(VaporView::LogLevel::Warning,
-                        QStringLiteral("lidar_output_rate_update_failed"),
-                        QStringLiteral("激光测距仪输出频率下发失败，使用设备默认输出。"),
-                        {{QStringLiteral("device"), QStringLiteral("TFA1500-L")},
-                         {QStringLiteral("requested_rate_hz"), request.lidar.sampleRateHz},
-                         {QStringLiteral("error_code"), QStringLiteral("OUTPUT_RATE_UPDATE_FAILED")}});
-            }
-            else
-            {
-                postConnectionLog(VaporView::LogLevel::Info,
-                        QStringLiteral("lidar_output_rate_updated"),
-                        QStringLiteral("激光测距仪输出频率已更新。"),
-                        {{QStringLiteral("device"), QStringLiteral("TFA1500-L")},
-                         {QStringLiteral("requested_rate_hz"), request.lidar.sampleRateHz}});
-            }
+            collectors.lidar->setDeviceSampleRate(request.lidar.sampleRateHz);
+            postConnectionLog(VaporView::LogLevel::Info,
+                    QStringLiteral("sdfm300_host_rate_updated"),
+                    QStringLiteral("SDFM300 主机刷新频率已设置，设备保持自动输出。"),
+                    {{QStringLiteral("device"), QStringLiteral("SDFM300")},
+                     {QStringLiteral("host_rate_hz"), request.lidar.sampleRateHz}});
             if (collectors.lidar->startStreaming()) return true;
             postConnectionLog(VaporView::LogLevel::Error,
                     QStringLiteral("local_device_stream_start_failed"),
                     QStringLiteral("本地设备数据流启动失败。"),
-                    {{QStringLiteral("device"), QStringLiteral("TFA1500-L")},
+                    {{QStringLiteral("device"), QStringLiteral("SDFM300")},
                      {QStringLiteral("error_code"), QStringLiteral("STREAM_START_FAILED")}});
             return false;
         }) < 0) return;

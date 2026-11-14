@@ -75,7 +75,7 @@ void testFrameRoundTrip()
     basic.ecef_x_m = 1.0;
     basic.ecef_y_m = 2.0;
     basic.ecef_z_m = 3.0;
-    basic.lidar_height_m = 44.0f;
+    basic.lidar_distance_m = 44.0f;
     basic.temperature_c = 25.0f;
     basic.humidity_percent = 60.0f;
     basic.pressure_hpa = 900.0f;
@@ -84,7 +84,7 @@ void testFrameRoundTrip()
     basic.update_status_bits = 0x0003;
     basic.gnss_fix_code = 6;
     basic.gnss_satellites = 18;
-    basic.lidar_signal_strength = 180;
+    basic.legacy_lidar_signal_strength = 180;
     basic.hdop = 0.75f;
     basic.vdop = 1.25f;
     basic.hacc_m = 0.012f;
@@ -127,7 +127,7 @@ void testFrameRoundTrip()
                            VaporView::BasicHasNedVelocity |
                            VaporView::BasicHasImu |
                            VaporView::BasicHasAttitude |
-                           VaporView::BasicHasLidarStrength |
+                           VaporView::BasicHasLegacyLidarStrength |
                            VaporView::BasicHasEpsilonDiagnostics;
 
     const QByteArray payload = VaporView::TelemetryCodec::serializeBasicTelemetry(basic);
@@ -160,7 +160,7 @@ void testFrameRoundTrip()
     require(parsed.gnss_fix_code == basic.gnss_fix_code, "basic gnss fix");
     require(parsed.validity_flags == basic.validity_flags, "basic validity flags");
     require(parsed.gnss_satellites == basic.gnss_satellites, "basic satellites");
-    require(parsed.lidar_signal_strength == basic.lidar_signal_strength, "basic lidar strength");
+    require(parsed.legacy_lidar_signal_strength == basic.legacy_lidar_signal_strength, "basic lidar strength");
     require(std::fabs(parsed.hacc_m - basic.hacc_m) < 0.000001f, "basic hacc");
     require(parsed.heading_valid == basic.heading_valid, "basic heading valid");
     require(std::fabs(parsed.vel_e_mps - basic.vel_e_mps) < 0.000001f, "basic ned velocity");

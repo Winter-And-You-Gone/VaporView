@@ -41,10 +41,10 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
     {
         state_->current_lidar_.valid = true;
         state_->current_lidar_.timestamp = now;
-        state_->current_lidar_.distance_m = telemetry.lidar_height_m;
-        if (hasFlag(VaporView::BasicHasLidarStrength))
+        state_->current_lidar_.distance_m = telemetry.lidar_distance_m;
+        if (hasFlag(VaporView::BasicHasLegacyLidarStrength))
         {
-            state_->current_lidar_.signal_strength = telemetry.lidar_signal_strength;
+            state_->current_lidar_.legacy_signal_strength = telemetry.legacy_lidar_signal_strength;
         }
     }
     else

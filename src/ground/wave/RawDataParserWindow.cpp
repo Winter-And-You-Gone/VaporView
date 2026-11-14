@@ -1,3 +1,4 @@
+#include "Sdfm300Protocol.h"
 #include "shared/session/FpgaSessionArchive.h"
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/CheckedIndicator.h"
@@ -356,6 +357,7 @@ QString lidarProtocolName(quint16 recordType, bool english)
     case 3: return english ? QStringLiteral("TFA1500-L Low Frequency") : QStringLiteral("TFA1500-L 低频");
     case 4: return english ? QStringLiteral("TFA1500-L High Frequency") : QStringLiteral("TFA1500-L 高频");
     case 5: return QStringLiteral("AA-B7");
+    case 6: return QStringLiteral("SDFM300 Distance");
     default: return english ? QStringLiteral("Unknown Lidar") : QStringLiteral("未知激光协议");
     }
 }
@@ -2853,7 +2855,19 @@ void decodeLidarPayload(RawDecodedRecord& decoded, const QByteArray& payload, qu
 {
     decoded.title = lidarProtocolName(recordType, english);
     const auto bytes = reinterpret_cast<const uint8_t*>(payload.constData());
-    if ((recordType == 2 || recordType == 4) && payload.size() >= 5)
+    if (recordType == VaporView::Sdfm300::kRecordType && payload.size() == 4)
+    {
+        const uint16_t distanceCm = uint16_t(bytes[1]) | (uint16_t(bytes[2]) << 8);
+        VaporView::LidarData sample;
+        const bool frameOk = VaporView::Sdfm300::decodeFrame(bytes, payload.size(), sample);
+        addField(decoded, QStringLiteral("SDFM300"), QStringLiteral("header"), formatHex(bytes[0]), bytes[0] == 0x5C ? QStringLiteral("OK") : QStringLiteral("BAD"), QString(), 0, 1, QString(), bytes[0] != 0x5C);
+        addField(decoded, QStringLiteral("SDFM300"), QStringLiteral("sdfm300_distance_cm"), QString::number(distanceCm), frameOk && sample.valid ? QString::number(sample.distance_m, 'f', 2) : QStringLiteral("---"), QStringLiteral("m"), 1, 2);
+        addField(decoded, QStringLiteral("SDFM300"), QStringLiteral("checksum"), formatHex(bytes[3]), frameOk ? QStringLiteral("OK") : QStringLiteral("BAD"), QString(), 3, 1, QString(), !frameOk);
+        addField(decoded, QStringLiteral("SDFM300"), QStringLiteral("sdfm300_valid"), frameOk && sample.valid ? QStringLiteral("true") : QStringLiteral("false"), QString(), QString(), 1, 2);
+        decoded.summary = frameOk && sample.valid ? QStringLiteral("%1 m").arg(sample.distance_m, 0, 'f', 2)
+            : (english ? QStringLiteral("No target / invalid distance") : QStringLiteral("无目标或距离无效"));
+    }
+    else if ((recordType == 2 || recordType == 4) && payload.size() >= 5)
     {
         uint8_t sum = 0;
         for (int i = 1; i < 4; ++i)

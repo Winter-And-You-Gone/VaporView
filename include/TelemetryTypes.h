@@ -197,7 +197,7 @@ enum TelemetryBasicValidityFlag : quint32
     BasicHasNedVelocity = 1u << 8,
     BasicHasImu = 1u << 9,
     BasicHasAttitude = 1u << 10,
-    BasicHasLidarStrength = 1u << 11,
+    BasicHasLegacyLidarStrength = 1u << 11, // Historical wire flag; SDFM300 never sets it.
     BasicHasEpsilonDiagnostics = 1u << 12,
 };
 
@@ -218,7 +218,7 @@ struct TelemetryBasic
     double ecef_x_m = 0.0;
     double ecef_y_m = 0.0;
     double ecef_z_m = 0.0;
-    float lidar_height_m = 0.0f;
+    float lidar_distance_m = 0.0f;
     float temperature_c = 0.0f;
     float humidity_percent = 0.0f;
     float pressure_hpa = 0.0f;
@@ -228,7 +228,7 @@ struct TelemetryBasic
     quint8 gnss_fix_code = 0;
     quint32 validity_flags = 0;
     quint16 gnss_satellites = 0;
-    quint16 lidar_signal_strength = 0;
+    quint16 legacy_lidar_signal_strength = 0; // Reserved wire slot for older senders.
     float hdop = 0.0f;
     float vdop = 0.0f;
     float hacc_m = 0.0f;

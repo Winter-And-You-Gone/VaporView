@@ -1549,7 +1549,7 @@ void SkyTuiApp::drawDeviceOverview(SkyTuiScreenBuffer& output, int top, int bott
                 .arg(d.hc2a.valid ? QString::number(d.hc2a.temperature, 'f', 1) : QStringLiteral("---"),
                      d.hc2a.valid ? QString::number(d.hc2a.humidity, 'f', 1) : QStringLiteral("---"),
                      d.ptb.valid ? QString::number(d.ptb.pressure_hpa, 'f', 1) : QStringLiteral("---")),
-            QStringLiteral("Lidar: %1 m")
+            QStringLiteral("SDFM300: %1 m")
                 .arg(d.lidar.valid ? QString::number(d.lidar.distance_m, 'f', 2) : QStringLiteral("---")),
             QStringLiteral("温控: RD105 %1 / AI-8 CH1 %2")
                 .arg(d.temperature_controller.valid ? QString::number(d.temperature_controller.channels[0].measured_temperature_c, 'f', 1) : QStringLiteral("---"),
@@ -1711,7 +1711,7 @@ QStringList SkyTuiApp::dashboardSummaryLines(int width) const
                 .arg(d.uptime_ms / 1000)
                 .arg(d.epsilon.raw_frame_count)
                 .arg(humanBytes(d.telemetry_status.disk_free_bytes)),
-            QStringLiteral("采集：EPSILON %1 / PTB %2 / HC2A %3 / Lidar %4 / Wave %5 Hz")
+            QStringLiteral("采集：EPSILON %1 / PTB %2 / HC2A %3 / SDFM300 %4 / Wave %5 Hz")
                 .arg(d.epsilon_acquisition_rate_hz, 0, 'f', 1)
                 .arg(d.ptb_acquisition_rate_hz, 0, 'f', 1)
                 .arg(d.hc2a_acquisition_rate_hz, 0, 'f', 1)
@@ -1735,7 +1735,7 @@ QStringList SkyTuiApp::dashboardSummaryLines(int width) const
             .arg(humanBytes(d.telemetry_status.disk_free_bytes))
             .arg(d.telemetry_status.rx_total_frames)
             .arg(d.telemetry_status.crc_error_count),
-        QStringLiteral("采集频率：EPSILON %1Hz | PTB %2Hz | HC2A %3Hz | Lidar %4Hz | Wave %5Hz")
+        QStringLiteral("采集频率：EPSILON %1Hz | PTB %2Hz | HC2A %3Hz | SDFM300 %4Hz | Wave %5Hz")
             .arg(d.epsilon_acquisition_rate_hz, 0, 'f', 1)
             .arg(d.ptb_acquisition_rate_hz, 0, 'f', 1)
             .arg(d.hc2a_acquisition_rate_hz, 0, 'f', 1)

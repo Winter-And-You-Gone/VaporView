@@ -1485,9 +1485,9 @@ int main(int argc, char **argv)
     requireUiTestEpsilonValueColor(
         epsilonPanel, false, "light UI-test EPSILON values keep the blue theme color");
     require(VaporViewTest::processEventsUntil(4000, [window]() {
-                return uiTestLidarDistanceUsesIntegerDigits(window, 4);
+                return uiTestLidarDistanceUsesIntegerDigits(window, 3);
             }),
-            "UI test mode changes lidar distance to four integer digits with two decimals every three seconds");
+            "UI test mode keeps SDFM300 distance within three integer digits with two decimals every three seconds");
     require(VaporViewTest::processEventsUntil(2500, [window]() {
                 return uiTestLidarDistanceUsesIntegerDigits(window, 3);
             }),
@@ -2445,7 +2445,7 @@ int main(int argc, char **argv)
                     text.contains(QStringLiteral("已记录条数\nRAW EPSILON：")) &&
                     text.contains(QStringLiteral(" 条\nRAW PTB210：")) &&
                     text.contains(QStringLiteral(" 条\nRAW HC2A：")) &&
-                    text.contains(QStringLiteral(" 条\nRAW TFA1500：")) &&
+                    text.contains(QStringLiteral(" 条\nSDFM300：")) &&
                     text.contains(QStringLiteral(" 条\nRAW WAVE：")) &&
                     text.contains(QStringLiteral(" 条\nRAW RD105：")) &&
                     text.contains(QStringLiteral(" 条\nRAW AI-8288：")) &&
@@ -2953,7 +2953,7 @@ int main(int argc, char **argv)
                  QStringLiteral("BMP390"),
                  QStringLiteral("HC2A"),
                  QStringLiteral("SHT45"),
-                 QStringLiteral("TFA1500-L"),
+                 QStringLiteral("SDFM300"),
                  QStringLiteral("RD105"),
                  QStringLiteral("AI-8288")})
         {

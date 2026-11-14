@@ -1,6 +1,7 @@
 #include "ground/calibration/CalibrationService.h"
 #include "ground/main/GroundMainWindowImplementation.h"
 #include "ground/devices/UiTestDataModel.h"
+#include "BaudRateComboSupport.h"
 #include <QFileDialog>
 #include <QJsonDocument>
 #include <QJsonArray>
@@ -135,11 +136,15 @@ void MainWindow::syncFpgaDeviceConfigUi()
             editor->clear();editor->setProperty("source",source);editor->setProperty("parameter",key);
             const auto *oldValidator=editor->validator();editor->setValidator(nullptr);delete oldValidator;
             if(key=="baud") {
-                const int minimum=(source==0x40 || source==0x41)?1200:source==0x42?9600:115200;
-                const int maximum=source==0x40?19200:source==0x41?115200:6250000;
-                editor->setValidator(new QIntValidator(minimum,maximum,editor));
-                for(int baud:{1200,2400,4800,9600,19200,38400,57600,115200,230400,460800,500000,921600,1000000,2000000,6250000})
-                    if(baud>=minimum&&baud<=maximum)editor->addItem(QString::number(baud));
+                if(source==0x45) {
+                    VaporView::configureSerialBaudRateCombo(editor, VaporView::lidarBaudCapabilities(), QStringLiteral("460800"));
+                } else {
+                    const int minimum=(source==0x40 || source==0x41)?1200:9600;
+                    const int maximum=source==0x40?19200:source==0x41?115200:6250000;
+                    editor->setValidator(new QIntValidator(minimum,maximum,editor));
+                    for(int baud:{1200,2400,4800,9600,19200,38400,57600,115200,230400,460800,500000,921600,1000000,2000000,6250000})
+                        if(baud>=minimum&&baud<=maximum)editor->addItem(QString::number(baud));
+                }
             } else {
                 auto *validator=new QDoubleValidator(1000.0/3600000,1000,9,editor);validator->setLocale(QLocale::c());editor->setValidator(validator);
                 editor->addItems({"0.1","0.2","0.5","1","2","5","10","20","50","100","1000"});
@@ -151,8 +156,9 @@ void MainWindow::syncFpgaDeviceConfigUi()
         const auto numberText=[&](double value) {return QString::number(key=="baud"?value:1000.0/value,'g',9);};
         const QString text=draft.contains(key)?value.toString()
             :registers.value(address)?numberText(registers.value(address)):QString();
-        if(editor->currentText()!=text)editor->setCurrentText(text);
-        editor->lineEdit()->setPlaceholderText(state_->is_english_?(key=="baud"?"Baud":"Hz"):(key=="baud"?"波特率":"Hz"));
+        if(!editor->isEditable() && text.isEmpty())editor->setCurrentIndex(-1);
+        else if(editor->currentText()!=text)editor->setCurrentText(text);
+        if(editor->lineEdit())editor->lineEdit()->setPlaceholderText(state_->is_english_?(key=="baud"?"Baud":"Hz"):(key=="baud"?"波特率":"Hz"));
         const quint32 control=0x6004+(source-0x40)*0x100;
         editor->setEnabled(relay&&!busy&&(!usbConnected||(registers.contains(control)&&!(registers.value(control)&1))));
         editor->setToolTip(hint+(key=="poll_ms"?(state_->is_english_?QStringLiteral(" Frequency in Hz; polling cadence, not measured sample rate.")
@@ -194,7 +200,7 @@ void MainWindow::syncFpgaDeviceConfigUi()
     field(state_->device_config_.ptb_rate_combo,pressure,"poll_ms",pressure==0x43?0x6314:0x6018);
     field(state_->device_config_.hc2a_rate_combo,0x41,"poll_ms",0x611c);
     field(state_->device_config_.ai8_temperature_rate_combo,0x46,"poll_ms",0x662c);
-    field(state_->device_config_.lidar_rate_combo,0x45,{},0,state_->is_english_?QStringLiteral("Device output"):QStringLiteral("设备输出"));
+    field(state_->device_config_.lidar_rate_combo,0x45,{},0,state_->is_english_?QStringLiteral("Auto 50/1000 Hz"):QStringLiteral("自动 50/1000 Hz"));
     field(state_->device_config_.temperature_rate_combo,0x48,(extensions&VaporView::FpgaExtensions::Rd105)?"poll_ms":"",0x682c,QStringLiteral("—"));
     if (auto *check=state_->device_config_.fpga_wave_enabled_check) {
         check->setVisible(relay);
@@ -1246,7 +1252,7 @@ void MainWindow::receiveFpgaMeasurements(const VaporView::FpgaSensor::AdaptedMea
             state_->current_hc2a_.valid=true;state_->current_hc2a_.timestamp=now;
         }
     }
-    else if (r.kind == VaporView::FpgaSensor::SensorKind::Tfa1500)
+    else if (r.kind == VaporView::FpgaSensor::SensorKind::Sdfm300)
     {
         state_->current_lidar_ = VaporView::LidarData{};
         if (valid && r.distanceMm) { state_->current_lidar_.distance_m=*r.distanceMm/1000.; state_->current_lidar_.valid=true; state_->current_lidar_.timestamp=now; }

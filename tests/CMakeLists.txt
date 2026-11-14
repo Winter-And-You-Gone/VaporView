@@ -23,6 +23,13 @@ function(vaporview_add_test)
     set_property(TEST ${test_NAME} PROPERTY VAPORVIEW_BUILD_TARGET "${build_target}")
 endfunction()
 
+add_executable(sdfm300_protocol_test sdfm300_protocol_test.cpp)
+target_include_directories(sdfm300_protocol_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(sdfm300_protocol_test PRIVATE vaporview_sky_core vaporview_session_format)
+vaporview_add_test(NAME sdfm300_protocol_test COMMAND sdfm300_protocol_test)
+set_tests_properties(sdfm300_protocol_test PROPERTIES LABELS "fast;unit;protocol" TIMEOUT 30)
+
+
 add_executable(log_context_test log_context_test.cpp)
 add_executable(sky_console_diagnostics_test sky_console_diagnostics_test.cpp)
 target_include_directories(sky_console_diagnostics_test PRIVATE ${CMAKE_SOURCE_DIR}/include)

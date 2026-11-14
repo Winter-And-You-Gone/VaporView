@@ -332,7 +332,7 @@ void FpgaDeviceController::readAll()
     read(0x6210);   // EPSILON baud.
     read(0x6314);   // BMP polling interval.
     read(0x6414);   // SHT polling interval.
-    read(0x6510);   // TFA baud.
+    read(0x6510);   // SDFM300 baud.
     read(0x6610,22);
     callback([this]{readExtensions();});
 }
@@ -356,7 +356,7 @@ bool FpgaDeviceController::versionsMatch(QString *detail) const
     const QMap<quint32,quint32> expected{{0x4000,0x00200101},{0x4100,0x00210101},
         {0x4018,0x00011800},{0x4118,0x00011800},{0x5000,0x00300101},{0x5100,0x00310101},
         {0x5024,0x00040101},{0x5124,0x00040101},{0x6600,0x00460200},
-        {0x6100,0x00410106},{0x614c,0x48434432},{0x1000,0x00020200},{0x6700,0x00470200}};
+        {0x6500,0x00450200},{0x6100,0x00410106},{0x614c,0x48434432},{0x1000,0x00020200},{0x6700,0x00470200}};
     const auto cap = session_->capabilities();
     if (!registers_.contains(0x8004) || !(registers_.value(0x8004)&1)) {
         if(detail)*detail=QStringLiteral("USB 上传通路未启用，保留只读诊断并禁止写操作；不能盲目写入恢复。请恢复下位机通路后重新连接。");
@@ -605,7 +605,7 @@ void FpgaDeviceController::reportConnection(quint16 source, const QString& resul
 {
     const QMap<quint16,QString> names{{0,QStringLiteral("ADC / DLIA")},{0x40,QStringLiteral("PTB210")},
         {0x41,QStringLiteral("HC2A")},{0x42,QStringLiteral("EPSILON")},{0x43,QStringLiteral("BMP390")},{0x44,QStringLiteral("SHT45")},
-        {0x45,QStringLiteral("TFA1500-L")},{0x46,QStringLiteral("AI-8288D92J0")},{0x48,QStringLiteral("RD105")}};
+        {0x45,QStringLiteral("SDFM300")},{0x46,QStringLiteral("AI-8288D92J0")},{0x48,QStringLiteral("RD105")}};
     LogRecord record; record.source=QStringLiteral("Ground"); record.category=QStringLiteral("device.fpga");
     record.level=(result==QStringLiteral("failed") || result==QStringLiteral("warning"))?LogLevel::Warning:LogLevel::Info;
     record.message=names.value(source)+QStringLiteral(" 经 FPGA ")+
@@ -703,7 +703,7 @@ void FpgaDeviceController::checkStartupWarnings()
         const auto event=startupWarnings_.take(source);
         const auto sample=latestReadings_.value(source);
         const auto& validity=sample.reading.validity;
-        // A latched error does not prove the current measurement is bad. TFA
+        // A latched error does not prove the current measurement is bad. SDFM300
         // emits no distance frame for invalid returns, so require a recent one.
         const bool fresh=lastReadingMs_.contains(source)
             && QDateTime::currentMSecsSinceEpoch()-lastReadingMs_.value(source)<=(source==0x45?1000:5000);
@@ -786,8 +786,7 @@ void FpgaDeviceController::recoverConnection()
         if(saved.value(b+4)&1) {
             Step stop;stop.kind=Kind::Sensor;stop.address=1;stop.source=quint16(0x40+(b-0x6000)/0x100);stop.expected=0;
             steps_.push_back(stop);verify(b+4,0);
-            // PTB reports BUSY even in ST_DISABLED. TFA must finish its
-            // serial stop/quiet sequence before accepting a new start.
+            // PTB reports BUSY even in ST_DISABLED. SDFM300 only gates reception.
             const quint32 stoppedMask=b==0x6500?13:(b==0x6300||b==0x6400)?9:1;
             waitFor(b+8,stoppedMask,0);
         }
@@ -1027,7 +1026,7 @@ void FpgaDeviceController::startSensorConfiguration(const QJsonObject& request, 
     read(base+4,3);
     if(source==0x40)read(0x6010,4);
     if(source==0x44)read(0x6414,3);
-    if(source==0x45)read(0x6510,2);
+    if(source==0x45)read(0x6510);
     Step prepare;prepare.kind=Kind::PrepareSensorConfig;prepare.source=source;
     prepare.values={quint32(request.value("baud").toInt()),quint32(request.value("poll_ms").toInt()),connectAfter?1u:0u};
     steps_.push_back(prepare);advance();
@@ -1047,9 +1046,6 @@ void FpgaDeviceController::prepareSensorConfiguration(quint16 source, quint32 ba
     if(source==0x44 && heater && (pollMs?pollMs:registers_.value(0x6414))<(heater&1?12000u:1300u)) {
         fail(QStringLiteral("SHT45 当前加热模式要求更长的轮询间隔；未修改参数。"));return;
     }
-    if(source==0x45 && quint32(pendingSensorParameters_.value("mode").toDouble(registers_.value(0x6514)))==2 && (baud?baud:registers_.value(0x6510))<500000) {
-        fail(QStringLiteral("TFA 高频模式要求波特率不低于 500000；未修改参数。"));return;
-    }
     snapshotConfiguration();
     const auto sensor=[&](bool on) {
         Step s;s.kind=Kind::Sensor;s.source=source;s.address=1;s.expected=on?1:0;steps_.push_back(s);
@@ -1064,12 +1060,10 @@ void FpgaDeviceController::prepareSensorConfiguration(quint16 source, quint32 ba
         Step s;s.kind=Kind::Write;s.address=address;s.values={value};s.label=QStringLiteral("sensor_parameter");steps_.push_back(s);
         verify(address,value);
     };
-    const bool modeBeforeBaud=source==0x45 && pendingSensorParameters_.contains("mode") && pendingSensorParameters_.value("mode").toInt()!=2;
-    if(modeBeforeBaud)parameter(0x6514,quint32(pendingSensorParameters_.value("mode").toInt()));
     if(baud)parameter(base+0x10,baud);
     if(source==0x41)parameter(0x6118,0); // HC2A uses fixed 8N1.
     if(pollMs)parameter(base+(source==0x40?0x18:source==0x41?0x1c:(source==0x46 || source==0x48)?0x2c:0x14),pollMs);
-    for(const auto& spec:FpgaRemote::sensorParameters())if(spec.source==source && pendingSensorParameters_.contains(spec.key) && !(modeBeforeBaud && QString::fromLatin1(spec.key)=="mode"))parameter(spec.address,quint32(pendingSensorParameters_.value(spec.key).toDouble()));
+    for(const auto& spec:FpgaRemote::sensorParameters())if(spec.source==source && pendingSensorParameters_.contains(spec.key))parameter(spec.address,quint32(pendingSensorParameters_.value(spec.key).toDouble()));
     if(source==0x43 && !pendingSensorParameters_.isEmpty())commit(source,base);
     if(source==0x45)waitFor(base+8,13,0);
     if(connectAfter) {

@@ -197,7 +197,7 @@ int main(int argc, char **argv)
     VaporView::LidarData lidarData;
     lidarData.valid = true;
     lidarData.distance_m = 120.75;
-    lidarData.signal_strength = 321;
+    lidarData.legacy_signal_strength = 321;
     coordinator.updateEnvironmentData(epsilonData, ptbData, hc2aData, lidarData);
     for (QWidget *panel : {static_cast<QWidget *>(&ptb),
                            static_cast<QWidget *>(&hc2a),
@@ -218,17 +218,17 @@ int main(int argc, char **argv)
             "Lidar data is presented through the coordinator");
     auto *lidarDistanceValue =
         firstLabelContaining(lidar, QStringLiteral("highlightedValue"), QStringLiteral("120.75"));
-    auto *lidarStrengthValue =
-        firstLabelContaining(lidar, QStringLiteral("highlightedValue"), QStringLiteral("321"));
+    auto *lidarRangeValue =
+        firstLabelContaining(lidar, QStringLiteral("highlightedValue"), QStringLiteral("300 m"));
     auto *lidarRateValue =
         firstLabelContaining(lidar, QStringLiteral("rateLabel"), QStringLiteral("20.0"));
-    require(lidarDistanceValue && lidarStrengthValue && lidarRateValue,
-            "Lidar row exposes distance, strength, and rate labels");
+    require(lidarDistanceValue && lidarRangeValue && lidarRateValue,
+            "Lidar row exposes distance, model range, and rate labels");
     require(std::abs(labelCenterYInPanel(lidarDistanceValue, lidar) -
-                     labelCenterYInPanel(lidarStrengthValue, lidar)) <= 2 &&
+                     labelCenterYInPanel(lidarRangeValue, lidar)) <= 2 &&
                 std::abs(labelCenterYInPanel(lidarDistanceValue, lidar) -
                          labelCenterYInPanel(lidarRateValue, lidar)) <= 2,
-            "Lidar distance, strength, and rate are presented on the same row");
+            "Lidar distance, model range, and rate are presented on the same row");
     auto *pressureField =
         firstLabelExact(ptb, QStringLiteral("fieldLabel"), QStringLiteral("环境气压:"));
     auto *pressureValue =
@@ -242,22 +242,22 @@ int main(int argc, char **argv)
                                 "pressure value is centered between its field label and rate");
     auto *distanceField =
         firstLabelExact(lidar, QStringLiteral("fieldLabel"), QStringLiteral("距离:"));
-    auto *strengthField =
-        firstLabelExact(lidar, QStringLiteral("fieldLabel"), QStringLiteral("强度:"));
+    auto *rangeField =
+        firstLabelExact(lidar, QStringLiteral("fieldLabel"), QStringLiteral("量程:"));
     requireCompactFieldValueGap(lidar,
                                 distanceField,
                                 lidarDistanceValue,
                                 "distance field and value keep a compact readable gap");
     requireReadableLabelGap(lidar,
                             lidarDistanceValue,
-                            strengthField,
+                            rangeField,
                             8,
                             24,
-                            "strength field keeps a slightly wider gap after distance");
+                            "range field keeps a slightly wider gap after distance");
     requireCompactFieldValueGap(lidar,
-                                strengthField,
-                                lidarStrengthValue,
-                                "strength field and value keep a compact readable gap");
+                                rangeField,
+                                lidarRangeValue,
+                                "range field and value keep a compact readable gap");
     auto *temperatureTrend = hc2a.findChild<QWidget *>(QStringLiteral("environmentTemperatureTrendPlot"));
     auto *humidityTrend = hc2a.findChild<QWidget *>(QStringLiteral("environmentHumidityTrendPlot"));
     auto *pressureTrend = ptb.findChild<QWidget *>(QStringLiteral("environmentPressureTrendPlot"));

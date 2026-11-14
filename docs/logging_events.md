@@ -112,10 +112,6 @@
 | SkyCore | device.temperature.state | temperature_controller_firmware_read_failed | Error | RD105 温控器版本号读取失败。 | device_id, device, command, error_code |  | COMMAND_VERIFY_FAILED |
 | SkyCore | device.temperature.state | temperature_controller_parameters_read_failed | Error | RD105 温控器参数读取失败。 | device_id, device, command, error_code |  | COMMAND_VERIFY_FAILED |
 | SkyCore | device.temperature.state | temperature_controller_parameters_incomplete | Error | RD105 温控器参数读取不完整。 | device_id, device, command, error_code |  | COMMAND_VERIFY_FAILED |
-| SkyCore | device.lidar.command | lidar_high_frequency_start_failed | Error | TFA1500-L 高频测距启动命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
-| SkyCore | device.lidar.command | lidar_standby_command_failed | Error | TFA1500-L 待机命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
-| SkyCore | device.lidar.command | lidar_distance_output_command_failed | Error | TFA1500-L 距离输出命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
-| SkyCore | device.lidar.command | lidar_low_frequency_continuous_command_failed | Error | TFA1500-L 低频连续测距命令发送失败。 | device_id, device, command, error_code |  | SERIAL_WRITE_FAILED |
 | SkyCore | device.wave_tcp | wave_tcp_peak_search_range_updated | Info | Wave TCP 峰值搜索范围已更新。 | start_index, end_index |  |  |
 | SkyCore | device.wave_tcp | wave_tcp_resync_discarded_bytes | Warning | Wave TCP 重新同步时已丢弃部分字节。 | dropped_bytes |  | WAVE_TCP_FRAME_HEADER_NOT_FOUND |
 | SkyCore | device.wave_tcp | wave_tcp_resync_skipped_bytes | Warning | Wave TCP 重新同步时已跳过部分字节。 | skipped_bytes, header_order |  | WAVE_TCP_FRAME_OFFSET |
@@ -254,9 +250,6 @@
 | Ground | device.connection | epsilon_output_reconfigure_skipped_fdilink_detected | Info | 已检测到 EPSILON FDILink 数据流，跳过默认输出配置下发。 | device, epsilon_packet_profile, reason_code | ui_visibility | FDILINK_STREAM_DETECTED |
 | Ground | device.connection | ptb_sample_rate_command_skipped | Info | 已跳过 PTB210 采样频率下发，使用设备当前输出。 | device, reason_code | ui_visibility | RATE_UNSPECIFIED |
 | Ground | device.connection | ptb_sample_rate_update_failed | Warning | PTB210 采样频率下发失败。 | device, requested_rate_hz, error_code | ui_visibility | SAMPLE_RATE_UPDATE_FAILED |
-| Ground | device.connection | lidar_output_rate_command_skipped | Info | 已跳过激光测距仪输出频率下发，使用设备默认或自适应输出。 | device, reason_code | ui_visibility | RATE_UNSPECIFIED |
-| Ground | device.connection | lidar_output_rate_update_failed | Warning | 激光测距仪输出频率下发失败，使用设备默认输出。 | device, requested_rate_hz, error_code | ui_visibility | OUTPUT_RATE_UPDATE_FAILED |
-| Ground | device.connection | lidar_output_rate_updated | Info | 激光测距仪输出频率已更新。 | device, requested_rate_hz | ui_visibility |  |
 | Ground | device.connection | ai8_temperature_polling_rate_updated | Info | AI-8288 主机轮询频率已更新。 | device, requested_rate_hz | ui_visibility |  |
 | Ground | device.connection | local_serial_device_phase_completed | Info | 本地串口设备连接阶段已完成。 | connected_devices, total_devices | ui_visibility |  |
 | Ground | device.connection | local_serial_devices_not_connected | Warning | 没有串口设备连接成功。 | connected_devices, total_devices, reason_code | ui_visibility | NO_DEVICE_CONNECTED |
@@ -364,14 +357,14 @@
 | Ground | configuration.apply | epsilon_packet_profile_apply_requested | Info | 正在应用刚保存的 EPSILON 包频率配置。 | device, port, packet_rate_summary | ui_visibility |  |
 | Ground | configuration.apply | epsilon_packet_profile_saved_deferred | Info | EPSILON 包频率配置已保存，将在下次连接或重配时生效。 | device, packet_rate_summary | ui_visibility |  |
 | Ground | configuration.apply | ai8_persisted_baud_rejected | Warning | 已忽略 AI-8288 的无效已保存波特率，并恢复默认值。 | device, configured_baud, fallback_baud, error_code, reason_code | ui_visibility | UNSUPPORTED_BAUD_RATE |
-| Ground | configuration.apply | lidar_persisted_baud_rejected | Warning | 已忽略 TFA1500-L 的无效已保存波特率，并恢复默认值。 | device, configured_baud, fallback_baud, error_code, reason_code | ui_visibility | UNSUPPORTED_BAUD_RATE |
+| Ground | configuration.apply | lidar_persisted_baud_rejected | Warning | 已忽略 SDFM300 的无效已保存波特率，并恢复默认值。 | device, configured_baud, fallback_baud, error_code, reason_code | ui_visibility | UNSUPPORTED_BAUD_RATE |
 | Ground | configuration.apply | recording_directory_updated | Info | 记录目录已更新。 | recording_directory | ui_visibility |  |
 | Ground | configuration.apply | recording_csv_rate_updated | Info | 其余设备记录频率已更新。 | recording_rate_hz | ui_visibility |  |
 | Ground | configuration.apply | epsilon_raw_recording_full_frames_enabled | Info | EPSILON 原始记录固定保存完整已校验 FDILink 帧。 | device, recording_mode | ui_visibility |  |
 | Ground | configuration.apply | tcp_wave_raw_recording_full_frames_enabled | Info | TCP 波形原始记录固定保存每组完整 TCP 帧。 | device, recording_mode | ui_visibility |  |
 | Ground | device.pressure.command | ptb_sample_rate_command_disabled | Info | 已禁用 PTB210 采样频率下发，使用设备当前输出。 | device, apply_device_rate | ui_visibility |  |
 | Ground | device.pressure.command | ptb_sample_rate_command_failed | Error | PTB210 采样频率命令下发失败。 | device, requested_rate_hz, error_code | ui_dedupe_key | COMMAND_VERIFY_FAILED |
-| Ground | device.lidar.command | lidar_output_rate_command_disabled | Info | 已禁用激光测距仪输出频率下发，使用设备默认或自适应输出。 | device, apply_device_rate | ui_visibility |  |
+| Ground | device.lidar.command | lidar_output_rate_command_disabled | Info | SDFM300 使用自动输出，主机使用默认刷新频率。 | device, apply_device_rate | ui_visibility |  |
 | Ground | device.rate | sample_rate_apply_partial_failure | Warning | 主机侧频率已更新，但一个或多个设备输出频率命令失败。 | requested_rate_hz, epsilon_command_failed, ptb_command_failed, reason_code | ui_dedupe_key | DEPENDENCY_UNAVAILABLE |
 | Ground | device.rate | sample_rates_updated | Info | 所有频率已更新。 | requested_rate_hz, epsilon_rate_hz, ptb_rate_hz, hc2a_rate_hz, lidar_rate_hz, temperature_rate_hz | ui_visibility |  |
 | Ground | device.rate | sample_rate_device_commands_skipped_unspecified | Info | 已选择“不设定”的设备保持不下发输出频率命令。 | ptb_skipped, hc2a_skipped, lidar_skipped, temperature_skipped | ui_visibility |  |
@@ -380,7 +373,7 @@
 | Ground | device.rate | ptb_sample_rate_updated | Info | PTB210 采样频率已更新。 | device, requested_rate_hz | ui_visibility |  |
 | Ground | device.rate | hc2a_polling_rate_defaulted | Info | HC2A 轮询频率保持不设定，使用默认主机轮询频率。 | device, effective_rate_hz | ui_visibility |  |
 | Ground | device.rate | hc2a_sample_rate_updated | Info | HC2A 采样频率已更新。 | device, requested_rate_hz | ui_visibility |  |
-| Ground | device.rate | lidar_sample_rate_updated | Info | 激光测距仪采样频率已更新。 | device, requested_rate_hz | ui_visibility |  |
+| Ground | device.rate | lidar_sample_rate_updated | Info | SDFM300 主机刷新频率已更新，设备保持自动输出。 | device, requested_rate_hz | ui_visibility |  |
 | Ground | device.rate | temperature_polling_rate_defaulted | Info | RD105 轮询频率保持不设定，使用默认主机轮询频率。 | device, effective_rate_hz | ui_visibility |  |
 | Ground | device.rate | temperature_polling_rate_updated | Info | RD105 轮询频率已更新。 | device, requested_rate_hz | ui_visibility |  |
 | Ground | device.rate | temperature_polling_rate_capped | Info | RD105 轮询频率已按设备上限限制。 | device, requested_rate_hz, effective_rate_hz | ui_visibility |  |
@@ -434,3 +427,5 @@
 - RTK / service.raw / `rtk_service_raw_output` / Debug / `hidden` / 可合并 / 默认键：原始 RTK 输出只写文件和 RTK 对话框，不进入桌面主日志。
 
 第一方 Ground `MainWindow::log(QString)` 已删除。仓库内部日志型 QString signal/emit bridge 已清零；`TelemetryLink`、`TcpWavePanel`、SkyRuntime、SkyLocalIpcClient/Server、GroundTelemetry 和 SkyDeviceManager 使用结构化 `LogRecord` / `LogEvent` 或直接 `LogService` 发布。未显式设置 `ui_visibility` 的结构化记录仍由 UI 模型使用回退规则：Warning / Error / Critical -> `attention`，Info -> `details`，Debug -> 调试视图。
+
+| Ground | device.connection | sdfm300_host_rate_updated | Info | SDFM300 主机刷新频率已设置，设备保持自动输出。 | device, host_rate_hz | ui_visibility |  |

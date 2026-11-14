@@ -64,7 +64,7 @@ FPGA 页在界面测试模式中禁用记录按钮，不再伪造记录成功；
 | BMP390 | 原始 ADC 与标定数据，实际经过主机补偿 |
 | SHT45 | 独立内部温湿度和加热器状态，不覆盖HC2A环境字段 |
 | EPSILON | 14 种带有效 FDILink CRC 的核心报文，覆盖设备信息、IMU、姿态、定位、速度、UTC、卫星和状态 |
-| TFA1500 | 变化的距离 |
+| SDFM300 | 变化的距离 |
 | AI8 | 按`0x661C`确认的一个选定通道输出schema 2，设温经确认计数与读回更新 |
 | TIME / DM422 | PPS资格与只读UTC状态、有限运动范围及心跳失联语义 |
 | LC0 / LC1 | 正确模块ID、只读UART状态/计数；不生成厂家控制应答 |
@@ -108,7 +108,7 @@ EPSILON 定位高度是 WGS84 椭球高，不是直接测得的离地高度。�
 
 模拟器不在 Windows 设备管理器中注册虚拟 USB；连接是在现有 `FpgaUsbTransport` 接口处替换物理后端。真实 USB 枚举、驱动、拔插、吞吐和模拟输出校准仍需实板验证。
 
-远程FPGA当前接入PTB210、HC2A、EPSILON、BMP390、SHT45、TFA1500和单通道AI8，真实路径与默认模拟路径采用同一设备语义。RD105在HCD2不可用，LC只显示UART诊断。独立EM-FWC3、本地串口设备及PPK原始观测不由远程模拟服务替代。
+远程FPGA当前接入PTB210、HC2A、EPSILON、BMP390、SHT45、SDFM300和单通道AI8，真实路径与默认模拟路径采用同一设备语义。RD105在HCD2不可用，LC只显示UART诊断。独立EM-FWC3、本地串口设备及PPK原始观测不由远程模拟服务替代。
 
 协议依据 `Vapor_Radar_App_V2/Docs/protocol/FPGA_HOST_PROTOCOL_V1.0.md`、双 AD4630 修订及主机交接文档；未使用旧 VFLP 设计稿。
 

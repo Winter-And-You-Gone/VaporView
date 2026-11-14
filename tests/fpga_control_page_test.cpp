@@ -375,8 +375,10 @@ int main(int argc,char **argv) {
     auto *sensorChoice=page.findChild<QComboBox*>("fpgaAdvancedSensor");auto *sensorForms=page.findChild<QWidget*>("fpgaAdvancedSensorStack");
     auto *advancedTabs=page.findChild<QTabWidget*>("fpgaTabs");const int previousTab=advancedTabs->currentIndex();advancedTabs->setCurrentIndex(3);
     sensorChoice->setCurrentIndex(0);app.processEvents();app.processEvents();const int shortForm=sensorForms->parentWidget()->height();
-    sensorChoice->setCurrentIndex(5);app.processEvents();app.processEvents();
+    sensorChoice->setCurrentIndex(3);app.processEvents();app.processEvents();
     require(sensorForms->parentWidget()->height()>shortForm,"advanced sensor card height follows the visible form rather than the longest hidden form");
+    sensorChoice->setCurrentIndex(5);app.processEvents();app.processEvents();
+    require(sensorForms->parentWidget()->height()<=shortForm,"SDFM300 receive-only form no longer reserves space for withdrawn TFA controls");
     sensorChoice->setCurrentIndex(0);advancedTabs->setCurrentIndex(previousTab);app.processEvents();
     for(bool dark : {false,true}) for(bool english : {false,true}) for(int scale : {100,150}) {
         page.setLanguage(english); page.setTheme(dark,scale);

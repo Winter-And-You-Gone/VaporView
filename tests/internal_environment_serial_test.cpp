@@ -16,14 +16,6 @@ class TestPtbCollector : public VaporView::PtbCollector
 public:
     using VaporView::PtbCollector::run;
 };
-namespace VaporView {
-class LidarCollectorTestAccess : public LidarCollector
-{
-public:
-    using LidarCollector::run;
-    void setActiveProtocol(LidarProtocol protocol) { active_protocol_ = protocol; }
-};
-}
 int main(int argc,char **argv)
 {
     QCoreApplication app(argc,argv);
@@ -90,31 +82,6 @@ int main(int argc,char **argv)
         require(contexts.size() == 2 && contexts[1].correlationId.isEmpty() &&
                 contexts[1].sessionId.isEmpty() && contextCleared,
                 "later PTB startup cannot inherit a completed connection context");
-    }
-    {
-        LidarCollectorTestAccess lidar;
-        QVector<LogContext> contexts;
-        bool contextCleared = false;
-        lidar.setActiveProtocol(LidarProtocol::TFA1500DistanceFrame);
-        lidar.setStructuredLogCallback([&](LogLevel, const std::string&, const std::string& event,
-                                           const std::string&, DataCollector::StructuredLogFields) {
-            if (event == "lidar_distance_output_command_failed") {
-                const auto *context = currentLogContext();
-                contexts.push_back(context ? *context : LogContext{});
-            }
-        });
-        lidar.setStartupLogContext({QStringLiteral("lidar-connect"), QStringLiteral("lidar-session")});
-        std::thread worker([&] {
-            lidar.run();
-            contextCleared = currentLogContext() == nullptr;
-            lidar.run();
-            contextCleared = contextCleared && currentLogContext() == nullptr;
-        });
-        worker.join();
-        require(contexts.size() == 2 && contexts[0].correlationId == QStringLiteral("lidar-connect") &&
-                contexts[0].sessionId == QStringLiteral("lidar-session") &&
-                contexts[1].correlationId.isEmpty() && contexts[1].sessionId.isEmpty() && contextCleared,
-                "LiDAR startup failure keeps its connection context only for the first command");
     }
     SkyConfig config=SkyConfig::defaults();
     require(!config.bmp390.enabled&&!config.sht45.enabled&&config.bmp390.baud_rate==115200&&config.sht45.frequency_hz==1,

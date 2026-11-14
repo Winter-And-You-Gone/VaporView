@@ -214,10 +214,10 @@ private:
     void setupUi();
     QLabel *rate_label_ = nullptr;
     QLabel *distance_label_ = nullptr;
-    QLabel *strength_label_ = nullptr;
+    QLabel *range_label_ = nullptr;
     QLabel *status_label_ = nullptr;
     QLabel *distance_lbl_ = nullptr;
-    QLabel *strength_lbl_ = nullptr;
+    QLabel *range_lbl_ = nullptr;
     bool is_english_ = false;
 };
 

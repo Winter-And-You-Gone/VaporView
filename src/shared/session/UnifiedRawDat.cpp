@@ -134,7 +134,7 @@ bool isValidRecordType(quint16 sourceId, quint16 recordType)
         return recordType == kRecordTypeTemperatureHumidityRoAsciiResponse ||
                recordType == kRecordTypeTemperatureHumidityModbusResponse;
     case RawSourceId::Distance:
-        return recordType >= 1u && recordType <= 5u;
+        return recordType >= 1u && recordType <= 6u;
     case RawSourceId::Waveform:
         return recordType == kRecordTypeWaveformPayload || recordType == kRecordTypeHarmonicPair;
     case RawSourceId::LaserTemperatureController:

@@ -40,4 +40,10 @@ int main(){
     for(quint32 channel:{0u,3u})require(!FpgaSensorDecoder::decode(rd105Payload(2,channel,0,0),0x48).validity.measurement);
     require(!FpgaSensorDecoder::decode(rd105Payload(2,1,2000001,1),0x48).validity.measurement);
     require(!FpgaSensorDecoder::decode(rd105Payload(2,1,0,2),0x48).validity.measurement);
+    for(quint32 mm:{50u,43540u,300000u}) {
+        const auto range=FpgaSensorDecoder::decode(tlv(0x13,3,mm),0x45);
+        require(range.kind==SensorKind::Sdfm300 && range.validity.measurement && range.distanceMm==mm);
+    }
+    for(quint32 mm:{0u,49u,300001u,655350u,0xffffffffu})
+        require(!FpgaSensorDecoder::decode(tlv(0x13,3,mm),0x45).validity.measurement);
     std::cout<<"fpga sensor decoder tests passed\n"; }

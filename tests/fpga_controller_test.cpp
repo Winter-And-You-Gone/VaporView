@@ -37,7 +37,7 @@ bool readable(quint32 address){
     if(base==0x6000)return offset<=0x38;
     if(base==0x6200||base==0x6400)return offset<=0x3c;
     if(base==0x6300)return offset<=0x40;
-    if(base==0x6500)return offset<=0x5c;
+    if(base==0x6500)return offset<=0x10 || offset==0x1c || offset==0x20 || (offset>=0x28 && offset<=0x40) || offset==0x48 || offset==0x5c;
     if(base==0x6600)return offset<=0x64;
     if(base==0x6100)return offset<=0x5c;
     if(base==0x6700)return offset<=0x48;
@@ -63,7 +63,7 @@ public:
     QByteArray incoming;
     ScriptedTransport(){
         regs={{0x4000,0x00200101},{0x4100,0x00210101},{0x4018,0x00011800},{0x4118,0x00011800},
-            {0x5000,0x00300101},{0x5100,0x00310101},{0x5024,0x00040101},{0x5124,0x00040101},{0x6600,0x00460200},
+            {0x5000,0x00300101},{0x5100,0x00310101},{0x5024,0x00040101},{0x5124,0x00040101},{0x6600,0x00460200},{0x6500,0x00450200},
             {0x4010,1000000},{0x4014,1000000},{0x4114,1000000},{0x504c,10000},{0x514c,10000},
             {0x5050,100},{0x5150,100},{0x6614,1},{0x661c,1},{0x662c,1000},
             {0x6010,4800},{0x6018,500},{0x6210,460800},{0x6510,115200},{0x6314,250},{0x6414,2000}};
@@ -120,7 +120,7 @@ public:
                 if(base==0x3000||base==0x3100)regs[base+0x3c]=16666666;
             } else if(command.message==0xb){
                 if(command.address==17&&confirmTemperature){++regs[0x6648];regs[0x664c]=0x10000;const auto raw=quint16(qint32(command.value)/100000);regs[0x6654]=(quint32(raw)<<16)|raw;regs[0x6658]=quint32(raw)<<16;}
-                else if(command.address==1){const auto base=0x6000+(command.source-0x40)*0x100;regs[base+4]=command.value;regs[base+8]=(regs.value(base+8)&~9u)|(command.value&1);if(base==0x6000&&!command.value)regs[base+8]|=8;if(base==0x6500)pendingReads[base+8]=2;}
+                else if(command.address==1){const auto base=0x6000+(command.source-0x40)*0x100;regs[base+4]=command.value;regs[base+8]=(regs.value(base+8)&~9u)|(command.value&1);if(base==0x6000&&!command.value)regs[base+8]|=8;if(base==0x6500)regs[base+8]=(command.value&1)|2;}
             } else if(command.message==0xc && command.source==0x47) {
                 if(command.address==5)++regs[0x6738];
                 if(command.address==4)regs[0x6704]=command.value;
@@ -200,7 +200,7 @@ void startupWarningGrace(){
         if(scenario!=2)injectError();
         QTimer samples;samples.setInterval(25);
         QObject::connect(&samples,&QTimer::timeout,&f.controller,[&] {
-            FpgaSensor::Reading r;r.source=0x45;r.kind=FpgaSensor::SensorKind::Tfa1500;r.timestamp=2;
+            FpgaSensor::Reading r;r.source=0x45;r.kind=FpgaSensor::SensorKind::Sdfm300;r.timestamp=2;
             r.validity.structure=true;r.validity.measurement=scenario==0;r.distanceMm=1000;
             if(scenario>=3) {
                 r.source=source;r.kind=FpgaSensor::SensorKind::Ai8;r.schema=2;r.validity.measurement=true;
@@ -650,6 +650,14 @@ void connectionAndVersions(){
     require(!disabled.controller.ready()&&disabled.transport->writes().isEmpty(),"disabled USB transmitter fails ready condition without blind recovery writes");
 }
 void connectionRecovery(){
+    {
+        Fixture old;
+        old.transport->regs[0x6500]=0x00450100;
+        old.controller.connectDevice({},"auto");old.finish();
+        require(!old.controller.ready(),"old TFA module version cannot enable new SDFM300 control");
+        for(const auto &command:old.transport->commands)
+            require(command.message!=0xb,"model version mismatch prevents sensor commands");
+    }
     Fixture f;
     const QMap<quint32,quint32> saved{{0x2004,1},{0x2104,1},{0x3004,1},{0x3104,0},
         {0x4004,1},{0x4104,0},{0x5004,1},{0x5104,0},{0x403c,1},{0x413c,0},{0x50,1},
@@ -670,12 +678,12 @@ void connectionRecovery(){
         require(c.source==0x40||c.source==0x43||c.source==0x44||c.source==0x45,"disabled sensors are never started");
         if(c.source==0x40){ptbStops+=c.value==0;ptbStarts+=c.value==1;}
     }
-    bool tfaStopped=false;int tfaTransitionReads=0;
+    bool sdfmStopped=false;int sdfmStatusReads=0;
     for(const auto &c:f.transport->commands){
-        if(c.message==0xb&&c.source==0x45&&c.value==0){tfaStopped=true;tfaTransitionReads=0;}
-        if(tfaStopped&&c.message==2&&c.address==0x6508)++tfaTransitionReads;
+        if(c.message==0xb&&c.source==0x45&&c.value==0){sdfmStopped=true;sdfmStatusReads=0;}
+        if(sdfmStopped&&c.message==2&&c.address==0x6508)++sdfmStatusReads;
         if(c.message==0xb&&c.source==0x45&&c.value==1)
-            require(tfaStopped&&tfaTransitionReads>=3,"TFA restart waits until its pending serial transition finishes");
+            require(sdfmStopped&&sdfmStatusReads>=1,"SDFM300 restart verifies the receive gate without serial commands");
     }
     require(ptbStops==1&&ptbStarts==1,"enabled PTB restarts exactly once per connection");
     f.transport->clear();f.controller.refresh();f.finish();require(f.transport->writes().isEmpty(),"manual refresh never repeats connection reset");
@@ -960,7 +968,7 @@ void sensorConfiguration(){
             QJsonObject request{{"op","sensor_config"},{"source",source}};
             const bool uart=source==0x40 || source==0x42 || source==0x45;
             const quint32 address=uart?base+0x10:base+(source==0x46?0x2c:0x14);
-            const quint32 value=uart?(source==0x40?9600:source==0x42?921600:500000):500;
+            const quint32 value=uart?(source==0x40?9600:source==0x42?921600:460800):500;
             request[uart?"baud":"poll_ms"]=int(value);
             if(source==0x40)request["poll_ms"]=750;
             f.controller.configureSensor(request);f.finish();
@@ -981,7 +989,7 @@ void sensorConfiguration(){
     }
     f.transport->clear();f.controller.configureSensor({{"op","sensor_config"},{"source",0x40},{"baud",115200}});
     require(f.transport->commands.isEmpty(),"invalid range causes no hardware side effects");
-    for(const auto &entry:{qMakePair(0x601c,1u),qMakePair(0x641c,1u),qMakePair(0x6514,2u)}) {
+    for(const auto &entry:{qMakePair(0x601c,1u),qMakePair(0x641c,1u)}) {
         f.transport->regs[entry.first]=entry.second;f.transport->clear();f.diagnostics.clear();
         const quint16 source=entry.first==0x601c?0x40:entry.first==0x641c?0x44:0x45;
         f.controller.configureSensor(source==0x45?QJsonObject{{"op","sensor_config"},{"source",source},{"baud",115200}}:
@@ -1008,7 +1016,7 @@ void sensorConfiguration(){
         QJsonObject request{{"op","sensor"},{"source",source},{"enabled",true}};
         const quint32 base=0x6000+(source-0x40)*0x100;
         const bool baud=source==0x40||source==0x42||source==0x45;
-        const quint32 address=base+(baud?0x10:source==0x46?0x2c:0x14),value=baud?(source==0x40?9600:500000):500;
+        const quint32 address=base+(baud?0x10:source==0x46?0x2c:0x14),value=baud?(source==0x40?9600:460800):500;
         request[baud?"baud":"poll_ms"]=int(value);
         connected.controller.connectSensor(request);connected.finish();
         require(connected.diagnostics.isEmpty()&&connected.controller.hardwareValues().value(address)==value

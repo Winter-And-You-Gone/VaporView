@@ -512,7 +512,7 @@ void FpgaDeviceSession::processFrame(const FpgaVlp1::Frame& frame)
             data.valid = reading.validity.measurement;
             emit hc2aDataUpdated(data);
         }
-        else if (reading.kind == FpgaSensor::SensorKind::Tfa1500 && reading.distanceMm)
+        else if (reading.kind == FpgaSensor::SensorKind::Sdfm300 && reading.distanceMm)
         {
             LidarData data;
             data.distance_m = static_cast<double>(*reading.distanceMm) / 1000.0;

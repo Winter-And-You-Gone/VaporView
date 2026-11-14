@@ -3107,7 +3107,7 @@ void MainWindow::setupDeviceConfigPage()
     VaporView::configureSerialBaudRateCombo(
         state_->device_config_.lidar_baud_combo,
         VaporView::lidarBaudCapabilities(),
-        QStringLiteral("500000"));
+        QStringLiteral("460800"));
     VaporView::configureSerialBaudRateCombo(
         state_->device_config_.temperature_baud_combo,
         VaporView::rd105BaudCapabilities(),
@@ -3128,7 +3128,7 @@ void MainWindow::setupDeviceConfigPage()
                  kPtbMaxSampleRateHz,
                  kDefaultPtbSampleRateHz);
     populateRate(state_->device_config_.hc2a_rate_combo, 1000, kDefaultHc2aSampleRateHz);
-    populateRate(state_->device_config_.lidar_rate_combo, 100, kDefaultLidarSampleRateHz);
+    populateRate(state_->device_config_.lidar_rate_combo, 1000, kDefaultLidarSampleRateHz);
     populateRate(state_->device_config_.temperature_rate_combo,
                  kMaxTemperatureSampleRateHz,
                  kDefaultTemperatureSampleRateHz);
@@ -4244,7 +4244,7 @@ void MainWindow::updateDeviceConfigTexts()
             : QStringLiteral("HC2A\n温湿度计"));
     }
     if (state_->device_config_.epsilon_lbl) state_->device_config_.epsilon_lbl->setText(state_->is_english_ ? QStringLiteral("EPSILON2-D4G\nIntegrated Navigation") : QStringLiteral("EPSILON2-D4G\n组合导航"));
-    if (state_->device_config_.lidar_lbl) state_->device_config_.lidar_lbl->setText(state_->is_english_ ? QStringLiteral("TFA1500-L\nLiDAR") : QStringLiteral("TFA1500-L\n激光测距"));
+    if (state_->device_config_.lidar_lbl) state_->device_config_.lidar_lbl->setText(state_->is_english_ ? QStringLiteral("SDFM300\nLiDAR") : QStringLiteral("SDFM300\n激光测距"));
     if (state_->device_config_.temperature_lbl) state_->device_config_.temperature_lbl->setText(state_->is_english_ ? QStringLiteral("RD105\nLaser Thermal Controller") : QStringLiteral("RD105\n激光驱动温控器"));
     if (state_->device_config_.ai8_temperature_lbl) state_->device_config_.ai8_temperature_lbl->setText(state_->is_english_ ? QStringLiteral("AI-8288D92J0\n8-Channel Thermal") : QStringLiteral("AI-8288D92J0\n八路温控器"));
     if (state_->device_config_.tcp_wave_lbl) state_->device_config_.tcp_wave_lbl->setText(state_->is_english_ ? QStringLiteral("TCP Waveform") : QStringLiteral("TCP 波形"));
@@ -4283,7 +4283,7 @@ void MainWindow::updateDeviceConfigTexts()
     updateEnabledCheckPresentation(state_->device_config_.epsilon_enabled_check, QStringLiteral("EPSILON"));
     updateEnabledCheckPresentation(state_->device_config_.ptb_enabled_check, state_->is_english_ ? QStringLiteral("Pressure") : QStringLiteral("气压"));
     updateEnabledCheckPresentation(state_->device_config_.hc2a_enabled_check, state_->is_english_ ? QStringLiteral("Humidity") : QStringLiteral("温湿度"));
-    updateEnabledCheckPresentation(state_->device_config_.lidar_enabled_check, QStringLiteral("TFA1500-L"));
+    updateEnabledCheckPresentation(state_->device_config_.lidar_enabled_check, QStringLiteral("SDFM300"));
     updateEnabledCheckPresentation(state_->device_config_.temperature_enabled_check, QStringLiteral("RD105"));
     updateEnabledCheckPresentation(state_->device_config_.ai8_temperature_enabled_check, QStringLiteral("AI-8288"));
     updateEnabledCheckPresentation(state_->device_config_.tcp_wave_enabled_check,
@@ -4302,7 +4302,8 @@ void MainWindow::updateDeviceConfigTexts()
     }
     if (state_->device_config_.ptb_rate_lbl) state_->device_config_.ptb_rate_lbl->setText(state_->is_english_ ? "Rate:" : "频率:");
     if (state_->device_config_.hc2a_rate_lbl) state_->device_config_.hc2a_rate_lbl->setText(state_->is_english_ ? "Rate:" : "频率:");
-    if (state_->device_config_.lidar_rate_lbl) state_->device_config_.lidar_rate_lbl->setText(state_->is_english_ ? "Rate:" : "频率:");
+    if (state_->device_config_.lidar_rate_lbl) state_->device_config_.lidar_rate_lbl->setText(state_->is_english_ ? "Host rate:" : "刷新率:");
+    if (state_->device_config_.lidar_rate_combo) state_->device_config_.lidar_rate_combo->setToolTip(state_->is_english_ ? QStringLiteral("SDFM300: host refresh limit only. Device output automatically switches between 1000 and 50 Hz.") : QStringLiteral("SDFM300：仅限制主机刷新率；设备根据回波自动切换 1000 / 50 Hz，不下发频率命令。"));
     if (state_->device_config_.temperature_rate_lbl) state_->device_config_.temperature_rate_lbl->setText(state_->is_english_ ? "Poll:" : "轮询:");
     if (state_->device_config_.ai8_temperature_rate_lbl) state_->device_config_.ai8_temperature_rate_lbl->setText(state_->is_english_ ? "Poll:" : "轮询:");
     if (state_->epsilon_config_panel_)
