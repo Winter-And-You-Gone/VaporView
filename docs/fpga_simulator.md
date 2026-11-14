@@ -74,7 +74,7 @@ FPGA 页在界面测试模式中禁用记录按钮，不再伪造记录成功；
 
 兼容测试可显式选择`FpgaSimulatorFirmware::HistoricalExtensions`，使用历史`0x3F`扩展及RD105/AI8扫描夹具；正常GUI、独立模拟服务和默认工厂都使用HCD2。历史夹具不证明当前固件具有RD105、自动扫描或参数事务能力，不能用其结果代替HCD2验收。
 
-2026-11-14新增`FpgaSimulatorFirmware::Hcd2Ai8Scan`测试夹具，对齐下位机新的扫描源码契约：capability为`0x2B`、AI8 feature为`0x0B`，保留LC标识，只开放八路扫描、逐路缓存/计数和定向设温，不开放通用参数事务或RD105。默认模拟器仍为`CurrentHcd2`的`0x29`。该夹具通过`fpga_extensions_test`验证主机兼容性；下位机新BIT已生成但尚未加载及实板验收，不能用模拟结果推断当前实板已支持扫描，交付边界见[联调问题记录](onsite_test_issues_2026-11-14.md)。
+2026-11-14新增`FpgaSimulatorFirmware::Hcd2Ai8Scan`测试夹具，对齐下位机新的扫描源码契约：capability为`0x2B`、AI8 feature为`0x0B`，保留LC标识，只开放八路扫描、逐路缓存/计数和定向设温，不开放通用参数事务或RD105。默认模拟器仍为`CurrentHcd2`的`0x29`。该夹具通过`fpga_extensions_test`验证主机兼容性；下位机新BIT已JTAG加载并只读确认能力及feature，八路实物采集待验，模拟结果不能替代实物采集验收，交付边界见[联调问题记录](onsite_test_issues_2026-11-14.md)。
 
 BMP390 帧携带原始气压/温度 ADC 和 21 字节出厂标定系数；上位机先求芯片补偿温度，再按 Bosch 公式求气压，首页显示的是补偿后气压（Pa 转 hPa）。此补偿使用 BMP390 自身温度，与 SHT45 的内部温度显示独立；缺少标定系数时不显示未经补偿的 ADC 值。
 
