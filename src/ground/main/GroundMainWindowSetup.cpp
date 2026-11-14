@@ -5374,7 +5374,7 @@ void MainWindow::setupDataPanels()
     motionChannelCombo->setFocusPolicy(Qt::TabFocus);
     for (int channel = 1; channel <= 3; ++channel)
         motionChannelCombo->addItem(QStringLiteral("通道 %1").arg(channel), channel);
-    motionTitleLayout->addWidget(motionChannelCombo, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    motionChannelCombo->hide(); // Keep channel routing available internally; use channel 1 in the UI.
     motionTitleLayout->addStretch();
     motionLayout->addWidget(motionTitleBar);
     sensorColumnLayout->addWidget(state_->home_motion_card_, 1);

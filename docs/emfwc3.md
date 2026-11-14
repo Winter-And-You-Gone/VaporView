@@ -32,17 +32,17 @@ card but require an appropriate manufacturer runtime before connection.
 1. Open **Device configuration → Motion control · EM-FWC3**.
 2. Select the actual COM port. Port numbers may change between computers or
    USB sockets; CH340 identifies the bridge, not uniquely the attached product.
-3. Use the channel dropdown to check each channel's physical motor type
-   (EM-FPM or CEM-FPM; the confirmed project hardware defaults to CEM-FPM on
-   all three channels), then explicitly
-   confirm the three types. They are used by the SDK's angle conversion.
+3. The fitted motor is fixed to CEM-FPM (the manufacturer's SDK spelling),
+   and the UI operates channel 1. There is no model selector, model-confirmation
+   checkbox or channel selector; legacy saved motor types are ignored.
 4. Connect. Success requires initialization, serial open, motor-type setup,
    three finite position responses, and a speed response. Connection never
    homes, moves, changes speed, clears the origin, or writes EEPROM.
-5. Operate the selected channel directly in the same card. Channels 1–3 map
-   to SDK motor indices 0–2. Switching channels retains each channel's target,
-   step and motor type. The serial selector, refresh, connect and disconnect
-   controls are in the card header; no separate motion page is needed.
+5. Operate channel 1 directly in the same card or from the home motion card.
+   The serial selector, refresh, connect and disconnect controls are in the
+   configuration card header; no separate motion page is needed. The internal
+   three-channel routing and per-channel target/step state are retained, with
+   channels 1–3 mapping to SDK indices 0–2; both channel selectors stay hidden.
 
 Each channel provides absolute positioning, relative steps, homing, continuous
 motion, and stop. Homing and continuous motion require explicit confirmation.
@@ -76,7 +76,7 @@ Disconnect, application shutdown, and connection-loss cleanup attempt to stop
 channels commanded to move by this session, then close the device and release
 the SDK. Read-only connections send no stop command on close. UI test mode
 cannot start while a real motion session is open or connecting, and its write
-barrier blocks motion connections/commands. Port and model choices use the
+barrier blocks motion connections/commands. Port choices use the
 normal settings write barrier; tests isolate settings with the shared sandbox.
 
 ## Verification
@@ -86,9 +86,9 @@ routing, relative/absolute commands, speed readback, explicit EEPROM writes,
 SDK errors, invalid inputs, nonfinite feedback, failed handshakes, lost-device
 cleanup, and stopping owned movement on shutdown.
 
-`emfwc3_ui_test` uses that same isolated SDK to verify explicit model
-confirmation, startup without motion, operation from the real main window,
-independence from Direct/FPGA switching, channel selection and retained inputs,
+`emfwc3_ui_test` uses that same isolated SDK to verify the fixed CEM-FPM model,
+hidden channel selectors, startup without motion, operation from the real main window,
+independence from Direct/FPGA switching, internal channel routing and retained inputs,
 command routing, the UI test barrier, and compact card layout at 100%/130%
 font scales in light/dark themes.
 

@@ -103,6 +103,11 @@ int main(int argc, char **argv)
     QLibrary fake(QString::fromLocal8Bit(argv[1]) + QStringLiteral("/LB_Control_Library_x64")); check(fake.load(), qPrintable(fake.errorString()));
     const auto reset = reinterpret_cast<void(*)()>(fake.resolve("testReset"));
     const auto motions = reinterpret_cast<int(*)()>(fake.resolve("testMotionCount")); check(reset && motions, "test SDK symbols exist"); reset();
+    const auto cemFpmCount = reinterpret_cast<int(*)()>(fake.resolve("testCemFpmCount")); check(cemFpmCount, "motor type counter exists");
+    {
+        QSettings settings(QStringLiteral("VaporView"), QStringLiteral("EmFwc3"));
+        for (int i = 0; i < 3; ++i) settings.setValue(QStringLiteral("motor_type_%1").arg(i), QStringLiteral("EM-FPM"));
+    }
     {
         MainWindow window; window.resize(1280, 850); window.show();
         auto *page = find<MotionControlPage>(window, "emFwc3ConnectionPanel");
@@ -118,9 +123,10 @@ int main(int argc, char **argv)
         auto *homePlus = find<QPushButton>(*homeMotion, "homeMotionPlus");
         auto *homeCard = find<QWidget>(window, "homeMotionCard");
         auto *homeHeader = homeCard->findChild<QWidget *>(QStringLiteral("sectionTitleBar"), Qt::FindDirectChildrenOnly);
-        check(homeHeader && homeHeader->isAncestorOf(homeSelector), "home channel selector is in the title bar");
+        check(homeHeader && homeHeader->isAncestorOf(homeSelector) && homeSelector->isHidden(),
+              "home channel selector stays hidden without removing its routing code");
         check(homeSelector->count() == 3 && homeSelector->currentIndex() == 0,
-              "home selector defaults to channel one and offers three channels");
+              "home controls default to channel one and retain internal multi-channel support");
         check(!homeStop->isEnabled(), "home stop is disabled while disconnected");
         check(!homeGo->isEnabled() && !homeMinus->isEnabled() && !homePlus->isEnabled(),
               "home motion actions are disabled while disconnected");
@@ -138,11 +144,14 @@ int main(int argc, char **argv)
             check(action->focusPolicy() == Qt::TabFocus && !action->accessibleName().isEmpty(), "independent device actions follow keyboard-focus and accessibility conventions");
         auto *port = find<QComboBox>(*panel, "emFwc3Port"); port->setEditText(QStringLiteral("FAKE-COM"));
         for (int i = 1; i <= 3; ++i)
-            check(panel->findChild<QComboBox*>(QStringLiteral("emFwc3MotorType%1").arg(i))->currentText() == QStringLiteral("CEM-FPM"), "new setup defaults to the confirmed CEM-FPM hardware");
+            check(panel->findChild<QLabel*>(QStringLiteral("emFwc3MotorType%1").arg(i))->text() == QStringLiteral("CEM-FPM") &&
+                  !panel->findChild<QComboBox*>(QStringLiteral("emFwc3MotorType%1").arg(i)),
+                  "motor model is fixed to CEM-FPM despite legacy EM-FPM settings");
         check(!page->session()->state().connected && !find<QPushButton>(*page, "emFwc3Go1")->isEnabled(), "startup never connects or enables motion");
-        check(!connect->isEnabled(), "motor types must be checked before connecting");
-        find<QCheckBox>(*panel, "emFwc3ConfirmTypes")->setChecked(true); check(connect->isEnabled(), "explicit model confirmation enables connection");
+        check(!panel->findChild<QCheckBox*>(QStringLiteral("emFwc3ConfirmTypes")) && connect->isEnabled(),
+              "connection needs only a COM port with no model-confirmation checkbox");
         connect->click(); until("connect completes", [&] { return page->session()->state().connected && !page->session()->state().busy; });
+        check(cemFpmCount() == 3, "SDK always receives fixed CEM-FPM types while retaining its three-channel interface");
         check(homeStop->isEnabled() && homeConnection->text().contains(QStringLiteral("已连接")),
               "home panel follows the device page's connected session");
         check(motions() == 0, "connecting from configuration never causes motion");
@@ -160,7 +169,8 @@ int main(int argc, char **argv)
         check(header->isAncestorOf(port) && header->isAncestorOf(connect) &&
               header->isAncestorOf(find<QPushButton>(*panel, "emFwc3Disconnect")), "serial and connection actions are in the card title bar");
         auto *selector = find<QComboBox>(*page, "emFwc3ChannelSelector");
-        check(selector->count() == 3, "one selector exposes all three channels");
+        check(selector->isHidden() && selector->currentIndex() == 0 && selector->count() == 3,
+              "configuration hides channel selection and defaults to channel one");
         for (int i = 1; i <= 3; ++i) {
             selector->setCurrentIndex(i - 1); QApplication::processEvents();
             for (int j = 1; j <= 3; ++j)
@@ -281,6 +291,7 @@ int main(int argc, char **argv)
         for (bool english : {false, true}) for (bool dark : {false, true}) for (int scale : {100, 130}) {
             QFont font = app.font(); font.setPointSizeF(10 * scale / 100.0); host.setFont(font);
             page->setTheme(dark, scale); page->setLanguage(english);
+            check(find<QComboBox>(*page, "emFwc3ChannelSelector")->isHidden(), "theme and language changes never reveal the channel selector");
             for (int width : {1200, 1000, 800, 600}) {
                 host.resize(width, 1100); QApplication::processEvents();
                 check(host.width() == width, "compact controls fit requested window width at both font scales");

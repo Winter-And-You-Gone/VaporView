@@ -67,9 +67,7 @@ struct MotionControlPage::State
     QStackedWidget *channels = nullptr;
     std::array<QLabel*, 3> positions{};
     std::array<QDoubleSpinBox*, 3> targets{}, steps{};
-    std::array<QComboBox*, 3> types{};
     QComboBox *port = nullptr;
-    QCheckBox *confirmTypes = nullptr;
     QPushButton *connect = nullptr, *disconnect = nullptr, *refreshPorts = nullptr, *stopAll = nullptr;
     QLabel *connection = nullptr, *status = nullptr, *speedReadback = nullptr;
     QSpinBox *speed = nullptr;
@@ -116,11 +114,9 @@ MotionControlPage::MotionControlPage(QWidget *parent, const QString& sdkDirector
     s.connection = new QLabel(content); s.connection->setObjectName(QStringLiteral("emFwc3ConnectionState")); layout->addWidget(s.connection);
     layout->addWidget(label(content, "本机 USB 虚拟串口直连，独立于直连 / FPGA 与本地 / 远端采集。",
         "Local USB virtual COM, independent of Direct / FPGA and Local / Remote acquisition."));
-    auto *channelRow = new QHBoxLayout;
-    channelRow->addWidget(label(content, "通道", "Channel"));
     s.channel = new QComboBox(content); s.channel->setObjectName(QStringLiteral("emFwc3ChannelSelector"));
-    s.channel->addItems({QString(), QString(), QString()}); channelRow->addWidget(s.channel); channelRow->addStretch();
-    layout->addLayout(channelRow);
+    s.channel->addItems({QString(), QString(), QString()});
+    s.channel->hide(); // Keep multi-channel routing; this installation exposes channel 1 only.
     s.channels = new QStackedWidget(content); s.channels->setObjectName(QStringLiteral("emFwc3Channels"));
     connect(s.channel, &QComboBox::currentIndexChanged, s.channels, &QStackedWidget::setCurrentIndex);
     QSettings settings("VaporView", "EmFwc3");
@@ -130,14 +126,12 @@ MotionControlPage::MotionControlPage(QWidget *parent, const QString& sdkDirector
         auto *v = new QVBoxLayout(card); v->setContentsMargins(0, 0, 0, 0); v->setSpacing(8);
         auto *readback = new QHBoxLayout;
         readback->addWidget(label(card, "电机型号", "Motor type"));
-        s.types[i] = new QComboBox(card); s.types[i]->setObjectName(QStringLiteral("emFwc3MotorType") + suffix);
-        s.types[i]->addItems({QStringLiteral("EM-FPM"), QStringLiteral("CEM-FPM")});
-        s.types[i]->setCurrentText(settings.value(QStringLiteral("motor_type_%1").arg(i), QStringLiteral("CEM-FPM")).toString());
-        readback->addWidget(s.types[i]); readback->addSpacing(12);
+        auto *motorType = new QLabel(QStringLiteral("CEM-FPM"), card);
+        motorType->setObjectName(QStringLiteral("emFwc3MotorType") + suffix);
+        readback->addWidget(motorType); readback->addSpacing(12);
         readback->addWidget(label(card, "当前角度", "Current angle"));
         s.positions[i] = new QLabel(QStringLiteral("—"), card);
         s.positions[i]->setObjectName(QStringLiteral("emFwc3Position") + suffix); readback->addWidget(s.positions[i]); readback->addStretch(); v->addLayout(readback);
-        connect(s.types[i], &QComboBox::currentTextChanged, this, [this] { state_->confirmTypes->setChecked(false); saveSettings(); });
         auto *moves = new QGridLayout; moves->setHorizontalSpacing(12); moves->setVerticalSpacing(6);
         s.motionLayouts[i] = moves;
         auto *targetGroup = new QWidget(card); auto *targetRow = new QHBoxLayout(targetGroup);
@@ -196,9 +190,6 @@ MotionControlPage::MotionControlPage(QWidget *parent, const QString& sdkDirector
         s.channels->addWidget(card);
     }
     layout->addWidget(s.channels);
-    s.confirmTypes = new DeviceEnabledCheckBox(content); s.confirmTypes->setObjectName(QStringLiteral("emFwc3ConfirmTypes"));
-    wording(s.confirmTypes, "已核对三路电机型号（影响角度换算）", "All three motor types checked (angle conversion)"); layout->addWidget(s.confirmTypes);
-    connect(s.confirmTypes, &QCheckBox::toggled, this, [this] { refresh(); });
     auto *separator = new QFrame(content); separator->setFrameShape(QFrame::HLine); layout->addWidget(separator);
     layout->addWidget(label(content, "设备公共参数 · 速度单位及有效范围请按实际电机确认", "Device-wide parameters · verify speed units and range for the fitted motor"));
     s.deviceLayout = new QGridLayout; s.deviceLayout->setHorizontalSpacing(12); s.deviceLayout->setVerticalSpacing(6);
@@ -229,8 +220,7 @@ MotionControlPage::MotionControlPage(QWidget *parent, const QString& sdkDirector
     connect(s.refreshPorts, &QPushButton::clicked, this, &MotionControlPage::refreshPorts);
     connect(s.connect, &QPushButton::clicked, this, [this] {
         if (VaporView::settingsWritesSuspended()) return;
-        QStringList types;
-        for (auto *combo : state_->types) types << combo->currentText();
+        const QStringList types{QStringLiteral("CEM-FPM"), QStringLiteral("CEM-FPM"), QStringLiteral("CEM-FPM")};
         saveSettings(); state_->session->connectDevice(state_->port->currentData().isValid()
             && state_->port->currentText() == state_->port->itemText(state_->port->currentIndex())
                 ? state_->port->currentData().toString() : state_->port->currentText().trimmed(), types);
@@ -293,8 +283,6 @@ void MotionControlPage::saveSettings()
     const QString port = s.port->currentIndex() >= 0 && s.port->currentText() == s.port->itemText(s.port->currentIndex())
         ? s.port->currentData().toString() : s.port->currentText().trimmed();
     VaporView::setPersistentSetting(settings, QStringLiteral("port"), port);
-    for (int i = 0; i < 3; ++i)
-        VaporView::setPersistentSetting(settings, QStringLiteral("motor_type_%1").arg(i), s.types[i]->currentText());
 }
 void MotionControlPage::run(EmFwc3Session::Command command, int channel, double value)
 {
@@ -319,9 +307,8 @@ void MotionControlPage::refresh()
     for (auto *w : s.stopActions) w->setEnabled(snapshot.connected);
     {
         const bool editable = !snapshot.connected && !snapshot.busy;
-        s.port->setEnabled(editable); s.refreshPorts->setEnabled(editable); s.confirmTypes->setEnabled(editable);
-        for (auto *combo : s.types) combo->setEnabled(editable);
-        s.connect->setEnabled(editable && s.confirmTypes->isChecked() && !s.port->currentText().trimmed().isEmpty());
+        s.port->setEnabled(editable); s.refreshPorts->setEnabled(editable);
+        s.connect->setEnabled(editable && !s.port->currentText().trimmed().isEmpty());
         s.disconnect->setEnabled(snapshot.connected && !snapshot.busy);
     }
 }
