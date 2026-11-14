@@ -10,6 +10,7 @@
 #include <QMutex>
 #include <QMutexLocker>
 #include <cmath>
+#include <limits>
 
 namespace VaporView {
 class SkyRuntimeEpsilonContextTestAccess {
@@ -17,6 +18,16 @@ public:
     static void setFpgaTimeout(SkyDeviceManager& manager, int timeoutMs) {
         manager.ensureFpgaBackend();
         manager.fpga_backend_->setOperationTimeoutForTesting(timeoutMs);
+    }
+    static void deliverAi8(SkyRuntime& runtime, const Ai8TemperatureControllerProtocol::LiveData& data,
+                           DeviceState state) {
+        runtime.device_manager_.setState(SkyDeviceId::Ai8TemperatureController, state);
+        runtime.device_manager_.handleAi8TemperatureControllerData(data);
+    }
+    static void resendStaleAi8(SkyRuntime& runtime) {
+        runtime.device_manager_.setState(SkyDeviceId::Ai8TemperatureController, DeviceState::Error);
+        runtime.device_manager_.ai8_temperature_controller_status_.last_data_time_us = 1;
+        runtime.sendAi8TemperatureControllerStatus();
     }
 };
 class SkyRuntimeStorageFailureTestAccess {
@@ -44,6 +55,53 @@ public:
         return (event ? recorder.event_log_file_ : recorder.error_log_file_).open(QIODevice::WriteOnly | QIODevice::Append);
     }
 };
+}
+
+static void ai8FaultStatusTest()
+{
+    namespace Ai8 = VaporView::Ai8TemperatureControllerProtocol;
+    QTemporaryDir directory;
+    require(directory.isValid(), "isolated AI8 fault runtime fixture");
+    SkyRuntimeOptions options;
+    options.config_path = directory.filePath(QStringLiteral("sky.json"));
+    options.simulate_fpga = true;
+    SkyRuntime runtime(options);
+    QVector<Ai8::LiveData> received;
+    QObject::connect(&runtime, &SkyRuntime::telemetryFrameReady, [&](MsgType type, const QByteArray& payload) {
+        if (type != MsgType::Ai8TemperatureControllerStatus) return;
+        Ai8::LiveData data;
+        require(TelemetryCodec::parseAi8TemperatureControllerStatus(payload, data), "parse AI8 fault telemetry");
+        received.append(data);
+    });
+    Ai8::LiveData fault;
+    fault.measuredC.fill(std::numeric_limits<double>::quiet_NaN());
+    fault.detailedChannel = 1;
+    fault.controlRaw = 1;
+    fault.alarmRaw = 1;
+    fault.mainStatusValid = true;
+    fault.mainStatusRaw = 0x214;
+    SkyRuntimeEpsilonContextTestAccess::deliverAi8(runtime, fault, DeviceState::Error);
+    require(received.size() == 1 && !received.last().valid &&
+                std::isnan(received.last().measuredC[0]) && received.last().detailedChannel == 1 &&
+                received.last().alarmRaw == 1 && received.last().mainStatusValid &&
+                received.last().mainStatusRaw == 0x214,
+            "an input fault is transmitted with confirmed metadata despite having no valid PV");
+    fault.alarmRaw = 0;
+    fault.mainStatusRaw = 0x100;
+    SkyRuntimeEpsilonContextTestAccess::deliverAi8(runtime, fault, DeviceState::Error);
+    require(received.size() == 2 && !received.last().valid && received.last().mainStatusRaw == 0x100,
+            "an instrument system fault reaches remote diagnostics without a valid measurement");
+    Ai8::LiveData unknown;
+    unknown.measuredC.fill(std::numeric_limits<double>::quiet_NaN());
+    SkyRuntimeEpsilonContextTestAccess::deliverAi8(runtime, unknown, DeviceState::Error);
+    require(received.size() == 3 && !received.last().valid && !received.last().mainStatusValid &&
+                !received.last().alarmStatusValid && !received.last().controlStatesValid &&
+                received.last().detailedChannel == 0 &&
+                received.last().controlStates[0] == Ai8::ChannelControlState::Unknown,
+            "a failed unknown poll clears older telemetry without claiming confirmed alarm metadata");
+    SkyRuntimeEpsilonContextTestAccess::deliverAi8(runtime, fault, DeviceState::Disconnected);
+    SkyRuntimeEpsilonContextTestAccess::resendStaleAi8(runtime);
+    require(received.size() == 3, "disconnected or stale AI8 snapshots are not transmitted");
 }
 
 class FailingFpgaTransport final : public FpgaUsbTransport {
@@ -297,6 +355,8 @@ static void storageFailureContextTest(bool stale, bool writerFailure = false, bo
 int main(int argc,char **argv)
 {
     QCoreApplication app(argc,argv);
+    ai8FaultStatusTest();
+    if (app.arguments().contains("--ai8-fault-status")) return 0;
     if (app.arguments().contains("--storage-failure-context")) {
         sessionLogFailureContextTest();
         storageFailureContextTest(false);

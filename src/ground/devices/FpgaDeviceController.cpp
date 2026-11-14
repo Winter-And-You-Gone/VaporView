@@ -12,6 +12,7 @@
 #include <QThread>
 #include <QtEndian>
 #include <cmath>
+#include <limits>
 #include <utility>
 
 namespace VaporView::Ground::Devices
@@ -20,6 +21,11 @@ namespace {
 constexpr quint32 kBases[] = {0x2000,0x2100,0x3000,0x3100,0x4000,0x4100,0x5000,0x5100,
                               0x6000,0x6100,0x6200,0x6300,0x6400,0x6500,0x6600};
 QString hex(quint32 value) { return QStringLiteral("0x%1").arg(value, 8, 16, QLatin1Char('0')); }
+qint64 startupWarningGraceMs(quint16 source,const QMap<quint32,quint32>& registers)
+{
+    // PTB performs FORM0/RESET and a two-second settling wait before polling.
+    return source==0x40?2000+qMax<qint64>(3000,registers.value(0x6018)):3000;
+}
 }
 
 quint64 FpgaDeviceController::nowUs() { return quint64(QDateTime::currentMSecsSinceEpoch()) * 1000; }
@@ -184,9 +190,28 @@ void FpgaDeviceController::logManagementEvent(const QJsonObject& event, bool aft
         :QStringLiteral("FPGA 上传发生丢包：事件 %1，生产端合计 %2。注意两个计数分别统计。")
         .arg(words[4].toDouble()).arg(words[5].toDouble());
     record.fields={{"event","fpga_firmware_event"},{"message_id",msg},{"source_id",source},{"tick",event.value("tick").toString()},{"payload",event.toVariantMap()},{"ui_visibility","attention"}};
+    const auto ai8=source==0x46?latestReadings_.value(source).ai8:std::optional<FpgaSensor::Ai8Sample>{};
+    if(ai8 && ai8->snapshotValid) {
+        const QString channelState=ai8->inputError?QStringLiteral("本路输入错误/超量程"):
+            ai8->systemFault?QStringLiteral("仪表系统故障"):
+            ai8->alarm?QStringLiteral("本路阈值/状态报警，测量值仍可用"):QStringLiteral("本路测量正常");
+        record.message+=QStringLiteral(" 当前 CH%1 快照：%2；%3；alarm=%4，host=%5。")
+            .arg(ai8->channel).arg(channelState,ai8->globalAlarm?QStringLiteral("仪表有全局报警"):QStringLiteral("无全局报警"),hex(ai8->alarm),hex(ai8->host));
+        record.fields.insert(QStringLiteral("ai8_channel"),ai8->channel);
+        record.fields.insert(QStringLiteral("ai8_alarm"),ai8->alarm);
+        record.fields.insert(QStringLiteral("ai8_host"),ai8->host);
+        record.fields.insert(QStringLiteral("ai8_input_error"),ai8->inputError);
+        record.fields.insert(QStringLiteral("ai8_system_fault"),ai8->systemFault);
+        record.fields.insert(QStringLiteral("ai8_global_alarm"),ai8->globalAlarm);
+    }
     if(afterStartup) {
-        record.message=QStringLiteral("启动等待 3 秒后仍异常；启动期间记录：")+record.message;
-        record.fields.insert(QStringLiteral("startup_grace_ms"),3000);
+        const qint64 grace=startupWarningGraceMs(source,registers_);
+        const QString seconds=QString::number(grace/1000.0,'g',6);
+        const bool globalOnly=ai8 && ai8->measurementValid && ai8->globalAlarm && !ai8->alarm && !ai8->systemFault;
+        record.message=(globalOnly
+            ?QStringLiteral("启动等待 %1 秒后，当前通道测量正常，仪表仍有全局报警；启动期间记录：")
+            :QStringLiteral("启动等待 %1 秒后仍异常；启动期间记录：")).arg(seconds)+record.message;
+        record.fields.insert(QStringLiteral("startup_grace_ms"),grace);
         const auto context = startupWarningLogContexts_.constFind(source);
         if (context != startupWarningLogContexts_.cend()) {
             record.correlation_id = context->correlationId;
@@ -576,10 +601,21 @@ void FpgaDeviceController::reportConnection(quint16 source, const QString& resul
         {QStringLiteral("device"),names.value(source)},{QStringLiteral("fpga_source"),source},
         {QStringLiteral("result"),result},{QStringLiteral("reason_code"),reasonCode},
         {QStringLiteral("reason"),detail},{QStringLiteral("ui_visibility"),QStringLiteral("attention")}};
+    if(reasonCode==QStringLiteral("STARTUP_UNHEALTHY"))
+        record.fields.insert(QStringLiteral("startup_grace_ms"),startupWarningGraceMs(source,registers_));
     if(source) {
         const quint32 base=0x6000+(source-0x40)*0x100;
         record.fields.insert(QStringLiteral("module_status"),registers_.value(base+8));
         record.fields.insert(QStringLiteral("module_error"),registers_.value(base+12));
+        const auto ai8=source==0x46?latestReadings_.value(source).ai8:std::optional<FpgaSensor::Ai8Sample>{};
+        if(ai8 && ai8->snapshotValid) {
+            record.fields.insert(QStringLiteral("ai8_channel"),ai8->channel);
+            record.fields.insert(QStringLiteral("ai8_alarm"),ai8->alarm);
+            record.fields.insert(QStringLiteral("ai8_host"),ai8->host);
+            record.fields.insert(QStringLiteral("ai8_input_error"),ai8->inputError);
+            record.fields.insert(QStringLiteral("ai8_system_fault"),ai8->systemFault);
+            record.fields.insert(QStringLiteral("ai8_global_alarm"),ai8->globalAlarm);
+        }
     }
     const auto context = pendingConnectionLogContexts_.constFind(source);
     if (context != pendingConnectionLogContexts_.cend()) {
@@ -607,9 +643,9 @@ void FpgaDeviceController::confirmConnection(quint16 source)
         pendingConnections_.remove(source); operationConnections_.remove(source); pendingConnectionLogContexts_.remove(source); return;
     }
     const quint32 pollAddress=source==0x40?0x6018:source==0x41?0x611c:source==0x43?0x6314:source==0x44?0x6414:source==0x46?0x662c:source==0x48?0x682c:0;
-    const qint64 timeout=qMax<qint64>(8000,3*qint64(registers_.value(pollAddress))+5000);
+    const qint64 timeout=qMax<qint64>(8000,3*qint64(pollAddress?registers_.value(pollAddress):0)+5000);
     pendingConnections_[source]=QDateTime::currentMSecsSinceEpoch()+timeout;
-    startupWarningDeadlines_[source]=connectionClock_.elapsed()+3000;
+    startupWarningDeadlines_[source]=connectionClock_.elapsed()+startupWarningGraceMs(source,registers_);
     reportConnection(source,QStringLiteral("waiting"),QStringLiteral("CHANNEL_ENABLED"),QStringLiteral("读回确认，等待设备有效数据。"));
 }
 
@@ -626,8 +662,16 @@ void FpgaDeviceController::checkConnectionResults()
             && ai8Valid && now-lastReadingMs_.value(i.key())<=5000) {
             reportConnection(i.key(),QStringLiteral("succeeded"),QStringLiteral("VALID_SAMPLE"),QStringLiteral("已收到设备有效数据。"));
         } else if(now>=i.value()) {
-            reportConnection(i.key(),QStringLiteral("failed"),QStringLiteral("NO_VALID_SAMPLE"),
-                QStringLiteral("等待有效数据超时；通道已启用，请检查设备供电、接线及通信参数。"));
+            const bool currentAi8=measurements.ai8 && measurements.ai8->snapshotValid && now-lastReadingMs_.value(i.key())<=5000;
+            if(currentAi8 && measurements.ai8->systemFault)
+                reportConnection(i.key(),QStringLiteral("failed"),QStringLiteral("AI8_SYSTEM_FAULT"),
+                    QStringLiteral("AI-8 已响应，但主机状态报告系统故障；测量值不可用，请检查仪表。"));
+            else if(currentAi8 && measurements.ai8->inputError)
+                reportConnection(i.key(),QStringLiteral("failed"),QStringLiteral("AI8_INPUT_ERROR"),
+                    QStringLiteral("AI-8 已响应，但 CH%1 输入错误/超量程；请检查该路接线及 In/InP 配置，故障值不作正常温度。")
+                        .arg(measurements.ai8->channel));
+            else reportConnection(i.key(),QStringLiteral("failed"),QStringLiteral("NO_VALID_SAMPLE"),
+                    QStringLiteral("等待有效数据超时；通道已启用，请检查设备供电、接线及通信参数。"));
         } else continue;
         pendingConnections_.remove(i.key()); operationConnections_.remove(i.key()); pendingConnectionLogContexts_.remove(i.key());
     }
@@ -649,17 +693,18 @@ void FpgaDeviceController::checkStartupWarnings()
         const bool fresh=lastReadingMs_.contains(source)
             && QDateTime::currentMSecsSinceEpoch()-lastReadingMs_.value(source)<=(source==0x45?1000:5000);
         const bool healthy=fresh && validity.structure && validity.crc && validity.deviceOnline && validity.measurement
-            && (!sample.ai8 || (sample.ai8->measurementValid && !sample.ai8->alarmActive))
+            && (!sample.ai8 || (sample.ai8->measurementValid && !sample.ai8->alarm && !sample.ai8->systemFault))
             && sample.reading.hc2aDeviceError.value_or(0)==0;
         const auto words=event.value("words").toArray();
         const quint32 errors=words.size()==7?quint32(words[1].toDouble()):0;
         const quint32 base=0x6000+(source-0x40)*0x100;
         const bool hardwareFault=(errors & registers_.value(base+12) & 0x30)!=0;
         const bool newerSample=event.isEmpty() || sample.reading.timestamp>=event.value("tick").toString().toULongLong();
-        if(!(healthy && newerSample && !hardwareFault)) {
+        if(!(healthy && newerSample && !hardwareFault) || (sample.ai8 && sample.ai8->globalAlarm && !event.isEmpty())) {
             if(!event.isEmpty())logManagementEvent(event,true);
             else reportConnection(source,QStringLiteral("warning"),QStringLiteral("STARTUP_UNHEALTHY"),
-                QStringLiteral("启动等待 3 秒后仍未获得有效测量或设备仍在报警，请检查设备状态。"));
+                QStringLiteral("启动等待 %1 秒后仍未获得有效测量或设备仍在报警，请检查设备状态。")
+                    .arg(QString::number(startupWarningGraceMs(source,registers_)/1000.0,'g',6)));
         }
         startupWarningLogContexts_.remove(source);
     }
@@ -1176,8 +1221,10 @@ void FpgaDeviceController::acceptReading(const FpgaSensor::Reading& reading)
     if(contextual.source==0x48 && !contextual.rd105Channel && registers_.contains(0x681c))contextual.rd105Channel=registers_.value(0x681c);
     auto adapted=adapter_.accept(contextual);
     const bool keepHealthyScan=reading.source==0x46 && reading.schema==3 && !adapted.reading.validity.measurement
+        && !(adapted.ai8 && adapted.ai8->snapshotValid && adapted.ai8->systemFault)
         && latestReadings_.contains(reading.source) && latestReadings_.value(reading.source).reading.validity.measurement;
     if(!keepHealthyScan)latestReadings_[reading.source]=adapted;
+    else latestReadings_[reading.source].ai8Live=adapted.ai8Live;
     if(key!=reading.source)latestReadings_[key]=adapted;
     const auto received=QDateTime::currentMSecsSinceEpoch();
     if(!keepHealthyScan)lastReadingMs_[reading.source]=received;
@@ -1190,18 +1237,58 @@ void FpgaDeviceController::flushPresentation()
     checkStartupWarnings();
     checkConnectionResults();
     const qint64 now=QDateTime::currentMSecsSinceEpoch();
+    auto ai8ScanLive=latestReadings_.value(0x46).ai8Live;
+    if(ai8ScanLive && !replaying_) {
+        for(int channel=1;channel<=8;++channel) {
+            const quint16 key=quint16(0x4600+channel);
+            if(lastReadingMs_.contains(key) && now-lastReadingMs_.value(key)<=5000)continue;
+            const int index=channel-1,shift=channel%2?8:0;
+            ai8ScanLive->measuredC[index]=std::numeric_limits<double>::quiet_NaN();
+            ai8ScanLive->setpointsC[index]=std::numeric_limits<double>::quiet_NaN();
+            ai8ScanLive->controlStates[index]=Ai8TemperatureControllerProtocol::ChannelControlState::Unknown;
+            ai8ScanLive->alarmStatusRegisters[index/2]&=~quint16(0xffu<<shift);
+            if(ai8ScanLive->detailedChannel==channel)ai8ScanLive->detailedChannel=0;
+        }
+        ai8ScanLive->valid=false;
+        bool anyKnown=false,allKnown=true;
+        for(int i=0;i<8;++i) {
+            ai8ScanLive->valid|=std::isfinite(ai8ScanLive->measuredC[i]);
+            const bool known=ai8ScanLive->controlStates[i]!=Ai8TemperatureControllerProtocol::ChannelControlState::Unknown;
+            anyKnown|=known;allKnown&=known;
+        }
+        ai8ScanLive->alarmStatusValid=ai8ScanLive->controlStatesValid=allKnown;
+        if(!anyKnown)ai8ScanLive->mainStatusValid=ai8ScanLive->setpointsValid=false;
+    }
+    bool ai8ScanLivePublished=false;
     for (auto i=latestReadings_.begin(); i!=latestReadings_.end(); ++i) {
         const bool expired=!replaying_ && now-lastReadingMs_.value(i.key())>5000;
         if (!dirtyReadings_.contains(i.key()) && (!expired || expiredReadings_.contains(i.key()))) continue;
         auto value=i.value();
+        const bool ai8Scan=value.reading.source==0x46 && value.reading.schema==3;
+        if(ai8Scan)value.ai8Live.reset();
         if (expired) {
             value.sampleRateHz=0.0;
             value.reading.validity.measurement=false; value.reading.validity.deviceOnline=false;
             if (value.epsilon) value.epsilon->valid=false;
             value.epsilonPositionTime.reset();value.epsilonVelocityTime.reset();
             value.attitudeValid=value.navigationValid=value.utcValid=false;
-            if (value.ai8Live) value.ai8Live->valid=false;
+            if (value.ai8Live) {
+                value.ai8Live->valid=false;
+                value.ai8Live->detailedChannel=0;
+                value.ai8Live->mainStatusValid=false;
+                value.ai8Live->alarmStatusValid=false;
+                value.ai8Live->controlStatesValid=false;
+                value.ai8Live->controlStates.fill(Ai8TemperatureControllerProtocol::ChannelControlState::Unknown);
+                value.ai8Live->setpointsValid=false;
+                value.ai8Live->setpointsC.fill(std::numeric_limits<double>::quiet_NaN());
+            }
             expiredReadings_.insert(i.key());
+        }
+        // Per-channel slots retain their own rate and status, but every slot
+        // contains an older full scan. Publish the newest aggregate only once.
+        if(ai8Scan && !ai8ScanLivePublished && ai8ScanLive) {
+            value.ai8Live=ai8ScanLive;
+            ai8ScanLivePublished=true;
         }
         emit measurementUpdated(value);
     }

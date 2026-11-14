@@ -1126,6 +1126,9 @@ void MainWindow::sendRemoteFpgaControl(const QJsonObject& request)
     } else if (result == Submission::Invalid) {
         state_->fpga_page_->appendDiagnostic(error);
     }
+    // Lock parameter drafts as soon as a write is submitted; the periodic
+    // editor refresh is coalesced and must not leave them editable in flight.
+    if (result == Submission::Accepted) syncFpgaDeviceConfigUi();
     updateFpgaPageBackend();
 }
 

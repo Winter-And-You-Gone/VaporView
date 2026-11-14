@@ -5,6 +5,7 @@
 #include <iostream>
 
 using namespace VaporView::FpgaSensor;
+namespace Ai8TemperatureControllerProtocol = VaporView::Ai8TemperatureControllerProtocol;
 namespace
 {
 void require(bool v, const char *why) { if (!v) { std::cerr << why << '\n'; std::exit(1); } }
@@ -117,6 +118,19 @@ int main()
     };
     require(adapter.accept(alarmPacket(1,0x20,0)).ai8->measurementValid,"channel alarm alone keeps PV visible");
     require(adapter.accept(alarmPacket(1,0,0x200)).ai8->measurementValid,"host alarm alone keeps PV visible");
+    require(adapter.accept(alarmPacket(1,2,0)).ai8->measurementValid,"threshold alarm does not invalidate a measured temperature");
+    const auto inputFault=adapter.accept(alarmPacket(1,1,0x214));
+    require(inputFault.ai8 && inputFault.ai8->snapshotValid && inputFault.ai8->inputError
+        && inputFault.ai8->globalAlarm && !inputFault.ai8->systemFault && !inputFault.ai8->measurementValid
+        && !inputFault.reading.validity.measurement && std::isnan(inputFault.ai8Live->measuredC[0]),
+        "selected-channel input error invalidates PV without being mistaken for a system fault");
+    require(inputFault.ai8Live->detailedChannel==1 && inputFault.ai8Live->alarmRaw==1
+        && inputFault.ai8Live->mainStatusValid && inputFault.ai8Live->mainStatusRaw==0x214
+        && inputFault.ai8Live->setpointsC[0]==40,
+        "input error preserves confirmed target and diagnostic metadata independently of PV validity");
+    const auto systemFault=adapter.accept(alarmPacket(1,0,0x100));
+    require(systemFault.ai8->systemFault && !systemFault.ai8->globalAlarm && !systemFault.ai8->measurementValid,
+        "instrument system fault is distinct from global alarm and invalidates the measurement");
     require(!alarmPacket(1,0,0).validity.measurement,"unexplained packet error remains invalid");
     for(quint32 status:{0u,3u,5u,7u,0x89u}) {
         const auto failed=alarmPacket(status,0x20,0x200);
@@ -156,6 +170,40 @@ int main()
     scanReading.ai8Channel = 2;
     require(std::isnan(scan.accept(scanReading).ai8Live->setpointsC[0]),
         "restarting AI8 clears targets accumulated before the restart");
+    FpgaSensorAdapter mixedScan;
+    AdaptedMeasurements mixed;
+    for(int channel=1;channel<=8;++channel) {
+        auto reading=aiReading;reading.schema=3;reading.ai8Channel=channel;reading.timestamp=1000+channel;
+        reading.ai8Alarm=channel<=2?0:1;reading.ai8Host=0x214;reading.ai8PvRaw=channel<=2?250:9110;
+        mixed=mixedScan.accept(reading);
+        require(mixed.ai8Live->controlStates[channel-1]!=Ai8TemperatureControllerProtocol::ChannelControlState::Unknown,
+            "partial scan identifies the channel metadata actually received");
+        if(channel<8)require(!mixed.ai8Live->alarmStatusValid && !mixed.ai8Live->controlStatesValid,
+            "partial scan does not claim unread channels have known alarm or control states");
+    }
+    require(mixed.ai8Live->valid && mixed.ai8Live->alarmStatusValid && mixed.ai8Live->controlStatesValid
+        && mixed.ai8Live->measuredC[0]==25 && mixed.ai8Live->measuredC[1]==25,
+        "two connected inputs remain usable while the other six channels cause a global alarm");
+    for(int i=2;i<8;++i)require(std::isnan(mixed.ai8Live->measuredC[i])
+        && Ai8TemperatureControllerProtocol::decodeChannelAlarmStatus(mixed.ai8Live->alarmStatusRegisters[i/2],i+1)==1,
+        "unconnected scan channels retain their individual input error without publishing fault PVs");
+    auto failedScan=aiReading;failedScan.schema=3;failedScan.ai8Channel=2;failedScan.timestamp=2000;failedScan.ai8DeviceStatus=3;
+    mixed=mixedScan.accept(failedScan);
+    require(mixed.ai8Live->valid && mixed.ai8Live->measuredC[0]==25 && std::isnan(mixed.ai8Live->measuredC[1])
+        && mixed.ai8Live->controlStates[1]==Ai8TemperatureControllerProtocol::ChannelControlState::Unknown
+        && mixed.ai8Live->controlStates[2]!=Ai8TemperatureControllerProtocol::ChannelControlState::Unknown
+        && !mixed.ai8Live->alarmStatusValid,
+        "failed scan clears only its channel and preserves fresh input-alarm metadata on other channels");
+    failedScan.timestamp+=500000001;
+    mixed=mixedScan.accept(failedScan);
+    require(!mixed.ai8Live->valid && mixed.ai8Live->controlStates[2]==Ai8TemperatureControllerProtocol::ChannelControlState::Unknown,
+        "expired partial-scan alarm metadata cannot stay latched in the UI");
+    auto healthyScan=aiReading;healthyScan.schema=3;healthyScan.ai8Channel=1;healthyScan.timestamp=600000000;healthyScan.ai8Alarm=0;healthyScan.ai8Host=0;
+    mixedScan.accept(healthyScan);
+    healthyScan.ai8Channel=2;healthyScan.timestamp++;healthyScan.ai8Host=0x100;
+    mixed=mixedScan.accept(healthyScan);
+    require(!mixed.ai8Live->valid && std::isnan(mixed.ai8Live->measuredC[0]) && std::isnan(mixed.ai8Live->measuredC[1]),
+        "instrument-wide system fault invalidates measurements retained before that fault");
     aiReading.ai8DeviceStatus=3; sample=adapter.accept(aiReading);
     require(!sample.ai8->measurementValid && sample.ai8->online,"AI8 transport failure isolates stale snapshot");
     aiReading.ai8SetResult=0; require(!adapter.accept(aiReading).ai8->setSucceeded,"zero result without valid bit is not success");

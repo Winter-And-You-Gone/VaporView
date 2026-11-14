@@ -360,6 +360,90 @@ int main(int argc, char **argv)
     for (QWidget *plot : {temperatureTrend, humidityTrend, pressureTrend})
         requireTimeLabelsMatchRange(plot);
 
+    const auto requireCenteredRange = [](QWidget *plot, double center, double dataMin, double dataMax) {
+        const double lower = plot->property("yAxisMin").toDouble();
+        const double upper = plot->property("yAxisMax").toDouble();
+        require(std::abs((lower + upper) / 2.0 - center) < 1e-6,
+                "environment y axis centers the visible data range");
+        require(upper - lower >= 2.0 - 1e-6 && lower < dataMin && upper > dataMax,
+                "environment values retain a minimum span and clearance from both edges");
+    };
+    Hc2aPanel steadyHc2a;
+    PtbPanel steadyPressure;
+    auto *steadyTemperature = steadyHc2a.findChild<QWidget *>(QStringLiteral("environmentTemperatureTrendPlot"));
+    auto *steadyHumidity = steadyHc2a.findChild<QWidget *>(QStringLiteral("environmentHumidityTrendPlot"));
+    auto *steadyPressurePlot = steadyPressure.findChild<QWidget *>(QStringLiteral("environmentPressureTrendPlot"));
+    require(steadyTemperature && steadyHumidity && steadyPressurePlot,
+            "steady environment test exposes all three trend plots");
+    for (QWidget *plot : {steadyTemperature, steadyHumidity, steadyPressurePlot})
+        plot->setFixedSize(420, 64);
+    auto steadyData = hc2aData;
+    auto steadyPtbData = ptbData;
+    for (int i = 0; i < 2; ++i)
+    {
+        steadyData.timestamp = baseTimestamp + std::chrono::seconds(i);
+        steadyData.temperature = 22.48 + i * 0.02;
+        steadyData.humidity = 72.19 + i * 0.02;
+        steadyPtbData.timestamp = steadyData.timestamp;
+        steadyPtbData.pressure_hpa = 1011.65 + i * 0.02;
+        steadyHc2a.updateData(steadyData);
+        steadyPressure.updateData(steadyPtbData);
+    }
+    requireCenteredRange(steadyTemperature, 22.49, 22.48, 22.50);
+    requireCenteredRange(steadyHumidity, 72.20, 72.19, 72.21);
+    requireCenteredRange(steadyPressurePlot, 1011.66, 1011.65, 1011.67);
+
+    Hc2aPanel windowedHc2a;
+    auto *windowedTemperature = windowedHc2a.findChild<QWidget *>(QStringLiteral("environmentTemperatureTrendPlot"));
+    auto *windowedHumidity = windowedHc2a.findChild<QWidget *>(QStringLiteral("environmentHumidityTrendPlot"));
+    windowedTemperature->setFixedSize(240, 64);
+    windowedHumidity->setFixedSize(240, 64);
+    for (int seconds : {0, 1, 20})
+    {
+        steadyData.timestamp = baseTimestamp + std::chrono::seconds(seconds);
+        steadyData.temperature = seconds == 0 ? 0.0 : 25.0;
+        steadyData.humidity = seconds == 0 ? 100.0 : 72.2;
+        windowedHc2a.updateData(steadyData);
+    }
+    requireCenteredRange(windowedTemperature, 25.0, 25.0, 25.0);
+    requireCenteredRange(windowedHumidity, 72.2, 72.2, 72.2);
+    require(windowedTemperature->property("sampleCount").toInt() == 3,
+            "offscreen extrema remain in history while no longer affecting the y axis");
+    for (QWidget *plot : {windowedTemperature, windowedHumidity})
+    {
+        plot->setFixedSize(1400, 64);
+        require(!plot->grab().isNull(), "resized environment plot renders");
+    }
+    requireCenteredRange(windowedTemperature, 12.5, 0.0, 25.0);
+    requireCenteredRange(windowedHumidity, 86.1, 72.2, 100.0);
+    for (QWidget *plot : {windowedTemperature, windowedHumidity})
+    {
+        plot->setFixedSize(240, 64);
+        plot->grab();
+    }
+    requireCenteredRange(windowedTemperature, 25.0, 25.0, 25.0);
+    requireCenteredRange(windowedHumidity, 72.2, 72.2, 72.2);
+
+    Hc2aPanel crossingHc2a;
+    auto *crossingTemperature = crossingHc2a.findChild<QWidget *>(QStringLiteral("environmentTemperatureTrendPlot"));
+    crossingTemperature->setFixedSize(420, 64);
+    for (int seconds : {0, 119, 120})
+    {
+        steadyData.timestamp = baseTimestamp + std::chrono::seconds(seconds);
+        steadyData.temperature = seconds == 0 ? 0.0 : seconds == 119 ? 25.0 : 25.1;
+        crossingHc2a.updateData(steadyData);
+    }
+    crossingTemperature->grab();
+    const qint64 crossingWindowStart = crossingTemperature->property("xAxisTimeMinMsecs").toLongLong();
+    const qint64 crossingWindowEnd = crossingTemperature->property("xAxisTimeMaxMsecs").toLongLong();
+    const double crossingValue = 25.0 *
+        static_cast<double>(crossingWindowStart - (crossingWindowEnd - 120000)) / 119000.0;
+    require(crossingValue > 0.0 && crossingValue < 25.0,
+            "test line crosses the left time-window boundary");
+    requireCenteredRange(crossingTemperature, (crossingValue + 25.1) / 2.0, crossingValue, 25.1);
+    require(crossingTemperature->property("yAxisMin").toDouble() > 0.0,
+            "a crossing segment contributes only its visible boundary value, not its old endpoint");
+
     hc2a.setEnglish(true);
     ptb.setEnglish(true);
     require(temperatureTrend->property("xAxisLeftLabel").toString().contains(QLatin1Char(':')) &&

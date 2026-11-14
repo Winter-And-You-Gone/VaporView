@@ -499,8 +499,8 @@ void requireCompactTelemetryPillTextGap(QFrame *pill, const char *message)
     QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
     QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
     require(nameLabel != nullptr && valueLabel != nullptr, message);
-    require(valueLabel->alignment().testFlag(Qt::AlignLeft),
-            "UI-test home telemetry values start near their field names");
+    require(valueLabel->alignment().testFlag(Qt::AlignRight),
+            "UI-test home telemetry values anchor their units to the right");
 
     const int nameTextRight = nameLabel->mapTo(pill, QPoint(0, 0)).x() +
         nameLabel->fontMetrics().horizontalAdvance(nameLabel->text());

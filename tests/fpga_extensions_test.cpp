@@ -1,5 +1,6 @@
 #include "FpgaDeviceController.h"
 #include "FpgaUsbSimulator.h"
+#include "FpgaVlp1.h"
 #include "FpgaTelemetry.h"
 #include "FpgaExtensions.h"
 #include "ground/devices/EpsilonConfigurationService.h"
@@ -134,6 +135,84 @@ int main(int argc,char** argv) {
     result=param(0x48,3,0,1,QByteArray::fromHex("0001"));check(result.value("ok").toBool() && result.value("unverified").toBool() && !result.value("verified").toBool(),"factory reset ACK is explicitly unverified");
     check(!(controller.hardwareValues().value(0x6804)&1),"factory reset stops RD105 polling");
     controller.disconnectDevice();
+    {
+        auto scanSimulator=makeFpgaUsbSimulator(nullptr,FpgaSimulatorStartup::Idle,FpgaSimulatorFirmware::Hcd2Ai8Scan);
+        auto* scanTransport=scanSimulator.get();check(scanTransport->open(),"scan-only HCD2 fixture opens");
+        FpgaVlp1::StreamParser parser;quint32 sequence=10000;
+        const auto wireExchange=[&](const std::vector<std::uint8_t>& request) {
+            const auto expected=qFromLittleEndian<quint32>(request.data()+12);
+            scanTransport->write(QByteArray(reinterpret_cast<const char*>(request.data()),qsizetype(request.size())));
+            std::vector<std::uint8_t> payload;bool received=false;
+            check(waitFor([&] {QByteArray part;scanTransport->read(part,16384);
+                for(const auto& frame:parser.feed(reinterpret_cast<const std::uint8_t*>(part.constData()),part.size()))
+                    if(frame.header.frameType==FpgaVlp1::FrameType::Response&&frame.header.sequence==expected){payload=frame.payload;received=true;}
+                return received;}),"scan-only register request completes");
+            return payload;
+        };
+        const auto wireWord=[&](const std::vector<std::uint8_t>& payload,int offset=0) {
+            check(payload.size()>=std::size_t(offset+4),"scan-only response has a complete word");
+            return payload.size()>=std::size_t(offset+4)?qFromLittleEndian<quint32>(payload.data()+offset):0u;
+        };
+        check(wireWord(wireExchange(FpgaVlp1::buildGetCapabilities(++sequence)),24)==0x2b,
+            "scan-only firmware adds only AI8 scan to the HCD2 capability word");
+        check(wireWord(wireExchange(FpgaVlp1::buildReadReg(++sequence,0x66fc,1)),12)==0x0b,
+            "scan-only cache features exclude generic parameter transactions");
+        check(wireWord(wireExchange(FpgaVlp1::buildReadReg(++sequence,0x6684,1)))==5 &&
+            wireWord(wireExchange(FpgaVlp1::buildWriteReg(++sequence,0x6680,{1})))==5 &&
+            wireWord(wireExchange(FpgaVlp1::buildReadReg(++sequence,0x6884,1)))==5,
+            "scan-only firmware does not expose withdrawn AI8 or RD105 parameter registers");
+        check(wireWord(wireExchange(FpgaVlp1::buildReadReg(++sequence,0x66b8,2)),12)==0 &&
+            wireWord(wireExchange(FpgaVlp1::buildWriteReg(++sequence,0x66b8,{1})))==6,
+            "new per-channel counters start at zero and are read-only");
+        scanTransport->close();
+        FpgaDeviceController scanController(std::move(scanSimulator));
+        QVector<FpgaSensor::Reading> scanReadings;
+        QObject::connect(&scanController,&FpgaDeviceController::measurementUpdated,&app,
+            [&](const FpgaSensor::AdaptedMeasurements& m){scanReadings.append(m.reading);});
+        scanController.connectDevice({},"simulator",FpgaDeviceController::ConnectMode::PreserveRunningModules);
+        check(waitFor([&]{return scanController.ready()&&!scanController.busy();}),"scan-only HCD2 handshake succeeds");
+        check(scanController.extensions()==0x2b && scanController.hardwareValues().value(0x6800)==0x00480100 &&
+            !scanController.hardwareValues().contains(0x6684) && !scanController.hardwareValues().contains(0x6884),
+            "scan capability keeps LC identification and avoids unsupported parameter reads");
+        const auto scanCall=[&](const QJsonObject& request) {
+            bool finished=false;QJsonObject response;
+            const auto observer=QObject::connect(&scanController,&FpgaDeviceController::extensionCompleted,&app,
+                [&](const QJsonObject& value){response=value;finished=true;});
+            scanController.executeOperation(request);check(waitFor([&]{return finished;}),"scan-only operation completes");
+            QObject::disconnect(observer);return response;
+        };
+        auto scanConfiguration=FpgaControlConfig{};scanConfiguration.ai8.scan=true;
+        scanController.setConfiguration(scanConfiguration);scanController.setSensorEnabled(0x46,true);
+        check(waitFor([&]{return !scanController.busy();}) && scanController.hardwareValues().value(0x6668)==1,
+            "0x2b firmware configures eight-channel scanning without legacy parameter capabilities");
+        check(waitFor([&]{QSet<quint32> channels;for(const auto& r:scanReadings)
+            if(r.source==0x46&&r.schema==3&&r.ai8Channel&&r.ai8SampleCounter.value_or(0)>0)channels.insert(*r.ai8Channel);
+            return channels.size()==8;}),"scan-only firmware delivers all eight channel-tagged snapshots with counters");
+        check(!scanCall({{"op","instrument"},{"source",0x46},{"action",1},{"address",0},{"count",1},{"data",""}}).value("ok").toBool() &&
+            !scanCall({{"op","instrument"},{"source",0x48},{"action",1},{"address",0x1000},{"count",1},{"data",""}}).value("ok").toBool(),
+            "scan-only controller rejects generic AI8 parameters and independent RD105 operations");
+        const auto targeted=scanCall({{"op","device_temperature"},{"source",0x46},{"channel",8},{"celsius",31.6}});
+        check(targeted.value("ok").toBool() && targeted.value("verified").toBool(),
+            "scan-only capability permits the existing targeted setpoint with independent confirmation");
+        check(waitFor([&]{for(const auto& r:scanReadings)
+            if(r.ai8Channel==8 && r.ai8SpRaw==316)return true;return false;}),"targeted scan-channel setpoint appears in its own snapshot");
+        const auto cache=scanCall({{"op","ai8_cache"},{"channel",8}});
+        check(cache.value("ok").toBool() && (cache.value("status").toInt()&3)==3 &&
+            (quint32(cache.value("pv_sp").toDouble())>>16)==316,
+            "scan-only cached channel preserves its quality and targeted setpoint");
+        scanController.setSensorEnabled(0x46,false);check(waitFor([&]{return !scanController.busy();}),"scan-only channel disables");
+        scanController.disconnectDevice();
+        check(scanTransport->open(),"scan-only transport reopens for retained diagnostic counters");
+        parser=FpgaVlp1::StreamParser{};
+        check(wireWord(wireExchange(FpgaVlp1::buildReadReg(++sequence,0x66b8,2)),12)>0 &&
+            wireWord(wireExchange(FpgaVlp1::buildReadReg(++sequence,0x66bc,1)),12)==0,
+            "disabling and reconnecting retain per-channel success and failure counters");
+        std::vector<std::uint8_t> resetPayload(8,0);
+        check(wireWord(wireExchange(FpgaVlp1::buildFrame(FpgaVlp1::FrameType::Command,++sequence,0x46,8,resetPayload)))==0 &&
+            wireWord(wireExchange(FpgaVlp1::buildReadReg(++sequence,0x66b8,2)),12)==0,
+            "AI8 module reset clears the new cached counters");
+        scanTransport->close();
+    }
     auto old=makeFpgaUsbSimulator();old->injectFault("legacy_extensions");FpgaDeviceController legacy(std::move(old));
     legacy.connectDevice({},"simulator",FpgaDeviceController::ConnectMode::PreserveRunningModules);
     check(waitFor([&]{return legacy.ready()&&!legacy.busy();}),"legacy extension word remains compatible");

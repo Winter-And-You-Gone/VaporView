@@ -7,9 +7,10 @@ namespace VaporView::Ground::Devices
 // Produces and consumes VLP1 wire bytes through the same boundary as USB.
 // No OS device is registered and no physical USB/serial endpoint is opened.
 enum class FpgaSimulatorStartup { RunningDemo, Idle };
-// HistoricalExtensions is an explicit test fixture for the withdrawn AI8/RD105
-// extensions. The default models the current HCD2 production firmware.
-enum class FpgaSimulatorFirmware { CurrentHcd2, HistoricalExtensions };
+// The default models the current HCD2 production firmware. Hcd2Ai8Scan models
+// the scan-only extension contract; HistoricalExtensions also exposes withdrawn
+// AI8 parameter transactions and RD105 for explicit compatibility tests.
+enum class FpgaSimulatorFirmware { CurrentHcd2, Hcd2Ai8Scan, HistoricalExtensions };
 class FpgaUsbSimulator : public FpgaUsbTransport
 {
 public:

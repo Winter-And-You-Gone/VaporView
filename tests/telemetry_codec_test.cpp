@@ -685,6 +685,27 @@ void testAi8TemperatureControllerStatus()
                 VaporView::TelemetryCodec::serializeAi8TemperatureControllerStatus(legacyDetails), parsed) &&
                 parsed.detailedChannel == 3 && !parsed.setpointsValid,
             "legacy FPGA details without a target array remain readable");
+    Ai8::LiveData partialScan;
+    partialScan.valid = true;
+    partialScan.measuredC.fill(std::numeric_limits<double>::quiet_NaN());
+    partialScan.measuredC[0] = 24.5;
+    partialScan.controlStates[0] = Ai8::ChannelControlState::ApidOutput;
+    partialScan.controlStates[1] = Ai8::ChannelControlState::Stopped;
+    partialScan.alarmStatusRegisters[0] = 0x0001;
+    partialScan.mainStatusValid = true;
+    partialScan.mainStatusRaw = 0x0200;
+    partialScan.detailedChannel = 2;
+    partialScan.alarmRaw = 1;
+    require(VaporView::TelemetryCodec::parseAi8TemperatureControllerStatus(
+                VaporView::TelemetryCodec::serializeAi8TemperatureControllerStatus(partialScan), parsed) &&
+                parsed.valid && !parsed.controlStatesValid && !parsed.alarmStatusValid &&
+                parsed.measuredC[0] == 24.5 && std::isnan(parsed.measuredC[1]) &&
+                parsed.controlStates[0] == Ai8::ChannelControlState::ApidOutput &&
+                parsed.controlStates[1] == Ai8::ChannelControlState::Stopped &&
+                parsed.controlStates[2] == Ai8::ChannelControlState::Unknown &&
+                parsed.alarmStatusRegisters[0] == 1 && parsed.mainStatusRaw == 0x0200 &&
+                parsed.detailedChannel == 2 && parsed.alarmRaw == 1,
+            "partial scan preserves a healthy PV and a different channel's input alarm without inventing unseen channels");
     status.detailedChannel=9;require(!VaporView::TelemetryCodec::parseAi8TemperatureControllerStatus(VaporView::TelemetryCodec::serializeAi8TemperatureControllerStatus(status),parsed),"invalid selected channel rejected");
     Ai8::LiveData ignored;
     require(!VaporView::TelemetryCodec::parseAi8TemperatureControllerStatus(payload.left(payload.size() - 1), ignored),

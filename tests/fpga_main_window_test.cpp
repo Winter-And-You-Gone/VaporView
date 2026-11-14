@@ -42,6 +42,7 @@
 #include <QJsonArray>
 #include <QIntValidator>
 #include <QLabel>
+#include <QLineEdit>
 #include <QRegularExpression>
 #include <QMessageBox>
 #include <QImage>
@@ -57,6 +58,7 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QDoubleSpinBox>
+#include <QSpinBox>
 #include <QTemporaryDir>
 #include <QDir>
 #include <QStandardItemModel>
@@ -66,6 +68,7 @@
 #include <stdexcept>
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <QtEndian>
 #include <cstdlib>
 #include <iostream>
@@ -1044,6 +1047,8 @@ static void remoteHomeActions()
         &&settingsRequest.value("op")=="sensor"&&settingsRequest.value("source").toInt()==0x42
         &&settingsRequest.value("enabled").toBool()&&settingsRequest.value("baud").toInt()==460800,
         "remote connection atomically carries staged UART settings");
+    require(!baud->isEnabled()&&epsilon->property("state")=="connecting",
+        "submitted remote settings lock immediately while final readback is pending");
     ack.command_seq=commandSequence;send(MsgType::CommandAck,TelemetryCodec::serializeCommandAck(ack));processFor(30);
     require(!baud->isEnabled()&&epsilon->property("state")=="connecting","remote ACK cannot confirm parameter write or connection");
     complete(CommandErrorCode::ConfigApplyFailed);
@@ -2217,6 +2222,79 @@ static void directInternalEnvironmentRouting()
     remote->close();window.close();
 }
 
+static void remoteAi8FaultMetadata()
+{
+    using namespace VaporView;
+    namespace Ai8 = Ai8TemperatureControllerProtocol;
+    TcpTelemetryLink server;
+    require(server.listen("127.0.0.1", 0), "AI8 fault fixture listens");
+    MainWindow window;
+    QMetaObject::invokeMethod(&window, "onDataSourceModeChanged", Q_ARG(int, 1));
+    auto *remote = window.testRemoteSkyController();
+    require(remote->openTcp("127.0.0.1", server.localPort()) &&
+                waitUntil([&] { return remote->isOpen(); }), "AI8 fault fixture opens remote telemetry");
+    auto *overview = static_cast<Ground::Widgets::Ai8TemperatureOverviewPanel *>(
+        window.findChild<QWidget *>(QStringLiteral("ai8TemperatureOverviewPanel")));
+    auto *panel = window.findChild<Ground::Widgets::Ai8TemperatureControllerPanel *>();
+    require(overview && panel, "AI8 remote diagnostics expose both temperature panels");
+    overview->setEnglish(false);
+    panel->setEnglish(false);
+    panel->findChild<QSpinBox *>("ai8ChannelSpin")->setValue(1);
+    const auto statuses = overview->findChildren<QLabel *>("ai8TemperatureOverviewStatusLabel");
+    const auto values = overview->findChildren<QLabel *>("ai8TemperatureOverviewValueLabel");
+    auto *alarm = panel->findChild<QLineEdit *>("ai8ChannelAlarmStatusEdit");
+    require(statuses.size() == 8 && values.size() == 8 && alarm, "AI8 fault labels are available");
+    TelemetryCodec encoder;
+    quint16 sequence = 1;
+    auto send = [&](MsgType type, const QByteArray& payload) {
+        server.writeBytes(encoder.encodeFrame(type, payload, sequence++, 1));
+    };
+    TelemetryStatus status;
+    DeviceStatusItem item;
+    item.device_id = SkyDeviceId::Ai8TemperatureController;
+    item.state = DeviceState::Connected;
+    status.devices.append(item);
+    send(MsgType::TelemetryStatus, TelemetryCodec::serializeTelemetryStatus(status));
+    require(waitUntil([&] { return remote->deviceState(item.device_id) == DeviceState::Connected; }),
+            "AI8 fault fixture receives initial device status");
+    Ai8::LiveData fault;
+    fault.measuredC.fill(std::numeric_limits<double>::quiet_NaN());
+    fault.detailedChannel = 1;
+    fault.setpointC = 25.0;
+    fault.displayedSetpointC = 25.0;
+    fault.controlRaw = 1;
+    fault.alarmRaw = 1;
+    fault.mainStatusValid = true;
+    fault.mainStatusRaw = 0x214;
+    send(MsgType::Ai8TemperatureControllerStatus, TelemetryCodec::serializeAi8TemperatureControllerStatus(fault));
+    require(waitUntil([&] { return statuses[0]->text() == QStringLiteral("输入错误") &&
+                alarm->text().contains(QStringLiteral("0x01")); }), "confirmed remote input fault is displayed");
+    status.devices[0].state = DeviceState::Error;
+    send(MsgType::TelemetryStatus, TelemetryCodec::serializeTelemetryStatus(status));
+    require(waitUntil([&] { return remote->deviceState(item.device_id) == DeviceState::Error; }),
+            "AI8 remote status reports its measurement error");
+    require(statuses[0]->text() == QStringLiteral("输入错误") &&
+                values[0]->text() == QStringLiteral("---") && alarm->text().contains(QStringLiteral("0x01")),
+            "Error device status preserves newly confirmed input diagnostics without restoring a fault PV");
+    Ai8::LiveData unknown;
+    unknown.measuredC.fill(std::numeric_limits<double>::quiet_NaN());
+    send(MsgType::Ai8TemperatureControllerStatus, TelemetryCodec::serializeAi8TemperatureControllerStatus(unknown));
+    require(waitUntil([&] { return statuses[0]->text() == QStringLiteral("—") &&
+                alarm->text() == QStringLiteral("---"); }), "unknown failed poll clears older confirmed fault metadata");
+    fault.alarmRaw = 0;
+    fault.mainStatusRaw = 0x100;
+    send(MsgType::Ai8TemperatureControllerStatus, TelemetryCodec::serializeAi8TemperatureControllerStatus(fault));
+    require(waitUntil([&] { return statuses[0]->text() == QStringLiteral("系统故障") &&
+                statuses[0]->toolTip().contains(QStringLiteral("仪表系统故障")); }),
+            "confirmed remote system fault is independent of channel input alarms");
+    status.devices[0].state = DeviceState::Disconnected;
+    send(MsgType::TelemetryStatus, TelemetryCodec::serializeTelemetryStatus(status));
+    require(waitUntil([&] { return statuses[0]->text() == QStringLiteral("—"); }),
+            "disconnect clears remote AI8 fault metadata");
+    remote->close();
+    window.close();
+}
+
 static void epsilonMixedPacketPresentation()
 {
     QTemporaryDir output;
@@ -2398,6 +2476,7 @@ int main(int argc,char **argv)
     native.setValue("app_sidebar_width",62);
     if(app.arguments().contains("--epsilon-packets")) {epsilonMixedPacketPresentation();return 0;}
     if(app.arguments().contains("--internal-direct")) {directInternalEnvironmentRouting();return 0;}
+    if(app.arguments().contains("--ai8-fault-status")) {remoteAi8FaultMetadata();return 0;}
     if(app.arguments().contains("--relay-configuration")) {
         relayConfigurationPresentation();std::cout<<"FPGA relay configuration test passed\n";return 0;
     }
@@ -2487,6 +2566,7 @@ int main(int argc,char **argv)
     }
     phase("relay_presentation");relayConfigurationPresentation();
     phase("remote_page");remotePageRouting();
+    phase("remote_ai8_fault");remoteAi8FaultMetadata();
     phase("remote_home");remoteHomeActions();
     phase("transport_capabilities");remoteTransportAndCapabilities();
     phase("finished");

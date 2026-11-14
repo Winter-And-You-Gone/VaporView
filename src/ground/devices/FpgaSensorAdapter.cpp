@@ -62,7 +62,7 @@ void FpgaSensorAdapter::reset()
     epsilon_ = EpsilonData{};
     epsilonStatusTimestamp_.reset();
     epsilonPosition_={};epsilonVelocity_={};
-    ai8ScanValues_={};ai8ScanSetpoints_={};ai8ScanTicks_={};
+    ai8ScanSnapshots_={};ai8ScanTicks_={};
 }
 
 double FpgaSensorAdapter::updateRate(const Reading &reading, quint16 key)
@@ -116,7 +116,7 @@ AdaptedMeasurements FpgaSensorAdapter::accept(const Reading &input)
         s.deviceError = input.ai8DeviceError.value_or(0);
         s.sampleCounter = input.ai8SampleCounter.value_or(0);
         s.online = (s.deviceStatus & 1) != 0;
-        s.measurementValid = input.validity.measurement && s.online
+        s.snapshotValid = input.validity.measurement && s.online
             && (s.deviceStatus & 0x1ffe) == 0 && input.ai8PvRaw && input.ai8SpRaw
             && input.ai8SvRaw && input.ai8OpRaw && input.ai8Alarm && input.ai8Control
             && input.ai8Host && input.ai8SetResult && input.ai8SampleCounter;
@@ -127,7 +127,13 @@ AdaptedMeasurements FpgaSensorAdapter::accept(const Reading &input)
         s.alarm = quint8(input.ai8Alarm.value_or(0));
         s.control = quint8(input.ai8Control.value_or(0));
         s.host = quint16(input.ai8Host.value_or(0));
-        s.alarmActive = s.alarm != 0 || (s.host & 0x300) != 0;
+        s.inputError = (s.alarm & 1) != 0;
+        s.systemFault = (s.host & 0x100) != 0;
+        s.globalAlarm = (s.host & 0x200) != 0;
+        // Input errors invalidate this channel's PV. A threshold alarm or an
+        // alarm elsewhere in the instrument does not invalidate a good input.
+        s.measurementValid = s.snapshotValid && !s.inputError && !s.systemFault;
+        s.alarmActive = s.alarm != 0 || s.systemFault || s.globalAlarm;
         s.setResultRaw = input.ai8SetResult.value_or(0);
         s.setResultValid = (s.setResultRaw & 0x10000) != 0;
         s.setSucceeded = s.setResultValid && (s.setResultRaw & 0xffff) == 0;
@@ -139,38 +145,46 @@ AdaptedMeasurements FpgaSensorAdapter::accept(const Reading &input)
         if (s.channel >= 1 && s.channel <= Ai8TemperatureControllerProtocol::kChannelCount)
         {
             const int index = s.channel - 1;
-            if (s.measurementValid) {
-                live.measuredC[index] = s.measuredC;
-                live.setpointsC[index] = s.setpointC;
-            }
+            if (s.measurementValid) live.measuredC[index] = s.measuredC;
+            if (s.snapshotValid) live.setpointsC[index] = s.setpointC;
             const int shift = s.channel % 2 ? 8 : 0;
             live.alarmStatusRegisters[index / 2] = quint16(s.alarm) << shift;
+            if(s.snapshotValid)live.controlStates[index]=Ai8TemperatureControllerProtocol::decodeChannelControlState(quint16(s.control)<<8,1);
             live.valid = s.measurementValid;
-            if(s.measurementValid) {
+            if(s.snapshotValid) {
                 live.detailedChannel=quint8(s.channel);live.setpointC=s.setpointC;live.displayedSetpointC=s.displayedSetpointC;
                 live.outputRaw=quint16(s.outputRaw);live.alarmRaw=s.alarm;live.controlRaw=s.control;
             }
             // The FPGA snapshot supplies exactly one channel, not all eight.
             // Global all-channel validity flags must remain false.
             live.mainStatusRaw = s.host;
-            live.mainStatusValid = s.measurementValid;
+            live.mainStatusValid = s.snapshotValid;
         }
         if(input.schema==3 && s.channel>=1 && s.channel<=8) {
+            if(s.snapshotValid && s.systemFault)ai8ScanSnapshots_={};
             for(int i=0;i<8;++i) {
                 if(input.timestamp<ai8ScanTicks_[i] || input.timestamp-ai8ScanTicks_[i]>500000000) {
-                    ai8ScanValues_[i].reset();
-                    ai8ScanSetpoints_[i].reset();
+                    ai8ScanSnapshots_[i].reset();
                 }
             }
             ai8ScanTicks_[s.channel-1]=input.timestamp;
-            ai8ScanValues_[s.channel-1]=s.measurementValid?std::optional<double>(s.measuredC):std::nullopt;
-            ai8ScanSetpoints_[s.channel-1]=s.measurementValid?std::optional<double>(s.setpointC):std::nullopt;
+            ai8ScanSnapshots_[s.channel-1]=s.snapshotValid?std::optional<Ai8Sample>(s):std::nullopt;
             live.valid=false;
+            bool allSnapshots=true;
             for(int i=0;i<8;++i) {
-                live.measuredC[i]=ai8ScanValues_[i].value_or(std::numeric_limits<double>::quiet_NaN());
-                live.setpointsC[i]=ai8ScanSetpoints_[i].value_or(std::numeric_limits<double>::quiet_NaN());
-                live.valid|=ai8ScanValues_[i].has_value();
+                const auto& cached=ai8ScanSnapshots_[i];
+                allSnapshots&=cached.has_value();
+                if(!cached)continue;
+                if(cached->measurementValid)live.measuredC[i]=cached->measuredC;
+                live.setpointsC[i]=cached->setpointC;
+                const int shift=(i+1)%2?8:0;
+                const quint16 mask=quint16(0xffu<<shift);
+                live.alarmStatusRegisters[i/2]=(live.alarmStatusRegisters[i/2]&~mask)|(quint16(cached->alarm)<<shift);
+                live.controlStates[i]=Ai8TemperatureControllerProtocol::decodeChannelControlState(quint16(cached->control)<<8,1);
+                live.valid|=cached->measurementValid;
             }
+            live.alarmStatusValid=allSnapshots;
+            live.controlStatesValid=allSnapshots;
         }
         out.ai8Live = live;
         out.reading.validity.measurement = s.measurementValid;

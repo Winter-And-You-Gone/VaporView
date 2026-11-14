@@ -259,6 +259,77 @@ int main(int argc, char **argv)
                 "AI-8288 overview clears stale temperatures when live data is unavailable");
     }
 
+    VaporView::Ai8TemperatureControllerProtocol::LiveData inputFault;
+    inputFault.measuredC.fill(std::numeric_limits<double>::quiet_NaN());
+    inputFault.detailedChannel = 1;
+    inputFault.controlRaw = 1;
+    inputFault.alarmRaw = 1;
+    inputFault.setpointC = 25.0;
+    inputFault.mainStatusValid = true;
+    inputFault.mainStatusRaw = 0x200;
+    overview.applyLiveData(inputFault);
+    require(statuses[0]->text() == QStringLiteral("Input error") &&
+                statuses[0]->toolTip().contains(QStringLiteral("0x01")) &&
+                statuses[0]->toolTip().contains(QStringLiteral("global alarm")) &&
+                overviewValueLabels[0]->text() == QStringLiteral("---") &&
+                overviewTargets[0]->text() == QStringLiteral("25.0 °C"),
+            "An invalid input preserves its channel alarm and target without displaying its PV");
+
+    VaporView::Ai8TemperatureControllerProtocol::LiveData scanned;
+    scanned.measuredC.fill(std::numeric_limits<double>::quiet_NaN());
+    scanned.valid = true;
+    scanned.mainStatusValid = true;
+    scanned.mainStatusRaw = 0x200;
+    for (int index = 0; index < 8; ++index)
+    {
+        scanned.detailedChannel = index + 1;
+        scanned.controlRaw = 1;
+        scanned.alarmRaw = index < 2 ? 0 : 1;
+        scanned.controlStates[static_cast<size_t>(index)] =
+            VaporView::Ai8TemperatureControllerProtocol::ChannelControlState::ApidOutput;
+        if (index < 2)
+            scanned.measuredC[static_cast<size_t>(index)] = 22.0 + index;
+        else
+            scanned.alarmStatusRegisters[static_cast<size_t>(index / 2)] |=
+                quint16(1) << (index % 2 == 0 ? 8 : 0);
+        overview.applyLiveData(scanned);
+        for (int cached = 0; cached <= index; ++cached)
+        {
+            require(statuses[cached]->text() == (cached < 2 ? QStringLiteral("Running")
+                        : QStringLiteral("Input error")) &&
+                        overviewValueLabels[cached]->text() == (cached < 2
+                            ? QString::number(22.0 + cached, 'f', 1) + QStringLiteral(" °C")
+                            : QStringLiteral("---")),
+                    "Partial eight-channel scans retain healthy PVs and each known input alarm");
+        }
+    }
+    require(!scanned.controlStatesValid && !scanned.alarmStatusValid &&
+                statuses[0]->styleSheet().contains(VaporView::appThemeColor(
+                    VaporView::AppThemeColor::Text, VaporView::isDarkThemeEnabled()).name()) &&
+                overview.toolTip().contains(QStringLiteral("global alarm")),
+            "A global alarm does not mark the two healthy channels as input faults");
+    scanned.detailedChannel = 0;
+    overview.applyLiveData(scanned);
+    require(statuses[0]->text() == QStringLiteral("Running") &&
+                statuses[7]->text() == QStringLiteral("Input error"),
+            "Cached per-channel metadata survives a scan with no detailed channel");
+    scanned.controlStates[2] = VaporView::Ai8TemperatureControllerProtocol::ChannelControlState::Unknown;
+    scanned.alarmStatusRegisters[1] &= 0x00ff;
+    overview.applyLiveData(scanned);
+    require(statuses[2]->text() == QStringLiteral("—") &&
+                statuses[3]->text() == QStringLiteral("Input error"),
+            "An expired channel loses its status without clearing other cached channel alarms");
+    scanned.valid = false;
+    scanned.mainStatusRaw = 0x100;
+    overview.applyLiveData(scanned);
+    require(statuses[0]->text() == QStringLiteral("System fault") &&
+                overviewValueLabels[0]->text() == QStringLiteral("---") &&
+                statuses[0]->toolTip().contains(QStringLiteral("instrument system fault")),
+            "An instrument system fault has a separate status and hides cached measurements");
+    overview.applyLiveData({});
+    for (QLabel *status : statuses)
+        require(status->text() == QStringLiteral("—"), "Disconnect clears cached input and system faults");
+
     auto *stack = panel.findChild<QStackedWidget *>(QStringLiteral("ai8ParameterStack"));
     require(stack != nullptr && stack->count() == 4 && stack->currentIndex() == 0,
             "AI-8 panel starts on one of four documented parameter groups");
@@ -771,7 +842,7 @@ int main(int argc, char **argv)
     liveData.measuredC.fill(std::numeric_limits<double>::quiet_NaN());
     liveData.measuredC[0] = 23.4;
     liveData.alarmStatusValid = true;
-    liveData.alarmStatusRegisters[0] = 0x0203;
+    liveData.alarmStatusRegisters[0] = 0x0204;
     panel.applyLiveData(liveData);
     auto *pvEdit = panel.findChild<QLineEdit *>(QStringLiteral("ai8MeasuredTemperatureEdit"));
     auto *alarmStatusEdit = panel.findChild<QLineEdit *>(QStringLiteral("ai8ChannelAlarmStatusEdit"));
@@ -809,7 +880,7 @@ int main(int argc, char **argv)
             "AI-8 temperature plot follows the selected channel history");
     require(panel.currentOutputStatusText() == QStringLiteral("通道2：停止输出"),
             "AI-8 title status follows the selected channel");
-    require(alarmStatusEdit->text().contains(QStringLiteral("0x03")),
+    require(alarmStatusEdit->text().contains(QStringLiteral("0x04")),
             "AI-8 selected-channel alarm status follows the selected channel");
     VaporView::Ai8TemperatureControllerProtocol::LiveData selected;
     selected.valid=true;selected.measuredC.fill(std::numeric_limits<double>::quiet_NaN());selected.measuredC[0]=24.0;
@@ -822,6 +893,42 @@ int main(int argc, char **argv)
         &&panel.findChild<QLineEdit*>("ai8MeasuredTemperatureEdit")->text()==QStringLiteral("---"),
             "uncollected FPGA channels do not retain another channel's details or display NaN");
     channelSpin->setValue(1);
+    const int samplesBeforeFault = temperaturePlot->property("sampleCount").toInt();
+    selected.alarmRaw = 1;
+    selected.measuredC[0] = 911.0;
+    selected.mainStatusValid = true;
+    selected.mainStatusRaw = 0x200;
+    selected.controlRaw = 1;
+    panel.applyLiveData(selected);
+    require(pvEdit->text() == QStringLiteral("---") &&
+                alarmStatusEdit->text().contains(QStringLiteral("0x01")) &&
+                alarmStatusEdit->toolTip().contains(QStringLiteral("全局报警")) &&
+                temperaturePlot->property("sampleCount").toInt() == samplesBeforeFault,
+            "An input fault retains its alarm without displaying or plotting the 911 failure value");
+    selected.alarmRaw = 0;
+    selected.measuredC[0] = 24.0;
+    panel.applyLiveData(selected);
+    require(pvEdit->text() == QStringLiteral("24.0 °C") &&
+                alarmStatusEdit->text().contains(QStringLiteral("0x00")) &&
+                panel.currentOutputStatusText() == QStringLiteral("通道1：APID输出"),
+            "A global alarm alone preserves a healthy selected-channel measurement and control state");
+    selected.detailedChannel = 0;
+    selected.controlStates[0] =
+        VaporView::Ai8TemperatureControllerProtocol::ChannelControlState::ApidOutput;
+    selected.alarmStatusRegisters[0] = 0x0100;
+    selected.measuredC[0] = std::numeric_limits<double>::quiet_NaN();
+    panel.applyLiveData(selected);
+    require(pvEdit->text() == QStringLiteral("---") &&
+                alarmStatusEdit->text().contains(QStringLiteral("0x01")) &&
+                panel.currentOutputStatusText() == QStringLiteral("通道1：APID输出"),
+            "A cached input fault remains visible when the latest scan has no detailed channel");
+    selected.mainStatusRaw = 0x100;
+    selected.alarmStatusRegisters[0] = 0;
+    selected.measuredC[0] = 24.0;
+    panel.applyLiveData(selected);
+    require(pvEdit->text() == QStringLiteral("---") &&
+                alarmStatusEdit->toolTip().contains(QStringLiteral("仪表系统故障")),
+            "The selected-channel readback explains system faults independently from input alarms");
     panel.applyLiveData(VaporView::Ai8TemperatureControllerProtocol::LiveData{});
     require(alarmStatusEdit->text()==QStringLiteral("---") && panel.findChild<QLineEdit*>("ai8DisplayedSetpointEdit")->text().isEmpty(),
             "losing FPGA details clears the previous selected-channel readback");

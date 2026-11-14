@@ -5,6 +5,7 @@
 #include <QPointer>
 #include <QThread>
 #include <QtEndian>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
@@ -65,6 +66,7 @@ public:
             {0x5050,100},{0x5150,100},{0x6614,1},{0x661c,1},{0x662c,1000},
             {0x6010,4800},{0x6018,500},{0x6210,460800},{0x6510,115200},{0x6314,250},{0x6414,2000}};
         regs[0x8004]=1;regs[0x8014]=1;regs[0x7004]=1;regs[0x2c]=regs[0x30]=0xffffffff;
+        regs[0]=0x00010101;
         regs[0x701c]=9;regs[0x802c]=7;regs[0x8034]=3;
         regs[0x6100]=0x00410106;regs[0x614c]=0x48434432;regs[0x6110]=19200;regs[0x6114]=99;regs[0x6118]=0;
         regs[0x1000]=0x00020200;regs[0x6700]=0x00470200;regs[0x6730]=4;regs[0x6744]=2000;
@@ -174,8 +176,8 @@ void connectionEventTimeFilter(){
     require(count()==4,"reconnect resets cumulative drop baseline");
 }
 void startupWarningGrace(){
-    for(int scenario=0;scenario<4;++scenario) {
-        const quint16 source=scenario==3?0x46:0x45;
+    for(int scenario=0;scenario<6;++scenario) {
+        const quint16 source=scenario>=3?0x46:0x45;
         Fixture f;f.transport->regs[0x6504]=source==0x45;f.transport->regs[0x6604]=source==0x46;
         f.controller.setOperationLogContext(1,QStringLiteral("startup-operation"),QStringLiteral("startup-session"));
         f.connect();f.controller.clearOperationLogContext(1);
@@ -195,10 +197,11 @@ void startupWarningGrace(){
         QObject::connect(&samples,&QTimer::timeout,&f.controller,[&] {
             FpgaSensor::Reading r;r.source=0x45;r.kind=FpgaSensor::SensorKind::Tfa1500;r.timestamp=2;
             r.validity.structure=true;r.validity.measurement=scenario==0;r.distanceMm=1000;
-            if(scenario==3) {
+            if(scenario>=3) {
                 r.source=source;r.kind=FpgaSensor::SensorKind::Ai8;r.schema=2;r.validity.measurement=true;
                 r.ai8DeviceStatus=1;r.ai8DeviceError=0x40;r.ai8PvRaw=250;r.ai8SpRaw=250;r.ai8SvRaw=250;
-                r.ai8OpRaw=0;r.ai8Alarm=1;r.ai8Control=0;r.ai8Host=0;r.ai8SetResult=0;r.ai8SampleCounter=1;
+                r.ai8OpRaw=0;r.ai8Alarm=scenario==3?1:0;r.ai8Control=0;
+                r.ai8Host=scenario==4?0x200:scenario==5?0x100:0;r.ai8SetResult=0;r.ai8SampleCounter=1;
             }
             emit session->sensorReadingReceived(r);
         });
@@ -208,6 +211,14 @@ void startupWarningGrace(){
         require(errors()==0,"startup errors are quiet during the grace period");
         while(elapsed.elapsed()<3300){QCoreApplication::processEvents();QThread::msleep(1);}
         require(errors()==(scenario==0?0:1),"recovered startup is quiet; persistent error or invalid data warns once");
+        if(scenario>=3)for(const auto& record:f.records)if(record.fields.value("source_id").toUInt()==source) {
+            require(record.fields.value("ai8_input_error").toBool()==(scenario==3)
+                && record.fields.value("ai8_global_alarm").toBool()==(scenario==4)
+                && record.fields.value("ai8_system_fault").toBool()==(scenario==5),
+                "startup warning distinguishes channel input, instrument global alarm and system fault");
+            if(scenario==4)require(record.message.contains(QStringLiteral("当前通道测量正常")),
+                "global alarm warning does not misdescribe a healthy channel as an invalid measurement");
+        }
         if(scenario!=0)for(const auto& record:f.records)
             if((record.fields.value("event")=="fpga_firmware_event" && record.fields.value("source_id").toUInt()==source)
                || (record.fields.value("fpga_source").toUInt()==source && record.fields.value("reason_code")=="STARTUP_UNHEALTHY"))
@@ -240,6 +251,34 @@ void startupWarningGrace(){
         require(record.correlation_id==QStringLiteral("new-start") && record.session_id==QStringLiteral("new-session"),"reconnected source uses new context after cancellation");
     }
     require(newWarning,"reconnected source emits startup diagnostic");
+}
+void ptbStartupWarningGrace(){
+    for(bool recovers:{true,false}) {
+        Fixture f;f.transport->regs[0x6004]=1;f.transport->regs[0x6018]=500;
+        f.connect();
+        auto* session=f.controller.findChild<FpgaDeviceSession*>();
+        const auto warnings=[&] {int count=0;for(const auto& record:f.records)
+            if(record.fields.value("fpga_source").toUInt()==0x40
+                && record.fields.value("reason_code")=="STARTUP_UNHEALTHY")++count;return count;};
+        QElapsedTimer elapsed;elapsed.start();
+        QTimer samples;samples.setInterval(25);
+        QObject::connect(&samples,&QTimer::timeout,&f.controller,[&] {
+            if(!recovers || elapsed.elapsed()<4000)return;
+            FpgaSensor::Reading reading;reading.source=0x40;reading.kind=FpgaSensor::SensorKind::Ptb210;
+            reading.timestamp=quint64(elapsed.elapsed())*100000;reading.flags=1;reading.pressureMilliPa=101325000;
+            reading.validity.structure=reading.validity.crc=reading.validity.deviceOnline=reading.validity.measurement=true;
+            emit session->sensorReadingReceived(reading);
+        });
+        samples.start();
+        while(elapsed.elapsed()<4300){QCoreApplication::processEvents();QThread::msleep(1);}
+        require(warnings()==0,"PTB FORM0/RESET settling and first poll do not trigger a premature three-second warning");
+        while(elapsed.elapsed()<5300){QCoreApplication::processEvents();QThread::msleep(1);}
+        require(warnings()==(recovers?0:1),"PTB recovery is quiet while persistent missing data warns after its startup window");
+        if(!recovers)for(const auto& record:f.records)if(record.fields.value("reason_code")=="STARTUP_UNHEALTHY")
+            require(record.fields.value("startup_grace_ms").toLongLong()==5000
+                && record.message.contains(QStringLiteral("5 秒")),"PTB diagnostic reports its actual five-second startup grace");
+        samples.stop();f.controller.disconnectDevice();
+    }
 }
 void currentFirmwareSafety(){
     {
@@ -355,7 +394,32 @@ void connectionResultLogs(){
     feed(1u<<4);QCoreApplication::processEvents();
     require(count(f,0x45,"succeeded")==0,"invalid sensor data cannot produce success");
     feed(0);waitUntil([&]{return count(f,0x45,"succeeded")==1;},"first valid sample reports connection success");
-    feed(0);waitUntil([&]{return count(f,0x40,"failed")==1&&count(f,0x46,"failed")==1;},"missing data reports per-device failure",11000);
+    Fixture unpolled;unpolled.transport->regs[0x6204]=unpolled.transport->regs[0x6504]=1;
+    QElapsedTimer unpolledWait;unpolledWait.start();unpolled.connect();
+    Fixture inputFault;inputFault.transport->regs[0x6604]=1;inputFault.connect();
+    Fixture systemFault;systemFault.transport->regs[0x6604]=1;systemFault.connect();
+    QTimer faultSamples;faultSamples.setInterval(25);
+    QObject::connect(&faultSamples,&QTimer::timeout,&f.controller,[&] {
+        auto reading=ai8;reading.ai8DeviceStatus=1;reading.ai8PvRaw=9110;reading.ai8Alarm=1;reading.ai8Host=0x214;
+        emit inputFault.controller.findChild<FpgaDeviceSession*>()->sensorReadingReceived(reading);
+        reading.ai8Alarm=0;reading.ai8Host=0x100;
+        emit systemFault.controller.findChild<FpgaDeviceSession*>()->sensorReadingReceived(reading);
+    });
+    faultSamples.start();
+    feed(0);waitUntil([&]{return count(f,0x40,"failed")==1&&count(f,0x46,"failed")==1
+        &&count(unpolled,0x42,"failed")==1&&count(unpolled,0x45,"failed")==1
+        &&count(inputFault,0x46,"failed")==1&&count(systemFault,0x46,"failed")==1;},"missing data reports per-device failure",11000);
+    faultSamples.stop();
+    require(unpolledWait.elapsed()>=7800 && unpolledWait.elapsed()<11000,
+        "sensors without polling registers use the eight-second default, not the system identity as milliseconds");
+    require(count(inputFault,0x46,"succeeded")==0 && count(systemFault,0x46,"succeeded")==0,
+        "input or system fault cannot report a successful valid-temperature connection");
+    bool inputReason=false,systemReason=false;
+    for(const auto& record:inputFault.records)inputReason|=record.fields.value("reason_code")=="AI8_INPUT_ERROR"
+        && record.fields.value("ai8_input_error").toBool() && record.fields.value("ai8_global_alarm").toBool();
+    for(const auto& record:systemFault.records)systemReason|=record.fields.value("reason_code")=="AI8_SYSTEM_FAULT"
+        && record.fields.value("ai8_system_fault").toBool();
+    require(inputReason && systemReason,"failed AI8 measurements identify input and system faults instead of blaming communication");
     require(count(f,0x45,"succeeded")==1&&count(f,0x45,"failed")==0,"continuous samples never spam connection logs");
     for (const auto& record : f.records) {
         if (record.fields.value("event") == "fpga_device_connection_result" &&
@@ -421,6 +485,63 @@ void sensorRates(){
     waitUntil([&]{return presentations>0;},"coalesced sensor presentation arrives");
     require(rate==1000.0&&presentations==1,"one presentation retains the rate of all 1001 raw sensor frames");
     waitUntil([&]{return rate==0.0;},"stalled sensor data clears the frequency",6500);
+    f.controller.disconnectDevice();
+}
+void ai8ScanPresentation(){
+    Fixture f;f.connect();
+    auto* session=f.controller.findChild<FpgaDeviceSession*>();
+    QVector<FpgaSensor::AdaptedMeasurements> presentations;
+    QObject::connect(&f.controller,&FpgaDeviceController::measurementUpdated,&f.controller,
+        [&](const auto& value){if(value.reading.source==0x46)presentations.append(value);});
+    const auto feed=[&](int channel,int pv,quint32 alarm,quint64 timestamp) {
+        FpgaSensor::Reading reading;reading.source=0x46;reading.kind=FpgaSensor::SensorKind::Ai8;reading.schema=3;
+        reading.validity.structure=reading.validity.crc=reading.validity.deviceOnline=reading.validity.measurement=true;
+        reading.timestamp=timestamp;reading.ai8Channel=channel;reading.ai8DeviceStatus=1;reading.ai8DeviceError=0;
+        reading.ai8PvRaw=pv;reading.ai8SpRaw=300;reading.ai8SvRaw=300;reading.ai8OpRaw=0;
+        reading.ai8Alarm=alarm;reading.ai8Control=0;reading.ai8Host=alarm?0x200:0;
+        reading.ai8SetResult=0;reading.ai8SampleCounter=quint32(timestamp);
+        emit session->sensorReadingReceived(reading);
+    };
+    feed(8,280,0,1);feed(1,9110,1,2);
+    waitUntil([&]{return presentations.size()>=2;},"both scan channels retain their individual presentation events");
+    int aggregates=0;
+    for(const auto& value:presentations)if(value.ai8Live) {
+        ++aggregates;
+        require(value.ai8Live->measuredC[7]==28 && std::isnan(value.ai8Live->measuredC[0])
+            && value.ai8Live->controlStates[0]!=Ai8TemperatureControllerProtocol::ChannelControlState::Unknown
+            && Ai8TemperatureControllerProtocol::decodeChannelAlarmStatus(value.ai8Live->alarmStatusRegisters[0],1)==1,
+            "reverse channel arrival publishes the newest aggregate without rolling back the latest input alarm");
+    }
+    require(aggregates==1,"one coalescing interval publishes a scan aggregate only once");
+
+    presentations.clear();
+    feed(2,260,0,10);
+    QElapsedTimer streaming;streaming.start();
+    QTimer channelOne;channelOne.setInterval(25);
+    QObject::connect(&channelOne,&QTimer::timeout,&f.controller,[&] {
+        feed(1,250,0,1000+quint64(streaming.elapsed())*100000);
+    });
+    channelOne.start();
+    while(streaming.elapsed()<5300){QCoreApplication::processEvents();QThread::msleep(1);}
+    channelOne.stop();
+    bool expiredChannelTwo=false,activeChannelOne=false;
+    const Ai8TemperatureControllerProtocol::LiveData* lastAggregate=nullptr;
+    for(const auto& value:presentations)if(value.ai8Live) {
+        lastAggregate=&*value.ai8Live;
+        activeChannelOne|=value.ai8Live->measuredC[0]==25;
+        if(!activeChannelOne)continue;
+        require(value.ai8Live->valid && value.ai8Live->measuredC[0]==25,
+            "an expired channel cannot clear or roll back the active scan channel");
+        if(std::isnan(value.ai8Live->measuredC[1])) {
+            expiredChannelTwo=true;
+            require(std::isnan(value.ai8Live->setpointsC[1])
+                && value.ai8Live->controlStates[1]==Ai8TemperatureControllerProtocol::ChannelControlState::Unknown,
+                "channel expiry also clears its target and diagnostic metadata");
+        }
+    }
+    require(expiredChannelTwo && lastAggregate && lastAggregate->valid && lastAggregate->measuredC[0]==25
+        && std::isnan(lastAggregate->measuredC[1]),
+        "CH1 continuous updates remain visible after stopped CH2 expires at five seconds");
     f.controller.disconnectDevice();
 }
 void connectionAndVersions(){
@@ -831,7 +952,8 @@ int main(int argc,char **argv){
     QCoreApplication app(argc,argv);
     if(app.arguments().contains("--selective-connection")) {selectiveConnection();std::puts("FPGA selective connection tests passed");return 0;}
     if(app.arguments().contains("--sensor-config")) {sensorConfiguration();std::puts("FPGA sensor configuration tests passed");return 0;}
-    if(app.arguments().contains("--startup-grace")) {startupWarningGrace();std::puts("FPGA startup warning grace tests passed");return 0;}
+    if(app.arguments().contains("--startup-grace")) {startupWarningGrace();ptbStartupWarningGrace();std::puts("FPGA startup warning grace tests passed");return 0;}
+    if(app.arguments().contains("--scan-presentation")) {ai8ScanPresentation();std::puts("FPGA scan presentation tests passed");return 0;}
     if(app.arguments().contains("--command-timeout")) {commandTimeoutAttribution();std::puts("FPGA command timeout attribution tests passed");return 0;}
     if(app.arguments().contains("--hardware-probe")) {
         FpgaDeviceController controller;
@@ -889,5 +1011,5 @@ int main(int argc,char **argv){
         }
         std::puts("hardware controller connect/idle/reconnect probe passed");return 0;
     }
-    connectionEventTimeFilter();currentFirmwareSafety();advancedDataPaths();connectionResultLogs();sensorRates();connectionAndVersions();connectionRecovery();backgroundRefresh();commandTimeoutAttribution();independentAndAcquisition();restartClearsDliaState();configurationAndFailure();scopedConfiguration();rawAndBusy();temperature();sensorUploadAndFailure();ai8DisabledConfiguration();ptbHistoricalErrorRecovery();threadCleanup();std::puts("FPGA controller tests passed");return 0;
+    connectionEventTimeFilter();currentFirmwareSafety();advancedDataPaths();connectionResultLogs();sensorRates();ai8ScanPresentation();connectionAndVersions();connectionRecovery();backgroundRefresh();commandTimeoutAttribution();independentAndAcquisition();restartClearsDliaState();configurationAndFailure();scopedConfiguration();rawAndBusy();temperature();sensorUploadAndFailure();ai8DisabledConfiguration();ptbHistoricalErrorRecovery();threadCleanup();std::puts("FPGA controller tests passed");return 0;
 }

@@ -271,7 +271,7 @@ void reflowHomeDeviceSummary(QVBoxLayout *sectionLayout, int rowHeight, int spac
     int minimumWidth = used;
     for (QFrame *pill : pills)
     {
-        const int width = std::max(pill->minimumWidth(), pill->sizeHint().width());
+        const int width = qBound(pill->minimumWidth(), pill->sizeHint().width(), pill->maximumWidth());
         minimumWidth = std::max(minimumWidth, width + (pill == pills.first() && title ? title->width() + spacing : 0));
         if (!rows.last().isEmpty() && used + spacing + width > available)
         {

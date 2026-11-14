@@ -666,9 +666,11 @@ void RemoteSkyController::updateStatusState(const TelemetryStatus& status)
     for (const DeviceStatusItem& item : status.devices)
     {
         state_.setDeviceState(item.device_id, item.state);
-        // FPGA telemetry owns its own sensor freshness.  The legacy WaveTcp
-        // status can remain disconnected while FPGA previews are streaming.
-        if (item.state != DeviceState::Connected && item.device_id != SkyDeviceId::WaveTcp)
+        // FPGA previews and confirmed AI8 fault diagnostics have independent
+        // packet freshness even when their measurement status is not Connected.
+        const bool ai8Fault = item.device_id == SkyDeviceId::Ai8TemperatureController &&
+            item.state == DeviceState::Error;
+        if (item.state != DeviceState::Connected && item.device_id != SkyDeviceId::WaveTcp && !ai8Fault)
         {
             state_.clearDeviceData(item.device_id);
         }

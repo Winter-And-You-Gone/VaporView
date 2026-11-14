@@ -1340,7 +1340,11 @@ void SkyRuntime::sendAi8TemperatureControllerStatus()
 {
     const DeviceStatusItem status = device_manager_.status(SkyDeviceId::Ai8TemperatureController);
     const quint64 nowUs = currentTimestampUs();
-    if (!connectedAndFresh(status, nowUs, 3'000'000ULL))
+    // This message also carries confirmed alarms when no PV is usable. Failed
+    // polls retain their false validity flags so they can clear older metadata.
+    if ((status.state != DeviceState::Connected && status.state != DeviceState::Error) ||
+        status.last_data_time_us == 0 || nowUs < status.last_data_time_us ||
+        nowUs - status.last_data_time_us > 3'000'000ULL)
     {
         return;
     }

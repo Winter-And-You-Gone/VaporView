@@ -273,6 +273,12 @@ public:
     }
 
 protected:
+    void resizeEvent(QResizeEvent *event) override
+    {
+        QWidget::resizeEvent(event);
+        updateAxisProperties();
+    }
+
     void paintEvent(QPaintEvent *event) override
     {
         Q_UNUSED(event);
@@ -298,27 +304,15 @@ protected:
         QVector<double> finiteSamples;
         QVector<qint64> finiteSampleTimes;
         collectFiniteSamples(finiteSamples, finiteSampleTimes);
-        const AxisState axisState = makeAxisState(finiteSamples, finiteSampleTimes);
-
         QFont axisFont = font();
         axisFont.setPointSize(std::max(7, axisFont.pointSize() - 3));
         const QFontMetrics axisFm(axisFont);
-        const qreal yAxisWidth = yAxisWidthFor(axisState, axisFm);
-        const qreal xAxisHeight = axisFm.height() + 9.0;
-        const QRectF basePlotRect = panelRect.adjusted(yAxisWidth, 5.0, -7.0, -xAxisHeight);
-        QRectF plotRect = basePlotRect;
-        const qreal compactLabelHalfWidth = timeAxisSubsequentLabelWidth(axisFm) / 2.0;
-        const qreal timeAxisLeft = std::max(basePlotRect.left(), compactLabelHalfWidth);
-        const qreal timeAxisRight = std::min(basePlotRect.right(),
-                                             width() - compactLabelHalfWidth -
-                                                 kEnvironmentXAxisLabelRightInset);
-        if (timeAxisRight > timeAxisLeft + 1.0)
-        {
-            plotRect.setLeft(timeAxisLeft);
-            plotRect.setRight(timeAxisRight);
-        }
-        const XAxisState xAxisState = makeXAxisState(axisState, plotRect.width(), axisFm);
-        setXAxisProperties(this, xAxisState);
+        const PlotState plotState = makePlotState(finiteSamples, finiteSampleTimes, axisFm);
+        const auto& axisState = plotState.axis;
+        const auto& xAxisState = plotState.xAxis;
+        const QRectF plotRect = plotState.rect;
+        const qreal yAxisWidth = plotState.yAxisWidth;
+        setAxisProperties(plotState);
         painter.setClipPath(panelPath);
         painter.setPen(QPen(grid, 1.0));
         for (int i = 1; i <= 2; ++i)
@@ -437,10 +431,12 @@ protected:
         painter.setClipRect(plotRect);
         painter.setPen(QPen(line, 1.8, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
         painter.drawPolyline(polyline);
+        painter.restore();
+        // The newest sample is anchored to the final time tick. Keep its marker
+        // whole in the panel's existing right margin instead of cutting it in half.
         painter.setBrush(line);
         painter.setPen(Qt::NoPen);
         painter.drawEllipse(polyline.constLast(), 2.4, 2.4);
-        painter.restore();
         painter.setClipping(false);
         if (!unit_.isEmpty())
         {
@@ -454,13 +450,9 @@ private:
         double minValue = std::numeric_limits<double>::quiet_NaN();
         double maxValue = std::numeric_limits<double>::quiet_NaN();
         double span = 0.0;
-        qint64 minWallMsecs = 0;
-        qint64 maxWallMsecs = 0;
         QString yTopLabel = QStringLiteral("--");
         QString yMiddleLabel = QStringLiteral("--");
         QString yBottomLabel = QStringLiteral("--");
-        QString xLeftLabel;
-        QString xRightLabel;
     };
 
     struct XAxisState
@@ -468,6 +460,14 @@ private:
         QStringList labels;
         qint64 minWallMsecs = 0;
         qint64 maxWallMsecs = 0;
+    };
+
+    struct PlotState
+    {
+        AxisState axis;
+        XAxisState xAxis;
+        QRectF rect;
+        qreal yAxisWidth = 32.0;
     };
 
     void collectFiniteSamples(QVector<double>& finiteSamples,
@@ -537,22 +537,24 @@ private:
         return width;
     }
 
-    qreal plotWidthFor(const AxisState& state, const QFontMetrics& axisFm) const
+    QRectF plotRectFor(qreal yAxisWidth, const QFontMetrics& axisFm) const
     {
         const qreal widgetWidth = width() > 0 ? width() : sizeHint().width();
-        const qreal yAxisWidth = yAxisWidthFor(state, axisFm);
-        const qreal baseLeft = 1.0 + yAxisWidth;
-        const qreal baseRight = widgetWidth - 8.0;
+        const qreal widgetHeight = height() > 0 ? height() : sizeHint().height();
+        const QRectF panelRect = QRectF(0.0, 0.0, widgetWidth, widgetHeight)
+            .adjusted(1.0, 1.0, -1.0, -1.0);
+        QRectF plotRect = panelRect.adjusted(yAxisWidth, 5.0, -7.0, -(axisFm.height() + 9.0));
         const qreal compactLabelHalfWidth = timeAxisSubsequentLabelWidth(axisFm) / 2.0;
-        const qreal timeAxisLeft = std::max(baseLeft, compactLabelHalfWidth);
-        const qreal timeAxisRight = std::min(baseRight,
+        const qreal timeAxisLeft = std::max(plotRect.left(), compactLabelHalfWidth);
+        const qreal timeAxisRight = std::min(plotRect.right(),
                                              widgetWidth - compactLabelHalfWidth -
                                                  kEnvironmentXAxisLabelRightInset);
         if (timeAxisRight > timeAxisLeft + 1.0)
         {
-            return std::max<qreal>(0.0, timeAxisRight - timeAxisLeft);
+            plotRect.setLeft(timeAxisLeft);
+            plotRect.setRight(timeAxisRight);
         }
-        return std::max<qreal>(0.0, baseRight - baseLeft);
+        return plotRect;
     }
 
     static qreal timeAxisLabelWidth(const QFontMetrics& axisFm, bool includeHour)
@@ -576,7 +578,7 @@ private:
         return std::max(2, intervalsByWidth + 1);
     }
 
-    static XAxisState makeXAxisState(const AxisState& state,
+    static XAxisState makeXAxisState(const QVector<qint64>& finiteSampleTimes,
                                      qreal plotWidth,
                                      const QFontMetrics& axisFm)
     {
@@ -585,15 +587,21 @@ private:
         const qint64 spanMsecs = std::max<qint64>(
             kEnvironmentTimeAxisMsecsPerInterval,
             static_cast<qint64>(tickCount - 1) * kEnvironmentTimeAxisMsecsPerInterval);
-        xAxis.maxWallMsecs = state.maxWallMsecs > 0
-            ? state.maxWallMsecs
-            : QDateTime::currentMSecsSinceEpoch();
+        qint64 firstWallMsecs = QDateTime::currentMSecsSinceEpoch();
+        xAxis.maxWallMsecs = firstWallMsecs;
+        if (!finiteSampleTimes.isEmpty())
+        {
+            const auto [minTime, maxTime] = std::minmax_element(
+                finiteSampleTimes.cbegin(), finiteSampleTimes.cend());
+            firstWallMsecs = *minTime;
+            xAxis.maxWallMsecs = *maxTime;
+        }
         // When a source has only just started (as in UI test mode), keep the
         // available samples centered in the plot instead of anchoring the
         // entire fixed window to "now" and leaving half the line empty.
-        const qint64 availableSpan = std::max<qint64>(0, state.maxWallMsecs - state.minWallMsecs);
+        const qint64 availableSpan = std::max<qint64>(0, xAxis.maxWallMsecs - firstWallMsecs);
         xAxis.minWallMsecs = availableSpan > 0 && availableSpan < spanMsecs
-            ? state.minWallMsecs
+            ? firstWallMsecs
             : xAxis.maxWallMsecs - spanMsecs;
 
         xAxis.labels.reserve(tickCount);
@@ -623,50 +631,75 @@ private:
     }
 
     static AxisState makeAxisState(const QVector<double>& finiteSamples,
-                                   const QVector<qint64>& finiteSampleTimes)
+                                   const QVector<qint64>& finiteSampleTimes,
+                                   const XAxisState& xAxis)
     {
         AxisState state;
-        if (finiteSamples.isEmpty())
+        QVector<double> visibleSamples;
+        visibleSamples.reserve(finiteSamples.size() + 2);
+        for (int index = 0; index < finiteSamples.size(); ++index)
         {
-            const qint64 now = QDateTime::currentMSecsSinceEpoch();
-            state.minWallMsecs = now;
-            state.maxWallMsecs = now;
-            state.xLeftLabel = formatClockLabel(now, true);
-            state.xRightLabel = state.xLeftLabel;
+            const qint64 time = finiteSampleTimes.at(index);
+            if (time >= xAxis.minWallMsecs && time <= xAxis.maxWallMsecs)
+                visibleSamples.append(finiteSamples.at(index));
+            if (index == 0)
+                continue;
+            const qint64 previousTime = finiteSampleTimes.at(index - 1);
+            for (const qint64 edge : {xAxis.minWallMsecs, xAxis.maxWallMsecs})
+            {
+                if (edge > std::min(previousTime, time) && edge < std::max(previousTime, time))
+                {
+                    const double ratio = static_cast<double>(edge - previousTime) /
+                        static_cast<double>(time - previousTime);
+                    visibleSamples.append(finiteSamples.at(index - 1) +
+                        ratio * (finiteSamples.at(index) - finiteSamples.at(index - 1)));
+                }
+            }
+        }
+        if (visibleSamples.isEmpty())
             return state;
-        }
-
-        auto [minIt, maxIt] = std::minmax_element(finiteSamples.cbegin(), finiteSamples.cend());
-        state.minValue = *minIt;
-        state.maxValue = *maxIt;
-        state.span = state.maxValue - state.minValue;
-        if (state.span < 1e-6)
-        {
-            constexpr double reserve = 1.0;
-            state.minValue -= reserve;
-            state.maxValue += reserve;
-            state.span = state.maxValue - state.minValue;
-        }
+        const auto [minIt, maxIt] = std::minmax_element(visibleSamples.cbegin(), visibleSamples.cend());
+        const double center = (*minIt + *maxIt) / 2.0;
+        // Retain the former constant-value scale for small changes as well.
+        // Larger ranges leave ten percent of the plot height free on each side.
+        state.span = std::max(2.0, (*maxIt - *minIt) * 1.25);
+        state.minValue = center - state.span / 2.0;
+        state.maxValue = center + state.span / 2.0;
         state.yTopLabel = formatAxisValue(state.maxValue, state.span);
         state.yMiddleLabel = formatAxisValue((state.minValue + state.maxValue) / 2.0, state.span);
         state.yBottomLabel = formatAxisValue(state.minValue, state.span);
 
-        if (finiteSampleTimes.isEmpty())
-        {
-            const qint64 now = QDateTime::currentMSecsSinceEpoch();
-            state.minWallMsecs = now;
-            state.maxWallMsecs = now;
-        }
-        else
-        {
-            auto [minTimeIt, maxTimeIt] = std::minmax_element(finiteSampleTimes.cbegin(),
-                                                              finiteSampleTimes.cend());
-            state.minWallMsecs = *minTimeIt;
-            state.maxWallMsecs = *maxTimeIt;
-        }
-        state.xLeftLabel = formatClockLabel(state.minWallMsecs, true);
-        state.xRightLabel = formatClockLabel(state.maxWallMsecs, false);
         return state;
+    }
+
+    PlotState makePlotState(const QVector<double>& finiteSamples,
+                            const QVector<qint64>& finiteSampleTimes,
+                            const QFontMetrics& axisFm) const
+    {
+        PlotState state;
+        // Wider y labels shorten the time window. Only grow the reserved label
+        // width during layout so a tick-count boundary cannot oscillate.
+        for (;;)
+        {
+            state.rect = plotRectFor(state.yAxisWidth, axisFm);
+            state.xAxis = makeXAxisState(finiteSampleTimes, state.rect.width(), axisFm);
+            state.axis = makeAxisState(finiteSamples, finiteSampleTimes, state.xAxis);
+            const qreal requiredWidth = yAxisWidthFor(state.axis, axisFm);
+            if (requiredWidth <= state.yAxisWidth)
+                return state;
+            state.yAxisWidth = requiredWidth;
+        }
+    }
+
+    void setAxisProperties(const PlotState& state)
+    {
+        setProperty("yAxisUnitLabel", unit_);
+        setProperty("yAxisMin", state.axis.minValue);
+        setProperty("yAxisMax", state.axis.maxValue);
+        setProperty("yAxisTopLabel", state.axis.yTopLabel);
+        setProperty("yAxisMiddleLabel", state.axis.yMiddleLabel);
+        setProperty("yAxisBottomLabel", state.axis.yBottomLabel);
+        setXAxisProperties(this, state.xAxis);
     }
 
     void updateAxisProperties()
@@ -674,17 +707,10 @@ private:
         QVector<double> finiteSamples;
         QVector<qint64> finiteSampleTimes;
         collectFiniteSamples(finiteSamples, finiteSampleTimes);
-        const AxisState state = makeAxisState(finiteSamples, finiteSampleTimes);
-        setProperty("yAxisUnitLabel", unit_);
-        setProperty("yAxisMin", state.minValue);
-        setProperty("yAxisMax", state.maxValue);
-        setProperty("yAxisTopLabel", state.yTopLabel);
-        setProperty("yAxisMiddleLabel", state.yMiddleLabel);
-        setProperty("yAxisBottomLabel", state.yBottomLabel);
         QFont axisFont = font();
         axisFont.setPointSize(std::max(7, axisFont.pointSize() - 3));
         const QFontMetrics axisFm(axisFont);
-        setXAxisProperties(this, makeXAxisState(state, plotWidthFor(state, axisFm), axisFm));
+        setAxisProperties(makePlotState(finiteSamples, finiteSampleTimes, axisFm));
     }
 
     VaporView::AppThemeColor series_color_;

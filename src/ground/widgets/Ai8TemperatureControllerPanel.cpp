@@ -22,6 +22,7 @@
 #include <QSpinBox>
 #include <QStackedWidget>
 #include <QStyle>
+#include <QStringList>
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -146,6 +147,45 @@ QString hexText(quint32 value, int width)
 QString decimalHexText(quint32 value, int width)
 {
     return QStringLiteral("%1 / %2").arg(value).arg(hexText(value, width));
+}
+
+bool channelMetadataKnown(const Ai8TemperatureControllerProtocol::LiveData& data, int index)
+{
+    // Partial FPGA scans mark each fresh channel with a concrete control state.
+    return data.detailedChannel == index + 1 || data.controlStatesValid ||
+           data.controlStates[static_cast<size_t>(index)] !=
+               Ai8TemperatureControllerProtocol::ChannelControlState::Unknown;
+}
+
+bool channelInputError(const Ai8TemperatureControllerProtocol::LiveData& data, int index)
+{
+    if (data.detailedChannel == index + 1)
+        return (data.alarmRaw & 1) != 0;
+    return (data.alarmStatusValid || channelMetadataKnown(data, index)) &&
+           (Ai8TemperatureControllerProtocol::decodeChannelAlarmStatus(
+                data.alarmStatusRegisters[static_cast<size_t>(index / 2)], index + 1) & 1) != 0;
+}
+
+bool instrumentSystemFault(const Ai8TemperatureControllerProtocol::LiveData& data)
+{
+    return data.mainStatusValid && (data.mainStatusRaw & 0x100) != 0;
+}
+
+QString instrumentStatusText(const Ai8TemperatureControllerProtocol::LiveData& data, bool english)
+{
+    if (!data.mainStatusValid)
+        return QString();
+    QStringList conditions;
+    if (instrumentSystemFault(data))
+        conditions << (english ? QStringLiteral("instrument system fault") : QStringLiteral("仪表系统故障"));
+    if ((data.mainStatusRaw & 0x200) != 0)
+        conditions << (english ? QStringLiteral("global alarm; it does not identify a channel input fault")
+                               : QStringLiteral("全局报警；不等同于本通道输入错误"));
+    if (conditions.isEmpty())
+        conditions << (english ? QStringLiteral("no system fault or global alarm")
+                               : QStringLiteral("无系统故障或全局报警"));
+    return (english ? QStringLiteral("Instrument status %1: %2") : QStringLiteral("主机状态 %1：%2"))
+        .arg(hexText(data.mainStatusRaw, 4), conditions.join(QStringLiteral("；")));
 }
 
 QString temperatureText(double value)
@@ -1133,6 +1173,7 @@ void Ai8TemperatureControllerPanel::setEnglish(bool english)
     updateRunStateAccessibility();
 
     updateStatusText();
+    updateAlarmStatusDisplay();
     refreshPageCommandControls();
     if (temperature_plot_)
     {
@@ -1219,7 +1260,9 @@ QString Ai8TemperatureControllerPanel::currentOutputStatusText() const
         ? QStringLiteral("Output: --")
         : QStringLiteral("输出：--");
     auto *channelSpin = findChild<QSpinBox *>(QStringLiteral("ai8ChannelSpin"));
-    if (!channelSpin || !backend_connected_ || (!latest_live_data_.controlStatesValid && latest_live_data_.detailedChannel!=channelSpin->value()))
+    if (!channelSpin || !backend_connected_ ||
+        !channelMetadataKnown(latest_live_data_, std::clamp(channelSpin->value(), 1,
+            Ai8TemperatureControllerProtocol::kChannelCount) - 1))
     {
         return unknownText;
     }
@@ -1493,7 +1536,7 @@ void Ai8TemperatureControllerPanel::applyLiveData(
         for (int index = 0; index < Ai8TemperatureControllerProtocol::kChannelCount; ++index)
         {
             const double measured = liveData.measuredC[static_cast<size_t>(index)];
-            if (!std::isfinite(measured))
+            if (!std::isfinite(measured) || channelInputError(liveData, index) || instrumentSystemFault(liveData))
             {
                 continue;
             }
@@ -1512,9 +1555,11 @@ void Ai8TemperatureControllerPanel::applyLiveData(
     updateMeasuredValue();
     if(hadDetails && !liveData.detailedChannel) {
         if(auto *sv=findChild<QLineEdit*>(QStringLiteral("ai8DisplayedSetpointEdit")))sv->clear();
-        if(!liveData.alarmStatusValid)
-            if(auto *alarm=findChild<QLineEdit*>(QStringLiteral("ai8ChannelAlarmStatusEdit")))alarm->setText(QStringLiteral("---"));
     }
+    if (auto *channel = findChild<QSpinBox *>(QStringLiteral("ai8ChannelSpin")); channel &&
+        !liveData.alarmStatusValid && !channelMetadataKnown(liveData, channel->value() - 1))
+        if (auto *alarm = findChild<QLineEdit *>(QStringLiteral("ai8ChannelAlarmStatusEdit")))
+            alarm->setText(QStringLiteral("---"));
     if(auto *ch=findChild<QSpinBox*>(QStringLiteral("ai8ChannelSpin"));ch && liveData.detailedChannel==ch->value()) {
         if(auto *sp=findChild<QDoubleSpinBox*>(QStringLiteral("ai8SetpointSpin"));sp && !sp->hasFocus() && !sp->findChild<QLineEdit*>()->hasFocus()) {const QSignalBlocker block(sp);sp->setValue(liveData.setpointC);}
         if(auto *sv=findChild<QLineEdit*>(QStringLiteral("ai8DisplayedSetpointEdit")))sv->setText(QString::number(liveData.displayedSetpointC,'f',1)+QStringLiteral(" °C"));
@@ -1535,7 +1580,9 @@ void Ai8TemperatureControllerPanel::updateMeasuredValue()
     }
     const int index = std::clamp(channelSpin->value(), 1,
                                  Ai8TemperatureControllerProtocol::kChannelCount) - 1;
-    edit->setText(latest_live_data_.valid && std::isfinite(latest_live_data_.measuredC[static_cast<size_t>(index)])
+    edit->setText(latest_live_data_.valid && !channelInputError(latest_live_data_, index) &&
+            !instrumentSystemFault(latest_live_data_) &&
+            std::isfinite(latest_live_data_.measuredC[static_cast<size_t>(index)])
         ? QString::number(latest_live_data_.measuredC[static_cast<size_t>(index)], 'f', 1) +
               QStringLiteral(" °C")
         : QStringLiteral("---"));
@@ -1549,12 +1596,16 @@ void Ai8TemperatureControllerPanel::updateAlarmStatusDisplay()
     {
         return;
     }
+    edit->setToolTip(instrumentStatusText(latest_live_data_, english_));
     if(latest_live_data_.detailedChannel==channelSpin->value()) {
         edit->setText(decimalHexText(latest_live_data_.alarmRaw,2));return;
     }
-    if (!latest_live_data_.alarmStatusValid)
+    if (!latest_live_data_.alarmStatusValid &&
+        !channelMetadataKnown(latest_live_data_, std::clamp(channelSpin->value(), 1,
+            Ai8TemperatureControllerProtocol::kChannelCount) - 1))
     {
-        if(latest_live_data_.detailedChannel)edit->setText(QStringLiteral("---"));
+        if(latest_live_data_.detailedChannel || latest_live_data_.mainStatusValid)
+            edit->setText(QStringLiteral("---"));
         return;
     }
     const int channel = std::clamp(channelSpin->value(),
@@ -1685,20 +1736,21 @@ void Ai8TemperatureOverviewPanel::applyLiveData(
     using namespace Ai8TemperatureControllerProtocol;
     for (int index = 0; index < kChannelCount; ++index)
     {
-        if (!liveData.valid || !std::isfinite(liveData.measuredC[index]))
+        const bool known = channelMetadataKnown(liveData, index);
+        if (!known && !liveData.alarmStatusValid &&
+            (!liveData.valid || !std::isfinite(liveData.measuredC[index])))
         {
             control_states_[index] = ChannelControlState::Unknown;
             alarm_states_[index] = -1;
             continue;
         }
-        if (liveData.controlStatesValid) control_states_[index] = liveData.controlStates[index];
-        if (liveData.alarmStatusValid)
+        if (known) control_states_[index] = liveData.controlStates[index];
+        if (liveData.alarmStatusValid || known)
             alarm_states_[index] = decodeChannelAlarmStatus(liveData.alarmStatusRegisters[index / 2], index + 1);
         if (liveData.detailedChannel == index + 1)
         {
             control_states_[index] = decodeChannelControlState(quint16(liveData.controlRaw) << 8, 1);
             alarm_states_[index] = liveData.alarmRaw;
-            if (liveData.mainStatusValid && (liveData.mainStatusRaw & 0x300)) alarm_states_[index] |= 0x100;
         }
     }
     refreshLabels();
@@ -1706,6 +1758,9 @@ void Ai8TemperatureOverviewPanel::applyLiveData(
 
 void Ai8TemperatureOverviewPanel::refreshLabels()
 {
+    const bool systemFault = instrumentSystemFault(latest_live_data_);
+    const QString instrumentStatus = instrumentStatusText(latest_live_data_, english_);
+    setToolTip(instrumentStatus);
     for (int index = 0; index < Ai8TemperatureControllerProtocol::kChannelCount; ++index)
     {
         QLabel *channelLabel = channel_labels_[static_cast<size_t>(index)];
@@ -1724,16 +1779,21 @@ void Ai8TemperatureOverviewPanel::refreshLabels()
             ? latest_live_data_.setpointsC[static_cast<size_t>(index)]
             : latest_live_data_.detailedChannel == index + 1 ? latest_live_data_.setpointC
             : std::numeric_limits<double>::quiet_NaN();
-        targetLabel->setText(latest_live_data_.valid && std::isfinite(target)
+        targetLabel->setText(std::isfinite(target)
             ? temperatureText(target) : QStringLiteral("---"));
         targetLabel->setAccessibleName(english_
             ? QStringLiteral("Channel %1 target temperature %2").arg(index + 1).arg(targetLabel->text())
             : QStringLiteral("通道 %1 目标温度 %2").arg(index + 1).arg(targetLabel->text()));
         const double measured = latest_live_data_.measuredC[static_cast<size_t>(index)];
-        const bool available = latest_live_data_.valid && std::isfinite(measured);
+        const bool available = latest_live_data_.valid && std::isfinite(measured) &&
+            !channelInputError(latest_live_data_, index) && !systemFault;
         using Ai8TemperatureControllerProtocol::ChannelControlState;
         QString stateText;
-        if (alarm_states_[index] > 0) stateText = english_ ? QStringLiteral("Alarm") : QStringLiteral("告警");
+        const bool known = alarm_states_[index] >= 0 || control_states_[index] != ChannelControlState::Unknown;
+        if (systemFault && known) stateText = english_ ? QStringLiteral("System fault") : QStringLiteral("系统故障");
+        else if (alarm_states_[index] > 0 && (alarm_states_[index] & 1))
+            stateText = english_ ? QStringLiteral("Input error") : QStringLiteral("输入错误");
+        else if (alarm_states_[index] > 0) stateText = english_ ? QStringLiteral("Alarm") : QStringLiteral("告警");
         else switch (control_states_[index])
         {
         case ChannelControlState::ApidOutput: stateText = english_ ? QStringLiteral("Running") : QStringLiteral("运行"); break;
@@ -1742,11 +1802,13 @@ void Ai8TemperatureOverviewPanel::refreshLabels()
         default: stateText = QStringLiteral("—"); break;
         }
         status_labels_[index]->setText(stateText);
-        status_labels_[index]->setToolTip(QString(english_ ? "Channel %1 status: %2; alarm: %3" : "通道%1状态：%2；告警：%3")
+        QString statusTooltip = QString(english_ ? "Channel %1 status: %2; alarm: %3" : "通道%1状态：%2；告警：%3")
             .arg(index + 1).arg(stateText, alarm_states_[index] < 0 ? QStringLiteral("—")
-                : QStringLiteral("0x%1").arg(alarm_states_[index], 2, 16, QLatin1Char('0'))));
+                : QStringLiteral("0x%1").arg(alarm_states_[index], 2, 16, QLatin1Char('0')));
+        if (!instrumentStatus.isEmpty()) statusTooltip += QStringLiteral("\n") + instrumentStatus;
+        status_labels_[index]->setToolTip(statusTooltip);
         status_labels_[index]->setStyleSheet(QStringLiteral("color: %1;")
-            .arg(appThemeColor(alarm_states_[index] > 0 ? AppThemeColor::ToolbarRed
+            .arg(appThemeColor(alarm_states_[index] > 0 || (systemFault && known) ? AppThemeColor::ToolbarRed
                 : AppThemeColor::Text, VaporView::isDarkThemeEnabled()).name()));
         const QString valueText = available
             ? temperatureText(measured)

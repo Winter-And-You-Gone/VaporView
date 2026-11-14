@@ -261,10 +261,17 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
                      (state_->ai8_temperature_controller_panel_ ||
                       state_->ai8_temperature_overview_panel_))
             {
+                const bool keepFaultMetadata = item.state == VaporView::DeviceState::Error &&
+                    state_->remote_ai8_fault_metadata_ && state_->remote_sky_controller_ &&
+                    state_->remote_sky_controller_->deviceDataFresh(item.device_id,
+                        QDateTime::currentMSecsSinceEpoch(), 3000);
                 if (state_->ai8_device_session_)
                 {
                     state_->ai8_device_session_->setRemoteAvailable(false);
                 }
+                if (keepFaultMetadata)
+                    continue;
+                state_->remote_ai8_fault_metadata_ = false;
                 if (state_->ai8_temperature_controller_panel_)
                 {
                     state_->ai8_temperature_controller_panel_->setBackendConnected(false);
@@ -315,6 +322,11 @@ void MainWindow::onRemoteTemperatureControllerStatusUpdated(const VaporView::Tem
 void MainWindow::onRemoteAi8TemperatureControllerStatusUpdated(
     const VaporView::Ai8TemperatureControllerProtocol::LiveData& liveData)
 {
+    state_->remote_ai8_fault_metadata_ = !liveData.valid &&
+        (liveData.mainStatusValid || liveData.alarmStatusValid || liveData.detailedChannel != 0 ||
+         std::any_of(liveData.controlStates.cbegin(), liveData.controlStates.cend(), [](auto state) {
+             return state != VaporView::Ai8TemperatureControllerProtocol::ChannelControlState::Unknown;
+         }));
     if (!state_->ai8_temperature_controller_panel_ && !state_->ai8_temperature_overview_panel_)
     {
         return;

@@ -570,6 +570,7 @@ struct MainWindowState
     std::unique_ptr<VaporView::Ground::Map3DController> map3d_controller_;
 #endif
     VaporView::TelemetryStatus remote_status_;
+    bool remote_ai8_fault_metadata_ = false;
     VaporView::Session::NavigationStatusChangeTracker navigation_status_changes_;
     VaporView::TelemetryStatus last_remote_recording_status_;
     bool has_last_remote_recording_status_;
