@@ -155,5 +155,8 @@ void HomeMotionPanel::setTheme(bool dark, int fontScalePercent)
         "QLabel#homeMotionPosition { font-size: %1px; font-weight: 600; }"
         "QPushButton#homeMotionStopAll:enabled { background-color: @vv-danger; color: @vv-text-inverse; }"
     ).arg(qRound(18 * fontScalePercent / 100.0)), dark));
+    position_->ensurePolished();
+    position_->setFixedWidth(std::max(position_->fontMetrics().horizontalAdvance(QStringLiteral("-1000000.000°")),
+        position_->fontMetrics().horizontalAdvance(english_ ? QStringLiteral("Reading paused") : QStringLiteral("读取已暂停"))) + 4);
 }
 }

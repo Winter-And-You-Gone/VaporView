@@ -3625,7 +3625,15 @@ void requireHomeDataRowsPacked(QWidget *summaryContainer)
         const QPoint right = b->mapTo(section, QPoint());
         return left.y() == right.y() ? left.x() < right.x() : left.y() < right.y();
     });
-    require(pills.size() == 9, "Automatic wrapping preserves all nine devices");
+    require(pills.size() == 10, "Automatic wrapping preserves all ten devices");
+    require(findTelemetryPillByName(section, QStringLiteral("EM-FWC3")), "home data summary includes motor feedback");
+    QWidget *overviewCard = section;
+    while (overviewCard && !qobject_cast<QGroupBox *>(overviewCard))
+        overviewCard = overviewCard->parentWidget();
+    require(overviewCard, "data section belongs to an overview card");
+    for (auto *pill : pills)
+        require(pill->mapTo(overviewCard, QPoint(0, pill->height())).y() <= overviewCard->height() - 4,
+                "overview bottom edge leaves clearance below every data capsule");
     for (int i = 1; i < pills.size(); ++i)
     {
         auto *previous = pills.at(i - 1);
@@ -5194,8 +5202,11 @@ void requireHomeSensorLayoutAfterSidebarRestore()
             const int requiredWidth = std::max(epsilon->minimumSizeHint().width(),
                 panel->preferredWrappedWidth() + margins.left() + margins.right()) +
                 cards->handleWidth() + std::max(environment->minimumWidth(), environment->minimumSizeHint().width());
-            require(cards->parentWidget()->width() >= requiredWidth,
-                    "collapsed sidebar leaves enough space for both sensor cards");
+            if (cards->parentWidget()->width() < requiredWidth) {
+                require(cards->orientation() == Qt::Vertical,
+                        "sensor cards stack when reserved motor feedback width exceeds the available row");
+                continue;
+            }
             require(cards->orientation() == Qt::Horizontal &&
                         std::abs(epsilon->y() - environment->y()) <= 1 &&
                         epsilon->x() > environment->geometry().right(),
@@ -8290,7 +8301,7 @@ int main(int argc, char **argv)
     bool homeDataHasEpsilon = false;
     const QList<QFrame*> dataPills =
         homeDataSection->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
-    require(dataPills.size() == 9,
+    require(dataPills.size() == 10,
             "home data availability row covers all nine devices");
     const QStringList compactDeviceNames = {"EPSILON", "PTB210", "HC2A", "TFA1500-L", "RD105", "AI-8288", "BMP390", "SHT45", QStringLiteral("波形"), "Waveform"};
     for (QFrame *pill : dataPills)

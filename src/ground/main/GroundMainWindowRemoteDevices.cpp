@@ -940,13 +940,13 @@ void MainWindow::updateConfigCardHeightForSourceMode()
         const int homeBodyTopPadding = scalePixels(kHomeOverviewBodyPadding);
         const int homeBodyBottomPadding = scalePixels(kConfigHomeBodyBottomPadding);
         minimumHeight = std::max(minimumHeight,
-                                 kMainPageTitleBarHeight +
+                                 scalePixels(kMainPageTitleBarHeight) +
                                      homeBodyTopPadding +
                                      homeDeviceRowHeight +
                                      homeBodySpacing +
                                      summaryHeight +
                                      homeBodyBottomPadding +
-                                     scalePixels(kConfigCardBottomPadding));
+                                     scalePixels(kConfigCardBottomPadding + 8));
     }
 
     const auto naturalCardHeight = [](QWidget *card) {
@@ -1679,6 +1679,17 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         if (!remoteFpga)
             item.valueWidthText = state_->is_english_ ? QStringLiteral("Data available") : QStringLiteral("有数据");
     }
+    RemoteTelemetrySummarySections::Item motorItem;
+    motorItem.label = QStringLiteral("EM-FWC3");
+    const auto motorState = state_->motion_page_ ? state_->motion_page_->session()->state()
+        : VaporView::Ground::Motion::EmFwc3State{};
+    motorItem.hasData = motorState.connected && motorState.valid[0];
+    motorItem.value = state_->is_english_
+        ? (motorItem.hasData ? QStringLiteral("Data available") : QStringLiteral("No data"))
+        : (motorItem.hasData ? QStringLiteral("有数据") : QStringLiteral("无数据"));
+    motorItem.valueWidthText = state_->is_english_ ? QStringLiteral("Data available") : QStringLiteral("有数据");
+    motorItem.tooltip = state_->is_english_ ? QStringLiteral("Local motor angle feedback") : QStringLiteral("本机电机角度反馈");
+    homeSections.deviceItems << motorItem;
     const auto updateSourcePill = [this](QFrame *pill) {
         if (!pill)
         {

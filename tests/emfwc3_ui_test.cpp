@@ -397,6 +397,13 @@ int main(int argc, char **argv)
               "application UI test mode populates and enables both motor panels");
         homeTarget->setValue(72.5); homeGo->click();
         check(page->session()->state().positions[0] == 72.5, "home positioning works in simulation");
+        const int targetLeft = homeTarget->x();
+        const int positionWidth = homePosition->width();
+        for (double angle : {-1000000.0, 0.0, 999999.999}) {
+            homeTarget->setValue(angle); homeGo->click(); QApplication::processEvents();
+            check(homeTarget->x() == targetLeft && homePosition->width() == positionWidth,
+                  "angle changes preserve reserved feedback width and following field positions");
+        }
         homeHome->click();
         check(page->session()->state().positions[0] == 0, "home simulation resets its angle without a hardware confirmation");
         find<QPushButton>(*page, "emFwc3Plus1")->click();
