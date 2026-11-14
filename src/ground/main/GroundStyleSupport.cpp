@@ -1054,34 +1054,28 @@ QLabel#homeDeviceStatusCapsule[state="connected"] {
     border: 1px solid @vv-hd-ok;
     color: @vv-hd-ok;
 }
-QToolButton#homeMotionActionButton,
 QToolButton#homeDeviceActionButton {
     background-color: @vv-surface-alt;
     border: 1px solid @vv-border;
     border-radius: 7px;
     padding: 2px;
 }
-QToolButton#homeMotionActionButton:disabled,
 QToolButton#homeDeviceActionButton:disabled {
     background-color: @vv-surface-alt;
     border-color: @vv-border;
 }
-QToolButton#homeMotionActionButton[state="disconnected"],
 QToolButton#homeDeviceActionButton[state="disconnected"] {
     background-color: @vv-hd-ok-bg;
     border-color: @vv-hd-ok;
 }
-QToolButton#homeMotionActionButton[state="connecting"],
 QToolButton#homeDeviceActionButton[state="connecting"] {
     background-color: @vv-hd-ok-bg;
     border-color: @vv-hd-ok;
 }
-QToolButton#homeMotionActionButton[state="connected"],
 QToolButton#homeDeviceActionButton[state="connected"] {
     background-color: @vv-surface-alt;
     border-color: @vv-border-strong;
 }
-QToolButton#homeMotionActionButton:hover,
 QToolButton#homeDeviceActionButton:hover {
     background-color: @vv-primary-subtle;
     border-color: @vv-border-strong;
@@ -1092,6 +1086,16 @@ QToolButton#homeDeviceActionButton[deviceConfigAction="true"] {
 }
 QToolButton#homeDeviceActionButton[deviceConfigAction="true"]:hover {
     background-color: @vv-surface-alt;
+    border: none;
+}
+QToolButton#homeMotionActionButton {
+    background-color: transparent;
+    border: none;
+    border-radius: 7px;
+    padding: 2px;
+}
+QToolButton#homeMotionActionButton:hover {
+    background-color: @vv-title-hover;
     border: none;
 }
 QLabel#statusIndicator[status="connected"] {

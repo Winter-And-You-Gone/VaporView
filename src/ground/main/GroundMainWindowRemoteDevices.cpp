@@ -918,7 +918,8 @@ void MainWindow::updateConfigCardHeightForSourceMode()
         return;
     }
 
-    reflowHomeDeviceSummary(state_->data_telemetry_device_summary_layout_, scalePixels(28), scalePixels(2), scalePixels(2));
+    for (auto *layout : {state_->data_telemetry_link_summary_layout_, state_->data_telemetry_device_summary_layout_})
+        reflowHomeDeviceSummary(layout, scalePixels(28), scalePixels(2), scalePixels(2));
     int minimumHeight = scaledConfiguredHeight(state_->config_group_, kConfigCardMinHeight);
     if (state_->data_telemetry_summary_card_)
     {
@@ -2144,7 +2145,8 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             section->adjustSize();
             section->updateGeometry();
         }
-        if (sectionLayout == state_->data_telemetry_device_summary_layout_)
+        if (sectionLayout == state_->data_telemetry_device_summary_layout_ ||
+            sectionLayout == state_->data_telemetry_link_summary_layout_)
         {
             reflowHomeDeviceSummary(sectionLayout, scalePixels(28), scalePixels(2), scalePixels(2));
         }
@@ -2179,8 +2181,8 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                              state_->data_telemetry_link_summary_layout_,
                              state_->is_english_ ? QStringLiteral("Link rate") : QStringLiteral("链路速率"),
                              homeSections.linkItems,
-                             1,
-                             2);
+                             3,
+                             3);
         renderSummarySection(state_->data_telemetry_summary_card_,
                              state_->data_telemetry_device_summary_layout_,
                              state_->is_english_ ? QStringLiteral("Data") : QStringLiteral("数据"),

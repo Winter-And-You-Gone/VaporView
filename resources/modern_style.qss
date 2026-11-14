@@ -1704,6 +1704,18 @@ QToolButton#homeDeviceActionButton[deviceConfigAction="true"]:hover {
     border: none;
 }
 
+QToolButton#homeMotionActionButton {
+    background-color: transparent;
+    border: none;
+    border-radius: 7px;
+    padding: 2px;
+}
+
+QToolButton#homeMotionActionButton:hover {
+    background-color: @vv-title-hover;
+    border: none;
+}
+
 /* 状态指示器 */
 QLabel#statusIndicator {
     padding: 4px 12px;

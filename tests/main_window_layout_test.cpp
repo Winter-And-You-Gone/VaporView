@@ -3590,6 +3590,29 @@ void requireTelemetrySummaryPillsOrdered(QWidget *summaryContainer, const char *
     }
 }
 
+void requireHomeLinkRowsPacked(QWidget *summaryContainer)
+{
+    const auto sections = sortedTelemetrySections(summaryContainer);
+    require(sections.size() == 3, "Home summary includes the link-rate section");
+    auto *section = sections.at(1);
+    auto pills = section->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
+    std::sort(pills.begin(), pills.end(), [](QFrame *a, QFrame *b) {
+        return a->property("summaryItemIndex").toInt() < b->property("summaryItemIndex").toInt();
+    });
+    require(pills.size() == 3, "Link layout preserves both directions and the total");
+    for (int i = 1; i < pills.size(); ++i)
+    {
+        auto *previous = pills.at(i - 1);
+        auto *next = pills.at(i);
+        if (previous->parentWidget() == next->parentWidget()) continue;
+        const int usedRight = previous->mapTo(section, QPoint()).x() + previous->width();
+        const int contentRight = section->contentsRect().right() + 1 - section->layout()->contentsMargins().right();
+        require(usedRight + previous->parentWidget()->layout()->spacing() + next->width() > contentRight,
+                "Link rates wrap only when the next item cannot fit on the preceding row");
+    }
+    requireTelemetrySummaryPillsOrdered(summaryContainer, "Link rates remain inside their section without overlap");
+}
+
 void requireHomeDataRowsPacked(QWidget *summaryContainer)
 {
     processEventsFor(100);
@@ -3995,6 +4018,7 @@ void requireHomeOverviewLanguageWidthRoundTrip()
         languageTelemetrySummaryContainer,
         "language overview telemetry labels fit at startup");
     requireHomeDataRowsPacked(languageTelemetrySummaryContainer);
+    requireHomeLinkRowsPacked(languageTelemetrySummaryContainer);
     const QVector<TelemetryPillWidthSnapshotItem> initialTelemetryPillWidths =
         telemetryPillWidthSnapshot(languageTelemetrySummaryContainer);
     requireEpsilonSectionTitleWidths(languageEpsilonPanel, false);
@@ -4088,6 +4112,7 @@ void requireHomeOverviewLanguageWidthRoundTrip()
         languageTelemetrySummaryContainer,
         "language overview telemetry labels fit in English");
     requireHomeDataRowsPacked(languageTelemetrySummaryContainer);
+    requireHomeLinkRowsPacked(languageTelemetrySummaryContainer);
     requireEpsilonSectionTitleWidths(languageEpsilonPanel, true);
     require(QMetaObject::invokeMethod(&languageOverviewWindow,
                                       "onSwitchLanguage",
@@ -4127,6 +4152,7 @@ void requireHomeOverviewLanguageWidthRoundTrip()
         languageTelemetrySummaryContainer,
         "language overview telemetry labels fit after returning to Chinese");
     requireHomeDataRowsPacked(languageTelemetrySummaryContainer);
+    requireHomeLinkRowsPacked(languageTelemetrySummaryContainer);
     requireTelemetryPillWidthSnapshotNotWider(
         initialTelemetryPillWidths,
         telemetryPillWidthSnapshot(languageTelemetrySummaryContainer),
@@ -4209,6 +4235,26 @@ void requireHomeOverviewLanguageWidthRoundTrip()
     requireEpsilonSectionCardsFillRows(
         wideEpsilonPanel,
         "wide overview EPSILON cards fill one or two rows without a center gap");
+    auto *wideSummary = wideOverview->widget(0)->findChild<QWidget *>(QStringLiteral("homeTelemetrySummaryContainer"));
+    const int compactOverviewWidth = wideOverview->widget(0)->minimumWidth();
+    wideOverview->setProperty(VaporView::Ground::MainSupport::kHomeOverviewDeviceAutoManagedWidthProperty, false);
+    for (int width : {800, compactOverviewWidth, 800})
+    {
+        auto sizes = wideOverview->sizes();
+        sizes[0] = width;
+        wideOverview->setProperty(VaporView::Ground::MainSupport::kHomeOverviewDeviceProgrammaticResizeProperty, true);
+        wideOverview->setSizes(sizes);
+        wideOverview->setProperty(VaporView::Ground::MainSupport::kHomeOverviewDeviceProgrammaticResizeProperty, false);
+        processEventsFor(200);
+        requireHomeLinkRowsPacked(wideSummary);
+        if (width == 800)
+        {
+            const auto pills = sortedTelemetrySections(wideSummary).at(1)->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
+            require(pills.at(0)->parentWidget() == pills.at(1)->parentWidget() &&
+                    pills.at(1)->parentWidget() == pills.at(2)->parentWidget(),
+                    "all three link rates share one row when the overview is wide");
+        }
+    }
     wideOverviewWindow.close();
     require(processEventsUntil(1000, [&wideOverviewWindow]() {
                 return !wideOverviewWindow.isVisible();
@@ -8216,11 +8262,8 @@ int main(int argc, char **argv)
             "home link-rate telemetry section includes only the three link-rate pills");
     require(findTelemetryPillByName(homeLinkSection, QStringLiteral("目标")) == nullptr,
             "home link-rate telemetry section omits the target capsule");
-    QSet<int> linkRateRows;
     for (QFrame *pill : linkRatePills)
     {
-        const int pillY = pill->mapTo(homeLinkSection, QPoint(0, 0)).y();
-        linkRateRows.insert(pillY);
         QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
         require(valueLabel != nullptr,
                 "home link-rate pill has a value label");
@@ -8236,8 +8279,7 @@ int main(int argc, char **argv)
             pill,
             "home link-rate telemetry field/value gap remains compact");
     }
-    require(linkRateRows.size() == 2,
-            "full link direction and total descriptions use two telemetry lines");
+    requireHomeLinkRowsPacked(homeTelemetrySummaryContainer);
     QFrame *homeDataSection = homeTelemetrySections.at(2);
     QLabel *homeDataTitle =
         homeDataSection->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryTitleLabel"));
