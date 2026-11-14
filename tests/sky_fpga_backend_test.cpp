@@ -121,15 +121,17 @@ void motorSafetyDoesNotCompleteAnotherOperation()
 {
     auto mock=std::make_unique<ScriptedTransport>();auto* wire=mock.get();
     SkyFpgaBackend backend(std::move(mock));QObject receiver;
-    int reads=0,heartbeats=0,stops=0;QVector<qint32> moves;
+    int reads=0,heartbeats=0,stops=0,enableCommands=0,registerWrites=0;QVector<qint32> moves;
     QObject::connect(&backend,&SkyFpgaBackend::rawCommand,&receiver,[&](quint64,const QByteArray& bytes) {
         FpgaVlp1::StreamParser parser;
         for(const auto& frame:parser.feed(reinterpret_cast<const std::uint8_t*>(bytes.constData()),bytes.size())) {
             if(frame.header.message==2)++reads;
+            if(frame.header.message==3)++registerWrites;
             if(frame.header.message==12&&frame.header.source==0x47) {
                 const auto action=word(frame.payload,0);
                 if(action==5)++heartbeats;
                 if(action==2)++stops;
+                if(action==4)++enableCommands;
                 if(action==1)moves.append(qint32(word(frame.payload,4)));
             }
         }
@@ -156,6 +158,30 @@ void motorSafetyDoesNotCompleteAnotherOperation()
         });
         require(rejected&&moves.size()==2,"SkyCore rejects invalid pulse counts before dispatch");
     }
+
+    const auto priorMoves=moves.size();const int priorEnables=enableCommands,priorWrites=registerWrites;
+    wire->rejectMotorAction=1;
+    int rejectedMoveCompletions=0;
+    backend.submit({{"op","motor"},{"action",1},{"value",1000}},[&](CommandErrorCode code,QString error,QJsonObject status) {
+        require(code==CommandErrorCode::ConfigApplyFailed&&error.contains("VLP status=11"),
+            "SkyCore returns the real MOVE rejection as a failed operation");
+        require(status.value("connected").toBool()&&status.value("ready").toBool()&&!status.value("busy").toBool(),
+            "a confirmed MOVE rejection preserves Sky USB readiness");
+        require(status.value("registers").toObject().value(QString::number(0x6704)).toInt()==1,
+            "MOVE rejection retains the previously confirmed motor enable readback");
+        ++rejectedMoveCompletions;
+    });
+    waitUntil([&]{return rejectedMoveCompletions==1;},"Sky MOVE rejection completes once");
+    require(moves.size()==priorMoves+1&&moves.back()==1000,"rejected MOVE reaches USB once");
+    wire->rejectMotorAction=0xffffffff;
+    const int rejectedMoveHeartbeats=heartbeats;
+    backend.submit({{"op","motor_heartbeat"}},[&](CommandErrorCode code,QString,QJsonObject status) {
+        require(code==CommandErrorCode::Ok&&status.isEmpty(),"existing Sky owner can dispatch a heartbeat after MOVE rejection");
+    });
+    waitUntil([&]{return heartbeats>rejectedMoveHeartbeats;},"real owner heartbeat still reaches USB after MOVE rejection");
+    settle();
+    require(rejectedMoveCompletions==1&&moves.size()==priorMoves+1&&enableCommands==priorEnables&&registerWrites==priorWrites,
+        "MOVE rejection does not retry, re-enable or rewrite motor configuration");
 
     wire->holdRegularResponses=true;reads=0;
     int refreshCompletions=0,heartbeatCompletions=0;

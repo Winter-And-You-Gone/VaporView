@@ -53,6 +53,8 @@ public:
     quint64 responseTick=0;
     quint32 failWriteAddress=0xffffffff;
     quint32 failWriteValue=0xffffffff;
+    quint32 rejectMotorAction=0xffffffff,rejectMotorStatus=11;
+    bool dropMotorHeartbeatResponse=false;
     bool failTemperature=false,confirmTemperature=true;
     quint32 ignoreWriteAddress=0xffffffff;
     QMap<quint32,quint32> regs;
@@ -92,6 +94,7 @@ public:
         if(command.message==3 && (command.address==0x6010 || command.address==0x6210 || command.address==0x6414 || command.address==0x662c)
             && (regs.value((command.address&~255u)+4)&1))status=7;
         if(command.message==0xb&&command.address==17&&failTemperature)status=14;
+        if(command.message==12&&command.source==0x47&&command.address==rejectMotorAction)status=rejectMotorStatus;
         std::vector<std::uint8_t> response;append32(response,status);
         if(!status){
             if(command.message==0xfe)response.insert(response.end(),f.payload.begin(),f.payload.end());
@@ -124,7 +127,9 @@ public:
             }
         }
         const auto wire=FpgaVlp1::buildFrame(FpgaVlp1::FrameType::Response,f.header.sequence,f.header.source,f.header.message,response,true,3,responseTick);
-        incoming.append(reinterpret_cast<const char*>(wire.data()),wire.size());return bytes.size();
+        if(!(dropMotorHeartbeatResponse && command.message==12 && command.source==0x47 && command.address==5))
+            incoming.append(reinterpret_cast<const char*>(wire.data()),wire.size());
+        return bytes.size();
     }
     void clear(){commands.clear();}
     QVector<Command> writes() const {QVector<Command> out;for(const auto &c:commands)if(c.message==3)out.append(c);return out;}
@@ -329,6 +334,80 @@ void currentFirmwareSafety(){
     Fixture incompatible;incompatible.transport->regs[0x6100]=0x00410101;
     incompatible.controller.connectDevice({},"auto");incompatible.finish();
     require(!incompatible.controller.ready() && incompatible.transport->writes().isEmpty(),"old humidity model is read-only and never receives HC2A configuration");
+}
+void motorRejectionOwnership(){
+    const auto actionCount=[](const Fixture& f,quint32 action) {
+        int count=0;
+        for(const auto& command:f.transport->commands)
+            count+=command.message==12 && command.source==0x47 && command.address==action;
+        return count;
+    };
+    for(quint32 status:{11u,12u}) {
+        Fixture f;f.connect();
+        f.controller.executeOperation({{"op","motor"},{"action",4},{"value",1}});f.finish();
+        f.transport->clear();f.transport->rejectMotorAction=1;f.transport->rejectMotorStatus=status;
+        f.controller.executeOperation({{"op","motor"},{"action",1},{"value",5000}});f.finish();
+        require(actionCount(f,1)==1,"a rejected MOVE is sent once without retry");
+        require(actionCount(f,4)==0 && f.transport->writes().isEmpty(),"rejection never automatically re-enables or rewrites motor configuration");
+        const auto heartbeats=f.transport->regs.value(0x6738);
+        f.controller.executeOperation({{"op","motor_heartbeat"}});
+        require(f.transport->regs.value(0x6738)==heartbeats+(status==11?1u:0u),
+            "confirmed NOT_READY preserves existing ownership; unknown failures revoke it");
+        if(status==11) {
+            require(f.diagnostics.back().contains(QStringLiteral("MOVE（action=1）"))
+                && f.diagnostics.back().contains(QStringLiteral("NOT_READY")),"MOVE rejection identifies its action without guessing the instantaneous cause");
+            waitUntil([&]{return f.transport->incoming.isEmpty();},"preserved owner's heartbeat acknowledgement completes");
+        }
+    }
+    {
+        Fixture f;f.connect();f.transport->holdResponses=true;
+        f.controller.executeOperation({{"op","motor"},{"action",4},{"value",1}});
+        const auto pending=f.transport->commands.size();
+        f.controller.executeOperation({{"op","motor_heartbeat"}});
+        require(f.transport->commands.size()==pending,"unconfirmed enable does not grant heartbeat ownership");
+        f.transport->holdResponses=false;f.finish();
+        f.transport->clear();f.transport->rejectMotorAction=1;
+        f.transport->dropMotorHeartbeatResponse=true;f.transport->holdResponses=true;
+        f.controller.executeOperation({{"op","motor"},{"action",1},{"value",5000}});
+        f.controller.executeOperation({{"op","motor_heartbeat"}});
+        require(actionCount(f,1)==1 && actionCount(f,5)==1,"a real owner heartbeat is already in flight when MOVE is rejected");
+        f.transport->holdResponses=false;f.finish();
+        const auto sent=f.transport->commands.size();
+        f.controller.executeOperation({{"op","motor_heartbeat"}});
+        require(f.transport->commands.size()==sent,"MOVE rejection retains in-flight heartbeat tracking and does not duplicate it");
+        waitUntil([&] {
+            for(const auto& record:f.records)if(record.message.contains(QStringLiteral("DM422 安全命令超时")))return true;
+            return false;
+        },"the preserved heartbeat still expires and reports its own timeout",1500);
+        f.transport->clear();f.controller.executeOperation({{"op","motor_heartbeat"}});
+        require(f.transport->commands.isEmpty(),"timed out in-flight heartbeat revokes the preserved ownership");
+    }
+    {
+        Fixture f;f.connect();f.transport->rejectMotorAction=4;
+        f.controller.executeOperation({{"op","motor"},{"action",4},{"value",1}});f.finish();
+        require(f.transport->regs.value(0x6704)==0,"rejected enable remains disabled");
+        f.transport->clear();f.controller.executeOperation({{"op","motor_heartbeat"}});
+        require(f.transport->commands.isEmpty(),"rejected enable never grants heartbeat ownership");
+    }
+    for(int failure=0;failure<3;++failure) {
+        Fixture f;f.connect();
+        f.controller.executeOperation({{"op","motor"},{"action",4},{"value",1}});f.finish();
+        f.transport->clear();f.transport->holdResponses=true;
+        auto* session=f.controller.findChild<FpgaDeviceSession*>();
+        quint32 sequence=0;
+        const auto sentConnection=QObject::connect(session,&FpgaDeviceSession::commandSent,&f.controller,[&](const QByteArray& bytes) {
+            sequence=qFromLittleEndian<quint32>(bytes.constData()+12);
+        });
+        f.controller.executeOperation({{"op","motor"},{"action",1},{"value",5000}});
+        require(sequence && actionCount(f,1)==1,"uncertain MOVE is on the wire once");
+        if(failure==0)emit session->commandTimedOut(sequence,12);
+        else if(failure==1)emit session->errorOccurred(QStringLiteral("USB transport failed"));
+        else emit session->commandCompleted(sequence,12,false,11,QByteArray(8,'\0'));
+        require(!f.controller.busy(),"uncertain MOVE failure aborts the operation");
+        f.transport->clear();f.controller.executeOperation({{"op","motor_heartbeat"}});
+        require(f.transport->commands.isEmpty(),"timeout, transport error or malformed rejection cannot preserve heartbeat ownership");
+        QObject::disconnect(sentConnection);
+    }
 }
 void advancedDataPaths(){
     Fixture f;f.connect();f.transport->clear();
@@ -967,6 +1046,7 @@ int main(int argc,char **argv){
     if(app.arguments().contains("--startup-grace")) {startupWarningGrace();ptbStartupWarningGrace();std::puts("FPGA startup warning grace tests passed");return 0;}
     if(app.arguments().contains("--scan-presentation")) {ai8ScanPresentation();std::puts("FPGA scan presentation tests passed");return 0;}
     if(app.arguments().contains("--command-timeout")) {commandTimeoutAttribution();std::puts("FPGA command timeout attribution tests passed");return 0;}
+    if(app.arguments().contains("--motor-ownership")) {currentFirmwareSafety();motorRejectionOwnership();std::puts("FPGA motor ownership tests passed");return 0;}
     if(app.arguments().contains("--hardware-probe")) {
         FpgaDeviceController controller;
         const int durationIndex=app.arguments().indexOf("--hardware-duration-ms");
@@ -1023,5 +1103,5 @@ int main(int argc,char **argv){
         }
         std::puts("hardware controller connect/idle/reconnect probe passed");return 0;
     }
-    connectionEventTimeFilter();currentFirmwareSafety();advancedDataPaths();connectionResultLogs();sensorRates();ai8ScanPresentation();connectionAndVersions();connectionRecovery();backgroundRefresh();commandTimeoutAttribution();independentAndAcquisition();restartClearsDliaState();configurationAndFailure();scopedConfiguration();rawAndBusy();temperature();sensorUploadAndFailure();ai8DisabledConfiguration();ptbHistoricalErrorRecovery();threadCleanup();std::puts("FPGA controller tests passed");return 0;
+    connectionEventTimeFilter();currentFirmwareSafety();motorRejectionOwnership();advancedDataPaths();connectionResultLogs();sensorRates();ai8ScanPresentation();connectionAndVersions();connectionRecovery();backgroundRefresh();commandTimeoutAttribution();independentAndAcquisition();restartClearsDliaState();configurationAndFailure();scopedConfiguration();rawAndBusy();temperature();sensorUploadAndFailure();ai8DisabledConfiguration();ptbHistoricalErrorRecovery();threadCleanup();std::puts("FPGA controller tests passed");return 0;
 }

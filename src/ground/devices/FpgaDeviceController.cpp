@@ -79,7 +79,9 @@ void FpgaDeviceController::installSession(std::unique_ptr<FpgaUsbTransport> tran
             if (registers_.contains(0x661c)) adapter_.setAi8Channel(int(registers_.value(0x661c)));
         });
     connect(session_, &FpgaDeviceSession::commandCompleted, this,
-        [this](quint32 seq, quint16, bool success, quint32 status, const QByteArray&) { completed(seq, success, status); });
+        [this](quint32 seq, quint16, bool success, quint32 status, const QByteArray& payload) {
+            completed(seq, success, status, payload.size()==4);
+        });
     connect(session_, &FpgaDeviceSession::commandTimedOut, this,
         [this](quint32 seq, quint16 message) {
             if (motorSafetySequences_.remove(seq)) {
@@ -480,7 +482,7 @@ void FpgaDeviceController::advance()
     if (!pendingSequence_) fail(QStringLiteral("命令未发送。"));
 }
 
-void FpgaDeviceController::completed(quint32 seq, bool success, quint32 status)
+void FpgaDeviceController::completed(quint32 seq, bool success, quint32 status, bool statusOnlyResponse)
 {
     if(motorSafetySequences_.remove(seq)) {
         if(!success) {
@@ -490,7 +492,18 @@ void FpgaDeviceController::completed(quint32 seq, bool success, quint32 status)
         return;
     }
     if (!current_ || seq!=pendingSequence_) return;
-    if (!success) { fail(QStringLiteral("%1失败：VLP status=%2；请查看模块状态和错误。") .arg(operation_).arg(status)); return; }
+    if (!success) {
+        // MOTOR_CTRL replies contain only status, not the failing microstep.
+        // NOT_READY rejects MOVE without accepting a new motion; partial or
+        // malformed replies must retain the default uncertain-failure handling.
+        const bool rejectedMove=statusOnlyResponse && status==11 && current_->kind==Kind::Management
+            && current_->address==12 && current_->source==0x47 && current_->values.value(0)==1;
+        fail(rejectedMove
+            ? QStringLiteral("DM422 MOVE（action=1）被拒绝：VLP status=11（NOT_READY）；未自动重试或使能。请读回 busy、使能、心跳和故障状态；如有故障，需显式停用后重新启用。")
+            : QStringLiteral("%1失败：VLP status=%2；请查看模块状态和错误。").arg(operation_).arg(status),
+            true,rejectedMove && motorOwnerEnabled_);
+        return;
+    }
     if (current_->kind==Kind::Wait &&
         (!registers_.contains(current_->address) || (registers_.value(current_->address)&current_->mask)!=current_->expected)) {
         const int timeout=extensionRequest_.value("op")=="epsilon_mailbox"?15000:10000;
@@ -506,9 +519,9 @@ void FpgaDeviceController::completed(quint32 seq, bool success, quint32 status)
     QTimer::singleShot(0,this,&FpgaDeviceController::advance);
 }
 
-void FpgaDeviceController::fail(const QString& detail, bool operationScoped)
+void FpgaDeviceController::fail(const QString& detail, bool operationScoped, bool preserveMotorOwner)
 {
-    motorOwnerEnabled_=false;motorSafetySequences_.clear();
+    if(!preserveMotorOwner) {motorOwnerEnabled_=false;motorSafetySequences_.clear();}
     if (rawOperation_) {
         reportRawResult(*rawOperation_,false,detail);
         rawOperation_.reset();
@@ -523,7 +536,9 @@ void FpgaDeviceController::fail(const QString& detail, bool operationScoped)
     operationConnections_.clear();
     if(recoveringConnection_) {ready_=false;recoveringConnection_=false;connectionRecoveryFailed_=true;}
     steps_.clear(); current_.reset(); pendingSequence_=0; busy_=false; drainWaveforms_=false; backgroundRefresh_=false;
-    if (session_) session_->cancelQueuedCommands();
+    // A confirmed MOVE rejection must not cancel the live owner's in-flight
+    // heartbeat or lose its independent acknowledgement/timeout tracking.
+    if (session_ && !preserveMotorOwner) session_->cancelQueuedCommands();
     detail_=detail; report(detail, LogLevel::Error, VAPORVIEW_LOG_FILE, VAPORVIEW_LOG_FUNCTION, VAPORVIEW_LOG_LINE, operationScoped);
     if(!extensionRequest_.isEmpty()) {
         extensionRequest_={};extensionResult_["ok"]=false;extensionResult_["detail"]=detail;

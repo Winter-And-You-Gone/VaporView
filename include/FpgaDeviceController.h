@@ -96,8 +96,8 @@ private:
     void installSession(std::unique_ptr<FpgaUsbTransport> transport);
     bool begin(const QString& label, bool background = false);
     void advance();
-    void completed(quint32 sequence, bool success, quint32 status);
-    void fail(const QString& detail, bool operationScoped = true);
+    void completed(quint32 sequence, bool success, quint32 status, bool statusOnlyResponse);
+    void fail(const QString& detail, bool operationScoped = true, bool preserveMotorOwner = false);
     void report(const QString& detail, LogLevel level = LogLevel::Warning, const char *file = VAPORVIEW_LOG_FILE, const char *function = VAPORVIEW_LOG_FUNCTION, int line = VAPORVIEW_LOG_LINE, bool operationScoped = true);
     void reportRawResult(bool enabled, bool succeeded, const QString& detail, const char *file = VAPORVIEW_LOG_FILE, const char *function = VAPORVIEW_LOG_FUNCTION, int line = VAPORVIEW_LOG_LINE);
     void trackConnection(quint16 source);

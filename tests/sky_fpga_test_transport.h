@@ -56,6 +56,7 @@ public:
     bool opened=false,closed=false,strict=true;
     std::atomic_bool holdResponses{false},holdRegularResponses{false};
     quint32 failWriteAddress=0xffffffff;
+    quint32 rejectMotorAction=0xffffffff,rejectMotorStatus=11;
     bool failTemperature=false,confirmTemperature=true;
     QMap<quint32,quint32> regs;
     QMap<quint32,int> pendingReads;
@@ -108,6 +109,7 @@ public:
         }
         if(command.message==0xb&&command.address==17&&failTemperature)status=14;
         if(command.message==0xb&&command.source==0x41&&(command.address==16||command.address==2))status=14;
+        if(command.message==12&&command.source==0x47&&command.address==rejectMotorAction)status=rejectMotorStatus;
         std::vector<std::uint8_t> response;append32(response,status);
         if(!status){
             if(command.message==0xfe)response.insert(response.end(),f.payload.begin(),f.payload.end());
