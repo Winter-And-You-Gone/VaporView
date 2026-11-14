@@ -24,6 +24,7 @@
 | 007 | 环境趋势图小幅波动却贴边、数据未居中 | 纵轴使用全部缓存极值，且微小波动没有留白 | 已修复；定向回归及临时 Qt 控件截图确认通过 |
 | 008 | DM422 点击相对运动后肉眼未见动作 | 用户已确认能运动，40/400 脉冲位移太小 | 已扩展至 ±5000，重建并加载新 BIT，板上目标读回通过；未自动试转 |
 | 009 | DM422 相对运动被拒绝 `VLP status=11`，随后发生中断 | 已确认主机普通失败处理会撤销原有心跳；首次拒绝的瞬时条件缺少日志 | 已修复并重建，本地/Sky 回归通过；现场显式恢复后再测，不自动补走剩余步数 |
+| 010 | FX3 无法识别，Windows 未枚举设备 | JTAG 只读确认 FPGA 未配置、DONE/EOS=0；原 WinUSB 驱动仍在 | 重新加载已签核 BIT 后 FX3 恢复，USB 硬件探测通过；配置丢失触发原因未确认 |
 
 ## 001：AI-8 只有一个通道更新
 
@@ -283,6 +284,18 @@ cmake --build build/Release --config Release --parallel 6
 
 本轮没有操作板卡或改变已加载 BIT；实际故障恢复和新一轮机械动作留给用户显式执行。测试使用隔离桌面/配置，完成后测试与构建进程退出，临时构建/测试日志清理，不提交原始现场日志或生成物。
 
+## 010：FPGA 未配置时 FX3 不枚举
+
+用户于 2026-11-14 22:17 左右反馈 FX3 识别不到。读取本机 PID `40928` 日志，22:16:24 sequence5 为 `GP01 FX3 device 04B4:00F1 was not found`，22:16:45 应用退出。Windows 当时仅枚举出独立 Xilinx 烧录器 `03FD:0008`，没有 FX3 应用、其他 `04B4` BootLoader 或描述符失败设备；历史 FX3 记录的 `IsPresent=false`、Service 仍为 `WinUSB`、ConfigFlags=0。系统记录的最后到达为 21:10:44、离线为 **21:47:03**。这些时间说明设备此前已经离线，不证明具体由拔线、断电或哪一次复位触发。
+
+用户重新插入 FX3 数据线后仍没有系统提示音或设备。随后只读访问唯一 XCKU11P，22:23:43 工具明确报告 `Device ... is not programmed (DONE status = 0)`；CONFIG_STATUS=`0x1080190c`，EOS、DONE 内部及引脚均为 0，CRC/IDCODE/SECURITY/BAD_PACKET 错误均为 0。设计及交接说明要求 FPGA 释放 FX3 reset 后才启动 USB 应用，因此先恢复 FPGA 配置，而不是把未枚举当作上位机列表缓存或直接改驱动/FX3 EEPROM。
+
+核对 ±5000 BIT 的 SHA-256 `3ecf54aa6e705a985f4a03173fe204a1759a490d725c479590a18088820e8ea1` 后，继续使用已有签核产物 `D:/Project/Test/dm422_5000_full_a/full_build/vapor_lidar_top.bit`。北京时间 **22:26:14** JTAG SRAM 重新加载成功，DONE/EOS 恢复为 1，配置错误均为 0；22:26:20 Windows 再次枚举唯一 `04B4:00F1`、WinUSB 状态正常。用户也确认设备管理器已出现 FX3。恢复顺序支持 FPGA 配置缺失是本次无法启动枚举的关键状态；配置为何丢失仍未确认。
+
+随后执行现有 `fpga_usb_transport_test.exe --hardware-probe`，返回 0：GP01 B1/B0 身份、WinUSB 打开、bulk 端点和连续 5 次 IN 轮询均通过，结束后句柄释放。该探测没有发送 VLP 控制命令或启用采集/电机；本轮也没有运行电机、重装驱动、下载 FX3 RAM 镜像或改写 EEPROM/Flash。FPGA 仍为易失 SRAM 配置，断电或重新配置后需重新核对当前版本，不能假定非易失启动镜像就是本次 ±5000 版本。
+
+证据仅保留本机 `D:/Project/Test/fx3_missing_20261114_a/read_fpga_console.log`、`program_fpga_console.log` 和 `usb_hardware_probe.log`，临时 Tcl 已清理，不入 Git。上位机代码仍为 `20d0b07b`；本次只更新问题文档，无需重新构建，复用该版本已成功的 `build/Release` 构建与验证。
+
 ## 本次修复与下位机交接（2026-11-14）
 
 ### GitHub 同步
@@ -369,4 +382,4 @@ cmake --build build/Release --config Release --parallel 6 --target ui_test_mode_
 
 ## 后续追加规则
 
-新问题继续使用 010、011……编号，每项记录发生时间、操作、预期/实际、日志进程与 sequence、现场参数、已确认原因、待证实假设、处理及复测结果。修复完成时更新索引状态，并保留原始失败与复测的区别。原始日志、截图、配置、dump 和含凭据的样例只保留本地。
+新问题继续使用 011、012……编号，每项记录发生时间、操作、预期/实际、日志进程与 sequence、现场参数、已确认原因、待证实假设、处理及复测结果。修复完成时更新索引状态，并保留原始失败与复测的区别。原始日志、截图、配置、dump 和含凭据的样例只保留本地。
