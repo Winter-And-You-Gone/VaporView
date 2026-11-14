@@ -31,6 +31,72 @@ namespace {
 void require(bool value, const char *message) {
     if (!value) { std::fprintf(stderr,"FAIL: %s\n",message); std::exit(1); }
 }
+void motorMotionGuard() {
+    FpgaControlPage page;page.setConnectionState(true,false);
+    QMap<quint32,quint32> values{{0x6700,0x00470200},{0x6708,0x63},{0x673c,0x21},{0x6734,10},{0x6714,100},{0x6728,0},{0x670c,0}};
+    page.setHardwareValues(values);
+    auto *run=page.findChild<QPushButton*>("fpgaMotorRun"),*stop=page.findChild<QPushButton*>("fpgaMotorStop"),*disable=page.findChild<QPushButton*>("fpgaMotorDisable");
+    auto *steps=page.findChild<QDoubleSpinBox*>("fpgaMotorSteps"),*frequency=page.findChild<QDoubleSpinBox*>("fpgaMotorFrequency");
+    auto *progress=page.findChild<QLabel*>("fpgaMotorProgress");
+    QVector<QJsonObject> requests;int heartbeats=0;
+    QObject::connect(&page,&FpgaControlPage::operationRequested,&page,[&](const QJsonObject& request){requests.append(request);});
+    QObject::connect(&page,&FpgaControlPage::motorHeartbeatRequested,&page,[&]{++heartbeats;});
+    const auto processFor=[](int ms) {QElapsedTimer clock;clock.start();while(clock.elapsed()<ms){QCoreApplication::processEvents();QThread::msleep(1);}};
+    const auto event=[](quint32 id,quint64 tick) {return QJsonObject{{"1300",QJsonObject{{"message",0x1300},{"source",0x47},{"tick",QString::number(tick)},{"words",QJsonArray{double(id),0,0,0,0,0,0}}}}};};
+    const auto idle=[&](quint32 id) {values[0x6734]=id;values[0x6708]=0x63;values[0x673c]=0x21;values[0x6728]=0;page.setHardwareValues(values);};
+    const auto moving=[&](quint32 id) {values[0x6734]=id;values[0x6708]=0x69;values[0x673c]=0x23;values[0x6728]=50;page.setHardwareValues(values);};
+    page.setManagementState(event(10,100));frequency->setValue(20);steps->setValue(100);
+    page.findChild<QPushButton*>("fpgaMotorEnable")->click();page.setConnectionState(true,false);
+    run->click();run->click();const auto first=requests.last();
+    require(requests.size()==2&&progress->text().contains("1.0 s"),"MOVE locks immediately and estimates from actual frequency rather than an unapplied edit");
+    page.setConnectionState(true,false);idle(10);page.setManagementState(event(10,100));
+    require(!run->isEnabled()&&!steps->isEnabled()&&!frequency->isEnabled(),"command completion and cached idle/event cannot unlock an unconfirmed move");
+    for(const char *name:{"fpgaMotorRun","fpgaMotorEnable","fpgaMotorConfigure","fpgaMotorZero"})page.findChild<QPushButton*>(QString::fromLatin1(name))->click();
+    require(requests.size()==2&&stop->isEnabled()&&disable->isEnabled(),"movement blocks repeated motor commands while keeping both safety actions available");
+    auto *module=page.findChild<QComboBox*>("fpgaMaintenanceModule");module->setCurrentIndex(module->findData(0x47));
+    page.findChild<QPushButton*>("fpgaModuleReset")->click();
+    require(requests.size()==2&&!page.findChild<QPushButton*>("fpgaModuleClearErrors")->isEnabled(),"maintenance cannot bypass the motor movement guard");
+    module->setCurrentIndex(module->findData(0x40));
+    require(page.findChild<QPushButton*>("fpgaModuleReset")->isEnabled(),"movement does not lock maintenance for other modules");
+    page.finishMotorOperation(first,true);const auto initialProgress=progress->text();const int beforeHeartbeats=heartbeats;
+    processFor(350);
+    require(progress->text()!=initialProgress&&requests.size()==2&&heartbeats>beforeHeartbeats,"local estimated progress advances without querying or sending new operations, while heartbeats continue");
+    page.setLanguage(true);require(progress->text().contains("Estimated")&&!run->isEnabled(),"language change preserves the active movement and translates its estimate");
+    moving(11);processFor(850);
+    require(progress->text().contains("waiting for completion")&&!run->isEnabled(),"zero estimated time cannot confirm completion or permit a second move");
+    idle(10);require(!run->isEnabled(),"a stale pre-move idle snapshot cannot complete the current motion");
+    idle(11);require(run->isEnabled()&&progress->text().contains("Device confirmed"),"matching new motion id and idle readback confirm the move");
+
+    steps->setValue(-100);run->click();const auto rejected=requests.last();page.setConnectionState(true,false);
+    page.finishMotorOperation({{"op","motor"},{"action",3},{"value",0}},true);
+    require(!run->isEnabled(),"an unrelated operation result cannot finish the pending move");
+    page.finishMotorOperation(rejected,false);page.setLanguage(false);page.setLanguage(true);
+    require(progress->text().contains("unconfirmed")&&!run->isEnabled(),"failure and language rerender retain the uncertain execution guard");
+    idle(11);require(!run->isEnabled()&&progress->text().contains("unconfirmed"),"cached idle with the old motion id cannot release an uncertain failed command");
+    stop->click();page.finishMotorOperation(requests.last(),true);page.setConnectionState(true,false);
+    require(run->isEnabled()&&progress->text().contains("Stopped"),"explicit confirmed STOP restores control after an uncertain failed MOVE");
+    run->click();const auto shortMove=requests.last();page.setConnectionState(true,false);
+    page.setManagementState(event(10,100));require(!run->isEnabled(),"cached old completion cannot finish a newer move");
+    page.setManagementState(event(12,300));require(!run->isEnabled(),"a short move completion arriving before its command result remains pending");
+    page.finishMotorOperation(shortMove,true);require(run->isEnabled(),"matching fresh completion evidence is retained until command success");
+
+    idle(12);steps->setValue(1000);run->click();page.finishMotorOperation(requests.last(),true);page.setConnectionState(true,false);moving(13);
+    stop->click();const auto failedStop=requests.last();page.finishMotorOperation(failedStop,false);page.setConnectionState(true,false);
+    require(!run->isEnabled()&&progress->text().contains("unconfirmed"),"failed STOP does not claim motion has completed");
+    stop->click();page.finishMotorOperation(requests.last(),true);page.setConnectionState(true,false);
+    require(progress->text().contains("moving")&&!run->isEnabled(),"a confirmed STOP cannot override hardware that still reports busy");
+    idle(13);require(progress->text().contains("Stopped")&&run->isEnabled(),"STOP is distinct from pulse completion and releases the movement guard after idle");
+    const int holdingHeartbeats=heartbeats;processFor(250);require(heartbeats>holdingHeartbeats,"STOP retains the existing owner's holding heartbeat");
+    run->click();page.finishMotorOperation(requests.last(),true);page.setConnectionState(true,false);
+    disable->click();page.finishMotorOperation(requests.last(),true);page.setConnectionState(true,false);
+    const int disabledHeartbeats=heartbeats;processFor(250);
+    require(progress->text().contains("disabled")&&heartbeats==disabledHeartbeats,"Disable clears the estimate and ends heartbeat ownership");
+    run->click();page.setConnectionState(false,false,"Not ready");
+    require(progress->text().contains("unconfirmed")&&!run->isEnabled(),"loss of readiness stops the estimate without asserting a motion end");
+    page.setTransportConnected(false);page.setConnectionState(true,false);idle(13);
+    require(run->isEnabled()&&!progress->text().contains("Estimated"),"disconnect clears the old local estimate before a fresh connection");
+    moving(14);require(progress->text().contains("progress is unknown")&&!run->isEnabled(),"pre-existing device motion is locked and never given an invented estimate");idle(14);
+}
 }
 int main(int argc,char **argv) {
     QApplication app(argc,argv);
@@ -41,6 +107,7 @@ int main(int argc,char **argv) {
 #endif
     VaporView::installButtonFocusStyle();
     VaporView::setAppStyleSheet(VaporView::startupAppThemeStyleSheet(false));
+    motorMotionGuard();
     FpgaControlPage page;
     auto *requiredHarmonics=page.findChild<QCheckBox*>("fpgaRecordHarmonics");
     require(requiredHarmonics && requiredHarmonics->isChecked() && !requiredHarmonics->isEnabled(),"H1/H2 recording is required");
@@ -126,10 +193,12 @@ int main(int argc,char **argv) {
         && motorSteps->value()==40 && motorSteps->decimals()==0
         && !page.findChild<QDoubleSpinBox*>("fpgaMotorHigh") && !page.findChild<QDoubleSpinBox*>("fpgaMotorPolarity"),"DM422 exposes bounded motion and fixed timing/polarity");
     for(int pulses:{-5000,5000}) {
+        const quint32 motionId=pulses<0?0:1;
+        page.setHardwareValues({{0x6734,motionId},{0x6714,100},{0x6708,2},{0x673c,0}});
         motorSteps->setValue(pulses);page.findChild<QPushButton*>("fpgaMotorRun")->click();
         require(advancedRequest.value("op")=="motor" && advancedRequest.value("action")==1 && advancedRequest.value("value").toInt()==pulses,
             "DM422 run submits both signed 5000-pulse bounds without clamping");
-        page.setConnectionState(true,false);
+        page.finishMotorOperation(advancedRequest,true);page.setHardwareValues({{0x6734,motionId+1},{0x6708,2},{0x673c,0}});page.setConnectionState(true,false);
     }
     motorSteps->setValue(40);
     require(page.findChild<QLabel*>("fpgaMotorSafetyStatus")->text().contains(QStringLiteral("旧 BIT 会拒绝")),
@@ -477,6 +546,28 @@ int main(int argc,char **argv) {
     operation({{"op","configure"},{"section","all"},{"configuration",wireConfig.toJson()}});
     for(quint32 base:{0x2000u,0x3000u,0x4000u,0x5000u,0x6000u,0x6100u,0x6200u,0x6300u,0x6400u,0x6500u,0x6600u})
         require(page.uiTestHardwareValues().value(base+4)==0,"opening FPGA does not enable any device");
+    {
+        const auto route=QObject::connect(&page,&FpgaControlPage::operationRequested,&page,[&](const QJsonObject& request){page.simulateOperation(request);});
+        const auto heartbeat=QObject::connect(&page,&FpgaControlPage::motorHeartbeatRequested,&page,[&]{page.simulateOperation({{"op","motor_heartbeat"}});});
+        int moves=0;
+        const auto commands=QObject::connect(simulation,&VaporView::Ground::Devices::FpgaDeviceController::rawCommand,&page,[&](quint64,const QByteArray& bytes) {
+            VaporView::FpgaVlp1::StreamParser parser;
+            for(const auto& frame:parser.feed(reinterpret_cast<const std::uint8_t*>(bytes.constData()),bytes.size()))
+                if(frame.header.source==0x47&&frame.header.message==12&&frame.payload.size()==8&&qFromLittleEndian<quint32>(frame.payload.data())==1)++moves;
+        });
+        operation({{"op","motor_config"},{"frequency",20}});
+        page.findChild<QPushButton*>("fpgaMotorEnable")->click();
+        wait([&]{return !page.uiTestBusy()&&page.uiTestHardwareValues().value(0x6704)==1;},"simulated motor enable completes through actual controller results");
+        motorSteps->setValue(40);auto *run=page.findChild<QPushButton*>("fpgaMotorRun");run->click();run->click();
+        wait([&]{return !page.uiTestBusy()&&page.findChild<QLabel*>("fpgaMotorProgress")->text().contains(QStringLiteral("预计进度"));},"simulated MOVE acknowledgement enters the local running estimate");
+        require(moves==1&&!run->isEnabled(),"UI simulator sends one MOVE and retains the physical movement guard after the command completes");
+        QElapsedTimer clock;clock.start();while(clock.elapsed()<250){app.processEvents();QThread::msleep(1);}
+        require(!page.uiTestBusy(),"simulated heartbeat forwarding does not fabricate a foreground busy transaction");
+        wait([&]{return run->isEnabled();},"natural simulated idle readback confirms completion without a new query",5000);
+        require(moves==1&&!(page.uiTestHardwareValues().value(0x673c)&8),"host heartbeats keep the estimated two-second motion alive without retries");
+        page.findChild<QPushButton*>("fpgaMotorDisable")->click();wait([&]{return !page.uiTestBusy();},"simulated motor is disabled before restoring the test fixture");
+        QObject::disconnect(commands);QObject::disconnect(heartbeat);QObject::disconnect(route);
+    }
     operation({{"op","sensor"},{"source",0x40},{"enabled",true}});
     page.setLanguage(true);
     wait([&]{return sensor->text().contains("Valid measurement");},"sensor display comes from decoded protocol data");

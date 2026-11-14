@@ -47,6 +47,7 @@ public:
     quint64 usbDiscoveryGeneration() const { return usbDiscoveryGeneration_; }
     void setHardwareValues(const QMap<quint32, quint32> &values);
     void setManagementState(const QJsonObject& state);
+    void finishMotorOperation(const QJsonObject& request, bool success);
     void updateSensor(const VaporView::FpgaSensor::Reading &reading);
     void updateWaveform(const VaporView::FpgaWave::CompletedStream &stream);
     void appendDiagnostic(const QString &text);
@@ -102,6 +103,12 @@ private:
     void refreshMeasurements();
     void clearMeasurements();
     void stopUiTestController();
+    bool motorBusy() const;
+    bool motorLocked() const;
+    bool prepareMotorOperation(const QJsonObject& request);
+    void updateMotorReadback();
+    void updateMotorProgress();
+    void endMotorEstimate(const char *zh, const char *en);
     void label(QWidget *widget, const QString &zh, const QString &en);
     struct Simulation {
         std::unique_ptr<QThread> worker;
@@ -113,6 +120,7 @@ private:
         FpgaControlConfig saved;
         QJsonObject savedUsb;
         bool savedUsbRemote=false, savedUsbAvailable=true;
+        quint64 motorGeneration=0;
     } simulation_;
     FpgaControlConfig config_;
     QVector<Field> fields_;
@@ -143,9 +151,18 @@ private:
     QAbstractButton *refresh_ = nullptr;
     QAbstractButton *record_ = nullptr;
     QLabel *status_ = nullptr, *recordStatus_ = nullptr, *managementStatus_ = nullptr;
-    QLabel *calibrationStatus_ = nullptr, *motorStatus_ = nullptr, *lcStatus_ = nullptr;
+    QLabel *calibrationStatus_ = nullptr, *motorStatus_ = nullptr, *motorProgress_ = nullptr, *lcStatus_ = nullptr;
     QTimer motorHeartbeatTimer_;
     bool motorLeaseRequested_ = false;
+    enum class MotorPhase { Idle, Pending, Running, Unconfirmed };
+    MotorPhase motorPhase_ = MotorPhase::Idle;
+    QElapsedTimer motorMoveClock_;
+    qint64 motorEstimatedMs_ = 0;
+    QJsonObject motorPendingOperation_;
+    quint32 motorBaselineId_ = 0;
+    quint64 motorLastEventTick_ = 0, motorStartEventTick_ = 0;
+    bool motorHasBaselineId_ = false, motorSawBusy_ = false, motorCompletionKnown_ = false, motorCompletionFault_ = false;
+    QString motorResultZh_, motorResultEn_;
     QPlainTextEdit *diagnostics_ = nullptr;
     QComboBox *backend_ = nullptr;
     std::array<QComboBox*,2> cutoff_{{nullptr,nullptr}};

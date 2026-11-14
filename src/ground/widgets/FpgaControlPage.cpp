@@ -122,6 +122,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     motorHeartbeatTimer_.setParent(this);motorHeartbeatTimer_.setInterval(200);
     connect(&motorHeartbeatTimer_,&QTimer::timeout,this,[this] {
         if(motorLeaseRequested_ && connected_ && ready_)emit motorHeartbeatRequested();
+        updateMotorProgress();
     });
     motorHeartbeatTimer_.start();
     measurementClock_.start();
@@ -435,8 +436,13 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
         auto *label=new QLabel(QString::fromUtf8(title),this);label->setWordWrap(true);grid->addWidget(label,row,0);
         auto *spin=new QDoubleSpinBox(this);spin->setObjectName(QString::fromLatin1(name));spin->setRange(low,high);spin->setDecimals(decimals);spin->setValue(value);spin->setKeyboardTracking(false);grid->addWidget(spin,row,1);return spin;
     };
-    auto operation=[this,&action](QGridLayout *grid,int row,int col,const char *zh,const char *en,const char *name,std::function<QJsonObject()> request) {
-        return action(grid,row,col,zh,en,QString::fromLatin1(name),[this,request]{emit operationRequested(request());});
+    auto operation=[this](QGridLayout *grid,int row,int col,const char *zh,const char *en,const char *name,std::function<QJsonObject()> request) {
+        auto *button=new QPushButton(this);label(button,QString::fromUtf8(zh),QString::fromUtf8(en));button->setObjectName(QString::fromLatin1(name));
+        grid->addWidget(button,row,col);onlineControls_.append(button);
+        connect(button,&QPushButton::clicked,this,[this,request] {
+            const auto command=request();if(!prepareMotorOperation(command))return;
+            lockOperation();emit operationRequested(command);
+        });return button;
     };
     struct ActualField { quint32 address; const char *zh; const char *en; };
     auto readbacks=[&readback](QGridLayout *grid,int row,std::initializer_list<ActualField> fields) {
@@ -457,12 +463,13 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
         {0x1064,"不合格 PPS 间隔累计数","Rejected PPS interval count"}});
     auto *motor=card(advanced,advancedLayout,QStringLiteral("步进电机（仅显式运行）"),QStringLiteral("Stepper motor (explicit run only)"),QStringLiteral("settings"));auto *mg=new QGridLayout(motor);
     auto *frequency=number(mg,0,"步进频率 / Hz (20..400)","fpgaMotorFrequency",20,400,100);
-    operation(mg,0,2,"应用电机参数并停用","Configure and disable","fpgaMotorConfigure",[this,frequency]{motorLeaseRequested_=false;return QJsonObject{{"op","motor_config"},{"frequency",frequency->value()}};});
+    operation(mg,0,2,"应用电机参数并停用","Configure and disable","fpgaMotorConfigure",[frequency]{return QJsonObject{{"op","motor_config"},{"frequency",frequency->value()}};});
     motorStatus_=new QLabel(motor);motorStatus_->setObjectName("fpgaMotorSafetyStatus");motorStatus_->setWordWrap(true);mg->addWidget(motorStatus_,1,0,1,3);
+    motorProgress_=new QLabel(motor);motorProgress_->setObjectName("fpgaMotorProgress");motorProgress_->setWordWrap(true);mg->addWidget(motorProgress_,2,0,1,3);
     auto *steps=number(mg,4,"相对运动脉冲数 (±1..5000，正值向上接入)","fpgaMotorSteps",-5000,5000,40);
-    operation(mg,5,0,"启用电机","Enable motor","fpgaMotorEnable",[this]{motorLeaseRequested_=true;return QJsonObject{{"op","motor"},{"action",4},{"value",1}};});operation(mg,5,1,"运行相对运动","Run relative move","fpgaMotorRun",[steps]{return QJsonObject{{"op","motor"},{"action",1},{"value",steps->value()}};});
+    operation(mg,5,0,"启用电机","Enable motor","fpgaMotorEnable",[]{return QJsonObject{{"op","motor"},{"action",4},{"value",1}};});operation(mg,5,1,"运行相对运动","Run relative move","fpgaMotorRun",[steps]{return QJsonObject{{"op","motor"},{"action",1},{"value",steps->value()}};});
     auto *stop=operation(mg,5,2,"停止电机（保持使能）","Stop motor (hold enabled)","fpgaMotorStop",[]{return QJsonObject{{"op","motor"},{"action",2},{"value",0}};});stop->setProperty("fpgaSafetyControl",true);
-    auto *disable=operation(mg,6,0,"停用电机","Disable motor","fpgaMotorDisable",[this]{motorLeaseRequested_=false;return QJsonObject{{"op","motor"},{"action",4},{"value",0}};});disable->setProperty("fpgaSafetyControl",true);
+    auto *disable=operation(mg,6,0,"停用电机","Disable motor","fpgaMotorDisable",[]{return QJsonObject{{"op","motor"},{"action",4},{"value",0}};});disable->setProperty("fpgaSafetyControl",true);
     operation(mg,6,1,"软件脉冲位置清零","Zero software pulse position","fpgaMotorZero",[]{return QJsonObject{{"op","motor"},{"action",3},{"value",0}};});
     readbacks(mg,7,{{0x6704,"电机控制","Motor control"},{0x6708,"电机状态","Motor status"},{0x670c,"电机错误","Motor errors"},
         {0x6714,"当前步进频率","Actual step frequency"},{0x6718,"固定 50% 占空比半周期 / tick","Fixed 50% duty half-period / ticks"},{0x671c,"固定 10 ms 方向建立时间 / tick","Fixed 10 ms direction setup / ticks"},
@@ -522,6 +529,7 @@ FpgaControlPage::FpgaControlPage(QWidget *parent) : QWidget(parent) {
     for (auto *button : {disconnect_,refresh_}) button->setProperty("fpgaSecondaryAction",true);
     replay->setProperty("fpgaSecondaryAction",true); exportButton->setProperty("fpgaSecondaryAction",true);
     for (const char *name : {"fpgaAcquisitionStop","fpgaRawStop"}) findChild<QPushButton*>(QString::fromLatin1(name))->setProperty("fpgaSecondaryAction",true);
+    connect(module,&QComboBox::currentIndexChanged,this,[this]{updateActions();});
     setConfiguration(config_);setExtensions(0); setLanguage(false);setTheme(false); setConnectionState(false,false); setRecordingState(false);
     auto *freshnessTimer = new QTimer(this);
     freshnessTimer->setInterval(1000);
@@ -556,6 +564,75 @@ void FpgaControlPage::setConfiguration(const FpgaControlConfig &c) {
     updateActions();
 }
 void FpgaControlPage::lockOperation(){busy_=true;updateActions();}
+bool FpgaControlPage::motorBusy() const {
+    return connected_ && ((hardwareValues_.value(0x6708)&8) || (hardwareValues_.value(0x673c)&2));
+}
+bool FpgaControlPage::motorLocked() const { return motorPhase_!=MotorPhase::Idle || motorBusy(); }
+bool FpgaControlPage::prepareMotorOperation(const QJsonObject& request) {
+    const auto op=request.value("op").toString();const int action=request.value("action").toInt();
+    const bool safety=op=="motor" && (action==2 || (action==4 && request.value("value").toInt()==0));
+    if(motorLocked()&&!safety && (op=="motor" || op=="motor_config" ||
+        ((op=="maintenance" || op=="sensor_action") && request.value("source").toInt()==0x47)))return false;
+    if(op=="motor_config" || (safety&&action==4))motorLeaseRequested_=false;
+    if(op!="motor")return true;
+    if(action==4 && request.value("value").toInt()==1)motorLeaseRequested_=true;
+    if(safety)motorPendingOperation_=request;
+    if(action==1) {
+        motorPendingOperation_=request;motorPhase_=MotorPhase::Pending;
+        motorHasBaselineId_=hardwareValues_.contains(0x6734);motorBaselineId_=hardwareValues_.value(0x6734);
+        motorStartEventTick_=motorLastEventTick_;motorSawBusy_=motorCompletionKnown_=motorCompletionFault_=false;
+        const auto actualFrequency=hardwareValues_.value(0x6714,100);
+        const double frequency=actualFrequency>=20&&actualFrequency<=400?actualFrequency:100;
+        motorEstimatedMs_=10+qint64(std::ceil(std::abs(request.value("value").toDouble())*1000/qMax(1.0,frequency)));
+        motorMoveClock_.start();motorResultZh_.clear();motorResultEn_.clear();updateMotorProgress();
+    }
+    return true;
+}
+void FpgaControlPage::endMotorEstimate(const char *zh,const char *en) {
+    motorPhase_=MotorPhase::Idle;motorPendingOperation_={};motorMoveClock_.invalidate();
+    motorResultZh_=QString::fromUtf8(zh);motorResultEn_=QString::fromUtf8(en);
+    updateMotorProgress();updateActions();
+}
+void FpgaControlPage::finishMotorOperation(const QJsonObject& request,bool success) {
+    if(motorPendingOperation_.isEmpty() || request!=motorPendingOperation_)return;
+    motorPendingOperation_={};
+    if(!success || !ready_) {
+        motorPhase_=MotorPhase::Unconfirmed;motorMoveClock_.invalidate();updateMotorProgress();updateActions();return;
+    }
+    const int action=request.value("action").toInt();
+    if(action==2)endMotorEstimate("已停止；保持使能。","Stopped; motor remains enabled.");
+    else if(action==4)endMotorEstimate("电机已停用。","Motor disabled.");
+    else {
+        motorPhase_=MotorPhase::Running;
+        if(motorCompletionKnown_)endMotorEstimate(motorCompletionFault_?"运动已结束；设备报告故障或未完成，请检查状态。":"设备已确认运动结束（脉冲输出完成）。",
+            motorCompletionFault_?"Motion ended with a fault or remaining pulses; check device status.":"Device confirmed motion ended (pulse output complete).");
+        else {updateMotorProgress();updateActions();}
+    }
+}
+void FpgaControlPage::updateMotorReadback() {
+    if(motorPhase_==MotorPhase::Idle || (!hardwareValues_.contains(0x6708)&&!hardwareValues_.contains(0x673c)))return;
+    const bool busy=motorBusy();
+    const bool matchingId=motorHasBaselineId_ && hardwareValues_.contains(0x6734) && hardwareValues_.value(0x6734)==quint32(motorBaselineId_+1);
+    if(busy && (matchingId || !motorHasBaselineId_))motorSawBusy_=true;
+    if(!busy && (matchingId || (!motorHasBaselineId_&&motorSawBusy_))) {
+        motorCompletionKnown_=true;
+        motorCompletionFault_=(hardwareValues_.value(0x673c)&8) || hardwareValues_.value(0x670c) || hardwareValues_.value(0x6728);
+        if(motorPendingOperation_.isEmpty())endMotorEstimate(motorCompletionFault_?"运动已结束；设备报告故障或未完成，请检查状态。":"设备已确认运动结束（脉冲输出完成）。",
+            motorCompletionFault_?"Motion ended with a fault or remaining pulses; check device status.":"Device confirmed motion ended (pulse output complete).");
+    }
+}
+void FpgaControlPage::updateMotorProgress() {
+    if(!motorProgress_)return;
+    if(motorPhase_==MotorPhase::Pending)motorProgress_->setText(text("已提交运动，等待指令结果；预计用时 %1 s。","Move submitted; awaiting command result. Estimated duration: %1 s.").arg(motorEstimatedMs_/1000.0,0,'f',1));
+    else if(motorPhase_==MotorPhase::Unconfirmed)motorProgress_->setText(text("指令失败，执行结果未确认；请等待本次运动结束状态，或显式停止/停用后确认。","Command failed; execution is unconfirmed. Await this move's completion status, or explicitly stop/disable and confirm."));
+    else if(motorPhase_==MotorPhase::Running) {
+        const qint64 remaining=qMax<qint64>(0,motorEstimatedMs_-motorMoveClock_.elapsed());
+        if(!remaining)motorProgress_->setText(text("预计已到时，等待完成确认；尚不能确认实际运动结束。","Estimated time elapsed; waiting for completion confirmation. Actual motion end is unconfirmed."));
+        else motorProgress_->setText(text("预计进度 %1% · 预计剩余 %2 s（本地计时，不代表机械到位）。","Estimated progress %1% · Estimated remaining %2 s (local timer; mechanical position is unconfirmed).")
+            .arg(qBound<qint64>(0LL,100*motorMoveClock_.elapsed()/qMax<qint64>(1,motorEstimatedMs_),100LL)).arg(remaining/1000.0,0,'f',1));
+    } else motorProgress_->setText(motorBusy()?text("设备运动中，进度未知；未建立本地运动估算。","Device is moving; progress is unknown. No local estimate is available.")
+        :motorResultZh_.isEmpty()?text("未运行相对运动。","No relative move in progress."):(english_?motorResultEn_:motorResultZh_));
+}
 void FpgaControlPage::updateActions(){
     for(const auto& spec:VaporView::FpgaRemote::sensorParameters())if(auto *input=sensorParameterInputs_.value(spec.address))input->setEnabled(!busy_ && (!connected_ || (hardwareValues_.contains(0x6004+(spec.source-0x40)*0x100) && !(hardwareValues_.value(0x6004+(spec.source-0x40)*0x100)&1))));
     locator_->setToolTip(locator_->currentText()+"\n"+(backend_->currentData().toString()==QStringLiteral("simulator")
@@ -575,6 +652,14 @@ void FpgaControlPage::updateActions(){
         const quint32 bit=w->property("fpgaExtension").toUInt();const bool safety=w->property("fpgaSafetyControl").toBool();
         w->setEnabled((safety?connected_&&(ready_||hardwareValues_.value(0x6700)==0x00470200):ready_&&!busy_)&&(!bit || (extensions_&bit)));
     }refresh_->setEnabled(connected_&&!busy_);record_->setEnabled(!property("fpgaUiTestMode").toBool()&&(ready_||recording_));
+    const bool motorBlocked=motorLocked();
+    for(const char *name:{"fpgaMotorRun","fpgaMotorEnable","fpgaMotorConfigure","fpgaMotorZero"})
+        if(auto *button=findChild<QPushButton*>(QString::fromLatin1(name)))button->setEnabled(button->isEnabled()&&!motorBlocked);
+    for(const char *name:{"fpgaMotorFrequency","fpgaMotorSteps"})
+        if(auto *input=findChild<QDoubleSpinBox*>(QString::fromLatin1(name)))input->setEnabled(!motorBlocked&&!busy_);
+    if(auto *module=findChild<QComboBox*>("fpgaMaintenanceModule"))if(module->currentData().toInt()==0x47 && motorBlocked)
+        for(const char *name:{"fpgaModuleReset","fpgaModuleClearErrors","fpgaSensorClearFifo"})
+            if(auto *button=findChild<QPushButton*>(QString::fromLatin1(name)))button->setEnabled(false);
     if(ai8Scan_)ai8Scan_->setEnabled(ready_&&!busy_&&(extensions_&VaporView::FpgaExtensions::Ai8Scan)&&!(hardwareValues_.value(0x6604)&1));
 }
 void FpgaControlPage::setExtensions(quint32 bits) {
@@ -637,6 +722,9 @@ void FpgaControlPage::setTransportConnected(bool connected){
     const bool lost=connected_&&!connected;connected_=connected;
     if(!connected_)ready_=false;
     if(lost){
+        motorLastEventTick_=0;
+        if(motorPhase_!=MotorPhase::Idle || !motorPendingOperation_.isEmpty())
+            endMotorEstimate("连接已断开，运动状态未确认。","Disconnected; motion state is unconfirmed.");
         for(auto it=latestReadings_.cbegin();it!=latestReadings_.cend();++it)historicalReadings_.insert(it.key());
         for(auto it=latestWaves_.cbegin();it!=latestWaves_.cend();++it)historicalWaves_.insert(it.key());
         for(auto *l:hardwareLabels_)l->setText(text("历史值 · ","Historical · ")+l->text());
@@ -646,6 +734,7 @@ void FpgaControlPage::setTransportConnected(bool connected){
 void FpgaControlPage::setConnectionState(bool ready,bool busy,const QString &detail){
     const bool lost=ready_&&!ready;ready_=ready;if(ready_)connected_=true;busy_=busy;connectionDetail_=detail;
     if(!ready_)motorLeaseRequested_=false;
+    if(!ready_ && motorPhase_!=MotorPhase::Idle) {motorPhase_=MotorPhase::Unconfirmed;motorMoveClock_.invalidate();updateMotorProgress();}
     status_->setText(ready?text("已连接","Connected"):connected_?text("已连接未就绪 · 禁止写操作","Connected, not ready · Writes disabled"):text("离线","Offline"));
     if(!usbRemote_&&backend_->currentData().toString()==QStringLiteral("simulator"))
         status_->setText(text("协议模拟 · ","Protocol simulation · ")+status_->text());
@@ -656,6 +745,8 @@ void FpgaControlPage::setConnectionState(bool ready,bool busy,const QString &det
 }
 void FpgaControlPage::setHardwareValues(const QMap<quint32,quint32> &v){
     hardwareValues_=v;
+    if(!rerendering_)updateMotorReadback();
+    updateMotorProgress();
     const quint32 calibration=v.value(0x1060);
     const bool frequencyValid=calibration&1,utcValid=frequencyValid&&(calibration&2);
     const auto ppsTick=(quint64(v.value(0x1054))<<32)|v.value(0x1050);
@@ -821,8 +912,18 @@ void FpgaControlPage::setManagementState(const QJsonObject& state)
         if(msg==0x1400)lines<<text("系统状态 %1；错误汇总 %2；事件丢失 %3；生产端丢失 %4","Status %1; errors %2; event drops %3; producer drops %4")
             .arg(w[0].toDouble()).arg(w[1].toDouble()).arg(w[4].toDouble()).arg(w[5].toDouble());
         if(msg==0x1201)lines<<text("同步序号 %1；GNSS 标签有效 %2","Sync sequence %1; GNSS tag valid %2").arg(w[0].toDouble()).arg(w[5].toDouble());
-        if(msg==0x1300)lines<<text("电机位置 %1；剩余 %2；错误 %3","Motor position %1; remaining %2; error %3")
-            .arg(qint32(quint32(w[1].toDouble()))).arg(w[2].toDouble()).arg(w[3].toDouble());
+        if(msg==0x1300) {
+            lines<<text("电机位置 %1；剩余 %2；错误 %3","Motor position %1; remaining %2; error %3")
+                .arg(qint32(quint32(w[1].toDouble()))).arg(w[2].toDouble()).arg(w[3].toDouble());
+            const auto tick=o.value("tick").toString().toULongLong();
+            if(motorPhase_!=MotorPhase::Idle && tick>motorStartEventTick_ && tick>motorLastEventTick_
+                && o.value("source").toInt()==0x47 && motorHasBaselineId_ && quint32(w[0].toDouble())==quint32(motorBaselineId_+1)) {
+                motorCompletionKnown_=true;motorCompletionFault_=w[2].toDouble()!=0 || w[3].toDouble()!=0;
+                if(motorPendingOperation_.isEmpty())endMotorEstimate(motorCompletionFault_?"运动已结束；设备报告故障或未完成，请检查状态。":"设备已确认运动结束（脉冲输出完成）。",
+                    motorCompletionFault_?"Motion ended with a fault or remaining pulses; check device status.":"Device confirmed motion ended (pulse output complete).");
+            }
+            motorLastEventTick_=qMax(motorLastEventTick_,tick);
+        }
         if(msg==0x1401)lines<<text("模块页 0x%1：状态 0x%2；错误 0x%3；存在 %4","Module page 0x%1: status 0x%2; errors 0x%3; present %4")
             .arg(quint32(w[0].toDouble()),2,16,QChar('0')).arg(quint32(w[1].toDouble()),8,16,QChar('0'))
             .arg(quint32(w[2].toDouble()),8,16,QChar('0')).arg(w[3].toDouble());
@@ -834,7 +935,7 @@ void FpgaControlPage::setManagementState(const QJsonObject& state)
 }
 void FpgaControlPage::appendDiagnostic(const QString &s){diagnostics_->appendPlainText(s);}
 void FpgaControlPage::setLanguage(bool en){english_=en;for(auto *w:findChildren<QWidget*>())if(w->property("fpgaZh").isValid())label(w,w->property("fpgaZh").toString(),w->property("fpgaEn").toString());
-    setHardwareValues(hardwareValues_);
+    const bool rendering=rerendering_;rerendering_=true;setHardwareValues(hardwareValues_);rerendering_=rendering;updateMotorProgress();
     backend_->setItemText(backend_->findData(QStringLiteral("simulator")),text("模拟器","Simulator"));
     for(int i=0;i<tabs_->count();++i)tabs_->setTabText(i,tabs_->widget(i)->property(en?"fpgaEn":"fpgaZh").toString());
     for(auto it=sensorLabels_.cbegin();it!=sensorLabels_.cend();++it)if(!latestReadings_.contains(it.key()))it.value()->setText(text("等待有效样本","Waiting for valid sample"));
@@ -939,9 +1040,36 @@ void FpgaControlPage::simulateOperation(const QJsonObject &request)
         },Qt::QueuedConnection);
         return;
     }
-    if(op!="missing_cycle"&&op!="latch_dlia")lockOperation();
+    if((op=="motor" || op=="motor_config" || op=="maintenance" || op=="sensor_action")
+        && request!=motorPendingOperation_ && !prepareMotorOperation(request))return;
+    if(op!="missing_cycle"&&op!="latch_dlia"&&op!="motor_heartbeat")lockOperation();
     const auto config=configuration();
-    QMetaObject::invokeMethod(controller,[controller,transport,request,op,config] {
+    const auto motorGeneration=op=="motor"?++simulation_.motorGeneration:0;
+    QPointer<QObject> receiver(simulation_.receiver.get());
+    QMetaObject::invokeMethod(controller,[this,controller,transport,request,op,config,receiver,motorGeneration] {
+        if(op=="motor") {
+            const int action=request.value("action").toInt();
+            const bool safety=action==2 || (action==4 && request.value("value").toInt()==0);
+            const auto finish=[this,receiver,request,motorGeneration](bool success) {
+                if(receiver)QMetaObject::invokeMethod(receiver,[this,request,success,motorGeneration] {
+                    if(motorGeneration==simulation_.motorGeneration)finishMotorOperation(request,success);
+                },Qt::QueuedConnection);
+            };
+            if(!VaporView::FpgaRemote::validateControl(request) || (safety?!controller->connected():!controller->ready()||controller->busy())) {finish(false);return;}
+            auto observer=std::make_shared<QMetaObject::Connection>();auto done=std::make_shared<bool>(false),dispatching=std::make_shared<bool>(true);
+            *observer=connect(controller,&VaporView::Ground::Devices::FpgaDeviceController::snapshot,controller,
+                [observer,done,dispatching,finish,safety](quint64,const QJsonObject& document) {
+                    const auto event=document.value("event").toString();
+                    if(event!="operation_completed"&&event!="operation_failed")return;
+                    if(safety&&*dispatching&&document.value("interrupted_by_motor_stop").toBool())return;
+                    if(event=="operation_completed" && document.value("operation").toString()!=(safety?QStringLiteral("DM422 停止与状态读回"):QStringLiteral("FPGA 高级控制与读回")))return;
+                    QObject::disconnect(*observer);*done=true;finish(event=="operation_completed");
+                });
+            controller->executeOperation(request);
+            *dispatching=false;
+            if(!controller->busy()&&!*done){QObject::disconnect(*observer);finish(false);}
+            return;
+        }
         const bool enabled=request.value("enabled").toBool();
         if(op=="missing_cycle"||op=="latch_dlia")transport->injectFault(op);
         else if(op=="connect") {

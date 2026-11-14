@@ -432,6 +432,63 @@ static void remotePageRouting()
         response.operation = DeviceOperation::FpgaControl; response.payload = FpgaRemote::encodeStatus(status);
         send(MsgType::DeviceOperationResponse, TelemetryCodec::serializeDeviceOperationResponse(response));
         require(waitUntil([&] { return acquisition->isEnabled(); }), "final response unlocks actions");
+        {
+            auto *run=page->findChild<QAbstractButton*>("fpgaMotorRun");
+            auto *stop=page->findChild<QAbstractButton*>("fpgaMotorStop");
+            auto *steps=page->findChild<QDoubleSpinBox*>("fpgaMotorSteps");
+            auto *progress=page->findChild<QLabel*>("fpgaMotorProgress");
+            require(run&&stop&&steps&&progress,"remote motor controls expose command progress");
+            QJsonObject registers;
+            for(const auto pair:{qMakePair(0x6700u,0x00470200u),qMakePair(0x6704u,1u),
+                    qMakePair(0x6708u,0x63u),qMakePair(0x6714u,100u),qMakePair(0x6728u,0u),
+                    qMakePair(0x6734u,0u),qMakePair(0x673cu,0x21u)})
+                registers[QString::number(pair.first)]=double(pair.second);
+            status["registers"]=registers;
+            send(MsgType::FpgaStatus,FpgaRemote::encodeStatus(status));
+            require(waitUntil([&]{return run->isEnabled();}),"fake Sky idle motor allows a move");
+            const int beforeMotor=commands;
+            steps->setValue(200);run->click();
+            require(!run->isEnabled()&&stop->isEnabled()&&progress->text().contains(QStringLiteral("等待指令结果")),
+                "remote MOVE locks immediately while STOP remains available");
+            require(QMetaObject::invokeMethod(run,"clicked",Qt::DirectConnection,Q_ARG(bool,false)),
+                "force duplicate remote click through the page command guard");
+            require(waitUntil([&]{return commands==beforeMotor+1;}),"remote MOVE reaches fake Sky exactly once");
+            require(FpgaRemote::parseControl(lastRequest.payload,control)&&control.value("op")=="motor"
+                &&control.value("action").toInt()==1,"remote motor progress tracks its typed MOVE request");
+            ack.command_seq=commandSequence;
+            send(MsgType::CommandAck,TelemetryCodec::serializeCommandAck(ack));processFor(50);
+            require(progress->text().contains(QStringLiteral("等待指令结果")),"remote acceptance ACK does not start a movement estimate");
+            const auto motorReply=[&] {
+                ack.command_seq=commandSequence;
+                send(MsgType::CommandAck,TelemetryCodec::serializeCommandAck(ack));
+                response.request_id=lastRequest.request_id;response.payload=FpgaRemote::encodeStatus(status);
+                send(MsgType::DeviceOperationResponse,TelemetryCodec::serializeDeviceOperationResponse(response));
+            };
+            registers[QString::number(0x6708)]=0x69;registers[QString::number(0x673c)]=0x23;
+            registers[QString::number(0x6734)]=1;registers[QString::number(0x6728)]=200;
+            status["registers"]=registers;motorReply();
+            require(waitUntil([&]{return progress->text().contains(QStringLiteral("预计进度"))&&acquisition->isEnabled();}),
+                "remote final MOVE result starts the estimate without locking other modules");
+            require(!run->isEnabled()&&stop->isEnabled(),"remote motion stays locked after command transport becomes idle");
+            stop->click();
+            require(waitUntil([&]{return commands==beforeMotor+2;}),"remote STOP bypasses the motion lock");
+            registers[QString::number(0x6708)]=0x63;registers[QString::number(0x673c)]=0x21;
+            status["registers"]=registers;motorReply();
+            require(waitUntil([&]{return run->isEnabled()&&progress->text().contains(QStringLiteral("已停止"));}),
+                "remote STOP final result ends the estimate and unlocks the next move");
+            run->click();
+            require(waitUntil([&]{return commands==beforeMotor+3;}),"a new remote MOVE is accepted after confirmed STOP");
+            registers[QString::number(0x6708)]=0x69;registers[QString::number(0x673c)]=0x23;
+            registers[QString::number(0x6734)]=2;status["registers"]=registers;motorReply();
+            require(waitUntil([&]{return progress->text().contains(QStringLiteral("预计进度"));}),"second remote final result starts a fresh estimate");
+            registers[QString::number(0x6708)]=0x73;registers[QString::number(0x673c)]=0x25;
+            registers[QString::number(0x6728)]=0;status["registers"]=registers;
+            send(MsgType::FpgaStatus,FpgaRemote::encodeStatus(status));
+            require(waitUntil([&]{return run->isEnabled()&&progress->text().contains(QStringLiteral("设备已确认运动结束"));}),
+                "matching remote motion ID and idle completion unlock the move independently of the local timer");
+            steps->setValue(40);
+        }
+        const int completedCommands=commands;
         FpgaWave::CompletedStream wave;
         wave.source = 0x20; wave.message = 0x1000; wave.schema = 2; wave.format = 0;
         wave.rate = 1000000; wave.totalPoints = 4096; wave.bytesPerPoint = 4; wave.adcBits = 24;
@@ -463,7 +520,7 @@ static void remotePageRouting()
         remote->close();
         require(waitUntil([&] { return !acquisition->isEnabled(); }), "link close disables writes");
         processFor(100);
-        require(disconnectCommands == 0 && commands == 1, "link close never sends Sky USB disconnect or retries control");
+        require(disconnectCommands == 0 && commands == completedCommands, "link close never sends Sky USB disconnect or retries control");
         require(QMetaObject::invokeMethod(&window, "onDataSourceModeChanged", Q_ARG(int, 0)), "return Local");
         require(page->configuration().pressureSource == localConfiguration.pressureSource,
             "Local desired config restored independently");
@@ -475,7 +532,7 @@ static void remotePageRouting()
         auto *scan = page->findChild<QAbstractButton*>("fpgaDiscover");
         auto *devices = page->findChild<QComboBox*>("fpgaLocator");
         scan->click();
-        require(waitUntil([&] { return commands == 2; }), "discovery routes to Sky while USB is disconnected");
+        require(waitUntil([&] { return commands == completedCommands+1; }), "discovery routes to Sky while USB is disconnected");
         require(FpgaRemote::parseControl(lastRequest.payload, control) && control.value("op") == "discover", "typed Sky discovery request");
         status["connected"] = false; status["ready"] = false;
         status["usb_discovery"] = QJsonObject{{"devices",QJsonArray{QJsonObject{{"locator","sky-only-device"},{"label","GP01 Sky"},
@@ -484,7 +541,7 @@ static void remotePageRouting()
         send(MsgType::DeviceOperationResponse, TelemetryCodec::serializeDeviceOperationResponse(response));
         require(waitUntil([&] { return devices->currentData().toString() == "sky-only-device"; }), "Sky result populates USB selector");
         page->findChild<QAbstractButton*>("fpgaConnect")->click();
-        require(waitUntil([&] { return commands == 3; }), "selected Sky device connects through remote request");
+        require(waitUntil([&] { return commands == completedCommands+2; }), "selected Sky device connects through remote request");
         require(FpgaRemote::parseControl(lastRequest.payload, control) && control.value("op") == "connect"
             && control.value("locator") == "sky-only-device", "Sky opaque locator is preserved by selection");
         remote->close();
@@ -1278,6 +1335,48 @@ static void localSimulatorRouting()
     check(targetStarted,"idle simulator actually receives the target start command");
     check(waitUntil([&]{return connectionSuccesses.contains(0x40);})&&connectionSuccesses.size()==1,
         "only the requested simulated sensor reports a connection result");
+    {
+        auto *run=page->findChild<QAbstractButton*>("fpgaMotorRun");
+        auto *stop=page->findChild<QAbstractButton*>("fpgaMotorStop");
+        auto *enable=page->findChild<QAbstractButton*>("fpgaMotorEnable");
+        auto *disable=page->findChild<QAbstractButton*>("fpgaMotorDisable");
+        auto *steps=page->findChild<QDoubleSpinBox*>("fpgaMotorSteps");
+        auto *progress=page->findChild<QLabel*>("fpgaMotorProgress");
+        check(run&&stop&&enable&&disable&&steps&&progress,"local simulator exposes the motor command controls");
+        check(page->configuration().backend=="simulator"&&devices->currentData().toString()=="simulation://fpga",
+            "motor integration uses only the selected protocol simulator, never hardware USB");
+        const auto moves=std::make_shared<int>(0);
+        const auto observer=QObject::connect(window.testFpgaController(),&VaporView::Ground::Devices::FpgaDeviceController::rawCommand,
+            &window,[moves](quint64,const QByteArray& bytes) {
+                VaporView::FpgaVlp1::StreamParser parser;
+                for(const auto& frame:parser.feed(reinterpret_cast<const std::uint8_t*>(bytes.constData()),bytes.size()))
+                    if(frame.header.message==12&&frame.header.source==0x47&&frame.payload.size()==8
+                        &&qFromLittleEndian<quint32>(frame.payload.data())==1)++*moves;
+            },Qt::QueuedConnection);
+        const auto cleanup=qScopeGuard([observer]{QObject::disconnect(observer);});
+        enable->click();
+        check(waitUntil([&]{return run->isEnabled()&&lastRegisters.value(0x6704)==1;}),"simulated motor enable is confirmed by the production controller");
+        steps->setValue(200);run->click();
+        check(!run->isEnabled()&&stop->isEnabled()&&progress->text().contains(QStringLiteral("等待指令结果")),
+            "local MOVE locks immediately before the worker acknowledges it");
+        check(QMetaObject::invokeMethod(run,"clicked",Qt::DirectConnection,Q_ARG(bool,false)),
+            "force duplicate local click through the page command guard");
+        check(waitUntil([&]{return *moves==1&&progress->text().contains(QStringLiteral("预计进度"));}),
+            "one local MOVE reaches VLP and its own final result starts the estimate");
+        check(!run->isEnabled()&&stop->isEnabled(),"local command completion does not unlock an active movement");
+        stop->click();stop->click();
+        check(waitUntil([&]{return run->isEnabled()&&progress->text().contains(QStringLiteral("已停止"));}),
+            "replacement STOP ignores the old cancellation and unlocks only from its own result");
+        check(*moves==1,"STOP replacement does not retry or re-enable a move");
+        steps->setValue(100);run->click();
+        check(waitUntil([&]{return *moves==2&&progress->text().contains(QStringLiteral("预计进度"));}),
+            "a second local MOVE starts only after confirmed STOP");
+        check(waitUntil([&]{return run->isEnabled()&&progress->text().contains(QStringLiteral("设备已确认运动结束"));},8000),
+            "natural simulated completion and matching motion ID unlock the movement");
+        disable->click();
+        check(waitUntil([&]{return run->isEnabled()&&lastRegisters.value(0x6704)==0;}),"motor test restores disabled drive state");
+        steps->setValue(40);
+    }
     homeAction(window,"HC2A")->click();
     check(waitUntil([&]{return homeAction(window,"HC2A")->isEnabled()&&homeAction(window,"HC2A")->property("state")=="connected";})
         &&pressureAction->property("state")=="connected","connecting a second home device preserves the first");

@@ -759,7 +759,45 @@ void MainWindow::setupFpgaControlPage()
     connect(page, &FpgaControlPage::applyDliaRequested, this, [dispatch, controller](const FpgaControlConfig& config) {
         dispatch({{"op", "configure"}, {"section", "dlia"}, {"configuration", config.toJson()}}, [controller, config] { controller->applyConfiguration(config,"dlia"); });
     });
-    connect(page,&FpgaControlPage::operationRequested,this,[dispatch,controller](const QJsonObject& request){dispatch(request,[controller,request]{controller->executeOperation(request);});});
+    const auto motorOperationGeneration=std::make_shared<quint64>(0);
+    connect(page,&FpgaControlPage::operationRequested,this,[this,dispatch,controller,page,motorOperationGeneration](const QJsonObject& request) {
+        const auto generation=request.value("op")=="motor"?++*motorOperationGeneration:0;
+        if(request.value("op")!="motor" || isUiTestMode() || isRemoteSkyMode()) {
+            dispatch(request,[controller,request]{controller->executeOperation(request);});return;
+        }
+        QPointer<FpgaControlPage> target(page);
+        QMetaObject::invokeMethod(controller,[controller,target,request,motorOperationGeneration,generation] {
+            const auto reply=[target,request,motorOperationGeneration,generation](bool success) {
+                if(target)QMetaObject::invokeMethod(target,[target,request,success,motorOperationGeneration,generation] {
+                    if(target && *motorOperationGeneration==generation)target->finishMotorOperation(request,success);
+                },Qt::QueuedConnection);
+            };
+            const bool stop=request.value("action").toInt()==2
+                || (request.value("action").toInt()==4 && request.value("value").toInt()==0);
+            if(!VaporView::FpgaRemote::validateControl(request) || !controller->connected()
+                || controller->hardwareValues().value(0x6700)!=0x00470200
+                || (!stop && (!controller->ready() || controller->busy()))) {reply(false);return;}
+            const auto observer=std::make_shared<QMetaObject::Connection>();
+            const auto finished=std::make_shared<bool>(false);
+            const auto dispatching=std::make_shared<bool>(true);
+            const auto finish=[observer,finished,reply](bool success) {
+                if(*finished)return;*finished=true;QObject::disconnect(*observer);reply(success);
+            };
+            *observer=QObject::connect(controller,&Controller::snapshot,controller,
+                [finish,stop,dispatching](quint64,const QJsonObject& result) {
+                    const auto event=result.value("event").toString();
+                    if(stop && *dispatching && result.value("interrupted_by_motor_stop").toBool())return;
+                    if(event=="operation_failed" || event=="disconnected")finish(false);
+                    else if(event=="operation_completed" && result.value("operation").toString()
+                        ==(stop?QStringLiteral("DM422 停止与状态读回"):QStringLiteral("FPGA 高级控制与读回")))finish(true);
+                });
+            // The precheck, observer and dispatch share this worker invocation:
+            // a periodic refresh cannot be mistaken for this motor transaction.
+            controller->executeOperation(request);
+            *dispatching=false;
+            if(!controller->busy())finish(false);
+        },Qt::QueuedConnection);
+    });
     connect(page,&FpgaControlPage::motorHeartbeatRequested,this,[this,controller] {
         const QJsonObject heartbeat{{"op","motor_heartbeat"}};
         if (isUiTestMode()) state_->fpga_page_->simulateOperation(heartbeat);
@@ -1042,6 +1080,7 @@ void MainWindow::setupFpgaControlPage()
         } else if (discovery && isRemoteSkyMode() && page->usbDiscoveryGeneration() == state_->fpga_session_.discoveryGeneration) {
             page->setUsbDiscoveryResult({{"devices",QJsonArray{}},{"error",QStringLiteral("Invalid Sky USB discovery response")}});
         }
+        page->finishMotorOperation(request,statusParsed && response.error_code==VaporView::CommandErrorCode::Ok);
         if(state_->fpga_instrument_reply_) {
             auto reply=std::move(state_->fpga_instrument_reply_);
             auto result=status.value("operation_result").toObject();
@@ -1061,6 +1100,7 @@ void MainWindow::setupFpgaControlPage()
     });
     connect(remote, &Remote::deviceOperationRejected, this, [this, page](quint32 requestId, const VaporView::CommandAck& ack) {
         if (!state_->fpga_session_.matches(requestId, *state_->remote_sky_controller_)) return;
+        page->finishMotorOperation(state_->fpga_session_.remoteControl,false);
         cancelFpgaActions();
         state_->fpga_session_.finishRemote();
         if(state_->fpga_instrument_reply_) {auto reply=std::move(state_->fpga_instrument_reply_);reply({{"ok",false},{"detail",VaporView::commandErrorCodeText(ack.error_code,state_->is_english_)}});}
@@ -1075,6 +1115,7 @@ void MainWindow::setupFpgaControlPage()
     });
     connect(remote, &Remote::deviceOperationTimedOut, this, [this, page](quint32 requestId) {
         if (!state_->fpga_session_.matches(requestId, *state_->remote_sky_controller_)) return;
+        page->finishMotorOperation(state_->fpga_session_.remoteControl,false);
         cancelFpgaActions();
         state_->fpga_session_.finishRemote();
         if(state_->fpga_instrument_reply_) {auto reply=std::move(state_->fpga_instrument_reply_);reply({{"ok",false},{"detail",QStringLiteral("天空端 FPGA 事务超时，结果未知。")}});}
@@ -1089,8 +1130,9 @@ void MainWindow::setupFpgaControlPage()
                 : QStringLiteral("FPGA 命令超时，执行结果未知。再次写入前请读取状态；系统不会自动重发。")));
         updateFpgaPageBackend();
     });
-    connect(remote, &Remote::linkOpenChanged, this, [this](bool open) {
+    connect(remote, &Remote::linkOpenChanged, this, [this,page](bool open) {
         if (!open) {
+            if(state_->fpga_session_.requestId)page->finishMotorOperation(state_->fpga_session_.remoteControl,false);
             cancelFpgaActions();
             if(state_->fpga_instrument_reply_) {auto reply=std::move(state_->fpga_instrument_reply_);reply({{"ok",false},{"detail",QStringLiteral("天空端链路已断开，结果未知。")}});}
             state_->fpga_home_connect_device_ = VaporView::SkyDeviceId::All;
@@ -1126,6 +1168,7 @@ void MainWindow::sendRemoteFpgaControl(const QJsonObject& request)
     } else if (result == Submission::Invalid) {
         state_->fpga_page_->appendDiagnostic(error);
     }
+    if(result!=Submission::Accepted)state_->fpga_page_->finishMotorOperation(request,false);
     // Lock parameter drafts as soon as a write is submitted; the periodic
     // editor refresh is coalesced and must not leave them editable in flight.
     if (result == Submission::Accepted) syncFpgaDeviceConfigUi();
