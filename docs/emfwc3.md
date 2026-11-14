@@ -42,8 +42,9 @@ card but require an appropriate manufacturer runtime before connection.
    Both the home and configuration cards share one USB session and synchronize
    the selected COM port. The home card header provides the serial selector and
    one animated icon-only connect/disconnect button and the USB connection
-   status. Current angle, target angle and positioning share one row; both
-   continuous directions, home, stop and device settings share another row.
+   status. Current angle, a compact target-angle editor, positioning, home,
+   stop and device settings share one row. Relative steps and continuous
+   directions are available in device configuration.
    The home device overview also includes EM-FWC3 and shares its connection
    action and status with the motion card. Refresh and
    speed/EEPROM settings remain in device configuration. The internal
@@ -54,6 +55,13 @@ Each channel provides absolute positioning, relative steps, homing, continuous
 motion, and stop. Continuous-direction buttons are always visible; the old
 checkbox only expanded the UI and was not a device requirement. Homing and
 continuous motion retain their action-confirmation dialogs.
+
+UI Test Mode also covers the motor controller. It supplies a simulated USB
+connection, angle and speed, and supports positioning, relative steps, homing,
+continuous motion, stop, and connection actions without calling the vendor SDK.
+Failure and stalled-data scenarios affect simulated feedback. Leaving the mode
+restores the original port, angle editors and speed editor and clears the
+simulated connection; simulated operations never write motor EEPROM.
 The stop controls remain available while another command is pending. Calls
 are serialized on a dedicated worker thread; a stop waits for the in-flight
 SDK call to return. **Stop all** attempts all three channels even if a previous
@@ -83,8 +91,9 @@ automatic re-homing occurs.
 Disconnect, application shutdown, and connection-loss cleanup attempt to stop
 channels commanded to move by this session, then close the device and release
 the SDK. Read-only connections send no stop command on close. UI test mode
-cannot start while a real motion session is open or connecting, and its write
-barrier blocks motion connections/commands. Port choices use the
+cannot start while a real motion session is open or connecting. Its motion
+controls use an in-memory session while the write barrier blocks real commands.
+Port choices use the
 normal settings write barrier; tests isolate settings with the shared sandbox.
 
 ## Verification

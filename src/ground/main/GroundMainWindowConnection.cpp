@@ -532,7 +532,7 @@ bool MainWindow::updateHomeMotionDeviceControls(qint64 nowMs, bool animationOnly
         : (state_->is_english_ ? QStringLiteral("Not ready") : QStringLiteral("未就绪"));
     if (auto *label = state_->home_motion_status_lbl_)
     {
-        setLabelTextIfChanged(label, QStringLiteral("EM-FWC3"));
+        setLabelTextIfChanged(label, state_->is_english_ ? QStringLiteral("EM-FWC3 Motor") : QStringLiteral("EM-FWC3电机"));
         setWidgetToolTipIfChanged(label, state_->is_english_
             ? QStringLiteral("EM-FWC3 motor controller status: %1 (local USB direct)").arg(statusText)
             : QStringLiteral("EM-FWC3 电机控制器状态：%1（本机 USB 直连）").arg(statusText));

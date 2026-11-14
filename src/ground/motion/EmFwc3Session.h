@@ -4,6 +4,7 @@
 #include <QThread>
 #include <QStringList>
 #include <array>
+class QTimer;
 
 namespace VaporView::Ground::Motion
 {
@@ -29,6 +30,9 @@ public:
     explicit EmFwc3Session(QObject *parent = nullptr, const QString& sdkDirectory = {});
     ~EmFwc3Session() override;
     EmFwc3State state() const { return state_; }
+    bool isUiTestMode() const { return ui_test_mode_; }
+    void setUiTestMode(bool enabled);
+    void setUiTestScenario(bool failed, bool stalled);
     void connectDevice(const QString& port, const QStringList& motorTypes);
     void disconnectDevice();
     void execute(Command command, int channel = 0, double value = 0);
@@ -42,6 +46,9 @@ private:
     EmFwc3State state_;
     bool closing_ = false;
     int pending_ = 0;
+    bool ui_test_mode_ = false, ui_test_failed_ = false, ui_test_stalled_ = false;
+    std::array<int, 3> ui_test_directions_{};
+    QTimer *ui_test_timer_ = nullptr;
 };
 }
 Q_DECLARE_METATYPE(VaporView::Ground::Motion::EmFwc3State)

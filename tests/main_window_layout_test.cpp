@@ -4039,7 +4039,7 @@ void requireHomeOverviewLanguageWidthRoundTrip()
             "home link rates preserve receive, transmit, total order with compact Chinese labels");
     bool hasMotorController = false;
     for (auto *capsule : languageDeviceOverviewCard->findChildren<QLabel *>(QStringLiteral("homeDeviceStatusCapsule")))
-        hasMotorController |= capsule->text() == QStringLiteral("EM-FWC3");
+        hasMotorController |= capsule->text() == QStringLiteral("EM-FWC3电机");
     require(hasMotorController, "language overview includes the local motor controller");
 
     const QList<int> initialHomeOverviewSizes = languageHomeOverviewSplitter->sizes();
@@ -4475,8 +4475,8 @@ void requireHomeSensorColumnLayout(MainWindow& window)
             "home EPSILON and motion cards are visible");
     auto *motionPanel = motion->findChild<QWidget *>(QStringLiteral("homeMotionPanel"));
     require(motionPanel != nullptr, "home motion controls exist");
-    for (const char *name : {"homeMotionPosition", "homeMotionTarget", "homeMotionStep",
-                             "homeMotionGo", "homeMotionMinus", "homeMotionPlus"})
+    for (const char *name : {"homeMotionPosition", "homeMotionTarget", "homeMotionGo",
+                             "homeMotionHome", "homeMotionStopAll", "homeMotionConfigure"})
     {
         auto *control = motionPanel->findChild<QWidget *>(QString::fromLatin1(name));
         require(control && control->isVisible(), "home motion channel control is visible");
@@ -7578,7 +7578,7 @@ int main(int argc, char **argv)
     require(homeDeviceNames.contains(QStringLiteral("BMP390 气压")) &&
                 homeDeviceNames.contains(QStringLiteral("SHT45 温湿度")),
             "internal sensors include their model and measurement description");
-    require(homeDeviceNames.contains(QStringLiteral("EM-FWC3")),
+    require(homeDeviceNames.contains(QStringLiteral("EM-FWC3电机")),
             "home device overview includes the local EM-FWC3 motor controller");
     const QList<QToolButton*> homeDeviceActionButtons =
         window.findChildren<QToolButton *>(QStringLiteral("homeDeviceActionButton"));
@@ -8150,7 +8150,7 @@ int main(int argc, char **argv)
                                  QStringLiteral("QPushButton#temperatureOverviewOutputSwitch {"),
                                  QStringLiteral("font-size: 14px"),
                                  "temperature overview output switch font is enlarged for readability");
-    require(temperatureOutputPercentPill->height() == 56 && temperatureOutputCapsule->height() == 84,
+    require(temperatureOutputPercentPill->height() == 72 && temperatureOutputCapsule->height() == 84,
             "temperature overview capsules fit the two channel rows");
     require(temperatureValuePills[0]->geometry().right() < temperatureValuePills[1]->geometry().left() &&
                 temperatureValuePills[2]->geometry().right() < temperatureValuePills[3]->geometry().left() &&

@@ -25,6 +25,7 @@ public:
     void connectDevice();
     void homeChannel(int channel);
     void runContinuous(int channel, int direction);
+    void setUiTestMode(bool enabled);
     void setTheme(bool dark, int fontScalePercent = 100);
     void setLanguage(bool english);
     void shutdown();

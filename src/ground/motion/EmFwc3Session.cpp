@@ -259,17 +259,59 @@ EmFwc3Session::EmFwc3Session(QObject *parent, const QString& sdkDirectory) : QOb
         emit operationFinished(operation, code, detail);
     });
     thread_.start();
+    ui_test_timer_ = new QTimer(this);
+    ui_test_timer_->setInterval(100);
+    connect(ui_test_timer_, &QTimer::timeout, this, [this] {
+        if (!ui_test_mode_ || !state_.connected || ui_test_failed_ || ui_test_stalled_ || !state_.continuousMotion) return;
+        for (int i = 0; i < 3; ++i) state_.positions[i] += ui_test_directions_[i] * state_.speed * 0.01;
+        emit stateChanged(state_);
+    });
 }
 EmFwc3Session::~EmFwc3Session() { shutdown(); }
+void EmFwc3Session::setUiTestMode(bool enabled)
+{
+    if (enabled == ui_test_mode_ || (enabled && (state_.connected || state_.busy || closing_))) return;
+    ui_test_mode_ = enabled;
+    if (enabled) ui_test_timer_->start(); else ui_test_timer_->stop();
+    ui_test_failed_ = ui_test_stalled_ = false;
+    ui_test_directions_ = {};
+    state_ = {};
+    if (enabled) {
+        state_.connected = true; state_.positions = {45, 0, 0}; state_.valid.fill(true);
+        state_.speed = 50; state_.speedValid = true;
+    }
+    emit stateChanged(state_);
+}
+void EmFwc3Session::setUiTestScenario(bool failed, bool stalled)
+{
+    if (!ui_test_mode_) return;
+    ui_test_failed_ = failed; ui_test_stalled_ = stalled;
+    state_.valid.fill(state_.connected && !failed);
+    state_.speedValid = state_.connected && !failed;
+    emit stateChanged(state_);
+}
 void EmFwc3Session::connectDevice(const QString& port, const QStringList& types)
 {
     if (closing_ || state_.busy || state_.connected) return;
+    if (ui_test_mode_) {
+        state_.connected = !ui_test_failed_; state_.valid.fill(state_.connected); state_.speedValid = state_.connected;
+        emit stateChanged(state_);
+        emit operationFinished(QStringLiteral("connect"), ui_test_failed_ ? unavailable : 0, QStringLiteral("UI test simulation"));
+        return;
+    }
     ++pending_; state_.busy = true; emit stateChanged(state_);
     QMetaObject::invokeMethod(worker_, [this, port, types] { worker_->open(port, types); }, Qt::QueuedConnection);
 }
 void EmFwc3Session::disconnectDevice()
 {
     if (closing_ || state_.busy || !state_.connected) return;
+    if (ui_test_mode_) {
+        state_.connected = false; state_.valid.fill(false); state_.speedValid = false;
+        state_.continuousMotion = false; ui_test_directions_ = {};
+        emit stateChanged(state_);
+        emit operationFinished(QStringLiteral("disconnect"), 0, QStringLiteral("UI test simulation"));
+        return;
+    }
     ++pending_; state_.busy = true; emit stateChanged(state_);
     QMetaObject::invokeMethod(worker_, [this] { worker_->close(); }, Qt::QueuedConnection);
 }
@@ -277,6 +319,24 @@ void EmFwc3Session::execute(Command command, int channel, double value)
 {
     const bool stop = command == Command::StopAll || (command == Command::Continuous && value == 0);
     if (closing_ || !state_.connected || ((state_.busy || state_.continuousMotion) && !stop)) return;
+    if (ui_test_mode_) {
+        if (channel < 0 || channel >= 3 || !std::isfinite(value)) return;
+        if (!ui_test_failed_ || stop) {
+            switch (command) {
+            case Command::Relative: state_.positions[channel] += value; break;
+            case Command::Absolute: state_.positions[channel] = value; break;
+            case Command::Home: state_.positions[channel] = 0; break;
+            case Command::Continuous: ui_test_directions_[channel] = value > 0 ? 1 : value < 0 ? -1 : 0; break;
+            case Command::StopAll: ui_test_directions_ = {}; break;
+            case Command::Speed: state_.speed = std::clamp(value, 1.0, double(std::numeric_limits<int>::max())); break;
+            case Command::SavePosition: break;
+            }
+            state_.continuousMotion = std::any_of(ui_test_directions_.begin(), ui_test_directions_.end(), [](int value) { return value != 0; });
+        }
+        emit stateChanged(state_);
+        emit operationFinished(QStringLiteral("ui_test"), ui_test_failed_ && !stop ? unavailable : 0, QStringLiteral("UI test simulation"));
+        return;
+    }
     ++pending_; state_.busy = true; emit stateChanged(state_);
     QMetaObject::invokeMethod(worker_, [this, command, channel, value] { worker_->command(command, channel, value); }, Qt::QueuedConnection);
 }

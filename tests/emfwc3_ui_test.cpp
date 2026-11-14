@@ -4,6 +4,7 @@
 #include "ground/motion/MotionControlPage.h"
 #include "shared/config/SettingsWriteBarrier.h"
 #include <QApplication>
+#include <QAction>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDir>
@@ -120,10 +121,9 @@ int main(int argc, char **argv)
         auto *homeSelector = find<QComboBox>(window, "homeMotionChannelCombo");
         auto *homePosition = find<QLabel>(*homeMotion, "homeMotionPosition");
         auto *homeTarget = find<QDoubleSpinBox>(*homeMotion, "homeMotionTarget");
-        auto *homeStep = find<QDoubleSpinBox>(*homeMotion, "homeMotionStep");
         auto *homeGo = find<QPushButton>(*homeMotion, "homeMotionGo");
-        auto *homeMinus = find<QPushButton>(*homeMotion, "homeMotionMinus");
-        auto *homePlus = find<QPushButton>(*homeMotion, "homeMotionPlus");
+        auto *configMinus = find<QPushButton>(*page, "emFwc3Minus2");
+        auto *configPlus = find<QPushButton>(*page, "emFwc3Plus2");
         auto *homeCard = find<QWidget>(window, "homeMotionCard");
         auto *homeHeader = homeCard->findChild<QWidget *>(QStringLiteral("sectionTitleBar"), Qt::FindDirectChildrenOnly);
         auto *homePort = find<QComboBox>(*homeCard, "homeMotionPort");
@@ -135,11 +135,11 @@ int main(int argc, char **argv)
         check(overviewMotionAction, "device overview includes the local motor action");
         QLabel *overviewMotionStatus = nullptr;
         for (auto *label : overview->findChildren<QLabel *>(QStringLiteral("homeDeviceStatusCapsule")))
-            if (label->text() == QStringLiteral("EM-FWC3")) overviewMotionStatus = label;
+            if (label->text() == QStringLiteral("EM-FWC3电机")) overviewMotionStatus = label;
         check(overviewMotionStatus, "device overview includes EM-FWC3 status");
         auto *homeHome = find<QPushButton>(*homeMotion, "homeMotionHome");
-        auto *homeForward = find<QPushButton>(*homeMotion, "homeMotionForward");
-        auto *homeReverse = find<QPushButton>(*homeMotion, "homeMotionReverse");
+        auto *configForward = find<QPushButton>(*page, "emFwc3Forward1");
+        auto *configReverse = find<QPushButton>(*page, "emFwc3Reverse1");
         check(homeHeader && homeHeader->isAncestorOf(homePort) && homeHeader->isAncestorOf(homeAction) &&
               homeHeader->isAncestorOf(homeConnection), "home serial, combined connection action and status belong to the title bar");
         check(!homeCard->findChild<QToolButton *>(QStringLiteral("homeMotionConnect")) &&
@@ -152,14 +152,14 @@ int main(int argc, char **argv)
         for (auto *button : {homeAction, overviewMotionAction})
             check(button->text().isEmpty() && !button->icon().isNull() && !button->toolTip().isEmpty() &&
                   !button->accessibleName().isEmpty(), "home connection actions use labeled accessible icons without visible text");
-        check(homeForward->isVisibleTo(homeMotion) && homeReverse->isVisibleTo(homeMotion),
-              "home continuous controls are always visible without a checkbox");
+        for (const char *removed : {"homeMotionForward", "homeMotionReverse", "homeMotionStep", "homeMotionMinus", "homeMotionPlus"})
+            check(!homeMotion->findChild<QWidget *>(QString::fromLatin1(removed)), "home card omits continuous and step controls");
         check(homeHeader && homeHeader->isAncestorOf(homeSelector) && homeSelector->isHidden(),
               "home channel selector stays hidden without removing its routing code");
         check(homeSelector->count() == 3 && homeSelector->currentIndex() == 0,
               "home controls default to channel one and retain internal multi-channel support");
         check(!homeStop->isEnabled(), "home stop is disabled while disconnected");
-        check(!homeGo->isEnabled() && !homeMinus->isEnabled() && !homePlus->isEnabled(),
+        check(!homeGo->isEnabled() && !configMinus->isEnabled() && !configPlus->isEnabled(),
               "home motion actions are disabled while disconnected");
         check(homePosition->text() == QStringLiteral("—"), "home position is empty while disconnected");
         int configurationRequests = 0;
@@ -215,9 +215,9 @@ int main(int argc, char **argv)
         check(sameHomeRow(homePosition, homeTarget) && sameHomeRow(homeTarget, homeGo),
               "current angle, target angle and positioning share a row");
         auto *homeConfigure = find<QPushButton>(*homeMotion, "homeMotionConfigure");
-        for (auto *button : {homeReverse, homeForward, homeHome, homeStop, homeConfigure}) {
+        for (auto *button : {homeHome, homeStop, homeConfigure}) {
             check(homeCard->rect().contains(homeBounds(button)), "motion action fits within the home card");
-            if (button != homeReverse) check(sameHomeRow(homeReverse, button), "all five motion actions share a row");
+            check(sameHomeRow(homeGo, button), "all remaining home motion controls share one row");
         }
         auto *homeTitle = find<QLabel>(*homeHeader, "sectionTitleLabel");
         check(homeBounds(homeTitle).right() < homeBounds(homePort).left() &&
@@ -271,39 +271,38 @@ int main(int argc, char **argv)
             homeSelector->setCurrentIndex(i - 1); QApplication::processEvents();
             check(homePosition->text() == QString::number(i * 10.0, 'f', 3) + QStringLiteral("°"),
                   "switching the home selector immediately shows the selected channel readback");
-            check(homeTarget->value() == i * 10.0 && homeStep->value() == i * 0.5,
+            check(homeTarget->value() == i * 10.0,
                   "home editors follow the selected channel settings from the device page");
         }
         homeSelector->setCurrentIndex(1);
-        homeTarget->setValue(24.0); homeStep->setValue(0.75); QApplication::processEvents();
-        check(find<QDoubleSpinBox>(*page, "emFwc3Target2")->value() == 24.0 &&
-              find<QDoubleSpinBox>(*page, "emFwc3Step2")->value() == 0.75,
+        homeTarget->setValue(24.0); QApplication::processEvents();
+        check(find<QDoubleSpinBox>(*page, "emFwc3Target2")->value() == 24.0,
               "home edits update the corresponding device page channel");
         homeSelector->setCurrentIndex(0); QApplication::processEvents();
-        check(homeTarget->value() == 10.0 && homeStep->value() == 0.5,
+        check(homeTarget->value() == 10.0,
               "switching channels preserves independent target and step values");
         homeSelector->setCurrentIndex(1); QApplication::processEvents();
-        check(homeTarget->value() == 24.0 && homeStep->value() == 0.75,
+        check(homeTarget->value() == 24.0,
               "returning to a channel restores its target and step");
         find<QDoubleSpinBox>(*page, "emFwc3Target2")->setValue(25.0);
         find<QDoubleSpinBox>(*page, "emFwc3Step2")->setValue(1.25);
         QApplication::processEvents();
-        check(homeTarget->value() == 25.0 && homeStep->value() == 1.25,
+        check(homeTarget->value() == 25.0,
               "device page edits immediately update the selected home channel");
-        check(homeGo->isEnabled() && homeMinus->isEnabled() && homePlus->isEnabled(),
+        check(homeGo->isEnabled() && configMinus->isEnabled() && configPlus->isEnabled(),
               "home motion actions are enabled for a connected idle device");
         homeGo->click();
-        check(page->session()->state().busy && !homeGo->isEnabled() && !homeMinus->isEnabled() &&
-                  !homePlus->isEnabled() && homeStop->isEnabled(),
+        check(page->session()->state().busy && !homeGo->isEnabled() && !configMinus->isEnabled() &&
+                  !configPlus->isEnabled() && homeStop->isEnabled(),
               "busy home motion disables movement while retaining the stop action");
         until("home absolute move reaches selected channel exactly once", [&] {
             return motions() == 10 && homePosition->text() == QStringLiteral("25.000°") && !page->session()->state().busy;
         });
-        homePlus->click();
+        configPlus->click();
         until("home positive step reaches selected channel exactly once", [&] {
             return motions() == 11 && homePosition->text() == QStringLiteral("26.250°") && !page->session()->state().busy;
         });
-        homeMinus->click();
+        configMinus->click();
         until("home negative step reaches selected channel exactly once", [&] {
             return motions() == 12 && homePosition->text() == QStringLiteral("25.000°") && !page->session()->state().busy;
         });
@@ -327,7 +326,7 @@ int main(int argc, char **argv)
         checkCardGeometry(*panel);
         VaporView::setSettingsWritesSuspended(true);
         find<QPushButton>(*page, "emFwc3Go3")->click(); QApplication::processEvents();
-        homeGo->click(); homePlus->click(); homeMinus->click(); QApplication::processEvents();
+        homeGo->click(); configPlus->click(); configMinus->click(); QApplication::processEvents();
         check(motions() == 12, "UI test write barrier blocks device and home motion commands");
         homeStop->click(); QApplication::processEvents();
         check(stops(0) == 2 && stops(1) == 2 && stops(2) == 2, "write barrier also blocks home stop");
@@ -338,7 +337,7 @@ int main(int argc, char **argv)
         check(homePosition->text() == QStringLiteral("读取已暂停") &&
               find<QLabel>(*page, "emFwc3Position1")->text() == QStringLiteral("读取已暂停"),
               "both panels explain why angle feedback pauses during continuous motion");
-        check(!homeGo->isEnabled() && !homePlus->isEnabled() && homeStop->isEnabled() &&
+        check(!homeGo->isEnabled() && !configPlus->isEnabled() && homeStop->isEnabled() &&
               !find<QPushButton>(*page, "emFwc3ApplySpeed")->isEnabled() &&
               find<QPushButton>(*page, "emFwc3Stop1")->isEnabled(),
               "continuous motion keeps stop controls available and blocks interrupting commands");
@@ -351,9 +350,9 @@ int main(int argc, char **argv)
         homeHome->click();
         until("home card homing reaches the selected channel", [&] { return homePosition->text() == QStringLiteral("0.000°") && !page->session()->state().busy; });
         QTimer::singleShot(0, [] { auto *box = qobject_cast<QMessageBox*>(QApplication::activeModalWidget()); check(box, "home continuous confirmation appears"); box->button(QMessageBox::Yes)->click(); });
-        homeReverse->click();
+        configReverse->click();
         until("home reverse continuous motion starts", [&] { return page->session()->state().continuousMotion && !page->session()->state().busy; });
-        check(!homeForward->isEnabled() && !homeHome->isEnabled() && homeStop->isEnabled() && homeAction->isEnabled(),
+        check(!configForward->isEnabled() && !homeHome->isEnabled() && homeStop->isEnabled() && homeAction->isEnabled(),
               "home continuous motion retains stop and disconnect without enabling other motion");
         homeStop->click();
         until("home stop ends continuous motion", [&] { return !page->session()->state().continuousMotion && !page->session()->state().busy; });
@@ -365,7 +364,7 @@ int main(int argc, char **argv)
               !overviewMotionStatus->property("connected").toBool(), "home disconnect restores shared connection controls");
         check(find<QLabel>(*page, "emFwc3Position3")->text() == QStringLiteral("—"), "disconnection clears position readbacks");
         check(!homeStop->isEnabled() && homeConnection->text() == QStringLiteral("未连接"), "disconnection updates home status and disables stop");
-        check(!homeGo->isEnabled() && !homeMinus->isEnabled() && !homePlus->isEnabled(),
+        check(!homeGo->isEnabled() && !configMinus->isEnabled() && !configPlus->isEnabled(),
               "disconnection disables home motion actions");
         for (int i = 0; i < 3; ++i) {
             homeSelector->setCurrentIndex(i); QApplication::processEvents();
@@ -385,6 +384,44 @@ int main(int argc, char **argv)
               "slow disconnect keeps both icons animating after the minimum transition time");
         until("configuration disconnect updates both home actions", [&] { return !page->session()->state().connected && homeAction->isEnabled() && overviewMotionAction->isEnabled(); });
         closeDelay(0);
+        homeSelector->setCurrentIndex(0); selector->setCurrentIndex(0);
+        page->setTargetAngle(0, 17.25); page->setStepAngle(0, 2.5);
+        const QString originalPort = page->portName();
+        const int originalSpeed = find<QSpinBox>(*page, "emFwc3Speed")->value();
+        auto *uiMode = window.findChild<QAction *>(QStringLiteral("uiTestModeAction"));
+        check(uiMode, "application UI test mode action exists");
+        reset();
+        uiMode->trigger(); QApplication::processEvents();
+        check(page->session()->isUiTestMode() && page->session()->state().connected &&
+              homeConnection->text().contains(QStringLiteral("模拟")) && homeGo->isEnabled(),
+              "application UI test mode populates and enables both motor panels");
+        homeTarget->setValue(72.5); homeGo->click();
+        check(page->session()->state().positions[0] == 72.5, "home positioning works in simulation");
+        homeHome->click();
+        check(page->session()->state().positions[0] == 0, "home simulation resets its angle without a hardware confirmation");
+        find<QPushButton>(*page, "emFwc3Plus1")->click();
+        check(page->session()->state().positions[0] == 2.5, "configuration relative motion is simulated");
+        configForward->click();
+        until("simulated continuous motion advances", [&] { return page->session()->state().positions[0] > 2.5; });
+        homeStop->click();
+        check(!page->session()->state().continuousMotion, "home stop halts simulated continuous motion");
+        find<QSpinBox>(*page, "emFwc3Speed")->setValue(75);
+        find<QPushButton>(*page, "emFwc3ApplySpeed")->click();
+        check(page->session()->state().speed == 75, "simulation applies and reads back speed");
+        page->session()->setUiTestScenario(true, false);
+        check(!page->session()->state().valid[0], "failure simulation invalidates motor feedback");
+        page->session()->setUiTestScenario(false, false);
+        find<QPushButton>(*page, "emFwc3Disconnect")->click();
+        check(!page->session()->state().connected, "simulation disconnect does not use the SDK");
+        connect->click();
+        check(page->session()->state().connected, "simulation reconnect restores motor controls");
+        check(motions() == 0 && cemFpmCount() == 0 && stops(0) == 0 && saves() == 0,
+              "UI test operations never reach the SDK double");
+        uiMode->trigger(); QApplication::processEvents();
+        check(!page->session()->isUiTestMode() && !page->session()->state().connected &&
+              page->portName() == originalPort && page->targetAngle(0) == 17.25 &&
+              page->stepAngle(0) == 2.5 && find<QSpinBox>(*page, "emFwc3Speed")->value() == originalSpeed,
+              "leaving UI test restores motor settings and disconnects the simulated session");
         window.close();
     }
     {
@@ -403,10 +440,6 @@ int main(int argc, char **argv)
                       "serial selector remains compact at each font scale");
                 const auto bounds = [page](QWidget *widget) {
                     return QRect(widget->mapTo(page, QPoint(0, 0)), widget->size());
-                };
-                const auto sameRow = [&](QWidget *left, QWidget *right) {
-                    const QRect a = bounds(left), b = bounds(right);
-                    return a.top() <= b.bottom() && b.top() <= a.bottom() && !a.intersects(b);
                 };
                 for (int channel = 1; channel <= 3; ++channel) {
                     find<QComboBox>(*page, "emFwc3ChannelSelector")->setCurrentIndex(channel - 1);
@@ -430,9 +463,9 @@ int main(int argc, char **argv)
                         for (auto *widget : {target, step, home, area, speed, save})
                             check(page->rect().contains(bounds(widget)), "motion controls stay within the card at wide and narrow widths");
                         if (width == 1200 && scale == 100 && !english) {
-                            check(sameRow(target, step), "wide card places target and relative step on one row");
-                            check(sameRow(home, area), "wide card places motion actions and continuous controls on one row");
-                            check(sameRow(speed, save), "wide card places common speed and device actions on one row");
+                            check(bounds(target).left() == bounds(step).left(), "target and step input columns align");
+                            check(bounds(home).left() == bounds(area).left(), "motion action rows align on the left");
+                            check(bounds(speed).left() == bounds(target).left(), "speed and angle input columns align");
                         }
                     }
                 }

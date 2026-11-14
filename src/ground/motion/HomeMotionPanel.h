@@ -35,11 +35,11 @@ private:
     QComboBox *channel_combo_;
     QComboBox *port_combo_;
     QLabel *position_;
-    QLabel *position_label_, *target_label_, *step_label_;
-    QDoubleSpinBox *target_, *step_;
-    QPushButton *go_, *minus_, *plus_;
+    QLabel *position_label_, *target_label_;
+    QDoubleSpinBox *target_;
+    QPushButton *go_;
     QPushButton *stop_;
-    QPushButton *home_, *reverse_, *forward_;
+    QPushButton *home_;
     QPushButton *configure_;
     bool english_ = false;
 };

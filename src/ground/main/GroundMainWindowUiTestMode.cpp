@@ -341,6 +341,7 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
             state_->device_config_.sensor_transport_path_combo->setCurrentIndex(index >= 0 ? index : 1);
         }
         state_->ui_test_mode_enabled_ = true;
+        if (state_->motion_page_) state_->motion_page_->setUiTestMode(true);
         configureGatewayRuntime();
         state_->gateway_action_->setEnabled(false);
         state_->ui_test_epsilon_operation_pending_ = false;
@@ -431,6 +432,8 @@ void MainWindow::setUiTestModeEnabled(bool enabled)
     }
     state_->ui_test_connection_in_progress_ = false;
     resetUiTestRecording();
+    if (state_->motion_page_) state_->motion_page_->setUiTestMode(false);
+    state_->home_motion_action_spinner_until_ms_ = 0;
     state_->ui_test_mode_enabled_ = false;
     configureGatewayRuntime();
     state_->gateway_action_->setEnabled(true);
@@ -641,6 +644,9 @@ void MainWindow::applyUiTestSnapshot()
         return;
     }
     const qint64 elapsed = QDateTime::currentMSecsSinceEpoch() - state_->ui_test_started_ms_;
+    if (state_->motion_page_) state_->motion_page_->session()->setUiTestScenario(
+        state_->ui_test_model_->scenario() == UiTestScenario::PartialFailure,
+        state_->ui_test_model_->scenario() == UiTestScenario::DataStalled);
     if(isFpgaRelayPath()) {
         const auto scenario=state_->ui_test_model_->scenario();
         state_->fpga_page_->setUiTestState(true,scenario==UiTestScenario::DataStalled,
