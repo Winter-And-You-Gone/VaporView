@@ -2469,6 +2469,9 @@ void MainWindow::setupCentralWidget()
     state_->home_motion_panel_ = new VaporView::Ground::Motion::HomeMotionPanel(
         state_->motion_page_,
         state_->home_motion_card_->findChild<QComboBox *>(QStringLiteral("homeMotionChannelCombo")),
+        state_->home_motion_card_->findChild<QComboBox *>(QStringLiteral("homeMotionPort")),
+        state_->home_motion_card_->findChild<QToolButton *>(QStringLiteral("homeMotionConnect")),
+        state_->home_motion_card_->findChild<QToolButton *>(QStringLiteral("homeMotionDisconnect")),
         state_->home_motion_card_);
     static_cast<QVBoxLayout *>(state_->home_motion_card_->layout())->addWidget(state_->home_motion_panel_, 1);
     connect(state_->home_motion_panel_, &VaporView::Ground::Motion::HomeMotionPanel::openConfigurationRequested,
@@ -5376,6 +5379,20 @@ void MainWindow::setupDataPanels()
         motionChannelCombo->addItem(QStringLiteral("通道 %1").arg(channel), channel);
     motionChannelCombo->hide(); // Keep channel routing available internally; use channel 1 in the UI.
     motionTitleLayout->addStretch();
+    motionTitleLayout->setSpacing(4);
+    auto *motionPort = new QComboBox(motionTitleBar);
+    motionPort->setObjectName(QStringLiteral("homeMotionPort"));
+    motionPort->setEditable(true);
+    motionPort->setInsertPolicy(QComboBox::NoInsert);
+    motionTitleLayout->addWidget(motionPort);
+    auto *motionConnect = createTitleBarIconButton(QStringLiteral("homeMotionConnect"), motionTitleBar);
+    auto *motionDisconnect = createTitleBarIconButton(QStringLiteral("homeMotionDisconnect"), motionTitleBar);
+    motionConnect->setFocusPolicy(Qt::TabFocus);
+    motionDisconnect->setFocusPolicy(Qt::TabFocus);
+    motionConnect->setIcon(createConnectIcon());
+    motionDisconnect->setIcon(createDisconnectIcon());
+    motionTitleLayout->addWidget(motionConnect);
+    motionTitleLayout->addWidget(motionDisconnect);
     motionLayout->addWidget(motionTitleBar);
     sensorColumnLayout->addWidget(state_->home_motion_card_, 1);
     state_->sensor_card_splitter_->addWidget(state_->home_sensor_column_);

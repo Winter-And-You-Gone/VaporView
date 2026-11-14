@@ -3,8 +3,6 @@
 #include "shared/theme/AppTheme.h"
 #include "shared/theme/TopLevelCardStyle.h"
 #include "ground/widgets/LabelTextSelection.h"
-#include "ground/widgets/DeviceEnabledCheckBox.h"
-#include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QEvent>
@@ -159,33 +157,23 @@ MotionControlPage::MotionControlPage(QWidget *parent, const QString& sdkDirector
         auto *stop = button(card, qPrintable(QStringLiteral("emFwc3Stop") + suffix), "停止", "Stop");
         actions->addWidget(home); actions->addWidget(stop); actions->addStretch();
         s.normalActions << home; s.stopActions << stop;
-        connect(home, &QPushButton::clicked, this, [this, i] {
-            if (QMessageBox::question(this, text("回零", "Home"),
-                text("将驱动通道 %1 回零，确认周围运动空间已清空？", "Home channel %1? Check the mechanism's clearance first.").arg(i + 1)) == QMessageBox::Yes)
-                run(EmFwc3Session::Command::Home, i);
-        });
+        connect(home, &QPushButton::clicked, this, [this, i] { homeChannel(i); });
         connect(stop, &QPushButton::clicked, this, [this, i] { run(EmFwc3Session::Command::Continuous, i, 0); });
         auto *advanced = new QWidget(card); advanced->setObjectName(QStringLiteral("emFwc3ContinuousArea") + suffix);
         auto *a = new QHBoxLayout(advanced); a->setContentsMargins(0, 0, 0, 0); a->setSpacing(8);
-        auto *toggle = new DeviceEnabledCheckBox(advanced); toggle->setFocusPolicy(Qt::TabFocus);
-        toggle->setObjectName(QStringLiteral("emFwc3ContinuousToggle") + suffix); wording(toggle, "连续运动", "Continuous motion"); a->addWidget(toggle);
         auto *continuousBody = new QWidget(advanced); continuousBody->setObjectName(QStringLiteral("emFwc3ContinuousBody") + suffix);
         auto *continuousLayout = new QHBoxLayout(continuousBody); continuousLayout->setContentsMargins(0, 0, 0, 0); continuousLayout->setSpacing(6);
         auto *reverse = button(continuousBody, qPrintable(QStringLiteral("emFwc3Reverse") + suffix), "反向连续运行", "Run reverse");
         auto *forward = button(continuousBody, qPrintable(QStringLiteral("emFwc3Forward") + suffix), "正向连续运行", "Run forward");
         continuousLayout->addWidget(reverse); continuousLayout->addWidget(forward);
-        a->addWidget(continuousBody); a->addStretch(); continuousBody->hide();
+        a->addWidget(continuousBody); a->addStretch();
         advanced->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
         s.motionGroups[i] = {targetGroup, stepGroup, actionGroup, advanced};
         for (int group = 0; group < 4; ++group) moves->addWidget(s.motionGroups[i][group], group, 0);
         moves->setColumnStretch(0, 1);
-        connect(toggle, &QCheckBox::toggled, continuousBody, &QWidget::setVisible);
-        connect(toggle, &QCheckBox::toggled, this, [this] { QTimer::singleShot(0, this, &MotionControlPage::reflow); });
         s.normalActions << advanced;
         for (auto *b : {reverse, forward}) connect(b, &QPushButton::clicked, this, [this, i, b, forward] {
-            if (QMessageBox::question(this, text("连续运动", "Continuous motion"),
-                text("连续运动将持续到下发停止指令，确认开始？", "Continuous motion runs until a stop command. Start?")) == QMessageBox::Yes)
-                run(EmFwc3Session::Command::Continuous, i, b == forward ? 1 : -1);
+            runContinuous(i, b == forward ? 1 : -1);
         });
         s.channels->addWidget(card);
     }
@@ -218,13 +206,7 @@ MotionControlPage::MotionControlPage(QWidget *parent, const QString& sdkDirector
     s.status = new QLabel(content); s.status->setObjectName(QStringLiteral("emFwc3Status")); s.status->setWordWrap(true); s.status->hide(); layout->addWidget(s.status);
     outer->addWidget(content);
     connect(s.refreshPorts, &QPushButton::clicked, this, &MotionControlPage::refreshPorts);
-    connect(s.connect, &QPushButton::clicked, this, [this] {
-        if (VaporView::settingsWritesSuspended()) return;
-        const QStringList types{QStringLiteral("CEM-FPM"), QStringLiteral("CEM-FPM"), QStringLiteral("CEM-FPM")};
-        saveSettings(); state_->session->connectDevice(state_->port->currentData().isValid()
-            && state_->port->currentText() == state_->port->itemText(state_->port->currentIndex())
-                ? state_->port->currentData().toString() : state_->port->currentText().trimmed(), types);
-    });
+    connect(s.connect, &QPushButton::clicked, this, &MotionControlPage::connectDevice);
     connect(s.disconnect, &QPushButton::clicked, s.session, &EmFwc3Session::disconnectDevice);
     refreshPorts();
     const auto savedPort = settings.value(QStringLiteral("port")).toString();
@@ -232,7 +214,9 @@ MotionControlPage::MotionControlPage(QWidget *parent, const QString& sdkDirector
         const int index = s.port->findData(savedPort);
         if (index >= 0) s.port->setCurrentIndex(index); else s.port->setEditText(savedPort);
     }
-    connect(s.port, &QComboBox::currentTextChanged, this, [this] { saveSettings(); refresh(); });
+    connect(s.port, &QComboBox::currentTextChanged, this, [this] {
+        saveSettings(); refresh(); emit portChanged(portName());
+    });
     connect(s.session, &EmFwc3Session::stateChanged, this, [this] { refresh(); });
     connect(s.session, &EmFwc3Session::operationFinished, this, [this](const QString& operation, int code, const QString& detail) {
         const bool motion = operation == "relative" || operation == "absolute" || operation == "home" || operation == "continuous";
@@ -255,6 +239,37 @@ void MotionControlPage::setTargetAngle(int channel, double value) { state_->targ
 void MotionControlPage::setStepAngle(int channel, double value) { state_->steps.at(channel)->setValue(value); }
 void MotionControlPage::moveToTarget(int channel) { run(EmFwc3Session::Command::Absolute, channel, targetAngle(channel)); }
 void MotionControlPage::moveStep(int channel, int direction) { run(EmFwc3Session::Command::Relative, channel, direction * stepAngle(channel)); }
+QString MotionControlPage::portName() const { return state_->port->currentText().trimmed(); }
+QStringList MotionControlPage::portNames() const
+{
+    QStringList ports;
+    for (int i = 0; i < state_->port->count(); ++i) ports << state_->port->itemText(i);
+    return ports;
+}
+void MotionControlPage::setPortName(const QString& port)
+{
+    if (!state_->session->state().connected && !state_->session->state().busy) state_->port->setEditText(port);
+}
+void MotionControlPage::connectDevice()
+{
+    if (VaporView::settingsWritesSuspended()) return;
+    saveSettings();
+    state_->session->connectDevice(portName(), {QStringLiteral("CEM-FPM"), QStringLiteral("CEM-FPM"), QStringLiteral("CEM-FPM")});
+}
+void MotionControlPage::homeChannel(int channel)
+{
+    if (VaporView::settingsWritesSuspended()) return;
+    if (QMessageBox::question(window(), text("回零", "Home"),
+        text("将驱动通道 %1 回零，确认周围运动空间已清空？", "Home channel %1? Check the mechanism's clearance first.").arg(channel + 1)) == QMessageBox::Yes)
+        run(EmFwc3Session::Command::Home, channel);
+}
+void MotionControlPage::runContinuous(int channel, int direction)
+{
+    if (VaporView::settingsWritesSuspended()) return;
+    if (QMessageBox::question(window(), text("连续运动", "Continuous motion"),
+        text("连续运动将持续到下发停止指令，确认开始？", "Continuous motion runs until a stop command. Start?")) == QMessageBox::Yes)
+        run(EmFwc3Session::Command::Continuous, channel, direction);
+}
 void MotionControlPage::shutdown() { state_->session->shutdown(); }
 QString MotionControlPage::text(const char *cn, const char *en) const
 {
@@ -274,7 +289,7 @@ void MotionControlPage::refreshPorts()
     int index = port->findData(previous);
     if (index >= 0) port->setCurrentIndex(index);
     else port->setEditText(previous);
-    port->blockSignals(false); refresh();
+    port->blockSignals(false); refresh(); emit portsChanged();
 }
 void MotionControlPage::saveSettings()
 {
@@ -351,8 +366,6 @@ void MotionControlPage::setTheme(bool dark, int fontScalePercent)
         "QStackedWidget, QStackedWidget > QWidget { background-color: transparent; border: none; }"
         "QPushButton { min-width: 0px; padding: 3px 10px; min-height: %4px; max-height: %4px; }"
         "QComboBox, QSpinBox, QDoubleSpinBox { min-height: %4px; max-height: %4px; }"
-        "QCheckBox { color: @vv-text; background-color: transparent; }"
-        "QCheckBox:disabled { color: @vv-text-disabled; }"
         "QWidget#sectionTitleBar QLabel#sectionTitleLabel { font-size: %3px; font-weight: 700; padding: 0px; margin: 0px; }"
         "QLabel[emFwc3Error=true] { color: @vv-danger; }"
         "QLabel#emFwc3Position1, QLabel#emFwc3Position2, QLabel#emFwc3Position3 { font-size: %1px; font-weight: 600; }"

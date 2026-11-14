@@ -19,11 +19,19 @@ public:
     void setStepAngle(int channel, double value);
     void moveToTarget(int channel);
     void moveStep(int channel, int direction);
+    QString portName() const;
+    QStringList portNames() const;
+    void setPortName(const QString& port);
+    void connectDevice();
+    void homeChannel(int channel);
+    void runContinuous(int channel, int direction);
     void setTheme(bool dark, int fontScalePercent = 100);
     void setLanguage(bool english);
     void shutdown();
 signals:
     void channelParametersChanged(int channel);
+    void portChanged(const QString& port);
+    void portsChanged();
 protected:
     void resizeEvent(QResizeEvent *event) override;
     bool eventFilter(QObject *watched, QEvent *event) override;

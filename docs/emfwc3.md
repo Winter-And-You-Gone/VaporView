@@ -39,13 +39,18 @@ card but require an appropriate manufacturer runtime before connection.
    three finite position responses, and a speed response. Connection never
    homes, moves, changes speed, clears the origin, or writes EEPROM.
 5. Operate channel 1 directly in the same card or from the home motion card.
-   The serial selector, refresh, connect and disconnect controls are in the
-   configuration card header; no separate motion page is needed. The internal
+   Both the home and configuration cards share one USB session and synchronize
+   the selected COM port. The home card header provides the serial selector and
+   icon-only connect/disconnect buttons, while its body shows the current angle,
+   target/step editors, home, stop and both continuous directions. Refresh and
+   speed/EEPROM settings remain in device configuration. The internal
    three-channel routing and per-channel target/step state are retained, with
    channels 1–3 mapping to SDK indices 0–2; both channel selectors stay hidden.
 
 Each channel provides absolute positioning, relative steps, homing, continuous
-motion, and stop. Homing and continuous motion require explicit confirmation.
+motion, and stop. Continuous-direction buttons are always visible; the old
+checkbox only expanded the UI and was not a device requirement. Homing and
+continuous motion retain their action-confirmation dialogs.
 The stop controls remain available while another command is pending. Calls
 are serialized on a dedicated worker thread; a stop waits for the in-flight
 SDK call to return. **Stop all** attempts all three channels even if a previous

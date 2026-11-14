@@ -11,6 +11,7 @@
 #include <QElapsedTimer>
 #include <QFrame>
 #include <QLabel>
+#include <QLineEdit>
 #include <QLibrary>
 #include <QPushButton>
 #include <QScopeGuard>
@@ -19,6 +20,7 @@
 #include <QSpinBox>
 #include <QThread>
 #include <QTimer>
+#include <QToolButton>
 #include <QMessageBox>
 #include <QTemporaryDir>
 #include <QSettings>
@@ -90,6 +92,7 @@ int main(int argc, char **argv)
     {
         QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
         settings.setValue(QStringLiteral("recording_directory"), recordingDirectory.path());
+        settings.setValue(QStringLiteral("font_scale_percent"), 100);
     }
     const auto cleanup = qScopeGuard([&] {
         // rmdir deliberately rejects unexpected files and unreleased handles.
@@ -123,6 +126,21 @@ int main(int argc, char **argv)
         auto *homePlus = find<QPushButton>(*homeMotion, "homeMotionPlus");
         auto *homeCard = find<QWidget>(window, "homeMotionCard");
         auto *homeHeader = homeCard->findChild<QWidget *>(QStringLiteral("sectionTitleBar"), Qt::FindDirectChildrenOnly);
+        auto *homePort = find<QComboBox>(*homeCard, "homeMotionPort");
+        auto *homeConnect = find<QToolButton>(*homeCard, "homeMotionConnect");
+        auto *homeDisconnect = find<QToolButton>(*homeCard, "homeMotionDisconnect");
+        auto *homeHome = find<QPushButton>(*homeMotion, "homeMotionHome");
+        auto *homeForward = find<QPushButton>(*homeMotion, "homeMotionForward");
+        auto *homeReverse = find<QPushButton>(*homeMotion, "homeMotionReverse");
+        check(homeHeader && homeHeader->isAncestorOf(homePort) && homeHeader->isAncestorOf(homeConnect) &&
+              homeHeader->isAncestorOf(homeDisconnect), "home serial and connection controls belong to the title bar");
+        check(homePort->lineEdit()->contentsRect().width() >= homePort->fontMetrics().horizontalAdvance(QStringLiteral("COM50")),
+              "home serial selector reserves room for an actual COM port name");
+        for (auto *button : {homeConnect, homeDisconnect})
+            check(button->text().isEmpty() && !button->icon().isNull() && !button->toolTip().isEmpty() &&
+                  !button->accessibleName().isEmpty(), "home connection actions use labeled accessible icons without visible text");
+        check(homeForward->isVisibleTo(homeMotion) && homeReverse->isVisibleTo(homeMotion),
+              "home continuous controls are always visible without a checkbox");
         check(homeHeader && homeHeader->isAncestorOf(homeSelector) && homeSelector->isHidden(),
               "home channel selector stays hidden without removing its routing code");
         check(homeSelector->count() == 3 && homeSelector->currentIndex() == 0,
@@ -143,6 +161,12 @@ int main(int argc, char **argv)
         for (auto *action : panel->findChildren<QPushButton*>())
             check(action->focusPolicy() == Qt::TabFocus && !action->accessibleName().isEmpty(), "independent device actions follow keyboard-focus and accessibility conventions");
         auto *port = find<QComboBox>(*panel, "emFwc3Port"); port->setEditText(QStringLiteral("FAKE-COM"));
+        check(homePort->currentText() == port->currentText(), "configuration port selection updates the home card");
+        homePort->setEditText(QString());
+        check(!homeConnect->isEnabled() && !connect->isEnabled(), "empty home COM selection disables both connect actions");
+        homePort->setEditText(QStringLiteral("HOME-COM"));
+        check(port->currentText() == QStringLiteral("HOME-COM") && homeConnect->isEnabled(),
+              "home COM selection updates configuration and enables connection");
         for (int i = 1; i <= 3; ++i)
             check(panel->findChild<QLabel*>(QStringLiteral("emFwc3MotorType%1").arg(i))->text() == QStringLiteral("CEM-FPM") &&
                   !panel->findChild<QComboBox*>(QStringLiteral("emFwc3MotorType%1").arg(i)),
@@ -150,7 +174,9 @@ int main(int argc, char **argv)
         check(!page->session()->state().connected && !find<QPushButton>(*page, "emFwc3Go1")->isEnabled(), "startup never connects or enables motion");
         check(!panel->findChild<QCheckBox*>(QStringLiteral("emFwc3ConfirmTypes")) && connect->isEnabled(),
               "connection needs only a COM port with no model-confirmation checkbox");
-        connect->click(); until("connect completes", [&] { return page->session()->state().connected && !page->session()->state().busy; });
+        homeConnect->click(); until("connect completes", [&] { return page->session()->state().connected && !page->session()->state().busy; });
+        check(!homeConnect->isEnabled() && homeDisconnect->isEnabled() && !homePort->isEnabled(),
+              "home connection uses the same session and locks port editing");
         check(cemFpmCount() == 3, "SDK always receives fixed CEM-FPM types while retaining its three-channel interface");
         check(homeStop->isEnabled() && homeConnection->text().contains(QStringLiteral("已连接")),
               "home panel follows the device page's connected session");
@@ -273,7 +299,18 @@ int main(int argc, char **argv)
             return !page->session()->state().continuousMotion && !page->session()->state().busy &&
                    homePosition->text() == QStringLiteral("10.000°") && homeGo->isEnabled();
         });
-        find<QPushButton>(*panel, "emFwc3Disconnect")->click(); until("disconnect completes", [&] { return !page->session()->state().connected && !page->session()->state().busy; });
+        QTimer::singleShot(0, [] { auto *box = qobject_cast<QMessageBox*>(QApplication::activeModalWidget()); check(box, "home homing confirmation appears"); box->button(QMessageBox::Yes)->click(); });
+        homeHome->click();
+        until("home card homing reaches the selected channel", [&] { return homePosition->text() == QStringLiteral("0.000°") && !page->session()->state().busy; });
+        QTimer::singleShot(0, [] { auto *box = qobject_cast<QMessageBox*>(QApplication::activeModalWidget()); check(box, "home continuous confirmation appears"); box->button(QMessageBox::Yes)->click(); });
+        homeReverse->click();
+        until("home reverse continuous motion starts", [&] { return page->session()->state().continuousMotion && !page->session()->state().busy; });
+        check(!homeForward->isEnabled() && !homeHome->isEnabled() && homeStop->isEnabled() && homeDisconnect->isEnabled(),
+              "home continuous motion retains stop and disconnect without enabling other motion");
+        homeStop->click();
+        until("home stop ends continuous motion", [&] { return !page->session()->state().continuousMotion && !page->session()->state().busy; });
+        homeDisconnect->click(); until("disconnect completes", [&] { return !page->session()->state().connected && !page->session()->state().busy; });
+        check(homeConnect->isEnabled() && !homeDisconnect->isEnabled() && homePort->isEnabled(), "home disconnect restores connection controls");
         check(find<QLabel>(*page, "emFwc3Position3")->text() == QStringLiteral("—"), "disconnection clears position readbacks");
         check(!homeStop->isEnabled() && homeConnection->text() == QStringLiteral("未连接"), "disconnection updates home status and disables stop");
         check(!homeGo->isEnabled() && !homeMinus->isEnabled() && !homePlus->isEnabled(),
@@ -307,14 +344,12 @@ int main(int argc, char **argv)
                 };
                 for (int channel = 1; channel <= 3; ++channel) {
                     find<QComboBox>(*page, "emFwc3ChannelSelector")->setCurrentIndex(channel - 1);
-                    for (bool expanded : {false, true}) {
-                        auto *toggle = page->findChild<QCheckBox*>(QStringLiteral("emFwc3ContinuousToggle%1").arg(channel));
-                        toggle->setChecked(expanded); QApplication::processEvents(); checkCardGeometry(*page);
+                    {
+                        QApplication::processEvents(); checkCardGeometry(*page);
                         auto *area = page->findChild<QWidget*>(QStringLiteral("emFwc3ContinuousArea%1").arg(channel));
                         auto *body = page->findChild<QWidget*>(QStringLiteral("emFwc3ContinuousBody%1").arg(channel));
-                        check(body->isHidden() != expanded, "continuous controls collapse without an empty frame");
-                        check(area->rect().contains(toggle->geometry()), "continuous-motion label stays inside its layout");
-                        if (expanded) check(!toggle->geometry().intersects(body->geometry()), "continuous-motion heading and controls do not overlap");
+                        check(!body->isHidden() && !page->findChild<QCheckBox*>(QStringLiteral("emFwc3ContinuousToggle%1").arg(channel)),
+                              "continuous controls stay visible without a checkbox");
                         const auto named = [&](const QString& name) {
                             auto *widget = page->findChild<QWidget*>(name);
                             check(widget != nullptr, "motion control exists");
@@ -326,11 +361,11 @@ int main(int argc, char **argv)
                         auto *home = named(QStringLiteral("emFwc3Home") + suffix);
                         auto *speed = named(QStringLiteral("emFwc3Speed"));
                         auto *save = named(QStringLiteral("emFwc3SavePosition"));
-                        for (auto *widget : {target, step, home, static_cast<QWidget*>(toggle), speed, save})
+                        for (auto *widget : {target, step, home, area, speed, save})
                             check(page->rect().contains(bounds(widget)), "motion controls stay within the card at wide and narrow widths");
                         if (width == 1200 && scale == 100 && !english) {
                             check(sameRow(target, step), "wide card places target and relative step on one row");
-                            check(sameRow(home, toggle), "wide card places motion actions and continuous controls on one row");
+                            check(sameRow(home, area), "wide card places motion actions and continuous controls on one row");
                             check(sameRow(speed, save), "wide card places common speed and device actions on one row");
                         }
                     }

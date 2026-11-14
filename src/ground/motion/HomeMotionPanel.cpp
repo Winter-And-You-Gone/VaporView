@@ -11,12 +11,15 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QSignalBlocker>
+#include <QToolButton>
 #include <QVBoxLayout>
 
 namespace VaporView::Ground::Motion
 {
-HomeMotionPanel::HomeMotionPanel(MotionControlPage *motionPage, QComboBox *channelCombo, QWidget *parent)
-    : QWidget(parent), session_(motionPage->session()), motion_page_(motionPage), channel_combo_(channelCombo)
+HomeMotionPanel::HomeMotionPanel(MotionControlPage *motionPage, QComboBox *channelCombo, QComboBox *portCombo,
+                                 QToolButton *connectButton, QToolButton *disconnectButton, QWidget *parent)
+    : QWidget(parent), session_(motionPage->session()), motion_page_(motionPage), channel_combo_(channelCombo),
+      port_combo_(portCombo), connect_(connectButton), disconnect_(disconnectButton)
 {
     setObjectName(QStringLiteral("homeMotionPanel"));
     auto *layout = new QVBoxLayout(this);
@@ -57,13 +60,20 @@ HomeMotionPanel::HomeMotionPanel(MotionControlPage *motionPage, QComboBox *chann
     fields->setColumnStretch(1, 1);
     layout->addLayout(fields);
 
+    auto *continuous = new QHBoxLayout;
+    reverse_ = new QPushButton(this); reverse_->setObjectName(QStringLiteral("homeMotionReverse"));
+    forward_ = new QPushButton(this); forward_->setObjectName(QStringLiteral("homeMotionForward"));
+    continuous->addWidget(reverse_); continuous->addWidget(forward_);
+    layout->addLayout(continuous);
+
     auto *actions = new QHBoxLayout;
     actions->setSpacing(8);
     stop_ = new QPushButton(this);
     stop_->setObjectName(QStringLiteral("homeMotionStopAll"));
+    home_ = new QPushButton(this); home_->setObjectName(QStringLiteral("homeMotionHome"));
     configure_ = new QPushButton(this);
     configure_->setObjectName(QStringLiteral("homeMotionConfigure"));
-    actions->addWidget(stop_);
+    actions->addWidget(home_); actions->addWidget(stop_);
     actions->addWidget(configure_);
     actions->addStretch();
     layout->addLayout(actions);
@@ -74,6 +84,17 @@ HomeMotionPanel::HomeMotionPanel(MotionControlPage *motionPage, QComboBox *chann
             session_->execute(EmFwc3Session::Command::StopAll);
     });
     connect(configure_, &QPushButton::clicked, this, &HomeMotionPanel::openConfigurationRequested);
+    connect(connect_, &QToolButton::clicked, motion_page_, &MotionControlPage::connectDevice);
+    connect(disconnect_, &QToolButton::clicked, session_, &EmFwc3Session::disconnectDevice);
+    connect(port_combo_, &QComboBox::currentTextChanged, motion_page_, &MotionControlPage::setPortName);
+    connect(motion_page_, &MotionControlPage::portChanged, this, [this](const QString& port) {
+        const QSignalBlocker blocker(port_combo_); port_combo_->setEditText(port); refresh();
+    });
+    connect(motion_page_, &MotionControlPage::portsChanged, this, &HomeMotionPanel::refreshPorts);
+    connect(home_, &QPushButton::clicked, this, [this] { motion_page_->homeChannel(channel_combo_->currentIndex()); });
+    for (auto *button : {reverse_, forward_}) connect(button, &QPushButton::clicked, this, [this, button] {
+        motion_page_->runContinuous(channel_combo_->currentIndex(), button == forward_ ? 1 : -1);
+    });
     connect(session_, &EmFwc3Session::stateChanged, this, [this] { refresh(); });
     connect(channel_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this] { refreshParameters(); refresh(); });
     connect(motion_page_, &MotionControlPage::channelParametersChanged, this, [this](int channel) {
@@ -98,6 +119,7 @@ HomeMotionPanel::HomeMotionPanel(MotionControlPage *motionPage, QComboBox *chann
         if (channel >= 0 && channel < 3) motion_page_->moveStep(channel, button == plus_ ? 1 : -1);
     });
     refreshParameters();
+    refreshPorts();
     setLanguage(false);
 }
 
@@ -106,14 +128,21 @@ void HomeMotionPanel::setLanguage(bool english)
     english_ = english;
     for (int i = 0; i < 3; ++i)
         channel_combo_->setItemText(i, english ? QStringLiteral("Channel %1").arg(i + 1) : QStringLiteral("通道 %1").arg(i + 1));
-    stop_->setText(english ? QStringLiteral("Stop all") : QStringLiteral("全部停止"));
+    stop_->setText(english ? QStringLiteral("Stop") : QStringLiteral("停止"));
+    home_->setText(english ? QStringLiteral("Home") : QStringLiteral("回零"));
+    reverse_->setText(english ? QStringLiteral("Run reverse") : QStringLiteral("反向连续运行"));
+    forward_->setText(english ? QStringLiteral("Run forward") : QStringLiteral("正向连续运行"));
+    port_combo_->setAccessibleName(english ? QStringLiteral("Motion COM port") : QStringLiteral("电机串口"));
+    connect_->setToolTip(english ? QStringLiteral("Connect motor") : QStringLiteral("连接电机"));
+    disconnect_->setToolTip(english ? QStringLiteral("Disconnect motor") : QStringLiteral("断开电机"));
+    connect_->setAccessibleName(connect_->toolTip()); disconnect_->setAccessibleName(disconnect_->toolTip());
     position_label_->setText(english ? QStringLiteral("Current angle") : QStringLiteral("当前角度"));
     target_label_->setText(english ? QStringLiteral("Target angle") : QStringLiteral("目标角度"));
     step_label_->setText(english ? QStringLiteral("Step") : QStringLiteral("步长"));
     go_->setText(english ? QStringLiteral("Move") : QStringLiteral("定位"));
     minus_->setAccessibleName(english ? QStringLiteral("Step reverse") : QStringLiteral("反向步进"));
     plus_->setAccessibleName(english ? QStringLiteral("Step forward") : QStringLiteral("正向步进"));
-    configure_->setText(english ? QStringLiteral("Device configuration") : QStringLiteral("设备配置"));
+    configure_->setText(english ? QStringLiteral("Settings") : QStringLiteral("设备配置"));
     refresh();
 }
 
@@ -130,9 +159,22 @@ void HomeMotionPanel::refresh()
         : channel >= 0 && channel < 3 && state.connected && state.valid[channel]
         ? QString::number(state.positions[channel], 'f', 3) + QStringLiteral("°") : QStringLiteral("—"));
     stop_->setEnabled(state.connected);
+    const bool editable = !state.connected && !state.busy;
+    port_combo_->setEnabled(editable);
+    connect_->setEnabled(editable && !motion_page_->portName().isEmpty());
+    disconnect_->setEnabled(state.connected && !state.busy);
     for (auto *widget : {static_cast<QWidget *>(target_), static_cast<QWidget *>(step_),
-                         static_cast<QWidget *>(go_), static_cast<QWidget *>(minus_), static_cast<QWidget *>(plus_)})
+                         static_cast<QWidget *>(go_), static_cast<QWidget *>(minus_), static_cast<QWidget *>(plus_),
+                         static_cast<QWidget *>(home_), static_cast<QWidget *>(reverse_), static_cast<QWidget *>(forward_)})
         widget->setEnabled(state.connected && !state.busy && !state.continuousMotion && channel >= 0 && channel < 3);
+}
+
+void HomeMotionPanel::refreshPorts()
+{
+    const QSignalBlocker blocker(port_combo_);
+    port_combo_->clear(); port_combo_->addItems(motion_page_->portNames());
+    port_combo_->setEditText(motion_page_->portName());
+    refresh();
 }
 
 void HomeMotionPanel::refreshParameters()
@@ -146,6 +188,14 @@ void HomeMotionPanel::refreshParameters()
 
 void HomeMotionPanel::setTheme(bool dark, int fontScalePercent)
 {
+    port_combo_->setFixedSize(qRound(110 * fontScalePercent / 100.0), qRound(30 * fontScalePercent / 100.0));
+    for (auto *button : {connect_, disconnect_}) {
+        button->setFixedSize(qRound(28 * fontScalePercent / 100.0), qRound(28 * fontScalePercent / 100.0));
+        button->setIconSize(QSize(qRound(18 * fontScalePercent / 100.0), qRound(18 * fontScalePercent / 100.0)));
+        button->setStyleSheet(applyAppThemeTokens(QStringLiteral(
+            "QToolButton { background: transparent; border: none; border-radius: 6px; padding: 0px; }"
+            "QToolButton:hover { background: @vv-title-hover; }"), dark));
+    }
     setStyleSheet(applyAppThemeTokens(QStringLiteral(
         "QWidget#homeMotionPanel { background: transparent; }"
         "QWidget#homeMotionPanel QLabel { background: transparent; border: none; color: @vv-text; }"
