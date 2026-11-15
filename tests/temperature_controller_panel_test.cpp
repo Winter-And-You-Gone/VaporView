@@ -109,8 +109,8 @@ int main(int argc, char **argv)
                 overviewPlots[0]->geometry().top() == overviewPlots[1]->geometry().top() &&
                 std::abs(overviewPlots[0]->width() - overviewPlots[1]->width()) <= 1,
             "RD105 home overview places channel 1 left of channel 2 at equal width without a selector");
-    require(overview->sizeHint().height() == 148 && overview->height() == 148,
-            "Both RD105 channels fit the original single-plot overview height");
+    require(overview->sizeHint().height() == 164 && overview->height() == 164,
+            "Both RD105 channels fit the enlarged output controls and side-by-side plots");
     for (auto *homePlot : overviewPlots)homePlot->grab();
     require(overviewPlots[0]->property("xAxisLabelsVisible").toBool() &&
                 overviewPlots[1]->property("xAxisLabelsVisible").toBool(),

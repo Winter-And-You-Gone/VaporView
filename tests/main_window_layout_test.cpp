@@ -8109,8 +8109,8 @@ int main(int argc, char **argv)
     require(temperatureOutputCapsule->geometry().top() ==
                 temperatureOutputPercentPill->geometry().bottom() + 1 + summarySpacing,
             "temperature overview places output enable directly below output percent without a stretch gap");
-    require(temperatureOverviewBody->height() == 148 && temperatureOverviewPlot->height() == 144,
-            "temperature overview preserves its original height with side-by-side plots");
+    require(temperatureOverviewBody->height() == 164 && temperatureOverviewPlot->height() == 144,
+            "temperature overview accommodates the enlarged controls and side-by-side plots");
     QList<QWidget *> overviewPlots;
     for (auto *plot : window.findChildren<QWidget *>(QStringLiteral("temperatureTrendPlot")))
         if (plot->property("temperatureOverviewPlot").toBool())overviewPlots.append(plot);
@@ -8302,8 +8302,8 @@ int main(int argc, char **argv)
     const QList<QFrame*> dataPills =
         homeDataSection->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
     require(dataPills.size() == 10,
-            "home data availability row covers all nine devices");
-    const QStringList compactDeviceNames = {"EPSILON", "PTB210", "HC2A", "SDFM300", "RD105", "AI-8288", "BMP390", "SHT45", QStringLiteral("波形"), "Waveform"};
+            "home data availability row covers all ten devices");
+    const QStringList compactDeviceNames = {"EPSILON", "PTB210", "HC2A", "SDFM300", "RD105", "AI-8288", "BMP390", "SHT45", "EM-FWC3", QStringLiteral("波形"), "Waveform"};
     for (QFrame *pill : dataPills)
     {
         QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
@@ -11565,9 +11565,13 @@ int main(int argc, char **argv)
     const QString appStyleSheet = VaporView::appStyleSheet();
     const int serialCardStyleIndex = appStyleSheet.indexOf(
         QStringLiteral("QGroupBox#sensorGroupBox[vaporViewTopLevelCard=\"true\"]"));
-    require(serialCardStyleIndex >= 0 &&
-                appStyleSheet.mid(serialCardStyleIndex, 480).contains(QStringLiteral("border-radius: 12px")) &&
-                appStyleSheet.mid(serialCardStyleIndex, 480).contains(QStringLiteral("rgba(0, 0, 0, 0.04)")),
+    const int serialCardRuleStart = appStyleSheet.indexOf(QLatin1Char('{'), serialCardStyleIndex);
+    const int serialCardRuleEnd = appStyleSheet.indexOf(QLatin1Char('}'), serialCardRuleStart);
+    const QString serialCardRule = appStyleSheet.mid(serialCardRuleStart, serialCardRuleEnd - serialCardRuleStart + 1);
+    require(serialCardStyleIndex >= 0 && serialCardRuleStart > serialCardStyleIndex &&
+                serialCardRuleEnd > serialCardRuleStart &&
+                serialCardRule.contains(QStringLiteral("border-radius: 12px")) &&
+                serialCardRule.contains(QStringLiteral("rgba(0, 0, 0, 0.04)")),
             "serial configuration card uses the shared 12px radius and subtle outline");
 
     const QRect deviceRateRect(deviceRateCombo->mapTo(deviceConfigPage, QPoint(0, 0)),

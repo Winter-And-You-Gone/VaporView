@@ -77,7 +77,7 @@ private:
             layout_->removeWidget(motion_);
             serial_->setSizePolicy(QSizePolicy::Maximum, sideBySide ? QSizePolicy::Preferred : QSizePolicy::Fixed);
             motion_->setSizePolicy(QSizePolicy::Maximum, sideBySide ? QSizePolicy::Preferred : QSizePolicy::Fixed);
-            layout_->addWidget(serial_, 0, 0);
+            layout_->addWidget(serial_, 0, 0, Qt::AlignLeft);
             layout_->addWidget(motion_, sideBySide ? 0 : 1, sideBySide ? 1 : 0, Qt::AlignLeft);
             layout_->setColumnStretch(1, sideBySide ? 1 : 0);
             layout_->invalidate();

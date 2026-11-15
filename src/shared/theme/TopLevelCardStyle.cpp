@@ -110,11 +110,20 @@ protected:
     {
         switch (event->type())
         {
+        case QEvent::LayoutRequest:
+            // A layout request alone does not change shadow geometry. Re-raise
+            // only when a new sibling actually changed the stacking order;
+            // subsequent Move/Resize events repaint changed card bounds.
+            if (!cards_.isEmpty() && !hasExpectedStackingOrder())
+            {
+                raiseAboveContent();
+                update();
+            }
+            break;
         case QEvent::Move:
         case QEvent::Resize:
         case QEvent::Show:
         case QEvent::Hide:
-        case QEvent::LayoutRequest:
         case QEvent::ParentChange:
         case QEvent::StyleChange:
             if (watched == parentWidget())
@@ -241,6 +250,37 @@ protected:
     }
 
 private:
+    bool hasExpectedStackingOrder() const
+    {
+        QWidget *host = parentWidget();
+        if (!host) return true;
+        auto *scrollArea = qobject_cast<QAbstractScrollArea *>(host);
+        QWidget *bottomFade = scrollArea ? nullptr
+            : host->findChild<QWidget *>(QStringLiteral("mainContentBottomFade"), Qt::FindDirectChildrenOnly);
+        QWidget *verticalTrack = scrollArea && scrollArea->verticalScrollBar()
+            ? scrollArea->verticalScrollBar()->parentWidget() : nullptr;
+        QWidget *horizontalTrack = scrollArea && scrollArea->horizontalScrollBar()
+            ? scrollArea->horizontalScrollBar()->parentWidget() : nullptr;
+        bool foundLayer = false;
+        bool foundFadeAbove = bottomFade == nullptr;
+        for (QObject *child : host->children())
+        {
+            if (child == this)
+            {
+                foundLayer = true;
+                continue;
+            }
+            if (!foundLayer) continue;
+            if (auto *widget = qobject_cast<QWidget *>(child))
+            {
+                if (widget == verticalTrack || widget == horizontalTrack) continue;
+                if (widget != bottomFade) return false;
+                foundFadeAbove = true;
+            }
+        }
+        return foundLayer && foundFadeAbove;
+    }
+
     void raiseAboveContent()
     {
         raise();

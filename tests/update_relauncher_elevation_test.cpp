@@ -246,6 +246,28 @@ int runRelauncher(const std::wstring& relauncher,
     return static_cast<int>(exitCode);
 }
 
+void verifyInheritedEventProbe(const std::wstring& probe, const std::wstring& resultPath, HANDLE event)
+{
+    std::wstring commandLine = quote(probe) + L" --result " + quote(resultPath) +
+        L" --inherited-handle " + std::to_wstring(reinterpret_cast<uintptr_t>(event));
+    STARTUPINFOW startup{};
+    startup.cb = sizeof(startup);
+    PROCESS_INFORMATION process{};
+    require(CreateProcessW(probe.c_str(), commandLine.data(), nullptr, nullptr, TRUE,
+                           0, nullptr, nullptr, &startup, &process),
+            "could not start positive-control handle probe");
+    CloseHandle(process.hThread);
+    Handle child(process.hProcess);
+    require(WaitForSingleObject(child.value, 10000) == WAIT_OBJECT_0,
+            "positive-control handle probe timed out");
+    DWORD exitCode = 1;
+    require(GetExitCodeProcess(child.value, &exitCode) && exitCode == 0,
+            "positive-control handle probe failed");
+    require(WaitForSingleObject(event, 0) == WAIT_OBJECT_0,
+            "positive-control child did not signal the inherited event");
+    require(ResetEvent(event), "could not reset the inherited-event probe");
+}
+
 std::string readFile(const std::wstring& path)
 {
     std::ifstream input(std::filesystem::path(path), std::ios::binary);
@@ -370,6 +392,8 @@ int runTest(int argc, char** argv)
     inheritableAttributes.bInheritHandle = TRUE;
     Handle inheritedProbe(CreateEventW(&inheritableAttributes, TRUE, FALSE, nullptr));
     require(inheritedProbe.value != nullptr, "CreateEventW for inherited-handle probe failed");
+    verifyInheritedEventProbe(fakeVaporView, joinPath(targetDir, L"inherited_probe_control.txt"),
+                              inheritedProbe.value);
 
     ScopedEnvironment resultPathEnv(L"VAPORVIEW_RELAUNCHER_TEST_RESULT", probeResult);
     ScopedEnvironment parentElevatedEnv(L"VAPORVIEW_RELAUNCHER_TEST_PARENT_ELEVATED",
@@ -402,9 +426,10 @@ int runTest(int argc, char** argv)
     requireContains(result,
                     std::string("relauncher_elevated=") + (parentElevated ? "1" : "0"),
                     "relauncher elevation state did not match the parent branch");
-    requireContains(result,
-                    "inherited_handle_accessible=0",
-                    "probe child inherited an unnecessary parent handle");
+    // A numeric handle can be reused for an unrelated child event. Check the
+    // original event's state to distinguish reuse from actual inheritance.
+    require(WaitForSingleObject(inheritedProbe.value, 0) == WAIT_TIMEOUT,
+            "probe child inherited an unnecessary parent handle");
 
     DWORD currentSession = 0;
     ProcessIdToSessionId(GetCurrentProcessId(), &currentSession);

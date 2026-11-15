@@ -6,6 +6,7 @@
 #include <osgEarth/Map>
 #include <osgEarth/MapNode>
 #include <osgEarth/SpatialReference>
+#include <osgEarth/Threading>
 
 #include <QApplication>
 #include <QDateTime>
@@ -402,6 +403,11 @@ int main(int argc, char** argv)
     view.shutdown();
     view.close();
     processEventsFor(250);
+    // Match application shutdown: drain osgEarth workers before GDAL/PROJ
+    // global teardown, which may otherwise race still-open map datasets.
+    jobs::shutdown();
+    require(jobs::get_metrics()->total_running() == 0,
+            QStringLiteral("osgEarth workers stop before GDAL process teardown"));
     std::cout << "map3d_real_data_load_test passed: 55/55 building tiles loaded\n";
     return 0;
 }

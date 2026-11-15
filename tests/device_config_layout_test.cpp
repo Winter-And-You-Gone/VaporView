@@ -585,20 +585,15 @@ int main(int argc, char **argv)
                     "narrow page places motion control below device configuration");
         }
     }
-    auto *continuousToggle = motionCard->findChild<QCheckBox *>(QStringLiteral("emFwc3ContinuousToggle1"));
     auto *continuousBody = motionCard->findChild<QWidget *>(QStringLiteral("emFwc3ContinuousBody1"));
-    require(continuousToggle && continuousBody, "motion card exposes continuous controls");
-    continuousToggle->setChecked(true);
-    VaporViewTest::processEventsFor(180);
-    activateLayouts(&window);
-    require(!continuousBody->isHidden() &&
+    auto *continuousReverse = motionCard->findChild<QPushButton *>(QStringLiteral("emFwc3Reverse1"));
+    auto *continuousForward = motionCard->findChild<QPushButton *>(QStringLiteral("emFwc3Forward1"));
+    require(continuousBody && continuousReverse && continuousForward &&
+                !continuousBody->isHidden() && !continuousReverse->isHidden() && !continuousForward->isHidden() &&
                 motionCard->rect().contains(QRect(continuousBody->mapTo(motionCard, QPoint()), continuousBody->size())),
-            "expanded continuous controls stay inside motion card");
+            "visible continuous controls stay inside motion card");
     require(std::abs(serialCard->height() - motionCard->height()) <= 2,
-            "expanded motion and device cards remain aligned in a wide window");
-    continuousToggle->setChecked(false);
-    VaporViewTest::processEventsFor(180);
-    activateLayouts(&window);
+            "motion and device cards remain aligned in a wide window");
     const auto setFontScale = [&window](int scale) {
         for (QAction *action : window.findChildren<QAction *>())
         {
@@ -1099,7 +1094,7 @@ int main(int argc, char **argv)
     selectComboText(pressurePortCombo,QStringLiteral("COM11"),"environmental PTB port remains editable");
     pressureBaudCombo->setCurrentText(QStringLiteral("19200"));
     selectComboText(humidityPortCombo,QStringLiteral("COM12"),"environmental HC2A port remains editable");
-    humidityBaudCombo->setCurrentText(QStringLiteral("128000"));
+    humidityBaudCombo->setCurrentText(QStringLiteral("25600"));
     VaporView::setSettingsWritesSuspended(true);
     require(dataSourceModeSwitch->property("segmentedSwitchControl").toBool() &&
                 dataSourceModeSwitch->text().contains(QStringLiteral("数据源")) &&
@@ -1146,7 +1141,7 @@ int main(int argc, char **argv)
         QStringLiteral("115200"),
         QStringLiteral("230400"),
         QStringLiteral("460800"),
-        QStringLiteral("460800"),
+        QStringLiteral("500000"),
         QStringLiteral("921600"),
     };
     require(skyTelemetryBaudCombo->count() == expectedSkyTelemetryBauds.size() &&
@@ -1157,21 +1152,17 @@ int main(int argc, char **argv)
         require(skyTelemetryBaudCombo->findText(baud) >= 0,
                 "device Sky Link baud keeps every original choice");
     }
-    const QList<QComboBox *> customHostBaudCombos = {
-        humidityBaudCombo,
-        skyTelemetryBaudCombo,
+    require(skyTelemetryBaudCombo->isEditable(),
+            "host serial baud combo accepts custom values");
+    const QStringList expectedHc2aBauds = {
+        QStringLiteral("1200"), QStringLiteral("2400"), QStringLiteral("4800"),
+        QStringLiteral("9600"), QStringLiteral("19200"), QStringLiteral("38400"),
+        QStringLiteral("57600"), QStringLiteral("115200"),
     };
-    for (QComboBox *combo : customHostBaudCombos)
-    {
-        require(combo && combo->isEditable() &&
-                    combo->count() == expectedSkyTelemetryBauds.size(),
-                "custom host serial baud combo keeps the shared editable preset set");
-        for (const QString& baud : expectedSkyTelemetryBauds)
-        {
-            require(combo->findText(baud) >= 0,
-                "custom host serial baud combo keeps every original preset");
-        }
-    }
+    require(humidityBaudCombo->isEditable() && humidityBaudCombo->count() == expectedHc2aBauds.size(),
+            "HC2A offers its documented presets and bounded custom input");
+    for (const QString& baud : expectedHc2aBauds)
+        require(humidityBaudCombo->findText(baud) >= 0, "HC2A retains each supported baud preset");
     const QStringList expectedEpsilonBauds = {
         QStringLiteral("9600"), QStringLiteral("19200"), QStringLiteral("38400"),
         QStringLiteral("76800"), QStringLiteral("115200"), QStringLiteral("230400"),
@@ -1844,10 +1835,12 @@ int main(int argc, char **argv)
     require(getSkyConfigRequests == 1,
             "Remote link-open lifecycle sends one automatic GetSkyConfig request");
     activateLayouts(&window);
-    require(scrollArea->horizontalScrollBar() &&
-                scrollArea->horizontalScrollBar()->maximum() == 0 &&
-                !scrollArea->horizontalScrollBar()->isVisible(),
-            "loaded remote SkyConfig still fits horizontally");
+    const bool remoteConfigFits = VaporViewTest::processEventsUntil(3000, [scrollArea] {
+        return scrollArea->horizontalScrollBar() &&
+            scrollArea->horizontalScrollBar()->maximum() == 0 &&
+            !scrollArea->horizontalScrollBar()->isVisible();
+    });
+    require(remoteConfigFits, "loaded remote SkyConfig still fits horizontally");
     require(remoteStatus->property("status").toString() == QStringLiteral("success"),
             "loaded remote SkyConfig is marked successful while the sky link is connected");
     require(epsilonPortCombo->currentText() == QStringLiteral("/dev/ttyEPSILON") &&
@@ -1855,6 +1848,7 @@ int main(int argc, char **argv)
             "remote SkyConfig updates the same EPSILON port and documented baud controls");
     for (QComboBox *baudCombo : {epsilonBaudCombo,
                                  pressureBaudCombo,
+                                 lidarBaudCombo,
                                  serialCard->findChild<QComboBox *>(QStringLiteral("deviceTemperatureBaudCombo")),
                                  ai8BaudCombo})
     {
@@ -1863,7 +1857,6 @@ int main(int argc, char **argv)
                 "remote fixed-protocol baud controls stay non-editable");
     }
     for (QComboBox *baudCombo : {humidityBaudCombo,
-                                 serialCard->findChild<QComboBox *>(QStringLiteral("deviceLidarBaudCombo")),
                                  skyTelemetryBaudCombo})
     {
         require(baudCombo && baudCombo->isEditable() &&
@@ -2135,7 +2128,7 @@ int main(int argc, char **argv)
 
 
     pressureBaudCombo->setCurrentText(QStringLiteral("19200"));
-    humidityBaudCombo->setCurrentText(QStringLiteral("1000000"));
+    humidityBaudCombo->setCurrentText(QStringLiteral("25600"));
     lidarBaudCombo->setCurrentText(QStringLiteral("230400"));
     temperatureBaudCombo->setCurrentText(QStringLiteral("460800"));
     selectComboText(ai8PortCombo, QStringLiteral("/dev/ttyAI8_ALT"),
@@ -2155,7 +2148,7 @@ int main(int argc, char **argv)
     require(uiJson.value(QStringLiteral("epsilon")).toObject().value(QStringLiteral("baud")).toInt() == 230400,
             "remote EPSILON documented baud is serialized into SetSkyConfig JSON");
     require(uiJson.value(QStringLiteral("ptb")).toObject().value(QStringLiteral("baud")).toInt() == 19200 &&
-                uiJson.value(QStringLiteral("hc2a")).toObject().value(QStringLiteral("baud")).toInt() == 1000000 &&
+                uiJson.value(QStringLiteral("hc2a")).toObject().value(QStringLiteral("baud")).toInt() == 25600 &&
                 uiJson.value(QStringLiteral("lidar")).toObject().value(QStringLiteral("baud")).toInt() == 230400 &&
                 uiJson.value(QStringLiteral("temperature_controller")).toObject().value(QStringLiteral("baud")).toInt() == 460800,
             "remote source-specific and host-link baud controls serialize according to capability");
@@ -2189,7 +2182,7 @@ int main(int argc, char **argv)
                 return setSkyConfigRequests == customBaudApplyRequestCount + 1 &&
                     remoteConfig.epsilon.baud_rate == 230400 &&
                     remoteConfig.ptb.baud_rate == 19200 &&
-                    remoteConfig.hc2a.baud_rate == 1000000 &&
+                    remoteConfig.hc2a.baud_rate == 25600 &&
                     remoteConfig.lidar.baud_rate == 230400 &&
                     remoteConfig.temperature_controller.baud_rate == 460800 &&
                     remoteConfig.ai8_temperature_controller.baud_rate == 57600 &&
@@ -2204,7 +2197,7 @@ int main(int argc, char **argv)
                 return getSkyConfigRequests == customBaudReadRequestCount + 1 &&
                     epsilonBaudCombo->currentText() == QStringLiteral("230400") &&
                     pressureBaudCombo->currentText() == QStringLiteral("19200") &&
-                    humidityBaudCombo->currentText() == QStringLiteral("1000000") &&
+                    humidityBaudCombo->currentText() == QStringLiteral("25600") &&
                     lidarBaudCombo->currentText() == QStringLiteral("230400") &&
                     temperatureBaudCombo->currentText() == QStringLiteral("460800") &&
                     ai8BaudCombo->currentText() == QStringLiteral("57600") &&

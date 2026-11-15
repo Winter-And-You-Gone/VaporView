@@ -1,4 +1,5 @@
 #include "shared/theme/AppTheme.h"
+#include "shared/theme/TopLevelCardStyle.h"
 #include "test_ui_helpers.h"
 
 #include <QApplication>
@@ -7,6 +8,8 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QPixmap>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QVBoxLayout>
 #include <cstdlib>
 #include <iostream>
@@ -29,6 +32,17 @@ public:
     }
 };
 
+class PaintEvents final : public QObject
+{
+public:
+    int count = 0;
+    bool eventFilter(QObject *, QEvent *event) override
+    {
+        if (event->type() == QEvent::Paint) ++count;
+        return false;
+    }
+};
+
 QString themeStyle(bool dark)
 {
     return VaporView::applyAppThemeTokens(QStringLiteral(
@@ -38,12 +52,100 @@ QString themeStyle(bool dark)
 }
 
 void settle() { VaporViewTest::processEventsFor(80); }
+
+void testShadowLayoutUpdates()
+{
+    QWidget window;
+    window.resize(300, 200);
+    auto *host = new QWidget(&window);
+    host->setGeometry(window.rect());
+    auto *card = new QWidget(host);
+    card->setGeometry(30, 30, 120, 90);
+    VaporView::configureTopLevelCard(card);
+    auto *fade = new QWidget(host);
+    fade->setObjectName(QStringLiteral("mainContentBottomFade"));
+    fade->setGeometry(0, 185, 300, 15);
+    window.show();
+    require(VaporViewTest::waitForWindowExposed(&window), "shadow test window is exposed");
+    VaporView::updateTopLevelCardShadows(&window, 1.0);
+    settle();
+    auto *shadow = host->findChild<QWidget *>(
+        QString::fromLatin1(VaporView::kTopLevelCardShadowLayerName), Qt::FindDirectChildrenOnly);
+    require(shadow && shadow->isVisible(), "card shadow layer is visible");
+    PaintEvents paints;
+    shadow->installEventFilter(&paints);
+    QEvent layoutRequest(QEvent::LayoutRequest);
+    QCoreApplication::sendEvent(card, &layoutRequest);
+    settle();
+    require(paints.count == 0, "unchanged layout requests do not repaint the shadow layer");
+
+    auto *sibling = new QWidget(host);
+    sibling->setGeometry(160, 30, 40, 40);
+    sibling->show();
+    QEvent stackingRequest(QEvent::LayoutRequest);
+    QCoreApplication::sendEvent(host, &stackingRequest);
+    settle();
+    const auto children = host->children();
+    require(children.indexOf(sibling) < children.indexOf(shadow) &&
+                children.indexOf(shadow) < children.indexOf(fade),
+            "layout requests restore shadow and fade stacking after a sibling is added");
+
+    const QImage shadowBeforeMove = shadow->grab().toImage();
+    paints.count = 0;
+    card->move(50, 40);
+    settle();
+    require(paints.count > 0, "moving a card repaints its shadow");
+    const QImage shadowAfterMove = shadow->grab().toImage();
+    require(shadowBeforeMove != shadowAfterMove, "moving a card moves the rendered shadow");
+    paints.count = 0;
+    card->resize(140, 100);
+    settle();
+    require(paints.count > 0, "resizing a card repaints its shadow");
+    require(shadowAfterMove != shadow->grab().toImage(), "resizing a card updates the rendered shadow");
+    shadow->removeEventFilter(&paints);
+    window.close();
+
+    QScrollArea scroll;
+    scroll.resize(300, 200);
+    scroll.setWidgetResizable(true);
+    scroll.setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+    scroll.setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+    auto *content = new QWidget;
+    auto *scrollCard = new QWidget(content);
+    scrollCard->setGeometry(30, 30, 120, 90);
+    VaporView::configureTopLevelCard(scrollCard);
+    scroll.setWidget(content);
+    scroll.show();
+    require(VaporViewTest::waitForWindowExposed(&scroll), "scroll shadow test window is exposed");
+    VaporView::updateTopLevelCardShadows(&scroll, 1.0);
+    settle();
+    auto *scrollShadow = scroll.findChild<QWidget *>(
+        QString::fromLatin1(VaporView::kTopLevelCardShadowLayerName), Qt::FindDirectChildrenOnly);
+    require(scrollShadow && scrollShadow->isVisible(), "scroll area has a visible shadow layer");
+    QWidget *verticalTrack = scroll.verticalScrollBar()->parentWidget();
+    QWidget *horizontalTrack = scroll.horizontalScrollBar()->parentWidget();
+    verticalTrack->raise();
+    horizontalTrack->raise();
+    settle();
+    require(scroll.children().indexOf(verticalTrack) > scroll.children().indexOf(scrollShadow) &&
+                scroll.children().indexOf(horizontalTrack) > scroll.children().indexOf(scrollShadow),
+            "scrollbar tracks are above the clipped shadow layer");
+    PaintEvents scrollPaints;
+    scrollShadow->installEventFilter(&scrollPaints);
+    QEvent scrollLayoutRequest(QEvent::LayoutRequest);
+    QCoreApplication::sendEvent(content, &scrollLayoutRequest);
+    settle();
+    require(scrollPaints.count == 0, "scrollbar tracks do not trigger redundant shadow stacking");
+    scrollShadow->removeEventFilter(&scrollPaints);
+    scroll.close();
+}
 }
 
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
     VaporView::installButtonFocusStyle();
+    testShadowLayoutUpdates();
     StyleEvents events;
     app.installEventFilter(&events);
     QWidget mainWindow;

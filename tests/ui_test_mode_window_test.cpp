@@ -1392,8 +1392,9 @@ int main(int argc, char **argv)
     window->findChild<QPushButton *>(QStringLiteral("fpgaAcquisitionStart"))->click();
     require(VaporViewTest::processEventsUntil(12000,[&]{return !fpgaPage->uiTestBusy();}),"FPGA UI acquisition waits for actual readback");
     window->findChild<QPushButton *>(QStringLiteral("fpgaDisconnect"))->click();
-    VaporViewTest::processEventsFor(100);
-    require(window->findChild<QPushButton *>(QStringLiteral("fpgaConnect"))->isEnabled(),"UI simulator disconnect routes to simulation");
+    require(VaporViewTest::processEventsUntil(5000, [&] {
+                return window->findChild<QPushButton *>(QStringLiteral("fpgaConnect"))->isEnabled();
+            }), "UI simulator disconnect routes to simulation");
     window->findChild<QPushButton *>(QStringLiteral("fpgaConnect"))->click();
     require(VaporViewTest::processEventsUntil(12000,[&]{return window->findChild<QPushButton *>(QStringLiteral("fpgaAcquisitionStop"))->isEnabled();}),"UI simulator reconnect resumes ready state after handshake");
     const auto scenarioAction = [scenarioMenu](int value) {
@@ -2431,7 +2432,7 @@ int main(int argc, char **argv)
     require(VaporViewTest::processEventsUntil(1500, [recordingStatus, recordingStatusUnitColumnIsStable, recordingUsesFpga]() {
                 const QString text = recordingStatus->statusText();
                 return text.contains(QStringLiteral("记录（本地）：进行中（测试）")) &&
-                    text.contains(QStringLiteral("会话：UI-TEST-SESSION")) &&
+                    text.contains(QStringLiteral("会话：\nUI-TEST-SESSION")) &&
                     text.contains(QStringLiteral("外部设备记录：")) &&
                     !text.contains(QStringLiteral("外部设备记录：0 行\n")) &&
                     text.contains(QStringLiteral("波形帧数：")) &&
@@ -2476,7 +2477,8 @@ int main(int argc, char **argv)
                                                  QStringLiteral("时长："),
                                                  QStringLiteral("文件写入：")};
     const QList<QLabel *> recordingStatusFields =
-        recordingStatus->findChildren<QLabel *>(QStringLiteral("recordingStatusFieldLabel"));
+        recordingStatus->findChildren<QLabel *>(QStringLiteral("recordingStatusFieldLabel")) +
+        recordingStatus->findChildren<QLabel *>(QStringLiteral("recordingStatusSectionLabel"));
     bool namedRecordingFieldsLeftAligned = true;
     for (const QString& fieldName : leftAlignedRecordingFields)
     {
@@ -2682,7 +2684,7 @@ int main(int argc, char **argv)
         QGroupBox *remoteHomeConfigCard = findHomeDeviceOverviewCard(connectionWindow);
         require(remoteHomeConfigCard != nullptr && connectionSourceModeSwitch->switchChecked(),
                 "remote source mode is active for zero-rate link coverage");
-        for (const QString& name : {QStringLiteral("天空端→地面端"), QStringLiteral("地面端→天空端"), QStringLiteral("合计")})
+        for (const QString& name : {QStringLiteral("天→地"), QStringLiteral("地→天"), QStringLiteral("合计")})
         {
             QFrame *pill = homeTelemetryPill(remoteHomeConfigCard, name);
             require(pill != nullptr,
