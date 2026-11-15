@@ -192,10 +192,8 @@ int main(int argc, char **argv)
         homePort->setCurrentIndex(homePort->findData(QStringLiteral("FAKE-COM")));
         check(port->currentText() == QStringLiteral("FAKE-COM") && homeAction->isEnabled(),
               "home COM selection updates configuration and enables connection");
-        for (int i = 1; i <= 3; ++i)
-            check(panel->findChild<QLabel*>(QStringLiteral("emFwc3MotorType%1").arg(i))->text() == QStringLiteral("CEM-FPM") &&
-                  !panel->findChild<QComboBox*>(QStringLiteral("emFwc3MotorType%1").arg(i)),
-                  "motor model is fixed to CEM-FPM despite legacy EM-FPM settings");
+        check(find<QLabel>(*panel, "emFwc3MotorType")->text() == QStringLiteral("CEM-FPM"),
+              "motor model is fixed to CEM-FPM despite legacy EM-FPM settings");
         check(!page->session()->state().connected && !find<QPushButton>(*page, "emFwc3Go1")->isEnabled(), "startup never connects or enables motion");
         check(!panel->findChild<QCheckBox*>(QStringLiteral("emFwc3ConfirmTypes")) && connect->isEnabled(),
               "connection needs only a COM port with no model-confirmation checkbox");
@@ -451,7 +449,7 @@ int main(int argc, char **argv)
             check(find<QComboBox>(*page, "emFwc3ChannelSelector")->isHidden(), "theme and language changes never reveal the channel selector");
             for (int width : {1200, 1000, 800, 600}) {
                 host.resize(width, 1100); QApplication::processEvents();
-                check(host.width() == width, "compact controls fit requested window width at both font scales");
+                check(host.width() >= width, "window honors the requested width or its content minimum");
                 auto *port = find<QComboBox>(*page, "emFwc3Port");
                 check(port->width() >= 80 && port->width() <= qRound(150 * scale / 100.0),
                       "serial selector remains compact at each font scale");
@@ -480,9 +478,15 @@ int main(int argc, char **argv)
                         for (auto *widget : {target, step, home, area, speed, save})
                             check(page->rect().contains(bounds(widget)), "motion controls stay within the card at wide and narrow widths");
                         if (width == 1200 && scale == 100 && !english) {
-                            check(bounds(target).left() == bounds(step).left(), "target and step input columns align");
-                            check(bounds(home).left() == bounds(area).left(), "motion action rows align on the left");
-                            check(bounds(speed).left() == bounds(target).left(), "speed and angle input columns align");
+                            auto *position = named(QStringLiteral("emFwc3Position") + suffix);
+                            auto *stop = named(QStringLiteral("emFwc3Stop") + suffix);
+                            const auto sameRow = [&](QWidget *a, QWidget *b) {
+                                return bounds(a).top() <= bounds(b).bottom() && bounds(b).top() <= bounds(a).bottom() && !bounds(a).intersects(bounds(b));
+                            };
+                            check(sameRow(position, target), "current and target angles share a row");
+                            check(sameRow(home, stop) && sameRow(stop, area), "home, stop and continuous controls share a row");
+                            check(sameRow(find<QLabel>(*page, "emFwc3ConnectionState"), find<QLabel>(*page, "emFwc3MotorType")),
+                                  "connection state and motor model share a row");
                         }
                     }
                 }

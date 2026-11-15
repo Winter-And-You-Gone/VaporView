@@ -111,9 +111,15 @@ MotionControlPage::MotionControlPage(QWidget *parent, const QString& sdkDirector
     auto *content = new QWidget(this); content->setObjectName(QStringLiteral("emFwc3CardBody"));
     content->setAttribute(Qt::WA_StyledBackground, true);
     auto *layout = new QVBoxLayout(content); layout->setContentsMargins(12, 8, 12, 10); layout->setSpacing(8);
-    s.connection = new QLabel(content); s.connection->setObjectName(QStringLiteral("emFwc3ConnectionState")); layout->addWidget(s.connection);
-    layout->addWidget(label(content, "本机 USB 虚拟串口直连，独立于直连 / FPGA 与本地 / 远端采集。",
-        "Local USB virtual COM, independent of Direct / FPGA and Local / Remote acquisition."));
+    auto *identityRow = new QHBoxLayout;
+    identityRow->setSpacing(12);
+    s.connection = new QLabel(content); s.connection->setObjectName(QStringLiteral("emFwc3ConnectionState"));
+    identityRow->addWidget(s.connection);
+    identityRow->addWidget(label(content, "电机型号", "Motor type"));
+    auto *motorType = new QLabel(QStringLiteral("CEM-FPM"), content);
+    motorType->setObjectName(QStringLiteral("emFwc3MotorType"));
+    identityRow->addWidget(motorType); identityRow->addStretch();
+    layout->addLayout(identityRow);
     s.channel = new QComboBox(content); s.channel->setObjectName(QStringLiteral("emFwc3ChannelSelector"));
     s.channel->addItems({QString(), QString(), QString()});
     s.channel->hide(); // Keep multi-channel routing; this installation exposes channel 1 only.
@@ -125,19 +131,15 @@ MotionControlPage::MotionControlPage(QWidget *parent, const QString& sdkDirector
         const auto suffix = QString::number(i + 1);
         auto *card = new QWidget(s.channels); card->setObjectName(QStringLiteral("emFwc3Channel") + suffix);
         auto *v = new QVBoxLayout(card); v->setContentsMargins(0, 0, 0, 0); v->setSpacing(8);
-        auto *readback = new QHBoxLayout;
-        readback->addWidget(label(card, "电机型号", "Motor type"));
-        auto *motorType = new QLabel(QStringLiteral("CEM-FPM"), card);
-        motorType->setObjectName(QStringLiteral("emFwc3MotorType") + suffix);
-        readback->addWidget(motorType); readback->addSpacing(12);
-        readback->addWidget(label(card, "当前角度", "Current angle"));
-        s.positions[i] = new QLabel(QStringLiteral("—"), card);
-        s.positions[i]->setObjectName(QStringLiteral("emFwc3Position") + suffix); readback->addWidget(s.positions[i]); readback->addStretch(); v->addLayout(readback);
         auto *moves = new QGridLayout; moves->setHorizontalSpacing(12); moves->setVerticalSpacing(6);
         auto *targetGroup = new QWidget(card); auto *targetRow = new QHBoxLayout(targetGroup);
         targetRow->setContentsMargins(0, 0, 0, 0); targetRow->setSpacing(6);
+        targetRow->addWidget(label(card, "当前角度", "Current angle"));
+        s.positions[i] = new QLabel(QStringLiteral("—"), card);
+        s.positions[i]->setObjectName(QStringLiteral("emFwc3Position") + suffix);
+        targetRow->addWidget(s.positions[i]); targetRow->addSpacing(12);
         auto *targetLabel = label(card, "目标角度", "Target angle");
-        targetLabel->setProperty("motionFormLabel", true); targetRow->addWidget(targetLabel);
+        targetRow->addWidget(targetLabel);
         s.targets[i] = angle(card, QStringLiteral("emFwc3Target") + suffix, false); targetRow->addWidget(s.targets[i]);
         auto *go = button(card, qPrintable(QStringLiteral("emFwc3Go") + suffix), "定位", "Move to target");
         targetRow->addWidget(go); targetRow->addStretch(); s.normalActions << go << s.targets[i];
@@ -159,7 +161,7 @@ MotionControlPage::MotionControlPage(QWidget *parent, const QString& sdkDirector
         actions->setContentsMargins(0, 0, 0, 0); actions->setSpacing(6);
         auto *home = button(card, qPrintable(QStringLiteral("emFwc3Home") + suffix), "回零", "Home");
         auto *stop = button(card, qPrintable(QStringLiteral("emFwc3Stop") + suffix), "停止", "Stop");
-        actions->addWidget(home); actions->addWidget(stop); actions->addStretch();
+        actions->addWidget(home); actions->addWidget(stop);
         s.normalActions << home; s.stopActions << stop;
         connect(home, &QPushButton::clicked, this, [this, i] { homeChannel(i); });
         connect(stop, &QPushButton::clicked, this, [this, i] { run(EmFwc3Session::Command::Continuous, i, 0); });
@@ -172,8 +174,9 @@ MotionControlPage::MotionControlPage(QWidget *parent, const QString& sdkDirector
         continuousLayout->addWidget(reverse); continuousLayout->addWidget(forward);
         a->addWidget(continuousBody); a->addStretch();
         advanced->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-        const std::array<QWidget *, 4> groups{targetGroup, stepGroup, actionGroup, advanced};
-        for (int group = 0; group < 4; ++group) moves->addWidget(groups[group], group, 0);
+        actions->addWidget(advanced); actions->addStretch();
+        const std::array<QWidget *, 3> groups{targetGroup, stepGroup, actionGroup};
+        for (int group = 0; group < 3; ++group) moves->addWidget(groups[group], group, 0);
         moves->setColumnStretch(0, 1);
         s.normalActions << advanced;
         for (auto *b : {reverse, forward}) connect(b, &QPushButton::clicked, this, [this, i, b, forward] {
@@ -182,8 +185,6 @@ MotionControlPage::MotionControlPage(QWidget *parent, const QString& sdkDirector
         s.channels->addWidget(card);
     }
     layout->addWidget(s.channels);
-    auto *separator = new QFrame(content); separator->setFrameShape(QFrame::HLine); layout->addWidget(separator);
-    layout->addWidget(label(content, "设备公共参数 · 速度单位及有效范围请按实际电机确认", "Device-wide parameters · verify speed units and range for the fitted motor"));
     s.deviceLayout = new QGridLayout; s.deviceLayout->setHorizontalSpacing(12); s.deviceLayout->setVerticalSpacing(6);
     auto *speedGroup = new QWidget(content); auto *speedRow = new QHBoxLayout(speedGroup);
     speedRow->setContentsMargins(0, 0, 0, 0); speedRow->setSpacing(6);
@@ -412,6 +413,11 @@ void MotionControlPage::setTheme(bool dark, int fontScalePercent)
     ).arg(qRound(24 * fontScalePercent / 100.0)).arg(qRound(40 * fontScalePercent / 100.0)).arg(qRound(16 * fontScalePercent / 100.0)).arg(qRound(24 * fontScalePercent / 100.0)), dark);
     setStyleSheet(style);
     setPalette(appThemePalette(dark));
+    for (auto *position : state_->positions) {
+        position->ensurePolished();
+        position->setFixedWidth(std::max(position->fontMetrics().horizontalAdvance(QStringLiteral("-1000000.000°")),
+            position->fontMetrics().horizontalAdvance(QStringLiteral("Reading paused"))) + 4);
+    }
     reflow();
 }
 void MotionControlPage::resizeEvent(QResizeEvent *event) { QFrame::resizeEvent(event); reflow(); }
