@@ -33,6 +33,8 @@ add_library(vaporview_fpga_device_core STATIC
     ${CMAKE_SOURCE_DIR}/src/ground/devices/FpgaDeviceSession.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/devices/FpgaDeviceController.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/devices/FpgaDeviceExtensions.cpp
+    ${CMAKE_SOURCE_DIR}/src/ground/devices/FpgaUartExchange.cpp
+    ${CMAKE_SOURCE_DIR}/src/ground/devices/Tec103GpioProtocol.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/devices/FpgaSensorDecoder.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/devices/FpgaSensorAdapter.cpp
     ${CMAKE_SOURCE_DIR}/src/ground/devices/FpgaUsbTransport.cpp
@@ -42,6 +44,8 @@ add_library(vaporview_fpga_device_core STATIC
     ${CMAKE_SOURCE_DIR}/src/shared/fpga/FpgaSerialBudget.cpp
     ${CMAKE_SOURCE_DIR}/include/FpgaDeviceSession.h
     ${CMAKE_SOURCE_DIR}/include/FpgaDeviceController.h
+    ${CMAKE_SOURCE_DIR}/include/FpgaUartExchange.h
+    ${CMAKE_SOURCE_DIR}/include/Tec103GpioProtocol.h
     ${CMAKE_SOURCE_DIR}/include/FpgaControlConfig.h
     ${CMAKE_SOURCE_DIR}/include/FpgaSensorDecoder.h
     ${CMAKE_SOURCE_DIR}/include/FpgaSensorAdapter.h

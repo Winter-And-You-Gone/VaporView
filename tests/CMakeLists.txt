@@ -418,6 +418,21 @@ add_executable(fpga_extensions_test ${CMAKE_CURRENT_SOURCE_DIR}/fpga_extensions_
 target_link_libraries(fpga_extensions_test PRIVATE vaporview_ground_device_core)
 vaporview_add_test(NAME fpga_extensions_test COMMAND fpga_extensions_test)
 set_tests_properties(fpga_extensions_test PROPERTIES LABELS "integration;fpga" TIMEOUT 120)
+
+add_executable(fpga_uart_exchange_test ${CMAKE_CURRENT_SOURCE_DIR}/fpga_uart_exchange_test.cpp)
+target_link_libraries(fpga_uart_exchange_test PRIVATE vaporview_fpga_device_core)
+vaporview_add_test(NAME fpga_uart_exchange_test COMMAND fpga_uart_exchange_test)
+set_tests_properties(fpga_uart_exchange_test PROPERTIES LABELS "integration;fpga" TIMEOUT 60)
+
+add_executable(tec103_gpio_protocol_test ${CMAKE_CURRENT_SOURCE_DIR}/tec103_gpio_protocol_test.cpp)
+target_link_libraries(tec103_gpio_protocol_test PRIVATE vaporview_fpga_device_core)
+vaporview_add_test(NAME tec103_gpio_protocol_test COMMAND tec103_gpio_protocol_test)
+set_tests_properties(tec103_gpio_protocol_test PROPERTIES LABELS "fast;unit;fpga")
+
+add_executable(tec103_gpio_controller_test ${CMAKE_CURRENT_SOURCE_DIR}/tec103_gpio_controller_test.cpp)
+target_link_libraries(tec103_gpio_controller_test PRIVATE vaporview_fpga_device_core)
+vaporview_add_test(NAME tec103_gpio_controller_test COMMAND tec103_gpio_controller_test)
+set_tests_properties(tec103_gpio_controller_test PROPERTIES LABELS "integration;fpga" TIMEOUT 60)
 target_link_libraries(fpga_telemetry_test PRIVATE vaporview_fpga_device_core)
 vaporview_add_test(NAME fpga_telemetry_test COMMAND fpga_telemetry_test)
 set_tests_properties(fpga_telemetry_test PROPERTIES LABELS "fast;unit;fpga" TIMEOUT 60)

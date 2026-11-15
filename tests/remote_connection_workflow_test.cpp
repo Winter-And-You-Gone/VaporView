@@ -73,8 +73,9 @@ static void workflow(bool fpga)
     registers[QString::number(0x614c)] = 0x48434432;
     registers[QString::number(0x6800)] = 0x00480100;
     registers[QString::number(0x6900)] = 0x00490100;
+    registers[QString::number(0x6804)] = 0;registers[QString::number(0x6904)] = 0;
     QJsonObject status{{"version", 1}, {"connected", false}, {"ready", false}, {"busy", false},
-        {"detail", "test board"}, {"archived_records", "0"},
+        {"detail", "test board"}, {"archived_records", "0"}, {"tec103_connected",false},
         {"extensions", int(FpgaExtensions::RawSchema2 | FpgaExtensions::EpsilonMailbox | FpgaExtensions::DliaCutoff)},
         {"configuration", config.fpga.configuration.toJson()}};
     TelemetryCodec encoder, decoder; quint16 sequence = 1;
@@ -113,13 +114,17 @@ static void workflow(bool fpga)
             DeviceOperationResponse response;
             response.request_id = request.request_id; response.device_id = request.device_id; response.operation = request.operation;
             if (op == "connect") { status["connected"] = true; status["ready"] = true; }
-            else if (op == "disconnect") { ++disconnects; status["connected"] = false; status["ready"] = false; }
+            else if (op == "disconnect") { ++disconnects; status["connected"] = false; status["ready"] = false;status["tec103_connected"]=false; }
             else if (op == "sensor") {
                 const auto source = control.value("source").toInt();
                 require(source != 0x42 && source != 0x45 && source != 0x46, "unchecked devices are excluded");
                 if (source == 0x40) {
                     ++failures; response.error_code = CommandErrorCode::ConfigApplyFailed;
                     response.error_message = "test sensor port busy";
+                } else if(source==0x4a) {
+                    registers[QString::number(0x6804)]=1;registers[QString::number(0x6904)]=1;
+                    registers[QString::number(0x6810)]=38400;registers[QString::number(0x6910)]=38400;
+                    status["tec103_connected"]=true;status["tec103_detail"]="two identified GPIO TEC103 fixtures; no temperature sample published";
                 } else registers[QString::number(0x6004 + (source - 0x40) * 0x100)] = 1;
             } else if (op == "acquisition") {
                 for (quint32 address : {0x4004u, 0x4104u, 0x5004u, 0x5104u}) registers[QString::number(address)] = 1;
@@ -181,7 +186,7 @@ static void workflow(bool fpga)
             && MainWindowRtcmTestAccess::valid(window, SkyDeviceId::Sht45)
             && MainWindowRtcmTestAccess::valid(window, SkyDeviceId::Hc2a); }), "per sensor FPGA freshness agrees with HC2A and internal environment details");
         require(!MainWindowRtcmTestAccess::valid(window, SkyDeviceId::TemperatureController),
-            "HCD2 does not treat the LC0 page as an RD105 temperature controller");
+            "identified GPIO connection without typed temperature data does not claim fresh measurement");
         FpgaSensor::Reading invalid; invalid.source = 0x43;
         send(MsgType::FpgaSensor, FpgaRemote::encodeSensor(invalid, 2));
         require(waitUntil([&] { return !MainWindowRtcmTestAccess::valid(window, SkyDeviceId::Bmp390); }), "invalid reading clears summary freshness");
@@ -296,9 +301,12 @@ static void simulatedSkyWorkflow()
     }
     require(connected, "one title click connects real SkyCore simulated sensors, summaries and waveform rate");
     require(state.fpga_session_.remoteStatus.value("simulation").toBool(), "Sky identifies simulation");
-    require((state.fpga_session_.remoteStatus.value("extensions").toInt() & FpgaExtensions::Rd105) &&
+    const auto actualRegisters=state.fpga_session_.remoteStatus.value("registers").toObject();
+    require(actualRegisters.value(QString::number(0x6800)).toInt()==0x00480100
+            &&actualRegisters.value(QString::number(0x6900)).toInt()==0x00490100
+            &&state.fpga_session_.remoteStatus.value("tec103_connected").toBool() &&
             MainWindowRtcmTestAccess::valid(window, SkyDeviceId::TemperatureController),
-            "default production simulator exposes independent RD105 alongside HC2A");
+            "default production simulator exposes two identified native TEC103 controllers alongside HC2A");
     connectPulse.stop();
     require(!connectDelays.isEmpty(), "connection heartbeat samples");
     std::sort(connectDelays.begin(), connectDelays.end());
@@ -309,7 +317,7 @@ static void simulatedSkyWorkflow()
     require(waitUntil([&]{return state.current_temperature_controller_.valid
         &&std::isfinite(state.current_temperature_controller_.channels[0].measured_temperature_c)
         &&std::isfinite(state.current_temperature_controller_.channels[1].measured_temperature_c);}),
-        "both RD105 channels reach Ground through a real SkyCore TCP connection");
+        "both physical TEC103 internal TC1 channels reach Ground through a real SkyCore TCP connection");
     bool temperatureConfirmed=false;
     const auto temperatureObserver=QObject::connect(state.rd105_device_session_.get(),
         &VaporView::Ground::Devices::Rd105DeviceSession::operationFinished,&window,
@@ -319,7 +327,9 @@ static void simulatedSkyWorkflow()
     MainWindowRtcmTestAccess::setTemperature(window,2,-10.12345);
     require(waitUntil([&]{return temperatureConfirmed
         &&std::abs(state.current_temperature_controller_.channels[1].target_temperature_c+10.12345)<1e-8;},10000),
-        "remote RD105 channel two setpoint completes only after FPGA device readback");
+        "remote TEC103 physical channel two setpoint completes only after native device readback");
+    require(std::abs(state.current_temperature_controller_.channels[0].target_temperature_c-27.3)<1e-8,
+        "remote physical channel two write preserves the first TEC103 target");
     QObject::disconnect(temperatureObserver);
     require(waitUntil([&] { return state.current_hc2a_.valid && state.current_hc2a_.temperature > 22.0
         && state.current_hc2a_.temperature < 24.0 && state.current_hc2a_.humidity > 44.0

@@ -174,7 +174,8 @@ public:
         close(); opened_ = true;
         diagnostic_.state = FpgaUsbTransportState::Open;
         diagnostic_.detail = QStringLiteral("FPGA protocol simulator (no physical USB)");
-        diagnostic_.fields = {{"mode", "simulation"}, {"serial", "SIMULATED-GP01"}};
+        diagnostic_.fields = {{"mode", "simulation"}, {"serial", "SIMULATED-GP01"},
+            {"temperature_devices", "SIMULATED TEC103 fixtures"}};
         publishState(diagnostic_.state); return true;
     }
     void close() override
@@ -188,7 +189,9 @@ public:
     void injectFault(const QString& fault) override
     {
         if(fault=="legacy_extensions")extensions_=1;
-        else if(fault=="parameter_timeout" || fault=="parameter_mismatch" || fault=="epsilon_error")fault_=fault;
+        else if(fault=="tec103_lc1_disconnected")tec103Lc1Disconnected_=true;
+        else if(fault=="tec103_lc1_reconnected")tec103Lc1Disconnected_=false;
+        else if(fault=="parameter_timeout" || fault=="parameter_mismatch" || fault=="epsilon_error" || fault=="tec103_timeout")fault_=fault;
         else if (fault == "missing_cycle") missingCycle_ = true;
         else if (fault == "latch_dlia") {
             for (quint32 base : {0x5000u,0x5100u}) regs_[base+12] |= 0x84;
@@ -230,9 +233,75 @@ public:
         diagnostic_.bytesWritten += bytes.size(); return bytes.size();
     }
 private:
+    struct UartState {
+        QByteArray command, receive, response;
+        QMap<QByteArray,qint64> parameters;
+        qint64 lastFeedMs=0;
+        double byteCredit=0;
+    };
+    QByteArray tec103Response(UartState& uart,const QByteArray& bytes)
+    {
+        if(!bytes.endsWith('@'))return {};
+        if(tec103Lc1Disconnected_ && &uart==&uart_[1])return {};
+        if(fault_=="tec103_timeout") {fault_.clear();return {};}
+        const auto command=bytes.chopped(1);
+        const auto equal=command.indexOf('=');
+        if(equal<1)return QByteArray("ERROR@\r\n\0",9);
+        const auto key=command.left(equal),value=command.mid(equal+1);
+        QByteArray reply;
+        const auto field=[](const QByteArray& name,qint64 number) {
+            return name+'='+QByteArray::number(number)+'@';
+        };
+        if(key=="DATADEMAND" && value=="1") {
+            const bool first=&uart==&uart_[0];
+            reply=field("TC1:TCADJTEMP",first?2450000:2650000)
+                +field("TC1:RESISTOR",first?10001000000LL:9901000000LL)
+                +field("TC1:PWM",uart.parameters.value("TC1:PWMDUTY")/200)
+                +"TC2:TCADJTEMP=0@TC2:RESISTOR=0@TC2:PWM=0@"
+                +field("SINTERIORTEMP",uart.parameters.value("SINTERIORTEMP"));
+        } else if(key=="INQUIRE" && value=="1") {
+            for(auto i=uart.parameters.cbegin();i!=uart.parameters.cend();++i) {
+                if(!i.key().startsWith("TC1:"))continue;
+                reply+="OK"+field(i.key(),i.value());
+                reply+=field("TC2:"+i.key().mid(4),0);reply.append('\0');
+            }
+            reply+="OKTEC=103@";
+        } else if(value=="?" && uart.parameters.contains(key)) {
+            reply=(key=="FPV"?"OK:":"OK")+field(key,uart.parameters.value(key));
+        } else {
+            const QList<QByteArray> writable={"TC1:TG","TC1:ENABLE","TC1:MODE","TC1:LIMITED",
+                "TC1:KP","TC1:KI","TC1:KD","TC1:OVERTEMPUP","TC1:OVERTEMPLOWER",
+                "TC1:SPEED","TC1:STARTUPDELAY","TC1:AUTOPID","OVERTTEMP"};
+            bool valid=false;const auto number=value.toLongLong(&valid);
+            if(!valid || !writable.contains(key))return QByteArray("ERROR@\r\n\0",9);
+            uart.parameters[key]=number;
+            if(key=="TC1:ENABLE")uart.parameters["TC1:PWMDUTY"]=number?(&uart==&uart_[0]?360000:-360000):0;
+            reply="OK"+field(key,number);
+        }
+        reply.append("\r\n\0",3);return reply;
+    }
+    void updateUarts(qint64 now)
+    {
+        for(int channel=0;channel<2;++channel) {
+            auto& uart=uart_[channel];const quint32 base=0x6800+quint32(channel)*0x100;
+            const auto elapsed=qMax<qint64>(0,now-uart.lastFeedMs);uart.lastFeedMs=now;
+            if(uart.response.isEmpty()) {uart.byteCredit=0;continue;}
+            uart.byteCredit+=double(elapsed)*38400/10000;
+            const int count=qMin(int(uart.byteCredit),int(uart.response.size()));
+            uart.byteCredit-=count;
+            for(int i=0;i<count;++i) {
+                if(!(regs_.value(base+4)&regs_.value(4)&1))continue;
+                ++regs_[base+0x2c];
+                if(uart.receive.size()<256)uart.receive.append(uart.response[i]);
+                else {++regs_[base+0x30];regs_[base+12]|=1;}
+            }
+            uart.response.remove(0,count);
+        }
+    }
     void initialize()
     {
         regs_.clear();
+        uart_ = {};
         extensions_ = historical_ ? 0x3f : rd105_ ? 0x3b : hcd2Scan_ ? 0x2b : 0x29;
         regs_ = {{0x4000,0x00200101},{0x4100,0x00210101},{0x4018,0x00011800},{0x4118,0x00011800},
             {0x5000,0x00300101},{0x5100,0x00310101},{0x5024,0x00040101},{0x5124,0x00040101},
@@ -244,6 +313,20 @@ private:
         for(quint32 base:{0x6800u,0x6900u}) {
             regs_[base]=base==0x6800?0x00480100:0x00490100;
             regs_[base+0x10]=115200;regs_[base+0x14]=0x108;regs_[base+0x3c]=256;
+            auto& uart = uart_[(base-0x6800)/0x100];
+            const bool first = base == 0x6800;
+            uart.parameters = {{"TEC",103},{"FPV",4370},{"ADDRESS",1},
+                {"TC1:TG",first?2730000:2600000},{"TC1:ENABLE",0},{"TC1:MODE",0},
+                {"TC1:KP",first?200:100},{"TC1:KI",first?100:80},{"TC1:KD",0},
+                {"TC1:LIMITED",18},{"TC1:RP",10000},{"TC1:BX",393000},
+                {"TC1:PT1000RP",1000000},{"TC1:CHRATIO",100},{"TC1:SPEED",0},
+                {"TC1:STEADYIOB",0},{"TC1:OVERTEMPUP",500000000},
+                {"TC1:OVERTEMPLOWER",-300000000},{"TC1:FDEADV",0},{"TC1:BDEADV",0},
+                {"TC1:NTCRP",10000000000LL},{"TC1:PTRP",1000000000},
+                {"TC1:PTA",3908300},{"TC1:PTB",-5775000},{"TC1:PTC",-4183000},
+                {"TC1:PIDPOL",0},{"TC1:POLYOMIAL",0},{"TC1:AUTOPID",0},
+                {"TC1:STARTUPDELAY",3},{"TC1:PWMDUTY",0},{"CONTMODE",0},
+                {"OVERTTEMP",1},{"ERRORCODE",0},{"SINTERIORTEMP",33}};
         }
         if(historical_ || hcd2Scan_) {regs_[0x66fc]=historical_?0x0f:0x0b;regs_[0x6698]=1;}
         regs_[0x6270]=2000;regs_[0x6278]=115200;
@@ -303,6 +386,27 @@ private:
     void setRegister(quint32 address, quint32 value)
     {
         const auto base = address & ~255u;
+        if(base==0x6800 || base==0x6900) {
+            auto& uart = uart_[(base-0x6800)/0x100];
+            const auto offset = address-base;
+            if(offset==4) {
+                regs_[address]=value&1;
+                if(!(value&1) || (value&10)) {
+                    uart.command.clear();uart.receive.clear();uart.response.clear();
+                }
+                if(value&2)for(quint32 item:{0x0cu,0x28u,0x2cu,0x30u,0x34u,0x38u})regs_[base+item]=0;
+            } else if(offset==12)regs_[address]&=~value;
+            else if(offset==0x18) {
+                ++regs_[base+0x28];
+                uart.command.append(char(value&255));
+                if((value&255)=='@') {
+                    if(regs_[base+0x10]==38400 && regs_[base+0x14]==0x108)
+                        uart.response.append(tec103Response(uart,uart.command));
+                    uart.command.clear();uart.lastFeedMs=clock_.elapsed();uart.byteCredit=0;
+                } else if(uart.command.size()>256)uart.command.clear();
+            } else regs_[address]=value;
+            updateUarts(clock_.elapsed());return;
+        }
         if(base==0x6700) {
             if(address==0x6738) {lastHeartbeatMs_=clock_.elapsed();++regs_[address];}
             else if(address==0x670c)regs_[address]&=~value;
@@ -356,6 +460,7 @@ private:
     }
     void updateBoard(qint64 now)
     {
+        updateUarts(now);
         if(!(regs_[4]&1)) {regs_[0x6704]=0;motorBusy_=motorDone_=false;}
         const bool alive=lastHeartbeatMs_>=0 && now-lastHeartbeatMs_<2000;
         if(!(regs_[0x6704]&1) && alive)motorFault_=false;
@@ -382,6 +487,19 @@ private:
     }
     quint32 readRegister(quint32 address)
     {
+        const auto base=address&~255u;
+        if(base==0x6800 || base==0x6900) {
+            updateUarts(clock_.elapsed());
+            auto& uart=uart_[(base-0x6800)/0x100];
+            if(address==base+8)return ((regs_.value(base+4)&regs_.value(4)&1)?1u:0u)|2u
+                |(uart.receive.size()>=240?32u:0u)|(regs_.value(base+12)?192u:0u)
+                |(!uart.receive.isEmpty()?512u:0u);
+            if(address==base+0x1c) {
+                if(uart.receive.isEmpty())return 0;
+                const quint32 byte=quint8(uart.receive.front());uart.receive.remove(0,1);return byte;
+            }
+            if(address==base+0x24)return quint32(uart.receive.size());
+        }
         if(address==0x1044) {
             const quint64 tick=quint64(qMax<qint64>(0,timeEnabledMs_)+qint64(ppsSequence_)*1000)*100000;
             const quint64 utc=utcAnchored_?anchorUtc_+quint64(ppsSequence_-anchorPps_)*1000000:0;
@@ -537,7 +655,14 @@ private:
                 if(value==1 && ((timeStatus_&9)!=9 || regs_.value(0x1074)!=ppsSequence_))return 7;}
             else return 6;
         }
-        if(base==0x6800 || base==0x6900)return 6;
+        if(base==0x6800 || base==0x6900) {
+            if(offset==4)return value&~11u?7:0;
+            if(offset==12)return 0;
+            if(offset==0x10)return enabled?8:(value<300 || value>6250000)?7:0;
+            if(offset==0x14)return enabled?8:value!=0x108?7:0;
+            if(offset==0x18)return !enabled || !(regs_.value(4)&1)?11:value>255?7:0;
+            return 6;
+        }
         if(hcd2Scan_ && base==0x6600) {
             if((offset>=0xa0 && offset<=0xbc) || offset==0xfc)return 6;
             if(offset==0x98 && (value<1 || value>8))return 7;
@@ -606,7 +731,9 @@ private:
                 if (!count || count > 1000 || p.size() != (message == 2 ? 8 : 8 + count * 4)) status = 2;
                 for (int i = 0; !status && i < count; ++i)
                     if ((!readable(address + i * 4,historical_,hcd2Scan_,rd105_) && !(message==3 && address+i*4==0x44)) || address + quint64(i) * 4 > 0xffff) status = 5;
-                if(!status && message==2 && ((address<=0x681c && address+quint32(count)*4>0x681c) || (address<=0x691c && address+quint32(count)*4>0x691c)))status=11;
+                if(!status && message==2)for(quint32 pop:{0x681cu,0x691cu})
+                    if(address<=pop && address+quint32(count)*4>pop
+                        && uart_[(pop-0x681c)/0x100].receive.isEmpty())status=11;
                 if (!status && message == 2) {
                     put32(result,address); put16(result,count); put16(result,0);
                     for (int i = 0; i < count; ++i) put32(result,readRegister(address + i * 4));
@@ -897,7 +1024,9 @@ private:
     quint32 ppsSequence_=0,timeStatus_=0,anchorPps_=0;
     quint64 anchorUtc_=0;
     QString fault_;
+    bool tec103Lc1Disconnected_=false;
     QMap<quint16,quint16> ai8Registers_,rd105Registers_;
+    std::array<UartState,2> uart_{};
     std::array<double,8> ai8Measured_{};
     std::array<std::array<quint32,8>,8> ai8Cache_{};
     std::array<quint32,8> ai8GoodCounts_{};

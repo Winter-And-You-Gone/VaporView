@@ -3,6 +3,7 @@
 #include "FpgaDeviceController.h"
 #include "TelemetryTypes.h"
 #include <QThread>
+#include <atomic>
 #include <functional>
 
 namespace VaporView {
@@ -25,6 +26,8 @@ signals:
     void statusChanged(QJsonObject status);
     void observationEpochReceived(const QByteArray& encodedEpoch);
     void measurementUpdated(const VaporView::FpgaSensor::AdaptedMeasurements& measurement);
+    void temperatureDataUpdated(const VaporView::TemperatureControllerData& data);
+    void temperatureConnectionChanged(bool connected, const QString& detail);
     void waveformUpdated(const VaporView::FpgaWave::CompletedStream& waveform);
     void rawFrame(quint64 time, QByteArray bytes);
     void rawCommand(quint64 time, QByteArray bytes);
@@ -39,6 +42,7 @@ private:
     quint64 nextRequest_ = 1, activeRequest_ = 0;
     Completion completion_;
     std::shared_ptr<QMetaObject::Connection> operationObserver_;
+    std::shared_ptr<std::atomic_bool> operationCancelled_;
     int operationTimeoutMs_ = 120000;
 };
 }

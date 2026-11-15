@@ -305,6 +305,8 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
 
 void MainWindow::onRemoteTemperatureControllerStatusUpdated(const VaporView::TemperatureControllerData& controllerData)
 {
+    state_->recording_service_->recordTemperatureControllerStatus(
+        VaporView::Ground::Session::GroundRecordingService::currentTimestampUs(),controllerData);
     state_->current_temperature_controller_ = controllerData;
     if (state_->rd105_device_session_)
     {

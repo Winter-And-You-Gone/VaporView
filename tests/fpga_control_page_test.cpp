@@ -20,6 +20,7 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QSemaphore>
 #include <QPlainTextEdit>
 #include <QTabWidget>
 #include <cstdio>
@@ -30,6 +31,50 @@
 namespace {
 void require(bool value, const char *message) {
     if (!value) { std::fprintf(stderr,"FAIL: %s\n",message); std::exit(1); }
+}
+void motorQueuedCancellation()
+{
+    FpgaControlPage page;page.setUiTestState(true);
+    const auto wait=[](const std::function<bool()>& done,const char* message) {
+        QElapsedTimer timer;timer.start();
+        while(!done() && timer.elapsed()<4000) {QCoreApplication::processEvents();QThread::msleep(1);}
+        require(done(),message);
+    };
+    page.simulateOperation({{"op","connect"}});
+    wait([&]{return page.uiTestReady()&&!page.uiTestBusy();},"queued cancellation fixture connects its isolated protocol simulator");
+    auto* controller=page.uiTestController();auto* progress=page.findChild<QLabel*>("fpgaMotorProgress");
+    int movesSent=0;
+    QObject::connect(controller,&VaporView::Ground::Devices::FpgaDeviceController::rawCommand,&page,
+        [&](quint64,const QByteArray& bytes) {
+            VaporView::FpgaVlp1::StreamParser parser;
+            for(const auto& frame:parser.feed(reinterpret_cast<const std::uint8_t*>(bytes.constData()),size_t(bytes.size())))
+                if(frame.header.message==12 && frame.header.source==0x47 && frame.payload.size()>=4
+                    && qFromLittleEndian<quint32>(frame.payload.data())==1)++movesSent;
+        },Qt::QueuedConnection);
+    const QJsonObject move{{"op","motor"},{"action",1},{"value",40}};
+    const QJsonObject stop{{"op","motor"},{"action",2},{"value",0}};
+    for(bool cancelWithStop:{false,true}) {
+        QSemaphore entered,released;
+        QMetaObject::invokeMethod(controller,[&] {entered.release();released.acquire();},Qt::QueuedConnection);
+        require(entered.tryAcquire(1,1000),"simulated USB worker is held before the unsent MOVE");
+        page.simulateOperation(move);
+        require(progress->text().contains(QStringLiteral("等待指令结果")),"queued MOVE enters the pending UI state");
+        if(cancelWithStop)page.simulateOperation(stop);
+        else page.cancelPendingUiTestOperations();
+        released.release();
+        if(cancelWithStop) {
+            wait([&]{return !page.uiTestBusy()&&progress->text().contains(QStringLiteral("已停止"));},
+                "new STOP finishes without an older cancelled MOVE overwriting its result");
+        } else {
+            wait([&]{return progress->text().contains(QStringLiteral("执行结果未确认"));},
+                "cancelled unsent MOVE receives a terminal result instead of remaining pending forever");
+            page.simulateOperation(stop);
+            wait([&]{return !page.uiTestBusy()&&progress->text().contains(QStringLiteral("已停止"));},
+                "explicit STOP restores controls after a cancelled pending MOVE");
+        }
+        require(movesSent==0,"cancelled unsent MOVEs never reach the FPGA transport");
+    }
+    page.setUiTestState(false);
 }
 void motorMotionGuard() {
     FpgaControlPage page;page.setConnectionState(true,false);
@@ -107,6 +152,7 @@ int main(int argc,char **argv) {
 #endif
     VaporView::installButtonFocusStyle();
     VaporView::setAppStyleSheet(VaporView::startupAppThemeStyleSheet(false));
+    motorQueuedCancellation();
     motorMotionGuard();
     FpgaControlPage page;
     auto *requiredHarmonics=page.findChild<QCheckBox*>("fpgaRecordHarmonics");
@@ -187,7 +233,22 @@ int main(int argc,char **argv) {
     page.setHardwareValues({{0x1060,5},{0x104c,7},{0x1050,123},{0x1058,123456789},{0x6800,0x00480100},{0x6900,0x00490100}});
     require(page.findChild<QLabel*>("fpgaPpsCalibrationStatus")->text().contains(QStringLiteral("未确认"))
         && !page.findChild<QLabel*>("fpgaPpsCalibrationStatus")->text().contains("123456789"),"qualified PPS without UTC anchor never displays an absolute time");
-    require(page.findChild<QLabel*>("fpgaLcStatus")->text().contains(QStringLiteral("厂家命令协议尚未提供")),"LC status explains why vendor controls are unavailable");
+    auto* lcStatus=page.findChild<QLabel*>("fpgaLcStatus");
+    require(lcStatus && lcStatus->text().contains(QStringLiteral("LC0 模块匹配：1"))
+        && lcStatus->text().contains(QStringLiteral("LC1 模块匹配：1"))
+        && lcStatus->text().contains(QStringLiteral("TEC103"))
+        && lcStatus->text().contains(QStringLiteral("CON11 5/7"))
+        && lcStatus->text().contains(QStringLiteral("6/8"))
+        && lcStatus->text().contains(QStringLiteral("38400 / 8N1"))
+        && lcStatus->text().contains(QStringLiteral("内部 TC1"))
+        && lcStatus->text().contains(QStringLiteral("激光温控页")),
+        "LC status maps both real UART bridge IDs to the TEC103 wiring, protocol and temperature page");
+    page.setHardwareValues({{0x6800,0x00480100},{0x6900,0}});
+    require(lcStatus->text().contains(QStringLiteral("LC0 模块匹配：1"))
+        && lcStatus->text().contains(QStringLiteral("LC1 模块匹配：0")),
+        "LC status reports each bridge ID independently without inventing instrument identity");
+    require(!page.property("tec103Connected").toBool(),
+        "matching raw UART bridge IDs alone never confirm a TEC103 instrument connection");
     auto* motorFrequency=page.findChild<QDoubleSpinBox*>("fpgaMotorFrequency");auto* motorSteps=page.findChild<QDoubleSpinBox*>("fpgaMotorSteps");
     require(motorFrequency->minimum()==20 && motorFrequency->maximum()==400 && motorSteps->minimum()==-5000 && motorSteps->maximum()==5000
         && motorSteps->value()==40 && motorSteps->decimals()==0

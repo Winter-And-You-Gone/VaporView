@@ -1,6 +1,7 @@
 #include "ground/session/GroundRecordingService.h"
 #include "FailingRecordingStorage.h"
 #include "shared/session/SessionDeviceConfig.h"
+#include "shared/session/SessionPackageLayout.h"
 #include "shared/session/SessionSensorCsv.h"
 #include "shared/session/UnifiedRawDat.h"
 
@@ -45,6 +46,114 @@ QByteArray littleEndianFloat(float value)
 int main(int argc, char **argv)
 {
     QCoreApplication application(argc, argv);
+    {
+        QTemporaryDir directory;
+        QTemporaryDir nextDirectory;
+        VaporView::Ground::Session::GroundRecordingService recorder;
+        VaporView::Ground::Session::GroundRecordingOptions options;
+        options.baseDirectory = directory.path();
+        VaporView::TemperatureControllerData temperature;
+        temperature.valid = true;
+        temperature.error_code = 2;
+        temperature.channels[0].target_temperature_c = 27.3;
+        temperature.channels[0].measured_temperature_c = 53.40894;
+        temperature.channels[0].output_percent = 18;
+        temperature.channels[0].output_enabled = true;
+        temperature.channels[0].max_output_percent = 18;
+        temperature.channels[0].kp = 200;
+        temperature.channels[0].ki = 100;
+        temperature.channels[1].target_temperature_c = 26;
+        temperature.channels[1].measured_temperature_c = 22.65118;
+        temperature.channels[1].output_percent = 0;
+        require(!recorder.recordTemperatureControllerStatus(2'000'000, temperature),
+                "inactive recording rejects semantic temperature status");
+        require(recorder.start(options), "start semantic temperature recording");
+        const QString session = recorder.status().sessionDirectory;
+        bool accepted = false;
+        std::thread producer([&] {
+            accepted = recorder.recordTemperatureControllerStatus(2'000'001, temperature);
+        });
+        producer.join();
+        require(accepted, "worker thread can queue semantic temperature status");
+        require(recorder.pause(), "pause drains semantic temperature records");
+        require(!recorder.recordTemperatureControllerStatus(2'000'002, temperature),
+                "paused recording rejects semantic temperature status");
+        require(recorder.start(options), "resume semantic temperature recording");
+        require(recorder.recordTemperatureControllerStatus(2'000'003, temperature),
+                "resumed recording accepts semantic temperature status");
+        require(!recorder.stop().writeFailed, "semantic temperature recording stops without errors");
+        require(!recorder.recordTemperatureControllerStatus(2'000'004, temperature),
+                "stopped recording rejects semantic temperature status");
+
+        QFile csv(QDir(session).filePath(QStringLiteral("sensors/laser_temperature_controller.csv")));
+        require(csv.open(QIODevice::ReadOnly), "open semantic temperature csv");
+        QByteArray contents = csv.readAll();
+        contents.replace("\r\n", "\n");
+        const auto lines = contents.split('\n');
+        require(lines.size() == 4 && lines.last().isEmpty(),
+                "only two active semantic temperature rows are recorded");
+        require(lines[0] + '\n' == VaporView::Session::laserTemperatureControllerCsvHeader().toUtf8(),
+                "ground semantic temperature header exactly matches shared Sky header");
+        const auto first = lines[1].split(',');
+        const auto second = lines[2].split(',');
+        require(first.size() == 24 && second.size() == 24 &&
+                    first[0] == "2000001" && second[0] == "2000003" && first[1] == "true" && first[3] == "2",
+                "semantic temperature host timestamps, validity and error are preserved");
+        require(first[4] == "27.300000" && first[5] == "53.408940" && first[6] == "18.000000" &&
+                    first[8] == "true" && first[11] == "200" && first[12] == "100" &&
+                    first[14] == "26.000000" && first[15] == "22.651180" &&
+                    first[16] == "0.000000" && first[18] == "false",
+                "both physical temperature units retain their own target and measured columns");
+        require(first[2].isEmpty() && first[7].isEmpty() && first[17].isEmpty() && !contents.contains("nan"),
+                "unknown internal temperature and output currents are empty CSV fields");
+        csv.close();
+
+        QFile manifest(QDir(session).filePath(QStringLiteral("session.json")));
+        require(manifest.open(QIODevice::ReadOnly), "open semantic temperature manifest");
+        const auto metadata = QJsonDocument::fromJson(manifest.readAll()).object();
+        require(metadata.value("counts").toObject().value("laser_temperature_controller_rows").toString() == "2",
+                "manifest counts successfully written semantic temperature rows");
+        require(metadata.value("raw_files").toObject().value("laser_temperature_controller").toObject()
+                    .value("records").toString() == "0",
+                "semantic status does not increment raw temperature record count");
+        QFile raw(QDir(session).filePath(QStringLiteral("raw/laser_temperature_controller.dat")));
+        require(raw.open(QIODevice::ReadOnly), "open unmodified temperature raw file");
+        VaporView::SessionRawDat::RawScanOptions scanOptions;
+        scanOptions.expectedSourceId = VaporView::SessionRawDat::kSourceLaserTemperatureController;
+        const auto scan = VaporView::SessionRawDat::scan(raw, scanOptions);
+        require(scan.success() && scan.records.isEmpty(), "semantic temperature status never fabricates raw DAT records");
+
+        options.baseDirectory = nextDirectory.path();
+        require(recorder.start(options), "start fresh temperature count session");
+        const QString nextSession = recorder.status().sessionDirectory;
+        recorder.stop();
+        QFile nextManifest(QDir(nextSession).filePath(QStringLiteral("session.json")));
+        require(nextManifest.open(QIODevice::ReadOnly), "open fresh temperature count manifest");
+        require(QJsonDocument::fromJson(nextManifest.readAll()).object().value("counts").toObject()
+                    .value("laser_temperature_controller_rows").toString() == "0",
+                "new session resets semantic temperature row count");
+    }
+    {
+        QTemporaryDir directory;
+        auto storage = std::make_shared<FailingRecordingStorage>();
+        VaporView::Ground::Session::GroundRecordingService recorder(storage);
+        VaporView::Ground::Session::GroundRecordingOptions options;
+        options.baseDirectory = directory.path();
+        require(recorder.start(options), "start semantic temperature write failure fixture");
+        const QString session = recorder.status().sessionDirectory;
+        storage->setFailWriteFile(QDir(session).filePath(QStringLiteral("sensors/laser_temperature_controller.csv")));
+        storage->failWrites.store(true);
+        require(recorder.recordTemperatureControllerStatus(3'000'001, VaporView::TemperatureControllerData{}),
+                "queue semantic temperature status before injected short write");
+        require(recorder.stop().writeFailed && storage->shortWriteObserved.load(),
+                "short semantic temperature CSV write marks session failed");
+        QFile manifest(QDir(session).filePath(QStringLiteral("session.json")));
+        require(manifest.open(QIODevice::ReadOnly), "open semantic temperature failure manifest");
+        const auto metadata = QJsonDocument::fromJson(manifest.readAll()).object();
+        require(metadata.value("state").toString() == "incomplete" &&
+                    metadata.value("counts").toObject().value("laser_temperature_controller_rows").toString() == "0",
+                "failed semantic temperature row is not counted as successfully recorded");
+    }
     {
         QTemporaryDir firstDirectory;
         QTemporaryDir secondDirectory;

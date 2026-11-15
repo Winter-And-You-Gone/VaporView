@@ -5,6 +5,7 @@
 #include <QFileDialog>
 #include <QJsonDocument>
 #include <QJsonArray>
+#include <QDateTime>
 #include <QGridLayout>
 #include <QPointer>
 #include <QDoubleValidator>
@@ -16,6 +17,28 @@
 #include "ground/widgets/DeviceEnabledCheckBox.h"
 #include "ground/session/SessionViewerWindow.h"
 #include "shared/session/FpgaSessionArchive.h"
+
+namespace {
+bool tec103BridgesAvailable(const QMap<quint32,quint32>& values)
+{
+    return values.value(0x6800)==0x00480100 && values.value(0x6900)==0x00490100;
+}
+void dispatchLocalWhenIdle(QPointer<VaporView::Ground::Devices::FpgaDeviceController> controller,
+    const std::shared_ptr<std::atomic<quint64>>& generation,quint64 expected,qint64 deadline,
+    std::function<void()> action,std::function<void()> expired)
+{
+    if(!controller)return;
+    if(generation->load(std::memory_order_acquire)!=expected) {expired();return;}
+    if(!controller->connected() || QDateTime::currentMSecsSinceEpoch()>=deadline) {expired();return;}
+    if(controller->busy()) {
+        QTimer::singleShot(10,controller,[controller,generation,expected,deadline,
+            action=std::move(action),expired=std::move(expired)]() mutable {
+            dispatchLocalWhenIdle(controller,generation,expected,deadline,std::move(action),std::move(expired));
+        });return;
+    }
+    action();
+}
+}
 
 #ifdef VAPORVIEW_MAIN_WINDOW_TESTING
 VaporView::Ground::Devices::FpgaDeviceController *MainWindow::testFpgaController()
@@ -60,11 +83,13 @@ void MainWindow::syncFpgaDeviceConfigUi()
         state_->epsilon_device_session_->setFpgaTransport(call,(extensions&VaporView::FpgaExtensions::EpsilonMailbox) && (values.value(0x6204)&1));
         state_->epsilon_device_session_->setTransportSupported(!relay || (extensions&VaporView::FpgaExtensions::EpsilonMailbox),relay?epsilonUnsupported:QString());
     }
-    if(state_->rd105_device_session_)state_->rd105_device_session_->setFpgaTransport(call,(extensions&VaporView::FpgaExtensions::Rd105) && (values.value(0x6a04)&1));
+    if(state_->rd105_device_session_)state_->rd105_device_session_->setFpgaTransport(call,
+        homeFpgaDeviceState(VaporView::SkyDeviceId::TemperatureController)==VaporView::DeviceState::Connected);
     const QString rd105CommunicationDetail=state_->is_english_
-        ? QStringLiteral("FPGA shared RS485 requires RD105 address 2 at 19200/8N1. Configure the instrument externally before connection; communication settings and factory reset are unavailable through FPGA.")
-        : QStringLiteral("FPGA 共用 RS485 要求 RD105 为站号 2、19200/8N1；请在连接前通过外部工具配置实体设备。FPGA 路径不提供通信参数修改和恢复出厂。");
-    for(const auto& name:{QStringLiteral("temperatureDeviceAddressSpin"),QStringLiteral("temperatureRs485BaudCombo"),QStringLiteral("temperatureFactoryResetButton")})
+        ? QStringLiteral("Two TEC103 controllers use LC0/LC1 TTL at 38400/8N1. Each uses internal TC1. Communication settings and factory reset are unavailable through this connection.")
+        : QStringLiteral("两台 TEC103 分别通过 LC0/LC1 TTL、38400/8N1 连接，每台均使用内部 TC1；此路径不提供通信参数修改和恢复出厂。");
+    for(const auto& name:{QStringLiteral("temperatureDeviceAddressSpin"),QStringLiteral("temperatureRs485BaudCombo"),QStringLiteral("temperatureFactoryResetButton"),
+        QStringLiteral("temperatureControllerModeCombo"),QStringLiteral("temperatureOvertempOutputModeCombo")})
         if(auto* control=findChild<QWidget*>(name)) {control->setEnabled(!relay);control->setToolTip(relay?rd105CommunicationDetail:QString());}
     if (relay && state_->ai8_temperature_controller_panel_) {
         state_->ai8_temperature_controller_panel_->setBackendConnected(
@@ -75,8 +100,8 @@ void MainWindow::syncFpgaDeviceConfigUi()
     const auto registers = homeFpgaRegisters();
     if(auto* read=findChild<QToolButton*>(QStringLiteral("temperatureFpgaReadParameters"))) {
         read->setVisible(relay);read->setEnabled(relay && state_->rd105_device_session_ && state_->rd105_device_session_->operationsAvailable());
-        read->setToolTip(state_->is_english_?QStringLiteral("Read RD105 channel 1/2 and common parameters")
-            :QStringLiteral("读取 RD105 双通道及通用参数"));
+        read->setToolTip(state_->is_english_?QStringLiteral("Read both TEC103 controllers and their parameters")
+            :QStringLiteral("分别读取原位与遥测两台 TEC103 的参数"));
     }
     if(state_->rtk_config_dialog_ && (state_->rtk_config_dialog_->property("fpgaExtensions").toUInt()!=extensions || state_->rtk_config_dialog_->property("fpgaRelay").toBool()!=relay)) {
         state_->rtk_config_dialog_->setProperty("fpgaExtensions",extensions);state_->rtk_config_dialog_->setProperty("fpgaRelay",relay);syncRtkConfigPageState();
@@ -203,12 +228,12 @@ void MainWindow::syncFpgaDeviceConfigUi()
     field(state_->device_config_.hc2a_baud_combo,0x41,"baud",0x6110);
     field(state_->device_config_.lidar_baud_combo,0x45,"baud",0x6510);
     field(state_->device_config_.ai8_temperature_baud_combo,0x46,{},0,registers.contains(0x6610)?QString::number(registers.value(0x6610)):QStringLiteral("19200"));
-    field(state_->device_config_.temperature_baud_combo,0x4a,{},0,(extensions&VaporView::FpgaExtensions::Rd105)?QStringLiteral("19200"):state_->is_english_?QStringLiteral("Unsupported"):QStringLiteral("不支持"));
+    field(state_->device_config_.temperature_baud_combo,0x4a,{},0,tec103BridgesAvailable(values)?QStringLiteral("38400 / 8N1 (TTL)"):state_->is_english_?QStringLiteral("Unsupported"):QStringLiteral("不支持"));
     field(state_->device_config_.ptb_rate_combo,pressure,"poll_ms",pressure==0x43?0x6314:0x6018);
     field(state_->device_config_.hc2a_rate_combo,0x41,"poll_ms",0x611c);
     field(state_->device_config_.ai8_temperature_rate_combo,0x46,"poll_ms",0x662c);
     field(state_->device_config_.lidar_rate_combo,0x45,{},0,state_->is_english_?QStringLiteral("Auto 50/1000 Hz"):QStringLiteral("自动 50/1000 Hz"));
-    field(state_->device_config_.temperature_rate_combo,0x4a,(extensions&VaporView::FpgaExtensions::Rd105)?"poll_ms":"",0x6a2c,QStringLiteral("—"));
+    field(state_->device_config_.temperature_rate_combo,0x4a,{},0,QStringLiteral("1 Hz"));
     if (auto *check=state_->device_config_.fpga_wave_enabled_check) {
         check->setVisible(relay);
         enabledSelection(check,VaporView::SkyDeviceId::WaveTcp);
@@ -248,7 +273,7 @@ void MainWindow::syncFpgaDeviceConfigUi()
              qMakePair(state_->device_config_.temperature_enabled_check,SkyDeviceId::TemperatureController),
              qMakePair(state_->device_config_.ai8_temperature_enabled_check,SkyDeviceId::Ai8TemperatureController)}) {
         const bool supported = item.second != SkyDeviceId::TemperatureController || registers.isEmpty()
-                || (extensions & VaporView::FpgaExtensions::Rd105);
+                || tec103BridgesAvailable(registers);
         enabledSelection(item.first,item.second,supported);
         // Selection is independent of readback; the action must show actual state.
         if (relay) updateDeviceConfigRemoteActionButton(item.second);
@@ -285,6 +310,7 @@ QMap<quint16, QJsonObject>& MainWindow::fpgaSensorDrafts()
 
 QJsonObject MainWindow::fpgaSensorConnectRequest(quint16 source)
 {
+    if(source==0x4a)return {{"op","sensor"},{"source",source},{"enabled",true}};
     auto request=fpgaSensorDrafts().value(source);
     // Keep the typed text intact during refresh; convert only for the transaction.
     for(auto it=request.begin();it!=request.end();++it) {
@@ -343,7 +369,7 @@ VaporView::DeviceState MainWindow::homeFpgaDeviceActionState(VaporView::SkyDevic
     using VaporView::DeviceState;
     using VaporView::SkyDeviceId;
     if (!homeFpgaSensorSource(device) && device != SkyDeviceId::WaveTcp) return DeviceState::Disabled;
-    if(device==SkyDeviceId::TemperatureController && !homeFpgaRegisters().isEmpty() && !(homeFpgaExtensions()&VaporView::FpgaExtensions::Rd105))return DeviceState::Disabled;
+    if(device==SkyDeviceId::TemperatureController && !homeFpgaRegisters().isEmpty() && !tec103BridgesAvailable(homeFpgaRegisters()))return DeviceState::Disabled;
     if (state_->fpga_home_action_device_ == device || state_->fpga_pending_home_actions_.contains(device))
         return DeviceState::Connecting;
     if (isUiTestMode()) {
@@ -422,6 +448,8 @@ void MainWindow::processFpgaActions()
 
 void MainWindow::cancelFpgaActions()
 {
+    state_->fpga_local_dispatch_generation_->fetch_add(1,std::memory_order_acq_rel);
+    if(state_->fpga_page_)state_->fpga_page_->cancelPendingUiTestOperations();
     if (state_->fpga_action_timer_) state_->fpga_action_timer_->stop();
     const auto actions = std::exchange(state_->fpga_action_queue_, {});
     for (const auto &action : actions) action.cancel(QStringLiteral("FPGA 排队操作已取消，命令未发送。"));
@@ -537,6 +565,12 @@ VaporView::DeviceState MainWindow::homeFpgaDeviceState(VaporView::SkyDeviceId de
             && !state_->fpga_session_.remoteStatus.value("busy").toBool())) return DeviceState::Disconnected;
     }
     const auto registers = homeFpgaRegisters();
+    if(device==VaporView::SkyDeviceId::TemperatureController) {
+        if(!tec103BridgesAvailable(registers))return DeviceState::Disabled;
+        const bool connected=isUiTestMode()?state_->fpga_page_->property("tec103Connected").toBool():isRemoteSkyMode()
+            ?state_->fpga_session_.remoteStatus.value("tec103_connected").toBool():state_->fpga_tec103_connected_;
+        return connected?DeviceState::Connected:DeviceState::Disconnected;
+    }
     if (source) {
         const quint32 control = 0x6004 + (source - 0x40) * 0x100;
         if (!registers.contains(control)) return DeviceState::Disabled;
@@ -557,7 +591,7 @@ void MainWindow::connectNextHomeFpgaDevice()
         const auto device = state_->fpga_home_connect_queue_.takeFirst();
         if (!homeFpgaDeviceSelected(device)) continue;
         if(device==VaporView::SkyDeviceId::TemperatureController && !homeFpgaRegisters().isEmpty()
-            && !(homeFpgaExtensions()&VaporView::FpgaExtensions::Rd105))continue;
+            && !tec103BridgesAvailable(homeFpgaRegisters()))continue;
         if (homeFpgaDeviceState(device) == VaporView::DeviceState::Connected
             && fpgaSensorDrafts().value(homeFpgaSensorSource(device)).isEmpty()) continue;
         setHomeFpgaDeviceEnabled(device,true);
@@ -700,6 +734,12 @@ void MainWindow::setupFpgaControlPage()
         state_->fpga_home_raw_start_pending_=false;updateHomeDeviceStatusCapsules();
     });
     connect(page,&FpgaControlPage::simulationMeasurementsUpdated,this,&MainWindow::receiveFpgaMeasurements);
+    connect(page,&FpgaControlPage::simulationTemperatureDataUpdated,this,[this](const VaporView::TemperatureControllerData& data) {
+        if(!isUiTestMode())return;
+        state_->current_temperature_controller_=data;state_->fpga_rd105_ui_dirty_=true;
+        if(data.valid)state_->fpga_sources_.insert(0x4a);else state_->fpga_sources_.remove(0x4a);
+        state_->fpga_sensor_rates_[0x4a]=data.valid?1.0:0.0;
+    });
     connect(page,&FpgaControlPage::simulationWaveformUpdated,this,&MainWindow::receiveFpgaWaveform);
     connect(page, &FpgaControlPage::waveformDisplayUpdated, this,
         [this](quint16 source, const QVector<QVector<double>> &samples,
@@ -715,7 +755,29 @@ void MainWindow::setupFpgaControlPage()
     const auto dispatch = [this, controller](const QJsonObject& request, std::function<void()> local) {
         if (isUiTestMode()) state_->fpga_page_->simulateOperation(request);
         else if (isRemoteSkyMode()) sendRemoteFpgaControl(request);
-        else QMetaObject::invokeMethod(controller, std::move(local), Qt::QueuedConnection);
+        else if(request.value("op")=="disconnect") {
+            state_->fpga_local_dispatch_generation_->fetch_add(1,std::memory_order_acq_rel);
+            QMetaObject::invokeMethod(controller,std::move(local),Qt::QueuedConnection);
+        } else {
+            const auto generation=state_->fpga_local_dispatch_generation_;
+            const auto expected=generation->load(std::memory_order_acquire);
+            const auto deadline=QDateTime::currentMSecsSinceEpoch()+10000;
+            QPointer<MainWindow> owner(this);
+            const auto expired=[owner,generation,expected] {
+                if(owner)QMetaObject::invokeMethod(owner,[owner,generation,expected] {
+                    if(!owner || generation->load(std::memory_order_acquire)!=expected)return;
+                    owner->cancelFpgaActions();owner->state_->fpga_home_connect_queue_.clear();
+                    owner->state_->fpga_home_action_device_=VaporView::SkyDeviceId::All;
+                    owner->state_->fpga_home_action_started_=false;
+                    owner->state_->fpga_page_->appendDiagnostic(QStringLiteral("等待 FPGA 空闲已取消或超时；操作未发送。"));
+                    owner->updateFpgaPageBackend();
+                },Qt::QueuedConnection);
+            };
+            QMetaObject::invokeMethod(controller,[controller,generation,expected,deadline,
+                local=std::move(local),expired]() mutable {
+                dispatchLocalWhenIdle(controller,generation,expected,deadline,std::move(local),expired);
+            },Qt::QueuedConnection);
+        }
     };
     connect(page, &FpgaControlPage::discoverDevicesRequested, this, [this, controller, page] {
         if (isUiTestMode()) {
@@ -779,7 +841,7 @@ void MainWindow::setupFpgaControlPage()
             dispatch(request,[controller,request]{controller->executeOperation(request);});return;
         }
         QPointer<FpgaControlPage> target(page);
-        QMetaObject::invokeMethod(controller,[controller,target,request,motorOperationGeneration,generation] {
+        auto action=[controller,target,request,motorOperationGeneration,generation] {
             const auto reply=[target,request,motorOperationGeneration,generation](bool success) {
                 if(target)QMetaObject::invokeMethod(target,[target,request,success,motorOperationGeneration,generation] {
                     if(target && *motorOperationGeneration==generation)target->finishMotorOperation(request,success);
@@ -809,6 +871,23 @@ void MainWindow::setupFpgaControlPage()
             controller->executeOperation(request);
             *dispatching=false;
             if(!controller->busy())finish(false);
+        };
+        const bool stop=request.value("action").toInt()==2
+            || (request.value("action").toInt()==4 && request.value("value").toInt()==0);
+        const auto cancellation=state_->fpga_local_dispatch_generation_;
+        if(stop)cancellation->fetch_add(1,std::memory_order_acq_rel);
+        const auto expected=cancellation->load(std::memory_order_acquire);
+        const auto deadline=QDateTime::currentMSecsSinceEpoch()+10000;
+        const auto expired=[target,request,motorOperationGeneration,generation] {
+            if(target)QMetaObject::invokeMethod(target,[target,request,motorOperationGeneration,generation] {
+                if(target && *motorOperationGeneration==generation)target->finishMotorOperation(request,false);
+            },Qt::QueuedConnection);
+        };
+        QMetaObject::invokeMethod(controller,[controller,cancellation,expected,deadline,stop,
+            action=std::move(action),expired]() mutable {
+            if(cancellation->load(std::memory_order_acquire)!=expected) {expired();return;}
+            if(stop)action();
+            else dispatchLocalWhenIdle(controller,cancellation,expected,deadline,std::move(action),expired);
         },Qt::QueuedConnection);
     });
     connect(page,&FpgaControlPage::motorHeartbeatRequested,this,[this,controller] {
@@ -1002,6 +1081,25 @@ void MainWindow::setupFpgaControlPage()
         updateConnectionStatus(anyLocalDeviceConnected());
     }, Qt::QueuedConnection);
     connect(controller,&Controller::measurementUpdated,this,&MainWindow::receiveFpgaMeasurements,Qt::QueuedConnection);
+    connect(controller,&Controller::temperatureConnectionChanged,this,[this](bool connected,const QString& detail) {
+        state_->fpga_tec103_connected_=connected;
+        if(isRemoteSkyMode())return;
+        state_->fpga_page_->setTemperatureConnectionState(connected,detail);
+        if(!connected) {
+            state_->current_temperature_controller_=VaporView::TemperatureControllerData{};
+            state_->fpga_rd105_ui_dirty_=true;
+        }
+        updateHomeDeviceStatusCapsules();syncFpgaDeviceConfigUi();
+    },Qt::QueuedConnection);
+    connect(controller,&Controller::temperatureDataUpdated,this,[this](const VaporView::TemperatureControllerData& data) {
+        if(isRemoteSkyMode() || isUiTestMode())return;
+        const auto previous=state_->current_temperature_controller_.timestamp;
+        const double seconds=std::chrono::duration<double>(data.timestamp-previous).count();
+        state_->current_temperature_controller_=data;
+        if(data.valid)state_->fpga_sources_.insert(0x4a);else state_->fpga_sources_.remove(0x4a);
+        state_->fpga_rd105_ui_dirty_=true;
+        state_->fpga_sensor_rates_[0x4a]=data.valid && previous!=std::chrono::steady_clock::time_point{} && seconds>0?1.0/seconds:0.0;
+    },Qt::QueuedConnection);
     auto *calibration=state_->calibration_service_.get();
     connect(controller,&Controller::measurementUpdated,calibration,[calibration](const auto& m){
         const auto& r=m.reading;if(r.source!=0x40 && r.source!=0x41)return;
@@ -1016,6 +1114,9 @@ void MainWindow::setupFpgaControlPage()
 
     // These APIs enqueue under the recording service's lock, independent of GUI delivery.
     auto *recorder = state_->recording_service_.get();
+    connect(controller,&Controller::temperatureDataUpdated,controller,[recorder](const VaporView::TemperatureControllerData& data) {
+        recorder->recordTemperatureControllerStatus(VaporView::Ground::Session::GroundRecordingService::currentTimestampUs(),data);
+    },Qt::DirectConnection);
     auto *peakBus = state_->calibration_peak_bus_.get();
     connect(controller,&Controller::harmonicCycleReady,peakBus,[peakBus](quint64 t,const auto& s){peakBus->publish(t,s);},Qt::DirectConnection);
     connect(controller,&Controller::transportConnectionChanged,peakBus,[peakBus](bool connected){if(!connected)peakBus->setDevice(false,{});},Qt::DirectConnection);
@@ -1206,6 +1307,11 @@ void MainWindow::receiveRemoteFpgaStatus(const QJsonObject& status)
     const auto configuration = status.value("configuration").toObject();
     const bool configurationChanged = configuration != state_->fpga_session_.remoteStatus.value("configuration").toObject();
     state_->fpga_session_.updateRemoteStatus(status);
+    if(isRemoteSkyMode() && (previousStatus.value("tec103_connected")!=status.value("tec103_connected")
+        || previousStatus.value("tec103_detail")!=status.value("tec103_detail"))) {
+        state_->fpga_page_->setTemperatureConnectionState(status.value("tec103_connected").toBool(),status.value("tec103_detail").toString());
+        syncFpgaDeviceConfigUi();
+    }
     if (configurationChanged && !state_->remote_config_session_.applying) {
         state_->fpga_session_.remoteConfig = FpgaControlConfig::fromJson(configuration);
         state_->remote_config_session_.desired.fpga.configuration.ai8.pollIntervalMs=state_->fpga_session_.remoteConfig.ai8.pollIntervalMs;
@@ -1300,18 +1406,7 @@ void MainWindow::receiveFpgaMeasurements(const VaporView::FpgaSensor::AdaptedMea
             state_->fpga_ai8_ui_dirty_ = true;
         }
     }
-    else if(r.kind==VaporView::FpgaSensor::SensorKind::Rd105) {
-        const int channel=qBound(1,int(r.rd105Channel.value_or(homeFpgaRegisters().value(0x6a1c,1))),2)-1;
-        auto& data=state_->current_temperature_controller_;
-        data.valid=valid;data.timestamp=std::chrono::steady_clock::now();
-        data.device_address=int(homeFpgaRegisters().value(0x6a14,2));data.rs485_baud_index=2;
-        data.error_code=quint16(r.rd105Error.value_or(0));
-        data.channels[channel].target_temperature_c=valid&&r.rd105TargetMicroC?*r.rd105TargetMicroC/1000000.0:std::numeric_limits<double>::quiet_NaN();
-        data.channels[channel].measured_temperature_c=valid&&r.rd105ActualMicroC?*r.rd105ActualMicroC/1000000.0:std::numeric_limits<double>::quiet_NaN();
-        data.channels[channel].output_percent=valid&&r.rd105OutputRaw?*r.rd105OutputRaw/20000.0:std::numeric_limits<double>::quiet_NaN();
-        data.channels[channel].output_enabled=valid&&r.rd105OutputEnabled&&*r.rd105OutputEnabled!=0;
-        state_->fpga_rd105_ui_dirty_ = true;
-    }
+    // TEC103 values arrive through the GPIO protocol, independently of legacy 6A telemetry.
     {
         const std::lock_guard<std::mutex> lock(state_->fpga_snapshot_mutex_);
         auto &snapshot = state_->fpga_recording_snapshot_;

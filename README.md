@@ -1,6 +1,6 @@
 # VaporView
 
-`VaporView` 是一个基于 Qt Widgets 的桌面程序。当前主界面面向 EPSILON 组合导航、PTB210/BMP390 气压来源、HC2A/SHT45 温湿度来源、SDFM300 激光测距模块、RD105 温控器、AI-8288 八路温控器和本地 TCP 波形流，提供串口接入、实时数据显示、RTK/NTRIP 转发、会话记录、离线查看和轨迹查看能力。
+`VaporView` 是一个基于 Qt Widgets 的桌面程序。当前主界面面向 EPSILON 组合导航、PTB210/BMP390 气压来源、HC2A/SHT45 温湿度来源、SDFM300 激光测距模块、TEC103 激光温控器、AI-8288 八路温控器和本地 TCP 波形流，提供串口接入、实时数据显示、RTK/NTRIP 转发、会话记录、离线查看和轨迹查看能力。
 
 ## 快速开始
 
@@ -8,7 +8,7 @@
 
 主侧栏“运动控制”支持 EM-FWC3 三路电机定位、步进、回零、连续运动与停止。设备通过本机 USB 虚拟串口独立连接，FPGA 中转或远端采集模式下仍保持直连；配置入口、可选 SDK 部署与验证说明见 [EM-FWC3 接入说明](docs/emfwc3.md)。
 
-FPGA 模式支持 HC2A 环境温湿度、SDFM300 测距、AI8 八路扫描、独立 RD105 双通道温控、新版 DM422、PPS/UTC 状态及 LC 只读诊断。2026-11-15 新 RD105 固件使用 source `0x4A` / page `0x6A00`、扩展字 `0x3B`；LC0/LC1 保留原地址。RD105 实体需事先配置为 RS485 19200/8N1、站号 2，见 [RD105 接入说明](docs/rd105.md)和 [SDFM300 接入说明](docs/sdfm300.md)。旧 HCD2 固件仍按能力位限制功能，历史约束见 [HCD2 适配记录](docs/fpga_hcd2_adaptation_20261114.md)。本轮未连接或烧录板卡。
+FPGA 模式支持 HC2A 环境温湿度、SDFM300 测距、AI8 八路扫描、两台 TEC103 温控、新版 DM422 及 PPS/UTC 状态。现场 TEC103 分别使用 LC0/LC1 GPIO TTL、38400/8N1，每台均访问内部 TC1；已读到实体型号和固件。接线、ASCII 协议及本地/远程行为见 [TEC103 双 GPIO 接入说明](docs/tec103_gpio.md)和 [SDFM300 接入说明](docs/sdfm300.md)。此次复用并重新加载已有原始 UART BIT，无需改 RTL 或重新生成镜像；旧 6A RS485 实现与历史验证见 [RD105 历史记录](docs/rd105.md)。
 
 ### 依赖
 

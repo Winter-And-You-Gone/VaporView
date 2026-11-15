@@ -674,6 +674,16 @@ void SkyDeviceManager::ensureFpgaBackend()
     });
     connect(fpga_backend_.get(), &SkyFpgaBackend::observationEpochReceived, this, &SkyDeviceManager::epsilonObservationEpochReceived);
     connect(fpga_backend_.get(), &SkyFpgaBackend::measurementUpdated, this, &SkyDeviceManager::acceptFpgaMeasurement);
+    connect(fpga_backend_.get(), &SkyFpgaBackend::temperatureDataUpdated, this,[this](const TemperatureControllerData& data) {
+        if(config_.sensor_transport_path!=SensorTransportPath::FpgaRelay)return;
+        handleTemperatureControllerData(data);
+        if(fpgaStatus().value("tec103_connected").toBool())
+            setState(SkyDeviceId::TemperatureController,data.valid?DeviceState::Connected:DeviceState::Error);
+    });
+    connect(fpga_backend_.get(), &SkyFpgaBackend::temperatureConnectionChanged, this,[this](bool connected,const QString&) {
+        if(config_.sensor_transport_path==SensorTransportPath::FpgaRelay)
+            setState(SkyDeviceId::TemperatureController,connected?DeviceState::Connected:DeviceState::Disconnected);
+    });
     connect(fpga_backend_.get(), &SkyFpgaBackend::waveformUpdated, this, &SkyDeviceManager::fpgaWaveformUpdated);
     connect(fpga_backend_.get(), &SkyFpgaBackend::harmonicCycleReady, this, &SkyDeviceManager::fpgaHarmonicCycleReady, Qt::DirectConnection);
     connect(fpga_backend_.get(), &SkyFpgaBackend::rawFrame, this, &SkyDeviceManager::fpgaRawFrameReceived, Qt::DirectConnection);
@@ -759,17 +769,6 @@ void SkyDeviceManager::acceptFpgaMeasurement(const FpgaSensor::AdaptedMeasuremen
             if(m.ai8Live)data=*m.ai8Live;
         }
         setState(SkyDeviceId::Ai8TemperatureController, data.valid ? DeviceState::Connected : DeviceState::Error);handleAi8TemperatureControllerData(data);
-    } else if(r.kind==FpgaSensor::SensorKind::Rd105) {
-        auto data=latest_temperature_controller_;
-        const auto registers=fpgaStatus().value("registers").toObject();
-        const int channel=qBound(1,int(r.rd105Channel.value_or(quint32(registers.value(QString::number(0x6a1c)).toDouble(1)))),2)-1;
-        data.valid=valid;data.timestamp=timestamp;data.error_code=quint16(r.rd105Error.value_or(0));
-        data.device_address=int(registers.value(QString::number(0x6a14)).toDouble(2));data.rs485_baud_index=2;
-        data.channels[channel].target_temperature_c=valid&&r.rd105TargetMicroC?*r.rd105TargetMicroC/1000000.0:std::numeric_limits<double>::quiet_NaN();
-        data.channels[channel].measured_temperature_c=valid&&r.rd105ActualMicroC?*r.rd105ActualMicroC/1000000.0:std::numeric_limits<double>::quiet_NaN();
-        data.channels[channel].output_percent=valid&&r.rd105OutputRaw?*r.rd105OutputRaw/20000.0:std::numeric_limits<double>::quiet_NaN();
-        data.channels[channel].output_enabled=valid&&r.rd105OutputEnabled&&*r.rd105OutputEnabled!=0;
-        setState(SkyDeviceId::TemperatureController,valid?DeviceState::Connected:DeviceState::Error);handleTemperatureControllerData(data);
     }
     fpga_status_.rx_count++; fpga_status_.last_data_time_us=nowUs();
     emit fpgaSensorUpdated(r);

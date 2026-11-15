@@ -152,7 +152,7 @@ bool validateControl(const QJsonObject& control, QString *error)
     QStringList keys{"op"};
     if(control.contains("ticket")) {
         quint64 ticket=0;
-        if(!QStringList{"instrument","epsilon_mailbox","ai8_scan","ai8_cache","dlia_cutoff","device_temperature"}.contains(op)
+        if(!QStringList{"instrument","epsilon_mailbox","ai8_scan","ai8_cache","dlia_cutoff","device_temperature","uart_exchange"}.contains(op)
             || !decimal(control.value("ticket"),ticket) || !ticket)return fail();
         keys << "ticket";
     }
@@ -226,6 +226,14 @@ bool validateControl(const QJsonObject& control, QString *error)
         keys << "mode" << "high_water" << "burst";if(!integer(control.value("mode"),0,1) || !integer(control.value("high_water"),1) || !integer(control.value("burst"),1,65535))return fail();
     } else if(op=="watchdog") {
         keys << "value";if(!integer(control.value("value"),0,3600000) || (control.value("value").toInt()!=0 && control.value("value").toInt()<30000))return fail();
+    } else if(op=="uart_exchange") {
+        keys << "channel" << "data" << "timeout_ms" << "max_rx" << "quiet_ms";
+        if(!integer(control.value("channel"),1,2) || !control.value("data").isString()
+            || (control.contains("timeout_ms") && !integer(control.value("timeout_ms"),200,5000))
+            || (control.contains("max_rx") && !integer(control.value("max_rx"),1,16384))
+            || (control.contains("quiet_ms") && !integer(control.value("quiet_ms"),10,200)))return fail();
+        const auto encoded=control.value("data").toString().toLatin1(),data=QByteArray::fromBase64(encoded);
+        if(data.toBase64()!=encoded || data.isEmpty() || data.size()>256)return fail();
     } else if(op=="instrument") {
         keys << "source" << "action" << "address" << "count" << "data";
         if(!integer(control.value("source"),0,65535) || (control.value("source").toInt()!=0x46 && control.value("source").toInt()!=0x4a)
@@ -291,7 +299,8 @@ bool parseStatus(const QByteArray& payload, QJsonObject& status)
         !decimal(result.value("archived_records"), archived)) return false;
     if (result.contains("recording_state") && !integer(result.value("recording_state"),0,2)) return false;
     if(result.contains("extensions") && !integer(result.value("extensions")))return false;
-    if(result.contains("operation_result") && (!result.value("operation_result").isObject() || QJsonDocument(result.value("operation_result").toObject()).toJson().size()>8192))return false;
+    if(result.contains("operation_result") && (!result.value("operation_result").isObject() || QJsonDocument(result.value("operation_result").toObject()).toJson().size()>32768))return false;
+    if(result.contains("tec103_connected") && !result.value("tec103_connected").isBool())return false;
     if (result.contains("session_directory") && !result.value("session_directory").isString()) return false;
     if (result.contains("usb_discovery")) {
         if (!result.value("usb_discovery").isObject()) return false;

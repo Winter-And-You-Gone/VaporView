@@ -100,6 +100,15 @@ int main(int argc, char **argv)
     require(!validateControl({{"op","temperature"},{"celsius",25.01}}),"temperature precision rejected");
     require(!validateControl({{"op","refresh"},{"address",42}}),"arbitrary register fields rejected");
     require(encodeControl({{"op","write_register"},{"value",3}}).isEmpty(),"raw register operation rejected");
+    const QJsonObject uart{{"op","uart_exchange"},{"ticket","42"},{"channel",2},
+        {"data",QString::fromLatin1(QByteArray("TEC=?@").toBase64())},{"timeout_ms",1200},{"max_rx",16384},{"quiet_ms",20}};
+    require(parseControl(encodeControl(uart),parsed) && parsed.value("channel")==2,
+        "physical TEC103 UART channel and ticket survive SkyCore control codec");
+    for(const auto& invalid:QVector<QPair<QString,QJsonValue>>{{"channel",0},{"channel",3},{"data","bad base64"},
+        {"data",QString()},{"timeout_ms",199},{"timeout_ms",5001},{"max_rx",16385},{"quiet_ms",0}}) {
+        auto bad=uart;bad[invalid.first]=invalid.second;
+        require(!validateControl(bad),"invalid raw UART exchange rejected before transmission");
+    }
     for(const auto& operation:QVector<QJsonObject>{
         {{"op","sensor"},{"source",0x41},{"enabled",true},{"baud",19200},{"poll_ms",1000},{"parameters",QJsonObject{{"address",99},{"measurements",3}}}},
         {{"op","sensor_config"},{"source",0x41},{"parameters",QJsonObject{{"address",0}}}},

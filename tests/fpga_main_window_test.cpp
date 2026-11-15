@@ -614,6 +614,8 @@ static void configurationActionReadback()
     for(quint32 address:{0x6004u,0x6104u,0x6204u,0x6304u,0x6404u,0x6504u,0x6604u,0x6a04u,
                         0x4004u,0x4104u,0x5004u,0x5104u})registers[QString::number(address)]=0;
     registers[QString::number(0x6010)]=4800;
+    registers[QString::number(0x6800)]=0x00480100;
+    registers[QString::number(0x6900)]=0x00490100;
     QJsonObject status{{"connected",true},{"ready",true},{"busy",false},{"detail","ready"},
         {"extensions",double(FpgaExtensions::Rd105)},{"configuration",FpgaControlConfig{}.toJson()},{"archived_records","0"}};
     int marker=0;
@@ -634,7 +636,9 @@ static void configurationActionReadback()
     // No language switch, checkbox click or page re-open may repair stale buttons.
     for(bool enabled:{true,false}) {
         for(auto it=registers.begin();it!=registers.end();++it)
-            if(it.key()!="256"&&it.key()!=QString::number(0x6010))it.value()=enabled?1:0;
+            if(it.key()!="256"&&it.key()!=QString::number(0x6010)
+                &&it.key()!=QString::number(0x6800)&&it.key()!=QString::number(0x6900))it.value()=enabled?1:0;
+        status["tec103_connected"]=enabled;
         publish();
         for(auto id:devices) {
             auto *button=action(id);
@@ -1153,11 +1157,21 @@ static void simulatorRefreshBudget()
         auto actions = grid->findChildren<QToolButton *>("homeDeviceActionButton");
         actions.removeAll(MainWindowRtcmTestAccess::state(window).home_motion_action_btn_);
         require(actions.size() == 9, "refresh budget covers all nine devices");
-        require(waitUntil([&] {
+        const bool connected=waitUntil([&] {
             return std::all_of(actions.cbegin(), actions.cend(), [](auto *button) {
                 return button->property("state") == "connected";
             });
-        }, 20000), "refresh budget waits for every supported current-firmware device");
+        }, 20000);
+        if(!connected) {
+            const auto& current=MainWindowRtcmTestAccess::state(window);
+            std::cerr<<"Refresh startup "<<(uiTest?"UI simulator":"Local simulator")
+                <<": queued="<<current.fpga_action_queue_.size()<<" busy="<<(uiTest?current.fpga_sim_busy_:current.fpga_busy_)
+                <<" activeDevice="<<int(current.fpga_home_action_device_)<<'\n';
+            for(auto* button:actions)std::cerr<<"  "<<button->toolTip().toStdString()
+                <<" state="<<button->property("state").toString().toStdString()
+                <<" enabled="<<button->isEnabled()<<'\n';
+        }
+        require(connected,"refresh budget waits for every supported current-firmware device");
         processFor(500);
 
         int measurements = 0, viewUpdates = 0;
@@ -1418,8 +1432,8 @@ static void localSimulatorRouting()
     QMetaObject::invokeMethod(&window,"onConnectClicked");
     check(waitUntil([&]{return connectionSuccesses==QSet<quint16>{0x4a}&&homeAction(window,"RD105")->isEnabled();}),
         "RD105-only selection connects the independent source");
-    check(lastRegisters.value(0x6a04)==1&&lastRegisters.value(0x6804)==0&&lastRegisters.value(0x6904)==0,
-        "RD105 selective connection preserves both LC UART pages");
+    check(lastRegisters.value(0x6a04)==0&&lastRegisters.value(0x6804)==1&&lastRegisters.value(0x6904)==1,
+        "TEC103 selective connection uses both physical UARTs and leaves legacy RS485 disabled");
     if(disconnect->isEnabled())disconnect->click();
     check(waitUntil([&]{return connectButton->isEnabled();}),"RD105 connection leaves the USB connection releasable");
     for(const auto &name:relaySelectionNames) window.findChild<QCheckBox*>(name)->setChecked(true);
@@ -1437,7 +1451,7 @@ static void localSimulatorRouting()
             &window,[&](quint64,const QByteArray& bytes) {
                 VaporView::FpgaVlp1::StreamParser parser;
                 for(const auto& frame:parser.feed(reinterpret_cast<const std::uint8_t*>(bytes.constData()),bytes.size()))if(frame.header.message==3 && frame.payload.size()>=12) {
-                    const auto address=qFromLittleEndian<quint32>(frame.payload.data());rdReads+=address==0x6a80;aiReads+=address==0x6680;asciiStarts+=address==0x6240;
+                    const auto address=qFromLittleEndian<quint32>(frame.payload.data());rdReads+=address==0x6818||address==0x6918;aiReads+=address==0x6680;asciiStarts+=address==0x6240;
                 }
             },Qt::QueuedConnection);
         auto* readRd=window.findChild<QToolButton*>("temperatureFpgaReadParameters");
@@ -1525,8 +1539,15 @@ static void localSimulatorRouting()
         auto *button=homeAction(window,name);
         for(bool enabled:{false,true}) {
             button->click();
-            check(waitUntil([&]{return button->isEnabled()&&button->property("state")== (enabled?"connected":"disconnected");},10000),
-                "local home action confirms sensor or acquisition enable through actual VLP1 readback");
+            const bool completed=waitUntil([&]{return button->isEnabled()&&button->property("state")== (enabled?"connected":"disconnected");},10000);
+            if(!completed) {
+                const auto& current=MainWindowRtcmTestAccess::state(window);
+                std::cerr<<"Local home action "<<name.toStdString()<<" enabled="<<enabled
+                    <<" state="<<button->property("state").toString().toStdString()
+                    <<" available="<<button->isEnabled()<<" queue="<<current.fpga_action_queue_.size()
+                    <<" busy="<<current.fpga_busy_<<" activeDevice="<<int(current.fpga_home_action_device_)<<'\n';
+            }
+            check(completed,"local home action confirms sensor or acquisition enable through actual VLP1 readback");
             check(disconnect->isEnabled()&&stack->currentIndex()==0,"individual stop keeps USB open and stays on home");
             if(name==QStringLiteral("波形源"))check(waveEnabled->isEnabled()&&waveEnabled->isChecked(),
                 "local VLP1 start and stop preserve desired acquisition selection");
@@ -1835,10 +1856,14 @@ static void simulatedMonitorActions()
     require(waitUntil([&]{return outputPercent(1)>0&&outputPercent(2)<0;}),
         "home overview displays positive and negative RD105 output percentages from decoded simulator data");
     outputs[0]->click();
-    require(waitUntil([&]{return !outputs[0]->isChecked()&&outputPercent(1)==0&&outputPercent(2)<0&&!confirmedOutputs.value(1,true);}),
+    const bool firstStopped=waitUntil([&]{return !outputs[0]->isChecked()&&outputPercent(1)==0&&outputPercent(2)<0&&!confirmedOutputs.value(1,true);},6000);
+    if(!firstStopped)std::cerr<<"TEC103 stop first: channel="<<outputs[0]->property("temperatureChannel").toInt()
+        <<" checked="<<outputs[0]->isChecked()<<" percents="<<outputPercent(1)<<','<<outputPercent(2)
+        <<" confirmed="<<confirmedOutputs.value(1,true)<<','<<confirmedOutputs.value(2,true)<<'\n';
+    require(firstStopped,
         "stopping channel one displays zero output while channel two keeps running");
     outputs[1]->click();
-    require(waitUntil([&]{return !outputs[1]->isChecked()&&outputPercent(2)==0&&!confirmedOutputs.value(2,true);}),"both simulated outputs can be stopped independently");
+    require(waitUntil([&]{return !outputs[1]->isChecked()&&outputPercent(2)==0&&!confirmedOutputs.value(2,true);},6000),"both simulated outputs can be stopped independently");
     for(auto *object:watched)object->removeEventFilter(&outputState);
     require(!outputState.actionsLocked,"RD105 output commands never disable unrelated home connection buttons");
     require(!outputState.capsuleChanged,"RD105 output enable and disable never flash connected device capsules to unavailable");

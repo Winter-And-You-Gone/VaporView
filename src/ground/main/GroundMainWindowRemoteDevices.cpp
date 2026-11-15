@@ -2766,7 +2766,9 @@ void MainWindow::updateTemperatureControllerTitleText()
 
     const QString portText = state_->local_device_config_.temperatureController.port;
     const bool hasPort = !portText.isEmpty() && !portText.startsWith(QStringLiteral("--"));
-    const QString base = state_->is_english_
+    const QString base = isFpgaRelayPath()?(state_->is_english_
+        ?QStringLiteral("TEC103 Laser Temperature · LC0 / LC1")
+        :QStringLiteral("TEC103 激光温控 · 原位 / 遥测")):state_->is_english_
         ? QStringLiteral("RD105 Laser Driver Board Temperature Controller")
         : QStringLiteral("RD105激光驱动板温控器");
     const QString portDisplay = hasPort
@@ -3279,7 +3281,8 @@ void MainWindow::onRd105SessionOperationStarted(
             temperatureCommandStatusText(command, channel, true));
     }
     QVariantMap fields = temperatureCommandLogFields(command, payload, channel);
-    fields.insert(QStringLiteral("device"), QStringLiteral("RD105"));
+    fields.insert(QStringLiteral("device"), isFpgaRelayPath()?QStringLiteral("TEC103"):QStringLiteral("RD105"));
+    if(isFpgaRelayPath()) {fields.insert(QStringLiteral("uart_bridge"),channel==2?QStringLiteral("LC1"):QStringLiteral("LC0"));fields.insert(QStringLiteral("instrument_channel"),1);}
     fields.insert(QStringLiteral("execution_path"),
                   rd105ExecutionPath(state_->rd105_device_session_
                       ? state_->rd105_device_session_->backend()
@@ -3288,7 +3291,7 @@ void MainWindow::onRd105SessionOperationStarted(
     fields.insert(QStringLiteral("ui_visibility"), QStringLiteral("details"));
     publishTemperatureCommandLog(VaporView::LogLevel::Info,
                                  QStringLiteral("temperature_command_sent"),
-                                 QStringLiteral("RD105 温控命令已提交。"),
+                                 QStringLiteral("激光温控命令已提交。"),
                                  fields);
     restoreTemperatureCommandUi(command, channel);
 }
@@ -3318,7 +3321,20 @@ void MainWindow::onRd105SessionOperationFinished(
 
     if (result.backend == VaporView::Ground::Devices::Rd105Backend::Local || isFpgaRelayPath())
     {
-        if (result.has_latest_data &&
+        if (isFpgaRelayPath() && result.has_latest_data && result.command!=VaporView::CommandId::QueryDeviceStatus) {
+            const auto index=qBound(1,int(result.payload.channel),2)-1;
+            auto& current=state_->current_temperature_controller_.channels[size_t(index)];
+            const auto& incoming=result.latest_data.channels[size_t(index)];
+            current.target_temperature_c=incoming.target_temperature_c;
+            current.measured_temperature_c=incoming.measured_temperature_c;
+            current.output_percent=incoming.output_percent;
+            current.output_current_a=incoming.output_current_a;
+            current.output_enabled=incoming.output_enabled;
+            current.output_mode=incoming.output_mode;
+            current.sensor_resistance_ohm=incoming.sensor_resistance_ohm;
+            state_->current_temperature_controller_.timestamp=std::max(state_->current_temperature_controller_.timestamp,result.latest_data.timestamp);
+        }
+        else if (result.has_latest_data &&
             result.latest_data.timestamp >= state_->current_temperature_controller_.timestamp)
         {
             state_->current_temperature_controller_ = result.latest_data;
@@ -3375,7 +3391,8 @@ void MainWindow::onRd105SessionOperationFinished(
     }
 
     QVariantMap fields = temperatureCommandLogFields(result.command, result.payload, channel);
-    fields.insert(QStringLiteral("device"), QStringLiteral("RD105"));
+    fields.insert(QStringLiteral("device"), isFpgaRelayPath()?QStringLiteral("TEC103"):QStringLiteral("RD105"));
+    if(isFpgaRelayPath()) {fields.insert(QStringLiteral("uart_bridge"),channel==2?QStringLiteral("LC1"):QStringLiteral("LC0"));fields.insert(QStringLiteral("instrument_channel"),1);}
     fields.insert(QStringLiteral("execution_path"), rd105ExecutionPath(result.backend));
     fields.insert(QStringLiteral("request_id"), result.request_id);
     fields.insert(QStringLiteral("outcome"), rd105OutcomeName(result.outcome));
@@ -3387,7 +3404,7 @@ void MainWindow::onRd105SessionOperationFinished(
         fields.insert(QStringLiteral("ui_visibility"), QStringLiteral("details"));
         publishTemperatureCommandLog(VaporView::LogLevel::Info,
                                      QStringLiteral("temperature_command_completed"),
-                                     QStringLiteral("RD105 温控命令执行成功。"),
+                                     QStringLiteral("激光温控命令执行成功。"),
                                      fields);
     }
     else if (result.error_code == VaporView::CommandErrorCode::DeviceNotConnected ||
@@ -3403,8 +3420,8 @@ void MainWindow::onRd105SessionOperationFinished(
             VaporView::LogLevel::Warning,
             QStringLiteral("temperature_command_rejected_not_connected"),
             result.backend == VaporView::Ground::Devices::Rd105Backend::Remote
-                ? QStringLiteral("天空端 RD105 温控器不可用，无法下发温控命令。")
-                : QStringLiteral("本地 RD105 温控器未连接，无法下发温控命令。"),
+                ? QStringLiteral("天空端 激光温控器不可用，无法下发温控命令。")
+                : QStringLiteral("本地 激光温控器未连接，无法下发温控命令。"),
             fields);
     }
     else if (result.outcome == VaporView::Ground::Devices::Rd105OperationOutcome::Timeout)
@@ -3417,7 +3434,7 @@ void MainWindow::onRd105SessionOperationFinished(
                           channel));
         publishTemperatureCommandLog(VaporView::LogLevel::Warning,
                                      QStringLiteral("temperature_command_ack_timeout"),
-                                     QStringLiteral("RD105 温控命令 ACK 等待超时。"),
+                                     QStringLiteral("激光温控命令 ACK 等待超时。"),
                                      fields);
     }
     else
@@ -3433,7 +3450,7 @@ void MainWindow::onRd105SessionOperationFinished(
                           channel));
         publishTemperatureCommandLog(VaporView::LogLevel::Error,
                                      QStringLiteral("temperature_command_failed"),
-                                     QStringLiteral("RD105 温控命令执行失败。"),
+                                     QStringLiteral("激光温控命令执行失败。"),
                                      fields);
     }
 

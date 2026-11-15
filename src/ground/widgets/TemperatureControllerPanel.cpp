@@ -3852,7 +3852,7 @@ void TemperatureControllerPanel::updateData(const VaporView::TemperatureControll
         if (!pending_controller_mode_ && !controllerModeHasFocus)
         {
             const int modeIndex = controller_mode_combo_->findData(controllerData.valid ? controllerData.controller_mode : 0);
-            const int selected = modeIndex >= 0 ? modeIndex : 0;
+            const int selected = controllerData.valid && controllerData.controller_mode<0?-1:modeIndex >= 0 ? modeIndex : 0;
             if (controller_mode_combo_->currentIndex() != selected) controller_mode_combo_->setCurrentIndex(selected);
         }
     }
@@ -3889,7 +3889,7 @@ void TemperatureControllerPanel::updateData(const VaporView::TemperatureControll
         {
             const QSignalBlocker blocker(common_.rs485_baud_combo);
             const int baudIndex = common_.rs485_baud_combo->findData(controllerData.rs485_baud_index);
-            const int selected = baudIndex >= 0 ? baudIndex : 0;
+            const int selected = controllerData.rs485_baud_index<0?-1:baudIndex >= 0 ? baudIndex : 0;
             if (common_.rs485_baud_combo->currentIndex() != selected) common_.rs485_baud_combo->setCurrentIndex(selected);
         }
         if (pending_common_edits_.overtemp_output_mode &&
@@ -3901,7 +3901,7 @@ void TemperatureControllerPanel::updateData(const VaporView::TemperatureControll
         {
             const QSignalBlocker blocker(common_.overtemp_output_combo);
             const int overtempIndex = common_.overtemp_output_combo->findData(controllerData.overtemp_output_mode);
-            const int selected = overtempIndex >= 0 ? overtempIndex : 0;
+            const int selected = controllerData.overtemp_output_mode<0?-1:overtempIndex >= 0 ? overtempIndex : 0;
             if (common_.overtemp_output_combo->currentIndex() != selected) common_.overtemp_output_combo->setCurrentIndex(selected);
         }
     }

@@ -251,8 +251,11 @@ supported sensors reach that host through `FPGA -> USB/VLP1`. Thus Local and
 Remote each have both a direct and a relay variant. The Device Configuration
 page owns this second selector; the FPGA page reports it but does not redefine
 it as FPGA USB ownership. The current VLP1 source set covers PTB210/BMP390,
-EPSILON, SHT45, SDFM300 and AI8. RD105 remains a serial-only compatibility
-device until a documented FPGA source is available.
+EPSILON, SHT45, SDFM300 and AI8. Two TEC103 controllers use the LC0/LC1 raw
+UART bridges at 38400/8N1, with native ASCII semantics in the shared device core.
+Their semantic temperature data follows the existing local/remote temperature
+telemetry and recording path; legacy 6A measurement frames do not supply these
+GPIO readings. See [TEC103 integration](tec103_gpio.md).
 
 ### Session recording and viewing
 

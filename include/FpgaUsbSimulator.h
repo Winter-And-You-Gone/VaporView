@@ -9,7 +9,8 @@ namespace VaporView::Ground::Devices
 enum class FpgaSimulatorStartup { RunningDemo, Idle };
 // Rd105Integrated models the new firmware. The two HCD2 profiles retain older
 // capability sets; HistoricalExtensions additionally exposes withdrawn AI8
-// parameter transactions for explicit compatibility tests.
+// parameter transactions for explicit compatibility tests. All profiles also
+// model two explicitly simulated TEC103 devices on the LC0/LC1 raw UARTs.
 enum class FpgaSimulatorFirmware { CurrentHcd2, Hcd2Ai8Scan, HistoricalExtensions, Rd105Integrated };
 class FpgaUsbSimulator : public FpgaUsbTransport
 {

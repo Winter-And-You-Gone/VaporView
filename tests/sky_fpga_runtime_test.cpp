@@ -549,7 +549,19 @@ int main(int argc,char **argv)
     operation.payload=FpgaRemote::encodeControl({{"op","connect"},{"backend","auto"},{"locator","mock"}});
     command.payload=TelemetryCodec::serializeDeviceOperationRequest(operation);
     runtime.submitCommand(command,[](const SkyCommandResult&) {},"ipc-after-stop");
+    waitUntil([&]{return runtime.currentFpgaStatus().value("ready").toBool();},
+        "post-stop IPC fixture starts a USB producer before testing repeated-stop teardown");
     runtime.stop();
     require(producerClosed->load(),"stop joins and closes USB producer even when runtime was already stopped");
+    auto cancelledMock=std::make_unique<ScriptedTransport>();
+    QPointer<ScriptedTransport> cancelledProducer(cancelledMock.get());
+    runtime.setFpgaTransportForTesting(std::move(cancelledMock));
+    operation.request_id=501;command.payload=TelemetryCodec::serializeDeviceOperationRequest(operation);
+    runtime.submitCommand(command,[](const SkyCommandResult&) {},"queued-ipc-after-stop");
+    runtime.stop();
+    require(!cancelledProducer,"immediate repeated stop destroys a producer even if its queued open was cancelled");
+    QCoreApplication::processEvents();
+    require(!runtime.currentFpgaStatus().value("connected").toBool() && !cancelledProducer,
+        "a cancelled post-stop request cannot open the USB producer later");
     return 0;
 }

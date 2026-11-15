@@ -5,6 +5,7 @@
 #include "FpgaSensorAdapter.h"
 #include "FpgaWaveformAssembler.h"
 #include "SensorTransportPath.h"
+#include "data_types.h"
 #include <QMap>
 #include <QElapsedTimer>
 #include <QSet>
@@ -12,6 +13,7 @@
 #include <QTimer>
 #include <QJsonObject>
 #include <functional>
+#include <atomic>
 #include <memory>
 
 namespace VaporView::Ground::Devices { class FpgaDeviceController; class FpgaUsbSimulator; }
@@ -46,6 +48,7 @@ public:
     void setUsbDiscoveryResult(const QJsonObject &result);
     quint64 usbDiscoveryGeneration() const { return usbDiscoveryGeneration_; }
     void setHardwareValues(const QMap<quint32, quint32> &values);
+    void setTemperatureConnectionState(bool connected, const QString& detail = {});
     void setManagementState(const QJsonObject& state);
     void finishMotorOperation(const QJsonObject& request, bool success);
     void updateSensor(const VaporView::FpgaSensor::Reading &reading);
@@ -56,6 +59,7 @@ public:
     void setRecordingState(bool active, const QString &detail = {});
     void setSensorTransportPath(VaporView::SensorTransportPath path);
     void simulateOperation(const QJsonObject &request);
+    void cancelPendingUiTestOperations();
     void setUiTestState(bool enabled, bool dataStalled = false,
                         bool partialFailure = false, qint64 elapsedMs = 0,
                         VaporView::SensorTransportPath path = VaporView::SensorTransportPath::DirectDevices);
@@ -86,6 +90,7 @@ signals:
     void exportRequested(const QString &path);
     void recordingRequested(bool enable);
     void simulationMeasurementsUpdated(const VaporView::FpgaSensor::AdaptedMeasurements &measurements);
+    void simulationTemperatureDataUpdated(const VaporView::TemperatureControllerData& data);
     void simulationOperationFailed();
     void simulationWaveformUpdated(const VaporView::FpgaWave::CompletedStream &stream);
 private:
@@ -121,6 +126,7 @@ private:
         QJsonObject savedUsb;
         bool savedUsbRemote=false, savedUsbAvailable=true;
         quint64 motorGeneration=0;
+        std::shared_ptr<std::atomic<quint64>> dispatchGeneration=std::make_shared<std::atomic<quint64>>(0);
     } simulation_;
     FpgaControlConfig config_;
     QVector<Field> fields_;

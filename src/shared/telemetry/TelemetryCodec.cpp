@@ -1246,14 +1246,15 @@ QByteArray TelemetryCodec::serializeTemperatureControllerStatus(const Temperatur
             appendLe<qint16>(payload, static_cast<qint16>(channel.polynomial_exponents[i]));
         }
     }
-    appendLe<quint16>(payload, static_cast<quint16>(std::clamp(data.controller_mode, 0, 65535)));
+    const auto temperatureSetting=[](int value) {return value<0?quint16(0xffff):quint16(std::clamp(value,0,65534));};
+    appendLe<quint16>(payload, temperatureSetting(data.controller_mode));
     for (const TemperatureControllerChannelData& channel : data.channels)
     {
         appendLe<quint16>(payload, static_cast<quint16>(std::clamp(channel.auto_pid_mode, 0, 65535)));
     }
-    appendLe<quint16>(payload, static_cast<quint16>(std::clamp(data.device_address, 0, 65535)));
-    appendLe<quint16>(payload, static_cast<quint16>(std::clamp(data.rs485_baud_index, 0, 65535)));
-    appendLe<quint16>(payload, static_cast<quint16>(std::clamp(data.overtemp_output_mode, 0, 65535)));
+    appendLe<quint16>(payload, temperatureSetting(data.device_address));
+    appendLe<quint16>(payload, temperatureSetting(data.rs485_baud_index));
+    appendLe<quint16>(payload, temperatureSetting(data.overtemp_output_mode));
     for (const TemperatureControllerChannelData& channel : data.channels)
     {
         appendDoubleLe(payload, channel.overtemp_upper_c);
@@ -1360,7 +1361,7 @@ bool TelemetryCodec::parseTemperatureControllerStatus(const QByteArray& payload,
     quint16 controllerMode = 0;
     if (readLe(payload, offset, controllerMode))
     {
-        data.controller_mode = controllerMode;
+        data.controller_mode = controllerMode==0xffff?-1:int(controllerMode);
         for (TemperatureControllerChannelData& channel : data.channels)
         {
             quint16 autoPidMode = 0;
@@ -1375,13 +1376,13 @@ bool TelemetryCodec::parseTemperatureControllerStatus(const QByteArray& payload,
         quint16 overtempOutputMode = 0;
         if (readLe(payload, offset, deviceAddress))
         {
-            data.device_address = deviceAddress;
+            data.device_address = deviceAddress==0xffff?-1:int(deviceAddress);
             if (readLe(payload, offset, rs485BaudIndex))
             {
-                data.rs485_baud_index = rs485BaudIndex;
+                data.rs485_baud_index = rs485BaudIndex==0xffff?-1:int(rs485BaudIndex);
                 if (readLe(payload, offset, overtempOutputMode))
                 {
-                    data.overtemp_output_mode = overtempOutputMode;
+                    data.overtemp_output_mode = overtempOutputMode==0xffff?-1:int(overtempOutputMode);
                 }
             }
         }

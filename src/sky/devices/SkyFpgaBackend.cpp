@@ -1,12 +1,29 @@
 #include "SkyFpgaBackend.h"
 #include "FpgaTelemetry.h"
 #include <QPointer>
+#include <QDateTime>
 #include <QSet>
 #include <cmath>
 #include <atomic>
 #include <array>
 
 namespace VaporView {
+namespace {
+void dispatchWhenIdle(QPointer<Ground::Devices::FpgaDeviceController> controller,
+    const std::shared_ptr<std::atomic_bool>& cancelled,qint64 deadline,bool bypassBusy,
+    std::function<void()> action,std::function<void()> expired)
+{
+    if(!controller || cancelled->load(std::memory_order_acquire))return;
+    if(!bypassBusy && controller->busy()) {
+        if(QDateTime::currentMSecsSinceEpoch()>=deadline) {expired();return;}
+        QTimer::singleShot(10,controller,[controller,cancelled,deadline,bypassBusy,
+            action=std::move(action),expired=std::move(expired)]() mutable {
+            dispatchWhenIdle(controller,cancelled,deadline,bypassBusy,std::move(action),std::move(expired));
+        });return;
+    }
+    action();
+}
+}
 bool SkyFpgaBackend::validateOperation(const QJsonObject& o, QString *error)
 {
     return FpgaRemote::validateControl(o, error);
@@ -45,6 +62,27 @@ SkyFpgaBackend::SkyFpgaBackend(std::unique_ptr<Ground::Devices::FpgaUsbTransport
         status_["sensor_rates_hz"] = rates;
         emit measurementUpdated(m);
     });
+    auto temperatureClock=std::make_shared<QElapsedTimer>();
+    connect(controller_, &Ground::Devices::FpgaDeviceController::temperatureDataUpdated, this,
+        [this,temperatureClock](const TemperatureControllerData& data) {
+            double hz=0;
+            if(status_.value("tec103_connected").toBool() && data.timestamp!=std::chrono::steady_clock::time_point{}) {
+                if(temperatureClock->isValid() && temperatureClock->elapsed()>0)hz=1000.0/temperatureClock->elapsed();
+                temperatureClock->restart();
+            } else temperatureClock->invalidate();
+            auto rates=status_.value("sensor_rates_hz").toObject();rates[QString::number(0x4a)]=hz;
+            status_["sensor_rates_hz"]=rates;
+            emit temperatureDataUpdated(data);emit statusChanged(status_);
+        });
+    connect(controller_, &Ground::Devices::FpgaDeviceController::temperatureConnectionChanged, this,
+        [this,temperatureClock](bool connected,const QString& detail) {
+            status_["tec103_connected"]=connected;status_["tec103_detail"]=detail;
+            if(!connected) {
+                temperatureClock->invalidate();auto rates=status_.value("sensor_rates_hz").toObject();
+                rates[QString::number(0x4a)]=0;status_["sensor_rates_hz"]=rates;
+            }
+            emit statusChanged(status_);emit temperatureConnectionChanged(connected,detail);
+        });
     // Count complete DLIA cycles on the USB worker before preview thinning and UI coalescing.
     auto cycleCount = std::make_shared<std::atomic<quint64>>(0);
     auto lastCycles = std::make_shared<std::array<std::pair<quint32, quint64>, 2>>();
@@ -132,6 +170,7 @@ void SkyFpgaBackend::setConfiguration(const FpgaControlConfig& configuration)
 void SkyFpgaBackend::shutdown()
 {
     if (!worker_.isRunning()) return;
+    if(operationCancelled_)operationCancelled_->store(true,std::memory_order_release);
     QMetaObject::invokeMethod(controller_, &Ground::Devices::FpgaDeviceController::disconnectDevice, Qt::BlockingQueuedConnection);
     worker_.quit(); worker_.wait(); controller_ = nullptr;
     if (completion_) { auto callback = std::move(completion_); activeRequest_ = 0;
@@ -158,6 +197,7 @@ void SkyFpgaBackend::submit(const QJsonObject& operation, Completion completion,
         return;
     }
     if (activeRequest_ && motorStop) {
+        if(operationCancelled_)operationCancelled_->store(true,std::memory_order_release);
         const auto observer = operationObserver_;
         QMetaObject::invokeMethod(controller_, [observer] { if (observer) QObject::disconnect(*observer); }, Qt::QueuedConnection);
         interruptedCompletion = std::move(completion_); activeRequest_ = 0;
@@ -170,9 +210,11 @@ void SkyFpgaBackend::submit(const QJsonObject& operation, Completion completion,
     // The handle is created here but read and written only on the controller thread.
     // Timeout and normal completion both disconnect this operation's observer.
     const auto observer = std::make_shared<QMetaObject::Connection>();
+    const auto cancelled=std::make_shared<std::atomic_bool>(false);operationCancelled_=cancelled;
     operationObserver_ = observer;
-    QTimer::singleShot(operationTimeoutMs_,this,[this,identity,operation,observer] {
+    QTimer::singleShot(operationTimeoutMs_,this,[this,identity,operation,observer,cancelled] {
         if (activeRequest_!=identity) return;
+        cancelled->store(true,std::memory_order_release);
         // Cancel the receive/command loop; a timeout never resubmits a physical write.
         QMetaObject::invokeMethod(controller_, [controller = controller_, identity, operation, observer] {
             QObject::disconnect(*observer);
@@ -185,7 +227,9 @@ void SkyFpgaBackend::submit(const QJsonObject& operation, Completion completion,
             : QStringLiteral("FPGA operation timed out; physical outcome is unknown. Reconnect and read back before retrying."),status_);
     });
     QPointer<SkyFpgaBackend> self(this);
-    QMetaObject::invokeMethod(controller_, [self, controller = controller_, identity, operation, correlationId, sessionId, observer] {
+    const auto deadline=QDateTime::currentMSecsSinceEpoch()+10000;
+    auto dispatch=[self, controller = controller_, identity, operation, correlationId, sessionId, observer,cancelled] {
+        if(!self || cancelled->load(std::memory_order_acquire))return;
         controller->setOperationLogContext(identity, correlationId, sessionId);
         if (!correlationId.isEmpty() && self) {
             LogRecord record;
@@ -210,7 +254,8 @@ void SkyFpgaBackend::submit(const QJsonObject& operation, Completion completion,
             }, Qt::QueuedConnection);
             return;
         }
-        auto finish = [self, identity, operation, controller](CommandErrorCode code, const QString& detail) {
+        auto finish = [self, identity, operation, controller,cancelled](CommandErrorCode code, const QString& detail) {
+            if(cancelled->exchange(true,std::memory_order_acq_rel))return;
             controller->clearOperationLogContext(identity);
             if (!self) return;
             QJsonObject registers;
@@ -274,7 +319,20 @@ void SkyFpgaBackend::submit(const QJsonObject& operation, Completion completion,
         else if (op == "temperature") controller->setTemperature(operation.value("celsius").toDouble());
         else controller->executeOperation(operation);
         if (!controller->busy()) { QObject::disconnect(*observer); finish(CommandErrorCode::ConfigApplyFailed, QStringLiteral("Operation was not started; verify FPGA state.")); }
-    }, Qt::QueuedConnection);
+    };
+    auto expired=[self,identity,cancelled] {
+        if(cancelled->exchange(true,std::memory_order_acq_rel))return;
+        if(self)QMetaObject::invokeMethod(self,[self,identity] {
+            if(!self || self->activeRequest_!=identity)return;
+            auto callback=std::move(self->completion_);self->activeRequest_=0;
+            if(callback)callback(CommandErrorCode::DeviceOperationBusy,
+                QStringLiteral("Waiting for the FPGA to become idle timed out; the operation was not sent."),self->status_);
+        },Qt::QueuedConnection);
+    };
+    QMetaObject::invokeMethod(controller_,[controller=QPointer(controller_),cancelled,deadline,motorStop,
+        action=std::move(dispatch),expired=std::move(expired)]() mutable {
+        dispatchWhenIdle(controller,cancelled,deadline,motorStop,std::move(action),std::move(expired));
+    },Qt::QueuedConnection);
     if (interruptedCompletion) QTimer::singleShot(0, this,
         [callback = std::move(interruptedCompletion), status = std::move(interruptedStatus)] {
             // STOP already owns the operation slot and has been sent to the worker.

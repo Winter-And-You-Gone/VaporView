@@ -23,7 +23,7 @@ void FpgaDeviceController::readExtensions()
     for(auto& step:remaining)steps_.push_back(std::move(step));
 }
 
-void FpgaDeviceController::executeExtension(const QJsonObject& request)
+void FpgaDeviceController::executeExtension(const QJsonObject& request, bool polling)
 {
     const auto reject=[this,&request](const QString& detail) {
         emit extensionCompleted({{"op",request.value("op")},{"ticket",request.value("ticket")},{"ok",false},{"detail",detail}});
@@ -33,18 +33,32 @@ void FpgaDeviceController::executeExtension(const QJsonObject& request)
     if(!ready_ || busy()) {reject(QStringLiteral("FPGA 未就绪或已有事务正在执行。"));return;}
     const auto op=request.value("op").toString();
     const quint16 source=quint16(request.value("source").toInt());
-    const quint32 required=op=="epsilon_mailbox"?FpgaExtensions::EpsilonMailbox:
+    if(source==0x4a && (op=="instrument" || op=="device_temperature")) {
+        reject(QStringLiteral("现场 TEC103 使用 LC0/LC1 GPIO UART；旧 6A RS485 温控事务已停用。"));return;
+    }
+    const quint32 required=op=="uart_exchange"?0:op=="epsilon_mailbox"?FpgaExtensions::EpsilonMailbox:
         op=="dlia_cutoff"?FpgaExtensions::DliaCutoff:(op=="ai8_scan" || op=="ai8_cache")?FpgaExtensions::Ai8Scan:
         source==0x4a?FpgaExtensions::Rd105:op=="instrument"?FpgaExtensions::Ai8Parameters:
         request.value("channel").toInt()?FpgaExtensions::Ai8Scan:0;
     if(required && !(extensions()&required)) {reject(QStringLiteral("当前固件未报告此扩展能力；请更新下位机后重新连接。"));return;}
-    const QString label=op=="device_temperature"?(source==0x4a?QStringLiteral("RD105 设温与确认"):QStringLiteral("AI8 设温与确认")):
+    const QString label=op=="uart_exchange"?QStringLiteral("TEC103 GPIO 原生通信"):
+        op=="device_temperature"?(source==0x4a?QStringLiteral("RD105 设温与确认"):QStringLiteral("AI8 设温与确认")):
         op=="instrument"?(source==0x4a?QStringLiteral("RD105 参数事务与回读"):QStringLiteral("AI8 参数事务与回读")):
         op=="epsilon_mailbox"?QStringLiteral("EPSILON 命令与 RTCM 转发"):op=="ai8_cache"?QStringLiteral("AI8 通道缓存读回"):
         op=="ai8_scan"?QStringLiteral("AI8 扫描配置"):QStringLiteral("DLIA 截止频率配置");
-    if(!begin(label))return;
+    if(!begin(label,false,!polling))return;
+    tec103PollExchange_=polling;
     extensionRequest_=request;extensionResult_={{"op",op},{"ticket",request.value("ticket")},{"source",source},{"verified",false}};
-    if(op=="instrument") {
+    if(op=="uart_exchange") {
+        const auto data=QByteArray::fromBase64(request.value("data").toString().toLatin1());
+        if(!data.contains("=?@") && data!="INQUIRE=1@" && data!="DATADEMAND=1@") {
+            const int channel=request.value("channel").toInt();
+            if(channel>=1 && channel<=2) {
+                tec103Identified_[size_t(channel-1)]=false;++tec103Revision_[size_t(channel-1)];
+            }
+        }
+        steps_.push_back({Kind::UartExchange});
+    } else if(op=="instrument") {
         const quint32 base=source==0x4a?0x6a00:0x6600;
         if(!(registers_.value(base+4)&1)) {fail(QStringLiteral("参数操作前请先启用对应设备。"));return;}
         const bool rd=source==0x4a;

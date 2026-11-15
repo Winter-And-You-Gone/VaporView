@@ -179,6 +179,8 @@ public:
                                                      quint16 recordType,
                                                      const void *data,
                                                      size_t size);
+    bool recordTemperatureControllerStatus(quint64 hostTimestampUs,
+                                            const TemperatureControllerData& data);
     bool recordRawSystemTemperatureControllerResponse(quint64 hostTimestampUs,
                                                       quint16 recordType,
                                                       const void *data,

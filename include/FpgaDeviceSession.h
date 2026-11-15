@@ -71,6 +71,7 @@ public:
     // replay tests and callers that own their event loop.
     void poll();
     void cancelQueuedCommands();
+    void cancelCommands(const QVector<quint32>& sequences);
     void ingestReplayBytes(const QByteArray& bytes);
     void flushWaveforms(quint16 source = 0);
 
@@ -79,6 +80,12 @@ public:
     quint32 readRegisters(quint32 address, quint16 count, quint16 source = 0x0001);
     quint32 writeRegisters(quint32 address, const QVector<quint32>& values,
                            quint16 flags = 0, quint16 source = 0x0001);
+    // One USB transfer, with a separately matched acknowledgement for every
+    // byte written to the same FIFO register. Requires an idle command queue.
+    QVector<quint32> writeRepeatedRegister(quint32 address, const QByteArray& bytes,
+                                           quint16 source = 0x0001);
+    QVector<quint32> readRepeatedRegister(quint32 address, quint16 count,
+                                          quint16 source = 0x0001);
     quint32 maskedWrite(quint32 address, quint32 mask, quint32 value,
                         quint16 source = 0x0001);
     quint32 commitConfig(quint64 moduleMask, quint16 source = 0x0001);
@@ -122,6 +129,7 @@ private:
         quint16 source = 0;
         quint16 message = 0;
         QByteArray bytes;
+        bool readRetryAllowed = true;
     };
 
     struct PendingCommand
@@ -134,6 +142,7 @@ private:
     quint32 enqueue(quint16 source, quint16 message,
                     const std::vector<std::uint8_t>& bytes);
     void dispatchNext();
+    QVector<quint32> dispatchRepeated(const QVector<QueuedCommand>& commands);
     void processFrame(const VaporView::FpgaVlp1::Frame& frame);
     void setState(FpgaSessionState state, const QString& detail);
     static bool parseCapabilities(const QByteArray& payload, FpgaCapabilities& result);
@@ -147,6 +156,7 @@ private:
     QQueue<QueuedCommand> commandQueue_;
     std::optional<PendingCommand> pendingCommand_;
     QMap<quint32, PendingCommand> motorSafetyCommands_;
+    QMap<quint32, PendingCommand> repeatedCommands_;
     FpgaCapabilities capabilities_;
     FpgaSessionState state_ = FpgaSessionState::Closed;
     QString stateDetail_;

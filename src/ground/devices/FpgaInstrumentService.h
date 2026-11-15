@@ -16,4 +16,6 @@ LocalAi8OperationResult writeFpgaAi8Page(const FpgaInstrumentCall& call,
     const Ai8TemperatureControllerProtocol::PageData& data);
 LocalTemperatureCommandResult sendFpgaTemperatureCommand(const FpgaInstrumentCall& call,
     CommandId command,const TemperatureControllerCommand& payload);
+LocalTemperatureCommandResult readFpgaTec103Data(const FpgaInstrumentCall& call,
+    int logicalChannel,bool full);
 }

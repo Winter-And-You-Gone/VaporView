@@ -14,6 +14,7 @@
 #include "ground/session/GroundRecordingService.h"
 #include "ground/main/GatewaySettingsDialog.h"
 #include <QSet>
+#include <atomic>
 
 class FpgaControlPage;
 namespace VaporView::Ground::Calibration { class WaterCalibrationPage; class CalibrationService; class RealtimePeakBus; }
@@ -183,6 +184,7 @@ struct MainWindowState
     Devices::RemoteConfigSession remote_config_session_;
     Devices::FpgaControlSession fpga_session_;
     quint32 fpga_extensions_=0;
+    bool fpga_tec103_connected_=false;
     std::function<void(const QJsonObject&)> fpga_instrument_reply_;
     struct FpgaQueuedAction {
         std::function<void()> run;
@@ -193,6 +195,7 @@ struct MainWindowState
         std::chrono::steady_clock::time_point deadline;
     };
     QList<FpgaQueuedAction> fpga_action_queue_;
+    std::shared_ptr<std::atomic<quint64>> fpga_local_dispatch_generation_=std::make_shared<std::atomic<quint64>>(0);
     QTimer *fpga_action_timer_ = nullptr;
     QSet<VaporView::SkyDeviceId> fpga_pending_home_actions_;
     QByteArray fpga_rtcm_buffer_;

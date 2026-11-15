@@ -287,15 +287,28 @@ void ptbStartupWarningGrace(){
 }
 void currentFirmwareSafety(){
     {
-        Fixture lc;lc.transport->regs[0x6804]=1;lc.connect();
+        Fixture lc;lc.transport->regs[0x6804]=1;lc.transport->regs[0x6a04]=1;lc.connect();
         require(lc.controller.hardwareValues().value(0x6800)==0x00480100
             && lc.transport->regs.value(0x6804)==1,"connection preserves an independently enabled LC0");
         for(const auto& command:lc.transport->commands)
             require(!(command.message==3 && command.address>=0x6800 && command.address<0x6a00)
-                && !(command.message==0xb && command.source==0x48),"connection recovery never writes LC pages or starts RD105 on LC0");
+                && !(command.message==3 && command.address>=0x6a00 && command.address<0x6b00)
+                && !(command.message==0xb && (command.source==0x48 || command.source==0x4a)),
+                "general connection recovery preserves raw UART state and never starts the legacy 6A temperature path");
+        require(lc.transport->regs.value(0x6a04)==1 && !lc.controller.temperatureConnected(),
+            "legacy hardware enable does not count as a verified GPIO temperature connection");
+        int legacyMeasurements=0;
+        QObject::connect(&lc.controller,&FpgaDeviceController::measurementUpdated,&lc.controller,
+            [&](const FpgaSensor::AdaptedMeasurements& value){if(value.reading.source==0x4a)++legacyMeasurements;});
+        FpgaSensor::Reading legacy;legacy.source=0x4a;legacy.kind=FpgaSensor::SensorKind::Rd105;
+        legacy.validity.structure=legacy.validity.crc=legacy.validity.deviceOnline=legacy.validity.measurement=true;
+        auto* session=lc.controller.findChild<FpgaDeviceSession*>();emit session->sensorReadingReceived(legacy);
+        QCoreApplication::processEvents();
+        require(legacyMeasurements==0,"live legacy 6A samples cannot replace native GPIO temperature data");
         lc.controller.disconnectDevice();
         for(const auto& record:lc.records)
-            require(record.fields.value("fpga_source").toUInt()!=0x48,"enabled LC0 creates no RD105 connection, timeout or cancellation log");
+            require(record.fields.value("fpga_source").toUInt()!=0x48 && record.fields.value("fpga_source").toUInt()!=0x4a,
+                "general USB recovery does not claim that an unqueried UART instrument has connected");
     }
     Fixture f;f.connect();
     int latch=-1,snapshot=-1;

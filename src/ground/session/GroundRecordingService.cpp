@@ -27,6 +27,7 @@
 #include <QTextStream>
 #include <QSaveFile>
 #include <QScopeGuard>
+#include <QStringList>
 
 #include <algorithm>
 #include <atomic>
@@ -35,6 +36,7 @@
 #include <deque>
 #include <limits>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <utility>
 
@@ -66,6 +68,7 @@ struct DeviceRawRecord
     quint16 recordType = 0;
     quint32 flags = 0;
     QByteArray payload;
+    std::optional<TemperatureControllerData> temperatureController;
 };
 
 struct TcpWavePeakSummary
@@ -621,7 +624,22 @@ public:
             record.payload = QByteArray(reinterpret_cast<const char *>(data), static_cast<int>(size));
         }
 
-        const auto result = deviceRawQueue.push(std::move(record), static_cast<quint64>(size));
+        return enqueueDeviceRecord(std::move(record), static_cast<quint64>(size));
+    }
+
+    bool recordTemperatureControllerStatus(quint64 timestampUs, const TemperatureControllerData& data)
+    {
+        std::lock_guard<std::mutex> admission(harmonicAdmissionMutex);
+        if (!workerRunning.load() || paused.load() || writeFailed.load()) return false;
+        DeviceRawRecord record;
+        record.timestampUs = timestampUs;
+        record.temperatureController = data;
+        return enqueueDeviceRecord(std::move(record), sizeof(data) + data.error_message.size());
+    }
+
+    bool enqueueDeviceRecord(DeviceRawRecord record, quint64 bytes)
+    {
+        const auto result = deviceRawQueue.push(std::move(record), bytes);
         const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
         if (result.status == VaporView::BoundedByteQueue<DeviceRawRecord>::PushStatus::Full)
         {
@@ -890,6 +908,36 @@ private:
         return true;
     }
 
+    void writeTemperatureControllerRecord(const DeviceRawRecord& record)
+    {
+        const auto& data = *record.temperatureController;
+        const auto finiteText = [](double value) {
+            return std::isfinite(value) ? QString::number(value, 'f', 6) : QString();
+        };
+        QStringList row;
+        row.reserve(24);
+        row << QString::number(record.timestampUs) << (data.valid ? QStringLiteral("true") : QStringLiteral("false"))
+            << finiteText(data.internal_temperature_c) << QString::number(data.error_code);
+        for (const auto& channel : data.channels)
+        {
+            row << finiteText(channel.target_temperature_c) << finiteText(channel.measured_temperature_c)
+                << finiteText(channel.output_percent) << finiteText(channel.output_current_a)
+                << (channel.output_enabled ? QStringLiteral("true") : QStringLiteral("false"))
+                << QString::number(channel.output_mode) << QString::number(channel.max_output_percent)
+                << QString::number(channel.kp) << QString::number(channel.ki) << QString::number(channel.kd);
+        }
+
+        std::lock_guard<std::mutex> lock(filesMutex);
+        if (writeFailed.load() || !temperatureControllerFile || !temperatureControllerFile->isOpen()) return;
+        VaporView::RecordingOutputDevice output(*storage, *temperatureControllerFile);
+        QTextStream out(&output);
+        out.setEncoding(QStringConverter::Utf8);
+        out << row.join(',') << '\n';
+        out.flush();
+        if (out.status() != QTextStream::Ok) markWriteFailure();
+        else temperatureControllerRows.fetch_add(1);
+    }
+
     void startWorkers()
     {
         if (workerRunning.load())
@@ -964,6 +1012,11 @@ private:
             DeviceRawRecord record;
             while (deviceRawQueue.waitPop(&record))
             {
+                if (record.temperatureController)
+                {
+                    writeTemperatureControllerRecord(record);
+                    continue;
+                }
                 if (record.sourceId == SessionRawDat::kSourceFpga)
                 {
                     writeFpgaRecord(record);
@@ -1204,7 +1257,7 @@ private:
         manifest.capture.telemetryPort = QString::number(options.deviceConfig.waveformPort);
         manifest.counts.sensorRows = static_cast<quint64>(std::max<qint64>(0, sensorRows.load()));
         manifest.counts.navigationStatusRows = navigationStatusRows.load();
-        manifest.counts.laserTemperatureControllerRows = 0;
+        manifest.counts.laserTemperatureControllerRows = temperatureControllerRows.load();
         manifest.counts.systemTemperatureControllerRows = 0;
         manifest.counts.waveformFrames = static_cast<quint64>(std::max<qint64>(0, waveformFrames.load()));
         manifest.counts.waveformFeatureRows = harmonicFrameCount.load();
@@ -1296,6 +1349,7 @@ private:
         rawDistanceRecordCount.store(0);
         rawWaveformRecordCount.store(0);
         rawLaserTemperatureControllerRecordCount.store(0);
+        temperatureControllerRows.store(0);
         rawSystemTemperatureControllerRecordCount.store(0);
         eventRows.store(0);
         errorRows.store(0);
@@ -1367,6 +1421,7 @@ public:
     std::atomic<quint64> rawDistanceRecordCount{0};
     std::atomic<quint64> rawWaveformRecordCount{0};
     std::atomic<quint64> rawLaserTemperatureControllerRecordCount{0};
+    std::atomic<quint64> temperatureControllerRows{0};
     std::atomic<quint64> rawSystemTemperatureControllerRecordCount{0};
     std::atomic<quint64> eventRows{0};
     std::atomic<quint64> errorRows{0};
@@ -1542,6 +1597,12 @@ bool GroundRecordingService::recordRawLaserTemperatureControllerResponse(quint64
                             hostTimestampUs,
                             data,
                             size);
+}
+
+bool GroundRecordingService::recordTemperatureControllerStatus(quint64 hostTimestampUs,
+                                                               const TemperatureControllerData& data)
+{
+    return impl_->recordTemperatureControllerStatus(hostTimestampUs, data);
 }
 
 bool GroundRecordingService::recordRawSystemTemperatureControllerResponse(quint64 hostTimestampUs,

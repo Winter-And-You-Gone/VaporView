@@ -590,6 +590,14 @@ void testWaveform()
                 parsedStatus.rs485_baud_index == 5 &&
                 parsedStatus.overtemp_output_mode == 1,
             "temperature status common settings");
+    auto unknownSettings=status;
+    unknownSettings.controller_mode=unknownSettings.device_address=unknownSettings.rs485_baud_index=unknownSettings.overtemp_output_mode=-1;
+    VaporView::TemperatureControllerData unknownReadback;
+    require(VaporView::TelemetryCodec::parseTemperatureControllerStatus(
+        VaporView::TelemetryCodec::serializeTemperatureControllerStatus(unknownSettings),unknownReadback)
+        &&unknownReadback.controller_mode==-1 &&unknownReadback.device_address==-1
+        &&unknownReadback.rs485_baud_index==-1 &&unknownReadback.overtemp_output_mode==-1,
+        "independent TEC103 unknown common settings survive telemetry without becoming zero");
     require(parsedStatus.channels[0].output_enabled && parsedStatus.channels[0].kp == 100 && parsedStatus.channels[0].auto_pid_mode == 1, "temperature status channel one");
     require(std::fabs(parsedStatus.channels[0].overtemp_upper_c - 500.0) < 0.000001 &&
                 std::fabs(parsedStatus.channels[0].overtemp_lower_c + 35.0) < 0.000001 &&

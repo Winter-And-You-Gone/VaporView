@@ -4,15 +4,21 @@
 #include "FpgaTelemetry.h"
 #include "FpgaAdvancedParameters.h"
 #include "FpgaExtensions.h"
+#include "FpgaUartExchange.h"
+#include "Tec103GpioProtocol.h"
 #include "ppk/ObservationStore.h"
 #include "shared/session/FpgaSessionArchive.h"
 
 #include <QDateTime>
 #include <QFileInfo>
+#include <QEventLoop>
+#include <QPointer>
+#include <QStringList>
 #include <QThread>
 #include <QtEndian>
 #include <cmath>
 #include <limits>
+#include <memory>
 #include <utility>
 
 namespace VaporView::Ground::Devices
@@ -44,7 +50,10 @@ FpgaDeviceController::FpgaDeviceController(std::unique_ptr<FpgaUsbTransport> tra
     qRegisterMetaType<FpgaControlConfig>();
     qRegisterMetaType<FpgaSensor::AdaptedMeasurements>();
     qRegisterMetaType<LogRecord>();
+    qRegisterMetaType<TemperatureControllerData>();
     presentationTimer_.setParent(this); statusTimer_.setParent(this);watchdogTimer_.setParent(this);
+    tec103Timer_.setParent(this);tec103Timer_.setInterval(1000);tec103WorkerThread_.setParent(this);
+    connect(&tec103Timer_,&QTimer::timeout,this,&FpgaDeviceController::pollTec103);
     presentationTimer_.setInterval(50);
     statusTimer_.setInterval(2000);
     connect(&watchdogTimer_,&QTimer::timeout,this,[this] {
@@ -52,14 +61,18 @@ FpgaDeviceController::FpgaDeviceController(std::unique_ptr<FpgaUsbTransport> tra
     });
     connect(&presentationTimer_, &QTimer::timeout, this, &FpgaDeviceController::flushPresentation);
     connect(&statusTimer_, &QTimer::timeout, this, [this] {
-        if (ready_ && !busy_ && begin(QStringLiteral("读取实际状态"), true)) {
+        if (ready_ && !busy_ && !tec103PollPending_ && begin(QStringLiteral("读取实际状态"), true)) {
             readAll(); steps_.push_back({Kind::CheckVersions}); advance();
         }
     });
     if (transport) installSession(std::move(transport));
 }
 
-FpgaDeviceController::~FpgaDeviceController() { pendingConnections_.clear(); disconnectDevice(); }
+FpgaDeviceController::~FpgaDeviceController()
+{
+    pendingConnections_.clear(); disconnectDevice();
+    tec103WorkerThread_.requestInterruption();tec103WorkerThread_.quit();tec103WorkerThread_.wait();
+}
 
 QJsonObject FpgaDeviceController::discoverDevices(const QString& backend) const
 {
@@ -93,6 +106,8 @@ void FpgaDeviceController::installSession(std::unique_ptr<FpgaUsbTransport> tran
                 fail(QStringLiteral("命令超时，执行结果未知；请刷新读回状态，写操作未自动重发。"));
                 return;
             }
+            // The UART helper owns and reports its own byte-transfer sequences.
+            if (uartExchange_) return;
             LogRecord record;
             record.level = LogLevel::Warning; record.source = QStringLiteral("Ground");
             record.category = QStringLiteral("device.fpga");
@@ -107,7 +122,7 @@ void FpgaDeviceController::installSession(std::unique_ptr<FpgaUsbTransport> tran
                 : QStringLiteral("队列中另一条命令超时；请刷新读回状态，写操作未自动重发。"), foreground);
         });
     connect(session_, &FpgaDeviceSession::errorOccurred, this, [this](const QString& message) {
-        if (!session_->isOpen()) { ready_ = false; emit transportConnectionChanged(false); }
+        if (!session_->isOpen()) { ready_ = false; stopTec103(); emit transportConnectionChanged(false); }
         fail(message);
     });
     connect(session_, &FpgaDeviceSession::frameReceived, this,
@@ -251,6 +266,8 @@ void FpgaDeviceController::connectDevice(const QString& locator, const QString& 
 
 void FpgaDeviceController::disconnectDevice()
 {
+    stopTec103();
+    if(uartExchange_) {delete uartExchange_;uartExchange_=nullptr;}
     const auto pendingSources = pendingConnections_.keys();
     for (quint16 source : pendingSources)
         reportConnection(source, QStringLiteral("cancelled"), QStringLiteral("DISCONNECTED"),
@@ -274,14 +291,14 @@ void FpgaDeviceController::disconnectDevice()
     steps_.clear(); current_.reset(); pendingSequence_ = 0;
     ready_ = busy_ = replaying_ = drainWaveforms_ = backgroundRefresh_ = recoveringConnection_ = connectionRecoveryFailed_ = false;
     registers_.clear();management_={};emit managementUpdated(management_); adapter_.reset(); latestReadings_.clear(); latestWaves_.clear(); lastReadingMs_.clear();
-    extensionRequest_={};extensionResult_={};emit capabilitiesUpdated(0);
+    extensionRequest_={};extensionResult_={};tec103PollExchange_=false;emit capabilitiesUpdated(0);
     dirtyReadings_.clear(); expiredReadings_.clear();
     emit snapshot(nowUs(), {{"event","disconnected"}});
     emit hardwareValuesChanged(registers_);
     emit connectionChanged(false,false,QStringLiteral("USB 未连接"));
 }
 
-bool FpgaDeviceController::begin(const QString& label, bool background)
+bool FpgaDeviceController::begin(const QString& label, bool background, bool notify)
 {
     if ((busy_ && !backgroundRefresh_) || !session_ || !session_->isOpen()) { report(QStringLiteral("当前无法执行：") + label); return false; }
     // A foreground operation replaces the remaining background reads. The session
@@ -289,9 +306,9 @@ bool FpgaDeviceController::begin(const QString& label, bool background)
     busy_=true; backgroundRefresh_=background; operation_=label;
     ++operationGeneration_;
     steps_.clear(); current_.reset(); pendingSequence_=0;pendingSensorParameters_={};
-    extensionRequest_={};extensionResult_={};
+    extensionRequest_={};extensionResult_={};tec103PollExchange_=false;
     operationConnections_.clear();
-    if (!background) { detail_=label; emit connectionChanged(ready_,true,label); }
+    if (!background && notify) { detail_=label; emit connectionChanged(ready_,true,label); }
     return true;
 }
 
@@ -369,9 +386,6 @@ bool FpgaDeviceController::versionsMatch(QString *detail) const
         if (detail) *detail=QStringLiteral("模块版本不匹配：%1 实际 %2，期望 %3；已禁用写操作。")
             .arg(hex(i.key()),hex(registers_.value(i.key())),hex(i.value())); return false;
     }
-    if((cap.extensions&FpgaExtensions::Rd105) && registers_.value(0x6a00)!=0x004a0103) {
-        if(detail)*detail=QStringLiteral("RD105 模块版本与扩展能力不一致。");return false;
-    }
     return true;
 }
 
@@ -379,6 +393,8 @@ void FpgaDeviceController::advance()
 {
     if (!busy_ || current_) return;
     if (steps_.empty()) {
+        const bool polling=std::exchange(tec103PollExchange_,false);
+        const bool wasBackground=backgroundRefresh_;
         if (drainWaveforms_) { session_->flushWaveforms(); flushPresentation(); drainWaveforms_ = false; }
         if(recoveringConnection_) {
             recoveringConnection_=false;
@@ -390,13 +406,15 @@ void FpgaDeviceController::advance()
             reportRawResult(*rawOperation_,true,QStringLiteral("寄存器读回确认。"));
             rawOperation_.reset();
         }
-        if (!backgroundRefresh_) emit connectionChanged(ready_,false,operation_+QStringLiteral("完成"));
+        if (!backgroundRefresh_ && !polling) emit connectionChanged(ready_,false,operation_+QStringLiteral("完成"));
         backgroundRefresh_=false;
         if(!extensionRequest_.isEmpty()) {
             extensionResult_["ok"]=true;
             extensionRequest_={};emit extensionCompleted(extensionResult_);
         }
-        emit snapshot(nowUs(),{{"event","operation_completed"},{"operation",operation_},{"configuration",configuration_.toJson()},{"result",extensionResult_}});
+        if(!polling)emit snapshot(nowUs(),{{"event","operation_completed"},{"operation",operation_},{"configuration",configuration_.toJson()},{"result",extensionResult_}});
+        if(wasBackground && ready_ && tec103Enabled_ && !tec103PollPending_)
+            QTimer::singleShot(0,this,&FpgaDeviceController::pollTec103);
         return;
     }
     current_=steps_.front(); steps_.pop_front();
@@ -404,6 +422,27 @@ void FpgaDeviceController::advance()
         auto action=std::move(current_->callback);current_.reset();action();advance();return;
     }
     const auto& s=*current_;
+    if(s.kind==Kind::UartExchange) {
+        auto *exchange=new FpgaUartExchange(session_,this);uartExchange_=exchange;
+        connect(exchange,&FpgaUartExchange::finished,this,[this,exchange](const QJsonObject& result) {
+            if(uartExchange_!=exchange)return;
+            uartExchange_=nullptr;exchange->deleteLater();
+            for(auto i=result.begin();i!=result.end();++i)extensionResult_[i.key()]=i.value();
+            const auto tx=QByteArray::fromBase64(extensionRequest_.value("data").toString().toLatin1());
+            const int channel=extensionRequest_.value("channel").toInt();
+            if(channel>=1 && channel<=2 && !tx.contains("=?@") && tx!="INQUIRE=1@" && tx!="DATADEMAND=1@")
+                tec103Identified_[size_t(channel-1)]=false;
+            current_.reset();pendingSequence_=0;
+            if(!result.value("ok").toBool()) {
+                // A device-level UART timeout must not revoke the independent
+                // motor owner's heartbeat lease on a healthy USB connection.
+                const bool transportReady=ready_ && session_->isOpen() && session_->state()==FpgaSessionState::Ready;
+                fail(result.value("detail").toString(),true,transportReady);return;
+            }
+            advance();
+        });
+        exchange->start(extensionRequest_);return;
+    }
     if (s.kind==Kind::ConfirmConnection) {
         confirmConnection(s.source); current_.reset(); advance(); return;
     }
@@ -477,7 +516,7 @@ void FpgaDeviceController::advance()
             }
         }
         pendingSequence_=session_->sensorAction(s.address,s.expected,s.source); break;
-    case Kind::Delay: case Kind::PrepareSensorConfig: case Kind::FinishSensorConfig: case Kind::CheckVersions: case Kind::RecoverConnection: case Kind::FinishRawStop: case Kind::CheckTemperature: case Kind::ConfirmConnection: case Kind::FinishWatchdog: case Kind::Callback: break;
+    case Kind::Delay: case Kind::PrepareSensorConfig: case Kind::FinishSensorConfig: case Kind::CheckVersions: case Kind::RecoverConnection: case Kind::FinishRawStop: case Kind::CheckTemperature: case Kind::ConfirmConnection: case Kind::FinishWatchdog: case Kind::Callback: case Kind::UartExchange: break;
     }
     if (!pendingSequence_) fail(QStringLiteral("命令未发送。"));
 }
@@ -521,6 +560,11 @@ void FpgaDeviceController::completed(quint32 seq, bool success, quint32 status, 
 
 void FpgaDeviceController::fail(const QString& detail, bool operationScoped, bool preserveMotorOwner)
 {
+    const bool polling=std::exchange(tec103PollExchange_,false);
+    if(uartExchange_) {
+        extensionResult_["unverified"]=true;
+        auto *exchange=std::exchange(uartExchange_,nullptr);exchange->deleteLater();
+    }
     if(!preserveMotorOwner) {motorOwnerEnabled_=false;motorSafetySequences_.clear();}
     if (rawOperation_) {
         reportRawResult(*rawOperation_,false,detail);
@@ -545,8 +589,8 @@ void FpgaDeviceController::fail(const QString& detail, bool operationScoped, boo
         emit extensionCompleted(extensionResult_);
     }
     emit hardwareValuesChanged(registers_);
-    emit connectionChanged(ready_,false,detail);
-    emit snapshot(nowUs(),{{"event","operation_failed"},{"detail",detail},{"interrupted_by_motor_stop",interruptingForMotorStop_}});
+    if(!polling || !ready_)emit connectionChanged(ready_,false,detail);
+    if(!polling)emit snapshot(nowUs(),{{"event","operation_failed"},{"detail",detail},{"interrupted_by_motor_stop",interruptingForMotorStop_}});
 }
 
 void FpgaDeviceController::report(const QString& detail, LogLevel level, const char *file, const char *function, int line, bool operationScoped)
@@ -593,7 +637,7 @@ void FpgaDeviceController::trackConnection(quint16 source)
     pendingConnections_[source]=0; operationConnections_.insert(source);
     if (operationCorrelationId_.isEmpty()) pendingConnectionLogContexts_.remove(source);
     else pendingConnectionLogContexts_.insert(source, {operationCorrelationId_, operationSessionId_});
-    if(FpgaExtensions::sensor(source)) {
+    if(FpgaExtensions::sensor(source) && source!=0x4a) {
         startupWarningDeadlines_[source]=-1;
         startupWarnings_.remove(source);
         if (operationCorrelationId_.isEmpty()) startupWarningLogContexts_.remove(source);
@@ -605,7 +649,7 @@ void FpgaDeviceController::reportConnection(quint16 source, const QString& resul
 {
     const QMap<quint16,QString> names{{0,QStringLiteral("ADC / DLIA")},{0x40,QStringLiteral("PTB210")},
         {0x41,QStringLiteral("HC2A")},{0x42,QStringLiteral("EPSILON")},{0x43,QStringLiteral("BMP390")},{0x44,QStringLiteral("SHT45")},
-        {0x45,QStringLiteral("SDFM300")},{0x46,QStringLiteral("AI-8288D92J0")},{0x4a,QStringLiteral("RD105")}};
+        {0x45,QStringLiteral("SDFM300")},{0x46,QStringLiteral("AI-8288D92J0")},{0x4a,QStringLiteral("TEC103 GPIO 双温控")}};
     LogRecord record; record.source=QStringLiteral("Ground"); record.category=QStringLiteral("device.fpga");
     record.level=(result==QStringLiteral("failed") || result==QStringLiteral("warning"))?LogLevel::Warning:LogLevel::Info;
     record.message=names.value(source)+QStringLiteral(" 经 FPGA ")+
@@ -669,6 +713,7 @@ void FpgaDeviceController::checkConnectionResults()
     const auto pending=pendingConnections_;
     const auto now=QDateTime::currentMSecsSinceEpoch();
     for(auto i=pending.cbegin();i!=pending.cend();++i) {
+        if(i.key()==0x4a)continue; // GPIO identity/measurement worker owns this result.
         if(!i.value())continue;
         const auto measurements=latestReadings_.value(i.key());
         const auto& reading=measurements.reading;
@@ -774,15 +819,13 @@ void FpgaDeviceController::recoverConnection()
     operation_=QStringLiteral("连接后恢复采集与传感器");
     emit connectionChanged(false,true,operation_);
     snapshotConfiguration();
-    for(quint16 source:{0x40,0x41,0x42,0x43,0x44,0x45,0x46,0x4a})
-        if((source!=0x4a || (extensions()&FpgaExtensions::Rd105))
-            && (saved.value(0x6004+(source-0x40)*0x100)&1))trackConnection(source);
+    for(quint16 source:{0x40,0x41,0x42,0x43,0x44,0x45,0x46})
+        if(saved.value(0x6004+(source-0x40)*0x100)&1)trackConnection(source);
     for(quint32 control:{0x4004u,0x4104u,0x5004u,0x5104u})
         if(saved.value(control)&1) {trackConnection(0);break;}
     if(!enableUpload())return;
     stopAndDrain();resetAcquisition();
-    for(quint32 b:{0x6000u,0x6100u,0x6200u,0x6300u,0x6400u,0x6500u,0x6600u,0x6a00u}) {
-        if(b==0x6a00 && !(extensions()&FpgaExtensions::Rd105))continue;
+    for(quint32 b:{0x6000u,0x6100u,0x6200u,0x6300u,0x6400u,0x6500u,0x6600u}) {
         if(saved.value(b+4)&1) {
             Step stop;stop.kind=Kind::Sensor;stop.address=1;stop.source=quint16(0x40+(b-0x6000)/0x100);stop.expected=0;
             steps_.push_back(stop);verify(b+4,0);
@@ -948,13 +991,203 @@ void FpgaDeviceController::setDac(int channel, bool enable)
 
 void FpgaDeviceController::setSensorEnabled(quint16 source, bool enable)
 {
-    if (!ready_ || !FpgaExtensions::sensor(source) || (source==0x4a && !(extensions()&FpgaExtensions::Rd105)) || !begin(QStringLiteral("设置传感器状态"))) return;
+    if(source==0x4a) {configureTec103(enable);return;}
+    if (!ready_ || !FpgaExtensions::sensor(source) || !begin(QStringLiteral("设置传感器状态"))) return;
     if(enable)trackConnection(source);
     if (source==0x43 && enable && (registers_.value(0x6304)&1)) {
         fail(QStringLiteral("修改 BMP 地址前请先禁用 BMP390。"));return;
     }
     if (!appendSensorEnable(source,enable)) return;
     readAll(); advance();
+}
+
+void FpgaDeviceController::stopTec103()
+{
+    ++tec103Generation_;tec103Timer_.stop();tec103Enabled_=false;tec103PollPending_=false;
+    tec103Identified_.fill(false);tec103Online_.fill(false);tec103Valid_.fill(false);
+    tec103Data_=TemperatureControllerData{};tec103PortData_={};
+    tec103Data_.device_address=tec103Data_.rs485_baud_index=-1;
+    tec103Data_.controller_mode=tec103Data_.overtemp_output_mode=-1;
+    const bool wasConnected=tec103Connected_;tec103Connected_=false;tec103Detail_.clear();
+    if(wasConnected)emit temperatureConnectionChanged(false,QStringLiteral("TEC103 GPIO 通信已断开。"));
+    emit temperatureDataUpdated(tec103Data_);
+}
+
+void FpgaDeviceController::configureTec103(bool enable)
+{
+    if(!ready_ || !begin(enable?QStringLiteral("连接双 TEC103 GPIO 温控"):QStringLiteral("断开双 TEC103 GPIO 温控")))return;
+    stopTec103();
+    if(enable)trackConnection(0x4a);
+    for(quint32 base:{0x6800u,0x6900u}) {read(base,6);read(base+0x20,2);}
+    callback([this,enable] {
+        if(registers_.value(0x6800)!=0x00480100 || registers_.value(0x6900)!=0x00490100) {
+            fail(QStringLiteral("TEC103 所需的 LC0/LC1 GPIO UART 桥版本不匹配。"));return;
+        }
+        if(enable)for(quint32 base:{0x6800u,0x6900u}) {
+            if((registers_.value(base+8)&8) || registers_.value(base+0x20) || registers_.value(base+0x24)) {
+                fail(QStringLiteral("GPIO UART 仍有未完成收发或未读取字节；未清空数据，请先完成当前事务。"));return;
+            }
+        }
+        for(quint32 base:{0x6800u,0x6900u}) {
+            write(base+4,0);verify(base+4,0);waitFor(base+8,9,0);
+            if(enable) {
+                write(base+0x10,38400);verify(base+0x10,38400);
+                write(base+0x14,0x108);verify(base+0x14,0x108);
+            }
+        }
+        if(enable) {write(4,registers_.value(4)|1u);verify(4,registers_.value(4)|1u);}
+        for(quint32 base:{0x6800u,0x6900u}) {
+            if(enable) {write(base+4,1);verify(base+4,1);waitFor(base+8,1,1);}
+            read(base,6);read(base+0x20,8);
+        }
+        callback([this,enable] {
+            tec103Enabled_=enable;
+            if(enable) {
+                reportConnection(0x4a,QStringLiteral("waiting"),QStringLiteral("GPIO_UART_ENABLED"),
+                    QStringLiteral("LC0/LC1 已配置 38400/8N1，正在分别识别 TEC103 并读取内部 TC1。"));
+                tec103Timer_.start();QTimer::singleShot(0,this,&FpgaDeviceController::pollTec103);
+            } else {
+                pendingConnections_.remove(0x4a);operationConnections_.remove(0x4a);pendingConnectionLogContexts_.remove(0x4a);
+                emit temperatureConnectionChanged(false,QStringLiteral("TEC103 GPIO 通信已断开；仪表输出状态未修改。"));
+            }
+        });
+    });
+    advance();
+}
+
+void FpgaDeviceController::submitTec103Exchange(QJsonObject request,
+    std::function<void(const QJsonObject&)> reply,quint64 generation,qint64 deadline)
+{
+    if(generation!=tec103Generation_ || !tec103Enabled_ || !ready_) {
+        reply({{"ok",false},{"detail",QStringLiteral("TEC103 读取已取消或连接已断开。")}});return;
+    }
+    if(busy_) {
+        if(QDateTime::currentMSecsSinceEpoch()>=deadline) {
+            reply({{"ok",false},{"detail",QStringLiteral("等待 FPGA 空闲超时；未发送 TEC103 查询。")}});return;
+        }
+        QTimer::singleShot(10,this,[this,request,reply=std::move(reply),generation,deadline]() mutable {
+            submitTec103Exchange(request,std::move(reply),generation,deadline);
+        });return;
+    }
+    const auto ticket=QString::number((quint64(1)<<63)+ ++tec103Ticket_);request["ticket"]=ticket;
+    auto observer=std::make_shared<QMetaObject::Connection>();
+    *observer=connect(this,&FpgaDeviceController::extensionCompleted,this,
+        [ticket,observer,reply=std::move(reply)](const QJsonObject& result) {
+            if(result.value("ticket").toString()!=ticket)return;
+            QObject::disconnect(*observer);reply(result);
+        });
+    executeExtension(request,true);
+}
+
+void FpgaDeviceController::pollTec103()
+{
+    if(!tec103Enabled_ || tec103PollPending_ || !ready_ || busy_)return;
+    if(!tec103Worker_) {
+        tec103Worker_=new QObject;tec103Worker_->moveToThread(&tec103WorkerThread_);
+        connect(&tec103WorkerThread_,&QThread::finished,tec103Worker_,&QObject::deleteLater);
+        tec103WorkerThread_.start();
+    }
+    tec103PollPending_=true;
+    const auto generation=tec103Generation_;const auto identified=tec103Identified_;const auto revisions=tec103Revision_;
+    QPointer<FpgaDeviceController> owner(this);
+    const Tec103GpioProtocol::Call call=[owner,generation](const QJsonObject& request) {
+        if(!owner || QThread::currentThread()->isInterruptionRequested())
+            return QJsonObject{{"ok",false},{"detail",QStringLiteral("TEC103 读取已停止。")}};
+        QEventLoop loop;QTimer timeout;timeout.setSingleShot(true);QTimer interrupted;
+        auto result=std::make_shared<QJsonObject>(QJsonObject{{"ok",false},{"detail",QStringLiteral("TEC103 原生查询等待超时。")}});
+        QPointer<QEventLoop> receiver(&loop);
+        connect(&timeout,&QTimer::timeout,&loop,&QEventLoop::quit);
+        connect(&interrupted,&QTimer::timeout,&loop,[&loop] {
+            if(QThread::currentThread()->isInterruptionRequested())loop.quit();
+        });interrupted.start(50);
+        QMetaObject::invokeMethod(owner,[owner,generation,request,receiver,result] {
+            if(!owner || !receiver)return;
+            owner->submitTec103Exchange(request,[receiver,result](const QJsonObject& response) {
+                if(receiver)QMetaObject::invokeMethod(receiver,[receiver,result,response] {
+                    if(receiver) {*result=response;receiver->quit();}
+                },Qt::QueuedConnection);
+            },generation,QDateTime::currentMSecsSinceEpoch()+10000);
+        },Qt::QueuedConnection);
+        timeout.start(16000);loop.exec();return *result;
+    };
+    QMetaObject::invokeMethod(tec103Worker_,[owner,generation,identified,revisions,call] {
+        std::array<Tec103GpioProtocol::Result,2> results;
+        for(int i=0;i<2;++i)results[size_t(i)]=Tec103GpioProtocol::read(call,i+1,!identified[size_t(i)]);
+        if(owner)QMetaObject::invokeMethod(owner,[owner,generation,identified,revisions,results] {
+            if(!owner || generation!=owner->tec103Generation_)return;
+            owner->tec103PollPending_=false;
+            if(revisions!=owner->tec103Revision_) {
+                // A user write invalidated this round while its reads were in
+                // flight. Publishing the unchanged cached slot would undo the
+                // independently verified command result in the UI.
+                QTimer::singleShot(0,owner,&FpgaDeviceController::pollTec103);return;
+            }
+            QStringList errors;
+            for(int i=0;i<2;++i) {
+                const auto& result=results[size_t(i)];const auto& incoming=result.data.channels[size_t(i)];
+                auto& channel=owner->tec103Data_.channels[size_t(i)];
+                owner->tec103Online_[size_t(i)]=result.success;
+                owner->tec103Valid_[size_t(i)]=result.success && result.channelValid[size_t(i)];
+                if(result.success) {
+                    if(!result.channelValid[size_t(i)] && !result.message.isEmpty())
+                        errors.append(QStringLiteral("LC%1：%2").arg(i).arg(result.message));
+                    if(!identified[size_t(i)]) {
+                        channel=incoming;owner->tec103PortData_[size_t(i)]=result.data;
+                        owner->tec103Identified_[size_t(i)]=true;
+                        LogRecord record;record.source=QStringLiteral("Ground");record.category=QStringLiteral("device.temperature.identity");record.level=LogLevel::Info;
+                        record.message=QStringLiteral("LC%1 已识别 TEC103，原始固件号 4370，逻辑通道 %2 对应实体内部 TC1。").arg(i).arg(i+1);
+                        record.fields={{"event","tec103_gpio_identified"},{"logical_channel",i+1},{"uart_bridge",QStringLiteral("LC%1").arg(i)},
+                            {"model",103},{"firmware_raw",4370},{"instrument_channel",1},{"baud",38400}};
+                        LogService::addCallLocation(record,VAPORVIEW_LOG_FILE,VAPORVIEW_LOG_FUNCTION,VAPORVIEW_LOG_LINE);
+                        emit owner->logRecordGenerated(record);
+                    }
+                    else {
+                        channel.target_temperature_c=incoming.target_temperature_c;
+                        channel.measured_temperature_c=incoming.measured_temperature_c;
+                        channel.sensor_resistance_ohm=incoming.sensor_resistance_ohm;
+                        channel.output_percent=incoming.output_percent;
+                        channel.output_enabled=incoming.output_enabled;channel.output_mode=incoming.output_mode;
+                    }
+                    owner->tec103PortData_[size_t(i)].error_code=result.data.error_code;
+                } else {
+                    channel.measured_temperature_c=channel.output_percent=channel.sensor_resistance_ohm=std::numeric_limits<double>::quiet_NaN();
+                    errors.append(QStringLiteral("LC%1：%2").arg(i).arg(result.message));
+                }
+            }
+            const bool bothOnline=owner->tec103Online_[0] && owner->tec103Online_[1];
+            const bool connected=owner->tec103Online_[0] || owner->tec103Online_[1];
+            const auto detail=bothOnline?QStringLiteral("双 TEC103 已连接（LC0/LC1，38400/8N1，各内部 TC1）。"):
+                QStringLiteral("LC0：%1；LC1：%2。%3")
+                    .arg(owner->tec103Online_[0]?QStringLiteral("已连接 TEC103"):QStringLiteral("未连接或无有效应答"),
+                         owner->tec103Online_[1]?QStringLiteral("已连接 TEC103"):QStringLiteral("未连接或无有效应答"),
+                         errors.join(QStringLiteral("；")));
+            if(owner->tec103Connected_!=connected || owner->tec103Detail_!=detail) {
+                owner->tec103Connected_=connected;owner->tec103Detail_=detail;
+                emit owner->temperatureConnectionChanged(connected,detail);
+            }
+            owner->tec103Data_.valid=owner->tec103Valid_[0] || owner->tec103Valid_[1];
+            // The public format has one set of global fields. Do not present
+            // the second instrument's state as a shared physical value.
+            owner->tec103Data_.internal_temperature_c=std::numeric_limits<double>::quiet_NaN();
+            owner->tec103Data_.error_code=owner->tec103PortData_[0].error_code|owner->tec103PortData_[1].error_code;
+            const auto common=[owner,bothOnline](auto member) {
+                return bothOnline && owner->tec103PortData_[0].*member==owner->tec103PortData_[1].*member
+                    ?owner->tec103PortData_[0].*member:-1;
+            };
+            owner->tec103Data_.device_address=common(&TemperatureControllerData::device_address);
+            owner->tec103Data_.rs485_baud_index=-1;
+            owner->tec103Data_.controller_mode=common(&TemperatureControllerData::controller_mode);
+            owner->tec103Data_.overtemp_output_mode=common(&TemperatureControllerData::overtemp_output_mode);
+            owner->tec103Data_.timestamp=std::chrono::steady_clock::now();
+            owner->tec103Data_.error_message=errors.join(QStringLiteral("；")).toStdString();
+            emit owner->temperatureDataUpdated(owner->tec103Data_);
+            if(owner->pendingConnections_.contains(0x4a)) {
+                owner->reportConnection(0x4a,connected?QStringLiteral("succeeded"):QStringLiteral("failed"),
+                    bothOnline?QStringLiteral("TEC103_IDENTIFIED"):connected?QStringLiteral("TEC103_PARTIAL_CONNECTION"):QStringLiteral("TEC103_QUERY_FAILED"),detail);
+                owner->pendingConnections_.remove(0x4a);owner->operationConnections_.remove(0x4a);owner->pendingConnectionLogContexts_.remove(0x4a);
+            }
+        },Qt::QueuedConnection);
+    },Qt::QueuedConnection);
 }
 
 bool FpgaDeviceController::appendSensorEnable(quint16 source, bool enable)
@@ -996,7 +1229,7 @@ void FpgaDeviceController::connectSensor(const QJsonObject& request)
         fail(QStringLiteral("传感器连接参数或范围无效。"));return;
     }
     const auto source=quint16(request.value("source").toInt());
-    if(source==0x4a && !(extensions()&FpgaExtensions::Rd105)) {fail(QStringLiteral("当前固件未报告 RD105 扩展能力。"));return;}
+    if(source==0x4a) {configureTec103(true);return;}
     if (!request.contains("baud") && !request.contains("poll_ms") && !request.contains("parameters") && configuration_.sensorParameters.value(source).isEmpty()) {
         setSensorEnabled(quint16(request.value("source").toInt()),true);return;
     }
@@ -1016,7 +1249,7 @@ void FpgaDeviceController::startSensorConfiguration(const QJsonObject& request, 
     if (request.value("op").toString()!=QStringLiteral("sensor_config") || !FpgaRemote::validateControl(request)) {
         fail(QStringLiteral("传感器参数或范围无效。"));return;
     }
-    if(request.value("source").toInt()==0x4a && !(extensions()&FpgaExtensions::Rd105)) {fail(QStringLiteral("当前固件未报告 RD105 扩展能力。"));return;}
+    if(request.value("source").toInt()==0x4a) {configureTec103(false);return;}
     if (!ready_ || !begin(QStringLiteral("配置传感器参数并读回"))) return;
     const auto source=quint16(request.value("source").toInt());
     pendingSensorParameters_=request.value("parameters").toObject();
@@ -1078,9 +1311,26 @@ void FpgaDeviceController::prepareSensorConfiguration(quint16 source, quint32 ba
     Step finish;finish.kind=Kind::FinishSensorConfig;finish.source=source;steps_.push_back(finish);
 }
 
+void FpgaDeviceController::deferExtensionOperation(const QJsonObject& request,quint64 generation,qint64 deadline)
+{
+    if(generation!=tec103Generation_ || !ready_ || QDateTime::currentMSecsSinceEpoch()>=deadline) {
+        emit extensionCompleted({{"op",request.value("op")},{"ticket",request.value("ticket")},{"ok",false},
+            {"detail",QStringLiteral("FPGA 扩展事务等待已取消或超时；请求未发送。")}});return;
+    }
+    if(busy() && tec103PollExchange_ && FpgaRemote::validateControl(request)) {
+        QTimer::singleShot(10,this,[this,request,generation,deadline] {
+            deferExtensionOperation(request,generation,deadline);
+        });return;
+    }
+    executeExtension(request);
+}
+
 void FpgaDeviceController::executeOperation(const QJsonObject& request)
 {
     const auto requestedOp=request.value("op").toString();
+    if(requestedOp=="uart_exchange") {
+        deferExtensionOperation(request,tec103Generation_,QDateTime::currentMSecsSinceEpoch()+10000);return;
+    }
     if(requestedOp=="motor_heartbeat") {
         if(FpgaRemote::validateControl(request) && ready_ && connected() && motorOwnerEnabled_
             && registers_.value(0x6700)==0x00470200) {
@@ -1110,11 +1360,11 @@ void FpgaDeviceController::executeOperation(const QJsonObject& request)
         return;
     }
     if(requestedOp=="instrument" || requestedOp=="epsilon_mailbox" || requestedOp=="ai8_scan" || requestedOp=="ai8_cache" || requestedOp=="dlia_cutoff" || requestedOp=="device_temperature") {
-        executeExtension(request);return;
+        deferExtensionOperation(request,tec103Generation_,QDateTime::currentMSecsSinceEpoch()+10000);return;
     }
     if(busy_ && !backgroundRefresh_) {report(QStringLiteral("FPGA 操作被拒绝：已有事务正在执行。"));return;}
     if(!FpgaRemote::validateControl(request)) {fail(QStringLiteral("FPGA 操作参数无效。"));return;}
-    if(request.value("source").toInt()==0x4a && !(extensions()&FpgaExtensions::Rd105)) {fail(QStringLiteral("当前固件未报告 RD105 扩展能力。"));return;}
+    if(request.value("source").toInt()==0x4a) {fail(QStringLiteral("TEC103 GPIO 温控请使用独立连接及已确认的原生命令；旧 6A 控制路径已停用。"));return;}
     if(!ready_ || !begin(QStringLiteral("FPGA 高级控制与读回")))return;
     snapshotConfiguration();
     const auto op=request.value("op").toString();
@@ -1207,6 +1457,7 @@ void FpgaDeviceController::setTemperature(double celsius)
 
 void FpgaDeviceController::acceptReading(const FpgaSensor::Reading& reading)
 {
+    if(!replaying_ && reading.source==0x4a)return; // Live TEC103 data comes from the two GPIO instruments.
     if(reading.source==0x42 && reading.epsilonMessageId==Ppk::kMsgRawSatellite) {
         Ppk::RawSatellitePacket packet;std::string reason;
         if(!reading.validity.structure || !reading.validity.crc || (reading.flags&0x18) ||

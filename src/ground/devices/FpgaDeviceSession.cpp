@@ -94,6 +94,7 @@ bool FpgaDeviceSession::open(const QString& locator, QString *errorMessage)
     commandQueue_.clear();
     pendingCommand_.reset();
     motorSafetyCommands_.clear();
+    repeatedCommands_.clear();
     capabilities_ = {};
     if (!transport_->open(locator))
     {
@@ -117,6 +118,7 @@ void FpgaDeviceSession::close()
     commandQueue_.clear();
     pendingCommand_.reset();
     motorSafetyCommands_.clear();
+    repeatedCommands_.clear();
     parser_ = FpgaVlp1::StreamParser();
     flushWaveforms();
     waveformAssembler_.clear();
@@ -205,12 +207,23 @@ void FpgaDeviceSession::poll()
         }
     }
 
+    const auto repeatedSequences = repeatedCommands_.keys();
+    for (quint32 sequence : repeatedSequences) {
+        const auto command = repeatedCommands_.constFind(sequence);
+        if (command != repeatedCommands_.cend() && command->timer.elapsed() > commandTimeoutMs_) {
+            const auto message = command->command.message;
+            repeatedCommands_.remove(sequence);
+            emit commandTimedOut(sequence, message);
+        }
+    }
+    dispatchNext();
+
     if (pendingCommand_ && pendingCommand_->timer.elapsed() > commandTimeoutMs_)
     {
         const auto command = pendingCommand_->command;
         // A cancelled USB IN can lose a response. Only register reads are safe
         // to repeat; never replay a write whose execution is unknown.
-        if (command.message == kReadRegister && !pendingCommand_->readRetried) {
+        if (command.message == kReadRegister && command.readRetryAllowed && !pendingCommand_->readRetried) {
             pendingCommand_->readRetried = true;
             if (transport_->write(command.bytes) != command.bytes.size()) {
                 pendingCommand_.reset();
@@ -234,6 +247,20 @@ void FpgaDeviceSession::cancelQueuedCommands()
     commandQueue_.clear();
     pendingCommand_.reset();
     motorSafetyCommands_.clear();
+    repeatedCommands_.clear();
+}
+
+void FpgaDeviceSession::cancelCommands(const QVector<quint32>& sequences)
+{
+    for (quint32 sequence : sequences) {
+        if (pendingCommand_ && pendingCommand_->command.sequence == sequence)
+            pendingCommand_.reset();
+        repeatedCommands_.remove(sequence);
+        for (qsizetype i = commandQueue_.size(); i > 0; --i)
+            if (commandQueue_.at(i - 1).sequence == sequence)
+                commandQueue_.removeAt(i - 1);
+    }
+    dispatchNext();
 }
 
 void FpgaDeviceSession::ingestReplayBytes(const QByteArray& bytes)
@@ -298,6 +325,65 @@ quint32 FpgaDeviceSession::writeRegisters(quint32 address, const QVector<quint32
         emit errorOccurred(QString::fromUtf8(exception.what()));
         return 0;
     }
+}
+
+QVector<quint32> FpgaDeviceSession::writeRepeatedRegister(quint32 address,
+                                                         const QByteArray& bytes,
+                                                         quint16 source)
+{
+    if (bytes.isEmpty() || bytes.size() > 256)
+        return {};
+    QVector<QueuedCommand> commands;
+    for (char byte : bytes) {
+        const quint32 sequence = nextSequence_++;
+        const auto frame = FpgaVlp1::buildWriteReg(sequence, address,
+            {quint32(static_cast<unsigned char>(byte))}, 0, source);
+        commands.append({sequence, source, kWriteRegister,
+            QByteArray(reinterpret_cast<const char*>(frame.data()), int(frame.size()))});
+    }
+    return dispatchRepeated(commands);
+}
+
+QVector<quint32> FpgaDeviceSession::readRepeatedRegister(quint32 address, quint16 count,
+                                                        quint16 source)
+{
+    if (!count || count > 256)
+        return {};
+    QVector<QueuedCommand> commands;
+    for (quint16 i = 0; i < count; ++i) {
+        const quint32 sequence = nextSequence_++;
+        const auto frame = FpgaVlp1::buildReadReg(sequence, address, 1, source);
+        commands.append({sequence, source, kReadRegister,
+            QByteArray(reinterpret_cast<const char*>(frame.data()), int(frame.size())), false});
+    }
+    return dispatchRepeated(commands);
+}
+
+QVector<quint32> FpgaDeviceSession::dispatchRepeated(const QVector<QueuedCommand>& commands)
+{
+    if (!isOpen() || pendingCommand_ || !commandQueue_.isEmpty()
+        || !repeatedCommands_.isEmpty())
+        return {};
+    QVector<quint32> sequences;
+    QByteArray transfer;
+    for (const auto& command : commands) {
+        PendingCommand pending;
+        pending.command = command;
+        pending.timer.start();
+        transfer.append(pending.command.bytes);
+        repeatedCommands_.insert(command.sequence, std::move(pending));
+        sequences.append(command.sequence);
+    }
+    if (transport_->write(transfer) != transfer.size()) {
+        repeatedCommands_.clear();
+        const QString message = QStringLiteral("FPGA UART FIFO burst transfer failed; execution is unknown");
+        setState(FpgaSessionState::Error, message);
+        emit errorOccurred(message);
+        return {};
+    }
+    emit commandSent(transfer);
+    QMetaObject::invokeMethod(this, &FpgaDeviceSession::poll, Qt::QueuedConnection);
+    return sequences;
 }
 
 quint32 FpgaDeviceSession::maskedWrite(quint32 address, quint32 mask, quint32 value,
@@ -425,6 +511,14 @@ quint32 FpgaDeviceSession::enqueue(quint16 source, quint16 message,
     command.message = message;
     command.bytes = QByteArray(reinterpret_cast<const char *>(bytes.data()),
                                static_cast<int>(bytes.size()));
+    if (message == kReadRegister && command.bytes.size() >= 48) {
+        const quint32 address = readU32(command.bytes.constData() + 40);
+        const quint16 count = quint16(quint8(command.bytes[44]))
+            | (quint16(quint8(command.bytes[45])) << 8);
+        const quint64 lastAddress = quint64(address) + (count ? quint64(count - 1) * 4 : 0);
+        command.readRetryAllowed = !((address <= 0x681c && lastAddress >= 0x681c)
+            || (address <= 0x691c && lastAddress >= 0x691c));
+    }
     const quint32 sequence = command.sequence;
     commandQueue_.enqueue(std::move(command));
     dispatchNext();
@@ -433,7 +527,7 @@ quint32 FpgaDeviceSession::enqueue(quint16 source, quint16 message,
 
 void FpgaDeviceSession::dispatchNext()
 {
-    if (pendingCommand_ || commandQueue_.isEmpty() || !isOpen())
+    if (pendingCommand_ || !repeatedCommands_.isEmpty() || commandQueue_.isEmpty() || !isOpen())
         return;
     QueuedCommand command = commandQueue_.dequeue();
     if (transport_->write(command.bytes) != command.bytes.size())
@@ -531,6 +625,27 @@ void FpgaDeviceSession::processFrame(const FpgaVlp1::Frame& frame)
         const auto sequence = safety->command.sequence;
         motorSafetyCommands_.remove(sequence);
         emit commandCompleted(sequence, 12, success, status, payload);
+        return;
+    }
+    const auto repeated = repeatedCommands_.constFind(frame.header.sequence);
+    if (repeated != repeatedCommands_.cend() && FpgaVlp1::matchesResponse(frame,
+            {repeated->command.sequence, repeated->command.source, repeated->command.message})) {
+        quint32 status = std::numeric_limits<quint32>::max();
+        bool success = FpgaVlp1::responseSucceeded(frame, &status);
+        const auto command = repeated->command;
+        if (success && command.message == kReadRegister) {
+            FpgaRegisterReadResult result;
+            success = parseRegisterRead(payload, result)
+                && result.address == readU32(command.bytes.constData() + 40)
+                && result.values.size() == 1;
+            if (success)
+                emit registerReadCompleted(command.sequence, result.address, result.values);
+        }
+        if (!success && status == 0)
+            status = 12;
+        repeatedCommands_.remove(command.sequence);
+        emit commandCompleted(command.sequence, command.message, success, status, payload);
+        dispatchNext();
         return;
     }
     if (!pendingCommand_)

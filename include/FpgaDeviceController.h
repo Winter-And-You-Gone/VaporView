@@ -5,16 +5,19 @@
 #include "FpgaSensorAdapter.h"
 #include "LogService.h"
 #include "EpsilonRawSatellite.h"
+#include "data_types.h"
 
 #include <QMap>
 #include <QJsonObject>
 #include <QSet>
+#include <QThread>
 #include <deque>
 #include <functional>
 #include <optional>
 
 namespace VaporView::Ground::Devices
 {
+class FpgaUartExchange;
 
 // Lives in the USB worker thread. The page edits desired configuration; this
 // controller owns hardware readback and serialized, verified operations.
@@ -33,6 +36,7 @@ public:
     bool connected() const { return session_ && session_->isOpen(); }
     bool ready() const { return ready_; }
     bool busy() const { return busy_ && !backgroundRefresh_; }
+    bool temperatureConnected() const { return tec103Connected_; }
     const QMap<quint32, quint32>& hardwareValues() const { return registers_; }
     quint32 extensions() const { return session_?session_->capabilities().extensions:0; }
     QJsonObject extensionResult() const { return extensionResult_; }
@@ -68,6 +72,8 @@ signals:
     void managementUpdated(const QJsonObject& state);
     void observationEpochReceived(const QByteArray& encodedEpoch);
     void measurementUpdated(const VaporView::FpgaSensor::AdaptedMeasurements& measurements);
+    void temperatureDataUpdated(const VaporView::TemperatureControllerData& data);
+    void temperatureConnectionChanged(bool connected, const QString& detail);
     void waveformUpdated(const VaporView::FpgaWave::CompletedStream& stream);
     void harmonicCycleReady(quint64 hostTimestampUs, const VaporView::FpgaWave::CompletedStream& stream);
     void logRecordGenerated(const VaporView::LogRecord& record);
@@ -83,7 +89,7 @@ private:
     QString operationSessionId_;
     struct PendingConnectionLogContext { QString correlationId; QString sessionId; };
     QHash<quint16, PendingConnectionLogContext> pendingConnectionLogContexts_;
-    enum class Kind { Management, Read, Write, Commit, Ping, Capabilities, Sensor, Wait, Delay, PrepareSensorConfig, FinishSensorConfig, CheckVersions, RecoverConnection, FinishRawStop, CheckTemperature, ConfirmConnection, FinishWatchdog, Callback };
+    enum class Kind { Management, Read, Write, Commit, Ping, Capabilities, Sensor, Wait, Delay, PrepareSensorConfig, FinishSensorConfig, CheckVersions, RecoverConnection, FinishRawStop, CheckTemperature, ConfirmConnection, FinishWatchdog, Callback, UartExchange };
     struct Step {
         Kind kind = Kind::Read;
         quint32 address = 0;
@@ -94,7 +100,7 @@ private:
         std::function<void()> callback;
     };
     void installSession(std::unique_ptr<FpgaUsbTransport> transport);
-    bool begin(const QString& label, bool background = false);
+    bool begin(const QString& label, bool background = false, bool notify = true);
     void advance();
     void completed(quint32 sequence, bool success, quint32 status, bool statusOnlyResponse);
     void fail(const QString& detail, bool operationScoped = true, bool preserveMotorOwner = false);
@@ -112,7 +118,13 @@ private:
     void readAll();
     void readExtensions();
     void callback(std::function<void()> action);
-    void executeExtension(const QJsonObject& request);
+    void executeExtension(const QJsonObject& request, bool polling = false);
+    void deferExtensionOperation(const QJsonObject& request,quint64 generation,qint64 deadline);
+    void configureTec103(bool enable);
+    void pollTec103();
+    void submitTec103Exchange(QJsonObject request, std::function<void(const QJsonObject&)> reply,
+                              quint64 generation, qint64 deadline);
+    void stopTec103();
     void startSensorConfiguration(const QJsonObject& request, bool connectAfter);
     void prepareSensorConfiguration(quint16 source, quint32 baud, quint32 pollMs, bool connectAfter);
     bool appendSensorEnable(quint16 source, bool enable);
@@ -132,6 +144,20 @@ private:
     static quint64 nowUs();
 
     FpgaDeviceSession *session_ = nullptr;
+    FpgaUartExchange *uartExchange_ = nullptr;
+    QThread tec103WorkerThread_;
+    QObject *tec103Worker_ = nullptr;
+    QTimer tec103Timer_;
+    TemperatureControllerData tec103Data_;
+    std::array<TemperatureControllerData,2> tec103PortData_;
+    std::array<bool,2> tec103Identified_{};
+    std::array<bool,2> tec103Online_{};
+    std::array<bool,2> tec103Valid_{};
+    std::array<quint64,2> tec103Revision_{};
+    quint64 tec103Generation_ = 0, tec103Ticket_ = 0;
+    bool tec103Enabled_ = false, tec103PollPending_ = false, tec103Connected_ = false;
+    QString tec103Detail_;
+    bool tec103PollExchange_ = false;
     FpgaControlConfig configuration_;
     FpgaSensor::FpgaSensorAdapter adapter_;
     Ppk::RawSatelliteAssembler observations_;

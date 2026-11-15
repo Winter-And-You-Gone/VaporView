@@ -1,6 +1,8 @@
 #include "SkyFpgaBackend.h"
 #include "FpgaUsbSimulator.h"
 #include "SkyDeviceManager.h"
+#include "Tec103GpioProtocol.h"
+#include "TelemetryCodec.h"
 #include "sky_fpga_test_transport.h"
 
 void rd105Relay()
@@ -9,30 +11,80 @@ void rd105Relay()
     auto config=SkyConfig::defaults();config.sensor_transport_path=SensorTransportPath::FpgaRelay;config.fpga.enabled=true;
     manager.loadConfig(config);
     manager.setFpgaTransportForTesting(VaporView::Ground::Devices::makeFpgaUsbSimulator());
-    const auto submit=[&](const QJsonObject& request) {
+    QVector<FpgaVlp1::Frame> commands;
+    QObject::connect(&manager,&SkyDeviceManager::fpgaRawCommandReceived,&manager,[&](quint64,const QByteArray& bytes) {
+        FpgaVlp1::StreamParser parser;
+        for(const auto& frame:parser.feed(reinterpret_cast<const std::uint8_t*>(bytes.constData()),size_t(bytes.size())))commands.append(frame);
+    });
+    const auto submit=[&](const QJsonObject& request,CommandErrorCode expected=CommandErrorCode::Ok) {
+        waitUntil([&]{return !manager.fpgaStatus().value("busy").toBool();},"Sky temperature operation waits for the current native query");
         bool done=false;QJsonObject document;
         manager.submitFpgaControl(request,[&](CommandErrorCode code,QString,QJsonObject status) {
-            require(code==CommandErrorCode::Ok,"Sky RD105 relay operation succeeds");document=status;done=true;
+            require(code==expected,"Sky temperature relay returns the expected operation result");document=status;done=true;
         });
-        waitUntil([&]{return done;},"Sky RD105 relay completes");return document;
+        waitUntil([&]{return done;},"Sky temperature relay completes");return document;
     };
     const auto status=submit({{"op","connect"},{"recover",false}});
-    require(status.value("extensions").toInt()==0x3b,"Sky exposes the integrated RD105 firmware capability");
-    submit({{"op","sensor"},{"source",0x4a},{"enabled",true},{"poll_ms",100}});
+    require(status.value("extensions").toInt()==0x3b,"Sky exposes the actual FPGA capability word");
+    const auto writeCount=[&] {int count=0;for(const auto& command:commands)if(command.header.message==3)++count;return count;};
+    const int beforeLegacy=writeCount();
+    submit({{"op","instrument"},{"source",0x4a},{"action",2},{"address",0x2000},{"count",2},{"data","AC3GwA=="}},CommandErrorCode::ConfigApplyFailed);
+    submit({{"op","device_temperature"},{"source",0x4a},{"celsius",30.0}},CommandErrorCode::ConfigApplyFailed);
+    require(writeCount()==beforeLegacy,"Sky rejects legacy 6A temperature operations before any register write");
+    submit({{"op","sensor"},{"source",0x4a},{"enabled",true}});
     waitUntil([&]{const auto data=manager.latestTemperatureController();return data.valid
         &&std::isfinite(data.channels[0].measured_temperature_c)&&std::isfinite(data.channels[1].measured_temperature_c);},
-        "Sky merges real VLP samples for both RD105 channels");
+        "Sky merges typed native samples from two physical TEC103 instruments");
     const auto data=manager.latestTemperatureController();
-    require(data.device_address==2&&data.rs485_baud_index==2,"Sky publishes the shared-bus instrument settings");
+    require(data.device_address==1&&data.rs485_baud_index==-1&&std::isnan(data.internal_temperature_c),
+        "Sky preserves actual device address and leaves nonshared globals unknown");
+    require(manager.fpgaStatus().value("tec103_connected").toBool(),"Sky status reports both identified GPIO instruments");
+    const auto commandsBeforePoll=commands.size();
+    waitUntil([&]{return commands.size()>commandsBeforePoll;},
+        "native polling continues while foreground controls remain available");
+    require(!manager.fpgaStatus().value("busy").toBool(),
+        "background native polling does not advertise a foreground operation");
+    bool queuedQueryDone=false;QJsonObject queuedQueryResult;
+    const QString queuedTicket=QStringLiteral("1000000");
+    manager.submitFpgaControl({{"op","uart_exchange"},{"channel",1},{"ticket",queuedTicket},
+        {"data",QString::fromLatin1(QByteArray("TEC=?@").toBase64())},
+        {"timeout_ms",1200},{"max_rx",2048},{"quiet_ms",30}},
+        [&](CommandErrorCode code,QString,QJsonObject document) {
+            require(code==CommandErrorCode::Ok,"a command arriving during internal polling waits before sending");
+            queuedQueryResult=document.value("operation_result").toObject();queuedQueryDone=true;
+        });
+    waitUntil([&]{return queuedQueryDone;},"queued native identity query completes after the poll yields");
+    require(queuedQueryResult.value("ticket").toString()==queuedTicket && queuedQueryResult.value("ok").toBool()
+        && QByteArray::fromBase64(queuedQueryResult.value("data").toString().toLatin1()).contains("TEC=103@"),
+        "the queued query receives its own native response instead of a poll completion");
     bool listed=false;for(const auto& device:manager.allStatuses())if(device.device_id==SkyDeviceId::TemperatureController)listed=true;
-    require(listed,"Sky telemetry device status includes RD105 in FPGA mode");
-    auto response=submit({{"op","instrument"},{"source",0x4a},{"action",2},{"address",0x2000},{"count",2},{"data","AC3GwA=="}});
-    require(response.value("operation_result").toObject().value("verified").toBool(),"Sky returns independent RD105 device readback verification");
+    require(listed,"Sky telemetry device status includes GPIO temperature controllers in FPGA mode");
+    const Tec103GpioProtocol::Call call=[&](const QJsonObject& request) {
+        static quint64 nextTicket=0;const auto ticket=QString::number(++nextTicket);
+        auto operation=request;operation["ticket"]=ticket;
+        const auto response=submit(operation).value("operation_result").toObject();
+        require(response.value("ticket").toString()==ticket&&response.value("op")=="uart_exchange",
+            "Sky native transaction completes only its own request, not an internal polling query");
+        return response;
+    };
+    const auto written=Tec103GpioProtocol::writeVerified(call,2,{{"TC1:TG",3000000}});
+    require(written.success&&!written.unverified,"Sky native write is independently read back through the device protocol");
     waitUntil([&]{return manager.latestTemperatureController().channels[1].target_temperature_c==30.0;},
         "Sky receives the confirmed channel two setpoint through normal telemetry");
-    require(manager.latestTemperatureController().channels[0].target_temperature_c==25.0,"Sky channel two write preserves channel one");
+    require(std::abs(manager.latestTemperatureController().channels[0].target_temperature_c-27.3)<1e-8,
+        "Sky physical channel two write preserves physical channel one");
+    const auto first=Tec103GpioProtocol::read(call,1,true);const auto second=Tec103GpioProtocol::read(call,2,true);
+    require(first.success&&second.success&&first.channelValid[0]&&second.channelValid[1],
+        "Sky transports complete status queries for both physical internal TC1 channels");
+    waitUntil([&]{return manager.fpgaStatus().value("sensor_rates_hz").toObject().value("74").toDouble()>0;},
+        "Sky publishes a measured native temperature sample rate");
+    for(const auto& command:commands)if(command.header.message==3 && command.payload.size()>=8) {
+        const auto address=qFromLittleEndian<quint32>(command.payload.data());
+        require(address<0x6a00 || address>=0x6b00,"Sky GPIO workflow never writes the legacy 6A page");
+    }
     submit({{"op","disconnect"}});
-    require(!manager.latestTemperatureController().valid,"Sky disconnect clears the RD105 snapshot");
+    require(!manager.latestTemperatureController().valid&&!manager.fpgaStatus().value("tec103_connected").toBool(),
+        "Sky disconnect clears the typed temperature snapshot and identity state");
 }
 
 void selectiveConnection()
