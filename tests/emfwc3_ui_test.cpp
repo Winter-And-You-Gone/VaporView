@@ -170,6 +170,16 @@ int main(int argc, char **argv)
         auto *configuration = find<QWidget>(window, "deviceConfigPage");
         check(pages->currentWidget() == configuration, "home configuration action opens device configuration");
         auto *panel = find<QWidget>(window, "emFwc3ConnectionPanel");
+        window.resize(1920, 900);
+        until("wide configuration card settles", [&] {
+            return panel->width() <= panel->sizeHint().width() + 2 && panel->width() > 0;
+        });
+        check(panel->width() <= panel->sizeHint().width() + 2,
+              "motion configuration card uses its content width on wide windows");
+        check(panel->rect().contains(QRect(find<QPushButton>(*panel, "emFwc3Forward1")->mapTo(panel, QPoint()),
+                                            find<QPushButton>(*panel, "emFwc3Forward1")->size())),
+              "compact card keeps motion controls inside its boundaries");
+        window.resize(1280, 850); QApplication::processEvents();
         auto *connect = find<QPushButton>(*panel, "emFwc3Connect");
         for (auto *action : panel->findChildren<QPushButton*>())
             check(action->focusPolicy() == Qt::TabFocus && !action->accessibleName().isEmpty(), "independent device actions follow keyboard-focus and accessibility conventions");
