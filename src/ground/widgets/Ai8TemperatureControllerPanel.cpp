@@ -350,6 +350,23 @@ void Ai8TemperatureControllerPanel::setupUi()
     statusLayout->setContentsMargins(0, 0, 0, 0);
     statusLayout->setSpacing(8);
 
+    auto *spRow = new QWidget(statusRow);
+    spRow->setObjectName("ai8FpgaSetpointRow");
+    auto *spLayout = new QHBoxLayout(spRow);
+    spLayout->setContentsMargins(0, 0, 0, 0);
+    sp_readback_ = new QLabel(spRow);
+    sp_readback_->setObjectName("ai8FpgaSetpointReadback");
+    spLayout->addWidget(sp_readback_);
+    sp_status_ = new QLabel(spRow);
+    sp_status_->setObjectName("ai8FpgaSetpointStatus");
+    sp_status_->setWordWrap(true);
+    spLayout->addWidget(sp_status_, 1);
+    sp_apply_ = new QPushButton(spRow);
+    sp_apply_->setObjectName("ai8FpgaApplySetpoint");
+    spLayout->addWidget(sp_apply_);
+    connect(sp_apply_, &QAbstractButton::clicked, this, &Ai8TemperatureControllerPanel::submitFpgaSetpoint);
+    statusLayout->addWidget(spRow);
+
     auto *readButton = new QPushButton(statusRow);
     read_button_ = readButton;
     readButton->setObjectName(QStringLiteral("ai8ReadParametersButton"));
@@ -416,22 +433,6 @@ void Ai8TemperatureControllerPanel::setupUi()
     mainContentLayout->addWidget(temperature_plot_, 1, Qt::AlignTop);
     rootLayout->addWidget(mainContentCard);
     rootLayout->addWidget(detail_stack_);
-    auto *spRow = new QWidget(this);
-    spRow->setObjectName("ai8FpgaSetpointRow");
-    auto *spLayout = new QHBoxLayout(spRow);
-    spLayout->setContentsMargins(0, 0, 0, 0);
-    sp_readback_ = new QLabel(spRow);
-    sp_readback_->setObjectName("ai8FpgaSetpointReadback");
-    spLayout->addWidget(sp_readback_);
-    sp_status_ = new QLabel(spRow);
-    sp_status_->setObjectName("ai8FpgaSetpointStatus");
-    sp_status_->setWordWrap(true);
-    spLayout->addWidget(sp_status_, 1);
-    sp_apply_ = new QPushButton(spRow);
-    sp_apply_->setObjectName("ai8FpgaApplySetpoint");
-    spLayout->addWidget(sp_apply_);
-    connect(sp_apply_, &QAbstractButton::clicked, this, &Ai8TemperatureControllerPanel::submitFpgaSetpoint);
-    rootLayout->addWidget(spRow);
 
     setEnglish(false);
     selectPage(0);
